@@ -1,0 +1,11 @@
+# KDE Config File
+[Desktop Entry]
+Name=Kdenlive
+Comment=Nonlinear video editor by KDE
+Type=Application
+Exec=env QT_SCALE_FACTOR=1.0 kdenlive %F
+Icon=kdenlive
+StartupWMClass=kdenlive
+X-DocPath=kdenlive/index.html
+MimeType=application/x-kdenlive;
+X-DBUS-ServiceName=org.kde.kdenlive
