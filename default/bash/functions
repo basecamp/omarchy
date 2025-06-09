@@ -48,12 +48,10 @@ web2app() {
 Version=1.0
 Name=$APP_NAME
 Comment=$APP_NAME
-Exec=google-chrome-stable --app="$APP_URL" --name="$APP_NAME" --class="$APP_NAME"
+Exec=chromium --app="$APP_URL" --name="$APP_NAME" --class="$APP_NAME"
 Terminal=false
 Type=Application
 Icon=$ICON_PATH
-Categories=GTK;
-MimeType=text/html;text/xml;application/xhtml_xml;
 StartupNotify=true
 EOF
 
