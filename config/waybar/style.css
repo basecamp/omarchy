@@ -4,7 +4,7 @@
   min-height: 0;
   font-family: CaskaydiaMono Nerd Font;
   font-size: 12px;
-  color: #cdd6f4;
+  color: #cfc9c2;
   background-color: #1a1b26;
 }
 
@@ -35,11 +35,9 @@
 
 tooltip {
   border-radius: 8px;
-  padding: 15px;
-  background-color: #131822;
+  padding: 5px;
 }
 
 tooltip label {
   padding: 5px;
-  background-color: #131822;
 }
