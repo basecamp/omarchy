@@ -1,14 +1,14 @@
 * {
   all: unset;
   font-family: Liberation Sans;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .notification {
   border-radius: 0px;
   padding: 14px;
   color: #cdd6f4;
-  background-color: #1a1b26;
+  background-color: rgba(26, 27, 38, 0.95);
   border: 2px solid #313244;
   margin: 20px;
 }
