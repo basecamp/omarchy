@@ -6,7 +6,7 @@ alias lta='lt -a'
 alias ff="fzf --preview 'batcat --style=numbers --color=always {}'"
 alias fd='fdfind'
 alias cd="zd"
-zd() { [ $# -eq 0 ] && cd ~ && return || { z "$@" && pwd; }; }
+zd() { [ $# -eq 0 ] && cd ~ && return || { z "$@" && printf " \U000F17A9 " && pwd; }; }
 
 # Directories
 alias ..='cd ..'
