@@ -1,4 +1,4 @@
-yay -Sy --noconfirm --needed ttf-font-awesome
+yay -Sy --noconfirm --needed ttf-font-awesome noto-fonts-emoji
 
 mkdir -p ~/.local/share/fonts
 
