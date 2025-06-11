@@ -6,7 +6,15 @@ alias lta='lt -a'
 alias ff="fzf --preview 'batcat --style=numbers --color=always {}'"
 alias fd='fdfind'
 alias cd="zd"
-zd() { [ $# -eq 0 ] && cd ~ && return || { z "$@" && printf " \U000F17A9 " && pwd; }; }
+zd() {
+  if [ $# -eq 0 ]; then
+    builtin cd ~ && return
+  elif [ -d "$1" ]; then
+    builtin cd "$1"
+  else
+    z "$@" && printf " \U000F17A9 " && pwd || echo "Error: Directory not found"
+  fi
+}
 
 # Directories
 alias ..='cd ..'
