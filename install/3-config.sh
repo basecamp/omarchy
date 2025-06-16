@@ -22,3 +22,25 @@ git config --global alias.br branch
 git config --global alias.ci commit
 git config --global alias.st status
 git config --global pull.rebase true
+
+# Configure identification
+echo "Enter identification for git and autocomplete..."
+export OMAKUB_USER_NAME=$(gum input --placeholder "Enter full name" --prompt "Name> ")
+export OMAKUB_USER_EMAIL=$(gum input --placeholder "Enter email address" --prompt "Email> ")
+
+# Set identification from install inputs
+if [[ -n "${OMAKUB_USER_NAME//[[:space:]]/}" ]]; then
+  git config --global user.name "$OMAKUB_USER_NAME"
+fi
+
+if [[ -n "${OMAKUB_USER_EMAIL//[[:space:]]/}" ]]; then
+  git config --global user.email "$OMAKUB_USER_EMAIL"
+fi
+
+tee ~/.XCompose >/dev/null <<EOF
+include "%H/.local/share/omarchy/default/xcompose"
+
+# Identification
+<Multi_key> <space> <n> : "$OMAKUB_USER_NAME"
+<Multi_key> <space> <e> : "$OMAKUB_USER_EMAIL"
+EOF
