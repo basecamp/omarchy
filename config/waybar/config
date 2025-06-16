@@ -10,6 +10,7 @@
       "clock"
     ],
     "modules-right": [
+      "bluetooth",
       "network",
       "cpu",
       "battery",
@@ -42,7 +43,7 @@
     },
     "cpu": {
       "interval": 5,
-      "format": "{usage}% 󰍛",
+      "format": "󰍛",
       "on-click": "alacritty -e btop"
     },
     "clock": {
@@ -52,11 +53,10 @@
     },
     "network": {
       "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
-      "format-wifi" : "{bandwidthDownBytes} {icon}",
-      "format-ethernet" : "{bandwidthDownBytes} 󰀂",
+      "format-wifi" : "{icon}",
+      "format-ethernet" : "󰀂",
       "format-disconnected" : "󰖪",
-      "tooltip-format-wifi": "{icon} {essid}\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
-      "tooltip-format-ethernet": "{icon} {ifname}\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
+      "tooltip-format": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
       "tooltip-format-disconnected": "Disconnected",
       "interval": 3,
       "nospacing": 1,
@@ -82,6 +82,13 @@
         "warning": 20,
         "critical": 10
       }
+    },
+    "bluetooth": {
+      "format": "",
+      "format-disabled": "󰂲",
+      "format-connected": "",
+      "tooltip-format": "{num_connections} devices connected",
+      "on-click": "GTK_THEME=Adwaita-dark /usr/bin/blueberry"
     },
     "power-profiles-daemon": {
       "format": "{icon}",
