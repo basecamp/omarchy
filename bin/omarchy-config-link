@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Link all the key config files to omarchy's internal versions for quicker testing
+
+ln -nsf ~/.local/share/omarchy/config/hypr/hyprland.conf ~/.config/hypr/
+ln -nsf ~/.local/share/omarchy/config/hypr/hypridle.conf ~/.config/hypr/
+ln -nsf ~/.local/share/omarchy/config/hypr/hyprlock.conf ~/.config/hypr/
+
+ln -nsf ~/.local/share/omarchy/config/waybar/config ~/.config/waybar/
+ln -nsf ~/.local/share/omarchy/config/waybar/style.css ~/.config/waybar/
+
+ln -nsf ~/.local/share/omarchy/config/swaync/config.json ~/.config/swaync/
+ln -nsf ~/.local/share/omarchy/config/swaync/style.css ~/.config/swaync/
+
+ln -nsf ~/.local/share/omarchy/config/wofi/config ~/.config/wofi/
+ln -nsf ~/.local/share/omarchy/config/wofi/style.css ~/.config/wofi/
+
+ln -nsf ~/.local/share/omarchy/config/alacritty/alacritty.toml ~/.config/alacritty/
