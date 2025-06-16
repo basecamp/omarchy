@@ -50,12 +50,12 @@
       "tooltip": false
     },
     "network": {
-      "format-wifi" : "{bandwidthDownBytes} {icon}",
       "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
-      "format-ethernet": "󰀂",
+      "format-wifi" : "{bandwidthDownBytes} {icon}",
+      "format-ethernet" : "{bandwidthDownBytes} {icon}",
       "format-disconnected" : "󰖪",
       "tooltip-format-wifi": "{icon} {essid}\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
-      "tooltip-format-ethernet": "󰀂  {ifname}\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
+      "tooltip-format-ethernet": "{icon} {ifname}\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
       "tooltip-format-disconnected": "Disconnected",
       "interval": 3,
       "nospacing": 1,
