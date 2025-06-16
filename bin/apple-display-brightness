@@ -1,0 +1,3 @@
+#!/bin/bash
+
+sudo asdcontrol $(sudo asdcontrol --detect /dev/usb/hiddev* | grep ^/dev/usb/hiddev | cut -d: -f1) -- "$1"
