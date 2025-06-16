@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Bluetooth
+Comment=Configure Bluetooth settings
+Icon=bluetooth
+Exec=env GTK_THEME=Adwaita-dark blueberry
+Terminal=false
+Type=Application
+Categories=GTK;GNOME;Settings;HardwareSettings;X-XFCE-SettingsDialog;X-XFCE-HardwareSettings;
+StartupNotify=true
+NotShowIn=GNOME;KDE;Unity;
