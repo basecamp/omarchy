@@ -19,6 +19,7 @@
 }
 
 #cpu,
+#power-profiles-daemon,
 #battery,
 #network,
 #clock {
@@ -29,7 +30,7 @@
   padding-left: 10px;
 }
 
-#battery {
+#power-profiles-daemon {
   margin-right: 5px;
 }
 

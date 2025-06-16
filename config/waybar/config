@@ -12,7 +12,8 @@
     "modules-right": [
       "network",
       "cpu",
-      "battery"
+      "battery",
+      "power-profiles-daemon"
     ],
     "hyprland/workspaces": {
       "on-click": "activate",
@@ -52,7 +53,7 @@
     "network": {
       "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
       "format-wifi" : "{bandwidthDownBytes} {icon}",
-      "format-ethernet" : "{bandwidthDownBytes} {icon}",
+      "format-ethernet" : "{bandwidthDownBytes} 󰀂",
       "format-disconnected" : "󰖪",
       "tooltip-format-wifi": "{icon} {essid}\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
       "tooltip-format-ethernet": "{icon} {ifname}\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
@@ -80,6 +81,16 @@
       "states": {
         "warning": 20,
         "critical": 10
+      }
+    },
+    "power-profiles-daemon": {
+      "format": "{icon}",
+      "tooltip-format": "Power profile: {profile}",
+      "tooltip": true,
+      "format-icons": {
+        "power-saver": "󰡳",
+        "balanced":     "󰊚",
+        "performance":  "󰡴"
       }
     }
 }
