@@ -8,8 +8,9 @@ ascii_art=' ▄██████▄    ▄▄▄▄███▄▄▄▄      �
  ▀██████▀   ▀█   ███   █▀    ███    █▀    ███    ███ ████████▀    ███    █▀     ▀█████▀ 
                                           ███    ███                                    '
 
-echo -e "$ascii_art"
+echo -e "\n$ascii_art\n\n"
 
+echo "Starting installation of Omarchy..."
 sudo pacman -Sy --noconfirm --needed git >/dev/null
 
 echo "Cloning Omarchy..."
