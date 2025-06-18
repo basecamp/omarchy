@@ -4,8 +4,6 @@
   min-height: 0;
   font-family: CaskaydiaMono Nerd Font;
   font-size: 12px;
-  color: #cdd6f4;
-  background-color: #1a1b26;
 }
 
 #workspaces {
@@ -29,7 +27,6 @@
   margin-right: 13px;
 }
 
-
 tooltip {
   padding: 2px;
 }
@@ -37,3 +34,5 @@ tooltip {
 tooltip label {
   padding: 2px;
 }
+
+@import "../omarchy/current-theme/waybar.css";

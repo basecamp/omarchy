@@ -2,7 +2,7 @@
 
 # Cycles through the background images available
 
-BACKGROUNDS_DIR="$HOME/.local/share/backgrounds"
+BACKGROUNDS_DIR="$HOME/.config/omarchy/current-backgrounds/"
 NEXT_BACKGROUND_FILE="$HOME/.cache/next_background_index"
 
 BACKGROUNDS=($(find "$BACKGROUNDS_DIR" -type f | sort))
@@ -15,7 +15,7 @@ else
 fi
 
 # Save next index (wrap around)
-echo "$(( (INDEX + 1) % TOTAL ))" > "$NEXT_BACKGROUND_FILE"
+echo "$(((INDEX + 1) % TOTAL))" >"$NEXT_BACKGROUND_FILE"
 
 # Launch swaybg
 pkill -x swaybg

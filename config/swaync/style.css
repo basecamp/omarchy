@@ -26,3 +26,5 @@
 .body {
   color: #a6adc8;
 }
+
+@import "../omarchy/current-theme/swaync.css";
