@@ -3,20 +3,35 @@
 # Cycles through the background images available
 
 BACKGROUNDS_DIR="$HOME/.config/omarchy/current-backgrounds/"
-NEXT_BACKGROUND_FILE="$HOME/.cache/next_background_index"
+CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current-background"
 
 BACKGROUNDS=($(find "$BACKGROUNDS_DIR" -type f | sort))
 TOTAL=${#BACKGROUNDS[@]}
 
-if [[ ! -f "$NEXT_BACKGROUND_FILE" ]]; then
-  INDEX=0
+# Get current background from symlink
+if [[ -L "$CURRENT_BACKGROUND_LINK" ]]; then
+  CURRENT_BACKGROUND=$(readlink "$CURRENT_BACKGROUND_LINK")
 else
-  INDEX=$(<"$NEXT_BACKGROUND_FILE")
+  # Default to first background if no symlink exists
+  CURRENT_BACKGROUND=${BACKGROUNDS[0]}
 fi
 
-# Save next index (wrap around)
-echo "$(((INDEX + 1) % TOTAL))" >"$NEXT_BACKGROUND_FILE"
+# Find current background index
+INDEX=0
+for i in "${!BACKGROUNDS[@]}"; do
+  if [[ "${BACKGROUNDS[$i]}" == "$CURRENT_BACKGROUND" ]]; then
+    INDEX=$i
+    break
+  fi
+done
+
+# Get next background (wrap around)
+NEXT_INDEX=$(((INDEX + 1) % TOTAL))
+NEW_BACKGROUND=${BACKGROUNDS[$NEXT_INDEX]}
+
+# Set new background symlink
+ln -nsf "$NEW_BACKGROUND" "$CURRENT_BACKGROUND_LINK"
 
 # Launch swaybg
 pkill -x swaybg
-setsid swaybg -i "${BACKGROUNDS[$INDEX]}" -m fill >/dev/null 2>&1 &
+setsid swaybg -i "$NEW_BACKGROUND" -m fill >/dev/null 2>&1 &
