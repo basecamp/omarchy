@@ -25,18 +25,15 @@
 #bluetooth,
 #pulseaudio,
 #clock {
-  padding: 0 8px 0 8px;
+  min-width: 12px;
+  margin-right: 13px;
 }
 
-#cpu {
-  margin-right: 5px;
-}
 
 tooltip {
-  border-radius: 8px;
-  padding: 5px;
+  padding: 2px;
 }
 
 tooltip label {
-  padding: 5px;
+  padding: 2px;
 }
