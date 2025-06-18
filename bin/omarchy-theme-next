@@ -12,15 +12,19 @@ else
   INDEX=$(<"$NEXT_THEME_FILE")
 fi
 
-# Save next index (wrap around)
-echo "$(((INDEX + 1) % TOTAL))" >"$NEXT_THEME_FILE"
-
 # Set new theme
 NEW_THEME=${THEMES[$INDEX]}
 ln -nsf $NEW_THEME ~/.config/omarchy/current-theme
 
+# Save next index (wrap around)
+echo "$(((INDEX + 1) % TOTAL))" >"$NEXT_THEME_FILE"
+
 # Install theme backgrounds
 source ~/.config/omarchy/current-theme/backgrounds.sh
+ln -nsf ~/.config/omarchy/backgrounds/catpuccin ~/.config/omarchy/current-backgrounds
+
+# Touch alacritty config to pickup the changed theme
+touch ~/.config/alacritty/alacritty.toml
 
 # Restart apps for new theme
 pkill -SIGRTMIN+10 waybar
