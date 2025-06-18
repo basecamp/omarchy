@@ -11,8 +11,8 @@
     ],
     "modules-right": [
       "bluetooth",
-      "pulseaudio",
       "network",
+      "pulseaudio",
       "cpu",
       "power-profiles-daemon",
       "battery"
