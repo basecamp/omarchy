@@ -1,5 +1,5 @@
 yay -S --noconfirm --needed \
-  brightnessctl playerctl wpctl pamixer wireplumber power-profiles-daemon blueberry \
+  brightnessctl playerctl wpctl pamixer pavucontrol wireplumber power-profiles-daemon blueberry \
   fcitx5 fcitx5-gtk fcitx5-qt fcitx5-configtool \
   wl-clip-persist clipse \
   nautilus sushi gnome-calculator \

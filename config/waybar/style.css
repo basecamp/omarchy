@@ -23,15 +23,12 @@
 #battery,
 #network,
 #bluetooth,
+#pulseaudio,
 #clock {
   padding: 0 8px 0 8px;
 }
 
 #cpu {
-  padding-left: 10px;
-}
-
-#power-profiles-daemon {
   margin-right: 5px;
 }
 

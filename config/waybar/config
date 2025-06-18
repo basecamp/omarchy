@@ -11,10 +11,11 @@
     ],
     "modules-right": [
       "bluetooth",
+      "pulseaudio",
       "network",
-      "cpu",
+      "power-profiles-daemon",
       "battery",
-      "power-profiles-daemon"
+      "cpu"
     ],
     "hyprland/workspaces": {
       "on-click": "activate",
@@ -89,6 +90,15 @@
       "format-connected": "",
       "tooltip-format": "{num_connections} devices connected",
       "on-click": "GTK_THEME=Adwaita-dark /usr/bin/blueberry"
+    },
+    "pulseaudio": {
+      "format": "",
+      "format-muted": "󰝟",
+      "scroll-step": 5,
+      "on-click": "GTK_THEME=Adwaita-dark pavucontrol",
+      "tooltip-format": "Playing at {volume}%",
+      "on-click-right": "pamixer -t",
+      "ignored-sinks": ["Easy Effects Sink"]
     },
     "power-profiles-daemon": {
       "format": "{icon}",
