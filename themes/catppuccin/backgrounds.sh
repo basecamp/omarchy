@@ -1,4 +1,4 @@
-BACKGROUNDS_DIR=~/.config/omarchy/backgrounds/catpuccin
+BACKGROUNDS_DIR=~/.config/omarchy/backgrounds/catppuccin
 
 if [[ ! -d $BACKGROUNDS_DIR ]]; then
   mkdir -p $BACKGROUNDS_DIR
