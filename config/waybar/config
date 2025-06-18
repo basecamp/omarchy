@@ -90,7 +90,7 @@
       "format-disabled": "󰂲",
       "format-connected": "",
       "tooltip-format": "Devices connected: {num_connections}",
-      "on-click": "GTK_THEME=Adwaita-dark /usr/bin/blueberry"
+      "on-click": "GTK_THEME=Adwaita-dark blueberry"
     },
     "pulseaudio": {
       "format": "",
