@@ -57,7 +57,7 @@
       "format-wifi" : "{icon}",
       "format-ethernet" : "󰀂",
       "format-disconnected" : "󰖪",
-      "tooltip-format": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
+      "tooltip-format": "{essid} ({frequency} GHz)\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
       "tooltip-format-disconnected": "Disconnected",
       "interval": 3,
       "nospacing": 1,
