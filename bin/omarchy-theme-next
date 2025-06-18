@@ -27,13 +27,13 @@ done
 NEXT_INDEX=$(((INDEX + 1) % TOTAL))
 NEW_THEME=${THEMES[$NEXT_INDEX]}
 
-# Set new theme
-ln -nsf $NEW_THEME ~/.config/omarchy/current-theme
-
 # Install theme backgrounds
 source ~/.config/omarchy/current-theme/backgrounds.sh
 THEME_NAME=$(basename "$NEW_THEME")
 ln -nsf ~/.config/omarchy/backgrounds/$THEME_NAME ~/.config/omarchy/current-backgrounds
+
+# Set new theme
+ln -nsf $NEW_THEME ~/.config/omarchy/current-theme
 
 # Touch alacritty config to pickup the changed theme
 touch ~/.config/alacritty/alacritty.toml
