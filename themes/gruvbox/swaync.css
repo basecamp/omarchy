@@ -1,0 +1,10 @@
+.notification {
+  color: #cdd6f4;
+  background-color: rgba(30, 30, 46, 0.95);
+  border: 2px solid #313244;
+}
+
+.body {
+  color: #a6adc8;
+}
+
