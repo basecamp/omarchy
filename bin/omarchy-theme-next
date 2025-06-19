@@ -38,5 +38,6 @@ touch "$HOME/.config/alacritty/alacritty.toml"
 # Restart waybar for new theme
 pkill waybar && setsid waybar
 
-# Pick new background from theme set
-swaybg-next
+# Set new background
+ln -nsf $(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1) "$HOME/.config/omarchy/current/background"
+pkill -x swaybg && setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill
