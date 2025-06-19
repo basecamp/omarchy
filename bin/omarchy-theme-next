@@ -39,5 +39,6 @@ ln -nsf $NEW_THEME ~/.config/omarchy/current-theme
 touch ~/.config/alacritty/alacritty.toml
 
 # Restart apps for new theme
-pkill -SIGRTMIN+10 waybar
+pkill waybar
+setsid waybar &
 swaybg-next
