@@ -26,11 +26,11 @@ done
 # Get next theme (wrap around)
 NEXT_INDEX=$(((INDEX + 1) % TOTAL))
 NEW_THEME=${THEMES[$NEXT_INDEX]}
+NEW_THEME_NAME=$(basename "$NEW_THEME")
 
 # Install theme backgrounds
 source ~/.config/omarchy/current-theme/backgrounds.sh
-THEME_NAME=$(basename "$NEW_THEME")
-ln -nsf ~/.config/omarchy/backgrounds/$THEME_NAME ~/.config/omarchy/current-backgrounds
+ln -nsf ~/.config/omarchy/backgrounds/$NEW_THEME_NAME ~/.config/omarchy/current-backgrounds
 
 # Set new theme
 ln -nsf $NEW_THEME ~/.config/omarchy/current-theme
