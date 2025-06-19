@@ -32,6 +32,6 @@ NEW_BACKGROUND=${BACKGROUNDS[$NEXT_INDEX]}
 # Set new background symlink
 ln -nsf "$NEW_BACKGROUND" "$CURRENT_BACKGROUND_LINK"
 
-# Launch swaybg
+# Relaunch swaybg
 pkill -x swaybg
-setsid swaybg -i "$NEW_BACKGROUND" -m fill >/dev/null 2>&1 &
+setsid swaybg -i "$NEW_BACKGROUND" -m fill >/dev/null 2>&2
