@@ -14,5 +14,3 @@ ln -nsf ~/.local/share/omarchy/config/swaync/style.css ~/.config/swaync/
 
 ln -nsf ~/.local/share/omarchy/config/wofi/config ~/.config/wofi/
 ln -nsf ~/.local/share/omarchy/config/wofi/style.css ~/.config/wofi/
-
-ln -nsf ~/.local/share/omarchy/config/alacritty/alacritty.toml ~/.config/alacritty/
