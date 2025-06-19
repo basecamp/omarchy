@@ -35,8 +35,9 @@ ln -nsf "$NEW_THEME" "$HOME/.config/omarchy/current/theme"
 # Touch alacritty config to pickup the changed theme
 touch "$HOME/.config/alacritty/alacritty.toml"
 
-# Restart waybar for new theme
+# Restart for new theme
 pkill waybar && setsid waybar
+pkill swaync && setsid swaync
 
 # Set new background
 ln -nsf $(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1) "$HOME/.config/omarchy/current/background"
