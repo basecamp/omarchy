@@ -13,4 +13,3 @@ ln -nsf ~/.local/share/omarchy/config/swaync/config.json ~/.config/swaync/
 ln -nsf ~/.local/share/omarchy/config/swaync/style.css ~/.config/swaync/
 
 ln -nsf ~/.local/share/omarchy/config/wofi/config ~/.config/wofi/
-ln -nsf ~/.local/share/omarchy/config/wofi/style.css ~/.config/wofi/
