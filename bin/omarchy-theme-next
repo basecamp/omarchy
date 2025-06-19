@@ -1,7 +1,7 @@
 #!/bin/bash
 
 THEMES_DIR="$HOME/.config/omarchy/themes/"
-CURRENT_THEME_LINK="$HOME/.config/omarchy/current-theme"
+CURRENT_THEME_LINK="$HOME/.config/omarchy/current/theme"
 
 THEMES=($(find "$THEMES_DIR" -mindepth 1 | sort))
 TOTAL=${#THEMES[@]}
@@ -28,17 +28,15 @@ NEXT_INDEX=$(((INDEX + 1) % TOTAL))
 NEW_THEME=${THEMES[$NEXT_INDEX]}
 NEW_THEME_NAME=$(basename "$NEW_THEME")
 
-# Install theme backgrounds
-source ~/.config/omarchy/current-theme/backgrounds.sh
-ln -nsf ~/.config/omarchy/backgrounds/$NEW_THEME_NAME ~/.config/omarchy/current-backgrounds
-
-# Set new theme
-ln -nsf $NEW_THEME ~/.config/omarchy/current-theme
+# Set current theme
+ln -nsf "$HOME/.config/omarchy/backgrounds/$NEW_THEME_NAME" "$HOME/.config/omarchy/current/backgrounds"
+ln -nsf "$NEW_THEME" "$HOME/.config/omarchy/current/theme"
 
 # Touch alacritty config to pickup the changed theme
-touch ~/.config/alacritty/alacritty.toml
+touch "$HOME/.config/alacritty/alacritty.toml"
 
-# Restart apps for new theme
-pkill waybar
-setsid waybar &
+# Restart waybar for new theme
+pkill waybar && setsid waybar
+
+# Pick new background from theme set
 swaybg-next
