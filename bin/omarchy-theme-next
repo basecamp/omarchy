@@ -42,3 +42,12 @@ pkill swaync && setsid swaync
 # Set new background
 ln -nsf $(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1) "$HOME/.config/omarchy/current/background"
 pkill -x swaybg && setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill
+
+# Wait for swaync to get started properly again
+while ! pgrep -x swaync >/dev/null; do
+  sleep 0.05
+done
+sleep 0.5
+
+# Notify of the new theme
+notify-send "Theme changed to $NEW_THEME_NAME" -t 2000 -e
