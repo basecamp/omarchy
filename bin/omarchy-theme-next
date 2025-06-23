@@ -38,6 +38,7 @@ touch "$HOME/.config/alacritty/alacritty.toml"
 # Restart for new theme
 pkill waybar && setsid waybar
 pkill swaync && setsid swaync
+hyprctl reload
 
 # Set new background
 ln -nsf $(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1) "$HOME/.config/omarchy/current/background"
