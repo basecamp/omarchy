@@ -36,19 +36,14 @@ ln -nsf "$NEW_THEME" "$HOME/.config/omarchy/current/theme"
 touch "$HOME/.config/alacritty/alacritty.toml"
 
 # Restart for new theme
-pkill swaync && setsid swaync
 pkill -SIGUSR2 waybar
+makoctl reload
 hyprctl reload
 
 # Set new background
 ln -nsf $(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1) "$HOME/.config/omarchy/current/background"
-pkill -x swaybg && setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill
-
-# Wait for swaync to get started properly again
-while ! pgrep -x swaync >/dev/null; do
-  sleep 0.05
-done
-sleep 0.5
+pkill -x swaybg
+setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill
 
 # Notify of the new theme
-notify-send "Theme changed to $NEW_THEME_NAME" -t 2000 -e
+notify-send "Theme changed to $NEW_THEME_NAME" -t 2000
