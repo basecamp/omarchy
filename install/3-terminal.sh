@@ -1,5 +1,5 @@
 yay -S --noconfirm --needed \
-  wget curl unzip \
+  wget curl unzip inetutils \
   eza fzf ripgrep zoxide \
   wl-clipboard fastfetch btop \
   man tldr less whois plocate \
