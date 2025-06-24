@@ -63,7 +63,7 @@
       "tooltip-format-disconnected": "Disconnected",
       "interval": 3,
       "nospacing": 1,
-      "on-click": "alacritty -e iwctl"
+      "on-click-wifi": "alacritty -e iwctl"
     },
     "battery": {
       "interval": 5,
