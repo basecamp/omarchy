@@ -1,1 +1,4 @@
-yay -S --noconfirm --needed mise github-cli lazygit lazydocker
+yay -S --noconfirm --needed \
+  cargo clang llvm mise \
+  github-cli \
+  lazygit lazydocker
