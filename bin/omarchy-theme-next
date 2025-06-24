@@ -43,7 +43,7 @@ hyprctl reload
 # Set new background
 ln -nsf $(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1) "$HOME/.config/omarchy/current/background"
 pkill -x swaybg
-setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill
+setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill &
 
 # Notify of the new theme
 notify-send "Theme changed to $NEW_THEME_NAME" -t 2000
