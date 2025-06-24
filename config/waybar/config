@@ -70,7 +70,7 @@
       "format": "{capacity}% {icon}",
       "format-discharging": "{icon}",
       "format-charging":    "{icon}",
-      "format-plugged":     "{capacity}%  {icon}",
+      "format-plugged":     "",
         "format-icons": {
           "charging": [
             "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"
