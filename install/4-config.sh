@@ -32,6 +32,7 @@ if [[ -n "${OMAKUB_USER_EMAIL//[[:space:]]/}" ]]; then
   git config --global user.email "$OMAKUB_USER_EMAIL"
 fi
 
+# Set default XCompose that is triggered with CapsLock
 tee ~/.XCompose >/dev/null <<EOF
 include "%H/.local/share/omarchy/default/xcompose"
 
