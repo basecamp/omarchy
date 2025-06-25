@@ -15,6 +15,9 @@ zd() {
     z "$@" && printf " \U000F17A9 " && pwd || echo "Error: Directory not found"
   fi
 }
+open() {
+  xdg-open "$@" >/dev/null 2>&1
+}
 
 # Directories
 alias ..='cd ..'
