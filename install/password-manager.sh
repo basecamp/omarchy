@@ -4,7 +4,7 @@ if ! command -v 1password &>/dev/null; then
   tar -xf 1password-latest.tar.gz
   sudo mkdir -p /opt/1Password
   sudo mv 1password-*/* /opt/1Password
-  sudo source /opt/1Password/after-install.sh
+  sudo /opt/1Password/after-install.sh
   rm -rf 1password*
   cd -
 
