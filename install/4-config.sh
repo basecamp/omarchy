@@ -2,8 +2,7 @@
 cp -R ~/.local/share/omarchy/config/* ~/.config/
 
 # Copy over Omarchy applications
-mkdir -p ~/.local/share/applications
-cp ~/.local/share/omarchy/applications/* ~/.local/share/applications/
+source ~/.local/share/omarchy/bin/omarchy-sync-applications
 
 # Use default bashrc from Omarchy
 echo "source ~/.local/share/omarchy/default/bash/rc" >~/.bashrc
