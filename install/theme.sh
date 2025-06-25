@@ -16,6 +16,7 @@ source ~/.local/share/omarchy/themes/tokyo-night/backgrounds.sh
 ln -snf ~/.config/omarchy/backgrounds/tokyo-night ~/.config/omarchy/current/backgrounds
 
 # Set specific app links for current theme
+ln -snf ~/.config/omarchy/current/theme/hyprlock.conf ~/.config/hypr/hyprlock.conf
 ln -snf ~/.config/omarchy/current/theme/wofi.css ~/.config/wofi/style.css
 ln -snf ~/.config/omarchy/current/theme/neovim.lua ~/.config/nvim/lua/plugins/theme.lua
 mkdir -p ~/.config/btop/themes
