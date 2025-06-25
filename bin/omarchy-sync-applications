@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Copy and sync icon files
-sudo gtk-update-icon-cache /usr/share/icons/hicolor &>/dev/null
 sudo cp ~/.local/share/omarchy/applications/icons/*.png /usr/share/icons/hicolor/48x48/apps/
+sudo touch /usr/share/icons/hicolor/48x48/apps/*
 sudo gtk-update-icon-cache /usr/share/icons/hicolor &>/dev/null
 
 # Copy .desktop declarations
