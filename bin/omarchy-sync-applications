@@ -1,0 +1,3 @@
+#!/bin/bash
+
+cp ~/.local/share/omarchy/applications/* ~/.local/share/applications/
