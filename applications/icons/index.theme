@@ -1,0 +1,9 @@
+[Icon Theme]
+Name=User Icons
+Comment=User-local icon theme
+Directories=48x48/apps
+
+[48x48/apps]
+Size=48
+Context=Apps
+Type=Fixed
