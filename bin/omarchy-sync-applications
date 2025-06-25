@@ -1,13 +1,12 @@
 #!/bin/bash
 
 # Ensure necessary directories are present
-mkdir -p ~/.local/share/icons/hicolor/48x48/apps/
+mkdir -p ~/.local/share/icons/hicolor/scalable/apps/
 mkdir -p ~/.local/share/applications/
 
 # Copy and sync icon files
-cp ~/.local/share/omarchy/applications/icons/*.png ~/.local/share/icons/hicolor/48x48/apps/
-cp ~/.local/share/omarchy/applications/icons/index.theme ~/.local/share/icons/hicolor/
-gtk-update-icon-cache ~/.local/share/icons/hicolor
+sudo cp ~/.local/share/omarchy/applications/icons/*.png /usr/share/icons/hicolor/48x48/apps/
+sudo gtk-update-icon-cache /usr/share/icons/hicolor &>/dev/null
 
 # Copy .desktop declarations
 cp ~/.local/share/omarchy/applications/*.desktop ~/.local/share/applications/
