@@ -1,6 +1,6 @@
-@define-color	selected-text  #cba6f7;
-@define-color	text  #cdd6f4;
-@define-color	base  #1e1e2e;
+@define-color	selected-text  #fabd2f;
+@define-color	text  #ebdbb2;
+@define-color	base  #282828;
 
 * {
   font-family: 'CaskaydiaMono Nerd Font', monospace;
