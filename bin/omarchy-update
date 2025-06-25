@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cd ~/.local/share/omarchy
+git pull
+cd -
