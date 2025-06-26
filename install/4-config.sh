@@ -12,10 +12,6 @@ ExecStart=
 ExecStart=-/usr/bin/agetty --autologin $USER --noclear %I \$TERM
 EOF
 
-# Add lib32 for pacman so we can install steam
-sudo sed -i '/^\s*#\[multilib\]/,/^$/{s/^\s*#//}' /etc/pacman.conf
-sudo pacman -Sy
-
 # Set common git aliases
 git config --global alias.co checkout
 git config --global alias.br branch
