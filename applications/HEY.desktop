@@ -2,7 +2,7 @@
 Version=1.0
 Name=HEY
 Comment=HEY Email + Calendar
-Exec=google-chrome-stable --new-window --ozone-platform=wayland --app="https://app.hey.com" --name=HEY --class=HEY
+Exec=chromium --new-window --ozone-platform=wayland --app="https://app.hey.com" --name=HEY --class=HEY
 Terminal=false
 Type=Application
 Icon=HEY
