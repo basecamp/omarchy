@@ -54,6 +54,7 @@
     },
     "network": {
       "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
+      "format" : "{icon}",
       "format-wifi" : "{icon}",
       "format-ethernet" : "󰀂",
       "format-disconnected" : "󰖪",
