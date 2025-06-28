@@ -14,7 +14,7 @@ for file in migrations/*.sh; do
   migrate_at="${filename%.sh}"
 
   if [ $migrate_at -gt $last_updated_at ]; then
-    echo "Running migration for $migrate_at"
+    echo "Running migration ($migrate_at)"
     source $file
   fi
 done
