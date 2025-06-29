@@ -10,11 +10,11 @@ if [ -n "$gpu_info" ]; then
     if [ -t 0 ]; then
         read -p "NVIDIA GPU detected. Do you want to install NVIDIA drivers? (y/N) " install_nvidia
         if [[ "$install_nvidia" =~ ^[yY](es)?$ ]]; then
-            source ./nvidia
+            source ~/.local/share/omarchy/install/nvidia
         fi
     else
         # Non-interactive mode - run nvidia script
-        source ./nvidia
+        source ~/.local/share/omarchy/install/nvidia
     fi
 fi
 
