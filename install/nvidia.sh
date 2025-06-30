@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # ==============================================================================
 # Hyprland NVIDIA Setup Script for Arch Linux
 # ==============================================================================
@@ -10,16 +8,20 @@
 # 
 # ==============================================================================
 
+# --- GPU Detection ---
+# Check if nvidia gpu exists, exit silently if not found
+gpu_info=$(lspci | grep -i 'nvidia')
+if [ -z "$gpu_info" ]; then
+    exit 0
+fi
+
 # --- Colors for better readability ---
 C_RESET='\033[0m'
 C_RED='\033[0;31m'
 C_YELLOW='\033[0;33m'
 C_BOLD='\033[1m'
 
-# --- GPU Detection and Driver Selection ---
-# Get GPU info for driver selection
-gpu_info=$(lspci | grep -i 'nvidia')
-
+# --- Driver Selection ---
 # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
 if echo "$gpu_info" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
     NVIDIA_DRIVER_PACKAGE="nvidia-open-dkms"
@@ -60,18 +62,10 @@ if ! yay -Syu --needed --noconfirm "${PACKAGES_TO_INSTALL[@]}"; then
 fi
 
 # Configure modprobe for early KMS
-if ! echo "options nvidia_drm modeset=1" | sudo tee /etc/modprobe.d/nvidia.conf >/dev/null; then
-    echo -e "${C_RED}${C_BOLD}[ERROR]${C_RESET} Failed to configure modprobe. Please check your permissions." >&2
-    exit 1
-fi
+echo "options nvidia_drm modeset=1" | sudo tee /etc/modprobe.d/nvidia.conf >/dev/null
 
 # Configure mkinitcpio for early loading
 MKINITCPIO_CONF="/etc/mkinitcpio.conf"
-
-if [ ! -f "$MKINITCPIO_CONF" ]; then
-    echo -e "${C_RED}${C_BOLD}[ERROR]${C_RESET} $MKINITCPIO_CONF not found. Aborting." >&2
-    exit 1
-fi
 
 # Define modules
 NVIDIA_MODULES="nvidia nvidia_modeset nvidia_uvm nvidia_drm"
@@ -97,14 +91,8 @@ if [ -f "$HYPRLAND_CONF" ]; then
     cat >> "$HYPRLAND_CONF" << 'EOF'
 
 # NVIDIA environment variables
-env = ELECTRON_OZONE_PLATFORM_HINT,auto
 env = NVD_BACKEND,direct
 env = LIBVA_DRIVER_NAME,nvidia
 env = __GLX_VENDOR_LIBRARY_NAME,nvidia
 EOF
 fi
-
-# Final information
-echo -e "${C_YELLOW}${C_BOLD}IMPORTANT:${C_RESET} A reboot is required for all changes to take effect."
-
-
