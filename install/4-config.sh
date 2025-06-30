@@ -2,7 +2,11 @@
 cp -R ~/.local/share/omarchy/config/* ~/.config/
 
 # Use default bashrc from Omarchy
-echo "source ~/.local/share/omarchy/default/bash/rc" >~/.bashrc
+if [ "$(cat ~/.config/omarchy/shell_choice)" = "zsh" ]; then
+  echo "source ~/.local/share/omarchy/default/zsh/rc" >~/.zshrc
+else
+  echo "source ~/.local/share/omarchy/default/bash/rc" >~/.bashrc
+fi
 
 # Login directly as user, rely on disk encryption + hyprlock for security
 sudo mkdir -p /etc/systemd/system/getty@tty1.service.d

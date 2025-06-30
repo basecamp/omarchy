@@ -1,0 +1,11 @@
+# History control
+setopt append_history
+setopt share_history
+HISTSIZE=32768
+HISTFILESIZE="${HISTSIZE}"
+
+# Autocompletion
+# autoload -Uz compinit && compinit
+
+# Set complete path
+export PATH="./bin:$HOME/.local/bin:$HOME/.local/share/omarchy/bin:$PATH"
