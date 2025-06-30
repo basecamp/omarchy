@@ -4,4 +4,8 @@ yay -S --noconfirm --needed \
   xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
 
 # Start Hyprland on first session
-echo "[[ -z \$DISPLAY && \$(tty) == /dev/tty1 ]] && exec Hyprland" >~/.bash_profile
+if [ "$(cat ~/.config/omarchy/shell_choice)" = "zsh" ]; then
+  echo "[[ -z \$DISPLAY && \$(tty) == /dev/tty1 ]] && exec Hyprland" >~/.zprofile
+else
+  echo "[[ -z \$DISPLAY && \$(tty) == /dev/tty1 ]] && exec Hyprland" >~/.bash_profile
+fi
