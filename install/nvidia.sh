@@ -5,7 +5,7 @@
 # for use with Hyprland on Arch Linux, following the official Hyprland wiki.
 #
 # Author: https://github.com/Kn0ax
-# 
+#
 # ==============================================================================
 
 # --- GPU Detection ---
@@ -14,12 +14,6 @@ gpu_info=$(lspci | grep -i 'nvidia')
 if [ -z "$gpu_info" ]; then
     exit 0
 fi
-
-# --- Colors for better readability ---
-C_RESET='\033[0m'
-C_RED='\033[0;31m'
-C_YELLOW='\033[0;33m'
-C_BOLD='\033[1m'
 
 # --- Driver Selection ---
 # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
@@ -46,7 +40,7 @@ fi
 
 # Install packages
 PACKAGES_TO_INSTALL=(
-    "${KERNEL_HEADERS}"    
+    "${KERNEL_HEADERS}"
     "${NVIDIA_DRIVER_PACKAGE}"
     "nvidia-utils"
     "lib32-nvidia-utils"
@@ -56,10 +50,7 @@ PACKAGES_TO_INSTALL=(
     "qt6-wayland"
 )
 
-if ! yay -Syu --needed --noconfirm "${PACKAGES_TO_INSTALL[@]}"; then
-    echo -e "${C_RED}${C_BOLD}[ERROR]${C_RESET} Failed to install NVIDIA packages. Please check the output for errors." >&2
-    exit 1
-fi
+yay -Syu --needed --noconfirm "${PACKAGES_TO_INSTALL[@]}"
 
 # Configure modprobe for early KMS
 echo "options nvidia_drm modeset=1" | sudo tee /etc/modprobe.d/nvidia.conf >/dev/null
@@ -80,10 +71,7 @@ sudo sed -i -E "s/^(MODULES=\\()/\\1${NVIDIA_MODULES} /" "$MKINITCPIO_CONF"
 # Clean up potential double spaces
 sudo sed -i -E 's/  +/ /g' "$MKINITCPIO_CONF"
 
-if ! sudo mkinitcpio -P; then
-    echo -e "${C_RED}${C_BOLD}[ERROR]${C_RESET} Failed to rebuild initramfs with 'mkinitcpio -P'. Please check the output for errors." >&2
-    exit 1
-fi
+sudo mkinitcpio -P
 
 # Add NVIDIA environment variables to hyprland.conf
 HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
