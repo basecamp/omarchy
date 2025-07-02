@@ -25,7 +25,7 @@ alias ...='cd ../..'
 alias ....='cd ../../..'
 
 # Tools
-alias n='nvim'
+alias {n,vi,vim}='nvim'
 alias g='git'
 alias d='docker'
 alias r='rails'
