@@ -12,7 +12,7 @@
 # Check if nvidia gpu exists, exit silently if not found
 gpu_info=$(lspci | grep -i 'nvidia')
 if [ -z "$gpu_info" ]; then
-    exit 0
+    return 0
 fi
 
 # --- Driver Selection ---
