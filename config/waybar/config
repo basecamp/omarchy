@@ -34,7 +34,7 @@
         "9": "9",
         "active": "󱓻"
       },
-      "persistent_workspaces": {
+      "persistent-workspaces": {
         "1": [],
         "2": [],
         "3": [],
@@ -66,7 +66,6 @@
       "on-click": "alacritty -e iwctl"
     },
     "battery": {
-      "interval": 5,
       "format": "{capacity}% {icon}",
       "format-discharging": "{icon}",
       "format-charging":    "{icon}",

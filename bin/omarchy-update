@@ -2,8 +2,13 @@
 
 cd ~/.local/share/omarchy
 
-# Remember the version we're at before upgrading
-last_updated_at=$(git log -1 --format=%cd --date=unix)
+if [[ $1 == "all" ]]; then
+  # Run all migrations
+  last_updated_at=1
+else
+  # Remember the version we're at before upgrading
+  last_updated_at=$(git log -1 --format=%cd --date=unix)
+fi
 
 # Get the latest
 git pull
@@ -20,4 +25,4 @@ for file in migrations/*.sh; do
 done
 
 # Back to where we came from
-cd -
+cd - >/dev/null
