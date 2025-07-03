@@ -5,19 +5,8 @@ echo "Migrating from yay to paru AUR helper..."
 
 # Install paru if not already installed
 if ! command -v paru &>/dev/null; then
-  echo "Installing paru..."
-  
-  # Ensure prerequisites are installed
-  sudo pacman -S --needed --noconfirm base-devel git
-  
-  # Clone and build paru
-  cd /tmp
-  git clone https://aur.archlinux.org/paru.git
-  cd paru
-  makepkg -si --noconfirm
-  cd ~
-  rm -rf /tmp/paru
-  
+  echo "Installing paru with yay..."
+  yay -S --noconfirm --needed paru
   echo "Paru installed successfully"
 else
   echo "Paru is already installed"
