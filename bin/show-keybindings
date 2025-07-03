@@ -1,0 +1,56 @@
+#!/bin/bash
+#
+# A script to display Hyprland keybindings defined in your configuration
+# using wofi for an interactive search menu.
+#
+
+# --- CONFIGURATION ---
+# Set the path to your keybindings file.
+# The script will check keybindings in 'hyprland.conf'.
+HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
+
+# --- SCRIPT LOGIC ---
+
+# Determine which configuration file to use
+if [ -f "$HYPRLAND_CONF" ]; then
+  CONFIG_FILE="$HYPRLAND_CONF"
+else
+  # If no config file is found, show an error in wofi and exit
+  echo "Error: Configuration file not found." | wofi -dmenu -p "Hyprland Error"
+  exit 1
+fi
+
+# Process the configuration file to extract and format keybindings
+# 1. `grep` finds all lines starting with 'bind' (allowing for leading spaces).
+# 2. The first `sed` removes comments (anything after a '#').
+# 3. `awk` does the heavy lifting of formatting the output.
+#    - It sets the field separator to a comma ','.
+#    - It removes the 'bind... =' part from the beginning of the line.
+#    - It joins the key combination (e.g., "SUPER + Q").
+#    - It joins the command that the key executes.
+#    - It prints everything in a nicely aligned format.
+# 4. The final `sed` cleans up any leftover commas from the end of lines.
+grep '^[[:space:]]*bind' "$CONFIG_FILE" |
+  sed 's/\#.*//' |
+  awk -F, '{
+        # Remove the "bind... =" part and any surrounding whitespace
+        sub(/^[[:space:]]*bind[^=]*=[[:space:]]*/, "", $1);
+
+        # Combine the modifier and key (first two fields)
+        key_combo = $1 " + " $2;
+        gsub(/^[ \t]+|[ \t]+$/, "", key_combo); # Trim whitespace
+
+        # Reconstruct the command from the remaining fields
+        action = "";
+        for (i = 3; i <= NF; i++) {
+            action = action $i (i < NF ? "," : "");
+        }
+        gsub(/^[ \t]+|[ \t]+$/, "", action); # Trim whitespace
+
+        # Print only if an action exists
+        if (action != "") {
+            printf "%-35s → %s\n", key_combo, action;
+        }
+    }' |
+  sed 's/,$//' |
+  flock --nonblock /tmp/.wofi.lock -c "wofi -dmenu -i --width 60% --height 70% -p 'Hyprland Keybindings'"
