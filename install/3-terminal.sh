@@ -1,4 +1,4 @@
-yay -S --noconfirm --needed \
+paru -S --noconfirm --needed \
   wget curl unzip inetutils \
   fd eza fzf ripgrep zoxide bat \
   wl-clipboard fastfetch btop \
