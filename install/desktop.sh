@@ -5,4 +5,5 @@ yay -S --noconfirm --needed \
   nautilus sushi gnome-calculator \
   1password-beta 1password-cli \
   chromium vlc \
-  evince imv
+  evince imv \
+  libfido2
