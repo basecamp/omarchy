@@ -35,6 +35,9 @@ ln -nsf "$NEW_THEME" "$HOME/.config/omarchy/current/theme"
 # Touch alacritty config to pickup the changed theme
 touch "$HOME/.config/alacritty/alacritty.toml"
 
+# Rebuild bat cache to pickup the changed theme
+bat cache --build
+
 # Restart for new theme
 pkill -SIGUSR2 waybar
 makoctl reload

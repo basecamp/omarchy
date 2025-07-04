@@ -25,3 +25,6 @@ mkdir -p ~/.config/btop/themes
 ln -snf ~/.config/omarchy/current/theme/btop.theme ~/.config/btop/themes/current.theme
 mkdir -p ~/.config/mako
 ln -snf ~/.config/omarchy/current/theme/mako.ini ~/.config/mako/config
+mkdir -p ~/.config/bat/themes
+ln -snf ~/.config/omarchy/current/theme/bat.tmTheme ~/.config/bat/themes/current.tmTheme
+bat cache --build
