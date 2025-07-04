@@ -1,5 +1,5 @@
 echo "Switching from vlc to mpv for the default video player"
-yay -Rns vlc
+yay -Rns --noconfirm vlc
 rm ~/.local/share/applications/vlc.desktop
 yay -S --noconfirm mpv
 xdg-mime default mpv.desktop video/mp4
