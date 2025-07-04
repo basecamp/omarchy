@@ -1,4 +1,4 @@
-# Use dark mode for QT apps too (like VLC and kdenlive)
+# Use dark mode for QT apps too (like kdenlive)
 sudo pacman -S --noconfirm kvantum-qt5
 
 # Prefer dark mode everything

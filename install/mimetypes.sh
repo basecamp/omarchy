@@ -16,19 +16,19 @@ xdg-settings set default-web-browser chromium.desktop
 xdg-mime default chromium.desktop x-scheme-handler/http
 xdg-mime default chromium.desktop x-scheme-handler/https
 
-# Open video files with VLC
-xdg-mime default vlc.desktop video/mp4
-xdg-mime default vlc.desktop video/x-msvideo
-xdg-mime default vlc.desktop video/x-matroska
-xdg-mime default vlc.desktop video/x-flv
-xdg-mime default vlc.desktop video/x-ms-wmv
-xdg-mime default vlc.desktop video/mpeg
-xdg-mime default vlc.desktop video/ogg
-xdg-mime default vlc.desktop video/webm
-xdg-mime default vlc.desktop video/quicktime
-xdg-mime default vlc.desktop video/3gpp
-xdg-mime default vlc.desktop video/3gpp2
-xdg-mime default vlc.desktop video/x-ms-asf
-xdg-mime default vlc.desktop video/x-ogm+ogg
-xdg-mime default vlc.desktop video/x-theora+ogg
-xdg-mime default vlc.desktop application/ogg
+# Open video files with mpv
+xdg-mime default mpv.desktop video/mp4
+xdg-mime default mpv.desktop video/x-msvideo
+xdg-mime default mpv.desktop video/x-matroska
+xdg-mime default mpv.desktop video/x-flv
+xdg-mime default mpv.desktop video/x-ms-wmv
+xdg-mime default mpv.desktop video/mpeg
+xdg-mime default mpv.desktop video/ogg
+xdg-mime default mpv.desktop video/webm
+xdg-mime default mpv.desktop video/quicktime
+xdg-mime default mpv.desktop video/3gpp
+xdg-mime default mpv.desktop video/3gpp2
+xdg-mime default mpv.desktop video/x-ms-asf
+xdg-mime default mpv.desktop video/x-ogm+ogg
+xdg-mime default mpv.desktop video/x-theora+ogg
+xdg-mime default mpv.desktop application/ogg

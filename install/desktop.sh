@@ -4,5 +4,5 @@ yay -S --noconfirm --needed \
   wl-clip-persist clipse \
   nautilus sushi gnome-calculator \
   1password-beta 1password-cli \
-  chromium vlc \
+  chromium mpv \
   evince imv
