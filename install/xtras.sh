@@ -4,4 +4,4 @@ yay -S --noconfirm --needed \
   pinta xournalpp
 
 # Copy over Omarchy applications
-source ~/.local/share/omarchy/bin/omarchy-sync-applications
+source ~/.local/share/omarchy/bin/omarchy-sync-applications || true
