@@ -25,3 +25,5 @@ mkdir -p ~/.config/btop/themes
 ln -snf ~/.config/omarchy/current/theme/btop.theme ~/.config/btop/themes/current.theme
 mkdir -p ~/.config/mako
 ln -snf ~/.config/omarchy/current/theme/mako.ini ~/.config/mako/config
+mkdir -p ~/.config/zellij/themes
+ln -snf ~/.config/omarchy/current/theme/zellij.kdl ~/.config/zellij/themes/main.kdl
