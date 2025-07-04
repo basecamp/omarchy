@@ -12,4 +12,3 @@ if fprintd-verify; then
 else
   echo -e "\e[31m\nSomething went wrong. Maybe try again?\e[0m"
 fi
-
