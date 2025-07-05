@@ -1,0 +1,27 @@
+# Font configuration
+font-family = CaskaydiaMono Nerd Font
+font-size = 9
+adjust-cell-height=7%
+
+# Window settings
+window-padding-x = 14
+window-padding-y = 14
+window-decoration = false
+background-opacity = 0.98
+
+# Window behavior
+confirm-close-surface=false
+resize-overlay = never
+
+# Cursor stlying
+cursor-style = "block"
+cursor-style-blink = false
+
+# Terminal settings
+term = xterm-256color
+
+# Keybindings
+keybind = f11=toggle_fullscreen
+
+# FIXME: Will need to change this theme out in a symlink
+theme = "tokyonight"
