@@ -142,7 +142,7 @@
   "custom/ip": {
     "format": "󰩟 {}",
     "exec": "ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print $2}' | cut -d'/' -f1 || echo 'No IP'",
-    "interval": 30,
+    "interval": 2,
     "tooltip": false
   }
 }
