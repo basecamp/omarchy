@@ -2,6 +2,6 @@
 force_color_prompt=yes
 color_prompt=yes
 
-# Simple prompt with path in the window/pane title and caret for typing line
-PS1=$'\uf0a9 '
-PS1="\[\e]0;\w\a\]$PS1"
+# Default prompt choosed by Thiaudiott
+PROMPT_COMMAND='PS1_CMD1=$(git branch 2>/dev/null | grep '"'"'*'"'"' | colrm 1 2)'
+PS1='\[\e[3m\]\W\[\e[0m\] \[\e[2;3m\]${PS1_CMD1}\[\e[0m\] \[\e[1m\]λ\[\e[0m\] '
