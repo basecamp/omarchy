@@ -1,3 +1,5 @@
+general.import = [ "~/.config/omarchy/current/theme/alacritty.toml" ]
+
 [env]
 TERM = "xterm-256color"
 
