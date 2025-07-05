@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Power menu for Omarchy
+# Provides power off, restart, and sleep options
+
+# Function to show power menu
+show_power_menu() {
+local menu_options="󰐥 Power Off
+󰜉 Restart
+󰤄 Sleep
+󰍃 Logout
+󰒲 Lock"
+  
+# Show menu and get selection
+local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Power Options" --width 200 --height 250)
+  
+if [ -n "$selection" ]; then
+  case "$selection" in
+    "󰐥 Power Off")
+      systemctl poweroff
+      ;;
+    "󰜉 Restart")
+      systemctl reboot
+      ;;
+    "󰤄 Sleep")
+      systemctl suspend
+      ;;
+    "󰍃 Logout")
+      hyprctl dispatch exit
+      ;;
+    "󰒲 Lock")
+      hyprlock
+      ;;
+    *)
+    ;;
+  esac
+fi
+}
+
+# Main execution
+show_power_menu 
