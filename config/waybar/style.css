@@ -22,7 +22,8 @@
 #network,
 #bluetooth,
 #pulseaudio,
-#clock {
+#clock,
+#custom-ip {
   min-width: 12px;
   margin-right: 13px;
 }
