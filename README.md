@@ -1,8 +1,17 @@
-# Omarchy
+# Archyytt
 
-Turn a fresh Arch installation into a fully-configured, beautiful, and modern web development system based on Hyprland by running a single command. That's the one-line pitch for Omarchy (like it was for Omakub). No need to write bespoke configs for every essential tool just to get started or to be up on all the latest command-line tools. Omarchy is an opinionated take on what Linux can be at its best.
+A fork of Omarchy, a modern web development system based on Hyprland.
 
-Read more at [omarchy.org](https://omarchy.org).
+Read more about Omarchy at [omarchy.org](https://omarchy.org).
+
+
+## Installation
+
+On a fresh Arch Linux installation, run the following command to install Archyytt:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ThiaudioTT/archyytt/refs/heads/master/boot.sh | bash
+```
 
 ## License
 
