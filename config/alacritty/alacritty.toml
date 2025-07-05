@@ -17,5 +17,9 @@ opacity = 0.98
 
 [keyboard]
 bindings = [
-{ key = "F11", action = "ToggleFullscreen" }
+{ key = "F11", action = "ToggleFullscreen" },
+{ key = "V", mods = "Control", action = "Paste" }
 ]
+
+[selection]
+save_to_clipboard = true
