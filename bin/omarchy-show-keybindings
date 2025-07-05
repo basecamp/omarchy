@@ -1,59 +1,64 @@
 #!/bin/bash
 
-# A script to display Hyprland keybindings defined in your configuration
-# using wofi for an interactive search menu.
+# Define modifier flags as associative array for name lookup
+# per https://github.com/hyprwm/Hyprland/blob/main/src/devices/IKeyboard.hpp#L13-L22
+declare -A MODIFIER_NAMES=(
+    [$((1 << 0))]="SHIFT"
+    [$((1 << 1))]="CAPS"
+    [$((1 << 2))]="CTRL"
+    [$((1 << 3))]="ALT"
+    [$((1 << 4))]="MOD2"
+    [$((1 << 5))]="MOD3"
+    [$((1 << 6))]="SUPER"
+    [$((1 << 7))]="MOD5"
+)
 
-USER_HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
-OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.conf $HOME/.local/share/omarchy/default/hypr/bindings/tiling.conf $HOME/.local/share/omarchy/default/hypr/bindings/utilities.conf $HOME/.local/share/omarchy/default/hypr/bindings.conf $HOME/.local/share/omarchy/default/hypr/media.conf"
+decode_modmask() {
+    local modifiers=$1
+    local result=()
 
-OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.conf \
-$HOME/.local/share/omarchy/default/hypr/bindings/tiling.conf \
-$HOME/.local/share/omarchy/default/hypr/bindings/utilities.conf \
-$HOME/.local/share/omarchy/default/hypr/media.conf"
+    for bit in "${!MODIFIER_NAMES[@]}"; do
+        if (( modifiers & bit )); then
+            result+=("${MODIFIER_NAMES[$bit]}")
+        fi
+    done
 
-# Process the configuration file to extract and format keybindings
-# 1. `grep` finds all lines starting with 'bind' (allowing for leading spaces).
-# 2. The first `sed` removes comments (anything after a '#').
-# 3. `awk` does the heavy lifting of formatting the output.
-#    - It sets the field separator to a comma ','.
-#    - It removes the 'bind... =' part from the beginning of the line.
-#    - It joins the key combination (e.g., "SUPER + Q").
-#    - It joins the command that the key executes.
-#    - It prints everything in a nicely aligned format.
-# 4. The final `sed` cleans up any leftover commas from the end of lines.
-grep -h '^[[:space:]]*bind' $USER_HYPRLAND_CONF $OMARCHY_BINDINGS_CONF |
-  sed 's/#.*//' |
-  sed '/^[[:space:]]*$/d' |
-  sort -u |
-  awk -F, '
-{
-    # Strip trailing comments
-    sub(/#.*/, "");
+    # Output all detected modifiers (plus-separated)
+    echo "${result[*]}"
+}
 
-    # Remove the "bind... =" part and surrounding whitespace
-    sub(/^[[:space:]]*bind[^=]*=(\+[[:space:]])?(exec, )?[[:space:]]*/, "", $1);
+# Read live keybinds, not config file
+OLD_IFS=$IFS
+IFS=$'\n'
+readarray -t KEYBINDS < <(hyprctl -j binds | jq -cr 'sort_by(.description)|.[]')
+IFS=$OLD_IFS
 
-    # Combine the modifier and key (first two fields)
-    key_combo = $1 " + " $2;
+# Loop over each keybind and pipe results to wofi for inspection/execution
+# Format to send to wofi:
+#
+# <dispatcher> -- <arg> #<Modifier Keys> <Key> - <Description>
+# exec -- alacritty #SUPER return - Launch a Terminal
+# or
+# exit -- #SUPER+ALT ESCAPE - Logout
+#
+# Wofi's pre-display-cmd looks for the '#' and prints everything after it
+# in the wofi window. When we pipe that to `xargs hyprctl dispatch`, the
+# Comment character ensures we ignore the description text and only executes
+# the dispatcher + arg.
+for keyconfig in "${KEYBINDS[@]}"; do
+    # Use pipe '|' to delimit results
+    IFS="|" read modmask key keycode description dispatcher arg < <(echo $(echo "$keyconfig" | jq -r '[.modmask, .key, .keycode, .description, .dispatcher, .arg] | join("|")'))
+    keys=($(decode_modmask $modmask) $key)
+    IFS=$OLD_IFS
 
-    # Clean up: strip leading "+" if present, trim spaces
-    gsub(/^[ \t]*\+?[ \t]*/, "", key_combo);
-    gsub(/[ \t]+$/, "", key_combo);
+    # We can't use IFS here, as it only supports single characters
+    delimiter=" + "
 
-    # Reconstruct the command from the remaining fields
-    action = "";
-    for (i = 3; i <= NF; i++) {
-        action = action $i (i < NF ? "," : "");
-    }
+    # Join the array elements with the delimiter
+    combo=$(printf "%s$delimiter" "${keys[@]}")
 
-    # Clean up trailing commas, remove leading "exec, ", and trim
-    sub(/,$/, "", action);
-    gsub(/(^|,)[[:space:]]*exec[[:space:]]*,?/, "", action);
-    gsub(/^[ \t]+|[ \t]+$/, "", action);
-    gsub(/[ \t]+/, " ", key_combo);  # Collapse multiple spaces to one
+    # Remove the trailing delimiter
+    combo="${combo%$delimiter}"
 
-    if (action != "") {
-        printf "%-35s → %s\n", key_combo, action;
-    }
-}' |
-  flock --nonblock /tmp/.wofi.lock -c "wofi -dmenu -i --width 60% --height 70% -p 'Hyprland Keybindings' -O alphabetical  --style=\"$HOME/.local/share/omarchy/default/wofi/search.css\""
+    printf "%s -- %s #%-30s → %s\n" "$dispatcher" "$arg" "$combo" "$description"
+done | flock --nonblock /tmp/.wofi.lock -c "wofi --width 40% --height 70% -d -i -p 'Hyprland Keybindings' --style=\"$HOME/.local/share/omarchy/default/wofi/search.css\" -m --pre-display-cmd \"echo '%s' | cut -d'#' -f2\" | xargs hyprctl dispatch"
