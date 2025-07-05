@@ -32,8 +32,41 @@ NEW_THEME_NAME=$(basename "$NEW_THEME")
 ln -nsf "$HOME/.config/omarchy/backgrounds/$NEW_THEME_NAME" "$HOME/.config/omarchy/current/backgrounds"
 ln -nsf "$NEW_THEME" "$HOME/.config/omarchy/current/theme"
 
+# Apply theme configuration if theme.conf exists
+THEME_CONF="$NEW_THEME/theme.conf"
+if [[ -f "$THEME_CONF" ]]; then
+  # Source the theme configuration
+  source "$THEME_CONF"
+  
+  # Apply GTK settings
+  if [[ -n "$gtk_theme" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "$gtk_theme"
+  fi
+  
+  if [[ -n "$gtk_color_scheme" ]]; then
+    gsettings set org.gnome.desktop.interface color-scheme "$gtk_color_scheme"
+  fi
+  
+  if [[ -n "$icon_theme" ]]; then
+    gsettings set org.gnome.desktop.interface icon-theme "$icon_theme"
+  fi
+  
+  if [[ -n "$cursor_theme" ]]; then
+    gsettings set org.gnome.desktop.interface cursor-theme "$cursor_theme"
+  fi
+  
+  # Export GTK_THEME for current session
+  export GTK_THEME="$gtk_theme"
+  
+  # Create/update theme environment file
+  echo "export GTK_THEME=\"$gtk_theme\"" > "$HOME/.config/omarchy/current/theme.env"
+fi
+
 # Touch alacritty config to pickup the changed theme
 touch "$HOME/.config/alacritty/alacritty.toml"
+
+# Update desktop files with new theme
+omarchy-update-desktop-files
 
 # Restart for new theme
 pkill -SIGUSR2 waybar

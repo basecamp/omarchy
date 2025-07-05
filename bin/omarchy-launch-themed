@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# Launch application with theme-aware GTK settings
+# Usage: omarchy-launch-themed <application> [args...]
+
+# Get current theme GTK settings
+THEME_ENV="$HOME/.config/omarchy/current/theme.env"
+if [[ -f "$THEME_ENV" ]]; then
+  source "$THEME_ENV"
+else
+  # Fallback to Adwaita-dark if no theme env exists
+  GTK_THEME="Adwaita-dark"
+fi
+
+# Launch the application with the correct GTK_THEME
+exec env GTK_THEME="$GTK_THEME" "$@"
