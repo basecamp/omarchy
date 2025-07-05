@@ -1,0 +1,237 @@
+# Omarchy Plymouth Theme Script
+
+Window.SetBackgroundTopColor(0.101, 0.105, 0.149);
+Window.SetBackgroundBottomColor(0.101, 0.105,  0.149);
+
+logo.image = Image("logo.png");
+logo.sprite = Sprite(logo.image);
+logo.sprite.SetX (Window.GetX() + Window.GetWidth()  / 2 - logo.image.GetWidth()  / 2);
+logo.sprite.SetY (Window.GetY() + Window.GetHeight() / 2 - logo.image.GetHeight() / 2);
+logo.sprite.SetOpacity (1);
+
+fun refresh_callback ()
+  {
+    # Always animate spinner - it will be invisible when not needed
+    if (global.spinner_sprite)
+      {
+        global.spinner_frame++;
+        frame_index = Math.Int(global.spinner_frame / 3) % global.spinner_frame_count;
+        global.spinner_sprite.SetImage(global.spinner_images[frame_index]);
+      }
+  }
+  
+Plymouth.SetRefreshFunction (refresh_callback);
+
+#----------------------------------------- Dialogue --------------------------------
+
+status = "normal";
+
+fun dialog_setup()
+  {
+    local.lock;
+    local.entry;
+    
+    lock.image = Image("lock.png");
+    entry.image = Image("entry.png");
+    
+    entry.sprite = Sprite(entry.image);
+    entry.x = Window.GetX() + Window.GetWidth()/2 - entry.image.GetWidth() / 2;
+    entry.y = logo.sprite.GetY() + logo.image.GetHeight() + 40;
+    entry.z = 10001;
+    entry.sprite.SetPosition(entry.x, entry.y, entry.z);
+    
+    lock.sprite = Sprite(lock.image);
+    lock.x = entry.x - lock.image.GetWidth() - 10;
+    lock.y = logo.sprite.GetY() + logo.image.GetHeight() + 40 + entry.image.GetHeight()/2 - lock.image.GetHeight()/2;
+    lock.z = 10001;
+    lock.sprite.SetPosition(lock.x, lock.y, lock.z);
+    
+    global.dialog.lock = lock;
+    global.dialog.entry = entry;
+    global.dialog.bullet_image = Image("bullet.png");
+    dialog_opacity (1);
+  }
+    
+fun dialog_opacity(opacity)
+  {
+    global.dialog.lock.sprite.SetOpacity (opacity);
+    global.dialog.entry.sprite.SetOpacity (opacity);
+    for (index = 0; global.dialog.bullet[index]; index++)
+      {
+        global.dialog.bullet[index].sprite.SetOpacity(opacity);
+      }
+  }
+
+fun display_normal_callback ()
+  {
+    global.status = "normal";
+    if (global.dialog)
+      dialog_opacity (0);
+    spinner_show();  # Show spinner when no password dialog
+  }
+
+fun display_password_callback (prompt, bullets)
+  {
+    global.status = "password";
+    
+    # Always hide spinner when showing password dialog
+    spinner_hide();
+    
+    # Setup dialog if it doesn't exist
+    if (!global.dialog)
+      dialog_setup();
+    else
+      dialog_opacity(1);
+    
+    # Clear all bullets first (user might hit backspace)
+    for (index = 0; global.dialog.bullet[index]; index++)
+      {
+        global.dialog.bullet[index].sprite.SetOpacity(0);
+      }
+    
+    # Create and show bullets for current password
+    for (index = 0; index < bullets; index++)
+      {
+        if (!global.dialog.bullet[index])
+          {
+            global.dialog.bullet[index].sprite = Sprite(global.dialog.bullet_image);
+            global.dialog.bullet[index].x = global.dialog.entry.x + 10 + index * (global.dialog.bullet_image.GetWidth() + 5);
+            global.dialog.bullet[index].y = global.dialog.entry.y + global.dialog.entry.image.GetHeight() / 2 - global.dialog.bullet_image.GetHeight() / 2;
+            global.dialog.bullet[index].z = global.dialog.entry.z + 1;
+            global.dialog.bullet[index].sprite.SetPosition(global.dialog.bullet[index].x, global.dialog.bullet[index].y, global.dialog.bullet[index].z);
+          }
+        global.dialog.bullet[index].sprite.SetOpacity(1);
+      }
+  }
+
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+#----------------------------------------- Spinner --------------------------------
+
+global.spinner_sprite = NULL;
+global.spinner_frame = 0;
+global.spinner_frame_count = 30;
+global.spinner_visible = false;
+global.spinner_images = [];
+
+fun spinner_setup()
+  {
+    if (!global.spinner_sprite)
+      {
+        # Load all throbber frames
+        for (i = 1; i <= global.spinner_frame_count; i++)
+          {
+            if (i < 10)
+              filename = "throbber-000" + i + ".png";
+            else
+              filename = "throbber-00" + i + ".png";
+            global.spinner_images[i-1] = Image(filename);
+          }
+        
+        # Create spinner sprite
+        global.spinner_sprite = Sprite(global.spinner_images[0]);
+        global.spinner_x = Window.GetX() + Window.GetWidth() / 2 - global.spinner_images[0].GetWidth() / 2;
+        global.spinner_y = Window.GetY() + Window.GetHeight() / 2 - logo.image.GetHeight() / 2 + logo.image.GetHeight() + 40;
+        global.spinner_sprite.SetPosition(global.spinner_x, global.spinner_y, 10002);
+        global.spinner_sprite.SetOpacity(0);
+      }
+  }
+
+fun spinner_show()
+  {
+    if (global.spinner_sprite)
+      {
+        global.spinner_sprite.SetOpacity(1);
+        global.spinner_visible = true;
+      }
+  }
+
+fun spinner_hide()
+  {
+    if (global.spinner_sprite)
+      {
+        global.spinner_sprite.SetOpacity(0);
+        global.spinner_visible = false;
+      }
+  }
+
+# Initialize spinner
+spinner_setup();
+#----------------------------------------- Progress Bar --------------------------------
+
+progress_box.image = Image("progress_box.png");
+progress_box.sprite = Sprite(progress_box.image);
+
+progress_box.x = Window.GetX() + Window.GetWidth() / 2 - progress_box.image.GetWidth() / 2;
+progress_box.y = Window.GetY() + Window.GetHeight() * 0.75 - progress_box.image.GetHeight() / 2;
+progress_box.sprite.SetPosition(progress_box.x, progress_box.y, 0);
+progress_box.sprite.SetOpacity(0);
+
+progress_bar.original_image = Image("progress_bar.png");
+progress_bar.sprite = Sprite();
+
+progress_bar.x = Window.GetX() + Window.GetWidth() / 2 - progress_bar.original_image.GetWidth() / 2;
+progress_bar.y = Window.GetY() + Window.GetHeight() / 2 * 1.5  - progress_box.image.GetHeight() / 2 + (progress_box.image.GetHeight() - progress_bar.original_image.GetHeight()) / 2;
+progress_bar.sprite.SetPosition(progress_bar.x, progress_bar.y, 1);
+progress_bar.sprite.SetOpacity(0);
+
+global.progress_visible = false;
+fun progress_callback (duration, progress)
+  {
+    if (progress > 0.01 && Plymouth.GetMode() != "shutdown" && Plymouth.GetMode() != "reboot" && Plymouth.GetMode() != "suspend")
+      {
+        if (!global.progress_visible)
+          {
+            progress_box.sprite.SetOpacity(1);
+            progress_bar.sprite.SetOpacity(1);
+            global.progress_visible = true;
+          }
+        
+        if (progress_bar.image.GetWidth () != Math.Int (progress_bar.original_image.GetWidth () * progress))
+          {
+            progress_bar.image = progress_bar.original_image.Scale(progress_bar.original_image.GetWidth() * progress, progress_bar.original_image.GetHeight());
+            progress_bar.sprite.SetImage (progress_bar.image);
+          }
+      }
+    else
+      {
+        # Hide progress bar when progress is 0
+        if (global.progress_visible)
+          {
+            progress_box.sprite.SetOpacity(0);
+            progress_bar.sprite.SetOpacity(0);
+            global.progress_visible = false;
+          }
+      }
+  }
+
+Plymouth.SetBootProgressFunction(progress_callback);
+
+#----------------------------------------- Quit --------------------------------
+
+fun quit_callback ()
+{
+  logo.sprite.SetOpacity (1);
+}
+
+Plymouth.SetQuitFunction(quit_callback);
+
+#----------------------------------------- Message --------------------------------
+
+message_sprite = Sprite();
+message_sprite.SetPosition(10, 10, 10000);
+
+fun display_message_callback (text)
+{
+  my_image = Image.Text(text, 1, 1, 1);
+  message_sprite.SetImage(my_image);
+}
+
+fun hide_message_callback (text)
+{
+  message_sprite.SetOpacity(0);
+}
+
+Plymouth.SetDisplayMessageFunction (display_message_callback);
+Plymouth.SetHideMessageFunction (hide_message_callback);
