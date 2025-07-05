@@ -1,0 +1,37 @@
+#!/bin/bash
+#
+# Move active workspace to the next monitor (with wraparound)
+
+# Get list of connected monitor names
+readarray -t monitors < <(hyprctl monitors | grep "Monitor" | awk '{print $2}')
+
+# Exit if no monitors or only one monitor
+if (( ${#monitors[@]} <= 1 )); then
+  exit 0
+fi
+
+# Get current workspace info
+current_workspace_info=$(hyprctl activeworkspace -j)
+current_workspace_id=$(echo "$current_workspace_info" | jq -r '.id')
+current_monitor=$(echo "$current_workspace_info" | jq -r '.monitor')
+
+# Find current monitor index
+current_index=-1
+for i in "${!monitors[@]}"; do
+  if [[ "${monitors[$i]}" == "$current_monitor" ]]; then
+    current_index=$i
+    break
+  fi
+done
+
+# If current monitor not found, exit
+if (( current_index == -1 )); then
+  exit 1
+fi
+
+# Calculate next monitor index (with wraparound)
+next_index=$(( (current_index + 1) % ${#monitors[@]} ))
+target_monitor="${monitors[$next_index]}"
+
+# Move current workspace to target monitor
+hyprctl dispatch moveworkspacetomonitor "$current_workspace_id" "$target_monitor" &>/dev/null
