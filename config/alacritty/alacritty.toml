@@ -1,5 +1,3 @@
-general.import = [ "~/.config/omarchy/current/theme/alacritty.toml" ]
-
 [env]
 TERM = "xterm-256color"
 
@@ -17,5 +15,9 @@ opacity = 0.98
 
 [keyboard]
 bindings = [
-{ key = "F11", action = "ToggleFullscreen" }
+{ key = "F11", action = "ToggleFullscreen" },
+{ key = "V", mods = "Control", action = "Paste" }
 ]
+
+[selection]
+save_to_clipboard = true
