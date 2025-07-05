@@ -1,0 +1,210 @@
+#!/bin/bash
+
+# Omarchy Plymouth Theme Generator
+# This script uses ImageMagick to recolor PNG assets from tokyo-night plymouth theme
+# Usage: omarchy-generate-plymouth-theme --background=#24273a --foreground=#cad3f5 --progress-background=#343849 --progress-foreground=#cad3f5 --logo=#a6da95 --destination=catppuccin
+set -e
+
+# Check if ImageMagick is installed
+if ! command -v magick &>/dev/null; then
+  echo "ImageMagick 7+ is required but not installed. Please install it first:"
+  echo "yay -S imagemagick"
+  exit 1
+fi
+
+# Base directory
+THEMES_DIR="$HOME/.local/share/omarchy/themes"
+
+# Default values (tokyo-night colors)
+BACKGROUND="#1a1b26"
+FOREGROUND="#c0caf5"
+PROGRESS_BACKGROUND="#343849"
+PROGRESS_FOREGROUND="#7aa2f7"
+LOGO="#7aa2f7"
+DESTINATION=""
+
+# Function to show usage
+show_usage() {
+  echo "Usage: $0 --background=<hex> --foreground=<hex> --progress-background=<hex> --progress-foreground=<hex> --logo=<hex> --destination=<name>"
+  echo
+  echo "Parameters:"
+  echo "  --background         Background color (hex format, e.g., #24273a)"
+  echo "  --foreground         Foreground color (hex format, e.g., #cad3f5)"
+  echo "  --progress-background Progress bar background color (hex format, e.g., #343849)"
+  echo "  --progress-foreground Progress bar foreground color (hex format, e.g., #cad3f5)"
+  echo "  --logo               Logo color (hex format, e.g., #a6da95)"
+  echo "  --destination        Destination theme name (e.g., catppuccin)"
+  echo
+  echo "Example:"
+  echo "  $0 --background=#24273a --foreground=#cad3f5 --progress-background=#343849 --progress-foreground=#cad3f5 --logo=#a6da95 --destination=catppuccin"
+  exit 1
+}
+
+# Parse command line arguments
+for arg in "$@"; do
+  case $arg in
+  --background=*)
+    BACKGROUND="${arg#*=}"
+    ;;
+  --foreground=*)
+    FOREGROUND="${arg#*=}"
+    ;;
+  --progress-background=*)
+    PROGRESS_BACKGROUND="${arg#*=}"
+    ;;
+  --progress-foreground=*)
+    PROGRESS_FOREGROUND="${arg#*=}"
+    ;;
+  --logo=*)
+    LOGO="${arg#*=}"
+    ;;
+  --destination=*)
+    DESTINATION="${arg#*=}"
+    ;;
+  --help | -h)
+    show_usage
+    ;;
+  *)
+    echo "Unknown parameter: $arg"
+    show_usage
+    ;;
+  esac
+done
+
+# Check if destination is provided
+if [[ -z "$DESTINATION" ]]; then
+  echo "Error: --destination parameter is required"
+  show_usage
+fi
+
+# Convert hex to RGB values for Plymouth script
+hex_to_rgb() {
+  local hex="$1"
+  # Remove # if present
+  hex="${hex#\#}"
+
+  # Convert to decimal
+  local r=$((16#${hex:0:2}))
+  local g=$((16#${hex:2:2}))
+  local b=$((16#${hex:4:2}))
+
+  # Convert to 0-1 range with 3 decimal places
+  printf "%.3f\n" $(awk "BEGIN {print $r/255}")
+  printf "%.3f\n" $(awk "BEGIN {print $g/255}")
+  printf "%.3f\n" $(awk "BEGIN {print $b/255}")
+}
+
+# Convert hex to Plymouth hex format (0xRRGGBB)
+hex_to_plymouth() {
+  local hex="$1"
+  # Remove # if present and prepend 0x
+  hex="${hex#\#}"
+  echo "0x${hex}"
+}
+
+# Function to recolor an image
+recolor_image() {
+  local input="$1"
+  local output="$2"
+  local color="$3"
+  local operation="$4"
+
+  case "$operation" in
+  "fill")
+    # Simple fill with color (for lock, bullet, progress_bar, progress_box, logo, throbber)
+    # Use -strip to remove EXIF data and avoid warnings
+    magick "$input" -strip -fill "$color" -colorize 100% "$output" 2>/dev/null
+    ;;
+  "entry")
+    # Create semi-transparent black with colored border
+    # First get dimensions
+    dims=$(magick identify -format "%wx%h" "$input")
+    width=$(echo $dims | cut -d'x' -f1)
+    height=$(echo $dims | cut -d'x' -f2)
+
+    # Create new image with transparent background, semi-transparent black fill, and colored border
+    magick -size ${width}x${height} xc:transparent \
+      -fill "rgba(0,0,0,0.05)" -draw "rectangle 0,0 $((width - 1)),$((height - 1))" \
+      -fill none -stroke "$color" -strokewidth 2 -draw "rectangle 1,1 $((width - 2)),$((height - 2))" \
+      "$output"
+    ;;
+  esac
+}
+
+# Source and destination directories
+SOURCE_DIR="${THEMES_DIR}/tokyo-night/plymouth"
+DEST_DIR="${THEMES_DIR}/${DESTINATION}/plymouth"
+
+# Check if source exists
+if [[ ! -d "$SOURCE_DIR" ]]; then
+  echo "Error: Tokyo Night theme not found at $SOURCE_DIR"
+  exit 1
+fi
+
+echo "Plymouth Asset Recoloring Script"
+echo "================================"
+echo
+echo "Configuration:"
+echo "  Background:          $BACKGROUND"
+echo "  Foreground:          $FOREGROUND"
+echo "  Progress Background: $PROGRESS_BACKGROUND"
+echo "  Progress Foreground: $PROGRESS_FOREGROUND"
+echo "  Logo:                $LOGO"
+echo "  Destination:         $DESTINATION"
+echo
+
+# Create destination directory
+echo "Creating destination directory: $DEST_DIR"
+mkdir -p "$DEST_DIR"
+
+# Copy all files from tokyo-night
+echo "Copying files from tokyo-night theme..."
+cp -r "$SOURCE_DIR"/* "$DEST_DIR/"
+
+# Update omarchy.plymouth with background color
+echo "Updating omarchy.plymouth..."
+PLYMOUTH_BG=$(hex_to_plymouth "$BACKGROUND")
+sed -i "s/ConsoleLogBackgroundColor=.*/ConsoleLogBackgroundColor=${PLYMOUTH_BG}/" "$DEST_DIR/omarchy.plymouth"
+
+# Update omarchy.script with background color
+echo "Updating omarchy.script..."
+RGB=($(hex_to_rgb "$BACKGROUND"))
+sed -i "s/Window.SetBackgroundTopColor(.*);/Window.SetBackgroundTopColor(${RGB[0]}, ${RGB[1]}, ${RGB[2]});/" "$DEST_DIR/omarchy.script"
+sed -i "s/Window.SetBackgroundBottomColor(.*);/Window.SetBackgroundBottomColor(${RGB[0]}, ${RGB[1]}, ${RGB[2]});/" "$DEST_DIR/omarchy.script"
+
+# Recolor assets
+echo "Recoloring assets..."
+
+# Recolor lock.png
+echo "  - Recoloring lock.png with $FOREGROUND"
+recolor_image "$DEST_DIR/lock.png" "$DEST_DIR/lock.png" "$FOREGROUND" "fill"
+
+# Recolor bullet.png
+echo "  - Recoloring bullet.png with $FOREGROUND"
+recolor_image "$DEST_DIR/bullet.png" "$DEST_DIR/bullet.png" "$FOREGROUND" "fill"
+
+# Recolor progress_bar.png
+echo "  - Recoloring progress_bar.png with $PROGRESS_FOREGROUND"
+recolor_image "$DEST_DIR/progress_bar.png" "$DEST_DIR/progress_bar.png" "$PROGRESS_FOREGROUND" "fill"
+
+# Recolor progress_box.png
+echo "  - Recoloring progress_box.png with $PROGRESS_BACKGROUND"
+recolor_image "$DEST_DIR/progress_box.png" "$DEST_DIR/progress_box.png" "$PROGRESS_BACKGROUND" "fill"
+
+# Recolor entry.png
+echo "  - Creating entry.png with 5% black and $FOREGROUND border"
+recolor_image "$DEST_DIR/entry.png" "$DEST_DIR/entry.png" "$FOREGROUND" "entry"
+
+# Recolor logo.png (using fill instead of tint)
+echo "  - Recoloring logo.png with $LOGO"
+recolor_image "$DEST_DIR/logo.png" "$DEST_DIR/logo.png" "$LOGO" "fill"
+
+# Recolor throbber frames
+echo "  - Recoloring throbber frames (1-30) with $FOREGROUND"
+for i in {1..30}; do
+  frame_file=$(printf "throbber-%02d.png" $i)
+  recolor_image "$DEST_DIR/$frame_file" "$DEST_DIR/$frame_file" "$FOREGROUND" "fill" 2>/dev/null
+done
+
+echo
+echo "✓ Plymouth theme for $DESTINATION has been created successfully!"
