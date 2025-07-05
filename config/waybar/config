@@ -7,6 +7,7 @@
       "hyprland/workspaces"
     ],
     "modules-center": [
+      "custom/dnd",
       "clock"
     ],
     "modules-right": [
@@ -16,9 +17,7 @@
       "pulseaudio",
       "cpu",
       "power-profiles-daemon",
-      "battery",
-      "custom/dnd"
-
+      "battery"
     ],
     "hyprland/workspaces": {
       "on-click": "activate",
