@@ -10,7 +10,7 @@ ascii_art=' ▄██████▄    ▄▄▄▄███▄▄▄▄      �
 
 echo -e "\n$ascii_art\n"
 
-pacman -Q git &>/dev/null || sudo pacman -Sy --noconfirm --needed git
+rpm -q git &>/dev/null || sudo dnf install -y git
 
 echo -e "\nCloning Omarchy..."
 rm -rf ~/.local/share/omarchy/

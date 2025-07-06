@@ -1,4 +1,4 @@
-yay -Sy --noconfirm --needed ttf-font-awesome noto-fonts noto-fonts-emoji noto-fonts-cjk noto-fonts-extra
+sudo dnf install -y fontawesome-fonts google-noto-fonts google-noto-emoji-fonts google-noto-cjk-fonts google-noto-fonts-extra
 
 mkdir -p ~/.local/share/fonts
 
