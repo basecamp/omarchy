@@ -114,6 +114,7 @@
     },
     "custom/power-menu": {
       "format": "󰐥",
-      "on-click": "~/.local/share/omarchy/bin/omarchy-power-menu"
+      "on-click": "~/.local/share/omarchy/bin/omarchy-power-menu",
+      "tooltip": false
     }
 }
