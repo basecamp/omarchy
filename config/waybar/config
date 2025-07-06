@@ -7,7 +7,6 @@
       "hyprland/workspaces"
     ],
     "modules-center": [
-      "custom/dnd",
       "clock"
     ],
     "modules-right": [
@@ -122,18 +121,5 @@
       "interval": 5,
       "tooltip": true,
       "tooltip-format": "{}"
-    },
-    "custom/dnd": {
-      "exec": "makoctl mode | grep -q 'do-not-disturb' && echo '{\"alt\":\"dnd\",\"tooltip\":\"Enable notifications\"}' || echo '{\"alt\":\"on\",\"tooltip\":\"Disable notifications\"}'",
-      "format": "{icon}",
-      "format-icons": {
-        "on": " 󰂚",
-        "dnd": "󰂛"
-      },
-      "return-type": "json",
-      "interval": 5,
-      "tooltip": "{tooltip}",
-      "on-click": "makoctl mode -t do-not-disturb"
     }
-
 }
