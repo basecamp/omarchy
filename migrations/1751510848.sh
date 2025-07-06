@@ -1,3 +1,3 @@
 echo "Installing missing fd terminal tool for finding files"
-yay -S --noconfirm --needed fd
+sudo dnf install -y fd-find
 echo "You must start a new terminal for fd to work"

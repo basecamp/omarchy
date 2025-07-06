@@ -1,7 +1,7 @@
 echo "Switching from vlc to mpv for the default video player"
-yay -Rns --noconfirm vlc
+sudo dnf remove -y vlc
 rm ~/.local/share/applications/vlc.desktop
-yay -S --noconfirm mpv
+sudo dnf install -y mpv
 xdg-mime default mpv.desktop video/mp4
 xdg-mime default mpv.desktop video/x-msvideo
 xdg-mime default mpv.desktop video/x-matroska
