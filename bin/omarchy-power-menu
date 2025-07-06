@@ -5,18 +5,17 @@
 
 # Function to show power menu
 show_power_menu() {
-local menu_options="󰐥 Power Off
-󰜉 Restart
+  local menu_options=" Lock
 󰤄 Sleep
-󰍃 Logout
-󰒲 Lock"
-  
-# Show menu and get selection
-local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Power Options" --width 200 --height 250)
-  
-if [ -n "$selection" ]; then
-  case "$selection" in
-    "󰐥 Power Off")
+󰜉 Restart
+󰐥 Shutdown"
+
+  # Show menu and get selection
+  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Power Options" --width 200 --height 250)
+
+  if [ -n "$selection" ]; then
+    case "$selection" in
+    "󰐥 Shutdown")
       systemctl poweroff
       ;;
     "󰜉 Restart")
@@ -25,17 +24,13 @@ if [ -n "$selection" ]; then
     "󰤄 Sleep")
       systemctl suspend
       ;;
-    "󰍃 Logout")
-      hyprctl dispatch exit
-      ;;
-    "󰒲 Lock")
+    " Lock")
       hyprlock
       ;;
-    *)
-    ;;
-  esac
-fi
+    *) ;;
+    esac
+  fi
 }
 
 # Main execution
-show_power_menu 
+show_power_menu
