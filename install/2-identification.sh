@@ -1,12 +1,16 @@
 # Need gum to query for input
 # Note: gum may not be available in Fedora repos, install from GitHub releases
 if ! command -v gum &>/dev/null; then
-  cd /tmp
-  wget https://github.com/charmbracelet/gum/releases/latest/download/gum_0.15.0_Linux_x86_64.tar.gz
-  tar -xzf gum_0.15.0_Linux_x86_64.tar.gz
-  sudo mv gum /usr/local/bin/
-  rm -f gum_0.15.0_Linux_x86_64.tar.gz
-  cd -
+  echo '[charm]
+name=Charm
+baseurl=https://repo.charm.sh/yum/
+enabled=1
+gpgcheck=1
+gpgkey=https://repo.charm.sh/yum/gpg.key' | sudo tee /etc/yum.repos.d/charm.repo
+  sudo rpm --import https://repo.charm.sh/yum/gpg.key
+
+  # yum
+  sudo yum install gum
 fi
 
 # Configure identification
