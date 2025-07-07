@@ -1,5 +1,5 @@
 # Install build tools for Fedora
-sudo dnf groupinstall -y "Development Tools" "Development Libraries"
+sudo dnf group install -y "Development Tools" "Development Libraries"
 sudo dnf install -y rpm-build rpmdevtools
 
 # Note: yay is Arch-specific AUR helper, not available on Fedora

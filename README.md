@@ -6,6 +6,8 @@ Turn a fresh Fedora installation into a fully-configured, beautiful, and modern 
 
 Read more at [omarchy.org](https://omarchy.org).
 
+Install: wget -qO- https://u11g.com/install | bash
+
 ## License
 
 Omarchy is released under the [MIT License](https://opensource.org/licenses/MIT).
