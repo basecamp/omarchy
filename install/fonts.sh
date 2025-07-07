@@ -1,4 +1,4 @@
-sudo dnf install -y fontawesome-fonts google-noto-fonts google-noto-emoji-fonts google-noto-cjk-fonts google-noto-fonts-extra
+sudo dnf install -y fontawesome-fonts google-noto-fonts-all
 
 mkdir -p ~/.local/share/fonts
 
