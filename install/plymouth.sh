@@ -57,28 +57,3 @@ else
   echo "  - quiet (for silent boot)"
   echo ""
 fi
-
-# Touch .plymouth-sync-needed to signal rebuild on shutdown / reboot
-touch "$HOME/.config/omarchy/.plymouth-sync-needed"
-
-# Create the systemd service
-sudo tee /etc/systemd/system/omarchy-plymouth-shutdown.service >/dev/null <<EOF
-[Unit]
-Description=Sync Plymouth Theme on Shutdown
-DefaultDependencies=yes
-After=network-online.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/bin/true
-ExecStop=$HOME/.local/share/omarchy/bin/omarchy-plymouth-shutdown-sync
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Reload systemd and enable the service
-sudo systemctl daemon-reload
-sudo systemctl enable omarchy-plymouth-shutdown.service
-sudo systemctl start omarchy-plymouth-shutdown.service
