@@ -6,7 +6,7 @@
 # Function to show power menu. The first characters are invisible sort keys.
 show_power_menu() {
   local menu_options="\u200B Lock
-\u200C󰤄 Sleep
+\u200C󰤄 Suspend
 \u200D Relaunch
 \u2060󰜉 Restart
 󰐥\u2063 Shutdown"
@@ -14,7 +14,7 @@ show_power_menu() {
 
   case "$selection" in
   *Lock*) hyprlock ;;
-  *Sleep*) systemctl suspend ;;
+  *Suspend*) systemctl suspend ;;
   *Relaunch*) hyprctl dispatch exit ;;
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
