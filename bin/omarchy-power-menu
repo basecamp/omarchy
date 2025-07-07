@@ -11,7 +11,7 @@ show_power_menu() {
 󰐥 Shutdown"
 
   # Show menu and get selection
-  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Power Options" --width 200 --height 250)
+  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Power Options" --width 200 --height 210)
 
   if [ -n "$selection" ]; then
     case "$selection" in
