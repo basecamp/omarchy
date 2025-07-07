@@ -5,13 +5,13 @@
 
 # Function to show power menu
 show_power_menu() {
-  local menu_options="\u200B Lock
-\u200C󰤄 Sleep
-\u200D Relaunch
-\u2060󰜉 Restart
-󰐥\u2063 Shutdown" # These first characters are invisible sort keys
+  local menu_options="\u200B Lock (Super + Escape)
+\u200C󰤄 Sleep (Shift + Super + Escape)
+\u200D Relaunch (Alt + Super + Escape)
+\u2060󰜉 Restart (Ctrl + Super + Escape)
+󰐥\u2063 Shutdown (Ctrl + Shift + Super + Escape)" # These first characters are invisible sort keys
 
-  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Power Options" --width 200 --height 195 -O alphabetical --style ~/.config/wofi/omarchy-power-menu.css)
+  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Power Options" --width 500 --height 195 -O alphabetical --style ~/.config/wofi/omarchy-power-menu.css)
 
   case "$selection" in
   *Lock*) hyprlock ;;
