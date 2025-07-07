@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Overwrite local waybar settings with the latest in Omarchy
+cp -f ~/.local/share/omarchy/config/waybar/config ~/.config/waybar/ 2>/dev/null
+cp -f ~/.local/share/omarchy/config/waybar/style.css ~/.config/waybar/ 2>/dev/null
+
+# Restart waybar
+pkill waybar &>/dev/null
+setsid waybar &>/dev/null &
