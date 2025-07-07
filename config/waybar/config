@@ -14,8 +14,6 @@
     "bluetooth",
     "network",
     "pulseaudio",
-    "cpu",
-    "power-profiles-daemon",
     "battery",
     "custom/power-menu"
   ],
@@ -42,11 +40,6 @@
       "4": [],
       "5": []
     }
-  },
-  "cpu": {
-    "interval": 5,
-    "format": "󰍛",
-    "on-click": "alacritty -e btop"
   },
   "clock": {
     "format": "{:%A %H:%M}",
@@ -129,16 +122,6 @@
     "ignored-sinks": [
       "Easy Effects Sink"
     ]
-  },
-  "power-profiles-daemon": {
-    "format": "{icon}",
-    "tooltip-format": "Power profile: {profile}",
-    "tooltip": true,
-    "format-icons": {
-      "power-saver": "󰡳",
-      "balanced": "󰊚",
-      "performance": "󰡴"
-    }
   },
   "custom/ip": {
     "format": "󰩟 {}",
