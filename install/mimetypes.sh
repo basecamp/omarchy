@@ -1,3 +1,5 @@
+echo "Configuring MIME types and default applications..."
+
 update-desktop-database ~/.local/share/applications
 
 # Open all images with imv
@@ -32,3 +34,5 @@ xdg-mime default mpv.desktop video/x-ms-asf
 xdg-mime default mpv.desktop video/x-ogm+ogg
 xdg-mime default mpv.desktop video/x-theora+ogg
 xdg-mime default mpv.desktop application/ogg
+
+echo "MIME types and default applications configured successfully."
