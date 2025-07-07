@@ -1,5 +1,5 @@
 if ! command -v nvim &>/dev/null; then
-  sudo dnf install -y neovim luarocks tree-sitter-cli
+  sudo dnf install -y neovim python3-neovim luarocks tree-sitter-cli
 
   # Install LazyVim
   rm -rf ~/.config/nvim
