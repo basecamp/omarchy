@@ -10,7 +10,7 @@ gpgkey=https://repo.charm.sh/yum/gpg.key' | sudo tee /etc/yum.repos.d/charm.repo
   sudo rpm --import https://repo.charm.sh/yum/gpg.key
 
   # yum
-  sudo yum install gum
+  sudo yum install -y gum
 fi
 
 # Configure identification
