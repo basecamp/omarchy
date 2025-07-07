@@ -3,7 +3,7 @@ sudo dnf install -y \
   fd-find fzf ripgrep zoxide bat \
   wl-clipboard fastfetch btop \
   man tldr less whois \
-  alacritty
+  alacritty make
 
 # Install eza from GitHub releases (not available in Fedora 42 repos)
 if ! command -v eza &>/dev/null; then
