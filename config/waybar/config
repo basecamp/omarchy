@@ -10,7 +10,6 @@
       "clock"
     ],
     "modules-right": [
-      "custom/dropbox",
       "bluetooth",
       "network",
       "pulseaudio",
@@ -102,15 +101,6 @@
       "tooltip-format": "Playing at {volume}%",
       "on-click-right": "pamixer -t",
       "ignored-sinks": ["Easy Effects Sink"]
-    },
-    "custom/dropbox": {
-      "format": "",
-      "on-click": "nautilus ~/Dropbox",
-      "exec": "dropbox-cli status",
-      "return-type": "text",
-      "interval": 5,
-      "tooltip": true,
-      "tooltip-format": "{}"
     },
     "custom/power-menu": {
       "format": "󰐥",
