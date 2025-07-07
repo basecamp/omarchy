@@ -1,5 +1,5 @@
 yay -S --noconfirm --needed \
-  hyprland hyprshot hyprpicker hyprlock hypridle hyprpolkitagent hyprland-qtutils \
+  hyprland hyprshot hyprpicker hyprlock hypridle hyprpolkitagent hyprland-qtutils hyprsunset \
   wofi waybar mako swaybg \
   xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
 
