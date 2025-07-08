@@ -14,8 +14,7 @@
       "network",
       "pulseaudio",
       "cpu",
-      "battery",
-      "custom/power-menu"
+      "battery"
     ],
     "hyprland/workspaces": {
       "on-click": "activate",
@@ -101,10 +100,5 @@
       "tooltip-format": "Playing at {volume}%",
       "on-click-right": "pamixer -t",
       "ignored-sinks": ["Easy Effects Sink"]
-    },
-    "custom/power-menu": {
-      "format": "󰐥",
-      "on-click": "~/.local/share/omarchy/bin/omarchy-power-menu",
-      "tooltip": false
     }
 }
