@@ -5,26 +5,21 @@ echo "Installing Plymouth..."
 yay -S --noconfirm --needed plymouth
 
 # Skip if plymouth already exists for some reason
-if ! grep -q "plymouth" /etc/mkinitcpio.conf; then
+if ! grep -q "^HOOKS=.*plymouth" /etc/mkinitcpio.conf; then
   # Backup original mkinitcpio.conf just in case
   backup_timestamp=$(date +"%Y%m%d%H%M%S")
   sudo cp /etc/mkinitcpio.conf "/etc/mkinitcpio.conf.bak.${backup_timestamp}"
 
-  # Add plymouth to HOOKS array. Should be added:
-  # - After 'base' and 'udev' (or 'systemd' if using systemd hook)
-  # - Before 'encrypt' or 'sd-encrypt' if present
-
-  # Use sed to add plymouth in-place
-  if grep -q "systemd" /etc/mkinitcpio.conf; then
-    # Add after systemd
-    sudo sed -i '/^HOOKS=/s/systemd/systemd plymouth/' /etc/mkinitcpio.conf
-  elif grep -q "udev" /etc/mkinitcpio.conf; then
-    # Add after udev
-    sudo sed -i '/^HOOKS=/s/udev/udev plymouth/' /etc/mkinitcpio.conf
+  # Add plymouth to HOOKS array after 'base udev' or 'base systemd'
+  if grep "^HOOKS=" /etc/mkinitcpio.conf | grep -q "base systemd"; then
+    sudo sed -i '/^HOOKS=/s/base systemd/base systemd plymouth/' /etc/mkinitcpio.conf
+  elif grep "^HOOKS=" /etc/mkinitcpio.conf | grep -q "base udev"; then
+    sudo sed -i '/^HOOKS=/s/base udev/base udev plymouth/' /etc/mkinitcpio.conf
   else
-    # Fallback: add after base
-    sudo sed -i '/^HOOKS=/s/base/base plymouth/' /etc/mkinitcpio.conf
+    echo "Couldn't add the Plymouth hook"
   fi
+else
+  echo "Plymouth already present in mkinitcpio.conf HOOKS"
 fi
 
 # Regenerate initramfs
@@ -50,10 +45,44 @@ if [ -d "/boot/loader/entries" ]; then
       fi
     fi
   done
+elif [ -f "/etc/default/grub" ]; then
+  # Backup GRUB config before modifying
+  backup_timestamp=$(date +"%Y%m%d%H%M%S")
+  sudo cp /etc/default/grub "/etc/default/grub.bak.${backup_timestamp}"
+
+  # Check if splash is already in GRUB_CMDLINE_LINUX_DEFAULT
+  if ! grep -q "GRUB_CMDLINE_LINUX_DEFAULT.*splash" /etc/default/grub; then
+    # Get current GRUB_CMDLINE_LINUX_DEFAULT value
+    current_cmdline=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub | cut -d'"' -f2)
+
+    # Add splash and quiet if not present
+    new_cmdline="$current_cmdline"
+    if [[ ! "$current_cmdline" =~ splash ]]; then
+      new_cmdline="$new_cmdline splash"
+    fi
+    if [[ ! "$current_cmdline" =~ quiet ]]; then
+      new_cmdline="$new_cmdline quiet"
+    fi
+
+    # Trim any leading/trailing spaces
+    new_cmdline=$(echo "$new_cmdline" | xargs)
+
+    sudo sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\".*\"/GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline\"/" /etc/default/grub
+
+    # Regenerate grub config
+    sudo grub-mkconfig -o /boot/grub/grub.cfg
+  else
+    echo "GRUB already configured with splash kernel parameters"
+  fi
 else
   echo ""
-  echo "systemd-boot not detected. Please manually add these kernel parameters:"
+  echo "Neither systemd-boot nor GRUB detected. Please manually add these kernel parameters:"
   echo "  - splash (to see the graphical splash screen)"
   echo "  - quiet (for silent boot)"
   echo ""
 fi
+
+# Copy and set the Plymouth theme
+sudo cp -r "$HOME/.local/share/omarchy/default/plymouth" /usr/share/plymouth/themes/omarchy/
+
+sudo plymouth-set-default-theme -R omarchy
