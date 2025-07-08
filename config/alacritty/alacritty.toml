@@ -17,5 +17,12 @@ opacity = 0.98
 
 [keyboard]
 bindings = [
-{ key = "F11", action = "ToggleFullscreen" }
+{ key = "F11", action = "ToggleFullscreen" },
+{ key = "V", mods = "Control|Shift", action = "Paste"},
+{ key = "C", mods = "Control|Shift", action = "Copy"}
+]
+
+[mouse]
+bindings = [
+{ mouse = "Right", action = "Copy" }
 ]
