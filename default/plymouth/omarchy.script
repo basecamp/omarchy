@@ -9,19 +9,6 @@ logo.sprite.SetX (Window.GetX() + Window.GetWidth()  / 2 - logo.image.GetWidth()
 logo.sprite.SetY (Window.GetY() + Window.GetHeight() / 2 - logo.image.GetHeight() / 2);
 logo.sprite.SetOpacity (1);
 
-fun refresh_callback ()
-  {
-    # Always animate spinner - it will be invisible when not needed
-    if (global.spinner_sprite)
-      {
-        global.spinner_frame++;
-        frame_index = Math.Int(global.spinner_frame / 3) % global.spinner_frame_count;
-        global.spinner_sprite.SetImage(global.spinner_images[frame_index]);
-      }
-  }
-  
-Plymouth.SetRefreshFunction (refresh_callback);
-
 #----------------------------------------- Dialogue --------------------------------
 
 status = "normal";
@@ -67,15 +54,11 @@ fun display_normal_callback ()
     global.status = "normal";
     if (global.dialog)
       dialog_opacity (0);
-    spinner_show();  # Show spinner when no password dialog
   }
 
 fun display_password_callback (prompt, bullets)
   {
     global.status = "password";
-    
-    # Always hide spinner when showing password dialog
-    spinner_hide();
     
     # Setup dialog if it doesn't exist
     if (!global.dialog)
@@ -107,57 +90,6 @@ fun display_password_callback (prompt, bullets)
 Plymouth.SetDisplayNormalFunction(display_normal_callback);
 Plymouth.SetDisplayPasswordFunction(display_password_callback);
 
-#----------------------------------------- Spinner --------------------------------
-
-global.spinner_sprite = NULL;
-global.spinner_frame = 0;
-global.spinner_frame_count = 30;
-global.spinner_visible = false;
-global.spinner_images = [];
-
-fun spinner_setup()
-  {
-    if (!global.spinner_sprite)
-      {
-        # Load all throbber frames
-        for (i = 1; i <= global.spinner_frame_count; i++)
-          {
-            if (i < 10)
-              filename = "throbber-000" + i + ".png";
-            else
-              filename = "throbber-00" + i + ".png";
-            global.spinner_images[i-1] = Image(filename);
-          }
-        
-        # Create spinner sprite
-        global.spinner_sprite = Sprite(global.spinner_images[0]);
-        global.spinner_x = Window.GetX() + Window.GetWidth() / 2 - global.spinner_images[0].GetWidth() / 2;
-        global.spinner_y = Window.GetY() + Window.GetHeight() / 2 - logo.image.GetHeight() / 2 + logo.image.GetHeight() + 40;
-        global.spinner_sprite.SetPosition(global.spinner_x, global.spinner_y, 10002);
-        global.spinner_sprite.SetOpacity(0);
-      }
-  }
-
-fun spinner_show()
-  {
-    if (global.spinner_sprite)
-      {
-        global.spinner_sprite.SetOpacity(1);
-        global.spinner_visible = true;
-      }
-  }
-
-fun spinner_hide()
-  {
-    if (global.spinner_sprite)
-      {
-        global.spinner_sprite.SetOpacity(0);
-        global.spinner_visible = false;
-      }
-  }
-
-# Initialize spinner
-spinner_setup();
 #----------------------------------------- Progress Bar --------------------------------
 
 progress_box.image = Image("progress_box.png");
@@ -179,7 +111,7 @@ progress_bar.sprite.SetOpacity(0);
 global.progress_visible = false;
 fun progress_callback (duration, progress)
   {
-    if (progress > 0.01 && Plymouth.GetMode() != "shutdown" && Plymouth.GetMode() != "reboot" && Plymouth.GetMode() != "suspend")
+    if (progress > 0.01)
       {
         if (!global.progress_visible)
           {
