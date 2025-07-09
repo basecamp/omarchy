@@ -9,6 +9,56 @@ logo.sprite.SetX (Window.GetX() + Window.GetWidth()  / 2 - logo.image.GetWidth()
 logo.sprite.SetY (Window.GetY() + Window.GetHeight() / 2 - logo.image.GetHeight() / 2);
 logo.sprite.SetOpacity (1);
 
+# Use these to adjust the progress bar timing
+global.fake_progress_limit = 0.8;  # Target percentage for fake progress (0.0 to 1.0)
+global.fake_progress_duration = 15.0;  # Duration in seconds to reach limit
+
+# Progress bar animation variables
+global.fake_progress = 0.0;
+global.real_progress = 0.0;
+global.fake_progress_active = 0; # 0 / 1 boolean
+global.animation_frame = 0;
+global.fake_progress_start_time = 0;  # Track when fake progress started
+global.password_shown = 0;  # Track if password dialog has been shown
+
+fun refresh_callback ()
+  {
+    global.animation_frame++;
+    
+    # Animate fake progress to limit over time with easing
+    if (global.fake_progress_active == 1)
+      {
+        # Calculate elapsed time since start
+        elapsed_time = global.animation_frame / 50.0;  # Convert frames to seconds (50 FPS)
+        
+        # Calculate linear progress ratio (0 to 1) based on time
+        time_ratio = elapsed_time / global.fake_progress_duration;
+        if (time_ratio > 1.0)
+          time_ratio = 1.0;
+        
+        # Apply easing curve: ease-out quadratic
+        # Formula: 1 - (1 - x)^2
+        eased_ratio = 1 - ((1 - time_ratio) * (1 - time_ratio));
+        
+        # Calculate fake progress based on eased ratio
+        global.fake_progress = eased_ratio * global.fake_progress_limit;
+        
+        # Update progress bar with fake progress
+        update_progress_bar(global.fake_progress);
+      }
+  }
+
+fun update_progress_bar(progress)
+  {
+    width = Math.Int(progress_bar.original_image.GetWidth() * progress);
+    if (width < 1) width = 1;  # Ensure minimum width of 1 pixel
+    
+    progress_bar.image = progress_bar.original_image.Scale(width, progress_bar.original_image.GetHeight());
+    progress_bar.sprite.SetImage(progress_bar.image);
+  }
+
+Plymouth.SetRefreshFunction (refresh_callback);
+
 
 #----------------------------------------- Dialogue --------------------------------
 
@@ -34,19 +84,47 @@ bullet.sprites = [];
 
 fun display_normal_callback ()
   {
+    
     # Hide dialog
     lock.sprite.SetOpacity(0);
     entry.sprite.SetOpacity(0);
     for (index = 0; bullet.sprites[index]; index++)
       bullet.sprites[index].SetOpacity(0);
     
-    # Show progress
-    progress_box.sprite.SetOpacity(1);
-    progress_bar.sprite.SetOpacity(1);
+    # Get current mode
+    mode = Plymouth.GetMode();
+    
+    # Only require password_shown check for boot and resume modes
+    show_progress = 0;
+    if ((mode == "boot" || mode == "resume") && global.password_shown == 1)
+      show_progress = 1;
+    else if (mode != "boot" && mode != "resume")
+      show_progress = 1;
+    
+    if (show_progress == 1)
+      {
+        # Show progress
+        progress_box.sprite.SetOpacity(1);
+        progress_bar.sprite.SetOpacity(1);
+        
+        # Reset and start fake progress animation
+        global.fake_progress = 0.0;
+        global.real_progress = 0.0;
+        global.fake_progress_active = 1;
+        global.animation_frame = 0;  # Reset timer
+        
+        # Reset progress bar to empty
+        update_progress_bar(0.0);
+      }
   }
 
 fun display_password_callback (prompt, bullets)
   {
+    global.password_shown = 1;  # Mark that password dialog has been shown
+    
+    # Stop fake progress animation
+    global.fake_progress_active = 0;
+    
     # Hide progress
     progress_box.sprite.SetOpacity(0);
     progress_bar.sprite.SetOpacity(0);
@@ -65,7 +143,7 @@ fun display_password_callback (prompt, bullets)
         if (!bullet.sprites[index])
           {
             bullet.sprites[index] = Sprite(bullet.image);
-            bullet.x = entry.x + 10 + index * (bullet.image.GetWidth() + 5);
+            bullet.x = entry.x + 20 + index * (bullet.image.GetWidth() + 5);
             bullet.y = entry.y + entry.image.GetHeight() / 2 - bullet.image.GetHeight() / 2;
             bullet.sprites[index].SetPosition(bullet.x, bullet.y, 10002);
           }
@@ -88,6 +166,7 @@ progress_box.sprite.SetOpacity(0);
 
 progress_bar.original_image = Image("progress_bar.png");
 progress_bar.sprite = Sprite();
+progress_bar.image = progress_bar.original_image.Scale(1, progress_bar.original_image.GetHeight());
 
 progress_bar.x = Window.GetX() + Window.GetWidth() / 2 - progress_bar.original_image.GetWidth() / 2;
 progress_bar.y = progress_box.y + (progress_box.image.GetHeight() - progress_bar.original_image.GetHeight()) / 2;
@@ -96,10 +175,13 @@ progress_bar.sprite.SetOpacity(0);
 
 fun progress_callback (duration, progress)
   {
-    if (progress_bar.image.GetWidth () != Math.Int (progress_bar.original_image.GetWidth () * progress))
+    global.real_progress = progress;
+    
+    # If real progress is above limit, stop fake progress and use real progress
+    if (progress > global.fake_progress_limit)
       {
-        progress_bar.image = progress_bar.original_image.Scale(progress_bar.original_image.GetWidth() * progress, progress_bar.original_image.GetHeight());
-        progress_bar.sprite.SetImage (progress_bar.image);
+        global.fake_progress_active = 0;
+        update_progress_bar(progress);
       }
   }
 
