@@ -5,6 +5,7 @@ yay -S --noconfirm --needed fprintd libfprint
 # Add fingerprint authentication as a sufficient option
 grep -q 'pam_fprintd.so' /etc/pam.d/system-auth ||
   sudo sed -i '/^auth.*pam_unix.so/ i auth       sufficient                  pam_fprintd.so' /etc/pam.d/system-auth
+systemctl --user restart hyprpolkitagent
 
 # Enroll the first finger
 echo -e "\e[32m\nLet's setup your right index finger as the first fingerprint.\nKeep moving the finger around on sensor until the process completes.\n\e[0m"
