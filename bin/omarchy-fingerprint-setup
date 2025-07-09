@@ -1,7 +1,6 @@
 #!/bin/bash
 
 yay -S --noconfirm --needed fprintd libfprint
-sudo systemctl enable --now fprintd.service
 
 # Add fingerprint authentication as a sufficient option
 grep -q 'pam_fprintd.so' /etc/pam.d/system-auth ||
