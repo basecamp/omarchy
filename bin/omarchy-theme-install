@@ -6,16 +6,16 @@
 REPO_URL="$1"
 THEMES_SRC_DIR="$HOME/.local/share/omarchy/themes"
 THEMES_LINK_DIR="$HOME/.config/omarchy/themes"
-REPO_NAME=$(basename "$REPO_URL" .git)
-THEME_SRC_PATH="$THEMES_SRC_DIR/$REPO_NAME"
-THEME_LINK_PATH="$THEMES_LINK_DIR/$REPO_NAME"
+THEME_NAME=$(basename "$REPO_URL" .git)
+THEME_SRC_PATH="$THEMES_SRC_DIR/$THEME_NAME"
+THEME_LINK_PATH="$THEMES_LINK_DIR/$THEME_NAME"
 BACKGROUND_DIR="$HOME/.config/omarchy/backgrounds"
 CURRENT_DIR="$HOME/.config/omarchy/current"
 
 set -e
 
 if [ -z "$1" ]; then
-  echo "Usage: $0 [GIT_REPO_URL]"
+  echo "Usage: omarchy-theme-install [GIT_REPO_URL]"
   exit 1
 fi
 
@@ -24,7 +24,7 @@ mkdir -p "$THEMES_SRC_DIR" "$THEMES_LINK_DIR" "$BACKGROUND_DIR" "$CURRENT_DIR"
 
 # Remove existing theme if present
 if [ -d "$THEME_SRC_PATH" ]; then
-  echo "Theme '$REPO_NAME' already exists in $THEMES_SRC_DIR. Removing old version..."
+  echo "Theme '$THEME_NAME' already exists in $THEMES_SRC_DIR. Removing old version..."
   rm -rf "$THEME_SRC_PATH"
 fi
 if [ -L "$THEME_LINK_PATH" ]; then
@@ -42,20 +42,28 @@ ln -nsf "$THEME_SRC_PATH" "$THEME_LINK_PATH"
 
 # Run backgrounds.sh if present
 if [ -f "$THEME_SRC_PATH/backgrounds.sh" ]; then
-  echo "Running backgrounds.sh for $REPO_NAME..."
+  echo "Running backgrounds.sh for $THEME_NAME..."
   (export BACKGROUNDS_DIR="$BACKGROUND_DIR" && cd "$THEME_SRC_PATH" && bash backgrounds.sh)
 else
-  echo "No backgrounds.sh found in $REPO_NAME. Skipping backgrounds setup."
+  echo "No backgrounds.sh found in $THEME_NAME. Skipping backgrounds setup."
 fi
 
 # Set as current theme (update symlinks)
 ln -nsf "$THEME_LINK_PATH" "$CURRENT_DIR/theme"
-ln -nsf "$BACKGROUND_DIR/$REPO_NAME" "$CURRENT_DIR/backgrounds"
+ln -nsf "$BACKGROUND_DIR/$THEME_NAME" "$CURRENT_DIR/backgrounds"
 
-# Set current background to first image if available
-FIRST_BG=$(find "$BACKGROUND_DIR/$REPO_NAME" -type f | sort | head -n 1)
+# Check for backgrounds and set the first as current, or warn if none
+FIRST_BG=$(find "$BACKGROUND_DIR/$THEME_NAME" -type f | sort | head -n 1)
 if [ -n "$FIRST_BG" ]; then
   ln -nsf "$FIRST_BG" "$CURRENT_DIR/background"
+  # Use swaybg-next to set the background if available
+  if command -v swaybg-next >/dev/null 2>&1; then
+    swaybg-next
+  elif [ -x "$HOME/.local/share/omarchy/bin/swaybg-next" ]; then
+    "$HOME/.local/share/omarchy/bin/swaybg-next"
+  fi
+else
+  echo "No backgrounds found for theme $THEME_NAME"
 fi
 
 # Touch alacritty config to pickup the changed theme
@@ -68,13 +76,7 @@ pkill -SIGUSR2 waybar 2>/dev/null || true
 makoctl reload 2>/dev/null || true
 hyprctl reload 2>/dev/null || true
 
-# Set new background if swaybg is running
-if pgrep swaybg >/dev/null; then
-  pkill -x swaybg
-  setsid swaybg -i "$CURRENT_DIR/background" -m fill &
-fi
-
 # Notify of the new theme
-notify-send "Theme changed to $REPO_NAME" -t 2000
+notify-send "Theme changed to $THEME_NAME" -t 2000
 
-echo "Theme '$REPO_NAME' installed and set as current." 
+echo "Theme '$THEME_NAME' installed and set as current." 
