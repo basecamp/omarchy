@@ -1,6 +1,3 @@
-#!/usr/bin/env bash
-
-# Run Plymouth installation script
 echo "Install Plymouth splash screen"
 if ! command -v plymouth &>/dev/null; then
   yay -S --noconfirm --needed plymouth
