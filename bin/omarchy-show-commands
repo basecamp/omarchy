@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# A script to display Hyprland keybindings defined in your configuration
+# using wofi for an interactive search menu.
+
+USER_HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
+OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.conf"
+
+# Process the configuration file to extract and format keybindings
+# 1. `grep` finds all lines starting with 'bind' (allowing for leading spaces).
+# 2. The first `sed` removes comments (anything after a '#').
+# 3. `awk` does the heavy lifting of formatting the output.
+#    - It sets the field separator to a comma ','.
+#    - It removes the 'bind... =' part from the beginning of the line.
+#    - It joins the key combination (e.g., "SUPER + Q").
+#    - It joins the command that the key executes.
+#    - It prints everything in a nicely aligned format.
+# 4. The final `sed` cleans up any leftover commas from the end of lines.
+echo "nm-connection-editor              Open NetworkManager
+nmcli device wifi list            List available Wi-Fi networks
+nmcli connection show             Show all network connections
+nmcli connection up <name>        Connect to a network by name
+nmcli connection down <name>      Disconnect from a network by name" |
+  flock --nonblock /tmp/.wofi.lock -c "wofi -dmenu -i --width 60% --height 70% -p 'Useful commands' -O alphabetical"
