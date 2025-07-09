@@ -48,6 +48,11 @@ fun refresh_callback ()
       }
   }
 
+
+Plymouth.SetRefreshFunction (refresh_callback);
+
+#----------------------------------------- Helper Functions --------------------------------
+
 fun update_progress_bar(progress)
   {
     width = Math.Int(progress_bar.original_image.GetWidth() * progress);
@@ -57,8 +62,45 @@ fun update_progress_bar(progress)
     progress_bar.sprite.SetImage(progress_bar.image);
   }
 
-Plymouth.SetRefreshFunction (refresh_callback);
+fun show_progress_bar()
+  {
+    progress_box.sprite.SetOpacity(1);
+    progress_bar.sprite.SetOpacity(1);
+  }
 
+fun hide_progress_bar()
+  {
+    progress_box.sprite.SetOpacity(0);
+    progress_bar.sprite.SetOpacity(0);
+  }
+
+fun show_password_dialog()
+  {
+    lock.sprite.SetOpacity(1);
+    entry.sprite.SetOpacity(1);
+  }
+
+fun hide_password_dialog()
+  {
+    lock.sprite.SetOpacity(0);
+    entry.sprite.SetOpacity(0);
+    for (index = 0; bullet.sprites[index]; index++)
+      bullet.sprites[index].SetOpacity(0);
+  }
+
+fun start_fake_progress()
+  {
+    global.fake_progress = 0.0;
+    global.real_progress = 0.0;
+    global.fake_progress_active = 1;
+    global.animation_frame = 0;
+    update_progress_bar(0.0);
+  }
+
+fun stop_fake_progress()
+  {
+    global.fake_progress_active = 0;
+  }
 
 #----------------------------------------- Dialogue --------------------------------
 
@@ -84,12 +126,7 @@ bullet.sprites = [];
 
 fun display_normal_callback ()
   {
-    
-    # Hide dialog
-    lock.sprite.SetOpacity(0);
-    entry.sprite.SetOpacity(0);
-    for (index = 0; bullet.sprites[index]; index++)
-      bullet.sprites[index].SetOpacity(0);
+    hide_password_dialog();
     
     # Get current mode
     mode = Plymouth.GetMode();
@@ -103,18 +140,8 @@ fun display_normal_callback ()
     
     if (show_progress == 1)
       {
-        # Show progress
-        progress_box.sprite.SetOpacity(1);
-        progress_bar.sprite.SetOpacity(1);
-        
-        # Reset and start fake progress animation
-        global.fake_progress = 0.0;
-        global.real_progress = 0.0;
-        global.fake_progress_active = 1;
-        global.animation_frame = 0;  # Reset timer
-        
-        # Reset progress bar to empty
-        update_progress_bar(0.0);
+        show_progress_bar();
+        start_fake_progress();
       }
   }
 
@@ -122,16 +149,9 @@ fun display_password_callback (prompt, bullets)
   {
     global.password_shown = 1;  # Mark that password dialog has been shown
     
-    # Stop fake progress animation
-    global.fake_progress_active = 0;
-    
-    # Hide progress
-    progress_box.sprite.SetOpacity(0);
-    progress_bar.sprite.SetOpacity(0);
-    
-    # Show dialog
-    lock.sprite.SetOpacity(1);
-    entry.sprite.SetOpacity(1);
+    stop_fake_progress();
+    hide_progress_bar();
+    show_password_dialog();
     
     # Clear all bullets first
     for (index = 0; bullet.sprites[index]; index++)
@@ -180,7 +200,7 @@ fun progress_callback (duration, progress)
     # If real progress is above limit, stop fake progress and use real progress
     if (progress > global.fake_progress_limit)
       {
-        global.fake_progress_active = 0;
+        stop_fake_progress();
         update_progress_bar(progress);
       }
   }
