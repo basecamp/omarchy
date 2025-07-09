@@ -2,4 +2,7 @@
 
 # Run Plymouth installation script
 echo "Install Plymouth splash screen"
-bash "$HOME/.local/share/omarchy/install/plymouth.sh"
+if ! command -v plymouth &>/dev/null; then
+  yay -S --noconfirm --needed plymouth
+  bash "$HOME/.local/share/omarchy/install/plymouth.sh"
+fi

@@ -1,5 +1,5 @@
 echo "Switching system authentication prompt to dark mode"
-if [[ ! -f ~/.config/systemd/user/hyprpolkitagent.service.d/override.conf ]]; do
+if [[ ! -f ~/.config/systemd/user/hyprpolkitagent.service.d/override.conf ]]; then
   source ~/.local/share/omarchy/install/hyprpolkitagent.sh
 
   # Reload user systemd and restart service
