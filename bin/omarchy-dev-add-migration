@@ -1,0 +1,5 @@
+#!/bin/bash
+
+next_migration_date=$(git log -1 --format=%cd --date=unix)
+touch ~/.local/share/omarchy/migrations/$next_migration_date.sh
+nvim ~/.local/share/omarchy/migrations/$next_migration_date.sh
