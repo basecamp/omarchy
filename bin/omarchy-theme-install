@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy-theme-install: Install a new theme from a git repo for Omarchy 
-# Usage: omarchy-theme-install [GIT_REPO_URL]
+# Usage: omarchy-theme-install <git-repo-url>
 
 REPO_URL="$1"
 THEMES_SRC_DIR="$HOME/.local/share/omarchy/themes"
@@ -15,7 +15,7 @@ CURRENT_DIR="$HOME/.config/omarchy/current"
 set -e
 
 if [ -z "$1" ]; then
-  echo "Usage: omarchy-theme-install [GIT_REPO_URL]"
+  echo "Usage: omarchy-theme-install <git-repo-url>"
   exit 1
 fi
 
