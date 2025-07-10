@@ -28,4 +28,4 @@ done
 cd - >/dev/null
 
 echo -e "\e[32m\nUpdating system packages\e[0m"
-yay -Syu
+yay -Syu --noconfirm
