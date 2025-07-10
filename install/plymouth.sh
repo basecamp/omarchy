@@ -4,8 +4,8 @@
 echo "Installing Plymouth..."
 yay -S --noconfirm --needed plymouth
 
-# Skip if plymouth already exists for some reason
-if ! grep -q "^HOOKS=.*plymouth" /etc/mkinitcpio.conf; then
+if ! command -v plymouth &>/dev/null; then
+  # Skip if plymouth already exists for some reason
   # Backup original mkinitcpio.conf just in case
   backup_timestamp=$(date +"%Y%m%d%H%M%S")
   sudo cp /etc/mkinitcpio.conf "/etc/mkinitcpio.conf.bak.${backup_timestamp}"
@@ -18,71 +18,69 @@ if ! grep -q "^HOOKS=.*plymouth" /etc/mkinitcpio.conf; then
   else
     echo "Couldn't add the Plymouth hook"
   fi
-else
-  echo "Plymouth already present in mkinitcpio.conf HOOKS"
-fi
 
-# Regenerate initramfs
-sudo mkinitcpio -P
+  # Regenerate initramfs
+  sudo mkinitcpio -P
 
-# Add kernel parameters for Plymouth (systemd-boot only)
-if [ -d "/boot/loader/entries" ]; then
-  echo "Detected systemd-boot"
+  # Add kernel parameters for Plymouth (systemd-boot only)
+  if [ -d "/boot/loader/entries" ]; then
+    echo "Detected systemd-boot"
 
-  for entry in /boot/loader/entries/*.conf; do
-    if [ -f "$entry" ]; then
-      # Skip fallback entries
-      if [[ "$(basename "$entry")" == *"fallback"* ]]; then
-        echo "Skipped: $(basename "$entry") (fallback entry)"
-        continue
+    for entry in /boot/loader/entries/*.conf; do
+      if [ -f "$entry" ]; then
+        # Skip fallback entries
+        if [[ "$(basename "$entry")" == *"fallback"* ]]; then
+          echo "Skipped: $(basename "$entry") (fallback entry)"
+          continue
+        fi
+
+        # Skip if splash it already present for some reason
+        if ! grep -q "splash" "$entry"; then
+          sudo sed -i '/^options/ s/$/ splash quiet/' "$entry"
+        else
+          echo "Skipped: $(basename "$entry") (splash already present)"
+        fi
+      fi
+    done
+  elif [ -f "/etc/default/grub" ]; then
+    # Backup GRUB config before modifying
+    backup_timestamp=$(date +"%Y%m%d%H%M%S")
+    sudo cp /etc/default/grub "/etc/default/grub.bak.${backup_timestamp}"
+
+    # Check if splash is already in GRUB_CMDLINE_LINUX_DEFAULT
+    if ! grep -q "GRUB_CMDLINE_LINUX_DEFAULT.*splash" /etc/default/grub; then
+      # Get current GRUB_CMDLINE_LINUX_DEFAULT value
+      current_cmdline=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub | cut -d'"' -f2)
+
+      # Add splash and quiet if not present
+      new_cmdline="$current_cmdline"
+      if [[ ! "$current_cmdline" =~ splash ]]; then
+        new_cmdline="$new_cmdline splash"
+      fi
+      if [[ ! "$current_cmdline" =~ quiet ]]; then
+        new_cmdline="$new_cmdline quiet"
       fi
 
-      # Skip if splash it already present for some reason
-      if ! grep -q "splash" "$entry"; then
-        sudo sed -i '/^options/ s/$/ splash quiet/' "$entry"
-      else
-        echo "Skipped: $(basename "$entry") (splash already present)"
-      fi
+      # Trim any leading/trailing spaces
+      new_cmdline=$(echo "$new_cmdline" | xargs)
+
+      sudo sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\".*\"/GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline\"/" /etc/default/grub
+
+      # Regenerate grub config
+      sudo grub-mkconfig -o /boot/grub/grub.cfg
+    else
+      echo "GRUB already configured with splash kernel parameters"
     fi
-  done
-elif [ -f "/etc/default/grub" ]; then
-  # Backup GRUB config before modifying
-  backup_timestamp=$(date +"%Y%m%d%H%M%S")
-  sudo cp /etc/default/grub "/etc/default/grub.bak.${backup_timestamp}"
-
-  # Check if splash is already in GRUB_CMDLINE_LINUX_DEFAULT
-  if ! grep -q "GRUB_CMDLINE_LINUX_DEFAULT.*splash" /etc/default/grub; then
-    # Get current GRUB_CMDLINE_LINUX_DEFAULT value
-    current_cmdline=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub | cut -d'"' -f2)
-
-    # Add splash and quiet if not present
-    new_cmdline="$current_cmdline"
-    if [[ ! "$current_cmdline" =~ splash ]]; then
-      new_cmdline="$new_cmdline splash"
-    fi
-    if [[ ! "$current_cmdline" =~ quiet ]]; then
-      new_cmdline="$new_cmdline quiet"
-    fi
-
-    # Trim any leading/trailing spaces
-    new_cmdline=$(echo "$new_cmdline" | xargs)
-
-    sudo sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\".*\"/GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline\"/" /etc/default/grub
-
-    # Regenerate grub config
-    sudo grub-mkconfig -o /boot/grub/grub.cfg
   else
-    echo "GRUB already configured with splash kernel parameters"
+    echo ""
+    echo "Neither systemd-boot nor GRUB detected. Please manually add these kernel parameters:"
+    echo "  - splash (to see the graphical splash screen)"
+    echo "  - quiet (for silent boot)"
+    echo ""
   fi
-else
-  echo ""
-  echo "Neither systemd-boot nor GRUB detected. Please manually add these kernel parameters:"
-  echo "  - splash (to see the graphical splash screen)"
-  echo "  - quiet (for silent boot)"
-  echo ""
+
+  # Copy and set the Plymouth theme
+  sudo cp -r "$HOME/.local/share/omarchy/default/plymouth" /usr/share/plymouth/themes/omarchy/
+
+  sudo plymouth-set-default-theme -R omarchy
 fi
-
-# Copy and set the Plymouth theme
-sudo cp -r "$HOME/.local/share/omarchy/default/plymouth" /usr/share/plymouth/themes/omarchy/
-
-sudo plymouth-set-default-theme -R omarchy
