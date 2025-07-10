@@ -3,7 +3,7 @@
 yay -S --noconfirm --needed fprintd libfprint lsusb
 
 if ! lsusb | grep -iq fingerprint; then
-  echo "No fingerprint sensor detected."
+  echo -e "\e[31m\nNo fingerprint sensor detected.\e[0m"
 else
   # Add fingerprint authentication as an option for sudo
   if ! grep -q pam_fprintd.so /etc/pam.d/sudo; then
