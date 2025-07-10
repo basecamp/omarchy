@@ -16,7 +16,7 @@ OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.conf"
 #    - It joins the command that the key executes.
 #    - It prints everything in a nicely aligned format.
 # 4. The final `sed` cleans up any leftover commas from the end of lines.
-grep -h '^[[:space:]]*bind' "$HYPRLAND_CONF" "$OMARCHY_BINDINGS_CONF" |
+grep -h '^[[:space:]]*bind' "$USER_HYPRLAND_CONF" "$OMARCHY_BINDINGS_CONF" |
   awk -F, '
 {
     # Strip trailing comments
