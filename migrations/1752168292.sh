@@ -12,4 +12,3 @@ if ls /sys/class/power_supply/BAT* &>/dev/null; then
 else
   echo "No battery detected - skipping battery monitor setup"
 fi
-
