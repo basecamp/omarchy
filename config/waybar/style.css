@@ -17,13 +17,15 @@
 }
 
 #custom-dropbox,
+#custom-expand,
+#tray,
 #cpu,
-#power-profiles-daemon,
 #battery,
 #network,
 #bluetooth,
 #pulseaudio,
-#clock {
+#clock,
+#custom-power-menu {
   min-width: 12px;
   margin-right: 13px;
 }

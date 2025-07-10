@@ -1,0 +1,8 @@
+[Unit]
+Description=Omarchy Battery Monitor Check
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/omarchy/bin/omarchy-battery-monitor
+Environment=DISPLAY=:0

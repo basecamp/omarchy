@@ -10,12 +10,11 @@
       "clock"
     ],
     "modules-right": [
-      "custom/dropbox",
+      "group/tray",
       "bluetooth",
       "network",
       "pulseaudio",
       "cpu",
-      "power-profiles-daemon",
       "battery"
     ],
     "hyprland/workspaces": {
@@ -63,22 +62,22 @@
       "tooltip-format-disconnected": "Disconnected",
       "interval": 3,
       "nospacing": 1,
-      "on-click": "alacritty -e iwctl"
+      "on-click": "alacritty --class=Impala -e impala"
     },
     "battery": {
       "format": "{capacity}% {icon}",
       "format-discharging": "{icon}",
       "format-charging":    "{icon}",
       "format-plugged":     "",
-        "format-icons": {
-          "charging": [
-            "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"
-          ],
-          "default": [
-            "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"
-          ]
-        },
-      "format-full": "Charged ",
+      "format-icons": {
+        "charging": [
+          "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"
+        ],
+        "default": [
+          "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"
+        ]
+      },
+      "format-full": "󰂅",
       "tooltip-format-discharging": "{power:>1.0f}W↓ {capacity}%",
       "tooltip-format-charging": "{power:>1.0f}W↑ {capacity}%",
       "interval": 5,
@@ -103,23 +102,22 @@
       "on-click-right": "pamixer -t",
       "ignored-sinks": ["Easy Effects Sink"]
     },
-    "power-profiles-daemon": {
-      "format": "{icon}",
-      "tooltip-format": "Power profile: {profile}",
-      "tooltip": true,
-      "format-icons": {
-        "power-saver": "󰡳",
-        "balanced":     "󰊚",
-        "performance":  "󰡴"
-      }
+    "group/tray": {
+      "orientation": "inherit",
+      "drawer": {
+        "transition-duration": 600
+      },
+      "modules": [
+        "custom/expand",
+        "tray"
+      ]
     },
-    "custom/dropbox": {
-      "format": "",
-      "on-click": "nautilus ~/Dropbox",
-      "exec": "dropbox-cli status",
-      "return-type": "text",
-      "interval": 5,
-      "tooltip": true,
-      "tooltip-format": "{}"
+    "custom/expand": {
+      "format": " ",
+      "tooltip": false
+    },
+    "tray": {
+      "icon-size": 12,
+      "spacing": 12
     }
 }

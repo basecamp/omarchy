@@ -5,7 +5,10 @@ set -e
 trap 'echo "Omarchy installation failed! You can retry by running: source ~/.local/share/omarchy/install.sh"' ERR
 
 # Install everything
-for f in ~/.local/share/omarchy/install/*.sh; do source "$f"; done
+for f in ~/.local/share/omarchy/install/*.sh; do
+  echo -e "\nRunning installer: $f"
+  source "$f"
+done
 
 # Ensure locate is up to date now that everything has been installed
 sudo updatedb
