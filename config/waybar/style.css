@@ -2,7 +2,7 @@
   border: none;
   border-radius: 0;
   min-height: 0;
-  font-family: CaskaydiaMono Nerd Font;
+  font-family: CaskaydiaMono Nerd Font Propo;
   font-size: 12px;
 }
 
@@ -16,8 +16,11 @@
   margin-right: 3px;
 }
 
+#custom-expand {
+  margin-right: 0px;
+}
+
 #custom-dropbox,
-#custom-expand,
 #tray,
 #cpu,
 #battery,
