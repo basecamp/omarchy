@@ -41,6 +41,7 @@ if ! command -v plymouth &>/dev/null; then
       fi
     done
   elif [ -f "/etc/default/grub" ]; then
+    echo "Detected grub"
     # Backup GRUB config before modifying
     backup_timestamp=$(date +"%Y%m%d%H%M%S")
     sudo cp /etc/default/grub "/etc/default/grub.bak.${backup_timestamp}"
@@ -69,6 +70,42 @@ if ! command -v plymouth &>/dev/null; then
     else
       echo "GRUB already configured with splash kernel parameters"
     fi
+  elif [ -d "/etc/cmdline.d" ]; then
+    echo "Detected a UKI setup"
+    # Relying on mkinitcpio to assemble a UKI
+    # https://wiki.archlinux.org/title/Unified_kernel_image
+    if ! grep -q splash /etc/cmdline.d/*.conf; then
+        # Need splash, create the omarchy file
+        echo "splash" | sudo tee -a /etc/cmdline.d/omarchy.conf
+    fi
+    if ! grep -q quiet /etc/cmdline.d/*.conf; then
+        # Need quiet, create or append the omarchy file
+        echo "quiet" | sudo tee -a /etc/cmdline.d/omarchy.conf
+    fi
+  elif [ -f "/etc/kernel/cmdline" ]; then
+    # Alternate UKI kernel cmdline location
+    echo "Detected a UKI setup"
+
+    # Backup kernel cmdline config before modifying
+    backup_timestamp=$(date +"%Y%m%d%H%M%S")
+    sudo cp /etc/kernel/cmdline "/etc/kernel/cmdline.bak.${backup_timestamp}"
+
+    current_cmdline=$(cat /etc/kernel/cmdline)
+
+    # Add splash and quiet if not present
+    new_cmdline="$current_cmdline"
+    if [[ ! "$current_cmdline" =~ splash ]]; then
+        new_cmdline="$new_cmdline splash"
+    fi
+    if [[ ! "$current_cmdline" =~ quiet ]]; then
+        new_cmdline="$new_cmdline quiet"
+    fi
+
+    # Trim any leading/trailing spaces
+    new_cmdline=$(echo "$new_cmdline" | xargs)
+
+    # Write new file
+    echo $new_cmdline | sudo tee /etc/kernel/cmdline
   else
     echo ""
     echo "Neither systemd-boot nor GRUB detected. Please manually add these kernel parameters:"
