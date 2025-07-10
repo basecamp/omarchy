@@ -10,6 +10,7 @@
       "clock"
     ],
     "modules-right": [
+      "group/tray",
       "bluetooth",
       "network",
       "pulseaudio",
@@ -100,5 +101,23 @@
       "tooltip-format": "Playing at {volume}%",
       "on-click-right": "pamixer -t",
       "ignored-sinks": ["Easy Effects Sink"]
+    },
+    "group/tray": {
+      "orientation": "inherit",
+      "drawer": {
+        "transition-duration": 600
+      },
+      "modules": [
+        "custom/expand",
+        "tray"
+      ]
+    },
+    "custom/expand": {
+      "format": " ",
+      "tooltip": false
+    },
+    "tray": {
+      "icon-size": 12,
+      "spacing": 12
     }
 }
