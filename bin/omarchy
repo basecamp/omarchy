@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# omarchy: Main CLI interface for Omarchy
-# Usage: omarchy [command] [options]
+# omarchy: Main TUI menu for Omarchy tools
+# Usage: omarchy
 
 set -e
 
@@ -9,13 +9,29 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
-NC='\033[0m' 
+NC='\033[0m'
 
-# Show help menu
-show_help() {
+BIN_DIR="$(dirname "$0")"
+
+# Show version information
+show_version() {
+    (
+        cd ~/.local/share/omarchy
+        if [ -d ".git" ]; then
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
+            COMMIT_HASH=$(git rev-parse --short HEAD)
+            echo -e "${BLUE}Omarchy Version:${NC} $LATEST_TAG"
+        fi
+    )
+}
+
+OMARCHY_ASCII_SHOWN=0
+
+# TUI menu using gum
+show_tui_menu() {
     local COLUMNS=$(tput cols 2>/dev/null || echo 80)
-    if [ "$COLUMNS" -ge 100 ]; then
-    echo ""
+    if [ "$OMARCHY_ASCII_SHOWN" -eq 0 ] && [ "$COLUMNS" -ge 100 ]; then
+        echo ""
         cat <<'EOF'
  ▄██████▄    ▄▄▄▄███▄▄▄▄      ▄████████    ▄████████  ▄████████    ▄█    █▄    ▄██   ▄  
 ███    ███ ▄██▀▀▀███▀▀▀██▄   ███    ███   ███    ███ ███    ███   ███    ███   ███   ██▄
@@ -27,56 +43,118 @@ show_help() {
  ▀██████▀   ▀█   ███   █▀    ███    █▀    ███    ███ ████████▀    ███    █▀     ▀█████▀ 
                                           ███    ███                                    
 EOF
+        echo
+        OMARCHY_ASCII_SHOWN=1
+    elif [ "$OMARCHY_ASCII_SHOWN" -eq 0 ]; then
+        echo "Omarchy"
+        echo
+        OMARCHY_ASCII_SHOWN=1
     fi
-    echo ""
-    echo "Usage: omarchy [command] [options]"
-    echo ""
-    echo "Commands:"
-    echo "  -v, --version     Show version information"
-    echo "  update            Update to latest version"
-    echo "  refresh-waybar    Refresh waybar configuration"
-    echo "  help              Show this help message"
-    echo ""
-    echo "Examples:"
-    echo "  omarchy -v                    # Show current version"
-    echo "  omarchy update                # Update omarchy to latest version"
-    echo "  omarchy refresh-waybar        # Refresh waybar configuration"
-    echo ""
+
+    # Main menu categories
+    local main_menu=("System" "Theme" "Tools" "Exit")
+    local choice
+    choice=$(printf "%s\n" "${main_menu[@]}" | gum choose --header="Select a category:") || exit 0
+
+    case "$choice" in
+        "System")
+            system_menu
+            ;;
+        "Theme")
+            theme_menu
+            ;;
+        "Tools")
+            tools_menu
+            ;;
+        "Exit")
+            exit 0
+            ;;
+    esac
 }
 
-# Show version information
-show_version() {
-    cd ~/.local/share/omarchy
-    
-    if [ -d ".git" ]; then
-        # Get the latest tag (release version)
-        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
-        COMMIT_HASH=$(git rev-parse --short HEAD)
-        
-        echo -e "${BLUE}Omarchy Version:${NC} $LATEST_TAG"
-    fi
+system_menu() {
+    local menu=("Version" "Update" "Refresh Waybar" "Back")
+    local commands=(
+        "$BIN_DIR/omarchy -v"
+        "$BIN_DIR/omarchy-update"
+        "$BIN_DIR/omarchy-refresh-waybar"
+        "show_tui_menu"
+    )
+    local choice
+    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="System:") || show_tui_menu
+    for i in "${!menu[@]}"; do
+        if [[ "${menu[$i]}" == "$choice" ]]; then
+            if [[ "$choice" == "Back" ]]; then
+                show_tui_menu
+            else
+                eval "${commands[$i]}"
+            fi
+            break
+        fi
+    done
+}
+
+theme_menu() {
+    local menu=("Switch Theme" "Back")
+    local commands=(
+        "$BIN_DIR/omarchy-theme-next"
+        "show_tui_menu"
+    )
+    local choice
+    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Theme:") || show_tui_menu
+    for i in "${!menu[@]}"; do
+        if [[ "${menu[$i]}" == "$choice" ]]; then
+            if [[ "$choice" == "Back" ]]; then
+                show_tui_menu
+            else
+                eval "${commands[$i]}"
+            fi
+            break
+        fi
+    done
+}
+
+tools_menu() {
+    local menu=("Setup Fingerprint" "Sync Applications" "Back")
+    local commands=(
+        "$BIN_DIR/omarchy-fingerprint-setup"
+        "$BIN_DIR/omarchy-sync-applications"
+        "show_tui_menu"
+    )
+    local choice
+    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Tools:") || show_tui_menu
+    for i in "${!menu[@]}"; do
+        if [[ "${menu[$i]}" == "$choice" ]]; then
+            if [[ "$choice" == "Back" ]]; then
+                show_tui_menu
+            else
+                eval "${commands[$i]}"
+            fi
+            break
+        fi
+    done
 }
 
 # Main command handler
-case "${1:-help}" in
+if [ $# -eq 0 ]; then
+    show_tui_menu
+    exit 0
+fi
+
+case "$1" in
     -v|--version|version)
         show_version
         ;;
     update)
         echo -e "${BLUE}🔄 Updating Omarchy...${NC}"
-        ~/.local/share/omarchy/bin/omarchy-update
+        "$BIN_DIR/omarchy-update"
         ;;
     refresh-waybar)
         echo -e "${BLUE}🔄 Refreshing waybar...${NC}"
-        ~/.local/share/omarchy/bin/omarchy-refresh-waybar
-        ;;
-    help|--help|-h)
-        show_help
+        "$BIN_DIR/omarchy-refresh-waybar"
         ;;
     *)
         echo -e "${RED}Unknown command: $1${NC}"
-        echo ""
-        show_help
         exit 1
         ;;
 esac 
