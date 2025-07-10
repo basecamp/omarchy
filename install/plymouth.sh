@@ -2,9 +2,10 @@
 
 # Install Plymouth package
 echo "Installing Plymouth..."
-yay -S --noconfirm --needed plymouth
 
 if ! command -v plymouth &>/dev/null; then
+  yay -S --noconfirm --needed plymouth
+
   # Skip if plymouth already exists for some reason
   # Backup original mkinitcpio.conf just in case
   backup_timestamp=$(date +"%Y%m%d%H%M%S")
