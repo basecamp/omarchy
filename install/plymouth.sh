@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# Install Plymouth package
-echo "Installing Plymouth..."
-
 if ! command -v plymouth &>/dev/null; then
   yay -S --noconfirm --needed plymouth
 
