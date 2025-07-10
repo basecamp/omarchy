@@ -2,9 +2,23 @@
 
 yay -S --noconfirm --needed fprintd libfprint
 
-# Add fingerprint authentication as a sufficient option
-grep -q 'pam_fprintd.so' /etc/pam.d/system-auth ||
-  sudo sed -i '/^auth.*pam_unix.so/ i auth       sufficient                  pam_fprintd.so' /etc/pam.d/system-auth
+# Add fingerprint authentication as an option for sudo
+if ! grep -q pam_fprintd.so /etc/pam.d/sudo; then
+  sudo sed -i '1i auth    sufficient pam_fprintd.so' /etc/pam.d/sudo
+fi
+
+# Add fingerprint authentication as an option for hyprpolkitagent
+if [ ! -f /etc/pam.d/polkit-1 ] || ! grep -q pam_fprintd.so /etc/pam.d/polkit-1; then
+  sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
+auth      required pam_unix.so
+auth      optional pam_fprintd.so
+
+account   required pam_unix.so
+password  required pam_unix.so
+session   required pam_unix.so
+EOF
+fi
+
 systemctl --user restart hyprpolkitagent
 
 # Enroll the first finger
