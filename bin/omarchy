@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# omarchy: Main CLI interface for Omarchy
+# Usage: omarchy [command] [options]
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m' 
+
+# Show help menu
+show_help() {
+    echo ""
+    echo "Usage: omarchy [command] [options]"
+    echo ""
+    echo "Commands:"
+    echo "  -v, --version     Show version information"
+    echo "  update            Update to latest version"
+    echo "  refresh-waybar    Refresh waybar configuration"
+    echo "  help              Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  omarchy -v                    # Show current version"
+    echo "  omarchy update                # Update omarchy to latest version"
+    echo "  omarchy refresh-waybar        # Refresh waybar configuration"
+}
+
+# Show version information
+show_version() {
+    cd ~/.local/share/omarchy
+    
+    if [ -d ".git" ]; then
+        # Get the latest tag (release version)
+        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
+        COMMIT_HASH=$(git rev-parse --short HEAD)
+        
+        echo -e "${BLUE}Omarchy Version:${NC} $LATEST_TAG"
+    fi
+}
+
+# Main command handler
+case "${1:-help}" in
+    -v|--version|version)
+        show_version
+        ;;
+    update)
+        echo -e "${BLUE}🔄 Updating Omarchy...${NC}"
+        ~/.local/share/omarchy/bin/omarchy-update
+        ;;
+    refresh-waybar)
+        echo -e "${BLUE}🔄 Refreshing waybar...${NC}"
+        ~/.local/share/omarchy/bin/omarchy-refresh-waybar
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $1${NC}"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac 
