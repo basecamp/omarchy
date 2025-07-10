@@ -1,6 +1,6 @@
 #!/bin/bash
 
-yay -S --noconfirm --needed fprintd libfprint lsusb
+yay -S --noconfirm --needed fprintd libfprint usbutils
 
 if ! lsusb | grep -iq fingerprint; then
   echo -e "\e[31m\nNo fingerprint sensor detected.\e[0m"
