@@ -14,8 +14,7 @@
       "network",
       "pulseaudio",
       "cpu",
-      "battery",
-      "custom/power-menu"
+      "battery"
     ],
     "hyprland/workspaces": {
       "on-click": "activate",
@@ -62,21 +61,21 @@
       "tooltip-format-disconnected": "Disconnected",
       "interval": 3,
       "nospacing": 1,
-      "on-click": "alacritty -e iwctl"
+      "on-click": "alacritty --class=Impala -e impala"
     },
     "battery": {
       "format": "{capacity}% {icon}",
       "format-discharging": "{icon}",
       "format-charging":    "{icon}",
       "format-plugged":     "",
-        "format-icons": {
-          "charging": [
-            "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"
-          ],
-          "default": [
-            "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"
-          ]
-        },
+      "format-icons": {
+        "charging": [
+          "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"
+        ],
+        "default": [
+          "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"
+        ]
+      },
       "format-full": "Charged ",
       "tooltip-format-discharging": "{power:>1.0f}W↓ {capacity}%",
       "tooltip-format-charging": "{power:>1.0f}W↑ {capacity}%",
@@ -101,10 +100,5 @@
       "tooltip-format": "Playing at {volume}%",
       "on-click-right": "pamixer -t",
       "ignored-sinks": ["Easy Effects Sink"]
-    },
-    "custom/power-menu": {
-      "format": "󰐥",
-      "on-click": "~/.local/share/omarchy/bin/omarchy-power-menu",
-      "tooltip": false
     }
 }
