@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# Omarchy Battery Monitor
-# One-shot script that checks battery and sends notification if needed
-# Designed to be run by systemd timer every 30 seconds
+# Designed to be run by systemd timer every 30 seconds and alerts if battery is low
 
 BATTERY_THRESHOLD=10
 NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
@@ -16,7 +14,7 @@ get_battery_state() {
 }
 
 send_notification() {
-  notify-send -u critical "Battery Low" "Battery level is at ${1}%! Please plug in your charger." -i battery-caution
+  notify-send -u critical "Battery Low" "Time to recharge! (battery is at ${1}%)" -i battery-caution
 }
 
 BATTERY_LEVEL=$(get_battery_percentage)
