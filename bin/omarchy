@@ -13,6 +13,21 @@ NC='\033[0m'
 
 # Show help menu
 show_help() {
+    local COLUMNS=$(tput cols 2>/dev/null || echo 80)
+    if [ "$COLUMNS" -ge 100 ]; then
+    echo ""
+        cat <<'EOF'
+ ▄██████▄    ▄▄▄▄███▄▄▄▄      ▄████████    ▄████████  ▄████████    ▄█    █▄    ▄██   ▄  
+███    ███ ▄██▀▀▀███▀▀▀██▄   ███    ███   ███    ███ ███    ███   ███    ███   ███   ██▄
+███    ███ ███   ███   ███   ███    ███   ███    ███ ███    █▀    ███    ███   ███▄▄▄███
+███    ███ ███   ███   ███   ███    ███  ▄███▄▄▄▄██▀ ███         ▄███▄▄▄▄███▄▄ ▀▀▀▀▀▀███
+███    ███ ███   ███   ███ ▀███████████ ▀▀███▀▀▀▀▀   ███        ▀▀███▀▀▀▀███▀  ▄██   ███
+███    ███ ███   ███   ███   ███    ███ ▀███████████ ███    █▄    ███    ███   ███   ███
+███    ███ ███   ███   ███   ███    ███   ███    ███ ███    ███   ███    ███   ███   ███
+ ▀██████▀   ▀█   ███   █▀    ███    █▀    ███    ███ ████████▀    ███    █▀     ▀█████▀ 
+                                          ███    ███                                    
+EOF
+    fi
     echo ""
     echo "Usage: omarchy [command] [options]"
     echo ""
@@ -26,6 +41,7 @@ show_help() {
     echo "  omarchy -v                    # Show current version"
     echo "  omarchy update                # Update omarchy to latest version"
     echo "  omarchy refresh-waybar        # Refresh waybar configuration"
+    echo ""
 }
 
 # Show version information
