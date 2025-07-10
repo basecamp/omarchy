@@ -1,4 +1,8 @@
-yay -Sy --noconfirm --needed ttf-font-awesome noto-fonts noto-fonts-emoji noto-fonts-cjk noto-fonts-extra
+if [ -z "$OMARCHY_BARE" ]; then
+  yay -Sy --noconfirm --needed ttf-font-awesome noto-fonts noto-fonts-emoji noto-fonts-cjk noto-fonts-extra
+else
+  yay -Sy --noconfirm --needed ttf-font-awesome noto-fonts noto-fonts-emoji
+fi
 
 mkdir -p ~/.local/share/fonts
 
