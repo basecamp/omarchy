@@ -10,7 +10,7 @@ logo.sprite.SetY (Window.GetY() + Window.GetHeight() / 2 - logo.image.GetHeight(
 logo.sprite.SetOpacity (1);
 
 # Use these to adjust the progress bar timing
-global.fake_progress_limit = 0.8;  # Target percentage for fake progress (0.0 to 1.0)
+global.fake_progress_limit = 0.7;  # Target percentage for fake progress (0.0 to 1.0)
 global.fake_progress_duration = 15.0;  # Duration in seconds to reach limit
 
 # Progress bar animation variables
@@ -104,7 +104,6 @@ fun stop_fake_progress()
 
 #----------------------------------------- Dialogue --------------------------------
 
-# Dialog elements - create once, reuse
 lock.image = Image("lock.png");
 entry.image = Image("entry.png");
 bullet.image = Image("bullet.png");
@@ -115,9 +114,16 @@ entry.y = logo.sprite.GetY() + logo.image.GetHeight() + 40;
 entry.sprite.SetPosition(entry.x, entry.y, 10001);
 entry.sprite.SetOpacity(0);
 
-lock.sprite = Sprite(lock.image);
-lock.x = entry.x - lock.image.GetWidth() - 10;
-lock.y = entry.y + entry.image.GetHeight()/2 - lock.image.GetHeight()/2;
+# Scale lock to be slightly shorter than entry field height
+# Original lock is 84x96, entry height determines scale
+lock_height = entry.image.GetHeight() * 0.8;
+lock_scale = lock_height / 96;
+lock_width = 84 * lock_scale;
+
+scaled_lock = lock.image.Scale(lock_width, lock_height);
+lock.sprite = Sprite(scaled_lock);
+lock.x = entry.x - lock_width - 15;
+lock.y = entry.y + entry.image.GetHeight()/2 - lock_height/2;
 lock.sprite.SetPosition(lock.x, lock.y, 10001);
 lock.sprite.SetOpacity(0);
 
@@ -131,14 +137,8 @@ fun display_normal_callback ()
     # Get current mode
     mode = Plymouth.GetMode();
     
-    # Only require password_shown check for boot and resume modes
-    show_progress = 0;
+    # Only show progress bar for boot and resume modes
     if ((mode == "boot" || mode == "resume") && global.password_shown == 1)
-      show_progress = 1;
-    else if (mode != "boot" && mode != "resume")
-      show_progress = 1;
-    
-    if (show_progress == 1)
       {
         show_progress_bar();
         start_fake_progress();
@@ -162,9 +162,11 @@ fun display_password_callback (prompt, bullets)
       {
         if (!bullet.sprites[index])
           {
-            bullet.sprites[index] = Sprite(bullet.image);
-            bullet.x = entry.x + 20 + index * (bullet.image.GetWidth() + 5);
-            bullet.y = entry.y + entry.image.GetHeight() / 2 - bullet.image.GetHeight() / 2;
+            # Scale bullet image to 7x7 pixels
+            scaled_bullet = bullet.image.Scale(7, 7);
+            bullet.sprites[index] = Sprite(scaled_bullet);
+            bullet.x = entry.x + 20 + index * (7 + 5);
+            bullet.y = entry.y + entry.image.GetHeight() / 2 - 3.5;
             bullet.sprites[index].SetPosition(bullet.x, bullet.y, 10002);
           }
         bullet.sprites[index].SetOpacity(1);
