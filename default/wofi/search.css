@@ -24,6 +24,7 @@ window {
   padding: 20px;
   border: none;
   background-color: @base;
+  border: 2px solid @border;
 }
 
 #scroll {
@@ -69,4 +70,3 @@ window {
 #entry image {
   -gtk-icon-transform: scale(0.7);
 }
-
