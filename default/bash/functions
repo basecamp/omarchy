@@ -71,6 +71,3 @@ refresh-xcompose() {
   pkill fcitx5
   setsid fcitx5 &>/dev/null &
 }
-
-# Ensure that external keyboards that use an fn key has the F keys as the default
-alias fix_fkeys='echo 2 | sudo tee /sys/module/hid_apple/parameters/fnmode'

@@ -19,10 +19,13 @@ for file in migrations/*.sh; do
   migrate_at="${filename%.sh}"
 
   if [ $migrate_at -gt $last_updated_at ]; then
-    echo "Running migration ($migrate_at)"
+    echo -e "\e[32m\nRunning migration ($migrate_at)\e[0m"
     source $file
   fi
 done
 
 # Back to where we came from
 cd - >/dev/null
+
+echo -e "\e[32m\nUpdating system packages\e[0m"
+yay -Syu --noconfirm
