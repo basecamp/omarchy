@@ -1,5 +1,6 @@
 echo "Add new matte black theme"
 
+BACKGROUNDS_DIR=~/.config/omarchy/backgrounds/
 download_background_image() {
   local url="$1"
   local path="$2"
