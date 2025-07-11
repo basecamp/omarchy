@@ -42,8 +42,33 @@ ln -nsf "$THEME_SRC_PATH" "$THEME_LINK_PATH"
 
 # Run backgrounds.sh if present
 if [ -f "$THEME_SRC_PATH/backgrounds.sh" ]; then
-  echo "Running backgrounds.sh for $THEME_NAME..."
-  (export BACKGROUNDS_DIR="$BACKGROUND_DIR" && cd "$THEME_SRC_PATH" && bash backgrounds.sh)
+  echo "Backgrounds script found for $THEME_NAME."
+  
+  while true; do
+    echo ""
+    ACTION=$(gum choose "View theme's backgrounds.sh" "Install theme" "Abort installation")
+    
+    case "$ACTION" in
+      "View theme's backgrounds.sh")
+        echo "Showing backgrounds.sh content (press ESC to exit):"
+        gum pager < "$THEME_SRC_PATH/backgrounds.sh"
+        ;;
+      "Install theme")
+        echo "Running backgrounds.sh for $THEME_NAME..."
+        (export BACKGROUNDS_DIR="$BACKGROUND_DIR" && cd "$THEME_SRC_PATH" && bash backgrounds.sh)
+        break
+        ;;
+      "Abort installation")
+        echo "Aborting theme installation due to user rejection of backgrounds.sh script."
+        # Clean up the cloned repository
+        rm -rf "$THEME_SRC_PATH"
+        if [ -L "$THEME_LINK_PATH" ]; then
+          rm -f "$THEME_LINK_PATH"
+        fi
+        exit 1
+        ;;
+    esac
+  done
 else
   echo "No backgrounds.sh found in $THEME_NAME. Skipping backgrounds setup."
 fi
