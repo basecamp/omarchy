@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Get current theme GTK settings
+THEME_ENV="$HOME/.config/omarchy/current/theme.env"
+if [[ -f "$THEME_ENV" ]]; then
+  source "$THEME_ENV"
+else
+  # Fallback to Adwaita-dark if no theme env exists
+  GTK_THEME="Adwaita-dark"
+fi
+
+# Create desktop directory if it doesn't exist
+DESKTOP_DIR="$HOME/.local/share/applications"
+mkdir -p "$DESKTOP_DIR"
+
+# Generate Blueberry desktop file
+cat > "$DESKTOP_DIR/omarchy-blueberry.desktop" <<EOF
+[Desktop Entry]
+Name=Bluetooth (Omarchy)
+Comment=Configure Bluetooth settings
+Icon=bluetooth
+Exec=env GTK_THEME=${GTK_THEME} blueberry
+Terminal=false
+Type=Application
+Categories=GTK;GNOME;Settings;HardwareSettings;X-XFCE-SettingsDialog;X-XFCE-HardwareSettings;
+StartupNotify=true
+NotShowIn=GNOME;KDE;Unity;
+EOF
+
+# Generate PulseAudio Volume Control desktop file
+cat > "$DESKTOP_DIR/omarchy-pavucontrol.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Name=Volume Control (Omarchy)
+Comment=Adjust the volume level
+Exec=env GTK_THEME=${GTK_THEME} pavucontrol
+Icon=multimedia-volume-control
+StartupNotify=true
+Type=Application
+Categories=AudioVideo;Audio;Mixer;GTK;Settings;X-XFCE-SettingsDialog;X-XFCE-HardwareSettings;
+Keywords=pavucontrol;PulseAudio;Microphone;Volume;Fade;Balance;Headset;Speakers;Headphones;Audio;Mixer;Output;Input;Devices;Playback;Recording;System Sounds;Sound Card;Settings;Preferences;
+EOF
+
+# Update desktop database
+update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+
+echo "Desktop files updated with GTK_THEME=$GTK_THEME"
