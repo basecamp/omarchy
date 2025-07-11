@@ -14,8 +14,7 @@
     "bluetooth",
     "network",
     "pulseaudio",
-    "battery",
-    "custom/power-menu"
+    "battery"
   ],
   "hyprland/workspaces": {
     "on-click": "activate",
@@ -63,7 +62,7 @@
     "tooltip-format-disconnected": "Disconnected",
     "interval": 3,
     "nospacing": 1,
-    "on-click": "alacritty -e iwctl"
+    "on-click": "alacritty --class=Impala -e impala"
   },
   "battery": {
     "format": "{capacity}% {icon}",
@@ -127,11 +126,6 @@
     "format": "{}",
     "exec": "ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print $2}' | cut -d'/' -f1 || echo 'No IP'",
     "interval": 2,
-    "tooltip": false
-  },
-  "custom/power-menu": {
-    "format": "󰐥",
-    "on-click": "~/.local/share/omarchy/bin/omarchy-power-menu",
     "tooltip": false
   }
 }
