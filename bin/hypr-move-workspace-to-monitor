@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+# Get the desired monitor index from the first argument
+target_index=$1
+
+# Get list of connected monitor names
+readarray -t monitors < <(hyprctl monitors | grep "Monitor" | awk '{print $2}')
+
+# Check if the index is within bounds
+if ((target_index < 0 || target_index >= ${#monitors[@]})); then
+  # Invalid index
+  exit 1
+fi
+
+# Get monitor name from index
+target_monitor="${monitors[$target_index]}"
+
+# Get current workspace ID
+current_workspace=$(hyprctl activeworkspace -j | jq -r '.id')
+
+# Move current workspace to target monitor
+hyprctl dispatch moveworkspacetomonitor "$current_workspace" "$target_monitor" &>/dev/null
