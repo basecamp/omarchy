@@ -30,7 +30,7 @@ decode_modmask() {
 # Read live keybinds, not config file
 OLD_IFS=$IFS
 IFS=$'\n'
-readarray -t KEYBINDS < <(hyprctl -j binds | jq -cr 'sort_by(.description)|.[]')
+readarray -t KEYBINDS < <(hyprctl -j binds | jq -cr '.[]')
 IFS=$OLD_IFS
 
 # Loop over each keybind and pipe results to wofi for inspection/execution
