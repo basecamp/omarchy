@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# omarchy-theme-remove: Remove a theme from Omarchy by name
+# Usage: omarchy-theme-remove <theme-name>
+
+THEME_NAME="$1"
+THEMES_SRC_DIR="$HOME/.local/share/omarchy/themes"
+THEMES_LINK_DIR="$HOME/.config/omarchy/themes"
+BACKGROUND_DIR="$HOME/.config/omarchy/backgrounds"
+CURRENT_DIR="$HOME/.config/omarchy/current"
+
+THEME_SRC_PATH="$THEMES_SRC_DIR/$THEME_NAME"
+THEME_LINK_PATH="$THEMES_LINK_DIR/$THEME_NAME"
+BACKGROUND_PATH="$BACKGROUND_DIR/$THEME_NAME"
+
+set -e
+
+if [ -z "$1" ]; then
+  echo "Usage: omarchy-theme-remove <theme-name>"
+  exit 1
+fi
+
+# Count available themes (symlinks in ~/.config/omarchy/themes)
+THEMES=($(find "$THEMES_LINK_DIR" -mindepth 1 -maxdepth 1 -type l | sort))
+if [ ${#THEMES[@]} -le 1 ]; then
+  echo "Error: Cannot remove the last remaining theme. At least one theme must be installed."
+  exit 1
+fi
+
+# Check if theme exists before attempting removal
+if [ ! -d "$THEME_SRC_PATH" ] && [ ! -L "$THEME_LINK_PATH" ]; then
+  echo "Error: Theme '$THEME_NAME' not found."
+  exit 1
+fi
+
+# If the theme is current, unset current symlinks and switch to next theme if available
+if [ "$(readlink "$CURRENT_DIR/theme")" = "$THEME_LINK_PATH" ]; then
+  rm -f "$CURRENT_DIR/theme" "$CURRENT_DIR/backgrounds" "$CURRENT_DIR/background"
+
+  # Find next available theme
+  THEMES=($(find "$THEMES_LINK_DIR" -mindepth 1 -maxdepth 1 -type l | sort))
+  THEMES=("${THEMES[@]/$THEME_LINK_PATH}")
+  if [ ${#THEMES[@]} -gt 0 ]; then
+    # Use omarchy-theme-next to switch to the next theme
+    "$HOME/.local/share/omarchy/bin/omarchy-theme-next"
+    echo "Switched to next theme."
+  fi
+fi
+
+# Remove theme repo
+if [ -d "$THEME_SRC_PATH" ]; then
+  rm -rf "$THEME_SRC_PATH"
+  echo "Removed $THEME_SRC_PATH"
+fi
+
+# Remove theme symlink
+if [ -L "$THEME_LINK_PATH" ]; then
+  rm -f "$THEME_LINK_PATH"
+  echo "Removed $THEME_LINK_PATH"
+fi
+
+# Remove backgrounds
+if [ -d "$BACKGROUND_PATH" ]; then
+  rm -rf "$BACKGROUND_PATH"
+  echo "Removed $BACKGROUND_PATH"
+fi
+
+echo "Theme '$THEME_NAME' uninstalled." 
