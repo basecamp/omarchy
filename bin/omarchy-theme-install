@@ -59,7 +59,6 @@ if [ -f "$THEME_SRC_PATH/backgrounds.sh" ]; then
         break
         ;;
       "Abort installation")
-        echo "Aborting theme installation due to user rejection of backgrounds.sh script."
         # Clean up the cloned repository
         rm -rf "$THEME_SRC_PATH"
         if [ -L "$THEME_LINK_PATH" ]; then
