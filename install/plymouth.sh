@@ -34,7 +34,7 @@ if ! command -v plymouth &>/dev/null; then
 
         # Skip if splash it already present for some reason
         if ! grep -q "splash" "$entry"; then
-          sudo sed -i '/^options/ s/$/ splash quiet/' "$entry"
+          sudo sed -i '/^options/ s/$/ splash/' "$entry"
         else
           echo "Skipped: $(basename "$entry") (splash already present)"
         fi
@@ -51,13 +51,10 @@ if ! command -v plymouth &>/dev/null; then
       # Get current GRUB_CMDLINE_LINUX_DEFAULT value
       current_cmdline=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub | cut -d'"' -f2)
 
-      # Add splash and quiet if not present
+      # Add splash if not present
       new_cmdline="$current_cmdline"
       if [[ ! "$current_cmdline" =~ splash ]]; then
         new_cmdline="$new_cmdline splash"
-      fi
-      if [[ ! "$current_cmdline" =~ quiet ]]; then
-        new_cmdline="$new_cmdline quiet"
       fi
 
       # Trim any leading/trailing spaces
@@ -78,10 +75,6 @@ if ! command -v plymouth &>/dev/null; then
         # Need splash, create the omarchy file
         echo "splash" | sudo tee -a /etc/cmdline.d/omarchy.conf
     fi
-    if ! grep -q quiet /etc/cmdline.d/*.conf; then
-        # Need quiet, create or append the omarchy file
-        echo "quiet" | sudo tee -a /etc/cmdline.d/omarchy.conf
-    fi
   elif [ -f "/etc/kernel/cmdline" ]; then
     # Alternate UKI kernel cmdline location
     echo "Detected a UKI setup"
@@ -92,13 +85,10 @@ if ! command -v plymouth &>/dev/null; then
 
     current_cmdline=$(cat /etc/kernel/cmdline)
 
-    # Add splash and quiet if not present
+    # Add splash if not present
     new_cmdline="$current_cmdline"
     if [[ ! "$current_cmdline" =~ splash ]]; then
         new_cmdline="$new_cmdline splash"
-    fi
-    if [[ ! "$current_cmdline" =~ quiet ]]; then
-        new_cmdline="$new_cmdline quiet"
     fi
 
     # Trim any leading/trailing spaces
@@ -110,7 +100,6 @@ if ! command -v plymouth &>/dev/null; then
     echo ""
     echo "Neither systemd-boot nor GRUB detected. Please manually add these kernel parameters:"
     echo "  - splash (to see the graphical splash screen)"
-    echo "  - quiet (for silent boot)"
     echo ""
   fi
 
@@ -118,4 +107,7 @@ if ! command -v plymouth &>/dev/null; then
   sudo cp -r "$HOME/.local/share/omarchy/default/plymouth" /usr/share/plymouth/themes/omarchy/
 
   sudo plymouth-set-default-theme -R omarchy
+
+  # Set up simple Plymouth transition with auto-login
+  bash "$HOME/.local/share/omarchy/install/simple-plymouth-transition.sh"
 fi
