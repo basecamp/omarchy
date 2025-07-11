@@ -4,6 +4,10 @@
 
 echo "Setting up seamless auto-login..."
 
+# Install UWSM for systemd integration
+echo "Installing UWSM..."
+yay -S --noconfirm --needed uwsm
+
 # Compile the seamless login helper
 echo "Compiling seamless login helper..."
 gcc -o /tmp/seamless-login "$HOME/.local/share/omarchy/install/seamless-login.c"
@@ -21,7 +25,7 @@ PartOf=graphical.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/seamless-login /usr/bin/Hyprland
+ExecStart=/usr/local/bin/seamless-login uwsm start -- hyprland.desktop
 User=$USER
 TTYPath=/dev/tty1
 TTYReset=yes

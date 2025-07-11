@@ -18,6 +18,12 @@ if [ -f "$HOME/.bash_profile" ]; then
   echo "Cleaned up .bash_profile"
 fi
 
+# Remove GTK_IM_MODULE from fcitx config for better Wayland compatibility
+if [ -f "$HOME/.config/environment.d/fcitx.conf" ]; then
+  echo "Removing GTK_IM_MODULE from fcitx config for Wayland..."
+  sed -i 's/^GTK_IM_MODULE=fcitx$//' "$HOME/.config/environment.d/fcitx.conf"
+fi
+
 echo ""
-echo "Migration complete! You can now run sddm.sh to set up SDDM auto-login."
-echo "Your old .bash_profile has been backed up."
+echo "Migration complete! You can now run seamless-login.sh to set up uwsm auto-login."
+echo "Your old configuration files have been backed up."
