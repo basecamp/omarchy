@@ -5,7 +5,7 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
 Screenshot script using slurp + grim with smart selection
 
 USAGE:
-  omarchy-screenshot [MODE]
+  omarchy-screenshot [MODE] [ACTION]
 
 MODES:
   smart      - Shows window/monitor outlines, and allows free selection (default)
@@ -13,25 +13,29 @@ MODES:
   windows    - Restricted to clicking predefined windows/monitors only  
   fullscreen - Instant full screen capture of active monitor
 
-ACTIONS (after capture):
-  Copy    - Copy image to clipboard
-  Edit    - Open in image editor (configurable)
-  Save    - Save to Pictures directory  
-  Discard - Delete and cancel
+ACTIONS:
+  copy    - Copy image to clipboard
+  edit    - Open in image editor (configurable)
+  save    - Save to Pictures directory  
+  discard - Delete and cancel
+  (if no action specified, shows interactive menu)
 
 CONFIGURATION:
   SCREENSHOT_EDITOR - Image editor command (default: gradia)
   XDG_PICTURES_DIR  - Screenshot save location (default: ~/Pictures)
 
 EXAMPLES:
-  omarchy-screenshot smart                                  # Smart selection with guides
-  omarchy-screenshot fullscreen                             # Instant full screen
-  SCREENSHOT_EDITOR="satty --filename" omarchy-screenshot   # Edit opens in Satty
+  omarchy-screenshot smart                      # Smart selection with menu
+  omarchy-screenshot smart copy                 # Smart selection, auto-copy
+  omarchy-screenshot fullscreen save            # Instant full screen save
+  omarchy-screenshot region edit               # Region select, auto-edit
+  SCREENSHOT_EDITOR=satty omarchy-screenshot    # Edit opens in Satty
 EOF
   exit 0
 fi
 
 MODE="${1:-smart}"
+ACTION="${2:-}"
 SCREENSHOT_DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}"
 TIMESTAMP=$(date +"%Y-%m-%d-%H%M%S")
 TEMP_FILE="/tmp/screenshot-${TIMESTAMP}.png"
@@ -151,5 +155,43 @@ if [ ! -f "$TEMP_FILE" ]; then
   exit 1
 fi
 
-# Show the menu
-show_screenshot_menu
+# Handle action directly or show menu
+if [ -n "$ACTION" ]; then
+  case "$ACTION" in
+    "copy")
+      wl-copy < "$TEMP_FILE"
+      rm -f "$TEMP_FILE"
+      ;;
+    "edit")
+      ${SCREENSHOT_EDITOR:-gradia} "$TEMP_FILE"
+      ;;
+    "save")
+      FINAL_FILE="${SCREENSHOT_DIR}/Screenshot-${TIMESTAMP}.png"
+      cp "$TEMP_FILE" "$FINAL_FILE"
+      rm -f "$TEMP_FILE"
+      
+      # Send notification with default action to open folder when clicked
+      ACTION_RESULT=$(notify-send "Screenshot Saved" "Saved to: $(basename "$FINAL_FILE")\nClick to open folder" \
+        -i "$FINAL_FILE" \
+        -A "default=Open Folder" \
+        -t 8000 \
+        --wait)
+      
+      # Handle the action if the user clicks it
+      if [ "$ACTION_RESULT" = "default" ]; then
+        xdg-open "$SCREENSHOT_DIR"
+      fi
+      ;;
+    "discard")
+      rm -f "$TEMP_FILE"
+      ;;
+    *)
+      echo "Invalid action: $ACTION"
+      echo "Valid actions: copy, edit, save, discard"
+      exit 1
+      ;;
+  esac
+else
+  # No action specified, show interactive menu
+  show_screenshot_menu
+fi
