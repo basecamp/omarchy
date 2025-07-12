@@ -1,0 +1,155 @@
+#!/bin/bash
+
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+  cat <<'EOF'
+Screenshot script using slurp + grim with smart selection
+
+USAGE:
+  omarchy-screenshot [MODE]
+
+MODES:
+  smart      - Shows window/monitor outlines, and allows free selection (default)
+  region     - Pure region selection
+  windows    - Restricted to clicking predefined windows/monitors only  
+  fullscreen - Instant full screen capture of active monitor
+
+ACTIONS (after capture):
+  Copy    - Copy image to clipboard
+  Edit    - Open in image editor (configurable)
+  Save    - Save to Pictures directory  
+  Discard - Delete and cancel
+
+CONFIGURATION:
+  SCREENSHOT_EDITOR - Image editor command (default: gradia)
+  XDG_PICTURES_DIR  - Screenshot save location (default: ~/Pictures)
+
+EXAMPLES:
+  omarchy-screenshot smart                                  # Smart selection with guides
+  omarchy-screenshot fullscreen                             # Instant full screen
+  SCREENSHOT_EDITOR="satty --filename" omarchy-screenshot   # Edit opens in Satty
+EOF
+  exit 0
+fi
+
+MODE="${1:-smart}"
+SCREENSHOT_DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}"
+TIMESTAMP=$(date +"%Y-%m-%d-%H%M%S")
+TEMP_FILE="/tmp/screenshot-${TIMESTAMP}.png"
+
+# Prevent stacking - kill any existing slurp processes to make toggleable
+if pgrep -x slurp >/dev/null; then
+  pkill -x slurp
+  exit 0
+fi
+
+# Function to get theme color by name
+get_theme_color() {
+  local color_name="$1"
+  local fallback="$2"
+  local wofi_css="$HOME/.config/omarchy/current/theme/wofi.css"
+
+  # Extract color directly or use fallback
+  sed -n 's/.*@define-color.*'"${color_name}"'[[:space:]]*\(#[0-9a-fA-F]\{6\}\).*/\1/p' "$wofi_css" 2>/dev/null | head -1 || echo "$fallback"
+}
+
+# Get the dynamic colors w/ fallbacks
+BORDER_COLOR=$(get_theme_color "border" "#ffffff")
+UNSELECTED_COLOR=$(get_theme_color "base" "#000000")
+
+# Add alpha channels
+BORDER_COLOR_FULL="${BORDER_COLOR}ff"
+UNSELECTED_COLOR_OVERLAY="${UNSELECTED_COLOR}88"
+
+# Function to get predefined rectangles (windows and monitors)
+get_rectangles() {
+  # Get the active workspace ID
+  local active_workspace=$(hyprctl activewindow -j | jq -r '.workspace.id // empty')
+
+  # Get monitors with scale adjustment (divide by scale to get physical resolution)
+  hyprctl monitors -j | jq -r '.[] | 
+    . as $m | 
+    "\(.x),\(.y) \((.width / .scale) | floor)x\((.height / .scale) | floor) 🖥️ \(.name)"'
+
+  # Get windows only from active workspace
+  if [ -n "$active_workspace" ]; then
+    hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1]) 🪟 \(.title | .[0:50])"'
+  fi
+}
+
+# Show interactive menu using wofi with compact styling
+show_screenshot_menu() {
+  local menu_options="\u200B󰆏 Copy
+\u200C󰤌 Edit
+\u200D󰆓 Save
+\u2060󰩺 Discard"
+  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Screenshot Actions" --width 180 --height 160 -O alphabetical --style ~/.local/share/omarchy/default/wofi/select.css)
+
+  case "$selection" in
+  *"Copy"*)
+    wl-copy <"$TEMP_FILE"
+    rm -f "$TEMP_FILE"
+    ;;
+  *"Edit"*)
+    # Open in screenshot editor (defaults to gradia)
+    ${SCREENSHOT_EDITOR:-gradia} "$TEMP_FILE"
+    ;;
+  *"Save"*)
+    FINAL_FILE="${SCREENSHOT_DIR}/Screenshot-${TIMESTAMP}.png"
+    cp "$TEMP_FILE" "$FINAL_FILE"
+    rm -f "$TEMP_FILE"
+
+    # Send notification with default action to open folder when clicked
+    ACTION=$(notify-send "Screenshot Saved" "Saved to: $(basename "$FINAL_FILE")\nClick to open folder" \
+      -i "$FINAL_FILE" \
+      -A "default=Open Folder" \
+      -t 8000 \
+      --wait)
+
+    # Handle the action if the user clicks it
+    if [ "$ACTION" = "default" ]; then
+      xdg-open "$SCREENSHOT_DIR"
+    fi
+    ;;
+  *"Discard"* | "")
+    # Remove temp file (no saved file to remove since we didn't save it)
+    rm -f "$TEMP_FILE"
+    ;;
+  esac
+}
+
+# Choose selection method based on mode
+case "$MODE" in
+"region")
+  SELECTION=$(slurp -c "$BORDER_COLOR_FULL" -b "$UNSELECTED_COLOR_OVERLAY" 2>/dev/null)
+  ;;
+"windows")
+  # Windows and monitors only - restricted to predefined areas
+  SELECTION=$(get_rectangles | slurp -r -c "$BORDER_COLOR_FULL" -b "$UNSELECTED_COLOR_OVERLAY" -B "$UNSELECTED_COLOR_OVERLAY" 2>/dev/null)
+  ;;
+"fullscreen")
+  # Full screen of active monitor - no selection needed
+  SELECTION=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | "\(.x),\(.y) \((.width / .scale) | floor)x\((.height / .scale) | floor)"')
+  ;;
+"smart" | *)
+  # Smart mode: Shows windows/monitors as guides but allows free selection
+  SELECTION=$(get_rectangles | slurp -c "$BORDER_COLOR_FULL" -b "$UNSELECTED_COLOR_OVERLAY" -B "$UNSELECTED_COLOR_OVERLAY" 2>/dev/null)
+  ;;
+esac
+
+if [ -z "$SELECTION" ]; then
+  exit 0
+fi
+
+# Small delay to let slurp's border disappear before capturing
+sleep 0.1
+
+grim -g "$SELECTION" "$TEMP_FILE"
+
+# Check if screenshot was successful
+if [ ! -f "$TEMP_FILE" ]; then
+  notify-send "Screenshot Failed" "Failed to capture screenshot" -u critical
+  exit 1
+fi
+
+# Show the menu
+show_screenshot_menu
