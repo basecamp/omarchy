@@ -1,3 +1,9 @@
+#!/bin/bash
+# Hyprland launched via UWSM and login directly as user, rely on disk encryption + hyprlock for security
+yay -S --noconfirm --needed uwsm
+
+# Compile the seamless login helper -- needed to prevent seeing terminal between loader and desktop
+cat <<'CCODE' >/tmp/seamless-login.c
 /*
  * Seamless Login - Minimal SDDM-style Plymouth transition
  * Replicates SDDM's VT management for seamless auto-login
@@ -68,3 +74,42 @@ int main(int argc, char *argv[]) {
     perror("Failed to exec session");
     return 1;
 }
+CCODE
+
+gcc -o /tmp/seamless-login /tmp/seamless-login.c
+sudo mv /tmp/seamless-login /usr/local/bin/seamless-login
+sudo chmod +x /usr/local/bin/seamless-login
+rm /tmp/seamless-login.c
+
+cat <<EOF | sudo tee /etc/systemd/system/omarchy-seamless-login.service
+[Unit]
+Description=Omarchy Seamless Auto-Login
+Documentation=https://github.com/basecamp/omarchy
+Conflicts=getty@tty1.service
+After=systemd-user-sessions.service getty@tty1.service plymouth-quit.service systemd-logind.service
+PartOf=graphical.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/seamless-login uwsm start -- hyprland.desktop
+Restart=always
+RestartSec=2
+User=$USER
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal+console
+PAMName=login
+
+[Install]
+WantedBy=graphical.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable omarchy-seamless-login.service
+
+# Disable getty@tty1 to prevent conflicts
+sudo systemctl disable getty@tty1.service
