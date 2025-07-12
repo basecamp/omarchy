@@ -10,10 +10,10 @@
     "clock"
   ],
   "modules-right": [
-    "custom/ip",
     "bluetooth",
     "network",
     "pulseaudio",
+    "cpu",
     "battery"
   ],
   "hyprland/workspaces": {
@@ -39,6 +39,11 @@
       "4": [],
       "5": []
     }
+  },
+  "cpu": {
+    "interval": 5,
+    "format": "󰍛",
+    "on-click": "alacritty -e btop"
   },
   "clock": {
     "format": "{:%A %H:%M}",
@@ -95,7 +100,7 @@
         "󰁹"
       ]
     },
-    "format-full": "Charged ",
+    "format-full": "󰂅",
     "tooltip-format-discharging": "{power:>1.0f}W↓ {capacity}%",
     "tooltip-format-charging": "{power:>1.0f}W↑ {capacity}%",
     "interval": 5,
@@ -121,11 +126,5 @@
     "ignored-sinks": [
       "Easy Effects Sink"
     ]
-  },
-  "custom/ip": {
-    "format": "{}",
-    "exec": "ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print $2}' | cut -d'/' -f1 || echo 'No IP'",
-    "interval": 2,
-    "tooltip": false
   }
 }
