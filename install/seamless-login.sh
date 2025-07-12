@@ -26,6 +26,8 @@ PartOf=graphical.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/seamless-login uwsm start -- hyprland.desktop
+Restart=always
+RestartSec=2
 User=$USER
 TTYPath=/dev/tty1
 TTYReset=yes
@@ -35,10 +37,6 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal+console
 PAMName=login
-Environment=XDG_SESSION_TYPE=wayland
-Environment=XDG_VTNR=1
-Environment=HOME=$HOME
-WorkingDirectory=$HOME
 
 [Install]
 WantedBy=graphical.target

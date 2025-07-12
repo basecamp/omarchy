@@ -59,11 +59,9 @@ int main(int argc, char *argv[]) {
     
     close(vt_fd);
     
-    // Set proper working directory to user's home
+    // Set working directory to user's home
     const char *home = getenv("HOME");
-    if (home && chdir(home) != 0) {
-        perror("Failed to change to home directory");
-    }
+    if (home) chdir(home);
     
     // Now execute the session command
     execvp(argv[1], &argv[1]);
