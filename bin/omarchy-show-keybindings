@@ -61,4 +61,4 @@ for keyconfig in "${KEYBINDS[@]}"; do
     combo="${combo%$delimiter}"
 
     printf "%s -- %s #%-30s → %s\n" "$dispatcher" "$arg" "$combo" "$description"
-done | flock --nonblock /tmp/.wofi.lock -c "wofi --cache-file /dev/null --width 40% --height 70% -d -i -p 'Hyprland Keybindings' --style=\"$HOME/.local/share/omarchy/default/wofi/search.css\" -m --pre-display-cmd \"echo '%s' | cut -d'#' -f2\" | xargs hyprctl dispatch"
+done | flock --nonblock /tmp/.wofi.lock -c "wofi --cache-file /dev/null --width 40% --height 70% -d -i -p 'Hyprland Keybindings' --style=\"$HOME/.local/share/omarchy/default/wofi/search.css\" -m --pre-display-cmd \"echo '%s' | cut -d'#' -f2 | tr -d '\n'\" | xargs hyprctl dispatch"
