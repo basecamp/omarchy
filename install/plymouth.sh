@@ -75,12 +75,12 @@ if ! command -v plymouth &>/dev/null; then
     # Relying on mkinitcpio to assemble a UKI
     # https://wiki.archlinux.org/title/Unified_kernel_image
     if ! grep -q splash /etc/cmdline.d/*.conf; then
-        # Need splash, create the omarchy file
-        echo "splash" | sudo tee -a /etc/cmdline.d/omarchy.conf
+      # Need splash, create the omarchy file
+      echo "splash" | sudo tee -a /etc/cmdline.d/omarchy.conf
     fi
     if ! grep -q quiet /etc/cmdline.d/*.conf; then
-        # Need quiet, create or append the omarchy file
-        echo "quiet" | sudo tee -a /etc/cmdline.d/omarchy.conf
+      # Need quiet, create or append the omarchy file
+      echo "quiet" | sudo tee -a /etc/cmdline.d/omarchy.conf
     fi
   elif [ -f "/etc/kernel/cmdline" ]; then
     # Alternate UKI kernel cmdline location
@@ -95,10 +95,10 @@ if ! command -v plymouth &>/dev/null; then
     # Add splash and quiet if not present
     new_cmdline="$current_cmdline"
     if [[ ! "$current_cmdline" =~ splash ]]; then
-        new_cmdline="$new_cmdline splash"
+      new_cmdline="$new_cmdline splash"
     fi
     if [[ ! "$current_cmdline" =~ quiet ]]; then
-        new_cmdline="$new_cmdline quiet"
+      new_cmdline="$new_cmdline quiet"
     fi
 
     # Trim any leading/trailing spaces
