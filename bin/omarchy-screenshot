@@ -5,37 +5,69 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
 Screenshot script using slurp + grim with smart selection
 
 USAGE:
-  omarchy-screenshot [MODE] [ACTION]
+  omarchy-screenshot [OPTIONS] [MODE]
+
+OPTIONS:
+  --action=ACTION    Specify action to perform after capture
+  --editor=COMMAND   Override screenshot editor (default: gradia)
+  -h, --help         Show this help message
 
 MODES:
-  smart      - Shows window/monitor outlines, and allows free selection (default)
-  region     - Pure region selection
+  smart      - Shows window/monitor outlines, allows free selection (default)
+  region     - Pure region selection with crosshair
   windows    - Restricted to clicking predefined windows/monitors only  
   fullscreen - Instant full screen capture of active monitor
 
 ACTIONS:
-  copy    - Copy image to clipboard
-  edit    - Open in image editor (configurable)
-  save    - Save to Pictures directory  
-  discard - Delete and cancel
-  (if no action specified, shows interactive menu)
+  copy       - Copy image to clipboard
+  edit       - Open in image editor (configurable)
+  save       - Save to Pictures directory  
+  discard    - Delete and cancel
+  
+  If no --action= is specified, an interactive menu will be shown.
 
 CONFIGURATION:
-  SCREENSHOT_EDITOR - Image editor command (default: gradia)
   XDG_PICTURES_DIR  - Screenshot save location (default: ~/Pictures)
+  --editor=COMMAND  - Specify image editor (default: gradia)
 
 EXAMPLES:
-  omarchy-screenshot smart                      # Smart selection with menu
-  omarchy-screenshot smart copy                 # Smart selection, auto-copy
-  omarchy-screenshot fullscreen save            # Instant full screen save
-  omarchy-screenshot region edit                # Region select, auto-edit
-  SCREENSHOT_EDITOR=satty omarchy-screenshot    # Edit menu option opens in Satty
+  omarchy-screenshot                              # Smart selection, show menu
+  omarchy-screenshot --action=copy                # Smart selection, auto-copy
+  omarchy-screenshot --editor="satty --filename"  # Use Satty for editing
+  omarchy-screenshot smart --action=copy          # Same as above (explicit mode)
+  omarchy-screenshot windows                      # Window selection, show menu
 EOF
   exit 0
 fi
 
-MODE="${1:-smart}"
-ACTION="${2:-}"
+# Parse arguments
+MODE="smart"
+ACTION=""
+EDITOR=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+  --action=*)
+    ACTION="${1#*=}"
+    shift
+    ;;
+  --editor=*)
+    EDITOR="${1#*=}"
+    shift
+    ;;
+  -*)
+    echo "Unknown option: $1"
+    exit 1
+    ;;
+  *)
+    MODE="$1"
+    shift
+    ;;
+  esac
+done
+
+# Set editor with fallback to gradia
+SCREENSHOT_EDITOR="${EDITOR:-gradia}"
 SCREENSHOT_DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}"
 TIMESTAMP=$(date +"%Y-%m-%d-%H%M%S")
 TEMP_FILE="/tmp/screenshot-${TIMESTAMP}.png"
