@@ -1,39 +1,12 @@
-* {
-  border: none;
-  border-radius: 0;
-  min-height: 0;
-  font-family: CaskaydiaMono Nerd Font Propo;
-  font-size: 12px;
-}
-
-#workspaces {
-  margin-left: 7px;
-}
-
-#workspaces button {
-  all: initial;
-  padding: 2px 6px;
-  margin-right: 3px;
-}
-
-#custom-dropbox,
-#cpu,
-#battery,
-#network,
-#bluetooth,
-#pulseaudio,
-#clock,
-#custom-power-menu {
-  min-width: 12px;
-  margin-right: 13px;
-}
-
-tooltip {
-  padding: 2px;
-}
-
-tooltip label {
-  padding: 2px;
-}
-
+/* Import Omarchy defaults */
+@import "../../.local/share/omarchy/default/waybar/style.css";
 @import "../omarchy/current/theme/waybar.css";
+
+/* Add your own customizations or imports below
+ * customizations will override defaults */
+/* @import "module-custom.css"; 
+ *
+ * {
+ *  font-size: 16px;
+ * }
+ * */
