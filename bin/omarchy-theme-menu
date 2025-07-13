@@ -23,7 +23,7 @@ show_theme_menu() {
   
   # Add current theme first with asterisk (using invisible Unicode for sorting)
   if [[ "$CURRENT_THEME_NAME" != "unknown" ]]; then
-    wofi_input+="\u200B* ${CURRENT_THEME_NAME}"
+    wofi_input+="* ${CURRENT_THEME_NAME}"
   fi
   
   # Add remaining themes in alphabetical order
@@ -33,7 +33,7 @@ show_theme_menu() {
       if [[ -n "$wofi_input" ]]; then
         wofi_input+="\n"
       fi
-      wofi_input+="  ${theme}"
+      wofi_input+="${theme}"
     fi
   done
   
