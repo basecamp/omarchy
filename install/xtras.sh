@@ -1,5 +1,5 @@
 if [ -z "$OMARCHY_BARE" ]; then
-  packages=(
+  omarchy_xtras_packages=(
     signal-desktop
     spotify
     dropbox-cli
@@ -25,6 +25,8 @@ if [ -z "$OMARCHY_BARE" ]; then
       omarchy_failed_packages+=("$pkg")
     fi
   done
+
+  unset omarchy_xtras_packages
 fi
 
 # Copy over Omarchy applications

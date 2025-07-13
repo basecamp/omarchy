@@ -1,4 +1,4 @@
-packages=(
+omarchy_desktop_packages=(
   brightnessctl
   playerctl
   pamixer
@@ -35,3 +35,5 @@ for pkg in "${packages[@]}"; do
     omarchy_failed_packages+=("$pkg")
   fi
 done
+
+unset omarchy_desktop_packages
