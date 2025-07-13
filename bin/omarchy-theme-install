@@ -4,11 +4,9 @@
 # Usage: omarchy-theme-install <git-repo-url>
 
 REPO_URL="$1"
-THEMES_SRC_DIR="$HOME/.local/share/omarchy/themes"
-THEMES_LINK_DIR="$HOME/.config/omarchy/themes"
+THEMES_DIR="$HOME/.config/omarchy/themes"
 THEME_NAME=$(basename "$REPO_URL" .git)
-THEME_SRC_PATH="$THEMES_SRC_DIR/$THEME_NAME"
-THEME_LINK_PATH="$THEMES_LINK_DIR/$THEME_NAME"
+THEME_PATH="$THEMES_DIR/$THEME_NAME"
 BACKGROUND_DIR="$HOME/.config/omarchy/backgrounds"
 FONTS_DIR="$HOME/.config/omarchy/fonts"
 CURRENT_DIR="$HOME/.config/omarchy/current"
@@ -21,41 +19,35 @@ if [ -z "$1" ]; then
 fi
 
 # Ensure theme directories exist
-mkdir -p "$THEMES_SRC_DIR" "$THEMES_LINK_DIR" "$BACKGROUND_DIR" "$CURRENT_DIR"
+mkdir -p "$THEMES_DIR" "$BACKGROUND_DIR" "$CURRENT_DIR"
 
 # Remove existing theme if present
-if [ -d "$THEME_SRC_PATH" ]; then
-  echo "Theme '$THEME_NAME' already exists in $THEMES_SRC_DIR. Removing old version..."
-  rm -rf "$THEME_SRC_PATH"
-fi
-if [ -L "$THEME_LINK_PATH" ]; then
-  rm -f "$THEME_LINK_PATH"
+if [ -d "$THEME_PATH" ]; then
+  echo "Theme '$THEME_NAME' already exists in $THEMES_DIR. Removing old version..."
+  rm -rf "$THEME_PATH"
 fi
 
-# Clone the repo
-if ! git clone "$REPO_URL" "$THEME_SRC_PATH"; then
+# Clone the repo directly to ~/.config/omarchy/themes
+if ! git clone "$REPO_URL" "$THEME_PATH"; then
   echo "Failed to clone theme repo."
   exit 1
 fi
 
-# Create symlink in ~/.config/omarchy/themes
-ln -nsf "$THEME_SRC_PATH" "$THEME_LINK_PATH"
-
 # Copy backgrounds if present
-if [ -d "$THEME_SRC_PATH/backgrounds" ]; then
+if [ -d "$THEME_PATH/backgrounds" ]; then
   DEST_BG="$BACKGROUND_DIR/$THEME_NAME"
   rm -rf "$DEST_BG"
   mkdir -p "$DEST_BG"
-  cp -r "$THEME_SRC_PATH/backgrounds/." "$DEST_BG/"
+  cp -r "$THEME_PATH/backgrounds/." "$DEST_BG/"
   echo "Copied backgrounds for $THEME_NAME."
 fi
 
 # Copy fonts if present
-if [ -d "$THEME_SRC_PATH/fonts" ]; then
+if [ -d "$THEME_PATH/fonts" ]; then
   DEST_FONTS="$FONTS_DIR/$THEME_NAME"
   rm -rf "$DEST_FONTS"
   mkdir -p "$DEST_FONTS"
-  cp -r "$THEME_SRC_PATH/fonts/." "$DEST_FONTS/"
+  cp -r "$THEME_PATH/fonts/." "$DEST_FONTS/"
   echo "Copied fonts for $THEME_NAME."
   
   # Install fonts to system font directory
@@ -63,7 +55,7 @@ if [ -d "$THEME_SRC_PATH/fonts" ]; then
   mkdir -p "$USER_FONT_DIR"
   
   # Copy fonts to system font directory
-  cp -r "$THEME_SRC_PATH/fonts/." "$USER_FONT_DIR/"
+  cp -r "$THEME_PATH/fonts/." "$USER_FONT_DIR/"
   echo "Installed fonts to system font directory: $USER_FONT_DIR"
   
   # Update font cache
@@ -74,7 +66,7 @@ if [ -d "$THEME_SRC_PATH/fonts" ]; then
 fi
 
 # Set as current theme (update symlinks)
-ln -nsf "$THEME_LINK_PATH" "$CURRENT_DIR/theme"
+ln -nsf "$THEME_PATH" "$CURRENT_DIR/theme"
 ln -nsf "$BACKGROUND_DIR/$THEME_NAME" "$CURRENT_DIR/backgrounds"
 
 # Check for backgrounds and set the first as current, or warn if none
