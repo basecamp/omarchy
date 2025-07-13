@@ -10,6 +10,27 @@ for f in ~/.local/share/omarchy/install/*.sh; do
   source "$f"
 done
 
+# Report any failed package installations
+if [ -n "${omarchy_failed_packages+x}" ] && [ ${#omarchy_failed_packages[@]} -gt 0 ]; then
+  gum style --foreground 226 --bold "⚠️  Package Installation Summary"
+  echo ""
+  
+  # Remove duplicates and sort
+  unique_failed_packages=($(printf '%s\n' "${omarchy_failed_packages[@]}" | sort -u))
+  
+  gum style --foreground 196 "Failed to install ${#unique_failed_packages[@]} package(s):"
+  echo ""
+  
+  for pkg in "${unique_failed_packages[@]}"; do
+    echo "  • $pkg"
+  done
+  
+  echo ""
+  gum style --foreground 39 "You can try installing them manually with:"
+  echo "  yay -S ${unique_failed_packages[*]}"
+  echo ""
+fi
+
 # Ensure locate is up to date now that everything has been installed
 sudo updatedb
 
