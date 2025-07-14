@@ -1,0 +1,8 @@
+#!/bin/bash
+set -e
+
+makoctl mode -t do-not-disturb > /dev/null
+
+makoctl mode | grep -q 'do-not-disturb' \
+    && notify-send "Silenced notifications" \
+    || notify-send "Enabled notifications"
