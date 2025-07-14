@@ -1,0 +1,63 @@
+# ────────────────────────────────────────────────────────────
+# Matte Black Theme for Alacritty
+# By noiseRandom
+# https://github.com/tahayvr
+# ────────────────────────────────────────────────────────────
+
+[window]
+# window padding {px}
+padding.x = 12
+padding.y = 12
+
+[font]
+size = 12.0
+
+
+
+[colors]
+[colors.primary]
+background = "#121212"
+foreground = "#eaeaea"
+dim_foreground = "#a5abb6"
+
+[colors.cursor]
+text = "#121212"
+cursor = "#eaeaea"
+
+[colors.vi_mode_cursor]
+text = "#2e3440"
+cursor = "#d8dee9"
+
+[colors.selection]
+text = "CellForeground"
+background = "#333333" #charcoal
+
+[colors.normal]
+black = "#2c2c2c"
+red = "#bf616a"
+green = "#a3be8c"
+yellow = "#ebcb8b"
+blue = "#81a1c1"
+magenta = "#b48ead"
+cyan = "#88c0d0"
+white = "#e5e9f0"
+
+[colors.bright]
+black = "#8a8a8d"
+red = "#bf616a"
+green = "#a3be8c"
+yellow = "#ebcb8b"
+blue = "#81a1c1"
+magenta = "#b48ead"
+cyan = "#8fbcbb"
+white = "#eceff4"
+
+[colors.dim]
+black = "#373e4d"
+red = "#94545d"
+green = "#809575"
+yellow = "#b29e75"
+blue = "#68809a"
+magenta = "#8c738c"
+cyan = "#6d96a5"
+white = "#aeb3bb"

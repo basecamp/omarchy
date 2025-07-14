@@ -94,13 +94,15 @@
       "on-click": "GTK_THEME=Adwaita-dark blueberry"
     },
     "pulseaudio": {
-      "format": "",
-      "format-muted": "󰝟",
-      "scroll-step": 5,
+      "format": "{icon}",
       "on-click": "GTK_THEME=Adwaita-dark pavucontrol",
-      "tooltip-format": "Playing at {volume}%",
       "on-click-right": "pamixer -t",
-      "ignored-sinks": ["Easy Effects Sink"]
+      "tooltip-format": "Playing at {volume}%",
+      "scroll-step": 5,
+      "format-muted": "󰝟",
+      "format-icons": {
+        "default": ["", "", ""]
+      }
     },
     "group/tray-expander": {
       "orientation": "inherit",
