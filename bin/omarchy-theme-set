@@ -35,6 +35,13 @@ hyprctl reload
 
 # Set new background
 first_bg=$(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1)
-ln -nsf "$first_bg" "$HOME/.config/omarchy/current/background"
-pkill -x swaybg
-setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill &
+if [[ -n "$first_bg" ]]; then
+  ln -nsf "$first_bg" "$HOME/.config/omarchy/current/background"
+  pkill -x swaybg
+  setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill &
+else
+  # Background does not exist for this theme - fallback to solid black.
+  rm -f "$HOME/.config/omarchy/current/background"
+  pkill -x swaybg
+  setsid swaybg -c '#000000' &
+fi
