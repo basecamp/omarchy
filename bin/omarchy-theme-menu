@@ -3,38 +3,33 @@
 # Theme menu for Omarchy
 # Provides an interactive dmenu to switch between available themes
 
-THEMES_DIR="$HOME/.local/share/omarchy/themes/"
-CURRENT_THEME_LINK="$HOME/.config/omarchy/current/theme"
+THEMES_DIR="$HOME/.config/omarchy/themes/"
+CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 
 # Show theme selection menu and apply changes
 show_theme_menu() {
   # Get current theme name
-  if [[ -L "$CURRENT_THEME_LINK" ]]; then
-    CURRENT_THEME_NAME=$(basename "$(realpath "$CURRENT_THEME_LINK")")
+  if [[ -e "$CURRENT_THEME_DIR" ]]; then
+    CURRENT_THEME_NAME=$(basename "$(realpath "$CURRENT_THEME_DIR")")
   else
-    CURRENT_THEME_NAME="unknown"
+      CURRENT_THEME_NAME="unknown"
   fi
   
   # Build menu options from available themes
   local themes=($(find "$THEMES_DIR" -mindepth 1 -maxdepth 1 -type d -printf "%f\n" | sort))
   
-  # Create formatted input for wofi with current theme at top
-  local wofi_input=""
-  
-  # Add current theme first with asterisk (using invisible Unicode for sorting)
-  if [[ "$CURRENT_THEME_NAME" != "unknown" ]]; then
-    wofi_input+="* ${CURRENT_THEME_NAME}"
-  fi
-  
-  # Add remaining themes in alphabetical order
+  # Remove the current theme from the list before building the menu
+  local filtered_themes=()
   for theme in "${themes[@]}"; do
     if [[ "$theme" != "$CURRENT_THEME_NAME" ]]; then
-      # Add newline before each theme (except the first one)
-      if [[ -n "$wofi_input" ]]; then
-        wofi_input+="\n"
-      fi
-      wofi_input+="${theme}"
+      filtered_themes+=("$theme")
     fi
+  done
+
+  # Add current theme to the top of menu
+  local wofi_input=$'\uf0a9 '"${CURRENT_THEME_NAME}"
+  for theme in "${filtered_themes[@]}"; do
+    wofi_input+="\n${theme}"
   done
   
   # Display theme selection menu
@@ -44,28 +39,16 @@ show_theme_menu() {
     --height 225 \
     --style ~/.local/share/omarchy/default/wofi/select.css)
   
-  # Extract theme name from selection (remove asterisk and leading spaces)
-  local selected_theme=$(echo "$selection" | sed 's/^[* ]*//')
-  
-  # Apply theme changes if a new theme was selected
-  if [[ -n "$selected_theme" && "$selected_theme" != "$CURRENT_THEME_NAME" ]]; then
-    # Update theme symlinks
-    ln -nsf "$HOME/.config/omarchy/backgrounds/$selected_theme" "$HOME/.config/omarchy/current/backgrounds"
-    ln -nsf "$THEMES_DIR/$selected_theme" "$HOME/.config/omarchy/current/theme"
-    
-    # Trigger alacritty config reload
-    touch "$HOME/.config/alacritty/alacritty.toml"
-    
-    # Restart components to apply new theme
-    pkill -SIGUSR2 waybar
-    makoctl reload
-    hyprctl reload
-    
-    # Set new background
-    ln -nsf $(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1) "$HOME/.config/omarchy/current/background"
-    pkill -x swaybg
-    setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill &
+  # Extract theme name from selection (remove glyph and leading spaces)
+  local selected_theme=$(echo "$selection" | sed 's/^\s*\uf0a9 \?//')
+
+  # Exit if the selected theme is the current theme or empty
+  if [[ -z "$selected_theme" || "$selected_theme" == "$CURRENT_THEME_NAME" ]]; then
+    exit 0
   fi
+
+  # Apply the new theme with omarchy-theme-set
+  "$HOME/.local/share/omarchy/bin/omarchy-theme-set" "$selected_theme"
 }
 
 # Main execution
