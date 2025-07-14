@@ -31,28 +31,27 @@ if [ ! -d "$THEME_PATH" ]; then
   exit 1
 fi
 
-# If the theme is current, unset current symlinks and switch to next theme if available
-if [ "$(readlink "$CURRENT_DIR/theme")" = "$THEME_PATH" ]; then
-  rm -f "$CURRENT_DIR/theme" "$CURRENT_DIR/backgrounds" "$CURRENT_DIR/background"
-
-  # Find next available theme
-  THEMES=($(find "$THEMES_DIR" -mindepth 1 -maxdepth 1 -type d | sort))
-  THEMES=(${THEMES[@]/$THEME_PATH})
-  if [ ${#THEMES[@]} -gt 0 ]; then
-      # Use omarchy-theme-next to switch to the next theme
-    "$HOME/.local/share/omarchy/bin/omarchy-theme-next"
-    echo "Switched to next theme."
-  fi
+# Check if the theme to be removed is the current theme
+IS_CURRENT=0
+# Use readlink -f to resolve symlinks and get the absolute path
+if [ "$(readlink -f "$CURRENT_DIR/theme")" = "$(readlink -f "$THEME_PATH")" ]; then
+  IS_CURRENT=1
 fi
 
-# Remove theme directory
+# If it is, switch to the next theme before removing
+if [ $IS_CURRENT -eq 1 ]; then
+  echo "The theme to be removed is the current theme. Switching to the next theme..."
+  "$HOME/.local/share/omarchy/bin/omarchy-theme-next"
+  echo "Switched to next theme."
+fi
+
+# Now remove the theme directory and backgrounds for THEME_NAME
 rm -rf "$THEME_PATH"
 echo "Removed $THEME_PATH"
 
-# Remove backgrounds
 if [ -d "$BACKGROUND_PATH" ]; then
   rm -rf "$BACKGROUND_PATH"
   echo "Removed $BACKGROUND_PATH"
 fi
 
-echo "Theme '$THEME_NAME' uninstalled." 
+echo "Theme '$THEME_NAME' uninstalled."
