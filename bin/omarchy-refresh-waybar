@@ -2,7 +2,7 @@
 
 if gum confirm "Refresh Waybar config? This will replace your current Waybar settings with Omarchy defaults."; then
   # Overwrite local waybar settings with the latest in Omarchy
-  cp -f ~/.local/share/omarchy/config/waybar/config ~/.config/waybar/ 2>/dev/null
+  cp -f ~/.local/share/omarchy/config/waybar/config.jsonc ~/.config/waybar/ 2>/dev/null
   cp -f ~/.local/share/omarchy/config/waybar/style.css ~/.config/waybar/ 2>/dev/null
 
   # Restart waybar

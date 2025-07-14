@@ -4,5 +4,5 @@
 ln -nsf ~/.local/share/omarchy/config/hypr/hyprland.conf ~/.config/hypr/
 ln -nsf ~/.local/share/omarchy/config/hypr/hypridle.conf ~/.config/hypr/
 ln -nsf ~/.local/share/omarchy/config/hypr/hyprlock.conf ~/.config/hypr/
-ln -nsf ~/.local/share/omarchy/config/waybar/config ~/.config/waybar/
+ln -nsf ~/.local/share/omarchy/config/waybar/config.jsonc ~/.config/waybar/
 ln -nsf ~/.local/share/omarchy/config/wofi/config ~/.config/wofi/
