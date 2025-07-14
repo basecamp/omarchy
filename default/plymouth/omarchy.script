@@ -20,6 +20,7 @@ global.fake_progress_active = 0; # 0 / 1 boolean
 global.animation_frame = 0;
 global.fake_progress_start_time = 0;  # Track when fake progress started
 global.password_shown = 0;  # Track if password dialog has been shown
+global.max_progress = 0.0;  # Track the maximum progress reached to prevent backwards movement
 
 fun refresh_callback ()
   {
@@ -55,11 +56,16 @@ Plymouth.SetRefreshFunction (refresh_callback);
 
 fun update_progress_bar(progress)
   {
-    width = Math.Int(progress_bar.original_image.GetWidth() * progress);
-    if (width < 1) width = 1;  # Ensure minimum width of 1 pixel
-    
-    progress_bar.image = progress_bar.original_image.Scale(width, progress_bar.original_image.GetHeight());
-    progress_bar.sprite.SetImage(progress_bar.image);
+    # Only update if progress is moving forward
+    if (progress > global.max_progress)
+      {
+        global.max_progress = progress;
+        width = Math.Int(progress_bar.original_image.GetWidth() * progress);
+        if (width < 1) width = 1;  # Ensure minimum width of 1 pixel
+        
+        progress_bar.image = progress_bar.original_image.Scale(width, progress_bar.original_image.GetHeight());
+        progress_bar.sprite.SetImage(progress_bar.image);
+      }
   }
 
 fun show_progress_bar()
@@ -90,11 +96,15 @@ fun hide_password_dialog()
 
 fun start_fake_progress()
   {
-    global.fake_progress = 0.0;
-    global.real_progress = 0.0;
+    # Don't reset if we already have progress
+    if (global.max_progress == 0.0)
+      {
+        global.fake_progress = 0.0;
+        global.real_progress = 0.0;
+        update_progress_bar(0.0);
+      }
     global.fake_progress_active = 1;
     global.animation_frame = 0;
-    update_progress_bar(0.0);
   }
 
 fun stop_fake_progress()
@@ -149,8 +159,12 @@ fun display_password_callback (prompt, bullets)
   {
     global.password_shown = 1;  # Mark that password dialog has been shown
     
+    # Reset progress when password dialog appears
     stop_fake_progress();
     hide_progress_bar();
+    global.max_progress = 0.0;
+    global.fake_progress = 0.0;
+    global.real_progress = 0.0;
     show_password_dialog();
     
     # Clear all bullets first
