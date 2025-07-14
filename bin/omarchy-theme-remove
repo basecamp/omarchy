@@ -40,18 +40,14 @@ fi
 
 # If it is, switch to the next theme before removing
 if [ $IS_CURRENT -eq 1 ]; then
-  echo "The theme to be removed is the current theme. Switching to the next theme..."
   "$HOME/.local/share/omarchy/bin/omarchy-theme-next"
-  echo "Switched to next theme."
 fi
 
 # Now remove the theme directory and backgrounds for THEME_NAME
 rm -rf "$THEME_PATH"
-echo "Removed $THEME_PATH"
 
 if [ -d "$BACKGROUND_PATH" ]; then
   rm -rf "$BACKGROUND_PATH"
-  echo "Removed $BACKGROUND_PATH"
 fi
 
-echo "Theme '$THEME_NAME' uninstalled."
+notify-send "Theme '$THEME_NAME' removed." -t 2000

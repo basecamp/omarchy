@@ -22,13 +22,12 @@ mkdir -p "$THEMES_DIR" "$BACKGROUND_DIR" "$CURRENT_DIR"
 
 # Remove existing theme if present
 if [ -d "$THEME_PATH" ]; then
-  echo "Theme '$THEME_NAME' already exists in $THEMES_DIR. Removing old version..."
   rm -rf "$THEME_PATH"
 fi
 
 # Clone the repo directly to ~/.config/omarchy/themes
 if ! git clone "$REPO_URL" "$THEME_PATH"; then
-  echo "Failed to clone theme repo."
+  echo "Error: Failed to clone theme repo."
   exit 1
 fi
 
@@ -38,7 +37,6 @@ if [ -d "$THEME_PATH/backgrounds" ]; then
   rm -rf "$DEST_BG"
   mkdir -p "$DEST_BG"
   cp -r "$THEME_PATH/backgrounds/." "$DEST_BG/"
-  echo "Copied backgrounds for $THEME_NAME."
 fi
 
 # Apply the new theme with omarchy-theme-set
@@ -46,5 +44,3 @@ fi
 
 # Notify of the new theme
 notify-send "Theme changed to $THEME_NAME" -t 2000
-
-echo "Theme '$THEME_NAME' installed and set as current." 
