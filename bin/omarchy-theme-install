@@ -73,12 +73,7 @@ ln -nsf "$BACKGROUND_DIR/$THEME_NAME" "$CURRENT_DIR/backgrounds"
 FIRST_BG=$(find "$BACKGROUND_DIR/$THEME_NAME" -type f | sort | head -n 1)
 if [ -n "$FIRST_BG" ]; then
   ln -nsf "$FIRST_BG" "$CURRENT_DIR/background"
-  # Use swaybg-next to set the background if available
-  if command -v swaybg-next >/dev/null 2>&1; then
-    swaybg-next
-  elif [ -x "$HOME/.local/share/omarchy/bin/swaybg-next" ]; then
-    "$HOME/.local/share/omarchy/bin/swaybg-next"
-  fi
+  swaybg-next
 fi
 
 # Reload waybar, mako, hyprland if available
