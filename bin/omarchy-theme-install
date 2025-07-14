@@ -8,7 +8,6 @@ THEMES_DIR="$HOME/.config/omarchy/themes"
 THEME_NAME=$(basename "$REPO_URL" .git)
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 BACKGROUND_DIR="$HOME/.config/omarchy/backgrounds"
-FONTS_DIR="$HOME/.config/omarchy/fonts"
 CURRENT_DIR="$HOME/.config/omarchy/current"
 
 set -e
@@ -40,29 +39,6 @@ if [ -d "$THEME_PATH/backgrounds" ]; then
   mkdir -p "$DEST_BG"
   cp -r "$THEME_PATH/backgrounds/." "$DEST_BG/"
   echo "Copied backgrounds for $THEME_NAME."
-fi
-
-# Copy fonts if present
-if [ -d "$THEME_PATH/fonts" ]; then
-  DEST_FONTS="$FONTS_DIR/$THEME_NAME"
-  rm -rf "$DEST_FONTS"
-  mkdir -p "$DEST_FONTS"
-  cp -r "$THEME_PATH/fonts/." "$DEST_FONTS/"
-  echo "Copied fonts for $THEME_NAME."
-  
-  # Install fonts to system font directory
-  USER_FONT_DIR="$HOME/.local/share/fonts"
-  mkdir -p "$USER_FONT_DIR"
-  
-  # Copy fonts to system font directory
-  cp -r "$THEME_PATH/fonts/." "$USER_FONT_DIR/"
-  echo "Installed fonts to system font directory: $USER_FONT_DIR"
-  
-  # Update font cache
-  if command -v fc-cache >/dev/null 2>&1; then
-    echo "Updating font cache..."
-    fc-cache -f -v "$USER_FONT_DIR" 2>/dev/null || true
-  fi
 fi
 
 # Set as current theme (update symlinks)
