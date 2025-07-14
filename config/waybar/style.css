@@ -24,6 +24,7 @@
 }
 
 #custom-dropbox,
+#tray,
 #cpu,
 #battery,
 #network,
@@ -33,6 +34,10 @@
 #custom-power-menu {
   min-width: 12px;
   margin: 0 10px;
+}
+
+#custom-expand-icon {
+  margin-right: 12px;
 }
 
 tooltip {
