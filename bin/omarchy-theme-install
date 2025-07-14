@@ -41,35 +41,8 @@ if [ -d "$THEME_PATH/backgrounds" ]; then
   echo "Copied backgrounds for $THEME_NAME."
 fi
 
-# Set as current theme (update symlinks)
-ln -nsf "$THEME_PATH" "$CURRENT_DIR/theme"
-ln -nsf "$BACKGROUND_DIR/$THEME_NAME" "$CURRENT_DIR/backgrounds"
-
-# Check for backgrounds and set the first as current, or warn if none
-FIRST_BG=$(find "$BACKGROUND_DIR/$THEME_NAME" -type f | sort | head -n 1)
-if [ -n "$FIRST_BG" ]; then
-  ln -nsf "$FIRST_BG" "$CURRENT_DIR/background"
-  swaybg-next
-fi
-
-# Reload waybar, mako, hyprland if available
-echo "Restarting applications to apply font changes..."
-pkill -SIGUSR2 waybar 2>/dev/null || true
-makoctl reload 2>/dev/null || true
-hyprctl reload 2>/dev/null || true
-
-# Restart mako notification daemon if it's running (for font changes)
-if pgrep mako >/dev/null 2>&1; then
-  echo "Restarting mako notification daemon for font changes..."
-  pkill mako 2>/dev/null || true
-  sleep 1
-  mako >/dev/null 2>&1 &
-fi
-
-# Touch alacritty config to pickup the changed theme
-if [ -f "$HOME/.config/alacritty/alacritty.toml" ]; then
-  touch "$HOME/.config/alacritty/alacritty.toml"
-fi
+# Apply the new theme with omarchy-theme-set
+"$HOME/.local/share/omarchy/bin/omarchy-theme-set" "$THEME_NAME"
 
 # Notify of the new theme
 notify-send "Theme changed to $THEME_NAME" -t 2000
