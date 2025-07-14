@@ -1,0 +1,33 @@
+# General theme information
+[theme]
+name = "Rose Pine"
+variant = "light" # or "dark"
+
+# GTK settings
+[gtk]
+theme = "Adwaita"
+color_scheme = "default" # or "prefer-light", "prefer-dark"
+
+# Icon and Cursor settings
+[icons]
+theme = "Adwaita" 
+cursor_theme = "Adwaita" 
+
+# Optional: Font settings
+[fonts]
+monospace = "JetBrains Mono Nerd Font 10"
+sans_serif = "Inter 10"
+
+# Optional: Backgrounds
+[[background]] # First background entry
+url = "https://unsplash.com/photos/6q5QG8iIgRo/download?ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzM2ODc5NTQzfA&force=true&w=1920"
+
+[[background]] # Another background entry
+url = "https://unsplash.com/photos/6YmzwamGzCg/download?ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzM2ODc5NTQzfA&force=true&w=1920"
+
+[[background]] # A third background entry
+url = "https://unsplash.com/photos/MfnX4XtGnvU/download?ixid=M3wxMjA3fDB8MXxhbGx8fHx8fHx8fHwxNzM2ODc5NTQzfA&force=true&w=1920"
+
+# Optional: Environment variables specific to this theme
+[env]
+GTK_THEME_VARIANT = "light"

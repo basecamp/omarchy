@@ -1,0 +1,26 @@
+# Test theme for unit tests
+[theme]
+name = "Test Theme"
+variant = "dark"
+
+[gtk]
+theme = "Adwaita-dark"
+color_scheme = "prefer-dark"
+
+[icons]
+theme = "TestIcons"
+cursor_theme = "TestCursor"
+
+[fonts]
+monospace = "Test Mono 12"
+sans_serif = "Test Sans 11"
+
+[[background]]
+url = "https://example.com/bg1.jpg"
+
+[[background]]
+url = "https://example.com/bg2.png"
+
+[env]
+TEST_VAR = "test_value"
+ANOTHER_VAR = "another_value"

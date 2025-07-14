@@ -1,0 +1,33 @@
+# General theme information
+[theme]
+name = "Kanagawa"
+variant = "dark"
+
+# GTK settings
+[gtk]
+theme = "Adwaita-dark"
+color_scheme = "prefer-dark"
+
+# Icon and Cursor settings
+[icons]
+theme = "Adwaita" 
+cursor_theme = "Adwaita" 
+
+# Optional: Font settings
+[fonts]
+monospace = "JetBrains Mono Nerd Font 10"
+sans_serif = "Inter 10"
+
+# Optional: Backgrounds
+[[background]]
+url = "https://raw.githubusercontent.com/rebelot/kanagawa.nvim/master/kanagawa.png"
+
+[[background]]
+url = "https://images.unsplash.com/photo-1549298916-b41d501d3772?w=1920"
+
+[[background]]
+url = "https://images.unsplash.com/photo-1580133318324-f2f76d987dd8?w=1920"
+
+# Optional: Environment variables specific to this theme
+[env]
+GTK_THEME_VARIANT = "dark"

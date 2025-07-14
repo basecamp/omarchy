@@ -1,0 +1,33 @@
+# General theme information
+[theme]
+name = "Nord"
+variant = "dark"
+
+# GTK settings
+[gtk]
+theme = "Adwaita-dark"
+color_scheme = "prefer-dark"
+
+# Icon and Cursor settings
+[icons]
+theme = "Adwaita" 
+cursor_theme = "Adwaita" 
+
+# Optional: Font settings
+[fonts]
+monospace = "JetBrains Mono Nerd Font 10"
+sans_serif = "Inter 10"
+
+# Optional: Backgrounds
+[[background]]
+url = "https://raw.githubusercontent.com/arctic-ice-cool/nord-wallpapers/master/wallpapers/nordic-obsession.png"
+
+[[background]]
+url = "https://raw.githubusercontent.com/arctic-ice-cool/nord-wallpapers/master/wallpapers/nord-rainbow.png"
+
+[[background]]
+url = "https://raw.githubusercontent.com/arctic-ice-cool/nord-wallpapers/master/wallpapers/the-great-wave-of-kanagawa.jpg"
+
+# Optional: Environment variables specific to this theme
+[env]
+GTK_THEME_VARIANT = "dark"

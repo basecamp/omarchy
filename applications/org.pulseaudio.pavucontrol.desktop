@@ -2,7 +2,7 @@
 Version=1.0
 Name=Volume Control
 Comment=Adjust the volume level
-Exec=env GTK_THEME=Adwaita-dark pavucontrol
+Exec=omarchy-launch-themed pavucontrol
 Icon=multimedia-volume-control
 StartupNotify=true
 Type=Application

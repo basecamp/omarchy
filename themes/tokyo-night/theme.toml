@@ -1,0 +1,33 @@
+# General theme information
+[theme]
+name = "Tokyo Night"
+variant = "dark"
+
+# GTK settings
+[gtk]
+theme = "Adwaita-dark"
+color_scheme = "prefer-dark"
+
+# Icon and Cursor settings
+[icons]
+theme = "Adwaita" 
+cursor_theme = "Adwaita" 
+
+# Optional: Font settings
+[fonts]
+monospace = "JetBrains Mono Nerd Font 10"
+sans_serif = "Inter 10"
+
+# Optional: Backgrounds
+[[background]]
+url = "https://raw.githubusercontent.com/tokyo-night/wallpapers/main/1.jpg"
+
+[[background]]
+url = "https://raw.githubusercontent.com/tokyo-night/wallpapers/main/2.jpg"
+
+[[background]]
+url = "https://raw.githubusercontent.com/tokyo-night/wallpapers/main/3.jpg"
+
+# Optional: Environment variables specific to this theme
+[env]
+GTK_THEME_VARIANT = "dark"

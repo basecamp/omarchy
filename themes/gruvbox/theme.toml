@@ -1,0 +1,33 @@
+# General theme information
+[theme]
+name = "Gruvbox"
+variant = "dark"
+
+# GTK settings
+[gtk]
+theme = "Adwaita-dark"
+color_scheme = "prefer-dark"
+
+# Icon and Cursor settings
+[icons]
+theme = "Adwaita" 
+cursor_theme = "Adwaita" 
+
+# Optional: Font settings
+[fonts]
+monospace = "JetBrains Mono Nerd Font 10"
+sans_serif = "Inter 10"
+
+# Optional: Backgrounds
+[[background]]
+url = "https://raw.githubusercontent.com/morhetz/gruvbox/master/wallpapers/ign-0000.png"
+
+[[background]]
+url = "https://raw.githubusercontent.com/morhetz/gruvbox/master/wallpapers/ign-0001.png"
+
+[[background]]
+url = "https://raw.githubusercontent.com/morhetz/gruvbox/master/wallpapers/ign-0002.png"
+
+# Optional: Environment variables specific to this theme
+[env]
+GTK_THEME_VARIANT = "dark"

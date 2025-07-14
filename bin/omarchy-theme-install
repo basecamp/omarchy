@@ -1,36 +1,156 @@
 #!/bin/bash
 
-# omarchy-theme-install: Install a new theme from a git repo for Omarchy
-# Usage: omarchy-theme-install <git-repo-url>
+# Script to install theme resources (fonts, backgrounds) from theme.toml files
 
-if [ -z "$1" ]; then
-  echo "Usage: omarchy-theme-install <git-repo-url>"
-  exit 1
-fi
+set -euo pipefail
 
-REPO_URL="$1"
-THEMES_DIR="$HOME/.config/omarchy/themes"
-THEME_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-theme$//')
-THEME_PATH="$THEMES_DIR/$THEME_NAME"
-THEME_BACKGROUND_PATH="$THEME_PATH/backgrounds"
-BACKGROUNDS_PATH="$HOME/.config/omarchy/backgrounds"
-BACKGROUNDS_THEME_PATH="$BACKGROUNDS_PATH/$THEME_NAME"
+# Parse background URLs from TOML using tomlq
+parse_background_urls() {
+  local file="$1"
+  
+  # Extract all background URLs
+  tomlq -r '.background[].url // empty' "$file" | grep -v '^null$' || true
+}
 
-# Remove existing theme if present
-if [ -d "$THEME_PATH" ]; then
-  rm -rf "$THEME_PATH"
-fi
+# Validate URL (basic check)
+validate_url() {
+  local url="$1"
+  if [[ ! "$url" =~ ^https?:// ]]; then
+    echo "Error: Invalid URL: $url" >&2
+    return 1
+  fi
+  return 0
+}
 
-# Clone the repo directly to ~/.config/omarchy/themes
-if ! git clone "$REPO_URL" "$THEME_PATH"; then
-  echo "Error: Failed to clone theme repo."
-  exit 1
-fi
+# Download file safely
+download_file() {
+  local url="$1"
+  local output="$2"
+  
+  echo "Downloading: $url"
+  
+  # Create parent directory if needed
+  mkdir -p "$(dirname "$output")"
+  
+  # Download with timeout and size limit (max 50MB)
+  if ! curl -fsSL --max-time 60 --max-filesize 52428800 -o "$output" "$url"; then
+    echo "Error: Failed to download $url" >&2
+    return 1
+  fi
+  
+  return 0
+}
 
-# Link backgrounds if present
-if [ -d $THEME_BACKGROUND_PATH ]; then
-  ln -snf $THEME_BACKGROUND_PATH $BACKGROUNDS_THEME_PATH
-fi
+# Install fonts for a theme
+install_fonts() {
+  local theme_toml="$1"
+  local fonts_dir="$HOME/.local/share/fonts"
+  
+  # Get font settings
+  local monospace=$(tomlq -r '.fonts.monospace // empty' "$theme_toml" | grep -v '^null$' || echo "")
+  local sans_serif=$(tomlq -r '.fonts.sans_serif // empty' "$theme_toml" | grep -v '^null$' || echo "")
+  
+  if [[ -n "$monospace" || -n "$sans_serif" ]]; then
+    echo "Note: Font preferences found in theme.toml:"
+    [[ -n "$monospace" ]] && echo "  Monospace: $monospace"
+    [[ -n "$sans_serif" ]] && echo "  Sans-serif: $sans_serif"
+    echo "Please install these fonts manually if not already installed."
+  fi
+}
 
-# Apply the new theme with omarchy-theme-set
-omarchy-theme-set $THEME_NAME
+# Install backgrounds for a theme
+install_backgrounds() {
+  local theme_toml="$1"
+  local theme_name="$2"
+  local backgrounds_dir="$HOME/.config/omarchy/backgrounds/$theme_name"
+  
+  # Create backgrounds directory
+  mkdir -p "$backgrounds_dir"
+  
+  # Get all background URLs
+  local urls=($(parse_background_urls "$theme_toml"))
+  
+  if [[ ${#urls[@]} -eq 0 ]]; then
+    echo "No backgrounds specified in theme.toml"
+    return 0
+  fi
+  
+  echo "Installing ${#urls[@]} backgrounds for $theme_name..."
+  
+  local count=1
+  for url in "${urls[@]}"; do
+    if ! validate_url "$url"; then
+      continue
+    fi
+    
+    # Generate filename based on URL or use numbered format
+    local filename
+    if [[ "$url" =~ /([^/]+\.(jpg|jpeg|png|webp))(\?|$) ]]; then
+      filename="${BASH_REMATCH[1]}"
+    else
+      filename="background-${count}.jpg"
+    fi
+    
+    local output_path="$backgrounds_dir/$filename"
+    
+    # Skip if already exists
+    if [[ -f "$output_path" ]]; then
+      echo "Skipping existing: $filename"
+    else
+      download_file "$url" "$output_path" || true
+    fi
+    
+    ((count++))
+  done
+  
+  echo "Backgrounds installed to: $backgrounds_dir"
+}
+
+# Main function
+main() {
+  local theme_path="${1:-}"
+  
+  if [[ -z "$theme_path" ]]; then
+    echo "Usage: $0 <theme-directory-or-name>"
+    echo "Examples:"
+    echo "  $0 rose-pine"
+    echo "  $0 ~/.config/omarchy/themes/tokyo-night"
+    exit 1
+  fi
+  
+  # Resolve theme path
+  if [[ ! -d "$theme_path" ]]; then
+    # Try to find theme by name
+    local themes_dir="$HOME/.config/omarchy/themes"
+    if [[ -d "$themes_dir/$theme_path" ]]; then
+      theme_path="$themes_dir/$theme_path"
+    else
+      echo "Error: Theme not found: $theme_path" >&2
+      exit 1
+    fi
+  fi
+  
+  local theme_name=$(basename "$theme_path")
+  local theme_toml="$theme_path/theme.toml"
+  
+  if [[ ! -f "$theme_toml" ]]; then
+    echo "Error: theme.toml not found in $theme_path" >&2
+    exit 1
+  fi
+  
+  echo "Installing resources for theme: $theme_name"
+  echo "Reading: $theme_toml"
+  echo
+  
+  # Install fonts (just show info for now)
+  install_fonts "$theme_toml"
+  echo
+  
+  # Install backgrounds
+  install_backgrounds "$theme_toml" "$theme_name"
+  
+  echo
+  echo "Theme resources installation complete!"
+}
+
+main "$@"

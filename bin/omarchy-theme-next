@@ -30,5 +30,72 @@ NEXT_INDEX=$(((INDEX + 1) % TOTAL))
 NEW_THEME=${THEMES[$NEXT_INDEX]}
 NEW_THEME_NAME=$(basename "$NEW_THEME")
 
-omarchy-theme-set $NEW_THEME_NAME
+# Set current theme
+ln -nsf "$HOME/.config/omarchy/backgrounds/$NEW_THEME_NAME" "$HOME/.config/omarchy/current/backgrounds"
+ln -nsf "$NEW_THEME" "$HOME/.config/omarchy/current/theme"
+
+# Apply theme configuration from theme.toml
+THEME_TOML="$NEW_THEME/theme.toml"
+
+if [[ -f "$THEME_TOML" ]]; then
+  # Parse TOML file using tomlq
+  gtk_theme=$(tomlq -r '.gtk.theme' "$THEME_TOML")
+  gtk_color_scheme=$(tomlq -r '.gtk.color_scheme' "$THEME_TOML")
+  icon_theme=$(tomlq -r '.icons.theme' "$THEME_TOML")
+  cursor_theme=$(tomlq -r '.icons.cursor_theme' "$THEME_TOML")
+  
+  # Apply GTK settings
+  if [[ -n "$gtk_theme" && "$gtk_theme" != "null" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "$gtk_theme"
+    export GTK_THEME="$gtk_theme"
+    echo "export GTK_THEME=\"$gtk_theme\"" > "$HOME/.config/omarchy/current/theme.env"
+  fi
+  
+  if [[ -n "$gtk_color_scheme" && "$gtk_color_scheme" != "null" ]]; then
+    gsettings set org.gnome.desktop.interface color-scheme "$gtk_color_scheme"
+  fi
+  
+  if [[ -n "$icon_theme" && "$icon_theme" != "null" ]]; then
+    gsettings set org.gnome.desktop.interface icon-theme "$icon_theme"
+  fi
+  
+  if [[ -n "$cursor_theme" && "$cursor_theme" != "null" ]]; then
+    gsettings set org.gnome.desktop.interface cursor-theme "$cursor_theme"
+  fi
+  
+  # Parse and set environment variables
+  env_vars=$(tomlq -r '.env // {}' "$THEME_TOML")
+  if [[ "$env_vars" != "{}" && "$env_vars" != "null" ]]; then
+    # Export each environment variable
+    while IFS= read -r line; do
+      key=$(echo "$line" | cut -d: -f1 | xargs | tr -d '"')
+      value=$(echo "$line" | cut -d: -f2- | xargs | tr -d '"')
+      if [[ -n "$key" && -n "$value" ]]; then
+        export "$key=$value"
+        echo "export $key=\"$value\"" >> "$HOME/.config/omarchy/current/theme.env"
+      fi
+    done < <(echo "$env_vars" | jq -r 'to_entries[] | "\(.key):\(.value)"')
+  fi
+else
+  echo "Error: theme.toml not found for $NEW_THEME_NAME" >&2
+  exit 1
+fi
+
+# Touch alacritty config to pickup the changed theme
+touch "$HOME/.config/alacritty/alacritty.toml"
+
+# Update desktop files with new theme
+omarchy-update-desktop-files
+
+# Restart for new theme
+pkill -SIGUSR2 waybar
+makoctl reload
+hyprctl reload
+
+# Set new background
+ln -nsf $(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1) "$HOME/.config/omarchy/current/background"
+pkill -x swaybg
+setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill &
+
+# Notify of the new theme
 notify-send "Theme changed to $NEW_THEME_NAME" -t 2000
