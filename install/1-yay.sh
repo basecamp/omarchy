@@ -9,3 +9,9 @@ if ! command -v yay &>/dev/null; then
   rm -rf yay-bin
   cd ~
 fi
+
+# FIXME: Temporary fix for the fact that some locations can't reach the default keyserver
+if [[ ! -f "$HOME/.gnupg/gpg.conf" ]]; then
+  mkdir -p ~/.gnupg
+  echo "keyserver hkps://pgp.mit.edu" >~/.gnupg/dirmngr.conf
+fi
