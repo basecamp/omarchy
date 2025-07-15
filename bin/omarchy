@@ -24,6 +24,53 @@ show_ascii_art() {
 EOF
 }
 
+show_help() {
+  cat <<EOF
+Omarchy CLI - Usage:
+
+  omarchy [command]
+
+Available commands:
+  omarchy                       Launch the Omarchy TUI menu
+  -v, --version, version        Show Omarchy version
+  -h, --help, help              Show this help menu
+
+  update                        Update Omarchy
+  refresh-waybar                Refresh waybar
+  theme-install <git-url>       Install a theme from a git repo
+  theme-remove <theme-name>     Remove a theme by name
+EOF
+}
+
+show_version() {
+  BLUE='\033[0;34m'
+  NC='\033[0m'
+  (
+    cd ~/.local/share/omarchy 2>/dev/null
+    tag=$(git describe --tags --abbrev=0 2>/dev/null)
+    echo -e "${BLUE}Omarchy Version:${NC} $tag"
+  )
+}
+
+install_theme_prompt() {
+  local url
+  url=$(gum input --placeholder="Git repo URL for theme" --header="Enter theme git repo URL:") || theme_menu
+  if [[ -n "$url" ]]; then
+    "$BIN_DIR/omarchy-theme-install" "$url"
+  fi
+  theme_menu
+}
+
+remove_theme_prompt() {
+  local theme
+  theme=$(gum input --placeholder="Theme name" --header="Enter the theme name to remove:") || theme_menu
+  if [[ -n "$theme" ]]; then
+    "$BIN_DIR/omarchy-theme-remove" "$theme"
+  fi
+  theme_menu
+}
+
+# Menu functions
 show_tui_menu() {
   local columns choice
   columns=$(tput cols 2>/dev/null || echo 80)
@@ -64,7 +111,11 @@ system_menu() {
       if [[ "$choice" == "Back" ]]; then
         show_tui_menu
       else
-        eval "${commands[$i]}"
+        if [[ "${commands[$i]}" == "show_version" ]]; then
+          show_version
+        else
+          eval "${commands[$i]}"
+        fi
       fi
       break
     fi
@@ -75,8 +126,8 @@ theme_menu() {
   local menu=("Switch Theme" "Install Theme" "Remove Theme" "Back")
   local commands=(
     "$BIN_DIR/omarchy-theme-menu"
-    "install_theme_tui"
-    "remove_theme_tui"
+    "install_theme_prompt"
+    "remove_theme_prompt"
     "show_tui_menu"
   )
   local choice
@@ -114,33 +165,6 @@ tools_menu() {
   done
 }
 
-show_version() {
-  (
-    cd ~/.local/share/omarchy 2>/dev/null 
-    local tag commit
-    tag=$(git describe --tags --abbrev=0 2>/dev/null)
-    echo -e "${BLUE}Omarchy Version:${NC} $tag"
-  )
-}
-
-install_theme_tui() {
-  local url
-  url=$(gum input --placeholder="Git repo URL for theme" --header="Enter theme git repo URL:") || theme_menu
-  if [[ -n "$url" ]]; then
-    "$BIN_DIR/omarchy-theme-install" "$url"
-  fi
-  theme_menu
-}
-
-remove_theme_tui() {
-  local theme
-  theme=$(gum input --placeholder="Theme name to remove" --header="Enter the theme name to remove:") || theme_menu
-  if [[ -n "$theme" ]]; then
-    "$BIN_DIR/omarchy-theme-remove" "$theme"
-  fi
-  theme_menu
-}
-
 if [[ $# -eq 0 ]]; then
   show_tui_menu
   exit 0
@@ -150,6 +174,9 @@ case "$1" in
   -v|--version|version)
     show_version
     ;;
+  -h|--help|help)
+    show_help
+    ;;
   update)
     echo -e "${BLUE}🔄 Updating Omarchy...${NC}"
     "$BIN_DIR/omarchy-update"
@@ -158,8 +185,15 @@ case "$1" in
     echo -e "${BLUE}🔄 Refreshing waybar...${NC}"
     "$BIN_DIR/omarchy-refresh-waybar"
     ;;
+  theme-install)
+    "$BIN_DIR/omarchy-theme-install" "${@:2}"
+    ;;
+  theme-remove)
+    "$BIN_DIR/omarchy-theme-remove" "${@:2}"
+    ;;
   *)
     echo -e "${RED}Unknown command: $1${NC}"
+    show_help
     exit 1
     ;;
 esac 
