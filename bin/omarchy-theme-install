@@ -1,24 +1,20 @@
 #!/bin/bash
 
-# omarchy-theme-install: Install a new theme from a git repo for Omarchy 
+# omarchy-theme-install: Install a new theme from a git repo for Omarchy
 # Usage: omarchy-theme-install <git-repo-url>
-
-REPO_URL="$1"
-THEMES_DIR="$HOME/.config/omarchy/themes"
-THEME_NAME=$(basename "$REPO_URL" .git)
-THEME_PATH="$THEMES_DIR/$THEME_NAME"
-BACKGROUND_DIR="$HOME/.config/omarchy/backgrounds"
-CURRENT_DIR="$HOME/.config/omarchy/current"
-
-set -e
 
 if [ -z "$1" ]; then
   echo "Usage: omarchy-theme-install <git-repo-url>"
   exit 1
 fi
 
-# Ensure theme directories exist
-mkdir -p "$THEMES_DIR" "$BACKGROUND_DIR" "$CURRENT_DIR"
+REPO_URL="$1"
+THEMES_DIR="$HOME/.config/omarchy/themes"
+THEME_NAME=$(basename "$REPO_URL" .git)
+THEME_PATH="$THEMES_DIR/$THEME_NAME"
+THEME_BACKGROUND_PATH="$THEME_PATH/backgrounds"
+BACKGROUNDS_PATH="$HOME/.config/omarchy/backgrounds"
+BACKGROUNDS_THEME_PATH="$BACKGROUNDS_PATH/$THEME_NAME"
 
 # Remove existing theme if present
 if [ -d "$THEME_PATH" ]; then
@@ -32,15 +28,11 @@ if ! git clone "$REPO_URL" "$THEME_PATH"; then
 fi
 
 # Copy backgrounds if present
-if [ -d "$THEME_PATH/backgrounds" ]; then
-  DEST_BG="$BACKGROUND_DIR/$THEME_NAME"
-  rm -rf "$DEST_BG"
-  mkdir -p "$DEST_BG"
-  cp -r "$THEME_PATH/backgrounds/." "$DEST_BG/"
+if [ -d $THEME_BACKGROUND_PATH ]; then
+  mkdir -p $BACKGROUNDS_THEME_PATH
+  cp $THEME_BACKGROUND_PATH/* $BACKGROUNDS_THEME_PATH/
 fi
 
 # Apply the new theme with omarchy-theme-set
-"$HOME/.local/share/omarchy/bin/omarchy-theme-set" "$THEME_NAME"
+omarchy-theme-set $THEME_NAME
 
-# Notify of the new theme
-notify-send "Theme changed to $THEME_NAME" -t 2000

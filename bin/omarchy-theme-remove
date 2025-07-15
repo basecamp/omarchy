@@ -3,6 +3,11 @@
 # omarchy-theme-remove: Remove a theme from Omarchy by name
 # Usage: omarchy-theme-remove <theme-name>
 
+if [ -z "$1" ]; then
+  echo "Usage: omarchy-theme-remove <theme-name>"
+  exit 1
+fi
+
 THEME_NAME="$1"
 THEMES_DIR="$HOME/.config/omarchy/themes"
 BACKGROUND_DIR="$HOME/.config/omarchy/backgrounds"
@@ -11,43 +16,18 @@ CURRENT_DIR="$HOME/.config/omarchy/current"
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 BACKGROUND_PATH="$BACKGROUND_DIR/$THEME_NAME"
 
-set -e
-
-if [ -z "$1" ]; then
-  echo "Usage: omarchy-theme-remove <theme-name>"
-  exit 1
-fi
-
-# Count available themes (directories in ~/.config/omarchy/themes)
-THEMES=($(find "$THEMES_DIR" -mindepth 1 -maxdepth 1 -type d | sort))
-if [ ${#THEMES[@]} -le 1 ]; then
-  echo "Error: Cannot remove the last remaining theme. At least one theme must be installed."
-  exit 1
-fi
-
 # Check if theme exists before attempting removal
 if [ ! -d "$THEME_PATH" ]; then
   echo "Error: Theme '$THEME_NAME' not found."
   exit 1
 fi
 
-# Check if the theme to be removed is the current theme
-IS_CURRENT=0
 # Use readlink -f to resolve symlinks and get the absolute path
 if [ "$(readlink -f "$CURRENT_DIR/theme")" = "$(readlink -f "$THEME_PATH")" ]; then
-  IS_CURRENT=1
-fi
-
-# If it is, switch to the next theme before removing
-if [ $IS_CURRENT -eq 1 ]; then
   "$HOME/.local/share/omarchy/bin/omarchy-theme-next"
 fi
 
 # Now remove the theme directory and backgrounds for THEME_NAME
 rm -rf "$THEME_PATH"
+rm -rf "$BACKGROUND_PATH"
 
-if [ -d "$BACKGROUND_PATH" ]; then
-  rm -rf "$BACKGROUND_PATH"
-fi
-
-notify-send "Theme '$THEME_NAME' removed." -t 2000
