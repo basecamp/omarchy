@@ -1,5 +1,4 @@
-@import ".config/omarchy/current/theme/wofi.css";
-@import ".config/wofi/style.css";
+/* Colors are defined by theme files and can be referenced via @base, @text, @selected-text, and @border */
 
 * {
   font-family: 'CaskaydiaMono Nerd Font', monospace;
@@ -71,3 +70,4 @@ window {
 #entry image {
   -gtk-icon-transform: scale(0.7);
 }
+

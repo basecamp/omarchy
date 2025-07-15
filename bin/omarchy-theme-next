@@ -3,20 +3,22 @@
 THEMES_DIR="$HOME/.config/omarchy/themes/"
 CURRENT_THEME_LINK="$HOME/.config/omarchy/current/theme"
 
-THEMES=($(find "$THEMES_DIR" -mindepth 1 | sort))
+THEMES=($(find "$THEMES_DIR" -mindepth 1 -maxdepth 1 | sort))
 TOTAL=${#THEMES[@]}
 
 # Get current theme from symlink
 if [[ -L "$CURRENT_THEME_LINK" ]]; then
-  CURRENT_THEME=$(readlink "$CURRENT_THEME_LINK")
+  CURRENT_THEME=$(realpath "$CURRENT_THEME_LINK")
 else
   # Default to first theme if no symlink exists
-  CURRENT_THEME=${THEMES[0]}
+  CURRENT_THEME=$(realpath "${THEMES[0]}")
 fi
 
 # Find current theme index
 INDEX=0
 for i in "${!THEMES[@]}"; do
+  THEMES[$i]=$(realpath "${THEMES[$i]}")
+
   if [[ "${THEMES[$i]}" == "$CURRENT_THEME" ]]; then
     INDEX=$i
     break
@@ -28,22 +30,5 @@ NEXT_INDEX=$(((INDEX + 1) % TOTAL))
 NEW_THEME=${THEMES[$NEXT_INDEX]}
 NEW_THEME_NAME=$(basename "$NEW_THEME")
 
-# Set current theme
-ln -nsf "$HOME/.config/omarchy/backgrounds/$NEW_THEME_NAME" "$HOME/.config/omarchy/current/backgrounds"
-ln -nsf "$NEW_THEME" "$HOME/.config/omarchy/current/theme"
-
-# Touch alacritty config to pickup the changed theme
-touch "$HOME/.config/alacritty/alacritty.toml"
-
-# Restart for new theme
-pkill -SIGUSR2 waybar
-makoctl reload
-hyprctl reload
-
-# Set new background
-ln -nsf $(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1) "$HOME/.config/omarchy/current/background"
-pkill -x swaybg
-setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill &
-
-# Notify of the new theme
+omarchy-theme-set $NEW_THEME_NAME
 notify-send "Theme changed to $NEW_THEME_NAME" -t 2000

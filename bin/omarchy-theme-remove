@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy-theme-remove: Remove a theme from Omarchy by name
+# Usage: omarchy-theme-remove <theme-name>
+
+if [ -z "$1" ]; then
+  echo "Usage: omarchy-theme-remove <theme-name>"
+  exit 1
+fi
+
+THEME_NAME="$1"
+THEMES_DIR="$HOME/.config/omarchy/themes"
+BACKGROUND_DIR="$HOME/.config/omarchy/backgrounds"
+CURRENT_DIR="$HOME/.config/omarchy/current"
+
+THEME_PATH="$THEMES_DIR/$THEME_NAME"
+BACKGROUND_PATH="$BACKGROUND_DIR/$THEME_NAME"
+
+# Check if theme exists before attempting removal
+if [ ! -d "$THEME_PATH" ]; then
+  echo "Error: Theme '$THEME_NAME' not found."
+  exit 1
+fi
+
+# Use readlink -f to resolve symlinks and get the absolute path
+if [ "$(readlink -f "$CURRENT_DIR/theme")" = "$(readlink -f "$THEME_PATH")" ]; then
+  "$HOME/.local/share/omarchy/bin/omarchy-theme-next"
+fi
+
+# Now remove the theme directory and backgrounds for THEME_NAME
+rm -rf "$THEME_PATH"
+rm -rf "$BACKGROUND_PATH"
+
