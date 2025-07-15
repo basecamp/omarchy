@@ -8,9 +8,10 @@ USAGE:
   omarchy-screenshot [OPTIONS] [MODE]
 
 OPTIONS:
-  --action=ACTION    Specify action to perform after capture
-  --editor=COMMAND   Override screenshot editor (default: gradia)
-  -h, --help         Show this help message
+  --action=ACTION        Specify action to perform after capture
+  --editor=COMMAND       Override screenshot editor (default: gradia)
+  --copy-path-on-save    Copy saved file path to clipboard when saving
+  -h, --help             Show this help message
 
 MODES:
   smart      - Shows window/monitor outlines, allows free selection (default)
@@ -44,6 +45,7 @@ fi
 MODE="smart"
 ACTION=""
 EDITOR=""
+COPY_PATH_ON_SAVE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -53,6 +55,10 @@ while [ $# -gt 0 ]; do
     ;;
   --editor=*)
     EDITOR="${1#*=}"
+    shift
+    ;;
+  --copy-path-on-save)
+    COPY_PATH_ON_SAVE="true"
     shift
     ;;
   -*)
@@ -114,21 +120,27 @@ get_rectangles() {
 
 # Show interactive menu using wofi with compact styling
 show_screenshot_menu() {
+  # Kill any existing wofi instances to prevent stacking
+  pkill -x wofi 2>/dev/null
+
   local menu_options="\u200B󰆏 Copy
 \u200C󰤌 Edit
 \u200D󰆓 Save
 \u2060󰩺 Discard"
-  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Screenshot Actions" --width 180 --height 160 -O alphabetical --style ~/.local/share/omarchy/default/wofi/select.css)
+  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Screenshot Actions" --width 180 --height 160 -O alphabetical --normal-window --style ~/.local/share/omarchy/default/wofi/select.css)
 
   handle_menu_selection "$selection"
 }
 
 # Show post-copy menu (without copy option since it's already copied)
 show_post_copy_menu() {
+  # Kill any existing wofi instances to prevent stacking
+  pkill -x wofi 2>/dev/null
+
   local menu_options="\u200C󰤌 Edit
 \u200D󰆓 Save
 \u2060󰩺 Discard"
-  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Additional Actions" --width 180 --height 120 -O alphabetical --style ~/.local/share/omarchy/default/wofi/select.css)
+  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Additional Actions" --width 180 --height 120 -O alphabetical --normal-window --style ~/.local/share/omarchy/default/wofi/select.css)
 
   handle_menu_selection "$selection"
 }
@@ -140,14 +152,14 @@ handle_menu_selection() {
   case "$selection" in
   *"Copy"*)
     wl-copy <"$TEMP_FILE"
-    
+
     # Send notification with action to reopen menu when clicked
     ACTION_RESULT=$(notify-send "Screenshot Copied" "Screenshot copied to clipboard\nClick to view more options" \
       -i "$TEMP_FILE" \
       -A "default=More Options" \
       -t 5000 \
       --wait)
-    
+
     # Handle the action if the user clicks it - reopen post-copy menu
     if [ "$ACTION_RESULT" = "default" ]; then
       show_post_copy_menu
@@ -164,16 +176,22 @@ handle_menu_selection() {
     cp "$TEMP_FILE" "$FINAL_FILE"
     rm -f "$TEMP_FILE"
 
-    # Send notification with default action to open folder when clicked
-    ACTION=$(notify-send "Screenshot Saved" "Saved to: $(basename "$FINAL_FILE")\nClick to open folder" \
-      -i "$FINAL_FILE" \
-      -A "default=Open Folder" \
-      -t 8000 \
-      --wait)
+    # Copy path to clipboard if flag is set
+    if [ "$COPY_PATH_ON_SAVE" = "true" ]; then
+      echo -n "$FINAL_FILE" | wl-copy
+      notify-send "Screenshot Saved" "Saved to: $(basename "$FINAL_FILE")\nPath copied to clipboard" -i "$FINAL_FILE" -t 5000
+    else
+      # Send notification with default action to open folder when clicked
+      ACTION=$(notify-send "Screenshot Saved" "Saved to: $(basename "$FINAL_FILE")\nClick to open folder" \
+        -i "$FINAL_FILE" \
+        -A "default=Open Folder" \
+        -t 8000 \
+        --wait)
 
-    # Handle the action if the user clicks it
-    if [ "$ACTION" = "default" ]; then
-      xdg-open "$SCREENSHOT_DIR"
+      # Handle the action if the user clicks it
+      if [ "$ACTION" = "default" ]; then
+        xdg-open "$SCREENSHOT_DIR"
+      fi
     fi
     ;;
   *"Discard"* | "")
@@ -222,14 +240,14 @@ if [ -n "$ACTION" ]; then
   case "$ACTION" in
   "copy")
     wl-copy <"$TEMP_FILE"
-    
+
     # Send notification with action to reopen menu when clicked
     ACTION_RESULT=$(notify-send "Screenshot Copied" "Screenshot copied to clipboard\nClick to view more options" \
       -i "$TEMP_FILE" \
       -A "default=More Options" \
       -t 5000 \
       --wait)
-    
+
     # Handle the action if the user clicks it - reopen post-copy menu
     if [ "$ACTION_RESULT" = "default" ]; then
       show_post_copy_menu
@@ -245,16 +263,22 @@ if [ -n "$ACTION" ]; then
     cp "$TEMP_FILE" "$FINAL_FILE"
     rm -f "$TEMP_FILE"
 
-    # Send notification with default action to open folder when clicked
-    ACTION_RESULT=$(notify-send "Screenshot Saved" "Saved to: $(basename "$FINAL_FILE")\nClick to open folder" \
-      -i "$FINAL_FILE" \
-      -A "default=Open Folder" \
-      -t 8000 \
-      --wait)
+    # Copy path to clipboard if flag is set
+    if [ "$COPY_PATH_ON_SAVE" = "true" ]; then
+      echo -n "$FINAL_FILE" | wl-copy
+      notify-send "Screenshot Saved" "Saved to: $(basename "$FINAL_FILE")\nPath copied to clipboard" -i "$FINAL_FILE" -t 5000
+    else
+      # Send notification with default action to open folder when clicked
+      ACTION_RESULT=$(notify-send "Screenshot Saved" "Saved to: $(basename "$FINAL_FILE")\nClick to open folder" \
+        -i "$FINAL_FILE" \
+        -A "default=Open Folder" \
+        -t 8000 \
+        --wait)
 
-    # Handle the action if the user clicks it
-    if [ "$ACTION_RESULT" = "default" ]; then
-      xdg-open "$SCREENSHOT_DIR"
+      # Handle the action if the user clicks it
+      if [ "$ACTION_RESULT" = "default" ]; then
+        xdg-open "$SCREENSHOT_DIR"
+      fi
     fi
     ;;
   "discard")
