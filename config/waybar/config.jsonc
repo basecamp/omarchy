@@ -11,6 +11,7 @@
     "clock"
   ],
   "modules-right": [
+    "group/tray-expander",
     "bluetooth",
     "network",
     "pulseaudio",
@@ -52,11 +53,17 @@
     "tooltip": false
   },
   "network": {
-    "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
-    "format" : "{icon}",
-    "format-wifi" : "{icon}",
-    "format-ethernet" : "󰀂",
-    "format-disconnected" : "󰖪",
+    "format-icons": [
+      "󰤯",
+      "󰤟",
+      "󰤢",
+      "󰤥",
+      "󰤨"
+    ],
+    "format": "{icon}",
+    "format-wifi": "{icon}",
+    "format-ethernet": "󰀂",
+    "format-disconnected": "󰖪",
     "tooltip-format-wifi": "{essid} ({frequency} GHz)\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
     "tooltip-format-ethernet": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
     "tooltip-format-disconnected": "Disconnected",
@@ -67,14 +74,32 @@
   "battery": {
     "format": "{capacity}% {icon}",
     "format-discharging": "{icon}",
-    "format-charging":    "{icon}",
-    "format-plugged":     "",
+    "format-charging": "{icon}",
+    "format-plugged": "",
     "format-icons": {
       "charging": [
-        "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"
+        "󰢜",
+        "󰂆",
+        "󰂇",
+        "󰂈",
+        "󰢝",
+        "󰂉",
+        "󰢞",
+        "󰂊",
+        "󰂋",
+        "󰂅"
       ],
       "default": [
-        "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"
+        "󰁺",
+        "󰁻",
+        "󰁼",
+        "󰁽",
+        "󰁾",
+        "󰁿",
+        "󰂀",
+        "󰂁",
+        "󰂂",
+        "󰁹"
       ]
     },
     "format-full": "󰂅",
@@ -94,12 +119,37 @@
     "on-click": "GTK_THEME=Adwaita-dark blueberry"
   },
   "pulseaudio": {
-    "format": "",
-    "format-muted": "󰝟",
-    "scroll-step": 5,
+    "format": "{icon}",
     "on-click": "GTK_THEME=Adwaita-dark pavucontrol",
-    "tooltip-format": "Playing at {volume}%",
     "on-click-right": "pamixer -t",
-    "ignored-sinks": ["Easy Effects Sink"]
+    "tooltip-format": "Playing at {volume}%",
+    "scroll-step": 5,
+    "format-muted": "󰝟",
+    "format-icons": {
+      "default": [
+        "",
+        "",
+        ""
+      ]
+    }
+  },
+  "group/tray-expander": {
+    "orientation": "inherit",
+    "drawer": {
+      "transition-duration": 600,
+      "children-class": "tray-group-item"
+    },
+    "modules": [
+      "custom/expand-icon",
+      "tray"
+    ]
+  },
+  "custom/expand-icon": {
+    "format": " ",
+    "tooltip": false
+  },
+  "tray": {
+    "icon-size": 12,
+    "spacing": 12
   }
 }
