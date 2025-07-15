@@ -119,19 +119,15 @@
     "on-click": "GTK_THEME=Adwaita-dark blueberry"
   },
   "pulseaudio": {
-    "format": "{icon}",
-    "on-click": "GTK_THEME=Adwaita-dark pavucontrol",
-    "on-click-right": "pamixer -t",
-    "tooltip-format": "Playing at {volume}%",
-    "scroll-step": 5,
+    "format": "",
     "format-muted": "󰝟",
-    "format-icons": {
-      "default": [
-        "",
-        "",
-        ""
-      ]
-    }
+    "scroll-step": 5,
+    "on-click": "GTK_THEME=Adwaita-dark pavucontrol",
+    "tooltip-format": "Playing at {volume}%",
+    "on-click-right": "pamixer -t",
+    "ignored-sinks": [
+      "Easy Effects Sink"
+    ]
   },
   "group/tray-expander": {
     "orientation": "inherit",
