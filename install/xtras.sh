@@ -1,10 +1,11 @@
 if [ -z "$OMARCHY_BARE" ]; then
   yay -S --noconfirm --needed \
-    gnome-calculator \
-    signal-desktop spotify dropbox-cli zoom \
+    gnome-calculator gnome-keyring signal-desktop \
     obsidian-bin typora libreoffice obs-studio kdenlive \
-    1password-beta 1password-cli gnome-keyring \
     pinta xournalpp localsend-bin
+
+  yay -S --noconfirm --needed spotify dropbox-cli 1password-beta 1password-cli ||
+    echo -e "\e[31mFailed to install Spotify, Dropbox, and/or 1password because of a keyserver problem. Continuing without!\e[0m"
 fi
 
 # Copy over Omarchy applications
