@@ -3,36 +3,15 @@
 # omarchy: Main TUI menu for Omarchy tools
 # Usage: omarchy
 
-set -e
-
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
-
 BIN_DIR="$(dirname "$0")"
-
-# Show version information
-show_version() {
-    (
-        cd ~/.local/share/omarchy
-        if [ -d ".git" ]; then
-            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
-            COMMIT_HASH=$(git rev-parse --short HEAD)
-            echo -e "${BLUE}Omarchy Version:${NC} $LATEST_TAG"
-        fi
-    )
-}
-
 OMARCHY_ASCII_SHOWN=0
 
-# TUI menu using gum
-show_tui_menu() {
-    local COLUMNS=$(tput cols 2>/dev/null || echo 80)
-    if [ "$OMARCHY_ASCII_SHOWN" -eq 0 ] && [ "$COLUMNS" -ge 100 ]; then
-        echo ""
-        cat <<'EOF'
+show_ascii_art() {
+  cat <<'EOF'
  ▄██████▄    ▄▄▄▄███▄▄▄▄      ▄████████    ▄████████  ▄████████    ▄█    █▄    ▄██   ▄  
 ███    ███ ▄██▀▀▀███▀▀▀██▄   ███    ███   ███    ███ ███    ███   ███    ███   ███   ██▄
 ███    ███ ███   ███   ███   ███    ███   ███    ███ ███    █▀    ███    ███   ███▄▄▄███
@@ -43,118 +22,144 @@ show_tui_menu() {
  ▀██████▀   ▀█   ███   █▀    ███    █▀    ███    ███ ████████▀    ███    █▀     ▀█████▀ 
                                           ███    ███                                    
 EOF
-        echo
-        OMARCHY_ASCII_SHOWN=1
-    elif [ "$OMARCHY_ASCII_SHOWN" -eq 0 ]; then
-        echo "Omarchy"
-        echo
-        OMARCHY_ASCII_SHOWN=1
+}
+
+show_tui_menu() {
+  local columns choice
+  columns=$(tput cols 2>/dev/null || echo 80)
+  
+  if [[ $OMARCHY_ASCII_SHOWN -eq 0 ]]; then
+    if [[ $columns -ge 100 ]]; then
+      echo 
+        show_ascii_art
+    else
+      echo "Omarchy"
     fi
+    echo
+    OMARCHY_ASCII_SHOWN=1
+  fi
 
-    # Main menu categories
-    local main_menu=("System" "Theme" "Tools" "Exit")
-    local choice
-    choice=$(printf "%s\n" "${main_menu[@]}" | gum choose --header="Select a category:") || exit 0
-
-    case "$choice" in
-        "System")
-            system_menu
-            ;;
-        "Theme")
-            theme_menu
-            ;;
-        "Tools")
-            tools_menu
-            ;;
-        "Exit")
-            exit 0
-            ;;
-    esac
+  local main_menu=("System" "Theme" "Tools" "Exit")
+  choice=$(printf "%s\n" "${main_menu[@]}" | gum choose --header="Select a category:") || exit 0
+  case "$choice" in
+    System) system_menu ;;
+    Theme)  theme_menu  ;;
+    Tools)  tools_menu  ;;
+    Exit)   exit 0      ;;
+  esac
 }
 
 system_menu() {
-    local menu=("Version" "Update" "Refresh Waybar" "Back")
-    local commands=(
-        "$BIN_DIR/omarchy -v"
-        "$BIN_DIR/omarchy-update"
-        "$BIN_DIR/omarchy-refresh-waybar"
-        "show_tui_menu"
-    )
-    local choice
-    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="System:") || show_tui_menu
-    for i in "${!menu[@]}"; do
-        if [[ "${menu[$i]}" == "$choice" ]]; then
-            if [[ "$choice" == "Back" ]]; then
-                show_tui_menu
-            else
-                eval "${commands[$i]}"
-            fi
-            break
-        fi
-    done
+  local menu=("Version" "Update" "Refresh Waybar" "Back")
+  local commands=(
+    "show_version"
+    "$BIN_DIR/omarchy-update"
+    "$BIN_DIR/omarchy-refresh-waybar"
+    "show_tui_menu"
+  )
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="System:") || show_tui_menu
+  for i in "${!menu[@]}"; do
+    if [[ "${menu[$i]}" == "$choice" ]]; then
+      if [[ "$choice" == "Back" ]]; then
+        show_tui_menu
+      else
+        eval "${commands[$i]}"
+      fi
+      break
+    fi
+  done
 }
 
 theme_menu() {
-    local menu=("Switch Theme" "Back")
-    local commands=(
-        "$BIN_DIR/omarchy-theme-next"
-        "show_tui_menu"
-    )
-    local choice
-    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Theme:") || show_tui_menu
-    for i in "${!menu[@]}"; do
-        if [[ "${menu[$i]}" == "$choice" ]]; then
-            if [[ "$choice" == "Back" ]]; then
-                show_tui_menu
-            else
-                eval "${commands[$i]}"
-            fi
-            break
-        fi
-    done
+  local menu=("Switch Theme" "Install Theme" "Remove Theme" "Back")
+  local commands=(
+    "$BIN_DIR/omarchy-theme-menu"
+    "install_theme_tui"
+    "remove_theme_tui"
+    "show_tui_menu"
+  )
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Theme:") || show_tui_menu
+  for i in "${!menu[@]}"; do
+    if [[ "${menu[$i]}" == "$choice" ]]; then
+      if [[ "$choice" == "Back" ]]; then
+        show_tui_menu
+      else
+        eval "${commands[$i]}"
+      fi
+      break
+    fi
+  done
 }
 
 tools_menu() {
-    local menu=("Setup Fingerprint" "Sync Applications" "Back")
-    local commands=(
-        "$BIN_DIR/omarchy-fingerprint-setup"
-        "$BIN_DIR/omarchy-sync-applications"
-        "show_tui_menu"
-    )
-    local choice
-    choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Tools:") || show_tui_menu
-    for i in "${!menu[@]}"; do
-        if [[ "${menu[$i]}" == "$choice" ]]; then
-            if [[ "$choice" == "Back" ]]; then
-                show_tui_menu
-            else
-                eval "${commands[$i]}"
-            fi
-            break
-        fi
-    done
+  local menu=("Setup Fingerprint" "Sync Applications" "Back")
+  local commands=(
+    "$BIN_DIR/omarchy-fingerprint-setup"
+    "$BIN_DIR/omarchy-sync-applications"
+    "show_tui_menu"
+  )
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Tools:") || show_tui_menu
+  for i in "${!menu[@]}"; do
+    if [[ "${menu[$i]}" == "$choice" ]]; then
+      if [[ "$choice" == "Back" ]]; then
+        show_tui_menu
+      else
+        eval "${commands[$i]}"
+      fi
+      break
+    fi
+  done
 }
 
-# Main command handler
-if [ $# -eq 0 ]; then
-    show_tui_menu
-    exit 0
+show_version() {
+  (
+    cd ~/.local/share/omarchy 2>/dev/null 
+    local tag commit
+    tag=$(git describe --tags --abbrev=0 2>/dev/null)
+    echo -e "${BLUE}Omarchy Version:${NC} $tag"
+  )
+}
+
+install_theme_tui() {
+  local url
+  url=$(gum input --placeholder="Git repo URL for theme" --header="Enter theme git repo URL:") || theme_menu
+  if [[ -n "$url" ]]; then
+    "$BIN_DIR/omarchy-theme-install" "$url"
+  fi
+  theme_menu
+}
+
+remove_theme_tui() {
+  local theme
+  theme=$(gum input --placeholder="Theme name to remove" --header="Enter the theme name to remove:") || theme_menu
+  if [[ -n "$theme" ]]; then
+    "$BIN_DIR/omarchy-theme-remove" "$theme"
+  fi
+  theme_menu
+}
+
+if [[ $# -eq 0 ]]; then
+  show_tui_menu
+  exit 0
 fi
 
 case "$1" in
-    -v|--version|version)
-        show_version
-        ;;
-    update)
-        echo -e "${BLUE}🔄 Updating Omarchy...${NC}"
-        "$BIN_DIR/omarchy-update"
-        ;;
-    refresh-waybar)
-        echo -e "${BLUE}🔄 Refreshing waybar...${NC}"
-        "$BIN_DIR/omarchy-refresh-waybar"
-        ;;
-    *)
-        echo -e "${RED}Unknown command: $1${NC}"
-        exit 1
-        ;;
+  -v|--version|version)
+    show_version
+    ;;
+  update)
+    echo -e "${BLUE}🔄 Updating Omarchy...${NC}"
+    "$BIN_DIR/omarchy-update"
+    ;;
+  refresh-waybar)
+    echo -e "${BLUE}🔄 Refreshing waybar...${NC}"
+    "$BIN_DIR/omarchy-refresh-waybar"
+    ;;
+  *)
+    echo -e "${RED}Unknown command: $1${NC}"
+    exit 1
+    ;;
 esac 
