@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy-theme-install: Install a new theme from a git repo for Omarchy 
+# Usage: omarchy-theme-install <git-repo-url>
+
+REPO_URL="$1"
+THEMES_DIR="$HOME/.config/omarchy/themes"
+THEME_NAME=$(basename "$REPO_URL" .git)
+THEME_PATH="$THEMES_DIR/$THEME_NAME"
+BACKGROUND_DIR="$HOME/.config/omarchy/backgrounds"
+CURRENT_DIR="$HOME/.config/omarchy/current"
+
+set -e
+
+if [ -z "$1" ]; then
+  echo "Usage: omarchy-theme-install <git-repo-url>"
+  exit 1
+fi
+
+# Ensure theme directories exist
+mkdir -p "$THEMES_DIR" "$BACKGROUND_DIR" "$CURRENT_DIR"
+
+# Remove existing theme if present
+if [ -d "$THEME_PATH" ]; then
+  rm -rf "$THEME_PATH"
+fi
+
+# Clone the repo directly to ~/.config/omarchy/themes
+if ! git clone "$REPO_URL" "$THEME_PATH"; then
+  echo "Error: Failed to clone theme repo."
+  exit 1
+fi
+
+# Copy backgrounds if present
+if [ -d "$THEME_PATH/backgrounds" ]; then
+  DEST_BG="$BACKGROUND_DIR/$THEME_NAME"
+  rm -rf "$DEST_BG"
+  mkdir -p "$DEST_BG"
+  cp -r "$THEME_PATH/backgrounds/." "$DEST_BG/"
+fi
+
+# Apply the new theme with omarchy-theme-set
+"$HOME/.local/share/omarchy/bin/omarchy-theme-set" "$THEME_NAME"
+
+# Notify of the new theme
+notify-send "Theme changed to $THEME_NAME" -t 2000
