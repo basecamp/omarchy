@@ -8,4 +8,7 @@ if ! command -v yay &>/dev/null; then
   cd -
   rm -rf yay-bin
   cd ~
+
+  # Add fun and color to the pacman installer
+  sed -i '/^\[options\]/a Color\nILoveCandy' /etc/pacman.conf
 fi
