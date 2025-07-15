@@ -1,3 +1,8 @@
 #!/bin/bash
 
-yay -S --noconfirm --needed libfido2
+yay -S --noconfirm --needed libfido2 pam-u2f
+
+tokens=$(fido2-token -L)
+if [ -z "$tokens" ]; then
+  echo -e "\e[31m\nNo fido2 device detected.\e[0m"
+fi
