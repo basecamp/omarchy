@@ -13,5 +13,8 @@ fi
 # FIXME: Temporary fix for the fact that some locations can't reach the default keyserver
 if [[ ! -f "$HOME/.gnupg/gpg.conf" ]]; then
   mkdir -p ~/.gnupg
+  chmod 700 ~/.gnupg
+
   echo "keyserver hkps://pgp.mit.edu" >~/.gnupg/dirmngr.conf
+  chmod 600 ~/.gnupg/dirmngr.conf
 fi
