@@ -1,3 +1,5 @@
+@import "../omarchy/current/theme/waybar.css";
+
 * {
   background-color: @background;
   color: @foreground;
@@ -23,7 +25,6 @@
   margin: 0 1.5px;
 }
 
-#custom-dropbox,
 #tray,
 #cpu,
 #battery,
@@ -33,7 +34,7 @@
 #clock,
 #custom-power-menu {
   min-width: 12px;
-  margin: 0 10px;
+  margin: 0 7.5px;
 }
 
 #custom-expand-icon {
@@ -43,9 +44,3 @@
 tooltip {
   padding: 2px;
 }
-
-tooltip label {
-  padding: 2px;
-}
-
-@import "../omarchy/current/theme/waybar.css";
