@@ -29,8 +29,7 @@ ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 touch "$HOME/.config/alacritty/alacritty.toml"
 
 # Restart components to apply new theme
-pkill waybar &>/dev/null
-setsid waybar &>/dev/null &
+pkill -SIGUSR2 waybar
 makoctl reload
 hyprctl reload
 
