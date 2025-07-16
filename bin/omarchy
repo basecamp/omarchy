@@ -1,16 +1,9 @@
 #!/bin/bash
 
-# omarchy: Main TUI menu for Omarchy tools
-# Usage: omarchy
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-BIN_DIR="$(dirname "$0")"
-OMARCHY_ASCII_SHOWN=0
+OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/dev/null)
 
 show_ascii_art() {
+  clear
   cat <<'EOF'
  ▄██████▄    ▄▄▄▄███▄▄▄▄      ▄████████    ▄████████  ▄████████    ▄█    █▄    ▄██   ▄  
 ███    ███ ▄██▀▀▀███▀▀▀██▄   ███    ███   ███    ███ ███    ███   ███    ███   ███   ██▄
@@ -22,100 +15,43 @@ show_ascii_art() {
  ▀██████▀   ▀█   ███   █▀    ███    █▀    ███    ███ ████████▀    ███    █▀     ▀█████▀ 
                                           ███    ███                                    
 EOF
+  echo "                                                                                 $OMARCHY_VERSION"
 }
 
-show_help() {
-  cat <<EOF
-Omarchy CLI - Usage:
+main_menu() {
+  show_ascii_art
 
-  omarchy [command]
-
-Available commands:
-  omarchy                       Launch the Omarchy TUI menu
-  -v, --version, version        Show Omarchy version
-  -h, --help, help              Show this help menu
-
-  update                        Update Omarchy
-  refresh-waybar                Refresh waybar
-  theme-install <git-url>       Install a theme from a git repo
-  theme-remove <theme-name>     Remove a theme by name
-EOF
-}
-
-show_version() {
-  BLUE='\033[0;34m'
-  NC='\033[0m'
-  (
-    cd ~/.local/share/omarchy 2>/dev/null
-    tag=$(git describe --tags --abbrev=0 2>/dev/null)
-    echo -e "${BLUE}Omarchy Version:${NC} $tag"
-  )
-}
-
-install_theme_prompt() {
-  local url
-  url=$(gum input --placeholder="Git repo URL for theme" --header="Enter theme git repo URL:") || theme_menu
-  if [[ -n "$url" ]]; then
-    "$BIN_DIR/omarchy-theme-install" "$url"
-  fi
-  theme_menu
-}
-
-remove_theme_prompt() {
-  local theme
-  theme=$(gum input --placeholder="Theme name" --header="Enter the theme name to remove:") || theme_menu
-  if [[ -n "$theme" ]]; then
-    "$BIN_DIR/omarchy-theme-remove" "$theme"
-  fi
-  theme_menu
-}
-
-# Menu functions
-show_tui_menu() {
-  local columns choice
-  columns=$(tput cols 2>/dev/null || echo 80)
-  
-  if [[ $OMARCHY_ASCII_SHOWN -eq 0 ]]; then
-    if [[ $columns -ge 100 ]]; then
-      echo 
-        show_ascii_art
-    else
-      echo "Omarchy"
-    fi
-    echo
-    OMARCHY_ASCII_SHOWN=1
-  fi
-
-  local main_menu=("System" "Theme" "Tools" "Exit")
-  choice=$(printf "%s\n" "${main_menu[@]}" | gum choose --header="Select a category:") || exit 0
+  local options=("Theme" "Setup" "Update" "Manual" "Exit")
+  choice=$(printf "%s\n" "${options[@]}" | gum choose --header "") || exit 0
   case "$choice" in
-    System) system_menu ;;
-    Theme)  theme_menu  ;;
-    Tools)  tools_menu  ;;
-    Exit)   exit 0      ;;
+  Theme) theme_menu ;;
+  Update) update_menu ;;
+  Setup) setup_menu ;;
+  Manual) open_manual ;;
+  Exit) clear && exit 0 ;;
   esac
 }
 
-system_menu() {
-  local menu=("Version" "Update" "Refresh Waybar" "Back")
+update_menu() {
+  show_ascii_art
+  local menu=("Omarchy" "Wofi Apps" "Waybar" "Plymouth" "Back")
   local commands=(
-    "show_version"
-    "$BIN_DIR/omarchy-update"
-    "$BIN_DIR/omarchy-refresh-waybar"
-    "show_tui_menu"
+    "omarchy-update"
+    "omarchy-sync-applications"
+    "omarchy-refresh-waybar"
+    "omarchy-refresh-plymouth"
+    "main_menu"
   )
   local choice
-  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="System:") || show_tui_menu
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Update") || main_menu
   for i in "${!menu[@]}"; do
     if [[ "${menu[$i]}" == "$choice" ]]; then
       if [[ "$choice" == "Back" ]]; then
-        show_tui_menu
+        main_menu
       else
-        if [[ "${commands[$i]}" == "show_version" ]]; then
-          show_version
-        else
-          eval "${commands[$i]}"
-        fi
+        eval "${commands[$i]}"
+        ack_command
+        main_menu
       fi
       break
     fi
@@ -123,77 +59,77 @@ system_menu() {
 }
 
 theme_menu() {
-  local menu=("Switch Theme" "Install Theme" "Remove Theme" "Back")
+  show_ascii_art
+  local menu=("Install" "Remove" "Back")
   local commands=(
-    "$BIN_DIR/omarchy-theme-menu"
     "install_theme_prompt"
     "remove_theme_prompt"
-    "show_tui_menu"
+    "main_menu"
   )
   local choice
-  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Theme:") || show_tui_menu
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Theme") || main_menu
   for i in "${!menu[@]}"; do
     if [[ "${menu[$i]}" == "$choice" ]]; then
       if [[ "$choice" == "Back" ]]; then
-        show_tui_menu
+        main_menu
       else
         eval "${commands[$i]}"
+        ack_command
+        main_menu
       fi
       break
     fi
   done
 }
 
-tools_menu() {
-  local menu=("Setup Fingerprint" "Sync Applications" "Back")
+install_theme_prompt() {
+  local url
+  url=$(gum input --placeholder="Git repo URL for theme" --header="")
+  if [[ -n "$url" ]]; then
+    omarchy-theme-install "$url"
+  fi
+  theme_menu
+}
+
+remove_theme_prompt() {
+  local theme
+  theme=$(gum input --placeholder="Theme name" --header="")
+  if [[ -n "$theme" ]]; then
+    omarchy-theme-remove "$theme"
+  fi
+  theme_menu
+}
+
+setup_menu() {
+  show_ascii_art
+  local menu=("Fingerprint sensor" "Back")
   local commands=(
-    "$BIN_DIR/omarchy-fingerprint-setup"
-    "$BIN_DIR/omarchy-sync-applications"
-    "show_tui_menu"
+    "omarchy-fingerprint-setup"
+    "main_menu"
   )
   local choice
-  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Tools:") || show_tui_menu
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Setup") || main_menu
   for i in "${!menu[@]}"; do
     if [[ "${menu[$i]}" == "$choice" ]]; then
       if [[ "$choice" == "Back" ]]; then
-        show_tui_menu
+        main_menu
       else
         eval "${commands[$i]}"
+        ack_command
+        main_menu
       fi
       break
     fi
   done
 }
 
-if [[ $# -eq 0 ]]; then
-  show_tui_menu
-  exit 0
-fi
+open_manual() {
+  xdg-open "https://manuals.omamix.org/2/the-omarchy-manual"
+}
 
-case "$1" in
-  -v|--version|version)
-    show_version
-    ;;
-  -h|--help|help)
-    show_help
-    ;;
-  update)
-    echo -e "${BLUE}🔄 Updating Omarchy...${NC}"
-    "$BIN_DIR/omarchy-update"
-    ;;
-  refresh-waybar)
-    echo -e "${BLUE}🔄 Refreshing waybar...${NC}"
-    "$BIN_DIR/omarchy-refresh-waybar"
-    ;;
-  theme-install)
-    "$BIN_DIR/omarchy-theme-install" "${@:2}"
-    ;;
-  theme-remove)
-    "$BIN_DIR/omarchy-theme-remove" "${@:2}"
-    ;;
-  *)
-    echo -e "${RED}Unknown command: $1${NC}"
-    show_help
-    exit 1
-    ;;
-esac 
+ack_command() {
+  gum spin --spinner "globe" --title "Done!" -- sleep 1
+}
+
+main_menu
+
