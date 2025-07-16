@@ -3,6 +3,29 @@
 THEMES_DIR="$HOME/.config/omarchy/themes/"
 CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 CURRENT_THEME_NAME=$(basename "$(realpath "$CURRENT_THEME_DIR")")
+LOCK_FILE="/tmp/omarchy-theme-menu.lock"
+
+# Check if another instance is already running
+if [[ -f "$LOCK_FILE" ]]; then
+    # Check if the process is still running
+    if kill -0 "$(cat "$LOCK_FILE")" 2>/dev/null; then
+        # Dismiss existing wofi window
+        pkill wofi 2>/dev/null
+        exit 0
+    else
+        # Remove stale lock file
+        rm -f "$LOCK_FILE"
+    fi
+fi
+
+# Create lock file with current PID
+echo $$ > "$LOCK_FILE"
+
+# Cleanup function to remove lock file on exit
+cleanup() {
+    rm -f "$LOCK_FILE"
+}
+trap cleanup EXIT INT TERM
 
 # Build themes list with pretty display names
 mapfile -t themes < <(
