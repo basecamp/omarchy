@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Minimum selection area in pixels - selections smaller than this will snap to containing window/monitor
+MIN_SELECTION_AREA=20
+
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   cat <<'EOF'
 Screenshot script using slurp + grim with smart selection
@@ -201,6 +204,77 @@ handle_menu_selection() {
   esac
 }
 
+# Function to check if selection area is too small
+is_selection_too_small() {
+  local selection="$1"
+
+  # Parse selection format: "x,y WxH" (e.g., "1294,346 1x2")
+  if [[ "$selection" =~ ^([0-9]+),([0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]]; then
+    local width="${BASH_REMATCH[3]}"
+    local height="${BASH_REMATCH[4]}"
+    local area=$((width * height))
+
+    if [ "$area" -le "$MIN_SELECTION_AREA" ]; then
+      return 0 # true - selection is too small
+    fi
+  fi
+
+  return 1 # false - selection is fine
+}
+
+# Function to find the intended selection box containing a point
+find_containing_box() {
+  local selection="$1"
+  local rectangles="$2"
+
+  # Parse selection to get the x,y coordinates
+  if [[ "$selection" =~ ^([0-9]+),([0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]]; then
+    local x="${BASH_REMATCH[1]}"
+    local y="${BASH_REMATCH[2]}"
+
+    local window_box=""
+    local monitor_box=""
+
+    # Check which rectangle contains the point
+    while IFS= read -r rect; do
+      # Parse rectangle format: "rx,ry rwxrh ..."
+      if [[ "$rect" =~ ^([0-9]+),([0-9]+)[[:space:]]([0-9]+)x([0-9]+) ]]; then
+        local rx="${BASH_REMATCH[1]}"
+        local ry="${BASH_REMATCH[2]}"
+        local rw="${BASH_REMATCH[3]}"
+        local rh="${BASH_REMATCH[4]}"
+
+        # Check if point (x,y) is within the rectangle bounds
+        if [ "$x" -ge "$rx" ] && [ "$x" -lt $((rx + rw)) ] &&
+          [ "$y" -ge "$ry" ] && [ "$y" -lt $((ry + rh)) ]; then
+          # Format the coordinates exactly as grim expects: "x,y WxH"
+          local coords="${rx},${ry} ${rw}x${rh}"
+
+          # Check if it's a window or monitor
+          if [[ "$rect" == *"🪟"* ]]; then
+            window_box="$coords"
+          elif [[ "$rect" == *"🖥️"* ]]; then
+            monitor_box="$coords"
+          fi
+        fi
+      fi
+    done <<<"$rectangles"
+
+    # Prioritize window box over monitor box
+    if [ -n "$window_box" ]; then
+      echo "$window_box"
+    elif [ -n "$monitor_box" ]; then
+      echo "$monitor_box"
+    else
+      # If no containing box found, return nothing (invalid selection)
+      echo ""
+    fi
+  else
+    # Invalid format, return nothing
+    echo ""
+  fi
+}
+
 # Choose selection method based on mode
 case "$MODE" in
 "region")
@@ -216,7 +290,12 @@ case "$MODE" in
   ;;
 "smart" | *)
   # Smart mode: Shows windows/monitors as guides but allows free selection
-  SELECTION=$(get_rectangles | slurp -c "$BORDER_COLOR_FULL" -b "$UNSELECTED_COLOR_OVERLAY" -B "$UNSELECTED_COLOR_OVERLAY" 2>/dev/null)
+  RECTANGLES=$(get_rectangles)
+  SELECTION=$(echo "$RECTANGLES" | slurp -c "$BORDER_COLOR_FULL" -b "$UNSELECTED_COLOR_OVERLAY" -B "$UNSELECTED_COLOR_OVERLAY" 2>/dev/null)
+
+  if is_selection_too_small "$SELECTION"; then
+    SELECTION=$(find_containing_box "$SELECTION" "$RECTANGLES")
+  fi
   ;;
 esac
 
