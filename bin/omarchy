@@ -35,12 +35,13 @@ main_menu() {
 
 update_menu() {
   show_ascii_art
-  local menu=("Omarchy" "Wofi apps" "Waybar" "Plymouth" "Back")
+  local menu=("Omarchy" "Waybar" "Wofi" "Plymouth" "Desktop apps" "Back")
   local commands=(
     "omarchy-update"
-    "omarchy-sync-applications"
     "omarchy-refresh-waybar"
+    "omarchy-refresh-wofi"
     "omarchy-refresh-plymouth"
+    "omarchy-refresh-applications"
     "main_menu"
   )
   local choice
