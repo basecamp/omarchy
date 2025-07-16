@@ -126,7 +126,8 @@ setup_menu() {
 }
 
 open_manual() {
-  xdg-open "https://manuals.omamix.org/2/the-omarchy-manual"
+  setsid chromium --new-window --ozone-platform=wayland --app="https://manuals.omamix.org/2/the-omarchy-manual" >/dev/null 2>&1 &
+  clear
 }
 
 ack_command() {
@@ -134,4 +135,3 @@ ack_command() {
 }
 
 main_menu
-
