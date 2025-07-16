@@ -1,0 +1,7 @@
+#!/bin/bash
+
+if gum confirm "Refresh Wofi config? This will replace your current Wofi settings with Omarchy defaults."; then
+  # Overwrite local waybar settings with the latest in Omarchy
+  cp -f ~/.local/share/omarchy/config/wofi/config ~/.config/wofi/ 2>/dev/null
+  cp -f ~/.local/share/omarchy/config/wofi/style.css ~/.config/wofi/ 2>/dev/null
+fi
