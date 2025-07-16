@@ -12,11 +12,11 @@
   ],
   "modules-right": [
     "group/tray-expander",
-  "bluetooth",
-  "network",
-  "pulseaudio",
-  "cpu",
-  "battery"
+    "bluetooth",
+    "network",
+    "pulseaudio",
+    "cpu",
+    "battery"
   ],
   "hyprland/workspaces": {
     "on-click": "activate",
@@ -125,4 +125,3 @@
     "spacing": 12
   }
 }
-
