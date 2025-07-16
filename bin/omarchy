@@ -1,6 +1,7 @@
 #!/bin/bash
 
 OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/dev/null)
+PATH="$PATH:$HOME/.local/share/omarchy/bin"
 
 show_ascii_art() {
   clear
