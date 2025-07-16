@@ -12,4 +12,4 @@ if [ -z "$OMARCHY_BARE" ]; then
 fi
 
 # Copy over Omarchy applications
-source ~/.local/share/omarchy/bin/omarchy-sync-applications || true
+source ~/.local/share/omarchy/bin/omarchy-refresh-applications || true
