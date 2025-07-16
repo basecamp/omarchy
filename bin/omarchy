@@ -35,7 +35,7 @@ main_menu() {
 
 update_menu() {
   show_ascii_art
-  local menu=("Omarchy" "Wofi Apps" "Waybar" "Plymouth" "Back")
+  local menu=("Omarchy" "Wofi apps" "Waybar" "Plymouth" "Back")
   local commands=(
     "omarchy-update"
     "omarchy-sync-applications"
