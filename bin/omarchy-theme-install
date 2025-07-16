@@ -10,7 +10,7 @@ fi
 
 REPO_URL="$1"
 THEMES_DIR="$HOME/.config/omarchy/themes"
-THEME_NAME=$(basename "$REPO_URL" .git)
+THEME_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-theme$//')
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 THEME_BACKGROUND_PATH="$THEME_PATH/backgrounds"
 BACKGROUNDS_PATH="$HOME/.config/omarchy/backgrounds"
