@@ -25,7 +25,7 @@ selection=$(printf '%s\n' "${themes[@]}" | wofi \
   --width 150 \
   --height 300 \
   -O alphabetical \
-  --style ~/.local/share/omarchy/default/wofi/select.css)
+  --style ~/.config/wofi/select.css 2>/dev/null)
 
 # Remove any Pango markup before converting back to filename
 clean_selection=$(echo "$selection" | sed -E 's/<[^>]+>//g')
@@ -35,4 +35,3 @@ selected_theme=$(echo "$clean_selection" | tr '[:upper:]' '[:lower:]' | tr ' ' '
 
 # Apply the selected theme
 "$HOME/.local/share/omarchy/bin/omarchy-theme-set" "$selected_theme"
-
