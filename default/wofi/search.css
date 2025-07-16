@@ -1,4 +1,5 @@
 @import ".config/omarchy/current/theme/wofi.css";
+@import ".config/wofi/style.css";
 
 * {
   font-family: 'CaskaydiaMono Nerd Font', monospace;

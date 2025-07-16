@@ -4,16 +4,15 @@ cp -R ~/.local/share/omarchy/config/* ~/.config/
 # Ensure application directory exists for update-desktop-database
 mkdir -p ~/.local/share/applications
 
+# Setup GPG configuration with multiple keyservers for better reliability
+sudo mkdir -p /etc/gnupg
+sudo cp ~/.local/share/omarchy/default/gpg/dirmngr.conf /etc/gnupg/
+sudo chmod 644 /etc/gnupg/dirmngr.conf
+sudo gpgconf --kill dirmngr || true
+sudo gpgconf --launch dirmngr || true
+
 # Use default bashrc from Omarchy
 echo "source ~/.local/share/omarchy/default/bash/rc" >~/.bashrc
-
-# Login directly as user, rely on disk encryption + hyprlock for security
-sudo mkdir -p /etc/systemd/system/getty@tty1.service.d
-sudo tee /etc/systemd/system/getty@tty1.service.d/override.conf >/dev/null <<EOF
-[Service]
-ExecStart=
-ExecStart=-/usr/bin/agetty --autologin $USER --noclear %I \$TERM
-EOF
 
 # Set common git aliases
 git config --global alias.co checkout

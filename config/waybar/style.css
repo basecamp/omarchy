@@ -1,4 +1,9 @@
+@import "../omarchy/current/theme/waybar.css";
+
 * {
+  background-color: @background;
+  color: @foreground;
+
   border: none;
   border-radius: 0;
   min-height: 0;
@@ -6,17 +11,21 @@
   font-size: 12px;
 }
 
-#workspaces {
-  margin-left: 7px;
+.modules-left {
+  margin-left: 8px;
+}
+
+.modules-right {
+  margin-right: 8px;
 }
 
 #workspaces button {
   all: initial;
-  padding: 2px 6px;
-  margin-right: 3px;
+  padding: 0 6px;
+  margin: 0 1.5px;
 }
 
-#custom-dropbox,
+#tray,
 #cpu,
 #battery,
 #network,
@@ -25,15 +34,13 @@
 #clock,
 #custom-power-menu {
   min-width: 12px;
-  margin-right: 13px;
+  margin: 0 7.5px;
+}
+
+#custom-expand-icon {
+  margin-right: 12px;
 }
 
 tooltip {
   padding: 2px;
 }
-
-tooltip label {
-  padding: 2px;
-}
-
-@import "../omarchy/current/theme/waybar.css";

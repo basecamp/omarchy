@@ -15,7 +15,7 @@ show_power_menu() {
   case "$selection" in
   *Lock*) hyprlock ;;
   *Suspend*) systemctl suspend ;;
-  *Relaunch*) hyprctl dispatch exit ;;
+  *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
   esac
