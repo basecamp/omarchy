@@ -38,6 +38,5 @@ first_bg=$(find "$HOME/.config/omarchy/current/backgrounds/" -type f | head -n 1
 if [[ -n "$first_bg" ]]; then
   ln -nsf "$first_bg" "$HOME/.config/omarchy/current/background"
   pkill -x swaybg
-  setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill &
+  setsid swaybg -i "$HOME/.config/omarchy/current/background" -m fill >/dev/null &
 fi
-
