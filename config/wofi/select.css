@@ -1,0 +1,11 @@
+/* Use by power menu, theme selector, and other menus without visible search bar */
+
+@import ".config/wofi/style.css";
+
+#input {
+    display: none;
+    opacity: 0;
+    margin-top: -200px;
+}
+
+@import ".config/omarchy/current/theme/wofi.css";

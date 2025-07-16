@@ -25,7 +25,7 @@ selection=$(printf '%s\n' "${themes[@]}" | wofi \
   --width 150 \
   --height 300 \
   -O alphabetical \
-  --style ~/.local/share/omarchy/default/wofi/select.css 2>/dev/null)
+  --style ~/.config/wofi/select.css 2>/dev/null)
 
 # Remove any Pango markup before converting back to filename
 clean_selection=$(echo "$selection" | sed -E 's/<[^>]+>//g')
