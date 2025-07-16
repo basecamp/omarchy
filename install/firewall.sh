@@ -19,5 +19,8 @@ if ! command -v ufw &>/dev/null; then
 
   # Turn on the firewall
   sudo ufw enable
+
+  # Turn on Docker protections
+  sudo ufw-docker install
   sudo ufw reload
 fi
