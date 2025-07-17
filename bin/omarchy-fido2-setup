@@ -1,9 +1,10 @@
 #!/bin/bash
 
 if [[ "--remove" == "$1" ]]; then
+  yay -Rns --noconfirm libfido2 pam-u2f
   sudo rm -rf /etc/fido2
   sudo sed -i '\|^auth[[:space:]]\+sufficient[[:space:]]\+pam_u2f\.so[[:space:]]\+cue[[:space:]]\+authfile=/etc/fido2/fido2$|d' /etc/pam.d/sudo
-  echo -e "\e[32mYou've successfully removed the fido2 device setup.\e[0m"
+  echo -e "\e[32m\nYou've successfully removed the fido2 device setup.\e[0m"
 else
   yay -S --noconfirm --needed libfido2 pam-u2f
 
