@@ -21,7 +21,7 @@ mapfile -t themes < <(
 # Show Fuzzel menu
 selection=$(printf '%s\n' "${themes[@]}" | fuzzel \
   --dmenu \
-  --config ~/.config/fuzzel/select.ini 2>/dev/null)
+  --config ~/.config/fuzzel/theme.ini 2>/dev/null)
 
 # Remove the indicator and extra spaces before converting back to filename
 clean_selection=$(echo "$selection" | sed -E 's/^[●] +//; s/^  +//')
