@@ -23,7 +23,7 @@ selection=$(printf '%s\n' "${themes[@]}" | wofi \
   --show dmenu \
   --allow-markup \
   --width 150 \
-  --height 300 \
+  --height 400 \
   -O alphabetical \
   --style ~/.config/wofi/select.css 2>/dev/null)
 
