@@ -2,6 +2,18 @@
 
 yay -S --noconfirm --needed libfido2 pam-u2f
 
+# Check if the user doesn't want sudo
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --no-sudo) exit 0 ;;
+  *)
+    echo "Unknown option: $1 \n --no-sudo is the only option"
+    exit 1
+    ;;
+  esac
+  shift
+done
+
 tokens=$(fido2-token -L)
 if [ -z "$tokens" ]; then
   echo -e "\e[31m\nNo fido2 device detected. Plug it in, you may have to unlock it as well\e[0m"
