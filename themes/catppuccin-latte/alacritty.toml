@@ -1,0 +1,71 @@
+[colors.primary]
+foreground = "#4c4f69"        # text
+background = "#eff1f5"        # base
+dim_foreground = "#6c6f85"    # subtext0
+bright_foreground = "#4c4f69"
+
+[colors.cursor]
+text = "#eff1f5"
+cursor = "#4c4f69"
+
+[colors.vi_mode_cursor]
+text = "#eff1f5"
+cursor = "#1e66f5" # blue
+
+[colors.search.matches]
+foreground = "#4c4f69"
+background = "#ccd0da" # surface0
+
+[colors.search.focused_match]
+foreground = "#eff1f5"
+background = "#1e66f5"
+
+[colors.hints.start]
+foreground = "#6c6f85"
+background = "#e6e9ef" # mantle
+
+[colors.hints.end]
+foreground = "#6c6f85"
+background = "#dce0e8" # crust
+
+[colors.line_indicator]
+foreground = "None"
+background = "None"
+
+[colors.footer_bar]
+foreground = "#4c4f69"
+background = "#e6e9ef"
+
+[colors.selection]
+text = "#4c4f69"
+background = "#ccd0da"
+
+[colors.normal]
+black = "#5c5f77"   # overlay2
+red = "#d20f39"
+green = "#40a02b"
+yellow = "#df8e1d"
+blue = "#1e66f5"
+magenta = "#ea76cb"
+cyan = "#04a5e5"
+white = "#4c4f69"
+
+[colors.bright]
+black = "#9ca0b0"   # overlay1
+red = "#d20f39"
+green = "#40a02b"
+yellow = "#df8e1d"
+blue = "#1e66f5"
+magenta = "#ea76cb"
+cyan = "#04a5e5"
+white = "#4c4f69"
+
+[colors.dim]
+black = "#acb0be"   # overlay0
+red = "#d20f39"
+green = "#40a02b"
+yellow = "#df8e1d"
+blue = "#1e66f5"
+magenta = "#ea76cb"
+cyan = "#04a5e5"
+white = "#4c4f69"
