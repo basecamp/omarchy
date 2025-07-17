@@ -52,4 +52,4 @@ makoctl reload
 hyprctl reload
 
 # Set new background
-omarchy-theme-bg-next
+"$HOME/.local/share/omarchy/bin/omarchy-theme-bg-next"
