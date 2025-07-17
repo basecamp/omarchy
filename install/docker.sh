@@ -1,3 +1,5 @@
+#!/bin/bash
+
 yay -S --noconfirm --needed docker docker-compose docker-buildx
 
 # Limit log size to avoid running out of disk

@@ -5,7 +5,7 @@
 BACKGROUNDS_DIR="$HOME/.config/omarchy/current/backgrounds/"
 CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
 
-BACKGROUNDS=($(find "$BACKGROUNDS_DIR" -type f | sort))
+mapfile -d '' -t BACKGROUNDS < <(find "$BACKGROUNDS_DIR" -type f -print0 | sort -z)
 TOTAL=${#BACKGROUNDS[@]}
 
 # Get current background from symlink
@@ -13,7 +13,7 @@ if [[ -L "$CURRENT_BACKGROUND_LINK" ]]; then
   CURRENT_BACKGROUND=$(readlink "$CURRENT_BACKGROUND_LINK")
 else
   # Default to first background if no symlink exists
-  CURRENT_BACKGROUND=${BACKGROUNDS[0]}
+  CURRENT_BACKGROUND="${BACKGROUNDS[0]}"
 fi
 
 # Find current background index
@@ -27,7 +27,7 @@ done
 
 # Get next background (wrap around)
 NEXT_INDEX=$(((INDEX + 1) % TOTAL))
-NEW_BACKGROUND=${BACKGROUNDS[$NEXT_INDEX]}
+NEW_BACKGROUND="${BACKGROUNDS[$NEXT_INDEX]}"
 
 # Set new background symlink
 ln -nsf "$NEW_BACKGROUND" "$CURRENT_BACKGROUND_LINK"

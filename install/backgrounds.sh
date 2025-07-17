@@ -1,3 +1,5 @@
+#!/bin/bash
+
 BACKGROUNDS_DIR=~/.config/omarchy/backgrounds/
 
 download_background_image() {
