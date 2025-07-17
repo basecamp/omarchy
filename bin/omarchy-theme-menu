@@ -11,24 +11,20 @@ mapfile -t themes < <(
     display_name=$(echo "$filename" | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g')
 
     if [[ "$filename" == "$CURRENT_THEME_NAME" ]]; then
-      echo "<i>$display_name</i>"
+      echo "● $display_name"
     else
-      echo "$display_name"
+      echo "  $display_name"
     fi
   done | sort
 )
 
-# Show Wofi menu (with markup support)
-selection=$(printf '%s\n' "${themes[@]}" | wofi \
-  --show dmenu \
-  --allow-markup \
-  --width 150 \
-  --height 300 \
-  -O alphabetical \
-  --style ~/.config/wofi/select.css 2>/dev/null)
+# Show Fuzzel menu
+selection=$(printf '%s\n' "${themes[@]}" | fuzzel \
+  --dmenu \
+  --config ~/.config/fuzzel/select.ini 2>/dev/null)
 
-# Remove any Pango markup before converting back to filename
-clean_selection=$(echo "$selection" | sed -E 's/<[^>]+>//g')
+# Remove the indicator and extra spaces before converting back to filename
+clean_selection=$(echo "$selection" | sed -E 's/^[●] +//; s/^  +//')
 
 # Convert to lowercase and dash-separated: "Tokyo Night" -> "tokyo-night"
 selected_theme=$(echo "$clean_selection" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')

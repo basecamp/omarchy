@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # A script to display Hyprland keybindings defined in your configuration
-# using wofi for an interactive search menu.
+# using fuzzel for an interactive search menu.
 
 USER_HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
 OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.conf $HOME/.local/share/omarchy/default/hypr/bindings/tiling.conf $HOME/.local/share/omarchy/default/hypr/bindings/utilities.conf $HOME/.local/share/omarchy/default/hypr/bindings.conf $HOME/.local/share/omarchy/default/hypr/media.conf"
@@ -56,4 +56,4 @@ grep -h '^[[:space:]]*bind' $USER_HYPRLAND_CONF $OMARCHY_BINDINGS_CONF |
         printf "%-35s → %s\n", key_combo, action;
     }
 }' |
-  wofi -dmenu -i --width 60% --height 70% -p 'Hyprland Keybindings' -O alphabetical
+  fuzzel --dmenu --prompt 'Hyprland Keybindings ' --config ~/.config/fuzzel/keybindings.ini
