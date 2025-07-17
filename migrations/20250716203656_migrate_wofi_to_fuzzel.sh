@@ -24,7 +24,6 @@ mkdir -p ~/.config/fuzzel
 echo "Setting up fuzzel configuration..."
 cp -f ~/.local/share/omarchy/config/fuzzel/base.ini ~/.config/fuzzel/ 2>/dev/null
 cp -f ~/.local/share/omarchy/config/fuzzel/fuzzel.ini ~/.config/fuzzel/ 2>/dev/null
-cp -f ~/.local/share/omarchy/config/fuzzel/select.ini ~/.config/fuzzel/ 2>/dev/null
 cp -f ~/.local/share/omarchy/config/fuzzel/power.ini ~/.config/fuzzel/ 2>/dev/null
 cp -f ~/.local/share/omarchy/config/fuzzel/theme.ini ~/.config/fuzzel/ 2>/dev/null
 cp -f ~/.local/share/omarchy/config/fuzzel/keybindings.ini ~/.config/fuzzel/ 2>/dev/null
