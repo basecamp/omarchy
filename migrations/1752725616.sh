@@ -9,3 +9,7 @@ if [[ -f ~/.local/share/applications/blueberry.desktop ]]; then
 
   omarchy-refresh-waybar
 fi
+
+if [[ ! -L "~/.config/omarchy/themes/rose-pine" ]]; then
+  ln -snf ~/.local/share/omarchy/themes/rose-pine ~/.config/omarchy/themes/
+fi
