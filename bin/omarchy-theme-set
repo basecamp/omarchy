@@ -25,6 +25,15 @@ fi
 ln -nsf "$BACKGROUND_PATH" "$HOME/.config/omarchy/current/backgrounds"
 ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 
+# Change gnome modes
+if [[ -f ~/.config/omarchy/current/theme/light.marker ]]; then
+  gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
+  gsettings set org.gnome.desktop.interface gtk-theme "Adwaita"
+else
+  gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"
+  gsettings set org.gnome.desktop.interface gtk-theme "Adwaita-dark"
+fi
+
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
