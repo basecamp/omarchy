@@ -18,7 +18,7 @@ else
     CURRENT_BACKGROUND=$(readlink "$CURRENT_BACKGROUND_LINK")
   else
     # Default to first background if no symlink exists
-    CURRENT_BACKGROUND="${BACKGROUNDS[0]}"
+    CURRENT_BACKGROUND=""
   fi
 
   # Find current background index
