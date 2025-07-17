@@ -1,0 +1,137 @@
+#!/bin/bash
+
+OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/dev/null)
+PATH="$PATH:$HOME/.local/share/omarchy/bin"
+
+show_ascii_art() {
+  clear
+  cat <<'EOF'
+ ▄██████▄    ▄▄▄▄███▄▄▄▄      ▄████████    ▄████████  ▄████████    ▄█    █▄    ▄██   ▄  
+███    ███ ▄██▀▀▀███▀▀▀██▄   ███    ███   ███    ███ ███    ███   ███    ███   ███   ██▄
+███    ███ ███   ███   ███   ███    ███   ███    ███ ███    █▀    ███    ███   ███▄▄▄███
+███    ███ ███   ███   ███   ███    ███  ▄███▄▄▄▄██▀ ███         ▄███▄▄▄▄███▄▄ ▀▀▀▀▀▀███
+███    ███ ███   ███   ███ ▀███████████ ▀▀███▀▀▀▀▀   ███        ▀▀███▀▀▀▀███▀  ▄██   ███
+███    ███ ███   ███   ███   ███    ███ ▀███████████ ███    █▄    ███    ███   ███   ███
+███    ███ ███   ███   ███   ███    ███   ███    ███ ███    ███   ███    ███   ███   ███
+ ▀██████▀   ▀█   ███   █▀    ███    █▀    ███    ███ ████████▀    ███    █▀     ▀█████▀ 
+                                          ███    ███                                    
+EOF
+  echo "                                                                                 $OMARCHY_VERSION"
+}
+
+main_menu() {
+  show_ascii_art
+
+  local options=("Theme" "Setup" "Update" "Manual" "Exit")
+  choice=$(printf "%s\n" "${options[@]}" | gum choose --header "") || exit 0
+  case "$choice" in
+  Theme) theme_menu ;;
+  Update) update_menu ;;
+  Setup) setup_menu ;;
+  Manual) open_manual ;;
+  Exit) clear && exit 0 ;;
+  esac
+}
+
+update_menu() {
+  show_ascii_art
+  local menu=("Omarchy" "Waybar" "Wofi" "Plymouth" "Desktop apps" "Back")
+  local commands=(
+    "omarchy-update"
+    "omarchy-refresh-waybar"
+    "omarchy-refresh-wofi"
+    "omarchy-refresh-plymouth"
+    "omarchy-refresh-applications"
+    "main_menu"
+  )
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Update") || main_menu
+  for i in "${!menu[@]}"; do
+    if [[ "${menu[$i]}" == "$choice" ]]; then
+      if [[ "$choice" == "Back" ]]; then
+        main_menu
+      else
+        eval "${commands[$i]}"
+        ack_command
+        main_menu
+      fi
+      break
+    fi
+  done
+}
+
+theme_menu() {
+  show_ascii_art
+  local menu=("Install" "Remove" "Back")
+  local commands=(
+    "install_theme_prompt"
+    "remove_theme_prompt"
+    "main_menu"
+  )
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Theme") || main_menu
+  for i in "${!menu[@]}"; do
+    if [[ "${menu[$i]}" == "$choice" ]]; then
+      if [[ "$choice" == "Back" ]]; then
+        main_menu
+      else
+        eval "${commands[$i]}"
+        ack_command
+        main_menu
+      fi
+      break
+    fi
+  done
+}
+
+install_theme_prompt() {
+  local url
+  url=$(gum input --placeholder="Git repo URL for theme" --header="")
+  if [[ -n "$url" ]]; then
+    omarchy-theme-install "$url"
+  fi
+  theme_menu
+}
+
+remove_theme_prompt() {
+  local theme
+  theme=$(gum input --placeholder="Theme name" --header="")
+  if [[ -n "$theme" ]]; then
+    omarchy-theme-remove "$theme"
+  fi
+  theme_menu
+}
+
+setup_menu() {
+  show_ascii_art
+  local menu=("Fingerprint sensor" "Back")
+  local commands=(
+    "omarchy-fingerprint-setup"
+    "main_menu"
+  )
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Setup") || main_menu
+  for i in "${!menu[@]}"; do
+    if [[ "${menu[$i]}" == "$choice" ]]; then
+      if [[ "$choice" == "Back" ]]; then
+        main_menu
+      else
+        eval "${commands[$i]}"
+        ack_command
+        main_menu
+      fi
+      break
+    fi
+  done
+}
+
+open_manual() {
+  setsid chromium --new-window --ozone-platform=wayland --app="https://manuals.omamix.org/2/the-omarchy-manual" >/dev/null 2>&1 &
+  clear
+}
+
+ack_command() {
+  gum spin --spinner "globe" --title "Done!" -- sleep 1
+}
+
+main_menu

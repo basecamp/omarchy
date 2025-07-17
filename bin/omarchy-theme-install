@@ -10,7 +10,7 @@ fi
 
 REPO_URL="$1"
 THEMES_DIR="$HOME/.config/omarchy/themes"
-THEME_NAME=$(basename "$REPO_URL" .git)
+THEME_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-theme$//')
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 THEME_BACKGROUND_PATH="$THEME_PATH/backgrounds"
 BACKGROUNDS_PATH="$HOME/.config/omarchy/backgrounds"
@@ -27,12 +27,10 @@ if ! git clone "$REPO_URL" "$THEME_PATH"; then
   exit 1
 fi
 
-# Copy backgrounds if present
+# Link backgrounds if present
 if [ -d $THEME_BACKGROUND_PATH ]; then
-  mkdir -p $BACKGROUNDS_THEME_PATH
-  cp $THEME_BACKGROUND_PATH/* $BACKGROUNDS_THEME_PATH/
+  ln -snf $THEME_BACKGROUND_PATH $BACKGROUNDS_THEME_PATH
 fi
 
 # Apply the new theme with omarchy-theme-set
 omarchy-theme-set $THEME_NAME
-
