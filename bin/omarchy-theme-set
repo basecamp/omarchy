@@ -13,7 +13,12 @@ CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 
 THEME_NAME="$1"
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
-BACKGROUND_PATH="$HOME/.config/omarchy/backgrounds/$THEME_NAME"
+
+if [[ -d "$HOME/.config/omarchy/themes/$THEME_NAME/backgrounds" ]]; then
+  BACKGROUND_PATH="$HOME/.config/omarchy/themes/$THEME_NAME/backgrounds"
+else
+  BACKGROUND_PATH="$HOME/.config/omarchy/backgrounds/$THEME_NAME"
+fi
 
 # Check if the theme entered exists
 if [[ ! -d "$THEME_PATH" ]]; then
