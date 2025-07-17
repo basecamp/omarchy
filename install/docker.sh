@@ -1,6 +1,6 @@
 #!/bin/bash
 
-yay -S --noconfirm --needed docker docker-compose
+yay -S --noconfirm --needed docker docker-compose docker-buildx
 
 # Limit log size to avoid running out of disk
 sudo mkdir -p /etc/docker
