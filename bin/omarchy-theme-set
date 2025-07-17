@@ -42,6 +42,9 @@ fi
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
+# Trigger btop config reload
+pkill -SIGUSR2 btop
+
 # Restart components to apply new theme
 pkill waybar
 setsid waybar >/dev/null 2>&1 &
