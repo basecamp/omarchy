@@ -1,3 +1,5 @@
+#!/bin/bash
+
 if [ -z "$OMARCHY_BARE" ]; then
   yay -S --noconfirm --needed \
     gnome-calculator gnome-keyring signal-desktop \

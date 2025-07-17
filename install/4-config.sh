@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Copy over Omarchy configs
 cp -R ~/.local/share/omarchy/config/* ~/.config/
 

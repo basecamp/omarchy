@@ -1,3 +1,5 @@
+#!/bin/bash
+
 if [ -z "$OMARCHY_BARE" ]; then
   yay -Sy --noconfirm --needed ttf-font-awesome noto-fonts noto-fonts-emoji noto-fonts-cjk noto-fonts-extra
 else

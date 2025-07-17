@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 if ! command -v plymouth &>/dev/null; then
   yay -S --noconfirm --needed plymouth

@@ -1,3 +1,5 @@
+#!/bin/bash
+
 sudo pacman -S --needed --noconfirm base-devel
 
 if ! command -v yay &>/dev/null; then
