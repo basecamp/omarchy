@@ -29,5 +29,5 @@ done
 # Back to where we came from
 cd - >/dev/null
 
-echo -e "\e[32m\nUpdating system packages\e[0m"
-yay -Syu --noconfirm
+echo -e ""
+gum confirm "Update system packages too?" && yay -Syu --noconfirm
