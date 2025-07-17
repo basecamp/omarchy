@@ -20,5 +20,7 @@ echo "nm-connection-editor              Open NetworkManager
 nmcli device wifi list            List available Wi-Fi networks
 nmcli connection show             Show all network connections
 nmcli connection up <name>        Connect to a network by name
-nmcli connection down <name>      Disconnect from a network by name" |
+nmcli connection down <name>      Disconnect from a network by name
+nmcli radio wifi off              Turn off Wi-Fi
+nmcli radio wifi on               Turn on Wi-Fi" |
   flock --nonblock /tmp/.wofi.lock -c "wofi -dmenu -i --width 60% --height 70% -p 'Useful commands' -O alphabetical"
