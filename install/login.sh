@@ -109,6 +109,15 @@ PAMName=login
 WantedBy=graphical.target
 EOF
 
+# Make plymouth remain until graphical.target
+sudo tee /etc/systemd/system/plymouth-quit.service.d/wait-for-graphical.conf <<'EOF'
+[Unit]
+After=multi-user.target
+EOF
+
+# Prevent plymouth-quit-wait.service
+sudo systemctl unmask plymouth-quit-wait.service
+
 sudo systemctl daemon-reload
 sudo systemctl enable omarchy-seamless-login.service
 
