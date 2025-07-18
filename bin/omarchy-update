@@ -2,29 +2,13 @@
 
 cd ~/.local/share/omarchy
 
-if [[ $1 == "all" ]]; then
-  # Run all migrations
-  last_updated_at=1
-else
-  # Remember the version we're at before upgrading
-  last_updated_at=$(git log -1 --format=%cd --date=unix)
-fi
-
 # Get the latest while trying to preserve any modifications
 git stash
 git pull
 git stash pop
 
-# Run any pending migrations
-for file in migrations/*.sh; do
-  filename=$(basename "$file")
-  migrate_at="${filename%.sh}"
-
-  if [ $migrate_at -gt $last_updated_at ]; then
-    echo -e "\e[32m\nRunning migration ($migrate_at)\e[0m"
-    source $file
-  fi
-done
+# Run pending migrations
+omarchy migrate
 
 # Back to where we came from
 cd - >/dev/null
