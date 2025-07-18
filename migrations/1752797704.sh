@@ -12,4 +12,4 @@ After=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl unmask plymouth-quit-wait.service
+sudo systemctl mask plymouth-quit-wait.service
