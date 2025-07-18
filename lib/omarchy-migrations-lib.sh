@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MIGRATION_LOG="$HOME/.config/omarchy/migrations.log"
+MIGRATION_LOG="$HOME/.local/share/omarchy/migrations.log"
 MIGRATION_DIR="$HOME/.local/share/omarchy/migrations"
 
 # Ensure config directory exists
