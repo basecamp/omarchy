@@ -1,9 +1,9 @@
-app_launch_prefix = ""
+app_launch_prefix = "uwsm app -- "
 terminal_title_flag = ""
 locale = ""
-close_when_open = false
+close_when_open = true             # Toggle on reopen
 theme = "search"
-theme_base = [""]
+theme_base = []
 monitor = ""
 hotreload_theme = false
 as_window = false
@@ -95,6 +95,16 @@ label = "Walker"
 url = "https://github.com/abenz1267/walker"
 keywords = ["walker", "github"]
 
+[[builtins.bookmarks.entries]]
+label = "Omarchy - Github"
+url = "https://github.com/basecamp/omarchy"
+keywords = ["omarchy", "github"]
+
+[[builtins.bookmarks.entries]]
+label = "Omarchy Manual"
+url = "https://manuals.omamix.org/2/the-omarchy-manual"
+keywords = ["omarchy"]
+
 [builtins.xdph_picker]
 hidden = true
 weight = 5
@@ -124,7 +134,7 @@ weight = 5
 name = "calc"
 icon = "accessories-calculator"
 placeholder = "Calculator"
-min_chars = 4
+min_chars = 3                   # Min chars to calculate. 3 allows "3+3"
 
 [builtins.windows]
 weight = 5
@@ -132,6 +142,7 @@ icon = "view-restore"
 name = "windows"
 placeholder = "Windows"
 show_icon_when_single = true
+switcher_only = true
 
 [builtins.clipboard]
 always_put_new_on_top = true
@@ -199,9 +210,11 @@ name = "runner"
 placeholder = "Runner"
 typeahead = true
 history = true
-generic_entry = false
+generic_entry = false       # Generic command runner
+shell_config = ""           # Path to shell to parse for aliases
 refresh = true
 use_fd = false
+enabled = false
 
 [builtins.ssh]
 weight = 5
@@ -224,6 +237,7 @@ weight = 5
 icon = "applications-internet"
 name = "websearch"
 placeholder = "Websearch"
+switcher_only = true
 
 [[builtins.websearch.entries]]
 name = "Google"
