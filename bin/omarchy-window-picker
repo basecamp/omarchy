@@ -1,0 +1,31 @@
+#!/bin/bash
+
+pkill wofi
+
+# Generate list of titles and a lookup map
+declare -A window_map
+display_list=""
+
+while IFS=$'\t' read -r title address; do
+  # Store mapping and accumulate display list
+  window_map["$title"]="$address"
+  display_list+="$title"$'\n'
+done < <(
+  hyprctl clients -j | jq -r '
+        .[]
+        | select(.title | contains("omarchy-window-picker") | not)
+        | [.title, .address] | @tsv'
+)
+
+# Exit if no windows
+[ -z "$display_list" ] && notify-send "Window Picker" "No windows are open" && exit 1
+
+# Let user pick a window
+selected_title=$(echo "$display_list" | wofi --show dmenu --prompt "Select a window" \
+  --width 800 --height 400 --style ~/.config/wofi/select.css 2>/dev/null)
+
+# Lookup address from map
+if [ -n "$selected_title" ]; then
+  address="${window_map[$selected_title]}"
+  [ -n "$address" ] && hyprctl dispatch focuswindow address:$address
+fi
