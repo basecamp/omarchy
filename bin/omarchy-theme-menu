@@ -18,14 +18,8 @@ mapfile -t themes < <(
   done | sort
 )
 
-# Show Wofi menu (with markup support)
-selection=$(printf '%s\n' "${themes[@]}" | wofi \
-  --show dmenu \
-  --allow-markup \
-  --width 150 \
-  --height 400 \
-  -O alphabetical \
-  --style ~/.config/wofi/select.css 2>/dev/null)
+# Show Walker menu
+selection=$(printf '%s\n' "${themes[@]}" | walker --dmenu --theme dmenu_250 2>/dev/null)
 
 # Remove any Pango markup before converting back to filename
 clean_selection=$(echo "$selection" | sed -E 's/<[^>]+>//g')
