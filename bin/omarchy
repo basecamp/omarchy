@@ -62,8 +62,9 @@ update_menu() {
 
 theme_menu() {
   show_ascii_art
-  local menu=("Install" "Remove" "Back")
+  local menu=("Pick" "Install" "Remove" "Back")
   local commands=(
+    "omarchy-theme-menu"
     "install_theme_prompt"
     "remove_theme_prompt"
     "main_menu"
