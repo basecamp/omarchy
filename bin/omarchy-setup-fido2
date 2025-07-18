@@ -1,0 +1,33 @@
+#!/bin/bash
+
+if [[ "--remove" == "$1" ]]; then
+  yay -Rns --noconfirm libfido2 pam-u2f
+  sudo rm -rf /etc/fido2
+  sudo sed -i '\|^auth[[:space:]]\+sufficient[[:space:]]\+pam_u2f\.so[[:space:]]\+cue[[:space:]]\+authfile=/etc/fido2/fido2$|d' /etc/pam.d/sudo
+  echo -e "\e[32m\nYou've successfully removed the fido2 device setup.\e[0m"
+else
+  yay -S --noconfirm --needed libfido2 pam-u2f
+
+  tokens=$(fido2-token -L)
+
+  if [ -z "$tokens" ]; then
+    echo -e "\e[31m\nNo fido2 device detected. Plug it in, you may have to unlock it as well\e[0m"
+  else
+    # Create the pamu2fcfg file
+    if [ ! -f /etc/fido2/fido2 ]; then
+      sudo mkdir -p /etc/fido2
+      echo -e "\e[32m\nLet's setup your device by confirming on the device now.\e[0m"
+      pamu2fcfg >/tmp/fido2 # This needs to run as the user
+      sudo mv /tmp/fido2 /etc/fido2/fido2
+    fi
+
+    # Add fido2 auth as an option for sudo
+    if ! grep -q pam_u2f.so /etc/pam.d/sudo; then
+      sudo sed -i '1i auth    sufficient pam_u2f.so cue authfile=/etc/fido2/fido2' /etc/pam.d/sudo
+    fi
+
+    if ! sudo echo -e "\e[32m\nPerfect! Now you can use your fido2 device for sudo.\e[0m"; then
+      echo -e "\e[31m\nSomething went wrong. Maybe try again?\e[0m"
+    fi
+  fi
+fi

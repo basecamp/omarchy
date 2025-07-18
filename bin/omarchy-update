@@ -10,8 +10,10 @@ else
   last_updated_at=$(git log -1 --format=%cd --date=unix)
 fi
 
-# Get the latest
+# Get the latest while trying to preserve any modifications
+git stash
 git pull
+git stash pop
 
 # Run any pending migrations
 for file in migrations/*.sh; do
@@ -27,5 +29,5 @@ done
 # Back to where we came from
 cd - >/dev/null
 
-echo -e "\e[32m\nUpdating system packages\e[0m"
-yay -Syu --noconfirm
+echo -e ""
+gum confirm "Update system packages too?" && yay -Syu --noconfirm
