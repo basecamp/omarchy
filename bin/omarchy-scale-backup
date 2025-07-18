@@ -1,0 +1,25 @@
+#!/bin/bash
+# Backup current configuration before scale detection changes
+
+BACKUP_DIR="$HOME/.config/omarchy/backups/scale-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+
+echo "Creating backup in $BACKUP_DIR"
+
+# Backup monitors.conf
+if [[ -f "$HOME/.config/hypr/monitors.conf" ]]; then
+  cp "$HOME/.config/hypr/monitors.conf" "$BACKUP_DIR/"
+  echo "Backed up monitors.conf"
+fi
+
+# Backup environment file
+if [[ -f "$HOME/.config/environment.d/50-hypr-scale.conf" ]]; then
+  cp "$HOME/.config/environment.d/50-hypr-scale.conf" "$BACKUP_DIR/"
+  echo "Backed up environment scale config"
+fi
+
+# Backup autostart
+cp "$HOME/.local/share/omarchy/default/hypr/autostart.conf" "$BACKUP_DIR/"
+echo "Backed up autostart.conf"
+
+echo "Backup complete: $BACKUP_DIR" 
