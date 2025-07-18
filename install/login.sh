@@ -116,7 +116,7 @@ After=multi-user.target
 EOF
 
 # Prevent plymouth-quit-wait.service
-sudo systemctl unmask plymouth-quit-wait.service
+sudo systemctl mask plymouth-quit-wait.service
 
 sudo systemctl daemon-reload
 sudo systemctl enable omarchy-seamless-login.service
