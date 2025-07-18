@@ -22,4 +22,20 @@ fi
 cp "$HOME/.local/share/omarchy/default/hypr/autostart.conf" "$BACKUP_DIR/"
 echo "Backed up autostart.conf"
 
+# Backup font configurations
+if [[ -f "$HOME/.config/alacritty/alacritty.toml" ]]; then
+  cp "$HOME/.config/alacritty/alacritty.toml" "$BACKUP_DIR/"
+  echo "Backed up alacritty.toml"
+fi
+
+if [[ -f "$HOME/.config/waybar/style.css" ]]; then
+  cp "$HOME/.config/waybar/style.css" "$BACKUP_DIR/"
+  echo "Backed up waybar style.css"
+fi
+
+if [[ -f "$HOME/.config/wofi/style.css" ]]; then
+  cp "$HOME/.config/wofi/style.css" "$BACKUP_DIR/"
+  echo "Backed up wofi style.css"
+fi
+
 echo "Backup complete: $BACKUP_DIR" 

@@ -1,0 +1,74 @@
+#!/bin/bash
+# Show current scale status and configuration
+
+echo "=== Omarchy Scale Status ==="
+echo
+
+# Get current monitor information
+echo "📺 Monitor Information:"
+if command -v hyprctl >/dev/null 2>&1; then
+  hyprctl monitors | grep -E "(Monitor|res)" | head -10
+else
+  echo "Hyprland not running"
+fi
+echo
+
+# Get current scale configuration
+echo "⚙️  Scale Configuration:"
+SCALE_FILE="$HOME/.config/environment.d/50-hypr-scale.conf"
+if [[ -f "$SCALE_FILE" ]]; then
+  echo "Environment file: $SCALE_FILE"
+  cat "$SCALE_FILE"
+else
+  echo "No scale configuration found"
+fi
+echo
+
+# Get monitor configuration
+echo "🖥️  Monitor Configuration:"
+MON_CONF="$HOME/.config/hypr/monitors.conf"
+if [[ -f "$MON_CONF" ]]; then
+  echo "Monitor config: $MON_CONF"
+  grep -E "^monitor|^env" "$MON_CONF" || echo "No monitor/env settings found"
+else
+  echo "Monitor config not found"
+fi
+echo
+
+# Get font sizes
+echo "📝 Font Sizes:"
+ALACRITTY_CONF="$HOME/.config/alacritty/alacritty.toml"
+if [[ -f "$ALACRITTY_CONF" ]]; then
+  FONT_SIZE=$(grep "^size = " "$ALACRITTY_CONF" | cut -d'=' -f2 | tr -d ' ')
+  echo "Alacritty: ${FONT_SIZE}pt"
+fi
+
+WAYBAR_STYLE="$HOME/.config/waybar/style.css"
+if [[ -f "$WAYBAR_STYLE" ]]; then
+  FONT_SIZE=$(grep "font-size:" "$WAYBAR_STYLE" | head -1 | sed -E 's/.*font-size: ([0-9]+)px.*/\1/')
+  echo "Waybar: ${FONT_SIZE}px"
+fi
+
+WOFI_STYLE="$HOME/.config/wofi/style.css"
+if [[ -f "$WOFI_STYLE" ]]; then
+  FONT_SIZE=$(grep "font-size:" "$WOFI_STYLE" | head -1 | sed -E 's/.*font-size: ([0-9]+)px.*/\1/')
+  echo "Wofi: ${FONT_SIZE}px"
+fi
+echo
+
+# Show layout information
+echo "📐 Layout Elements:"
+HYPR_CONF="$HOME/.config/hypr/looknfeel.conf"
+if [[ -f "$HYPR_CONF" ]]; then
+  GAPS_IN=$(grep "gaps_in = " "$HYPR_CONF" | cut -d'=' -f2 | tr -d ' ')
+  GAPS_OUT=$(grep "gaps_out = " "$HYPR_CONF" | cut -d'=' -f2 | tr -d ' ')
+  BORDER_SIZE=$(grep "border_size = " "$HYPR_CONF" | cut -d'=' -f2 | tr -d ' ')
+  echo "  Gaps (in/out): ${GAPS_IN}/${GAPS_OUT}px"
+  echo "  Border size: ${BORDER_SIZE}px"
+fi
+
+# Show available commands
+echo "🔧 Available Commands:"
+echo "  omarchy-scale-refresh    - Refresh scale detection"
+echo "  omarchy-scale-backup     - Backup current configuration"
+echo "  omarchy-scale-status     - Show this status (current command)" 
