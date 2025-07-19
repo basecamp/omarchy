@@ -22,7 +22,7 @@ mapfile -t themes < <(
 selection=$(printf '%s\n' "${themes[@]}" | wofi \
   --show dmenu \
   --allow-markup \
-  --width 150 \
+  --width 190 \
   --height 400 \
   -O alphabetical \
   --style ~/.config/wofi/select.css 2>/dev/null)
