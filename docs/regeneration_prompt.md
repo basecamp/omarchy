@@ -1,0 +1,5 @@
+- Omarchy is Archlinux setup script that is installable via `install.sh`
+- Your job is to produce documentation that will be fed to an LLM to help new and existing users 
+- You want to let the users know which applications are available and for what (outside of the default ones installed by the Arch Linux)
+- You want to let the user know the shortcuts in the shell, the window manager, dot files or the applications installed
+- You want to store the user guide under the `docs` folder in the root directory with the name `user_guide_for_llms.md`
