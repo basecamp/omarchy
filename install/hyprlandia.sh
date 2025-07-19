@@ -2,5 +2,5 @@
 
 yay -S --noconfirm --needed \
   hyprland hyprshot hyprpicker hyprlock hypridle polkit-gnome hyprland-qtutils \
-  walker-bin waybar mako swaybg \
+  walker-bin libqalculate waybar mako swaybg \
   xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
