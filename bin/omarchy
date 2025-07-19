@@ -3,6 +3,9 @@
 OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/dev/null)
 PATH="$PATH:$HOME/.local/share/omarchy/bin"
 
+# Source the migration library
+source ~/.local/share/omarchy/lib/omarchy-migrations-lib.sh
+
 show_ascii_art() {
   clear
   cat <<'EOF'
@@ -22,12 +25,13 @@ EOF
 main_menu() {
   show_ascii_art
 
-  local options=("Theme" "Setup" "Update" "Manual" "Exit")
+  local options=("Theme" "Setup" "Update" "Migrations" "Manual" "Exit")
   choice=$(printf "%s\n" "${options[@]}" | gum choose --header "") || exit 0
   case "$choice" in
   Theme) theme_menu ;;
   Update) update_menu ;;
   Setup) setup_menu ;;
+  Migrations) migrations_menu ;;
   Manual) open_manual ;;
   Exit) clear && exit 0 ;;
   esac
@@ -129,6 +133,35 @@ setup_menu() {
   done
 }
 
+migrations_menu() {
+  show_ascii_art
+  local menu=("Status" "List" "Create" "Run pending" "Re-run migration" "Back")
+  local commands=(
+    "migration_status"
+    "migration_list"
+    "migration_create"
+    "migration_run_pending"
+    "migration_run_selector"
+    "main_menu"
+  )
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Migrations") || main_menu
+  for i in "${!menu[@]}"; do
+    if [[ "${menu[$i]}" == "$choice" ]]; then
+      if [[ "$choice" == "Back" ]]; then
+        main_menu
+      else
+        eval "${commands[$i]}"
+        if [[ "$choice" != "Create" ]]; then
+          read -p "Press Enter to return..."
+        fi
+        migrations_menu
+      fi
+      break
+    fi
+  done
+}
+
 open_manual() {
   setsid chromium --new-window --ozone-platform=wayland --app="https://manuals.omamix.org/2/the-omarchy-manual" >/dev/null 2>&1 &
   clear
@@ -138,4 +171,47 @@ ack_command() {
   gum spin --spinner "globe" --title "Done!" -- sleep 1
 }
 
+# Handle command line arguments
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+  migrate)
+    shift
+    case "$1" in
+    status)
+      migration_status
+      ;;
+    create)
+      migration_create
+      ;;
+    list)
+      migration_list
+      ;;
+    run)
+      shift
+      migration_run_new "$1"
+      ;;
+    "")
+      migration_run_pending
+      ;;
+    *)
+      echo "Usage: omarchy migrate [status|create|list|run [all|<timestamp>]]"
+      echo "       omarchy migrate           # Run pending migrations"
+      echo "       omarchy migrate run       # Select a migration to run"
+      echo "       omarchy migrate run all   # Run all migrations"
+      echo "       omarchy migrate run <id>  # Run specific migration"
+      exit 1
+      ;;
+    esac
+    exit 0
+    ;;
+  *)
+    echo "Usage: omarchy [migrate <subcommand>]"
+    echo "       omarchy (interactive menu)"
+    exit 1
+    ;;
+  esac
+fi
+
+# If no arguments, show interactive menu
 main_menu
+
