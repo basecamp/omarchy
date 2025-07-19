@@ -45,6 +45,9 @@ touch "$HOME/.config/alacritty/alacritty.toml"
 # Trigger btop config reload
 pkill -SIGUSR2 btop
 
+# Auto-detect and set appropriate scaling
+"$HOME/.local/share/omarchy/bin/omarchy-scale-detect"
+
 # Restart components to apply new theme
 pkill waybar
 setsid waybar >/dev/null 2>&1 &

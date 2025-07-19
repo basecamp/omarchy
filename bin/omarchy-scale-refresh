@@ -1,0 +1,5 @@
+#!/bin/bash
+# Manually refresh monitor scale detection
+
+echo "Refreshing monitor scale detection..."
+"$HOME/.local/share/omarchy/bin/omarchy-scale-detect" 

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Zoom
 Comment=Zoom Video Conference
-Exec=env QT_SCALE_FACTOR=2 /usr/bin/zoom %U
+Exec=/usr/bin/zoom %U
 Icon=Zoom
 Terminal=false
 Type=Application

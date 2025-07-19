@@ -1,0 +1,76 @@
+#!/bin/bash
+# Update font sizes based on detected scale
+
+# Get the current scale from the environment file
+SCALE_FILE="$HOME/.config/environment.d/50-hypr-scale.conf"
+if [[ ! -f "$SCALE_FILE" ]]; then
+  echo "Scale configuration not found. Run omarchy-scale-detect first."
+  exit 1
+fi
+
+# Extract scale value
+SCALE=$(grep "^GDK_SCALE=" "$SCALE_FILE" | cut -d'=' -f2)
+if [[ -z "$SCALE" ]]; then
+  echo "Could not determine scale from $SCALE_FILE"
+  exit 1
+fi
+
+echo "Updating font sizes for ${SCALE}x scaling..."
+
+# Update Alacritty font size
+ALACRITTY_CONF="$HOME/.config/alacritty/alacritty.toml"
+if [[ -f "$ALACRITTY_CONF" ]]; then
+  # Calculate new font size (base 9 for 1x, 9 for 1.5x, 9 for 2x)
+  case $SCALE in
+    1) NEW_FONT_SIZE=9 ;;
+    1.5) NEW_FONT_SIZE=9 ;;
+    2) NEW_FONT_SIZE=9 ;;
+    *) NEW_FONT_SIZE=9 ;;
+  esac
+  sed -i -E "s/^size = [0-9]+/size = $NEW_FONT_SIZE/" "$ALACRITTY_CONF"
+  echo "Updated Alacritty font size to $NEW_FONT_SIZE"
+fi
+
+# Update Waybar font size
+WAYBAR_STYLE="$HOME/.config/waybar/style.css"
+if [[ -f "$WAYBAR_STYLE" ]]; then
+  # Calculate new font size (base 12 for 1x, 12 for 1.5x, 12 for 2x)
+  case $SCALE in
+    1) NEW_FONT_SIZE=12 ;;
+    1.5) NEW_FONT_SIZE=12 ;;
+    2) NEW_FONT_SIZE=12 ;;
+    *) NEW_FONT_SIZE=12 ;;
+  esac
+  sed -i -E "s/font-size: [0-9]+px/font-size: ${NEW_FONT_SIZE}px/" "$WAYBAR_STYLE"
+  echo "Updated Waybar font size to ${NEW_FONT_SIZE}px"
+fi
+
+# Update Wofi font size
+WOFI_STYLE="$HOME/.config/wofi/style.css"
+if [[ -f "$WOFI_STYLE" ]]; then
+  # Calculate new font size (base 14 for 1x, 14 for 1.5x, 14 for 2x)
+  case $SCALE in
+    1) NEW_FONT_SIZE=14 ;;
+    1.5) NEW_FONT_SIZE=14 ;;
+    2) NEW_FONT_SIZE=14 ;;
+    *) NEW_FONT_SIZE=14 ;;
+  esac
+  sed -i -E "s/font-size: [0-9]+px/font-size: ${NEW_FONT_SIZE}px/" "$WOFI_STYLE"
+  echo "Updated Wofi font size to ${NEW_FONT_SIZE}px"
+fi
+
+# Update Hyprlock font size
+HYPRLOCK_CONF="$HOME/.config/hypr/hyprlock.conf"
+if [[ -f "$HYPRLOCK_CONF" ]]; then
+  # Calculate new font size (base 24 for 1x, 24 for 1.5x, 24 for 2x)
+  case $SCALE in
+    1) NEW_FONT_SIZE=24 ;;
+    1.5) NEW_FONT_SIZE=24 ;;
+    2) NEW_FONT_SIZE=24 ;;
+    *) NEW_FONT_SIZE=24 ;;
+  esac
+  sed -i -E "s/font_size = [0-9]+/font_size = $NEW_FONT_SIZE/" "$HYPRLOCK_CONF"
+  echo "Updated Hyprlock font size to $NEW_FONT_SIZE"
+fi
+
+echo "Font size updates complete!" 
