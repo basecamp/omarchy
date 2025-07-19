@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# Sets background from URL or local path
+# Usage: omarchy-set-background [url|path]
+
+if [ $# -eq 0 ]; then
+  echo "Usage: omarchy-set-background [url|path]"
+  exit 1
+fi
+
+INPUT="$1"
+CURRENT_THEME_LINK="$HOME/.config/omarchy/current/theme"
+CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
+
+# Get current theme name
+if [[ -L "$CURRENT_THEME_LINK" ]]; then
+  CURRENT_THEME=$(readlink "$CURRENT_THEME_LINK")
+  THEME_NAME=$(basename "$CURRENT_THEME")
+else
+  echo "Error: No current theme found"
+  exit 1
+fi
+
+BACKGROUNDS_DIR="$HOME/.config/omarchy/backgrounds/$THEME_NAME"
+
+# Create backgrounds directory if it doesn't exist
+mkdir -p "$BACKGROUNDS_DIR"
+
+# Determine if input is URL or local path
+if [[ "$INPUT" =~ ^https?:// ]]; then
+  # Get mimetype from HTTP headers
+  CONTENT_TYPE=$(wget --spider --server-response "$INPUT" 2>&1 | grep -i "content-type:" | cut -d':' -f2 | tr -d '\r\n ' | xargs)
+
+  if [[ ! "$CONTENT_TYPE" =~ ^image/ ]]; then
+    echo "Error: URL is not an image (detected: Content-Type: $CONTENT_TYPE)"
+    exit 1
+  fi
+
+  # Set extension based on mimetype
+  EXT=${CONTENT_TYPE##*/}
+  EXT=${EXT%%;*}
+
+  FILENAME="$THEME_NAME-$(date +%s).$EXT"
+  TARGET_PATH="$BACKGROUNDS_DIR/$FILENAME"
+
+  # Download the file
+  gum spin --title "Downloading image" -- wget -O "$TARGET_PATH" "$INPUT" || {
+    rm -f "$TARGET_PATH"
+    exit 1
+  }
+
+else
+  # It's a local path - copy it
+  if [ ! -f "$INPUT" ]; then
+    echo "Error: File not found: $INPUT"
+    exit 1
+  fi
+
+  # Validate that the local file is actually an image
+  FILE_TYPE=$(file -b --mime-type "$INPUT")
+  if [[ ! "$FILE_TYPE" =~ ^image/ ]]; then
+    echo "Error: File is not a valid image (detected: $FILE_TYPE)"
+    exit 1
+  fi
+
+  FILENAME=$(basename "$INPUT")
+  TARGET_PATH="$BACKGROUNDS_DIR/$FILENAME"
+
+  cp "$INPUT" "$TARGET_PATH"
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to copy file"
+    exit 1
+  fi
+
+fi
+
+# Set the new background as current
+ln -nsf "$TARGET_PATH" "$CURRENT_BACKGROUND_LINK"
+
+# Apply the background
+pkill -x swaybg
+setsid swaybg -i "$TARGET_PATH" -m fill >/dev/null 2>&1 &
