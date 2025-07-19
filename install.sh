@@ -1,8 +1,16 @@
+#!/bin/bash
+
 # Exit immediately if a command exits with a non-zero status
 set -e
 
 # Give people a chance to retry running the installation
-trap 'echo "Omarchy installation failed! You can retry by running: source ~/.local/share/omarchy/install.sh"' ERR
+catch_errors() {
+  echo -e "\n\e[31mOmarchy installation failed!\e[0m"
+  echo "You can retry by running: bash ~/.local/share/omarchy/install.sh"
+  echo "Get help from the community: https://discord.gg/tXFUdasqhY"
+}
+
+trap catch_errors ERR
 
 # Install everything
 for f in ~/.local/share/omarchy/install/*.sh; do
