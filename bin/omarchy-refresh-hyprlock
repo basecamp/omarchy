@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Overwrite local Hyprlock settings with the latest in Omarchy, but create a backup
+cp -f ~/.config/hypr/hyprlock.conf ~/.config/hypr/hyprlock.conf.bak 2>/dev/null
+cp -f ~/.local/share/omarchy/config/hypr/hyprlock.conf ~/.config/hypr/ 2>/dev/null
