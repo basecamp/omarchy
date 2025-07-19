@@ -9,6 +9,6 @@ else
   sleep 1
   wl-screenrec \
     -g "$region" \
-    -f "$HOME/Videos/screen-recording-$(date +'%Y-%m-%d_%H-%M-%S').mp4" \
+    -f "$HOME/Videos/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4" \
     --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart"
 fi
