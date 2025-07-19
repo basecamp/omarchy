@@ -6,6 +6,5 @@ if gum confirm "Refresh Waybar config? This will replace your current settings w
   cp -f ~/.local/share/omarchy/config/waybar/style.css ~/.config/waybar/ 2>/dev/null
 
   # Restart waybar
-  pkill waybar
-  setsid waybar >/dev/null 2>&1 &
+  pkill -SIGUSR2 waybar
 fi

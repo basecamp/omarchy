@@ -1,10 +1,7 @@
 #!/bin/bash
 
-# Power menu for Omarchy
-# Provides power off, restart, and sleep options
-
-# Function to show power menu. The first characters are invisible sort keys.
 show_power_menu() {
+  # The first characters are invisible sort keys.
   local menu_options="\u200B Lock
 \u200C󰤄 Suspend
 \u200D Relaunch
@@ -21,5 +18,4 @@ show_power_menu() {
   esac
 }
 
-# Main execution
 show_power_menu

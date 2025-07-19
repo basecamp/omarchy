@@ -11,9 +11,8 @@ else
 fi
 
 # Get the latest while trying to preserve any modifications
-git stash
-git pull
-git stash pop
+git pull --autostash
+git diff --check || git reset --merge
 
 # Run any pending migrations
 for file in migrations/*.sh; do
