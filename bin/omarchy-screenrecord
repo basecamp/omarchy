@@ -1,0 +1,14 @@
+#!/bin/bash
+
+if pgrep -x wl-screenrec >/dev/null; then
+  pkill -x wl-screenrec
+  notify-send "Screen recording saved to ~/Videos" -t 2000
+else
+  region=$(slurp) || exit 1
+  notify-send "Screen recording starting..." -t 1000
+  sleep 1
+  wl-screenrec \
+    -g "$region" \
+    -f "$HOME/Videos/screen-recording-$(date +'%Y-%m-%d_%H-%M-%S').mp4" \
+    --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart"
+fi
