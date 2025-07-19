@@ -63,6 +63,7 @@ weight = 5
 name = "hyprland_keybinds"
 placeholder = "Hyprland Keybinds"
 switcher_only = true
+hidden = true
 
 [builtins.applications]
 weight = 5
@@ -89,6 +90,7 @@ placeholder = "Bookmarks"
 name = "bookmarks"
 icon = "bookmark"
 switcher_only = true
+hidden = true
 
 [[builtins.bookmarks.entries]]
 label = "Walker"
@@ -131,10 +133,11 @@ prompt = "You are a helpful general assistant. Keep your answers short and preci
 [builtins.calc]
 require_number = true
 weight = 5
-name = "calc"
+name = "Calculator"
 icon = "accessories-calculator"
 placeholder = "Calculator"
 min_chars = 3                   # Min chars to calculate. 3 allows "3+3"
+prefix = "="
 
 [builtins.windows]
 weight = 5
@@ -143,6 +146,7 @@ name = "windows"
 placeholder = "Windows"
 show_icon_when_single = true
 switcher_only = true
+hidden = true
 
 [builtins.clipboard]
 always_put_new_on_top = true
@@ -161,6 +165,7 @@ icon = "utilities-terminal"
 switcher_only = true
 name = "commands"
 placeholder = "Commands"
+hidden = true
 
 [builtins.custom_commands]
 weight = 5
@@ -171,12 +176,13 @@ placeholder = "Custom Commands"
 [builtins.emojis]
 exec = "wl-copy"
 weight = 5
-name = "emojis"
+name = "Emojis"
 placeholder = "Emojis"
 switcher_only = true
 history = true
 typeahead = true
 show_unqualified = false
+prefix = "."
 
 [builtins.symbols]
 after_copy = ""
@@ -186,6 +192,7 @@ placeholder = "Symbols"
 switcher_only = true
 history = true
 typeahead = true
+hidden = true
 
 [builtins.finder]
 use_fd = false
@@ -201,6 +208,7 @@ refresh = true
 concurrency = 8
 show_icon_when_single = true
 preview_images = false
+hidden = true
 
 [builtins.runner]
 eager_loading = true
@@ -214,7 +222,8 @@ generic_entry = false       # Generic command runner
 shell_config = ""           # Path to shell to parse for aliases
 refresh = true
 use_fd = false
-enabled = false
+switcher_only = true
+hidden = true
 
 [builtins.ssh]
 weight = 5
@@ -224,6 +233,7 @@ placeholder = "SSH"
 switcher_only = true
 history = true
 refresh = true
+hidden = true
 
 [builtins.switcher]
 weight = 5
@@ -238,6 +248,7 @@ icon = "applications-internet"
 name = "websearch"
 placeholder = "Websearch"
 switcher_only = true
+hidden = true
 
 [[builtins.websearch.entries]]
 name = "Google"
@@ -274,3 +285,4 @@ icon = "accessories-dictionary"
 placeholder = "Translation"
 switcher_only = true
 provider = "googlefree"
+hidden = true

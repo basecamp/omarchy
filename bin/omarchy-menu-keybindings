@@ -61,4 +61,3 @@ grep -h '^[[:space:]]*bind' $USER_HYPRLAND_CONF $OMARCHY_BINDINGS_CONF |
     }
 }' |
   walker --dmenu --theme keybindings -p 'Keybindings'
-
