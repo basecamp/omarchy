@@ -3,6 +3,13 @@
 OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/dev/null)
 PATH="$PATH:$HOME/.local/share/omarchy/bin"
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 show_ascii_art() {
   clear
   cat <<'EOF'
@@ -22,12 +29,13 @@ EOF
 main_menu() {
   show_ascii_art
 
-  local options=("Theme" "Setup" "Update" "Manual" "Exit")
+  local options=("Theme" "Setup" "Update" "Monitor Resolution" "Manual" "Exit")
   choice=$(printf "%s\n" "${options[@]}" | gum choose --header "") || exit 0
   case "$choice" in
   Theme) theme_menu ;;
   Update) update_menu ;;
   Setup) setup_menu ;;
+  "Monitor Resolution") monitor_menu ;;
   Manual) open_manual ;;
   Exit) clear && exit 0 ;;
   esac
@@ -127,6 +135,318 @@ setup_menu() {
       break
     fi
   done
+}
+
+monitor_menu() {
+  show_ascii_art
+
+  # Detect current resolution
+  local resolution=""
+  if command -v hyprctl &>/dev/null; then
+    resolution=$(hyprctl monitors | grep -A1 "^Monitor" | grep -o '[0-9]\+x[0-9]\+' | head -1)
+  elif command -v wlr-randr &>/dev/null; then
+    resolution=$(wlr-randr | grep -P "^[A-Za-z0-9-]+\s+\(enabled\)\s+[0-9]+x[0-9]+" | head -1 | grep -o '[0-9]\+x[0-9]\+')
+  elif command -v xrandr &>/dev/null; then
+    resolution=$(xrandr | grep '*' | head -1 | awk '{print $1}')
+  fi
+
+  # Get current settings
+  local current_gdk_scale=$(grep -o 'GDK_SCALE,[0-9.]*' ~/.local/share/omarchy/config/hypr/monitors.conf 2>/dev/null | cut -d',' -f2 || echo "not set")
+  local current_text_scale=$(gsettings get org.gnome.desktop.interface text-scaling-factor 2>/dev/null || echo "not set")
+
+  # Check if global font scaling is configured
+  local global_font_scale=""
+  if [ -f "$HOME/.local/share/omarchy/config/environment.d/font-scaling.conf" ]; then
+    global_font_scale=$(grep "QT_SCALE_FACTOR=" "$HOME/.local/share/omarchy/config/environment.d/font-scaling.conf" | cut -d'=' -f2)
+  fi
+
+  echo -e "${BLUE}Current Monitor Settings:${NC}"
+  if [[ -n "$resolution" ]]; then
+    echo -e "  Resolution: ${YELLOW}$resolution${NC}"
+  else
+    echo -e "  Resolution: ${RED}Could not detect${NC}"
+  fi
+  echo -e "  Monitor Scale (GDK_SCALE): ${YELLOW}$current_gdk_scale${NC}"
+  if [[ -n "$global_font_scale" ]]; then
+    echo -e "  Global Font Scale: ${YELLOW}$global_font_scale${NC}"
+  else
+    echo -e "  Font Scale Factor: ${YELLOW}$current_text_scale${NC}"
+  fi
+
+  local menu=("Change monitor scale" "Change font scale" "Back")
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Monitor Resolution") || main_menu
+  case "$choice" in
+  "Change monitor scale") change_monitor_scale ;;
+  "Change font scale") change_font_scale ;;
+  "Back") main_menu ;;
+  esac
+}
+
+change_monitor_scale() {
+  show_ascii_art
+  echo -e "${BLUE}Monitor Scale Options:${NC}"
+  echo -e "  1: Standard scaling (1x)"
+  echo -e "  2: High-DPI scaling (2x)"
+
+  local menu=("Set to 1x" "Set to 2x" "Back")
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Change Monitor Scale") || monitor_menu
+  case "$choice" in
+  "Set to 1x") apply_monitor_scale "1" ;;
+  "Set to 2x") apply_monitor_scale "2" ;;
+  "Back") monitor_menu ;;
+  esac
+}
+
+change_font_scale() {
+  show_ascii_art
+  echo -e "${BLUE}Font Scale Options:${NC}"
+  echo -e "  0.7: Smaller text (more content)"
+  echo -e "  0.8: Small text (1080p recommended)"
+  echo -e "  0.9: Medium text (1440p recommended)"
+  echo -e "  1.0: Default text size"
+  echo -e "  1.2: Large text (4K recommended)"
+  echo -e "  1.4: Larger text (5K recommended)"
+  echo -e "  1.6: Largest text (6K recommended)"
+
+  local menu=("0.7" "0.8" "0.9" "1.0" "1.2" "1.4" "1.6" "Custom" "Reset to Default" "Back")
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Change Font Scale") || monitor_menu
+  case "$choice" in
+  "0.7" | "0.8" | "0.9" | "1.0" | "1.2" | "1.4" | "1.6") apply_font_scale "$choice" ;;
+  "Custom")
+    local custom_scale
+    custom_scale=$(gum input --placeholder="Font scale factor (e.g., 0.8)" --header="Custom Font Scale")
+    if [[ -n "$custom_scale" ]]; then
+      apply_font_scale "$custom_scale"
+    else
+      change_font_scale
+    fi
+    ;;
+  "Reset to Default") reset_font_scale ;;
+  "Back") monitor_menu ;;
+  esac
+}
+
+apply_monitor_scale() {
+  local scale=$1
+  local monitors_conf="$HOME/.local/share/omarchy/config/hypr/monitors.conf"
+
+  if [ -f "$monitors_conf" ]; then
+    sed -i "s/env = GDK_SCALE,[0-9.]*/env = GDK_SCALE,$scale/" "$monitors_conf"
+    echo -e "${GREEN}Monitor scale set to $scale in config file${NC}"
+  else
+    echo -e "${RED}Could not find monitors.conf file${NC}"
+  fi
+
+  # Apply changes immediately using hyprctl if available
+  if command -v hyprctl &>/dev/null; then
+    echo -e "${BLUE}Applying changes to running Hyprland session...${NC}"
+    # Get the monitor name
+    local monitor_name=$(hyprctl monitors | grep -E "^Monitor" | head -1 | awk '{print $2}' | sed 's/://')
+    if [[ -n "$monitor_name" ]]; then
+      hyprctl keyword monitor "$monitor_name,preferred,auto,$scale" 2>/dev/null
+      echo -e "${GREEN}Applied scale $scale to monitor $monitor_name${NC}"
+    else
+      echo -e "${YELLOW}Could not determine monitor name for immediate application${NC}"
+    fi
+  fi
+
+  echo -e "${YELLOW}Note: For permanent changes, restart Hyprland (Super+Esc, then Relaunch)${NC}"
+
+  ack_command
+  monitor_menu
+}
+
+reset_font_scale() {
+  echo -e "${BLUE}Resetting font scaling to default values...${NC}"
+
+  # Reset GTK font scaling
+  if command -v gsettings &>/dev/null; then
+    gsettings set org.gnome.desktop.interface text-scaling-factor 1.0
+    echo -e "${GREEN}✓ GTK font scaling reset to 1.0${NC}"
+  fi
+
+  # Reset Alacritty font size to default
+  local alacritty_conf="$HOME/.config/alacritty/alacritty.toml"
+  if [ -f "$alacritty_conf" ]; then
+    sed -i "s/size = [0-9]*/size = 10/" "$alacritty_conf"
+    echo -e "${GREEN}✓ Alacritty font size reset to 10${NC}"
+  fi
+
+  # Reset Neovim GUI font size to default
+  local nvim_conf="$HOME/.local/share/omarchy/config/nvim/lua/plugins/theme.lua"
+  if [ -f "$nvim_conf" ]; then
+    if grep -q "vim.opt.guifont" "$nvim_conf"; then
+      sed -i "s/vim.opt.guifont = .*/vim.opt.guifont = \"CaskaydiaMono Nerd Font:h10\"/" "$nvim_conf"
+      echo -e "${GREEN}✓ Neovim GUI font size reset to 10${NC}"
+    fi
+  fi
+
+  # Remove global font scaling configuration
+  local env_file="$HOME/.local/share/omarchy/config/environment.d/font-scaling.conf"
+  if [ -f "$env_file" ]; then
+    rm "$env_file"
+    echo -e "${GREEN}✓ Global font scaling configuration removed${NC}"
+  fi
+
+  # Remove fontconfig scaling
+  local fontconfig_file="$HOME/.config/fontconfig/fonts.conf"
+  if [ -f "$fontconfig_file" ]; then
+    rm "$fontconfig_file"
+    echo -e "${GREEN}✓ Fontconfig scaling removed${NC}"
+  fi
+
+  # Reload fontconfig
+  if command -v fc-cache &>/dev/null; then
+    fc-cache -f -v >/dev/null 2>&1
+    echo -e "${GREEN}✓ Font cache refreshed${NC}"
+  fi
+
+  echo -e "${YELLOW}Font scaling reset to default values. Some applications may need to be restarted.${NC}"
+
+  ack_command
+  monitor_menu
+}
+
+apply_font_scale() {
+  local scale=$1
+
+  echo -e "${BLUE}Applying global font scaling factor: $scale${NC}"
+
+  # 1. GTK applications (gsettings)
+  if command -v gsettings &>/dev/null; then
+    gsettings set org.gnome.desktop.interface text-scaling-factor "$scale"
+    echo -e "${GREEN}✓ GTK font scaling set to $scale${NC}"
+  fi
+
+  # 2. Electron applications (QT_SCALE_FACTOR)
+  export QT_SCALE_FACTOR="$scale"
+  echo -e "${GREEN}✓ Electron/Qt font scaling set to $scale${NC}"
+
+  # 3. Alacritty configuration - set font size directly based on resolution
+  local alacritty_conf="$HOME/.config/alacritty/alacritty.toml"
+  if [ -f "$alacritty_conf" ]; then
+    # Determine base font size based on scale factor
+    local base_font_size=9 # Default base size
+    local new_font_size
+
+    case "$scale" in
+    "0.7") new_font_size=7 ;;
+    "0.8") new_font_size=8 ;;
+    "0.9") new_font_size=9 ;;
+    "1.0") new_font_size=10 ;;
+    "1.2") new_font_size=12 ;;
+    "1.4") new_font_size=14 ;;
+    "1.6") new_font_size=16 ;;
+    *)
+      # For custom values, calculate from base
+      new_font_size=$(awk "BEGIN {printf \"%.0f\", $base_font_size * $scale}")
+      ;;
+    esac
+
+    sed -i "s/size = [0-9]*/size = $new_font_size/" "$alacritty_conf"
+    echo -e "${GREEN}✓ Alacritty font size set to $new_font_size${NC}"
+  fi
+
+  # 4. Neovim GUI font scaling (for Neovide, etc.)
+  local nvim_conf="$HOME/.local/share/omarchy/config/nvim/lua/plugins/theme.lua"
+  if [ -f "$nvim_conf" ]; then
+    # Look for GUI font settings and update them
+    if grep -q "vim.opt.guifont" "$nvim_conf"; then
+      # Update existing GUI font setting
+      sed -i "s/vim.opt.guifont = .*/vim.opt.guifont = \"CaskaydiaMono Nerd Font:h$new_font_size\"/" "$nvim_conf"
+      echo -e "${GREEN}✓ Neovim GUI font size updated to $new_font_size${NC}"
+    else
+      # Add GUI font setting if it doesn't exist
+      echo "vim.opt.guifont = \"CaskaydiaMono Nerd Font:h$new_font_size\"" >>"$nvim_conf"
+      echo -e "${GREEN}✓ Neovim GUI font size set to $new_font_size${NC}"
+    fi
+  fi
+
+  # 5. Environment variables for global scaling
+  local env_file="$HOME/.local/share/omarchy/config/environment.d/font-scaling.conf"
+  mkdir -p "$(dirname "$env_file")"
+  cat >"$env_file" <<EOF
+# Font scaling configuration
+export QT_SCALE_FACTOR=$scale
+export GDK_SCALE_FACTOR=$scale
+export XCURSOR_SIZE=$(awk "BEGIN {printf \"%.0f\", 24 * $scale}")
+EOF
+  echo -e "${GREEN}✓ Environment variables configured${NC}"
+
+  # 6. Fontconfig for system-wide font scaling
+  local fontconfig_dir="$HOME/.config/fontconfig"
+  mkdir -p "$fontconfig_dir"
+  cat >"$fontconfig_dir/fonts.conf" <<EOF
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <match target="pattern">
+    <test qual="any" name="size" compare="more">
+      <double>0</double>
+    </test>
+    <edit name="pixelsize" mode="assign">
+      <times>
+        <name>pixelsize</name>
+        <double>$scale</double>
+      </times>
+    </edit>
+  </match>
+</fontconfig>
+EOF
+  echo -e "${GREEN}✓ Fontconfig scaling configured${NC}"
+
+  # 7. Reload fontconfig
+  if command -v fc-cache &>/dev/null; then
+    fc-cache -f -v >/dev/null 2>&1
+    echo -e "${GREEN}✓ Font cache refreshed${NC}"
+  fi
+
+  # Verify GTK setting
+  if command -v gsettings &>/dev/null; then
+    local current_scale=$(gsettings get org.gnome.desktop.interface text-scaling-factor 2>/dev/null)
+    echo -e "${BLUE}Current GTK font scale factor: $current_scale${NC}"
+  fi
+
+  echo -e "${YELLOW}Note: Font scaling applied globally.${NC}"
+  echo -e "${BLUE}To see changes:${NC}"
+  echo -e "  • GTK apps: Changes should be immediate"
+  echo -e "  • Alacritty terminals: Font size updated in ~/.config/alacritty/alacritty.toml"
+  echo -e "  • Electron apps: Restart the application"
+  echo -e "  • For environment variables: source ~/.local/share/omarchy/config/environment.d/font-scaling.conf"
+
+  # Offer to reload Hyprland configuration
+  if command -v hyprctl &>/dev/null; then
+    echo -e "\n${BLUE}To apply font changes to all applications:${NC}"
+    if gum confirm "Reload Hyprland configuration now?"; then
+      reload_hyprland_config
+    fi
+  fi
+
+  ack_command
+  monitor_menu
+}
+
+reload_hyprland_config() {
+  echo -e "${BLUE}Reloading Hyprland configuration...${NC}"
+  echo -e "${YELLOW}Warning: This will close all windows and restart Hyprland.${NC}"
+  echo -e "${YELLOW}Make sure to save any unsaved work before continuing.${NC}"
+
+  if gum confirm "Continue with Hyprland relaunch?"; then
+    if command -v hyprctl &>/dev/null; then
+      # Relaunch Hyprland (this closes all windows and restarts)
+      hyprctl dispatch exit
+      echo -e "${GREEN}✓ Hyprland relaunch initiated${NC}"
+      echo -e "${BLUE}Font scaling changes will be applied when Hyprland restarts.${NC}"
+    else
+      echo -e "${YELLOW}hyprctl not available, cannot relaunch automatically${NC}"
+      echo -e "${YELLOW}Please manually relaunch Hyprland (Super+Esc, then Relaunch)${NC}"
+    fi
+  else
+    echo -e "${BLUE}Relaunch cancelled. Changes will apply on next Hyprland restart.${NC}"
+  fi
 }
 
 open_manual() {
