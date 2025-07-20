@@ -23,6 +23,7 @@
   all: initial;
   padding: 0 6px;
   margin: 0 1.5px;
+  min-width: 10px;
 }
 
 #tray,
