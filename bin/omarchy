@@ -151,7 +151,7 @@ monitor_menu() {
   fi
 
   # Get current settings
-  local current_gdk_scale=$(grep -o 'GDK_SCALE,[0-9.]*' ~/.local/share/omarchy/config/hypr/monitors.conf 2>/dev/null | cut -d',' -f2 || echo "not set")
+  local current_gdk_scale=$(grep '^env = GDK_SCALE,' ~/.local/share/omarchy/config/hypr/monitors.conf 2>/dev/null | cut -d',' -f2 | tr -d ' ' || echo "not set")
   local current_text_scale=$(gsettings get org.gnome.desktop.interface text-scaling-factor 2>/dev/null || echo "not set")
 
   # Check if global font scaling is configured
@@ -205,11 +205,21 @@ change_monitor_scale() {
   # Show recommendation based on resolution
   if [[ -n "$resolution" ]]; then
     local width=$(echo "$resolution" | cut -d'x' -f1)
+    local current_gdk_scale=$(grep '^env = GDK_SCALE,' ~/.local/share/omarchy/config/hypr/monitors.conf 2>/dev/null | cut -d',' -f2 | tr -d ' ' || echo "1")
+
     echo -e ""
     if [ "$width" -ge 3840 ]; then
-      echo -e "${GREEN}Recommendation: 2x scaling for ${resolution}${NC}"
+      if [[ "$current_gdk_scale" == "2" ]]; then
+        echo -e "${GREEN}Current: 2x scaling for ${resolution} (recommended)${NC}"
+      else
+        echo -e "${GREEN}Recommendation: 2x scaling for ${resolution}${NC}"
+      fi
     else
-      echo -e "${GREEN}Recommendation: 1x scaling for ${resolution}${NC}"
+      if [[ "$current_gdk_scale" == "1" ]]; then
+        echo -e "${GREEN}Current: 1x scaling for ${resolution} (recommended)${NC}"
+      else
+        echo -e "${GREEN}Recommendation: 1x scaling for ${resolution}${NC}"
+      fi
     fi
   fi
 
@@ -241,23 +251,39 @@ change_font_scale() {
   echo -e "  1.4: Larger text (5K recommended)"
   echo -e "  1.6: Largest text (6K recommended)"
 
-  # Show recommendation based on resolution
+  # Show recommendation based on effective resolution (accounting for current scaling)
   if [[ -n "$resolution" ]]; then
     local width=$(echo "$resolution" | cut -d'x' -f1)
+    local current_gdk_scale=$(grep '^env = GDK_SCALE,' ~/.local/share/omarchy/config/hypr/monitors.conf 2>/dev/null | cut -d',' -f2 | tr -d ' ' || echo "1")
+
+    # Calculate effective width based on current scaling
+    local effective_width=$width
+    if [[ "$current_gdk_scale" == "2" ]]; then
+      effective_width=$((width / 2))
+    fi
+
     echo -e ""
-    if [ "$width" -eq 1920 ]; then
-      echo -e "${GREEN}Recommendation: 0.8 for ${resolution}${NC}"
-    elif [ "$width" -eq 2560 ]; then
-      echo -e "${GREEN}Recommendation: 0.9 for ${resolution}${NC}"
-    elif [ "$width" -eq 3840 ]; then
+    if [ "$effective_width" -eq 1920 ]; then
+      if [[ "$current_gdk_scale" == "2" ]]; then
+        echo -e "${GREEN}Recommendation: 0.8 for ${resolution} (effective 1920x1080)${NC}"
+      else
+        echo -e "${GREEN}Recommendation: 0.8 for ${resolution}${NC}"
+      fi
+    elif [ "$effective_width" -eq 2560 ]; then
+      if [[ "$current_gdk_scale" == "2" ]]; then
+        echo -e "${GREEN}Recommendation: 0.9 for ${resolution} (effective 2560x1440)${NC}"
+      else
+        echo -e "${GREEN}Recommendation: 0.9 for ${resolution}${NC}"
+      fi
+    elif [ "$effective_width" -eq 3840 ]; then
       echo -e "${GREEN}Recommendation: 1.2 for ${resolution}${NC}"
-    elif [ "$width" -eq 5120 ]; then
+    elif [ "$effective_width" -eq 5120 ]; then
       echo -e "${GREEN}Recommendation: 1.4 for ${resolution}${NC}"
-    elif [ "$width" -eq 6016 ]; then
+    elif [ "$effective_width" -eq 6016 ]; then
       echo -e "${GREEN}Recommendation: 1.6 for ${resolution}${NC}"
-    elif [ "$width" -ge 3840 ]; then
+    elif [ "$effective_width" -ge 3840 ]; then
       echo -e "${GREEN}Recommendation: 1.2-1.4 for ${resolution}${NC}"
-    elif [ "$width" -ge 2560 ]; then
+    elif [ "$effective_width" -ge 2560 ]; then
       echo -e "${GREEN}Recommendation: 0.9-1.0 for ${resolution}${NC}"
     else
       echo -e "${GREEN}Recommendation: 0.8-0.9 for ${resolution}${NC}"
@@ -391,9 +417,9 @@ apply_font_scale() {
     "0.8") new_font_size=8 ;;
     "0.9") new_font_size=9 ;;
     "1.0") new_font_size=10 ;;
-    "1.2") new_font_size=12 ;;
-    "1.4") new_font_size=14 ;;
-    "1.6") new_font_size=16 ;;
+    "1.2") new_font_size=11 ;;
+    "1.4") new_font_size=13 ;;
+    "1.6") new_font_size=15 ;;
     *)
       # For custom values, calculate from base
       new_font_size=$(awk "BEGIN {printf \"%.0f\", $base_font_size * $scale}")
@@ -488,36 +514,62 @@ show_resolution_recommendations() {
   local width=$(echo "$resolution" | cut -d'x' -f1)
   local height=$(echo "$resolution" | cut -d'x' -f2)
 
-  echo -e "\n${BLUE}Recommendations for ${YELLOW}${resolution}${NC}:"
+  # Get current GDK_SCALE to calculate effective resolution
+  local current_gdk_scale=$(grep '^env = GDK_SCALE,' ~/.local/share/omarchy/config/hypr/monitors.conf 2>/dev/null | cut -d',' -f2 | tr -d ' ' || echo "1")
 
-  # Determine recommendations based on resolution
-  if [ "$width" -eq 1920 ] && [ "$height" -eq 1080 ]; then
-    echo -e "  ${GREEN}Monitor Scale: 1x${NC} (standard scaling)"
-    echo -e "  ${GREEN}Font Scale: 0.8${NC} (smaller text, more content)"
-    echo -e "  ${YELLOW}Note: 1080p works well with 1x scaling${NC}"
-  elif [ "$width" -eq 2560 ] && [ "$height" -eq 1440 ]; then
-    echo -e "  ${GREEN}Monitor Scale: 1x${NC} (standard scaling)"
-    echo -e "  ${GREEN}Font Scale: 0.9${NC} (balanced text size)"
-    echo -e "  ${YELLOW}Note: 1440p is optimal for 1x scaling${NC}"
-  elif [ "$width" -eq 3840 ] && [ "$height" -eq 2160 ]; then
+  # Calculate effective resolution based on current scaling
+  local effective_width=$width
+  local effective_height=$height
+  if [[ "$current_gdk_scale" == "2" ]]; then
+    effective_width=$((width / 2))
+    effective_height=$((height / 2))
+  fi
+
+  echo -e "\n${BLUE}Recommendations for ${YELLOW}${resolution}${NC}:"
+  if [[ "$current_gdk_scale" == "2" ]]; then
+    echo -e "  ${YELLOW}Current scaling: 2x (effective resolution: ${effective_width}x${effective_height})${NC}"
+  fi
+
+  # Determine recommendations based on effective resolution
+  if [ "$effective_width" -eq 1920 ] && [ "$effective_height" -eq 1080 ]; then
+    if [[ "$current_gdk_scale" == "2" ]]; then
+      echo -e "  ${GREEN}Monitor Scale: 2x${NC} (current - high-DPI scaling)"
+      echo -e "  ${GREEN}Font Scale: 0.8${NC} (smaller text, more content)"
+      echo -e "  ${YELLOW}Note: Effective 1080p with 2x scaling${NC}"
+    else
+      echo -e "  ${GREEN}Monitor Scale: 1x${NC} (standard scaling)"
+      echo -e "  ${GREEN}Font Scale: 0.8${NC} (smaller text, more content)"
+      echo -e "  ${YELLOW}Note: 1080p works well with 1x scaling${NC}"
+    fi
+  elif [ "$effective_width" -eq 2560 ] && [ "$effective_height" -eq 1440 ]; then
+    if [[ "$current_gdk_scale" == "2" ]]; then
+      echo -e "  ${GREEN}Monitor Scale: 2x${NC} (current - high-DPI scaling)"
+      echo -e "  ${GREEN}Font Scale: 0.9${NC} (balanced text size)"
+      echo -e "  ${YELLOW}Note: Effective 1440p with 2x scaling${NC}"
+    else
+      echo -e "  ${GREEN}Monitor Scale: 1x${NC} (standard scaling)"
+      echo -e "  ${GREEN}Font Scale: 0.9${NC} (balanced text size)"
+      echo -e "  ${YELLOW}Note: 1440p is optimal for 1x scaling${NC}"
+    fi
+  elif [ "$effective_width" -eq 3840 ] && [ "$effective_height" -eq 2160 ]; then
     echo -e "  ${GREEN}Monitor Scale: 2x${NC} (high-DPI scaling)"
     echo -e "  ${GREEN}Font Scale: 1.2${NC} (larger text for readability)"
     echo -e "  ${YELLOW}Note: 4K requires 2x scaling for usable UI elements${NC}"
-  elif [ "$width" -eq 5120 ] && [ "$height" -eq 2880 ]; then
+  elif [ "$effective_width" -eq 5120 ] && [ "$effective_height" -eq 2880 ]; then
     echo -e "  ${GREEN}Monitor Scale: 2x${NC} (high-DPI scaling)"
     echo -e "  ${GREEN}Font Scale: 1.4${NC} (even larger text)"
     echo -e "  ${YELLOW}Note: 5K displays need 2x scaling${NC}"
-  elif [ "$width" -eq 6016 ] && [ "$height" -eq 3384 ]; then
+  elif [ "$effective_width" -eq 6016 ] && [ "$effective_height" -eq 3384 ]; then
     echo -e "  ${GREEN}Monitor Scale: 2x${NC} (high-DPI scaling)"
     echo -e "  ${GREEN}Font Scale: 1.6${NC} (largest text for high-DPI)"
     echo -e "  ${YELLOW}Note: 6K displays require 2x scaling${NC}"
   else
-    # Generic recommendations based on width
-    if [ "$width" -ge 3840 ]; then
+    # Generic recommendations based on effective width
+    if [ "$effective_width" -ge 3840 ]; then
       echo -e "  ${GREEN}Monitor Scale: 2x${NC} (recommended for high-DPI)"
       echo -e "  ${GREEN}Font Scale: 1.2-1.4${NC} (adjust based on preference)"
       echo -e "  ${YELLOW}Note: High-resolution display detected${NC}"
-    elif [ "$width" -ge 2560 ]; then
+    elif [ "$effective_width" -ge 2560 ]; then
       echo -e "  ${GREEN}Monitor Scale: 1x${NC} (recommended)"
       echo -e "  ${GREEN}Font Scale: 0.9-1.0${NC} (adjust based on preference)"
       echo -e "  ${YELLOW}Note: QHD+ display detected${NC}"
