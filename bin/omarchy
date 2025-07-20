@@ -173,21 +173,45 @@ monitor_menu() {
     echo -e "  Font Scale Factor: ${YELLOW}$current_text_scale${NC}"
   fi
 
-  local menu=("Change monitor scale" "Change font scale" "Back")
+  # Show recommendations based on resolution
+  if [[ -n "$resolution" ]]; then
+    show_resolution_recommendations "$resolution"
+  fi
+
+  local menu=("Change monitor scale" "Change font scale" "Advanced Configuration" "Back")
   local choice
   choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Monitor Resolution") || main_menu
   case "$choice" in
   "Change monitor scale") change_monitor_scale ;;
   "Change font scale") change_font_scale ;;
+  "Advanced Configuration") advanced_config_menu ;;
   "Back") main_menu ;;
   esac
 }
 
 change_monitor_scale() {
   show_ascii_art
+
+  # Get current resolution for recommendations
+  local resolution=""
+  if command -v hyprctl &>/dev/null; then
+    resolution=$(hyprctl monitors | grep -A1 "^Monitor" | grep -o '[0-9]\+x[0-9]\+' | head -1)
+  fi
+
   echo -e "${BLUE}Monitor Scale Options:${NC}"
   echo -e "  1: Standard scaling (1x)"
   echo -e "  2: High-DPI scaling (2x)"
+
+  # Show recommendation based on resolution
+  if [[ -n "$resolution" ]]; then
+    local width=$(echo "$resolution" | cut -d'x' -f1)
+    echo -e ""
+    if [ "$width" -ge 3840 ]; then
+      echo -e "${GREEN}Recommendation: 2x scaling for ${resolution}${NC}"
+    else
+      echo -e "${GREEN}Recommendation: 1x scaling for ${resolution}${NC}"
+    fi
+  fi
 
   local menu=("Set to 1x" "Set to 2x" "Back")
   local choice
@@ -201,6 +225,13 @@ change_monitor_scale() {
 
 change_font_scale() {
   show_ascii_art
+
+  # Get current resolution for recommendations
+  local resolution=""
+  if command -v hyprctl &>/dev/null; then
+    resolution=$(hyprctl monitors | grep -A1 "^Monitor" | grep -o '[0-9]\+x[0-9]\+' | head -1)
+  fi
+
   echo -e "${BLUE}Font Scale Options:${NC}"
   echo -e "  0.7: Smaller text (more content)"
   echo -e "  0.8: Small text (1080p recommended)"
@@ -209,6 +240,29 @@ change_font_scale() {
   echo -e "  1.2: Large text (4K recommended)"
   echo -e "  1.4: Larger text (5K recommended)"
   echo -e "  1.6: Largest text (6K recommended)"
+
+  # Show recommendation based on resolution
+  if [[ -n "$resolution" ]]; then
+    local width=$(echo "$resolution" | cut -d'x' -f1)
+    echo -e ""
+    if [ "$width" -eq 1920 ]; then
+      echo -e "${GREEN}Recommendation: 0.8 for ${resolution}${NC}"
+    elif [ "$width" -eq 2560 ]; then
+      echo -e "${GREEN}Recommendation: 0.9 for ${resolution}${NC}"
+    elif [ "$width" -eq 3840 ]; then
+      echo -e "${GREEN}Recommendation: 1.2 for ${resolution}${NC}"
+    elif [ "$width" -eq 5120 ]; then
+      echo -e "${GREEN}Recommendation: 1.4 for ${resolution}${NC}"
+    elif [ "$width" -eq 6016 ]; then
+      echo -e "${GREEN}Recommendation: 1.6 for ${resolution}${NC}"
+    elif [ "$width" -ge 3840 ]; then
+      echo -e "${GREEN}Recommendation: 1.2-1.4 for ${resolution}${NC}"
+    elif [ "$width" -ge 2560 ]; then
+      echo -e "${GREEN}Recommendation: 0.9-1.0 for ${resolution}${NC}"
+    else
+      echo -e "${GREEN}Recommendation: 0.8-0.9 for ${resolution}${NC}"
+    fi
+  fi
 
   local menu=("0.7" "0.8" "0.9" "1.0" "1.2" "1.4" "1.6" "Custom" "Reset to Default" "Back")
   local choice
@@ -427,6 +481,217 @@ EOF
 
   ack_command
   monitor_menu
+}
+
+show_resolution_recommendations() {
+  local resolution=$1
+  local width=$(echo "$resolution" | cut -d'x' -f1)
+  local height=$(echo "$resolution" | cut -d'x' -f2)
+
+  echo -e "\n${BLUE}Recommendations for ${YELLOW}${resolution}${NC}:"
+
+  # Determine recommendations based on resolution
+  if [ "$width" -eq 1920 ] && [ "$height" -eq 1080 ]; then
+    echo -e "  ${GREEN}Monitor Scale: 1x${NC} (standard scaling)"
+    echo -e "  ${GREEN}Font Scale: 0.8${NC} (smaller text, more content)"
+    echo -e "  ${YELLOW}Note: 1080p works well with 1x scaling${NC}"
+  elif [ "$width" -eq 2560 ] && [ "$height" -eq 1440 ]; then
+    echo -e "  ${GREEN}Monitor Scale: 1x${NC} (standard scaling)"
+    echo -e "  ${GREEN}Font Scale: 0.9${NC} (balanced text size)"
+    echo -e "  ${YELLOW}Note: 1440p is optimal for 1x scaling${NC}"
+  elif [ "$width" -eq 3840 ] && [ "$height" -eq 2160 ]; then
+    echo -e "  ${GREEN}Monitor Scale: 2x${NC} (high-DPI scaling)"
+    echo -e "  ${GREEN}Font Scale: 1.2${NC} (larger text for readability)"
+    echo -e "  ${YELLOW}Note: 4K requires 2x scaling for usable UI elements${NC}"
+  elif [ "$width" -eq 5120 ] && [ "$height" -eq 2880 ]; then
+    echo -e "  ${GREEN}Monitor Scale: 2x${NC} (high-DPI scaling)"
+    echo -e "  ${GREEN}Font Scale: 1.4${NC} (even larger text)"
+    echo -e "  ${YELLOW}Note: 5K displays need 2x scaling${NC}"
+  elif [ "$width" -eq 6016 ] && [ "$height" -eq 3384 ]; then
+    echo -e "  ${GREEN}Monitor Scale: 2x${NC} (high-DPI scaling)"
+    echo -e "  ${GREEN}Font Scale: 1.6${NC} (largest text for high-DPI)"
+    echo -e "  ${YELLOW}Note: 6K displays require 2x scaling${NC}"
+  else
+    # Generic recommendations based on width
+    if [ "$width" -ge 3840 ]; then
+      echo -e "  ${GREEN}Monitor Scale: 2x${NC} (recommended for high-DPI)"
+      echo -e "  ${GREEN}Font Scale: 1.2-1.4${NC} (adjust based on preference)"
+      echo -e "  ${YELLOW}Note: High-resolution display detected${NC}"
+    elif [ "$width" -ge 2560 ]; then
+      echo -e "  ${GREEN}Monitor Scale: 1x${NC} (recommended)"
+      echo -e "  ${GREEN}Font Scale: 0.9-1.0${NC} (adjust based on preference)"
+      echo -e "  ${YELLOW}Note: QHD+ display detected${NC}"
+    else
+      echo -e "  ${GREEN}Monitor Scale: 1x${NC} (recommended)"
+      echo -e "  ${GREEN}Font Scale: 0.8-0.9${NC} (adjust based on preference)"
+      echo -e "  ${YELLOW}Note: Standard resolution display${NC}"
+    fi
+  fi
+}
+
+advanced_config_menu() {
+  show_ascii_art
+  echo -e "${BLUE}Advanced Configuration Options:${NC}"
+  echo -e "  ${YELLOW}Fractional Scaling:${NC} For displays that need precise scaling"
+  echo -e "  ${YELLOW}Custom Monitor Setup:${NC} Manual monitor configuration"
+  echo -e "  ${YELLOW}Reset All Settings:${NC} Restore all to defaults"
+
+  local menu=("Fractional Scaling" "Custom Monitor Setup" "Reset All Settings" "Back")
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Advanced Configuration") || monitor_menu
+  case "$choice" in
+  "Fractional Scaling") fractional_scaling_menu ;;
+  "Custom Monitor Setup") custom_monitor_setup ;;
+  "Reset All Settings") reset_all_settings ;;
+  "Back") monitor_menu ;;
+  esac
+}
+
+fractional_scaling_menu() {
+  show_ascii_art
+  echo -e "${BLUE}Fractional Scaling${NC}"
+  echo -e "${YELLOW}What is fractional scaling?${NC}"
+  echo -e "  Fractional scaling allows for precise scaling factors between 1x and 2x."
+  echo -e "  This is useful for displays that are too small for 1x but too large for 2x."
+  echo -e "  Common use cases: 1440p displays, mixed DPI setups, specific preferences."
+  echo -e ""
+  echo -e "${GREEN}Recommended fractional scales:${NC}"
+  echo -e "  • 1.25x: Good for 1440p displays"
+  echo -e "  • 1.33x: Balanced scaling for high-DPI"
+  echo -e "  • 1.5x: Middle ground between 1x and 2x"
+  echo -e "  • 1.75x: High scaling for very dense displays"
+  echo -e ""
+  echo -e "${YELLOW}Note: Fractional scaling may cause slight blur in some applications.${NC}"
+  echo -e "${YELLOW}For best results, use integer scaling (1x or 2x) when possible.${NC}"
+
+  local menu=("1.25x" "1.33x" "1.5x" "1.75x" "Custom" "Back")
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Fractional Scaling") || advanced_config_menu
+  case "$choice" in
+  "1.25x") apply_fractional_scale "1.25" ;;
+  "1.33x") apply_fractional_scale "1.33" ;;
+  "1.5x") apply_fractional_scale "1.5" ;;
+  "1.75x") apply_fractional_scale "1.75" ;;
+  "Custom")
+    local custom_scale
+    custom_scale=$(gum input --placeholder="Fractional scale (e.g., 1.25)" --header="Custom Fractional Scale")
+    if [[ -n "$custom_scale" ]]; then
+      apply_fractional_scale "$custom_scale"
+    else
+      fractional_scaling_menu
+    fi
+    ;;
+  "Back") advanced_config_menu ;;
+  esac
+}
+
+apply_fractional_scale() {
+  local scale=$1
+  local monitors_conf="$HOME/.local/share/omarchy/config/hypr/monitors.conf"
+
+  echo -e "${BLUE}Applying fractional scaling: $scale${NC}"
+  echo -e "${YELLOW}This will set both GDK_SCALE and monitor scaling to $scale${NC}"
+
+  if gum confirm "Apply fractional scaling $scale?"; then
+    # Update GDK_SCALE
+    if [ -f "$monitors_conf" ]; then
+      sed -i "s/env = GDK_SCALE,[0-9.]*/env = GDK_SCALE,$scale/" "$monitors_conf"
+      echo -e "${GREEN}✓ GDK_SCALE set to $scale${NC}"
+    fi
+
+    # Update monitor configuration for all detected monitors
+    if [ -f "$monitors_conf" ] && command -v hyprctl &>/dev/null; then
+      # Comment out existing monitor lines
+      sed -i 's/^monitor=/# monitor=/' "$monitors_conf"
+
+      # Get monitor names and add new configurations
+      local monitor_names=$(hyprctl monitors | awk '/^Monitor/ {print $2}' | sed 's/://')
+      for monitor in $monitor_names; do
+        echo "monitor = $monitor,preferred,auto,$scale" >>"$monitors_conf"
+      done
+      echo -e "${GREEN}✓ Monitor scaling set to $scale${NC}"
+    fi
+
+    # Apply immediately if hyprctl is available
+    if command -v hyprctl &>/dev/null; then
+      local monitor_names=$(hyprctl monitors | awk '/^Monitor/ {print $2}' | sed 's/://')
+      for monitor in $monitor_names; do
+        hyprctl keyword monitor "$monitor,preferred,auto,$scale" 2>/dev/null
+      done
+      echo -e "${GREEN}✓ Applied fractional scaling immediately${NC}"
+    fi
+
+    echo -e "${YELLOW}Fractional scaling applied. Some applications may need to be restarted.${NC}"
+    echo -e "${YELLOW}For best results, consider relaunching Hyprland.${NC}"
+
+    ack_command
+    advanced_config_menu
+  else
+    echo -e "${BLUE}Fractional scaling cancelled.${NC}"
+    advanced_config_menu
+  fi
+}
+
+custom_monitor_setup() {
+  show_ascii_art
+  echo -e "${BLUE}Custom Monitor Setup${NC}"
+  echo -e "${YELLOW}This allows you to manually configure monitor settings.${NC}"
+  echo -e "${YELLOW}Use this if automatic detection doesn't work correctly.${NC}"
+
+  local menu=("Manual Monitor Scale" "Manual Font Scale" "Back")
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Custom Monitor Setup") || advanced_config_menu
+  case "$choice" in
+  "Manual Monitor Scale")
+    local manual_scale
+    manual_scale=$(gum input --placeholder="Monitor scale (e.g., 1, 2, 1.5)" --header="Manual Monitor Scale")
+    if [[ -n "$manual_scale" ]]; then
+      apply_monitor_scale "$manual_scale"
+    else
+      custom_monitor_setup
+    fi
+    ;;
+  "Manual Font Scale")
+    local manual_font_scale
+    manual_font_scale=$(gum input --placeholder="Font scale (e.g., 0.8, 1.2)" --header="Manual Font Scale")
+    if [[ -n "$manual_font_scale" ]]; then
+      apply_font_scale "$manual_font_scale"
+    else
+      custom_monitor_setup
+    fi
+    ;;
+  "Back") advanced_config_menu ;;
+  esac
+}
+
+reset_all_settings() {
+  show_ascii_art
+  echo -e "${RED}Reset All Monitor and Font Settings${NC}"
+  echo -e "${YELLOW}This will reset ALL monitor and font scaling to default values.${NC}"
+  echo -e "${YELLOW}This action cannot be undone.${NC}"
+
+  if gum confirm "Are you sure you want to reset ALL settings?"; then
+    # Reset monitor scale
+    local monitors_conf="$HOME/.local/share/omarchy/config/hypr/monitors.conf"
+    if [ -f "$monitors_conf" ]; then
+      sed -i "s/env = GDK_SCALE,[0-9.]*/env = GDK_SCALE,1/" "$monitors_conf"
+      sed -i 's/^monitor=/# monitor=/' "$monitors_conf"
+      echo "monitor=,preferred,auto,1" >>"$monitors_conf"
+      echo -e "${GREEN}✓ Monitor scale reset to 1x${NC}"
+    fi
+
+    # Reset font scaling
+    reset_font_scale
+
+    echo -e "${GREEN}✓ All settings reset to defaults${NC}"
+    echo -e "${YELLOW}Consider relaunching Hyprland to apply all changes.${NC}"
+
+    ack_command
+    advanced_config_menu
+  else
+    echo -e "${BLUE}Reset cancelled.${NC}"
+    advanced_config_menu
+  fi
 }
 
 reload_hyprland_config() {
