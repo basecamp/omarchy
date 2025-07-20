@@ -4,7 +4,8 @@ if [ -z "$OMARCHY_BARE" ]; then
   yay -S --noconfirm --needed \
     gnome-calculator gnome-keyring signal-desktop \
     obsidian-bin libreoffice obs-studio kdenlive \
-    xournalpp localsend-bin
+    xournalpp localsend-bin \
+    libappindicator-gtk3
 
   yay -S --noconfirm --needed pinta ||
     echo -e "\e[31mFailed to install Pinta. Continuing without!\e[0m"
