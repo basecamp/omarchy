@@ -12,6 +12,9 @@ if [ -z "$OMARCHY_BARE" ]; then
   yay -S --noconfirm --needed typora ||
     echo -e "\e[31mFailed to install Typora. Continuing without!\e[0m"
 
+  yay -S --noconfirm --needed zoom ||
+    echo -e "\e[31mFailed to install Zoom. Continuing without!\e[0m"
+
   yay -S --noconfirm --needed dropbox libappindicator-gtk3 python-gpgme nautilus-dropbox ||
     echo -e "\e[31mFailed to install Dropbox. Continuing without!\e[0m"
 
