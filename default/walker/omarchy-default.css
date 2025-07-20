@@ -82,7 +82,7 @@ slider,
 
 /* List items */
 child {
-  padding: 5px;
+  padding: 0px 12px;
   background: transparent;
   border-radius: 0;
 }
@@ -106,6 +106,7 @@ child:hover {
 /* Text */
 #text {
   color: @text;
+  padding: 14px 0;
 }
 
 #label {

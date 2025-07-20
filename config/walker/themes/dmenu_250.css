@@ -1,6 +1,4 @@
-@import url("file://~/.config/walker/themes/omarchy-default.css");
+@import url("file://~//.local/share/omarchy/default/walker/omarchy-default.css");
 @import url("file://~/.config/omarchy/current/theme/walker.css");
 
-child {
-  padding: 12px 12px;
-}
+/* Place any overrides below */
