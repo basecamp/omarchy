@@ -78,6 +78,7 @@ show_icon_when_single = true
 show_generic = true
 history = true
 icon = ""
+hidden = true
 
 [builtins.applications.actions]
 enabled = false
@@ -137,7 +138,6 @@ name = "Calculator"
 icon = "accessories-calculator"
 placeholder = "Calculator"
 min_chars = 3                   # Min chars to calculate. 3 allows "3+3"
-prefix = "="
 
 [builtins.windows]
 weight = 5
@@ -172,6 +172,7 @@ weight = 5
 icon = "utilities-terminal"
 name = "custom_commands"
 placeholder = "Custom Commands"
+hidden = true
 
 [builtins.emojis]
 exec = "wl-copy"
