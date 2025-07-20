@@ -1,5 +1,5 @@
 echo "Replace wofi with walker as the default launcher"
-yay -S --noconfirm --needed walker-bin libqalculate
+yay -Sy --noconfirm --needed walker-bin libqalculate
 yay -Rns --noconfirm wofi
 
 if gum confirm "Launcher changed to walker. Would you like to remove the wofi config files?"; then
