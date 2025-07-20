@@ -1,0 +1,10 @@
+[ui.window.box]
+width = 150
+
+[ui.window.box.scroll.list]
+max_width = 150
+min_width = 150
+width = 150
+
+[ui.window.box.search]
+hide = true
