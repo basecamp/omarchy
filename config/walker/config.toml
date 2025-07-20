@@ -1,9 +1,10 @@
 app_launch_prefix = "uwsm app -- "
 terminal_title_flag = ""
 locale = ""
-close_when_open = true             # Toggle on reopen
+close_when_open = true                                             # Toggle on reopen
 theme = "search"
 theme_base = []
+theme_location = ["~/.local/share/omarchy/default/walker/themes/"]
 monitor = ""
 hotreload_theme = false
 as_window = false
@@ -158,6 +159,7 @@ placeholder = "Clipboard"
 image_height = 300
 max_entries = 10
 switcher_only = true
+hidden = true
 
 [builtins.commands]
 weight = 5
