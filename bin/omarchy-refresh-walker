@@ -1,7 +1,5 @@
 #!/bin/bash
 
 if [[ "$1" == "-y" ]] || gum confirm "Refresh Walker config? This will replace your current settings with Omarchy defaults."; then
-  rm -rf ~/.config/walker/*
   cp -f ~/.local/share/omarchy/config/walker/config.toml ~/.config/walker/ 2>/dev/null
-  cp -f ~/.local/share/omarchy/config/walker/themes/* ~/.config/walker/themes/ 2>/dev/null
 fi
