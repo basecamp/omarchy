@@ -93,7 +93,7 @@ PartOf=graphical.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/seamless-login uwsm start -- hyprland.desktop
-Restart=always
+Restart=on-success
 RestartSec=2
 User=$USER
 TTYPath=/dev/tty1
