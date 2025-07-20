@@ -2,6 +2,7 @@
 
 MIGRATION_LOG="$HOME/.local/share/omarchy/migrations.log"
 MIGRATION_DIR="$HOME/.local/share/omarchy/migrations"
+SYSTEM_START_DATE=$(stat -c %W / 2>/dev/null || echo "0")
 
 # Ensure config directory exists
 mkdir -p "$(dirname "$MIGRATION_LOG")"
@@ -44,6 +45,11 @@ get_pending_migrations() {
     # If filename is just timestamp.sh (old format), extract it differently
     if [[ "$timestamp" == "$filename" ]]; then
       timestamp="${filename%.sh}"
+    fi
+
+    # Skip migrations older than system start date
+    if [[ "$timestamp" -lt "$SYSTEM_START_DATE" ]]; then
+      continue
     fi
 
     if ! is_migration_completed "$timestamp"; then
@@ -122,11 +128,35 @@ run_single_migration() {
 
 # Migration status
 migration_status() {
-  completed_count=$(get_completed_migrations | wc -l)
-  total_count=$(ls "$MIGRATION_DIR"/*.sh 2>/dev/null | wc -l)
-  pending_count=$((total_count - completed_count))
+  local completed_count=0
+  local total_count=0
+  local pending_count=0
+  local pre_system_count=0
+
+  for file in "$MIGRATION_DIR"/*.sh; do
+    [[ ! -f "$file" ]] && continue
+
+    local filename=$(basename "$file")
+    local timestamp=$(get_migration_timestamp "$filename")
+
+    if [[ "$timestamp" -lt "$SYSTEM_START_DATE" ]]; then
+      ((pre_system_count++))
+      continue
+    fi
+
+    ((total_count++))
+
+    if is_migration_completed "$timestamp"; then
+      ((completed_count++))
+    else
+      ((pending_count++))
+    fi
+  done
 
   echo "Migrations: $completed_count completed, $pending_count pending"
+  if [[ "$pre_system_count" -gt 0 ]]; then
+    echo "($pre_system_count pre-system migrations excluded)"
+  fi
 }
 
 # Create new migration
@@ -148,8 +178,8 @@ migration_create() {
 #!/bin/bash
 
 echo "Running migration..."
-
-# Migration code here
+# yay -Rns --noconfirm PACKAGE
+# yay -S --noconfirm --needed PACKAGE
 
 EOF
 
@@ -167,7 +197,9 @@ migration_list() {
     timestamp=$(get_migration_timestamp "$filename")
     desc=$(get_migration_description "$filename")
 
-    if is_migration_completed "$timestamp"; then
+    if [[ "$timestamp" -lt "$SYSTEM_START_DATE" ]]; then
+      echo -e "\e[90m\uf05e\e[0m ${desc} (${timestamp}) [pre-system]"
+    elif is_migration_completed "$timestamp"; then
       echo -e "\e[32m\uf00c\e[0m ${desc} (${timestamp})"
     else
       echo -e "\e[33m\uf254\e[0m ${desc} (${timestamp})"
@@ -229,8 +261,13 @@ migration_run_selector() {
     local filename=$(basename "$file")
     local timestamp=$(get_migration_timestamp "$filename")
     local desc=$(get_migration_description "$filename")
-    local status=""
 
+    # Skip migrations older than system start date
+    if [[ "$timestamp" -lt "$SYSTEM_START_DATE" ]]; then
+      continue
+    fi
+
+    local status=""
     if is_migration_completed "$timestamp"; then
       status="\uf00c"
     else
@@ -254,10 +291,19 @@ migration_run_selector() {
 
 # Run ALL migrations (even completed ones)
 migration_run_all() {
-  echo "Re-running ALL migrations..."
+  echo "Re-running ALL migrations (from system start date)..."
 
   for file in $(ls "$MIGRATION_DIR"/*.sh 2>/dev/null | sort); do
     [[ ! -f "$file" ]] && continue
+
+    local filename=$(basename "$file")
+    local timestamp=$(get_migration_timestamp "$filename")
+
+    # Skip migrations older than system start date
+    if [[ "$timestamp" -lt "$SYSTEM_START_DATE" ]]; then
+      continue
+    fi
+
     run_single_migration "$file" "true"
   done
 }
