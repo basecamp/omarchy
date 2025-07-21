@@ -27,7 +27,6 @@ if [[ ! -d "$THEME_PATH" ]]; then
 fi
 
 # Update theme symlinks
-ln -nsf "$BACKGROUND_PATH" "$HOME/.config/omarchy/current/backgrounds"
 ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 
 # Change gnome modes
@@ -46,8 +45,7 @@ touch "$HOME/.config/alacritty/alacritty.toml"
 pkill -SIGUSR2 btop
 
 # Restart components to apply new theme
-pkill waybar
-setsid waybar >/dev/null 2>&1 &
+pkill -SIGUSR2 waybar
 makoctl reload
 hyprctl reload
 

@@ -1,0 +1,43 @@
+#!/bin/bash
+
+source ~/.local/share/omarchy/ansi.sh
+
+if gum confirm "Install editor in addition to Neovim?"; then
+  options=("VSCode" "Cursor" "Zed" "Helix" "Emacs" "Nevermind")
+  choice=$(printf "%s\n" "${options[@]}" | gum choose --header "Add programming editor") || exit 0
+
+  case "$choice" in
+  VSCode) yay -Sy --noconfirm --needed vscodium-electron-bin ;;
+  Cursor) yay -Sy --noconfirm --needed cursor ;;
+  Zed) yay -Sy --noconfirm --needed zed ;;
+  Helix) yay -Sy --noconfirm --needed helix-bin ;;
+  Emacs) yay -Sy --noconfirm --needed emacs ;;
+  Nevermind) ;;
+  esac
+fi
+
+if gum confirm "Login to GitHub?"; then
+  gh auth login
+fi
+
+if gum confirm "Setup Dropbox?"; then
+  omarchy-setup-dropbox
+fi
+
+if gum confirm "Start Docker DBs?"; then
+  options=("MySQL" "Redis" "PostgreSQL")
+  choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases") || exit 0
+
+  if [[ -n "$choices" ]]; then
+    for db in $choices; do
+      case $db in
+      MySQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mysql8 -e MYSQL_ROOT_PASSWORD= -e MYSQL_ALLOW_EMPTY_PASSWORD=true mysql:8.4 ;;
+      Redis) sudo docker run -d --restart unless-stopped -p "127.0.0.1:6379:6379" --name=redis redis:7 ;;
+      PostgreSQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:5432:5432" --name=postgres16 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16 ;;
+      esac
+    done
+  fi
+fi
+
+gum spin --spinner "globe" --title "You're all set!" -- sleep 2
+setsid chromium --new-window --ozone-platform=wayland --app="https://manuals.omamix.org/2/the-omarchy-manual" >/dev/null 2>&1 &

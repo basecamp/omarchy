@@ -1,0 +1,15 @@
+#!/bin/bash
+
+echo "Installing all dependencies..."
+yay -S --noconfirm --needed \
+  dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
+
+echo -e "\nFirst login to Dropbox..."
+setsid chromium --new-window --ozone-platform=wayland --app="https://www.dropbox.com/login" >/dev/null 2>&1 &
+
+if gum confirm "Have you logged into your account yet?"; then
+  echo "Starting Dropbox and asking for identification..."
+  uwsm app -- dropbox-cli start &>/dev/null &
+else
+  echo "Can't setup Dropbox before you're logged in"
+fi

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+if [[ ! -f ~/.local/state/omarchy/after-first-run.mode ]]; then
+  uwsm app -- alacritty --class=Omarchy --title=Omarchy -e ~/.local/share/omarchy/bin/omarchy-first-run-flow
+  mkdir -p ~/.local/state/omarchy
+  touch ~/.local/state/omarchy/after-first-run.mode
+fi

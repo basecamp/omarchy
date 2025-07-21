@@ -4,18 +4,7 @@ OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/de
 PATH="$PATH:$HOME/.local/share/omarchy/bin"
 
 show_ascii_art() {
-  clear
-  cat <<'EOF'
- ▄██████▄    ▄▄▄▄███▄▄▄▄      ▄████████    ▄████████  ▄████████    ▄█    █▄    ▄██   ▄  
-███    ███ ▄██▀▀▀███▀▀▀██▄   ███    ███   ███    ███ ███    ███   ███    ███   ███   ██▄
-███    ███ ███   ███   ███   ███    ███   ███    ███ ███    █▀    ███    ███   ███▄▄▄███
-███    ███ ███   ███   ███   ███    ███  ▄███▄▄▄▄██▀ ███         ▄███▄▄▄▄███▄▄ ▀▀▀▀▀▀███
-███    ███ ███   ███   ███ ▀███████████ ▀▀███▀▀▀▀▀   ███        ▀▀███▀▀▀▀███▀  ▄██   ███
-███    ███ ███   ███   ███   ███    ███ ▀███████████ ███    █▄    ███    ███   ███   ███
-███    ███ ███   ███   ███   ███    ███   ███    ███ ███    ███   ███    ███   ███   ███
- ▀██████▀   ▀█   ███   █▀    ███    █▀    ███    ███ ████████▀    ███    █▀     ▀█████▀ 
-                                          ███    ███                                    
-EOF
+  source ~/.local/share/omarchy/ansi.sh
   echo "                                                                                 $OMARCHY_VERSION"
 }
 
@@ -35,11 +24,11 @@ main_menu() {
 
 update_menu() {
   show_ascii_art
-  local menu=("Omarchy" "Waybar" "Wofi" "Plymouth" "Desktop apps" "Back")
+  local menu=("Omarchy" "Waybar" "Walker" "Plymouth" "Desktop apps" "Back")
   local commands=(
     "omarchy-update"
     "omarchy-refresh-waybar"
-    "omarchy-refresh-wofi"
+    "omarchy-refresh-walker"
     "omarchy-refresh-plymouth"
     "omarchy-refresh-applications"
     "main_menu"
@@ -105,12 +94,11 @@ remove_theme_prompt() {
 
 setup_menu() {
   show_ascii_art
-  local menu=("Add fingerprint sensor" "Remove fingerprint sensor" "Add Fido2 device" "Remove Fido2 device" "Back")
+  local menu=("Dropbox" "Fingerprint sensor" "Fido2 device" "Back")
   local commands=(
+    "omarchy-setup-dropbox"
     "omarchy-setup-fingerprint"
-    "omarchy-setup-fingerprint --remove"
     "omarchy-setup-fido2"
-    "omarchy-setup-fido2 --remove"
     "main_menu"
   )
   local choice

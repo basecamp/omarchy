@@ -69,5 +69,5 @@ web2app-remove() {
 # Ensure changes to ~/.XCompose are immediately available
 refresh-xcompose() {
   pkill fcitx5
-  setsid fcitx5 &>/dev/null &
+  uwsm app -- fcitx5 >/dev/null 2>&1 &
 }

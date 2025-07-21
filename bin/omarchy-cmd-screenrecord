@@ -1,0 +1,20 @@
+#!/bin/bash
+
+screenrecording() {
+  notify-send "Screen recording starting..." -t 1000
+  sleep 1
+  wl-screenrec \
+    -f "$HOME/Videos/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4" \
+    --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" \
+    "$@"
+}
+
+if pgrep -x wl-screenrec >/dev/null; then
+  pkill -x wl-screenrec
+  notify-send "Screen recording saved to ~/Videos" -t 2000
+elif [[ "$1" == "output" ]]; then
+  screenrecording -o ""
+else
+  region=$(slurp) || exit 1
+  screenrecording -g "$region"
+fi
