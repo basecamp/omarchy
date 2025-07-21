@@ -41,6 +41,11 @@
   margin-right: 12px;
 }
 
+#backlight {
+  font-size: 15px;
+  padding: 0 8px;
+}
+
 tooltip {
   padding: 2px;
 }
