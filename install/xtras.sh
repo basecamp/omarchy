@@ -12,9 +12,6 @@ if [ -z "$OMARCHY_BARE" ]; then
       echo -e "\e[31mFailed to install $pkg. Continuing without!\e[0m"
   done
 
-  yay -S --noconfirm --needed dropbox libappindicator-gtk3 python-gpgme nautilus-dropbox ||
-    echo -e "\e[31mFailed to install Dropbox. Continuing without!\e[0m"
-
   yay -S --noconfirm --needed 1password-beta 1password-cli ||
     echo -e "\e[31mFailed to install 1password. Continuing without!\e[0m"
 fi

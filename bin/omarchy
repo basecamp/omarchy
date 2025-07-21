@@ -105,8 +105,9 @@ remove_theme_prompt() {
 
 setup_menu() {
   show_ascii_art
-  local menu=("Add fingerprint sensor" "Remove fingerprint sensor" "Add Fido2 device" "Remove Fido2 device" "Back")
+  local menu=("Dropbox" "Add fingerprint sensor" "Remove fingerprint sensor" "Add Fido2 device" "Remove Fido2 device" "Back")
   local commands=(
+    "omarchy-setup-dropbox"
     "omarchy-setup-fingerprint"
     "omarchy-setup-fingerprint --remove"
     "omarchy-setup-fido2"
