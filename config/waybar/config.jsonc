@@ -16,7 +16,7 @@
     "network",
     "pulseaudio",
     "cpu",
-    "custom/brightness",
+    "backlight",
     "battery"
   ],
   "hyprland/workspaces": {
@@ -66,13 +66,25 @@
     "nospacing": 1,
     "on-click": "alacritty --class=Impala -e impala"
   },
-  "custom/brightness": {
-    "exec": "b=$(brightnessctl -d $(ls /sys/class/backlight/ | head -n1) g); m=$(brightnessctl -d $(ls /sys/class/backlight/ | head -n1) m); p=$((b * 100 / m)); if [ $p -ge 90 ]; then icon>
-    "interval": 5,
-    "on-scroll-up": "brightnessctl -d $(ls /sys/class/backlight/ | head -n1) set +5%",
-    "on-scroll-down": "brightnessctl -d $(ls /sys/class/backlight/ | head -n1) set 5%-",
-    "format": "{}",
-    "tooltip": false
+  "backlight": {
+    "device": "", // Empty This For Autodetect
+    "format": "{icon}",
+    "tooltip-format": "Brightness: {percent}%",
+    "interval": 2,
+    "on-scroll-up": "brightnessctl set +5%",
+    "on-scroll-down": "brightnessctl set 5%-",
+    "format-icons": [
+       "",  // 0–10%
+       "",  // 11–20%
+       "",  // 21–30%
+       "",  // 31–40%
+       "",  // 41–50%
+       "",  // 51–60%
+       "",  // 61–70%
+       "",  // 71–80%
+       "",  // 81–90%
+       ""   // 91–100%
+     ]
   },
   "battery": {
     "format": "{capacity}% {icon}",
