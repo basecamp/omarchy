@@ -27,7 +27,6 @@ if [[ ! -d "$THEME_PATH" ]]; then
 fi
 
 # Update theme symlinks
-ln -nsf "$BACKGROUND_PATH" "$HOME/.config/omarchy/current/backgrounds"
 ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 
 # Change gnome modes
