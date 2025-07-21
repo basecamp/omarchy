@@ -33,6 +33,9 @@ if [[ -n "${OMARCHY_USER_EMAIL//[[:space:]]/}" ]]; then
   git config --global user.email "$OMARCHY_USER_EMAIL"
 fi
 
+# Set default git editor
+git config --global core.editor "nvim"
+
 # Set default XCompose that is triggered with CapsLock
 tee ~/.XCompose >/dev/null <<EOF
 include "%H/.local/share/omarchy/default/xcompose"
