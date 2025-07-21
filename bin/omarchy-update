@@ -26,5 +26,5 @@ done
 # Back to where we came from
 cd - >/dev/null
 
-echo -e ""
-gum confirm "Update system packages too?" && yay -Syu --noconfirm
+# Update system packages
+yay -Syu --noconfirm
