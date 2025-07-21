@@ -1,10 +1,25 @@
 #!/bin/bash
 
-if gum confirm "Refresh Waybar config? This will replace your current settings with Omarchy defaults."; then
-  # Overwrite local waybar settings with the latest in Omarchy
-  cp -f ~/.local/share/omarchy/config/waybar/config.jsonc ~/.config/waybar/ 2>/dev/null
-  cp -f ~/.local/share/omarchy/config/waybar/style.css ~/.config/waybar/ 2>/dev/null
+# Backup existing settings
+cp -f ~/.config/waybar/config.jsonc ~/.config/waybar/config.jsonc.bak 2>/dev/null
+cp -f ~/.config/waybar/style.css ~/.config/waybar/style.css.bak 2>/dev/null
 
-  # Restart waybar
-  pkill -SIGUSR2 waybar
+# Overwrite local waybar settings with the latest in Omarchy
+cp -f ~/.local/share/omarchy/config/waybar/config.jsonc ~/.config/waybar/ 2>/dev/null
+cp -f ~/.local/share/omarchy/config/waybar/style.css ~/.config/waybar/ 2>/dev/null
+
+# Remove identical backup files
+if cmp -s ~/.config/waybar/config.jsonc.bak ~/.config/waybar/config.jsonc; then
+  rm ~/.config/waybar/config.jsonc.bak
+else
+  echo -e "\e[31mExisting .config/waybar/config.jsonc replaced with new Omarchy default, but a .bak file was made.\e[0m"
 fi
+
+if cmp -s ~/.config/waybar/style.css.bak ~/.config/waybar/style.css; then
+  rm ~/.config/waybar/style.css.bak
+else
+  echo -e "\e[31mExisting .config/waybar/style.css replaced with new Omarchy default, but a .bak file was made.\e[0m"
+fi
+
+# Restart waybar
+pkill -SIGUSR2 waybar

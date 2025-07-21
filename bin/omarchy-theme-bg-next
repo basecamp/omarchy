@@ -2,7 +2,7 @@
 
 # Cycles through the background images available
 
-BACKGROUNDS_DIR="$HOME/.config/omarchy/current/backgrounds/"
+BACKGROUNDS_DIR="$HOME/.config/omarchy/current/theme/backgrounds/"
 CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
 
 mapfile -d '' -t BACKGROUNDS < <(find "$BACKGROUNDS_DIR" -type f -print0 | sort -z)

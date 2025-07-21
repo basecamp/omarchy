@@ -3,11 +3,11 @@
 cd ~/.local/share/omarchy
 
 if [[ $1 == "all" ]]; then
-  # Run all migrations
-  last_updated_at=1
+  # Run all migrations since the root commit
+  migration_starting_point=$(git log --max-parents=0 --first-parent --format="%H")
 else
-  # Remember the version we're at before upgrading
-  last_updated_at=$(git log -1 --format=%cd --date=unix)
+  # Remember the commit we're at before upgrading in order to only run new migrations
+  migration_starting_point=$(git log -1 --format=%H)
 fi
 
 # Get the latest while trying to preserve any modifications
@@ -15,18 +15,16 @@ git pull --autostash
 git diff --check || git reset --merge
 
 # Run any pending migrations
-for file in migrations/*.sh; do
+for file in $(git diff --name-only --diff-filter=A $migration_starting_point.. migrations/*.sh); do
   filename=$(basename "$file")
   migrate_at="${filename%.sh}"
 
-  if [ $migrate_at -gt $last_updated_at ]; then
-    echo -e "\e[32m\nRunning migration ($migrate_at)\e[0m"
-    source $file
-  fi
+  echo -e "\e[32m\nRunning migration ($migrate_at)\e[0m"
+  source $file
 done
 
 # Back to where we came from
 cd - >/dev/null
 
-echo -e ""
-gum confirm "Update system packages too?" && yay -Syu --noconfirm
+# Update system packages
+yay -Syu --noconfirm

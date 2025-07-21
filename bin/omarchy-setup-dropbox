@@ -1,0 +1,8 @@
+#!/bin/bash
+
+echo "Installing all dependencies..."
+yay -S --noconfirm --needed \
+  dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
+
+echo "Starting Dropbox and asking for identification..."
+uwsm app -- dropbox start -i &>/dev/null &

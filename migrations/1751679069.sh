@@ -1,2 +1,5 @@
 echo "Install ffmpegthumbnailer for video thumbnails in the file manager"
-yay -S --noconfirm --needed ffmpegthumbnailer
+
+if ! command -v ffmpegthumbnailer &>/dev/null; then
+  yay -S --noconfirm --needed ffmpegthumbnailer
+fi
