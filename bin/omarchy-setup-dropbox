@@ -9,7 +9,7 @@ setsid chromium --new-window --ozone-platform=wayland --app="https://www.dropbox
 
 if gum confirm "Have you logged into your account yet?"; then
   echo "Starting Dropbox and asking for identification..."
-  uwsm app -- dropbox start -i &>/dev/null &
+  uwsm app -- dropbox-cli start &>/dev/null &
 else
   echo "Can't setup Dropbox before you're logged in"
 fi
