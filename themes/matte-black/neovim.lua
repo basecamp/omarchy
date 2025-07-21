@@ -16,10 +16,10 @@ return {
     local matte_black_palette = {
       -- Base "Matte Black" Palette Overrides
       bg0 = "#0D0D0D", bg1 = "#121212", bg2 = "#1E1E1E", bg3 = "#2C2C2C", bg4 = "#333333",
-      fg0 = "#FFFFFF", fg1 = "#BEBEBE", fg2 = "#BEBEBE", fg3 = "#8A8A8D",
+      fg0 = "#FFFFFF", fg1 = "#EAEAEA", fg2 = "#BEBEBE", fg3 = "#8A8A8D",
       sel0 = "#2C2C2C",
       sel1 = c.from_hex("#2C2C2C"):blend(c.from_hex("#F59E0B"), 0.2):to_css(),
-      comment = "#333333",
+      comment = "#8A8A8D",
       red = Shade.new("#D35F5F", c.from_hex("#D35F5F"):lighten(8):to_css(), "#B91C1C"),
       orange = Shade.new("#F59E0B", "#FFC107", c.from_hex("#F59E0B"):lighten(-8):to_css()),
       yellow = Shade.new("#FFC107", c.from_hex("#FFC107"):lighten(10):to_css(), "#F59E0B"),
@@ -82,6 +82,8 @@ return {
         Whitespace = { fg = "palette.black.bright" },
         NonText = { fg = "palette.black.bright" },
         IncSearch = { bg = "palette.sel1" },
+        CursorLine = { bg = "palette.bg2" },
+        Normal = { fg = "palette.fg1" },
 
         -- Noice Cmdline Overrides
         NoiceCmdlinePopupBorder = { fg = "palette.fg3" },
