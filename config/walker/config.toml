@@ -1,3 +1,5 @@
+# General Configuration
+# https://github.com/abenz1267/walker/wiki/Basic-Configuration
 app_launch_prefix = "uwsm app -- "
 terminal_title_flag = ""
 locale = ""
@@ -10,27 +12,7 @@ hotreload_theme = false
 as_window = false
 timeout = 0
 disable_click_to_close = false
-force_keyboard_focus = true
-
-[keys]
-accept_typeahead = ["tab"]
-trigger_labels = "lalt"
-next = ["down"]
-prev = ["up"]
-close = ["esc"]
-remove_from_history = ["shift backspace"]
-resume_query = ["ctrl r"]
-toggle_exact_search = ["ctrl m"]
-
-[keys.activation_modifiers]
-keep_open = "shift"
-alternate = "alt"
-
-[keys.ai]
-clear_session = ["ctrl x"]
-copy_last_response = ["ctrl c"]
-resume_session = ["ctrl r"]
-run_last_responstruee = ["ctrl e"]
+force_keyboard_focus = true                                        # Forces Walker to have keyboard focus when it opens. Conflicts with Window module.
 
 [events]
 on_activate = ""
@@ -54,45 +36,107 @@ placeholder = " Search..."
 delay = 0
 resume_last_query = false
 
+# Switcher allows you to use a prefix key to switch to other non-hidden modules
+[builtins.switcher]
+weight = 5
+name = "switcher"
+placeholder = "Switcher"
+prefix = "/"
+
+
+# Shortcut keys
+# https://github.com/abenz1267/walker/wiki/Keybinds
+[keys]
+accept_typeahead = ["tab"]
+trigger_labels = "lalt"
+next = ["down"]
+prev = ["up"]
+close = ["esc"]
+remove_from_history = ["shift backspace"]
+resume_query = ["ctrl r"]
+toggle_exact_search = ["ctrl m"]
+
+[keys.activation_modifiers]
+keep_open = "shift"
+alternate = "alt"
+
+[keys.ai]
+clear_session = ["ctrl x"]
+copy_last_response = ["ctrl c"]
+resume_session = ["ctrl r"]
+run_last_responstruee = ["ctrl e"]
+
 [activation_mode]
 labels = "jkl;asdf"
 
-[builtins.hyprland_keybinds]
-show_sub_when_single = true
-path = "~/.config/hypr/hyprland.conf"
-weight = 5
-name = "hyprland_keybinds"
-placeholder = "Hyprland Keybinds"
-switcher_only = true
-hidden = true
 
+# Modules
+# https://github.com/abenz1267/walker/wiki/Modules
+#
+# Key Flags:
+#   switcher_only - Causes the module to only load when selected from the switcher menu (/)
+#   hidden - Hides the module from the switcher menu
+#
+# Default Modules:
+#   applications is the only module enabled by default (when running `walker`)
+#
+# Default Modules (Switcher Only)
+#   Calculator and Emoji modules are enabled by default in the switcher menu. All others are
+#   hidden and will need the hidden flag toggled to enable
+#
+# You can launch into a specific module with `walker -m bookmarks` even if the module is
+# set to switcher_only and hidden.
+
+
+# Applications
 [builtins.applications]
+hidden = true
+switcher_only = false
 weight = 5
-name = "applications"
+name = "Applications"
 placeholder = " Search..."
-prioritize_new = true
+prioritize_new = false               # Newly installed apps will float to the top
 hide_actions_with_empty_query = true
 context_aware = true
 refresh = true
 show_sub_when_single = false
 show_icon_when_single = true
 show_generic = true
-history = false
+history = false                      # Recently accessed apps will appear on top
 icon = ""
-hidden = true
 
 [builtins.applications.actions]
 enabled = false
 hide_category = true
 hide_without_query = true
 
+
+# AI Assistant
+[builtins.ai]
+hidden = true
+switcher_only = true
+weight = 5
+placeholder = "AI"
+name = "AI"
+icon = "help-browser"
+show_sub_when_single = true
+
+[[builtins.ai.anthropic.prompts]]
+model = "claude-3-7-sonnet-20250219"
+temperature = 1
+max_tokens = 1_000
+label = "General Assistant"
+prompt = "You are a helpful general assistant. Keep your answers short and precise."
+
+
+# Bookmarks
 [builtins.bookmarks]
+hidden = true
+switcher_only = true
 weight = 5
 placeholder = "Bookmarks"
-name = "bookmarks"
+name = "Bookmarks"
 icon = "bookmark"
-switcher_only = true
-hidden = true
 
 [[builtins.bookmarks.entries]]
 label = "Walker"
@@ -109,30 +153,11 @@ label = "Omarchy Manual"
 url = "https://manuals.omamix.org/2/the-omarchy-manual"
 keywords = ["omarchy"]
 
-[builtins.xdph_picker]
-hidden = true
-weight = 5
-placeholder = "Screen/Window Picker"
-show_sub_when_single = true
-name = "xdphpicker"
-switcher_only = true
 
-[builtins.ai]
-weight = 5
-placeholder = "AI"
-name = "ai"
-icon = "help-browser"
-switcher_only = true
-show_sub_when_single = true
-
-[[builtins.ai.anthropic.prompts]]
-model = "claude-3-7-sonnet-20250219"
-temperature = 1
-max_tokens = 1_000
-label = "General Assistant"
-prompt = "You are a helpful general assistant. Keep your answers short and precise."
-
+# Calculator
 [builtins.calc]
+hidden = false
+switcher_only = false
 require_number = true
 weight = 5
 name = "Calculator"
@@ -140,118 +165,171 @@ icon = "accessories-calculator"
 placeholder = "Calculator"
 min_chars = 3                   # Min chars to calculate. 3 allows "3+3"
 
-[builtins.windows]
-weight = 5
-icon = "view-restore"
-name = "windows"
-placeholder = "Windows"
-show_icon_when_single = true
-switcher_only = true
-hidden = true
 
+# Clipboard (Requires wl-clipboard and running as service)
 [builtins.clipboard]
+hidden = true
+switcher_only = true
 always_put_new_on_top = true
 exec = "wl-copy"
 weight = 5
-name = "clipboard"
+name = "Clipboard"
 avoid_line_breaks = true
 placeholder = "Clipboard"
 image_height = 300
 max_entries = 10
-switcher_only = true
-hidden = true
 
+
+# Commands - Walker-specific commands
 [builtins.commands]
-weight = 5
-icon = "utilities-terminal"
+hidden = true
 switcher_only = true
-name = "commands"
-placeholder = "Commands"
-hidden = true
-
-[builtins.custom_commands]
 weight = 5
 icon = "utilities-terminal"
-name = "custom_commands"
-placeholder = "Custom Commands"
-hidden = true
+name = "Commands"
+placeholder = "Commands"
 
+
+# Commands - Custom Commands
+[builtins.custom_commands]
+hidden = true
+switcher_only = true
+weight = 5
+icon = "utilities-terminal"
+name = "Custom Commands"
+placeholder = "Custom Commands"
+
+[[commands]]
+cmd = ""
+name = "Command Name"
+
+
+# Dmenu
+[builtins.dmenu]
+hidden = true
+switcher_only = true
+weight = 5
+name = "Dmenu"
+placeholder = "Dmenu"
+show_icon_when_single = true
+
+
+# Emoji Picker
 [builtins.emojis]
+hidden = false
+switcher_only = true
 exec = "wl-copy"
 weight = 5
 name = "Emojis"
 placeholder = "Emojis"
-switcher_only = true
 history = true
 typeahead = true
 show_unqualified = false
 prefix = "."
 
-[builtins.symbols]
-after_copy = ""
-weight = 5
-name = "symbols"
-placeholder = "Symbols"
-switcher_only = true
-history = true
-typeahead = true
-hidden = true
 
+# Finder
 [builtins.finder]
-use_fd = false
+hidden = true
+switcher_only = true
+use_fd = true                                          # Drastic performance boost
 fd_flags = "--ignore-vcs --type file --type directory"
 cmd_alt = "xdg-open $(dirname ~/%RESULT%)"
 weight = 5
 icon = "file"
-name = "finder"
+name = "Finder"
 placeholder = "Finder"
-switcher_only = true
 ignore_gitignore = true
 refresh = true
 concurrency = 8
 show_icon_when_single = true
 preview_images = false
-hidden = true
 
+
+# Hyprland Keybinds
+[builtins.hyprland_keybinds]
+hidden = true
+switcher_only = true
+show_sub_when_single = true
+path = "~/.config/hypr/hyprland.conf"
+weight = 5
+name = "Hyprland Keybinds"
+placeholder = "Hyprland Keybinds"
+
+
+# Runner - Runs terminal commands
 [builtins.runner]
+hidden = true
+switcher_only = true
 eager_loading = true
 weight = 5
 icon = "utilities-terminal"
-name = "runner"
+name = "Runner"
 placeholder = "Runner"
 typeahead = true
 history = true
 generic_entry = false       # Generic command runner
 shell_config = ""           # Path to shell to parse for aliases
 refresh = true
-use_fd = false
-switcher_only = true
-hidden = true
+use_fd = true               # Drastic performance boost
 
+
+# Symbols Picker
+[builtins.symbols]
+hidden = true
+switcher_only = true
+after_copy = ""
+weight = 5
+name = "Symbols"
+placeholder = "Symbols"
+history = true
+typeahead = true
+
+
+# SSH
 [builtins.ssh]
+hidden = true
+switcher_only = true
 weight = 5
 icon = "preferences-system-network"
-name = "ssh"
+name = "SSH"
 placeholder = "SSH"
-switcher_only = true
 history = true
 refresh = true
+
+
+# Translation
+[builtins.translation]
 hidden = true
-
-[builtins.switcher]
+switcher_only = true
+delay = 1000
 weight = 5
-name = "switcher"
-placeholder = "Switcher"
-prefix = "/"
+name = "Translation"
+icon = "accessories-dictionary"
+placeholder = "Translation"
+provider = "googlefree"
 
+
+# Window Switcher (Requires force_keyboard_focus = false)
+[builtins.windows]
+hidden = true
+switcher_only = true
+weight = 5
+icon = "view-restore"
+name = "Windows"
+placeholder = "Windows"
+show_icon_when_single = true
+
+
+# Web Search
 [builtins.websearch]
+hidden = true
+switcher_only = true
 keep_selection = true
 weight = 5
 icon = "applications-internet"
-name = "websearch"
-placeholder = "Websearch"
-switcher_only = true
-hidden = true
+name = "Web Search"
+placeholder = "Web Search"
 
 [[builtins.websearch.entries]]
 name = "Google"
@@ -260,32 +338,26 @@ url = "https://www.google.com/search?q=%TERM%"
 [[builtins.websearch.entries]]
 name = "DuckDuckGo"
 url = "https://duckduckgo.com/?q=%TERM%"
-switcher_only = true
 
 [[builtins.websearch.entries]]
 name = "Ecosia"
 url = "https://www.ecosia.org/search?q=%TERM%"
-switcher_only = true
 
 [[builtins.websearch.entries]]
 name = "Yandex"
 url = "https://yandex.com/search/?text=%TERM%"
-switcher_only = true
 
-[builtins.dmenu]
-hidden = true
-weight = 5
-name = "dmenu"
-placeholder = "Dmenu"
-switcher_only = true
-show_icon_when_single = true
 
-[builtins.translation]
-delay = 1000
-weight = 5
-name = "translation"
-icon = "accessories-dictionary"
-placeholder = "Translation"
-switcher_only = true
-provider = "googlefree"
+# XDPH Picker - Screen share selection
+[builtins.xdph_picker]
 hidden = true
+switcher_only = true
+weight = 5
+placeholder = "Screen/Window Picker"
+show_sub_when_single = true
+name = "XDPH Picker"
+
+
+# Plugins
+#
+# Walker can be extended with custom plugins. See: https://github.com/abenz1267/walker/wiki/Plugins
