@@ -16,6 +16,7 @@
     "network",
     "pulseaudio",
     "cpu",
+    "custom/brightness",
     "battery"
   ],
   "hyprland/workspaces": {
@@ -64,6 +65,14 @@
     "interval": 3,
     "nospacing": 1,
     "on-click": "alacritty --class=Impala -e impala"
+  },
+  "custom/brightness": {
+    "exec": "b=$(brightnessctl -d $(ls /sys/class/backlight/ | head -n1) g); m=$(brightnessctl -d $(ls /sys/class/backlight/ | head -n1) m); p=$((b * 100 / m)); if [ $p -ge 90 ]; then icon>
+    "interval": 5,
+    "on-scroll-up": "brightnessctl -d $(ls /sys/class/backlight/ | head -n1) set +5%",
+    "on-scroll-down": "brightnessctl -d $(ls /sys/class/backlight/ | head -n1) set 5%-",
+    "format": "{}",
+    "tooltip": false
   },
   "battery": {
     "format": "{capacity}% {icon}",
