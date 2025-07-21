@@ -40,3 +40,5 @@ if gum confirm "Start Docker DBs?"; then
     done
   fi
 fi
+
+echo -e "\nYou're all set!"
