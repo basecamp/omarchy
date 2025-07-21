@@ -185,7 +185,7 @@ switcher_only = true
 history = true
 typeahead = true
 show_unqualified = false
-prefix = "."
+prefix = ":"
 
 [builtins.symbols]
 after_copy = ""
