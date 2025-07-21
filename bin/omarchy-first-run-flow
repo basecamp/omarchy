@@ -2,8 +2,6 @@
 
 source ~/.local/share/omarchy/ansi.sh
 
-echo -e "Welcome to Omarchy!\n"
-
 if gum confirm "Install editor in addition to Neovim?"; then
   options=("VSCode" "Cursor" "Zed" "Helix" "Emacs" "Nevermind")
   choice=$(printf "%s\n" "${options[@]}" | gum choose --header "Add programming editor") || exit 0
