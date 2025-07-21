@@ -17,7 +17,7 @@ if gum confirm "Install editor in addition to Neovim?"; then
 fi
 
 if gum confirm "Login to GitHub?"; then
-  gh auth login
+  gh auth login 2>/dev/null
 fi
 
 if gum confirm "Setup Dropbox?"; then
