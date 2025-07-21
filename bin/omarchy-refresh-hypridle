@@ -1,6 +1,0 @@
-#!/bin/bash
-
-# Overwrite local Hypridle settings with the latest in Omarchy, but create a backup
-cp -f ~/.config/hypr/hypridle.conf ~/.config/hypr/hypridle.conf.bak 2>/dev/null
-cp -f ~/.local/share/omarchy/config/hypr/hypridle.conf ~/.config/hypr/ 2>/dev/null
-pkill -x hypridle && uwsm app -- hypridle >/dev/null 2>&1 &
