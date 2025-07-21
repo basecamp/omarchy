@@ -8,9 +8,9 @@ if gum confirm "Install editor in addition to Neovim?"; then
 
   case "$choice" in
   VSCode) yay -Sy --noconfirm --needed vscodium-electron-bin ;;
-  Cursor) yay -Sy --noconfirm --needed cursor ;;
+  Cursor) yay -Sy --noconfirm --needed cursor-bin ;;
   Zed) yay -Sy --noconfirm --needed zed ;;
-  Helix) yay -Sy --noconfirm --needed helix-bin ;;
+  Helix) yay -Sy --noconfirm --needed helix ;;
   Emacs) yay -Sy --noconfirm --needed emacs ;;
   Nevermind) ;;
   esac
