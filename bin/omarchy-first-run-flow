@@ -24,6 +24,7 @@ fi
 source ~/.local/share/omarchy/ansi.sh
 
 if gum confirm "Setup Dropbox?"; then
+  gtk-launch chromium # FIXME: Workaround for Dropbox to be able to open with the correct scaling during initial setup
   ~/.local/share/omarchy/bin/omarchy-setup-dropbox
 fi
 
