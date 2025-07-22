@@ -16,13 +16,19 @@ if gum confirm "Install editor in addition to Neovim?"; then
   esac
 fi
 
+source ~/.local/share/omarchy/ansi.sh
+
 if gum confirm "Login to GitHub?"; then
   gh auth login
 fi
 
+source ~/.local/share/omarchy/ansi.sh
+
 if gum confirm "Setup Dropbox?"; then
   omarchy-setup-dropbox
 fi
+
+source ~/.local/share/omarchy/ansi.sh
 
 if gum confirm "Start Docker DBs?"; then
   options=("MySQL" "Redis" "PostgreSQL")
@@ -38,6 +44,13 @@ if gum confirm "Start Docker DBs?"; then
     done
   fi
 fi
+
+source ~/.local/share/omarchy/ansi.sh
+
+echo "Updating all system packages..."
+yay -Syu
+
+source ~/.local/share/omarchy/ansi.sh
 
 gum spin --spinner "globe" --title "You're all set!" -- sleep 2
 setsid chromium --new-window --ozone-platform=wayland --app="https://manuals.omamix.org/2/the-omarchy-manual" >/dev/null 2>&1 &
