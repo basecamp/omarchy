@@ -43,10 +43,10 @@ if gum confirm "Start Docker DBs?"; then
     done
   fi
 
+  clear
   gtk-launch Docker
 fi
 
-clear
 echo "Updating all system packages..."
 yay -Syu --noconfirm
 
