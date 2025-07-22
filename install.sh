@@ -13,7 +13,7 @@ catch_errors() {
 trap catch_errors ERR
 
 # Update all built-in packages
-yay -Syu --noconfirm
+sudo pacman -Syu --noconfirm
 
 # Install everything
 for f in ~/.local/share/omarchy/install/*.sh; do
