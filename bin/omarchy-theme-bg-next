@@ -44,5 +44,5 @@ else
 
   # Relaunch swaybg
   pkill -x swaybg
-  uwsm app -- swaybg -i "$NEW_BACKGROUND" -m fill >/dev/null 2>&1 &
+  uwsm app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
 fi
