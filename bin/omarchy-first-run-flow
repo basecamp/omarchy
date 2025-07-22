@@ -2,6 +2,8 @@
 
 # Read the manual if you have any questions while we install
 setsid gtk-launch "Omarchy Manual" >/dev/null 2>&1 &
+sleep 1
+hyprctl dispatch focuswindow "class:Alacritty" &>/dev/null
 
 header() {
   clear
