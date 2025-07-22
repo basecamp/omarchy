@@ -24,12 +24,6 @@ fi
 
 header
 
-if gum confirm "Login to GitHub?"; then
-  gh auth login
-fi
-
-header
-
 if gum confirm "Start Docker DBs?"; then
   options=("MySQL" "Redis" "PostgreSQL")
   choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases (space to select, return to install)") || exit 0
