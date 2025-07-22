@@ -1,17 +1,35 @@
 #!/bin/bash
 
+# Set recorder based on GPU
+if lspci | grep -qi 'nvidia'; then
+  RECORDER="wf-recorder"
+  RECORDER_ARGS="-c libx264 -p crf=23 -p preset=medium -p movflags=+faststart"
+else
+  RECORDER="wl-screenrec"
+  RECORDER_ARGS="--ffmpeg-encoder-options=\"-c:v libx264 -crf 23 -preset medium -movflags +faststart\""
+fi
+
 screenrecording() {
+  local filename
+  filename="$HOME/Videos/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
   notify-send "Screen recording starting..." -t 1000
   sleep 1
-  wf-recorder \
-    -f "$HOME/Videos/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4" \
-    -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart \
-    "$@"
+  eval "$RECORDER -f \"$filename\" $RECORDER_ARGS \"\$@\""
 }
 
-if pgrep -x wf-recorder >/dev/null; then
-  pkill -x wf-recorder
-  notify-send "Screen recording saved to ~/Videos" -t 2000
+stop_recording() {
+  if pgrep -x "$RECORDER" >/dev/null; then
+    pkill -x "$RECORDER"
+    notify-send "Screen recording saved to ~/Videos" -t 2000
+    return 0
+  fi
+  return 1
+}
+
+# Main logic
+if stop_recording; then
+  # Recording was stopped
+  :
 elif [[ "$1" == "output" ]]; then
   screenrecording
 else
