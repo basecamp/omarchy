@@ -1,18 +1,16 @@
 #!/bin/bash
 
-# Base packages
-PACKAGES="brightnessctl playerctl pamixer wiremix wireplumber \
+yay -S --noconfirm --needed \
+  brightnessctl playerctl pamixer wiremix wireplumber \
   fcitx5 fcitx5-gtk fcitx5-qt wl-clip-persist \
   nautilus sushi ffmpegthumbnailer \
   slurp satty \
   mpv evince imv \
-  chromium"
+  chromium
 
 # Add screen recorder based on GPU
 if [ -n "$(lspci | grep -i 'nvidia')" ]; then
-  PACKAGES="$PACKAGES wf-recorder"
+  yay -S --noconfirm --needed wf-recorder
 else
-  PACKAGES="$PACKAGES wl-screenrec"
+  yay -S --noconfirm --needed wl-screenrec
 fi
-
-yay -S --noconfirm --needed $PACKAGES
