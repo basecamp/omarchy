@@ -12,8 +12,8 @@ catch_errors() {
 
 trap catch_errors ERR
 
-# Update all built-in packages
-sudo pacman -Syu --noconfirm
+# Update all package indexes
+sudo pacman -Sy --noconfirm
 
 # Install everything
 for f in ~/.local/share/omarchy/install/*.sh; do
@@ -23,5 +23,8 @@ done
 
 # Ensure locate is up to date now that everything has been installed
 sudo updatedb
+
+# Update all built-in packages
+sudo pacman -Syu --noconfirm
 
 gum confirm "Reboot to apply all settings?" && reboot
