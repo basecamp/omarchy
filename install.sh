@@ -12,9 +12,6 @@ catch_errors() {
 
 trap catch_errors ERR
 
-# Update all package indexes
-sudo pacman -Sy --noconfirm
-
 # Install everything
 for f in ~/.local/share/omarchy/install/*.sh; do
   echo -e "\nRunning installer: $f"

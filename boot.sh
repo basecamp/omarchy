@@ -12,7 +12,7 @@ ansi_art=' ▄██████▄    ▄▄▄▄███▄▄▄▄      �
 
 echo -e "\n$ansi_art\n"
 
-pacman -Q git &>/dev/null || sudo pacman -Sy --noconfirm --needed git
+sudo pacman -Sy --noconfirm --needed git
 
 echo -e "\nCloning Omarchy..."
 rm -rf ~/.local/share/omarchy/
