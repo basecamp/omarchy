@@ -1,0 +1,10 @@
+[Unit]
+Description=Run tzupdate on boot and every hour
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=default.target

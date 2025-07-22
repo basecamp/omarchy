@@ -1,0 +1,7 @@
+[Unit]
+Description=Update system timezone from geoIP
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/tzupdate
