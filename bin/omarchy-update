@@ -27,4 +27,5 @@ done
 cd - >/dev/null
 
 # Update system packages
+echo -e "\e[32m\nUpdate system packages\e[0m"
 yay -Syu --noconfirm
