@@ -48,6 +48,6 @@ source ~/.local/share/omarchy/ansi.sh
 echo "Updating all system packages..."
 yay -Syu --noconfirm
 
-gum spin --spinner "globe" --title "You're all set!" -- sleep 2
 setsid gtk-launch "Omarchy Manual" >/dev/null 2>&1 &
+gum spin --spinner "globe" --title "You're all set!" -- sleep 2
 clear
