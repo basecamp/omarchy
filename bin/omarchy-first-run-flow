@@ -24,7 +24,7 @@ fi
 source ~/.local/share/omarchy/ansi.sh
 
 if gum confirm "Setup Dropbox?"; then
-  omarchy-setup-dropbox
+  ~/.local/share/omarchy/bin/omarchy-setup-dropbox
 fi
 
 source ~/.local/share/omarchy/ansi.sh
