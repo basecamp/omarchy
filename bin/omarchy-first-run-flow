@@ -47,7 +47,7 @@ fi
 source ~/.local/share/omarchy/ansi.sh
 
 echo "Updating all system packages..."
-yay -Syu
+yay -Syu --noconfirm
 
 source ~/.local/share/omarchy/ansi.sh
 
