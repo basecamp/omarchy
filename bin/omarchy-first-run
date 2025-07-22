@@ -1,7 +1,13 @@
 #!/bin/bash
 
-if [[ ! -f ~/.local/state/omarchy/after-first-run.mode ]]; then
+if [[ ! -f ~/.local/state/omarchy/after-first-run-display.mode ]]; then
   mkdir -p ~/.local/state/omarchy
-  touch ~/.local/state/omarchy/after-first-run.mode
-  uwsm app -- alacritty -e ~/.local/share/omarchy/bin/omarchy-first-run-flow
+  touch ~/.local/state/omarchy/after-first-run-display.mode
+  uwsm app -- alacritty -e ~/.local/share/omarchy/bin/omarchy-first-run-display
+fi
+
+if [[ ! -f ~/.local/state/omarchy/after-first-run-setup.mode ]]; then
+  mkdir -p ~/.local/state/omarchy
+  touch ~/.local/state/omarchy/after-first-run-setup.mode
+  uwsm app -- alacritty -e ~/.local/share/omarchy/bin/omarchy-first-run-setup
 fi

@@ -1,0 +1,21 @@
+#!/bin/bash
+
+source ~/.local/share/omarchy/ansi.sh
+
+height=$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .height')
+width=$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .width')
+resolution="${width}x${height}"
+
+set_1x_gdk_scale() {
+  sed -i 's/env = GDK_SCALE,[0-9.]*/env = GDK_SCALE,1/' ~/.config/hypr/monitors.conf
+  gum spin --title "Detected 1x resolution display. Restarting Hyprland for appropriate scaling." -- sleep 2
+  uwsm stop
+}
+
+case "$resolution" in
+"1920×1080") set_1x_gdk_scale ;;
+"2560×1440") set_1x_gdk_scale ;;
+"5120x2880") echo "5K!" ;;
+esac
+
+sg
