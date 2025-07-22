@@ -8,3 +8,6 @@ if cmp -s ~/.config/walker/config.toml.bak ~/.config/walker/config.toml; then
 else
   echo -e "\e[31mExisting .config/walker/config.toml replaced with new Omarchy default, but a .bak file was made.\e[0m"
 fi
+
+pkill walker
+uwsm app -- walker --gapplication-service &
