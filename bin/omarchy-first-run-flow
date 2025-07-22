@@ -42,11 +42,9 @@ if gum confirm "Start Docker DBs?"; then
       esac
     done
   fi
-
-  clear
-  setsid gtk-launch Docker >/dev/null 2>&1 &
 fi
 
+source ~/.local/share/omarchy/ansi.sh
 echo "Updating all system packages..."
 yay -Syu --noconfirm
 
