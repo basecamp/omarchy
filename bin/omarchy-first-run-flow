@@ -46,8 +46,7 @@ if gum confirm "Start Docker DBs?"; then
   gtk-launch Docker
 fi
 
-source ~/.local/share/omarchy/ansi.sh
-
+clear
 echo "Updating all system packages..."
 yay -Syu --noconfirm
 
