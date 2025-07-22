@@ -31,7 +31,7 @@ source ~/.local/share/omarchy/ansi.sh
 
 if gum confirm "Start Docker DBs?"; then
   options=("MySQL" "Redis" "PostgreSQL")
-  choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases") || exit 0
+  choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases (space to select, return to install)") || exit 0
 
   if [[ -n "$choices" ]]; then
     for db in $choices; do
