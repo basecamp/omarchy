@@ -3,7 +3,7 @@
 source ~/.local/share/omarchy/ansi.sh
 
 if gum confirm "Install editor in addition to Neovim?"; then
-  options=("VSCode" "Cursor" "Zed" "Helix" "Emacs" "Nevermind")
+  options=("VSCode" "Cursor" "Zed" "Helix" "Nevermind")
   choice=$(printf "%s\n" "${options[@]}" | gum choose --header "Add programming editor") || exit 0
 
   case "$choice" in
@@ -11,7 +11,6 @@ if gum confirm "Install editor in addition to Neovim?"; then
   Cursor) yay -Sy --noconfirm --needed cursor-bin ;;
   Zed) yay -Sy --noconfirm --needed zed ;;
   Helix) yay -Sy --noconfirm --needed helix ;;
-  Emacs) yay -Sy --noconfirm --needed emacs ;;
   Nevermind) ;;
   esac
 fi
