@@ -9,7 +9,7 @@ yay -S --noconfirm --needed \
   chromium
 
 # Add screen recorder based on GPU
-if [ -n "$(lspci | grep -i 'nvidia')" ]; then
+if lspci | grep -qi 'nvidia'; then
   yay -S --noconfirm --needed wf-recorder
 else
   yay -S --noconfirm --needed wl-screenrec
