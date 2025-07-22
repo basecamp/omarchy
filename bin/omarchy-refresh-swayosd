@@ -1,0 +1,13 @@
+#!/bin/bash
+
+cp -f ~/.config/swayosd/config.toml ~/.config/swayosd/config.toml.back 2>/dev/null
+cp -f ~/.local/share/omarchy/config/walker/config.toml ~/.config/swayosd 2>/dev/null
+
+if cmp -s ~/.config/swayosd/config.toml.bak ~/.config/swayosd/config.toml; then
+  rm ~/.config/swayosd//config.toml.bak
+else
+  echo -e "\e[31mExisting .config/swayosd/config.toml replaced with new Omarchy default, but a .bak file was made.\e[0m"
+fi
+
+pkill swayosd-server
+uwsm app -- swayosd-server --gapplication-service &

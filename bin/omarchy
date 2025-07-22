@@ -24,12 +24,13 @@ main_menu() {
 
 update_menu() {
   show_ascii_art
-  local menu=("Omarchy" "Waybar" "Walker" "Plymouth" "Desktop apps" "Back")
+  local menu=("Omarchy" "Waybar" "Walker" "Plymouth" "SwayOSD" "Desktop apps" "Back")
   local commands=(
     "omarchy-update"
     "omarchy-refresh-waybar"
     "omarchy-refresh-walker"
     "omarchy-refresh-plymouth"
+    "omarchy-refresh-swayosd"
     "omarchy-refresh-applications"
     "main_menu"
   )
