@@ -1,15 +1,10 @@
 #!/bin/bash
 
-# Read the manual if you have any questions while we install
-setsid gtk-launch "Omarchy Manual" >/dev/null 2>&1 &
-sleep 1
-hyprctl dispatch focuswindow "class:Alacritty" &>/dev/null
-
 header() {
   clear
   gum style \
     --foreground 212 --border-foreground 213 --border double --margin "1 0" --padding "1 3" \
-    "Welcome to Omarchy!"
+    "You Got Omarchy!"
 }
 
 header
@@ -25,13 +20,6 @@ if gum confirm "Install editor in addition to Neovim?"; then
   Helix) yay -Sy --noconfirm --needed helix ;;
   Nevermind) ;;
   esac
-fi
-
-header
-
-if gum confirm "Setup Dropbox?"; then
-  gtk-launch chromium # FIXME: Workaround for Dropbox to be able to open with the correct scaling during initial setup
-  ~/.local/share/omarchy/bin/omarchy-setup-dropbox
 fi
 
 header
@@ -62,5 +50,6 @@ header
 echo "Updating all system packages..."
 yay -Syu --noconfirm
 
+setsid gtk-launch "Omarchy Manual" >/dev/null 2>&1 &
 gum spin --spinner "globe" --title "You're all set!" -- sleep 2
 clear
