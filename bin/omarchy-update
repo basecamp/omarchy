@@ -23,9 +23,9 @@ for file in $(git diff --name-only --diff-filter=A $migration_starting_point.. m
   source $file
 done
 
-# Back to where we came from
-cd - >/dev/null
-
 # Update system packages
 echo -e "\e[32m\nUpdate system packages\e[0m"
 yay -Syu --noconfirm
+
+# Back to where we came from
+cd - >/dev/null
