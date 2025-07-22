@@ -44,12 +44,12 @@ if gum confirm "Start Docker DBs?"; then
   fi
 
   clear
-  gtk-launch Docker
+  setsid gtk-launch Docker >/dev/null 2>&1 &
 fi
 
 echo "Updating all system packages..."
 yay -Syu --noconfirm
 
 gum spin --spinner "globe" --title "You're all set!" -- sleep 2
-gtk-launch "Omarchy Manual" >/dev/null 2>&1
+setsid gtk-launch "Omarchy Manual" >/dev/null 2>&1 &
 clear
