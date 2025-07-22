@@ -26,7 +26,6 @@ stop_recording() {
   return 1
 }
 
-# Main logic
 if stop_recording; then
   # Recording was stopped
   :
