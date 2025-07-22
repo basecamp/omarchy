@@ -1,16 +1,13 @@
 #!/bin/bash
 
-# Power menu for Omarchy
-# Provides power off, restart, and sleep options
-
-# Function to show power menu. The first characters are invisible sort keys.
 show_power_menu() {
+  # The first characters are invisible sort keys.
   local menu_options="\u200B Lock
 \u200C󰤄 Suspend
 \u200D Relaunch
 \u2060󰜉 Restart
 \u2063󰐥 Shutdown"
-  local selection=$(echo -e "$menu_options" | wofi --show dmenu --prompt "Power Options" --width 150 --height 195 -O alphabetical --style ~/.config/wofi/select.css)
+  local selection=$(echo -e "$menu_options" | walker --dmenu --theme dmenu_150)
 
   case "$selection" in
   *Lock*) hyprlock ;;
@@ -21,5 +18,4 @@ show_power_menu() {
   esac
 }
 
-# Main execution
 show_power_menu

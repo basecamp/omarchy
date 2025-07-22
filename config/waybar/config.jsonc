@@ -96,7 +96,7 @@
   },
   "pulseaudio": {
     "format": "{icon}",
-    "on-click": "pavucontrol",
+    "on-click": "alacritty --class=Wiremix -e wiremix",
     "on-click-right": "pamixer -t",
     "tooltip-format": "Playing at {volume}%",
     "scroll-step": 5,

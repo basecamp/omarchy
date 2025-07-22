@@ -1,0 +1,48 @@
+[ui.window.box]
+width = 964
+min_width = 964
+max_width = 964
+
+height = 664
+min_height = 664
+max_height = 664
+
+[ui.window.box.search]
+hide = false
+
+[ui.window.box.scroll]
+v_align = "fill"
+h_align = "fill"
+min_width = 964
+width = 964
+max_width = 964
+min_height = 664
+height = 664
+max_height = 664
+
+[ui.window.box.scroll.list]
+v_align = "fill"
+h_align = "fill"
+min_width = 900
+width = 900
+max_width = 900
+min_height = 600
+height = 600
+max_height = 600
+
+[ui.window.box.scroll.list.item]
+h_align = "fill"
+min_width = 900
+width = 900
+max_width = 900
+
+[ui.window.box.scroll.list.item.activation_label]
+hide = true
+
+[ui.window.box.scroll.list.placeholder]
+v_align = "start"
+h_align = "fill"
+hide = false
+min_width = 900
+width = 900
+max_width = 900

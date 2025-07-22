@@ -6,14 +6,14 @@ if [ -z "$OMARCHY_BARE" ]; then
     obsidian-bin libreoffice obs-studio kdenlive \
     xournalpp localsend-bin
 
-  yay -S --noconfirm --needed pinta ||
-    echo -e "\e[31mFailed to install Pinta. Continuing without!\e[0m"
+  # Packages known to be flaky or having key signing issues are run one-by-one
+  for pkg in pinta typora spotify zoom; do
+    yay -S --noconfirm --needed "$pkg" ||
+      echo -e "\e[31mFailed to install $pkg. Continuing without!\e[0m"
+  done
 
-  yay -S --noconfirm --needed typora ||
-    echo -e "\e[31mFailed to install Typora. Continuing without!\e[0m"
-
-  yay -S --noconfirm --needed spotify dropbox-cli 1password-beta 1password-cli ||
-    echo -e "\e[31mFailed to install Spotify, Dropbox, and/or 1password because of a keyserver problem. Continuing without!\e[0m"
+  yay -S --noconfirm --needed 1password-beta 1password-cli ||
+    echo -e "\e[31mFailed to install 1password. Continuing without!\e[0m"
 fi
 
 # Copy over Omarchy applications

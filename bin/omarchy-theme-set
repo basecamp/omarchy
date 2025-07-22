@@ -14,12 +14,6 @@ CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 THEME_NAME="$1"
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
-if [[ -d "$HOME/.config/omarchy/themes/$THEME_NAME/backgrounds" ]]; then
-  BACKGROUND_PATH="$HOME/.config/omarchy/themes/$THEME_NAME/backgrounds"
-else
-  BACKGROUND_PATH="$HOME/.config/omarchy/backgrounds/$THEME_NAME"
-fi
-
 # Check if the theme entered exists
 if [[ ! -d "$THEME_PATH" ]]; then
   echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR" >&2
@@ -27,7 +21,6 @@ if [[ ! -d "$THEME_PATH" ]]; then
 fi
 
 # Update theme symlinks
-ln -nsf "$BACKGROUND_PATH" "$HOME/.config/omarchy/current/backgrounds"
 ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 
 # Change gnome modes
@@ -46,8 +39,7 @@ touch "$HOME/.config/alacritty/alacritty.toml"
 pkill -SIGUSR2 btop
 
 # Restart components to apply new theme
-pkill waybar
-setsid waybar >/dev/null 2>&1 &
+pkill -SIGUSR2 waybar
 makoctl reload
 hyprctl reload
 
