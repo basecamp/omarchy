@@ -35,6 +35,41 @@ fi
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
+# Define theme mappings
+declare -A VSCODE_THEMES=(
+  [tokyonight]="Tokyo Night"
+  [tokyonight_light]="Tokyo Night Light"
+  [everforest]="Everforest Dark"
+  [everforest_light]="Everforest Light"
+  [gruvbox]="Gruvbox Dark Medium"
+  [gruvbox_light]="Gruvbox Light"
+)
+
+DEFAULT_DARK="Default Dark Modern"
+DEFAULT_LIGHT="Catppuccin Latte"
+
+THEME_NAME="$1"
+MODE="dark"
+[[ "$THEME_NAME" == *_light ]] && MODE="light"
+
+# Resolve VS Code theme from mapping
+VSCODE_THEME="${VSCODE_THEMES[$THEME_NAME]}"
+[[ -z "$VSCODE_THEME" && "$MODE" == "dark" ]] && VSCODE_THEME="$DEFAULT_DARK"
+[[ -z "$VSCODE_THEME" && "$MODE" == "light" ]] && VSCODE_THEME="$DEFAULT_LIGHT"
+
+# Determine VS Code settings path (adjust if you use VSCodium or OSS builds)
+VSCODE_SETTINGS="$HOME/.config/Code/User/settings.json"
+[[ ! -f "$VSCODE_SETTINGS" ]] && mkdir -p "$(dirname "$VSCODE_SETTINGS")" && echo '{}' >"$VSCODE_SETTINGS"
+
+TMPFILE=$(mktemp)
+
+# Apply update using jq
+jq --arg theme "$VSCODE_THEME" --arg mode "$MODE" '
+  .["window.autoDetectColorScheme"] = true
+  | .["workbench.preferredDarkColorTheme"] = (if $mode == "dark" then $theme else .["workbench.preferredDarkColorTheme"] end)
+  | .["workbench.preferredLightColorTheme"] = (if $mode == "light" then $theme else .["workbench.preferredLightColorTheme"] end)
+' "$VSCODE_SETTINGS" >"$TMPFILE" && mv "$TMPFILE" "$VSCODE_SETTINGS"
+
 # Trigger btop config reload
 pkill -SIGUSR2 btop
 
