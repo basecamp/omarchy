@@ -1,4 +1,4 @@
-echo "Adding SwayOSD"
+echo "Adding SwayOSD theming"
 
 if [[ ! -d ~/.config/swayosd ]]; then
   mkdir -p ~/.config/swayosd
