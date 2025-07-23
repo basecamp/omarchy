@@ -57,8 +57,8 @@ grep -h '^[[:space:]]*bind' $USER_HYPRLAND_CONF $OMARCHY_BINDINGS_CONF |
         gsub(/>/, "\\&gt;", action);
         gsub(/"/, "\\&quot;", action);
         gsub(/'"'"'/, "\\&apos;", action);
-        
+
         printf "%-35s → %s\n", key_combo, action;
     }
 }' |
-  walker --dmenu --theme keybindings -p 'Keybindings'
+  walker --dmenu -p 'Keybindings'
