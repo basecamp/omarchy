@@ -40,6 +40,7 @@ pkill -SIGUSR2 btop
 
 # Restart components to apply new theme
 pkill -SIGUSR2 waybar
+pkill -SIGUSR2 swayosd-server
 makoctl reload
 hyprctl reload
 
