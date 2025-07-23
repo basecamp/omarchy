@@ -24,12 +24,13 @@ main_menu() {
 
 update_menu() {
   show_ascii_art
-  local menu=("Omarchy" "Waybar" "Walker" "Plymouth" "Desktop apps" "Back")
+  local menu=("Omarchy" "Waybar" "Walker" "Plymouth" "SwayOSD" "Desktop apps" "Back")
   local commands=(
     "omarchy-update"
     "omarchy-refresh-waybar"
     "omarchy-refresh-walker"
     "omarchy-refresh-plymouth"
+    "omarchy-refresh-swayosd"
     "omarchy-refresh-applications"
     "main_menu"
   )
@@ -119,12 +120,13 @@ setup_menu() {
 }
 
 setup_docker_dbs() {
-  options=("MySQL" "Redis" "PostgreSQL")
+  options=("MariaDB" "MySQL" "Redis" "PostgreSQL")
   choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases (space to select, return to install, esc to cancel)") || main_menu
 
   if [[ -n "$choices" ]]; then
     for db in $choices; do
       case $db in
+      MariaDB) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mariadb11 -e MARIADB_ROOT_PASSWORD= -e MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=true mariadb:11.8 ;;
       MySQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mysql8 -e MYSQL_ROOT_PASSWORD= -e MYSQL_ALLOW_EMPTY_PASSWORD=true mysql:8.4 ;;
       Redis) sudo docker run -d --restart unless-stopped -p "127.0.0.1:6379:6379" --name=redis redis:7 ;;
       PostgreSQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:5432:5432" --name=postgres16 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16 ;;

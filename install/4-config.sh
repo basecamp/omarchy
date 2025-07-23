@@ -3,6 +3,9 @@
 # Copy over Omarchy configs
 cp -R ~/.local/share/omarchy/config/* ~/.config/
 
+# Use default bashrc from Omarchy
+echo "source ~/.local/share/omarchy/default/bash/rc" >~/.bashrc
+
 # Ensure application directory exists for update-desktop-database
 mkdir -p ~/.local/share/applications
 
@@ -13,8 +16,9 @@ sudo chmod 644 /etc/gnupg/dirmngr.conf
 sudo gpgconf --kill dirmngr || true
 sudo gpgconf --launch dirmngr || true
 
-# Use default bashrc from Omarchy
-echo "source ~/.local/share/omarchy/default/bash/rc" >~/.bashrc
+# Increase lockout limit to 10 and decrease timeout to 2 minutes
+sudo sed -i 's|^\(auth\s\+required\s\+pam_faillock.so\)\s\+preauth.*$|\1 preauth silent deny=10 unlock_time=120|' "/etc/pam.d/system-auth"
+sudo sed -i 's|^\(auth\s\+\[default=die\]\s\+pam_faillock.so\)\s\+authfail.*$|\1 authfail deny=10 unlock_time=120|' "/etc/pam.d/system-auth"
 
 # Set common git aliases
 git config --global alias.co checkout

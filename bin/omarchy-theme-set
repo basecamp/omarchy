@@ -35,11 +35,11 @@ fi
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
-# Trigger btop config reload
-pkill -SIGUSR2 btop
-
 # Restart components to apply new theme
+pkill -SIGUSR2 btop
 pkill -SIGUSR2 waybar
+pkill swayosd-server
+setsid uwsm app -- swayosd-server &>/dev/null &
 makoctl reload
 hyprctl reload
 
