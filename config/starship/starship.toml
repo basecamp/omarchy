@@ -1,0 +1,150 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# 🎨 Set your preferred theme (options: catppuccin_mocha, gruvbox_dark)
+palette = 'catppuccin_mocha'
+
+format = """
+[](surface0)\
+$os\
+$username\
+[](bg:peach fg:surface0)\
+$directory\
+[](fg:peach bg:green)\
+$git_branch\
+$git_status\
+[](fg:green bg:teal)\
+$c\
+$rust\
+$golang\
+$nodejs\
+$php\
+$java\
+$kotlin\
+$haskell\
+$python\
+[](fg:teal bg:blue)\
+$docker_context\
+[](fg:blue bg:purple)\
+$time\
+[ ](fg:purple)\
+$line_break$character"""
+
+# 🎨 Gruvbox Dark Theme
+[palettes.gruvbox_dark]
+fg = '#fbf1c7'
+bg = '#282828'
+peach = '#fabd2f'
+green = '#98971a'
+teal = '#689d6a'
+blue = '#458588'
+purple = '#b16286'
+surface0 = '#3c3836'
+
+# 🎨 Catppuccin Mocha Theme
+[palettes.catppuccin_mocha]
+fg = "#cdd6f4"
+bg = "#1e1e2e"
+peach = "#fab387"
+green = "#a6e3a1"
+teal = "#94e2d5"
+blue = "#89b4fa"
+purple = "#b4befe"
+surface0 = "#313244"
+
+[os]
+disabled = false
+style = "bg:surface0 fg:fg"
+[os.symbols]
+Macos = ""
+Linux = "󰌽"
+Arch = "󰣇"
+
+[username]
+show_always = true
+style_user = "bg:surface0 fg:fg"
+format = '[ $user ]($style)'
+
+[directory]
+style = "fg:bg bg:peach"
+format = "[ $path ]($style)"
+truncation_length = 3
+truncation_symbol = "…/"
+[directory.substitutions]
+"Documents" = "󰈙 "
+"Downloads" = " "
+
+[git_branch]
+symbol = ""
+style = "fg:bg bg:green"
+format = '[ $symbol $branch ]($style)'
+
+[git_status]
+style = "fg:bg bg:green"
+format = '[($all_status$ahead_behind )]($style)'
+
+# Programming Languages (Grouped for Consistency)
+[nodejs]
+symbol = ""
+style = "fg:bg bg:teal"
+format = '[ $symbol($version) ]($style)'
+
+[c]
+symbol = " "
+style = "fg:bg bg:teal"
+format = '[ $symbol($version) ]($style)'
+
+[rust]
+symbol = ""
+style = "fg:bg bg:teal"
+format = '[ $symbol($version) ]($style)'
+
+[golang]
+symbol = ""
+style = "fg:bg bg:teal"
+format = '[ $symbol($version) ]($style)'
+
+[php]
+symbol = ""
+style = "fg:bg bg:teal"
+format = '[ $symbol($version) ]($style)'
+
+[java]
+symbol = " "
+style = "fg:bg bg:teal"
+format = '[ $symbol($version) ]($style)'
+
+[kotlin]
+symbol = ""
+style = "fg:bg bg:teal"
+format = '[ $symbol($version) ]($style)'
+
+[haskell]
+symbol = ""
+style = "fg:bg bg:teal"
+format = '[ $symbol($version) ]($style)'
+
+[python]
+symbol = ""
+style = "fg:bg bg:teal"
+format = '[ $symbol($version) ]($style)'
+
+[docker_context]
+symbol = ""
+style = "fg:bg bg:mantle"
+format = '[ $symbol($context) ]($style)'
+
+[time]
+disabled = false
+time_format = "%R"
+style = "fg:bg bg:purple"
+format = '[  $time ]($style)'
+
+[line_break]
+disabled = false
+
+[character]
+disabled = false
+success_symbol = '[](bold fg:green)'
+error_symbol = '[](bold fg:red)'
+vimcmd_symbol = '[](bold fg:green)'
+vimcmd_visual_symbol = '[](bold fg:lavender)'
