@@ -35,6 +35,9 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
     sudo sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' /etc/pacman.conf
   fi
 
+  # force package database refresh
+  sudo pacman -Syy
+
   # Install packages
   PACKAGES_TO_INSTALL=(
     "${KERNEL_HEADERS}"
