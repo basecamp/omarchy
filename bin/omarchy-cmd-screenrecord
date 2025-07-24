@@ -2,8 +2,10 @@
 
 # Set recorder based on GPU
 
+OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-$HOME/Videos}"
+
 screenrecording() {
-  filename="$HOME/Videos/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
+  filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
   notify-send "Screen recording starting..." -t 1000
   sleep 1
 
