@@ -95,12 +95,13 @@ remove_theme_prompt() {
 
 setup_menu() {
   show_ascii_art
-  local menu=("Dropbox" "Docker DBs" "Fingerprint sensor" "Fido2 device" "Back")
+  local menu=("Dropbox" "Docker DBs" "Fingerprint sensor" "Fido2 device" "Timezone" "Back")
   local commands=(
     "omarchy-setup-dropbox"
     "setup_docker_dbs"
     "omarchy-setup-fingerprint"
     "omarchy-setup-fido2"
+    "omarchy-setup-timezone"
     "main_menu"
   )
   local choice

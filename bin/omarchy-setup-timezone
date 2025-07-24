@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# Ensure tzupdate is installed
+if ! command -v tzupdate &>/dev/null; then
+  echo "Installing tzupdate..."
+  yay -S --noconfirm --needed tzupdate
+fi
+
+# Check if passwordless sudo is available for tzupdate and timedatectl
+can_sudo_tzupdate() {
+  sudo -n tzupdate --version &>/dev/null
+}
+can_sudo_timedatectl() {
+  sudo -n timedatectl show &>/dev/null
+}
+
+show_menu() {
+  local options=("Auto-detect timezone (tzupdate)" "Manually set timezone" "Show current timezone" "Help (VPN/offline)" "Back")
+  local choice
+  choice=$(printf "%s\n" "${options[@]}" | gum choose --header="Timezone Setup") || exit 0
+  case "$choice" in
+    "Auto-detect timezone (tzupdate)")
+      echo "Running tzupdate..."
+      if can_sudo_tzupdate; then
+        if sudo -n tzupdate; then
+          echo -e "\e[32mTimezone updated successfully!\e[0m"
+        else
+          echo -e "\e[31mFailed to update timezone.\e[0m"
+        fi
+      else
+        echo -e "\e[31mPasswordless sudo is not available for tzupdate. Please run the Omarchy migration or contact your administrator.\e[0m"
+      fi
+      gum confirm "Back to timezone menu?" && show_menu
+      ;;
+    "Manually set timezone")
+      current=$(timedatectl | grep "Time zone" | awk '{print $3}')
+      tz=$(gum input --placeholder="e.g. Europe/London" --value="$current" --header="Enter your desired timezone (see 'timedatectl list-timezones'):")
+      if [[ -n "$tz" ]]; then
+        if timedatectl list-timezones | grep -qx "$tz"; then
+          if can_sudo_timedatectl; then
+            if sudo -n timedatectl set-timezone "$tz"; then
+              echo -e "\e[32mTimezone set to $tz\e[0m"
+            else
+              echo -e "\e[31mFailed to set timezone.\e[0m"
+            fi
+          else
+            echo -e "\e[31mPasswordless sudo is not available for timedatectl. Please run the Omarchy migration or contact your administrator.\e[0m"
+          fi
+        else
+          echo -e "\e[31mInvalid timezone: $tz\e[0m"
+        fi
+      fi
+      gum confirm "Back to timezone menu?" && show_menu
+      ;;
+    "Show current timezone")
+      timedatectl | grep "Time zone"
+      gum confirm "Back to timezone menu?" && show_menu
+      ;;
+    "Help (VPN/offline)")
+      echo -e "\nIf you are on a VPN or have no network access, auto-detect may fail.\nYou can manually set your timezone using the option above.\nTo see all valid timezones, run: timedatectl list-timezones\n"
+      gum confirm "Back to timezone menu?" && show_menu
+      ;;
+    "Back")
+      clear
+      exit 0
+      ;;
+  esac
+}
+
+show_menu 

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# This script is for post-install or manual hooks, not for login automation.
+case "$1" in
+post)
+  /usr/bin/tzupdate
+  ;;
+esac
