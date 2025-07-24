@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Audio Settings
 Comment=Using Wiremix
-Exec=alacritty --class=Wiremix --title=Wiremix -e wiremix
+Exec=wiremix
 Icon=audio-card
 Type=Application
-Terminal=false
+Terminal=true
