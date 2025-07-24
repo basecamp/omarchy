@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Displays
+Comment=Control Hyprland monitor settings
+Exec=alacritty --class=Displays --title=Displays -e omarchy-monitor-settings
+Terminal=false
+Type=Application
+Icon=video-display
+Categories=System;Settings;
+StartupNotify=false 
