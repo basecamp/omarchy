@@ -21,7 +21,7 @@ echo -e "\e[32mPasswordless sudo for timezone updates is now enabled for all whe
 
 # Create systemd user service for tzupdate
 mkdir -p ~/.config/systemd/user
-cat > ~/.config/systemd/user/omarchy-tzupdate.service <<EOF
+cat >~/.config/systemd/user/omarchy-tzupdate.service <<EOF
 [Unit]
 Description=Update timezone using tzupdate at login
 After=network-online.target
@@ -38,4 +38,5 @@ EOF
 systemctl --user daemon-reload
 systemctl --user enable omarchy-tzupdate.service
 
-echo -e "\e[32mTimezone auto-sync is now enabled for this user.\e[0m" 
+echo -e "\e[32mTimezone auto-sync is now enabled for this user.\e[0m"
+
