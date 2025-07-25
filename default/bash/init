@@ -7,8 +7,8 @@ if command -v zoxide &> /dev/null; then
 fi
 
 if command -v fzf &> /dev/null; then
-  if [[ -f /usr/share/bash-completion/completions/fzf ]]; then
-    source /usr/share/bash-completion/completions/fzf
+  if [[ -f /usr/share/fzf/completion.bash ]]; then
+    source /usr/share/fzf/completion.bash
   fi
   if [[ -f /usr/share/fzf/key-bindings.bash ]]; then
     source /usr/share/fzf/key-bindings.bash
