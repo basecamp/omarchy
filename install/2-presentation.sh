@@ -5,7 +5,7 @@ yay -S --noconfirm --needed gum python-terminaltexteffects
 
 show_logo() {
   clear
-  tte -i ~/.local/share/omarchy/logo.txt --frame-rate 120 expand
+  tte -i ~/.local/share/omarchy/logo.txt --frame-rate 120 ${1:-expand}
   echo -e ""
 }
 
