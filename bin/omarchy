@@ -4,7 +4,8 @@ OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/de
 PATH="$PATH:$HOME/.local/share/omarchy/bin"
 
 show_ascii_art() {
-  source ~/.local/share/omarchy/ansi.sh
+  clear
+  tte -i ~/.local/share/omarchy/logo.txt --frame-rate 640 expand
   echo "                                                                                 $OMARCHY_VERSION"
 }
 
