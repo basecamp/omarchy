@@ -38,7 +38,6 @@ source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
 source $OMARCHY_INSTALL/config/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/network.sh
 source $OMARCHY_INSTALL/config/power.sh
-source $OMARCHY_INSTALL/config/theme.sh
 source $OMARCHY_INSTALL/config/login.sh
 source $OMARCHY_INSTALL/config/plymouth.sh
 source $OMARCHY_INSTALL/config/nvidia.sh
@@ -58,6 +57,7 @@ show_logo slice
 show_subtext "Installing desktop tools [3/10]"
 source $OMARCHY_INSTALL/desktop/desktop.sh
 source $OMARCHY_INSTALL/desktop/hyprlandia.sh
+source $OMARCHY_INSTALL/dekstop/theme.sh
 source $OMARCHY_INSTALL/desktop/bluetooth.sh
 source $OMARCHY_INSTALL/desktop/asdcontrol.sh
 source $OMARCHY_INSTALL/desktop/fonts.sh
