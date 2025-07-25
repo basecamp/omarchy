@@ -3,7 +3,7 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-OMARCHY_INSTALL=~/.local/share/omarchy/install/
+OMARCHY_INSTALL=~/.local/share/omarchy/install
 
 # Give people a chance to retry running the installation
 catch_errors() {
@@ -46,7 +46,7 @@ source $OMARCHY_INSTALL/config/nvidia.sh
 show_logo decrypt 920
 show_subtext "Installing terminal tools [2/10]"
 source $OMARCHY_INSTALL/development/terminal.sh
-source $OMARCHY_INSTALL/development/developmment.sh
+source $OMARCHY_INSTALL/development/developent.sh
 source $OMARCHY_INSTALL/development/nvim.sh
 source $OMARCHY_INSTALL/development/ruby.sh
 source $OMARCHY_INSTALL/development/docker.sh
