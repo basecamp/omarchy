@@ -10,7 +10,13 @@ gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"
 
 # Setup theme links
 mkdir -p ~/.config/omarchy/themes
-for f in ~/.local/share/omarchy/themes/*; do ln -s "$f" ~/.config/omarchy/themes/; done
+for f in ~/.local/share/omarchy/themes/*; do
+  if [[ ! -L ~/.config/omarchy/themes/$(basename $f) ]]; then
+    ln -s "$f" ~/.config/omarchy/themes/;
+  else
+    echo "Link for theme $(basename $f) exists"
+  fi
+done
 
 # Set initial theme
 mkdir -p ~/.config/omarchy/current
