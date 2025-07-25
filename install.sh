@@ -24,4 +24,4 @@ sudo updatedb
 # Update all built-in packages
 sudo pacman -Syu --noconfirm
 
-gum confirm "Reboot to apply all settings?" && reboot
+reboot
