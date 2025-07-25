@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Hyprland launched via UWSM and login directly as user, rely on disk encryption + hyprlock for security
+show_logo
+show_subtext "Install decryption and boot loader..."
+
 yay -S --noconfirm --needed uwsm
 
 # Compile the seamless login helper -- needed to prevent seeing terminal between loader and desktop

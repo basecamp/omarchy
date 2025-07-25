@@ -1,5 +1,8 @@
 #!/bin/bash
 
+show_logo
+show_subtext "Installing themes..."
+
 # Use dark mode for QT apps too (like kdenlive)
 sudo pacman -S --noconfirm kvantum-qt5
 

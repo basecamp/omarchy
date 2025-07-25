@@ -1,5 +1,8 @@
 #!/bin/bash
 
+show_logo
+show_subtext "Installing Hyprland ecosystem..."
+
 yay -S --noconfirm --needed \
   hyprland hyprshot hyprpicker hyprlock hypridle polkit-gnome hyprland-qtutils \
   walker-bin libqalculate waybar mako swaybg swayosd \

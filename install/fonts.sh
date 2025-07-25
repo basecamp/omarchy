@@ -1,5 +1,8 @@
 #!/bin/bash
 
+show_logo
+show_subtext "Install beautiful fonts..."
+
 if [ -z "$OMARCHY_BARE" ]; then
   yay -S --noconfirm --needed ttf-font-awesome noto-fonts noto-fonts-emoji noto-fonts-cjk noto-fonts-extra
 else
