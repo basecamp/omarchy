@@ -6,6 +6,8 @@ yay -S --noconfirm --needed gum python-terminaltexteffects
 # Configure identification
 clear
 tte -i ~/.local/share/omarchy/logo.txt --frame-rate 120 expand
-echo -e "\nEnter identification for git and autocomplete..."
+echo -e ""
+echo "Let's install Omarchy!" | tte --frame-rate 640 wipe
+echo -e ""
 export OMARCHY_USER_NAME=$(gum input --placeholder "Enter full name" --prompt "Name> ")
 export OMARCHY_USER_EMAIL=$(gum input --placeholder "Enter email address" --prompt "Email> ")
