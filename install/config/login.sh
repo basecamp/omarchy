@@ -1,8 +1,5 @@
 #!/bin/bash
 
-show_logo
-show_subtext "Install decryption and boot loader..."
-
 yay -S --noconfirm --needed uwsm
 
 # Compile the seamless login helper -- needed to prevent seeing terminal between loader and desktop

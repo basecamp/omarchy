@@ -1,8 +1,5 @@
 #!/bin/bash
 
-show_logo
-show_subtext "Let's install desktop tools..."
-
 yay -S --noconfirm --needed \
   brightnessctl playerctl pamixer wiremix wireplumber \
   fcitx5 fcitx5-gtk fcitx5-qt wl-clip-persist \
