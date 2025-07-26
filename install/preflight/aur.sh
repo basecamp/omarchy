@@ -31,7 +31,8 @@ if ! command -v yay &>/dev/null; then
   git clone https://aur.archlinux.org/yay-bin.git && \
   cd yay-bin && \
   makepkg -si --noconfirm
-  
+
+  cd ~
   fi
 
 # Add fun and color to the pacman installer
