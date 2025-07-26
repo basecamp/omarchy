@@ -14,6 +14,5 @@ if ! command -v uwsm &>/dev/null; then
     sed -i 's/^GTK_IM_MODULE=fcitx$//' "$HOME/.config/environment.d/fcitx.conf"
   fi
 
-  omarchy-refresh-plymouth -y
   source ~/.local/share/omarchy/install/login.sh
 fi
