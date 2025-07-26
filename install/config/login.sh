@@ -47,7 +47,9 @@ if [ -d "/boot/loader/entries" ]; then # systemd-boot
       fi
     fi
   done
-elif [ -f "/etc/default/grub" ]; then # Grub
+elif [ -f "/boot/efi/m1n1/boot.conf" ]; then # Asahi Linux
+  echo "Detected Asahi Linux"
+  sudo sed -i '/^options/ s/$/ splash quiet/' /boot/efi/m1n1/boot.conf
   echo "Detected grub"
 
   # Backup GRUB config before modifying

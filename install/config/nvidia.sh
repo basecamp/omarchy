@@ -11,7 +11,7 @@
 # ==============================================================================
 
 # --- GPU Detection ---
-if [ -n "$(lspci | grep -i 'nvidia')" ]; then
+if [[ "$(uname -m)" == "x86_64" ]] && [ -n "$(lspci | grep -i 'nvidia')" ]; then
   show_logo
   show_subtext "Install NVIDIA drivers..."
 
