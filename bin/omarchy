@@ -12,10 +12,11 @@ show_ascii_art() {
 main_menu() {
   show_ascii_art
 
-  local options=("Theme" "Setup" "Update" "Manual" "Exit")
+  local options=("Theme" "Plugin" "Setup" "Update" "Manual" "Exit")
   choice=$(printf "%s\n" "${options[@]}" | gum choose --header "") || exit 0
   case "$choice" in
   Theme) theme_menu ;;
+  Plugin) plugin_menu ;;
   Update) update_menu ;;
   Setup) setup_menu ;;
   Manual) open_manual ;;
@@ -92,6 +93,59 @@ remove_theme_prompt() {
     omarchy-theme-remove "$theme"
   fi
   theme_menu
+}
+
+plugin_menu() {
+  show_ascii_art
+  local menu=("Install" "Remove" "Update" "List" "Back")
+  local commands=(
+    "install_plugin_prompt"
+    "remove_plugin_prompt"
+    "update_plugin_prompt"
+    "omarchy-plugin-list"
+    "main_menu"
+  )
+  local choice
+  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Plugin") || main_menu
+  for i in "${!menu[@]}"; do
+    if [[ "${menu[$i]}" == "$choice" ]]; then
+      if [[ "$choice" == "Back" ]]; then
+        main_menu
+      else
+        eval "${commands[$i]}"
+        ack_command
+        main_menu
+      fi
+      break
+    fi
+  done
+}
+
+install_plugin_prompt() {
+  local url
+  url=$(gum input --placeholder="Git repo URL for plugin" --header="")
+  if [[ -n "$url" ]]; then
+    omarchy-plugin-install "$url"
+  fi
+  plugin_menu
+}
+
+remove_plugin_prompt() {
+  local plugin
+  plugin=$(gum input --placeholder="Plugin name" --header="")
+  if [[ -n "$plugin" ]]; then
+    omarchy-plugin-remove "$plugin"
+  fi
+  plugin_menu
+}
+
+update_plugin_prompt() {
+  local plugin
+  plugin=$(gum input --placeholder="Plugin name" --header="")
+  if [[ -n "$plugin" ]]; then
+    omarchy-plugin-update "$plugin"
+  fi
+  plugin_menu
 }
 
 setup_menu() {

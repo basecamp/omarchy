@@ -1,0 +1,41 @@
+#!/bin/bash
+
+PLUGIN_PATH="$HOME/.config/omarchy/plugins"
+
+echo -e "\n\e[34mInstalled Omarchy Plugins:\e[0m"
+echo "=========================="
+
+if [ ! -d "$PLUGIN_PATH" ]; then
+  echo "No plugins found."
+  exit 0
+fi
+
+for plugin_dir in "$PLUGIN_PATH"/*; do
+  if [ -d "$plugin_dir" ]; then
+    plugin_name=$(basename "$plugin_dir")
+
+    echo -e "\n - $plugin_name"
+
+    # Get repository URL if available
+    if [ -d "$plugin_dir/.git" ]; then
+      cd "$plugin_dir"
+      repo_url=$(git config --get remote.origin.url 2>/dev/null)
+      if [ -n "$repo_url" ]; then
+        echo "   Repository: $repo_url"
+      fi
+
+      # Get description
+      description=$(jq -r ".description" "$plugin_dir/manifest.json")
+      if [ -n "$description" ]; then
+        echo "   Description: $description"
+      fi
+
+      # Get current version
+      version=$(jq -r ".version" "$plugin_dir/manifest.json")
+      if [ -n "$version" ]; then
+        echo "   Version: $version"
+      fi
+
+    fi
+  fi
+done
