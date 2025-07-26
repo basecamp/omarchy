@@ -1,9 +1,6 @@
 #!/bin/bash
 
 if [ -z "$OMARCHY_BARE" ]; then
-  show_logo
-  show_subtext "Installing default applications..."
-
   yay -S --noconfirm --needed \
     gnome-calculator gnome-keyring signal-desktop \
     obsidian-bin libreoffice obs-studio kdenlive \
