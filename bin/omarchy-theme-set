@@ -42,6 +42,7 @@ pkill swayosd-server
 setsid uwsm app -- swayosd-server &>/dev/null &
 makoctl reload
 hyprctl reload
+pkill -SIGUSR1 nvim 2>/dev/null || true
 
 # Set new background
 "$HOME/.local/share/omarchy/bin/omarchy-theme-bg-next"
