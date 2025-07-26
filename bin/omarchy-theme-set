@@ -48,6 +48,7 @@ pkill -SIGUSR2 btop
 ~/.local/share/omarchy/bin/omarchy-restart-swayosd
 makoctl reload
 hyprctl reload
+pkill -SIGUSR1 nvim 2>/dev/null || true
 
 # Set new background
 ~/.local/share/omarchy/bin/omarchy-theme-bg-next
