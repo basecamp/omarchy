@@ -9,6 +9,12 @@ echo "source ~/.local/share/omarchy/default/bash/rc" >~/.bashrc
 # Ensure application directory exists for update-desktop-database
 mkdir -p ~/.local/share/applications
 
+# If bare install, allow a way for its exclusions to not get added in updates
+if [ -n "$OMARCHY_BARE" ]; then
+  mkdir -p ~/.local/state/omarchy
+  touch ~/.local/state/omarchy/bare.mode
+fi
+
 # Setup GPG configuration with multiple keyservers for better reliability
 sudo mkdir -p /etc/gnupg
 sudo cp ~/.local/share/omarchy/default/gpg/dirmngr.conf /etc/gnupg/
