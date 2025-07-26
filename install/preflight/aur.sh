@@ -10,7 +10,9 @@ if [[ "$(uname -m)" == "x86_64" ]] && ! command -v yay &>/dev/null; then
     sudo pacman -U --noconfirm 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst'; then
 
     # Add Chaotic-AUR repo to pacman config
-    echo -e '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist' | sudo tee -a /etc/pacman.conf >/dev/null
+    if ! grep -q "chaotic-aur" /etc/pacman.conf; then
+      echo -e '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist' | sudo tee -a /etc/pacman.conf >/dev/null
+    fi
 
     # Install yay directly from Chaotic-AUR
     sudo pacman -Sy --needed --noconfirm yay
