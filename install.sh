@@ -53,7 +53,7 @@ source $OMARCHY_INSTALL/development/docker.sh
 source $OMARCHY_INSTALL/development/firewall.sh
 
 # Desktop
-show_logo slice
+show_logo slice 60
 show_subtext "Installing desktop tools [3/10]"
 source $OMARCHY_INSTALL/desktop/desktop.sh
 source $OMARCHY_INSTALL/desktop/hyprlandia.sh
