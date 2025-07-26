@@ -1,0 +1,11 @@
+#!/bin/bash
+
+focused_app=$(hyprctl activewindow -j | jq -r '.class')
+
+case "$focused_app" in "Typora")
+  wtype -k F11
+  ;;
+*)
+  hyprctl dispatch fullscreen
+  ;;
+esac
