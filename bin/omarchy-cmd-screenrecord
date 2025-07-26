@@ -2,7 +2,13 @@
 
 # Set recorder based on GPU
 
-OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-$HOME/Videos}"
+[[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
+OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+
+if [[ ! -d "$OUTPUT_DIR" ]]; then
+  notify-send "Screen recording directory does not exist: $OUTPUT_DIR" -u critical -t 3000
+  exit 1
+fi
 
 screenrecording() {
   filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
@@ -19,7 +25,7 @@ screenrecording() {
 if pgrep -x wl-screenrec >/dev/null || pgrep -x wf-recorder >/dev/null; then
   pkill -x wl-screenrec
   pkill -x wf-recorder
-  notify-send "Screen recording saved to ~/Videos" -t 2000
+  notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
 elif [[ "$1" == "output" ]]; then
   screenrecording
 else
