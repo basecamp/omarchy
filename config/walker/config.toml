@@ -139,6 +139,7 @@ name = "Calculator"
 icon = "accessories-calculator"
 placeholder = "Calculator"
 min_chars = 3                   # Min chars to calculate. 3 allows "3+3"
+prefix = "="
 
 [builtins.windows]
 weight = 5
