@@ -4,7 +4,8 @@ OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/de
 PATH="$PATH:$HOME/.local/share/omarchy/bin"
 
 show_ascii_art() {
-  source ~/.local/share/omarchy/ansi.sh
+  clear
+  tte -i ~/.local/share/omarchy/logo.txt --frame-rate 640 expand
   echo "                                                                                 $OMARCHY_VERSION"
 }
 
@@ -95,9 +96,10 @@ remove_theme_prompt() {
 
 setup_menu() {
   show_ascii_art
-  local menu=("Dropbox" "Docker DBs" "Fingerprint sensor" "Fido2 device" "Back")
+  local menu=("Dropbox" "Steam" "Docker DBs" "Fingerprint sensor" "Fido2 device" "Back")
   local commands=(
     "omarchy-setup-dropbox"
+    "omarchy-setup-steam"
     "setup_docker_dbs"
     "omarchy-setup-fingerprint"
     "omarchy-setup-fido2"
@@ -126,10 +128,10 @@ setup_docker_dbs() {
   if [[ -n "$choices" ]]; then
     for db in $choices; do
       case $db in
-      MariaDB) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mariadb11 -e MARIADB_ROOT_PASSWORD= -e MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=true mariadb:11.8 ;;
       MySQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mysql8 -e MYSQL_ROOT_PASSWORD= -e MYSQL_ALLOW_EMPTY_PASSWORD=true mysql:8.4 ;;
-      Redis) sudo docker run -d --restart unless-stopped -p "127.0.0.1:6379:6379" --name=redis redis:7 ;;
       PostgreSQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:5432:5432" --name=postgres16 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16 ;;
+      MariaDB) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mariadb11 -e MARIADB_ROOT_PASSWORD= -e MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=true mariadb:11.8 ;;
+      Redis) sudo docker run -d --restart unless-stopped -p "127.0.0.1:6379:6379" --name=redis redis:7 ;;
       esac
     done
   fi
