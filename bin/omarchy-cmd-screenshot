@@ -2,7 +2,7 @@
 
 OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-$HOME/Pictures}"
 
-hyprshot -m ${1:-region} --raw |
+pkill slurp || hyprshot -m ${1:-region} --raw |
   satty --filename - \
     --output-filename "$OUTPUT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png" \
     --early-exit \
