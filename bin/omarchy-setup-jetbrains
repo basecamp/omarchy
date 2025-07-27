@@ -1,0 +1,39 @@
+# Modified from original script https://raw.githubusercontent.com/nagygergo/jetbrains-toolbox-install/refs/heads/master/jetbrains-toolbox.sh
+#!/bin/bash
+
+set -e
+set -o pipefail
+
+TMP_DIR="/tmp"
+INSTALL_DIR="$HOME/.local/share/JetBrains/Toolbox/bin"
+SYMLINK_DIR="$HOME/.local/bin"
+
+echo "Installing Jetbrains Toolbox"
+
+echo "Fetching the latest version of toolbox..."
+ARCHIVE_URL=$(curl -s 'https://data.services.jetbrains.com/products/releases?code=TBA&latest=true&type=release' | grep -Po '"linux":.*?[^\\]",' | awk -F ':' '{print $3,":"$4}'| sed 's/[", ]//g')
+ARCHIVE_FILENAME=$(basename "$ARCHIVE_URL")
+
+echo "Downloading $ARCHIVE_FILENAME..."
+rm "$TMP_DIR/$ARCHIVE_FILENAME" 2>/dev/null || true
+wget -q --show-progress -cO "$TMP_DIR/$ARCHIVE_FILENAME" "$ARCHIVE_URL"
+
+echo "Extracting to $INSTALL_DIR..."
+mkdir -p "$INSTALL_DIR"
+rm "$INSTALL_DIR/jetbrains-toolbox" 2>/dev/null || true
+tar -xzf "$TMP_DIR/$ARCHIVE_FILENAME" -C "$INSTALL_DIR" --strip-components=2
+rm "$TMP_DIR/$ARCHIVE_FILENAME"
+chmod +x "$INSTALL_DIR/jetbrains-toolbox"
+
+echo "Symlinking to $SYMLINK_DIR/jetbrains-toolbox..."
+mkdir -p $SYMLINK_DIR
+rm "$SYMLINK_DIR/jetbrains-toolbox" 2>/dev/null || true
+ln -s "$INSTALL_DIR/jetbrains-toolbox" "$SYMLINK_DIR/jetbrains-toolbox"
+
+echo "Starting Jetbrains Toolbox..."
+uwsm app -- "$INSTALL_DIR/jetbrains-toolbox" start &>/dev/null &
+
+# Add Jetbrains window rules to hyprland.conf
+echo -e "\n#Jetbrains window rules\nsource = ~/.local/share/omarchy/config/jetbrains/windows.conf" >> ~/.config/hypr/hyprland.conf
+
+hyprctl reload
