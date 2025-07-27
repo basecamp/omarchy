@@ -1,6 +1,6 @@
 #!/bin/bash
 
-yay -Sy --noconfirm --needed gum python-terminaltexteffects cage alacritty xorg-xwayland
+yay -Sy --noconfirm --needed gum python-terminaltexteffects cage alacritty xorg-xwayland unzip
 
 mkdir -p ~/.local/share/fonts
 
