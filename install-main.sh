@@ -81,10 +81,6 @@ catch_errors() {
   local exit_code=$?
   local line_number=${BASH_LINENO[0]}
 
-  # cleanup() will run automatically when we exit
-  # Clear everything from current position down
-  printf "\033[J"
-
   cleanup
 
   show_logo crumble 120
