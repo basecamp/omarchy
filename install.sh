@@ -18,17 +18,15 @@ trap catch_preflight_errors ERR
 
 echo "Running preflight items..."
 
-echo "Starting: Running preflight/aur.sh..." | tee -a "$LOGFILE"
-bash "$OMARCHY_INSTALL/preflight/aur.sh" >>"$LOGFILE" 2>&1
-echo "Completed: Running preflight/aur.sh..." | tee -a "$LOGFILE"
-
-echo "Starting: Running preflight/presentation.sh..." | tee -a "$LOGFILE"
-bash "$OMARCHY_INSTALL/preflight/presentation.sh" >>"$LOGFILE" 2>&1
-echo "Completed: Running preflight/presentation.sh..." | tee -a "$LOGFILE"
-
-echo "Starting: Running preflight/fonts.sh..." | tee -a "$LOGFILE"
-bash "$OMARCHY_INSTALL/preflight/fonts.sh" >>"$LOGFILE" 2>&1
-echo "Completed: Running preflight/fonts.sh..." | tee -a "$LOGFILE"
+# Find and execute all .sh files in the preflight directory
+if [[ -d "$OMARCHY_INSTALL/preflight" ]]; then
+  while IFS= read -r script; do
+    script_name=$(basename "$script")
+    echo "Starting: Running preflight/$script_name..." | tee -a "$LOGFILE"
+    bash "$script" >>"$LOGFILE" 2>&1
+    echo "Completed: Running preflight/$script_name..." | tee -a "$LOGFILE"
+  done < <(find "$OMARCHY_INSTALL/preflight" -name "*.sh" -type f | sort)
+fi
 
 echo -e "\n"
 
