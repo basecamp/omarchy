@@ -167,7 +167,8 @@ spinner_step() {
       # Get recent lines from log, excluding empty lines and start/complete messages
       # Take more lines initially to ensure we capture enough after filtering
       # Use grep -a to handle any binary data and suppress warnings
-      last_lines=$(tail -n $PROGRESS_LINES "$LOGFILE")
+      # Strip ANSI codes and control characters, then limit line length
+      last_lines=$(tail -n $PROGRESS_LINES "$LOGFILE" | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g')
 
       # Save cursor position
       printf "\033[s"
@@ -177,8 +178,10 @@ spinner_step() {
       while IFS= read -r line; do
         if [[ -n "$line" ]] && [[ $line_num -le $PROGRESS_LINES ]]; then
           # Move to line, clear it, and print new content
-          local max_width=$((TERM_WIDTH - LOGO_INDENT - 5))
-          printf "\033[${line_num}B\033[2K\033[${LOGO_INDENT}C\033[90m  → %s\033[0m\033[u" "$(echo "$line" | cut -c1-${max_width})"
+          local max_width=$((TERM_WIDTH - LOGO_INDENT - 8))
+          # Ensure line is truncated to prevent wrapping
+          local truncated_line=$(echo "$line" | cut -c1-${max_width})
+          printf "\033[${line_num}B\033[2K\033[${LOGO_INDENT}C\033[90m  → %s\033[0m\033[u" "$truncated_line"
           line_num=$((line_num + 1))
         fi
       done <<<"$last_lines"
