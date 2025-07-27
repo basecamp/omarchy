@@ -59,6 +59,7 @@ CURRENT_STEP=0
 # show_logo [animation] [frame-rate] [anchor-text]
 show_logo() {
   clear
+  echo -e "\n\n\n\n"
   if command -v tte &>/dev/null; then
     tte --anchor-text ${3:-n} --canvas-width 0 -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
   else
