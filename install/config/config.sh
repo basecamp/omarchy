@@ -4,7 +4,7 @@
 cp -R ~/.local/share/omarchy/config/* ~/.config/
 
 # Use default bashrc from Omarchy
-echo "source ~/.local/share/omarchy/default/bash/rc" >~/.bashrc
+cp ~/.local/share/omarchy/default/bashrc ~/.bashrc
 
 # Ensure application directory exists for update-desktop-database
 mkdir -p ~/.local/share/applications
