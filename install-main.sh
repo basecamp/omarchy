@@ -151,23 +151,16 @@ spinner_step() {
   # Log the start
   echo "Starting: $step_title" >>"$LOGFILE" 2>&1
 
-  # Move up to overwrite previous progress bar (except for first step)
-  if [[ $CURRENT_STEP -gt 1 ]]; then
-    printf "\033[1A"
-  fi
+  # Move up to overwrite previous progress bar
+  printf "\033[1A"
 
   show_progress_bar
   echo ""
 
   # Start a background process to show progress
   (
-    # Give the script a moment to start
     sleep 0.2
     while true; do
-      # Get recent lines from log, excluding empty lines and start/complete messages
-      # Take more lines initially to ensure we capture enough after filtering
-      # Use grep -a to handle any binary data and suppress warnings
-      # Strip ANSI codes and control characters, then limit line length
       last_lines=$(tail -n $PROGRESS_LINES "$LOGFILE" | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g')
 
       # Save cursor position
@@ -177,8 +170,7 @@ spinner_step() {
       line_num=1
       while IFS= read -r line; do
         if [[ -n "$line" ]] && [[ $line_num -le $PROGRESS_LINES ]]; then
-          # Move to line, clear it, and print new content
-          local max_width=$((TERM_WIDTH - LOGO_INDENT - 8))
+          local max_width=$((LOGO_WIDTH - 8))
           # Ensure line is truncated to prevent wrapping
           local truncated_line=$(echo "$line" | cut -c1-${max_width})
           printf "\033[${line_num}B\033[2K\033[${LOGO_INDENT}C\033[90m  → %s\033[0m\033[u" "$truncated_line"
@@ -186,14 +178,6 @@ spinner_step() {
         fi
       done <<<"$last_lines"
 
-      # Clear any remaining lines that weren't updated
-      while [[ $line_num -le $PROGRESS_LINES ]]; do
-        printf "\033[${line_num}B\033[2K\033[u"
-        line_num=$((line_num + 1))
-      done
-
-      # Restore cursor position
-      printf "\033[u"
       sleep 0.2
     done
   ) &
@@ -211,9 +195,6 @@ spinner_step() {
 
   # Stop progress display
   kill $progress_pid 2>/dev/null || true
-
-  # Clear everything from current position down
-  printf "\033[J"
 
   # Check if command failed
   if [[ $exit_code -ne 0 ]]; then
