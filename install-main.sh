@@ -13,17 +13,6 @@ PROGRESS_PIDS=()
 LOGFILE=~/.local/share/omarchy/omarchy-install.log
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 
-# Request sudo upfront for the entire installation
-echo "Omarchy installer requires administrator privileges."
-sudo -v
-
-# Keep sudo alive in the background
-(while true; do
-  sudo -n true
-  sleep 50
-done 2>/dev/null) &
-SUDO_PID=$!
-
 # Ensure log file exists and is writable
 if [[ ! -f "$LOGFILE" ]]; then
   echo "Creating log file: $LOGFILE"
@@ -67,6 +56,17 @@ show_logo() {
   fi
 }
 
+show_subtext() {
+  echo
+  if command -v tte &>/dev/null; then
+    # Add indent to the text before piping to tte
+    printf "%*s%s\n" $LOGO_INDENT "" "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
+  else
+    printf "%*s%s\n" $LOGO_INDENT "" "$1" # TODO: Maybe get rid of this fallback?
+  fi
+  echo
+}
+
 # Kill any progress monitors on exit
 cleanup() {
   for pid in "${PROGRESS_PIDS[@]}"; do
@@ -100,17 +100,6 @@ catch_errors() {
   exit 1
 }
 trap catch_errors ERR
-
-show_subtext() {
-  echo
-  if command -v tte &>/dev/null; then
-    # Add indent to the text before piping to tte
-    printf "%*s%s\n" $LOGO_INDENT "" "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
-  else
-    printf "%*s%s\n" $LOGO_INDENT "" "$1" # TODO: Maybe get rid of this fallback?
-  fi
-  echo
-}
 
 # ==============================================================================
 # PROGRESS BAR
@@ -204,6 +193,52 @@ spinner_step() {
 
   echo "Completed: $step_title" >>"$LOGFILE"
 }
+
+# ==============================================================================
+# INITIAL SETUP - User interaction before spinner steps
+# ==============================================================================
+show_logo "waves" 240
+show_subtext "Let's get some things out of the way..."
+
+# Request sudo upfront for the entire installation
+printf "%*sOmarchy installer requires administrator privileges.\n" $LOGO_INDENT ""
+echo
+
+# Try up to 3 times for sudo password
+for attempt in 1 2 3; do
+  SUDO_PASS=$(gum input --password --no-show-help --placeholder "Enter your password" --prompt "$(printf "%*s[sudo] Password> " $LOGO_INDENT "")")
+  # Use printf instead of echo to avoid issues with special characters
+  if printf '%s\n' "$SUDO_PASS" | sudo -S true 2>/dev/null; then
+    # Successfully authenticated, validate sudo access
+    sudo -v
+    unset SUDO_PASS
+    printf "%*sSudo confirmed.\n" $LOGO_INDENT ""
+    break
+  else
+    unset SUDO_PASS
+    if [[ $attempt -lt 3 ]]; then
+      printf "%*sSorry, incorrect password. Try again.\n" $LOGO_INDENT ""
+    else
+      printf "%*sSorry, 3 incorrect password attempts.\n" $LOGO_INDENT ""
+      echo "Authentication failed - exiting installer" >>"$LOGFILE"
+      exit 1
+    fi
+  fi
+done
+
+# Keep sudo alive in the background
+(while true; do
+  sudo -n true
+  sleep 50
+done 2>/dev/null) &
+SUDO_PID=$!
+
+# Collect user identification before launching Cage
+printf "\n\n"
+printf "%*sPlease provide your information for Git configuration:\n" $LOGO_INDENT ""
+echo
+export OMARCHY_USER_NAME=$(gum input --no-show-help --placeholder "Enter full name" --prompt "$(printf "%*sName> " $LOGO_INDENT "")")
+export OMARCHY_USER_EMAIL=$(gum input --no-show-help --placeholder "Enter your email" --prompt "$(printf "%*sEmail> " $LOGO_INDENT "")")
 
 # ==============================================================================
 # INSTALLATION STEPS

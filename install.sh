@@ -31,10 +31,10 @@ fi
 echo -e "\n"
 
 # Collect user identification before launching Cage
-echo "Please provide your information for Git configuration:"
-echo
-export OMARCHY_USER_NAME=$(gum input --placeholder "Enter full name" --prompt "Name> ")
-export OMARCHY_USER_EMAIL=$(gum input --placeholder "Enter email address" --prompt "Email> ")
+# echo "Please provide your information for Git configuration:"
+# echo
+# export OMARCHY_USER_NAME=$(gum input --placeholder "Enter full name" --prompt "Name> ")
+# export OMARCHY_USER_EMAIL=$(gum input --placeholder "Enter email address" --prompt "Email> ")
 
 echo -e "\nPreflight completed. Launching installer...\n"
 
