@@ -162,7 +162,7 @@ spinner_step() {
   # Start a background process to show progress
   (
     # Give the script a moment to start
-    sleep 0.1
+    sleep 0.2
     while true; do
       # Get recent lines from log, excluding empty lines and start/complete messages
       # Take more lines initially to ensure we capture enough after filtering
@@ -194,7 +194,7 @@ spinner_step() {
 
       # Restore cursor position
       printf "\033[u"
-      sleep 0.1
+      sleep 0.2
     done
   ) &
   local progress_pid=$!
