@@ -31,7 +31,7 @@ else
   TERM_WIDTH=80
 fi
 
-LOGO_WIDTH=88 # Width of the OMARCHY logo
+LOGO_WIDTH=86 # Width of the OMARCHY logo
 
 # Calculate indent to center logo and align spinner with "O"
 LOGO_INDENT=$(((TERM_WIDTH - LOGO_WIDTH) / 2))
@@ -110,7 +110,7 @@ show_progress_bar() {
     return
   fi
 
-  local percent=$((CURRENT_STEP / TOTAL_STEPS * 100))
+  local percent=$((CURRENT_STEP * 100 / TOTAL_STEPS))
   local bar_width=40
   local filled=$((bar_width * CURRENT_STEP / TOTAL_STEPS))
   local empty=$((bar_width - filled))
@@ -140,20 +140,16 @@ spinner_step() {
   # Log the start
   echo "Starting: $step_title" >>"$LOGFILE" 2>&1
 
-  # Move up to overwrite previous progress bar
-  printf "\033[1A"
-
+  # Clear current line and draw the progress bar
+  printf "\033[2K\r"
   show_progress_bar
-  echo ""
+  printf "\n"
 
   # Start a background process to show progress
   (
     sleep 0.2
     while true; do
       last_lines=$(tail -n $PROGRESS_LINES "$LOGFILE" | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g')
-
-      # Save cursor position
-      printf "\033[s"
 
       # Print each line, clearing as we go
       line_num=1
@@ -162,7 +158,9 @@ spinner_step() {
           local max_width=$((LOGO_WIDTH - 8))
           # Ensure line is truncated to prevent wrapping
           local truncated_line=$(echo "$line" | cut -c1-${max_width})
-          printf "\033[${line_num}B\033[2K\033[${LOGO_INDENT}C\033[90m  → %s\033[0m\033[u" "$truncated_line"
+          # Move down to line, clear it, print content, then return to start
+          printf "\033[%dB\033[2K\033[${LOGO_INDENT}C\033[90m  → %s\033[0m\033[%dA\r" \
+            $line_num "$truncated_line" $line_num
           line_num=$((line_num + 1))
         fi
       done <<<"$last_lines"
@@ -185,6 +183,9 @@ spinner_step() {
   # Stop progress display
   kill $progress_pid 2>/dev/null || true
 
+  # Move back up to progress bar position (1 line up from spinner)
+  printf "\033[1A"
+
   # Check if command failed
   if [[ $exit_code -ne 0 ]]; then
     echo "Failed: $step_title" >>"$LOGFILE"
@@ -200,16 +201,12 @@ spinner_step() {
 show_logo "waves" 240
 show_subtext "Let's get some things out of the way..."
 
-# Request sudo upfront for the entire installation
 printf "%*sOmarchy installer requires administrator privileges.\n" $LOGO_INDENT ""
 echo
 
-# Try up to 3 times for sudo password
 for attempt in 1 2 3; do
   SUDO_PASS=$(gum input --password --no-show-help --placeholder "Enter your password" --prompt "$(printf "%*s[sudo] Password> " $LOGO_INDENT "")")
-  # Use printf instead of echo to avoid issues with special characters
   if printf '%s\n' "$SUDO_PASS" | sudo -S true 2>/dev/null; then
-    # Successfully authenticated, validate sudo access
     sudo -v
     unset SUDO_PASS
     printf "%*sSudo confirmed.\n" $LOGO_INDENT ""
@@ -234,7 +231,6 @@ done 2>/dev/null) &
 SUDO_PID=$!
 
 printf "\n\n"
-# Collect Git info
 printf "%*sPlease provide your information for Git configuration:\n" $LOGO_INDENT ""
 echo
 export OMARCHY_USER_NAME=$(gum input --no-show-help --placeholder "Enter full name" --prompt "$(printf "%*sName> " $LOGO_INDENT "")")
@@ -276,6 +272,7 @@ for section in "${SECTION_ORDER[@]}"; do
       else
         spinner_step "$step_title" "bash $script"
       fi
+
     done < <(find "$OMARCHY_INSTALL/$section" -name "*.sh" -type f | sort)
   fi
 done
