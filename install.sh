@@ -1,84 +1,57 @@
 #!/bin/bash
+set -eE
 
-# Exit immediately if a command exits with a non-zero status
-set -e
-
+LOGFILE=~/.local/share/omarchy/omarchy-install.log
 OMARCHY_INSTALL=~/.local/share/omarchy/install
+OMARCHY_INSTALL=~/Dev/omarchy/install
 
-# Give people a chance to retry running the installation
-catch_errors() {
-  echo -e "\n\e[31mOmarchy installation failed!\e[0m"
-  echo "You can retry by running: bash ~/.local/share/omarchy/install.sh"
-  echo "Get help from the community: https://discord.gg/tXFUdasqhY"
+# Create/clear log file
+echo "Omarchy installation started at $(date)" >"$LOGFILE"
+
+# Error handler for preflight
+catch_preflight_errors() {
+  echo -e "\n\e[31mOmarchy preflight failed!\e[0m"
+  echo "Check the log at: $LOGFILE"
+  tail -n 20 $LOGFILE
+  exit 1
 }
+trap catch_preflight_errors ERR
 
-trap catch_errors ERR
+echo "Running preflight items..."
 
-show_logo() {
-  clear
-  tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
-  echo
-}
+echo "Starting: Running preflight/aur.sh..." | tee -a "$LOGFILE"
+bash "$OMARCHY_INSTALL/preflight/aur.sh" >>"$LOGFILE" 2>&1
+echo "Completed: Running preflight/aur.sh..." | tee -a "$LOGFILE"
 
-show_subtext() {
-  echo "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
-  echo
-}
+echo "Starting: Running preflight/presentation.sh..." | tee -a "$LOGFILE"
+bash "$OMARCHY_INSTALL/preflight/presentation.sh" >>"$LOGFILE" 2>&1
+echo "Completed: Running preflight/presentation.sh..." | tee -a "$LOGFILE"
 
-# Install prerequisites
-source $OMARCHY_INSTALL/preflight/aur.sh
-source $OMARCHY_INSTALL/preflight/presentation.sh
-source $OMARCHY_INSTALL/preflight/migrations.sh
+echo -e "\n"
 
-# Configuration
-show_logo beams 240
-show_subtext "Let's install Omarchy! [1/5]"
-source $OMARCHY_INSTALL/config/identification.sh
-source $OMARCHY_INSTALL/config/config.sh
-source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
-source $OMARCHY_INSTALL/config/fix-fkeys.sh
-source $OMARCHY_INSTALL/config/network.sh
-source $OMARCHY_INSTALL/config/power.sh
-source $OMARCHY_INSTALL/config/timezones.sh
-source $OMARCHY_INSTALL/config/login.sh
-source $OMARCHY_INSTALL/config/nvidia.sh
+# Collect user identification before launching Cage
+echo "Please provide your information for Git configuration:"
+echo
+export OMARCHY_USER_NAME=$(gum input --placeholder "Enter full name" --prompt "Name> ")
+export OMARCHY_USER_EMAIL=$(gum input --placeholder "Enter email address" --prompt "Email> ")
 
-# Development
-show_logo decrypt 920
-show_subtext "Installing terminal tools [2/5]"
-source $OMARCHY_INSTALL/development/terminal.sh
-source $OMARCHY_INSTALL/development/development.sh
-source $OMARCHY_INSTALL/development/nvim.sh
-source $OMARCHY_INSTALL/development/ruby.sh
-source $OMARCHY_INSTALL/development/docker.sh
-source $OMARCHY_INSTALL/development/firewall.sh
+echo -e "\nPreflight completed. Launching installer...\n"
 
-# Desktop
-show_logo slice 60
-show_subtext "Installing desktop tools [3/5]"
-source $OMARCHY_INSTALL/desktop/desktop.sh
-source $OMARCHY_INSTALL/desktop/hyprlandia.sh
-source $OMARCHY_INSTALL/desktop/theme.sh
-source $OMARCHY_INSTALL/desktop/bluetooth.sh
-source $OMARCHY_INSTALL/desktop/asdcontrol.sh
-source $OMARCHY_INSTALL/desktop/fonts.sh
-source $OMARCHY_INSTALL/desktop/printer.sh
+# Adjust font size based on detected resolution
+FONT_SIZE=12 # Default
+if [[ -r /sys/class/graphics/fb0/virtual_size ]]; then
+  IFS=',' read -r WIDTH HEIGHT </sys/class/graphics/fb0/virtual_size
+  if [[ $HEIGHT -ge 1440 ]]; then
+    FONT_SIZE=16
+  elif [[ $HEIGHT -ge 2160 ]]; then
+    FONT_SIZE=18
+  fi
+fi
 
-# Apps
-show_logo expand
-show_subtext "Installing default applications [4/5]"
-source $OMARCHY_INSTALL/apps/webapps.sh
-source $OMARCHY_INSTALL/apps/xtras.sh
-source $OMARCHY_INSTALL/apps/mimetypes.sh
+# Pass TEST_MODE if set (can be set when calling this script: TEST_MODE=true ./install-cage.sh)
+TEST_MODE="${TEST_MODE:-false}"
 
-# Updates
-show_logo highlight
-show_subtext "Updating system packages [5/5]"
-sudo updatedb
-sudo pacman -Syu --noconfirm
-
-# Reboot
-show_logo laseretch 920
-show_subtext "You're done! So we'll be rebooting now..."
-sleep 2
-reboot
+# Launch the main installer in cage with adjusted font size and environment variables
+MAIN_INSTALLER="${OMARCHY_INSTALL%/install}/install-main.sh"
+OMARCHY_USER_NAME="$OMARCHY_USER_NAME" OMARCHY_USER_EMAIL="$OMARCHY_USER_EMAIL" TEST_MODE="$TEST_MODE" \
+  cage -- alacritty -o font.size=$FONT_SIZE -e bash "$MAIN_INSTALLER"
