@@ -1,4 +1,3 @@
-# Modified from original script https://raw.githubusercontent.com/nagygergo/jetbrains-toolbox-install/refs/heads/master/jetbrains-toolbox.sh
 #!/bin/bash
 
 yay -S jetbrains-toolbox
