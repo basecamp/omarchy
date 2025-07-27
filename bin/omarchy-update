@@ -45,23 +45,28 @@ if (( ${#SVCS[@]} )); then
         for svc in "${SVCS[@]}"; do
             echo -e "  ↻ Restarting \e[32m$svc\e[0m"
             sudo systemctl restart "$svc"
+            if [[ $? -ne 0 ]]; then
+                echo -e "\e[31mFailed to restart $svc. Please check manually.\e[0m"
+            else
+                echo -e "\e[32m$svc restarted successfully.\e[0m"
+            fi
         done
     fi
-else
-    echo -e "\n\e[32mNo systemd services need restarting.\e[0m"
 fi
 
-# List user‐land PIDs holding old libraries
+# Check for user-land processes holding old libraries
+USER_LOG=$(mktemp)
+needrestart -b >"$USER_LOG" 2>&1
+
 mapfile -t PIDS < <(
-    grep '^NEEDRESTART-PID:' "$SERV_LOG" \
+    grep '^NEEDRESTART-PID:' "$USER_LOG" \
     | sed 's/NEEDRESTART-PID:/• PID/'
 )
+
 if (( ${#PIDS[@]} )); then
     echo -e "\n\e[33mUser-land processes holding old libraries:\e[0m"
     printf "  %s\n" "${PIDS[@]}"
     echo "Please restart or kill these manually."
-else
-    echo -e "\n\e[32mNo leftover user processes detected.\e[0m"
 fi
 
 # Check kernel status (0=unknown,1=ok,2=ABI change,3=version change)
@@ -77,8 +82,6 @@ if (( KSTA >= 2 )); then
     else
         echo -e "\e[33mRemember to reboot later!\e[0m"
     fi
-else
-    echo -e "\n\e[32mKernel is up-to-date (status $KSTA).\e[0m"
 fi
 
 rm -f "$SERV_LOG"
