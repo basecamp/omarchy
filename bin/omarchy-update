@@ -1,6 +1,30 @@
 #!/bin/bash
 
-cd ~/.local/share/omarchy
+OMARCHY_DIR="$HOME/.local/share/omarchy"
+MIGRATIONS_DB="$OMARCHY_DIR/migrations/migrations.sqlite3"
+
+# Create the migrations DB and table to store migrations and their statuses if necessary
+mkdir -p "$(dirname "$MIGRATIONS_DB")"
+sqlite3 "$MIGRATIONS_DB" << SQL
+  CREATE TABLE IF NOT EXISTS migrations(
+    version   TEXT PRIMARY KEY,
+    ran_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    success   INTEGER NOT NULL
+  );
+SQL
+
+record_migration() {
+  local version="$1"
+  local status="$2"
+  sqlite3 "$MIGRATIONS_DB" "INSERT OR REPLACE INTO migrations(version, success) VALUES("$version", $status);"
+}
+
+# Gather all of the already-run migrations
+mapfile -t applied_versions < <(
+  sqlite3 "$MIGRATIONS_DB" "SELECT version FROM migrations WHERE success=1;"
+)
+
+cd "$OMARCHY_DIR"
 
 if [[ $1 == "all" ]]; then
   # Run all migrations since the root commit
@@ -19,8 +43,20 @@ for file in $(git diff --name-only --diff-filter=A $migration_starting_point.. m
   filename=$(basename "$file")
   migrate_at="${filename%.sh}"
 
+  if printf "%s\n" "${applied_versions[@]}" | grep -xq "$migrate_at"; then
+    echo "Skipping $migrate_at (already applied)"
+    continue
+  fi
+
   echo -e "\e[32m\nRunning migration ($migrate_at)\e[0m"
-  source $file
+  if source $file; then
+    record_migration $migrate_at 1
+    echo -e "\e[32m✔  Migration $migrate_at succeeded\e[0m"
+  else
+    record_migration $migrate_at 0
+    echo -e "\e[31m✖  Migration $migrate_at FAILED\e[0m"
+    exit 1
+  fi
 done
 
 # Update system packages
