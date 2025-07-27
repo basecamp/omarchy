@@ -98,7 +98,8 @@ catch_errors() {
 
   tail -n 20 "$LOGFILE"
 
-  read -p "Press Enter to exit..."
+  echo "Press Enter to exit..."
+  read -n 1 -s -r </dev/tty
   exit 1
 }
 trap catch_errors ERR
