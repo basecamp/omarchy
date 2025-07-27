@@ -8,7 +8,7 @@ set -eE
 # ==============================================================================
 # TEST_MODE can be set via environment variable, defaults to false
 TEST_MODE="${TEST_MODE:-false}"
-PROGRESS_LINES=5 # Number of progress lines to show below spinner
+PROGRESS_LINES=10 # Number of progress lines to show below spinner
 PROGRESS_PIDS=()
 LOGFILE=~/.local/share/omarchy/omarchy-install.log
 OMARCHY_INSTALL=~/.local/share/omarchy/install
