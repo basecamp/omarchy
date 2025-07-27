@@ -1,3 +1,3 @@
 #!/bin/bash
 
-yay -S --noconfirm --needed gum python-terminaltexteffects cage alacritty
+yay -S --noconfirm --needed gum python-terminaltexteffects cage alacritty xorg-xwayland
