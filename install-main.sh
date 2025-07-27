@@ -257,7 +257,7 @@ for section in "${SECTION_ORDER[@]}"; do
       if [[ "$TEST_MODE" == "true" ]]; then
         spinner_step "$step_title" "~/.local/share/omarchy/test-task.sh '$step_title'"
       else
-        spinner_step "$step_title" "$script"
+        spinner_step "$step_title" "bash $script"
       fi
     done < <(find "$OMARCHY_INSTALL/$section" -name "*.sh" -type f | sort)
   fi
