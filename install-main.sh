@@ -56,12 +56,12 @@ CURRENT_STEP=0
 # DISPLAY FUNCTIONS
 # ==============================================================================
 
-# show_logo [animation] [frame-rate] [anchor-text]
+# show_logo [animation] [frame-rate]
 show_logo() {
   clear
   echo -e "\n\n\n\n"
   if command -v tte &>/dev/null; then
-    tte --anchor-text ${3:-n} --canvas-width 0 -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
+    tte --anchor-text n --canvas-width 0 -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
   else
     cat ~/.local/share/omarchy/logo.txt # TODO: Maybe get rid of this fallback?
   fi
@@ -87,7 +87,7 @@ catch_errors() {
 
   cleanup
 
-  show_logo crumble 120 w
+  show_logo crumble 120
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
   echo -e ""
   echo -e "\nYou can retry by running: bash ~/.local/share/omarchy/install.sh"
