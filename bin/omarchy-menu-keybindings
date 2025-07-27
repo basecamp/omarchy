@@ -12,7 +12,7 @@
 # - Output comma-separated values that the parser can understand
 dynamic_bindings() {
   hyprctl -j binds | \
-    jq -r '.[] | {modmask, key, keycode, dispatcher, arg} | "\(.modmask),\(.key)@\(.keycode),\(.dispatcher),\(.arg)"' | \
+    jq -r '.[] | {modmask, key, keycode, description, dispatcher, arg} | "\(.modmask),\(.key)@\(.keycode),\(.description),\(.dispatcher),\(.arg)"' | \
     sed -r \
         -e 's/null//' \
         -e 's,~/.local/share/omarchy/bin/,,' \
@@ -51,26 +51,30 @@ parse_bindings() {
     gsub(/^[ \t]*\+?[ \t]*/, "", key_combo);
     gsub(/[ \t]+$/, "", key_combo);
 
-    # Reconstruct the command from the remaining fields
-    action = "";
-    for (i = 3; i <= NF; i++) {
-        action = action $i (i < NF ? "," : "");
-    }
+    # Use description, if set
+    action = $3;
 
-    # Clean up trailing commas, remove leading "exec, ", and trim
-    sub(/,$/, "", action);
-    gsub(/(^|,)[[:space:]]*exec[[:space:]]*,?/, "", action);
-    gsub(/^[ \t]+|[ \t]+$/, "", action);
-    gsub(/[ \t]+/, " ", key_combo);  # Collapse multiple spaces to one
+    if (action == "") {
+        # Reconstruct the command from the remaining fields
+        for (i = 4; i <= NF; i++) {
+            action = action $i (i < NF ? "," : "");
+        }
 
-    if (action != "") {
+        # Clean up trailing commas, remove leading "exec, ", and trim
+        sub(/,$/, "", action);
+        gsub(/(^|,)[[:space:]]*exec[[:space:]]*,?/, "", action);
+        gsub(/^[ \t]+|[ \t]+$/, "", action);
+        gsub(/[ \t]+/, " ", key_combo);  # Collapse multiple spaces to one
+
         # Escape XML entities
         gsub(/&/, "\\&amp;", action);
         gsub(/</, "\\&lt;", action);
         gsub(/>/, "\\&gt;", action);
         gsub(/"/, "\\&quot;", action);
         gsub(/'"'"'/, "\\&apos;", action);
-        
+    }
+
+    if (action != "") {
         printf "%-35s → %s\n", key_combo, action;
     }
 }'
