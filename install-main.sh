@@ -233,8 +233,8 @@ done
 done 2>/dev/null) &
 SUDO_PID=$!
 
-# Collect user identification before launching Cage
 printf "\n\n"
+# Collect Git info
 printf "%*sPlease provide your information for Git configuration:\n" $LOGO_INDENT ""
 echo
 export OMARCHY_USER_NAME=$(gum input --no-show-help --placeholder "Enter full name" --prompt "$(printf "%*sName> " $LOGO_INDENT "")")
