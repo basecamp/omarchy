@@ -167,9 +167,7 @@ spinner_step() {
       # Get recent lines from log, excluding empty lines and start/complete messages
       # Take more lines initially to ensure we capture enough after filtering
       # Use grep -a to handle any binary data and suppress warnings
-      last_lines=$(tail -n 20 "$LOGFILE" 2>/dev/null |
-        grep -a -v -E "^$|^Starting:|^Completed:" 2>/dev/null |
-        tail -n $PROGRESS_LINES)
+      last_lines=$(tail -n $PROGRESS_LINES "$LOGFILE")
 
       # Save cursor position
       printf "\033[s"
