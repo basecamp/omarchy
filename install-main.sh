@@ -267,4 +267,7 @@ done
 show_logo laseretch 920
 show_subtext "You're done! So we'll be rebooting now..."
 sleep 2
-# sudo reboot
+
+if [[ "$TEST_MODE" != "true" ]]; then
+  sudo reboot
+fi
