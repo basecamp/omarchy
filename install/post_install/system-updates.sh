@@ -1,2 +1,2 @@
 sudo updatedb
-sudo pacman -Syu --noconfirm
+yay -Syu --noconfirm
