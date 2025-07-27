@@ -27,6 +27,10 @@ echo "Starting: Running preflight/presentation.sh..." | tee -a "$LOGFILE"
 bash "$OMARCHY_INSTALL/preflight/presentation.sh" >>"$LOGFILE" 2>&1
 echo "Completed: Running preflight/presentation.sh..." | tee -a "$LOGFILE"
 
+echo "Starting: Running preflight/fonts.sh..." | tee -a "$LOGFILE"
+bash "$OMARCHY_INSTALL/preflight/fonts.sh" >>"$LOGFILE" 2>&1
+echo "Completed: Running preflight/fonts.sh..." | tee -a "$LOGFILE"
+
 echo -e "\n"
 
 # Collect user identification before launching Cage
@@ -54,4 +58,4 @@ TEST_MODE="${TEST_MODE:-false}"
 # Launch the main installer in cage with adjusted font size and environment variables
 MAIN_INSTALLER="${OMARCHY_INSTALL%/install}/install-main.sh"
 OMARCHY_USER_NAME="$OMARCHY_USER_NAME" OMARCHY_USER_EMAIL="$OMARCHY_USER_EMAIL" TEST_MODE="$TEST_MODE" \
-  cage -- alacritty -o font.size=$FONT_SIZE -e bash "$MAIN_INSTALLER" 2>>"$LOGFILE"
+  cage -- alacritty -o font.size=$FONT_SIZE -o font.normal.family="CaskaydiaMono Nerd Font" -e bash "$MAIN_INSTALLER" 2>>"$LOGFILE"
