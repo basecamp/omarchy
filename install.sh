@@ -3,7 +3,6 @@ set -eE
 
 LOGFILE=~/.local/share/omarchy/omarchy-install.log
 OMARCHY_INSTALL=~/.local/share/omarchy/install
-OMARCHY_INSTALL=~/Dev/omarchy/install
 
 # Create/clear log file
 echo "Omarchy installation started at $(date)" >"$LOGFILE"

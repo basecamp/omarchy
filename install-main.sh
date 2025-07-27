@@ -258,7 +258,7 @@ for section in "${SECTION_ORDER[@]}"; do
       step_title="${section^}: $script_name" # Capitalize first letter
 
       if [[ "$TEST_MODE" == "true" ]]; then
-        spinner_step "$step_title" "~/Dev/omarchy/test-task.sh '$step_title'"
+        spinner_step "$step_title" "~/.local/share/omarchy/test-task.sh '$step_title'"
       else
         spinner_step "$step_title" "$script"
       fi
