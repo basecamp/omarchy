@@ -3,11 +3,11 @@
 cd ~/.local/share/omarchy
 
 if [[ $1 == "all" ]]; then
-  # Run all migrations since the root commit
-  migration_starting_point=$(git log --max-parents=0 --first-parent --format="%H")
+    # Run all migrations since the root commit
+    migration_starting_point=$(git log --max-parents=0 --first-parent --format="%H")
 else
-  # Remember the commit we're at before upgrading in order to only run new migrations
-  migration_starting_point=$(git log -1 --format=%H)
+    # Remember the commit we're at before upgrading in order to only run new migrations
+    migration_starting_point=$(git log -1 --format=%H)
 fi
 
 # Get the latest while trying to preserve any modifications
@@ -16,16 +16,72 @@ git diff --check || git reset --merge
 
 # Run any pending migrations
 for file in $(git diff --name-only --diff-filter=A $migration_starting_point.. migrations/*.sh); do
-  filename=$(basename "$file")
-  migrate_at="${filename%.sh}"
-
-  echo -e "\e[32m\nRunning migration ($migrate_at)\e[0m"
-  source $file
+    filename=$(basename "$file")
+    migrate_at="${filename%.sh}"
+    
+    echo -e "\e[32m\nRunning migration ($migrate_at)\e[0m"
+    source $file
 done
 
 # Update system packages
 echo -e "\e[32m\nUpdate system packages\e[0m"
 yay -Syu --noconfirm
+
+# Detect stale services & kernel status
+SERV_LOG=$(mktemp)
+sudo needrestart -b >"$SERV_LOG" 2>&1
+
+# Parse services that need a restart
+mapfile -t SVCS < <(
+    grep '^NEEDRESTART-SVC:' "$SERV_LOG" \
+    | awk '{print $2}' \
+    | sort -u
+)
+if (( ${#SVCS[@]} )); then
+    echo -e "\n\e[33mThe following services need restarting:\e[0m"
+    printf "  • %s\n" "${SVCS[@]}"
+    read -r -p "Restart now? [y/N] " ans
+    if [[ $ans =~ ^[Yy] ]]; then
+        for svc in "${SVCS[@]}"; do
+            echo -e "  ↻ Restarting \e[32m$svc\e[0m"
+            sudo systemctl restart "$svc"
+        done
+    fi
+else
+    echo -e "\n\e[32mNo systemd services need restarting.\e[0m"
+fi
+
+# List user‐land PIDs holding old libraries
+mapfile -t PIDS < <(
+    grep '^NEEDRESTART-PID:' "$SERV_LOG" \
+    | sed 's/NEEDRESTART-PID:/• PID/'
+)
+if (( ${#PIDS[@]} )); then
+    echo -e "\n\e[33mUser-land processes holding old libraries:\e[0m"
+    printf "  %s\n" "${PIDS[@]}"
+    echo "Please restart or kill these manually."
+else
+    echo -e "\n\e[32mNo leftover user processes detected.\e[0m"
+fi
+
+# Check kernel status (0=unknown,1=ok,2=ABI change,3=version change)
+KSTA=$(
+    awk '/^NEEDRESTART-KSTA:/ {print $2}' \
+    "$SERV_LOG" || echo 0
+)
+if (( KSTA >= 2 )); then
+    read -r -p $'\n\e[31mNew kernel detected. Reboot now? [y/N] \e[0m' ans
+    if [[ $ans =~ ^[Yy] ]]; then
+        echo -e "\e[32mRebooting…\e[0m"
+        sudo reboot
+    else
+        echo -e "\e[33mRemember to reboot later!\e[0m"
+    fi
+else
+    echo -e "\n\e[32mKernel is up-to-date (status $KSTA).\e[0m"
+fi
+
+rm -f "$SERV_LOG"
 
 # Back to where we came from
 cd - >/dev/null
