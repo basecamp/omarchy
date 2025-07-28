@@ -16,7 +16,8 @@
     "network",
     "pulseaudio",
     "cpu",
-    "battery"
+    "battery",
+    "custom/idle"
   ],
   "hyprland/workspaces": {
     "on-click": "activate",
@@ -116,6 +117,12 @@
       "custom/expand-icon",
     "tray"
     ]
+  },
+  "custom/idle": {
+    "format": "{text}",
+    "signal": 8,
+    "on-click": "~/.local/share/omarchy/bin/omarchy-toggle-idle",
+    "exec": "if pgrep -x hypridle >/dev/null; then echo '󰒲'; else echo '󰒳'; fi"
   },
   "custom/expand-icon": {
     "format": " ",

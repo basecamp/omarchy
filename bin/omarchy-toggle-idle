@@ -3,7 +3,17 @@
 if pgrep -x hypridle >/dev/null; then
   pkill -x hypridle
   notify-send "Stop locking computer when idle"
+  pkill -SIGRTMIN+8 waybar
 else
   uwsm app -- hypridle >/dev/null 2>&1 &
-  notify-send "Now locking computer when idle"
+
+  # Wait up to 1 second for hypridle to start
+  for i in $(seq 1 50); do
+    if pgrep -x hypridle >/dev/null; then
+      notify-send "Now locking computer when idle"
+      pkill -SIGRTMIN+8 waybar
+      break
+    fi
+    sleep 0.02
+  done
 fi
