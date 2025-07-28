@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# Configuration
+REPO_PATH="$HOME/.local/share/omarchy"
+CACHE_FILE="$HOME/.cache/omarchy-update/omarchy-last-tag.txt"
+LOG_FILE="$HOME/.cache/omarchy-update/omarchy-update-check.log"
+
+# Ensure cache directory exists
+mkdir -p "$(dirname "$CACHE_FILE")"
+
+# Rotate log file if it gets too large (keep last 100 lines)
+if [ -f "$LOG_FILE" ] && [ $(wc -l < "$LOG_FILE") -gt 100 ]; then
+    tail -50 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
+fi
+
+echo "$(date): Starting update check" >> "$LOG_FILE"
+
+# Verify repository exists
+if [ ! -d "$REPO_PATH/.git" ]; then
+    echo "$(date): Error: Repository not found at $REPO_PATH" >> "$LOG_FILE"
+    exit 1
+fi
+
+# Get the current local tag
+OMARCHY_VERSION=$(git -C "$REPO_PATH" describe --tags --abbrev=0 2>/dev/null)
+if [ -z "$OMARCHY_VERSION" ]; then
+    echo "$(date): Error: No local tags found" >> "$LOG_FILE"
+    exit 1
+fi
+echo "$(date): Local tag: $OMARCHY_VERSION" >> "$LOG_FILE"
+
+# Fetch remote tags without merging
+git -C "$REPO_PATH" fetch origin --tags --quiet 2>>"$LOG_FILE"
+if [ $? -ne 0 ]; then
+    echo "$(date): Error: Failed to fetch remote tags" >> "$LOG_FILE"
+    exit 1
+fi
+echo "$(date): Fetch successful" >> "$LOG_FILE"
+
+# Get the latest remote tag
+LATEST_TAG=$(git -C "$REPO_PATH" describe --tags --abbrev=0 origin/master 2>>"$LOG_FILE")
+if [ -z "$LATEST_TAG" ]; then
+    echo "$(date): Error: No remote tags found on origin/master" >> "$LOG_FILE"
+    # Initialize cache with a placeholder if no tags exist
+    if [ ! -f "$CACHE_FILE" ]; then
+        echo "none" > "$CACHE_FILE"
+        echo "$(date): Initialized cache with 'none'" >> "$LOG_FILE"
+    fi
+    exit 1
+fi
+echo "$(date): Remote tag: $LATEST_TAG" >> "$LOG_FILE"
+
+# Read the last known tag from cache
+if [ -f "$CACHE_FILE" ]; then
+    LAST_TAG=$(cat "$CACHE_FILE")
+else
+    LAST_TAG=""
+fi
+echo "$(date): Last cached tag: $LAST_TAG" >> "$LOG_FILE"
+
+# Compare and notify if there's a new tag
+if [ "$LATEST_TAG" != "$OMARCHY_VERSION" ] && [ "$LATEST_TAG" != "$LAST_TAG" ]; then
+    notify-send -u normal "🚀 Omarchy Update Available" "Update to $LATEST_TAG by running omarchy-update in terminal."
+    echo "$(date): New tag detected: $LATEST_TAG" >> "$LOG_FILE"
+fi
+
+# Update cache if needed
+if [ "$LATEST_TAG" != "$LAST_TAG" ]; then
+    echo "$LATEST_TAG" > "$CACHE_FILE"
+    if [ "$LATEST_TAG" != "$OMARCHY_VERSION" ]; then
+        echo "$(date): Updated cache with $LATEST_TAG" >> "$LOG_FILE"
+    else
+        echo "$(date): Updated cache with $LATEST_TAG (no notification needed)" >> "$LOG_FILE"
+    fi
+else
+    echo "$(date): No new tag detected" >> "$LOG_FILE"
+fi
