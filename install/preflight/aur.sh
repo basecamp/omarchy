@@ -33,7 +33,7 @@ if ! command -v yay &>/dev/null; then
   makepkg -si --noconfirm
 
   cd ~
-  fi
+fi
 
 # Add fun and color to the pacman installer
 if ! grep -q "ILoveCandy" /etc/pacman.conf; then
