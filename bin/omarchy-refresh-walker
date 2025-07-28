@@ -10,4 +10,4 @@ else
 fi
 
 pkill walker
-uwsm app -- walker --gapplication-service &
+setsid uwsm app -- walker --gapplication-service &
