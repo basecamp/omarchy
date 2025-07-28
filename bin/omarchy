@@ -6,7 +6,7 @@ PATH="$PATH:$HOME/.local/share/omarchy/bin"
 show_ascii_art() {
   clear
   tte -i ~/.local/share/omarchy/logo.txt --frame-rate 640 --no-color expand
-  echo "                                                                                 $OMARCHY_VERSION"
+  echo "                                                                          $OMARCHY_VERSION"
 }
 
 main_menu() {

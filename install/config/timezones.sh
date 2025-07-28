@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [[ ! -f /etc/sudoers.d/omarchy-tzupdate ]]; then
+if ! command -v tzupdate &>/dev/null; then
   yay -S --noconfirm --needed tzupdate
   sudo tee /etc/sudoers.d/omarchy-tzupdate >/dev/null <<EOF
 %wheel ALL=(root) NOPASSWD: /usr/bin/tzupdate, /usr/bin/timedatectl
