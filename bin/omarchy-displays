@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Launch the monitor settings application
+if command -v omarchy-monitor-settings &>/dev/null; then
+  omarchy-monitor-settings
+else
+  echo "Error: omarchy-monitor-settings is not installed."
+  echo "Please run: omarchy-update"
+  exit 1
+fi 
