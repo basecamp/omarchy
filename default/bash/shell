@@ -12,3 +12,6 @@ fi
 # Set complete path
 export PATH="./bin:$HOME/.local/bin:$HOME/.local/share/omarchy/bin:$PATH"
 set +h
+
+# Omarchy path
+export OMARCHY_PATH="/home/$USER/.local/share/omarchy"
