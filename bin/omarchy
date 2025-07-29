@@ -12,10 +12,15 @@ show_ascii_art() {
 main_menu() {
   show_ascii_art
 
-  local options=("Theme" "Setup" "Update" "Manual" "Exit")
+  local options=("Theme" "Font" "Setup" "Update" "Manual" "Exit")
   choice=$(printf "%s\n" "${options[@]}" | gum choose --header "") || exit 0
   case "$choice" in
   Theme) theme_menu ;;
+  Font)
+    omarchy-font-menu
+    ack_command
+    main_menu
+    ;;
   Update) update_menu ;;
   Setup) setup_menu ;;
   Manual) open_manual ;;
