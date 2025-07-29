@@ -30,7 +30,7 @@ main_menu() {
 
 update_menu() {
   show_ascii_art
-  local menu=("Omarchy" "Waybar" "Walker" "Plymouth" "SwayOSD" "Desktop apps" "Themes" "Back")
+  local menu=("Omarchy" "Waybar" "Walker" "Plymouth" "SwayOSD" "Desktop apps" "Back")
   local commands=(
     "omarchy-update"
     "omarchy-refresh-waybar"
@@ -38,7 +38,6 @@ update_menu() {
     "omarchy-refresh-plymouth"
     "omarchy-refresh-swayosd"
     "omarchy-refresh-applications"
-    "omarchy-theme-update"
     "main_menu"
   )
   local choice
@@ -59,10 +58,11 @@ update_menu() {
 
 theme_menu() {
   show_ascii_art
-  local menu=("Pick" "Install" "Remove" "Back")
+  local menu=("Pick" "Install" "Update" "Remove" "Back")
   local commands=(
     "omarchy-theme-menu"
     "install_theme_prompt"
+    "omarchy-theme-update"
     "remove_theme_prompt"
     "main_menu"
   )
