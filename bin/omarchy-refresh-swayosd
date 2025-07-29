@@ -1,14 +1,7 @@
 #!/bin/bash
 
-backup_filename=config.toml.bak.$(date +%s)
-cp -f ~/.config/swayosd/config.toml ~/.config/swayosd/${backup_filename} 2>/dev/null
-cp -f ~/.local/share/omarchy/config/swayosd/config.toml ~/.config/swayosd/ 3>/dev/null
-
-if cmp -s ~/.config/swayosd/${backup_filename} ~/.config/swayosd/config.toml; then
-  rm ~/.config/swayosd/${backup_filename}
-else
-  echo -e "\e[31mExisting .config/swayosd/config.toml replaced with new Omarchy default, but a ${backup_filename} file was made.\e[0m"
-fi
+omarchy-refresh-config swayosd/config.toml
+omarchy-refresh-config swayosd/style.css
 
 pkill swayosd-server
 setsid uwsm app -- swayosd-server &>/dev/null &

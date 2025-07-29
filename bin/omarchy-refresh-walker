@@ -1,14 +1,6 @@
 #!/bin/bash
 
-backup_filename=config.toml.bak.$(date +%s)
-cp -f ~/.config/walker/config.toml ~/.config/walker/${backup_filename} 2>/dev/null
-cp -f ~/.local/share/omarchy/config/walker/config.toml ~/.config/walker/ 2>/dev/null
-
-if cmp -s ~/.config/walker/${backup_filename} ~/.config/walker/config.toml; then
-  rm ~/.config/walker/${backup_filename}
-else
-  echo -e "\e[31mExisting .config/walker/config.toml replaced with new Omarchy default, but a ${backup_filename} file was made.\e[0m"
-fi
+omarchy-refresh-config walker/config.toml
 
 pkill walker
 setsid uwsm app -- walker --gapplication-service &

@@ -1,29 +1,7 @@
 #!/bin/bash
 
-# Backup existing settings
-timestamp=$(date +%s)
-config_backup_filename=config.jsonc.bak.${timestamp}
-style_backup_filename=style.css.bak.${timestamp}
-
-cp -f ~/.config/waybar/config.jsonc ~/.config/waybar/${config_backup_filename} 2>/dev/null
-cp -f ~/.config/waybar/style.css ~/.config/waybar/${style_backup_filename} 2>/dev/null
-
-# Overwrite local waybar settings with the latest in Omarchy
-cp -f ~/.local/share/omarchy/config/waybar/config.jsonc ~/.config/waybar/ 2>/dev/null
-cp -f ~/.local/share/omarchy/config/waybar/style.css ~/.config/waybar/ 2>/dev/null
-
-# Remove identical backup files
-if cmp -s ~/.config/waybar/${config_backup_filename} ~/.config/waybar/config.jsonc; then
-  rm ~/.config/waybar/${config_backup_filename}
-else
-  echo -e "\e[31mExisting .config/waybar/config.jsonc replaced with new Omarchy default, but a ${config_backup_filename} file was made.\e[0m"
-fi
-
-if cmp -s ~/.config/waybar/${style_backup_filename} ~/.config/waybar/style.css; then
-  rm ~/.config/waybar/${style_backup_filename}
-else
-  echo -e "\e[31mExisting .config/waybar/style.css replaced with new Omarchy default, but a ${style_backup_filename} file was made.\e[0m"
-fi
+omarchy-refresh-config waybar/config.jsonc
+omarchy-refresh-config waybar/style.css
 
 # Restart waybar
 pkill -SIGUSR2 waybar

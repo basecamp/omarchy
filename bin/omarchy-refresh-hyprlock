@@ -1,12 +1,4 @@
 #!/bin/bash
 
-# Overwrite local Hyprlock settings with the latest in Omarchy, but create a backup if it differs
-backup_filename=hyprlock.conf.bak.$(date +%s)
-cp -f ~/.config/hypr/hyprlock.conf ~/.config/hypr/${backup_filename} 2>/dev/null
-cp -f ~/.local/share/omarchy/config/hypr/hyprlock.conf ~/.config/hypr/ 2>/dev/null
-
-if cmp -s ~/.config/hypr/${backup_filename} ~/.config/hypr/hyprlock.conf; then
-  rm ~/.config/hypr/${backup_filename}
-else
-  echo -e "\e[31mExisting .config/hypr/hyprlock.conf replaced with new Omarchy default, but a ${backup_filename} file was made.\e[0m"
-fi
+# Overwrite local Hyprlock settings with the latest in Omarchy
+omarchy-refresh-config hypr/hyprlock.conf
