@@ -60,7 +60,7 @@ echo "$(date): Last cached tag: $LAST_TAG" >> "$LOG_FILE"
 
 # Compare and notify if there's a new tag
 if [ "$LATEST_TAG" != "$OMARCHY_VERSION" ] && [ "$LATEST_TAG" != "$LAST_TAG" ]; then
-    notify-send -u normal "🚀 Omarchy Update Available" "Update to $LATEST_TAG by running omarchy-update in terminal."
+    notify-send -u normal "Omarchy Update Available" "Update to $LATEST_TAG by running omarchy-update in terminal."
     echo "$(date): New tag detected: $LATEST_TAG" >> "$LOG_FILE"
 fi
 
