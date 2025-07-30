@@ -1,2 +1,2 @@
 echo "Install Plymouth splash screen"
-source "$HOME/.local/share/omarchy/install/login.sh"
+source "$HOME/.local/share/omarchy/install/config/login.sh"
