@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Exit immediately if a command exits with a non-zero status
+set -e
+
 STATE_DIR="$HOME/.local/state/omarchy/migrations"
 
 cd ~/.local/share/omarchy
@@ -20,13 +23,8 @@ for file in migrations/*.sh; do
   [ -e "${STATE_DIR}/$filename" ] && continue
 
   echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
-  if source $file; then
-    touch "${STATE_DIR}/$filename"
-    echo -e "\t\e[32m✔  Succeess\e[0m"
-  else
-    echo -e "\t\e[31m✖  FAILED\e[0m"
-    exit 1
-  fi
+  source $file
+  touch "${STATE_DIR}/$filename"
 done
 
 # Update system packages
@@ -35,3 +33,4 @@ yay -Syu --noconfirm
 
 # Back to where we came from
 cd - >/dev/null
+
