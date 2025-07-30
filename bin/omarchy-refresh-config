@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# This script deploys ~/.local/share/omarchy/config/X/Y/Z -> ~/.config/X/Y/Z
+config_file=$1
+
+if [[ -z "$config_file" ]]; then
+  cat << USAGE
+  Usage: $0 [config_file]
+
+  Must provide a file path from the .config directory to be refreshed.
+  To copy ~/.local/share/omarchy/config/hypr/hyprlock.conf to ~/.config/hypr/hyprlock.conf
+    
+    $0 hypr/hyprlock.conf     
+USAGE
+  exit 1
+fi
+
+# Backup the destination file (with timestamp) to avoid clobbering (Ex: hyprlock.conf.bak.1753817951)
+backup_file="${HOME}/.config/${config_file}.bak.$(date +%s)"
+cp -f "${HOME}/.config/${config_file}" "$backup_file" 2>/dev/null
+
+# Deploy the source file
+cp -f "${HOME}/.local/share/omarchy/config/${config_file}" "${HOME}/.config/${config_file}" 2>/dev/null
+
+# Compare and delete/inform accordingly
+if cmp -s "${HOME}/.config/${config_file}" "$backup_file"; then
+  rm $backup_file
+else
+  echo -e "\e[31mExisting "${HOME}/.config/${config_file}" replaced with new Omarchy default, but ${backup_file} file was made.\e[0m"
+fi
