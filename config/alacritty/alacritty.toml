@@ -15,6 +15,9 @@ padding.y = 14
 decorations = "None"
 opacity = 0.98
 
+[selection]
+save_to_clipboard = true
+
 [keyboard]
 bindings = [
 { key = "F11", action = "ToggleFullscreen" }
