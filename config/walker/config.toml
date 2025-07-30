@@ -199,7 +199,7 @@ typeahead = true
 hidden = true
 
 [builtins.finder]
-use_fd = false
+use_fd = true
 fd_flags = "--ignore-vcs --type file --type directory"
 cmd_alt = "xdg-open $(dirname ~/%RESULT%)"
 weight = 5
