@@ -1,26 +1,32 @@
 #!/bin/bash
 
+STATE_DIR="$HOME/.local/state/omarchy/migrations"
+
 cd ~/.local/share/omarchy
 
-if [[ $1 == "all" ]]; then
-  # Run all migrations since the root commit
-  migration_starting_point=$(git log --max-parents=0 --first-parent --format="%H")
-else
-  # Remember the commit we're at before upgrading in order to only run new migrations
-  migration_starting_point=$(git log -1 --format=%H)
-fi
+# Create the migrations state directory, we will store an empty file for each migration that has already been performed.
+mkdir -p "$STATE_DIR"
 
 # Get the latest while trying to preserve any modifications
 git pull --autostash
 git diff --check || git reset --merge
 
 # Run any pending migrations
-for file in $(git diff --name-only --diff-filter=A $migration_starting_point.. migrations/*.sh); do
+for file in migrations/*.sh; do
   filename=$(basename "$file")
   migrate_at="${filename%.sh}"
 
-  echo -e "\e[32m\nRunning migration ($migrate_at)\e[0m"
-  source $file
+  # Migration already applied, to re-run it simply delete the state file and try again
+  [ -e "${STATE_DIR}/$filename" ] && continue
+
+  echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
+  if source $file; then
+    touch "${STATE_DIR}/$filename"
+    echo -e "\t\e[32m✔  Succeess\e[0m"
+  else
+    echo -e "\t\e[31m✖  FAILED\e[0m"
+    exit 1
+  fi
 done
 
 # Update system packages
