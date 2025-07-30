@@ -1,0 +1,11 @@
+#!/bin/bash
+
+yay -S jetbrains-toolbox
+
+echo "Starting Jetbrains Toolbox..."
+uwsm app -- jetbrains-toolbox start &>/dev/null &
+
+# Add Jetbrains window rules to hyprland.conf
+echo -e "\n#Jetbrains window rules\nsource = ~/.local/share/omarchy/config/jetbrains/windows.conf" >> ~/.config/hypr/hyprland.conf
+
+hyprctl reload
