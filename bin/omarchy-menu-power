@@ -2,11 +2,11 @@
 
 show_power_menu() {
   # The first characters are invisible sort keys.
-  local menu_options="\u200B Lock
-\u200C󰤄 Suspend
-\u200D Relaunch
-\u2060󰜉 Restart
-\u2063󰐥 Shutdown"
+  local menu_options=" Lock
+󰤄 Suspend
+ Relaunch
+󰜉 Restart
+󰐥 Shutdown"
   local selection=$(echo -e "$menu_options" | walker --dmenu --theme dmenu_150)
 
   case "$selection" in
