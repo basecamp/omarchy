@@ -1,13 +1,25 @@
 # Omarchy Plymouth Theme Script
 
 Window.SetBackgroundTopColor(0.101, 0.105, 0.149);
-Window.SetBackgroundBottomColor(0.101, 0.105,  0.149);
+Window.SetBackgroundBottomColor(0.101, 0.105, 0.149);
 
+# --- Sprite Storage ---
+# We use arrays to hold a sprite for each monitor.
+logo.sprites = [];
+progress_box.sprites = [];
+progress_bar.sprites = [];
+lock.sprites = [];
+entry.sprites = [];
+bullet.sprites_by_screen = []; # Array of arrays for bullets on each screen
+
+# --- Image Storage (Load images once) ---
 logo.image = Image("logo.png");
-logo.sprite = Sprite(logo.image);
-logo.sprite.SetX (Window.GetX() + Window.GetWidth()  / 2 - logo.image.GetWidth()  / 2);
-logo.sprite.SetY (Window.GetY() + Window.GetHeight() / 2 - logo.image.GetHeight() / 2);
-logo.sprite.SetOpacity (1);
+progress_box.image = Image("progress_box.png");
+progress_bar.original_image = Image("progress_bar.png");
+lock.image = Image("lock.png");
+entry.image = Image("entry.png");
+bullet.image = Image("bullet.png");
+scaled_bullet = bullet.image.Scale(7, 7); // Scale bullet once
 
 # Use these to adjust the progress bar timing
 global.fake_progress_limit = 0.7;  # Target percentage for fake progress (0.0 to 1.0)
@@ -18,7 +30,6 @@ global.fake_progress = 0.0;
 global.real_progress = 0.0;
 global.fake_progress_active = 0; # 0 / 1 boolean
 global.animation_frame = 0;
-global.fake_progress_start_time = 0;  # Track when fake progress started
 global.password_shown = 0;  # Track if password dialog has been shown
 global.max_progress = 0.0;  # Track the maximum progress reached to prevent backwards movement
 
@@ -56,7 +67,7 @@ Plymouth.SetRefreshFunction (refresh_callback);
 
 fun update_progress_bar(progress)
   {
-    # Only update if progress is moving forward
+    # only update if progress is moving forward
     if (progress > global.max_progress)
       {
         global.max_progress = progress;
@@ -64,34 +75,52 @@ fun update_progress_bar(progress)
         if (width < 1) width = 1;  # Ensure minimum width of 1 pixel
         
         progress_bar.image = progress_bar.original_image.Scale(width, progress_bar.original_image.GetHeight());
-        progress_bar.sprite.SetImage(progress_bar.image);
+        for (i = 0; progress_bar.sprites[i]; i++)
+          {
+            progress_bar.sprites[i].SetImage(progress_bar.image);
+          }
       }
   }
 
 fun show_progress_bar()
   {
-    progress_box.sprite.SetOpacity(1);
-    progress_bar.sprite.SetOpacity(1);
+    for (i = 0; progress_box.sprites[i]; i++)
+      {
+        progress_box.sprites[i].SetOpacity(1);
+        progress_bar.sprites[i].SetOpacity(1);
+      }
   }
 
 fun hide_progress_bar()
   {
-    progress_box.sprite.SetOpacity(0);
-    progress_bar.sprite.SetOpacity(0);
+    for (i = 0; progress_box.sprites[i]; i++)
+      {
+        progress_box.sprites[i].SetOpacity(0);
+        progress_bar.sprites[i].SetOpacity(0);
+      }
   }
 
 fun show_password_dialog()
   {
-    lock.sprite.SetOpacity(1);
-    entry.sprite.SetOpacity(1);
+    for (i = 0; lock.sprites[i]; i++)
+      {
+        lock.sprites[i].SetOpacity(1);
+        entry.sprites[i].SetOpacity(1);
+      }
   }
 
 fun hide_password_dialog()
   {
-    lock.sprite.SetOpacity(0);
-    entry.sprite.SetOpacity(0);
-    for (index = 0; bullet.sprites[index]; index++)
-      bullet.sprites[index].SetOpacity(0);
+    for (i = 0; lock.sprites[i]; i++)
+      {
+        lock.sprites[i].SetOpacity(0);
+        entry.sprites[i].SetOpacity(0);
+        # Hide bullets for this screen
+        for (j = 0; bullet.sprites_by_screen[i][j]; j++)
+          {
+            bullet.sprites_by_screen[i][j].SetOpacity(0);
+          }
+      }
   }
 
 fun start_fake_progress()
@@ -112,36 +141,61 @@ fun stop_fake_progress()
     global.fake_progress_active = 0;
   }
 
-#----------------------------------------- Dialogue --------------------------------
+fun draw_theme_on_all_screens ()
+  {
+    num_screens = 0;
+    while (Window.GetWidth(num_screens) > 0)
+      {
+        # --- Logo ---
+        if (!logo.sprites[num_screens]) logo.sprites[num_screens] = Sprite();
+        logo.sprites[num_screens].SetImage(logo.image);
+        logo.sprites[num_screens].SetX(Window.GetX(num_screens) + Window.GetWidth(num_screens) / 2 - logo.image.GetWidth() / 2);
+        logo.sprites[num_screens].SetY(Window.GetY(num_screens) + Window.GetHeight(num_screens) / 2 - logo.image.GetHeight() / 2);
+        logo.sprites[num_screens].SetOpacity(1);
 
-lock.image = Image("lock.png");
-entry.image = Image("entry.png");
-bullet.image = Image("bullet.png");
+        # --- Password Dialogue Elements (Lock & Entry) ---
+        # Scale lock relative to entry field height
+        lock_height = entry.image.GetHeight() * 0.8;
+        lock_scale = lock_height / lock.image.GetHeight();
+        lock_width = lock.image.GetWidth() * lock_scale;
+        scaled_lock = lock.image.Scale(lock_width, lock_height);
 
-entry.sprite = Sprite(entry.image);
-entry.x = Window.GetX() + Window.GetWidth()/2 - entry.image.GetWidth() / 2;
-entry.y = logo.sprite.GetY() + logo.image.GetHeight() + 40;
-entry.sprite.SetPosition(entry.x, entry.y, 10001);
-entry.sprite.SetOpacity(0);
+        if (!entry.sprites[num_screens]) entry.sprites[num_screens] = Sprite();
+        entry_x = Window.GetX(num_screens) + Window.GetWidth(num_screens) / 2 - entry.image.GetWidth() / 2;
+        entry_y = logo.sprites[num_screens].GetY() + logo.image.GetHeight() + 40;
+        entry.sprites[num_screens].SetImage(entry.image);
+        entry.sprites[num_screens].SetPosition(entry_x, entry_y, 10001);
 
-# Scale lock to be slightly shorter than entry field height
-# Original lock is 84x96, entry height determines scale
-lock_height = entry.image.GetHeight() * 0.8;
-lock_scale = lock_height / 96;
-lock_width = 84 * lock_scale;
+        if (!lock.sprites[num_screens]) lock.sprites[num_screens] = Sprite();
+        lock_x = entry_x - lock_width - 15;
+        lock_y = entry_y + entry.image.GetHeight() / 2 - lock_height / 2;
+        lock.sprites[num_screens].SetImage(scaled_lock);
+        lock.sprites[num_screens].SetPosition(lock_x, lock_y, 10001);
 
-scaled_lock = lock.image.Scale(lock_width, lock_height);
-lock.sprite = Sprite(scaled_lock);
-lock.x = entry.x - lock_width - 15;
-lock.y = entry.y + entry.image.GetHeight()/2 - lock_height/2;
-lock.sprite.SetPosition(lock.x, lock.y, 10001);
-lock.sprite.SetOpacity(0);
+        # Initialize bullet array for this screen
+        if (!bullet.sprites_by_screen[num_screens]) bullet.sprites_by_screen[num_screens] = [];
 
-# Bullet array
-bullet.sprites = [];
+        # --- Progress Bar Elements ---
+        if (!progress_box.sprites[num_screens]) progress_box.sprites[num_screens] = Sprite();
+        progress_box_x = Window.GetX(num_screens) + Window.GetWidth(num_screens) / 2 - progress_box.image.GetWidth() / 2;
+        progress_box_y = entry_y + entry.image.GetHeight() / 2 - progress_box.image.GetHeight() / 2;
+        progress_box.sprites[num_screens].SetImage(progress_box.image);
+        progress_box.sprites[num_screens].SetPosition(progress_box_x, progress_box_y, 0);
 
+        if (!progress_bar.sprites[num_screens]) progress_bar.sprites[num_screens] = Sprite();
+        progress_bar_x = Window.GetX(num_screens) + Window.GetWidth(num_screens) / 2 - progress_bar.original_image.GetWidth() / 2;
+        progress_bar_y = progress_box_y + (progress_box.image.GetHeight() - progress_bar.original_image.GetHeight()) / 2;
+        progress_bar.sprites[num_screens].SetPosition(progress_bar_x, progress_bar_y, 1);
+
+        num_screens++;
+    }
+  }
+
+# Initial draw
+draw_theme_on_all_screens();
 fun display_normal_callback ()
   {
+    draw_theme_on_all_screens(); // Redraw in case monitors changed
     hide_password_dialog();
     
     # Get current mode
@@ -159,6 +213,8 @@ fun display_password_callback (prompt, bullets)
   {
     global.password_shown = 1;  # Mark that password dialog has been shown
     
+    draw_theme_on_all_screens(); # Redraw in case monitors changed
+
     # Reset progress when password dialog appears
     stop_fake_progress();
     hide_progress_bar();
@@ -167,47 +223,34 @@ fun display_password_callback (prompt, bullets)
     global.real_progress = 0.0;
     show_password_dialog();
     
-    # Clear all bullets first
-    for (index = 0; bullet.sprites[index]; index++)
-      bullet.sprites[index].SetOpacity(0);
-    
-    # Create and show bullets for current password
-    for (index = 0; index < bullets; index++)
+    # Update bullets on all screens
+    for (i = 0; entry.sprites[i]; i++)
       {
-        if (!bullet.sprites[index])
+        # Clear all bullets first
+        for (j = 0; bullet.sprites_by_screen[i][j]; j++)
           {
-            # Scale bullet image to 7x7 pixels
-            scaled_bullet = bullet.image.Scale(7, 7);
-            bullet.sprites[index] = Sprite(scaled_bullet);
-            bullet.x = entry.x + 20 + index * (7 + 5);
-            bullet.y = entry.y + entry.image.GetHeight() / 2 - 3.5;
-            bullet.sprites[index].SetPosition(bullet.x, bullet.y, 10002);
+            bullet.sprites_by_screen[i][j].SetOpacity(0);
           }
-        bullet.sprites[index].SetOpacity(1);
+
+        # Create and show bullets for current password
+        for (j = 0; j < bullets; j++)
+          {
+            if (!bullet.sprites_by_screen[i][j])
+              {
+                bullet.sprites_by_screen[i][j] = Sprite(scaled_bullet);
+                bullet_x = entry.sprites[i].GetX() + 20 + j * (7 + 5);
+                bullet_y = entry.sprites[i].GetY() + entry.image.GetHeight() / 2 - 3.5;
+                bullet.sprites_by_screen[i][j].SetPosition(bullet_x, bullet_y, 10002);
+              }
+            bullet.sprites_by_screen[i][j].SetOpacity(1);
+          }
       }
   }
 
 Plymouth.SetDisplayNormalFunction(display_normal_callback);
 Plymouth.SetDisplayPasswordFunction(display_password_callback);
 
-#----------------------------------------- Progress Bar --------------------------------
 
-progress_box.image = Image("progress_box.png");
-progress_box.sprite = Sprite(progress_box.image);
-
-progress_box.x = Window.GetX() + Window.GetWidth() / 2 - progress_box.image.GetWidth() / 2;
-progress_box.y = entry.y + entry.image.GetHeight() / 2 - progress_box.image.GetHeight() / 2;
-progress_box.sprite.SetPosition(progress_box.x, progress_box.y, 0);
-progress_box.sprite.SetOpacity(0);
-
-progress_bar.original_image = Image("progress_bar.png");
-progress_bar.sprite = Sprite();
-progress_bar.image = progress_bar.original_image.Scale(1, progress_bar.original_image.GetHeight());
-
-progress_bar.x = Window.GetX() + Window.GetWidth() / 2 - progress_bar.original_image.GetWidth() / 2;
-progress_bar.y = progress_box.y + (progress_box.image.GetHeight() - progress_bar.original_image.GetHeight()) / 2;
-progress_bar.sprite.SetPosition(progress_bar.x, progress_bar.y, 1);
-progress_bar.sprite.SetOpacity(0);
 
 fun progress_callback (duration, progress)
   {
@@ -227,7 +270,10 @@ Plymouth.SetBootProgressFunction(progress_callback);
 
 fun quit_callback ()
 {
-  logo.sprite.SetOpacity (1);
+  for (i = 0; logo.sprites[i]; i++)
+  {
+    logo.sprites[i].SetOpacity(1);
+  }
 }
 
 Plymouth.SetQuitFunction(quit_callback);
