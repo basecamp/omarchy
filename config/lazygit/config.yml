@@ -1,0 +1,3 @@
+git:
+  paging:
+    pager: delta --light --paging=never --line-numbers
