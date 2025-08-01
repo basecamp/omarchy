@@ -2,9 +2,21 @@
 
 trap "exit" SIGINT
 
+# Use mise to get the currently activated Python bin path
+PYTHON_BIN=$(mise which python)
+PYTHON_DIR=$(dirname "$PYTHON_BIN")
+TTE_PATH="$PYTHON_DIR/tte"
+
+# Install terminaltexteffects if missing
+if [ ! -f "$TTE_PATH" ]; then
+  echo "tte not found, installing via pip..."
+  "$PYTHON_BIN" -m pip install terminaltexteffects
+fi
+
+# Main loop
 while true; do
-  effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
-  tte -i ~/.local/share/omarchy/logo.txt \
+  effect=$($TTE_PATH 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
+  $TTE_PATH -i ~/.local/share/omarchy/logo.txt \
     --frame-rate 240 --canvas-width 0 --canvas-height 0 --anchor-canvas c --anchor-text c \
     "$effect"
 done
