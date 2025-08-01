@@ -35,6 +35,9 @@ fi
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
+# Trigger ghostty config reload using SIGUSR2 (requires ghostty 1.2+)
+pkill -SIGUSR2 ghostty
+
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
 pkill -SIGUSR2 waybar
