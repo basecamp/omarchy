@@ -1,9 +1,21 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# This script uses 'systemd-run' to reliably create a transient service
+# that holds a persistent idle inhibit lock.
 
-if pgrep -x hypridle >/dev/null; then
-  pkill -x hypridle
-  notify-send "Stop locking computer when idle"
-else
-  uwsm app -- hypridle >/dev/null 2>&1 &
+# The predictable systemd unit name we will assign and control.
+UNIT_NAME="hypridle-inhibit-toggle.service"
+
+# Check if the systemd unit is currently active.
+if systemctl --user is-active --quiet "$UNIT_NAME"; then
+  # The unit is active, so we stop it to release the lock.
+  systemctl --user stop "$UNIT_NAME"
   notify-send "Now locking computer when idle"
+else
+  # The unit is not active, so we use systemd-run to create and start it.
+  systemd-run \
+    --user \
+    --unit="$UNIT_NAME" \
+    --description="Persistent hypridle inhibit lock" \
+    /usr/bin/systemd-inhibit --what=idle --who='Toggle Script' --why='User Requested' sleep infinity
+  notify-send "Stop locking computer when idle"
 fi
