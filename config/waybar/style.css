@@ -26,6 +26,10 @@
   min-width: 9px;
 }
 
+#workspaces button.empty {
+  opacity: 0.35;
+}
+
 #tray,
 #cpu,
 #battery,
