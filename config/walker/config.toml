@@ -213,7 +213,7 @@ concurrency = 8
 show_icon_when_single = true
 preview_images = true
 hidden = false
-prefix = '.'
+prefix = "."
 
 [builtins.runner]
 eager_loading = true
