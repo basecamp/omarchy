@@ -10,6 +10,11 @@ if ! yay -Q gnome-themes-extra &>/dev/null; then
   yay -S --noconfirm gnome-themes-extra # Adds Adwaita-dark theme
 fi
 
+# Allow icons to match the theme
+if ! yay -! yaru-icon-theme &>/dev/null; then
+  yay -S --noconfirm yaru-icon-theme
+fi
+
 gsettings set org.gnome.desktop.interface gtk-theme "Adwaita-dark"
 gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"
 
