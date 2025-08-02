@@ -1,0 +1,12 @@
+[Unit] 
+Description=Run check-omarchy-updates daily
+
+[Timer] 
+OnCalendar=daily
+OnCalendar=08:00:00
+Persistent=true 
+RandomizedDelaySec=300
+AccuracySec=1h
+
+[Install] 
+WantedBy=timers.target

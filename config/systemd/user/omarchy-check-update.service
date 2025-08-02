@@ -1,0 +1,8 @@
+[Unit] 
+Description=Check for Omarchy repository updates and notify 
+After=network-online.target
+
+[Service] 
+Type=oneshot 
+ExecStart=%h/.local/share/omarchy/bin/omarchy-check-update 
+Environment=DISPLAY=:0
