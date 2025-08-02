@@ -1,7 +1,44 @@
 #!/bin/bash
+#
+# Usage examples:
+#   bright +5000    # bump brightness up by 5 000 (asdcontrol scale)
+#   bright -5000    # bump brightness down by 5 000
+#   bright 30000    # set absolute level (0-60 000)
+#
 
-if [[ $# -eq 0 ]]; then
-  echo "Adjust Apple Display Brightness by passing +5000 or -5000 (or any range from 0-60000)"
-else
-  sudo asdcontrol $(sudo asdcontrol --detect /dev/usb/hiddev* | grep ^/dev/usb/hiddev | cut -d: -f1) -- "$1"
+die() { echo "Error: $*" >&2; exit 1; }
+
+[[ $# -eq 1 ]] || die "Pass exactly one argument (e.g., +5000, -5000, or 0-60000)."
+
+INC="$1"
+
+########################################
+# 1. Try asdcontrol (requires hiddev)  #
+########################################
+if compgen -G "/dev/usb/hiddev*" >/dev/null 2>&1 \
+   || compgen -G "/dev/hiddev*"   >/dev/null 2>&1; then
+  DEV=$(asdcontrol --detect /dev/usb/hiddev* /dev/hiddev* 2>/dev/null |
+        awk '/^\/dev/ {print $1; exit}')
+  if [[ -n $DEV ]]; then
+    exec sudo asdcontrol "$DEV" -- "$INC"
+  fi
 fi
+
+########################################
+# 2. Fallback to asdbctl (uses hidraw) #
+########################################
+if command -v asdbctl >/dev/null 2>&1; then
+  # Convert 0-60 000 → 0-100 % and keep the sign
+  sign=${INC:0:1}
+  val=${INC#[-+]}
+  pct=$(( val * 100 / 60000 ))
+
+  case "$sign" in
+    +) exec asdbctl up   -s "$pct" ;;  # increase by %
+    -) exec asdbctl down -s "$pct" ;;  # decrease by %
+    *) exec asdbctl set  "$pct" ;;  # absolute %
+  esac
+fi
+
+die "Neither asdcontrol (hiddev) nor asdbctl (hidraw) is available."
+
