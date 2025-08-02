@@ -1,0 +1,1 @@
+killall waybar && setsid uwsm app -- waybar &>/dev/null &
