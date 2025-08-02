@@ -70,8 +70,8 @@ elif [ -f "/etc/default/grub" ]; then # Grub
 
     # Trim any leading/trailing spaces
     new_cmdline=$(echo "$new_cmdline" | xargs)
-
-    sudo sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\".*\"/GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline\"/" /etc/default/grub
+    escaped_new_cmdline=$(printf '%s' "$new_cmdline" | sed 's/[\/&]/\\&/g')
+    sudo sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\".*\"/GRUB_CMDLINE_LINUX_DEFAULT=\"$escaped_new_cmdline\"/" /etc/default/grub
 
     # Regenerate grub config
     sudo grub-mkconfig -o /boot/grub/grub.cfg
