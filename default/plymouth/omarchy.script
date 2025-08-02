@@ -171,8 +171,13 @@ fun display_password_callback (prompt, bullets)
     for (index = 0; bullet.sprites[index]; index++)
       bullet.sprites[index].SetOpacity(0);
     
-    # Create and show bullets for current password
-    for (index = 0; index < bullets; index++)
+    # Create and show bullets for current password (max 21)
+    max_bullets = 21;
+    bullets_to_show = bullets;
+    if (bullets_to_show > max_bullets)
+      bullets_to_show = max_bullets;
+    
+    for (index = 0; index < bullets_to_show; index++)
       {
         if (!bullet.sprites[index])
           {
