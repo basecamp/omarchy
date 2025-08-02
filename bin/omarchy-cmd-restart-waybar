@@ -1,1 +1,4 @@
-killall waybar && setsid uwsm app -- waybar &>/dev/null &
+#!/bin/bash
+
+killall waybar || true
+setsid uwsm app -- waybar &>/dev/null &
