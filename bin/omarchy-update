@@ -3,11 +3,12 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-STATE_DIR="$HOME/.local/state/omarchy/migrations"
-
+clear
+cat <~/.local/share/omarchy/logo.txt
 cd ~/.local/share/omarchy
 
 # Create the migrations state directory, we will store an empty file for each migration that has already been performed.
+STATE_DIR="$HOME/.local/state/omarchy/migrations"
 mkdir -p "$STATE_DIR"
 
 # Get the latest while trying to preserve any modifications
