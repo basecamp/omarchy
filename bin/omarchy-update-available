@@ -5,9 +5,9 @@ latest_tag=$(git -C $omarchy_path ls-remote --tags origin | grep -v "{}" | awk '
 current_tag=$(git -C $omarchy_path describe --tags $(git -C $omarchy_path rev-list --tags --max-count=1))
 
 if [[ "$current_tag" < "$latest_tag" ]]; then
-  echo "New Omarchy available ($latest_tag)"
+  echo "Omarchy update available ($latest_tag)"
   exit 0
 else
-  echo "Omarchy version is current ($current_tag)"
+  echo "Omarchy is up to date ($current_tag)"
   exit 1
 fi
