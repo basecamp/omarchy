@@ -9,10 +9,10 @@ CURRENT_TEMP=$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+')
 
 if [[ "$CURRENT_TEMP" == "$OFF_TEMP" ]]; then
   hyprctl hyprsunset temperature $ON_TEMP
-  pkill -SIGRTMIN+8 waybar # refresh waybar in case user has waybar module for hyprsunset
+  omarchy-restart-waybar # restart waybar in case user has waybar module for hyprsunset
   notify-send "  Nightlight On"
 else
   hyprctl hyprsunset temperature $OFF_TEMP
-  pkill -SIGRTMIN+8 waybar # refresh waybar in case user has waybar module for hyprsunset
+  omarchy-restart-waybar # restart waybar in case user has waybar module for hyprsunset
   notify-send "   Nightlight Off"
 fi 
