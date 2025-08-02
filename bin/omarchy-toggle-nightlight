@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Default temperature values
+ON_TEMP=4000
+OFF_TEMP=6500
+
+# Query the current temperature
+CURRENT_TEMP=$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+')
+
+if [[ "$CURRENT_TEMP" == "$OFF_TEMP" ]]; then
+  hyprctl hyprsunset temperature $ON_TEMP
+  pkill -SIGRTMIN+8 waybar # refresh waybar in case user has waybar module for hyprsunset
+  notify-send "  Nightlight On"
+else
+  hyprctl hyprsunset temperature $OFF_TEMP
+  pkill -SIGRTMIN+8 waybar # refresh waybar in case user has waybar module for hyprsunset
+  notify-send "   Nightlight Off"
+fi 
