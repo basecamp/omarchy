@@ -4,7 +4,7 @@ omarchy_path="$HOME/.local/share/omarchy"
 latest_tag=$(git -C $omarchy_path ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
 current_tag=$(git -C $omarchy_path describe --tags $(git -C $omarchy_path rev-list --tags --max-count=1))
 
-if [[ "$current_tag" < "$latest_tag" ]]; then
+if [[ "$current_tag" != "$latest_tag" ]]; then
   echo "Omarchy update available ($latest_tag)"
   exit 0
 else
