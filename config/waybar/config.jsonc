@@ -8,7 +8,8 @@
     "hyprland/workspaces"
   ],
   "modules-center": [
-    "clock"
+    "clock",
+    "custom/update"
   ],
   "modules-right": [
     "group/tray-expander",
@@ -41,6 +42,12 @@
       "4": [],
       "5": []
     }
+  },
+  "custom/update": {
+    "format": "",
+    "exec": "~/.local/share/omarchy/bin/omarchy-update-available",
+    "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
+    "interval": 3600
   },
   "cpu": {
     "interval": 5,
