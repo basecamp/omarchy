@@ -12,6 +12,7 @@
   ],
   "modules-right": [
     "group/tray-expander",
+    "custom/nightlight",
     "bluetooth",
     "network",
     "pulseaudio",
