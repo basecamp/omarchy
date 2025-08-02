@@ -44,7 +44,7 @@ touch "$HOME/.config/alacritty/alacritty.toml"
 
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
-pkill -SIGUSR2 waybar
+"$HOME/.local/share/omarchy/bin/omarchy-restart-waybar"
 pkill swayosd-server
 setsid uwsm app -- swayosd-server &>/dev/null &
 makoctl reload

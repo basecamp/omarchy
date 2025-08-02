@@ -4,4 +4,4 @@ omarchy-refresh-config waybar/config.jsonc
 omarchy-refresh-config waybar/style.css
 
 # Restart waybar
-pkill -SIGUSR2 waybar
+omarchy-restart-waybar
