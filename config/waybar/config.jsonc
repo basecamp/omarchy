@@ -54,7 +54,7 @@
     "on-click-right": "~/.local/share/omarchy/bin/omarchy-cmd-tzupdate"
   },
   "custom/screen": {
-    "exec": "hyprctl hyprsunset temperature",
+    "exec": "hyprctl hyprsunset temperature | jq --unbuffered --compact-output -Rn '{alt: input}",
     "format": "{icon}",
     "format-icons": {
       "4000": "",
