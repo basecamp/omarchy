@@ -12,7 +12,7 @@ show_power_menu() {
 
   case "$selection" in
   *Lock*) hyprlock ;;
-  *Show*) ~/.local/share/omarchy/bin/omarchy-launch-screensaver ;;
+  *Save*) ~/.local/share/omarchy/bin/omarchy-launch-screensaver ;;
   *Suspend*) systemctl suspend ;;
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
