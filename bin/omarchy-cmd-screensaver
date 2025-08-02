@@ -2,9 +2,22 @@
 
 trap "exit" SIGINT
 
-while true; do
-  effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
-  tte -i ~/.local/share/omarchy/logo.txt \
-    --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
-    "$effect"
-done
+screensaver() {
+  while true; do
+    effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
+    tte -i ~/.local/share/omarchy/logo.txt \
+      --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
+      "$effect"
+  done
+}
+
+if command -v tte &>/dev/null; then
+  screensaver
+else
+  if command -v pip &>/dev/null; then
+    pip install terminaltexteffects
+    screensaver
+  else
+    gum spin --title "Can't find tte or pip. Install pip, then try: pip install terminaltexteffects" -- sleep 2
+  fi
+fi
