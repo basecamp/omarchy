@@ -5,8 +5,8 @@ Window.SetBackgroundBottomColor(0.101, 0.105,  0.149);
 
 logo.image = Image("logo.png");
 logo.sprite = Sprite(logo.image);
-logo.sprite.SetX (Window.GetX() + Window.GetWidth()  / 2 - logo.image.GetWidth()  / 2);
-logo.sprite.SetY (Window.GetY() + Window.GetHeight() / 2 - logo.image.GetHeight() / 2);
+logo.sprite.SetX (Window.GetWidth()  / 2 - logo.image.GetWidth()  / 2);
+logo.sprite.SetY (Window.GetHeight() / 2 - logo.image.GetHeight() / 2);
 logo.sprite.SetOpacity (1);
 
 # Use these to adjust the progress bar timing
@@ -119,7 +119,7 @@ entry.image = Image("entry.png");
 bullet.image = Image("bullet.png");
 
 entry.sprite = Sprite(entry.image);
-entry.x = Window.GetX() + Window.GetWidth()/2 - entry.image.GetWidth() / 2;
+entry.x = Window.GetWidth()/2 - entry.image.GetWidth() / 2;
 entry.y = logo.sprite.GetY() + logo.image.GetHeight() + 40;
 entry.sprite.SetPosition(entry.x, entry.y, 10001);
 entry.sprite.SetOpacity(0);
@@ -200,7 +200,7 @@ Plymouth.SetDisplayPasswordFunction(display_password_callback);
 progress_box.image = Image("progress_box.png");
 progress_box.sprite = Sprite(progress_box.image);
 
-progress_box.x = Window.GetX() + Window.GetWidth() / 2 - progress_box.image.GetWidth() / 2;
+progress_box.x = Window.GetWidth() / 2 - progress_box.image.GetWidth() / 2;
 progress_box.y = entry.y + entry.image.GetHeight() / 2 - progress_box.image.GetHeight() / 2;
 progress_box.sprite.SetPosition(progress_box.x, progress_box.y, 0);
 progress_box.sprite.SetOpacity(0);
@@ -209,7 +209,7 @@ progress_bar.original_image = Image("progress_bar.png");
 progress_bar.sprite = Sprite();
 progress_bar.image = progress_bar.original_image.Scale(1, progress_bar.original_image.GetHeight());
 
-progress_bar.x = Window.GetX() + Window.GetWidth() / 2 - progress_bar.original_image.GetWidth() / 2;
+progress_bar.x = Window.GetWidth() / 2 - progress_bar.original_image.GetWidth() / 2;
 progress_bar.y = progress_box.y + (progress_box.image.GetHeight() - progress_bar.original_image.GetHeight()) / 2;
 progress_bar.sprite.SetPosition(progress_bar.x, progress_bar.y, 1);
 progress_bar.sprite.SetOpacity(0);
