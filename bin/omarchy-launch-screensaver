@@ -2,4 +2,4 @@
 
 pkill -f "alacritty --class Screensaver" ||
   alacritty --class Screensaver --title Screensaver -o 'colors.primary.background="#000000"' \
-    -e ~/.local/share/omarchy/bin/omarchy-cmd-screensaver
+    -o 'colors.cursor.cursor="#000000"' -e ~/.local/share/omarchy/bin/omarchy-cmd-screensaver
