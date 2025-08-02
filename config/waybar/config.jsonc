@@ -53,6 +53,18 @@
     "tooltip": false,
     "on-click-right": "~/.local/share/omarchy/bin/omarchy-cmd-tzupdate"
   },
+  "custom/screen": {
+    "exec": "hyprctl hyprsunset temperature",
+    "format": "{icon}",
+    "format-icons": {
+      "4000": "",
+      "default": ""
+    },
+    "tooltip-format": "Blue Light Filter",
+    "interval": "once",
+    "on-click": "hyprctl hyprsunset temperature | grep -q 4000 && hyprctl hyprsunset temperature 6500 || hyprctl hyprsunset temperature 4000; pkill -SIGRTMIN+8 waybar",
+    "signal": 8
+  },
   "network": {
     "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
     "format" : "{icon}",
