@@ -31,6 +31,10 @@ done
 echo -e "\e[32m\nUpdate system packages\e[0m"
 yay -Syu --noconfirm
 
+# Offer to reboot if the kernel has been changed
+if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
+  gum confirm "Linux kernel has been updated. Reboot?" && sudo reboot now
+fi
+
 # Back to where we came from
 cd - >/dev/null
-
