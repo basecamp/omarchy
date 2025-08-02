@@ -12,7 +12,7 @@
   ],
   "modules-right": [
     "group/tray-expander",
-    "custom/nightlight",
+    // "custom/nightlight", // optional quick control for nightlight / blue light filter
     "bluetooth",
     "network",
     "pulseaudio",
