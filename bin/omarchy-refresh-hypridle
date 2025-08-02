@@ -1,0 +1,6 @@
+#!/bin/bash
+
+omarchy-refresh-config hypr/hypridle.conf
+pkill -x hypridle
+uwsm app -- hypridle >/dev/null 2>&1 &
+
