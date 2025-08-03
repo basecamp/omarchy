@@ -2,6 +2,4 @@
 
 omarchy-refresh-config swayosd/config.toml
 omarchy-refresh-config swayosd/style.css
-
-pkill swayosd-server
-setsid uwsm app -- swayosd-server &>/dev/null &
+omarchy-restart-swayosd

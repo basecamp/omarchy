@@ -42,7 +42,7 @@ on_query_change = ""
 [list]
 dynamic_sub = true
 keyboard_scroll_style = "emacs"
-max_entries = 50
+max_entries = 200
 show_initial_entries = true
 single_click = true
 visibility_threshold = 20

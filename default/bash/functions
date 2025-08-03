@@ -65,9 +65,3 @@ web2app-remove() {
   rm "$DESKTOP_FILE"
   rm "$ICON_PATH"
 }
-
-# Ensure changes to ~/.XCompose are immediately available
-refresh-xcompose() {
-  pkill fcitx5
-  uwsm app -- fcitx5 >/dev/null 2>&1 &
-}

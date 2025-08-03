@@ -1,26 +1,18 @@
 #!/bin/bash
 
-# Exit immediately if a command exits with a non-zero status
 set -e
 
-# Create the migrations state directory, we will store an empty file for each migration that has already been performed.
+# Where we store an empty file for each migration that has already been performed.
 STATE_DIR="$HOME/.local/state/omarchy/migrations"
 mkdir -p "$STATE_DIR"
 
 # Run any pending migrations
-cd ~/.local/share/omarchy
-
-for file in migrations/*.sh; do
+for file in ~/.local/share/omarchy/migrations/*.sh; do
   filename=$(basename "$file")
-  migrate_at="${filename%.sh}"
 
-  # Migration already applied, to re-run it simply delete the state file and try again
-  [ -e "${STATE_DIR}/$filename" ] && continue
-
-  echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
-  source $file
-  touch "${STATE_DIR}/$filename"
+  if [[ ! -f "$STATE_DIR/$filename" ]]; then
+    echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
+    source $file
+    touch "$STATE_DIR/$filename"
+  fi
 done
-
-# Back to where we came from
-cd - >/dev/null
