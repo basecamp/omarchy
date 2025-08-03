@@ -32,9 +32,6 @@ LOGO_WIDTH=86 # Width of the OMARCHY logo
 LOGO_INDENT=$(((TERM_WIDTH - LOGO_WIDTH) / 2))
 LOGO_INDENT=$((LOGO_INDENT < 0 ? 0 : LOGO_INDENT)) # Ensure non-negative
 
-# Progress tracking setup
-TOTAL_STEPS=$(find "$OMARCHY_INSTALL" -name "*.sh" -type f ! -path "*/preflight/*" 2>/dev/null | wc -l)
-CURRENT_STEP=0
 
 # ==============================================================================
 # DISPLAY FUNCTIONS
@@ -112,9 +109,6 @@ trap catch_errors ERR
 install_step() {
   local step_title="$1"
   local script_cmd="$2"
-
-  # Increment step counter
-  CURRENT_STEP=$((CURRENT_STEP + 1))
 
   # Log the start
   echo "Starting: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p info
