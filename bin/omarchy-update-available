@@ -1,7 +1,14 @@
 #!/bin/bash
 
 omarchy_path="$HOME/.local/share/omarchy"
-latest_tag=$(git -C $omarchy_path ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+
+if git -C $omarchy_path remote | grep -q "^upstream$"; then
+  remote="upstream"
+else
+  remote="origin"
+fi
+
+latest_tag=$(git -C $omarchy_path ls-remote --tags $remote | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
 current_tag=$(git -C $omarchy_path describe --tags $(git -C $omarchy_path rev-list --tags --max-count=1))
 
 if [[ "$current_tag" != "$latest_tag" ]]; then
