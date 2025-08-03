@@ -9,7 +9,6 @@ set -eE
 # TEST_MODE can be set via environment variable, defaults to false
 TEST_MODE="${TEST_MODE:-false}"
 PROGRESS_LINES=10 # Number of progress lines to show below spinner
-PROGRESS_PIDS=()
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 JOURNAL_TAG="omarchy-install"
 
@@ -61,17 +60,16 @@ show_subtext() {
   echo
 }
 
-# Kill any progress monitors on exit
+# Cleanup on exit
 cleanup() {
-  for pid in "${PROGRESS_PIDS[@]}"; do
-    kill $pid 2>/dev/null || true
-  done
+  # Kill any active progress monitor
+  [[ -n "${step_progress_pid:-}" ]] && kill $step_progress_pid 2>/dev/null || true
   # Kill sudo keeper
   [[ -n "$SUDO_PID" ]] && kill $SUDO_PID 2>/dev/null || true
   # Show cursor again
   printf "\033[?25h"
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 catch_errors() {
   local exit_code=$?
@@ -106,11 +104,59 @@ trap catch_errors ERR INT
 install_step() {
   local step_title="$1"
   local script_cmd="$2"
+  local script_name="$3"
 
   echo "Starting: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p info
 
+  if [[ "$script_name" != "system-updates.sh" ]]; then
+    # Hide cursor during log display
+    printf "\033[?25l"
+
+    # Start a background process to show tail output
+    (
+      trap 'exit 0' TERM INT
+      while true; do
+        # Restore cursor to saved position
+        printf "\033[u"
+
+        # Get last 10 lines and print them
+        journalctl -t "$JOURNAL_TAG" -n $PROGRESS_LINES --no-pager --output=cat 2>/dev/null |
+          while IFS= read -r line; do
+            # Clean and truncate line
+            clean_line=$(echo "$line" | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g' | cut -c1-$((LOGO_WIDTH - 8)))
+            # Clear current line and print
+            printf "\033[2K%*s\033[90m  → %s\033[0m\n" $LOGO_INDENT "" "$clean_line"
+          done
+
+        # Clear any remaining lines if we have fewer than 10 entries
+        lines_printed=$(journalctl -t "$JOURNAL_TAG" -n $PROGRESS_LINES --no-pager --output=cat 2>/dev/null | wc -l)
+        for ((i = lines_printed; i < $PROGRESS_LINES; i++)); do
+          printf "\033[2K\n"
+        done
+
+        sleep 0.2
+      done
+    ) &
+    step_progress_pid=$!
+  else
+    # For system-updates.sh, just show a static message
+    #
+    # Sometimes, during this phase the binaries we need become unavailable and show errors
+    # to the user that could be confusing.
+    printf "%*s\033[90mLogs aren't shown during this step...this could take a bit.\033[0m\n" $LOGO_INDENT ""
+  fi
+
   $script_cmd 2>&1 | systemd-cat -t "$JOURNAL_TAG" -p info
   local exit_code=${PIPESTATUS[0]}
+
+  # Stop the step's progress display if it exists
+  if [[ -n "${step_progress_pid:-}" ]]; then
+    kill $step_progress_pid 2>/dev/null || true
+    wait $step_progress_pid 2>/dev/null || true
+    unset step_progress_pid
+    # Show cursor again
+    printf "\033[?25h"
+  fi
 
   if [[ $exit_code -ne 0 ]]; then
     echo "Failed: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p err
@@ -184,38 +230,8 @@ for section in "${SECTION_ORDER[@]}"; do
   show_logo "$animation" "$speed"
   show_subtext "$subtitle"
 
-  # Hide cursor during log display
-  printf "\033[?25l"
-
-  # Start a background process to show tail output
-  (
-    # Save initial cursor position
-    printf "\033[s"
-
-    while true; do
-      # Restore cursor to saved position
-      printf "\033[u"
-
-      # Get last 10 lines and print them
-      journalctl -t "$JOURNAL_TAG" -n $PROGRESS_LINES --no-pager --output=cat 2>/dev/null |
-        while IFS= read -r line; do
-          # Clean and truncate line
-          clean_line=$(echo "$line" | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g' | cut -c1-$((LOGO_WIDTH - 8)))
-          # Clear current line and print
-          printf "\033[2K%*s\033[90m  → %s\033[0m\n" $LOGO_INDENT "" "$clean_line"
-        done
-
-      # Clear any remaining lines if we have fewer than 10 entries
-      lines_printed=$(journalctl -t "$JOURNAL_TAG" -n $PROGRESS_LINES --no-pager --output=cat 2>/dev/null | wc -l)
-      for ((i = lines_printed; i < $PROGRESS_LINES; i++)); do
-        printf "\033[2K\n"
-      done
-
-      sleep 0.2
-    done
-  ) &
-  section_progress_pid=$!
-  PROGRESS_PIDS+=($section_progress_pid)
+  # Save cursor position once for this section
+  printf "\033[s"
 
   # Find and execute all .sh files in this section's directory
   if [[ -d "$OMARCHY_INSTALL/$section" ]]; then
@@ -224,20 +240,13 @@ for section in "${SECTION_ORDER[@]}"; do
       step_title="${section^}: $script_name"
 
       if [[ "$TEST_MODE" == "true" ]]; then
-        install_step "$step_title" "$HOME/.local/share/omarchy/test-task.sh '$step_title'"
+        install_step "$step_title" "$HOME/.local/share/omarchy/test-task.sh" "$script_name"
       else
-        install_step "$step_title" "bash $script"
+        install_step "$step_title" "bash $script" "$script_name"
       fi
 
     done < <(find "$OMARCHY_INSTALL/$section" -name "*.sh" -type f | sort)
   fi
-
-  # Stop the section's progress display
-  kill $section_progress_pid 2>/dev/null || true
-  wait $section_progress_pid 2>/dev/null || true
-
-  # Show cursor again
-  printf "\033[?25h"
 done
 
 # Reboot
