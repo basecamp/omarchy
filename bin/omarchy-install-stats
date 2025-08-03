@@ -1,27 +1,24 @@
 #!/bin/bash
-# Omarchy installation benchmark analyzer
 # Reads journalctl logs and reports timing for each installation step
 
 echo "Omarchy Installation Benchmark Report"
 echo "====================================="
 echo
 
-# Get all completed steps with timing
+# Get all completed steps with timing (in execution order)
 journalctl -t omarchy-install --output=cat | grep "^Completed:" | while IFS= read -r line; do
   # Extract step name and duration
   if [[ $line =~ ^Completed:\ (.+)\ \(([0-9]+)s\)$ ]]; then
     step="${BASH_REMATCH[1]}"
     duration="${BASH_REMATCH[2]}"
-    
+
     # Format duration as MM:SS
     minutes=$((duration / 60))
     seconds=$((duration % 60))
     formatted_time=$(printf "%02d:%02d" $minutes $seconds)
-    
+
     printf "%-60s %s (%ds)\n" "$step" "$formatted_time" "$duration"
   fi
-done | sort -k4 -nr | while IFS= read -r line; do
-  echo "$line"
 done
 
 echo
@@ -46,3 +43,4 @@ journalctl -t omarchy-install --output=cat | grep "^Completed:" | while IFS= rea
     printf "%4ds - %s\n" "$duration" "$step"
   fi
 done | sort -rn | head -5
+
