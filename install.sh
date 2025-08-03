@@ -4,10 +4,8 @@ set -eE
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 JOURNAL_TAG="omarchy-install"
 
-# Log installation start
 echo "Omarchy installation started at $(date)" | systemd-cat -t "$JOURNAL_TAG" -p info
 
-# Error handler for preflight
 catch_preflight_errors() {
   echo -e "\n\e[31mOmarchy preflight failed!\e[0m"
   echo "Check the logs with: journalctl -t $JOURNAL_TAG -n 20"
@@ -42,7 +40,6 @@ fi
 # Pass TEST_MODE if set (can be set when calling this script: TEST_MODE=true ./install-cage.sh)
 TEST_MODE="${TEST_MODE:-false}"
 
-# Launch the main installer in cage with adjusted font size and environment variables
 MAIN_INSTALLER="${OMARCHY_INSTALL%/install}/install-main.sh"
 
 OMARCHY_USER_NAME="$OMARCHY_USER_NAME" OMARCHY_USER_EMAIL="$OMARCHY_USER_EMAIL" TEST_MODE="$TEST_MODE" \
