@@ -234,6 +234,7 @@ for section in "${SECTION_ORDER[@]}"; do
 
   # Stop the section's progress display
   kill $section_progress_pid 2>/dev/null || true
+  wait $section_progress_pid 2>/dev/null || true
 
   # Show cursor again
   printf "\033[?25h"
