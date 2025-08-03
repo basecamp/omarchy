@@ -1,0 +1,4 @@
+#!/bin/bash
+
+pkill -x hypridle
+uwsm app -- hypridle >/dev/null 2>&1 &

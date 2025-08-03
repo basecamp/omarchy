@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# exit early if screensave is already running
+# Exit early if screensave is already running
 pgrep -f "alacritty --class Screensaver" && exit 0
 
 focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
@@ -11,6 +11,7 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
     alacritty --class Screensaver --title Screensaver \
     -o 'colors.primary.background="#000000"' \
     -o 'colors.cursor.cursor="#000000"' \
+    -o 'font.size=18' \
     -e ~/.local/share/omarchy/bin/omarchy-cmd-screensaver
 done
 
