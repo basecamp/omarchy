@@ -47,7 +47,7 @@ show_logo() {
 }
 
 show_subtext() {
-  echo
+  echo -e "\n\n"
   # Calculate centered position for subtext
   local text_length=${#1}
   local subtext_indent=$(((TERM_WIDTH - text_length) / 2))
