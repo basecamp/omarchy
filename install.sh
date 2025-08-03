@@ -16,19 +16,17 @@ catch_preflight_errors() {
 }
 trap catch_preflight_errors ERR
 
-echo "Running preflight items..."
+echo "Loading installer experience..."
 
 # Find and execute all .sh files in the preflight directory
 if [[ -d "$OMARCHY_INSTALL/preflight" ]]; then
   while IFS= read -r script; do
     script_name=$(basename "$script")
-    echo "Starting: Running preflight/$script_name..." | tee -a "$LOGFILE"
+    echo "Starting: Running preflight/$script_name..." >>"$LOGFILE"
     bash "$script" >>"$LOGFILE" 2>&1
-    echo "Completed: Running preflight/$script_name..." | tee -a "$LOGFILE"
+    echo "Completed: Running preflight/$script_name..." >>"$LOGFILE"
   done < <(find "$OMARCHY_INSTALL/preflight" -name "*.sh" -type f | sort)
 fi
-
-echo -e "\nPreflight completed. Launching installer...\n"
 
 # Adjust font size based on detected resolution
 FONT_SIZE=12 # Default
@@ -46,5 +44,10 @@ TEST_MODE="${TEST_MODE:-false}"
 
 # Launch the main installer in cage with adjusted font size and environment variables
 MAIN_INSTALLER="${OMARCHY_INSTALL%/install}/install-main.sh"
+
 OMARCHY_USER_NAME="$OMARCHY_USER_NAME" OMARCHY_USER_EMAIL="$OMARCHY_USER_EMAIL" TEST_MODE="$TEST_MODE" \
-  cage -- alacritty -o font.size=$FONT_SIZE -o 'font.normal.family="CaskaydiaMono Nerd Font"' -e bash "$MAIN_INSTALLER" 2>>"$LOGFILE"
+  cage -- alacritty \
+  --config-file ~/.local/share/omarchy/themes/tokyo-night/alacritty.toml \
+  -o font.size=$FONT_SIZE \
+  -o 'font.normal.family="CaskaydiaMono Nerd Font"' \
+  -e bash "$MAIN_INSTALLER" 2>>"$LOGFILE"
