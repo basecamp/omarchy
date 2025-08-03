@@ -105,6 +105,7 @@ install_step() {
   local step_title="$1"
   local script_cmd="$2"
   local script_name="$3"
+  local start_time=$(date +%s)
 
   echo "Starting: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p info
 
@@ -163,7 +164,9 @@ install_step() {
     false # This triggers the error trap
   fi
 
-  echo "Completed: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p info
+  local end_time=$(date +%s)
+  local duration=$((end_time - start_time))
+  echo "Completed: $step_title (${duration}s)" | systemd-cat -t "$JOURNAL_TAG" -p info
 }
 
 # ==============================================================================
