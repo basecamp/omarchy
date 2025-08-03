@@ -102,35 +102,9 @@ catch_errors() {
 trap catch_errors ERR
 
 # ==============================================================================
-# PROGRESS BAR
-# ==============================================================================
-show_progress_bar() {
-  # Ensure we don't divide by zero
-  if [[ $TOTAL_STEPS -eq 0 ]]; then
-    return
-  fi
-
-  local percent=$((CURRENT_STEP * 100 / TOTAL_STEPS))
-  local bar_width=40
-  local filled=$((bar_width * CURRENT_STEP / TOTAL_STEPS))
-  local empty=$((bar_width - filled))
-
-  # ASCII progress bar on its own line
-  printf "%*s" $LOGO_INDENT ""
-  printf "\033[90m["
-  if [[ $filled -gt 0 ]]; then
-    printf "\033[92m%${filled}s" | tr ' ' '='
-  fi
-  if [[ $empty -gt 0 ]]; then
-    printf "\033[90m%${empty}s" | tr ' ' '-'
-  fi
-  printf "] \033[97m%d%%\033[0m  %d/%d steps" $percent $CURRENT_STEP $TOTAL_STEPS
-}
-
-# ==============================================================================
 # MAIN EXECUTION FUNCTION
 # ==============================================================================
-spinner_step() {
+install_step() {
   local step_title="$1"
   local script_cmd="$2"
 
@@ -140,56 +114,14 @@ spinner_step() {
   # Log the start
   echo "Starting: $step_title" >>"$LOGFILE" 2>&1
 
-  # Clear current line and draw the progress bar
-  printf "\033[2K\r"
-  show_progress_bar
-  printf "\n"
-
-  # Start a background process to show progress
-  (
-    sleep 0.2
-    while true; do
-      last_lines=$(tail -n $PROGRESS_LINES "$LOGFILE" | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g')
-
-      # Print each line, clearing as we go
-      line_num=1
-      while IFS= read -r line; do
-        if [[ -n "$line" ]] && [[ $line_num -le $PROGRESS_LINES ]]; then
-          local max_width=$((LOGO_WIDTH - 8))
-          # Ensure line is truncated to prevent wrapping
-          local truncated_line=$(echo "$line" | cut -c1-${max_width})
-          # Move down to line, clear it, print content, then return to start
-          printf "\033[%dB\033[2K\033[${LOGO_INDENT}C\033[90m  → %s\033[0m\033[%dA\r" \
-            $line_num "$truncated_line" $line_num
-          line_num=$((line_num + 1))
-        fi
-      done <<<"$last_lines"
-
-      sleep 0.2
-    done
-  ) &
-  local progress_pid=$!
-  PROGRESS_PIDS+=($progress_pid)
-
-  # Add indent to the title
-  local display_title=$(printf "%*s%s" $LOGO_INDENT "" "$step_title")
-
-  # Run the command with spinner
-  gum spin --spinner line --align right --title "$display_title" -- bash -c "
-    $script_cmd >>'$LOGFILE' 2>&1
-  "
+  # Run the command (no spinner, no progress area)
+  $script_cmd >>"$LOGFILE" 2>&1
   local exit_code=$?
-
-  # Stop progress display
-  kill $progress_pid 2>/dev/null || true
-
-  # Move back up to progress bar position (1 line up from spinner)
-  printf "\033[1A"
 
   # Check if command failed
   if [[ $exit_code -ne 0 ]]; then
     echo "Failed: $step_title" >>"$LOGFILE"
-    false # This will trigger the trap
+    false # This will trigger the error trap
   fi
 
   echo "Completed: $step_title" >>"$LOGFILE"
@@ -261,6 +193,46 @@ for section in "${SECTION_ORDER[@]}"; do
   show_logo "$animation" "$speed"
   show_subtext "$subtitle"
 
+  # Save cursor position (this is where we'll return to for updates)
+  printf "\033[s"
+
+  # Start a background process to show tail output
+  (
+    while true; do
+      # Get last N lines from log
+      last_lines=$(tail -n $PROGRESS_LINES "$LOGFILE" 2>/dev/null | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g')
+
+      # Restore cursor to saved position
+      printf "\033[u"
+
+      # Print each line, clearing as we go
+      line_count=0
+      while IFS= read -r line; do
+        if [[ $line_count -lt $PROGRESS_LINES ]]; then
+          # Clear line and print
+          printf "\033[2K"
+          if [[ -n "$line" ]]; then
+            # Truncate line to prevent wrapping (no 'local' in subshell)
+            truncated_line=$(echo "$line" | cut -c1-$((LOGO_WIDTH - 8)))
+            printf "%*s\033[90m  → %s\033[0m" $LOGO_INDENT "" "$truncated_line"
+          fi
+          printf "\n"
+          line_count=$((line_count + 1))
+        fi
+      done <<<"$last_lines"
+
+      # Fill any remaining lines with blanks
+      while [[ $line_count -lt $PROGRESS_LINES ]]; do
+        printf "\033[2K\n"
+        line_count=$((line_count + 1))
+      done
+
+      sleep 0.2
+    done
+  ) &
+  section_progress_pid=$!
+  PROGRESS_PIDS+=($section_progress_pid)
+
   # Find and execute all .sh files in this section's directory
   if [[ -d "$OMARCHY_INSTALL/$section" ]]; then
     while IFS= read -r script; do
@@ -268,13 +240,16 @@ for section in "${SECTION_ORDER[@]}"; do
       step_title="${section^}: $script_name" # Capitalize first letter
 
       if [[ "$TEST_MODE" == "true" ]]; then
-        spinner_step "$step_title" "~/.local/share/omarchy/test-task.sh '$step_title'"
+        install_step "$step_title" "$HOME/.local/share/omarchy/test-task.sh '$step_title'"
       else
-        spinner_step "$step_title" "bash $script"
+        install_step "$step_title" "bash $script"
       fi
 
     done < <(find "$OMARCHY_INSTALL/$section" -name "*.sh" -type f | sort)
   fi
+
+  # Stop the section's progress display
+  kill $section_progress_pid 2>/dev/null || true
 done
 
 # Reboot
