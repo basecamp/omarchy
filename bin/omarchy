@@ -21,39 +21,14 @@ main_menu() {
     ack_command
     main_menu
     ;;
-  Update) update_menu ;;
+  Update)
+    omarchy-update
+    main_menu
+    ;;
   Setup) setup_menu ;;
   Manual) open_manual ;;
   Exit) clear && exit 0 ;;
   esac
-}
-
-update_menu() {
-  show_ascii_art
-  local menu=("Omarchy" "Waybar" "Walker" "Plymouth" "SwayOSD" "Desktop apps" "Back")
-  local commands=(
-    "omarchy-update"
-    "omarchy-refresh-waybar"
-    "omarchy-refresh-walker"
-    "omarchy-refresh-plymouth"
-    "omarchy-refresh-swayosd"
-    "omarchy-refresh-applications"
-    "main_menu"
-  )
-  local choice
-  choice=$(printf "%s\n" "${menu[@]}" | gum choose --header="Update") || main_menu
-  for i in "${!menu[@]}"; do
-    if [[ "${menu[$i]}" == "$choice" ]]; then
-      if [[ "$choice" == "Back" ]]; then
-        main_menu
-      else
-        eval "${commands[$i]}"
-        ack_command
-        main_menu
-      fi
-      break
-    fi
-  done
 }
 
 theme_menu() {
