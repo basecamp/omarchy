@@ -1,6 +1,7 @@
 #!/bin/bash
 # Omarchy installation script - main installer that runs inside Cage
 # Shows progress bar, spinner with live log output during installation
+# journalctl -t omarchy-install
 set -eE
 
 # ==============================================================================
@@ -10,14 +11,8 @@ set -eE
 TEST_MODE="${TEST_MODE:-false}"
 PROGRESS_LINES=10 # Number of progress lines to show below spinner
 PROGRESS_PIDS=()
-LOGFILE=~/.local/share/omarchy/omarchy-install.log
 OMARCHY_INSTALL=~/.local/share/omarchy/install
-
-# Ensure log file exists and is writable
-if [[ ! -f "$LOGFILE" ]]; then
-  echo "Creating log file: $LOGFILE"
-  touch "$LOGFILE"
-fi
+JOURNAL_TAG="omarchy-install"
 
 # ==============================================================================
 # TERMINAL SETUP
@@ -58,11 +53,16 @@ show_logo() {
 
 show_subtext() {
   echo
+  # Calculate centered position for subtext
+  local text_length=${#1}
+  local subtext_indent=$(((TERM_WIDTH - text_length) / 2))
+  subtext_indent=$((subtext_indent < 0 ? 0 : subtext_indent))
+
   if command -v tte &>/dev/null; then
     # Add indent to the text before piping to tte
-    printf "%*s%s\n" $LOGO_INDENT "" "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
+    printf "%*s%s\n" $subtext_indent "" "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
   else
-    printf "%*s%s\n" $LOGO_INDENT "" "$1" # TODO: Maybe get rid of this fallback?
+    printf "%*s%s\n" $subtext_indent "" "$1"
   fi
   echo
 }
@@ -74,6 +74,8 @@ cleanup() {
   done
   # Kill sudo keeper
   [[ -n "$SUDO_PID" ]] && kill $SUDO_PID 2>/dev/null || true
+  # Show cursor again
+  printf "\033[?25h"
 }
 trap cleanup EXIT
 
@@ -86,14 +88,17 @@ catch_errors() {
   show_logo crumble 120
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
   echo -e ""
-  echo -e "\nYou can retry by running: bash ~/.local/share/omarchy/install.sh"
+  echo -e "You can retry by running: bash ~/.local/share/omarchy/install.sh"
   echo "Get help from the community: https://discord.gg/tXFUdasqhY"
+  echo -e ""
+  echo "View full logs with: journalctl -t omarchy-install"
   echo -e ""
   echo "Error occurred at line $line_number with exit code $exit_code"
   echo "Last command: ${BASH_COMMAND}"
-  echo -e "\nLog tail:"
+  echo -e ""
+  echo -e "Log tail:"
 
-  tail -n 20 "$LOGFILE"
+  journalctl -t "$JOURNAL_TAG" -n 20 --no-pager
 
   echo "Press Enter to exit..."
   read -n 1 -s -r </dev/tty
@@ -112,19 +117,19 @@ install_step() {
   CURRENT_STEP=$((CURRENT_STEP + 1))
 
   # Log the start
-  echo "Starting: $step_title" >>"$LOGFILE" 2>&1
+  echo "Starting: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p info
 
-  # Run the command (no spinner, no progress area)
-  $script_cmd >>"$LOGFILE" 2>&1
-  local exit_code=$?
+  # Run the command and pipe output to journal
+  $script_cmd 2>&1 | systemd-cat -t "$JOURNAL_TAG" -p info
+  local exit_code=${PIPESTATUS[0]}
 
   # Check if command failed
   if [[ $exit_code -ne 0 ]]; then
-    echo "Failed: $step_title" >>"$LOGFILE"
+    echo "Failed: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p err
     false # This will trigger the error trap
   fi
 
-  echo "Completed: $step_title" >>"$LOGFILE"
+  echo "Completed: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p info
 }
 
 # ==============================================================================
@@ -149,7 +154,7 @@ for attempt in 1 2 3; do
       printf "%*sSorry, incorrect password. Try again.\n" $LOGO_INDENT ""
     else
       printf "%*sSorry, 3 incorrect password attempts.\n" $LOGO_INDENT ""
-      echo "Authentication failed - exiting installer" >>"$LOGFILE"
+      echo "Authentication failed - exiting installer" | systemd-cat -t "$JOURNAL_TAG" -p err
       exit 1
     fi
   fi
@@ -196,11 +201,14 @@ for section in "${SECTION_ORDER[@]}"; do
   # Save cursor position (this is where we'll return to for updates)
   printf "\033[s"
 
+  # Hide cursor during log display
+  printf "\033[?25l"
+
   # Start a background process to show tail output
   (
     while true; do
-      # Get last N lines from log
-      last_lines=$(tail -n $PROGRESS_LINES "$LOGFILE" 2>/dev/null | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g')
+      # Get last N lines from journal
+      last_lines=$(journalctl -t "$JOURNAL_TAG" -n $PROGRESS_LINES --no-pager --output=cat 2>/dev/null | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g')
 
       # Restore cursor to saved position
       printf "\033[u"
@@ -250,6 +258,9 @@ for section in "${SECTION_ORDER[@]}"; do
 
   # Stop the section's progress display
   kill $section_progress_pid 2>/dev/null || true
+
+  # Show cursor again
+  printf "\033[?25h"
 done
 
 # Reboot

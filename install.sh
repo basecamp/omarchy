@@ -1,17 +1,17 @@
 #!/bin/bash
 set -eE
 
-LOGFILE=~/.local/share/omarchy/omarchy-install.log
 OMARCHY_INSTALL=~/.local/share/omarchy/install
+JOURNAL_TAG="omarchy-install"
 
-# Create/clear log file
-echo "Omarchy installation started at $(date)" >"$LOGFILE"
+# Log installation start
+echo "Omarchy installation started at $(date)" | systemd-cat -t "$JOURNAL_TAG" -p info
 
 # Error handler for preflight
 catch_preflight_errors() {
   echo -e "\n\e[31mOmarchy preflight failed!\e[0m"
-  echo "Check the log at: $LOGFILE"
-  tail -n 20 $LOGFILE
+  echo "Check the logs with: journalctl -t $JOURNAL_TAG -n 20"
+  journalctl -t "$JOURNAL_TAG" -n 20 --no-pager
   exit 1
 }
 trap catch_preflight_errors ERR
@@ -22,9 +22,9 @@ echo "Loading installer experience..."
 if [[ -d "$OMARCHY_INSTALL/preflight" ]]; then
   while IFS= read -r script; do
     script_name=$(basename "$script")
-    echo "Starting: Running preflight/$script_name..." >>"$LOGFILE"
-    bash "$script" >>"$LOGFILE" 2>&1
-    echo "Completed: Running preflight/$script_name..." >>"$LOGFILE"
+    echo "Starting: Running preflight/$script_name..." | systemd-cat -t "$JOURNAL_TAG" -p info
+    bash "$script" 2>&1 | systemd-cat -t "$JOURNAL_TAG" -p info
+    echo "Completed: Running preflight/$script_name..." | systemd-cat -t "$JOURNAL_TAG" -p info
   done < <(find "$OMARCHY_INSTALL/preflight" -name "*.sh" -type f | sort)
 fi
 
@@ -33,7 +33,7 @@ FONT_SIZE=12 # Default
 if [[ -r /sys/class/graphics/fb0/virtual_size ]]; then
   IFS=',' read -r WIDTH HEIGHT </sys/class/graphics/fb0/virtual_size
   if [[ $HEIGHT -ge 1440 ]]; then
-    FONT_SIZE=16
+    FONT_SIZE=14
   elif [[ $HEIGHT -ge 2160 ]]; then
     FONT_SIZE=18
   fi
@@ -50,4 +50,4 @@ OMARCHY_USER_NAME="$OMARCHY_USER_NAME" OMARCHY_USER_EMAIL="$OMARCHY_USER_EMAIL" 
   --config-file ~/.local/share/omarchy/themes/tokyo-night/alacritty.toml \
   -o font.size=$FONT_SIZE \
   -o 'font.normal.family="CaskaydiaMono Nerd Font"' \
-  -e bash "$MAIN_INSTALLER" 2>>"$LOGFILE"
+  -e bash "$MAIN_INSTALLER" 2>&1 | systemd-cat -t "$JOURNAL_TAG" -p info
