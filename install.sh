@@ -22,11 +22,11 @@ if [[ -d "$OMARCHY_INSTALL/preflight" ]]; then
   while IFS= read -r script; do
     script_name=$(basename "$script")
     start_time=$(date +%s)
-    echo "Starting: Running preflight/$script_name..." | systemd-cat -t "$JOURNAL_TAG" -p info
+    echo "Starting: Preflight: $script_name" | systemd-cat -t "$JOURNAL_TAG" -p info
     bash "$script" 2>&1 | systemd-cat -t "$JOURNAL_TAG" -p info
     end_time=$(date +%s)
     duration=$((end_time - start_time))
-    echo "Completed: Running preflight/$script_name... (${duration}s)" | systemd-cat -t "$JOURNAL_TAG" -p info
+    echo "Completed: Preflight: $script_name (${duration}s)" | systemd-cat -t "$JOURNAL_TAG" -p info
   done < <(find "$OMARCHY_INSTALL/preflight" -name "*.sh" -type f | sort)
 fi
 
