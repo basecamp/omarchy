@@ -7,16 +7,19 @@ OFF_TEMP=6500
 # Query the current temperature
 CURRENT_TEMP=$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+')
 
+restart_nightlighted_waybar() {
+  if grep -q "custom/nightlight" ~/.config/waybar/config.jsonc; then
+    omarchy-restart-waybar # restart waybar in case user has waybar module for hyprsunset
+  fi
+}
+
 if [[ "$CURRENT_TEMP" == "$OFF_TEMP" ]]; then
   hyprctl hyprsunset temperature $ON_TEMP
   notify-send "  Nightlight On"
-  if grep -q "custom/nightlight" ~/.config/waybar/config.jsonc; then  
-    omarchy-restart-waybar # restart waybar in case user has waybar module for hyprsunset
-  fi
+  restart_nightlighted_waybar
 else
   hyprctl hyprsunset temperature $OFF_TEMP
   notify-send "   Nightlight Off"
-  if grep -q "custom/nightlight" ~/.config/waybar/config.jsonc; then  
-    omarchy-restart-waybar # restart waybar in case user has waybar module for hyprsunset
-  fi
-fi 
+  restart_nightlighted_waybar
+fi
+
