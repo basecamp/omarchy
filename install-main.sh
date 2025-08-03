@@ -1,6 +1,5 @@
 #!/bin/bash
 # Omarchy installation script - main installer that runs inside Cage
-# Shows progress bar, spinner with live log output during installation
 # journalctl -t omarchy-install
 set -eE
 
@@ -26,12 +25,11 @@ else
   TERM_WIDTH=80
 fi
 
-LOGO_WIDTH=86 # Width of the OMARCHY logo
+LOGO_WIDTH=86
 
-# Calculate indent to center logo and align spinner with "O"
+# Calculate indent to align prompts and logs to the left edge of the "O"
 LOGO_INDENT=$(((TERM_WIDTH - LOGO_WIDTH) / 2))
 LOGO_INDENT=$((LOGO_INDENT < 0 ? 0 : LOGO_INDENT)) # Ensure non-negative
-
 
 # ==============================================================================
 # DISPLAY FUNCTIONS
@@ -56,10 +54,9 @@ show_subtext() {
   subtext_indent=$((subtext_indent < 0 ? 0 : subtext_indent))
 
   if command -v tte &>/dev/null; then
-    # Add indent to the text before piping to tte
     printf "%*s%s\n" $subtext_indent "" "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
   else
-    printf "%*s%s\n" $subtext_indent "" "$1"
+    printf "%*s%s\n" $subtext_indent "" "$1" # TODO: Maybe get rid of this fallback?
   fi
   echo
 }
@@ -101,7 +98,7 @@ catch_errors() {
   read -n 1 -s -r </dev/tty
   exit 1
 }
-trap catch_errors ERR
+trap catch_errors ERR INT
 
 # ==============================================================================
 # MAIN EXECUTION FUNCTION
@@ -110,17 +107,14 @@ install_step() {
   local step_title="$1"
   local script_cmd="$2"
 
-  # Log the start
   echo "Starting: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p info
 
-  # Run the command and pipe output to journal
   $script_cmd 2>&1 | systemd-cat -t "$JOURNAL_TAG" -p info
   local exit_code=${PIPESTATUS[0]}
 
-  # Check if command failed
   if [[ $exit_code -ne 0 ]]; then
     echo "Failed: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p err
-    false # This will trigger the error trap
+    false # This triggers the error trap
   fi
 
   echo "Completed: $step_title" | systemd-cat -t "$JOURNAL_TAG" -p info
@@ -183,50 +177,38 @@ declare -A SECTIONS=(
 # Order of sections to process
 SECTION_ORDER=("config" "development" "desktop" "apps" "post_install")
 
-# Process each section
 for section in "${SECTION_ORDER[@]}"; do
-  # Parse section info
   IFS='|' read -r animation speed subtitle <<<"${SECTIONS[$section]}"
 
   # Show section header
   show_logo "$animation" "$speed"
   show_subtext "$subtitle"
 
-  # Save cursor position (this is where we'll return to for updates)
-  printf "\033[s"
-
   # Hide cursor during log display
   printf "\033[?25l"
 
   # Start a background process to show tail output
   (
-    while true; do
-      # Get last N lines from journal
-      last_lines=$(journalctl -t "$JOURNAL_TAG" -n $PROGRESS_LINES --no-pager --output=cat 2>/dev/null | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g')
+    # Save initial cursor position
+    printf "\033[s"
 
+    while true; do
       # Restore cursor to saved position
       printf "\033[u"
 
-      # Print each line, clearing as we go
-      line_count=0
-      while IFS= read -r line; do
-        if [[ $line_count -lt $PROGRESS_LINES ]]; then
-          # Clear line and print
-          printf "\033[2K"
-          if [[ -n "$line" ]]; then
-            # Truncate line to prevent wrapping (no 'local' in subshell)
-            truncated_line=$(echo "$line" | cut -c1-$((LOGO_WIDTH - 8)))
-            printf "%*s\033[90m  → %s\033[0m" $LOGO_INDENT "" "$truncated_line"
-          fi
-          printf "\n"
-          line_count=$((line_count + 1))
-        fi
-      done <<<"$last_lines"
+      # Get last 10 lines and print them
+      journalctl -t "$JOURNAL_TAG" -n $PROGRESS_LINES --no-pager --output=cat 2>/dev/null |
+        while IFS= read -r line; do
+          # Clean and truncate line
+          clean_line=$(echo "$line" | sed 's/\x1b\[[0-9;]*[mGKH]//g' | sed 's/\r//g' | cut -c1-$((LOGO_WIDTH - 8)))
+          # Clear current line and print
+          printf "\033[2K%*s\033[90m  → %s\033[0m\n" $LOGO_INDENT "" "$clean_line"
+        done
 
-      # Fill any remaining lines with blanks
-      while [[ $line_count -lt $PROGRESS_LINES ]]; do
+      # Clear any remaining lines if we have fewer than 10 entries
+      lines_printed=$(journalctl -t "$JOURNAL_TAG" -n $PROGRESS_LINES --no-pager --output=cat 2>/dev/null | wc -l)
+      for ((i = lines_printed; i < $PROGRESS_LINES; i++)); do
         printf "\033[2K\n"
-        line_count=$((line_count + 1))
       done
 
       sleep 0.2
@@ -239,7 +221,7 @@ for section in "${SECTION_ORDER[@]}"; do
   if [[ -d "$OMARCHY_INSTALL/$section" ]]; then
     while IFS= read -r script; do
       script_name=$(basename "$script")
-      step_title="${section^}: $script_name" # Capitalize first letter
+      step_title="${section^}: $script_name"
 
       if [[ "$TEST_MODE" == "true" ]]; then
         install_step "$step_title" "$HOME/.local/share/omarchy/test-task.sh '$step_title'"
