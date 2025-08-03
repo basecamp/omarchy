@@ -15,11 +15,11 @@ restart_nightlighted_waybar() {
 
 if [[ "$CURRENT_TEMP" == "$OFF_TEMP" ]]; then
   hyprctl hyprsunset temperature $ON_TEMP
-  notify-send "  Nightlight On"
+  notify-send "  Nightlight screen temperature"
   restart_nightlighted_waybar
 else
   hyprctl hyprsunset temperature $OFF_TEMP
-  notify-send "   Nightlight Off"
+  notify-send "   Daylight screen temperature"
   restart_nightlighted_waybar
 fi
 
