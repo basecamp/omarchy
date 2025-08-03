@@ -10,8 +10,6 @@ show_ascii_art() {
 }
 
 main_menu() {
-  show_ascii_art
-
   local options=("Theme" "Font" "Setup" "Update" "Manual" "Exit")
   choice=$(printf "%s\n" "${options[@]}" | gum choose --header "") || exit 0
   case "$choice" in
@@ -32,7 +30,6 @@ main_menu() {
 }
 
 theme_menu() {
-  show_ascii_art
   local menu=("Pick" "Install" "Update" "Remove" "Back")
   local commands=(
     "omarchy-theme-menu"
@@ -76,7 +73,6 @@ remove_theme_prompt() {
 }
 
 setup_menu() {
-  show_ascii_art
   local menu=("Dropbox" "Steam" "Docker DBs" "Fingerprint sensor" "Fido2 device" "Back")
   local commands=(
     "omarchy-setup-dropbox"
@@ -128,5 +124,8 @@ open_manual() {
 ack_command() {
   gum spin --spinner "globe" --title "Done!" -- sleep 1
 }
+
+# Show ASCII art once at startup
+show_ascii_art
 
 main_menu
