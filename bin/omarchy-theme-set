@@ -42,6 +42,11 @@ fi
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
+# Trigger tmux config reload
+if command -v tmux >/dev/null 2>&1 && tmux has-session 2>/dev/null; then
+  tmux source-file ~/.config/tmux/tmux.conf
+fi
+
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
 "$HOME/.local/share/omarchy/bin/omarchy-restart-waybar"
