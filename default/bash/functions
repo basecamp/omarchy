@@ -15,6 +15,7 @@ iso2sd() {
   fi
 }
 
+# Format an entire drive for a single partition using ext4
 format-drive() {
   if [ $# -ne 2 ]; then
     echo "Usage: format-drive <device> <name>"
