@@ -15,6 +15,26 @@ iso2sd() {
   fi
 }
 
+format-drive() {
+  if [ $# -ne 2 ]; then
+    echo "Usage: format-drive <device> <name>"
+    echo "Example: format-drive /dev/sda 'My Stuff'"
+    echo -e "\nAvailable drives:"
+    lsblk -d -o NAME -n | awk '{print "/dev/"$1}'
+  else
+    echo "WARNING: This will completely erase all data on $1 and label it '$2'."
+    read -rp "Are you sure you want to continue? (y/N): " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+      sudo wipefs -a "$1"
+      sudo dd if=/dev/zero of="$1" bs=1M count=100 status=progress
+      sudo parted -s "$1" mklabel gpt
+      sudo parted -s "$1" mkpart primary ext4 1MiB 100%
+      sudo mkfs.ext4 -L "$2" "$([[ $1 == *"nvme"* ]] && echo "${1}p1" || echo "${1}1")"
+      echo "Drive $1 formatted and labeled '$2'."
+    fi
+  fi
+}
+
 # Create a desktop launcher for a web app
 web2app() {
   if [ "$#" -ne 3 ]; then
