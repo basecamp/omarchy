@@ -1,4 +1,3 @@
 #!/bin/bash
 
-killall waybar || true
-setsid uwsm app -- waybar &>/dev/null &
+omarchy-restart-app waybar
