@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# Show logo
-clear
-cat <~/.local/share/omarchy/logo.txt
+~/.local/share/omarchy/bin/omarchy-show-logo
 
 for dir in ~/.config/omarchy/themes/*/; do
   [ -d "$dir" ] && [ ! -L "${dir%/}" ] && echo "Updating: $(basename "$dir")" && git -C "$dir" pull

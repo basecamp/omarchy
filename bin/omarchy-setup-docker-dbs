@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# Show logo
-clear
-cat <~/.local/share/omarchy/logo.txt
+~/.local/share/omarchy/bin/omarchy-show-logo
 
 options=("MariaDB" "MySQL" "Redis" "PostgreSQL")
 choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases (space to select, return to install, esc to cancel)") || main_menu

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+~/.local/share/omarchy/bin/omarchy-show-logo
+
 if [[ "--remove" == "$1" ]]; then
   yay -Rns --noconfirm libfido2 pam-u2f
   sudo rm -rf /etc/fido2

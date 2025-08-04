@@ -1,0 +1,5 @@
+#!/bin/bash
+
+clear
+cat <~/.local/share/omarchy/logo.txt
+echo

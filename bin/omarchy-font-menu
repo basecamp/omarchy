@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# Show logo
-clear
-cat <~/.local/share/omarchy/logo.txt
+~/.local/share/omarchy/bin/omarchy-show-logo
 
 font=$(
   fc-list :spacing=100 -f "%{family[0]}\n" |

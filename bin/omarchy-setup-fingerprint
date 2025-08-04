@@ -1,5 +1,7 @@
 #!/bin/bash
 
+~/.local/share/omarchy/bin/omarchy-show-logo
+
 if [[ "--remove" == "$1" ]]; then
   yay -Rns --noconfirm fprintd
   sudo rm -rf /etc/pam.d/polkit-1

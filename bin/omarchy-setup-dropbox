@@ -1,5 +1,7 @@
 #!/bin/bash
 
+~/.local/share/omarchy/bin/omarchy-show-logo
+
 echo "Installing all dependencies..."
 yay -S --noconfirm --needed \
   dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
