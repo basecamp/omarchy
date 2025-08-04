@@ -13,10 +13,10 @@ disable_click_to_close = false
 force_keyboard_focus = true
 
 [keys]
-accept_typeahead = ["tab"]
+accept_typeahead = ["tab", "ctrl y"]
 trigger_labels = "lalt"
-next = ["down"]
-prev = ["up"]
+next = ["down", "ctrl j"]
+prev = ["up", "ctrl k"]
 close = ["esc"]
 remove_from_history = ["shift backspace"]
 resume_query = ["ctrl r"]
