@@ -87,8 +87,9 @@ show_install_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" "󰣇  Omarchy ($OMARCHY_VERSION)\n  Timezone") in
+  case $(menu "Update" "󰣇  Omarchy ($OMARCHY_VERSION)\n󰸌  Themes\n  Timezone") in
   *Omarchy*) terminal $OMARCHY_BIN_PATH/omarchy-update ;;
+  *Themes*) terminal $OMARCHY_BIN_PATH/omarchy-theme-update ;;
   *Timezone*) $OMARCHY_BIN_PATH/omarchy-cmd-tzupdate ;;
   *) show_main_menu ;;
   esac
