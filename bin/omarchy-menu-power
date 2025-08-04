@@ -1,9 +1,7 @@
 #!/bin/bash
 
 show_power_menu() {
-  # The first characters are invisible sort keys.
   local menu_options=" Lock
-󱄄 Save
 󰤄 Suspend
  Relaunch
 󰜉 Restart
@@ -12,7 +10,6 @@ show_power_menu() {
 
   case "$selection" in
   *Lock*) hyprlock ;;
-  *Save*) ~/.local/share/omarchy/bin/omarchy-launch-screensaver ;;
   *Suspend*) systemctl suspend ;;
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;

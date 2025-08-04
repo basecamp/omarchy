@@ -1,0 +1,30 @@
+#!/bin/bash
+
+show_cmd_menu() {
+  local menu_options="󱄄 Start Screensaver
+ Take Screenshot
+ Start Screenrecord
+󰃉 Pick color
+󰍜 Toggle Top Bar
+󱫖 Toggle Idle Lock
+󰔎 Toggle Nightlight
+󰸌 Pick Theme
+ Next Background
+ Show Keybindings"
+  local selection=$(echo -e "$menu_options" | walker --dmenu --theme dmenu_250)
+
+  case "$selection" in
+  *Screensaver*) ~/.local/share/omarchy/bin/omarchy-launch-screensaver ;;
+  *Screenshot*) ~/.local/share/omarchy/bin/omarchy-cmd-screenshot ;;
+  *Screenrecord*) ~/.local/share/omarchy/bin/omarchy-cmd-screenrecord ;;
+  *Color*) pkill hyprpicker || hyprpicker -a ;;
+  *Bar*) pkill -SIGUSR1 waybar ;;
+  *Idle*) ~/.local/share/omarchy/bin/omarchy-toggle-idle ;;
+  *Nightlight*) ~/.local/share/omarchy/bin/omarchy-toggle-nightlight ;;
+  *Theme*) ~/.local/share/omarchy/bin/omarchy-theme-menu ;;
+  *Background*) ~/.local/share/omarchy/bin/omarchy-theme-bg-next ;;
+  *Keybindings*) ~/.local/share/omarchy/bin/omarchy-menu-keybindings ;;
+  esac
+}
+
+show_cmd_menu
