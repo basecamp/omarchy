@@ -82,8 +82,8 @@ show_setup_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  AUR\n  Dropbox\n  Steam\n  Docker DBs") in
-  *AUR*) terminal $OMARCHY_BIN_PATH/omarchy-cmd-install ;;
+  case $(menu "Install" "󰣇  Packages\n  Dropbox\n  Steam\n  Docker DBs") in
+  *Packages*) terminal $OMARCHY_BIN_PATH/omarchy-cmd-install ;;
   *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
   *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
   *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
@@ -114,13 +114,13 @@ show_system_menu() {
 show_main_menu() {
   case $(menu "Do" "󰀻  Apps\n󰧑  Learning\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n  Update\n  System") in
   *Apps*) walker -p "Launch…" ;;
+  *Learn*) show_learn_menu ;;
   *Capture*) show_capture_menu ;;
   *Toggle*) show_toggle_menu ;;
   *Style*) show_style_menu ;;
   *Setup*) show_setup_menu ;;
   *Install*) show_install_menu ;;
   *Update*) show_update_menu ;;
-  *Learn*) show_learn_menu ;;
   *System*) show_system_menu ;;
   esac
 }
