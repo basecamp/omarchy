@@ -3,6 +3,7 @@
 show_cmd_menu() {
   local menu_options="󱄄 Start Screensaver
  Show Keybindings
+ Open Manual
  Take Screenshot
  Start Screenrecord
 󰸌 Choose Theme
@@ -17,6 +18,7 @@ show_cmd_menu() {
   case "$selection" in
   *Screensaver*) ~/.local/share/omarchy/bin/omarchy-launch-screensaver ;;
   *Keybindings*) ~/.local/share/omarchy/bin/omarchy-menu-keybindings ;;
+  *Manual*) setsid chromium --new-window --app="https://manuals.omamix.org/2/the-omarchy-manual" & ;;
   *Screenshot*) ~/.local/share/omarchy/bin/omarchy-cmd-screenshot ;;
   *Screenrecord*) ~/.local/share/omarchy/bin/omarchy-cmd-screenrecord ;;
   *Theme*) ~/.local/share/omarchy/bin/omarchy-theme-menu ;;
