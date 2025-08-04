@@ -22,4 +22,3 @@ else
   notify-send "   Daylight screen temperature"
   restart_nightlighted_waybar
 fi
-
