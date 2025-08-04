@@ -12,7 +12,8 @@ show_cmd_menu() {
 󰔎 Toggle Nightlight
 󱫖 Toggle Idle Lock
 󰍜 Toggle Top Bar
- Update Timezone"
+ Update Timezone
+󰈷 Setup Fingerprint"
   local selection=$(echo -e "$menu_options" | walker --dmenu --theme dmenu_250 -p "Trigger Command")
 
   case "$selection" in
@@ -28,6 +29,7 @@ show_cmd_menu() {
   *Idle*) ~/.local/share/omarchy/bin/omarchy-toggle-idle ;;
   *Bar*) pkill -SIGUSR1 waybar ;;
   *Timezone*) ~/.local/share/omarchy/bin/omarchy-cmd-tzupdate ;;
+  *Fingerprint*) ~/.local/share/omarchy/bin/omarchy-setup-fingerprint ;;
   esac
 }
 
