@@ -1,4 +1,0 @@
-#!/bin/bash
-
-"$HOME/.local/share/omarchy/bin/omarchy-theme-set" \
-  "$(~/.local/share/omarchy/bin/omarchy-theme-list | walker --dmenu --theme dmenu_250 -p "Choose Theme" 2>/dev/null)"
