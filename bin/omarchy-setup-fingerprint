@@ -43,3 +43,5 @@ EOF
     fi
   fi
 fi
+
+~/.local/share/omarchy/bin/omarchy-show-done

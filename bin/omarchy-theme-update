@@ -6,5 +6,4 @@ for dir in ~/.config/omarchy/themes/*/; do
   [ -d "$dir" ] && [ ! -L "${dir%/}" ] && echo "Updating: $(basename "$dir")" && git -C "$dir" pull
 done
 
-gum spin --spinner "globe" --title "Done!" -- sleep 2
-
+~/.local/share/omarchy/bin/omarchy-show-done

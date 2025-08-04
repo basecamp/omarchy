@@ -13,4 +13,4 @@ if [[ -n "$font" ]]; then
   sed -i "s/family = \".*\"/family = \"$font\"/g" ~/.config/alacritty/alacritty.toml
 fi
 
-gum spin --spinner "globe" --title "Done!" -- sleep 2
+~/.local/share/omarchy/bin/omarchy-show-done

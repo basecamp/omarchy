@@ -2,4 +2,4 @@
 
 yay -Qqe | fzf --multi --preview 'yay -Qi {1}' --preview-window=down:75% | xargs -ro yay -Rns --noconfirm
 
-gum spin --spinner "globe" --title "Done!" -- sleep 2
+~/.local/share/omarchy/bin/omarchy-show-done

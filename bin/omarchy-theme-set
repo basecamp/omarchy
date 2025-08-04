@@ -44,11 +44,11 @@ touch "$HOME/.config/alacritty/alacritty.toml"
 
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
-"$HOME/.local/share/omarchy/bin/omarchy-restart-waybar"
+~/.local/share/omarchy/bin/omarchy-restart-waybar
 pkill swayosd-server
 setsid uwsm app -- swayosd-server &>/dev/null &
 makoctl reload
 hyprctl reload
 
 # Set new background
-"$HOME/.local/share/omarchy/bin/omarchy-theme-bg-next"
+~/.local/share/omarchy/bin/omarchy-theme-bg-next

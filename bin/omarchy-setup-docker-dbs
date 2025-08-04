@@ -16,4 +16,4 @@ if [[ -n "$choices" ]]; then
   done
 fi
 
-gum spin --spinner "globe" --title "Done!" -- sleep 2
+~/.local/share/omarchy/bin/omarchy-show-done
