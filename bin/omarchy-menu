@@ -112,7 +112,7 @@ show_system_menu() {
 }
 
 show_main_menu() {
-  case $(menu "Do" "󰀻  Apps\n󰧑  Learning\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n  Update\n  System") in
+  case $(menu "Start" "󰀻  Apps\n󰧑  Learning\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n  Update\n  System") in
   *Apps*) walker -p "Launch…" ;;
   *Learn*) show_learn_menu ;;
   *Capture*) show_capture_menu ;;
