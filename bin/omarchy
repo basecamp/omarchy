@@ -3,9 +3,21 @@
 OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/dev/null)
 PATH="$PATH:$HOME/.local/share/omarchy/bin"
 
+# Set colors to use for gum theme
+export GUM_CHOOSE_CURSOR_FOREGROUND="4"    # Blue
+export GUM_CHOOSE_SELECTED_FOREGROUND="12" # Bright blue
+export GUM_CHOOSE_HEADER_FOREGROUND="5"    # Magenta
+export GUM_CHOOSE_ITEM_FOREGROUND="7"      # White
+export GUM_INPUT_CURSOR_FOREGROUND="7"     # White
+export GUM_INPUT_PROMPT_FOREGROUND="4"     # Blue
+export GUM_SPIN_SPINNER_FOREGROUND="5"     # Magenta
+export GUM_SPIN_TITLE_FOREGROUND="5"       # Magenta
+
 show_ascii_art() {
   clear
+  echo -e "\033[32m"
   tte -i ~/.local/share/omarchy/logo.txt --frame-rate 640 --no-color expand
+  echo -e "\033[0m"
   echo "                                                                          $OMARCHY_VERSION"
 }
 
