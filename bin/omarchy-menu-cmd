@@ -10,7 +10,8 @@ show_cmd_menu() {
 󰃉 Pick Color
 󰔎 Toggle Nightlight
 󱫖 Toggle Idle Lock
-󰍜 Toggle Top Bar"
+󰍜 Toggle Top Bar
+ Update Timezone"
   local selection=$(echo -e "$menu_options" | walker --dmenu --theme dmenu_250 -p "Trigger Command")
 
   case "$selection" in
@@ -24,6 +25,7 @@ show_cmd_menu() {
   *Nightlight*) ~/.local/share/omarchy/bin/omarchy-toggle-nightlight ;;
   *Idle*) ~/.local/share/omarchy/bin/omarchy-toggle-idle ;;
   *Bar*) pkill -SIGUSR1 waybar ;;
+  *Timezone*) ~/.local/share/omarchy/bin/omarchy-cmd-tzupdate ;;
   esac
 }
 
