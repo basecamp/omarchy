@@ -23,3 +23,5 @@ yay -Syu --noconfirm
 if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
   gum confirm "Linux kernel has been updated. Reboot?" && sudo reboot now
 fi
+
+gum spin --spinner "globe" --title "Done!" -- sleep 2
