@@ -11,7 +11,7 @@ show_cmd_menu() {
 󰔎 Toggle Nightlight
 󱫖 Toggle Idle Lock
 󰍜 Toggle Top Bar"
-  local selection=$(echo -e "$menu_options" | walker --dmenu --theme dmenu_250 -p "Run command")
+  local selection=$(echo -e "$menu_options" | walker --dmenu --theme dmenu_250 -p "Trigger Command")
 
   case "$selection" in
   *Screensaver*) ~/.local/share/omarchy/bin/omarchy-launch-screensaver ;;

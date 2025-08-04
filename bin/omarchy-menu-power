@@ -6,7 +6,7 @@ show_power_menu() {
  Relaunch
 󰜉 Restart
 󰐥 Shutdown"
-  local selection=$(echo -e "$menu_options" | walker --dmenu --theme dmenu_150)
+  local selection=$(echo -e "$menu_options" | walker --dmenu --theme dmenu_150 -p "System")
 
   case "$selection" in
   *Lock*) hyprlock ;;
