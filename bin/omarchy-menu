@@ -1,0 +1,122 @@
+#!/bin/bash
+
+OMARCHY_BIN_PATH=~/.local/share/omarchy/bin
+OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/dev/null)
+
+menu() {
+  echo -e "$2" | walker --dmenu --theme dmenu_250 -p "$1…"
+}
+
+terminal() {
+  alacritty --class Omarchy -e $1
+}
+
+show_learn_menu() {
+  case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland") in
+  *Keybindings*) $OMARCHY_BIN_PATH/omarchy-menu-keybindings ;;
+  *Omarchy*) setsid chromium --new-window --app="https://manuals.omamix.org/2/the-omarchy-manual" & ;;
+  *Hyprland*) setsid chromium --new-window --app="https://wiki.hypr.land/" & ;;
+  *) show_menu ;;
+  esac
+}
+
+show_style_menu() {
+  case $(menu "Style" "󰸌  Theme\n  Font\n  Background") in
+  *Theme*) $OMARCHY_BIN_PATH/omarchy-theme-menu ;;
+  *Font*) terminal $OMARCHY_BIN_PATH/omarchy-font-menu ;;
+  *Background*) $OMARCHY_BIN_PATH/omarchy-theme-bg-next ;;
+  *) show_menu ;;
+  esac
+}
+
+show_capture_menu() {
+  case $(menu "Capture" "  Screenshot\n  Screenrecord\n󰃉  Color") in
+  *Screenshot*) show_screenshot_menu ;;
+  *Screenrecord*) show_screenrecord_menu ;;
+  *Color*) pkill hyprpicker || hyprpicker -a ;;
+  *) show_menu ;;
+  esac
+}
+
+show_screenshot_menu() {
+  case $(menu "Screenshot" "  Region\n  Window\n  Display") in
+  *Region*) $OMARCHY_BIN_PATH/omarchy-cmd-screenshot ;;
+  *Window*) $OMARCHY_BIN_PATH/omarchy-cmd-screenshot window ;;
+  *Display*) $OMARCHY_BIN_PATH/omarchy-cmd-screenshot output ;;
+  *) show_capture_menu ;;
+  esac
+}
+
+show_screenrecord_menu() {
+  case $(menu "Screenrecord" "  Region\n  Display") in
+  *Region*) $OMARCHY_BIN_PATH/omarchy-cmd-screenrecord ;;
+  *Display*) $OMARCHY_BIN_PATH/omarchy-cmd-screenrecord output ;;
+  *) show_capture_menu ;;
+  esac
+}
+
+show_toggle_menu() {
+  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
+  *Screensaver*) $OMARCHY_BIN_PATH/omarchy-launch-screensaver ;;
+  *Nightlight*) $OMARCHY_BIN_PATH/omarchy-toggle-nightlight ;;
+  *Idle*) $OMARCHY_BIN_PATH/omarchy-toggle-idle ;;
+  *Bar*) pkill -SIGUSR1 waybar ;;
+  *) show_menu ;;
+  esac
+}
+
+show_setup_menu() {
+  case $(menu "Setup" "  Wifi\n󰂯  Bluetooth\n  Audio\n󰈷  Fingerprint\n  Fido2") in
+  *Wifi*) alacritty --class=Impala -e impala ;;
+  *Bluetooth*) blueberry ;;
+  *Audio*) alacritty --class=Wiremix -e wiremix ;;
+  *Fingerprint*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
+  *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
+  *) show_menu ;;
+  esac
+}
+
+show_install_menu() {
+  case $(menu "Install" "󰣇  AUR\n  Dropbox\n  Steam\n  Docker DBs") in
+  *AUR*) terminal $OMARCHY_BIN_PATH/omarchy-cmd-install ;;
+  *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
+  *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
+  *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
+  *) show_menu ;;
+  esac
+}
+
+show_update_menu() {
+  case $(menu "Update" "󰣇  Omarchy ($OMARCHY_VERSION)\n  Timezone") in
+  *Omarchy*) terminal $OMARCHY_BIN_PATH/omarchy-update ;;
+  *Timezone*) $OMARCHY_BIN_PATH/omarchy-cmd-tzupdate ;;
+  *) show_menu ;;
+  esac
+}
+
+show_system_menu() {
+  case $(menu "System" "  Lock\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
+  *Lock*) hyprlock ;;
+  *Suspend*) systemctl suspend ;;
+  *Relaunch*) uwsm stop ;;
+  *Restart*) systemctl reboot ;;
+  *Shutdown*) systemctl poweroff ;;
+  *) show_menu ;;
+  esac
+}
+
+show_menu() {
+  case $(menu "Do" "󰀻  Apps\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n  Update\n󰧑  Learning\n  System") in
+  *Apps*) walker -p "Launch…" ;;
+  *Capture*) show_capture_menu ;;
+  *Toggle*) show_toggle_menu ;;
+  *Style*) show_style_menu ;;
+  *Setup*) show_setup_menu ;;
+  *Install*) show_install_menu ;;
+  *Update*) show_update_menu ;;
+  *Learn*) show_learn_menu ;;
+  *System*) show_system_menu ;;
+  esac
+}
+
+show_menu
