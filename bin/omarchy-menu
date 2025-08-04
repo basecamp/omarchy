@@ -82,8 +82,9 @@ show_setup_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Packages\n  Dropbox\n  Steam\n  Docker DBs") in
+  case $(menu "Install" "󰣇  Packages\n󰸌  Theme\n  Dropbox\n  Steam\n  Docker DBs") in
   *Packages*) terminal $OMARCHY_BIN_PATH/omarchy-cmd-install ;;
+  *Theme*) terminal $OMARCHY_BIN_PATH/omarchy-theme-install ;;
   *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
   *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
   *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
