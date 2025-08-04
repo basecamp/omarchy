@@ -16,7 +16,7 @@ show_learn_menu() {
   *Keybindings*) $OMARCHY_BIN_PATH/omarchy-menu-keybindings ;;
   *Omarchy*) setsid chromium --new-window --app="https://manuals.omamix.org/2/the-omarchy-manual" & ;;
   *Hyprland*) setsid chromium --new-window --app="https://wiki.hypr.land/" & ;;
-  *) show_menu ;;
+  *) show_main_menu ;;
   esac
 }
 
@@ -25,7 +25,7 @@ show_style_menu() {
   *Theme*) $OMARCHY_BIN_PATH/omarchy-theme-menu ;;
   *Font*) terminal $OMARCHY_BIN_PATH/omarchy-font-menu ;;
   *Background*) $OMARCHY_BIN_PATH/omarchy-theme-bg-next ;;
-  *) show_menu ;;
+  *) show_main_menu ;;
   esac
 }
 
@@ -34,7 +34,7 @@ show_capture_menu() {
   *Screenshot*) show_screenshot_menu ;;
   *Screenrecord*) show_screenrecord_menu ;;
   *Color*) pkill hyprpicker || hyprpicker -a ;;
-  *) show_menu ;;
+  *) show_main_menu ;;
   esac
 }
 
@@ -61,7 +61,7 @@ show_toggle_menu() {
   *Nightlight*) $OMARCHY_BIN_PATH/omarchy-toggle-nightlight ;;
   *Idle*) $OMARCHY_BIN_PATH/omarchy-toggle-idle ;;
   *Bar*) pkill -SIGUSR1 waybar ;;
-  *) show_menu ;;
+  *) show_main_menu ;;
   esac
 }
 
@@ -72,7 +72,7 @@ show_setup_menu() {
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
   *Fingerprint*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
   *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
-  *) show_menu ;;
+  *) show_main_menu ;;
   esac
 }
 
@@ -82,7 +82,7 @@ show_install_menu() {
   *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
   *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
   *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
-  *) show_menu ;;
+  *) show_main_menu ;;
   esac
 }
 
@@ -90,7 +90,7 @@ show_update_menu() {
   case $(menu "Update" "󰣇  Omarchy ($OMARCHY_VERSION)\n  Timezone") in
   *Omarchy*) terminal $OMARCHY_BIN_PATH/omarchy-update ;;
   *Timezone*) $OMARCHY_BIN_PATH/omarchy-cmd-tzupdate ;;
-  *) show_menu ;;
+  *) show_main_menu ;;
   esac
 }
 
@@ -101,12 +101,12 @@ show_system_menu() {
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
-  *) show_menu ;;
+  *) show_main_menu ;;
   esac
 }
 
-show_menu() {
-  case $(menu "Do" "󰀻  Apps\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n  Update\n󰧑  Learning\n  System") in
+show_main_menu() {
+  case $(menu "Do" "󰀻  Apps\n󰧑  Learning\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n  Update\n  System") in
   *Apps*) walker -p "Launch…" ;;
   *Capture*) show_capture_menu ;;
   *Toggle*) show_toggle_menu ;;
@@ -119,4 +119,17 @@ show_menu() {
   esac
 }
 
-show_menu
+case "$1" in
+*learn*) show_learn_menu ;;
+*style*) show_style_menu ;;
+*theme*) show_theme_menu ;;
+*capture*) show_capture_menu ;;
+*screenshot*) show_screenshot_menu ;;
+*screenrecord*) show_screenrecord_menu ;;
+*toggle*) show_toggle_menu ;;
+*setup*) show_setup_menu ;;
+*install*) show_install_menu ;;
+*update*) show_update_menu ;;
+*system*) show_system_menu ;;
+*) show_main_menu ;;
+esac
