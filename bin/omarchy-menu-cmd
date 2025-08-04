@@ -2,28 +2,28 @@
 
 show_cmd_menu() {
   local menu_options="󱄄 Start Screensaver
+ Show Keybindings
  Take Screenshot
  Start Screenrecord
-󰃉 Pick color
-󰍜 Toggle Top Bar
-󱫖 Toggle Idle Lock
-󰔎 Toggle Nightlight
-󰸌 Pick Theme
+󰸌 Choose Theme
  Next Background
- Show Keybindings"
+󰃉 Pick Color
+󰔎 Toggle Nightlight
+󱫖 Toggle Idle Lock
+󰍜 Toggle Top Bar"
   local selection=$(echo -e "$menu_options" | walker --dmenu --theme dmenu_250)
 
   case "$selection" in
   *Screensaver*) ~/.local/share/omarchy/bin/omarchy-launch-screensaver ;;
+  *Keybindings*) ~/.local/share/omarchy/bin/omarchy-menu-keybindings ;;
   *Screenshot*) ~/.local/share/omarchy/bin/omarchy-cmd-screenshot ;;
   *Screenrecord*) ~/.local/share/omarchy/bin/omarchy-cmd-screenrecord ;;
-  *Color*) pkill hyprpicker || hyprpicker -a ;;
-  *Bar*) pkill -SIGUSR1 waybar ;;
-  *Idle*) ~/.local/share/omarchy/bin/omarchy-toggle-idle ;;
-  *Nightlight*) ~/.local/share/omarchy/bin/omarchy-toggle-nightlight ;;
   *Theme*) ~/.local/share/omarchy/bin/omarchy-theme-menu ;;
   *Background*) ~/.local/share/omarchy/bin/omarchy-theme-bg-next ;;
-  *Keybindings*) ~/.local/share/omarchy/bin/omarchy-menu-keybindings ;;
+  *Color*) pkill hyprpicker || hyprpicker -a ;;
+  *Nightlight*) ~/.local/share/omarchy/bin/omarchy-toggle-nightlight ;;
+  *Idle*) ~/.local/share/omarchy/bin/omarchy-toggle-idle ;;
+  *Bar*) pkill -SIGUSR1 waybar ;;
   esac
 }
 
