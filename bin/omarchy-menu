@@ -88,8 +88,9 @@ show_setup_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰸌  Theme\n  Dropbox\n  Steam\n  Docker DBs") in
-  *Package*) terminal $OMARCHY_BIN_PATH/omarchy-cmd-install ;;
+  case $(menu "Install" "󰣇  Package\n  Web App\n󰸌  Theme\n  Dropbox\n  Steam\n  Docker DBs") in
+  *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-install ;;
+  *Web*) terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
   *Theme*) terminal $OMARCHY_BIN_PATH/omarchy-theme-install ;;
   *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
   *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
@@ -99,8 +100,9 @@ show_install_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
-  *Package*) terminal $OMARCHY_BIN_PATH/omarchy-cmd-uninstall ;;
+  case $(menu "Remove" "󰣇  Package\n  Web App\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
+  *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-remove ;;
+  *Web*) terminal $OMARCHY_BIN_PATH/omarchy-webapp-remove ;;
   *Theme*) present_terminal $OMARCHY_BIN_PATH/omarchy-theme-remove ;;
   *Fingerprint*) terminal "$OMARCHY_BIN_PATH/omarchy-setup-fingerprint --remove" ;;
   *Fido2*) terminal "$OMARCHY_BIN_PATH/omarchy-setup-fido2 --remove" ;;
