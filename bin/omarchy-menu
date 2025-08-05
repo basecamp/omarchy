@@ -15,6 +15,10 @@ present_terminal() {
   alacritty --class Omarchy -e bash -c "~/.local/share/omarchy/bin/omarchy-show-logo; eval \"$1\"; ~/.local/share/omarchy/bin/omarchy-show-done;"
 }
 
+edit_in_nvim() {
+  alacritty -e nvim "$1"
+}
+
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) $OMARCHY_BIN_PATH/omarchy-menu-keybindings ;;
@@ -87,10 +91,10 @@ show_setup_menu() {
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
   *Wifi*) alacritty --class=Impala -e impala ;;
   *Bluetooth*) blueberry ;;
-  *Monitors*) alacritty -e nvim ~/.config/hypr/monitors.conf ;;
-  *Keybindings*) alacritty -e nvim ~/.config/hypr/bindings.conf ;;
-  *Input*) alacritty -e nvim ~/.config/hypr/input.conf ;;
-  *Hyprland*) alacritty -e nvim ~/.config/hypr/hyprland.conf ;;
+  *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
+  *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
+  *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
+  *Configs*) show_setup_configs_menu ;;
   *Fingerprint*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
   *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
   *) show_main_menu ;;
