@@ -7,7 +7,8 @@ if [ -z "$1" ]; then
   extra_themes=$(find ~/.config/omarchy/themes -mindepth 1 -maxdepth 1 -type d ! -xtype l -printf '%f\n')
 
   if [[ -n "$extra_themes" ]]; then
-    THEME_NAME=$(gum choose --header="Remove extra theme" "$extra_themes")
+    # THEME_NAME=$(gum choose --header="Remove extra theme" "$extra_themes")
+    THEME_NAME=$(echo -e "$extra_themes" | gum choose --header="Remove extra theme")
   else
     echo "No extra themes installed."
     exit 1
