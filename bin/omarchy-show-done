@@ -1,0 +1,5 @@
+#!/bin/bash
+
+echo
+gum spin --spinner "globe" --title "Done!" -- sleep 2
+clear

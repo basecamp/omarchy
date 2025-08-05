@@ -1,2 +1,2 @@
 echo "Increase time before screensaver starts to 2.5 minutes (from 1 minute)"
-omarchy-refresh-hypridle
+~/.local/share/omarchy/bin/omarchy-refresh-hypridle

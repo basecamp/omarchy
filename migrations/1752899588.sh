@@ -1,2 +1,2 @@
 echo "Update .config/hypr/hyprlock.conf to include failed attempt counter"
-omarchy-refresh-hyprlock
+~/.local/share/omarchy/bin/omarchy-refresh-hyprlock
