@@ -1,7 +1,6 @@
 #!/bin/bash
 
 if [ -z "$OMARCHY_BARE" ]; then
-  source ~/.local/share/omarchy/default/bash/functions
   ~/.local/share/omarchy/bin/omarchy-webapp-install "HEY" https://app.hey.com https://www.hey.com/assets/images/general/hey.png
   ~/.local/share/omarchy/bin/omarchy-webapp-install "Basecamp" https://launchpad.37signals.com https://basecamp.com/assets/images/general/basecamp.png
   ~/.local/share/omarchy/bin/omarchy-webapp-install "WhatsApp" https://web.whatsapp.com/ https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/whatsapp.png
