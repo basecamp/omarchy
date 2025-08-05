@@ -171,4 +171,8 @@ go_to_menu() {
   esac
 }
 
-show_main_menu
+if [[ -n "$1" ]]; then
+  go_to_menu "$1"
+else
+  show_main_menu
+fi
