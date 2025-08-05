@@ -20,6 +20,10 @@ else
       sudo mkdir -p /etc/fido2
       echo -e "\e[32m\nLet's setup your device by confirming on the device now.\e[0m"
       pamu2fcfg >/tmp/fido2 # This needs to run as the user
+      if [ $? -ne 0 ]; then
+        echo -e "\e[31m\nSomething went wrong. Maybe try again?\e[0m"
+        exit 1
+      fi
       sudo mv /tmp/fido2 /etc/fido2/fido2
     fi
 
