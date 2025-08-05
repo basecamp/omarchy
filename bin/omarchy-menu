@@ -42,8 +42,12 @@ show_style_menu() {
 }
 
 show_theme_menu() {
-  $OMARCHY_BIN_PATH/omarchy-theme-set "$(menu "Theme" "$($OMARCHY_BIN_PATH/omarchy-theme-list)")"
-  show_main_menu
+  theme=$(menu "Theme" "$($OMARCHY_BIN_PATH/omarchy-theme-list)")
+  if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
+    show_main_menu
+  else
+    $OMARCHY_BIN_PATH/omarchy-theme-set "$theme"
+  fi
 }
 
 show_capture_menu() {
