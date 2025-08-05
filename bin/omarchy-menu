@@ -12,10 +12,11 @@ terminal() {
 }
 
 show_learn_menu() {
-  case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland") in
+  case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch") in
   *Keybindings*) $OMARCHY_BIN_PATH/omarchy-menu-keybindings ;;
   *Omarchy*) setsid chromium --new-window --app="https://manuals.omamix.org/2/the-omarchy-manual" & ;;
   *Hyprland*) setsid chromium --new-window --app="https://wiki.hypr.land/" & ;;
+  *Arch*) setsid chromium --new-window --app="https://wiki.archlinux.org/title/Main_page" & ;;
   *) show_main_menu ;;
   esac
 }
