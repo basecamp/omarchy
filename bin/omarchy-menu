@@ -78,11 +78,18 @@ show_toggle_menu() {
 }
 
 show_setup_menu() {
-  case $(menu "Setup" "  Audio\n  Wifi\n󰂯  Bluetooth\n󰍹  Monitors\n  Hyprland\n󰈷  Fingerprint\n  Fido2") in
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󰍹  Monitors"
+  [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
+  [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
+  options="$options\n  Hyprland\n󰈷  Fingerprint\n  Fido2"
+
+  case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
   *Wifi*) alacritty --class=Impala -e impala ;;
   *Bluetooth*) blueberry ;;
   *Monitors*) alacritty -e nvim ~/.config/hypr/monitors.conf ;;
+  *Keybindings*) alacritty -e nvim ~/.config/hypr/bindings.conf ;;
+  *Input*) alacritty -e nvim ~/.config/hypr/input.conf ;;
   *Hyprland*) alacritty -e nvim ~/.config/hypr/hyprland.conf ;;
   *Fingerprint*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
   *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
