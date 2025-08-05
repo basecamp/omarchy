@@ -88,12 +88,22 @@ show_setup_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Packages\n󰸌  Theme\n  Dropbox\n  Steam\n  Docker DBs") in
-  *Packages*) terminal $OMARCHY_BIN_PATH/omarchy-cmd-install ;;
+  case $(menu "Install" "󰣇  Package\n󰸌  Theme\n  Dropbox\n  Steam\n  Docker DBs") in
+  *Package*) terminal $OMARCHY_BIN_PATH/omarchy-cmd-install ;;
   *Theme*) terminal $OMARCHY_BIN_PATH/omarchy-theme-install ;;
   *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
   *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
   *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
+  *) show_main_menu ;;
+  esac
+}
+
+show_remove_menu() {
+  case $(menu "Remove" "󰣇  Package\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
+  *Package*) terminal $OMARCHY_BIN_PATH/omarchy-cmd-uninstall ;;
+  *Theme*) present_terminal $OMARCHY_BIN_PATH/omarchy-theme-remove ;;
+  *Fingerprint*) terminal "$OMARCHY_BIN_PATH/omarchy-setup-fingerprint --remove" ;;
+  *Fido2*) terminal "$OMARCHY_BIN_PATH/omarchy-setup-fido2 --remove" ;;
   *) show_main_menu ;;
   esac
 }
@@ -134,7 +144,7 @@ show_system_menu() {
 }
 
 show_main_menu() {
-  case $(menu "Start" "󰀻  Apps\n󰧑  Learning\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n  Update\n  System") in
+  case $(menu "Start" "󰀻  Apps\n󰧑  Learning\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  System") in
   *Apps*) walker -p "Launch…" ;;
   *Learn*) show_learn_menu ;;
   *Capture*) show_capture_menu ;;
@@ -142,6 +152,7 @@ show_main_menu() {
   *Style*) show_style_menu ;;
   *Setup*) show_setup_menu ;;
   *Install*) show_install_menu ;;
+  *Remove*) show_remove_menu ;;
   *Update*) show_update_menu ;;
   *System*) show_system_menu ;;
   esac
@@ -157,6 +168,7 @@ case "$1" in
 *toggle*) show_toggle_menu ;;
 *setup*) show_setup_menu ;;
 *install*) show_install_menu ;;
+*remove*) show_remove_menu ;;
 *update*) show_update_menu ;;
 *system*) show_system_menu ;;
 *) show_main_menu ;;
