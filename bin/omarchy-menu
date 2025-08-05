@@ -77,10 +77,10 @@ show_toggle_menu() {
 }
 
 show_setup_menu() {
-  case $(menu "Setup" "  Wifi\n󰂯  Bluetooth\n  Audio\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Setup" "  Audio\n  Wifi\n󰂯  Bluetooth\n󰈷  Fingerprint\n  Fido2") in
+  *Audio*) alacritty --class=Wiremix -e wiremix ;;
   *Wifi*) alacritty --class=Impala -e impala ;;
   *Bluetooth*) blueberry ;;
-  *Audio*) alacritty --class=Wiremix -e wiremix ;;
   *Fingerprint*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
   *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
   *) show_main_menu ;;
