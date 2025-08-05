@@ -1,3 +1,3 @@
 #!/bin/bash
 
-omarchy-restart-app hypridle
+~/.local/share/omarchy/bin/omarchy-restart-app hypridle
