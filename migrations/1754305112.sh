@@ -1,2 +1,2 @@
 echo "Restart Walker to pick up menu selections"
-omarchy-restart-walker
+~/.local/share/omarchy/bin/omarchy-restart-walker

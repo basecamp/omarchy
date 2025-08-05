@@ -1,5 +1,5 @@
 echo "Add auto-update icon to waybar when update available"
 
 if ! grep -q "custom/update" ~/.config/waybar/config.jsonc; then
-  omarchy-refresh-waybar
+  ~/.local/share/omarchy/bin/omarchy-refresh-waybar
 fi
