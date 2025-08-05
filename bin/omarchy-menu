@@ -1,7 +1,6 @@
 #!/bin/bash
 
 OMARCHY_BIN_PATH=~/.local/share/omarchy/bin
-OMARCHY_VERSION=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/dev/null)
 
 menu() {
   echo -e "$2" | walker --dmenu --theme dmenu_250 -p "$1…"
@@ -144,7 +143,7 @@ show_remove_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" "󰣇  Omarchy ($OMARCHY_VERSION)\n  Configs\n󰸌  Themes\n  Timezone") in
+  case $(menu "Update" "󰣇  Omarchy\n  Configs\n󰸌  Themes\n  Timezone") in
   *Omarchy*) terminal $OMARCHY_BIN_PATH/omarchy-update ;;
   *Configs*) show_update_configs_menu ;;
   *Themes*) terminal $OMARCHY_BIN_PATH/omarchy-theme-update ;;
