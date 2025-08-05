@@ -149,32 +149,26 @@ show_system_menu() {
 }
 
 show_main_menu() {
-  case $(menu "Start" "󰀻  Apps\n󰧑  Learning\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  System") in
-  *Apps*) walker -p "Launch…" ;;
-  *Learn*) show_learn_menu ;;
-  *Capture*) show_capture_menu ;;
-  *Toggle*) show_toggle_menu ;;
-  *Style*) show_style_menu ;;
-  *Setup*) show_setup_menu ;;
-  *Install*) show_install_menu ;;
-  *Remove*) show_remove_menu ;;
-  *Update*) show_update_menu ;;
-  *System*) show_system_menu ;;
+  go_to_menu "$(menu "Start" "󰀻  Apps\n󰧑  Learning\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
+}
+
+go_to_menu() {
+  case "${1,,}" in
+  *apps*) walker -p "Launch…" ;;
+  *learn*) show_learn_menu ;;
+  *style*) show_style_menu ;;
+  *theme*) show_theme_menu ;;
+  *capture*) show_capture_menu ;;
+  *screenshot*) show_screenshot_menu ;;
+  *screenrecord*) show_screenrecord_menu ;;
+  *toggle*) show_toggle_menu ;;
+  *setup*) show_setup_menu ;;
+  *install*) show_install_menu ;;
+  *remove*) show_remove_menu ;;
+  *update*) show_update_menu ;;
+  *system*) show_system_menu ;;
+  *about*) gtk-launch About.desktop ;;
   esac
 }
 
-case "$1" in
-*learn*) show_learn_menu ;;
-*style*) show_style_menu ;;
-*theme*) show_theme_menu ;;
-*capture*) show_capture_menu ;;
-*screenshot*) show_screenshot_menu ;;
-*screenrecord*) show_screenrecord_menu ;;
-*toggle*) show_toggle_menu ;;
-*setup*) show_setup_menu ;;
-*install*) show_install_menu ;;
-*remove*) show_remove_menu ;;
-*update*) show_update_menu ;;
-*system*) show_system_menu ;;
-*) show_main_menu ;;
-esac
+show_main_menu
