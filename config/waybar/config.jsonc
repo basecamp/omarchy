@@ -47,7 +47,7 @@
   "custom/omarchy": {
     "format": "",
     "on-click": "~/.local/share/omarchy/bin/omarchy-menu",
-    "tooltip": false
+    "tooltip-format": "SUPER + ALT + SPACE"
   },
   "custom/update": {
     "format": "",
