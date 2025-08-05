@@ -85,7 +85,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Hyprland\n󰈷  Fingerprint\n  Fido2"
+  options="$options\n  Configs\n󰈷  Fingerprint\n  Fido2"
 
   case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
@@ -97,6 +97,20 @@ show_setup_menu() {
   *Configs*) show_setup_configs_menu ;;
   *Fingerprint*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
   *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
+  *) show_main_menu ;;
+  esac
+}
+
+show_setup_configs_menu() {
+  case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  *Hyprland*) edit_in_nvim ~/.config/hypr/hyprland.conf ;;
+  *Hypridle*) edit_in_nvim ~/.config/hypr/hypridle.conf && ~/.local/share/omarchy/bin/omarchy-restart-hypridle ;;
+  *Hyprlock*) edit_in_nvim ~/.config/hypr/hyprlock.conf ;;
+  *Hyprsunset*) edit_in_nvim ~/.config/hypr/hyprsunset.conf && ~/.local/share/omarchy/bin/omarchy-restart-hyprsunset ;;
+  *Swayosd*) edit_in_nvim ~/.config/swayosd/config.toml && ~/.local/share/omarchy/bin/omarchy-restart-swayosd ;;
+  *Walker*) edit_in_nvim ~/.config/walker/config.toml && ~/.local/share/omarchy/bin/omarchy-restart-walker ;;
+  *Waybar*) edit_in_nvim ~/.config/waybar/config.jsonc && ~/.local/share/omarchy/bin/omarchy-restart-waybar ;;
+  *XCompose*) edit_in_nvim ~/.XCompose && ~/.local/share/omarchy/bin/omarchy-restart-xcompose ;;
   *) show_main_menu ;;
   esac
 }
