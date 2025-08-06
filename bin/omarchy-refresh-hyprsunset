@@ -1,0 +1,4 @@
+#!/bin/bash
+
+~/.local/share/omarchy/bin/omarchy-refresh-config hypr/hyprsunset.conf
+~/.local/share/omarchy/bin/omarchy-restart-hyprsunset

@@ -12,8 +12,6 @@ if [[ "$(uname -m)" == "x86_64" ]] && ! grep -q '^\[chaotic-aur\]' /etc/pacman.c
 
     # Refresh pacman package databases
     sudo pacman -Sy
-
-    chaotic_ok=1
   else
     echo "Failed to install Chaotic-AUR, so won't include it in pacman config!"
   fi

@@ -4,17 +4,26 @@
 # Usage: omarchy-theme-remove <theme-name>
 
 if [ -z "$1" ]; then
-  echo "Usage: omarchy-theme-remove <theme-name>"
-  exit 1
+  extra_themes=$(find ~/.config/omarchy/themes -mindepth 1 -maxdepth 1 -type d ! -xtype l -printf '%f\n')
+
+  if [[ -n "$extra_themes" ]]; then
+    THEME_NAME=$(gum choose --header="Remove extra theme" "$extra_themes")
+  else
+    echo "No extra themes installed."
+    exit 1
+  fi
+else
+  THEME_NAME="$1"
 fi
 
-THEME_NAME="$1"
 THEMES_DIR="$HOME/.config/omarchy/themes"
-BACKGROUND_DIR="$HOME/.config/omarchy/backgrounds"
 CURRENT_DIR="$HOME/.config/omarchy/current"
-
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
-BACKGROUND_PATH="$BACKGROUND_DIR/$THEME_NAME"
+
+# Ensure a theme was set
+if [ -z "$THEME_NAME" ]; then
+  exit 1
+fi
 
 # Check if theme exists before attempting removal
 if [ ! -d "$THEME_PATH" ]; then
@@ -22,12 +31,10 @@ if [ ! -d "$THEME_PATH" ]; then
   exit 1
 fi
 
-# Use readlink -f to resolve symlinks and get the absolute path
+# Move to the next theme if the current theme is the one being removed
 if [ "$(readlink -f "$CURRENT_DIR/theme")" = "$(readlink -f "$THEME_PATH")" ]; then
-  "$HOME/.local/share/omarchy/bin/omarchy-theme-next"
+  ~/.local/share/omarchy/bin/omarchy-theme-next
 fi
 
-# Now remove the theme directory and backgrounds for THEME_NAME
+# Now remove the theme directory for THEME_NAME
 rm -rf "$THEME_PATH"
-rm -rf "$BACKGROUND_PATH"
-

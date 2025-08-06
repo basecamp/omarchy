@@ -1,0 +1,18 @@
+#!/bin/bash
+
+set -e
+
+# Where we store an empty file for each migration that has already been performed.
+STATE_DIR="$HOME/.local/state/omarchy/migrations"
+mkdir -p "$STATE_DIR"
+
+# Run any pending migrations
+for file in ~/.local/share/omarchy/migrations/*.sh; do
+  filename=$(basename "$file")
+
+  if [[ ! -f "$STATE_DIR/$filename" ]]; then
+    echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
+    source $file
+    touch "$STATE_DIR/$filename"
+  fi
+done

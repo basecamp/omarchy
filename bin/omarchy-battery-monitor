@@ -14,7 +14,7 @@ get_battery_state() {
 }
 
 send_notification() {
-  notify-send -u critical "Battery Low" "Time to recharge! (battery is at ${1}%)" -i battery-caution
+  notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
 }
 
 BATTERY_LEVEL=$(get_battery_percentage)

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+yay -Slq | fzf --multi --preview 'yay -Sii {1}' --preview-window=down:75% | xargs -ro yay -S --noconfirm && sudo updatedb
+
+~/.local/share/omarchy/bin/omarchy-show-done

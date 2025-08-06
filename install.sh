@@ -28,6 +28,7 @@ show_subtext() {
 # Install prerequisites
 source $OMARCHY_INSTALL/preflight/aur.sh
 source $OMARCHY_INSTALL/preflight/presentation.sh
+source $OMARCHY_INSTALL/preflight/migrations.sh
 
 # Configuration
 show_logo beams 240
@@ -38,6 +39,7 @@ source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
 source $OMARCHY_INSTALL/config/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/network.sh
 source $OMARCHY_INSTALL/config/power.sh
+source $OMARCHY_INSTALL/config/timezones.sh
 source $OMARCHY_INSTALL/config/login.sh
 source $OMARCHY_INSTALL/config/nvidia.sh
 

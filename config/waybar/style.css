@@ -26,6 +26,10 @@
   min-width: 9px;
 }
 
+#workspaces button.empty {
+  opacity: 0.5;
+}
+
 #tray,
 #cpu,
 #battery,
@@ -33,7 +37,7 @@
 #bluetooth,
 #pulseaudio,
 #clock,
-#custom-power-menu {
+#custom-omarchy {
   min-width: 12px;
   margin: 0 7.5px;
 }

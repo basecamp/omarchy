@@ -1,0 +1,3 @@
+#!/bin/bash
+
+~/.local/share/omarchy/bin/omarchy-restart-app swayosd-server

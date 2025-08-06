@@ -6,7 +6,7 @@ theme = "omarchy-default"
 theme_base = []
 theme_location = ["~/.local/share/omarchy/default/walker/themes/"]
 monitor = ""
-hotreload_theme = false
+hotreload_theme = true
 as_window = false
 timeout = 0
 disable_click_to_close = false
@@ -42,7 +42,7 @@ on_query_change = ""
 [list]
 dynamic_sub = true
 keyboard_scroll_style = "emacs"
-max_entries = 50
+max_entries = 200
 show_initial_entries = true
 single_click = true
 visibility_threshold = 20
@@ -199,20 +199,21 @@ typeahead = true
 hidden = true
 
 [builtins.finder]
-use_fd = false
+use_fd = true
 fd_flags = "--ignore-vcs --type file --type directory"
 cmd_alt = "xdg-open $(dirname ~/%RESULT%)"
 weight = 5
 icon = "file"
-name = "finder"
+name = "Finder"
 placeholder = "Finder"
 switcher_only = true
 ignore_gitignore = true
 refresh = true
 concurrency = 8
 show_icon_when_single = true
-preview_images = false
-hidden = true
+preview_images = true
+hidden = false
+prefix = "."
 
 [builtins.runner]
 eager_loading = true

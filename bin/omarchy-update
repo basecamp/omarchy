@@ -1,31 +1,27 @@
 #!/bin/bash
 
-cd ~/.local/share/omarchy
+# Exit immediately if a command exits with a non-zero status
+set -e
 
-if [[ $1 == "all" ]]; then
-  # Run all migrations since the root commit
-  migration_starting_point=$(git log --max-parents=0 --first-parent --format="%H")
-else
-  # Remember the commit we're at before upgrading in order to only run new migrations
-  migration_starting_point=$(git log -1 --format=%H)
-fi
+# Show logo
+clear
+cat <~/.local/share/omarchy/logo.txt
 
 # Get the latest while trying to preserve any modifications
-git pull --autostash
-git diff --check || git reset --merge
+omarchy_path=~/.local/share/omarchy
+git -C $omarchy_path pull --autostash
+git -C $omarchy_path diff --check || git -C $omarchy_path reset --merge
 
-# Run any pending migrations
-for file in $(git diff --name-only --diff-filter=A $migration_starting_point.. migrations/*.sh); do
-  filename=$(basename "$file")
-  migrate_at="${filename%.sh}"
-
-  echo -e "\e[32m\nRunning migration ($migrate_at)\e[0m"
-  source $file
-done
+# Run migrations
+~/.local/share/omarchy/bin/omarchy-migrate
 
 # Update system packages
 echo -e "\e[32m\nUpdate system packages\e[0m"
 yay -Syu --noconfirm
 
-# Back to where we came from
-cd - >/dev/null
+# Offer to reboot if the kernel has been changed
+if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
+  gum confirm "Linux kernel has been updated. Reboot?" && sudo reboot now
+fi
+
+~/.local/share/omarchy/bin/omarchy-show-done
