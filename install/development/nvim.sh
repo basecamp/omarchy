@@ -6,9 +6,13 @@ if ! command -v nvim &>/dev/null; then
   # Install LazyVim
   rm -rf ~/.config/nvim
   git clone https://github.com/LazyVim/starter ~/.config/nvim
-  cp -R ~/.local/share/omarchy/config/nvim/* ~/.config/nvim/
-  cp ~/.local/share/omarchy/config/lazyvim/init.lua ~/.config/nvim/
-  cp ~/.local/share/omarchy/config/lazyvim/lazy.lua ~/.config/nvim/lua/config/
+  cp -R ~/.local/share/omarchy/config/nvim/* ~/.config/nvim/  
   rm -rf ~/.config/nvim/.git
   echo "vim.opt.relativenumber = false" >>~/.config/nvim/lua/config/options.lua
+  cat <<EOF >>~/.config/nvim/init.lua
+
+-- Setup theme reloader
+require("omarchy.theme_reload").setup()
+EOF
+
 fi
