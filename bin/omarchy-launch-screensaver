@@ -9,7 +9,7 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   hyprctl dispatch focusmonitor $m
   hyprctl dispatch exec -- \
     alacritty --class Screensaver \
-    --config-file ~/.config/alacritty/screensaver.toml  \
+    --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
     -e ~/.local/share/omarchy/bin/omarchy-cmd-screensaver
 done
 
