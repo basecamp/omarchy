@@ -37,7 +37,7 @@ source ~/.config/omarchy/default/bash/prompt
 ## Prompt Format
 
 ```
-╭─[👤 user@hostname ]─[📁 /current/path ]🌿 main✓
+╭─[ user@hostname ]─[ /current/path ] main✓
 ╰─❯❯❯ 
 ```
 
