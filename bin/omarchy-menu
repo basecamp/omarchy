@@ -19,6 +19,10 @@ edit_in_nvim() {
   alacritty -e nvim "$1"
 }
 
+install_and_launch() {
+  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2 && gtk-launch $3"
+}
+
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) $OMARCHY_BIN_PATH/omarchy-menu-keybindings ;;
@@ -120,15 +124,25 @@ show_setup_configs_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n󰸌  Theme\n  Background\n  Dropbox\n  Steam\n  Docker DBs") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  Editor\n󰸌  Theme\n  Background\n  Dropbox\n  Steam\n  Docker DBs") in
   *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-install ;;
   *Web*) terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
+  *Editor*) show_install_editor_menu ;;
   *Theme*) terminal $OMARCHY_BIN_PATH/omarchy-theme-install ;;
   *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
   *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
   *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
   *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_install_editor_menu() {
+  case $(menu "Install" "  VSCode\n  Cursor\n  Zed") in
+  *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
+  *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor-cursor" ;;
+  *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+  *) show_install_menu ;;
   esac
 }
 
