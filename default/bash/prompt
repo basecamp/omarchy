@@ -1,7 +1,152 @@
-# Technicolor dreams
+#!/bin/bash
+# Dynamic Omarchy Bash Prompt
+# Automatically adapts to current theme colors
+
+# Git helper functions
+function __git_branch() {
+    local branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+    if [ -n "$branch" ]; then
+        echo " $branch"
+    fi
+}
+
+function __git_status() {
+    local status=$(git status --porcelain 2>/dev/null)
+    if [ -n "$status" ]; then
+        echo "●"
+    else
+        echo "✓"
+    fi
+}
+
+# Cache variables
+__LAST_THEME=""
+__PROMPT_NEEDS_UPDATE=true
+
+# Function to update PS1 only when needed
+__update_omarchy_prompt() {
+    local current_theme=""
+    if [[ -L "$HOME/.config/omarchy/current/theme" ]]; then
+        current_theme=$(basename "$(readlink "$HOME/.config/omarchy/current/theme")")
+    else
+        current_theme="default"
+    fi
+    
+    # Only update if theme changed or first run
+    if [[ "$current_theme" == "$__LAST_THEME" && "$__PROMPT_NEEDS_UPDATE" != true ]]; then
+        return
+    fi
+    
+    __LAST_THEME="$current_theme"
+    __PROMPT_NEEDS_UPDATE=false
+    
+    # Extract colors for current theme
+    local theme_dir="$HOME/.config/omarchy/current/theme"
+    local alacritty_file="$theme_dir/alacritty.toml"
+    local waybar_file="$theme_dir/waybar.css"
+    local light_mode_file="$theme_dir/light.mode"
+    
+    # Detect light theme
+    local is_light_theme=false
+    [[ -f "$light_mode_file" ]] && is_light_theme=true
+    
+    # Default colors (Catppuccin Mocha)
+    local bg_color="#1e1e2e"
+    local fg_color="#cdd6f4"
+    local blue_color="#89b4fa"
+    local purple_color="#cba6f7"
+    local cyan_color="#89dceb"
+    local green_color="#a6e3a1"
+    local yellow_color="#f9e2af"
+    
+    # Light theme defaults (Rose Pine Dawn)
+    if [[ "$is_light_theme" == true ]]; then
+        bg_color="#faf4ed"
+        fg_color="#575279"
+        blue_color="#286983"
+        purple_color="#907aa9"
+        cyan_color="#56949f"
+        green_color="#618a3f"
+        yellow_color="#ea9d34"
+    fi
+    
+    # Extract from alacritty.toml
+    if [[ -f "$alacritty_file" ]]; then
+        local extracted_fg=$(grep -E "foreground.*=" "$alacritty_file" | head -1 | sed -E "s/.*['\"]?(#|0x)([0-9a-fA-F]{6})['\"]?.*/\\2/" | sed 's/^/#/')
+        local extracted_blue=$(grep -E "(blue|primary).*=" "$alacritty_file" | grep -E "(#|0x)[0-9a-fA-F]{6}" | head -1 | sed -E "s/.*['\"]?(#|0x)([0-9a-fA-F]{6})['\"]?.*/\\2/" | sed 's/^/#/')
+        local extracted_purple=$(grep -E "(magenta|purple).*=" "$alacritty_file" | head -1 | sed -E "s/.*['\"]?(#|0x)([0-9a-fA-F]{6})['\"]?.*/\\2/" | sed 's/^/#/')
+        local extracted_cyan=$(grep -E "cyan.*=" "$alacritty_file" | head -1 | sed -E "s/.*['\"]?(#|0x)([0-9a-fA-F]{6})['\"]?.*/\\2/" | sed 's/^/#/')
+        local extracted_green=$(grep -E "green.*=" "$alacritty_file" | head -1 | sed -E "s/.*['\"]?(#|0x)([0-9a-fA-F]{6})['\"]?.*/\\2/" | sed 's/^/#/')
+        local extracted_yellow=$(grep -E "yellow.*=" "$alacritty_file" | head -1 | sed -E "s/.*['\"]?(#|0x)([0-9a-fA-F]{6})['\"]?.*/\\2/" | sed 's/^/#/')
+        
+        [[ "$extracted_fg" =~ ^#[0-9a-fA-F]{6}$ ]] && fg_color="$extracted_fg"
+        [[ "$extracted_blue" =~ ^#[0-9a-fA-F]{6}$ ]] && blue_color="$extracted_blue"
+        [[ "$extracted_purple" =~ ^#[0-9a-fA-F]{6}$ ]] && purple_color="$extracted_purple"
+        [[ "$extracted_cyan" =~ ^#[0-9a-fA-F]{6}$ ]] && cyan_color="$extracted_cyan"
+        [[ "$extracted_green" =~ ^#[0-9a-fA-F]{6}$ ]] && green_color="$extracted_green"
+        [[ "$extracted_yellow" =~ ^#[0-9a-fA-F]{6}$ ]] && yellow_color="$extracted_yellow"
+    fi
+    
+    # Convert hex to bash color
+    hex_to_bash() {
+        local hex="$1"
+        hex=${hex#\#}
+        local r=$((16#${hex:0:2}))
+        local g=$((16#${hex:2:2}))
+        local b=$((16#${hex:4:2}))
+        echo "\[\033[38;2;${r};${g};${b}m\]"
+    }
+    
+    # Create color variables
+    local C_RESET='\[\033[0m\]'
+    local C_BLUE=$(hex_to_bash "$blue_color")
+    local C_PURPLE=$(hex_to_bash "$purple_color")
+    local C_CYAN=$(hex_to_bash "$cyan_color")
+    local C_GREEN=$(hex_to_bash "$green_color")
+    local C_YELLOW=$(hex_to_bash "$yellow_color")
+    
+    # Adaptive text colors
+    local fg_r=$((16#${fg_color:1:2}))
+    local fg_g=$((16#${fg_color:3:2}))
+    local fg_b=$((16#${fg_color:5:2}))
+    
+    local C_TEXT
+    local C_SUBTEXT
+    if [[ "$is_light_theme" == true ]]; then
+        # Light theme: darker text
+        local text_r=$(( fg_r * 5 / 10 ))
+        local text_g=$(( fg_g * 5 / 10 ))
+        local text_b=$(( fg_b * 5 / 10 ))
+        local subtext_r=$(( fg_r * 6 / 10 ))
+        local subtext_g=$(( fg_g * 6 / 10 ))
+        local subtext_b=$(( fg_b * 6 / 10 ))
+        
+        C_TEXT="\[\033[38;2;${text_r};${text_g};${text_b}m\]"
+        C_SUBTEXT="\[\033[38;2;${subtext_r};${subtext_g};${subtext_b}m\]"
+    else
+        # Dark theme: use foreground
+        C_TEXT=$(hex_to_bash "$fg_color")
+        local dim_r=$(( fg_r * 7 / 10 ))
+        local dim_g=$(( fg_g * 7 / 10 ))
+        local dim_b=$(( fg_b * 7 / 10 ))
+        C_SUBTEXT="\[\033[38;2;${dim_r};${dim_g};${dim_b}m\]"
+    fi
+    
+    # Build PS1
+    PS1="${C_BLUE}╭─[${C_PURPLE} ${C_TEXT}\u${C_SUBTEXT}@${C_CYAN}\h ${C_BLUE}]─[${C_YELLOW} ${C_TEXT}\w ${C_BLUE}]${C_PURPLE}\$(__git_branch)${C_GREEN}\$(__git_status)${C_RESET}
+${C_BLUE}╰─${C_CYAN}❯${C_BLUE}❯${C_PURPLE}❯ ${C_RESET}"
+}
+
+# Initialize dynamic prompt
 force_color_prompt=yes
 color_prompt=yes
 
-# Simple prompt with path in the window/pane title and caret for typing line
-PS1=$'\uf0a9 '
-PS1="\[\e]0;\w\a\]$PS1"
+# Set up PROMPT_COMMAND for dynamic updates
+if [[ "$PROMPT_COMMAND" ]]; then
+    PROMPT_COMMAND="__update_omarchy_prompt; $PROMPT_COMMAND"
+else
+    PROMPT_COMMAND="__update_omarchy_prompt"
+fi
+
+# Build initial prompt
+__update_omarchy_prompt
