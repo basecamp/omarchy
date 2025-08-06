@@ -44,6 +44,7 @@
 
 #custom-expand-icon {
   margin-right: 12px;
+  opacity: 1;
 }
 
 #custom-expand-icon.visible {

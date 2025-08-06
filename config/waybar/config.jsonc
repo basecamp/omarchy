@@ -134,7 +134,10 @@
     "exec": "~/.local/share/omarchy/bin/omarchy-cmd-tray-status",
     "format": " ",
     "tooltip": false,
-    "return-type": "json"
+    "return-type": "json",
+    "signal": 8,
+    "interval": 1,
+    "restart-interval": 1
   },
   "tray": {
     "icon-size": 12,

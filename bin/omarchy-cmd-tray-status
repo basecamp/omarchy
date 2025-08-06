@@ -1,25 +1,154 @@
 #!/bin/bash
 
-# Script to detect tray state and return appropriate CSS class
-# Returns "empty" class when no tray items are present
+# Script to detect system tray state and return appropriate CSS class
+# Returns "empty" class when no tray items are present, "visible" when items exist
+# Supports multiple detection methods with fallbacks for reliability
 
-check_tray_items() {
-    if ! busctl --user list | grep -q "org.kde.StatusNotifierWatcher"; then
-        echo '{"text": "", "class": "empty"}'
-        return
+DEBUG=${OMARCHY_TRAY_DEBUG:-0}
+debug_log() {
+    [[ $DEBUG -eq 1 ]] && echo "[DEBUG] $*" >&2
+}
+
+check_via_busctl() {
+    debug_log "Checking via busctl..."
+    
+    if ! busctl --user list 2>/dev/null | grep -q "org.kde.StatusNotifierWatcher"; then
+        debug_log "StatusNotifierWatcher service not found"
+        return 1
     fi
     
-    items=$(busctl --user get-property org.kde.StatusNotifierWatcher \
+    # Get registered items with timeout
+    local items
+    items=$(timeout 2 busctl --user get-property org.kde.StatusNotifierWatcher \
         /StatusNotifierWatcher \
         org.kde.StatusNotifierWatcher \
-        RegisteredStatusNotifierItems 2>/dev/null | cut -d'"' -f2- | tr -d '"')
+        RegisteredStatusNotifierItems 2>/dev/null)
     
-    # Check if items is empty or only contains spaces
-    if [[ -z "$items" || "$items" =~ ^[[:space:]]*$ ]]; then
-        echo '{"text": "", "class": "empty"}'
-    else
-        echo '{"text": "", "class": "visible"}'
+    if [[ $? -ne 0 ]]; then
+        debug_log "busctl query failed or timed out"
+        return 1
     fi
+    
+    debug_log "busctl raw output: '$items'"
+    
+    # Parse D-Bus array format: "as 0" means empty array, "as N ..." means N items
+    if echo "$items" | grep -q "^as 0\s*$"; then
+        debug_log "No items found via busctl (empty array)"
+        return 1
+    elif echo "$items" | grep -q "^as [1-9]"; then
+        debug_log "Found items via busctl"
+        return 0
+    else
+        debug_log "Unexpected busctl format: '$items'"
+        return 1
+    fi
+}
+
+check_via_gdbus() {
+    debug_log "Checking via gdbus..."
+    
+    if ! gdbus introspect --session --dest org.kde.StatusNotifierWatcher \
+        --object-path /StatusNotifierWatcher &>/dev/null; then
+        debug_log "StatusNotifierWatcher not accessible via gdbus"
+        return 1
+    fi
+    
+    local items
+    items=$(timeout 2 gdbus call --session \
+        --dest org.kde.StatusNotifierWatcher \
+        --object-path /StatusNotifierWatcher \
+        --method org.freedesktop.DBus.Properties.Get \
+        org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems 2>/dev/null)
+    
+    if [[ $? -ne 0 ]]; then
+        debug_log "gdbus query failed or timed out"
+        return 1
+    fi
+    
+    debug_log "gdbus response: '$items'"
+    
+    if echo "$items" | grep -q "\['.*'\]"; then
+        debug_log "Found items via gdbus"
+        return 0
+    else
+        debug_log "No items found via gdbus"
+        return 1
+    fi
+}
+
+check_via_processes() {
+    debug_log "Checking via process detection..."
+    
+    local tray_apps=(
+        "discord"
+        "steam"
+        "dropbox"
+        "telegram"
+        "slack"
+        "skype"
+        "teams"
+        "zoom"
+        "thunderbird"
+        "evolution"
+        "keepassxc"
+        "1password"
+        "nextcloud"
+        "syncthing"
+        "transmission"
+        "qbittorrent"
+        "ktorrent"
+        "deluge"
+        "flameshot"
+        "spectacle"
+        "copyq"
+        "clipit"
+        "parcellite"
+        "redshift"
+        "flux"
+        "caffeine"
+        "blueman-applet"
+        "nm-applet"
+        "pasystray"
+        "volumeicon"
+        "cbatticon"
+        "udiskie"
+    )
+    
+    for app in "${tray_apps[@]}"; do
+        if pgrep -x "$app" &>/dev/null; then
+            debug_log "Found tray application: $app"
+            return 0
+        fi
+    done
+    
+    debug_log "No known tray applications found"
+    return 1
+}
+
+check_tray_items() {
+    debug_log "Starting tray detection..."
+    
+    if check_via_busctl; then
+        debug_log "Detection successful via busctl"
+        echo '{"text": "", "class": "visible"}'
+        return 0
+    fi
+    
+    if check_via_gdbus; then
+        debug_log "Detection successful via gdbus"
+        echo '{"text": "", "class": "visible"}'
+        return 0
+    fi
+    
+    if check_via_processes; then
+        debug_log "Detection successful via process check"
+        echo '{"text": "", "class": "visible"}'
+        return 0
+    fi
+    
+    debug_log "No tray items detected by any method"
+    echo '{"text": "", "class": "empty"}'
+    return 0
 }
 
 trap 'check_tray_items' RTMIN+8
