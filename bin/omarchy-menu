@@ -24,7 +24,7 @@ install_and_launch() {
 }
 
 install_font() {
-  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2 && ~/.local/share/omarchy/bin/omarchy-font-set "$3""
+  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm --needed $2 && ~/.local/share/omarchy/bin/omarchy-font-set '$3'"
 }
 
 show_learn_menu() {
@@ -137,12 +137,13 @@ show_setup_configs_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n  Editor\n󰸌  Theme\n  Background\n  Dropbox\n  Steam\n  Docker DBs") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  Editor\n󰸌  Theme\n  Background\n  Font\n  Dropbox\n  Steam\n  Docker DBs") in
   *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-install ;;
   *Web*) terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
   *Editor*) show_install_editor_menu ;;
   *Theme*) terminal $OMARCHY_BIN_PATH/omarchy-theme-install ;;
   *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
+  *Font*) show_install_font_menu ;;
   *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
   *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
   *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
@@ -160,12 +161,11 @@ show_install_editor_menu() {
 }
 
 show_install_font_menu() {
-  case $(menu "Install" "  Meslo LG Mono") in
-  *Meslo*) install_font "VSCode" "visual-studio-code-bin" "code" ;;
-  *Fira*) install_and_launch "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font" ;;
+  case $(menu "Install" "  Meslo LG Mono\n  Fira Code\n  Victor Code\n  Bistream Vera Mono") in
+  *Meslo*) install_font "Meslo LG Mono" "ttf-meslo-nerd" "MesloLGL Nerd Font" ;;
+  *Fira*) install_font "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font" ;;
   *Victor*) install_font "Victor Code" "ttf-victor-mono-nerd" "VictorMono Nerd Font" ;;
-  *Victor*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
-  *Bitstream*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+  *Bistream*) install_font "Bistream Vera Code" "ttf-bitstream-vera-mono-nerd" "BitstromWera Nerd Font" ;;
   *) show_install_menu ;;
   esac
 }
