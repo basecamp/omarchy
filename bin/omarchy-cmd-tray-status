@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Script to detect tray state and return appropriate CSS class
+# Returns "empty" class when no tray items are present
+
+check_tray_items() {
+    if ! busctl --user list | grep -q "org.kde.StatusNotifierWatcher"; then
+        echo '{"text": "", "class": "empty"}'
+        return
+    fi
+    
+    items=$(busctl --user get-property org.kde.StatusNotifierWatcher \
+        /StatusNotifierWatcher \
+        org.kde.StatusNotifierWatcher \
+        RegisteredStatusNotifierItems 2>/dev/null | cut -d'"' -f2- | tr -d '"')
+    
+    # Check if items is empty or only contains spaces
+    if [[ -z "$items" || "$items" =~ ^[[:space:]]*$ ]]; then
+        echo '{"text": "", "class": "empty"}'
+    else
+        echo '{"text": "", "class": "visible"}'
+    fi
+}
+
+trap 'check_tray_items' RTMIN+8
+
+check_tray_items

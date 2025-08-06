@@ -46,6 +46,16 @@
   margin-right: 12px;
 }
 
+#custom-expand-icon.visible {
+  margin-right: 12px;
+  opacity: 1;
+}
+
+#custom-expand-icon.empty {
+  opacity: 0;
+  margin-right: 0;
+}
+
 tooltip {
   padding: 2px;
 }
