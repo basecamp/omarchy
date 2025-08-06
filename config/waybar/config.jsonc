@@ -37,11 +37,11 @@
       "active": "󱓻"
     },
     "persistent-workspaces": {
-      "1": [ ],
-      "2": [ ],
-      "3": [ ],
-      "4": [ ],
-      "5": [ ]
+      "1": [],
+      "2": [],
+      "3": [],
+      "4": [],
+      "5": []
     }
   },
   "custom/omarchy": {
@@ -67,7 +67,7 @@
     "on-click-right": "~/.local/share/omarchy/bin/omarchy-cmd-tzupdate"
   },
   "network": {
-    "format-icons": [ "󰤯", "󰤟", "󰤢", "󰤥", "󰤨" ],
+    "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
     "format": "{icon}",
     "format-wifi": "{icon}",
     "format-ethernet": "󰀂",
@@ -82,8 +82,8 @@
   "battery": {
     "format": "{capacity}% {icon}",
     "format-discharging": "{icon}",
-    "format-charging": "{icon}",
-    "format-plugged": "",
+    "format-charging":    "{icon}",
+    "format-plugged":     "",
     "format-icons": {
       "charging": [
         "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"
@@ -116,7 +116,7 @@
     "scroll-step": 5,
     "format-muted": "󰝟",
     "format-icons": {
-      "default": [ "", "", "" ]
+      "default": ["","",""]
     }
   },
   "group/tray-expander": {
