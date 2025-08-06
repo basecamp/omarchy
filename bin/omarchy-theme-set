@@ -42,6 +42,15 @@ fi
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
+# Update Kitty theme if Kitty is installed and configured
+if command -v kitty >/dev/null 2>&1 && [[ -d "$HOME/.config/kitty" ]]; then
+  if [[ -f ~/.config/omarchy/current/theme/kitty.conf ]]; then
+    ln -nsf ~/.config/omarchy/current/theme/kitty.conf ~/.config/kitty/current-theme.conf
+    # Signal running Kitty instances to reload config
+    pkill -SIGUSR1 kitty 2>/dev/null || true
+  fi
+fi
+
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
 ~/.local/share/omarchy/bin/omarchy-restart-waybar

@@ -6,3 +6,9 @@ yay -S --noconfirm --needed \
   wl-clipboard fastfetch btop \
   man tldr less whois plocate bash-completion \
   alacritty
+
+# Optional: Install Kitty terminal for enhanced features
+# Kitty provides advanced features like image display, better Unicode support,
+# and superior terminal graphics protocol support
+echo "Installing Kitty terminal (optional but recommended for enhanced features)..."
+yay -S --noconfirm --needed kitty
