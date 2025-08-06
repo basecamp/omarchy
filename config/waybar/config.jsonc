@@ -116,7 +116,7 @@
     "scroll-step": 5,
     "format-muted": "󰝟",
     "format-icons": {
-      "default": ["","",""]
+      "default": ["", "", ""]
     }
   },
   "group/tray-expander": {
