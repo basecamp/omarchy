@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# This script installs and configures the CUPS printing server on Arch Linux.
+# It sets up CUPS for local access only.
+
+set -e # Exit script if a command fails
+
+echo "--> Installing CUPS packages..."
+sudo pacman -Syu --noconfirm --needed cups gutenprint system-config-printer
+
+echo "--> Adding current user ($USER) to the 'lpadmin' group..."
+sudo usermod -aG lpadmin "$USER"
+
+echo "--> Configuring CUPS for local access only..."
+sudo cupsctl --no-remote-any --no-share-printers
+
+echo "--> Enabling and starting the CUPS service..."
+sudo systemctl enable --now cups.service
+sudo systemctl restart cups.service # Ensure config is applied
+
+echo ""
+echo "-----------------------------------------------------"
+echo " CUPS setup is complete! "
+echo "-----------------------------------------------------"
+echo ""
+echo "You can manage your printers via:"
+echo "  - The web interface: http://localhost:631"
+echo "  - The graphical tool: run 'system-config-printer'"
+echo ""
+echo "IMPORTANT: You must log out and log back in for the group change to take effect."
+echo ""

@@ -101,6 +101,7 @@ show_setup_menu() {
   *Configs*) show_setup_configs_menu ;;
   *Fingerprint*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
   *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
+  *Printer*) terminal $OMARCHY_BIN_PATH/omarchy-setup-cups ;;
   *) show_main_menu ;;
   esac
 }
