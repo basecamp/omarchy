@@ -103,7 +103,7 @@ show_toggle_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
   options="$options\n  Configs\n󰈷  Fingerprint\n  Fido2"
@@ -112,6 +112,7 @@ show_setup_menu() {
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
   *Wifi*) alacritty --class=Impala -e impala ;;
   *Bluetooth*) blueberry ;;
+  *Power*) show_setup_power_menu ;;
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
@@ -120,6 +121,17 @@ show_setup_menu() {
   *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
   *) show_main_menu ;;
   esac
+}
+
+show_setup_power_menu() {
+  current_profile=$(powerprofilesctl get)
+  new_profile=$(menu "Power Profile" "$($OMARCHY_BIN_PATH/omarchy-powerprofiles-list)" "-a '${current_profile}'")
+
+  if [[ "$new_profile" == "CNCLD" || -z "$new_profile" ]]; then
+    show_main_menu
+  else
+    powerprofilesctl set "$new_profile"
+  fi
 }
 
 show_setup_configs_menu() {
