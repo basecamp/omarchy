@@ -24,7 +24,7 @@ install_and_launch() {
 }
 
 install_font() {
-  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm --needed $2 && ~/.local/share/omarchy/bin/omarchy-font-set '$3'"
+  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm --needed $2 && sleep 2 && ~/.local/share/omarchy/bin/omarchy-font-set '$3'"
 }
 
 show_learn_menu() {
