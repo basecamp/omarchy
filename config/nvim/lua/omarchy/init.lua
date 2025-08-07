@@ -9,6 +9,8 @@ return {
     { "tahayvr/matteblack.nvim", lazy = false, priority = 1000 },
     { "EdenEast/nightfox.nvim", lazy = false, priority = 1000 },
     { "rose-pine/neovim", name = "rose-pine", lazy = false, priority = 1000 },
+    { "ribru17/bamboo.nvim", lazy = false, priority = 1000 },
+    { "gthelding/monokai-pro.nvim", lazy = false, priority = 1000}
   },
   install = {
     colorscheme = {
@@ -22,6 +24,8 @@ return {
       "nordfox",
       "matteblack",
       "rose-pine-dawn",
+      "bamboo",
+      "monokai-pro",
     },
   },
 }
