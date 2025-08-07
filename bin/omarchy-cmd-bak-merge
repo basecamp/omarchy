@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# omarchy-merge-backup: Find and merge Omarchy backups in a loop
+
+OMARCHY_BIN_PATH=~/.local/share/omarchy/bin
+
+$OMARCHY_BIN_PATH/omarchy-show-logo
+
+# Check for merge tool
+if ! command -v meld &>/dev/null; then
+  if gum confirm "Meld is not installed. It is recommended for a better visual merge experience. Install it now?"; then
+    yay -S --noconfirm --needed meld
+  fi
+fi
+
+while true; do
+  BACKUP_FILES=$(find ~/.config -type f -name "*.bak.*" -printf "%T@ %p\n" | sort -n | cut -d' ' -f2-)
+
+  if [[ -z "$BACKUP_FILES" ]]; then
+    echo "No more backup files found. All done!"
+    break
+  fi
+
+  # Add a "Quit" option to the list
+  CHOICE=$(echo -e "Quit\n$BACKUP_FILES" | gum choose --header "Select a backup to merge (or Quit to exit)")
+
+  # Exit if the user chose "Quit" or nothing
+  if [[ "$CHOICE" == "Quit" || -z "$CHOICE" ]]; then
+    break
+  fi
+
+  BACKUP_FILE="$CHOICE"
+  ORIG_FILE=$(echo "$BACKUP_FILE" | sed -E 's/\.bak\.[0-9]+$//')
+
+  echo "Backup selected: $BACKUP_FILE"
+  echo "Original file:   $ORIG_FILE"
+  
+  gum spin --title "Launching merge tool..." -- sleep 1
+  
+  if command -v meld &>/dev/null; then
+    meld "$ORIG_FILE" "$BACKUP_FILE"
+  else
+    nvim -d "$ORIG_FILE" "$BACKUP_FILE"
+  fi
+
+  echo
+
+  if gum confirm "Merge process finished. Do you want to delete the backup file?"; then
+    rm "$BACKUP_FILE"
+    echo "Backup file '$BACKUP_FILE' has been deleted."
+  else
+    echo "Backup file has been kept."
+  fi
+
+  gum spin --title "Checking for more backups..." -- sleep 2
+  clear
+  $OMARCHY_BIN_PATH/omarchy-show-logo
+done
+
+$OMARCHY_BIN_PATH/omarchy-show-done

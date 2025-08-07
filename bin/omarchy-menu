@@ -196,6 +196,7 @@ show_remove_menu() {
 show_update_menu() {
   case $(menu "Update" "󰣇  Omarchy\n  Configs\n󰸌  Themes\n  Timezone") in
   *Omarchy*) terminal $OMARCHY_BIN_PATH/omarchy-update ;;
+  *Config Bak Merge*) terminal $OMARCHY_BIN_PATH/omarchy-cmd-bak-merge ;;
   *Configs*) show_update_configs_menu ;;
   *Themes*) terminal $OMARCHY_BIN_PATH/omarchy-theme-update ;;
   *Timezone*) $OMARCHY_BIN_PATH/omarchy-cmd-tzupdate ;;
