@@ -35,3 +35,18 @@ format-drive() {
     fi
   fi
 }
+
+# Transcode a video to a good-balance 1080p that's great for sharing online
+transcode-video-1080p() {
+  ffmpeg -i $1 -vf scale=1920:1080 -c:v libx264 -preset fast -crf 23 -c:a copy ${1%.*}-1080p.mp4
+}
+
+# Transcode a video to a good-balance 4K that's great for sharing online
+transcode-video-4K() {
+  ffmpeg -i $1 -c:v libx265 -preset slow -crf 24 -c:a aac -b:a 192k ${1%.*}-optimized.mp4
+}
+
+# Transcode PNG to JPG image that's great for shrinking wallpapers
+transcode-png2jpg() {
+  convert $1 -quality 95 -strip $(1%.*).jpg
+}

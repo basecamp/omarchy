@@ -1,5 +1,9 @@
 #!/bin/bash
 
-yay -Slq | fzf --multi --preview 'yay -Sii {1}' --preview-window=down:75% | xargs -ro yay -S --noconfirm && sudo updatedb
+pkg_name=$(yay -Slq | fzf --multi --preview 'yay -Sii {1}' --preview-window=down:75%)
 
-~/.local/share/omarchy/bin/omarchy-show-done
+if [[ -n "$pkg_name" ]]; then
+  yay -Sy --noconfirm "$pkg_name"
+  sudo updatedb
+  ~/.local/share/omarchy/bin/omarchy-show-done
+fi

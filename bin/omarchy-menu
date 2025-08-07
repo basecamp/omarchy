@@ -3,7 +3,7 @@
 OMARCHY_BIN_PATH=~/.local/share/omarchy/bin
 
 menu() {
-  echo -e "$2" | walker --dmenu --theme dmenu_250 -p "$1…"
+  echo -e "$2" | walker --dmenu --theme dmenu_250 -p "$1…" $3
 }
 
 terminal() {
@@ -17,6 +17,14 @@ present_terminal() {
 edit_in_nvim() {
   notify-send "Editing config file" "$1"
   alacritty -e nvim "$1"
+}
+
+install_and_launch() {
+  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2 && gtk-launch $3"
+}
+
+install_font() {
+  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm --needed $2 && sleep 2 && ~/.local/share/omarchy/bin/omarchy-font-set '$3'"
 }
 
 show_learn_menu() {
@@ -34,7 +42,7 @@ show_learn_menu() {
 show_style_menu() {
   case $(menu "Style" "󰸌  Theme\n  Font\n  Background") in
   *Theme*) show_theme_menu ;;
-  *Font*) terminal $OMARCHY_BIN_PATH/omarchy-font-menu ;;
+  *Font*) show_font_menu ;;
   *Background*) $OMARCHY_BIN_PATH/omarchy-theme-bg-next ;;
   *) show_main_menu ;;
   esac
@@ -46,6 +54,15 @@ show_theme_menu() {
     show_main_menu
   else
     $OMARCHY_BIN_PATH/omarchy-theme-set "$theme"
+  fi
+}
+
+show_font_menu() {
+  theme=$(menu "Font" "$($OMARCHY_BIN_PATH/omarchy-font-list)" "-w 350")
+  if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
+    show_main_menu
+  else
+    $OMARCHY_BIN_PATH/omarchy-font-set "$theme"
   fi
 }
 
@@ -86,7 +103,7 @@ show_toggle_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
   options="$options\n  Configs\n󰈷  Fingerprint\n  Fido2"
@@ -95,6 +112,7 @@ show_setup_menu() {
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
   *Wifi*) alacritty --class=Impala -e impala ;;
   *Bluetooth*) blueberry ;;
+  *Power*) show_setup_power_menu ;;
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
@@ -103,6 +121,17 @@ show_setup_menu() {
   *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
   *) show_main_menu ;;
   esac
+}
+
+show_setup_power_menu() {
+  current_profile=$(powerprofilesctl get)
+  new_profile=$(menu "Power Profile" "$($OMARCHY_BIN_PATH/omarchy-powerprofiles-list)" "-a '${current_profile}'")
+
+  if [[ "$new_profile" == "CNCLD" || -z "$new_profile" ]]; then
+    show_main_menu
+  else
+    powerprofilesctl set "$new_profile"
+  fi
 }
 
 show_setup_configs_menu() {
@@ -120,15 +149,36 @@ show_setup_configs_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n󰸌  Theme\n  Background\n  Dropbox\n  Steam\n  Docker DBs") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  Editor\n󰸌  Theme\n  Background\n  Font\n  Dropbox\n  Steam\n  Docker DBs") in
   *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-install ;;
   *Web*) terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
+  *Editor*) show_install_editor_menu ;;
   *Theme*) terminal $OMARCHY_BIN_PATH/omarchy-theme-install ;;
   *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
+  *Font*) show_install_font_menu ;;
   *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
   *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
   *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_install_editor_menu() {
+  case $(menu "Install" "  VSCode\n  Cursor\n  Zed") in
+  *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
+  *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor-cursor" ;;
+  *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_font_menu() {
+  case $(menu "Install" "  Meslo LG Mono\n  Fira Code\n  Victor Code\n  Bistream Vera Mono" "-w 350") in
+  *Meslo*) install_font "Meslo LG Mono" "ttf-meslo-nerd" "MesloLGL Nerd Font" ;;
+  *Fira*) install_font "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font" ;;
+  *Victor*) install_font "Victor Code" "ttf-victor-mono-nerd" "VictorMono Nerd Font" ;;
+  *Bistream*) install_font "Bistream Vera Code" "ttf-bitstream-vera-mono-nerd" "BitstromWera Nerd Font" ;;
+  *) show_install_menu ;;
   esac
 }
 
@@ -179,7 +229,7 @@ show_system_menu() {
 }
 
 show_main_menu() {
-  go_to_menu "$(menu "Start" "󰀻  Apps\n󰧑  Learning\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
+  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
 }
 
 go_to_menu() {
