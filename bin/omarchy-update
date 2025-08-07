@@ -25,3 +25,6 @@ if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $
 fi
 
 ~/.local/share/omarchy/bin/omarchy-show-done
+
+# Refresh waybar to remove update-available icon
+~/.local/share/omarchy/bin/omarchy-refresh-waybar
