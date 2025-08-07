@@ -48,5 +48,5 @@ transcode-video-4K() {
 
 # Transcode PNG to JPG image that's great for shrinking wallpapers
 transcode-png2jpg() {
-  convert $1 -quality 95 -strip $(1%.*).jpg
+  magick $1 -quality 95 -strip ${1%.*}.jpg
 }
