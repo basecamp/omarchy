@@ -2,7 +2,7 @@
 
 if [ -z "$OMARCHY_BARE" ]; then
   yay -S --noconfirm --needed \
-    gnome-calculator gnome-keyring signal-desktop \
+    gnome-calculator gnome-keyring signal-desktop discord \
     obsidian-bin libreoffice obs-studio kdenlive \
     xournalpp localsend-bin
 
