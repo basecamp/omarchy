@@ -3,7 +3,22 @@
 OMARCHY_BIN_PATH=~/.local/share/omarchy/bin
 
 menu() {
-  echo -e "$2" | walker --dmenu --theme dmenu_250 -p "$1…" $3
+  local prompt="$1"
+  local options="$2"
+  local extra="$3"
+  local preselect="$4"
+
+  read -r -a args <<<"$extra"
+
+  if [[ -n "$preselect" ]]; then
+    local index
+    index=$(echo -e "$options" | grep -nxF "$preselect" | cut -d: -f1)
+    if [[ -n "$index" ]]; then
+      args+=("-a" "$index")
+    fi
+  fi
+
+  echo -e "$options" | walker --dmenu --theme dmenu_250 -p "$prompt…" "${args[@]}"
 }
 
 terminal() {
@@ -57,7 +72,7 @@ show_style_menu() {
 }
 
 show_theme_menu() {
-  theme=$(menu "Theme" "$($OMARCHY_BIN_PATH/omarchy-theme-list)")
+  theme=$(menu "Theme" "$($OMARCHY_BIN_PATH/omarchy-theme-list)" "" "$($OMARCHY_BIN_PATH/omarchy-theme-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
     show_main_menu
   else

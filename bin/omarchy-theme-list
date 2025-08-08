@@ -1,21 +1,5 @@
 #!/bin/bash
 
-THEMES_DIR="$HOME/.config/omarchy/themes/"
-CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
-CURRENT_THEME_NAME=$(basename "$(realpath "$CURRENT_THEME_DIR")")
-
-# Build themes list with pretty display names
-mapfile -t themes < <(
-  find "$THEMES_DIR" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | sort | while read -r path; do
-    filename=$(basename "$path")
-    display_name=$(echo "$filename" | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g')
-
-    if [[ "$filename" == "$CURRENT_THEME_NAME" ]]; then
-      echo "<i>$display_name</i>"
-    else
-      echo "$display_name"
-    fi
-  done
-)
-
-printf '%s\n' "${themes[@]}"
+find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | sort | while read -r path; do
+  echo "$(basename "$path" | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g')"
+done

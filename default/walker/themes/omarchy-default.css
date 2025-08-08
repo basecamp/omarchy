@@ -123,6 +123,10 @@ child:hover #label {
   color: @selected-text;
 }
 
+#item.active {
+  font-style: italic;
+}
+
 /* Hide sub text */
 #sub {
   opacity: 0;
