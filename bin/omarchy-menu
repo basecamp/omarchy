@@ -222,11 +222,23 @@ show_remove_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" "󰣇  Omarchy\n  Configs\n󰸌  Themes\n  Timezone") in
-  *Omarchy*) terminal $OMARCHY_BIN_PATH/omarchy-update ;;
-  *Configs*) show_update_configs_menu ;;
+  case $(menu "Update" "󰣇  Omarchy\n  Config\n  Process\n󰸌  Themes\n  Timezone") in
+  *Omarchy*) present_terminal $OMARCHY_BIN_PATH/omarchy-update ;;
+  *Config*) show_update_config_menu ;;
+  *Process*) show_update_process_menu ;;
   *Themes*) terminal $OMARCHY_BIN_PATH/omarchy-theme-update ;;
   *Timezone*) $OMARCHY_BIN_PATH/omarchy-cmd-tzupdate ;;
+  *) show_main_menu ;;
+  esac
+}
+
+show_update_process_menu() {
+  case $(menu "Restart" "  Hypridle\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
+  *Hypridle*) $OMARCHY_BIN_PATH/omarchy-restart-hypridle ;;
+  *Hyprsunset*) $OMARCHY_BIN_PATH/omarchy-restart-hyprsunset ;;
+  *Swayosd*) $OMARCHY_BIN_PATH/omarchy-restart-swayosd ;;
+  *Walker*) $OMARCHY_BIN_PATH/omarchy-restart-walker ;;
+  *Waybar*) $OMARCHY_BIN_PATH/omarchy-restart-waybar ;;
   *) show_main_menu ;;
   esac
 }
