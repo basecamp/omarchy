@@ -147,13 +147,12 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
-  current_profile=$(powerprofilesctl get)
-  new_profile=$(menu "Power Profile" "$($OMARCHY_BIN_PATH/omarchy-powerprofiles-list)" "-a '${current_profile}'")
+  profile=$(menu "Power Profile" "$($OMARCHY_BIN_PATH/omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
-  if [[ "$new_profile" == "CNCLD" || -z "$new_profile" ]]; then
+  if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
     show_main_menu
   else
-    powerprofilesctl set "$new_profile"
+    powerprofilesctl set "$profile"
   fi
 }
 
