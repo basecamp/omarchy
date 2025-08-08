@@ -19,6 +19,10 @@ edit_in_nvim() {
   alacritty -e nvim "$1"
 }
 
+open_web() {
+  setsid chromium --new-window --app="$1" &
+}
+
 install_and_launch() {
   present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2 && gtk-launch $3"
 }
@@ -30,11 +34,11 @@ install_font() {
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) $OMARCHY_BIN_PATH/omarchy-menu-keybindings ;;
-  *Omarchy*) setsid chromium --new-window --app="https://manuals.omamix.org/2/the-omarchy-manual" & ;;
-  *Hyprland*) setsid chromium --new-window --app="https://wiki.hypr.land/" & ;;
-  *Arch*) setsid chromium --new-window --app="https://wiki.archlinux.org/title/Main_page" & ;;
-  *Bash*) setsid chromium --new-window --app="https://devhints.io/bash" & ;;
-  *Neovim*) setsid chromium --new-window --app="https://www.lazyvim.org/keymaps" & ;;
+  *Omarchy*) open_web "https://manuals.omamix.org/2/the-omarchy-manual" ;;
+  *Hyprland*) open_web "https://wiki.hypr.land/" ;;
+  *Arch*) open_web "https://wiki.archlinux.org/title/Main_page" ;;
+  *Bash*) open_web "https://devhints.io/bash" ;;
+  *Neovim*) open_web "https://www.lazyvim.org/keymaps" ;;
   *) show_main_menu ;;
   esac
 }
