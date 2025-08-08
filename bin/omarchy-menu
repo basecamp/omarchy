@@ -23,6 +23,10 @@ open_web() {
   setsid chromium --new-window --app="$1" &
 }
 
+install() {
+  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2"
+}
+
 install_and_launch() {
   present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2 && gtk-launch $3"
 }
@@ -153,13 +157,12 @@ show_setup_configs_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n  Editor\n󰸌  Theme\n  Background\n  Font\n  Dropbox\n  Steam\n  Docker DBs") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  Style\n  Editor\n󱚤  AI\n  Dropbox\n  Steam\n  Docker DB") in
   *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-install ;;
   *Web*) terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
+  *Style*) show_install_style_menu ;;
   *Editor*) show_install_editor_menu ;;
-  *Theme*) terminal $OMARCHY_BIN_PATH/omarchy-theme-install ;;
-  *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
-  *Font*) show_install_font_menu ;;
+  *AI*) show_install_ai_menu ;;
   *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
   *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
   *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
@@ -172,6 +175,27 @@ show_install_editor_menu() {
   *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor-cursor" ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_ai_menu() {
+  case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  Open Code") in
+  *Claude*) install "Claude Code" "claude-code" ;;
+  *Gemini*) install "Gemini" "gemini-cli-bin" ;;
+  *Studio*) install "LM Studio" "lmstudio" ;;
+  *Ollama*) install "Ollama" "ollama" ;;
+  *Crush*) install "Crush" "crush-bin" ;;
+  *Code*) install "Open Code" "opencode-bin" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_style_menu() {
+  case $(menu "Install" "󰸌  Theme\n  Background\n  Font") in
+  *Theme*) terminal $OMARCHY_BIN_PATH/omarchy-theme-install ;;
+  *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
+  *Font*) show_install_font_menu ;;
   *) show_install_menu ;;
   esac
 }
