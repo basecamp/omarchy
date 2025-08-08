@@ -34,7 +34,7 @@ fi
 
 # Change gnome icon theme color
 if [[ -f "$CURRENT_THEME_DIR"/icons.theme ]]; then
-  gsettings set org.gnome.desktop.interface icon-theme "$(<~/.config/omarchy/current/theme/icons.theme)"
+  gsettings set org.gnome.desktop.interface icon-theme "$(<$CURRENT_THEME_DIR/icons.theme)"
 else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
