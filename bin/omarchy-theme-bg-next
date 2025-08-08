@@ -5,7 +5,7 @@
 BACKGROUNDS_DIR="$HOME/.config/omarchy/current/theme/backgrounds/"
 CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
 
-mapfile -d '' -t BACKGROUNDS < <(find "$BACKGROUNDS_DIR" -type f -print0 | sort -z)
+mapfile -d '' -t BACKGROUNDS < <(find "$BACKGROUNDS_DIR" -type l -print0 | sort -z)
 TOTAL=${#BACKGROUNDS[@]}
 
 if [[ $TOTAL -eq 0 ]]; then
