@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Check if notifications are silenced (do-not-disturb mode)
+if makoctl mode | grep -q 'do-not-disturb'; then
+  # Notifications are disabled - show red dot
+  echo '{"text": "•", "tooltip": "Notifications silenced", "class": "notifications-disabled"}'
+else
+  # Notifications are enabled - show dim dot
+  echo '{"text": "•", "tooltip": "Notifications enabled", "class": "notifications-enabled"}'
+fi

@@ -37,7 +37,8 @@
 #bluetooth,
 #pulseaudio,
 #clock,
-#custom-omarchy {
+#custom-omarchy,
+#custom-notification-status {
   min-width: 12px;
   margin: 0 7.5px;
 }
@@ -48,4 +49,18 @@
 
 tooltip {
   padding: 2px;
+}
+
+#custom-notification-status {
+  font-size: 14px;
+  margin-right: 3px;
+}
+
+#custom-notification-status.notifications-disabled {
+  color: #f38ba8;
+  opacity: 1;
+}
+
+#custom-notification-status.notifications-enabled {
+  opacity: 0.5;
 }
