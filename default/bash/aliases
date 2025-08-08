@@ -35,4 +35,26 @@ alias gcam='git commit -a -m'
 alias gcad='git commit -a --amend'
 
 # Find packages without leaving the terminal
-alias yayf="yay -Slq | fzf --multi --preview 'yay -Sii {1}' --preview-window=down:75% | xargs -ro yay -S"
+# alias yayf="yay -Slq | fzf --multi --preview 'yay -Sii {1}' --preview-window=down:75% | xargs -ro yay -S"
+
+yayf() {
+  local fzf_args=(
+    --multi
+    --preview 'yay -Sii {1}'
+    --preview-window 'down:50%:wrap'
+    --bind 'alt-p:toggle-preview'
+    --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
+    --bind 'alt-k:preview-up,alt-j:preview-down'
+    --bind 'ctrl-d:half-page-down,ctrl-u:half-page-up'
+  )
+
+  local selected_pkgs
+  selected_pkgs=$(yay -Slq | fzf "${fzf_args[@]}")
+
+  if [[ -n "$selected_pkgs" ]]; then
+    echo "$selected_pkgs" | xargs -r yay -S
+  else
+    echo "No packages selected."
+  fi
+}
+

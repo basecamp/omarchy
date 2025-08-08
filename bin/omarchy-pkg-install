@@ -1,6 +1,16 @@
 #!/bin/bash
 
-pkg_name=$(yay -Slq | fzf --multi --preview 'yay -Sii {1}' --preview-window=down:75%)
+fzf_args=(
+  --multi
+  --preview 'yay -Sii {1}'
+  --preview-window 'down:50%:wrap'
+  --bind 'alt-p:toggle-preview'
+  --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
+  --bind 'alt-k:preview-up,alt-j:preview-down'
+  --bind 'ctrl-d:half-page-down,ctrl-u:half-page-up'
+)
+
+pkg_name=$(yay -Slq | fzf "${fzf_args[@]}")
 
 if [[ -n "$pkg_name" ]]; then
   yay -Sy --noconfirm "$pkg_name"
