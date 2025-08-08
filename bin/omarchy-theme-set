@@ -67,7 +67,7 @@ if [[ -f "$INSTALL_SCRIPT" ]]; then
     chmod +x "$INSTALL_SCRIPT"
 
     # Execute from its directory (ensure relative paths work)
-    (cd "$CURRENT_THEME_DIR" && ./"install.sh")
+    (cd "$CURRENT_THEME_DIR" && ./install.sh)
 
     if [[ $? -eq 0 ]]; then
       echo "✅ Script executed successfully."
