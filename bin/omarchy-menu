@@ -81,7 +81,7 @@ show_theme_menu() {
 }
 
 show_font_menu() {
-  theme=$(menu "Font" "$($OMARCHY_BIN_PATH/omarchy-font-list)" "-w 350")
+  theme=$(menu "Font" "$($OMARCHY_BIN_PATH/omarchy-font-list)" "-w 350" "$($OMARCHY_BIN_PATH/omarchy-font-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
     show_main_menu
   else
