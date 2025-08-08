@@ -39,8 +39,10 @@ else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
 
+INSTALL_SCRIPT="$CURRENT_THEME_DIR/install.sh"
+
 # Check if the install.sh script exists
-if [[ -f "$CURRENT_THEME_DIR/install.sh" ]]; then
+if [[ -f "$INSTALL_SCRIPT" ]]; then
   echo -e "\n This theme includes a custom installation script to set up dependencies."
 
   # Add a security warning
