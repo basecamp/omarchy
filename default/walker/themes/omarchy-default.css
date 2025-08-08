@@ -99,6 +99,10 @@ child:hover {
   padding: 0;
 }
 
+#item.active {
+  font-style: italic;
+}
+
 /* Icon */
 #icon {
   margin-right: 10px;
@@ -121,10 +125,6 @@ child:selected #label,
 child:hover #text,
 child:hover #label {
   color: @selected-text;
-}
-
-#item.active {
-  font-style: italic;
 }
 
 /* Hide sub text */
