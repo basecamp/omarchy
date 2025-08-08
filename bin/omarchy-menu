@@ -163,9 +163,9 @@ show_install_menu() {
   *Style*) show_install_style_menu ;;
   *Editor*) show_install_editor_menu ;;
   *AI*) show_install_ai_menu ;;
-  *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
-  *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
-  *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
+  *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-install-dropbox ;;
+  *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-install-steam ;;
+  *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-install-docker-dbs ;;
   *) show_main_menu ;;
   esac
 }
