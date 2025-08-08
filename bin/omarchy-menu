@@ -243,7 +243,7 @@ show_update_process_menu() {
   esac
 }
 
-show_update_configs_menu() {
+show_update_config_menu() {
   case $(menu "Use default config" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n󱣴  Plymouth\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
   *Hyprland*) present_terminal $OMARCHY_BIN_PATH/omarchy-refresh-hyprland ;;
   *Hypridle*) present_terminal $OMARCHY_BIN_PATH/omarchy-refresh-hypridle ;;
