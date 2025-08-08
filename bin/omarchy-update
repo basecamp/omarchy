@@ -4,6 +4,7 @@
 set -e
 
 # Get the latest while trying to preserve any modifications
+echo -e "\e[32mUpdate Omarchy\e[0m"
 omarchy_path=~/.local/share/omarchy
 git -C $omarchy_path pull --autostash
 git -C $omarchy_path diff --check || git -C $omarchy_path reset --merge
