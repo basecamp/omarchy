@@ -1,7 +1,5 @@
 #!/bin/bash
 
-~/.local/share/omarchy/bin/omarchy-show-logo
-
 if [[ "--remove" == "$1" ]]; then
   echo -e "\e[32mLet's remove your Fido2 device from sudo authentication.\n\e[0m"
   yay -Rns --noconfirm libfido2 pam-u2f
@@ -39,5 +37,3 @@ else
     fi
   fi
 fi
-
-~/.local/share/omarchy/bin/omarchy-show-done

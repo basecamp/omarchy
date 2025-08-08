@@ -1,7 +1,5 @@
 #!/bin/bash
 
-~/.local/share/omarchy/bin/omarchy-show-logo
-
 options=("MariaDB" "MySQL" "Redis" "PostgreSQL")
 choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases (space to select, return to install, esc to cancel)") || main_menu
 
@@ -15,5 +13,3 @@ if [[ -n "$choices" ]]; then
     esac
   done
 fi
-
-~/.local/share/omarchy/bin/omarchy-show-done
