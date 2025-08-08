@@ -7,7 +7,6 @@ fzf_args=(
   --bind 'alt-p:toggle-preview'
   --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
   --bind 'alt-k:preview-up,alt-j:preview-down'
-  --bind 'ctrl-d:half-page-down,ctrl-u:half-page-up'
 )
 
 pkg_name=$(yay -Qqe | fzf "${fzf_args[@]}")
