@@ -125,8 +125,8 @@ show_setup_menu() {
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
   *Configs*) show_setup_configs_menu ;;
-  *Fingerprint*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
-  *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
+  *Fingerprint*) present_terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
+  *Fido2*) present_terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
   *) show_main_menu ;;
   esac
 }
@@ -159,7 +159,7 @@ show_setup_configs_menu() {
 show_install_menu() {
   case $(menu "Install" "󰣇  Package\n  Web App\n  Style\n  Editor\n󱚤  AI\n  Dropbox\n  Steam\n  Docker DB") in
   *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-install ;;
-  *Web*) terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
+  *Web*) present_terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
   *Style*) show_install_style_menu ;;
   *Editor*) show_install_editor_menu ;;
   *AI*) show_install_ai_menu ;;
@@ -213,10 +213,10 @@ show_install_font_menu() {
 show_remove_menu() {
   case $(menu "Remove" "󰣇  Package\n  Web App\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-remove ;;
-  *Web*) terminal $OMARCHY_BIN_PATH/omarchy-webapp-remove ;;
+  *Web*) present_terminal $OMARCHY_BIN_PATH/omarchy-webapp-remove ;;
   *Theme*) present_terminal $OMARCHY_BIN_PATH/omarchy-theme-remove ;;
-  *Fingerprint*) terminal "$OMARCHY_BIN_PATH/omarchy-setup-fingerprint --remove" ;;
-  *Fido2*) terminal "$OMARCHY_BIN_PATH/omarchy-setup-fido2 --remove" ;;
+  *Fingerprint*) present_terminal "$OMARCHY_BIN_PATH/omarchy-setup-fingerprint --remove" ;;
+  *Fido2*) present_terminal "$OMARCHY_BIN_PATH/omarchy-setup-fido2 --remove" ;;
   *) show_main_menu ;;
   esac
 }
