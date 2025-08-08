@@ -9,6 +9,7 @@
     "hyprland/workspaces"
   ],
   "modules-center": [
+    "custom/notification-status",
     "clock",
     "custom/update"
   ],
@@ -55,6 +56,13 @@
     "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
     "tooltip-format": "Omarchy update available",
     "interval": 3600
+  },
+  "custom/notification-status": {
+    "exec": "~/.local/share/omarchy/bin/omarchy-notification-status",
+    "return-type": "json",
+    "interval": 1,
+    "on-click": "makoctl mode -t do-not-disturb",
+    "tooltip": true
   },
   "cpu": {
     "interval": 5,
