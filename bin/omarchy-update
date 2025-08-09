@@ -16,7 +16,20 @@ git -C $omarchy_path diff --check || git -C $omarchy_path reset --merge
 echo -e "\e[32m\nUpdate system packages\e[0m"
 yay -Syu --noconfirm
 
-# Offer to reboot if the kernel has been changed
-if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
+# Check if any kernel packages were updated since the last boot
+# Get the boot time in the same format as pacman log
+boot_time=$(date -d "$(uptime -s)" '+%Y-%m-%d')
+
+# Check for kernel package updates since last boot
+recent_kernel_updates=$(awk -v boot_date="$boot_time" '$0 >= "["boot_date' /var/log/pacman.log | grep -E "\[ALPM\] (upgraded|installed) linux" | grep -v 'linux-api-headers\|linux-docs\|linux-headers\|linux-firmware' || true)
+
+if [ -n "$recent_kernel_updates" ]; then
+  echo -e "\e[33mKernel package updates detected since last boot:\e[0m"
+  echo "$recent_kernel_updates" | while IFS= read -r line; do
+    # Extract package name and version info
+    package_info=$(echo "$line" | sed 's/.*\] \[ALPM\] //')
+    echo "  • $package_info"
+  done
+  echo
   gum confirm "Linux kernel has been updated. Reboot?" && sudo reboot now
 fi
