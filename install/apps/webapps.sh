@@ -12,4 +12,5 @@ if [ -z "$OMARCHY_BARE" ]; then
   ~/.local/share/omarchy/bin/omarchy-webapp-install "GitHub" https://github.com/ https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/github-light.png
   ~/.local/share/omarchy/bin/omarchy-webapp-install "X" https://x.com/ https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/x-light.png
   ~/.local/share/omarchy/bin/omarchy-webapp-install "Figma" https://figma.com/ https://www.veryicon.com/download/png/application/app-icon-7/figma-1?s=256
+  ~/.local/share/omarchy/bin/omarchy-webapp-install "Discord" https://discord.com/channels/@me https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/discord.png
 fi
