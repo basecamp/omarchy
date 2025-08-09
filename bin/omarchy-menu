@@ -171,14 +171,14 @@ show_setup_config_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n  Editor\n󱚤  AI\n  Docker DB") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI") in
   *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-install ;;
   *Web*) present_terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
   *Service*) show_install_service_menu ;;
   *Style*) show_install_style_menu ;;
+  *Development*) show_install_development_menu ;;
   *Editor*) show_install_editor_menu ;;
   *AI*) show_install_ai_menu ;;
-  *Docker*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-docker-dbs ;;
   *) show_main_menu ;;
   esac
 }
@@ -230,6 +230,19 @@ show_install_font_menu() {
   *Fira*) install_font "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font" ;;
   *Victor*) install_font "Victor Code" "ttf-victor-mono-nerd" "VictorMono Nerd Font" ;;
   *Bistream*) install_font "Bistream Vera Code" "ttf-bitstream-vera-mono-nerd" "BitstromWera Nerd Font" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_development_menu() {
+  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  Node.js\n  Go\n  Laravel\n  Python\n  Elixir") in
+  *Rails*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env ruby" ;;
+  *Docker*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-docker-dbs ;;
+  *Node*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env node" ;;
+  *Go*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env go" ;;
+  *Laravel*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env laravel" ;;
+  *Python*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env python" ;;
+  *Elixir*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env elixir" ;;
   *) show_install_menu ;;
   esac
 }

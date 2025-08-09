@@ -1,0 +1,46 @@
+#!/bin/bash
+
+if [[ -z "$1" ]]; then
+  echo "Usage: omarchy-instal-dev-env <ruby|node|go|laravel|python|elixir|rust|java>" >&2
+  exit 1
+fi
+
+case "$1" in
+ruby)
+  echo -e "Installing Ruby on Rails...\n"
+  mise use --global ruby@latest
+  mise settings add idiomatic_version_file_enable_tools ruby
+  mise x ruby -- gem install rails --no-document
+  ;;
+node)
+  echo -e "Installing Node.js...\n"
+  mise use --global node@lts
+  ;;
+go)
+  echo -e "Installing Go...\n"
+  mise use --global go@latest
+  ;;
+laravel)
+  echo -e "Need help figuring this out!\n"
+  ;;
+python)
+  echo -e "Installing Python...\n"
+  mise use --global python@latest
+  echo -e "\nInstalling uv...\n"
+  wget -qO- https://astral.sh/uv/install.sh | sh
+  ;;
+elixir)
+  echo -e "Installing Elixir...\n"
+  mise use --global erlang@latest
+  mise use --global elixir@latest
+  mise x elixir -- mix local.hex --force
+  ;;
+rust)
+  echo -e "Installing Rust...\n"
+  bash -c "$(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)" -- -y
+  ;;
+java)
+  echo -e "Installing Java...\n"
+  mise use --global java@latest
+  ;;
+esac
