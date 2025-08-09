@@ -43,7 +43,7 @@ install() {
 }
 
 install_and_launch() {
-  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2 && gtk-launch $3"
+  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2 && setsid gtk-launch $3"
 }
 
 install_font() {
@@ -185,10 +185,11 @@ show_install_menu() {
 }
 
 show_install_editor_menu() {
-  case $(menu "Install" "  VSCode\n  Cursor\n  Zed") in
+  case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text") in
   *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor-cursor" ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+  *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *) show_install_menu ;;
   esac
 }
