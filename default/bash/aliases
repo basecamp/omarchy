@@ -33,27 +33,3 @@ n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
 alias gcm='git commit -m'
 alias gcam='git commit -a -m'
 alias gcad='git commit -a --amend'
-
-# Find packages without leaving the terminal
-# alias yayf="yay -Slq | fzf --multi --preview 'yay -Sii {1}' --preview-window=down:75% | xargs -ro yay -S"
-
-yayf() {
-  local fzf_args=(
-    --multi
-    --preview 'echo "alt-p: toggle preview, alt-j/k: scroll, F11: maxime"; echo; yay -Sii {1}'
-    --preview-window 'down:50%:wrap'
-    --bind 'alt-p:toggle-preview'
-    --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
-    --bind 'alt-k:preview-up,alt-j:preview-down'
-  )
-
-  local selected_pkgs
-  selected_pkgs=$(yay -Slq | fzf "${fzf_args[@]}")
-
-  if [[ -n "$selected_pkgs" ]]; then
-    echo "$selected_pkgs" | xargs -r yay -S
-  else
-    echo "No packages selected."
-  fi
-}
-
