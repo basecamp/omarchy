@@ -11,6 +11,71 @@ ansi_art='                 ▄▄▄
  ▀█████▀    ▀█   ███   █▀   ███   █▀   ███   ███  ███████▀   ███   █▀    ▀█████▀ 
                                        ███   █▀                                  '
 
+# Check if running as root and offer to create a user
+check_root_user() {
+  if [[ $EUID -eq 0 ]]; then
+    echo -e "\e[33mWarning: This script should not be run as the root user!\e[0m"
+    echo "Running as root can cause issues with makepkg and other tools."
+    echo "This script should be run as a normal user with sudo permissions."
+    echo
+    echo "Would you like me to help create a new user account?"
+    echo -n "Create a new user? [Y/n]: "
+    read -r response
+    
+    if [[ -z "$response" || "$response" =~ ^[Yy]$ ]]; then
+      create_new_user
+    else
+      echo "Please create a user manually and run this script as that user."
+      echo "Example commands:"
+      echo "  useradd -m -G wheel username"
+      echo "  passwd username"
+      echo "  su - username"
+      exit 1
+    fi
+  fi
+}
+
+# Create a new user with sudo permissions
+create_new_user() {
+  echo
+  echo "Creating a new user account..."
+  
+  # Get username
+  while true; do
+    echo -n "Enter username for the new user: "
+    read -r username
+    if [[ -n "$username" && "$username" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+      if ! id "$username" &>/dev/null; then
+        break
+      else
+        echo "User '$username' already exists. Please choose a different name."
+      fi
+    else
+      echo "Invalid username. Use lowercase letters, numbers, underscore, and hyphen only."
+    fi
+  done
+  
+  # Create user with home directory and add to wheel group
+  echo "Creating user '$username'..."
+  useradd -m -G wheel "$username"
+  
+  # Set password
+  echo "Please set a password for user '$username':"
+  passwd "$username"
+  
+  # Ensure sudo is configured for wheel group
+  if ! grep -q "^%wheel ALL=(ALL:ALL) ALL" /etc/sudoers; then
+    echo "Configuring sudo access for wheel group..."
+    echo "%wheel ALL=(ALL:ALL) ALL" >> /etc/sudoers
+  fi
+  
+  echo -e "\e[32mUser '$username' created successfully!\e[0m"
+  echo "Please switch to the new user and run this script again:"
+  echo "  su - $username"
+  echo "  # Then re-run the installation command"
+  exit 0
+}
+
 # Check for required prerequisites
 check_prerequisites() {
   local missing_deps=()
@@ -82,6 +147,9 @@ check_prerequisites() {
 
 clear
 echo -e "\n$ansi_art\n"
+
+# Run root user check
+check_root_user
 
 # Run prerequisite check
 check_prerequisites

@@ -35,12 +35,16 @@ curl -fsSL https://omarchy.org/boot.sh | bash
 ```
 
 The installer will:
-1. Check for all required prerequisites
-2. Clone the Omarchy repository
-3. Run the complete installation process
-4. Reboot your system when finished
+1. Check that you're not running as root (and offer to create a user if needed)
+2. Check for all required prerequisites (and install them if missing)
+3. Clone the Omarchy repository
+4. Run the complete installation process
+5. Reboot your system when finished
 
-**Note:** The installation process requires an internet connection and will make system-wide changes. Make sure you have backups of any important data before proceeding.
+**Important Notes:**
+- **Do not run as root**: The installer should be run as a normal user with sudo permissions. If you're running as root, the installer will offer to create a new user account for you.
+- **Internet connection required**: The installation process downloads packages and repositories.
+- **System changes**: The installer makes system-wide changes. Make sure you have backups of any important data before proceeding.
 
 ## License
 
