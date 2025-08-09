@@ -30,5 +30,45 @@ if ! git clone "$REPO_URL" "$THEME_PATH"; then
   exit 1
 fi
 
+INSTALL_SCRIPT="$THEME_PATH/install.sh"
+
+# Check if the install.sh script exists, install dependencies
+if [[ -f "$INSTALL_SCRIPT" ]]; then
+  echo -e "\n This theme includes a custom installation script to set up dependencies."
+
+  # Add a security warning
+  echo -e "\n\n\033[1;31m⚠️ WARNING: Running this script can execute any command and modify your system.\033[0m"
+  echo "You should only proceed if you have reviewed the script and trust the theme author."
+
+  read -p "Would you like to review the contents of 'install.sh' now? (y/N) " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo -e "\n--- Contents of install.sh ---"
+    cat -n "$INSTALL_SCRIPT"
+    echo "----------------------------"
+  fi
+
+  # Ask for consent
+  read -p "Do you want to run the theme's installation script? (y/N) " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo -e "\n Running install.sh..."
+
+    # Ensure the script is executable
+    chmod +x "$INSTALL_SCRIPT"
+
+    # Execute from its directory (ensure relative paths work)
+    (cd "$THEME_PATH" && ./install.sh)
+
+    if [[ $? -eq 0 ]]; then
+      echo "✅ Script executed successfully."
+    else
+      echo "❌ The script finished with an error."
+    fi
+  else
+    echo "👍 Skipping the installation script."
+  fi
+fi
+
 # Apply the new theme with omarchy-theme-set
 ~/.local/share/omarchy/bin/omarchy-theme-set $THEME_NAME
