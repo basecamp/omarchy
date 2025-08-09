@@ -24,6 +24,7 @@ local function ReloadTheme()
       -- Look for LazyVim opts with colorscheme
       for _, entry in ipairs(result) do
         if entry[1] == "LazyVim/LazyVim" and entry.opts and entry.opts.colorscheme then
+          vim.cmd("hi clear")
           local colorscheme_ok, err = pcall(vim.cmd, "colorscheme " .. entry.opts.colorscheme)
           if not colorscheme_ok then
             print("Error applying colorscheme: " .. err)
