@@ -48,7 +48,7 @@ java)
   echo -e "Installing Java...\n"
   mise use --global java@latest
   ;;
-rust)
+dotnet)
   echo -e "Installing dotnet...\n"
   bash -c "$(curl -fsSL https://dot.net/v1/dotnet-install.sh)"
   export DOTNET_ROOT=$HOME/.dotnet
