@@ -25,7 +25,8 @@ go)
   mise use --global go@latest
   ;;
 laravel)
-  echo -e "Need help figuring this out!\n"
+  echo -e "Installing PHP and Laravel...\n"
+  bash -c "$(curl -fsSL https://php.new/install/linux)"
   ;;
 python)
   echo -e "Installing Python...\n"
