@@ -235,10 +235,11 @@ show_install_font_menu() {
 }
 
 show_install_development_menu() {
-  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  Node.js\n  Go\n  Laravel\n  Python\n  Elixir") in
+  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  Node.js\n  Bun\n  Go\n  Laravel\n  Python\n  Elixir") in
   *Rails*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env ruby" ;;
   *Docker*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-docker-dbs ;;
   *Node*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env node" ;;
+  *Bun*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env bun" ;;
   *Go*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env go" ;;
   *Laravel*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env laravel" ;;
   *Python*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env python" ;;

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-instal-dev-env <ruby|node|go|laravel|python|elixir|rust|java>" >&2
+  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|rust|java>" >&2
   exit 1
 fi
 
@@ -15,6 +15,10 @@ ruby)
 node)
   echo -e "Installing Node.js...\n"
   mise use --global node@lts
+  ;;
+bun)
+  echo -e "Installing Bun...\n"
+  mise use -g bun@latest
   ;;
 go)
   echo -e "Installing Go...\n"
