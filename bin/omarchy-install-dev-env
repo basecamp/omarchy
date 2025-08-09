@@ -1,0 +1,71 @@
+#!/bin/bash
+set -euo pipefail
+
+if [[ -z "${1:-}" ]]; then
+  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|phoenix|rust|java>" >&2
+  exit 1
+fi
+
+case "$1" in
+ruby)
+  echo -e "Installing Ruby on Rails...\n"
+  mise use --global ruby@latest
+  mise settings add idiomatic_version_file_enable_tools ruby
+  mise x ruby -- gem install rails --no-document
+  ;;
+node)
+  echo -e "Installing Node.js...\n"
+  mise use --global node@lts
+  ;;
+bun)
+  echo -e "Installing Bun...\n"
+  mise use -g bun@latest
+  ;;
+go)
+  echo -e "Installing Go...\n"
+  mise use --global go@latest
+  ;;
+laravel)
+  echo -e "Installing PHP and Laravel...\n"
+  bash -c "$(curl -fsSL https://php.new/install/linux)"
+  ;;
+python)
+  echo -e "Installing Python...\n"
+  mise use --global python@latest
+  echo -e "\nInstalling uv...\n"
+  wget -qO- https://astral.sh/uv/install.sh | sh
+  ;;
+elixir)
+  echo -e "Installing Elixir...\n"
+  mise use --global erlang@latest
+  mise use --global elixir@latest
+  # Hex & Rebar (needed by many deps)
+  mise x elixir -- mix local.hex --force
+  mise x elixir -- mix local.rebar --force
+  ;;
+phoenix)
+  echo -e "Installing Phoenix Framework...\n"
+  # Ensure Erlang/Elixir first
+  mise use --global erlang@latest
+  mise use --global elixir@latest
+  # Hex & Rebar
+  mise x elixir -- mix local.hex --force
+  mise x elixir -- mix local.rebar --force
+  # Phoenix project (phx_new)
+  mise x elixir -- mix archive.install hex phx_new --force
+  echo -e "\n Phoenix installed. Create a project with:\n   mix phx.new my_app\n"
+  echo -e "Tip: Inside the project you can run:\n   mix deps.get\n   mix ecto.create   # if using a DB\n   mix phx.server\n"
+  ;;
+rust)
+  echo -e "Installing Rust...\n"
+  bash -c "$(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)" -- -y
+  ;;
+java)
+  echo -e "Installing Java...\n"
+  mise use --global java@latest
+  ;;
+*)
+  echo "Unknown target: $1" >&2
+  exit 1
+  ;;
+esac
