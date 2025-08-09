@@ -60,7 +60,7 @@
   "custom/notification-status": {
     "exec": "~/.local/share/omarchy/bin/omarchy-notification-status",
     "return-type": "json",
-    "interval": 1,
+    "interval": 2,
     "on-click": "makoctl mode -t do-not-disturb",
     "tooltip": true
   },
