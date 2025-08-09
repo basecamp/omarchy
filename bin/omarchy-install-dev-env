@@ -50,7 +50,7 @@ java)
   ;;
 ocaml)
   echo -e "Installing OCaml...\n"
-  sh <(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)"
   opam init --yes
   eval "$(opam env)"
   opam install ocaml-lsp-server odoc ocamlformat utop --yes
