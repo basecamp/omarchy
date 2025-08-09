@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|rust|java>" >&2
+  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|rust|java|symfony>" >&2
   exit 1
 fi
 
@@ -47,5 +47,9 @@ rust)
 java)
   echo -e "Installing Java...\n"
   mise use --global java@latest
+  ;;
+symfony)
+  echo -e "Installing Symfony...\n"
+  curl -sS https://get.symfony.com/cli/installer | bash
   ;;
 esac
