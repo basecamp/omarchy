@@ -48,4 +48,8 @@ java)
   echo -e "Installing Java...\n"
   mise use --global java@latest
   ;;
+zig)
+  echo -e "Installing Zig...\n"
+  mise use --global zig@latest
+  ;;
 esac
