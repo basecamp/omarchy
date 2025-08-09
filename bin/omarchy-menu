@@ -2,6 +2,28 @@
 
 OMARCHY_BIN_PATH=~/.local/share/omarchy/bin
 
+ensure_single_instance() {
+  local state_dir="/run/user/$UID"
+  local lock_file="$state_dir/omarchy-menu.lock"
+  local pid_file="$state_dir/omarchy-menu.pid"
+
+  trap 'pkill -f "walker .*(--dmenu|-p)" >/dev/null 2>&1; exit 0' USR1
+
+  exec 9>"$lock_file"
+  if ! flock -n 9; then
+    local prev_pid
+    prev_pid="$(cat "$pid_file" 2>/dev/null || true)"
+    [[ -n "$prev_pid" ]] && kill -USR1 "$prev_pid" 2>/dev/null || true
+    for i in {1..20}; do kill -0 "$prev_pid" 2>/dev/null || break; done
+    flock -n 9 || exit 0
+  fi
+
+  echo "$$" > "$pid_file"; trap "rm -f '$pid_file'" EXIT
+  pkill -f 'walker .*(--dmenu|-p)' >/dev/null 2>&1 || true
+}
+
+ensure_single_instance
+
 menu() {
   local prompt="$1"
   local options="$2"
