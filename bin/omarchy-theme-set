@@ -24,7 +24,7 @@ fi
 ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 
 # Change gnome modes
-if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
+if [[ -f "$CURRENT_THEME_DIR"/light.mode ]]; then
   gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
   gsettings set org.gnome.desktop.interface gtk-theme "Adwaita"
 else
@@ -33,8 +33,8 @@ else
 fi
 
 # Change gnome icon theme color
-if [[ -f ~/.config/omarchy/current/theme/icons.theme ]]; then
-  gsettings set org.gnome.desktop.interface icon-theme "$(<~/.config/omarchy/current/theme/icons.theme)"
+if [[ -f "$CURRENT_THEME_DIR"/icons.theme ]]; then
+  gsettings set org.gnome.desktop.interface icon-theme "$(<$CURRENT_THEME_DIR/icons.theme)"
 else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
