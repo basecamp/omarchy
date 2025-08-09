@@ -171,16 +171,24 @@ show_setup_config_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n  Style\n  Editor\n󱚤  AI\n  Dropbox\n  Steam\n  Docker DB") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n  Editor\n󱚤  AI\n  Docker DB") in
   *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-install ;;
   *Web*) present_terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
+  *Service*) show_install_service_menu ;;
   *Style*) show_install_style_menu ;;
   *Editor*) show_install_editor_menu ;;
   *AI*) show_install_ai_menu ;;
-  *Dropbox*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-dropbox ;;
-  *Steam*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-steam ;;
   *Docker*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-docker-dbs ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_install_service_menu() {
+  case $(menu "Install" "  Dropbox\n  Steam\n  Tailscale") in
+  *Dropbox*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-dropbox ;;
+  *Steam*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-steam ;;
+  *Tailscale*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-tailscale ;;
+  *) show_install_menu ;;
   esac
 }
 
