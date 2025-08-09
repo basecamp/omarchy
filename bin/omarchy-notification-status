@@ -1,10 +1,52 @@
 #!/bin/bash
 
-# Check if notifications are silenced (do-not-disturb mode)
-if makoctl mode | grep -q 'do-not-disturb'; then
-  # Notifications are disabled - show red dot
-  echo '{"text": "•", "tooltip": "Notifications silenced", "class": "notifications-disabled"}'
+# Unified status cluster - shows only active states
+# Supports: DND, night light, screen recording, idle lock disabled
+
+active_indicators=()
+tooltip_items=()
+
+# Check notification status (do-not-disturb mode)
+if makoctl mode 2>/dev/null | grep -q 'do-not-disturb'; then
+  active_indicators+=("•")
+  tooltip_items+=("Notifications silenced")
+fi
+
+# Check night light status (if gammastep/redshift is available)
+if command -v gammastep >/dev/null 2>&1; then
+  if pgrep -x gammastep >/dev/null 2>&1; then
+    active_indicators+=("◐")
+    tooltip_items+=("Night light active")
+  fi
+elif command -v redshift >/dev/null 2>&1; then
+  if pgrep -x redshift >/dev/null 2>&1; then
+    active_indicators+=("◐")
+    tooltip_items+=("Night light active")
+  fi
+fi
+
+# Check screen recording (look for common recording tools)
+if pgrep -x wf-recorder >/dev/null 2>&1 || pgrep -x obs >/dev/null 2>&1 || pgrep -f "ffmpeg.*screen" >/dev/null 2>&1; then
+  active_indicators+=("●")
+  tooltip_items+=("Screen recording active")
+fi
+
+# Check idle lock status (if hypridle is available and disabled)
+if command -v hypridle >/dev/null 2>&1; then
+  if ! pgrep -x hypridle >/dev/null 2>&1; then
+    active_indicators+=("◯")
+    tooltip_items+=("Idle lock disabled")
+  fi
+fi
+
+# Build output
+if [ ${#active_indicators[@]} -eq 0 ]; then
+  # No active states - hide module completely
+  echo '{"text": "", "tooltip": "", "class": "hidden"}'
 else
-  # Notifications are enabled - show dim dot
-  echo '{"text": "•", "tooltip": "Notifications enabled", "class": "notifications-enabled"}'
+  # Join indicators with spaces and tooltips with newlines
+  text=$(printf "%s " "${active_indicators[@]}" | sed 's/ $//')
+  tooltip=$(IFS=$'\n'; echo "${tooltip_items[*]}")
+  
+  echo "{\"text\": \"$text\", \"tooltip\": \"$tooltip\", \"class\": \"status-cluster\"}"
 fi

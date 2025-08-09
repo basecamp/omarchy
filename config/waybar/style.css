@@ -56,11 +56,11 @@ tooltip {
   margin-right: 3px;
 }
 
-#custom-notification-status.notifications-disabled {
+#custom-notification-status.status-cluster {
   color: #f38ba8;
   opacity: 1;
 }
 
-#custom-notification-status.notifications-enabled {
-  opacity: 0.5;
+#custom-notification-status.hidden {
+  display: none;
 }
