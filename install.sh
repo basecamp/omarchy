@@ -3,6 +3,54 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# Check for required prerequisites
+check_prerequisites() {
+  local missing_deps=()
+  
+  # Check for git
+  if ! command -v git >/dev/null 2>&1; then
+    missing_deps+=("git")
+  fi
+  
+  # Check for sudo
+  if ! command -v sudo >/dev/null 2>&1; then
+    missing_deps+=("sudo")
+  fi
+  
+  if [ ${#missing_deps[@]} -ne 0 ]; then
+    echo -e "\e[33mWarning: Missing required prerequisites!\e[0m"
+    echo "The following commands are required but not found:"
+    for dep in "${missing_deps[@]}"; do
+      echo "  - $dep"
+    done
+    echo
+    echo "Would you like to install the missing prerequisites now?"
+    echo "Command to run: pacman -S ${missing_deps[*]}"
+    echo -n "Install missing dependencies? [Y/n]: "
+    read -r response
+    
+    # Default to yes if empty response
+    if [[ -z "$response" || "$response" =~ ^[Yy]$ ]]; then
+      echo "Installing missing dependencies..."
+      if sudo pacman -S --noconfirm ${missing_deps[*]}; then
+        echo -e "\e[32mDependencies installed successfully!\e[0m"
+        echo "Continuing with installation..."
+      else
+        echo -e "\e[31mFailed to install dependencies!\e[0m"
+        echo "Please install them manually and try again."
+        exit 1
+      fi
+    else
+      echo "Installation cancelled. Please install the missing prerequisites manually:"
+      echo "  pacman -S ${missing_deps[*]}"
+      exit 1
+    fi
+  fi
+}
+
+# Run prerequisite check
+check_prerequisites
+
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 
 # Give people a chance to retry running the installation
