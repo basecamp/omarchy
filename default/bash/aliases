@@ -40,7 +40,7 @@ alias gcad='git commit -a --amend'
 yayf() {
   local fzf_args=(
     --multi
-    --preview 'yay -Sii {1}'
+    --preview 'echo "alt-p: toggle preview, alt-j/k: scroll, F11: maxime"; echo; yay -Sii {1}'
     --preview-window 'down:50%:wrap'
     --bind 'alt-p:toggle-preview'
     --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'

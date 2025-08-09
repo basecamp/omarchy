@@ -2,8 +2,8 @@
 
 fzf_args=(
   --multi
-  --preview 'yay -Qi {1}'
-  --preview-window 'down:50%:wrap'
+  --preview 'echo "alt-p: toggle preview, alt-j/k: scroll, F11: maxime"; echo; yay -Qi {1}'
+  --preview-window 'down:65%:wrap'
   --bind 'alt-p:toggle-preview'
   --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
   --bind 'alt-k:preview-up,alt-j:preview-down'
