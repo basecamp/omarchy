@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|rust|java>" >&2
+  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|rust|java|ocaml>" >&2
   exit 1
 fi
 
@@ -47,5 +47,12 @@ rust)
 java)
   echo -e "Installing Java...\n"
   mise use --global java@latest
+  ;;
+ocaml)
+  echo -e "Installing OCaml...\n"
+  sh <(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)
+  opam init --yes
+  eval "$(opam env)"
+  opam install ocaml-lsp-server odoc ocamlformat utop --yes
   ;;
 esac
