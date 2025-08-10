@@ -10,7 +10,7 @@ if [[ ! -v BASH_COMPLETION_VERSINFO && -f /usr/share/bash-completion/bash_comple
 fi
 
 # Set complete path
-export PATH="./bin:$HOME/.local/bin:$HOME/.local/share/omarchy/bin:$PATH"
+export PATH="./bin:$HOME/.local/bin:$PATH"
 set +h
 
 # Omarchy path

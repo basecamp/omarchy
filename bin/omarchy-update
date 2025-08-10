@@ -18,5 +18,9 @@ yay -Syu --noconfirm
 
 # Offer to reboot if the kernel has been changed
 if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
-  gum confirm "Linux kernel has been updated. Reboot?" && sudo reboot now
+  gum confirm "Linux kernel has been updated. Reboot?" && omarchy-state clear re*-required && sudo reboot now
+elif [ -f "$HOME/.local/state/omarchy/restart-required" ]; then
+  gum confirm "Some updates require a system restart to take effect. Would you like to restart now?" && omarchy-state clear re*-required && uwsm stop
+elif [ -f "$HOME/.local/state/omarchy/relaunch-required" ]; then
+  gum confirm "Some updates require Hyprland to be relaunched to take effect. Would you like to relaunch Hyprland now?" && omarchy-state clear relaunch-required && uwsm stop
 fi
