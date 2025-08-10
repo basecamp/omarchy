@@ -21,18 +21,24 @@ local function ReloadTheme()
     end
     -- Check if result is a table
     if type(result) == "table" then
-      -- Look for LazyVim opts with colorscheme
+      -- Look for LazyVim opts with colorscheme and background
       for _, entry in ipairs(result) do
-        if entry[1] == "LazyVim/LazyVim" and entry.opts and entry.opts.colorscheme then
-          vim.cmd("hi clear")
-          local colorscheme_ok, err = pcall(vim.cmd, "colorscheme " .. entry.opts.colorscheme)
-          if not colorscheme_ok then
-            print("Error applying colorscheme: " .. err)
+        if entry[1] == "LazyVim/LazyVim" and entry.opts then
+          -- Set background if specified, defaults to dark
+          local background = entry.opts.background
+          vim.o.background = (background == "light" or background == "dark") and background or "dark"
+          -- Set colorscheme
+          if entry.opts.colorscheme then
+            vim.cmd("hi clear")
+            local colorscheme_ok, err = pcall(vim.cmd, "colorscheme " .. entry.opts.colorscheme)
+            if not colorscheme_ok then
+              print("Error applying colorscheme: " .. err)
+              return
+            end
+            vim.cmd("redraw!")
+            last_theme_target = theme_dir -- Update last known target
             return
           end
-          vim.cmd("redraw!")
-          last_theme_target = theme_dir -- Update last known target
-          return
         end
       end
       print("No valid colorscheme found in " .. theme_config)
