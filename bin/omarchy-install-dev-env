@@ -9,7 +9,7 @@ install_php() {
   yay -Sy php composer --noconfirm
 
   if [[ ":$PATH:" != *":$HOME/.config/composer/vendor/bin:"* ]]; then
-    echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >> "$HOME/.bashrc"
+    echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >>"$HOME/.bashrc"
     source "$HOME/.bashrc"
     echo "Added Composer global bin directory to PATH."
   else
