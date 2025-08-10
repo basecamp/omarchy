@@ -1,27 +1,8 @@
 #!/bin/bash
 
-# Exit immediately if a command exits with a non-zero status
 set -e
 
-# Get the latest while trying to preserve any modifications
-echo -e "\e[32mUpdate Omarchy\e[0m"
-omarchy_path=~/.local/share/omarchy
-git -C $omarchy_path pull --autostash
-git -C $omarchy_path diff --check || git -C $omarchy_path reset --merge
-
-# Run migrations
-~/.local/share/omarchy/bin/omarchy-migrate
-
-# Update system packages
-echo -e "\e[32m\nUpdate system packages\e[0m"
-yay -Syu --noconfirm
-echo
-
-# Offer to reboot if the kernel has been changed
-if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
-  gum confirm "New Linux kernel requires reboot. Ready?" && omarchy-state clear re*-required && sudo reboot now
-elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
-  gum confirm "Updates require reboot. Ready?" && omarchy-state clear re*-required && sudo reboot now
-elif [ -f "$HOME/.local/state/omarchy/relaunch-required" ]; then
-  gum confirm "Updates require Hyprland relaunch. Ready?" && omarchy-state clear relaunch-required && uwsm stop
-fi
+omarchy-update-git
+omarchy-migrate
+omarchy-update-system-pkgs
+omarchy-update-restart
