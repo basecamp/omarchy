@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# omarchy-theme-hook: Run a hook script for a theme
+# Usage: omarchy-theme-hook <theme-path> <hook-name> <action-name>
+
+THEME_PATH="$1"
+HOOK_NAME="$2"
+ACTION_NAME="$3"
+
+HOOK_SCRIPT="$THEME_PATH/hooks/$HOOK_NAME"
+
+if [[ ! -f "$HOOK_SCRIPT" ]]; then
+  exit 0
+fi
+
+if [[ "$ACTION_NAME" == "cleanup" ]]; then
+  echo
+  echo -e "The previous theme with the theme path $THEME_PATH includes a custom cleanup script."
+else
+  echo
+  echo -e "This theme includes a custom ${ACTION_NAME} script to set up dependencies/theme specific configurations."
+fi
+
+# Add a security warning
+echo -e "\n\n\033[1;31m⚠️ WARNING: Running this script can execute any command and modify your system.\033[0m"
+echo "You should only proceed if you have reviewed the script and trust the theme author."
+
+read -p "Would you like to review the contents of '$HOOK_NAME' now? (y/N) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  echo
+  echo -e "--- Contents of $HOOK_NAME ---"
+  cat -n "$HOOK_SCRIPT"
+  echo "----------------------------"
+fi
+
+# Ask for consent
+read -p "Do you want to run the theme's ${ACTION_NAME} script? (y/N) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  echo "👍 Skipping the ${ACTION_NAME} script."
+  exit 0
+fi
+
+echo
+echo -e "Running $HOOK_NAME..."
+
+# Ensure the script is executable
+chmod +x "$HOOK_SCRIPT"
+
+# Execute from its directory (ensure relative paths work)
+if (cd "$THEME_PATH" && "./hooks/$HOOK_NAME"); then
+  echo "✅ Script executed successfully."
+else
+  echo "❌ The script finished with an error."
+fi

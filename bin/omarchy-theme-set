@@ -20,6 +20,9 @@ if [[ ! -d "$THEME_PATH" ]]; then
   exit 2
 fi
 
+# Run cleanup from the previous theme on switch
+"$(dirname "$0")/omarchy-theme-hook" "$CURRENT_THEME_DIR" "cleanup.sh" "cleanup"
+
 # Update theme symlinks
 ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 
@@ -49,6 +52,9 @@ pkill swayosd-server
 setsid uwsm app -- swayosd-server &>/dev/null &
 makoctl reload
 hyprctl reload
+
+# Run apply hook
+"$(dirname "$0")/omarchy-theme-hook" "$THEME_PATH" "apply.sh" "apply"
 
 # Set new background
 ~/.local/share/omarchy/bin/omarchy-theme-bg-next

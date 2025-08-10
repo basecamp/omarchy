@@ -36,5 +36,7 @@ if [ "$(readlink -f "$CURRENT_DIR/theme")" = "$(readlink -f "$THEME_PATH")" ]; t
   ~/.local/share/omarchy/bin/omarchy-theme-next
 fi
 
+"$(dirname "$0")/omarchy-theme-hook" "$THEME_PATH" "uninstall.sh" "uninstallation"
+
 # Now remove the theme directory for THEME_NAME
 rm -rf "$THEME_PATH"
