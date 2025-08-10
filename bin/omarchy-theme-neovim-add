@@ -7,7 +7,7 @@ set -euo pipefail
 err() { printf "Error: %s\n" "$*" >&2; }
 info() { printf "%s\n" "$*"; }
 
-INIT_FILE="/home/taha/.config/nvim/lua/omarchy/init.lua"
+INIT_FILE="$HOME/.config/nvim/lua/omarchy/init.lua"
 if [[ $# -lt 1 ]]; then
   err "Usage: $(basename "$0") path/to/neovim.lua"; exit 2;
 fi
