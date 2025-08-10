@@ -235,11 +235,10 @@ show_install_font_menu() {
 }
 
 show_install_development_menu() {
-  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  Node.js\n  Bun\n  Go\n  Laravel\n  Python\n  Elixir\n  Rust\n  Java\n  Ocaml") in
+  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  Laravel\n  Python\n  Elixir\n  Rust\n  Java\n  Ocaml") in
   *Rails*) present_terminal "omarchy-install-dev-env ruby" ;;
   *Docker*) present_terminal omarchy-install-docker-dbs ;;
-  *Node*) present_terminal "omarchy-install-dev-env node" ;;
-  *Bun*) present_terminal "omarchy-install-dev-env bun" ;;
+  *JavaScript*) show_install_javascript_menu ;;
   *Go*) present_terminal "omarchy-install-dev-env go" ;;
   *Laravel*) present_terminal "omarchy-install-dev-env laravel" ;;
   *Python*) present_terminal "omarchy-install-dev-env python" ;;
@@ -251,6 +250,14 @@ show_install_development_menu() {
   esac
 }
 
+show_install_javascript_menu() {
+  case $(menu "Install" "  Node.js\n  Bun\n  Deno") in
+  *Node*) present_terminal "omarchy-install-dev-env node" ;;
+  *Bun*) present_terminal "omarchy-install-dev-env bun" ;;
+  *Deno*) present_terminal "omarchy-install-dev-env deno" ;;
+  *) show_install_development_menu ;;
+  esac
+}
 show_remove_menu() {
   case $(menu "Remove" "󰣇  Package\n  Web App\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;
