@@ -30,14 +30,14 @@ echo -e "Chaotic-AUR is an unofficial, \e[1moptional\e[0m repository that provid
 echo "Using it is not required. Please ensure you understand the potential risks."
 echo "https://aur.chaotic.cx"
 
-echo -ne "\e[33m\nWould you like to setup the Chaotic-AUR repository? [Y/n]\e[0m\n"
+echo -ne "\e[33m\nWould you like to setup the Chaotic-AUR repository? [Y/n]\e[0m"
 
 while true; do
   read -rsn1 choice
   if [[ "$choice" =~ ^[YyNn]$ || -z "$choice" ]]; then
       case "$choice" in
           [Yy] | "" ) setup_chaotic_aur; break ;;
-          [Nn]      ) echo "Chaotic-AUR will not be setup."; break ;;
+          [Nn]      ) echo -e "\nChaotic-AUR will not be setup."; break ;;
       esac
   fi
 done
