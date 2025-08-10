@@ -1,0 +1,29 @@
+#!/bin/bash
+
+STATE_DIR="$HOME/.local/state/omarchy"
+mkdir -p "$STATE_DIR"
+
+COMMAND="$1"
+STATE_NAME="$2"
+
+case "$COMMAND" in
+    set)
+        if [[ -z "$STATE_NAME" ]]; then
+            echo "Usage: omarchy-state set <state-name>" >&2
+            exit 1
+        fi
+        touch "$STATE_DIR/$STATE_NAME"
+        ;;
+    clear)
+        if [[ -z "$STATE_NAME" ]]; then
+            echo "Usage: omarchy-state clear <state-name-or-pattern>" >&2
+            exit 1
+        fi
+        # Use find with -maxdepth 1 to match files in STATE_DIR
+        find "$STATE_DIR" -maxdepth 1 -type f -name "$STATE_NAME" -delete
+        ;;
+    *)
+        echo "Usage: omarchy-state <set|clear> <state-name-or-pattern>" >&2
+        exit 1
+        ;;
+esac
