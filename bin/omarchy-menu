@@ -262,7 +262,8 @@ show_install_javascript_menu() {
 }
 
 show_install_php_menu() {
-  case $(menu "Install" "  Laravel\n  Symfony") in
+  case $(menu "Install" "  PHP\n  Laravel\n  Symfony") in
+  *PHP*) present_terminal "omarchy-install-dev-env php" ;;
   *Laravel*) present_terminal "omarchy-install-dev-env laravel" ;;
   *Symfony*) present_terminal "omarchy-install-dev-env symfony" ;;
   *) show_install_development_menu ;;
