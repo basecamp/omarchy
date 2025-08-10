@@ -1,23 +1,23 @@
 #!/bin/bash
 
-if [ -z "$1" ]; then
-  echo "Usage: omarchy-plugin-remove <plugin-name>"
-  exit 1
-fi
-
-PLUGIN_PATH="$HOME/.config/omarchy/plugins"
 PLUGIN_NAME="$1"
+PLUGIN_PATH="$HOME/.config/omarchy/plugins"
 
-echo -e "\n\e[31mRemoving plugin: $PLUGIN_NAME\e[0m"
-
-if [ ! -d "$PLUGIN_PATH/$PLUGIN_NAME" ]; then
-  echo "Error: Plugin '$PLUGIN_NAME' not found."
-  exit 1
+if [[ -z "$1" ]]; then
+  PLUGIN_NAME=$(basename -a "$HOME/.config/omarchy/plugins"/* | fzf "${fzf_args[@]}")
 fi
 
-cd "$PLUGIN_PATH/$PLUGIN_NAME"
+if [[ -n "$PLUGIN_NAME" ]]; then
+  echo -e "\n\e[31mRemoving plugin: $PLUGIN_NAME\e[0m"
 
-# Running the plugins install command
-./remove.sh
+  if [ ! -d "$PLUGIN_PATH/$PLUGIN_NAME" ]; then
+    echo "Error: Plugin '$PLUGIN_NAME' not found."
+    exit 1
+  fi
 
-notify-send "Plugin: $PLUGIN_NAME has been removed" -t 2000
+  # Running the plugins remove script
+  "$PLUGIN_PATH/$PLUGIN_NAME/remove"
+  rm -rf "$PLUGIN_PATH/$PLUGIN_NAME"
+
+  ~/.local/share/omarchy/bin/omarchy-show-done
+fi
