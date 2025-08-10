@@ -235,7 +235,7 @@ show_install_font_menu() {
 }
 
 show_install_development_menu() {
-  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  Node.js\n  Bun\n  Go\n  Laravel\n  Python\n  Elixir\n  Rust\n  Java") in
+  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  Node.js\n  Bun\n  Go\n  Laravel\n  Python\n  Elixir\n  Rust\n  Java\n  Ocaml") in
   *Rails*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env ruby" ;;
   *Docker*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-docker-dbs ;;
   *Node*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env node" ;;
@@ -246,6 +246,7 @@ show_install_development_menu() {
   *Elixir*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env elixir" ;;
   *Rust*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env rust" ;;
   *Java*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env java" ;;
+  *Ocaml*) present_terminal "$OMARCHY_BIN_PATH/omarchy-install-dev-env ocaml" ;;
   *) show_install_menu ;;
   esac
 }
