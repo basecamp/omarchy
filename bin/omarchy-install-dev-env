@@ -20,6 +20,10 @@ bun)
   echo -e "Installing Bun...\n"
   mise use -g bun@latest
   ;;
+deno)
+  echo -e "Installing Deno...\n"
+  mise use -g deno@latest
+  ;;
 go)
   echo -e "Installing Go...\n"
   mise use --global go@latest
