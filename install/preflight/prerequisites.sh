@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [ ! -f /etc/os-release ]; then
-  echo "$(tput setaf 1)Error: Unable to determine OS. /etc/os-release file not found."
+  echo -e "\e[31mError: Unable to determine OS. /etc/os-release file not found.\e[0m"
   echo "Installation stopped."
   exit 1
 fi
@@ -12,14 +12,14 @@ fi
 ARCH=$(uname -m)
 
 if [ "$ARCH" = "aarch64" ]; then
-  echo "$(tput setaf 1)Error: aarch64 is not supported."
+  echo -e "\e[31mError: aarch64 is not supported.\e[0m"
   echo "Hyprland, a required dependency, does not support this architecture."
   echo "Installation stopped."
   exit 1
 fi
 
 if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "i686" ]; then
-  echo "$(tput setaf 1)Error: Unsupported architecture: $ARCH"
+  echo -e "\e[31mError: Unsupported architecture: $ARCH\e[0m"
   echo "This installation is only supported on x86_64 or i686."
   echo "Installation stopped."
   exit 1
@@ -27,7 +27,7 @@ fi
 
 # Check if running on Arch Linux
 if [ "$ID" != "arch" ]; then
-  echo "$(tput setaf 1)Error: OS requirement not met"
+  echo -e "\e[31mError: OS requirement not met\e[0m"
   echo "You are currently running: $ID"
   echo "OS required: Arch Linux"
   echo "Installation stopped."
