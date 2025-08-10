@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export PATH="$HOME/.local/share/omarchy/bin:$PATH"
+
 menu() {
   local prompt="$1"
   local options="$2"
