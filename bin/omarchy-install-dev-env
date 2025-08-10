@@ -1,9 +1,21 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|rust|java|ocaml|dotnet>" >&2
+  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|symfony|python|elixir|rust|java|ocaml|dotnet>" >&2
   exit 1
 fi
+
+install_php() {
+  yay -Sy php composer --noconfirm
+
+  if [[ ":$PATH:" != *":$HOME/.config/composer/vendor/bin:"* ]]; then
+    echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >> "$HOME/.bashrc"
+    source "$HOME/.bashrc"
+    echo "Added Composer global bin directory to PATH."
+  else
+    echo "Composer global bin directory already in PATH."
+  fi
+}
 
 case "$1" in
 ruby)
@@ -30,12 +42,20 @@ go)
   ;;
 laravel)
   echo -e "Installing PHP and Laravel...\n"
-  yay -S php composer --noconfirm
+  install_php
   composer global require laravel/installer
-  echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >>"$HOME/.bashrc"
-  source "$HOME/.bashrc"
   echo "PHP, Composer, and Laravel have been installed successfully."
   echo "You can now run: laravel new myproject"
+  ;;
+symfony)
+  echo -e "Installing PHP and Symfony...\n"
+  install_php
+  yay -S symfony-cli --noconfirm
+  echo "PHP, Composer, and Symfony CLI have been installed successfully."
+  echo "If you are building a traditional web application:"
+  echo "symfony new --webapp my_project"
+  echo "If you are building a microservice, console application or API:"
+  echo "symfony new my_project"
   ;;
 python)
   echo -e "Installing Python...\n"
