@@ -1,0 +1,9 @@
+[Midnight-Commander]
+use_internal_edit=false
+shadows=false
+skin=modarin256-defbg-thin
+
+[Panels]
+navigate_with_arrows=true
+simple_swap=false
+
