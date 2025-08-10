@@ -60,6 +60,7 @@ java)
 zig)
   echo -e "Installing Zig...\n"
   mise use --global zig@latest
+  ;;
 ocaml)
   echo -e "Installing OCaml...\n"
   bash -c "$(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)"
