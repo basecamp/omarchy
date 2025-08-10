@@ -15,6 +15,7 @@ git -C $omarchy_path diff --check || git -C $omarchy_path reset --merge
 # Update system packages
 echo -e "\e[32m\nUpdate system packages\e[0m"
 yay -Syu --noconfirm
+echo
 
 # Offer to reboot if the kernel has been changed
 if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
