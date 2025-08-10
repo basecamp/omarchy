@@ -1,0 +1,2 @@
+export OMARCHY_PATH=$HOME/.local/share/omarchy
+export PATH=$OMARCHY_PATH/bin/:$PATH

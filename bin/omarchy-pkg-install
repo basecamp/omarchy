@@ -2,7 +2,7 @@
 
 fzf_args=(
   --multi
-  --preview 'echo "alt-p: toggle preview, alt-j/k: scroll, F11: maxime"; echo; yay -Sii {1}'
+  --preview 'echo "alt-p: toggle description, alt-j/k: scroll, F11: maximize"; echo; yay -Sii {1}'
   --preview-window 'down:65%:wrap'
   --bind 'alt-p:toggle-preview'
   --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
@@ -14,5 +14,5 @@ pkg_name=$(yay -Slq | fzf "${fzf_args[@]}")
 if [[ -n "$pkg_name" ]]; then
   yay -Sy --noconfirm "$pkg_name"
   sudo updatedb
-  ~/.local/share/omarchy/bin/omarchy-show-done
+  omarchy-show-done
 fi
