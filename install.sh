@@ -26,6 +26,7 @@ show_subtext() {
 }
 
 # Install prerequisites
+clear
 echo -e "Installing prerequisites [0/5]"
 source $OMARCHY_INSTALL/preflight/aur.sh
 source $OMARCHY_INSTALL/preflight/presentation.sh
