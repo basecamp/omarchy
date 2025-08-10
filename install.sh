@@ -26,6 +26,8 @@ show_subtext() {
 }
 
 # Install prerequisites
+show_logo blackhole
+show_subtext "Installing prerequisites [0/5]"
 source $OMARCHY_INSTALL/preflight/aur.sh
 source $OMARCHY_INSTALL/preflight/presentation.sh
 source $OMARCHY_INSTALL/preflight/migrations.sh

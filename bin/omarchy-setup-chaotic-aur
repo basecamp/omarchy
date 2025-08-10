@@ -26,11 +26,11 @@ setup_chaotic_aur() {
   fi
 }
 
-echo "Chaotic-AUR is an optional and unofficial repository that provides pre-built packages from the AUR."
-echo "Before proceeding, please make sure you understand its implications."
+echo -e "Chaotic-AUR is an unofficial, \e[1moptional\e[0m repository that provides pre-built AUR packages."
+echo "Using it is not required. Please ensure you understand the potential risks."
 echo "https://aur.chaotic.cx"
 
-echo -ne "\e[33m\nWould you like to setup the Chaotic-AUR repository? [Y/n]\e[0m"
+echo -ne "\e[33m\nWould you like to setup the Chaotic-AUR repository? [Y/n]\e[0m\n"
 
 while true; do
   read -rsn1 choice
