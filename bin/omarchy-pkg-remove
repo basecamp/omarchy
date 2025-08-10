@@ -14,5 +14,5 @@ pkg_name=$(yay -Qqe | fzf "${fzf_args[@]}")
 if [[ -n "$pkg_name" ]]; then
   yay -Rns --noconfirm "$pkg_name"
   sudo updatedb
-  ~/.local/share/omarchy/bin/omarchy-show-done
+  omarchy-show-done
 fi

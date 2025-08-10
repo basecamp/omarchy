@@ -5,4 +5,4 @@ curl -fsSL https://tailscale.com/install.sh | sh
 echo -e "\nStarting Tailscale..."
 sudo tailscale up --accept-routes
 
-~/.local/share/omarchy/bin/omarchy-webapp-install "Tailscale" "https://login.tailscale.com/admin/machines" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png
+omarchy-webapp-install "Tailscale" "https://login.tailscale.com/admin/machines" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png

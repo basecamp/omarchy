@@ -26,7 +26,7 @@ terminal() {
 }
 
 present_terminal() {
-  alacritty --class Omarchy -e bash -c "~/.local/share/omarchy/bin/omarchy-show-logo; eval \"$1\"; ~/.local/share/omarchy/bin/omarchy-show-done;"
+  alacritty --class Omarchy -e bash -c "omarchy-show-logo; eval \"$1\"; omarchy-show-done;"
 }
 
 edit_in_nvim() {
@@ -47,7 +47,7 @@ install_and_launch() {
 }
 
 install_font() {
-  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm --needed $2 && sleep 2 && ~/.local/share/omarchy/bin/omarchy-font-set '$3'"
+  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm --needed $2 && sleep 2 && omarchy-font-set '$3'"
 }
 
 show_learn_menu() {
@@ -159,13 +159,13 @@ show_setup_power_menu() {
 show_setup_config_menu() {
   case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
   *Hyprland*) edit_in_nvim ~/.config/hypr/hyprland.conf ;;
-  *Hypridle*) edit_in_nvim ~/.config/hypr/hypridle.conf && ~/.local/share/omarchy/bin/omarchy-restart-hypridle ;;
+  *Hypridle*) edit_in_nvim ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
   *Hyprlock*) edit_in_nvim ~/.config/hypr/hyprlock.conf ;;
-  *Hyprsunset*) edit_in_nvim ~/.config/hypr/hyprsunset.conf && ~/.local/share/omarchy/bin/omarchy-restart-hyprsunset ;;
-  *Swayosd*) edit_in_nvim ~/.config/swayosd/config.toml && ~/.local/share/omarchy/bin/omarchy-restart-swayosd ;;
-  *Walker*) edit_in_nvim ~/.config/walker/config.toml && ~/.local/share/omarchy/bin/omarchy-restart-walker ;;
-  *Waybar*) edit_in_nvim ~/.config/waybar/config.jsonc && ~/.local/share/omarchy/bin/omarchy-restart-waybar ;;
-  *XCompose*) edit_in_nvim ~/.XCompose && ~/.local/share/omarchy/bin/omarchy-restart-xcompose ;;
+  *Hyprsunset*) edit_in_nvim ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
+  *Swayosd*) edit_in_nvim ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
+  *Walker*) edit_in_nvim ~/.config/walker/config.toml && omarchy-restart-walker ;;
+  *Waybar*) edit_in_nvim ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
+  *XCompose*) edit_in_nvim ~/.XCompose && omarchy-restart-xcompose ;;
   *) show_main_menu ;;
   esac
 }
