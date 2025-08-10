@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|rust|java|dotnet>" >&2
+  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|rust|java|ocaml|dotnet>" >&2
   exit 1
 fi
 
@@ -26,7 +26,12 @@ go)
   ;;
 laravel)
   echo -e "Installing PHP and Laravel...\n"
-  bash -c "$(curl -fsSL https://php.new/install/linux)"
+  yay -S php composer --noconfirm
+  composer global require laravel/installer
+  echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >> "$HOME/.bashrc"
+  source "$HOME/.bashrc"
+  echo "PHP, Composer, and Laravel have been installed successfully."
+  echo "You can now run: laravel new myproject"
   ;;
 python)
   echo -e "Installing Python...\n"
@@ -47,6 +52,13 @@ rust)
 java)
   echo -e "Installing Java...\n"
   mise use --global java@latest
+  ;;
+ocaml)
+  echo -e "Installing OCaml...\n"
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)"
+  opam init --yes
+  eval "$(opam env)"
+  opam install ocaml-lsp-server odoc ocamlformat utop --yes
   ;;
 dotnet)
   echo -e "Installing .NET...\n"
