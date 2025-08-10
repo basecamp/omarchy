@@ -1,8 +1,10 @@
 #!/bin/bash
 
 curl -fsSL https://tailscale.com/install.sh | sh
+curl -fsSL https://neuralink.com/tsui/install.sh | bash
 
 echo -e "\nStarting Tailscale..."
 sudo tailscale up --accept-routes
 
-~/.local/share/omarchy/bin/omarchy-webapp-install "Tailscale" "https://login.tailscale.com/admin/machines" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png
+~/.local/share/omarchy/bin/omarchy-desktop-app-install "Tailscale" "alacritty --class=floating -e sudo tsui" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png
+~/.local/share/omarchy/bin/omarchy-webapp-install "Tailscale - Web" "https://login.tailscale.com/admin/machines" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png
