@@ -23,6 +23,7 @@ ruby)
   mise use --global ruby@latest
   mise settings add idiomatic_version_file_enable_tools ruby
   mise x ruby -- gem install rails --no-document
+  echo -e "\nYou can now run: rails new myproject"
   ;;
 node)
   echo -e "Installing Node.js...\n"
@@ -44,18 +45,13 @@ laravel)
   echo -e "Installing PHP and Laravel...\n"
   install_php
   composer global require laravel/installer
-  echo "PHP, Composer, and Laravel have been installed successfully."
-  echo "You can now run: laravel new myproject"
+  echo -e "\nYou can now run: laravel new myproject"
   ;;
 symfony)
   echo -e "Installing PHP and Symfony...\n"
   install_php
   yay -S symfony-cli --noconfirm
-  echo "PHP, Composer, and Symfony CLI have been installed successfully."
-  echo "If you are building a traditional web application:"
-  echo "symfony new --webapp my_project"
-  echo "If you are building a microservice, console application or API:"
-  echo "symfony new my_project"
+  echo -e "\nYou can now run: symfony new --webapp myproject"
   ;;
 python)
   echo -e "Installing Python...\n"
