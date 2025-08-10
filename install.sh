@@ -27,7 +27,7 @@ show_subtext() {
 
 # Install prerequisites
 clear
-echo -e "\e[1mInstalling prerequisites [0/5]\e[0m"
+echo -e "\e[1mInstalling prerequisites [0/5]\e[0m\n"
 source $OMARCHY_INSTALL/preflight/aur.sh
 source $OMARCHY_INSTALL/preflight/presentation.sh
 source $OMARCHY_INSTALL/preflight/migrations.sh
