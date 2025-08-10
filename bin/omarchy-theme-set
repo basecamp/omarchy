@@ -54,7 +54,7 @@ makoctl reload
 hyprctl reload
 
 # Run apply hook
-"$(dirname "$0")/omarchy-theme-hook" "$THEME_PATH" "apply.sh" "apply"
+"$(dirname "$0")/omarchy-theme-hook" "$CURRENT_THEME_PATH" "apply.sh" "apply"
 
 # Set new background
 ~/.local/share/omarchy/bin/omarchy-theme-bg-next
