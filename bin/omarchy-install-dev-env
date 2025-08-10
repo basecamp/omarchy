@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|rust|java|ocaml>" >&2
+  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|python|elixir|rust|java|ocaml|dotnet>" >&2
   exit 1
 fi
 
@@ -59,5 +59,9 @@ ocaml)
   opam init --yes
   eval "$(opam env)"
   opam install ocaml-lsp-server odoc ocamlformat utop --yes
+  ;;
+dotnet)
+  echo -e "Installing .NET...\n"
+  mise use --global dotnet@latest
   ;;
 esac
