@@ -1,13 +1,14 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|symfony|python|elixir|rust|java|ocaml|dotnet>" >&2
+  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|rust|java|ocaml|dotnet>" >&2
   exit 1
 fi
 
 install_php() {
-  yay -Sy php composer --noconfirm
+  yay -Sy php composer php-sqlite --noconfirm
 
+  # Install Path for Composer
   if [[ ":$PATH:" != *":$HOME/.config/composer/vendor/bin:"* ]]; then
     echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >>"$HOME/.bashrc"
     source "$HOME/.bashrc"
@@ -15,6 +16,21 @@ install_php() {
   else
     echo "Composer global bin directory already in PATH."
   fi
+
+  # Enable some extensions
+  local php_ini_path="/etc/php/php.ini"
+  local extensions_to_enable=(
+    "bcmath"
+    "intl"
+    "iconv"
+    "openssl"
+    "pdo_sqlite"
+    "pdo_mysql"
+  )
+
+  for ext in "${extensions_to_enable[@]}"; do
+    sudo sed -i "s/^;extension=${ext}/extension=${ext}/" "$php_ini_path"
+  done
 }
 
 case "$1" in
@@ -40,6 +56,10 @@ deno)
 go)
   echo -e "Installing Go...\n"
   mise use --global go@latest
+  ;;
+php)
+  echo -e "Installing PHP...\n"
+  install_php
   ;;
 laravel)
   echo -e "Installing PHP and Laravel...\n"
