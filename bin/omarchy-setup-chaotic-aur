@@ -1,0 +1,44 @@
+#!/bin/bash
+
+setup_chaotic_aur() {
+  if [[ "$(uname -m)" != "x86_64" ]]; then
+    echo "Chaotic-AUR is only supported on x86_64 architecture."
+    return 0
+  fi
+
+  if grep -q "^\[chaotic-aur\]" /etc/pacman.conf; then
+    echo "Chaotic-AUR is already configured."
+    return 0
+  fi
+
+  
+  if ! pacman-key --list-keys 3056513887B78AEB >/dev/null 2>&1 &&
+    sudo pacman-key --recv-key 3056513887B78AEB &&
+    sudo pacman-key --lsign-key 3056513887B78AEB &&
+    sudo pacman -U --noconfirm 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' &&
+    sudo pacman -U --noconfirm 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst'; then
+
+    echo -e '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist' | sudo tee -a /etc/pacman.conf >/dev/null
+
+    sudo pacman -Sy --needed --noconfirm yay
+  else
+    echo "Failed to install Chaotic-AUR; skipping update to pacman.conf"
+  fi
+}
+
+echo "Chaotic-AUR is an optional and unofficial repository that provides pre-built packages from the AUR."
+echo "Before proceeding, please make sure you understand its implications."
+echo "https://aur.chaotic.cx"
+
+echo -ne "\e[33m\nWould you like to setup the Chaotic-AUR repository? [Y/n]\e[0m"
+
+while true; do
+  read -rsn1 choice
+  if [[ "$choice" =~ ^[YyNn]$ || -z "$choice" ]]; then
+      case "$choice" in
+          [Yy] | "" ) setup_chaotic_aur; break ;;
+          [Nn]      ) echo "Chaotic-AUR will not be setup."; break ;;
+      esac
+  fi
+done
+echo
