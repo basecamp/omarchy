@@ -39,7 +39,7 @@ if [[ -z "${COLORSCHEME:-}" ]]; then
 fi
 
 # Build plugin table entry format used in init.lua Themes section.
-PLUGIN_ENTRY="{ \"$PLUGIN_REPO\", lazy = false, priority = 1000 }"
+PLUGIN_ENTRY="{ \"$PLUGIN_REPO\" }"
 
 added_plugin=0
 added_colorscheme=0

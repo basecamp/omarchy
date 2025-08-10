@@ -1,16 +1,16 @@
 return {
   plugins = {
     -- Themes
-    { "ellisonleao/gruvbox.nvim", lazy = false, priority = 1000 },
-    { "catppuccin/nvim", name = "catppuccin", lazy = false, priority = 1000 },
-    { "folke/tokyonight.nvim", lazy = false, priority = 1000 },
-    { "neanias/everforest-nvim", lazy = false, priority = 1000 },
-    { "rebelot/kanagawa.nvim", lazy = false, priority = 1000 },
-    { "tahayvr/matteblack.nvim", lazy = false, priority = 1000 },
-    { "EdenEast/nightfox.nvim", lazy = false, priority = 1000 },
-    { "rose-pine/neovim", name = "rose-pine", lazy = false, priority = 1000 },
-    { "ribru17/bamboo.nvim", lazy = false, priority = 1000 },
-    { "gthelding/monokai-pro.nvim", lazy = false, priority = 1000}
+    { "ellisonleao/gruvbox.nvim" },
+    { "catppuccin/nvim", name = "catppuccin" },
+    { "folke/tokyonight.nvim" },
+    { "neanias/everforest-nvim" },
+    { "rebelot/kanagawa.nvim" },
+    { "tahayvr/matteblack.nvim" },
+    { "EdenEast/nightfox.nvim" },
+    { "rose-pine/neovim", name = "rose-pine" },
+    { "ribru17/bamboo.nvim" },
+    { "gthelding/monokai-pro.nvim" }
   },
   install = {
     colorscheme = {
