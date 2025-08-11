@@ -44,10 +44,10 @@ touch "$HOME/.config/alacritty/alacritty.toml"
 
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
-~/.local/share/omarchy/bin/omarchy-restart-waybar
-~/.local/share/omarchy/bin/omarchy-restart-swayosd
+omarchy-restart-waybar
+omarchy-restart-swayosd
 makoctl reload
 hyprctl reload
 
 # Set new background
-~/.local/share/omarchy/bin/omarchy-theme-bg-next
+omarchy-theme-bg-next

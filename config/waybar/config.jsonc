@@ -46,13 +46,13 @@
   },
   "custom/omarchy": {
     "format": "",
-    "on-click": "~/.local/share/omarchy/bin/omarchy-menu",
-    "tooltip-format": "SUPER + ALT + SPACE"
+    "on-click": "omarchy-menu",
+    "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space"
   },
   "custom/update": {
     "format": "",
-    "exec": "~/.local/share/omarchy/bin/omarchy-update-available",
-    "on-click": "alacritty --class Omarchy --title Omarchy -e ~/.local/share/omarchy/bin/omarchy-update",
+    "exec": "omarchy-update-available",
+    "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
     "tooltip-format": "Omarchy update available",
     "interval": 3600
   },
@@ -65,7 +65,7 @@
     "format": "{:%A %H:%M}",
     "format-alt": "{:%d %B W%V %Y}",
     "tooltip": false,
-    "on-click-right": "~/.local/share/omarchy/bin/omarchy-cmd-tzupdate"
+    "on-click-right": "omarchy-cmd-tzupdate"
   },
   "network": {
     "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
