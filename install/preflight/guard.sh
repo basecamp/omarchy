@@ -2,7 +2,12 @@
 
 abort() {
   echo -e "\e[31mOmarchy requires a fresh vanilla Arch install and running on x86_64 as user.\e[0m"
-  gum confirm "Proceed anyway on your own accord and without assistance?" || exit 1
+
+  if gum confirm "Proceed anyway on your own accord and without assistance?"; then
+    exit 0
+  else
+    exit 1
+  fi
 }
 
 # Must be an Arch distro
@@ -22,3 +27,6 @@ done
 # Must not have Gnome or KDE already install
 pacman -Qe gnome-shell &>/dev/null && abort
 pacman -Qe plasma-desktop &>/dev/null && abort
+
+# All guards have been cleared!
+echo -e "\e[32mOmarchy sees a fresh vanilla Arch install running on x86_64 as user.\e[0m"
