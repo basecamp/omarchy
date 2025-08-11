@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# set OMARCHY_PATH in case this is called by non bash environment
+OMARCHY_PATH="/home/$USER/.local/share/omarchy"
+
+git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1)
