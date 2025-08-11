@@ -1,0 +1,85 @@
+#!/bin/bash
+
+# Ultra-lightweight status daemon that outputs for specific modules
+# Usage: omarchy-status-daemon [dnd|nightlight|recording|idle]
+
+MODULE="$1"
+STATE_DIR="/tmp/omarchy-status"
+DAEMON_PID_FILE="$STATE_DIR/daemon.pid"
+
+mkdir -p "$STATE_DIR"
+
+# Update all status files
+update_all_status() {
+  # DND
+  if makoctl mode 2>/dev/null | grep -q 'do-not-disturb'; then
+    echo '{"text": "󰂛", "tooltip": "Notifications silenced", "class": "status-dnd"}' > "$STATE_DIR/dnd"
+  else
+    echo '{"text": "", "tooltip": "", "class": "hidden"}' > "$STATE_DIR/dnd"
+  fi
+
+  # Nightlight
+  if pgrep -x hyprsunset >/dev/null 2>&1; then
+    temp=$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+')
+    if [ -n "$temp" ] && [ "$temp" -lt 6000 ]; then
+      echo '{"text": "󰔎", "tooltip": "Night light active", "class": "status-nightlight"}' > "$STATE_DIR/nightlight"
+    else
+      echo '{"text": "", "tooltip": "", "class": "hidden"}' > "$STATE_DIR/nightlight"
+    fi
+  else
+    echo '{"text": "", "tooltip": "", "class": "hidden"}' > "$STATE_DIR/nightlight"
+  fi
+
+  # Recording
+  if pgrep -x wf-recorder >/dev/null 2>&1 || pgrep -x obs >/dev/null 2>&1 || pgrep -f "ffmpeg.*screen" >/dev/null 2>&1; then
+    echo '{"text": "󰻂", "tooltip": "Screen recording active", "class": "status-recording"}' > "$STATE_DIR/recording"
+  else
+    echo '{"text": "", "tooltip": "", "class": "hidden"}' > "$STATE_DIR/recording"
+  fi
+
+  # Idle
+  if command -v hypridle >/dev/null 2>&1 && ! pgrep -x hypridle >/dev/null 2>&1; then
+    echo '{"text": "󱫖", "tooltip": "Idle lock disabled", "class": "status-idle"}' > "$STATE_DIR/idle"
+  else
+    echo '{"text": "", "tooltip": "", "class": "hidden"}' > "$STATE_DIR/idle"
+  fi
+}
+
+# Start daemon if not running
+start_daemon() {
+  if [ -f "$DAEMON_PID_FILE" ] && kill -0 $(cat "$DAEMON_PID_FILE") 2>/dev/null; then
+    return 0
+  fi
+
+  {
+    last_hash=""
+    while true; do
+      current_hash=$(pgrep -c "mako|hyprsunset|wf-recorder|obs|hypridle" 2>/dev/null)$(makoctl mode 2>/dev/null | grep -c 'do-not-disturb')$(hyprctl hyprsunset temperature 2>/dev/null)
+      
+      if [ "$current_hash" != "$last_hash" ]; then
+        update_all_status
+        last_hash="$current_hash"
+      fi
+      
+      sleep 0.5
+    done
+  } &
+  
+  echo $! > "$DAEMON_PID_FILE"
+}
+
+# Main execution
+if [ -z "$MODULE" ]; then
+  echo "Usage: $0 [dnd|nightlight|recording|idle]"
+  exit 1
+fi
+
+start_daemon
+
+# Return cached status for requested module
+if [ -f "$STATE_DIR/$MODULE" ]; then
+  cat "$STATE_DIR/$MODULE"
+else
+  update_all_status
+  cat "$STATE_DIR/$MODULE" 2>/dev/null || echo '{"text": "", "tooltip": "", "class": "hidden"}'
+fi

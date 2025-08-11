@@ -10,89 +10,98 @@ DAEMON_PID_FILE="/tmp/omarchy-status-daemon.pid"
 
 # Function to check and update status (optimized)
 update_status() {
-    # Prevent race conditions with non-blocking lock
-    (
-        flock -n 9 || exit 1
-        
-        local active_indicators=()
-        local tooltip_items=()
-        
-        # Check DND (fastest check first)
-        if makoctl mode 2>/dev/null | grep -q 'do-not-disturb'; then
-            active_indicators+=("•")
-            tooltip_items+=("Notifications silenced")
+  # Prevent race conditions with non-blocking lock
+  (
+    flock -n 9 || exit 1
+
+    local active_indicators=()
+    local tooltip_items=()
+
+    # Check DND (fastest check first)
+    if makoctl mode 2>/dev/null | grep -q 'do-not-disturb'; then
+      active_indicators+=("•")
+      tooltip_items+=("Notifications silenced")
+    fi
+
+    # Only check processes if any are likely running (efficient pre-check)
+    if [ -n "$(pgrep -x "hyprsunset|wf-recorder|obs" 2>/dev/null)" ]; then
+      # Night light
+      if pgrep -x hyprsunset >/dev/null 2>&1; then
+        # Check if nightlight is actually enabled (temperature < 6000K)
+        local temp=$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+')
+        if [ -n "$temp" ] && [ "$temp" -lt 6000 ]; then
+          active_indicators+=("◐")
+          tooltip_items+=("Night light active")
         fi
-        
-        # Only check processes if any are likely running (efficient pre-check)
-        if [ -n "$(pgrep -x "gammastep|redshift|wf-recorder|obs" 2>/dev/null)" ]; then
-            # Night light
-            if pgrep -x gammastep >/dev/null 2>&1 || pgrep -x redshift >/dev/null 2>&1; then
-                active_indicators+=("◐")
-                tooltip_items+=("Night light active")
-            fi
-            
-            # Screen recording
-            if pgrep -x wf-recorder >/dev/null 2>&1 || pgrep -x obs >/dev/null 2>&1 || pgrep -f "ffmpeg.*screen" >/dev/null 2>&1; then
-                active_indicators+=("●")
-                tooltip_items+=("Screen recording active")
-            fi
-        fi
-        
-        # Check idle lock (only if hypridle is expected)
-        if command -v hypridle >/dev/null 2>&1 && ! pgrep -x hypridle >/dev/null 2>&1; then
-            active_indicators+=("◯")
-            tooltip_items+=("Idle lock disabled")
-        fi
-        
-        # Generate output
-        if [ ${#active_indicators[@]} -eq 0 ]; then
-            echo '{"text": "", "tooltip": "", "class": "hidden"}'
-        else
-            local text=$(printf "%s " "${active_indicators[@]}" | sed 's/ $//')
-            local tooltip=$(IFS=$'\n'; echo "${tooltip_items[*]}")
-            echo "{\"text\": \"$text\", \"tooltip\": \"$tooltip\", \"class\": \"status-cluster\"}"
-        fi
-        
-    ) 9>"$LOCK_FILE"
+      fi
+
+      # Screen recording
+      if pgrep -x wf-recorder >/dev/null 2>&1 || pgrep -x obs >/dev/null 2>&1 || pgrep -f "ffmpeg.*screen" >/dev/null 2>&1; then
+        active_indicators+=("●")
+        tooltip_items+=("Screen recording active")
+      fi
+    fi
+
+    # Check idle lock (only if hypridle is expected)
+    if command -v hypridle >/dev/null 2>&1 && ! pgrep -x hypridle >/dev/null 2>&1; then
+      active_indicators+=("◯")
+      tooltip_items+=("Idle lock disabled")
+    fi
+
+    # Generate output
+    if [ ${#active_indicators[@]} -eq 0 ]; then
+      echo '{"text": "", "tooltip": "", "class": "hidden"}'
+    else
+      IFS=""
+      local text="${active_indicators[*]}"
+      local tooltip=$(
+        IFS=$'\n'
+        echo "${tooltip_items[*]}"
+      )
+      echo "{\"text\": \"$text\", \"tooltip\": \"$tooltip\", \"class\": \"status-cluster\"}"
+    fi
+
+  ) 9>"$LOCK_FILE"
 }
 
 # Start background daemon if not running
 start_daemon() {
-    if [ -f "$DAEMON_PID_FILE" ] && kill -0 $(cat "$DAEMON_PID_FILE") 2>/dev/null; then
-        return 0  # Already running
-    fi
-    
-    # Ultra-lightweight background monitoring
-    {
-        last_hash=""
-        
-        while true; do
-            # Only check when something might have changed
-            # Use process count + DND mode as lightweight change indicator
-            current_hash=$(pgrep -c "mako|gammastep|redshift|wf-recorder|obs|hypridle" 2>/dev/null)$(makoctl mode 2>/dev/null | grep -c 'do-not-disturb')
-            
-            if [ "$current_hash" != "$last_hash" ]; then
-                update_status > "$STATE_FILE" 2>/dev/null
-                last_hash="$current_hash"
-            fi
-            
-            sleep 0.5  # 500ms polling - only when changes detected
-        done
-    } &
-    
-    echo $! > "$DAEMON_PID_FILE"
+  if [ -f "$DAEMON_PID_FILE" ] && kill -0 $(cat "$DAEMON_PID_FILE") 2>/dev/null; then
+    return 0 # Already running
+  fi
+
+  # Ultra-lightweight background monitoring
+  {
+    last_hash=""
+
+    while true; do
+      # Only check when something might have changed
+      # Use process count + DND mode as lightweight change indicator
+      current_hash=$(pgrep -c "mako|hyprsunset|wf-recorder|obs|hypridle" 2>/dev/null)$(makoctl mode 2>/dev/null | grep -c 'do-not-disturb')$(hyprctl hyprsunset temperature 2>/dev/null)
+
+      if [ "$current_hash" != "$last_hash" ]; then
+        update_status >"$STATE_FILE" 2>/dev/null
+        last_hash="$current_hash"
+      fi
+
+      sleep 0.5 # 500ms polling - only when changes detected
+    done
+  } &
+
+  echo $! >"$DAEMON_PID_FILE"
 }
 
 # Main execution
 if [ "$1" = "--daemon-only" ]; then
-    # Start daemon mode for testing
-    start_daemon
-    echo "Status daemon started (PID: $(cat "$DAEMON_PID_FILE"))"
+  # Start daemon mode for testing
+  start_daemon
+  echo "Status daemon started (PID: $(cat "$DAEMON_PID_FILE"))"
 elif [ -f "$STATE_FILE" ] && [ -f "$DAEMON_PID_FILE" ] && kill -0 $(cat "$DAEMON_PID_FILE") 2>/dev/null; then
-    # Daemon is running, read cached state
-    cat "$STATE_FILE" 2>/dev/null || update_status
+  # Daemon is running, read cached state
+  cat "$STATE_FILE" 2>/dev/null || update_status
 else
-    # Daemon not running or no cached state, start daemon and return current status
-    start_daemon
-    update_status
+  # Daemon not running or no cached state, start daemon and return current status
+  start_daemon
+  update_status
 fi
+
