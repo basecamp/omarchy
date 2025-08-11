@@ -63,8 +63,9 @@ show_learn_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background") in
+  case $(menu "Style" "󰸌  Theme\n🖌 LooknFeel\n  Font\n  Background") in
   *Theme*) show_theme_menu ;;
+  *LooknFeel*) edit_in_nvim ~/.config/hypr/looknfeel.conf ;;
   *Font*) show_font_menu ;;
   *Background*) $OMARCHY_BIN_PATH/omarchy-theme-bg-next ;;
   *) show_main_menu ;;
