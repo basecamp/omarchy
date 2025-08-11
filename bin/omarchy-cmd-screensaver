@@ -1,6 +1,7 @@
 #!/bin/bash
 
 if command -v tte &>/dev/null; then
+  hyprctl keyword cursor:inactive_timeout 1 &>/dev/null
   while true; do
     effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
     tte -i ~/.local/share/omarchy/logo.txt \
@@ -9,6 +10,7 @@ if command -v tte &>/dev/null; then
 
     while pgrep tte >/dev/null; do
       if read -n 1 -t 0.01; then
+        hyprctl keyword cursor:inactive_timeout 0 &>/dev/null
         pkill tte 2>/dev/null
         pkill -f "alacritty --class Screensaver" 2>/dev/null
         exit 0
