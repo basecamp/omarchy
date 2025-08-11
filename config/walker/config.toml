@@ -17,10 +17,6 @@ accept_typeahead = ["tab", "ctrl y"]
 next = ["down", "ctrl j", "ctrl n"]
 prev = ["up", "ctrl k", "ctrl p"]
 
-[keys.activation_modifiers]
-keep_open = "shift"
-alternate = "alt"
-
 [keys.ai]
 clear_session = ["ctrl x"]
 copy_last_response = ["ctrl c"]
