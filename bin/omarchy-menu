@@ -274,7 +274,11 @@ show_update_config_menu() {
 show_system_menu() {
   case $(menu "System" "  Lock\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
   *Lock*) $OMARCHY_BIN_PATH/omarchy-lock-screen ;;
-  *Suspend*) systemctl suspend ;;
+  *Suspend*)
+    $OMARCHY_BIN_PATH/omarchy-lock-screen &
+    sleep 0.5
+    systemctl suspend
+    ;;
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
