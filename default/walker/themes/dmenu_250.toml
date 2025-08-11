@@ -8,4 +8,4 @@ width = 250
 max_height = 600
 
 [ui.window.box.search]
-hide = true
+hide = false

@@ -5,6 +5,7 @@
   "spacing": 0,
   "height": 26,
   "modules-left": [
+    "custom/omarchy",
     "hyprland/workspaces"
   ],
   "modules-center": [
@@ -43,10 +44,16 @@
       "5": []
     }
   },
+  "custom/omarchy": {
+    "format": "",
+    "on-click": "~/.local/share/omarchy/bin/omarchy-menu",
+    "tooltip-format": "SUPER + ALT + SPACE"
+  },
   "custom/update": {
-    "format": "",
+    "format": "",
     "exec": "~/.local/share/omarchy/bin/omarchy-update-available",
-    "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
+    "on-click": "alacritty --class Omarchy --title Omarchy -e ~/.local/share/omarchy/bin/omarchy-update",
+    "tooltip-format": "Omarchy update available",
     "interval": 3600
   },
   "cpu": {

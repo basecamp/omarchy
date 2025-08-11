@@ -1,0 +1,3 @@
+#!/bin/bash
+
+basename "$(realpath "$HOME/.config/omarchy/current/theme")" | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g'

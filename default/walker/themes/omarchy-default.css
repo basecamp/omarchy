@@ -99,6 +99,10 @@ child:hover {
   padding: 0;
 }
 
+#item.active {
+  font-style: italic;
+}
+
 /* Icon */
 #icon {
   margin-right: 10px;

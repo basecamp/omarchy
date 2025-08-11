@@ -20,16 +20,21 @@ user_config_file="${HOME}/.config/$config_file"
 default_config_file="${HOME}/.local/share/omarchy/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
 
-# Create preliminary backup
-cp -f "$user_config_file" "$backup_config_file" 2>/dev/null
+if [[ -f "$user_config_file" ]]; then
+  # Create preliminary backup
+  cp -f "$user_config_file" "$backup_config_file" 2>/dev/null
 
-# Replace config with new default
-cp -f "$default_config_file" "$user_config_file" 2>/dev/null
+  # Replace config with new default
+  cp -f "$default_config_file" "$user_config_file" 2>/dev/null
 
-# Compare and delete/inform accordingly
-if cmp -s "$user_config_file" "$backup_config_file"; then
-  rm "$backup_config_file"
+  # Compare and delete/inform accordingly
+  if cmp -s "$user_config_file" "$backup_config_file"; then
+    rm "$backup_config_file"
+  else
+    echo -e "\e[31mReplaced $user_config_file with new Omarchy default.\nSaved backup as ${backup_config_file}.\n\n\e[32mChanges:\e[0m"
+    diff "$user_config_file" "$backup_config_file" || true
+  fi
 else
-  echo -e "\e[31mReplaced $user_config_file with new Omarchy default.\nSaved backup as ${backup_config_file}.\n\n\e[32mChanges:\e[0m"
-  diff "$user_config_file" "$backup_config_file"
+  # Config file did not exist already
+  cp -f "$default_config_file" "$user_config_file" 2>/dev/null
 fi

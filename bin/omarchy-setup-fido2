@@ -1,11 +1,13 @@
 #!/bin/bash
 
 if [[ "--remove" == "$1" ]]; then
+  echo -e "\e[32mLet's remove your Fido2 device from sudo authentication.\n\e[0m"
   yay -Rns --noconfirm libfido2 pam-u2f
   sudo rm -rf /etc/fido2
   sudo sed -i '\|^auth[[:space:]]\+sufficient[[:space:]]\+pam_u2f\.so[[:space:]]\+cue[[:space:]]\+authfile=/etc/fido2/fido2$|d' /etc/pam.d/sudo
   echo -e "\e[32m\nYou've successfully removed the fido2 device setup.\e[0m"
 else
+  echo -e "\e[32mLet's setup your Fido2 device for sudo authentication.\n\e[0m"
   yay -S --noconfirm --needed libfido2 pam-u2f
 
   tokens=$(fido2-token -L)
@@ -18,6 +20,10 @@ else
       sudo mkdir -p /etc/fido2
       echo -e "\e[32m\nLet's setup your device by confirming on the device now.\e[0m"
       pamu2fcfg >/tmp/fido2 # This needs to run as the user
+      if [ $? -ne 0 ]; then
+        echo -e "\e[31m\nSomething went wrong. Maybe try again?\e[0m"
+        exit 1
+      fi
       sudo mv /tmp/fido2 /etc/fido2/fido2
     fi
 

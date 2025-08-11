@@ -3,4 +3,4 @@ if ! command -v hyprsunset &>/dev/null; then
   yay -S --noconfirm --needed hyprsunset
 fi
 
-omarchy-refresh-hyprsunset
+~/.local/share/omarchy/bin/omarchy-refresh-hyprsunset

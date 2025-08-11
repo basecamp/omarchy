@@ -3,17 +3,13 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-# Show logo
-clear
-cat <~/.local/share/omarchy/logo.txt
-
 # Get the latest while trying to preserve any modifications
 omarchy_path=~/.local/share/omarchy
 git -C $omarchy_path pull --autostash
 git -C $omarchy_path diff --check || git -C $omarchy_path reset --merge
 
 # Run migrations
-"$HOME/.local/share/omarchy/bin/omarchy-migrate"
+~/.local/share/omarchy/bin/omarchy-migrate
 
 # Update system packages
 echo -e "\e[32m\nUpdate system packages\e[0m"
