@@ -47,7 +47,7 @@
   "custom/omarchy": {
     "format": "",
     "on-click": "omarchy-menu",
-    "tooltip-format": "SUPER + ALT + SPACE"
+    "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space"
   },
   "custom/update": {
     "format": "",
