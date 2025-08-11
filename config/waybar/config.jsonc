@@ -157,12 +157,14 @@
   "custom/status-recording": {
     "exec": "~/.local/share/omarchy/bin/omarchy-status-daemon recording",
     "return-type": "json", 
-    "interval": 2
+    "interval": 2,
+    "on-click": "~/.local/share/omarchy/bin/omarchy-cmd-screenrecord"
   },
   "custom/status-idle": {
     "exec": "~/.local/share/omarchy/bin/omarchy-status-daemon idle",
     "return-type": "json",
-    "interval": 2
+    "interval": 2,
+    "on-click": "~/.local/share/omarchy/bin/omarchy-toggle-idle"
   },
   "custom/expand-icon": {
     "format": " ",

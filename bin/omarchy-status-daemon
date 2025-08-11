@@ -19,7 +19,7 @@ update_all_status_files() {
 
 # Generate hash for change detection
 get_status_hash() {
-  echo "$(pgrep -c "mako|hyprsunset|wf-recorder|obs|hypridle" 2>/dev/null)$(makoctl mode 2>/dev/null | grep -c 'do-not-disturb')$(hyprctl hyprsunset temperature 2>/dev/null)"
+  echo "$(pgrep -c "mako|hyprsunset|wl-screenrec|wf-recorder|obs|hypridle" 2>/dev/null)$(makoctl mode 2>/dev/null | grep -c 'do-not-disturb')$(hyprctl hyprsunset temperature 2>/dev/null)"
 }
 
 # Start background monitoring daemon
