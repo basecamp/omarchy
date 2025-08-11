@@ -1,7 +1,7 @@
 #!/bin/bash
 
 abort() {
-  echo -e "\e[31mOmarchy requires a fresh vanilla Arch install running as user.\e[0m"
+  echo -e "\e[31mOmarchy requires a fresh vanilla Arch install and running as user.\e[0m"
   gum confirm "Proceed anyway on your own accord and without assistance?" || exit 1
 }
 
