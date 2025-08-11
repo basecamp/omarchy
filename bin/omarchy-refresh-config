@@ -9,16 +9,62 @@ if [[ -z "$config_file" ]]; then
 
   Must provide a file path from the .config directory to be refreshed.
   To copy ~/.local/share/omarchy/config/hypr/hyprlock.conf to ~/.config/hypr/hyprlock.conf
-    
-    $0 hypr/hyprlock.conf     
+
+    $0 hypr/hyprlock.conf
 USAGE
   exit 1
 fi
+
+# This is used to ignore some files when updating
+ignore_file=~/.local/share/omarchy/config/ignore
+ignore_patterns=""
+
+if [ -f "$ignore_file" ]; then
+   mapfile -t ignore_patterns < "$ignore_file"
+fi
+
+# Check if a pattern matches
+match_pattern() {
+    local pattern="$1"
+    local path="$2"
+
+    case "$path" in
+        $pattern)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Check if ignore pattern
+ignore_pattern() {
+   for pattern in "${ignore_patterns[@]}"; do
+      # remove whitespaces and empty lines
+      pattern=$(echo "$pattern" | xargs)
+
+      [[ -z "$pattern" ]] && continue
+
+      if match_pattern "$HOME/.config/$pattern" "$user_config_file"; then
+         return 0
+      fi
+   done
+
+   return 1
+}
 
 # Backup the destination file (with timestamp) to avoid clobbering (Ex: hyprlock.conf.bak.1753817951)
 user_config_file="${HOME}/.config/$config_file"
 default_config_file="${HOME}/.local/share/omarchy/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
+
+# If has patterns to ignore and found a match,  exit
+if [ -n "$ignore_patterns" ]; then
+   if ignore_pattern; then
+      exit 1
+   fi
+fi
 
 if [[ -f "$user_config_file" ]]; then
   # Create preliminary backup
