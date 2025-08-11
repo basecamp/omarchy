@@ -52,7 +52,8 @@
   "custom/update": {
     "format": "",
     "exec": "~/.local/share/omarchy/bin/omarchy-update-available",
-    "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
+    "on-click": "alacritty --class Omarchy --title Omarchy -e ~/.local/share/omarchy/bin/omarchy-update",
+    "tooltip-format": "Omarchy update available",
     "interval": 3600
   },
   "cpu": {

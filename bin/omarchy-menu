@@ -3,7 +3,22 @@
 OMARCHY_BIN_PATH=~/.local/share/omarchy/bin
 
 menu() {
-  echo -e "$2" | walker --dmenu --theme dmenu_250 -p "$1…" $3
+  local prompt="$1"
+  local options="$2"
+  local extra="$3"
+  local preselect="$4"
+
+  read -r -a args <<<"$extra"
+
+  if [[ -n "$preselect" ]]; then
+    local index
+    index=$(echo -e "$options" | grep -nxF "$preselect" | cut -d: -f1)
+    if [[ -n "$index" ]]; then
+      args+=("-a" "$index")
+    fi
+  fi
+
+  echo -e "$options" | walker --dmenu --theme dmenu_250 -p "$prompt…" "${args[@]}"
 }
 
 terminal() {
@@ -19,6 +34,14 @@ edit_in_nvim() {
   alacritty -e nvim "$1"
 }
 
+open_web() {
+  setsid chromium --new-window --app="$1" &
+}
+
+install() {
+  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2"
+}
+
 install_and_launch() {
   present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2 && gtk-launch $3"
 }
@@ -30,11 +53,11 @@ install_font() {
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) $OMARCHY_BIN_PATH/omarchy-menu-keybindings ;;
-  *Omarchy*) setsid chromium --new-window --app="https://manuals.omamix.org/2/the-omarchy-manual" & ;;
-  *Hyprland*) setsid chromium --new-window --app="https://wiki.hypr.land/" & ;;
-  *Arch*) setsid chromium --new-window --app="https://wiki.archlinux.org/title/Main_page" & ;;
-  *Bash*) setsid chromium --new-window --app="https://devhints.io/bash" & ;;
-  *Neovim*) setsid chromium --new-window --app="https://www.lazyvim.org/keymaps" & ;;
+  *Omarchy*) open_web "https://manuals.omamix.org/2/the-omarchy-manual" ;;
+  *Hyprland*) open_web "https://wiki.hypr.land/" ;;
+  *Arch*) open_web "https://wiki.archlinux.org/title/Main_page" ;;
+  *Bash*) open_web "https://devhints.io/bash" ;;
+  *Neovim*) open_web "https://www.lazyvim.org/keymaps" ;;
   *) show_main_menu ;;
   esac
 }
@@ -49,7 +72,7 @@ show_style_menu() {
 }
 
 show_theme_menu() {
-  theme=$(menu "Theme" "$($OMARCHY_BIN_PATH/omarchy-theme-list)")
+  theme=$(menu "Theme" "$($OMARCHY_BIN_PATH/omarchy-theme-list)" "" "$($OMARCHY_BIN_PATH/omarchy-theme-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
     show_main_menu
   else
@@ -58,7 +81,7 @@ show_theme_menu() {
 }
 
 show_font_menu() {
-  theme=$(menu "Font" "$($OMARCHY_BIN_PATH/omarchy-font-list)" "-w 350")
+  theme=$(menu "Font" "$($OMARCHY_BIN_PATH/omarchy-font-list)" "-w 350" "$($OMARCHY_BIN_PATH/omarchy-font-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
     show_main_menu
   else
@@ -106,7 +129,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Configs\n󰈷  Fingerprint\n  Fido2"
+  options="$options\n  Config\n󰈷  Fingerprint\n  Fido2"
 
   case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
@@ -116,25 +139,24 @@ show_setup_menu() {
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
-  *Configs*) show_setup_configs_menu ;;
-  *Fingerprint*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
-  *Fido2*) terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
+  *Config*) show_setup_config_menu ;;
+  *Fingerprint*) present_terminal $OMARCHY_BIN_PATH/omarchy-setup-fingerprint ;;
+  *Fido2*) present_terminal $OMARCHY_BIN_PATH/omarchy-setup-fido2 ;;
   *) show_main_menu ;;
   esac
 }
 
 show_setup_power_menu() {
-  current_profile=$(powerprofilesctl get)
-  new_profile=$(menu "Power Profile" "$($OMARCHY_BIN_PATH/omarchy-powerprofiles-list)" "-a '${current_profile}'")
+  profile=$(menu "Power Profile" "$($OMARCHY_BIN_PATH/omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
-  if [[ "$new_profile" == "CNCLD" || -z "$new_profile" ]]; then
+  if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
     show_main_menu
   else
-    powerprofilesctl set "$new_profile"
+    powerprofilesctl set "$profile"
   fi
 }
 
-show_setup_configs_menu() {
+show_setup_config_menu() {
   case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
   *Hyprland*) edit_in_nvim ~/.config/hypr/hyprland.conf ;;
   *Hypridle*) edit_in_nvim ~/.config/hypr/hypridle.conf && ~/.local/share/omarchy/bin/omarchy-restart-hypridle ;;
@@ -149,16 +171,15 @@ show_setup_configs_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n  Editor\n󰸌  Theme\n  Background\n  Font\n  Dropbox\n  Steam\n  Docker DBs") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  Style\n  Editor\n󱚤  AI\n  Dropbox\n  Steam\n  Docker DB") in
   *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-install ;;
-  *Web*) terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
+  *Web*) present_terminal $OMARCHY_BIN_PATH/omarchy-webapp-install ;;
+  *Style*) show_install_style_menu ;;
   *Editor*) show_install_editor_menu ;;
-  *Theme*) terminal $OMARCHY_BIN_PATH/omarchy-theme-install ;;
-  *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
-  *Font*) show_install_font_menu ;;
-  *Dropbox*) terminal $OMARCHY_BIN_PATH/omarchy-setup-dropbox ;;
-  *Steam*) terminal $OMARCHY_BIN_PATH/omarchy-setup-steam ;;
-  *Docker*) terminal $OMARCHY_BIN_PATH/omarchy-setup-docker-dbs ;;
+  *AI*) show_install_ai_menu ;;
+  *Dropbox*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-dropbox ;;
+  *Steam*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-steam ;;
+  *Docker*) present_terminal $OMARCHY_BIN_PATH/omarchy-install-docker-dbs ;;
   *) show_main_menu ;;
   esac
 }
@@ -168,6 +189,27 @@ show_install_editor_menu() {
   *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor-cursor" ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_ai_menu() {
+  case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  Open Code") in
+  *Claude*) install "Claude Code" "claude-code" ;;
+  *Gemini*) install "Gemini" "gemini-cli-bin" ;;
+  *Studio*) install "LM Studio" "lmstudio" ;;
+  *Ollama*) install "Ollama" "ollama" ;;
+  *Crush*) install "Crush" "crush-bin" ;;
+  *Code*) install "Open Code" "opencode-bin" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_style_menu() {
+  case $(menu "Install" "󰸌  Theme\n  Background\n  Font") in
+  *Theme*) present_terminal $OMARCHY_BIN_PATH/omarchy-theme-install ;;
+  *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
+  *Font*) show_install_font_menu ;;
   *) show_install_menu ;;
   esac
 }
@@ -185,25 +227,37 @@ show_install_font_menu() {
 show_remove_menu() {
   case $(menu "Remove" "󰣇  Package\n  Web App\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal $OMARCHY_BIN_PATH/omarchy-pkg-remove ;;
-  *Web*) terminal $OMARCHY_BIN_PATH/omarchy-webapp-remove ;;
+  *Web*) present_terminal $OMARCHY_BIN_PATH/omarchy-webapp-remove ;;
   *Theme*) present_terminal $OMARCHY_BIN_PATH/omarchy-theme-remove ;;
-  *Fingerprint*) terminal "$OMARCHY_BIN_PATH/omarchy-setup-fingerprint --remove" ;;
-  *Fido2*) terminal "$OMARCHY_BIN_PATH/omarchy-setup-fido2 --remove" ;;
+  *Fingerprint*) present_terminal "$OMARCHY_BIN_PATH/omarchy-setup-fingerprint --remove" ;;
+  *Fido2*) present_terminal "$OMARCHY_BIN_PATH/omarchy-setup-fido2 --remove" ;;
   *) show_main_menu ;;
   esac
 }
 
 show_update_menu() {
-  case $(menu "Update" "󰣇  Omarchy\n  Configs\n󰸌  Themes\n  Timezone") in
-  *Omarchy*) terminal $OMARCHY_BIN_PATH/omarchy-update ;;
-  *Configs*) show_update_configs_menu ;;
-  *Themes*) terminal $OMARCHY_BIN_PATH/omarchy-theme-update ;;
+  case $(menu "Update" "󰣇  Omarchy\n  Config\n  Process\n󰸌  Themes\n  Timezone") in
+  *Omarchy*) present_terminal $OMARCHY_BIN_PATH/omarchy-update ;;
+  *Config*) show_update_config_menu ;;
+  *Process*) show_update_process_menu ;;
+  *Themes*) present_terminal $OMARCHY_BIN_PATH/omarchy-theme-update ;;
   *Timezone*) $OMARCHY_BIN_PATH/omarchy-cmd-tzupdate ;;
   *) show_main_menu ;;
   esac
 }
 
-show_update_configs_menu() {
+show_update_process_menu() {
+  case $(menu "Restart" "  Hypridle\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
+  *Hypridle*) $OMARCHY_BIN_PATH/omarchy-restart-hypridle ;;
+  *Hyprsunset*) $OMARCHY_BIN_PATH/omarchy-restart-hyprsunset ;;
+  *Swayosd*) $OMARCHY_BIN_PATH/omarchy-restart-swayosd ;;
+  *Walker*) $OMARCHY_BIN_PATH/omarchy-restart-walker ;;
+  *Waybar*) $OMARCHY_BIN_PATH/omarchy-restart-waybar ;;
+  *) show_main_menu ;;
+  esac
+}
+
+show_update_config_menu() {
   case $(menu "Use default config" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n󱣴  Plymouth\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
   *Hyprland*) present_terminal $OMARCHY_BIN_PATH/omarchy-refresh-hyprland ;;
   *Hypridle*) present_terminal $OMARCHY_BIN_PATH/omarchy-refresh-hypridle ;;
@@ -219,7 +273,7 @@ show_update_configs_menu() {
 
 show_system_menu() {
   case $(menu "System" "  Lock\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
-  *Lock*) hyprlock ;;
+  *Lock*) $OMARCHY_BIN_PATH/omarchy-lock-screen ;;
   *Suspend*) systemctl suspend ;;
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;

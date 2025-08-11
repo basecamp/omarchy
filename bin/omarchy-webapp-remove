@@ -4,8 +4,6 @@ ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications/"
 
 if [ "$#" -ne 1 ]; then
-  ~/.local/share/omarchy/bin/omarchy-show-logo
-
   # Find all web apps
   while IFS= read -r -d '' file; do
     if grep -q '^Exec=.*chromium.*--app' "$file"; then
@@ -35,5 +33,4 @@ rm "$ICON_DIR/$APP_NAME.png"
 
 if [ "$#" -ne 1 ]; then
   echo -e "Removed $APP_NAME\n"
-  ~/.local/share/omarchy/bin/omarchy-show-done
 fi

@@ -32,7 +32,7 @@ if [[ -f "$user_config_file" ]]; then
     rm "$backup_config_file"
   else
     echo -e "\e[31mReplaced $user_config_file with new Omarchy default.\nSaved backup as ${backup_config_file}.\n\n\e[32mChanges:\e[0m"
-    diff "$user_config_file" "$backup_config_file"
+    diff "$user_config_file" "$backup_config_file" || true
   fi
 else
   # Config file did not exist already

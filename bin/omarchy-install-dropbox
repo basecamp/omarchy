@@ -1,7 +1,5 @@
 #!/bin/bash
 
-~/.local/share/omarchy/bin/omarchy-show-logo
-
 echo "Installing all dependencies..."
 yay -S --noconfirm --needed \
   dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
@@ -9,5 +7,3 @@ yay -S --noconfirm --needed \
 echo "Starting Dropbox..."
 uwsm app -- dropbox-cli start &>/dev/null &
 echo "See Dropbox icon behind   hover tray in top right and right-click for setup."
-
-~/.local/share/omarchy/bin/omarchy-show-done
