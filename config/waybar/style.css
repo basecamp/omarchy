@@ -37,8 +37,7 @@
 #bluetooth,
 #pulseaudio,
 #clock,
-#custom-omarchy,
-#custom-notification-status {
+#custom-omarchy {
   min-width: 12px;
   margin: 0 7.5px;
 }
@@ -51,16 +50,26 @@ tooltip {
   padding: 2px;
 }
 
-#custom-notification-status {
-  font-size: 14px;
-  margin-right: 3px;
+#custom-status-dnd,
+#custom-status-nightlight, 
+#custom-status-recording,
+#custom-status-idle {
+  min-width: 12px;
+  margin: 0 2px;
+  font-size: 10px;
 }
 
-#custom-notification-status.status-cluster {
-  color: #f38ba8;
+#custom-status-dnd.status-dnd,
+#custom-status-nightlight.status-nightlight,
+#custom-status-idle.status-idle {
   opacity: 1;
 }
 
-#custom-notification-status.hidden {
-  display: none;
+#custom-status-recording.status-recording {
+  color: #a55555;
+  opacity: 1;
+}
+
+.hidden {
+  opacity: 0;
 }

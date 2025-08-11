@@ -9,7 +9,7 @@
     "hyprland/workspaces"
   ],
   "modules-center": [
-    "custom/notification-status",
+    "group/status-cluster",
     "clock",
     "custom/update"
   ],
@@ -57,13 +57,7 @@
     "tooltip-format": "Omarchy update available",
     "interval": 3600
   },
-  "custom/notification-status": {
-    "exec": "~/.local/share/omarchy/bin/omarchy-notification-status",
-    "return-type": "json",
-    "interval": 2,
-    "on-click": "makoctl mode -t do-not-disturb",
-    "tooltip": true
-  },
+
   "cpu": {
     "interval": 5,
     "format": "󰍛",
@@ -138,6 +132,37 @@
       "custom/expand-icon",
     "tray"
     ]
+  },
+  "group/status-cluster": {
+    "orientation": "inherit",
+    "modules": [
+      "custom/status-dnd",
+      "custom/status-nightlight", 
+      "custom/status-recording",
+      "custom/status-idle"
+    ]
+  },
+  "custom/status-dnd": {
+    "exec": "~/.local/share/omarchy/bin/omarchy-status-daemon dnd",
+    "return-type": "json",
+    "interval": 2,
+    "on-click": "makoctl mode -t do-not-disturb"
+  },
+  "custom/status-nightlight": {
+    "exec": "~/.local/share/omarchy/bin/omarchy-status-daemon nightlight", 
+    "return-type": "json",
+    "interval": 2,
+    "on-click": "~/.local/share/omarchy/bin/omarchy-toggle-nightlight"
+  },
+  "custom/status-recording": {
+    "exec": "~/.local/share/omarchy/bin/omarchy-status-daemon recording",
+    "return-type": "json", 
+    "interval": 2
+  },
+  "custom/status-idle": {
+    "exec": "~/.local/share/omarchy/bin/omarchy-status-daemon idle",
+    "return-type": "json",
+    "interval": 2
   },
   "custom/expand-icon": {
     "format": " ",

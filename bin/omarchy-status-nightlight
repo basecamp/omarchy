@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # Nightlight status indicator
+
 if pgrep -x hyprsunset >/dev/null 2>&1; then
   temp=$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+')
   if [ -n "$temp" ] && [ "$temp" -lt 6000 ]; then
-    echo '{"text": "◐", "tooltip": "Night light active", "class": "status-nightlight"}'
+    echo '{"text": "󰔎", "tooltip": "Night light active", "class": "status-nightlight"}'
   else
     echo '{"text": "", "tooltip": "", "class": "hidden"}'
   fi

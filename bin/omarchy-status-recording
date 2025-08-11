@@ -1,8 +1,9 @@
 #!/bin/bash
 
-# Screen recording status indicator
+# Recording status indicator
+
 if pgrep -x wf-recorder >/dev/null 2>&1 || pgrep -x obs >/dev/null 2>&1 || pgrep -f "ffmpeg.*screen" >/dev/null 2>&1; then
-  echo '{"text": "●", "tooltip": "Screen recording active", "class": "status-recording"}'
+  echo '{"text": "󰻂", "tooltip": "Screen recording active", "class": "status-recording"}'
 else
   echo '{"text": "", "tooltip": "", "class": "hidden"}'
 fi
