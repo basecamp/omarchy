@@ -171,7 +171,7 @@ show_setup_config_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
   *Service*) show_install_service_menu ;;
@@ -179,14 +179,14 @@ show_install_menu() {
   *Development*) show_install_development_menu ;;
   *Editor*) show_install_editor_menu ;;
   *AI*) show_install_ai_menu ;;
+  *Gaming*) show_install_gaming_menu ;;
   *) show_main_menu ;;
   esac
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Steam\n  Tailscale") in
+  case $(menu "Install" "  Dropbox\n  Tailscale") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
-  *Steam*) present_terminal omarchy-install-steam ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
   *) show_install_menu ;;
   esac
@@ -211,6 +211,15 @@ show_install_ai_menu() {
   *Ollama*) install "Ollama" "ollama" ;;
   *Crush*) install "Crush" "crush-bin" ;;
   *opencode*) install "opencode" "opencode-bin" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_gaming_menu() {
+  case $(menu "Install" "  Steam\n  RetroArch\n󰍳  Minecraft") in
+  *Steam*) present_terminal omarchy-install-steam ;;
+  *RetroArch*) install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
+  *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
   *) show_install_menu ;;
   esac
 }
