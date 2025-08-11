@@ -36,6 +36,7 @@
 #network,
 #bluetooth,
 #pulseaudio,
+#power-profiles-daemon,
 #clock,
 #custom-omarchy {
   min-width: 12px;

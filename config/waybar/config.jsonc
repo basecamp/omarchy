@@ -10,7 +10,8 @@
   ],
   "modules-center": [
     "clock",
-    "custom/update"
+    "custom/update",
+    "power-profiles-daemon"
   ],
   "modules-right": [
     "group/tray-expander",
@@ -20,6 +21,20 @@
     "cpu",
     "battery"
   ],
+
+  "power-profiles-daemon": {
+    "format": "{icon}",
+    "tooltip-format": "Power profile: {profile}\nDriver: {driver}",
+    "tooltip": true,
+    "format-icons": {
+      "default": "\uf0e7",
+      "performance": "\uf0e7",
+      "balanced": "\uf24e",
+      "power-saver": "\uf06c"
+    },
+    "class": true
+  },
+
   "hyprland/workspaces": {
     "on-click": "activate",
     "format": "{icon}",
