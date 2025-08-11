@@ -36,8 +36,8 @@
 #network,
 #bluetooth,
 #pulseaudio,
-#clock,
-#custom-omarchy {
+#custom-omarchy,
+#custom-update {
   min-width: 12px;
   margin: 0 7.5px;
 }
@@ -48,6 +48,18 @@
 
 tooltip {
   padding: 2px;
+}
+
+#custom-update {
+  font-size: 10px;
+}
+
+#clock {
+  margin-left: 8.75px;
+}
+
+#group-status-cluster {
+  margin-right: 8.75px;
 }
 
 #custom-status-dnd,
