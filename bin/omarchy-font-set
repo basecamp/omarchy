@@ -12,8 +12,9 @@ if [[ -n "$font_name" && "$font_name" != "CNCLD" ]]; then
       -v "$font_name" \
       ~/.config/fontconfig/fonts.conf
 
-    ~/.local/share/omarchy/bin/omarchy-restart-waybar
-    ~/.local/share/omarchy/bin/omarchy-restart-swayosd
+    omarchy-restart-waybar
+    omarchy-restart-swayosd
+    omarchy-restart-walker
   else
     echo "Font '$font_name' not found."
     exit 1

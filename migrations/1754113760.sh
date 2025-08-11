@@ -6,5 +6,5 @@ if ! grep -q 'on_unlock_cmd *= *omarchy-restart-waybar' ~/.config/hypr/hypridle.
     on_unlock_cmd = omarchy-restart-waybar  # prevent stacking of waybar when waking' \
     ~/.config/hypr/hypridle.conf
 
-  ~/.local/share/omarchy/bin/omarchy-restart-waybar
+  omarchy-restart-waybar
 fi
