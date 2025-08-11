@@ -1,7 +1,7 @@
 #!/bin/bash
 
 abort() {
-  echo -e "\e[31mOmarchy requires a fresh vanilla Arch install and running as user.\e[0m"
+  echo -e "\e[31mOmarchy requires a fresh vanilla Arch install and running on x86_64 as user.\e[0m"
   gum confirm "Proceed anyway on your own accord and without assistance?" || exit 1
 }
 
@@ -13,7 +13,11 @@ for marker in /etc/cachyos-release /etc/eos-release /etc/garuda-release /etc/man
   [[ -f "$marker" ]] && abort
 done
 
+# Must not be runnig as root
 [ "$EUID" -eq 0 ] && abort
+
+# Must be x86 only to fully work
+[ "$(uname -m)" != "x86_64" ] && abort
 
 # Must not have Gnome or KDE already install
 pacman -Qe gnome-shell &>/dev/null && abort
