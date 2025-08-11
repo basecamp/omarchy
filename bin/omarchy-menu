@@ -195,7 +195,7 @@ show_install_service_menu() {
 show_install_editor_menu() {
   case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix") in
   *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
-  *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor-cursor" ;;
+  *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
   *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) install_and_launch "Helix" "helix" "helix" ;;
