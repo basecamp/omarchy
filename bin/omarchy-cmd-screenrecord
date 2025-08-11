@@ -15,6 +15,9 @@ screenrecording() {
 
   if lspci | grep -qi 'nvidia'; then
     wf-recorder -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@"
+  elif lspci | grep -qi 'intel.*graphics'; then
+    # Use wf-recorder for Intel graphics due to wl-screenrec VAAPI issues
+    wf-recorder -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@"
   else
     wl-screenrec -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@"
   fi
