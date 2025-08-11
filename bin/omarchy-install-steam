@@ -6,4 +6,4 @@ sudo pacman -Sy
 
 echo "Now pick dependencies matching your graphics card"
 yay -S steam
-gtk-launch steam >/dev/null 2>&1 &
+setsid gtk-launch steam >/dev/null 2>&1 &
