@@ -6,7 +6,8 @@
   "height": 26,
   "modules-left": [
     "custom/omarchy",
-    "hyprland/workspaces"
+    "hyprland/workspaces",
+    "group/media-controls"
   ],
   "modules-center": [
     "clock",
@@ -138,5 +139,25 @@
   "tray": {
     "icon-size": 12,
     "spacing": 12
+  },
+  "group/media-controls": {
+    "orientation": "horizontal",
+    "modules": [
+      "custom/playpause",
+      "custom/next",
+      "custom/media"
+    ]
+  },
+  "custom/playpause": {
+    "exec": "~/work/omarchy/config/waybar/media-controls/playpause.sh",
+    "return-type": "json",
+    "on-click": "playerctl play-pause",
+    "interval": 1
+  },
+  "custom/media": {
+    "exec": "~/work/omarchy/config/waybar/media-controls/mediaplayer.sh",
+    "return-type": "json",
+    "interval": 1,
+    "max-length": 50
   }
 }
