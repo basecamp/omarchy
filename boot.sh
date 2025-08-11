@@ -31,5 +31,4 @@ if [[ -n "$OMARCHY_REF" ]]; then
   cd -
 fi
 
-echo -e "\nInstallation starting..."
 source ~/.local/share/omarchy/install.sh

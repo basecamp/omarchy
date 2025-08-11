@@ -1,85 +1,59 @@
 #!/bin/bash
-
-# Exit immediately if a command exits with a non-zero status
-set -e
+set -eE
 
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 OMARCHY_INSTALL=~/.local/share/omarchy/install
+JOURNAL_TAG="omarchy-install"
 
-# Give people a chance to retry running the installation
-catch_errors() {
-  echo -e "\n\e[31mOmarchy installation failed!\e[0m"
-  echo "You can retry by running: bash ~/.local/share/omarchy/install.sh"
-  echo "Get help from the community: https://discord.gg/tXFUdasqhY"
+INSTALL_START_TIME=$(date +%s)
+echo "Omarchy installation started at $(date)" | systemd-cat -t "$JOURNAL_TAG" -p info
+
+catch_preflight_errors() {
+  echo -e "\n\e[31mOmarchy preflight failed!\e[0m"
+  echo "Check the logs with: journalctl -t $JOURNAL_TAG -n 20"
+  journalctl -t "$JOURNAL_TAG" -n 20 --no-pager
+  exit 1
 }
+trap catch_preflight_errors ERR
 
-trap catch_errors ERR
+echo "Loading installer experience..."
 
-show_logo() {
-  clear
-  tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
-  echo
-}
+# Find and execute all .sh files in the preflight directory
+if [[ -d "$OMARCHY_INSTALL/preflight" ]]; then
+  while IFS= read -r script; do
+    script_name=$(basename "$script")
+    start_time=$(date +%s)
+    echo "Starting: Preflight: $script_name" | systemd-cat -t "$JOURNAL_TAG" -p info
+    bash "$script" 2>&1 | systemd-cat -t "$JOURNAL_TAG" -p info
+    end_time=$(date +%s)
+    duration=$((end_time - start_time))
+    echo "Completed: Preflight: $script_name (${duration}s)" | systemd-cat -t "$JOURNAL_TAG" -p info
+  done < <(find "$OMARCHY_INSTALL/preflight" -name "*.sh" -type f | sort)
+fi
 
-show_subtext() {
-  echo "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
-  echo
-}
+# Adjust font size based on detected resolution
+FONT_SIZE=12 # Default
+if [[ -r /sys/class/graphics/fb0/virtual_size ]]; then
+  IFS=',' read -r WIDTH HEIGHT </sys/class/graphics/fb0/virtual_size
+  if [[ $HEIGHT -ge 1440 ]]; then
+    FONT_SIZE=14
+  elif [[ $HEIGHT -ge 2160 ]]; then
+    FONT_SIZE=18
+  fi
+fi
 
-# Install prerequisites
-source $OMARCHY_INSTALL/preflight/aur.sh
-source $OMARCHY_INSTALL/preflight/presentation.sh
-source $OMARCHY_INSTALL/preflight/migrations.sh
+# Pass TEST_MODE if set (can be set when calling this script: TEST_MODE=true ./install-cage.sh)
+TEST_MODE="${TEST_MODE:-false}"
 
-# Configuration
-show_logo beams 240
-show_subtext "Let's install Omarchy! [1/5]"
-source $OMARCHY_INSTALL/config/identification.sh
-source $OMARCHY_INSTALL/config/config.sh
-source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
-source $OMARCHY_INSTALL/config/fix-fkeys.sh
-source $OMARCHY_INSTALL/config/network.sh
-source $OMARCHY_INSTALL/config/power.sh
-source $OMARCHY_INSTALL/config/timezones.sh
-source $OMARCHY_INSTALL/config/login.sh
-source $OMARCHY_INSTALL/config/nvidia.sh
+MAIN_INSTALLER="${OMARCHY_INSTALL%/install}/install-main.sh"
 
-# Development
-show_logo decrypt 920
-show_subtext "Installing terminal tools [2/5]"
-source $OMARCHY_INSTALL/development/terminal.sh
-source $OMARCHY_INSTALL/development/development.sh
-source $OMARCHY_INSTALL/development/nvim.sh
-source $OMARCHY_INSTALL/development/ruby.sh
-source $OMARCHY_INSTALL/development/docker.sh
-source $OMARCHY_INSTALL/development/firewall.sh
+OMARCHY_USER_NAME="$OMARCHY_USER_NAME" OMARCHY_USER_EMAIL="$OMARCHY_USER_EMAIL" TEST_MODE="$TEST_MODE" \
+  cage -- alacritty \
+  --config-file ~/.local/share/omarchy/themes/tokyo-night/alacritty.toml \
+  -o font.size=$FONT_SIZE \
+  -o 'font.normal.family="CaskaydiaMono Nerd Font"' \
+  -e bash "$MAIN_INSTALLER" 2>&1 | systemd-cat -t "$JOURNAL_TAG" -p info
 
-# Desktop
-show_logo slice 60
-show_subtext "Installing desktop tools [3/5]"
-source $OMARCHY_INSTALL/desktop/desktop.sh
-source $OMARCHY_INSTALL/desktop/hyprlandia.sh
-source $OMARCHY_INSTALL/desktop/theme.sh
-source $OMARCHY_INSTALL/desktop/bluetooth.sh
-source $OMARCHY_INSTALL/desktop/asdcontrol.sh
-source $OMARCHY_INSTALL/desktop/fonts.sh
-source $OMARCHY_INSTALL/desktop/printer.sh
-
-# Apps
-show_logo expand
-show_subtext "Installing default applications [4/5]"
-source $OMARCHY_INSTALL/apps/webapps.sh
-source $OMARCHY_INSTALL/apps/xtras.sh
-source $OMARCHY_INSTALL/apps/mimetypes.sh
-
-# Updates
-show_logo highlight
-show_subtext "Updating system packages [5/5]"
-sudo updatedb
-sudo pacman -Syu --noconfirm
-
-# Reboot
-show_logo laseretch 920
-show_subtext "You're done! So we'll be rebooting now..."
-sleep 2
-reboot
+INSTALL_END_TIME=$(date +%s)
+TOTAL_DURATION=$((INSTALL_END_TIME - INSTALL_START_TIME))
+echo "Omarchy installation completed at $(date) - Total time: ${TOTAL_DURATION}s" | systemd-cat -t "$JOURNAL_TAG" -p info
