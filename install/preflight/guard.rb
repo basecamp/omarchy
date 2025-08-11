@@ -1,8 +1,8 @@
 #!/bin/bash
 
 abort() {
-  echo -e "\e[31mOmarchy is only designed for a fresh Arch install!\e[0m"
-  exit 1
+  echo -e "\e[31mOmarchy requires a fresh vanilla Arch install running as user.\e[0m"
+  gum confirm "Proceed anyway on your own accord and without assistance?" || exit 1
 }
 
 # Must be an Arch distro
@@ -12,6 +12,8 @@ abort() {
 for marker in /etc/cachyos-release /etc/eos-release /etc/garuda-release /etc/manjaro-release; do
   [[ -f "$marker" ]] && abort
 done
+
+[ "$EUID" -eq 0 ] && abort
 
 # Must not have Gnome or KDE already install
 pacman -Qe gnome-shell &>/dev/null && abort
