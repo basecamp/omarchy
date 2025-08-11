@@ -14,13 +14,8 @@ force_keyboard_focus = true
 
 [keys]
 accept_typeahead = ["tab", "ctrl y"]
-trigger_labels = "lalt"
 next = ["down", "ctrl j", "ctrl n"]
 prev = ["up", "ctrl k", "ctrl p"]
-close = ["esc"]
-remove_from_history = ["shift backspace"]
-resume_query = ["ctrl r"]
-toggle_exact_search = ["ctrl m"]
 
 [keys.activation_modifiers]
 keep_open = "shift"
