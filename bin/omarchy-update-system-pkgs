@@ -1,5 +1,5 @@
 #!/bin/bash
 
 echo -e "\e[32m\nUpdate system packages\e[0m"
-yay -Syu --noconfirm
+yay -Syu --noconfirm --ignore uwsm
 echo
