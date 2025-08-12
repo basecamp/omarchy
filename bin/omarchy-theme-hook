@@ -24,26 +24,13 @@ fi
 # Add a security warning
 echo -e "\n\n\033[1;31m⚠️ WARNING: Running this script can execute any command and modify your system.\033[0m"
 echo "You should only proceed if you have reviewed the script and trust the theme author."
-
-read -p "Would you like to review the contents of '$HOOK_NAME' now? (y/N) " -n 1 -r
 echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-  echo
-  echo -e "--- Contents of $HOOK_NAME ---"
-  cat -n "$HOOK_SCRIPT"
-  echo "----------------------------"
-fi
+
+gum confirm "Would you like to review the contents of '$HOOK_NAME' now?" && cat -n "$HOOK_SCRIPT"
 
 # Ask for consent
-read -p "Do you want to run the theme's ${ACTION_NAME} script? (y/N) " -n 1 -r
 echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  echo "👍 Skipping the ${ACTION_NAME} script."
-  exit 0
-fi
-
-echo
-echo -e "Running $HOOK_NAME..."
+gum confirm "Do you want to run the theme's ${ACTION_NAME} script?" && echo "Running $HOOK_NAME..." || exit 0
 
 # Ensure the script is executable
 chmod +x "$HOOK_SCRIPT"
