@@ -50,3 +50,8 @@ transcode-video-4K() {
 transcode-png2jpg() {
   magick $1 -quality 95 -strip ${1%.*}.jpg
 }
+
+# Transcode PNG to JPG image that's great for sharing online without being too big
+transcode-png2jpg-1080() {
+  magick $1 -resize 1080x\> -quality 95 -strip ${1%.*}.jpg
+}

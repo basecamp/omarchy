@@ -8,10 +8,10 @@ if command -v tte &>/dev/null; then
       --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
       "$effect" &
 
-    while pgrep tte >/dev/null; do
+    while pgrep -x tte >/dev/null; do
       if read -n 1 -t 0.01; then
         hyprctl keyword cursor:inactive_timeout 0 &>/dev/null
-        pkill tte 2>/dev/null
+        pkill -x tte 2>/dev/null
         pkill -f "alacritty --class Screensaver" 2>/dev/null
         exit 0
       fi
