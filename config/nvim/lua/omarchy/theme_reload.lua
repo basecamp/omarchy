@@ -1,16 +1,22 @@
 local M = {}
 
--- Variable to store the last known theme symlink target
+-- Store the last known theme symlink target
 local last_theme_target = nil
 
--- Function to reload the theme based on Omarchy's current theme
-local function ReloadTheme()
+-- Check if light.mode file exists
+local function check_mode()
+  local mode_path = vim.fn.expand("~/.config/omarchy/current/theme/light.mode")
+  return vim.fn.filereadable(mode_path) == 1
+end
+
+-- Reload the theme based on Omarchy's current theme
+function M.reload_theme()
   local theme_dir = vim.fn.resolve(vim.fn.expand("~/.config/omarchy/current/theme"))
   local theme_config = theme_dir .. "/neovim.lua"
 
   -- Check if the theme directory has changed
   if theme_dir == last_theme_target then
-    return -- No change, skip reload
+    return
   end
 
   if vim.fn.filereadable(theme_config) == 1 then
@@ -19,14 +25,14 @@ local function ReloadTheme()
       print("Error loading theme: " .. result)
       return
     end
-    -- Check if result is a table
+
     if type(result) == "table" then
-      -- Look for LazyVim opts with colorscheme and background
+      -- Look for LazyVim opts with colorscheme
       for _, entry in ipairs(result) do
         if entry[1] == "LazyVim/LazyVim" and entry.opts then
-          -- Set background if specified, defaults to dark
-          local background = entry.opts.background
-          vim.o.background = (background == "light" or background == "dark") and background or "dark"
+          -- Set background based on light.mode file
+          vim.o.background = check_mode() and "light" or "dark"
+
           -- Set colorscheme
           if entry.opts.colorscheme then
             vim.cmd("hi clear")
@@ -36,7 +42,7 @@ local function ReloadTheme()
               return
             end
             vim.cmd("redraw!")
-            last_theme_target = theme_dir -- Update last known target
+            last_theme_target = theme_dir
             return
           end
         end
@@ -52,17 +58,15 @@ end
 
 function M.setup()
   -- Load the theme on startup
-  ReloadTheme()
+  M.reload_theme()
 
-  -- Reload theme on SIGUSR1 signal
+  -- Reload theme on custom User event
   vim.api.nvim_create_autocmd("User", {
     pattern = "OmarchyThemeReload",
-    callback = function()
-      ReloadTheme()
-    end,
+    callback = M.reload_theme,
   })
 
-  -- Set up SIGUSR1 handler using vim.loop
+  -- Set up SIGUSR1 handler
   local uv = vim.loop
   local signal = uv.new_signal()
   uv.signal_start(signal, "sigusr1", function()
