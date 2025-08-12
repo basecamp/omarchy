@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Install build tools
+sudo pacman -Sy --needed --noconfirm base-devel
+
 # Only add Chaotic-AUR if the architecture is x86_64 so ARM users can build the packages
 if [[ "$(uname -m)" == "x86_64" ]] && ! command -v yay &>/dev/null; then
   # Try installing Chaotic-AUR keyring and mirrorlist
@@ -23,8 +26,6 @@ fi
 
 # Manually install yay from AUR if not already available
 if ! command -v yay &>/dev/null; then
-  # Install build tools
-  sudo pacman -Sy --needed --noconfirm base-devel
   cd /tmp
   rm -rf yay-bin
   git clone https://aur.archlinux.org/yay-bin.git
