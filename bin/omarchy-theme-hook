@@ -24,8 +24,8 @@ fi
 # Add a security warning
 echo -e "\n\n\033[1;31m⚠️ WARNING: Running this script can execute any command and modify your system.\033[0m"
 echo "You should only proceed if you have reviewed the script and trust the theme author."
-echo
 
+echo
 gum confirm "Would you like to review the contents of '$HOOK_NAME' now?" && cat -n "$HOOK_SCRIPT"
 
 # Ask for consent
