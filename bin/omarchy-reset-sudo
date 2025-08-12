@@ -1,12 +1,4 @@
 #!/bin/bash
+
 echo "Resetting sudo lockout for user: $USER"
-
-# Use su to get root privileges and run faillock reset
 su -c "faillock --reset --user $USER"
-
-if [ $? -eq 0 ]; then
-    echo "✓ Sudo lockout reset successfully for user: $USER"
-else
-    echo "✗ Failed to reset sudo lockout"
-    exit 1
-fi
