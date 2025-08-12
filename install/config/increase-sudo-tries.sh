@@ -1,2 +1,2 @@
-echo "Defaults passwd_tries=10" > /etc/sudoers.d/00-passwd-tries
-chmod 440 /etc/sudoers.d/00-passwd-tries
+echo "Defaults passwd_tries=10" | sudo tee /etc/sudoers.d/passwd-tries
+sudo chmod 440 /etc/sudoers.d/passwd-tries
