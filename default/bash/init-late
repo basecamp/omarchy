@@ -1,0 +1,5 @@
+# Tools that need to be initialized at the end of shell configuration
+
+if command -v zoxide &> /dev/null; then
+  eval "$(zoxide init bash)"
+fi
