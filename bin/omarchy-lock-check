@@ -1,0 +1,25 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Usage: omarchy-lock-check <value>
+# Exit codes: 0 exists, 1 not found, 2 usage/validation error
+
+if [[ $# -ne 1 ]]; then
+	exit 2
+fi
+
+value="$1"
+
+# Validate value to avoid traversal or weird chars
+if [[ ! "$value" =~ ^[A-Za-z0-9._-]+$ ]]; then
+	exit 2
+fi
+
+lock_file="$HOME/.local/state/omarchy/locks/${value}.config-lock"
+
+if [[ -f "$lock_file" ]]; then
+	exit 0
+else
+	exit 1
+fi
