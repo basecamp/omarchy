@@ -26,6 +26,11 @@ show_subtext() {
   echo
 }
 
+# `gum` is required from the beginning, so ensure it is installed.
+if ! command -v gum &>/dev/null; then
+  pacman -S --noconfirm gum
+fi
+
 # Install prerequisites
 source $OMARCHY_INSTALL/preflight/guard.sh
 source $OMARCHY_INSTALL/preflight/aur.sh
