@@ -1,3 +1,3 @@
 #!/bin/bash
 
-~/.local/share/omarchy/bin/omarchy-refresh-config hypr/hyprlock.conf
+omarchy-refresh-config hypr/hyprlock.conf
