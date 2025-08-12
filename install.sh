@@ -77,7 +77,7 @@ source $OMARCHY_INSTALL/apps/mimetypes.sh
 show_logo highlight
 show_subtext "Updating system packages [5/5]"
 sudo updatedb
-sudo pacman -Syu --noconfirm
+yay -Syu --noconfirm --ignore uwsm
 
 # Reboot
 show_logo laseretch 920
