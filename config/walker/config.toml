@@ -10,6 +10,7 @@ run_last_response = ["ctrl e"]
 
 [list]
 max_entries = 200
+cycle = true
 
 [search]
 placeholder = " Search..."
