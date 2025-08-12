@@ -129,7 +129,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Config\n󰈷  Fingerprint\n  Fido2"
+  options="$options\n  Config\n  Lock Configs\n󰈷  Fingerprint\n  Fido2"
 
   case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
@@ -139,6 +139,7 @@ show_setup_menu() {
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
+  *Lock\ Configs*) show_config_lock_menu ;;
   *Config*) show_setup_config_menu ;;
   *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
   *Fido2*) present_terminal omarchy-setup-fido2 ;;
@@ -333,6 +334,14 @@ show_system_menu() {
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
+  *) show_main_menu ;;
+  esac
+}
+
+show_config_lock_menu() {
+  case $(menu "Lock Configs" "󰍜  Waybar\n  Hypridle") in
+  *Waybar*) omarchy-lock waybar ;;
+  *Hypridle*) omarchy-lock hypridle ;;
   *) show_main_menu ;;
   esac
 }
