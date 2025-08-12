@@ -47,6 +47,28 @@ if [ -d "/boot/loader/entries" ]; then # systemd-boot
       fi
     fi
   done
+elif [ -f "/boot/limine/limine.conf" ] || [ -f "/boot/EFI/limine/limine.conf" ]; then # Limine
+  echo "Detected Limine"
+
+  # Determine which Limine config file exists
+  if [ -f "/boot/limine/limine.conf" ]; then
+    limine_config="/boot/limine/limine.conf"
+  else
+    limine_config="/boot/EFI/limine/limine.conf"
+  fi
+
+  # Backup Limine config before modifying
+  backup_timestamp=$(date +"%Y%m%d%H%M%S")
+  sudo cp "$limine_config" "${limine_config}.bak.${backup_timestamp}"
+
+  # Check if splash is already present in cmdline entries
+  if ! grep -q "cmdline:.*splash" "$limine_config"; then
+    # Add quiet splash only to non-fallback cmdline entries
+    sudo sed -i '/^\/.*fallback/,/^\//{b}; /cmdline:/{/quiet/!s/$/ quiet/; /splash/!s/$/ splash/}' "$limine_config"
+    echo "Added quiet splash parameters to Limine configuration"
+  else
+    echo "Limine already configured with quiet splash kernel parameters"
+  fi
 elif [ -f "/etc/default/grub" ]; then # Grub
   echo "Detected grub"
 
