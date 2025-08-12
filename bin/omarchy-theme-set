@@ -39,6 +39,41 @@ else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
 
+# Set Zed theme if installed (check for both zed and zeditor commands)
+if (command -v zed &>/dev/null || command -v zeditor &>/dev/null) && [[ -f "$THEME_PATH/zed.json" ]]; then
+  mkdir -p ~/.config/zed/themes
+  ln -nsf "$THEME_PATH/zed.json" ~/.config/zed/themes/omarchy-current.json
+  
+  # Update Zed's settings.json to trigger theme reload
+  ZED_SETTINGS="$HOME/.config/zed/settings.json"
+  if [[ -f "$ZED_SETTINGS" ]]; then
+    # Use Python to safely update the JSON
+    python3 -c "
+import json
+import sys
+
+settings_file = '$ZED_SETTINGS'
+try:
+    with open(settings_file, 'r') as f:
+        settings = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    settings = {}
+
+# Update theme setting
+settings['theme'] = 'Omarchy Current'
+
+# Write back with nice formatting
+with open(settings_file, 'w') as f:
+    json.dump(settings, f, indent=2)
+" 2>/dev/null || true
+  else
+    # Create new settings.json with theme
+    echo '{
+  "theme": "Omarchy Current"
+}' > "$ZED_SETTINGS"
+  fi
+fi
+
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 

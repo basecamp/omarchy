@@ -36,3 +36,9 @@ ln -snf ~/.config/omarchy/current/theme/btop.theme ~/.config/btop/themes/current
 
 mkdir -p ~/.config/mako
 ln -snf ~/.config/omarchy/current/theme/mako.ini ~/.config/mako/config
+
+# Setup Zed theme link if Zed is installed (check for both zed and zeditor commands)
+if command -v zed &>/dev/null || command -v zeditor &>/dev/null; then
+  mkdir -p ~/.config/zed/themes
+  ln -snf ~/.config/omarchy/current/theme/zed.json ~/.config/zed/themes/omarchy-current.json
+fi
