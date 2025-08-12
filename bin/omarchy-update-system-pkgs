@@ -1,5 +1,6 @@
 #!/bin/bash
 
 echo -e "\e[32m\nUpdate system packages\e[0m"
-yay -Syu --noconfirm --ignore uwsm
+sudo pacman -Syu --ignore uwsm     # Upgrade official packages first
+yay -Syu --noconfirm --ignore uwsm # Upgrade AUR second
 echo
