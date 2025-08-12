@@ -1,5 +1,12 @@
 #!/bin/bash
 
+set -euo pipefail
+
+# Skip refresh if locked
+if omarchy-lock-check waybar; then
+	exit 0
+fi
+
 omarchy-refresh-config waybar/config.jsonc
 omarchy-refresh-config waybar/style.css
 omarchy-restart-waybar
