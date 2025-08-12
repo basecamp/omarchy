@@ -1,3 +1,3 @@
 #!/bin/bash
 
-yay -S --noconfirm --needed gum
+pacman -S --noconfirm --needed gum
