@@ -16,11 +16,24 @@ OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.conf"
 #    - It joins the command that the key executes.
 #    - It prints everything in a nicely aligned format.
 # 4. The final `sed` cleans up any leftover commas from the end of lines.
-echo "nm-connection-editor              Open NetworkManager
-nmcli device wifi list            List available Wi-Fi networks
-nmcli connection show             Show all network connections
+COMMANDS="nm-connection-editor              Open NetworkManager
+nmcli device wifi list            [out] List available Wi-Fi networks
+nmcli connection show             [out] Show all network connections
 nmcli connection up <name>        Connect to a network by name
 nmcli connection down <name>      Disconnect from a network by name
 nmcli radio wifi off              Turn off Wi-Fi
-nmcli radio wifi on               Turn on Wi-Fi" |
-  flock --nonblock /tmp/.wofi.lock -c "wofi -dmenu -i --width 60% --height 70% -p 'Useful commands' -O alphabetical"
+nmcli radio wifi on               Turn on Wi-Fi"
+
+chosen=$(echo -e "$COMMANDS" | flock --nonblock /tmp/.wofi.lock -c "wofi -dmenu -i --width 60% --height 70% -p 'Useful commands' -O alphabetical")
+
+if [ -z "$chosen" ]; then
+  exit 0
+fi
+
+command_to_run=$(echo "$chosen" | sed -e 's/\[out\]//' -e 's/  .*//')
+
+if echo "$chosen" | grep -q "\[out\]"; then
+  alacritty -e bash -c "$command_to_run; echo; read -p 'Press any key to exit...'"
+else
+  eval "$command_to_run"
+fi
