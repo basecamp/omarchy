@@ -116,11 +116,12 @@ show_screenrecord_menu() {
 }
 
 show_toggle_menu() {
-  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
+  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n🔐 SSH Agent") in
   *Screensaver*) omarchy-launch-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
   *Bar*) pkill -SIGUSR1 waybar ;;
+  *SSH*) omarchy-toggle-ssh-agent ;;
   *) show_main_menu ;;
   esac
 }
