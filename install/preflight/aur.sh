@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Only add Chaotic-AUR if the architecture is x86_64 so ARM users can build the packages
-if [[ "$(uname -m)" == "x86_64" ]] && ! command -v yay &>/dev/null; then
+if [[ "$(uname -m)" == "x86_64" ]] && [ -z "$DISABLE_CHAOTIC" ] && ! command -v yay &>/dev/null; then
   # Try installing Chaotic-AUR keyring and mirrorlist
   if ! pacman-key --list-keys 3056513887B78AEB >/dev/null 2>&1 &&
     sudo pacman-key --recv-key 3056513887B78AEB &&
