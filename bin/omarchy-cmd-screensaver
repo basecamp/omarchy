@@ -1,19 +1,26 @@
 #!/bin/bash
 
 if command -v tte &>/dev/null; then
+  original_timeout=${1:-0}
+
+  stop_all_screensaver() {
+    hyprctl keyword cursor:inactive_timeout $original_timeout &>/dev/null
+    pkill -x tte 2>/dev/null
+    pkill -f "alacritty --class Screensaver" 2>/dev/null
+    exit 0
+  }
+
+  trap 'stop_all_screensaver; exit' INT TERM
+
   hyprctl keyword cursor:inactive_timeout 1 &>/dev/null
   while true; do
     effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
     tte -i ~/.local/share/omarchy/logo.txt \
       --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
       "$effect" &
-
     while pgrep -x tte >/dev/null; do
       if read -n 1 -t 0.01; then
-        hyprctl keyword cursor:inactive_timeout 0 &>/dev/null
-        pkill -x tte 2>/dev/null
-        pkill -f "alacritty --class Screensaver" 2>/dev/null
-        exit 0
+        stop_all_screensaver
       fi
     done
   done

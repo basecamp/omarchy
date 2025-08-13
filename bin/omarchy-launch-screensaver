@@ -5,12 +5,16 @@ pgrep -f "alacritty --class Screensaver" && exit 0
 
 focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
 
+# Get the original cursor timeout
+original_timeout=$(hyprctl getoption cursor:inactive_timeout 2>/dev/null | awk '/float:/ {print $2}')
+original_timeout=${original_timeout:-0}
+
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   hyprctl dispatch focusmonitor $m
   hyprctl dispatch exec -- \
     alacritty --class Screensaver \
     --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
-    -e omarchy-cmd-screensaver
+    -e omarchy-cmd-screensaver "$original_timeout"
 done
 
 hyprctl dispatch focusmonitor $focused
