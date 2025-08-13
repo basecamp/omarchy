@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Default download directory
+DOWNLOAD_DIR="$HOME/Downloads/YouTube"
+mkdir -p "$DOWNLOAD_DIR"
+
+if [ "$#" -ne 1 ]; then
+  echo -e "\e[32mLet's Download a YouTube video.\n\e[0m"
+  VIDEO_URL=$(gum input --prompt "URL> " --placeholder "https://youtube.com/watch?v=...")
+else
+  VIDEO_URL="$1"
+fi
+
+if [[ -z "$VIDEO_URL" ]]; then
+  echo "❌ You must provide a YouTube video URL!"
+  exit 1
+fi
+
+# Ensure yt-dlp and aria2c are installed
+if ! command -v yt-dlp >/dev/null || ! command -v aria2c >/dev/null; then
+  echo "📦 Installing yt-dlp and aria2c..."
+  sudo pacman -S --noconfirm yt-dlp aria2
+fi
+
+# Auto-fetch video title
+VIDEO_NAME=$(yt-dlp --get-title "$VIDEO_URL" 2>/dev/null)
+if [[ -z "$VIDEO_NAME" ]]; then
+  echo "❌ Failed to get video title."
+  exit 1
+fi
+
+# Replace slashes and problematic characters in the title
+SAFE_NAME=$(echo "$VIDEO_NAME" | sed 's/[\/:*?"<>|]/-/g')
+
+# Get the direct media URL
+DIRECT_URL=$(yt-dlp -f best --get-url "$VIDEO_URL")
+if [[ -z "$DIRECT_URL" ]]; then
+  echo "❌ Failed to get direct video URL."
+  exit 1
+fi
+
+echo "Downloading: $VIDEO_NAME"
+echo "Saving as: $SAFE_NAME.mp4"
+
+# Download with aria2c
+
+aria2c -o "${SAFE_NAME}.mp4" \
+  --dir="$DOWNLOAD_DIR" \
+  --max-connection-per-server=16 \
+  --split=16 \
+  --min-split-size=1M \
+  --continue=true \
+  --summary-interval=5 \
+  "$DIRECT_URL"
+
+echo -e "\n✅ Download complete: $DOWNLOAD_DIR/${SAFE_NAME}.mp4"

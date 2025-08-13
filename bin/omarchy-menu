@@ -170,6 +170,14 @@ show_setup_config_menu() {
   esac
 }
 
+show_download_menu() {
+  case $(menu "Download" "  File\n  YouTube-Video") in
+  *File*) present_terminal omarchy-download-file ;;
+  *YouTube-Video*) present_terminal omarchy-download-youtube-video ;;
+  *) show_main_menu ;;
+  esac
+}
+
 show_install_menu() {
   case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
@@ -338,7 +346,7 @@ show_system_menu() {
 }
 
 show_main_menu() {
-  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
+  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰇚  Download\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
 }
 
 go_to_menu() {
@@ -352,6 +360,7 @@ go_to_menu() {
   *screenrecord*) show_screenrecord_menu ;;
   *toggle*) show_toggle_menu ;;
   *setup*) show_setup_menu ;;
+  *download*) show_download_menu ;;
   *install*) show_install_menu ;;
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;

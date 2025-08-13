@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# Default download directory
+DOWNLOAD_DIR="$HOME/Downloads"
+mkdir -p "$DOWNLOAD_DIR"
+
+if [ "$#" -ne 1 ]; then
+  echo -e "\e[32mFast File Downloader\n\e[0m"
+  FILE_URL=$(gum input --prompt "URL> " --placeholder "https://example.com/file.zip")
+else
+  FILE_URL="$1"
+fi
+
+if [[ -z "$FILE_URL" ]]; then
+  echo "❌ You must provide a file URL!"
+  exit 1
+fi
+
+# Ensure aria2c is installed
+if ! command -v aria2c >/dev/null; then
+  echo "📦 Installing aria2..."
+  sudo pacman -S --noconfirm aria2
+fi
+
+# Download file with high-speed settings
+aria2c \
+  --dir="$DOWNLOAD_DIR" \
+  --max-connection-per-server=16 \
+  --split=16 \
+  --min-split-size=1M \
+  --continue=true \
+  --summary-interval=5 \
+  "$FILE_URL"
+
+echo -e "\n✅ Download complete. Saved to: $DOWNLOAD_DIR"
