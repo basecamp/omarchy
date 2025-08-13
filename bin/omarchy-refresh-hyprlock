@@ -1,3 +1,10 @@
 #!/bin/bash
 
+set -euo pipefail
+
+# Skip refresh if locked
+if omarchy-lock-check hyprlock; then
+	exit 0
+fi
+
 omarchy-refresh-config hypr/hyprlock.conf

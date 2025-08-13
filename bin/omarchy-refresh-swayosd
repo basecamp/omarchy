@@ -1,5 +1,12 @@
 #!/bin/bash
 
+set -euo pipefail
+
+# Skip refresh if locked
+if omarchy-lock-check swayosd; then
+	exit 0
+fi
+
 omarchy-refresh-config swayosd/config.toml
 omarchy-refresh-config swayosd/style.css
 omarchy-restart-swayosd
