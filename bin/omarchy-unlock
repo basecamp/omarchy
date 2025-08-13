@@ -1,0 +1,48 @@
+#!/bin/bash
+
+set -euo pipefail
+
+usage() {
+	cat <<'EOF'
+Usage: omarchy-unlock <value>
+
+Removes a lock file at:
+	$HOME/.local/state/omarchy/locks/<value>.config-lock
+
+This re-enables omarchy-update to replace your configuration.
+
+Options:
+	-h, --help   Show this help and exit
+
+Notes:
+	- <value> must consist of letters, numbers, dots, underscores, or dashes.
+EOF
+}
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+	usage
+	exit 0
+fi
+
+if [[ $# -ne 1 ]]; then
+	echo "Error: exactly one <value> is required." >&2
+	echo >&2
+	usage >&2
+	exit 2
+fi
+
+value="$1"
+
+# Basic validation to prevent path traversal or odd characters
+if [[ ! "$value" =~ ^[A-Za-z0-9._-]+$ ]]; then
+	echo "Error: invalid value '$value'. Allowed: [A-Za-z0-9._-]" >&2
+	exit 2
+fi
+
+lock_dir="$HOME/.local/state/omarchy/locks"
+lock_file="$lock_dir/${value}.config-lock"
+
+if [[ -e "$lock_file" ]]; then
+	rm -f "$lock_file"
+	echo "$lock_file removed"
+fi
