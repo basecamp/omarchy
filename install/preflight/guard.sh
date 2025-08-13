@@ -14,13 +14,13 @@ for marker in /etc/cachyos-release /etc/eos-release /etc/garuda-release /etc/man
   [[ -f "$marker" ]] && abort "Vanilla Arch"
 done
 
-# Must not be runnig as root
+# Must not be running as root
 [ "$EUID" -eq 0 ] && abort "Running as user (not root)"
 
 # Must be x86 only to fully work
 [ "$(uname -m)" != "x86_64" ] && abort "x86_64 CPU"
 
-# Must not have Gnome or KDE already install
+# Must not have Gnome or KDE already installed
 pacman -Qe gnome-shell &>/dev/null && abort "Fresh + Vanilla Arch"
 pacman -Qe plasma-desktop &>/dev/null && abort "Fresh + Vanilla Arch"
 

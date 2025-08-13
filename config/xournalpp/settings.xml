@@ -58,7 +58,7 @@
   <property name="useStockIcons" value="false"/>
   <property name="disableScrollbarFadeout" value="false"/>
   <property name="disableAudio" value="false"/>
-  <!--Hides scroolbars in the main window, allowed values: "none", "horizontal", "vertical", "both"-->
+    <!--Hides scrollbars in the main window, allowed values: "none", "horizontal", "vertical", "both"-->
   <property name="scrollbarHideType" value="none"/>
   <property name="autoloadMostRecent" value="false"/>
   <property name="autoloadPdfXoj" value="true"/>
