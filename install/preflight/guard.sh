@@ -1,5 +1,7 @@
 #!/bin/bash
 
+sudo pacman -S --noconfirm --needed gum
+
 abort() {
   echo -e "\e[31mOmarchy install requires: $1\e[0m"
   echo
