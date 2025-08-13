@@ -43,35 +43,25 @@ fi
 if (command -v zed &>/dev/null || command -v zeditor &>/dev/null) && [[ -f "$THEME_PATH/zed.json" ]]; then
   mkdir -p ~/.config/zed/themes
   ln -nsf "$THEME_PATH/zed.json" ~/.config/zed/themes/omarchy-current.json
-  
-  # Update Zed's settings.json to trigger theme reload
+
+  # Update Zed's settings.json using sed (preserves comments and formatting)
   ZED_SETTINGS="$HOME/.config/zed/settings.json"
   if [[ -f "$ZED_SETTINGS" ]]; then
-    # Use Python to safely update the JSON
-    python3 -c "
-import json
-import sys
-
-settings_file = '$ZED_SETTINGS'
-try:
-    with open(settings_file, 'r') as f:
-        settings = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
-    settings = {}
-
-# Update theme setting
-settings['theme'] = 'Omarchy Current'
-
-# Write back with nice formatting
-with open(settings_file, 'w') as f:
-    json.dump(settings, f, indent=2)
-" 2>/dev/null || true
+    if grep -q '"theme"' "$ZED_SETTINGS"; then
+      sed -i 's/"theme"\s*:\s*"[^"]*"/"theme": "Omarchy Current"/g' "$ZED_SETTINGS"
+    else
+      # Add theme setting before the closing brace
+      sed -i '$s/}/  "theme": "Omarchy Current"\n}/' "$ZED_SETTINGS"
+    fi
   else
-    # Create new settings.json with theme
+    # Create new settings.json with theme only if file doesn't exist
     echo '{
   "theme": "Omarchy Current"
 }' > "$ZED_SETTINGS"
   fi
+
+  # Touch the theme file to trigger Zed's file watcher for theme reload
+  touch ~/.config/zed/themes/omarchy-current.json
 fi
 
 # Trigger alacritty config reload
