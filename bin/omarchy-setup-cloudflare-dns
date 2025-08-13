@@ -1,0 +1,195 @@
+#!/bin/bash
+
+# omarchy-setup-cloudflare-dns
+# Script to configure DNS settings for Omarchy installations
+# Provides options for Cloudflare, local/DHCP, or custom DNS setups
+
+set -e
+
+RESOLVED_CONF="/etc/systemd/resolved.conf"
+BACKUP_CONF="/etc/systemd/resolved.conf.omarchy-backup"
+
+show_help() {
+    cat << EOF
+omarchy-setup-cloudflare-dns - Configure DNS settings for Omarchy
+
+USAGE:
+    omarchy-setup-cloudflare-dns [OPTION]
+
+OPTIONS:
+    cloudflare      Set Cloudflare (1.1.1.1) as primary DNS with Google (8.8.8.8) as fallback
+    dhcp           Use DHCP-provided DNS (preserves local router DNS for development)
+    custom         Interactive setup for custom DNS servers
+    restore        Restore original DNS configuration from backup
+    status         Show current DNS configuration
+    help           Show this help message
+
+EXAMPLES:
+    omarchy-setup-cloudflare-dns cloudflare    # Use Cloudflare DNS
+    omarchy-setup-cloudflare-dns dhcp          # Use router/DHCP DNS (recommended for local dev)
+    omarchy-setup-cloudflare-dns custom        # Set custom DNS servers
+    omarchy-setup-cloudflare-dns status        # Check current configuration
+
+NOTE:
+    - This script requires sudo privileges to modify system DNS settings
+    - Changes take effect after restarting systemd-resolved
+    - A backup of your current configuration is automatically created
+EOF
+}
+
+backup_current_config() {
+    if [[ -f "$RESOLVED_CONF" ]] && [[ ! -f "$BACKUP_CONF" ]]; then
+        echo "Creating backup of current DNS configuration..."
+        sudo cp "$RESOLVED_CONF" "$BACKUP_CONF"
+        echo "Backup saved to: $BACKUP_CONF"
+    fi
+}
+
+restart_resolved() {
+    echo "Restarting systemd-resolved to apply changes..."
+    sudo systemctl restart systemd-resolved
+    echo "DNS configuration updated successfully!"
+}
+
+setup_cloudflare() {
+    echo "Setting up Cloudflare DNS with Google fallback..."
+    backup_current_config
+    
+    # Remove existing DNS entries and add Cloudflare
+    sudo sed -i '/^DNS=/d' "$RESOLVED_CONF"
+    sudo sed -i '/^FallbackDNS=/d' "$RESOLVED_CONF"
+    
+    # Add Cloudflare as primary, Google as fallback
+    echo "DNS=1.1.1.1 1.0.0.1" | sudo tee -a "$RESOLVED_CONF" > /dev/null
+    echo "FallbackDNS=8.8.8.8 8.8.4.4" | sudo tee -a "$RESOLVED_CONF" > /dev/null
+    
+    restart_resolved
+    echo "Cloudflare DNS configured successfully!"
+}
+
+setup_dhcp() {
+    echo "Setting up DHCP DNS (recommended for local development)..."
+    backup_current_config
+    
+    # Create a clean resolved.conf that forces DHCP usage
+    sudo tee "$RESOLVED_CONF" > /dev/null << 'EOF'
+[Resolve]
+DNS=
+FallbackDNS=
+#DNS=1.1.1.1 1.0.0.1
+#FallbackDNS=8.8.8.8 8.8.4.4
+EOF
+    
+    restart_resolved
+    echo "DHCP DNS configured successfully!"
+    echo "Your router will now handle DNS resolution, preserving local development setups."
+}
+
+setup_custom() {
+    echo "Custom DNS setup"
+    echo "Enter your preferred DNS servers (space-separated, e.g., '192.168.1.1 1.1.1.1'):"
+    read -r primary_dns
+    
+    if [[ -z "$primary_dns" ]]; then
+        echo "Error: No DNS servers provided"
+        exit 1
+    fi
+    
+    echo "Enter fallback DNS servers (optional, press Enter to skip):"
+    read -r fallback_dns
+    
+    backup_current_config
+    
+    # Remove existing DNS entries
+    sudo sed -i '/^DNS=/d' "$RESOLVED_CONF"
+    sudo sed -i '/^FallbackDNS=/d' "$RESOLVED_CONF"
+    
+    # Add custom DNS
+    echo "DNS=$primary_dns" | sudo tee -a "$RESOLVED_CONF" > /dev/null
+    
+    if [[ -n "$fallback_dns" ]]; then
+        echo "FallbackDNS=$fallback_dns" | sudo tee -a "$RESOLVED_CONF" > /dev/null
+    fi
+    
+    restart_resolved
+    echo "Custom DNS configured successfully!"
+}
+
+restore_backup() {
+    if [[ ! -f "$BACKUP_CONF" ]]; then
+        echo "Error: No backup configuration found at $BACKUP_CONF"
+        exit 1
+    fi
+    
+    echo "Restoring DNS configuration from backup..."
+    sudo cp "$BACKUP_CONF" "$RESOLVED_CONF"
+    restart_resolved
+    echo "Configuration restored from backup!"
+}
+
+show_status() {
+    echo "Current DNS Configuration:"
+    echo "=========================="
+    
+    if [[ -f "$RESOLVED_CONF" ]]; then
+        echo "From $RESOLVED_CONF:"
+        grep -E "^(DNS|FallbackDNS)=" "$RESOLVED_CONF" 2>/dev/null || echo "  No explicit DNS configuration found (using DHCP)"
+    else
+        echo "  No resolved.conf found"
+    fi
+    
+    echo ""
+    echo "Active DNS servers (from systemd-resolved):"
+    systemd-resolve --status 2>/dev/null | grep -A 10 "DNS Servers:" | head -10 || echo "  Unable to query systemd-resolved status"
+    
+    echo ""
+    echo "Quick test - resolving example.com:"
+    if command -v dig >/dev/null 2>&1; then
+        dig +short example.com @127.0.0.53 2>/dev/null || echo "  dig test failed"
+    elif command -v nslookup >/dev/null 2>&1; then
+        nslookup example.com 2>/dev/null | grep -A 2 "Name:" || echo "  nslookup test failed"
+    elif command -v host >/dev/null 2>&1; then
+        host example.com 2>/dev/null || echo "  host test failed"
+    else
+        # Use getent as fallback (always available)
+        getent hosts example.com >/dev/null 2>&1 && echo "  DNS resolution working" || echo "  DNS resolution test failed"
+    fi
+    
+    if [[ -f "$BACKUP_CONF" ]]; then
+        echo ""
+        echo "Backup configuration available at: $BACKUP_CONF"
+    fi
+}
+
+# Check if running as root (we need sudo for systemctl and file modifications)
+if [[ $EUID -eq 0 ]] && [[ -z "$SUDO_USER" ]]; then
+    echo "Warning: Running as root. Consider using sudo instead."
+fi
+
+# Main script logic
+case "${1:-help}" in
+    cloudflare)
+        setup_cloudflare
+        ;;
+    dhcp)
+        setup_dhcp
+        ;;
+    custom)
+        setup_custom
+        ;;
+    restore)
+        restore_backup
+        ;;
+    status)
+        show_status
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        echo "Unknown option: $1"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac
