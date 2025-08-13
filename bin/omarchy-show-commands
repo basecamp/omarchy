@@ -1,38 +1,83 @@
 #!/bin/bash
 
-# A script to display Hyprland keybindings defined in your configuration
-# using wofi for an interactive search menu.
+# Show a searchable list of useful commands in wofi. When an entry is selected:
+# - Left side: the command to execute
+# - Right side: the description (aligned by the script)
+# - If flagged with [out], the command runs in a terminal and shows its output
 
-USER_HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
-OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.conf"
+set -euo pipefail
 
-# Process the configuration file to extract and format keybindings
-# 1. `grep` finds all lines starting with 'bind' (allowing for leading spaces).
-# 2. The first `sed` removes comments (anything after a '#').
-# 3. `awk` does the heavy lifting of formatting the output.
-#    - It sets the field separator to a comma ','.
-#    - It removes the 'bind... =' part from the beginning of the line.
-#    - It joins the key combination (e.g., "SUPER + Q").
-#    - It joins the command that the key executes.
-#    - It prints everything in a nicely aligned format.
-# 4. The final `sed` cleans up any leftover commas from the end of lines.
-COMMANDS="nm-connection-editor              Open NetworkManager
-nmcli device wifi list            [out] List available Wi-Fi networks
-nmcli connection show             [out] Show all network connections
-nmcli connection up <name>        Connect to a network by name
-nmcli connection down <name>      Disconnect from a network by name
-nmcli radio wifi off              Turn off Wi-Fi
-nmcli radio wifi on               Turn on Wi-Fi"
+WOFI_ARGS=(
+  -dmenu -i --width 60% --height 70% -p "Useful commands" -O alphabetical
+)
 
-chosen=$(echo -e "$COMMANDS" | flock --nonblock /tmp/.wofi.lock -c "wofi -dmenu -i --width 60% --height 70% -p 'Useful commands' -O alphabetical")
+# Structured command list in JSON. Each entry:
+# { "cmd": string, "desc": string, "out": boolean }
+COMMANDS_JSON='[
+  {"cmd": "nm-connection-editor",       "desc": "Open NetworkManager"},
+  {"cmd": "nmcli device wifi list",      "desc": "List available Wi-Fi networks",     "out": true},
+  {"cmd": "nmcli connection show",       "desc": "Show all network connections",       "out": true},
+  {"cmd": "nmcli connection up <name>",  "desc": "Connect to a network by name"},
+  {"cmd": "nmcli connection down <name>","desc": "Disconnect from a network by name"},
+  {"cmd": "nmcli radio wifi off",        "desc": "Turn off Wi-Fi"},
+  {"cmd": "nmcli radio wifi on",         "desc": "Turn on Wi-Fi"}
+]'
+
+# Parse COMMANDS_JSON and emit TSV lines: cmd<TAB>desc<TAB>out(0/1)
+generate_items_tab() {
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$COMMANDS_JSON" |
+      jq -r '.[] | [.cmd, (.desc // ""), (if .out then "1" else "0" end)] | @tsv'
+  elif command -v python3 >/dev/null 2>&1; then
+    COMMANDS_JSON="$COMMANDS_JSON" python3 - <<'PY'
+import json, os, sys
+data = json.loads(os.environ["COMMANDS_JSON"])  # type: ignore[index]
+for item in data:
+    cmd = item.get("cmd", "")
+    desc = item.get("desc", "")
+    out = "1" if item.get("out", False) else "0"
+    sys.stdout.write(f"{cmd}\t{desc}\t{out}\n")
+PY
+  else
+    echo "Error: Need either 'jq' or 'python3' to parse JSON." >&2
+    exit 1
+  fi
+}
+
+# Build the menu with aligned columns
+mapfile -t ITEMS < <(generate_items_tab)
+
+if [ ${#ITEMS[@]} -eq 0 ]; then
+  exit 0
+fi
+
+max_cmd_len=0
+for line in "${ITEMS[@]}"; do
+  IFS=$'\t' read -r cmd desc outflag <<<"$line"
+  (( ${#cmd} > max_cmd_len )) && max_cmd_len=${#cmd}
+done
+
+MENU_LINES=()
+for line in "${ITEMS[@]}"; do
+  IFS=$'\t' read -r cmd desc outflag <<<"$line"
+  printf -v cmd_padded "%-*s" "$max_cmd_len" "$cmd"
+  flag=""
+  if [[ "$outflag" == "1" ]]; then flag="[out] "; fi
+  MENU_LINES+=("$cmd_padded  $flag$desc")
+done
+
+menu_text=$(printf '%s\n' "${MENU_LINES[@]}")
+
+chosen=$(echo -e "$menu_text" | flock --nonblock /tmp/.wofi.lock -c "wofi ${WOFI_ARGS[*]}")
 
 if [ -z "$chosen" ]; then
   exit 0
 fi
 
-command_to_run=$(echo "$chosen" | sed -e 's/\[out\]//' -e 's/  .*//')
+# Extract the command: everything before the two-space separator we inserted
+command_to_run=$(printf '%s' "$chosen" | sed -E 's/\[out\][ ]*//; s/  .*//')
 
-if echo "$chosen" | grep -q "\[out\]"; then
+if printf '%s' "$chosen" | grep -q "\[out\]"; then
   alacritty -e bash -c "$command_to_run; echo; read -p 'Press any key to exit...'"
 else
   eval "$command_to_run"
