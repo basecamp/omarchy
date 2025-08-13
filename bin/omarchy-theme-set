@@ -40,9 +40,9 @@ else
 fi
 
 # Set Zed theme if installed (check for both zed and zeditor commands)
-if (command -v zed &>/dev/null || command -v zeditor &>/dev/null) && [[ -f "$THEME_PATH/zed.json" ]]; then
+if (command -v zed &>/dev/null || command -v zeditor &>/dev/null) && [[ -f "$CURRENT_THEME_DIR/zed.json" ]]; then
   mkdir -p ~/.config/zed/themes
-  ln -nsf "$THEME_PATH/zed.json" ~/.config/zed/themes/omarchy-current.json
+  ln -nsf "$CURRENT_THEME_DIR/zed.json" ~/.config/zed/themes/omarchy-current.json
 
   # Update Zed's settings.json using sed (preserves comments and formatting)
   ZED_SETTINGS="$HOME/.config/zed/settings.json"
