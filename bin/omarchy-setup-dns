@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy-setup-cloudflare-dns
+# omarchy-setup-dns
 # Script to configure DNS settings for Omarchy installations
 # Provides options for Cloudflare, local/DHCP, or custom DNS setups
 
@@ -11,13 +11,13 @@ BACKUP_CONF="/etc/systemd/resolved.conf.omarchy-backup"
 
 show_help() {
     cat << EOF
-omarchy-setup-cloudflare-dns - Configure DNS settings for Omarchy
+omarchy-setup-dns - Configure DNS settings for Omarchy
 
 USAGE:
-    omarchy-setup-cloudflare-dns [OPTION]
+    omarchy-setup-dns [OPTION]
 
 OPTIONS:
-    cloudflare      Set Cloudflare (1.1.1.1) as primary DNS with Google (8.8.8.8) as fallback
+    cloudflare     Set Cloudflare (1.1.1.1) as primary DNS with Google (8.8.8.8) as fallback
     dhcp           Use DHCP-provided DNS (preserves local router DNS for development)
     custom         Interactive setup for custom DNS servers
     restore        Restore original DNS configuration from backup
@@ -25,10 +25,10 @@ OPTIONS:
     help           Show this help message
 
 EXAMPLES:
-    omarchy-setup-cloudflare-dns cloudflare    # Use Cloudflare DNS
-    omarchy-setup-cloudflare-dns dhcp          # Use router/DHCP DNS (recommended for local dev)
-    omarchy-setup-cloudflare-dns custom        # Set custom DNS servers
-    omarchy-setup-cloudflare-dns status        # Check current configuration
+    omarchy-setup-dns cloudflare    # Use Cloudflare DNS
+    omarchy-setup-dns dhcp          # Use router/DHCP DNS (recommended for local dev)
+    omarchy-setup-dns custom        # Set custom DNS servers
+    omarchy-setup-dns status        # Check current configuration
 
 NOTE:
     - This script requires sudo privileges to modify system DNS settings
@@ -63,6 +63,43 @@ setup_cloudflare() {
     echo "DNS=1.1.1.1 1.0.0.1" | sudo tee -a "$RESOLVED_CONF" > /dev/null
     echo "FallbackDNS=8.8.8.8 8.8.4.4" | sudo tee -a "$RESOLVED_CONF" > /dev/null
     
+    # Force DNS on ethernet and wifi interfaces using systemd-networkd
+    # This ensures DHCP-provided DNS is overridden on physical interfaces
+    echo "Configuring systemd-networkd to use Cloudflare DNS on all connections..."
+    
+    # Create drop-in directory for network configs
+    sudo mkdir -p /etc/systemd/network
+    
+    # Create a high-priority config that matches all ethernet and wifi interfaces
+    # but excludes docker, bridge, and virtual interfaces
+    sudo tee /etc/systemd/network/99-omarchy-dns.network > /dev/null << 'EOF'
+[Match]
+# Match ethernet and wifi interfaces, exclude virtual ones
+Name=en* wl*
+Type=!bridge
+Type=!veth
+
+[Network]
+# Force Cloudflare DNS even if DHCP provides DNS
+DNS=1.1.1.1
+DNS=1.0.0.1
+DNS=8.8.8.8
+DNS=8.8.4.4
+UseDNS=no
+DHCP=yes
+
+[DHCP]
+UseDNS=no
+UseDomains=no
+
+[IPv6AcceptRA]
+UseDNS=no
+EOF
+    
+    # Restart systemd-networkd to apply changes
+    echo "Restarting systemd-networkd to apply DNS changes..."
+    sudo systemctl restart systemd-networkd
+    
     restart_resolved
     echo "Cloudflare DNS configured successfully!"
 }
@@ -79,6 +116,13 @@ FallbackDNS=
 #DNS=1.1.1.1 1.0.0.1
 #FallbackDNS=8.8.8.8 8.8.4.4
 EOF
+    
+    # Remove any forced DNS config from systemd-networkd
+    if [ -f /etc/systemd/network/99-omarchy-dns.network ]; then
+        echo "Removing forced DNS configuration from systemd-networkd..."
+        sudo rm -f /etc/systemd/network/99-omarchy-dns.network
+        sudo systemctl restart systemd-networkd
+    fi
     
     restart_resolved
     echo "DHCP DNS configured successfully!"
@@ -123,6 +167,14 @@ restore_backup() {
     
     echo "Restoring DNS configuration from backup..."
     sudo cp "$BACKUP_CONF" "$RESOLVED_CONF"
+    
+    # Remove any forced DNS config from systemd-networkd
+    if [ -f /etc/systemd/network/99-omarchy-dns.network ]; then
+        echo "Removing forced DNS configuration from systemd-networkd..."
+        sudo rm -f /etc/systemd/network/99-omarchy-dns.network
+        sudo systemctl restart systemd-networkd
+    fi
+    
     restart_resolved
     echo "Configuration restored from backup!"
 }
