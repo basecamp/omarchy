@@ -50,6 +50,17 @@ install_font() {
   present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm --needed $2 && sleep 2 && omarchy-font-set '$3'"
 }
 
+toggle_lock() {
+  local target="$1"
+  if omarchy-lock-check "$target"; then
+    omarchy-unlock "$target"
+    notify-send "$target config unlocked"
+  else
+    omarchy-lock "$target"
+    notify-send "$target config locked"
+  fi
+}
+
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) omarchy-menu-keybindings ;;
@@ -339,10 +350,30 @@ show_system_menu() {
 }
 
 show_config_lock_menu() {
-  case $(menu "Lock Configs" "󰍜  Waybar\n  Hypridle") in
-  *Waybar*) omarchy-lock waybar ;;
-  *Hypridle*) omarchy-lock hypridle ;;
-  *) show_main_menu ;;
+  local options=""
+  local display_targets=("Waybar" "Hyprland" "Hyprlock" "Walker" "Swayosd" "Hypridle")
+  local d t
+
+  for d in "${display_targets[@]}"; do
+    t="${d,,}"
+    if omarchy-lock-check "$t"; then
+      options+="  Unlock $d\n"
+    else
+      options+="  Lock $d\n"
+    fi
+  done
+
+  # Trim trailing newline to avoid empty menu item
+  # options="${options%\n}"
+
+  case "$(menu "Lock Configs" "$options")" in
+    *Waybar*) toggle_lock waybar ;;
+    *Hyprland*) toggle_lock hyprland ;;
+    *Hyprlock*) toggle_lock hyprlock ;;
+    *Walker*) toggle_lock walker ;;
+    *Swayosd*) toggle_lock swayosd ;;
+    *Hypridle*) toggle_lock hypridle ;;
+    *) show_main_menu ;;
   esac
 }
 
