@@ -9,7 +9,7 @@ if [[ ! -d "$OUTPUT_DIR" ]]; then
 fi
 
 pkill slurp || hyprshot -m ${1:-region} --raw |
-  satty --filename - \
+  LIBGL_ALWAYS_SOFTWARE=1 satty --filename - \
     --output-filename "$OUTPUT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png" \
     --early-exit \
     --actions-on-enter save-to-clipboard \
