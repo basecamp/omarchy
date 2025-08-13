@@ -204,13 +204,14 @@ show_install_editor_menu() {
 }
 
 show_install_ai_menu() {
-  case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
+  case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode\n󱚤  Qwen Code") in
   *Claude*) install "Claude Code" "claude-code" ;;
   *Gemini*) install "Gemini" "gemini-cli-bin" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" "ollama" ;;
   *Crush*) install "Crush" "crush-bin" ;;
   *opencode*) install "opencode" "opencode-bin" ;;
+  *qwencode*) install "Qwen Code" "qwen-code" ;;
   *) show_install_menu ;;
   esac
 }
