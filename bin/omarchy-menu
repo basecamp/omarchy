@@ -363,9 +363,6 @@ show_config_lock_menu() {
     fi
   done
 
-  # Trim trailing newline to avoid empty menu item
-  # options="${options%\n}"
-
   case "$(menu "Lock Configs" "$options")" in
     *Waybar*) toggle_lock waybar ;;
     *Hyprland*) toggle_lock hyprland ;;
