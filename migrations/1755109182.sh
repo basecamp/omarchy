@@ -5,10 +5,9 @@ echo "Reset DNS configuration to DHCP (remove forced Cloudflare DNS)"
 # Users can still opt-in to Cloudflare DNS using: omarchy-setup-dns cloudflare
 
 if [ -f /etc/systemd/resolved.conf ]; then
-  # Backup current config if not already backed up
-  if [ ! -f /etc/systemd/resolved.conf.omarchy-backup ]; then
-    sudo cp /etc/systemd/resolved.conf /etc/systemd/resolved.conf.omarchy-backup
-  fi
+  # Backup current config with timestamp
+  backup_timestamp=$(date +"%Y%m%d%H%M%S")
+  sudo cp /etc/systemd/resolved.conf "/etc/systemd/resolved.conf.bak.${backup_timestamp}"
   
   # Remove explicit DNS entries to use DHCP
   sudo sed -i '/^DNS=/d' /etc/systemd/resolved.conf

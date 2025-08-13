@@ -7,7 +7,6 @@
 set -e
 
 RESOLVED_CONF="/etc/systemd/resolved.conf"
-BACKUP_CONF="/etc/systemd/resolved.conf.omarchy-backup"
 
 show_help() {
     cat << EOF
@@ -20,7 +19,6 @@ OPTIONS:
     cloudflare     Set Cloudflare (1.1.1.1) as primary DNS with Google (8.8.8.8) as fallback
     dhcp           Use DHCP-provided DNS (preserves local router DNS for development)
     custom         Interactive setup for custom DNS servers
-    restore        Restore original DNS configuration from backup
     status         Show current DNS configuration
     help           Show this help message
 
@@ -38,10 +36,11 @@ EOF
 }
 
 backup_current_config() {
-    if [[ -f "$RESOLVED_CONF" ]] && [[ ! -f "$BACKUP_CONF" ]]; then
+    if [[ -f "$RESOLVED_CONF" ]]; then
+        backup_file="$RESOLVED_CONF.bak.$(date +%s)"
         echo "Creating backup of current DNS configuration..."
-        sudo cp "$RESOLVED_CONF" "$BACKUP_CONF"
-        echo "Backup saved to: $BACKUP_CONF"
+        sudo cp "$RESOLVED_CONF" "$backup_file"
+        echo "Backup saved to: $backup_file"
     fi
 }
 
@@ -159,25 +158,6 @@ setup_custom() {
     echo "Custom DNS configured successfully!"
 }
 
-restore_backup() {
-    if [[ ! -f "$BACKUP_CONF" ]]; then
-        echo "Error: No backup configuration found at $BACKUP_CONF"
-        exit 1
-    fi
-    
-    echo "Restoring DNS configuration from backup..."
-    sudo cp "$BACKUP_CONF" "$RESOLVED_CONF"
-    
-    # Remove any forced DNS config from systemd-networkd
-    if [ -f /etc/systemd/network/99-omarchy-dns.network ]; then
-        echo "Removing forced DNS configuration from systemd-networkd..."
-        sudo rm -f /etc/systemd/network/99-omarchy-dns.network
-        sudo systemctl restart systemd-networkd
-    fi
-    
-    restart_resolved
-    echo "Configuration restored from backup!"
-}
 
 show_status() {
     echo "Current DNS Configuration:"
@@ -207,10 +187,6 @@ show_status() {
         getent hosts example.com >/dev/null 2>&1 && echo "  DNS resolution working" || echo "  DNS resolution test failed"
     fi
     
-    if [[ -f "$BACKUP_CONF" ]]; then
-        echo ""
-        echo "Backup configuration available at: $BACKUP_CONF"
-    fi
 }
 
 # Check if running as root (we need sudo for systemctl and file modifications)
@@ -228,9 +204,6 @@ case "${1:-help}" in
         ;;
     custom)
         setup_custom
-        ;;
-    restore)
-        restore_backup
         ;;
     status)
         show_status
