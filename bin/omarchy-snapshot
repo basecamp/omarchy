@@ -1,341 +1,371 @@
 #!/bin/bash
 
-# Create, list, and mount Btrfs snapshots
+# omarchy-snapshot: Manage Btrfs snapshots via snapper
 
-SNAPSHOT_DIR="/.snapshots"
-SNAPSHOT_PREFIX="omarchy"
+# Configurations to manage (root and home)
+CONFIGS=("root" "home")
 
-check_root() {
-  if [[ $EUID -ne 0 ]]; then
-    echo "This script must be run as root (use sudo)" >&2
-    exit 1
+# Use omarchy-state to track pre-snapshot numbers
+
+# Error handling
+set -e
+
+show_usage() {
+  echo "Usage: omarchy-snapshot <command> [options]"
+  echo ""
+  echo "Commands:"
+  echo "  setup                    Create snapper configurations for root and home"
+  echo "  create [description]     Create snapshots for both root and home"
+  echo "  pre [description]        Create pre-action snapshots for both root and home"
+  echo "  post [description]       Create post-action snapshots (auto-pairs with last pre)"
+  echo "  delete <number(s)|all>   Delete snapshot(s) by number or all snapshots from both root and home"
+  echo "  list                     List all snapshots for both root and home"
+  echo ""
+  echo "Options:"
+  echo "  -h, --help              Show this help message"
+  echo ""
+  echo "Examples:"
+  echo "  omarchy-snapshot setup                       # Setup snapper configs"
+  echo "  omarchy-snapshot create \"Manual backup\"     # Snapshot both root and home"
+  echo "  omarchy-snapshot pre \"Omarchy update\"       # Pre-snapshot both"
+  echo "  omarchy-snapshot post \"Update completed\"    # Post-snapshot both"
+  echo "  omarchy-snapshot delete 45                   # Delete snapshot 45 from both"
+  echo "  omarchy-snapshot delete all                  # Delete all snapshots from both"
+  echo "  omarchy-snapshot list                        # List both configurations"
+}
+
+save_pre_number() {
+  local config="$1"
+  local number="$2"
+  omarchy-state set "snapshot-pre-${config}-${number}"
+}
+
+get_last_pre_number() {
+  local config="$1"
+  local state_dir="$HOME/.local/state/omarchy"
+
+  # Find the most recent pre-snapshot state file for this config
+  local pre_file=$(find "$state_dir" -maxdepth 1 -name "snapshot-pre-${config}-*" -type f | sort -V | tail -1)
+
+  if [[ -z "$pre_file" ]]; then
+    return 1
+  fi
+
+  # Extract the number from the filename
+  local pre_number="${pre_file##*-}"
+
+  # Clear this state
+  omarchy-state clear "snapshot-pre-${config}-${pre_number}"
+
+  echo "$pre_number"
+  return 0
+}
+
+check_config() {
+  local config="$1"
+  if ! snapper -c "$config" list-configs &>/dev/null; then
+    echo "Error: snapper configuration '$config' does not exist" >&2
+    echo "Run 'omarchy-snapshot setup' to create configurations" >&2
+    return 1
+  fi
+  return 0
+}
+
+run_snapper_cmd() {
+  local config="$1"
+  shift
+  sudo snapper -c "$config" "$@"
+}
+
+setup_single_config() {
+  local config="$1"
+  local path="$2"
+
+  if snapper -c "$config" list-configs &>/dev/null; then
+    echo "$config configuration already exists"
+    return 0
+  fi
+
+  echo "Creating $config configuration..."
+  if run_snapper_cmd "$config" create-config "$path"; then
+    echo "$config configuration created successfully"
+    # Set cleanup algorithm and disable timeline
+    run_snapper_cmd "$config" set-config "TIMELINE_CREATE=no"
+    run_snapper_cmd "$config" set-config "TIMELINE_CLEANUP=no"
+    run_snapper_cmd "$config" set-config "NUMBER_LIMIT=50"
+    run_snapper_cmd "$config" set-config "NUMBER_LIMIT_IMPORTANT=10"
+    return 0
+  else
+    echo "Failed to create $config configuration" >&2
+    return 1
   fi
 }
 
-check_btrfs() {
-  if ! findmnt -n -o FSTYPE / | grep -q "btrfs"; then
-    echo "The root filesystem is not Btrfs" >&2
-    exit 1
-  fi
+for_each_config() {
+  local func="$1"
+  shift
+
+  for config in "${CONFIGS[@]}"; do
+    if ! check_config "$config"; then
+      continue
+    fi
+    "$func" "$config" "$@"
+  done
 }
 
-ensure_snapshot_dir() {
-  if [[ ! -d "$SNAPSHOT_DIR" ]]; then
-    echo "Creating snapshot directory: $SNAPSHOT_DIR"
-    mkdir -p "$SNAPSHOT_DIR"
+setup_configs() {
+  echo "Setting up snapper configurations for root and home..."
+
+  local failed=false
+
+  if ! setup_single_config "root" "/"; then
+    failed=true
+  fi
+
+  if ! setup_single_config "home" "/home"; then
+    failed=true
+  fi
+
+  if [[ "$failed" == "true" ]]; then
+    exit 1
+  fi
+
+  echo "Setup complete!"
+}
+
+_create_snapshot_for_config() {
+  local config="$1"
+  local description="$2"
+  local extra_args="${@:3}"
+
+  local desc_arg=""
+  if [[ -n "$description" ]]; then
+    desc_arg="--description \"$description\""
+  fi
+
+  echo "Creating snapshot for $config..."
+  local cmd="run_snapper_cmd \"$config\" create $extra_args $desc_arg"
+
+  if eval "$cmd"; then
+    echo "Snapshot created successfully for $config"
+    return 0
+  else
+    echo "Failed to create snapshot for $config" >&2
+    return 1
   fi
 }
 
 create_snapshot() {
-  local description="${1:-Manual snapshot}"
+  local description="$1"
+  for_each_config _create_snapshot_for_config "$description"
+}
 
-  check_root
-  check_btrfs
-  ensure_snapshot_dir
+_create_pre_snapshot_for_config() {
+  local config="$1"
+  local description="$2"
 
-  local timestamp=$(date +%Y%m%d_%H%M%S)
-  local snapshot_name="${SNAPSHOT_PREFIX}_${timestamp}"
-  local snapshot_path="${SNAPSHOT_DIR}/${snapshot_name}"
+  local desc_arg=""
+  if [[ -n "$description" ]]; then
+    desc_arg="--description \"$description\""
+  fi
 
-  echo "Creating system snapshot (all subvolumes)"
-  mkdir -p "$snapshot_path"
+  echo "Creating pre-action snapshot for $config..."
+  local cmd="run_snapper_cmd \"$config\" create -t pre $desc_arg --print-number"
+  local snapshot_num=$(eval "$cmd")
 
-  # Hardcoded subvolumes based on a standard arch install
-  local subvolumes=(
-    "/:root"
-    "/home:home"
-    "/var/log:var_log"
-  )
+  if [[ $? -eq 0 ]]; then
+    echo "Pre-action snapshot created for $config: #$snapshot_num"
+    save_pre_number "$config" "$snapshot_num"
+  else
+    echo "Failed to create pre-action snapshot for $config" >&2
+  fi
+}
 
-  local snapshot_count=0
-  local failed_count=0
+create_pre_snapshot() {
+  local description="$1"
+  for_each_config _create_pre_snapshot_for_config "$description"
+  echo "Pre-snapshot numbers saved for automatic pairing"
+}
 
-  for subvol_spec in "${subvolumes[@]}"; do
-    local target="${subvol_spec%:*}"
-    local subvol_name="${subvol_spec#*:}"
-    local subvol_snapshot="${snapshot_path}/${subvol_name}"
+_create_post_snapshot_for_config() {
+  local config="$1"
+  local description="$2"
 
-    echo "  Snapshotting $target"
-    if btrfs subvolume snapshot -r "$target" "$subvol_snapshot" 2>/dev/null; then
-      ((snapshot_count++))
-    else
-      echo "  Failed to snapshot $target" >&2
-      ((failed_count++))
+  # Try to get the last pre-snapshot number
+  local pre_number
+  if pre_number=$(get_last_pre_number "$config"); then
+    echo "Creating post-action snapshot for $config (pre-snapshot #$pre_number)..."
+
+    local desc_arg=""
+    if [[ -n "$description" ]]; then
+      desc_arg="--description \"$description\""
     fi
-  done
 
-  if [[ $snapshot_count -eq 0 ]]; then
-    rm -rf "$snapshot_path"
-    echo "Failed to create any snapshots" >&2
+    local cmd="run_snapper_cmd \"$config\" create -t post --pre-number \"$pre_number\" $desc_arg"
+    eval "$cmd"
+
+    if [[ $? -eq 0 ]]; then
+      echo "Post-action snapshot created successfully for $config"
+    else
+      echo "Failed to create post-action snapshot for $config" >&2
+    fi
+  else
+    echo "Warning: No pre-action snapshot found for configuration '$config'" >&2
+  fi
+}
+
+create_post_snapshot() {
+  local description="$1"
+  for_each_config _create_post_snapshot_for_config "$description"
+}
+
+delete_snapshots() {
+  local args=("$@")
+
+  if [[ ${#args[@]} -eq 0 ]]; then
+    echo "Error: At least one snapshot number or 'all' is required" >&2
+    echo "Usage: omarchy-snapshot delete <number(s)|all>" >&2
     exit 1
   fi
 
-  local omarchy_version="unknown"
-  if [[ -n "${OMARCHY_PATH:-}" ]] && [[ -x "${OMARCHY_PATH}/bin/omarchy-version" ]]; then
-    omarchy_version=$("${OMARCHY_PATH}/bin/omarchy-version" 2>/dev/null || echo "unknown")
+  local delete_all=false
+  local numbers=()
+
+  # Check if "all" is specified
+  if [[ "${args[0]}" == "all" ]]; then
+    delete_all=true
+    echo "Deleting ALL snapshots from both root and home"
+  else
+    # Validate all numbers
+    for num in "${args[@]}"; do
+      if ! [[ "$num" =~ ^[0-9]+$ ]]; then
+        echo "Error: '$num' is not a valid snapshot number" >&2
+        exit 1
+      fi
+    done
+    numbers=("${args[@]}")
+    echo "Deleting snapshot(s) from both root and home: ${numbers[*]}"
   fi
 
-  cat >"${snapshot_path}.info" <<EOF
-timestamp=$timestamp
-date=$(date '+%Y-%m-%d %H:%M:%S')
-description=$description
-kernel=$(uname -r)
-omarchy_version=$omarchy_version
-subvolumes=$snapshot_count
-EOF
-
-  echo "Snapshot created: $snapshot_name"
-  echo "  Subvolumes: $snapshot_count"
-  if [[ $failed_count -gt 0 ]]; then
-    echo "  Failed: $failed_count" >&2
+  # Ask for confirmation
+  if [[ "$delete_all" == "true" ]]; then
+    read -p "Delete ALL snapshots from both configurations? This cannot be undone! (y/N): " -n 1 -r
+  else
+    read -p "Delete these snapshots from both configurations? (y/N): " -n 1 -r
   fi
+  echo
+
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Deletion cancelled"
+    return 0
+  fi
+
+  # Process each configuration
+  _delete_snapshots_for_config() {
+    local config="$1"
+    echo "Deleting from $config..."
+
+    if [[ "$delete_all" == "true" ]]; then
+      # Get all snapshot numbers (excluding snapshot 0 which is the initial snapshot)
+      local all_snapshots=$(run_snapper_cmd "$config" list | grep -E '^\s*[0-9]+' | awk '{print $1}' | grep -v '^0$' | sort -n)
+      local snapshot_array=($all_snapshots)
+
+      if [[ ${#snapshot_array[@]} -eq 0 ]]; then
+        echo "No snapshots to delete for $config"
+        return 0
+      fi
+
+      echo "Found ${#snapshot_array[@]} snapshots to delete for $config"
+      if run_snapper_cmd "$config" delete "${snapshot_array[@]}"; then
+        echo "All snapshots deleted successfully from $config"
+      else
+        echo "Failed to delete all snapshots from $config" >&2
+      fi
+    else
+      if run_snapper_cmd "$config" delete "${numbers[@]}"; then
+        echo "Snapshot(s) deleted successfully from $config"
+      else
+        echo "Failed to delete snapshot(s) from $config" >&2
+      fi
+    fi
+  }
+
+  for_each_config _delete_snapshots_for_config
+}
+
+_list_snapshots_for_config() {
+  local config="$1"
+  echo ""
+  echo "=== Snapshots for configuration '$config' ==="
+  run_snapper_cmd "$config" list
 }
 
 list_snapshots() {
-  check_root
-
-  if [[ ! -d "$SNAPSHOT_DIR" ]]; then
-    echo "No snapshots directory found" >&2
-    return 1
-  fi
-
-  local snapshots=($(ls -1 "$SNAPSHOT_DIR" 2>/dev/null | grep "^${SNAPSHOT_PREFIX}_" | grep -v ".info$" | sort -r))
-
-  if [[ ${#snapshots[@]} -eq 0 ]]; then
-    echo "No snapshots found"
-    return 1
-  fi
-
-  echo "Available snapshots:"
-  echo ""
-  printf "%-40s %-20s %-10s %s\n" "NAME" "DATE" "VERSION" "DESCRIPTION"
-  printf "%-40s %-20s %-10s %s\n" "----" "----" "-------" "-----------"
-
-  for snapshot in "${snapshots[@]}"; do
-    local info_file="${SNAPSHOT_DIR}/${snapshot}.info"
-    if [[ -f "$info_file" ]]; then
-      local date=$(grep "^date=" "$info_file" | cut -d= -f2-)
-      local desc=$(grep "^description=" "$info_file" | cut -d= -f2-)
-      local version=$(grep "^omarchy_version=" "$info_file" | cut -d= -f2-)
-      printf "%-40s %-20s %-10s %s\n" "$snapshot" "$date" "$version" "$desc"
-    else
-      printf "%-40s %-20s %-10s %s\n" "$snapshot" "Unknown" "Unknown" "No metadata"
-    fi
-  done
-
-  echo ""
-  local count=${#snapshots[@]}
-  echo "Total snapshots: $count"
-
-  local usage=$(du -sh "$SNAPSHOT_DIR" 2>/dev/null | cut -f1)
-  echo "Total disk usage: $usage"
+  for_each_config _list_snapshots_for_config
 }
 
-delete_snapshot() {
-  local snapshot_name="$1"
+# Parse command line arguments
+COMMAND=""
+ARGS=()
 
-  check_root
-
-  if [[ -z "$snapshot_name" ]]; then
-    echo "Please specify a snapshot name to delete or 'all' to delete all" >&2
-    exit 1
-  fi
-
-  if [[ "$snapshot_name" == "all" ]]; then
-    # Delete all snapshots
-    local snapshots=($(ls -1 "$SNAPSHOT_DIR" 2>/dev/null | grep "^${SNAPSHOT_PREFIX}_" | grep -v ".info$"))
-
-    if [[ ${#snapshots[@]} -eq 0 ]]; then
-      echo "No snapshots found to delete"
-      return 0
-    fi
-
-    echo "Warning: You are about to delete ALL ${#snapshots[@]} snapshots"
-    read -p "Are you sure? (y/N): " -n 1 -r
-    echo
-
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-      echo "Deletion cancelled"
-      return 0
-    fi
-
-    local deleted_count=0
-    for snapshot in "${snapshots[@]}"; do
-      echo "Deleting snapshot: $snapshot"
-      delete_single_snapshot "$snapshot"
-      ((deleted_count++))
-    done
-
-    echo "Deleted $deleted_count snapshots"
-  else
-    # Delete single snapshot
-    delete_single_snapshot "$snapshot_name"
-  fi
-}
-
-delete_single_snapshot() {
-  local snapshot_name="$1"
-  local snapshot_path="${SNAPSHOT_DIR}/${snapshot_name}"
-
-  if [[ ! -d "$snapshot_path" ]]; then
-    echo "Snapshot not found: $snapshot_name" >&2
-    exit 1
-  fi
-
-  # Delete all subvolume snapshots
-  for subvol_dir in "$snapshot_path"/*; do
-    if [[ -d "$subvol_dir" ]]; then
-      local subvol_name=$(basename "$subvol_dir")
-      echo "  Deleting subvolume: $subvol_name"
-      if ! btrfs subvolume delete "$subvol_dir" 2>/dev/null; then
-        echo "  Failed to delete subvolume: $subvol_name" >&2
-      fi
-    fi
-  done
-
-  # Remove the directory and metadata file
-  rmdir "$snapshot_path" 2>/dev/null
-  rm -f "${snapshot_path}.info"
-
-  echo "Snapshot deleted: $snapshot_name"
-}
-
-mount_snapshot() {
-  local snapshot_name="$1"
-  local mount_point="${2:-/mnt/snapshot}"
-
-  check_root
-
-  if [[ -z "$snapshot_name" ]]; then
-    echo "Please specify a snapshot name to mount" >&2
-    exit 1
-  fi
-
-  local snapshot_path="${SNAPSHOT_DIR}/${snapshot_name}"
-
-  if [[ ! -d "$snapshot_path" ]]; then
-    echo "Snapshot not found: $snapshot_name" >&2
-    exit 1
-  fi
-
-  if [[ ! -d "$mount_point" ]]; then
-    echo "Creating mount point: $mount_point"
-    mkdir -p "$mount_point"
-  fi
-
-  if mountpoint -q "$mount_point"; then
-    echo "Mount point already in use: $mount_point" >&2
-    read -p "Unmount existing? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-      umount -R "$mount_point" 2>/dev/null || umount "$mount_point"
-    else
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  -h | --help)
+    show_usage
+    exit 0
+    ;;
+  setup | create | pre | post | delete | list)
+    if [[ -n "$COMMAND" ]]; then
+      echo "Error: Multiple commands specified" >&2
       exit 1
     fi
-  fi
+    COMMAND="$1"
+    shift
+    ;;
+  *)
+    ARGS+=("$1")
+    shift
+    ;;
+  esac
+done
 
-  echo "Mounting snapshot with all subvolumes"
-
-  local mounted_count=0
-
-  # Mount root first
-  if [[ -d "$snapshot_path/root" ]]; then
-    if mount --bind -o ro "$snapshot_path/root" "$mount_point" 2>/dev/null; then
-      ((mounted_count++))
-      echo "  Mounted root → $mount_point"
-    else
-      echo "  Failed to mount root" >&2
-    fi
-  fi
-
-  # Then mount other subvolumes on top
-  for subvol_dir in "$snapshot_path"/*; do
-    if [[ ! -d "$subvol_dir" ]]; then continue; fi
-
-    local subvol_name=$(basename "$subvol_dir")
-
-    # Skip root since we already mounted it
-    if [[ "$subvol_name" == "root" ]]; then
-      continue
-    fi
-
-    local target_dir
-    if [[ "$subvol_name" == "home" ]]; then
-      target_dir="$mount_point/home"
-    else
-      local rel_path=$(echo "$subvol_name" | sed 's|_|/|g')
-      target_dir="$mount_point/$rel_path"
-    fi
-
-    # Ensure target directory exists
-    mkdir -p "$target_dir"
-
-    if mount --bind -o ro "$subvol_dir" "$target_dir" 2>/dev/null; then
-      ((mounted_count++))
-      echo "  Mounted $subvol_name → $target_dir"
-    else
-      echo "  Failed to mount $subvol_name" >&2
-    fi
-  done
-
-  if [[ $mounted_count -gt 0 ]]; then
-    echo "Snapshot mounted at: $mount_point"
-    echo "Your home directory is at: $mount_point/home"
-    echo "Unmount when done with: sudo umount -R $mount_point"
-  else
-    echo "Failed to mount any subvolumes" >&2
-    exit 1
-  fi
-}
-
-show_usage() {
-  cat <<EOF
-Usage: $(basename "$0") [command] [options]
-
-Commands:
-  create [description]   Create a new snapshot of all subvolumes
-  list                  List all snapshots
-  delete <name|all>     Delete a specific snapshot or all snapshots
-  mount <name> [path]   Mount snapshot for browsing
-
-Examples:
-  $(basename "$0") create "Before system update"
-  $(basename "$0") list
-  $(basename "$0") delete omarchy_20240101_120000
-  $(basename "$0") delete all
-  $(basename "$0") mount omarchy_20240101_120000
-
-Note: This script requires root privileges (use sudo)
-EOF
-}
-
-if [[ -z "$1" ]]; then
+# Check if command was provided
+if [[ -z "$COMMAND" ]]; then
+  echo "Error: No command specified" >&2
   show_usage
   exit 1
 fi
 
-case "$1" in
-create)
-  shift
-  create_snapshot "$@"
+# Request sudo access early
+case "$COMMAND" in
+setup | create | pre | post | delete | list)
+  sudo -v
   ;;
-list | ls)
+esac
+
+# Execute the appropriate command
+case "$COMMAND" in
+setup)
+  setup_configs
+  ;;
+create)
+  create_snapshot "${ARGS[0]}"
+  ;;
+pre)
+  create_pre_snapshot "${ARGS[0]}"
+  ;;
+post)
+  create_post_snapshot "${ARGS[0]}"
+  ;;
+delete)
+  delete_snapshots "${ARGS[@]}"
+  ;;
+list)
   list_snapshots
   ;;
-delete | rm)
-  shift
-  delete_snapshot "$@"
-  ;;
-mount)
-  shift
-  mount_snapshot "$@"
-  ;;
-help | --help | -h)
-  show_usage
-  ;;
 *)
-  echo "Unknown command: $1" >&2
-  show_usage >&2
+  echo "Error: Unknown command '$COMMAND'" >&2
+  show_usage
   exit 1
   ;;
 esac

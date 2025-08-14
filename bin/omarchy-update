@@ -3,7 +3,9 @@
 set -e
 
 omarchy-update-git
+omarchy-snapshot pre "Omarchy update $(date +%Y-%m-%d_%H:%M)"
 omarchy-migrate
 omarchy-update-system-pkgs
+omarchy-snapshot post "Omarchy update completed $(date +%Y-%m-%d_%H:%M)"
 omarchy-update-restart
 omarchy-restart-waybar # removes update-available icon
