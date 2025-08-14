@@ -1,0 +1,123 @@
+#!/bin/bash
+
+# omarchy-obsidian-theme-remove: Remove Omarchy theme from an Obsidian vault and unregister it
+# Usage: omarchy-obsidian-theme-remove [vault-directory]
+# If no vault directory is provided, it will show a selection menu
+
+VAULTS_FILE="$HOME/.local/state/omarchy/obsidian-vaults"
+
+# Function to remove theme from a vault
+remove_theme_from_vault() {
+  local vault_path="$1"
+  local vault_name=$(basename "$vault_path")
+
+  if [ ! -d "$vault_path" ]; then
+    echo "❌ Vault directory does not exist: $vault_path"
+    return 1
+  fi
+
+  THEME_DIR="$vault_path/.obsidian/themes/Omarchy"
+
+  if [ -d "$THEME_DIR" ]; then
+    rm -rf "$THEME_DIR"
+    echo "✅ Removed Omarchy theme from: $vault_name"
+  else
+    echo "ℹ️  Theme not installed in: $vault_name"
+  fi
+
+  # Remove from registry
+  if [ -f "$VAULTS_FILE" ]; then
+    # Create temp file without this vault
+    grep -v "^$vault_path$" "$VAULTS_FILE" >"$VAULTS_FILE.tmp" || true
+
+    # Replace original file if temp has content, otherwise remove it
+    if [ -s "$VAULTS_FILE.tmp" ]; then
+      mv "$VAULTS_FILE.tmp" "$VAULTS_FILE"
+    else
+      rm -f "$VAULTS_FILE" "$VAULTS_FILE.tmp"
+    fi
+
+    echo "✅ Unregistered vault from automatic updates"
+  fi
+}
+
+# Main logic
+if [ $# -eq 0 ]; then
+  # No argument provided - show selection menu
+
+  # Check if any vaults are registered
+  if [ ! -f "$VAULTS_FILE" ] || [ ! -s "$VAULTS_FILE" ]; then
+    echo "❌ No Obsidian vaults are registered"
+    echo ""
+    echo "To install the theme first, run:"
+    echo "  omarchy-obsidian-theme-install"
+    exit 1
+  fi
+
+  # Build list of vaults for selection
+  vault_list=""
+  while IFS= read -r vault_path; do
+    if [ -d "$vault_path" ]; then
+      vault_name=$(basename "$vault_path")
+      if [ -z "$vault_list" ]; then
+        vault_list="$vault_name:$vault_path"
+      else
+        vault_list="$vault_list\n$vault_name:$vault_path"
+      fi
+    fi
+  done <"$VAULTS_FILE"
+
+  if [ -z "$vault_list" ]; then
+    echo "❌ No valid vaults found in registry"
+    exit 1
+  fi
+
+  # Show selection menu
+  echo "Select vault to remove Omarchy theme from:"
+  selected=$(echo -e "$vault_list" | cut -d: -f1 | gum choose --header "Select Obsidian Vault:")
+
+  if [ -z "$selected" ]; then
+    echo "❌ No vault selected"
+    exit 0
+  fi
+
+  # Get the full path for selected vault
+  VAULT_DIR=$(echo -e "$vault_list" | grep "^$selected:" | cut -d: -f2-)
+
+  if [ -z "$VAULT_DIR" ]; then
+    echo "❌ Could not find path for selected vault"
+    exit 1
+  fi
+
+  # Confirm removal
+  echo ""
+  echo "This will remove the Omarchy theme from:"
+  echo "  📁 $selected"
+  echo "  📍 $VAULT_DIR"
+  echo ""
+
+  if gum confirm "Remove theme and unregister vault?"; then
+    remove_theme_from_vault "$VAULT_DIR"
+  else
+    echo "❌ Removal cancelled"
+    exit 0
+  fi
+
+else
+  # Vault directory provided as argument
+  VAULT_DIR="$1"
+  remove_theme_from_vault "$VAULT_DIR"
+fi
+
+# Show remaining registered vaults
+echo ""
+if [ -f "$VAULTS_FILE" ] && [ -s "$VAULTS_FILE" ]; then
+  echo "📋 Remaining registered vaults:"
+  while IFS= read -r vault_path; do
+    if [ -d "$vault_path" ]; then
+      echo "  • $(basename "$vault_path")"
+    fi
+  done <"$VAULTS_FILE"
+else
+  echo "ℹ️  No vaults are currently registered"
+fi
