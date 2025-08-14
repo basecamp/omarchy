@@ -11,6 +11,23 @@ catch_errors() {
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
   echo "You can retry by running: bash ~/.local/share/omarchy/install.sh"
   echo "Get help from the community: https://discord.gg/tXFUdasqhY"
+  echo "                                 "
+  echo "                                 "
+  echo "    █▀▀▀▀▀█ ▄ ▄ ▀▄▄▄█ █▀▀▀▀▀█    "
+  echo "    █ ███ █ ▄▄▄▄▀▄▀▄▀ █ ███ █    "
+  echo "    █ ▀▀▀ █ ▄█  ▄█▄▄▀ █ ▀▀▀ █    "
+  echo "    ▀▀▀▀▀▀▀ ▀▄█ █ █ █ ▀▀▀▀▀▀▀    "
+  echo "    ▀▀█▀▀▄▀▀▀▀▄█▀▀█  ▀ █ ▀ █     "
+  echo "    █▄█ ▄▄▀▄▄ ▀ ▄ ▀█▄▄▄▄ ▀ ▀█    "
+  echo "    ▄ ▄▀█ ▀▄▀▀▀▄ ▄█▀▄█▀▄▀▄▀█▀    "
+  echo "    █ ▄▄█▄▀▄█ ▄▄▄  ▀ ▄▀██▀ ▀█    "
+  echo "    ▀ ▀   ▀ █ ▀▄  ▀▀█▀▀▀█▄▀      "
+  echo "    █▀▀▀▀▀█ ▀█  ▄▀▀ █ ▀ █▄▀██    "
+  echo "    █ ███ █ █▀▄▄▀ █▀███▀█▄██▄    "
+  echo "    █ ▀▀▀ █ ██  ▀ █▄█ ▄▄▄█▀ █    "
+  echo "    ▀▀▀▀▀▀▀ ▀ ▀ ▀▀▀  ▀ ▀▀▀▀▀▀    "
+  echo "                                 "
+  echo "                                 "
 }
 
 trap catch_errors ERR
