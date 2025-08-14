@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Create new bin scripts
 cat > "$HOME/.local/share/omarchy/bin/omarchy-toggle-screensaver" << 'EOF'
 #!/bin/bash
 
@@ -28,5 +29,13 @@ EOF
 chmod +x "$HOME/.local/share/omarchy/bin/omarchy-toggle-screensaver"
 chmod +x "$HOME/.local/share/omarchy/bin/omarchy-launch-screensaver-if-enabled"
 
+
+# Backup files
+backup_timestamp=$(date +"%Y%m%d%H%M%S")
+cp "$HOME/.config/hypr/hypridle.conf" "$HOME/.config/hypr/hypridle.conf.bak.${backup_timestamp}"
+cp "$HOME/.local/share/omarchy/bin/omarchy-menu" "$HOME/.local/share/omarchy/bin/omarchy-menu.bak.${backup_timestamp}"
+echo "Backed up hypridle.conf and omarchy-menu to hypridle.conf.bak.${backup_timestamp} and omarchy-menu.bak.${backup_timestamp}"
+
+# Update hypridle config and menu
 sed -i 's/omarchy-launch-screensaver/omarchy-launch-screensaver-if-enabled/' "$HOME/.config/hypr/hypridle.conf"
 sed -i 's/omarchy-launch-screensaver/omarchy-toggle-screensaver/' "$HOME/.local/share/omarchy/bin/omarchy-menu"
