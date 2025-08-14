@@ -1,0 +1,34 @@
+#!/bin/bash
+#
+# Detects the active keyboard layout and updates the keybindings accordingly.
+#
+
+# Exit on error
+set -e
+
+# Get the active keyboard layout
+layout=$(hyprctl devices | grep 'at-translated-set-2-keyboard' -A 4 | grep 'active keymap:' | awk '{print $3}')
+
+# Default to qwerty
+keymap_name="qwerty"
+
+# Check if the layout is French (AZERTY)
+if [[ "$layout" == "French" ]]; then
+    keymap_name="azerty"
+fi
+
+# The source directory for the keymaps
+omarchy_dir="$HOME/.local/share/omarchy"
+keymap_src_dir="$omarchy_dir/default/hypr/resize-keymaps"
+
+# The destination for the keymap config
+config_dest_dir="$HOME/.config/hypr"
+config_dest_file="$config_dest_dir/resize-keymap.conf"
+
+# Ensure the destination directory exists
+mkdir -p "$config_dest_dir"
+
+# Create the symlink
+ln -sf "$keymap_src_dir/$keymap_name.conf" "$config_dest_file"
+
+echo "Keybindings refreshed for $keymap_name layout."
