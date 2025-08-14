@@ -1,7 +1,5 @@
 #!/bin/bash
 
-omarchy-refresh-keybindings
-
 omarchy-refresh-config hypr/autostart.conf
 omarchy-refresh-config hypr/bindings.conf
 omarchy-refresh-config hypr/envs.conf

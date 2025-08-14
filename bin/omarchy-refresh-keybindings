@@ -6,15 +6,14 @@
 # Exit on error
 set -e
 
-# Get the active keyboard layout
-layout=$(hyprctl devices | grep 'at-translated-set-2-keyboard' -A 4 | grep 'active keymap:' | awk '{print $3}')
+layout=$(localectl status | grep 'X11 Layout' | sed 's/.*X11 Layout://' | xargs | cut -d ',' -f 1)
 
 # Default to qwerty
 keymap_name="qwerty"
 
-# Check if the layout is French (AZERTY)
-if [[ "$layout" == "French" ]]; then
-    keymap_name="azerty"
+# Check if the layout is French (azerty)
+if [[ "$layout" == "fr" ]]; then
+  keymap_name="azerty"
 fi
 
 # The source directory for the keymaps
