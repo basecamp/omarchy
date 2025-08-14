@@ -10,7 +10,7 @@ elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
   gum confirm "Updates require reboot. Ready?" && omarchy-state clear re*-required && omarchy-snapshot post && sudo reboot now
 
 elif [ -f "$HOME/.local/state/omarchy/relaunch-required" ]; then
-  gum confirm "Updates require Hyprland relaunch. Ready?" && omarchy-state clear re*-required && omarchy-snapshot post && uwsm stop
+  gum confirm "Updates require Hyprland relaunch. Ready?" && omarchy-state clear relaunch-required && omarchy-snapshot post && uwsm stop
 fi
 
 for file in "$HOME"/.local/state/omarchy/restart-*-required; do
