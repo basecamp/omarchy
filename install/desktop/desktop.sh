@@ -6,7 +6,7 @@ yay -S --noconfirm --needed \
   nautilus sushi ffmpegthumbnailer gvfs-mtp \
   slurp satty \
   mpv evince imv \
-  chromium
+  omarchy-chromium-bin
 
 # Add screen recorder based on GPU
 if lspci | grep -qi 'nvidia'; then
