@@ -1,6 +1,30 @@
 #!/bin/bash
+# Get the full running kernel version
+running_kernel_full=$(uname -r)
 
-if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
+# Normalize running kernel by replacing -archN or -zenN with .archN or .zenN and removing trailing -arch or -zen
+running_kernel=$(echo "$running_kernel_full" | sed -E 's/-(arch|zen)([0-9]+(-[0-9]+)?)/.\1\2/' | sed -E 's/-(arch|zen)$//')
+
+# Determine the running kernel type
+if [[ $running_kernel_full == *-zen ]]; then
+  kernel_type="zen"
+elif [[ $running_kernel_full == *-arch ]]; then
+  kernel_type="arch"
+else
+  kernel_type="unknown"
+fi
+
+# Get the installed version for the running kernel type
+if [ "$kernel_type" = "zen" ]; then
+  installed_version=$(pacman -Q linux-zen 2>/dev/null | awk '{print $2}')
+elif [ "$kernel_type" = "arch" ]; then
+  installed_version=$(pacman -Q linux 2>/dev/null | awk '{print $2}')
+else
+  installed_version=""
+fi
+
+# Check if running kernel matches the installed version for its type
+if [ -n "$installed_version" ] && [ "$running_kernel" != "$installed_version" ]; then
   gum confirm "New Linux kernel requires reboot. Ready?" && omarchy-state clear re*-required && sudo reboot now
 elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
   gum confirm "Updates require reboot. Ready?" && omarchy-state clear re*-required && sudo reboot now
