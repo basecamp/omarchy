@@ -7,8 +7,5 @@ if ! pacman -Q snapper &>/dev/null; then
 fi
 
 # Setup snapper configurations
-if command -v snapper &>/dev/null && command -v omarchy-snapshot &>/dev/null; then
-  echo "Setting up snapper configurations..."
-  sudo omarchy-snapshot setup || true
-fi
-
+echo "Setting up snapper configurations..."
+sudo omarchy-snapshot setup || true
