@@ -5,8 +5,6 @@
 # Configurations to manage (root and home)
 CONFIGS=("root" "home")
 
-# Use omarchy-state to track pre-snapshot numbers
-
 # Error handling
 set -e
 
