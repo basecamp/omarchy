@@ -7,11 +7,11 @@ STATE_FILE="$HOME/.local/state/omarchy/toggles/screensaver-off"
 
 if [[ -f "$STATE_FILE" ]]; then
   rm -f "$STATE_FILE"
-  notify-send "󰍹  Screensaver enabled"
+  notify-send "Screensaver enabled"
 else
   mkdir -p "$(dirname "$STATE_FILE")"
   touch "$STATE_FILE"
-  notify-send "󰍺  Screensaver disabled"
+  notify-send "Screensaver disabled"
 fi
 EOF
 
@@ -29,4 +29,4 @@ chmod +x "$HOME/.local/share/omarchy/bin/omarchy-toggle-screensaver"
 chmod +x "$HOME/.local/share/omarchy/bin/omarchy-launch-screensaver-if-enabled"
 
 sed -i 's/omarchy-launch-screensaver/omarchy-launch-screensaver-if-enabled/' "$HOME/.config/hypr/hypridle.conf"
-sed -i 's/\*Screensaver\*) omarchy-launch-screensaver ;;/&Screensaver*) omarchy-toggle-screensaver ;;/' "$HOME/.local/share/omarchy/bin/omarchy-menu"
+sed -i 's/omarchy-launch-screensaver/omarchy-toggle-screensaver/' "$HOME/.local/share/omarchy/bin/omarchy-menu"
