@@ -1,4 +1,6 @@
 #!/bin/bash
 
 pkill walker
-setsid uwsm app -- walker --gapplication-service &
+# FIXME: Reenable the walker service once the memory leak has been fixed
+# See https://github.com/basecamp/omarchy/issues/698
+# setsid uwsm app -- walker --gapplication-service &
