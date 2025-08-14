@@ -1,10 +1,16 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-if [[ "--remove" == "$1" ]]; then
+if [[ "${1:-}" == "--remove" ]]; then
   echo -e "\e[32mLet's remove your fingerprint scanner from authentication.\n\e[0m"
   yay -Rns --noconfirm fprintd
   sudo rm -rf /etc/pam.d/polkit-1
   sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/sudo
+
+  # Remove fingerprint icon and auth section from hyprlock.conf
+  sed -i -E 's|^\s*placeholder_text\s*=.*Enter Password.*$|    placeholder_text =   Enter Password|' ~/.config/hypr/hyprlock.conf
+  sed -i '/^auth {$/,/^}$/d' ~/.config/hypr/hyprlock.conf
+
   echo -e "\e[32mYou've successfully removed the fingerprint setup.\e[0m"
 else
   echo -e "\e[32mLet's setup your fingerprint scanner for authentication.\n\e[0m"
@@ -37,6 +43,15 @@ EOF
     echo -e "\e[32m\nNow let's verify that it's working correctly.\e[0m\n"
 
     if fprintd-verify; then
+      # Add fingerprint icon to hyprlock placeholder text and enable fingerprint auth
+      CFG=~/.config/hypr/hyprlock.conf
+      sed -i -E 's|^\s*placeholder_text\s*=.*Enter Password.*$|    placeholder_text =   Enter Password 󰈷|' "$CFG"
+      
+      # Only add auth block if it doesn't already exist
+      if ! grep -q 'fingerprint:enabled' "$CFG"; then
+        echo -e "\nauth {\n    fingerprint:enabled = true\n}" >> "$CFG"
+      fi
+      
       echo -e "\e[32m\nPerfect! Now you can use your fingerprint on the lock screen (Super + Escape).\e[0m"
     else
       echo -e "\e[31m\nSomething went wrong. Maybe try again?\e[0m"
