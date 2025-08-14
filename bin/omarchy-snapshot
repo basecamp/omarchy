@@ -181,6 +181,9 @@ _create_pre_snapshot_for_config() {
 
 create_pre_snapshot() {
   local description="$1"
+  if [[ -z "$description" ]]; then
+    description="Omarchy update $(date +%Y-%m-%d_%H:%M)"
+  fi
   for_each_config _create_pre_snapshot_for_config "$description"
   echo "Pre-snapshot numbers saved for automatic pairing"
 }
@@ -214,6 +217,9 @@ _create_post_snapshot_for_config() {
 
 create_post_snapshot() {
   local description="$1"
+  if [[ -z "$description" ]]; then
+    description="Omarchy update completed $(date +%Y-%m-%d_%H:%M)"
+  fi
   for_each_config _create_post_snapshot_for_config "$description"
 }
 

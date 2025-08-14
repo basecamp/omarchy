@@ -1,9 +1,9 @@
 #!/bin/bash
 
 if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
-  gum confirm "New Linux kernel requires reboot. Ready?" && omarchy-state clear re*-required && sudo reboot now
+  gum confirm "New Linux kernel requires reboot. Ready?" && omarchy-state clear re*-required && omarchy-snapshot post && sudo reboot now
 elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
-  gum confirm "Updates require reboot. Ready?" && omarchy-state clear re*-required && sudo reboot now
+  gum confirm "Updates require reboot. Ready?" && omarchy-state clear re*-required && omarchy-snapshot post && sudo reboot now
 elif [ -f "$HOME/.local/state/omarchy/relaunch-required" ]; then
-  gum confirm "Updates require Hyprland relaunch. Ready?" && omarchy-state clear relaunch-required && uwsm stop
+  gum confirm "Updates require Hyprland relaunch. Ready?" && omarchy-state clear relaunch-required && omarchy-snapshot post && uwsm stop
 fi
