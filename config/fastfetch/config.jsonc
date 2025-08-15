@@ -1,6 +1,8 @@
 {
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
   "logo": {
+    "type": "file-raw",
+    "source": "~/.config/fastfetch/omarchy-logo.txt",
     "padding": {
       "top": 5,
       "right": 6
