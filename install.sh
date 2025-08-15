@@ -18,12 +18,13 @@ trap catch_errors ERR
 
 show_logo() {
   clear
-  tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
+  # tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
+  cat <~/.local/share/omarchy/logo.txt
   echo
 }
 
 show_subtext() {
-  echo "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
+  echo "$1" # | tte --frame-rate ${3:-640} ${2:-wipe}
   echo
 }
 
