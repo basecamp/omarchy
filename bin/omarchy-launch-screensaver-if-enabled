@@ -1,6 +1,0 @@
-#!/bin/bash
-STATE_FILE="$HOME/.local/state/omarchy/toggles/screensaver-off"
-
-if [[ ! -f "$STATE_FILE" ]]; then
-  omarchy-launch-screensaver
-fi
