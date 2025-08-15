@@ -1,0 +1,64 @@
+#!/bin/bash
+
+##
+# Get the CWD of a child shell process.
+# @param $1: The parent process ID (e.g., of the terminal emulator).
+# @return: The absolute path of the shell's CWD on success.
+##
+get_terminal_cwd() {
+  local parent_pid=$1
+  local shell_pid
+  shell_pid=$(pgrep --parent "$parent_pid")
+  if [ -n "$shell_pid" ]; then
+    readlink -f "/proc/$shell_pid/cwd" 2>/dev/null
+  fi
+}
+
+##
+# Get the CWD of a generic GUI application as a fallback.
+# @param $1: The process ID of the application.
+# @return: The absolute path of the process's CWD on success.
+##
+get_generic_gui_cwd() {
+  local pid=$1
+  readlink -f "/proc/$pid/cwd" 2>/dev/null
+}
+
+##
+# Main function to orchestrate CWD detection.
+##
+main() {
+  local final_cwd="$HOME"
+  local found_path
+  
+  local active_window_info
+  active_window_info=$(hyprctl activewindow)
+  
+  local active_class
+  active_class=$(echo "$active_window_info" | grep 'class:' | awk '{print $2}')
+  
+  local _pid
+  _pid=$(echo "$active_window_info" | grep 'pid:' | awk '{print $2}')
+
+  if [ -n "$active_class" ]; then
+    case "$active_class" in
+      kitty|Alacritty|Gnome-terminal|foot|wezterm)
+        found_path=$(get_terminal_cwd "$_pid")
+        ;;
+
+      *)
+        if [ -n "$_pid" ]; then
+            found_path=$(get_generic_gui_cwd "$_pid")
+        fi
+        ;;
+    esac
+  fi
+
+  if [ -n "$found_path" ]; then
+    final_cwd="$found_path"
+  fi
+
+  echo "$final_cwd"
+}
+
+main "$@"
