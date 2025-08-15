@@ -31,6 +31,7 @@ format-drive() {
       sudo parted -s "$1" mklabel gpt
       sudo parted -s "$1" mkpart primary ext4 1MiB 100%
       sudo mkfs.ext4 -L "$2" "$([[ $1 == *"nvme"* ]] && echo "${1}p1" || echo "${1}1")"
+      sudo chmod -R 777 "/run/media/$USER/$2"
       echo "Drive $1 formatted and labeled '$2'."
     fi
   fi
