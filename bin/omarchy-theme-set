@@ -58,6 +58,25 @@ fi
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
+# Update vscode theme
+VS_CODE_THEME="$CURRENT_THEME_DIR/vscode.json"
+VS_CODE_SETTINGS="$HOME/.config/Code/User/settings.json"
+
+if command -v code >/dev/null && [[ -f "$VS_CODE_THEME" ]] && [[ -f "$VS_CODE_SETTINGS" ]]; then
+  theme_name=$(jq -r '.name' "$VS_CODE_THEME")
+  extension=$(jq -r '.extension' "$VS_CODE_THEME")
+
+  # Install VS Code theme extension
+  if [[ -n "$extension" ]] && ! code --list-extensions | grep -Fxq "$extension"; then
+    code --install-extension "$extension"
+  fi
+
+  # Update theme in settings.json 
+  sed -i.bak -E \
+    "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
+    "$VS_CODE_SETTINGS" && rm -f "$VS_CODE_SETTINGS.bak"
+fi
+
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
 omarchy-restart-waybar
