@@ -2,13 +2,35 @@
 
 # Check for kernel package updates since last boot
 boot_time=$(date -d "$(uptime -s)" '+%Y-%m-%d %H:%M')
-recent_kernel_updates=$(awk -v boot_time="$boot_time" '$0 >="["boot_time' /var/log/pacman.log | grep -E "\[ALPM\] (upgraded|installed) (linux|linux-zen|linux-lts|linux-hardened)\b" || true)
-if [ -n "$recent_kernel_updates" ]; then
-  gum confirm "Linux kernel has been updated. Reboot?" && omarchy-state clear re*-required && sudo reboot now
+running_kernel=$(uname -r)
+recent_kernel_updates=$(awk -v boot_time="$boot_time" '$0 >= "["boot_time' /var/log/pacman.log | grep -E "\[ALPM\] (upgraded|installed) (linux|linux-zen|linux-lts|linux-hardened)\b" || true)
 
+# Check if any updated kernel matches the running kernel
+reboot_needed=false
+if [ -n "$recent_kernel_updates" ]; then
+  while IFS= read -r line; do
+    # Extract the kernel package name (e.g., linux, linux-zen) from the log
+    updated_kernel=$(echo "$line" | grep -oE '(linux|linux-zen|linux-lts|linux-hardened)')
+    # Map to a pattern that appears in uname -r for that kernel
+    case "$updated_kernel" in
+    linux) kernel_pattern="arch" ;;
+    linux-zen) kernel_pattern="zen" ;;
+    linux-lts) kernel_pattern="lts" ;;
+    linux-hardened) kernel_pattern="hardened" ;;
+    *) continue ;;
+    esac
+    # Check if the running kernel contains the pattern
+    if [[ "$running_kernel" == *"$kernel_pattern"* ]]; then
+      reboot_needed=true
+      break
+    fi
+  done <<<"$recent_kernel_updates"
+fi
+
+if [ "$reboot_needed" = true ]; then
+  gum confirm "Linux kernel has been updated and is in use. Reboot?" && omarchy-state clear re*-required && sudo reboot now
 elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
   gum confirm "Updates require reboot. Ready?" && omarchy-state clear re*-required && sudo reboot now
-
 elif [ -f "$HOME/.local/state/omarchy/relaunch-required" ]; then
   gum confirm "Updates require Hyprland relaunch. Ready?" && omarchy-state clear re*-required && uwsm stop
 fi
