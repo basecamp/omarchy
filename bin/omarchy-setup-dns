@@ -37,6 +37,9 @@ EOF
 
 backup_current_config() {
     if [[ -f "$RESOLVED_CONF" ]]; then
+        # Remove old backup files to prevent accumulation
+        sudo rm -f "$RESOLVED_CONF".bak.* 2>/dev/null
+        
         backup_file="$RESOLVED_CONF.bak.$(date +%s)"
         echo "Creating backup of current DNS configuration..."
         sudo cp "$RESOLVED_CONF" "$backup_file"
