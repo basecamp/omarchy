@@ -7,6 +7,7 @@ recent_kernel_updates=$(awk -v boot_time="$boot_time" '$0 >= "["boot_time' /var/
 
 # Check if any updated kernel matches the running kernel
 reboot_needed=false
+updated_kernel_name=""
 if [ -n "$recent_kernel_updates" ]; then
   while IFS= read -r line; do
     # Extract the kernel package name (e.g., linux, linux-zen) from the log
@@ -22,17 +23,18 @@ if [ -n "$recent_kernel_updates" ]; then
     # Check if the running kernel contains the pattern
     if [[ "$running_kernel" == *"$kernel_pattern"* ]]; then
       reboot_needed=true
+      updated_kernel_name="$updated_kernel"
       break
     fi
   done <<<"$recent_kernel_updates"
 fi
 
 if [ "$reboot_needed" = true ]; then
-  gum confirm "Linux kernel has been updated and is in use. Reboot?" && omarchy-state clear re*-required && sudo reboot now
+  gum confirm "Kernel package $updated_kernel_name has been updated and is currently running. Reboot?" && omarchy-state clear re*-required && sudo reboot now
 elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
-  gum confirm "Updates require reboot. Ready?" && omarchy-state clear re*-required && sudo reboot now
+  gum confirm "Updates require reboot. Ready?" && omarchy-state clear re*_required && sudo reboot now
 elif [ -f "$HOME/.local/state/omarchy/relaunch-required" ]; then
-  gum confirm "Updates require Hyprland relaunch. Ready?" && omarchy-state clear re*-required && uwsm stop
+  gum confirm "Updates require Hyprland relaunch. Ready?" && omarchy-state clear re*_required && uwsm stop
 fi
 
 for file in "$HOME"/.local/state/omarchy/restart-*-required; do
