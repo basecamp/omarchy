@@ -2,11 +2,12 @@
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications/"
+CURRENT_BROWSER="${BROWSER:-}"
 
 if [ "$#" -ne 1 ]; then
   # Find all web apps
   while IFS= read -r -d '' file; do
-    if grep -q '^Exec=.*chromium.*--app' "$file"; then
+    if grep -q "^Exec=.*\(${CURRENT_BROWSER}\|chromium\).*--app" "$file"; then
       WEB_APPS+=("$(basename "${file%.desktop}")")
     fi
   done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)
