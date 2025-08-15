@@ -7,7 +7,8 @@ yay -S --noconfirm --needed \
   slurp satty \
   mpv evince imv \
   bolt \
-  chromium
+  omarchy-chromium-bin
+
 
 # Add screen recorder based on GPU
 if lspci | grep -qi 'nvidia'; then

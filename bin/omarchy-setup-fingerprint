@@ -10,7 +10,7 @@ else
   echo -e "\e[32mLet's setup your fingerprint scanner for authentication.\n\e[0m"
   yay -S --noconfirm --needed fprintd usbutils
 
-  if ! lsusb | grep -Eiq 'fingerprint|synaptics|goodix'; then
+  if ! lsusb | grep -Eiq 'fingerprint|synaptics|goodix|elan'; then
     echo -e "\e[31m\nNo fingerprint sensor detected.\e[0m"
   else
     # Add fingerprint authentication as an option for sudo

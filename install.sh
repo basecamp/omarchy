@@ -17,19 +17,21 @@ trap catch_errors ERR
 
 show_logo() {
   clear
-  tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
+  # tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
+  cat <~/.local/share/omarchy/logo.txt
   echo
 }
 
 show_subtext() {
-  echo "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
+  echo "$1" # | tte --frame-rate ${3:-640} ${2:-wipe}
   echo
 }
 
 # Install prerequisites
+source $OMARCHY_INSTALL/preflight/gum.sh
 source $OMARCHY_INSTALL/preflight/guard.sh
 source $OMARCHY_INSTALL/preflight/aur.sh
-source $OMARCHY_INSTALL/preflight/presentation.sh
+# source $OMARCHY_INSTALL/preflight/tte.sh
 source $OMARCHY_INSTALL/preflight/migrations.sh
 
 # Configuration
@@ -44,6 +46,7 @@ source $OMARCHY_INSTALL/config/power.sh
 source $OMARCHY_INSTALL/config/timezones.sh
 source $OMARCHY_INSTALL/config/login.sh
 source $OMARCHY_INSTALL/config/nvidia.sh
+source $OMARCHY_INSTALL/config/increase-sudo-tries.sh
 
 # Development
 show_logo decrypt 920
