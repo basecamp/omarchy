@@ -1,0 +1,10 @@
+#!/bin/bash
+
+notify-send "Editing" "$1"
+if [ -n "$VISUAL" ]; then
+  $VISUAL "$1"
+elif [ -n "$EDITOR" ]; then
+  alacritty -e "$EDITOR" "$1"
+else
+  alacritty -e nvim "$1"
+fi
