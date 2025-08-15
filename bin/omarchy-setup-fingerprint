@@ -21,8 +21,8 @@ else
     # Add fingerprint authentication as an option for hyprpolkitagent
     if [ ! -f /etc/pam.d/polkit-1 ] || ! grep -q pam_fprintd.so /etc/pam.d/polkit-1; then
       sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
+auth      sufficient pam_fprintd.so
 auth      required pam_unix.so
-auth      optional pam_fprintd.so
 
 account   required pam_unix.so
 password  required pam_unix.so
