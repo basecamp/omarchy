@@ -131,9 +131,9 @@ show_setup_menu() {
   *Wifi*) alacritty --class=Impala -e impala ;;
   *Bluetooth*) blueberry ;;
   *Power*) show_setup_power_menu ;;
-  *Monitors*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.config/hypr/monitors.conf ;;
-  *Keybindings*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.config/hypr/bindings.conf ;;
-  *Input*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.config/hypr/input.conf ;;
+  *Monitors*) omarchy-launch-editor ~/.config/hypr/monitors.conf ;;
+  *Keybindings*) omarchy-launch-editor ~/.config/hypr/bindings.conf ;;
+  *Input*) omarchy-launch-editor ~/.config/hypr/input.conf ;;
   *Config*) show_setup_config_menu ;;
   *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
   *Fido2*) present_terminal omarchy-setup-fido2 ;;
@@ -153,14 +153,14 @@ show_setup_power_menu() {
 
 show_setup_config_menu() {
   case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
-  *Hyprland*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.config/hypr/hyprland.conf ;;
-  *Hypridle*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
-  *Hyprlock*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.config/hypr/hyprlock.conf ;;
-  *Hyprsunset*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
-  *Swayosd*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
-  *Walker*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.config/walker/config.toml && omarchy-restart-walker ;;
-  *Waybar*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
-  *XCompose*) $OMARCHY_BIN_PATH/omarchy-launch-editor ~/.XCompose && omarchy-restart-xcompose ;;
+  *Hyprland*) omarchy-launch-editor ~/.config/hypr/hyprland.conf ;;
+  *Hypridle*) omarchy-launch-editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
+  *Hyprlock*) omarchy-launch-editor ~/.config/hypr/hyprlock.conf ;;
+  *Hyprsunset*) omarchy-launch-editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
+  *Swayosd*) omarchy-launch-editor ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
+  *Walker*) omarchy-launch-editor ~/.config/walker/config.toml && omarchy-restart-walker ;;
+  *Waybar*) omarchy-launch-editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
+  *XCompose*) omarchy-launch-editor ~/.XCompose && omarchy-restart-xcompose ;;
   *) show_main_menu ;;
   esac
 }
