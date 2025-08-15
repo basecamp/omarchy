@@ -51,3 +51,8 @@ hyprctl reload
 
 # Set new background
 omarchy-theme-bg-next
+
+# Run user-defined theme hooks, for styling additional applications
+export THEME_NAME
+USER_HOOKS_DIR="$HOME/.local/share/omarchy/theme-set-hooks"
+find "$USER_HOOKS_DIR" -mindepth 2 -maxdepth 2 -name "hook.sh" -type f -executable -exec {} \;
