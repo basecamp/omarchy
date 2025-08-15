@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# Pick one or more files from home directory
+FILES=$(find "$HOME" -type f 2>/dev/null | fzf --multi)
+[ -z "$FILES" ] && exit 0
+
+# Run LocalSend in its own systemd service (detached from Ghostty)
+systemd-run --user --quiet --collect \
+  localsend --headless send $FILES
+
+exit 0
