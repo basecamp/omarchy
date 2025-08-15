@@ -1,2 +1,4 @@
 echo "Remove old Omarchy TUI app now that we have the Omarchy Menu"
-rm ~/.local/share/applications/omarchy.desktop 2> /dev/null
+if [ -f ~/.local/share/applications/omarchy.desktop ]; then 
+  rm ~/.local/share/applications/omarchy.desktop
+fi
