@@ -1,0 +1,23 @@
+# Custom palette definition for Matte Black theme
+palette = 0=#333333
+palette = 1=#D35F5F
+palette = 2=#FFC107
+palette = 3=#b91c1c
+palette = 4=#e68e0d
+palette = 5=#D35F5F
+palette = 6=#bebebe
+palette = 7=#bebebe
+palette = 8=#8a8a8d
+palette = 9=#B91C1C
+palette = 10=#FFC107
+palette = 11=#b90a0a
+palette = 12=#f59e0b
+palette = 13=#B91C1C
+palette = 14=#eaeaea
+palette = 15=#ffffff
+background = #121212
+foreground = #bebebe
+cursor-color = #eaeaea
+cursor-text = #121212
+selection-background = #333333
+selection-foreground = #bebebe
