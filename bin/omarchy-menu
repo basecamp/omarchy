@@ -171,8 +171,9 @@ show_setup_config_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n  Plugin\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
+  *Plugin*) terminal omarchy-plugin-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
   *Service*) show_install_service_menu ;;
   *Style*) show_install_style_menu ;;
@@ -280,8 +281,9 @@ show_install_php_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Plugin\n  Web App\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;
+  *Plugin*) terminal omarchy-plugin-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
   *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
@@ -291,10 +293,11 @@ show_remove_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" "󰣇  Omarchy\n  Config\n󰸌  Themes\n  Process\n  Timezone") in
+  case $(menu "Update" "󰣇  Omarchy\n  Config\n󰸌  Themes\n  Plugin\n  Process\n  Timezone") in
   *Omarchy*) present_terminal omarchy-update ;;
   *Config*) show_update_config_menu ;;
   *Themes*) present_terminal omarchy-theme-update ;;
+  *Plugin*) terminal omarchy-plugin-update ;;
   *Process*) show_update_process_menu ;;
   *Timezone*) omarchy-cmd-tzupdate ;;
   *) show_main_menu ;;
