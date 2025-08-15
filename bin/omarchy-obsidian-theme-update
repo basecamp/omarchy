@@ -495,7 +495,12 @@ mark {
 
 .search-result-file-match {
   background-color: var(--code-background);
+  color: var(--text-normal);
   border-left: 3px solid var(--interactive-accent);
+}
+
+.search-result-file-matched-text {
+  color: var(--code-background);
 }
 
 /* Tables */
