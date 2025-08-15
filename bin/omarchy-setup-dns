@@ -60,8 +60,8 @@ setup_cloudflare() {
     sudo sed -i '/^DNSOverTLS=/d' "$RESOLVED_CONF"
     
     # Add Cloudflare as primary, Google as fallback with DNS over TLS
-    echo "DNS=1.1.1.1 1.0.0.1" | sudo tee -a "$RESOLVED_CONF" > /dev/null
-    echo "FallbackDNS=8.8.8.8 8.8.4.4" | sudo tee -a "$RESOLVED_CONF" > /dev/null
+    echo "DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com" | sudo tee -a "$RESOLVED_CONF" > /dev/null
+    echo "FallbackDNS=8.8.8.8#dns.google 8.8.4.4#dns.google" | sudo tee -a "$RESOLVED_CONF" > /dev/null
     echo "DNSOverTLS=opportunistic" | sudo tee -a "$RESOLVED_CONF" > /dev/null
     
     # Force DNS on ethernet and wifi interfaces using systemd-networkd
@@ -82,10 +82,10 @@ Type=!veth
 
 [Network]
 # Force Cloudflare DNS even if DHCP provides DNS with DNS over TLS
-DNS=1.1.1.1
-DNS=1.0.0.1
-DNS=8.8.8.8
-DNS=8.8.4.4
+DNS=1.1.1.1#cloudflare-dns.com
+DNS=1.0.0.1#cloudflare-dns.com
+DNS=8.8.8.8#dns.google
+DNS=8.8.4.4#dns.google
 DNSOverTLS=opportunistic
 UseDNS=no
 DHCP=yes
