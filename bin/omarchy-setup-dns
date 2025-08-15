@@ -16,7 +16,7 @@ USAGE:
     omarchy-setup-dns [OPTION]
 
 OPTIONS:
-    cloudflare     Set Cloudflare (1.1.1.1) as primary DNS with Google (8.8.8.8) as fallback
+    cloudflare     Set Cloudflare (1.1.1.1) as primary DNS with Google (8.8.8.8) as fallback (with DNS over TLS)
     dhcp           Use DHCP-provided DNS (preserves local router DNS for development)
     custom         Interactive setup for custom DNS servers
     status         Show current DNS configuration
@@ -57,10 +57,12 @@ setup_cloudflare() {
     # Remove existing DNS entries and add Cloudflare
     sudo sed -i '/^DNS=/d' "$RESOLVED_CONF"
     sudo sed -i '/^FallbackDNS=/d' "$RESOLVED_CONF"
+    sudo sed -i '/^DNSOverTLS=/d' "$RESOLVED_CONF"
     
-    # Add Cloudflare as primary, Google as fallback
+    # Add Cloudflare as primary, Google as fallback with DNS over TLS
     echo "DNS=1.1.1.1 1.0.0.1" | sudo tee -a "$RESOLVED_CONF" > /dev/null
     echo "FallbackDNS=8.8.8.8 8.8.4.4" | sudo tee -a "$RESOLVED_CONF" > /dev/null
+    echo "DNSOverTLS=opportunistic" | sudo tee -a "$RESOLVED_CONF" > /dev/null
     
     # Force DNS on ethernet and wifi interfaces using systemd-networkd
     # This ensures DHCP-provided DNS is overridden on physical interfaces
@@ -79,11 +81,12 @@ Type=!bridge
 Type=!veth
 
 [Network]
-# Force Cloudflare DNS even if DHCP provides DNS
+# Force Cloudflare DNS even if DHCP provides DNS with DNS over TLS
 DNS=1.1.1.1
 DNS=1.0.0.1
 DNS=8.8.8.8
 DNS=8.8.4.4
+DNSOverTLS=opportunistic
 UseDNS=no
 DHCP=yes
 
@@ -112,6 +115,7 @@ setup_dhcp() {
 [Resolve]
 DNS=
 FallbackDNS=
+DNSOverTLS=no
 #DNS=1.1.1.1 1.0.0.1
 #FallbackDNS=8.8.8.8 8.8.4.4
 EOF
