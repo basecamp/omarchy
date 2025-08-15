@@ -42,6 +42,9 @@ fi
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
+# Update Obsidian themes if any vaults are registered
+omarchy-obsidian-theme-update
+
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
 omarchy-restart-waybar
