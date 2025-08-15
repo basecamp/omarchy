@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 if [[ "${1:-}" == "--remove" ]]; then
@@ -46,12 +46,12 @@ EOF
       # Add fingerprint icon to hyprlock placeholder text and enable fingerprint auth
       CFG=~/.config/hypr/hyprlock.conf
       sed -i -E 's|^\s*placeholder_text\s*=.*Enter Password.*$|    placeholder_text =   Enter Password 󰈷|' "$CFG"
-      
+
       # Only add auth block if it doesn't already exist
       if ! grep -q 'fingerprint:enabled' "$CFG"; then
-        echo -e "\nauth {\n    fingerprint:enabled = true\n}" >> "$CFG"
+        echo -e "\nauth {\n    fingerprint:enabled = true\n}" >>"$CFG"
       fi
-      
+
       echo -e "\e[32m\nPerfect! Now you can use your fingerprint on the lock screen (Super + Escape).\e[0m"
     else
       echo -e "\e[31m\nSomething went wrong. Maybe try again?\e[0m"
