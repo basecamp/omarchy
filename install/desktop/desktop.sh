@@ -6,7 +6,7 @@ yay -S --noconfirm --needed \
   nautilus sushi ffmpegthumbnailer gvfs-mtp gvfs-smb \
   slurp satty \
   mpv evince imv \
-  bolt \
+  bolt fwupd \
   omarchy-chromium-bin
 
 
