@@ -1,0 +1,47 @@
+#!/bin/bash
+
+CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
+BACKGROUNDS_DIR="$HOME/.config/omarchy/current/theme/backgrounds/"
+
+show_backgrounds_menu() {
+  backgrounds=$(ls "$BACKGROUNDS_DIR" 2>/dev/null)
+  if [[ -z "$backgrounds" ]]; then
+    notify-send "No backgrounds found for theme: $theme"
+    return
+  fi
+  local selected
+  selected=$(menu "Background" "$backgrounds")
+  local selected_file="$BACKGROUNDS_DIR/$selected"
+  if [[ ! -f "$selected_file" ]]; then
+    return
+  fi
+  set_background "$selected_file"
+}
+
+set_background() {
+  local bg_file="$1"
+  ln -nsf "$bg_file" "$CURRENT_BACKGROUND_LINK"
+  pkill -x swaybg
+  setsid uwsm app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
+}
+
+menu() {
+  local prompt="$1"
+  local options="$2"
+  local extra="$3"
+  local preselect="$4"
+
+  read -r -a args <<<"$extra"
+
+  if [[ -n "$preselect" ]]; then
+    local index
+    index=$(echo -e "$options" | grep -nxF "$preselect" | cut -d: -f1)
+    if [[ -n "$index" ]]; then
+      args+=("-a" "$index")
+    fi
+  fi
+
+  echo -e "$options" | walker --dmenu --theme dmenu_250 -p "$prompt…" "${args[@]}"
+}
+
+show_backgrounds_menu
