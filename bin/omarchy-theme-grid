@@ -25,13 +25,17 @@ SCALE_FACTOR=${SCALE_FACTOR%.*}  # Convert to integer if decimal
 EFFECTIVE_WIDTH=$((SCREEN_WIDTH / SCALE_FACTOR))
 EFFECTIVE_HEIGHT=$((SCREEN_HEIGHT / SCALE_FACTOR))
 
-# Calculate 70% of effective screen size
 WINDOW_WIDTH=$((EFFECTIVE_WIDTH * 70 / 100))
 WINDOW_HEIGHT=$((EFFECTIVE_HEIGHT * 70 / 100))
 
-# Calculate item dimensions for 3 columns
-ITEM_WIDTH=$((WINDOW_WIDTH * 28 / 100))
-ITEM_HEIGHT=$((ITEM_WIDTH * 7 / 10))
+ITEM_WIDTH=$((WINDOW_WIDTH * 30 / 100))
+
+# For 3 rows to fit with margins, calculate height dynamically
+# Account for: 3 tiles + gaps between them + some padding
+# Roughly: (window_height - margins) / 3
+ITEM_HEIGHT=$((WINDOW_HEIGHT * 31 / 100))
+
+ICON_SIZE=$ITEM_WIDTH
 
 # Generate temporary theme file
 THEME_NAME="grid-dynamic-$$"
@@ -60,13 +64,19 @@ orientation = "vertical"
 spacing = 0
 
 [ui.window.box.scroll.list.item.icon]
-pixel_size = $ITEM_HEIGHT
+pixel_size = -1
 hide = false
+vexpand = true
+hexpand = true
+width = $ITEM_WIDTH
+height = $ITEM_HEIGHT
 
 [ui.window.box.scroll.list.item.text]
 hide = false
 h_align = "center"
-v_align = "end"
+v_align = "center"
+hexpand = true
+margin_top = 4
 
 [ui.window.box.scroll.list.item.sub]
 hide = true
@@ -79,7 +89,6 @@ EOF
 ln -sf "$THEME_FILE" "$WALKER_THEME_DIR/$THEME_NAME.toml"
 ln -sf "$WALKER_THEME_DIR/theme-grid.css" "$WALKER_THEME_DIR/$THEME_NAME.css"
 
-# Create input for Walker dmenu mode
 current_theme=$(omarchy-theme-current)
 INPUT_FILE=$(mktemp)
 
@@ -108,7 +117,6 @@ INPUT_FILE=$(mktemp)
       fi
   done
 
-  # Launch Walker with icon column specified (--no-actions removes hotkey letters)
   selected=$(cat "$INPUT_FILE" | walker --dmenu --theme "$THEME_NAME" -w "$WINDOW_WIDTH" -h "$WINDOW_HEIGHT" -p "Select Theme" -i 2 -t $'\x1f')
 
 # Extract theme name and apply if selected

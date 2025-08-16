@@ -1,49 +1,36 @@
 @import url("file://~/.local/share/omarchy/default/walker/themes/omarchy-default.css");
 @import url("file://~/.config/omarchy/current/theme/walker.css");
 
+/* Container for each grid item */
 #list child {
     background: alpha(@background, 0.8);
-    padding: 0;
+    padding: 8px 0 0 0;
     border: 2px solid transparent;
-    transition: all 0.3s ease;
-    margin: 10px;
-    overflow: hidden;
-    position: relative;
+    transition: all 0.2s ease;
+    margin: 2px;
 }
 
 #list child:selected {
-    background: alpha(@selected-text, 0.3);
+    background: alpha(@selected-text, 0.2);
     border: 2px solid @border;
 }
 
-/* Make icon fill the entire card */
+/* Icon container - scales image to fill tile */
 #icon {
-    margin: 0 !important;
-    padding: 0 !important;
-    border-radius: 13px;
+    border-radius: 8px;
+    /* Scale factor to make images fill the container since pixel_size forces container growth */
+    -gtk-icon-transform: scale(1.5);
 }
 
-/* Position text as subtle pill overlay */
+/* Text label */
 #text {
-    background: alpha(@base, 0.7);
-    backdrop-filter: blur(10px);
+    background: alpha(@base, 0.95);
     color: @text;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 4px 10px;
-    margin: 8px;
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    border-radius: 12px;
-    z-index: 10;
-    width: auto;
-    max-width: calc(100% - 16px);
-}
-
-#list child:hover #text {
-    color: @text;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    margin: 4px;
+    border-radius: 6px;
 }
 
 #list child:selected #text {
