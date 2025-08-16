@@ -1,0 +1,53 @@
+@import url("file://~/.local/share/omarchy/default/walker/themes/omarchy-default.css");
+@import url("file://~/.config/omarchy/current/theme/walker.css");
+
+#list child {
+    background: alpha(@background, 0.8);
+    padding: 0;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+    margin: 10px;
+    overflow: hidden;
+    position: relative;
+}
+
+#list child:selected {
+    background: alpha(@selected-text, 0.3);
+    border: 2px solid @border;
+}
+
+/* Make icon fill the entire card */
+#icon {
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 13px;
+}
+
+/* Position text as subtle pill overlay */
+#text {
+    background: alpha(@base, 0.7);
+    backdrop-filter: blur(10px);
+    color: @text;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 10px;
+    margin: 8px;
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 12px;
+    z-index: 10;
+    width: auto;
+    max-width: calc(100% - 16px);
+}
+
+#list child:hover #text {
+    color: @text;
+}
+
+#list child:selected #text {
+    color: @selected-text;
+    font-weight: 600;
+    background: alpha(@selected-text, 0.2);
+}
