@@ -80,7 +80,11 @@ source $OMARCHY_INSTALL/apps/mimetypes.sh
 show_logo highlight
 show_subtext "Updating system packages [5/5]"
 sudo updatedb
-yay -Syu --noconfirm --ignore uwsm
+
+# Update system packages if we have a network connection
+if ping -c1 omarchy.org &>/dev/null; then
+  yay -Syu --noconfirm --ignore uwsm
+fi
 
 # Reboot
 show_logo laseretch 920
