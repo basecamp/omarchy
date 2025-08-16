@@ -2,4 +2,5 @@
 
 sudo tzupdate
 new_timezone=$(timedatectl show -p Timezone --value)
+omarchy-restart-waybar
 notify-send "Timezone has been set to $new_timezone"
