@@ -1,0 +1,52 @@
+* {
+    background-image: none;
+    box-shadow: none;
+}
+
+window {
+    background-color: rgba(49, 49, 58, 0.6); /* Dracula background color */
+}
+
+button {
+    border-radius: 13px;
+    border-color: #9DA2FF; /* Dracula green */
+    text-decoration-color: #f8f8f2; /* Dracula foreground color */
+    color: #f8f8f2; /* Dracula foreground color */
+    background-color: rgba(49, 49, 58, 0.9); /* Dracula background color */
+    border-style: solid;
+    border-width: 2px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 15%;
+        margin: 15px;
+}
+
+button:focus, button:active, button:hover {
+    background-color: #9DA2FF; /* Default button bg again */ /* Dracula purple */
+    outline-style: none;
+        transition: background-color 0.2s ease;
+}
+
+#lock {
+    background-image: url("icons/lock.png"), url("/usr/local/share/wlogout/icons/lock.png");
+}
+
+#logout {
+    background-image: url("icons/logout.png"), url("/usr/local/share/wlogout/icons/logout.png");
+}
+
+#suspend {
+    background-image: url("icons/suspend.png"), url("/usr/local/share/wlogout/icons/suspend.png");
+}
+
+#hibernate {
+    background-image: url("icons/hibernate.png"), url("/usr/local/share/wlogout/icons/hibernate.png");
+}
+
+#shutdown {
+    background-image: url("icons/shutdown.png"), url("/usr/local/share/wlogout/icons/shutdown.png");
+}
+
+#reboot {
+    background-image: url("icons/reboot.png"), url("/usr/local/share/wlogout/icons/reboot.png");
+}

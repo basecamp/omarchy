@@ -1,0 +1,232 @@
+{
+    "layer": "top",
+    "position": "top",
+    "mod": "dock",
+    "height": 14,
+    "exclusive": true,
+    "passthrough": false,
+    "gtk-layer-shell": true,
+    "width": 1910,
+    "margin-top": 4,
+
+    "modules-left": [
+        "custom/launcher",
+        "custom/spacer",
+        "hyprland/workspaces"
+    ],
+
+    "modules-center": [
+        "clock",
+        "custom/weather"
+    ],
+
+    "modules-right": [
+        "network",
+        "custom/spacer",
+        "tray",
+        "custom/keyboard",
+        "custom/network",
+        "wireplumber",
+        "battery",
+        "custom/spacer1",
+            "custom/updates",
+            "custom/screenshot",
+        "custom/keybinds",
+        "custom/settings",
+        "custom/swaync",
+        "custom/shutdown"
+    ],
+
+"custom/swaync": {
+        "tooltip": true,
+        "format": "{icon}",
+        "format-icons": {
+          "notification": "<span foreground='red'><sup></sup></span>",
+          "none": "",
+          "dnd-notification": "<span foreground='red'><sup></sup></span>",
+          "dnd-none": "",
+          "inhibited-notification": "<span foreground='red'><sup></sup></span>",
+          "inhibited-none": "",
+          "dnd-inhibited-notification": "<span foreground='red'><sup></sup></span>",
+          "dnd-inhibited-none": ""
+        },
+        "return-type": "json",
+        "exec-if": "which swaync-client",
+        "exec": "swaync-client -swb",
+        "on-click": "swaync-client -t -sw",
+        "on-click-right": "swaync-client -d -sw",
+        "tooltip-format": "Notification Center",
+        "escape": true
+    },
+
+"custom/screenshot": {
+    "format": "󰄀",
+    "on-click": "grim -g \"$(slurp)\" - | satty --filename - --output-filename ~/Satty/Screenshot-$(date '+%Y%m%d-%H-%M-%S').png",
+    "tooltip": true,
+    "tooltip-format": "Screenshot Utility"
+},
+
+    "custom/keybinds": {
+        "format": "󰘳",
+        "on-click": "~/.config/hypr/waybar/modules/keybinds.sh",
+        "tooltip": true,
+        "tooltip-format": "Search Keybinds"
+    },
+
+    "custom/launcher": {
+        "format": "",
+        "on-click": "rofi -show drun -config ~/.config/hypr/rofi/config.rasi",
+        "tooltip": true,
+        "tooltip-format": "Application Launcher"
+    },
+
+    "custom/weather": {
+    "format": "{}°C",
+    "tooltip": true,
+    "interval": 3600,
+    "exec": "wttrbar",
+    "return-type": "json"
+},
+
+
+    "custom/settings": {
+        "format": "󱌢",
+            "on-click": "kitty -c ~/.config/kitty/kitty.conf xero-cli -m",
+        "tooltip": true,
+        "tooltip-format": "XeroLinux Toolkit"
+    },
+
+
+    "custom/updates": {
+    "format": "  {}",
+    "escape": true,
+    "return-type": "json",
+    "exec": "~/.config/hypr/waybar/modules/updates.sh",
+    "interval": 600,
+    "on-click": "kitty -e /usr/local/bin/upd",
+    "on-click-right": "~/.config//hypr/waybar/modules/software.sh"
+  },
+
+    "custom/network": {
+        "exec": "~/.config/hypr/waybar/modules/network.sh",
+        "interval": 10,
+        "tooltip": true,
+        "on-click": "nm-connection-editor",
+        "return-type": "json"
+    },
+
+    "network": {
+        "format": "{bandwidthDownBits}  {bandwidthUpBytes}",
+        "format-ethernet": "<span>  {bandwidthDownBytes}</span ><span>    {bandwidthUpBytes}</span>",
+        "format-wifi": "<span>  {bandwidthDownBytes}</span ><span>    {bandwidthUpBytes}</span>",
+
+        "format-disconnected": "", //An empty format will hide the module.
+        "tooltip-format": "{ifname} via {gwaddr} 󰊗",
+        "tooltip-format-wifi": "{essid} ({signalStrength}%) ",
+        "tooltip-format-ethernet": "{ifname} ",
+        "tooltip-format-disconnected": "Disconnected",
+        "max-length": 50,
+        "interval": 1
+    },
+
+    "custom/spacer": {
+        "format": "|"
+    },
+
+    "custom/spacer1": {
+        "format": "|"
+    },
+
+    "clock": {
+        "format": "<span foreground='#ffffff'></span><span> {:%I:%M %p}</span>",
+
+        "tooltip-format": "<tt><small>{calendar}</small></tt>",
+        "calendar": {
+            "mode": "month",
+            "mode-mon-col": 3,
+            "on-scroll": 1,
+            "on-click-right": "mode",
+            "format": {
+                "months": "<span color='#ffead3'><b>{}</b></span>",
+                "days": "<span color='#ecc6d9'><b>{}</b></span>",
+                "weeks": "<span color='#99ffdd'><b>{%W}</b></span>",
+                "weekdays": "<span color='#ffcc66'><b>{}</b></span>",
+                "today": "<span color='#ff6699'><b>{}</b></span>"
+            }
+        },
+        "actions": {
+            "on-click-middle": "mode",
+            "on-click-right": "shift_up",
+            "on-click": "shift_down"
+        }
+    },
+
+
+    "wireplumber": {
+        "on-click": "pavucontrol",
+        "on-click-right": "amixer sset Master toggle 1>/dev/null",
+        "format": "<span foreground='#FFFFFF'> 󰕾</span>",
+        "format-muted": " 󰖁",
+        "format-source": "",
+        "format-source-muted": "",
+        "format-icons": {
+            "headphone": "  ",
+            "hands-free": " ",
+            "headset": " ",
+            "phone": " ",
+            "portable": " ",
+            "car": " ",
+            "default": [" 󰕿", " 󰖀", " 󰕾"]
+        }
+    },
+
+    "tray": {
+        "icon-size": 16,
+        "spacing": 8,
+        "show-passive-items": "true"
+    },
+
+    "custom/shutdown": {
+        "format": "",
+        "on-click": "wlogout -l ~/.config/hypr/wlogout/layout -C ~/.config/hypr/wlogout/style.css",
+        "tooltip": true,
+        "tooltip-format": "Power Menu"
+    },
+
+"battery": {
+    "bat": "BAT0",
+    "interval": 5,
+    "states": {
+        "warning": 30,
+        "critical": 15
+    },
+    "format": "{icon}",
+    "format-icons": ["󰁺", "󰁼", "󰁾", "󰂁", "󰁹"],
+    "format-charging": "󰂇",
+    "tooltip": true,
+    "tooltip-format": "󰂁 {capacity}%\n {time}\n {power}\n󰤁 {cycles}\n {health}",
+    "max-length": 25
+},
+
+
+    "hyprland/workspaces": {
+        "active-only": false,
+        "all-outputs": true,
+        "disable-scroll": false,
+        "on-scroll-up": "hyprctl dispatch workspace -1",
+        "on-scroll-down": "hyprctl dispatch workspace +1",
+        "format": "{icon}",
+        "on-click": "activate",
+        "format-icons": {
+            "1": "",
+            "2": "",
+            "3": "",
+            "4": "",
+            "5": "",
+            "default": ""
+        },
+        "persistent-workspaces": {
+            "*": 5
+        }
+    }
+}

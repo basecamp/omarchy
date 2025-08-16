@@ -1,0 +1,8 @@
+ttf-meslo-nerd-font-powerlevel10k
+oh-my-posh-bin
+waybar-module-pacman-updates-git
+wttrbar
+pyprland
+waypaper
+wlogout
+flatseal

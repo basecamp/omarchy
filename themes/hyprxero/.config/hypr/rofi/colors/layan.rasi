@@ -1,0 +1,17 @@
+/**
+ *
+ * Author : Aditya Shakya (adi1090x)
+ * Github : @adi1090x
+ * Adapted to Layan (purple-accent) color style
+ *
+ * Colors
+ **/
+
+* {
+    background:     rgba(49, 49, 58, 0.95);       /* dark gray-blue */
+    background-alt: rgba(60, 60, 70, 1);       /* lighter gray-blue for contrast */
+    foreground:     #D3DAE3;       /* soft light gray */
+    selected:       #9DA2FF;       /* light purple (accent) */
+    active:         #9F7AEA;       /* more saturated purple */
+    urgent:         #FF6B6B;       /* soft red for urgency */
+}

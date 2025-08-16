@@ -1,0 +1,216 @@
+@define-color accent #cba6f7;
+@define-color txt #f5e0dc;
+@define-color bg #31313A;
+@define-color bg2 #cba6f7;
+
+* {
+    font-family: 'Ubuntu Nerd Font', 'monospace';
+    font-size: 14px;
+    font-weight: bold;
+    border-radius: 0;
+}
+
+window {
+    background: transparent;
+    background-color: @bg;
+    border-radius: 12px;
+}
+
+#workspaces {
+    transition: none;
+    background: transparent;
+    margin-left: -5px;
+}
+
+#workspaces button {
+    background: transparent;
+    box-shadow: none;
+    text-shadow: none;
+    border: none;
+    outline: none;
+    color: #f1f1f1;
+    font-size: 14px;
+        padding: 6px 4px;
+    border-radius: 13px;
+    margin-top: 1px;
+    margin-bottom: 1px;
+}
+
+#workspaces button:hover {
+    color: #50fa7b; /* Dracula green */
+    background: transparent;
+    box-shadow: none;
+    border: none;
+    outline: none;
+}
+
+
+#workspaces button.persistent {
+    color: #f1f1f1;
+    font-size: 14px;
+}
+
+#workspaces button.empty {
+    color: #f1f1f1;
+}
+
+#workspaces button.active {
+    color: #9DA2FF;
+    font-size: 14px;
+}
+
+#battery {
+    color: #ffffff;
+}
+
+
+#battery.warning {
+    color: #ffffff;
+    background: none;
+}
+#battery.critical {
+    color: #ffffff; /* force white even if critical */
+    background: none; /* remove orange/red background */
+}
+
+
+#custom-arch {
+    min-width: 0;
+    box-shadow: inset 0 -3px transparent;
+    font-size: 10px;
+    padding: 2px 4px;
+    margin: 2px;
+    border-radius: 4px;
+    color: #E2E2E4;
+    margin-left: 6px;
+}
+
+#custom-spacer,
+#custom-spacer1 {
+    min-width: 0;
+    box-shadow: inset 0 -3px transparent;
+    font-size: 14px;
+    padding: 2px 4px;
+    margin: 2px;
+    border-radius: 4px;
+    color: #494A53;
+}
+
+#custom-spacer {
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+#custom-spacer1 {
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+#window {
+    min-width: 0;
+    box-shadow: inset 0 -3px transparent;
+    padding: 2px 6px;
+    margin: 2px;
+    border-radius: 4px;
+    background-color: #0F1014;
+    color: #ffffff;
+}
+
+#clock {
+    min-width: 0;
+    box-shadow: inset 0 -3px transparent;
+    padding: 2px 6px;
+    margin: 2px;
+    border-radius: 4px;
+    color: #ffffff;
+    font-size: 13px;
+}
+
+#wireplumber {
+    all: initial;
+    min-width: 0;
+    box-shadow: inset 0 -3px transparent;
+    color: #ffffff;
+    font-weight: bold;
+    margin-right: 16px;
+}
+
+#network {
+    all: initial;
+    min-width: 0;
+    box-shadow: inset 0 -3px transparent;
+    font-family: 'Ubuntu Nerd Font', monospace;
+    font-size: 12px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+
+
+#custom-shutdown {
+    color: #ffffff;
+    margin-right: 15px;
+}
+
+#tray {
+   margin-right:8px;
+}
+
+#custom-network {
+    margin-right: 10px;
+    color: white;
+}
+
+#custom-updates {
+        margin-right: 10px;
+        color: white;
+    font-size: 13px;
+}
+
+#custom-settings {
+        margin-right: 10px;
+        color: white;
+}
+
+#custom-weather {
+   font-size: 13px;
+   color: white;
+}
+
+#custom-lockscreen {
+   margin-right: 12px;
+   margin-left: 5px;
+   font-size: 14px;
+   color: white;
+}
+
+#custom-keyboard {
+    margin-right: 12px;
+    color: white;
+}
+
+#custom-keybinds {
+   color:white;
+   font-size: 14px;
+   margin-right: 10px;
+
+}
+#custom-launcher {
+    font-size: 18px;
+    margin-left: 18px;
+}
+
+#custom-lock-toggle {
+    margin-right: 12px;
+    color: white;
+}
+
+#custom-screenshot {
+    color: white;
+    margin-right: 10px;
+}
+
+#custom-swaync {
+    color: white;
+    margin-right: 10px;
+}

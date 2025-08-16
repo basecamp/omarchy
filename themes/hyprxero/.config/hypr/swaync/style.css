@@ -1,0 +1,358 @@
+fonts {
+  font-family: Ubuntu Nerd Font;
+  font-weight: 300;
+}
+
+
+/* ── 5. Sliders (Volume, Backlight) ─────────────────────────────── */
+.widget-volume label, .widget-backlight label {
+  font-size: 24px;
+  color: #ffffff;
+
+  min-width: 24px;
+  margin-right: 14px;
+}
+scale trough {
+  min-height: 12px;
+  border-radius: 6px;
+  background-color: #4B4B55;
+}
+scale trough progress {
+  min-height: 12px;
+  border-radius: 6px;
+  background-color: #ffffff;
+  transition: background-color 0.15s ease;
+}
+scale:hover trough progress {
+  background-color: #7C4DFF;
+}
+trough highlight {
+  padding: 5px;
+  background: #9DA2FF;
+  border-radius: 20px;
+  box-shadow: 0 0 5px rgba(0, 0, 0, .5);
+  transition: all 0.7s ease;
+}
+scale slider {
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: 20px;
+  background-color: #7C4DFF;
+}
+
+.control-center .notification-row:focus,
+.control-center .notification-row:hover {
+  opacity: 1;
+  background: rgba(49, 49, 58, 0.);
+  color: #D3DAE3;
+}
+
+.notification-row {
+  outline: none;
+  margin: 0px;
+  padding: 0px;
+}
+
+.notification {
+  background: rgba(49, 49, 58, 0.92);
+  border: 2px solid #9DA2FF;
+  border-radius: 10px;
+  margin: 3px;
+  padding: 5px 10px;
+}
+
+.notification-content {
+  background: transparent;
+}
+
+.notification-default-action {
+  margin: 0;
+  padding: 0;
+  border-radius: 5px;
+}
+
+.close-button {
+  background: #FF6B6B;
+  color: rgba(49, 49, 58, 0.92);
+  text-shadow: none;
+  padding: 0px;
+  border-radius: 5px;
+  margin-top: 5px;
+}
+
+.close-button:hover {
+  box-shadow: none;
+  background: #FF8A8A;
+  transition: all 0.15s ease-in-out;
+  border: none;
+}
+
+.notification-action {
+  border: 2px solid #9DA2FF;
+  border-top: none;
+  border-radius: 5px;
+}
+
+.notification-default-action:hover,
+.notification-action:hover {
+  color: #D3DAE3;
+  background: #3C3C46;
+}
+
+.notification-default-action {
+  border-radius: 5px;
+  margin: 0px;
+}
+
+.notification-default-action:not(:only-child) {
+  border-bottom-left-radius: 7px;
+  border-bottom-right-radius: 7px;
+}
+
+.notification-action:first-child {
+  border-bottom-left-radius: 10px;
+  background: #3C3C46;
+}
+
+.notification-action:last-child {
+  border-bottom-right-radius: 10px;
+  background: rgba(49, 49, 58, 0.92);
+  border: 2px solid #9DA2FF;
+}
+
+.inline-reply {
+  margin-top: 8px;
+}
+
+.inline-reply-entry {
+  background: #3C3C46;
+  color: #D3DAE3;
+  caret-color: #D3DAE3;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+}
+
+.inline-reply-button {
+  margin-left: 4px;
+  background: #27272E;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+  color: #D3DAE3;
+}
+
+.inline-reply-button:disabled {
+  background: initial;
+  color: #999;
+  border: 1px solid transparent;
+}
+
+.inline-reply-button:hover {
+  background: #3C3C46;
+}
+
+.image {
+  border-radius: 5px;
+  margin-right: 10px;
+}
+
+.summary {
+  font-size: 16px;
+  font-weight: 700;
+  background: transparent;
+  color: #9DA2FF;
+  text-shadow: none;
+}
+
+.time {
+  font-size: 16px;
+  font-weight: 700;
+  background: transparent;
+  color: #9DA2FF;
+  text-shadow: none;
+  margin-right: 18px;
+}
+
+.body {
+  font-size: 15px;
+  font-weight: 400;
+  background: transparent;
+  color: #D3DAE3;
+  text-shadow: none;
+}
+
+.control-center {
+  background: rgba(49, 49, 58, 0.92);
+  border-radius: 35px;
+  border-top-right-radius: 5px;
+}
+
+.control-center-list {
+  background: transparent;
+}
+
+.control-center-list-placeholder {
+  opacity: 0.5;
+}
+
+.floating-notifications {
+  background: transparent;
+}
+
+.blank-window {
+  background: alpha(black, 0.1);
+}
+
+.widget-title {
+  color: #D3DAE3;
+  background: transparent;
+  padding: 10px 0px 0px 10px;
+  margin: 0 0 0 5px;
+  border-bottom: 2px solid #9DA2FF;
+}
+
+.widget-title > button {
+  color: #D3DAE3;
+  text-shadow: none;
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  border-radius: 10px;
+}
+
+.widget-title > button:hover {
+  color: #000;
+  background: #9DA2FF;
+}
+
+.widget-dnd {
+  background: transparent;
+  padding: 15px 0 0 0;
+  margin: 0 15px;
+  border-radius: 15px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #D3DAE3;
+}
+
+.widget-dnd > switch {
+  border-radius: 15px;
+  background: #3C3C46;
+}
+
+.widget-dnd > switch:checked {
+  background: #9DA2FF;
+  border: 1px solid #9DA2FF;
+}
+
+.widget-dnd > switch slider,
+.widget-dnd > switch:checked slider {
+  background: #D3DAE3;
+  border-radius: 15px;
+}
+
+.widget-label {
+  margin: 10px 10px 5px 10px;
+}
+
+.widget-label > label {
+  font-size: 1rem;
+  color: #D3DAE3;
+}
+
+.widget-mpris {
+  color: #D3DAE3;
+  background: transparent;
+  border-radius: 10px;
+}
+
+.widget-mpris > box > button {
+  border-radius: 10px;
+  color: #D3DAE3;
+}
+
+.widget-mpris-player {
+  color: #D3DAE3;
+  padding: 5px 10px;
+  margin: 10px;
+  opacity: 0.8;
+}
+
+.widget-mpris-title {
+  font-weight: 900;
+  font-size: 1.25rem;
+  color: #ffffff;
+}
+
+.widget-mpris-subtitle {
+  font-size: 1rem;
+  color: #ffffff;
+}
+
+.widget-buttons-grid {
+  font-size: x-large;
+  padding-left: 34px;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild > button {
+  font-size: 16px;
+  background: #3C3C46;
+  border: none;
+  border-radius: 8px;
+  color: #D3DAE3;
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild > button image {
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild > button:hover {
+  background: #9DA2FF;
+  color: #27272E;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild > button:checked {
+  background: #9DA2FF;
+  color: #27272E;
+}
+
+.widget-menubar > box > .menu-button-bar > button {
+  border: none;
+  background: transparent;
+}
+
+.topbar-buttons > button {
+  border: none;
+  background: transparent;
+}
+
+.widget-volume {
+  background: transparent;
+  padding: 10px 5px 5px;
+  margin: 5px 10px;
+  font-size: 2rem;
+  color: #9DA2FF;
+  border-color: #7C4DFF;
+}
+
+.widget-backlight {
+  background: transparent;
+  padding: 5px;
+  margin: 5px 10px;
+  font-size: 2rem;
+  color: #3C3C46;
+}
+
+.widget-menubar>box>.menu-button-bar>button{
+  border: none;
+  background: transparent;
+}
+
+.topbar-buttons>button{
+  border: none;
+  background: transparent;
+}

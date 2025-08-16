@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Extract available profiles
+RAW_PROFILES=($(powerprofilesctl list | grep -E '^\*?\s*[a-z-]+:' | sed -E 's/^\*?\s*([a-z-]+):.*/\1/'))
+
+# Capitalize profile name (e.g. power-saver → Power Saver)
+capitalize() {
+    echo "$1" | sed -E 's/(^|-)([a-z])/\U\2/g'
+}
+
+# Generate button list
+BUTTONS=""
+for i in "${!RAW_PROFILES[@]}"; do
+    LABEL=$(capitalize "${RAW_PROFILES[$i]}")
+    BUTTONS+="--button=$LABEL:$(($i + 1)) "
+done
+
+# Adjust width dynamically
+WIDTH=$((160 + ${#RAW_PROFILES[@]} * 100))
+
+# Show yad dialog
+yad --center --title="Power Profiles" \
+    --width=$WIDTH --height=100 \
+    --text="<b>Select a power profile:</b>" \
+    $BUTTONS \
+    --buttons-layout=center
+
+# Handle button selection
+CLICK=$?
+INDEX=$((CLICK - 1))
+
+if [ $INDEX -ge 0 ] && [ $INDEX -lt ${#RAW_PROFILES[@]} ]; then
+    PROFILE="${RAW_PROFILES[$INDEX]}"
+    powerprofilesctl set "$PROFILE"
+
+    # Choose appropriate icon
+    case "$PROFILE" in
+        performance)
+            ICON="yast-firewall"
+            ;;
+        balanced)
+            ICON="atom"
+            ;;
+        power-saver)
+            ICON="battery"
+            ;;
+        *)
+            ICON="dialog-information"
+            ;;
+    esac
+
+    # Send notification
+    notify-send -i "$ICON" "Power Profile" "Switched to $(capitalize "$PROFILE") mode"
+fi
