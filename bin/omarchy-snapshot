@@ -1,0 +1,410 @@
+#!/bin/bash
+
+# omarchy-snapshot: Manage Btrfs snapshots via snapper
+
+# Configurations to manage (root and home)
+CONFIGS=("root" "home")
+
+# Error handling
+set -e
+
+show_usage() {
+  echo "Usage: omarchy-snapshot <command> [options]"
+  echo ""
+  echo "Commands:"
+  echo "  setup                    Create snapper configurations for root and home"
+  echo "  create [description]     Create snapshots for both root and home"
+  echo "  pre [description]        Create pre-action snapshots for both root and home"
+  echo "  post [description]       Create post-action snapshots (auto-pairs with last pre)"
+  echo "  delete <number(s)|all>   Delete snapshot(s) by number or all snapshots from both root and home"
+  echo "  list                     List all snapshots for both root and home"
+  echo ""
+  echo "Options:"
+  echo "  -h, --help              Show this help message"
+  echo ""
+  echo "Examples:"
+  echo "  omarchy-snapshot setup                       # Setup snapper configs"
+  echo "  omarchy-snapshot create \"Manual backup\"     # Snapshot both root and home"
+  echo "  omarchy-snapshot pre \"Omarchy update\"       # Pre-snapshot both"
+  echo "  omarchy-snapshot post \"Update completed\"    # Post-snapshot both"
+  echo "  omarchy-snapshot delete 45                   # Delete snapshot 45 from both"
+  echo "  omarchy-snapshot delete all                  # Delete all snapshots from both"
+  echo "  omarchy-snapshot list                        # List both configurations"
+}
+
+save_pre_number() {
+  local config="$1"
+  local number="$2"
+  omarchy-state set "snapshot-pre-${config}-${number}"
+}
+
+get_last_pre_number() {
+  local config="$1"
+  local state_dir="$HOME/.local/state/omarchy"
+
+  # Find the most recent pre-snapshot state file for this config
+  local pre_file=$(find "$state_dir" -maxdepth 1 -name "snapshot-pre-${config}-*" -type f 2>/dev/null | sort -V | tail -1)
+
+  if [[ -z "$pre_file" ]]; then
+    return 1
+  fi
+
+  # Extract the number from the filename
+  local pre_number="${pre_file##*-}"
+  
+  # Validate the number is not empty
+  if [[ -z "$pre_number" ]]; then
+    echo "Warning: Invalid state file found: $pre_file" >&2
+    rm -f "$pre_file"
+    return 1
+  fi
+
+  # Clear this state
+  omarchy-state clear "snapshot-pre-${config}-${pre_number}"
+
+  echo "$pre_number"
+  return 0
+}
+
+check_config() {
+  local config="$1"
+  if ! snapper list-configs | grep -q "^$config "; then
+    echo "Error: snapper configuration '$config' does not exist" >&2
+    echo "Run 'omarchy-snapshot setup' to create configurations" >&2
+    return 1
+  fi
+  return 0
+}
+
+run_snapper_cmd() {
+  local config="$1"
+  shift
+  sudo snapper -c "$config" "$@"
+}
+
+setup_single_config() {
+  local config="$1"
+  local path="$2"
+
+  if snapper list-configs | grep -q "^$config "; then
+    echo "$config configuration already exists"
+    return 0
+  fi
+
+  echo "Creating $config configuration..."
+  if sudo snapper -c "$config" create-config "$path"; then
+    echo "$config configuration created successfully"
+    # Set cleanup algorithm and disable timeline
+    sudo snapper -c "$config" set-config "TIMELINE_CREATE=no"
+    sudo snapper -c "$config" set-config "TIMELINE_CLEANUP=no"
+    sudo snapper -c "$config" set-config "NUMBER_LIMIT=50"
+    sudo snapper -c "$config" set-config "NUMBER_LIMIT_IMPORTANT=10"
+    return 0
+  else
+    echo "Failed to create $config configuration" >&2
+    return 1
+  fi
+}
+
+for_each_config() {
+  local func="$1"
+  shift
+
+  for config in "${CONFIGS[@]}"; do
+    if ! check_config "$config"; then
+      continue
+    fi
+    "$func" "$config" "$@"
+  done
+}
+
+setup_configs() {
+  echo "Setting up snapper configurations for root and home..."
+
+  local failed=false
+
+  if ! setup_single_config "root" "/"; then
+    failed=true
+  fi
+
+  if ! setup_single_config "home" "/home"; then
+    failed=true
+  fi
+
+  if [[ "$failed" == "true" ]]; then
+    exit 1
+  fi
+
+  # Disable timeline service to prevent automatic snapshots
+  if systemctl is-enabled snapper-timeline.timer &>/dev/null; then
+    echo "Disabling snapper timeline service..."
+    sudo systemctl disable --now snapper-timeline.timer
+  fi
+
+  echo "Setup complete!"
+}
+
+_create_snapshot_for_config() {
+  local config="$1"
+  local description="$2"
+  local extra_args="${@:3}"
+
+  local desc_arg=""
+  if [[ -n "$description" ]]; then
+    desc_arg="--description \"$description\""
+  fi
+
+  local cmd="run_snapper_cmd \"$config\" create $extra_args $desc_arg"
+
+  if ! eval "$cmd"; then
+    echo "Failed to create snapshot for $config" >&2
+    return 1
+  fi
+  return 0
+}
+
+create_snapshot() {
+  local description="$1"
+  echo "Creating snapshots for root and home..."
+  for_each_config _create_snapshot_for_config "$description"
+  echo "Snapshots created successfully"
+}
+
+_create_pre_snapshot_for_config() {
+  local config="$1"
+  local description="$2"
+
+  local desc_arg=""
+  if [[ -n "$description" ]]; then
+    desc_arg="--description \"$description\""
+  fi
+
+  local cmd="run_snapper_cmd \"$config\" create -t pre $desc_arg --print-number"
+  local snapshot_num
+  snapshot_num=$(eval "$cmd")
+  local exit_code=$?
+
+  if [[ $exit_code -eq 0 && -n "$snapshot_num" ]]; then
+    save_pre_number "$config" "$snapshot_num"
+  else
+    echo "Failed to create pre-action snapshot for $config" >&2
+  fi
+}
+
+create_pre_snapshot() {
+  local description="$1"
+  if [[ -z "$description" ]]; then
+    description="Omarchy update $(date +%Y-%m-%d_%H:%M)"
+  fi
+  echo "Creating pre-snapshots for root and home..."
+  for_each_config _create_pre_snapshot_for_config "$description"
+  echo "Pre-snapshots created and saved for automatic pairing"
+}
+
+_create_post_snapshot_for_config() {
+  local config="$1"
+  local description="$2"
+
+  # Try to get the last pre-snapshot number
+  local pre_number
+  if pre_number=$(get_last_pre_number "$config"); then
+    local desc_arg=""
+    if [[ -n "$description" ]]; then
+      desc_arg="--description \"$description\""
+    fi
+
+    local cmd="run_snapper_cmd \"$config\" create -t post --pre-number \"$pre_number\" $desc_arg"
+    if ! eval "$cmd"; then
+      echo "Failed to create post-action snapshot for $config" >&2
+      return 1
+    fi
+    return 0
+  else
+    echo "Warning: No pre-action snapshot found for configuration '$config'" >&2
+    return 1
+  fi
+}
+
+create_post_snapshot() {
+  local description="$1"
+  if [[ -z "$description" ]]; then
+    description="Omarchy update completed $(date +%Y-%m-%d_%H:%M)"
+  fi
+  echo "Creating post-snapshots for root and home..."
+  
+  local had_errors=false
+  _create_post_with_tracking() {
+    if ! _create_post_snapshot_for_config "$@"; then
+      had_errors=true
+    fi
+  }
+  
+  for config in "${CONFIGS[@]}"; do
+    if ! check_config "$config"; then
+      continue
+    fi
+    _create_post_with_tracking "$config" "$description"
+  done
+  
+  if [[ "$had_errors" == "false" ]]; then
+    echo "Post-snapshots created successfully"
+  fi
+}
+
+delete_snapshots() {
+  local args=("$@")
+
+  if [[ ${#args[@]} -eq 0 ]]; then
+    echo "Error: At least one snapshot number or 'all' is required" >&2
+    echo "Usage: omarchy-snapshot delete <number(s)|all>" >&2
+    exit 1
+  fi
+
+  local delete_all=false
+  local numbers=()
+
+  # Check if "all" is specified
+  if [[ "${args[0]}" == "all" ]]; then
+    delete_all=true
+    echo "Deleting ALL snapshots from both root and home"
+  else
+    # Validate all numbers
+    for num in "${args[@]}"; do
+      if ! [[ "$num" =~ ^[0-9]+$ ]]; then
+        echo "Error: '$num' is not a valid snapshot number" >&2
+        exit 1
+      fi
+    done
+    numbers=("${args[@]}")
+    echo "Deleting snapshot(s) from both root and home: ${numbers[*]}"
+  fi
+
+  # Ask for confirmation
+  if [[ "$delete_all" == "true" ]]; then
+    read -p "Delete ALL snapshots from both configurations? This cannot be undone! (y/N): " -n 1 -r
+  else
+    read -p "Delete these snapshots from both configurations? (y/N): " -n 1 -r
+  fi
+  echo
+
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Deletion cancelled"
+    return 0
+  fi
+
+  # Process each configuration
+  _delete_snapshots_for_config() {
+    local config="$1"
+
+    if [[ "$delete_all" == "true" ]]; then
+      # Get all snapshot numbers (excluding snapshot 0 which is the initial snapshot)
+      local all_snapshots=$(run_snapper_cmd "$config" list | grep -E '^\s*[0-9]+' | awk '{print $1}' | grep -v '^0$' | sort -n)
+      local snapshot_array=($all_snapshots)
+
+      if [[ ${#snapshot_array[@]} -eq 0 ]]; then
+        return 0
+      fi
+
+      if run_snapper_cmd "$config" delete "${snapshot_array[@]}"; then
+        # Clean up all state files for this config
+        rm -f "$HOME/.local/state/omarchy/snapshot-pre-${config}-"*
+      else
+        echo "Failed to delete all snapshots from $config" >&2
+      fi
+    else
+      if run_snapper_cmd "$config" delete "${numbers[@]}"; then
+        # Clean up state files for deleted snapshots
+        for num in "${numbers[@]}"; do
+          rm -f "$HOME/.local/state/omarchy/snapshot-pre-${config}-${num}"
+        done
+      else
+        echo "Failed to delete snapshot(s) from $config" >&2
+      fi
+    fi
+  }
+
+  for_each_config _delete_snapshots_for_config
+  echo "Snapshots deleted successfully"
+  
+  # Clean up any orphaned state files if all snapshots were deleted
+  if [[ "$delete_all" == "true" ]]; then
+    rm -f "$HOME/.local/state/omarchy/snapshot-pre-"*
+  fi
+}
+
+_list_snapshots_for_config() {
+  local config="$1"
+  echo ""
+  echo "=== Snapshots for configuration '$config' ==="
+  run_snapper_cmd "$config" list
+}
+
+list_snapshots() {
+  for_each_config _list_snapshots_for_config
+}
+
+# Parse command line arguments
+COMMAND=""
+ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  -h | --help)
+    show_usage
+    exit 0
+    ;;
+  setup | create | pre | post | delete | list)
+    if [[ -n "$COMMAND" ]]; then
+      echo "Error: Multiple commands specified" >&2
+      exit 1
+    fi
+    COMMAND="$1"
+    shift
+    ;;
+  *)
+    ARGS+=("$1")
+    shift
+    ;;
+  esac
+done
+
+# Check if command was provided
+if [[ -z "$COMMAND" ]]; then
+  echo "Error: No command specified" >&2
+  show_usage
+  exit 1
+fi
+
+# Request sudo access early
+case "$COMMAND" in
+setup | create | pre | post | delete | list)
+  sudo -v
+  ;;
+esac
+
+# Execute the appropriate command
+case "$COMMAND" in
+setup)
+  setup_configs
+  ;;
+create)
+  create_snapshot "${ARGS[0]}"
+  ;;
+pre)
+  create_pre_snapshot "${ARGS[0]}"
+  ;;
+post)
+  create_post_snapshot "${ARGS[0]}"
+  ;;
+delete)
+  delete_snapshots "${ARGS[@]}"
+  ;;
+list)
+  list_snapshots
+  ;;
+*)
+  echo "Error: Unknown command '$COMMAND'" >&2
+  show_usage
+  exit 1
+  ;;
+esac
