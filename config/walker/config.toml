@@ -5,6 +5,11 @@ theme_location = ["~/.local/share/omarchy/default/walker/themes/"]
 hotreload_theme = true
 force_keyboard_focus = true
 
+[keys]
+accept_typeahead = ["tab", "ctrl y"]
+next = ["down", "ctrl j", "ctrl n"]
+prev = ["up", "ctrl k", "ctrl p"]
+
 [keys.ai]
 run_last_response = ["ctrl e"]
 
