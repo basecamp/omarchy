@@ -1,0 +1,12 @@
+#!/bin/bash
+
+source "$(dirname "$0")/omarchy-browser-utils"
+
+browser_command=$(get_browser_cmd)
+browser=$(basename "$(echo "$browser_command" | awk '{print $1}')")
+# Use omarchy default browser if the system default isn't chromium or google-chrome
+if [[ ! "$browser" =~ ^(chromium|google-chrome-.*)$ ]]; then
+  browser_command=$(get_default_browser_cmd)
+fi
+
+exec $browser_command "$@"

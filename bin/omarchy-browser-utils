@@ -1,0 +1,72 @@
+#!/bin/bash
+
+omarchy_default_browser="chromium"
+
+get_desktop_file_path() {
+  browser_desktop_file="$1"
+  search_paths=(
+    "$HOME/.local/share/applications"
+    "/usr/share/applications"
+    "/usr/local/share/applications"
+  )
+  desktop_file_path=""
+  for path in "${search_paths[@]}"; do
+    if [ -f "$path/$browser_desktop_file" ]; then
+      desktop_file_path="$path/$browser_desktop_file"
+      break
+    fi
+  done
+  if [[ -z "$desktop_file_path" ]]; then
+    echo "Error: Could not find desktop file for $browser_desktop_file" >&2
+    exit 1
+  fi
+  echo "$desktop_file_path"
+}
+
+get_cmd() {
+  desktop_file_path="$1"
+  if [ -n "$desktop_file_path" ]; then
+    exec_line=$(grep -m 1 -E '^Exec=' "$desktop_file_path" | cut -d'=' -f2-)
+    base_cmd=$(echo "$exec_line" | sed -e 's/ %U//' -e 's/ %u//' -e 's/ %F//' -e 's/ %f//')
+    echo "$base_cmd"
+  else
+    echo "Error: desktop_file_path is empty" >&2
+    exit 1
+  fi
+}
+
+# Special arguments for specific browsers
+get_args_for_browser() {
+  base_cmd="$1"
+  first_word=$(echo "$base_cmd" | awk '{print $1}')
+  browser_name=$(basename "$first_word")
+  args=()
+  if [[ "$browser_name" == "chromium" || "$browser_name" == "google-chrome-"* ]]; then
+    args+=(--ozone-platform=wayland)
+    args+=(--new-window)
+  fi
+  echo "${args[@]}"
+}
+
+# For the provided desktop file, return the full command to run (including args)
+get_cmd_for_desktop_file() {
+  browser_desktop_file="$1"
+  desktop_file_path=$(get_desktop_file_path "$browser_desktop_file")
+  
+  base_cmd=$(get_cmd "$desktop_file_path")
+  args=$(get_args_for_browser "$base_cmd")
+  echo "${base_cmd} ${args[@]}"
+}
+
+get_browser_cmd() {
+  # Get the default browser
+  browser_desktop_file=$(xdg-settings get default-web-browser)
+  if [[ -z "$browser_desktop_file" ]]; then
+    browser_desktop_file="${omarchy_default_browser}.desktop"
+  fi
+  echo $(get_cmd_for_desktop_file "$browser_desktop_file")
+}
+
+get_default_browser_cmd() {
+  echo $(get_cmd_for_desktop_file "${omarchy_default_browser}.desktop")
+}
