@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Get the default browser
+browser=$(xdg-settings get default-web-browser)
+
+# If the browser is not found, fall back to chromium
+if [[ -z "$browser" ]]; then
+  browser="chromium"
+else
+  # The output of xdg-settings might be something like "firefox.desktop",
+  # so we need to extract the executable name.
+  browser=$(echo "$browser" | sed 's/\.desktop//')
+fi
+
+args=()
+if [[ "$browser" == "chromium" || "$browser" == "google-chrome"* ]]; then
+  args+=(--ozone-platform=wayland)
+fi
+
+exec "$browser" "${args[@]}" "$@"

@@ -35,7 +35,7 @@ edit_in_nvim() {
 }
 
 open_web() {
-  setsid chromium --new-window --app="$1" &
+  setsid omarchy-browser --new-window --app="$1" &
 }
 
 install() {
