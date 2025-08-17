@@ -89,7 +89,7 @@ EOF
 ln -sf "$THEME_FILE" "$WALKER_THEME_DIR/$THEME_NAME.toml"
 ln -sf "$WALKER_THEME_DIR/theme-grid.css" "$WALKER_THEME_DIR/$THEME_NAME.css"
 
-current_theme=$(omarchy-theme-current)
+current_theme=$(omarchy-theme-current | tr '[:upper:]' '[:lower:]')
 INPUT_FILE=$(mktemp)
 
   # Create input for Walker dmenu mode
@@ -97,6 +97,12 @@ INPUT_FILE=$(mktemp)
       if [[ -d "$theme_path" || -L "$theme_path" ]]; then
           theme_name=$(basename "$theme_path")
           display_name=$(echo "$theme_name" | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g')
+          
+          # Mark current theme with a checkmark (compare lowercase)
+          theme_name_lower=$(echo "$theme_name" | tr '[:upper:]' '[:lower:]')
+          if [[ "$theme_name_lower" == "$current_theme" ]]; then
+              display_name="✓ $display_name"
+          fi
 
           # Follow symlinks to get the actual theme directory
           if [[ -L "$theme_path" ]]; then
@@ -121,8 +127,9 @@ INPUT_FILE=$(mktemp)
 
 # Extract theme name and apply if selected
 if [[ -n "$selected" && "$selected" != "CNCLD" ]]; then
-    # Convert display name back to theme name
-    theme_name=$(echo "$selected" | sed -E 's/ /-/g; s/([A-Z])/\L\1/g')
+    # Remove checkmark if present and convert display name back to theme name
+    selected_clean=$(echo "$selected" | sed 's/^✓ //')
+    theme_name=$(echo "$selected_clean" | sed -E 's/ /-/g; s/([A-Z])/\L\1/g')
 
     # Check if this theme exists
     if [[ -d "$HOME/.config/omarchy/themes/$theme_name" || -L "$HOME/.config/omarchy/themes/$theme_name" ]]; then
