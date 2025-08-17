@@ -3,7 +3,7 @@
 if command -v tte &>/dev/null; then
   # Check for logo file, preferring ~/.config/logo.txt
   if [[ -f ~/.config/logo.txt ]]; then
-    logo_file=~/.config/logo.txt
+    logo_file=~/.config/omarchy/logo.txt
   else
     logo_file=~/.local/share/omarchy/logo.txt
   fi
