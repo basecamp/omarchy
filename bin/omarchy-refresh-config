@@ -19,22 +19,68 @@ fi
 user_config_file="${HOME}/.config/$config_file"
 default_config_file="${HOME}/.local/share/omarchy/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
+base_config_file="${user_config_file}.omarchy-last-base"
 
-if [[ -f "$user_config_file" ]]; then
-  # Create preliminary backup
-  cp -f "$user_config_file" "$backup_config_file" 2>/dev/null
+mkdir -p -- "$(dirname "$user_config_file")"
 
-  # Replace config with new default
-  cp -f "$default_config_file" "$user_config_file" 2>/dev/null
-
-  # Compare and delete/inform accordingly
-  if cmp -s "$user_config_file" "$backup_config_file"; then
-    rm "$backup_config_file"
-  else
-    echo -e "\e[31mReplaced $user_config_file with new Omarchy default.\nSaved backup as ${backup_config_file}.\n\n\e[32mChanges:\e[0m"
-    diff "$user_config_file" "$backup_config_file" || true
-  fi
+# Set state based on user config and baseline
+if [[ ! -e "$user_config_file" ]]; then
+  state=no_user_config
+elif [[ ! -e "$base_config_file" ]]; then
+  state=has_user_no_base
+elif cmp -s -- "$user_config_file" "$base_config_file"; then
+  state=has_user_same_as_base
 else
-  # Config file did not exist already
-  cp -f "$default_config_file" "$user_config_file" 2>/dev/null
+  state=has_user_different_from_base
 fi
+
+# Helpers
+apply_default() {
+  # Copies default into user file, refreshes baseline and prints a caller-provided message
+  cp -f -- "$default_config_file" "$user_config_file"
+  cp -f -- "$default_config_file" "$base_config_file"
+  printf "$1\n" "$user_config_file"
+}
+
+backup_user() {
+  cp -f -- "$user_config_file" "$backup_config_file"
+  printf "Saved backup as %s\n" "$backup_config_file"
+}
+
+handle_diff() {
+  printf "%s\n" "${1:-Differences detected:}"
+  printf "Diff (user vs new default):\n"
+  diff -u -- "$user_config_file" "$default_config_file" || true
+  echo
+  read -r -p "Replace user config with new default? [y/N] " ans
+  if [[ "$ans" =~ ^[Yy]$ ]]; then
+    backup_user
+    apply_default "Replaced %s with new Omarchy default."
+  else
+    printf "Kept existing user config.\n"
+    printf "New Omarchy default remains at %s\n" "$default_config_file"
+    exit 3
+  fi  
+}
+
+# Apply changes according to state
+case $state in
+  no_user_config)
+    apply_default "Created %s from Omarchy default."
+  ;;
+  has_user_no_base)
+    cp -f -- "$default_config_file" "$base_config_file"
+    printf "Initialized baseline for %s.\n" "$user_config_file"
+    if cmp -s -- "$user_config_file" "$default_config_file"; then
+      printf "No changes needed (user config matches new default).\n"
+    else
+      handle_diff "Local edits suspected (previous baseline missing, user config differs from new default)"
+    fi
+  ;;
+  has_user_same_as_base)
+    apply_default "Updated %s with new Omarchy default."
+  ;;
+  has_user_different_from_base)
+    handle_diff "Local edits detected (user config differs from baseline)"
+  ;;
+esac
