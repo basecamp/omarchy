@@ -72,12 +72,7 @@ show_style_menu() {
 }
 
 show_theme_menu() {
-  theme=$(menu "Theme" "$(omarchy-theme-list)" "" "$(omarchy-theme-current)")
-  if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    show_main_menu
-  else
-    omarchy-theme-set "$theme"
-  fi
+  omarchy-theme-menu
 }
 
 show_font_menu() {
