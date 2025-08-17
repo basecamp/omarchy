@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# Check if flatpak is installed, install it with yay if not
+if ! command -v flatpak &>/dev/null; then
+  echo "Flatpak is not installed. Installing it with yay..."
+  yay -S flatpak
+  echo "Flatpak installed. A restart is required to continue. Please restart your system and run the script again."
+  exit 0
+fi
+
+fzf_args=(
+  --multi
+  --preview 'echo "alt-p: toggle description, alt-j/k: scroll, F11: maximize"; echo; flatpak remote-info flathub {2}'
+  --preview-window 'down:65%:wrap'
+  --bind 'alt-p:toggle-preview'
+  --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
+  --bind 'alt-k:preview-up,alt-j:preview-down'
+)
+
+installed_apps=$(flatpak list --columns=application)
+declare -A installed_map
+while IFS= read -r app; do
+  [[ -n "$app" ]] && installed_map["$app"]=1
+done <<<"$installed_apps"
+
+pkg_data=$(flatpak remote-ls flathub --columns=application,name)
+
+pkg_list=$(while IFS=$'\t' read -r app name; do
+  if [[ ${installed_map[$app]} ]]; then
+    printf "[Installed] %s\t%s\n" "$name" "$app"
+  else
+    printf "%s\t%s\n" "$name" "$app"
+  fi
+done <<<"$pkg_data")
+
+selected=$(echo "$pkg_list" | fzf "${fzf_args[@]}" --with-nth=1 --delimiter=$'\t')
+
+if [[ -n "$selected" ]]; then
+  pkg_name=$(echo "$selected" | cut -f2)
+
+  # Check if the selected app is installed
+  if [[ ${installed_map[$pkg_name]} ]]; then
+    echo "Uninstalling $pkg_name..."
+    flatpak uninstall -y "$pkg_name"
+  else
+    echo "Installing $pkg_name..."
+    flatpak install -y flathub "$pkg_name"
+  fi
+
+  sudo updatedb
+  omarchy-show-done
+fi
