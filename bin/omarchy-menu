@@ -349,7 +349,7 @@ show_system_menu() {
 
 show_share_menu() {
   case $(menu " Share" "  Files") in
-  *Files*) terminal "omarchy-cmd-share" ;;
+  *Files*) terminal "omarchy-cmd-share-files" ;;
   *) show_main_menu ;;
   esac
 }
