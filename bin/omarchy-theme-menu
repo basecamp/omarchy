@@ -3,23 +3,16 @@
 # Launch Walker with theme grid configuration
 # Dynamically calculates window size based on screen resolution
 
-export PATH="$HOME/.local/share/omarchy/bin:$PATH"
-
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 WALKER_THEME_DIR="$HOME/.local/share/omarchy/default/walker/themes"
 
 # Get screen dimensions and scale factor
-SCREEN_INFO=$(xrandr | grep -w connected | head -1)
-SCREEN_WIDTH=$(echo "$SCREEN_INFO" | grep -oP '\d+x\d+' | cut -d'x' -f1)
-SCREEN_HEIGHT=$(echo "$SCREEN_INFO" | grep -oP '\d+x\d+' | cut -d'x' -f2)
+MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[0]')
+SCREEN_WIDTH=$(echo "$MONITOR_INFO" | jq -r '.width')
+SCREEN_HEIGHT=$(echo "$MONITOR_INFO" | jq -r '.height')
 
-# Get scale factor (default to 1 if not set)
-SCALE_FACTOR=${GDK_SCALE:-1}
-if [[ -z "$SCALE_FACTOR" || "$SCALE_FACTOR" == "1" ]]; then
-    # Try to get from Hyprland if available
-    SCALE_FACTOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[0].scale' 2>/dev/null || echo "1")
-fi
-SCALE_FACTOR=${SCALE_FACTOR%.*}  # Convert to integer if decimal
+# Get scale factor
+SCALE_FACTOR=$GDK_SCALE
 
 # Adjust for scale factor
 EFFECTIVE_WIDTH=$((SCREEN_WIDTH / SCALE_FACTOR))
