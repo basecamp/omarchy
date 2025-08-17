@@ -363,6 +363,7 @@ go_to_menu() {
   *apps*) walker -p "Launch…" ;;
   *learn*) show_learn_menu ;;
   *style*) show_style_menu ;;
+  *share*) show_share_menu ;;
   *theme*) show_theme_menu ;;
   *capture*) show_capture_menu ;;
   *screenshot*) show_screenshot_menu ;;
