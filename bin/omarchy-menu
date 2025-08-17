@@ -171,7 +171,7 @@ show_setup_config_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming\n  Flatpak") in
   *Package*) terminal omarchy-pkg-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
   *Service*) show_install_service_menu ;;
@@ -180,6 +180,7 @@ show_install_menu() {
   *Editor*) show_install_editor_menu ;;
   *AI*) show_install_ai_menu ;;
   *Gaming*) show_install_gaming_menu ;;
+  *Flatpak*) terminal omarchy-flatpak-pkg-install ;;
   *) show_main_menu ;;
   esac
 }
