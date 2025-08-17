@@ -1,9 +1,16 @@
 #!/bin/bash
 
 if command -v tte &>/dev/null; then
+  # Check for logo file, preferring ~/.config/logo.txt
+  if [[ -f ~/.config/logo.txt ]]; then
+    logo_file=~/.config/logo.txt
+  else
+    logo_file=~/.local/share/omarchy/logo.txt
+  fi
+
   while true; do
     effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
-    tte -i ~/.local/share/omarchy/logo.txt \
+    tte -i "$logo_file" \
       --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
       "$effect" &
 
