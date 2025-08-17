@@ -10,8 +10,8 @@ set_theme_colors() {
 }
 
 if command -v chromium &>/dev/null; then
-  yay -Rns chromium
-  yay -Sy omarchy-chromium-bin
+  yay -Rns --noconfirm chromium
+  yay -Sy --noconfirm omarchy-chromium-bin
 
   if pgrep -x chromium; then
     if gum confirm "Chromium must be restarted. Ready?"; then
