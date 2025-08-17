@@ -1,0 +1,17 @@
+add_newline = true
+command_timeout = 200
+format = "[$directory$git_branch]($style)$character"
+
+[character]
+error_symbol = "[✗](bold red)"
+success_symbol = "[❯](bold #A5D6A7)[❯](bold #FFF59D)[❯](bold #FFAB91)"
+
+[directory]
+truncation_length = 2
+truncation_symbol = "…/"
+repo_root_style = "bold cyan"
+repo_root_format = "[$repo_root]($repo_root_style)[$path]($style)[$read_only]($read_only_style) "
+
+[git_branch]
+format = "[$branch]($style) "
+style = "bold"
