@@ -1,9 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Name=Omarchy Browser
-Comment=The default browser for Omarchy
-Exec=omarchy-browser %U
-Terminal=false
-Type=Application
-Icon=web-browser
-StartupNotify=true

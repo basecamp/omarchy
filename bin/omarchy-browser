@@ -13,7 +13,6 @@ search_paths=(
     "$HOME/.local/share/applications"
     "/usr/share/applications"
     "/usr/local/share/applications"
-    "/home/ankur/devel/omarchy/applications"
 )
 
 desktop_file_path=""
@@ -26,8 +25,7 @@ done
 
 # If .desktop file is found, parse the Exec line
 if [ -n "$desktop_file_path" ]; then
-    # Grep for Exec line and cut the value
-    exec_line=$(grep -E '^Exec=' "$desktop_file_path" | cut -d'=' -f2-)
+    exec_line=$(grep -m 1 -E '^Exec=' "$desktop_file_path" | cut -d'=' -f2-)
     # Remove desktop entry exec field codes
     base_cmd=$(echo "$exec_line" | sed -e 's/ %U//' -e 's/ %u//' -e 's/ %F//' -e 's/ %f//')
 else
@@ -44,7 +42,4 @@ if [[ "$browser_name" == "chromium" || "$browser_name" == "google-chrome-"* ]]; 
   args+=(--ozone-platform=wayland)
 fi
 
-# Execute the command.
-# We use `bash -c` to properly handle commands with arguments in $base_cmd.
-# The script arguments ($@) are passed at the end.
-exec bash -c "exec $base_cmd \"\$@\"" _ "${args[@]}" "$@"
+exec $base_cmd "${args[@]}" "$@"
