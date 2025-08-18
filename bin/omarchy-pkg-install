@@ -2,17 +2,43 @@
 
 fzf_args=(
   --multi
-  --preview 'echo "alt-p: toggle description, alt-j/k: scroll, F11: maximize"; echo; yay -Sii {1}'
+  --preview 'echo "tab: select/deselect, enter: confirm,"; echo "alt-p: toggle description, alt-j/k: scroll, F11: maximize"; echo; yay -Sii {1}'
   --preview-window 'down:65%:wrap'
   --bind 'alt-p:toggle-preview'
   --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
   --bind 'alt-k:preview-up,alt-j:preview-down'
 )
 
-pkg_name=$(yay -Slq | fzf "${fzf_args[@]}")
+pkg_names=$(yay -Slq | fzf "${fzf_args[@]}")
 
-if [[ -n "$pkg_name" ]]; then
-  yay -Sy --noconfirm "$pkg_name"
-  sudo updatedb
-  omarchy-show-done
+if [[ -n "$pkg_names" ]]; then
+  readarray -t pkg_array <<< "$pkg_names"
+  pkg_count=${#pkg_array[@]}
+  proceed=true
+
+  if [[ $pkg_count -eq 1 ]]; then
+    echo "Installing package: ${pkg_array[0]}"
+  else
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "Packages to install ($pkg_count)"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    for pkg in "${pkg_array[@]}"; do
+      echo "  • $pkg"
+    done
+    echo
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    read -p "Install all packages? (y/N): " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+      echo "✗ Operation cancelled."
+      proceed=false
+    fi
+  fi
+
+  if [[ "$proceed" == true ]]; then
+    yay -Sy --noconfirm "${pkg_array[@]}"
+    sudo updatedb
+  fi
 fi
+
+omarchy-show-done
