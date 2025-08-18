@@ -42,10 +42,6 @@ install() {
   present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2"
 }
 
-install_custom_cmd() {
-  present_terminal "echo 'Installing $1...'; $2"
-}
-
 install_and_launch() {
   present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2 && setsid gtk-launch $3"
 }
@@ -212,7 +208,7 @@ show_install_ai_menu() {
   *Claude*) install "Claude Code" "claude-code" ;;
   *Gemini*) install "Gemini" "gemini-cli-bin" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
-  *Ollama*) install_custom_cmd "Ollama" "curl -fsSL https://ollama.com/install.sh | sh" ;;
+  *Ollama*) install "Ollama" "$(command -v nvidia-smi &>/dev/null && echo "ollama-cuda" || echo "ollama")" ;;
   *Crush*) install "Crush" "crush-bin" ;;
   *opencode*) install "opencode" "opencode-bin" ;;
   *) show_install_menu ;;
