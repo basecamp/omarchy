@@ -1,8 +1,7 @@
 #!/bin/bash
 
 if command -v tte &>/dev/null; then
-  # Check for logo file, preferring ~/.config/logo.txt
-  if [[ -f ~/.config/logo.txt ]]; then
+  if [[ -f ~/.config/omarchy/logo.txt ]]; then
     logo_file=~/.config/omarchy/logo.txt
   else
     logo_file=~/.local/share/omarchy/logo.txt
