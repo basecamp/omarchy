@@ -73,11 +73,10 @@ show_learn_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󰒲  Screensaver") in
+  case $(menu "Style" "󰸌  Theme\n  Font\n  Background") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
-  *Screensaver*) copy_then_edit ~/.local/share/omarchy/logo.txt ~/.config/omarchy/logo.txt ;;
   *) show_main_menu ;;
   esac
 }
@@ -140,7 +139,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Config\n󰈷  Fingerprint\n  Fido2"
+  options="$options\n  Config\n󰈷  Fingerprint\n  Fido2\n󰒲  Screensaver"
 
   case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
@@ -153,6 +152,7 @@ show_setup_menu() {
   *Config*) show_setup_config_menu ;;
   *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
   *Fido2*) present_terminal omarchy-setup-fido2 ;;
+  *Screensaver*) copy_then_edit ~/.local/share/omarchy/logo.txt ~/.config/omarchy/logo.txt ;;
   *) show_main_menu ;;
   esac
 }
