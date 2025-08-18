@@ -348,8 +348,10 @@ show_system_menu() {
 }
 
 show_share_menu() {
-  case $(menu " Share" "  Files") in
-  *Files*) terminal "omarchy-cmd-share-files" ;;
+  case $(menu " Share" "  Clipboard\n File \n  Folder") in
+  *Clipboard*) terminal "omarchy-cmd-share-files clipboard" ;;
+  *File*) terminal "omarchy-cmd-share-files file" ;;
+  *Folder*) terminal "omarchy-cmd-share-files folder" ;;
   *) show_main_menu ;;
   esac
 }
