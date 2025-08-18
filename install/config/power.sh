@@ -9,7 +9,12 @@ if ls /sys/class/power_supply/BAT* &>/dev/null; then
   powerprofilesctl set balanced || true
 
   # Enable battery monitoring timer for low battery notifications
-  systemctl --user enable --now omarchy-battery-monitor.timer || true
+  if is_chroot; then
+    echo "⚠️  [CHROOT] Enabling omarchy-battery-monitor.timer (without --now flag)"
+    systemctl --user enable omarchy-battery-monitor.timer || true
+  else
+    systemctl --user enable --now omarchy-battery-monitor.timer || true
+  fi
 else
   # This computer runs on power outlet
   powerprofilesctl set performance || true

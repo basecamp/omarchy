@@ -114,7 +114,7 @@ elif [ -f "/etc/kernel/cmdline" ]; then # UKI Alternate
   new_cmdline=$(echo "$new_cmdline" | xargs)
 
   # Write new file
-  echo $new_cmdline | sudo tee /etc/kernel/cmdline
+  echo "$new_cmdline" | sudo tee /etc/kernel/cmdline
 else
   echo ""
   echo " None of systemd-boot, GRUB, or UKI detected. Please manually add these kernel parameters:"
@@ -261,7 +261,7 @@ fi
 
 # Enable omarchy-seamless-login.service only if not already enabled
 if ! systemctl is-enabled omarchy-seamless-login.service | grep -q enabled; then
-  sudo systemctl enable omarchy-seamless-login.service
+    sudo systemctl enable omarchy-seamless-login.service
 fi
 
 # Disable getty@tty1.service only if not already disabled

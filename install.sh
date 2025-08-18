@@ -6,6 +6,11 @@ set -e
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 
+# Simple chroot detection function
+is_chroot() {
+  [ -n "${CHROOT:-}" ] || [ ! -r /proc/1/root ] || ! cmp -s /proc/1/root/ / 2>/dev/null
+}
+
 # Give people a chance to retry running the installation
 catch_errors() {
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
@@ -87,6 +92,12 @@ fi
 
 # Reboot
 show_logo laseretch 920
-show_subtext "You're done! So we'll be rebooting now..."
-sleep 2
-reboot
+if is_chroot; then
+  show_subtext "🎉 Omarchy installation completed successfully!"
+  echo "    Installation finished in chroot environment."
+  echo "    Please exit the chroot and reboot your system manually."
+else
+  show_subtext "You're done! So we'll be rebooting now..."
+  sleep 2
+  sudo reboot
+fi
