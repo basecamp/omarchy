@@ -1,0 +1,1012 @@
+#!/bin/bash
+
+# set -e  # Disabled to prevent early exit on package checks
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Text indicators
+CHECK="PASS"
+FAIL="FAIL"
+WARN="WARN"
+INFO="INFO"
+
+# Configuration
+OMARCHY_DIR="$HOME/.local/share/omarchy"
+CONFIG_DIR="$HOME/.config"
+STATE_DIR="$HOME/.local/state/omarchy"
+
+# Options
+VERBOSE=false
+FIX=false
+CATEGORY=""
+FAILED_CHECKS=0
+TOTAL_CHECKS=0
+FAILED_ITEMS=()
+
+usage() {
+    echo "Usage: omarchy-healthcheck [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --fix              Attempt to fix common issues automatically"
+    echo "  --verbose          Show detailed output for all checks"
+    echo "  --category=CATEGORY Only run checks for specific category"
+    echo "  --help             Show this help message"
+    echo ""
+    echo "Categories:"
+    echo "  packages           Package dependencies check"
+    echo "  services           Systemd services status"
+    echo "  config             Configuration file integrity"
+    echo "  theme              Theme system validation"
+    echo "  binaries           Binary tools functionality"
+    echo "  desktop            Desktop environment status"
+    echo "  development        Development environment"
+    echo "  hardware           Hardware integration"
+    echo "  network            Network connectivity"
+    echo "  migrations         Migration status"
+    echo "  docker             Docker configuration"
+    echo "  firewall           Firewall configuration"
+    echo "  system             System configuration"
+}
+
+log_info() {
+    echo -e "${BLUE}[${INFO}]${NC} $1"
+}
+
+log_success() {
+    echo -e "  ${GREEN}[${CHECK}]${NC} $1"
+}
+
+log_warning() {
+    echo -e "  ${YELLOW}[${WARN}]${NC} $1"
+}
+
+log_error() {
+    echo -e "  ${RED}[${FAIL}]${NC} $1"
+    ((FAILED_CHECKS++))
+    FAILED_ITEMS+=("$1")
+}
+
+log_verbose() {
+    if [[ "$VERBOSE" == true ]]; then
+        echo "    • $1"
+    fi
+}
+
+log_section() {
+    echo ""
+    echo -e "${BLUE}┌─ $1${NC}"
+}
+
+run_check() {
+    ((TOTAL_CHECKS++))
+    if [[ -n "$CATEGORY" ]] && [[ "$1" != "$CATEGORY" ]]; then
+        return 0
+    fi
+    "$2"
+}
+
+check_package_installed() {
+    local package="$1"
+    if pacman -Qi "$package" &>/dev/null; then
+        return 0
+    elif command -v yay >/dev/null 2>&1 && yay -Qi "$package" &>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+fix_missing_package() {
+    local package="$1"
+    if [[ "$FIX" == true ]]; then
+        echo -e "    ${BLUE}[INFO]${NC} Attempting to install $package..."
+        if command -v yay >/dev/null && yay -S --noconfirm --needed "$package" &>/dev/null; then
+            log_success "Successfully installed $package"
+            return 0
+        else
+            echo -e "    ${RED}[FAIL]${NC} Failed to install $package"
+            return 1
+        fi
+    fi
+    return 1
+}
+
+check_packages() {
+    log_section "Package Dependencies"
+    
+    # Terminal packages
+    local terminal_packages=(
+        "wget" "curl" "unzip" "inetutils" "impala"
+        "fd" "eza" "fzf" "ripgrep" "zoxide" "bat" "dust" "jq" "xmlstarlet"
+        "wl-clipboard" "fastfetch" "btop"
+        "man" "tldr" "less" "whois" "plocate"
+        "starship" "bash-completion"
+        "alacritty"
+    )
+    
+    # Desktop packages
+    local desktop_packages=(
+        "brightnessctl" "playerctl" "pamixer" "wiremix" "wireplumber"
+        "fcitx5" "fcitx5-gtk" "fcitx5-qt" "wl-clip-persist"
+        "nautilus" "sushi" "ffmpegthumbnailer" "gvfs-mtp"
+        "slurp" "satty"
+        "mpv" "evince" "imv"
+    )
+    
+    # Hyprland packages
+    local hyprland_packages=(
+        "hyprland" "hyprshot" "hyprpicker" "hyprlock" "hypridle" "hyprsunset"
+        "polkit-gnome" "hyprland-qtutils"
+        "walker-bin" "libqalculate" "waybar" "mako" "swaybg" "swayosd"
+        "xdg-desktop-portal-hyprland" "xdg-desktop-portal-gtk"
+    )
+    
+    # Development packages
+    local dev_packages=(
+        "cargo" "clang" "llvm" "mise"
+        "imagemagick"
+        "mariadb-libs" "postgresql-libs"
+        "github-cli"
+        "lazygit" "lazydocker-bin"
+        "docker" "docker-compose" "docker-buildx"
+        "nvim" "luarocks" "tree-sitter-cli"
+        "gcc14"
+        "ufw" "ufw-docker"
+        "gum" "base-devel" "yay" "python-poetry-core" "python-terminaltexteffects"
+    )
+    
+    # Font packages
+    local font_packages=(
+        "ttf-font-awesome" "ttf-cascadia-mono-nerd" "ttf-ia-writer"
+        "noto-fonts" "noto-fonts-emoji" "ttf-jetbrains-mono"
+        "noto-fonts-cjk" "noto-fonts-extra"
+    )
+    
+    # Bluetooth packages
+    local bluetooth_packages=(
+        "blueberry"
+    )
+    
+    # Extra application packages
+    local app_packages=(
+        "gnome-calculator" "gnome-keyring" "signal-desktop"
+        "obsidian-bin" "libreoffice" "obs-studio" "kdenlive"
+        "xournalpp" "localsend-bin"
+    )
+    
+    # Optional packages (may fail to install)
+    local optional_packages=(
+        "typora" "spotify" "zoom" "1password-beta" "1password-cli"
+    )
+    
+    local all_packages=("${terminal_packages[@]}" "${desktop_packages[@]}" "${hyprland_packages[@]}" "${dev_packages[@]}" "${font_packages[@]}" "${bluetooth_packages[@]}" "${app_packages[@]}")
+    local missing_packages=()
+    
+    for package in "${all_packages[@]}"; do
+        if check_package_installed "$package"; then
+            log_verbose "$package is installed"
+        else
+            missing_packages+=("$package")
+            if ! fix_missing_package "$package"; then
+                log_verbose "$package is missing"
+            fi
+        fi
+    done
+    
+    # Check optional packages separately (don't fail if missing)
+    local missing_optional=()
+    for package in "${optional_packages[@]}"; do
+        if check_package_installed "$package"; then
+            log_verbose "$package is installed (optional)"
+        else
+            missing_optional+=("$package")
+            log_verbose "$package is missing (optional)"
+        fi
+    done
+    
+    if [[ ${#missing_packages[@]} -eq 0 ]]; then
+        log_success "All required packages are installed"
+        if [[ ${#missing_optional[@]} -gt 0 ]]; then
+            log_info "Optional packages missing: ${missing_optional[*]}"
+        fi
+    else
+        log_error "Missing ${#missing_packages[@]} packages: ${missing_packages[*]}"
+        if [[ ${#missing_optional[@]} -gt 0 ]]; then
+            log_info "Optional packages missing: ${missing_optional[*]}"
+        fi
+    fi
+}
+
+check_services() {
+    log_section "System Services"
+    
+    # User services
+    local user_services=(
+        "omarchy-battery-monitor.service"
+        "omarchy-battery-monitor.timer"
+    )
+    
+    # System services
+    local system_services=(
+        "docker.service"
+        "bluetooth.service"
+        "cups.service"
+        "avahi-daemon.service"
+        "cups-browsed.service"
+    )
+    
+    # Optional system services (only check if package is installed)
+    local optional_system_services=(
+        "iwd.service"
+        "omarchy-seamless-login.service"
+    )
+    
+    # Check user services
+    for service in "${user_services[@]}"; do
+        if systemctl --user is-enabled "$service" &>/dev/null; then
+            # Special handling for oneshot services (like battery monitor)
+            if [[ "$service" == "omarchy-battery-monitor.service" ]]; then
+                # For oneshot services, check if they can run successfully rather than if they're active
+                if systemctl --user show "$service" --property=ExecMainStatus --value | grep -q "^0$"; then
+                    log_success "User service $service is enabled and working (oneshot)"
+                else
+                    log_success "User service $service is enabled (oneshot, triggered by timer)"
+                fi
+            elif systemctl --user is-active "$service" &>/dev/null; then
+                log_success "User service $service is enabled and running"
+            else
+                log_warning "User service $service is enabled but not running"
+                if [[ "$FIX" == true ]]; then
+                    echo -e "    ${BLUE}[INFO]${NC} Attempting to start $service..."
+                    if systemctl --user start "$service" &>/dev/null; then
+                        log_success "Successfully started $service"
+                    else
+                        log_error "Failed to start $service"
+                    fi
+                fi
+            fi
+        else
+            log_error "User service $service is not enabled"
+            if [[ "$FIX" == true ]]; then
+                echo -e "    ${BLUE}[INFO]${NC} Attempting to enable $service..."
+                if systemctl --user enable "$service" &>/dev/null; then
+                    log_success "Successfully enabled $service"
+                    # Don't try to start oneshot services manually
+                    if [[ "$service" != "omarchy-battery-monitor.service" ]]; then
+                        systemctl --user start "$service" &>/dev/null || true
+                    fi
+                else
+                    log_error "Failed to enable $service"
+                fi
+            fi
+        fi
+    done
+    
+    # Check system services
+    for service in "${system_services[@]}"; do
+        if systemctl is-enabled "$service" &>/dev/null; then
+            if systemctl is-active "$service" &>/dev/null; then
+                log_success "System service $service is enabled and running"
+            else
+                log_warning "System service $service is enabled but not running"
+                if [[ "$FIX" == true ]]; then
+                    log_info "Attempting to start $service..."
+                    if sudo systemctl start "$service" &>/dev/null; then
+                        log_success "Successfully started $service"
+                    else
+                        log_error "Failed to start $service"
+                    fi
+                fi
+            fi
+        else
+            # Check if the service exists before reporting as error
+            if systemctl list-unit-files "$service" &>/dev/null; then
+                log_warning "System service $service exists but is not enabled"
+                if [[ "$FIX" == true ]]; then
+                    log_info "Attempting to enable $service..."
+                    if sudo systemctl enable --now "$service" &>/dev/null; then
+                        log_success "Successfully enabled and started $service"
+                    else
+                        log_error "Failed to enable $service"
+                    fi
+                fi
+            else
+                log_verbose "System service $service does not exist (package may not be installed)"
+            fi
+        fi
+    done
+    
+    # Check optional system services
+    for service in "${optional_system_services[@]}"; do
+        if systemctl list-unit-files "$service" &>/dev/null; then
+            if systemctl is-enabled "$service" &>/dev/null; then
+                if systemctl is-active "$service" &>/dev/null; then
+                    log_success "Optional service $service is enabled and running"
+                else
+                    log_info "Optional service $service is enabled but not running"
+                fi
+            else
+                log_info "Optional service $service exists but is not enabled"
+            fi
+        else
+            log_verbose "Optional service $service not found"
+        fi
+    done
+}
+
+check_config_files() {
+    log_section "Configuration Files"
+    
+    local config_files=(
+        "$CONFIG_DIR/alacritty/alacritty.toml"
+        "$CONFIG_DIR/hypr/hyprland.conf"
+        "$CONFIG_DIR/waybar/config.jsonc"
+        "$CONFIG_DIR/starship.toml"
+        "$CONFIG_DIR/btop/btop.conf"
+        "$CONFIG_DIR/fastfetch/config.jsonc"
+        "$CONFIG_DIR/lazygit/config.yml"
+        "$CONFIG_DIR/walker/config.toml"
+        "$CONFIG_DIR/swayosd/config.toml"
+    )
+    
+    for config_file in "${config_files[@]}"; do
+        if [[ -f "$config_file" ]]; then
+            log_verbose "✓ $config_file exists"
+            # Basic syntax check for JSON files
+            if [[ "$config_file" == *.json* ]]; then
+                if jq empty "$config_file" &>/dev/null; then
+                    log_verbose "✓ $config_file has valid JSON syntax"
+                else
+                    log_error "Configuration file $config_file has invalid JSON syntax"
+                fi
+            fi
+        else
+            log_error "Missing configuration file: $config_file"
+            if [[ "$FIX" == true ]]; then
+                log_info "Attempting to restore $config_file..."
+                omarchy-refresh-config &>/dev/null || true
+            fi
+        fi
+    done
+    
+    log_success "Configuration file check completed"
+}
+
+check_theme_system() {
+    log_section "Theme System"
+    
+    if [[ -x "$OMARCHY_DIR/bin/omarchy-theme-current" ]]; then
+        local current_theme
+        current_theme=$(omarchy-theme-current 2>/dev/null || echo "unknown")
+        
+        if [[ "$current_theme" != "unknown" ]] && [[ -n "$current_theme" ]]; then
+            log_success "Current theme: $current_theme"
+            
+            # Convert theme name back to directory format (lowercase with dashes)
+            local theme_dir
+            theme_dir=$(echo "$current_theme" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g')
+            
+            # Check if theme directory exists
+            if [[ -d "$OMARCHY_DIR/themes/$theme_dir" ]]; then
+                log_verbose "✓ Theme directory exists"
+                
+                # Check for essential theme files
+                local theme_files=(
+                    "alacritty.toml"
+                    "hyprland.conf"
+                    "waybar.css"
+                    "walker.css"
+                )
+                
+                for theme_file in "${theme_files[@]}"; do
+                    if [[ -f "$OMARCHY_DIR/themes/$theme_dir/$theme_file" ]]; then
+                        log_verbose "✓ Theme file $theme_file exists"
+                    else
+                        log_warning "Missing theme file: $theme_file"
+                    fi
+                done
+            else
+                log_error "Theme directory for $current_theme does not exist (looked for: $theme_dir)"
+            fi
+        else
+            log_error "No theme is currently set"
+        fi
+    else
+        log_error "Theme management system not available"
+    fi
+}
+
+check_binary_tools() {
+    log_section "Binary Tools"
+    
+    local essential_binaries=(
+        "omarchy-theme-current"
+        "omarchy-theme-set"
+        "omarchy-update"
+        "omarchy-refresh-config"
+        "omarchy-state"
+        "omarchy-font-current"
+        "omarchy-menu"
+    )
+    
+    for binary in "${essential_binaries[@]}"; do
+        local binary_path="$OMARCHY_DIR/bin/$binary"
+        if [[ -x "$binary_path" ]]; then
+            log_verbose "✓ $binary is executable"
+        else
+            log_error "Binary $binary is missing or not executable"
+        fi
+    done
+    
+    # Test a few key functions
+    if omarchy-state set healthcheck-test &>/dev/null; then
+        omarchy-state clear healthcheck-test &>/dev/null
+        log_success "State management system is functional"
+    else
+        log_error "State management system is not working"
+    fi
+}
+
+check_desktop_environment() {
+    log_section "Desktop Environment"
+    
+    # Check if Hyprland is running
+    if pgrep -x "Hyprland" >/dev/null; then
+        log_success "Hyprland compositor is running"
+        
+        # Check Waybar
+        if pgrep -x "waybar" >/dev/null; then
+            log_success "Waybar is running"
+        else
+            log_warning "Waybar is not running"
+            if [[ "$FIX" == true ]]; then
+                log_info "Attempting to start Waybar..."
+                omarchy-restart-waybar &>/dev/null || true
+            fi
+        fi
+        
+        # Check other essential processes
+        local processes=("hypridle" "swayosd-server" "mako")
+        for process in "${processes[@]}"; do
+            if pgrep -x "$process" >/dev/null; then
+                log_verbose "✓ $process is running"
+            else
+                log_warning "$process is not running"
+            fi
+        done
+        
+    else
+        log_error "Hyprland compositor is not running"
+    fi
+    
+    # Check XDG portals
+    if pgrep -f "xdg-desktop-portal" >/dev/null; then
+        log_success "XDG desktop portals are running"
+    else
+        log_warning "XDG desktop portals may not be running"
+    fi
+}
+
+check_development_environment() {
+    log_section "Development Environment"
+    
+    # Check Git configuration
+    if git config --global user.name >/dev/null && git config --global user.email >/dev/null; then
+        log_success "Git is configured"
+    else
+        log_warning "Git user configuration is incomplete"
+    fi
+    
+    # Check Neovim
+    if command -v nvim >/dev/null; then
+        log_success "Neovim is available"
+        if [[ -d "$CONFIG_DIR/nvim" ]]; then
+            log_verbose "✓ Neovim configuration exists"
+        else
+            log_warning "Neovim configuration directory missing"
+        fi
+    else
+        log_error "Neovim is not installed"
+    fi
+    
+    # Check Docker
+    if command -v docker >/dev/null; then
+        if systemctl is-active docker.service >/dev/null; then
+            log_success "Docker is installed and running"
+        else
+            log_warning "Docker is installed but not running"
+        fi
+    else
+        log_warning "Docker is not installed"
+    fi
+    
+    # Check development tools
+    local dev_tools=("cargo" "mise" "gh" "lazygit")
+    for tool in "${dev_tools[@]}"; do
+        if command -v "$tool" >/dev/null; then
+            log_verbose "✓ $tool is available"
+        else
+            log_warning "Development tool $tool is not available"
+        fi
+    done
+}
+
+check_hardware_integration() {
+    log_section "Hardware Integration"
+    
+    # Check graphics drivers
+    if lspci | grep -qi nvidia; then
+        if lsmod | grep -q nvidia; then
+            log_success "NVIDIA drivers are loaded"
+        else
+            log_error "NVIDIA GPU detected but drivers not loaded"
+        fi
+    elif lspci | grep -qi amd; then
+        if lsmod | grep -q amdgpu; then
+            log_success "AMD drivers are loaded"
+        else
+            log_warning "AMD GPU detected, checking driver status"
+        fi
+    fi
+    
+    # Check audio system
+    if systemctl --user is-active pipewire.service >/dev/null; then
+        log_success "PipeWire audio system is running"
+    elif systemctl --user is-active pulseaudio.service >/dev/null; then
+        log_success "PulseAudio system is running"
+    else
+        log_error "No audio system detected"
+    fi
+    
+    # Check input devices
+    if [[ -n "$(xinput list 2>/dev/null)" ]] || [[ -n "$(libinput list-devices 2>/dev/null)" ]]; then
+        log_success "Input devices are detected"
+    else
+        log_warning "Input device detection may have issues"
+    fi
+    
+    # Check brightness control
+    if command -v brightnessctl >/dev/null && brightnessctl get >/dev/null 2>&1; then
+        log_success "Brightness control is functional"
+    else
+        log_warning "Brightness control may not be available"
+    fi
+}
+
+check_network_connectivity() {
+    log_section "Network Connectivity"
+    
+    # Check basic connectivity
+    if ping -c1 8.8.8.8 >/dev/null 2>&1; then
+        log_success "Internet connectivity is working"
+        
+        # Check specific endpoints
+        if ping -c1 omarchy.org >/dev/null 2>&1; then
+            log_success "Can reach omarchy.org"
+        else
+            log_warning "Cannot reach omarchy.org"
+        fi
+        
+        if ping -c1 github.com >/dev/null 2>&1; then
+            log_success "Can reach GitHub"
+        else
+            log_warning "Cannot reach GitHub"
+        fi
+        
+        if ping -c1 aur.archlinux.org >/dev/null 2>&1; then
+            log_success "Can reach AUR"
+        else
+            log_warning "Cannot reach AUR"
+        fi
+    else
+        log_error "No internet connectivity"
+    fi
+}
+
+check_migration_status() {
+    log_section "Migration Status"
+    
+    if [[ -x "$OMARCHY_DIR/bin/omarchy-migrate" ]]; then
+        # Check if there are pending migrations
+        local migration_dir="$OMARCHY_DIR/migrations"
+        if [[ -d "$migration_dir" ]]; then
+            local pending_migrations=0
+            mkdir -p "$STATE_DIR"
+            
+            for migration_file in "$migration_dir"/*.sh; do
+                if [[ -f "$migration_file" ]]; then
+                    local migration_name
+                    migration_name=$(basename "$migration_file" .sh)
+                    if [[ ! -f "$STATE_DIR/migration-$migration_name" ]]; then
+                        ((pending_migrations++))
+                    fi
+                fi
+            done
+            
+            if [[ $pending_migrations -eq 0 ]]; then
+                log_success "All migrations have been applied"
+            else
+                log_warning "$pending_migrations pending migrations found"
+                if [[ "$FIX" == true ]]; then
+                    log_info "Running pending migrations..."
+                    omarchy-migrate &>/dev/null || true
+                fi
+            fi
+        else
+            log_warning "Migration directory not found"
+        fi
+    else
+        log_error "Migration system not available"
+    fi
+}
+
+check_docker_configuration() {
+    log_section "Docker Configuration"
+    
+    if ! command -v docker >/dev/null; then
+        log_verbose "Docker not installed, skipping configuration checks"
+        return 0
+    fi
+    
+    # Check Docker daemon configuration
+    if [[ -f "/etc/docker/daemon.json" ]]; then
+        log_success "Docker daemon configuration exists"
+        
+        # Validate JSON syntax
+        if jq empty "/etc/docker/daemon.json" &>/dev/null; then
+            log_verbose "Docker daemon.json has valid JSON syntax"
+            
+            # Check specific configuration fields
+            local config_issues=()
+            
+            # Check log driver
+            local log_driver
+            log_driver=$(jq -r '."log-driver" // "not-set"' "/etc/docker/daemon.json")
+            if [[ "$log_driver" != "json-file" ]]; then
+                config_issues+=("log-driver should be 'json-file', found '$log_driver'")
+            fi
+            
+            # Check log options
+            local max_size max_file
+            max_size=$(jq -r '."log-opts"."max-size" // "not-set"' "/etc/docker/daemon.json")
+            max_file=$(jq -r '."log-opts"."max-file" // "not-set"' "/etc/docker/daemon.json")
+            if [[ "$max_size" != "10m" ]]; then
+                config_issues+=("log-opts.max-size should be '10m', found '$max_size'")
+            fi
+            if [[ "$max_file" != "5" ]]; then
+                config_issues+=("log-opts.max-file should be '5', found '$max_file'")
+            fi
+            
+            # Check DNS configuration
+            local dns_config
+            dns_config=$(jq -r '.dns // empty | join(",")' "/etc/docker/daemon.json" 2>/dev/null)
+            if [[ "$dns_config" != "172.17.0.1" ]]; then
+                if [[ -z "$dns_config" ]]; then
+                    config_issues+=("dns field is missing, should be ['172.17.0.1']")
+                else
+                    config_issues+=("dns should be ['172.17.0.1'], found [$dns_config]")
+                fi
+            fi
+            
+            # Check BIP configuration
+            local bip_config
+            bip_config=$(jq -r '.bip // "not-set"' "/etc/docker/daemon.json")
+            if [[ "$bip_config" != "172.17.0.1/16" ]]; then
+                config_issues+=("bip should be '172.17.0.1/16', found '$bip_config'")
+            fi
+            
+            # Report configuration issues
+            if [[ ${#config_issues[@]} -eq 0 ]]; then
+                log_success "Docker daemon configuration is correct"
+            else
+                log_warning "Docker daemon configuration has ${#config_issues[@]} issues:"
+                for issue in "${config_issues[@]}"; do
+                    echo -e "    ${YELLOW}•${NC} $issue"
+                done
+                if [[ "$FIX" == true ]]; then
+                    echo -e "    ${BLUE}[INFO]${NC} Creating correct Docker daemon configuration..."
+                    sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{
+    "log-driver": "json-file",
+    "log-opts": { "max-size": "10m", "max-file": "5" },
+    "dns": ["172.17.0.1"],
+    "bip": "172.17.0.1/16"
+}
+EOF
+                    log_success "Updated Docker daemon configuration (restart Docker to apply)"
+                fi
+            fi
+        else
+            log_error "Docker daemon.json has invalid JSON syntax"
+        fi
+    else
+        log_warning "Docker daemon configuration (/etc/docker/daemon.json) is missing"
+        if [[ "$FIX" == true ]]; then
+            log_info "Creating Docker daemon configuration..."
+            sudo mkdir -p /etc/docker
+            sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{
+    "log-driver": "json-file",
+    "log-opts": { "max-size": "10m", "max-file": "5" },
+    "dns": ["172.17.0.1"],
+    "bip": "172.17.0.1/16"
+}
+EOF
+            log_success "Created Docker daemon configuration"
+        fi
+    fi
+    
+    # Check if user is in docker group
+    if groups "$USER" | grep -q docker; then
+        log_success "User $USER is in docker group"
+    else
+        log_error "User $USER is not in docker group"
+        if [[ "$FIX" == true ]]; then
+            log_info "Adding user to docker group..."
+            if sudo usermod -aG docker "$USER"; then
+                log_success "Added user to docker group (requires logout/login to take effect)"
+            else
+                log_error "Failed to add user to docker group"
+            fi
+        fi
+    fi
+}
+
+check_firewall_configuration() {
+    log_section "Firewall Configuration"
+    
+    if ! command -v ufw >/dev/null; then
+        log_verbose "UFW not installed, skipping firewall checks"
+        return 0
+    fi
+    
+    # Check if UFW is enabled
+    if sudo ufw status | grep -q "Status: active"; then
+        log_success "UFW firewall is enabled and active"
+        
+        # Check basic rules
+        local ufw_status
+        ufw_status=$(sudo ufw status)
+        
+        if echo "$ufw_status" | grep -q "Anywhere on docker0"; then
+            log_verbose "✓ Docker DNS rule is configured"
+        else
+            log_warning "Docker DNS rule may be missing"
+        fi
+        
+        if echo "$ufw_status" | grep -q "53317"; then
+            log_verbose "✓ LocalSend ports are configured"
+        else
+            log_warning "LocalSend ports may not be configured"
+        fi
+        
+        if echo "$ufw_status" | grep -q "22/tcp"; then
+            log_verbose "✓ SSH access is configured"
+        else
+            log_warning "SSH access may not be configured"
+        fi
+        
+    else
+        log_warning "UFW firewall is installed but not active"
+        if [[ "$FIX" == true ]]; then
+            log_info "Enabling UFW firewall with default configuration..."
+            sudo ufw --force reset >/dev/null
+            sudo ufw default deny incoming >/dev/null
+            sudo ufw default allow outgoing >/dev/null
+            sudo ufw allow 53317/udp >/dev/null
+            sudo ufw allow 53317/tcp >/dev/null
+            sudo ufw allow 22/tcp >/dev/null
+            sudo ufw allow in on docker0 to any port 53 >/dev/null
+            sudo ufw --force enable >/dev/null
+            log_success "UFW firewall enabled with basic configuration"
+        fi
+    fi
+    
+    # Check ufw-docker integration
+    if command -v ufw-docker >/dev/null; then
+        log_success "UFW-Docker integration is available"
+    else
+        log_warning "UFW-Docker integration is not installed"
+    fi
+}
+
+check_system_configuration() {
+    log_section "System Configuration"
+    
+    # Check pacman configuration
+    if [[ -f "/etc/pacman.conf" ]]; then
+        if grep -q "Color" /etc/pacman.conf; then
+            log_verbose "✓ Pacman color output is enabled"
+        else
+            log_warning "Pacman color output is not enabled"
+        fi
+        
+        if grep -q "ILoveCandy" /etc/pacman.conf; then
+            log_verbose "✓ Pacman candy progress bar is enabled"
+        else
+            log_warning "Pacman candy progress bar is not enabled"
+        fi
+        
+        if grep -q "chaotic-aur" /etc/pacman.conf; then
+            log_success "Chaotic-AUR repository is configured"
+        else
+            log_info "Chaotic-AUR repository is not configured (optional)"
+        fi
+        
+        log_success "Pacman configuration checked"
+    else
+        log_error "Pacman configuration file not found"
+    fi
+    
+    # Check systemd-resolved configuration for Docker
+    if [[ -f "/etc/systemd/resolved.conf.d/20-docker-dns.conf" ]]; then
+        log_success "Docker DNS resolver configuration exists"
+    else
+        log_warning "Docker DNS resolver configuration is missing"
+        if [[ "$FIX" == true ]] && command -v docker >/dev/null; then
+            log_info "Creating Docker DNS resolver configuration..."
+            sudo mkdir -p /etc/systemd/resolved.conf.d
+            echo -e '[Resolve]\nDNSStubListenerExtra=172.17.0.1' | sudo tee /etc/systemd/resolved.conf.d/20-docker-dns.conf >/dev/null
+            log_success "Created Docker DNS resolver configuration"
+        fi
+    fi
+    
+    # Check if yay is available
+    if command -v yay >/dev/null; then
+        log_success "AUR helper (yay) is available"
+    else
+        log_error "AUR helper (yay) is not available"
+    fi
+}
+
+prompt_user_options() {
+    echo ""
+    echo "Omarchy Health Check Options:"
+    echo "1. Standard check (default)"
+    echo "2. Verbose output"
+    echo "3. Fix issues automatically"
+    echo "4. Verbose + Fix"
+    echo "5. Check specific category"
+    echo "6. Help"
+    echo ""
+    read -p "Select option [1-6]: " choice
+    
+    case $choice in
+        2)
+            VERBOSE=true
+            ;;
+        3)
+            FIX=true
+            ;;
+        4)
+            VERBOSE=true
+            FIX=true
+            ;;
+        5)
+            echo ""
+            echo "Available categories:"
+            echo "packages, services, config, theme, binaries, desktop,"
+            echo "development, hardware, network, migrations, docker,"
+            echo "firewall, system"
+            echo ""
+            read -p "Enter category name: " CATEGORY
+            ;;
+        6)
+            usage
+            exit 0
+            ;;
+        1|"")
+            # Default - no changes needed
+            ;;
+        *)
+            echo "Invalid option. Using standard check."
+            ;;
+    esac
+}
+
+main() {
+    # If no arguments provided, prompt for options
+    if [[ $# -eq 0 ]]; then
+        prompt_user_options
+    else
+        # Parse arguments for command-line usage
+        while [[ $# -gt 0 ]]; do
+            case $1 in
+                --fix)
+                    FIX=true
+                    shift
+                    ;;
+                --verbose)
+                    VERBOSE=true
+                    shift
+                    ;;
+                --category=*)
+                    CATEGORY="${1#*=}"
+                    shift
+                    ;;
+                --help)
+                    usage
+                    exit 0
+                    ;;
+                *)
+                    echo "Unknown option: $1"
+                    usage
+                    exit 1
+                    ;;
+            esac
+        done
+    fi
+    
+    echo ""
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║${NC}                            ${GREEN}Omarchy Health Check${NC}                            ${BLUE}║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    if [[ "$FIX" == true ]]; then
+        echo -e "  ${YELLOW}[INFO]${NC} Fix mode enabled - will attempt to resolve issues automatically"
+        echo ""
+    fi
+    
+    if [[ -n "$CATEGORY" ]]; then
+        echo -e "  ${BLUE}[INFO]${NC} Running checks for category: $CATEGORY"
+        echo ""
+    fi
+    
+    # Run all checks
+    run_check "packages" check_packages
+    run_check "services" check_services
+    run_check "config" check_config_files
+    run_check "theme" check_theme_system
+    run_check "binaries" check_binary_tools
+    run_check "desktop" check_desktop_environment
+    run_check "development" check_development_environment
+    run_check "hardware" check_hardware_integration
+    run_check "network" check_network_connectivity
+    run_check "migrations" check_migration_status
+    run_check "docker" check_docker_configuration
+    run_check "firewall" check_firewall_configuration
+    run_check "system" check_system_configuration
+    
+    echo ""
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║${NC}                              ${GREEN}Health Check Summary${NC}                             ${BLUE}║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    local passed_checks=$((TOTAL_CHECKS - FAILED_CHECKS))
+    
+    if [[ $FAILED_CHECKS -eq 0 ]]; then
+        echo -e "  ${GREEN}[${CHECK}]${NC} All checks passed! (${GREEN}$TOTAL_CHECKS/$TOTAL_CHECKS${NC})"
+        echo ""
+        echo -e "  ${GREEN}Your Omarchy installation is healthy!${NC}"
+        exit 0
+    else
+        echo -e "  ${RED}[${FAIL}]${NC} $FAILED_CHECKS checks failed out of $TOTAL_CHECKS total"
+        echo -e "  ${GREEN}[${CHECK}]${NC} $passed_checks checks passed"
+        echo ""
+        
+        # Show specific failures
+        if [[ ${#FAILED_ITEMS[@]} -gt 0 ]]; then
+            echo -e "${RED}Specific Issues Found:${NC}"
+            for item in "${FAILED_ITEMS[@]}"; do
+                echo -e "  ${RED}•${NC} $item"
+            done
+            echo ""
+        fi
+        
+        echo -e "${YELLOW}Recommendations:${NC}"
+        echo -e "  ${BLUE}•${NC} Run with ${YELLOW}--fix${NC} to attempt automatic repairs"
+        echo -e "  ${BLUE}•${NC} Run with ${YELLOW}--verbose${NC} for detailed output"
+        echo -e "  ${BLUE}•${NC} Run with ${YELLOW}--category=<name>${NC} to focus on specific areas"
+        echo -e "  ${BLUE}•${NC} Check system logs: ${YELLOW}journalctl --user -f${NC}"
+        exit 1
+    fi
+}
+
+main "$@"
