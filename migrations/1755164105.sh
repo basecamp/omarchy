@@ -10,7 +10,7 @@ set_theme_colors() {
 }
 
 if command -v chromium &>/dev/null; then
-  yay -Rns --noconfirm chromium
+  yay -Rns --noconfirm chromium || true
   yay -Sy --noconfirm omarchy-chromium-bin
 
   if pgrep -x chromium; then
