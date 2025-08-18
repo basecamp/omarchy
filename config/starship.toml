@@ -3,7 +3,7 @@ command_timeout = 200
 format = "[$directory$git_branch$git_status]($style)$character"
 
 [character]
-error_symbol = "[✗](bold red)"
+error_symbol = "[✗](bold cyan)"
 success_symbol = "[❯](bold cyan)"
 
 [directory]
