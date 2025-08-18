@@ -93,11 +93,10 @@ fi
 # Reboot
 show_logo laseretch 920
 if is_chroot; then
-  show_subtext "🎉 Omarchy installation completed successfully!"
-  echo "    Installation finished in chroot environment."
-  echo "    Please exit the chroot and reboot your system manually."
+  show_subtext "⚠️ 🎉 Omarchy installation completed successfully!"
+  echo "    Installation finished. Please exit the chroot environment manually and reboot."
 else
-  show_subtext "You're done! So we'll be rebooting now..."
+  show_subtext "🎉 Omarchy installation completed successfully! Rebooting now..."
   sleep 2
   sudo reboot
 fi

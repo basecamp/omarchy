@@ -17,8 +17,8 @@ send_notification() {
   notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
 }
 
-BATTERY_LEVEL=$(get_battery_percentage)
-BATTERY_STATE=$(get_battery_state)
+BATTERY_LEVEL="$(get_battery_percentage)"
+BATTERY_STATE="$(get_battery_state)"
 
 if [[ "$BATTERY_STATE" == "discharging" && "$BATTERY_LEVEL" -le "$BATTERY_THRESHOLD" ]]; then
   if [[ ! -f "$NOTIFICATION_FLAG" ]]; then

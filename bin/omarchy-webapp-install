@@ -2,9 +2,9 @@
 
 if [ "$#" -ne 3 ]; then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
-  APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
-  APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
-  ICON_URL=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
+  APP_NAME="$(gum input --prompt "Name> " --placeholder "My favorite web app")"
+  APP_URL="$(gum input --prompt "URL> " --placeholder "https://example.com")"
+  ICON_URL="$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")"
 else
   APP_NAME="$1"
   APP_URL="$2"

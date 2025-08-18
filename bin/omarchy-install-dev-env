@@ -12,7 +12,7 @@ install_php() {
   if [[ ":$PATH:" != *":$HOME/.config/composer/vendor/bin:"* ]]; then
     # shellcheck disable=SC2016  # We want literal $HOME and $PATH in the output
     echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >>"$HOME/.bashrc"
-    # shellcheck source=/dev/null
+    # shellcheck source=/dev/null  # .bashrc content varies by user
     source "$HOME/.bashrc"
     echo "Added Composer global bin directory to PATH."
   else

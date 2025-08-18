@@ -27,11 +27,11 @@ git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/
 if [[ -n "$OMARCHY_REF" ]]; then
   echo -e "\eUsing branch: $OMARCHY_REF"
   (
-    cd ~/.local/share/omarchy || exit
+    cd ~/.local/share/omarchy || exit 1
     git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
   )
 fi
 
 echo -e "\nInstallation starting..."
-# shellcheck source=/dev/null
+# shellcheck source=/dev/null  # install.sh is dynamically generated
 source ~/.local/share/omarchy/install.sh

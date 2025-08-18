@@ -10,7 +10,7 @@ else
   echo -e "\e[32mLet's setup your Fido2 device for sudo authentication.\n\e[0m"
   yay -S --noconfirm --needed libfido2 pam-u2f
 
-  tokens=$(fido2-token -L)
+  tokens="$(fido2-token -L)"
 
   if [ -z "$tokens" ]; then
     echo -e "\e[31m\nNo fido2 device detected. Plug it in, you may have to unlock it as well\e[0m"

@@ -131,7 +131,7 @@ When shellcheck warnings are false positives or intentional, suppress them with 
 
 - **SC1090** - Dynamic source files that can't be statically analyzed:
   ```bash
-  # shellcheck source=/dev/null
+  # shellcheck source=/dev/null  # This is okay because $file is dynamically generated
   source "$file"
   ```
 
@@ -157,12 +157,12 @@ cd /some/directory
 rm -rf *  # Could delete files in wrong location!
 
 # CORRECT - safe error handling
-cd /some/directory || exit
+cd /some/directory || exit 1
 rm -rf *
 
 # ALTERNATIVE - use subshell to avoid changing working directory
 (
-  cd /some/directory || exit
+  cd /some/directory || exit 1
   rm -rf *
 )
 ```

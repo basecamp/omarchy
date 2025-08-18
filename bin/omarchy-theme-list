@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Define pattern for converting kebab-case to Title Case
+FORMAT_PATTERN='s/(^|-)([a-z])/\1\u\2/g; s/-/ /g'
+
 find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | sort | while read -r path; do
-  basename "$path" | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g'
+  basename "$path" | sed -E "$FORMAT_PATTERN"
 done

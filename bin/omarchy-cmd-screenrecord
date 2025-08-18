@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# shellcheck source=/dev/null
+# shellcheck source=/dev/null  # user-dirs.dirs is a runtime config file
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
 
@@ -28,6 +28,6 @@ if pgrep -x wl-screenrec >/dev/null || pgrep -x wf-recorder >/dev/null; then
 elif [[ "$1" == "output" ]]; then
   screenrecording
 else
-  region=$(slurp) || exit 1
+  region="$(slurp)" || exit 1
   screenrecording -g "$region"
 fi

@@ -12,7 +12,7 @@ fi
 
 if ! grep -Eq '^HOOKS=.*plymouth' /etc/mkinitcpio.conf; then
   # Backup original mkinitcpio.conf just in case
-  backup_timestamp=$(date +"%Y%m%d%H%M%S")
+  backup_timestamp="$(date +"%Y%m%d%H%M%S")"
   sudo cp /etc/mkinitcpio.conf "/etc/mkinitcpio.conf.bak.${backup_timestamp}"
 
   # Add plymouth to HOOKS array after 'base udev' or 'base systemd'
@@ -52,13 +52,13 @@ elif [ -f "/etc/default/grub" ]; then # Grub
   echo "Detected grub"
 
   # Backup GRUB config before modifying
-  backup_timestamp=$(date +"%Y%m%d%H%M%S")
+  backup_timestamp="$(date +"%Y%m%d%H%M%S")"
   sudo cp /etc/default/grub "/etc/default/grub.bak.${backup_timestamp}"
 
   # Check if splash is already in GRUB_CMDLINE_LINUX_DEFAULT
   if ! grep -q "GRUB_CMDLINE_LINUX_DEFAULT.*splash" /etc/default/grub; then
     # Get current GRUB_CMDLINE_LINUX_DEFAULT value
-    current_cmdline=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub | cut -d'"' -f2)
+    current_cmdline="$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub | cut -d'"' -f2)"
 
     # Add splash and quiet if not present
     new_cmdline="$current_cmdline"
@@ -70,7 +70,7 @@ elif [ -f "/etc/default/grub" ]; then # Grub
     fi
 
     # Trim any leading/trailing spaces
-    new_cmdline=$(echo "$new_cmdline" | xargs)
+    new_cmdline="$(echo "$new_cmdline" | xargs)"
 
     sudo sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\".*\"/GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline\"/" /etc/default/grub
 
@@ -96,10 +96,10 @@ elif [ -f "/etc/kernel/cmdline" ]; then # UKI Alternate
   echo "Detected a UKI setup"
 
   # Backup kernel cmdline config before modifying
-  backup_timestamp=$(date +"%Y%m%d%H%M%S")
+  backup_timestamp="$(date +"%Y%m%d%H%M%S")"
   sudo cp /etc/kernel/cmdline "/etc/kernel/cmdline.bak.${backup_timestamp}"
 
-  current_cmdline=$(cat /etc/kernel/cmdline)
+  current_cmdline="$(cat /etc/kernel/cmdline)"
 
   # Add splash and quiet if not present
   new_cmdline="$current_cmdline"
@@ -111,16 +111,16 @@ elif [ -f "/etc/kernel/cmdline" ]; then # UKI Alternate
   fi
 
   # Trim any leading/trailing spaces
-  new_cmdline=$(echo "$new_cmdline" | xargs)
+  new_cmdline="$(echo "$new_cmdline" | xargs)"
 
   # Write new file
   echo "$new_cmdline" | sudo tee /etc/kernel/cmdline
 else
-  echo ""
+  printf '\n'
   echo " None of systemd-boot, GRUB, or UKI detected. Please manually add these kernel parameters:"
   echo "  - splash (to see the graphical splash screen)"
   echo "  - quiet (for silent boot)"
-  echo ""
+  printf '\n'
 fi
 
 if [ "$(plymouth-set-default-theme)" != "omarchy" ]; then

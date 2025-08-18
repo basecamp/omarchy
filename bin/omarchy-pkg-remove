@@ -10,7 +10,7 @@ fzf_args=(
   --color 'pointer:red,marker:red'
 )
 
-pkg_name=$(yay -Qqe | fzf "${fzf_args[@]}")
+pkg_name="$(yay -Qqe | fzf "${fzf_args[@]}")"
 
 if [[ -n "$pkg_name" ]]; then
   yay -Rns --noconfirm "$pkg_name"

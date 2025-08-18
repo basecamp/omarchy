@@ -17,7 +17,8 @@ if lspci | grep -q -i 'nvidia'; then
 
   # --- Driver Selection ---
   # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
-  if lspci | grep -i 'nvidia' | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
+  MODERN_GPU_PATTERN="RTX [2-9][0-9]|GTX 16"
+  if lspci | grep -i 'nvidia' | grep -q -E "$MODERN_GPU_PATTERN"; then
     NVIDIA_DRIVER_PACKAGE="nvidia-open-dkms"
   else
     NVIDIA_DRIVER_PACKAGE="nvidia-dkms"

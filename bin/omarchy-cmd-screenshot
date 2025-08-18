@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# shellcheck source=/dev/null
+# shellcheck source=/dev/null  # user-dirs.dirs is a runtime config file
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
 

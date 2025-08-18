@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd ~/.local/share/omarchy || exit
+cd ~/.local/share/omarchy || exit 1
 migration_file="$HOME/.local/share/omarchy/migrations/$(git log -1 --format=%cd --date=unix).sh"
 touch "$migration_file"
 nvim "$migration_file"

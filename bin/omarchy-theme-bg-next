@@ -15,7 +15,7 @@ if [[ $TOTAL -eq 0 ]]; then
 else
   # Get current background from symlink
   if [[ -L "$CURRENT_BACKGROUND_LINK" ]]; then
-    CURRENT_BACKGROUND=$(readlink "$CURRENT_BACKGROUND_LINK")
+    CURRENT_BACKGROUND="$(readlink "$CURRENT_BACKGROUND_LINK")"
   else
     # Default to first background if no symlink exists
     CURRENT_BACKGROUND=""
@@ -35,7 +35,7 @@ else
     # Use the first background when no match was found
     NEW_BACKGROUND="${BACKGROUNDS[0]}"
   else
-    NEXT_INDEX=$(((INDEX + 1) % TOTAL))
+    NEXT_INDEX="$(((INDEX + 1) % TOTAL))"
     NEW_BACKGROUND="${BACKGROUNDS[$NEXT_INDEX]}"
   fi
 

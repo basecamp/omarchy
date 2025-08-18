@@ -11,7 +11,7 @@ fi
 THEMES_DIR="$HOME/.config/omarchy/themes/"
 CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 
-THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+THEME_NAME="$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Check if the theme entered exists

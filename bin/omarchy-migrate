@@ -8,11 +8,11 @@ mkdir -p "$STATE_DIR"
 
 # Run any pending migrations
 for file in ~/.local/share/omarchy/migrations/*.sh; do
-  filename=$(basename "$file")
+  filename="$(basename "$file")"
 
   if [[ ! -f "$STATE_DIR/$filename" ]]; then
     echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
-    # shellcheck source=/dev/null
+    # shellcheck source=/dev/null  # Migration files are dynamically sourced
     source "$file"
     touch "$STATE_DIR/$filename"
   fi
