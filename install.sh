@@ -18,7 +18,6 @@ trap catch_errors ERR
 show_logo() {
   clear
   tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
-  cat <~/.local/share/omarchy/logo.txt
   echo
 }
 
