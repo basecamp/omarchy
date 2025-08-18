@@ -2,4 +2,4 @@
 
 source "$(dirname "$0")/omarchy-browser-utils"
 
-exec $(get_browser_command) "$@"
+exec $(get_browser_cmd) "$@"
