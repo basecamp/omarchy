@@ -36,9 +36,7 @@ esac
 systemd-run --user --quiet --collect \
   localsend --headless send $FILES
 
-# Clean up temporary file if created for clipboard mode
-if [ "$MODE" = "clipboard" ] && [ -f "$TEMP_FILE" ]; then
-    rm "$TEMP_FILE"
-fi
+# Note: Temporary file will remain until system cleanup for clipboard mode
+# This ensures the file content is available for the LocalSend GUI
 
 exit 0
