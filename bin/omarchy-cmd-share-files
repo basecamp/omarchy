@@ -1,11 +1,44 @@
 #!/bin/bash
 
-# Pick one or more files from home directory
-FILES=$(find "$HOME" -type f 2>/dev/null | fzf --multi)
-[ -z "$FILES" ] && exit 0
+# Check for mode parameter
+MODE="file"
+if [ "$1" = "folder" ] || [ "$1" = "file" ] || [ "$1" = "clipboard" ]; then
+    MODE="$1"
+    shift
+fi
+
+# Handle different modes
+case "$MODE" in
+    "clipboard")
+        # Create temporary file with clipboard content
+        TEMP_FILE=$(mktemp)
+        wl-paste > "$TEMP_FILE"
+        FILES="$TEMP_FILE"
+        ;;
+    *)
+        # If file/folder paths are provided as arguments, use them; otherwise pick interactively
+        if [ $# -gt 0 ]; then
+            FILES="$*"
+        else
+            if [ "$MODE" = "folder" ]; then
+                # Pick a single folder from home directory
+                FILES=$(find "$HOME" -type d 2>/dev/null | fzf)
+            else
+                # Pick one or more files from home directory
+                FILES=$(find "$HOME" -type f 2>/dev/null | fzf --multi)
+            fi
+            [ -z "$FILES" ] && exit 0
+        fi
+        ;;
+esac
 
 # Run LocalSend in its own systemd service (detached from Ghostty)
 systemd-run --user --quiet --collect \
   localsend --headless send $FILES
+
+# Clean up temporary file if created for clipboard mode
+if [ "$MODE" = "clipboard" ] && [ -f "$TEMP_FILE" ]; then
+    rm "$TEMP_FILE"
+fi
 
 exit 0
