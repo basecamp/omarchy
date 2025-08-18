@@ -7,7 +7,7 @@ if ! git -C "$OMARCHY_PATH" ls-remote &>/dev/null; then
 fi
 
 latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
-current_tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
+current_tag=$(git -C "$OMARCHY_PATH" describe --tags "$(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1)")
 
 if [[ "$current_tag" != "$latest_tag" ]]; then
   echo "Omarchy update available ($latest_tag)"

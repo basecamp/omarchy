@@ -6,11 +6,11 @@ BATTERY_THRESHOLD=10
 NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
 
 get_battery_percentage() {
-  upower -i $(upower -e | grep 'BAT') | grep -E "percentage" | grep -o '[0-9]\+%' | sed 's/%//'
+  upower -i "$(upower -e | grep 'BAT')" | grep -E "percentage" | grep -o '[0-9]\+%' | sed 's/%//'
 }
 
 get_battery_state() {
-  upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}'
+  upower -i "$(upower -e | grep 'BAT')" | grep -E "state" | awk '{print $2}'
 }
 
 send_notification() {

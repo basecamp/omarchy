@@ -32,7 +32,7 @@ EOF
 
     # Enroll the first finger
     echo -e "\e[32m\nLet's setup your right index finger as the first fingerprint.\nKeep moving the finger around on sensor until the process completes.\n\e[0m"
-    sudo fprintd-enroll $USER
+    sudo fprintd-enroll "$USER"
 
     echo -e "\e[32m\nNow let's verify that it's working correctly.\e[0m\n"
 

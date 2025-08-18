@@ -26,10 +26,12 @@ git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/
 # Use custom branch if instructed
 if [[ -n "$OMARCHY_REF" ]]; then
   echo -e "\eUsing branch: $OMARCHY_REF"
-  cd ~/.local/share/omarchy
-  git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
-  cd -
+  (
+    cd ~/.local/share/omarchy || exit
+    git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
+  )
 fi
 
 echo -e "\nInstallation starting..."
+# shellcheck source=/dev/null
 source ~/.local/share/omarchy/install.sh

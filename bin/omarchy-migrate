@@ -12,7 +12,8 @@ for file in ~/.local/share/omarchy/migrations/*.sh; do
 
   if [[ ! -f "$STATE_DIR/$filename" ]]; then
     echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
-    source $file
+    # shellcheck source=/dev/null
+    source "$file"
     touch "$STATE_DIR/$filename"
   fi
 done

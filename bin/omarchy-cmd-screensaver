@@ -8,7 +8,7 @@ if command -v tte &>/dev/null; then
       "$effect" &
 
     while pgrep -x tte >/dev/null; do
-      if read -n 1 -t 0.01; then
+      if read -r -n 1 -t 0.01; then
         pkill -x tte 2>/dev/null
         pkill -f "alacritty --class Screensaver" 2>/dev/null
         exit 0

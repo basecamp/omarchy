@@ -12,8 +12,7 @@ if [ "$#" -ne 1 ]; then
   done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)
 
   if ((${#WEB_APPS[@]})); then
-    IFS=$'\n' SORTED_WEB_APPS=($(sort <<<"${WEB_APPS[*]}"))
-    unset IFS
+    mapfile -t SORTED_WEB_APPS < <(printf '%s\n' "${WEB_APPS[@]}" | sort)
     APP_NAME=$(gum choose --header "Select web app to remove..." "${SORTED_WEB_APPS[@]}")
   else
     echo "No web apps to remove."

@@ -115,6 +115,75 @@ This is essentially a **database-style migration system applied to system config
 - **Set error handling**: Use `set -e` for scripts that should fail fast
 - **Quote variables**: Always quote variables to prevent word splitting
 - **Use proper shebangs**: Start scripts with `#!/bin/bash`
+- **Handle cd failures**: Always check that `cd` commands succeed (see SC2164 below)
+
+#### Shellcheck Warning Suppressions
+
+When shellcheck warnings are false positives or intentional, suppress them with explanatory comments:
+
+**Common Legitimate Suppressions:**
+
+- **SC2016** - Intentional literal variables in output:
+  ```bash
+  # shellcheck disable=SC2016  # We want literal $HOME and $PATH in the output
+  echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >>"$HOME/.bashrc"
+  ```
+
+- **SC1090** - Dynamic source files that can't be statically analyzed:
+  ```bash
+  # shellcheck source=/dev/null
+  source "$file"
+  ```
+
+- **SC2034** - Intentionally unused variables (e.g., for future use):
+  ```bash
+  # shellcheck disable=SC2034  # Used by sourced scripts
+  VARIABLE="value"
+  ```
+
+- **SC2086** - When word splitting is intentional:
+  ```bash
+  # shellcheck disable=SC2086  # Word splitting intended for args
+  command $args_that_should_split
+  ```
+
+**Critical Warning - SC2164 (cd failures):**
+
+The `cd` command can fail for many reasons and continuing execution in the wrong directory is dangerous:
+
+```bash
+# WRONG - dangerous if cd fails
+cd /some/directory
+rm -rf *  # Could delete files in wrong location!
+
+# CORRECT - safe error handling
+cd /some/directory || exit
+rm -rf *
+
+# ALTERNATIVE - use subshell to avoid changing working directory
+(
+  cd /some/directory || exit
+  rm -rf *
+)
+```
+
+**Why SC2164 fixes are critical:**
+- **Security**: Operations in wrong directory can modify/delete unintended files
+- **Data loss**: File operations may target wrong locations
+- **Silent failures**: Scripts continue running with broken assumptions
+- **Debugging**: Failures are hard to trace when directory context is lost
+
+**Common cd failure causes:**
+- Directory doesn't exist
+- No permission to access directory  
+- Path is a file, not a directory
+- Network issues (mounted directories)
+- Disk space/filesystem problems
+
+**Important Guidelines:**
+- Always include a comment explaining **why** the suppression is safe
+- Only suppress warnings when the behavior is intentional, not to hide problems
+- Prefer fixing the underlying issue over suppression when possible
 
 #### Chroot Compatibility
 

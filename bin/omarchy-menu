@@ -22,7 +22,7 @@ menu() {
 }
 
 terminal() {
-  alacritty --class Omarchy -e $1
+  alacritty --class Omarchy -e "$1"
 }
 
 present_terminal() {
