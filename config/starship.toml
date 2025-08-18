@@ -14,7 +14,7 @@ repo_root_format = "[$repo_root]($repo_root_style)[$path]($style)[$read_only]($r
 
 [git_branch]
 format = "[$branch]($style) "
-style = "italic"
+style = "italic cyan"
 
 [git_status]
 format     = '[$all_status]($style)'
