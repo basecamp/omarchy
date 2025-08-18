@@ -11,7 +11,7 @@ fi
 case "$MODE" in
     "clipboard")
         # Create temporary file with clipboard content
-        TEMP_FILE=$(mktemp)
+        TEMP_FILE=$(mktemp --suffix=.txt)
         wl-paste > "$TEMP_FILE"
         FILES="$TEMP_FILE"
         ;;
