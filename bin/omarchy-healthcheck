@@ -614,15 +614,16 @@ check_migration_status() {
     if [[ -x "$OMARCHY_DIR/bin/omarchy-migrate" ]]; then
         # Check if there are pending migrations
         local migration_dir="$OMARCHY_DIR/migrations"
+        local migration_state_dir="$STATE_DIR/migrations"
         if [[ -d "$migration_dir" ]]; then
             local pending_migrations=0
-            mkdir -p "$STATE_DIR"
+            mkdir -p "$migration_state_dir"
             
             for migration_file in "$migration_dir"/*.sh; do
                 if [[ -f "$migration_file" ]]; then
-                    local migration_name
-                    migration_name=$(basename "$migration_file" .sh)
-                    if [[ ! -f "$STATE_DIR/migration-$migration_name" ]]; then
+                    local migration_filename
+                    migration_filename=$(basename "$migration_file")
+                    if [[ ! -f "$migration_state_dir/$migration_filename" ]]; then
                         ((pending_migrations++))
                     fi
                 fi
