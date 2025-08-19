@@ -12,7 +12,7 @@ if [[ -n "$PLUGIN_REPO_URL" ]]; then
 
   echo -e "\n\e[32mInstalling plugin: $PLUGIN_NAME\e[0m"
 
-  if ! mkdir -p "$PLUGIN_PATH" || ! git clone "$PLUGIN_REPO_URL" "$PLUGIN_PATH/$PLUGIN_NAME"; then
+  if ! mkdir -p "$PLUGIN_PATH" || ! git clone --depth 1 "$PLUGIN_REPO_URL" "$PLUGIN_PATH/$PLUGIN_NAME"; then
     echo "Error: Failed to clone the plugin repo."
     exit 1
   fi
