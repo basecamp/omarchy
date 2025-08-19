@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Set mirror to single geo setup
 echo 'Server = http://mirror.23m.com/archlinux/$repo/os/$arch' |
   sudo tee /etc/pacman.d/mirrorlist >/dev/null
