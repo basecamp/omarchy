@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# omarchy-snapshot: Create filesystem snapshots using snapper
+# Usage: omarchy-snapshot [pre|post] [description]
+
+SNAPSHOT_TYPE="${1:-pre}"
+DESCRIPTION="${2:-omarchy-$(date +'%Y%m%d-%H%M%S')}"
+
+create_snapshot() {
+  local type="$1"
+  local desc="$2"
+
+  # Check if we're on btrfs
+  # We should be - it is the recommended file system on omarchy manual https://manuals.omamix.org/2/the-omarchy-manual/50/getting-started
+  if ! findmnt -n -o FSTYPE / | grep -q btrfs; then
+    echo "Error: Snapshots require btrfs filesystem"
+    echo "Current root filesystem: $(findmnt -n -o FSTYPE /)"
+    return 1
+  fi
+
+  # Check if snapper is available
+  if ! command -v snapper >/dev/null; then
+    echo "Error: snapper not installed"
+    echo "Install with: sudo pacman -S snapper"
+    return 1
+  fi
+
+  # Check if snapper config exists
+  if ! sudo snapper -c root list-configs >/dev/null 2>&1; then
+    echo "Error: snapper not configured for root"
+    echo "Configure with: sudo snapper -c root create-config /"
+    return 1
+  fi
+
+  # Create snapshot
+  echo "Creating $type snapshot: $desc"
+  if sudo snapper -c root create --description "$desc" --type "$type" --cleanup-algorithm number; then
+    echo -e "\e[32m[PASS]\e[0m Snapshot created successfully"
+
+    # Show recent snapshots
+    echo ""
+    echo "Recent snapshots:"
+    sudo snapper -c root list | tail -5
+
+    return 0
+  else
+    echo -e "\e[31m[FAIL]\e[0m Failed to create snapshot"
+    return 1
+  fi
+}
+
+install_snapper() {
+  echo "Installing and configuring snapper..."
+
+  # Install snapper
+  if ! sudo pacman -S --noconfirm --needed snapper; then
+    echo -e "\e[31m[FAIL]\e[0m Failed to install snapper"
+    return 1
+  fi
+
+  # Create config for root
+  if ! sudo snapper -c root create-config /; then
+    echo -e "\e[31m[FAIL]\e[0m Failed to configure snapper"
+    return 1
+  fi
+
+  # Set up automatic timeline snapshots
+  sudo snapper -c root set-config TIMELINE_CREATE=yes
+  sudo snapper -c root set-config TIMELINE_CLEANUP=yes
+  sudo snapper -c root set-config NUMBER_CLEANUP=yes
+  sudo snapper -c root set-config NUMBER_LIMIT=10
+
+  echo -e "\e[32m[PASS]\e[0m Snapper installed and configured"
+  return 0
+}
+
+case "$1" in
+--install)
+  install_snapper
+  ;;
+--list)
+  if command -v snapper >/dev/null; then
+    sudo snapper -c root list
+  else
+    echo "snapper not installed"
+    exit 1
+  fi
+  ;;
+--help)
+  echo "Usage: omarchy-snapshot [COMMAND] [DESCRIPTION]"
+  echo ""
+  echo "Commands:"
+  echo "  pre [desc]     Create pre-update snapshot (default)"
+  echo "  post [desc]    Create post-update snapshot"
+  echo "  --install      Install and configure snapper"
+  echo "  --list         List all snapshots"
+  echo "  --help         Show this help"
+  echo ""
+  echo "Examples:"
+  echo "  omarchy-snapshot                    # Create pre snapshot"
+  echo "  omarchy-snapshot post               # Create post snapshot"
+  echo "  omarchy-snapshot pre 'before-update' # Custom description"
+  ;;
+pre | post | "")
+  create_snapshot "$SNAPSHOT_TYPE" "$DESCRIPTION"
+  ;;
+*)
+  echo "Unknown option: $1"
+  echo "Use --help for usage information"
+  exit 1
+  ;;
+esac
+
