@@ -39,12 +39,8 @@ show_subtext() {
   echo
 }
 
-# Update indexes if online
-if ping -c5 omarchy.org &>/dev/null; then
-  yay -Syy
-fi
-
 # Install prerequisites
+source $OMARCHY_INSTALL/preflight/mirrorlist.sh
 source $OMARCHY_INSTALL/preflight/gum.sh
 source $OMARCHY_INSTALL/preflight/guard.sh
 source $OMARCHY_INSTALL/preflight/aur.sh
