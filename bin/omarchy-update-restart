@@ -16,7 +16,8 @@ fi
 for file in "$HOME"/.local/state/omarchy/restart-*-required; do
   if [ -f "$file" ]; then
     filename=$(basename "$file")
-    service=$(echo "$filename" | sed 's/restart-\(.*\)-required/\1/')
+    service=${filename#restart-}
+    service=${service%-required}
     echo "Restarting $service"
     omarchy-state clear "$filename"
     omarchy-restart-"$service"

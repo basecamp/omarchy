@@ -96,6 +96,13 @@ This is essentially a **database-style migration system applied to system config
 
 ## Development Workflow
 
+### Branch Strategy
+
+**Development happens on the `dev` branch.** All pull requests should be opened against the `dev` branch, not `master`. The `master` branch contains stable releases.
+
+- **`master`** - Stable releases
+- **`dev`** - Active development branch
+
 ### Making Changes
 
 1. **Edit files** in their respective directories (config/, default/, themes/, etc.)
@@ -109,13 +116,27 @@ This is essentially a **database-style migration system applied to system config
 #### Shell Script Best Practices
 
 - **Use shellcheck**: All shell scripts should pass `shellcheck` analysis
-  ```bash
-  shellcheck install/**/*.sh bin/omarchy-* migrations/*.sh
-  ```
 - **Set error handling**: Use `set -e` for scripts that should fail fast
 - **Quote variables**: Always quote variables to prevent word splitting
 - **Use proper shebangs**: Start scripts with `#!/bin/bash`
 - **Handle cd failures**: Always check that `cd` commands succeed (see SC2164 below)
+
+#### Running Shellcheck
+
+To check shell scripts for common issues and best practices:
+
+**Check bin scripts:**
+```bash
+shellcheck -a -x boot.sh bin/*
+```
+
+**Check installer scripts:**
+```bash
+cd install/
+shellcheck -a -x ../install.sh
+```
+
+The `-a` flag enables all optional checks, and `-x` enables cross-file analysis to properly resolve sourced files and relative paths.
 
 #### Shellcheck Warning Suppressions
 
