@@ -39,6 +39,11 @@ show_subtext() {
   echo
 }
 
+# Update indexes if online
+if ping -c5 omarchy.org &>/dev/null; then
+  yay -Syy
+fi
+
 # Install prerequisites
 source $OMARCHY_INSTALL/preflight/gum.sh
 source $OMARCHY_INSTALL/preflight/guard.sh
@@ -94,7 +99,7 @@ show_subtext "Updating system packages [5/5]"
 sudo updatedb
 
 # Update system packages if we have a network connection
-if ping -c1 omarchy.org &>/dev/null; then
+if ping -c5 omarchy.org &>/dev/null; then
   yay -Syu --noconfirm --ignore uwsm
 fi
 
