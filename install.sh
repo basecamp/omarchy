@@ -6,19 +6,6 @@
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 
-# Chroot installations have some differences
-if ! cmp -s /proc/1/root/ / 2>/dev/null; then
-  export OMARCHY_CHROOT_INSTALL=1
-fi
-
-chrootable_systemctl_enable() {
-  if [ -n "${OMARCHY_CHROOT_INSTALL:-}" ]; then
-    sudo systemctl enable $1
-  else
-    sudo systemctl enable --now $1
-  fi
-}
-
 # Give people a chance to retry running the installation
 catch_errors() {
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
@@ -41,6 +28,7 @@ show_subtext() {
 }
 
 # Install prerequisites
+source $OMARCHY_INSTALL/preflight/chroot.sh
 source $OMARCHY_INSTALL/preflight/mirrorlist.sh
 source $OMARCHY_INSTALL/preflight/gum.sh
 source $OMARCHY_INSTALL/preflight/guard.sh
