@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Obsidian (Wayland + IME)
+GenericName=Markdown Knowledge Base
+Comment=Obsidian with native Wayland and IME enabled
+Exec=obsidian --ozone-platform=wayland --enable-features=WaylandWindowDecorations --enable-wayland-ime %U
+Terminal=false
+Type=Application
+Icon=obsidian
+Categories=Office;Utility;
+StartupNotify=true

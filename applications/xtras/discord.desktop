@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Discord (Wayland + IME)
+GenericName=Internet Messenger
+Comment=Discord client with native Wayland and IME enabled
+Exec=discord --ozone-platform=wayland --enable-features=WaylandWindowDecorations --enable-wayland-ime %U
+Terminal=false
+Type=Application
+Icon=discord
+Categories=Network;Chat;InstantMessaging;
+StartupNotify=true
