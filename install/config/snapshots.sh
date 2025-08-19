@@ -8,7 +8,7 @@ if findmnt -n -o FSTYPE / | grep -q btrfs; then
   sudo pacman -S --noconfirm --needed snapper
 
   # Configure snapper for root subvolume (only if not already configured)
-  if ! sudo snapper -c root list-configs >/dev/null 2>&1; then
+  if ! sudo snapper -c root list-configs | grep -q "root"; then
     echo "Configuring snapper for root subvolume..."
     sudo snapper -c root create-config /
     

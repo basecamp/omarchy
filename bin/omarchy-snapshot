@@ -20,16 +20,44 @@ create_snapshot() {
 
   # Check if snapper is available
   if ! command -v snapper >/dev/null; then
-    echo "Error: snapper not installed"
-    echo "Install with: sudo pacman -S snapper"
-    return 1
+    echo -e "\e[33m[WARN]\e[0m snapper not installed"
+    read -p "Install and configure snapper now? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      install_snapper
+      if [ $? -ne 0 ]; then
+        return 1
+      fi
+    else
+      echo "Snapper installation cancelled"
+      return 1
+    fi
   fi
 
   # Check if snapper config exists
-  if ! sudo snapper -c root list-configs >/dev/null 2>&1; then
-    echo "Error: snapper not configured for root"
-    echo "Configure with: sudo snapper -c root create-config /"
-    return 1
+  if ! sudo snapper -c root list-configs | grep -q "root"; then
+    echo -e "\e[33m[WARN]\e[0m snapper not configured for root"
+    read -p "Configure snapper now? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      echo "Configuring snapper for root subvolume..."
+      # Create config for root
+      if ! sudo snapper -c root create-config /; then
+        echo -e "\e[31m[FAIL]\e[0m Failed to configure snapper"
+        return 1
+      fi
+      
+      # Set up reasonable defaults (same as install script)
+      sudo snapper -c root set-config TIMELINE_CREATE=yes
+      sudo snapper -c root set-config TIMELINE_CLEANUP=yes
+      sudo snapper -c root set-config NUMBER_CLEANUP=yes
+      sudo snapper -c root set-config NUMBER_LIMIT=10
+      
+      echo -e "\e[32m[PASS]\e[0m Snapper configured"
+    else
+      echo "Snapper configuration cancelled"
+      return 1
+    fi
   fi
 
   # Create snapshot
