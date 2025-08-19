@@ -1,0 +1,18 @@
+#!/bin/bash
+
+if [ $# -ne 2 ]; then
+  exit 1
+fi
+
+WINDOW_PATTERN="$1"
+LAUNCH_COMMAND="$2"
+
+WINDOW_ADDRESS=$(hyprctl clients -j | jq -r --arg pattern "$WINDOW_PATTERN" '
+    .[] | select(.class + " " + .title | test($pattern; "i")) | .address
+' | head -n1)
+
+if [ -n "$WINDOW_ADDRESS" ]; then
+  hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
+else
+  eval "$LAUNCH_COMMAND"
+fi
