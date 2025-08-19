@@ -22,6 +22,7 @@ chrootable_systemctl_enable() {
 # Give people a chance to retry running the installation
 catch_errors() {
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
+  echo "The failing command was: \`$BASH_COMMAND\` (exit code: $?)"
   echo "You can retry by running: bash ~/.local/share/omarchy/install.sh"
   echo "Get help from the community: https://discord.gg/tXFUdasqhY"
 }
