@@ -7,17 +7,22 @@ if findmnt -n -o FSTYPE / | grep -q btrfs; then
 
   sudo pacman -S --noconfirm --needed snapper
 
-  # Configure snapper for root subvolume
-  sudo snapper -c root create-config /
-
-  # Set up reasonable defaults
-  sudo snapper -c root set-config TIMELINE_CREATE=yes
-  sudo snapper -c root set-config TIMELINE_CLEANUP=yes
-  sudo snapper -c root set-config NUMBER_CLEANUP=yes
-  sudo snapper -c root set-config NUMBER_LIMIT=10
-
-  # Create initial snapshot
-  sudo snapper -c root create --description "omarchy-initial-install"
+  # Configure snapper for root subvolume (only if not already configured)
+  if ! sudo snapper -c root list-configs >/dev/null 2>&1; then
+    echo "Configuring snapper for root subvolume..."
+    sudo snapper -c root create-config /
+    
+    # Set up reasonable defaults
+    sudo snapper -c root set-config TIMELINE_CREATE=yes
+    sudo snapper -c root set-config TIMELINE_CLEANUP=yes
+    sudo snapper -c root set-config NUMBER_CLEANUP=yes
+    sudo snapper -c root set-config NUMBER_LIMIT=10
+    
+    # Create initial snapshot
+    sudo snapper -c root create --description "omarchy-initial-install"
+  else
+    echo "Snapper already configured for root - skipping configuration"
+  fi
 
   echo -e "\e[32m[PASS]\e[0m Snapper configured and ready"
 else
