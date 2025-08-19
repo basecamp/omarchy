@@ -133,7 +133,7 @@ show_setup_menu() {
 
   case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
-  *Wifi*) alacritty --class=Impala -e impala ;;
+  *Wifi*) alacritty --class=Impala -e bash -c "rfkill unblock wifi; impala" ;;
   *Bluetooth*) blueberry ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
