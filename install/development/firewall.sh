@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if ! command -v ufw &>/dev/null; then
+if ! command -v ufw &>/dev/null && -z "${OMARCHY_CHROOT_INSTALL:-}"; then
   yay -S --noconfirm --needed ufw ufw-docker
 
   # Allow nothing in, everything out

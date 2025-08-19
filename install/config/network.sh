@@ -4,12 +4,7 @@
 # This can happen if archinstall used ethernet
 if ! command -v iwctl &>/dev/null; then
   yay -S --noconfirm --needed iwd
-
-  if [ -n "${OMARCHY_CHROOT_INSTALL:-}" ]; then
-    sudo systemctl enable iwd.service
-  else
-    sudo systemctl enable --now iwd.service
-  fi
+  chrootable_systemctl_enable iwd.service
 fi
 
 # Prevent systemd-networkd-wait-online timeout on boot

@@ -7,7 +7,18 @@ export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 
 # Chroot installations have some differences
-export OMARCHY_CHROOT_INSTALL=$(! cmp -s /proc/1/root/ / && echo 1 || echo 0)
+if ! cmp -s /proc/1/root/ / 2>/dev/null; then
+  export OMARCHY_CHROOT_INSTALL=1
+fi
+
+chrootable_systemctl_enable() {
+  local args=("$@")
+  if [ -n "${OMARCHY_CHROOT_INSTALL:-}" ]; then
+    sudo systemctl "${args[@]}" enable
+  else
+    sudo systemctl "${args[@]}" enable --now
+  fi
+}
 
 # Give people a chance to retry running the installation
 catch_errors() {
