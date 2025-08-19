@@ -1,0 +1,44 @@
+#!/bin/bash
+
+echo "Installing VSCode..."
+yay -Sy --noconfirm visual-studio-code-bin
+
+echo "Configuring VSCode for gnome-keyring..."
+mkdir -p ~/.vscode
+
+# Check if argv.json exists and has content
+if [ -f ~/.vscode/argv.json ]; then
+    # Preserve existing content and add/update password-store using jq
+    jq '. + {"password-store": "gnome-libsecret"}' ~/.vscode/argv.json > ~/.vscode/argv.json.tmp && \
+    mv ~/.vscode/argv.json.tmp ~/.vscode/argv.json
+else
+    # Create new argv.json with password-store setting
+    cat > ~/.vscode/argv.json << 'EOF'
+// This configuration file allows you to pass permanent command line arguments to VS Code.
+// Only a subset of arguments is currently supported to reduce the likelihood of breaking
+// the installation.
+//
+// PLEASE DO NOT CHANGE WITHOUT UNDERSTANDING THE IMPACT
+//
+// NOTE: Changing this file requires a restart of VS Code.
+{
+    // Use software rendering instead of hardware accelerated rendering.
+    // This can help in cases where you see rendering issues in VS Code.
+    // "disable-hardware-acceleration": true,
+
+    // Allows to disable crash reporting.
+    // Should restart the app if the value is changed.
+    "enable-crash-reporter": true,
+
+    // Unique id used for correlating crash reports sent from this instance.
+    // Do not edit this value.
+    "crash-reporter-id": "$(uuidgen)",
+
+    "password-store": "gnome-libsecret"
+}
+EOF
+fi
+
+echo "VSCode configured to use gnome-keyring."
+echo "Launching VSCode..."
+setsid gtk-launch code
