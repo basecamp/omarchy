@@ -5,3 +5,5 @@
 
 [ -z "$OMARCHY_USER_EMAIL" ] &&
   export OMARCHY_USER_EMAIL=$(gum input --placeholder "Enter email address" --prompt "Email> ")
+
+echo # Ensure we end with a positive exit
