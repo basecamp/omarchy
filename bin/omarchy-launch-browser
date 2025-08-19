@@ -1,0 +1,23 @@
+#!/bin/bash
+
+browser=$(basename "$(xdg-settings get default-web-browser)" .desktop)
+# Remap desktop files to the command, where they differ
+case $browser in
+  google-chrome)
+    browser=google-chrome-stable
+    ;;
+  brave-browser)
+    browser=brave
+    ;;
+esac
+
+# Custom arguments for browsers
+args=()
+case $browser in
+  chromium|google-chrome-*|brave)
+    args+=(--ozone-platform=wayland)
+    args+=(--new-window)
+    ;;
+esac
+
+uwsm app -- $browser ${args[@]} $@

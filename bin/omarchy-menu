@@ -35,7 +35,7 @@ edit_in_nvim() {
 }
 
 open_web() {
-  setsid omarchy-browser --app="$1" &
+  setsid omarchy-launch-browser --app="$1" &
 }
 
 install() {
