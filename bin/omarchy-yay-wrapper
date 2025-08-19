@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Simple yay wrapper that uses local PKGBUILDs when available
+# Falls back to normal yay behavior
+
+PKGBUILD_CACHE="$OMARCHY_PKGBUILD_CACHE"
+
+# If no cache set, just use regular yay
+if [[ -z "$PKGBUILD_CACHE" ]] || [[ ! -d "$PKGBUILD_CACHE" ]]; then
+    exec /usr/bin/yay.original "$@"
+fi
+
+# Check if this is a package installation command (contains -S)
+if [[ " $* " =~ " -S " ]]; then
+    # Extract package names (arguments that don't start with -)
+    packages=()
+    for arg in "$@"; do
+        if [[ ! "$arg" =~ ^- ]] && [[ "$arg" != "yay" ]]; then
+            packages+=("$arg")
+        fi
+    done
+    
+    # If we found packages to install, try cache first
+    if [[ ${#packages[@]} -gt 0 ]]; then
+        for pkg in "${packages[@]}"; do
+            if [[ -d "$PKGBUILD_CACHE/$pkg" ]]; then
+                echo "Installing $pkg from local cache..."
+                (
+                    cd "$PKGBUILD_CACHE/$pkg"
+                    makepkg -si --noconfirm --needed
+                )
+            else
+                echo "Installing $pkg from AUR (not in cache)..."
+                /usr/bin/yay.original -S --noconfirm --needed "$pkg"
+            fi
+        done
+        exit 0
+    fi
+fi
+
+# For other yay commands, just pass through
+exec /usr/bin/yay.original "$@"

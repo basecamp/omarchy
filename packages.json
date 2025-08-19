@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Omarchy Package Index",
+  "description": "Centralized index of all packages used by Omarchy",
+  "version": "1.0.0",
+  "updated": "2024-08-16T14:30:22-07:00",
+  
+  "aur_packages": {
+    "core": {
+      "description": "Essential AUR packages required for Omarchy",
+      "packages": {
+        "yay-bin": {
+          "description": "AUR helper (binary distribution)",
+          "category": "build-tools",
+          "required": true,
+          "install_stage": "preflight"
+        },
+        "walker-bin": {
+          "description": "Application launcher for Wayland",
+          "category": "desktop",
+          "required": true,
+          "install_stage": "desktop"
+        },
+        "localsend-bin": {
+          "description": "Cross-platform file sharing",
+          "category": "applications", 
+          "required": false,
+          "install_stage": "apps"
+        },
+        "lazydocker-bin": {
+          "description": "Docker management TUI",
+          "category": "development",
+          "required": false,
+          "install_stage": "development"
+        },
+        "obsidian-bin": {
+          "description": "Note-taking application",
+          "category": "applications",
+          "required": false,
+          "install_stage": "apps"
+        },
+        "visual-studio-code-bin": {
+          "description": "Code editor (binary distribution)",
+          "category": "development",
+          "required": false,
+          "install_stage": "apps",
+          "menu_only": true
+        },
+        "cursor-bin": {
+          "description": "AI code editor",
+          "category": "development", 
+          "required": false,
+          "install_stage": "apps",
+          "menu_only": true
+        },
+        "gemini-cli-bin": {
+          "description": "Gemini protocol client",
+          "category": "networking",
+          "required": false,
+          "install_stage": "apps",
+          "menu_only": true
+        },
+        "crush-bin": {
+          "description": "File compression utility",
+          "category": "utilities",
+          "required": false,
+          "install_stage": "apps",
+          "menu_only": true
+        },
+        "opencode-bin": {
+          "description": "Open source code editor",
+          "category": "development",
+          "required": false,
+          "install_stage": "apps", 
+          "menu_only": true
+        },
+        "1password-beta": {
+          "description": "Password manager (beta)",
+          "category": "security",
+          "required": false,
+          "install_stage": "apps"
+        },
+        "1password-cli": {
+          "description": "1Password command line tool",
+          "category": "security",
+          "required": false,
+          "install_stage": "apps"
+        },
+        "zoom": {
+          "description": "Video conferencing",
+          "category": "communication",
+          "required": false,
+          "install_stage": "apps"
+        },
+        "satty": {
+          "description": "Screenshot annotation tool",
+          "category": "utilities",
+          "required": false,
+          "install_stage": "desktop"
+        },
+        "python-terminaltexteffects": {
+          "description": "Terminal text effects library",
+          "category": "utilities",
+          "required": false,
+          "install_stage": "preflight"
+        },
+        "impala": {
+          "description": "Terminal file manager",
+          "category": "utilities",
+          "required": false,
+          "install_stage": "development"
+        },
+        "ttf-font-awesome": {
+          "description": "Font Awesome icon font",
+          "category": "fonts",
+          "required": true,
+          "install_stage": "desktop"
+        },
+        "ttf-ia-writer": {
+          "description": "iA Writer font family",
+          "category": "fonts",
+          "required": true,
+          "install_stage": "desktop"
+        },
+        "ttf-jetbrains-mono": {
+          "description": "JetBrains Mono font",
+          "category": "fonts",
+          "required": false,
+          "install_stage": "desktop"
+        },
+        "ufw-docker": {
+          "description": "UFW rules for Docker",
+          "category": "security",
+          "required": false,
+          "install_stage": "development"
+        },
+        "tzupdate": {
+          "description": "Automatic timezone detection",
+          "category": "system",
+          "required": false,
+          "install_stage": "config"
+        }
+      }
+    },
+    
+    "conditional": {
+      "description": "Packages that may be in official repos or AUR depending on system",
+      "packages": {
+        "kvantum-qt5": {
+          "description": "Qt5 theme engine",
+          "category": "theming",
+          "required": false,
+          "install_stage": "desktop",
+          "fallback_official": true
+        },
+        "hyprsunset": {
+          "description": "Blue light filter for Hyprland",
+          "category": "desktop",
+          "required": false,
+          "install_stage": "desktop"
+        },
+        "hyprshot": {
+          "description": "Screenshot tool for Hyprland",
+          "category": "utilities",
+          "required": true,
+          "install_stage": "desktop"
+        },
+        "hyprpicker": {
+          "description": "Color picker for Hyprland",
+          "category": "utilities",
+          "required": true,
+          "install_stage": "desktop"
+        },
+        "hyprlock": {
+          "description": "Screen locker for Hyprland",
+          "category": "desktop",
+          "required": true,
+          "install_stage": "desktop"
+        },
+        "hypridle": {
+          "description": "Idle daemon for Hyprland",
+          "category": "desktop",
+          "required": true,
+          "install_stage": "desktop"
+        },
+        "mise": {
+          "description": "Runtime version manager",
+          "category": "development",
+          "required": false,
+          "install_stage": "development",
+          "fallback_official": true
+        },
+        "wl-screenrec": {
+          "description": "Screen recorder for Wayland",
+          "category": "desktop",
+          "required": false,
+          "install_stage": "desktop"
+        },
+        "wf-recorder": {
+          "description": "Screen recorder for wlroots",
+          "category": "desktop", 
+          "required": false,
+          "install_stage": "desktop"
+        },
+        "blueberry": {
+          "description": "Bluetooth configuration tool",
+          "category": "desktop",
+          "required": false,
+          "install_stage": "desktop"
+        },
+        "plymouth": {
+          "description": "Boot splash screen",
+          "category": "system",
+          "required": false,
+          "install_stage": "config"
+        },
+        "gum": {
+          "description": "Tool for glamorous shell scripts",
+          "category": "utilities",
+          "required": false,
+          "install_stage": "preflight"
+        },
+        "iwd": {
+          "description": "Wireless daemon",
+          "category": "networking",
+          "required": false,
+          "install_stage": "config"
+        },
+        "power-profiles-daemon": {
+          "description": "Power profile management",
+          "category": "system",
+          "required": false,
+          "install_stage": "config"
+        }
+      }
+    }
+  },
+
+  "official_packages": {
+    "description": "Packages from official Arch repositories",
+    "note": "These are not cached but listed for completeness",
+    "categories": {
+      "base": ["git", "base-devel", "bash-completion"],
+      "desktop": ["hyprland", "waybar", "mako", "swaybg", "xdg-desktop-portal-hyprland"],
+      "development": ["cargo", "clang", "llvm", "imagemagick", "github-cli", "lazygit"],
+      "fonts": ["noto-fonts", "noto-fonts-emoji", "noto-fonts-cjk"],
+      "audio": ["pipewire", "wireplumber"],
+      "system": ["systemd", "networkmanager", "polkit-gnome"]
+    }
+  },
+
+  "meta": {
+    "cache_policy": {
+      "auto_update": true,
+      "update_frequency": "daily",
+      "retention_days": 30,
+      "verify_on_download": true
+    },
+    "validation": {
+      "required_packages": ["yay-bin", "hyprshot", "hyprpicker", "hyprlock", "hypridle", "swayosd", "walker-bin", "ttf-font-awesome", "ttf-cascadia-mono-nerd", "ttf-ia-writer"],
+      "essential_categories": ["build-tools", "desktop", "fonts"]
+    },
+    "sources": {
+      "primary": "https://github.com/basecamp/omarchy-aur-cache/releases/latest",
+      "fallback": "https://aur.archlinux.org"
+    }
+  }
+}

@@ -27,7 +27,16 @@ if ! command -v yay &>/dev/null; then
   sudo pacman -Sy --needed --noconfirm base-devel
   cd /tmp
   rm -rf yay-bin
-  git clone https://aur.archlinux.org/yay-bin.git
+  
+  # Try to use local PKGBUILDs first if available
+  if [[ -n "$OMARCHY_PKGBUILD_CACHE" ]] && [[ -d "$OMARCHY_PKGBUILD_CACHE/yay-bin" ]]; then
+    echo "Using local yay-bin PKGBUILD from cache"
+    cp -r "$OMARCHY_PKGBUILD_CACHE/yay-bin" .
+  else
+    echo "Downloading yay-bin from AUR"
+    git clone https://aur.archlinux.org/yay-bin.git
+  fi
+  
   cd yay-bin
   makepkg -si --noconfirm
   cd -
