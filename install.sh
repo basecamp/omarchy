@@ -12,11 +12,10 @@ if ! cmp -s /proc/1/root/ / 2>/dev/null; then
 fi
 
 chrootable_systemctl_enable() {
-  local args=("$@")
   if [ -n "${OMARCHY_CHROOT_INSTALL:-}" ]; then
-    sudo systemctl "${args[@]}" enable
+    sudo systemctl enable $1
   else
-    sudo systemctl "${args[@]}" enable --now
+    sudo systemctl enable --now $1
   fi
 }
 
