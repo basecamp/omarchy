@@ -6,6 +6,9 @@ set -e
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 
+# Chroot installations have some differences
+export OMARCHY_CHROOT_INSTALL=$(! cmp -s /proc/1/root/ / && echo 1 || echo 0)
+
 # Give people a chance to retry running the installation
 catch_errors() {
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
