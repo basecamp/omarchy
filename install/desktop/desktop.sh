@@ -4,7 +4,7 @@ yay -S --noconfirm --needed \
   brightnessctl playerctl pamixer wiremix wireplumber \
   fcitx5 fcitx5-gtk fcitx5-qt wl-clip-persist \
   nautilus sushi ffmpegthumbnailer gvfs-mtp \
-  yazi \
+  yazi ueberzugpp \
   slurp satty \
   mpv evince imv \
   chromium
