@@ -14,8 +14,8 @@ CONF="/etc/mkinitcpio.conf"
 sudo mkdir -p "$INSTALL_DIR" "$HOOKS_DIR"
 
 # Add required modules to mkinitcpio.conf (insert after 'btrfs' if present)
-# Only add amdgpu if AMD GPU is detected
-if [ -n "$(lspci | grep -i amd)" ]; then
+# Only add amdgpu if AMD GPU is detected (not just AMD USB controllers, etc.)
+if lspci | grep -Ei 'VGA|Display' | grep -qi 'AMD'; then
   NEEDED_MODS="amdgpu xhci_hcd xhci_pci thunderbolt typec ucsi_acpi typec_displayport usbhid hid_generic"
 else
   NEEDED_MODS="xhci_hcd xhci_pci thunderbolt typec ucsi_acpi typec_displayport usbhid hid_generic"
