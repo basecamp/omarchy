@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export PATH="$HOME/.local/bin:$PATH"
+
 if command -v tte &>/dev/null; then
   while true; do
     effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
