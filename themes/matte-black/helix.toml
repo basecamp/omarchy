@@ -1,0 +1,194 @@
+# Matte Black theme for Helix
+# Inspired by tahayvr/matteblack.nvim - A matte black colorscheme
+# Converted from Neovim to Helix by Claude AI
+# Deep black background with subtle contrasts and elegant accents
+
+# UI Colors
+"ui.background" = { }
+"ui.background.separator" = "bg2"
+"ui.cursor" = { fg = "bg0", bg = "fg" }
+"ui.cursor.insert" = { fg = "bg0", bg = "green" }
+"ui.cursor.select" = { fg = "bg0", bg = "blue" }
+"ui.cursor.match" = { fg = "yellow", bg = "bg2" }
+"ui.cursor.primary" = { fg = "bg0", bg = "fg" }
+"ui.cursor.secondary" = { fg = "bg0", bg = "grey" }
+"ui.cursorline.primary" = { bg = "bg1" }
+"ui.cursorline.secondary" = { bg = "bg1" }
+"ui.selection" = { bg = "bg2" }
+"ui.selection.primary" = { bg = "bg3" }
+"ui.linenr" = "grey"
+"ui.linenr.selected" = "fg"
+"ui.statusline" = { fg = "fg", bg = "bg2" }
+"ui.statusline.inactive" = { fg = "grey", bg = "bg1" }
+"ui.statusline.normal" = { fg = "bg0", bg = "cyan" }
+"ui.statusline.insert" = { fg = "bg0", bg = "green" }
+"ui.statusline.select" = { fg = "bg0", bg = "purple" }
+"ui.popup" = { bg = "bg1" }
+"ui.window" = { bg = "bg1" }
+"ui.help" = { bg = "bg1", fg = "fg" }
+"ui.text" = "fg"
+"ui.text.focus" = "cyan"
+"ui.text.inactive" = "grey"
+"ui.virtual.ruler" = { bg = "bg1" }
+"ui.virtual.whitespace" = "dark_grey"
+"ui.virtual.indent-guide" = "bg3"
+"ui.virtual.inlay-hint" = { fg = "dark_grey", modifiers = ["italic"] }
+"ui.virtual.jump-label" = { fg = "yellow", modifiers = ["bold"] }
+
+# Menu and completion
+"ui.menu" = { fg = "fg", bg = "bg1" }
+"ui.menu.selected" = { fg = "bg0", bg = "cyan" }
+"ui.menu.scroll" = { fg = "fg", bg = "bg2" }
+
+# Gutter
+"ui.gutter" = { }
+"ui.gutter.selected" = { bg = "bg1" }
+
+# Debug
+"ui.debug.breakpoint" = "red"
+"ui.debug.active" = "yellow"
+
+# Diagnostics
+"warning" = "yellow"
+"error" = "red"
+"info" = "blue"
+"hint" = "green"
+"diagnostic.hint" = { underline = { color = "green", style = "curl" } }
+"diagnostic.info" = { underline = { color = "blue", style = "curl" } }
+"diagnostic.warning" = { underline = { color = "yellow", style = "curl" } }
+"diagnostic.error" = { underline = { color = "red", style = "curl" } }
+
+# Syntax highlighting
+"type" = "cyan"
+"type.builtin" = "cyan"
+"type.parameter" = "fg"
+"type.enum" = "cyan"
+"constructor" = "cyan"
+"constant" = "orange"
+"constant.builtin" = "orange"
+"constant.builtin.boolean" = "purple"
+"constant.character" = "green"
+"constant.character.escape" = "yellow"
+"constant.numeric" = "orange"
+"constant.numeric.integer" = "orange"
+"constant.numeric.float" = "orange"
+"string" = "green"
+"string.regexp" = "red"
+"string.special" = "yellow"
+"string.special.path" = "green"
+"string.special.url" = "blue"
+"string.special.symbol" = "yellow"
+"comment" = { fg = "grey", modifiers = ["italic"] }
+"comment.line" = { fg = "grey", modifiers = ["italic"] }
+"comment.block" = { fg = "grey", modifiers = ["italic"] }
+"comment.block.documentation" = { fg = "grey", modifiers = ["italic"] }
+
+# Variables
+"variable" = "fg"
+"variable.builtin" = "purple"
+"variable.parameter" = { fg = "orange", modifiers = ["italic"] }
+"variable.other.member" = "fg"
+
+# Keywords
+"keyword" = "purple"
+"keyword.control" = "purple"
+"keyword.control.conditional" = "purple"
+"keyword.control.repeat" = "purple"
+"keyword.control.import" = "purple"
+"keyword.control.return" = "purple"
+"keyword.control.exception" = "purple"
+"keyword.operator" = "purple"
+"keyword.directive" = "purple"
+"keyword.function" = "purple"
+"keyword.storage" = "purple"
+"keyword.storage.modifier" = "purple"
+
+# Operators
+"operator" = "purple"
+
+# Functions
+"function" = "blue"
+"function.builtin" = "blue"
+"function.method" = "blue"
+"function.macro" = "red"
+"function.special" = "yellow"
+
+# Namespaces
+"namespace" = "cyan"
+
+# Tags (for markup languages)
+"tag" = "red"
+"tag.builtin" = "red"
+
+# Attributes
+"attribute" = "yellow"
+"attribute.builtin" = "yellow"
+
+# Labels
+"label" = "red"
+
+# Punctuation
+"punctuation" = "light_grey"
+"punctuation.delimiter" = "light_grey"
+"punctuation.bracket" = "light_grey"
+"punctuation.special" = "yellow"
+
+# Special
+"special" = "yellow"
+
+# Markup (for markdown, etc.)
+"markup.heading" = { fg = "cyan", modifiers = ["bold"] }
+"markup.heading.1" = { fg = "cyan", modifiers = ["bold"] }
+"markup.heading.2" = { fg = "blue", modifiers = ["bold"] }
+"markup.heading.3" = { fg = "purple", modifiers = ["bold"] }
+"markup.heading.4" = { fg = "green", modifiers = ["bold"] }
+"markup.heading.5" = { fg = "yellow", modifiers = ["bold"] }
+"markup.heading.6" = { fg = "orange", modifiers = ["bold"] }
+"markup.heading.marker" = "grey"
+"markup.list" = "purple"
+"markup.list.numbered" = "purple"
+"markup.list.unnumbered" = "purple"
+"markup.bold" = { modifiers = ["bold"] }
+"markup.italic" = { modifiers = ["italic"] }
+"markup.strikethrough" = { modifiers = ["crossed_out"] }
+"markup.link.url" = { fg = "blue", modifiers = ["underlined"] }
+"markup.link.text" = "cyan"
+"markup.quote" = "grey"
+"markup.raw" = "green"
+"markup.raw.inline" = "green"
+"markup.raw.block" = "green"
+
+# Diff
+"diff.plus" = "green"
+"diff.minus" = "red"
+"diff.delta" = "yellow"
+"diff.delta.moved" = "purple"
+
+# Git
+"git.delta.moved" = "purple"
+
+[palette]
+# True matte black backgrounds
+bg0 = "#0a0a0a"      # Deep matte black
+bg1 = "#121212"      # Slightly lighter black
+bg2 = "#1a1a1a"      # Lighter black for selections
+bg3 = "#262626"      # Light black for visual elements
+
+# Foreground colors
+fg = "#e4e4e4"       # Light grey text
+white = "#ffffff"    # Pure white
+light_grey = "#b4b4b4"  # Light grey for punctuation
+grey = "#6c6c6c"     # Medium grey for comments
+dark_grey = "#3a3a3a"   # Dark grey for subtle elements
+
+# Accent colors - carefully chosen for matte black aesthetic
+red = "#ff6b6b"      # Soft red
+green = "#51cf66"    # Soft green
+yellow = "#ffd43b"   # Soft yellow
+blue = "#74c0fc"     # Soft blue
+purple = "#c084fc"   # Soft purple
+cyan = "#22d3ee"     # Soft cyan
+orange = "#ff922b"   # Soft orange
+
+# Additional shades
+black = "#000000"    # Pure black

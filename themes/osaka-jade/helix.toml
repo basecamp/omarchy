@@ -1,0 +1,189 @@
+# Bamboo theme for Helix
+# Inspired by ribru17/bamboo.nvim - A warm green theme
+# Prioritizes green, yellow, and red colors while minimizing blue/purple for reduced eye strain
+# NOTE: Converted from Neovim to Helix by Claude AI
+
+# UI Colors
+"ui.background" = {}
+"ui.background.separator" = "bg2"
+"ui.cursor" = { fg = "bg0", bg = "fg" }
+"ui.cursor.insert" = { fg = "bg0", bg = "green" }
+"ui.cursor.select" = { fg = "bg0", bg = "blue" }
+"ui.cursor.match" = { fg = "orange", bg = "bg2" }
+"ui.cursor.primary" = { fg = "bg0", bg = "fg" }
+"ui.cursor.secondary" = { fg = "bg0", bg = "grey" }
+"ui.cursorline.primary" = { bg = "bg1" }
+"ui.cursorline.secondary" = { bg = "bg1" }
+"ui.selection" = { bg = "bg2" }
+"ui.selection.primary" = { bg = "bg3" }
+"ui.linenr" = "grey"
+"ui.linenr.selected" = "fg"
+"ui.statusline" = { fg = "fg", bg = "bg2" }
+"ui.statusline.inactive" = { fg = "grey", bg = "bg1" }
+"ui.statusline.normal" = { fg = "bg0", bg = "green" }
+"ui.statusline.insert" = { fg = "bg0", bg = "yellow" }
+"ui.statusline.select" = { fg = "bg0", bg = "blue" }
+"ui.popup" = { bg = "bg1" }
+"ui.window" = { bg = "bg1" }
+"ui.help" = { bg = "bg1", fg = "fg" }
+"ui.text" = "fg"
+"ui.text.focus" = "yellow"
+"ui.text.inactive" = "grey"
+"ui.virtual.ruler" = { bg = "bg1" }
+"ui.virtual.whitespace" = "grey"
+"ui.virtual.indent-guide" = "bg3"
+"ui.virtual.inlay-hint" = { fg = "grey", modifiers = ["italic"] }
+"ui.virtual.jump-label" = { fg = "red", modifiers = ["bold"] }
+
+# Menu and completion
+"ui.menu" = { fg = "fg", bg = "bg1" }
+"ui.menu.selected" = { fg = "bg0", bg = "green" }
+"ui.menu.scroll" = { fg = "fg", bg = "bg2" }
+
+# Gutter
+"ui.gutter" = { }
+"ui.gutter.selected" = { bg = "bg1" }
+
+# Debug
+"ui.debug.breakpoint" = "red"
+"ui.debug.active" = "yellow"
+
+# Diagnostics
+"warning" = "yellow"
+"error" = "red"
+"info" = "blue"
+"hint" = "green"
+"diagnostic.hint" = { underline = { color = "green", style = "curl" } }
+"diagnostic.info" = { underline = { color = "blue", style = "curl" } }
+"diagnostic.warning" = { underline = { color = "yellow", style = "curl" } }
+"diagnostic.error" = { underline = { color = "red", style = "curl" } }
+
+# Syntax highlighting
+"type" = "green"
+"type.builtin" = "green"
+"type.parameter" = "fg"
+"type.enum" = "green"
+"constructor" = "green"
+"constant" = "orange"
+"constant.builtin" = "orange"
+"constant.builtin.boolean" = "orange"
+"constant.character" = "yellow"
+"constant.character.escape" = "red"
+"constant.numeric" = "orange"
+"constant.numeric.integer" = "orange"
+"constant.numeric.float" = "orange"
+"string" = "yellow"
+"string.regexp" = "red"
+"string.special" = "red"
+"string.special.path" = "yellow"
+"string.special.url" = "blue"
+"string.special.symbol" = "red"
+"comment" = { fg = "grey", modifiers = ["italic"] }
+"comment.line" = { fg = "grey", modifiers = ["italic"] }
+"comment.block" = { fg = "grey", modifiers = ["italic"] }
+"comment.block.documentation" = { fg = "grey", modifiers = ["italic"] }
+
+# Variables
+"variable" = "fg"
+"variable.builtin" = "red"
+"variable.parameter" = { fg = "fg", modifiers = ["italic"] }
+"variable.other.member" = "fg"
+
+# Keywords
+"keyword" = { fg = "red", modifiers = ["italic"] }
+"keyword.control" = { fg = "red", modifiers = ["italic"] }
+"keyword.control.conditional" = { fg = "red", modifiers = ["italic"] }
+"keyword.control.repeat" = { fg = "red", modifiers = ["italic"] }
+"keyword.control.import" = { fg = "red", modifiers = ["italic"] }
+"keyword.control.return" = { fg = "red", modifiers = ["italic"] }
+"keyword.control.exception" = { fg = "red", modifiers = ["italic"] }
+"keyword.operator" = "red"
+"keyword.directive" = "red"
+"keyword.function" = "red"
+"keyword.storage" = "red"
+"keyword.storage.modifier" = "red"
+
+# Operators
+"operator" = "red"
+
+# Functions
+"function" = "blue"
+"function.builtin" = "blue"
+"function.method" = "blue"
+"function.macro" = "red"
+"function.special" = "red"
+
+# Namespaces
+"namespace" = { fg = "yellow", modifiers = ["italic"] }
+
+# Tags (for markup languages)
+"tag" = "red"
+"tag.builtin" = "red"
+
+# Attributes
+"attribute" = "yellow"
+"attribute.builtin" = "yellow"
+
+# Labels
+"label" = "red"
+
+# Punctuation
+"punctuation" = "fg"
+"punctuation.delimiter" = "fg"
+"punctuation.bracket" = "fg"
+"punctuation.special" = "red"
+
+# Special
+"special" = "red"
+
+# Markup (for markdown, etc.)
+"markup.heading" = { fg = "green", modifiers = ["bold"] }
+"markup.heading.1" = { fg = "green", modifiers = ["bold"] }
+"markup.heading.2" = { fg = "green", modifiers = ["bold"] }
+"markup.heading.3" = { fg = "green", modifiers = ["bold"] }
+"markup.heading.4" = { fg = "green", modifiers = ["bold"] }
+"markup.heading.5" = { fg = "green", modifiers = ["bold"] }
+"markup.heading.6" = { fg = "green", modifiers = ["bold"] }
+"markup.heading.marker" = "grey"
+"markup.list" = "red"
+"markup.list.numbered" = "red"
+"markup.list.unnumbered" = "red"
+"markup.bold" = { modifiers = ["bold"] }
+"markup.italic" = { modifiers = ["italic"] }
+"markup.strikethrough" = { modifiers = ["crossed_out"] }
+"markup.link.url" = { fg = "blue", modifiers = ["underlined"] }
+"markup.link.text" = "yellow"
+"markup.quote" = "grey"
+"markup.raw" = "yellow"
+"markup.raw.inline" = "yellow"
+"markup.raw.block" = "yellow"
+
+# Diff
+"diff.plus" = "green"
+"diff.minus" = "red"
+"diff.delta" = "yellow"
+"diff.delta.moved" = "blue"
+
+# Git
+"git.delta.moved" = "blue"
+
+[palette]
+# Main background and foreground
+bg0 = "#252623"  # Dark green background
+bg1 = "#2a2d2a"  # Slightly lighter background
+bg2 = "#313431"  # Even lighter background for selections
+bg3 = "#3a3d3a"  # Light background for visual elements
+fg = "#e0dcc7"   # Light foreground text
+
+# Core colors - prioritizing green, yellow, red as per bamboo.nvim philosophy
+green = "#8db573"    # Bamboo green - primary accent
+yellow = "#e3c78a"   # Warm yellow for strings
+red = "#e07d61"      # Warm red for keywords
+orange = "#dba76d"   # Orange for constants
+blue = "#7fa8d6"     # Muted blue - used sparingly
+purple = "#ad7fa8"   # Muted purple - used sparingly
+
+# Neutral colors
+grey = "#6a7364"     # Comments and secondary text
+white = "#f4f1e8"    # Bright white
+black = "#1b1d1a"    # Deep dark
