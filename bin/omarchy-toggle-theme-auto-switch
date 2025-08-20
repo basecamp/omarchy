@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Toggle darkman-based theme auto-switching
+
+CONFIG_FILE="$HOME/.config/omarchy/theme-auto-switch.conf"
+DARKMAN_CONFIG="$HOME/.config/darkman/config.yaml"
+
+# Check if config exists
+if [ ! -f "$CONFIG_FILE" ]; then
+  notify-send "Theme Auto-Switch" "Config file not found. Please run the darkman migration first."
+  exit 1
+fi
+
+# Check current status
+# Always regenerate darkman config from theme-schedule.conf
+
+# Create darkman config directory if it doesn't exist
+mkdir -p "$(dirname "$DARKMAN_CONFIG")"
+
+# Parse theme-schedule.conf and generate config.yaml
+cat >"$DARKMAN_CONFIG" <<'EOF'
+# Darkman configuration
+# Based on darkman(1) manual: https://darkman.whynothugo.nl/
+# This file is auto-generated from config/theme-auto-switch.conf
+
+EOF
+
+# Read configuration values from theme-schedule.conf
+LATITUDE=$(grep "^latitude = " "$CONFIG_FILE" | cut -d' ' -f3)
+LONGITUDE=$(grep "^longitude = " "$CONFIG_FILE" | cut -d' ' -f3)
+
+# Generate location settings
+cat >>"$DARKMAN_CONFIG" <<EOF
+# Location settings
+lat: $LATITUDE
+lng: $LONGITUDE
+
+# Use geoclue for location (set to false to use only manual lat/lng)
+usegeoclue: false
+
+# Enable D-Bus server for API access
+dbusserver: true
+
+# Enable XDG portal for desktop integration
+portal: true
+EOF
+
+echo "Generated darkman config at $DARKMAN_CONFIG"
+
+if systemctl --user is-active --quiet darkman; then
+  # Currently enabled, disable it
+  systemctl --user stop darkman
+  systemctl --user disable darkman
+  notify-send "Theme Auto-Switch" "Disabled"
+else
+  # Currently disabled, enable it
+  systemctl --user enable --now darkman
+  notify-send "Theme Auto-Switch" "Enabled"
+fi
+
