@@ -42,6 +42,7 @@ show_subtext "Let's install Omarchy! [1/5]"
 source $OMARCHY_INSTALL/config/identification.sh
 source $OMARCHY_INSTALL/config/config.sh
 source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
+source $OMARCHY_INSTALL/config/fix-ghost-display.sh
 source $OMARCHY_INSTALL/config/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/network.sh
 source $OMARCHY_INSTALL/config/power.sh
