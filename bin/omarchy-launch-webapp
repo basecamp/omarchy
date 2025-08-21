@@ -12,6 +12,18 @@ case $browser in
   brave-browser)
     browser=brave
     ;;
+  microsoft-edge)
+    browser=microsoft-edge-stable
+    ;;
+  microsoft-edge-*)
+    # Do nothing for Edge variants, don't default to Chromium
+    ;;
+  opera|opera-*)
+    # Do nothing for Opera variants, don't default to Chromium
+    ;;
+  vivaldi-*)
+    # Do nothing for Vivaldi variants, don't default to Chromium
+    ;;
   *)
     # Default to Chromium
     browser=chromium
@@ -20,8 +32,9 @@ esac
 
 # Custom arguments for browsers
 args=()
-case $browser in
-  chromium|google-chrome-*|brave)
+case $browser 
+  # Chromium variants
+  chromium|google-chrome-*|brave|microsoft-edge-*|opera|opera-*|vivaldi-*)
     args+=(--ozone-platform=wayland)
     args+=(--new-window)
     ;;
