@@ -32,7 +32,7 @@ esac
 
 # Custom arguments for browsers
 args=()
-case $browser 
+case $browser in
   # Chromium variants
   chromium|google-chrome-*|brave|microsoft-edge-*|opera|opera-*|vivaldi-*)
     args+=(--ozone-platform=wayland)
