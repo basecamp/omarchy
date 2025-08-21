@@ -16,6 +16,8 @@ echo -e "\n$ansi_art\n"
 
 sudo pacman -Sy --noconfirm --needed git
 
+OMARCHY_REPO="Xoorgh/xoomarchy"
+
 # Use custom repo if specified, otherwise default to basecamp/omarchy
 OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}"
 
