@@ -76,15 +76,31 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
 
   sudo mkinitcpio -P
 
-  # Add NVIDIA environment variables to hyprland.conf
-  HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
-  if [ -f "$HYPRLAND_CONF" ]; then
-    cat >>"$HYPRLAND_CONF" <<'EOF'
+  # Add NVIDIA environment variables to envs.conf
+  HYPRLAND_CONF="$HOME/default/hypr/envs.conf"
+  if [ -f "$ENVS_CONF" ]; then
+    cat >>"$ENVS_CONF" <<'EOF'
 
-# NVIDIA environment variables
-env = NVD_BACKEND,direct
+#----------------------nvidia-----------------------#
+# This is from Hyprland Wiki. As a start, WLR_NO_HARDWARE_CURSORS 1 will be activated if nvidia gpu detected
+#env = WLR_NO_HARDWARE_CURSORS,1
 env = LIBVA_DRIVER_NAME,nvidia
 env = __GLX_VENDOR_LIBRARY_NAME,nvidia
+#env = GBM_BACKEND,nvidia-drm
+ 
+#env = __NV_PRIME_RENDER_OFFLOAD,1
+#env = __VK_LAYER_NV_optimus,NVIDIA_only
+#env = WLR_DRM_NO_ATOMIC,1
+env = NVD_BACKEND,direct
+ 
+# FOR VM and POSSIBLY NVIDIA
+# env = WLR_RENDERER_ALLOW_SOFTWARE,1
+ 
+# nvidia firefox (for hardware acceleration on FF)?
+# check this post https://github.com/elFarto/nvidia-vaapi-driver#configuration
+# env = MOZ_DISABLE_RDD_SANDBOX,1
+# env = NVD_BACKEND,direct
+# env = EGL_PLATFORM,wayland
 EOF
   fi
 fi
