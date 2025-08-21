@@ -2,8 +2,7 @@
 
 # Hyprland launched via UWSM and login directly as user, rely on disk encryption + hyprlock for security
 if ! command -v uwsm &>/dev/null || ! command -v plymouth &>/dev/null; then
-  yay -S --noconfirm --needed uwsm plymouth
-  yay -S --noconfirm --needed plymouth
+  yay -S --noconfirm --needed plymouth uwsm
 fi
 
 # ==============================================================================
