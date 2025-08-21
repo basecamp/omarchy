@@ -86,7 +86,6 @@ show_subtext "You're done! So we're ready to reboot now..."
 
 if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
   sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
-  echo
   gum confirm "Have you unplugged the USB installer?"
 fi
 
