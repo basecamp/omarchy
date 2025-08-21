@@ -1,6 +1,10 @@
-echo "Install Impala as new wifi selection TUI"
+echo "Install Impala as new wifi selection TUI and bluetui for Bluetooth"
 if ! command -v impala &>/dev/null; then
   yay -S --noconfirm --needed impala
-  echo "You need to update the Waybar config to use Impala Wi-Fi selector in top bar."
-  omarchy-refresh-waybar
 fi
+
+if ! command -v bluetui &>/dev/null; then
+  yay -S --noconfirm --needed bluetui
+fi
+
+omarchy-refresh-waybar
