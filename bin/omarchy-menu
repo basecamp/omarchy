@@ -53,7 +53,7 @@ install_font() {
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) omarchy-menu-keybindings ;;
-  *Omarchy*) open_web "https://manuals.omamix.org/2/the-omarchy-manual" ;;
+  *Omarchy*) open_web "https://learn.omacom.io/2/the-omarchy-manual" ;;
   *Hyprland*) open_web "https://wiki.hypr.land/" ;;
   *Arch*) open_web "https://wiki.archlinux.org/title/Main_page" ;;
   *Bash*) open_web "https://devhints.io/bash" ;;
