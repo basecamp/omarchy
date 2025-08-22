@@ -1,14 +1,16 @@
 #!/bin/bash
 
-if [ "$#" -ne 3 ]; then
+if [ "$#" -ne 4 ]; then
   echo -e "\e[32mLet's create a TUI shortcut you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My TUI")
   APP_EXEC=$(gum input --prompt "Launch Command> " --placeholder "lazydocker or bash -c 'dust; read -n 1 -s'")
+  WINDOW_STYLE=$(gum choose --header "Window style" float tile)
   ICON_URL=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
 else
   APP_NAME="$1"
   APP_EXEC="$2"
-  ICON_URL="$3"
+  WINDOW_STYLE="$3"
+  ICON_URL="$4"
 fi
 
 if [[ -z "$APP_NAME" || -z "$APP_EXEC" || -z "$ICON_URL" ]]; then
@@ -27,12 +29,18 @@ if ! curl -sL -o "$ICON_PATH" "$ICON_URL"; then
   return 1
 fi
 
+if [[ $WINDOW_STYLE == "float" ]]; then
+  APP_CLASS="Omarchy"
+else
+  APP_CLASS="TUI"
+fi
+
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Version=1.0
 Name=$APP_NAME
 Comment=$APP_NAME
-Exec=alacritty --class Omarchy -e $APP_EXEC
+Exec=alacritty --class $APP_CLASS -e $APP_EXEC
 Terminal=false
 Type=Application
 Icon=$ICON_PATH
@@ -41,6 +49,6 @@ EOF
 
 chmod +x "$DESKTOP_FILE"
 
-if [ "$#" -ne 3 ]; then
+if [ "$#" -ne 4 ]; then
   echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
 fi
