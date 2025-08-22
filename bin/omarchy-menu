@@ -127,10 +127,10 @@ show_screenrecord_menu() {
 
 show_toggle_menu() {
   case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
-  *Screensaver*) omarchy-launch-screensaver ;;
+  *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
-  *Bar*) pkill -SIGUSR1 waybar ;;
+  *Bar*) omarchy-toggle-waybar ;;
   *) show_main_menu ;;
   esac
 }
@@ -143,7 +143,7 @@ show_setup_menu() {
 
   case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
-  *Wifi*) alacritty --class=Impala -e impala ;;
+  *Wifi*) alacritty --class=Impala -e bash -c "rfkill unblock wifi; impala" ;;
   *Bluetooth*) blueberry ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
@@ -338,8 +338,9 @@ show_update_config_menu() {
 }
 
 show_system_menu() {
-  case $(menu "System" "  Lock\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
+  case $(menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
   *Lock*) omarchy-lock-screen ;;
+  *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
