@@ -95,8 +95,7 @@ phoenix)
   mise x elixir -- mix local.rebar --force
   # Phoenix project (phx_new)
   mise x elixir -- mix archive.install hex phx_new --force
-  echo -e "\n Phoenix installed. Create a project with:\n   mix phx.new my_app\n"
-  echo -e "Tip: Inside the project you can run:\n   mix deps.get\n   mix ecto.create   # if using a DB\n   mix phx.server\n"
+  echo -e "\nYou can now run: mix phx.new my_app"
   ;;
 rust)
   echo -e "Installing Rust...\n"
