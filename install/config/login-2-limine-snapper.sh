@@ -25,6 +25,8 @@ FIND_BOOTLOADERS=yes
 BOOT_ORDER="*, *fallback, Snapshots"
 
 MAX_SNAPSHOT_ENTRIES=5
+
+SNAPSHOT_FORMAT_CHOICE=5
 EOF
 
   sudo tee /boot/limine.conf <<EOF >/dev/null
@@ -54,7 +56,6 @@ EOF
   sudo sed -i 's/^NUMBER_LIMIT_IMPORTANT="10"/NUMBER_LIMIT_IMPORTANT="5"/' /etc/snapper/configs/{root,home}
 
   sudo limine-update
-  sudo limine-snapper-sync
   chrootable_systemctl_enable limine-snapper-sync.service
 fi
 
