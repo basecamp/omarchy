@@ -193,22 +193,14 @@ show_install_service_menu() {
 }
 
 show_install_editor_menu() {
-  case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  IntelliJ IDEA") in
+  case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Jetbrains Toolbox") in
   *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
   *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) install "Helix" "helix" ;;
-  *IntelliJ*) show_install_intellij_menu ;;
+  *Jetbrains*) install_and_launch "Jetbrains Toolbox" "jetbrains-toolbox" "jetbrains-toolbox" ;;
   *) show_install_menu ;;
-  esac
-}
-
-show_install_intellij_menu() {
-  case $(menu "IntelliJ IDEA" "  Community Edition\n  Ultimate Edition") in
-  *Community*) install_and_launch "IntelliJ IDEA Community Edition" "intellij-idea-community-edition" "jetbrains-idea-ce.desktop" ;;
-  *Ultimate*) install_and_launch "IntelliJ IDEA Ultimate Edition" "intellij-idea-ultimate-edition" "jetbrains-idea-ultimate.desktop" ;;
-  *) show_install_editor_menu ;;
   esac
 }
 
