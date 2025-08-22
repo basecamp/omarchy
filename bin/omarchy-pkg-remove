@@ -3,7 +3,7 @@
 fzf_args=(
   --multi
   --preview 'yay -Qi {1}'
-  --preview-label='alt-p: toggle description, alt-j/k: scroll, F11: maximize'
+  --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select, F11: maximize'
   --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
   --bind 'alt-p:toggle-preview'
@@ -12,10 +12,11 @@ fzf_args=(
   --color 'pointer:red,marker:red'
 )
 
-pkg_name=$(yay -Qqe | fzf "${fzf_args[@]}")
+pkg_names=$(yay -Qqe | fzf "${fzf_args[@]}")
 
-if [[ -n "$pkg_name" ]]; then
-  yay -Rns --noconfirm "$pkg_name"
+if [[ -n "$pkg_names" ]]; then
+  # Convert newline-separated selections to space-separated for yay
+  echo "$pkg_names" | tr '\n' ' ' | xargs yay -Rns --noconfirm
   sudo updatedb
   omarchy-show-done
 fi
