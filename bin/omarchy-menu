@@ -252,7 +252,7 @@ show_install_development_menu() {
   *Go*) present_terminal "omarchy-install-dev-env go" ;;
   *PHP*) show_install_php_menu ;;
   *Python*) present_terminal "omarchy-install-dev-env python" ;;
-  *Elixir*) present_terminal "omarchy-install-dev-env elixir" ;;
+  *Elixir*) show_install_elixir_menu ;;
   *Zig*) present_terminal "omarchy-install-dev-env zig" ;;
   *Rust*) present_terminal "omarchy-install-dev-env rust" ;;
   *Java*) present_terminal "omarchy-install-dev-env java" ;;
@@ -276,6 +276,14 @@ show_install_php_menu() {
   *PHP*) present_terminal "omarchy-install-dev-env php" ;;
   *Laravel*) present_terminal "omarchy-install-dev-env laravel" ;;
   *Symfony*) present_terminal "omarchy-install-dev-env symfony" ;;
+  *) show_install_development_menu ;;
+  esac
+}
+
+show_install_elixir_menu() {
+  case $(menu "Install" "  Elixir\n  Phoenix") in
+  *Elixir*) present_terminal "omarchy-install-dev-env elixir" ;;
+  *Phoenix*) present_terminal "omarchy-install-dev-env phoenix" ;;
   *) show_install_development_menu ;;
   esac
 }
