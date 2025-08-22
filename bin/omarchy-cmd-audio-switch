@@ -1,47 +1,19 @@
 #!/bin/bash
 
-# Switch to the next available audio output
-# Preserves mute status across switches
-
-# Get all sink IDs
-get_sink_ids() {
-    wpctl status | sed -n '/Sinks:/,/Sources:/p' | grep -E '^\s*│\s+\*?\s*[0-9]+\.' | sed -E 's/^[^0-9]*([0-9]+)\..*/\1/'
-}
-
-# Get current sink ID (marked with *)
-get_current_sink() {
-    wpctl status | sed -n '/Sinks:/,/Sources:/p' | grep '^\s*│\s*\*' | sed -E 's/^[^0-9]*([0-9]+)\..*/\1/'
-}
-
-# Check if current sink is muted
-is_muted() {
-    local sink_id="$1"
-    wpctl get-volume "$sink_id" | grep -q '\[MUTED\]'
-}
-
-# Main
-sinks=($(get_sink_ids))
+# Find all the audio sinks but exit if there are none
+sinks=($(wpctl status | sed -n '/Sinks:/,/Sources:/p' | grep -E '^\s*│\s+\*?\s*[0-9]+\.' | sed -E 's/^[^0-9]*([0-9]+)\..*/\1/'))
 [ ${#sinks[@]} -eq 0 ] && exit 1
 
-current=$(get_current_sink)
-current_muted=0
+# Find current audio sink
+current=$(wpctl status | sed -n '/Sinks:/,/Sources:/p' | grep '^\s*│\s*\*' | sed -E 's/^[^0-9]*([0-9]+)\..*/\1/')
 
-# Save mute status if we have a current sink
-if [ -n "$current" ]; then
-    is_muted "$current" && current_muted=1
-    
-    # Find current position
-    for i in "${!sinks[@]}"; do
-        if [ "${sinks[$i]}" = "$current" ]; then
-            next_idx=$(( (i + 1) % ${#sinks[@]} ))
-            break
-        fi
-    done
-fi
+# Find the next sink (looping around in the list)
+for i in "${!sinks[@]}"; do
+  [ "${sinks[$i]}" = "$current" ] && next=${sinks[$(((i + 1) % ${#sinks[@]}))]}
+done
+next=${next:-${sinks[0]}}
 
-# Default to first sink if no current or not found
-next="${sinks[${next_idx:-0}]}"
-
-# Switch and apply mute status
+# Set the next sink and ensure it's not muted
 wpctl set-default "$next"
-wpctl set-mute "$next" "$current_muted"
+wpctl set-mute "$next" 0
+
