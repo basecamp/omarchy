@@ -1,0 +1,16 @@
+#!/bin/bash
+
+COMMAND="$1"
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+
+create() {
+  DESC="$($OMARCHY_PATH/bin/omarchy-version)"
+
+  for config in root home; do
+    sudo snapper -c "$config" create -c number -d "$DESC"
+  done
+}
+
+case "$COMMAND" in
+create) create ;;
+esac
