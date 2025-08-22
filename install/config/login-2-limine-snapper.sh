@@ -1,8 +1,6 @@
-if command -v limine &>/dev/null && ! command -v limine-entry-tool &>/dev/null; then
-  yay -S --noconfirm --needed limine-mkinitcpio-hook limine-snapper-sync
-fi
-
 if command -v limine &>/dev/null && [ ! -f /etc/default/limine ]; then
+  yay -S --noconfirm --needed limine-mkinitcpio-hook limine-snapper-sync
+
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
@@ -29,6 +27,7 @@ MAX_SNAPSHOT_ENTRIES=5
 SNAPSHOT_FORMAT_CHOICE=5
 EOF
 
+  # We overwrite the whole thing knowing the limine-update will add the entries for us
   sudo tee /boot/limine.conf <<EOF >/dev/null
 ### Read more at config document: https://github.com/limine-bootloader/limine/blob/trunk/CONFIG.md
 #timeout: 3
@@ -51,6 +50,17 @@ term_background_bright: 24283b
  
 EOF
 
+  # Match Snapper configs if not installing from the ISO
+  if [ -z "${OMARCHY_CHROOT_INSTALL:-}" ]; then
+    if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
+        sudo snapper -c root create-config /
+    fi
+    if ! sudo snapper list-configs 2>/dev/null | grep -q "home"; then
+        sudo snapper -c home create-config /home
+    fi
+  end
+
+  # Tweak default Snapper configs
   sudo sed -i 's/^TIMELINE_CREATE="yes"/TIMELINE_CREATE="no"/' /etc/snapper/configs/{root,home}
   sudo sed -i 's/^NUMBER_LIMIT="50"/NUMBER_LIMIT="5"/' /etc/snapper/configs/{root,home}
   sudo sed -i 's/^NUMBER_LIMIT_IMPORTANT="10"/NUMBER_LIMIT_IMPORTANT="5"/' /etc/snapper/configs/{root,home}
@@ -60,6 +70,7 @@ EOF
 fi
 
 # Add UKI entry to UEFI machines to skip bootloader showing on normal boot
+# Only doing this for ISO installs
 if [ -n "${OMARCHY_CHROOT_INSTALL:-}" ] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy; then
   sudo efibootmgr --create \
     --disk "$(findmnt -n -o SOURCE /boot | sed 's/[0-9]*$//')" \
