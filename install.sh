@@ -75,6 +75,7 @@ source $OMARCHY_INSTALL/config/timezones.sh
 source $OMARCHY_INSTALL/config/login.sh
 source $OMARCHY_INSTALL/config/nvidia.sh
 source $OMARCHY_INSTALL/config/increase-sudo-tries.sh
+source $OMARCHY_INSTALL/config/ignore-power-button.sh
 
 # Development
 source $OMARCHY_INSTALL/development/terminal.sh
