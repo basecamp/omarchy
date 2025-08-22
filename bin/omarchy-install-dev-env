@@ -77,7 +77,7 @@ python)
   echo -e "Installing Python...\n"
   mise use --global python@latest
   echo -e "\nInstalling uv...\n"
-  wget -qO- https://astral.sh/uv/install.sh | sh
+  curl -fsSL https://astral.sh/uv/install.sh | sh
   ;;
 elixir)
   echo -e "Installing Elixir...\n"
