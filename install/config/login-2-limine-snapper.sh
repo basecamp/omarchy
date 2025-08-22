@@ -7,12 +7,13 @@ if command -v limine &>/dev/null && [ ! -f /etc/default/limine ]; then
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
 
-  PARTUUID=$(blkid -t TYPE=crypto_LUKS -s PARTUUID -o value)
+  CMDLINE=$(grep "^[[:space:]]*cmdline:" /boot/EFI/limine/limine.conf | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
   sudo tee /etc/default/limine <<EOF >/dev/null
 TARGET_OS_NAME="Omarchy"
 
-KERNEL_CMDLINE[default]="cryptdevice=PARTUUID=${PARTUUID}:cryptroot root=/dev/mapper/cryptroot rootflags=subvol=@ rw quiet splash"
+KERNEL_CMDLINE[default]="$CMDLINE"
+KERNEL_CMDLINE[default]+="quiet splash"
 
 ENABLE_UKI=yes
 
