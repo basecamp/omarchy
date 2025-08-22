@@ -30,9 +30,9 @@ if ! curl -sL -o "$ICON_PATH" "$ICON_URL"; then
 fi
 
 if [[ $WINDOW_STYLE == "float" ]]; then
-  APP_CLASS="Omarchy"
+  APP_CLASS="TUI.float"
 else
-  APP_CLASS="TUI"
+  APP_CLASS="TUI.tile"
 fi
 
 cat >"$DESKTOP_FILE" <<EOF
