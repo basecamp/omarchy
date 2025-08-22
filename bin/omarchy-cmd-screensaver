@@ -1,15 +1,9 @@
 #!/bin/bash
 
 if command -v tte &>/dev/null; then
-  if [[ -f ~/.config/omarchy/logo.txt ]]; then
-    logo_file=~/.config/omarchy/logo.txt
-  else
-    logo_file=~/.local/share/omarchy/logo.txt
-  fi
-
   while true; do
     effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
-    tte -i "$logo_file" \
+    tte -i ~/.config/omarchy/screensaver.txt \
       --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
       "$effect" &
 

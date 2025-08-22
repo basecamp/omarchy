@@ -34,16 +34,6 @@ edit_in_nvim() {
   alacritty -e nvim "$1"
 }
 
-copy_then_edit() {
-  if [ -f "$2" ]; then
-    edit_in_nvim "$2"
-  else
-    mkdir -p "$(dirname "$2")"
-    cp "$1" "$2"
-    edit_in_nvim "$2"
-  fi
-}
-
 open_web() {
   setsid chromium --new-window --app="$1" &
 }
@@ -73,10 +63,11 @@ show_learn_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background") in
+  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
+  *Screensaver*) edit_in_nvim ~/.config/omarchy/screensaver.txt ;;
   *) show_main_menu ;;
   esac
 }
