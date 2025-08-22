@@ -18,8 +18,7 @@ catch_errors() {
   fi
 
   echo "See your installation log in ~/.local/state/omarchy/installation.log"
-  echo "Get help from the community: https://discord.gg/tXFUdasqhY"
-  echo "                                 "
+  echo "Get help from the community (or scan QR code below): https://discord.gg/tXFUdasqhY"
   echo "                                 "
   echo "    █▀▀▀▀▀█ ▄ ▄ ▀▄▄▄█ █▀▀▀▀▀█    "
   echo "    █ ███ █ ▄▄▄▄▀▄▀▄▀ █ ███ █    "
@@ -34,7 +33,6 @@ catch_errors() {
   echo "    █ ███ █ █▀▄▄▀ █▀███▀█▄██▄    "
   echo "    █ ▀▀▀ █ ██  ▀ █▄█ ▄▄▄█▀ █    "
   echo "    ▀▀▀▀▀▀▀ ▀ ▀ ▀▀▀  ▀ ▀▀▀▀▀▀    "
-  echo "                                 "
   echo "                                 "
 }
 
