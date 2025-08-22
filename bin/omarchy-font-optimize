@@ -1,0 +1,287 @@
+#!/bin/bash
+
+# Optimize font rendering based on display configuration
+# Reads monitor settings and applies optimal DPI and rendering settings
+
+set -e
+
+MONITORS_CONF="$HOME/.config/hypr/monitors.conf"
+FONTCONFIG_DIR="$HOME/.config/fontconfig"
+FONTCONFIG_FILE="$FONTCONFIG_DIR/fonts.conf"
+FONTCONFIG_BACKUP="$FONTCONFIG_FILE.pre-optimize"
+
+# Known display PPI values
+declare -A DISPLAY_PPI=(
+    ["5120x2880"]="218"  # 27" 5K
+    ["6016x3384"]="218"  # 32" 6K Pro Display XDR
+    ["3840x2160@27"]="163"  # 27" 4K
+    ["3840x2160@32"]="138"  # 32" 4K  
+    ["2880x1920"]="266"  # 13.5" Framework
+    ["2560x1440"]="109"  # 27" 1440p
+    ["1920x1080"]="82"   # 27" 1080p
+)
+
+# Parse monitor configuration
+get_monitor_resolution() {
+    if [ ! -f "$MONITORS_CONF" ]; then
+        echo "1920x1080"  # Default fallback
+        return
+    fi
+    
+    # Extract resolution from active monitor line
+    local monitor_line=$(grep -E "^monitor\s*=" "$MONITORS_CONF" | head -1)
+    
+    if [[ $monitor_line =~ ([0-9]+x[0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]}"
+    elif [[ $monitor_line =~ preferred ]]; then
+        # Try to get from hyprctl if available
+        if command -v hyprctl >/dev/null 2>&1; then
+            local width=$(hyprctl monitors -j 2>/dev/null | jq -r '.[0].width' 2>/dev/null || echo "1920")
+            local height=$(hyprctl monitors -j 2>/dev/null | jq -r '.[0].height' 2>/dev/null || echo "1080")
+            echo "${width}x${height}"
+        else
+            echo "1920x1080"
+        fi
+    else
+        echo "1920x1080"
+    fi
+}
+
+# Calculate optimal DPI
+calculate_dpi() {
+    local resolution="$1"
+    
+    # Check known configurations
+    if [ -n "${DISPLAY_PPI[$resolution]}" ]; then
+        echo "${DISPLAY_PPI[$resolution]}"
+        return
+    fi
+    
+    # Estimate based on resolution ranges
+    local width=$(echo "$resolution" | cut -d'x' -f1)
+    
+    if [ "$width" -ge 5000 ]; then
+        echo "218"  # 5K/6K displays
+    elif [ "$width" -ge 3840 ]; then
+        echo "163"  # 4K displays
+    elif [ "$width" -ge 2560 ]; then
+        echo "109"  # 1440p displays
+    else
+        echo "96"   # Standard DPI
+    fi
+}
+
+# Determine rendering settings based on DPI
+get_render_settings() {
+    local dpi="$1"
+    
+    if [ "$dpi" -ge 200 ]; then
+        echo "hintslight"  # High DPI - light hinting
+    elif [ "$dpi" -ge 140 ]; then
+        echo "hintslight"  # Medium-high DPI
+    else
+        echo "hintmedium"  # Low DPI - more aggressive hinting
+    fi
+}
+
+# Preserve existing font families from current config
+preserve_font_families() {
+    local current_config="$1"
+    local sans_family="Liberation Sans"
+    local serif_family="Liberation Serif"
+    local mono_family="CaskaydiaMono Nerd Font"
+    
+    if [ -f "$current_config" ]; then
+        # Extract current font families
+        local extracted_sans=$(xmlstarlet sel -t -v '//match[@target="pattern"][test/string="sans-serif"]/edit[@name="family"]/string' "$current_config" 2>/dev/null || true)
+        local extracted_serif=$(xmlstarlet sel -t -v '//match[@target="pattern"][test/string="serif"]/edit[@name="family"]/string' "$current_config" 2>/dev/null || true)
+        local extracted_mono=$(xmlstarlet sel -t -v '//match[@target="pattern"][test/string="monospace"]/edit[@name="family"]/string' "$current_config" 2>/dev/null || true)
+        
+        [ -n "$extracted_sans" ] && sans_family="$extracted_sans"
+        [ -n "$extracted_serif" ] && serif_family="$extracted_serif"
+        [ -n "$extracted_mono" ] && mono_family="$extracted_mono"
+    fi
+    
+    echo "$sans_family|$serif_family|$mono_family"
+}
+
+# Generate optimized fontconfig
+generate_fontconfig() {
+    local dpi="$1"
+    local hintstyle="$2"
+    local sans="$3"
+    local serif="$4"
+    local mono="$5"
+    
+    cat << EOF
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <!-- Omarchy font rendering optimizations -->
+  <!-- Auto-generated for display DPI: $dpi -->
+  
+  <!-- Font rendering settings -->
+  <match target="font">
+    <edit name="antialias" mode="assign">
+      <bool>true</bool>
+    </edit>
+    <edit name="hinting" mode="assign">
+      <bool>true</bool>
+    </edit>
+    <edit name="rgba" mode="assign">
+      <const>rgb</const>
+    </edit>
+    <edit name="hintstyle" mode="assign">
+      <const>$hintstyle</const>
+    </edit>
+    <edit name="lcdfilter" mode="assign">
+      <const>lcddefault</const>
+    </edit>
+  </match>
+
+  <!-- Display-specific DPI -->
+  <match target="pattern">
+    <edit name="dpi" mode="assign">
+      <double>$dpi</double>
+    </edit>
+  </match>
+
+  <!-- Font family mappings -->
+  <match target="pattern">
+    <test name="family" qual="any">
+      <string>sans-serif</string>
+    </test>
+    <edit name="family" mode="assign" binding="strong">
+      <string>$sans</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family" qual="any">
+      <string>serif</string>
+    </test>
+    <edit name="family" mode="assign" binding="strong">
+      <string>$serif</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family" qual="any">
+      <string>monospace</string>
+    </test>
+    <edit name="family" mode="assign" binding="strong">
+      <string>$mono</string>
+    </edit>
+  </match>
+
+  <alias>
+    <family>system-ui</family>
+    <prefer>
+      <family>$sans</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>ui-monospace</family>
+    <default>
+      <family>monospace</family>
+    </default>
+  </alias>
+
+  <alias>
+    <family>-apple-system</family>
+    <prefer>
+      <family>$sans</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>BlinkMacSystemFont</family>
+    <prefer>
+      <family>$sans</family>
+    </prefer>
+  </alias>
+</fontconfig>
+EOF
+}
+
+# Main optimization
+main() {
+    local force_refresh=false
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --force|-f)
+                force_refresh=true
+                shift
+                ;;
+            --help|-h)
+                echo "Usage: omarchy-font-optimize [OPTIONS]"
+                echo ""
+                echo "Optimize font rendering based on display configuration"
+                echo ""
+                echo "Options:"
+                echo "  -f, --force    Force refresh even if already optimized"
+                echo "  -h, --help     Show this help message"
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Check if already optimized (unless forced)
+    if [ "$force_refresh" = false ] && [ -f "$FONTCONFIG_FILE" ]; then
+        if grep -q "Omarchy font rendering optimizations" "$FONTCONFIG_FILE" 2>/dev/null; then
+            echo "Font rendering already optimized. Use --force to refresh."
+            exit 0
+        fi
+    fi
+    
+    echo "Optimizing font rendering for your display..."
+    
+    # Get monitor resolution
+    resolution=$(get_monitor_resolution)
+    echo "  Display resolution: $resolution"
+    
+    # Calculate optimal DPI
+    dpi=$(calculate_dpi "$resolution")
+    echo "  Calculated DPI: $dpi"
+    
+    # Get rendering settings
+    hintstyle=$(get_render_settings "$dpi")
+    echo "  Hinting style: $hintstyle"
+    
+    # Preserve existing font families
+    IFS='|' read -r sans serif mono <<< $(preserve_font_families "$FONTCONFIG_FILE")
+    
+    # Create fontconfig directory
+    mkdir -p "$FONTCONFIG_DIR"
+    
+    # Backup existing config
+    if [ -f "$FONTCONFIG_FILE" ] && [ ! -f "$FONTCONFIG_BACKUP" ]; then
+        cp "$FONTCONFIG_FILE" "$FONTCONFIG_BACKUP"
+        echo "  Backed up existing config to $FONTCONFIG_BACKUP"
+    fi
+    
+    # Generate and write optimized config
+    generate_fontconfig "$dpi" "$hintstyle" "$sans" "$serif" "$mono" > "$FONTCONFIG_FILE"
+    
+    # Update font cache
+    fc-cache -f
+    
+    echo "✓ Font rendering optimized successfully!"
+    echo ""
+    echo "Settings applied:"
+    echo "  • DPI: $dpi"
+    echo "  • Hinting: $hintstyle"
+    echo "  • Subpixel: RGB"
+    echo "  • LCD filter: default"
+    echo ""
+    echo "Note: Restart applications to see changes."
+}
+
+main "$@"
