@@ -15,7 +15,7 @@ if ! command -v ufw &>/dev/null && -z "${OMARCHY_CHROOT_INSTALL:-}"; then
   sudo ufw allow 22/tcp
 
   # Allow Docker containers to use DNS on host
-  sudo ufw allow in proto udp from 172.16.0.0/12 to 172.17.0.1 port 53 comment allow-docker-dns
+  sudo ufw allow in proto udp from 172.16.0.0/12 to 172.17.0.1 port 53 comment 'allow-docker-dns'
 
   # Turn on the firewall
   sudo ufw --force enable
