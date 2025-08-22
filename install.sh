@@ -10,9 +10,11 @@ OMARCHY_INSTALL=~/.local/share/omarchy/install
 catch_errors() {
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
 
-  local retry_cmd="bash ~/.local/share/omarchy/install.sh"
-  [[ -n "$OMARCHY_BARE" ]] && retry_cmd="OMARCHY_BARE=true $retry_cmd"
-  echo "You can retry by running: $retry_cmd"
+  if [[ -n $OMARCHY_BARE ]]; then
+    echo "You can retry by running: OMARCHY_BARE=true bash ~/.local/share/omarchy/install.sh"
+  else
+    echo "You can retry by running: bash ~/.local/share/omarchy/install.sh"
+  fi
 
   echo "Get help from the community: https://discord.gg/tXFUdasqhY"
 }
