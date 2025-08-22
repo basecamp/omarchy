@@ -3,6 +3,11 @@
 # Exit early if screensave is already running
 pgrep -f "alacritty --class Screensaver" && exit 0
 
+# Allow screensaver to be turned off but also force started
+if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]]; then
+  exit 1
+fi
+
 focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
 
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
