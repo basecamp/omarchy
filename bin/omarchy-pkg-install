@@ -2,7 +2,9 @@
 
 fzf_args=(
   --multi
-  --preview 'echo "alt-p: toggle description, alt-j/k: scroll, F11: maximize"; echo; yay -Sii {1}'
+  --preview 'yay -Sii {1}'
+  --preview-label='alt-p: toggle description, alt-j/k: scroll, F11: maximize'
+  --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
   --bind 'alt-p:toggle-preview'
   --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
