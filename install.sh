@@ -96,6 +96,7 @@ source $OMARCHY_INSTALL/desktop/printer.sh
 
 # Apps
 source $OMARCHY_INSTALL/apps/webapps.sh
+source $OMARCHY_INSTALL/apps/tuis.sh
 source $OMARCHY_INSTALL/apps/xtras.sh
 source $OMARCHY_INSTALL/apps/mimetypes.sh
 
