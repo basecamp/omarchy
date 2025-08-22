@@ -1,6 +1,6 @@
 #!/bin/bash
 
-options=("MariaDB" "MySQL" "Redis" "PostgreSQL")
+options=("MariaDB" "MySQL" "Redis" "PostgreSQL" "MongoDB")
 choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases (space to select, return to install, esc to cancel)") || main_menu
 
 if [[ -n "$choices" ]]; then
@@ -10,6 +10,7 @@ if [[ -n "$choices" ]]; then
     PostgreSQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:5432:5432" --name=postgres16 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16 ;;
     MariaDB) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mariadb11 -e MARIADB_ROOT_PASSWORD= -e MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=true mariadb:11.8 ;;
     Redis) sudo docker run -d --restart unless-stopped -p "127.0.0.1:6379:6379" --name=redis redis:7 ;;
+    MongoDB) sudo docker run -d --restart unless-stopped -p "127.0.0.1:27017:27017" --name mongodb -e MONGO_INITDB_ROOT_USERNAME=admin -e MONGO_INITDB_ROOT_PASSWORD=admin123 mongo:noble ;;
     esac
   done
 fi

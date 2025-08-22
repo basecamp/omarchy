@@ -30,7 +30,7 @@ sudo sed -i 's|^\(auth\s\+\[default=die\]\s\+pam_faillock.so\)\s\+authfail.*$|\1
 sudo cp ~/.local/share/omarchy/default/systemd/resolved.conf /etc/systemd/
 
 # Ensure /etc/resolv.conf is symlinked to systemd-resolved's stub resolver
-sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+sudo ln -sfn /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf 2>/dev/null || true
 
 # Solve common flakiness with SSH
 echo "net.ipv4.tcp_mtu_probing=1" | sudo tee -a /etc/sysctl.d/99-sysctl.conf

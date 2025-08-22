@@ -1,9 +1,9 @@
 #!/bin/bash
 
 yay -S --noconfirm --needed \
-  wget curl unzip inetutils impala \
+  unzip inetutils impala \
   fd eza fzf ripgrep zoxide bat dust jq xmlstarlet \
-  wl-clipboard fastfetch btop \
+  wl-clipboard btop \
   man tldr less whois plocate \
   starship bash-completion \
   alacritty
