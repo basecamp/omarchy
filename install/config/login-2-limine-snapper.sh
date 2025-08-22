@@ -54,7 +54,7 @@ EOF
 
   sudo limine-update
   sudo limine-snapper-sync
-  sudo systemctl enable --now limine-snapper-sync.service
+  chrootable_systemctl_enable limine-snapper-sync.service
 fi
 
 # Add UKI entry to UEFI machines to skip bootloader showing on normal boot
