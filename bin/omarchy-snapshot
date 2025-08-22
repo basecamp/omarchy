@@ -11,6 +11,11 @@ create() {
   done
 }
 
+restore() {
+  sudo limine-snapper-restore
+}
+
 case "$COMMAND" in
 create) create ;;
+restore) restore ;;
 esac
