@@ -1,0 +1,26 @@
+#!/bin/bash
+
+PLUGIN_REPO_URL="$1"
+
+if [[ -z "$1" ]]; then
+  PLUGIN_REPO_URL=$(gum input --placeholder="Git repo URL for plugin" --header="")
+fi
+
+if [[ -n "$PLUGIN_REPO_URL" ]]; then
+  PLUGIN_PATH="$HOME/.config/omarchy/plugins"
+  PLUGIN_NAME=$(basename -s .git "$PLUGIN_REPO_URL")
+
+  echo -e "\n\e[32mInstalling plugin: $PLUGIN_NAME\e[0m"
+
+  if ! mkdir -p "$PLUGIN_PATH" || ! git clone --depth 1 "$PLUGIN_REPO_URL" "$PLUGIN_PATH/$PLUGIN_NAME"; then
+    echo "Error: Failed to clone the plugin repo."
+    exit 1
+  fi
+
+  cd "$PLUGIN_PATH/$PLUGIN_NAME"
+
+  # Running the plugins install script
+  ./install
+
+  ~/.local/share/omarchy/bin/omarchy-show-done
+fi
