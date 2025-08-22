@@ -14,9 +14,9 @@ screenrecording() {
   sleep 1
 
   if lspci | grep -qi 'nvidia'; then
-    wf-recorder -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@"
+    wf-recorder --audio -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@"
   else
-    wl-screenrec -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@"
+    wl-screenrec --audio -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@"
   fi
 }
 
