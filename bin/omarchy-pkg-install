@@ -1,7 +1,6 @@
 #!/bin/bash
 
 set -e
-omarchy-ensure-aur-available
 
 fzf_args=(
   --multi

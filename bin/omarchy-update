@@ -1,7 +1,6 @@
 #!/bin/bash
 
 set -e
-omarchy-ensure-aur-available
 
 omarchy-update-git
 omarchy-migrate
