@@ -120,7 +120,7 @@ show_toggle_menu() {
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
-  *Bar*) pkill -SIGUSR1 waybar ;;
+  *Bar*) omarchy-toggle-waybar ;;
   *) show_main_menu ;;
   esac
 }
