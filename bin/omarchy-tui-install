@@ -1,9 +1,9 @@
 #!/bin/bash
 
 if [ "$#" -ne 3 ]; then
-  echo -e "\e[32mLet's create an app shortcut you can start with the app launcher.\n\e[0m"
-  APP_NAME=$(gum input --prompt "Name> " --placeholder "My app")
-  APP_EXEC=$(gum input --prompt "Launch Command> " --placeholder "alacritty -e fastfetch")
+  echo -e "\e[32mLet's create a TUI shortcut you can start with the app launcher.\n\e[0m"
+  APP_NAME=$(gum input --prompt "Name> " --placeholder "My TUI")
+  APP_EXEC=$(gum input --prompt "Launch Command> " --placeholder "lazydocker or bash -c 'dust; read -n 1 -s'")
   ICON_URL=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
 else
   APP_NAME="$1"
@@ -32,7 +32,7 @@ cat >"$DESKTOP_FILE" <<EOF
 Version=1.0
 Name=$APP_NAME
 Comment=$APP_NAME
-Exec=$APP_EXEC
+Exec=alacritty --class Omarchy -e $APP_EXEC
 Terminal=false
 Type=Application
 Icon=$ICON_PATH

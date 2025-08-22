@@ -172,9 +172,10 @@ show_setup_config_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
+  *TUI*) present_terminal omarchy-tui-install ;;
   *Service*) show_install_service_menu ;;
   *Style*) show_install_style_menu ;;
   *Development*) show_install_development_menu ;;
@@ -289,9 +290,10 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
+  *TUI*) present_terminal omarchy-tui-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
   *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
   *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
