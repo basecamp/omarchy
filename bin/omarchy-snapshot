@@ -3,19 +3,20 @@
 COMMAND="$1"
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
-create() {
-  DESC="$($OMARCHY_PATH/bin/omarchy-version)"
+if [[ -z $COMMAND ]]; then
+  echo "Usage: omarchy-snapshot <create|restore>" >&2
+  exit 1
+fi
+
+case "$COMMAND" in
+create)
+  DESC="$(omarchy-version)"
 
   for config in root home; do
     sudo snapper -c "$config" create -c number -d "$DESC"
   done
-}
-
-restore() {
+  ;;
+restore)
   sudo limine-snapper-restore
-}
-
-case "$COMMAND" in
-create) create ;;
-restore) restore ;;
+  ;;
 esac
