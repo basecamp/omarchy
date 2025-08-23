@@ -12,7 +12,7 @@ catch_errors() {
   echo "The failing command was: \`$BASH_COMMAND\` (exit code: $?)"
   echo "See your installation log: ~/.local/state/omarchy/installation.log"
   echo
-  echo "Get help from the community (or scan QR code below): https://discord.gg/tXFUdasqhY"
+  echo "Get help from the community by scanning QR code or going to https://discord.gg/tXFUdasqhY"
   echo "                                 "
   echo "    █▀▀▀▀▀█ ▄ ▄ ▀▄▄▄█ █▀▀▀▀▀█    "
   echo "    █ ███ █ ▄▄▄▄▀▄▀▄▀ █ ███ █    "
