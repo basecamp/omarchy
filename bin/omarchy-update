@@ -2,6 +2,8 @@
 
 set -e
 
+# Create pre-update snapshot (will not block rest of update going ahead if user is not running btrfs or does not have snapper installed)
+omarchy-snapshot pre "omarchy-update-$(date +'%Y%m%d-%H%M%S')" || true
 omarchy-update-git
 omarchy-migrate
 omarchy-update-system-pkgs
