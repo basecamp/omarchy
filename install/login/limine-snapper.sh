@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if command -v limine &>/dev/null && [ ! -f /etc/default/limine ]; then
+if command -v limine &>/dev/null; then
   yay -S --noconfirm --needed limine-mkinitcpio-hook limine-snapper-sync
 
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
