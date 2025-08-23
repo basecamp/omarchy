@@ -6,4 +6,5 @@ yay -S --noconfirm --needed \
   wl-clipboard btop \
   man tldr less whois plocate \
   starship bash-completion \
+  gum python-poetry-core python-terminaltexteffects \
   alacritty
