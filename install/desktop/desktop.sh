@@ -5,7 +5,7 @@ yay -S --noconfirm --needed \
   fcitx5 fcitx5-gtk fcitx5-qt wl-clip-persist \
   nautilus sushi ffmpegthumbnailer gvfs-mtp \
   slurp satty \
-  mpv evince imv \
+  mpv evince imv feh \
   chromium
 
 # Add screen recorder based on GPU
