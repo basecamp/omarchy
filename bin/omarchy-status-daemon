@@ -11,10 +11,10 @@ mkdir -p "$STATE_DIR"
 
 # Update all status files by calling individual scripts
 update_all_status_files() {
-  "$SCRIPT_DIR/omarchy-status-dnd" > "$STATE_DIR/dnd"
-  "$SCRIPT_DIR/omarchy-status-nightlight" > "$STATE_DIR/nightlight"
-  "$SCRIPT_DIR/omarchy-status-recording" > "$STATE_DIR/recording"
-  "$SCRIPT_DIR/omarchy-status-idle" > "$STATE_DIR/idle"
+  "$SCRIPT_DIR/omarchy-status-dnd" >"$STATE_DIR/dnd"
+  "$SCRIPT_DIR/omarchy-status-nightlight" >"$STATE_DIR/nightlight"
+  "$SCRIPT_DIR/omarchy-status-recording" >"$STATE_DIR/recording"
+  "$SCRIPT_DIR/omarchy-status-idle" >"$STATE_DIR/idle"
 }
 
 # Generate hash for change detection
@@ -32,17 +32,17 @@ start_daemon() {
     last_hash=""
     while true; do
       current_hash=$(get_status_hash)
-      
+
       if [ "$current_hash" != "$last_hash" ]; then
         update_all_status_files
         last_hash="$current_hash"
       fi
-      
+
       sleep 0.5
     done
   } &
-  
-  echo $! > "$DAEMON_PID_FILE"
+
+  echo $! >"$DAEMON_PID_FILE"
 }
 
 # Main execution
