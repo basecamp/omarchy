@@ -37,5 +37,5 @@ fi
 
 # Add fun and color to the pacman installer
 if ! grep -q "ILoveCandy" /etc/pacman.conf; then
-  sudo sed -i '/^\[options\]/a Color\nILoveCandy' /etc/pacman.conf
+  sudo sed -i '/^\[options\]/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
 fi
