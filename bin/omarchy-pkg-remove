@@ -1,6 +1,8 @@
 #!/bin/bash
 
 fzf_args=(
+  --ansi
+  --prompt=' '
   --multi
   --preview 'yay -Qi {1}'
   --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select, F11: maximize'
@@ -12,7 +14,7 @@ fzf_args=(
   --color 'pointer:red,marker:red'
 )
 
-pkg_names=$(yay -Qqe | fzf "${fzf_args[@]}")
+pkg_names=$(yay -Qe --color=always | fzf "${fzf_args[@]}" | awk '{print $1}')
 
 if [[ -n "$pkg_names" ]]; then
   # Convert newline-separated selections to space-separated for yay
