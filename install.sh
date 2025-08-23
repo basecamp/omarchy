@@ -67,8 +67,12 @@ source $OMARCHY_INSTALL/config/power.sh
 source $OMARCHY_INSTALL/config/usb-autosuspend.sh
 source $OMARCHY_INSTALL/config/timezones.sh
 source $OMARCHY_INSTALL/config/nvidia.sh
+<<<<<<< Updated upstream
 source $OMARCHY_INSTALL/config/increase-sudo-tries.sh
 source $OMARCHY_INSTALL/config/ignore-power-button.sh
+=======
+source $OMARCHY_INSTALL/config/asus-touchpad.sh
+>>>>>>> Stashed changes
 
 # Login
 source $OMARCHY_INSTALL/login/plymouth.sh
