@@ -1,0 +1,120 @@
+@import url("file://~/.config/omarchy/current/theme/walker.css");
+
+scrollbar,
+.box-wrapper,
+.preview-box,
+.box,
+.search-container,
+.input,
+.input,
+.content-container,
+.placeholder,
+.scroll,
+.list,
+child,
+.item-box,
+.item-text-box,
+.item-text,
+.item-subtext,
+.current,
+.keybind-hints,
+.preview {
+  all: unset;
+}
+
+* {
+  font-family: monospace;
+  font-size: 18px;
+  color: @text;
+}
+
+scrollbar {
+  opacity: 0;
+}
+
+.box-wrapper {
+  background: alpha(@base, 0.95);
+  padding: 20px;
+  border: 2px solid @border;
+  border-radius: 0px;
+}
+
+.preview-box {
+}
+
+.box {
+}
+
+.search-container {
+  background: @base;
+  padding: 10px;
+}
+
+.input placeholder {
+  opacity: 0.5;
+}
+
+.input {
+}
+
+.input:focus,
+.input:active {
+  box-shadow: none;
+  outline: none;
+}
+
+.content-container {
+}
+
+.placeholder {
+}
+
+.scroll {
+}
+
+.list {
+}
+
+child,
+child > * {
+  padding: 0px 12px;
+}
+
+child:selected,
+child:hover {
+  color: @selected-text;
+}
+
+.item-box {
+}
+
+.item-text-box {
+  all: unset;
+  padding: 14px 0;
+}
+
+.item-text {
+}
+
+.item-subtext {
+  opacity: 0.5;
+}
+
+.item-image {
+  margin-right: 10px;
+  -gtk-icon-transform: scale(0.7);
+}
+
+.current {
+  font-style: italic;
+}
+
+.keybind-hints {
+  background: @background;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.preview {
+  background: @background;
+}
