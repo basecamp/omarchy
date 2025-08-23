@@ -1,100 +1,95 @@
-close_when_open = true
-theme = "omarchy-default"
-theme_base = []
-theme_location = ["~/.local/share/omarchy/default/walker/themes/"]
-hotreload_theme = true
-force_keyboard_focus = true
-timeout = 60
+force_keyboard_focus = true                                                 # forces keyboard forcus to stay in Walker
+close_when_open = true                                                      # close walker when invoking while already opened
+selection_wrap = true                                                       # wrap list if at bottom or top
+global_argument_delimiter = "#"                                             # query: firefox#https://benz.dev => part after delimiter will be ignored when querying. this should be the same as in the elephant config
+keep_open_modifier = "shift"                                                # won't close on activation, but rather select the next item in the list
+exact_search_prefix = "'"                                                   # disable fuzzy searching
+theme = "omarchy-default"                                                   # theme to use
+disable_mouse = false                                                       # disable mouse (on input and list only)
+additional_theme_location = "~/.local/share/omarchy/default/walker/themes/"
 
-[keys.ai]
-run_last_response = ["ctrl e"]
+[shell]
+anchor_top = true
+anchor_bottom = true
+anchor_left = true
+anchor_right = true
 
-[list]
-max_entries = 200
-cycle = true
+[placeholders]
+"default" = { input = "Start", list = "No Results" } # placeholders for input and empty list, key is the providers name, so f.e. "desktopapplications" or "menus:other"
 
-[search]
-placeholder = " Search..."
+[keybinds]
+close = "esc"
+next = "down"
+previous = "up"
+toggle_exact = "ctrl e"
+resume_last_query = "ctrl r"
 
-[builtins.hyprland_keybinds]
-path = "~/.config/hypr/hyprland.conf"
-hidden = true
+[providers]
+default = [
+  "desktopapplications",
+  "menus",
+  "websearch",
+] # providers to be queried by default
+empty = ["desktopapplications"] # providers to be queried when query is empty
 
-[builtins.applications]
-launch_prefix = "uwsm app -- "
-placeholder = " Search..."
-prioritize_new = false
-context_aware = false
-show_sub_when_single = false
-history = false
-icon = ""
-hidden = true
+[[providers.prefixes]]
+prefix = "/"
+provider = "providerlist"
 
-[builtins.applications.actions]
-enabled = false
-hide_category = true
-
-[builtins.bookmarks]
-hidden = true
-
-[[builtins.bookmarks.entries]]
-label = "Omarchy - Github"
-url = "https://github.com/basecamp/omarchy"
-keywords = ["omarchy", "github"]
-
-[[builtins.bookmarks.entries]]
-label = "Omarchy Manual"
-url = "https://manuals.omamix.org/2/the-omarchy-manual"
-keywords = ["omarchy"]
-
-[builtins.calc]
-name = "Calculator"
-icon = ""
-min_chars = 3
-prefix = "="
-
-[builtins.windows]
-switcher_only = true
-hidden = true
-
-[builtins.clipboard]
-hidden = true
-
-[builtins.commands]
-hidden = true
-
-[builtins.custom_commands]
-hidden = true
-
-[builtins.emojis]
-name = "Emojis"
-icon = ""
-prefix = ":"
-
-[builtins.symbols]
-after_copy = ""
-hidden = true
-
-[builtins.finder]
-use_fd = true
-cmd_alt = "xdg-open $(dirname ~/%RESULT%)"
-icon = "file"
-name = "Finder"
-preview_images = true
-hidden = false
+[[providers.prefixes]]
 prefix = "."
+provider = "files"
 
-[builtins.runner]
-shell_config = ""
-switcher_only = true
-hidden = true
+[[providers.prefixes]]
+prefix = ":"
+provider = "symbols"
 
-[builtins.ssh]
-hidden = true
+[[providers.prefixes]]
+prefix = "="
+provider = "calc"
 
-[builtins.websearch]
-switcher_only = true
-hidden = true
+[[providers.prefixes]]
+prefix = "@"
+provider = "websearch"
 
-[builtins.translation]
-hidden = true
+[[providers.prefixes]]
+prefix = "$"
+provider = "clipboard"
+
+[providers.calc]
+copy = "enter"
+save = "ctrl s"
+delete = "ctrl d"
+
+[providers.websearch]
+search = "enter"
+
+[providers.providerlist]
+activate = "enter"
+
+[providers.clipboard]
+time_format = "%d.%m. - %H:%M" # format for the clipboard item date
+copy = "enter"
+delete = "ctrl d"
+
+[providers.desktopapplications]
+start = "enter"
+
+[providers.files]
+open = "enter"
+open_dir = "ctrl enter"
+copy_path = "ctrl shift C"
+copy_file = "ctrl c"
+
+[providers.runner]
+start = "enter"
+start_terminal = "shift enter"
+
+[providers.dmenu]
+select = "enter"
+
+[providers.symbols]
+copy = "enter"
+
+[providers.menus]
+activate = "enter"

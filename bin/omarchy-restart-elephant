@@ -1,5 +1,5 @@
 #!/bin/bash
 
-pkill walker
-setsid uwsm app -- walker --gapplication-service &
+pkill elephant
+setsid uwsm app -- elephant &
 echo # Always end in success so we don't terminate further running
