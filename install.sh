@@ -10,7 +10,6 @@ OMARCHY_INSTALL=~/.local/share/omarchy/install
 catch_errors() {
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
   echo "The failing command was: \`$BASH_COMMAND\` (exit code: $?)"
-  echo "See your installation log: ~/.local/state/omarchy/installation.log"
   echo
   echo "Get help from the community via QR code or at https://discord.gg/tXFUdasqhY"
   echo "                                 "
@@ -48,9 +47,6 @@ show_subtext() {
   echo "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
   echo
 }
-
-# Start logging
-source $OMARCHY_INSTALL/log/before-install.sh
 
 # Install prerequisites
 source $OMARCHY_INSTALL/preflight/chroot.sh
@@ -109,9 +105,6 @@ sudo updatedb
 if ping -c5 omarchy.org &>/dev/null; then
   yay -Syu --noconfirm
 fi
-
-# Stop logging
-source $OMARCHY_INSTALL/log/after-install.sh
 
 # Reboot
 show_logo laseretch 920
