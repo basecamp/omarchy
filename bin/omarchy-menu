@@ -352,9 +352,9 @@ show_system_menu() {
 
 show_share_menu() {
   case $(menu " Share" "  Clipboard\n  File \n  Folder") in
-  *Clipboard*) terminal "omarchy-cmd-share clipboard" ;;
-  *File*) terminal "omarchy-cmd-share file" ;;
-  *Folder*) terminal "omarchy-cmd-share folder" ;;
+  *Clipboard*) terminal bash -c "omarchy-cmd-share clipboard" ;;
+  *File*) terminal bash -c "omarchy-cmd-share file" ;;
+  *Folder*) terminal bash -c "omarchy-cmd-share folder" ;;
   *) show_main_menu ;;
   esac
 }
