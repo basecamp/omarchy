@@ -3,35 +3,35 @@
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 
 menu() {
-  local prompt="$1"
-  local options="$2"
-  local extra="$3"
-  local preselect="$4"
+    local prompt="$1"
+    local options="$2"
+    local extra="$3"
+    local preselect="$4"
 
-  read -r -a args <<<"$extra"
+    read -r -a args <<<"$extra"
 
-  if [[ -n "$preselect" ]]; then
-    local index
-    index=$(echo -e "$options" | grep -nxF "$preselect" | cut -d: -f1)
-    if [[ -n "$index" ]]; then
-      args+=("-a" "$index")
+    if [[ -n "$preselect" ]]; then
+        local index
+        index=$(echo -e "$options" | grep -nxF "$preselect" | cut -d: -f1)
+        if [[ -n "$index" ]]; then
+            args+=("-a" "$index")
+        fi
     fi
-  fi
 
-  echo -e "$options" | walker --dmenu --theme dmenu_250 -p "$prompt…" "${args[@]}"
+    echo -e "$options" | walker --dmenu -w 250 -p "$prompt…" "${args[@]}"
 }
 
 terminal() {
-  alacritty --class Omarchy -e "$@"
+    alacritty --class Omarchy -e "$@"
 }
 
 present_terminal() {
-  alacritty --class Omarchy -e bash -c "omarchy-show-logo; eval \"$1\"; omarchy-show-done;"
+    alacritty --class Omarchy -e bash -c "omarchy-show-logo; eval \"$1\"; omarchy-show-done;"
 }
 
 edit_in_nvim() {
-  notify-send "Editing config file" "$1"
-  alacritty -e nvim "$1"
+    notify-send "Editing config file" "$1"
+    alacritty -e nvim "$1"
 }
 
 install() {
@@ -55,80 +55,80 @@ aur_install_and_launch() {
 }
 
 show_learn_menu() {
-  case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
-  *Keybindings*) omarchy-menu-keybindings ;;
-  *Omarchy*) omarchy-launch-webapp "https://learn.omacom.io/2/the-omarchy-manual" ;;
-  *Hyprland*) omarchy-launch-webapp "https://wiki.hypr.land/" ;;
-  *Arch*) omarchy-launch-webapp "https://wiki.archlinux.org/title/Main_page" ;;
-  *Bash*) omarchy-launch-webapp "https://devhints.io/bash" ;;
-  *Neovim*) omarchy-launch-webapp "https://www.lazyvim.org/keymaps" ;;
-  *) show_main_menu ;;
-  esac
+    case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
+    *Keybindings*) omarchy-menu-keybindings ;;
+    *Omarchy*) omarchy-launch-webapp "https://learn.omacom.io/2/the-omarchy-manual" ;;
+    *Hyprland*) omarchy-launch-webapp "https://wiki.hypr.land/" ;;
+    *Arch*) omarchy-launch-webapp "https://wiki.archlinux.org/title/Main_page" ;;
+    *Bash*) omarchy-launch-webapp "https://devhints.io/bash" ;;
+    *Neovim*) omarchy-launch-webapp "https://www.lazyvim.org/keymaps" ;;
+    *) show_main_menu ;;
+    esac
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver\n  About") in
-  *Theme*) show_theme_menu ;;
-  *Font*) show_font_menu ;;
-  *Background*) omarchy-theme-bg-next ;;
-  *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
-  *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
-  *) show_main_menu ;;
-  esac
+    case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver\n  About") in
+    *Theme*) show_theme_menu ;;
+    *Font*) show_font_menu ;;
+    *Background*) omarchy-theme-bg-next ;;
+    *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
+    *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
+    *) show_main_menu ;;
+    esac
 }
 
 show_theme_menu() {
-  theme=$(menu "Theme" "$(omarchy-theme-list)" "" "$(omarchy-theme-current)")
-  if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    show_main_menu
-  else
-    omarchy-theme-set "$theme"
-  fi
+    theme=$(menu "Theme" "$(omarchy-theme-list)" "" "$(omarchy-theme-current)")
+    if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
+        show_main_menu
+    else
+        omarchy-theme-set "$theme"
+    fi
 }
 
 show_font_menu() {
-  theme=$(menu "Font" "$(omarchy-font-list)" "-w 350" "$(omarchy-font-current)")
-  if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    show_main_menu
-  else
-    omarchy-font-set "$theme"
-  fi
+    theme=$(menu "Font" "$(omarchy-font-list)" "-w 350" "$(omarchy-font-current)")
+    if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
+        show_main_menu
+    else
+        omarchy-font-set "$theme"
+    fi
 }
 
 show_capture_menu() {
-  case $(menu "Capture" "  Screenshot\n  Screenrecord\n󰃉  Color") in
-  *Screenshot*) show_screenshot_menu ;;
-  *Screenrecord*) show_screenrecord_menu ;;
-  *Color*) pkill hyprpicker || hyprpicker -a ;;
-  *) show_main_menu ;;
-  esac
+    case $(menu "Capture" "  Screenshot\n  Screenrecord\n󰃉  Color") in
+    *Screenshot*) show_screenshot_menu ;;
+    *Screenrecord*) show_screenrecord_menu ;;
+    *Color*) pkill hyprpicker || hyprpicker -a ;;
+    *) show_main_menu ;;
+    esac
 }
 
 show_screenshot_menu() {
-  case $(menu "Screenshot" "  Region\n  Window\n  Display") in
-  *Region*) omarchy-cmd-screenshot ;;
-  *Window*) omarchy-cmd-screenshot window ;;
-  *Display*) omarchy-cmd-screenshot output ;;
-  *) show_capture_menu ;;
-  esac
+    case $(menu "Screenshot" "  Region\n  Window\n  Display") in
+    *Region*) omarchy-cmd-screenshot ;;
+    *Window*) omarchy-cmd-screenshot window ;;
+    *Display*) omarchy-cmd-screenshot output ;;
+    *) show_capture_menu ;;
+    esac
 }
 
 show_screenrecord_menu() {
-  case $(menu "Screenrecord" "  Region\n  Display") in
-  *Region*) omarchy-cmd-screenrecord ;;
-  *Display*) omarchy-cmd-screenrecord output ;;
-  *) show_capture_menu ;;
-  esac
+    case $(menu "Screenrecord" "  Region\n  Display") in
+    *Region*) omarchy-cmd-screenrecord ;;
+    *Display*) omarchy-cmd-screenrecord output ;;
+    *) show_capture_menu ;;
+    esac
 }
 
 show_toggle_menu() {
-  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
-  *Screensaver*) omarchy-toggle-screensaver ;;
-  *Nightlight*) omarchy-toggle-nightlight ;;
-  *Idle*) omarchy-toggle-idle ;;
-  *Bar*) omarchy-toggle-waybar ;;
-  *) show_main_menu ;;
-  esac
+    case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
+    *Screensaver*) omarchy-toggle-screensaver ;;
+    *Nightlight*) omarchy-toggle-nightlight ;;
+    *Idle*) omarchy-toggle-idle ;;
+    *Bar*) omarchy-toggle-waybar ;;
+    *) show_main_menu ;;
+    esac
 }
 
 show_setup_menu() {
@@ -160,27 +160,27 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
-  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
+    profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
-  if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
-    show_main_menu
-  else
-    powerprofilesctl set "$profile"
-  fi
+    if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
+        show_main_menu
+    else
+        powerprofilesctl set "$profile"
+    fi
 }
 
 show_setup_config_menu() {
-  case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
-  *Hyprland*) edit_in_nvim ~/.config/hypr/hyprland.conf ;;
-  *Hypridle*) edit_in_nvim ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
-  *Hyprlock*) edit_in_nvim ~/.config/hypr/hyprlock.conf ;;
-  *Hyprsunset*) edit_in_nvim ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
-  *Swayosd*) edit_in_nvim ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
-  *Walker*) edit_in_nvim ~/.config/walker/config.toml && omarchy-restart-walker ;;
-  *Waybar*) edit_in_nvim ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
-  *XCompose*) edit_in_nvim ~/.XCompose && omarchy-restart-xcompose ;;
-  *) show_main_menu ;;
-  esac
+    case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+    *Hyprland*) edit_in_nvim ~/.config/hypr/hyprland.conf ;;
+    *Hypridle*) edit_in_nvim ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
+    *Hyprlock*) edit_in_nvim ~/.config/hypr/hyprlock.conf ;;
+    *Hyprsunset*) edit_in_nvim ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
+    *Swayosd*) edit_in_nvim ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
+    *Walker*) edit_in_nvim ~/.config/walker/config.toml && omarchy-restart-walker ;;
+    *Waybar*) edit_in_nvim ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
+    *XCompose*) edit_in_nvim ~/.XCompose && omarchy-restart-xcompose ;;
+    *) show_main_menu ;;
+    esac
 }
 
 show_install_menu() {
@@ -200,11 +200,11 @@ show_install_menu() {
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Tailscale") in
-  *Dropbox*) present_terminal omarchy-install-dropbox ;;
-  *Tailscale*) present_terminal omarchy-install-tailscale ;;
-  *) show_install_menu ;;
-  esac
+    case $(menu "Install" "  Dropbox\n  Tailscale") in
+    *Dropbox*) present_terminal omarchy-install-dropbox ;;
+    *Tailscale*) present_terminal omarchy-install-tailscale ;;
+    *) show_install_menu ;;
+    esac
 }
 
 show_install_editor_menu() {
@@ -240,153 +240,153 @@ show_install_gaming_menu() {
 }
 
 show_install_style_menu() {
-  case $(menu "Install" "󰸌  Theme\n  Background\n  Font") in
-  *Theme*) present_terminal omarchy-theme-install ;;
-  *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
-  *Font*) show_install_font_menu ;;
-  *) show_install_menu ;;
-  esac
+    case $(menu "Install" "󰸌  Theme\n  Background\n  Font") in
+    *Theme*) present_terminal omarchy-theme-install ;;
+    *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
+    *Font*) show_install_font_menu ;;
+    *) show_install_menu ;;
+    esac
 }
 
 show_install_font_menu() {
-  case $(menu "Install" "  Meslo LG Mono\n  Fira Code\n  Victor Code\n  Bistream Vera Mono" "-w 350") in
-  *Meslo*) install_font "Meslo LG Mono" "ttf-meslo-nerd" "MesloLGL Nerd Font" ;;
-  *Fira*) install_font "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font" ;;
-  *Victor*) install_font "Victor Code" "ttf-victor-mono-nerd" "VictorMono Nerd Font" ;;
-  *Bistream*) install_font "Bistream Vera Code" "ttf-bitstream-vera-mono-nerd" "BitstromWera Nerd Font" ;;
-  *) show_install_menu ;;
-  esac
+    case $(menu "Install" "  Meslo LG Mono\n  Fira Code\n  Victor Code\n  Bistream Vera Mono" "-w 350") in
+    *Meslo*) install_font "Meslo LG Mono" "ttf-meslo-nerd" "MesloLGL Nerd Font" ;;
+    *Fira*) install_font "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font" ;;
+    *Victor*) install_font "Victor Code" "ttf-victor-mono-nerd" "VictorMono Nerd Font" ;;
+    *Bistream*) install_font "Bistream Vera Code" "ttf-bitstream-vera-mono-nerd" "BitstromWera Nerd Font" ;;
+    *) show_install_menu ;;
+    esac
 }
 
 show_install_development_menu() {
-  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml") in
-  *Rails*) present_terminal "omarchy-install-dev-env ruby" ;;
-  *Docker*) present_terminal omarchy-install-docker-dbs ;;
-  *JavaScript*) show_install_javascript_menu ;;
-  *Go*) present_terminal "omarchy-install-dev-env go" ;;
-  *PHP*) show_install_php_menu ;;
-  *Python*) present_terminal "omarchy-install-dev-env python" ;;
-  *Elixir*) show_install_elixir_menu ;;
-  *Zig*) present_terminal "omarchy-install-dev-env zig" ;;
-  *Rust*) present_terminal "omarchy-install-dev-env rust" ;;
-  *Java*) present_terminal "omarchy-install-dev-env java" ;;
-  *NET*) present_terminal "omarchy-install-dev-env dotnet" ;;
-  *OCaml*) present_terminal "omarchy-install-dev-env ocaml" ;;
-  *) show_install_menu ;;
-  esac
+    case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml") in
+    *Rails*) present_terminal "omarchy-install-dev-env ruby" ;;
+    *Docker*) present_terminal omarchy-install-docker-dbs ;;
+    *JavaScript*) show_install_javascript_menu ;;
+    *Go*) present_terminal "omarchy-install-dev-env go" ;;
+    *PHP*) show_install_php_menu ;;
+    *Python*) present_terminal "omarchy-install-dev-env python" ;;
+    *Elixir*) show_install_elixir_menu ;;
+    *Zig*) present_terminal "omarchy-install-dev-env zig" ;;
+    *Rust*) present_terminal "omarchy-install-dev-env rust" ;;
+    *Java*) present_terminal "omarchy-install-dev-env java" ;;
+    *NET*) present_terminal "omarchy-install-dev-env dotnet" ;;
+    *OCaml*) present_terminal "omarchy-install-dev-env ocaml" ;;
+    *) show_install_menu ;;
+    esac
 }
 
 show_install_javascript_menu() {
-  case $(menu "Install" "  Node.js\n  Bun\n  Deno") in
-  *Node*) present_terminal "omarchy-install-dev-env node" ;;
-  *Bun*) present_terminal "omarchy-install-dev-env bun" ;;
-  *Deno*) present_terminal "omarchy-install-dev-env deno" ;;
-  *) show_install_development_menu ;;
-  esac
+    case $(menu "Install" "  Node.js\n  Bun\n  Deno") in
+    *Node*) present_terminal "omarchy-install-dev-env node" ;;
+    *Bun*) present_terminal "omarchy-install-dev-env bun" ;;
+    *Deno*) present_terminal "omarchy-install-dev-env deno" ;;
+    *) show_install_development_menu ;;
+    esac
 }
 
 show_install_php_menu() {
-  case $(menu "Install" "  PHP\n  Laravel\n  Symfony") in
-  *PHP*) present_terminal "omarchy-install-dev-env php" ;;
-  *Laravel*) present_terminal "omarchy-install-dev-env laravel" ;;
-  *Symfony*) present_terminal "omarchy-install-dev-env symfony" ;;
-  *) show_install_development_menu ;;
-  esac
+    case $(menu "Install" "  PHP\n  Laravel\n  Symfony") in
+    *PHP*) present_terminal "omarchy-install-dev-env php" ;;
+    *Laravel*) present_terminal "omarchy-install-dev-env laravel" ;;
+    *Symfony*) present_terminal "omarchy-install-dev-env symfony" ;;
+    *) show_install_development_menu ;;
+    esac
 }
 
 show_install_elixir_menu() {
-  case $(menu "Install" "  Elixir\n  Phoenix") in
-  *Elixir*) present_terminal "omarchy-install-dev-env elixir" ;;
-  *Phoenix*) present_terminal "omarchy-install-dev-env phoenix" ;;
-  *) show_install_development_menu ;;
-  esac
+    case $(menu "Install" "  Elixir\n  Phoenix") in
+    *Elixir*) present_terminal "omarchy-install-dev-env elixir" ;;
+    *Phoenix*) present_terminal "omarchy-install-dev-env phoenix" ;;
+    *) show_install_development_menu ;;
+    esac
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
-  *Package*) terminal omarchy-pkg-remove ;;
-  *Web*) present_terminal omarchy-webapp-remove ;;
-  *TUI*) present_terminal omarchy-tui-remove ;;
-  *Theme*) present_terminal omarchy-theme-remove ;;
-  *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
-  *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
-  *) show_main_menu ;;
-  esac
+    case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
+    *Package*) terminal omarchy-pkg-remove ;;
+    *Web*) present_terminal omarchy-webapp-remove ;;
+    *TUI*) present_terminal omarchy-tui-remove ;;
+    *Theme*) present_terminal omarchy-theme-remove ;;
+    *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
+    *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
+    *) show_main_menu ;;
+    esac
 }
 
 show_update_menu() {
-  case $(menu "Update" "󰣇  Omarchy\n  Config\n󰸌  Themes\n  Process\n  Timezone") in
-  *Omarchy*) present_terminal omarchy-update ;;
-  *Config*) show_update_config_menu ;;
-  *Themes*) present_terminal omarchy-theme-update ;;
-  *Process*) show_update_process_menu ;;
-  *Timezone*) omarchy-cmd-tzupdate ;;
-  *) show_main_menu ;;
-  esac
+    case $(menu "Update" "󰣇  Omarchy\n  Config\n󰸌  Themes\n  Process\n  Timezone") in
+    *Omarchy*) present_terminal omarchy-update ;;
+    *Config*) show_update_config_menu ;;
+    *Themes*) present_terminal omarchy-theme-update ;;
+    *Process*) show_update_process_menu ;;
+    *Timezone*) omarchy-cmd-tzupdate ;;
+    *) show_main_menu ;;
+    esac
 }
 
 show_update_process_menu() {
-  case $(menu "Restart" "  Hypridle\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
-  *Hypridle*) omarchy-restart-hypridle ;;
-  *Hyprsunset*) omarchy-restart-hyprsunset ;;
-  *Swayosd*) omarchy-restart-swayosd ;;
-  *Walker*) omarchy-restart-walker ;;
-  *Waybar*) omarchy-restart-waybar ;;
-  *) show_main_menu ;;
-  esac
+    case $(menu "Restart" "  Hypridle\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
+    *Hypridle*) omarchy-restart-hypridle ;;
+    *Hyprsunset*) omarchy-restart-hyprsunset ;;
+    *Swayosd*) omarchy-restart-swayosd ;;
+    *Walker*) omarchy-restart-walker ;;
+    *Waybar*) omarchy-restart-waybar ;;
+    *) show_main_menu ;;
+    esac
 }
 
 show_update_config_menu() {
-  case $(menu "Use default config" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n󱣴  Plymouth\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
-  *Hyprland*) present_terminal omarchy-refresh-hyprland ;;
-  *Hypridle*) present_terminal omarchy-refresh-hypridle ;;
-  *Hyprlock*) present_terminal omarchy-refresh-hyprlock ;;
-  *Hyprsunset*) present_terminal omarchy-refresh-hyprsunset ;;
-  *Plymouth*) present_terminal omarchy-refresh-plymouth ;;
-  *Swayosd*) present_terminal omarchy-refresh-swayosd ;;
-  *Walker*) present_terminal omarchy-refresh-walker ;;
-  *Waybar*) present_terminal omarchy-refresh-waybar ;;
-  *) show_main_menu ;;
-  esac
+    case $(menu "Use default config" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n󱣴  Plymouth\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
+    *Hyprland*) present_terminal omarchy-refresh-hyprland ;;
+    *Hypridle*) present_terminal omarchy-refresh-hypridle ;;
+    *Hyprlock*) present_terminal omarchy-refresh-hyprlock ;;
+    *Hyprsunset*) present_terminal omarchy-refresh-hyprsunset ;;
+    *Plymouth*) present_terminal omarchy-refresh-plymouth ;;
+    *Swayosd*) present_terminal omarchy-refresh-swayosd ;;
+    *Walker*) present_terminal omarchy-refresh-walker ;;
+    *Waybar*) present_terminal omarchy-refresh-waybar ;;
+    *) show_main_menu ;;
+    esac
 }
 
 show_system_menu() {
-  case $(menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
-  *Lock*) omarchy-lock-screen ;;
-  *Screensaver*) omarchy-launch-screensaver force ;;
-  *Suspend*) systemctl suspend ;;
-  *Relaunch*) uwsm stop ;;
-  *Restart*) systemctl reboot ;;
-  *Shutdown*) systemctl poweroff ;;
-  *) show_main_menu ;;
-  esac
+    case $(menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
+    *Lock*) omarchy-lock-screen ;;
+    *Screensaver*) omarchy-launch-screensaver force ;;
+    *Suspend*) systemctl suspend ;;
+    *Relaunch*) uwsm stop ;;
+    *Restart*) systemctl reboot ;;
+    *Shutdown*) systemctl poweroff ;;
+    *) show_main_menu ;;
+    esac
 }
 
 show_main_menu() {
-  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
+    go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
 }
 
 go_to_menu() {
-  case "${1,,}" in
-  *apps*) walker -p "Launch…" ;;
-  *learn*) show_learn_menu ;;
-  *style*) show_style_menu ;;
-  *theme*) show_theme_menu ;;
-  *capture*) show_capture_menu ;;
-  *screenshot*) show_screenshot_menu ;;
-  *screenrecord*) show_screenrecord_menu ;;
-  *toggle*) show_toggle_menu ;;
-  *setup*) show_setup_menu ;;
-  *install*) show_install_menu ;;
-  *remove*) show_remove_menu ;;
-  *update*) show_update_menu ;;
-  *system*) show_system_menu ;;
-  *about*) terminal bash -c 'fastfetch; read -n 1 -s' ;;
-  esac
+    case "${1,,}" in
+    *apps*) walker -p "Launch…" ;;
+    *learn*) show_learn_menu ;;
+    *style*) show_style_menu ;;
+    *theme*) show_theme_menu ;;
+    *capture*) show_capture_menu ;;
+    *screenshot*) show_screenshot_menu ;;
+    *screenrecord*) show_screenrecord_menu ;;
+    *toggle*) show_toggle_menu ;;
+    *setup*) show_setup_menu ;;
+    *install*) show_install_menu ;;
+    *remove*) show_remove_menu ;;
+    *update*) show_update_menu ;;
+    *system*) show_system_menu ;;
+    *about*) terminal bash -c 'fastfetch; read -n 1 -s' ;;
+    esac
 }
 
 if [[ -n "$1" ]]; then
-  go_to_menu "$1"
+    go_to_menu "$1"
 else
-  show_main_menu
+    show_main_menu
 fi
