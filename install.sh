@@ -61,12 +61,14 @@ source $OMARCHY_INSTALL/preflight/migrations.sh
 source $OMARCHY_INSTALL/config/config.sh
 source $OMARCHY_INSTALL/config/branding.sh
 source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
+source $OMARCHY_INSTALL/config/fix-ghost-display.sh
 source $OMARCHY_INSTALL/config/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/network.sh
 source $OMARCHY_INSTALL/config/power.sh
 source $OMARCHY_INSTALL/config/usb-autosuspend.sh
 source $OMARCHY_INSTALL/config/timezones.sh
 source $OMARCHY_INSTALL/config/nvidia.sh
+source $OMARCHY_INSTALL/config/thunderbolt.sh
 source $OMARCHY_INSTALL/config/increase-sudo-tries.sh
 source $OMARCHY_INSTALL/config/ignore-power-button.sh
 
