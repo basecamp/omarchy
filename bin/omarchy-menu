@@ -34,10 +34,6 @@ edit_in_nvim() {
   alacritty -e nvim "$1"
 }
 
-open_web() {
-  setsid omarchy-launch-browser --app="$1" &
-}
-
 install() {
   present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2"
 }
@@ -53,11 +49,11 @@ install_font() {
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) omarchy-menu-keybindings ;;
-  *Omarchy*) open_web "https://learn.omacom.io/2/the-omarchy-manual" ;;
-  *Hyprland*) open_web "https://wiki.hypr.land/" ;;
-  *Arch*) open_web "https://wiki.archlinux.org/title/Main_page" ;;
-  *Bash*) open_web "https://devhints.io/bash" ;;
-  *Neovim*) open_web "https://www.lazyvim.org/keymaps" ;;
+  *Omarchy*) omarchy-launch-webapp "https://learn.omacom.io/2/the-omarchy-manual" ;;
+  *Hyprland*) omarchy-launch-webapp "https://wiki.hypr.land/" ;;
+  *Arch*) omarchy-launch-webapp "https://wiki.archlinux.org/title/Main_page" ;;
+  *Bash*) omarchy-launch-webapp "https://devhints.io/bash" ;;
+  *Neovim*) omarchy-launch-webapp "https://www.lazyvim.org/keymaps" ;;
   *) show_main_menu ;;
   esac
 }
