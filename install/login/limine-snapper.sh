@@ -7,7 +7,12 @@ if command -v limine &>/dev/null && [ ! -f /etc/default/limine ]; then
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
 
-  CMDLINE=$(grep "^[[:space:]]*cmdline:" /boot/EFI/limine/limine.conf | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
+  [[ -f /boot/EFI/limine/limine.conf ]] && EFI=true
+
+  # Conf location is different between EFI and BIOS
+  [[ -n "$EFI" ]] && limine_config="/boot/EFI/limine/limine.conf" || limine_config="/boot/limine/limine.conf"
+
+  CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
   sudo tee /etc/default/limine <<EOF >/dev/null
 TARGET_OS_NAME="Omarchy"
@@ -28,6 +33,11 @@ MAX_SNAPSHOT_ENTRIES=5
 
 SNAPSHOT_FORMAT_CHOICE=5
 EOF
+
+  # UKI and EFI fallback are EFI only
+  if [[ -z $EFI ]]; then
+    sudo sed -i '/^ENABLE_UKI=/d; /^ENABLE_LIMINE_FALLBACK=/d' /etc/default/limine
+  fi
 
   # We overwrite the whole thing knowing the limine-update will add the entries for us
   sudo tee /boot/limine.conf <<EOF >/dev/null
@@ -70,7 +80,6 @@ EOF
   sudo sed -i 's/^NUMBER_LIMIT="50"/NUMBER_LIMIT="5"/' /etc/snapper/configs/{root,home}
   sudo sed -i 's/^NUMBER_LIMIT_IMPORTANT="10"/NUMBER_LIMIT_IMPORTANT="5"/' /etc/snapper/configs/{root,home}
 
-  sudo limine-update
   chrootable_systemctl_enable limine-snapper-sync.service
 fi
 
