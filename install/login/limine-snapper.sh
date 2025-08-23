@@ -1,8 +1,6 @@
 #!/bin/bash
 
 if command -v limine &>/dev/null; then
-  yay -S --noconfirm --needed limine-mkinitcpio-hook limine-snapper-sync
-
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
@@ -64,6 +62,7 @@ term_background_bright: 24283b
  
 EOF
 
+  yay -S --noconfirm --needed limine-mkinitcpio-hook limine-snapper-sync
   sudo limine-update
 
   # Match Snapper configs if not installing from the ISO
