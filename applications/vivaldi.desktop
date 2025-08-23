@@ -1,6 +1,6 @@
 [Desktop Entry]
 Version=1.0
-Name=Chromium
+Name=Vivaldi
 # Only KDE 4 seems to use GenericName, so we reuse the KDE strings.
 # From Ubuntu's language-pack-kde-XX-base packages, version 9.04-20090413.
 GenericName=Web Browser
@@ -105,10 +105,10 @@ Comment[vi]=Truy cập Internet
 Comment[zh_CN]=访问互联网
 Comment[zh_HK]=連線到網際網路
 Comment[zh_TW]=連線到網際網路
-Exec=/usr/bin/chromium --ozone-platform=wayland %U
+Exec=/usr/bin/vivaldi --ozone-platform=wayland %U
 StartupNotify=true
 Terminal=false
-Icon=chromium
+Icon=vivaldi
 Type=Application
 Categories=Network;WebBrowser;
 MimeType=application/pdf;application/rdf+xml;application/rss+xml;application/xhtml+xml;application/xhtml_xml;application/xml;image/gif;image/jpeg;image/png;image/webp;text/html;text/xml;x-scheme-handler/http;x-scheme-handler/https;
@@ -166,7 +166,7 @@ Name[uk]=Нове вікно
 Name[vi]=Cửa sổ Mới
 Name[zh_CN]=新建窗口
 Name[zh_TW]=開新視窗
-Exec=/usr/bin/chromium --ozone-platform=wayland --new-window
+Exec=/usr/bin/vivaldi --ozone-platform=wayland --new-window
 
 [Desktop Action new-private-window]
 Name=New Incognito Window
@@ -218,4 +218,4 @@ Name[uk]=Нове вікно в режимі анонімного перегля
 Name[vi]=Cửa sổ ẩn danh mới
 Name[zh_CN]=新建隐身窗口
 Name[zh_TW]=新增無痕式視窗
-Exec=/usr/bin/chromium --ozone-platform=wayland --new-window --incognito
+Exec=/usr/bin/vivaldi --ozone-platform=wayland --new-window --incognito
