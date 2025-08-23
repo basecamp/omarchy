@@ -2,7 +2,7 @@
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
   "logo": {
     "type": "file",
-    "source": "~/.config/fastfetch/omarchy-icon.txt",
+    "source": "~/.config/omarchy/branding/about.txt",
     "color": { "1": "green" },
     "padding": {
       "top": 2,

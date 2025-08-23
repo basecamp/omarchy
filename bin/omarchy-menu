@@ -67,7 +67,7 @@ show_style_menu() {
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
-  *Screensaver*) edit_in_nvim ~/.config/omarchy/screensaver.txt ;;
+  *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
   *) show_main_menu ;;
   esac
 }
