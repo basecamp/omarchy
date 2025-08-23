@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 # Start logging a copy of everything sent to STDOUT and STDERR
 mkdir -p ~/.local/state/omarchy/logs/
