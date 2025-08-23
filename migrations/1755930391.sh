@@ -1,10 +1,10 @@
 echo "Migrate to Walker 1.0.0-Beta"
 
-pkill walker
+pkill walker || true
 
-yay -Rns --noconfirm walker-bin
+yay -Rns --noconfirm walker-bin walker-bin-debug
 
-yay -S --noconfirm --needed \
+yay -Sy --noconfirm --needed \
   elephant \
   elephant-calc \
   elephant-clipboard \
