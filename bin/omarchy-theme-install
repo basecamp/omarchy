@@ -30,7 +30,7 @@ if ! git clone "$REPO_URL" "$THEME_PATH"; then
 fi
 
 # add theme to neovim registry at ~/.config/nvim/lua/omarchy/init.lua
-~/.local/share/omarchy/bin/omarchy-theme-neovim-add "$THEME_PATH/neovim.lua" || true
+~/.local/share/omarchy/bin/omarchy-theme-sync-nvim "$THEME_PATH/neovim.lua" || true
 
 # Apply the new theme with omarchy-theme-set
 omarchy-theme-set $THEME_NAME

@@ -1,0 +1,278 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Parses neovim.lua in new themes to find a theme plugin repo and colorscheme,
+# Validates and extracts plugin information from theme neovim.lua and adds to omarchy init.lua
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Output functions
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+# Configuration
+INIT_FILE="${OMARCHY_INIT_FILE:-$HOME/.config/nvim/lua/omarchy/init.lua}"
+
+# Usage function
+usage() {
+    cat << EOF
+Usage: omarchy-theme-sync-nvim <neovim.lua>
+
+Validates and syncs theme plugins from neovim.lua to omarchy init.lua configuration.
+
+Validation Requirements:
+  - Theme must specify a plugin repository (e.g., "owner/repo")
+  - LazyVim/LazyVim entries don't count as theme plugins
+  - Theme must have a colorscheme specified or derivable from plugin name
+
+Arguments:
+  neovim.lua    Path to theme's neovim.lua file
+
+Examples:
+  omarchy-theme-sync-nvim themes/catppuccin/neovim.lua
+EOF
+}
+
+# Validate theme neovim.lua file
+validate_theme() {
+    local neovim_file="$1"
+    local theme_name="$2"
+    
+    log_info "Validating theme: $theme_name"
+    
+    # Check if neovim.lua exists
+    if [[ ! -f "$neovim_file" ]]; then
+        log_error "neovim.lua not found: $neovim_file"
+        return 1
+    fi
+    
+    # Extract plugin repository (excluding LazyVim/LazyVim)
+    local plugin_repo
+    plugin_repo=$(grep -Eo '"[^"/]+/[^"]+"' "$neovim_file" | grep -v '"LazyVim/LazyVim"' | head -n1 | tr -d '"' || echo "")
+    
+    if [[ -z "$plugin_repo" ]]; then
+        log_error "No valid plugin repository found in $theme_name (LazyVim/LazyVim doesn't count)"
+        log_error "Theme must specify a plugin repository like \"owner/repo\""
+        return 1
+    fi
+    
+    # Extract colorscheme
+    local colorscheme
+    colorscheme=$(grep -Eo 'colorscheme[[:space:]]*=[[:space:]]*"[^"]+"' "$neovim_file" | sed -E 's/.*"([^"]+)".*/\1/' | tail -n1 || echo "")
+    
+    if [[ -z "$colorscheme" ]]; then
+        # Try to derive from plugin repo name
+        colorscheme=${plugin_repo##*/}
+        colorscheme=${colorscheme%.nvim}
+        
+        if [[ -z "$colorscheme" ]]; then
+            log_error "No colorscheme found in $theme_name and cannot derive from plugin name"
+            return 1
+        fi
+        
+        log_warn "No explicit colorscheme found, using derived name: $colorscheme"
+    fi
+    
+    log_success "Theme validation passed: $theme_name"
+    log_info "  Plugin: $plugin_repo"
+    log_info "  Colorscheme: $colorscheme"
+    
+    return 0
+}
+
+# Add plugin to omarchy init.lua
+add_plugin() {
+    local plugin_repo="$1"
+    local plugin_entry="{ \"$plugin_repo\", lazy = false }"
+    
+    if grep -qF -- "$plugin_repo" "$INIT_FILE"; then
+        log_info "Plugin already present: $plugin_repo"
+        return 0
+    fi
+    
+    local tmpfile
+    tmpfile=$(mktemp)
+    
+    awk -v pe="$plugin_entry" '
+        BEGIN { inserted=0; in_plugins=0 }
+        /plugins[[:space:]]*=[[:space:]]*\{/ { in_plugins=1 }
+        {
+            if (!inserted && $0 ~ /--[[:space:]]*Themes/) {
+                print $0
+                print "    " pe ","
+                inserted=1
+                next
+            }
+            if (!inserted && in_plugins && $0 ~ /^[[:space:]]*},[[:space:]]*$/) {
+                # Fallback: before closing of plugins table
+                print "    " pe ","
+                print $0
+                inserted=1
+                in_plugins=0
+                next
+            }
+            print $0
+        }
+    ' "$INIT_FILE" > "$tmpfile"
+    
+    if mv "$tmpfile" "$INIT_FILE"; then
+        log_success "Added plugin: $plugin_repo"
+        return 0
+    else
+        log_error "Failed to add plugin: $plugin_repo"
+        rm -f "$tmpfile"
+        return 1
+    fi
+}
+
+# Add colorscheme to omarchy init.lua
+add_colorscheme() {
+    local colorscheme="$1"
+    
+    if grep -q "\"${colorscheme}\"" "$INIT_FILE"; then
+        log_info "Colorscheme already present: $colorscheme"
+        return 0
+    fi
+    
+    local tmpfile
+    tmpfile=$(mktemp)
+    
+    awk -v cs="$colorscheme" '
+        BEGIN { in_colors=0; in_install=0 }
+        /install[[:space:]]*=[[:space:]]*\{/ { in_install=1 }
+        in_install && /colorscheme[[:space:]]*=[[:space:]]*\{/ { in_colors=1 }
+        {
+            if (in_colors && $0 ~ /\}/) {
+                # Insert before this closing brace
+                print "      \"" cs "\",";
+                print $0;
+                in_colors=0; in_install=0
+                next
+            }
+            print $0
+        }
+    ' "$INIT_FILE" > "$tmpfile"
+    
+    if mv "$tmpfile" "$INIT_FILE"; then
+        log_success "Added colorscheme: $colorscheme"
+        return 0
+    else
+        log_error "Failed to add colorscheme: $colorscheme"
+        rm -f "$tmpfile"
+        return 1
+    fi
+}
+
+# Sync to omarchy init.lua
+sync_theme_plugins() {
+    local neovim_file="$1"
+    
+    # Extract plugin repository (excluding LazyVim/LazyVim)
+    local plugin_repo
+    plugin_repo=$(grep -Eo '"[^"/]+/[^"]+"' "$neovim_file" | grep -v '"LazyVim/LazyVim"' | head -n1 | tr -d '"')
+    
+    # Extract colorscheme
+    local colorscheme
+    colorscheme=$(grep -Eo 'colorscheme[[:space:]]*=[[:space:]]*"[^"]+"' "$neovim_file" | sed -E 's/.*"([^"]+)".*/\1/' | tail -n1 || echo "")
+    
+    if [[ -z "$colorscheme" ]]; then
+        # Fallback: use repo name without .nvim suffix
+        colorscheme=${plugin_repo##*/}
+        colorscheme=${colorscheme%.nvim}
+    fi
+    
+    log_info "Adding to init.lua:"
+    log_info "  Plugin: $plugin_repo"
+    log_info "  Colorscheme: $colorscheme"
+    
+    # Add plugin and colorscheme to init.lua
+    local success=true
+    
+    if ! add_plugin "$plugin_repo"; then
+        success=false
+    fi
+    
+    if ! add_colorscheme "$colorscheme"; then
+        success=false
+    fi
+    
+    return $([[ "$success" == true ]])
+}
+
+# Main function
+main() {
+    # Check for help
+    if [[ $# -eq 0 ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        usage
+        exit 0
+    fi
+    
+    if [[ $# -ne 1 ]]; then
+        usage
+        exit 1
+    fi
+    
+    local neovim_file="$1"
+    local theme_name
+    theme_name=$(basename "$(dirname "$neovim_file")")
+    
+    # Validate input file exists
+    if [[ ! -f "$neovim_file" ]]; then
+        log_error "File not found: $neovim_file"
+        exit 1
+    fi
+    
+    if [[ ! "$neovim_file" =~ neovim\.lua$ ]]; then
+        log_error "File must be named neovim.lua"
+        exit 1
+    fi
+    
+    # Check if omarchy init.lua exists
+    if [[ ! -f "$INIT_FILE" ]]; then
+        log_error "omarchy init.lua not found at: $INIT_FILE"
+        log_error "Set OMARCHY_INIT_FILE environment variable if using custom path"
+        exit 1
+    fi
+    
+    # Validate theme before syncing
+    if ! validate_theme "$neovim_file" "$theme_name"; then
+        log_error "Theme validation failed for: $theme_name"
+        log_error "Skipping sync to prevent adding invalid entries to init.lua"
+        exit 1
+    fi
+    
+    log_info "Syncing theme plugins from: $neovim_file"
+    log_info "Target init.lua: $INIT_FILE"
+    
+    # Extract and add plugin information
+    if sync_theme_plugins "$neovim_file"; then
+        log_success "Theme plugin sync completed successfully"
+    else
+        log_error "Theme plugin sync failed"
+        exit 1
+    fi
+}
+
+# Run main function if script is executed directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
