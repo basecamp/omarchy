@@ -1,10 +1,10 @@
 #!/bin/bash
 
 set -e
+
 fzf_args=(
+  --prompt=' '
   --ansi
-  --delimiter=$'\t'
-  --with-nth=2..
   --no-sort
   --exact
   --multi
@@ -19,7 +19,7 @@ fzf_args=(
 )
 
 sudo pacman -Sy
-pkg_names=$(pacman -Sl --color=always | awk '{printf "%s\t%s\n", $2, $0}' | fzf "${fzf_args[@]}")
+pkg_names=$(pacman -Sl --color=always | awk '{print $2 " " $3 " " $1 " " $4}' | fzf "${fzf_args[@]}" | awk '{print $1}')
 
 if [[ -n "$pkg_names" ]]; then
   # Convert newline-separated selections to space-separated for yay
