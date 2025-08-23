@@ -7,4 +7,4 @@ min_width = 150
 width = 150
 
 [ui.window.box.search]
-hide = true
+hide = false

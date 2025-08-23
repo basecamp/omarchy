@@ -1,14 +1,16 @@
 #!/bin/bash
 
 if [[ "--remove" == "$1" ]]; then
+  echo -e "\e[32mLet's remove your fingerprint scanner from authentication.\n\e[0m"
   yay -Rns --noconfirm fprintd
   sudo rm -rf /etc/pam.d/polkit-1
   sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/sudo
   echo -e "\e[32mYou've successfully removed the fingerprint setup.\e[0m"
 else
+  echo -e "\e[32mLet's setup your fingerprint scanner for authentication.\n\e[0m"
   yay -S --noconfirm --needed fprintd usbutils
 
-  if ! lsusb | grep -Eiq 'fingerprint|synaptics|goodix'; then
+  if ! lsusb | grep -Eiq 'fingerprint|synaptics|goodix|elan'; then
     echo -e "\e[31m\nNo fingerprint sensor detected.\e[0m"
   else
     # Add fingerprint authentication as an option for sudo

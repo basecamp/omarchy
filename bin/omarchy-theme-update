@@ -1,4 +1,5 @@
 #!/bin/bash
+
 for dir in ~/.config/omarchy/themes/*/; do
-    [ -d "$dir" ] && [ ! -L "${dir%/}" ] && echo "Updating: $(basename "$dir")" && git -C "$dir" pull
+  [ -d "$dir" ] && [ ! -L "${dir%/}" ] && echo "Updating: $(basename "$dir")" && git -C "$dir" pull
 done

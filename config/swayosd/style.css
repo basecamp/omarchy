@@ -9,7 +9,7 @@ window {
 }
 
 label {
-  font-family: 'CaskaydiaMono Nerd Font', monospace;
+  font-family: 'CaskaydiaMono Nerd Font';
   font-size: 11pt;
 
   color: @label;

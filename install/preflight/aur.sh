@@ -1,7 +1,10 @@
 #!/bin/bash
 
+# Install build tools
+sudo pacman -Sy --needed --noconfirm base-devel
+
 # Only add Chaotic-AUR if the architecture is x86_64 so ARM users can build the packages
-if [[ "$(uname -m)" == "x86_64" ]] && ! command -v yay &>/dev/null; then
+if [[ "$(uname -m)" == "x86_64" ]] && [ -z "$DISABLE_CHAOTIC" ] && ! command -v yay &>/dev/null; then
   # Try installing Chaotic-AUR keyring and mirrorlist
   if ! pacman-key --list-keys 3056513887B78AEB >/dev/null 2>&1 &&
     sudo pacman-key --recv-key 3056513887B78AEB &&
@@ -23,8 +26,6 @@ fi
 
 # Manually install yay from AUR if not already available
 if ! command -v yay &>/dev/null; then
-  # Install build tools
-  sudo pacman -Sy --needed --noconfirm base-devel
   cd /tmp
   rm -rf yay-bin
   git clone https://aur.archlinux.org/yay-bin.git
@@ -35,7 +36,7 @@ if ! command -v yay &>/dev/null; then
   cd ~
 fi
 
-# Add fun and color to the pacman installer
+# Add fun and color and verbosity to the pacman installer
 if ! grep -q "ILoveCandy" /etc/pacman.conf; then
-  sudo sed -i '/^\[options\]/a Color\nILoveCandy' /etc/pacman.conf
+  sudo sed -i '/^\[options\]/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
 fi

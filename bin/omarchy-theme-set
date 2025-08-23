@@ -3,7 +3,7 @@
 # omarchy-theme-set: Set a theme, specified by its name.
 # Usage: omarchy-theme-set <theme-name>
 
-if [[ -z "$1" ]]; then
+if [[ -z "$1" && "$1" != "CNCLD" ]]; then
   echo "Usage: omarchy-theme-set <theme-name>" >&2
   exit 1
 fi
@@ -11,7 +11,7 @@ fi
 THEMES_DIR="$HOME/.config/omarchy/themes/"
 CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 
-THEME_NAME="$1"
+THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Check if the theme entered exists
@@ -39,16 +39,23 @@ else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
 
+# Change Chromium colors
+if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]] && command -v chromium &>/dev/null; then
+  chromium --no-startup-window --set-theme-color="$(<~/.config/omarchy/current/theme/chromium.theme)"
+else
+  # Use a default, neutral grey if theme doesn't have a color
+  chromium --no-startup-window --set-theme-color="28,32,39"
+fi
+
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
-"$HOME/.local/share/omarchy/bin/omarchy-restart-waybar"
-pkill swayosd-server
-setsid uwsm app -- swayosd-server &>/dev/null &
+omarchy-restart-waybar
+omarchy-restart-swayosd
 makoctl reload
 hyprctl reload
 
 # Set new background
-"$HOME/.local/share/omarchy/bin/omarchy-theme-bg-next"
+omarchy-theme-bg-next

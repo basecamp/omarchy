@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Set recorder based on GPU
-
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
 
@@ -15,7 +13,7 @@ screenrecording() {
   notify-send "Screen recording starting..." -t 1000
   sleep 1
 
-  if lspci | grep -qi 'nvidia'; then
+  if lspci | grep -Eqi 'nvidia|intel.*graphics'; then
     wf-recorder -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@"
   else
     wl-screenrec -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@"

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+omarchy-refresh-config hypr/autostart.conf
+omarchy-refresh-config hypr/bindings.conf
+omarchy-refresh-config hypr/envs.conf
+omarchy-refresh-config hypr/input.conf
+omarchy-refresh-config hypr/hyprland.conf

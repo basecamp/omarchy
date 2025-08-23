@@ -2,6 +2,4 @@
 
 omarchy-refresh-config waybar/config.jsonc
 omarchy-refresh-config waybar/style.css
-
-# Restart waybar
 omarchy-restart-waybar

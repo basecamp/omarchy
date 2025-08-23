@@ -3,34 +3,50 @@
 # A script to display Hyprland keybindings defined in your configuration
 # using walker for an interactive search menu.
 
-USER_HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
-OMARCHY_BINDINGS_CONF="$HOME/.local/share/omarchy/default/hypr/bindings.conf \
-$HOME/.local/share/omarchy/default/hypr/bindings/tiling.conf \
-$HOME/.local/share/omarchy/default/hypr/bindings/utilities.conf \
-$HOME/.local/share/omarchy/default/hypr/bindings/media.conf"
+# Fetch dynamic keybindings from Hyprland
+#
+# Also do some pre-processing:
+# - Remove standard Omarchy bin path prefix
+# - Remove uwsm prefix
+# - Map numeric modifier key mask to a textual rendition
+# - Output comma-separated values that the parser can understand
+dynamic_bindings() {
+  hyprctl -j binds | \
+    jq -r '.[] | {modmask, key, keycode, description, dispatcher, arg} | "\(.modmask),\(.key)@\(.keycode),\(.description),\(.dispatcher),\(.arg)"' | \
+    sed -r \
+        -e 's/null//' \
+        -e 's,~/.local/share/omarchy/bin/,,' \
+        -e 's,uwsm app -- ,,' \
+        -e 's/@0//' \
+        -e 's/,@/,code:/' \
+        -e 's/^0,/,/' \
+        -e 's/^1,/SHIFT,/' \
+        -e 's/^4,/CTRL,/' \
+        -e 's/^5,/SHIFT CTRL,/' \
+        -e 's/^8,/ALT,/' \
+        -e 's/^9,/SHIFT ALT,/' \
+        -e 's/^12,/CTRL ALT,/' \
+        -e 's/^13,/SHIFT CTRL ALT,/' \
+        -e 's/^64,/SUPER,/' \
+        -e 's/^65,/SUPER SHIFT,/' \
+        -e 's/^68,/SUPER CTRL,/' \
+        -e 's/^69,/SUPER SHIFT CTRL,/' \
+        -e 's/^72,/SUPER ALT,/' \
+        -e 's/^73,/SUPER SHIFT ALT,/' \
+        -e 's/^76,/SUPER CTRL ALT,/' \
+        -e 's/^77,/SUPER SHIFT CTRL ALT,/'
+}
 
-# Process the configuration file to extract and format keybindings
-# 1. `grep` finds all lines starting with 'bind' (allowing for leading spaces).
-# 2. The first `sed` removes comments (anything after a '#').
-# 3. `awk` does the heavy lifting of formatting the output.
-#    - It sets the field separator to a comma ','.
-#    - It removes the 'bind... =' part from the beginning of the line.
-#    - It joins the key combination (e.g., "SUPER + Q").
-#    - It joins the command that the key executes.
-#    - It prints everything in a nicely aligned format.
-# 4. The final `sed` cleans up any leftover commas from the end of lines.
-grep -h '^[[:space:]]*bind' $USER_HYPRLAND_CONF $OMARCHY_BINDINGS_CONF |
-  sed 's/#.*//' |
-  sed '/^[[:space:]]*$/d' |
-  sort -u |
+# Parse and format keybindings
+#
+# `awk` does the heavy lifting:
+# - Set the field separator to a comma ','.
+# - Joins the key combination (e.g., "SUPER + Q").
+# - Joins the command that the key executes.
+# - Prints everything in a nicely aligned format.
+parse_bindings() {
   awk -F, '
 {
-    # Strip trailing comments
-    sub(/#.*/, "");
-
-    # Remove the "bind... =" part and surrounding whitespace
-    sub(/^[[:space:]]*bind[^=]*=(\+[[:space:]])?(exec, )?[[:space:]]*/, "", $1);
-
     # Combine the modifier and key (first two fields)
     key_combo = $1 " + " $2;
 
@@ -38,27 +54,36 @@ grep -h '^[[:space:]]*bind' $USER_HYPRLAND_CONF $OMARCHY_BINDINGS_CONF |
     gsub(/^[ \t]*\+?[ \t]*/, "", key_combo);
     gsub(/[ \t]+$/, "", key_combo);
 
-    # Reconstruct the command from the remaining fields
-    action = "";
-    for (i = 3; i <= NF; i++) {
-        action = action $i (i < NF ? "," : "");
-    }
+    # Use description, if set
+    action = $3;
 
-    # Clean up trailing commas, remove leading "exec, ", and trim
-    sub(/,$/, "", action);
-    gsub(/(^|,)[[:space:]]*exec[[:space:]]*,?/, "", action);
-    gsub(/^[ \t]+|[ \t]+$/, "", action);
-    gsub(/[ \t]+/, " ", key_combo);  # Collapse multiple spaces to one
+    if (action == "") {
+        # Reconstruct the command from the remaining fields
+        for (i = 4; i <= NF; i++) {
+            action = action $i (i < NF ? "," : "");
+        }
 
-    if (action != "") {
+        # Clean up trailing commas, remove leading "exec, ", and trim
+        sub(/,$/, "", action);
+        gsub(/(^|,)[[:space:]]*exec[[:space:]]*,?/, "", action);
+        gsub(/^[ \t]+|[ \t]+$/, "", action);
+        gsub(/[ \t]+/, " ", key_combo);  # Collapse multiple spaces to one
+
         # Escape XML entities
         gsub(/&/, "\\&amp;", action);
         gsub(/</, "\\&lt;", action);
         gsub(/>/, "\\&gt;", action);
         gsub(/"/, "\\&quot;", action);
         gsub(/'"'"'/, "\\&apos;", action);
-        
+    }
+
+    if (action != "") {
         printf "%-35s → %s\n", key_combo, action;
     }
-}' |
+}'
+}
+
+dynamic_bindings | \
+  sort -u | \
+  parse_bindings | \
   walker --dmenu --theme keybindings -p 'Keybindings'

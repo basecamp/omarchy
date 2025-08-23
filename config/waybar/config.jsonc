@@ -5,9 +5,11 @@
   "spacing": 0,
   "height": 26,
   "modules-left": [
+    "custom/omarchy",
     "hyprland/workspaces"
   ],
   "modules-center": [
+    "group/status-cluster",
     "clock",
     "custom/update"
   ],
@@ -43,12 +45,19 @@
       "5": []
     }
   },
+  "custom/omarchy": {
+    "format": "",
+    "on-click": "omarchy-menu",
+    "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space"
+  },
   "custom/update": {
-    "format": "",
-    "exec": "~/.local/share/omarchy/bin/omarchy-update-available",
+    "format": "",
+    "exec": "omarchy-update-available",
     "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
+    "tooltip-format": "Omarchy update available",
     "interval": 3600
   },
+
   "cpu": {
     "interval": 5,
     "format": "󰍛",
@@ -58,7 +67,7 @@
     "format": "{:%A %H:%M}",
     "format-alt": "{:%d %B W%V %Y}",
     "tooltip": false,
-    "on-click-right": "~/.local/share/omarchy/bin/omarchy-cmd-tzupdate"
+    "on-click-right": "omarchy-cmd-tzupdate"
   },
   "network": {
     "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
@@ -123,6 +132,39 @@
       "custom/expand-icon",
     "tray"
     ]
+  },
+  "group/status-cluster": {
+    "orientation": "inherit",
+    "modules": [
+      "custom/status-dnd",
+      "custom/status-nightlight", 
+      "custom/status-recording",
+      "custom/status-idle"
+    ]
+  },
+  "custom/status-dnd": {
+    "exec": "omarchy-status-daemon dnd",
+    "return-type": "json",
+    "interval": 1,
+    "on-click": "makoctl mode -t do-not-disturb"
+  },
+  "custom/status-nightlight": {
+    "exec": "omarchy-status-daemon nightlight", 
+    "return-type": "json",
+    "interval": 1,
+    "on-click": "omarchy-toggle-nightlight"
+  },
+  "custom/status-recording": {
+    "exec": "omarchy-status-daemon recording",
+    "return-type": "json", 
+    "interval": 1,
+    "on-click": "omarchy-cmd-screenrecord-stop"
+  },
+  "custom/status-idle": {
+    "exec": "omarchy-status-daemon idle",
+    "return-type": "json",
+    "interval": 1,
+    "on-click": "omarchy-toggle-idle"
   },
   "custom/expand-icon": {
     "format": " ",

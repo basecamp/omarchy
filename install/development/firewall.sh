@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if ! command -v ufw &>/dev/null; then
+if ! command -v ufw &>/dev/null && -z "${OMARCHY_CHROOT_INSTALL:-}"; then
   yay -S --noconfirm --needed ufw ufw-docker
 
   # Allow nothing in, everything out
@@ -15,10 +15,10 @@ if ! command -v ufw &>/dev/null; then
   sudo ufw allow 22/tcp
 
   # Allow Docker containers to use DNS on host
-  sudo ufw allow in on docker0 to any port 53
+  sudo ufw allow in proto udp from 172.16.0.0/12 to 172.17.0.1 port 53 comment 'allow-docker-dns'
 
   # Turn on the firewall
-  sudo ufw enable
+  sudo ufw --force enable
 
   # Turn on Docker protections
   sudo ufw-docker install

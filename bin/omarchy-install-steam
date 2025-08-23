@@ -1,0 +1,9 @@
+#!/bin/bash
+
+echo "Adding multilib repository for 32-bit compatibility"
+sudo sed -i '/^\s*#\[multilib\]/,/^$/{s/^\s*#//}' /etc/pacman.conf
+sudo pacman -Sy
+
+echo "Now pick dependencies matching your graphics card"
+yay -S steam
+setsid gtk-launch steam >/dev/null 2>&1 &
