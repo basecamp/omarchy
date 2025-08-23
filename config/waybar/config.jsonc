@@ -143,28 +143,28 @@
     ]
   },
   "custom/status-dnd": {
-    "exec": "~/.local/share/omarchy/bin/omarchy-status-daemon dnd",
+    "exec": "omarchy-status-daemon dnd",
     "return-type": "json",
-    "interval": 2,
+    "interval": 1,
     "on-click": "makoctl mode -t do-not-disturb"
   },
   "custom/status-nightlight": {
-    "exec": "~/.local/share/omarchy/bin/omarchy-status-daemon nightlight", 
+    "exec": "omarchy-status-daemon nightlight", 
     "return-type": "json",
-    "interval": 2,
-    "on-click": "~/.local/share/omarchy/bin/omarchy-toggle-nightlight"
+    "interval": 1,
+    "on-click": "omarchy-toggle-nightlight"
   },
   "custom/status-recording": {
-    "exec": "~/.local/share/omarchy/bin/omarchy-status-daemon recording",
+    "exec": "omarchy-status-daemon recording",
     "return-type": "json", 
-    "interval": 2,
-    "on-click": "~/.local/share/omarchy/bin/omarchy-cmd-screenrecord"
+    "interval": 1,
+    "on-click": "omarchy-cmd-screenrecord"
   },
   "custom/status-idle": {
-    "exec": "~/.local/share/omarchy/bin/omarchy-status-daemon idle",
+    "exec": "omarchy-status-daemon idle",
     "return-type": "json",
-    "interval": 2,
-    "on-click": "~/.local/share/omarchy/bin/omarchy-toggle-idle"
+    "interval": 1,
+    "on-click": "omarchy-toggle-idle"
   },
   "custom/expand-icon": {
     "format": " ",
