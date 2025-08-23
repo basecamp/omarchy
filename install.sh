@@ -50,7 +50,7 @@ show_subtext() {
 }
 
 # Start logging
-source $OMARCHY_INSTALL/log/before-install.sh
+# source $OMARCHY_INSTALL/log/before-install.sh
 
 # Install prerequisites
 source $OMARCHY_INSTALL/preflight/chroot.sh
@@ -114,7 +114,7 @@ if ping -c5 omarchy.org &>/dev/null; then
 fi
 
 # Stop logging
-source $OMARCHY_INSTALL/log/after-install.sh
+# source $OMARCHY_INSTALL/log/after-install.sh
 
 # Reboot
 show_logo laseretch 920
