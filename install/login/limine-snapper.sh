@@ -52,6 +52,8 @@ term_background_bright: 24283b
  
 EOF
 
+  sudo limine-update
+
   # Match Snapper configs if not installing from the ISO
   if [ -z "${OMARCHY_CHROOT_INSTALL:-}" ]; then
     if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
