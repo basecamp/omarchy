@@ -1,0 +1,44 @@
+theme = "ao"
+
+[editor]
+# Show currently open buffers, only when more than one exists.
+bufferline = "multiple"
+# Highlight all lines with a cursor
+cursorline = true
+# Use relative line numbers
+line-number = "relative"
+# Show a ruler at column 120
+rulers = [120]
+# Force the theme to show colors
+true-color = true
+# Minimum severity to show a diagnostic after the end of a line
+end-of-line-diagnostics = "hint"
+
+[editor.indent-guides]
+character = "╎"
+render = true
+
+[editor.file-picker]
+hidden = false
+git-ignore = false
+
+[editor.lsp]
+# Disable automatically popups of signature parameter help
+# auto-signature-help = false
+# Show LSP messages in the status line
+display-messages = true
+
+[editor.statusline]
+left = ["mode", "spinner", "version-control", "file-name"]
+
+[editor.inline-diagnostics]
+cursor-line = "error" # Show inline diagnostics when the cursor is on the line
+other-lines = "disable" # Don't expand diagnostics unless the cursor is on the line
+
+[keys.normal]
+A-x = "extend_to_line_bounds"
+X = "select_line_above"
+
+[keys.select]
+A-x = "extend_to_line_bounds"
+X = "select_line_above"
