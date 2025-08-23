@@ -3,7 +3,7 @@
 # Status indicator daemon for waybar
 # Calls individual status scripts and caches results
 
-STATE_DIR="/tmp/omarchy-status"
+STATE_DIR=~/.local/state/omarchy/status
 DAEMON_PID_FILE="$STATE_DIR/daemon.pid"
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 
