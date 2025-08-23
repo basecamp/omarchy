@@ -10,7 +10,7 @@ OMARCHY_INSTALL=~/.local/share/omarchy/install
 catch_errors() {
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
   echo
-  echo "This command caused it with exit code $?:"
+  echo "This command halted with exit code $?:"
   echo "$BASH_COMMAND"
   echo
   echo "Get help from the community via QR code or at https://discord.gg/tXFUdasqhY"
