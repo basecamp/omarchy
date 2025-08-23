@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Simple script to download PKGBUILDs from AUR git mirror
+# Usage: omarchy-download-pkgbuilds [output_dir]
+
+set -e
+
+OUTPUT_DIR="${1:-/tmp/omarchy-pkgbuilds}"
+
+# Get package list from packages.json
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ ! -f "$SCRIPT_DIR/packages.json" ]]; then
+    echo "Error: packages.json not found in $SCRIPT_DIR"
+    exit 1
+fi
+
+# Extract all AUR package names from packages.json
+PACKAGES=($(jq -r '.aur_packages.core.packages, .aur_packages.conditional.packages | keys[]' "$SCRIPT_DIR/packages.json" | sort -u))
+
+echo "Downloading PKGBUILDs to: $OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR"
+cd "$OUTPUT_DIR"
+
+for pkg in "${PACKAGES[@]}"; do
+    echo "Downloading $pkg..."
+    
+    if git clone --single-branch --branch "$pkg" --depth=1 "https://github.com/archlinux/aur.git" "$pkg" 2>/dev/null; then
+        echo "  ✓ $pkg"
+        # Remove .git directory to save space
+        rm -rf "$pkg/.git"
+    else
+        echo "  ✗ $pkg (failed)"
+        # Create minimal PKGBUILD as fallback
+        mkdir -p "$pkg"
+        cat > "$pkg/PKGBUILD" << EOF
+# Fallback PKGBUILD for $pkg
+pkgname=$pkg
+pkgver=latest
+pkgrel=1
+pkgdesc="Manual installation required"
+arch=('x86_64')
+package() {
+    echo "Download manually from AUR: $pkg"
+}
+EOF
+    fi
+done
+
+echo "Done! PKGBUILDs downloaded to $OUTPUT_DIR"
