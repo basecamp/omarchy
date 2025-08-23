@@ -119,7 +119,9 @@ show_subtext "You're done! So we're ready to reboot now..."
 
 if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
   sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
-  gum confirm "Have you unplugged the USB installer?"
+  echo
+  read -n 1 -s -r -p "Remove the USB installer then press any key to reboot..."
+  echo
 fi
 
 sleep 2
