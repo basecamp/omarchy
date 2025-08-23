@@ -39,9 +39,6 @@ else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
 
-# Trigger alacritty config reload
-touch "$HOME/.config/alacritty/alacritty.toml"
-
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
 omarchy-restart-waybar
