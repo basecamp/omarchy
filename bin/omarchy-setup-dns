@@ -1,227 +1,59 @@
 #!/bin/bash
 
-# omarchy-setup-dns
-# Script to configure DNS settings for Omarchy installations
-# Provides options for Cloudflare, local/DHCP, or custom DNS setups
+# omarchy-setup-dns: Configure DNS settings for Omarchy
+# Usage: omarchy-setup-dns [cloudflare|dhcp|custom|--remove]
 
-set -e
-
-RESOLVED_CONF="/etc/systemd/resolved.conf"
-
-show_help() {
-    cat << EOF
-omarchy-setup-dns - Configure DNS settings for Omarchy
-
-USAGE:
-    omarchy-setup-dns [OPTION]
-
-OPTIONS:
-    cloudflare     Set Cloudflare (1.1.1.1) as primary DNS with Google (8.8.8.8) as fallback (with DNS over TLS)
-    dhcp           Use DHCP-provided DNS (preserves local router DNS for development)
-    custom         Interactive setup for custom DNS servers
-    status         Show current DNS configuration
-    help           Show this help message
-
-EXAMPLES:
-    omarchy-setup-dns cloudflare    # Use Cloudflare DNS
-    omarchy-setup-dns dhcp          # Use router/DHCP DNS (recommended for local dev)
-    omarchy-setup-dns custom        # Set custom DNS servers
-    omarchy-setup-dns status        # Check current configuration
-
-NOTE:
-    - This script requires sudo privileges to modify system DNS settings
-    - Changes take effect after restarting systemd-resolved
-    - A backup of your current configuration is automatically created
-EOF
-}
-
-backup_current_config() {
-    if [[ -f "$RESOLVED_CONF" ]]; then
-        # Remove old backup files to prevent accumulation
-        sudo rm -f "$RESOLVED_CONF".bak.* 2>/dev/null
-        
-        backup_file="$RESOLVED_CONF.bak.$(date +%s)"
-        echo "Creating backup of current DNS configuration..."
-        sudo cp "$RESOLVED_CONF" "$backup_file"
-        echo "Backup saved to: $backup_file"
-    fi
-}
-
-restart_resolved() {
-    echo "Restarting systemd-resolved to apply changes..."
-    sudo systemctl restart systemd-resolved
-    echo "DNS configuration updated successfully!"
-}
-
-setup_cloudflare() {
-    echo "Setting up Cloudflare DNS with Google fallback..."
-    backup_current_config
-    
-    # Remove existing DNS entries and add Cloudflare
-    sudo sed -i '/^DNS=/d' "$RESOLVED_CONF"
-    sudo sed -i '/^FallbackDNS=/d' "$RESOLVED_CONF"
-    sudo sed -i '/^DNSOverTLS=/d' "$RESOLVED_CONF"
-    
-    # Add Cloudflare as primary, Google as fallback with DNS over TLS
-    echo "DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com" | sudo tee -a "$RESOLVED_CONF" > /dev/null
-    echo "FallbackDNS=8.8.8.8#dns.google 8.8.4.4#dns.google" | sudo tee -a "$RESOLVED_CONF" > /dev/null
-    echo "DNSOverTLS=opportunistic" | sudo tee -a "$RESOLVED_CONF" > /dev/null
-    
-    # Force DNS on ethernet and wifi interfaces using systemd-networkd
-    # This ensures DHCP-provided DNS is overridden on physical interfaces
-    echo "Configuring systemd-networkd to use Cloudflare DNS on all connections..."
-    
-    # Create drop-in directory for network configs
-    sudo mkdir -p /etc/systemd/network
-    
-    # Create a high-priority config that matches all ethernet and wifi interfaces
-    # but excludes docker, bridge, and virtual interfaces
-    sudo tee /etc/systemd/network/99-omarchy-dns.network > /dev/null << 'EOF'
-[Match]
-# Match ethernet and wifi interfaces, exclude virtual ones
-Name=en* wl*
-Type=!bridge
-Type=!veth
-
-[Network]
-# Force Cloudflare DNS even if DHCP provides DNS with DNS over TLS
-DNS=1.1.1.1#cloudflare-dns.com
-DNS=1.0.0.1#cloudflare-dns.com
-DNS=8.8.8.8#dns.google
-DNS=8.8.4.4#dns.google
+case "${1:-dhcp}" in
+    cloudflare)
+        echo "Setting up Cloudflare DNS with DNS over TLS..."
+        sudo tee /etc/systemd/resolved.conf > /dev/null << 'EOF'
+[Resolve]
+DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com
+FallbackDNS=8.8.8.8#dns.google 8.8.4.4#dns.google
 DNSOverTLS=opportunistic
-UseDNS=no
-DHCP=yes
-
-[DHCP]
-UseDNS=no
-UseDomains=no
-
-[IPv6AcceptRA]
-UseDNS=no
 EOF
+        sudo systemctl restart systemd-resolved
+        echo "Cloudflare DNS configured successfully."
+        ;;
     
-    # Restart systemd-networkd to apply changes
-    echo "Restarting systemd-networkd to apply DNS changes..."
-    sudo systemctl restart systemd-networkd
-    
-    restart_resolved
-    echo "Cloudflare DNS configured successfully!"
-}
-
-setup_dhcp() {
-    echo "Setting up DHCP DNS (recommended for local development)..."
-    backup_current_config
-    
-    # Create a clean resolved.conf that forces DHCP usage
-    sudo tee "$RESOLVED_CONF" > /dev/null << 'EOF'
+    dhcp|--remove)
+        echo "Setting up DHCP DNS (router DNS)..."
+        sudo tee /etc/systemd/resolved.conf > /dev/null << 'EOF'
 [Resolve]
 DNS=
 FallbackDNS=
 DNSOverTLS=no
-#DNS=1.1.1.1 1.0.0.1
-#FallbackDNS=8.8.8.8 8.8.4.4
 EOF
-    
-    # Remove any forced DNS config from systemd-networkd
-    if [ -f /etc/systemd/network/99-omarchy-dns.network ]; then
-        echo "Removing forced DNS configuration from systemd-networkd..."
-        sudo rm -f /etc/systemd/network/99-omarchy-dns.network
-        sudo systemctl restart systemd-networkd
-    fi
-    
-    restart_resolved
-    echo "DHCP DNS configured successfully!"
-    echo "Your router will now handle DNS resolution, preserving local development setups."
-}
-
-setup_custom() {
-    echo "Custom DNS setup"
-    echo "Enter your preferred DNS servers (space-separated, e.g., '192.168.1.1 1.1.1.1'):"
-    read -r primary_dns
-    
-    if [[ -z "$primary_dns" ]]; then
-        echo "Error: No DNS servers provided"
-        exit 1
-    fi
-    
-    echo "Enter fallback DNS servers (optional, press Enter to skip):"
-    read -r fallback_dns
-    
-    backup_current_config
-    
-    # Remove existing DNS entries
-    sudo sed -i '/^DNS=/d' "$RESOLVED_CONF"
-    sudo sed -i '/^FallbackDNS=/d' "$RESOLVED_CONF"
-    
-    # Add custom DNS
-    echo "DNS=$primary_dns" | sudo tee -a "$RESOLVED_CONF" > /dev/null
-    
-    if [[ -n "$fallback_dns" ]]; then
-        echo "FallbackDNS=$fallback_dns" | sudo tee -a "$RESOLVED_CONF" > /dev/null
-    fi
-    
-    restart_resolved
-    echo "Custom DNS configured successfully!"
-}
-
-
-show_status() {
-    echo "Current DNS Configuration:"
-    echo "=========================="
-    
-    if [[ -f "$RESOLVED_CONF" ]]; then
-        echo "From $RESOLVED_CONF:"
-        grep -E "^(DNS|FallbackDNS)=" "$RESOLVED_CONF" 2>/dev/null || echo "  No explicit DNS configuration found (using DHCP)"
-    else
-        echo "  No resolved.conf found"
-    fi
-    
-    echo ""
-    echo "Active DNS servers (from systemd-resolved):"
-    systemd-resolve --status 2>/dev/null | grep -A 10 "DNS Servers:" | head -10 || echo "  Unable to query systemd-resolved status"
-    
-    echo ""
-    echo "Quick test - resolving example.com:"
-    if command -v dig >/dev/null 2>&1; then
-        dig +short example.com @127.0.0.53 2>/dev/null || echo "  dig test failed"
-    elif command -v nslookup >/dev/null 2>&1; then
-        nslookup example.com 2>/dev/null | grep -A 2 "Name:" || echo "  nslookup test failed"
-    elif command -v host >/dev/null 2>&1; then
-        host example.com 2>/dev/null || echo "  host test failed"
-    else
-        # Use getent as fallback (always available)
-        getent hosts example.com >/dev/null 2>&1 && echo "  DNS resolution working" || echo "  DNS resolution test failed"
-    fi
-    
-}
-
-# Check if running as root (we need sudo for systemctl and file modifications)
-if [[ $EUID -eq 0 ]] && [[ -z "$SUDO_USER" ]]; then
-    echo "Warning: Running as root. Consider using sudo instead."
-fi
-
-# Main script logic
-case "${1:-help}" in
-    cloudflare)
-        setup_cloudflare
+        sudo systemctl restart systemd-resolved
+        echo "DHCP DNS configured successfully."
         ;;
-    dhcp)
-        setup_dhcp
-        ;;
+    
     custom)
-        setup_custom
+        echo "Enter your DNS servers (space-separated, e.g. '192.168.1.1 1.1.1.1'):"
+        read -r dns_servers
+        
+        if [[ -z "$dns_servers" ]]; then
+            echo "Error: No DNS servers provided."
+            exit 1
+        fi
+        
+        echo "Setting up custom DNS..."
+        sudo tee /etc/systemd/resolved.conf > /dev/null << EOF
+[Resolve]
+DNS=$dns_servers
+FallbackDNS=1.1.1.1 8.8.8.8
+EOF
+        sudo systemctl restart systemd-resolved
+        echo "Custom DNS configured successfully."
         ;;
-    status)
-        show_status
-        ;;
-    help|--help|-h)
-        show_help
-        ;;
+    
     *)
-        echo "Unknown option: $1"
+        echo "Usage: omarchy-setup-dns [cloudflare|dhcp|custom|--remove]"
         echo ""
-        show_help
+        echo "  cloudflare  Use Cloudflare DNS with DNS over TLS"
+        echo "  dhcp        Use router/DHCP DNS (default)"
+        echo "  custom      Set custom DNS servers"
+        echo "  --remove    Reset to DHCP DNS"
         exit 1
         ;;
 esac
