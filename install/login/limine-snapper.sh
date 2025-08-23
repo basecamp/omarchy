@@ -1,8 +1,6 @@
 #!/bin/bash
 
-if command -v limine &>/dev/null && [ ! -f /etc/default/limine ]; then
-  yay -S --noconfirm --needed limine-mkinitcpio-hook limine-snapper-sync
-
+if command -v limine &>/dev/null; then
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
@@ -16,6 +14,8 @@ EOF
 
   sudo tee /etc/default/limine <<EOF >/dev/null
 TARGET_OS_NAME="Omarchy"
+
+ESP_PATH="/boot"
 
 KERNEL_CMDLINE[default]="$CMDLINE"
 KERNEL_CMDLINE[default]+="quiet splash"
@@ -62,6 +62,7 @@ term_background_bright: 24283b
  
 EOF
 
+  yay -S --noconfirm --needed limine-mkinitcpio-hook limine-snapper-sync
   sudo limine-update
 
   # Match Snapper configs if not installing from the ISO
@@ -84,8 +85,7 @@ EOF
 fi
 
 # Add UKI entry to UEFI machines to skip bootloader showing on normal boot
-# Only doing this for ISO installs
-if [ -n "${OMARCHY_CHROOT_INSTALL:-}" ] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy; then
+if [ -n "$EFI" ] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy; then
   sudo efibootmgr --create \
     --disk "$(findmnt -n -o SOURCE /boot | sed 's/[0-9]*$//')" \
     --part "$(findmnt -n -o SOURCE /boot | grep -o '[0-9]*$')" \
