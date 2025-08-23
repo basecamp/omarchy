@@ -1,0 +1,76 @@
+# Static theme for 3x3 grid layout with theme thumbnails
+
+[activation_mode]
+disabled = true
+
+# Window dimensions for 1920x1080 display
+# 70% of 1920x1080 = 1344x756
+[ui.window.box]
+width = 1240
+min_width = 1240
+max_width = 1240
+height = 790
+min_height = 790
+max_height = 790
+
+[ui.window.box.search]
+hide = true
+
+[ui.window.box.scroll]
+v_align = "fill"
+h_align = "fill"
+min_width = 1240
+width = 1240
+max_width = 1240
+min_height = 790
+height = 790
+max_height = 790
+
+[ui.window.box.scroll.list]
+grid = true
+v_align = "fill"
+h_align = "fill"
+min_width = 1215
+width = 1215
+max_width = 1215
+min_height = 765
+height = 765
+max_height = 765
+
+# Item container for 3x3 grid
+# For 1920x1080: window is 1240x756
+# 3 columns: 1215/3 = 405px width each
+# 3 rows: 735/3 = 245px height each
+[ui.window.box.scroll.list.item]
+width = 405
+max_width = 405
+min_width = 405
+height = 245
+max_height = 245
+min_height = 245
+orientation = "vertical"
+spacing = 0
+
+# Icon fills the item minus text space
+# 405px item - 8px padding = 397px width
+# 245px height - 35px text - 8px padding = 202px
+[ui.window.box.scroll.list.item.icon]
+pixel_size = -1
+hide = false
+vexpand = true
+hexpand = true
+width = 397
+height = 202
+
+[ui.window.box.scroll.list.item.text]
+hide = false
+h_align = "center"
+v_align = "center"
+hexpand = true
+margin_top = 4
+
+[ui.window.box.scroll.list.item.sub]
+hide = true
+
+[ui.window.box.scroll.list.item.activation_label]
+hide = true

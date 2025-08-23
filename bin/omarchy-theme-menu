@@ -1,89 +1,10 @@
 #!/bin/bash
 
-# Launch Walker with theme grid configuration
-# Dynamically calculates window size based on screen resolution
-
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 WALKER_THEME_DIR="$HOME/.local/share/omarchy/default/walker/themes"
 
-# Get screen dimensions and scale factor
-MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[0]')
-SCREEN_WIDTH=$(echo "$MONITOR_INFO" | jq -r '.width')
-SCREEN_HEIGHT=$(echo "$MONITOR_INFO" | jq -r '.height')
-
-# Get scale factor
-SCALE_FACTOR=$GDK_SCALE
-
-# Adjust for scale factor
-EFFECTIVE_WIDTH=$((SCREEN_WIDTH / SCALE_FACTOR))
-EFFECTIVE_HEIGHT=$((SCREEN_HEIGHT / SCALE_FACTOR))
-
-WINDOW_WIDTH=$((EFFECTIVE_WIDTH * 70 / 100))
-WINDOW_HEIGHT=$((EFFECTIVE_HEIGHT * 70 / 100))
-
-ITEM_WIDTH=$((WINDOW_WIDTH * 30 / 100))
-
-# For 3 rows to fit with margins, calculate height dynamically
-# Account for: 3 tiles + gaps between them + some padding
-# Roughly: (window_height - margins) / 3
-ITEM_HEIGHT=$((WINDOW_HEIGHT * 31 / 100))
-
-ICON_SIZE=$ITEM_WIDTH
-
-# Generate temporary theme file
-THEME_NAME="grid-dynamic-$$"
-THEME_FILE="/tmp/walker-theme-$THEME_NAME.toml"
-
-cat > "$THEME_FILE" << EOF
-# Dynamically generated theme for grid layout
-
-[activation_mode]
-disabled = true
-
-[ui.window.box.search]
-hide = true
-
-[ui.window.box.scroll.list]
-grid = true
-
-[ui.window.box.scroll.list.item]
-width = $ITEM_WIDTH
-max_width = $ITEM_WIDTH
-min_width = $ITEM_WIDTH
-height = $ITEM_HEIGHT
-max_height = $ITEM_HEIGHT
-min_height = $ITEM_HEIGHT
-orientation = "vertical"
-spacing = 0
-
-[ui.window.box.scroll.list.item.icon]
-pixel_size = -1
-hide = false
-vexpand = true
-hexpand = true
-width = $ITEM_WIDTH
-height = $ITEM_HEIGHT
-
-[ui.window.box.scroll.list.item.text]
-hide = false
-h_align = "center"
-v_align = "center"
-hexpand = true
-margin_top = 4
-
-[ui.window.box.scroll.list.item.sub]
-hide = true
-
-[ui.window.box.scroll.list.item.activation_label]
-hide = true
-EOF
-
-# Create symlinks in Walker's theme directory
-ln -sf "$THEME_FILE" "$WALKER_THEME_DIR/$THEME_NAME.toml"
-ln -sf "$WALKER_THEME_DIR/theme-grid.css" "$WALKER_THEME_DIR/$THEME_NAME.css"
-
 current_theme=$(omarchy-theme-current)
-INPUT_FILE=$(mktemp)
+INPUT_DATA=""
 
 while IFS= read -r theme_name; do
     display_name="$theme_name"
@@ -107,15 +28,15 @@ while IFS= read -r theme_name; do
     # Find preview image
     preview_image="$actual_path/thumbnail.jpg"
 
-    # Output with image path for Walker - use unit separator
+    # Build input data with image path for Walker - use unit separator
     if [[ -f "$preview_image" ]]; then
-        printf "%s\x1f%s\n" "$display_name" "$preview_image" >> "$INPUT_FILE"
+        INPUT_DATA+="$display_name"$'\x1f'"$preview_image"$'\n'
     else
-        echo "$display_name" >> "$INPUT_FILE"
+        INPUT_DATA+="$display_name"$'\n'
     fi
 done < <(omarchy-theme-list)
 
-  selected=$(cat "$INPUT_FILE" | walker --dmenu --theme "$THEME_NAME" -w "$WINDOW_WIDTH" -h "$WINDOW_HEIGHT" -p "Select Theme" -i 2 -t $'\x1f')
+selected=$(echo -n "$INPUT_DATA" | walker --dmenu --theme "theme-grid" -p "Select Theme" -i 2 -t $'\x1f')
 
 # Extract theme name and apply if selected
 if [[ -n "$selected" && "$selected" != "CNCLD" ]]; then
@@ -123,8 +44,3 @@ if [[ -n "$selected" && "$selected" != "CNCLD" ]]; then
     selected_clean=$(echo "$selected" | sed 's/^✓ //')
     omarchy-theme-set "$selected_clean"
 fi
-
-# Clean up
-rm -f "$INPUT_FILE" "$THEME_FILE"
-rm -f "$WALKER_THEME_DIR/$THEME_NAME.toml"
-rm -f "$WALKER_THEME_DIR/$THEME_NAME.css"
