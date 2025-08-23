@@ -46,11 +46,13 @@ source $OMARCHY_INSTALL/config/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/network.sh
 source $OMARCHY_INSTALL/config/power.sh
 source $OMARCHY_INSTALL/config/timezones.sh
-source $OMARCHY_INSTALL/config/login-1-plymouth.sh
-source $OMARCHY_INSTALL/config/login-2-limine-snapper.sh
-source $OMARCHY_INSTALL/config/login-3-alt-bootloaders.sh
 source $OMARCHY_INSTALL/config/nvidia.sh
 source $OMARCHY_INSTALL/config/increase-sudo-tries.sh
+
+# Login
+source $OMARCHY_INSTALL/login/plymouth.sh
+source $OMARCHY_INSTALL/login/limine-snapper.sh
+source $OMARCHY_INSTALL/login/alt-bootloaders.sh
 
 # Development
 source $OMARCHY_INSTALL/development/terminal.sh
