@@ -8,6 +8,11 @@ if [[ -z $COMMAND ]]; then
   exit 1
 fi
 
+if ! command -v snapper &>/dev/null; then
+  echo "You need Snapper installed to be able to use omarchy-snapshot."
+  exit 127
+fi
+
 case "$COMMAND" in
 create)
   DESC="$(omarchy-version)"
