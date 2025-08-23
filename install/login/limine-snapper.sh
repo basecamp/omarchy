@@ -86,8 +86,7 @@ EOF
 fi
 
 # Add UKI entry to UEFI machines to skip bootloader showing on normal boot
-# Only doing this for ISO installs
-if [ -n "${OMARCHY_CHROOT_INSTALL:-}" ] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy; then
+if [ -n "$EFI" ] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy; then
   sudo efibootmgr --create \
     --disk "$(findmnt -n -o SOURCE /boot | sed 's/[0-9]*$//')" \
     --part "$(findmnt -n -o SOURCE /boot | grep -o '[0-9]*$')" \
