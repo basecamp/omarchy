@@ -53,12 +53,12 @@ EOF
   # Match Snapper configs if not installing from the ISO
   if [ -z "${OMARCHY_CHROOT_INSTALL:-}" ]; then
     if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
-        sudo snapper -c root create-config /
+      sudo snapper -c root create-config /
     fi
     if ! sudo snapper list-configs 2>/dev/null | grep -q "home"; then
-        sudo snapper -c home create-config /home
+      sudo snapper -c home create-config /home
     fi
-  end
+  fi
 
   # Tweak default Snapper configs
   sudo sed -i 's/^TIMELINE_CREATE="yes"/TIMELINE_CREATE="no"/' /etc/snapper/configs/{root,home}
