@@ -1,0 +1,9 @@
+# Colors
+background = #000000
+cursor-color = #000000
+
+# Font
+font-size = 18
+
+# Window
+background-opacity = 1.0
