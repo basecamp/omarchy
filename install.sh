@@ -60,15 +60,20 @@ source $OMARCHY_INSTALL/preflight/migrations.sh
 # Configuration
 source $OMARCHY_INSTALL/config/config.sh
 source $OMARCHY_INSTALL/config/branding.sh
-source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
-source $OMARCHY_INSTALL/config/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/network.sh
 source $OMARCHY_INSTALL/config/power.sh
+source $OMARCHY_INSTALL/config/git.sh
+source $OMARCHY_INSTALL/config/gpg.sh
 source $OMARCHY_INSTALL/config/usb-autosuspend.sh
 source $OMARCHY_INSTALL/config/timezones.sh
 source $OMARCHY_INSTALL/config/nvidia.sh
 source $OMARCHY_INSTALL/config/increase-sudo-tries.sh
+source $OMARCHY_INSTALL/config/increase-lockout-limit.sh
 source $OMARCHY_INSTALL/config/ignore-power-button.sh
+source $OMARCHY_INSTALL/config/ssh-flakiness.sh
+source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
+source $OMARCHY_INSTALL/config/fix-fkeys.sh
+source $OMARCHY_INSTALL/config/xcompose.sh
 
 # Login
 source $OMARCHY_INSTALL/login/plymouth.sh
