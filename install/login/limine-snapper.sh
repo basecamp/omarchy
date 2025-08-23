@@ -1,3 +1,5 @@
+#!/bin/bash
+
 if command -v limine &>/dev/null && [ ! -f /etc/default/limine ]; then
   yay -S --noconfirm --needed limine-mkinitcpio-hook limine-snapper-sync
 
@@ -55,6 +57,7 @@ EOF
     if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
       sudo snapper -c root create-config /
     fi
+
     if ! sudo snapper list-configs 2>/dev/null | grep -q "home"; then
       sudo snapper -c home create-config /home
     fi

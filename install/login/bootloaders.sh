@@ -1,3 +1,5 @@
+#!/bin/bash
+
 if ! command -v limine &>/dev/null; then
   # Add kernel hooks
   if ! grep -Eq '^HOOKS=.*plymouth' /etc/mkinitcpio.conf; then
