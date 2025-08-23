@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Check if ssh-agent.service is active
+if systemctl --user is-active --quiet ssh-agent.service; then
+  notify-send "Stopping ssh-agent"
+  systemctl --user stop ssh-agent.service
+  systemctl --user disable ssh-agent.service
+else
+  # Enable and start the service
+  systemctl --user enable --now ssh-agent.service
+  # Export SSH_AUTH_SOCK for current session
+  export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
+  notify-send "Enabling ssh-agent"
+fi
+
+# # Verify the current state
+# echo "Current SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+# systemctl --user status ssh-agent.service --no-pager
