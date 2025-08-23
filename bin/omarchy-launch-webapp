@@ -1,43 +1,10 @@
 #!/bin/bash
 
-browser=$(basename "$(xdg-settings get default-web-browser)" .desktop)
-# Remap desktop files to the command, where they differ
+browser=$(xdg-settings get default-web-browser)
+
 case $browser in
-  google-chrome)
-    browser=google-chrome-stable
-    ;;
-  google-chrome-*)
-    # Do nothing for Chrome variants, don't default to Chromium
-    ;;
-  brave-browser)
-    browser=brave
-    ;;
-  microsoft-edge)
-    browser=microsoft-edge-stable
-    ;;
-  microsoft-edge-*)
-    # Do nothing for Edge variants, don't default to Chromium
-    ;;
-  opera|opera-*)
-    # Do nothing for Opera variants, don't default to Chromium
-    ;;
-  vivaldi-*)
-    # Do nothing for Vivaldi variants, don't default to Chromium
-    ;;
-  *)
-    # Default to Chromium
-    browser=chromium
-    ;;
+google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi*) ;;
+*) browser="chromium.desktop" ;;
 esac
 
-# Custom arguments for browsers
-args=()
-case $browser in
-  # Chromium variants
-  chromium|google-chrome-*|brave|microsoft-edge-*|opera|opera-*|vivaldi-*)
-    args+=(--ozone-platform=wayland)
-    args+=(--new-window)
-    ;;
-esac
-
-uwsm app -- $browser ${args[@]} $@
+exec setsid uwsm app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
