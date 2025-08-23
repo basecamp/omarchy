@@ -10,27 +10,44 @@
 #
 # ==============================================================================
 
-# --- GPU Detection ---
-if [ -n "$(lspci | grep -i 'nvidia')" ]; then
+# --- GPU and already installed Detection ---
+has_nvidia_card () { [ -n "$(lspci | grep -i 'nvidia')" ]; }
+
+if has_nvidia_card && ! [ -n "$(pacman -Q nvidia)" ]; then
   show_logo
   show_subtext "Install NVIDIA drivers..."
+
+  skip_headers () { [ -n "$(uname -r | grep -i 'cachyos')" ]; }
 
   # --- Driver Selection ---
   # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
   if echo "$(lspci | grep -i 'nvidia')" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
-    NVIDIA_DRIVER_PACKAGE="nvidia-open-dkms"
+    if skip_headers; then
+      # https://wiki.cachyos.org/features/kernel/#prebuilt-kernel-modules
+      echo "OS does not require -dkms packages. Using non-dkms variant..."
+      NVIDIA_DRIVER_PACKAGE="nvidia-open"
+    else
+      NVIDIA_DRIVER_PACKAGE="nvidia-open-dkms"
+    fi
   else
-    NVIDIA_DRIVER_PACKAGE="nvidia-dkms"
+    if skip_headers; then
+      echo "OS does not require -dkms packages. Using non-dkms variant..."
+      NVIDIA_DRIVER_PACKAGE="nvidia"
+    else
+      NVIDIA_DRIVER_PACKAGE="nvidia-dkms"
+    fi
   fi
 
-  # Check which kernel is installed and set appropriate headers package
-  KERNEL_HEADERS="linux-headers" # Default
-  if pacman -Q linux-zen &>/dev/null; then
-    KERNEL_HEADERS="linux-zen-headers"
-  elif pacman -Q linux-lts &>/dev/null; then
-    KERNEL_HEADERS="linux-lts-headers"
-  elif pacman -Q linux-hardened &>/dev/null; then
-    KERNEL_HEADERS="linux-hardened-headers"
+  if ! skip_headers; then
+    # Check which kernel is installed and set appropriate headers package
+    KERNEL_HEADERS="linux-headers" # Default
+    if pacman -Q linux-zen &>/dev/null; then
+      KERNEL_HEADERS="linux-zen-headers"
+    elif pacman -Q linux-lts &>/dev/null; then
+      KERNEL_HEADERS="linux-lts-headers"
+    elif pacman -Q linux-hardened &>/dev/null; then
+      KERNEL_HEADERS="linux-hardened-headers"
+    fi
   fi
 
   # Enable multilib repository for 32-bit libraries
@@ -75,7 +92,9 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
   sudo sed -i -E 's/  +/ /g' "$MKINITCPIO_CONF"
 
   sudo mkinitcpio -P
+fi
 
+if has_nvidia_card; then
   # Add NVIDIA environment variables to hyprland.conf
   HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
   if [ -f "$HYPRLAND_CONF" ]; then
@@ -86,5 +105,4 @@ env = NVD_BACKEND,direct
 env = LIBVA_DRIVER_NAME,nvidia
 env = __GLX_VENDOR_LIBRARY_NAME,nvidia
 EOF
-  fi
 fi

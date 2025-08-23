@@ -17,13 +17,12 @@ trap catch_errors ERR
 
 show_logo() {
   clear
-  # tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
-  cat <~/.local/share/omarchy/logo.txt
+  tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
   echo
 }
 
 show_subtext() {
-  echo "$1" # | tte --frame-rate ${3:-640} ${2:-wipe}
+  echo "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
   echo
 }
 
@@ -51,7 +50,7 @@ show_logo decrypt 920
 show_subtext "Installing terminal tools [2/5]"
 source $OMARCHY_INSTALL/development/terminal.sh
 source $OMARCHY_INSTALL/development/development.sh
-source $OMARCHY_INSTALL/development/nvim.sh
+source $OMARCHY_INSTALL/development/helix.sh
 source $OMARCHY_INSTALL/development/ruby.sh
 source $OMARCHY_INSTALL/development/docker.sh
 source $OMARCHY_INSTALL/development/firewall.sh
