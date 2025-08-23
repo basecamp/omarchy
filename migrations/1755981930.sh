@@ -1,3 +1,7 @@
-echo "Add omarchy.ttf font to system fonts"
+echo "Add Omarchy icon to the Waybar"
 
-cp "$HOME/.local/share/omarchy/config/omarchy.ttf" /usr/share/fonts
+cp ~/.local/share/omarchy/config/omarchy.ttf /usr/share/fonts/
+
+echo
+gum confirm "Replace current Waybar config (backup will be made)?" && omarchy-refresh-waybar
+
