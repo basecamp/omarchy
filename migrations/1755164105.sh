@@ -1,24 +1,28 @@
 echo "Switch to Omarchy Chromium for synchronized theme switching"
 
-set_theme_colors() {
-  if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]] && command -v chromium &>/dev/null; then
-    chromium --no-startup-window --set-theme-color="$(<~/.config/omarchy/current/theme/chromium.theme)"
-  else
-    # Use a default, neutral grey if theme doesn't have a color
-    chromium --no-startup-window --set-theme-color="28,32,39"
-  fi
-}
+if omarchy-pkg-aur-accessible; then
+  set_theme_colors() {
+    if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]] && command -v chromium &>/dev/null; then
+      chromium --no-startup-window --set-theme-color="$(<~/.config/omarchy/current/theme/chromium.theme)"
+    else
+      # Use a default, neutral grey if theme doesn't have a color
+      chromium --no-startup-window --set-theme-color="28,32,39"
+    fi
+  }
 
-if command -v chromium &>/dev/null; then
-  sudo pacman -Rns --noconfirm chromium || true
-  yay -Sy --noconfirm omarchy-chromium-bin
+  if command -v chromium &>/dev/null; then
+    sudo pacman -Rns --noconfirm chromium || true
+    yay -Sy --noconfirm omarchy-chromium-bin
 
-  if pgrep -x chromium; then
-    if gum confirm "Chromium must be restarted. Ready?"; then
-      pkill -x chromium
+    if pgrep -x chromium; then
+      if gum confirm "Chromium must be restarted. Ready?"; then
+        pkill -x chromium
+        set_theme_colors
+      fi
+    else
       set_theme_colors
     fi
-  else
-    set_theme_colors
   fi
+else
+  echo -e "\n\e[31mAUR is unavailable. Skipping installation. Please try manually later.\e[0m"
 fi
