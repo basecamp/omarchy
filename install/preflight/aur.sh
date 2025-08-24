@@ -5,10 +5,12 @@ sudo pacman -Sy --needed --noconfirm base-devel
 
 # Ensure AUR is available
 while true; do
-  if curl -s --retry 4 --connect-timeout 30 --head -A "omarchy-update" "https://aur.archlinux.org"; then
+  if curl -s --connect-timeout 30 --head -A "omarchy-update" https://aur.archlinux.org >/dev/null &&
+    curl -sf -A "omarchy-update" "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" |
+    jq -e '.type=="info"' >/dev/null; then
     break
   else
-    echo -e "\n\e[31mAUR is unavailable. Retrying in 10 seconds.\e[0m"
+    echo -e "\n\e[31mAUR is unavailable. Retrying in 10 seconds...\e[0m"
     sleep 10
   fi
 done
