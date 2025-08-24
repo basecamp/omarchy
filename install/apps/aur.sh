@@ -8,7 +8,6 @@ if omarchy-pkg-aur-accessible; then
   fi
 
   yay -S --noconfirm --needed \
-    walker-bin \
     tzupdate wl-screenrec \
     python-poetry-core python-terminaltexteffects
 
