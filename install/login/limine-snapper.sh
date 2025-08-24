@@ -62,7 +62,9 @@ term_background_bright: 24283b
  
 EOF
 
-  yay -S --noconfirm --needed limine-mkinitcpio-hook limine-snapper-sync
+  sudo pacman -S --noconfirm --needed limine-snapper-sync
+  # FIXME: Figure out how to skip this when AUR isn't there
+  yay -S --noconfirm --needed limine-mkinitcpio-hook
   sudo limine-update
 
   # Match Snapper configs if not installing from the ISO
