@@ -1,5 +1,21 @@
 #!/bin/bash
 
+# Install build tools
+sudo pacman -Sy --needed --noconfirm base-devel jq
+
+# Add fun and color and verbosity to the pacman installer
+if ! grep -q "ILoveCandy" /etc/pacman.conf; then
+  sudo sed -i '/^\[options\]/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
+fi
+
+# Add the Omarchy repository as first choice
+if ! grep -q "omarchy" /etc/pacman.conf; then
+  sudo sed -i '/^\[core\]/i [omarchy]\nSigLevel = Optional TrustAll\nServer = https:\/\/pkgs.omarchy.org\/$arch\/\n' /etc/pacman.conf
+fi
+
+# Install yay from Omarchy repository
+sudo pacman -Sy --needed --noconfirm yay
+
 # Only add Chaotic-AUR if the architecture is x86_64 so ARM users can build the packages
 if [[ "$(uname -m)" == "x86_64" ]] && [ -z "$DISABLE_CHAOTIC" ] && ! command -v yay &>/dev/null; then
   # Try installing Chaotic-AUR keyring and mirrorlist
@@ -13,22 +29,7 @@ if [[ "$(uname -m)" == "x86_64" ]] && [ -z "$DISABLE_CHAOTIC" ] && ! command -v 
     if ! grep -q "chaotic-aur" /etc/pacman.conf; then
       echo -e '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist' | sudo tee -a /etc/pacman.conf >/dev/null
     fi
-
-    # Install yay directly from Chaotic-AUR
-    sudo pacman -Sy --needed --noconfirm yay
   else
     echo "Failed to install Chaotic-AUR, so won't include it in pacman config!"
-  fi
-else
-  # Manually install yay from AUR if not already available
-  if ! command -v yay &>/dev/null; then
-    cd /tmp
-    rm -rf yay-bin
-    git clone https://aur.archlinux.org/yay-bin.git
-    cd yay-bin
-    makepkg -si --noconfirm
-    cd -
-    rm -rf yay-bin
-    cd ~
   fi
 fi

@@ -12,8 +12,7 @@ source $OMARCHY_INSTALL/preflight/trap-errors.sh
 source $OMARCHY_INSTALL/preflight/chroot.sh
 source $OMARCHY_INSTALL/preflight/mirrorlist.sh
 source $OMARCHY_INSTALL/preflight/guard.sh
-source $OMARCHY_INSTALL/preflight/pacman.sh
-source $OMARCHY_INSTALL/preflight/aur.sh
+source $OMARCHY_INSTALL/preflight/repositories.sh
 source $OMARCHY_INSTALL/preflight/migrations.sh
 
 # Configuration
