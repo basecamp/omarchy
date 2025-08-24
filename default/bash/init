@@ -6,6 +6,10 @@ if command -v zoxide &> /dev/null; then
   eval "$(zoxide init bash)"
 fi
 
+if command -v atuin &> /dev/null; then
+  eval "$(atuin init bash)"
+fi
+
 if command -v fzf &> /dev/null; then
   if [[ -f /usr/share/fzf/completion.bash ]]; then
     source /usr/share/fzf/completion.bash
