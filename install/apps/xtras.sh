@@ -7,8 +7,7 @@ if [ -z "$OMARCHY_BARE" ]; then
     xournalpp localsend-bin
 
   # Packages known to be flaky or having key signing issues are run one-by-one
-  # FIXME: Add pinta back to this list when we have dealt with certificate issue
-  for pkg in typora spotify; do
+  for pkg in typora spotify pinta; do
     yay -S --noconfirm --needed "$pkg" ||
       echo -e "\e[31mFailed to install $pkg. Continuing without!\e[0m"
   done
