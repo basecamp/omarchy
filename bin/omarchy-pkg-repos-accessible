@@ -2,18 +2,25 @@
 
 echo "Ensuring all package repositories are available..."
 
+# Backoff sequence in seconds
+BACKOFFS=(10 30 60 300 600)
+
 # Ensure Arch mirror is available
+i=0
 while true; do
   if curl -sfI -A "omarchy-update" \
     https://geo.mirror.pkgbuild.com/core/os/x86_64/core.db >/dev/null; then
     break
   else
-    echo -e "\e[31mArch mirror is unavailable. Retrying in 20 seconds...\e[0m"
-    sleep 20
+    wait=${BACKOFFS[$i]:-${BACKOFFS[-1]}}
+    echo -e "\e[31mArch mirror is unavailable. Retrying in $wait seconds...\e[0m"
+    sleep "$wait"
+    ((i++))
   fi
 done
 
 # Ensure AUR is available
+i=0
 while true; do
   if curl -sfI --connect-timeout 30 -A "omarchy-update" https://aur.archlinux.org >/dev/null &&
     curl -sf -A "omarchy-update" \
@@ -21,7 +28,9 @@ while true; do
     jq -e '.type=="info"' >/dev/null; then
     break
   else
-    echo -e "\e[31mAUR is unavailable. Retrying in 20 seconds...\e[0m"
-    sleep 20
+    wait=${BACKOFFS[$i]:-${BACKOFFS[-1]}}
+    echo -e "\e[31mAUR is unavailable. Retrying in $wait seconds...\e[0m"
+    sleep "$wait"
+    ((i++))
   fi
 done
