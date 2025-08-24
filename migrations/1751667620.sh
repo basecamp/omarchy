@@ -1,6 +1,6 @@
 echo "Switching from vlc to mpv for the default video player"
 if ! command -v mpv &>/dev/null; then
-  yay -Rns --noconfirm vlc
+  sudo pacman -Rns --noconfirm vlc
   rm ~/.local/share/applications/vlc.desktop
   sudo pacman -S --noconfirm mpv
   xdg-mime default mpv.desktop video/mp4
