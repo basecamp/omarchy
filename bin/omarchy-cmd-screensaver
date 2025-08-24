@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if ! command -v tte &>/dev/null; then
+if command -v tte &>/dev/null; then
   while true; do
     effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
     tte -i ~/.config/omarchy/branding/screensaver.txt \
