@@ -6,39 +6,6 @@ set -e
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 
-# Give people a chance to retry running the installation
-catch_errors() {
-  echo -e "\n\e[31mOmarchy installation failed!\e[0m"
-  echo
-  echo "This command halted with exit code $?:"
-  echo "$BASH_COMMAND"
-  echo
-  echo "Get help from the community via QR code or at https://discord.gg/tXFUdasqhY"
-  echo "                                 "
-  echo "    █▀▀▀▀▀█ ▄ ▄ ▀▄▄▄█ █▀▀▀▀▀█    "
-  echo "    █ ███ █ ▄▄▄▄▀▄▀▄▀ █ ███ █    "
-  echo "    █ ▀▀▀ █ ▄█  ▄█▄▄▀ █ ▀▀▀ █    "
-  echo "    ▀▀▀▀▀▀▀ ▀▄█ █ █ █ ▀▀▀▀▀▀▀    "
-  echo "    ▀▀█▀▀▄▀▀▀▀▄█▀▀█  ▀ █ ▀ █     "
-  echo "    █▄█ ▄▄▀▄▄ ▀ ▄ ▀█▄▄▄▄ ▀ ▀█    "
-  echo "    ▄ ▄▀█ ▀▄▀▀▀▄ ▄█▀▄█▀▄▀▄▀█▀    "
-  echo "    █ ▄▄█▄▀▄█ ▄▄▄  ▀ ▄▀██▀ ▀█    "
-  echo "    ▀ ▀   ▀ █ ▀▄  ▀▀█▀▀▀█▄▀      "
-  echo "    █▀▀▀▀▀█ ▀█  ▄▀▀ █ ▀ █▄▀██    "
-  echo "    █ ███ █ █▀▄▄▀ █▀███▀█▄██▄    "
-  echo "    █ ▀▀▀ █ ██  ▀ █▄█ ▄▄▄█▀ █    "
-  echo "    ▀▀▀▀▀▀▀ ▀ ▀ ▀▀▀  ▀ ▀▀▀▀▀▀    "
-  echo "                                 "
-
-  if [[ -n $OMARCHY_BARE ]]; then
-    echo "You can retry by running: OMARCHY_BARE=true bash ~/.local/share/omarchy/install.sh"
-  else
-    echo "You can retry by running: bash ~/.local/share/omarchy/install.sh"
-  fi
-}
-
-trap catch_errors ERR
-
 show_logo() {
   clear
   tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
@@ -51,6 +18,7 @@ show_subtext() {
 }
 
 # Install prerequisites
+source $OMARCHY_INSTALL/preflight/trap-errors.sh
 source $OMARCHY_INSTALL/preflight/chroot.sh
 source $OMARCHY_INSTALL/preflight/mirrorlist.sh
 source $OMARCHY_INSTALL/preflight/guard.sh
