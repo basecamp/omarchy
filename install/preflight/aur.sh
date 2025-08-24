@@ -3,10 +3,22 @@
 # Install build tools
 sudo pacman -Sy --needed --noconfirm base-devel
 
+# Ensure Arch mirror is available
+while true; do
+  if curl -sfI -A "omarchy-update" \
+    https://geo.mirror.pkgbuild.com/core/os/x86_64/core.db >/dev/null; then
+    break
+  else
+    echo -e "\n\e[31mArch mirror is unavailable. Retrying in 10 seconds...\e[0m"
+    sleep 10
+  fi
+done
+
 # Ensure AUR is available
 while true; do
-  if curl -s --connect-timeout 30 --head -A "omarchy-update" https://aur.archlinux.org >/dev/null &&
-    curl -sf -A "omarchy-update" "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" |
+  if curl -sfI --connect-timeout 30 -A "omarchy-update" https://aur.archlinux.org >/dev/null &&
+    curl -sf -A "omarchy-update" \
+      "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" |
     jq -e '.type=="info"' >/dev/null; then
     break
   else
