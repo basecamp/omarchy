@@ -11,7 +11,7 @@ if ! pacman -Q gnome-themes-extra &>/dev/null; then
 fi
 
 # Allow icons to match the theme
-if ! yay -! yaru-icon-theme &>/dev/null; then
+if ! pacman -Q yaru-icon-theme &>/dev/null; then
   sudo pacman -S --noconfirm yaru-icon-theme
 fi
 
