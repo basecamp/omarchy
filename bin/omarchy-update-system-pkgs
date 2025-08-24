@@ -14,5 +14,5 @@ else
 fi
 
 echo -e "\e[32m\nRemove orphan system packages\e[0m"
-sudo pacman -Rs $(pacman -Qtdq)
+sudo pacman -Rs --noconfirm $(pacman -Qtdq)
 echo
