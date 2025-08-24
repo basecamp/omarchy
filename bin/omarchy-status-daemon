@@ -13,13 +13,12 @@ mkdir -p "$STATE_DIR"
 update_all_status_files() {
   "$SCRIPT_DIR/omarchy-status-dnd" >"$STATE_DIR/dnd"
   "$SCRIPT_DIR/omarchy-status-nightlight" >"$STATE_DIR/nightlight"
-  "$SCRIPT_DIR/omarchy-status-recording" >"$STATE_DIR/recording"
   "$SCRIPT_DIR/omarchy-status-idle" >"$STATE_DIR/idle"
 }
 
 # Generate hash for change detection
 get_status_hash() {
-  echo "$(pgrep -c "mako|hyprsunset|wl-screenrec|wf-recorder|obs|hypridle" 2>/dev/null)$(makoctl mode 2>/dev/null | grep -c 'do-not-disturb')$(hyprctl hyprsunset temperature 2>/dev/null)"
+  echo "$($(makoctl mode 2>/dev/null | grep -c 'do-not-disturb')$(hyprctl hyprsunset temperature 2>/dev/null)"
 }
 
 # Start background monitoring daemon
@@ -49,7 +48,7 @@ start_daemon() {
 MODULE="$1"
 
 if [ -z "$MODULE" ]; then
-  echo "Usage: $0 [dnd|nightlight|recording|idle]"
+  echo "Usage: $0 [dnd|nightlight|idle]"
   exit 1
 fi
 

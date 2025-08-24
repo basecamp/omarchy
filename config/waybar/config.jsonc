@@ -124,7 +124,6 @@
     "modules": [
       "custom/status-dnd",
       "custom/status-nightlight",
-      "custom/status-recording",
       "custom/status-idle"
     ]
   },
@@ -139,12 +138,6 @@
     "return-type": "json",
     "interval": 1,
     "on-click": "omarchy-toggle-nightlight"
-  },
-  "custom/status-recording": {
-    "exec": "omarchy-status-daemon recording",
-    "return-type": "json",
-    "interval": 1,
-    "on-click": "omarchy-cmd-screenrecord-stop"
   },
   "custom/status-idle": {
     "exec": "omarchy-status-daemon idle",
