@@ -28,10 +28,6 @@ mkdir -p ~/.config/omarchy/current
 ln -snf ~/.config/omarchy/themes/tokyo-night ~/.config/omarchy/current/theme
 ln -snf ~/.config/omarchy/current/theme/backgrounds/1-scenery-pink-lakeside-sunset-lake-landscape-scenic-panorama-7680x3215-144.png ~/.config/omarchy/current/background
 
-# Set chromium for current theme
-chromium --no-startup-window --set-color-scheme="dark"
-chromium --no-startup-window --set-theme-color="$(<~/.config/omarchy/current/theme/chromium.theme)"
-
 # Set specific app links for current theme
 ln -snf ~/.config/omarchy/current/theme/neovim.lua ~/.config/nvim/lua/plugins/theme.lua
 
