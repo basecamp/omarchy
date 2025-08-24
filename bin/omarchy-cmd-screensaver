@@ -15,16 +15,4 @@ if command -v tte &>/dev/null; then
       fi
     done
   done
-else
-  # Poor man's screensaver in case we don't have tte
-  clear
-  while true; do
-    echo -e "\033[32m"
-    cat ~/.config/omarchy/branding/screensaver.txt
-    echo -e "\033[0m"
-    echo
-
-    # Wait up to 2 seconds, quit if any key is pressed
-    read -t 2 -n 1 key && break
-  done
 fi
