@@ -1,10 +1,13 @@
 #!/bin/bash
 
-# omarchy-setup-dns: Configure DNS settings for Omarchy
-# Usage: omarchy-setup-dns [cloudflare|dhcp|custom]
+if [[ -z $1 ]]; then
+  dns=$(gum choose --height 5 --header "Select DNS provider" Cloudflare DHCP Custom)
+else
+  dns=$1
+fi
 
-case "${1:-dhcp}" in
-cloudflare)
+case "$dns" in
+Cloudflare)
   sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com
@@ -12,10 +15,9 @@ FallbackDNS=8.8.8.8#dns.google 8.8.4.4#dns.google
 DNSOverTLS=opportunistic
 EOF
   sudo systemctl restart systemd-resolved
-  notify-send "   Using Cloudflare DNS"
   ;;
 
-dhcp)
+DHCP)
   sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=
@@ -23,10 +25,9 @@ FallbackDNS=
 DNSOverTLS=no
 EOF
   sudo systemctl restart systemd-resolved
-  notify-send "   Using DHCP DNS"
   ;;
 
-custom)
+Custom)
   echo "Enter your DNS servers (space-separated, e.g. '192.168.1.1 1.1.1.1'):"
   read -r dns_servers
 
@@ -41,17 +42,7 @@ DNS=$dns_servers
 FallbackDNS=1.1.1.1 8.8.8.8
 EOF
   sudo systemctl restart systemd-resolved
-  notify-send "󰢩   Using Custom DNS: $dns_servers"
 
-  ;;
-
-*)
-  echo "Usage: omarchy-setup-dns [cloudflare|dhcp|custom|--remove]"
-  echo ""
-  echo "  cloudflare  Use Cloudflare DNS with DNS over TLS"
-  echo "  dhcp        Use router/DHCP DNS (default)"
-  echo "  custom      Set custom DNS servers"
-  exit 1
   ;;
 esac
 

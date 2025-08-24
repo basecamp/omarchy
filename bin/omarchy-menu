@@ -143,7 +143,7 @@ show_setup_menu() {
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
-  *DNS*) show_setup_dns_menu ;;
+  *DNS*) present_terminal omarchy-setup-dns ;;
   *Config*) show_setup_config_menu ;;
   *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
   *Fido2*) present_terminal omarchy-setup-fido2 ;;
@@ -159,14 +159,6 @@ show_setup_power_menu() {
   else
     powerprofilesctl set "$profile"
   fi
-}
-
-show_setup_dns_menu() {
-  case $(menu "DNS" "  Cloudflare\n󰛳  DHCP\n󰢩  Custom") in
-  *Cloudflare*) edit_in_nvim ~/.config/hypr/hyprland.conf ;;
-  *DHCP*) edit_in_nvim ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
-  *DHCP*) edit_in_nvim ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
-  esac
 }
 
 show_setup_config_menu() {
