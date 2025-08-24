@@ -1,8 +1,6 @@
 #!/bin/bash
 
-if curl -sf --connect-timeout 30 -A "omarchy-update" \
-  "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" |
-  jq -e '.type=="multiinfo"' >/dev/null; then
+if omarchy-pkg-aur-accessible; then
   if [ -z "$OMARCHY_BARE" ]; then
     yay -S --noconfirm --needed \
       1password-beta 1password-cli \
