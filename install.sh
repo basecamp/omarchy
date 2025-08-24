@@ -18,6 +18,7 @@ show_subtext() {
 }
 
 # Install prerequisites
+source $OMARCHY_INSTALL/preflight/show-env.sh
 source $OMARCHY_INSTALL/preflight/trap-errors.sh
 source $OMARCHY_INSTALL/preflight/chroot.sh
 source $OMARCHY_INSTALL/preflight/mirrorlist.sh
