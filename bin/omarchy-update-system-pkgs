@@ -3,3 +3,7 @@
 echo -e "\e[32m\nUpdate system packages\e[0m"
 yay -Syu --noconfirm
 echo
+
+echo -e "\e[32m\nRemove orphan system packages\e[0m"
+sudo pacman -Rs $(pacman -Qtdq)
+echo
