@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Exit immediately if a command exits with a non-zero status
-# set -e
+set -e
 
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 OMARCHY_INSTALL=~/.local/share/omarchy/install
@@ -9,10 +9,11 @@ OMARCHY_INSTALL=~/.local/share/omarchy/install
 # Give people a chance to retry running the installation
 catch_errors() {
   echo -e "\n\e[31mOmarchy installation failed!\e[0m"
-  echo "The failing command was: \`$BASH_COMMAND\` (exit code: $?)"
-  echo "See your installation log: ~/.local/state/omarchy/installation.log"
   echo
-  echo "Get help from the community (or scan QR code below): https://discord.gg/tXFUdasqhY"
+  echo "This command halted with exit code $?:"
+  echo "$BASH_COMMAND"
+  echo
+  echo "Get help from the community via QR code or at https://discord.gg/tXFUdasqhY"
   echo "                                 "
   echo "    █▀▀▀▀▀█ ▄ ▄ ▀▄▄▄█ █▀▀▀▀▀█    "
   echo "    █ ███ █ ▄▄▄▄▀▄▀▄▀ █ ███ █    "
@@ -49,34 +50,35 @@ show_subtext() {
   echo
 }
 
-# Start logging
-source $OMARCHY_INSTALL/log/before-install.sh
-
 # Install prerequisites
 source $OMARCHY_INSTALL/preflight/chroot.sh
 source $OMARCHY_INSTALL/preflight/mirrorlist.sh
-source $OMARCHY_INSTALL/preflight/gum.sh
 source $OMARCHY_INSTALL/preflight/guard.sh
 source $OMARCHY_INSTALL/preflight/aur.sh
-source $OMARCHY_INSTALL/preflight/tte.sh
 source $OMARCHY_INSTALL/preflight/migrations.sh
 
 # Configuration
-show_logo beams 240
-show_subtext "Let's install Omarchy!"
-source $OMARCHY_INSTALL/config/identification.sh
 source $OMARCHY_INSTALL/config/config.sh
 source $OMARCHY_INSTALL/config/branding.sh
-source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
-source $OMARCHY_INSTALL/config/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/network.sh
 source $OMARCHY_INSTALL/config/power.sh
+source $OMARCHY_INSTALL/config/git.sh
+source $OMARCHY_INSTALL/config/gpg.sh
 source $OMARCHY_INSTALL/config/usb-autosuspend.sh
 source $OMARCHY_INSTALL/config/timezones.sh
-source $OMARCHY_INSTALL/config/login.sh
 source $OMARCHY_INSTALL/config/nvidia.sh
 source $OMARCHY_INSTALL/config/increase-sudo-tries.sh
+source $OMARCHY_INSTALL/config/increase-lockout-limit.sh
 source $OMARCHY_INSTALL/config/ignore-power-button.sh
+source $OMARCHY_INSTALL/config/ssh-flakiness.sh
+source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
+source $OMARCHY_INSTALL/config/fix-fkeys.sh
+source $OMARCHY_INSTALL/config/xcompose.sh
+
+# Login
+source $OMARCHY_INSTALL/login/plymouth.sh
+source $OMARCHY_INSTALL/login/limine-snapper.sh
+source $OMARCHY_INSTALL/login/alt-bootloaders.sh
 
 # Development
 source $OMARCHY_INSTALL/development/terminal.sh
@@ -109,17 +111,14 @@ if ping -c5 omarchy.org &>/dev/null; then
   yay -Syu --noconfirm
 fi
 
-# Stop logging
-source $OMARCHY_INSTALL/log/after-install.sh
-
 # Reboot
 show_logo laseretch 920
 show_subtext "You're done! So we're ready to reboot now..."
 
 if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
   sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
-  gum confirm "Have you unplugged the USB installer?"
+  echo -e "\nRemember to remove USB installer!"
 fi
 
-sleep 2
+sleep 5
 reboot

@@ -1,0 +1,27 @@
+#!/bin/bash
+
+COMMAND="$1"
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+
+if [[ -z $COMMAND ]]; then
+  echo "Usage: omarchy-snapshot <create|restore>" >&2
+  exit 1
+fi
+
+if ! command -v snapper &>/dev/null; then
+  echo "You need Snapper installed to be able to use omarchy-snapshot."
+  exit 127
+fi
+
+case "$COMMAND" in
+create)
+  DESC="$(omarchy-version)"
+
+  for config in root home; do
+    sudo snapper -c "$config" create -c number -d "$DESC"
+  done
+  ;;
+restore)
+  sudo limine-snapper-restore
+  ;;
+esac
