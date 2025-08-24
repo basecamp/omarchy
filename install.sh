@@ -6,17 +6,6 @@ set -eE
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 
-show_logo() {
-  clear
-  tte -i ~/.local/share/omarchy/logo.txt --frame-rate ${2:-120} ${1:-expand}
-  echo
-}
-
-show_subtext() {
-  echo "$1" | tte --frame-rate ${3:-640} ${2:-wipe}
-  echo
-}
-
 # Install prerequisites
 source $OMARCHY_INSTALL/preflight/show-env.sh
 source $OMARCHY_INSTALL/preflight/trap-errors.sh
@@ -82,8 +71,8 @@ if ping -c5 omarchy.org &>/dev/null; then
 fi
 
 # Reboot
-show_logo laseretch 920
-show_subtext "You're done! So we're ready to reboot now..."
+omarchy-show-logo
+echo -e "\n\e[31mYou're done! So we're ready to reboot now...\e[0m"
 
 if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
   sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
