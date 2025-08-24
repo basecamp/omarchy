@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if ! lspci | grep -Eqi 'nvidia|intel.*graphics' && ! command -v wl-screenrec >/dev/null; then
+  notify-send "Installing wl-screenrec in order to make screen recordings..."
+  yay -S --noconfirm wl-screenrec
+fi
+
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
 
