@@ -31,7 +31,4 @@ catch_errors() {
   fi
 }
 
-if [ -z "${OMARCHY_CHROOT_INSTALL:-}" ]; then
-  # ISO installer has its own trap we need to stay in the chroot
-  trap catch_errors ERR
-fi
+trap catch_errors ERR
