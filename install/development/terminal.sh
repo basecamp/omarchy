@@ -6,5 +6,5 @@ sudo pacman -S --noconfirm --needed \
   wl-clipboard fastfetch btop \
   man tldr less whois plocate \
   starship bash-completion \
-  gum \
+  gum python-poetry-core \
   alacritty
