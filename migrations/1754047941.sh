@@ -1,6 +1,6 @@
 echo "Add icon theme coloring"
 
-if ! yay -! yaru-icon-theme &>/dev/null; then
+if ! pacman -Q yaru-icon-theme &>/dev/null; then
   sudo pacman -S --noconfirm yaru-icon-theme
 
   if [[ -f ~/.config/omarchy/current/theme/icons.theme ]]; then
