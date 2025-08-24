@@ -11,7 +11,7 @@ Cloudflare)
   sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com
-FallbackDNS=8.8.8.8#dns.google 8.8.4.4#dns.google
+FallbackDNS=9.9.9.9 149.112.112.112
 DNSOverTLS=opportunistic
 EOF
   
@@ -63,7 +63,7 @@ Custom)
   sudo tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
 DNS=$dns_servers
-FallbackDNS=1.1.1.1 8.8.8.8
+FallbackDNS=9.9.9.9 149.112.112.112
 EOF
   
   # Ensure network interfaces don't override our DNS settings
