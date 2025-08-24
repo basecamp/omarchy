@@ -12,8 +12,8 @@
 
 # --- GPU Detection ---
 if [ -n "$(lspci | grep -i 'nvidia')" ]; then
-  show_logo
-  show_subtext "Install NVIDIA drivers..."
+  omarchy-show-logo
+  echo -e "\n\e[31mInstall NVIDIA drivers..."
 
   # --- Driver Selection ---
   # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
