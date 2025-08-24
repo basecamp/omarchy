@@ -1,5 +1,5 @@
 #!/bin/bash
 
-curl -sf --connect-timeout 30 -A "omarchy-update" \
+curl -sf --connect-timeout 30 --retry 3 --retry-delay 3 -A "omarchy-update" \
   "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" |
   jq -e empty >/dev/null
