@@ -1,0 +1,27 @@
+#!/bin/bash
+
+echo "Ensuring all package repositories are available..."
+
+# Ensure Arch mirror is available
+while true; do
+  if curl -sfI -A "omarchy-update" \
+    https://geo.mirror.pkgbuild.com/core/os/x86_64/core.db >/dev/null; then
+    break
+  else
+    echo -e "\e[31mArch mirror is unavailable. Retrying in 20 seconds...\e[0m"
+    sleep 20
+  fi
+done
+
+# Ensure AUR is available
+while true; do
+  if curl -sfI --connect-timeout 30 -A "omarchy-update" https://aur.archlinux.org >/dev/null &&
+    curl -sf -A "omarchy-update" \
+      "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" |
+    jq -e '.type=="info"' >/dev/null; then
+    break
+  else
+    echo -e "\e[31mAUR is unavailable. Retrying in 20 seconds...\e[0m"
+    sleep 20
+  fi
+done

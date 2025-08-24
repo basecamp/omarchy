@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Idle lock status indicator
+
+if command -v hypridle >/dev/null 2>&1 && ! pgrep -x hypridle >/dev/null 2>&1; then
+  echo '{"text": "󱫖", "tooltip": "Idle lock disabled", "class": "status-idle"}'
+else
+  echo '{"text": "", "tooltip": "", "class": "hidden"}'
+fi

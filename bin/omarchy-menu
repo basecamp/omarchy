@@ -22,7 +22,7 @@ menu() {
 }
 
 terminal() {
-  alacritty --class Omarchy -e $1
+  alacritty --class Omarchy -e "$@"
 }
 
 present_terminal() {
@@ -32,10 +32,6 @@ present_terminal() {
 edit_in_nvim() {
   notify-send "Editing config file" "$1"
   alacritty -e nvim "$1"
-}
-
-open_web() {
-  setsid chromium --new-window --app="$1" &
 }
 
 install() {
@@ -53,20 +49,22 @@ install_font() {
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) omarchy-menu-keybindings ;;
-  *Omarchy*) open_web "https://manuals.omamix.org/2/the-omarchy-manual" ;;
-  *Hyprland*) open_web "https://wiki.hypr.land/" ;;
-  *Arch*) open_web "https://wiki.archlinux.org/title/Main_page" ;;
-  *Bash*) open_web "https://devhints.io/bash" ;;
-  *Neovim*) open_web "https://www.lazyvim.org/keymaps" ;;
+  *Omarchy*) omarchy-launch-webapp "https://learn.omacom.io/2/the-omarchy-manual" ;;
+  *Hyprland*) omarchy-launch-webapp "https://wiki.hypr.land/" ;;
+  *Arch*) omarchy-launch-webapp "https://wiki.archlinux.org/title/Main_page" ;;
+  *Bash*) omarchy-launch-webapp "https://devhints.io/bash" ;;
+  *Neovim*) omarchy-launch-webapp "https://www.lazyvim.org/keymaps" ;;
   *) show_main_menu ;;
   esac
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background") in
+  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
+  *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
+  *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
   esac
 }
@@ -117,10 +115,10 @@ show_screenrecord_menu() {
 
 show_toggle_menu() {
   case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
-  *Screensaver*) omarchy-launch-screensaver ;;
+  *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
-  *Bar*) pkill -SIGUSR1 waybar ;;
+  *Bar*) omarchy-toggle-waybar ;;
   *) show_main_menu ;;
   esac
 }
@@ -133,8 +131,14 @@ show_setup_menu() {
 
   case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
-  *Wifi*) alacritty --class=Impala -e impala ;;
-  *Bluetooth*) blueberry ;;
+  *Wifi*)
+    rfkill unblock wifi
+    alacritty --class=Impala -e impala
+    ;;
+  *Bluetooth*)
+    rfkill unblock bluetooth
+    blueberry
+    ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
@@ -180,9 +184,10 @@ show_setup_config_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
+  *TUI*) present_terminal omarchy-tui-install ;;
   *Service*) show_install_service_menu ;;
   *Style*) show_install_style_menu ;;
   *Development*) show_install_development_menu ;;
@@ -194,7 +199,8 @@ show_install_menu() {
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Tailscale") in
+  case $(menu "Install" "󱨑  Firewall\n  Dropbox\n  Tailscale") in
+  *Firewall*) present_terminal omarchy-install-firewall ;;
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
   *) show_install_menu ;;
@@ -260,7 +266,7 @@ show_install_development_menu() {
   *Go*) present_terminal "omarchy-install-dev-env go" ;;
   *PHP*) show_install_php_menu ;;
   *Python*) present_terminal "omarchy-install-dev-env python" ;;
-  *Elixir*) present_terminal "omarchy-install-dev-env elixir" ;;
+  *Elixir*) show_install_elixir_menu ;;
   *Zig*) present_terminal "omarchy-install-dev-env zig" ;;
   *Rust*) present_terminal "omarchy-install-dev-env rust" ;;
   *Java*) present_terminal "omarchy-install-dev-env java" ;;
@@ -288,10 +294,19 @@ show_install_php_menu() {
   esac
 }
 
+show_install_elixir_menu() {
+  case $(menu "Install" "  Elixir\n  Phoenix") in
+  *Elixir*) present_terminal "omarchy-install-dev-env elixir" ;;
+  *Phoenix*) present_terminal "omarchy-install-dev-env phoenix" ;;
+  *) show_install_development_menu ;;
+  esac
+}
+
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
+  *TUI*) present_terminal omarchy-tui-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
   *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
   *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
@@ -336,8 +351,9 @@ show_update_config_menu() {
 }
 
 show_system_menu() {
-  case $(menu "System" "  Lock\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
+  case $(menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
   *Lock*) omarchy-lock-screen ;;
+  *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
@@ -365,7 +381,7 @@ go_to_menu() {
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
   *system*) show_system_menu ;;
-  *about*) gtk-launch About.desktop ;;
+  *about*) terminal bash -c 'fastfetch; read -n 1 -s' ;;
   esac
 }
 

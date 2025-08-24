@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-instal-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|rust|java|ocaml|dotnet>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet>" >&2
   exit 1
 fi
 
@@ -77,13 +77,25 @@ python)
   echo -e "Installing Python...\n"
   mise use --global python@latest
   echo -e "\nInstalling uv...\n"
-  wget -qO- https://astral.sh/uv/install.sh | sh
+  curl -fsSL https://astral.sh/uv/install.sh | sh
   ;;
 elixir)
   echo -e "Installing Elixir...\n"
   mise use --global erlang@latest
   mise use --global elixir@latest
   mise x elixir -- mix local.hex --force
+  ;;
+phoenix)
+  echo -e "Installing Phoenix Framework...\n"
+  # Ensure Erlang/Elixir first
+  mise use --global erlang@latest
+  mise use --global elixir@latest
+  # Hex & Rebar
+  mise x elixir -- mix local.hex --force
+  mise x elixir -- mix local.rebar --force
+  # Phoenix project (phx_new)
+  mise x elixir -- mix archive.install hex phx_new --force
+  echo -e "\nYou can now run: mix phx.new my_app"
   ;;
 rust)
   echo -e "Installing Rust...\n"
