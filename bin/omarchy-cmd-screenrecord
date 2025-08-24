@@ -18,7 +18,11 @@ screenrecording() {
   else
     if ! command -v wl-screenrec >/dev/null; then
       notify-send "Installing wl-screenrec in order to make screen recordings..."
-      yay -S --noconfirm wl-screenrec
+      if omarchy-pkg-aur-accessible; then
+        yay -S --noconfirm wl-screenrec
+      else
+        notify-send "Installing wl-screenrec failed due to AUR being unavailable..."
+      fi
     fi
 
     wl-screenrec -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@"
