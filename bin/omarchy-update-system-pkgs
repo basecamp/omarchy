@@ -13,6 +13,9 @@ else
   echo
 fi
 
-echo -e "\e[32m\nRemove orphan system packages\e[0m"
-sudo pacman -Rs --noconfirm $(pacman -Qtdq)
-echo
+orphans=$(pacman -Qtdq)
+if [[ -n $orphans ]]; then
+  echo -e "\e[32m\nRemove orphan system packages\e[0m"
+  sudo pacman -Rs --noconfirm "$orphans"
+  echo
+fi
