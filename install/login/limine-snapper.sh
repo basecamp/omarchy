@@ -85,10 +85,11 @@ EOF
 fi
 
 # Add UKI entry to UEFI machines to skip bootloader showing on normal boot
-if [ -n "$EFI" ] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy; then
-  sudo efibootmgr --create \
-    --disk "$(findmnt -n -o SOURCE /boot | sed 's/[0-9]*$//')" \
-    --part "$(findmnt -n -o SOURCE /boot | grep -o '[0-9]*$')" \
-    --label "Omarchy" \
-    --loader "\\EFI\\Linux\\$(cat /etc/machine-id)_linux.efi"
-fi
+# FIXME: Make this work on real hardware
+# if [ -n "$EFI" ] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy; then
+#   sudo efibootmgr --create \
+#     --disk "$(findmnt -n -o SOURCE /boot | sed 's/[0-9]*$//')" \
+#     --part "$(findmnt -n -o SOURCE /boot | grep -o '[0-9]*$')" \
+#     --label "Omarchy" \
+#     --loader "\\EFI\\Linux\\$(cat /etc/machine-id)_linux.efi"
+# fi
