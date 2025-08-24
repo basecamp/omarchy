@@ -85,9 +85,9 @@
     "break",
     {
       "type": "command",
-      "key": "│ ├Ø",
+      "key": "Ø Omarchy",
       "keyColor": "blue",
-      "text": "version=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/dev/null); echo \"Omarchy $version\""
+      "text": "version=$(git -C ~/.local/share/omarchy describe --tags --abbrev=0 2>/dev/null); echo \"$version\""
     },
     {
       "type": "command",
