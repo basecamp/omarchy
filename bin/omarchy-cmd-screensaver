@@ -20,7 +20,7 @@ else
   clear
   while true; do
     echo -e "\033[32m"
-    cat ~/.config/omarchy/screensaver.txt
+    cat ~/.config/omarchy/branding/screensaver.txt
     echo -e "\033[0m"
     echo
 
