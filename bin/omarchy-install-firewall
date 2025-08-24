@@ -5,7 +5,7 @@ if ! command -v ufw &>/dev/null; then
 fi
 
 if ! command -v ufw-docker &>/dev/null; then
-  yay -S --noconfirm ufw
+  yay -S --noconfirm ufw-docker
 fi
 
 # Allow nothing in, everything out
