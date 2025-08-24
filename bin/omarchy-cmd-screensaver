@@ -1,9 +1,9 @@
 #!/bin/bash
 
-if command -v tte &>/dev/null; then
+if ! command -v tte &>/dev/null; then
   while true; do
     effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
-    tte -i ~/.local/share/omarchy/logo.txt \
+    tte -i ~/.config/omarchy/branding/screensaver.txt \
       --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
       "$effect" &
 
@@ -16,5 +16,15 @@ if command -v tte &>/dev/null; then
     done
   done
 else
-  gum spin --title "Can't find tte. Try: pip install terminaltexteffects" -- sleep 2
+  # Poor man's screensaver in case we don't have tte
+  clear
+  while true; do
+    echo -e "\033[32m"
+    cat ~/.config/omarchy/screensaver.txt
+    echo -e "\033[0m"
+    echo
+
+    # Wait up to 2 seconds, quit if any key is pressed
+    read -t 2 -n 1 key && break
+  done
 fi

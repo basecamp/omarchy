@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if ! command -v tzupdate &>/dev/null; then
+  yay -S --noconfirm --needed tzupdate
+fi
+
 sudo tzupdate
 new_timezone=$(timedatectl show -p Timezone --value)
+omarchy-restart-waybar
 notify-send "Timezone has been set to $new_timezone"
