@@ -53,7 +53,7 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
     "qt6-wayland"
   )
 
-  yay -S --needed --noconfirm "${PACKAGES_TO_INSTALL[@]}"
+  sudo pacman -S --needed --noconfirm "${PACKAGES_TO_INSTALL[@]}"
 
   # Configure modprobe for early KMS
   echo "options nvidia_drm modeset=1" | sudo tee /etc/modprobe.d/nvidia.conf >/dev/null

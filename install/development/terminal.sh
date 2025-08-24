@@ -1,6 +1,6 @@
 #!/bin/bash
 
-yay -S --noconfirm --needed \
+sudo pacman -S --noconfirm --needed \
   unzip inetutils impala \
   fd eza fzf ripgrep zoxide bat dust jq xmlstarlet \
   wl-clipboard fastfetch btop \

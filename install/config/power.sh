@@ -2,7 +2,7 @@
 
 # Setting the performance profile can make a big difference. By default, most systems seem to start in balanced mode,
 # even if they're not running off a battery. So let's make sure that's changed to performance.
-yay -S --noconfirm python-gobject power-profiles-daemon
+sudo pacman -S --noconfirm python-gobject power-profiles-daemon
 
 # FIXME: Can't set powerprofilesctl during CHROOT, must do it afterwards
 if [ -z "${OMARCHY_CHROOT_INSTALL:-}" ]; then

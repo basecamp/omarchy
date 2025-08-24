@@ -5,5 +5,5 @@ sudo sed -i '/^\s*#\[multilib\]/,/^$/{s/^\s*#//}' /etc/pacman.conf
 sudo pacman -Sy
 
 echo "Now pick dependencies matching your graphics card"
-yay -S steam
+sudo pacman -S steam
 setsid gtk-launch steam >/dev/null 2>&1 &
