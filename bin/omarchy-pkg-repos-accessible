@@ -8,8 +8,8 @@ while true; do
     https://geo.mirror.pkgbuild.com/core/os/x86_64/core.db >/dev/null; then
     break
   else
-    echo -e "\e[31mArch mirror is unavailable. Retrying in 10 seconds...\e[0m"
-    sleep 10
+    echo -e "\e[31mArch mirror is unavailable. Retrying in 20 seconds...\e[0m"
+    sleep 20
   fi
 done
 
@@ -21,7 +21,7 @@ while true; do
     jq -e '.type=="info"' >/dev/null; then
     break
   else
-    echo -e "\e[31mAUR is unavailable. Retrying in 10 seconds...\e[0m"
-    sleep 10
+    echo -e "\e[31mAUR is unavailable. Retrying in 20 seconds...\e[0m"
+    sleep 20
   fi
 done
