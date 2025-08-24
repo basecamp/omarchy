@@ -72,7 +72,7 @@ fi
 
 # Reboot
 omarchy-show-logo
-echo -e "\n\e[31mYou're done! So we're ready to reboot now...\e[0m"
+echo -e "\n\e[32mYou're done! So we're ready to reboot now...\e[0m"
 
 if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
   sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
