@@ -29,6 +29,9 @@ if [[ "$(uname -m)" == "x86_64" ]] && [ -z "$DISABLE_CHAOTIC" ]; then
     if ! grep -q "chaotic-aur" /etc/pacman.conf; then
       echo -e '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist' | sudo tee -a /etc/pacman.conf >/dev/null
     fi
+
+    # Refresh all repos
+    sudo pacman -Sy
   else
     echo -e "Failed to install Chaotic-AUR, so won't include it in pacman config!"
   fi
