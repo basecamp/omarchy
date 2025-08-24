@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Install build tools
-sudo pacman -Sy --needed --noconfirm base-devel
+sudo pacman -Sy --needed --noconfirm base-devel jq
 
 # Ensure package repositories are accessible before proceeding
 omarchy-pkg-repos-accessible
