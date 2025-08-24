@@ -1,59 +1,57 @@
 #!/bin/bash
 
 # omarchy-setup-dns: Configure DNS settings for Omarchy
-# Usage: omarchy-setup-dns [cloudflare|dhcp|custom|--remove]
+# Usage: omarchy-setup-dns [cloudflare|dhcp|custom]
 
 case "${1:-dhcp}" in
-    cloudflare)
-        echo "Setting up Cloudflare DNS with DNS over TLS..."
-        sudo tee /etc/systemd/resolved.conf > /dev/null << 'EOF'
+cloudflare)
+  sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com
 FallbackDNS=8.8.8.8#dns.google 8.8.4.4#dns.google
 DNSOverTLS=opportunistic
 EOF
-        sudo systemctl restart systemd-resolved
-        echo "Cloudflare DNS configured successfully."
-        ;;
-    
-    dhcp|--remove)
-        echo "Setting up DHCP DNS (router DNS)..."
-        sudo tee /etc/systemd/resolved.conf > /dev/null << 'EOF'
+  sudo systemctl restart systemd-resolved
+  notify-send "   Using Cloudflare DNS"
+  ;;
+
+dhcp)
+  sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=
 FallbackDNS=
 DNSOverTLS=no
 EOF
-        sudo systemctl restart systemd-resolved
-        echo "DHCP DNS configured successfully."
-        ;;
-    
-    custom)
-        echo "Enter your DNS servers (space-separated, e.g. '192.168.1.1 1.1.1.1'):"
-        read -r dns_servers
-        
-        if [[ -z "$dns_servers" ]]; then
-            echo "Error: No DNS servers provided."
-            exit 1
-        fi
-        
-        echo "Setting up custom DNS..."
-        sudo tee /etc/systemd/resolved.conf > /dev/null << EOF
+  sudo systemctl restart systemd-resolved
+  notify-send "   Using DHCP DNS"
+  ;;
+
+custom)
+  echo "Enter your DNS servers (space-separated, e.g. '192.168.1.1 1.1.1.1'):"
+  read -r dns_servers
+
+  if [[ -z "$dns_servers" ]]; then
+    echo "Error: No DNS servers provided."
+    exit 1
+  fi
+
+  sudo tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
 DNS=$dns_servers
 FallbackDNS=1.1.1.1 8.8.8.8
 EOF
-        sudo systemctl restart systemd-resolved
-        echo "Custom DNS configured successfully."
-        ;;
-    
-    *)
-        echo "Usage: omarchy-setup-dns [cloudflare|dhcp|custom|--remove]"
-        echo ""
-        echo "  cloudflare  Use Cloudflare DNS with DNS over TLS"
-        echo "  dhcp        Use router/DHCP DNS (default)"
-        echo "  custom      Set custom DNS servers"
-        echo "  --remove    Reset to DHCP DNS"
-        exit 1
-        ;;
+  sudo systemctl restart systemd-resolved
+  notify-send "󰢩   Using Custom DNS: $dns_servers"
+
+  ;;
+
+*)
+  echo "Usage: omarchy-setup-dns [cloudflare|dhcp|custom|--remove]"
+  echo ""
+  echo "  cloudflare  Use Cloudflare DNS with DNS over TLS"
+  echo "  dhcp        Use router/DHCP DNS (default)"
+  echo "  custom      Set custom DNS servers"
+  exit 1
+  ;;
 esac
+

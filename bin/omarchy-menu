@@ -129,7 +129,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Config\n󰈷  Fingerprint\n  Fido2"
+  options="$options\n󰱔  DNS\n  Config\n󰈷  Fingerprint\n  Fido2"
 
   case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
@@ -139,6 +139,7 @@ show_setup_menu() {
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
+  *DNS*) show_setup_dns_menu ;;
   *Config*) show_setup_config_menu ;;
   *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
   *Fido2*) present_terminal omarchy-setup-fido2 ;;
@@ -154,6 +155,14 @@ show_setup_power_menu() {
   else
     powerprofilesctl set "$profile"
   fi
+}
+
+show_setup_dns_menu() {
+  case $(menu "DNS" "  Cloudflare\n󰛳  DHCP\n󰢩  Custom") in
+  *Cloudflare*) edit_in_nvim ~/.config/hypr/hyprland.conf ;;
+  *DHCP*) edit_in_nvim ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
+  *DHCP*) edit_in_nvim ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
+  esac
 }
 
 show_setup_config_menu() {
