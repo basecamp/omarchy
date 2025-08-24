@@ -14,6 +14,7 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
+yay -Sy
 pkg_names=$(yay -Slqa | fzf "${fzf_args[@]}")
 
 if [[ -n "$pkg_names" ]]; then

@@ -14,6 +14,7 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
+sudo pacman -Sy
 pkg_names=$(pacman -Slq | fzf "${fzf_args[@]}")
 
 if [[ -n "$pkg_names" ]]; then
