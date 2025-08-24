@@ -14,7 +14,24 @@ DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com
 FallbackDNS=8.8.8.8#dns.google 8.8.4.4#dns.google
 DNSOverTLS=opportunistic
 EOF
-  sudo systemctl restart systemd-resolved
+  
+  # Ensure network interfaces don't override our DNS settings
+  for file in /etc/systemd/network/*.network; do
+    [[ -f "$file" ]] || continue
+    if ! grep -q "^\[DHCPv4\]" "$file"; then continue; fi
+    
+    # Add UseDNS=no to DHCPv4 section if not present
+    if ! sed -n '/^\[DHCPv4\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
+      sudo sed -i '/^\[DHCPv4\]/a UseDNS=no' "$file"
+    fi
+    
+    # Add UseDNS=no to IPv6AcceptRA section if present
+    if grep -q "^\[IPv6AcceptRA\]" "$file" && ! sed -n '/^\[IPv6AcceptRA\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
+      sudo sed -i '/^\[IPv6AcceptRA\]/a UseDNS=no' "$file"
+    fi
+  done
+  
+  sudo systemctl restart systemd-networkd systemd-resolved
   ;;
 
 DHCP)
@@ -24,7 +41,14 @@ DNS=
 FallbackDNS=
 DNSOverTLS=no
 EOF
-  sudo systemctl restart systemd-resolved
+  
+  # Allow network interfaces to use DHCP DNS
+  for file in /etc/systemd/network/*.network; do
+    [[ -f "$file" ]] || continue
+    sudo sed -i '/^UseDNS=no/d' "$file"
+  done
+  
+  sudo systemctl restart systemd-networkd systemd-resolved
   ;;
 
 Custom)
@@ -41,7 +65,24 @@ Custom)
 DNS=$dns_servers
 FallbackDNS=1.1.1.1 8.8.8.8
 EOF
-  sudo systemctl restart systemd-resolved
+  
+  # Ensure network interfaces don't override our DNS settings
+  for file in /etc/systemd/network/*.network; do
+    [[ -f "$file" ]] || continue
+    if ! grep -q "^\[DHCPv4\]" "$file"; then continue; fi
+    
+    # Add UseDNS=no to DHCPv4 section if not present
+    if ! sed -n '/^\[DHCPv4\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
+      sudo sed -i '/^\[DHCPv4\]/a UseDNS=no' "$file"
+    fi
+    
+    # Add UseDNS=no to IPv6AcceptRA section if present
+    if grep -q "^\[IPv6AcceptRA\]" "$file" && ! sed -n '/^\[IPv6AcceptRA\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
+      sudo sed -i '/^\[IPv6AcceptRA\]/a UseDNS=no' "$file"
+    fi
+  done
+  
+  sudo systemctl restart systemd-networkd systemd-resolved
 
   ;;
 esac
