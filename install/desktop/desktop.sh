@@ -6,5 +6,4 @@ sudo pacman -S --noconfirm --needed \
   nautilus sushi ffmpegthumbnailer gvfs-mtp \
   slurp satty wf-recorder \
   mpv evince imv \
-  walker-bin \
-  chromium
+  walker-bin omarchy-chromium
