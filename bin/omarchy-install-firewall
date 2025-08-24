@@ -1,7 +1,11 @@
 #!/bin/bash
 
 if ! command -v ufw &>/dev/null; then
-  yay -S --noconfirm --needed ufw ufw-docker
+  yay -S --noconfirm ufw
+fi
+
+if ! command -v ufw-docker &>/dev/null; then
+  yay -S --noconfirm ufw
 fi
 
 # Allow nothing in, everything out
