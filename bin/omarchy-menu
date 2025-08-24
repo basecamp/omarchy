@@ -31,7 +31,7 @@ present_terminal() {
 
 edit_in_nvim() {
   notify-send "Editing config file" "$1"
-  alacritty -e nvim "$1"
+  omarchy-launch-editor "$1"
 }
 
 install() {
@@ -144,6 +144,7 @@ show_setup_menu() {
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
+  *Editor*) present_terminal omarchy-set-editor ;;
   *Config*) show_setup_config_menu ;;
   *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
   *Fido2*) present_terminal omarchy-setup-fido2 ;;

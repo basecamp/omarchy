@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Set the default editor for omarchy-launch-editor
+
+STATE_DIR="$HOME/.local/state/omarchy/default"
+STATE_FILE="$STATE_DIR/editor"
+
+# Create state directory if it doesn't exist
+mkdir -p "$STATE_DIR"
+
+if [[ -z "$1" ]]; then
+  # Show menu to select editor
+  EDITOR_CHOICE=$(gum choose --header "Select default editor" \
+    "nvim" \
+    "vim" \
+    "nano" \
+    "micro" \
+    "helix" \
+    "code" \
+    "codium" \
+    "zed" \
+    "sublime")
+else
+  EDITOR_CHOICE="$1"
+fi
+
+if [[ -n "$EDITOR_CHOICE" ]]; then
+  echo "$EDITOR_CHOICE" > "$STATE_FILE"
+  echo "Default editor set to: $EDITOR_CHOICE"
+fi

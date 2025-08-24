@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Launch the user's preferred editor
+# Reads preference from ~/.local/state/omarchy/default/editor
+# Falls back to nvim if not set
+
+STATE_FILE="$HOME/.local/state/omarchy/default/editor"
+
+# Read the preferred editor
+if [[ -f "$STATE_FILE" ]]; then
+  PREFERRED_EDITOR=$(cat "$STATE_FILE")
+else
+  PREFERRED_EDITOR="nvim"
+fi
+
+# Launch the editor with the file
+case "$PREFERRED_EDITOR" in
+  nvim|vim|nano|micro|helix)
+    # Terminal editors need alacritty
+    alacritty -e "$PREFERRED_EDITOR" "$1"
+    ;;
+  code|codium|zed|sublime)
+    # GUI editors launch directly
+    "$PREFERRED_EDITOR" "$1"
+    ;;
+  *)
+    # Default fallback
+    alacritty -e nvim "$1"
+    ;;
+esac
