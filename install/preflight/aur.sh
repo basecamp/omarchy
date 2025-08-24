@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Install build tools
-sudo pacman -Sy --needed --noconfirm base-devel jq
-
 # Only add Chaotic-AUR if the architecture is x86_64 so ARM users can build the packages
 if [[ "$(uname -m)" == "x86_64" ]] && [ -z "$DISABLE_CHAOTIC" ] && ! command -v yay &>/dev/null; then
   # Try installing Chaotic-AUR keyring and mirrorlist
