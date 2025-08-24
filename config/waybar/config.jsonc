@@ -13,12 +13,17 @@
     "custom/update"
   ],
   "modules-right": [
+    "custom/spotify",
+    "custom/spotify-prev",
+    "custom/spotify-next",
     "group/tray-expander",
     "bluetooth",
     "network",
     "pulseaudio",
     "cpu",
-    "battery"
+    "battery",
+    "custom/hyprsunset",
+    "custom/makoctl"
   ],
   "hyprland/workspaces": {
     "on-click": "activate",
@@ -55,6 +60,46 @@
     "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
     "tooltip-format": "Omarchy update available",
     "interval": 3600
+  },
+  "custom/hyprsunset": {
+    "format": " {text} ",
+    "exec": "~/.config/waybar/scripts/hyprsunset.sh",
+    "return-type": "json",
+    "on-click": "~/.config/waybar/scripts/hyprsunset.sh toggle",
+    "interval": 5,
+    "tooltip": false
+  },
+  "custom/makoctl": {
+    "format": " {} ",
+    "exec": "~/.config/waybar/scripts/mako.sh",
+    "return-type": "json",
+    "on-click": "~/.config/waybar/scripts/mako.sh toggle",
+    "interval": 5,
+    "tooltip": false
+  },
+  "custom/spotify": {
+      "format": "   {} ",
+      "exec": "playerctl -p spotify metadata --format '{{ artist }} - {{ title }}'",
+      "exec-if": "pgrep spotify",
+      "interval": 1,
+      "on-click": "playerctl -p spotify play-pause",
+      "tooltip": false
+  },
+  "custom/spotify-prev": {
+      "format": " 󰒮 ",
+      "exec": "echo -1",
+      "exec-if": "pgrep spotify",
+      "interval": 1,
+      "on-click": "playerctl -p spotify previous",
+      "tooltip": false
+  },
+  "custom/spotify-next": {
+      "format": " 󰒭  ",
+      "exec": "echo 1",
+      "exec-if": "pgrep spotify",
+      "interval": 1,
+      "on-click": "playerctl -p spotify next",
+      "tooltip": false
   },
   "cpu": {
     "interval": 5,
