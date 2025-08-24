@@ -16,5 +16,7 @@ if command -v tte &>/dev/null; then
     done
   done
 else
-  gum spin --title "Can't find tte. Try: pip install terminaltexteffects" -- sleep 2
+  # Poor man's screensaver in case we don't have tte
+  omarchy-show-logo
+  read -n 1 -s
 fi
