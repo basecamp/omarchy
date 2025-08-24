@@ -1,7 +1,11 @@
 #!/bin/bash
 
 if ! command -v tzupdate &>/dev/null; then
-  yay -S --noconfirm --needed tzupdate
+  if omarchy-pkg-aur-accessible; then
+    yay -S --noconfirm tzupdate
+  else
+    notify-send "Installing tzupdate failed due to AUR being unavailable..."
+  fi
 fi
 
 sudo tzupdate
