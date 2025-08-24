@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if ! command -v nvim &>/dev/null; then
-  yay -S --noconfirm --needed nvim luarocks tree-sitter-cli
+if ! command -v nvim &>/dev/null || [ ! -d "$HOME/.config/nvim" ]; then
+  sudo pacman -S --noconfirm --needed nvim luarocks tree-sitter-cli
 
   # Install LazyVim
   rm -rf ~/.config/nvim

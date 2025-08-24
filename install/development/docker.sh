@@ -1,10 +1,24 @@
 #!/bin/bash
 
-yay -S --noconfirm --needed docker docker-compose docker-buildx
+sudo pacman -S --noconfirm --needed docker docker-compose docker-buildx
 
-# Limit log size to avoid running out of disk
+# Configure Docker daemon:
+# - limit log size to avoid running out of disk
+# - use host's DNS resolver
 sudo mkdir -p /etc/docker
-echo '{"log-driver":"json-file","log-opts":{"max-size":"10m","max-file":"5"}}' | sudo tee /etc/docker/daemon.json
+sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{
+    "log-driver": "json-file",
+    "log-opts": { "max-size": "10m", "max-file": "5" },
+    "dns": ["172.17.0.1"],
+    "bip": "172.17.0.1/16"
+}
+EOF
+
+# Expose systemd-resolved to our Docker network
+sudo mkdir -p /etc/systemd/resolved.conf.d
+echo -e '[Resolve]\nDNSStubListenerExtra=172.17.0.1' | sudo tee /etc/systemd/resolved.conf.d/20-docker-dns.conf >/dev/null
+sudo systemctl restart systemd-resolved
 
 # Start Docker automatically
 sudo systemctl enable docker

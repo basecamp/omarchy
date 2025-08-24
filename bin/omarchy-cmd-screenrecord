@@ -13,9 +13,18 @@ screenrecording() {
   notify-send "Screen recording starting..." -t 1000
   sleep 1
 
-  if lspci | grep -qi 'nvidia'; then
+  if lspci | grep -Eqi 'nvidia|intel.*graphics'; then
     wf-recorder -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@"
   else
+    if ! command -v wl-screenrec >/dev/null; then
+      notify-send "Installing wl-screenrec in order to make screen recordings..."
+      if omarchy-pkg-aur-accessible; then
+        yay -S --noconfirm wl-screenrec
+      else
+        notify-send "Installing wl-screenrec failed due to AUR being unavailable..."
+      fi
+    fi
+
     wl-screenrec -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@"
   fi
 }

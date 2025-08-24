@@ -1,5 +1,14 @@
 #!/bin/bash
 
+if ! command -v tzupdate &>/dev/null; then
+  if omarchy-pkg-aur-accessible; then
+    yay -S --noconfirm tzupdate
+  else
+    notify-send "Installing tzupdate failed due to AUR being unavailable..."
+  fi
+fi
+
 sudo tzupdate
 new_timezone=$(timedatectl show -p Timezone --value)
+omarchy-restart-waybar
 notify-send "Timezone has been set to $new_timezone"

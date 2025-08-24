@@ -3,8 +3,8 @@
 # Install iwd explicitly if it wasn't included in archinstall
 # This can happen if archinstall used ethernet
 if ! command -v iwctl &>/dev/null; then
-  yay -S --noconfirm --needed iwd
-  sudo systemctl enable --now iwd.service
+  sudo pacman -S --noconfirm --needed iwd
+  chrootable_systemctl_enable iwd.service
 fi
 
 # Prevent systemd-networkd-wait-online timeout on boot
