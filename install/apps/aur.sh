@@ -2,7 +2,6 @@
 
 if omarchy-pkg-aur-accessible; then
   yay -S --noconfirm --needed \
-    1password-beta 1password-cli \
     typora ttf-ia-writer
 
   yay -S --noconfirm --needed \
