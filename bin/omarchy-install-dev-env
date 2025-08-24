@@ -6,7 +6,7 @@ if [[ -z "$1" ]]; then
 fi
 
 install_php() {
-  yay -Sy php composer php-sqlite --noconfirm
+  sudo pacman -Sy php composer php-sqlite --noconfirm
 
   # Install Path for Composer
   if [[ ":$PATH:" != *":$HOME/.config/composer/vendor/bin:"* ]]; then

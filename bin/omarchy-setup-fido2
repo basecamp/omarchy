@@ -80,7 +80,7 @@ if [[ "--remove" == "$1" ]]; then
 
   # Uninstall packages
   print_info "Removing FIDO2 packages..."
-  yay -Rns --noconfirm libfido2 pam-u2f
+  sudo pacman -Rns --noconfirm libfido2 pam-u2f
 
   print_success "FIDO2 authentication has been completely removed."
 else
@@ -88,7 +88,7 @@ else
 
   # Install required packages
   print_info "Installing required packages..."
-  yay -S --noconfirm --needed libfido2 pam-u2f
+  sudo pacman -S --noconfirm --needed libfido2 pam-u2f
 
   if ! check_fido2_hardware; then
     exit 1
@@ -125,4 +125,3 @@ else
     print_error "\nVerification failed. You may want to check your configuration."
   fi
 fi
-

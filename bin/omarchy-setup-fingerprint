@@ -73,7 +73,7 @@ if [[ "--remove" == "$1" ]]; then
 
   # Uninstall packages
   print_info "Removing fingerprint packages..."
-  yay -Rns --noconfirm fprintd
+  sudo pacman -Rns --noconfirm fprintd
 
   print_success "Fingerprint authentication has been completely removed."
 else
@@ -81,7 +81,7 @@ else
 
   # Install required packages
   print_info "Installing required packages..."
-  yay -S --noconfirm --needed fprintd usbutils
+  sudo pacman -S --noconfirm --needed fprintd usbutils
 
   if ! check_fingerprint_hardware; then
     exit 1
@@ -110,4 +110,3 @@ else
     exit 1
   fi
 fi
-
