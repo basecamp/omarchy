@@ -24,11 +24,7 @@ catch_errors() {
   echo "    ▀▀▀▀▀▀▀ ▀ ▀ ▀▀▀  ▀ ▀▀▀▀▀▀    "
   echo "                                 "
 
-  if [[ -n $OMARCHY_BARE ]]; then
-    echo "You can retry by running: OMARCHY_BARE=true bash ~/.local/share/omarchy/install.sh"
-  else
-    echo "You can retry by running: bash ~/.local/share/omarchy/install.sh"
-  fi
+  echo "You can retry by running: bash ~/.local/share/omarchy/install.sh"
 }
 
 trap catch_errors ERR

@@ -1,11 +1,9 @@
 #!/bin/bash
 
 if omarchy-pkg-aur-accessible; then
-  if [ -z "$OMARCHY_BARE" ]; then
-    yay -S --noconfirm --needed \
-      1password-beta 1password-cli \
-      typora ttf-ia-writer
-  fi
+  yay -S --noconfirm --needed \
+    1password-beta 1password-cli \
+    typora ttf-ia-writer
 
   yay -S --noconfirm --needed \
     tzupdate wl-screenrec \
