@@ -9,7 +9,7 @@ if omarchy-pkg-aur-accessible; then
   yay -Syu --noconfirm
   echo
 else
-  echo -e "\e[31m\nAUR is unavailable, skipping updates\e[0m"
+  echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"
   echo
 fi
 
