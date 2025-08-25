@@ -4,8 +4,8 @@
 # Usage: omarchy-theme-set <theme-name>
 
 if [[ -z "$1" && "$1" != "CNCLD" ]]; then
-	echo "Usage: omarchy-theme-set <theme-name>" >&2
-	exit 1
+  echo "Usage: omarchy-theme-set <theme-name>" >&2
+  exit 1
 fi
 
 THEMES_DIR="$HOME/.config/omarchy/themes/"
@@ -16,8 +16,8 @@ THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Check if the theme entered exists
 if [[ ! -d "$THEME_PATH" ]]; then
-	echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR" >&2
-	exit 2
+  echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR" >&2
+  exit 2
 fi
 
 # Update theme symlinks
@@ -25,45 +25,45 @@ ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 
 # Link theme waybar config or default
 if [[ -f "$THEME_PATH/waybar.config.jsonc" ]]; then
-	echo 'linking theme waybar configurations'
-	ln -nsf "$THEME_PATH/waybar.config.jsonc" ~/.config/waybar/config.jsonc
-	ln -nsf "$THEME_PATH/waybar.css" ~/.config/waybar/style.css
+  echo 'linking theme waybar configurations'
+  ln -nsf "$THEME_PATH/waybar.config.jsonc" ~/.config/waybar/config.jsonc
+  ln -nsf "$THEME_PATH/waybar.css" ~/.config/waybar/style.css
 else
-	echo 'linking default waybar configurations'
-	ln -nsf "$OMARCHY_PATH/default/waybar/config.jsonc" ~/.config/waybar/config.jsonc
-	ln -nsf "$OMARCHY_PATH/default/waybar/style.css" ~/.config/waybar/style.css
+  echo 'linking default waybar configurations'
+  ln -nsf "$OMARCHY_PATH/default/waybar/config.jsonc" ~/.config/waybar/config.jsonc
+  ln -nsf "$OMARCHY_PATH/default/waybar/style.css" ~/.config/waybar/style.css
 fi
 
 # Change gnome modes
 if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
-	gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
-	gsettings set org.gnome.desktop.interface gtk-theme "Adwaita"
+  gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
+  gsettings set org.gnome.desktop.interface gtk-theme "Adwaita"
 else
-	gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"
-	gsettings set org.gnome.desktop.interface gtk-theme "Adwaita-dark"
+  gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"
+  gsettings set org.gnome.desktop.interface gtk-theme "Adwaita-dark"
 fi
 
 # Change gnome icon theme color
 if [[ -f ~/.config/omarchy/current/theme/icons.theme ]]; then
-	gsettings set org.gnome.desktop.interface icon-theme "$(<~/.config/omarchy/current/theme/icons.theme)"
+  gsettings set org.gnome.desktop.interface icon-theme "$(<~/.config/omarchy/current/theme/icons.theme)"
 else
-	gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
+  gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
 
 # Change Chromium colors
 if command -v chromium &>/dev/null; then
-	if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
-		chromium --no-startup-window --set-color-scheme="light"
-	else
-		chromium --no-startup-window --set-color-scheme="dark"
-	fi
+  if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
+    chromium --no-startup-window --set-color-scheme="light"
+  else
+    chromium --no-startup-window --set-color-scheme="dark"
+  fi
 
-	if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]]; then
-		chromium --no-startup-window --set-theme-color="$(<~/.config/omarchy/current/theme/chromium.theme)"
-	else
-		# Use a default, neutral grey if theme doesn't have a color
-		chromium --no-startup-window --set-theme-color="28,32,39"
-	fi
+  if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]]; then
+    chromium --no-startup-window --set-theme-color="$(<~/.config/omarchy/current/theme/chromium.theme)"
+  else
+    # Use a default, neutral grey if theme doesn't have a color
+    chromium --no-startup-window --set-theme-color="28,32,39"
+  fi
 fi
 
 # Trigger alacritty config reload
