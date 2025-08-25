@@ -6,6 +6,7 @@ yay -Rns --noconfirm walker-bin walker-bin-debug
 
 yay -Sy --noconfirm --needed \
   elephant \
+  elephant-archlinuxpkgs \
   elephant-calc \
   elephant-clipboard \
   elephant-desktopapplications \

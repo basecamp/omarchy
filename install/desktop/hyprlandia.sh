@@ -2,6 +2,7 @@
 
 yay -S --noconfirm --needed \
   elephant \
+  elephant-archlinuxpkgs \
   elephant-calc \
   elephant-clipboard \
   elephant-desktopapplications \
