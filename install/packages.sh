@@ -120,4 +120,5 @@ sudo pacman -S --noconfirm --needed \
   xmlstarlet \
   xournalpp \
   yaru-icon-theme \
+  yay \
   zoxide
