@@ -14,21 +14,27 @@ if [ "$#" -eq 0 ]; then
   if ((${#WEB_APPS[@]})); then
     IFS=$'\n' SORTED_WEB_APPS=($(sort <<<"${WEB_APPS[*]}"))
     unset IFS
-    APP_NAMES=$(gum choose --no-limit --header "Select web app to remove..." "${SORTED_WEB_APPS[@]}")
+    APP_NAMES_STRING=$(gum choose --no-limit --header "Select web app to remove..." "${SORTED_WEB_APPS[@]}")
+    # Convert newline-separated string to array
+    APP_NAMES=()
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && APP_NAMES+=("$line")
+    done <<< "$APP_NAMES_STRING"
   else
     echo "No web apps to remove."
     exit 1
   fi
 else
-  APP_NAMES="$*"
+  # Use array to preserve spaces in app names
+  APP_NAMES=("$@")
 fi
 
-if [[ -z "$APP_NAMES" ]]; then
+if [[ ${#APP_NAMES[@]} -eq 0 ]]; then
   echo "You must provide web app names."
   exit 1
 fi
 
-for APP_NAME in $APP_NAMES; do
+for APP_NAME in "${APP_NAMES[@]}"; do
   rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
   rm -f "$ICON_DIR/$APP_NAME.png"
   echo "Removed $APP_NAME"
