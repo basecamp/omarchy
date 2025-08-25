@@ -18,13 +18,17 @@
     "on-click": "activate",
     "format": "{icon}",
     "format-icons": {
-      "default": "",
-      "1": "",
-      "2": "",
-      "3": "",
-      "4": "",
-      "5": "",
-      "active": "",
+      "default": "",
+      "1": "1",
+      "2": "2",
+      "3": "3",
+      "4": "4",
+      "5": "5",
+      "6": "6",
+      "7": "7",
+      "8": "8",
+      "9": "9",
+      "active": "󱓻",
     },
     "persistent-workspaces": {
       "1": [],
@@ -35,7 +39,7 @@
     },
   },
   "custom/omarchy": {
-    "format": "",
+    "format": "<span font='omarchy'>\ue900</span>",
     "on-click": "omarchy-menu",
     "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space",
   },
@@ -46,6 +50,7 @@
     "tooltip-format": "Omarchy update available",
     "interval": 3600,
   },
+
   "cpu": {
     "interval": 5,
     "format": "󰍛",
