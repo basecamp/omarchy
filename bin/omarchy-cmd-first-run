@@ -8,5 +8,5 @@ if [[ -f FIRST_RUN_MODE ]]; then
   $OMARCHY_PATH/install/first-run/battery-monitor.sh
   $OMARCHY_PATH/install/first-run/firewall.sh
   rm FIRST_RUN_MODE
-  sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
+  sudo rm -f /etc/sudoers.d/first-run &>/dev/null
 fi
