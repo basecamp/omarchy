@@ -219,8 +219,8 @@ show_install_editor_menu() {
 }
 
 show_install_ai_menu() {
-  case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini\n󱚤  LM Studio [AUR]\n󱚤  Ollama\n󱚤  Crush [AUR]\n󱚤  opencode [AUR]") in
-  *Claude*) install "Claude Code" "claude-code" ;;
+  case $(menu "Install" "󱚤  Claude Code [AUR]\n󱚤  Gemini\n󱚤  LM Studio [AUR]\n󱚤  Ollama\n󱚤  Crush [AUR]\n󱚤  opencode [AUR]") in
+  *Claude*) aur_install "Claude Code" "claude-code" ;;
   *Gemini*) install "Gemini" "gemini-cli" ;;
   *Studio*) aur_install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" "ollama" ;;
