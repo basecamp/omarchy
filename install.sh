@@ -19,7 +19,6 @@ source $OMARCHY_INSTALL/preflight/migrations.sh
 source $OMARCHY_INSTALL/config/config.sh
 source $OMARCHY_INSTALL/config/branding.sh
 source $OMARCHY_INSTALL/config/network.sh
-source $OMARCHY_INSTALL/config/power.sh
 source $OMARCHY_INSTALL/config/git.sh
 source $OMARCHY_INSTALL/config/gpg.sh
 source $OMARCHY_INSTALL/config/usb-autosuspend.sh
