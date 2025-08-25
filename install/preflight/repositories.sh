@@ -41,5 +41,6 @@ fi
 # Allow repository index updates without sudo
 sudo tee /etc/sudoers.d/repositories >/dev/null <<EOF
 $USER ALL=(ALL) NOPASSWD: /usr/bin/pacman -Sy
+$USER ALL=(ALL) NOPASSWD: /usr/bin/yay -Sy
 EOF
 sudo chmod 440 /etc/sudoers.d/repositories
