@@ -2,7 +2,17 @@
 
 set -e
 
+if ! omarchy-pkg-aur-accessible; then
+  echo -e "\e[31m\nAUR is unavailable\e[0m"
+  echo
+  exit 1
+fi
+
 fzf_args=(
+  --prompt=' '
+  --ansi
+  --no-sort
+  --exact
   --multi
   --preview 'yay -Sii {1}'
   --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select, F11: maximize'
@@ -14,7 +24,7 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-pkg_names=$(yay -Slqa | fzf "${fzf_args[@]}")
+pkg_names=$(yay -Sla --color=never | awk '{print "\033[0m" $2 " \033[1;36m" $4 }' | fzf "${fzf_args[@]}" | awk '{print $1}')
 
 if [[ -n "$pkg_names" ]]; then
   # Convert newline-separated selections to space-separated for yay
