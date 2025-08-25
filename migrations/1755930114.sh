@@ -1,3 +1,8 @@
-echo "Add status indicators for nightlight, dnd, and idle lock to Waybar"
+echo "Add status indicators for nightlight, dnd, idle lock, and new icon to Waybar"
+
+mkdir -p ~/.local/share/fonts
+cp ~/.local/share/omarchy/config/omarchy.ttf ~/.local/share/fonts/
+fc-cache
+
 echo
 gum confirm "Replace current Waybar config (backup will be made)?" && omarchy-refresh-waybar
