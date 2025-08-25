@@ -60,8 +60,10 @@ sudo updatedb
 sudo pacman -Syu --noconfirm
 
 # Reboot
-omarchy-show-logo
-echo -e "\n\e[32mYou're done! So we're ready to reboot now...\e[0m"
+clear
+tte -i ~/.local/share/omarchy/logo.txt --frame-rate 920 laseretch
+echo
+echo "You're done! So we're ready to reboot now..." | tte --frame-rate 640 wipe
 
 if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
   sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
