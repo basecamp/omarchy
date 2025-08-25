@@ -4,7 +4,8 @@ sudo pacman -S --noconfirm --needed \
   gnome-calculator gnome-keyring signal-desktop \
   obsidian libreoffice obs-studio kdenlive \
   1password-beta 1password-cli \
-  xournalpp localsend
+  xournalpp localsend \
+  typora
 
 # Packages known to be flaky or having key signing issues are run one-by-one
 for pkg in spotify pinta; do

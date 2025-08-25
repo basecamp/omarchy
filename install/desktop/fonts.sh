@@ -1,7 +1,7 @@
 #!/bin/bash
 
 sudo pacman -S --noconfirm --needed \
-  ttf-font-awesome ttf-cascadia-mono-nerd ttf-jetbrains-mono \
+  ttf-font-awesome ttf-cascadia-mono-nerd ttf-jetbrains-mono ttf-ia-writer \
   noto-fonts noto-fonts-emoji noto-fonts-cjk noto-fonts-extra
 
 mkdir -p ~/.local/share/fonts
