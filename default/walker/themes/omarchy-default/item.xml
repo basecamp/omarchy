@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"></requires>
+  <object class="GtkBox" id="ItemBox">
+    <style>
+      <class name="item-box"></class>
+    </style>
+    <property name="orientation">horizontal</property>
+    <property name="spacing">0</property>
+    <child>
+      <object class="GtkImage" id="ItemImage">
+        <style>
+          <class name="item-image"></class>
+        </style>
+        <property name="icon-size">large</property>
+      </object>
+    </child>
+    <child>
+      <object class="GtkBox" id="ItemTextBox">
+        <style>
+          <class name="item-text-box"></class>
+        </style>
+        <property name="orientation">vertical</property>
+        <property name="vexpand">true</property>
+        <property name="vexpand-set">true</property>
+        <property name="spacing">0</property>
+        <child>
+          <object class="GtkLabel" id="ItemText">
+            <style>
+              <class name="item-text"></class>
+            </style>
+            <property name="wrap">false</property>
+            <property name="vexpand_set">true</property>
+            <property name="vexpand">true</property>
+            <property name="xalign">0</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>
