@@ -20,6 +20,8 @@ source $OMARCHY_INSTALL/packages.sh
 source $OMARCHY_INSTALL/packaging/asdcontrol.sh
 source $OMARCHY_INSTALL/packaging/fonts.sh
 source $OMARCHY_INSTALL/packaging/lazyvim.sh
+source $OMARCHY_INSTALL/packaging/webapps.sh
+source $OMARCHY_INSTALL/packaging/tuis.sh
 
 # Configuration
 source $OMARCHY_INSTALL/config/config.sh
@@ -42,16 +44,12 @@ source $OMARCHY_INSTALL/config/printer.sh
 source $OMARCHY_INSTALL/config/xcompose.sh
 source $OMARCHY_INSTALL/config/mise-ruby.sh
 source $OMARCHY_INSTALL/config/docker.sh
+source $OMARCHY_INSTALL/config/mimetypes.sh
 
 # Login
 source $OMARCHY_INSTALL/login/plymouth.sh
 source $OMARCHY_INSTALL/login/limine-snapper.sh
 source $OMARCHY_INSTALL/login/alt-bootloaders.sh
-
-# Apps
-source $OMARCHY_INSTALL/apps/webapps.sh
-source $OMARCHY_INSTALL/apps/tuis.sh
-source $OMARCHY_INSTALL/apps/mimetypes.sh
 
 # Updates
 sudo updatedb
