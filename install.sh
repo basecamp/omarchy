@@ -10,7 +10,6 @@ OMARCHY_INSTALL=~/.local/share/omarchy/install
 source $OMARCHY_INSTALL/preflight/show-env.sh
 source $OMARCHY_INSTALL/preflight/trap-errors.sh
 source $OMARCHY_INSTALL/preflight/chroot.sh
-source $OMARCHY_INSTALL/preflight/mirrorlist.sh
 source $OMARCHY_INSTALL/preflight/guard.sh
 source $OMARCHY_INSTALL/preflight/repositories.sh
 source $OMARCHY_INSTALL/preflight/migrations.sh
