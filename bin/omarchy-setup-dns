@@ -56,15 +56,10 @@ EOF
   ;;
 
 DHCP)
-  if [[ -z $2 ]]; then
-    fallback_dns=$(prompt_fallback_dns)
-  else
-    fallback_dns="$2"
-  fi
   sudo tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
 DNS=
-FallbackDNS=$fallback_dns
+FallbackDNS=
 DNSOverTLS=no
 EOF
   
