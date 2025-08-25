@@ -192,8 +192,7 @@ show_install_menu() {
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "󱨑  Firewall\n  Dropbox\n  Tailscale") in
-  *Firewall*) present_terminal omarchy-install-firewall ;;
+  case $(menu "Install" "  Dropbox\n  Tailscale") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
   *) show_install_menu ;;
