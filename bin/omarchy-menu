@@ -35,15 +35,23 @@ edit_in_nvim() {
 }
 
 install() {
-  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2"
+  present_terminal "echo 'Installing $1...'; sudo pacman -Sy --noconfirm $2"
 }
 
 install_and_launch() {
-  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm $2 && setsid gtk-launch $3"
+  present_terminal "echo 'Installing $1...'; sudo pacman -Sy --noconfirm $2 && setsid gtk-launch $3"
 }
 
 install_font() {
-  present_terminal "echo 'Installing $1...'; yay -Sy --noconfirm --needed $2 && sleep 2 && omarchy-font-set '$3'"
+  present_terminal "echo 'Installing $1...'; sudo pacman -Sy --noconfirm --needed $2 && sleep 2 && omarchy-font-set '$3'"
+}
+
+aur_install() {
+  present_terminal "echo 'Installing $1 from AUR...'; yay -Sy --noconfirm $2"
+}
+
+aur_install_and_launch() {
+  present_terminal "echo 'Installing $1 from AUR...'; yay -Sy --noconfirm $2 && setsid gtk-launch $3"
 }
 
 show_learn_menu() {
@@ -200,9 +208,9 @@ show_install_service_menu() {
 }
 
 show_install_editor_menu() {
-  case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix") in
+  case $(menu "Install" "  VSCode\n  Cursor [AUR]\n  Zed\n  Sublime Text\n  Helix") in
   *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
-  *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
+  *Cursor*) aur_install_and_launch "Cursor" "cursor-bin" "cursor" ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
   *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) install "Helix" "helix" ;;
@@ -211,21 +219,21 @@ show_install_editor_menu() {
 }
 
 show_install_ai_menu() {
-  case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
+  case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini\n󱚤  LM Studio [AUR]\n󱚤  Ollama\n󱚤  Crush [AUR]\n󱚤  opencode [AUR]") in
   *Claude*) install "Claude Code" "claude-code" ;;
-  *Gemini*) install "Gemini" "gemini-cli-bin" ;;
-  *Studio*) install "LM Studio" "lmstudio" ;;
+  *Gemini*) install "Gemini" "gemini-cli" ;;
+  *Studio*) aur_install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" "ollama" ;;
-  *Crush*) install "Crush" "crush-bin" ;;
-  *opencode*) install "opencode" "opencode-bin" ;;
+  *Crush*) aur_install "Crush" "crush-bin" ;;
+  *opencode*) aur_install "opencode" "opencode-bin" ;;
   *) show_install_menu ;;
   esac
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch\n󰍳  Minecraft") in
+  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft") in
   *Steam*) present_terminal omarchy-install-steam ;;
-  *RetroArch*) install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
+  *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
   *) show_install_menu ;;
   esac
