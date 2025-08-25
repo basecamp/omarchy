@@ -1,7 +1,5 @@
 #!/bin/bash
 
-sudo pacman -S --noconfirm --needed docker docker-compose docker-buildx
-
 # Configure Docker daemon:
 # - limit log size to avoid running out of disk
 # - use host's DNS resolver

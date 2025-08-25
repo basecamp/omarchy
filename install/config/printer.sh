@@ -1,6 +1,5 @@
 #!/bin/bash
 
-sudo pacman -S --noconfirm cups cups-pdf cups-filters cups-browsed system-config-printer avahi nss-mdns
 chrootable_systemctl_enable cups.service
 
 # Disable multicast dns in resolved. Avahi will provide this for better network printer discovery

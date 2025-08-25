@@ -16,8 +16,15 @@ source $OMARCHY_INSTALL/preflight/repositories.sh
 source $OMARCHY_INSTALL/preflight/migrations.sh
 source $OMARCHY_INSTALL/preflight/first-run-mode.sh
 
+# Packages
+source $OMARCHY_INSTALL/packages.sh
+source $OMARCHY_INSTALL/packaging/asdcontrol.sh
+source $OMARCHY_INSTALL/packaging/fonts.sh
+source $OMARCHY_INSTALL/packaging/lazyvim.sh
+
 # Configuration
 source $OMARCHY_INSTALL/config/config.sh
+source $OMARCHY_INSTALL/config/theme.sh
 source $OMARCHY_INSTALL/config/branding.sh
 source $OMARCHY_INSTALL/config/network.sh
 source $OMARCHY_INSTALL/config/git.sh
@@ -31,28 +38,16 @@ source $OMARCHY_INSTALL/config/ignore-power-button.sh
 source $OMARCHY_INSTALL/config/ssh-flakiness.sh
 source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
 source $OMARCHY_INSTALL/config/fix-fkeys.sh
+source $OMARCHY_INSTALL/config/bluetooth.sh
+source $OMARCHY_INSTALL/config/printer.sh
 source $OMARCHY_INSTALL/config/xcompose.sh
+source $OMARCHY_INSTALL/config/mise-ruby.sh
+source $OMARCHY_INSTALL/config/docker.sh
 
 # Login
 source $OMARCHY_INSTALL/login/plymouth.sh
 source $OMARCHY_INSTALL/login/limine-snapper.sh
 source $OMARCHY_INSTALL/login/alt-bootloaders.sh
-
-# Development
-source $OMARCHY_INSTALL/development/terminal.sh
-source $OMARCHY_INSTALL/development/development.sh
-source $OMARCHY_INSTALL/development/nvim.sh
-source $OMARCHY_INSTALL/development/ruby.sh
-source $OMARCHY_INSTALL/development/docker.sh
-
-# Desktop
-source $OMARCHY_INSTALL/desktop/desktop.sh
-source $OMARCHY_INSTALL/desktop/hyprlandia.sh
-source $OMARCHY_INSTALL/desktop/theme.sh
-source $OMARCHY_INSTALL/desktop/bluetooth.sh
-source $OMARCHY_INSTALL/desktop/asdcontrol.sh
-source $OMARCHY_INSTALL/desktop/fonts.sh
-source $OMARCHY_INSTALL/desktop/printer.sh
 
 # Apps
 source $OMARCHY_INSTALL/apps/webapps.sh
