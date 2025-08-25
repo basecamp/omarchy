@@ -14,7 +14,7 @@ if ! grep -q "omarchy" /etc/pacman.conf; then
 fi
 
 # Set mirrors to global ones only
-echo "Server = https://geo.mirror.pkgbuild.com/\$repo/os/\$arch\nServer = https://mirror.rackspace.com/archlinux/\$repo/os/\$arch" |
+echo -e "Server = https://geo.mirror.pkgbuild.com/\$repo/os/\$arch\nServer = https://mirror.rackspace.com/archlinux/\$repo/os/\$arch" |
   sudo tee /etc/pacman.d/mirrorlist >/dev/null
 
 # Install yay from Omarchy repository
