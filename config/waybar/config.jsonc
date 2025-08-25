@@ -5,7 +5,7 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-  "modules-center": ["clock", "custom/update"],
+  "modules-center": ["custom/status-dnd", "clock", "custom/update"],
   "modules-right": [
     "group/tray-expander",
     "bluetooth",
@@ -122,6 +122,12 @@
   "custom/expand-icon": {
     "format": " ",
     "tooltip": false
+  },
+  "custom/status-dnd": {
+    "exec": "omarchy-status-daemon dnd",
+    "return-type": "json",
+    "interval": 1,
+    "on-click": "omarchy-toggle-dnd"
   },
   "tray": {
     "icon-size": 12,
