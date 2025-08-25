@@ -27,24 +27,25 @@ source $OMARCHY_INSTALL/packaging/tuis.sh
 source $OMARCHY_INSTALL/config/config.sh
 source $OMARCHY_INSTALL/config/theme.sh
 source $OMARCHY_INSTALL/config/branding.sh
-source $OMARCHY_INSTALL/config/network.sh
 source $OMARCHY_INSTALL/config/git.sh
 source $OMARCHY_INSTALL/config/gpg.sh
-source $OMARCHY_INSTALL/config/usb-autosuspend.sh
 source $OMARCHY_INSTALL/config/timezones.sh
-source $OMARCHY_INSTALL/config/nvidia.sh
 source $OMARCHY_INSTALL/config/increase-sudo-tries.sh
 source $OMARCHY_INSTALL/config/increase-lockout-limit.sh
-source $OMARCHY_INSTALL/config/ignore-power-button.sh
 source $OMARCHY_INSTALL/config/ssh-flakiness.sh
 source $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
-source $OMARCHY_INSTALL/config/fix-fkeys.sh
-source $OMARCHY_INSTALL/config/bluetooth.sh
-source $OMARCHY_INSTALL/config/printer.sh
 source $OMARCHY_INSTALL/config/xcompose.sh
 source $OMARCHY_INSTALL/config/mise-ruby.sh
 source $OMARCHY_INSTALL/config/docker.sh
 source $OMARCHY_INSTALL/config/mimetypes.sh
+
+source $OMARCHY_INSTALL/config/hardware/network.sh
+source $OMARCHY_INSTALL/config/hardware/fix-fkeys.sh
+source $OMARCHY_INSTALL/config/hardware/bluetooth.sh
+source $OMARCHY_INSTALL/config/hardware/printer.sh
+source $OMARCHY_INSTALL/config/hardware/usb-autosuspend.sh
+source $OMARCHY_INSTALL/config/hardware/ignore-power-button.sh
+source $OMARCHY_INSTALL/config/hardware/nvidia.sh
 
 # Login
 source $OMARCHY_INSTALL/login/plymouth.sh
