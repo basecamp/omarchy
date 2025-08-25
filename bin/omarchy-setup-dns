@@ -6,12 +6,33 @@ else
   dns=$1
 fi
 
+
+
+# Function to prompt for FallbackDNS
+prompt_fallback_dns() {
+  local fallback_value
+  local default_fallback_dns="9.9.9.9 149.112.112.112"
+  echo "Enter FallbackDNS servers (space-separated, default: '$default_fallback_dns'). Leave blank to use default:" >&2
+  read -r fallback_value
+  if [[ -z "$fallback_value" ]]; then
+    fallback_value="$default_fallback_dns"
+  fi
+  echo "$fallback_value"
+}
+
+
+# FallbackDNS selection (all modes)
 case "$dns" in
 Cloudflare)
-  sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
+  if [[ -z $2 ]]; then
+    fallback_dns=$(prompt_fallback_dns)
+  else
+    fallback_dns="$2"
+  fi
+  sudo tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
 DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com
-FallbackDNS=9.9.9.9 149.112.112.112
+FallbackDNS=$fallback_dns
 DNSOverTLS=opportunistic
 EOF
   
@@ -35,10 +56,15 @@ EOF
   ;;
 
 DHCP)
-  sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
+  if [[ -z $2 ]]; then
+    fallback_dns=$(prompt_fallback_dns)
+  else
+    fallback_dns="$2"
+  fi
+  sudo tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
 DNS=
-FallbackDNS=
+FallbackDNS=$fallback_dns
 DNSOverTLS=no
 EOF
   
@@ -60,11 +86,10 @@ Custom)
     echo "Error: No DNS servers provided."
     exit 1
   fi
-
-  echo "Enter FallbackDNS servers (space-separated, default: '9.9.9.9 149.112.112.112'). Leave blank to use default:"
-  read -r fallback_dns
-  if [[ -z "$fallback_dns" ]]; then
-    fallback_dns="9.9.9.9 149.112.112.112"
+  if [[ -z $2 ]]; then
+    fallback_dns=$(prompt_fallback_dns)
+  else
+    fallback_dns="$2"
   fi
 
   echo "Enter a custom domain for DNS search (optional, e.g. 'mydomain.local'):"
