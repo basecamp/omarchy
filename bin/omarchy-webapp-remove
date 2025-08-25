@@ -3,10 +3,10 @@
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications/"
 
-if [ "$#" -ne 1 ]; then
+if [ "$#" -eq 0 ]; then
   # Find all web apps
   while IFS= read -r -d '' file; do
-    if grep -q '^Exec=.*chromium.*--app' "$file"; then
+    if grep -q '^Exec=.*omarchy-launch-webapp.*' "$file"; then
       WEB_APPS+=("$(basename "${file%.desktop}")")
     fi
   done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)
@@ -14,23 +14,22 @@ if [ "$#" -ne 1 ]; then
   if ((${#WEB_APPS[@]})); then
     IFS=$'\n' SORTED_WEB_APPS=($(sort <<<"${WEB_APPS[*]}"))
     unset IFS
-    APP_NAME=$(gum choose --header "Select web app to remove..." "${SORTED_WEB_APPS[@]}")
+    APP_NAMES=$(gum choose --no-limit --header "Select web app to remove..." "${SORTED_WEB_APPS[@]}")
   else
     echo "No web apps to remove."
     exit 1
   fi
 else
-  APP_NAME="$1"
+  APP_NAMES="$*"
 fi
 
-if [[ -z "$APP_NAME" ]]; then
-  echo "You must provide web app name."
+if [[ -z "$APP_NAMES" ]]; then
+  echo "You must provide web app names."
   exit 1
 fi
 
-rm "$DESKTOP_DIR/$APP_NAME.desktop"
-rm "$ICON_DIR/$APP_NAME.png"
-
-if [ "$#" -ne 1 ]; then
-  echo -e "Removed $APP_NAME\n"
-fi
+for APP_NAME in $APP_NAMES; do
+  rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
+  rm -f "$ICON_DIR/$APP_NAME.png"
+  echo "Removed $APP_NAME"
+done

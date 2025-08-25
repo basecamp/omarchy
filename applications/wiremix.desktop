@@ -1,7 +1,0 @@
-[Desktop Entry]
-Name=Audio Settings
-Comment=Using Wiremix
-Exec=alacritty --class=Wiremix --title=Wiremix -e wiremix
-Icon=audio-headphones
-Type=Application
-Terminal=false

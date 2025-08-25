@@ -2,6 +2,7 @@
 
 set -e
 
+omarchy-snapshot create || [ $? -eq 127 ]
 omarchy-update-git
 omarchy-migrate
 omarchy-update-system-pkgs
