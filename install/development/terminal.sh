@@ -8,4 +8,5 @@ sudo pacman -S --noconfirm --needed \
   starship bash-completion \
   gum python-poetry-core python-terminaltexteffects \
   tzupdate \
+  ufw ufw-docker \
   alacritty
