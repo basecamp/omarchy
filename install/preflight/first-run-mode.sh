@@ -8,6 +8,6 @@ touch ~/.local/state/omarchy/first-run.mode
 sudo tee /etc/sudoers.d/first-run >/dev/null <<EOF
 $USER ALL=(ALL) NOPASSWD: /usr/bin/ufw
 $USER ALL=(ALL) NOPASSWD: /usr/bin/ufw-docker
-$USER ALL=(ALL) NOPASSWD: /bin/rm -f /home/$USER/.local/state/omarchy/first-run.mode
+$USER ALL=(ALL) NOPASSWD: /bin/rm -f /etc/sudoers.d/first-run
 EOF
 sudo chmod 440 /etc/sudoers.d/first-run
