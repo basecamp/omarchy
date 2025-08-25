@@ -7,6 +7,10 @@ reinstall_package_opr() {
   fi
 }
 
+if pacman -Q yay-bin-debug >/dev/null; then
+  sudo pacman -Rns --noconfirm yay-bin-debug
+fi
+
 reinstall_package_opr yay-bin yay
 reinstall_package_opr obsidian-bin obsidian
 reinstall_package_opr localsend-bin localsend
