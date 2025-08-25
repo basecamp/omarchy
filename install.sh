@@ -6,7 +6,7 @@ set -eE
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 OMARCHY_INSTALL=~/.local/share/omarchy/install
 
-# Install prerequisites
+# Preparation
 source $OMARCHY_INSTALL/preflight/show-env.sh
 source $OMARCHY_INSTALL/preflight/trap-errors.sh
 source $OMARCHY_INSTALL/preflight/guard.sh
@@ -15,7 +15,7 @@ source $OMARCHY_INSTALL/preflight/repositories.sh
 source $OMARCHY_INSTALL/preflight/migrations.sh
 source $OMARCHY_INSTALL/preflight/first-run-mode.sh
 
-# Packages
+# Packaging
 source $OMARCHY_INSTALL/packages.sh
 source $OMARCHY_INSTALL/packaging/asdcontrol.sh
 source $OMARCHY_INSTALL/packaging/fonts.sh
@@ -38,7 +38,6 @@ source $OMARCHY_INSTALL/config/xcompose.sh
 source $OMARCHY_INSTALL/config/mise-ruby.sh
 source $OMARCHY_INSTALL/config/docker.sh
 source $OMARCHY_INSTALL/config/mimetypes.sh
-
 source $OMARCHY_INSTALL/config/hardware/network.sh
 source $OMARCHY_INSTALL/config/hardware/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/hardware/bluetooth.sh
@@ -66,7 +65,7 @@ echo "You're done! So we're ready to reboot now..." | tte --frame-rate 640 wipe
 
 if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
   sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
-  echo -e "\nRemember to remove USB installer!"
+  echo -e "\nRemember to remove USB installer!\n\n"
 fi
 
 sleep 5
