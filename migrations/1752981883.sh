@@ -8,6 +8,4 @@ if ! command -v walker &>/dev/null; then
 
   mkdir -p ~/.config/walker
   cp -r ~/.local/share/omarchy/config/walker/* ~/.config/walker/
-
-  setsid uwsm app -- walker --gapplication-service &
 fi
