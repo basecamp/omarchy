@@ -9,6 +9,5 @@ gtk-update-icon-cache ~/.local/share/icons/hicolor &>/dev/null
 mkdir -p ~/.local/share/applications
 cp ~/.local/share/omarchy/applications/*.desktop ~/.local/share/applications/
 cp ~/.local/share/omarchy/applications/hidden/*.desktop ~/.local/share/applications/
-cp ~/.local/share/omarchy/applications/xtras/*.desktop ~/.local/share/applications/
 
 update-desktop-database ~/.local/share/applications
