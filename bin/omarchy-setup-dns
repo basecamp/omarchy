@@ -52,6 +52,7 @@ EOF
   ;;
 
 Custom)
+
   echo "Enter your DNS servers (space-separated, e.g. '192.168.1.1 1.1.1.1'):"
   read -r dns_servers
 
@@ -60,28 +61,46 @@ Custom)
     exit 1
   fi
 
-  sudo tee /etc/systemd/resolved.conf >/dev/null <<EOF
+  echo "Enter FallbackDNS servers (space-separated, default: '9.9.9.9 149.112.112.112'). Leave blank to use default:"
+  read -r fallback_dns
+  if [[ -z "$fallback_dns" ]]; then
+    fallback_dns="9.9.9.9 149.112.112.112"
+  fi
+
+  echo "Enter a custom domain for DNS search (optional, e.g. 'mydomain.local'):"
+  read -r custom_domain
+
+  if [[ -n "$custom_domain" ]]; then
+    sudo tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
 DNS=$dns_servers
-FallbackDNS=9.9.9.9 149.112.112.112
+FallbackDNS=$fallback_dns
+Domains=$custom_domain
 EOF
-  
+  else
+    sudo tee /etc/systemd/resolved.conf >/dev/null <<EOF
+[Resolve]
+DNS=$dns_servers
+FallbackDNS=$fallback_dns
+EOF
+  fi
+
   # Ensure network interfaces don't override our DNS settings
   for file in /etc/systemd/network/*.network; do
     [[ -f "$file" ]] || continue
     if ! grep -q "^\[DHCPv4\]" "$file"; then continue; fi
-    
+
     # Add UseDNS=no to DHCPv4 section if not present
     if ! sed -n '/^\[DHCPv4\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
       sudo sed -i '/^\[DHCPv4\]/a UseDNS=no' "$file"
     fi
-    
+
     # Add UseDNS=no to IPv6AcceptRA section if present
     if grep -q "^\[IPv6AcceptRA\]" "$file" && ! sed -n '/^\[IPv6AcceptRA\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
       sudo sed -i '/^\[IPv6AcceptRA\]/a UseDNS=no' "$file"
     fi
   done
-  
+
   sudo systemctl restart systemd-networkd systemd-resolved
 
   ;;
