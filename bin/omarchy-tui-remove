@@ -20,7 +20,7 @@ if [ "$#" -ne 1 ]; then
     exit 1
   fi
 else
-  APP_NAME="$1"
+  APP_NAME="$*"
 fi
 
 if [[ -z "$APP_NAME" ]]; then
