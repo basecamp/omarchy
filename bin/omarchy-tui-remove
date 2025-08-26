@@ -14,7 +14,7 @@ if [ "$#" -ne 1 ]; then
   if ((${#TUIS[@]})); then
     IFS=$'\n' SORTED_TUIS=($(sort <<<"${TUIS[*]}"))
     unset IFS
-    APP_NAME=$(gum choose --header "Select TUI to remove..." "${SORTED_TUIS[@]}")
+    APP_NAME=$(gum choose --no-limit --header "Select TUI to remove..." --selected-prefix="✗ " "${SORTED_TUIS[@]}")
   else
     echo "No TUIs to remove."
     exit 1
