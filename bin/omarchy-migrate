@@ -2,24 +2,75 @@
 
 # Where we store an empty file for each migration that has already been performed.
 STATE_DIR="$HOME/.local/state/omarchy/migrations"
-mkdir -p "$STATE_DIR/skipped"
+MIGRATIONS_DIR="$HOME/.local/share/omarchy/migrations"
 
-# Run any pending migrations
-for file in ~/.local/share/omarchy/migrations/*.sh; do
-  filename=$(basename "$file")
+run_migration() {
+  local migration_file="$1"
+  local filename="$2"
+  local migration_name="${filename%.sh}"
 
-  if [[ ! (-f "$STATE_DIR/$filename") && ! (-f "$STATE_DIR/skipped/$filename") ]]; then
-    echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
-    source $file
+  return $?
+}
+
+run_skipped_migrations() {
+  for file in "$STATE_DIR/skipped"/*.sh; do
+    [ -f "$file" ] || continue
+
+    local filename=$(basename "$file")
+    local migration_file="$MIGRATIONS_DIR/$filename"
+    local migration_name="${filename%.sh}"
+
+    if [ ! -f "$migration_file" ]; then
+      echo -e "\e[33mWarning: Migration file $migration_file not found, skipping\e[0m"
+      continue
+    fi
+
+    echo -e "\e[32m\nRunning skipped migration ($migration_name)\e[0m"
+    source "$migration_file"
+
+    if [ $? -eq 0 ]; then
+      rm "$STATE_DIR/skipped/$filename"
+      touch "$STATE_DIR/$filename"
+      echo -e "\e[32mMigration $migration_name completed successfully\e[0m"
+    else
+      echo -e "\e[31mSkipped migration $migration_name failed again\e[0m"
+    fi
+  done
+}
+
+run_pending_migrations() {
+  for file in "$MIGRATIONS_DIR"/*.sh; do
+    [ -f "$file" ] || continue
+
+    local filename=$(basename "$file")
+    local migration_name="${filename%.sh}"
+
+    # Skip if already completed or skipped
+    if [[ -f "$STATE_DIR/$filename" || -f "$STATE_DIR/skipped/$filename" ]]; then
+      continue
+    fi
+
+    echo -e "\e[32m\nRunning migration ($migration_name)\e[0m"
+    source "$file"
+
     if [ $? -eq 0 ]; then
       touch "$STATE_DIR/$filename"
     else
-      gum confirm "migration ${filename%.sh} failed, do you wish to skip this migration?"
+      gum confirm "migration $migration_name failed, do you wish to skip this migration?"
       if [ $? -eq 0 ]; then
         touch "$STATE_DIR/skipped/$filename"
+        echo -e "\e[32m\nMigration skipped. Run omarchy-migrate --skipped to run skipped migrations\e[0m"
       else
         exit 1
       fi
     fi
-  fi
-done
+  done
+}
+
+mkdir -p "$STATE_DIR/skipped"
+
+if [ "$1" = "--skipped" ]; then
+  run_skipped_migrations
+else
+  run_pending_migrations
+fi
