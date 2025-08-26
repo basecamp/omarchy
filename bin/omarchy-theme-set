@@ -61,14 +61,19 @@ touch "$HOME/.config/alacritty/alacritty.toml"
 # Update vscode theme
 VS_CODE_THEME="$CURRENT_THEME_DIR/vscode.json"
 VS_CODE_SETTINGS="$HOME/.config/Code/User/settings.json"
+VS_CODE_SKIP_FLAG="$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes"
 
-if command -v code >/dev/null && [[ -f "$VS_CODE_THEME" ]] && [[ -f "$VS_CODE_SETTINGS" ]]; then
+if command -v code >/dev/null \
+  && [[ ! -f "$VS_CODE_SKIP_FLAG" ]] \
+  && [[ -f "$VS_CODE_THEME" ]] \
+  && [[ -f "$VS_CODE_SETTINGS" ]]; then
+  
   theme_name=$(jq -r '.name' "$VS_CODE_THEME")
   extension=$(jq -r '.extension' "$VS_CODE_THEME")
 
   # Install VS Code theme extension
   if [[ -n "$extension" ]] && ! code --list-extensions | grep -Fxq "$extension"; then
-    code --install-extension "$extension"
+    code --install-extension "$extension" >/dev/null
   fi
 
   # Update theme in settings.json 
