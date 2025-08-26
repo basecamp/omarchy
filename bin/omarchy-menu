@@ -272,6 +272,7 @@ show_install_development_menu() {
   *Java*) present_terminal "omarchy-install-dev-env java" ;;
   *NET*) present_terminal "omarchy-install-dev-env dotnet" ;;
   *OCaml*) present_terminal "omarchy-install-dev-env ocaml" ;;
+  *Flutter*) present_terminal "omarchy-install-dev-env flutter" ;;
   *) show_install_menu ;;
   esac
 }
