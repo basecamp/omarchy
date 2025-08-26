@@ -1,3 +1,3 @@
 #!/bin/bash
 
-systemctl enable --now systemd-resolved
+sudo systemctl enable --now systemd-resolved
