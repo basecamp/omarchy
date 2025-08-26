@@ -381,7 +381,7 @@ go_to_menu() {
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
   *system*) show_system_menu ;;
-  *about*) terminal bash -c 'fastfetch; read -n 1 -s' ;;
+  *about*) alacritty --class Omarchy -o font.size=9 -e bash -c 'fastfetch; read -n 1 -s' ;;
   esac
 }
 
