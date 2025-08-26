@@ -3,8 +3,8 @@
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications/"
 
-if [ "$#" -ne 1 ]; then
-  # Find all web apps
+if [ "$#" -eq 0 ]; then
+  # Find all TUIs
   while IFS= read -r -d '' file; do
     if grep -q '^Exec=.*alacritty.*-e' "$file"; then
       TUIS+=("$(basename "${file%.desktop}")")
@@ -14,23 +14,28 @@ if [ "$#" -ne 1 ]; then
   if ((${#TUIS[@]})); then
     IFS=$'\n' SORTED_TUIS=($(sort <<<"${TUIS[*]}"))
     unset IFS
-    APP_NAME=$(gum choose --header "Select TUI to remove..." "${SORTED_TUIS[@]}")
+    APP_NAMES_STRING=$(gum choose --no-limit --header "Select TUI to remove..." --selected-prefix="✗ " "${SORTED_TUIS[@]}")
+    # Convert newline-separated string to array
+    APP_NAMES=()
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && APP_NAMES+=("$line")
+    done <<< "$APP_NAMES_STRING"
   else
     echo "No TUIs to remove."
     exit 1
   fi
 else
-  APP_NAME="$1"
+  # Use array to preserve spaces in app names
+  APP_NAMES=("$@")
 fi
 
-if [[ -z "$APP_NAME" ]]; then
-  echo "You must provide TUI name."
+if [[ ${#APP_NAMES[@]} -eq 0 ]]; then
+  echo "You must provide TUI names."
   exit 1
 fi
 
-rm "$DESKTOP_DIR/$APP_NAME.desktop"
-rm "$ICON_DIR/$APP_NAME.png"
-
-if [ "$#" -ne 1 ]; then
-  echo -e "Removed $APP_NAME\n"
-fi
+for APP_NAME in "${APP_NAMES[@]}"; do
+  rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
+  rm -f "$ICON_DIR/$APP_NAME.png"
+  echo "Removed $APP_NAME"
+done
