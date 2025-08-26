@@ -2,6 +2,21 @@
 
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 
+# Track if menu was accessed directly via command line argument
+DIRECT_ACCESS=false
+
+# Handle exit behavior based on access method and parent menu
+handle_exit() {
+  local parent_menu="$1"
+  if [[ "$DIRECT_ACCESS" == "true" ]]; then
+    exit 0
+  elif [[ -n "$parent_menu" ]]; then
+    "$parent_menu"
+  else
+    show_main_menu
+  fi
+}
+
 menu() {
   local prompt="$1"
   local options="$2"
@@ -80,7 +95,7 @@ show_style_menu() {
 show_theme_menu() {
   theme=$(menu "Theme" "$(omarchy-theme-list)" "" "$(omarchy-theme-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    show_main_menu
+    handle_exit show_style_menu
   else
     omarchy-theme-set "$theme"
   fi
@@ -89,7 +104,7 @@ show_theme_menu() {
 show_font_menu() {
   theme=$(menu "Font" "$(omarchy-font-list)" "-w 350" "$(omarchy-font-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    show_main_menu
+    handle_exit show_style_menu
   else
     omarchy-font-set "$theme"
   fi
@@ -163,7 +178,7 @@ show_setup_power_menu() {
   profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
   if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
-    show_main_menu
+    handle_exit show_setup_menu
   else
     powerprofilesctl set "$profile"
   fi
@@ -332,7 +347,7 @@ show_update_process_menu() {
   *Swayosd*) omarchy-restart-swayosd ;;
   *Walker*) omarchy-restart-walker ;;
   *Waybar*) omarchy-restart-waybar ;;
-  *) show_main_menu ;;
+  *) show_update_menu ;;
   esac
 }
 
@@ -346,7 +361,7 @@ show_update_config_menu() {
   *Swayosd*) present_terminal omarchy-refresh-swayosd ;;
   *Walker*) present_terminal omarchy-refresh-walker ;;
   *Waybar*) present_terminal omarchy-refresh-waybar ;;
-  *) show_main_menu ;;
+  *) show_update_menu ;;
   esac
 }
 
@@ -386,6 +401,7 @@ go_to_menu() {
 }
 
 if [[ -n "$1" ]]; then
+  DIRECT_ACCESS=true
   go_to_menu "$1"
 else
   show_main_menu
