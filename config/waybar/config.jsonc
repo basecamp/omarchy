@@ -72,7 +72,7 @@
     "tooltip-format-ethernet": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
     "tooltip-format-disconnected": "Disconnected",
     "interval": 3,
-    "nospacing": 1,
+    "spacing": 1,
     "on-click": "alacritty --class=Impala -e impala"
   },
   "battery": {
