@@ -2,9 +2,21 @@
 
 browser=$(xdg-settings get default-web-browser)
 
+# Prefer Chromium-family desktop entries; otherwise fall back to Chromium.
 case $browser in
-google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi*) ;;
-*) browser="chromium.desktop" ;;
+  google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi*) ;;
+  *) browser="chromium.desktop" ;;
 esac
 
-exec setsid uwsm app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+# Resolve the underlying executable from the desktop file
+exec_cmd=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,/usr}/share/applications/$browser 2>/dev/null | head -1)
+
+# Build optional flags depending on the browser engine
+extra_args=()
+case "$exec_cmd" in
+  *chromium*|*chrome*|*brave*|*edge*|*opera*|*vivaldi*)
+    extra_args+=(--ozone-platform=wayland)
+    ;;
+esac
+
+exec setsid uwsm app -- "$exec_cmd" ${extra_args[@]} --app="$1" "${@:2}"
