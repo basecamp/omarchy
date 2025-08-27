@@ -1,6 +1,5 @@
 #!/bin/bash
 
-<<<<<<< HEAD:install/packaging/lazyvim.sh
 if [[ ! -d "$HOME/.config/nvim" ]]; then
   git clone https://github.com/LazyVim/starter ~/.config/nvim
   cp -R ~/.local/share/omarchy/config/nvim/* ~/.config/nvim/
