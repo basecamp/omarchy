@@ -22,6 +22,7 @@ source $OMARCHY_INSTALL/packaging/fonts.sh
 source $OMARCHY_INSTALL/packaging/lazyvim.sh
 source $OMARCHY_INSTALL/packaging/webapps.sh
 source $OMARCHY_INSTALL/packaging/tuis.sh
+source $OMARCHY_INSTALL/packaging/pins.sh
 
 # Configuration
 source $OMARCHY_INSTALL/config/config.sh
