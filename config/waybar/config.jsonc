@@ -5,7 +5,7 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-  "modules-center": ["group/status-cluster", "clock", "custom/update"],
+  "modules-center": ["clock", "custom/update"],
   "modules-right": [
     "group/tray-expander",
     "bluetooth",
@@ -46,7 +46,7 @@
   "custom/update": {
     "format": "",
     "exec": "omarchy-update-available",
-    "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
+    "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
     "tooltip-format": "Omarchy update available",
     "interval": 3600
   },
@@ -72,7 +72,7 @@
     "tooltip-format-ethernet": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
     "tooltip-format-disconnected": "Disconnected",
     "interval": 3,
-    "nospacing": 1,
+    "spacing": 1,
     "on-click": "alacritty --class=Impala -e impala"
   },
   "battery": {

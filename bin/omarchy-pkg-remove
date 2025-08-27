@@ -2,7 +2,7 @@
 
 fzf_args=(
   --ansi
-  --prompt=' '
+  --prompt=' > '
   --multi
   --preview 'yay -Qi {1}'
   --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select, F11: maximize'

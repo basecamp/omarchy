@@ -9,7 +9,7 @@ if ! omarchy-pkg-aur-accessible; then
 fi
 
 fzf_args=(
-  --prompt=' '
+  --prompt=' > '
   --ansi
   --no-sort
   --exact
@@ -28,7 +28,7 @@ pkg_names=$(yay -Sla --color=never | awk '{print "\033[0m" $2 " \033[1;36m" $4 }
 
 if [[ -n "$pkg_names" ]]; then
   # Convert newline-separated selections to space-separated for yay
-  echo "$pkg_names" | tr '\n' ' ' | xargs yay -Sy --noconfirm
+  echo "$pkg_names" | tr '\n' ' ' | xargs yay -S --noconfirm
   sudo updatedb
   omarchy-show-done
 fi
