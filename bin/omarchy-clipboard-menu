@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Clipboard history picker with cliphist, walker, and wl-copy
+
+cliphist list \
+  | awk '{id=$1; $1=""; print substr($0,2) " ::: " id}' \
+  | walker -d -p "Clipboard History" \
+  | awk -F " ::: " '{print $2}' \
+  | xargs -r cliphist decode \
+  | wl-copy
