@@ -5,6 +5,7 @@ yay -S yazi ueberzugpp dragon-drop
 
 # Configure Yazi file manager with plugins and custom settings
 if command -v yazi &>/dev/null; then
+  echo "Yazi successfully installed"
   mkdir -p ~/.config/yazi
 
   # Install Yazi plugins ya pkg add yazi-rs/plugins:full-border

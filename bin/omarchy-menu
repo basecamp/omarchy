@@ -184,7 +184,7 @@ show_setup_config_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n  Web App\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming\n  Extras") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -195,6 +195,7 @@ show_install_menu() {
   *Editor*) show_install_editor_menu ;;
   *AI*) show_install_ai_menu ;;
   *Gaming*) show_install_gaming_menu ;;
+  *Extras*) show_install_extras_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -272,6 +273,13 @@ show_install_development_menu() {
   *Java*) present_terminal "omarchy-install-dev-env java" ;;
   *NET*) present_terminal "omarchy-install-dev-env dotnet" ;;
   *OCaml*) present_terminal "omarchy-install-dev-env ocaml" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_extras_menu() {
+  case $(menu "Install" "󰇥  Yazi") in
+  *Yazi*) present_terminal omarchy-install-yazi ;;
   *) show_install_menu ;;
   esac
 }
