@@ -38,7 +38,6 @@ source $OMARCHY_INSTALL/config/xcompose.sh
 source $OMARCHY_INSTALL/config/mise-ruby.sh
 source $OMARCHY_INSTALL/config/docker.sh
 source $OMARCHY_INSTALL/config/mimetypes.sh
-source $OMARCHY_INSTALL/config/localdb.sh
 source $OMARCHY_INSTALL/config/hardware/network.sh
 source $OMARCHY_INSTALL/config/hardware/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/hardware/bluetooth.sh
@@ -52,8 +51,11 @@ source $OMARCHY_INSTALL/login/plymouth.sh
 source $OMARCHY_INSTALL/login/limine-snapper.sh
 source $OMARCHY_INSTALL/login/alt-bootloaders.sh
 
-# Pin bad packages
-sudo pacman -U --noconfirm https://pkgs.omarchy.org/x86_64/abseil-cpp-20250512.1-1-x86_64.pkg.tar.zst
+# Updates
+sudo updatedb
+
+# Update system packages
+sudo pacman -Syu --noconfirm
 
 # Reboot
 clear

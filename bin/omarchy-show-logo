@@ -1,7 +1,15 @@
 #!/bin/bash
 
+# Create directory if it doesn't exist
+mkdir -p ~/.local/share/omarchy
+
+# Copy logo.txt if it doesn't exist in the target location
+if [ ! -f ~/.local/share/omarchy/logo.txt ] && [ -f "$(dirname "$(dirname "$0")")/logo.txt" ]; then
+  cp "$(dirname "$(dirname "$0")")/logo.txt" ~/.local/share/omarchy/logo.txt
+fi
+
 clear
 echo -e "\033[32m"
-cat <~/.local/share/omarchy/logo.txt
+cat ~/.local/share/omarchy/logo.txt 2>/dev/null || cat "$(dirname "$(dirname "$0")")/logo.txt"
 echo -e "\033[0m"
 echo

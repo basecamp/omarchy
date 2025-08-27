@@ -7,8 +7,15 @@
 # ==============================================================================
 
 if [ "$(plymouth-set-default-theme)" != "omarchy" ]; then
-  sudo cp -r "$HOME/.local/share/omarchy/default/plymouth" /usr/share/plymouth/themes/omarchy/
-  sudo plymouth-set-default-theme -R omarchy
+  LOCAL_REPO_DIR="$(cd "$(dirname "$OMARCHY_INSTALL")/.." && pwd)"
+  echo "Copying plymouth theme from $LOCAL_REPO_DIR/default/plymouth"
+  sudo cp -r "$LOCAL_REPO_DIR/default/plymouth" /usr/share/plymouth/themes/omarchy/ 2>/dev/null || sudo cp -r "$HOME/.local/share/omarchy/default/plymouth" /usr/share/plymouth/themes/omarchy/ 2>/dev/null || true
+  # Check if the theme was copied successfully
+  if [ -f "/usr/share/plymouth/themes/omarchy/omarchy.plymouth" ]; then
+    sudo plymouth-set-default-theme -R omarchy
+  else
+    echo "Warning: Plymouth theme not found, skipping theme setup"
+  fi
 fi
 
 # ==============================================================================

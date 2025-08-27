@@ -7,11 +7,11 @@ abort() {
 }
 
 # Must be an Arch distro
-[[ -f /etc/arch-release ]] || abort "Vanilla Arch"
+[[ -f /etc/arch-release ]] || abort "Arch Linux (or derivative)"
 
 # Must not be an Arch derivative distro
 for marker in /etc/cachyos-release /etc/eos-release /etc/garuda-release /etc/manjaro-release; do
-  [[ -f "$marker" ]] && abort "Vanilla Arch"
+  [[ -f "$marker" ]] && abort "Arch Linux (or derivative)"
 done
 
 # Must not be running as root
@@ -20,9 +20,8 @@ done
 # Must be x86 only to fully work
 [ "$(uname -m)" != "x86_64" ] && abort "x86_64 CPU"
 
-# Must not have Gnome or KDE already install
-pacman -Qe gnome-shell &>/dev/null && abort "Fresh + Vanilla Arch"
-pacman -Qe plasma-desktop &>/dev/null && abort "Fresh + Vanilla Arch"
+# Must not have KDE already installed (Gnome is acceptable)
+pacman -Qe plasma-desktop &>/dev/null && abort "Fresh Arch installation (without KDE)"
 
 # Cleared all guards
 echo "Guards: OK"
