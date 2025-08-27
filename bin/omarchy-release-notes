@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Use the passed in version or grab the current omarchy version
+version=${1:-$(omarchy-version)}
+
+# Ensure the version starts with 'v', i.e. v2.0.1
+[[ $version == v* ]] || version="v$version"
+
+url="https://api.github.com/repos/basecamp/omarchy/releases/tags/${version}"
+response=$(curl -s "$url")
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to fetch release notes from GitHub API - ${url}" >&2
+    exit 1
+fi
+release_notes=$(echo "$response" | jq -r '.body // "No release notes found for this tag."')
+
+echo "Release Notes for Omarchy $version:"
+echo "$release_notes" | glow
