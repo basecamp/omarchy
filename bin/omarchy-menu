@@ -35,23 +35,23 @@ edit_in_nvim() {
 }
 
 install() {
-  present_terminal "echo 'Installing $1...'; sudo pacman -Sy --noconfirm $2"
+  present_terminal "echo 'Installing $1...'; sudo pacman -S --noconfirm $2"
 }
 
 install_and_launch() {
-  present_terminal "echo 'Installing $1...'; sudo pacman -Sy --noconfirm $2 && setsid gtk-launch $3"
+  present_terminal "echo 'Installing $1...'; sudo pacman -S --noconfirm $2 && setsid gtk-launch $3"
 }
 
 install_font() {
-  present_terminal "echo 'Installing $1...'; sudo pacman -Sy --noconfirm --needed $2 && sleep 2 && omarchy-font-set '$3'"
+  present_terminal "echo 'Installing $1...'; sudo pacman -S --noconfirm --needed $2 && sleep 2 && omarchy-font-set '$3'"
 }
 
 aur_install() {
-  present_terminal "echo 'Installing $1 from AUR...'; yay -Sy --noconfirm $2"
+  present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2"
 }
 
 aur_install_and_launch() {
-  present_terminal "echo 'Installing $1 from AUR...'; yay -Sy --noconfirm $2 && setsid gtk-launch $3"
+  present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2 && setsid gtk-launch $3"
 }
 
 show_learn_menu() {

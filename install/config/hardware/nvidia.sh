@@ -36,7 +36,7 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
   fi
 
   # force package database refresh
-  sudo pacman -Syy
+  sudo pacman -Syu
 
   # Install packages
   PACKAGES_TO_INSTALL=(
