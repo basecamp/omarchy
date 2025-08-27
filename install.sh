@@ -53,7 +53,7 @@ source $OMARCHY_INSTALL/login/limine-snapper.sh
 source $OMARCHY_INSTALL/login/alt-bootloaders.sh
 
 # Pin bad packages
-# sudo pacman -U --noconfirm https://pkgs.omarchy.org/x86_64/abseil-cpp-20250512.1-1-x86_64.pkg.tar.zst
+sudo pacman -U --noconfirm https://pkgs.omarchy.org/x86_64/abseil-cpp-20250512.1-1-x86_64.pkg.tar.zst
 
 # Reboot
 clear
