@@ -22,7 +22,6 @@ echo "==> Adding Nvidia variables at the end of $HYPRCONF ..."
     echo "env = LIBVA_DRIVER_NAME,nvidia"
     echo "env = GBM_BACKEND,nvidia-drm"
     echo "env = __GLX_VENDOR_LIBRARY_NAME,nvidia"
-    echo "env = WLR_NO_HARDWARE_CURSORS,1"
 } >> "$HYPRCONF"
 
 echo "==> Configuration completed!"
