@@ -22,7 +22,6 @@ source $OMARCHY_INSTALL/packaging/fonts.sh
 source $OMARCHY_INSTALL/packaging/lazyvim.sh
 source $OMARCHY_INSTALL/packaging/webapps.sh
 source $OMARCHY_INSTALL/packaging/tuis.sh
-source $OMARCHY_INSTALL/packaging/pins.sh
 
 # Configuration
 source $OMARCHY_INSTALL/config/config.sh
@@ -52,6 +51,9 @@ source $OMARCHY_INSTALL/config/hardware/nvidia.sh
 source $OMARCHY_INSTALL/login/plymouth.sh
 source $OMARCHY_INSTALL/login/limine-snapper.sh
 source $OMARCHY_INSTALL/login/alt-bootloaders.sh
+
+# Pin any bad packages
+source $OMARCHY_INSTALL/packaging/pins.sh
 
 # Reboot
 clear
