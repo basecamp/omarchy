@@ -1,0 +1,128 @@
+#!/bin/bash
+
+# Install and configure Nushell as default shell
+echo "Installing Nushell..."
+yay -S --needed nushell zoxide
+
+if command -v nu &>/dev/null; then
+  echo "Nushell installed successfully"
+
+  # Get the nushell binary path
+  NU_PATH=$(which nu)
+  echo "Nushell path: $NU_PATH"
+
+  # Add nushell to /etc/shells if not already there
+  if ! grep -q "$NU_PATH" /etc/shells; then
+    echo "Adding nushell to /etc/shells..."
+    echo "$NU_PATH" | sudo tee -a /etc/shells
+  fi
+
+  # Create nushell config directory
+  mkdir -p ~/.config/nushell
+
+  # Create config files
+  echo "Setting up nushell configuration..."
+
+  # Create config.nu
+  cat >~/.config/nushell/config.nu <<'EOF'
+# Nushell configuration file
+
+# Settings
+
+$env.EDITOR = "nvim"
+$env.VISUAL = "nvim"
+
+$env.PROMPT_INDICATOR = " "
+$env.PROMPT_COMMAND_RIGHT = ""
+$env.PROMPT_MULTILINE_INDICATOR = ""
+$env.PROMPT_COMMAND = ""
+
+$env.config = {
+	show_banner: false
+	buffer_editor: "nvim"
+	highlight_resolved_externals: true
+}
+
+# Environment variables
+
+$env.TRANSIENT_PROMPT_COMMAND = null
+$env.SSH_AUTH_SOCK = $"($env.XDG_RUNTIME_DIR)/ssh-agent.socket"
+
+# Source external configuration files
+
+source ~/.config/nushell/alias.nu
+
+source ~/.zoxide.nu
+
+# Startup programs
+
+sleep 0.1sec
+fastfetch
+source $"($nu.home-path)/.cargo/env.nu"
+
+# Starship support
+mkdir ($nu.data-dir | path join "vendor/autoload")
+starship init nu | save -f ($nu.data-dir | path join "vendor/autoload/starship.nu")
+EOF
+
+  # Create env.nu
+  cat >~/.config/nushell/env.nu <<'EOF'
+# env.nu
+#
+# Installed by:
+# version = "0.106.1"
+#
+# Previously, environment variables were typically configured in `env.nu`.
+# In general, most configuration can and should be performed in `config.nu`
+# or one of the autoload directories.
+#
+# This file is generated for backwards compatibility for now.
+# It is loaded before config.nu and login.nu
+#
+# See https://www.nushell.sh/book/configuration.html
+#
+# Also see `help config env` for more options.
+#
+# You can remove these comments if you want or leave
+# them for future reference.
+
+# Initialize zoxide support for nu
+zoxide init nushell --cmd cd | save -f ~/.zoxide.nu
+EOF
+
+  # Create alias.nu
+  cat >~/.config/nushell/alis.nu <<'EOF'
+# You can define your custom aliases here
+# Some examples you can uncomment:
+#
+# fzf with file preview
+# alias pfzf = fzf --preview="bat --color=always {}"
+#
+# Use bat instead of cat
+# alias cat = bat
+#
+# Fzf with image preview and selection opening to a nvim buffer
+# def nfzf [] {
+#     try {
+#         let selected_file = (fzf --preview="bat --color=always {}" | str trim)
+#         if ($selected_file != "" and ($selected_file | path exists)) {
+#             nvim $selected_file
+#         } else {
+#             print "No file selected or file doesn't exist"
+#         }
+#     } catch {
+#         print "fzf was cancelled or failed"
+#     }
+# }
+EOF
+
+  # Set nushell as default shell
+  echo "Setting nushell as default shell..."
+  chsh -s "$NU_PATH"
+
+  echo "Nushell has been configured successfully!"
+  echo "Please log out and log back in for the shell change to take effect."
+else
+  echo "Failed to install nushell"
+  exit 1
+fi

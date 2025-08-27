@@ -278,8 +278,9 @@ show_install_development_menu() {
 }
 
 show_install_extras_menu() {
-  case $(menu "Install" "󰇥  Yazi") in
+  case $(menu "Install" "󰇥  Yazi\n  Nushell") in
   *Yazi*) present_terminal omarchy-install-yazi ;;
+  *Nushell*) present_terminal omarchy-install-nushell ;;
   *) show_install_menu ;;
   esac
 }
