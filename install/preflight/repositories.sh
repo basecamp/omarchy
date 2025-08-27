@@ -36,4 +36,4 @@ if [[ "$(uname -m)" == "x86_64" ]] && [ -z "$DISABLE_CHAOTIC" ]; then
 fi
 
 # Refresh all repos
-sudo pacman -Syu
+sudo pacman -Syu --noconfirm
