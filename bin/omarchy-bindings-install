@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# omarchy-bindings-install: Install a new binding set from a git repo for Omarchy
+# Usage: omarchy-bindings-install <git-repo-url>
+
+if [ -z "$1" ]; then
+  echo -e "\e[32mEnter the Git repository URL for the binding set.\n\e[0m"
+  REPO_URL=$(gum input --placeholder="Git repo URL for bindings" --header="")
+else
+  REPO_URL="$1"
+fi
+
+if [ -z "$REPO_URL" ]; then
+  exit 1
+fi
+
+BINDINGS_DIR="$HOME/.config/omarchy/bindings"
+BINDING_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-bindings$//')
+BINDING_PATH="$BINDINGS_DIR/$BINDING_NAME"
+
+# Create the bindings directory if it doesn't exist
+mkdir -p "$BINDINGS_DIR"
+
+# Remove existing binding set if present
+if [ -d "$BINDING_PATH" ]; then
+  rm -rf "$BINDING_PATH"
+fi
+
+# Clone the repo directly to ~/.config/omarchy/bindings
+echo "Cloning repository..."
+if ! git clone "$REPO_URL" "$BINDING_PATH"; then
+  echo "Error: Failed to clone binding set repository."
+  exit 1
+fi
+
+# Check if metadata.json exists
+if [[ ! -f "$BINDING_PATH/metadata.json" ]]; then
+  echo "Error: Invalid binding set - missing metadata.json" >&2
+  rm -rf "$BINDING_PATH" # Clean up failed install
+  exit 3
+fi
+
+echo "Binding set '$BINDING_NAME' installed successfully."
+
+# Apply the new binding set with omarchy-bindings-set
+echo "Applying new binding set..."
+omarchy-bindings-set "$BINDING_NAME"
