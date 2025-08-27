@@ -1,4 +1,4 @@
 #!/bin/bash
 
-echo "Resetting sudo lockout for user: $USER"
+# Resetting sudo lockout for user
 su -c "faillock --reset --user $USER"
