@@ -1,4 +1,0 @@
-#!/bin/bash
-
-cmd="$*"
-setsid alacritty -e bash -c "omarchy-show-logo; $cmd; omarchy-show-done"

@@ -26,7 +26,7 @@ terminal() {
 }
 
 present_terminal() {
-  alacritty --class Omarchy -e bash -c "omarchy-show-logo; eval \"$1\"; omarchy-show-done;"
+  omarchy-launch-floating-terminal-with-presentation $1
 }
 
 edit_in_nvim() {
