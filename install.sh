@@ -54,9 +54,6 @@ source $OMARCHY_INSTALL/login/alt-bootloaders.sh
 # Updates
 sudo updatedb
 
-# Update system packages
-sudo pacman -Syu --noconfirm
-
 # Reboot
 clear
 tte -i ~/.local/share/omarchy/logo.txt --frame-rate 920 laseretch
