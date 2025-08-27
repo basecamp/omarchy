@@ -59,6 +59,14 @@ EOF
     ]
 EOF
 
+  # Add yazi keybinding to hyprland config
+  if [ -f ~/.config/hypr/bindings.conf ]; then
+    echo "Adding yazi keybinding to hyprland..."
+    echo 'bind = SUPER SHIFT, F, File manager (Yazi), exec, $terminal -e yazi' >> ~/.config/hypr/bindings.conf
+  else
+    echo "Warning: ~/.config/hypr/bindings.conf not found. Skipping keybinding setup."
+  fi
+
   echo "Yazi has been configured with plugins and custom settings"
 else
   echo "Yazi is not installed. Please install yazi first."
