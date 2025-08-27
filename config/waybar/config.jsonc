@@ -46,7 +46,7 @@
   "custom/update": {
     "format": "",
     "exec": "omarchy-update-available",
-    "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
+    "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
     "tooltip-format": "Omarchy update available",
     "interval": 3600
   },
