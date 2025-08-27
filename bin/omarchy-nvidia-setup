@@ -1,0 +1,28 @@
+#!/bin/bash
+# omarchy-nvidia-setup
+# Script to configure Nvidia drivers on Arch Linux with Hyprland
+
+set -e
+
+echo "==> Installing drivers NVIDIA..."
+sudo pacman -S --noconfirm nvidia nvidia-utils nvidia-settings lib32-nvidia-utils
+
+echo "==> Removing Nvidia-Open-DKMS (if it exists)..."
+sudo pacman -R --noconfirm nvidia-open-dkms || true
+
+HYPRCONF="$HOME/.config/hypr/hyprland.conf"
+
+echo "==> Creating configuration directory if it does not exist..."
+mkdir -p "$(dirname "$HYPRCONF")"
+
+echo "==> Adding Nvidia variables at the end of $HYPRCONF ..."
+{
+    echo ""
+    echo "# NVIDIA setup"
+    echo "env = LIBVA_DRIVER_NAME,nvidia"
+    echo "env = GBM_BACKEND,nvidia-drm"
+    echo "env = __GLX_VENDOR_LIBRARY_NAME,nvidia"
+    echo "env = WLR_NO_HARDWARE_CURSORS,1"
+} >> "$HYPRCONF"
+
+echo "==> Configuration completed!"
