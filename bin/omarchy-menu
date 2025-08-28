@@ -67,14 +67,25 @@ show_learn_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n  Bindings\n  Font\n  Background\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
+  *Bindings*) show_bindings_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
   *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
   *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
   esac
+}
+
+show_bindings_menu() {
+  binding=$(menu "Bindings" "$(omarchy-bindings-list)" "" "$(omarchy-bindings-current)")
+  if [[ "$binding" == "CNCLD" || -z "$binding" ]]; then
+    show_style_menu
+  else
+    omarchy-bindings-set "$binding"
+    show_style_menu
+  fi
 }
 
 show_theme_menu() {
@@ -240,8 +251,9 @@ show_install_gaming_menu() {
 }
 
 show_install_style_menu() {
-  case $(menu "Install" "󰸌  Theme\n  Background\n  Font") in
+  case $(menu "Install" "󰸌  Theme\n  Bindings\n  Background\n  Font") in
   *Theme*) present_terminal omarchy-theme-install ;;
+  *Bindings*) present_terminal omarchy-bindings-install ;;
   *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
   *Font*) show_install_font_menu ;;
   *) show_install_menu ;;
@@ -303,11 +315,12 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n  Bindings\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
+  *Bindings*) present_terminal omarchy-bindings-remove ;;
   *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
   *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
   *) show_main_menu ;;

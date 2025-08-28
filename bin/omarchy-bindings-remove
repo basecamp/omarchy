@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy-bindings-remove: Remove a binding set.
+# Usage: omarchy-bindings-remove [binding-set-name]
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BINDINGS_DIR="$HOME/.config/omarchy/bindings"
+
+# If no binding set is specified, prompt the user to select one
+if [ -z "$1" ]; then
+  mapfile -t BINDING_SETS < <("$SCRIPT_DIR/omarchy-bindings-list")
+  if [ ${#BINDING_SETS[@]} -eq 0 ]; then
+    echo "No binding sets to remove."
+    exit 0
+  fi
+  
+  SELECTED_BINDING=$(printf "%s\n" "${BINDING_SETS[@]}" | gum choose --header "Select a binding set to remove")
+  if [ -z "$SELECTED_BINDING" ]; then
+    exit 1 # User cancelled
+  fi
+  BINDING_TO_REMOVE="$SELECTED_BINDING"
+else
+  BINDING_TO_REMOVE="$1"
+fi
+
+BINDING_NAME=$(echo "$BINDING_TO_REMOVE" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+BINDING_PATH="$BINDINGS_DIR/$BINDING_NAME"
+
+# Check if the binding set exists
+if [[ ! -d "$BINDING_PATH" ]]; then
+  echo "Binding set '$BINDING_TO_REMOVE' does not exist in $BINDINGS_DIR" >&2
+  exit 2
+fi
+
+# Check if the binding set to be removed is the current one
+CURRENT_BINDING=$("$SCRIPT_DIR/omarchy-bindings-current")
+if [[ "$CURRENT_BINDING" == "$BINDING_TO_REMOVE" ]]; then
+  echo "Binding set '$BINDING_TO_REMOVE' is currently active. Switching to the next available set..."
+  "$SCRIPT_DIR/omarchy-bindings-next"
+fi
+
+# Remove the binding set directory
+rm -rf "$BINDING_PATH"
+
+echo "Binding set '$BINDING_TO_REMOVE' has been removed."

@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# omarchy-bindings-next: Cycle to the next available binding set
+# Usage: omarchy-bindings-next
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Get list of available binding sets
+mapfile -t BINDING_SETS < <("$SCRIPT_DIR/omarchy-bindings-list")
+
+if [[ ${#BINDING_SETS[@]} -eq 0 ]]; then
+  echo "No binding sets available" >&2
+  exit 1
+fi
+
+# Get current binding set
+CURRENT_BINDING=$("$SCRIPT_DIR/omarchy-bindings-current")
+
+# Find current index
+CURRENT_INDEX=-1
+for i in "${!BINDING_SETS[@]}"; do
+  if [[ "${BINDING_SETS[$i]}" == "$CURRENT_BINDING" ]]; then
+    CURRENT_INDEX=$i
+    break
+  fi
+done
+
+# Calculate next index (wrap around)
+if [[ $CURRENT_INDEX -eq -1 ]]; then
+  NEXT_INDEX=0
+else
+  NEXT_INDEX=$(( (CURRENT_INDEX + 1) % ${#BINDING_SETS[@]} ))
+fi
+
+# Switch to next binding set
+"$SCRIPT_DIR/omarchy-bindings-set" "${BINDING_SETS[$NEXT_INDEX]}"
