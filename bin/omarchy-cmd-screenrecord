@@ -1,7 +1,7 @@
 #!/bin/bash
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
-OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR}}"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
   notify-send "Screen recording directory does not exist: $OUTPUT_DIR" -u critical -t 3000
