@@ -8,9 +8,9 @@ if ! grep -q "ILoveCandy" /etc/pacman.conf; then
   sudo sed -i '/^\[options\]/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
 fi
 
-# Add the Omarchy repository as first choice
+# Add the Omarchy repository
 if ! grep -q "omarchy" /etc/pacman.conf; then
-  sudo sed -i '/^\[core\]/i [omarchy]\nSigLevel = Optional TrustAll\nServer = https:\/\/pkgs.omarchy.org\/$arch\/\n' /etc/pacman.conf
+  echo -e '\n[omarchy]\nSigLevel = Optional TrustAll\nServer = https:\/\/pkgs.omarchy.org\/$arch\/\n' | sudo tee -a /etc/pacman.conf >/dev/null
 fi
 
 # Set mirrors to global ones only
