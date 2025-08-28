@@ -1,11 +1,14 @@
 #!/bin/bash
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
-OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
+OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_SCREENSHOTS_DIR:-$HOME/Pictures/Screenshots}}"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
-  notify-send "Screenshot directory does not exist: $OUTPUT_DIR" -u critical -t 3000
-  exit 1
+  mkdir $HOME/Pictures/Screenshots
+  sed -i -e '$aXDG_SCREENSHOTS_DIR="$HOME/Pictures/Screenshots"' ~/.config/user-dirs.dirs
+  if [[ ! -d "$OUTPUT_DIR" ]]; then
+    notify-send "Screenshot directory cannot be created at path: $OUTPUT_DIR" -u critical -t 3000
+  fi
 fi
 
 pkill slurp || hyprshot -m ${1:-region} --raw |
