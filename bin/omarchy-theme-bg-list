@@ -1,0 +1,43 @@
+#!/bin/bash
+
+CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
+BACKGROUNDS_DIR="$HOME/.config/omarchy/current/theme/backgrounds/"
+
+show_backgrounds_menu() {
+    INPUT_DATA=""
+
+    for bg_file in "$BACKGROUNDS_DIR"/*; do
+        [[ -f "$bg_file" ]] || continue
+
+        display_name=$(basename "$bg_file")
+
+        if [[ "$(readlink -f "$CURRENT_BACKGROUND_LINK")" == "$(readlink -f "$bg_file")" ]]; then
+            display_name="✓ $display_name"
+        fi
+
+        # Walker input: "label \x1f imagepath"
+        INPUT_DATA+="$display_name"$'\x1f'"$bg_file"$'\n'
+    done
+
+    if [[ -z "$INPUT_DATA" ]]; then
+        notify-send "No backgrounds found in $BACKGROUNDS_DIR"
+        return
+    fi
+
+    # keep --dmenu, use your theme that makes it a grid
+    selected=$(echo -n "$INPUT_DATA" | walker --dmenu --theme "theme-grid" -p "Select Background" -i 2 -t $'\x1f')
+
+    if [[ -n "$selected" && "$selected" != "CNCLD" ]]; then
+        selected_clean=$(echo "$selected" | sed 's/^✓ //')
+        set_background "$BACKGROUNDS_DIR/$selected_clean"
+    fi
+}
+
+set_background() {
+    local bg_file="$1"
+    ln -nsf "$bg_file" "$CURRENT_BACKGROUND_LINK"
+    pkill -x swaybg
+    setsid uwsm app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
+}
+
+show_backgrounds_menu
