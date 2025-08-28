@@ -25,6 +25,9 @@ fi
 
 case "$1" in
   "left")
+    # Exit fullscreen mode first (works for both fullscreen,0 and fullscreen,1)
+    hyprctl dispatch fullscreen 0
+    sleep 0.05
     # Set floating and resize
     hyprctl dispatch setfloating active
     sleep 0.05
@@ -36,6 +39,9 @@ case "$1" in
     ;;
 
   "right")
+    # Exit fullscreen mode first (works for both fullscreen,0 and fullscreen,1)
+    hyprctl dispatch fullscreen 0
+    sleep 0.05
     # Set floating and resize
     hyprctl dispatch setfloating active
     sleep 0.05
@@ -47,6 +53,9 @@ case "$1" in
     ;;
 
   "center")
+    # Exit fullscreen mode first (works for both fullscreen,0 and fullscreen,1)
+    hyprctl dispatch fullscreen 0
+    sleep 0.05
     # Set floating and resize
     hyprctl dispatch setfloating active
     sleep 0.05
