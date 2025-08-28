@@ -1,21 +1,73 @@
 #!/bin/bash
 
-# Get remote tag
-latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+# Constants
+UPSTREAM_REPO="basecamp/omarchy"
+
+# Get remote tag from upstream repository
+latest_tag=$(git ls-remote --tags "https://github.com/$UPSTREAM_REPO" | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
 if [[ -z "$latest_tag" ]]; then
   echo "Error: Could not retrieve latest tag."
   exit 1
 fi
 
-# Get local tag
-current_tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
+# Get local tag (current checked out tag)
+current_tag=$(git -C "$OMARCHY_PATH" describe --tags --exact-match 2>/dev/null || git -C "$OMARCHY_PATH" describe --tags)
 if [[ -z "$current_tag" ]]; then
   echo "Error: Could not retrieve current tag."
   exit 1
 fi
 
 if [[ "$current_tag" != "$latest_tag" ]]; then
-  echo "Omarchy update available ($latest_tag)"
+  echo "Omarchy update available: $current_tag → $latest_tag"
+  echo ""
+  
+  # Get all tags between current and latest
+  all_tags=$(git ls-remote --tags "https://github.com/$UPSTREAM_REPO" | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V)
+  
+  # Find tags newer than current_tag up to and including latest_tag
+  newer_tags=""
+  found_current=false
+  while IFS= read -r tag; do
+    if [[ "$found_current" == true ]]; then
+      newer_tags="$newer_tags$tag "
+      if [[ "$tag" == "$latest_tag" ]]; then
+        break
+      fi
+    elif [[ "$tag" == "$current_tag" ]]; then
+      found_current=true
+    fi
+  done <<< "$all_tags"
+  
+  # Fetch and combine release notes for all versions being skipped
+  if [[ -n "$newer_tags" ]]; then
+    echo "Release notes for updates:"
+    echo "================================"
+    
+    for tag in $newer_tags; do
+      release_notes=$(curl -s "https://api.github.com/repos/$UPSTREAM_REPO/releases/tags/$tag" | \
+        jq -r '.body // ""' 2>/dev/null)
+      
+      if [[ -n "$release_notes" && "$release_notes" != "null" ]]; then
+        echo ""
+        echo "## Version $tag"
+        echo "--------------------------------"
+        echo "$release_notes"
+      fi
+    done
+  else
+    # Fallback: just show notes for latest version
+    release_notes=$(curl -s "https://api.github.com/repos/$UPSTREAM_REPO/releases/tags/$latest_tag" | \
+      jq -r '.body // "No release notes available"' 2>/dev/null)
+    
+    if [[ -n "$release_notes" && "$release_notes" != "No release notes available" && "$release_notes" != "null" ]]; then
+      echo "Release notes for $latest_tag:"
+      echo "--------------------------------"
+      echo "$release_notes"
+    else
+      echo "No release notes available for $latest_tag"
+    fi
+  fi
+  
   exit 0
 else
   echo "Omarchy is up to date ($current_tag)"
