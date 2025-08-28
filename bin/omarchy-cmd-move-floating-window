@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# Move floating window to left, right, or center position
+# Usage: omarchy-cmd-move-floating-window [left|right|center]
+
+# Configuration via environment variables
+LEFT_WIDTH="${OMARCHY_FLOAT_LEFT_WIDTH:-60%}"
+LEFT_HEIGHT="${OMARCHY_FLOAT_LEFT_HEIGHT:-93%}"
+RIGHT_WIDTH="${OMARCHY_FLOAT_RIGHT_WIDTH:-60%}"
+RIGHT_HEIGHT="${OMARCHY_FLOAT_RIGHT_HEIGHT:-93%}"
+CENTER_WIDTH="${OMARCHY_FLOAT_CENTER_WIDTH:-95%}"
+CENTER_HEIGHT="${OMARCHY_FLOAT_CENTER_HEIGHT:-93%}"
+
+# Check for required dependencies
+if ! command -v hyprctl &> /dev/null; then
+  echo "Error: hyprctl not found. Is Hyprland running?" >&2
+  exit 1
+fi
+
+# Check for valid argument
+if [[ $# -ne 1 ]]; then
+  echo "Usage: $0 [left|right|center]" >&2
+  exit 1
+fi
+
+case "$1" in
+  "left")
+    # Set floating and resize
+    hyprctl dispatch setfloating active
+    sleep 0.05
+    hyprctl dispatch resizeactive exact "$LEFT_WIDTH" "$LEFT_HEIGHT"
+    hyprctl dispatch centerwindow  # Center vertically first
+    sleep 0.05
+    # Move window to left edge
+    hyprctl dispatch movewindow l
+    ;;
+
+  "right")
+    # Set floating and resize
+    hyprctl dispatch setfloating active
+    sleep 0.05
+    hyprctl dispatch resizeactive exact "$RIGHT_WIDTH" "$RIGHT_HEIGHT"
+    hyprctl dispatch centerwindow  # Center vertically first
+    sleep 0.05
+    # Move window to right edge
+    hyprctl dispatch movewindow r
+    ;;
+
+  "center")
+    # Set floating and resize
+    hyprctl dispatch setfloating active
+    sleep 0.05
+    hyprctl dispatch resizeactive exact "$CENTER_WIDTH" "$CENTER_HEIGHT"
+    hyprctl dispatch centerwindow
+    ;;
+
+  *)
+    echo "Error: Invalid position '$1'. Use: left, right, or center" >&2
+    exit 1
+    ;;
+esac
