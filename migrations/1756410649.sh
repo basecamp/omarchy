@@ -1,10 +1,10 @@
 echo "Remove any Chaotic-AUR infrastructure packages"
 
-if pacman -Q chaotic-keyring >/dev/null; then
+if pacman -Q chaotic-keyring 2>/dev/null; then
   sudo pacman -Rns --noconfirm chaotic-keyring
 fi
 
-if pacman -Q chaotic-mirrorlist >/dev/null; then
+if pacman -Q chaotic-mirrorlist 2>/dev/null; then
   sudo pacman -Rns --noconfirm chaotic-mirrorlist
 fi
 
