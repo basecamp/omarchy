@@ -16,9 +16,11 @@ case "$COMMAND" in
 create)
   DESC="$(omarchy-version)"
 
+  echo -e "\e[32mCreate system snapshot\e[0m"
   for config in root home; do
     sudo snapper -c "$config" create -c number -d "$DESC"
   done
+  echo
   ;;
 restore)
   sudo limine-snapper-restore
