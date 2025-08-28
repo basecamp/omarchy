@@ -22,9 +22,16 @@ if [ -f /etc/systemd/resolved.conf ]; then
     sudo rm -f /etc/systemd/network/99-omarchy-dns.network
     sudo systemctl restart systemd-networkd
   fi
+  
+  # Remove UseDNS=no from all network files to allow DHCP DNS
+  # This matches what omarchy-setup-dns DHCP does
+  for file in /etc/systemd/network/*.network; do
+    [[ -f "$file" ]] || continue
+    sudo sed -i '/^UseDNS=no/d' "$file"
+  done
 
-  # Restart systemd-resolved to apply changes
-  sudo systemctl restart systemd-resolved
+  # Restart systemd services to apply changes
+  sudo systemctl restart systemd-networkd systemd-resolved
 
   echo "DNS configuration reset to use DHCP (router DNS)"
   echo "To use Cloudflare DNS, run: omarchy-setup-dns Cloudflare"
