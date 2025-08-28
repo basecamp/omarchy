@@ -1,4 +1,7 @@
 echo "Use new Omarchy mirror as default"
 
-echo -e "Server = https://mirror.omarchy.org/\$repo/os/\$arch\nServer = https://mirror.rackspace.com/archlinux/\$repo/os/\$arch\nServer = https://geo.mirror.pkgbuild.com/\$repo/os/\$arch" |
-  sudo tee /etc/pacman.d/mirrorlist >/dev/null
+sudo tee /etc/pacman.d/mirrorlist >/dev/null <<'EOF'
+Server = https://mirror.omarchy.org/$repo/os/$arch
+Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+EOF
