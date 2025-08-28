@@ -39,20 +39,32 @@ else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
 
-# Change Chromium colors
-if command -v chromium &>/dev/null; then
-  if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
-    chromium --no-startup-window --set-color-scheme="light"
-  else
-    chromium --no-startup-window --set-color-scheme="dark"
-  fi
+# Function to convert RGB to hex
+rgb_to_hex() {
+  local rgb="$1"
+  IFS=',' read -r r g b <<< "$rgb"
+  printf "#%02x%02x%02x" "$r" "$g" "$b"
+}
 
-  if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]]; then
-    chromium --no-startup-window --set-theme-color="$(<~/.config/omarchy/current/theme/chromium.theme)"
-  else
-    # Use a default, neutral grey if theme doesn't have a color
-    chromium --no-startup-window --set-theme-color="28,32,39"
-  fi
+# Change Chromium colors via policies and fallback to old method
+if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]]; then
+  THEME_COLOR="$(<~/.config/omarchy/current/theme/chromium.theme)"
+else
+  # Use a default, neutral grey if theme doesn't have a color
+  THEME_COLOR="28,32,39"
+fi
+
+# Convert RGB to hex for policies
+HEX_COLOR=$(rgb_to_hex "$THEME_COLOR")
+
+# Create Chrome policy directory and file
+if [[ -d "/etc/chromium/policies/managed" ]] || sudo mkdir -p "/etc/chromium/policies/managed" 2>/dev/null; then
+  echo "{\"BrowserThemeColor\": \"$HEX_COLOR\"}" | sudo tee "/etc/chromium/policies/managed/color.json" >/dev/null
+fi
+
+# Create Brave policy directory and file  
+if [[ -d "/etc/brave/policies/managed" ]] || sudo mkdir -p "/etc/brave/policies/managed" 2>/dev/null; then
+  echo "{\"BrowserThemeColor\": \"$HEX_COLOR\"}" | sudo tee "/etc/brave/policies/managed/color.json" >/dev/null
 fi
 
 # Trigger alacritty config reload
