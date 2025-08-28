@@ -16,9 +16,15 @@ case "$COMMAND" in
 create)
   DESC="$(omarchy-version)"
 
-  for config in root home; do
+  echo -e "\e[32mCreate system snapshot\e[0m"
+  
+  # Get existing snapper config names from CSV output
+  mapfile -t CONFIGS < <(sudo snapper --csvout list-configs | awk -F, 'NR>1 {print $1}')
+
+  for config in "${CONFIGS[@]}"; do
     sudo snapper -c "$config" create -c number -d "$DESC"
   done
+  echo
   ;;
 restore)
   sudo limine-snapper-restore
