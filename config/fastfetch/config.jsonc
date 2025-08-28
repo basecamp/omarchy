@@ -69,6 +69,12 @@
       "text": "version=$(omarchy-version); echo \"Omarchy $version\""
     },
     {
+      "type": "command",
+      "key": "│ ├󰘬",
+      "keyColor": "blue",
+      "text": "branch=$(omarchy-version-branch); echo \"$branch\""
+    },
+    {
       "type": "kernel",
       "key": "│ ├",
       "keyColor": "blue"
