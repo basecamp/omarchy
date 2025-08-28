@@ -1,0 +1,10 @@
+
+#!/bin/bash
+
+prompt="$1"
+
+if [[ -n "$prompt" && "$prompt" != "CNCLD" ]]; then
+  ln -nsf "$HOME/.local/share/omarchy/config/starship/$prompt.toml" "$HOME/.config/starship.toml"
+else
+  echo "Usage: omarchy-prompt-set <font-name>"
+fi

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+basename "$(realpath "$HOME/.config/starship.toml")" | sed -E 's/\.[^.]+$//' | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g'

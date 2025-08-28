@@ -67,11 +67,12 @@ show_learn_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver\n➤  Prompt\n  About") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
   *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
+  *Prompt*) show_prompt_menu ;;
   *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
   esac
@@ -83,6 +84,15 @@ show_theme_menu() {
     show_main_menu
   else
     omarchy-theme-set "$theme"
+  fi
+}
+
+show_prompt_menu() {
+  prompt=$(menu "Prompt" "$(omarchy-prompt-list)" "" "$(omarchy-prompt-current)")
+  if [[ "$prompt" == "CNCLD" || -z "$prompt" ]]; then
+    show_main_menu
+  else
+    omarchy-prompt-set "$prompt"
   fi
 }
 
