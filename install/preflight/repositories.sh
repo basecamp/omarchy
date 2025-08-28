@@ -10,7 +10,7 @@ fi
 
 # Add the Omarchy repository
 if ! grep -q "omarchy" /etc/pacman.conf; then
-  echo -e '\n[omarchy]\nSigLevel = Optional TrustAll\nServer = https:\/\/pkgs.omarchy.org\/$arch\/\n' | sudo tee -a /etc/pacman.conf >/dev/null
+  echo -e "\n[omarchy]\nSigLevel = Optional TrustAll\nServer = https://pkgs.omarchy.org/\$arch/\n" | sudo tee -a /etc/pacman.conf >/dev/null
 fi
 
 # Set mirrors to global ones only
