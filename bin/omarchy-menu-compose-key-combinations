@@ -1,0 +1,117 @@
+#!/bin/bash
+
+# A script to display compose key combinations for special characters
+# using walker for an interactive search menu
+# Get the current compose key from Hyprland configuration
+get_compose_key() {
+  local composekey=$(hyprctl getoption -j input:kb_options | jq -r '.str' | tr ',' '\n' | grep "compose:" | cut -d: -f2)
+  echo "${composekey:-caps}" # Default to caps if not set
+}
+
+# Extract compose key combinations from system compose file
+extract_compose_sequences() {
+  local user_compose_file="$HOME/.XCompose"
+  local shared_compose_file="$HOME/.local/share/omarchy/default/xcompose"
+  local compose_file="/usr/share/X11/locale/${LANG}/Compose"
+
+  # Process all compose files additively
+  {
+    # System compose file (base)
+    if [[ -f "$compose_file" ]]; then
+      grep "^<" "$compose_file" 2>/dev/null | grep -v "^#"
+    fi
+
+    # Shared compose file (additions)
+    if [[ -f "$shared_compose_file" ]]; then
+      grep "^<" "$shared_compose_file" 2>/dev/null | grep -v "^#"
+    fi
+
+    # User compose file (overrides/additions)
+    if [[ -f "$user_compose_file" ]]; then
+      grep "^<" "$user_compose_file" 2>/dev/null | grep -v "^#"
+    fi
+  } | sed -r \
+    -e 's/<([^>]+)>/\1/g' \
+    -e 's/^[ \t]+//g' \
+    -e 's/[ \t]+/ /g'
+}
+
+# Parse and format compose sequences for display
+parse_compose_sequences() {
+  local compose_key="$1"
+  awk -v compose_key="$compose_key" '{
+    # Find the colon separator
+    colon_pos = index($0, " : ");
+    if (colon_pos > 0) {
+      # Extract key sequence (before colon)
+      keys = substr($0, 1, colon_pos - 1);
+      gsub(/^[ \t]+|[ \t]+$/, "", keys);
+      
+      # Extract result and description (after colon)
+      rest = substr($0, colon_pos + 3);
+      if (match(rest, /"([^"]*)"[ \t]+[^ \t]+[ \t]*#[ \t]*(.*)/, parts)) {
+        char = parts[1];
+        desc = parts[2];
+        
+        if (char != "" && keys != "") {
+          # Replace Multi_key with actual compose key name
+          gsub(/^Multi_key /, compose_key " ", keys);
+          gsub(/Multi_key/, compose_key, keys);
+          
+          # Map unfriendly key names to user-friendly symbols (readable ones only)
+          gsub(/asciicircum/, "^", keys);
+          gsub(/asciitilde/, "~", keys);
+          gsub(/asterisk/, "*", keys);
+          gsub(/backslash/, "\\\\", keys);
+          gsub(/bar/, "|", keys);
+          gsub(/braceleft/, "{", keys);
+          gsub(/braceright/, "}", keys);
+          gsub(/bracketleft/, "[", keys);
+          gsub(/bracketright/, "]", keys);
+          gsub(/colon/, ":", keys);
+          gsub(/comma/, ",", keys);
+          gsub(/equal/, "=", keys);
+          gsub(/exclam/, "!", keys);
+          gsub(/greater/, ">", keys);
+          gsub(/less/, "<", keys);
+          gsub(/numbersign/, "#", keys);
+          gsub(/parenleft/, "(", keys);
+          gsub(/parenright/, ")", keys);
+          gsub(/semicolon/, ";", keys);
+          gsub(/underscore/, "_", keys);
+          
+          # Escape XML entities in keys for GTK markup
+          gsub(/&/, "\\&amp;", keys);
+          gsub(/</, "\\&lt;", keys);
+          gsub(/>/, "\\&gt;", keys);
+          gsub(/\\42/, "\\\\&quot;", keys);
+          
+          # Escape XML entities for GTK markup
+          gsub(/&/, "\\&amp;", char);
+          gsub(/</, "\\&lt;", char);
+          gsub(/>/, "\\&gt;", char);
+          gsub(/\\42/, "\\\\&quot;", char);
+          
+          gsub(/&/, "\\\\&amp;", desc);
+          gsub(/</, "\\\\&lt;", desc);
+          gsub(/>/, "\\\\&gt;", desc);
+          gsub(/\\42/, "\\\\&quot;", desc);
+          
+          if (keys != "") {
+            # Add middle dot separator between keys for readability
+            gsub(/ /, " · ", keys);
+            printf "%s → %s \(%s\)\n", keys, char, desc;
+          }
+        }
+      }
+    }
+  }'
+}
+
+compose_key=$(get_compose_key)
+
+{
+  echo "Current compose key: $compose_key"
+  echo "────────────────────────────────────────────────────────────────────────────────"
+  extract_compose_sequences | parse_compose_sequences "$compose_key" | sort -u
+} | walker --dmenu --theme keybindings -p 'XCompose Key Combinations'
