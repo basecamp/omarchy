@@ -118,4 +118,5 @@ sudo pacman -S --noconfirm --needed \
   xournalpp \
   yaru-icon-theme \
   yay \
-  zoxide
+  zoxide\
+  cliphist
