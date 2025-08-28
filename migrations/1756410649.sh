@@ -8,4 +8,6 @@ if pacman -Q chaotic-mirrorlist >/dev/null; then
   sudo pacman -Rns --noconfirm chaotic-mirrorlist
 fi
 
-sudo pacman-key --delete 3056513887B78AEB
+if sudo pacman-key --list-keys 3056513887B78AEB >/dev/null 2>&1; then
+  sudo pacman-key --delete 3056513887B78AEB
+fi
