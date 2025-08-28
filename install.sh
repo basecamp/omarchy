@@ -52,9 +52,6 @@ source $OMARCHY_INSTALL/login/plymouth.sh
 source $OMARCHY_INSTALL/login/limine-snapper.sh
 source $OMARCHY_INSTALL/login/alt-bootloaders.sh
 
-# Pin bad packages
-sudo pacman -U --noconfirm https://pkgs.omarchy.org/x86_64/abseil-cpp-20250512.1-1-x86_64.pkg.tar.zst
-
 # Reboot
 clear
 tte -i ~/.local/share/omarchy/logo.txt --frame-rate 920 laseretch
