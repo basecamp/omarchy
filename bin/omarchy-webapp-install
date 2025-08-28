@@ -25,7 +25,20 @@ if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_REF" ]]; then
   exit 1
 fi
 
-# Refer to local icon or fetch remotely from URL
+PROFILE_DIR="$HOME/.config/chromium/"
+PROFILES=()
+for p in "$PROFILE_DIR"/Default "$PROFILE_DIR"/Profile*; do
+  if [ -d "$p" ]; then
+    PROFILES+=("$(basename "$p")")
+  fi
+done
+
+if [ ${#PROFILES[@]} -eq 1 ]; then
+  APP_PROFILES="${PROFILES[0]}"
+else
+  APP_PROFILES=$(gum choose --header "Select browser profile" "${PROFILES[@]}")
+fi
+
 ICON_DIR="$HOME/.local/share/applications/icons"
 if [[ $ICON_REF =~ ^https?:// ]]; then
   ICON_PATH="$ICON_DIR/$APP_NAME.png"
@@ -54,7 +67,7 @@ cat >"$DESKTOP_FILE" <<EOF
 Version=1.0
 Name=$APP_NAME
 Comment=$APP_NAME
-Exec=$EXEC_COMMAND
+Exec=omarchy-launch-webapp "$APP_URL" "$APP_PROFILES"
 Terminal=false
 Type=Application
 Icon=$ICON_PATH
