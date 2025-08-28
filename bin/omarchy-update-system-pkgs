@@ -1,12 +1,13 @@
 #!/bin/bash
 
 echo -e "\e[32m\nUpdate system packages\e[0m"
-sudo pacman -Syu --noconfirm
-echo
+echo "sudo pacman -Syu --noconfirm --ignore \"$(omarchy-pkg-ignored)\""
+sudo pacman -Syu --noconfirm --ignore "$(omarchy-pkg-ignored)"
 
 if omarchy-pkg-aur-accessible; then
   echo -e "\e[32m\nUpdate AUR packages\e[0m"
-  yay -Syu --noconfirm
+  echo "yay -Syu --noconfirm  --ignore \"$(omarchy-pkg-ignored)\""
+  yay -Syu --noconfirm --ignore "$(omarchy-pkg-ignored)"
   echo
 else
   echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"

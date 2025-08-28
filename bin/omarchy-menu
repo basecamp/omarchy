@@ -26,7 +26,7 @@ terminal() {
 }
 
 present_terminal() {
-  alacritty --class Omarchy -e bash -c "omarchy-show-logo; eval \"$1\"; omarchy-show-done;"
+  omarchy-launch-floating-terminal-with-presentation $1
 }
 
 edit_in_nvim() {
@@ -35,23 +35,23 @@ edit_in_nvim() {
 }
 
 install() {
-  present_terminal "echo 'Installing $1...'; sudo pacman -Sy --noconfirm $2"
+  present_terminal "echo 'Installing $1...'; sudo pacman -S --noconfirm $2"
 }
 
 install_and_launch() {
-  present_terminal "echo 'Installing $1...'; sudo pacman -Sy --noconfirm $2 && setsid gtk-launch $3"
+  present_terminal "echo 'Installing $1...'; sudo pacman -S --noconfirm $2 && setsid gtk-launch $3"
 }
 
 install_font() {
-  present_terminal "echo 'Installing $1...'; sudo pacman -Sy --noconfirm --needed $2 && sleep 2 && omarchy-font-set '$3'"
+  present_terminal "echo 'Installing $1...'; sudo pacman -S --noconfirm --needed $2 && sleep 2 && omarchy-font-set '$3'"
 }
 
 aur_install() {
-  present_terminal "echo 'Installing $1 from AUR...'; yay -Sy --noconfirm $2"
+  present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2"
 }
 
 aur_install_and_launch() {
-  present_terminal "echo 'Installing $1 from AUR...'; yay -Sy --noconfirm $2 && setsid gtk-launch $3"
+  present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2 && setsid gtk-launch $3"
 }
 
 show_learn_menu() {
@@ -377,11 +377,12 @@ go_to_menu() {
   *screenrecord*) show_screenrecord_menu ;;
   *toggle*) show_toggle_menu ;;
   *setup*) show_setup_menu ;;
+  *power*) show_setup_power_menu ;;
   *install*) show_install_menu ;;
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
-  *system*) show_system_menu ;;
   *about*) alacritty --class Omarchy -o font.size=9 -e bash -c 'fastfetch; read -n 1 -s' ;;
+  *system*) show_system_menu ;;
   esac
 }
 
