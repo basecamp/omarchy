@@ -29,7 +29,7 @@ if [[ "$current_tag" != "$latest_tag" ]]; then
   found_current=false
   while IFS= read -r tag; do
     if [[ "$found_current" == true ]]; then
-      newer_tags="$newer_tags$tag "
+      newer_tags="$tag $newer_tags"  # Prepend to reverse order
       if [[ "$tag" == "$latest_tag" ]]; then
         break
       fi
