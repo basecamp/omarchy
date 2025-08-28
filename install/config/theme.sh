@@ -21,3 +21,6 @@ ln -snf ~/.config/omarchy/current/theme/btop.theme ~/.config/btop/themes/current
 
 mkdir -p ~/.config/mako
 ln -snf ~/.config/omarchy/current/theme/mako.ini ~/.config/mako/config
+
+mkdir -p ~/.config/eza
+ln -snf ~/.config/omarchy/current/theme/eza-theme.yml ~/.config/eza/theme.yml
