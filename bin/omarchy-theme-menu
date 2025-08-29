@@ -1,0 +1,46 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+WALKER_THEME_DIR="$HOME/.local/share/omarchy/default/walker/themes"
+
+current_theme=$(omarchy-theme-current)
+INPUT_DATA=""
+
+while IFS= read -r theme_name; do
+    display_name="$theme_name"
+
+    # Mark current theme with a checkmark
+    if [[ "$theme_name" == "$current_theme" ]]; then
+        display_name="✓ $display_name"
+    fi
+
+    # Convert theme name to snake-case directory name (e.g., "Matte Black" -> "matte-black")
+    theme_dir=$(echo "$theme_name" | sed -E 's/ /-/g; s/([A-Z])/\L\1/g')
+    theme_path="$HOME/.config/omarchy/themes/$theme_dir"
+
+    # Follow symlinks to get the actual theme directory
+    if [[ -L "$theme_path" ]]; then
+        actual_path=$(readlink -f "$theme_path")
+    else
+        actual_path="$theme_path"
+    fi
+
+    # Find preview image
+    preview_image="$actual_path/thumbnail.jpg"
+
+    # Build input data with image path for Walker - use unit separator
+    if [[ -f "$preview_image" ]]; then
+        INPUT_DATA+="$display_name"$'\x1f'"$preview_image"$'\n'
+    else
+        INPUT_DATA+="$display_name"$'\n'
+    fi
+done < <(omarchy-theme-list)
+
+selected=$(echo -n "$INPUT_DATA" | walker --dmenu --theme "theme-grid" -p "Select Theme" -i 2 -t $'\x1f')
+
+# Extract theme name and apply if selected
+if [[ -n "$selected" && "$selected" != "CNCLD" ]]; then
+    # Remove checkmark if present
+    selected_clean=$(echo "$selected" | sed 's/^✓ //')
+    omarchy-theme-set "$selected_clean"
+fi
