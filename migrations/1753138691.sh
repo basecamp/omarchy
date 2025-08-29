@@ -1,6 +1,6 @@
 echo "Install swayOSD to show volume status"
 
-if ! command -v swayosd-server &>/dev/null; then
-  sudo pacman -S --noconfirm --needed swayosd
+if cmd-missing swayosd-server; then
+  pkg-add swayosd
   setsid uwsm app -- swayosd-server &>/dev/null &
 fi
