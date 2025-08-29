@@ -1,5 +1,3 @@
 echo "Install missing docker-buildx package for out-of-the-box Kamal compatibility"
 
-if ! docker buildx version &>/dev/null; then
-  sudo pacman -S --noconfirm --needed docker-buildx
-fi
+pkg-add docker-buildx
