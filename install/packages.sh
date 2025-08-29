@@ -1,6 +1,4 @@
 sudo pacman -S --noconfirm --needed \
-  1password-beta \
-  1password-cli \
   alacritty \
   avahi \
   bash-completion \
@@ -21,9 +19,6 @@ sudo pacman -S --noconfirm --needed \
   evince \
   eza \
   fastfetch \
-  fcitx5 \
-  fcitx5-gtk \
-  fcitx5-qt \
   fd \
   ffmpegthumbnailer \
   fzf \
@@ -46,7 +41,6 @@ sudo pacman -S --noconfirm --needed \
   imv \
   inetutils \
   jq \
-  kdenlive \
   kvantum-qt5 \
   lazydocker \
   lazygit \
@@ -68,9 +62,7 @@ sudo pacman -S --noconfirm --needed \
   noto-fonts-extra \
   nss-mdns \
   nvim \
-  obs-studio \
   obsidian \
-  omarchy-chromium \
   pamixer \
   pinta \
   playerctl \
@@ -84,9 +76,7 @@ sudo pacman -S --noconfirm --needed \
   python-terminaltexteffects \
   ripgrep \
   satty \
-  signal-desktop \
   slurp \
-  spotify \
   starship \
   sushi \
   swaybg \
@@ -102,6 +92,7 @@ sudo pacman -S --noconfirm --needed \
   ufw-docker \
   unzip \
   uwsm \
+  vivaldi-bin \
   walker-bin \
   waybar \
   wf-recorder \
