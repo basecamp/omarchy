@@ -46,7 +46,7 @@ rgb_to_hex() {
   printf "#%02x%02x%02x" "$r" "$g" "$b"
 }
 
-# Change Chromium colors via policies and fallback to old method
+# Change Chromium colors via policies
 if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]]; then
   THEME_COLOR="$(<~/.config/omarchy/current/theme/chromium.theme)"
 else
@@ -60,12 +60,16 @@ HEX_COLOR=$(rgb_to_hex "$THEME_COLOR")
 # Create Chrome policy directory and file
 if [[ -d "/etc/chromium/policies/managed" ]] || sudo mkdir -p "/etc/chromium/policies/managed" 2>/dev/null; then
   echo "{\"BrowserThemeColor\": \"$HEX_COLOR\"}" | sudo tee "/etc/chromium/policies/managed/color.json" >/dev/null
+  # force a reload
+  chromium --force-policy-reload --no-startup-window 
 fi
 
 # Create Brave policy directory and file  
 if [[ -d "/etc/brave/policies/managed" ]] || sudo mkdir -p "/etc/brave/policies/managed" 2>/dev/null; then
   echo "{\"BrowserThemeColor\": \"$HEX_COLOR\"}" | sudo tee "/etc/brave/policies/managed/color.json" >/dev/null
 fi
+
+
 
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
