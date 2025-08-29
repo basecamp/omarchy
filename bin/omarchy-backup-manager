@@ -1,0 +1,325 @@
+#!/bin/bash
+
+# Omarchy Backup Manager
+# Helps users manage their configuration backups created during Omarchy installation
+
+BACKUP_DIR="$HOME/.config/omarchy-backups"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+show_help() {
+  echo "Omarchy Backup Manager"
+  echo "====================="
+  echo ""
+  echo "USAGE:"
+  echo "  omarchy-backup-manager [COMMAND] [OPTIONS]"
+  echo ""
+  echo "COMMANDS:"
+  echo "  backup              Create a new backup of current configurations"
+  echo "  list                List all available backups"
+  echo "  show [DATE]         Show contents of a specific backup"
+  echo "  restore [DATE] [CONFIG]  Restore a configuration from backup"
+  echo "  delete [DATE]       Delete a specific backup"
+  echo "  clean               Delete backups older than 30 days"
+  echo "  help                Show this help message"
+  echo ""
+  echo "EXAMPLES:"
+  echo "  omarchy-backup-manager backup"
+  echo "  omarchy-backup-manager list"
+  echo "  omarchy-backup-manager show <timestamp>"
+  echo "  omarchy-backup-manager restore <timestamp> hypr"
+  echo "  omarchy-backup-manager restore latest waybar"
+  echo "  omarchy-backup-manager delete <timestamp>"
+  echo ""
+}
+
+list_backups() {
+  if [ ! -d "$BACKUP_DIR" ]; then
+    echo -e "${YELLOW}No backups found.${NC}"
+    return
+  fi
+
+  echo "Available Configuration Backups:"
+  echo "================================"
+
+  local count=0
+  for backup_dir in "$BACKUP_DIR"/*/; do
+    if [ -d "$backup_dir" ] && [[ "$(basename "$backup_dir")" =~ ^[0-9]{8}_[0-9]{6}$ ]]; then
+      local backup_name=$(basename "$backup_dir")
+      local backup_date=$(echo "$backup_name" | sed 's/_/ /')
+      local formatted_date=$(date -d "${backup_date:0:8} ${backup_date:9:2}:${backup_date:11:2}:${backup_date:13:2}" "+%B %d, %Y at %H:%M:%S" 2>/dev/null || echo "$backup_name")
+      
+      echo -e "${GREEN}$backup_name${NC} - $formatted_date"
+      
+      if [ -L "$BACKUP_DIR/latest" ] && [ "$(readlink "$BACKUP_DIR/latest")" = "$backup_dir" ]; then
+        echo -e "   ${YELLOW}(Latest backup)${NC}"
+      fi
+      
+      # Show number of backed up items
+      local item_count=$(find "$backup_dir/.config" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+      echo "   Contains $item_count configuration items"
+      echo ""
+      ((count++))
+    fi
+  done
+  
+  if [ $count -eq 0 ]; then
+    echo -e "${YELLOW}No backups found.${NC}"
+  else
+    echo "Total backups: $count"
+    echo ""
+    echo "Tip: Use 'show' command to see backup contents"
+    echo "Tip: Use 'latest' as date to reference the most recent backup"
+  fi
+}
+
+create_backup() {
+  echo "Creating new configuration backup..."
+  echo ""
+  
+  # Check if the backup script exists
+  local backup_script="$HOME/.local/share/omarchy/install/config/backup-configs.sh"
+  
+  if [ ! -f "$backup_script" ]; then
+    echo -e "${RED}Error: Backup script not found at $backup_script${NC}"
+    echo "This command requires Omarchy to be installed."
+    return 1
+  fi
+  
+  # Run the backup script
+  if "$backup_script"; then
+    echo ""
+    echo -e "${GREEN}Backup created successfully!${NC}"
+    echo ""
+    echo "Use 'omarchy-backup-manager list' to see all backups"
+    echo "Use 'omarchy-backup-manager show latest' to see what was backed up"
+  else
+    echo -e "${RED}Backup creation failed${NC}"
+    return 1
+  fi
+}
+
+show_backup() {
+  local backup_date="$1"
+  
+  if [ -z "$backup_date" ]; then
+    echo -e "${RED}Error: Please specify a backup date${NC}"
+    echo "Usage: omarchy-backup-manager show <backup_date>"
+    return 1
+  fi
+  
+  local backup_path
+  if [ "$backup_date" = "latest" ]; then
+    if [ -L "$BACKUP_DIR/latest" ]; then
+      backup_path=$(readlink -f "$BACKUP_DIR/latest")
+      backup_date=$(basename "$backup_path")
+    else
+      echo -e "${RED}No latest backup found${NC}"
+      return 1
+    fi
+  else
+    backup_path="$BACKUP_DIR/$backup_date"
+  fi
+  
+  if [ ! -d "$backup_path" ]; then
+    echo -e "${RED}Backup not found: $backup_date${NC}"
+    return 1
+  fi
+
+  echo "Backup Contents: $backup_date"
+  echo "================================"
+  
+  if [ -f "$backup_path/backup_manifest.txt" ]; then
+    echo "Manifest:"
+    cat "$backup_path/backup_manifest.txt"
+    echo ""
+  fi
+
+  echo "Configuration items:"
+  if [ -d "$backup_path/.config" ]; then
+    find "$backup_path/.config" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort | while read -r item; do
+      echo "   • $item"
+    done
+  fi
+
+  echo "Configuration files:"
+  find "$backup_path" -name ".*" -type f 2>/dev/null | grep -v "/.config/" | while read -r file; do
+    local rel_path=$(echo "$file" | sed "s|$backup_path/||")
+    echo "   • $rel_path"
+  done
+}
+
+restore_config() {
+  local backup_date="$1"
+  local config_name="$2"
+  
+  if [ -z "$backup_date" ]; then
+    echo "Error: Please specify a backup date"
+    echo "Usage: omarchy-backup-manager restore <backup_date> [config_name]"
+    return 1
+  fi
+
+  local backup_path
+  if [ "$backup_date" = "latest" ]; then
+    if [ -L "$BACKUP_DIR/latest" ]; then
+      backup_path=$(readlink -f "$BACKUP_DIR/latest")
+      backup_date=$(basename "$backup_path")
+    else
+      echo "No latest backup found"
+      return 1
+    fi
+  else
+    backup_path="$BACKUP_DIR/$backup_date"
+  fi
+
+  if [ ! -d "$backup_path" ]; then
+    echo "Backup not found: $backup_date"
+    return 1
+  fi
+
+  if [ -z "$config_name" ]; then
+    # Interactive mode
+    echo "Available configurations to restore from backup $backup_date:"
+    find "$backup_path/.config" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort
+    echo ""
+    echo "Usage: omarchy-backup-manager restore $backup_date <config_name>"
+    return 0
+  fi
+
+  local source_path="$backup_path/.config/$config_name"
+  local dest_path="$HOME/.config/$config_name"
+
+  if [ ! -e "$source_path" ]; then
+    echo -e "${RED}Configuration not found in backup: $config_name${NC}"
+    return 1
+  fi
+
+  echo -e "${YELLOW}Warning: This will overwrite your current $config_name configuration.${NC}"
+  read -p "Are you sure? (y/N): " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Restoration cancelled."
+    return 0
+  fi
+
+  echo "Restoring $config_name from backup..."
+
+  # Backup current config before restoring
+  if [ -e "$dest_path" ]; then
+    local temp_backup="$dest_path.backup.$(date +%s)"
+    mv "$dest_path" "$temp_backup"
+    echo -e "${YELLOW}Current configuration backed up to: $temp_backup${NC}"
+  fi
+
+  cp -r "$source_path" "$dest_path"
+  echo -e "${GREEN}Successfully restored $config_name configuration${NC}"
+}
+
+delete_backup() {
+  local backup_date="$1"
+  
+  if [ -z "$backup_date" ]; then
+    echo -e "${RED}Error: Please specify a backup date${NC}"
+    echo "Usage: omarchy-backup-manager delete <backup_date>"
+    return 1
+  fi
+
+  if [ "$backup_date" = "latest" ]; then
+    echo -e "${RED}Cannot delete 'latest' - specify the actual backup date${NC}"
+    return 1
+  fi
+
+  local backup_path="$BACKUP_DIR/$backup_date"
+
+  if [ ! -d "$backup_path" ]; then
+    echo -e "${RED}Backup not found: $backup_date${NC}"
+    return 1
+  fi
+
+  echo -e "${YELLOW}Warning: This will permanently delete the backup: $backup_date${NC}"
+  read -p "Are you sure? (y/N): " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Deletion cancelled."
+    return 0
+  fi
+
+  rm -rf "$backup_path"
+  echo -e "${GREEN}Backup deleted: $backup_date${NC}"
+
+  # Update latest symlink if it was pointing to deleted backup
+  if [ -L "$BACKUP_DIR/latest" ] && [ ! -e "$BACKUP_DIR/latest" ]; then
+    # Find most recent remaining backup
+    local newest=$(find "$BACKUP_DIR" -maxdepth 1 -name "[0-9]*_[0-9]*" -type d | sort -r | head -1)
+    if [ -n "$newest" ]; then
+      ln -sfn "$newest" "$BACKUP_DIR/latest"
+      echo "Updated latest symlink to: $(basename "$newest")"
+    else
+      rm -f "$BACKUP_DIR/latest"
+    fi
+  fi
+}
+
+clean_old_backups() {
+  if [ ! -d "$BACKUP_DIR" ]; then
+    echo -e "${YELLOW}No backup directory found.${NC}"
+    return
+  fi
+
+  local count=0
+  local cutoff_date=$(date -d "30 days ago" +%Y%m%d)
+
+  for backup_dir in "$BACKUP_DIR"/*/; do
+    if [ -d "$backup_dir" ] && [[ "$(basename "$backup_dir")" =~ ^[0-9]{8}_[0-9]{6}$ ]]; then
+      local backup_name=$(basename "$backup_dir")
+      local backup_date_only=${backup_name:0:8}
+      
+      if [ "$backup_date_only" -lt "$cutoff_date" ]; then
+        echo -e "${YELLOW}Deleting old backup: $backup_name${NC}"
+        rm -rf "$backup_dir"
+        ((count++))
+      fi
+    fi
+  done
+
+  if [ $count -gt 0 ]; then
+    echo -e "${GREEN}Cleaned up $count old backups${NC}"
+  else
+    echo "No old backups to clean up"
+  fi
+}
+
+# Main command handling
+case "$1" in
+  "backup")
+    create_backup
+    ;;
+  "list"|"")
+    list_backups
+    ;;
+  "show")
+    show_backup "$2"
+    ;;
+  "restore")
+    restore_config "$2" "$3"
+    ;;
+  "delete")
+    delete_backup "$2"
+    ;;
+  "clean")
+    clean_old_backups
+    ;;
+  "help"|"-h"|"--help")
+    show_help
+    ;;
+  *)
+    echo -e "${RED}Unknown command: $1${NC}"
+    echo ""
+    show_help
+    exit 1
+    ;;
+esac
