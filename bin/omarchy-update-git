@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Trap interruption signals to prevent data loss
+trap 'echo -e "\n\e[33mUpdate interrupted.\e[0m"; exit 130' INT TERM HUP
+
 echo -e "\e[32mUpdate Omarchy\e[0m"
 git -C $OMARCHY_PATH pull --autostash
-git -C $OMARCHY_PATH diff --check || git -C $OMARCHY_PATH reset --merge
