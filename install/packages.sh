@@ -95,7 +95,7 @@ sudo pacman -S --noconfirm --needed \
   tldr \
   tree-sitter-cli \
   ttf-cascadia-mono-nerd \
-  ttf-jetbrains-mono \
+  ttf-jetbrains-mono-nerd \
   typora \
   tzupdate \
   ufw \
