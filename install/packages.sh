@@ -34,6 +34,7 @@ sudo pacman -S --noconfirm --needed \
   gnome-themes-extra \
   gum \
   gvfs-mtp \
+  gvfs-smb \
   hypridle \
   hyprland \
   hyprland-qtutils \
