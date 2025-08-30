@@ -1,9 +1,9 @@
 echo "Replace wofi with walker as the default launcher"
 
-if ! command -v walker &>/dev/null; then
-  sudo pacman -S --noconfirm --needed walker-bin libqalculate
+if cmd-missing walker; then
+  pkg-add walker-bin libqalculate
 
-  sudo pacman -Rns --noconfirm wofi
+  pkg-remove wofi
   rm -rf ~/.config/wofi
 
   mkdir -p ~/.config/walker
