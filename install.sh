@@ -46,6 +46,7 @@ source $OMARCHY_INSTALL/config/hardware/printer.sh
 source $OMARCHY_INSTALL/config/hardware/usb-autosuspend.sh
 source $OMARCHY_INSTALL/config/hardware/ignore-power-button.sh
 source $OMARCHY_INSTALL/config/hardware/nvidia.sh
+source $OMARCHY_INSTALL/config/hardware/macbook-keyboard.sh
 
 # Login
 source $OMARCHY_INSTALL/login/plymouth.sh
