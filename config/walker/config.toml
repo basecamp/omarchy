@@ -9,6 +9,10 @@ timeout = 60
 [keys.ai]
 run_last_response = ["ctrl e"]
 
+[keys]
+prev = ["ctrl p", "up"]
+next = ["ctrl n", "down"]
+
 [list]
 max_entries = 200
 cycle = true
