@@ -184,7 +184,7 @@ show_setup_config_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
+  case $(menu "Add" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -200,7 +200,7 @@ show_install_menu() {
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Tailscale") in
+  case $(menu "Add" "  Dropbox\n  Tailscale") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
   *) show_install_menu ;;
@@ -208,7 +208,7 @@ show_install_service_menu() {
 }
 
 show_install_editor_menu() {
-  case $(menu "Install" "  VSCode\n  Cursor [AUR]\n  Zed\n  Sublime Text\n  Helix") in
+  case $(menu "Add" "  VSCode\n  Cursor [AUR]\n  Zed\n  Sublime Text\n  Helix") in
   *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
   *Cursor*) aur_install_and_launch "Cursor" "cursor-bin" "cursor" ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
@@ -219,7 +219,7 @@ show_install_editor_menu() {
 }
 
 show_install_ai_menu() {
-  case $(menu "Install" "󱚤  Claude Code [AUR]\n󱚤  Gemini\n󱚤  LM Studio [AUR]\n󱚤  Ollama\n󱚤  Crush [AUR]\n󱚤  opencode [AUR]") in
+  case $(menu "Add" "󱚤  Claude Code [AUR]\n󱚤  Gemini\n󱚤  LM Studio [AUR]\n󱚤  Ollama\n󱚤  Crush [AUR]\n󱚤  opencode [AUR]") in
   *Claude*) aur_install "Claude Code" "claude-code" ;;
   *Gemini*) install "Gemini" "gemini-cli" ;;
   *Studio*) aur_install "LM Studio" "lmstudio" ;;
@@ -231,7 +231,7 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft") in
+  case $(menu "Add" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft") in
   *Steam*) present_terminal omarchy-install-steam ;;
   *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
@@ -240,7 +240,7 @@ show_install_gaming_menu() {
 }
 
 show_install_style_menu() {
-  case $(menu "Install" "󰸌  Theme\n  Background\n  Font") in
+  case $(menu "Add" "󰸌  Theme\n  Background\n  Font") in
   *Theme*) present_terminal omarchy-theme-install ;;
   *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
   *Font*) show_install_font_menu ;;
@@ -249,7 +249,7 @@ show_install_style_menu() {
 }
 
 show_install_font_menu() {
-  case $(menu "Install" "  Meslo LG Mono\n  Fira Code\n  Victor Code\n  Bistream Vera Mono" "-w 350") in
+  case $(menu "Add" "  Meslo LG Mono\n  Fira Code\n  Victor Code\n  Bistream Vera Mono" "-w 350") in
   *Meslo*) install_font "Meslo LG Mono" "ttf-meslo-nerd" "MesloLGL Nerd Font" ;;
   *Fira*) install_font "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font" ;;
   *Victor*) install_font "Victor Code" "ttf-victor-mono-nerd" "VictorMono Nerd Font" ;;
@@ -259,7 +259,7 @@ show_install_font_menu() {
 }
 
 show_install_development_menu() {
-  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml") in
+  case $(menu "Add" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml") in
   *Rails*) present_terminal "omarchy-install-dev-env ruby" ;;
   *Docker*) present_terminal omarchy-install-docker-dbs ;;
   *JavaScript*) show_install_javascript_menu ;;
@@ -277,7 +277,7 @@ show_install_development_menu() {
 }
 
 show_install_javascript_menu() {
-  case $(menu "Install" "  Node.js\n  Bun\n  Deno") in
+  case $(menu "Add" "  Node.js\n  Bun\n  Deno") in
   *Node*) present_terminal "omarchy-install-dev-env node" ;;
   *Bun*) present_terminal "omarchy-install-dev-env bun" ;;
   *Deno*) present_terminal "omarchy-install-dev-env deno" ;;
@@ -286,7 +286,7 @@ show_install_javascript_menu() {
 }
 
 show_install_php_menu() {
-  case $(menu "Install" "  PHP\n  Laravel\n  Symfony") in
+  case $(menu "Add" "  PHP\n  Laravel\n  Symfony") in
   *PHP*) present_terminal "omarchy-install-dev-env php" ;;
   *Laravel*) present_terminal "omarchy-install-dev-env laravel" ;;
   *Symfony*) present_terminal "omarchy-install-dev-env symfony" ;;
@@ -295,7 +295,7 @@ show_install_php_menu() {
 }
 
 show_install_elixir_menu() {
-  case $(menu "Install" "  Elixir\n  Phoenix") in
+  case $(menu "Add" "  Elixir\n  Phoenix") in
   *Elixir*) present_terminal "omarchy-install-dev-env elixir" ;;
   *Phoenix*) present_terminal "omarchy-install-dev-env phoenix" ;;
   *) show_install_development_menu ;;
@@ -363,7 +363,7 @@ show_system_menu() {
 }
 
 show_main_menu() {
-  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
+  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Add\n󰭌  Remove\n  Update\n  About\n  System")"
 }
 
 go_to_menu() {
@@ -378,7 +378,7 @@ go_to_menu() {
   *toggle*) show_toggle_menu ;;
   *setup*) show_setup_menu ;;
   *power*) show_setup_power_menu ;;
-  *install*) show_install_menu ;;
+  *add*) show_install_menu ;;
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
   *about*) alacritty --class Omarchy -o font.size=9 -e bash -c 'fastfetch; read -n 1 -s' ;;
