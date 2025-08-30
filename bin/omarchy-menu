@@ -223,7 +223,7 @@ show_install_ai_menu() {
   *Claude*) aur_install "Claude Code" "claude-code" ;;
   *Gemini*) install "Gemini" "gemini-cli" ;;
   *Studio*) aur_install "LM Studio" "lmstudio" ;;
-  *Ollama*) install "Ollama" "ollama" ;;
+  *Ollama*) present_terminal omarchy-install-ollama ;;
   *Crush*) aur_install "Crush" "crush-bin" ;;
   *opencode*) aur_install "opencode" "opencode-bin" ;;
   *) show_install_menu ;;
