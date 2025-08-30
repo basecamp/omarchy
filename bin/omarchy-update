@@ -2,6 +2,30 @@
 
 set -e
 
+# Show update information with release notes before proceeding
+echo "Checking for updates..."
+set +e  # Temporarily disable exit on error for the update check
+omarchy-update-available
+update_status=$?
+set -e  # Re-enable exit on error
+
+if [[ $update_status -eq 0 ]]; then
+  echo ""
+  read -p "Proceed with update? (y/N): " -n 1 -r
+  echo ""
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Update cancelled."
+    exit 0
+  fi
+else
+  echo "No updates available."
+  exit 0
+fi
+
+echo ""
+echo "Starting update process..."
+echo ""
+
 omarchy-snapshot create || [ $? -eq 127 ]
 omarchy-update-git
 omarchy-migrate
