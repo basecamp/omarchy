@@ -5,3 +5,6 @@ sudo ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-next-symbolic.svg /usr
 
 # rebuild cache
 sudo gtk-update-icon-cache /usr/share/icons/Yaru
+
+echo "Close Files if running"
+sudo -u ${SUDO_USER:-$USER} pkill nautilus
