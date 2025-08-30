@@ -1,0 +1,10 @@
+#!/bin/bash
+
+echo -e "Installing Ollama...\n"
+sudo pacman -S --noconfirm ollama
+
+# Ensure that Ollama can run on NVIDIA GPUs.
+if command -v nvidia-smi &>/dev/null; then
+  echo -e "Installing CUDA-enabled Ollama...\n"
+  sudo pacman -S --noconfirm ollama-cuda
+fi
