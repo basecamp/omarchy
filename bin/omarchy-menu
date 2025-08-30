@@ -54,6 +54,17 @@ aur_install_and_launch() {
   present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2 && setsid gtk-launch $3"
 }
 
+toggle_lock() {
+  local target="$1"
+  if omarchy-lock-check "$target"; then
+    omarchy-unlock "$target"
+    notify-send "$target config unlocked"
+  else
+    omarchy-lock "$target"
+    notify-send "$target config locked"
+  fi
+}
+
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) omarchy-menu-keybindings ;;
@@ -135,7 +146,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n󰱔  DNS\n  Config\n󰈷  Fingerprint\n  Fido2"
+  options="$options\n󰱔  DNS\n  Config\n  Lock Configs\n󰈷  Fingerprint\n  Fido2"
 
   case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
@@ -152,6 +163,7 @@ show_setup_menu() {
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
+  *Lock\ Configs*) show_config_lock_menu ;;
   *Config*) show_setup_config_menu ;;
   *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
   *Fido2*) present_terminal omarchy-setup-fido2 ;;
@@ -359,6 +371,31 @@ show_system_menu() {
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_config_lock_menu() {
+  local options=""
+  local display_targets=("Waybar" "Hyprland" "Hyprlock" "Walker" "Swayosd" "Hypridle")
+  local d t
+
+  for d in "${display_targets[@]}"; do
+    t="${d,,}"
+    if omarchy-lock-check "$t"; then
+      options+="  Unlock $d\n"
+    else
+      options+="  Lock $d\n"
+    fi
+  done
+
+  case "$(menu "Lock Configs" "$options")" in
+    *Waybar*) toggle_lock waybar ;;
+    *Hyprland*) toggle_lock hyprland ;;
+    *Hyprlock*) toggle_lock hyprlock ;;
+    *Walker*) toggle_lock walker ;;
+    *Swayosd*) toggle_lock swayosd ;;
+    *Hypridle*) toggle_lock hypridle ;;
+    *) show_main_menu ;;
   esac
 }
 
