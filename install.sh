@@ -40,6 +40,7 @@ source $OMARCHY_INSTALL/config/docker.sh
 source $OMARCHY_INSTALL/config/mimetypes.sh
 source $OMARCHY_INSTALL/config/localdb.sh
 source $OMARCHY_INSTALL/config/hardware/network.sh
+source $OMARCHY_INSTALL/config/hardware/set-wireless-regdom.sh
 source $OMARCHY_INSTALL/config/hardware/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/hardware/bluetooth.sh
 source $OMARCHY_INSTALL/config/hardware/printer.sh
