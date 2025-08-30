@@ -15,7 +15,7 @@ while true; do
     "$effect" &
 
   while pgrep -x tte >/dev/null; do
-    if read -n 1 -t 0.01; then
+    if read -n 1 -t 2; then
       exit_screensaver
     fi
   done
