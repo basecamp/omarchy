@@ -9,9 +9,9 @@ set_theme_colors() {
   fi
 }
 
-if command -v chromium &>/dev/null; then
-  sudo pacman -Rns --noconfirm chromium || true
-  sudo pacman -S --noconfirm omarchy-chromium
+if cmd-present chromium; then
+  pkg-remove chromium
+  pkg-add omarchy-chromium
 
   if pgrep -x chromium; then
     if gum confirm "Chromium must be restarted. Ready?"; then

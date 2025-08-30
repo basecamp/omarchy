@@ -66,3 +66,53 @@ img2png() {
     "${1%.*}.png"
 }
 
+
+pkg-present() {
+  for pkg in "$@"; do
+    pacman -Q "$pkg" &>/dev/null || return 1
+  done
+
+  return 0
+}
+
+pkg-missing() {
+  for pkg in "$@"; do
+    if ! pacman -Q "$pkg" &>/dev/null; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+pkg-add() {
+  for pkg in "$@"; do
+    if ! pacman -Q "$pkg" &>/dev/null; then
+      sudo pacman -S --noconfirm --needed "$pkg"
+    fi
+  done
+}
+
+pkg-remove() {
+  for pkg in "$@"; do
+    if pacman -Q "$pkg" &>/dev/null; then
+      sudo pacman -Rns --noconfirm "$pkg"
+    fi
+  done
+}
+
+cmd-present() {
+  for cmd in "$@"; do
+    command -v "$cmd" &>/dev/null || return 1
+  done
+  return 0
+}
+
+cmd-missing() {
+  for cmd in "$@"; do
+    if ! command -v "$cmd" &>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
