@@ -1,5 +1,13 @@
 #!/bin/bash
+set -euo pipefail
 
 echo -e "\e[32mUpdate Omarchy\e[0m"
-git -C $OMARCHY_PATH pull --autostash
-git -C $OMARCHY_PATH diff --check || git -C $OMARCHY_PATH reset --merge
+
+# Ensure we have full history before pulling
+if [ "$(git -C "$OMARCHY_PATH" rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+  echo "Unshallowing repository..."
+  git -C "$OMARCHY_PATH" fetch --unshallow --quiet
+fi
+
+git -C "$OMARCHY_PATH" pull --autostash
+git -C "$OMARCHY_PATH" diff --check || git -C "$OMARCHY_PATH" reset --merge
