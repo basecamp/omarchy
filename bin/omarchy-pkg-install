@@ -3,6 +3,10 @@
 set -e
 
 fzf_args=(
+  --prompt=' > '
+  --ansi
+  --no-sort
+  --exact
   --multi
   --preview 'pacman -Sii {1}'
   --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select, F11: maximize'
@@ -14,7 +18,7 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-pkg_names=$(pacman -Slq | fzf "${fzf_args[@]}")
+pkg_names=$(pacman -Sl --color=always | awk '{print $2 " " $3 " " $1 " " $4}' | fzf "${fzf_args[@]}" | awk '{print $1}')
 
 if [[ -n "$pkg_names" ]]; then
   # Convert newline-separated selections to space-separated for yay
