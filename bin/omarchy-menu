@@ -302,6 +302,13 @@ show_install_elixir_menu() {
   esac
 }
 
+show_install_docker_container_menu() {
+  case $(menu "Install" " Gonic\n") in
+  *Gonic*) present_terminal "omarchy-install-docker-container gonic" ;;
+  *) show_install_menu ;;
+  esac
+}
+
 show_remove_menu() {
   case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;

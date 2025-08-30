@@ -1,4 +1,4 @@
 # Editor used by CLI
-export EDITOR="nvim"
+export EDITOR="code"
 export SUDO_EDITOR="$EDITOR"
 export BAT_THEME=ansi

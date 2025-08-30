@@ -4,6 +4,7 @@ sudo pacman -S --noconfirm --needed \
   bash-completion \
   bat \
   blueberry \
+  bluetui \
   brightnessctl \
   btop \
   cargo \
@@ -12,6 +13,8 @@ sudo pacman -S --noconfirm --needed \
   cups-browsed \
   cups-filters \
   cups-pdf \
+  dmidecode \
+  dnsmasq \
   docker \
   docker-buildx \
   docker-compose \
@@ -21,14 +24,19 @@ sudo pacman -S --noconfirm --needed \
   fastfetch \
   fd \
   ffmpegthumbnailer \
+  flameshot \
+  freerdp \
+  fwupd \
   fzf \
   gcc14 \
-  github-cli \
   gnome-calculator \
   gnome-keyring \
   gnome-themes-extra \
+  gocryptfs \
   gum \
   gvfs-mtp \
+  gvfs-nfs \
+  gvfs-smb \
   hypridle \
   hyprland \
   hyprland-qtutils \
@@ -49,13 +57,21 @@ sudo pacman -S --noconfirm --needed \
   libreoffice \
   llvm \
   localsend \
+  lshw \
+  lsof \
   luarocks \
   mako \
   man \
   mariadb-libs \
+  micro \
+  minicom \
   mise \
-  mpv \
+  mtr \
+  nano \
   nautilus \
+  nautilus-share \
+  ncdu \
+  nfs-utils \
   noto-fonts \
   noto-fonts-cjk \
   noto-fonts-emoji \
@@ -71,17 +87,25 @@ sudo pacman -S --noconfirm --needed \
   polkit-gnome \
   postgresql-libs \
   power-profiles-daemon \
+  powertop \
   python-gobject \
   python-poetry-core \
   python-terminaltexteffects \
+  qemu-desktop \
+  rclone \
+  remmina \
+  resources \
+  ristretto \
   ripgrep \
   satty \
   slurp \
+  smbclient \
   starship \
   sushi \
   swaybg \
   swayosd \
   system-config-printer \
+  thefuck \
   tldr \
   tree-sitter-cli \
   ttf-cascadia-mono-nerd \
@@ -92,10 +116,13 @@ sudo pacman -S --noconfirm --needed \
   ufw-docker \
   unzip \
   uwsm \
-  vivaldi-bin \
+  virt-manager \
+  vivaldi \
+  vlc \
   walker-bin \
   waybar \
   wf-recorder \
+  wget \
   whois \
   wiremix \
   wireplumber \
@@ -106,7 +133,24 @@ sudo pacman -S --noconfirm --needed \
   xdg-desktop-portal-gtk \
   xdg-desktop-portal-hyprland \
   xmlstarlet \
+  xorg-xauth \
   xournalpp \
   yaru-icon-theme \
   yay \
   zoxide
+
+
+yay -S --noconfirm --needed \
+  backrest \
+  mailspring-bin \
+  nomachine \
+  packet \
+  remote-desktop-manager \
+  sirikali \
+  tilix \
+  visual-studio-code-bin \
+  waybar-mpris-git \
+  wttrbar
+
+
+sudo systemctl enable --now backrest@$USER.service

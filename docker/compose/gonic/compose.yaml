@@ -1,0 +1,18 @@
+services:
+  gonic:
+    image: sentriz/gonic:latest
+    environment:
+      - TZ=America/Los_Angeles
+    ports:
+      - 4747:80
+    restart: unless-stopped
+    volumes:
+      - /data/dockerData/gonic/data:/data # gonic db etc
+      - /data/Music:/music:ro # your music
+      - /data/dockerData/gonic/playlists:/playlists
+      - /data/dockerData/gonic/cache:/cache # transcode / covers / etc cache dir
+    # set the following two sections if you've enabled jukebox
+    group_add:
+      - audio
+    devices:
+      - /dev/snd:/dev/snd

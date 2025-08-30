@@ -26,10 +26,13 @@ alias ....='cd ../../..'
 # Tools
 alias g='git'
 alias d='docker'
-alias r='rails'
+alias dps='docker ps'
+alias dpsa='docker ps -a'
 n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
 
 # Git
 alias gcm='git commit -m'
 alias gcam='git commit -a -m'
 alias gcad='git commit -a --amend'
+
+alias yayf="yay -Slq | fzf --multi --preview 'yay -Sii {1}' --preview-window=down:75% | xargs -ro yay -S"
