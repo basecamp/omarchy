@@ -363,6 +363,7 @@ show_system_menu() {
 }
 
 show_main_menu() {
+  [[ -n "$MENU_QUICK_EXIT" ]] && exit 0
   go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
 }
 
@@ -387,6 +388,7 @@ go_to_menu() {
 }
 
 if [[ -n "$1" ]]; then
+  MENU_QUICK_EXIT=1
   go_to_menu "$1"
 else
   show_main_menu
