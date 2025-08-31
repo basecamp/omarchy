@@ -15,5 +15,4 @@ if [[ -n "$choices" ]]; then
   done
 else
   echo "No databases selected for installation."
-  sleep 1
 fi
