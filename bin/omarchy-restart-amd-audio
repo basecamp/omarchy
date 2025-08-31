@@ -1,0 +1,10 @@
+#!/bin/bash
+
+CARD=$(pactl list cards | grep -B20 "Family 17h/19h" | grep "Name: " | awk '{print $2}')
+
+if [[ -n $CARD ]]; then
+  pactl set-card-profile "$CARD" "HiFi (Mic1, Mic2, Speaker)" 2>/dev/null
+else
+  echo "AMD audio card not found"
+  exit 1
+fi
