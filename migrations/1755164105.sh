@@ -10,7 +10,6 @@ if omarchy-cmd-present chromium; then
     fi
   }
 
-  sudo pacman -Syu
   omarchy-pkg-drop chromium
   omarchy-pkg-add omarchy-chromium
 
