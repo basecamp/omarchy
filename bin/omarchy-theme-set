@@ -55,6 +55,9 @@ if command -v chromium &>/dev/null; then
   fi
 fi
 
+# Link
+TODO
+
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
