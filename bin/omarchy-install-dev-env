@@ -125,4 +125,8 @@ dotnet)
   echo -e "Installing .NET...\n"
   mise use --global dotnet@latest
   ;;
+crystal)
+  echo -e "Installing Crystal...\n"
+  mise use --global crystal
+  ;;
 esac
