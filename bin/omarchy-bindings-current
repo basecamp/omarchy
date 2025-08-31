@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# omarchy-bindings-current: Show the currently active binding set
+# Usage: omarchy-bindings-current
+
+CURRENT_BINDINGS_DIR="$HOME/.config/omarchy/current/bindings"
+
+if [[ -L "$CURRENT_BINDINGS_DIR" ]]; then
+  CURRENT_TARGET=$(readlink "$CURRENT_BINDINGS_DIR")
+  CURRENT_NAME=$(basename "$CURRENT_TARGET")
+  echo "$(echo "$CURRENT_NAME" | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g')"
+else
+  echo "No binding set active"
+fi
