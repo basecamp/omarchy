@@ -20,4 +20,5 @@ if [ $? -ne 0 ]; then
 fi
 release_notes=$(echo "$response" | jq -r '.body // "No release notes found for this tag."')
 
-echo "$release_notes" | glow
+# Pass the current terminal width to glow to avoid the default word wrap at 80.
+echo "$release_notes" | glow -w $(tput cols)
