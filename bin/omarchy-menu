@@ -220,11 +220,17 @@ show_install_editor_menu() {
 }
 
 show_install_ai_menu() {
+  ollama_pkg=$(
+    (command -v nvidia-smi &>/dev/null && echo ollama-cuda) ||
+      (command -v rocminfo &>/dev/null && echo ollama-rocm) ||
+      echo ollama
+  )
+
   case $(menu "Install" "󱚤  Claude Code [AUR]\n󱚤  Gemini\n󱚤  LM Studio [AUR]\n󱚤  Ollama\n󱚤  Crush [AUR]\n󱚤  opencode [AUR]") in
   *Claude*) aur_install "Claude Code" "claude-code" ;;
   *Gemini*) install "Gemini" "gemini-cli" ;;
   *Studio*) aur_install "LM Studio" "lmstudio" ;;
-  *Ollama*) install "Ollama" "ollama" ;;
+  *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) aur_install "Crush" "crush-bin" ;;
   *opencode*) aur_install "opencode" "opencode-bin" ;;
   *) show_install_menu ;;
