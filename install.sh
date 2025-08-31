@@ -3,8 +3,9 @@
 # Exit immediately if a command exits with a non-zero status
 set -eE
 
-export PATH="$HOME/.local/share/omarchy/bin:$PATH"
-OMARCHY_INSTALL=~/.local/share/omarchy/install
+OMARCHY_PATH="$HOME/.local/share/omarchy"
+OMARCHY_INSTALL="$OMARCHY_PATH/install"
+export PATH="$OMARCHY_PATH/bin:$PATH"
 
 # Preparation
 source $OMARCHY_INSTALL/preflight/show-env.sh
