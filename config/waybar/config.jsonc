@@ -46,7 +46,7 @@
   "custom/update": {
     "format": "",
     "exec": "omarchy-update-available --no-release-notes",
-    "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
+    "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
     "tooltip-format": "Omarchy update available",
     "interval": 3600
   },
@@ -88,6 +88,7 @@
     "tooltip-format-discharging": "{power:>1.0f}W↓ {capacity}%",
     "tooltip-format-charging": "{power:>1.0f}W↑ {capacity}%",
     "interval": 5,
+    "on-click": "omarchy-menu power",
     "states": {
       "warning": 20,
       "critical": 10

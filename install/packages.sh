@@ -95,9 +95,8 @@ sudo pacman -S --noconfirm --needed \
   tldr \
   tree-sitter-cli \
   ttf-cascadia-mono-nerd \
-  ttf-font-awesome \
   ttf-ia-writer \
-  ttf-jetbrains-mono \
+  ttf-jetbrains-mono-nerd \
   typora \
   tzupdate \
   ufw \
@@ -113,6 +112,7 @@ sudo pacman -S --noconfirm --needed \
   wl-clip-persist \
   wl-clipboard \
   wl-screenrec \
+  woff2-font-awesome \
   xdg-desktop-portal-gtk \
   xdg-desktop-portal-hyprland \
   xmlstarlet \

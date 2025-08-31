@@ -1,4 +1,5 @@
 echo "Make light themes possible"
+
 if [[ -f ~/.local/share/applications/blueberry.desktop ]]; then
   rm -f ~/.local/share/applications/blueberry.desktop
   rm -f ~/.local/share/applications/org.pulseaudio.pavucontrol.desktop

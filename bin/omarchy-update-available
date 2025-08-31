@@ -1,8 +1,9 @@
 #!/bin/bash
 
-# Ensure remote is reachable
-if ! git -C "$OMARCHY_PATH" ls-remote &>/dev/null; then
-  echo "Error: Unable to reach remote repository."
+# Get remote tag
+latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+if [[ -z "$latest_tag" ]]; then
+  echo "Error: Could not retrieve latest tag."
   exit 1
 fi
 
