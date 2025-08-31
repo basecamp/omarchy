@@ -12,4 +12,4 @@ sudo systemctl disable systemd-networkd-wait-online.service
 sudo systemctl mask systemd-networkd-wait-online.service
 
 # Ensure systemd-resolved is enabled and running
-sudo systemctl enable --now systemd-resolved
+sudo systemctl enable systemd-resolved
