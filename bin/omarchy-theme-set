@@ -55,8 +55,14 @@ if command -v chromium &>/dev/null; then
   fi
 fi
 
-# Link
-TODO
+# Try to link eza theme, not all themes support eza
+if [ -f ~/.config/omarchy/current/theme/eza-theme.yml ]; then
+  # if theme has eza config, link it
+  ln -snf ~/.config/omarchy/current/theme/eza-theme.yml ~/.config/eza/theme.yml
+else
+  # otherwise remove existing link if it exists
+  rm -f ~/.config/eza/theme.yml
+fi
 
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
