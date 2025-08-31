@@ -13,4 +13,6 @@ if [[ -n "$choices" ]]; then
     MongoDB) sudo docker run -d --restart unless-stopped -p "127.0.0.1:27017:27017" --name mongodb -e MONGO_INITDB_ROOT_USERNAME=admin -e MONGO_INITDB_ROOT_PASSWORD=admin123 mongo:noble ;;
     esac
   done
+else
+  echo "No databases selected for installation."
 fi
