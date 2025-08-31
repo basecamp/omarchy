@@ -361,10 +361,9 @@ show_update_config_menu() {
 }
 
 show_update_hardware_menu() {
-  case $(menu "Restart" "󱚾  Wi-Fi\n󰂯  Bluetooth\n  AMD Audio (F13)") in
+  case $(menu "Restart" "󱚾  Wi-Fi\n󰂯  Bluetooth") in
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
-  *Audio*) present_terminal omarchy-restart-amd-audio ;;
   *) show_update_menu ;;
   esac
 }

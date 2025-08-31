@@ -1,3 +1,3 @@
 echo "Fix audio input on AMD Framework laptops"
 
-omarchy-restart-amd-audio || true
+source $OMARCHY_PATH/install/config/hardware/fix-f13-amd-audio-input.sh || true
