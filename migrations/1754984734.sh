@@ -1,6 +1,6 @@
 echo "Configure Docker to use the host's DNS resolver"
 
-if cmd-present docker; then
+if omarchy-cmd-present docker; then
   # If the daemon configuration has been changed since we wrote it, leave it as-is
   ORIGINAL_CONFIG='{"log-driver":"json-file","log-opts":{"max-size":"10m","max-file":"5"}}'
 

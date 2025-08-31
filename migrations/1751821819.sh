@@ -1,3 +1,3 @@
 echo "Install bash-completion"
 
-pkg-add bash-completion
+omarchy-pkg-add bash-completion

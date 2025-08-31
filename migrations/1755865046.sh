@@ -1,4 +1,4 @@
 echo "Switch from lazydocker-bin to lazydocker official"
 
-pkg-remove lazydocker-bin
-pkg-add lazydocker
+omarchy-pkg-drop lazydocker-bin
+omarchy-pkg-add lazydocker

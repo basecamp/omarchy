@@ -1,3 +1,3 @@
 echo "Install slurp + wl-screenrec for new ALT+PrintScreen screen recorder"
 
-pkg-add slurp wl-screenrec
+omarchy-pkg-add slurp wl-screenrec

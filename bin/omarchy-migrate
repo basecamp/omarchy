@@ -14,7 +14,7 @@ for file in ~/.local/share/omarchy/migrations/*.sh; do
   if [[ ! -f "$STATE_DIR/$filename" && ! -f "$STATE_DIR/skipped/$filename" ]]; then
     echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
 
-    if bash -e $file; then
+    if bash $file; then
       touch "$STATE_DIR/$filename"
     else
       if gum confirm "Migration ${filename%.sh} failed. Skip and continue?"; then

@@ -1,3 +1,3 @@
 echo "Install wf-recorder for intel based device"
 
-pkg-add wf-recorder
+omarchy-pkg-add wf-recorder

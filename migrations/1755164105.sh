@@ -9,9 +9,9 @@ set_theme_colors() {
   fi
 }
 
-if cmd-present chromium; then
-  pkg-remove chromium
-  pkg-add omarchy-chromium
+if omarchy-cmd-present chromium; then
+  omarchy-pkg-drop chromium
+  omarchy-pkg-add omarchy-chromium
 
   if pgrep -x chromium; then
     if gum confirm "Chromium must be restarted. Ready?"; then
