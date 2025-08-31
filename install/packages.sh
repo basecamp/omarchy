@@ -1,6 +1,9 @@
+#!/bin/bash
+
 sudo pacman -S --noconfirm --needed \
   1password-beta \
   1password-cli \
+  asdcontrol-git \
   alacritty \
   avahi \
   bash-completion \
@@ -26,6 +29,7 @@ sudo pacman -S --noconfirm --needed \
   fcitx5-qt \
   fd \
   ffmpegthumbnailer \
+  fontconfig \
   fzf \
   gcc14 \
   github-cli \
@@ -34,6 +38,7 @@ sudo pacman -S --noconfirm --needed \
   gnome-themes-extra \
   gum \
   gvfs-mtp \
+  gvfs-smb \
   hypridle \
   hyprland \
   hyprland-qtutils \
@@ -45,6 +50,7 @@ sudo pacman -S --noconfirm --needed \
   impala \
   imv \
   inetutils \
+  iwd \
   jq \
   kdenlive \
   kvantum-qt5 \
@@ -82,6 +88,7 @@ sudo pacman -S --noconfirm --needed \
   python-gobject \
   python-poetry-core \
   python-terminaltexteffects \
+  qt5-wayland \
   ripgrep \
   satty \
   signal-desktop \
@@ -95,7 +102,8 @@ sudo pacman -S --noconfirm --needed \
   tldr \
   tree-sitter-cli \
   ttf-cascadia-mono-nerd \
-  ttf-jetbrains-mono \
+  ttf-ia-writer \
+  ttf-jetbrains-mono-nerd \
   typora \
   tzupdate \
   ufw \

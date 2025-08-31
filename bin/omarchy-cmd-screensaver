@@ -1,5 +1,13 @@
 #!/bin/bash
 
+function exit_screensaver {
+  pkill -x tte 2>/dev/null
+  pkill -f "alacritty --class Screensaver" 2>/dev/null
+  exit 0
+}
+
+trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+
 while true; do
   effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
   tte -i ~/.config/omarchy/branding/screensaver.txt \
@@ -7,10 +15,8 @@ while true; do
     "$effect" &
 
   while pgrep -x tte >/dev/null; do
-    if read -n 1 -t 0.01; then
-      pkill -x tte 2>/dev/null
-      pkill -f "alacritty --class Screensaver" 2>/dev/null
-      exit 0
+    if read -n 1 -t 3; then
+      exit_screensaver
     fi
   done
 done
