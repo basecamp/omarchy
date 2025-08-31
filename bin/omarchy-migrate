@@ -2,20 +2,22 @@
 
 # Where we store an empty file for each migration that has already been performed.
 STATE_DIR="$HOME/.local/state/omarchy/migrations"
+mkdir -p "$STATE_DIR"
+
+# Skipped migrations are tracked separately
 mkdir -p "$STATE_DIR/skipped"
 
 # Run any pending migrations
 for file in ~/.local/share/omarchy/migrations/*.sh; do
   filename=$(basename "$file")
 
-  if [[ ! (-f "$STATE_DIR/$filename") && ! (-f "$STATE_DIR/skipped/$filename") ]]; then
+  if [[ ! -f "$STATE_DIR/$filename" && ! -f "$STATE_DIR/skipped/$filename" ]]; then
     echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
-    source $file
-    if [ $? -eq 0 ]; then
+
+    if bash -e $file; then
       touch "$STATE_DIR/$filename"
     else
-      gum confirm "migration ${filename%.sh} failed, do you wish to skip this migration?"
-      if [ $? -eq 0 ]; then
+      if gum confirm "Migration ${filename%.sh} failed. Skip and continue?"; then
         touch "$STATE_DIR/skipped/$filename"
       else
         exit 1
