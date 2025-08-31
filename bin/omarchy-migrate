@@ -17,7 +17,7 @@ for file in ~/.local/share/omarchy/migrations/*.sh; do
     if bash $file; then
       touch "$STATE_DIR/$filename"
     else
-      if gum confirm "Migration ${filename%.sh} failed. Skip and continue?"; then
+      if omarchy-confirm "Migration ${filename%.sh} failed. Skip and continue?"; then
         touch "$STATE_DIR/skipped/$filename"
       else
         exit 1

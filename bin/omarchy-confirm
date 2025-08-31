@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# omarchy-confirm - A gum-compatible confirmation prompt with fallback
+# Usage: omarchy-confirm [--default=false] "prompt message"
+
+set -e
+
+DEFAULT_YES=true
+PROMPT=""
+
+# Parse arguments to match gum's API
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --default=false)
+    DEFAULT_YES=false
+    shift
+    ;;
+  --default=true)
+    DEFAULT_YES=true
+    shift
+    ;;
+  --default)
+    if [[ "${2:-}" == "false" ]]; then
+      DEFAULT_YES=false
+    else
+      DEFAULT_YES=true
+    fi
+    shift 2
+    ;;
+  *)
+    PROMPT="$1"
+    shift
+    ;;
+  esac
+done
+
+# Ensure we have a prompt
+if [[ -z "$PROMPT" ]]; then
+  echo "Usage: omarchy-confirm [--default=false] \"prompt message\"" >&2
+  exit 1
+fi
+
+# Try to use gum if available
+if command -v gum >/dev/null 2>&1; then
+  if [[ "$DEFAULT_YES" == true ]]; then
+    gum confirm --default=true "$PROMPT"
+  else
+    gum confirm --default=false "$PROMPT"
+  fi
+else
+  # Fallback to basic y/n prompt
+  if [[ "$DEFAULT_YES" == true ]]; then
+    echo -n "$PROMPT [Y/n]: "
+    read -r response
+    case "$response" in
+    [nN] | [nN][oO])
+      exit 1
+      ;;
+    *)
+      exit 0
+      ;;
+    esac
+  else
+    echo -n "$PROMPT [y/N]: "
+    read -r response
+    case "$response" in
+    [yY] | [yY][eE][sS])
+      exit 0
+      ;;
+    *)
+      exit 1
+      ;;
+    esac
+  fi
+fi
+

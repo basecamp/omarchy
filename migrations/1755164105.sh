@@ -14,7 +14,7 @@ if omarchy-cmd-present chromium; then
   omarchy-pkg-add omarchy-chromium
 
   if pgrep -x chromium; then
-    if gum confirm "Chromium must be restarted. Ready?"; then
+    if omarchy-confirm "Chromium must be restarted. Ready?"; then
       pkill -x chromium
       set_theme_colors
     fi
