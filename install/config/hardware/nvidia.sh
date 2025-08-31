@@ -32,7 +32,7 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
 
   # Enable multilib repository for 32-bit libraries
   if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
-    sudo sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' /etc/pacman.conf
+    sudo sed -i '/^#\s*\[multilib\]/,/^#\s*Include/ s/^#\s*//' /etc/pacman.conf
   fi
 
   # force package database refresh
