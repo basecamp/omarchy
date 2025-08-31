@@ -27,6 +27,7 @@ sudo pacman -S --noconfirm --needed \
   fcitx5-qt \
   fd \
   ffmpegthumbnailer \
+  fontconfig \
   fzf \
   gcc14 \
   github-cli \
