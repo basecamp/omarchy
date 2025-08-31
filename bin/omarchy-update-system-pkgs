@@ -8,7 +8,8 @@ echo -e "\e[32m\nUpdate system packages\e[0m"
 [[ -n $ignored_packages ]] && echo "sudo pacman -Syu --noconfirm --ignore \"$ignored_packages\""
 sudo pacman -Syu --noconfirm --ignore "$ignored_packages"
 
-if omarchy-pkg-aur-accessible; then
+# Update AUR packages if any are installed and AUR is available
+if pacman -Qem >/dev/null && omarchy-pkg-aur-accessible; then
   echo -e "\e[32m\nUpdate AUR packages\e[0m"
   [[ -n $ignored_packages ]] && echo "yay -Sua --noconfirm  --ignore \"$ignored_packages\""
   yay -Sua --noconfirm --ignore "$ignored_packages"
