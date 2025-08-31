@@ -1,5 +1,13 @@
 #!/bin/bash
 
 echo -e "\e[32mUpdate Omarchy\e[0m"
+
+if ! git -C $OMARCHY_PATH diff-index --quiet HEAD -- 2>/dev/null; then
+  if ! gum confirm "Local modifications detected. They'll be preserved during the update. Continue?"; then
+    echo "Update cancelled by user"
+    exit 1
+  fi
+fi
+
 git -C $OMARCHY_PATH pull --autostash
 git -C $OMARCHY_PATH diff --check || git -C $OMARCHY_PATH reset --merge
