@@ -1,7 +1,6 @@
 #!/bin/bash
 
-set -e
-
+set +e # Don't exit on error for omarchy-update-available check
 omarchy-update-available
 if [[ $? -eq 0 ]]; then
     if ! gum confirm "Proceed with update?"; then
@@ -9,6 +8,7 @@ if [[ $? -eq 0 ]]; then
         exit 1
     fi
 fi
+set -e # Re-enable exit on error
 
 omarchy-snapshot create || [ $? -eq 127 ]
 omarchy-update-git
