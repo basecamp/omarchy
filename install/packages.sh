@@ -1,6 +1,7 @@
 sudo pacman -S --noconfirm --needed \
   1password-beta \
   1password-cli \
+  asdcontrol-git \
   alacritty \
   avahi \
   bash-completion \

@@ -18,7 +18,6 @@ source $OMARCHY_INSTALL/preflight/first-run-mode.sh
 
 # Packaging
 source $OMARCHY_INSTALL/packages.sh
-source $OMARCHY_INSTALL/packaging/asdcontrol.sh
 source $OMARCHY_INSTALL/packaging/fonts.sh
 source $OMARCHY_INSTALL/packaging/lazyvim.sh
 source $OMARCHY_INSTALL/packaging/webapps.sh
@@ -40,6 +39,7 @@ source $OMARCHY_INSTALL/config/mise-ruby.sh
 source $OMARCHY_INSTALL/config/docker.sh
 source $OMARCHY_INSTALL/config/mimetypes.sh
 source $OMARCHY_INSTALL/config/localdb.sh
+source $OMARCHY_INSTALL/config/sudoless-asdcontrol.sh
 source $OMARCHY_INSTALL/config/hardware/network.sh
 source $OMARCHY_INSTALL/config/hardware/fix-fkeys.sh
 source $OMARCHY_INSTALL/config/hardware/bluetooth.sh
