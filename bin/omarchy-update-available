@@ -1,15 +1,18 @@
 #!/bin/bash
 
-omarchy_path="$HOME/.local/share/omarchy"
-
-# Ensure remote is reachable
-if ! git -C "$omarchy_path" ls-remote &>/dev/null; then
-  echo "Error: Unable to reach remote repository."
+# Get remote tag
+latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+if [[ -z "$latest_tag" ]]; then
+  echo "Error: Could not retrieve latest tag."
   exit 1
 fi
 
-latest_tag=$(git -C "$omarchy_path" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
-current_tag=$(git -C "$omarchy_path" describe --tags $(git -C "$omarchy_path" rev-list --tags --max-count=1))
+# Get local tag
+current_tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
+if [[ -z "$current_tag" ]]; then
+  echo "Error: Could not retrieve current tag."
+  exit 1
+fi
 
 if [[ "$current_tag" != "$latest_tag" ]]; then
   echo "Omarchy update available ($latest_tag)"
