@@ -1,6 +1,7 @@
 #!/bin/bash
 
-echo "Installing all dependencies..."
+# FIXME: Should not use AUR dependencies when we can avoid it
+echo "Installing all dependencies [from AUR]..."
 yay -S --noconfirm --needed \
   dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
 
