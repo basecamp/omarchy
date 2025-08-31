@@ -2,8 +2,8 @@
 
 for pkg in "$@"; do
   if ! pacman -Q "$pkg" &>/dev/null; then
-    return 0
+    exit 0
   fi
 done
 
-return 1
+exit 1

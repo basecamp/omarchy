@@ -1,7 +1,7 @@
 #!/bin/bash
 
 for cmd in "$@"; do
-  command -v "$cmd" &>/dev/null || return 1
+  command -v "$cmd" &>/dev/null || exit 1
 done
 
-return 0
+exit 0
