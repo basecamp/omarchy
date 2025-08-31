@@ -24,7 +24,7 @@ if [ -d "$THEME_PATH" ]; then
 fi
 
 # Clone the repo directly to ~/.config/omarchy/themes
-if ! git clone "$REPO_URL" "$THEME_PATH"; then
+if ! git clone --depth 1 "$REPO_URL" "$THEME_PATH"; then
   echo "Error: Failed to clone theme repo."
   exit 1
 fi
