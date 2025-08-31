@@ -73,9 +73,6 @@ sudo pacman -S --noconfirm --needed \
   omarchy-chromium \
   pamixer \
   pinta \
-  pipewire-alsa \
-  pipewire-jack \
-  pipewire-pulse \
   playerctl \
   plocate \
   plymouth \

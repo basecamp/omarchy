@@ -21,7 +21,12 @@ if [ "$EUID" -eq 0 ] && [ "$(uname -m)" = "aarch64" ]; then
     echo "Detected Asahi Linux - running initial setup..."
 
     # install gum and asahi specific packages
-    pacman -S --needed --noconfirm gum asahi-audio
+    pacman -S --needed --noconfirm \
+      gum \
+      asahi-audio \
+      pipewire-alsa \
+      pipewire-jack \
+      pipewire-pulse
 
     set -e
 
