@@ -83,6 +83,7 @@ sudo pacman -S --noconfirm --needed \
   python-gobject \
   python-poetry-core \
   python-terminaltexteffects \
+  qt5-wayland \
   ripgrep \
   satty \
   signal-desktop \
