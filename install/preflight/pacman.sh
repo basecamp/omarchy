@@ -19,11 +19,8 @@ EOF
 fi
 
 # Set mirrors to global ones only
-sudo tee /etc/pacman.d/mirrorlist >/dev/null <<'EOF'
-Server = https://mirror.omarchy.org/$repo/os/$arch
-Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch
-Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
-EOF
+omarchy-refresh-pacman-mirrorlist
 
 # Refresh all repos
 sudo pacman -Syu --noconfirm
+
