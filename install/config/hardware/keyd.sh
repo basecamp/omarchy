@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Install keyd and configure Keychron K3 keyboard remapping
+# Install keyd and configure keyboard remapping for Mac-style keyboards
 
 # Install keyd if not already installed
 if ! yay -Qq keyd &>/dev/null; then
