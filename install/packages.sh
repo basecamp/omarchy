@@ -46,6 +46,7 @@ sudo pacman -S --noconfirm --needed \
   impala \
   imv \
   inetutils \
+  iwd \
   jq \
   kdenlive \
   kvantum-qt5 \
