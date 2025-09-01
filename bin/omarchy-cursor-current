@@ -1,0 +1,7 @@
+#!/bin/bash
+
+CONFIG_FILE="$HOME/.config/hypr/envs.conf"
+
+[[ ! -f "$CONFIG_FILE" ]] && exit
+
+grep 'env = HYPRCURSOR_THEME' "$CONFIG_FILE" | cut -d ',' -f2 | tr -d ' ' | sed -E 's/-/ /g'

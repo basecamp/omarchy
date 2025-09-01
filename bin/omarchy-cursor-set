@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# omarchy-cursor-set: Set a cursor theme, specified by its name.
+# Usage: omarchy-cursor-set <cursor-theme-name>
+
+if [[ -z "$1" && "$1" != "CNCLD" ]]; then
+  echo "Usage: omarchy-cursor-set <cursor-theme-name>" >&2
+  exit 1
+fi
+
+GLOBAL_CURSOR_THEME_PATH="/usr/share/icons/"
+LOCAL_CURSOR_THEME_PATH="$HOME/.local/share/icons"
+
+CURSOR_THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr ' ' '-')
+CURSOR_THEME_PATH=$(find $GLOBAL_CURSOR_THEME_PATH $LOCAL_CURSOR_THEME_PATH -maxdepth 1 -type d -iname "$CURSOR_THEME_NAME")
+
+CURSOR_SIZE=${HYPRCURSOR_SIZE:-24}
+CONFIG_FILE="$HOME/.config/hypr/envs.conf"
+
+HYPR_ENV_LINE="env = HYPRCURSOR_THEME"
+X_ENV_LINE="env = XCURSOR_THEME"
+
+if [[ ! -d $CURSOR_THEME_PATH ]]; then
+  echo "Cursor theme '$CURSOR_THEME_NAME' could not be found in $GLOBAL_CURSOR_THEME_PATH or $LOCAL_CURSOR_THEME_PATH"
+  exit 2
+fi
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  echo "Cursor theme '$CURSOR_THEME_NAME' could not be applied. The config file $CONFIG_FILE does not exist"
+  exit 3
+fi
+
+# hyprcursor and xcursor are case sensitive so its
+# important that the cursor theme name is the same
+# as the path name
+CURSOR_THEME_NAME=$(basename "$CURSOR_THEME_PATH")
+
+if grep -q "^$HYPR_ENV_LINE," "$CONFIG_FILE"; then
+  sed -i "s|^$HYPR_ENV_LINE,.*|$HYPR_ENV_LINE,$CURSOR_THEME_NAME|" "$CONFIG_FILE"
+else
+  echo "$HYPR_ENV_LINE,$CURSOR_THEME_NAME" >>"$CONFIG_FILE"
+fi
+
+if grep -q "^$X_ENV_LINE," "$CONFIG_FILE"; then
+  sed -i "s|^$X_ENV_LINE,.*|$X_ENV_LINE,$CURSOR_THEME_NAME|" "$CONFIG_FILE"
+else
+  echo "$X_ENV_LINE,$CURSOR_THEME_NAME" >>"$CONFIG_FILE"
+fi
+
+hyprctl setcursor $CURSOR_THEME_NAME $CURSOR_SIZE
+
+gsettings set org.gnome.desktop.interface cursor-theme "$CURSOR_THEME_NAME"

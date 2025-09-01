@@ -1,0 +1,7 @@
+#!/bin/bash
+
+find ~/.local/share/icons/ /usr/share/icons/ -mindepth 1 -maxdepth 2 -iname 'cursors' \( -type d -o -type l \) -exec dirname {} \; | sort | while read -r path; do
+  echo "$(
+    basename "$path" | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g'
+  )"
+done
