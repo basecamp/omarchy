@@ -2,8 +2,10 @@ if command -v mise &> /dev/null; then
   eval "$(mise activate bash)"
 fi
 
-if [[ "$SKIP_STARSHIP_PROMPT" == "false" ]] && [ command -v starship ] &> /dev/null; then
-  eval "$(starship init bash)"
+if [[ "$SKIP_STARSHIP_PROMPT" = false ]]; then
+  if command -v starship &> /dev/null; then
+    eval "$(starship init bash)"
+  fi
 fi
 
 if command -v zoxide &> /dev/null; then

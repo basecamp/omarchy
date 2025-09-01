@@ -1,5 +1,5 @@
 # Change to true to turn off starship
-SKIP_STARSHIP_PROMPT = false
+SKIP_STARSHIP_PROMPT=false
 # All the default Omarchy aliases and functions
 # (don't mess with these directly, just overwrite them here!)
 source ~/.local/share/omarchy/default/bash/rc
