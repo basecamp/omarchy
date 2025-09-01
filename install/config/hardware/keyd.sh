@@ -15,6 +15,8 @@ sudo mkdir -p /etc/keyd
 if [[ ! -f /etc/keyd/default.conf ]]; then
   echo "Creating keyd config for keyboard remapping"
   cat <<EOF | sudo tee /etc/keyd/default.conf >/dev/null
+[ids]
+*
 [main]
 leftmeta+leftshift+4 = sysrq
 EOF
