@@ -1,24 +1,28 @@
 #!/bin/bash
 
 if [ "$#" -ne 3 ]; then
-  echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
+  echo -e "\e[32mLet's create a new web app. You can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
   ICON_URL=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
+  SET_KEY=$(gum input --prompt "Enter your key> " --placeholder "SUPER + SHIFT + your key (M,N,L,...)")
 else
   APP_NAME="$1"
   APP_URL="$2"
   ICON_URL="$3"
+  SET_KEY="$4"
 fi
 
-if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_URL" ]]; then
-  echo "You must set app name, app URL, and icon URL!"
+if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_URL" || -z "$SET_KEY" ]]; then
+  echo "You must set app name, app URL, icon URL, and set the shortcut key!"
   exit 1
 fi
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
 ICON_PATH="$ICON_DIR/$APP_NAME.png"
+KEY_PATH="$HOME/.config/hypr/bindings.conf"
+
 
 mkdir -p "$ICON_DIR"
 
@@ -38,6 +42,8 @@ Type=Application
 Icon=$ICON_PATH
 StartupNotify=true
 EOF
+
+echo -e "\nbindd = SUPER SHIFT, $SET_KEY, $APP_NAME, exec, \$webapp=\"$APP_URL\"\n" >>"$KEY_PATH"
 
 chmod +x "$DESKTOP_FILE"
 
