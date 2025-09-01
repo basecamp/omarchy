@@ -10,6 +10,9 @@ EOF
   # Conf location is different between EFI and BIOS
   [[ -n "$EFI" ]] && limine_config="/boot/EFI/limine/limine.conf" || limine_config="/boot/limine/limine.conf"
 
+  # If $limine_config does not point to a real file, use /boot/limine.conf (ArchLinux 2025-08 Default Location)
+  [[ -f $limine_config ]] || limine_config=/boot/limine.conf
+
   CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
   sudo tee /etc/default/limine <<EOF >/dev/null
