@@ -7,16 +7,5 @@ if [[ -z "$latest_tag" ]]; then
   exit 1
 fi
 
-# Get local tag
-current_tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
-if [[ -z "$current_tag" ]]; then
-  echo "Error: Could not retrieve current tag."
-  exit 1
-fi
-
-if [[ "$current_tag" != "$latest_tag" ]]; then
-  omarchy-launch-webapp https://github.com/basecamp/omarchy/releases/tag/$latest_tag
-  exit 0
-else
-  exit 1
-fi
+omarchy-launch-webapp https://github.com/basecamp/omarchy/releases/tag/$latest_tag
+exit 0
