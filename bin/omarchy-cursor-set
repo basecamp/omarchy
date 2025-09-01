@@ -20,7 +20,7 @@ CONFIG_FILE="$HOME/.config/hypr/envs.conf"
 HYPR_ENV_LINE="env = HYPRCURSOR_THEME"
 X_ENV_LINE="env = XCURSOR_THEME"
 
-if [[ ! -d $CURSOR_THEME_PATH ]]; then
+if [[ ! -d $CURSOR_THEME_PATH && ! -L $CURSOR_THEME_PATH ]]; then
   echo "Cursor theme '$CURSOR_THEME_NAME' could not be found in $GLOBAL_CURSOR_THEME_PATH or $LOCAL_CURSOR_THEME_PATH"
   exit 2
 fi
