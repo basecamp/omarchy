@@ -19,7 +19,7 @@ if [[ -z "$APP_NAME" || -z "$APP_EXEC" || -z "$ICON_URL" ]]; then
 fi
 
 # Create normalized name (lowercase, spaces replaced with underscores)
-NORMALIZED_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')
+NORMALIZED_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_FILE="$HOME/.local/share/applications/$NORMALIZED_NAME.desktop"
