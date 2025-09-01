@@ -1,3 +1,5 @@
+# Change to true to turn off starship
+SKIP_STARSHIP_PROMPT = false
 # All the default Omarchy aliases and functions
 # (don't mess with these directly, just overwrite them here!)
 source ~/.local/share/omarchy/default/bash/rc
@@ -12,9 +14,3 @@ source ~/.local/share/omarchy/default/bash/rc
 #
 # Set a custom prompt with the directory revealed, starship must be turned off
 # PS1="\W \[\e]0;\w\a\]$PS1"
-
-# Omarchy ships with a simple starship prompt. Remove the section below
-# to turn it off.
-if command -v starship &>/dev/null; then
-  eval "$(starship init bash)"
-fi
