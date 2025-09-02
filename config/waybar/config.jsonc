@@ -55,8 +55,8 @@
   },
   "custom/dotfiles": {
     "format": "",
-    "on-click": "~/.local/share/dotfiles/bin/dotfiles-menu",
-    "tooltip-format": "Dotfiles Menu\n\nSuper + Alt + Space"
+    "on-click": "~/.local/share/omarchy/bin/omarchy-menu",
+    "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space"
   },
   "custom/update": {
     "format": "",
