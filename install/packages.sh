@@ -152,8 +152,8 @@ yay -S --noconfirm --needed \
   waybar-mpris-git \
   wttrbar \
   ttf-google-fonts-git \
-  #all-repository-fonts \
+  all-repository-fonts \
   ttf-font-awesome
 
 
-sudo systemctl enable --now backrest@$USER.service
+sudo systemctl enable backrest@$USER.service
