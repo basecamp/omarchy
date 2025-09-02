@@ -2,6 +2,7 @@
 
 sudo pacman -S --noconfirm --needed \
   alacritty \
+  ansible \
   avahi \
   bash-completion \
   bat \
@@ -84,6 +85,7 @@ sudo pacman -S --noconfirm --needed \
   nss-mdns \
   nvim \
   obsidian \
+  opentofu \
   pamixer \
   pinta \
   playerctl \
@@ -144,7 +146,8 @@ sudo pacman -S --noconfirm --needed \
   xournalpp \
   yaru-icon-theme \
   yay \
-  zoxide
+  zoxide \
+  zsh
 
 
 yay -S --noconfirm --needed \
