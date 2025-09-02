@@ -157,10 +157,6 @@ yay -S --noconfirm --needed \
   tilix \
   visual-studio-code-bin \
   waybar-mpris-git \
-  wttrbar \
-  ttf-google-fonts-git \
-  all-repository-fonts \
-  ttf-font-awesome
-
-
+  wttrbar
+  
 sudo systemctl enable backrest@$USER.service
