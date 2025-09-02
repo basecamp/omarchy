@@ -96,7 +96,7 @@ sudo pacman -S --noconfirm --needed \
   postgresql-libs \
   power-profiles-daemon \
   powertop \
-  python-dbus \ 
+  python-dbus \
   python-gobject \
   python-poetry-core \
   python-terminaltexteffects \
