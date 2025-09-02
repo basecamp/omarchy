@@ -78,7 +78,7 @@ fi
 command_to_run=$(printf '%s' "$chosen" | sed -E 's/\[out\][ ]*//; s/  .*//')
 
 if printf '%s' "$chosen" | grep -q "\[out\]"; then
-  alacritty -e bash -c "$command_to_run; echo; read -p 'Press any key to exit...'"
+  ghostty -e bash -c "$command_to_run; echo; read -p 'Press any key to exit...'"
 else
   eval "$command_to_run"
 fi
