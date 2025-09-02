@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|ddev>" >&2
   exit 1
 fi
 
@@ -124,5 +124,13 @@ ocaml)
 dotnet)
   echo -e "Installing .NET...\n"
   mise use --global dotnet@latest
+  ;;
+ddev)
+  echo -e "Installing DDEV...\n"
+  omarchy-pkg-aur-install ddev-bin
+  echo -e "\nInitializing mkcert for HTTPS certificates...\n"
+  mkcert -install
+  echo -e "\nDDEV installation complete!"
+  echo -e "You can now run: ddev config && ddev start"
   ;;
 esac
