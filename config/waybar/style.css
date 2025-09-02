@@ -1,23 +1,59 @@
-@import "../omarchy/current/theme/waybar.css";
+@import "../dotfiles/current/theme/waybar.css";
+
+@define-color rosewater #f5e0dc;
+@define-color flamingo #f2cdcd;
+@define-color pink #f5c2e7;
+@define-color mauve #cba6f7;
+@define-color red #f38ba8;
+@define-color maroon #eba0ac;
+@define-color peach #fab387;
+@define-color yellow #f9e2af;
+@define-color green #a6e3a1;
+@define-color teal #94e2d5;
+@define-color sky #89dceb;
+@define-color sapphire #74c7ec;
+@define-color blue #89b4fa;
+@define-color lavender #b4befe;
+@define-color text #cdd6f4;
+@define-color subtext1 #bac2de;
+@define-color subtext0 #a6adc8;
+@define-color overlay2 #9399b2;
+@define-color overlay1 #7f849c;
+@define-color overlay0 #6c7086;
+@define-color surface2 #585b70;
+@define-color surface1 #45475a;
+@define-color surface0 #313244;
+@define-color base rgba(30, 30, 46, 1);
+@define-color mantle #181825;
+@define-color crust #11111b;
+@define-color power #5e81ac;
+@define-color suspend #ebcb8b;
+@define-color reboot #d08770;
 
 * {
   background-color: @background;
   color: @foreground;
 
   border: none;
+  
   border-radius: 0;
   min-height: 0;
-  font-family: CaskaydiaMono Nerd Font;
-  font-size: 12px;
+  /*font-family: SauceCodePro Nerd Font;*/
+  font-family: Outfit;
+  font-size: 15px;
 }
 
 .modules-left {
-  margin-left: 8px;
+  margin-left: 16px;
 }
 
 .modules-right {
-  margin-right: 8px;
+  margin-right: 16px;
 }
+
+/* #workspaces {
+  background-color: #303536;
+} */
 
 #workspaces button {
   all: initial;
@@ -32,15 +68,59 @@
 
 #tray,
 #cpu,
+#memory
 #battery,
 #network,
+#network#net2,
 #bluetooth,
 #pulseaudio,
-#custom-omarchy,
-#custom-update {
+#temperature,
+#power-profiles-daemon,
+#clock,
+#custom-dotfiles {
   min-width: 12px;
   margin: 0 7.5px;
 }
+
+#custom-waybar-mpris {
+
+  border-radius: 15px;
+  margin-left: 8px;
+  padding: 4px 10px 4px 10px;
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+
+
+#custom-waybar-mpris.progress {font-size:11px;}
+#custom-waybar-mpris.paused {color: #999;}
+
+#network,
+#bluetooth,
+#pulseaudio,
+#power-profiles-daemon,
+#custom-dotfiles {
+  font-family: SauceCodePro Nerd Font;
+}
+
+#bluetooth.disconnected {
+  color: #999;
+}
+
+#power-profiles-daemon.performance {
+    color: #f53c3c;
+}
+
+#power-profiles-daemon.balanced {
+    color: #2980b9;
+}
+
+#power-profiles-daemon.power-saver {
+    /*background-color: #2ecc71;*/
+    color: #2ecc71;
+}
+
+
 
 #custom-expand-icon {
   margin-right: 7px;
@@ -50,14 +130,22 @@ tooltip {
   padding: 2px;
 }
 
-#custom-update {
-  font-size: 10px;
+#network.disconnected,
+#pulseaudio.muted,
+#wireplumber.muted {
+    color: @red;
 }
 
-#clock {
-  margin-left: 8.75px;
+#battery.charging,
+#battery.plugged {
+    color: @green;
 }
 
-.hidden {
-  opacity: 0;
+#battery.critical:not(.charging) {
+    color: @red;
+    animation-name: blink;
+    animation-duration: 0.5s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
 }

@@ -1,14 +1,12 @@
 #!/bin/bash
 
 sudo pacman -S --noconfirm --needed \
-  1password-beta \
-  1password-cli \
-  asdcontrol-git \
   alacritty \
   avahi \
   bash-completion \
   bat \
   blueberry \
+  bluetui \
   brightnessctl \
   btop \
   cargo \
@@ -17,6 +15,8 @@ sudo pacman -S --noconfirm --needed \
   cups-browsed \
   cups-filters \
   cups-pdf \
+  dmidecode \
+  dnsmasq \
   docker \
   docker-buildx \
   docker-compose \
@@ -24,20 +24,21 @@ sudo pacman -S --noconfirm --needed \
   evince \
   eza \
   fastfetch \
-  fcitx5 \
-  fcitx5-gtk \
-  fcitx5-qt \
   fd \
   ffmpegthumbnailer \
+  flameshot \
+  freerdp \
+  fwupd \
   fontconfig \
   fzf \
   gcc14 \
-  github-cli \
   gnome-calculator \
   gnome-keyring \
   gnome-themes-extra \
+  gocryptfs \
   gum \
   gvfs-mtp \
+  gvfs-nfs \
   gvfs-smb \
   hypridle \
   hyprland \
@@ -52,7 +53,6 @@ sudo pacman -S --noconfirm --needed \
   inetutils \
   iwd \
   jq \
-  kdenlive \
   kvantum-qt5 \
   lazydocker \
   lazygit \
@@ -61,22 +61,29 @@ sudo pacman -S --noconfirm --needed \
   libreoffice \
   llvm \
   localsend \
+  lshw \
+  lsof \
   luarocks \
   mako \
   man \
   mariadb-libs \
+  micro \
+  minicom \
   mise \
-  mpv \
+  mtr \
+  nano \
   nautilus \
+  nautilus-share \
+  ncdu \
+  nfs-utils \
+  nftables \
   noto-fonts \
   noto-fonts-cjk \
   noto-fonts-emoji \
   noto-fonts-extra \
   nss-mdns \
   nvim \
-  obs-studio \
   obsidian \
-  omarchy-chromium \
   pamixer \
   pinta \
   playerctl \
@@ -85,34 +92,44 @@ sudo pacman -S --noconfirm --needed \
   polkit-gnome \
   postgresql-libs \
   power-profiles-daemon \
+  powertop \
   python-gobject \
   python-poetry-core \
   python-terminaltexteffects \
+  qemu-desktop \
+  rclone \
+  remmina \
+  resources \
+  ristretto \
   qt5-wayland \
   ripgrep \
   satty \
-  signal-desktop \
   slurp \
-  spotify \
+  smbclient \
   starship \
   sushi \
   swaybg \
   swayosd \
   system-config-printer \
+  thefuck \
   tldr \
   tree-sitter-cli \
   ttf-cascadia-mono-nerd \
+  ttf-jetbrains-mono \
   ttf-ia-writer \
   ttf-jetbrains-mono-nerd \
-  typora \
   tzupdate \
   ufw \
   ufw-docker \
   unzip \
   uwsm \
+  virt-manager \
+  vivaldi \
+  vlc \
   walker-bin \
   waybar \
   wf-recorder \
+  wget \
   whois \
   wiremix \
   wireplumber \
@@ -123,7 +140,27 @@ sudo pacman -S --noconfirm --needed \
   xdg-desktop-portal-gtk \
   xdg-desktop-portal-hyprland \
   xmlstarlet \
+  xorg-xauth \
   xournalpp \
   yaru-icon-theme \
   yay \
   zoxide
+
+
+yay -S --noconfirm --needed \
+  backrest \
+  mailspring-bin \
+  nomachine \
+  packet \
+  remote-desktop-manager \
+  sirikali-bin \
+  tilix \
+  visual-studio-code-bin \
+  waybar-mpris-git \
+  wttrbar \
+  ttf-google-fonts-git \
+  all-repository-fonts \
+  ttf-font-awesome
+
+
+sudo systemctl enable backrest@$USER.service

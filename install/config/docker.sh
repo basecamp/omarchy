@@ -4,12 +4,14 @@
 # - limit log size to avoid running out of disk
 # - use host's DNS resolver
 sudo mkdir -p /etc/docker
+sudo mkdir -p /data/var/lib/docker
 sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
 {
     "log-driver": "json-file",
     "log-opts": { "max-size": "10m", "max-file": "5" },
     "dns": ["172.17.0.1"],
-    "bip": "172.17.0.1/16"
+    "bip": "172.17.0.1/16",
+    "default-address-pools": [{ "base": "192.168.99.0/16", "size": 27 }]
 }
 EOF
 

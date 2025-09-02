@@ -81,7 +81,36 @@ else
 
   # Install required packages
   print_info "Installing required packages..."
-  sudo pacman -S --noconfirm --needed fprintd usbutils
+  sudo pacman -S --noconfirm --needed fprintd usbutils acpid
+
+  sudo mkdir -p /etc/acpi/events
+  sudo mkdir -p /etc/acpi/actions
+  sudo tee /etc/acpi/events/lid-event >/dev/null <<'EOF'
+        event=button/lid.*
+        action=/etc/acpi/actions/lid.sh %e
+EOF
+  sudo tee /etc/acpi/actions/lid.sh >/dev/null <<'EOF'
+        #!/bin/bash
+        grep -q closed /proc/acpi/button/lid/LID0/state && exit 0
+        case "$1" in
+            button/lid)
+                case "$3" in
+                    open)
+                        systemctl start fprintd.service
+                        systemctl unmask fprintd.service
+                        ;;
+                    close)
+                        systemctl stop fprintd.service
+                        systemctl mask fprintd.service
+                        ;;
+                esac
+                ;;
+        esac
+EOF
+
+
+  sudo chmod +x /etc/acpi/actions/lid.sh
+  sudo systemctl enable --now acpid
 
   if ! check_fingerprint_hardware; then
     exit 1

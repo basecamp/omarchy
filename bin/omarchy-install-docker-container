@@ -1,0 +1,12 @@
+#!/bin/bash
+
+if [[ -z "$1" ]]; then
+  echo "Usage: omarchy-install-docker-container <gonic>" >&2
+  exit 1
+fi
+
+case "$1" in
+gonic)
+  docker compose -f ${HOME}/.local/share/omarchy/docker/$1/compose.yaml up -d
+  ;;
+  esac

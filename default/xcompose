@@ -13,9 +13,9 @@ include "%L"
 <Multi_key> <m> <r> : "🤘" # rock
 <Multi_key> <m> <k> : "😘" # kiss
 <Multi_key> <m> <e> : "🙄" # eyeroll
-<Multi_key> <m> <d> : "🤤" # droll
+<Multi_key> <m> <d> : "🤤" # drool
 <Multi_key> <m> <m> : "💰" # money
-<Multi_key> <m> <x> : "🎉" # xellebrate
+<Multi_key> <m> <x> : "🎉" # cellebrate
 <Multi_key> <m> <1> : "💯" # 100%
 <Multi_key> <m> <t> : "🥂" # toast
 <Multi_key> <m> <p> : "🙏" # pray
