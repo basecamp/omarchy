@@ -132,13 +132,14 @@ show_toggle_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
+  local options="  Audio\n  Video\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Config\n󰈷  Fingerprint\n  Fido2"
 
   case $(menu "Setup" "$options") in
   *Audio*) alacritty --class=Wiremix -e wiremix ;;
+  *Video*) show_setup_video_menu ;;
   *Wifi*)
     rfkill unblock wifi
     alacritty --class=Impala -e impala
@@ -167,6 +168,13 @@ show_setup_power_menu() {
   else
     powerprofilesctl set "$profile"
   fi
+}
+
+show_setup_video_menu() {
+  case $(menu "Video Setup" " Studio Webcam") in
+  *Webcam*) present_terminal omarchy-setup-apple-studio-display-webcam ;;
+  *) show_setup_menu ;;
+  esac
 }
 
 show_setup_config_menu() {
