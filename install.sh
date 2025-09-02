@@ -17,7 +17,7 @@ source $OMARCHY_INSTALL/preflight/first-run-mode.sh
 
 # Packaging
 source $OMARCHY_INSTALL/packages.sh
-source $OMARCHY_INSTALL/packaging/fonts.sh
+#source $OMARCHY_INSTALL/packaging/fonts.sh
 source $OMARCHY_INSTALL/packaging/lazyvim.sh
 source $OMARCHY_INSTALL/packaging/webapps.sh
 source $OMARCHY_INSTALL/packaging/tuis.sh
