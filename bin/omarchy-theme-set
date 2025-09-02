@@ -58,6 +58,11 @@ fi
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
+# Update zellij theme
+if [[ -d "$HOME/.config/zellij" ]]; then
+  sed -i "s/^theme \".*\"/theme \"$THEME_NAME\"/" "$HOME/.config/zellij/config.kdl"
+fi
+
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
 omarchy-restart-waybar
