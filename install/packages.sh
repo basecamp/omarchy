@@ -74,6 +74,7 @@ sudo pacman -S --noconfirm --needed \
   mtr \
   nano \
   nautilus \
+  nautilus-python \
   nautilus-share \
   ncdu \
   nfs-utils \
@@ -95,6 +96,7 @@ sudo pacman -S --noconfirm --needed \
   postgresql-libs \
   power-profiles-daemon \
   powertop \
+  python-dbus \ 
   python-gobject \
   python-poetry-core \
   python-terminaltexteffects \
