@@ -30,6 +30,8 @@ source $OMARCHY_INSTALL/config/branding.sh
 source $OMARCHY_INSTALL/config/git.sh
 source $OMARCHY_INSTALL/config/gpg.sh
 source $OMARCHY_INSTALL/config/timezones.sh
+source $OMARCHY_INSTALL/config/thunderbolt.sh
+source $OMARCHY_INSTALL/config/fix-ghost-display.sh
 source $OMARCHY_INSTALL/config/increase-sudo-tries.sh
 source $OMARCHY_INSTALL/config/increase-lockout-limit.sh
 source $OMARCHY_INSTALL/config/ssh-flakiness.sh
