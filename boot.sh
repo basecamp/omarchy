@@ -32,5 +32,5 @@ if [[ $OMARCHY_REF != "master" ]]; then
   cd -
 fi
 
-echo -e "\nInstallation starting..."'
+echo -e "\nInstallation starting..."
 source ~/.local/share/omarchy/install.sh
