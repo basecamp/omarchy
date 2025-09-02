@@ -152,11 +152,7 @@ yay -S --noconfirm --needed \
   wttrbar \
   ttf-google-fonts-git \
   #all-repository-fonts \
-  ttf-font-awesome \
-  ttf-cascadia-mono-nerd \
-  noto-fonts \
-  noto-fonts-emoji \
-  noto-fonts-extra
+  ttf-font-awesome
 
 
 sudo systemctl enable --now backrest@$USER.service
