@@ -105,6 +105,7 @@ sudo pacman -S --noconfirm --needed \
   remmina \
   resources \
   ristretto \
+  rsync \
   qt5-wayland \
   ripgrep \
   satty \
