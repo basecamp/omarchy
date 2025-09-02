@@ -2,7 +2,7 @@
 Version=1.0
 Name=Activity
 Comment=System activity from btop
-Exec=alacritty --class=Activity --title=Activity -e btop
+Exec=ghostty --class=Activity --title=Activity -e btop
 Terminal=false
 Type=Application
 Icon=Activity
