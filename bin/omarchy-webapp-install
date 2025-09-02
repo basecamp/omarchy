@@ -1,20 +1,30 @@
 #!/bin/bash
 
-if [ "$#" -ne 3 ]; then
+if [ "$#" -ne 4 ]; then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
   ICON_URL=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
+  PROFILE=$(gum input --prompt "Separate Profile?> " --placeholder "Leave it blank for a shared profile, or type "YES" for a separate profile (multiple instances)")
 else
   APP_NAME="$1"
   APP_URL="$2"
   ICON_URL="$3"
+  PROFILE="$4"
 fi
 
 if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_URL" ]]; then
   echo "You must set app name, app URL, and icon URL!"
   exit 1
 fi
+
+if [ "$PROFILE" != "" ]; then 
+  USER_DATA_DIR="$HOME/.cache/ChromiumInstances/$APP_NAME" 
+  mkdir -p "$USER_DATA_DIR" 
+  USER_DATA_DIR="--user-data-dir=${USER_DATA_DIR}" 
+else 
+  USER_DATA_DIR="" 
+fi 
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
@@ -32,7 +42,7 @@ cat >"$DESKTOP_FILE" <<EOF
 Version=1.0
 Name=$APP_NAME
 Comment=$APP_NAME
-Exec=omarchy-launch-webapp $APP_URL
+Exec=omarchy-launch-webapp $APP_URL $USER_DATA_DIR
 Terminal=false
 Type=Application
 Icon=$ICON_PATH
@@ -41,6 +51,6 @@ EOF
 
 chmod +x "$DESKTOP_FILE"
 
-if [ "$#" -ne 3 ]; then
+if [ "$#" -ne 4 ]; then
   echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
 fi
