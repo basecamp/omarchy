@@ -1,0 +1,3 @@
+# Run ghost display fix when Thunderbolt devices are added
+# Use systemd-run to completely detach from udev
+ACTION=="add", SUBSYSTEM=="thunderbolt", RUN+="/usr/bin/systemd-run --uid=0 --gid=0 --on-active=8s /usr/local/bin/thunderbolt-ghost-fix"
