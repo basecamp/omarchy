@@ -110,7 +110,6 @@ sudo pacman -S --noconfirm --needed \
   tree-sitter-cli \
   ttf-cascadia-mono-nerd \
   ttf-jetbrains-mono \
-  typora \
   tzupdate \
   ufw \
   ufw-docker \
@@ -146,11 +145,18 @@ yay -S --noconfirm --needed \
   nomachine \
   packet \
   remote-desktop-manager \
-  sirikali \
+  sirikali-bin \
   tilix \
   visual-studio-code-bin \
   waybar-mpris-git \
-  wttrbar
+  wttrbar \
+  ttf-google-fonts-git \
+  #all-repository-fonts \
+  ttf-font-awesome \
+  ttf-cascadia-mono-nerd \
+  noto-fonts \
+  noto-fonts-emoji \
+  noto-fonts-extra
 
 
 sudo systemctl enable --now backrest@$USER.service
