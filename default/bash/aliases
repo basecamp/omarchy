@@ -24,13 +24,13 @@ alias ...='cd ../..'
 alias ....='cd ../../..'
 
 # Tools
-alias g='git'
 alias d='docker'
 alias dps='docker ps'
 alias dpsa='docker ps -a'
 n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
 
 # Git
+alias g='git'
 alias gcm='git commit -m'
 alias gcam='git commit -a -m'
 alias gcad='git commit -a --amend'

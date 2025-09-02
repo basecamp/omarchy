@@ -1,3 +1,5 @@
+#!/bin/bash
+
 sudo pacman -S --noconfirm --needed \
   alacritty \
   avahi \
@@ -27,6 +29,7 @@ sudo pacman -S --noconfirm --needed \
   flameshot \
   freerdp \
   fwupd \
+  fontconfig \
   fzf \
   gcc14 \
   gnome-calculator \
@@ -48,6 +51,7 @@ sudo pacman -S --noconfirm --needed \
   impala \
   imv \
   inetutils \
+  iwd \
   jq \
   kvantum-qt5 \
   lazydocker \
@@ -97,6 +101,7 @@ sudo pacman -S --noconfirm --needed \
   remmina \
   resources \
   ristretto \
+  qt5-wayland \
   ripgrep \
   satty \
   slurp \
@@ -111,6 +116,8 @@ sudo pacman -S --noconfirm --needed \
   tree-sitter-cli \
   ttf-cascadia-mono-nerd \
   ttf-jetbrains-mono \
+  ttf-ia-writer \
+  ttf-jetbrains-mono-nerd \
   tzupdate \
   ufw \
   ufw-docker \

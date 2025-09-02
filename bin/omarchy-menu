@@ -200,32 +200,41 @@ show_install_menu() {
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Tailscale") in
+  case $(menu "Install" "  Dropbox\n  Tailscale\n󰟵  Bitwarden") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
+  *Bitwarden*) install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden" ;;
   *) show_install_menu ;;
   esac
 }
 
 show_install_editor_menu() {
-  case $(menu "Install" "  VSCode\n  Cursor [AUR]\n  Zed\n  Sublime Text\n  Helix") in
+  case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Emacs") in
   *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
-  *Cursor*) aur_install_and_launch "Cursor" "cursor-bin" "cursor" ;;
+  *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
-  *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
+  *Sublime*) aur_install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) install "Helix" "helix" ;;
+  *Emacs*) install "Emacs" "emacs-wayland" && systemctl --user enable --now emacs.service ;;
   *) show_install_menu ;;
   esac
 }
 
 show_install_ai_menu() {
-  case $(menu "Install" "󱚤  Claude Code [AUR]\n󱚤  Gemini\n󱚤  LM Studio [AUR]\n󱚤  Ollama\n󱚤  Crush [AUR]\n󱚤  opencode [AUR]") in
-  *Claude*) aur_install "Claude Code" "claude-code" ;;
+  ollama_pkg=$(
+    (command -v nvidia-smi &>/dev/null && echo ollama-cuda) ||
+      (command -v rocminfo &>/dev/null && echo ollama-rocm) ||
+      echo ollama
+  )
+
+  case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini\n󱚤  OpenAI Codex [AUR]\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
+  *Claude*) install "Claude Code" "claude-code" ;;
+  *OpenAI*) aur_install "OpenAI Codex" "openai-codex-bin" ;;
   *Gemini*) install "Gemini" "gemini-cli" ;;
-  *Studio*) aur_install "LM Studio" "lmstudio" ;;
-  *Ollama*) install "Ollama" "ollama" ;;
-  *Crush*) aur_install "Crush" "crush-bin" ;;
-  *opencode*) aur_install "opencode" "opencode-bin" ;;
+  *Studio*) install "LM Studio" "lmstudio" ;;
+  *Ollama*) install "Ollama" $ollama_pkg ;;
+  *Crush*) install "Crush" "crush-bin" ;;
+  *opencode*) install "opencode" "opencode-bin" ;;
   *) show_install_menu ;;
   esac
 }
@@ -322,11 +331,12 @@ show_remove_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" " Omarchy\n  Config\n󰸌  Themes\n  Process\n  Timezone") in
+  case $(menu "Update" " Omarchy\n  Config\n󰸌  Themes\n  Process\n󰇅  Hardware\n  Timezone") in
   *Omarchy*) present_terminal omarchy-update ;;
   *Config*) show_update_config_menu ;;
   *Themes*) present_terminal omarchy-theme-update ;;
   *Process*) show_update_process_menu ;;
+  *Hardware*) show_update_hardware_menu ;;
   *Timezone*) omarchy-cmd-tzupdate ;;
   *) show_main_menu ;;
   esac
@@ -339,7 +349,7 @@ show_update_process_menu() {
   *Swayosd*) omarchy-restart-swayosd ;;
   *Walker*) omarchy-restart-walker ;;
   *Waybar*) omarchy-restart-waybar ;;
-  *) show_main_menu ;;
+  *) show_update_menu ;;
   esac
 }
 
@@ -353,7 +363,15 @@ show_update_config_menu() {
   *Swayosd*) present_terminal omarchy-refresh-swayosd ;;
   *Walker*) present_terminal omarchy-refresh-walker ;;
   *Waybar*) present_terminal omarchy-refresh-waybar ;;
-  *) show_main_menu ;;
+  *) show_update_menu ;;
+  esac
+}
+
+show_update_hardware_menu() {
+  case $(menu "Restart" "󱚾  Wi-Fi\n󰂯  Bluetooth") in
+  *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
+  *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
+  *) show_update_menu ;;
   esac
 }
 
