@@ -1,4 +1,5 @@
 echo "Add start burst limit to login"
+
 if [ -f /etc/systemd/system/omarchy-seamless-login.service ]; then
   cat <<EOF | sudo tee /etc/systemd/system/omarchy-seamless-login.service
 [Unit]

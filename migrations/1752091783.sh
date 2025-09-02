@@ -1,2 +1,4 @@
 echo "Install Plymouth splash screen"
-source "$HOME/.local/share/omarchy/install/config/login.sh"
+
+omarchy-pkg-add uwsm plymouth
+source "$OMARCHY_PATH/install/login/plymouth.sh"

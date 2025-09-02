@@ -53,3 +53,11 @@ tooltip {
 #custom-update {
   font-size: 10px;
 }
+
+#clock {
+  margin-left: 8.75px;
+}
+
+.hidden {
+  opacity: 0;
+}

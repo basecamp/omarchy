@@ -1,5 +1,6 @@
 echo "Update to use UWSM and seamless login"
-if ! command -v uwsm &>/dev/null; then
+
+if omarchy-cmd-missing uwsm; then
   sudo rm -f /etc/systemd/system/getty@tty1.service.d/override.conf
   sudo rmdir /etc/systemd/system/getty@tty1.service.d/ 2>/dev/null || true
 
@@ -14,5 +15,5 @@ if ! command -v uwsm &>/dev/null; then
     sed -i 's/^GTK_IM_MODULE=fcitx$//' "$HOME/.config/environment.d/fcitx.conf"
   fi
 
-  source ~/.local/share/omarchy/install/config/login.sh
+  source $OMARCHY_PATH/install/login/plymouth.sh
 fi

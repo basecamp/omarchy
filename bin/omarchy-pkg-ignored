@@ -1,0 +1,7 @@
+#!/bin/bash
+
+IGNORED_PACKAGES_FILE="$OMARCHY_PATH/install/packages.ignored"
+
+if [[ -f $IGNORED_PACKAGES_FILE ]]; then
+  tr '\r\n' ',' <"$IGNORED_PACKAGES_FILE" | sed 's/,$//'
+fi

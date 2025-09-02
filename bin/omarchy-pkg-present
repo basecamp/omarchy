@@ -1,0 +1,7 @@
+#!/bin/bash
+
+for pkg in "$@"; do
+  pacman -Q "$pkg" &>/dev/null || exit 1
+done
+
+exit 0

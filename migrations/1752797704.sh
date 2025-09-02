@@ -1,4 +1,5 @@
 echo "Prevent docker from requiring network readiness on boot"
+
 if [[ ! -f /etc/systemd/system/docker.service.d/no-block-boot.conf ]]; then
   sudo mkdir -p /etc/systemd/system/docker.service.d/
   sudo tee /etc/systemd/system/docker.service.d/no-block-boot.conf <<'EOF'
