@@ -25,7 +25,6 @@ source $OMARCHY_INSTALL/packaging/tuis.sh
 
 # Configuration
 source $OMARCHY_INSTALL/config/config.sh
-CHY_INSTALL/config/nvidia.sh
 source $OMARCHY_INSTALL/config/theme.sh
 source $OMARCHY_INSTALL/config/branding.sh
 source $OMARCHY_INSTALL/config/git.sh
