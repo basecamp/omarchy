@@ -1,4 +1,4 @@
-@import "../dotfiles/current/theme/waybar.css";
+@import "../omarchy/current/theme/waybar.css";
 
 @define-color rosewater #f5e0dc;
 @define-color flamingo #f2cdcd;
@@ -77,7 +77,7 @@
 #temperature,
 #power-profiles-daemon,
 #clock,
-#custom-dotfiles {
+#custom-omarchy {
   min-width: 12px;
   margin: 0 7.5px;
 }

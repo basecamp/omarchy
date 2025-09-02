@@ -5,7 +5,7 @@
   "spacing": 5,
   "height": 30,
   "modules-left": [
-    "custom/dotfiles",
+    "custom/omarchy",
     "hyprland/workspaces",
     "custom/waybar-mpris"
   ],
@@ -53,7 +53,8 @@
       "5": []
     }
   },
-  "custom/dotfiles": {
+  "custom/omarchyy
+": {
     "format": "",
     "on-click": "~/.local/share/omarchy/bin/omarchy-menu",
     "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space"
