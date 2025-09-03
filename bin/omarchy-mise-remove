@@ -1,0 +1,61 @@
+if ! command -v mise &> /dev/null; then
+  echo "mise is not installed or not in PATH"
+  exit 1
+fi
+
+chooser_gum() {
+  local items=("$@")
+  gum choose --no-limit --header "Select mise tools to uninstall..." --selected-prefix="✗ " "${items[@]}"
+}
+
+chooser_fzf() {
+  local items=("$@")
+  printf '%s\n' "${items[@]}" | fzf --multi --prompt="mise » " --header="Select mise tools to uninstall (TAB to select, ENTER to confirm)" --preview="echo {}" --color 'pointer:red,marker:red'
+}
+
+choose_many() {
+  local items=("$@")
+  if command -v gum &> /dev/null; then
+    chooser_gum "${items[@]}"
+  else
+    chooser_fzf "${items[@]}"
+  fi
+}
+
+installed_json=$(mise ls --installed --json)
+if [[ -z "$installed_json" || "$installed_json" == "{}" ]]; then
+  echo "No mise tools installed."
+  exit 0
+fi
+
+mapfile -t entries < <(printf '%s' "$installed_json" | jq -r 'to_entries[] | .key as $tool | .value[] | select(.version != null) | "\($tool)@\(.version)"' )
+
+if [[ ${#entries[@]} -eq 0 ]]; then
+  echo "No mise tools installed."
+  exit 0
+fi
+
+selection=$(choose_many "${entries[@]}")
+
+selected_entries=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && selected_entries+=("$line")
+done <<< "$selection"
+
+if [[ ${#selected_entries[@]} -eq 0 ]]; then
+  exit 0
+fi
+
+for entry in "${selected_entries[@]}"; do
+  mise uninstall --yes "$entry"
+  if [[ $? -ne 0 ]]; then
+    tool_only="${entry%@*}"
+    mise uninstall --yes "$tool_only" || true
+  fi
+  echo "Uninstalled: $entry"
+done
+
+if command -v omarchy-show-done &> /dev/null; then
+  omarchy-show-done
+fi
+
