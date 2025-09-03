@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Omarchy Status Daemon - provides JSON status for waybar modules
+# Usage: omarchy-status-daemon <module_name>
+
+get_dnd_status() {
+    local modes
+    modes=$(makoctl mode 2>/dev/null)
+    
+    if echo "$modes" | grep -q "do-not-disturb"; then
+        echo '{"text": "󰂛", "class": "active", "tooltip": "Do Not Disturb: ON\nClick to disable"}'
+    else
+        echo '{"text": "󰂚", "class": "inactive", "tooltip": "Do Not Disturb: OFF\nClick to enable"}'
+    fi
+}
+
+case "$1" in
+    "dnd")
+        get_dnd_status
+        ;;
+    *)
+        echo '{"text": "?", "class": "error", "tooltip": "Unknown module: '"$1"'"}'
+        exit 1
+        ;;
+esac

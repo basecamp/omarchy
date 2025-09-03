@@ -42,6 +42,20 @@
   margin: 0 7.5px;
 }
 
+#custom-status-dnd {
+  min-width: 12px;
+  margin: 0 4px;
+  transition: opacity 0.2s;
+}
+
+#custom-status-dnd.inactive {
+  opacity: 0.6;
+}
+
+#custom-status-dnd.active {
+  opacity: 1;
+}
+
 #custom-expand-icon {
   margin-right: 7px;
 }
