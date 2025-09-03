@@ -155,6 +155,7 @@ sudo pacman -S --noconfirm --needed \
 
 yay -S --noconfirm --needed \
   backrest \
+  feishin-bin \
   mailspring-bin \
   nomachine \
   packet \
@@ -165,4 +166,4 @@ yay -S --noconfirm --needed \
   waybar-mpris-git \
   wttrbar
   
-sudo systemctl enable backrest@$USER.service
+systemctl enable backrest@$USER.service
