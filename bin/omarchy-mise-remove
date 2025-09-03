@@ -56,7 +56,3 @@ for entry in "${selected_entries[@]}"; do
   fi
   echo "Uninstalled: $entry"
 done
-
-if command -v omarchy-show-done &> /dev/null; then
-  omarchy-show-done
-fi
