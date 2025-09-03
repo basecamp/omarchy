@@ -268,9 +268,17 @@ show_install_font_menu() {
 }
 
 show_install_development_menu() {
-  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml") in
+  case $(menu "Development" "󰵮  Languages\n󰘳  CLI Tools\n  Databases") in
+  *Languages*) show_install_dev_languages_menu ;;
+  *CLI*) show_install_dev_cli_menu ;;
+  *Database*) show_install_dev_databases_menu ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_dev_languages_menu() {
+  case $(menu "Languages" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml") in
   *Rails*) present_terminal "omarchy-install-dev-env ruby" ;;
-  *Docker*) present_terminal omarchy-install-docker-dbs ;;
   *JavaScript*) show_install_javascript_menu ;;
   *Go*) present_terminal "omarchy-install-dev-env go" ;;
   *PHP*) show_install_php_menu ;;
@@ -281,7 +289,21 @@ show_install_development_menu() {
   *Java*) present_terminal "omarchy-install-dev-env java" ;;
   *NET*) present_terminal "omarchy-install-dev-env dotnet" ;;
   *OCaml*) present_terminal "omarchy-install-dev-env ocaml" ;;
-  *) show_install_menu ;;
+  *) show_install_development_menu ;;
+  esac
+}
+
+show_install_dev_cli_menu() {
+  case $(menu "CLI Tools" "  Railway CLI") in
+  *Railway*) present_terminal "omarchy-install-dev-env railway" ;;
+  *) show_install_development_menu ;;
+  esac
+}
+
+show_install_dev_databases_menu() {
+  case $(menu "Databases" "  Docker DB") in
+  *Docker*) present_terminal omarchy-install-docker-dbs ;;
+  *) show_install_development_menu ;;
   esac
 }
 
