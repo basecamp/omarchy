@@ -1,7 +1,12 @@
 #!/bin/bash
 
 options=("MySQL" "PostgreSQL" "Redis" "MongoDB" "MariaDB")
-choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases (space to select, return to install, esc to cancel)") || main_menu
+
+if [[ "$#" -eq 0 ]]; then
+  choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases (space to select, return to install, esc to cancel)") || main_menu
+else
+  choices="$@"
+fi
 
 if [[ -n "$choices" ]]; then
   for db in $choices; do
