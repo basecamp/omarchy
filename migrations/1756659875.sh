@@ -1,4 +1,2 @@
 #!/bin/bash
-sed -i 's/-e btop/-e sh -c '\''btop; exec \$SHELL'\''/g' ~/.local/share/omarchy/default/hypr/bindings.conf ~/.config/hypr/bindings.conf
-
-
+sed -i 's|readlink -f "/proc/$shell_pid/cwd" 2>/dev/null|readlink -f "/proc/$shell_pid/cwd" 2>/dev/null \|\| echo "$HOME"|' $OMARCHY_PATH/bin/omarchy-cmd-terminal-cwd
