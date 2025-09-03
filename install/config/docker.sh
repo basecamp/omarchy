@@ -7,6 +7,7 @@ sudo mkdir -p /etc/docker
 sudo mkdir -p /data/var/lib/docker
 sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
 {
+    "data-root": "/data/var/lib/docker",
     "log-driver": "json-file",
     "log-opts": { "max-size": "10m", "max-file": "5" },
     "dns": ["172.17.0.1"],
