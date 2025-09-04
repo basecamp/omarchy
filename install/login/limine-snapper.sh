@@ -3,7 +3,7 @@ if command -v limine &>/dev/null; then
   MACBOOK_SPI_MODULES=""
   if [ -f "/sys/class/dmi/id/product_name" ]; then
     PRODUCT_NAME=$(cat /sys/class/dmi/id/product_name 2>/dev/null)
-    if [[ "$PRODUCT_NAME" =~ MacBook12,1|MacBookPro13,[23]|MacBookPro14,[23] ]]; then
+    if [[ "$PRODUCT_NAME" =~ MacBook12,1|MacBookPro13,[123]|MacBookPro14,[123] ]]; then
       echo "Detected MacBook with SPI keyboard: $PRODUCT_NAME"
       
       # Ensure applespi driver is available
