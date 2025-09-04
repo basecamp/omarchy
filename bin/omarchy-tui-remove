@@ -6,7 +6,7 @@ DESKTOP_DIR="$HOME/.local/share/applications/"
 if [ "$#" -eq 0 ]; then
   # Find all TUIs
   while IFS= read -r -d '' file; do
-    if grep -q '^Exec=.*alacritty.*-e' "$file"; then
+    if grep -q '^Exec=.*ghostty.*-e' "$file"; then
       TUIS+=("$(basename "${file%.desktop}")")
     fi
   done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)

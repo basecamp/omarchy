@@ -55,8 +55,8 @@ if command -v chromium &>/dev/null; then
   fi
 fi
 
-# Trigger alacritty config reload
-touch "$HOME/.config/alacritty/alacritty.toml"
+# Trigger ghostty config reload
+touch "$HOME/.config/ghostty/config"
 
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
