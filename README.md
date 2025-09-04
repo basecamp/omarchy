@@ -4,6 +4,15 @@ Turn a fresh Arch installation into a fully-configured, beautiful, and modern we
 
 Read more at [omarchy.org](https://omarchy.org).
 
+## Installation
+
+To install Omarchy, run the following command in your terminal:
+
+```bash
+# With this ENV username and this ENV email, run bash that will execute a curl command to download the boot.sh script, and pipe the contents of that script to bash for execution
+OMARCHY_USER_NAME="your_username" OMARCHY_USER_EMAIL="your_email@example.com" bash -c 'curl -fsSL https://raw.githubusercontent.com/RATIU5/omarchy/refs/heads/master/boot.sh | bash'
+```
+
 ## Differences
 
 My configuration of Omarchy has some differences. These include:
