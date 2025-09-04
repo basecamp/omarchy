@@ -111,6 +111,9 @@ sudo pacman -S --noconfirm --needed \
   xmlstarlet \
   yaru-icon-theme \
   yay \
-  zen-browser-bin \
   zoxide \
   zsh-completions
+
+# AUR Packages
+sudo yay -S --noconfirm --needed \
+  zen-browser-bin
