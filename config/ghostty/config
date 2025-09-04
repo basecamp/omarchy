@@ -1,0 +1,223 @@
+# A named theme to use. The available themes are currently hardcoded to the
+# themes that ship with Ghostty. On macOS, this list is in the `Ghostty.app/
+# Contents/Resources/ghostty/themes` directory. On Linux, this list is in the
+# `share/ghostty/themes` directory (wherever you installed the Ghostty "share"
+# directory.
+#
+# To see a list of available themes, run `ghostty +list-themes`.
+#
+# Any additional colors specified via background, foreground, palette, etc.
+# will override the colors specified in the theme.
+#
+# This configuration can be changed at runtime, but the new theme will only
+# affect new cells. Existing colored cells will not be updated. Therefore,
+# after changing the theme, you should restart any running programs to ensure
+# they get the new colors.
+#
+# A future update will allow custom themes to be installed in certain
+# directories.
+theme = catppuccin-mocha
+
+# Font size in points. This value can be a non-integer and the nearest integer
+# pixel size will be selected. If you have a high dpi display where 1pt = 2px
+# then you can get an odd numbered pixel size by specifying a half point.
+#
+# For example, 13.5pt @ 2px/pt = 27px
+#
+# Changing this configuration at runtime will only affect new terminals,
+# i.e. new windows, tabs, etc. Note that you may still not see the change
+# depending on your `window-inherit-font-size` setting. If that setting is
+# true, only the first window will be affected by this change since all
+# subsequent windows will inherit the font size of the previous window.
+font-size = 16
+
+
+# Hide the mouse immediately when typing. The mouse becomes visible again when
+# the mouse is used. The mouse is only hidden if the mouse cursor is over the
+# active terminal surface.
+mouse-hide-while-typing = true
+
+# Valid values:
+#
+#   * `true`
+#   * `false` - windows won't have native decorations, i.e. titlebar and
+#      borders. On MacOS this also disables tabs and tab overview.
+#
+# The "toggle_window_decoration" keybind action can be used to create
+# a keybinding to toggle this setting at runtime.
+#
+# Changing this configuration in your configuration and reloading will
+# only affect new windows. Existing windows will not be affected.
+window-decoration = true
+
+# Window padding. This applies padding between the terminal cells and the
+# window border. The `x` option applies to the left and right padding and the
+# `y` option is top and bottom. The value is in points, meaning that it will
+# be scaled appropriately for screen DPI.
+#
+# If this value is set too large, the screen will render nothing, because the
+# grid will be completely squished by the padding. It is up to you as the user
+# to pick a reasonable value. If you pick an unreasonable value, a warning
+# will appear in the logs.
+#
+# Changing these values will only apply after restart.
+window-padding-x = 12
+window-padding-y = 4
+
+# The opacity level (opposite of transparency) of the background. A value of
+# 1 is fully opaque and a value of 0 is fully transparent. A value less than 0
+# or greater than 1 will be clamped to the nearest valid value.
+background-opacity = 0.9
+
+# A positive value enables blurring of the background when background-opacity
+# is less than 1. The value is the blur radius to apply. A value of 20
+# is reasonable for a good looking blur. Higher values will cause strange
+# rendering issues as well as performance issues.
+#
+# This is only supported on macOS.
+background-blur-radius = 40
+
+# The font families to use.
+#
+# You can generate the list of valid values using the CLI:
+#
+#     ghostty +list-fonts
+#
+# This configuration can be repeated multiple times to specify preferred
+# fallback fonts when the requested codepoint is not available in the primary
+# font. This is particularly useful for multiple languages, symbolic fonts,
+# etc.
+#
+# If you want to overwrite a previous set value rather than append a fallback,
+# specify the value as `""` (empty string) to reset the list and then set the
+# new values. For example:
+#
+#     font-family = ""
+#     font-family = "My Favorite Font"
+#
+# Setting any of these as CLI arguments will automatically clear the
+# values set in configuration files so you don't need to specify
+# `--font-family=""` before setting a new value. You only need to specify
+# this within config files if you want to clear previously set values in
+# configuration files or on the CLI if you want to clear values set on the
+# CLI.
+#
+# Changing this configuration at runtime will only affect new terminals, i.e.
+# new windows, tabs, etc.
+# Default font
+font-family             = "JetBrainsMono Nerd Font Mono"
+font-style              = "Medium"
+# Bold
+font-family-bold        = "JetBrainsMono Nerd Font Mono"
+font-style-bold         = "ExtraBold"
+# Italic
+font-family-italic      = "JetBrainsMono Nerd Font Mono"
+font-style-italic       = "Italic"
+# Bold and Italic
+font-family-bold-italic = "JetBrainsMono Nerd Font Mono"
+font-style-bold-italic  = "ExtraBold Italic"
+
+macos-option-as-alt = true
+
+# The style of the cursor. This sets the default style. A running program can
+# still request an explicit cursor style using escape sequences (such as `CSI
+# q`). Shell configurations will often request specific cursor styles.
+#
+# Note that shell integration will automatically set the cursor to a bar at
+# a prompt, regardless of this configuration. You can disable that behavior
+# by specifying `shell-integration-features = no-cursor` or disabling shell
+# integration entirely.
+#
+# Valid values are:
+#
+#   * `block`
+#   * `bar`
+#   * `underline`
+#
+cursor-style = block
+
+# Sets the default blinking state of the cursor. This is just the default
+# state; running programs may override the cursor style using `DECSCUSR` (`CSI
+# q`).
+#
+# If this is not set, the cursor blinks by default. Note that this is not the
+# same as a "true" value, as noted below.
+#
+# If this is not set at all (`null`), then Ghostty will respect DEC Mode 12
+# (AT&T cursor blink) as an alternate approach to turning blinking on/off. If
+# this is set to any value other than null, DEC mode 12 will be ignored but
+# `DECSCUSR` will still be respected.
+#
+# Valid values are:
+#
+#   * `` (blank)
+#   * `true`
+#   * `false`
+#
+cursor-style-blink = false
+
+# Shell integration features to enable if shell integration itself is enabled.
+# The format of this is a list of features to enable separated by commas. If
+# you prefix a feature with `no-` then it is disabled. If you omit a feature,
+# its default value is used, so you must explicitly disable features you don't
+# want. You can also use `true` or `false` to turn all features on or off.
+#
+# Available features:
+#
+#   * `cursor` - Set the cursor to a blinking bar at the prompt.
+#
+#   * `sudo` - Set sudo wrapper to preserve terminfo.
+#
+#   * `title` - Set the window title via shell integration.
+#
+# Example: `cursor`, `no-cursor`, `sudo`, `no-sudo`, `title`, `no-title`
+shell-integration-features = no-cursor
+
+# Whether to allow programs running in the terminal to read/write to the
+# system clipboard (OSC 52, for googling). The default is to allow clipboard
+# reading after prompting the user and allow writing unconditionally.
+#
+# Valid values are:
+#
+#   * `ask`
+#   * `allow`
+#   * `deny`
+#
+clipboard-read = ask
+
+clipboard-write = allow
+
+# The style of the macOS titlebar. Available values are: "native",
+# "transparent", and "tabs".
+#
+# The "native" style uses the native macOS titlebar with zero customization.
+# The titlebar will match your window theme (see `window-theme`).
+#
+# The "transparent" style is the same as "native" but the titlebar will
+# be transparent and allow your window background color to come through.
+# This makes a more seamless window appearance but looks a little less
+# typical for a macOS application and may not work well with all themes.
+#
+# The "tabs" style is a completely custom titlebar that integrates the
+# tab bar into the titlebar. This titlebar always matches the background
+# color of the terminal. There are some limitations to this style:
+# On macOS 13 and below, saved window state will not restore tabs correctly.
+# macOS 14 does not have this issue and any other macOS version has not
+# been tested.
+#
+# The default value is "transparent". This is an opinionated choice
+# but its one I think is the most aesthetically pleasing and works in
+# most cases.
+#
+# Changing this option at runtime only applies to new windows.
+macos-titlebar-style = transparent
+
+# This will be used to set the `TERM` environment variable.
+# HACK: We set this with an `xterm` prefix because vim uses that to enable key
+# protocols (specifically this will enable `modifyOtherKeys`), among other
+# features. An option exists in vim to modify this: `:set
+# keyprotocol=ghostty:kitty`, however a bug in the implementation prevents it
+# from working properly. https://github.com/vim/vim/pull/13211 fixes this.
+term = xterm-ghostty
+
+macos-auto-secure-input = false

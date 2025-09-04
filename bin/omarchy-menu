@@ -22,16 +22,16 @@ menu() {
 }
 
 terminal() {
-  alacritty --class Omarchy -e "$@"
+  ghostty --class Omarchy -e "$@"
 }
 
 present_terminal() {
   omarchy-launch-floating-terminal-with-presentation $1
 }
 
-edit_in_nvim() {
+edit_in_helix() {
   notify-send "Editing config file" "$1"
-  alacritty -e nvim "$1"
+  ghostty -e hx "$1"
 }
 
 install() {
@@ -71,8 +71,8 @@ show_style_menu() {
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
-  *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
-  *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
+  *Screensaver*) edit_in_helix ~/.config/omarchy/branding/screensaver.txt ;;
+  *About*) edit_in_helix ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
   esac
 }
@@ -138,19 +138,19 @@ show_setup_menu() {
   options="$options\n󰱔  DNS\n  Config\n󰈷  Fingerprint\n  Fido2"
 
   case $(menu "Setup" "$options") in
-  *Audio*) alacritty --class=Wiremix -e wiremix ;;
+  *Audio*) ghostty --class=Wiremix -e wiremix ;;
   *Wifi*)
     rfkill unblock wifi
-    alacritty --class=Impala -e impala
+    ghostty --class=Impala -e impala
     ;;
   *Bluetooth*)
     rfkill unblock bluetooth
     blueberry
     ;;
   *Power*) show_setup_power_menu ;;
-  *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
-  *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
-  *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
+  *Monitors*) edit_in_helix ~/.config/hypr/monitors.conf ;;
+  *Keybindings*) edit_in_helix ~/.config/hypr/bindings.conf ;;
+  *Input*) edit_in_helix ~/.config/hypr/input.conf ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Config*) show_setup_config_menu ;;
   *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
@@ -171,20 +171,20 @@ show_setup_power_menu() {
 
 show_setup_config_menu() {
   case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
-  *Hyprland*) edit_in_nvim ~/.config/hypr/hyprland.conf ;;
-  *Hypridle*) edit_in_nvim ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
-  *Hyprlock*) edit_in_nvim ~/.config/hypr/hyprlock.conf ;;
-  *Hyprsunset*) edit_in_nvim ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
-  *Swayosd*) edit_in_nvim ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
-  *Walker*) edit_in_nvim ~/.config/walker/config.toml && omarchy-restart-walker ;;
-  *Waybar*) edit_in_nvim ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
-  *XCompose*) edit_in_nvim ~/.XCompose && omarchy-restart-xcompose ;;
+  *Hyprland*) edit_in_helix ~/.config/hypr/hyprland.conf ;;
+  *Hypridle*) edit_in_helix ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
+  *Hyprlock*) edit_in_helix ~/.config/hypr/hyprlock.conf ;;
+  *Hyprsunset*) edit_in_helix ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
+  *Swayosd*) edit_in_helix ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
+  *Walker*) edit_in_helix ~/.config/walker/config.toml && omarchy-restart-walker ;;
+  *Waybar*) edit_in_helix ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
+  *XCompose*) edit_in_helix ~/.XCompose && omarchy-restart-xcompose ;;
   *) show_main_menu ;;
   esac
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -194,7 +194,6 @@ show_install_menu() {
   *Development*) show_install_development_menu ;;
   *Editor*) show_install_editor_menu ;;
   *AI*) show_install_ai_menu ;;
-  *Gaming*) show_install_gaming_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -235,15 +234,6 @@ show_install_ai_menu() {
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
   *opencode*) install "opencode" "opencode-bin" ;;
-  *) show_install_menu ;;
-  esac
-}
-
-show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft") in
-  *Steam*) present_terminal omarchy-install-steam ;;
-  *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
-  *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
   *) show_install_menu ;;
   esac
 }
@@ -399,7 +389,7 @@ go_to_menu() {
   *install*) show_install_menu ;;
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
-  *about*) alacritty --class Omarchy -o font.size=9 -e bash -c 'fastfetch; read -n 1 -s' ;;
+  *about*) ghostty --class Omarchy -e bash -c 'fastfetch; read -n 1 -s' ;;
   *system*) show_system_menu ;;
   esac
 }

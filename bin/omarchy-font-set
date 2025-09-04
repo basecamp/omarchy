@@ -4,7 +4,7 @@ font_name="$1"
 
 if [[ -n "$font_name" && "$font_name" != "CNCLD" ]]; then
   if fc-list | grep -iq "$font_name"; then
-    sed -i "s/family = \".*\"/family = \"$font_name\"/g" ~/.config/alacritty/alacritty.toml
+    sed -i 's/^\(font-family\s*=\s*\).*$/\1"'$font_name'"/' ~/.config/ghostty/config
     sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/waybar/style.css
     sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/swayosd/style.css
     xmlstarlet ed -L \

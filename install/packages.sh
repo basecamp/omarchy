@@ -4,9 +4,7 @@ sudo pacman -S --noconfirm --needed \
   1password-beta \
   1password-cli \
   asdcontrol-git \
-  alacritty \
   avahi \
-  bash-completion \
   bat \
   blueberry \
   brightnessctl \
@@ -24,21 +22,20 @@ sudo pacman -S --noconfirm --needed \
   evince \
   eza \
   fastfetch \
-  fcitx5 \
-  fcitx5-gtk \
-  fcitx5-qt \
   fd \
   ffmpegthumbnailer \
   fontconfig \
   fzf \
   gcc14 \
   github-cli \
+  ghostty \
   gnome-calculator \
   gnome-keyring \
   gnome-themes-extra \
   gum \
   gvfs-mtp \
   gvfs-smb \
+  helix \
   hypridle \
   hyprland \
   hyprland-qtutils \
@@ -52,19 +49,15 @@ sudo pacman -S --noconfirm --needed \
   inetutils \
   iwd \
   jq \
-  kdenlive \
   kvantum-qt5 \
   lazydocker \
   lazygit \
   less \
   libqalculate \
-  libreoffice \
   llvm \
   localsend \
-  luarocks \
   mako \
   man \
-  mariadb-libs \
   mise \
   mpv \
   nautilus \
@@ -73,12 +66,8 @@ sudo pacman -S --noconfirm --needed \
   noto-fonts-emoji \
   noto-fonts-extra \
   nss-mdns \
-  nvim \
-  obs-studio \
   obsidian \
-  omarchy-chromium \
   pamixer \
-  pinta \
   playerctl \
   plocate \
   plymouth \
@@ -86,19 +75,16 @@ sudo pacman -S --noconfirm --needed \
   postgresql-libs \
   power-profiles-daemon \
   python-gobject \
-  python-poetry-core \
-  python-terminaltexteffects \
   qt5-wayland \
   ripgrep \
   satty \
-  signal-desktop \
   slurp \
-  spotify \
   starship \
   sushi \
   swaybg \
   swayosd \
   system-config-printer \
+  tailscale \
   tldr \
   tree-sitter-cli \
   ttf-cascadia-mono-nerd \
@@ -123,7 +109,8 @@ sudo pacman -S --noconfirm --needed \
   xdg-desktop-portal-gtk \
   xdg-desktop-portal-hyprland \
   xmlstarlet \
-  xournalpp \
   yaru-icon-theme \
   yay \
-  zoxide
+  zen-browser-bin \
+  zoxide \
+  zsh-completions
