@@ -1,4 +1,11 @@
 #!/bin/bash
 
+set -euo pipefail
+
+# Skip refresh if locked
+if omarchy-lock-check hypridle; then
+	exit 0
+fi
+
 omarchy-refresh-config hypr/hypridle.conf
 omarchy-restart-hypridle
