@@ -21,10 +21,11 @@ My configuration of Omarchy has some differences. These include:
 
 | Package Name                  | Status  |
 | ----------------------------- | ------- |
+| ghostty                       | Added   |
 | helix                         | Added   |
 | tailscale                     | Added   |
-| zsh-completions               | Added   |
 | zen-browser-bin               | Added   |
+| zsh-completions               | Added   |
 | alacritty                     | Removed |
 | bash-completions              | Removed |
 | fcitx5, fcitx5-gtk, fcitx5-qt | Removed |
@@ -58,6 +59,16 @@ My configuration of Omarchy has some differences. These include:
 | YouTube         | Removed |
 | GitHub          | Removed |
 | X               | Removed |
+
+### Other Changes
+
+- Removed Steam install script
+- Ghostty is set as the default terminal
+- Helix is set as the default text editor
+- Hyprland opacity is set to 1.0 (no transparency)
+- zsh replaces bash as the default shell
+- Removed Ruby language installation
+- Catppuccin is set as the default theme
 
 ## License
 
