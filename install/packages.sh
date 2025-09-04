@@ -115,5 +115,5 @@ sudo pacman -S --noconfirm --needed \
   zsh-completions
 
 # AUR Packages
-sudo yay -S --noconfirm --needed \
+yay -S --noconfirm --needed \
   zen-browser-bin
