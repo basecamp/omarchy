@@ -1,5 +1,0 @@
-#!/bin/bash
-
-if ! curl -s --connect-timeout 10 --head -A "omarchy-update" -o /dev/null "https://aur.archlinux.org/"; then
-  gum spin --spinner "globe" --title "The AUR package repository is currently unavailable, please try again later" -- sleep 2 && exit 1
-fi

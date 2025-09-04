@@ -62,7 +62,7 @@ term_background_bright: 24283b
  
 EOF
 
-  yay -S --noconfirm --needed limine-mkinitcpio-hook limine-snapper-sync
+  sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
   sudo limine-update
 
   # Match Snapper configs if not installing from the ISO
@@ -85,10 +85,11 @@ EOF
 fi
 
 # Add UKI entry to UEFI machines to skip bootloader showing on normal boot
-if [ -n "$EFI" ] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy; then
+if [ -n "$EFI" ] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy &&
+  ! cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "American Megatrends"; then
   sudo efibootmgr --create \
-    --disk "$(findmnt -n -o SOURCE /boot | sed 's/[0-9]*$//')" \
-    --part "$(findmnt -n -o SOURCE /boot | grep -o '[0-9]*$')" \
+    --disk "$(findmnt -n -o SOURCE /boot | sed 's/p\?[0-9]*$//')" \
+    --part "$(findmnt -n -o SOURCE /boot | grep -o 'p\?[0-9]*$' | sed 's/^p//')" \
     --label "Omarchy" \
     --loader "\\EFI\\Linux\\$(cat /etc/machine-id)_linux.efi"
 fi
