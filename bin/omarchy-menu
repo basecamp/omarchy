@@ -31,7 +31,7 @@ present_terminal() {
 
 edit_in_nvim() {
   notify-send "Editing config file" "$1"
-  alacritty -e nvim "$1"
+  alacritty -e "${EDITOR:-nvim}" "$1"
 }
 
 install() {
