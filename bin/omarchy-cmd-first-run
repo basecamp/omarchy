@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -e
+
+FIRST_RUN_MODE=~/.local/state/omarchy/first-run.mode
+
+if [[ -f "$FIRST_RUN_MODE" ]]; then
+  rm -f "$FIRST_RUN_MODE"
+  $OMARCHY_PATH/install/first-run/battery-monitor.sh
+  $OMARCHY_PATH/install/first-run/firewall.sh
+  sudo rm -f /etc/sudoers.d/first-run
+fi

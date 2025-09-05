@@ -1,20 +1,22 @@
 #!/bin/bash
 
-if command -v tte &>/dev/null; then
-  while true; do
-    effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
-    tte -i ~/.local/share/omarchy/logo.txt \
-      --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
-      "$effect" &
+function exit_screensaver {
+  pkill -x tte 2>/dev/null
+  pkill -f "alacritty --class Screensaver" 2>/dev/null
+  exit 0
+}
 
-    while pgrep tte >/dev/null; do
-      if read -n 1 -t 0.01; then
-        pkill tte 2>/dev/null
-        pkill -f "alacritty --class Screensaver" 2>/dev/null
-        exit 0
-      fi
-    done
+trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+
+while true; do
+  effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
+  tte -i ~/.config/omarchy/branding/screensaver.txt \
+    --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
+    "$effect" &
+
+  while pgrep -x tte >/dev/null; do
+    if read -n 1 -t 3; then
+      exit_screensaver
+    fi
   done
-else
-  gum spin --title "Can't find tte. Try: pip install terminaltexteffects" -- sleep 2
-fi
+done
