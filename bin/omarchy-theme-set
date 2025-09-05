@@ -55,6 +55,31 @@ if command -v chromium &>/dev/null; then
   fi
 fi
 
+# Change VSCode colors
+if command -v code &>/dev/null; then
+  if [[ -f ~/.config/omarchy/current/theme/vscode.theme ]]; then
+    declare -A vscode
+    source ~/.config/omarchy/current/theme/vscode.theme
+
+    # Install extension if specified
+    if [[ -n "${vscode[extension]}" ]]; then
+      code --install-extension "${vscode[extension]}" --force
+    fi
+
+    # Set theme if specified
+    if [[ -n "${vscode[theme]}" ]]; then
+      sed -i "s/\"workbench.colorTheme\": \".*\"/\"workbench.colorTheme\": \"${vscode[theme]}\"/g" ~/.config/Code/User/settings.json
+    fi
+  # Fallback to default themes
+  else
+    if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
+      sed -i "s/\"workbench.colorTheme\": \".*\"/\"workbench.colorTheme\": \"Default Light+\"/g" ~/.config/Code/User/settings.json
+    else
+      sed -i "s/\"workbench.colorTheme\": \".*\"/\"workbench.colorTheme\": \"Default Dark+\"/g" ~/.config/Code/User/settings.json
+    fi
+  fi
+fi
+
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
