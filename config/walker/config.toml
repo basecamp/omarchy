@@ -23,6 +23,7 @@ next = "down"
 previous = "up"
 toggle_exact = "ctrl e"
 resume_last_query = "ctrl r"
+quick_activate = []
 
 [providers]
 default = [
