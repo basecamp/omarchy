@@ -11,6 +11,8 @@ yay -S --noconfirm --needed \
   elephant-providerlist \
   elephant-runner \
   elephant-symbols \
+  elephant-todo \
+  elephant-unicode \
   elephant-websearch \
   hypridle \
   hyprland \
