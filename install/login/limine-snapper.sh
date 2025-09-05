@@ -28,7 +28,7 @@ if command -v limine &>/dev/null; then
       MACBOOK_SPI_MODULES="applespi intel_lpss_pci spi_pxa2xx_platform"
       
       # Log MacBook detection to systemd journal (boot log)
-      echo "MacBook SPI keyboard support configured for $PRODUCT_NAME" | systemd-cat -t omarchy -p info
+      echo "MacBook SPI keyboard support configured for $PRODUCT_NAME" | systemd-cat -t macbook -p info
     fi
   fi
 
@@ -116,10 +116,10 @@ EOF
   if [ -n "$MACBOOK_SPI_MODULES" ]; then
     echo "Rebuilding initramfs for MacBook SPI keyboard support..."
     sudo mkinitcpio -P
-    echo "MacBook SPI keyboard support integrated successfully" | tee >(systemd-cat -t omarchy -p info)
+    echo "MacBook SPI keyboard support integrated successfully" | tee >(systemd-cat -t macbook -p info)
   elif [ -f "/sys/class/dmi/id/product_name" ] && [[ "$(cat /sys/class/dmi/id/product_name 2>/dev/null)" =~ MacBook12,1|MacBookPro13,[23]|MacBookPro14,[23] ]]; then
     # MacBook was detected but modules weren't set (driver installation failed)
-    echo "WARNING: MacBook detected but SPI keyboard support could not be configured. Internal keyboard may not work during LUKS encryption prompt" | tee >(systemd-cat -t omarchy -p warning)
+    echo "WARNING: MacBook detected but SPI keyboard support could not be configured. Internal keyboard may not work during LUKS encryption prompt" | tee >(systemd-cat -t macbook -p warning)
   fi
   
   sudo limine-update
