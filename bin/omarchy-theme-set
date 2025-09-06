@@ -60,8 +60,8 @@ HEX_COLOR=$(rgb_to_hex "$THEME_COLOR")
 # Create Chrome policy directory and file
 if [[ -d "/etc/chromium/policies/managed" ]] || mkdir -p "/etc/chromium/policies/managed" 2>/dev/null; then
   echo "{\"BrowserThemeColor\": \"$HEX_COLOR\"}" |  tee "/etc/chromium/policies/managed/color.json" >/dev/null
-  # force a reload
-  chromium --force-policy-reload --no-startup-window 
+  # force a policy refresh
+  chromium --refresh-platform-policy --no-startup-window 
 fi
 
 # Create Brave policy directory and file  
