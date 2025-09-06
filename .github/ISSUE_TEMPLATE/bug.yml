@@ -1,0 +1,29 @@
+name: Bug
+description: File a bug report
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the following details.
+
+  - type: input
+    id: system-info
+    attributes:
+      label: System Info
+      description: What CPU/Graphics/version are you using?
+      placeholder: e.g. AMD 9950X, NVIDIA 5090, Omarchy 2.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How do we trigger the bug?
+      placeholder: |
+        1. Go to ...
+        2. Click on ...
+        3. See error
+    validations:
+      required: true
