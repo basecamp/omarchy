@@ -19,9 +19,9 @@ duration=$(playerctl -a metadata --format "({{duration(position)}}/{{duration(mp
 # title=$(playerctl -p playerctld metadata title 2>/dev/null || true)
 
 if [[ $status = "Playing" ]]; then
-  printf '{"class":"playing", "text":"%s %s %s"}' "$icon" "$info" "<span>$duration</span>"
+  printf '{"class":"playing", "text":"%s %s %s"}' "$icon" "$info" "<span class='progress'>$duration</span>"
 elif [[ $status = "Paused" ]]; then
-  printf '{"class":"paused","text":"%s %s %s"}' "$icon" "$info" "<span>$duration</span>"
+  printf '{"class":"paused","text":"%s %s %s"}' "$icon" "$info" "<span class='progress'>$duration</span>"
 fi
 
 # # Escape tooltip for JSON using jq if available

@@ -1,0 +1,272 @@
+{
+  "reload_style_on_change": true,
+  "layer": "top",
+  "position": "top",
+  "spacing": 5,
+  "height": 30,
+  "modules-left": [
+    "custom/omarchy",
+    "hyprland/workspaces",
+    "custom/mpris"
+  ],
+  "modules-center": [
+    "clock",
+    "custom/separator",
+    "custom/weather",
+    "custom/update",
+  ],
+  "modules-right": [
+    "group/tray-expander",
+    "network",
+    "bluetooth",
+    "pulseaudio",
+    "cpu",
+    "temperature",
+    "memory",
+    "power-profiles-daemon",
+    "battery"
+  ],
+
+
+
+  "group/group-1": {
+    "orientation": "horizontal",
+    "modules": [
+      "hyprland/workspaces",
+    ],
+  },
+
+
+  
+  "hyprland/workspaces": {
+    "on-click": "activate",
+    "on-scroll-up": "hyprctl dispatch workspace r-1",
+    "on-scroll-down": "hyprctl dispatch workspace r+1",
+    "format": "{icon}",
+    "active-only": true,
+    "format-icons": {
+      "default": "",
+      "1": "1",
+      "2": "2",
+      "3": "3",
+      "4": "4",
+      "5": "5",
+      "6": "6",
+      "7": "7",
+      "8": "8",
+      "9": "9",
+      "active": "󱓻"
+    },
+    "persistent-workspaces": {
+      "1": [],
+      "2": [],
+      "3": [],
+      "4": [],
+      "5": []
+    }
+  },
+  "custom/omarchy": {
+    "format": "",
+    "on-click": "~/.local/share/omarchy/bin/omarchy-menu",
+    "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space"
+  },
+  "custom/update": {
+    "format": "",
+    "exec": "omarchy-update-available",
+    "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
+    "tooltip-format": "Omarchy update available",
+    "interval": 3600
+  },
+  "custom/separator": {
+    "format": " | ",
+    "tooltip": false
+  },
+  "custom/weather": {
+    "format": "{}°",
+    "tooltip": true,
+    "interval": 1800,
+    "exec": "wttrbar --fahrenheit --mph --observation-time --hide-conditions",
+    "on-click": "wttrbar --fahrenheit --mph --observation-time --hide-conditions",
+    "return-type": "json"
+  },
+  // "mpris": {
+  //   "format": "{player_icon} {title} - {artist} [{position}/{length}]",
+  //   "format-paused": "{status_icon} <i>{title} - {artist}</i>",
+  //   "dynamic-order": "artist - title",
+  //   "interval": 2,
+  //   "player-icons": {
+  //     "default": "▶",
+  //     "mpv": "🎵"
+  //   },
+  //   "status-icons": {
+  //     "paused": "⏸"
+  //   },
+  //   // "ignored-players": ["firefox"]
+  // },
+  "custom/waybar-mpris": {
+    "return-type": "json",
+    "exec": "waybar-mpris --position --autofocus --order \"TITLE:ARTIST:POSITION\"",
+    "on-click": "waybar-mpris --send toggle",
+    // This option will switch between players on right click.
+        "on-click-right": "waybar-mpris --send player-next",
+    // The options below will switch the selected player on scroll
+        // "on-scroll-up": "waybar-mpris --send player-next",
+        // "on-scroll-down": "waybar-mpris --send player-prev",
+    // The options below will go to next/previous track on scroll
+        // "on-scroll-up": "waybar-mpris --send next",
+        // "on-scroll-down": "waybar-mpris --send prev",
+    "escape": true,
+  },
+  // "custom/mpris": {
+  //   "return-type": "json",
+  //   "exec": "~/.config/waybar/scripts/mpris.sh",
+  //   "interval": 1,
+  //   "tooltip": false,
+  //   "format": "{}",
+  //   "class": "progress",
+  //   "escape": true,
+  //   "on-click": "playerctl -p playerctld play-pause",
+  //   "on-scroll-up": "playerctl -p playerctld next",
+  //   "on-scroll-down": "playerctl -p playerctld previous"
+  // },
+  "custom/mpris": {
+    "return-type": "json",
+    "exec": "~/.config/waybar/scripts/mpris.sh",
+    "interval": 1,
+    "tooltip": false,
+    "format": "{}",
+    //"escape": true,
+    "on-click": "playerctl -p playerctld play-pause",
+    "on-scroll-up": "playerctl -p playerctld next",
+    "on-scroll-down": "playerctl -p playerctld previous"
+  },
+  "cpu": {
+    "interval": 5,
+    "format": "󰍛 {usage}%",
+    "on-click": "alacritty -e btop",
+    "states": {
+      "critical": 90
+    }
+  },
+  "temperature": {
+    "thermal-zone": 2,
+    "hwmon-path": "/sys/class/hwmon/hwmon2/temp1_input",
+    "critical-threshold": 80,
+    "format-critical": "🌡️ {temperatureF}°F",
+    "format": "🌡️ {temperatureF}°F",
+    "interval": 5,
+    "tooltip-format": "CPU Temperature: {temperatureF}°F",
+    "on-click": "alacritty -e btop"
+  },
+  "memory": {
+    "format": "    {percentage}%",
+    "interval": 5,
+    "tooltip-format": "Used {percentage}%\n{used:0.1f}GB/{total:0.1f}GB",
+    "states": {
+      "critical": 80
+    }
+  },
+  "clock": {
+    "format": "{:%a %d %B - %I:%M %p}",
+    "tooltip-format": "<tt>{calendar}</tt>",
+    "tooltip": true,
+    "on-click-right": "~/.local/share/omarchy/bin/omarchy-cmd-tzupdate",
+    "calendar": {
+        "format": {
+        "months":     "<span color='#ffead3'>{}</span>",
+        "days":       "<span color='#ecc6d9'>{}</span>",
+        "weeks":      "<span color='#99ffdd'>W{}</span>",
+        "weekdays":   "<span color='#ffcc66'>{}</span>",
+        "today":      "<span color='#ff6699'><u>{}</u></span>"
+      }
+    },
+  },
+  "network": {
+    "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
+    "format" : "{icon}",
+    "format-wifi" : "{icon}",
+    "format-ethernet" : "󰀂",
+    "format-disconnected" : "󰖪",
+    "tooltip-format-wifi": "{essid} ({frequency} GHz)\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
+    "tooltip-format-ethernet": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
+    "tooltip-format-disconnected": "Disconnected",
+    "interval": 3,
+    "nospacing": 1,
+    "on-click": "alacritty --class=Impala -e impala"
+  },
+  "network#net2": {
+    "format": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
+    "interval": 1,
+  },
+  "battery": {
+    "format": "{icon} {capacity}%",
+    "format-discharging": " {icon} {capacity}%",
+    "format-charging":    " {icon} {capacity}%",
+    "format-plugged":     "",
+    "format-icons": {
+      "charging": [
+        "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"
+      ],
+      "default": [
+        "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"
+      ]
+    },
+    "format-full": "󰂅",
+    "tooltip-format-discharging": "{power:>1.0f} Watts ↓ \n Estimated battery left: {time} ",
+    "tooltip-format-charging": "{power:>1.0f} Watts ↑ \n Battery charged in {time}",
+    "interval": 5,
+    "states": {
+      "warning": 20,
+      "critical": 10
+    }
+  },
+
+  "power-profiles-daemon": {
+    "format": "{icon}",
+    "tooltip-format": "Power profile: {profile}",
+    "tooltip": true,
+    "format-icons": {
+      "default": "",
+      "performance": "",
+      "balanced": "",
+      "power-saver": ""
+    }
+  },
+  "bluetooth": {
+    "format": "",
+    "format-disabled": "󰂲",
+    "format-connected": "",
+    "tooltip-format": "Devices connected: {num_connections}",
+    "on-click": "alacritty --class bluetui -e bluetui"
+  },
+  "pulseaudio": {
+    "format": "{icon}",
+    "on-click": "alacritty --class=Wiremix -e wiremix",
+    "on-click-right": "pamixer -t",
+    "tooltip-format": "Playing at {volume}%",
+    "scroll-step": 5,
+    "format-muted": "󰝟",
+    "format-icons": {
+      "default": ["", "", ""]
+    }
+  },
+  "group/tray-expander": {
+    "orientation": "inherit",
+    "drawer": {
+      "transition-duration": 600,
+      "children-class": "tray-group-item"
+    },
+    "modules": [
+      //"custom/expand-icon",
+    "tray"
+    ]
+  },
+  "custom/expand-icon": {
+    "format": " ",
+    "tooltip": false
+  },
+  "tray": {
+    "icon-size": 12,
+    "spacing": 12
+  }
+}

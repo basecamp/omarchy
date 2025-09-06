@@ -1,161 +1,140 @@
+//--- ZepharDev Nvim
 {
-  "reload_style_on_change": true,
   "layer": "top",
   "position": "top",
-  "spacing": 5,
-  "height": 30,
-  "modules-left": [
-    "custom/omarchy",
-    "hyprland/workspaces",
-    "custom/mpris"
+  "height": 25,
+  "margin-left": 5,
+  "margin-right": 5,
+  "margin-top": 5,
+  "margin-bottom": 0,
+  "spacing": 1,
+  "reload_style_on_change": true,
+
+  // Choose the order of the modules
+
+  "modules-left": [ 
+    "custom/omarchy", 
+    "group/group-1",
+    "group/group-9",
+    "group/group-6",
   ],
   "modules-center": [
-    "clock",
-    "custom/separator",
-    "custom/weather",
-    "custom/update",
-  ],
+    "group/group-5"
+  ] ,
   "modules-right": [
-    "group/tray-expander",
-    "network",
-    "bluetooth",
-    "pulseaudio",
-    "cpu",
-    "temperature",
-    "memory",
-    "power-profiles-daemon",
-    "battery"
+    "group/group-4",
+    "group/group-3",
+    "group/group-2"
   ],
+  "group/group-1": {
+    "orientation": "horizontal",
+    "modules": [
+      "hyprland/workspaces",
+    ],
+  },
+  "group/group-2": {
+    "orientation": "horizontal",
+    "modules": [
+      "cpu",
+      "temperature",
+      "memory",
+    ],
+  },
+  "group/group-3": {
+    "orientation": "horizontal",
+    "modules": [
+      "wireplumber",
+      "backlight",
+    ],
+  },
+  "group/group-4": {
+    "orientation": "horizontal",
+    "modules": [
+      "network",
+      "bluetooth",
+      "battery",
+      "idle_inhibitor"
+    ],
+  },
+  "group/group-5": {
+    "orientation": "horizontal",
+    "modules": [
+      "clock",
+      "custom/weather"
+    ],
+  },
+  "group/group-6": {
+    "orientation": "horizontal",
+    "modules": [
+      "custom/pacman",
+      "custom/pkg-aur",
+    ],
+  },
+  "group/group-9": {
+    "orientation": "horizontal",
+    "modules": [
+    //   "mpris",
+      "custom/mpris",
+      "custom/previous",
+      "custom/pause",
+      "custom/next",
+    ],
+  },
+  "group/group-10": {
+    "orientation": "horizontal",
+    "modules": [
+      "hyprland/window"
+    ],
+  },
+  // Modules configuration
   "hyprland/workspaces": {
     "on-click": "activate",
-    "on-scroll-up": "hyprctl dispatch workspace r-1",
-    "on-scroll-down": "hyprctl dispatch workspace r+1",
-    "format": "{icon}",
-    "active-only": true,
+    "activate-only": false,
+    "all-outputs": true,
+    "format": "{name}",
     "format-icons": {
-      "default": "",
-      "1": "1",
-      "2": "2",
-      "3": "3",
-      "4": "4",
-      "5": "5",
-      "6": "6",
-      "7": "7",
-      "8": "8",
-      "9": "9",
-      "active": "󱓻"
+      "1": "*",  
+      "2": "*",   
+      "3": "*",     
+      "4": "*",    
+      "5": "*",   
+      "6": "*",     
+      "7": "*",    
+      "8": "*",     
+      "9": "*",    
+      "10": "*",
+       "urgent": "*",
+       "active": "*",
+       "default": "*",
     },
-    "persistent-workspaces": {
-      "1": [],
-      "2": [],
-      "3": [],
-      "4": [],
-      "5": []
+    "persistent_workspaces": {
+      "[]": 3
     }
+  },
+  "hyprland/window": {
+    "format": "{}",
+    "max-length": 18,
+    "separate-outputs": true,
   },
   "custom/omarchy": {
     "format": "",
     "on-click": "~/.local/share/omarchy/bin/omarchy-menu",
     "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space"
   },
-  "custom/update": {
-    "format": "",
-    "exec": "omarchy-update-available",
-    "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
-    "tooltip-format": "Omarchy update available",
-    "interval": 3600
+  "river/tags": {
+    "num-tags": 7,
+    "tag-labels": ["", "", "", "", "", "", "", "", "", ""],
   },
-  "custom/separator": {
-    "format": " | ",
-    "tooltip": false
+
+  "tray": {
+    "icon-size": 16,
+    "spacing": 5,
+    "show-passive-items": true,
   },
-  "custom/weather": {
-    "format": "{}°",
-    "tooltip": true,
-    "interval": 1800,
-    "exec": "wttrbar --fahrenheit --mph --observation-time --hide-conditions",
-    "on-click": "wttrbar --fahrenheit --mph --observation-time --hide-conditions",
-    "return-type": "json"
-  },
-  // "mpris": {
-  //   "format": "{player_icon} {title} - {artist} [{position}/{length}]",
-  //   "format-paused": "{status_icon} <i>{title} - {artist}</i>",
-  //   "dynamic-order": "artist - title",
-  //   "interval": 2,
-  //   "player-icons": {
-  //     "default": "▶",
-  //     "mpv": "🎵"
-  //   },
-  //   "status-icons": {
-  //     "paused": "⏸"
-  //   },
-  //   // "ignored-players": ["firefox"]
-  // },
-  "custom/waybar-mpris": {
-    "return-type": "json",
-    "exec": "waybar-mpris --position --autofocus --order \"TITLE:ARTIST:POSITION\"",
-    "on-click": "waybar-mpris --send toggle",
-    // This option will switch between players on right click.
-        "on-click-right": "waybar-mpris --send player-next",
-    // The options below will switch the selected player on scroll
-        // "on-scroll-up": "waybar-mpris --send player-next",
-        // "on-scroll-down": "waybar-mpris --send player-prev",
-    // The options below will go to next/previous track on scroll
-        // "on-scroll-up": "waybar-mpris --send next",
-        // "on-scroll-down": "waybar-mpris --send prev",
-    "escape": true,
-  },
-  // "custom/mpris": {
-  //   "return-type": "json",
-  //   "exec": "~/.config/waybar/scripts/mpris.sh",
-  //   "interval": 1,
-  //   "tooltip": false,
-  //   "format": "{}",
-  //   "class": "progress",
-  //   "escape": true,
-  //   "on-click": "playerctl -p playerctld play-pause",
-  //   "on-scroll-up": "playerctl -p playerctld next",
-  //   "on-scroll-down": "playerctl -p playerctld previous"
-  // },
-  "custom/mpris": {
-    "return-type": "json",
-    "exec": "~/.config/waybar/scripts/mpris.sh",
-    "interval": 1,
-    "tooltip": false,
-    "format": "{}",
-    //"escape": true,
-    "on-click": "playerctl -p playerctld play-pause",
-    "on-scroll-up": "playerctl -p playerctld next",
-    "on-scroll-down": "playerctl -p playerctld previous"
-  },
-  "cpu": {
-    "interval": 5,
-    "format": "󰍛 {usage}%",
-    "on-click": "alacritty -e btop",
-    "states": {
-      "critical": 90
-    }
-  },
-  "temperature": {
-    "thermal-zone": 2,
-    "hwmon-path": "/sys/class/hwmon/hwmon2/temp1_input",
-    "critical-threshold": 80,
-    "format-critical": "🌡️ {temperatureF}°F",
-    "format": "🌡️ {temperatureF}°F",
-    "interval": 5,
-    "tooltip-format": "CPU Temperature: {temperatureF}°F",
-    "on-click": "alacritty -e btop"
-  },
-  "memory": {
-    "format": "    {percentage}%",
-    "interval": 5,
-    "tooltip-format": "Used {percentage}%\n{used:0.1f}GB/{total:0.1f}GB",
-    "states": {
-      "critical": 80
-    }
-  },
+
+
   "clock": {
-    "format": "{:%a %d %B - %I:%M %p}",
+    "format": "{:%I:%M - %h %d}",
     "tooltip-format": "<tt>{calendar}</tt>",
     "tooltip": true,
     "on-click-right": "~/.local/share/omarchy/bin/omarchy-cmd-tzupdate",
@@ -169,92 +148,344 @@
       }
     },
   },
-  "network": {
-    "format-icons": ["󰤯","󰤟","󰤢","󰤥","󰤨"],
-    "format" : "{icon}",
-    "format-wifi" : "{icon}",
-    "format-ethernet" : "󰀂",
-    "format-disconnected" : "󰖪",
-    "tooltip-format-wifi": "{essid} ({frequency} GHz)\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
-    "tooltip-format-ethernet": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
-    "tooltip-format-disconnected": "Disconnected",
-    "interval": 3,
-    "nospacing": 1,
-    "on-click": "alacritty --class=Impala -e impala"
-  },
-  "network#net2": {
-    "format": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
-    "interval": 1,
-  },
-  "battery": {
-    "format": "{icon} {capacity}%",
-    "format-discharging": " {icon} {capacity}%",
-    "format-charging":    " {icon} {capacity}%",
-    "format-plugged":     "",
-    "format-icons": {
-      "charging": [
-        "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"
-      ],
-      "default": [
-        "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"
-      ]
-    },
-    "format-full": "󰂅",
-    "tooltip-format-discharging": "{power:>1.0f} Watts ↓ \n Estimated battery left: {time} ",
-    "tooltip-format-charging": "{power:>1.0f} Watts ↑ \n Battery charged in {time}",
-    "interval": 5,
-    "states": {
-      "warning": 20,
-      "critical": 10
-    }
+
+  "temperature": {
+    "thermal-zone": 2,
+    "hwmon-path": "/sys/class/hwmon/hwmon2/temp1_input",
+    "format-critical": "{temperatureF}°F {icon}",
+    "critical-threshold": 80,
+    "interval": 2,
+    "format": " {temperatureF:>2}°F",
+    "format-icons": ["0", "", ""],
+    
   },
 
-  "power-profiles-daemon": {
-    "format": "{icon}",
-    "tooltip-format": "Power profile: {profile}",
-    "tooltip": true,
-    "format-icons": {
-      "default": "",
-      "performance": "",
-      "balanced": "",
-      "power-saver": ""
-    }
+  "cpu": {
+    "interval": 2,
+    "format": " {usage:>2}%",
+    "on-click": "alacritty -e btop",
   },
+
+  "memory": {
+    "interval": 2,
+    "format": " {:>2}%",
+  },
+
+  "disk": {
+    "interval": 15,
+    "format": "󰋊 {percentage_used:>2}%",
+  },
+  "backlight": {
+    // "device": "acpi_video1",
+    "format": "{icon} {percent:>2}%",
+    "format-icons": [ "", "", "", "", "", "", "", "", ""],
+  },
+
   "bluetooth": {
-    "format": "",
-    "format-disabled": "󰂲",
-    "format-connected": "",
-    "tooltip-format": "Devices connected: {num_connections}",
+    "format": "{icon}",
+    "format-icons": ["󰂯", "󰤾", "󰥀", "󰥄", "󰥈"],
+
+    "tooltip-format-off": "Bluetooth is off",
+    "tooltip-format-on": "Bluetooth is on",
+
+    "format-connected": "{icon} {num_connections}",
+    "format-connected-battery": "{icon} {device_battery_percentage}%",
+
+    "tooltip-format-connected": "{device_enumerate}",
+    "tooltip-format-enumerate-connected": "{device_alias}\t{device_battery_percentage}%",
+
     "on-click": "alacritty --class bluetui -e bluetui"
   },
-  "pulseaudio": {
-    "format": "{icon}",
-    "on-click": "alacritty --class=Wiremix -e wiremix",
-    "on-click-right": "pamixer -t",
-    "tooltip-format": "Playing at {volume}%",
-    "scroll-step": 5,
-    "format-muted": "󰝟",
-    "format-icons": {
-      "default": ["", "", ""]
-    }
-  },
-  "group/tray-expander": {
-    "orientation": "inherit",
-    "drawer": {
-      "transition-duration": 600,
-      "children-class": "tray-group-item"
+
+  // "network": {
+    // "interval": 3,
+    // "format-wifi": "  {bandwidthTotalBytes:>2}",
+    // "format-ethernet": "{ipaddr}/{cidr} ",
+    // "tooltip-format-wifi": " {ipaddr} ({signalStrength}%)",
+    // "tooltip-format": "{ifname} via {gwaddr} ",
+    // "format-linked": "{ifname} (No IP) ",
+    // "format-disconnected": "󰀦 Disconnected",
+    // "format-alt": "{ifname}: {ipaddr}/{cidr}",
+  // },
+
+  "network": {
+        "interval": 3,
+        "format-wifi": "{icon} ", 
+        "format-ethernet": "󰌗 {ipaddr}", 
+        "format-linked": "󰌙 {ifname} (Sin IP)", 
+        "format-disconnected": "󰖪", 
+        "format-alt": "󰛳 {ifname}", 
+        "tooltip-format-wifi": " {bandwidthDownBytes}  {bandwidthUpBytes}", 
+        "tooltip-format-ethernet": "󰌗 {ifname} | IP: {ipaddr}/{cidr} | GW: {gwaddr}", 
+        "tooltip-format-disconnected": "󰖪 Sin conexión de red", 
+        "tooltip-format-linked": "󰌙 {ifname}: Not ip",
+        "max-length": 30, 
+        "on-click": "alacritty --class=Impala -e impala", 
+        "format-icons": {
+            "wifi": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"], 
+            "ethernet": ["󰌗"], 
+            "disconnected": ["󰖪"] 
+        }
     },
-    "modules": [
-      //"custom/expand-icon",
-    "tray"
-    ]
+
+  "pulseaudio": {
+    "format": "{icon} {volume}%", //{format_source}",
+    "format-bluetooth": "{icon} {volume}% 󰂯", //{format_source}",
+    "format-bluetooth-muted": "󰖁 {icon} 󰂯", //{format_source}",
+    "format-muted": "󰖁 {volume}%",
+    "format-source": " {volume}%",
+    "format-source-muted": "",
+    "format-icons": {
+      "headphone": "󰋋",
+      "hands-free": "󱡒",
+      "headset": "󰋎",
+      "phone": "",
+      "portable": "",
+      "car": "",
+      "default": ["", "", ""],
+    },
+    "on-click": "alacritty --class=Wiremix -e wiremix",
+    "on-click-right": "pamixer -t"
   },
-  "custom/expand-icon": {
-    "format": " ",
-    "tooltip": false
+
+  "wireplumber": {
+    "format": "{icon} {volume:>3}%",
+    "format-muted": "󰖁 {volume:>3}%",
+    "format-bluetooth": "{icon} {volume:>2}% 󰂯", //{format_source}",
+    "format-bluetooth-muted": "󰖁 {icon} 󰂯", //{format_source}",
+    "format-icons": ["", "", ""],
   },
-  "tray": {
-    "icon-size": 12,
-    "spacing": 12
-  }
-}
+
+  "cava": {
+    "cava_config": "~/.config/cava/config",
+    "framerate": 30,
+    "autosens": 0,
+    "sensitivity": 7,
+    "bars": 15,
+    "lower_cutoff_freq": 50,
+    "higher_cutoff_freq": 10000,
+    "method": "pulse",
+    "source": "auto",
+    "stereo": true,
+    "reverse": false,
+    "bar_delimiter": 0,
+    "monstercat": false,
+    "waves": false,
+    "noise_reduction": 0.77,
+    "input_delay": 2,
+    "format-icons": ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"],
+    "actions": {
+      "on-click-right": "mode",
+    },
+  },
+
+  "idle_inhibitor": {
+    "format": "{icon} ",
+    "format-icons": {
+      "activated": "󰈈",
+      "deactivated": "󰈉",
+    },
+  },
+
+   // Module Custom
+
+   "custom/pkg-aur": {
+    "exec": "yay -Qua | wc -l",
+    "interval": 1800,
+    "format": "󰏔 {}",
+    "tooltip": true,
+    "tooltip-format": "AUR packages"
+
+  },
+  "custom/power": {
+    "format": "{icon}",
+    "format-icons": "", //  
+    "exec-on-event": "true",
+    "on-click": "wlogout",
+    "tooltip-format": "Power Menu",
+  },
+  "custom/pacman": {
+    "format": "  {}",
+    "interval": 3600, // every hour
+    "exec": "checkupdates | wc -l", // # of updates
+    "exec-if": "exit 0", // always run; consider advanced run conditions
+  },
+  "custom/notification": {
+    "tooltip": false,
+    "format": " 󰂚",
+    "format-icons": {
+      "notification": "󰂚<span foreground='red'><sup></sup></span>",
+      "none": "",
+      "dnd-notification": "<span foreground='red'><sup></sup></span>",
+      "dnd-none": "",
+      "inhibited-notification": "<span foreground='red'><sup></sup></span>",
+      "inhibited-none": "",
+      "dnd-inhibited-notification": "<span foreground='red'><sup></sup></span>",
+      "dnd-inhibited-none": "",
+    },
+    "return-type": "json",
+    "exec-if": "which swaync-client",
+    "exec": "swaync-client -swb",
+    "on-click": "swaync-client -t -sw",
+    "on-click-right": "swaync-client -d -sw",
+    "escape": true,
+  },
+
+  "keyboard-state": {
+    "numlock": false,
+    "capslock": true,
+    "format": "{icon}",
+    "format-icons": {
+      "locked": " On",
+      "unlocked": " Off",
+    },
+  },
+
+  "wlr/taskbar": {
+    "format": "{icon}",
+    "icon-size": 18,
+    "tooltip-format": "{title}",
+    "on-click": "activate",
+    "on-click-middle": "close",
+    "ignore-list": ["wezterm", "foot", "footclient"],
+  },
+
+  "battery": {
+    "states": {
+      "good": 95,
+      "warning": 30,
+      "critical": 15
+    },
+    "format": "{icon} ",
+    "format-full": "{icon} ",
+    "format-plugged": " {capacity}% <span font='Font Awesome 5 Free'>\uf0e7</span> ",
+    "format-alt": "{icon} {capacity}%",
+    "tooltip-format": "{capacity}%, about {time} left",
+    "format-icons": ["", "", "", ""]
+  },
+   "backlight/slider": {
+     "min": 0,
+     "max": 100,
+     "orientation": "horizontal",
+     "device": "intel_backlight",
+   },
+   "mpris": {
+     "format": "{player_icon} {title} - {artist} ",
+     "format-paused": "{status_icon} {title} - {artist}",
+
+     "player-icons": {
+       "default": "<span foreground='#cba6f7'>󰝚 </span>",
+       "spotify": "<span foreground='#a6e3a1'>󰓇 </span>",
+       "vivaldi": "<span foreground='#f38ba8'>󰗃 </span>",
+       "chrome": "<span foreground='#f38ba8'>󰗃 </span>"
+     },
+     "status-icons": {
+       "paused": "<span color='#b4befe'>\u200A\u200A󰏤\u2009\u2009</span>"
+     },
+
+     "tooltip-format": "Playing: {title} - {artist}",
+     "tooltip-format-paused": "Paused: {title} - {artist}",
+     "min-length": 5,
+    //  "max-length": 15,
+   },
+
+  "custom/mpris": {
+    "return-type": "json",
+    "exec": "~/.config/waybar/scripts/mpris.sh",
+    "interval": 1,
+    "tooltip": false,
+    "format": "{}",
+    //"escape": true,
+    "on-click": "playerctl -p playerctld play-pause",
+    "on-scroll-up": "playerctl -p playerctld next",
+    "on-scroll-down": "playerctl -p playerctld previous"
+  },
+
+  // Custom module configuration for waybar personalization modules.
+    "custom/separator": {
+    "format": "|",
+    "tooltip": false,
+   },
+    "custom/space": {
+    "format": " ",
+    "tooltip": false,
+   },
+    "custom/wallpaper": {
+     "format": " ",
+     "on-click": "~/.config/rofi/wallselect/script.sh",
+     "tooltip": false,
+   },
+    "custom/ip": {
+    "format": {},
+    "exec": "~/.config/waybar/scripts/ip.sh",
+    "tooltip": false,
+  },
+
+//   "custom/weather":  {
+//     "format": "󰖐",
+//     "format-alt": "󰖐 {}",
+//     "exec": "~/.config/waybar/scripts/weather.sh",
+//     "tooltip": false,
+//   },
+
+"custom/weather": {
+    "return-type": "json",
+    "exec": "~/.config/waybar/scripts/weather.sh",
+    "interval": 600,
+    "tooltip": true,
+    "format": "{}"
+  },
+
+  // Experimental module for music player of playerctl
+  // this module; Next, Pause, Previous 
+  "custom/next": {
+    "format": "󰙡 ",
+    "on-click": "playerctl -p $(playerctl -l | head -n 1) next",
+    "tooltip": false,
+  },
+  "custom/pause": {
+    "format": "{icon}",
+//    "exec": "playerctl -l 2>/dev/null | head -n 1",
+    "on-click": "playerctl -p $(playerctl -l | head -n 1) play-pause",
+    "tooltip": false,
+    "format-icons": [ "", "" ],
+  },
+  "custom/previous": {
+    "format": "󰙣",
+    "on-click": "playerctl -p $(playerctl -l | head -n 1) previous ",
+    "tooltip": false,
+  },
+  "custom/music": {
+    "exec": "playerctl -p $(playerctl -l | head -n 1) status",
+    "on-click": "playerctl -p $(playerctl -l | head -n 1) play-pause",
+    "on-scroll-up": "playerctl -p $(playerctl -l | head -n 1) next",
+    "on-scroll-down": "playerctl -p $(playerctl -l | head -n 1) previous",
+    "format": "{icon} {status}",
+    "tooltip": "Reproductor de Música",
+    "icon": "",
+    "max-length": 15
+  },
+
+  
+
+  "custom/catppuccin-theme": {
+    "format": "󰏘",
+    "on-click": "~/.config/waybar/scripts/catppuccin.sh",
+    "tooltip": false,
+  },
+
+  "network#speed": {
+    "interval": 1,
+    "format": "{ifname}%%",
+    "format-wifi": " {bandwidthDownBytes}  {bandwidthUpBytes}",
+    "format-ethernet": " {bandwidthDownBytes}  {bandwidthUpBytes} ",
+    "format-disconnected": "󰌙",
+    "tooltip-format": "{ipaddr}",
+    "format-linked": "󰈁 {ifname} (No IP)",
+    "tooltip-format-wifi": "{essid} {icon} {signalStrength}%",
+    "tooltip-format-ethernet": "{ifname} 󰌘",
+    "tooltip-format-disconnected": "󰌙 Disconnected",
+    "max-length": 16,
+    "min-length": 14,
+  },
+} 
