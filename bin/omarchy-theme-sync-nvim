@@ -93,8 +93,8 @@ validate_theme() {
     fi
     
     log_success "Theme validation passed: $theme_name"
-    log_info "  Plugin: $plugin_repo"
-    log_info "  Colorscheme: $colorscheme"
+    log_info "Plugin: $plugin_repo"
+    log_info "Colorscheme: $colorscheme"
     
     return 0
 }
@@ -200,10 +200,6 @@ sync_theme_plugins() {
         colorscheme=${colorscheme%.nvim}
     fi
     
-    log_info "Adding to init.lua:"
-    log_info "  Plugin: $plugin_repo"
-    log_info "  Colorscheme: $colorscheme"
-    
     # Add plugin and colorscheme to init.lua
     local success=true
     
@@ -261,7 +257,6 @@ main() {
     fi
     
     log_info "Syncing theme plugins from: $neovim_file"
-    log_info "Target init.lua: $INIT_FILE"
     
     # Extract and add plugin information
     if sync_theme_plugins "$neovim_file"; then
