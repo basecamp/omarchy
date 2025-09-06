@@ -29,9 +29,9 @@ present_terminal() {
   omarchy-launch-floating-terminal-with-presentation $1
 }
 
-edit_in_nvim() {
+edit_with_default_editor() {
   notify-send "Editing config file" "$1"
-  alacritty -e nvim "$1"
+  alacritty -e "${EDITOR:-nvim}" "$1"
 }
 
 install() {
