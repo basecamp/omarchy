@@ -67,9 +67,10 @@ show_learn_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n  Font\n󰇀  Cursor\n  Background\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
+  *Cursor*) show_cursor_menu ;;
   *Background*) omarchy-theme-bg-next ;;
   *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
   *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
@@ -92,6 +93,15 @@ show_font_menu() {
     show_main_menu
   else
     omarchy-font-set "$theme"
+  fi
+}
+
+show_cursor_menu() {
+  theme=$(menu "Cursor" "$(omarchy-cursor-list)" "-w 350" "$(omarchy-cursor-current)")
+  if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
+    show_main_menu
+  else
+    omarchy-cursor-set "$theme"
   fi
 }
 
