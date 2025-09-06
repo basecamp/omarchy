@@ -1,11 +1,13 @@
 #!/bin/bash
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
-OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR}/Screenrecordings}"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
-  notify-send "Screen recording directory does not exist: $OUTPUT_DIR" -u critical -t 3000
-  exit 1
+  mkdir -p "$OUTPUT_DIR"
+  if [[ ! -d "$OUTPUT_DIR" ]]; then
+    notify-send "Screen recording directory cannot be created at path: $OUTPUT_DIR" -u critical -t 3000
+  fi
 fi
 
 screenrecording() {
