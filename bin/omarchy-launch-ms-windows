@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# Docker Compose Windows VM Launcher for Omarchy
+# Starts Windows VM via Docker and connects with RDP
+# When RDP closes, docker-compose will also stop
+
+set -e
+
+WINDOWS_STORAGE_DIR="$HOME/.windows"
+RDP_COMMAND="rdesktop -g 1920x1200 -P -z -x l -r sound:off -u docker 127.0.0.1:3389 -p admin"
+DOCKER_COMMAND="docker run -d --name windows -p 8006:8006 -p 3389:3389/tcp -p 3389:3389/udp --device=/dev/kvm --device=/dev/net/tun --cap-add NET_ADMIN -v ${WINDOWS_STORAGE_DIR}:/storage --stop-timeout 120 dockurr/windows"
+
+echo "Starting Windows VM..."
+
+# Create Windows storage directory if it doesn't exist
+mkdir -p "$WINDOWS_STORAGE_DIR"
+
+# Check for required dependencies
+for cmd in docker rdesktop nc curl; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Error: Required command '$cmd' not found."
+        echo "Please ensure Docker, rdesktop, and netcat are installed."
+        exit 1
+    fi
+done
+
+# Function to handle cleanup
+cleanup() {
+    echo "Shutting down Windows VM..."
+    docker stop windows 2>/dev/null || true
+    docker rm windows 2>/dev/null || true
+    exit 0
+}
+
+# Set up signal handlers
+trap cleanup SIGTERM SIGINT
+
+# Check if container already exists and remove it
+if docker ps -a --format '{{.Names}}' | grep -q "^windows$"; then
+    echo "Removing existing Windows container..."
+    docker stop windows 2>/dev/null || true
+    docker rm windows 2>/dev/null || true
+fi
+
+# Start docker container
+echo "Starting Windows container..."
+eval $DOCKER_COMMAND
+
+# Wait for container to be running
+echo "Waiting for Windows container to start..."
+while true; do
+    CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' windows 2>/dev/null)
+    if [ "$CONTAINER_STATUS" = "running" ]; then
+        echo "Container is running!"
+        break
+    fi
+    echo "  Container status: $CONTAINER_STATUS"
+    sleep 2
+    
+    # Check if container is still running
+    if ! docker ps --format '{{.Names}}' | grep -q "^windows$"; then
+        echo "Docker container died unexpectedly"
+        exit 1
+    fi
+done
+
+# Check if web interface is responding (faster than waiting for RDP)
+echo "Checking if Windows VM web interface is responding..."
+while true; do
+    if curl -s --connect-timeout 5 http://127.0.0.1:8006 > /dev/null 2>&1; then
+        echo "Web interface is responding at http://127.0.0.1:8006"
+        break
+    fi
+    echo "  Web interface not ready yet..."
+    sleep 3
+done
+
+# Now wait for RDP port specifically
+echo "Waiting for RDP service to be ready..."
+while ! nc -z 127.0.0.1 3389; do
+    echo "  RDP port not ready yet..."
+    sleep 5
+done
+
+echo "RDP port is open, testing connection..."
+# Quick RDP test with shorter timeout
+timeout 5 rdesktop -g 320x240 -u docker 127.0.0.1:3389 -p admin 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "RDP not fully ready yet, waiting 20 more seconds..."
+    sleep 20
+fi
+
+echo "Starting RDP connection..."
+echo "When you close RDP, the Windows VM will automatically shut down."
+
+# Start RDP in foreground - when it exits, cleanup will run
+$RDP_COMMAND
+
+# If RDP exits, cleanup
+cleanup
