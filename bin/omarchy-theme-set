@@ -64,6 +64,7 @@ omarchy-restart-waybar
 omarchy-restart-swayosd
 makoctl reload
 hyprctl reload
+pkill -SIGUSR1 nvim 2>/dev/null || true
 
 # Set new background
 omarchy-theme-bg-next

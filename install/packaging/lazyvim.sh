@@ -5,4 +5,9 @@ if [[ ! -d "$HOME/.config/nvim" ]]; then
   cp -R ~/.local/share/omarchy/config/nvim/* ~/.config/nvim/
   rm -rf ~/.config/nvim/.git
   echo "vim.opt.relativenumber = false" >>~/.config/nvim/lua/config/options.lua
+  cat <<EOF >>~/.config/nvim/init.lua
+
+-- Setup theme reloader
+require("omarchy.theme_reload").setup()
+EOF
 fi
