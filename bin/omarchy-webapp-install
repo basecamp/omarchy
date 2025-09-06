@@ -26,18 +26,25 @@ if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_REF" ]]; then
 fi
 
 PROFILE_DIR="$HOME/.config/chromium/"
+declare -A PROFILE_MAP
 PROFILES=()
-for p in "$PROFILE_DIR"/Default "$PROFILE_DIR"/Profile*; do
-  if [ -d "$p" ]; then
-    PROFILES+=("$(basename "$p")")
-  fi
-done
+
+while IFS= read -r line; do
+  folder=$(echo "$line" | cut -d'|' -f1)
+  name=$(echo "$line" | cut -d'|' -f2)
+  PROFILES+=("$name")
+  PROFILE_MAP["$name"]="$folder"
+done < <(
+  jq -r '.profile.info_cache | to_entries[] | "\(.key)|\(.value.name)"' "$PROFILE_DIR/Local State"
+)
 
 if [ ${#PROFILES[@]} -eq 1 ]; then
-  APP_PROFILES="${PROFILES[0]}"
+  APP_PROFILE_NAME="${PROFILES[0]}"
 else
-  APP_PROFILES=$(gum choose --header "Select browser profile" "${PROFILES[@]}")
+  APP_PROFILE_NAME=$(gum choose --header "Select browser profile" "${PROFILES[@]}")
 fi
+
+APP_PROFILES="${PROFILE_MAP[$APP_PROFILE_NAME]}"
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 if [[ $ICON_REF =~ ^https?:// ]]; then
