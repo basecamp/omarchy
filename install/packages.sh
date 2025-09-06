@@ -89,6 +89,7 @@ sudo pacman -S --noconfirm --needed \
   opentofu \
   pamixer \
   pinta \
+  platformio-core \
   playerctl \
   plocate \
   plymouth \
