@@ -33,7 +33,7 @@ show_main_menu() {
   while true; do
     clear
     omarchy-show-logo
-    echo "📺 PinArchy LG TV Management"
+    echo "📺 Omarchy LG TV Management"
     echo
     
     # Build menu options dynamically
