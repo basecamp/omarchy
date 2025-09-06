@@ -133,6 +133,7 @@ show_toggle_menu() {
 
 show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
+  python -c "import bscpylgtv" &>/dev/null && options="$options\n  LG TV"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Config\n󰈷  Fingerprint\n  Fido2"
@@ -149,6 +150,7 @@ show_setup_menu() {
     ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
+  *LG*) present_terminal pinarchy-setup-lgtv ;;
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
@@ -184,10 +186,15 @@ show_setup_config_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming") in
+  local options="󰣇  Package\n󰣇  AUR\n  Web App"
+  python -c "import bscpylgtv" &>/dev/null && options="$options\n  TV App"
+  options="$options\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n󱚤  AI\n  Gaming"
+
+  case $(menu "Install" "$options") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
+  *TV*) present_terminal pinarchy-install-tvapp ;;
   *TUI*) present_terminal omarchy-tui-install ;;
   *Service*) show_install_service_menu ;;
   *Style*) show_install_style_menu ;;
@@ -312,9 +319,14 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
+  local options="󰣇  Package\n  Web App"
+  python -c "import bscpylgtv" &>/dev/null && options="$options\n  TV App"
+  options="$options\n  TUI\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2"
+
+  case $(menu "Remove" "$options") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
+  *TV*) present_terminal pinarchy-remove-tvapp ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
   *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;

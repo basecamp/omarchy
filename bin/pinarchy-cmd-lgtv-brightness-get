@@ -1,0 +1,25 @@
+#!/bin/bash
+
+set -e
+
+# LG TV Get Brightness Command for PinArchy
+# Gets current TV brightness level
+
+if [ $# -eq 0 ]; then
+    echo "❌ Usage: pinarchy-cmd-lgtv-brightness-get <TV_IP>"
+    echo "Example: pinarchy-cmd-lgtv-brightness-get 192.168.1.100"
+    exit 1
+fi
+
+TV_IP="$1"
+
+# Get brightness level using bscpylgtvcommand
+BRIGHTNESS_JSON=$(bscpylgtvcommand "$TV_IP" get_picture_settings "[\"backlight\"]" -p "$HOME/.config/lgtv/bscpylgtv.sqlite" 2>/dev/null)
+
+if [ -n "$BRIGHTNESS_JSON" ]; then
+    # Extract the backlight value from JSON using jq (convert single quotes to double quotes first)
+    BRIGHTNESS=$(echo "$BRIGHTNESS_JSON" | sed "s/'/\"/g" | jq -r '.backlight // 0')
+    echo "$BRIGHTNESS"
+else
+    echo "0"  # Fallback value if brightness cannot be determined
+fi

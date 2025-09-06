@@ -1,0 +1,34 @@
+#!/bin/bash
+
+set -e
+
+# LG TV Launch App Command for PinArchy
+# Launches specific application on TV
+
+if [ $# -ne 2 ]; then
+    echo "❌ Usage: pinarchy-cmd-lgtv-launch <TV_IP> <APP_ID>"
+    echo "Example: pinarchy-cmd-lgtv-launch 192.168.1.100 airplay"
+    echo "Example: pinarchy-cmd-lgtv-launch 192.168.1.100 amazon.alexa.view"
+    exit 1
+fi
+
+TV_IP="$1"
+APP_ID="$2"
+
+# Validate APP_ID format (must contain at least one dot or be a simple name)
+if [[ ! "$APP_ID" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+    echo "❌ APP_ID contains invalid characters. Use only letters, numbers, dots, underscores, and hyphens."
+    echo "Example: airplay, amazon.alexa.view, com.webos.app.browser"
+    exit 1
+fi
+
+echo "📱 Launching app '$APP_ID' on TV at $TV_IP..."
+
+# Launch the specified app
+if bscpylgtvcommand "$TV_IP" launch_app "$APP_ID" -p "$HOME/.config/lgtv/bscpylgtv.sqlite" &>/dev/null; then
+    echo "✅ App '$APP_ID' launched successfully on TV at $TV_IP!"
+else
+    echo "❌ Failed to launch app '$APP_ID' on TV at $TV_IP"
+    echo "   Make sure the app ID is correct and the TV is on"
+    exit 1
+fi

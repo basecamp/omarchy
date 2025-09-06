@@ -1,0 +1,46 @@
+#!/bin/bash
+
+set -e
+
+# LG TV Wake-on-LAN Command for PinArchy
+# Wakes up LG TV using Wake-on-LAN
+
+if [ $# -eq 0 ]; then
+    echo "❌ Usage: pinarchy-cmd-lgtv-wol <TV_IP>"
+    echo "Example: pinarchy-cmd-lgtv-wol 192.168.1.100"
+    exit 1
+fi
+
+TV_IP="$1"
+
+echo "⚡ Waking up LG TV at $TV_IP..."
+
+# Get MAC address from JSON config file
+config_file="$HOME/.config/lgtv/config.json"
+if [ ! -f "$config_file" ]; then
+    echo "❌ Config file not found. Please add TV first using pinarchy-setup-lgtv"
+    exit 1
+fi
+
+MAC_ADDRESS=$(jq -r --arg ip "$TV_IP" '.tvs[] | select(.ip == $ip) | .mac' "$config_file")
+
+if [ -z "$MAC_ADDRESS" ] || [ "$MAC_ADDRESS" = "unknown" ] || [ "$MAC_ADDRESS" = "null" ]; then
+    echo "❌ MAC address not found for $TV_IP"
+    echo "Please re-add the TV when it's powered on to get MAC address"
+    exit 1
+fi
+
+# Convert MAC address to uppercase for better compatibility
+MAC_ADDRESS=$(echo "$MAC_ADDRESS" | tr '[:lower:]' '[:upper:]')
+
+echo "📍 Using MAC address: $MAC_ADDRESS"
+
+# Send Wake-on-LAN packet using wakeonlan tool
+if command -v wakeonlan &> /dev/null; then
+    # Use the TV IP directly as the interface target
+    wakeonlan -i "$TV_IP" "$MAC_ADDRESS"
+    echo "✅ Wake-on-LAN signal sent to $MAC_ADDRESS via $TV_IP!"
+else
+    echo "❌ wakeonlan tool not found. Install it with: sudo pacman -S wakeonlan"
+    exit 1
+fi

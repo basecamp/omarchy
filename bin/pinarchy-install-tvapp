@@ -1,0 +1,49 @@
+#!/bin/bash
+
+set -e
+
+# LG TV App Installer for PinArchy
+# Creates desktop launcher for TV apps
+
+# Source library functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/pinarchy-lib/fn-lgtv-apps.sh"
+
+echo "📱 LG TV App Installer"
+
+# Check if config file exists
+config_file="$HOME/.config/lgtv/config.json"
+if [ ! -f "$config_file" ]; then
+    echo "❌ No TV configuration found"
+    echo "   Run 'pinarchy-setup-lgtv' to add a TV first"
+    exit 1
+fi
+
+# Get list of configured TVs
+tv_count=$(jq '.tvs | length' "$config_file")
+if [ "$tv_count" -eq 0 ]; then
+    echo "❌ No TVs configured"
+    echo "   Run 'pinarchy-setup-lgtv' to add a TV first"
+    exit 1
+fi
+
+# If only one TV, use it directly; otherwise let user choose
+if [ "$tv_count" -eq 1 ]; then
+    tv_ip=$(jq -r '.tvs[0].ip' "$config_file")
+    tv_name=$(jq -r '.tvs[0].name' "$config_file")
+    echo "🎯 Using TV: $tv_name ($tv_ip)"
+else
+    echo "📺 Select TV to install app for:"
+    # Create array for gum choose
+    tv_options=()
+    while IFS= read -r line; do
+        tv_options+=("$line")
+    done < <(jq -r '.tvs[] | "\(.name) (\(.ip))"' "$config_file")
+    
+    selected_tv=$(printf '%s\n' "${tv_options[@]}" | gum choose)
+    tv_ip=$(echo "$selected_tv" | grep -o '([^)]*)' | tr -d '()')
+    tv_name=$(echo "$selected_tv" | sed 's/ ([^)]*)$//')
+fi
+
+echo
+add_tv_app "$tv_ip" "$tv_name"

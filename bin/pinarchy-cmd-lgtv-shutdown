@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -e
+
+# LG TV Shutdown Command for PinArchy
+# Shuts down LG TV using bscpylgtvcommand
+
+if [ $# -eq 0 ]; then
+    echo "❌ Usage: pinarchy-cmd-lgtv-shutdown <TV_IP>"
+    echo "Example: pinarchy-cmd-lgtv-shutdown 192.168.1.100"
+    exit 1
+fi
+
+TV_IP="$1"
+
+echo "⏹️ Shutting down LG TV at $TV_IP..."
+
+# Shutdown TV using bscpylgtvcommand
+if bscpylgtvcommand "$TV_IP" power_off -p "$HOME/.config/lgtv/bscpylgtv.sqlite" &>/dev/null; then
+    echo "✅ TV shutdown signal sent to $TV_IP!"
+else
+    echo "❌ Failed to shutdown TV at $TV_IP"
+    exit 1
+fi

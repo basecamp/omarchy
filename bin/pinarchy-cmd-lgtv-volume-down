@@ -1,0 +1,25 @@
+#!/bin/bash
+
+set -e
+
+# LG TV Volume Down Command for PinArchy
+# Decreases TV volume using button press
+
+if [ $# -eq 0 ]; then
+    echo "❌ Usage: pinarchy-cmd-lgtv-volume-down <TV_IP>"
+    echo "Example: pinarchy-cmd-lgtv-volume-down 192.168.1.100"
+    exit 1
+fi
+
+TV_IP="$1"
+
+echo "🔉 Decreasing TV volume at $TV_IP..."
+
+# Press VOLUMEDOWN button twice for better volume steps
+if bscpylgtvcommand "$TV_IP" button VOLUMEDOWN -p "$HOME/.config/lgtv/bscpylgtv.sqlite" &>/dev/null && \
+   bscpylgtvcommand "$TV_IP" button VOLUMEDOWN -p "$HOME/.config/lgtv/bscpylgtv.sqlite" &>/dev/null; then
+    echo "✅ TV volume decreased (2 steps) at $TV_IP!"
+else
+    echo "❌ Failed to decrease TV volume at $TV_IP"
+    exit 1
+fi

@@ -1,0 +1,23 @@
+#!/bin/bash
+
+set -e
+
+# LG TV App Remover for PinArchy
+# Removes desktop launcher for TV apps
+
+# Source library functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/pinarchy-lib/fn-lgtv-apps.sh"
+
+echo "🗑️ LG TV App Remover"
+
+# Check if any lgtv desktop files exist
+apps_dir="$HOME/.local/share/applications"
+if ! find "$apps_dir" -name "lgtv-*.desktop" -print -quit | grep -q .; then
+    echo "❌ No installed TV apps found"
+    echo "   Install apps first using 'pinarchy-install-tvapp'"
+    exit 1
+fi
+
+echo
+remove_tvapp
