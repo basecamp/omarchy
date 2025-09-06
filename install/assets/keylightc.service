@@ -1,0 +1,42 @@
+[Unit]
+Description=Keyboard backlight daemon
+StartLimitBurst=5
+StartLimitIntervalSec=500
+
+[Service]
+DynamicUser=yes
+ExecStart=/usr/bin/keylightc
+LogLevelMax=info
+OpenFile=/sys/class/leds/chromeos\x3a\x3akbd_backlight/brightness
+Restart=on-failure
+RestartSec=1s
+SupplementaryGroups=input
+Type=exec
+
+#Security
+CapabilityBoundingSet=
+DeviceAllow=char-input r
+IPAddressDeny=any
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+PrivateNetwork=yes
+PrivateUsers=yes
+ProcSubset=pid
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectHome=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
