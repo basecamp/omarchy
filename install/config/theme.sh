@@ -24,5 +24,4 @@ ln -snf ~/.config/omarchy/current/theme/neovim.lua ~/.config/nvim/lua/plugins/th
 mkdir -p ~/.config/btop/themes
 ln -snf ~/.config/omarchy/current/theme/btop.theme ~/.config/btop/themes/current.theme
 
-mkdir -p ~/.config/mako
 ln -snf ~/.config/omarchy/current/theme/mako.ini ~/.config/mako/config
