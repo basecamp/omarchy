@@ -1,0 +1,40 @@
+@import url("file://~/.local/share/omarchy/default/walker/themes/omarchy-default.css");
+@import url("file://~/.config/omarchy/current/theme/walker.css");
+
+/* Container for each grid item */
+#list child {
+  background: alpha(@background, 0.8);
+  padding: 8px 0 0 0;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  margin: 2px;
+}
+
+#list child:selected {
+  background: alpha(@selected-text, 0.2);
+  border: 2px solid @border;
+}
+
+/* Icon container - scales image to fill tile */
+#icon {
+  border-radius: 8px;
+  /* Scale factor to make images fill the container since pixel_size forces container growth */
+  -gtk-icon-transform: scale(1.5);
+}
+
+/* Text label */
+#text {
+  background: alpha(@base, 0.95);
+  color: @text;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  margin: 4px;
+  border-radius: 6px;
+}
+
+#list child:selected #text {
+  color: @selected-text;
+  font-weight: 600;
+  background: alpha(@selected-text, 0.2);
+}
