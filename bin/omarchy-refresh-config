@@ -24,8 +24,8 @@ if [[ -f "$user_config_file" ]]; then
   # Create preliminary backup
   cp -f "$user_config_file" "$backup_config_file" 2>/dev/null
 
-  # Replace config with new default
-  cp -f "$default_config_file" "$user_config_file" 2>/dev/null
+  # Replace config with new default, expanding $HOME
+  sed "s|\$HOME|$HOME|g" "$default_config_file" > "$user_config_file" 2>/dev/null
 
   # Compare and delete/inform accordingly
   if cmp -s "$user_config_file" "$backup_config_file"; then
@@ -35,6 +35,6 @@ if [[ -f "$user_config_file" ]]; then
     diff "$user_config_file" "$backup_config_file" || true
   fi
 else
-  # Config file did not exist already
-  cp -f "$default_config_file" "$user_config_file" 2>/dev/null
+  # Config file did not exist already, expanding $HOME
+  sed "s|\$HOME|$HOME|g" "$default_config_file" > "$user_config_file" 2>/dev/null
 fi
