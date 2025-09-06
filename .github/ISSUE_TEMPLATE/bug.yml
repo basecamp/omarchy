@@ -1,16 +1,16 @@
 name: Bug
-description: File a bug report
+description: Report a problem
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug! Please fill out the following details.
+        Remember: Omarchy is an open source gift, not a product you bought from a a vendor
 
   - type: input
-    id: system-info
+    id: system-details
     attributes:
-      label: System Info
+      label: System details
       description: What CPU/Graphics/version are you using?
       placeholder: e.g. AMD 9950X, NVIDIA 5090, Omarchy 2.1.0
     validations:
@@ -19,11 +19,6 @@ body:
   - type: textarea
     id: steps
     attributes:
-      label: Steps to Reproduce
-      description: How do we trigger the bug?
-      placeholder: |
-        1. Go to ...
-        2. Click on ...
-        3. See error
+      label: What's wrong?
     validations:
       required: true
