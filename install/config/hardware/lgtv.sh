@@ -3,7 +3,7 @@
 # LG TV Management Setup
 # Installs and configures LG TV power management tools
 
-if [ "$PINARCHY_LG_TV" = "y" ]; then
+if [ "$ADD_LG_TV_SUPPORT" = "y" ]; then
   echo "Setting up LG TV management..."
   
   # Install Python using mise
