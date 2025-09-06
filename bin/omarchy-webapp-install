@@ -16,6 +16,27 @@ if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_URL" ]]; then
   exit 1
 fi
 
+PROFILE_DIR="$HOME/.config/chromium/"
+declare -A PROFILE_MAP
+PROFILES=()
+
+while IFS= read -r line; do
+  folder=$(echo "$line" | cut -d'|' -f1)
+  name=$(echo "$line" | cut -d'|' -f2)
+  PROFILES+=("$name")
+  PROFILE_MAP["$name"]="$folder"
+done < <(
+  jq -r '.profile.info_cache | to_entries[] | "\(.key)|\(.value.name)"' "$PROFILE_DIR/Local State"
+)
+
+if [ ${#PROFILES[@]} -eq 1 ]; then
+  APP_PROFILE_NAME="${PROFILES[0]}"
+else
+  APP_PROFILE_NAME=$(gum choose --header "Select browser profile" "${PROFILES[@]}")
+fi
+
+APP_PROFILES="${PROFILE_MAP[$APP_PROFILE_NAME]}"
+
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
 ICON_PATH="$ICON_DIR/$APP_NAME.png"
@@ -32,7 +53,7 @@ cat >"$DESKTOP_FILE" <<EOF
 Version=1.0
 Name=$APP_NAME
 Comment=$APP_NAME
-Exec=omarchy-launch-webapp $APP_URL
+Exec=omarchy-launch-webapp "$APP_URL" "$APP_PROFILES"
 Terminal=false
 Type=Application
 Icon=$ICON_PATH
