@@ -12,6 +12,7 @@ sudo pacman -S --noconfirm --needed \
   btop \
   cargo \
   clang \
+  clipse \
   cups \
   cups-browsed \
   cups-filters \
