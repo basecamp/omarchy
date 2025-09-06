@@ -82,7 +82,7 @@
   margin: 0 7.5px;
 }
 
-#custom-waybar-mpris {
+#custom-waybar-mpris, #custom-mpris {
 
   border-radius: 15px;
   margin-left: 8px;
@@ -92,14 +92,15 @@
 
 
 
-#custom-waybar-mpris.progress {font-size:11px;}
-#custom-waybar-mpris.paused {color: #999;}
+#custom-mpris span {font-size:9px;}
+#custom-waybar-mpris.playing, #custom-mpris.playing {color: #bbb;}
+#custom-waybar-mpris.paused, #custom-mpris.paused {color: #777;}
 
 #network,
 #bluetooth,
 #pulseaudio,
 #power-profiles-daemon,
-#custom-dotfiles {
+#custom-omarchy {
   font-family: SauceCodePro Nerd Font;
 }
 

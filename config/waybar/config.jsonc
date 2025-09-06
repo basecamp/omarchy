@@ -7,7 +7,7 @@
   "modules-left": [
     "custom/omarchy",
     "hyprland/workspaces",
-    "custom/waybar-mpris"
+    "custom/mpris"
   ],
   "modules-center": [
     "clock",
@@ -53,8 +53,7 @@
       "5": []
     }
   },
-  "custom/omarchyy
-": {
+  "custom/omarchy": {
     "format": "",
     "on-click": "~/.local/share/omarchy/bin/omarchy-menu",
     "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space"
@@ -106,6 +105,29 @@
         // "on-scroll-down": "waybar-mpris --send prev",
     "escape": true,
   },
+  // "custom/mpris": {
+  //   "return-type": "json",
+  //   "exec": "~/.config/waybar/scripts/mpris.sh",
+  //   "interval": 1,
+  //   "tooltip": false,
+  //   "format": "{}",
+  //   "class": "progress",
+  //   "escape": true,
+  //   "on-click": "playerctl -p playerctld play-pause",
+  //   "on-scroll-up": "playerctl -p playerctld next",
+  //   "on-scroll-down": "playerctl -p playerctld previous"
+  // },
+  "custom/mpris": {
+    "return-type": "json",
+    "exec": "~/.config/waybar/scripts/mpris.sh",
+    "interval": 1,
+    "tooltip": false,
+    "format": "{}",
+    //"escape": true,
+    "on-click": "playerctl -p playerctld play-pause",
+    "on-scroll-up": "playerctl -p playerctld next",
+    "on-scroll-down": "playerctl -p playerctld previous"
+  },
   "cpu": {
     "interval": 5,
     "format": "󰍛 {usage}%",
@@ -136,7 +158,7 @@
     "format": "{:%a %d %B - %I:%M %p}",
     "tooltip-format": "<tt>{calendar}</tt>",
     "tooltip": true,
-    "on-click-right": "~/.local/share/dotfiles/bin/dotfiles-cmd-tzupdate",
+    "on-click-right": "~/.local/share/omarchy/bin/omarchy-cmd-tzupdate",
     "calendar": {
         "format": {
         "months":     "<span color='#ffead3'>{}</span>",
