@@ -1,0 +1,25 @@
+#!/bin/bash
+
+set -e
+
+# LG TV Volume Up Command for PinArchy
+# Increases TV volume using button press
+
+if [ $# -eq 0 ]; then
+    echo "❌ Usage: pinarchy-cmd-lgtv-volume-up <TV_IP>"
+    echo "Example: pinarchy-cmd-lgtv-volume-up 192.168.1.100"
+    exit 1
+fi
+
+TV_IP="$1"
+
+echo "🔊 Increasing TV volume at $TV_IP..."
+
+# Press VOLUMEUP button twice for better volume steps
+if bscpylgtvcommand "$TV_IP" button VOLUMEUP -p "$HOME/.config/lgtv/bscpylgtv.sqlite" &>/dev/null && \
+   bscpylgtvcommand "$TV_IP" button VOLUMEUP -p "$HOME/.config/lgtv/bscpylgtv.sqlite" &>/dev/null; then
+    echo "✅ TV volume increased (2 steps) at $TV_IP!"
+else
+    echo "❌ Failed to increase TV volume at $TV_IP"
+    exit 1
+fi

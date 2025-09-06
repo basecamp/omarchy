@@ -1,0 +1,62 @@
+#!/bin/bash
+
+set -e
+
+# LG TV Brightness Command for PinArchy
+# Adjusts TV brightness by specified amount
+
+if [ $# -ne 2 ]; then
+    echo "❌ Usage: pinarchy-cmd-lgtv-brightness <TV_IP> <+/-NUMBER>"
+    echo "Example: pinarchy-cmd-lgtv-brightness 192.168.1.100 +10"
+    echo "Example: pinarchy-cmd-lgtv-brightness 192.168.1.100 -5"
+    exit 1
+fi
+
+TV_IP="$1"
+ADJUSTMENT="$2"
+
+# Validate adjustment parameter
+if [[ ! "$ADJUSTMENT" =~ ^[+-][0-9]+$ ]]; then
+    echo "❌ Adjustment must be in format +NUMBER or -NUMBER (e.g., +10, -5)"
+    exit 1
+fi
+
+# Extract the number and direction
+NUMBER=$(echo "$ADJUSTMENT" | sed 's/[+-]//')
+DIRECTION=${ADJUSTMENT:0:1}
+
+if [ "$DIRECTION" = "+" ]; then
+    echo "🔆 Increasing TV brightness by $NUMBER at $TV_IP..."
+    ACTION="increase"
+else
+    echo "🔅 Decreasing TV brightness by $NUMBER at $TV_IP..."
+    ACTION="decrease"
+fi
+
+# Get current brightness
+CURRENT=$(bscpylgtvcommand "$TV_IP" get_picture_settings "[\"backlight\"]" -p "$HOME/.config/lgtv/bscpylgtv.sqlite" 2>/dev/null | sed "s/'/\"/g" | jq -r '.backlight // 50')
+
+# Calculate new brightness (clamp between 0-100)
+if [ "$DIRECTION" = "+" ]; then
+    NEW_BRIGHTNESS=$((CURRENT + NUMBER))
+else
+    NEW_BRIGHTNESS=$((CURRENT - NUMBER))
+fi
+
+# Clamp to valid range
+if [ $NEW_BRIGHTNESS -lt 0 ]; then
+    NEW_BRIGHTNESS=0
+elif [ $NEW_BRIGHTNESS -gt 100 ]; then
+    NEW_BRIGHTNESS=100
+fi
+
+# Set new brightness
+if bscpylgtvcommand "$TV_IP" set_current_picture_settings "{\"backlight\": $NEW_BRIGHTNESS}" -p "$HOME/.config/lgtv/bscpylgtv.sqlite" &>/dev/null; then
+    echo "✅ TV brightness ${ACTION}d to $NEW_BRIGHTNESS at $TV_IP!"
+    
+    # Trigger Waybar update for brightness value display
+    pkill -SIGRTMIN+8 waybar 2>/dev/null || true
+else
+    echo "❌ Failed to $ACTION TV brightness at $TV_IP"
+    exit 1
+fi

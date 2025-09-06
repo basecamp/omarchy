@@ -1,0 +1,80 @@
+#!/bin/bash
+
+set -e
+
+# LG TV Management Script for PinArchy
+# Interactive setup for LG TV power management
+
+# Source library functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/pinarchy-lib/fn-lgtv-boot.sh"
+source "$SCRIPT_DIR/pinarchy-lib/fn-lgtv-brightness.sh"
+source "$SCRIPT_DIR/pinarchy-lib/fn-lgtv-setup.sh"
+source "$SCRIPT_DIR/pinarchy-lib/fn-lgtv-shutdown.sh"
+source "$SCRIPT_DIR/pinarchy-lib/fn-lgtv-volume.sh"
+
+# Check if bscpylgtv is installed
+if ! python -c "import bscpylgtv" &>/dev/null; then
+    echo "❌ bscpylgtv is not installed."
+    echo "Please run the full installation first or install it manually:"
+    echo "  mise exec python -- python -m pip install bscpylgtv"
+    exit 1
+fi
+
+show_completion_message() {
+  echo
+  echo "✅ $1"
+  echo
+  echo "Press any key to continue..."
+  read -n 1 -s
+}
+
+show_main_menu() {
+  while true; do
+    clear
+    omarchy-show-logo
+    echo "📺 PinArchy LG TV Management"
+    echo
+    
+    # Build menu options dynamically
+    OPTIONS=("Add TV")
+    
+    # Check for existing TVs and add them to the menu
+    config_file="$HOME/.config/lgtv/config.json"
+    if [ -f "$config_file" ] && [ -s "$config_file" ]; then
+      while IFS= read -r tv_option; do
+        if [ -n "$tv_option" ]; then
+          OPTIONS+=("$tv_option")
+        fi
+      done < <(jq -r '.tvs[] | "\(.name) (\(.ip))"' "$config_file")
+    fi
+    
+    # Add exit option
+    OPTIONS+=("⨯ Exit")
+    
+    # Use gum for consistent interface
+    SELECTED=$(gum choose --header "Select an option:" "${OPTIONS[@]}")
+    
+    case "$SELECTED" in
+      "Add TV")
+        add_tv
+        show_completion_message "TV configuration completed!"
+        ;;
+      "⨯ Exit")
+        echo "👋 Goodbye!"
+        exit 0
+        ;;
+      *)
+        # Handle TV selection (format: "TV Name (IP)")
+        if [[ "$SELECTED" =~ ^.*\ \(([0-9.]+)\)$ ]]; then
+          TV_IP="${BASH_REMATCH[1]}"
+          tv_details "$SELECTED" "$TV_IP"
+          show_completion_message "TV action completed!"
+        fi
+        ;;
+    esac
+  done
+}
+
+# Start the main menu loop
+show_main_menu

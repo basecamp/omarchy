@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -e
+
+# LG TV Screen Off Command for PinArchy
+# Turns off TV screen while keeping audio on
+
+if [ $# -eq 0 ]; then
+    echo "❌ Usage: pinarchy-cmd-lgtv-screenoff <TV_IP>"
+    echo "Example: pinarchy-cmd-lgtv-screenoff 192.168.1.100"
+    exit 1
+fi
+
+TV_IP="$1"
+
+echo "📺 Turning off TV screen at $TV_IP..."
+
+# Turn off TV screen using bscpylgtvcommand
+if bscpylgtvcommand "$TV_IP" turn_screen_off -p "$HOME/.config/lgtv/bscpylgtv.sqlite" &>/dev/null; then
+    echo "✅ TV screen turned off at $TV_IP!"
+else
+    echo "❌ Failed to turn off TV screen at $TV_IP"
+    exit 1
+fi
