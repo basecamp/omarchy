@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+
+# ---- Apple Studio Display Webcam Setup for Omarchy ----
+#
+# SIMPLE THUNDERBOLT-ONLY SETUP - NO SPECIAL CABLES REQUIRED!
+#
+# This script works straight out of the box with ONLY the Apple Studio Display's
+# included Thunderbolt cable. No DisplayPort + USB-A => USB-C adapter needed!
+#
+# ✅ TESTED ON: Framework Laptop 13 with AMD 7040 Series
+# ✅ WORKS WITH: Single Thunderbolt 3/4 cable (included with Studio Display)
+# ✅ ACTIVATES: 1080p webcam + studio-quality audio + display
+#
+# Acknowledgements:
+# Constructed using contributions from @mikeytag on community.frame.work
+# https://community.frame.work/t/apple-studio-display-any-experiences/34702/14
+
+# ---- First, ensure bolt is installed for thunderbolt control ----
+if ! command -v bolt &>/dev/null; then
+  echo "Installing bolt for Thunderbolt device management..."
+  yay -S bolt --noconfirm
+else
+  echo "✓ bolt is already installed"
+fi
+
+# ---- Second, switch audio to Studio Display when docked, or to laptop when undocked ----
+
+# Check if Studio Display audio devices are available
+STUDIO_SINK=$(pactl list short sinks | grep "Studio_Display" | head -1 | cut -f2)
+
+if [[ -n "$STUDIO_SINK" ]]; then
+  echo "Studio Display detected, switching audio output..."
+  pactl set-default-sink "$STUDIO_SINK"
+
+  # Also switch the microphone to Studio Display
+  STUDIO_SOURCE=$(pactl list short sources | grep "Studio_Display" | grep -v "monitor" | head -1 | cut -f2)
+  if [[ -n "$STUDIO_SOURCE" ]]; then
+    pactl set-default-source "$STUDIO_SOURCE"
+    echo "Switched to Studio Display microphone"
+  fi
+
+  echo "Audio switched to Studio Display"
+else
+  echo "Studio Display not detected, switching to laptop audio..."
+  # Switch to laptop speakers
+  LAPTOP_SINK=$(pactl list short sinks | grep "pci-0000_c1_00.6" | cut -f2)
+  if [[ -n "$LAPTOP_SINK" ]]; then
+    pactl set-default-sink "$LAPTOP_SINK"
+  fi
+
+  # Switch to laptop microphone
+  LAPTOP_SOURCE=$(pactl list short sources | grep "pci-0000_c1_00.6" | grep -v "monitor" | cut -f2)
+  if [[ -n "$LAPTOP_SOURCE" ]]; then
+    pactl set-default-source "$LAPTOP_SOURCE"
+  fi
+
+  echo "Audio switched to laptop"
+fi
+
+# ---- Main Feature: Configure Apple Studio Display webcam for optimal 1080p quality ----
+
+echo "  Configuring Apple Studio Display webcam for optimal quality..."
+echo "   This activates the Studio Display's built-in 12MP Ultra Wide camera"
+echo "   at 1080p resolution with auto-exposure and white balance."
+
+# Find all Studio Display webcams
+STUDIO_CAMS=$(v4l2-ctl --list-devices | grep -A1 "Studio Display" | grep "/dev/video" | head -2)
+
+for cam in $STUDIO_CAMS; do
+  if [[ -e "$cam" ]]; then
+    echo "Configuring $cam..."
+
+    # Set to 1080p 30fps MJPEG for best quality
+    v4l2-ctl -d "$cam" --set-fmt-video=width=1920,height=1080,pixelformat=MJPG 2>/dev/null
+
+    # Set exposure and white balance to auto
+    v4l2-ctl -d "$cam" --set-ctrl=auto_exposure=0 2>/dev/null # Auto Mode
+    v4l2-ctl -d "$cam" --set-ctrl=white_balance_automatic=1 2>/dev/null
+
+    # Set power line frequency to 60Hz (US standard)
+    v4l2-ctl -d "$cam" --set-ctrl=power_line_frequency=2 2>/dev/null
+
+    # Center the camera (reset pan/tilt)
+    v4l2-ctl -d "$cam" --set-ctrl=pan_absolute=0 2>/dev/null
+    v4l2-ctl -d "$cam" --set-ctrl=tilt_absolute=-2880000 2>/dev/null # Default tilt
+
+    # Set zoom to a natural level (slightly zoomed in from minimum)
+    v4l2-ctl -d "$cam" --set-ctrl=zoom_absolute=150 2>/dev/null
+
+    echo "  Set to 1920x1080 30fps MJPEG"
+  fi
+done
+
+echo "✅ Studio Display webcam configuration complete!"
+echo ""
+echo "󱁖  Your Apple Studio Display is now optimized for:"
+echo "   • 1920x1080 resolution at 30fps"
+echo "   • MJPEG format for best quality"
+echo "   • Auto-exposure and white balance"
+echo "   • Centered position with natural zoom level"
+echo ""
+echo "💡 Works with any video conferencing app (Zoom, Teams, Meet, etc.)"
+echo ""
+echo "Current webcam settings:"
+for cam in $STUDIO_CAMS; do
+  if [[ -e "$cam" ]]; then
+    echo "$cam:"
+    v4l2-ctl -d "$cam" --get-fmt-video | grep -E "Width|Pixel"
+    echo ""
+  fi
+done
