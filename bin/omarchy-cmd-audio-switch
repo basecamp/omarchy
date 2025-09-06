@@ -1,19 +1,46 @@
 #!/bin/bash
 
-# Find all the audio sinks but exit if there are none
-sinks=($(wpctl status | sed -n '/Sinks:/,/Sources:/p' | grep -E '^\s*│\s+\*?\s*[0-9]+\.' | sed -E 's/^[^0-9]*([0-9]+)\..*/\1/'))
-[ ${#sinks[@]} -eq 0 ] && exit 1
+sinks=$(pactl -f json list sinks)
+sinks_count=$(echo "$sinks" | jq '. | length')
 
-# Find current audio sink
-current=$(wpctl status | sed -n '/Sinks:/,/Sources:/p' | grep '^\s*│\s*\*' | sed -E 's/^[^0-9]*([0-9]+)\..*/\1/')
+[ "$sinks_count" -eq 0 ] && {
+  swayosd-client \
+    --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" \
+    --custom-message "No audio devices found"
+  exit 1
+}
 
-# Find the next sink (looping around in the list)
-for i in "${!sinks[@]}"; do
-  [ "${sinks[$i]}" = "$current" ] && next=${sinks[$(((i + 1) % ${#sinks[@]}))]}
-done
-next=${next:-${sinks[0]}}
+current_sink_name=$(pactl get-default-sink)
+current_sink_index=$(echo "$sinks" | jq -r --arg name "$current_sink_name" 'map(.name) | index($name)')
 
-# Set the next sink and ensure it's not muted
-wpctl set-default "$next"
-wpctl set-mute "$next" 0
+if [ "$current_sink_index" != "null" ]; then
+  next_sink_index=$(((current_sink_index + 1) % sinks_count))
+else
+  next_sink_index=0
+fi
 
+next_sink_name=$(echo "$sinks" | jq -r ".[$next_sink_index].name")
+next_sink_description=$(echo "$sinks" | jq -r ".[$next_sink_index].description")
+next_sink_volume=$(echo "$sinks" | jq -r ".[$next_sink_index].volume[\"front-left\"].value_percent" | sed 's/%//')
+next_sink_is_muted=$(echo "$sinks" | jq -r ".[$next_sink_index].mute")
+
+if [ "$next_sink_is_muted" = "true" ] || [ "$next_sink_volume" -eq 0 ]; then
+  icon_state="muted"
+elif [ "$next_sink_volume" -le 33 ]; then
+  icon_state="low"
+elif [ "$next_sink_volume" -le 66 ]; then
+  icon_state="medium"
+else
+  icon_state="high"
+fi
+
+next_sink_volume_icon="sink-volume-${icon_state}-symbolic"
+
+[ "$next_sink_name" != "$current_sink_name" ] && {
+  pactl set-default-sink "$next_sink_name"
+}
+
+swayosd-client \
+  --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" \
+  --custom-message "$next_sink_description" \
+  --custom-icon "$next_sink_volume_icon"
