@@ -48,15 +48,15 @@ add_volume_control() {
   local config_file="$HOME/.config/lgtv/config.json"
   jq --arg ip "$tv_ip" '(.tvs[] | select(.ip == $ip) | .enabled_features.waybar_volume_control) = true' "$config_file" > "$config_file.tmp" && mv "$config_file.tmp" "$config_file"
   
-  # Add TV volume controls to Waybar config after "mpris"
+  # Add TV volume controls to Waybar config after "group/tray-expander"
   local waybar_config="$HOME/.config/waybar/config.jsonc"
   
-  # Add the three modules to modules-right after "mpris"
+  # Add the three modules to modules-right after "group/tray-expander"
   jq --arg ip "$tv_ip" '
     .["modules-right"] = (
-      .["modules-right"][:(.["modules-right"] | index("mpris") + 1)] + 
+      .["modules-right"][:(.["modules-right"] | index("group/tray-expander") + 1)] + 
       ["custom/lgtv-volume-down", "custom/lgtv-tv-icon", "custom/lgtv-volume-up"] +
-      .["modules-right"][(.["modules-right"] | index("mpris") + 1):]
+      .["modules-right"][(.["modules-right"] | index("group/tray-expander") + 1):]
     ) |
     .["custom/lgtv-volume-down"] = {
       "format": "󰝞",

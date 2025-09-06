@@ -49,15 +49,15 @@ add_brightness_control() {
   local config_file="$HOME/.config/lgtv/config.json"
   jq --arg ip "$tv_ip" '(.tvs[] | select(.ip == $ip) | .enabled_features.brightness_control) = true' "$config_file" > "$config_file.tmp" && mv "$config_file.tmp" "$config_file"
   
-  # Add TV brightness controls to Waybar config after "mpris"
+  # Add TV brightness controls to Waybar config after "group/tray-expander"
   local waybar_config="$HOME/.config/waybar/config.jsonc"
   
-  # Add brightness control modules to modules-right after mpris
+  # Add brightness control modules to modules-right after group/tray-expander
   jq --arg ip "$tv_ip" '
     .["modules-right"] = (
-      .["modules-right"][:(.["modules-right"] | index("mpris") + 1)] + 
+      .["modules-right"][:(.["modules-right"] | index("group/tray-expander") + 1)] + 
       ["custom/lgtv-brightness-down", "custom/lgtv-brightness-value", "custom/lgtv-brightness-up"] +
-      .["modules-right"][(.["modules-right"] | index("mpris") + 1):]
+      .["modules-right"][(.["modules-right"] | index("group/tray-expander") + 1):]
     ) |
     .["custom/lgtv-brightness-down"] = {
       "format": "󰃞",
