@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# GLM-4.5 Installer for Claude Code
+# This script configures Claude Code to use GLM-4.5 models from Z.AI
+
+set -e
+
+echo "🤖 GLM-4.5 Installer for Claude Code"
+echo "=================================="
+
+# Check if Claude Code is installed
+if ! command -v claude &>/dev/null; then
+  echo "❌ Claude Code is not installed!"
+  echo ""
+  echo "To install Claude Code:"
+  echo "1. Open the omarchy menu"
+  echo "2. Navigate to Install → AI → Claude Code [AUR]"
+  echo "3. Complete the Claude Code installation"
+  echo ""
+  echo "Once Claude Code is installed, run this installer again."
+  exit 1
+fi
+
+echo "✅ Claude Code is installed"
+
+# Get API key from user
+echo ""
+echo "🔑 To use GLM-4.5 with Claude Code, you need a Z.AI API key"
+echo "Get your API key from: https://z.ai/manage-apikey/apikey-list"
+echo ""
+read -p "Enter your Z.AI API key: " api_key
+
+if [[ -z "$api_key" ]]; then
+  echo "❌ API key is required!"
+  exit 1
+fi
+
+# Create .claude directory if it doesn't exist
+mkdir -p ~/.claude
+
+# Create settings.json with GLM-4.5 configuration
+echo ""
+echo "⚙️  Configuring Claude Code to use GLM-4.5..."
+
+cat >~/.claude/settings.json <<EOF
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "$api_key",
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "API_TIMEOUT_MS": "3000000",
+    "ANTHROPIC_MODEL": "glm-4.5"
+  }
+}
+EOF
+
+echo "✅ Configuration saved to ~/.claude/settings.json"
+
+echo ""
+echo "🎉 GLM-4.5 configuration complete!"
+echo ""
+echo "📋 Next steps:"
+echo "1. Launch Claude Code by typing: claude"
+echo "2. Verify the configuration by running: /status in Claude Code"
+echo ""
+echo "🔍 Your Claude Code will now use:"
+echo "   • Model: GLM-4.5"
+echo "   • API endpoint: https://api.z.ai/api/anthropic"
+echo ""
+echo "⚠️  Note: Make sure you have purchased a monthly subscription or have enough credits in your api account"
