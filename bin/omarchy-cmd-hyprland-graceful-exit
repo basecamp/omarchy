@@ -1,6 +1,6 @@
 #!/bin/bash
-# Graceful Hyprland exit script with proper app shutdown delay
-# Ensures applications have time to save data and cleanup before termination
+# Graceful application shutdown script for Hyprland
+# Ensures applications have time to save data and cleanup before system shutdown/restart
 
 echo "Gracefully shutting down applications..."
 
@@ -27,6 +27,5 @@ for pid in $PIDS; do
     fi
 done
 
-# Now exit Hyprland
-echo "Exiting Hyprland..."
-hyprctl dispatch exit
+# Done - let the calling script (systemctl shutdown/reboot) handle the rest
+echo "Applications gracefully closed."
