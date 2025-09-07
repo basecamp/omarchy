@@ -234,7 +234,7 @@ show_install_ai_menu() {
   *Studio*) install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
-  *opencode*) install "opencode" "opencode-bin" ;;
+  *opencode*) install "opencode" "opencode" ;;
   *) show_install_menu ;;
   esac
 }
