@@ -1,5 +1,5 @@
 name: Suggestion
-description: Features or changes
+description: Feature or change
 labels: [suggestion]
 body:
   - type: markdown
