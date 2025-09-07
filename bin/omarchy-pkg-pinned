@@ -1,0 +1,7 @@
+#!/bin/bash
+
+PINNED_PACKAGES_FILE="$OMARCHY_PATH/install/packages.pinned"
+
+if [[ -f $PINNED_PACKAGES_FILE ]]; then
+  tr '\r\n' ',' <"$PINNED_PACKAGES_FILE" | sed 's/,$//'
+fi
