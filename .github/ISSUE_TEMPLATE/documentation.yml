@@ -1,6 +1,6 @@
-name: Suggestion
-description: Feature or change
-labels: [suggestion]
+name: Documentation
+description: New pages or changes to existing
+labels: [documentation]
 body:
   - type: markdown
     attributes:
@@ -10,6 +10,6 @@ body:
   - type: textarea
     id: steps
     attributes:
-      label: What do you need?
+      label: What correction or addition do we need?
     validations:
       required: true
