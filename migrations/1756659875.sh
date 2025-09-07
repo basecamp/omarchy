@@ -15,6 +15,10 @@ if systemctl is-active --quiet wpa_supplicant.service 2>/dev/null; then
   sudo systemctl mask wpa_supplicant.service
 fi
 
+if systemctl is-enabled --quiet iwd.service 2>/dev/null; then
+  sudo systemctl disable --now iwd.service
+fi
+
 sudo mkdir -p /etc/NetworkManager/conf.d
 sudo tee /etc/NetworkManager/conf.d/wifi_backend.conf >/dev/null <<EOF
 [device]
