@@ -12,6 +12,7 @@ sudo systemctl disable --now systemd-networkd-wait-online.service
 
 if systemctl is-active --quiet wpa_supplicant.service 2>/dev/null; then
   sudo systemctl disable --now wpa_supplicant.service
+  sudo systemctl mask wpa_supplicant.service
 fi
 
 sudo mkdir -p /etc/NetworkManager/conf.d
