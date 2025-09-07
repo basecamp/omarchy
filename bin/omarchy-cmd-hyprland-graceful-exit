@@ -1,0 +1,31 @@
+#!/bin/bash
+# Graceful application shutdown script for Hyprland
+# Ensures applications have time to save data and cleanup before system shutdown/restart
+
+echo "Gracefully shutting down applications..."
+
+# Get all window PIDs from Hyprland
+PIDS=$(hyprctl clients -j | jq -r '.[].pid' 2>/dev/null || echo "")
+
+# Send SIGTERM to all applications first (graceful shutdown signal)
+for pid in $PIDS; do
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        echo "Sending SIGTERM to PID $pid"
+        kill -TERM "$pid" 2>/dev/null
+    fi
+done
+
+# Wait 3 seconds for applications to close gracefully
+echo "Waiting 3 seconds for applications to close gracefully..."
+sleep 3
+
+# Check if any are still running and send SIGKILL if needed
+for pid in $PIDS; do
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        echo "Force killing PID $pid"
+        kill -KILL "$pid" 2>/dev/null
+    fi
+done
+
+# Done - let the calling script (systemctl shutdown/reboot) handle the rest
+echo "Applications gracefully closed."

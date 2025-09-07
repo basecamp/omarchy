@@ -374,8 +374,8 @@ show_system_menu() {
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
   *Relaunch*) uwsm stop ;;
-  *Restart*) systemctl reboot ;;
-  *Shutdown*) systemctl poweroff ;;
+  *Restart*) omarchy-cmd-hyprland-graceful-exit && sleep 1 && systemctl reboot ;;
+  *Shutdown*) omarchy-cmd-hyprland-graceful-exit && sleep 1 && systemctl poweroff ;;
   *) show_main_menu ;;
   esac
 }
