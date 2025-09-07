@@ -48,7 +48,7 @@ sudo pacman -S --noconfirm --needed \
   hyprsunset \
   imagemagick \
   impala \
-  imv \
+  swayimg \
   inetutils \
   iwd \
   jq \
