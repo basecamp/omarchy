@@ -1,14 +1,16 @@
 #!/bin/bash
 
+focused_monitor="$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')"
+
 sinks=$(pactl -f json list sinks)
 sinks_count=$(echo "$sinks" | jq '. | length')
 
-[ "$sinks_count" -eq 0 ] && {
+if [ "$sinks_count" -eq 0 ]; then
   swayosd-client \
-    --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" \
+    --monitor "$focused_monitor" \
     --custom-message "No audio devices found"
   exit 1
-}
+fi
 
 current_sink_name=$(pactl get-default-sink)
 current_sink_index=$(echo "$sinks" | jq -r --arg name "$current_sink_name" 'map(.name) | index($name)')
@@ -37,11 +39,11 @@ fi
 
 next_sink_volume_icon="sink-volume-${icon_state}-symbolic"
 
-[ "$next_sink_name" != "$current_sink_name" ] && {
+if [ "$next_sink_name" != "$current_sink_name" ]; then
   pactl set-default-sink "$next_sink_name"
-}
+fi
 
 swayosd-client \
-  --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" \
+  --monitor "$focused_monitor" \
   --custom-message "$next_sink_description" \
   --custom-icon "$next_sink_volume_icon"
