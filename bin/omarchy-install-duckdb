@@ -1,0 +1,79 @@
+#!/bin/bash -e
+
+# Install the DuckDB CLI locally (no root required) and expose it on PATH
+
+ARCH=$(uname -m)
+if [[ "$ARCH" == "x86_64" || "$ARCH" == "amd64" ]]; then
+  DIST="linux-amd64"
+elif [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+  DIST="linux-arm64"
+else
+  echo "Unsupported arch: $ARCH" >&2
+  exit 1
+fi
+
+VER=$(curl -fsSL https://duckdb.org/data/latest_stable_version.txt)
+if [[ -z "$VER" ]]; then
+  echo "Failed to resolve latest DuckDB version" >&2
+  exit 1
+fi
+
+PREFIX="$HOME/.duckdb/cli"
+INST="$PREFIX/$VER"
+
+mkdir -p "$INST"
+
+if [[ ! -x "$INST/duckdb" ]]; then
+  echo "Downloading DuckDB CLI v$VER for $DIST..."
+  curl -fL "https://github.com/duckdb/duckdb/releases/download/v$VER/duckdb_cli-$DIST.gz" | zcat >"$INST/duckdb"
+  chmod +x "$INST/duckdb"
+fi
+
+echo "Verifying DuckDB CLI..."
+if [[ "$("$INST/duckdb" -noheader -csv -batch -s "SELECT 42")" != "42" ]]; then
+  echo "DuckDB CLI verification failed" >&2
+  exit 1
+fi
+
+ln -sfn "$INST" "$PREFIX/latest"
+
+# Ensure ~/.local/bin exists and symlink a stable entry
+mkdir -p "$HOME/.local/bin"
+ln -sfn "$PREFIX/latest/duckdb" "$HOME/.local/bin/duckdb"
+
+echo "DuckDB CLI installed at $INST/duckdb"
+echo "Symlinked to $HOME/.local/bin/duckdb"
+
+# If user's shell PATH may not include ~/.local/bin, append to ~/.bashrc (and zshrc)
+ensure_path_line='export PATH="$HOME/.local/bin:$PATH"'
+if ! grep -qs "\.local/bin" "$HOME/.bashrc" 2>/dev/null; then
+  echo "$ensure_path_line" >>"$HOME/.bashrc"
+fi
+if ! grep -qs "\.local/bin" "$HOME/.zshrc" 2>/dev/null; then
+  echo "$ensure_path_line" >>"$HOME/.zshrc"
+fi
+
+echo "Done. Restart your shell or run: export PATH=\"$HOME/.local/bin:$PATH\""
+
+
+# Add Hyprland keybinding SUPER+SHIFT+D to launch DuckDB if not present
+HYPR_BINDINGS_FILE="$HOME/.config/hypr/bindings.conf"
+mkdir -p "$(dirname "$HYPR_BINDINGS_FILE")"
+
+# Only append if the file exists or we manage it; if missing, create it
+touch "$HYPR_BINDINGS_FILE"
+
+# Normalize search by ignoring spaces variations; simple grep should be fine
+if ! grep -qiE '^bind(d|)\s*=\s*SUPER\s+SHIFT\s*,\s*D\b' "$HYPR_BINDINGS_FILE" 2>/dev/null; then
+  echo "Appending SUPER+SHIFT+D DuckDB launcher to $HYPR_BINDINGS_FILE"
+  {
+    echo ""
+    echo "# DuckDB"
+    echo "bindd = SUPER SHIFT, D, DuckDB UI, exec, omarchy-launch-duckdb-ui"
+  } >>"$HYPR_BINDINGS_FILE"
+  # Optionally prompt Hyprland to reload bindings when convenient; leave to user/session
+else
+  echo "A SUPER+SHIFT+D binding already exists in $HYPR_BINDINGS_FILE; leaving unchanged."
+fi
+
+
