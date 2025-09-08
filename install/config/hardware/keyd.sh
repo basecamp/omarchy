@@ -18,6 +18,7 @@ if [[ ! -f /etc/keyd/default.conf ]]; then
 [ids]
 *
 [main]
+leftmeta+leftshift+3 = sysrq
 leftmeta+leftshift+4 = sysrq
 EOF
 fi
