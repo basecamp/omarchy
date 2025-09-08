@@ -7,10 +7,15 @@ fi
 
 yay -S --noconfirm --needed networkmanager
 
-sudo systemctl disable --now systemd-networkd.service
-sudo systemctl disable --now systemd-networkd-wait-online.service
+if systemctl is-enabled --quiet systemd-networkd.service 2>/dev/null; then
+  sudo systemctl disable --now systemd-networkd.service
+fi
 
-if systemctl is-active --quiet wpa_supplicant.service 2>/dev/null; then
+if systemctl is-enabled --quiet systemd-networkd-wait-online.service 2>/dev/null; then
+  sudo systemctl disable --now systemd-networkd-wait-online.service
+fi
+
+if systemctl is-enabled --quiet wpa_supplicant.service 2>/dev/null; then
   sudo systemctl disable --now wpa_supplicant.service
   sudo systemctl mask wpa_supplicant.service
 fi
