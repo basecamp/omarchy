@@ -132,7 +132,7 @@ show_toggle_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Resolution\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Config\n󰈷  Fingerprint\n  Fido2"
@@ -148,6 +148,7 @@ show_setup_menu() {
     blueberry
     ;;
   *Power*) show_setup_power_menu ;;
+  *Resolution*) present_terminal "omarchy-monitor-resolution-picker" ;;
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
