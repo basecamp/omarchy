@@ -1,0 +1,9 @@
+#!/bin/bash
+if [[ "$(hyprctl monitors)" =~ [[:space:]]DP-[0-9]+ ]]; then # Check if external monitor is connected
+  if [[ $1 == "open" ]]; then
+    hyprctl keyword monitor "eDP-1,preferred,auto,auto" # Enable laptop screen
+  else
+    hyprctl keyword monitor "eDP-1,disable" # Disable laptop screen
+  fi
+fi
+
