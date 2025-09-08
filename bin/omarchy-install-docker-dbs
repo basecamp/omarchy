@@ -1,6 +1,6 @@
 #!/bin/bash
 
-options=("MySQL" "PostgreSQL" "Redis" "MongoDB" "MariaDB" "DuckDB [local]")
+options=("MySQL" "PostgreSQL" "Redis" "MongoDB" "MariaDB" "DuckDB")
 choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases (space to select, return to install, esc to cancel)") || main_menu
 
 if [[ -n "$choices" ]]; then
