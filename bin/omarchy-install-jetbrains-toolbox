@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+yay -S --noconfirm jetbrains-toolbox
+
+scale=$(hyprctl -j monitors | jq '.[] | select(.focused == true) | .scale')
+
+if [[ -z "$scale" ]]; then
+  echo "Failed to retrieve the scale of the active monitor."
+  exit 1
+fi
+
+settings_dir="$HOME/.local/share/JetBrains/Toolbox"
+mkdir -p "$settings_dir"
+
+cat >"$settings_dir/.settings.json" <<EOF
+{
+    "shell_scripts": {
+        "location": "$HOME/.local/share/JetBrains/Toolbox/scripts"
+    },
+    "ui": {
+        "scale": $scale
+    }
+}
+EOF
