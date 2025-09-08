@@ -1,3 +1,3 @@
 #!/bin/bash
 
-exec setsid uwsm app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$(xdg-settings get default-web-browser) 2>/dev/null | head -1) ${args[@]} $@
+exec setsid uwsm app -- $(sed -n 's/^Exec=\(\/usr\/bin\/flatpak .*\) @@u %u @@/\1/Ip; t; s/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr,/var/lib/flatpak/exports}/share/applications/$(xdg-settings get default-web-browser) 2>/dev/null | head -1) ${args[@]} $@
