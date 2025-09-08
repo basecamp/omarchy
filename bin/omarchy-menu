@@ -230,7 +230,7 @@ show_install_ai_menu() {
   case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini\n󱚤  OpenAI Codex [AUR]\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
   *Claude*) install "Claude Code" "claude-code" ;;
   *OpenAI*) aur_install "OpenAI Codex" "openai-codex-bin" ;;
-  *Gemini*) install "Gemini" "gemini-cli" ;;
+  *Gemini*) aur_install "Gemini" "gemini-cli" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
