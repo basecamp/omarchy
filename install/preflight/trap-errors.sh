@@ -24,7 +24,11 @@ catch_errors() {
   echo "    ▀▀▀▀▀▀▀ ▀ ▀ ▀▀▀  ▀ ▀▀▀▀▀▀    "
   echo "                                 "
 
-  echo "You can retry by running: bash ~/.local/share/omarchy/install.sh"
+  if command -v gum >/dev/null && gum confirm "Retry installation?"; then
+    bash ~/.local/share/omarchy/install.sh
+  else
+    echo "You can retry later by running: bash ~/.local/share/omarchy/install.sh"
+  fi
 }
 
 trap catch_errors ERR
