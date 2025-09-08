@@ -216,7 +216,7 @@ show_install_editor_menu() {
   *Sublime*) aur_install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) install "Helix" "helix" ;;
   *Emacs*) install "Emacs" "emacs-wayland" && systemctl --user enable --now emacs.service ;;
-  *JetBrains*) aur_install_and_launch "Jetbrains Toolbox" "jetbrains-toolbox" "jetbrains-toolbox" ;;
+  *JetBrains*) terminal omarchy-install-jetbrains-toolbox ;;
   *) show_install_menu ;;
   esac
 }
