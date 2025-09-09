@@ -1,49 +1,11 @@
 #!/bin/bash
 
-set -euo pipefail
+command -v duckdb >/dev/null || { echo "duckdb not found. Run omarchy-install-duckdb first." >&2; exit 1; }
 
-url="http://localhost:4213"
-
-if ! command -v duckdb >/dev/null 2>&1; then
-  echo "duckdb not found on PATH. Please install it first (omarchy-install-duckdb)." >&2
-  exit 1
-fi
-
-# Start DuckDB UI in the background
 duckdb -ui >/dev/null 2>&1 &
-server_pid=$!
+pid=$!
+trap "kill $pid 2>/dev/null; wait $pid 2>/dev/null" EXIT
 
-cleanup() {
-  kill "$server_pid" >/dev/null 2>&1 || true
-  wait "$server_pid" 2>/dev/null || true
-}
-trap cleanup EXIT INT TERM
+timeout 5 bash -c 'until curl -fsS http://localhost:4213 >/dev/null 2>&1; do sleep 0.1; done' || exit 1
 
-# Wait for UI to become available
-for _ in {1..50}; do
-  if curl -fsS "$url" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.1
-done
-
-# Determine browser desktop entry
-browser=$(xdg-settings get default-web-browser)
-case $browser in
-  google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi*) ;;
-  *) browser="chromium.desktop" ;;
-esac
-
-# Resolve browser executable
-browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1)
-if [[ -z "${browser_exec:-}" ]]; then
-  echo "Unable to resolve browser executable for $browser" >&2
-  exit 1
-fi
-
-# Launch browser as app window and block until it exits
-setsid uwsm app -- "$browser_exec" --app="$url"
-
-# When browser exits, trap will clean up the DuckDB UI
-
-
+exec omarchy-launch-webapp http://localhost:4213
