@@ -2,8 +2,8 @@
 
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 
-# Track if menu was accessed directly via command line argument
-DIRECT_ACCESS=false
+# Set to true when going directly to a submenu, so we can exit directly
+BACK_TO_EXIT=false
 
 back_to() {
   local parent_menu="$1"
@@ -432,7 +432,7 @@ go_to_menu() {
 }
 
 if [[ -n "$1" ]]; then
-  DIRECT_ACCESS=true
+  BACK_TO_EXIT=true
   go_to_menu "$1"
 else
   show_main_menu
