@@ -33,15 +33,15 @@ slider,
 /* Main box container */
 #box {
   background: alpha(@base, 0.95);
-  padding: 20px;
+  padding: 20px 0;
   border: 2px solid @border;
   border-radius: 0px;
 }
 
 /* Search container */
 #search {
-  background: @base;
-  padding: 10px;
+  background: transparent;
+  padding: 0px 30px 20px;
   margin-bottom: 0;
 }
 
@@ -82,14 +82,14 @@ slider,
 
 /* List items */
 child {
-  padding: 0px 12px;
+  padding: 0 32px;
   background: transparent;
   border-radius: 0;
 }
 
 child:selected,
 child:hover {
-  background: transparent;
+  background: alpha(@border, 0.1);
 }
 
 /* Item layout */
