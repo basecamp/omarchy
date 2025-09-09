@@ -37,8 +37,6 @@ EOF
 DHCP)
   sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
-DNS=
-FallbackDNS=
 DNSOverTLS=no
 EOF
   
