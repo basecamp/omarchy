@@ -324,13 +324,14 @@ show_remove_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" " Omarchy\n  Config\n󰸌  Themes\n  Process\n󰇅  Hardware\n  Timezone") in
+  case $(menu "Update" " Omarchy\n  Config\n󰸌  Themes\n  Process\n󰇅  Hardware\n  Password\n  Timezone") in
   *Omarchy*) present_terminal omarchy-update ;;
   *Config*) show_update_config_menu ;;
   *Themes*) present_terminal omarchy-theme-update ;;
   *Process*) show_update_process_menu ;;
   *Hardware*) show_update_hardware_menu ;;
   *Timezone*) omarchy-cmd-tzupdate ;;
+  *Password*) show_update_password_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -364,6 +365,14 @@ show_update_hardware_menu() {
   case $(menu "Restart" "󱚾  Wi-Fi\n󰂯  Bluetooth") in
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
+  *) show_update_menu ;;
+  esac
+}
+
+show_update_password_menu() {
+  case $(menu "Update Password" "  Drive Encryption\n  User") in
+  *Drive*) present_terminal omarchy-drive-set-password ;;
+  *User*) present_terminal passwd ;;
   *) show_update_menu ;;
   esac
 }
