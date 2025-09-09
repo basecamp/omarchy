@@ -122,7 +122,7 @@ dotnet)
   ;;
 clojure)
   echo -e "Installing Clojure...\n"
-  sudo pacman -S --noconfirm rlwrap
+  omarchy-pkg-add rlwrap
   mise use --global clojure@latest
   ;;
 esac
