@@ -5,9 +5,9 @@ export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 # Track if menu was accessed directly via command line argument
 DIRECT_ACCESS=false
 
-# Handle exit behavior based on access method and parent menu
-handle_exit() {
+back_to() {
   local parent_menu="$1"
+
   if [[ "$DIRECT_ACCESS" == "true" ]]; then
     exit 0
   elif [[ -n "$parent_menu" ]]; then
@@ -95,7 +95,7 @@ show_style_menu() {
 show_theme_menu() {
   theme=$(menu "Theme" "$(omarchy-theme-list)" "" "$(omarchy-theme-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    handle_exit show_style_menu
+    back_to show_style_menu
   else
     omarchy-theme-set "$theme"
   fi
@@ -104,7 +104,7 @@ show_theme_menu() {
 show_font_menu() {
   theme=$(menu "Font" "$(omarchy-font-list)" "-w 350" "$(omarchy-font-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    handle_exit show_style_menu
+    back_to show_style_menu
   else
     omarchy-font-set "$theme"
   fi
@@ -180,7 +180,7 @@ show_setup_power_menu() {
   profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
   if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
-    handle_exit show_setup_menu
+    back_to show_setup_menu
   else
     powerprofilesctl set "$profile"
   fi
@@ -403,7 +403,7 @@ show_system_menu() {
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
-  *) show_main_menu ;;
+  *) back_to show_main_menu ;;
   esac
 }
 
