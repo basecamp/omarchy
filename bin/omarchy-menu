@@ -384,6 +384,17 @@ show_main_menu() {
   go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n  Capture\n󰔎  Toggle\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
 }
 
+show_llm_web_menu() {
+  case $(menu "" "󱚤  ChatGPT\n󱚤  Gemini\n󱚤  Claude\n󱚤  LeChat\n󱚤  Grok") in
+  *ChatGPT*) omarchy-launch-webapp "https://chat.openai.com/" ;;
+  *Gemini*) omarchy-launch-webapp "https://gemini.google.com/" ;;
+  *Claude*) omarchy-launch-webapp "https://claude.ai/" ;;
+  *LeChat*) omarchy-launch-webapp "https://chat.mistral.ai/chat" ;;
+  *Grok*) omarchy-launch-webapp "https://grok.com/" ;;
+  *) show_main_menu ;;
+  esac
+}
+
 go_to_menu() {
   case "${1,,}" in
   *apps*) walker -p "Launch…" ;;
@@ -401,6 +412,7 @@ go_to_menu() {
   *update*) show_update_menu ;;
   *about*) alacritty --class Omarchy -o font.size=9 -e bash -c 'fastfetch; read -n 1 -s' ;;
   *system*) show_system_menu ;;
+  *llmweb*) show_llm_web_menu ;;
   esac
 }
 
