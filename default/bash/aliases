@@ -11,7 +11,7 @@ zd() {
   elif [ -d "$1" ]; then
     builtin cd "$1"
   else
-    z "$@" && printf " \U000F17A9 " && pwd || echo "Error: Directory not found"
+    z "$@" && printf "\U000F17A9 " && pwd || echo "Error: Directory not found"
   fi
 }
 open() {
@@ -24,12 +24,12 @@ alias ...='cd ../..'
 alias ....='cd ../../..'
 
 # Tools
-alias g='git'
 alias d='docker'
 alias r='rails'
 n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
 
 # Git
+alias g='git'
 alias gcm='git commit -m'
 alias gcam='git commit -a -m'
 alias gcad='git commit -a --amend'

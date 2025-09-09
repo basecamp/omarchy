@@ -39,6 +39,22 @@ else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
 
+# Change Chromium colors
+if command -v chromium &>/dev/null; then
+  if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
+    chromium --no-startup-window --set-color-scheme="light"
+  else
+    chromium --no-startup-window --set-color-scheme="dark"
+  fi
+
+  if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]]; then
+    chromium --no-startup-window --set-theme-color="$(<~/.config/omarchy/current/theme/chromium.theme)"
+  else
+    # Use a default, neutral grey if theme doesn't have a color
+    chromium --no-startup-window --set-theme-color="28,32,39"
+  fi
+fi
+
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 

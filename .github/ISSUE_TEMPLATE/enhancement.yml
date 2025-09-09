@@ -1,0 +1,15 @@
+name: Enhancement
+description: Feature or change
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remember: Omarchy is an open source gift, not a product you bought from a vendor
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: What do you need?
+    validations:
+      required: true

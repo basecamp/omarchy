@@ -14,8 +14,8 @@ for marker in /etc/cachyos-release /etc/eos-release /etc/garuda-release /etc/man
   [[ -f "$marker" ]] && abort "Vanilla Arch"
 done
 
-# Must not be runnig as root
-[ "$EUID" -eq 0 ] && abort "Running as user (not root)"
+# Must not be running as root
+[ "$EUID" -eq 0 ] && abort "Running as root (not user)"
 
 # Must be x86 only to fully work
 [ "$(uname -m)" != "x86_64" ] && abort "x86_64 CPU"

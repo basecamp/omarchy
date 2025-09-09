@@ -1,0 +1,23 @@
+name: Bug
+description: Report a problem
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remember: Omarchy is an open source gift, not a product you bought from a vendor
+
+  - type: input
+    id: system-details
+    attributes:
+      label: System details
+      placeholder: e.g. AMD 9950X, NVIDIA 5090, Omarchy 2.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: What's wrong?
+    validations:
+      required: true
