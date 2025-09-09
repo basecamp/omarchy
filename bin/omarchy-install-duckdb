@@ -4,4 +4,9 @@ curl -fsSL https://install.duckdb.org | bash
 
 HYPR="$HOME/.config/hypr/bindings.conf"
 mkdir -p "$(dirname "$HYPR")" && touch "$HYPR"
-grep -q "SUPER.*SHIFT.*D" "$HYPR" || echo -e "\nbindd = SUPER SHIFT, D, DuckDB UI, exec, omarchy-launch-duckdb-ui" >>"$HYPR"
+
+if grep -qE "(SUPER SHIFT|SHIFT SUPER), D," "$HYPR"; then
+  echo "Warning: SUPER+SHIFT+D is already bound. Skipping keybinding setup."
+else
+  echo -e "\nbindd = SUPER SHIFT, D, DuckDB UI, exec, omarchy-launch-duckdb-ui" >>"$HYPR"
+fi
