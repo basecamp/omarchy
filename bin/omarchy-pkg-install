@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -e
-
 fzf_args=(
   --multi
   --preview 'pacman -Sii {1}'
