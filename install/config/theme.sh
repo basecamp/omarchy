@@ -25,3 +25,4 @@ mkdir -p ~/.config/btop/themes
 ln -snf ~/.config/omarchy/current/theme/btop.theme ~/.config/btop/themes/current.theme
 
 ln -snf ~/.config/omarchy/current/theme/mako.ini ~/.config/mako/config
+
