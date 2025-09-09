@@ -24,7 +24,8 @@ fi
 next_sink=$(echo "$sinks" | jq -r ".[$next_sink_index]")
 next_sink_name=$(echo "$next_sink" | jq -r '.name')
 next_sink_description=$(echo "$next_sink" | jq -r '.description')
-next_sink_volume=$(echo "$next_sink" | jq -r '.volume["front-left"].value_percent | sub("%"; "")')
+next_sink_volume=$(echo "$next_sink" | jq -r \
+  '.volume | to_entries[0].value.value_percent | sub("%"; "")')
 next_sink_is_muted=$(echo "$next_sink" | jq -r '.mute')
 
 if [ "$next_sink_is_muted" = "true" ] || [ "$next_sink_volume" -eq 0 ]; then
