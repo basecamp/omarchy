@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure>" >&2
   exit 1
 fi
 
@@ -130,5 +130,10 @@ ocaml)
 dotnet)
   echo -e "Installing .NET...\n"
   mise use --global dotnet@latest
+  ;;
+clojure)
+  echo -e "Installing Clojure...\n"
+  omarchy-pkg-add rlwrap
+  mise use --global clojure@latest
   ;;
 esac
