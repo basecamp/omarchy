@@ -1,5 +1,27 @@
 #!/bin/bash
 
+lockfile="/tmp/omarchy-cmd-tzupdate.lock"
+max_age=300
+
+# If lockfile exists, check if the process is still running or if lock is fresh
+if [[ -e "$lockfile" ]]; then
+  pid=$(<"$lockfile")
+  if kill -0 "$pid" 2>/dev/null; then
+    exit 0
+  fi
+
+  lock_age=$(($(date +%s) - $(stat -c %Y "$lockfile" 2>/dev/null || echo 0)))
+  if ((lock_age < max_age)); then
+    exit 0
+  fi
+
+  rm -f "$lockfile"
+fi
+
+# Create lockfile with current PID and ensure cleanup on exit
+echo $$ >"$lockfile"
+trap 'rm -f "$lockfile"' EXIT
+
 sudo systemctl restart systemd-timesyncd
 sudo tzupdate
 new_timezone=$(timedatectl show -p Timezone --value)
