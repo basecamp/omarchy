@@ -15,6 +15,6 @@ if [[ "$url" == zoommtg://* ]] || [[ "$url" == zoomus://* ]]; then
 
     exec omarchy-launch-webapp "$web_url"
   fi
+else
+  exec omarchy-launch-webapp "https://app.zoom.us/wc/home"
 fi
-
-exec omarchy-launch-webapp "https://app.zoom.us/wc/home"
