@@ -1,0 +1,20 @@
+#!/bin/bash
+
+url="$1"
+
+if [[ "$url" == zoommtg://* ]] || [[ "$url" == zoomus://* ]]; then
+  confno=$(echo "$url" | sed -n 's/.*[?&]confno=\([^&]*\).*/\1/p')
+  pwd=$(echo "$url" | sed -n 's/.*[?&]pwd=\([^&]*\).*/\1/p')
+
+  if [[ -n "$confno" ]]; then
+    if [[ -n "$pwd" ]]; then
+      web_url="https://app.zoom.us/wc/join/$confno?pwd=$pwd"
+    else
+      web_url="https://app.zoom.us/wc/join/$confno"
+    fi
+
+    exec omarchy-launch-webapp "$web_url"
+  fi
+fi
+
+exec omarchy-launch-webapp "https://app.zoom.us/wc/home"
