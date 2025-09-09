@@ -1,18 +1,66 @@
 #!/bin/bash
+# Description: Install popular databases using Docker with secure passwords.
+set -e
 
 options=("MySQL" "PostgreSQL" "Redis" "MongoDB" "MariaDB")
 choices=$(printf "%s\n" "${options[@]}" | gum choose --no-limit --header "Select databases (space to select, return to install, esc to cancel)") || main_menu
 
 if [[ -n "$choices" ]]; then
+  echo -e "\n Deploying selected databases..."
+  echo -e "Secure passwords will be generated for each service. Please save them in a safe place!\n"
+
   for db in $choices; do
     case $db in
-    MySQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mysql8 -e MYSQL_ROOT_PASSWORD= -e MYSQL_ALLOW_EMPTY_PASSWORD=true mysql:8.4 ;;
-    PostgreSQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:5432:5432" --name=postgres16 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16 ;;
-    MariaDB) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mariadb11 -e MARIADB_ROOT_PASSWORD= -e MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=true mariadb:11.8 ;;
-    Redis) sudo docker run -d --restart unless-stopped -p "127.0.0.1:6379:6379" --name=redis redis:7 ;;
-    MongoDB) sudo docker run -d --restart unless-stopped -p "127.0.0.1:27017:27017" --name mongodb -e MONGO_INITDB_ROOT_USERNAME=admin -e MONGO_INITDB_ROOT_PASSWORD=admin123 mongo:noble ;;
+    MySQL)
+      echo "Setting up MySQL..."
+      MYSQL_PASS=$(openssl rand -base64 16)
+      sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mysql8 -e MYSQL_ROOT_PASSWORD="$MYSQL_PASS" mysql:8.4
+      echo -e " MySQL (mysql:8.4) deployed."
+      echo -e "   - User: root"
+      echo -e "   - Password: \033[1;33m$MYSQL_PASS\033[0m\n"
+      ;;
+
+    PostgreSQL)
+      echo "Setting up PostgreSQL..."
+      POSTGRES_PASS=$(openssl rand -base64 16)
+      sudo docker run -d --restart unless-stopped -p "127.0.0.1:5432:5432" --name=postgres16 -e POSTGRES_PASSWORD="$POSTGRES_PASS" postgres:16
+      echo -e " PostgreSQL (postgres:16) deployed."
+      echo -e "   - User: postgres"
+      echo -e "   - Password: \033[1;33m$POSTGRES_PASS\033[0m\n"
+      ;;
+
+    MariaDB)
+      echo "Setting up MariaDB..."
+      MARIADB_PASS=$(openssl rand -base64 16)
+      sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mariadb11 -e MARIADB_ROOT_PASSWORD="$MARIADB_PASS" mariadb:11.8
+      echo -e " MariaDB (mariadb:11.8) deployed."
+      echo -e "   - User: root"
+      echo -e "   - Password: \033[1;33m$MARIADB_PASS\033[0m\n"
+      ;;
+
+    Redis)
+      echo "Setting up Redis..."
+      REDIS_PASS=$(openssl rand -base64 16)
+      sudo docker run -d --restart unless-stopped -p "127.0.0.1:6379:6379" --name=redis redis:7 --requirepass "$REDIS_PASS"
+      echo -e " Redis (redis:7) deployed."
+      echo -e "   - Auth Password: \033[1;33m$REDIS_PASS\033[0m\n"
+      ;;
+
+    MongoDB)
+      echo "Setting up MongoDB..."
+      MONGO_USER="omarchy_admin"
+      MONGO_PASS=$(openssl rand -base64 16)
+      sudo docker run -d --restart unless-stopped -p "127.0.0.1:27017:27017" --name mongodb -e MONGO_INITDB_ROOT_USERNAME="$MONGO_USER" -e MONGO_INITDB_ROOT_PASSWORD="$MONGO_PASS" mongo:noble
+      echo -e " MongoDB (mongo:noble) deployed."
+      echo -e "   - User: \033[1;33m$MONGO_USER\033[0m"
+      echo -e "   - Password: \033[1;33m$MONGO_PASS\033[0m\n"
+      ;;
     esac
   done
+
+  echo -e "\033[1;32mInstallation complete! Please ensure you have saved all passwords.\033[0m"
+
 else
   echo "No databases selected for installation."
 fi
+
