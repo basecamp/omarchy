@@ -1,19 +1,50 @@
 #!/bin/bash
 
-# Find all the audio sinks but exit if there are none
-sinks=($(wpctl status | sed -n '/Sinks:/,/Sources:/p' | grep -E '^\s*│\s+\*?\s*[0-9]+\.' | sed -E 's/^[^0-9]*([0-9]+)\..*/\1/'))
-[ ${#sinks[@]} -eq 0 ] && exit 1
+focused_monitor="$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')"
 
-# Find current audio sink
-current=$(wpctl status | sed -n '/Sinks:/,/Sources:/p' | grep '^\s*│\s*\*' | sed -E 's/^[^0-9]*([0-9]+)\..*/\1/')
+sinks=$(pactl -f json list sinks)
+sinks_count=$(echo "$sinks" | jq '. | length')
 
-# Find the next sink (looping around in the list)
-for i in "${!sinks[@]}"; do
-  [ "${sinks[$i]}" = "$current" ] && next=${sinks[$(((i + 1) % ${#sinks[@]}))]}
-done
-next=${next:-${sinks[0]}}
+if [ "$sinks_count" -eq 0 ]; then
+  swayosd-client \
+    --monitor "$focused_monitor" \
+    --custom-message "No audio devices found"
+  exit 1
+fi
 
-# Set the next sink and ensure it's not muted
-wpctl set-default "$next"
-wpctl set-mute "$next" 0
+current_sink_name=$(pactl get-default-sink)
+current_sink_index=$(echo "$sinks" | jq -r --arg name "$current_sink_name" 'map(.name) | index($name)')
 
+if [ "$current_sink_index" != "null" ]; then
+  next_sink_index=$(((current_sink_index + 1) % sinks_count))
+else
+  next_sink_index=0
+fi
+
+next_sink=$(echo "$sinks" | jq -r ".[$next_sink_index]")
+next_sink_name=$(echo "$next_sink" | jq -r '.name')
+next_sink_description=$(echo "$next_sink" | jq -r '.description')
+next_sink_volume=$(echo "$next_sink" | jq -r \
+  '.volume | to_entries[0].value.value_percent | sub("%"; "")')
+next_sink_is_muted=$(echo "$next_sink" | jq -r '.mute')
+
+if [ "$next_sink_is_muted" = "true" ] || [ "$next_sink_volume" -eq 0 ]; then
+  icon_state="muted"
+elif [ "$next_sink_volume" -le 33 ]; then
+  icon_state="low"
+elif [ "$next_sink_volume" -le 66 ]; then
+  icon_state="medium"
+else
+  icon_state="high"
+fi
+
+next_sink_volume_icon="sink-volume-${icon_state}-symbolic"
+
+if [ "$next_sink_name" != "$current_sink_name" ]; then
+  pactl set-default-sink "$next_sink_name"
+fi
+
+swayosd-client \
+  --monitor "$focused_monitor" \
+  --custom-message "$next_sink_description" \
+  --custom-icon "$next_sink_volume_icon"
