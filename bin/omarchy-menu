@@ -2,6 +2,21 @@
 
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 
+# Set to true when going directly to a submenu, so we can exit directly
+BACK_TO_EXIT=false
+
+back_to() {
+  local parent_menu="$1"
+
+  if [[ "$DIRECT_ACCESS" == "true" ]]; then
+    exit 0
+  elif [[ -n "$parent_menu" ]]; then
+    "$parent_menu"
+  else
+    show_main_menu
+  fi
+}
+
 menu() {
   local prompt="$1"
   local options="$2"
@@ -80,7 +95,7 @@ show_style_menu() {
 show_theme_menu() {
   theme=$(menu "Theme" "$(omarchy-theme-list)" "" "$(omarchy-theme-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    show_main_menu
+    back_to show_style_menu
   else
     omarchy-theme-set "$theme"
   fi
@@ -89,7 +104,7 @@ show_theme_menu() {
 show_font_menu() {
   theme=$(menu "Font" "$(omarchy-font-list)" "-w 350" "$(omarchy-font-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    show_main_menu
+    back_to show_style_menu
   else
     omarchy-font-set "$theme"
   fi
@@ -165,7 +180,7 @@ show_setup_power_menu() {
   profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
   if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
-    show_main_menu
+    back_to show_setup_menu
   else
     powerprofilesctl set "$profile"
   fi
@@ -388,7 +403,7 @@ show_system_menu() {
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
-  *) show_main_menu ;;
+  *) back_to show_main_menu ;;
   esac
 }
 
@@ -417,6 +432,7 @@ go_to_menu() {
 }
 
 if [[ -n "$1" ]]; then
+  BACK_TO_EXIT=true
   go_to_menu "$1"
 else
   show_main_menu
