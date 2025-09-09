@@ -67,10 +67,11 @@ show_learn_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Wallpaper Rotation\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
+  *Wallpaper*) show_wallpaper_rotation_menu ;;
   *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
   *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
@@ -93,6 +94,16 @@ show_font_menu() {
   else
     omarchy-font-set "$theme"
   fi
+}
+
+show_wallpaper_rotation_menu() {
+  case $(menu "Wallpaper Rotation" "  Hourly\n  Daily\n  Weekly\n  Disabled") in
+  *Hourly*) omarchy-wallpaper-rotation-config hourly ;;
+  *Daily*) omarchy-wallpaper-rotation-config daily ;;
+  *Weekly*) omarchy-wallpaper-rotation-config weekly ;;
+  *Disabled*) omarchy-wallpaper-rotation-config disable ;;
+  *) show_style_menu ;;
+  esac
 }
 
 show_capture_menu() {
@@ -122,11 +133,12 @@ show_screenrecord_menu() {
 }
 
 show_toggle_menu() {
-  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
+  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n  Wallpaper Rotation") in
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
   *Bar*) omarchy-toggle-waybar ;;
+  *Wallpaper*) omarchy-wallpaper-rotation-toggle ;;
   *) show_main_menu ;;
   esac
 }

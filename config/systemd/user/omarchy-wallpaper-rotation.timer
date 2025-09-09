@@ -1,0 +1,10 @@
+[Unit]
+Description=Omarchy Wallpaper Rotation Timer
+Requires=omarchy-wallpaper-rotation.service
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

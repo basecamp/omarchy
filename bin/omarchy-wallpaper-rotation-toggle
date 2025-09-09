@@ -1,0 +1,9 @@
+#!/bin/bash
+
+if systemctl --user is-enabled omarchy-wallpaper-rotation.timer >/dev/null 2>&1; then
+  systemctl --user disable --now omarchy-wallpaper-rotation.timer
+  notify-send "Wallpaper auto-rotation disabled"
+else
+  systemctl --user enable --now omarchy-wallpaper-rotation.timer
+  notify-send "Wallpaper auto-rotation enabled"
+fi

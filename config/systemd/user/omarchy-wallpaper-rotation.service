@@ -1,0 +1,8 @@
+[Unit]
+Description=Omarchy Wallpaper Rotation
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/omarchy/bin/omarchy-theme-bg-next
+Environment=DISPLAY=:0

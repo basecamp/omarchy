@@ -1,0 +1,37 @@
+#!/bin/bash
+
+FREQUENCY="$1"
+
+case "$FREQUENCY" in
+  hourly)
+    CALENDAR="hourly"
+    MESSAGE="Wallpaper rotation set to hourly"
+    ;;
+  daily)
+    CALENDAR="daily"
+    MESSAGE="Wallpaper rotation set to daily"
+    ;;
+  weekly)
+    CALENDAR="weekly"
+    MESSAGE="Wallpaper rotation set to weekly"
+    ;;
+  disable)
+    systemctl --user disable --now omarchy-wallpaper-rotation.timer
+    notify-send "Wallpaper auto-rotation disabled"
+    exit 0
+    ;;
+  *)
+    echo "Usage: omarchy-wallpaper-rotation-config {hourly|daily|weekly|disable}"
+    exit 1
+    ;;
+esac
+
+# Update the timer file
+TIMER_FILE="$HOME/.config/systemd/user/omarchy-wallpaper-rotation.timer"
+sed -i "s/OnCalendar=.*/OnCalendar=$CALENDAR/" "$TIMER_FILE"
+
+# Reload systemd and restart timer
+systemctl --user daemon-reload
+systemctl --user enable --now omarchy-wallpaper-rotation.timer
+
+notify-send "$MESSAGE"
