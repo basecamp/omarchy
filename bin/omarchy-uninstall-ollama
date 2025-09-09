@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Ensure that CUDA-enabled Ollama is removed if installed.
+if pacman -Q ollama-cuda &>/dev/null; then
+  echo -e "Uninstalling CUDA-enabled Ollama...\n"
+  sudo pacman -Rns --noconfirm ollama-cuda
+fi
+
+# Ensure that AMD-enabled Ollama is removed if installed.
+if pacman -Q ollama-rocm &>/dev/null; then
+  echo -e "Uninstalling AMD-enabled Ollama...\n"
+  sudo pacman -Rns --noconfirm ollama-rocm
+fi
+
+# Disable and stop the Ollama systemd service.
+echo -e "Disabling and stopping Ollama service...\n"
+sudo systemctl disable --now ollama
+
+echo -e "Uninstalling Ollama...\n"
+sudo pacman -Rns --noconfirm ollama

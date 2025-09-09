@@ -309,13 +309,14 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n󰈷  Fingerprint\n  Fido2\n󱚤  AI") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
   *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
   *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
+  *AI*) show_remove_ai_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -383,6 +384,13 @@ show_system_menu() {
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_remove_ai_menu() {
+  case $(menu "Remove" "󱚤  Ollama") in
+  *Ollama*) present_terminal omarchy-uninstall-ollama ;;
+  *) show_remove_menu ;;
   esac
 }
 
