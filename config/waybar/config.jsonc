@@ -127,8 +127,8 @@
   },
   "custom/screen-rec-indicator": {
     "on-click": "omarchy-cmd-screenrecord",
-    "exec": "~/.config/waybar/scripts/screen-rec-indicator.sh",
-    "signal": 1,
+    "exec": "~/.local/share/omarchy/default/waybar/indicators/screen-recording.sh",
+    "signal": 8,
     "return-type": "json"
   },
   "tray": {
