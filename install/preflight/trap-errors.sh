@@ -31,4 +31,7 @@ catch_errors() {
   fi
 }
 
+# Ensure gum is available as early as possible to retry errors
+sudo pacman -S gum
+
 trap catch_errors ERR
