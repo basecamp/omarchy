@@ -60,7 +60,7 @@ main() {
 
   # Step 3: resolution
   available_modes=$(echo "$monitor_details" | jq -r '.availableModes[]')
-  current_mode=$(echo "$monitor_details" | jq -r '"\(.width)x\(.height)@\(.refreshRate | floor)Hz"')
+  current_mode=$(echo "$monitor_details" | jq -r '"\(.width)x\(.height)@\(.refreshRate | floor).00Hz"')
 
   chosen_mode_raw=$(menu "Which resolution" "$available_modes" "" "$current_mode")
   if [[ -z "$chosen_mode_raw" ]]; then
