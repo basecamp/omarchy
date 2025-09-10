@@ -148,7 +148,7 @@ show_setup_menu() {
     blueberry
     ;;
   *Power*) show_setup_power_menu ;;
-  *Resolution*) present_terminal "omarchy-monitor-resolution-picker" ;;
+  *Resolution*) omarchy-monitor-resolution-picker ;;
   *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
   *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
   *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
