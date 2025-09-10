@@ -36,7 +36,7 @@ stop_screenrecording() {
 
   notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
 
-  sleep 0.2
+  sleep 0.2 # ensures the process is actually dead before we check
   toggle_recording_indicator
 }
 
