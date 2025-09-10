@@ -141,7 +141,7 @@ main() {
   if [[ "$chosen_mode_raw" != "Disable monitor" ]]; then
     # Step 4: scale (only if not disabled)
     chosen_mode=$(echo "$chosen_mode_raw" | sed -E 's/@([0-9]+)\.[0-9]+Hz/@\1Hz/' | cut -d' ' -f1)
-    scale_options="auto\n1.00\n1.25\n1.50\n1.75\n2.00"
+    scale_options="auto\n1.00\n1.25\n1.50\n1.666667\n2.00"
     current_scale=$(echo "$monitor_details" | jq -r '.scale')
 
     chosen_scale=$(menu "Which scale" "$scale_options" "" "$current_scale")
