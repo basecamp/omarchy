@@ -37,4 +37,5 @@ else
   screenrecording -g "$region"
 fi
 
+sleep 1
 pkill -RTMIN+8 waybar
