@@ -8,14 +8,19 @@ if [[ ! -d "$OUTPUT_DIR" ]]; then
   exit 1
 fi
 
+# Selects region or output
+SCOPE="$1"
+
+# Selects audio inclusion or not
+AUDIO=$([[ $2 == "audio" ]] && echo "--audio")
+
 start_screenrecording() {
   filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
-  audio=$([[ $2 == audio ]] && echo --audio)
 
   if lspci | grep -Eqi 'nvidia|intel.*graphics'; then
-    wf-recorder $audio -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@" &
+    wf-recorder $AUDIO -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@" &
   else
-    wl-screenrec $audio -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@" &
+    wl-screenrec $AUDIO -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@" &
   fi
 
   toggle_screenrecording_indicator
@@ -41,7 +46,7 @@ screenrecording_active() {
 
 if screenrecording_active; then
   stop_screenrecording
-elif [[ "$1" == "output" ]]; then
+elif [[ "$SCOPE" == "output" ]]; then
   start_screenrecording
 else
   region=$(slurp) || exit 1
