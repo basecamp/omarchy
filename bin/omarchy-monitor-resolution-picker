@@ -128,9 +128,8 @@ main() {
     current_mode="Disable monitor"
   fi
 
-
   if (( monitor_count > 1 )); then
-    available_modes="$available_modes\nDisable monitor"
+    available_modes="preferred\n$available_modes\nDisable monitor"
   fi
 
   chosen_mode_raw=$(menu "Resolution" "$available_modes" "" "$current_mode")
@@ -142,10 +141,10 @@ main() {
   if [[ "$chosen_mode_raw" != "Disable monitor" ]]; then
     # Step 4: scale (only if not disabled)
     chosen_mode=$(echo "$chosen_mode_raw" | sed -E 's/@([0-9]+)\.[0-9]+Hz/@\1Hz/' | cut -d' ' -f1)
-    scale_options="1.00\n1.25\n1.50\n1.75\n2.00"
+    scale_options="auto\n1.00\n1.25\n1.50\n1.75\n2.00"
     current_scale=$(echo "$monitor_details" | jq -r '.scale')
 
-    chosen_scale=$(menu "Which scale to apply" "$scale_options" "" "$current_scale")
+    chosen_scale=$(menu "Which scale" "$scale_options" "" "$current_scale")
     if [[ -z "$chosen_scale" ]]; then
       echo "No selection. Operation cancelled."
       exit 0
@@ -154,12 +153,10 @@ main() {
 
   if [[ "$chosen_mode_raw" == "Disable monitor" ]]; then
     # monitor = name, disable
-    cmd="hyprctl keyword monitor \"$monitor_name,disable\""
     persist_configuration "$monitor_name" "disable"
   else
     # Step 5: terminal script
     position=$(echo "$monitor_details" | jq -r '"\(.x)x\(.y)"')
-    cmd="hyprctl keyword monitor \"$monitor_name,${chosen_mode},$position,$chosen_scale\""
     persist_configuration "$monitor_name" "$chosen_mode,$position,$chosen_scale"
   fi
 }
