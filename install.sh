@@ -4,8 +4,9 @@
 set -eE
 
 OMARCHY_PATH="$HOME/.local/share/omarchy"
+OMACOM_CORE_PATH="$HOME/.local/share/omacom-core"
 OMARCHY_INSTALL="$OMARCHY_PATH/install"
-export PATH="$OMARCHY_PATH/bin:$PATH"
+export PATH="$OMARCHY_PATH/bin:$OMACOM_CORE_PATH/bin:$PATH"
 
 # Preparation
 source $OMARCHY_INSTALL/preflight/show-env.sh

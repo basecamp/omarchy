@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Omarchy
+
 # Get remote tag
 latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
 if [[ -z "$latest_tag" ]]; then
@@ -9,6 +11,27 @@ fi
 
 # Get local tag
 current_tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
+if [[ -z "$current_tag" ]]; then
+  echo "Error: Could not retrieve current tag."
+  exit 1
+fi
+
+if [[ "$current_tag" != "$latest_tag" ]]; then
+  echo "Omarchy update available ($latest_tag)"
+  exit 0
+fi
+
+# omacom-core
+
+# Get remote tag
+latest_tag=$(git -C "$OMACOM_CORE_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+if [[ -z "$latest_tag" ]]; then
+  echo "Error: Could not retrieve latest tag."
+  exit 1
+fi
+
+# Get local tag
+current_tag=$(git -C "$OMACOM_CORE_PATH" describe --tags $(git -C "$OMACOM_CORE_PATH" rev-list --tags --max-count=1))
 if [[ -z "$current_tag" ]]; then
   echo "Error: Could not retrieve current tag."
   exit 1
