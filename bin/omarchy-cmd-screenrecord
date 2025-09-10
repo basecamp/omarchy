@@ -18,7 +18,7 @@ toggle_recording_indicator() {
   pkill -RTMIN+8 waybar
 }
 
-screenrecording() {
+start_screenrecording() {
   filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
 
   if lspci | grep -Eqi 'nvidia|intel.*graphics'; then
@@ -43,8 +43,8 @@ stop_screenrecording() {
 if pgrep -x wl-screenrec >/dev/null || pgrep -x wf-recorder >/dev/null; then
   stop_screenrecording
 elif [[ "$1" == "output" ]]; then
-  screenrecording
+  start_screenrecording
 else
   region=$(slurp) || exit 1
-  screenrecording -g "$region"
+  start_screenrecording -g "$region"
 fi
