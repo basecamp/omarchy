@@ -40,7 +40,10 @@ else
 fi
 
 # Apply VS Code theme if it exists
-if [[ -f ~/.config/omarchy/current/theme/vscode.sh ]]; then
+if [[ -f ~/.config/omarchy/current/theme/vscode.sh && -d ~/.config/Code/User ]]; then
+  if [[ ! -f ~/.config/Code/User/settings.json ]]; then
+    cp ~/.local/share/omacom-core/configs/vscode.json ~/.config/Code/User/settings.json
+  fi
   source ~/.config/omarchy/current/theme/vscode.sh
 fi
 
