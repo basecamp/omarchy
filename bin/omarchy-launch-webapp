@@ -1,13 +1,30 @@
 #!/bin/bash
+set -euo pipefail
 
-APP_URL="$1"
-PROFILE="$2"
+APP_URL="${1:-}"
+PROFILE="${2:-}"
+BROWSER_BIN="${3:-}"
 
-browser=$(xdg-settings get default-web-browser)
+if [[ -z "$APP_URL" ]]; then
+  echo "Usage: omarchy-launch-webapp <app-url> [profile-dir-name] [browser-binary]" >&2
+  exit 1
+fi
 
-case $browser in
-google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
-*) browser="chromium.desktop" ;;
-esac
+if [[ -z "$PROFILE" ]]; then
+  PROFILE="Default"
+fi
+if [[ -z "$BROWSER_BIN" ]]; then
+  BROWSER_BIN="chromium"
+fi
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --profile-directory="$PROFILE" --app="$APP_URL" "${@:2}"
+declare -A BROWSER_USERDATA_DIR=(
+  [chromium]="$HOME/.config/chromium"
+  [google-chrome-stable]="$HOME/.config/google-chrome"
+  [brave]="$HOME/.config/BraveSoftware/Brave-Browser"
+  [microsoft-edge-stable]="$HOME/.config/microsoft-edge"
+  [vivaldi]="$HOME/.config/vivaldi"
+)
+
+USER_DATA_DIR="${BROWSER_USERDATA_DIR[$BROWSER_BIN]:-$HOME/.config/$BROWSER_BIN}"
+
+exec setsid uwsm app -- "$BROWSER_BIN" --user-data-dir="$USER_DATA_DIR" --profile-directory="$PROFILE" --app="$APP_URL"
