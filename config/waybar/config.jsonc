@@ -5,9 +5,8 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-  "modules-center": ["clock", "custom/update"],
+  "modules-center": ["clock", "custom/update", "custom/screen-rec-indicator"],
   "modules-right": [
-    "custom/screen-rec-indicator",
     "group/tray-expander",
     "bluetooth",
     "network",
