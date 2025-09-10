@@ -14,6 +14,10 @@ else
   AUDIO=""
 fi
 
+toggle_recording_indicator() {
+  pkill -RTMIN+8 waybar
+}
+
 screenrecording() {
   filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
 
@@ -23,17 +27,15 @@ screenrecording() {
     wl-screenrec $AUDIO -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@" &
   fi
 
-  # Reveal recording indicator
-  pkill -RTMIN+8 waybar
+  toggle_recording_indicator
 }
 
 stop_screenrecording() {
   pkill -x wl-screenrec
   pkill -x wf-recorder
-  notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
 
-  # Reveal recording indicator
-  pkill -RTMIN+8 waybar
+  toggle_recording_indicator
+  notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
 }
 
 if pgrep -x wl-screenrec >/dev/null || pgrep -x wf-recorder >/dev/null; then
