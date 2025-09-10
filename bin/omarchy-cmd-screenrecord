@@ -24,7 +24,7 @@ screenrecording() {
   else
     wl-screenrec $AUDIO -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@"
   fi
-}wl-screenrec
+}
 
 if pgrep -x wl-screenrec >/dev/null || pgrep -x wf-recorder >/dev/null; then
   pkill -x wl-screenrec
