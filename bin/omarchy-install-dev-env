@@ -1,12 +1,12 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure>" >&2
   exit 1
 fi
 
 install_php() {
-  sudo pacman -S php composer php-sqlite --noconfirm
+  sudo pacman -S php composer php-sqlite xdebug --noconfirm
 
   # Install Path for Composer
   if [[ ":$PATH:" != *":$HOME/.config/composer/vendor/bin:"* ]]; then
@@ -27,6 +27,12 @@ install_php() {
     "pdo_sqlite"
     "pdo_mysql"
   )
+
+  # Enable Xdebug
+  sudo sed -i \
+    -e 's/^;zend_extension=xdebug.so/zend_extension=xdebug.so/' \
+    -e 's/^;xdebug.mode=debug/xdebug.mode=debug/' \
+    /etc/php/conf.d/xdebug.ini
 
   for ext in "${extensions_to_enable[@]}"; do
     sudo sed -i "s/^;extension=${ext}/extension=${ext}/" "$php_ini_path"
@@ -124,5 +130,10 @@ ocaml)
 dotnet)
   echo -e "Installing .NET...\n"
   mise use --global dotnet@latest
+  ;;
+clojure)
+  echo -e "Installing Clojure...\n"
+  omarchy-pkg-add rlwrap
+  mise use --global clojure@latest
   ;;
 esac

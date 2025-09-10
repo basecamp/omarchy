@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Ensure git settings live under ~/.config
+mkdir -p ~/.config/git
+touch ~/.config/git/config
+
 # Set common git aliases
 git config --global alias.co checkout
 git config --global alias.br branch
