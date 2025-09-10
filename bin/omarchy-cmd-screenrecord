@@ -34,8 +34,10 @@ stop_screenrecording() {
   pkill -x wl-screenrec
   pkill -x wf-recorder
 
-  toggle_recording_indicator
   notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+
+  sleep 1
+  toggle_recording_indicator
 }
 
 if pgrep -x wl-screenrec >/dev/null || pgrep -x wf-recorder >/dev/null; then
