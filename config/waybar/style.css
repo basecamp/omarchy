@@ -63,26 +63,12 @@ tooltip {
   opacity: 0;
 }
 
+#custom-screen-rec-indicator {
+  min-width: 12px;
+  margin-left: 8.75px;
+  font-size: 10px;
+}
+
 #custom-screen-rec-indicator.recording {
-  color: red;
-  font-weight: bold;
-  animation: pulse 2s infinite;
-}
-
-#custom-screen-rec-indicator.idle {
-  color: transparent;
-}
-
-@keyframes pulse {
-  0% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.2;
-  }
-
-  100% {
-    opacity: 1;
-  }
+  color: #a55555;
 }
