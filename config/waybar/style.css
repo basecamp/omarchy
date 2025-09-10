@@ -37,6 +37,7 @@
 #bluetooth,
 #pulseaudio,
 #custom-omarchy,
+#custom-screen-rec-indicator,
 #custom-update {
   min-width: 12px;
   margin: 0 7.5px;
@@ -60,4 +61,13 @@ tooltip {
 
 .hidden {
   opacity: 0;
+}
+
+#custom-screen-rec-indicator.recording {
+    color: red;
+    font-weight: bold;
+}
+
+#custom-screen-rec-indicator.idle {
+    color: transparent; /* hides it when idle */
 }

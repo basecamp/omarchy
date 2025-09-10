@@ -7,6 +7,7 @@
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
   "modules-center": ["clock", "custom/update"],
   "modules-right": [
+    "custom/screen-rec-indicator",
     "group/tray-expander",
     "bluetooth",
     "network",
@@ -123,6 +124,12 @@
   "custom/expand-icon": {
     "format": " ",
     "tooltip": false
+  },
+  "custom/screen-rec-indicator": {
+    "on-click": "omarchy-cmd-screenrecord",
+    "exec": "~/.config/waybar/scripts/screen-rec-indicator.sh",
+    "interval": 1,
+    "return-type": "json"
   },
   "tray": {
     "icon-size": 12,
