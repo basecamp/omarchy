@@ -25,9 +25,7 @@ present_terminal() {
   alacritty --class Omarchy -e bash -c "$1"
 }
 
-# Main function
 main() {
-  # -- Step 1: get all monitors info --
   monitors_json=$(hyprctl monitors -j)
 
   if [[ -z "$monitors_json" || "$monitors_json" == "[]" ]]; then
@@ -35,25 +33,32 @@ main() {
     exit 1
   fi
 
-  # -- Step 2: select a monitor --
-  monitor_list=$(echo "$monitors_json" | jq -r '.[] |
-    .name + "\t" +
-    (.width|tostring) + "x" + (.height|tostring) + "@" + ((.refreshRate|floor)|tostring) + "Hz" +
-    (if .focused then " (current)" else "" end)')
+  monitor_count=$(echo "$monitors_json" | jq 'length')
 
-  focused_monitor=$(echo "$monitors_json" | jq -r '.[] | select(.focused) | .name')
+  if (( monitor_count == 1 )); then
+    # Only one monitor, no prompt
+    monitor_name=$(echo "$monitors_json" | jq -r '.[0].name')
+    monitor_details=$(echo "$monitors_json" | jq '.[0]')
+  else
+    # Multiple monitors → prompt
+    monitor_list=$(echo "$monitors_json" | jq -r '.[] |
+      .name + "\t" +
+      (.width|tostring) + "x" + (.height|tostring) + "@" + ((.refreshRate|floor)|tostring) + "Hz" +
+      (if .focused then " (current)" else "" end)')
 
-  selected_monitor_line=$(menu "Which monitor to configure" "$monitor_list" "" "$focused_monitor")
+    focused_monitor=$(echo "$monitors_json" | jq -r '.[] | select(.focused) | .name')
 
-  if [[ -z "$selected_monitor_line" ]]; then
-    echo "No selection. Operation cancelled."
-    exit 0
+    selected_monitor_line=$(menu "Which monitor to configure" "$monitor_list" "" "$focused_monitor")
+    if [[ -z "$selected_monitor_line" ]]; then
+      echo "No selection. Operation cancelled."
+      exit 0
+    fi
+
+    monitor_name=$(echo "$selected_monitor_line" | cut -f1)
+    monitor_details=$(echo "$monitors_json" | jq --arg MON "$monitor_name" '.[] | select(.name == $MON)')
   fi
 
-  monitor_name=$(echo "$selected_monitor_line" | cut -f1)
-  monitor_details=$(echo "$monitors_json" | jq --arg MON "$monitor_name" '.[] | select(.name == $MON)')
-
-  # -- Step 3: select a resolution --
+  # Step 3: resolution
   available_modes=$(echo "$monitor_details" | jq -r '.availableModes[]')
   current_mode=$(echo "$monitor_details" | jq -r '"\(.width)x\(.height)@\(.refreshRate | floor)Hz"')
 
@@ -62,10 +67,9 @@ main() {
     echo "No selection. Operation cancelled."
     exit 0
   fi
-
   chosen_mode=$(echo "$chosen_mode_raw" | sed -E 's/@([0-9]+)\.[0-9]+Hz/@\1Hz/' | cut -d' ' -f1)
 
-  # -- Step 4: select scale --
+  # Step 4: scale
   scale_options="1.00\n1.25\n1.50\n1.75\n2.00"
   current_scale=$(echo "$monitor_details" | jq -r '.scale')
 
@@ -75,7 +79,7 @@ main() {
     exit 0
   fi
 
-  # -- Step 5: prepare the terminal script --
+  # Step 5: terminal script
   position=$(echo "$monitor_details" | jq -r '"\(.x)x\(.y)"')
   cmd="hyprctl keyword monitor \"$monitor_name,${chosen_mode},$position,$chosen_scale\""
 
