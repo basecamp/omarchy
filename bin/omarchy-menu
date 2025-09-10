@@ -2,9 +2,6 @@
 
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 
-# Set to true when going directly to a submenu, so we can exit directly
-BACK_TO_EXIT=false
-
 back_to() {
   local parent_menu="$1"
 
@@ -432,7 +429,8 @@ go_to_menu() {
 }
 
 if [[ -n "$1" ]]; then
-  BACK_TO_EXIT=true
+  # Set to true when going directly to a submenu, so we can exit directly
+  DIRECT_ACCESS=true
   go_to_menu "$1"
 else
   show_main_menu
