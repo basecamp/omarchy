@@ -39,6 +39,11 @@ else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
 
+# Apply VS Code theme if it exists
+if [[ -f ~/.config/omarchy/current/theme/vscode.sh ]]; then
+  source ~/.config/omarchy/current/theme/vscode.sh
+fi
+
 # Change Chromium colors
 if command -v chromium &>/dev/null; then
   if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
