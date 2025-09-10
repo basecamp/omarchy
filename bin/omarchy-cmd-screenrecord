@@ -20,9 +20,9 @@ screenrecording() {
   sleep 1
 
   if lspci | grep -Eqi 'nvidia|intel.*graphics'; then
-    wf-recorder $AUDIO -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@"
+    wf-recorder $AUDIO -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@" SIGRTMIN &
   else
-    wl-screenrec $AUDIO -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@"
+    wl-screenrec $AUDIO -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@" &
   fi
 }
 
@@ -36,3 +36,5 @@ else
   region=$(slurp) || exit 1
   screenrecording -g "$region"
 fi
+
+pkill -RTMIN+8 waybar
