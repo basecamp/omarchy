@@ -152,7 +152,7 @@ main() {
   fi
 
   # Ask the user if he want to save the configuration or just apply it once
-  action=$(menu "Action" "Apply once\nSave configuration" "" "Save configuration")
+  action=$(menu "Action" "Apply once\nSave configuration" "" "")
   if [[ -z "$action" ]]; then
     echo "No selection. Operation cancelled."
     exit 0
