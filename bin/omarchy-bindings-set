@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# omarchy-bindings-set: Set a binding set, specified by its name.
+# Usage: omarchy-bindings-set <binding-set-name>
+
+if [[ -z "$1" || "$1" == "CNCLD" ]]; then
+  echo "Usage: omarchy-bindings-set <binding-set-name>" >&2
+  exit 1
+fi
+
+DISPLAY_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g')
+BINDING_NAME=$(echo "$DISPLAY_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+
+BINDINGS_DIR="$HOME/.config/omarchy/bindings"
+BINDING_PATH="$BINDINGS_DIR/$BINDING_NAME"
+CURRENT_BINDINGS_DIR="$HOME/.config/omarchy/current/bindings"
+
+# Check if the binding set exists
+if [[ ! -d "$BINDING_PATH" ]]; then
+  echo "Binding set '$BINDING_NAME' does not exist in $BINDINGS_DIR" >&2
+  exit 2
+fi
+
+# Check if metadata.json exists (validate binding set)
+if [[ ! -f "$BINDING_PATH/metadata.json" ]]; then
+  echo "Invalid binding set '$BINDING_NAME' - missing metadata.json" >&2
+  exit 3
+fi
+
+# Create the current directory if it doesn't exist
+mkdir -p "$(dirname "$CURRENT_BINDINGS_DIR")"
+
+# Update symlink
+ln -nsf "$BINDING_PATH" "$CURRENT_BINDINGS_DIR"
+
+# Reload Hyprland configuration
+if command -v hyprctl >/dev/null 2>&1; then
+  hyprctl reload 2>/dev/null || echo "Warning: Could not reload Hyprland configuration"
+fi
+
+echo "Switched to binding set: $DISPLAY_NAME"

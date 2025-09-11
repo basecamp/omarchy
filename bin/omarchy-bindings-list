@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy-bindings-list: List all available binding sets
+# Usage: omarchy-bindings-list
+
+find ~/.config/omarchy/bindings/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | sort | while read -r path; do
+  if [[ -f "$path/metadata.json" ]]; then
+    echo "$(basename "$path" | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g')"
+  fi
+done
