@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
-  echo -e "\nCreate a shortcut for your web app.\n"
+  echo -e "\e[32mCreate a shortcut for your web app.\n\e[0m"
 
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
@@ -27,53 +27,49 @@ fi
 
 declare -A BROWSER_BINARIES=(
   [Chromium]=chromium
-  [Google_Chrome]=google-chrome-stable
+  [Google Chrome]=google-chrome-stable
   [Brave]=brave
-  [Microsoft_Edge]=microsoft-edge-stable
+  [Microsoft Edge]=microsoft-edge-stable
   [Vivaldi]=vivaldi
 )
 
 BROWSERS=()
 for name in "${!BROWSER_BINARIES[@]}"; do
-  bin="${BROWSER_BINARIES[$name]}"
-  if command -v "$bin" >/dev/null 2>&1; then
+  if command -v "${BROWSER_BINARIES[$name]}" >/dev/null 2>&1; then
     BROWSERS+=("$name")
   fi
 done
 
 BROWSER_CHOICE=$(gum choose --header "Which browser?" "${BROWSERS[@]}")
-BROWSER="$BROWSER_CHOICE"
-BROWSER_BIN="${BROWSER_BINARIES[$BROWSER]}"
+BROWSER_BIN="${BROWSER_BINARIES[$BROWSER_CHOICE]}"
 
 declare -A BROWSER_CONFIG_DIRS=(
   [Chromium]="$HOME/.config/chromium"
-  [Google_Chrome]="$HOME/.config/google-chrome"
+  [Google Chrome]="$HOME/.config/google-chrome"
   [Brave]="$HOME/.config/BraveSoftware/Brave-Browser"
-  [Microsoft_Edge]="$HOME/.config/microsoft-edge"
+  [Microsoft Edge]="$HOME/.config/microsoft-edge"
   [Vivaldi]="$HOME/.config/vivaldi"
 )
 
-PROFILE_DIR="${BROWSER_CONFIG_DIRS[$BROWSER]:-$HOME/.config/$BROWSER}"
+ PROFILE_DIR="${BROWSER_CONFIG_DIRS[$BROWSER_CHOICE]:-$HOME/.config/$BROWSER_CHOICE}"
 
 declare -A PROFILE_MAP
 PROFILES=()
 
 if [ -f "$PROFILE_DIR/Local State" ]; then
-  while IFS= read -r line; do
-    folder=$(echo "$line" | cut -d'|' -f1)
-    name=$(echo "$line" | cut -d'|' -f2)
+  mapfile -t profile_data < <(jq -r '.profile.info_cache | to_entries[] | "\(.key)|\(.value.name)"' \
+    "$PROFILE_DIR/Local State" 2>/dev/null || true)
+  for line in "${profile_data[@]}"; do
+    IFS='|' read -r folder name <<<"$line"
     PROFILES+=("$name")
     PROFILE_MAP["$name"]="$folder"
-  done < <( jq -r '.profile.info_cache | to_entries[] | "\(.key)|\(.value.name)"' "$PROFILE_DIR/Local State" 2>/dev/null || true )
-fi
-
-if [ ${#PROFILES[@]} -eq 0 ] && [ -d "$PROFILE_DIR" ]; then
-  for d in "$PROFILE_DIR"/*; do
+  done
+elif [ -d "$PROFILE_DIR" ]; then
+  for d in "$PROFILE_DIR"/Profile*; do
+    [[ -d "$d" ]] || continue
     bn=$(basename "$d")
-    if [[ "$bn" == "Default" || "$bn" == "Profile "* || "$bn" == Profile* ]]; then
-      PROFILES+=("$bn")
-      PROFILE_MAP["$bn"]="$bn"
-    fi
+    PROFILES+=("$bn")
+    PROFILE_MAP["$bn"]="$bn"
   done
 fi
 
@@ -88,8 +84,6 @@ else
   APP_PROFILE_NAME=$(gum choose --header "Select browser profile" "${PROFILES[@]}")
 fi
 
-APP_PROFILES="${PROFILE_MAP[$APP_PROFILE_NAME]}"
-
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications"
 mkdir -p "$ICON_DIR" "$DESKTOP_DIR"
@@ -98,27 +92,8 @@ DESKTOP_SAFE_NAME="${APP_NAME// /_}"
 DESKTOP_FILE="$DESKTOP_DIR/$DESKTOP_SAFE_NAME.desktop"
 ICON_PATH="$ICON_DIR/$DESKTOP_SAFE_NAME.png"
 
-SEARCH_PATHS=("$HOME/.local/share/applications" "$HOME/.nix-profile/share/applications" "/usr/share/applications")
-BROWSER_DESKTOP_CANDIDATES=(
-  "${BROWSER_BIN}.desktop"
-  "${BROWSER_BIN}-stable.desktop"
-  "google-chrome.desktop"
-  "chromium.desktop"
-  "microsoft-edge.desktop"
-  "microsoft-edge-stable.desktop"
-)
-BROWSER_DESKTOP=""
-for cand in "${BROWSER_DESKTOP_CANDIDATES[@]}"; do
-  for p in "${SEARCH_PATHS[@]}"; do
-    if [ -f "$p/$cand" ]; then
-      BROWSER_DESKTOP="$cand"
-      break 2
-    fi
-  done
-done
-
 DESKTOP_ICON_VALUE=""
-if [[ -n "${ICON_URL:-}" ]]; then
+if [[ -n "$ICON_URL" ]]; then
   if curl -sL -o "$ICON_PATH" "$ICON_URL"; then
     DESKTOP_ICON_VALUE="$ICON_PATH"
   else
@@ -142,7 +117,7 @@ cat >"$DESKTOP_FILE" <<EOF
 Version=1.0
 Name=$APP_NAME
 Comment=$APP_NAME
-Exec=omarchy-launch-webapp "$APP_URL" "$APP_PROFILES" "$BROWSER_BIN"
+Exec=omarchy-launch-webapp "$APP_URL" "${PROFILE_MAP[$APP_PROFILE_NAME]}" "$BROWSER_BIN"
 Terminal=false
 Type=Application
 Icon=$DESKTOP_ICON_VALUE

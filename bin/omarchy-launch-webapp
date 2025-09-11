@@ -1,30 +1,9 @@
 #!/bin/bash
+
 set -euo pipefail
 
-APP_URL="${1:-}"
-PROFILE="${2:-}"
-BROWSER_BIN="${3:-}"
+APP_URL="$1"
+PROFILE="${2:-Default}"
+BROWSER_BIN="${3:-chromium}"
 
-if [[ -z "$APP_URL" ]]; then
-  echo "Usage: omarchy-launch-webapp <app-url> [profile-dir-name] [browser-binary]" >&2
-  exit 1
-fi
-
-if [[ -z "$PROFILE" ]]; then
-  PROFILE="Default"
-fi
-if [[ -z "$BROWSER_BIN" ]]; then
-  BROWSER_BIN="chromium"
-fi
-
-declare -A BROWSER_USERDATA_DIR=(
-  [chromium]="$HOME/.config/chromium"
-  [google-chrome-stable]="$HOME/.config/google-chrome"
-  [brave]="$HOME/.config/BraveSoftware/Brave-Browser"
-  [microsoft-edge-stable]="$HOME/.config/microsoft-edge"
-  [vivaldi]="$HOME/.config/vivaldi"
-)
-
-USER_DATA_DIR="${BROWSER_USERDATA_DIR[$BROWSER_BIN]:-$HOME/.config/$BROWSER_BIN}"
-
-exec setsid uwsm app -- "$BROWSER_BIN" --user-data-dir="$USER_DATA_DIR" --profile-directory="$PROFILE" --app="$APP_URL"
+exec setsid uwsm app -- "$BROWSER_BIN" --profile-directory="$PROFILE" --app="$APP_URL"
