@@ -9,7 +9,7 @@ sudo ufw allow 53317/udp
 sudo ufw allow 53317/tcp
 
 # Allow SSH in
-sudo ufw allow OpenSSH
+sudo ufw allow ssh
 
 # Allow Docker containers to use DNS on host
 sudo ufw allow in proto udp from 172.16.0.0/12 to 172.17.0.1 port 53 comment 'allow-docker-dns'
