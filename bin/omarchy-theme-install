@@ -15,7 +15,7 @@ if [ -z "$REPO_URL" ]; then
 fi
 
 THEMES_DIR="$HOME/.config/omarchy/themes"
-THEME_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-theme$//')
+THEME_NAME=$(basename "$REPO_URL" .git | sed -E 's/^(omarchy|omacom)-//; s/-theme$//')
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Remove existing theme if present

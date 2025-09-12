@@ -11,7 +11,7 @@ sudo gtk-update-icon-cache /usr/share/icons/Yaru
 
 # Setup theme links
 mkdir -p ~/.config/omarchy/themes
-for f in ~/.local/share/omarchy/themes/*; do ln -nfs "$f" ~/.config/omarchy/themes/; done
+for f in ~/.local/share/omacom-core/themes/*; do ln -nfs "$f" ~/.config/omarchy/themes/; done
 
 # Set initial theme
 mkdir -p ~/.config/omarchy/current
