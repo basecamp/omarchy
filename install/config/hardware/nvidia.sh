@@ -22,12 +22,28 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
 
   # Check which kernel is installed and set appropriate headers package
   KERNEL_HEADERS="linux-headers" # Default
+  KERNEL_TYPE="linux"
+  
   if pacman -Q linux-zen &>/dev/null; then
     KERNEL_HEADERS="linux-zen-headers"
+    KERNEL_TYPE="linux-zen"
   elif pacman -Q linux-lts &>/dev/null; then
     KERNEL_HEADERS="linux-lts-headers"
+    KERNEL_TYPE="linux-lts"
   elif pacman -Q linux-hardened &>/dev/null; then
     KERNEL_HEADERS="linux-hardened-headers"
+    KERNEL_TYPE="linux-hardened"
+  fi
+
+  # Determine pre-compiled package name
+  if echo "$(lspci | grep -i 'nvidia')" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
+    NVIDIA_PRECOMPILED_PACKAGE="nvidia-open"
+  else
+    NVIDIA_PRECOMPILED_PACKAGE="nvidia"
+  fi
+  
+  if [ "$KERNEL_TYPE" != "linux" ]; then
+    NVIDIA_PRECOMPILED_PACKAGE="${NVIDIA_PRECOMPILED_PACKAGE}-${KERNEL_TYPE#linux-}"
   fi
 
   # Enable multilib repository for 32-bit libraries
@@ -38,17 +54,58 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
   # force package database refresh
   sudo pacman -Syu --noconfirm
 
-  # Install packages
-  PACKAGES_TO_INSTALL=(
-    "${KERNEL_HEADERS}"
-    "${NVIDIA_DRIVER_PACKAGE}"
-    "nvidia-utils"
-    "lib32-nvidia-utils"
-    "egl-wayland"
-    "libva-nvidia-driver" # For VA-API hardware acceleration
-    "qt5-wayland"
-    "qt6-wayland"
-  )
+  # Ask user which driver type to install
+  echo
+  echo "NVIDIA GPU detected. Please select driver installation method:"
+  echo "1) DKMS drivers (automatically rebuild with kernel updates)"
+  echo "2) Pre-compiled drivers (faster install, manual updates needed)"
+  echo
+  
+  if command -v gum >/dev/null; then
+    CHOICE=$(gum choose "DKMS drivers" "Pre-compiled drivers")
+    if [ "$CHOICE" = "DKMS drivers" ]; then
+      USE_DKMS=true
+    else
+      USE_DKMS=false
+    fi
+  else
+    read -p "Enter choice (1 or 2): " DRIVER_CHOICE
+    if [ "$DRIVER_CHOICE" = "1" ]; then
+      USE_DKMS=true
+    else
+      USE_DKMS=false
+    fi
+  fi
+
+  # Install based on user choice
+  if [ "$USE_DKMS" = true ]; then
+    echo "Installing NVIDIA drivers with DKMS support..."
+    echo "Using package: ${NVIDIA_DRIVER_PACKAGE}"
+    
+    PACKAGES_TO_INSTALL=(
+      "${KERNEL_HEADERS}"
+      "${NVIDIA_DRIVER_PACKAGE}"
+      "nvidia-utils"
+      "lib32-nvidia-utils"
+      "egl-wayland"
+      "libva-nvidia-driver" # For VA-API hardware acceleration
+      "qt5-wayland"
+      "qt6-wayland"
+    )
+  else
+    echo "Installing pre-compiled NVIDIA drivers..."
+    echo "Using package: ${NVIDIA_PRECOMPILED_PACKAGE}"
+    
+    PACKAGES_TO_INSTALL=(
+      "${NVIDIA_PRECOMPILED_PACKAGE}"
+      "nvidia-utils"
+      "lib32-nvidia-utils"
+      "egl-wayland"
+      "libva-nvidia-driver" # For VA-API hardware acceleration
+      "qt5-wayland"
+      "qt6-wayland"
+    )
+  fi
 
   sudo pacman -S --needed --noconfirm "${PACKAGES_TO_INSTALL[@]}"
 
