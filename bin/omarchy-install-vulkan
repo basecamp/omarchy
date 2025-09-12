@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# ==============================================================================
+# Hyprland Vulkan Setup Script for Arch Linux
+# ==============================================================================
+# This script automates the installation of VULKAN drivers
+# for use with Hyprland on Arch Linux, following the official Hyprland wiki.
+#
+# Author: https://github.com/elbrodino inspired by Kn0ax
+#
+# ==============================================================================
+
+# --- Listing all GPU to check for, with their plugin name ---
+# we're assuming they start with 'vulkan-'
+declare -A GPU_list
+GPU_list[Intel]="intel"
+GPU_list[AMD]="radeon"
+GPU_list[Apple]="asahi"
+GPU_list[NVIDIA]="nouveau"
+
+# --- GPU Detection --
+for i in "${!GPU_list[@]}"; do
+    if lspci | grep -i "Display controller: $i"||
+       lspci | grep -i "VGA compatible controller: $i" ; then
+        VULKAN_DRIVER_PACKAGE+="vulkan-${GPU_list[$i]}"
+    else
+        exit 1
+    fi
+done
+
+# --- Install package ---
+if [[ -v VULKAN_DRIVER_PACKAGE ]]; then
+    if [[ $ans == "y" ]] ; then
+        sudo pacman -S --needed --noconfirm "$VULKAN_DRIVER_PACKAGE"
+    else
+        exit 1
+    fi
+else
+    exit 1
+fi
