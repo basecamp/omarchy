@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Toggle macOS-style keyboard shortcuts on/off
+
+SHORTCUTS_DIR="$HOME/.config/omarchy/macos-shortcuts"
+CURRENT_LINK="$HOME/.config/omarchy/current/macos-shortcuts"
+
+# Create the current directory if it doesn't exist
+mkdir -p "$(dirname "$CURRENT_LINK")"
+
+# Check current state and toggle
+if [[ $(readlink "$CURRENT_LINK" 2>/dev/null) == "$SHORTCUTS_DIR/enabled" ]]; then
+  # Currently enabled, disable it
+  ln -nsf "$SHORTCUTS_DIR/disabled" "$CURRENT_LINK"
+  notify-send "󰀵  macOS shortcuts disabled"
+else
+  # Currently disabled (or not set), enable it
+  ln -nsf "$SHORTCUTS_DIR/enabled" "$CURRENT_LINK"
+  notify-send "󰀵  macOS shortcuts enabled"
+fi
+
+# Reload Hyprland configuration
+hyprctl reload
