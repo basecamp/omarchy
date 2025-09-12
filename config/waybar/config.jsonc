@@ -85,8 +85,9 @@
       "default": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
     },
     "format-full": "󰂅",
-    "tooltip-format-discharging": "{power:>1.0f}W↓ {capacity}%",
-    "tooltip-format-charging": "{power:>1.0f}W↑ {capacity}%",
+    "tooltip-format-discharging": "{power:>1.0f}W↓\n  {capacity}%\n {health}%",
+    "tooltip-format-charging": "{power:>1.0f}W↑\n  {capacity}%\n {health}%",
+    "tooltip-format-full": "  {capacity}%\n {health}%",
     "interval": 5,
     "on-click": "omarchy-menu power",
     "states": {
