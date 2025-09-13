@@ -19,7 +19,7 @@ EOF
     limine_config="/boot/limine/limine.conf"
   fi
 
-  # Double-check and exit if we don't have a config file for some reason
+  # Double-check and exit if we don't have a config file for some reason -- this is bad
   if [[ ! -f "$limine_config" ]]; then
     echo "Error: Limine config not found at $limine_config" >&2
     exit 1
