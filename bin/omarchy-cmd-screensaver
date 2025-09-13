@@ -1,6 +1,7 @@
 #!/bin/bash
 
 function exit_screensaver {
+  hyprctl keyword cursor:invisible false
   pkill -x tte 2>/dev/null
   pkill -f "alacritty --class Screensaver" 2>/dev/null
   exit 0
