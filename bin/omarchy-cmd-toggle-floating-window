@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# Toggle floating state of the active window
+# When toggling to floating, auto-maximize and center the window
+
+# Configuration via environment variables
+FLOATING_WIDTH="${OMARCHY_FLOATING_WIDTH:-80%}"
+FLOATING_HEIGHT="${OMARCHY_FLOATING_HEIGHT:-93%}"
+
+# Check for required dependencies
+if ! command -v hyprctl &> /dev/null; then
+  echo "Error: hyprctl not found. Is Hyprland running?" >&2
+  exit 1
+fi
+
+if ! command -v jq &> /dev/null; then
+  echo "Error: jq not found. Please install jq." >&2
+  exit 1
+fi
+
+# Get the active window info
+window_info=$(hyprctl activewindow -j 2>/dev/null)
+
+# Check if there's an active window
+if [[ -z "$window_info" ]] || [[ "$window_info" == "null" ]]; then
+  echo "No active window found" >&2
+  exit 1
+fi
+
+# Get current floating state
+is_floating=$(echo "$window_info" | jq -r '.floating')
+
+if [[ "$is_floating" == "true" ]]; then
+  # Window is floating, toggle back to tiling
+  hyprctl dispatch togglefloating
+else
+  # Window is tiled, toggle to floating and auto-maximize
+  hyprctl dispatch togglefloating
+
+  # Small delay to ensure the floating state is applied
+  sleep 0.05
+
+  # Resize and center the window
+  hyprctl dispatch resizeactive exact "$FLOATING_WIDTH" "$FLOATING_HEIGHT"
+  hyprctl dispatch centerwindow
+fi
