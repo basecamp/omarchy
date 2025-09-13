@@ -7,15 +7,41 @@ if [[ -z "$latest_tag" ]]; then
   exit 1
 fi
 
-# Get local tag
-current_tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
-if [[ -z "$current_tag" ]]; then
-  echo "Error: Could not retrieve current tag."
-  exit 1
-fi
+latest_tag=$(omarchy-version latest)
+current_tag=$(omarchy-version)
 
 if [[ "$current_tag" != "$latest_tag" ]]; then
-  echo "Omarchy update available ($latest_tag)"
+  echo "Omarchy update available $current_tag → $latest_tag"
+  echo
+
+  all_tags=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V)
+
+  if [[ "$1" != "--no-release-notes" ]]; then
+    # Find tags newer than current_tag up to and including the latest_tag
+    newer_tags=""
+    found_current=false
+    while IFS= read -r tag; do
+      if [[ "$found_current" == true ]]; then
+        newer_tags="$tag $newer_tags"  # Prepend in reverse order
+        if [[ "$tag" == "$latest_tag" ]]; then
+          break
+        fi
+      elif [[ "$tag" == "$current_tag" ]]; then
+        found_current=true
+      fi
+    done <<< "$all_tags"
+
+    # If there are newer tags, iterate and display release notes for each
+    if [[ -n "$newer_tags" ]]; then
+      for tag in $newer_tags; do
+        omarchy-release-notes "$tag"
+      done
+    else
+      # Fallback: show notes for latest version only
+      omarchy-release-notes latest
+    fi
+  fi
+
   exit 0
 else
   echo "Omarchy is up to date ($current_tag)"
