@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# Upload logs to 0x0.st
+
+LOG_TYPE="${1:-install}"
+TEMP_LOG="/tmp/upload-log.txt"
+SYSTEM_INFO="/tmp/system-info.txt"
+
+# Get system information if fastfetch is available
+if command -v fastfetch >/dev/null 2>&1; then
+  {
+    echo "========================================="
+    echo "SYSTEM INFORMATION"
+    echo "========================================="
+    # Use fastfetch with no logo to get clean output
+    fastfetch --logo none --pipe 2>/dev/null || echo "Failed to get system info"
+    echo ""
+    echo "========================================="
+    echo "LOG CONTENT"
+    echo "========================================="
+    echo ""
+  } >"$SYSTEM_INFO"
+else
+  # Fallback to basic info if fastfetch isn't available
+  {
+    echo "========================================="
+    echo "SYSTEM INFORMATION"
+    echo "========================================="
+    echo "Hostname: $(hostname)"
+    echo "Kernel: $(uname -r)"
+    echo "Date: $(date)"
+    echo ""
+    echo "========================================="
+    echo "LOG CONTENT"
+    echo "========================================="
+    echo ""
+  } >"$SYSTEM_INFO"
+fi
+
+case "$LOG_TYPE" in
+install)
+  ARCHINSTALL_LOG="/var/log/archinstall/install.log"
+  OMARCHY_LOG="/var/log/omarchy-install.log"
+
+  # Combine system info with logs
+  cat "$SYSTEM_INFO" >"$TEMP_LOG"
+  cat $ARCHINSTALL_LOG $OMARCHY_LOG >>"$TEMP_LOG" 2>/dev/null
+
+  if [ ! -s "$TEMP_LOG" ]; then
+    echo "Error: No install logs found"
+    exit 1
+  fi
+
+  echo "Uploading installation log to 0x0.st..."
+  ;;
+
+this-boot)
+  # Combine system info with boot logs
+  cat "$SYSTEM_INFO" >"$TEMP_LOG"
+  journalctl -b 0 >>"$TEMP_LOG" 2>/dev/null
+
+  if [ ! -s "$TEMP_LOG" ]; then
+    echo "Error: No logs found for current boot"
+    exit 1
+  fi
+
+  echo "Uploading current boot logs to 0x0.st..."
+  ;;
+
+last-boot)
+  # Combine system info with previous boot logs
+  cat "$SYSTEM_INFO" >"$TEMP_LOG"
+  journalctl -b -1 >>"$TEMP_LOG" 2>/dev/null
+
+  if [ ! -s "$TEMP_LOG" ]; then
+    echo "Error: No logs found for previous boot"
+    exit 1
+  fi
+
+  echo "Uploading previous boot logs to 0x0.st..."
+  ;;
+
+installed)
+  # System info plus all installed packages
+  cat "$SYSTEM_INFO" >"$TEMP_LOG"
+  {
+    echo ""
+    echo "========================================="
+    echo "INSTALLED PACKAGES (pacman -Q)"
+    echo "========================================="
+    pacman -Q 2>/dev/null || echo "Failed to get package list"
+  } >>"$TEMP_LOG"
+
+  if [ ! -s "$TEMP_LOG" ]; then
+    echo "Error: Failed to gather system information"
+    exit 1
+  fi
+
+  echo "Uploading system information to 0x0.st..."
+  ;;
+
+*)
+  echo "Usage: $0 [install|this-boot|last-boot|system-info]"
+  echo "  install      - Upload installation logs (default)"
+  echo "  this-boot    - Upload logs from current boot"
+  echo "  last-boot    - Upload logs from previous boot"
+  echo "  installed    - Upload system info and installed packages"
+  exit 1
+  ;;
+esac
+
+echo ""
+
+URL=$(curl -sF "file=@$TEMP_LOG" -Fexpires=24 https://0x0.st)
+
+if [ $? -eq 0 ] && [ -n "$URL" ]; then
+  echo "✓ Log uploaded successfully!"
+  echo "Share this URL:"
+  echo ""
+  echo "  $URL"
+  echo ""
+  echo "This link will expire in 24 hours."
+else
+  echo "Error: Failed to upload log file"
+  exit 1
+fi

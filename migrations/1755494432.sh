@@ -1,3 +1,3 @@
 echo "Disable USB autosuspend"
 
-$OMARCHY_PATH/install/config/hardware/usb-autosuspend.sh
+bash "$OMARCHY_PATH/install/config/hardware/usb-autosuspend.sh"

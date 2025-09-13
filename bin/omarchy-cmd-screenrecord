@@ -8,31 +8,47 @@ if [[ ! -d "$OUTPUT_DIR" ]]; then
   exit 1
 fi
 
-if [[ $2 == "audio" ]]; then
-  AUDIO="--audio"
-else
-  AUDIO=""
-fi
+# Selects region or output
+SCOPE="$1"
 
-screenrecording() {
+# Selects audio inclusion or not
+AUDIO=$([[ $2 == "audio" ]] && echo "--audio")
+
+start_screenrecording() {
   filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
-  notify-send "Screen recording starting..." -t 1000
-  sleep 1
 
   if lspci | grep -Eqi 'nvidia|intel.*graphics'; then
-    wf-recorder $AUDIO -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@"
+    wf-recorder $AUDIO -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@" &
   else
-    wl-screenrec $AUDIO -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@"
+    wl-screenrec $AUDIO -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@" &
   fi
+
+  toggle_screenrecording_indicator
 }
 
-if pgrep -x wl-screenrec >/dev/null || pgrep -x wf-recorder >/dev/null; then
+stop_screenrecording() {
   pkill -x wl-screenrec
   pkill -x wf-recorder
+
   notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
-elif [[ "$1" == "output" ]]; then
-  screenrecording
+
+  sleep 0.2 # ensures the process is actually dead before we check
+  toggle_screenrecording_indicator
+}
+
+toggle_screenrecording_indicator() {
+  pkill -RTMIN+8 waybar
+}
+
+screenrecording_active() {
+  pgrep -x wl-screenrec >/dev/null || pgrep -x wf-recorder >/dev/null
+}
+
+if screenrecording_active; then
+  stop_screenrecording
+elif [[ "$SCOPE" == "output" ]]; then
+  start_screenrecording
 else
   region=$(slurp) || exit 1
-  screenrecording -g "$region"
+  start_screenrecording -g "$region"
 fi
