@@ -14,12 +14,12 @@ if [[ $(uname -m) == "x86_64" ]]; then
 
   mkdir -p "$MISE_RUBY_DIR"
 
-  if [[ ${OMARCHY_INSTALL_MODE:-offline} == "offline" ]]; then
-    echo "Installing Ruby from offline cache..."
-    tar -xzf "${OFFLINE_CACHE}/${RUBY_TARBALL}" -C "$MISE_RUBY_DIR"
-  else
+  if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
     echo "Downloading pre-built Ruby ${RUBY_VERSION}..."
     curl -fsSL "$RUBY_URL" | tar -xz -C "$MISE_RUBY_DIR"
+  else
+    echo "Installing Ruby from offline cache..."
+    tar -xzf "${OFFLINE_CACHE}/${RUBY_TARBALL}" -C "$MISE_RUBY_DIR"
   fi
 
   mise use --global "ruby@${RUBY_VERSION}"
