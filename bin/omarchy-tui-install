@@ -40,7 +40,7 @@ cat >"$DESKTOP_FILE" <<EOF
 Version=1.0
 Name=$APP_NAME
 Comment=$APP_NAME
-Exec=alacritty --class $APP_CLASS -e $APP_EXEC
+Exec=$TERMINAL --class $APP_CLASS -e $APP_EXEC
 Terminal=false
 Type=Application
 Icon=$ICON_PATH
