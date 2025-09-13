@@ -8,6 +8,7 @@ broadcom-wl
 btrfs-progs
 dart
 dkms
+efibootmgr
 egl-wayland
 git
 git
@@ -15,6 +16,7 @@ gst-plugin-pipewire
 gtk4-layer-shell
 gum
 htop
+intel-media-driver
 intltool
 iwd
 jdk-openjdk
@@ -23,6 +25,8 @@ lib32-nvidia-utils
 libpulse
 libsass
 libva-intel-driver
+libva-intel-driver
+libva-mesa-driver
 libva-nvidia-driver
 limine
 limine-mkinitcpio-hook
@@ -30,6 +34,7 @@ limine-snapper-sync
 linux
 linux-firmware
 linux-headers
+mesa
 nvidia-dkms
 nvidia-open-dkms
 nvidia-utils
@@ -43,8 +48,12 @@ qt5-remoteobjects
 qt6-wayland
 sassc
 snapper
+sof-firmware
 tzupdate
 webp-pixbuf-loader
 wget
+xf86-video-amdgpu
+xf86-video-ati
+xf86-video-nouveau
 yay-debug
 zram-generator
