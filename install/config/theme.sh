@@ -22,3 +22,9 @@ ln -snf ~/.config/omarchy/current/theme/btop.theme ~/.config/btop/themes/current
 
 mkdir -p ~/.config/mako
 ln -snf ~/.config/omarchy/current/theme/mako.ini ~/.config/mako/config
+
+mkdir -p ~/.config/eza
+# Try to link eza theme, not all themes support eza
+if [ -f ~/.config/omarchy/current/theme/eza-theme.yml ]; then
+  ln -snf ~/.config/omarchy/current/theme/eza-theme.yml ~/.config/eza/theme.yml
+fi
