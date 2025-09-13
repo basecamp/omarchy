@@ -88,9 +88,8 @@ ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications"
 mkdir -p "$ICON_DIR" "$DESKTOP_DIR"
 
-DESKTOP_SAFE_NAME="${APP_NAME// /_}"
-DESKTOP_FILE="$DESKTOP_DIR/$DESKTOP_SAFE_NAME.desktop"
-ICON_PATH="$ICON_DIR/$DESKTOP_SAFE_NAME.png"
+DESKTOP_FILE="$DESKTOP_DIR/$APP_NAME.desktop"
+ICON_PATH="$ICON_DIR/$APP_NAME.png"
 
 DESKTOP_ICON_VALUE=""
 if [[ -n "$ICON_URL" ]]; then
