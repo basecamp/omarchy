@@ -1,4 +1,11 @@
 #!/bin/bash
 
+set -euo pipefail
+
+# Skip refresh if locked
+if omarchy-lock-check walker; then
+	exit 0
+fi
+
 omarchy-refresh-config walker/config.toml
 omarchy-restart-walker
