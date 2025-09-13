@@ -1,41 +1,6 @@
 if command -v limine &>/dev/null; then
-  # Detect MacBook models that need SPI keyboard modules
-  MACBOOK_SPI_MODULES=""
-  if [ -f "/sys/class/dmi/id/product_name" ]; then
-    PRODUCT_NAME=$(cat /sys/class/dmi/id/product_name 2>/dev/null)
-    if [[ "$PRODUCT_NAME" =~ MacBook12,1|MacBookPro13,[123]|MacBookPro14,[123] ]]; then
-      echo "Detected MacBook with SPI keyboard: $PRODUCT_NAME"
-      
-      # Ensure applespi driver is available
-      if ! modprobe -nq applespi 2>/dev/null && ! modinfo applespi &>/dev/null; then
-        if ! pacman -Qi macbook12-spi-driver-dkms &>/dev/null; then
-          echo "Installing macbook12-spi-driver-dkms for SPI keyboard support..."
-          if command -v yay &>/dev/null; then
-            yay -S --noconfirm macbook12-spi-driver-dkms
-          elif command -v paru &>/dev/null; then
-            paru -S --noconfirm macbook12-spi-driver-dkms
-          else
-            echo "Warning: AUR helper (yay/paru) not found. Please install macbook12-spi-driver-dkms manually:"
-            echo "  yay -S macbook12-spi-driver-dkms"
-            echo "WARNING: MacBook SPI keyboard will NOT work at LUKS prompt without manual driver installation"
-            
-            # Log warning to systemd journal for persistent troubleshooting
-            echo "WARNING: MacBook $PRODUCT_NAME detected but AUR helper not available. MacBook SPI driver not installed. Internal keyboard will not work at LUKS prompt. Manual installation required: yay -S macbook12-spi-driver-dkms" | systemd-cat -t omarchy -p warning
-          fi
-        fi
-      fi
-      
-      MACBOOK_SPI_MODULES="applespi intel_lpss_pci spi_pxa2xx_platform"
-      
-      # Log MacBook detection to systemd journal (boot log)
-      echo "MacBook SPI keyboard support configured for $PRODUCT_NAME" | systemd-cat -t macbook -p info
-    fi
-  fi
-
-  # Create mkinitcpio config with conditional MacBook modules
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
-$([ -n "$MACBOOK_SPI_MODULES" ] && echo "MODULES=($MACBOOK_SPI_MODULES)")
 EOF
 
   [[ -f /boot/EFI/limine/limine.conf ]] || [[ -f /boot/EFI/BOOT/limine.conf ]] && EFI=true
@@ -52,8 +17,8 @@ EOF
     limine_config="/boot/limine/limine.conf"
   fi
 
-  # Double-check and exit if we don't have a config file for some reason
-  if [[ ! -f $limine_config ]]; then
+  # Double-check and exit if we don't have a config file for some reason -- this is bad
+  if [[ ! -f "$limine_config" ]]; then
     echo "Error: Limine config not found at $limine_config" >&2
     exit 1
   fi
@@ -111,18 +76,6 @@ term_background_bright: 24283b
 EOF
 
   sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
-  
-  # Rebuild initramfs if MacBook modules were added
-  if [ -n "$MACBOOK_SPI_MODULES" ]; then
-    echo "Rebuilding initramfs for MacBook SPI keyboard support..."
-    sudo mkinitcpio -P
-    echo "MacBook SPI keyboard support integrated successfully" | tee >(systemd-cat -t macbook -p info)
-  elif [ -f "/sys/class/dmi/id/product_name" ] && [[ "$(cat /sys/class/dmi/id/product_name 2>/dev/null)" =~ MacBook12,1|MacBookPro13,[23]|MacBookPro14,[23] ]]; then
-    # MacBook was detected but modules weren't set (driver installation failed)
-    echo "WARNING: MacBook detected but SPI keyboard support could not be configured. Internal keyboard may not work during LUKS encryption prompt" | tee >(systemd-cat -t macbook -p warning)
-  fi
-  
-  sudo limine-update
 
   # Match Snapper configs if not installing from the ISO
   if [[ -z ${OMARCHY_CHROOT_INSTALL:-} ]]; then
