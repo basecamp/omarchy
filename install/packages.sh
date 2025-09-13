@@ -9,6 +9,7 @@ sudo pacman -S --noconfirm --needed \
   bash-completion \
   bat \
   blueberry \
+  bolt \
   brightnessctl \
   btop \
   cargo \
