@@ -1,4 +1,11 @@
 #!/bin/bash
 
 cmd="$*"
-setsid alacritty --class Omarchy -e bash -c "omarchy-show-logo; $cmd; omarchy-show-done"
+
+if [[ "$1" == "omarchy-webapp-install" ]]; then
+  presentation_part="clear; echo -e '\033[32m'; cat ~/.local/share/omarchy/webapp-logo.txt; echo -e '\033[0m'; echo"
+else
+  presentation_part="omarchy-show-logo"
+fi
+
+setsid alacritty --class Omarchy -e bash -c "$presentation_part; $cmd; omarchy-show-done"
