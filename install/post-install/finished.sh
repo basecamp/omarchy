@@ -7,15 +7,13 @@ echo_in_style() {
 clear
 tte -i ~/.local/share/omarchy/logo.txt --canvas-width 0 --anchor-text c --frame-rate 920 laseretch
 echo
-echo
-echo_in_style "You're done!"
 
 # Display installation time if available
 if [[ -f $OMARCHY_INSTALL_LOG_FILE ]] && grep -q "Total:" "$OMARCHY_INSTALL_LOG_FILE" 2>/dev/null; then
   echo
   TOTAL_TIME=$(tail -n 20 "$OMARCHY_INSTALL_LOG_FILE" | grep "^Total:" | sed 's/^Total:[[:space:]]*//')
   if [ -n "$TOTAL_TIME" ]; then
-    echo_in_style "Installation completed in $TOTAL_TIME"
+    echo_in_style "Installed in $TOTAL_TIME"
   fi
 fi
 
