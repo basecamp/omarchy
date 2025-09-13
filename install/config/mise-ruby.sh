@@ -24,3 +24,13 @@ if [[ $(uname -m) == "x86_64" ]]; then
 
   mise use --global "ruby@${RUBY_VERSION}"
 fi
+
+# Add ./bin to path for all items in ~/Work
+mkdir -p "$HOME/Work"
+
+cat >"$HOME/Work/.mise.toml" <<'EOF'
+[env]
+_.path = "{{ cwd }}/bin"
+EOF
+
+mise trust ~/Work/.mise.toml
