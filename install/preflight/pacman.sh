@@ -1,11 +1,11 @@
-#!/bin/bash
+if [[ ${OMARCHY_INSTALL_MODE:-offline} == "online" ]]; then
+  # Install build tools
+  sudo pacman -S --needed --noconfirm base-devel
 
-# Install build tools
-sudo pacman -S --needed --noconfirm base-devel
+  # Configure pacman
+  sudo cp -f ~/.local/share/omarchy/default/pacman/pacman.conf /etc/pacman.conf
+  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist /etc/pacman.d/mirrorlist
 
-# Configure pacman
-sudo cp -f ~/.local/share/omarchy/default/pacman/pacman.conf /etc/pacman.conf
-sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist /etc/pacman.d/mirrorlist
-
-# Refresh all repos
-sudo pacman -Syu --noconfirm
+  # Refresh all repos
+  sudo pacman -Syu --noconfirm
+fi

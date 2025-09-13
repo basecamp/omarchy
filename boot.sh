@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Set install mode to online since boot.sh is used for curl installations
+export OMARCHY_INSTALL_MODE="online"
+
 ansi_art='                 ▄▄▄                                                   
  ▄█████▄    ▄███████████▄    ▄███████   ▄███████   ▄███████   ▄█   █▄    ▄█   █▄ 
 ███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███

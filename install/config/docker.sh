@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # Configure Docker daemon:
 # - limit log size to avoid running out of disk
 # - use host's DNS resolver
