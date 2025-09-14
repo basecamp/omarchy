@@ -1,10 +1,7 @@
 #!/bin/bash
 
-# omarchy-theme-set: Set a theme, specified by its name.
-# Usage: omarchy-theme-set <theme-name>
-
-if [[ -z "$1" && "$1" != "CNCLD" ]]; then
-  echo "Usage: omarchy-theme-set <theme-name>" >&2
+if [[ -z $1 && $1 != "CNCLD" ]]; then
+  echo "Usage: omarchy-theme-set <theme-name>"
   exit 1
 fi
 
@@ -16,8 +13,8 @@ THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Check if the theme entered exists
 if [[ ! -d "$THEME_PATH" ]]; then
-  echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR" >&2
-  exit 2
+  echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR"
+  exit 1
 fi
 
 # Update theme symlinks
@@ -39,19 +36,24 @@ else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
 
-# Change Chromium colors
-if command -v chromium &>/dev/null; then
-  if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
-    chromium --no-startup-window --set-color-scheme="light"
-  else
-    chromium --no-startup-window --set-color-scheme="dark"
-  fi
-
+# Change browser colors via policies
+if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
   if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]]; then
-    chromium --no-startup-window --set-theme-color="$(<~/.config/omarchy/current/theme/chromium.theme)"
+    rgb=$(<~/.config/omarchy/current/theme/chromium.theme)
+    THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${rgb//,/ })
   else
     # Use a default, neutral grey if theme doesn't have a color
-    chromium --no-startup-window --set-theme-color="28,32,39"
+    THEME_HEX_COLOR="#1c2027"
+  fi
+
+  if omarchy-cmd-present chromium; then
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
+    chromium --refresh-platform-policy --no-startup-window
+  fi
+
+  if omarchy-cmd-present brave; then
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
+    brave --refresh-platform-policy --no-startup-window
   fi
 fi
 
