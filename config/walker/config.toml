@@ -18,9 +18,9 @@ anchor_right = true
 "default" = { input = "Start", list = "No Results" } # placeholders for input and empty list, key is the providers name, so f.e. "desktopapplications" or "menus:other"
 
 [keybinds]
-close = "esc"
-next = "down"
-previous = "up"
+close = "Escape"
+next = "Down"
+previous = "Up"
 toggle_exact = "ctrl e"
 resume_last_query = "ctrl r"
 quick_activate = []
@@ -56,41 +56,3 @@ provider = "websearch"
 [[providers.prefixes]]
 prefix = "$"
 provider = "clipboard"
-
-[providers.calc]
-copy = "enter"
-save = "ctrl s"
-delete = "ctrl d"
-
-[providers.websearch]
-search = "enter"
-
-[providers.providerlist]
-activate = "enter"
-
-[providers.clipboard]
-time_format = "%d.%m. - %H:%M" # format for the clipboard item date
-copy = "enter"
-delete = "ctrl d"
-
-[providers.desktopapplications]
-start = "enter"
-
-[providers.files]
-open = "enter"
-open_dir = "ctrl enter"
-copy_path = "ctrl shift C"
-copy_file = "ctrl c"
-
-[providers.runner]
-start = "enter"
-start_terminal = "shift enter"
-
-[providers.dmenu]
-select = "enter"
-
-[providers.symbols]
-copy = "enter"
-
-[providers.menus]
-activate = "enter"
