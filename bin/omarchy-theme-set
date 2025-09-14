@@ -39,37 +39,26 @@ else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
 
-# Function to convert RGB to hex
-rgb_to_hex() {
-  local rgb="$1"
-  IFS=',' read -r r g b <<< "$rgb"
-  printf "#%02x%02x%02x" "$r" "$g" "$b"
-}
+# Change browser colors via policies
+if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
+  if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]]; then
+    rgb=$(<~/.config/omarchy/current/theme/chromium.theme)
+    THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${rgb//,/ })
+  else
+    # Use a default, neutral grey if theme doesn't have a color
+    THEME_HEX_COLOR="#1c2027"
+  fi
 
-# Change Chromium colors via policies
-if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]]; then
-  THEME_COLOR="$(<~/.config/omarchy/current/theme/chromium.theme)"
-else
-  # Use a default, neutral grey if theme doesn't have a color
-  THEME_COLOR="28,32,39"
+  if omarchy-cmd-present chromium; then
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
+    chromium --refresh-platform-policy --no-startup-window
+  fi
+
+  if omarchy-cmd-present brave; then
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
+    brave --refresh-platform-policy --no-startup-window
+  fi
 fi
-
-# Convert RGB to hex for policies
-HEX_COLOR=$(rgb_to_hex "$THEME_COLOR")
-
-# Create Chrome policy directory and file
-if [[ -d "/etc/chromium/policies/managed" ]] || mkdir -p "/etc/chromium/policies/managed" 2>/dev/null; then
-  echo "{\"BrowserThemeColor\": \"$HEX_COLOR\"}" |  tee "/etc/chromium/policies/managed/color.json" >/dev/null
-  # force a policy refresh
-  chromium --refresh-platform-policy --no-startup-window 
-fi
-
-# Create Brave policy directory and file  
-if [[ -d "/etc/brave/policies/managed" ]] || mkdir -p "/etc/brave/policies/managed" 2>/dev/null; then
-  echo "{\"BrowserThemeColor\": \"$HEX_COLOR\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
-fi
-
-
 
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
