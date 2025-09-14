@@ -13,8 +13,8 @@ THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Check if the theme entered exists
 if [[ ! -d "$THEME_PATH" ]]; then
-  echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR" >&2
-  exit 2
+  echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR"
+  exit 1
 fi
 
 # Update theme symlinks
