@@ -17,13 +17,14 @@ else
   INTERACTIVE_MODE=false
 fi
 
+# Ensure valid execution
 if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_URL" ]]; then
   echo "You must set app name, app URL, and icon URL!"
   exit 1
 fi
 
+# Refer to local icon or fetch remotely from URL
 ICON_DIR="$HOME/.local/share/applications/icons"
-DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
 
 if [[ ! "$ICON_URL" =~ ^https?:// ]] && [ -f "$ICON_URL" ]; then
   ICON_PATH="$ICON_URL"
@@ -43,6 +44,9 @@ else
   EXEC_COMMAND="omarchy-launch-webapp $APP_URL"
 fi
 
+# Create application .desktop file
+DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
+
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Version=1.0
@@ -56,12 +60,12 @@ StartupNotify=true
 EOF
 
 # Add mime types if provided
-if [ -n "$MIME_TYPES" ]; then
+if [[ -n $MIME_TYPES ]]; then
   echo "MimeType=$MIME_TYPES" >>"$DESKTOP_FILE"
 fi
 
 chmod +x "$DESKTOP_FILE"
 
-if [ "$INTERACTIVE_MODE" = true ]; then
+if [[ $INTERACTIVE_MODE == true ]]; then
   echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
 fi
