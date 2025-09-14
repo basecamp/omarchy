@@ -34,7 +34,7 @@ if ! curl -sL -o "$ICON_PATH" "$ICON_URL"; then
 fi
 
 # Use custom exec if provided, otherwise default behavior
-if [ -n "$CUSTOM_EXEC" ]; then
+if [[ -n $CUSTOM_EXEC ]]; then
   EXEC_COMMAND="$CUSTOM_EXEC"
 else
   EXEC_COMMAND="omarchy-launch-webapp $APP_URL"
