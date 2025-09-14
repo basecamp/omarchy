@@ -1,9 +1,4 @@
-echo "Update imv.desktop file with the navigation fix"
+echo "Allow Image Viewer to see all images in directory and use arrow keys to navigate"
 
-src="$HOME/.local/share/omarchy/applications/imv.desktop"
-dst="$HOME/.local/share/applications/imv.desktop"
+cp -f "$HOME/.local/share/omarchy/applications/imv.desktop" "$HOME/.local/share/applications/imv.desktop"
 
-exec_line=$(grep '^Exec' "$src")
-if [ -n "$exec_line" ]; then
-    sed -i "/^Exec/c\\$exec_line" "$dst"
-fi
