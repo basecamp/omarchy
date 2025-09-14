@@ -5,15 +5,15 @@ if [ "$#" -lt 3 ]; then
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
   ICON_URL=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
-  CUSTOM_EXEC=$(gum input --prompt "Custom exec command (optional)> " --placeholder "Leave empty for default webapp launch")
-  MIME_TYPES=$(gum input --prompt "MIME types (optional)> " --placeholder "e.g., x-scheme-handler/myprotocol")
+  CUSTOM_EXEC=""
+  MIME_TYPES=""
   INTERACTIVE_MODE=true
 else
   APP_NAME="$1"
   APP_URL="$2"
   ICON_URL="$3"
-  CUSTOM_EXEC="$4"  # Optional custom exec command
-  MIME_TYPES="$5"   # Optional mime types
+  CUSTOM_EXEC="$4" # Optional custom exec command
+  MIME_TYPES="$5"  # Optional mime types
   INTERACTIVE_MODE=false
 fi
 
@@ -54,7 +54,7 @@ EOF
 
 # Add mime types if provided
 if [ -n "$MIME_TYPES" ]; then
-  echo "MimeType=$MIME_TYPES" >> "$DESKTOP_FILE"
+  echo "MimeType=$MIME_TYPES" >>"$DESKTOP_FILE"
 fi
 
 chmod +x "$DESKTOP_FILE"
