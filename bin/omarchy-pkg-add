@@ -1,0 +1,9 @@
+#!/bin/bash
+
+for pkg in "$@"; do
+  if ! pacman -Q "$pkg" &>/dev/null; then
+    sudo pacman -S --noconfirm "$pkg" || exit 1
+  fi
+done
+
+exit 0

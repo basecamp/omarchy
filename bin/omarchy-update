@@ -2,8 +2,9 @@
 
 set -e
 
+omarchy-snapshot create || [ $? -eq 127 ]
 omarchy-update-git
 omarchy-migrate
 omarchy-update-system-pkgs
 omarchy-update-restart
-omarchy-restart-waybar # removes update-available icon
+omarchy-update-available-reset
