@@ -2,15 +2,15 @@
 
 # Toggle Do Not Disturb mode using mako
 
-# Check current mode
-current_modes=$(makoctl mode 2>/dev/null)
+# Toggle the mode
+makoctl mode -t do-not-disturb
 
-if echo "$current_modes" | grep -q "do-not-disturb"; then
-    # DND is currently on, turn it off
-    makoctl mode -r do-not-disturb
-    notify-send "󰂚  Do Not Disturb disabled" "Notifications will now be shown"
+# Check current mode to craft feedback
+if makoctl mode 2>/dev/null | grep -q "do-not-disturb"; then
+  notify-send -a notify-send -r 4243 "󰂛  Do Not Disturb enabled" "Notifications are now muted"
 else
-    # DND is currently off, turn it on
-    makoctl mode -a do-not-disturb
-    notify-send "󰂛  Do Not Disturb enabled" "Notifications are now muted"
+  notify-send -a notify-send -r 4243 "󰂚  Do Not Disturb disabled" "Notifications will now be shown"
 fi
+
+# Nudge waybar to refresh the DND module immediately (signal 9)
+pkill -RTMIN+9 waybar

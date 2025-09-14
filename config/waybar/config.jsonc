@@ -132,7 +132,7 @@
   "custom/status-dnd": {
     "exec": "omarchy-status-daemon dnd",
     "return-type": "json",
-    "interval": 1,
+    "signal": 9,
     "on-click": "omarchy-toggle-dnd"
   },
   "custom/screenrecording-indicator": {
