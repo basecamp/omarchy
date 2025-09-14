@@ -29,7 +29,7 @@ menu() {
         local index
         index=$(echo -e "$options" | grep -nxF "$preselect" | cut -d: -f1)
         if [[ -n "$index" ]]; then
-            args+=("-a" "$index")
+            args+=("-c" "$index")
         fi
     fi
 
