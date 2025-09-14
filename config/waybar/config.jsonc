@@ -46,7 +46,7 @@
   "custom/update": {
     "format": "",
     "exec": "omarchy-update-available",
-    "on-click": "alacritty --class Omarchy --title Omarchy -e omarchy-update",
+    "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
     "tooltip-format": "Omarchy update available",
     "interval": 3600
   },
@@ -57,8 +57,8 @@
     "on-click": "alacritty -e btop"
   },
   "clock": {
-    "format": "{:%A %H:%M}",
-    "format-alt": "{:%d %B W%V %Y}",
+    "format": "{:L%A %H:%M}",
+    "format-alt": "{:L%d %B W%V %Y}",
     "tooltip": false,
     "on-click-right": "omarchy-cmd-tzupdate"
   },
@@ -72,7 +72,7 @@
     "tooltip-format-ethernet": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
     "tooltip-format-disconnected": "Disconnected",
     "interval": 3,
-    "nospacing": 1,
+    "spacing": 1,
     "on-click": "alacritty --class=Impala -e impala"
   },
   "battery": {
@@ -88,6 +88,7 @@
     "tooltip-format-discharging": "{power:>1.0f}W↓ {capacity}%",
     "tooltip-format-charging": "{power:>1.0f}W↑ {capacity}%",
     "interval": 5,
+    "on-click": "omarchy-menu power",
     "states": {
       "warning": 20,
       "critical": 10
