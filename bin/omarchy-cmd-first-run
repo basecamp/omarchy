@@ -4,21 +4,6 @@ set -e
 
 FIRST_RUN_MODE=~/.local/state/omarchy/first-run.mode
 
-wait_for_notifications() {
-  # Wait up to ~3s for org.freedesktop.Notifications to appear
-  for _ in {1..30}; do
-    if gdbus call --session \
-      --dest org.freedesktop.DBus \
-      --object-path /org/freedesktop/DBus \
-      --method org.freedesktop.DBus.ListNames |
-      grep -q "org.freedesktop.Notifications"; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  return 1
-}
-
 if [[ -f "$FIRST_RUN_MODE" ]]; then
   rm -f "$FIRST_RUN_MODE"
 
@@ -27,7 +12,6 @@ if [[ -f "$FIRST_RUN_MODE" ]]; then
   bash "$OMARCHY_PATH/install/first-run/gnome-theme.sh"
   sudo rm -f /etc/sudoers.d/first-run
 
-  wait_for_notifications
   bash "$OMARCHY_PATH/install/first-run/wifi.sh"
   bash "$OMARCHY_PATH/install/first-run/welcome.sh"
 fi

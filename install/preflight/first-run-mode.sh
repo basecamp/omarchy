@@ -7,6 +7,7 @@ sudo tee /etc/sudoers.d/first-run >/dev/null <<EOF
 Cmnd_Alias FIRST_RUN_CLEANUP = /bin/rm -f /etc/sudoers.d/first-run
 $USER ALL=(ALL) NOPASSWD: /usr/bin/ufw
 $USER ALL=(ALL) NOPASSWD: /usr/bin/ufw-docker
+$USER ALL=(ALL) NOPASSWD: /usr/bin/gtk-update-icon-cache
 $USER ALL=(ALL) NOPASSWD: FIRST_RUN_CLEANUP
 EOF
 sudo chmod 440 /etc/sudoers.d/first-run
