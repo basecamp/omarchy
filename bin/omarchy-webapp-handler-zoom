@@ -3,7 +3,7 @@
 url="$1"
 web_url="https://app.zoom.us/wc/home"
 
-if [[ $url == zoom{mtg,us}://* ]]; then
+if [[ $url =~ ^zoom(mtg|us):// ]]; then
   confno=$(echo "$url" | sed -n 's/.*[?&]confno=\([^&]*\).*/\1/p')
 
   if [[ -n $confno ]]; then
