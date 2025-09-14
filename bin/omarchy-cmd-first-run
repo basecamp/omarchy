@@ -6,10 +6,13 @@ FIRST_RUN_MODE=~/.local/state/omarchy/first-run.mode
 
 if [[ -f "$FIRST_RUN_MODE" ]]; then
   rm -f "$FIRST_RUN_MODE"
+
   bash "$OMARCHY_PATH/install/first-run/battery-monitor.sh"
   bash "$OMARCHY_PATH/install/first-run/firewall.sh"
   bash "$OMARCHY_PATH/install/first-run/gnome-theme.sh"
+  sudo rm -f /etc/sudoers.d/first-run
+
+  sleep 2 # ensure that mako has started before sending notifications
   bash "$OMARCHY_PATH/install/first-run/wifi.sh"
   bash "$OMARCHY_PATH/install/first-run/welcome.sh"
-  sudo rm -f /etc/sudoers.d/first-run
 fi
