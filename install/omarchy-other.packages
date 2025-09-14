@@ -26,6 +26,7 @@ limine-snapper-sync
 linux
 linux-firmware
 linux-headers
+macbook12-spi-driver-dkms
 nvidia-dkms
 nvidia-open-dkms
 nvidia-utils
