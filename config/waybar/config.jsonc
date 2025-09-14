@@ -5,7 +5,7 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-  "modules-center": ["clock", "custom/update"],
+  "modules-center": ["clock", "custom/update", "custom/screenrecording-indicator"],
   "modules-right": [
     "group/tray-expander",
     "bluetooth",
@@ -48,6 +48,7 @@
     "exec": "omarchy-update-available",
     "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
     "tooltip-format": "Omarchy update available",
+    "signal": 7,
     "interval": 3600
   },
 
@@ -57,8 +58,8 @@
     "on-click": "alacritty -e btop"
   },
   "clock": {
-    "format": "{:%A %H:%M}",
-    "format-alt": "{:%d %B W%V %Y}",
+    "format": "{:L%A %H:%M}",
+    "format-alt": "{:L%d %B W%V %Y}",
     "tooltip": false,
     "on-click-right": "omarchy-cmd-tzupdate"
   },
@@ -123,6 +124,12 @@
   "custom/expand-icon": {
     "format": " ",
     "tooltip": false
+  },
+  "custom/screenrecording-indicator": {
+    "on-click": "omarchy-cmd-screenrecord",
+    "exec": "$OMARCHY_PATH/default/waybar/indicators/screen-recording.sh",
+    "signal": 8,
+    "return-type": "json"
   },
   "tray": {
     "icon-size": 12,
