@@ -12,7 +12,7 @@ fzf_args=(
   --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
   --bind 'alt-k:preview-up,alt-j:preview-down'
   --bind 'alt-b:change-preview:yay -Gpa {1} | tail -n +5'
-  --bind 'alt-B:change-preview:yay -Siia {1})'
+  --bind 'alt-B:change-preview:yay -Siia {1}'
   --color 'pointer:green,marker:green'
 )
 
