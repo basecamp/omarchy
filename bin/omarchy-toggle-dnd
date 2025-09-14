@@ -7,9 +7,9 @@ makoctl mode -t do-not-disturb
 
 # Check current mode to craft feedback
 if makoctl mode 2>/dev/null | grep -q "do-not-disturb"; then
-  notify-send -a notify-send -r 4243 "󰂛  Do Not Disturb enabled" "Notifications are now muted"
+  notify-send -a omarchy -r 4243 "󰂛  Do Not Disturb enabled" "Notifications are now muted"
 else
-  notify-send -a notify-send -r 4243 "󰂚  Do Not Disturb disabled" "Notifications will now be shown"
+  notify-send -a omarchy -r 4243 "󰂚  Do Not Disturb disabled" "Notifications will now be shown"
 fi
 
 # Nudge waybar to refresh the DND module immediately (signal 9)

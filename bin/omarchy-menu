@@ -45,7 +45,7 @@ present_terminal() {
 }
 
 edit_in_nvim() {
-  notify-send "Editing config file" "$1"
+  notify-send -a omarchy "Editing config file" "$1"
   alacritty -e nvim "$1"
 }
 

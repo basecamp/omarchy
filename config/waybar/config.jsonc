@@ -5,11 +5,7 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-<<<<<<< HEAD
   "modules-center": ["custom/status-dnd", "clock", "custom/update", "custom/screenrecording-indicator"],
-=======
-  "modules-center": ["clock", "custom/update", "custom/screenrecording-indicator"],
->>>>>>> origin/dev
   "modules-right": [
     "group/tray-expander",
     "bluetooth",

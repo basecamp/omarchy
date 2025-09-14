@@ -31,4 +31,4 @@ NEW_THEME=${THEMES[$NEXT_INDEX]}
 NEW_THEME_NAME=$(basename "$NEW_THEME")
 
 omarchy-theme-set $NEW_THEME_NAME
-notify-send "Theme changed to $NEW_THEME_NAME" -t 2000
+notify-send -a omarchy "Theme changed to $NEW_THEME_NAME" -t 2000
