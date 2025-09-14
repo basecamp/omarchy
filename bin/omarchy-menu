@@ -8,7 +8,7 @@ BACK_TO_EXIT=false
 back_to() {
   local parent_menu="$1"
 
-  if [[ "$DIRECT_ACCESS" == "true" ]]; then
+  if [[ "$BACK_TO_EXIT" == "true" ]]; then
     exit 0
   elif [[ -n "$parent_menu" ]]; then
     "$parent_menu"

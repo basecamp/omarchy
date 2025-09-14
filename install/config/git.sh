@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # Ensure git settings live under ~/.config
 mkdir -p ~/.config/git
 touch ~/.config/git/config
