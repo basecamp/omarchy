@@ -1,1 +1,1 @@
-notify-send "👋   Welcome to Omarchy!" "Hit SUPER + ALT + SPACE to start the Omarchy Menu." -u critical -t 30000
+notify-send "👋   Welcome to Omarchy" "You're in for a great computing adventure. Have fun!" -t 30000
