@@ -43,3 +43,11 @@ webp-pixbuf-loader
 wget
 yay-debug
 zram-generator
+
+# T2 MacBook support packages
+apple-bcm-firmware
+apple-t2-audio-config
+linux-t2
+linux-t2-headers
+t2fanrd
+tiny-dfr

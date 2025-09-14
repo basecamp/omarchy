@@ -26,3 +26,4 @@ run_logged $OMARCHY_INSTALL/config/hardware/nvidia.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-f13-amd-audio-input.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-apple-bcm4360.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-apple-spi-keyboard.sh
+run_logged $OMARCHY_INSTALL/config/hardware/fix-apple-t2.sh
