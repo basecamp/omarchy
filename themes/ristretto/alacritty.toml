@@ -22,7 +22,7 @@ white   = "#f1e5e7"
 
 [colors.cursor]
 cursor = '#c3b7b8'
-text = '#c3b7b8'
+text = '#2c2525'
 
 [colors.primary]
 background = '#2c2525'
