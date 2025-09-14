@@ -1,8 +1,8 @@
 #!/bin/bash
 
-notify-send "   Updating time and timezone..."
+notify-send -a omarchy "   Updating time and timezone..."
 sudo systemctl restart systemd-timesyncd
 sudo tzupdate
 new_timezone=$(timedatectl show -p Timezone --value)
 omarchy-restart-waybar
-notify-send "   Time updated and timezone set to $new_timezone"
+notify-send -a omarchy "   Time updated and timezone set to $new_timezone"

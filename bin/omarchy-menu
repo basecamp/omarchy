@@ -45,7 +45,7 @@ present_terminal() {
 }
 
 edit_in_nvim() {
-  notify-send "Editing config file" "$1"
+  notify-send -a omarchy "Editing config file" "$1"
   alacritty -e nvim "$1"
 }
 
@@ -140,8 +140,9 @@ show_screenrecord_menu() {
 }
 
 show_toggle_menu() {
-  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
+  case $(menu "Toggle" "󱄄  Screensaver\n󰂛  Do Not Disturb\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
   *Screensaver*) omarchy-toggle-screensaver ;;
+  *Disturb*) omarchy-toggle-dnd ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
   *Bar*) omarchy-toggle-waybar ;;

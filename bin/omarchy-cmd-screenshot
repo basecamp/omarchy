@@ -4,7 +4,7 @@
 OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
-  notify-send "Screenshot directory does not exist: $OUTPUT_DIR" -u critical -t 3000
+  notify-send -a omarchy "Screenshot directory does not exist: $OUTPUT_DIR" -u critical -t 3000
   exit 1
 fi
 
