@@ -1,10 +1,7 @@
 #!/bin/bash
 
-# omarchy-theme-set: Set a theme, specified by its name.
-# Usage: omarchy-theme-set <theme-name>
-
-if [[ -z "$1" && "$1" != "CNCLD" ]]; then
-  echo "Usage: omarchy-theme-set <theme-name>" >&2
+if [[ -z $1 && $1 != "CNCLD" ]]; then
+  echo "Usage: omarchy-theme-set <theme-name>"
   exit 1
 fi
 
