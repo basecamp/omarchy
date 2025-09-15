@@ -1,7 +1,7 @@
 #!/bin/bash
 
 kernel_pkg=$(LC_ALL=C pacman -Qo /usr/lib/modules/$(uname -r) | head -1 | awk '{print $5}')
-boot_time=$(stat -c %Y /proc/1)
+boot_time=$(date -d "$(uptime -s)" +%s)
 pkg_time=$(LC_ALL=C pacman -Qi "$kernel_pkg" | grep "Install Date" | cut -d: -f2- | xargs -I {} date -d "{}" +%s)
 if [ "$pkg_time" -gt "$boot_time" ]; then
   gum confirm "Linux kernel has been updated. Reboot?" && omarchy-state clear re*-required && sudo reboot now
