@@ -1,0 +1,23 @@
+#!/bin/bash
+
+CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
+
+if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
+  if [[ -f CHROMIUM_THEME ]]; then
+    rgb=$(<CHROMIUM_THEME)
+    THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${rgb//,/ })
+  else
+    # Use a default, neutral grey if theme doesn't have a color
+    THEME_HEX_COLOR="#1c2027"
+  fi
+
+  if omarchy-cmd-present chromium; then
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
+    chromium --refresh-platform-policy --no-startup-window
+  fi
+
+  if omarchy-cmd-present brave; then
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
+    brave --refresh-platform-policy --no-startup-window
+  fi
+fi

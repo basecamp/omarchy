@@ -20,55 +20,18 @@ fi
 # Update theme symlinks
 ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 
-# Change gnome modes
-if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
-  gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
-  gsettings set org.gnome.desktop.interface gtk-theme "Adwaita"
-else
-  gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"
-  gsettings set org.gnome.desktop.interface gtk-theme "Adwaita-dark"
-fi
-
-# Change gnome icon theme color
-if [[ -f ~/.config/omarchy/current/theme/icons.theme ]]; then
-  gsettings set org.gnome.desktop.interface icon-theme "$(<~/.config/omarchy/current/theme/icons.theme)"
-else
-  gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
-fi
-
-# Change browser colors via policies
-if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
-  if [[ -f ~/.config/omarchy/current/theme/chromium.theme ]]; then
-    rgb=$(<~/.config/omarchy/current/theme/chromium.theme)
-    THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${rgb//,/ })
-  else
-    # Use a default, neutral grey if theme doesn't have a color
-    THEME_HEX_COLOR="#1c2027"
-  fi
-
-  if omarchy-cmd-present chromium; then
-    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
-    chromium --refresh-platform-policy --no-startup-window
-  fi
-
-  if omarchy-cmd-present brave; then
-    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
-    brave --refresh-platform-policy --no-startup-window
-  fi
-fi
-
-# Trigger alacritty config reload
-touch "$HOME/.config/alacritty/alacritty.toml"
-
-# Update vscode theme
-omarchy-theme-set-vscode
+# Change background with theme
+omarchy-theme-bg-next
 
 # Restart components to apply new theme
-pkill -SIGUSR2 btop
+touch ~/.config/alacritty/alacritty.toml
 omarchy-restart-waybar
 omarchy-restart-swayosd
-makoctl reload
 hyprctl reload
+pkill -SIGUSR2 btop
+makoctl reload
 
-# Set new background
-omarchy-theme-bg-next
+# Change gnome, browser, vscode themes
+omarchy-theme-set-gnome
+omarchy-theme-set-browser
+omarchy-theme-set-vscode
