@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+USER_CFG="$HOME/.config/waybar/config.jsonc"
+
+if [[ ! -f "$USER_CFG" ]]; then
+  echo "Waybar config not found at $USER_CFG" >&2
+  exit 1
+fi
+
+if grep -q '"modules-left"' "$USER_CFG"; then
+  if grep -q '"modules-left".*"mpris"' "$USER_CFG"; then
+    # Disable: remove mpris from modules-left
+    sed -i -E 's/("hyprland\/workspaces")\s*,\s*"mpris"/\1/g' "$USER_CFG"
+    notify-send -a omarchy "Waybar: Media controls disabled"
+  else
+    # Enable: insert after hyprland/workspaces inside modules-left
+    sed -i -E '/"modules-left"/ s/("hyprland\/workspaces")/\1, "mpris"/' "$USER_CFG"
+    notify-send -a omarchy "Waybar: Media controls enabled"
+  fi
+  omarchy-restart-waybar
+else
+  echo "Could not locate modules-left in $USER_CFG" >&2
+  exit 1
+fi
+
