@@ -21,5 +21,9 @@ while true; do
     if read -n 1 -t 3; then
       exit_screensaver
     fi
+    # Exit if screensaver is not in focus 
+    if ! hyprctl activewindow -j | jq -e '.class == "Screensaver"' >/dev/null 2>&1; then
+      exit_screensaver
+    fi
   done
 done
