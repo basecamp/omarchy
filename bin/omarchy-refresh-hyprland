@@ -1,5 +1,12 @@
 #!/bin/bash
 
+set -euo pipefail
+
+# Skip refresh if locked
+if omarchy-lock-check hyprland; then
+	exit 0
+fi
+
 omarchy-refresh-config hypr/autostart.conf
 omarchy-refresh-config hypr/bindings.conf
 omarchy-refresh-config hypr/envs.conf
