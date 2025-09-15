@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # Hyprland launched via UWSM and login directly as user, rely on disk encryption + hyprlock for security
 
 # ==============================================================================
@@ -8,7 +6,7 @@
 
 if [ "$(plymouth-set-default-theme)" != "omarchy" ]; then
   sudo cp -r "$HOME/.local/share/omarchy/default/plymouth" /usr/share/plymouth/themes/omarchy/
-  sudo plymouth-set-default-theme -R omarchy
+  sudo plymouth-set-default-theme omarchy
 fi
 
 # ==============================================================================

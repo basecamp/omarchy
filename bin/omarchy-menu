@@ -2,6 +2,21 @@
 
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 
+# Set to true when going directly to a submenu, so we can exit directly
+BACK_TO_EXIT=false
+
+back_to() {
+  local parent_menu="$1"
+
+  if [[ "$BACK_TO_EXIT" == "true" ]]; then
+    exit 0
+  elif [[ -n "$parent_menu" ]]; then
+    "$parent_menu"
+  else
+    show_main_menu
+  fi
+}
+
 menu() {
   local prompt="$1"
   local options="$2"
@@ -67,10 +82,11 @@ show_learn_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
+  *Hyprland*) edit_in_nvim ~/.config/hypr/looknfeel.conf ;;
   *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
   *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
@@ -80,7 +96,7 @@ show_style_menu() {
 show_theme_menu() {
   theme=$(menu "Theme" "$(omarchy-theme-list)" "" "$(omarchy-theme-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    show_main_menu
+    back_to show_style_menu
   else
     omarchy-theme-set "$theme"
   fi
@@ -89,7 +105,7 @@ show_theme_menu() {
 show_font_menu() {
   theme=$(menu "Font" "$(omarchy-font-list)" "-w 350" "$(omarchy-font-current)")
   if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    show_main_menu
+    back_to show_style_menu
   else
     omarchy-font-set "$theme"
   fi
@@ -114,8 +130,10 @@ show_screenshot_menu() {
 }
 
 show_screenrecord_menu() {
-  case $(menu "Screenrecord" "  Region\n  Display") in
+  case $(menu "Screenrecord" "  Region\n  Region + Audio\n  Display\n  Display + Audio") in
+  *"Region + Audio"*) omarchy-cmd-screenrecord region audio ;;
   *Region*) omarchy-cmd-screenrecord ;;
+  *"Display + Audio"*) omarchy-cmd-screenrecord output audio ;;
   *Display*) omarchy-cmd-screenrecord output ;;
   *) show_capture_menu ;;
   esac
@@ -163,7 +181,7 @@ show_setup_power_menu() {
   profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
   if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
-    show_main_menu
+    back_to show_setup_menu
   else
     powerprofilesctl set "$profile"
   fi
@@ -227,14 +245,14 @@ show_install_ai_menu() {
       echo ollama
   )
 
-  case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini\n󱚤  OpenAI Codex [AUR]\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
+  case $(menu "Install" "󱚤  Claude Code\n󱚤  Gemini [AUR]\n󱚤  OpenAI Codex [AUR]\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
   *Claude*) install "Claude Code" "claude-code" ;;
   *OpenAI*) aur_install "OpenAI Codex" "openai-codex-bin" ;;
-  *Gemini*) install "Gemini" "gemini-cli" ;;
+  *Gemini*) aur_install "Gemini" "gemini-cli" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
-  *opencode*) install "opencode" "opencode-bin" ;;
+  *opencode*) install "opencode" "opencode" ;;
   *) show_install_menu ;;
   esac
 }
@@ -268,7 +286,7 @@ show_install_font_menu() {
 }
 
 show_install_development_menu() {
-  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml") in
+  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure") in
   *Rails*) present_terminal "omarchy-install-dev-env ruby" ;;
   *Docker*) present_terminal omarchy-install-docker-dbs ;;
   *JavaScript*) show_install_javascript_menu ;;
@@ -281,6 +299,7 @@ show_install_development_menu() {
   *Java*) present_terminal "omarchy-install-dev-env java" ;;
   *NET*) present_terminal "omarchy-install-dev-env dotnet" ;;
   *OCaml*) present_terminal "omarchy-install-dev-env ocaml" ;;
+  *Clojure*) present_terminal "omarchy-install-dev-env clojure" ;;
   *) show_install_menu ;;
   esac
 }
@@ -324,13 +343,14 @@ show_remove_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" " Omarchy\n  Config\n󰸌  Themes\n  Process\n󰇅  Hardware\n  Timezone") in
+  case $(menu "Update" " Omarchy\n  Config\n󰸌  Themes\n  Process\n󰇅  Hardware\n  Password\n  Timezone") in
   *Omarchy*) present_terminal omarchy-update ;;
   *Config*) show_update_config_menu ;;
   *Themes*) present_terminal omarchy-theme-update ;;
   *Process*) show_update_process_menu ;;
   *Hardware*) show_update_hardware_menu ;;
   *Timezone*) omarchy-cmd-tzupdate ;;
+  *Password*) show_update_password_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -368,6 +388,14 @@ show_update_hardware_menu() {
   esac
 }
 
+show_update_password_menu() {
+  case $(menu "Update Password" "  Drive Encryption\n  User") in
+  *Drive*) present_terminal omarchy-drive-set-password ;;
+  *User*) present_terminal passwd ;;
+  *) show_update_menu ;;
+  esac
+}
+
 show_system_menu() {
   case $(menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
   *Lock*) omarchy-lock-screen ;;
@@ -376,7 +404,7 @@ show_system_menu() {
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
-  *) show_main_menu ;;
+  *) back_to show_main_menu ;;
   esac
 }
 
@@ -415,6 +443,7 @@ go_to_menu() {
 }
 
 if [[ -n "$1" ]]; then
+  BACK_TO_EXIT=true
   go_to_menu "$1"
 else
   show_main_menu
