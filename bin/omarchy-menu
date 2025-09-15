@@ -447,6 +447,7 @@ go_to_menu() {
   *learn*) show_learn_menu ;;
   *about*) alacritty --class Omarchy -o font.size=9 -e bash -c 'fastfetch; read -n 1 -s' ;;
   *system*) show_system_menu ;;
+  *capture*) show_capture_menu ;;
   esac
 }
 
