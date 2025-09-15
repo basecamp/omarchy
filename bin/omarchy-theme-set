@@ -20,6 +20,17 @@ fi
 # Update theme symlinks
 ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 
+# Link theme waybar config or default
+if [[ -f "$THEME_PATH/waybar.config.jsonc" ]]; then
+  echo 'linking theme waybar configurations'
+  ln -nsf "$THEME_PATH/waybar.config.jsonc" ~/.config/waybar/config.jsonc
+  ln -nsf "$THEME_PATH/waybar.css" ~/.config/waybar/style.css
+else
+  echo 'linking default waybar configurations'
+  ln -nsf "$OMARCHY_PATH/default/waybar/config.jsonc" ~/.config/waybar/config.jsonc
+  ln -nsf "$OMARCHY_PATH/default/waybar/style.css" ~/.config/waybar/style.css
+fi
+
 # Change gnome modes
 if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
   gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
