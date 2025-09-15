@@ -1,9 +1,6 @@
-#!/bin/bash
-
 # Set links for Nautilius action icons
 sudo ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-previous-symbolic.svg /usr/share/icons/Yaru/scalable/actions/go-previous-symbolic.svg
 sudo ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-next-symbolic.svg /usr/share/icons/Yaru/scalable/actions/go-next-symbolic.svg
-sudo gtk-update-icon-cache /usr/share/icons/Yaru
 
 # Setup theme links
 mkdir -p ~/.config/omarchy/themes
@@ -23,8 +20,9 @@ ln -snf ~/.config/omarchy/current/theme/btop.theme ~/.config/btop/themes/current
 mkdir -p ~/.config/mako
 ln -snf ~/.config/omarchy/current/theme/mako.ini ~/.config/mako/config
 
-mkdir -p ~/.config/eza
-# Try to link eza theme, not all themes support eza
-if [ -f ~/.config/omarchy/current/theme/eza-theme.yml ]; then
-  ln -snf ~/.config/omarchy/current/theme/eza-theme.yml ~/.config/eza/theme.yml
-fi
+# Add managed policy directories for Chromium and Brave for theme changes
+sudo mkdir -p /etc/chromium/policies/managed
+sudo chmod a+rw /etc/chromium/policies/managed
+
+sudo mkdir -p /etc/brave/policies/managed
+sudo chmod a+rw /etc/brave/policies/managed
