@@ -58,6 +58,39 @@ fi
 # Trigger alacritty config reload
 touch "$HOME/.config/alacritty/alacritty.toml"
 
+# Setup tmux configuration if tmux is installed but config doesn't exist
+if command -v tmux &>/dev/null && [[ ! -f ~/.tmux.conf ]]; then
+  cat > ~/.tmux.conf << 'EOF'
+set -g default-terminal "screen-256color"
+set -g history-limit 10000
+set -g base-index 1
+setw -g pane-base-index 1
+
+set -g mouse on
+
+setw -g mode-keys vi
+
+set -g status-interval 5
+set -g status-position bottom
+set -g status-justify left
+
+bind -n M-Left select-pane -L
+bind -n M-Right select-pane -R
+bind -n M-Up select-pane -U
+bind -n M-Down select-pane -D
+
+bind -n S-Left previous-window
+bind -n S-Right next-window
+
+source-file ~/.config/omarchy/current/theme/tmux.conf
+EOF
+fi
+
+# Reload tmux configuration if tmux is running
+if command -v tmux &>/dev/null && tmux list-sessions &>/dev/null; then
+  tmux source-file ~/.tmux.conf
+fi
+
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
 omarchy-restart-waybar

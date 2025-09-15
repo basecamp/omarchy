@@ -1,0 +1,53 @@
+# ────────────────────────────────────────────────────────────
+# Omarchy Matte Black Theme for Alacritty
+# By tahayvr
+# https://github.com/tahayvr
+# ────────────────────────────────────────────────────────────
+
+[window]
+# window padding {px}
+padding.x = 12
+padding.y = 12
+
+[font]
+size = 12.0
+
+
+
+[colors]
+[colors.primary]
+background = "#121212"
+foreground = "#bebebe"
+dim_foreground = "#8a8a8d"
+
+[colors.cursor]
+text = "#121212"
+cursor = "#eaeaea"
+
+[colors.vi_mode_cursor]
+text = "#121212"
+cursor = "#eaeaea"
+
+[colors.selection]
+text = "CellForeground"
+background = "#333333"
+
+[colors.normal]
+black = "#333333"
+red = "#D35F5F"
+green = "#FFC107"
+yellow = "#b91c1c"
+blue = "#e68e0d"
+magenta = "#D35F5F"
+cyan = "#bebebe"
+white = "#bebebe"
+
+[colors.bright]
+black = "#8a8a8d"
+red = "#B91C1C"
+green = "#FFC107"
+yellow = "#b90a0a"
+blue = "#f59e0b"
+magenta = "#B91C1C"
+cyan = "#eaeaea"
+white = "#ffffff"
