@@ -1,26 +1,22 @@
 #!/bin/bash
 
-# Check for mode parameter
-MODE="file"
-if [ "$1" = "folder" ] || [ "$1" = "file" ] || [ "$1" = "clipboard" ]; then
-  MODE="$1"
-  shift
+if (($# == 0)); then
+  echo "Usage: omarchy-cmd-share [clipboard|file|folder]"
+  exit 1
 fi
 
-# Handle different modes
-case "$MODE" in
-"clipboard")
-  # Create temporary file with clipboard content
+MODE="$1"
+shift
+
+if [[ $MODE == "clipboard" ]]; then
   TEMP_FILE=$(mktemp --suffix=.txt)
   wl-paste >"$TEMP_FILE"
   FILES="$TEMP_FILE"
-  ;;
-*)
-  # If file/folder paths are provided as arguments, use them; otherwise pick interactively
-  if [ $# -gt 0 ]; then
+else
+  if (($# > 0)); then
     FILES="$*"
   else
-    if [ "$MODE" = "folder" ]; then
+    if [[ $MODE == "folder" ]]; then
       # Pick a single folder from home directory
       FILES=$(find "$HOME" -type d 2>/dev/null | fzf)
     else
@@ -29,20 +25,17 @@ case "$MODE" in
     fi
     [ -z "$FILES" ] && exit 0
   fi
-  ;;
-esac
+fi
 
-# Run LocalSend in its own systemd service (detached from Ghostty)
+# Run LocalSend in its own systemd service (detached from terminal)
 # Convert newline-separated files to space-separated arguments
-if [ "$MODE" != "clipboard" ] && echo "$FILES" | grep -q $'\n'; then
+if [[ $MODE != "clipboard" ]] && echo "$FILES" | grep -q $'\n'; then
   # Multiple files selected - convert newlines to array
   readarray -t FILE_ARRAY <<<"$FILES"
-  systemd-run --user --quiet --collect \
-    localsend --headless send "${FILE_ARRAY[@]}"
+  systemd-run --user --quiet --collect localsend --headless send "${FILE_ARRAY[@]}"
 else
   # Single file or clipboard mode
-  systemd-run --user --quiet --collect \
-    localsend --headless send "$FILES"
+  systemd-run --user --quiet --collect localsend --headless send "$FILES"
 fi
 
 # Note: Temporary file will remain until system cleanup for clipboard mode
