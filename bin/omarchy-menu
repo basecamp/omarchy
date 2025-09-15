@@ -260,7 +260,15 @@ show_install_gaming_menu() {
   case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft") in
   *Steam*) present_terminal omarchy-install-steam ;;
   *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
+  *Minecraft*) show_install_minecraft_menu ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_minecraft_menu() {
+  case $(menu "Install" "󰍳  Minecraft Launcher\n󰍳  Prism Launcher") in
   *Minecraft*) aur_install_and_launch "Minecraft [AUR]" "minecraft-launcher" "minecraft-launcher" ;;
+  *Prism*) install_and_launch "Prism Launcher" "prismlauncher" "prismlauncher" ;;
   *) show_install_menu ;;
   esac
 }
