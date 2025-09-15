@@ -33,7 +33,7 @@ menu() {
         fi
     fi
 
-    echo -e "$options" | walker --dmenu -w 250 -h 550 -p "$prompt…" "${args[@]}" 2>/dev/null
+    echo -e "$options" | walker --dmenu -w 250 -h 500 -p "$prompt…" "${args[@]}" 2>/dev/null
 }
 
 terminal() {
