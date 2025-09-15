@@ -11,7 +11,7 @@
   },
   "commands": {
     "copy-url": {
-      "suggested_key": {"default": "Alt+Shift+L"},
+      "suggested_key": {"default": "Alt+L"},
       "description": "Copy URL"
     }
   },
