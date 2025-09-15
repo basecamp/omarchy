@@ -65,23 +65,17 @@ VS_CODE_THEME="$CURRENT_THEME_DIR/vscode.json"
 VS_CODE_SETTINGS="$HOME/.config/Code/User/settings.json"
 VS_CODE_SKIP_FLAG="$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes"
 
-if command -v code >/dev/null \
-  && [[ ! -f "$VS_CODE_SKIP_FLAG" ]] \
-  && [[ -f "$VS_CODE_THEME" ]] \
-  && [[ -f "$VS_CODE_SETTINGS" ]]; then
-  
-  theme_name=$(jq -r '.name' "$VS_CODE_THEME")
-  extension=$(jq -r '.extension' "$VS_CODE_THEME")
-
+if omarchy-cmd-present code && [[ ! -f "$VS_CODE_SKIP_FLAG" ]] && [[ -f "$VS_CODE_THEME" ]]; then
   # Install VS Code theme extension
+  extension=$(jq -r '.extension' "$VS_CODE_THEME")
   if [[ -n "$extension" ]] && ! code --list-extensions | grep -Fxq "$extension"; then
     code --install-extension "$extension" >/dev/null
   fi
 
-  # Update theme in settings.json 
-  sed -i.bak -E \
-    "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
-    "$VS_CODE_SETTINGS" && rm -f "$VS_CODE_SETTINGS.bak"
+  # Update theme in settings.json
+  theme_name=$(jq -r '.name' "$VS_CODE_THEME")
+  jq -n --arg t "$theme_name" '(input? // {}) | .["workbench.colorTheme"] = $t' "$VS_CODE_SETTINGS" >"${VS_CODE_SETTINGS}.new"
+  mv "${VS_CODE_SETTINGS}.new" "$VS_CODE_SETTINGS"
 fi
 
 # Restart components to apply new theme
