@@ -9,20 +9,13 @@
 # Author: https://github.com/CWood-sdf
 #
 # ==============================================================================
-
-# --- GPU Detection ---
+#
 yay -S --noconfirm --needed libdrm
 
 # NOTE: Could possibly do this instead to test for gpu: -n "$(lspci | grep -i 'intel' | grep -i 'vga compatible controller')"
 if [ -n "$(/usr/bin/proptest -M i915 -D /dev/dri/card0 | grep -E 'Broadcast|Connector')" ]; then
-  # show_logo
-  # show_subtext "Fixing Intel driver HDMI support..."
+  sudo mkdir -p /usr/local/bin/
 
-    sudo mkdir -p /usr/local/bin/
-
-  if [ -f /usr/local/bin/intel-wayland-fix-full-color ]; then
-    sudo mv /usr/local/bin/intel-wayland-fix-full-color /usr/local/bin/intel-wayland-fix-full-color.backup
-  fi
   echo $'#!/bin/bash
 
 readarray -t proptest_result <<<"$(/usr/bin/proptest -M i915 -D /dev/dri/card0 | grep -E \'Broadcast|Connector\')"
@@ -37,14 +30,7 @@ done
 
   sudo chmod +x /usr/local/bin/intel-wayland-fix-full-color
 
-
-  sudo mkdir -p /etc/udev/rules.d/
-
-  if [ -f /etc/udev/rules.d/80-i915.rules ]; then
-    sudo mv /etc/udev/rules.d/80-i915.rules /etc/udev/rules.d/80-i915.rules.backup
-  fi
-
+  sudo mkdir -p /etc/udev/rules.d
   echo 'ACTION=="add", SUBSYSTEM=="module", KERNEL=="i915", RUN+="/usr/local/bin/intel-wayland-fix-full-color"' | sudo tee /etc/udev/rules.d/80-i915.rules
-
-
 fi
+
