@@ -88,7 +88,6 @@ show_trigger_menu() {
   *Toggle*) show_toggle_menu ;;
   *) show_main_menu ;;
   esac
-
 }
 
 show_capture_menu() {
@@ -124,7 +123,7 @@ show_share_menu() {
   *Clipboard*) terminal bash -c "omarchy-cmd-share clipboard" ;;
   *File*) terminal bash -c "omarchy-cmd-share file" ;;
   *Folder*) terminal bash -c "omarchy-cmd-share folder" ;;
-  *) show_trigger_menu ;;
+  *) back_to show_trigger_menu ;;
   esac
 }
 
@@ -435,6 +434,7 @@ go_to_menu() {
   case "${1,,}" in
   *apps*) walker -p "Launch…" ;;
   *trigger*) show_trigger_menu ;;
+  *share*) show_share_menu ;;
   *style*) show_style_menu ;;
   *theme*) show_theme_menu ;;
   *screenshot*) show_screenshot_menu ;;
