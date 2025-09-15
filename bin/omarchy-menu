@@ -95,7 +95,7 @@ show_capture_menu() {
   *Screenshot*) show_screenshot_menu ;;
   *Screenrecord*) show_screenrecord_menu ;;
   *Color*) pkill hyprpicker || hyprpicker -a ;;
-  *) show_trigger_menu ;;
+  *) back_to show_trigger_menu ;;
   esac
 }
 
