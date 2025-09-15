@@ -1,5 +1,4 @@
 #!/bin/bash
 
-pkill elephant
-setsid uwsm app -- elephant &
+systemctl restart --user elephant.service
 echo # Always end in success so we don't terminate further running
