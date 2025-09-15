@@ -80,8 +80,13 @@ child > * {
   padding: 0px 12px;
 }
 
-child:selected,
-child:hover {
+child:hover .item-box {
+}
+
+child:selected .item-box {
+}
+
+child:selected .item-box * {
   color: @selected-text;
 }
 
@@ -97,7 +102,10 @@ child:hover {
 }
 
 .item-subtext {
-  opacity: 0.5;
+  font-size: 0px;
+  min-height: 0px;
+  margin: 0px;
+  padding: 0px;
 }
 
 .item-image {
@@ -105,8 +113,15 @@ child:hover {
   -gtk-icon-transform: scale(0.7);
 }
 
+.item-box.calc .item-image {
+  -gtk-icon-source: url("file:///home/ryan/Downloads/gitlab.svg");
+}
+
 .current {
   font-style: italic;
+  background: alpha(@border, 0.2);
+  border-left: 3px solid @border;
+  padding-left: 7px;
 }
 
 .keybind-hints {
