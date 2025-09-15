@@ -12,7 +12,7 @@ chrome.commands.onCommand.addListener((command) => {
         chrome.notifications.create({
           type: 'basic',
           iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
-          title: 'URL Copied',
+          title: '   URL copied to clipboard',
           message: ''
         });
       });
