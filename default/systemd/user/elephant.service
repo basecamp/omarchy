@@ -1,0 +1,12 @@
+[Unit]
+Description=Elephant Service
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=uwsm app -- elephant
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

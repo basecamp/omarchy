@@ -2,10 +2,9 @@ echo "Migrate to Walker 1.0.0-Beta"
 
 pkill walker || true
 
-yay -Rns --noconfirm walker-bin walker-bin-debug
+omarchy-pkg-drop walker-bin walker-bin-debug
 
-yay -Sy --noconfirm --needed \
-  elephant \
+omarchy-pkg-add elephant \
   elephant-archlinuxpkgs \
   elephant-calc \
   elephant-clipboard \
@@ -25,5 +24,7 @@ mkdir -p ~/.config/elephant
 cp -r ~/.local/share/omarchy/config/walker/* ~/.config/walker/
 cp -r ~/.local/share/omarchy/config/elephant/* ~/.config/elephant/
 
-omarchy-refresh-walker
-omarchy-refresh-elephant
+install -D -m 644 $OMARCHY_PATH/default/systemd/user/elephant.service ~/.config/systemd/user/elephant.service
+
+systemctl enable --now --user elephant.service
+omarchy-restart-walker
