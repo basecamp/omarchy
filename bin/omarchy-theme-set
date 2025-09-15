@@ -33,5 +33,6 @@ makoctl reload
 
 # Change gnome, browser, vscode themes
 omarchy-theme-set-gnome
+omarchy-theme-set-eza
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
