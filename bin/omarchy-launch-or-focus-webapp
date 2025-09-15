@@ -5,4 +5,4 @@ if (($# == 0)); then
   exit 1
 fi
 
-exec omarchy-launch-or-focus $1 "omarchy-launch-webapp '$2'"
+exec omarchy-launch-or-focus "$1" "omarchy-launch-webapp '$2'"
