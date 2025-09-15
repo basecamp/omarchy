@@ -4,7 +4,4 @@ set -e
 
 omarchy-snapshot create || [ $? -eq 127 ]
 omarchy-update-git
-omarchy-migrate
-omarchy-update-system-pkgs
-omarchy-update-restart
-omarchy-update-available-reset
+omarchy-update-perform
