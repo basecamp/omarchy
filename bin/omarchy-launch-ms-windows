@@ -3,6 +3,10 @@
 # Docker Compose Windows VM Launcher for Omarchy
 # Starts Windows VM via Docker Compose and connects with RDP
 # When RDP closes, docker-compose will stop
+#
+# First tiem run: Please run `docker-compose up` and wait until windows is downloaded (the img file is 64 GB) and installed (takes up to 15 minutes)
+# Please connect to 127.0.0.1:8006 via browser to check progress (in case you have a wrong product-key, or someting else)
+# After that, you can use the launcher "Windows VM" that automatically start VM and connects RDesktop when docker is up and running
 
 set -e
 
