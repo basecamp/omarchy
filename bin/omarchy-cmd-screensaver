@@ -4,7 +4,7 @@ screensaver_in_focus() {
   hyprctl activewindow -j | jq -e '.class == "Screensaver"' >/dev/null 2>&1
 }
 
-function exit_screensaver {
+exit_screensaver() {
   hyprctl keyword cursor:invisible false
   pkill -x tte 2>/dev/null
   pkill -f "alacritty --class Screensaver" 2>/dev/null
