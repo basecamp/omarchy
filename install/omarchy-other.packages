@@ -16,7 +16,6 @@ htop
 intltool
 iwd
 jdk-openjdk
-lib32-nvidia-utils
 libpulse
 libsass
 libva-intel-driver
@@ -31,14 +30,13 @@ macbook12-spi-driver-dkms
 nvidia-dkms
 nvidia-open-dkms
 nvidia-utils
-openbsd-netcat
+lib32-nvidia-utils
 pipewire
 pipewire-alsa
 pipewire-jack
 pipewire-pulse
 qt5-remoteobjects
 qt6-wayland
-rdesktop
 sassc
 snapper
 webp-pixbuf-loader
