@@ -61,29 +61,7 @@ fi
 touch "$HOME/.config/alacritty/alacritty.toml"
 
 # Update vscode theme
-VS_CODE_THEME="$CURRENT_THEME_DIR/vscode.json"
-VS_CODE_SETTINGS="$HOME/.config/Code/User/settings.json"
-VS_CODE_SKIP_FLAG="$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes"
-
-if omarchy-cmd-present code && [[ ! -f "$VS_CODE_SKIP_FLAG" ]]; then
-  if [[ -f "$VS_CODE_THEME" ]]; then
-    # Install VS Code theme extension
-    extension=$(jq -r '.extension' "$VS_CODE_THEME")
-    if [[ -n "$extension" ]] && ! code --list-extensions | grep -Fxq "$extension"; then
-      notify-send "   Installing VS Code theme for $THEME_NAME"
-      code --install-extension "$extension" >/dev/null
-    fi
-
-    # Update theme in settings.json
-    theme_name=$(jq -r '.name' "$VS_CODE_THEME")
-    jq -n --arg t "$theme_name" '(input? // {}) | .["workbench.colorTheme"] = $t' "$VS_CODE_SETTINGS" >"${VS_CODE_SETTINGS}.new"
-  else
-    # Remove theme from settings.json when the theme doesn't have vscode support
-    jq 'del(.["workbench.colorTheme"])' "$VS_CODE_SETTINGS" >"${VS_CODE_SETTINGS}.new"
-  fi
-
-  mv "${VS_CODE_SETTINGS}.new" "$VS_CODE_SETTINGS"
-fi
+omarchy-theme-set-vscode
 
 # Restart components to apply new theme
 pkill -SIGUSR2 btop
