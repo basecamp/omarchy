@@ -1,5 +1,5 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 4,
   "name": "Copy URL",
   "version": "1.0",
   "description": "Copy current URL to clipboard, this extension is installed by Omarchy",
@@ -11,7 +11,7 @@
   },
   "commands": {
     "copy-url": {
-      "suggested_key": {"default": "Alt+L"},
+      "suggested_key": {"default": "Alt+Shift+L"},
       "description": "Copy URL"
     }
   },
