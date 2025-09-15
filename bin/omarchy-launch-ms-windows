@@ -10,11 +10,32 @@
 
 set -e
 
+# check and install required packages needed if not already installed
+check_and_install_packages() {
+    local packages=("rdesktop" "openbsd-netcat")
+    local missing_packages=()
+    
+    for package in "${packages[@]}"; do
+        if ! pacman -Qi "$package" &>/dev/null; then
+            missing_packages+=("$package")
+        fi
+    done
+    
+    if [ ${#missing_packages[@]} -gt 0 ]; then
+        echo "Missing required packages: ${missing_packages[*]}"
+        echo "Installing packages with sudo pacman -S..."
+        sudo pacman -S --needed "${missing_packages[@]}"
+    fi
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 COMPOSE_DIR="$SCRIPT_DIR/../config/windows-vm"
 RDP_COMMAND="rdesktop -g 1920x1200 -P -z -x l -r sound:off -u docker 127.0.0.1:3389 -p admin"
 
 echo "Starting Windows VM..."
+
+# Check and install required packages
+check_and_install_packages
 
 # Create Windows storage directory if it doesn't exist
 mkdir -p "$HOME/.windows"

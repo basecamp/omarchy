@@ -6,7 +6,7 @@ services:
       VERSION: "11"
       # RAM_SIZE: "12G"
       # CPU_CORES: "4"
-      # KEY: "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"  # Uncomment and add your Windows product key for initial installation
+      KEY: "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" # Please fill in with yours before running it the first time. If not, you'll be prompted during install.
     devices:
       - /dev/kvm
       - /dev/net/tun
