@@ -1,4 +1,3 @@
 #!/bin/bash
 
 systemctl restart --user elephant.service
-echo # Always end in success so we don't terminate further running
