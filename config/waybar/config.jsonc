@@ -4,7 +4,7 @@
   "position": "top",
   "spacing": 0,
   "height": 26,
-  "modules-left": ["custom/omarchy", "hyprland/workspaces"],
+  "modules-left": ["custom/omarchy", "hyprland/workspaces", "mpris"],
   "modules-center": ["clock", "custom/update"],
   "modules-right": [
     "group/tray-expander",
@@ -123,6 +123,14 @@
   "custom/expand-icon": {
     "format": " ",
     "tooltip": false
+  },
+  "mpris": {
+    "format": "  {title} — {artist}",
+    "format-paused": " {title} — {artist}",
+    "max-length": 60,
+    "tooltip": false,
+    "on-click": "playerctl play-pause",
+    "on-click-right": "playerctl next"
   },
   "tray": {
     "icon-size": 12,

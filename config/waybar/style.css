@@ -61,3 +61,8 @@ tooltip {
 .hidden {
   opacity: 0;
 }
+
+/* Space the mpris module away from workspaces */
+#mpris {
+  margin-left: 8px;
+}
