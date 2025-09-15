@@ -98,7 +98,8 @@ fi
 
 # Add UKI entry to UEFI machines to skip bootloader showing on normal boot
 if [[ -n $EFI ]] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy &&
-  ! cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "American Megatrends"; then
+  ! cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "American Megatrends" &&
+  ! cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "Apple"; then
   sudo efibootmgr --create \
     --disk "$(findmnt -n -o SOURCE /boot | sed 's/p\?[0-9]*$//')" \
     --part "$(findmnt -n -o SOURCE /boot | grep -o 'p\?[0-9]*$' | sed 's/^p//')" \
