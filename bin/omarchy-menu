@@ -8,7 +8,7 @@ BACK_TO_EXIT=false
 back_to() {
   local parent_menu="$1"
 
-  if [[ "$DIRECT_ACCESS" == "true" ]]; then
+  if [[ "$BACK_TO_EXIT" == "true" ]]; then
     exit 0
   elif [[ -n "$parent_menu" ]]; then
     "$parent_menu"
@@ -82,10 +82,11 @@ show_learn_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
+  *Hyprland*) edit_in_nvim ~/.config/hypr/looknfeel.conf ;;
   *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
   *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
