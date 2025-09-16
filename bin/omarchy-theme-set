@@ -24,7 +24,7 @@ ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 omarchy-theme-bg-next
 
 # Restart components to apply new theme
-touch ~/.config/alacritty/alacritty.toml
+omarchy-refresh-terminal
 omarchy-restart-waybar
 omarchy-restart-swayosd
 hyprctl reload

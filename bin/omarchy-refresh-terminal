@@ -1,0 +1,3 @@
+#!/bin/bash
+
+[[ -f ~/.config/alacritty/alacritty.toml ]] && touch ~/.config/alacritty/alacritty.toml
