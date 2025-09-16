@@ -33,7 +33,7 @@ install_windows() {
   fi
   
   if [ -f "$DESKTOP_PATH" ]; then
-    sudo cp "$DESKTOP_PATH" /usr/share/applications/windows-vm.desktop
+    sudo cp "$DESKTOP_PATH" ~/.local/share/applications/windows-vm.desktop
     echo "Installed Windows VM desktop application"
   fi
   
@@ -137,7 +137,7 @@ remove_windows() {
   fi
   
   if [ -f /usr/share/applications/windows-vm.desktop ]; then
-    sudo rm /usr/share/applications/windows-vm.desktop
+    sudo rm ~/.local/share/applications/windows-vm.desktop
     echo "Removed Windows VM desktop application"
   fi
   
