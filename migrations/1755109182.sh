@@ -29,4 +29,3 @@ if [ -f /etc/systemd/resolved.conf ]; then
   echo "DNS configuration reset to use DHCP (router DNS)"
   echo "To use Cloudflare DNS, run: omarchy-setup-dns Cloudflare"
 fi
-

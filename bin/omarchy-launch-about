@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec setsid uwsm app -- alacritty --class=Omarchy -o font.size=9 -e bash -c 'fastfetch; read -n 1 -s'

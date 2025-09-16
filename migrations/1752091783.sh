@@ -1,4 +1,4 @@
 echo "Install Plymouth splash screen"
 
-sudo pacman -S --needed --noconfirm uwsm plymouth
-source "$HOME/.local/share/omarchy/install/login/plymouth.sh"
+omarchy-pkg-add uwsm plymouth
+source "$OMARCHY_PATH/install/login/plymouth.sh"
