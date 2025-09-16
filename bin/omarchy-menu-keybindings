@@ -89,5 +89,5 @@ menu_height=$((monitor_height * 40 / 100))
 dynamic_bindings | \
   sort -u | \
   parse_bindings | \
-  walker --dmenu --theme keybindings -p 'Keybindings' -w 800 -h "$menu_height"
+  walker --dmenu -p 'Keybindings' -w 800 -h "$menu_height"
 
