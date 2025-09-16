@@ -1,0 +1,127 @@
+#!/bin/bash
+
+if [[ -z "$1" ]]; then
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure>" >&2
+  exit 1
+fi
+
+install_windows() {
+  echo "Installing Windows VM requirements..."
+  
+  # Install required packages
+  local packages=("rdesktop" "openbsd-netcat")
+  local missing_packages=()
+  
+  for package in "${packages[@]}"; do
+    if ! pacman -Qi "$package" &>/dev/null; then
+      missing_packages+=("$package")
+    fi
+  done
+  
+  if [ ${#missing_packages[@]} -gt 0 ]; then
+    echo "Installing required packages: ${missing_packages[*]}"
+    sudo pacman -S --needed "${missing_packages[@]}"
+  fi
+  
+  # Create Windows storage directory
+  mkdir -p "$HOME/.windows"
+  
+  # Navigate to docker-compose directory
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+  COMPOSE_DIR="$SCRIPT_DIR/../config/windows-vm"
+  
+  cd "$COMPOSE_DIR" || {
+    echo "Error: Could not change to $COMPOSE_DIR"
+    exit 1
+  }
+  
+  echo ""
+  echo "Starting Windows VM installation..."
+  echo "This will download a 64GB Windows image and takes 10-15 minutes to install."
+  echo ""
+  echo "IMPORTANT: You can monitor progress at http://127.0.0.1:8006"
+  echo "          If you need to set a Windows product key, edit:"
+  echo "          $COMPOSE_DIR/docker-compose.yml"
+  echo "          and change the KEY environment variable."
+  echo ""
+  echo "Opening browser to monitor installation..."
+  
+  # Open browser to monitor installation
+  (sleep 10 && xdg-open "http://127.0.0.1:8006") &
+  
+  # Start docker-compose in background
+  docker-compose up &
+  COMPOSE_PID=$!
+  
+  echo ""
+  echo "Windows installation started!"
+  echo "Monitor progress at: http://127.0.0.1:8006"
+  echo ""
+  echo "When Windows desktop is ready and you've completed initial setup:"
+  echo "Press ENTER to finish installation and stop the VM"
+  echo "(You can then launch it anytime using the 'Windows VM' application via Launcher)"
+  echo ""
+  read -r
+  
+  echo "Stopping Windows VM..."
+  docker-compose down
+  
+  # Wait for compose process to finish
+  wait $COMPOSE_PID 2>/dev/null || true
+  
+  echo ""
+  echo "Windows VM installation completed!"
+  echo "You can now launch it using the 'Windows VM' application or 'omarchy-launch-ms-windows'"
+}
+
+remove_windows() {
+  echo "Removing Windows VM..."
+  
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+  COMPOSE_DIR="$SCRIPT_DIR/../config/windows-vm"
+  
+  cd "$COMPOSE_DIR" || {
+    echo "Error: Could not change to $COMPOSE_DIR"
+    exit 1
+  }
+  
+  # Stop and remove containers
+  echo "Stopping Windows VM containers..."
+  docker-compose down
+  
+  # Remove the Docker image
+  echo "Removing Windows VM Docker image..."
+  docker rmi dockurr/windows 2>/dev/null || echo "Image already removed or not found"
+  
+  # Ask if user wants to remove storage directory
+  echo ""
+  read -p "Do you want to remove the Windows storage directory (~/.windows) and all VM data? [y/N]: " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    rm -rf "$HOME/.windows"
+    echo "Windows storage directory removed."
+  else
+    echo "Windows storage directory kept."
+  fi
+  
+  echo ""
+  echo "Windows VM removal completed!"
+}
+
+case "$1" in
+windows)
+  install_windows
+  ;;
+--remove)
+  if [[ "$2" == "windows" ]]; then
+    remove_windows
+  else
+    echo "Usage: omarchy-install-os-env --remove <windows>" >&2
+    exit 1
+  fi
+  ;;
+*)
+  echo "Usage: omarchy-install-os-env <windows|--remove windows>" >&2
+  exit 1
+  ;;
+esac
