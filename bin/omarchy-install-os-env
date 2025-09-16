@@ -26,6 +26,14 @@ install_windows() {
   # Create Windows storage directory
   mkdir -p "$HOME/.windows"
   
+  # Install Windows VM icon to system
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+  ICON_PATH="$SCRIPT_DIR/../applications/icons/windows.png"
+  if [ -f "$ICON_PATH" ]; then
+    sudo cp "$ICON_PATH" /usr/share/pixmaps/windows-vm.png
+    echo "Installed Windows VM icon"
+  fi
+  
   # Navigate to docker-compose directory
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
   COMPOSE_DIR="$SCRIPT_DIR/../config/windows-vm"
@@ -92,6 +100,12 @@ remove_windows() {
   # Remove the Docker image
   echo "Removing Windows VM Docker image..."
   docker rmi dockurr/windows 2>/dev/null || echo "Image already removed or not found"
+  
+  # Remove installed icon
+  if [ -f /usr/share/pixmaps/windows-vm.png ]; then
+    sudo rm /usr/share/pixmaps/windows-vm.png
+    echo "Removed Windows VM icon"
+  fi
   
   # Ask if user wants to remove storage directory
   echo ""

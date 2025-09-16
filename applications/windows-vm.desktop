@@ -2,7 +2,7 @@
 Name=Windows VM
 Comment=Start Windows VM via Docker and connect with RDP
 Exec=uwsm app -- omarchy-launch-ms-windows
-Icon=icons/windows.png
+Icon=windows-vm
 Terminal=false
 Type=Application
 Categories=System;Virtualization;
