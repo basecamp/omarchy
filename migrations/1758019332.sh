@@ -5,6 +5,6 @@ if ! grep -q "export TERMINAL" ~/.config/uwsm/env; then
   omarchy-state set relaunch-required
 fi
 
-if grep "scrolltouchpad 1.5, class:Alacritty" ~/.config/hypr/input.conf; then
+if grep -q "scrolltouchpad 1.5, class:Alacritty" ~/.config/hypr/input.conf; then
   sed -i 's/windowrule = scrolltouchpad 1\.5, class:Alacritty/windowrule = scrolltouchpad 1.5, tag:terminal/' ~/.config/hypr/input.conf
 fi
