@@ -1,5 +1,7 @@
 #!/bin/bash
 
+
+
 # Docker Compose Windows VM Launcher for Omarchy
 # Starts Windows VM via Docker Compose and connects with RDP
 # When RDP closes, docker-compose will stop
@@ -7,8 +9,6 @@
 # First tiem run: Please run `docker-compose up` and wait until windows is downloaded (the img file is 64 GB) and installed (takes up to 15 minutes)
 # Please connect to 127.0.0.1:8006 via browser to check progress (in case you have a wrong product-key, or someting else)
 # After that, you can use the launcher "Windows VM" that automatically start VM and connects RDesktop when docker is up and running
-
-set -e
 
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
@@ -26,7 +26,6 @@ cd "$COMPOSE_DIR" || {
     exit 1
 }
 
-
 # Function to handle cleanup
 cleanup() {
     echo "Shutting down Windows VM..."
@@ -37,14 +36,14 @@ cleanup() {
 # Set up signal handlers
 trap cleanup SIGTERM SIGINT
 
-# Start docker-compose in background
+# Start docker-compose in foreground with a background process
 docker-compose up &
 COMPOSE_PID=$!
 
 # Wait for container to be running
 echo "Waiting for Windows container to start..."
 while true; do
-    CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' windows 2>/dev/null)
+    CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' windows-omarchy 2>/dev/null)
     if [ "$CONTAINER_STATUS" = "running" ]; then
         echo "Container is running!"
         break
@@ -93,3 +92,4 @@ $RDP_COMMAND
 
 # If RDP exits, cleanup
 cleanup
+
