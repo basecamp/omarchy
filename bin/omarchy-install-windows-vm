@@ -1,9 +1,5 @@
 #!/bin/bash
 
-if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure>" >&2
-  exit 1
-fi
 
 install_windows() {
   echo "Installing Windows VM requirements..."
@@ -66,16 +62,28 @@ install_windows() {
   echo "Monitor progress at: http://127.0.0.1:8006"
   echo ""
   echo "When Windows desktop is ready and you've completed initial setup:"
-  echo "Press ENTER to finish installation and stop the VM"
+  echo "CLOSE THIS WINDOW to finish installation and stop the VM"
   echo "(You can then launch it anytime using the 'Windows VM' application via Launcher)"
   echo ""
-  read -r
+  echo "Waiting for window to close..."
   
-  echo "Stopping Windows VM..."
-  docker-compose down
+  # Set up trap to cleanup when script exits (window closed)
+  cleanup() {
+    echo "Window closed, stopping Windows VM..."
+    cd "$COMPOSE_DIR" 2>/dev/null || true
+    docker-compose down 2>/dev/null || true
+    exit 0
+  }
   
-  # Wait for compose process to finish
-  wait $COMPOSE_PID 2>/dev/null || true
+  trap cleanup EXIT SIGTERM SIGINT
+  
+  # Keep the script running until window is closed
+  while kill -0 $COMPOSE_PID 2>/dev/null; do
+    sleep 5
+  done
+  
+  # If docker-compose exits naturally, also cleanup
+  cleanup
   
   echo ""
   echo "Windows VM installation completed!"
