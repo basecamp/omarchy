@@ -14,3 +14,8 @@ fi
 if grep -q "bindd = SUPER, N, Neovim" ~/.config/hypr/bindings.conf; then
   sed -i '/SUPER, N, Neovim, exec/ c\bindd = SUPER, N, Editor, exec, omarchy-launch-editor' ~/.config/hypr/bindings.conf
 fi
+
+# Use default terminal for keybinding
+if grep -q "terminal = uwsm app" ~/.config/hypr/bindings.conf; then
+  sed -i '/terminal = uwsm app -- alacritty/ c\$terminal = uwsm app -- $TERMINAL' ~/.config/hypr/bindings.conf
+fi
