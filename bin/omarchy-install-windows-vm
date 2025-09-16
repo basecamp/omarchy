@@ -22,12 +22,19 @@ install_windows() {
   # Create Windows storage directory
   mkdir -p "$HOME/.windows"
   
-  # Install Windows VM icon to system
+  # Install Windows VM icon and desktop file to system
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
   ICON_PATH="$SCRIPT_DIR/../applications/icons/windows.png"
+  DESKTOP_PATH="$SCRIPT_DIR/../applications/windows-vm.desktop"
+  
   if [ -f "$ICON_PATH" ]; then
     sudo cp "$ICON_PATH" /usr/share/pixmaps/windows-vm.png
     echo "Installed Windows VM icon"
+  fi
+  
+  if [ -f "$DESKTOP_PATH" ]; then
+    sudo cp "$DESKTOP_PATH" /usr/share/applications/windows-vm.desktop
+    echo "Installed Windows VM desktop application"
   fi
   
   # Navigate to docker-compose directory
@@ -85,6 +92,20 @@ install_windows() {
   # If docker-compose exits naturally, also cleanup
   cleanup
   
+  # Accept RDP certificate for future connections
+  echo ""
+  echo "Accepting RDP certificate for future connections..."
+  echo "This will briefly connect to accept the certificate, then disconnect."
+  
+  # Wait for RDP to be ready
+  while ! nc -z 127.0.0.1 3389; do
+    echo "  Waiting for RDP to be ready for certificate acceptance..."
+    sleep 5
+  done
+  
+  # Quick connection to accept certificate
+  echo "yes" | timeout 10 rdesktop -g 320x240 -u docker 127.0.0.1:3389 -p admin 2>/dev/null || true
+  
   echo ""
   echo "Windows VM installation completed!"
   echo "You can now launch it using the 'Windows VM' application or 'omarchy-launch-windows-vm'"
@@ -109,10 +130,15 @@ remove_windows() {
   echo "Removing Windows VM Docker image..."
   docker rmi dockurr/windows 2>/dev/null || echo "Image already removed or not found"
   
-  # Remove installed icon
+  # Remove installed icon and desktop file
   if [ -f /usr/share/pixmaps/windows-vm.png ]; then
     sudo rm /usr/share/pixmaps/windows-vm.png
     echo "Removed Windows VM icon"
+  fi
+  
+  if [ -f /usr/share/applications/windows-vm.desktop ]; then
+    sudo rm /usr/share/applications/windows-vm.desktop
+    echo "Removed Windows VM desktop application"
   fi
   
   # Ask if user wants to remove storage directory
