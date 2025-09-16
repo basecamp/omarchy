@@ -177,7 +177,7 @@ show_setup_menu() {
   *Audio*) $TERMINAL --class=Wiremix -e wiremix ;;
   *Wifi*)
     rfkill unblock wifi
-    $TERMINAL --class=Impala -e impala
+    omarchy-launch-wifi
     ;;
   *Bluetooth*)
     rfkill unblock bluetooth
