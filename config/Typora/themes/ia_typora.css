@@ -72,7 +72,7 @@ pre.md-meta-block {
 /* headings */
 h1, h2, h3 {
   font-weight: bold;
-  color: var(--header-color);  
+  color: var(--header-color);
 }
 
 h1 {
@@ -98,7 +98,7 @@ h3 {
 }
 
 h4, h5, h6 {
-  color: var(--header-color);  
+  color: var(--header-color);
   margin-top: 1rem;
   margin-bottom: 0rem;
   font-size: 1rem;
@@ -109,7 +109,7 @@ h4 {
 }
 
 h6 {
-  color: var(--control-text-color);	
+  color: var(--control-text-color);
 }
 
 h1::before,

@@ -72,7 +72,7 @@ term_palette_bright: 414868;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;c0caf5
 term_foreground: c0caf5
 term_foreground_bright: c0caf5
 term_background_bright: 24283b
- 
+
 EOF
 
   sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook

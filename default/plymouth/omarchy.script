@@ -25,25 +25,25 @@ global.max_progress = 0.0;  # Track the maximum progress reached to prevent back
 fun refresh_callback ()
   {
     global.animation_frame++;
-    
+
     # Animate fake progress to limit over time with easing
     if (global.fake_progress_active == 1)
       {
         # Calculate elapsed time since start
         elapsed_time = global.animation_frame / 50.0;  # Convert frames to seconds (50 FPS)
-        
+
         # Calculate linear progress ratio (0 to 1) based on time
         time_ratio = elapsed_time / global.fake_progress_duration;
         if (time_ratio > 1.0)
           time_ratio = 1.0;
-        
+
         # Apply easing curve: ease-out quadratic
         # Formula: 1 - (1 - x)^2
         eased_ratio = 1 - ((1 - time_ratio) * (1 - time_ratio));
-        
+
         # Calculate fake progress based on eased ratio
         global.fake_progress = eased_ratio * global.fake_progress_limit;
-        
+
         # Update progress bar with fake progress
         update_progress_bar(global.fake_progress);
       }
@@ -62,7 +62,7 @@ fun update_progress_bar(progress)
         global.max_progress = progress;
         width = Math.Int(progress_bar.original_image.GetWidth() * progress);
         if (width < 1) width = 1;  # Ensure minimum width of 1 pixel
-        
+
         progress_bar.image = progress_bar.original_image.Scale(width, progress_bar.original_image.GetHeight());
         progress_bar.sprite.SetImage(progress_bar.image);
       }
@@ -143,10 +143,10 @@ bullet.sprites = [];
 fun display_normal_callback ()
   {
     hide_password_dialog();
-    
+
     # Get current mode
     mode = Plymouth.GetMode();
-    
+
     # Only show progress bar for boot and resume modes
     if ((mode == "boot" || mode == "resume") && global.password_shown == 1)
       {
@@ -158,7 +158,7 @@ fun display_normal_callback ()
 fun display_password_callback (prompt, bullets)
   {
     global.password_shown = 1;  # Mark that password dialog has been shown
-    
+
     # Reset progress when password dialog appears
     stop_fake_progress();
     hide_progress_bar();
@@ -166,17 +166,17 @@ fun display_password_callback (prompt, bullets)
     global.fake_progress = 0.0;
     global.real_progress = 0.0;
     show_password_dialog();
-    
+
     # Clear all bullets first
     for (index = 0; bullet.sprites[index]; index++)
       bullet.sprites[index].SetOpacity(0);
-    
+
     # Create and show bullets for current password (max 21)
     max_bullets = 21;
     bullets_to_show = bullets;
     if (bullets_to_show > max_bullets)
       bullets_to_show = max_bullets;
-    
+
     for (index = 0; index < bullets_to_show; index++)
       {
         if (!bullet.sprites[index])
@@ -217,7 +217,7 @@ progress_bar.sprite.SetOpacity(0);
 fun progress_callback (duration, progress)
   {
     global.real_progress = progress;
-    
+
     # If real progress is above limit, stop fake progress and use real progress
     if (progress > global.fake_progress_limit)
       {

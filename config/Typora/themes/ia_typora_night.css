@@ -12,14 +12,14 @@
   --font-color: #bbbcbc;
   --header-color: #bebebe; /* H4-H6 */
   --border-color: #232629;
-  --link-color: #5584aa; 
+  --link-color: #5584aa;
   --code-bg-color: #1c1a1a;
-  --hover-bg-color: #050505; 
-  --control-text-color: var(--font-color); 
+  --hover-bg-color: #050505;
+  --control-text-color: var(--font-color);
   --side-bar-bg-color: var(--accented-background-color);
   --control-text-hover-color: var(--header-color);
   --item-hover-text-color: var(--header-color);
-  --item-hover-bg-color: var(--hover-bg-color); 
+  --item-hover-bg-color: var(--hover-bg-color);
   --bg-color: var(--background-color);
   --text-color: var(--font-color);
   --meta-content-color: var(--accent-color);
