@@ -44,9 +44,9 @@ present_terminal() {
   omarchy-launch-floating-terminal-with-presentation $1
 }
 
-edit_in_nvim() {
+open_in_editor() {
   notify-send "Editing config file" "$1"
-  $TERMINAL -e nvim "$1"
+  omarchy-launch-editor "$1"
 }
 
 install() {
@@ -142,9 +142,9 @@ show_style_menu() {
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
-  *Hyprland*) edit_in_nvim ~/.config/hypr/looknfeel.conf ;;
-  *Screensaver*) edit_in_nvim ~/.config/omarchy/branding/screensaver.txt ;;
-  *About*) edit_in_nvim ~/.config/omarchy/branding/about.txt ;;
+  *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
+  *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
+  *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
   esac
 }
@@ -171,7 +171,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n󰱔  DNS\n  Config\n󰈷  Fingerprint\n  Fido2"
+  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
   *Audio*) $TERMINAL --class=Wiremix -e wiremix ;;
@@ -184,13 +184,13 @@ show_setup_menu() {
     blueberry
     ;;
   *Power*) show_setup_power_menu ;;
-  *Monitors*) edit_in_nvim ~/.config/hypr/monitors.conf ;;
-  *Keybindings*) edit_in_nvim ~/.config/hypr/bindings.conf ;;
-  *Input*) edit_in_nvim ~/.config/hypr/input.conf ;;
+  *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
+  *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
+  *Input*) open_in_editor ~/.config/hypr/input.conf ;;
+  *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
+  *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
-  *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
-  *Fido2*) present_terminal omarchy-setup-fido2 ;;
   *) show_main_menu ;;
   esac
 }
@@ -207,15 +207,23 @@ show_setup_power_menu() {
 
 show_setup_config_menu() {
   case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
-  *Hyprland*) edit_in_nvim ~/.config/hypr/hyprland.conf ;;
-  *Hypridle*) edit_in_nvim ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
-  *Hyprlock*) edit_in_nvim ~/.config/hypr/hyprlock.conf ;;
-  *Hyprsunset*) edit_in_nvim ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
-  *Swayosd*) edit_in_nvim ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
-  *Walker*) edit_in_nvim ~/.config/walker/config.toml && omarchy-restart-walker ;;
-  *Waybar*) edit_in_nvim ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
-  *XCompose*) edit_in_nvim ~/.XCompose && omarchy-restart-xcompose ;;
+  *Hyprland*) open_in_editor ~/.config/hypr/hyprland.conf ;;
+  *Hypridle*) open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
+  *Hyprlock*) open_in_editor ~/.config/hypr/hyprlock.conf ;;
+  *Hyprsunset*) open_in_editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
+  *Swayosd*) open_in_editor ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
+  *Walker*) open_in_editor ~/.config/walker/config.toml && omarchy-restart-walker ;;
+  *Waybar*) open_in_editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
+  *XCompose*) open_in_editor ~/.XCompose && omarchy-restart-xcompose ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_setup_security_menu() {
+  case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
+  *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
+  *Fido2*) present_terminal omarchy-setup-fido2 ;;
+  *) show_setup_menu ;;
   esac
 }
 
