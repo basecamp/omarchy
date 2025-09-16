@@ -2,6 +2,6 @@
 
 case "$TERMINAL" in
 "alacritty") touch ~/.config/alacritty/alacritty.toml ;;
-"kitty") pkill -USRSIG1 kitty ;;
-"ghostty") pkill -USRSIG2 ghostty ;;
+"kitty") killall -SIGUSR1 kitty ;;
+"ghostty") killall -USRSIG2 ghostty ;;
 esac
