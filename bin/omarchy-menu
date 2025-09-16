@@ -211,7 +211,7 @@ show_install_menu() {
   *Development*) show_install_development_menu ;;
   *Editor*) show_install_editor_menu ;;
   *AI*) show_install_ai_menu ;;
-  *Windows*) present_terminal "omarchy-install-windows-vm" ;;
+  *Windows*) present_terminal omarchy-install-windows-vm ;;
   *Gaming*) show_install_gaming_menu ;;
   *) show_main_menu ;;
   esac
