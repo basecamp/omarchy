@@ -6,5 +6,5 @@ if ! grep -q "export TERMINAL" ~/.config/uwsm/env; then
 fi
 
 if grep "scrolltouchpad 1.5, class:Alacritty" ~/.config/hypr/input.conf; then
-  sed -i 's/windowrule = scrolltouchpad 1\.5, class:Alacritty/windowrule = scrolltouchpad 1.5, tag:terminals/' ~/.config/hypr/input.conf
+  sed -i 's/windowrule = scrolltouchpad 1\.5, class:Alacritty/windowrule = scrolltouchpad 1.5, tag:terminal/' ~/.config/hypr/input.conf
 fi
