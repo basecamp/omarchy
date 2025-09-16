@@ -79,7 +79,7 @@ install_windows() {
   
   echo ""
   echo "Windows VM installation completed!"
-  echo "You can now launch it using the 'Windows VM' application or 'omarchy-launch-ms-windows'"
+  echo "You can now launch it using the 'Windows VM' application or 'omarchy-launch-windows-vm'"
 }
 
 remove_windows() {
