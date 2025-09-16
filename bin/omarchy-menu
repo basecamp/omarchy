@@ -29,7 +29,7 @@ menu() {
     local index
     index=$(echo -e "$options" | grep -nxF "$preselect" | cut -d: -f1)
     if [[ -n "$index" ]]; then
-        args+=("-c" "$index")
+      args+=("-c" "$index")
     fi
   fi
 
@@ -454,5 +454,5 @@ if [[ -n "$1" ]]; then
   BACK_TO_EXIT=true
   go_to_menu "$1"
 else
-    show_main_menu
+  show_main_menu
 fi
