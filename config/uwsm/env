@@ -1,7 +1,11 @@
+# Changes require a relaunch of Hyprland to take effect.
+
+# Ensure Omarchy bins are in the path
 export OMARCHY_PATH=$HOME/.local/share/omarchy
 export PATH=$OMARCHY_PATH/bin/:$PATH
+
+# Set terminal used by all default commands
 export TERMINAL=alacritty
 
-if command -v mise &> /dev/null; then
-  eval "$(mise activate bash)"
-fi
+# Activate mise if present on the system
+omarchy-cmd-present mise && eval "$(mise activate bash)"

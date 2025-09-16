@@ -24,7 +24,6 @@ ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 omarchy-theme-bg-next
 
 # Restart components to apply new theme
-touch ~/.config/alacritty/alacritty.toml
 omarchy-restart-waybar
 omarchy-restart-swayosd
 hyprctl reload
@@ -32,6 +31,7 @@ pkill -SIGUSR2 btop
 makoctl reload
 
 # Change gnome, browser, vscode themes
+omarchy-theme-set-terminal
 omarchy-theme-set-gnome
 omarchy-theme-set-eza
 omarchy-theme-set-browser

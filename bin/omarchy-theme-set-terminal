@@ -1,0 +1,6 @@
+#!/bin/bash
+
+case "$TERMINAL" in
+"alacritty") touch ~/.config/alacritty/alacritty.toml ;;
+"kitty") pkill -USR1 kitty ;;
+esac
