@@ -123,19 +123,14 @@ remove_windows() {
 }
 
 case "$1" in
-windows)
+""|install)
   install_windows
   ;;
---remove)
-  if [[ "$2" == "windows" ]]; then
-    remove_windows
-  else
-    echo "Usage: omarchy-install-os-env --remove <windows>" >&2
-    exit 1
-  fi
+--remove|remove)
+  remove_windows
   ;;
 *)
-  echo "Usage: omarchy-install-os-env <windows|--remove windows>" >&2
+  echo "Usage: omarchy-install-windows-vm [install|--remove]" >&2
   exit 1
   ;;
 esac
