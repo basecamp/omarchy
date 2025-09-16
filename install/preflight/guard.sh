@@ -1,5 +1,3 @@
-#!/bin/bash
-
 abort() {
   echo -e "\e[31mOmarchy install requires: $1\e[0m"
   echo
