@@ -1,13 +1,10 @@
 #!/bin/bash
 
-case "$EDITOR" in
+case "${EDITOR:-nvim}" in
 nvim | vim | nano | micro | hx)
   exec setsid uwsm app -- "$TERMINAL" -e "$EDITOR" "$@"
   ;;
-code | codium | subl | gedit | kate | zeditor)
-  exec setsid uwsm app -- "$EDITOR" "$@"
-  ;;
 *)
-  exec setsid uwsm app -- "$TERMINAL" -e nvim "$@"
+  exec setsid uwsm app -- "$EDITOR" "$@"
   ;;
 esac
