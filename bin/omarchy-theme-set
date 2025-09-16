@@ -23,9 +23,6 @@ ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 # Change background with theme
 omarchy-theme-bg-next
 
-# Trigger kitty config reload
-killall -SIGUSR1 kitty
-
 # Restart components to apply new theme
 omarchy-restart-waybar
 omarchy-restart-swayosd
