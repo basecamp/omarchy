@@ -1,0 +1,12 @@
+#!/bin/bash
+
+STATE_FILE=~/.local/state/omarchy/toggles/boot-lock-enabled
+
+if [[ -f $STATE_FILE ]]; then
+  rm -f $STATE_FILE
+  notify-send "󰍁 Boot lock disabled"
+else
+  mkdir -p "$(dirname $STATE_FILE)"
+  touch $STATE_FILE
+  notify-send "󰍁 Boot lock enabled"
+fi

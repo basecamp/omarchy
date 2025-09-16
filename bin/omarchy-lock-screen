@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Check if this is being called from autostart (boot lock)
+if [[ "$1" == "--boot" ]]; then
+  # Exit early if boot lock is disabled
+  if ! [[ -f ~/.local/state/omarchy/toggles/boot-lock-enabled ]]; then
+    exit 1
+  fi
+fi
+
 # Lock the screen
 pidof hyprlock || hyprlock &
 
