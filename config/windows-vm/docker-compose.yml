@@ -18,5 +18,6 @@ services:
       - 3389:3389/udp
     volumes:
       - ~/.windows:/storage
+      # - /home/username/Documents:/data # like this you can share linux files with Windows. It will show in file explorer under "network -> host.lan -> Data" or type `\\host.lan\Data`
     restart: always
     stop_grace_period: 2m
