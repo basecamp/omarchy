@@ -55,7 +55,7 @@
   "cpu": {
     "interval": 5,
     "format": "󰍛",
-    "on-click": "alacritty -e btop"
+    "on-click": "$TERMINAL -e btop"
   },
   "clock": {
     "format": "{:L%A %H:%M}",
@@ -74,7 +74,7 @@
     "tooltip-format-disconnected": "Disconnected",
     "interval": 3,
     "spacing": 1,
-    "on-click": "alacritty --class=Impala -e impala"
+    "on-click": "omarchy-launch-wifi"
   },
   "battery": {
     "format": "{capacity}% {icon}",
@@ -104,7 +104,7 @@
   },
   "pulseaudio": {
     "format": "{icon}",
-    "on-click": "alacritty --class=Wiremix -e wiremix",
+    "on-click": "$TERMINAL --class=Wiremix -e wiremix",
     "on-click-right": "pamixer -t",
     "tooltip-format": "Playing at {volume}%",
     "scroll-step": 5,
