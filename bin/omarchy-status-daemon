@@ -10,7 +10,7 @@ get_dnd_status() {
     if echo "$modes" | grep -q "do-not-disturb"; then
         echo '{"text": "󰂛", "class": "active", "tooltip": "Do Not Disturb: ON\nClick to disable"}'
     else
-        echo '{"text": "󰂚", "class": "inactive", "tooltip": "Do Not Disturb: OFF\nClick to enable"}'
+        echo '{"text": ""}'
     fi
 }
 
