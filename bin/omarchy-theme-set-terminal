@@ -3,5 +3,12 @@
 case "$TERMINAL" in
 "alacritty") touch ~/.config/alacritty/alacritty.toml ;;
 "kitty") killall -SIGUSR1 kitty ;;
-"ghostty") killall -USRSIG2 ghostty ;;
+"ghostty")
+  # Use a default theme if none exists
+  if [[ ! -f ~/.config/omarchy/current/theme/ghostty.conf ]]; then
+    echo "theme = Spacegray" >~/.config/omarchy/current/theme/ghostty.conf
+  fi
+
+  killall -USRSIG2 ghostty
+  ;;
 esac
