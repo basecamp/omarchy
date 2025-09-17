@@ -221,7 +221,6 @@ show_install_service_menu() {
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
   *Bitwarden*) install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden" ;;
-  *SSH Agent*) present_terminal omarchy-install-ssh-agent ;;
   *) show_install_menu ;;
   esac
 }
