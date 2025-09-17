@@ -1,24 +1,6 @@
 @import url("file://~/.config/omarchy/current/theme/walker.css");
 
-scrollbar,
-.box-wrapper,
-.preview-box,
-.box,
-.search-container,
-.input,
-.input,
-.content-container,
-.placeholder,
-.scroll,
-.list,
-child,
-.item-box,
-.item-text-box,
-.item-text,
-.item-subtext,
-.current,
-.keybind-hints,
-.preview {
+* {
   all: unset;
 }
 
@@ -30,6 +12,14 @@ child,
 
 scrollbar {
   opacity: 0;
+}
+
+.normal-icons {
+  -gtk-icon-size: 16px;
+}
+
+.large-icons {
+  -gtk-icon-size: 32px;
 }
 
 .box-wrapper {
@@ -77,7 +67,6 @@ scrollbar {
 
 child,
 child > * {
-  padding: 0px 12px;
 }
 
 child:hover .item-box {
