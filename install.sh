@@ -3,7 +3,7 @@
 # Exit immediately if a command exits with a non-zero status
 set -eE
 
-OMARCHY_PATH="$HOME/.local/share/omarchy"
+OMARCHY_PATH="$HOME/.local/share/omarchy-custom"
 OMARCHY_INSTALL="$OMARCHY_PATH/install"
 export PATH="$OMARCHY_PATH/bin:$PATH"
 

@@ -1,0 +1,7 @@
+source ~/.local/share/omarchy/default/fish/shell
+source ~/.local/share/omarchy/default/fish/aliases
+source ~/.local/share/omarchy/default/fish/functions
+source ~/.local/share/omarchy/default/fish/init
+source ~/.local/share/omarchy/default/fish/envs
+
+# [[ $- == *i* ]] && bind -f ~/.local/share/omarchy/default/fish/inputrc

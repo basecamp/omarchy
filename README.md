@@ -4,7 +4,17 @@ Turn a fresh Arch installation into a fully-configured, beautiful, and modern we
 
 Read more at [omarchy.org](https://omarchy.org).
 
+# Installation
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/afpp3/omarchy/master/install.sh | bash
+```
+
 ## License
 
 Omarchy is released under the [MIT License](https://opensource.org/licenses/MIT).
 
+## Documentation
+
+<!--REFER TO DOCUMENTATION.MD ON THIS FOLDER-->
+See [documentation.md](DOCUMENTATION.md) for more details on the installation process, features, and customization options.

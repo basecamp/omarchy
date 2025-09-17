@@ -1,8 +1,6 @@
 #!/bin/bash
 
 sudo pacman -S --noconfirm --needed \
-  1password-beta \
-  1password-cli \
   asdcontrol-git \
   alacritty \
   avahi \
@@ -29,6 +27,7 @@ sudo pacman -S --noconfirm --needed \
   fcitx5-qt \
   fd \
   ffmpegthumbnailer \
+  fish \
   fontconfig \
   fzf \
   gcc14 \
@@ -36,6 +35,7 @@ sudo pacman -S --noconfirm --needed \
   gnome-calculator \
   gnome-keyring \
   gnome-themes-extra \
+  ghostty \
   gum \
   gvfs-mtp \
   gvfs-smb \
@@ -52,19 +52,16 @@ sudo pacman -S --noconfirm --needed \
   inetutils \
   iwd \
   jq \
-  kdenlive \
   kvantum-qt5 \
   lazydocker \
   lazygit \
   less \
   libqalculate \
-  libreoffice \
   llvm \
   localsend \
   luarocks \
   mako \
   man \
-  mariadb-libs \
   mise \
   mpv \
   nautilus \
@@ -77,8 +74,8 @@ sudo pacman -S --noconfirm --needed \
   obs-studio \
   obsidian \
   omarchy-chromium \
+  onlyoffice-bin \
   pamixer \
-  pinta \
   playerctl \
   plocate \
   plymouth \
@@ -91,7 +88,6 @@ sudo pacman -S --noconfirm --needed \
   qt5-wayland \
   ripgrep \
   satty \
-  signal-desktop \
   slurp \
   spotify \
   starship \
@@ -104,7 +100,6 @@ sudo pacman -S --noconfirm --needed \
   ttf-cascadia-mono-nerd \
   ttf-ia-writer \
   ttf-jetbrains-mono-nerd \
-  typora \
   tzupdate \
   ufw \
   ufw-docker \
@@ -127,4 +122,5 @@ sudo pacman -S --noconfirm --needed \
   xournalpp \
   yaru-icon-theme \
   yay \
+  zen-browser-bin \
   zoxide

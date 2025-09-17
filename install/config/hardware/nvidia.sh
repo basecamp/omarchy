@@ -82,6 +82,11 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
 env = NVD_BACKEND,direct
 env = LIBVA_DRIVER_NAME,nvidia
 env = __GLX_VENDOR_LIBRARY_NAME,nvidia
+
+# nvidia firefox (for hardware acceleration on FF)?
+# check this post https://github.com/elFarto/nvidia-vaapi-driver#configuration
+env = MOZ_DISABLE_RDD_SANDBOX,1
+env = EGL_PLATFORM,wayland
 EOF
   fi
 fi
