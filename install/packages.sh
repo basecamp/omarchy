@@ -21,6 +21,7 @@ sudo pacman -S --noconfirm --needed \
   docker-buildx \
   docker-compose \
   dust \
+  efitools \
   evince \
   eza \
   fastfetch \
@@ -91,6 +92,8 @@ sudo pacman -S --noconfirm --needed \
   qt5-wayland \
   ripgrep \
   satty \
+  sbctl \
+  sbsigntools \
   signal-desktop \
   slurp \
   spotify \

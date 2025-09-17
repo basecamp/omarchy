@@ -1,0 +1,14 @@
+# Omarchy Secure Boot Hook
+# Automatically maintains EFI signature integrity after package updates
+
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Omarchy: Verifying and updating secure boot signatures and hashes
+When = PostTransaction
+Exec = /usr/local/bin/omarchy-secure-boot-update.sh
+Depends = sbctl
