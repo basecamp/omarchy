@@ -12,6 +12,7 @@
         <style>
           <class name="box-wrapper"></class>
         </style>
+        <property name="width-request">644</property>
         <property name="overflow">hidden</property>
         <property name="orientation">horizontal</property>
         <property name="valign">center</property>
@@ -54,14 +55,16 @@
                 </style>
                 <property name="orientation">horizontal</property>
                 <property name="spacing">10</property>
+                <property name="vexpand">true</property>
+                <property name="vexpand-set">true</property>
                 <child>
                   <object class="GtkLabel" id="ElephantHint">
                     <style>
                       <class name="elephant-hint"></class>
                     </style>
+                    <property name="hexpand">true</property>
+                    <property name="height-request">100</property>
                     <property name="label">Waiting for elephant...</property>
-                    <property name="height-request">400</property>
-                    <property name="width-request">500</property>
                   </object>
                 </child>
                 <child>
@@ -70,6 +73,7 @@
                       <class name="placeholder"></class>
                     </style>
                     <property name="label">No Results</property>
+                    <property name="yalign">0.0</property>
                     <property name="hexpand">true</property>
                   </object>
                 </child>
@@ -78,11 +82,12 @@
                     <style>
                       <class name="scroll"></class>
                     </style>
+                    <property name="hexpand">true</property>
                     <property name="can_focus">false</property>
                     <property name="overlay-scrolling">true</property>
-                    <property name="max-content-width">664</property>
-                    <property name="min-content-width">664</property>
+                    <property name="max-content-width">600</property>
                     <property name="max-content-height">300</property>
+                    <property name="min-content-height">0</property>
                     <property name="propagate-natural-height">true</property>
                     <property name="propagate-natural-width">true</property>
                     <property name="hscrollbar-policy">automatic</property>
