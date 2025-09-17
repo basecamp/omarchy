@@ -71,7 +71,7 @@
                     </style>
                     <property name="label">No Results</property>
                     <property name="height-request">300</property>
-                    <property name="width-request">664</property>
+                    <property name="hexpand">true</property>
                   </object>
                 </child>
                 <child>
@@ -84,7 +84,6 @@
                     <property name="max-content-width">664</property>
                     <property name="min-content-width">664</property>
                     <property name="max-content-height">300</property>
-                    <property name="min-content-height">300</property>
                     <property name="propagate-natural-height">true</property>
                     <property name="propagate-natural-width">true</property>
                     <property name="hscrollbar-policy">automatic</property>

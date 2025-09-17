@@ -119,9 +119,6 @@ child:selected .item-box * {
 
 .current {
   font-style: italic;
-  background: alpha(@border, 0.2);
-  border-left: 3px solid @border;
-  padding-left: 7px;
 }
 
 .keybind-hints {
