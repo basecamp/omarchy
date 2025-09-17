@@ -119,6 +119,7 @@ java)
 zig)
   echo -e "Installing Zig...\n"
   mise use --global zig@latest
+  mise use -g zls@latest
   ;;
 ocaml)
   echo -e "Installing OCaml...\n"
