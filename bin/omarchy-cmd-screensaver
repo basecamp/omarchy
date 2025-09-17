@@ -1,12 +1,19 @@
 #!/bin/bash
 
-function exit_screensaver {
+screensaver_in_focus() {
+  hyprctl activewindow -j | jq -e '.class == "Screensaver"' >/dev/null 2>&1
+}
+
+exit_screensaver() {
+  hyprctl keyword cursor:invisible false
   pkill -x tte 2>/dev/null
   pkill -f "alacritty --class Screensaver" 2>/dev/null
   exit 0
 }
 
 trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+
+hyprctl keyword cursor:invisible true
 
 while true; do
   effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
@@ -15,7 +22,7 @@ while true; do
     "$effect" &
 
   while pgrep -x tte >/dev/null; do
-    if read -n 1 -t 3; then
+    if read -n 1 -t 3 || ! screensaver_in_focus; then
       exit_screensaver
     fi
   done

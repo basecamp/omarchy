@@ -1,0 +1,7 @@
+#!/bin/bash
+
+case "$TERMINAL" in
+"alacritty") touch ~/.config/alacritty/alacritty.toml ;;
+"kitty") killall -SIGUSR1 kitty ;;
+"ghostty") killall -SIGUSR2 ghostty ;;
+esac

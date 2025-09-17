@@ -1,0 +1,19 @@
+#!/bin/bash
+
+if (($# == 0)); then
+  echo "Usage: omarchy-install-terminal [alacritty|ghostty|kitty]"
+  exit 1
+fi
+
+package="$1"
+
+# Install package
+omarchy-pkg-add $package
+
+# Set as default terminal
+echo "Setting $package as new default terminal..."
+sed -i "/export TERMINAL=/ c\export TERMINAL=$package" ~/.config/uwsm/default
+
+# Relaunch is needed for new default to take effect
+echo
+gum confirm "Relaunch Hyprland to use new terminal?" && uwsm stop
