@@ -122,5 +122,4 @@ sudo pacman -S --noconfirm --needed \
   xournalpp \
   yaru-icon-theme \
   yay \
-  zen-browser-bin \
   zoxide
