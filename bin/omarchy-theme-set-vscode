@@ -2,6 +2,7 @@
 
 VS_CODE_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
 VS_CODE_SETTINGS="$HOME/.config/Code/User/settings.json"
+VS_CODIUM_SETTINGS="$HOME/.config/VSCodium/User/settings.json"
 VS_CODE_SKIP_FLAG="$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes"
 
 if omarchy-cmd-present code && [[ ! -f "$VS_CODE_SKIP_FLAG" ]]; then
@@ -23,4 +24,25 @@ if omarchy-cmd-present code && [[ ! -f "$VS_CODE_SKIP_FLAG" ]]; then
   fi
 
   mv "${VS_CODE_SETTINGS}.new" "$VS_CODE_SETTINGS"
+fi
+
+if omarchy-cmd-present codium && [[ ! -f "$VS_CODE_SKIP_FLAG" ]]; then
+  if [[ -f "$VS_CODE_THEME" ]]; then
+    theme_name=$(jq -r '.name' "$VS_CODE_THEME")
+    extension=$(jq -r '.extension' "$VS_CODE_THEME")
+
+    # Install VS Codium theme extension
+    if [[ -n "$extension" ]] && ! codium --list-extensions | grep -Fxq "$extension"; then
+      notify-send "   Installing VS Codium theme for $theme_name"
+      codium --install-extension "$extension" >/dev/null
+    fi
+
+    # Update theme in settings.json
+    jq -n --arg t "$theme_name" '(input? // {}) | .["workbench.colorTheme"] = $t' "$VS_CODIUM_SETTINGS" >"${VS_CODIUM_SETTINGS}.new"
+  else
+    # Remove theme from settings.json when the theme doesn't have vscode support
+    jq 'del(.["workbench.colorTheme"])' "$VS_CODIUM_SETTINGS" >"${VS_CODIUM_SETTINGS}.new"
+  fi
+
+  mv "${VS_CODIUM_SETTINGS}.new" "$VS_CODIUM_SETTINGS"
 fi
