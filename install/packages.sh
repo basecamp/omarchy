@@ -74,7 +74,6 @@ sudo pacman -S --noconfirm --needed \
   obs-studio \
   obsidian \
   omarchy-chromium \
-  onlyoffice-bin \
   pamixer \
   playerctl \
   plocate \
