@@ -7,7 +7,7 @@ Read more at [omarchy.org](https://omarchy.org).
 # Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/afpp3/omarchy/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/basecamp/omarchy/refs/heads/master/boot.sh | bash
 ```
 
 ## License
