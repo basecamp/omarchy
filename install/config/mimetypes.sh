@@ -33,3 +33,15 @@ xdg-mime default mpv.desktop video/x-ms-asf
 xdg-mime default mpv.desktop video/x-ogm+ogg
 xdg-mime default mpv.desktop video/x-theora+ogg
 xdg-mime default mpv.desktop application/ogg
+
+# Open audio files with mpv
+xdg-mime default mpv.desktop audio/mpeg
+xdg-mime default mpv.desktop audio/x-wav
+xdg-mime default mpv.desktop audio/ogg
+xdg-mime default mpv.desktop audio/flac
+xdg-mime default mpv.desktop audio/aac
+xdg-mime default mpv.desktop audio/x-m4a
+xdg-mime default mpv.desktop audio/mp4
+
+# Open text files with nvim
+xdg-mime default nvim.desktop text/plain
