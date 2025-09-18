@@ -17,10 +17,6 @@ if grep -q '^KEYMAP=' "$conf"; then
     layout="ch"
     variant="fr"
     ;;
-  it_CH*)
-    layout="ch"
-    variant="it"
-    ;;
   *)
     layout="$keymap"
     ;;
