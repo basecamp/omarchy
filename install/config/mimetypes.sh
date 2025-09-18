@@ -45,3 +45,20 @@ xdg-mime default mpv.desktop audio/mp4
 
 # Open text files with nvim
 xdg-mime default nvim.desktop text/plain
+
+# Open subtitles with nvim
+xdg-mime default nvim.desktop text/x-microdvd
+xdg-mime default nvim.desktop text/x-srt
+
+# Open markdown and code files with nvim
+xdg-mime default nvim.desktop text/markdown
+xdg-mime default nvim.desktop text/x-python
+xdg-mime default nvim.desktop text/x-javascript
+xdg-mime default nvim.desktop application/json
+xdg-mime default nvim.desktop text/csv
+
+# Open archives with pcmanfm
+xdg-mime default pcmanfm.desktop application/zip
+xdg-mime default pcmanfm.desktop application/x-tar
+xdg-mime default pcmanfm.desktop application/gzip
+xdg-mime default pcmanfm.desktop application/x-7z-compressed
