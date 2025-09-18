@@ -1,0 +1,200 @@
+#!/bin/bash
+
+set -e
+
+# Default values
+VERSION=""
+OUTPUT_DIR="."
+WORK_DIR="/tmp/omarchy-build"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_header() {
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}$1${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
+}
+
+print_error() {
+    echo -e "${RED}✗ $1${NC}" >&2
+}
+
+print_success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+print_info() {
+    echo -e "${YELLOW}→ $1${NC}"
+}
+
+usage() {
+    cat << EOF
+Usage: $0 -v VERSION [-o OUTPUT_DIR] [-w WORK_DIR]
+
+Build an Omarchy ISO and automatically generate its torrent.
+
+Required:
+  -v VERSION      Version string (e.g., 3.0.1)
+
+Optional:
+  -o OUTPUT_DIR   Output directory for ISO and torrent (default: current directory)
+  -w WORK_DIR     Working directory for build process (default: /tmp/omarchy-build)
+  -h              Show this help message
+
+Example:
+  $0 -v 3.0.1
+  $0 -v 3.0.1 -o ~/releases -w /tmp/build
+
+Note: This script requires archiso or similar tools to be installed.
+      The actual ISO build process should be implemented based on your specific needs.
+EOF
+    exit 1
+}
+
+# Parse command line arguments
+while getopts "v:o:w:h" opt; do
+    case $opt in
+        v)
+            VERSION="$OPTARG"
+            ;;
+        o)
+            OUTPUT_DIR="$OPTARG"
+            ;;
+        w)
+            WORK_DIR="$OPTARG"
+            ;;
+        h)
+            usage
+            ;;
+        \?)
+            print_error "Invalid option: -$OPTARG"
+            usage
+            ;;
+    esac
+done
+
+# Check required parameters
+if [ -z "$VERSION" ]; then
+    print_error "Version is required"
+    usage
+fi
+
+ISO_NAME="omarchy-${VERSION}.iso"
+ISO_PATH="${OUTPUT_DIR}/${ISO_NAME}"
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+print_header "Building Omarchy ISO v${VERSION}"
+echo ""
+
+# Create output directory if it doesn't exist
+mkdir -p "$OUTPUT_DIR"
+
+# Check for required tools
+print_info "Checking build requirements..."
+
+if ! command -v mkarchiso &> /dev/null && ! command -v mkisofs &> /dev/null; then
+    print_error "Neither mkarchiso nor mkisofs found. Please install archiso or genisoimage."
+    exit 1
+fi
+
+if ! command -v mktorrent &> /dev/null; then
+    print_error "mktorrent not found. Please install it: sudo pacman -S mktorrent"
+    exit 1
+fi
+
+print_success "Build requirements satisfied"
+echo ""
+
+# TODO: Add your actual ISO build process here
+# This is a placeholder that should be replaced with your actual build commands
+print_header "Building ISO (Placeholder - Replace with actual build process)"
+print_info "Work directory: $WORK_DIR"
+print_info "Output: $ISO_PATH"
+echo ""
+
+# Example build process (replace this with your actual build)
+cat << 'EOF' > /tmp/iso-build-placeholder.txt
+This is where the actual ISO build process would go.
+Typically this would involve:
+1. Setting up the archiso profile
+2. Copying custom configurations
+3. Installing packages
+4. Building the ISO with mkarchiso
+
+For now, this is just a placeholder.
+To test torrent generation, create a dummy ISO:
+  dd if=/dev/zero of=omarchy-VERSION.iso bs=1M count=100
+EOF
+
+print_error "ISO build process not yet implemented"
+print_info "To implement, edit this script and replace the placeholder with actual build commands"
+print_info "See /tmp/iso-build-placeholder.txt for details"
+echo ""
+
+# If ISO exists (for testing or if built externally), generate torrent
+if [ -f "$ISO_PATH" ]; then
+    print_success "ISO found at: $ISO_PATH"
+
+    # Generate torrent
+    print_header "Generating Torrent"
+
+    if [ -x "$SCRIPT_DIR/omarchy-generate-torrent" ]; then
+        if "$SCRIPT_DIR/omarchy-generate-torrent" "$ISO_PATH"; then
+            print_success "Torrent generation completed"
+
+            # Get torrent path
+            TORRENT_PATH="$REPO_ROOT/torrents/${ISO_NAME}.torrent"
+
+            if [ -f "$TORRENT_PATH" ]; then
+                # Calculate checksums
+                print_header "Calculating Checksums"
+
+                cd "$OUTPUT_DIR"
+                SHA256=$(sha256sum "$ISO_NAME" | cut -d' ' -f1)
+                print_info "SHA256: $SHA256"
+
+                # Create checksums file
+                echo "$SHA256  $ISO_NAME" > "${ISO_NAME}.sha256"
+                print_success "Checksum file created: ${ISO_NAME}.sha256"
+
+                # Final summary
+                echo ""
+                print_header "Build Complete!"
+                print_success "ISO: $ISO_PATH"
+                print_success "Torrent: $TORRENT_PATH"
+                print_success "SHA256: ${ISO_PATH}.sha256"
+                echo ""
+                print_info "Next steps:"
+                echo "  1. Test the ISO in a VM to ensure it boots correctly"
+                echo "  2. Upload ISO to: https://iso.omarchy.org/$ISO_NAME"
+                echo "  3. Upload SHA256 to: https://iso.omarchy.org/${ISO_NAME}.sha256"
+                echo "  4. Commit changes:"
+                echo "     git add $TORRENT_PATH"
+                echo "     git commit -m 'Add torrent for Omarchy ${VERSION}'"
+                echo "  5. Tag the release:"
+                echo "     git tag -a v${VERSION} -m 'Omarchy ${VERSION}'"
+                echo "  6. Push to repository:"
+                echo "     git push && git push --tags"
+                echo ""
+            fi
+        else
+            print_error "Torrent generation failed"
+            exit 1
+        fi
+    else
+        print_error "omarchy-generate-torrent script not found or not executable"
+        exit 1
+    fi
+else
+    print_error "ISO not found at: $ISO_PATH"
+    print_info "Once you implement the build process, the ISO will be created there"
+    exit 1
+fi

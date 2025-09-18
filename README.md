@@ -4,6 +4,11 @@ Turn a fresh Arch installation into a fully-configured, beautiful, and modern we
 
 Read more at [omarchy.org](https://omarchy.org).
 
+## Documentation
+
+- [Commands Reference](./COMMANDS.md) - List of Omarchy commands and utilities
+- [Torrent Workflow](./TORRENT_WORKFLOW.md) - ISO distribution via BitTorrent
+
 ## License
 
 Omarchy is released under the [MIT License](https://opensource.org/licenses/MIT).
