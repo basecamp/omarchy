@@ -1,0 +1,38 @@
+#!/bin/bash
+
+STATE_FILE="/tmp/hypr_alt_tab_state"
+
+case "$1" in
+    "start")
+        # Check if currently fullscreen
+        FULLSCREEN=$(hyprctl activewindow -j | jq -r '.fullscreen')
+
+        if [ "$FULLSCREEN" = "1" ] || [ "$FULLSCREEN" = "2" ]; then
+            # Store state and exit fullscreen
+            echo "$FULLSCREEN" > "$STATE_FILE"
+            hyprctl dispatch fullscreen "$FULLSCREEN"
+        fi
+
+        hyprctl dispatch cyclenext
+        ;;
+
+    "cycle")
+        # Cycle through windows based on direction flag or cyclenext by default
+        if [[ "$2" =~ ^(u|d|l|r)$ ]]; then
+            hyprctl dispatch movefocus $2
+        else
+            hyprctl dispatch cyclenext
+        fi
+        ;;
+
+    "finish")
+        # Only restore fullscreen if we came from a fullscreen state
+        if [ -f "$STATE_FILE" ]; then
+            FULLSCREEN=$(cat "$STATE_FILE")
+            hyprctl dispatch fullscreen "$FULLSCREEN"
+            rm -f "$STATE_FILE"
+        fi
+        
+        hyprctl dispatch bringactivetotop
+        ;;
+esac
