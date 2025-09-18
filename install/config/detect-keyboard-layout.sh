@@ -2,6 +2,7 @@
 conf="/etc/vconsole.conf"
 hyprconf="$HOME/.config/hypr/input.conf"
 
+#TODO add check for underscores in the layout from arch and set the hypr configs accordingly
 if grep -q '^XKBLAYOUT=' "$conf"; then
   layout=$(grep '^XKBLAYOUT=' "$conf" | cut -d= -f2 | tr -d '"')
   sed -i "/^[[:space:]]*kb_options *=/i\  kb_layout = $layout" "$hyprconf"
