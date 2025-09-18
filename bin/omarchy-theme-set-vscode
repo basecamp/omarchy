@@ -37,12 +37,30 @@ if omarchy-cmd-present codium && [[ ! -f "$VS_CODE_SKIP_FLAG" ]]; then
       codium --install-extension "$extension" >/dev/null
     fi
 
-    # Update theme in settings.json
-    jq -n --arg t "$theme_name" '(input? // {}) | .["workbench.colorTheme"] = $t' "$VS_CODIUM_SETTINGS" >"${VS_CODIUM_SETTINGS}.new"
-  else
-    # Remove theme from settings.json when the theme doesn't have vscode support
-    jq 'del(.["workbench.colorTheme"])' "$VS_CODIUM_SETTINGS" >"${VS_CODIUM_SETTINGS}.new"
-  fi
+    # Create config file if there isn't already one
+    mkdir -p "$(dirname "$VS_CODIUM_SETTINGS")"
+    if [[ ! -f "$VS_CODIUM_SETTINGS" ]]; then
+      printf '{\n}\n' > "$VS_CODIUM_SETTINGS"
+    fi
 
-  mv "${VS_CODIUM_SETTINGS}.new" "$VS_CODIUM_SETTINGS"
+    # Create a `workbench.colorTheme` entry in settings.  
+    if ! grep -q '"workbench.colorTheme"' "$VS_CODIUM_SETTINGS"; then
+      # Insert `"workbench.colorTheme": "",` immediately after the first `{`
+      # Use sed's first-match range (0,/{/) to only replace the first `{`
+      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\
+      "workbench.colorTheme": "",/}' "$VS_CODIUM_SETTINGS"
+    fi
+
+    # Update theme
+    sed -i --follow-symlinks -E \
+      "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
+      "$VS_CODIUM_SETTINGS"
+
+  else
+    # Remove theme from settings.json when the theme doesn't have vscodium support
+    if [[ -f "$VS_CODIUM_SETTINGS" ]]; then
+      sed -i --follow-symlinks -E '/"workbench\.colorTheme"[[:space:]]*:[^,}]*,?/d' "$VS_CODIUM_SETTINGS"
+
+    fi
+  fi
 fi
