@@ -7,5 +7,5 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
   sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist /etc/pacman.d/mirrorlist
 
   # Refresh all repos
-  sudo pacman -Syu --noconfirm
+  sudo pacman -Syu --noconfirm --needed
 fi
