@@ -65,6 +65,10 @@ install_terminal() {
   present_terminal "omarchy-install-terminal $1"
 }
 
+install_password_manager() {
+  present_terminal "omarchy-install-password-manager $1"
+}
+
 aur_install() {
   present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2"
 }
@@ -242,6 +246,7 @@ show_install_menu() {
   *Development*) show_install_development_menu ;;
   *Editor*) show_install_editor_menu ;;
   *Terminal*) show_install_terminal_menu ;;
+  *Password Manager*) show_install_password_manager_menu ;;
   *AI*) show_install_ai_menu ;;
   *Gaming*) show_install_gaming_menu ;;
   *) show_main_menu ;;
@@ -275,6 +280,14 @@ show_install_terminal_menu() {
   *Alacritty*) install_terminal "alacritty" ;;
   *Ghostty*) install_terminal "ghostty" ;;
   *Kitty*) install_terminal "kitty" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_password_manager_menu() {
+  case $(menu "Install" "  1password\n  keepassxc") in
+  *1Password*) install_password_manager "1password" ;;
+  *KeePassXC*) install_password_manager "keepassxc" ;;
   *) show_install_menu ;;
   esac
 }
