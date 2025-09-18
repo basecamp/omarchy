@@ -37,11 +37,11 @@ menu() {
 }
 
 terminal() {
-  alacritty --class=Omarchy -e "$@"
+  $TERMINAL --class=omarchy.Omarchy -e "$@"
 }
 
 present_terminal() {
-  omarchy-launch-floating-terminal-with-presentation $1
+  omarchy-launch-floating-terminal-with-presentation "$1"
 }
 
 open_in_editor() {
@@ -178,14 +178,14 @@ show_setup_menu() {
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
-  *Audio*) $TERMINAL --class=Wiremix -e wiremix ;;
+  *Audio*) omarchy-launch-audio ;;
   *Wifi*)
     rfkill unblock wifi
     omarchy-launch-wifi
     ;;
   *Bluetooth*)
     rfkill unblock bluetooth
-    blueberry
+    omarchy-launch-bluetooth
     ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
@@ -291,7 +291,7 @@ show_install_ai_menu() {
   *OpenAI*) aur_install "OpenAI Codex" "openai-codex-bin" ;;
   *Gemini*) aur_install "Gemini" "gemini-cli" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
-  *Ollama*) install "Ollama" $ollama_pkg ;;
+  *Ollama*) install "Ollama" "$ollama_pkg" ;;
   *Crush*) install "Crush" "crush-bin" ;;
   *opencode*) install "opencode" "opencode" ;;
   *) show_install_menu ;;
