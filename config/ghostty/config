@@ -12,7 +12,7 @@ window-padding-y = 14
 confirm-close-surface=false
 resize-overlay = never
 
-# Cursor stlying
+# Cursor styling
 cursor-style = "block"
 cursor-style-blink = false
 shell-integration-features = no-cursor
