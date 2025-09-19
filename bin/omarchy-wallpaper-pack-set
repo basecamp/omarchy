@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# Set the active wallpaper pack
+
+CONFIG_FILE="$HOME/.config/omarchy/wallpaper-packs.conf"
+CURRENT_PACK_LINK="$HOME/.config/omarchy/current/wallpaper-pack"
+PACK_NAME="$1"
+
+if [[ -z "$PACK_NAME" ]]; then
+  echo "Usage: $0 <pack-name>"
+  exit 1
+fi
+
+# Create config file if it doesn't exist
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  cp "$HOME/.local/share/omarchy/default/wallpaper-packs.conf" "$CONFIG_FILE"
+fi
+
+# Find the pack in config
+PACK_PATH=""
+while IFS='=' read -r name path; do
+  # Skip comments and empty lines
+  [[ "$name" =~ ^[[:space:]]*# ]] && continue
+  [[ -z "$name" ]] && continue
+
+  # Trim whitespace
+  name="${name#"${name%%[![:space:]]*}"}"
+  name="${name%"${name##*[![:space:]]}"}"
+  path="${path#"${path%%[![:space:]]*}"}"
+  path="${path%"${path##*[![:space:]]}"}"
+
+  if [[ "$name" == "$PACK_NAME" ]]; then
+    # Expand tilde in path
+    PACK_PATH="${path/#\~/$HOME}"
+    break
+  fi
+done < "$CONFIG_FILE"
+
+if [[ -z "$PACK_PATH" ]]; then
+  notify-send "Wallpaper Pack" "Pack '$PACK_NAME' not found" -t 2000
+  exit 1
+fi
+
+if [[ ! -d "$PACK_PATH" ]]; then
+  notify-send "Wallpaper Pack" "Directory not found: $PACK_PATH" -t 2000
+  exit 1
+fi
+
+# Set the symlink
+mkdir -p "$(dirname "$CURRENT_PACK_LINK")"
+ln -nsf "$PACK_PATH" "$CURRENT_PACK_LINK"
+
+# Reset current background symlink so next cycle starts fresh
+CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
+rm -f "$CURRENT_BACKGROUND_LINK"
+
+# Set first background from new pack
+omarchy-theme-bg-next
+
+notify-send "Wallpaper Pack" "Switched to: $PACK_NAME" -t 2000

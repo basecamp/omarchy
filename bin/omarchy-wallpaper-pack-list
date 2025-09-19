@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# List all configured wallpaper packs and mark the current one
+
+CONFIG_FILE="$HOME/.config/omarchy/wallpaper-packs.conf"
+CURRENT_PACK_LINK="$HOME/.config/omarchy/current/wallpaper-pack"
+CURRENT_PACK=""
+
+# Get current pack from symlink
+if [[ -L "$CURRENT_PACK_LINK" ]]; then
+  CURRENT_PACK=$(readlink "$CURRENT_PACK_LINK")
+fi
+
+# Create config file if it doesn't exist
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  cp "$HOME/.local/share/omarchy/default/wallpaper-packs.conf" "$CONFIG_FILE"
+fi
+
+# Read and list packs
+while IFS='=' read -r name path; do
+  # Skip comments and empty lines
+  [[ "$name" =~ ^[[:space:]]*# ]] && continue
+  [[ -z "$name" ]] && continue
+
+  # Expand tilde in path
+  path="${path/#\~/$HOME}"
+  # Trim whitespace
+  name="${name#"${name%%[![:space:]]*}"}"
+  name="${name%"${name##*[![:space:]]}"}"
+  path="${path#"${path%%[![:space:]]*}"}"
+  path="${path%"${path##*[![:space:]]}"}"
+
+  # Mark current pack
+  if [[ "$path" == "$CURRENT_PACK" ]]; then
+    echo " $name"
+  else
+    echo "$name"
+  fi
+done < "$CONFIG_FILE"

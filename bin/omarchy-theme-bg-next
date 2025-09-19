@@ -2,7 +2,15 @@
 
 # Cycles through the background images available
 
-BACKGROUNDS_DIR="$HOME/.config/omarchy/current/theme/backgrounds/"
+# Check if a wallpaper pack is set, otherwise use theme backgrounds
+WALLPAPER_PACK_LINK="$HOME/.config/omarchy/current/wallpaper-pack"
+if [[ -L "$WALLPAPER_PACK_LINK" ]] && [[ -d "$(readlink "$WALLPAPER_PACK_LINK")" ]]; then
+  BACKGROUNDS_DIR="$(readlink "$WALLPAPER_PACK_LINK")/"
+else
+  # Fallback to theme backgrounds
+  BACKGROUNDS_DIR="$HOME/.config/omarchy/current/theme/backgrounds/"
+fi
+
 CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
 
 mapfile -d '' -t BACKGROUNDS < <(find "$BACKGROUNDS_DIR" -type f -print0 | sort -z)

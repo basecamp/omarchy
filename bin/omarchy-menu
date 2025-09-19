@@ -142,9 +142,10 @@ show_toggle_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n  Font\n  Wallpaper Pack\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
+  *"Wallpaper Pack"*) show_wallpaper_pack_menu ;;
   *Background*) omarchy-theme-bg-next ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
   *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
@@ -168,6 +169,17 @@ show_font_menu() {
     back_to show_style_menu
   else
     omarchy-font-set "$theme"
+  fi
+}
+
+show_wallpaper_pack_menu() {
+  pack=$(menu "Wallpaper Pack" "$(omarchy-wallpaper-pack-list)")
+  if [[ "$pack" == "CNCLD" || -z "$pack" ]]; then
+    back_to show_style_menu
+  else
+    # Remove the check mark if present
+    pack="${pack# }"
+    omarchy-wallpaper-pack-set "$pack"
   fi
 }
 
