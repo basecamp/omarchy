@@ -37,7 +37,7 @@ menu() {
 }
 
 terminal() {
-  alacritty --class=Omarchy -e "$@"
+  $TERMINAL --class=Omarchy -e "$@"
 }
 
 present_terminal() {
