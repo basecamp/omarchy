@@ -66,7 +66,7 @@ install_terminal() {
 }
 
 install_password_manager() {
-  present_terminal "omarchy-install-password-manager $1"
+  present_terminal "omarchy-install-password-manager $1 $2"
 }
 
 aur_install() {
@@ -286,7 +286,7 @@ show_install_terminal_menu() {
 show_install_password_manager_menu() {
   case $(menu "Install" "  1Password\n  Bitwarden\n  KeePassXC") in
   *1Password*) install_password_manager "1password" ;;
-  *Bitwarden*) install_password_manager "bitwarden" ;;
+  *Bitwarden*) install_password_manager "bitwarden" "bitwarden-cli" ;;
   *KeePassXC*) install_password_manager "keepassxc" ;;
   *) show_install_menu ;;
   esac
