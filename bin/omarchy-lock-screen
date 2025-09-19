@@ -6,6 +6,10 @@ pidof hyprlock || hyprlock &
 # Ensure password manager is locked
 if pgrep -x "$PASSWORD_MANAGER" >/dev/null; then
   $PASSWORD_MANAGER --lock &
+  case "$PASSWORD_MANAGER" in
+  "1password" | "keepassxc") $PASSWORD_MANAGER --lock & ;;
+  *) ;;
+  esac
 fi
 
 # Avoid running screensaver when locked

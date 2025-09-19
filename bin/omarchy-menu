@@ -254,10 +254,9 @@ show_install_menu() {
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Tailscale\n󰟵  Bitwarden\n  Chromium Account") in
+  case $(menu "Install" "  Dropbox\n  Tailscale\n  Chromium Account") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
-  *Bitwarden*) install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden" ;;
   *Chromium*) present_terminal omarchy-install-chromium-google-account ;;
   *) show_install_menu ;;
   esac
@@ -285,8 +284,9 @@ show_install_terminal_menu() {
 }
 
 show_install_password_manager_menu() {
-  case $(menu "Install" "  1Password\n  KeePassXC") in
+  case $(menu "Install" "  1Password\n  Bitwarden\n  KeePassXC") in
   *1Password*) install_password_manager "1password" ;;
+  *Bitwarden*) install_password_manager "bitwarden" ;;
   *KeePassXC*) install_password_manager "keepassxc" ;;
   *) show_install_menu ;;
   esac
