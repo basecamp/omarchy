@@ -63,7 +63,8 @@ if grep -q "^[[:space:]]*${PACK_NAME}=" "$CONFIG_FILE"; then
     exit 1
   fi
 else
-  # Add new entry
+  # Add new entry (ensure file ends with newline first)
+  [[ -f "$CONFIG_FILE" && $(tail -c 1 "$CONFIG_FILE" | wc -l) -eq 0 ]] && echo "" >> "$CONFIG_FILE"
   echo "${PACK_NAME}=${PACK_PATH}" >> "$CONFIG_FILE"
   echo "Added: ${PACK_NAME}=${PACK_PATH}"
 fi
