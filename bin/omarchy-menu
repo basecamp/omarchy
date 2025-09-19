@@ -285,7 +285,7 @@ show_install_terminal_menu() {
 }
 
 show_install_password_manager_menu() {
-  case $(menu "Install" "  1password\n  keepassxc") in
+  case $(menu "Install" "  1Password\n  KeePassXC") in
   *1Password*) install_password_manager "1password" ;;
   *KeePassXC*) install_password_manager "keepassxc" ;;
   *) show_install_menu ;;
