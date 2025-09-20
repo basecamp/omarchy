@@ -447,10 +447,15 @@ show_update_password_menu() {
 }
 
 show_system_menu() {
-  case $(menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
+  case $(
+  if omarchy-hibernation-available;
+  then menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n󰤁  Hibernate\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown";
+  else menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown";
+  fi) in
   *Lock*) omarchy-lock-screen ;;
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
+  *Hibernate*) systemctl hibernate;;
   *Relaunch*) uwsm stop ;;
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;

@@ -1,0 +1,11 @@
+#!/bin/bash
+# Checks if swap is big enough to hibernate
+
+SWAPSIZE=$(( 1024 * $(cat /proc/swaps |grep -v -e "Filename" -e "zram"| awk '{print $3}') ));
+HIBERNATION_IMAGE_SIZE=$(cat /sys/power/image_size)
+if [ "${SWAPSIZE:-0}" -gt "$HIBERNATION_IMAGE_SIZE" ]; then
+  exit 0;
+else
+  exit 1;
+fi
+  
