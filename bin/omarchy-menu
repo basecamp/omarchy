@@ -155,7 +155,8 @@ show_style_menu() {
 }
 
 # --- Auto Theme submenu ---
-AUTO_THEMER_CONFIG="$HOME/.local/share/omarchy/config/auto-themer/theme-auto.conf"
+# User config path for auto themer
+AUTO_THEMER_CONFIG="$HOME/.config/auto-themer/theme-auto.conf"
 
 auto_themer_ensure_units() {
   # Refresh units into user dir and reload systemd

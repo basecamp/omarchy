@@ -3,8 +3,9 @@
 # Automatically switches between a configured LIGHT_THEME and DARK_THEME
 # based on local time and configured day/night boundaries.
 #
-# Configuration file (edit this repo-managed file):
-#   ~/.local/share/omarchy/config/auto-themer/theme-auto.conf
+# Configuration files (user-first, default-fallback):
+#   User:    ~/.config/auto-themer/theme-auto.conf
+#   Default: ~/.local/share/omarchy/config/auto-themer/theme-auto.conf
 # Example:
 #   ENABLED=true
 #   LIGHT_THEME=catppuccin-latte
@@ -17,14 +18,13 @@
 #   omarchy-theme-auto apply      # same as above
 #   omarchy-theme-auto status     # show config and current evaluation
 #
-# A user systemd timer is provided to run this on boot and at 07:00/19:00.
+# A user systemd timer runs minutely and applies only when needed.
 # Enable it with:
 #   systemctl --user enable --now omarchy-theme-auto.timer
 
 set -euo pipefail
 
-# Source-of-truth config lives in Omarchy defaults under ~/.local/share
-CONFIG_FILE="$HOME/.local/share/omarchy/config/auto-themer/theme-auto.conf"
+# Config precedence: default (Omarchy) then user overrides
 
 # Defaults (safe): disabled until configured by user
 ENABLED=false
@@ -33,10 +33,18 @@ DARK_THEME=""
 DAY_START="07:00"
 NIGHT_START="19:00"
 
+USER_CONFIG="$HOME/.config/auto-themer/theme-auto.conf"
+DEFAULT_CONFIG="$HOME/.local/share/omarchy/config/auto-themer/theme-auto.conf"
+
 load_config() {
-  if [[ -f "$CONFIG_FILE" ]]; then
+  # Load default first, then user to override
+  if [[ -f "$DEFAULT_CONFIG" ]]; then
     # shellcheck disable=SC1090
-    source "$CONFIG_FILE"
+    source "$DEFAULT_CONFIG"
+  fi
+  if [[ -f "$USER_CONFIG" ]]; then
+    # shellcheck disable=SC1090
+    source "$USER_CONFIG"
   fi
 }
 
@@ -91,7 +99,7 @@ apply_once() {
   fi
 
   if [[ -z "${LIGHT_THEME}" || -z "${DARK_THEME}" ]]; then
-    echo "omarchy-theme-auto: LIGHT_THEME and DARK_THEME must be set in $CONFIG_FILE" >&2
+    echo "omarchy-theme-auto: set LIGHT_THEME and DARK_THEME in ~/.config/auto-themer/theme-auto.conf or ~/.local/share/omarchy/config/auto-themer/theme-auto.conf" >&2
     exit 0
   fi
 

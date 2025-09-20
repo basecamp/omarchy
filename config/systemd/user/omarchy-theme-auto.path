@@ -4,9 +4,9 @@ Description=Watch auto-theme config and apply on change
 [Path]
 # Trigger when the config file is modified
 PathModified=%h/.local/share/omarchy/config/auto-themer/theme-auto.conf
+PathModified=%h/.config/auto-themer/theme-auto.conf
 # Ensure the right service is started on change
 Unit=omarchy-theme-auto.service
 
 [Install]
 WantedBy=default.target
-

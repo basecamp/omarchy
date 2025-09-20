@@ -6,9 +6,25 @@ omarchy-refresh-config systemd/user/omarchy-theme-auto.service
 omarchy-refresh-config systemd/user/omarchy-theme-auto.timer
 omarchy-refresh-config systemd/user/omarchy-theme-auto.path
 
+# Only create a user config if one does not already exist
+USER_CONF="$HOME/.config/auto-themer/theme-auto.conf"
+DEFAULT_CONF="$HOME/.local/share/omarchy/config/auto-themer/theme-auto.conf"
+if [[ ! -f "$USER_CONF" && -f "$DEFAULT_CONF" ]]; then
+  mkdir -p "$(dirname "$USER_CONF")"
+  cp -f "$DEFAULT_CONF" "$USER_CONF"
+  CREATED_CONFIG=true
+else
+  CREATED_CONFIG=false
+fi
+
 systemctl --user daemon-reload || true
 
 echo "Refreshed auto-theme systemd units."
-echo "Config is read from: ~/.local/share/omarchy/config/auto-themer/theme-auto.conf"
+if [[ "$CREATED_CONFIG" == true ]]; then
+  echo "Installed default config to ~/.config/auto-themer/theme-auto.conf"
+else
+  echo "User config already present at ~/.config/auto-themer/theme-auto.conf (left unchanged)."
+fi
+echo "Default config template: ~/.local/share/omarchy/config/auto-themer/theme-auto.conf"
 echo "Enable timer: systemctl --user enable --now omarchy-theme-auto.timer"
 echo "Enable watcher: systemctl --user enable --now omarchy-theme-auto.path"
