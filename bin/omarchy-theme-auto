@@ -106,7 +106,6 @@ apply_once() {
   current_slug=$(current_theme_slug)
 
   if [[ -z "$current_slug" || "$current_slug" != "$target_slug" ]]; then
-    # Let omarchy-theme-set do the heavy lifting (signals, GNOME, etc.)
     omarchy-theme-set "$target_slug"
   fi
 }
