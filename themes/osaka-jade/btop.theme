@@ -17,7 +17,7 @@ theme[selected_bg]="#364538"
 theme[selected_fg]="#DEB266"
 
 # Color of inactive/disabled text
-theme[inactive_fg]="#32473B"  
+theme[inactive_fg]="#32473B"
 
 # Color of text appearing on top of graphs
 theme[graph_text]="#E6D8BA"
