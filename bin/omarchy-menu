@@ -238,13 +238,13 @@ show_auto_theme_menu() {
   local toggle_label
   if [[ "$enabled" == "true" ]]; then toggle_label="Disable"; else toggle_label="Enable"; fi
 
-  case $(menu "Auto Theme" "${toggle_label} Auto Switch\nSet Light Theme\nSet Dark Theme\nSet Day Start\nSet Night Start\nApply Now\nShow Status\nEnable services\nDisable services\nEdit Config\nBack") in
-  *Enable\ Auto\ Switch*)
+  case $(menu "Auto Theme" "${toggle_label} Auto Theme\nSet Light Theme\nSet Dark Theme\nSet Day Start\nSet Night Start\nApply Now\nShow Status\nEnable services\nDisable services\nEdit Config\nBack") in
+  *Enable\ Auto\ Theme*)
     auto_themer_set ENABLED true
     auto_themer_enable_units
     omarchy-theme-auto apply
     back_to show_auto_theme_menu ;;
-  *Disable\ Auto\ Switch*)
+  *Disable\ Auto\ Theme*)
     auto_themer_set ENABLED false
     back_to show_auto_theme_menu ;;
   *Set\ Light\ Theme*) auto_themer_pick_theme LIGHT_THEME ; back_to show_auto_theme_menu ;;
