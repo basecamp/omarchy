@@ -142,7 +142,8 @@ show_toggle_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n  Auto Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
+  *Auto\ Theme*) show_auto_theme_menu ;;
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
@@ -150,6 +151,116 @@ show_style_menu() {
   *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
   *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
+  esac
+}
+
+# --- Auto Theme submenu ---
+AUTO_THEMER_CONFIG="$HOME/.local/share/omarchy/config/auto-themer/theme-auto.conf"
+
+auto_themer_ensure_units() {
+  # Refresh units into user dir and reload systemd
+  omarchy-refresh-theme-auto >/dev/null 2>&1 || true
+  systemctl --user daemon-reload >/dev/null 2>&1 || true
+}
+
+auto_themer_get() {
+  local key="$1"
+  [ -f "$AUTO_THEMER_CONFIG" ] || return 0
+  grep -E "^${key}=" "$AUTO_THEMER_CONFIG" | tail -n1 | cut -d= -f2-
+}
+
+auto_themer_set() {
+  local key="$1" val="$2"
+  mkdir -p "$(dirname "$AUTO_THEMER_CONFIG")"
+  if grep -qE "^${key}=" "$AUTO_THEMER_CONFIG" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$AUTO_THEMER_CONFIG"
+  else
+    echo "${key}=${val}" >>"$AUTO_THEMER_CONFIG"
+  fi
+}
+
+auto_themer_slugify() {
+  echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-'
+}
+
+auto_themer_titleize() {
+  echo "$1" | sed -E 's/(^|-)([a-z])/\1\U\2/g; s/-/ /g'
+}
+
+auto_themer_pick_theme() {
+  local which="$1"; shift
+  local current_slug current_title selection
+  current_slug="$(auto_themer_get "$which")"
+  current_title="$(auto_themer_titleize "$current_slug")"
+  selection=$(menu "$which Theme" "$(omarchy-theme-list)" "" "$current_title")
+  if [[ -n "$selection" && "$selection" != "CNCLD" ]]; then
+    auto_themer_set "$which" "$(auto_themer_slugify "$selection")"
+  fi
+}
+
+auto_themer_pick_time() {
+  local which="$1"
+  local current="$(auto_themer_get "$which")"
+  local options="Custom (open editor)"
+  # Generate 24h times in 15-minute steps
+  local h m
+  for h in $(seq -w 00 23); do
+    for m in 00 15 30 45; do
+      options="$options\n${h}:${m}"
+    done
+  done
+  local sel
+  sel=$(menu "$which Time" "$options" "" "$current")
+  case "$sel" in
+    "CNCLD"|"") ;;
+    "Custom (open editor)") open_in_editor "$AUTO_THEMER_CONFIG" ;;
+    *) auto_themer_set "$which" "$sel" ;;
+  esac
+}
+
+auto_themer_enable_units() {
+  systemctl --user enable --now omarchy-theme-auto.timer >/dev/null 2>&1 || true
+  systemctl --user enable --now omarchy-theme-auto.path >/dev/null 2>&1 || true
+}
+
+auto_themer_disable_units() {
+  systemctl --user disable --now omarchy-theme-auto.timer >/dev/null 2>&1 || true
+  systemctl --user disable --now omarchy-theme-auto.path >/dev/null 2>&1 || true
+}
+
+show_auto_theme_menu() {
+  auto_themer_ensure_units
+
+  local enabled light dark day night
+  enabled="$(auto_themer_get ENABLED)"
+  light="$(auto_themer_titleize "$(auto_themer_get LIGHT_THEME)")"
+  dark="$(auto_themer_titleize "$(auto_themer_get DARK_THEME)")"
+  day="$(auto_themer_get DAY_START)"; [ -z "$day" ] && day=07:00
+  night="$(auto_themer_get NIGHT_START)"; [ -z "$night" ] && night=19:00
+
+  local toggle_label
+  if [[ "$enabled" == "true" ]]; then toggle_label="Disable"; else toggle_label="Enable"; fi
+
+  case $(menu "Auto Theme" "${toggle_label} Auto Switch\nSet Light Theme (current: ${light:-unset})\nSet Dark Theme (current: ${dark:-unset})\nSet Day Start (current: $day)\nSet Night Start (current: $night)\nApply Now\nShow Status\nEnable Timer + Watcher\nDisable Timer + Watcher\nEdit Config\nBack") in
+  *Enable\ Auto\ Switch*)
+    auto_themer_set ENABLED true
+    auto_themer_enable_units
+    omarchy-theme-auto apply
+    back_to show_auto_theme_menu ;;
+  *Disable\ Auto\ Switch*)
+    auto_themer_set ENABLED false
+    back_to show_auto_theme_menu ;;
+  *Set\ Light\ Theme*) auto_themer_pick_theme LIGHT_THEME ; back_to show_auto_theme_menu ;;
+  *Set\ Dark\ Theme*) auto_themer_pick_theme DARK_THEME ; back_to show_auto_theme_menu ;;
+  *Set\ Day\ Start*) auto_themer_pick_time DAY_START ; back_to show_auto_theme_menu ;;
+  *Set\ Night\ Start*) auto_themer_pick_time NIGHT_START ; back_to show_auto_theme_menu ;;
+  *Apply\ Now*) omarchy-theme-auto apply ; back_to show_auto_theme_menu ;;
+  *Show\ Status*) present_terminal "omarchy-theme-auto status" ; back_to show_auto_theme_menu ;;
+  *Enable\ Timer\ +\ Watcher*) auto_themer_enable_units ; back_to show_auto_theme_menu ;;
+  *Disable\ Timer\ +\ Watcher*) auto_themer_disable_units ; back_to show_auto_theme_menu ;;
+  *Edit\ Config*) open_in_editor "$AUTO_THEMER_CONFIG" ; back_to show_auto_theme_menu ;;
+  *Back*) show_style_menu ;;
+  *) show_style_menu ;;
   esac
 }
 

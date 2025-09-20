@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -euo pipefail
+
+omarchy-refresh-config systemd/user/omarchy-theme-auto.service
+omarchy-refresh-config systemd/user/omarchy-theme-auto.timer
+omarchy-refresh-config systemd/user/omarchy-theme-auto.path
+
+systemctl --user daemon-reload || true
+
+echo "Refreshed auto-theme systemd units."
+echo "Config is read from: ~/.local/share/omarchy/config/auto-themer/theme-auto.conf"
+echo "Enable timer: systemctl --user enable --now omarchy-theme-auto.timer"
+echo "Enable watcher: systemctl --user enable --now omarchy-theme-auto.path"

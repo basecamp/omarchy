@@ -1,0 +1,9 @@
+[Unit]
+Description=Omarchy Auto Theme Switch
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/omarchy/bin/omarchy-theme-auto apply
+Environment=DISPLAY=:0
+

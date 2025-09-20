@@ -1,0 +1,12 @@
+[Unit]
+Description=Omarchy Auto Theme Switch Timer
+Requires=omarchy-theme-auto.service
+
+[Timer]
+OnBootSec=1min
+# Run every minute; script decides whether a switch is needed based on config
+OnCalendar=minutely
+Persistent=true
+
+[Install]
+WantedBy=timers.target
