@@ -232,17 +232,13 @@ auto_themer_disable_units() {
 show_auto_theme_menu() {
   auto_themer_ensure_units
 
-  local enabled light dark day night
+  local enabled
   enabled="$(auto_themer_get ENABLED)"
-  light="$(auto_themer_titleize "$(auto_themer_get LIGHT_THEME)")"
-  dark="$(auto_themer_titleize "$(auto_themer_get DARK_THEME)")"
-  day="$(auto_themer_get DAY_START)"; [ -z "$day" ] && day=07:00
-  night="$(auto_themer_get NIGHT_START)"; [ -z "$night" ] && night=19:00
 
   local toggle_label
   if [[ "$enabled" == "true" ]]; then toggle_label="Disable"; else toggle_label="Enable"; fi
 
-  case $(menu "Auto Theme" "${toggle_label} Auto Switch\nSet Light Theme (current: ${light:-unset})\nSet Dark Theme (current: ${dark:-unset})\nSet Day Start (current: $day)\nSet Night Start (current: $night)\nApply Now\nShow Status\nEnable Timer + Watcher\nDisable Timer + Watcher\nEdit Config\nBack") in
+  case $(menu "Auto Theme" "${toggle_label} Auto Switch\nSet Light Theme\nSet Dark Theme\nSet Day Start\nSet Night Start\nApply Now\nShow Status\nEnable services\nDisable services\nEdit Config\nBack") in
   *Enable\ Auto\ Switch*)
     auto_themer_set ENABLED true
     auto_themer_enable_units
