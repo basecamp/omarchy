@@ -3,4 +3,3 @@
 systemctl restart --user elephant.service
 pkill walker
 setsid uwsm app -- walker --gapplication-service &
-echo # Always end in success so we don't terminate further running
