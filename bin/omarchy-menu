@@ -254,6 +254,7 @@ show_install_service_menu() {
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
   *Bitwarden*) install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden" ;;
   *Chromium*) present_terminal omarchy-install-chromium-google-account ;;
+  *SSH Agent*) present_terminal omarchy-install-ssh-agent ;;
   *) show_install_menu ;;
   esac
 }
