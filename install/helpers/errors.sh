@@ -126,7 +126,11 @@ catch_errors() {
       break
       ;;
     "View full log")
-      less "$OMARCHY_INSTALL_LOG_FILE"
+      if command -v less &>/dev/null; then
+        less "$OMARCHY_INSTALL_LOG_FILE"
+      else
+        tail "$OMARCHY_INSTALL_LOG_FILE"
+      fi
       ;;
     "Upload log for support")
       omarchy-upload-install-log
