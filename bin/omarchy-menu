@@ -32,7 +32,7 @@ menu() {
       args+=("-c" "$index")
     fi
 
-  echo -e "$options" | walker --dmenu --width 250 --minheight 1 --maxheight 600 -p "$prompt…" "${args[@]}" 2>/dev/null
+  echo -e "$options" | omarchy-launch-walker --dmenu --width 250 --minheight 1 --maxheight 600 -p "$prompt…" "${args[@]}" 2>/dev/null
 }
 
 terminal() {

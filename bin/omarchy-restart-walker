@@ -1,5 +1,6 @@
 #!/bin/bash
 
-systemctl restart --user elephant.service
+pkill elephant
+setsid uwsm app -- elephant &
 pkill walker
 setsid uwsm app -- walker --gapplication-service &
