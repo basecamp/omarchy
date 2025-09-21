@@ -31,6 +31,7 @@ menu() {
     if [[ -n "$index" ]]; then
       args+=("-c" "$index")
     fi
+  fi
 
   echo -e "$options" | omarchy-launch-walker --dmenu --width 250 --minheight 1 --maxheight 600 -p "$prompt…" "${args[@]}" 2>/dev/null
 }
