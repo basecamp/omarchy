@@ -1,14 +1,27 @@
-#!/bin/bash
-
 if command -v limine &>/dev/null; then
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
 
-  [[ -f /boot/EFI/limine/limine.conf ]] && EFI=true
+  [[ -f /boot/EFI/limine/limine.conf ]] || [[ -f /boot/EFI/BOOT/limine.conf ]] && EFI=true
 
   # Conf location is different between EFI and BIOS
-  [[ -n "$EFI" ]] && limine_config="/boot/EFI/limine/limine.conf" || limine_config="/boot/limine/limine.conf"
+  if [[ -n "$EFI" ]]; then
+    # Check USB location first, then regular EFI location
+    if [[ -f /boot/EFI/BOOT/limine.conf ]]; then
+      limine_config="/boot/EFI/BOOT/limine.conf"
+    else
+      limine_config="/boot/EFI/limine/limine.conf"
+    fi
+  else
+    limine_config="/boot/limine/limine.conf"
+  fi
+
+  # Double-check and exit if we don't have a config file for some reason
+  if [[ ! -f $limine_config ]]; then
+    echo "Error: Limine config not found at $limine_config" >&2
+    exit 1
+  fi
 
   CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
@@ -63,10 +76,9 @@ term_background_bright: 24283b
 EOF
 
   sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
-  sudo limine-update
 
   # Match Snapper configs if not installing from the ISO
-  if [ -z "${OMARCHY_CHROOT_INSTALL:-}" ]; then
+  if [[ -z ${OMARCHY_CHROOT_INSTALL:-} ]]; then
     if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
       sudo snapper -c root create-config /
     fi
@@ -85,7 +97,9 @@ EOF
 fi
 
 # Add UKI entry to UEFI machines to skip bootloader showing on normal boot
-if [ -n "$EFI" ] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy; then
+if [[ -n $EFI ]] && efibootmgr &>/dev/null && ! efibootmgr | grep -q Omarchy &&
+  ! cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "American Megatrends" &&
+  ! cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "Apple"; then
   sudo efibootmgr --create \
     --disk "$(findmnt -n -o SOURCE /boot | sed 's/p\?[0-9]*$//')" \
     --part "$(findmnt -n -o SOURCE /boot | grep -o 'p\?[0-9]*$' | sed 's/^p//')" \

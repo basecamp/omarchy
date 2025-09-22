@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # Allow nothing in, everything out
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
@@ -16,6 +14,9 @@ sudo ufw allow in proto udp from 172.16.0.0/12 to 172.17.0.1 port 53 comment 'al
 
 # Turn on the firewall
 sudo ufw --force enable
+
+# Enable UFW systemd service to start on boot
+sudo systemctl enable ufw
 
 # Turn on Docker protections
 sudo ufw-docker install
