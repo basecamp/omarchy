@@ -47,7 +47,7 @@ screenrecording_active() {
 if screenrecording_active; then
   stop_screenrecording
 elif [[ "$SCOPE" == "output" ]]; then
-  start_screenrecording
+  start_screenrecording -o "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')"
 else
   region=$(slurp) || exit 1
   start_screenrecording -g "$region"
