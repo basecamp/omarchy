@@ -175,7 +175,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
+  options="$options\n  Defaults\n󰱔  DNS\n Shell\n Security\n  Config"
 
   case $(menu "Setup" "$options") in
   *Audio*) $TERMINAL --class=Wiremix -e wiremix ;;
@@ -193,6 +193,7 @@ show_setup_menu() {
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
   *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
+  *Shell*) present_terminal omarchy-choose-shell ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
   *) show_main_menu ;;
