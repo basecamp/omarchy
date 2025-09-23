@@ -9,13 +9,16 @@ THEMES_DIR="$HOME/.config/omarchy/themes/"
 CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-THEME_PATH="$THEMES_DIR/$THEME_NAME"
+THEME_PATH="$THEMES_DIR$THEME_NAME"
 
 # Check if the theme entered exists
 if [[ ! -d "$THEME_PATH" ]]; then
   echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR"
   exit 1
 fi
+
+# Run neovim before the symlinks to create the neovim.lua if not exists
+omarchy-theme-set-neovim "$THEME_PATH"
 
 # Update theme symlinks
 ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
@@ -36,3 +39,4 @@ omarchy-theme-set-gnome
 omarchy-theme-set-eza
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
+

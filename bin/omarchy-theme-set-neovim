@@ -1,0 +1,22 @@
+#!/bin/bash
+
+THEME_PATH="$1"
+
+if [[ -z "$THEME_PATH" ]]; then
+    echo "Usage: omarchy-theme-set-neovim <theme-path>"
+    exit 1
+fi
+
+if [[ ! -f "$THEME_PATH/neovim.lua" ]]; then
+    # Create neovim.lua file with pixel theme configuration
+    cat > "$THEME_PATH/neovim.lua" << 'EOF'
+return {
+    {
+        "LazyVim/LazyVim",
+        opts = {
+            colorscheme = "pixel",
+        },
+    },
+}
+EOF
+fi
