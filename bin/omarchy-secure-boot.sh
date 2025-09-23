@@ -12,7 +12,7 @@ set -euo pipefail
 # ============================================================================
 
 # Script metadata
-readonly VERSION="1.2"
+readonly VERSION="1.2.1"
 readonly SCRIPT_NAME="omarchy-secure-boot.sh"
 
 # System paths
@@ -141,21 +141,6 @@ find_linux_efi_files() {
   done < <(find /boot -type f -iname "*.efi" 2>/dev/null || true)
 
   printf '%s\n' "${efi_files[@]}"
-}
-
-# Find snapshot UKIs specifically
-find_snapshot_ukis() {
-  local -a snapshot_files=()
-  local file
-
-  # Look for UKI files in limine_history directories
-  while IFS= read -r file; do
-    if [[ -f "$file" ]] && [[ ! -d "$file" ]]; then
-      snapshot_files+=("$file")
-    fi
-  done < <(find /boot -type f -path "*/limine_history/*" 2>/dev/null | grep -E "_sha256_[a-f0-9]{64}$" || true)
-
-  printf '%s\n' "${snapshot_files[@]}"
 }
 
 # Find Windows Boot Manager across all mounted partitions
@@ -709,6 +694,28 @@ update_snapshot_hashes() {
   fi
 }
 
+# Detect Windows version from available clues
+detect_windows_version() {
+  local windows_path="$1"
+  local windows_version="Microsoft Windows"
+
+  # Check for version clues in partition labels
+  local partition_info
+  partition_info=$(df "$windows_path" 2>/dev/null | tail -1)
+
+  # Check common indicators
+  if lsblk -o LABEL 2>/dev/null | grep -qi "windows.*11\|win.*11"; then
+    windows_version="Microsoft Windows 11"
+  elif lsblk -o LABEL 2>/dev/null | grep -qi "windows.*10\|win.*10"; then
+    windows_version="Microsoft Windows 10"
+  # Check if BCD store or other Windows 11 specific files exist
+  elif find "$(dirname "$windows_path")" -name "*.mui" 2>/dev/null | grep -qi "windows.ui\|winui"; then
+    windows_version="Microsoft Windows 11"
+  fi
+
+  echo "$windows_version"
+}
+
 # Check and add Windows entry to limine.conf
 ensure_windows_entry() {
   log_step "Checking for Windows Boot Entry"
@@ -730,6 +737,11 @@ ensure_windows_entry() {
 
   log_info "Found Windows Boot Manager at: $windows_path"
 
+  # Detect Windows version
+  local windows_version
+  windows_version=$(detect_windows_version "$windows_path")
+  log_info "Detected: $windows_version"
+
   # Convert absolute path to relative EFI path
   local efi_path
   if [[ "$windows_path" =~ /boot/(.*) ]]; then
@@ -744,7 +756,7 @@ ensure_windows_entry() {
   local windows_entry="
 # Windows Boot Manager
 /Windows
-    comment: Microsoft Windows 11
+    comment: $windows_version
     comment: order-priority=20
     protocol: efi_chainload
     image_path: boot():/${efi_path}"
@@ -798,9 +810,7 @@ cmd_setup() {
 
   # Step 4: Always run initial signing and verification
   log_step "Initial EFI File Signing"
-  local files_signed=false
   if sign_files; then
-    files_signed=true
     update_hash
     # Check and offer to fix snapshot hashes if needed
     if ! check_hash_mismatches >/dev/null 2>&1; then
