@@ -5,7 +5,7 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-  "modules-center": ["clock", "custom/update", "custom/screenrecording-indicator"],
+  "modules-center": ["clock", "custom/update", "custom/reboot-required", "custom/relaunch-required", "custom/screenrecording-indicator"],
   "modules-right": [
     "group/tray-expander",
     "bluetooth",
@@ -50,6 +50,22 @@
     "tooltip-format": "Omarchy update available",
     "signal": 7,
     "interval": 3600
+  },
+
+  "custom/reboot-required": {
+    "format": "󰜉",
+    "exec": "omarchy-reboot-required",
+    "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update-restart",
+    "tooltip-format": "Omarchy needs to reboot",
+    "signal": 7
+  },
+
+  "custom/relaunch-required": {
+    "format": "",
+    "exec": "omarchy-relaunch-required",
+    "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update-restart",
+    "tooltip-format": "Hyprland needs to relaunch",
+    "signal": 7
   },
 
   "cpu": {
