@@ -12,10 +12,6 @@ if [[ ! -f "$THEME_PATH/neovim.lua" ]]; then
     cat > "$THEME_PATH/neovim.lua" << 'EOF'
 return {
     {
-        "bjarneo/pixel.nvim",
-        name = "pixel",
-    },
-    {
         "LazyVim/LazyVim",
         opts = {
             colorscheme = "pixel",
