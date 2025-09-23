@@ -26,10 +26,6 @@ fi
 # Refer to local icon or fetch remotely from URL
 ICON_DIR="$HOME/.local/share/applications/icons"
 
-ensure_icon_dir() {
-  mkdir -p "$ICON_DIR"
-}
-
 normalize_fetch_url() {
   local url="$1"
   if [[ ! "$url" =~ ^https?:// ]]; then
@@ -82,7 +78,7 @@ download_and_convert() {
   return 1
 }
 
-ensure_icon_dir
+mkdir -p "$ICON_DIR"
 
 if [[ $ICON_REF =~ ^https?:// ]]; then
   ICON_PATH="$ICON_DIR/$APP_NAME.png"
