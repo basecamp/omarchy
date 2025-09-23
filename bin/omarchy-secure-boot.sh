@@ -1,34 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Omarchy Secure Boot Manager v1.1
-# Complete secure boot automation for Limine + UKI
+# ============================================================================
+# Omarchy Secure Boot Manager v1.2
+# Complete secure boot automation for Limine + UKI with snapshot support
 # Repository: https://github.com/peregrinus879/omarchy-secure-boot-manager
+# ============================================================================
 
-# Configuration
+# ============================================================================
+# SECTION 1: CONFIGURATION & CONSTANTS
+# ============================================================================
+
+# Script metadata
+readonly VERSION="1.2"
+readonly SCRIPT_NAME="omarchy-secure-boot.sh"
+
+# System paths
 readonly LIMINE_CONF="/boot/limine.conf"
 readonly MACHINE_ID_FILE="/etc/machine-id"
-readonly SCRIPT_NAME="omarchy-secure-boot.sh"
 readonly INSTALL_PATH="/usr/local/bin/$SCRIPT_NAME"
 readonly HOOK_PATH="/etc/pacman.d/hooks/99-omarchy-secure-boot.hook"
 
-# Required packages
+# Required packages for secure boot
 readonly -a SB_PACKAGES=(
   "sbctl"
   "efitools"
   "sbsigntools"
 )
 
-# Colors for output
+# Behavior settings
+readonly TIMEOUT_DURATION=15
+readonly CONFIRM_BULK_CHANGES=true
+
+# ============================================================================
+# SECTION 2: OUTPUT COLORS & LOGGING FUNCTIONS
+# ============================================================================
+
+# Terminal colors
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly CYAN='\033[0;36m'
+readonly MAGENTA='\033[0;35m'
 readonly BOLD='\033[1m'
 readonly NC='\033[0m'
 
-# Logging functions
+# Logging functions with consistent formatting
 log_info() {
   echo -e "${BLUE}[INFO]${NC} $*"
 }
@@ -49,7 +67,15 @@ log_step() {
   echo -e "\n${CYAN}${BOLD}=== $* ===${NC}"
 }
 
-# Utility functions
+log_detail() {
+  echo -e "${MAGENTA}[DETAIL]${NC} $*"
+}
+
+# ============================================================================
+# SECTION 3: CORE UTILITY FUNCTIONS
+# ============================================================================
+
+# Get system machine ID for UKI identification
 get_machine_id() {
   if [[ -f "$MACHINE_ID_FILE" ]]; then
     cat "$MACHINE_ID_FILE" | tr -d '\n'
@@ -60,37 +86,85 @@ get_machine_id() {
   fi
 }
 
-# NEW: Find all Linux-related EFI files dynamically
+# Create timestamped backup of limine.conf
+backup_limine_conf() {
+  local backup_name="${LIMINE_CONF}.backup.$(date +%Y%m%d_%H%M%S)"
+  if sudo cp "$LIMINE_CONF" "$backup_name"; then
+    log_info "Backup created: $backup_name"
+    echo "$backup_name"
+    return 0
+  else
+    log_error "Failed to backup limine.conf"
+    return 1
+  fi
+}
+
+# Require sudo authentication with single prompt
+require_auth() {
+  log_info "Authenticating for system changes..."
+  if ! sudo -v; then
+    log_error "Failed to authenticate"
+    exit 1
+  fi
+}
+
+# Extract SHA256 hash from snapshot filename
+extract_sha256_from_filename() {
+  local filename="$1"
+  if [[ "$filename" =~ _sha256_([a-f0-9]{64}) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+# ============================================================================
+# SECTION 4: DISCOVERY FUNCTIONS - Finding files and systems
+# ============================================================================
+
+# Find all Linux-related EFI files dynamically
 find_linux_efi_files() {
   local -a efi_files=()
   local file
 
   # Search for all .efi files in /boot, excluding Windows-related ones
-  # Use -type f to ensure we only get regular files, not directories
   while IFS= read -r file; do
     # Skip Windows-related files
     if [[ "$file" =~ [Mm]icrosoft|[Ww]indows|bootmgfw ]]; then
       continue
     fi
 
-    # Double-check it's a regular file (not directory, symlink, etc.)
+    # Triple-check: it's a regular file, not a directory or symlink
     if [[ -f "$file" ]] && [[ ! -d "$file" ]]; then
       efi_files+=("$file")
     fi
   done < <(find /boot -type f -iname "*.efi" 2>/dev/null || true)
 
-  # Return the array
   printf '%s\n' "${efi_files[@]}"
 }
 
-# NEW: Find Windows Boot Manager (searches all mounted partitions)
+# Find snapshot UKIs specifically
+find_snapshot_ukis() {
+  local -a snapshot_files=()
+  local file
+
+  # Look for UKI files in limine_history directories
+  while IFS= read -r file; do
+    if [[ -f "$file" ]] && [[ ! -d "$file" ]]; then
+      snapshot_files+=("$file")
+    fi
+  done < <(find /boot -type f -path "*/limine_history/*" 2>/dev/null | grep -E "_sha256_[a-f0-9]{64}$" || true)
+
+  printf '%s\n' "${snapshot_files[@]}"
+}
+
+# Find Windows Boot Manager across all mounted partitions
 find_windows_bootmgr() {
   local bootmgr_path=""
 
-  # Search all mounted partitions for Windows Boot Manager
   log_info "Searching for Windows Boot Manager..."
 
-  # Method 1: Check common mount points
+  # Define search locations
   local -a search_paths=(
     "/boot"
     "/boot/efi"
@@ -99,7 +173,7 @@ find_windows_bootmgr() {
     "/mnt/windows"
   )
 
-  # Method 2: Find all mounted FAT/NTFS partitions
+  # Add all mounted FAT/NTFS partitions to search
   while IFS= read -r mount_point; do
     if [[ -n "$mount_point" ]] && [[ ! " ${search_paths[@]} " =~ " ${mount_point} " ]]; then
       search_paths+=("$mount_point")
@@ -119,9 +193,8 @@ find_windows_bootmgr() {
     fi
   done
 
-  # If still not found, check if Windows partition needs mounting
+  # Check for unmounted Windows partitions
   if [[ -z "$bootmgr_path" ]]; then
-    # Check if there are unmounted Windows partitions
     local windows_parts
     windows_parts=$(lsblk -f -n -o NAME,FSTYPE,LABEL,MOUNTPOINT | grep -E "(ntfs|vfat)" | grep -v "/" | head -1 || true)
     if [[ -n "$windows_parts" ]]; then
@@ -132,73 +205,11 @@ find_windows_bootmgr() {
   echo "$bootmgr_path"
 }
 
-# NEW: Check and add Windows entry to limine.conf
-ensure_windows_entry() {
-  log_step "Checking for Windows Boot Entry"
+# ============================================================================
+# SECTION 5: VERIFICATION & CHECK FUNCTIONS
+# ============================================================================
 
-  # Check if Windows entry already exists
-  if grep -qi "windows\|bootmgfw" "$LIMINE_CONF" 2>/dev/null; then
-    log_success "Windows entry already exists in limine.conf"
-    return 0
-  fi
-
-  # Find Windows Boot Manager
-  local windows_path
-  windows_path=$(find_windows_bootmgr)
-
-  if [[ -z "$windows_path" ]]; then
-    log_info "No Windows installation detected"
-    return 0
-  fi
-
-  log_info "Found Windows Boot Manager at: $windows_path"
-
-  # Convert absolute path to relative EFI path
-  local efi_path
-  if [[ "$windows_path" =~ /boot/(.*) ]]; then
-    efi_path="${BASH_REMATCH[1]}"
-  elif [[ "$windows_path" =~ /efi/(.*) ]]; then
-    efi_path="${BASH_REMATCH[1]}"
-  else
-    efi_path="$windows_path"
-  fi
-
-  # Determine if it's on the same partition or different
-  local protocol="boot()"
-  if [[ "$windows_path" =~ ^/efi/ ]]; then
-    # Different partition mounting
-    protocol="boot()"
-  fi
-
-  # Create Windows entry
-  local windows_entry="
-# Windows Boot Manager
-/Windows
-    comment: Microsoft Windows 11
-    comment: order-priority=20
-    protocol: efi_chainload
-    image_path: ${protocol}:/${efi_path}"
-
-  # Ask for confirmation before adding
-  echo ""
-  echo "The following entry will be added to limine.conf:"
-  echo -e "${CYAN}$windows_entry${NC}"
-  echo ""
-  read -p "Add Windows entry to boot menu? (y/N): " add_windows
-
-  if [[ $add_windows =~ ^[Yy]$ ]]; then
-    # Backup limine.conf
-    sudo cp "$LIMINE_CONF" "${LIMINE_CONF}.backup.$(date +%Y%m%d_%H%M%S)"
-
-    # Add entry to limine.conf
-    echo "$windows_entry" | sudo tee -a "$LIMINE_CONF" >/dev/null
-    log_success "Windows entry added to limine.conf"
-    log_info "Backup saved to ${LIMINE_CONF}.backup.*"
-  else
-    log_info "Skipped adding Windows entry"
-  fi
-}
-
+# Check if required packages are installed
 check_packages() {
   local missing_packages=()
   for package in "${SB_PACKAGES[@]}"; do
@@ -214,8 +225,8 @@ check_packages() {
   return 0
 }
 
+# Check if secure boot keys exist
 check_keys() {
-  # Check multiple possible key locations
   if [[ -f /usr/share/secureboot/keys/db/db.key ]] ||
     [[ -f /var/lib/sbctl/keys/db/db.key ]] ||
     [[ -d /var/lib/sbctl/keys ]] ||
@@ -226,7 +237,150 @@ check_keys() {
   fi
 }
 
-# Setup functions
+# Check for hash mismatches in current kernel and snapshots
+check_hash_mismatches() {
+  log_step "Checking for Hash Mismatches"
+
+  local mismatches=0
+  local total=0
+
+  # Check current kernel
+  local machine_id
+  machine_id=$(get_machine_id)
+  local uki_file
+  uki_file=$(find /boot -type f -name "${machine_id}_linux.efi" 2>/dev/null | grep -v "limine_history" | head -1)
+
+  if [[ -f "$uki_file" ]]; then
+    total=$((total + 1))
+    local actual_hash
+    actual_hash=$(b2sum "$uki_file" | awk '{print $1}')
+    local uki_filename
+    uki_filename=$(basename "$uki_file")
+
+    if grep -qE "${uki_filename}" "$LIMINE_CONF"; then
+      local config_hash
+      config_hash=$(grep -E "${uki_filename}" "$LIMINE_CONF" | grep -v "limine_history" |
+        sed -E 's/.*#([0-9a-f]{128})/\1/' 2>/dev/null | head -1 || true)
+
+      if [[ "$actual_hash" != "$config_hash" ]]; then
+        mismatches=$((mismatches + 1))
+        log_warning "Current kernel: hash mismatch"
+        echo -e "  File   : $uki_filename"
+        echo -e "  Config : ${config_hash:0:32}..."
+        echo -e "  Actual : ${actual_hash:0:32}..."
+      else
+        log_success "Current kernel: hash OK"
+      fi
+    fi
+  fi
+
+  # Check snapshots - must look in limine_history directories
+  while IFS= read -r line; do
+    if [[ "$line" =~ image_path:.*limine_history/([^#]+) ]]; then
+      local snapshot_filename="${BASH_REMATCH[1]%%#*}"
+
+      # Extract SHA256 for exact matching
+      local sha256_part
+      sha256_part=$(extract_sha256_from_filename "$snapshot_filename") || continue
+
+      # Find the exact snapshot file
+      local efi_path
+      efi_path=$(find /boot -type f -path "*/limine_history/*_sha256_${sha256_part}" 2>/dev/null | head -1)
+
+      if [[ -f "$efi_path" ]]; then
+        total=$((total + 1))
+        local actual_hash
+        actual_hash=$(b2sum "$efi_path" | awk '{print $1}')
+
+        local config_hash=""
+        if [[ "$line" =~ \#([a-f0-9]{128}) ]]; then
+          config_hash="${BASH_REMATCH[1]}"
+        fi
+
+        if [[ "$actual_hash" != "$config_hash" ]]; then
+          mismatches=$((mismatches + 1))
+          log_warning "Snapshot: hash mismatch - SHA256_${sha256_part:0:16}..."
+          echo -e "  Config : ${config_hash:0:32}..."
+          echo -e "  Actual : ${actual_hash:0:32}..."
+        fi
+      fi
+    fi
+  done < <(grep "limine_history" "$LIMINE_CONF")
+
+  echo ""
+  if [[ $mismatches -eq 0 ]]; then
+    log_success "All $total UKI hashes match correctly"
+  else
+    log_warning "$mismatches hash mismatch(es) found out of $total UKIs"
+    log_info "Run '$SCRIPT_NAME --fix-hashes' to correct them"
+  fi
+
+  return $mismatches
+}
+
+# Verify EFI file signatures
+verify_signatures() {
+  local -a efi_files
+  mapfile -t efi_files < <(find_linux_efi_files)
+
+  local all_verified=true
+  local verification_output=""
+  local snapshot_count=0
+  local current_count=0
+
+  # Verify each file individually
+  for file in "${efi_files[@]}"; do
+    if [[ -f "$file" ]]; then
+      local filename=$(basename "$file")
+      local dir_hint=""
+
+      # Categorize file type
+      if [[ "$file" =~ limine_history ]]; then
+        dir_hint=" (snapshot)"
+        snapshot_count=$((snapshot_count + 1))
+      elif [[ "$filename" == "BOOTX64.EFI" ]]; then
+        if [[ "$file" =~ /limine/ ]]; then
+          dir_hint=" (limine)"
+        elif [[ "$file" =~ /BOOT/ ]]; then
+          dir_hint=" (BOOT)"
+        fi
+      elif [[ "$filename" =~ _linux\.efi$ ]] && [[ ! "$file" =~ limine_history ]]; then
+        dir_hint=" (current)"
+        current_count=$((current_count + 1))
+      fi
+
+      if timeout "$TIMEOUT_DURATION" sudo sbctl verify "$file" >/dev/null 2>&1; then
+        verification_output+="✓ ${filename}${dir_hint}\n"
+      else
+        verification_output+="✗ ${filename}${dir_hint}\n"
+        all_verified=false
+      fi
+    fi
+  done
+
+  if [[ -n "$verification_output" ]]; then
+    echo -e "$verification_output"
+  fi
+
+  # Summary
+  if [[ $snapshot_count -gt 0 ]]; then
+    log_info "Verified $snapshot_count snapshot(s) and $current_count current kernel(s)"
+  fi
+
+  if [[ "$all_verified" = true ]]; then
+    log_success "All signatures verified"
+    return 0
+  else
+    log_warning "Some signature issues detected"
+    return 1
+  fi
+}
+
+# ============================================================================
+# SECTION 6: INSTALLATION & SETUP FUNCTIONS
+# ============================================================================
+
+# Install required packages
 install_packages() {
   log_step "Installing Secure Boot Packages"
 
@@ -247,6 +401,7 @@ install_packages() {
   fi
 }
 
+# Install automation script and pacman hook
 install_automation() {
   log_step "Installing Automation"
 
@@ -295,12 +450,13 @@ HOOK_EOF
   fi
 }
 
+# Create secure boot keys
 create_keys() {
   log_step "Creating Secure Boot Keys"
 
   if check_keys; then
     log_warning "Secure boot keys already exist"
-    timeout 10 sudo sbctl status 2>/dev/null || log_warning "Could not check sbctl status"
+    timeout "$TIMEOUT_DURATION" sudo sbctl status 2>/dev/null || log_warning "Could not check sbctl status"
     echo ""
     read -p "Recreate keys? This will invalidate existing signatures (y/N): " recreate
     if [[ ! $recreate =~ ^[Yy]$ ]]; then
@@ -321,6 +477,7 @@ create_keys() {
   fi
 }
 
+# Show enrollment instructions for BIOS setup
 show_enrollment_instructions() {
   echo ""
   echo -e "${BOLD}${YELLOW}🔐 SECURE BOOT KEY ENROLLMENT REQUIRED${NC}"
@@ -355,7 +512,11 @@ ENROLL_EOF
   echo ""
 }
 
-# ENHANCED: Sign only actual EFI files (not directories)
+# ============================================================================
+# SECTION 7: CORE OPERATIONS - Signing and hash management
+# ============================================================================
+
+# Sign all Linux EFI files
 sign_files() {
   local machine_id
   machine_id=$(get_machine_id)
@@ -392,18 +553,17 @@ sign_files() {
   return $([ "$needs_signing" = true ] && echo 0 || echo 1)
 }
 
-# ENHANCED: Update hash for UKI file
+# Update hash for current UKI file
 update_hash() {
   local machine_id
   machine_id=$(get_machine_id)
 
-  # Find the UKI file (ensure it's a regular file)
+  # Find the current UKI file (exclude snapshots)
   local uki_file
-  uki_file=$(find /boot -type f -name "${machine_id}_linux.efi" 2>/dev/null | head -1 || true)
+  uki_file=$(find /boot -type f -name "${machine_id}_linux.efi" 2>/dev/null | grep -v "limine_history" | head -1)
 
   if [[ -z "$uki_file" ]]; then
-    # Try to find any UKI file (still ensuring it's a regular file)
-    uki_file=$(find /boot -type f -name "*_linux.efi" 2>/dev/null | head -1 || true)
+    uki_file=$(find /boot -type f -name "*_linux.efi" 2>/dev/null | grep -v "limine_history" | head -1)
   fi
 
   if [[ ! -f "$uki_file" ]] || [[ ! -f "$LIMINE_CONF" ]]; then
@@ -415,9 +575,10 @@ update_hash() {
   local uki_filename
   uki_filename=$(basename "$uki_file")
 
+  # Get current hash from config
   if grep -qE "${uki_filename}" "$LIMINE_CONF"; then
-    current_hash=$(grep -E "${uki_filename}" "$LIMINE_CONF" |
-      sed -E 's/.*#([0-9a-f]{128})/\1/' 2>/dev/null || true)
+    current_hash=$(grep -E "${uki_filename}" "$LIMINE_CONF" | grep -v "limine_history" |
+      sed -E 's/.*#([0-9a-f]{128})/\1/' 2>/dev/null | head -1)
   fi
 
   if [[ "$new_hash" != "$current_hash" ]]; then
@@ -431,52 +592,187 @@ update_hash() {
   fi
 }
 
-verify_signatures() {
-  # Get all Linux EFI files to verify (files only, not directories)
-  local -a efi_files
-  mapfile -t efi_files < <(find_linux_efi_files)
+# Process a single snapshot hash update
+update_single_snapshot_hash() {
+  local line_num="$1"
+  local snapshot_filename="$2"
+  local sha256_part="$3"
 
-  local all_verified=true
-  local verification_output=""
+  # Find the exact snapshot file
+  local efi_path
+  efi_path=$(find /boot -type f -path "*/limine_history/*_sha256_${sha256_part}" 2>/dev/null | head -1)
 
-  # Verify each file individually
-  for file in "${efi_files[@]}"; do
-    if [[ -f "$file" ]]; then
-      local filename=$(basename "$file")
-      local dir_hint=""
-
-      # Add directory hint for duplicate filenames
-      if [[ "$filename" == "BOOTX64.EFI" ]]; then
-        if [[ "$file" =~ /limine/ ]]; then
-          dir_hint=" (limine)"
-        elif [[ "$file" =~ /BOOT/ ]]; then
-          dir_hint=" (BOOT)"
-        fi
-      fi
-
-      if timeout 5 sudo sbctl verify "$file" >/dev/null 2>&1; then
-        verification_output+="✓ ${filename}${dir_hint}\n"
-      else
-        verification_output+="✗ ${filename}${dir_hint}\n"
-        all_verified=false
-      fi
-    fi
-  done
-
-  if [[ -n "$verification_output" ]]; then
-    echo -e "$verification_output"
+  if [[ ! -f "$efi_path" ]]; then
+    log_warning "Snapshot file not found: SHA256 ${sha256_part:0:16}..."
+    return 1
   fi
 
-  if [[ "$all_verified" = true ]]; then
-    log_success "All signatures verified"
+  local new_hash
+  new_hash=$(b2sum "$efi_path" | awk '{print $1}')
+
+  # Escape filename for sed
+  local escaped_filename
+  escaped_filename=$(echo "$snapshot_filename" | sed 's/[[\.*^$()+?{|]/\\&/g')
+
+  # Update the specific line
+  if sudo sed -i "${line_num}s|\(image_path:.*${escaped_filename}\)\(#[a-f0-9]*\)\?|\1#${new_hash}|" "$LIMINE_CONF"; then
+    log_success "Updated line $line_num: SHA256 ${sha256_part:0:16}..."
     return 0
   else
-    log_warning "Some signature issues detected"
+    log_error "Failed to update line $line_num: SHA256 ${sha256_part:0:16}..."
     return 1
   fi
 }
 
-# Main command implementations
+# Update snapshot UKI hashes after signing
+update_snapshot_hashes() {
+  log_step "Checking Snapshot UKI Hashes"
+
+  local updated=0
+  local checked=0
+  local needs_update=0
+
+  # First pass: check which snapshots need updating
+  local -a updates_needed=()
+
+  while IFS=: read -r line_num line_content; do
+    if [[ "$line_content" =~ image_path:.*limine_history/([^#]+) ]]; then
+      local snapshot_filename="${BASH_REMATCH[1]%%#*}"
+
+      # Extract SHA256 for exact matching
+      local sha256_part
+      sha256_part=$(extract_sha256_from_filename "$snapshot_filename") || continue
+
+      # Find the exact snapshot file
+      local efi_path
+      efi_path=$(find /boot -type f -path "*/limine_history/*_sha256_${sha256_part}" 2>/dev/null | head -1)
+
+      if [[ -f "$efi_path" ]]; then
+        checked=$((checked + 1))
+        local actual_hash
+        actual_hash=$(b2sum "$efi_path" | awk '{print $1}')
+
+        # Extract current hash from config
+        local config_hash=""
+        if [[ "$line_content" =~ \#([a-f0-9]{128}) ]]; then
+          config_hash="${BASH_REMATCH[1]}"
+        fi
+
+        if [[ "$actual_hash" != "$config_hash" ]]; then
+          needs_update=$((needs_update + 1))
+          updates_needed+=("${line_num}:${snapshot_filename}:${sha256_part}")
+          log_detail "Line $line_num - SHA256_${sha256_part:0:16}...: hash mismatch"
+          echo -e "    Config : ${config_hash:0:16}..."
+          echo -e "    Actual : ${actual_hash:0:16}..."
+        fi
+      else
+        log_warning "Snapshot file not found: SHA256 ${sha256_part:0:16}..."
+      fi
+    fi
+  done < <(grep -n "limine_history/" "$LIMINE_CONF")
+
+  if [[ $needs_update -eq 0 ]]; then
+    log_success "All $checked snapshot hashes are already correct"
+    return 0
+  fi
+
+  # Ask for confirmation before updating
+  echo ""
+  log_warning "Found $needs_update snapshot(s) with incorrect hashes out of $checked checked"
+
+  if [[ "$CONFIRM_BULK_CHANGES" == "true" ]]; then
+    read -p "Update snapshot hashes in limine.conf? (y/N): " update_confirm
+
+    if [[ ! $update_confirm =~ ^[Yy]$ ]]; then
+      log_info "Skipped snapshot hash updates"
+      return 0
+    fi
+  fi
+
+  # Backup before making changes
+  backup_limine_conf
+
+  # Second pass: perform updates
+  log_info "Updating snapshot hashes..."
+
+  for update_entry in "${updates_needed[@]}"; do
+    IFS=: read -r line_num snapshot_filename sha256_part <<<"$update_entry"
+    if update_single_snapshot_hash "$line_num" "$snapshot_filename" "$sha256_part"; then
+      updated=$((updated + 1))
+    fi
+  done
+
+  if [[ $updated -gt 0 ]]; then
+    log_success "Successfully updated $updated snapshot hash(es)"
+  else
+    log_warning "No snapshot hashes were updated"
+  fi
+}
+
+# Check and add Windows entry to limine.conf
+ensure_windows_entry() {
+  log_step "Checking for Windows Boot Entry"
+
+  # Check if Windows entry already exists
+  if grep -qi "windows\|bootmgfw" "$LIMINE_CONF" 2>/dev/null; then
+    log_success "Windows entry already exists in limine.conf"
+    return 0
+  fi
+
+  # Find Windows Boot Manager
+  local windows_path
+  windows_path=$(find_windows_bootmgr)
+
+  if [[ -z "$windows_path" ]]; then
+    log_info "No Windows installation detected"
+    return 0
+  fi
+
+  log_info "Found Windows Boot Manager at: $windows_path"
+
+  # Convert absolute path to relative EFI path
+  local efi_path
+  if [[ "$windows_path" =~ /boot/(.*) ]]; then
+    efi_path="${BASH_REMATCH[1]}"
+  elif [[ "$windows_path" =~ /efi/(.*) ]]; then
+    efi_path="${BASH_REMATCH[1]}"
+  else
+    efi_path="$windows_path"
+  fi
+
+  # Create Windows entry
+  local windows_entry="
+# Windows Boot Manager
+/Windows
+    comment: Microsoft Windows 11
+    comment: order-priority=20
+    protocol: efi_chainload
+    image_path: boot():/${efi_path}"
+
+  # Ask for confirmation before adding
+  echo ""
+  echo "The following entry will be added to limine.conf:"
+  echo -e "${CYAN}$windows_entry${NC}"
+  echo ""
+  read -p "Add Windows entry to boot menu? (y/N): " add_windows
+
+  if [[ $add_windows =~ ^[Yy]$ ]]; then
+    # Backup limine.conf
+    backup_limine_conf
+
+    # Add entry to limine.conf
+    echo "$windows_entry" | sudo tee -a "$LIMINE_CONF" >/dev/null
+    log_success "Windows entry added to limine.conf"
+  else
+    log_info "Skipped adding Windows entry"
+  fi
+}
+
+# ============================================================================
+# SECTION 8: COMMAND IMPLEMENTATIONS
+# ============================================================================
+
+# Complete setup command
 cmd_setup() {
   log_step "Starting Complete Secure Boot Setup"
   echo "Setting up secure boot for your Omarchy system..."
@@ -488,12 +784,8 @@ cmd_setup() {
     exit 1
   fi
 
-  # Authenticate sudo upfront (like pacman -Syu)
-  log_info "Authenticating for system changes..."
-  if ! sudo -v; then
-    log_error "Failed to authenticate"
-    exit 1
-  fi
+  # Authenticate sudo upfront
+  require_auth
 
   # Step 1: Install packages (critical foundation)
   install_packages
@@ -510,6 +802,11 @@ cmd_setup() {
   if sign_files; then
     files_signed=true
     update_hash
+    # Check and offer to fix snapshot hashes if needed
+    if ! check_hash_mismatches >/dev/null 2>&1; then
+      log_info "Detected hash mismatches in snapshots"
+      update_snapshot_hashes
+    fi
   fi
   verify_signatures
 
@@ -521,7 +818,7 @@ cmd_setup() {
   if check_keys; then
     # Check if we're in Setup Mode (need enrollment) or keys are already enrolled
     local sb_status
-    sb_status=$(timeout 10 sudo sbctl status 2>/dev/null || echo "")
+    sb_status=$(timeout "$TIMEOUT_DURATION" sudo sbctl status 2>/dev/null || echo "")
 
     if echo "$sb_status" | grep -q "Setup Mode.*✓ Enabled\|Setup Mode.*Enabled"; then
       # Setup Mode is ENABLED = need to enroll keys
@@ -549,6 +846,7 @@ cmd_setup() {
   log_info "Use '$SCRIPT_NAME --status' to check system state anytime"
 }
 
+# Enroll keys command
 cmd_enroll() {
   log_step "Enrolling Secure Boot Keys"
 
@@ -559,13 +857,11 @@ cmd_enroll() {
     exit 1
   fi
 
-  # Check setup mode (but don't fail if we can't determine it)
-  local setup_mode_check=false
+  # Check setup mode
   local sb_status
-  sb_status=$(timeout 10 sudo sbctl status 2>/dev/null || echo "")
+  sb_status=$(timeout "$TIMEOUT_DURATION" sudo sbctl status 2>/dev/null || echo "")
 
   if echo "$sb_status" | grep -q "Setup Mode.*✓ Enabled\|Setup Mode.*Enabled"; then
-    setup_mode_check=true
     log_info "System is in Setup Mode - ready for enrollment"
   elif echo "$sb_status" | grep -q "Setup Mode.*✓ Disabled\|Setup Mode.*Disabled"; then
     log_warning "Keys appear to be already enrolled (Setup Mode is disabled)"
@@ -595,7 +891,7 @@ cmd_enroll() {
   log_info "Enrolling secure boot keys..."
   if sudo sbctl enroll-keys -m -f; then
     log_success "Keys enrolled successfully"
-    timeout 10 sudo sbctl status 2>/dev/null || log_warning "Could not verify enrollment status"
+    timeout "$TIMEOUT_DURATION" sudo sbctl status 2>/dev/null || log_warning "Could not verify enrollment status"
 
     echo ""
     echo -e "${BOLD}${GREEN}🔐 FINAL STEP: Enable Secure Boot${NC}"
@@ -616,8 +912,8 @@ cmd_enroll() {
   fi
 }
 
+# Update command (used by pacman hook)
 cmd_update() {
-  # Called by pacman hook and for manual updates
   local machine_id
   machine_id=$(get_machine_id)
 
@@ -629,7 +925,7 @@ cmd_update() {
   log_info "Starting secure boot maintenance..."
 
   # For manual runs (not hook), authenticate upfront
-  if [[ -t 0 ]]; then # Check if running interactively
+  if [[ -t 0 ]]; then
     if ! sudo -v 2>/dev/null; then
       log_error "Failed to authenticate"
       exit 1
@@ -645,7 +941,7 @@ cmd_update() {
     files_signed=true
   fi
 
-  # Update hash if needed
+  # Update hash if needed (current kernel only during automated updates)
   if update_hash; then
     hash_updated=true
   fi
@@ -671,6 +967,50 @@ cmd_update() {
   fi
 }
 
+# Manual signing command
+cmd_sign() {
+  log_step "Manual File Signing"
+
+  require_auth
+
+  sign_files
+  update_hash
+
+  # Check and offer to fix snapshot hashes
+  if ! check_hash_mismatches >/dev/null 2>&1; then
+    update_snapshot_hashes
+  fi
+
+  verify_signatures
+  log_success "Manual signing complete"
+}
+
+# Fix hash mismatches command
+cmd_fix_hashes() {
+  log_step "Fixing Hash Mismatches"
+
+  require_auth
+
+  # Fix current kernel hash
+  local current_fixed=false
+  if update_hash; then
+    log_success "Fixed current kernel hash"
+    current_fixed=true
+  fi
+
+  # Fix snapshot hashes
+  update_snapshot_hashes
+
+  # Verify final state
+  echo ""
+  if check_hash_mismatches >/dev/null 2>&1; then
+    log_success "All hash mismatches have been resolved!"
+  else
+    log_warning "Some hash mismatches may still remain - check --status for details"
+  fi
+}
+
+# Status command
 cmd_status() {
   log_step "Secure Boot Status"
 
@@ -719,19 +1059,32 @@ cmd_status() {
   log_info "Linux EFI files found:"
   local -a efi_files
   mapfile -t efi_files < <(find_linux_efi_files)
+  local snapshot_count=0
   for file in "${efi_files[@]}"; do
-    echo "  - $(basename "$file") ($(dirname "$file"))"
+    if [[ "$file" =~ limine_history ]]; then
+      echo "  - $(basename "$file") (snapshot)"
+      snapshot_count=$((snapshot_count + 1))
+    else
+      echo "  - $(basename "$file") ($(dirname "$file"))"
+    fi
   done
+  if [[ $snapshot_count -gt 0 ]]; then
+    log_info "Including $snapshot_count snapshot UKI(s)"
+  fi
 
-  # Show sbctl status with timeout (needs authentication)
+  # Show sbctl status with timeout
   if command -v sbctl >/dev/null 2>&1; then
     echo ""
     log_info "Authenticating to check detailed status..."
     if sudo -v 2>/dev/null; then
-      timeout 15 sudo sbctl status 2>/dev/null || log_warning "sbctl status timed out or failed"
+      timeout "$TIMEOUT_DURATION" sudo sbctl status 2>/dev/null || log_warning "sbctl status timed out or failed"
       echo ""
       log_info "Verifying EFI file signatures:"
       verify_signatures
+
+      # Check for hash mismatches
+      echo ""
+      check_hash_mismatches
     else
       log_warning "Authentication failed - skipping detailed status"
     fi
@@ -740,35 +1093,20 @@ cmd_status() {
   fi
 }
 
-cmd_sign() {
-  log_step "Manual File Signing"
-
-  # Authenticate upfront
-  log_info "Authenticating for system changes..."
-  if ! sudo -v; then
-    log_error "Failed to authenticate"
-    exit 1
-  fi
-
-  sign_files
-  update_hash
-  verify_signatures
-  log_success "Manual signing complete"
-}
-
-# NEW: Command to add Windows entry
+# Add Windows entry command
 cmd_add_windows() {
-  log_info "Authenticating for system changes..."
-  if ! sudo -v; then
-    log_error "Failed to authenticate"
-    exit 1
-  fi
+  require_auth
   ensure_windows_entry
 }
 
+# ============================================================================
+# SECTION 9: HELP & MAIN EXECUTION
+# ============================================================================
+
+# Show usage information
 show_usage() {
-  echo -e "${BOLD}Omarchy Secure Boot Manager v1.1${NC}"
-  echo "Complete setup and maintenance for Limine + UKI secure boot"
+  echo -e "${BOLD}Omarchy Secure Boot Manager v${VERSION}${NC}"
+  echo "Complete setup and maintenance for Limine + UKI secure boot with snapshot support"
   echo ""
   echo -e "${BOLD}USAGE:${NC}"
   echo "  $0 [COMMAND]"
@@ -781,6 +1119,7 @@ show_usage() {
   echo -e "${BOLD}MAINTENANCE COMMANDS:${NC}"
   echo "  --update       Update signatures and hashes (used by pacman hook)"
   echo "  --sign         Manual signing of all EFI files"
+  echo "  --fix-hashes   Fix all hash mismatches (current + snapshots)"
   echo "  --status       Show secure boot status and verification"
   echo ""
   echo -e "${BOLD}HELP:${NC}"
@@ -792,20 +1131,21 @@ show_usage() {
   echo "  3. $0 --enroll"
   echo "  4. Reboot → BIOS → Enable Secure Boot"
   echo ""
-  echo -e "${BOLD}NEW FEATURES (v1.1):${NC}"
-  echo "  • Dynamic discovery of all Linux EFI files"
-  echo "  • Windows detection across all mounted partitions"
-  echo "  • Enhanced file verification (no directory operations)"
-  echo "  • Upfront authentication (single password prompt)"
-  echo "  • Individual file verification with status display"
+  echo -e "${BOLD}KEY FEATURES:${NC}"
+  echo "  • Robust setup that always installs automation"
+  echo "  • Snapshot hash management for complex naming schemes"
+  echo "  • Dynamic EFI file discovery and signing"
+  echo "  • Windows dual-boot detection and configuration"
+  echo "  • Automatic maintenance via pacman hooks"
+  echo "  • Safety features with backups and confirmations"
   echo ""
   echo -e "${BOLD}NOTE:${NC} After setup, maintenance is automatic via pacman hooks."
-  echo "      The hook uses --update for minimal, fast maintenance."
   echo "      Use --status to check system state anytime."
+  echo "      Use --fix-hashes if you have boot warnings about hash mismatches."
   echo ""
 }
 
-# Main function
+# Main function - command dispatcher
 main() {
   case "${1:-}" in
   --setup)
@@ -819,6 +1159,9 @@ main() {
     ;;
   --sign)
     cmd_sign
+    ;;
+  --fix-hashes)
+    cmd_fix_hashes
     ;;
   --status)
     cmd_status
@@ -838,5 +1181,9 @@ main() {
   esac
 }
 
-# Execute main function
+# ============================================================================
+# SCRIPT ENTRY POINT
+# ============================================================================
+
+# Execute main function with all arguments
 main "$@"
