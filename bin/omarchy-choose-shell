@@ -17,16 +17,7 @@ install_shell() {
   shell=$1
   if ! command -v "$shell" >/dev/null 2>&1; then
     print_info "$shell not found. Installing..."
-    if command -v pacman >/dev/null 2>&1; then
-      sudo pacman -S --noconfirm "$shell"
-    elif command -v apt-get >/dev/null 2>&1; then
-      sudo apt-get update && sudo apt-get install -y "$shell"
-    elif command -v dnf >/dev/null 2>&1; then
-      sudo dnf install -y "$shell"
-    else
-      print_info "No supported package manager found. Please install $shell manually."
-      exit 1
-    fi
+    sudo pacman -S --noconfirm "$shell"
   fi
 }
 
@@ -62,6 +53,10 @@ case $choice in
   exit 1
   ;;
 *)
+  echo "Invalid choice. Please try again."
+  exit 1
+  ;;
+esac
   echo "Invalid choice. Please try again."
   exit 1
   ;;
