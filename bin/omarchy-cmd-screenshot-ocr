@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Take a screenshot of a selected region, perform OCR on it, and copy the text to clipboard.
+if ! TEXT=$(hyprshot -m region --raw 2>/dev/null \
+    | tesseract stdin stdout \
+        --oem 1 --psm 6 -l eng --dpi 300 \
+        -c preserve_interword_spaces=1 2>/dev/null); then
+    exit 1
+fi
+
+# Exit if no text was found
+if [ -z "$TEXT" ]; then
+    exit 1
+fi
+
+# Remove leading/trailing whitespace
+printf "%s" "$TEXT" | wl-copy
+
+notify-send "Copied text from selection to clipboard"
