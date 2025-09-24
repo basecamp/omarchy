@@ -15,7 +15,7 @@ SCOPE="$1"
 AUDIO=$([[ $2 == "audio" ]] && echo "--audio")
 
 start_screenrecording() {
-  filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
+  local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
 
   if lspci | grep -qi 'nvidia'; then
     wf-recorder $AUDIO -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@" &
@@ -47,7 +47,8 @@ screenrecording_active() {
 if screenrecording_active; then
   stop_screenrecording
 elif [[ "$SCOPE" == "output" ]]; then
-  start_screenrecording
+  output=$(slurp -o) || exit 1
+  start_screenrecording -g "$output"
 else
   region=$(slurp) || exit 1
   start_screenrecording -g "$region"
