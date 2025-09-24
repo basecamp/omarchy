@@ -57,7 +57,3 @@ case $choice in
   exit 1
   ;;
 esac
-  echo "Invalid choice. Please try again."
-  exit 1
-  ;;
-esac
