@@ -32,6 +32,8 @@ LIGHT_THEME=""
 DARK_THEME=""
 DAY_START="07:00"
 NIGHT_START="19:00"
+# Flip Night Light when theme switches (via omarchy-toggle-nightlight)
+ENABLE_NIGHT_LIGHT_ON_DARK_MODE=false
 
 USER_CONFIG="$HOME/.config/auto-themer/theme-auto.conf"
 DEFAULT_CONFIG="$HOME/.local/share/omarchy/config/auto-themer/theme-auto.conf"
@@ -115,6 +117,10 @@ apply_once() {
 
   if [[ -z "$current_slug" || "$current_slug" != "$target_slug" ]]; then
     omarchy-theme-set "$target_slug"
+    # Optionally flip Night Light to match the theme toggle
+    if [[ "${ENABLE_NIGHT_LIGHT_ON_DARK_MODE}" == "true" ]]; then
+      omarchy-toggle-nightlight >/dev/null 2>&1 || true
+    fi
   fi
 }
 
@@ -131,6 +137,7 @@ show_status() {
   echo "Light:     ${LIGHT_THEME}"
   echo "Dark:      ${DARK_THEME}"
   echo "Current:   $(current_theme_slug)"
+  echo "NightLight with Dark: ${ENABLE_NIGHT_LIGHT_ON_DARK_MODE}"
 }
 
 case "${1:-apply}" in

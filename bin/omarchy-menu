@@ -238,7 +238,12 @@ show_auto_theme_menu() {
   local toggle_label
   if [[ "$enabled" == "true" ]]; then toggle_label="Disable"; else toggle_label="Enable"; fi
 
-  case $(menu "Auto Theme" "${toggle_label} Auto Theme\nSet Light Theme\nSet Dark Theme\nSet Day Start\nSet Night Start\nApply Now\nShow Status\nEnable services\nDisable services\nEdit Config\nBack") in
+  # Night Light with Dark Mode toggle label
+  local nl_enabled nl_toggle_label
+  nl_enabled="$(auto_themer_get ENABLE_NIGHT_LIGHT_ON_DARK_MODE)"
+  if [[ "$nl_enabled" == "true" ]]; then nl_toggle_label="Disable Night Light on Dark Mode"; else nl_toggle_label="Enable Night Light on Dark Mode"; fi
+
+  case $(menu "Auto Theme" "${toggle_label} Auto Theme\nSet Light Theme\nSet Dark Theme\nSet Day Start\nSet Night Start\n${nl_toggle_label}\nApply Now\nShow Status\nEnable services\nDisable services\nEdit Config\nBack") in
   *Enable\ Auto\ Theme*)
     auto_themer_set ENABLED true
     auto_themer_enable_units
@@ -251,6 +256,12 @@ show_auto_theme_menu() {
   *Set\ Dark\ Theme*) auto_themer_pick_theme DARK_THEME ; back_to show_auto_theme_menu ;;
   *Set\ Day\ Start*) auto_themer_pick_time DAY_START ; back_to show_auto_theme_menu ;;
   *Set\ Night\ Start*) auto_themer_pick_time NIGHT_START ; back_to show_auto_theme_menu ;;
+  *Enable\ Night\ Light\ on\ Dark\ Mode*)
+    auto_themer_set ENABLE_NIGHT_LIGHT_ON_DARK_MODE true
+    back_to show_auto_theme_menu ;;
+  *Disable\ Night\ Light\ on\ Dark\ Mode*)
+    auto_themer_set ENABLE_NIGHT_LIGHT_ON_DARK_MODE false
+    back_to show_auto_theme_menu ;;
   *Apply\ Now*) omarchy-theme-auto apply ; back_to show_auto_theme_menu ;;
   *Show\ Status*) present_terminal "omarchy-theme-auto status" ; back_to show_auto_theme_menu ;;
   *Enable\ Timer\ +\ Watcher*) auto_themer_enable_units ; back_to show_auto_theme_menu ;;
