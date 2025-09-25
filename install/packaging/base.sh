@@ -1,15 +1,6 @@
 
-# Add architecture-specific kernel packages
-ARCH="$(uname -m)"
-arch_packages=()
-if [[ "$ARCH" == "aarch64" ]]; then
-	arch_packages=("linux-asahi" "linux-asahi-headers" "asahi-fwextract" "asahi-desktop-meta")
-else
-	arch_packages=("linux" "linux-headers")
-fi
-
 # Read core and optional packages from omarchy-base.packages
-core_packages=("${arch_packages[@]}")
+core_packages=()
 optional_packages=()
 in_optional=0
 while IFS= read -r line; do
@@ -27,14 +18,7 @@ done < "$OMARCHY_INSTALL/omarchy-base.packages"
 
 # Interactive selection for optional packages using gum
 if command -v gum &>/dev/null && (( ${#optional_packages[@]} > 0 )); then
-	clear_logo
-	echo
-	gum style --foreground 6 --bold --padding "0 0 0 $PADDING_LEFT" \
-		"📦 Optional Package Selection"
-	echo
-	gum style --foreground 7 --padding "0 0 0 $PADDING_LEFT" \
-		"Select optional packages to install (use space to select, enter to confirm):"
-	echo
+	echo "\e[34m[Omarchy] Select optional packages to install (use space to select, enter to confirm):\e[0m"
 	selected_optional=$(printf '%s\n' "${optional_packages[@]}" | gum choose --no-limit --height 20)
 	mapfile -t selected_optional_pkgs <<< "$selected_optional"
 else
@@ -45,29 +29,17 @@ fi
 packages=("${core_packages[@]}" "${selected_optional_pkgs[@]}")
 
 # Pre-Install Compatibility Check
-clear_logo
-echo
-gum style --foreground 6 --bold --padding "0 0 0 $PADDING_LEFT" \
-	"🔍 Checking package availability..."
-echo
-
+echo "\e[34m[Omarchy] Checking package availability...\e[0m"
 unavailable_pkgs=()
 for pkg in "${packages[@]}"; do
 	if ! check_package_availability "$pkg"; then
 		unavailable_pkgs+=("$pkg")
 	fi
 done
-
 if (( ${#unavailable_pkgs[@]} > 0 )); then
-	gum style --foreground 3 --bold --padding "0 0 0 $PADDING_LEFT" \
-		"⚠️  Package Availability Warning"
-	echo
-	gum style --foreground 7 --padding "0 0 0 $PADDING_LEFT" \
-		"The following packages are likely unavailable and will be skipped:"
-	echo
+	echo "\e[33m[Warning] The following packages are likely unavailable and will be skipped:\e[0m"
 	for pkg in "${unavailable_pkgs[@]}"; do
-		gum style --foreground 3 --padding "0 0 0 $((PADDING_LEFT + 2))" \
-			"⚠ $pkg"
+		echo "  - $pkg"
 	done
 	echo
 fi
@@ -88,32 +60,16 @@ done
 # Post-install summary and support
 echo
 if (( ${#failed_packages[@]} > 0 )); then
-	clear_logo
-	echo
-	gum style --foreground 3 --bold --padding "0 0 0 $PADDING_LEFT" \
-		"⚠️  Installation Summary"
-	echo
-	gum style --foreground 7 --padding "0 0 0 $PADDING_LEFT" \
-		"The following packages could not be installed:"
-	echo
+	echo "==============================="
+	echo "The following packages could not be installed:"
 	for pkg in "${failed_packages[@]}"; do
-		gum style --foreground 1 --padding "0 0 0 $((PADDING_LEFT + 2))" \
-			"✗ $pkg"
+		echo "  - $pkg"
 	done
-	echo
-	gum style --foreground 7 --italic --padding "0 0 0 $PADDING_LEFT" \
-		"If you need help or want to request support for missing packages,"
-	gum style --foreground 6 --italic --padding "0 0 0 $PADDING_LEFT" \
-		"contact @tiredkebab on X (Twitter)."
+	echo "==============================="
+	echo "If you need help or want to request support for missing packages, contact @tiredkebab on X (Twitter)."
 else
-	clear_logo
-	echo
-	gum style --foreground 2 --bold --padding "0 0 0 $PADDING_LEFT" \
-		"✅ All packages installed successfully!"
+	echo "\e[32mAll packages installed successfully!\e[0m"
 fi
 
 echo
-gum style --foreground 6 --bold --padding "0 0 0 $PADDING_LEFT" \
-	"Installation complete. For troubleshooting, see the install log."
-gum style --foreground 7 --padding "0 0 0 $PADDING_LEFT" \
-	"For support, contact @tiredkebab on X (Twitter)."
+echo "[Omarchy] Installation complete. For troubleshooting, see the install log. For support, contact @tiredkebab on X (Twitter)."

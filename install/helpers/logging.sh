@@ -52,10 +52,6 @@ stop_log_output() {
   fi
 }
 
-show_cursor() {
-  printf "\033[?25h" # Show cursor
-}
-
 start_install_log() {
   sudo touch "$OMARCHY_INSTALL_LOG_FILE"
   sudo chmod 666 "$OMARCHY_INSTALL_LOG_FILE"

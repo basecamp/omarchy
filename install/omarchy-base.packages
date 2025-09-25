@@ -5,10 +5,10 @@
 
 # --- Omarchy core package list ---
 # These packages are always installed (required for a working system):
-
-# Architecture-specific kernel packages (handled in base.sh)
-# x86_64: linux, linux-headers
-# aarch64: linux-asahi, linux-asahi-headers, asahi-fwextract, asahi-desktop-meta
+linux-asahi
+linux-asahi-headers
+asahi-fwextract
+asahi-desktop-meta
 mesa
 mesa-utils
 mesa-demos
@@ -71,12 +71,15 @@ impala
 imv
 inetutils
 jq
+kdenlive
 kvantum-qt5
 lazydocker
 lazygit
 less
 libqalculate
+libreoffice
 llvm
+localsend
 luarocks
 mako
 man
@@ -86,7 +89,10 @@ noto-fonts-cjk
 noto-fonts-emoji
 noto-fonts-extra
 nss-mdns
+obs-studio
+obsidian
 pamixer
+pinta
 playerctl
 plocate
 plymouth
@@ -110,6 +116,7 @@ tree-sitter-cli
 ttf-cascadia-mono-nerd
 ttf-ia-writer
 ttf-jetbrains-mono-nerd
+typora
 tzupdate
 ufw
 ufw-docker
@@ -128,19 +135,6 @@ woff2-font-awesome
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
 xmlstarlet
+xournalpp
 yaru-icon-theme
 zoxide
-
-OPTIONAL:
-# Optional packages for enhanced functionality
-# Users can choose to install these during setup
-xournalpp
-kdenlive
-obs-studio
-obsidian
-#signal-desktop
-#spotify
-pinta
-libreoffice
-localsend
-typora

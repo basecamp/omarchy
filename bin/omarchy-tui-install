@@ -1,76 +1,11 @@
 #!/bin/bash
 
-# Source presentation helpers for consistent styling
-if [[ -f "$HOME/.local/share/omarchy/install/helpers/presentation.sh" ]]; then
-  source "$HOME/.local/share/omarchy/install/helpers/presentation.sh"
-fi
-
-# Function to display elegant header
-show_tui_header() {
-  clear
-  if [[ -n "$PADDING_LEFT" ]]; then
-    gum style --foreground 6 --bold --padding "1 0 0 $PADDING_LEFT" \
-      "🖥️  TUI Application Setup"
-    echo
-    gum style --foreground 7 --padding "0 0 0 $PADDING_LEFT" \
-      "Create a TUI shortcut you can start with the app launcher."
-    echo
-  else
-    echo -e "\e[96m🖥️  TUI Application Setup\e[0m"
-    echo -e "\e[37mCreate a TUI shortcut you can start with the app launcher.\e[0m"
-    echo
-  fi
-}
-
-# Function to display success message
-show_success() {
-  local app_name="$1"
-  echo
-  if [[ -n "$PADDING_LEFT" ]]; then
-    gum style --foreground 2 --bold --padding "0 0 0 $PADDING_LEFT" \
-      "✅ TUI Application Created Successfully!"
-    echo
-    gum style --foreground 7 --padding "0 0 0 $PADDING_LEFT" \
-      "You can now find '$app_name' using the app launcher (SUPER + SPACE)"
-  else
-    echo -e "\e[92m✅ TUI Application Created Successfully!\e[0m"
-    echo -e "\e[37mYou can now find '$app_name' using the app launcher (SUPER + SPACE)\e[0m"
-  fi
-  echo
-}
-
-# Function to display error message
-show_error() {
-  local message="$1"
-  echo
-  if [[ -n "$PADDING_LEFT" ]]; then
-    gum style --foreground 1 --bold --padding "0 0 0 $PADDING_LEFT" \
-      "❌ Error: $message"
-  else
-    echo -e "\e[91m❌ Error: $message\e[0m"
-  fi
-  echo
-}
-
 if [ "$#" -ne 4 ]; then
-  show_tui_header
-  
-  # Use gum for elegant input collection
-  if command -v gum &>/dev/null; then
-    APP_NAME=$(gum input --prompt "Name> " --placeholder "My TUI")
-    APP_EXEC=$(gum input --prompt "Launch Command> " --placeholder "lazydocker or bash -c 'dust; read -n 1 -s'")
-    WINDOW_STYLE=$(gum choose --header "Window style" float tile)
-    ICON_URL=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
-  else
-    # Fallback for systems without gum
-    read -p "Name> " APP_NAME
-    read -p "Launch Command> " APP_EXEC
-    echo "Window style (float/tile):"
-    select WINDOW_STYLE in float tile; do
-      break
-    done
-    read -p "Icon URL> " ICON_URL
-  fi
+  echo -e "\e[32mLet's create a TUI shortcut you can start with the app launcher.\n\e[0m"
+  APP_NAME=$(gum input --prompt "Name> " --placeholder "My TUI")
+  APP_EXEC=$(gum input --prompt "Launch Command> " --placeholder "lazydocker or bash -c 'dust; read -n 1 -s'")
+  WINDOW_STYLE=$(gum choose --header "Window style" float tile)
+  ICON_URL=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
 else
   APP_NAME="$1"
   APP_EXEC="$2"
@@ -78,53 +13,31 @@ else
   ICON_URL="$4"
 fi
 
-# Validate required inputs
 if [[ -z "$APP_NAME" || -z "$APP_EXEC" || -z "$ICON_URL" ]]; then
-  show_error "You must set app name, app command, and icon URL!"
+  echo "You must set app name, app command, and icon URL!"
   exit 1
 fi
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
 
-# Create icons directory if it doesn't exist
-mkdir -p "$ICON_DIR"
-
-# Handle icon download or local file
 if [[ ! "$ICON_URL" =~ ^https?:// ]] && [ -f "$ICON_URL" ]; then
   ICON_PATH="$ICON_URL"
 else
   ICON_PATH="$ICON_DIR/$APP_NAME.png"
+  mkdir -p "$ICON_DIR"
   if ! curl -sL -o "$ICON_PATH" "$ICON_URL"; then
-    show_error "Failed to download icon from $ICON_URL"
+    echo "Error: Failed to download icon."
     exit 1
   fi
 fi
 
-# Set window class based on style
 if [[ $WINDOW_STYLE == "float" ]]; then
   APP_CLASS="TUI.float"
 else
   APP_CLASS="TUI.tile"
 fi
 
-# Determine terminal application
-if [[ -z "$TERMINAL" ]]; then
-  # Try to find a suitable terminal
-  for term in alacritty kitty wezterm gnome-terminal xterm; do
-    if command -v "$term" &>/dev/null; then
-      TERMINAL="$term"
-      break
-    fi
-  done
-  
-  if [[ -z "$TERMINAL" ]]; then
-    show_error "No suitable terminal application found. Please set the TERMINAL environment variable."
-    exit 1
-  fi
-fi
-
-# Create desktop entry
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Version=1.0
@@ -137,10 +50,8 @@ Icon=$ICON_PATH
 StartupNotify=true
 EOF
 
-# Make desktop file executable
 chmod +x "$DESKTOP_FILE"
 
-# Show success message only for interactive mode
 if [ "$#" -ne 4 ]; then
-  show_success "$APP_NAME"
+  echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
 fi
