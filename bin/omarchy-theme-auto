@@ -24,8 +24,6 @@
 
 set -euo pipefail
 
-# Config precedence: default (Omarchy) then user overrides
-
 # Defaults (safe): disabled until configured by user
 ENABLED=false
 LIGHT_THEME=""
@@ -41,11 +39,9 @@ DEFAULT_CONFIG="$HOME/.local/share/omarchy/config/auto-themer/theme-auto.conf"
 load_config() {
   # Load default first, then user to override
   if [[ -f "$DEFAULT_CONFIG" ]]; then
-    # shellcheck disable=SC1090
     source "$DEFAULT_CONFIG"
   fi
   if [[ -f "$USER_CONFIG" ]]; then
-    # shellcheck disable=SC1090
     source "$USER_CONFIG"
   fi
 }
@@ -72,7 +68,6 @@ current_theme_slug() {
   fi
 }
 
-# Returns either "light" or "dark" based on current time and DAY/NIGHT_START
 which_phase() {
   local now d n
   now=$(now_minutes)
@@ -117,7 +112,6 @@ apply_once() {
 
   if [[ -z "$current_slug" || "$current_slug" != "$target_slug" ]]; then
     omarchy-theme-set "$target_slug"
-    # Optionally flip Night Light to match the theme toggle
     if [[ "${ENABLE_NIGHT_LIGHT_ON_DARK_MODE}" == "true" ]]; then
       omarchy-toggle-nightlight >/dev/null 2>&1 || true
     fi

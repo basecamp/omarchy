@@ -238,7 +238,6 @@ show_auto_theme_menu() {
   local toggle_label
   if [[ "$enabled" == "true" ]]; then toggle_label="Disable"; else toggle_label="Enable"; fi
 
-  # Night Light with Dark Mode toggle label
   local nl_enabled nl_toggle_label
   nl_enabled="$(auto_themer_get ENABLE_NIGHT_LIGHT_ON_DARK_MODE)"
   if [[ "$nl_enabled" == "true" ]]; then nl_toggle_label="Disable Night Light on Dark Mode"; else nl_toggle_label="Enable Night Light on Dark Mode"; fi
