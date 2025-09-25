@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 BOLD='\e[1m'
-GREEN='\e[92m'
 YELLOW='\e[93m'
+GREEN='\e[92m'
 RESET='\e[0m'
 
 print_info() {
@@ -21,34 +21,28 @@ install_shell() {
   fi
 }
 
-print_info "Choose your user's default shell:"
-echo "1. bash"
-echo "2. fish"
-echo "3. zsh"
-echo "4. quit"
+shell=$(gum choose --height 5 --header "Choose your usdefault shell" bash fish zsh quit)
 
-read -p "Enter the number of your preferred shell: " choice
-
-case $choice in
-1)
+case $shell in
+bash)
   install_shell bash
   chsh -s "$(command -v bash)"
   print_choice "Shell choice: bash"
   printf '%s\n' "If default shell was changed, you will need to logout and log back in for change to take effect."
   ;;
-2)
+fish)
   install_shell fish
   chsh -s "$(command -v fish)"
   print_choice "Shell choice: fish"
   printf '%s\n' "If default shell was changed, you will need to logout and log back in for change to take effect."
   ;;
-3)
+zsh)
   install_shell zsh
   chsh -s "$(command -v zsh)"
   print_choice "Shell choice: zsh"
   printf '%s\n' "If default shell was changed, you will need to logout and log back in for change to take effect."
   ;;
-4)
+quit)
   echo "User has chosen to quit program."
   exit 1
   ;;
