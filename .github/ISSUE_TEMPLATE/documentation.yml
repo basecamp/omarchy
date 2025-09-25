@@ -1,0 +1,15 @@
+name: Documentation
+description: New pages or changes to existing
+labels: [documentation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remember: Omarchy is an open source gift, not a product you bought from a vendor
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: What correction or addition do we need?
+    validations:
+      required: true
