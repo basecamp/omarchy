@@ -12,6 +12,7 @@
 #   DARK_THEME=tokyo-night
 #   DAY_START=07:00
 #   NIGHT_START=19:00
+#   ENABLE_NIGHT_LIGHT_ON_DARK_MODE=false
 #
 # Usage:
 #   omarchy-theme-auto            # apply once based on current time
@@ -30,7 +31,6 @@ LIGHT_THEME=""
 DARK_THEME=""
 DAY_START="07:00"
 NIGHT_START="19:00"
-# Flip Night Light when theme switches (via omarchy-toggle-nightlight)
 ENABLE_NIGHT_LIGHT_ON_DARK_MODE=false
 
 USER_CONFIG="$HOME/.config/auto-themer/theme-auto.conf"
