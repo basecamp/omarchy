@@ -7,7 +7,7 @@ if [[ "$MACBOOK_MODEL" =~ MacBook(8,1|9,1|10,1)|MacBookPro13,[123]|MacBookPro14,
   echo "Applying NVMe suspend fix..."
 
   # Check if the NVMe device exists at the expected PCI address
-  NVME_DEVICE="/sys/bus/pci/devices/0000\:01\:00.0/d3cold_allowed"
+  NVME_DEVICE="/sys/bus/pci/devices/0000:01:00.0/d3cold_allowed"
 
   if [[ -f "$NVME_DEVICE" ]]; then
     # Apply the fix immediately to prevent d3cold power state issues
