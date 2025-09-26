@@ -172,7 +172,7 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors\n  Default Browser"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
@@ -195,8 +195,28 @@ show_setup_menu() {
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
+  *Browser*) show_setup_browser_menu ;;
   *) show_main_menu ;;
   esac
+}
+
+show_setup_browser_menu() {
+  local current_browser
+  current_browser=$(xdg-settings get default-web-browser | sed 's/\.desktop$//')
+
+  local browsers
+  browsers=$(grep -rl 'MimeType=.*x-scheme-handler/http' /usr/share/applications ~/.local/share/applications 2>/dev/null | xargs -n1 basename | sed 's/\.desktop$//' | sort -u)
+
+  local browser
+  browser=$(menu "Default Browser" "$browsers" "" "$current_browser")
+
+  if [[ "$browser" == "CNCLD" || -z "$browser" ]]; then
+    back_to show_setup_menu
+  else
+    xdg-settings set default-web-browser "$browser.desktop"
+    notify-send "Default browser set to $browser"
+
+  fi
 }
 
 show_setup_power_menu() {
