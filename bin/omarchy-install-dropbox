@@ -4,5 +4,5 @@ echo "Installing all dependencies..."
 omarchy-pkg-add dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
 
 echo "Starting Dropbox..."
-uwsm app -- dropbox-cli start &>/dev/null &
+uwsm-app -- dropbox-cli start &>/dev/null &
 echo "See Dropbox icon behind   hover tray in top right and right-click for setup."
