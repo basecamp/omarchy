@@ -1,0 +1,6 @@
+# Configuration reference: https://github.com/tsowell/wiremix/blob/05a40ca2a147ce3e015802acc62b2e7bb3711bde/wiremix.toml#L141
+[[names.overrides]]
+types     = [ "endpoint" ]
+property  = "node:node.nick"
+value     = "GoXLRMini"
+templates = [ "{node:node.description}" ]
