@@ -7,6 +7,7 @@ font-style = Regular
 font-size = 9
 
 # Window
+window-theme = ghostty
 window-padding-x = 14
 window-padding-y = 14
 confirm-close-surface=false
