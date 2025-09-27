@@ -3,4 +3,4 @@
 set -e
 
 fwupdmgr refresh
-fwupdmgr update
+sudo fwupdmgr update
