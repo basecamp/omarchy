@@ -8,6 +8,7 @@
   "modules-center": ["clock", "custom/update", "custom/screenrecording-indicator"],
   "modules-right": [
     "group/tray-expander",
+    "custom/test",
     "bluetooth",
     "network",
     "pulseaudio",
@@ -134,5 +135,6 @@
   "tray": {
     "icon-size": 12,
     "spacing": 12
-  }
+  },
+  "include": "custom.jsonc"
 }
