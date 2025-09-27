@@ -1,0 +1,6 @@
+{
+  "custom/test": {
+    "format": "TEST",
+    "tooltip-format": "This is a test module"
+  }
+}
