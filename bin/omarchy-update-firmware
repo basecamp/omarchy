@@ -2,5 +2,5 @@
 
 set -e
 
-fwupd refresh
-fwupd update
+fwupdmgr refresh
+fwupdmgr update
