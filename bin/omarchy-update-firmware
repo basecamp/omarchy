@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -e
+
+fwupd refresh
+fwupd update
