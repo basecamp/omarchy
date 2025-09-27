@@ -15,6 +15,7 @@ STARSHIP_STATE_FILE="$STARSHIP_PRESETS_DIR/current_preset"
 
 STARSHIP_SUCCESS_COLOR="${STARSHIP_SUCCESS_COLOR:-#a6e3a1}"  # Catppuccin Green
 STARSHIP_ERROR_COLOR="${STARSHIP_ERROR_COLOR:-#f38ba8}"      # Catppuccin Red
+STARSHIP_TRANSIENT_PROMPT="${STARSHIP_TRANSIENT_PROMPT:-true}"  # Enable/disable transient prompt
 
 if [ "$CURRENT_SHELL" = "zsh" ]; then
     function _starship_transient_prompt() {
@@ -51,7 +52,8 @@ if [ "$CURRENT_SHELL" = "zsh" ]; then
     }
 
     function starship_transient_prompt_setup() {
-        if [[ -z "$_STARSHIP_TRANSIENT_SETUP" ]]; then
+        # Only setup transient prompt if enabled
+        if [[ "$STARSHIP_TRANSIENT_PROMPT" == "true" ]] && [[ -z "$_STARSHIP_TRANSIENT_SETUP" ]]; then
             # Register the ZLE widgets only if zle is available
             if [[ -n "$ZSH_VERSION" ]] && (($+widgets)); then
                 zle -N zle-line-finish _starship_zle_line_finish
@@ -167,8 +169,8 @@ function switch_starship_preset() {
             # Re-initialize starship with new config instead of full shell restart
             if command -v starship >/dev/null 2>&1; then
                 eval "$(starship init zsh)"
-                # Re-setup transient prompt if it was enabled
-                if typeset -f starship_transient_prompt_setup >/dev/null 2>&1; then
+                # Re-setup transient prompt if it's enabled
+                if [[ "$STARSHIP_TRANSIENT_PROMPT" == "true" ]] && typeset -f starship_transient_prompt_setup >/dev/null 2>&1; then
                     starship_transient_prompt_setup
                 fi
             fi
