@@ -2,9 +2,10 @@ if command -v mise &> /dev/null; then
   eval "$(mise activate bash)"
 fi
 
-if command -v starship &> /dev/null; then
-  eval "$(starship init bash)"
-fi
+# Load Starship and transient prompt
+OMARCHY_STARSHIP="~/.local/share/omarchy/config/systemd/user/omarchy-starship"
+[[ -f $OMARCHY_STARSHIP ]] && source $OMARCHY_STARSHIP
+
 
 if command -v zoxide &> /dev/null; then
   eval "$(zoxide init bash)"
