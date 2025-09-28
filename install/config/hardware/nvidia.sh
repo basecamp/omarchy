@@ -1,31 +1,28 @@
-# ==============================================================================
-# Hyprland NVIDIA Setup Script for Arch Linux
-# ==============================================================================
-# This script automates the installation and configuration of NVIDIA drivers
-# for use with Hyprland on Arch Linux, following the official Hyprland wiki.
-#
-# Author: https://github.com/Kn0ax
-#
-# ==============================================================================
+OMARCHY_DESCRIPTION="NVIDIA GPU Configuration"
 
-# --- GPU Detection ---
-if [ -n "$(lspci | grep -i 'nvidia')" ]; then
-  # --- Driver Selection ---
+should_run() {
+  NVIDIA_GPU=$(lspci | grep -i 'nvidia' || true)
+  [[ -n "$NVIDIA_GPU" ]]
+}
+
+omarchy_install() {
+  should_run || return 0
+
   # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
-  if echo "$(lspci | grep -i 'nvidia')" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
-    NVIDIA_DRIVER_PACKAGE="nvidia-open-dkms"
+  if echo "$NVIDIA_GPU" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
+      NVIDIA_DRIVER_PACKAGE="nvidia-open-dkms"
   else
-    NVIDIA_DRIVER_PACKAGE="nvidia-dkms"
+      NVIDIA_DRIVER_PACKAGE="nvidia-dkms"
   fi
 
   # Check which kernel is installed and set appropriate headers package
   KERNEL_HEADERS="linux-headers" # Default
   if pacman -Q linux-zen &>/dev/null; then
-    KERNEL_HEADERS="linux-zen-headers"
+      KERNEL_HEADERS="linux-zen-headers"
   elif pacman -Q linux-lts &>/dev/null; then
-    KERNEL_HEADERS="linux-lts-headers"
+      KERNEL_HEADERS="linux-lts-headers"
   elif pacman -Q linux-hardened &>/dev/null; then
-    KERNEL_HEADERS="linux-hardened-headers"
+      KERNEL_HEADERS="linux-hardened-headers"
   fi
 
   # force package database refresh
@@ -67,9 +64,9 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
   sudo mkinitcpio -P
 
   # Add NVIDIA environment variables to hyprland.conf
-  HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
+  HYPRLAND_CONF="$HOME/.config/hypr/envs.conf"
   if [ -f "$HYPRLAND_CONF" ]; then
-    cat >>"$HYPRLAND_CONF" <<'EOF'
+      cat >>"$HYPRLAND_CONF" <<'EOF'
 
 # NVIDIA environment variables
 env = NVD_BACKEND,direct
@@ -77,4 +74,22 @@ env = LIBVA_DRIVER_NAME,nvidia
 env = __GLX_VENDOR_LIBRARY_NAME,nvidia
 EOF
   fi
-fi
+}
+
+omarchy_verify() {
+  should_run || return 2
+
+  pacman -Q nvidia-dkms &>/dev/null || pacman -Q nvidia-open-dkms &>/dev/null || add_error "NVIDIA driver not installed"
+
+  [[ -f /etc/modprobe.d/nvidia.conf ]] || add_error "NVIDIA modprobe config missing"
+
+  if [[ -f /etc/modprobe.d/nvidia.conf ]]; then
+      grep -q "options nvidia_drm modeset=1" /etc/modprobe.d/nvidia.conf || add_error "NVIDIA DRM modeset not enabled"
+  fi
+
+  grep -q "nvidia" /etc/mkinitcpio.conf || add_error "NVIDIA modules not in mkinitcpio.conf"
+
+  if [[ -f "$HOME/.config/hypr/hyprland.conf" ]]; then
+      grep -q "LIBVA_DRIVER_NAME,nvidia" "$HOME/.config/hypr/hyprland.conf" || add_error "NVIDIA env vars not in Hyprland config"
+  fi
+}
