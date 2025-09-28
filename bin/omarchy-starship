@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Detect the current running shell, not the default shell
 if [ -n "$ZSH_VERSION" ]; then
     CURRENT_SHELL="zsh"
@@ -134,38 +136,225 @@ function _list_presets() {
     fi
 }
 
-function switch_starship_preset() {
-    local name="$1"
+# Check if a TOML file has palette support
+function _has_palette_support() {
+    local toml_file="$1"
+    if [ ! -f "$toml_file" ]; then
+        return 1
+    fi
+    grep -q '^palette[[:space:]]*=' "$toml_file" 2>/dev/null
+}
 
-    if [ -z "$name" ]; then
-        echo "Usage: spreset <preset_name>" >&2
+# Extract available palettes from a TOML file
+function _extract_palettes() {
+    local toml_file="$1"
+    if [ ! -f "$toml_file" ]; then
+        return 1
+    fi
+
+    # Find all [palettes.palette_name] sections
+    grep '^\[palettes\.' "$toml_file" 2>/dev/null | \
+    sed 's/^\[palettes\.\([^]]*\)\].*/\1/' | \
+    sort
+}
+
+# List palettes for a specific preset
+function _list_preset_palettes() {
+    local preset_name="$1"
+    local toml_file="$STARSHIP_PRESETS_DIR/$preset_name.toml"
+
+    if [ ! -f "$toml_file" ]; then
+        echo "Error: Preset '$preset_name' not found" >&2
+        return 1
+    fi
+
+    if ! _has_palette_support "$toml_file"; then
+        echo "Error: Preset '$preset_name' doesn't support palette switching" >&2
+        return 1
+    fi
+
+    echo "Available palettes for '$preset_name':"
+    local palettes
+    palettes=$(_extract_palettes "$toml_file")
+    if [ -n "$palettes" ]; then
+        echo "$palettes" | while read -r palette; do
+            echo "  $palette"
+        done
+    else
+        echo "  No palettes found"
+    fi
+}
+
+# Change palette in a TOML file using sed (BSD/GNU compatible)
+function _change_palette() {
+    local toml_file="$1"
+    local new_palette="$2"
+    local temp_file
+
+    if [ ! -f "$toml_file" ]; then
+        echo "Error: File '$toml_file' not found" >&2
+        return 1
+    fi
+
+    if ! _has_palette_support "$toml_file"; then
+        echo "Error: File doesn't support palette switching" >&2
+        return 1
+    fi
+
+    # Validate that the palette exists in the file
+    if ! _extract_palettes "$toml_file" | grep -q "^$new_palette$"; then
+        echo "Error: Palette '$new_palette' not found in preset" >&2
+        echo "Available palettes:"
+        _extract_palettes "$toml_file" | while read -r palette; do
+            echo "  $palette"
+        done
+        return 1
+    fi
+
+    # Create a temporary file for BSD/GNU sed compatibility
+    temp_file=$(mktemp "${toml_file}.tmp.XXXXXX") || {
+        echo "Error: Cannot create temporary file" >&2
+        return 1
+    }
+
+    # Use sed to replace the palette line (compatible with both BSD and GNU sed)
+    if sed 's/^palette[[:space:]]*=.*$/palette = "'"$new_palette"'"/' "$toml_file" > "$temp_file"; then
+        if mv "$temp_file" "$toml_file"; then
+            echo "Palette changed to: $new_palette"
+            return 0
+        else
+            echo "Error: Failed to update file" >&2
+            rm -f "$temp_file" 2>/dev/null
+            return 1
+        fi
+    else
+        echo "Error: Failed to process file" >&2
+        rm -f "$temp_file" 2>/dev/null
+        return 1
+    fi
+}
+
+# Show help for spreset command
+function _show_spreset_help() {
+    cat << 'EOF'
+Usage: spreset <preset_name> [options]
+       spreset --help
+
+Switch between starship presets and manage palette themes.
+
+Commands:
+  spreset <preset>                    Switch to the specified preset
+  spreset <preset> --palette=<name>   Switch preset and change palette (if supported)
+  spreset <preset> --list-palettes    List available palettes for the preset
+  spreset --help                      Show this help message
+
+Examples:
+  spreset catppuccin                                # Switch to catppuccin preset
+  spreset catppuccin --palette=catppuccin_mocha     # Switch and set mocha palette
+  spreset catppuccin --list-palettes                # List catppuccin palettes
+  spreset starship                                  # Switch to starship preset
+  spreset --help                                    # Show this help
+
+Note: Palette switching only works with presets that support the palette system.
+EOF
+}
+
+function switch_starship_preset() {
+    local preset_name=""
+    local palette_name=""
+    local list_palettes=false
+    local show_help=false
+
+    # Parse arguments
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h)
+                show_help=true
+                shift
+                ;;
+            --palette=*)
+                palette_name="${1#--palette=}"
+                shift
+                ;;
+            --list-palettes)
+                list_palettes=true
+                shift
+                ;;
+            --*)
+                echo "Error: Unknown option '$1'" >&2
+                echo "Use 'spreset --help' for usage information." >&2
+                return 1
+                ;;
+            *)
+                if [ -z "$preset_name" ]; then
+                    preset_name="$1"
+                else
+                    echo "Error: Multiple preset names specified" >&2
+                    return 1
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    # Handle help
+    if [ "$show_help" = true ]; then
+        _show_spreset_help
+        return 0
+    fi
+
+    # Handle list-palettes
+    if [ "$list_palettes" = true ]; then
+        if [ -z "$preset_name" ]; then
+            echo "Error: Preset name required for --list-palettes" >&2
+            echo "Usage: spreset <preset_name> --list-palettes" >&2
+            return 1
+        fi
+        _list_preset_palettes "$preset_name"
+        return $?
+    fi
+
+    # Require preset name for other operations
+    if [ -z "$preset_name" ]; then
+        echo "Usage: spreset <preset_name> [options]" >&2
+        echo "Use 'spreset --help' for more information." >&2
         _list_presets
         return 1
     fi
 
-    if [[ "$name" =~ [^a-zA-Z0-9_-] ]] || [[ "$name" == *"/"* ]] || [[ "$name" == *".."* ]]; then
+    # Validate preset name
+    if [[ "$preset_name" =~ [^a-zA-Z0-9_-] ]] || [[ "$preset_name" == *"/"* ]] || [[ "$preset_name" == *".."* ]]; then
         echo "Error: Invalid preset name. Only alphanumeric characters, hyphens, and underscores are allowed." >&2
         return 1
     fi
 
-    local path="$STARSHIP_PRESETS_DIR/$name.toml"
+    local preset_path="$STARSHIP_PRESETS_DIR/$preset_name.toml"
 
-    if [ ! -f "$path" ]; then
-        echo "Error: No such preset: $name" >&2
+    # Check if preset exists
+    if [ ! -f "$preset_path" ]; then
+        echo "Error: No such preset: $preset_name" >&2
         _list_presets
         return 1
     fi
 
-    if ! echo "$name" > "$STARSHIP_STATE_FILE" 2>/dev/null; then
+    # Handle palette change if specified
+    if [ -n "$palette_name" ]; then
+        if ! _change_palette "$preset_path" "$palette_name"; then
+            return 1
+        fi
+    fi
+
+    # Switch to the preset
+    if ! echo "$preset_name" > "$STARSHIP_STATE_FILE" 2>/dev/null; then
         echo "Error: Failed to save preset state" >&2
         return 1
     fi
 
-    export STARSHIP_CONFIG="$path"
+    export STARSHIP_CONFIG="$preset_path"
 
     case "$CURRENT_SHELL" in
         "zsh")
-            echo "Preset switched to: $name"
+            echo "Preset switched to: $preset_name"
             # Re-initialize starship with new config instead of full shell restart
             if command -v starship >/dev/null 2>&1; then
                 eval "$(starship init zsh)"
@@ -176,14 +365,14 @@ function switch_starship_preset() {
             fi
             ;;
         "bash")
-            echo "Preset switched to: $name"
+            echo "Preset switched to: $preset_name"
             # Re-initialize starship with new config
             if command -v starship >/dev/null 2>&1; then
                 eval "$(starship init bash)"
             fi
             ;;
         *)
-            echo "Preset switched to: $name"
+            echo "Preset switched to: $preset_name"
             echo "Please restart your shell or re-source your config to apply changes"
             ;;
     esac
