@@ -316,9 +316,7 @@ function switch_starship_preset() {
 
     # Require preset name for other operations
     if [ -z "$preset_name" ]; then
-        echo "Usage: spreset <preset_name> [options]" >&2
-        echo "Use 'spreset --help' for more information." >&2
-        _list_presets
+        _show_spreset_help
         return 1
     fi
 
