@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # Detect the current running shell, not the default shell
 if [ -n "$ZSH_VERSION" ]; then
     CURRENT_SHELL="zsh"
@@ -356,8 +354,10 @@ function switch_starship_preset() {
             # Re-initialize starship with new config instead of full shell restart
             if command -v starship >/dev/null 2>&1; then
                 eval "$(starship init zsh)"
-                # Re-setup transient prompt if it's enabled
+                # Reset and re-setup transient prompt if it's enabled
                 if [[ "$STARSHIP_TRANSIENT_PROMPT" == "true" ]] && typeset -f starship_transient_prompt_setup >/dev/null 2>&1; then
+                    # Reset the transient prompt setup flag to allow re-initialization
+                    unset _STARSHIP_TRANSIENT_SETUP
                     starship_transient_prompt_setup
                 fi
             fi
