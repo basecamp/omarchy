@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# Note: We cannot use `jq` to update settings.json because it’s JSONC (allows comments),
+# which jq doesn’t support.
+
+VS_CODE_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
+VS_CODE_SETTINGS="$HOME/.config/Code/User/settings.json"
+VS_CODE_SKIP_FLAG="$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes"
+
+if omarchy-cmd-present code && [[ ! -f "$VS_CODE_SKIP_FLAG" ]]; then
+  if [[ -f "$VS_CODE_THEME" ]]; then
+    theme_name=$(jq -r '.name' "$VS_CODE_THEME")
+    extension=$(jq -r '.extension' "$VS_CODE_THEME")
+
+    # Install VS Code theme extension
+    if [[ -n "$extension" ]] && ! code --list-extensions | grep -Fxq "$extension"; then
+      notify-send "   Installing VS Code theme for $theme_name"
+      code --install-extension "$extension" >/dev/null
+    fi
+
+    # Create config file if there isn't already one
+    mkdir -p "$(dirname "$VS_CODE_SETTINGS")"
+    if [[ ! -f "$VS_CODE_SETTINGS" ]]; then
+      printf '{\n}\n' > "$VS_CODE_SETTINGS"
+    fi
+
+    # Create a `workbench.colorTheme` entry in settings.  
+    if ! grep -q '"workbench.colorTheme"' "$VS_CODE_SETTINGS"; then
+      # Insert `"workbench.colorTheme": "",` immediately after the first `{`
+      # Use sed's first-match range (0,/{/) to only replace the first `{`
+      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\
+  "workbench.colorTheme": "",/}' "$VS_CODE_SETTINGS"
+    fi
+
+    # Update theme
+    sed -i --follow-symlinks -E \
+      "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
+      "$VS_CODE_SETTINGS"
+  else
+    # Remove theme from settings.json when the theme doesn't have vscode support
+    if [[ -f "$VS_CODE_SETTINGS" ]]; then
+      sed -i --follow-symlinks -E '/"workbench\.colorTheme"[[:space:]]*:[^,}]*,?/d' "$VS_CODE_SETTINGS"
+
+    fi
+  fi
+fi

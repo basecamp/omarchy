@@ -1,6 +1,6 @@
 echo "Install swayOSD to show volume status"
 
-if ! command -v swayosd-server &>/dev/null; then
-  yay -S --noconfirm --needed swayosd
+if omarchy-cmd-missing swayosd-server; then
+  omarchy-pkg-add swayosd
   setsid uwsm app -- swayosd-server &>/dev/null &
 fi

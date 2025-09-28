@@ -1,9 +1,6 @@
 #!/bin/bash
 
-# Check for kernel package updates since last boot
-boot_time=$(date -d "$(uptime -s)" '+%Y-%m-%d %H:%M')
-recent_kernel_updates=$(awk -v boot_time="$boot_time" '$0 >="["boot_time' /var/log/pacman.log | grep -E "\[ALPM\] (upgraded|installed) (linux|linux-zen|linux-lts|linux-hardened)\b" || true)
-if [ -n "$recent_kernel_updates" ]; then
+if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
   gum confirm "Linux kernel has been updated. Reboot?" && omarchy-state clear re*-required && sudo reboot now
 
 elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
