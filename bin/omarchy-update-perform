@@ -4,6 +4,5 @@ set -e
 
 omarchy-update-available-reset
 omarchy-update-system-pkgs
-omarchy-update-firmware
 omarchy-migrate
 omarchy-update-restart
