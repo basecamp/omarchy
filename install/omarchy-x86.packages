@@ -1,0 +1,18 @@
+# Omarchy x86 specific package list
+# This file is also used by the ISO builder when determining needs
+
+1password-beta
+1password-cli
+asdcontrol-git
+localsend
+obs-studio
+obsidian
+omarchy-chromium
+omarchy-lazyvim
+pinta
+signal-desktop
+spotify
+tzupdate
+walker-bin
+wl-screenrec
+yay

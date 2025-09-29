@@ -1,0 +1,4 @@
+## Asahi Linux ARM repository mirrorlist
+## Generated for Omarchy on Apple Silicon Macs
+
+Server = https://github.com/asahi-alarm/asahi-alarm/releases/download/$arch
