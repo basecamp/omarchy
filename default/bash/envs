@@ -5,3 +5,6 @@ export BAT_THEME=ansi
 # Duplicated from .config/uwsm/env so SSH works too
 export OMARCHY_PATH=$HOME/.local/share/omarchy
 export PATH=$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin
+
+# Set terminal type for better color support
+export TERM=xterm-256color
