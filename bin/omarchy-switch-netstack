@@ -1,17 +1,74 @@
 #!/bin/bash
 
 systemd_iwd() {
+    local backend
+    backend=$(detect_backend)
+    echo "Active backend: $backend"  # DEBUG
 
+    if [[ "$backend" == "systemd-iwd" ]]; then
+        echo "Systemd-networkd with iwd is already active"
+    else
+        echo "Switching to systemd-networkd with iwd..."
+    fi
+
+    rfkill unblock wifi || true
 }
 
-nm_wpa() {
 
+nm_wpa() {
+    local backend
+    backend=$(detect_backend)
+    echo "Active backend: $backend"  # DEBUG
+
+    if [[ "$backend" == "nm-wpa" ]]; then
+        echo "NetworkManager with wpa is already active"
+    else
+        echo "Switching to NetworkManager with wpa..."
+    fi
+
+    rfkill unblock wifi || true
 }
 
 nm_iwd() {
+    local backend
+    backend=$(detect_backend)
+    echo "Active backend: $backend"  # DEBUG
 
+    if [[ "$backend" == "nm-iwd" ]]; then
+        echo "NetworkManager with iwd is already active"
+    else
+        echo "Switching to NetworkManager with iwd..."
+    fi
+
+    rfkill unblock wifi || true
+}
+
+detect_backend() {
+  if systemctl is-active --quiet NetworkManager; then
+    if systemctl is-active --quiet iwd; then
+      echo "nm-iwd"
+    else
+      echo "nm-wpa"
+    fi
+  elif systemctl is-active --quiet iwd; then
+    echo "systemd-iwd"
+  else
+    echo "none"
+  fi
 }
 
 status() {
-
+    :
 }
+
+case "${1:-}" in
+  *systemd-iwd*) systemd_iwd ;;
+  *nm-wpa*)      nm_wpa ;;
+  *nm-iwd*)      nm_iwd ;;
+  *status*)      status ;;
+  *detect*)      detect_backend ;;
+  *)
+    echo "Usage: $0 {systemd-iwd|nm-wpa|nm-iwd|status|detect}" >&2
+    exit 1
+    ;;
+esac

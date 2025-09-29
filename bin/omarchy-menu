@@ -2,6 +2,9 @@
 
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 
+# Only for development (NEEDS REMOVAL)
+export PATH="$HOME/git/omarchy/bin:$PATH"
+
 # Set to true when going directly to a submenu, so we can exit directly
 BACK_TO_EXIT=false
 
@@ -197,28 +200,58 @@ show_setup_menu() {
 }
 
 show_setup_wifi_menu() {
-    case $(menu "Setup" "Wifi Manager\nSwitch Netstack\nStatus") in
-    *Manager*)
-    rfkill unblock wifi
-    omarchy-launch-wifi ;;
-    *Netstack*) omarchy-switch-netstack ;;
-    *) show_main_menu ;;
+    local opts="Switch Netstack"
+
+    if systemctl is-active --quiet NetworkManager; then
+        if systemctl is-active --quiet iwd; then
+            # NM + iwd
+            opts="Wifi Manager\nImpala\n$opts"
+        else
+            # NM + wpa_supplicant
+            opts="Wifi Manager\n$opts"
+        fi
+    elif systemctl is-active --quiet iwd; then
+        # systemd-iwd
+        opts="Impala\n$opts"
+    fi
+
+    case $(menu "Wifi" "$opts") in
+        *"Wifi Manager"*)
+            rfkill unblock wifi
+            exec setsid uwsm app -- nm-connection-editor
+            ;;
+        *Impala*)
+            rfkill unblock wifi
+            exec setsid uwsm app -- "$TERMINAL" --class=Impala -e impala
+            ;;
+        *"Switch Netstack"*)
+            show_setup_netstack_menu
+            ;;
+        *)
+            show_main_menu
+            ;;
     esac
 }
+
 
 show_setup_netstack_menu() {
     case $(menu "Setup" "systemd-iwd\nnm-wpa\nnm-iwd\nStatus") in
     *systemd-iwd*)
         omarchy-switch-netstack systemd-iwd
+        show_setup_netstack_menu
         ;;
     *nm-wpa*)
         omarchy-switch-netstack nm-wpa
+        show_setup_netstack_menu
+        # present_terminal
         ;;
     *nm-iwd*)
         omarchy-switch-netstack nm-iwd
+        show_setup_netstack_menu
         ;;
     *Status*)
         omarchy-switch-netstack status
+        show_setup_netstack_menu
         ;;
     *)
         show_setup_wifi_menu
