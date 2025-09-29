@@ -21,6 +21,27 @@ if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
   fi
 fi
 
+# Detect virtualization
+if command -v systemd-detect-virt &>/dev/null; then
+  virt_type=$(systemd-detect-virt || echo "none")
+
+  # Set universal virtualization flag for any VM
+  if [[ "$virt_type" != "none" ]]; then
+    export OMARCHY_VIRTUALIZATION=true
+  fi
+
+  # Detect VMware specifically
+  if [[ "$virt_type" == "vmware" ]]; then
+    export OMARCHY_VMWARE=true
+    export OMARCHY_SKIP_LIMINE=true
+  fi
+
+  # Enable software rendering for any VM except Parallels (which has good GPU virtualization)
+  if [[ "$virt_type" != "none" && "$virt_type" != "parallels" ]]; then
+    export OMARCHY_VM_SOFTWARE_RENDERING=true
+  fi
+fi
+
 # Install
 source "$OMARCHY_INSTALL/helpers/all.sh"
 source "$OMARCHY_INSTALL/preflight/all.sh"
