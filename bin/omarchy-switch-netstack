@@ -17,8 +17,10 @@ systemd_iwd() {
         sudo systemctl disable --now wpa_supplicant.service NetworkManager.service || true
         sudo systemctl mask wpa_supplicant.service || true
 
-        echo "Unmasking iwd (in case it was masked)"
+        echo "Unmasking iwd and systemd-networkd-wait-online.service (in case it was masked)"
         sudo systemctl unmask iwd.service || true
+        sudo systemctl unmask systemd-networkd-wait-online.service || true
+
 
         echo "Enabling iwd + systemd-networkd (+ wait-online)"
         sudo systemctl enable --now iwd.service systemd-networkd.service systemd-networkd-wait-online.service
