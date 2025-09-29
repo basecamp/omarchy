@@ -89,11 +89,8 @@ install_windows() {
   while kill -0 $COMPOSE_PID 2>/dev/null; do
     sleep 5
   done
-  
-  # If docker-compose exits naturally, also cleanup
-  cleanup
-  
-  # Accept RDP certificate for future connections with xfreerdp3
+
+  # Accept RDP certificate for future connections with xfreerdp3 (before cleanup)
   echo ""
   echo "Accepting RDP certificate for future connections..."
   echo "This will briefly connect to accept the certificate, then disconnect."
@@ -106,6 +103,9 @@ install_windows() {
 
   # Quick connection to accept certificate using xfreerdp3 with tofu (Trust On First Use)
   timeout 10 xfreerdp3 /u:docker /p:admin /v:127.0.0.1:3389 /size:320x240 /cert:tofu 2>/dev/null || true
+
+  # If docker-compose exits naturally, also cleanup
+  cleanup
   
   echo ""
   echo "Windows VM installation completed!"
