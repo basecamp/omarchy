@@ -13,6 +13,16 @@ ansi_art='                 ▄▄▄
 ███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███
  ▀█████▀    ▀█   ███   █▀   ███   █▀   ███   ███  ███████▀   ███   █▀    ▀█████▀ 
                                        ███   █▀                                  '
+# Detect virtualization
+if command -v systemd-detect-virt &>/dev/null; then
+  virt_type=$(systemd-detect-virt || echo "none")
+
+  # Set universal virtualization flag for any VM
+  if [[ "$virt_type" != "none" ]]; then
+    export OMARCHY_VIRTUALIZATION=true
+  fi
+fi
+
 
 clear
 echo -e "\n$ansi_art\n"
