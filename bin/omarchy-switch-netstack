@@ -9,9 +9,32 @@ systemd_iwd() {
         echo "Systemd-networkd with iwd is already active"
     else
         echo "Switching to systemd-networkd with iwd..."
+        echo "Installing dependencies..."
+        sudo pacman -S --needed iwd --noconfirm
+        echo "Done installing."
+
+        echo "Disabling wpa_supplicant + NetworkManager"
+        sudo systemctl disable --now wpa_supplicant.service NetworkManager.service || true
+        sudo systemctl mask wpa_supplicant.service || true
+
+        echo "Unmasking iwd (in case it was masked)"
+        sudo systemctl unmask iwd.service || true
+
+        echo "Enabling iwd + systemd-networkd (+ wait-online)"
+        sudo systemctl enable --now iwd.service systemd-networkd.service systemd-networkd-wait-online.service
+
+        echo "Cleaning NM wifi backend configs"
+        sudo rm -f /etc/NetworkManager/conf.d/wifi_backend.conf /etc/NetworkManager/NetworkManager.conf || true
     fi
 
     rfkill unblock wifi || true
+
+    # NEEDS PROPER VALIDATION OR ELSE SHOULD RESET BACK TO WIFI SETUP BEFORE
+    systemctl is-active iwd systemd-networkd
+    ps -e | grep -E "iwd|wpa_supplicant" || true
+    networkctl list || true
+
+    echo "Netstack is now systemd-iwd"
 }
 
 
@@ -24,9 +47,45 @@ nm_wpa() {
         echo "NetworkManager with wpa is already active"
     else
         echo "Switching to NetworkManager with wpa..."
+
+        echo "Installing dependencies..."
+        sudo pacman -S --needed networkmanager network-manager-applet wpa_supplicant --noconfirm
+        echo "Done installing."
+
+        echo "Disabling iwd + systemd-networkd"
+        sudo systemctl disable --now iwd.service systemd-networkd.service systemd-networkd-wait-online.service || true
+        sudo systemctl mask iwd.service || true
+
+        # wpa_supplicant does not need to be enabled as NetworkManager does that
+        echo "Unmasking + enabling wpa_supplicant"
+        sudo systemctl unmask wpa_supplicant.service || true
+
+        echo "Writing NetworkManager config"
+        sudo install -d /etc/NetworkManager/conf.d
+        sudo tee /etc/NetworkManager/NetworkManager.conf >/dev/null <<'EOF'
+[main]
+plugins=keyfile
+EOF
+        sudo tee /etc/NetworkManager/conf.d/wifi_backend.conf >/dev/null <<'EOF'
+[device]
+wifi.backend=wpa_supplicant
+EOF
+
+        echo "Enabling + restarting NetworkManager"
+        sudo systemctl enable --now NetworkManager.service
+        sudo systemctl restart NetworkManager.service
     fi
 
     rfkill unblock wifi || true
+    nmcli networking on >/dev/null 2>&1 || true
+    nmcli radio wifi on >/dev/null 2>&1 || true
+
+    # NEEDS PROPER VALIDATION OR ELSE SHOULD RESET BACK TO WIFI SETUP BEFORE
+    systemctl is-active NetworkManager iwd
+    ps -e | grep -E "iwd|wpa_supplicant" || true
+    nmcli general status
+
+    echo "Netstack is now nm-wpa"
 }
 
 nm_iwd() {
@@ -38,9 +97,46 @@ nm_iwd() {
         echo "NetworkManager with iwd is already active"
     else
         echo "Switching to NetworkManager with iwd..."
+
+        echo "Installing dependencies..."
+        sudo pacman -S --needed networkmanager network-manager-applet iwd --noconfirm
+        echo "Done installing."
+
+        echo "Disabling wpa_supplicant + systemd-networkd"
+        sudo systemctl disable --now wpa_supplicant.service systemd-networkd.service systemd-networkd-wait-online.service || true
+        sudo systemctl mask wpa_supplicant.service || true
+
+        echo "Unmasking + enabling iwd"
+        sudo systemctl unmask iwd.service || true
+        sudo systemctl enable --now iwd.service
+
+        echo "Writing NetworkManager config"
+        sudo install -d /etc/NetworkManager/conf.d
+        sudo tee /etc/NetworkManager/NetworkManager.conf >/dev/null <<'EOF'
+[main]
+plugins=keyfile
+EOF
+        sudo tee /etc/NetworkManager/conf.d/wifi_backend.conf >/dev/null <<'EOF'
+[device]
+wifi.backend=iwd
+EOF
+
+        echo "Enabling + restarting NetworkManager"
+        sudo systemctl enable --now NetworkManager.service
+        sudo systemctl restart NetworkManager.service
     fi
 
     rfkill unblock wifi || true
+    nmcli networking on >/dev/null 2>&1 || true
+    nmcli radio wifi on >/dev/null 2>&1 || true
+
+
+    # NEEDS PROPER VALIDATION OR ELSE SHOULD RESET BACK TO WIFI SETUP BEFORE
+    systemctl is-active NetworkManager iwd
+    ps -e | grep -E "iwd|wpa_supplicant" || true
+    nmcli general status
+
+    echo "Netstack is now nm-iwd"
 }
 
 detect_backend() {
@@ -58,7 +154,12 @@ detect_backend() {
 }
 
 status() {
-    :
+  local backend
+  backend=$(detect_backend)
+
+  echo "Netstack Status"
+  echo "Detected backend: $backend"
+  echo
 }
 
 case "${1:-}" in
