@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# set background image by filename for current theme
+
+BACKGROUNDS_DIR="$HOME/.config/omarchy/current/theme/backgrounds/"
+CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
+
+mapfile -d '' -t BACKGROUNDS < <(find "$BACKGROUNDS_DIR" -type f -print0 | sort -z)
+TOTAL=${#BACKGROUNDS[@]}
+
+INPUT=$1
+
+if [[ ! "$INPUT" =~ ^[^/]+\.(jpg|jpeg|png)$ ]]; then
+  notify-send "Input is not a filename: $INPUT" -t 2000
+  exit 1
+fi
+
+
+for i in "${!BACKGROUNDS[@]}"; do
+  FILENAME=$(basename "${BACKGROUNDS[$i]}")
+  if [[ "$FILENAME" == "$INPUT" ]]; then
+    NEW_INDEX=$i
+    break
+  fi
+done
+
+./omarchy-theme-bg-set-index "${NEW_INDEX}"
+
