@@ -205,10 +205,10 @@ show_setup_wifi_menu() {
     if systemctl is-active --quiet NetworkManager; then
         if systemctl is-active --quiet iwd; then
             # NM + iwd
-            opts="Wifi Manager\nImpala\n$opts"
+            opts="NetworkManager GUI\nImpala\n$opts"
         else
             # NM + wpa_supplicant
-            opts="Wifi Manager\n$opts"
+            opts="NetworkManager GUI\n$opts"
         fi
     elif systemctl is-active --quiet iwd; then
         # systemd-iwd
@@ -216,7 +216,7 @@ show_setup_wifi_menu() {
     fi
 
     case $(menu "Wifi" "$opts") in
-        *"Wifi Manager"*)
+        *"NetworkManager GUI"*)
             rfkill unblock wifi
             exec setsid uwsm app -- nm-connection-editor
             ;;
