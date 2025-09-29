@@ -1,14 +1,15 @@
 #!/bin/bash
 
+# Define packages used by Windows VM
+WINDOWS_VM_PACKAGES=("freerdp" "openbsd-netcat")
 
 install_windows() {
   echo "Installing Windows VM requirements..."
   
   # Install required packages
-  local packages=("rdesktop" "openbsd-netcat")
   local missing_packages=()
-  
-  for package in "${packages[@]}"; do
+
+  for package in "${WINDOWS_VM_PACKAGES[@]}"; do
     if ! pacman -Qi "$package" &>/dev/null; then
       missing_packages+=("$package")
     fi
@@ -92,19 +93,19 @@ install_windows() {
   # If docker-compose exits naturally, also cleanup
   cleanup
   
-  # Accept RDP certificate for future connections
+  # Accept RDP certificate for future connections with xfreerdp3
   echo ""
   echo "Accepting RDP certificate for future connections..."
   echo "This will briefly connect to accept the certificate, then disconnect."
-  
+
   # Wait for RDP to be ready
   while ! nc -z 127.0.0.1 3389; do
     echo "  Waiting for RDP to be ready for certificate acceptance..."
     sleep 5
   done
-  
-  # Quick connection to accept certificate
-  echo "yes" | timeout 10 rdesktop -g 320x240 -u docker 127.0.0.1:3389 -p admin 2>/dev/null || true
+
+  # Quick connection to accept certificate using xfreerdp3 with tofu (Trust On First Use)
+  timeout 10 xfreerdp3 /u:docker /p:admin /v:127.0.0.1:3389 /size:320x240 /cert:tofu 2>/dev/null || true
   
   echo ""
   echo "Windows VM installation completed!"
@@ -129,7 +130,11 @@ remove_windows() {
   # Remove the Docker image
   echo "Removing Windows VM Docker image..."
   docker rmi dockurr/windows 2>/dev/null || echo "Image already removed or not found"
-  
+
+  # Remove installed packages
+  echo "Removing Windows VM packages..."
+  sudo pacman -Rs "${WINDOWS_VM_PACKAGES[@]}" 2>/dev/null || echo "Some packages may already be removed or used by other applications"
+
   # Remove installed icon and desktop file
   if [ -f /usr/share/pixmaps/windows-vm.png ]; then
     sudo rm /usr/share/pixmaps/windows-vm.png
