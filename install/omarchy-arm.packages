@@ -3,6 +3,7 @@
 
 asahi-audio
 e2fsprogs
+fuse2
 omarchy-chromium-bin
 pipewire-alsa
 pipewire-pulse
