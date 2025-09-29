@@ -17,17 +17,37 @@ ansi_art='                 ▄▄▄
 clear
 echo -e "\n$ansi_art\n"
 
-sudo pacman -Syu --noconfirm --needed git
+# Install git early since it's needed when running boot.sh as a non-root user
+if ! command -v git &>/dev/null; then
+  echo "Installing git..."
+  sudo pacman -S --noconfirm --needed git >/dev/null 2>&1 || {
+    echo "Error: Failed to install git"
+    exit 1
+  }
+  echo "Git installed successfully"
+fi
 
-# Use custom repo if specified, otherwise default to basecamp/omarchy
-OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}"
+OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}" # custom repo with default fallback
+OMARCHY_REF="${OMARCHY_REF:-master}" # custom branch/ref with default fallback
+
+if [[ $EUID -eq 0 ]]; then
+  echo
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  Running as Root - Setting up non-root user for Omarchy  "
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo
+
+  curl -s "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/install/bootstrap/user-setup.sh" | \
+    OMARCHY_REPO="${OMARCHY_REPO}" OMARCHY_REF="${OMARCHY_REF}" bash
+
+  # user-setup.sh will create user and re-run boot.sh as that user, then exit
+  exit 0 # exit to not run the rest of the script, and avoid cloning as root
+fi
 
 echo -e "\nCloning Omarchy from: https://github.com/${OMARCHY_REPO}.git"
 rm -rf ~/.local/share/omarchy/
 git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
 
-# Use custom branch if instructed, otherwise default to master
-OMARCHY_REF="${OMARCHY_REF:-master}"
 if [[ $OMARCHY_REF != "master" ]]; then
   echo -e "\e[32mUsing branch: $OMARCHY_REF\e[0m"
   cd ~/.local/share/omarchy

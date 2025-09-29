@@ -1,0 +1,247 @@
+#!/bin/bash
+existing_users=$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd)
+
+if [[ $EUID -eq 0 ]]; then
+  # Install gum for user interaction (needed in bootstrap mode when helpers aren't sourced)
+  if ! command -v gum &>/dev/null; then
+    echo "Installing gum for interactive setup..."
+    pacman -S --needed --noconfirm gum >/dev/null 2>&1 || {
+      echo "Error: Failed to install the 'gum' package"
+      exit 1
+    }
+    echo "Gum installed successfully"
+  fi
+
+  if [ -n "$existing_users" ]; then
+    echo
+    echo "Found existing users:"
+    echo "$existing_users" | tr ' ' '\n' | sed 's/^/  - /'
+
+    # Convert existing users to an array for gum
+    readarray -t user_array <<< "$existing_users"
+
+    # Loop until we get valid input
+    while true; do
+      echo
+      # Force TTY allocation for gum when running from piped script
+      if gum confirm "Use an existing user account?" < /dev/tty; then
+        username=$(gum choose --header "Select user:" "${user_array[@]}" < /dev/tty)
+        exit_code=$?
+
+        # Check for Ctrl+C (exit code 130) and exit cleanly
+        if [ $exit_code -eq 130 ]; then
+          echo "Installation cancelled."
+          exit 130
+        fi
+
+        # Check if user cancelled with ESC or nothing was selected
+        if [ $exit_code -ne 0 ] || [ -z "$username" ]; then
+          continue
+        fi
+      else
+        echo
+        username=$(gum input --placeholder "Enter a new username for Omarchy" < /dev/tty)
+        exit_code=$?
+
+        if [ $exit_code -eq 130 ]; then
+          echo "Installation cancelled."
+          exit 130
+        fi
+
+        # Check if username is empty or only spaces
+        if [ -z "$username" ] || [ -z "$(echo "$username" | tr -d ' ')" ]; then
+          echo "No username entered. Please try again."
+          continue
+        fi
+      fi
+      break
+    done
+  else
+    # Loop until we get valid input for new user
+    while true; do
+      echo
+      username=$(gum input --placeholder "Enter a username for Omarchy" < /dev/tty)
+      exit_code=$?
+
+      if [ $exit_code -eq 130 ]; then
+        echo "Installation cancelled."
+        exit 130
+      fi
+
+      # Check if username is empty or only spaces
+      if [ -z "$username" ] || [ -z "$(echo "$username" | tr -d ' ')" ]; then
+        echo "No username entered. Please try again."
+        continue
+      fi
+      break
+    done
+  fi
+
+  # Create user if doesn't exist
+  if ! id "$username" &>/dev/null; then
+    echo "Creating user $username and setting password..."
+    useradd -m "$username"
+
+    while true; do
+      echo
+      password=$(gum input --password --placeholder "Enter password for $username" < /dev/tty)
+      exit_code=$?
+
+      if [ $exit_code -eq 130 ]; then
+        echo "Installation cancelled."
+        exit 130
+      fi
+
+      # Check if password is empty or only spaces
+      if [ -z "$password" ] || [ -z "$(echo "$password" | tr -d ' ')" ]; then
+        echo "No password supplied. Please try again."
+        continue
+      fi
+
+      password_confirm=$(gum input --password --placeholder "Confirm password" < /dev/tty)
+      exit_code=$?
+
+      if [ $exit_code -eq 130 ]; then
+        echo "Installation cancelled."
+        exit 130
+      fi
+
+      if [ "$password" = "$password_confirm" ]; then
+        echo "$username:$password" | chpasswd
+        break
+      else
+        echo "Passwords don't match. Please try again."
+      fi
+    done
+
+    # Add to wheel group for sudo access
+    usermod -aG wheel "$username"
+    echo "Added $username to wheel group"
+  else
+    echo "Using existing user $username"
+    # Ensure user is in wheel group even if they already exist
+    usermod -aG wheel "$username"
+  fi
+
+  # Collect user details for git configuration
+  while true; do # Loop until we get a valid full name
+    echo
+    user_fullname=$(gum input --placeholder "Enter your full name (for git config)" < /dev/tty)
+    exit_code=$?
+
+    if [ $exit_code -eq 130 ]; then
+      echo "Installation cancelled."
+      exit 130
+    fi
+
+    # Check if full name is empty or only spaces
+    if [ -z "$user_fullname" ] || [ -z "$(echo "$user_fullname" | tr -d ' ')" ]; then
+      echo "Full name is required. Please try again."
+      continue
+    fi
+    break
+  done
+
+  echo "Saved full name: $user_fullname"
+
+  while true; do # Loop until we get a valid email
+    echo
+    user_email=$(gum input --placeholder "Enter your email address (for git config)" < /dev/tty)
+    exit_code=$?
+
+    if [ $exit_code -eq 130 ]; then
+      echo "Installation cancelled."
+      exit 130
+    fi
+
+    # Check if email is empty or only spaces
+    if [ -z "$user_email" ] || [ -z "$(echo "$user_email" | tr -d ' ')" ]; then
+      echo "Email address is required. Please try again."
+      continue
+    fi
+
+    # Basic email validation: must contain @ and have text before and after it
+    if [[ ! "$user_email" =~ ^[^@]+@[^@]+\.[^@]+$ ]]; then
+      echo "Invalid email format. Please enter a valid email address (e.g., user@example.com)."
+      continue
+    fi
+    break
+  done
+
+  echo "Saved email address: $user_email"
+  echo
+  echo "Configuring sudo access..." # Enable sudo for wheel group
+
+  if ! command -v sudo &>/dev/null; then
+    echo "Installing sudo..."
+    pacman -S --needed --noconfirm sudo >/dev/null 2>&1 || {
+      echo "Error: Failed to install the 'sudo' package"
+      exit 1
+    }
+    echo "Sudo installed successfully"
+  fi
+
+  if grep -q "^# %wheel ALL=(ALL:ALL) ALL" /etc/sudoers; then
+    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+    echo
+    echo "Enabled sudo for wheel group"
+  elif ! grep -q "^%wheel ALL=(ALL:ALL) ALL" /etc/sudoers; then
+    echo "%wheel ALL=(ALL:ALL) ALL" >>/etc/sudoers
+    echo "Added wheel group to sudoers"
+  fi
+
+  echo
+  echo "Initial user setup complete!"
+  echo
+  echo "Continuing the rest of the installation as user $username..."
+  echo
+
+  # Temporarily allow passwordless sudo for the installation
+  echo "$username ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/omarchy-temp
+  echo "Enabled temporary passwordless sudo for installation"
+
+  # Re-run the boot script as the new user to continue installation
+  # Pass repo/ref and user details to continue installation as the new user
+  # Use printf %q to safely escape variables containing special characters
+  escaped_fullname=$(printf '%q' "${user_fullname}")
+  escaped_email=$(printf '%q' "${user_email}")
+
+  # Build install command with sudo cleanup at the end
+  install_cmd="export \
+    HOME=/home/$username \
+    USER=$username \
+    LOGNAME=$username \
+    OMARCHY_REPO='${OMARCHY_REPO}' \
+    OMARCHY_REF='${OMARCHY_REF}' \
+    OMARCHY_USER_NAME=${escaped_fullname} \
+    OMARCHY_USER_EMAIL=${escaped_email}; \
+    cd /home/$username; \
+    curl -fsSL https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/boot.sh | bash; \
+    install_result=\$?; \
+    sudo rm -f /etc/sudoers.d/omarchy-temp 2>/dev/null && echo && echo 'Removed temporary passwordless sudo'; \
+    exit \$install_result"
+
+  # Ensure runuser is available for better terminal handling
+  if ! command -v runuser &>/dev/null; then
+    echo
+    echo "Installing runuser for better terminal handling..."
+    pacman -S --needed --noconfirm util-linux >/dev/null 2>&1 || {
+      echo "Error: Failed to install util-linux package"
+      exit 1
+    }
+    echo "Runuser installed successfully"
+  fi
+
+  echo
+
+  # Use runuser for better terminal handling
+  echo "Starting Omarchy installation as user $username..."
+  runuser -u $username -- bash -c "$install_cmd"
+
+  # Exit after su completes to prevent further execution as root
+  exit 0
+fi
+
+echo "No non-root users detected on this system. Initial setup must be run as root to create a non-root user."
+echo "Please run this script as root."
+exit 1
