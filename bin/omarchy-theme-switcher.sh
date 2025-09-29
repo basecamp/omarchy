@@ -1,68 +1,65 @@
 #!/usr/bin/env bash
 
-set -e
+echo "╔════════════════════════════════════════╗"
+echo "║         OMARCHY THEME INSTALLER        ║"
+echo "╚════════════════════════════════════════╝"
 
-GREEN='\e[92m'
-NC='\e[0m'
-
-if ! command -v gum &>/dev/null; then
-  echo "Error: gum not found. Install with: pacman -S gum"
-  exit 1
-fi
-
-mapfile -t theme_urls < <(
-  curl -s https://github.com/aorumbayev/awesome-omarchy |
-    grep -oP 'https://github.com/[a-zA-Z0-9._-]+/omarchy-[a-zA-Z0-9._-]+-theme'
-)
-
-declare -A THEMES
-for url in "${theme_urls[@]}"; do
-  name=$(echo "$url" | sed -E 's#.*/omarchy-([a-zA-Z0-9._-]+)-theme#\1#' | tr '-' ' ' | sed 's/\b\(.\)/\u\1/g')
-  THEMES["$name"]="$url"
+for cmd in gum jq curl; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "Error: $cmd not found."
+    exit 1
+  fi
 done
 
-while true; do
-  echo "╔════════════════════════════════════════╗"
-  echo "║         OMARCHY THEME INSTALLER        ║"
-  echo "╚════════════════════════════════════════╝"
+omarchy_themes=$(curl -sf https://omarchythemes.com/api/themes/all)
 
+# Build theme list
+declare -A THEMES
+while IFS= read -r row; do
+  name=$(jq -r '.name' <<<"$row" | tr '-' ' ' | sed 's/\b\(.\)/\u\1/g')
+  url=$(jq -r '.url' <<<"$row")
+  THEMES["$name"]="$url"
+done < <(jq -c '.[]' <<<"$omarchy_themes")
+
+SEPARATOR="--------------------------------------------------"
+
+# Theme selection and installation loop
+while true; do
   selected=$(printf '%s\n' "${!THEMES[@]}" | sort | gum filter --placeholder="Search themes...")
 
-  if [ -z "$selected" ]; then
+  if [[ -z "$selected" ]]; then
+    echo
     echo "No theme selected."
     break
   fi
 
-  echo
   if ! gum confirm "Install theme: $selected?"; then
+    echo
     echo "Cancelled."
     continue
   fi
 
   url="${THEMES[$selected]}"
-  echo "Installing: $selected"
   echo
-  echo *─────────────────────***─────────────────────*
+  echo "$SEPARATOR"
+  echo "🛠️  Installing: $selected"
+  echo "$SEPARATOR"
   echo
 
   if gum spin --spinner dot --title "Installing..." -- omarchy-theme-install "$url"; then
-    echo -e "${GREEN}✓ Installed '$selected'${NC}"
-    echo
-    echo "Select it: Super + Ctrl + Shift + Space"
+    echo "✅ Installed: $selected"
   else
-    echo "✗ Failed to install '$selected'"
+    echo "❌ Failed to install: $selected"
+    echo "$SEPARATOR"
     continue
   fi
 
-  echo
-  echo *─────────────────────***─────────────────────*
-  echo
-
   if ! gum confirm "Install another theme?"; then
+    echo
     break
   fi
 done
 
-echo -e "${GREEN}Theme installation complete.${NC}"
-echo
-echo *─────────────────────***─────────────────────*
+echo "$SEPARATOR"
+echo "🎉 Theme installation complete."
+echo "$SEPARATOR"
