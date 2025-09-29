@@ -29,12 +29,48 @@ systemd_iwd() {
 
     rfkill unblock wifi || true
 
-    # NEEDS PROPER VALIDATION OR ELSE SHOULD RESET BACK TO WIFI SETUP BEFORE
-    systemctl is-active iwd systemd-networkd
-    ps -e | grep -E "iwd|wpa_supplicant" || true
-    networkctl list || true
+    if systemctl is-active --quiet iwd; then
+      echo "iwd: active"
+    else
+      echo "iwd: not active but should be active"
+    fi
 
-    echo "Netstack is now systemd-iwd"
+    if systemctl is-active --quiet systemd-networkd; then
+        echo "systemd-networkd: active"
+    else
+        echo "systemd-networkd: not active but should be active"
+    fi
+
+    if systemctl is-active --quiet wpa_supplicant; then
+        echo "wpa_supplicant: active but should not be active"
+    else
+        echo "wpa_supplicant: not active"
+    fi
+
+    if systemctl is-active --quiet NetworkManager; then
+        echo "NetworkManager: active but should not be active"
+    else
+        echo "NetworkManager: not active"
+    fi
+
+    if systemctl is-active --quiet iwd; then
+        if systemctl is-active --quiet systemd-networkd; then
+            if ! systemctl is-active --quiet wpa_supplicant; then
+                if ! systemctl is-active --quiet NetworkManager; then
+                    echo "Netstack is now systemd-iwd"
+                    echo "Verification: $(detect_backend)"
+                else
+                    echo "Netstack validation failed (NetworkManager still active)"
+                fi
+            else
+                echo "Netstack validation failed (wpa_supplicant still active)"
+            fi
+        else
+            echo "Netstack validation failed (systemd-networkd not active)"
+        fi
+    else
+      echo "Netstack validation failed (iwd not active)"
+    fi
 }
 
 
@@ -80,12 +116,48 @@ EOF
     nmcli networking on >/dev/null 2>&1 || true
     nmcli radio wifi on >/dev/null 2>&1 || true
 
-    # NEEDS PROPER VALIDATION OR ELSE SHOULD RESET BACK TO WIFI SETUP BEFORE
-    systemctl is-active NetworkManager iwd
-    ps -e | grep -E "iwd|wpa_supplicant" || true
-    nmcli general status
+    if systemctl is-active --quiet iwd; then
+      echo "iwd: active but should not be active"
+    else
+      echo "iwd: not active"
+    fi
 
-    echo "Netstack is now nm-wpa"
+    if systemctl is-active --quiet systemd-networkd; then
+        echo "systemd-networkd: active but should not be active"
+    else
+        echo "systemd-networkd: not active"
+    fi
+
+    if systemctl is-active --quiet wpa_supplicant; then
+        echo "wpa_supplicant: active"
+    else
+        echo "wpa_supplicant: not active but should be active"
+    fi
+
+    if systemctl is-active --quiet NetworkManager; then
+        echo "NetworkManager: active"
+    else
+        echo "NetworkManager: not active but should be active"
+    fi
+
+    if ! systemctl is-active --quiet iwd; then
+        if ! systemctl is-active --quiet systemd-networkd; then
+            if systemctl is-active --quiet wpa_supplicant; then
+                if systemctl is-active --quiet NetworkManager; then
+                    echo "Netstack is now nm-wpa"
+                    echo "Verification: $(detect_backend)"
+                else
+                    echo "Netstack validation failed (NetworkManager not active)"
+                fi
+            else
+                echo "Netstack validation failed (wpa_supplicant not active)"
+            fi
+        else
+            echo "Netstack validation failed (systemd-networkd still active)"
+        fi
+    else
+      echo "Netstack validation failed (iwd still active)"
+    fi
 }
 
 nm_iwd() {
@@ -130,13 +202,48 @@ EOF
     nmcli networking on >/dev/null 2>&1 || true
     nmcli radio wifi on >/dev/null 2>&1 || true
 
+    if systemctl is-active --quiet iwd; then
+      echo "iwd: active"
+    else
+      echo "iwd: not active but should be active"
+    fi
 
-    # NEEDS PROPER VALIDATION OR ELSE SHOULD RESET BACK TO WIFI SETUP BEFORE
-    systemctl is-active NetworkManager iwd
-    ps -e | grep -E "iwd|wpa_supplicant" || true
-    nmcli general status
+    if systemctl is-active --quiet systemd-networkd; then
+        echo "systemd-networkd: active but should not be active"
+    else
+        echo "systemd-networkd: not active"
+    fi
 
-    echo "Netstack is now nm-iwd"
+    if systemctl is-active --quiet wpa_supplicant; then
+        echo "wpa_supplicant: active but should not be active"
+    else
+        echo "wpa_supplicant: not active"
+    fi
+
+    if systemctl is-active --quiet NetworkManager; then
+        echo "NetworkManager: active"
+    else
+        echo "NetworkManager: not active but should be active"
+    fi
+
+    if systemctl is-active --quiet iwd; then
+        if ! systemctl is-active --quiet systemd-networkd; then
+            if ! systemctl is-active --quiet wpa_supplicant; then
+                if systemctl is-active --quiet NetworkManager; then
+                    echo "Netstack is now nm-iwd"
+                    echo "Verification: $(detect_backend)"
+                else
+                    echo "Netstack validation failed (NetworkManager not active)"
+                fi
+            else
+                echo "Netstack validation failed (wpa_supplicant still active)"
+            fi
+        else
+            echo "Netstack validation failed (systemd-networkd still active)"
+        fi
+    else
+      echo "Netstack validation failed (iwd not active)"
+    fi
 }
 
 detect_backend() {
