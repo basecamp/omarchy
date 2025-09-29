@@ -16,6 +16,8 @@ if [[ -f $OMARCHY_INSTALL_LOG_FILE ]] && grep -q "Total:" "$OMARCHY_INSTALL_LOG_
   if [ -n "$TOTAL_TIME" ]; then
     echo_in_style "Installed in $TOTAL_TIME"
   fi
+else
+  echo_in_style "Finished installing"
 fi
 
 if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
