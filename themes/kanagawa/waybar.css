@@ -1,11 +1,6 @@
+@import url("theme.css");
+
 @define-color foreground #dcd7ba;
 @define-color background #1f1f28;
 
-@define-color black #16161d;
-@define-color red #c34043;
-@define-color green #76946a;
-@define-color yellow #c0a36e;
-@define-color blue #7e9cd8;
-@define-color magenta #957fb8;
-@define-color cyan #6a9589;
-@define-color white #c8c093;
+/* palette moved to theme.css */
