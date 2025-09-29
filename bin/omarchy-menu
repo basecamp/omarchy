@@ -235,14 +235,14 @@ show_setup_wifi_menu() {
 
 
 show_setup_netstack_menu() {
-    case $(menu "Setup" "systemd-iwd\nnm-wpa\nnm-iwd\nStatus") in
-    *systemd-iwd*)
+    case $(menu "Setup" "Systemd + IWD\nNetworkManager + WPA\nNetworkManager + IWD\nStatus") in
+    *"Systemd + IWD"*)
         present_terminal "omarchy-switch-netstack systemd-iwd"
         ;;
-    *nm-wpa*)
+    *"NetworkManager + WPA"*)
         present_terminal "omarchy-switch-netstack nm-wpa"
         ;;
-    *nm-iwd*)
+    *"NetworkManager + IWD"*)
         present_terminal "omarchy-switch-netstack nm-iwd"
         ;;
     *Status*)
