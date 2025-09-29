@@ -21,11 +21,6 @@ if (( EUID == 0 )); then
   abort "Running as root (not user)"
 fi
 
-# Must be x86 only to fully work
-if [[ $(uname -m) != "x86_64" ]]; then
-  abort "x86_64 CPU"
-fi
-
 # Must have secure boot disabled
 if bootctl status 2>/dev/null | grep -q 'Secure Boot: enabled'; then
   abort "Secure Boot disabled"
