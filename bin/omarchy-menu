@@ -179,10 +179,7 @@ show_setup_menu() {
 
   case $(menu "Setup" "$options") in
   *Audio*) $TERMINAL --class=Wiremix -e wiremix ;;
-  *Wifi*)
-    rfkill unblock wifi
-    omarchy-launch-wifi
-    ;;
+  *Wifi*) show_setup_wifi_menu ;;
   *Bluetooth*)
     rfkill unblock bluetooth
     blueberry
@@ -197,6 +194,36 @@ show_setup_menu() {
   *Config*) show_setup_config_menu ;;
   *) show_main_menu ;;
   esac
+}
+
+show_setup_wifi_menu() {
+    case $(menu "Setup" "Wifi Manager\nSwitch Netstack\nStatus") in
+    *Manager*)
+    rfkill unblock wifi
+    omarchy-launch-wifi ;;
+    *Netstack*) omarchy-switch-netstack ;;
+    *) show_main_menu ;;
+    esac
+}
+
+show_setup_netstack_menu() {
+    case $(menu "Setup" "systemd-iwd\nnm-wpa\nnm-iwd\nStatus") in
+    *systemd-iwd*)
+        omarchy-switch-netstack systemd-iwd
+        ;;
+    *nm-wpa*)
+        omarchy-switch-netstack nm-wpa
+        ;;
+    *nm-iwd*)
+        omarchy-switch-netstack nm-iwd
+        ;;
+    *Status*)
+        omarchy-switch-netstack status
+        ;;
+    *)
+        show_setup_wifi_menu
+        ;;
+    esac
 }
 
 show_setup_power_menu() {

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+systemd_iwd() {
+
+}
+
+nm_wpa() {
+
+}
+
+nm_iwd() {
+
+}
+
+status() {
+
+}

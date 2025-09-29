@@ -1,3 +1,12 @@
 #!/bin/bash
 
-exec setsid uwsm app -- "$TERMINAL" --class=Impala -e impala "$@"
+if systemctl is-active --quiet iwd; then
+    # Impala works whenever iwd is active (systemd-iwd or NM+iwd)
+    exec setsid uwsm app -- "$TERMINAL" --class=Impala -e impala "$@"
+elif systemctl is-active --quiet NetworkManager; then
+    # NM + wpa_supplicant
+    exec setsid uwsm app -- nm-connection-editor
+else
+    echo "No supported WiFi backend is active!"
+    exit 1
+fi
