@@ -12,7 +12,11 @@ fi
 echo "mkinitcpio hooks re-enabled"
 
 if command -v limine &>/dev/null; then
-  sudo limine-update
+  if [[ "$(uname -m)" == "aarch64" ]] || [[ "$(uname -m)" == "arm64" ]]; then
+    sudo "$OMARCHY_PATH/bin/omarchy-limine-update"
+  else
+    sudo limine-update
+  fi
 else
   # Run mkinitcpio but don't fail on warnings (like missing fsck helpers)
   # The initramfs is still created, just without optional features

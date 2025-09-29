@@ -25,9 +25,16 @@ if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
   fi
 fi
 
-# Detect non-Parallels virtualization (needs software rendering on ARM64)
+# Detect virtualization
 if command -v systemd-detect-virt &>/dev/null; then
   virt_type=$(systemd-detect-virt)
+
+  # Detect VMware specifically
+  if [[ "$virt_type" == "vmware" ]]; then
+    export OMARCHY_VMWARE=true
+    export OMARCHY_SKIP_LIMINE=true
+  fi
+
   # Enable software rendering for any VM except Parallels (which has good GPU virtualization)
   if [[ "$virt_type" != "none" && "$virt_type" != "parallels" ]]; then
     export OMARCHY_VM_SOFTWARE_RENDERING=true

@@ -1,3 +1,15 @@
+# Skip for ARM systems entirely
+if [ -n "$OMARCHY_ARM" ] || [ -n "$ASAHI_ALARM" ]; then
+  echo "Skipping x86_64 Limine configuration on ARM system"
+  exit 0
+fi
+
+# Skip if Limine is not supported (e.g., VMware uses GRUB)
+if [ -n "$OMARCHY_SKIP_LIMINE" ]; then
+  echo "Skipping Limine installation (bootloader not supported on this platform)"
+  exit 0
+fi
+
 if command -v limine &>/dev/null; then
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
@@ -72,10 +84,10 @@ term_palette_bright: 414868;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;c0caf5
 term_foreground: c0caf5
 term_foreground_bright: c0caf5
 term_background_bright: 24283b
- 
+
 EOF
 
-  sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
+  sudo pacman -S --noconfirm --needed snapper limine-snapper-sync limine-mkinitcpio-hook
 
   # Match Snapper configs if not installing from the ISO
   if [[ -z ${OMARCHY_CHROOT_INSTALL:-} ]]; then
