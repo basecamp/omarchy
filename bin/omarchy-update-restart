@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
+if [[ "$(pacman -Q $(pacman -Qoq /usr/lib/modules/$(uname -r) | grep -v headers | head -n1) | awk '{print $2}')" != "$(uname -r | sed 's/-[[:alpha:]].*//')" ]]; then
   gum confirm "Linux kernel has been updated. Reboot?" && omarchy-state clear re*-required && sudo reboot now
 
 elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
