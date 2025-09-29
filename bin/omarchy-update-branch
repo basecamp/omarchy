@@ -1,0 +1,33 @@
+#!/bin/bash
+
+set -e
+
+if (($# == 0)); then
+  echo "Usage: omarchy-update-branch [master|dev]"
+  exit 1
+fi
+
+branch="$1"
+
+# Snapshot before switching branch
+omarchy-snapshot create || [ $? -eq 127 ]
+
+if ! git -C "$OMARCHY_PATH" diff --quiet || ! git -C "$OMARCHY_PATH" diff --cached --quiet; then
+  stashed=true
+  git -C "$OMARCHY_PATH" stash push -u -m "Autostash before switching to $branch"
+else
+  stashed=false
+fi
+
+# Switch branches
+git -C "$OMARCHY_PATH" switch "$branch"
+
+# Reapply stash if we made one
+if [[ $stashed == true ]]; then
+  if ! git -C "$OMARCHY_PATH" stash pop; then
+    echo "⚠️ Conflicts when applying stash — stash kept"
+  fi
+fi
+
+# Update the system from the new branch
+omarchy-update-perform
