@@ -118,8 +118,17 @@ run_logged() {
 
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting: $script" >>"$OMARCHY_INSTALL_LOG_FILE"
 
-  # Use bash -c to create a clean subshell
-  bash -c "source '$script'" </dev/null >>"$OMARCHY_INSTALL_LOG_FILE" 2>&1
+  # Use bash -c to create a clean subshell, preserving critical environment variables
+  # Export important variables explicitly to ensure they're available in the subshell
+  bash -c "
+    export OMARCHY_ARM='$OMARCHY_ARM'
+    export ASAHI_ALARM='$ASAHI_ALARM'
+    export OMARCHY_INSTALL='$OMARCHY_INSTALL'
+    export OMARCHY_PATH='$OMARCHY_PATH'
+    export OMARCHY_CHROOT_INSTALL='$OMARCHY_CHROOT_INSTALL'
+    export OMARCHY_ONLINE_INSTALL='$OMARCHY_ONLINE_INSTALL'
+    source '$script'
+  " </dev/null >>"$OMARCHY_INSTALL_LOG_FILE" 2>&1
 
   local exit_code=$?
 
