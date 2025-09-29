@@ -1,0 +1,10 @@
+## Arch Linux ARM repository mirrorlist
+## Generated for Omarchy ARM systems
+
+## Geo-IP based mirror selection
+Server = http://mirror.archlinuxarm.org/$arch/$repo
+
+## Worldwide mirrors
+Server = http://dk.mirror.archlinuxarm.org/$arch/$repo
+Server = http://de.mirror.archlinuxarm.org/$arch/$repo
+Server = http://ca.us.mirror.archlinuxarm.org/$arch/$repo
