@@ -29,8 +29,14 @@ start_log_output() {
         fi
 
         # Add clear line escape and formatted output for each line
+        # Use simple ASCII arrow on Asahi, Unicode elsewhere
+        local arrow="→"
+        if [[ "$ASAHI_ALARM" == "true" ]]; then
+          arrow="->"
+        fi
+
         if [ -n "$line" ]; then
-          output+="${ANSI_CLEAR_LINE}${ANSI_GRAY}${PADDING_LEFT_SPACES}  → ${line}${ANSI_RESET}\n"
+          output+="${ANSI_CLEAR_LINE}${ANSI_GRAY}${PADDING_LEFT_SPACES}  ${arrow} ${line}${ANSI_RESET}\n"
         else
           output+="${ANSI_CLEAR_LINE}${PADDING_LEFT_SPACES}\n"
         fi

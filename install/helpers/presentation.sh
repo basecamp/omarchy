@@ -21,7 +21,15 @@ else
   export TERM_HEIGHT=24
 fi
 
-export LOGO_PATH="$OMARCHY_PATH/logo.txt"
+# Detect if we're on a raw TTY that needs simple ASCII (Asahi bootstrap on /dev/tty1)
+if uname -r | grep -qi "asahi"; then
+  export USE_SIMPLE_ASCII=true
+  export LOGO_PATH="$OMARCHY_PATH/logo-ascii.txt"
+else
+  export USE_SIMPLE_ASCII=false
+  export LOGO_PATH="$OMARCHY_PATH/logo.txt"
+fi
+
 export LOGO_WIDTH=$(awk '{ if (length > max) max = length } END { print max+0 }' "$LOGO_PATH" 2>/dev/null || echo 0)
 export LOGO_HEIGHT=$(wc -l <"$LOGO_PATH" 2>/dev/null || echo 0)
 

@@ -1,36 +1,61 @@
 #!/bin/bash
+
+# Detect if we're on Asahi Linux
+is_asahi=false
+if uname -r | grep -qi "asahi"; then
+  is_asahi=true
+  export GUM_CHOOSE_CURSOR="> "
+  export GUM_CHOOSE_CURSOR_PREFIX="* "
+  export GUM_CHOOSE_SELECTED_PREFIX="[x] "
+  export GUM_CHOOSE_UNSELECTED_PREFIX="[ ] "
+fi
+
 existing_users=$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd)
 
 if [[ $EUID -eq 0 ]]; then
   # Install gum for user interaction (needed in bootstrap mode when helpers aren't sourced)
   if ! command -v gum &>/dev/null; then
+    echo
     echo "Installing gum for interactive setup..."
     pacman -S --needed --noconfirm gum >/dev/null 2>&1 || {
       echo "Error: Failed to install the 'gum' package"
       exit 1
     }
-    echo "Gum installed successfully"
+    echo "Gum installed successfully!"
+    echo
+    echo "------------------------------------------------------"
   fi
 
-  if [ -n "$existing_users" ]; then
-    echo
-    echo "Found existing users:"
-    echo "$existing_users" | tr ' ' '\n' | sed 's/^/  - /'
+  echo "Use arrow keys to navigate, and press Enter to confirm"
+  echo "------------------------------------------------------"
 
+  if [ -n "$existing_users" ]; then
     # Convert existing users to an array for gum
     readarray -t user_array <<< "$existing_users"
 
     # Loop until we get valid input
     while true; do
+      # Show user list before prompting
+      echo
+      echo "Found existing users:"
+      echo "$existing_users" | tr ' ' '\n' | sed 's/^/  - /'
+
+      # Calculate lines to clear: 1 blank line + 1 header + number of users
+      lines_to_clear=$((2 + ${#user_array[@]}))
+
       echo
       # Force TTY allocation for gum when running from piped script
-      if gum confirm "Use an existing user account?" < /dev/tty; then
-        username=$(gum choose --header "Select user:" "${user_array[@]}" < /dev/tty)
+      if gum confirm --show-help=false "Use an existing user account?" < /dev/tty; then
+        # Clear the user list by moving cursor up and clearing lines
+        printf "\033[${lines_to_clear}A\033[J"
+        username=$(gum choose --show-help=false --header "Select user:" "${user_array[@]}" < /dev/tty)
         exit_code=$?
 
         # Check for Ctrl+C (exit code 130) and exit cleanly
         if [ $exit_code -eq 130 ]; then
+          echo
           echo "Installation cancelled."
+          echo
           exit 130
         fi
 
@@ -39,18 +64,31 @@ if [[ $EUID -eq 0 ]]; then
           continue
         fi
       else
-        echo
+        printf "\033[${lines_to_clear}A\033[J"
         username=$(gum input --placeholder "Enter a new username for Omarchy" < /dev/tty)
         exit_code=$?
 
         if [ $exit_code -eq 130 ]; then
+          echo
           echo "Installation cancelled."
+          echo
           exit 130
         fi
 
         # Check if username is empty or only spaces
         if [ -z "$username" ] || [ -z "$(echo "$username" | tr -d ' ')" ]; then
           echo "No username entered. Please try again."
+          continue
+        fi
+
+        # Validate username format and length
+        if [ ${#username} -gt 32 ]; then
+          echo "Username too long (max 32 characters). Please try again."
+          continue
+        fi
+
+        if ! [[ "$username" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+          echo "Invalid username. Must start with a letter or underscore, and contain only lowercase letters, digits, underscores, or hyphens."
           continue
         fi
       fi
@@ -64,7 +102,9 @@ if [[ $EUID -eq 0 ]]; then
       exit_code=$?
 
       if [ $exit_code -eq 130 ]; then
+        echo
         echo "Installation cancelled."
+        echo
         exit 130
       fi
 
@@ -73,36 +113,67 @@ if [[ $EUID -eq 0 ]]; then
         echo "No username entered. Please try again."
         continue
       fi
+
+      # Validate username format and length
+      if [ ${#username} -gt 32 ]; then
+        echo "Username too long (max 32 characters). Please try again."
+        continue
+      fi
+
+      if ! [[ "$username" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        echo "Invalid username. Must start with a letter or underscore, and contain only lowercase letters, digits, underscores, or hyphens."
+        continue
+      fi
+
       break
     done
   fi
 
   # Create user if doesn't exist
   if ! id "$username" &>/dev/null; then
-    echo "Creating user $username and setting password..."
+    gum style --foreground 99 "Creating user and setting password..."
+    if [ "$is_asahi" = true ]; then
+      gum style --foreground 244 "Note: Password will not be masked (Asahi's initial TTY can't display masking characters properly) but your user will be created securely."
+    fi
     useradd -m "$username"
 
     while true; do
       echo
-      password=$(gum input --password --placeholder "Enter password for $username" < /dev/tty)
+      if [ "$is_asahi" = true ]; then
+        password=$(gum input --placeholder "Enter password for $username" < /dev/tty)
+      else
+        password=$(gum input --password --placeholder "Enter password for $username" < /dev/tty)
+      fi
       exit_code=$?
 
       if [ $exit_code -eq 130 ]; then
+        echo
         echo "Installation cancelled."
+        echo
         exit 130
       fi
 
-      # Check if password is empty or only spaces
-      if [ -z "$password" ] || [ -z "$(echo "$password" | tr -d ' ')" ]; then
+      if [ -z "$password" ]; then
         echo "No password supplied. Please try again."
         continue
       fi
 
-      password_confirm=$(gum input --password --placeholder "Confirm password" < /dev/tty)
+      if [[ "$password" =~ [[:space:]] ]]; then
+        echo "Password cannot contain spaces. Please try again."
+        continue
+      fi
+
+      if [ "$is_asahi" = true ]; then
+        password_confirm=$(gum input --placeholder "Confirm password" < /dev/tty)
+      else
+        password_confirm=$(gum input --password --placeholder "Confirm password" < /dev/tty)
+      fi
       exit_code=$?
 
       if [ $exit_code -eq 130 ]; then
+        echo
         echo "Installation cancelled."
+        echo
         exit 130
       fi
 
@@ -114,7 +185,6 @@ if [[ $EUID -eq 0 ]]; then
       fi
     done
 
-    # Add to wheel group for sudo access
     usermod -aG wheel "$username"
     echo "Added $username to wheel group"
   else
@@ -130,13 +200,21 @@ if [[ $EUID -eq 0 ]]; then
     exit_code=$?
 
     if [ $exit_code -eq 130 ]; then
+      echo
       echo "Installation cancelled."
+      echo
       exit 130
     fi
 
     # Check if full name is empty or only spaces
     if [ -z "$user_fullname" ] || [ -z "$(echo "$user_fullname" | tr -d ' ')" ]; then
       echo "Full name is required. Please try again."
+      continue
+    fi
+
+    # Validate full name length
+    if [ ${#user_fullname} -gt 50 ]; then
+      echo "Full name too long (max 50 characters). Please try again."
       continue
     fi
     break
@@ -150,13 +228,21 @@ if [[ $EUID -eq 0 ]]; then
     exit_code=$?
 
     if [ $exit_code -eq 130 ]; then
+      echo
       echo "Installation cancelled."
+      echo
       exit 130
     fi
 
     # Check if email is empty or only spaces
     if [ -z "$user_email" ] || [ -z "$(echo "$user_email" | tr -d ' ')" ]; then
       echo "Email address is required. Please try again."
+      continue
+    fi
+
+    # Check for spaces in email
+    if [[ "$user_email" =~ [[:space:]] ]]; then
+      echo "Email address cannot contain spaces. Please try again."
       continue
     fi
 
@@ -170,35 +256,28 @@ if [[ $EUID -eq 0 ]]; then
 
   echo "Saved email address: $user_email"
   echo
-  echo "Configuring sudo access..." # Enable sudo for wheel group
+  echo "Finalizing user permissions..."
 
   if ! command -v sudo &>/dev/null; then
-    echo "Installing sudo..."
+    echo "  - Installing sudo..."
     pacman -S --needed --noconfirm sudo >/dev/null 2>&1 || {
-      echo "Error: Failed to install the 'sudo' package"
+      echo "    Error: Failed to install the 'sudo' package"
       exit 1
     }
-    echo "Sudo installed successfully"
+    echo "  - Sudo installed successfully"
   fi
 
   if grep -q "^# %wheel ALL=(ALL:ALL) ALL" /etc/sudoers; then
     sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
-    echo
-    echo "Enabled sudo for wheel group"
+    echo "  - Enabled sudo for wheel group"
   elif ! grep -q "^%wheel ALL=(ALL:ALL) ALL" /etc/sudoers; then
     echo "%wheel ALL=(ALL:ALL) ALL" >>/etc/sudoers
-    echo "Added wheel group to sudoers"
+    echo "  - Added wheel group to sudoers"
   fi
-
-  echo
-  echo "Initial user setup complete!"
-  echo
-  echo "Continuing the rest of the installation as user $username..."
-  echo
 
   # Temporarily allow passwordless sudo for the installation
   echo "$username ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/omarchy-temp
-  echo "Enabled temporary passwordless sudo for installation"
+  echo "  - Enabled temporary passwordless sudo for installation"
 
   # Re-run the boot script as the new user to continue installation
   # Pass repo/ref and user details to continue installation as the new user
@@ -218,24 +297,29 @@ if [[ $EUID -eq 0 ]]; then
     cd /home/$username; \
     curl -fsSL https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/boot.sh | bash; \
     install_result=\$?; \
-    sudo rm -f /etc/sudoers.d/omarchy-temp 2>/dev/null && echo && echo 'Removed temporary passwordless sudo'; \
+    sudo rm -f /etc/sudoers.d/omarchy-temp 2>/dev/null && echo && echo 'Removed temporary passwordless sudo config for $username' && echo; \
     exit \$install_result"
 
   # Ensure runuser is available for better terminal handling
   if ! command -v runuser &>/dev/null; then
-    echo
-    echo "Installing runuser for better terminal handling..."
+    echo "  - Installing runuser for better terminal handling..."
     pacman -S --needed --noconfirm util-linux >/dev/null 2>&1 || {
-      echo "Error: Failed to install util-linux package"
+      echo "    Error: Failed to install util-linux package"
       exit 1
     }
-    echo "Runuser installed successfully"
+    echo "  - Runuser installed successfully"
   fi
 
   echo
 
-  # Use runuser for better terminal handling
-  echo "Starting Omarchy installation as user $username..."
+  # Confirm before proceeding with installation
+  if ! gum confirm --show-help=false "Ready to install Omarchy as $username?" < /dev/tty; then
+    echo
+    echo "Installation cancelled."
+    echo
+    exit 130
+  fi
+
   runuser -u $username -- bash -c "$install_cmd"
 
   # Exit after su completes to prevent further execution as root

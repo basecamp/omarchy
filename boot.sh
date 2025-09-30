@@ -3,8 +3,22 @@
 # Set install mode to online since boot.sh is used for curl installations
 export OMARCHY_ONLINE_INSTALL=true
 
-ansi_art='                 ▄▄▄                                                   
- ▄█████▄    ▄███████████▄    ▄███████   ▄███████   ▄███████   ▄█   █▄    ▄█   █▄ 
+# Use simple ASCII on raw TTY for Asahi bootstrap, Unicode elsewhere
+if uname -r | grep -qi "asahi"; then
+  omarchy_art='                 ###
+ #######    #############    ########   ########   ########   ##   ##    ##   ##
+###   ###  ###   ###   ###  ###   ###  ###   ###  ###   ###  ###   ###  ###   ###
+###   ###  ###   ###   ###  ###   ###  ###   ###  ###   ##   ###   ###  ###   ###
+###   ###  ###   ###   ###  ###   ###  ###   ###  ###        ###   #### ###   ###
+###   ###  ###   ###   ### ########## ########    ###      ###########  #########
+###   ###  ###   ###   ###  ###   ###  ####       ###        ###   ###        ###
+###   ###  ###   ###   ###  ###   ### ##########  ###   ##   ###   ###   ##   ###
+###   ###  ###   ###   ###  ###   ###  ###   ###  ###   ###  ###   ###  ###   ###
+ #######    ##   ###   ##   ###   ##   ###   ###  ########   ###   ##    ######
+                                       ###   ##                                  '
+else
+  omarchy_art='                 ▄▄▄
+ ▄█████▄    ▄███████████▄    ▄███████   ▄███████   ▄███████   ▄█   █▄    ▄█   █▄
 ███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███
 ███   ███  ███   ███   ███  ███   ███  ███   ███  ███   █▀   ███   ███  ███   ███
 ███   ███  ███   ███   ███ ▄███▄▄▄███ ▄███▄▄▄██▀  ███       ▄███▄▄▄███▄ ███▄▄▄███
@@ -13,9 +27,10 @@ ansi_art='                 ▄▄▄
 ███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███
  ▀█████▀    ▀█   ███   █▀   ███   █▀   ███   ███  ███████▀   ███   █▀    ▀█████▀ 
                                        ███   █▀                                  '
+fi
 
 clear
-echo -e "\n$ansi_art\n"
+echo -e "\n$omarchy_art\n"
 
 # Install git early since it's needed when running boot.sh as a non-root user
 if ! command -v git &>/dev/null; then
@@ -25,17 +40,16 @@ if ! command -v git &>/dev/null; then
     exit 1
   }
   echo "Git installed successfully"
+  echo
 fi
 
 OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}" # custom repo with default fallback
 OMARCHY_REF="${OMARCHY_REF:-master}" # custom branch/ref with default fallback
 
 if [[ $EUID -eq 0 ]]; then
-  echo
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  Running as Root - Setting up non-root user for Omarchy  "
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo
+  echo "------------------------------------------------------"
+  echo "Running as Root - Setting up non-root user for Omarchy"
+  echo "------------------------------------------------------"
 
   curl -s "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/install/bootstrap/user-setup.sh" | \
     OMARCHY_REPO="${OMARCHY_REPO}" OMARCHY_REF="${OMARCHY_REF}" bash
@@ -55,4 +69,4 @@ else
 fi
 
 echo -e "\nInstallation starting..."
-source ~/.local/share/omarchy/install.sh
+source ~/.local/share/omarchy/install.sh </dev/null
