@@ -1,3 +1,3 @@
 echo "Ensure latest uwsm is installed"
 
-sudo pacman -Sy --noconfirm uwsm
+sudo pacman -Syu --noconfirm uwsm

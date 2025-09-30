@@ -83,7 +83,11 @@ parse_bindings() {
 }'
 }
 
+monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
+menu_height=$((monitor_height * 40 / 100))
+
 dynamic_bindings | \
   sort -u | \
   parse_bindings | \
-  walker --dmenu --theme keybindings -p 'Keybindings'
+  walker --dmenu --theme keybindings -p 'Keybindings' -w 800 -h "$menu_height"
+

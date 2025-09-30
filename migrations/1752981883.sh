@@ -1,9 +1,9 @@
 echo "Replace wofi with walker as the default launcher"
 
-if ! command -v walker &>/dev/null; then
-  sudo pacman -Sy --noconfirm --needed walker-bin libqalculate
+if omarchy-cmd-missing walker; then
+  omarchy-pkg-add walker-bin libqalculate
 
-  sudo pacman -Rns --noconfirm wofi
+  omarchy-pkg-drop wofi
   rm -rf ~/.config/wofi
 
   mkdir -p ~/.config/walker
