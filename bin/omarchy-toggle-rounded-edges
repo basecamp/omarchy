@@ -1,0 +1,113 @@
+#!/bin/bash
+
+LOOKNFEEL_CONF="$HOME/.config/hypr/looknfeel.conf"
+WALKER_CSS="$HOME/.local/share/omarchy/default/walker/themes/omarchy-default.css"
+HYPRLOCK_CONF="$HOME/.config/hypr/hyprlock.conf"
+MAKO_CONF="$HOME/.config/mako/config"
+
+get_current_rounding() {
+  if [[ ! -f "$LOOKNFEEL_CONF" ]]; then
+    echo "Error: File not found: $LOOKNFEEL_CONF" >&2
+    exit 1
+  fi
+
+  # Extract rounding value from decoration block
+  local rounding=$(sed -n '/^decoration {/,/}/p' "$LOOKNFEEL_CONF" | grep -oP 'rounding\s*=\s*\K\d+' || echo "0")
+  echo "$rounding"
+}
+
+# Determine new value based on current hypr decoration
+CURRENT=$(get_current_rounding)
+if [[ "$CURRENT" -gt 0 ]]; then
+  NEW=0
+else
+  NEW=8
+fi
+
+modify_looknfeel() {
+  if [[ ! -f "$LOOKNFEEL_CONF" ]]; then
+    echo "Error: File not found: $LOOKNFEEL_CONF" >&2
+    exit 1
+  fi
+
+  # Check if decoration block exists
+  if ! grep -q "^decoration {" "$LOOKNFEEL_CONF"; then
+    # Add the block if missing
+    echo -e "\ndecoration {\n    rounding = $NEW\n}" >>"$LOOKNFEEL_CONF"
+  else
+    # Modify or add rounding line inside the block
+    if grep -q "rounding =" "$LOOKNFEEL_CONF"; then
+      sed -i "/^decoration {/,/}/ s/rounding =.*/rounding = $NEW/" "$LOOKNFEEL_CONF"
+    else
+      sed -i "/^decoration {/a \    rounding = $NEW" "$LOOKNFEEL_CONF"
+    fi
+  fi
+}
+
+modify_walker_css() {
+  if [[ ! -f "$WALKER_CSS" ]]; then
+    echo "Error: File not found: $WALKER_CSS" >&2
+    exit 1
+  fi
+
+  # Check if #box selector exists
+  if ! grep -q "^#box {" "$WALKER_CSS"; then
+    # Add the selector if missing
+    echo -e "\n#box {\n  border-radius: ${NEW}px;\n}" >>"$WALKER_CSS"
+  else
+    # Modify or add border-radius inside the selector
+    if grep -q "border-radius:" "$WALKER_CSS"; then
+      sed -i "/^#box {/,/}/ s/border-radius: .*/border-radius: ${NEW}px;/" "$WALKER_CSS"
+    else
+      sed -i "/^#box {/a \  border-radius: ${NEW}px;" "$WALKER_CSS"
+    fi
+  fi
+}
+
+modify_hyprlock() {
+  if [[ ! -f "$HYPRLOCK_CONF" ]]; then
+    echo "Error: File not found: $HYPRLOCK_CONF" >&2
+    exit 1
+  fi
+
+  # Check if input-field block exists
+  if ! grep -q "^input-field {" "$HYPRLOCK_CONF"; then
+    # Add the block if missing
+    echo -e "\ninput-field {\n    rounding = $NEW\n}" >>"$HYPRLOCK_CONF"
+  else
+    # Modify or add rounding line inside the block
+    if grep -q "rounding = " "$HYPRLOCK_CONF"; then
+      sed -i "/^input-field {/,/}/ s/rounding = .*/rounding = $NEW/" "$HYPRLOCK_CONF"
+    else
+      sed -i "/^input-field {/a \    rounding = $NEW" "$HYPRLOCK_CONF"
+    fi
+  fi
+}
+
+modify_mako() {
+  if [[ ! -f "$MAKO_CONF" ]]; then
+    echo "Error: File not found: $MAKO_CONF" >&2
+    exit 1
+  fi
+
+  # Modify or add border-radius line (assuming it's a key=value file, possibly under [appearance] or global)
+  if grep -q "^border-radius=" "$MAKO_CONF"; then
+    sed -i "s/^border-radius=.*/border-radius=$NEW/" "$MAKO_CONF"
+  else
+    # Append at the end if not found
+    echo "border-radius=$NEW" >>"$MAKO_CONF"
+  fi
+
+  makoctl reload
+}
+
+# Run modifications
+modify_looknfeel
+modify_walker_css
+modify_hyprlock
+modify_mako
+if [[ "$CURRENT" -gt 0 ]]; then
+  notify-send "■   Disabled rounded edges"
+else
+  notify-send "⏺   Enabled rounded edges"
+fi
