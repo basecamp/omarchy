@@ -1,0 +1,14 @@
+#!/bin/bash
+# Wayland → X11 with hash-based deduplication
+last_hash_file="/tmp/omarchy-wl-to-x11-hash"
+
+wl-paste --type text/plain --watch bash -c '
+  content=$(wl-paste --type text/plain 2>/dev/null || echo "")
+  current_hash=$(echo -n "$content" | md5sum | cut -d" " -f1)
+  last_hash=$(cat /tmp/omarchy-wl-to-x11-hash 2>/dev/null || echo "")
+
+  if [ "$current_hash" != "$last_hash" ] && [ -n "$content" ]; then
+    echo -n "$content" | xclip -selection clipboard -r -i 2>/dev/null
+    echo -n "$current_hash" > /tmp/omarchy-wl-to-x11-hash
+  fi
+'
