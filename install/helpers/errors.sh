@@ -14,6 +14,41 @@ QR_CODE='
 █ ▀▀▀ █ ██  ▀ █▄█ ▄▄▄█▀ █
 ▀▀▀▀▀▀▀ ▀ ▀ ▀▀▀  ▀ ▀▀▀▀▀▀'
 
+ASCII_QR_CODE='
+##################################################################
+##################################################################
+##################################################################
+##################################################################
+########              ##########  ######  ##              ########
+########  ##########  ##  ##  ####        ##  ##########  ########
+########  ##      ##  ##########  ##  ##  ##  ##      ##  ########
+########  ##      ##  ##        ##  ##  ####  ##      ##  ########
+########  ##      ##  ####  ######  ####  ##  ##      ##  ########
+########  ##########  ##    ####        ####  ##########  ########
+########              ##  ##  ##  ##  ##  ##              ########
+##########################    ##  ##  ##  ########################
+########          ##        ##        ####  ##  ##  ##  ##########
+############  ####  ########    ####  ########  ######  ##########
+########  ##  ######  ######  ######    ##########  ##    ########
+########      ##    ##    ######  ####          ########  ########
+##############    ##  ##      ######    ##    ##  ##      ########
+########  ##  ##  ####  ######  ##    ##    ##  ##  ##  ##########
+########  ######  ##  ##  ############  ####        ##    ########
+########  ##        ##    ##      ########  ##    ######  ########
+########  ##  ######  ##  ##  ######              ##  ############
+########################  ####  ########  ######    ##############
+########              ##    ######    ##  ##  ##  ##      ########
+########  ##########  ####  ####  ######  ######    ##    ########
+########  ##      ##  ##    ####  ##              ##    ##########
+########  ##      ##  ##  ##    ####  ##      ##          ########
+########  ##      ##  ##    ####  ##  ##  ########    ##  ########
+########  ##########  ##    ########      ##        ####  ########
+########              ##  ##  ##      ####  ##            ########
+##################################################################
+##################################################################
+##################################################################
+##################################################################'
+
 # Track if we're already handling an error to prevent double-trapping
 ERROR_HANDLING=false
 
@@ -25,7 +60,10 @@ show_cursor() {
 # Display truncated log lines from the install log
 show_log_tail() {
   if [[ -f $OMARCHY_INSTALL_LOG_FILE ]]; then
-    local log_lines=$((TERM_HEIGHT - LOGO_HEIGHT - 35))
+    local log_lines=$(($TERM_HEIGHT - $LOGO_HEIGHT - 35))
+    # Ensure we show at least 5 lines even if calculation goes wrong
+    [[ $log_lines -lt 5 ]] && log_lines=5
+
     local max_line_width=$((LOGO_WIDTH - 4))
 
     tail -n $log_lines "$OMARCHY_INSTALL_LOG_FILE" | while IFS= read -r line; do
@@ -35,7 +73,7 @@ show_log_tail() {
         local truncated_line="$line"
       fi
 
-      gum style "$truncated_line"
+      gum style -- "$truncated_line"
     done
 
     echo
@@ -96,9 +134,15 @@ catch_errors() {
   gum style "This command halted with exit code $exit_code:"
   show_failed_script_or_command
 
-  gum style "$QR_CODE"
-  echo
-  gum style "Get help from the community via QR code or at https://discord.gg/tXFUdasqhY"
+  # Show QR code immediately on systems with Unicode support
+  if [[ -z $OMARCHY_ARM ]] && [[ -z $ASAHI_ALARM ]] && [[ -z $OMARCHY_VIRTUALIZATION ]]; then
+    gum style "$QR_CODE"
+    echo
+    gum style "Get help from the community via QR code or at https://discord.gg/tXFUdasqhY"
+  else
+    echo
+    gum style "Get help from the community at https://discord.gg/tXFUdasqhY"
+  fi
 
   # Offer options menu
   while true; do
@@ -118,11 +162,25 @@ catch_errors() {
     options+=("View full log")
     options+=("Exit")
 
-    choice=$(gum choose "${options[@]}" --header "What would you like to do?" --height 6 --padding "1 $PADDING_LEFT")
+    # Hide help text on ARM/Asahi/VMs (raw TTY can't render it properly)
+    local show_help=""
+    if [[ -n $OMARCHY_ARM ]] || [[ -n $ASAHI_ALARM ]] || [[ -n $OMARCHY_VIRTUALIZATION ]]; then
+      show_help="--show-help=false"
+    fi
+
+    choice=$(gum choose "${options[@]}" $show_help --header "What would you like to do?" --height 7 --padding "1 $PADDING_LEFT")
 
     case "$choice" in
     "Retry installation")
-      bash ~/.local/share/omarchy/install.sh
+      # Preserve critical environment variables for retry
+      env \
+        OMARCHY_REPO="${OMARCHY_REPO:-}" \
+        OMARCHY_REF="${OMARCHY_REF:-}" \
+        OMARCHY_USER_NAME="${OMARCHY_USER_NAME:-}" \
+        OMARCHY_USER_EMAIL="${OMARCHY_USER_EMAIL:-}" \
+        OMARCHY_ONLINE_INSTALL="${OMARCHY_ONLINE_INSTALL:-}" \
+        OMARCHY_RETRY_INSTALL=true \
+        bash ~/.local/share/omarchy/install.sh
       break
       ;;
     "View full log")
@@ -133,7 +191,7 @@ catch_errors() {
       fi
       ;;
     "Upload log for support")
-      omarchy-upload-log
+      $OMARCHY_PATH/bin/omarchy-upload-log
       ;;
     "Exit" | "")
       exit 1
