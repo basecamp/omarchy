@@ -46,13 +46,12 @@ fi
 
 echo -e "\nCloning Omarchy from: https://github.com/${OMARCHY_REPO}.git"
 rm -rf ~/.local/share/omarchy/
-git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
 
 if [[ $OMARCHY_REF != "master" ]]; then
-  echo -e "\e[32mUsing branch: $OMARCHY_REF\e[0m"
-  cd ~/.local/share/omarchy
-  git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
-  cd -
+  echo -e "\e[32mUsing branch: $OMARCHY_REF (shallow clone)\e[0m"
+  git clone --depth 1 --branch "${OMARCHY_REF}" "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
+else
+  git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
 fi
 
 echo -e "\nInstallation starting..."
