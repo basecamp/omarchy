@@ -5,7 +5,7 @@ if [[ "$product_name" =~ MacBook[89],1|MacBook10,1|MacBookPro13,[123]|MacBookPro
 
   sudo pacman -S --noconfirm --needed macbook12-spi-driver-dkms
   if [[ "$product_name" == "MacBook8,1" ]]; then
-    echo "MODULES=(applespi spi_pxa2xx_platform spi_pxa2xx_pci)" | sudo tee /etc/mkinitcpio.conf.d/macbook_spi_modules.conf >/dev/null
+    echo "MODULES=(applespi intel_lpss_pci spi_pxa2xx_platform spi_pxa2xx_pci)" | sudo tee /etc/mkinitcpio.conf.d/macbook_spi_modules.conf >/dev/null
   else
     echo "MODULES=(applespi intel_lpss_pci spi_pxa2xx_platform)" | sudo tee /etc/mkinitcpio.conf.d/macbook_spi_modules.conf >/dev/null
   fi
