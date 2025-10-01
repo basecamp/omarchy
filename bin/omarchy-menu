@@ -99,7 +99,7 @@ show_capture_menu() {
   *Screenshot*) show_screenshot_menu ;;
   *Screenrecord*) show_screenrecord_menu ;;
   *Color*) pkill hyprpicker || hyprpicker -a ;;
-  *) show_trigger_menu ;;
+  *) back_to show_trigger_menu ;;
   esac
 }
 
@@ -479,6 +479,7 @@ go_to_menu() {
   *update*) show_update_menu ;;
   *about*) omarchy-launch-about ;;
   *system*) show_system_menu ;;
+  *capture*) show_capture_menu ;;
   esac
 }
 
