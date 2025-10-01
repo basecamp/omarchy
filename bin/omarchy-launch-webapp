@@ -2,7 +2,7 @@
 
 browser=$(xdg-settings get default-web-browser)
 
-webapp_browsers="google-chrome brave-browser microsoft-edge opera vivaldi chromium"
+webapp_browsers="google-chrome brave-browser microsoft-edge opera vivaldi helium-browser chromium"
 
 resolve_exec() {
   sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$1 2>/dev/null | head -1
