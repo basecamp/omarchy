@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# Get remote tag
+latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+if [[ -z "$latest_tag" ]]; then
+  echo "Error: Could not retrieve latest tag."
+  exit 1
+fi
+
+omarchy-launch-webapp https://github.com/basecamp/omarchy/releases/tag/$latest_tag
+exit 0
