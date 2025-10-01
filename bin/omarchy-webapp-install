@@ -4,7 +4,7 @@ if [ "$#" -lt 3 ]; then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
-  ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
+  ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!) Or leave blank to fetch automatically")
   CUSTOM_EXEC=""
   MIME_TYPES=""
   INTERACTIVE_MODE=true
@@ -18,23 +18,101 @@ else
 fi
 
 # Ensure valid execution
-if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_REF" ]]; then
-  echo "You must set app name, app URL, and icon URL!"
+if [[ -z "$APP_NAME" || -z "$APP_URL" ]]; then
+  echo "You must set app name and app URL"
   exit 1
 fi
 
 # Refer to local icon or fetch remotely from URL
 ICON_DIR="$HOME/.local/share/applications/icons"
+
+normalize_fetch_url() {
+  local url="$1"
+  if [[ ! "$url" =~ ^https?:// ]]; then
+    printf 'https://%s' "$url"
+  else
+    printf '%s' "$url"
+  fi
+}
+
+get_origin() {
+  local fetch="$1"
+  printf '%s' "$(echo "$fetch" | sed -E 's#(https?://[^/]+).*#\1#')"
+}
+
+extract_icon_from_html() {
+  local fetch="$1"
+  local html
+  html=$(curl -sfL "$fetch" || true)
+  if [[ -n "$html" ]]; then
+    printf '%s' "$(printf '%s' "$html" | tr '\n' ' ' | grep -iEo '<link[^>]+rel=[^>]*icon[^>]*>' | sed -nE 's/.*href="([^"]+)".*/\1/ip' | head -n1)"
+  fi
+}
+
+resolve_icon_url() {
+  local icon_url="$1" fetch="$2" origin="$3"
+  if [[ "$icon_url" =~ ^// ]]; then
+    local scheme
+    scheme=$(echo "$fetch" | sed -E 's#^(https?)://.*#\1#')
+    printf '%s' "$scheme:$icon_url"
+  elif [[ "$icon_url" =~ ^https?:// ]]; then
+    printf '%s' "$icon_url"
+  elif [[ "$icon_url" =~ ^/ ]]; then
+    printf '%s' "$origin$icon_url"
+  else
+    printf '%s' "$origin/${icon_url#./}"
+  fi
+}
+
+download_and_convert() {
+  local url="$1" tmp="$2" png="$3"
+  if curl -sfL -o "$tmp" "$url"; then
+    if magick "$tmp" "$png" >/dev/null 2>&1; then
+      printf '%s' "$png"
+      rm -f "$tmp" || true
+    else
+      printf '%s' "$tmp"
+    fi
+    return 0
+  fi
+  return 1
+}
+
+mkdir -p "$ICON_DIR"
+
 if [[ $ICON_REF =~ ^https?:// ]]; then
   ICON_PATH="$ICON_DIR/$APP_NAME.png"
   if curl -sL -o "$ICON_PATH" "$ICON_REF"; then
-    ICON_PATH="$ICON_DIR/$APP_NAME.png"
+    : # success; file saved to $ICON_PATH
   else
-    echo "Error: Failed to download icon."
+    echo "Error: Failed to download icon." >&2
     exit 1
   fi
 else
-  ICON_PATH="$ICON_DIR/$ICON_REF"
+  if [[ -z "$ICON_REF" ]]; then
+    FETCH_URL=$(normalize_fetch_url "$APP_URL")
+    APP_ORIGIN=$(get_origin "$FETCH_URL")
+
+    ICO_PATH="$ICON_DIR/$APP_NAME.ico"
+    PNG_PATH="$ICON_DIR/$APP_NAME.png"
+    TMP_PATH="$ICON_DIR/$APP_NAME.tmp"
+
+    ICON_URL="$(extract_icon_from_html "$FETCH_URL")"
+    if [[ -z "$ICON_URL" ]]; then
+      ICON_URL="$APP_ORIGIN/favicon.ico"
+    fi
+
+    ICON_URL="$(resolve_icon_url "$ICON_URL" "$FETCH_URL" "$APP_ORIGIN")"
+
+    if ICON_PATH="$(download_and_convert "$ICON_URL" "$TMP_PATH" "$PNG_PATH")"; then
+      : # ICON_PATH set by download_and_convert
+    else
+      echo "Error: Could not find or download an icon for $APP_URL. Aborting installation." >&2
+      exit 1
+    fi
+  else
+    ICON_PATH="$ICON_DIR/$ICON_REF"
+  fi
 fi
 
 # Use custom exec if provided, otherwise default behavior
