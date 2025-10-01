@@ -2,13 +2,16 @@
 
 browser=$(xdg-settings get default-web-browser)
 
-case $browser in
-google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi* | chromium*)
-  app_cmd=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1)
+webapp_browsers="google-chrome brave-browser microsoft-edge opera vivaldi chromium"
+
+resolve_exec() {
+  sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$1 2>/dev/null | head -1
+}
+
+if echo "$webapp_browsers" | grep -qw "${browser%%.*}"; then
+  app_cmd=$(resolve_exec "$browser")
   exec setsid uwsm app -- "$app_cmd" --app="$1" "${@:2}"
-  ;;
-firefox*)
-  exec setsid uwsm app -- firefox "$1" "${@:2}"
-  ;;
-*) ;;
-esac
+else
+  app_cmd=$(resolve_exec "$browser")
+  exec setsid uwsm app -- "$app_cmd" "$1" "${@:2}"
+fi
