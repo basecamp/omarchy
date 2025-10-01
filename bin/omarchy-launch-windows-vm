@@ -14,7 +14,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 COMPOSE_DIR="$SCRIPT_DIR/../config/windows-vm"
 # Note: added `-grab-keyboard` for avoiding terminal interruptions. e.g. ctrl+c is terminating RDC, but can be used for copying
-RDP_COMMAND="xfreerdp3 /u:docker /p:admin /v:127.0.0.1:3389 /size:1920x1200 +f -grab-keyboard /scale:140"
+RDP_COMMAND="xfreerdp3 /u:docker /p:admin /v:127.0.0.1:3389 /size:1920x1200 +f -grab-keyboard /cert:ignore /scale:140"
 
 echo "Starting Windows VM..."
 
@@ -78,8 +78,8 @@ while ! nc -z 127.0.0.1 3389; do
 done
 
 echo "RDP port is open, testing connection..."
-# Quick RDP test with shorter timeout - xfreerdp3 with certificate ignore
-timeout 5 xfreerdp3 /u:docker /p:admin /v:127.0.0.1:3389 /size:320x240 /cert:ignore 2>/dev/null
+# Quick RDP test with shorter timeout - xfreerdp3 with certificate accept
+timeout 5 xfreerdp3 /u:docker /p:admin /v:127.0.0.1:3389 /size:320x240 /cert:tofu 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "RDP not fully ready yet, waiting 5 more seconds..."
     sleep 5
