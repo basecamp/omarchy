@@ -52,7 +52,7 @@ inetutils
 iwd
 jq
 kdenlive
-kvantum-qt5
+kvantum
 lazydocker
 lazygit
 less
@@ -89,7 +89,7 @@ power-profiles-daemon
 python-gobject
 python-poetry-core
 python-terminaltexteffects
-qt5-wayland
+qt6-wayland
 ripgrep
 satty
 signal-desktop
