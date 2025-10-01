@@ -3,10 +3,12 @@
 # Lock the screen
 pidof hyprlock || hyprlock &
 
-# Ensure 1password is locked
-if pgrep -x "1password" >/dev/null; then
-  1password --lock &
-fi
+# Ensure password manager is locked
+case "$PASSWORD_MANAGER" in
+"1password" | "keepassxc") pgrep -x "$PASSWORD_MANAGER" >/dev/null && $PASSWORD_MANAGER --lock & ;;
+"bitwarden") bw lock & ;;
+*) ;;
+esac
 
 # Avoid running screensaver when locked
 pkill -f "$TERMINAL --class Screensaver"

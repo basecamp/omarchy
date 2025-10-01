@@ -2,3 +2,4 @@
 
 export TERMINAL=alacritty
 export EDITOR=nvim
+export PASSWORD_MANAGER=1password
