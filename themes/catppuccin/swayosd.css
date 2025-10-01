@@ -1,3 +1,5 @@
+@import url("theme.css");
+
 @define-color background-color #24273a;
 @define-color border-color #c6d0f5;
 @define-color label #cad3f5;

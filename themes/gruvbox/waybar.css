@@ -1,2 +1,6 @@
+@import url("theme.css");
+
 @define-color foreground #d4be98;
 @define-color background #282828;
+
+/* palette moved to theme.css */

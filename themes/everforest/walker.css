@@ -1,3 +1,5 @@
+@import url("theme.css");
+
 @define-color selected-text #dbbc7f;
 @define-color text #d3c6aa;
 @define-color base #2d353b;

@@ -1,3 +1,5 @@
+@import url("theme.css");
+
 @define-color foreground #4c4f69; /* text */
 @define-color background #eff1f5; /* base */
 @define-color border     #dce0e8; /* crust */
