@@ -1,3 +1,17 @@
 #!/bin/bash
 
-git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1)
+if [[ $1 == "latest" ]]; then
+    # Get the remote tag from the upstream repository    
+    UPSTREAM_REPO="basecamp/omarchy"
+    tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+else
+    # Get the 'currently installed' Omarchy version
+    tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
+fi
+
+if [[ -z "$tag" ]]; then
+  echo "Error: Could not retrieve tag."
+  exit 1
+fi
+
+echo "$tag"
