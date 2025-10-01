@@ -5,7 +5,7 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-  "modules-center": ["clock", "custom/update", "custom/screenrecording-indicator"],
+  "modules-center": ["custom/do-not-disturb-indicator","clock", "custom/update", "custom/screenrecording-indicator"],
   "modules-right": [
     "group/tray-expander",
     "bluetooth",
@@ -134,5 +134,11 @@
   "tray": {
     "icon-size": 12,
     "spacing": 12
+  },
+  "custom/do-not-disturb-indicator": {
+    "on-click": "makoctl mode -t do-not-disturb && notify-send 'Enabled notifications'",
+    "exec": "$OMARCHY_PATH/default/waybar/indicators/do-not-disturb.sh",
+    "signal": 9,
+    "return-type": "json"
   }
 }
