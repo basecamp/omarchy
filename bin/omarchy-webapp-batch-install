@@ -1,0 +1,127 @@
+#!/bin/bash
+
+# omarchy-webapp-batch-install: Install multiple web apps from a TOML file
+# Usage: omarchy-webapp-batch-install [file-path]
+
+if [ "$#" -eq 0 ]; then
+  echo -e "\e[32mLet's batch install web apps from a configuration file.\n\e[0m"
+  echo "TOML file format:"
+  echo "  [[webapp]]"
+  echo "  name = \"App Name\""
+  echo "  url = \"https://app.example.com\""
+  echo "  icon = \"https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/app.png\""
+  echo ""
+
+  FILE_PATH=$(gum input --prompt "TOML file path> " --placeholder "~/my-webapps.toml")
+
+  if [[ -z "$FILE_PATH" ]]; then
+    echo "No file path provided."
+    exit 1
+  fi
+else
+  FILE_PATH="$1"
+fi
+
+# Expand tilde
+FILE_PATH="${FILE_PATH/#\~/$HOME}"
+
+# Check if file exists
+if [[ ! -f "$FILE_PATH" ]]; then
+  echo "Error: File not found: $FILE_PATH"
+  exit 1
+fi
+
+# Parse TOML file and extract web apps
+# Simple parser for [[webapp]] sections
+declare -a APP_NAMES
+declare -a APP_URLS
+declare -a APP_ICONS
+
+current_name=""
+current_url=""
+current_icon=""
+
+while IFS= read -r line; do
+  # Remove leading/trailing whitespace
+  line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+  # Skip empty lines and comments
+  [[ -z "$line" || "$line" =~ ^# ]] && continue
+
+  # New webapp section
+  if [[ "$line" == "[[webapp]]" ]]; then
+    # Save previous webapp if exists
+    if [[ -n "$current_name" && -n "$current_url" && -n "$current_icon" ]]; then
+      APP_NAMES+=("$current_name")
+      APP_URLS+=("$current_url")
+      APP_ICONS+=("$current_icon")
+    fi
+    # Reset for new webapp
+    current_name=""
+    current_url=""
+    current_icon=""
+  # Parse name
+  elif [[ "$line" =~ ^name[[:space:]]*=[[:space:]]*\"(.*)\"$ ]]; then
+    current_name="${BASH_REMATCH[1]}"
+  # Parse url
+  elif [[ "$line" =~ ^url[[:space:]]*=[[:space:]]*\"(.*)\"$ ]]; then
+    current_url="${BASH_REMATCH[1]}"
+  # Parse icon
+  elif [[ "$line" =~ ^icon[[:space:]]*=[[:space:]]*\"(.*)\"$ ]]; then
+    current_icon="${BASH_REMATCH[1]}"
+  fi
+done < "$FILE_PATH"
+
+# Save last webapp
+if [[ -n "$current_name" && -n "$current_url" && -n "$current_icon" ]]; then
+  APP_NAMES+=("$current_name")
+  APP_URLS+=("$current_url")
+  APP_ICONS+=("$current_icon")
+fi
+
+# Check if any webapps were found
+if [[ ${#APP_NAMES[@]} -eq 0 ]]; then
+  echo "Error: No valid web apps found in $FILE_PATH"
+  exit 1
+fi
+
+# Let user select which apps to install
+echo -e "\nFound ${#APP_NAMES[@]} web apps in catalog.\n"
+
+SELECTED_STRING=$(gum choose --no-limit --header "Select web apps to install..." --selected-prefix="✓ " "${APP_NAMES[@]}")
+
+# Convert newline-separated string to array
+SELECTED_APPS=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && SELECTED_APPS+=("$line")
+done <<< "$SELECTED_STRING"
+
+# Check if any apps were selected
+if [[ ${#SELECTED_APPS[@]} -eq 0 ]]; then
+  echo "No web apps selected."
+  exit 0
+fi
+
+echo -e "\nInstalling ${#SELECTED_APPS[@]} web app(s)...\n"
+
+# Install each selected app
+for selected_app in "${SELECTED_APPS[@]}"; do
+  # Find the index of the selected app
+  for i in "${!APP_NAMES[@]}"; do
+    if [[ "${APP_NAMES[$i]}" == "$selected_app" ]]; then
+      echo "Installing: $selected_app"
+
+      # Call omarchy-webapp-install with the app details
+      if omarchy-webapp-install "${APP_NAMES[$i]}" "${APP_URLS[$i]}" "${APP_ICONS[$i]}"; then
+        echo "✓ Successfully installed: $selected_app"
+      else
+        echo "✗ Failed to install: $selected_app"
+      fi
+      echo ""
+      break
+    fi
+  done
+done
+
+echo -e "\e[32mBatch installation complete!\e[0m"
+echo "You can now find the installed apps using the app launcher (SUPER + SPACE)"
