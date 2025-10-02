@@ -1,9 +1,18 @@
 #!/bin/bash
 
-set -euo pipefail
+browser=$(xdg-settings get default-web-browser)
+
+case $browser in
+  google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi*) ;;
+  *) browser="chromium.desktop" ;;
+esac
+
+DEFAULT_BROWSER_BIN="$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1)"
 
 APP_URL="$1"
 PROFILE="${2:-Default}"
-BROWSER_BIN="${3:-chromium}"
+BROWSER_BIN="${3:-$DEFAULT_BROWSER_BIN}"
 
-exec setsid uwsm app -- "$BROWSER_BIN" --profile-directory="$PROFILE" --app="$APP_URL"
+shift 3 || true
+
+exec setsid uwsm app -- "$BROWSER_BIN" --profile-directory="$PROFILE" --app="$APP_URL" "$@"
