@@ -1,0 +1,144 @@
+#!/bin/bash
+
+# Automatically switches between a configured LIGHT_THEME and DARK_THEME
+# based on local time and configured day/night boundaries.
+#
+# Configuration files (user-first, default-fallback):
+#   User:    ~/.config/auto-themer/theme-auto.conf
+#   Default: ~/.local/share/omarchy/config/auto-themer/theme-auto.conf
+# Example:
+#   ENABLED=true
+#   LIGHT_THEME=catppuccin-latte
+#   DARK_THEME=tokyo-night
+#   DAY_START=07:00
+#   NIGHT_START=19:00
+#   ENABLE_NIGHT_LIGHT_ON_DARK_MODE=false
+#
+# Usage:
+#   omarchy-theme-auto            # apply once based on current time
+#   omarchy-theme-auto apply      # same as above
+#   omarchy-theme-auto status     # show config and current evaluation
+#
+# A user systemd timer runs minutely and applies only when needed.
+# Enable it with:
+#   systemctl --user enable --now omarchy-theme-auto.timer
+
+set -euo pipefail
+
+# Defaults (safe): disabled until configured by user
+ENABLED=false
+LIGHT_THEME=""
+DARK_THEME=""
+DAY_START="07:00"
+NIGHT_START="19:00"
+ENABLE_NIGHT_LIGHT_ON_DARK_MODE=false
+
+USER_CONFIG="$HOME/.config/auto-themer/theme-auto.conf"
+DEFAULT_CONFIG="$HOME/.local/share/omarchy/config/auto-themer/theme-auto.conf"
+
+load_config() {
+  # Load default first, then user to override
+  if [[ -f "$DEFAULT_CONFIG" ]]; then
+    source "$DEFAULT_CONFIG"
+  fi
+  if [[ -f "$USER_CONFIG" ]]; then
+    source "$USER_CONFIG"
+  fi
+}
+
+now_minutes() {
+  date +%H:%M | awk -F: '{ print ($1*60)+$2 }'
+}
+
+to_minutes() {
+  local t="$1"
+  if [[ ! "$t" =~ ^[0-9]{2}:[0-9]{2}$ ]]; then
+    echo "Invalid time format: $t (expected HH:MM)" >&2
+    exit 2
+  fi
+  echo "$t" | awk -F: '{ print ($1*60)+$2 }'
+}
+
+current_theme_slug() {
+  local link="$HOME/.config/omarchy/current/theme"
+  if [[ -L "$link" || -d "$link" ]]; then
+    basename "$(realpath "$link")"
+  else
+    echo ""  # unknown
+  fi
+}
+
+which_phase() {
+  local now d n
+  now=$(now_minutes)
+  d=$(to_minutes "$DAY_START")
+  n=$(to_minutes "$NIGHT_START")
+
+  if (( d == n )); then
+    # degenerate: treat as always dark
+    echo dark; return
+  fi
+
+  if (( d < n )); then
+    # Normal case: day in [d, n), night otherwise
+    if (( now >= d && now < n )); then echo light; else echo dark; fi
+  else
+    # Overnight day start: day if now >= d OR now < n
+    if (( now >= d || now < n )); then echo light; else echo dark; fi
+  fi
+}
+
+apply_once() {
+  load_config
+
+  if [[ "${ENABLED}" != "true" ]]; then
+    exit 0
+  fi
+
+  if [[ -z "${LIGHT_THEME}" || -z "${DARK_THEME}" ]]; then
+    echo "omarchy-theme-auto: set LIGHT_THEME and DARK_THEME in ~/.config/auto-themer/theme-auto.conf or ~/.local/share/omarchy/config/auto-themer/theme-auto.conf" >&2
+    exit 0
+  fi
+
+  local phase target_slug current_slug
+  phase=$(which_phase)
+  if [[ "$phase" == "light" ]]; then
+    target_slug=$(echo "$LIGHT_THEME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+  else
+    target_slug=$(echo "$DARK_THEME"  | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+  fi
+
+  current_slug=$(current_theme_slug)
+
+  if [[ -z "$current_slug" || "$current_slug" != "$target_slug" ]]; then
+    omarchy-theme-set "$target_slug"
+    if [[ "${ENABLE_NIGHT_LIGHT_ON_DARK_MODE}" == "true" ]]; then
+      omarchy-toggle-nightlight >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
+show_status() {
+  load_config
+  local phase now
+  phase=$(which_phase)
+  now=$(date +"%F %T")
+  echo "Time:      $now"
+  echo "Enabled:   ${ENABLED}"
+  echo "Day start: ${DAY_START}"
+  echo "Night st.: ${NIGHT_START}"
+  echo "Phase:     ${phase}"
+  echo "Light:     ${LIGHT_THEME}"
+  echo "Dark:      ${DARK_THEME}"
+  echo "Current:   $(current_theme_slug)"
+  echo "NightLight with Dark: ${ENABLE_NIGHT_LIGHT_ON_DARK_MODE}"
+}
+
+case "${1:-apply}" in
+  apply)  apply_once ;;
+  status) show_status ;;
+  *)
+    echo "Usage: omarchy-theme-auto [apply|status]" >&2
+    exit 1
+    ;;
+esac
