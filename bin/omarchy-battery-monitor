@@ -1,36 +1,110 @@
 #!/bin/bash
+#!/bin/bash
+# ⚙️ Thresholds
+LOW=30
+CRITICAL=10
 
-# Designed to be run by systemd timer every 30 seconds and alerts if battery is low
-
-BATTERY_THRESHOLD=10
-NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
-
+# 🔋 Battery info using upower
 get_battery_percentage() {
-  upower -i "$(upower -e | grep 'BAT')" \
-  | awk -F: '/percentage/ {
-      gsub(/[%[:space:]]/, "", $2);
-      val=$2;
-      printf("%d\n", (val+0.5))
-      exit
-    }'
+    upower -i "$(upower -e | grep 'BAT')" \
+    | awk -F: '/percentage/ {
+        gsub(/[%[:space:]]/, "", $2);
+        val=$2;
+        printf("%d\n", (val+0.5))
+        exit
+      }'
 }
 
 get_battery_state() {
-  upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}'
+    upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}'
 }
 
+BATTERY=$(get_battery_percentage)
+STATUS=$(get_battery_state)
+
+# 🧠 Power profile tool
+POWER_TOOL="powerprofilesctl"
+PROFILE_LOW="balanced"
+PROFILE_CRITICAL="power-saver"
+
+# 📁 Temp file to avoid repeat notifications
+TMPFILE="/tmp/battery_warn.tmp"
+
+# 🔈 Sound files
+SOUND_CRITICAL="/usr/share/sounds/freedesktop/stereo/complete.oga"
+SOUND_LOW="/usr/share/sounds/freedesktop/stereo/dialog-error.oga"
+
+# 🔊 Play sound
+play_sound() {
+    local sound_file=$1
+    if command -v paplay &>/dev/null && [ -f "$sound_file" ]; then
+        paplay --volume=65536 "$sound_file"
+    fi
+}
+
+# 🔁 Change power profile if supported
+set_power_profile() {
+    local target=$1
+    if command -v $POWER_TOOL &>/dev/null; then
+        current=$($POWER_TOOL get 2>/dev/null)
+        if [ "$current" != "$target" ]; then
+            $POWER_TOOL set "$target" 2>/dev/null
+        fi
+    fi
+}
+
+# 🔔 Send notification
 send_notification() {
-  notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
+    local urgency=$1
+    local title=$2
+    local message=$3
+    local icon=$4
+    local sound=$5
+    local battery_level=$6
+    
+    notify-send -u "$urgency" \
+        -a "Battery Monitor" \
+        -i "$icon" \
+        -t 30000 \
+        -h "string:x-canonical-private-synchronous:batmon" \
+        -h "int:value:$battery_level" \
+        -h "string:x-dunst-stack-tag:battery" \
+        "$title" \
+        "$message"
+    
+    play_sound "$sound"
 }
 
-BATTERY_LEVEL=$(get_battery_percentage)
-BATTERY_STATE=$(get_battery_state)
-
-if [[ "$BATTERY_STATE" == "discharging" && "$BATTERY_LEVEL" -le "$BATTERY_THRESHOLD" ]]; then
-  if [[ ! -f "$NOTIFICATION_FLAG" ]]; then
-    send_notification "$BATTERY_LEVEL"
-    touch "$NOTIFICATION_FLAG"
-  fi
+# 🔌 Main logic
+if [ "$STATUS" = "discharging" ]; then
+    if [ "$BATTERY" -le "$CRITICAL" ]; then
+        if [ ! -f "$TMPFILE" ] || [ "$(cat $TMPFILE)" != "critical" ]; then
+            send_notification "critical" \
+                "⚠️ BATTERY CRITICAL" \
+                "Only ${BATTERY}% remaining!\nPlug in charger immediately." \
+                "battery-empty" \
+                "$SOUND_CRITICAL" \
+                "$BATTERY"
+            set_power_profile "$PROFILE_CRITICAL"
+            echo "critical" > "$TMPFILE"
+        fi
+    elif [ "$BATTERY" -le "$LOW" ]; then
+        if [ ! -f "$TMPFILE" ] || [ "$(cat $TMPFILE)" != "low" ]; then
+            send_notification "normal" \
+                "🔋 Battery Running Low" \
+                "${BATTERY}% remaining\nConsider plugging in soon." \
+                "battery-low" \
+                "$SOUND_LOW" \
+                "$BATTERY"
+            set_power_profile "$PROFILE_LOW"
+            echo "low" > "$TMPFILE"
+        fi
+    else
+        # ✅ Battery OK, reset state
+        rm -f "$TMPFILE"
+    fi
 else
-  rm -f "$NOTIFICATION_FLAG"
+    # ⚡ Charging/full, reset and restore default
+    rm -f "$TMPFILE"
+    set_power_profile "performance" 2>/dev/null  # Optional: restore performance while charging
 fi
