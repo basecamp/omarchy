@@ -1,7 +1,10 @@
 #!/bin/bash
 
+set -euo pipefail
+
 if [ "$#" -lt 3 ]; then
-  echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
+  echo -e "\e[32mCreate a shortcut for your web app.\n\e[0m"
+
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
   ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
@@ -23,6 +26,65 @@ if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_REF" ]]; then
   exit 1
 fi
 
+declare -A BROWSER_BINARIES=(
+  [Chromium]=chromium
+  [Google Chrome]=google-chrome-stable
+  [Brave]=brave
+  [Microsoft Edge]=microsoft-edge-stable
+  [Vivaldi]=vivaldi
+)
+
+BROWSERS=()
+for name in "${!BROWSER_BINARIES[@]}"; do
+  if command -v "${BROWSER_BINARIES[$name]}" >/dev/null 2>&1; then
+    BROWSERS+=("$name")
+  fi
+done
+
+BROWSER_CHOICE=$(gum choose --header "Which browser?" "${BROWSERS[@]}")
+BROWSER_BIN="${BROWSER_BINARIES[$BROWSER_CHOICE]}"
+
+declare -A BROWSER_CONFIG_DIRS=(
+  [Chromium]="$HOME/.config/chromium"
+  [Google Chrome]="$HOME/.config/google-chrome"
+  [Brave]="$HOME/.config/BraveSoftware/Brave-Browser"
+  [Microsoft Edge]="$HOME/.config/microsoft-edge"
+  [Vivaldi]="$HOME/.config/vivaldi"
+)
+
+ PROFILE_DIR="${BROWSER_CONFIG_DIRS[$BROWSER_CHOICE]:-$HOME/.config/$BROWSER_CHOICE}"
+
+declare -A PROFILE_MAP
+PROFILES=()
+
+if [ -f "$PROFILE_DIR/Local State" ]; then
+  mapfile -t profile_data < <(jq -r '.profile.info_cache | to_entries[] | "\(.key)|\(.value.name)"' \
+    "$PROFILE_DIR/Local State" 2>/dev/null || true)
+  for line in "${profile_data[@]}"; do
+    IFS='|' read -r folder name <<<"$line"
+    PROFILES+=("$name")
+    PROFILE_MAP["$name"]="$folder"
+  done
+elif [ -d "$PROFILE_DIR" ]; then
+  for d in "$PROFILE_DIR"/Profile*; do
+    [[ -d "$d" ]] || continue
+    bn=$(basename "$d")
+    PROFILES+=("$bn")
+    PROFILE_MAP["$bn"]="$bn"
+  done
+fi
+
+if [ ${#PROFILES[@]} -eq 0 ]; then
+  echo "No browser profiles found in '$PROFILE_DIR'. Aborting." >&2
+  exit 1
+fi
+
+if [ ${#PROFILES[@]} -eq 1 ]; then
+  APP_PROFILE_NAME="${PROFILES[0]}"
+else
+  APP_PROFILE_NAME=$(gum choose --header "Select browser profile" "${PROFILES[@]}")
+fi
+
 # Refer to local icon or fetch remotely from URL
 ICON_DIR="$HOME/.local/share/applications/icons"
 if [[ $ICON_REF =~ ^https?:// ]]; then
@@ -41,7 +103,7 @@ fi
 if [[ -n $CUSTOM_EXEC ]]; then
   EXEC_COMMAND="$CUSTOM_EXEC"
 else
-  EXEC_COMMAND="omarchy-launch-webapp $APP_URL"
+  EXEC_COMMAND="omarchy-launch-webapp \"$APP_URL\" \"${PROFILE_MAP[$APP_PROFILE_NAME]}\" \"$BROWSER_BIN\""
 fi
 
 # Create application .desktop file
