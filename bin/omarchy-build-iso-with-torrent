@@ -1,0 +1,117 @@
+#!/bin/bash
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+print_header() {
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}$1${NC}"
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+}
+
+print_error() {
+    echo -e "${RED}✗ $1${NC}"
+}
+
+print_success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+print_info() {
+    echo -e "${YELLOW}→ $1${NC}"
+}
+
+usage() {
+    echo "Usage: $0 <iso-output-path> [build-command...]"
+    echo ""
+    echo "This script wraps your ISO build command and automatically generates a torrent."
+    echo ""
+    echo "Examples:"
+    echo "  $0 omarchy-3.0.1.iso mkarchiso -v -w /tmp/archiso-tmp -o . archiso/"
+    echo "  $0 omarchy-3.0.1.iso ./your-custom-build-script.sh"
+    echo ""
+    echo "If no build command is provided, it assumes the ISO already exists."
+    exit 1
+}
+
+if [ $# -lt 1 ]; then
+    usage
+fi
+
+ISO_PATH="$1"
+ISO_NAME=$(basename "$ISO_PATH")
+shift
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+print_header "Omarchy ISO Build with Torrent Generation"
+
+# If build commands were provided, execute them
+if [ $# -gt 0 ]; then
+    print_info "Running build command: $@"
+    echo ""
+
+    # Execute the build command
+    if "$@"; then
+        print_success "Build command completed successfully"
+    else
+        BUILD_EXIT_CODE=$?
+        print_error "Build command failed with exit code $BUILD_EXIT_CODE"
+        exit $BUILD_EXIT_CODE
+    fi
+    echo ""
+fi
+
+# Check if ISO was created
+if [ ! -f "$ISO_PATH" ]; then
+    print_error "ISO file not found: $ISO_PATH"
+    print_info "Make sure your build command creates the ISO at the specified path"
+    exit 1
+fi
+
+# Display ISO information
+ISO_SIZE=$(ls -lh "$ISO_PATH" | awk '{print $5}')
+print_success "ISO created successfully"
+print_info "Path: $ISO_PATH"
+print_info "Size: $ISO_SIZE"
+echo ""
+
+# Generate torrent
+print_header "Generating Torrent"
+
+if [ -x "$SCRIPT_DIR/omarchy-generate-torrent" ]; then
+    if "$SCRIPT_DIR/omarchy-generate-torrent" "$ISO_PATH"; then
+        print_success "Torrent generation completed"
+
+        # Get torrent path
+        REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+        TORRENT_PATH="$REPO_ROOT/torrents/${ISO_NAME}.torrent"
+
+        if [ -f "$TORRENT_PATH" ]; then
+            echo ""
+            print_header "Build Summary"
+            print_success "ISO: $ISO_PATH (${ISO_SIZE})"
+            print_success "Torrent: $TORRENT_PATH"
+            echo ""
+            print_info "Next steps:"
+            echo "  1. Test the ISO to ensure it works correctly"
+            echo "  2. Upload ISO to: https://iso.omarchy.org/$ISO_NAME"
+            echo "  3. Commit the torrent: git add $TORRENT_PATH && git commit"
+            echo "  4. Create a release tag: git tag -a v${ISO_NAME%.iso} -m 'Release ${ISO_NAME%.iso}'"
+            echo ""
+        fi
+    else
+        print_error "Torrent generation failed"
+        exit 1
+    fi
+else
+    print_error "omarchy-generate-torrent script not found or not executable"
+    print_info "Expected location: $SCRIPT_DIR/omarchy-generate-torrent"
+    exit 1
+fi

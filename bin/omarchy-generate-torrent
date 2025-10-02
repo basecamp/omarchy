@@ -1,0 +1,60 @@
+#!/bin/bash
+
+set -e
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <iso-file>"
+    echo "Example: $0 omarchy-3.0.1.iso"
+    exit 1
+fi
+
+ISO_FILE="$1"
+ISO_NAME=$(basename "$ISO_FILE")
+
+if [ ! -f "$ISO_FILE" ]; then
+    echo "Error: ISO file '$ISO_FILE' not found"
+    exit 1
+fi
+
+if ! command -v mktorrent &> /dev/null; then
+    echo "Error: mktorrent is not installed. Please install it first."
+    echo "Run: sudo pacman -S mktorrent"
+    exit 1
+fi
+
+# Find the repository root (where .git is located)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TORRENT_DIR="$REPO_ROOT/torrents"
+
+# Create torrents directory if it doesn't exist
+mkdir -p "$TORRENT_DIR"
+
+TORRENT_FILE="$TORRENT_DIR/${ISO_NAME}.torrent"
+
+echo "Generating torrent for: $ISO_NAME"
+echo "Output: $TORRENT_FILE"
+
+mktorrent -v -l 21 \
+    -w "https://iso.omarchy.org/$ISO_NAME" \
+    -a "udp://tracker.openbittorrent.com:6969/announce" \
+    -a "udp://tracker.opentrackr.org:1337/announce" \
+    -o "$TORRENT_FILE" \
+    "$ISO_FILE"
+
+if [ $? -eq 0 ]; then
+    echo "✓ Torrent successfully created: $TORRENT_FILE"
+    ls -lh "$TORRENT_FILE"
+    echo ""
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "NEXT STEPS:"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "1. Add torrent to git: git add $TORRENT_FILE"
+    echo "2. Commit the torrent file to the repository"
+    echo "3. Ensure the ISO is available at: https://iso.omarchy.org/$ISO_NAME"
+    echo "4. Optionally mirror torrent at: https://torrent.omarchy.org/$ISO_NAME.torrent"
+    echo "═══════════════════════════════════════════════════════════════"
+else
+    echo "✗ Failed to create torrent"
+    exit 1
+fi
