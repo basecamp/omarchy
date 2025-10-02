@@ -21,17 +21,21 @@ else
   export TERM_HEIGHT=24
 fi
 
-export LOGO_PATH="$OMARCHY_PATH/logo.txt"
-export LOGO_WIDTH=$(awk '{ if (length > max) max = length } END { print max+0 }' "$LOGO_PATH" 2>/dev/null || echo 0)
-export LOGO_HEIGHT=$(wc -l <"$LOGO_PATH" 2>/dev/null || echo 0)
 # Detect if we're on a system that needs simple ASCII (ARM, Asahi, or VM)
-if [[ -n "$OMARCHY_ARM" ]] || uname -r | grep -qi "asahi" || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
+if [[ -n $OMARCHY_ARM ]] || uname -r | grep -qi "asahi" || [[ -n $OMARCHY_VIRTUALIZATION ]]; then
   export USE_SIMPLE_ASCII=true
+  export LOGO_PATH="$OMARCHY_PATH/logo-ascii.txt"
 else
   export USE_SIMPLE_ASCII=false
+  export LOGO_PATH="$OMARCHY_PATH/logo.txt"
 fi
 
+export LOGO_WIDTH=$(wc -L < "$LOGO_PATH" 2>/dev/null || echo 0)
+export LOGO_HEIGHT=$(wc -l < "$LOGO_PATH" 2>/dev/null || echo 0)
 export PADDING_LEFT=$(((TERM_WIDTH - LOGO_WIDTH) / 2))
+if (( LOGO_WIDTH == 0 )); then
+  PADDING_LEFT=0
+fi
 export PADDING_LEFT_SPACES=$(printf "%*s" $PADDING_LEFT "")
 
 # Tokyo Night theme for gum confirm
