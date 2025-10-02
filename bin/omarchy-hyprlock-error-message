@@ -1,0 +1,72 @@
+#!/bin/bash
+
+USERNAME="$(whoami)"
+
+# Check if the user exists
+if ! id "$USERNAME" >/dev/null 2>&1; then
+  echo "User $USERNAME does not exist" >&1
+  exit 1
+fi
+
+# Get configuration from faillock.conf
+CONFIG_FILE="/etc/security/faillock.conf"
+
+# Get max attempts (default to 3 if not found)
+MAX_ATTEMPTS=$(grep -E "^\s*deny\s*=\s*[0-9]+" "$CONFIG_FILE" | awk '{print $3}' || echo 3)
+if [ -z "$MAX_ATTEMPTS" ]; then
+  MAX_ATTEMPTS=3
+fi
+
+# Get unlock_time (default to 600 seconds if not found)
+UNLOCK_TIME=$(grep -E "^\s*unlock_time\s*=\s*[0-9]+" "$CONFIG_FILE" | awk '{print $3}' || echo 600)
+if [ -z "$UNLOCK_TIME" ]; then
+  UNLOCK_TIME=600
+fi
+
+# Get current failed attempts count
+FAILED_ATTEMPTS=$(faillock --user "$USERNAME" | grep -E "[0-9]{4}-[0-9]{2}-[0-9]{2}" | wc -l)
+
+if [ -z "$FAILED_ATTEMPTS" ]; then
+  echo "<span> </span>"
+  exit 0
+fi
+
+# Check if max attempts reached
+if [ "$FAILED_ATTEMPTS" -ge "$MAX_ATTEMPTS" ]; then
+  # Get the last failure timestamp from faillock
+  LAST_FAIL=$(faillock --user "$USERNAME" | grep -E "[0-9]{4}-[0-9]{2}-[0-9]{2}" | tail -1 | awk '{print $1 " " $2}')
+
+  if [ -z "$LAST_FAIL" ]; then
+    echo "User $USERNAME is locked but no failure timestamp found."
+    exit 1
+  fi
+
+  # Convert last failure timestamp to epoch
+  LAST_FAIL_EPOCH=$(date -d "$LAST_FAIL" +%s 2>/dev/null)
+  if [ $? -ne 0 ]; then
+    echo "Error: Could not parse last failure timestamp" >&1
+    exit 1
+  fi
+
+  # Calculate unlock time (last failure + unlock_time)
+  CURRENT_EPOCH=$(date +%s)
+  UNLOCK_EPOCH=$((LAST_FAIL_EPOCH + UNLOCK_TIME))
+
+  # Calculate remaining time in seconds
+  REMAINING=$((UNLOCK_EPOCH - CURRENT_EPOCH))
+
+  if [ $REMAINING -le 0 ]; then
+    echo "<span> </span>"
+    exit 0
+  fi
+
+  # Convert remaining time to human-readable format
+  MINUTES=$((REMAINING / 60))
+  SECONDS=$((REMAINING % 60))
+
+  echo "Account Locked. Time remaining: $MINUTES minutes and $SECONDS seconds."
+  exit 0
+else
+  echo "<span> </span>"
+  exit 0
+fi
