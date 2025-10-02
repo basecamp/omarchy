@@ -1,13 +1,18 @@
 #!/bin/bash
 
 # Designed to be run by systemd timer every 30 seconds and alerts if battery is low
+# Uses warning and critical thresholds as defined in the waybar battery module config
 
-BATTERY_THRESHOLD=10
+NOTIFICATION_TIMEOUT=30000
+
+WARNING_THRESHOLD=$(jq -r '.battery.states.warning // 20' ~/.config/waybar/config.jsonc) || WARNING_THRESHOLD=20
+CRITICAL_THRESHOLD=$(jq -r '.battery.states.critical // 10' ~/.config/waybar/config.jsonc) || CRITICAL_THRESHOLD=10
+
 NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
 
 get_battery_percentage() {
-  upower -i "$(upower -e | grep 'BAT')" \
-  | awk -F: '/percentage/ {
+  upower -i "$(upower -e | grep 'BAT')" |
+    awk -F: '/percentage/ {
       gsub(/[%[:space:]]/, "", $2);
       val=$2;
       printf("%d\n", (val+0.5))
@@ -20,17 +25,32 @@ get_battery_state() {
 }
 
 send_notification() {
-  notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
+  if [[ "$1" == "critical" ]]; then
+    notify-send -u critical "󱐋 Caution!" "Battery level is critical (${2}%)" \
+      -i battery-caution -t $NOTIFICATION_TIMEOUT
+  else
+    notify-send -u normal "󱐋 Warning!" "Battery level is getting low (${2}%)" \
+      -i battery-caution -t $NOTIFICATION_TIMEOUT
+  fi
+}
+
+run() {
+  THRESHOLD_NAME=$1
+  THRESHOLD_LEVEL=$2
+  FLAG="${NOTIFICATION_FLAG}_${THRESHOLD_NAME}"
+
+  if [[ "$BATTERY_STATE" == "discharging" && "$BATTERY_LEVEL" -le "$THRESHOLD_LEVEL" ]]; then
+    if [[ ! -f "$FLAG" ]]; then
+      send_notification "$THRESHOLD_NAME" "$BATTERY_LEVEL"
+      touch "$FLAG"
+    fi
+  else
+    rm -f "$FLAG"
+  fi
 }
 
 BATTERY_LEVEL=$(get_battery_percentage)
 BATTERY_STATE=$(get_battery_state)
 
-if [[ "$BATTERY_STATE" == "discharging" && "$BATTERY_LEVEL" -le "$BATTERY_THRESHOLD" ]]; then
-  if [[ ! -f "$NOTIFICATION_FLAG" ]]; then
-    send_notification "$BATTERY_LEVEL"
-    touch "$NOTIFICATION_FLAG"
-  fi
-else
-  rm -f "$NOTIFICATION_FLAG"
-fi
+run warning $WARNING_THRESHOLD
+run critical $CRITICAL_THRESHOLD
