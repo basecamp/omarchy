@@ -72,3 +72,11 @@ tooltip {
 #custom-screenrecording-indicator.active {
   color: #a55555;
 }
+
+#battery.warning {
+  color: orange;
+}
+
+#battery.critical {
+  color: red;
+}
