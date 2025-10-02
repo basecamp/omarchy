@@ -16,7 +16,7 @@ if omarchy-cmd-present code && [[ ! -f "$VS_CODE_SKIP_FLAG" ]]; then
     fi
 
     # Update theme in settings.json
-    jq -n --arg t "$theme_name" '(input? // {}) | .["workbench.colorTheme"] = $t' "$VS_CODE_SETTINGS" >"${VS_CODE_SETTINGS}.new"
+    cat VS_CODE_SETTINGS | jq --arg t "$theme_name" '.["workbench.colorTheme"] = $t' "$VS_CODE_SETTINGS" >"${VS_CODE_SETTINGS}.new"
   else
     # Remove theme from settings.json when the theme doesn't have vscode support
     jq 'del(.["workbench.colorTheme"])' "$VS_CODE_SETTINGS" >"${VS_CODE_SETTINGS}.new"
