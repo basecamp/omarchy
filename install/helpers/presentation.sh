@@ -30,10 +30,12 @@ else
   export LOGO_PATH="$OMARCHY_PATH/logo.txt"
 fi
 
-export LOGO_WIDTH=$(awk '{ if (length > max) max = length } END { print max+0 }' "$LOGO_PATH" 2>/dev/null || echo 0)
-export LOGO_HEIGHT=$(wc -l <"$LOGO_PATH" 2>/dev/null || echo 0)
-
+export LOGO_WIDTH=$(wc -L < "$LOGO_PATH" 2>/dev/null || echo 0)
+export LOGO_HEIGHT=$(wc -l < "$LOGO_PATH" 2>/dev/null || echo 0)
 export PADDING_LEFT=$((($TERM_WIDTH - $LOGO_WIDTH) / 2))
+if [ "$LOGO_WIDTH" -eq 0 ]; then
+  PADDING_LEFT=0
+fi
 export PADDING_LEFT_SPACES=$(printf "%*s" $PADDING_LEFT "")
 
 # Tokyo Night theme for gum confirm

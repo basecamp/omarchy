@@ -1,9 +1,14 @@
 stop_install_log
 
+# Use existing width calculations from presentation.sh
+# (TERM_WIDTH, PADDING_LEFT, and PADDING_LEFT_SPACES are already set)
+
 echo_in_style() {
   if [ -n "$ASAHI_ALARM" ] || [ -n "$OMARCHY_VIRTUALIZATION" ]; then
-    local term_width=$(tput cols || echo 80)
-    echo "$1" | gum style --foreground 48 --bold --align center --width "$term_width"
+    # Calculate manual centering. Can't get --center to work on VM and Asahi consistently
+    local text_length=${#1}
+    local padding=$(( (TERM_WIDTH - text_length) / 2 ))
+    gum style --foreground 48 --bold --padding "0 0 0 $(($padding + 1))" "$1"
   else
     echo "$1" | tte --canvas-width 0 --anchor-text c --frame-rate 640 print
   fi
@@ -14,12 +19,6 @@ echo
 
 # Asahi and VMs can't handle tte terminal effects, use gum styled text instead
 if [ -n "$ASAHI_ALARM" ] || [ -n "$OMARCHY_VIRTUALIZATION" ]; then
-  # Get terminal width for centering
-  TERM_WIDTH=$(tput cols || echo 80)
-  LOGO_WIDTH=$(awk '{ if (length > max) max = length } END { print max+0 }' "$OMARCHY_PATH/logo-ascii.txt" 2>/dev/null || echo 0)
-  PADDING_LEFT=$((($TERM_WIDTH - $LOGO_WIDTH) / 2))
-  PADDING_LEFT_SPACES=$(printf "%*s" $PADDING_LEFT "")
-
   # Gradient colors from top to bottom
   colors=("#F9F9FA" "#D4EEFA" "#98E5FA" "#5CDBFA" "#3ED6F9" "#01CCF9" "#1F99DA" "#3080CC" "#534DB1" "#761B96")
 
@@ -43,8 +42,8 @@ if [ -n "$ASAHI_ALARM" ] || [ -n "$OMARCHY_VIRTUALIZATION" ]; then
       *) color_idx=9 ;;  # Line 11+: #761B96
     esac
 
-    # Center each line and apply color (avoid piping to preserve whitespace)
-    gum style --foreground "${colors[$color_idx]}" --bold "$PADDING_LEFT_SPACES$line"
+    # Center each line and apply color using gum's padding option
+    gum style --foreground "${colors[$color_idx]}" --bold --padding "0 0 0 $PADDING_LEFT" "$line"
     line_num=$((line_num + 1))
   done < "$OMARCHY_PATH/logo-ascii.txt"
 
@@ -62,6 +61,7 @@ if [[ -f $OMARCHY_INSTALL_LOG_FILE ]] && grep -q "Total:" "$OMARCHY_INSTALL_LOG_
     echo_in_style "Installed in $TOTAL_TIME"
   fi
 else
+  echo
   echo_in_style "Finished installing"
 fi
 
