@@ -1,5 +1,5 @@
 #!/bin/bash
 
 echo "Now pick dependencies matching your graphics card"
-sudo pacman -Syu --noconfirm steam
+sudo pacman -Syu --noconfirm --needed steam
 setsid gtk-launch steam >/dev/null 2>&1 &
