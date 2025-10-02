@@ -25,6 +25,11 @@ fi
 if command -v systemd-detect-virt &>/dev/null; then
   virt_type=$(systemd-detect-virt || echo "none")
 
+  # Set universal virtualization flag for any VM
+  if [[ "$virt_type" != "none" ]]; then
+    export OMARCHY_VIRTUALIZATION=true
+  fi
+
   # Detect VMware specifically
   if [[ "$virt_type" == "vmware" ]]; then
     export OMARCHY_VMWARE=true

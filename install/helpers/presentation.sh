@@ -21,8 +21,8 @@ else
   export TERM_HEIGHT=24
 fi
 
-# Detect if we're on a raw TTY that needs simple ASCII (Asahi bootstrap on /dev/tty1)
-if uname -r | grep -qi "asahi"; then
+# Detect if we're on a system that needs simple ASCII (Asahi or VM)
+if uname -r | grep -qi "asahi" || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
   export USE_SIMPLE_ASCII=true
   export LOGO_PATH="$OMARCHY_PATH/logo-ascii.txt"
 else

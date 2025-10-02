@@ -29,9 +29,9 @@ start_log_output() {
         fi
 
         # Add clear line escape and formatted output for each line
-        # Use simple ASCII arrow on Asahi, Unicode elsewhere
+        # Use simple ASCII arrow on Asahi and VMs, Unicode elsewhere
         local arrow="→"
-        if [[ "$ASAHI_ALARM" == "true" ]]; then
+        if [[ "$ASAHI_ALARM" == "true" ]] || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
           arrow="->"
         fi
 

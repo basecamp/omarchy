@@ -3,14 +3,24 @@
 # Set install mode to online since boot.sh is used for curl installations
 export OMARCHY_ONLINE_INSTALL=true
 
-# Use simple ASCII on raw TTY for Asahi bootstrap, Unicode elsewhere
-if uname -r | grep -qi "asahi"; then
-  omarchy_art='                 ###
- #######    #############    ########   ########   ########   ##   ##    ##   ##
-###   ###  ###   ###   ###  ###   ###  ###   ###  ###   ###  ###   ###  ###   ###
-###   ###  ###   ###   ###  ###   ###  ###   ###  ###   ##   ###   ###  ###   ###
-###   ###  ###   ###   ###  ###   ###  ###   ###  ###        ###   #### ###   ###
-###   ###  ###   ###   ### ########## ########    ###      ###########  #########
+# Detect virtualization
+if command -v systemd-detect-virt &>/dev/null; then
+  virt_type=$(systemd-detect-virt || echo "none")
+
+  # Set universal virtualization flag for any VM
+  if [[ "$virt_type" != "none" ]]; then
+    export OMARCHY_VIRTUALIZATION=true
+  fi
+fi
+
+# Use simple ASCII on Asahi and VMs, Unicode elsewhere
+if uname -r | grep -qi "asahi" || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
+  omarchy_art='                 ***
+ *#####*    *###########*    *#######   *#######   *#######   *#   #*    *#   #*
+*##   ##*  *##   ###   ##*  *##   ###  *##   ###  *##   ***  *##   ##*  *##   ##*
+###   ###  ###   ###   ###  ###   ###  ###   ###  ###   **   ###   ###  ###   ###
+###   ###  ###   ###   ###  ###   ###  ###   ###  ###       *###   ###* ###   ###
+###   ###  ###   ###   ### ########## ########    ###      *##########  #########
 ###   ###  ###   ###   ###  ###   ###  ####       ###        ###   ###        ###
 ###   ###  ###   ###   ###  ###   ### ##########  ###   ##   ###   ###   ##   ###
 ###   ###  ###   ###   ###  ###   ###  ###   ###  ###   ###  ###   ###  ###   ###

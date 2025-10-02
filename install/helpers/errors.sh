@@ -131,7 +131,7 @@ catch_errors() {
   gum style "This command halted with exit code $exit_code:"
   show_failed_script_or_command
 
-  if [[ -n $ASAHI_ALARM ]]; then
+  if [[ -n $ASAHI_ALARM ]] || [[ -n $OMARCHY_VIRTUALIZATION ]]; then
     gum style "$ASCII_QR_CODE"
   else
     gum style "$QR_CODE"
@@ -158,9 +158,9 @@ catch_errors() {
     options+=("View full log")
     options+=("Exit")
 
-    # Hide help text on Asahi (raw TTY can't render it properly)
+    # Hide help text on Asahi and VMs (raw TTY can't render it properly)
     local show_help=""
-    if [[ -n $ASAHI_ALARM ]]; then
+    if [[ -n $ASAHI_ALARM ]] || [[ -n $OMARCHY_VIRTUALIZATION ]]; then
       show_help="--show-help=false"
     fi
 
