@@ -26,6 +26,7 @@ alias ....='cd ../../..'
 # Tools
 alias d='docker'
 alias r='rails'
+alias caffeinate="systemd-inhibit sleep infinity"
 n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
 
 # Git
