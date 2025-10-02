@@ -18,3 +18,10 @@ if command -v fzf &> /dev/null; then
     source /usr/share/fzf/key-bindings.bash
   fi
 fi
+
+# Performance tuning: Fix for Arch Linux systemd user session file descriptor limit inheritance bug
+# Arch Linux systemd user sessions don't properly inherit global ulimit settings
+# This shell-level workaround ensures file descriptor limits are set correctly
+if [[ $(ulimit -n) -lt 65536 ]] 2>/dev/null; then
+  ulimit -n 65536 2>/dev/null || true
+fi
