@@ -1,0 +1,94 @@
+#!/bin/bash
+
+set -euo pipefail
+
+CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
+
+THEME_PATH="$(readlink -f "$CURRENT_THEME_DIR" 2>/dev/null || true)"
+
+if [[ -z "$THEME_PATH" || ! -d "$THEME_PATH" ]]; then
+  exit 0
+fi
+
+MC_SKIN_SOURCE="$THEME_PATH/mc.ini"
+
+if [[ ! -f "$MC_SKIN_SOURCE" ]]; then
+  exit 0
+fi
+
+THEME_NAME="$(basename "$THEME_PATH")"
+SKIN_NAME="omarchy-$THEME_NAME"
+
+SKIN_DIR="$HOME/.local/share/mc/skins"
+SKIN_TARGET="$SKIN_DIR/$SKIN_NAME.ini"
+
+mkdir -p "$SKIN_DIR"
+ln -snf "$MC_SKIN_SOURCE" "$SKIN_TARGET"
+
+MC_CONFIG_DIR="$HOME/.config/mc"
+MC_CONFIG_FILE="$MC_CONFIG_DIR/ini"
+
+mkdir -p "$MC_CONFIG_DIR"
+
+if [[ ! -f "$MC_CONFIG_FILE" ]]; then
+  printf "[Midnight-Commander]\nskin=%s\n" "$SKIN_NAME" >"$MC_CONFIG_FILE"
+  exit 0
+fi
+
+tmp_config="$(mktemp)"
+trap 'rm -f "$tmp_config"' EXIT
+
+awk -v skin="$SKIN_NAME" '
+function flush_skin() {
+  if (section == "Midnight-Commander" && !skin_written) {
+    print "skin=" skin
+    skin_written = 1
+  }
+}
+
+BEGIN {
+  section = ""
+  section_found = 0
+  skin_written = 0
+}
+
+/^[[:space:]]*\[/ {
+  flush_skin()
+
+  if ($0 ~ /^[[:space:]]*\[Midnight-Commander\][[:space:]]*$/) {
+    section = "Midnight-Commander"
+    section_found = 1
+  } else {
+    section = ""
+  }
+
+  print
+  next
+}
+
+section == "Midnight-Commander" && /^[[:space:]]*skin[[:space:]]*=/ {
+  if (!skin_written) {
+    print "skin=" skin
+    skin_written = 1
+  }
+  next
+}
+
+{ print }
+
+END {
+  flush_skin()
+
+  if (!section_found) {
+    if (NR > 0) {
+      print ""
+    }
+    print "[Midnight-Commander]"
+    print "skin=" skin
+  }
+}
+' "$MC_CONFIG_FILE" >"$tmp_config"
+
+mv "$tmp_config" "$MC_CONFIG_FILE"
+trap - EXIT
+
