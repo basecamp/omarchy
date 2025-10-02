@@ -27,6 +27,7 @@ linux
 linux-firmware
 linux-headers
 macbook12-spi-driver-dkms
+netctl
 nvidia-dkms
 nvidia-open-dkms
 nvidia-utils
