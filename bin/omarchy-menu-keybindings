@@ -11,8 +11,8 @@
 # - Map numeric modifier key mask to a textual rendition
 # - Output comma-separated values that the parser can understand
 dynamic_bindings() {
-  hyprctl -j binds | \
-    jq -r '.[] | {modmask, key, keycode, description, dispatcher, arg} | "\(.modmask),\(.key)@\(.keycode),\(.description),\(.dispatcher),\(.arg)"' | \
+  hyprctl -j binds |
+    jq -r '.[] | {modmask, key, keycode, description, dispatcher, arg} | "\(.modmask),\(.key)@\(.keycode),\(.description),\(.dispatcher),\(.arg)"' |
     sed -r \
         -e 's/null//' \
         -e 's,~/.local/share/omarchy/bin/,,' \
@@ -89,5 +89,5 @@ menu_height=$((monitor_height * 40 / 100))
 dynamic_bindings | \
   sort -u | \
   parse_bindings | \
-  walker --dmenu --theme keybindings -p 'Keybindings' -w 800 -h "$menu_height"
+  walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
 
