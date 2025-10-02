@@ -60,7 +60,14 @@ show_cursor() {
 # Display truncated log lines from the install log
 show_log_tail() {
   if [[ -f $OMARCHY_INSTALL_LOG_FILE ]]; then
-    local log_lines=$(($TERM_HEIGHT - $LOGO_HEIGHT - 35))
+    # On ARM/Asahi/VMs, QR code isn't shown immediately (only as menu option)
+    # so we have ~13 more lines available for log output
+    local reserved_lines=35
+    if [[ -n $OMARCHY_ARM ]] || [[ -n $ASAHI_ALARM ]] || [[ -n $OMARCHY_VIRTUALIZATION ]]; then
+      reserved_lines=22
+    fi
+
+    local log_lines=$(($TERM_HEIGHT - $LOGO_HEIGHT - $reserved_lines))
     # Ensure we show at least 5 lines even if calculation goes wrong
     [[ $log_lines -lt 5 ]] && log_lines=5
 
@@ -151,6 +158,10 @@ catch_errors() {
     # If online install, show retry first
     if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
       options+=("Retry installation")
+    # Add QR code option for ARM/Asahi/VMs where screen space is limited
+    # because the QR code is rendered with ASCII art instead of Unicode
+    if [[ -n $OMARCHY_ARM ]] || [[ -n $ASAHI_ALARM ]] || [[ -n $OMARCHY_VIRTUALIZATION ]]; then
+      options+=("Show QR code for Discord support")
     fi
 
     # Add upload option if internet is available
@@ -182,6 +193,11 @@ catch_errors() {
         OMARCHY_RETRY_INSTALL=true \
         bash ~/.local/share/omarchy/install.sh
       break
+      ;;
+    "Show QR code for Discord support")
+      gum style "$ASCII_QR_CODE"
+      echo
+      gum style "Scan QR code or visit: https://discord.gg/tXFUdasqhY"
       ;;
     "View full log")
       if command -v less &>/dev/null; then

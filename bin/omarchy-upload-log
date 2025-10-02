@@ -6,6 +6,14 @@ LOG_TYPE="${1:-install}"
 TEMP_LOG="/tmp/upload-log.txt"
 SYSTEM_INFO="/tmp/system-info.txt"
 
+# Set Unicode symbols based on architecture
+arch=$(uname -m)
+if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
+  CHECKMARK=""
+else
+  CHECKMARK="✓ "
+fi
+
 # Get system information if fastfetch is available
 if command -v fastfetch >/dev/null 2>&1; then
   {
