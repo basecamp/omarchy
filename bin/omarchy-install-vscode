@@ -1,0 +1,7 @@
+#!/bin/bash
+
+echo "Installing VSCode..."
+sudo pacman -S --noconfirm visual-studio-code-bin
+printf '{\n  "update.mode": "none"\n}\n' > ~/.config/Code/User/settings.json
+
+setsid gtk-launch code
