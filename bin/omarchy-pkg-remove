@@ -13,9 +13,22 @@ fzf_args=(
 )
 
 pkg_names=$(yay -Qqe | fzf "${fzf_args[@]}")
+TERMINALS=("alacritty" "kitty" "ghostty")
 
 if [[ -n "$pkg_names" ]]; then
   # Convert newline-separated selections to space-separated for yay
   echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -Rns --noconfirm
+
+  # Check if removed package is one of the terminals
+    if [[ " ${TERMINALS[@]} " =~ " $pkg_names " ]]; then
+      for item in "${TERMINALS[@]}"; do
+        if pacman -Qs "$item" >/dev/null; then
+          sed -i "/export TERMINAL=/c\export TERMINAL=$item" ~/.config/uwsm/default
+          gum confirm "Relaunch Hyprland to use new terminal?" && uwsm stop
+          break
+        fi
+      done
+    fi
+
   omarchy-show-done
 fi
