@@ -3,6 +3,9 @@
 # Set install mode to online since boot.sh is used for curl installations
 export OMARCHY_ONLINE_INSTALL=true
 
+OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}" # custom repo with default fallback
+OMARCHY_REF="${OMARCHY_REF:-master}" # custom branch/ref with default fallback
+
 # Detect virtualization
 if command -v systemd-detect-virt &>/dev/null; then
   virt_type=$(systemd-detect-virt || echo "none")
@@ -13,30 +16,18 @@ if command -v systemd-detect-virt &>/dev/null; then
   fi
 fi
 
+omarchy_art="Omarchy"
 # Use simple ASCII on Asahi and VMs, Unicode elsewhere
 if uname -r | grep -qi "asahi" || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
-  omarchy_art='                 ***
- *#####*    *###########*    *#######   *#######   *#######   *#   #*    *#   #*
-*##   ##*  *##   ###   ##*  *##   ###  *##   ###  *##   ***  *##   ##*  *##   ##*
-###   ###  ###   ###   ###  ###   ###  ###   ###  ###   **   ###   ###  ###   ###
-###   ###  ###   ###   ###  ###   ###  ###   ###  ###       *###   ###* ###   ###
-###   ###  ###   ###   ### ########## ########    ###      *##########  #########
-###   ###  ###   ###   ###  ###   ###  ####       ###        ###   ###        ###
-###   ###  ###   ###   ###  ###   ### ##########  ###   ##   ###   ###   ##   ###
-###   ###  ###   ###   ###  ###   ###  ###   ###  ###   ###  ###   ###  ###   ###
- #######    ##   ###   ##   ###   ##   ###   ###  ########   ###   ##    ######
-                                       ###   ##                                  '
+  curl -fsSL "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/logo-ascii.txt" -o /tmp/omarchy-logo-ascii.txt 2>/dev/null
+  if [ -f /tmp/omarchy-logo-ascii.txt ]; then
+    omarchy_art="$(cat /tmp/omarchy-logo-ascii.txt)"
+  fi
 else
-  omarchy_art='                 ▄▄▄
- ▄█████▄    ▄███████████▄    ▄███████   ▄███████   ▄███████   ▄█   █▄    ▄█   █▄
-███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███
-███   ███  ███   ███   ███  ███   ███  ███   ███  ███   █▀   ███   ███  ███   ███
-███   ███  ███   ███   ███ ▄███▄▄▄███ ▄███▄▄▄██▀  ███       ▄███▄▄▄███▄ ███▄▄▄███
-███   ███  ███   ███   ███ ▀███▀▀▀███ ▀███▀▀▀▀    ███      ▀▀███▀▀▀███  ▀▀▀▀▀▀███
-███   ███  ███   ███   ███  ███   ███ ██████████  ███   █▄   ███   ███  ▄██   ███
-███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███
- ▀█████▀    ▀█   ███   █▀   ███   █▀   ███   ███  ███████▀   ███   █▀    ▀█████▀ 
-                                       ███   █▀                                  '
+  curl -fsSL "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/logo.txt" -o /tmp/omarchy-logo.txt 2>/dev/null
+  if [ -f /tmp/omarchy-logo.txt ]; then
+    omarchy_art="$(cat /tmp/omarchy-logo.txt)"
+  fi
 fi
 
 clear
@@ -52,9 +43,6 @@ if ! command -v git &>/dev/null; then
   echo "Git installed successfully"
   echo
 fi
-
-OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}" # custom repo with default fallback
-OMARCHY_REF="${OMARCHY_REF:-master}" # custom branch/ref with default fallback
 
 if [[ $EUID -eq 0 ]]; then
   echo "------------------------------------------------------"
