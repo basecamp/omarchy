@@ -1,8 +1,8 @@
 #!/bin/bash
-#!/bin/bash
-# ⚙️ Thresholds
-LOW=30
-CRITICAL=10
+
+# ⚙️ Thresholds (can be passed as arguments from waybar)
+LOW=${1:-30}
+CRITICAL=${2:-10}
 
 # 🔋 Battery info using upower
 get_battery_percentage() {
@@ -27,8 +27,8 @@ POWER_TOOL="powerprofilesctl"
 PROFILE_LOW="balanced"
 PROFILE_CRITICAL="power-saver"
 
-# 📁 Temp file to avoid repeat notifications
-TMPFILE="/tmp/battery_warn.tmp"
+# 📁 User-specific runtime directory for state file
+NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
 
 # 🔈 Sound files
 SOUND_CRITICAL="/usr/share/sounds/freedesktop/stereo/complete.oga"
@@ -78,7 +78,7 @@ send_notification() {
 # 🔌 Main logic
 if [ "$STATUS" = "discharging" ]; then
     if [ "$BATTERY" -le "$CRITICAL" ]; then
-        if [ ! -f "$TMPFILE" ] || [ "$(cat $TMPFILE)" != "critical" ]; then
+        if [ ! -f "$NOTIFICATION_FLAG" ] || [ "$(cat $NOTIFICATION_FLAG)" != "critical" ]; then
             send_notification "critical" \
                 "⚠️ BATTERY CRITICAL" \
                 "Only ${BATTERY}% remaining!\nPlug in charger immediately." \
@@ -86,10 +86,10 @@ if [ "$STATUS" = "discharging" ]; then
                 "$SOUND_CRITICAL" \
                 "$BATTERY"
             set_power_profile "$PROFILE_CRITICAL"
-            echo "critical" > "$TMPFILE"
+            echo "critical" > "$NOTIFICATION_FLAG"
         fi
     elif [ "$BATTERY" -le "$LOW" ]; then
-        if [ ! -f "$TMPFILE" ] || [ "$(cat $TMPFILE)" != "low" ]; then
+        if [ ! -f "$NOTIFICATION_FLAG" ] || [ "$(cat $NOTIFICATION_FLAG)" != "low" ]; then
             send_notification "normal" \
                 "🔋 Battery Running Low" \
                 "${BATTERY}% remaining\nConsider plugging in soon." \
@@ -97,14 +97,14 @@ if [ "$STATUS" = "discharging" ]; then
                 "$SOUND_LOW" \
                 "$BATTERY"
             set_power_profile "$PROFILE_LOW"
-            echo "low" > "$TMPFILE"
+            echo "low" > "$NOTIFICATION_FLAG"
         fi
     else
         # ✅ Battery OK, reset state
-        rm -f "$TMPFILE"
+        rm -f "$NOTIFICATION_FLAG"
     fi
 else
     # ⚡ Charging/full, reset and restore default
-    rm -f "$TMPFILE"
+    rm -f "$NOTIFICATION_FLAG"
     set_power_profile "performance" 2>/dev/null  # Optional: restore performance while charging
 fi
