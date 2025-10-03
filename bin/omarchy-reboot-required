@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Get reboot state file
+if [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
+  echo "Omarchy needs to reboot"
+  exit 0
+else
+  echo "No reboot required"
+  exit 1
+fi

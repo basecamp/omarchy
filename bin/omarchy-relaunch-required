@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# Get reboot state file, no need to relaunch if we restart
+if [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
+  echo "Omarchy needs to reboot"
+  exit 1
+fi
+
+# Get relaunch state file
+if [ -f "$HOME/.local/state/omarchy/relaunch-required" ]; then
+  echo "Hyprland needs a relaunch"
+  exit 0
+else
+  echo "No relaunch required"
+  exit 1
+fi
