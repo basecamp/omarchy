@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 # ⚙️ Thresholds (can be passed as arguments from waybar)
 LOW=${1:-30}
 CRITICAL=${2:-10}
