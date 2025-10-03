@@ -29,6 +29,7 @@ omarchy-restart-swayosd
 hyprctl reload
 pkill -SIGUSR2 btop
 makoctl reload
+pkill -SIGUSR1 nvim
 
 # Change gnome, browser, vscode themes
 omarchy-theme-set-terminal
