@@ -36,3 +36,14 @@ omarchy-theme-set-gnome
 omarchy-theme-set-eza
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
+
+# Reload tmux theme if running
+if command -v tmux &>/dev/null && tmux list-sessions &>/dev/null 2>&1; then
+  TMUX_CONF="$HOME/.config/tmux/tmux.conf"
+  if [ -f "$TMUX_CONF" ]; then
+    tmux source-file "$TMUX_CONF" &>/dev/null || true
+    tmux list-clients -F '#{client_name}' 2>/dev/null | while IFS= read -r client; do
+      tmux refresh-client -t "$client" &>/dev/null || true
+    done
+  fi
+fi
