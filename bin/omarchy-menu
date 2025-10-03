@@ -288,7 +288,7 @@ show_install_ai_menu() {
 
   case $(menu "Install" "󱚤  Claude Code\n󱚤  Cursor CLI\n󱚤  Gemini [AUR]\n󱚤  OpenAI Codex [AUR]\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
   *Claude*) install "Claude Code" "claude-code" ;;
-  *Cursor*) present_terminal "echo 'Installing Cursor CLI...'; curl -fsSL https://cursor.com/install | bash" ;;
+  *Cursor*) aur_install "Cursor CLI" "cursor-cli" ;;
   *OpenAI*) aur_install "OpenAI Codex" "openai-codex-bin" ;;
   *Gemini*) aur_install "Gemini" "gemini-cli" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
