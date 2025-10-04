@@ -25,6 +25,27 @@ if [[ -n "$font_name" && "$font_name" != "CNCLD" ]]; then
       -v "$font_name" \
       ~/.config/fontconfig/fonts.conf
 
+    # Update Hyprland group tab font in both default and user config
+    if [[ -f ~/.local/share/omarchy/default/hypr/looknfeel.conf ]]; then
+      sed -i "s/font_family = .*/font_family = $font_name/g" ~/.local/share/omarchy/default/hypr/looknfeel.conf
+    fi
+    if [[ -f ~/.config/hypr/looknfeel.conf ]]; then
+      # Check if groupbar section exists in user config
+      if grep -q "groupbar" ~/.config/hypr/looknfeel.conf; then
+        sed -i "s/font_family = .*/font_family = $font_name/g" ~/.config/hypr/looknfeel.conf
+      else
+        # Add groupbar section if it doesn't exist
+        if ! grep -q "group {" ~/.config/hypr/looknfeel.conf; then
+          echo "" >> ~/.config/hypr/looknfeel.conf
+          echo "group {" >> ~/.config/hypr/looknfeel.conf
+          echo "    groupbar {" >> ~/.config/hypr/looknfeel.conf
+          echo "        font_family = $font_name" >> ~/.config/hypr/looknfeel.conf
+          echo "    }" >> ~/.config/hypr/looknfeel.conf
+          echo "}" >> ~/.config/hypr/looknfeel.conf
+        fi
+      fi
+    fi
+
     omarchy-restart-waybar
     omarchy-restart-swayosd
     omarchy-restart-walker
