@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# Note: We cannot use `jq` to update settings.json because it’s JSONC (allows comments),
+# which jq doesn’t support.
+
+CURSOR_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
+CURSOR_SETTINGS="$HOME/.config/Cursor/User/settings.json"
+CURSOR_SKIP_FLAG="$HOME/.local/state/omarchy/toggles/skip-cursor-theme-changes"
+
+if omarchy-cmd-present cursor && [[ ! -f "$CURSOR_SKIP_FLAG" ]]; then
+  if [[ -f "$CURSOR_THEME" ]]; then
+    theme_name=$(jq -r '.name' "$CURSOR_THEME")
+    extension=$(jq -r '.extension' "$CURSOR_THEME")
+
+    # Install Cursor theme extension
+    if [[ -n "$extension" ]] && ! cursor --list-extensions | grep -Fxq "$extension"; then
+      notify-send "   Installing Cursor theme for $theme_name"
+      cursor --install-extension "$extension" >/dev/null
+    fi
+
+    # Create config file if there isn't already one
+    mkdir -p "$(dirname "$CURSOR_SETTINGS")"
+    if [[ ! -f "$CURSOR_SETTINGS" ]]; then
+      printf '{\n}\n' > "$CURSOR_SETTINGS"
+    fi
+
+    # Create a `workbench.colorTheme` entry in settings.
+    if ! grep -q '"workbench.colorTheme"' "$CURSOR_SETTINGS"; then
+      # Insert `"workbench.colorTheme": "",` immediately after the first `{`
+      # Use sed's first-match range (0,/{/) to only replace the first `{`
+      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\
+  "workbench.colorTheme": "",/}' "$CURSOR_SETTINGS"
+    fi
+
+    # Update theme
+    sed -i --follow-symlinks -E \
+      "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
+      "$CURSOR_SETTINGS"
+  else
+    # Remove theme from settings.json when the theme doesn't have cursor support
+    if [[ -f "$CURSOR_SETTINGS" ]]; then
+      sed -i --follow-symlinks -E '/"workbench\.colorTheme"[[:space:]]*:[^,}]*,?/d' "$CURSOR_SETTINGS"
+    fi
+  fi
+fi
