@@ -384,9 +384,10 @@ show_remove_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" " Omarchy\n Branch\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Password\n  Timezone") in
+  case $(menu "Update" " Omarchy\n Branch\n펌  Firmware\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Password\n  Timezone") in
   *Omarchy*) present_terminal omarchy-update ;;
   *Branch*) show_update_branch_menu ;;
+  *Firmware*) present_terminal omarchy-update-firmware ;;
   *Config*) show_update_config_menu ;;
   *Themes*) present_terminal omarchy-theme-update ;;
   *Process*) show_update_process_menu ;;

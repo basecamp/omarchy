@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -e
+
+fwupdmgr refresh
+sudo fwupdmgr update
