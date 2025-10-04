@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+BOLD='\e[1m'
+YELLOW='\e[93m'
+GREEN='\e[92m'
+RESET='\e[0m'
+
+print_info() {
+  echo -ne "${BOLD}${YELLOW}$1${RESET}\n"
+}
+
+print_choice() {
+  echo -ne "${BOLD}${GREEN}>> $1${RESET}\n\n"
+}
+
+install_shell() {
+  shell=$1
+  if ! command -v "$shell" >/dev/null 2>&1; then
+    print_info "$shell not found. Installing..."
+    sudo pacman -S --noconfirm "$shell"
+  fi
+}
+
+shell=$(gum choose --height 5 --header "Choose your usdefault shell" bash fish zsh quit)
+
+case $shell in
+bash)
+  install_shell bash
+  chsh -s "$(command -v bash)"
+  print_choice "Shell choice: bash"
+  printf '%s\n' "If default shell was changed, you will need to logout and log back in for change to take effect."
+  ;;
+fish)
+  install_shell fish
+  chsh -s "$(command -v fish)"
+  print_choice "Shell choice: fish"
+  printf '%s\n' "If default shell was changed, you will need to logout and log back in for change to take effect."
+  ;;
+zsh)
+  install_shell zsh
+  chsh -s "$(command -v zsh)"
+  print_choice "Shell choice: zsh"
+  printf '%s\n' "If default shell was changed, you will need to logout and log back in for change to take effect."
+  ;;
+quit)
+  echo "User has chosen to quit program."
+  exit 1
+  ;;
+*)
+  echo "Invalid choice. Please try again."
+  exit 1
+  ;;
+esac
