@@ -1,10 +1,8 @@
 # Omarchy core package list installed via install/packages.sh
 # This file is also used by the ISO builder when determining needs
+# Packages that don't work on ARM are in omarchy-x86.packages
 
-1password-beta
-1password-cli
 alacritty
-asdcontrol-git
 avahi
 bash-completion
 bat
@@ -60,7 +58,6 @@ libyaml
 libqalculate
 libreoffice
 llvm
-localsend
 luarocks
 mako
 man
@@ -74,12 +71,7 @@ noto-fonts-emoji
 noto-fonts-extra
 nss-mdns
 nvim
-obs-studio
-obsidian
-omarchy-chromium
-omarchy-lazyvim
 pamixer
-pinta
 playerctl
 plocate
 plymouth
@@ -89,12 +81,9 @@ power-profiles-daemon
 python-gobject
 python-poetry-core
 python-terminaltexteffects
-qt5-wayland
 ripgrep
 satty
-signal-desktop
 slurp
-spotify
 starship
 sushi
 swaybg
@@ -103,15 +92,10 @@ system-config-printer
 tldr
 tree-sitter-cli
 ttf-cascadia-mono-nerd
-ttf-ia-writer
 ttf-jetbrains-mono-nerd
-typora
-tzupdate
 ufw
-ufw-docker
 unzip
 uwsm
-walker-bin
 waybar
 wf-recorder
 whois
@@ -120,12 +104,9 @@ wiremix
 wireplumber
 wl-clip-persist
 wl-clipboard
-wl-screenrec
 woff2-font-awesome
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
 xmlstarlet
-xournalpp
 yaru-icon-theme
-yay
 zoxide

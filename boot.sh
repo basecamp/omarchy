@@ -3,37 +3,73 @@
 # Set install mode to online since boot.sh is used for curl installations
 export OMARCHY_ONLINE_INSTALL=true
 
-ansi_art='                 ▄▄▄                                                   
- ▄█████▄    ▄███████████▄    ▄███████   ▄███████   ▄███████   ▄█   █▄    ▄█   █▄ 
-███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███
-███   ███  ███   ███   ███  ███   ███  ███   ███  ███   █▀   ███   ███  ███   ███
-███   ███  ███   ███   ███ ▄███▄▄▄███ ▄███▄▄▄██▀  ███       ▄███▄▄▄███▄ ███▄▄▄███
-███   ███  ███   ███   ███ ▀███▀▀▀███ ▀███▀▀▀▀    ███      ▀▀███▀▀▀███  ▀▀▀▀▀▀███
-███   ███  ███   ███   ███  ███   ███ ██████████  ███   █▄   ███   ███  ▄██   ███
-███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███
- ▀█████▀    ▀█   ███   █▀   ███   █▀   ███   ███  ███████▀   ███   █▀    ▀█████▀ 
-                                       ███   █▀                                  '
+OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}" # custom repo with default fallback
+OMARCHY_REF="${OMARCHY_REF:-master}" # custom branch/ref with default fallback
+
+# Detect virtualization
+if command -v systemd-detect-virt &>/dev/null; then
+  virt_type=$(systemd-detect-virt || echo "none")
+
+  # Set universal virtualization flag for any VM
+  if [[ "$virt_type" != "none" ]]; then
+    export OMARCHY_VIRTUALIZATION=true
+  fi
+fi
+
+omarchy_art="Omarchy"
+# Use simple ASCII on Asahi and VMs, Unicode elsewhere
+if uname -r | grep -qi "asahi" || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
+  curl -fsSL "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/logo-ascii.txt" -o /tmp/omarchy-logo-ascii.txt 2>/dev/null
+  if [ -f /tmp/omarchy-logo-ascii.txt ]; then
+    omarchy_art="$(cat /tmp/omarchy-logo-ascii.txt)"
+  fi
+else
+  curl -fsSL "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/logo.txt" -o /tmp/omarchy-logo.txt 2>/dev/null
+  if [ -f /tmp/omarchy-logo.txt ]; then
+    omarchy_art="$(cat /tmp/omarchy-logo.txt)"
+  fi
+fi
 
 clear
-echo -e "\n$ansi_art\n"
+echo -e "\n$omarchy_art\n"
 
-sudo pacman -Syu --noconfirm --needed git
+# Install git early since it's needed when running boot.sh as a non-root user
+if ! command -v git &>/dev/null; then
+  echo "Installing git..."
+  sudo pacman -S --noconfirm --needed git >/dev/null 2>&1 || {
+    echo "Error: Failed to install git"
+    exit 1
+  }
+  echo "Git installed successfully"
+  echo
+fi
 
-# Use custom repo if specified, otherwise default to basecamp/omarchy
-OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}"
+if [[ $EUID -eq 0 ]]; then
+  echo "------------------------------------------------------"
+  echo "Running as Root - Setting up non-root user for Omarchy"
+  echo "------------------------------------------------------"
 
-echo -e "\nCloning Omarchy from: https://github.com/${OMARCHY_REPO}.git"
-rm -rf ~/.local/share/omarchy/
-git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
+  curl -s "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/install/bootstrap/user-setup.sh" | \
+    OMARCHY_REPO="${OMARCHY_REPO}" OMARCHY_REF="${OMARCHY_REF}" bash
 
-# Use custom branch if instructed, otherwise default to master
-OMARCHY_REF="${OMARCHY_REF:-master}"
-if [[ $OMARCHY_REF != "master" ]]; then
-  echo -e "\e[32mUsing branch: $OMARCHY_REF\e[0m"
-  cd ~/.local/share/omarchy
-  git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
-  cd -
+  # user-setup.sh will create user and re-run boot.sh as that user, then exit
+  exit 0 # exit to not run the rest of the script, and avoid cloning as root
+fi
+
+if [[ -n $OMARCHY_RESUME_INSTALL ]]; then
+  echo -e "\n\e[32mResuming Omarchy installation from where it left off...\e[0m\n"
+else
+  echo -e "\nCloning Omarchy from: https://github.com/${OMARCHY_REPO}.git"
+
+  rm -rf ~/.local/share/omarchy/
+
+  if [[ $OMARCHY_REF != "master" ]]; then
+    echo -e "\n\e[32mUsing branch: $OMARCHY_REF (shallow clone)\e[0m\n"
+    git clone --depth 1 --branch "${OMARCHY_REF}" "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
+  else
+    git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
+  fi
 fi
 
 echo -e "\nInstallation starting..."
-source ~/.local/share/omarchy/install.sh
+source ~/.local/share/omarchy/install.sh </dev/null

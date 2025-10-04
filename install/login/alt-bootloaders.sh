@@ -1,3 +1,9 @@
+# Skip if we're intentionally avoiding bootloader modifications (e.g., VMware)
+if [ -n "$OMARCHY_SKIP_LIMINE" ]; then
+  echo "Skipping bootloader modifications (platform uses default bootloader config)"
+  exit 0
+fi
+
 if ! command -v limine &>/dev/null; then
   # Add kernel hooks
   if ! grep -Eq '^HOOKS=.*plymouth' /etc/mkinitcpio.conf; then
