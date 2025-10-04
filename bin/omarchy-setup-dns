@@ -1,5 +1,16 @@
 #!/bin/bash
 
+dnssec_yes_or_no() {
+  if gum confirm "Disable DNSSEC validation? Might need this if you run a local DNS server or use a captive portal."; then
+    sudo tee /etc/systemd/resolved.conf.d/30-dnssec.conf >/dev/null <<EOF
+[Resolve]
+DNSSEC=no
+EOF
+  else
+    sudo rm /etc/systemd/resolved.conf.d/30-dnssec.conf
+  fi
+}
+
 if [[ -z $1 ]]; then
   dns=$(gum choose --height 5 --header "Select DNS provider" Cloudflare DHCP Custom)
 else
@@ -31,6 +42,8 @@ EOF
     fi
   done
   
+  sudo rm /etc/systemd/resolved.conf.d/30-dnssec.conf
+
   sudo systemctl restart systemd-networkd systemd-resolved
   ;;
 
@@ -45,7 +58,9 @@ EOF
     [[ -f "$file" ]] || continue
     sudo sed -i '/^UseDNS=no/d' "$file"
   done
-  
+
+  dnssec_yes_or_no
+
   sudo systemctl restart systemd-networkd systemd-resolved
   ;;
 
@@ -80,8 +95,9 @@ EOF
     fi
   done
   
+  dnssec_yes_or_no
+  
   sudo systemctl restart systemd-networkd systemd-resolved
 
   ;;
 esac
-
