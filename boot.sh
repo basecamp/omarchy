@@ -56,14 +56,19 @@ if [[ $EUID -eq 0 ]]; then
   exit 0 # exit to not run the rest of the script, and avoid cloning as root
 fi
 
-echo -e "\nCloning Omarchy from: https://github.com/${OMARCHY_REPO}.git"
-rm -rf ~/.local/share/omarchy/
-
-if [[ $OMARCHY_REF != "master" ]]; then
-  echo -e "\e[32mUsing branch: $OMARCHY_REF (shallow clone)\e[0m"
-  git clone --depth 1 --branch "${OMARCHY_REF}" "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
+if [[ -n $OMARCHY_RESUME_INSTALL ]]; then
+  echo -e "\n\e[32mResuming Omarchy installation from where it left off...\e[0m\n"
 else
-  git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
+  echo -e "\nCloning Omarchy from: https://github.com/${OMARCHY_REPO}.git"
+
+  rm -rf ~/.local/share/omarchy/
+
+  if [[ $OMARCHY_REF != "master" ]]; then
+    echo -e "\n\e[32mUsing branch: $OMARCHY_REF (shallow clone)\e[0m\n"
+    git clone --depth 1 --branch "${OMARCHY_REF}" "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
+  else
+    git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
+  fi
 fi
 
 echo -e "\nInstallation starting..."
