@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if [[ "$TERMINAL" =~ ^(alacritty|kitty)$ ]]; then
-    exec setsid uwsm app -- "$TERMINAL" --class=Impala -e impala "$@"
+if [[ "$TERMINAL" =~ ^(ghostty)$ ]]; then
+    exec setsid uwsm app -- "$TERMINAL" --class=com.omarchy.impala -e impala "$@"
 else
-    exec setsid uwsm app -- "$TERMINAL" --title=Impala -e impala "$@"
+    exec setsid uwsm app -- "$TERMINAL" --class=Impala -e impala "$@"
 fi
