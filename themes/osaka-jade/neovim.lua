@@ -1,9 +1,13 @@
 return {
-	"ribru17/bamboo.nvim",
-	lazy = false,
-	priority = 1000,
-	config = function()
-		require("bamboo").setup({})
-		require("bamboo").load()
-	end,
+	{
+		"ribru17/bamboo.nvim",
+		priority = 1000,
+		opts = {},
+	},
+	{
+		"LazyVim/LazyVim",
+		opts = {
+			colorscheme = "bamboo",
+		},
+	},
 }
