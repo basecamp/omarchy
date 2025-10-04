@@ -1,0 +1,7 @@
+#!/bin/bash
+
+if [[ "$TERMINAL" =~ ^(alacritty|kitty)$ ]]; then
+    exec setsid uwsm app -- "$TERMINAL" --class=Wiremix -e wiremix "$@"
+else
+    exec setsid uwsm app -- "$TERMINAL" --title=Wiremix -e wiremix "$@"
+fi
