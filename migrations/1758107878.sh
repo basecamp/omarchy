@@ -20,4 +20,5 @@ omarchy-pkg-add elephant \
 
 source $OMARCHY_PATH/install/config/walker-elephant.sh
 
+rm -f ~/.config/walker/themes
 omarchy-refresh-walker
