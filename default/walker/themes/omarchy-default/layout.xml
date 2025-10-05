@@ -86,7 +86,6 @@
                     <property name="can_focus">false</property>
                     <property name="overlay-scrolling">true</property>
                     <property name="max-content-width">600</property>
-                    <property name="min-content-width">600</property>
                     <property name="max-content-height">300</property>
                     <property name="min-content-height">0</property>
                     <property name="propagate-natural-height">true</property>
