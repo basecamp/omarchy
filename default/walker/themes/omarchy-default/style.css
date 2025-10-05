@@ -80,6 +80,7 @@ child:selected .item-box * {
 }
 
 .item-box {
+  padding-left: 14px;
 }
 
 .item-text-box {
@@ -99,7 +100,7 @@ child:selected .item-box * {
 
 .item-image {
   margin-right: 10px;
-  -gtk-icon-transform: scale(0.7);
+  -gtk-icon-transform: scale(.9);
 }
 
 .item-box.calc .item-image {
