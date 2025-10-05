@@ -19,5 +19,4 @@ omarchy-pkg-add elephant \
 
 source $OMARCHY_PATH/install/config/walker-elephant.sh
 
-systemctl enable --now --user elephant.service
 omarchy-refresh-walker
