@@ -1,10 +1,10 @@
 #!/bin/bash
 
-if [ "$#" -lt 3 ]; then
+if [ "$#" -lt 2 ]; then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
-  ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com")
+  ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "URL or leave blank for auto-detection")
   CUSTOM_EXEC=""
   MIME_TYPES=""
   INTERACTIVE_MODE=true
@@ -18,9 +18,20 @@ else
 fi
 
 # Ensure valid execution
-if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_REF" ]]; then
-  echo "You must set app name, app URL, and icon URL!"
+if [[ -z "$APP_NAME" || -z "$APP_URL" ]]; then
+  echo "You must set app name and app URL!"
   exit 1
+fi
+
+# Normalize APP_URL - add https:// if no protocol specified
+if [[ ! "$APP_URL" =~ ^https?:// ]]; then
+  APP_URL="https://$APP_URL"
+fi
+
+# Auto-detect icon from google favicons if ICON_REF is empty
+if [[ -z "$ICON_REF" ]]; then
+  DOMAIN=$(echo "$APP_URL" | sed -E 's#^https?://([^/]+).*#\1#')
+  ICON_REF="https://www.google.com/s2/favicons?domain=${DOMAIN}&sz=64"
 fi
 
 # Download and convert icon
@@ -30,7 +41,7 @@ if [[ $ICON_REF =~ ^https?:// ]]; then
   ICON_PATH="$ICON_DIR/$APP_NAME.png"
   # Extract extension
   EXT="${ICON_REF##*.}"
-  EXT="${EXT%%\?*}"  # Remove query params
+  EXT="${EXT%%\?*}"
   EXT=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
 
   SOURCE_ICON="$ICON_DIR/${APP_NAME}_source.${EXT}"
@@ -49,11 +60,10 @@ if [[ $ICON_REF =~ ^https?:// ]]; then
       rm -f "$SOURCE_ICON"
     fi
   else
-    echo "Error: Failed to download icon from $ICON_REF"
+    echo "Error: Failed to download icon."
     exit 1
   fi
 else
-  # Local file reference
   ICON_PATH="$ICON_DIR/$ICON_REF"
 fi
 
