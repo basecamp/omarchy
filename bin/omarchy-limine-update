@@ -1,0 +1,240 @@
+#!/bin/bash
+
+set -e # Exit on error
+
+# Source the limine kernel versioning library
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+if [[ -f "$SCRIPT_DIR/omarchy-limine-lib" ]]; then
+    source "$SCRIPT_DIR/omarchy-limine-lib"
+else
+    echo "WARNING: omarchy-limine-lib not found - kernel versioning disabled"
+    KERNEL_VERSIONING_ENABLED=false
+fi
+
+LIMINE_CONF="/boot/limine.conf"
+LIMINE_CONF_EFI_LIMINE="/boot/EFI/limine/limine.conf"
+LIMINE_CONF_EFI_BOOT="/boot/EFI/BOOT/limine.conf"
+ESP_PATH="/boot"
+MACHINE_ID=$(cat /etc/machine-id)
+
+# Collect all existing limine.conf locations to update
+LIMINE_CONFIGS=()
+if [[ -f "$LIMINE_CONF_EFI_BOOT" ]]; then
+  LIMINE_CONFIGS+=("$LIMINE_CONF_EFI_BOOT")
+  EFI_MODE=true
+fi
+if [[ -f "$LIMINE_CONF_EFI_LIMINE" ]]; then
+  LIMINE_CONFIGS+=("$LIMINE_CONF_EFI_LIMINE")
+  EFI_MODE=true
+fi
+if [[ -f "$LIMINE_CONF" ]]; then
+  LIMINE_CONFIGS+=("$LIMINE_CONF")
+  [[ -z "$EFI_MODE" ]] && EFI_MODE=false
+fi
+
+# Use first config as primary for building
+LIMINE_CONFIG="${LIMINE_CONFIGS[0]:-$LIMINE_CONF}"
+
+# Backup all existing configs
+for config in "${LIMINE_CONFIGS[@]}"; do
+  if [[ -f "$config" ]]; then
+    cp "$config" "${config}.bak"
+  fi
+done
+
+# Function to get latest kernel version
+get_latest_kernel() {
+  # ARM64 uses Image instead of vmlinuz
+  if [[ "$(uname -m)" == "aarch64" ]]; then
+    if [[ -f /boot/Image ]]; then
+      echo "linux" # ARM64 typically just uses "linux" as version
+    fi
+  else
+    ls /boot/vmlinuz-* 2>/dev/null | sort -V | tail -1 | sed 's|/boot/vmlinuz-||'
+  fi
+}
+
+# Function to format snapshot description
+format_snapshot_desc() {
+  local desc="$1"
+  local num="$2"
+
+  # Clean up the description
+  if [[ -n "$desc" ]]; then
+    echo "$desc"
+  else
+    echo "Snapshot $num"
+  fi
+}
+
+# Start building the new config
+cat >"${LIMINE_CONFIG}.tmp" <<'EOF'
+### Read more at config document: https://github.com/limine-bootloader/limine/blob/trunk/CONFIG.md
+timeout: 3
+default_entry: 1
+interface_branding: Omarchy Bootloader
+interface_branding_color: 2
+hash_mismatch_panic: no
+
+term_background: 1a1b26
+backdrop: 1a1b26
+
+# Terminal colors (Tokyo Night palette)
+term_palette: 15161e;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;a9b1d6
+term_palette_bright: 414868;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;c0caf5
+
+# Text colors
+term_foreground: c0caf5
+term_foreground_bright: c0caf5
+term_background_bright: 24283b
+
+EOF
+
+KERNEL_VERSION=$(get_latest_kernel)
+
+# Build cmdline from current system
+ROOT_DEVICE=$(findmnt -n -o SOURCE /)
+ROOT_DEVICE_CLEAN=$(echo "$ROOT_DEVICE" | sed 's/\[.*\]$//')
+ROOT_UUID=$(blkid -o value -s UUID "$ROOT_DEVICE_CLEAN" 2>/dev/null)
+
+if [[ -z "$ROOT_UUID" ]]; then
+  ROOT_UUID=$(blkid | grep 'TYPE="btrfs"' | grep -oP 'UUID="\K[^"]+' | head -1)
+fi
+
+if [[ -n "$ROOT_UUID" ]]; then
+  # Check if we're using subvolumes
+  MOUNT_OPTIONS=$(findmnt -n -o OPTIONS /)
+  if echo "$MOUNT_OPTIONS" | grep -q "subvol="; then
+    SUBVOL=$(echo "$MOUNT_OPTIONS" | grep -o "subvol=[^,]*" | cut -d= -f2)
+    CMDLINE="root=UUID=$ROOT_UUID rootflags=subvol=$SUBVOL rw rootfstype=btrfs quiet splash"
+  else
+    CMDLINE="root=UUID=$ROOT_UUID rw rootfstype=btrfs quiet splash"
+  fi
+else
+  echo "ERROR: Could not detect root filesystem UUID!"
+  exit 1
+fi
+
+# Use boot(): resource locator (UEFI device handle)
+# This works across all platforms (Parallels, VMware, physical hardware)
+# and both disk types (NVMe, SATA) because it uses the UEFI boot device handle
+# rather than enumerating volumes by UUID (which is unreliable on some platforms)
+RESOURCE_PREFIX="boot():/"
+
+# Main Omarchy entry (expandable by default with +)
+echo "/+Omarchy" >>"${LIMINE_CONFIG}.tmp"
+echo "comment: Omarchy" >>"${LIMINE_CONFIG}.tmp"
+echo "comment: machine-id=${MACHINE_ID} order-priority=50" >>"${LIMINE_CONFIG}.tmp"
+
+# Add current kernel entry under Omarchy
+if [[ -n "$KERNEL_VERSION" ]]; then
+  echo "  //linux" >>"${LIMINE_CONFIG}.tmp"
+  echo "  comment: $KERNEL_VERSION" >>"${LIMINE_CONFIG}.tmp"
+  echo "  protocol: linux" >>"${LIMINE_CONFIG}.tmp"
+
+  # ARM64 uses different paths
+  if [[ "$(uname -m)" == "aarch64" ]]; then
+    echo "  kernel_path: ${RESOURCE_PREFIX}Image" >>"${LIMINE_CONFIG}.tmp"
+    if [[ -f "/boot/initramfs-linux.img" ]]; then
+      echo "  module_path: ${RESOURCE_PREFIX}initramfs-linux.img" >>"${LIMINE_CONFIG}.tmp"
+    fi
+  else
+    echo "  kernel_path: ${RESOURCE_PREFIX}vmlinuz-${KERNEL_VERSION}" >>"${LIMINE_CONFIG}.tmp"
+    if [[ -f "/boot/initramfs-${KERNEL_VERSION}.img" ]]; then
+      echo "  module_path: ${RESOURCE_PREFIX}initramfs-${KERNEL_VERSION}.img" >>"${LIMINE_CONFIG}.tmp"
+    fi
+  fi
+
+  echo "  kernel_cmdline: $CMDLINE" >>"${LIMINE_CONFIG}.tmp"
+fi
+
+# Add Snapshots submenu with kernel versioning support
+if command -v snapper &>/dev/null && snapper list-configs &>/dev/null 2>&1; then
+    echo "" >> "${LIMINE_CONFIG}.tmp"
+    echo "  //Snapshots" >> "${LIMINE_CONFIG}.tmp"
+    echo "  comment: Select a snapshot to boot into" >> "${LIMINE_CONFIG}.tmp"
+
+    # Use kernel versioning if available
+    if [[ "${KERNEL_VERSIONING_ENABLED:-true}" != "false" ]] && command -v jq &>/dev/null; then
+        # Initialize limine library for kernel versioning
+        init_limine_lib 2>/dev/null || true
+
+        # Sync snapshots to manifest with kernel versioning
+        add_current_snapshots_to_manifest
+
+        # Generate snapshot entries with proper kernel versions
+        generate_snapshot_entries_for_config "${LIMINE_CONFIG}.tmp"
+    else
+        # Fallback to original method (with kernel version mismatch warning)
+        echo "    ///WARNING: Kernel versioning disabled" >> "${LIMINE_CONFIG}.tmp"
+        echo "    comment: Snapshots may not boot correctly due to kernel mismatches" >> "${LIMINE_CONFIG}.tmp"
+
+        # Get root config snapshots - skip header and get LATEST 5 snapshots (newest first)
+        SNAPSHOTS=$(snapper -c root list --columns number,description 2>/dev/null | grep "^[1-9]" | tail -5 | tac)
+
+        if [[ -n "$SNAPSHOTS" ]]; then
+            while IFS= read -r line; do
+                if [[ -z "$line" ]]; then continue; fi
+
+                # Parse snapshot info - the line has format "NUM │ DESCRIPTION" with box character
+                NUM=$(echo "$line" | awk '{print $1}')
+                # Extract description - everything after the box character or pipe
+                if echo "$line" | grep -q "│"; then
+                    DESC=$(echo "$line" | sed 's/^[^│]*│ *//')
+                else
+                    DESC=$(echo "$line" | sed 's/^[0-9]* *//')
+                fi
+
+                # Skip if no snapshot number
+                if [[ -z "$NUM" ]] || [[ "$NUM" == "0" ]]; then continue; fi
+
+                # Check if snapshot directory exists (simpler check)
+                SNAPSHOT_SUBVOL="root/.snapshots/$NUM/snapshot"
+                if [[ ! -d "/.snapshots/$NUM/snapshot" ]]; then
+                    continue
+                fi
+
+                # Format the description
+                SNAPSHOT_DESC=$(format_snapshot_desc "$DESC" "$NUM")
+
+                # Add snapshot entry with proper indentation (4 spaces for sub-submenu)
+                echo "    ///Snapshot $NUM - $SNAPSHOT_DESC (KERNEL MISMATCH RISK)" >> "${LIMINE_CONFIG}.tmp"
+                echo "    comment: WARNING: Uses current kernel, may not boot" >> "${LIMINE_CONFIG}.tmp"
+                echo "    protocol: linux" >> "${LIMINE_CONFIG}.tmp"
+
+                # ARM64 uses different paths - CURRENT kernel (this is the problem!)
+                if [[ "$(uname -m)" == "aarch64" ]]; then
+                    echo "    kernel_path: ${RESOURCE_PREFIX}Image" >> "${LIMINE_CONFIG}.tmp"
+                    if [[ -f "/boot/initramfs-linux.img" ]]; then
+                        echo "    module_path: ${RESOURCE_PREFIX}initramfs-linux.img" >> "${LIMINE_CONFIG}.tmp"
+                    fi
+                else
+                    echo "    kernel_path: ${RESOURCE_PREFIX}vmlinuz-${KERNEL_VERSION}" >> "${LIMINE_CONFIG}.tmp"
+                    if [[ -f "/boot/initramfs-${KERNEL_VERSION}.img" ]]; then
+                        echo "    module_path: ${RESOURCE_PREFIX}initramfs-${KERNEL_VERSION}.img" >> "${LIMINE_CONFIG}.tmp"
+                    fi
+                fi
+
+                # Modify cmdline for snapshot
+                SNAPSHOT_CMDLINE=$(echo "$CMDLINE" | sed "s|rootflags=subvol=[^ ]*|rootflags=subvol=$SNAPSHOT_SUBVOL|")
+                echo "    kernel_cmdline: $SNAPSHOT_CMDLINE" >> "${LIMINE_CONFIG}.tmp"
+
+            done <<< "$SNAPSHOTS"
+        fi
+    fi
+fi
+
+# Copy the new config to all locations (for NVMe fallback support)
+if [[ ${#LIMINE_CONFIGS[@]} -gt 0 ]]; then
+  for config in "${LIMINE_CONFIGS[@]}"; do
+    cp "${LIMINE_CONFIG}.tmp" "$config"
+    echo "Updated: $config"
+  done
+  rm "${LIMINE_CONFIG}.tmp"
+else
+  # Fallback if no configs found - create at ESP root
+  mv "${LIMINE_CONFIG}.tmp" "$LIMINE_CONF"
+  echo "Created: $LIMINE_CONF"
+fi
+
+echo "Limine configuration updated with hierarchical menu structure"
