@@ -1,3 +1,2 @@
 #!/bin/bash
-
-git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1)
+cat $OMARCHY_PATH/version
