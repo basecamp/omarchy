@@ -196,6 +196,9 @@ catch_errors() {
         OMARCHY_USER_EMAIL="${OMARCHY_USER_EMAIL:-}" \
         OMARCHY_ONLINE_INSTALL="${OMARCHY_ONLINE_INSTALL:-}" \
         OMARCHY_RETRY_INSTALL=true \
+        SKIP_YARU="${SKIP_YARU:-}" \
+        SKIP_OBS="${SKIP_OBS:-}" \
+        SKIP_PINTA="${SKIP_PINTA:-}" \
         bash ~/.local/share/omarchy/install.sh
       break
       ;;

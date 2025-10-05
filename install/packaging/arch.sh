@@ -19,8 +19,20 @@ if [ -n "$OMARCHY_ARM" ]; then
   source $OMARCHY_INSTALL/arm_install_scripts/1password-app.sh
   source $OMARCHY_INSTALL/arm_install_scripts/1password-cli.sh
   source $OMARCHY_INSTALL/arm_install_scripts/asdcontrol-prebuilt.sh
+
+  # Skip OBS Studio if SKIP_OBS is set (for faster testing)
+  if [ -z "$SKIP_OBS" ]; then
+    source $OMARCHY_INSTALL/arm_install_scripts/obs-studio.sh
+  fi
+
   source $OMARCHY_INSTALL/arm_install_scripts/obsidian-appimage.sh
   source $OMARCHY_INSTALL/arm_install_scripts/omarchy-lazyvim.sh
+
+  # Skip Pinta if SKIP_PINTA is set (for faster testing)
+  if [ -z "$SKIP_PINTA" ]; then
+    source $OMARCHY_INSTALL/arm_install_scripts/pinta.sh
+  fi
+
   source $OMARCHY_INSTALL/arm_install_scripts/walker-prebuilt.sh
 
   # Widevine is what allow for playing back DRM/protected content in browsers.

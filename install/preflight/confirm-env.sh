@@ -2,7 +2,7 @@
 source "$OMARCHY_INSTALL/preflight/get-env.sh"
 
 # Show environment variable confirmation if custom repo/ref/skips are set
-if [[ -n "${OMARCHY_REPO:-}" ]] || [[ -n "${OMARCHY_REF:-}" ]]; then
+if [[ -n "${OMARCHY_REPO:-}" ]] || [[ -n "${OMARCHY_REF:-}" ]] || [[ -n "${SKIP_YARU:-}" ]] || [[ -n "${SKIP_OBS:-}" ]] || [[ -n "${SKIP_PINTA:-}" ]]; then
   echo
 
   # Use gum style for retries, plain echo for first-time installs
