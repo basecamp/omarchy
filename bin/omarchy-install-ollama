@@ -1,0 +1,20 @@
+#!/bin/bash
+
+echo -e "Installing Ollama...\n"
+sudo pacman -S --noconfirm ollama
+
+# Ensure that Ollama can run on NVIDIA GPUs.
+if command -v nvidia-smi &>/dev/null; then
+  echo -e "Installing CUDA-enabled Ollama...\n"
+  sudo pacman -S --noconfirm ollama-cuda
+fi
+
+# Ensure that Ollama can run on AMD GPUs.
+if command -v rocminfo &>/dev/null; then
+  echo -e "Installing AMD-enabled Ollama...\n"
+  sudo pacman -S --noconfirm ollama-rocm
+fi
+
+# Enable and start the Ollama systemd service.
+echo -e "Enabling and starting Ollama service...\n"
+sudo systemctl enable --now ollama
