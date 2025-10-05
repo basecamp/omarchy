@@ -37,7 +37,6 @@ sudo systemctl enable getty@tty1.service
 sudo systemctl enable sddm.service
 sudo systemctl daemon-reload
 
-# Verify service states
 if systemctl is-enabled omarchy-seamless-login.service >/dev/null 2>&1; then
   echo -e "\033[31mError: omarchy-seamless-login.service is still enabled\033[0m" >&2
   error_exit
