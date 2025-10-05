@@ -38,4 +38,10 @@ command -v limine &>/dev/null || abort "Limine bootloader"
 [[ $(findmnt -n -o FSTYPE /) = "btrfs" ]] || abort "Btrfs root filesystem" 
 
 # Cleared all guards
-echo "Guards: OK"
+if [[ "$OMARCHY_RETRY_INSTALL" == "true" ]]; then
+  echo
+  gum style "Guards: OK"
+else
+  echo
+  echo "Guards: OK"
+fi
