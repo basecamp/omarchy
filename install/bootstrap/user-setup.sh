@@ -317,6 +317,9 @@ if [[ $EUID -eq 0 ]]; then
     OMARCHY_REF='${OMARCHY_REF}' \
     OMARCHY_USER_NAME=${escaped_fullname} \
     OMARCHY_USER_EMAIL=${escaped_email} \
+    SKIP_YARU='${SKIP_YARU:-}' \
+    SKIP_OBS='${SKIP_OBS:-}' \
+    SKIP_PINTA='${SKIP_PINTA:-}'; \
     cd /home/$username; \
     curl -fsSL https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/boot.sh | bash; \
     install_result=\$?; \
