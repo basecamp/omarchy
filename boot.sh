@@ -55,6 +55,19 @@ if ! command -v less &>/dev/null; then
   echo "Less installed successfully"
   echo
 fi
+
+if [[ $EUID -eq 0 ]]; then
+  echo "------------------------------------------------------"
+  echo "Running as Root - Setting up non-root user for Omarchy"
+  echo "------------------------------------------------------"
+
+  curl -s "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/install/bootstrap/user-setup.sh" | \
+    OMARCHY_REPO="${OMARCHY_REPO}" OMARCHY_REF="${OMARCHY_REF}" bash
+
+  # user-setup.sh will create user and re-run boot.sh as that user, then exit
+  exit 0 # exit to not run the rest of the script, and avoid cloning as root
+fi
+
 # Use custom repo if specified, otherwise default to basecamp/omarchy
 OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}"
 
