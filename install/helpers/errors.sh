@@ -148,6 +148,8 @@ catch_errors() {
     gum style "Get help from the community via QR code or at https://discord.gg/tXFUdasqhY"
   else
     echo
+    gum style -- "--------------------------------------------------------------------------------" # add a divider between the log output and the help text / gum prompt
+    echo
     gum style "Get help from the community at https://discord.gg/tXFUdasqhY"
   fi
 
@@ -158,6 +160,9 @@ catch_errors() {
     # If online install, show retry first
     if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
       options+=("Retry installation")
+      options+=("Update Omarchy from GitHub, then retry installation")
+    fi
+
     # Add QR code option for ARM/Asahi/VMs where screen space is limited
     # because the QR code is rendered with ASCII art instead of Unicode
     if [[ -n $OMARCHY_ARM ]] || [[ -n $ASAHI_ALARM ]] || [[ -n $OMARCHY_VIRTUALIZATION ]]; then
@@ -192,6 +197,22 @@ catch_errors() {
         OMARCHY_ONLINE_INSTALL="${OMARCHY_ONLINE_INSTALL:-}" \
         OMARCHY_RETRY_INSTALL=true \
         bash ~/.local/share/omarchy/install.sh
+      break
+      ;;
+    "Update Omarchy from GitHub, then retry installation")
+      gum style "Downloading latest Omarchy from GitHub..."
+      # Note: this is not an "inline retry" since we re-download boot.sh which
+      # runs rm -rf ~/.local/share/omarchy/ and re-clones the repo, so we have
+      # a fresh copy of everything
+      curl -fsSL "https://raw.githubusercontent.com/${OMARCHY_REPO:-basecamp/omarchy}/${OMARCHY_REF:-master}/boot.sh" | \
+        env \
+          OMARCHY_REPO="${OMARCHY_REPO:-}" \
+          OMARCHY_REF="${OMARCHY_REF:-}" \
+          OMARCHY_RETRY_INSTALL=false \
+          SKIP_YARU="${SKIP_YARU:-}" \
+          SKIP_OBS="${SKIP_OBS:-}" \
+          SKIP_PINTA="${SKIP_PINTA:-}" \
+          bash
       break
       ;;
     "Show QR code for Discord support")
