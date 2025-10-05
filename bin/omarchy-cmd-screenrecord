@@ -73,20 +73,34 @@ start_webcam_overlay() {
 
 start_screenrecording() {
   local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
-  local audio_devices=""
-  local audio_args=""
 
-  [[ $DESKTOP_AUDIO == "true" ]] && audio_devices+="default_output"
+  if [[ "$(uname -m)" == "aarch64" ]]; then
+    # ARM systems: use wf-recorder (gpu-screen-recorder not available for ARM)
+    local audio_args=""
+    # wf-recorder only supports a single --audio flag, enable if either audio source requested
+    if [[ "$DESKTOP_AUDIO" == "true" ]] || [[ "$MICROPHONE_AUDIO" == "true" ]]; then
+      audio_args="--audio"
+    fi
 
-  if [[ $MICROPHONE_AUDIO == "true" ]]; then
-    # Merge audio tracks into one - separate tracks only play one at a time in most players
-    [[ -n $audio_devices ]] && audio_devices+="|"
-    audio_devices+="default_input"
+    wf-recorder $audio_args -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart &
+  else
+    # x86_64 systems: use gpu-screen-recorder
+    local audio_devices=""
+    local audio_args=""
+
+    [[ "$DESKTOP_AUDIO" == "true" ]] && audio_devices+="default_output"
+
+    if [[ "$MICROPHONE_AUDIO" == "true" ]]; then
+      # Merge audio tracks into one - separate tracks only play one at a time in most players
+      [[ -n "$audio_devices" ]] && audio_devices+="|"
+      audio_devices+="default_input"
+    fi
+
+    [[ -n "$audio_devices" ]] && audio_args="-a $audio_devices"
+
+    gpu-screen-recorder -w portal -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
   fi
 
-  [[ -n $audio_devices ]] && audio_args+="-a $audio_devices"
-
-  gpu-screen-recorder -w portal -k h264 -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
   toggle_screenrecording_indicator
 }
 
@@ -103,17 +117,20 @@ trim_first_frame() {
 }
 
 stop_screenrecording() {
-  pkill -SIGINT -f "^gpu-screen-recorder"  # SIGINT required to save video properly
+  local process_name="gpu-screen-recorder"
+  [[ "$(uname -m)" == "aarch64" ]] && process_name="wf-recorder"
+
+  pkill -SIGINT -f "^$process_name"  # SIGINT required to save video properly
 
   # Wait a maximum of 5 seconds to finish before hard killing
   local count=0
-  while pgrep -f "^gpu-screen-recorder" >/dev/null && (( count < 50 )); do
+  while pgrep -f "^$process_name" >/dev/null && [ $count -lt 50 ]; do
     sleep 0.1
     count=$((count + 1))
   done
 
-  if pgrep -f "^gpu-screen-recorder" >/dev/null; then
-    pkill -9 -f "^gpu-screen-recorder"
+  if pgrep -f "^$process_name" >/dev/null; then
+    pkill -9 -f "^$process_name"
     cleanup_webcam
     notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
   else
@@ -129,12 +146,22 @@ toggle_screenrecording_indicator() {
 }
 
 screenrecording_active() {
-  pgrep -f "^gpu-screen-recorder" >/dev/null || pgrep -f "WebcamOverlay" >/dev/null
+  local process_name="gpu-screen-recorder"
+  [[ "$(uname -m)" == "aarch64" ]] && process_name="wf-recorder"
+
+  pgrep -f "^$process_name" >/dev/null || pgrep -f "WebcamOverlay" >/dev/null
 }
 
 if screenrecording_active; then
-  if pgrep -f "WebcamOverlay" >/dev/null && ! pgrep -f "^gpu-screen-recorder" >/dev/null; then
-    cleanup_webcam
+  if pgrep -f "WebcamOverlay" >/dev/null; then
+    process_name="gpu-screen-recorder"
+    [[ "$(uname -m)" == "aarch64" ]] && process_name="wf-recorder"
+
+    if ! pgrep -f "^$process_name" >/dev/null; then
+      cleanup_webcam
+    else
+      stop_screenrecording
+    fi
   else
     stop_screenrecording
   fi

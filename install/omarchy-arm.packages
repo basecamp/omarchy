@@ -4,6 +4,9 @@
 asahi-audio
 e2fsprogs
 fuse2
+omarchy-chromium-bin
 pipewire-alsa
 pipewire-pulse
+localsend-bin
+signal-desktop-beta
 # Note: pipewire-jack is pre-installed in preflight/arm.sh to prevent jack2 conflicts
