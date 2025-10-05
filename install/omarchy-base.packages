@@ -22,7 +22,6 @@ docker-buildx
 docker-compose
 dust
 elephant
-elephant-archlinuxpkgs
 elephant-bluetooth
 elephant-calc
 elephant-clipboard

@@ -6,7 +6,6 @@ kill -9 $(pgrep -x walker)
 omarchy-pkg-drop walker-bin walker-bin-debug
 
 omarchy-pkg-add elephant \
-  elephant-archlinuxpkgs \
   elephant-calc \
   elephant-clipboard \
   elephant-bluetooth \
@@ -16,7 +15,9 @@ omarchy-pkg-add elephant \
   elephant-providerlist \
   elephant-runner \
   elephant-symbols \
+  elephant-unicode \
   elephant-websearch \
+  elephant-todo \
   walker
 
 source $OMARCHY_PATH/install/config/walker-elephant.sh
