@@ -65,7 +65,7 @@ providerlist = [
 ]
 
 bluetooth = [
-  { action = "find", global = true, bind = "ctrl f", after = "ClearReload" },
+  { action = "find", global = true, bind = "ctrl f", after = "AsyncClearReload" },
   { action = "trust", bind = "ctrl t", after = "AsyncReload" },
   { action = "untrust", bind = "ctrl t", after = "AsyncReload" },
   { action = "pair", bind = "Return", after = "AsyncReload" },
