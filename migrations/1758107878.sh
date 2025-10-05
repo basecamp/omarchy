@@ -9,6 +9,7 @@ omarchy-pkg-add elephant \
   elephant-archlinuxpkgs \
   elephant-calc \
   elephant-clipboard \
+  elephant-bluetooth \
   elephant-desktopapplications \
   elephant-files \
   elephant-menus \
