@@ -1,6 +1,7 @@
 echo "Migrate to Walker 1.0.0-Beta"
 
-pkill walker || true
+# Ensure we kill walker even if there's a restarting service running
+kill -9 $(pgrep -x walker)
 
 omarchy-pkg-drop walker-bin walker-bin-debug
 
