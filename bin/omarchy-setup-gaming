@@ -1,0 +1,27 @@
+#!/bin/bash
+
+yay -S --noconfirm gamescope proton-ge-custom-bin
+
+mkdir -p ~/.config/systemd/user/
+
+cat > ~/.config/systemd/user/omarchy-gaming-helper.service << EOF
+[Unit]
+Description=Omarchy Gaming Helper
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=$OMARCHY_PATH/default/hypr/scripts/omarchy-gaming-helper.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+
+systemctl --user enable omarchy-gaming-helper.service
+systemctl --user start omarchy-gaming-helper.service
+
+echo "Omarchy Gaming Helper service has been installed and started."
