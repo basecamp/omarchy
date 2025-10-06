@@ -21,4 +21,4 @@ shell-integration-features = no-cursor
 keybind = f11=toggle_fullscreen
 
 # SSH session terminfo
-shell-integration-features = ssh-env,ssh-terminfo
+shell-integration-features = ssh-env
