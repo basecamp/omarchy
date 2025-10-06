@@ -9,4 +9,4 @@ if pgrep -x "1password" >/dev/null; then
 fi
 
 # Avoid running screensaver when locked
-pkill -f "$TERMINAL --class Screensaver"
+pkill -f "alacritty --class Screensaver"
