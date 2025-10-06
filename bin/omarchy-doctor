@@ -1,0 +1,161 @@
+#!/bin/bash
+
+# Request sudo upfront to avoid prompts during checks
+sudo -v
+
+# Keep sudo alive during the script
+(while true; do sudo -v; sleep 50; done) &
+SUDO_REFRESH_PID=$!
+trap "kill $SUDO_REFRESH_PID 2>/dev/null" EXIT
+
+# Define Omarchy locations
+export OMARCHY_PATH="/home/ryan/Work/omarchy/omarchy-installer"
+export OMARCHY_INSTALL="$OMARCHY_PATH/install"
+
+# Track results
+failed_checks=0
+passed_checks=0
+skipped_checks=0
+total_checks=0
+
+# Function to display a message with icon
+show_message() {
+  local type="$1"
+  local msg="$2"
+  case "$type" in
+    error)   printf "  ❌ ERROR %s\n" "$msg" ;;
+    warning) printf "  ⚠️ WARNING %s\n" "$msg" ;;
+    info)    printf "  ✅ OK %s\n" "$msg" ;;
+  esac
+}
+
+# Function to check a single script
+check_script() {
+  local script="$1"
+  local script_name="${script#$OMARCHY_INSTALL/}"
+
+  # Check if script has verify function
+  if ! bash -c "source '$script' && declare -f omarchy_verify" >/dev/null 2>&1; then
+    ((skipped_checks++))
+    return
+  fi
+
+  ((total_checks++))
+
+  # Get friendly name
+  local friendly_name=$(bash -c "source '$script' 2>/dev/null; echo \"\${OMARCHY_DESCRIPTION:-$script_name}\"")
+
+  # Run verification in subshell and capture output
+  local output
+  output=$(
+    errors=()
+    warnings=()
+    infos=()
+
+    add_error()   { errors+=("$1"); }
+    add_warning() { warnings+=("$1"); }
+    add_info()    { infos+=("$1"); }
+
+    source "$script"
+    omarchy_verify
+    exit_code=$?
+
+    # Output results with delimiters
+    echo "EXIT:$exit_code"
+    for e in "${errors[@]}"; do echo "ERROR:$e"; done
+    for w in "${warnings[@]}"; do echo "WARNING:$w"; done
+    for i in "${infos[@]}"; do echo "INFO:$i"; done
+  )
+
+  # Parse output
+  local exit_code errors=() warnings=() infos=()
+  while IFS= read -r line; do
+    case "$line" in
+      EXIT:*) exit_code="${line#EXIT:}" ;;
+      ERROR:*) errors+=("${line#ERROR:}") ;;
+      WARNING:*) warnings+=("${line#WARNING:}") ;;
+      INFO:*) infos+=("${line#INFO:}") ;;
+    esac
+  done <<< "$output"
+
+  # Handle skipped (return code 2)
+  if [[ $exit_code -eq 2 ]]; then
+    ((skipped_checks++))
+    return
+  fi
+
+  # Count messages
+  local error_count=${#errors[@]}
+  local warning_count=${#warnings[@]}
+
+  # Determine status
+  local status_icon status_color
+  if [[ $error_count -gt 0 ]]; then
+    status_icon="❌"
+    status_color="1"  # Red
+    ((failed_checks++))
+  elif [[ $warning_count -gt 0 ]]; then
+    status_icon="⚠️"
+    status_color="3"  # Yellow
+    ((passed_checks++))
+  else
+    status_icon="✅"
+    status_color="2"  # Green
+    ((passed_checks++))
+  fi
+
+  # Display result
+  printf "%s %s\n" "$status_icon" "$(gum style --foreground "$status_color" --bold "$friendly_name")"
+
+  # Display messages if any errors or warnings
+  if [[ $error_count -gt 0 || $warning_count -gt 0 ]]; then
+    for msg in "${errors[@]}"; do
+      show_message error "$msg"
+    done
+
+    for msg in "${warnings[@]}"; do
+      show_message warning "$msg"
+    done
+
+    for msg in "${infos[@]}"; do
+      show_message info "$msg"
+    done
+  fi
+
+  echo
+}
+
+# Main execution
+echo
+gum style --italic --foreground 7 "Running health checks..."
+echo
+
+# Process all scripts
+while IFS= read -r script; do
+  # Skip certain directories
+  if [[ "$script" == */all.sh ]] ||
+     [[ "$script" == */helpers/* ]] ||
+     [[ "$script" == */preflight/* ]] ||
+     [[ "$script" == */first-run/* ]] ||
+     [[ "$script" == */post-install/* ]]; then
+    continue
+  fi
+
+  check_script "$script"
+done < <(find "$OMARCHY_INSTALL" -type f -name "*.sh" | sort)
+
+# Display summary
+echo
+echo "Summary:"
+echo "  Passed:  $passed_checks/$total_checks"
+[[ $failed_checks -gt 0 ]] && echo "  Failed:  $failed_checks/$total_checks"
+[[ $skipped_checks -gt 0 ]] && echo "  Skipped: $skipped_checks"
+
+echo
+
+if [[ $failed_checks -gt 0 ]]; then
+  echo "❌ Some checks failed. Please review the errors above."
+  exit 1
+else
+  echo "✅ All checks passed!"
+fi

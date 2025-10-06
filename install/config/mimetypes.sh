@@ -1,35 +1,48 @@
-omarchy-refresh-applications
-update-desktop-database ~/.local/share/applications
+OMARCHY_DESCRIPTION="Mimetypes"
 
-# Open all images with imv
-xdg-mime default imv.desktop image/png
-xdg-mime default imv.desktop image/jpeg
-xdg-mime default imv.desktop image/gif
-xdg-mime default imv.desktop image/webp
-xdg-mime default imv.desktop image/bmp
-xdg-mime default imv.desktop image/tiff
+omarchy_install() {
+  omarchy-refresh-applications
+  update-desktop-database ~/.local/share/applications
 
-# Open PDFs with the Document Viewer
-xdg-mime default org.gnome.Evince.desktop application/pdf
+  # Open all images with imv
+  xdg-mime default imv.desktop image/png
+  xdg-mime default imv.desktop image/jpeg
+  xdg-mime default imv.desktop image/gif
+  xdg-mime default imv.desktop image/webp
+  xdg-mime default imv.desktop image/bmp
+  xdg-mime default imv.desktop image/tiff
 
-# Use Chromium as the default browser
-xdg-settings set default-web-browser chromium.desktop
-xdg-mime default chromium.desktop x-scheme-handler/http
-xdg-mime default chromium.desktop x-scheme-handler/https
+  # Open PDFs with the Document Viewer
+  xdg-mime default org.gnome.Evince.desktop application/pdf
 
-# Open video files with mpv
-xdg-mime default mpv.desktop video/mp4
-xdg-mime default mpv.desktop video/x-msvideo
-xdg-mime default mpv.desktop video/x-matroska
-xdg-mime default mpv.desktop video/x-flv
-xdg-mime default mpv.desktop video/x-ms-wmv
-xdg-mime default mpv.desktop video/mpeg
-xdg-mime default mpv.desktop video/ogg
-xdg-mime default mpv.desktop video/webm
-xdg-mime default mpv.desktop video/quicktime
-xdg-mime default mpv.desktop video/3gpp
-xdg-mime default mpv.desktop video/3gpp2
-xdg-mime default mpv.desktop video/x-ms-asf
-xdg-mime default mpv.desktop video/x-ogm+ogg
-xdg-mime default mpv.desktop video/x-theora+ogg
-xdg-mime default mpv.desktop application/ogg
+  # Use Chromium as the default browser
+  xdg-settings set default-web-browser chromium.desktop
+  xdg-mime default chromium.desktop x-scheme-handler/http
+  xdg-mime default chromium.desktop x-scheme-handler/https
+
+  # Open video files with mpv
+  xdg-mime default mpv.desktop video/mp4
+  xdg-mime default mpv.desktop video/x-msvideo
+  xdg-mime default mpv.desktop video/x-matroska
+  xdg-mime default mpv.desktop video/x-flv
+  xdg-mime default mpv.desktop video/x-ms-wmv
+  xdg-mime default mpv.desktop video/mpeg
+  xdg-mime default mpv.desktop video/ogg
+  xdg-mime default mpv.desktop video/webm
+  xdg-mime default mpv.desktop video/quicktime
+  xdg-mime default mpv.desktop video/3gpp
+  xdg-mime default mpv.desktop video/3gpp2
+  xdg-mime default mpv.desktop video/x-ms-asf
+  xdg-mime default mpv.desktop video/x-ogm+ogg
+  xdg-mime default mpv.desktop video/x-theora+ogg
+  xdg-mime default mpv.desktop application/ogg
+}
+
+omarchy_verify() {
+  [[ -d ~/.local/share/applications ]] || add_error "Applications directory missing"
+
+  xdg-mime query default image/png | grep -q "imv.desktop" || add_error "Image viewer not set for PNG"
+  xdg-mime query default application/pdf | grep -q "Evince.desktop" || add_error "PDF viewer not set"
+  xdg-mime query default x-scheme-handler/http | grep -q "chromium.desktop" || add_warning "Browser not set to Chromium"
+  xdg-mime query default video/mp4 | grep -q "mpv.desktop" || add_error "Video player not set for MP4"
+}

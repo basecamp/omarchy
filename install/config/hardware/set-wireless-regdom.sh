@@ -1,33 +1,37 @@
-# First check that wireless-regdb is there
-if [ -f "/etc/conf.d/wireless-regdom" ]; then
-  unset WIRELESS_REGDOM
-  . /etc/conf.d/wireless-regdom
-fi
+OMARCHY_DESCRIPTION="Wireless Regdom"
 
-# If the region is already set, we're done
-if [ ! -n "${WIRELESS_REGDOM}" ]; then
-  # Get the current timezone
-  if [ -e "/etc/localtime" ]; then
-    TIMEZONE=$(readlink -f /etc/localtime)
-    TIMEZONE=${TIMEZONE#/usr/share/zoneinfo/}
+omarchy_install() {
+  if [ -f "/etc/conf.d/wireless-regdom" ]; then
+      unset WIRELESS_REGDOM
+      . /etc/conf.d/wireless-regdom
+  fi
 
-    # Some timezones are formatted with the two letter country code at the start
-    COUNTRY="${TIMEZONE%%/*}"
+  if [ ! -n "${WIRELESS_REGDOM}" ]; then
+    if [ -e "/etc/localtime" ]; then
+      TIMEZONE=$(readlink -f /etc/localtime)
+      TIMEZONE=${TIMEZONE#/usr/share/zoneinfo/}
 
-    # If we don't have a two letter country, get it from the timezone table
-    if [[ ! "$COUNTRY" =~ ^[A-Z]{2}$ ]] && [ -f "/usr/share/zoneinfo/zone.tab" ]; then
-      COUNTRY=$(awk -v tz="$TIMEZONE" '$3 == tz {print $1; exit}' /usr/share/zoneinfo/zone.tab)
-    fi
+      COUNTRY="${TIMEZONE%%/*}"
 
-    # Check if we have a two letter country code
-    if [[ "$COUNTRY" =~ ^[A-Z]{2}$ ]]; then
-      # Append it to the wireless-regdom conf file that is used at boot
-      echo "WIRELESS_REGDOM=\"$COUNTRY\"" | sudo tee -a /etc/conf.d/wireless-regdom >/dev/null
+      if [[ ! "$COUNTRY" =~ ^[A-Z]{2}$ ]] && [ -f "/usr/share/zoneinfo/zone.tab" ]; then
+        COUNTRY=$(awk -v tz="$TIMEZONE" '$3 == tz {print $1; exit}' /usr/share/zoneinfo/zone.tab)
+      fi
 
-      # Also set it one off now
-      if command -v iw &>/dev/null; then
-        sudo iw reg set ${COUNTRY}
+      if [[ "$COUNTRY" =~ ^[A-Z]{2}$ ]]; then
+        echo "WIRELESS_REGDOM=\"$COUNTRY\"" | sudo tee -a /etc/conf.d/wireless-regdom >/dev/null
+
+        if command -v iw &>/dev/null; then
+            sudo iw reg set ${COUNTRY}
+        fi
       fi
     fi
   fi
-fi
+}
+
+omarchy_verify() {
+  [[ -f /etc/conf.d/wireless-regdom ]] || add_error "Wireless regdom config missing"
+
+  if [[ -f /etc/conf.d/wireless-regdom ]]; then
+      grep -q "^WIRELESS_REGDOM=" /etc/conf.d/wireless-regdom || add_error "Wireless regulatory domain not configured"
+  fi
+}
