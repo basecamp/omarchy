@@ -18,15 +18,12 @@ done
 # Must be x86 only to fully work
 [ "$(uname -m)" != "x86_64" ] && abort "x86_64 CPU"
 
+# Must have secure boot disabled
+bootctl status 2>/dev/null | grep -q 'Secure Boot: disabled' || abort "Secure Boot disabled"
+
 # Must not have Gnome or KDE already install
 pacman -Qe gnome-shell &>/dev/null && abort "Fresh + Vanilla Arch"
 pacman -Qe plasma-desktop &>/dev/null && abort "Fresh + Vanilla Arch"
-
-# Must have limine installed
-command -v limine &>/dev/null || abort "Limine bootloader"
-
-# Must have btrfs root filesystem
-[ "$(findmnt -n -o FSTYPE /)" = "btrfs" ] || abort "Btrfs root filesystem" 
 
 # Cleared all guards
 echo "Guards: OK"

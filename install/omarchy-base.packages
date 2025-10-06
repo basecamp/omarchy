@@ -69,7 +69,6 @@ kvantum-qt5
 lazydocker
 lazygit
 less
-libsecret
 libyaml
 libqalculate
 libreoffice
@@ -82,6 +81,7 @@ mariadb-libs
 mise
 mpv
 nautilus
+gnome-disk-utility
 noto-fonts
 noto-fonts-cjk
 noto-fonts-emoji
@@ -106,7 +106,6 @@ python-terminaltexteffects
 qt5-wayland
 ripgrep
 satty
-sddm
 signal-desktop
 slurp
 spotify
