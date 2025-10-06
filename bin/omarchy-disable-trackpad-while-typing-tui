@@ -147,6 +147,60 @@ setup_sudo() {
   rm -f "$TEMP_FILE"
 }
 
+# Generic function to display device selection menu
+select_device_from_menu() {
+  local -n devices_ref=$1    # Array of device paths (nameref)
+  local -n names_ref=$2      # Array of display names (nameref)
+  local device_type=$3       # Description (e.g., "keyboard", "pointer device")
+  local default_pattern=$4   # Pattern to match for default (e.g., "internal")
+  local prompt_msg=$5        # Custom prompt message (optional)
+
+  if [ ${#devices_ref[@]} -eq 0 ]; then
+    error "No ${device_type}s found!"
+    exit 1
+  elif [ ${#devices_ref[@]} -eq 1 ]; then
+    success "Found one ${device_type}: ${names_ref[0]}" >&2
+    echo "${devices_ref[0]}"
+  else
+    # Find the default choice based on pattern
+    local default_choice=""
+    for i in "${!names_ref[@]}"; do
+      if echo "${names_ref[$i]}" | grep -q "$default_pattern"; then
+        default_choice=$((i + 1))
+        break
+      fi
+    done
+
+    # Show menu
+    if [ -n "$prompt_msg" ]; then
+      info "$prompt_msg" >&2
+    else
+      info "Found multiple ${device_type}s. Please select one:" >&2
+    fi
+    echo "" >&2
+    for i in "${!names_ref[@]}"; do
+      echo "$((i + 1))) ${names_ref[$i]}" >&2
+    done
+
+    # Get user selection
+    while true; do
+      if [ -n "$default_choice" ]; then
+        read -p "Enter number [default: $default_choice]: " choice
+        choice=${choice:-$default_choice}
+      else
+        read -p "Enter number: " choice
+      fi
+
+      if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#devices_ref[@]}" ]; then
+        echo "${devices_ref[$((choice - 1))]}"
+        break
+      else
+        error "Invalid choice, please enter 1-${#devices_ref[@]}" >&2
+      fi
+    done
+  fi
+}
+
 select_keyboard() {
   local keyboards=()
   local names=()
@@ -175,44 +229,7 @@ select_keyboard() {
     fi
   done
 
-  if [ ${#keyboards[@]} -eq 0 ]; then
-    error "No keyboard devices found!"
-    exit 1
-  elif [ ${#keyboards[@]} -eq 1 ]; then
-    success "Found one keyboard: ${names[0]}" >&2
-    echo "${keyboards[0]}"
-  else
-    # Find the internal keyboard index (1-based for display)
-    local default_choice=""
-    for i in "${!names[@]}"; do
-      if echo "${names[$i]}" | grep -q "internal"; then
-        default_choice=$((i + 1))
-        break
-      fi
-    done
-
-    info "Found multiple keyboards. Please select one:" >&2
-    echo "" >&2
-    for i in "${!names[@]}"; do
-      echo "$((i + 1))) ${names[$i]}" >&2
-    done
-
-    while true; do
-      if [ -n "$default_choice" ]; then
-        read -p "Enter number [default: $default_choice]: " choice
-        choice=${choice:-$default_choice}
-      else
-        read -p "Enter number: " choice
-      fi
-
-      if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#keyboards[@]}" ]; then
-        echo "${keyboards[$((choice - 1))]}"
-        break
-      else
-        error "Invalid choice, please enter 1-${#keyboards[@]}" >&2
-      fi
-    done
-  fi
+  select_device_from_menu keyboards names "keyboard" "internal" "Found multiple keyboards. Please select one:"
 }
 
 select_trackpad() {
@@ -300,44 +317,7 @@ select_trackpad() {
     names+=("$dev_name ($events, $dev_type, $bus_type)")
   done
 
-  if [ ${#devices[@]} -eq 0 ]; then
-    error "No pointer devices found!"
-    exit 1
-  elif [ ${#devices[@]} -eq 1 ]; then
-    success "Found one pointer device: ${names[0]}" >&2
-    echo "${devices[0]}"
-  else
-    # Find the internal trackpad index (1-based for display)
-    local default_choice=""
-    for i in "${!names[@]}"; do
-      if echo "${names[$i]}" | grep -q "trackpad.*internal"; then
-        default_choice=$((i + 1))
-        break
-      fi
-    done
-
-    info "Found multiple pointer devices. Please select one to disable while typing:" >&2
-    echo "" >&2
-    for i in "${!names[@]}"; do
-      echo "$((i + 1))) ${names[$i]}" >&2
-    done
-
-    while true; do
-      if [ -n "$default_choice" ]; then
-        read -p "Enter number [default: $default_choice]: " choice
-        choice=${choice:-$default_choice}
-      else
-        read -p "Enter number: " choice
-      fi
-
-      if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#devices[@]}" ]; then
-        echo "${devices[$((choice - 1))]}"
-        break
-      else
-        error "Invalid choice, please enter 1-${#devices[@]}" >&2
-      fi
-    done
-  fi
+  select_device_from_menu devices names "pointer device" "trackpad.*internal" "Found multiple pointer devices. Please select one to disable while typing:"
 }
 
 select_timeout() {

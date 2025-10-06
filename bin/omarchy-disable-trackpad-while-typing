@@ -77,60 +77,68 @@ main() {
     "ENTER" "RETURN"
   )
 
-  # Trackpad device(s) - REQUIRED environment variable
-  # Can be a single device or multiple colon-separated devices (e.g., event6:event7)
-  if [ -z "${OMARCHY_TRACKPAD_DWT_TRACKPAD:-}" ]; then
-    echo "Error: OMARCHY_TRACKPAD_DWT_TRACKPAD environment variable not set"
-    echo "Run omarchy-disable-trackpad-while-typing-tui to configure your trackpad device"
-    exit 1
-  fi
+  # Initialize trackpad devices and return array of sysfs inhibited file paths
+  initialize_trackpad_devices() {
+    local -n files_ref=$1  # Reference to TRACKPAD_FILES array
 
-  # Split by colons to handle multiple devices (e.g., Magic Trackpad with multiple interfaces)
-  IFS=':' read -ra TRACKPAD_DEVICES <<< "$OMARCHY_TRACKPAD_DWT_TRACKPAD"
-  TRACKPAD_FILES=()
+    # Trackpad device(s) - REQUIRED environment variable
+    # Can be a single device or multiple colon-separated devices (e.g., event6:event7)
+    if [ -z "${OMARCHY_TRACKPAD_DWT_TRACKPAD:-}" ]; then
+      echo "Error: OMARCHY_TRACKPAD_DWT_TRACKPAD environment variable not set"
+      echo "Run omarchy-disable-trackpad-while-typing-tui to configure your trackpad device"
+      exit 1
+    fi
 
-  for device_path in "${TRACKPAD_DEVICES[@]}"; do
-    TRACKPAD_EVENT=$(basename "$device_path")
-    TRACKPAD_SYSFS=""
+    # Split by colons to handle multiple devices (e.g., Magic Trackpad with multiple interfaces)
+    IFS=':' read -ra TRACKPAD_DEVICES <<< "$OMARCHY_TRACKPAD_DWT_TRACKPAD"
 
-    # Find sysfs path for this event device
-    for input_dev in /sys/class/input/input*/event*; do
-      if [ "$(basename "$input_dev")" = "$TRACKPAD_EVENT" ]; then
-        TRACKPAD_SYSFS=$(dirname "$input_dev")
-        break
+    for device_path in "${TRACKPAD_DEVICES[@]}"; do
+      TRACKPAD_EVENT=$(basename "$device_path")
+      TRACKPAD_SYSFS=""
+
+      # Find sysfs path for this event device
+      for input_dev in /sys/class/input/input*/event*; do
+        if [ "$(basename "$input_dev")" = "$TRACKPAD_EVENT" ]; then
+          TRACKPAD_SYSFS=$(dirname "$input_dev")
+          break
+        fi
+      done
+
+      if [ -z "$TRACKPAD_SYSFS" ]; then
+        echo "Error: Trackpad device $device_path not found"
+        echo "Run omarchy-disable-trackpad-while-typing-tui to configure available devices"
+        exit 1
       fi
+
+      log_info "Found trackpad at: $TRACKPAD_SYSFS"
+      log_info "Device name: $(cat "$TRACKPAD_SYSFS/name")"
+
+      # Find the inhibited file for this trackpad
+      TRACKPAD_FILE=""
+      if [ -f "$TRACKPAD_SYSFS/inhibited" ]; then
+        TRACKPAD_FILE="$TRACKPAD_SYSFS/inhibited"
+      elif [ -f "$TRACKPAD_SYSFS/device/inhibited" ]; then
+        TRACKPAD_FILE="$TRACKPAD_SYSFS/device/inhibited"
+      else
+        echo "Error: Cannot find inhibited file for trackpad $TRACKPAD_EVENT"
+        echo "Trackpad may not support the inhibit mechanism"
+        exit 1
+      fi
+
+      # Check that we have permission (script should be run with sudo)
+      if [ ! -w "$TRACKPAD_FILE" ] && [ "$EUID" -ne 0 ]; then
+        echo "Error: No permission to control trackpad"
+        echo "This script must be run with sudo"
+        exit 1
+      fi
+
+      files_ref+=("$TRACKPAD_FILE")
     done
+  }
 
-    if [ -z "$TRACKPAD_SYSFS" ]; then
-      echo "Error: Trackpad device $device_path not found"
-      echo "Run omarchy-disable-trackpad-while-typing-tui to configure available devices"
-      exit 1
-    fi
-
-    log_info "Found trackpad at: $TRACKPAD_SYSFS"
-    log_info "Device name: $(cat "$TRACKPAD_SYSFS/name")"
-
-    # Find the inhibited file for this trackpad
-    TRACKPAD_FILE=""
-    if [ -f "$TRACKPAD_SYSFS/inhibited" ]; then
-      TRACKPAD_FILE="$TRACKPAD_SYSFS/inhibited"
-    elif [ -f "$TRACKPAD_SYSFS/device/inhibited" ]; then
-      TRACKPAD_FILE="$TRACKPAD_SYSFS/device/inhibited"
-    else
-      echo "Error: Cannot find inhibited file for trackpad $TRACKPAD_EVENT"
-      echo "Trackpad may not support the inhibit mechanism"
-      exit 1
-    fi
-
-    # Check that we have permission (script should be run with sudo)
-    if [ ! -w "$TRACKPAD_FILE" ] && [ "$EUID" -ne 0 ]; then
-      echo "Error: No permission to control trackpad"
-      echo "This script must be run with sudo"
-      exit 1
-    fi
-
-    TRACKPAD_FILES+=("$TRACKPAD_FILE")
-  done
+  # Initialize trackpad devices
+  TRACKPAD_FILES=()
+  initialize_trackpad_devices TRACKPAD_FILES
 
   # Trackpad control functions that handle multiple devices
   disable_trackpad() {
@@ -188,17 +196,22 @@ main() {
 
   trap cleanup SIGINT SIGTERM
 
-  # Get all window focus movement keybindings at startup
-  log_info "Reading Hyprland keybindings for window focus movement..."
-  FOCUS_BINDINGS=""
-  if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
+  # Parse Hyprland keybindings to detect focus movement commands
+  parse_hyprland_focus_bindings() {
+    local bindings=""
+
+    if [ -z "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
+      echo "$bindings"
+      return
+    fi
+
     # Get all bindings and parse the structured format
-    focus_commands="movefocus|movewindow|workspace|movetoworkspace|focuswindow|swapwindow|moveworkspacetomonitor|focusmonitor"
+    local focus_commands="movefocus|movewindow|workspace|movetoworkspace|focuswindow|swapwindow|moveworkspacetomonitor|focusmonitor"
 
     # Parse hyprctl binds structured output
-    modmask=""
-    key=""
-    dispatcher=""
+    local modmask=""
+    local key=""
+    local dispatcher=""
 
     while IFS= read -r line; do
       if echo "$line" | grep -q "modmask:"; then
@@ -210,7 +223,7 @@ main() {
 
         # If this is a focus-related dispatcher, convert modmask to modifier names
         if echo "$dispatcher" | grep -qE "^($focus_commands)$"; then
-          modifiers=""
+          local modifiers=""
           # Convert modmask bits to modifier names (Hyprland modmask format)
           [ $((modmask & 1)) -ne 0 ] && modifiers="${modifiers}SHIFT_"
           [ $((modmask & 2)) -ne 0 ] && modifiers="${modifiers}CAPS_"
@@ -220,13 +233,14 @@ main() {
 
           # Remove trailing underscore and create binding
           modifiers=$(echo "$modifiers" | sed 's/_$//')
+          local binding
           if [ -n "$modifiers" ]; then
             binding="${modifiers}+${key}"
           else
             binding="$key"
           fi
 
-          FOCUS_BINDINGS="$FOCUS_BINDINGS $binding"
+          bindings="$bindings $binding"
         fi
 
         # Reset for next binding
@@ -235,8 +249,13 @@ main() {
         dispatcher=""
       fi
     done < <(sudo -u "${SUDO_USER:-$USER}" HYPRLAND_INSTANCE_SIGNATURE="$HYPRLAND_INSTANCE_SIGNATURE" hyprctl binds 2>/dev/null)
-  fi
 
+    echo "$bindings"
+  }
+
+  # Get all window focus movement keybindings at startup
+  log_info "Reading Hyprland keybindings for window focus movement..."
+  FOCUS_BINDINGS=$(parse_hyprland_focus_bindings)
   log_info "Detected focus movement bindings:$FOCUS_BINDINGS"
 
   # Track modifier key states for efficient combo detection
@@ -244,6 +263,17 @@ main() {
   ALT_HELD=false
   SHIFT_HELD=false
   SUPER_HELD=false
+
+  # Helper to check if any modifier key is currently held
+  any_modifier_held() {
+    $CTRL_HELD || $ALT_HELD || $SHIFT_HELD || $SUPER_HELD
+  }
+
+  # Helper to enable trackpad and cancel any pending timeout
+  enable_trackpad_and_cancel_timeout() {
+    enable_trackpad
+    touch "$CANCEL_TIMEOUT"
+  }
 
   # Function to check if current modifier+key combo is a focus movement binding
   is_focus_binding() {
@@ -269,62 +299,37 @@ main() {
   export -f log_info
   export INTERACTIVE
 
+  # Helper function to handle modifier key press/release
+  handle_modifier_key() {
+    local line="$1"
+    local key_name="$2"
+    local held_var="$3"
+
+    # Check for press (value 1)
+    if echo "$line" | grep -q "KEY_LEFT${key_name}.*value 1\|KEY_RIGHT${key_name}.*value 1"; then
+      eval "$held_var=true"
+      if echo "$line" | grep -q "KEY_LEFT${key_name}.*value 1"; then
+        log_info "LEFT_${key_name} pressed - enabling trackpad instantly"
+      else
+        log_info "RIGHT_${key_name} pressed - enabling trackpad instantly"
+      fi
+      enable_trackpad_and_cancel_timeout
+      return 0
+    # Check for release (value 0)
+    elif echo "$line" | grep -q "KEY_LEFT${key_name}.*value 0\|KEY_RIGHT${key_name}.*value 0"; then
+      eval "$held_var=false"
+      return 0
+    fi
+    return 1
+  }
+
   # Monitor keyboard with evtest
   evtest "$KEYBOARD_DEVICE" | while read -r line; do
     # Track all modifier key states and check for instant enable on press
-    if echo "$line" | grep -q "KEY_LEFTMETA.*value 1\|KEY_RIGHTMETA.*value 1"; then
-      SUPER_HELD=true
-      if echo "$line" | grep -q "KEY_LEFTMETA.*value 1"; then
-        log_info "LEFT_META pressed - enabling trackpad instantly"
-      else
-        log_info "RIGHT_META pressed - enabling trackpad instantly"
-      fi
-      enable_trackpad
-      touch "$CANCEL_TIMEOUT"
-      continue
-    elif echo "$line" | grep -q "KEY_LEFTMETA.*value 0\|KEY_RIGHTMETA.*value 0"; then
-      SUPER_HELD=false
-      continue
-    elif echo "$line" | grep -q "KEY_LEFTCTRL.*value 1\|KEY_RIGHTCTRL.*value 1"; then
-      CTRL_HELD=true
-      if echo "$line" | grep -q "KEY_LEFTCTRL.*value 1"; then
-        log_info "LEFT_CTRL pressed - enabling trackpad instantly"
-      else
-        log_info "RIGHT_CTRL pressed - enabling trackpad instantly"
-      fi
-      enable_trackpad
-      touch "$CANCEL_TIMEOUT"
-      continue
-    elif echo "$line" | grep -q "KEY_LEFTCTRL.*value 0\|KEY_RIGHTCTRL.*value 0"; then
-      CTRL_HELD=false
-      continue
-    elif echo "$line" | grep -q "KEY_LEFTALT.*value 1\|KEY_RIGHTALT.*value 1"; then
-      ALT_HELD=true
-      if echo "$line" | grep -q "KEY_LEFTALT.*value 1"; then
-        log_info "LEFT_ALT pressed - enabling trackpad instantly"
-      else
-        log_info "RIGHT_ALT pressed - enabling trackpad instantly"
-      fi
-      enable_trackpad
-      touch "$CANCEL_TIMEOUT"
-      continue
-    elif echo "$line" | grep -q "KEY_LEFTALT.*value 0\|KEY_RIGHTALT.*value 0"; then
-      ALT_HELD=false
-      continue
-    elif echo "$line" | grep -q "KEY_LEFTSHIFT.*value 1\|KEY_RIGHTSHIFT.*value 1"; then
-      SHIFT_HELD=true
-      if echo "$line" | grep -q "KEY_LEFTSHIFT.*value 1"; then
-        log_info "LEFT_SHIFT pressed - enabling trackpad instantly"
-      else
-        log_info "RIGHT_SHIFT pressed - enabling trackpad instantly"
-      fi
-      enable_trackpad
-      touch "$CANCEL_TIMEOUT"
-      continue
-    elif echo "$line" | grep -q "KEY_LEFTSHIFT.*value 0\|KEY_RIGHTSHIFT.*value 0"; then
-      SHIFT_HELD=false
-      continue
-    fi
+    handle_modifier_key "$line" "META" "SUPER_HELD" && continue
+    handle_modifier_key "$line" "CTRL" "CTRL_HELD" && continue
+    handle_modifier_key "$line" "ALT" "ALT_HELD" && continue
+    handle_modifier_key "$line" "SHIFT" "SHIFT_HELD" && continue
 
     # Look for key press events (value 1 = press)
     if echo "$line" | grep -q "EV_KEY.*value 1"; then
@@ -343,28 +348,24 @@ main() {
         for enable_key in "${INSTANT_ENABLE_KEYS[@]}"; do
           if [ "$hypr_key" = "$enable_key" ]; then
             log_info "$enable_key pressed - enabling trackpad instantly"
-            enable_trackpad
-            touch "$CANCEL_TIMEOUT"
+            enable_trackpad_and_cancel_timeout
             continue 2 # Continue outer loop
           fi
         done
 
         # Check if any modifier is held + key pressed (modifier chord)
-        if $CTRL_HELD || $ALT_HELD || $SHIFT_HELD || $SUPER_HELD; then
+        if any_modifier_held; then
           log_info "Modifier chord detected: $hypr_key - enabling trackpad"
-          enable_trackpad
-          touch "$CANCEL_TIMEOUT"
+          enable_trackpad_and_cancel_timeout
           continue
         fi
 
         # Check if this is a focus movement binding ONLY when modifiers are held
         # (Focus movement requires modifier combinations, not plain key presses)
-        if $CTRL_HELD || $ALT_HELD || $SHIFT_HELD || $SUPER_HELD; then
+        if any_modifier_held; then
           if is_focus_binding "$hypr_key" || is_focus_binding "$(echo "$hypr_key" | tr '[:upper:]' '[:lower:]')"; then
             log_info "Focus movement binding detected: $hypr_key - enabling trackpad"
-            enable_trackpad
-            # Cancel any running timeout
-            touch "$CANCEL_TIMEOUT"
+            enable_trackpad_and_cancel_timeout
             continue
           fi
         fi
