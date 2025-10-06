@@ -21,7 +21,7 @@ path = "~/.config/hypr/hyprland.conf"
 hidden = true
 
 [builtins.applications]
-launch_prefix = "uwsm app -- "
+launch_prefix = "uwsm-app -- "
 placeholder = " Search..."
 prioritize_new = false
 context_aware = false
