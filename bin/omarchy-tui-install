@@ -25,29 +25,7 @@ if [[ ! "$ICON_URL" =~ ^https?:// ]] && [ -f "$ICON_URL" ]; then
   ICON_PATH="$ICON_URL"
 elif [[ "$ICON_URL" =~ ^https?:// ]]; then
   ICON_PATH="$ICON_DIR/$APP_NAME.png"
-  mkdir -p "$ICON_DIR"
-  # Extract file extension from URL
-  EXT="${ICON_URL##*.}"
-  EXT="${EXT%%\?*}"
-
-  SOURCE_ICON="$ICON_DIR/${APP_NAME}_source.${EXT}"
-
-  # Download icon
-  if curl -sL -o "$SOURCE_ICON" "$ICON_URL" 2>/dev/null; then
-    # Convert to PNG using ImageMagick
-    if ! magick "$SOURCE_ICON" "$ICON_PATH" 2>/dev/null; then
-      # Try with -flatten for problematic formats
-      magick "$SOURCE_ICON" -flatten "$ICON_PATH" 2>/dev/null || {
-        echo "Error: Could not convert icon to PNG."
-        rm -f "$SOURCE_ICON"
-        exit 1
-      }
-    fi
-    rm -f "$SOURCE_ICON"
-  else
-    echo "Error: Failed to download icon from $ICON_URL"
-    exit 1
-  fi
+  omarchy-icon-dl "$ICON_URL" "$ICON_PATH" || exit 1
 fi
 
 if [[ $WINDOW_STYLE == "float" ]]; then

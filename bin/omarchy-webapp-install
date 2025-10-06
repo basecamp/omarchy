@@ -31,7 +31,7 @@ fi
 # Auto-detect icon from google favicons if ICON_REF is empty
 if [[ -z "$ICON_REF" ]]; then
   DOMAIN=$(echo "$APP_URL" | sed -E 's#^https?://([^/]+).*#\1#')
-  ICON_REF="https://www.google.com/s2/favicons?domain=${DOMAIN}&sz=64"
+  ICON_REF="https://www.google.com/s2/favicons?domain=${DOMAIN}&sz=128"
 fi
 
 # Download and convert icon
@@ -39,30 +39,7 @@ ICON_DIR="$HOME/.local/share/applications/icons"
 
 if [[ $ICON_REF =~ ^https?:// ]]; then
   ICON_PATH="$ICON_DIR/$APP_NAME.png"
-  # Extract extension
-  EXT="${ICON_REF##*.}"
-  EXT="${EXT%%\?*}"
-  EXT=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
-
-  SOURCE_ICON="$ICON_DIR/${APP_NAME}_source.${EXT}"
-
-  # Download icon
-  if curl -sL -o "$SOURCE_ICON" "$ICON_REF" 2>/dev/null; then
-    # Convert to PNG if needed
-    if [[ "$EXT" == "png" ]]; then
-      mv "$SOURCE_ICON" "$ICON_PATH"
-    else
-      magick "$SOURCE_ICON" -flatten "$ICON_PATH" 2>/dev/null || {
-        echo "Error: Could not convert icon to PNG."
-        rm -f "$SOURCE_ICON"
-        exit 1
-      }
-      rm -f "$SOURCE_ICON"
-    fi
-  else
-    echo "Error: Failed to download icon."
-    exit 1
-  fi
+  omarchy-icon-dl "$ICON_REF" "$ICON_PATH" || exit 1
 else
   ICON_PATH="$ICON_DIR/$ICON_REF"
 fi
