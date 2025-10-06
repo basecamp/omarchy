@@ -1,0 +1,429 @@
+#!/bin/bash
+
+# Disable trackpad while typing using sysfs inhibit mechanism
+# Also enable trackpad on window focus change for smooth window switching
+# Optimized for efficiency - minimal operations per keypress
+
+# Read timeout from environment variable set in Hyprland config, or use default
+TIMEOUT="${OMARCHY_TRACKPAD_DWT_TIMEOUT:-1.5}"
+PID_FILE="/tmp/dwt-timeout-pid"
+CANCEL_TIMEOUT="/tmp/dwt-cancel-timeout"
+SCRIPT_PID_FILE="/tmp/dwt-script-pid"
+
+main() {
+  # Check if already running and kill old instances (e.g., from previous Hyprland session)
+  if [ -f "$SCRIPT_PID_FILE" ]; then
+    old_pid=$(cat "$SCRIPT_PID_FILE" 2>/dev/null)
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+      # Kill the entire process group (negative PID kills process group)
+      # This ensures all subprocesses (evtest, socat, timeout jobs) are killed
+      kill -- -"$old_pid" 2>/dev/null || {
+        # Fallback: kill children then parent if process group kill fails
+        pkill -P "$old_pid" 2>/dev/null
+        kill "$old_pid" 2>/dev/null
+      }
+      sleep 0.5
+    fi
+    # Remove old PID file
+    rm -f "$SCRIPT_PID_FILE"
+  fi
+
+  # Run in own process group so we can kill entire tree later
+  # This makes $$ equal to the process group ID
+  set -m
+
+  # Store our PID (which is also our PGID due to set -m)
+  echo $$ >"$SCRIPT_PID_FILE"
+
+  # Detect if running interactively (not in background from autostart)
+  if [ -t 1 ]; then
+    INTERACTIVE=true
+  else
+    INTERACTIVE=false
+  fi
+
+  # Helper function for conditional output
+  log_info() {
+    $INTERACTIVE && echo "$@"
+  }
+
+  # Keyboard device - REQUIRED environment variable
+  if [ -z "${OMARCHY_TRACKPAD_DWT_KEYBOARD:-}" ]; then
+    echo "Error: OMARCHY_TRACKPAD_DWT_KEYBOARD environment variable not set"
+    echo "Run omarchy-disable-trackpad-while-typing-tui to configure your keyboard device"
+    exit 1
+  fi
+
+  KEYBOARD_DEVICE="$OMARCHY_TRACKPAD_DWT_KEYBOARD"
+  if [ ! -c "$KEYBOARD_DEVICE" ]; then
+    echo "Error: Keyboard device $KEYBOARD_DEVICE not found"
+    echo "Run omarchy-disable-trackpad-while-typing-tui to configure available devices"
+    exit 1
+  fi
+  log_info "Using keyboard: $KEYBOARD_DEVICE"
+
+  # Configuration for instant trackpad enable - array of keys
+  INSTANT_ENABLE_KEYS=(
+    "ESCAPE"
+    "LEFTCTRL" "RIGHTCTRL"
+    "LEFTALT" "RIGHTALT"
+    "LEFTSHIFT" "RIGHTSHIFT"
+    "LEFTMETA" "RIGHTMETA"
+    "ESC" # For escape sequences like ^[ from keyd remapped keys
+    "TAB"
+    "FN" # Might not work on all keyboards (firmware dependent)
+    "DELETE" "BACKSPACE"
+    "UP" "DOWN" "LEFT" "RIGHT"
+    "ENTER" "RETURN"
+  )
+
+  # Trackpad device - REQUIRED environment variable
+  if [ -z "${OMARCHY_TRACKPAD_DWT_TRACKPAD:-}" ]; then
+    echo "Error: OMARCHY_TRACKPAD_DWT_TRACKPAD environment variable not set"
+    echo "Run omarchy-disable-trackpad-while-typing-tui to configure your trackpad device"
+    exit 1
+  fi
+
+  # Convert trackpad device path to sysfs path
+  TRACKPAD_EVENT=$(basename "$OMARCHY_TRACKPAD_DWT_TRACKPAD")
+  TRACKPAD_SYSFS=""
+
+  for input_dev in /sys/class/input/input*/event*; do
+    if [ "$(basename "$input_dev")" = "$TRACKPAD_EVENT" ]; then
+      TRACKPAD_SYSFS=$(dirname "$input_dev")
+      break
+    fi
+  done
+
+  if [ -z "$TRACKPAD_SYSFS" ]; then
+    echo "Error: Trackpad device $OMARCHY_TRACKPAD_DWT_TRACKPAD not found"
+    echo "Run omarchy-disable-trackpad-while-typing-tui to configure available devices"
+    exit 1
+  fi
+
+  log_info "Found trackpad at: $TRACKPAD_SYSFS"
+  log_info "Device name: $(cat "$TRACKPAD_SYSFS/name")"
+
+  # Find the inhibited file for the trackpad
+  if [ -f "$TRACKPAD_SYSFS/inhibited" ]; then
+    TRACKPAD_FILE="$TRACKPAD_SYSFS/inhibited"
+  elif [ -f "$TRACKPAD_SYSFS/device/inhibited" ]; then
+    TRACKPAD_FILE="$TRACKPAD_SYSFS/device/inhibited"
+  else
+    echo "Error: Cannot find inhibited file for trackpad"
+    echo "Trackpad may not support the inhibit mechanism"
+    exit 1
+  fi
+
+  # Check that we have permission (script should be run with sudo)
+  if [ ! -w "$TRACKPAD_FILE" ] && [ "$EUID" -ne 0 ]; then
+    echo "Error: No permission to control trackpad"
+    echo "This script must be run with sudo"
+    exit 1
+  fi
+
+  # Simple trackpad control functions
+  disable_trackpad() {
+    echo 1 >"$TRACKPAD_FILE" 2>/dev/null
+  }
+
+  enable_trackpad() {
+    echo 0 >"$TRACKPAD_FILE" 2>/dev/null
+  }
+
+  log_info "Monitoring keyboard: $KEYBOARD_DEVICE"
+  log_info "Monitoring Hyprland window focus changes"
+  log_info "Trackpad will be disabled while typing (timeout: ${TIMEOUT}s)"
+  log_info "Trackpad will be enabled on window focus change"
+  log_info "Press Escape or any modifier key to instantly enable trackpad"
+  log_info "Press Ctrl+C to stop"
+
+  # Get Hyprland instance signature
+  ACTUAL_UID="${SUDO_UID:-$(id -u)}"
+
+  if [ -z "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
+    HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/$ACTUAL_UID/hypr/ 2>/dev/null | sort -r | head -1)
+  fi
+
+  # Start window focus monitor in background using socat
+  if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
+    (
+      # dwt-focus-monitor: Monitor Hyprland window focus changes
+      sudo -u "${SUDO_USER:-$USER}" HYPRLAND_INSTANCE_SIGNATURE="$HYPRLAND_INSTANCE_SIGNATURE" socat -u UNIX-CONNECT:/run/user/$ACTUAL_UID/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock - | while read -r line; do
+        if echo "$line" | grep -q "activewindow>>"; then
+          log_info "Window focus changed - enabling trackpad"
+          enable_trackpad
+          # Signal timeout cancellation
+          touch "$CANCEL_TIMEOUT"
+        fi
+      done
+    ) &
+    FOCUS_MONITOR_PID=$!
+  else
+    FOCUS_MONITOR_PID=""
+  fi
+
+  # Function to cleanup on exit
+  cleanup() {
+    log_info "Cleaning up..."
+    enable_trackpad
+    [ -n "$FOCUS_MONITOR_PID" ] && kill $FOCUS_MONITOR_PID 2>/dev/null
+    rm -f "$PID_FILE" "$CANCEL_TIMEOUT" "$SCRIPT_PID_FILE"
+    exit 0
+  }
+
+  trap cleanup SIGINT SIGTERM
+
+  # Get all window focus movement keybindings at startup
+  log_info "Reading Hyprland keybindings for window focus movement..."
+  FOCUS_BINDINGS=""
+  if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]; then
+    # Get all bindings and parse the structured format
+    focus_commands="movefocus|movewindow|workspace|movetoworkspace|focuswindow|swapwindow|moveworkspacetomonitor|focusmonitor"
+
+    # Parse hyprctl binds structured output
+    modmask=""
+    key=""
+    dispatcher=""
+
+    while IFS= read -r line; do
+      if echo "$line" | grep -q "modmask:"; then
+        modmask=$(echo "$line" | sed 's/.*modmask: //')
+      elif echo "$line" | grep -q "key:"; then
+        key=$(echo "$line" | sed 's/.*key: //')
+      elif echo "$line" | grep -q "dispatcher:"; then
+        dispatcher=$(echo "$line" | sed 's/.*dispatcher: //')
+
+        # If this is a focus-related dispatcher, convert modmask to modifier names
+        if echo "$dispatcher" | grep -qE "^($focus_commands)$"; then
+          modifiers=""
+          # Convert modmask bits to modifier names (Hyprland modmask format)
+          [ $((modmask & 1)) -ne 0 ] && modifiers="${modifiers}SHIFT_"
+          [ $((modmask & 2)) -ne 0 ] && modifiers="${modifiers}CAPS_"
+          [ $((modmask & 4)) -ne 0 ] && modifiers="${modifiers}CTRL_"
+          [ $((modmask & 8)) -ne 0 ] && modifiers="${modifiers}ALT_"
+          [ $((modmask & 64)) -ne 0 ] && modifiers="${modifiers}SUPER_"
+
+          # Remove trailing underscore and create binding
+          modifiers=$(echo "$modifiers" | sed 's/_$//')
+          if [ -n "$modifiers" ]; then
+            binding="${modifiers}+${key}"
+          else
+            binding="$key"
+          fi
+
+          FOCUS_BINDINGS="$FOCUS_BINDINGS $binding"
+        fi
+
+        # Reset for next binding
+        modmask=""
+        key=""
+        dispatcher=""
+      fi
+    done < <(sudo -u "${SUDO_USER:-$USER}" HYPRLAND_INSTANCE_SIGNATURE="$HYPRLAND_INSTANCE_SIGNATURE" hyprctl binds 2>/dev/null)
+  fi
+
+  log_info "Detected focus movement bindings:$FOCUS_BINDINGS"
+
+  # Track modifier key states for efficient combo detection
+  CTRL_HELD=false
+  ALT_HELD=false
+  SHIFT_HELD=false
+  SUPER_HELD=false
+
+  # Function to check if current modifier+key combo is a focus movement binding
+  is_focus_binding() {
+    local key="$1"
+    local current_combo=""
+
+    # Build current modifier combination in Hyprland order (matches the binding output)
+    $SHIFT_HELD && current_combo="${current_combo}SHIFT_"
+    $CTRL_HELD && current_combo="${current_combo}CTRL_"
+    $ALT_HELD && current_combo="${current_combo}ALT_"
+    $SUPER_HELD && current_combo="${current_combo}SUPER_"
+
+    # Remove trailing underscore and add key
+    current_combo=$(echo "$current_combo" | sed 's/_$//')
+    [ -n "$current_combo" ] && current_combo="${current_combo}+${key}"
+    [ -z "$current_combo" ] && current_combo="$key"
+
+    # Check if this combo matches any focus binding
+    echo "$FOCUS_BINDINGS" | grep -q "\<$current_combo\>"
+  }
+
+  # Export the function for use in subshells
+  export -f log_info
+  export INTERACTIVE
+
+  # Monitor keyboard with evtest
+  evtest "$KEYBOARD_DEVICE" | while read -r line; do
+    # Track all modifier key states and check for instant enable on press
+    if echo "$line" | grep -q "KEY_LEFTMETA.*value 1\|KEY_RIGHTMETA.*value 1"; then
+      SUPER_HELD=true
+      if echo "$line" | grep -q "KEY_LEFTMETA.*value 1"; then
+        log_info "LEFT_META pressed - enabling trackpad instantly"
+      else
+        log_info "RIGHT_META pressed - enabling trackpad instantly"
+      fi
+      enable_trackpad
+      touch "$CANCEL_TIMEOUT"
+      continue
+    elif echo "$line" | grep -q "KEY_LEFTMETA.*value 0\|KEY_RIGHTMETA.*value 0"; then
+      SUPER_HELD=false
+      continue
+    elif echo "$line" | grep -q "KEY_LEFTCTRL.*value 1\|KEY_RIGHTCTRL.*value 1"; then
+      CTRL_HELD=true
+      if echo "$line" | grep -q "KEY_LEFTCTRL.*value 1"; then
+        log_info "LEFT_CTRL pressed - enabling trackpad instantly"
+      else
+        log_info "RIGHT_CTRL pressed - enabling trackpad instantly"
+      fi
+      enable_trackpad
+      touch "$CANCEL_TIMEOUT"
+      continue
+    elif echo "$line" | grep -q "KEY_LEFTCTRL.*value 0\|KEY_RIGHTCTRL.*value 0"; then
+      CTRL_HELD=false
+      continue
+    elif echo "$line" | grep -q "KEY_LEFTALT.*value 1\|KEY_RIGHTALT.*value 1"; then
+      ALT_HELD=true
+      if echo "$line" | grep -q "KEY_LEFTALT.*value 1"; then
+        log_info "LEFT_ALT pressed - enabling trackpad instantly"
+      else
+        log_info "RIGHT_ALT pressed - enabling trackpad instantly"
+      fi
+      enable_trackpad
+      touch "$CANCEL_TIMEOUT"
+      continue
+    elif echo "$line" | grep -q "KEY_LEFTALT.*value 0\|KEY_RIGHTALT.*value 0"; then
+      ALT_HELD=false
+      continue
+    elif echo "$line" | grep -q "KEY_LEFTSHIFT.*value 1\|KEY_RIGHTSHIFT.*value 1"; then
+      SHIFT_HELD=true
+      if echo "$line" | grep -q "KEY_LEFTSHIFT.*value 1"; then
+        log_info "LEFT_SHIFT pressed - enabling trackpad instantly"
+      else
+        log_info "RIGHT_SHIFT pressed - enabling trackpad instantly"
+      fi
+      enable_trackpad
+      touch "$CANCEL_TIMEOUT"
+      continue
+    elif echo "$line" | grep -q "KEY_LEFTSHIFT.*value 0\|KEY_RIGHTSHIFT.*value 0"; then
+      SHIFT_HELD=false
+      continue
+    fi
+
+    # Look for key press events (value 1 = press)
+    if echo "$line" | grep -q "EV_KEY.*value 1"; then
+      # Skip modifier keys (already handled above)
+      if echo "$line" | grep -qE "(KEY_LEFT(SHIFT|CTRL|ALT|META)|KEY_RIGHT(SHIFT|CTRL|ALT|META)|KEY_COMPOSE)"; then
+        continue
+      fi
+
+      # Extract the key name from evtest output
+      key_name=$(echo "$line" | sed -n 's/.*(\(KEY_[^)]*\)).*/\1/p')
+      if [ -n "$key_name" ]; then
+        # Convert KEY_* to the format used in Hyprland binds (remove KEY_ prefix)
+        hypr_key=$(echo "$key_name" | sed 's/^KEY_//')
+
+        # Check for instant enable keys (Escape or any modifier)
+        for enable_key in "${INSTANT_ENABLE_KEYS[@]}"; do
+          if [ "$hypr_key" = "$enable_key" ]; then
+            log_info "$enable_key pressed - enabling trackpad instantly"
+            enable_trackpad
+            touch "$CANCEL_TIMEOUT"
+            continue 2 # Continue outer loop
+          fi
+        done
+
+        # Check if any modifier is held + key pressed (modifier chord)
+        if $CTRL_HELD || $ALT_HELD || $SHIFT_HELD || $SUPER_HELD; then
+          log_info "Modifier chord detected: $hypr_key - enabling trackpad"
+          enable_trackpad
+          touch "$CANCEL_TIMEOUT"
+          continue
+        fi
+
+        # Check if this is a focus movement binding ONLY when modifiers are held
+        # (Focus movement requires modifier combinations, not plain key presses)
+        if $CTRL_HELD || $ALT_HELD || $SHIFT_HELD || $SUPER_HELD; then
+          if is_focus_binding "$hypr_key" || is_focus_binding "$(echo "$hypr_key" | tr '[:upper:]' '[:lower:]')"; then
+            log_info "Focus movement binding detected: $hypr_key - enabling trackpad"
+            enable_trackpad
+            # Cancel any running timeout
+            touch "$CANCEL_TIMEOUT"
+            continue
+          fi
+        fi
+      fi
+
+      log_info "Key pressed - disabling trackpad"
+      disable_trackpad
+
+      # Clean up any existing cancel signal and kill existing timeout
+      rm -f "$CANCEL_TIMEOUT"
+      [ -f "$PID_FILE" ] && kill $(cat "$PID_FILE") 2>/dev/null
+
+      # Start simple timeout with cancellation check
+      (
+        # dwt-timeout: Re-enable trackpad after typing timeout
+        # Calculate iterations based on timeout (0.1s increments)
+        iterations=$(awk "BEGIN {print int($TIMEOUT * 10)}" 2>/dev/null || echo 15)
+        for ((i = 1; i <= iterations; i++)); do
+          sleep 0.1
+          [ -f "$CANCEL_TIMEOUT" ] && {
+            log_info "Timeout cancelled"
+            rm -f "$PID_FILE" "$CANCEL_TIMEOUT"
+            exit 0
+          }
+        done
+        log_info "Re-enabling trackpad after timeout"
+        enable_trackpad
+        rm -f "$PID_FILE"
+      ) &
+      echo $! >"$PID_FILE"
+    fi
+  done
+}
+
+# Show help if requested
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<EOF
+Usage: $(basename "$0") [OPTIONS]
+
+Disable trackpad while typing using sysfs inhibit mechanism. Enables trackpad
+on window focus changes for smooth window switching.
+
+REQUIRED ENVIRONMENT VARIABLES:
+    OMARCHY_TRACKPAD_DWT_KEYBOARD    Keyboard device path (e.g., /dev/input/event1)
+    OMARCHY_TRACKPAD_DWT_TRACKPAD    Trackpad device path (e.g., /dev/input/event2)
+
+OPTIONAL ENVIRONMENT VARIABLES:
+    OMARCHY_TRACKPAD_DWT_TIMEOUT     Timeout in seconds before re-enabling trackpad (default: 1.5)
+
+FEATURES:
+    • Disables trackpad while typing with configurable timeout
+    • Instantly enables trackpad on modifier keys (Ctrl, Alt, Shift, Super, Esc)
+    • Enables trackpad on window focus changes (Hyprland integration)
+    • Detects focus movement key bindings and enables trackpad accordingly
+
+EXAMPLES:
+    $(basename "$0")                                    # Start with default settings
+    OMARCHY_TRACKPAD_DWT_TIMEOUT=2.0 $(basename "$0")   # Use 2 second timeout
+
+NOTES:
+    • Script will auto-detect input devices and prompt to set the trigger (keyboard)
+      and target to disable (trackpad/mouse).
+    • Though designed to disable large trackpads on laptops while using the
+      internal keyboard, it can be used to disable any input device (e.g.,
+      external mouse) while typing on a specified trigger (keyboard). This
+      could be useful in a pair programming scenario where there are multiple
+      sets of input devices and you want to control which one is active based on
+      typing activity, for example.
+    • For keyd users, keyboard device is usually /dev/input/event3 if no external keyboards are attached
+    • Press Ctrl+C to stop the script
+
+EOF
+  exit 0
+fi
+
+main "$@"

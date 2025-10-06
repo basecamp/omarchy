@@ -190,12 +190,20 @@ show_setup_menu() {
   *Power*) show_setup_power_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
-  *Input*) open_in_editor ~/.config/hypr/input.conf ;;
+  *Input*) show_setup_input_menu ;;
   *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_setup_input_menu() {
+  case $(menu "Input Setup" "  Disable on Typing\n  Config Input Opts") in
+  *Disable*) present_terminal omarchy-disable-trackpad-while-typing-tui ;;
+  *Config*) open_in_editor ~/.config/hypr/input.conf ;;
+  *) show_setup_menu ;;
   esac
 }
 

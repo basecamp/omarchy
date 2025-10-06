@@ -1,0 +1,415 @@
+#!/usr/bin/env bash
+# Interactive TUI setup for trackpad disable-while-typing
+
+set -euo pipefail
+
+# Define logging functions
+info() { echo -e "\033[34m[INFO]\033[0m $*"; }
+success() { echo -e "\033[32m[SUCCESS]\033[0m $*"; }
+warn() { echo -e "\033[33m[WARN]\033[0m $*"; }
+error() { echo -e "\033[31m[ERROR]\033[0m $*"; }
+
+# Configuration files
+REAL_USER="${SUDO_USER:-$USER}"
+REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+DWT_SCRIPT="$REAL_HOME/.local/share/omarchy/bin/omarchy-disable-trackpad-while-typing"
+SUDOERS_FILE="/etc/sudoers.d/omarchy-trackpad-dwt"
+INPUT_CONF="$REAL_HOME/.config/hypr/input.conf"
+AUTOSTART_CONF="$REAL_HOME/.config/hypr/autostart.conf"
+
+main() {
+  clear
+  echo "═══════════════════════════════════"
+  echo "Trackpad Disable-While-Typing Setup"
+  echo "═══════════════════════════════════"
+  echo "" >&2
+
+  # Step 1: Install dependencies
+  info "Step 1: Checking dependencies..."
+  install_dependencies
+
+  # Step 2: Setup passwordless sudo
+  echo "" >&2
+  info "Step 2: Setting up passwordless sudo..."
+  setup_sudo
+
+  # Step 3: Select keyboard device
+  echo "" >&2
+  info "Step 3: Select your keyboard device"
+  KEYBOARD_DEVICE=$(select_keyboard)
+
+  # Step 4: Select trackpad device
+  echo "" >&2
+  info "Step 4: Select your trackpad device"
+  TRACKPAD_DEVICE=$(select_trackpad)
+
+  # Step 5: Choose timeout
+  echo "" >&2
+  info "Step 5: Choose timeout duration"
+  TIMEOUT=$(select_timeout)
+
+  # Step 6: Write configuration
+  echo "" >&2
+  info "Step 6: Writing configuration..."
+  write_config "$KEYBOARD_DEVICE" "$TRACKPAD_DEVICE" "$TIMEOUT"
+
+  # Final instructions
+  echo "" >&2
+  echo    "═════════════════════════"
+  success "Setup complete!"
+  echo    "═════════════════════════"
+  echo "" >&2
+  info "The following configuration has been added to your input.conf:"
+  echo "" >&2
+  echo "  env = OMARCHY_TRACKPAD_DWT_KEYBOARD,$KEYBOARD_DEVICE"
+  echo "  env = OMARCHY_TRACKPAD_DWT_TRACKPAD,$TRACKPAD_DEVICE"
+  echo "  env = OMARCHY_TRACKPAD_DWT_TIMEOUT,$TIMEOUT"
+  echo "" >&2
+
+  # Offer to relaunch Hyprland
+  warn "Hyprland needs to be relaunched before the changes will take effect."
+  echo "" >&2
+  read -p "Relaunch now? [y/N]: " -n 1 -r
+  echo "" >&2
+
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    info "Relaunching Hyprland..."
+    # Get the actual user's UID for their session bus
+    REAL_UID=$(id -u "$REAL_USER")
+    # Run as the real user with their session bus address
+    sudo -u "$REAL_USER" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$REAL_UID/bus" bash -c "$REAL_HOME/.local/share/omarchy/bin/omarchy-state clear relaunch-required && uwsm stop"
+  else
+    info "Skipping relaunch. To relaunch later, use Super+Esc → Relaunch"
+  fi
+
+  echo "" >&2
+  info "To remove this configuration later:"
+  echo "  - Remove the env lines from ~/.config/hypr/input.conf"
+  echo "  - Remove the exec-once line from ~/.config/hypr/autostart.conf"
+  echo "  - Run: sudo rm /etc/sudoers.d/omarchy-trackpad-dwt"
+}
+
+install_dependencies() {
+  local deps_needed=false
+
+  if ! command -v evtest &>/dev/null; then
+    deps_needed=true
+    info "Installing evtest..."
+    sudo pacman -S --noconfirm evtest || error "Failed to install evtest"
+  fi
+
+  if ! command -v socat &>/dev/null; then
+    deps_needed=true
+    info "Installing socat..."
+    sudo pacman -S --noconfirm socat || error "Failed to install socat"
+  fi
+
+  if ! $deps_needed; then
+    success "All dependencies are already installed"
+  else
+    success "Dependencies installed"
+  fi
+}
+
+setup_sudo() {
+  # Check if script exists
+  if [ ! -f "$DWT_SCRIPT" ]; then
+    error "Script not found: $DWT_SCRIPT"
+    info "Please install Omarchy first"
+    exit 1
+  fi
+
+  # Create sudoers rule with environment variable preservation
+  USERNAME="${SUDO_USER:-$USER}"
+  RULE="Defaults:$USERNAME env_keep += \"OMARCHY_TRACKPAD_DWT_KEYBOARD OMARCHY_TRACKPAD_DWT_TRACKPAD OMARCHY_TRACKPAD_DWT_TIMEOUT HYPRLAND_INSTANCE_SIGNATURE\"
+  $USERNAME ALL=(ALL) NOPASSWD: $DWT_SCRIPT"
+
+  # Create temporary file with proper permissions
+  TEMP_FILE=$(mktemp)
+  echo "$RULE" > "$TEMP_FILE"
+
+  # Validate the sudoers syntax
+  if ! visudo -c -f "$TEMP_FILE" &>/dev/null; then
+    error "Invalid sudoers syntax"
+    rm -f "$TEMP_FILE"
+    exit 1
+  fi
+
+  # Install the sudoers file
+  if sudo install -m 0440 "$TEMP_FILE" "$SUDOERS_FILE"; then
+    success "Passwordless sudo configured"
+  else
+    error "Failed to install sudoers rule"
+    rm -f "$TEMP_FILE"
+    exit 1
+  fi
+
+  rm -f "$TEMP_FILE"
+}
+
+select_keyboard() {
+  local keyboards=()
+  local names=()
+
+  # Find all keyboard devices
+  for input_dev in /sys/class/input/input*; do
+    if [ -r "$input_dev/name" ]; then
+      device_name=$(cat "$input_dev/name")
+      if echo "$device_name" | grep -qi "keyboard\|keyd" && \
+         ! echo "$device_name" | grep -qi "mouse\|touchpad\|trackpad"; then
+        for event_dev in "$input_dev"/event*; do
+          if [ -e "$event_dev" ]; then
+            event_path="/dev/input/$(basename "$event_dev")"
+            event_name=$(basename "$event_dev")
+            # Check if this is an internal (SPI) or external (USB/BT) device
+            bus_type="external"
+            if udevadm info --query=property "$event_path" 2>/dev/null | grep -q "ID_PATH.*spi"; then
+              bus_type="internal"
+            fi
+            keyboards+=("$event_path")
+            names+=("$device_name ($event_name, $bus_type)")
+            break
+          fi
+        done
+      fi
+    fi
+  done
+
+  if [ ${#keyboards[@]} -eq 0 ]; then
+    error "No keyboard devices found!"
+    exit 1
+  elif [ ${#keyboards[@]} -eq 1 ]; then
+    success "Found one keyboard: ${names[0]}" >&2
+    echo "${keyboards[0]}"
+  else
+    # Find the internal keyboard index (1-based for display)
+    local default_choice=""
+    for i in "${!names[@]}"; do
+      if echo "${names[$i]}" | grep -q "internal"; then
+        default_choice=$((i + 1))
+        break
+      fi
+    done
+
+    info "Found multiple keyboards. Please select one:" >&2
+    echo "" >&2
+    for i in "${!names[@]}"; do
+      echo "$((i + 1))) ${names[$i]}" >&2
+    done
+
+    while true; do
+      if [ -n "$default_choice" ]; then
+        read -p "Enter number [default: $default_choice]: " choice
+        choice=${choice:-$default_choice}
+      else
+        read -p "Enter number: " choice
+      fi
+
+      if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#keyboards[@]}" ]; then
+        echo "${keyboards[$((choice - 1))]}"
+        break
+      else
+        error "Invalid choice, please enter 1-${#keyboards[@]}" >&2
+      fi
+    done
+  fi
+}
+
+select_trackpad() {
+  local trackpads=()
+  local names=()
+
+  # Find all trackpad devices
+  for input_dev in /sys/class/input/input*; do
+    if [ -r "$input_dev/name" ]; then
+      device_name=$(cat "$input_dev/name")
+      if echo "$device_name" | grep -qi "trackpad\|touchpad"; then
+        for event_dev in "$input_dev"/event*; do
+          if [ -e "$event_dev" ]; then
+            event_path="/dev/input/$(basename "$event_dev")"
+            event_name=$(basename "$event_dev")
+            # Check if this is an internal (SPI) or external (USB/BT) device
+            bus_type="external"
+            if udevadm info --query=property "$event_path" 2>/dev/null | grep -q "ID_PATH.*spi"; then
+              bus_type="internal"
+            fi
+            trackpads+=("$event_path")
+            names+=("$device_name ($event_name, $bus_type)")
+            break
+          fi
+        done
+      fi
+    fi
+  done
+
+  if [ ${#trackpads[@]} -eq 0 ]; then
+    error "No trackpad devices found!"
+    exit 1
+  elif [ ${#trackpads[@]} -eq 1 ]; then
+    success "Found one trackpad: ${names[0]}" >&2
+    echo "${trackpads[0]}"
+  else
+    # Find the internal trackpad index (1-based for display)
+    local default_choice=""
+    for i in "${!names[@]}"; do
+      if echo "${names[$i]}" | grep -q "internal"; then
+        default_choice=$((i + 1))
+        break
+      fi
+    done
+
+    info "Found multiple trackpads. Please select one:" >&2
+    echo "" >&2
+    for i in "${!names[@]}"; do
+      echo "$((i + 1))) ${names[$i]}" >&2
+    done
+
+    while true; do
+      if [ -n "$default_choice" ]; then
+        read -p "Enter number [default: $default_choice]: " choice
+        choice=${choice:-$default_choice}
+      else
+        read -p "Enter number: " choice
+      fi
+
+      if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#trackpads[@]}" ]; then
+        echo "${trackpads[$((choice - 1))]}"
+        break
+      else
+        error "Invalid choice, please enter 1-${#trackpads[@]}" >&2
+      fi
+    done
+  fi
+}
+
+select_timeout() {
+  local show_menu=true
+
+  while true; do
+    if $show_menu; then
+      echo "" >&2
+      echo "Select disable-while-typing timeout:" >&2
+      echo "" >&2
+      echo "1) 0.5 seconds (very short)" >&2
+      echo "2) 1.0 seconds (short)" >&2
+      echo "3) 1.5 seconds (default)" >&2
+      echo "4) 2.0 seconds (long)" >&2
+      echo "5) 3.0 seconds (very long)" >&2
+      echo "6) Custom" >&2
+      echo "" >&2
+    fi
+    show_menu=true
+
+    read -p "Enter number [default: 3]: " choice
+    # Default to 3 if empty
+    choice=${choice:-3}
+
+    case $choice in
+      1) echo "0.5"; break ;;
+      2) echo "1.0"; break ;;
+      3) echo "1.5"; break ;;
+      4) echo "2.0"; break ;;
+      5) echo "3.0"; break ;;
+      6)
+        echo "" >&2
+        read -p "Enter custom timeout in seconds (e.g., 1.75): " custom
+        if [[ ! "$custom" =~ ^[0-9]+\.?[0-9]*$ ]]; then
+          echo "" >&2
+          error "Invalid number" >&2
+          # Menu will be re-shown on next loop
+        elif (( $(echo "$custom > 10" | awk '{print ($1 > 10)}') )); then
+          echo "" >&2
+          error "Timeout cannot exceed 10 seconds" >&2
+          # Menu will be re-shown on next loop
+        else
+          echo "$custom"
+          break
+        fi
+        ;;
+      *)
+        echo "" >&2
+        error "Invalid choice" >&2
+        # Menu will be re-shown on next loop
+        ;;
+    esac
+  done
+}
+
+write_config() {
+  local keyboard="$1"
+  local trackpad="$2"
+  local timeout="$3"
+
+  # Check if config already exists in input.conf
+  if grep -q "OMARCHY_TRACKPAD_DWT_KEYBOARD" "$INPUT_CONF" 2>/dev/null; then
+    echo "" >&2
+    warn "Existing DWT configuration found in input.conf"
+    echo "" >&2
+    read -p "Replace existing configuration? [Y/n]: " -n 1 -r
+    echo "" >&2
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+      echo "" >&2
+      info "Keeping existing configuration"
+      exit 0
+    fi
+
+    # Replace existing config lines in-place
+    sed -i "s|^env = OMARCHY_TRACKPAD_DWT_KEYBOARD,.*|env = OMARCHY_TRACKPAD_DWT_KEYBOARD,$keyboard|" "$INPUT_CONF"
+    sed -i "s|^env = OMARCHY_TRACKPAD_DWT_TRACKPAD,.*|env = OMARCHY_TRACKPAD_DWT_TRACKPAD,$trackpad|" "$INPUT_CONF"
+    sed -i "s|^env = OMARCHY_TRACKPAD_DWT_TIMEOUT,.*|env = OMARCHY_TRACKPAD_DWT_TIMEOUT,$timeout|" "$INPUT_CONF"
+  else
+    # First time setup - add comment and config
+    {
+      echo ""
+      echo "# Trackpad disable-while-typing (configured by omarchy-disable-trackpad-while-typing-tui)"
+      echo "env = OMARCHY_TRACKPAD_DWT_KEYBOARD,$keyboard"
+      echo "env = OMARCHY_TRACKPAD_DWT_TRACKPAD,$trackpad"
+      echo "env = OMARCHY_TRACKPAD_DWT_TIMEOUT,$timeout"
+    } >> "$INPUT_CONF"
+  fi
+
+  # Handle autostart.conf - only add if it doesn't exist
+  local autostart_added=false
+  if ! grep -q "omarchy-disable-trackpad-while-typing" "$AUTOSTART_CONF" 2>/dev/null; then
+    # First time setup - add comment and exec-once
+    {
+      echo ""
+      echo "# Trackpad disable-while-typing"
+      echo "exec-once = sudo $DWT_SCRIPT"
+    } >> "$AUTOSTART_CONF"
+    autostart_added=true
+  fi
+
+  if $autostart_added; then
+    success "Configuration written to ~/.config/hypr/input.conf and ~/.config/hypr/autostart.conf"
+  else
+    success "Configuration written to ~/.config/hypr/input.conf"
+  fi
+}
+
+# Show usage
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat << EOF
+Usage: $(basename "$0")
+
+Interactive setup for Trackpad disable-while-typing feature.
+This script will guide you through:
+  1. Installing required dependencies
+  2. Setting up passwordless sudo
+  3. Selecting your keyboard and trackpad devices
+  4. Choosing a timeout duration
+  5. Writing the configuration
+
+The script requires sudo access and will prompt when needed.
+EOF
+  exit 0
+fi
+
+# Check if we need sudo and re-run with it if necessary
+if [ "$EUID" -ne 0 ]; then
+  info "This script requires sudo access"
+  info "Re-running with sudo..."
+  exec sudo "$0" "$@"
+fi
+
+main "$@"
