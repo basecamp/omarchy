@@ -451,7 +451,7 @@ show_system_menu() {
   *Lock*) omarchy-lock-screen ;;
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
-  *Relaunch*) uwsm stop ;;
+  *Relaunch*) sudo systemctl restart sddm ;;
   *Restart*) systemctl reboot ;;
   *Shutdown*) systemctl poweroff ;;
   *) back_to show_main_menu ;;
