@@ -1,6 +1,6 @@
 KEYRING_DIR="$HOME/.local/share/keyrings"
-KEYRING_FILE="Default_keyring.keyring"
-DEFAULT_FILE="default"
+KEYRING_FILE="$KEYRING_DIR/Default_keyring.keyring"
+DEFAULT_FILE="$KEYRING_DIR/default"
 
 cat << EOF | tee "$KEYRING_FILE"
 [keyring]
