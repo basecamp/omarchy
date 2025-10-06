@@ -38,9 +38,9 @@ main() {
   info "Step 3: Select your keyboard device"
   KEYBOARD_DEVICE=$(select_keyboard)
 
-  # Step 4: Select trackpad device
+  # Step 4: Select pointer device (trackpad/mouse) to disable while typing
   echo "" >&2
-  info "Step 4: Select your trackpad device"
+  info "Step 4: Select pointer device to disable while typing"
   TRACKPAD_DEVICE=$(select_trackpad)
 
   # Step 5: Choose timeout
@@ -216,49 +216,68 @@ select_keyboard() {
 }
 
 select_trackpad() {
-  local trackpads=()
+  local devices=()
   local names=()
 
-  # Find all trackpad devices
+  # Find all pointer devices (trackpad, touchpad, mouse)
   for input_dev in /sys/class/input/input*; do
     if [ -r "$input_dev/name" ]; then
       device_name=$(cat "$input_dev/name")
-      if echo "$device_name" | grep -qi "trackpad\|touchpad"; then
-        for event_dev in "$input_dev"/event*; do
-          if [ -e "$event_dev" ]; then
-            event_path="/dev/input/$(basename "$event_dev")"
-            event_name=$(basename "$event_dev")
+
+      for event_dev in "$input_dev"/event*; do
+        if [ -e "$event_dev" ]; then
+          event_path="/dev/input/$(basename "$event_dev")"
+          event_name=$(basename "$event_dev")
+
+          # Check device properties using udevadm
+          device_props=$(udevadm info --query=property "$event_path" 2>/dev/null)
+
+          # Only include devices that are mice, touchpads, or trackpads
+          if echo "$device_props" | grep -q "ID_INPUT_MOUSE=1\|ID_INPUT_TOUCHPAD=1"; then
+            # Determine device type from properties and name
+            device_type="pointer"
+            if echo "$device_props" | grep -q "ID_INPUT_TOUCHPAD=1"; then
+              if echo "$device_name" | grep -qi "trackpad"; then
+                device_type="trackpad"
+              else
+                device_type="touchpad"
+              fi
+            elif echo "$device_props" | grep -q "ID_INPUT_MOUSE=1"; then
+              device_type="mouse"
+            fi
+
             # Check if this is an internal (SPI) or external (USB/BT) device
             bus_type="external"
-            if udevadm info --query=property "$event_path" 2>/dev/null | grep -q "ID_PATH.*spi"; then
+            if echo "$device_props" | grep -q "ID_PATH.*spi"; then
               bus_type="internal"
             fi
-            trackpads+=("$event_path")
-            names+=("$device_name ($event_name, $bus_type)")
+
+            devices+=("$event_path")
+            names+=("$device_name ($event_name, $device_type, $bus_type)")
             break
           fi
-        done
-      fi
+        fi
+      done
     fi
   done
 
-  if [ ${#trackpads[@]} -eq 0 ]; then
-    error "No trackpad devices found!"
+  if [ ${#devices[@]} -eq 0 ]; then
+    error "No pointer devices found!"
     exit 1
-  elif [ ${#trackpads[@]} -eq 1 ]; then
-    success "Found one trackpad: ${names[0]}" >&2
-    echo "${trackpads[0]}"
+  elif [ ${#devices[@]} -eq 1 ]; then
+    success "Found one pointer device: ${names[0]}" >&2
+    echo "${devices[0]}"
   else
     # Find the internal trackpad index (1-based for display)
     local default_choice=""
     for i in "${!names[@]}"; do
-      if echo "${names[$i]}" | grep -q "internal"; then
+      if echo "${names[$i]}" | grep -q "trackpad.*internal"; then
         default_choice=$((i + 1))
         break
       fi
     done
 
-    info "Found multiple trackpads. Please select one:" >&2
+    info "Found multiple pointer devices. Please select one to disable while typing:" >&2
     echo "" >&2
     for i in "${!names[@]}"; do
       echo "$((i + 1))) ${names[$i]}" >&2
@@ -272,11 +291,11 @@ select_trackpad() {
         read -p "Enter number: " choice
       fi
 
-      if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#trackpads[@]}" ]; then
-        echo "${trackpads[$((choice - 1))]}"
+      if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#devices[@]}" ]; then
+        echo "${devices[$((choice - 1))]}"
         break
       else
-        error "Invalid choice, please enter 1-${#trackpads[@]}" >&2
+        error "Invalid choice, please enter 1-${#devices[@]}" >&2
       fi
     done
   fi
