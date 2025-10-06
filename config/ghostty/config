@@ -12,6 +12,7 @@ window-padding-x = 14
 window-padding-y = 14
 confirm-close-surface=false
 resize-overlay = never
+gtk-toolbar-style = flat
 
 # Cursor styling
 cursor-style = "block"
