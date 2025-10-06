@@ -3,7 +3,7 @@
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 
 # Set to true when going directly to a submenu, so we can exit directly
-BACK_TO_EXIT=false
+BACK_TO_EXIT=true
 
 back_to() {
   local parent_menu="$1"
@@ -72,6 +72,352 @@ aur_install() {
 aur_install_and_launch() {
   present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2 && setsid gtk-launch $3"
 }
+
+# === Deep Search Feature: Flat menu list with full paths ===
+# Keep this list updated when adding new menu items
+declare -a full_menu_list=(
+  "Learn > Keybindings"
+  "Learn > Omarchy"
+  "Learn > Hyprland"
+  "Learn > Arch"
+  "Learn > Neovim"
+  "Learn > Bash"
+  "Trigger > Capture > Screenshot > Region"
+  "Trigger > Capture > Screenshot > Window"
+  "Trigger > Capture > Screenshot > Display"
+  "Trigger > Capture > Screenrecord > Region"
+  "Trigger > Capture > Screenrecord > Region + Audio"
+  "Trigger > Capture > Screenrecord > Display"
+  "Trigger > Capture > Screenrecord > Display + Audio"
+  "Trigger > Capture > Color"
+  "Trigger > Share > Clipboard"
+  "Trigger > Share > File"
+  "Trigger > Share > Folder"
+  "Trigger > Toggle > Screensaver"
+  "Trigger > Toggle > Nightlight"
+  "Trigger > Toggle > Idle Lock"
+  "Trigger > Toggle > Top Bar"
+  "Style > Theme"
+  "Style > Font"
+  "Style > Background"
+  "Style > Hyprland"
+  "Style > Screensaver"
+  "Style > About"
+  "Setup > Audio"
+  "Setup > Wifi"
+  "Setup > Bluetooth"
+  "Setup > Power Profile"
+  "Setup > Monitors"
+  "Setup > Keybindings"
+  "Setup > Input"
+  "Setup > Defaults"
+  "Setup > DNS"
+  "Setup > Security > Fingerprint"
+  "Setup > Security > Fido2"
+  "Setup > Config > Hyprland"
+  "Setup > Config > Hypridle"
+  "Setup > Config > Hyprlock"
+  "Setup > Config > Hyprsunset"
+  "Setup > Config > Swayosd"
+  "Setup > Config > Walker"
+  "Setup > Config > Waybar"
+  "Setup > Config > XCompose"
+  "Install > Web App"
+  "Install > TUI"
+  "Install > Service > Dropbox"
+  "Install > Service > Tailscale"
+  "Install > Service > Bitwarden"
+  "Install > Service > Chromium Account"
+  "Install > Style > Theme"
+  "Install > Style > Background"
+  "Install > Style > Font > Meslo LG Mono"
+  "Install > Style > Font > Fira Code"
+  "Install > Style > Font > Victor Code"
+  "Install > Style > Font > Bistream Vera Mono"
+  "Install > Development > Ruby on Rails"
+  "Install > Development > Docker DB"
+  "Install > Development > JavaScript > Node.js"
+  "Install > Development > JavaScript > Bun"
+  "Install > Development > JavaScript > Deno"
+  "Install > Development > Go"
+  "Install > Development > PHP"
+  "Install > Development > PHP > Laravel"
+  "Install > Development > PHP > Symfony"
+  "Install > Development > Python"
+  "Install > Development > Elixir"
+  "Install > Development > Elixir > Phoenix"
+  "Install > Development > Zig"
+  "Install > Development > Rust"
+  "Install > Development > Java"
+  "Install > Development > .NET"
+  "Install > Development > OCaml"
+  "Install > Development > Clojure"
+  "Install > Editor > VSCode"
+  "Install > Editor > Cursor"
+  "Install > Editor > Zed"
+  "Install > Editor > Sublime Text"
+  "Install > Editor > Helix"
+  "Install > Editor > Emacs"
+  "Install > Terminal > Alacritty"
+  "Install > Terminal > Ghostty"
+  "Install > Terminal > Kitty"
+  "Install > AI > Claude Code"
+  "Install > AI > Gemini"
+  "Install > AI > OpenAI Codex"
+  "Install > AI > LM Studio"
+  "Install > AI > Ollama"
+  "Install > AI > Crush"
+  "Install > AI > opencode"
+  "Install > Gaming > Steam"
+  "Install > Gaming > RetroArch"
+  "Install > Gaming > Minecraft"
+  "Install > Package"
+  "Install > AUR"
+  "Remove > Package"
+  "Remove > Web App"
+  "Remove > TUI"
+  "Remove > Theme"
+  "Remove > Fingerprint"
+  "Remove > Fido2"
+  "Update > Omarchy"
+  "Update > Branch > master"
+  "Update > Branch > dev"
+  "Update > Config > Hyprland"
+  "Update > Config > Hypridle"
+  "Update > Config > Hyprlock"
+  "Update > Config > Hyprsunset"
+  "Update > Config > Plymouth"
+  "Update > Config > Swayosd"
+  "Update > Config > Walker"
+  "Update > Config > Waybar"
+  "Update > Extra Themes"
+  "Update > Process > Hypridle"
+  "Update > Process > Hyprsunset"
+  "Update > Process > Swayosd"
+  "Update > Process > Walker"
+  "Update > Process > Waybar"
+  "Update > Hardware > Audio"
+  "Update > Hardware > Wi-Fi"
+  "Update > Hardware > Bluetooth"
+  "Update > Password > Drive Encryption"
+  "Update > Password > User"
+  "Update > Timezone"
+  "System > Lock"
+  "System > Screensaver"
+  "System > Suspend"
+  "System > Relaunch"
+  "System > Restart"
+  "System > Shutdown"
+)
+
+# Deep search function using walker 
+show_deep_search() {
+  local selection
+  selection=$(printf '%s\n' "${full_menu_list[@]}" | walker --dmenu --theme dmenu_250 -w 600 -p "Search menu…")
+
+  if [[ -z "$selection" ]]; then
+    show_main_menu
+    return
+  fi
+
+  case "$selection" in
+    # Learn
+    "Learn > Keybindings") omarchy-menu-keybindings ;;
+    "Learn > Omarchy") omarchy-launch-webapp "https://learn.omacom.io/2/the-omarchy-manual" ;;
+    "Learn > Hyprland") omarchy-launch-webapp "https://wiki.hypr.land/" ;;
+    "Learn > Arch") omarchy-launch-webapp "https://wiki.archlinux.org/title/Main_page" ;;
+    "Learn > Neovim") omarchy-launch-webapp "https://www.lazyvim.org/keymaps" ;;
+    "Learn > Bash") omarchy-launch-webapp "https://devhints.io/bash" ;;
+
+    # Trigger > Capture > Screenshot
+    "Trigger > Capture > Screenshot > Region") omarchy-cmd-screenshot ;;
+    "Trigger > Capture > Screenshot > Window") omarchy-cmd-screenshot window ;;
+    "Trigger > Capture > Screenshot > Display") omarchy-cmd-screenshot output ;;
+
+    # Trigger > Capture > Screenrecord
+    "Trigger > Capture > Screenrecord > Region") omarchy-cmd-screenrecord ;;
+    "Trigger > Capture > Screenrecord > Region + Audio") omarchy-cmd-screenrecord region audio ;;
+    "Trigger > Capture > Screenrecord > Display") omarchy-cmd-screenrecord output ;;
+    "Trigger > Capture > Screenrecord > Display + Audio") omarchy-cmd-screenrecord output audio ;;
+
+    # Trigger > Capture > Color
+    "Trigger > Capture > Color") pkill hyprpicker || hyprpicker -a ;;
+
+    # Trigger > Share
+    "Trigger > Share > Clipboard") terminal bash -c "omarchy-cmd-share clipboard" ;;
+    "Trigger > Share > File") terminal bash -c "omarchy-cmd-share file" ;;
+    "Trigger > Share > Folder") terminal bash -c "omarchy-cmd-share folder" ;;
+
+    # Trigger > Toggle
+    "Trigger > Toggle > Screensaver") omarchy-toggle-screensaver ;;
+    "Trigger > Toggle > Nightlight") omarchy-toggle-nightlight ;;
+    "Trigger > Toggle > Idle Lock") omarchy-toggle-idle ;;
+    "Trigger > Toggle > Top Bar") omarchy-toggle-waybar ;;
+
+    # Style
+    "Style > Theme") show_theme_menu ;;
+    "Style > Font") show_font_menu ;;
+    "Style > Background") omarchy-theme-bg-next ;;
+    "Style > Hyprland") open_in_editor ~/.config/hypr/looknfeel.conf ;;
+    "Style > Screensaver") open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
+    "Style > About") open_in_editor ~/.config/omarchy/branding/about.txt ;;
+
+    # Setup
+    "Setup > Audio") $TERMINAL --class=Wiremix -e wiremix ;;
+    "Setup > Wifi") rfkill unblock wifi; omarchy-launch-wifi ;;
+    "Setup > Bluetooth") rfkill unblock bluetooth; blueberry ;;
+    "Setup > Power Profile") show_setup_power_menu ;;
+    "Setup > Monitors") open_in_editor ~/.config/hypr/monitors.conf ;;
+    "Setup > Keybindings") open_in_editor ~/.config/hypr/bindings.conf ;;
+    "Setup > Input") open_in_editor ~/.config/hypr/input.conf ;;
+    "Setup > Defaults") open_in_editor ~/.config/uwsm/default ;;
+    "Setup > DNS") present_terminal omarchy-setup-dns ;;
+
+    # Setup > Security
+    "Setup > Security > Fingerprint") present_terminal omarchy-setup-fingerprint ;;
+    "Setup > Security > Fido2") present_terminal omarchy-setup-fido2 ;;
+
+    # Setup > Config
+    "Setup > Config > Hyprland") open_in_editor ~/.config/hypr/hyprland.conf ;;
+    "Setup > Config > Hypridle") open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
+    "Setup > Config > Hyprlock") open_in_editor ~/.config/hypr/hyprlock.conf ;;
+    "Setup > Config > Hyprsunset") open_in_editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
+    "Setup > Config > Swayosd") open_in_editor ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
+    "Setup > Config > Walker") open_in_editor ~/.config/walker/config.toml && omarchy-restart-walker ;;
+    "Setup > Config > Waybar") open_in_editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
+    "Setup > Config > XCompose") open_in_editor ~/.XCompose && omarchy-restart-xcompose ;;
+
+    # Install
+    "Install > Package") terminal omarchy-pkg-install ;;
+    "Install > AUR") terminal omarchy-pkg-aur-install ;;
+    "Install > Web App") present_terminal omarchy-webapp-install ;;
+    "Install > TUI") present_terminal omarchy-tui-install ;;
+
+    # Install > Service
+    "Install > Service > Dropbox") present_terminal omarchy-install-dropbox ;;
+    "Install > Service > Tailscale") present_terminal omarchy-install-tailscale ;;
+    "Install > Service > Bitwarden") install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden" ;;
+    "Install > Service > Chromium Account") present_terminal omarchy-install-chromium-google-account ;;
+
+    # Install > Style
+    "Install > Style > Theme") present_terminal omarchy-theme-install ;;
+    "Install > Style > Background") nautilus ~/.config/omarchy/current/theme/backgrounds ;;
+
+    # Install > Style > Font
+    "Install > Style > Font > Meslo LG Mono") install_font "Meslo LG Mono" "ttf-meslo-nerd" "MesloLGL Nerd Font" ;;
+    "Install > Style > Font > Fira Code") install_font "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font" ;;
+    "Install > Style > Font > Victor Code") install_font "Victor Code" "ttf-victor-mono-nerd" "VictorMono Nerd Font" ;;
+    "Install > Style > Font > Bistream Vera Mono") install_font "Bistream Vera Code" "ttf-bitstream-vera-mono-nerd" "BitstromWera Nerd Font" ;;
+
+    # Install > Development
+    "Install > Development > Ruby on Rails") present_terminal "omarchy-install-dev-env ruby" ;;
+    "Install > Development > Docker DB") present_terminal omarchy-install-docker-dbs ;;
+    "Install > Development > Go") present_terminal "omarchy-install-dev-env go" ;;
+    "Install > Development > PHP") present_terminal "omarchy-install-dev-env php" ;;
+    "Install > Development > PHP > Laravel") present_terminal "omarchy-install-dev-env laravel" ;;
+    "Install > Development > PHP > Symfony") present_terminal "omarchy-install-dev-env symfony" ;;
+    "Install > Development > Python") present_terminal "omarchy-install-dev-env python" ;;
+    "Install > Development > Elixir") present_terminal "omarchy-install-dev-env elixir" ;;
+    "Install > Development > Elixir > Phoenix") present_terminal "omarchy-install-dev-env phoenix" ;;
+    "Install > Development > Zig") present_terminal "omarchy-install-dev-env zig" ;;
+    "Install > Development > Rust") present_terminal "omarchy-install-dev-env rust" ;;
+    "Install > Development > Java") present_terminal "omarchy-install-dev-env java" ;;
+    "Install > Development > .NET") present_terminal "omarchy-install-dev-env dotnet" ;;
+    "Install > Development > OCaml") present_terminal "omarchy-install-dev-env ocaml" ;;
+    "Install > Development > Clojure") present_terminal "omarchy-install-dev-env clojure" ;;
+
+    # Install > Development > JavaScript
+    "Install > Development > JavaScript > Node.js") present_terminal "omarchy-install-dev-env node" ;;
+    "Install > Development > JavaScript > Bun") present_terminal "omarchy-install-dev-env bun" ;;
+    "Install > Development > JavaScript > Deno") present_terminal "omarchy-install-dev-env deno" ;;
+
+    # Install > Editor
+    "Install > Editor > VSCode") install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
+    "Install > Editor > Cursor") install_and_launch "Cursor" "cursor-bin" "cursor" ;;
+    "Install > Editor > Zed") install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+    "Install > Editor > Sublime Text") aur_install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
+    "Install > Editor > Helix") install "Helix" "helix" ;;
+    "Install > Editor > Emacs") install "Emacs" "emacs-wayland" && systemctl --user enable --now emacs.service ;;
+
+    # Install > Terminal
+    "Install > Terminal > Alacritty") install_terminal "alacritty" ;;
+    "Install > Terminal > Ghostty") install_terminal "ghostty" ;;
+    "Install > Terminal > Kitty") install_terminal "kitty" ;;
+
+    # Install > AI
+    "Install > AI > Claude Code") install "Claude Code" "claude-code" ;;
+    "Install > AI > Gemini") aur_install "Gemini" "gemini-cli" ;;
+    "Install > AI > OpenAI Codex") aur_install "OpenAI Codex" "openai-codex-bin" ;;
+    "Install > AI > LM Studio") install "LM Studio" "lmstudio" ;;
+    "Install > AI > Ollama") 
+      ollama_pkg=$(
+        (command -v nvidia-smi &>/dev/null && echo ollama-cuda) ||
+        (command -v rocminfo &>/dev/null && echo ollama-rocm) ||
+        echo ollama
+      )
+      install "Ollama" $ollama_pkg
+      ;;
+    "Install > AI > Crush") install "Crush" "crush-bin" ;;
+    "Install > AI > opencode") install "opencode" "opencode" ;;
+
+    # Install > Gaming
+    "Install > Gaming > Steam") present_terminal omarchy-install-steam ;;
+    "Install > Gaming > RetroArch") aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
+    "Install > Gaming > Minecraft") aur_install_and_launch "Minecraft [AUR]" "minecraft-launcher" "minecraft-launcher" ;;
+
+    # Remove
+    "Remove > Package") terminal omarchy-pkg-remove ;;
+    "Remove > Web App") present_terminal omarchy-webapp-remove ;;
+    "Remove > TUI") present_terminal omarchy-tui-remove ;;
+    "Remove > Theme") present_terminal omarchy-theme-remove ;;
+    "Remove > Fingerprint") present_terminal "omarchy-setup-fingerprint --remove" ;;
+    "Remove > Fido2") present_terminal "omarchy-setup-fido2 --remove" ;;
+
+    # Update
+    "Update > Omarchy") present_terminal omarchy-update ;;
+    "Update > Branch > master") present_terminal "omarchy-update-branch master" ;;
+    "Update > Branch > dev") present_terminal "omarchy-update-branch dev" ;;
+    "Update > Extra Themes") present_terminal omarchy-theme-update ;;
+    "Update > Timezone") omarchy-cmd-tzupdate ;;
+
+    # Update > Config
+    "Update > Config > Hyprland") present_terminal omarchy-refresh-hyprland ;;
+    "Update > Config > Hypridle") present_terminal omarchy-refresh-hypridle ;;
+    "Update > Config > Hyprlock") present_terminal omarchy-refresh-hyprlock ;;
+    "Update > Config > Hyprsunset") present_terminal omarchy-refresh-hyprsunset ;;
+    "Update > Config > Plymouth") present_terminal omarchy-refresh-plymouth ;;
+    "Update > Config > Swayosd") present_terminal omarchy-refresh-swayosd ;;
+    "Update > Config > Walker") present_terminal omarchy-refresh-walker ;;
+    "Update > Config > Waybar") present_terminal omarchy-refresh-waybar ;;
+
+    # Update > Process
+    "Update > Process > Hypridle") omarchy-restart-hypridle ;;
+    "Update > Process > Hyprsunset") omarchy-restart-hyprsunset ;;
+    "Update > Process > Swayosd") omarchy-restart-swayosd ;;
+    "Update > Process > Walker") omarchy-restart-walker ;;
+    "Update > Process > Waybar") omarchy-restart-waybar ;;
+
+    # Update > Hardware
+    "Update > Hardware > Audio") present_terminal omarchy-restart-pipewire ;;
+    "Update > Hardware > Wi-Fi") present_terminal omarchy-restart-wifi ;;
+    "Update > Hardware > Bluetooth") present_terminal omarchy-restart-bluetooth ;;
+
+    # Update > Password
+    "Update > Password > Drive Encryption") present_terminal omarchy-drive-set-password ;;
+    "Update > Password > User") present_terminal passwd ;;
+
+    # System
+    "System > Lock") omarchy-lock-screen ;;
+    "System > Screensaver") omarchy-launch-screensaver force ;;
+    "System > Suspend") systemctl suspend ;;
+    "System > Relaunch") uwsm stop ;;
+    "System > Restart") systemctl reboot ;;
+    "System > Shutdown") systemctl poweroff ;;
+
+    *) show_main_menu ;;
+  esac
+}
+
 
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
@@ -459,11 +805,13 @@ show_system_menu() {
 }
 
 show_main_menu() {
-  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n󱓞  Trigger\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
+  go_to_menu "$(menu "Go" "🔎 Search\n󰀻  Apps\n󰧑  Learn\n󱓞  Trigger\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
 }
+
 
 go_to_menu() {
   case "${1,,}" in
+  *search*) show_deep_search ;;
   *apps*) walker -p "Launch…" ;;
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
