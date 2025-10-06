@@ -11,14 +11,7 @@ trap error_exit ERR
 
 echo "Change display manager to SDDM"
 
-sudo pacman -S --needed --noconfirm sddm libsecret gnome-keyring
-
-for pkg in sddm libsecret gnome-keyring; do
-  if ! pacman -Q "$pkg" >/dev/null 2>&1; then
-    echo -e "\033[31mError: Package '$pkg' is not installed\033[0m" >&2
-    error_exit
-  fi
-done
+omarchy-pkg-add sddm libsecret gnome-keyring || error_exit
 
 sudo mkdir -p /etc/sddm.conf.d
 
