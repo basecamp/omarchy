@@ -33,7 +33,7 @@ menu() {
     fi
   fi
 
-  echo -e "$options" | walker --dmenu --theme dmenu_250 -p "$prompt…" "${args[@]}"
+echo -e "$options" | walker --dmenu --theme dmenu_250 -p "$prompt…" -w 400 "${args[@]}"
 }
 
 terminal() {
@@ -458,29 +458,139 @@ show_system_menu() {
   esac
 }
 
-show_main_menu() {
-  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n󱓞  Trigger\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
+extract_menu_actions() {
+  local script_path="${BASH_SOURCE[0]}"
+
+  # Parse all case statements that define menu options
+  awk '
+    # Detect entering a menu
+    /^show_[a-zA-Z0-9_]+_menu\s*\(\)\s*\{/ {
+      menu_name = gensub(/^show_([a-zA-Z0-9_]+)_menu.*/, "\\1", 1)
+      menu_stack[depth] = menu_name
+      depth++
+      next
+    }
+
+    # Detect end of a menu block
+    /^\}/ {
+      if (depth > 0) depth--
+      next
+    }
+
+    # Detect menu options inside case
+    in_menu && /\*[^)]*\*\)/ {
+      match($0, /\*([^)]*)\*\)/, pattern)
+      item = pattern[1]
+      cmd_line = $0
+      sub(/.*\*\)/, "", cmd_line)
+      sub(/;;.*/, "", cmd_line)
+      gsub(/^[ \t]+|[ \t]+$/, "", item)
+      gsub(/^[ \t]+|[ \t]+$/, "", cmd_line)
+
+      if (cmd_line ~ /^:/ || item == "" || cmd_line == "") next
+      if (item ~ /CNCLD/ || cmd_line ~ /^show_.*_menu$/ ||
+          cmd_line ~ /^back_to / || cmd_line ~ /^\) / || cmd_line ~ /^esac/) next
+      if (cmd_line ~ /^case /) next
+
+      # Construct breadcrumb path
+      full_path = ""
+      for (i = 0; i < depth; i++) {
+        if (menu_stack[i] != "") {
+          full_path = (full_path == "" ? menu_stack[i] : full_path " > " menu_stack[i])
+        }
+      }
+      if (full_path != "") full_path = full_path " > " item
+      else full_path = item
+
+      print full_path "::" cmd_line
+    }
+
+    /case \$\(menu/ { in_menu = 1; next }
+    /esac/ && in_menu { in_menu = 0 }
+  ' "$script_path"
+
+  # Add dynamic theme, font, and power profiles with hierarchy tag
+  if command -v omarchy-theme-list &>/dev/null; then
+    while IFS= read -r theme; do
+      [[ -n "$theme" ]] && echo "appearance > Theme: $theme::omarchy-theme-set '$theme'"
+    done < <(omarchy-theme-list)
+  fi
+
+  if command -v omarchy-font-list &>/dev/null; then
+    while IFS= read -r font; do
+      [[ -n "$font" ]] && echo "appearance > Font: $font::omarchy-font-set '$font'"
+    done < <(omarchy-font-list)
+  fi
+
+  if command -v omarchy-powerprofiles-list &>/dev/null; then
+    while IFS= read -r profile; do
+      [[ -n "$profile" ]] && echo "system > Power Profile: $profile::powerprofilesctl set '$profile'"
+    done < <(omarchy-powerprofiles-list)
+  fi
 }
 
+show_search_menu() {
+  declare -A actions
+
+  # Build map: pattern → command
+  while read -r line; do
+    if [[ $line = *::* ]]; then
+      key="${line%%::*}"
+      val="${line#*::}"
+      # Trim leading/trailing whitespace from key and val
+      key="${key#"${key%%[![:space:]]*}"}"
+      key="${key%"${key##*[![:space:]]}"}"
+      val="${val#"${val%%[![:space:]]*}"}"
+      val="${val%"${val##*[![:space:]]}"}"
+      actions["$key"]="$val"
+    fi
+  done < <(extract_menu_actions)
+
+  # Build search list
+  items=$(printf "%s\n" "${!actions[@]}" | sort)
+
+  # Search menu
+choice=$(echo "$items" | walker --dmenu --theme dmenu_250 -p "Search…" -w 500)
+
+  if [[ -n "$choice" ]]; then
+    cmd="${actions[$choice]}"
+    if [[ -n "$cmd" ]]; then
+      eval "$cmd" &
+    else
+      notify-send "No action found" "$choice"
+    fi
+  else
+    show_main_menu
+  fi
+}
+
+# Add to main menu
+show_main_menu() {
+  go_to_menu "$(menu "Go" "  Search\n󰀻  Apps\n󰧑  Learn\n󱓞  Trigger\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
+}
+
+# Handle search in go_to_menu
 go_to_menu() {
   case "${1,,}" in
-  *apps*) walker -p "Launch…" ;;
-  *learn*) show_learn_menu ;;
-  *trigger*) show_trigger_menu ;;
-  *share*) show_share_menu ;;
-  *style*) show_style_menu ;;
-  *theme*) show_theme_menu ;;
-  *screenshot*) show_screenshot_menu ;;
-  *screenrecord*) show_screenrecord_menu ;;
-  *setup*) show_setup_menu ;;
-  *power*) show_setup_power_menu ;;
-  *install*) show_install_menu ;;
-  *remove*) show_remove_menu ;;
-  *update*) show_update_menu ;;
-  *about*) omarchy-launch-about ;;
-  *system*) show_system_menu ;;
+    *search*) show_search_menu ;;
+    *apps*) walker -p "Launch…" ;;
+    *learn*) show_learn_menu ;;
+    *trigger*) show_trigger_menu ;;
+    *share*) show_share_menu ;;
+    *style*) show_style_menu ;;
+    *theme*) show_theme_menu ;;
+    *screenshot*) show_screenshot_menu ;;
+    *screenrecord*) show_screenrecord_menu ;;
+    *setup*) show_setup_menu ;;
+    *power*) show_setup_power_menu ;;
+    *install*) show_install_menu ;;
+    *remove*) show_remove_menu ;;
+    *update*) show_update_menu ;;
+    *about*) omarchy-launch-about ;;
+    *system*) show_system_menu ;;
   esac
 }
+
 
 if [[ -n "$1" ]]; then
   BACK_TO_EXIT=true
