@@ -18,6 +18,9 @@ done
 # Must be x86 only to fully work
 [ "$(uname -m)" != "x86_64" ] && abort "x86_64 CPU"
 
+# Must have secure boot disabled
+bootctl status 2>/dev/null | grep -q 'Secure Boot: disabled' || abort "Secure Boot disabled"
+
 # Must not have Gnome or KDE already install
 pacman -Qe gnome-shell &>/dev/null && abort "Fresh + Vanilla Arch"
 pacman -Qe plasma-desktop &>/dev/null && abort "Fresh + Vanilla Arch"
