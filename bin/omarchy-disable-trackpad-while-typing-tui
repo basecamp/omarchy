@@ -219,6 +219,10 @@ select_trackpad() {
   local devices=()
   local names=()
 
+  # Group devices by physical hardware + name to collect all sibling interfaces
+  declare -A device_groups
+  declare -A device_info
+
   # Find all pointer devices (trackpad, touchpad, mouse)
   for input_dev in /sys/class/input/input*; do
     if [ -r "$input_dev/name" ]; then
@@ -234,7 +238,20 @@ select_trackpad() {
 
           # Only include devices that are mice, touchpads, or trackpads
           if echo "$device_props" | grep -q "ID_INPUT_MOUSE=1\|ID_INPUT_TOUCHPAD=1"; then
-            # Determine device type from properties and name
+            # Get the physical device path (USB device path without interface number)
+            # DEVPATH looks like: /devices/.../usb3/3-1/3-1:1.0/0003:05AC:0265.0015/input/input23/event6
+            # We want up to the USB device: /devices/.../usb3/3-1
+            devpath=$(echo "$device_props" | grep "^DEVPATH=" | cut -d= -f2)
+
+            # Extract physical device path (remove interface and everything after)
+            # This removes the :1.0, :1.1 interface numbers and HID device part
+            phys_device=$(echo "$devpath" | sed 's|:[0-9]\+\.[0-9]\+/.*||')
+
+            # Create unique key: physical_device + device_name
+            # This groups multiple interfaces from same physical device together
+            unique_key="${phys_device}::${device_name}"
+
+            # Determine device type
             device_type="pointer"
             if echo "$device_props" | grep -q "ID_INPUT_TOUCHPAD=1"; then
               if echo "$device_name" | grep -qi "trackpad"; then
@@ -246,19 +263,41 @@ select_trackpad() {
               device_type="mouse"
             fi
 
-            # Check if this is an internal (SPI) or external (USB/BT) device
+            # Check if internal or external
             bus_type="external"
             if echo "$device_props" | grep -q "ID_PATH.*spi"; then
               bus_type="internal"
             fi
 
-            devices+=("$event_path")
-            names+=("$device_name ($event_name, $device_type, $bus_type)")
-            break
+            # Collect all event devices for this unique key
+            if [ -z "${device_groups[$unique_key]:-}" ]; then
+              device_groups[$unique_key]="$event_path"
+              device_info[$unique_key]="$device_name|$event_name|$device_type|$bus_type"
+            else
+              # Append to existing group (colon-separated)
+              device_groups[$unique_key]="${device_groups[$unique_key]}:$event_path"
+              # Collect event names (will format later)
+              current_info="${device_info[$unique_key]}"
+              current_events=$(echo "$current_info" | cut -d'|' -f2)
+              device_info[$unique_key]="$device_name|${current_events}+${event_name}|$device_type|$bus_type"
+            fi
           fi
+          break
         fi
       done
     fi
+  done
+
+  # Convert to arrays for selection and format display names
+  for key in "${!device_groups[@]}"; do
+    devices+=("${device_groups[$key]}")
+    # Format: "Device Name (event1 + event2, type, bus)"
+    info="${device_info[$key]}"
+    dev_name=$(echo "$info" | cut -d'|' -f1)
+    events=$(echo "$info" | cut -d'|' -f2 | sed 's/+/ + /g')
+    dev_type=$(echo "$info" | cut -d'|' -f3)
+    bus_type=$(echo "$info" | cut -d'|' -f4)
+    names+=("$dev_name ($events, $dev_type, $bus_type)")
   done
 
   if [ ${#devices[@]} -eq 0 ]; then

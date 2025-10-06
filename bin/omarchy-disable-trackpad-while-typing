@@ -77,58 +77,72 @@ main() {
     "ENTER" "RETURN"
   )
 
-  # Trackpad device - REQUIRED environment variable
+  # Trackpad device(s) - REQUIRED environment variable
+  # Can be a single device or multiple colon-separated devices (e.g., event6:event7)
   if [ -z "${OMARCHY_TRACKPAD_DWT_TRACKPAD:-}" ]; then
     echo "Error: OMARCHY_TRACKPAD_DWT_TRACKPAD environment variable not set"
     echo "Run omarchy-disable-trackpad-while-typing-tui to configure your trackpad device"
     exit 1
   fi
 
-  # Convert trackpad device path to sysfs path
-  TRACKPAD_EVENT=$(basename "$OMARCHY_TRACKPAD_DWT_TRACKPAD")
-  TRACKPAD_SYSFS=""
+  # Split by colons to handle multiple devices (e.g., Magic Trackpad with multiple interfaces)
+  IFS=':' read -ra TRACKPAD_DEVICES <<< "$OMARCHY_TRACKPAD_DWT_TRACKPAD"
+  TRACKPAD_FILES=()
 
-  for input_dev in /sys/class/input/input*/event*; do
-    if [ "$(basename "$input_dev")" = "$TRACKPAD_EVENT" ]; then
-      TRACKPAD_SYSFS=$(dirname "$input_dev")
-      break
+  for device_path in "${TRACKPAD_DEVICES[@]}"; do
+    TRACKPAD_EVENT=$(basename "$device_path")
+    TRACKPAD_SYSFS=""
+
+    # Find sysfs path for this event device
+    for input_dev in /sys/class/input/input*/event*; do
+      if [ "$(basename "$input_dev")" = "$TRACKPAD_EVENT" ]; then
+        TRACKPAD_SYSFS=$(dirname "$input_dev")
+        break
+      fi
+    done
+
+    if [ -z "$TRACKPAD_SYSFS" ]; then
+      echo "Error: Trackpad device $device_path not found"
+      echo "Run omarchy-disable-trackpad-while-typing-tui to configure available devices"
+      exit 1
     fi
+
+    log_info "Found trackpad at: $TRACKPAD_SYSFS"
+    log_info "Device name: $(cat "$TRACKPAD_SYSFS/name")"
+
+    # Find the inhibited file for this trackpad
+    TRACKPAD_FILE=""
+    if [ -f "$TRACKPAD_SYSFS/inhibited" ]; then
+      TRACKPAD_FILE="$TRACKPAD_SYSFS/inhibited"
+    elif [ -f "$TRACKPAD_SYSFS/device/inhibited" ]; then
+      TRACKPAD_FILE="$TRACKPAD_SYSFS/device/inhibited"
+    else
+      echo "Error: Cannot find inhibited file for trackpad $TRACKPAD_EVENT"
+      echo "Trackpad may not support the inhibit mechanism"
+      exit 1
+    fi
+
+    # Check that we have permission (script should be run with sudo)
+    if [ ! -w "$TRACKPAD_FILE" ] && [ "$EUID" -ne 0 ]; then
+      echo "Error: No permission to control trackpad"
+      echo "This script must be run with sudo"
+      exit 1
+    fi
+
+    TRACKPAD_FILES+=("$TRACKPAD_FILE")
   done
 
-  if [ -z "$TRACKPAD_SYSFS" ]; then
-    echo "Error: Trackpad device $OMARCHY_TRACKPAD_DWT_TRACKPAD not found"
-    echo "Run omarchy-disable-trackpad-while-typing-tui to configure available devices"
-    exit 1
-  fi
-
-  log_info "Found trackpad at: $TRACKPAD_SYSFS"
-  log_info "Device name: $(cat "$TRACKPAD_SYSFS/name")"
-
-  # Find the inhibited file for the trackpad
-  if [ -f "$TRACKPAD_SYSFS/inhibited" ]; then
-    TRACKPAD_FILE="$TRACKPAD_SYSFS/inhibited"
-  elif [ -f "$TRACKPAD_SYSFS/device/inhibited" ]; then
-    TRACKPAD_FILE="$TRACKPAD_SYSFS/device/inhibited"
-  else
-    echo "Error: Cannot find inhibited file for trackpad"
-    echo "Trackpad may not support the inhibit mechanism"
-    exit 1
-  fi
-
-  # Check that we have permission (script should be run with sudo)
-  if [ ! -w "$TRACKPAD_FILE" ] && [ "$EUID" -ne 0 ]; then
-    echo "Error: No permission to control trackpad"
-    echo "This script must be run with sudo"
-    exit 1
-  fi
-
-  # Simple trackpad control functions
+  # Trackpad control functions that handle multiple devices
   disable_trackpad() {
-    echo 1 >"$TRACKPAD_FILE" 2>/dev/null
+    for file in "${TRACKPAD_FILES[@]}"; do
+      echo 1 >"$file" 2>/dev/null
+    done
   }
 
   enable_trackpad() {
-    echo 0 >"$TRACKPAD_FILE" 2>/dev/null
+    for file in "${TRACKPAD_FILES[@]}"; do
+      echo 0 >"$file" 2>/dev/null
+    done
   }
 
   log_info "Monitoring keyboard: $KEYBOARD_DEVICE"
