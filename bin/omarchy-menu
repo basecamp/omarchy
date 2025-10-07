@@ -430,7 +430,8 @@ show_update_config_menu() {
 }
 
 show_update_hardware_menu() {
-  case $(menu "Restart" "󱚾  Wi-Fi\n󰂯  Bluetooth") in
+  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth") in
+  *Audio*) present_terminal omarchy-restart-pipewire ;;
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
   *) show_update_menu ;;
@@ -450,9 +451,9 @@ show_system_menu() {
   *Lock*) omarchy-lock-screen ;;
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
-  *Relaunch*) uwsm stop ;;
-  *Restart*) systemctl reboot ;;
-  *Shutdown*) systemctl poweroff ;;
+  *Relaunch*) omarchy-state clear relaunch-required && uwsm stop ;;
+  *Restart*) omarchy-state clear re*-required && systemctl reboot ;;
+  *Shutdown*) omarchy-state clear re*-required && systemctl poweroff ;;
   *) back_to show_main_menu ;;
   esac
 }
