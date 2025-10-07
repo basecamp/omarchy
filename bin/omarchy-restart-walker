@@ -3,5 +3,5 @@
 pkill walker
 # FIXME: Just deal with the memory leak for now.
 # See https://github.com/basecamp/omarchy/issues/698
-setsid uwsm app -- walker --gapplication-service &
+setsid uwsm-app -- walker --gapplication-service &
 echo # Always end in success so we don't terminate further running
