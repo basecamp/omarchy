@@ -389,8 +389,8 @@ write_config() {
   local trackpad="$2"
   local timeout="$3"
 
-  # Check if config already exists in input.conf
-  if grep -q "OMARCHY_TRACKPAD_DWT_KEYBOARD" "$INPUT_CONF" 2>/dev/null; then
+  # Check if config already exists in input.conf (not commented out)
+  if grep -q '^\s*env = OMARCHY_TRACKPAD_DWT_KEYBOARD' "$INPUT_CONF" 2>/dev/null; then
     echo "" >&2
     warn "Existing DWT configuration found in input.conf"
     echo "" >&2
