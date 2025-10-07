@@ -1,16 +1,78 @@
 #!/bin/bash
+set -euo pipefail
+
+# Usage:
+#   omarchy-launch-or-focus <window-pattern> [launch-command]
+#   omarchy-launch-or-focus <url> [profile] [extra browser flags...]
+
+find_window_address() {
+  local pattern="$1"
+  hyprctl clients -j \
+  | jq -r --arg p "$pattern" '.[] | select((.class+" "+.title) | test($p;"i")) | .address' \
+  | head -n1
+}
+
+regex_escape() {
+  sed -e 's/[.[\*^$()+?{}|\\]/\\&/g' <<<"$1"
+}
 
 if (($# == 0)); then
-  echo "Usage: omarchy-launch-or-focus [window-pattern] [launch-command]"
+  echo "Usage:"
+  echo "  omarchy-launch-or-focus <window-pattern> [launch-command]"
+  echo "  omarchy-launch-or-focus <url> [profile] [extra browser flags...]"
   exit 1
 fi
 
-WINDOW_PATTERN="$1"
-LAUNCH_COMMAND="${2:-"uwsm app -- $WINDOW_PATTERN"}"
-WINDOW_ADDRESS=$(hyprctl clients -j | jq -r --arg p "$WINDOW_PATTERN" '.[]|select((.class|test("\\b" + $p + "\\b";"i")) or (.title|test("\\b" + $p + "\\b";"i")))|.address' | head -n1)
+arg1="$1"
+if [[ "$arg1" =~ ^https?:// ]]; then
+  # ------------------ URL MODE ------------------
+  APP_URL="$1"
+  PROFILE="${2-}"          # optional
+  shift || true
+  if [[ $# -gt 0 ]]; then shift; fi
+  EXTRA_FLAGS=("$@")
 
-if [[ -n $WINDOW_ADDRESS ]]; then
-  hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
+  # Host (e.g., gemini.google.com, chatgpt.com)
+  host="${APP_URL#*://}"; host="${host%%/*}"
+  host_esc="$(regex_escape "$host")"
+
+  # Allow optional "__<segment>-" between host and profile, e.g. "__app-"
+  # Examples matched:
+  #   chrome-gemini.google.com__app-Default
+  #   chrome-chatgpt.com__-Default
+  #   chrome-web.whatsapp.com__-Profile_1
+  if [[ -n "${PROFILE:-}" ]]; then
+    prof_as_is="$(regex_escape "$PROFILE")"
+    prof_uscore="$(regex_escape "${PROFILE// /_}")"
+    WINDOW_PATTERN="(^| )(chrome|chromium|brave|vivaldi|microsoft-edge|google-chrome)-${host_esc}(__[^ ]*-)(${prof_as_is}|${prof_uscore})( |$)"
+  else
+    # No profile provided: match any window of this host, regardless of the optional segment/profile
+    WINDOW_PATTERN="(^| )(chrome|chromium|brave|vivaldi|microsoft-edge|google-chrome)-${host_esc}(__[^ ]*)?( |$)"
+  fi
+
+  # Debug aid: show the pattern if DEBUG=1
+  [[ "${DEBUG:-0}" = "1" ]] && echo "Pattern: $WINDOW_PATTERN" >&2
+
+  if WINDOW_ADDRESS="$(find_window_address "$WINDOW_PATTERN")" && [[ -n "$WINDOW_ADDRESS" ]]; then
+    hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
+    exit 0
+  fi
+
+  # No match → delegate launching (no duplication of browser logic here)
+  if [[ -n "${PROFILE:-}" ]]; then
+    exec omarchy-launch-webapp "$APP_URL" "$PROFILE" "${EXTRA_FLAGS[@]}"
+  else
+    exec omarchy-launch-webapp "$APP_URL" "${EXTRA_FLAGS[@]}"
+  fi
+
 else
-  eval exec $LAUNCH_COMMAND
+  # ---------------- PATTERN MODE (original) ----------------
+  WINDOW_PATTERN="$arg1"
+  LAUNCH_COMMAND="${2:-"uwsm app -- $WINDOW_PATTERN"}"
+
+  if WINDOW_ADDRESS="$(find_window_address "$WINDOW_PATTERN")" && [[ -n "$WINDOW_ADDRESS" ]]; then
+    hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
+  else
+    eval exec $LAUNCH_COMMAND
+  fi
 fi
