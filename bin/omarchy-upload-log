@@ -66,6 +66,11 @@ install)
   ARCHINSTALL_LOG="/var/log/archinstall/install.log"
   OMARCHY_LOG="/var/log/omarchy-install.log"
 
+  # Ensure log file exists before trying to read it
+  if [ ! -f "$OMARCHY_LOG" ]; then
+    sudo touch "$OMARCHY_LOG" 2>/dev/null || true
+  fi
+
   # Combine system info with logs
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   cat $ARCHINSTALL_LOG $OMARCHY_LOG >>"$TEMP_LOG" 2>/dev/null

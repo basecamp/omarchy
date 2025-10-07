@@ -224,6 +224,10 @@ catch_errors() {
       gum style "Scan QR code or visit: https://discord.gg/tXFUdasqhY"
       ;;
     "View full log")
+      # Ensure log file exists before trying to view it
+      if [ ! -f "$OMARCHY_INSTALL_LOG_FILE" ]; then
+        sudo touch "$OMARCHY_INSTALL_LOG_FILE" 2>/dev/null || true
+      fi
       if command -v less &>/dev/null; then
         less "$OMARCHY_INSTALL_LOG_FILE"
       else
