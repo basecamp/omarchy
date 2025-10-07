@@ -94,16 +94,27 @@ install_dependencies() {
 
   if ! command -v evtest &>/dev/null; then
     deps_needed=true
+    echo
     info "Installing evtest..."
-    sudo pacman -S --noconfirm evtest || error "Failed to install evtest"
+    if sudo pacman -S --noconfirm evtest &>/dev/null; then
+      success "evtest installed"
+    else
+      error "Failed to install evtest"
+    fi
   fi
 
   if ! command -v socat &>/dev/null; then
     deps_needed=true
+    echo
     info "Installing socat..."
-    sudo pacman -S --noconfirm socat || error "Failed to install socat"
+    if sudo pacman -S --noconfirm socat &>/dev/null; then
+      success "socat installed"
+    else
+      error "Failed to install socat"
+    fi
   fi
 
+  echo
   if ! $deps_needed; then
     success "All dependencies are already installed"
   else
