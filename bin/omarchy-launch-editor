@@ -1,7 +1,7 @@
 #!/bin/bash
 
 case "${EDITOR:-nvim}" in
-nvim | vim | nano | micro | hx)
+nvim | vim | nano | micro | hx | helix)
   exec setsid uwsm-app -- "$TERMINAL" -e "$EDITOR" "$@"
   ;;
 *)
