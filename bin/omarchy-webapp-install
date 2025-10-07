@@ -32,6 +32,7 @@ declare -A BROWSER_BINARIES=(
   [Brave]=brave
   [Microsoft Edge]=microsoft-edge-stable
   [Vivaldi]=vivaldi
+  [Helium]=helium-browser
 )
 
 BROWSERS=()
@@ -50,6 +51,7 @@ declare -A BROWSER_CONFIG_DIRS=(
   [Brave]="$HOME/.config/BraveSoftware/Brave-Browser"
   [Microsoft Edge]="$HOME/.config/microsoft-edge"
   [Vivaldi]="$HOME/.config/vivaldi"
+  [Helium]="$HOME/.config/net.imput.helium"
 )
 
  PROFILE_DIR="${BROWSER_CONFIG_DIRS[$BROWSER_CHOICE]:-$HOME/.config/$BROWSER_CHOICE}"
