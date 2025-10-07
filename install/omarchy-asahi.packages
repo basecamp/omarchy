@@ -1,0 +1,31 @@
+# Asahi Linux specific packages for M1/M2 Apple Silicon hardware
+# These packages are only needed for bare metal Asahi installations
+# NOT needed for Parallels/VMware ARM VMs
+#
+# The asahi-alarm "minimal" install adds the following packages automatically:
+#  - asahi-meta:
+#    - alsa-ucm-conf-asahi   # ALSA hardware configuration profiles for Apple Silicon audio
+#    - asahi-alarm-keyring   # Package signing keys for asahi-alarm repository
+#    - asahi-bless           # Boot partition selector tool for ARM Macs
+#    - asahi-btsync          # Bluetooth pairing key sync with macOS (dual-boot)
+#    - asahi-configs         # System configs (KDE/X11 settings, natural scrolling)
+#    - asahi-fwextract       # Firmware extraction utility for Apple hardware
+#    - asahi-scripts         # Maintenance scripts (update-m1n1, DTB management)
+#    - asahi-wifisync        # WiFi password sync with macOS (dual-boot)
+#    - linux-asahi           # Linux kernel with Apple Silicon hardware support
+#    - m1n1                  # Stage 1 bootloader for Apple Silicon
+#    - tiny-dfr              # Touch Bar input/display daemon
+#    - uboot-asahi           # U-Boot stage 2 bootloader for Apple Silicon
+
+# Additional packages to install for Omarchy Asahi-Alarm:
+# -------------------------------------------------------
+asahi-audio # meta-package for Asahi audio support
+# includes:
+#   - bankstown (>=1.1.0)        # Bass enhancer LV2 plugin
+#   - lsp-plugins-lv2 (>=1.2.15) # Professional audio processing plugins (EQ, compressor, etc.)
+#   - pipewire (>=1.0)           # Core PipeWire audio/video server
+#   - speakersafetyd             # Speaker protection daemon (prevents hardware damage)
+#   - triforce-lv2               # Guitar amp simulator and effects LV2 plugin
+#   - wireplumber (>=0.5.1)      # PipeWire session/policy manager
+
+vulkan-asahi # Vulkan 1.3 driver for Apple Silicon GPU (enables gaming and GPU acceleration)
