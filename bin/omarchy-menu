@@ -73,6 +73,14 @@ aur_install_and_launch() {
   present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2 && setsid gtk-launch $3"
 }
 
+install_and_launch_vscode() {
+  present_terminal "echo 'Installing VSCode...'; sudo pacman -S --noconfirm visual-studio-code-bin && bash ~/.local/share/omarchy/install/config/editor-argv.sh vscode && setsid gtk-launch code"
+}
+
+install_and_launch_cursor() {
+  present_terminal "echo 'Installing Cursor...'; sudo pacman -S --noconfirm cursor-bin && bash ~/.local/share/omarchy/install/config/editor-argv.sh cursor && setsid gtk-launch cursor"
+}
+
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) omarchy-menu-keybindings ;;
@@ -260,8 +268,8 @@ show_install_service_menu() {
 
 show_install_editor_menu() {
   case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Emacs") in
-  *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
-  *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
+  *VSCode*) install_and_launch_vscode ;;
+  *Cursor*) install_and_launch_cursor ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
   *Sublime*) aur_install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) install "Helix" "helix" ;;
