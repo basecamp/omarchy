@@ -21,3 +21,6 @@ shell-integration-features = no-cursor
 
 # Keyboard bindings
 keybind = f11=toggle_fullscreen
+
+# SSH session terminfo
+shell-integration-features = ssh-env
