@@ -1,0 +1,91 @@
+#!/bin/bash
+
+ALLOW_TOKEN=false
+[[ "$1" == "--allow-token" ]] && ALLOW_TOKEN=true
+
+output_selection() {
+  local type="$1"
+  local value="$2"
+
+  echo -n "[SELECTION]"
+  [[ "$ALLOW_TOKEN" == "true" ]] && echo -n "r"
+  echo "/${type}:${value}"
+  exit 0
+}
+
+show_screen_tab() {
+  local options=()
+  local connectors=()
+
+  while IFS='|' read -r connector desc width height; do
+    local friendly_name=$(sed -E 's/ (0x[0-9A-F]+|[A-Z0-9]{10,})$//' <<<"$desc")
+    options+=("$friendly_name (${width}x${height}) - $connector")
+    connectors+=("$connector")
+  done < <(hyprctl monitors -j 2>/dev/null | jq -r '.[] | "\(.name)|\(.description)|\(.width)|\(.height)"' 2>/dev/null)
+
+  local selected=$(printf '%s\n' "${options[@]}" | walker --dmenu -w 350 -p "Share Screen…" 2>/dev/null)
+
+  for i in "${!options[@]}"; do
+    [[ "${options[$i]}" == "$selected" ]] && output_selection "screen" "${connectors[$i]}"
+  done
+
+  exit 1
+}
+
+show_window_tab() {
+  [[ -z "$XDPH_WINDOW_SHARING_LIST" ]] && exit 1
+
+  local options=()
+  local ids=()
+  local rolling="$XDPH_WINDOW_SHARING_LIST"
+
+  while [[ -n "$rolling" && "$rolling" == *"[HC>]"* ]]; do
+    local id="${rolling%%\[HC>\]*}"
+    rolling="${rolling#*\[HC>\]}"
+
+    local class="${rolling%%\[HT>\]*}"
+    rolling="${rolling#*\[HT>\]}"
+
+    local title="${rolling%%\[HE>\]*}"
+    rolling="${rolling#*\[HE>\]}"
+
+    rolling="${rolling#*\[HA>\]}"
+
+    if [[ -n "$id" && -n "$title" ]]; then
+      options+=("$title")
+      ids+=("$id")
+    fi
+  done
+
+  local selected=$(printf '%s\n' "${options[@]}" | walker --dmenu -w 350 -p "Share Window…" 2>/dev/null)
+
+  for i in "${!options[@]}"; do
+    [[ "${options[$i]}" == "$selected" ]] && output_selection "window" "${ids[$i]}"
+  done
+
+  exit 1
+}
+
+show_region_tab() {
+  local geometry=$(slurp -f "%o %x %y %w %h" 2>/dev/null)
+
+  if [[ -n "$geometry" ]]; then
+    read -r output x y w h <<<"$geometry"
+    output_selection "region" "${output}@${x},${y},${w},${h}"
+  fi
+
+  exit 1
+}
+
+main_menu() {
+  local choice=$(printf "Screen\nWindow\nRegion" | walker --dmenu --theme dmenu_250 -p "Share…" 2>/dev/null)
+
+  case "$choice" in
+  Screen) show_screen_tab ;;
+  Window) show_window_tab ;;
+  Region) show_region_tab ;;
+  *) exit 1 ;;
+  esac
+}
+
+main_menu
