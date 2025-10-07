@@ -1,0 +1,11 @@
+#!/bin/bash
+
+default_browser=$(xdg-settings get default-web-browser)
+
+if [[ $default_browser =~ (firefox|zen|librewolf) ]]; then
+  private_flag="--private-window"
+else
+  private_flag="--incognito"
+fi
+
+exec setsid uwsm-app -- "$default_browser" "${@/--private/$private_flag}"

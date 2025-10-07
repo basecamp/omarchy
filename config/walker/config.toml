@@ -4,12 +4,14 @@ theme_base = []
 theme_location = ["~/.local/share/omarchy/default/walker/themes/"]
 hotreload_theme = true
 force_keyboard_focus = true
+timeout = 60
 
 [keys.ai]
 run_last_response = ["ctrl e"]
 
 [list]
 max_entries = 200
+cycle = true
 
 [search]
 placeholder = " Search..."
@@ -19,7 +21,7 @@ path = "~/.config/hypr/hyprland.conf"
 hidden = true
 
 [builtins.applications]
-launch_prefix = "uwsm app -- "
+launch_prefix = "uwsm-app -- "
 placeholder = " Search..."
 prioritize_new = false
 context_aware = false
