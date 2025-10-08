@@ -22,8 +22,8 @@ if [[ -n "${OMARCHY_REPO:-}" ]] || [[ -n "${OMARCHY_REF:-}" ]] || [[ -n "${SKIP_
 
   # Left-align for first-time installs, centered for retries
   if [[ "$OMARCHY_RETRY_INSTALL" == "true" ]]; then
-    gum confirm --show-help=false "Continue and retry with these env vars?" || exit 1
+    GUM_CONFIRM_PADDING="0 0 2 ${PADDING_LEFT:-0}" gum confirm "Continue and retry with these env vars?" || exit 1
   else
-    GUM_CONFIRM_PADDING="" gum confirm --show-help=false "Continue with these env vars?" < /dev/tty || exit 1
+    GUM_CONFIRM_PADDING="0 0 2 0" gum confirm "Continue with these env vars?" < /dev/tty || exit 1
   fi
 fi

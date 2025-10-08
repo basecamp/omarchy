@@ -1,37 +1,13 @@
 #!/bin/bash
 
-# Detect if we need ASCII rendering (ARM, Asahi, or VM)
-# This matches the detection logic in install.sh
+# Detect if we're on Asahi Linux
 is_asahi=false
-
-# Detect ARM
-arch=$(uname -m)
-if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
-  export OMARCHY_ARM=true
-fi
-
-# Detect Asahi specifically
 if uname -r | grep -qi "asahi"; then
   is_asahi=true
-  export ASAHI_ALARM=true
-fi
-
-# Detect virtualization
-if command -v systemd-detect-virt &>/dev/null; then
-  virt_type=$(systemd-detect-virt || echo "none")
-  if [[ "$virt_type" != "none" ]]; then
-    export OMARCHY_VIRTUALIZATION=true
-  fi
-fi
-
-# Suppress gum help and use simple ASCII on ARM/Asahi/VMs
-if [[ -n "$OMARCHY_ARM" ]] || [[ "$is_asahi" == "true" ]] || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
   export GUM_CHOOSE_CURSOR="> "
   export GUM_CHOOSE_CURSOR_PREFIX="* "
   export GUM_CHOOSE_SELECTED_PREFIX="[x] "
   export GUM_CHOOSE_UNSELECTED_PREFIX="[ ] "
-  export GUM_CONFIRM_SHOW_HELP=false
-  export GUM_CHOOSE_SHOW_HELP=false
 fi
 
 existing_users=$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd)
@@ -41,7 +17,7 @@ if [[ $EUID -eq 0 ]]; then
   if ! command -v gum &>/dev/null; then
     echo
     echo "Installing gum for interactive setup..."
-    pacman -S --needed --noconfirm gum >/dev/null 2>&1 || {
+    yes 1 | pacman -S --needed --noconfirm gum >/dev/null 2>&1 || {
       echo "Error: Failed to install the 'gum' package"
       exit 1
     }
@@ -69,10 +45,10 @@ if [[ $EUID -eq 0 ]]; then
 
       echo
       # Force TTY allocation for gum when running from piped script
-      if gum confirm --show-help=false "Use an existing user account?" < /dev/tty; then
+      if gum confirm "Use an existing user account?" < /dev/tty; then
         # Clear the user list by moving cursor up and clearing lines
         printf "\033[${lines_to_clear}A\033[J"
-        username=$(gum choose --show-help=false --header "Select user:" "${user_array[@]}" < /dev/tty)
+        username=$(gum choose --header "Select user:" "${user_array[@]}" < /dev/tty)
         exit_code=$?
 
         # Check for Ctrl+C (exit code 130) and exit cleanly
@@ -339,7 +315,7 @@ if [[ $EUID -eq 0 ]]; then
   echo
 
   # Confirm before proceeding with installation
-  if ! gum confirm --show-help=false "Ready to install Omarchy as $username?" < /dev/tty; then
+  if ! gum confirm "Ready to install Omarchy as $username?" < /dev/tty; then
     echo
     echo "Installation cancelled."
     echo
