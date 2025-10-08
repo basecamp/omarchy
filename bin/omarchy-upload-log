@@ -142,9 +142,35 @@ esac
 
 echo
 
-URL=$(curl -sF "file=@$TEMP_LOG" -Fexpires=24 https://0x0.st)
+# Check file size (0x0.st has 512 MiB limit)
+FILE_SIZE=$(stat -f%z "$TEMP_LOG" 2>/dev/null || stat -c%s "$TEMP_LOG" 2>/dev/null)
+MAX_SIZE=$((512 * 1024 * 1024))  # 512 MiB in bytes
 
-if (( $? == 0 )) && [[ -n $URL ]]; then
+if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
+  print_msg "Warning: Log file is $(($FILE_SIZE / 1024 / 1024)) MiB (limit: 512 MiB)"
+  print_msg "Truncating to last 100,000 lines..."
+  tail -100000 "$TEMP_LOG" > "${TEMP_LOG}.truncated"
+  mv "${TEMP_LOG}.truncated" "$TEMP_LOG"
+fi
+
+print_msg "Uploading $(du -h "$TEMP_LOG" | cut -f1) of logs..."
+
+# Upload with 60 second timeout
+# Use -# for simple hash progress bar (goes to stderr, won't interfere with URL capture)
+URL=$(curl --max-time 60 -# -F "file=@$TEMP_LOG" -Fexpires=24 https://0x0.st 2>/tmp/upload-progress.log)
+CURL_EXIT=$?
+
+if [ $CURL_EXIT -eq 28 ]; then
+  print_msg "Error: Upload timed out after 60 seconds"
+  print_msg "Log file may be too large. Try: omarchy-upload-log this-boot"
+  exit 1
+elif [ $CURL_EXIT -ne 0 ]; then
+  print_msg "Error: Upload failed (curl exit code: $CURL_EXIT)"
+  print_msg "Check network connection or try again later"
+  exit 1
+fi
+
+if [ -n "$URL" ] && [[ "$URL" =~ ^https?:// ]]; then
   print_msg "${CHECKMARK}Log uploaded successfully!"
   echo
   print_msg "Share this URL:"
@@ -155,6 +181,7 @@ if (( $? == 0 )) && [[ -n $URL ]]; then
   echo
   print_msg "This link will expire in 24 hours."
 else
-  print_msg "Error: Failed to upload log file"
+  print_msg "Error: Invalid response from server"
+  print_msg "Response: $URL"
   exit 1
 fi
