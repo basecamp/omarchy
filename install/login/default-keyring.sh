@@ -2,6 +2,8 @@ KEYRING_DIR="$HOME/.local/share/keyrings"
 KEYRING_FILE="$KEYRING_DIR/Default_keyring.keyring"
 DEFAULT_FILE="$KEYRING_DIR/default"
 
+mkdir -p $KEYRING_DIR
+
 cat << EOF | tee "$KEYRING_FILE"
 [keyring]
 display-name=Default keyring
