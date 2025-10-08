@@ -3,11 +3,20 @@
 
 set -e
 
+browser=$(xdg-settings get default-web-browser)
+
+case $browser in
+google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi* | helium-browser*) ;;
+*) browser="chromium.desktop" ;;
+esac
+
+BROWSER=${browser%.desktop}
+
 # Directories to remove
 CACHE_DIRS=(
-    "$HOME/.config/google-chrome/GrShaderCache"
-    "$HOME/.config/google-chrome/ShaderCache"
-    "$HOME/.config/google-chrome/Default/GPUCache"
+    "$HOME/.config/$BROWSER/GrShaderCache"
+    "$HOME/.config/$BROWSER/ShaderCache"
+    "$HOME/.config/$BROWSER/Default/GPUCache"
 )
 
 for dir in "${CACHE_DIRS[@]}"; do
