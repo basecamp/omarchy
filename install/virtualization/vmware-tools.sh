@@ -128,6 +128,9 @@ EOF
 # Enable for all users
 sudo systemctl --global enable vmware-user.service
 
+# Install clipboard sync (shared with Parallels)
+source "$OMARCHY_PATH/install/login/shared/clipboard-sync.sh"
+
 # Create HGFS shared folders mount
 echo "Configuring VMware shared folders auto-mount..."
 sudo mkdir -p /mnt/hgfs
