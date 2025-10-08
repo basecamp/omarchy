@@ -65,3 +65,30 @@ img2png() {
     -define png:exclude-chunk=all \
     "${1%.*}.png"
 }
+
+# Mapping of zd opt-outs to stay with cd builtin
+zd() {
+  if [ $# -eq 0 ]; then
+    builtin cd ~ && return
+  elif [[ "$1" == "-" ]]; then
+    if [[ -n "$OLDPWD" ]]; then
+      builtin cd -
+    else
+      print -u2 "zd: OLDPWD not set"
+      return 1
+    fi
+    return
+  elif [ -d "$1" ]; then
+    builtin cd "$1"
+  else
+    z "$@" && printf "\U000F17A9 " && pwd || echo "Error: Directory not found"
+  fi
+}
+
+# Open xdg-open session
+open() {
+  xdg-open "$@" >/dev/null 2>&1 &
+}
+
+# Open nvim shortcut
+n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
