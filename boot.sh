@@ -6,6 +6,17 @@ export OMARCHY_ONLINE_INSTALL=true
 OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}" # custom repo with default fallback
 OMARCHY_REF="${OMARCHY_REF:-master}" # custom branch/ref with default fallback
 
+# Detect ARM architecture
+arch=$(uname -m)
+if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
+  export OMARCHY_ARM=true
+
+  # Detect Asahi Linux specifically
+  if uname -r | grep -qi "asahi"; then
+    export ASAHI_ALARM=true
+  fi
+fi
+
 # Detect virtualization
 if command -v systemd-detect-virt &>/dev/null; then
   virt_type=$(systemd-detect-virt || echo "none")
@@ -14,6 +25,12 @@ if command -v systemd-detect-virt &>/dev/null; then
   if [[ "$virt_type" != "none" ]]; then
     export OMARCHY_VIRTUALIZATION=true
   fi
+fi
+
+# Suppress gum help text on ARM/Asahi/VMs (Unicode doesn't render properly in raw TTY)
+if [[ -n "$OMARCHY_ARM" ]] || [[ -n "$ASAHI_ALARM" ]] || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
+  export GUM_CONFIRM_SHOW_HELP=false
+  export GUM_CHOOSE_SHOW_HELP=false
 fi
 
 omarchy_art="Omarchy"
