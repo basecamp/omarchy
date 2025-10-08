@@ -260,7 +260,7 @@ show_install_service_menu() {
 
 show_install_editor_menu() {
   case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Emacs") in
-  *VSCode*) install_and_launch "VSCode" "visual-studio-code-bin" "code" ;;
+  *VSCode*) present_terminal omarchy-install-vscode ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
   *Sublime*) aur_install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
@@ -452,7 +452,7 @@ show_system_menu() {
   *Lock*) omarchy-lock-screen ;;
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
-  *Relaunch*) omarchy-state clear relaunch-required && uwsm stop ;;
+  *Relaunch*) omarchy-state clear relaunch-required && sudo systemctl restart sddm ;;
   *Restart*) omarchy-state clear re*-required && systemctl reboot ;;
   *Shutdown*) omarchy-state clear re*-required && systemctl poweroff ;;
   *) back_to show_main_menu ;;
