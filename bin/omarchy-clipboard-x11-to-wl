@@ -1,21 +1,10 @@
 #!/bin/bash
-# X11 → Wayland with hash-based deduplication
-last_hash=""
-while true; do
-    # Wait for X11 clipboard change
-    if clipnotify -s clipboard 2>/dev/null; then
-        sleep 0.1
-        # Get current X11 clipboard content
-        current_content=$(xclip -selection clipboard -o 2>/dev/null || echo "")
-        current_hash=$(echo -n "$current_content" | md5sum | cut -d' ' -f1)
-
-        # Only sync if hash changed
-        if [ "$current_hash" != "$last_hash" ] && [ -n "$current_content" ]; then
-            # Write to Wayland
-            echo -n "$current_content" | wl-copy --type text/plain 2>/dev/null
-            last_hash="$current_hash"
-        fi
-    else
-        sleep 1
+# X11 → Wayland with hash deduplication (prevents feedback loop)
+last=""
+while clipnotify -s clipboard; do
+    current=$(xclip -selection clipboard -o 2>/dev/null | md5sum)
+    if [ "$current" != "$last" ] && [ -n "$current" ]; then
+        xclip -selection clipboard -o 2>/dev/null | wl-copy -n 2>/dev/null
+        last="$current"
     fi
 done
