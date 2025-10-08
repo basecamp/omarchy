@@ -37,5 +37,8 @@ else
   exit 1
 fi
 
+# Install clipboard sync (shared with VMware)
+source "$OMARCHY_PATH/install/login/shared/clipboard-sync.sh"
+
 echo "Parallels Tools configuration complete!"
 echo "Shared folders will be available via the 'Parallels Shared Folders' desktop icon"
