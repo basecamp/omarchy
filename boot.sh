@@ -36,7 +36,7 @@ echo -e "\n$omarchy_art\n"
 # Install git early since it's needed when running boot.sh as a non-root user
 if ! command -v git &>/dev/null; then
   echo "Installing git..."
-  sudo pacman -S --noconfirm --needed git >/dev/null 2>&1 || {
+  yes 1 | sudo pacman -S --noconfirm --needed git >/dev/null 2>&1 || {
     echo "Error: Failed to install git"
     exit 1
   }
@@ -47,7 +47,7 @@ fi
 # Install the 'less' package early in case we error out and need to show logs
 if ! command -v less &>/dev/null; then
   echo "Installing less..."
-  sudo pacman -S --noconfirm --needed less >/dev/null 2>&1 || {
+  yes 1 | sudo pacman -S --noconfirm --needed less >/dev/null 2>&1 || {
     echo "Error: Failed to install less"
     exit 1
   }
