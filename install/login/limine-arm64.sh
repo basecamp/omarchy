@@ -25,7 +25,7 @@ fi
 echo "mkinitcpio hooks re-enabled"
 
 echo "Installing Limine, snapper, and mkinitcpio hook..."
-yay -S --noconfirm --needed --answerdiff None --answerclean None --removemake snapper limine limine-mkinitcpio-hook
+"$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed -r" snapper limine limine-mkinitcpio-hook
 
 # Configure mkinitcpio hooks (no microcode for ARM)
 echo "Configuring mkinitcpio hooks..."

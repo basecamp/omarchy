@@ -12,15 +12,7 @@ sudo pacman -S --needed --noconfirm base-devel git cmake qt6-base qt6-svg \
   libxrandr libxcb wayland-protocols libxkbcommon alsa-lib \
   libv4l dav1d
 
-# Clone and build from AUR
-git clone https://aur.archlinux.org/obs-studio-git.git
-cd obs-studio-git
-makepkg -si --noconfirm --ignorearch
-
-# Clean up
-cd ..
-rm -rf obs-studio-git
-
-cd ~
+# Install from AUR with automatic fallback
+"$OMARCHY_PATH/bin/omarchy-aur-install" obs-studio-git
 
 echo "OBS Studio installed successfully"

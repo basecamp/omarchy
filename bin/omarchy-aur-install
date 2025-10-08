@@ -1,0 +1,506 @@
+#!/bin/bash
+#
+# Omarchy AUR Installer with GitHub Mirror Fallback
+# Automatically detects AUR availability and falls back to GitHub mirror if needed.
+# Usage: omarchy-aur-install <package-name> [package-name...]
+#
+
+set -e
+
+# --- Configuration ---
+AUR_URL="https://aur.archlinux.org"
+AUR_GIT_URL="https://aur.archlinux.org"
+GITHUB_MIRROR_URL="https://github.com/archlinux/aur.git"
+AUR_CHECK_TIMEOUT=5
+AUR_FAILURE_THRESHOLD=3        # Mark AUR as down after this many consecutive failures
+AUR_COOLDOWN_MINUTES=20        # Don't retry AUR for this long after marking it down
+AUR_STATE_FILE="/tmp/omarchy-aur-state-$(id -u)"  # Per-user state file
+
+# --- Color Output ---
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_info() { echo -e "${BLUE}==>${NC} $*"; }
+print_success() { echo -e "${GREEN}==>${NC} $*"; }
+print_warning() { echo -e "${YELLOW}==>${NC} $*"; }
+print_error() { echo -e "${RED}==>${NC} $*"; }
+
+# --- Pre-flight Checks ---
+if [ $# -eq 0 ]; then
+  print_error "No package name specified."
+  echo "Usage: $0 [--makepkg-flags='FLAGS'] <package-name> [package-name...]"
+  echo "Example: $0 --makepkg-flags='--needed -r' package1 package2"
+  exit 1
+fi
+
+# Parse arguments
+EXTRA_MAKEPKG_FLAGS=""
+PACKAGES=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --makepkg-flags=*)
+      EXTRA_MAKEPKG_FLAGS="${1#*=}"
+      shift
+      ;;
+    --makepkg-flags)
+      EXTRA_MAKEPKG_FLAGS="$2"
+      shift 2
+      ;;
+    *)
+      PACKAGES+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [ ${#PACKAGES[@]} -eq 0 ]; then
+  print_error "No package names specified."
+  exit 1
+fi
+
+# Check if required tools are installed
+for tool in git makepkg curl; do
+  if ! command -v "$tool" &>/dev/null; then
+    print_error "Required tool '$tool' is not installed."
+    exit 1
+  fi
+done
+
+# --- AUR State Management ---
+get_aur_state() {
+  if [ -f "$AUR_STATE_FILE" ]; then
+    cat "$AUR_STATE_FILE"
+  else
+    echo "unknown 0 0"  # status failure_count last_check_time
+  fi
+}
+
+save_aur_state() {
+  local status="$1"
+  local failure_count="$2"
+  local timestamp="$3"
+  echo "$status $failure_count $timestamp" > "$AUR_STATE_FILE"
+}
+
+is_aur_in_cooldown() {
+  local state=($(get_aur_state))
+  local status="${state[0]}"
+  local last_check="${state[2]}"
+  local current_time=$(date +%s)
+  local cooldown_seconds=$((AUR_COOLDOWN_MINUTES * 60))
+
+  if [ "$status" = "down" ]; then
+    local elapsed=$((current_time - last_check))
+    if [ $elapsed -lt $cooldown_seconds ]; then
+      local remaining=$(((cooldown_seconds - elapsed) / 60))
+      print_warning "AUR marked as down, skipping check (retry in ${remaining}m)"
+      return 0  # In cooldown
+    fi
+  fi
+  return 1  # Not in cooldown
+}
+
+record_aur_failure() {
+  local state=($(get_aur_state))
+  local failure_count="${state[1]}"
+  local new_count=$((failure_count + 1))
+  local timestamp=$(date +%s)
+
+  if [ $new_count -ge $AUR_FAILURE_THRESHOLD ]; then
+    print_warning "AUR failed $new_count times, marking as down for ${AUR_COOLDOWN_MINUTES}m"
+    save_aur_state "down" "$new_count" "$timestamp"
+  else
+    save_aur_state "degraded" "$new_count" "$timestamp"
+  fi
+}
+
+record_aur_success() {
+  save_aur_state "up" "0" "$(date +%s)"
+}
+
+# --- AUR Availability Check ---
+check_aur_available() {
+  # Check if in cooldown period
+  if is_aur_in_cooldown; then
+    return 1
+  fi
+
+  print_info "Checking AUR availability..."
+  if curl --silent --max-time "$AUR_CHECK_TIMEOUT" --head "$AUR_URL" &>/dev/null; then
+    print_success "AUR is available"
+    record_aur_success
+    return 0
+  else
+    print_warning "AUR is unreachable (timeout: ${AUR_CHECK_TIMEOUT}s)"
+    record_aur_failure
+    return 1
+  fi
+}
+
+# --- Dependency Resolution ---
+
+# Check if a package is available in official repositories
+is_official_package() {
+  local package="$1"
+  # Strip version constraints (>=, =, <, etc.)
+  package=$(echo "$package" | sed 's/[<>=].*$//')
+
+  # Check if package can be resolved from sync databases
+  # Use -Sp (show package download URL) which will succeed for official packages
+  if pacman -Sp "$package" &>/dev/null; then
+    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "  DEBUG: '$package' found in official repos (pacman -Sp)"
+    return 0
+  fi
+
+  [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "  DEBUG: '$package' NOT in official repos (AUR package)"
+  return 1
+}
+
+# Extract dependencies from PKGBUILD
+extract_pkgbuild_deps() {
+  local pkgbuild_path="$1"
+
+  if [[ ! -f "$pkgbuild_path" ]]; then
+    print_error "PKGBUILD not found at: $pkgbuild_path"
+    return 1
+  fi
+
+  # Source PKGBUILD in a subshell to extract dependency arrays
+  (
+    # Set up makepkg environment variables that PKGBUILDs may use
+    export CARCH="$(uname -m)"
+    export CHOST="${CARCH}-unknown-linux-gnu"
+
+    # Debug: Show what CARCH is set to
+    if [[ -n "${OMARCHY_AUR_DEBUG:-}" ]]; then
+      echo "DEBUG:CARCH=$CARCH" >&2
+      echo "DEBUG:CHOST=$CHOST" >&2
+    fi
+
+    # Temporarily disable errexit in subshell to allow PKGBUILD sourcing
+    set +e
+    source "$pkgbuild_path" 2>/dev/null
+    local source_result=$?
+    set -e
+
+    if [ $source_result -ne 0 ]; then
+      # PKGBUILD sourcing failed, but continue to extract what we can
+      :
+    fi
+
+    # Print depends array
+    for dep in "${depends[@]:-}"; do
+      echo "depend:$dep"
+    done
+
+    # Print makedepends array
+    for dep in "${makedepends[@]:-}"; do
+      echo "makedepend:$dep"
+    done
+
+    # Print architecture-specific depends (depends_$CARCH, depends_x86_64, etc.)
+    local arch_depends_var="depends_${CARCH}"
+    local arch_depends_array="${arch_depends_var}[@]"
+    for dep in "${!arch_depends_array:-}"; do
+      echo "depend:$dep"
+    done
+
+    # Print architecture-specific makedepends (makedepends_$CARCH, makedepends_x86_64, etc.)
+    local arch_makedepends_var="makedepends_${CARCH}"
+    local arch_makedepends_array="${arch_makedepends_var}[@]"
+    for dep in "${!arch_makedepends_array:-}"; do
+      echo "makedepend:$dep"
+    done
+
+    # Debug: Show counts
+    if [[ -n "${OMARCHY_AUR_DEBUG:-}" ]]; then
+      local arch_count=0
+      eval "arch_count=\${#${arch_makedepends_var}[@]}"
+      echo "DEBUG:makedepends_count=${#makedepends[@]}" >&2
+      echo "DEBUG:makedepends_${CARCH}_count=${arch_count}" >&2
+    fi
+  )
+}
+
+# Recursively resolve AUR dependencies
+# Returns a list of AUR packages needed (in reverse dependency order)
+resolve_aur_deps_recursive() {
+  local package="$1"
+  local resolved_file="$2"  # File to track resolved packages (avoid cycles)
+  local deps_file="$3"      # File to accumulate dependencies
+
+  # Check if already resolved
+  if grep -q "^${package}$" "$resolved_file" 2>/dev/null; then
+    return 0
+  fi
+
+  # Mark as resolved to prevent cycles
+  echo "$package" >> "$resolved_file"
+
+  # Clone package to temporary location to read PKGBUILD
+  local temp_dir=$(mktemp -d -p "/tmp" "aur-dep-check-XXXX")
+  trap 'rm -rf "$temp_dir"' RETURN
+
+  cd "$temp_dir"
+
+  # Clone from GitHub mirror (since we're in fallback mode)
+  local clone_output
+  clone_output=$(git clone --depth 1 --single-branch --branch "$package" "$GITHUB_MIRROR_URL" "$package" 2>&1)
+  local clone_result=$?
+
+  if [ $clone_result -ne 0 ]; then
+    print_warning "Could not fetch PKGBUILD for '$package' from GitHub mirror - may not exist in AUR"
+    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && echo "$clone_output" | head -5
+    return 1
+  fi
+
+  if [[ ! -d "$package" ]]; then
+    print_error "Clone appeared to succeed but directory '$package' not found"
+    return 1
+  fi
+
+  cd "$package"
+
+  if [[ ! -f "PKGBUILD" ]]; then
+    print_error "No PKGBUILD found in cloned repository for '$package'"
+    return 1
+  fi
+
+  # Extract dependencies from PKGBUILD
+  [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "Extracting dependencies from PKGBUILD for '$package'..."
+  local deps=$(extract_pkgbuild_deps "PKGBUILD")
+  local extract_result=$?
+
+  if [[ -n "${OMARCHY_AUR_DEBUG:-}" ]]; then
+    print_info "Extract result code: $extract_result"
+    print_info "Dependencies for '$package': $(echo "$deps" | wc -l) items"
+    if [[ -n "$deps" ]]; then
+      echo "$deps" | while read line; do print_info "  -> $line"; done
+    else
+      print_warning "No dependencies extracted from PKGBUILD"
+    fi
+  fi
+
+  if [[ -z "$deps" ]]; then
+    # No dependencies found - this is OK, package might have no AUR deps
+    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "Adding '$package' to deps file (no dependencies)"
+    echo "$package" >> "$deps_file"
+    return 0
+  fi
+
+  # Process each dependency
+  while IFS= read -r dep_line; do
+    if [[ -z "$dep_line" ]]; then continue; fi
+
+    local dep_name=$(echo "$dep_line" | cut -d: -f2)
+    # Strip version constraints and library references
+    dep_name=$(echo "$dep_name" | sed 's/[<>=].*$//' | sed 's/\.so.*$//')
+
+    # Skip empty or library dependencies
+    if [[ -z "$dep_name" ]] || [[ "$dep_name" =~ ^lib.*\.so ]]; then
+      [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "  Skipping library: $dep_name"
+      continue
+    fi
+
+    # Skip if it's an official package
+    if is_official_package "$dep_name"; then
+      [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "  Skipping official package: $dep_name"
+      continue
+    fi
+
+    # Recursively resolve this AUR dependency
+    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "  Resolving AUR dependency: $dep_name"
+    resolve_aur_deps_recursive "$dep_name" "$resolved_file" "$deps_file"
+  done <<< "$deps"
+
+  # Add this package to the dependency list (after its dependencies)
+  echo "$package" >> "$deps_file"
+
+  return 0
+}
+
+# --- Package Installation ---
+install_package() {
+  local package_name="$1"
+  local git_url="$2"
+  local use_branch="${3:-false}"
+  local extra_flags="${4:-}"
+
+  print_info "Installing '$package_name'..."
+
+  # Create temporary build directory
+  local build_dir
+  build_dir=$(mktemp -d -p "/tmp" "aur-build-$package_name-XXXX")
+  print_info "Using temporary build directory: $build_dir"
+
+  # Ensure cleanup on exit
+  trap 'rm -rf "$build_dir"' RETURN
+
+  cd "$build_dir"
+
+  # Clone repository
+  print_info "Cloning repository for '$package_name'..."
+  local clone_success=false
+  local state=($(get_aur_state))
+  local aur_status="${state[0]}"
+
+  if [ "$use_branch" = "true" ]; then
+    # GitHub mirror uses branch-per-package
+    if git clone --depth 1 --single-branch --branch "$package_name" "$git_url" "$package_name" 2>/dev/null; then
+      clone_success=true
+    else
+      print_error "Failed to clone '$package_name' from GitHub mirror"
+      print_error "Package may not exist in AUR"
+      return 1
+    fi
+  else
+    # Check if AUR is marked as down or in cooldown
+    if [ "$aur_status" = "down" ] && is_aur_in_cooldown; then
+      print_info "AUR is in cooldown, using GitHub mirror directly"
+      if git clone --depth 1 --single-branch --branch "$package_name" "$GITHUB_MIRROR_URL" "$package_name" 2>/dev/null; then
+        clone_success=true
+      else
+        print_error "Failed to clone '$package_name' from GitHub mirror"
+        print_error "Package may not exist"
+        return 1
+      fi
+    else
+      # Try AUR first (with minimal retries if degraded)
+      local max_attempts=1
+      [ "$aur_status" = "up" ] && max_attempts=2
+
+      for attempt in 1 $max_attempts; do
+        if git clone --depth 1 "$git_url/$package_name.git" "$package_name" 2>/dev/null; then
+          clone_success=true
+          record_aur_success  # Reset failure counter
+          break
+        else
+          if [ $attempt -lt $max_attempts ]; then
+            print_warning "Clone attempt $attempt failed, retrying..."
+            sleep 1
+          fi
+        fi
+      done
+
+      # If AUR failed, try GitHub mirror as fallback
+      if [ "$clone_success" = "false" ]; then
+        record_aur_failure  # Increment failure counter
+        print_warning "AUR clone failed, trying GitHub mirror..."
+        if git clone --depth 1 --single-branch --branch "$package_name" "$GITHUB_MIRROR_URL" "$package_name" 2>/dev/null; then
+          clone_success=true
+          print_success "Successfully cloned from GitHub mirror"
+        else
+          print_error "Failed to clone '$package_name' from both AUR and GitHub mirror"
+          print_error "Package may not exist or network issues persist"
+          return 1
+        fi
+      fi
+    fi
+  fi
+
+  cd "$package_name"
+
+  # Build and install
+  print_info "Building and installing '$package_name'..."
+  # Add --ignorearch for ARM systems (many AUR packages don't officially support ARM)
+  local makepkg_flags=(-si --noconfirm)
+  if [[ "$(uname -m)" == "aarch64" ]]; then
+    makepkg_flags+=(--ignorearch)
+  fi
+  # Add any extra flags passed by caller
+  if [[ -n "$extra_flags" ]]; then
+    # Parse extra flags into array (safe for space-separated tokens)
+    read -ra extra_array <<< "$extra_flags"
+    makepkg_flags+=("${extra_array[@]}")
+  fi
+  makepkg "${makepkg_flags[@]}" || {
+    print_error "Failed to build/install '$package_name'"
+    return 1
+  }
+
+  print_success "Successfully installed '$package_name'"
+  return 0
+}
+
+# --- Main Logic ---
+# Determine which git source to use
+if check_aur_available; then
+  # AUR is available, use standard AUR git
+  USE_GITHUB_MIRROR=false
+  GIT_SOURCE="$AUR_GIT_URL"
+else
+  # AUR is down, use GitHub mirror with dependency resolution
+  print_warning "Falling back to GitHub mirror: $GITHUB_MIRROR_URL"
+  USE_GITHUB_MIRROR=true
+  GIT_SOURCE="$GITHUB_MIRROR_URL"
+
+  # Resolve dependencies for all requested packages
+  print_info "Resolving AUR dependencies recursively..."
+  RESOLVED_FILE=$(mktemp -p "/tmp" "aur-resolved-XXXX")
+  DEPS_FILE=$(mktemp -p "/tmp" "aur-deps-XXXX")
+  trap 'rm -f "$RESOLVED_FILE" "$DEPS_FILE"' EXIT
+
+  for package_name in "${PACKAGES[@]}"; do
+    print_info "Resolving dependencies for '$package_name'..."
+    if ! resolve_aur_deps_recursive "$package_name" "$RESOLVED_FILE" "$DEPS_FILE"; then
+      print_warning "Failed to fully resolve dependencies for '$package_name' - will attempt installation anyway"
+    fi
+  done
+
+  # Build list of all AUR dependencies (in order, without duplicates)
+  ALL_DEPS=()
+  if [[ -f "$DEPS_FILE" ]]; then
+    while IFS= read -r dep; do
+      # Skip if already in list (deduplication)
+      if [[ ! " ${ALL_DEPS[@]} " =~ " ${dep} " ]]; then
+        ALL_DEPS+=("$dep")
+      fi
+    done < "$DEPS_FILE"
+  fi
+
+  # Remove requested packages from dependency list (we'll install them separately)
+  DEPS_TO_INSTALL=()
+  for dep in "${ALL_DEPS[@]}"; do
+    if [[ ! " ${PACKAGES[@]} " =~ " ${dep} " ]]; then
+      DEPS_TO_INSTALL+=("$dep")
+    fi
+  done
+
+  # Install dependencies first
+  if [[ ${#DEPS_TO_INSTALL[@]} -gt 0 ]]; then
+    print_info "Installing ${#DEPS_TO_INSTALL[@]} AUR dependencies: ${DEPS_TO_INSTALL[*]}"
+    for dep in "${DEPS_TO_INSTALL[@]}"; do
+      print_info "Installing AUR dependency: $dep"
+      if ! install_package "$dep" "$GIT_SOURCE" "$USE_GITHUB_MIRROR" "$EXTRA_MAKEPKG_FLAGS"; then
+        print_error "Failed to install dependency '$dep' - continuing anyway"
+      fi
+      echo  # Blank line between packages
+    done
+  else
+    print_info "No additional AUR dependencies needed"
+  fi
+fi
+
+# Install requested packages
+FAILED_PACKAGES=()
+for package_name in "${PACKAGES[@]}"; do
+  if install_package "$package_name" "$GIT_SOURCE" "$USE_GITHUB_MIRROR" "$EXTRA_MAKEPKG_FLAGS"; then
+    :  # Success
+  else
+    FAILED_PACKAGES+=("$package_name")
+  fi
+  echo  # Blank line between packages
+done
+
+# Summary
+if [ ${#FAILED_PACKAGES[@]} -eq 0 ]; then
+  print_success "All packages installed successfully"
+  exit 0
+else
+  print_error "Failed to install: ${FAILED_PACKAGES[*]}"
+  exit 1
+fi

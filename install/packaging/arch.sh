@@ -6,11 +6,11 @@
 if [ -n "$OMARCHY_ARM" ]; then
   echo "Installing ARM-specific packages..."
 
-  # Install any ARM-specific packages from the packages file using yay
+  # Install any ARM-specific packages from the packages file
   if [ -s "$OMARCHY_INSTALL/omarchy-arm.packages" ]; then
     mapfile -t packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-arm.packages" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
     if [ ${#packages[@]} -gt 0 ]; then
-      yay -S --noconfirm --needed "${packages[@]}"
+      "$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" "${packages[@]}"
     fi
   fi
 
@@ -20,7 +20,7 @@ if [ -n "$OMARCHY_ARM" ]; then
     if [ -s "$OMARCHY_INSTALL/omarchy-asahi.packages" ]; then
       mapfile -t asahi_packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-asahi.packages" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
       if [ ${#asahi_packages[@]} -gt 0 ]; then
-        yay -S --noconfirm --needed "${asahi_packages[@]}"
+        "$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" "${asahi_packages[@]}"
       fi
     fi
   else
