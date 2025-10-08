@@ -68,11 +68,11 @@ install_terminal() {
 }
 
 aur_install() {
-  present_terminal "echo 'Installing $1 from AUR...'; omarchy-pkg-aur-add $2"
+  present_terminal "echo 'Installing $1 from AUR...'; omarchy-aur-install $2"
 }
 
 aur_install_and_launch() {
-  present_terminal "echo 'Installing $1 from AUR...'; omarchy-pkg-aur-add $2 && setsid gtk-launch $3"
+  present_terminal "echo 'Installing $1 from AUR...'; omarchy-aur-install $2 && setsid gtk-launch $3"
 }
 
 show_learn_menu() {

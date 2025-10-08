@@ -203,19 +203,121 @@ catch_errors() {
       break
       ;;
     "Update Omarchy from GitHub, then retry installation")
-      gum style "Downloading latest Omarchy from GitHub..."
-      # Note: this is not an "inline retry" since we re-download boot.sh which
-      # runs rm -rf ~/.local/share/omarchy/ and re-clones the repo, so we have
-      # a fresh copy of everything
-      curl -fsSL "https://raw.githubusercontent.com/${OMARCHY_REPO:-basecamp/omarchy}/${OMARCHY_REF:-master}/boot.sh" | \
-        env \
-          OMARCHY_REPO="${OMARCHY_REPO:-}" \
-          OMARCHY_REF="${OMARCHY_REF:-}" \
-          OMARCHY_RETRY_INSTALL=false \
-          SKIP_YARU="${SKIP_YARU:-}" \
-          SKIP_OBS="${SKIP_OBS:-}" \
-          SKIP_PINTA="${SKIP_PINTA:-}" \
-          bash
+      echo
+      gum style "Updating Omarchy from GitHub..."
+
+      cd ~/.local/share/omarchy || {
+        gum style --foreground 1 "Error: Could not access Omarchy directory"
+        continue
+      }
+
+      # Check if this is a git repository
+      if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        # Check if it's a dubious ownership issue
+        if git status 2>&1 | grep -q "dubious ownership"; then
+          gum style --foreground 3 "Fixing repository ownership..."
+          git config --global --add safe.directory ~/.local/share/omarchy || {
+            gum style --foreground 1 "Error: Could not configure safe.directory"
+            gum style "Please run: git config --global --add safe.directory ~/.local/share/omarchy"
+            continue
+          }
+          # Retry after fixing ownership
+          if ! git rev-parse --git-dir > /dev/null 2>&1; then
+            gum style --foreground 1 "Error: Omarchy directory is not a git repository"
+            gum style "Please delete ~/.local/share/omarchy and run installation again"
+            continue
+          fi
+        else
+          gum style --foreground 1 "Error: Omarchy directory is not a git repository"
+          gum style "Please delete ~/.local/share/omarchy and run installation again"
+          continue
+        fi
+      fi
+
+      # Stash any local changes (including untracked files)
+      local has_changes=false
+      if ! git diff-index --quiet HEAD -- || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+        has_changes=true
+        gum style "  - Stashing local changes (including new files)..."
+        if git stash push -u -m "omarchy-install: auto-stash before update $(date +%Y-%m-%d_%H:%M:%S)" 2>&1 | tee /tmp/omarchy-stash.log | grep -v "^hint:" >/dev/null; then
+          while IFS= read -r line; do
+            [[ -n "$line" ]] && gum style "  - $line"
+          done < <(cat /tmp/omarchy-stash.log | grep -v "^hint:")
+        else
+          gum style --foreground 1 "  - Error: Failed to stash local changes"
+          gum style "  - Your changes are preserved. Please manually resolve and retry."
+          continue
+        fi
+      fi
+
+      # Fetch latest changes
+      gum style "  - Fetching latest Omarchy..."
+      if git fetch origin "${OMARCHY_REF:-master}" 2>&1 | tee /tmp/omarchy-fetch.log | grep -v "^hint:" >/dev/null; then
+        while IFS= read -r line; do
+          [[ -n "$line" ]] && gum style "  - $line"
+        done < <(cat /tmp/omarchy-fetch.log | grep -v "^hint:")
+      else
+        gum style --foreground 3 "  - Warning: git fetch had issues, continuing anyway..."
+      fi
+
+      # Reset to latest
+      gum style "  - Updating to latest version..."
+      if git reset --hard "origin/${OMARCHY_REF:-master}" 2>&1 | tee /tmp/omarchy-reset.log | grep -v "^hint:" >/dev/null; then
+        while IFS= read -r line; do
+          [[ -n "$line" ]] && gum style "  - $line"
+        done < <(cat /tmp/omarchy-reset.log | grep -v "^hint:")
+      else
+        gum style --foreground 1 "  - Error: Failed to update Omarchy"
+        if [ "$has_changes" = true ]; then
+          gum style "  - Your stashed changes are preserved in: git stash list"
+        fi
+        continue
+      fi
+
+      # Apply stashed changes if any (use apply, not pop, to keep stash)
+      if [ "$has_changes" = true ]; then
+        gum style "  - Reapplying your local changes..."
+        if git stash apply 2>&1 | tee /tmp/omarchy-stash-apply.log | grep -q "CONFLICT"; then
+          gum style --foreground 1 "  - CONFLICT: Your local changes conflict with the update"
+          gum style ""
+          while IFS= read -r line; do
+            [[ -n "$line" ]] && gum style "    $line"
+          done < <(cat /tmp/omarchy-stash-apply.log)
+          gum style ""
+          gum style "  - Your changes are preserved in the stash. To resolve:"
+          gum style "    1. Exit the installer (choose Exit below)"
+          gum style "    2. cd ~/.local/share/omarchy"
+          gum style "    3. git status  # Review conflicts"
+          gum style "    4. Edit conflicting files to resolve"
+          gum style "    5. git add <resolved-files>"
+          gum style "    6. git stash drop  # After resolving"
+          gum style "    7. Re-run installation"
+          gum style ""
+          gum style --foreground 3 "Press Enter to return to menu..."
+          read
+          continue
+        else
+          while IFS= read -r line; do
+            [[ -n "$line" ]] && gum style "  - $line"
+          done < <(cat /tmp/omarchy-stash-apply.log | grep -v "^hint:")
+        fi
+      fi
+
+      gum style --foreground 2 "  - Omarchy updated successfully, restarting installation..."
+      sleep 2
+
+      # Restart installation with preserved environment
+      env \
+        OMARCHY_REPO="${OMARCHY_REPO:-}" \
+        OMARCHY_REF="${OMARCHY_REF:-}" \
+        OMARCHY_USER_NAME="${OMARCHY_USER_NAME:-}" \
+        OMARCHY_USER_EMAIL="${OMARCHY_USER_EMAIL:-}" \
+        OMARCHY_ONLINE_INSTALL="${OMARCHY_ONLINE_INSTALL:-}" \
+        OMARCHY_RETRY_INSTALL=true \
+        SKIP_YARU="${SKIP_YARU:-}" \
+        SKIP_OBS="${SKIP_OBS:-}" \
+        SKIP_PINTA="${SKIP_PINTA:-}" \
+        bash ~/.local/share/omarchy/install.sh
       break
       ;;
     "Show QR code for Discord support")
