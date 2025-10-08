@@ -219,8 +219,16 @@ show_setup_config_menu() {
   *Walker*) open_in_editor ~/.config/walker/config.toml && omarchy-restart-walker ;;
   *Waybar*) open_in_editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
   *XCompose*) open_in_editor ~/.XCompose && omarchy-restart-xcompose ;;
-  *Export/Import*) present_terminal omarchy-export ;;
+  *Export/Import*) show_export_import_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_export_import_menu() {
+  case $(menu "Export/Import" "  Export Settings\n  Import Settings") in
+  *Export Settings*) present_terminal omarchy-export ;;
+  *Import Settings*) present_terminal omarchy-import ;;
+  *) show_setup_config_menu ;;
   esac
 }
 
