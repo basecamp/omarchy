@@ -178,13 +178,8 @@ catch_errors() {
     options+=("View full log")
     options+=("Exit")
 
-    # Hide help text on ARM/Asahi/VMs (raw TTY can't render it properly)
-    local show_help=""
-    if [[ -n $OMARCHY_ARM ]] || [[ -n $ASAHI_ALARM ]] || [[ -n $OMARCHY_VIRTUALIZATION ]]; then
-      show_help="--show-help=false"
-    fi
-
-    choice=$(gum choose "${options[@]}" $show_help --header "What would you like to do?" --height 7 --padding "1 $PADDING_LEFT")
+    echo
+    choice=$(gum choose --header "What would you like to do?" "${options[@]}" --height 7 --padding "1 $PADDING_LEFT")
 
     case "$choice" in
     "Retry installation")
