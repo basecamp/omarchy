@@ -36,5 +36,11 @@ if pacman -Qe gnome-shell &>/dev/null || pacman -Qe plasma-desktop &>/dev/null; 
   abort "Fresh + Vanilla Arch"
 fi
 
+# Must have limine installed
+command -v limine &>/dev/null || abort "Limine bootloader"
+
+# Must have btrfs root filesystem
+[ "$(findmnt -n -o FSTYPE /)" = "btrfs" ] || abort "Btrfs root filesystem" 
+
 # Cleared all guards
 echo "Guards: OK"
