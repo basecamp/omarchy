@@ -1,0 +1,35 @@
+# AUR packages
+# Installed via omarchy-aur-install (with GitHub mirror fallback)
+
+blueberry
+cups-pdf
+dust
+eza
+hypridle
+hyprland
+hyprland-qtutils
+hyprlock
+hyprpicker
+hyprshot
+hyprsunset
+impala
+kvantum-qt5
+lazydocker
+luarocks
+mise
+plymouth
+python-terminaltexteffects
+satty
+swayosd
+ttf-cascadia-mono-nerd
+ttf-ia-writer
+ttf-jetbrains-mono-nerd
+typora
+tzupdate
+ufw-docker
+uwsm
+wiremix
+wl-clip-persist
+woff2-font-awesome
+xdg-desktop-portal-hyprland
+yaru-icon-theme
