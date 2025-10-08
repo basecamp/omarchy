@@ -417,7 +417,8 @@ install_package() {
     read -ra extra_array <<< "$extra_flags"
     makepkg_flags+=("${extra_array[@]}")
   fi
-  makepkg "${makepkg_flags[@]}" || {
+  # Use 'yes 1' to auto-select option 1 for any provider selection prompts during dependency installation
+  yes 1 | makepkg "${makepkg_flags[@]}" || {
     print_error "Failed to build/install '$package_name'"
     return 1
   }
