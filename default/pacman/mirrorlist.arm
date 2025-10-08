@@ -1,10 +1,20 @@
 ## Arch Linux ARM repository mirrorlist
 ## Generated for Omarchy ARM systems
+## Multiple mirrors for redundancy when primary is slow/down
 
-## Geo-IP based mirror selection
-Server = http://mirror.archlinuxarm.org/$arch/$repo
+## NOTE: Primary mirror.archlinuxarm.org currently redirects to broken NJ mirror (404s)
+## Using direct mirrors instead until resolved
 
-## Worldwide mirrors
+## Fast US mirrors
+Server = http://fl.us.mirror.archlinuxarm.org/$arch/$repo
+Server = http://ca.us.mirror.archlinuxarm.org/$arch/$repo
+
+## European mirrors
 Server = http://dk.mirror.archlinuxarm.org/$arch/$repo
 Server = http://de.mirror.archlinuxarm.org/$arch/$repo
-Server = http://ca.us.mirror.archlinuxarm.org/$arch/$repo
+Server = http://de3.mirror.archlinuxarm.org/$arch/$repo
+Server = http://uk.mirror.archlinuxarm.org/$arch/$repo
+Server = http://hu.mirror.archlinuxarm.org/$arch/$repo
+
+## Asia-Pacific mirror
+Server = http://tw.mirror.archlinuxarm.org/$arch/$repo

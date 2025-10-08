@@ -12,11 +12,12 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
     sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-${OMARCHY_MIRROR:-stable} /etc/pacman.d/mirrorlist
   fi
 
+  # Add omarchy signing key
   sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
   sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
 
+  # Quick sync to make omarchy-keyring available
   sudo pacman -Sy
-  omarchy-pkg-add omarchy-keyring
 
   # Refresh all repos
   sudo pacman -Syyuu --noconfirm

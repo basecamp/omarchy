@@ -19,7 +19,7 @@ echo "Detected VMware, installing Open VM Tools..."
 
 # Install build dependencies
 echo "Installing build dependencies..."
-sudo pacman -S --noconfirm --needed base-devel git autoconf automake libtool make \
+yes 1 | sudo pacman -S --noconfirm --needed base-devel git autoconf automake libtool make \
   pkgconf glib2 glib2-devel libmspack rpcsvc-proto fuse3 procps-ng xmlsec gtkmm3
 
 # Clone and build open-vm-tools
