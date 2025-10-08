@@ -188,7 +188,7 @@ catch_errors() {
 
     case "$choice" in
     "Retry installation")
-      # Preserve critical environment variables for retry
+      # Preserve critical environment variables for retry (including log timestamp)
       env \
         OMARCHY_REPO="${OMARCHY_REPO:-}" \
         OMARCHY_REF="${OMARCHY_REF:-}" \
@@ -196,6 +196,7 @@ catch_errors() {
         OMARCHY_USER_EMAIL="${OMARCHY_USER_EMAIL:-}" \
         OMARCHY_ONLINE_INSTALL="${OMARCHY_ONLINE_INSTALL:-}" \
         OMARCHY_RETRY_INSTALL=true \
+        OMARCHY_LOG_INSTALL_TIMESTAMP="${OMARCHY_LOG_INSTALL_TIMESTAMP:-}" \
         SKIP_YARU="${SKIP_YARU:-}" \
         SKIP_OBS="${SKIP_OBS:-}" \
         SKIP_PINTA="${SKIP_PINTA:-}" \
@@ -306,7 +307,7 @@ catch_errors() {
       gum style --foreground 2 "  - Omarchy updated successfully, restarting installation..."
       sleep 2
 
-      # Restart installation with preserved environment
+      # Restart installation with preserved environment (but NEW log - fresh code = fresh log)
       env \
         OMARCHY_REPO="${OMARCHY_REPO:-}" \
         OMARCHY_REF="${OMARCHY_REF:-}" \
