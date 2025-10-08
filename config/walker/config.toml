@@ -64,7 +64,7 @@ hidden = true
 hidden = true
 
 [builtins.custom_commands]
-hidden = true
+hidden = false
 
 [builtins.emojis]
 name = "Emojis"
@@ -98,3 +98,8 @@ hidden = true
 
 [builtins.translation]
 hidden = true
+
+[[builtins.custom_commands.entries]]
+label = "Export/Import"
+cmd = "omarchy-menu export_import"
+terminal = false

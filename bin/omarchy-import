@@ -1,0 +1,179 @@
+#!/bin/bash
+
+# Omarchy import script
+# This restores personal customizations from an export directory created by omarchy-export
+
+# Ensure scripts have execute permissions (needed after copying from export)
+SCRIPT_DIR="$HOME/.local/share/omarchy/bin"
+if [ -f "$SCRIPT_DIR/omarchy-import" ] && [ ! -x "$SCRIPT_DIR/omarchy-import" ]; then
+  chmod +x "$SCRIPT_DIR/omarchy-import" 2>/dev/null && \
+    echo "  Fixed permissions for omarchy-import"
+fi
+if [ -f "$SCRIPT_DIR/omarchy-export" ] && [ ! -x "$SCRIPT_DIR/omarchy-export" ]; then
+  chmod +x "$SCRIPT_DIR/omarchy-export" 2>/dev/null && \
+    echo "  Fixed permissions for omarchy-export"
+fi
+
+echo -e "\e[32mOmarchy Customization Import\e[0m"
+echo ""
+echo -e "\e[33m⚠️  WARNING: This will overwrite your current configurations!\e[0m"
+echo "Before starting, make sure you've:"
+echo "  1. Copied your export directory to your home folder"
+echo "  2. Backed up any current configurations you want to keep"
+echo ""
+
+# Look for export directories in home folder
+EXPORT_DIRS=($(find "$HOME" -maxdepth 1 -type d -name "omarchy_export_*" 2>/dev/null | sort -r))
+
+if [ "$#" -lt 1 ]; then
+  INTERACTIVE_MODE=true
+  
+  if [ ${#EXPORT_DIRS[@]} -eq 0 ]; then
+    # No export directories found
+    echo "No export directories found in home folder."
+    echo "Looking for directories named: omarchy_export_YYYYMMDD_HHMMSS"
+    echo ""
+    EXPORT_DIR=$(gum input --prompt "Enter export directory path> " --placeholder "$HOME/omarchy_export_20251006_150000")
+  elif [ ${#EXPORT_DIRS[@]} -eq 1 ]; then
+    # Only one export found
+    echo "Found export: ${EXPORT_DIRS[0]}"
+    if gum confirm "Use this export?"; then
+      EXPORT_DIR="${EXPORT_DIRS[0]}"
+    else
+      EXPORT_DIR=$(gum input --prompt "Enter export directory path> " --placeholder "$HOME/omarchy_export_20251006_150000")
+    fi
+  else
+    # Multiple exports found
+    echo "Found multiple export directories:"
+    echo ""
+    
+    # Create array of just the directory names for display
+    DISPLAY_OPTIONS=()
+    for dir in "${EXPORT_DIRS[@]}"; do
+      DISPLAY_OPTIONS+=("$(basename "$dir")")
+    done
+    
+    SELECTED=$(printf '%s\n' "${DISPLAY_OPTIONS[@]}" | gum choose --header "Select an export to import:")
+    
+    if [[ -n "$SELECTED" ]]; then
+      EXPORT_DIR="$HOME/$SELECTED"
+    else
+      echo ""
+      EXPORT_DIR=$(gum input --prompt "Or enter a custom path> " --placeholder "$HOME/omarchy_export_20251006_150000")
+    fi
+  fi
+else
+  EXPORT_DIR="$1"
+  INTERACTIVE_MODE=false
+fi
+
+# Validate export directory
+if [[ -z "$EXPORT_DIR" ]]; then
+  echo "Error: You must provide an export directory path!"
+  exit 1
+fi
+
+if [[ ! -d "$EXPORT_DIR" ]]; then
+  echo "Error: Export directory not found: $EXPORT_DIR"
+  exit 1
+fi
+
+echo ""
+echo "Using export: $EXPORT_DIR"
+echo ""
+
+if [[ $INTERACTIVE_MODE == true ]]; then
+  if ! gum confirm "Continue with import?"; then
+    echo "Import cancelled."
+    exit 0
+  fi
+  echo ""
+fi
+
+# 1. Restore personal dotfiles
+echo "Restoring personal dotfiles..."
+if [[ -d "$EXPORT_DIR/home" ]]; then
+  for file in .bashrc .bash_profile .zshrc .profile .gitconfig; do
+    if [[ -f "$EXPORT_DIR/home/$file" ]]; then
+      cp "$EXPORT_DIR/home/$file" "$HOME/$file"
+      echo "  Restored $file"
+    fi
+  done
+else
+  echo "  No dotfiles found in export"
+fi
+
+# 2. Restore all .config files
+echo ""
+echo "Restoring all configuration files..."
+if [[ -d "$EXPORT_DIR/config" ]]; then
+  mkdir -p "$HOME/.config"
+  cp -r "$EXPORT_DIR/config"/* "$HOME/.config/" 2>/dev/null
+  echo "  Restored all .config files"
+else
+  echo "  No configuration files found in export"
+fi
+
+# 3. Restore user-created web apps
+echo ""
+echo "Restoring user-created web apps..."
+if [[ -d "$EXPORT_DIR/home/.local/share/applications" ]]; then
+  mkdir -p "$HOME/.local/share/applications"
+  
+  # Copy user-created web apps
+  if ls "$EXPORT_DIR/home/.local/share/applications"/*.desktop &> /dev/null; then
+    cp "$EXPORT_DIR/home/.local/share/applications"/*.desktop "$HOME/.local/share/applications/"
+    chmod +x "$HOME/.local/share/applications"/*.desktop 2>/dev/null
+  fi
+  
+  # Copy custom icons
+  if [[ -d "$EXPORT_DIR/home/.local/share/applications/icons" ]]; then
+    mkdir -p "$HOME/.local/share/applications/icons"
+    cp "$EXPORT_DIR/home/.local/share/applications/icons"/*.png "$HOME/.local/share/applications/icons/" 2>/dev/null
+  fi
+  
+  echo "  Restored user-created web apps and icons"
+else
+  echo "  No user-created web apps found in export"
+fi
+
+# 4. Optionally restore packages
+echo ""
+echo "Package restoration..."
+if [[ -f "$EXPORT_DIR/pkglist.txt" ]]; then
+  PACKAGE_COUNT=$(wc -l < "$EXPORT_DIR/pkglist.txt")
+  echo "  Found $PACKAGE_COUNT packages in export"
+  
+  if [[ $INTERACTIVE_MODE == true ]]; then
+    if gum confirm "Install packages from export? (This may take a while)"; then
+      echo "  Installing packages..."
+      sudo pacman -S --needed - < "$EXPORT_DIR/pkglist.txt"
+      echo "  Packages installed"
+    else
+      echo "  Skipped package installation"
+      echo "  To install later: sudo pacman -S --needed - < $EXPORT_DIR/pkglist.txt"
+    fi
+  else
+    echo "  To install packages: sudo pacman -S --needed - < $EXPORT_DIR/pkglist.txt"
+  fi
+else
+  echo "  No package list found in export"
+fi
+
+if [[ -f "$EXPORT_DIR/aurlist.txt" ]]; then
+  AUR_COUNT=$(wc -l < "$EXPORT_DIR/aurlist.txt")
+  if [[ $AUR_COUNT -gt 0 ]]; then
+    echo "  Found $AUR_COUNT AUR packages in export"
+    echo "  To install AUR packages, use your AUR helper with: $EXPORT_DIR/aurlist.txt"
+  fi
+fi
+
+echo ""
+echo -e "\e[32mImport complete!\e[0m"
+echo ""
+echo "NEXT STEPS:"
+echo "1. Review restored configurations in ~/.config/"
+echo "2. Re-enroll fingerprint/FIDO2 if needed (Omarchy menu > Setup > Security)"
+echo "3. Restore SSH/GPG keys separately if needed"
+echo "4. Reboot to ensure all changes take effect"
+echo ""

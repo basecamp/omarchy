@@ -1,0 +1,159 @@
+#!/bin/bash
+
+# Omarchy backup script
+# This backs up personal customizations which can be imported/restored after a fresh install or to a new machine    
+
+EXPORT_DIR="$HOME/omarchy_export_$(date +%Y%m%d_%H%M%S)"
+
+
+echo "Creating export directory: $EXPORT_DIR"
+mkdir -p "$EXPORT_DIR"
+
+
+# 1. Back up personal files and customizations
+echo "Backing up personal files and Omarchy customizations..."
+mkdir -p "$EXPORT_DIR/home"
+
+
+# Personal dotfiles (not managed by Omarchy)
+for file in .bashrc .bash_profile .zshrc .profile; do
+    if [ -f "$HOME/$file" ]; then
+        cp "$HOME/$file" "$EXPORT_DIR/home/"
+        echo "  Backed up $file"
+    fi
+done
+
+# Back up all .config customizations (excluding caches)
+echo "Backing up configuration files..."
+if [ -d "$HOME/.config" ]; then
+    mkdir -p "$EXPORT_DIR/config"
+    
+    # Copy all config files, excluding cache directories
+    cd "$HOME/.config" || exit 1
+    find . -type f -o -type l | while read -r file; do
+        # Skip cache and temporary files
+        case "$file" in
+            */Cache/*|*/cache/*|*/CachedData/*|*/logs/*|*/GPUCache/*|*/Code\ Cache/*|\
+            */GrShaderCache/*|*/ShaderCache/*|*/DawnCache/*|*/Crash\ Reports/*|\
+            */crashes/*|*/Crashpad/*) 
+                continue
+                ;;
+        esac
+        
+        # Create directory structure and copy file
+        mkdir -p "$EXPORT_DIR/config/$(dirname "$file")"
+        cp -P "$file" "$EXPORT_DIR/config/$file" 2>/dev/null
+    done
+    cd - > /dev/null
+    
+    echo "  Backed up all .config files"
+fi
+
+
+# 2. Back up user-added web apps
+echo "Backing up user-added web apps..."
+if [ -d "$HOME/.local/share/applications" ]; then
+    mkdir -p "$EXPORT_DIR/home/.local/share/applications"
+    
+    # List of default Omarchy web apps to exclude (dynamically read from source)
+    OMARCHY_WEBAPPS_SOURCE="$HOME/.local/share/omarchy/install/packaging/webapps.sh"
+    OMARCHY_WEBAPPS=()
+    
+    if [ -f "$OMARCHY_WEBAPPS_SOURCE" ]; then
+        # Extract web app names from the installation script
+        while IFS= read -r line; do
+            if [[ $line =~ omarchy-webapp-install[[:space:]]+\"([^\"]+)\" ]]; then
+                OMARCHY_WEBAPPS+=("${BASH_REMATCH[1]}.desktop")
+            fi
+        done < "$OMARCHY_WEBAPPS_SOURCE"
+    fi
+    
+    # Copy only user-created web apps
+    USER_APP_COUNT=0
+    for app in "$HOME/.local/share/applications"/*.desktop; do
+        if [ -f "$app" ]; then
+            APP_NAME=$(basename "$app")
+            
+            # Skip if it's a default Omarchy web app
+            SKIP=false
+            for omarchy_app in "${OMARCHY_WEBAPPS[@]}"; do
+                if [[ "$APP_NAME" == "$omarchy_app" ]]; then
+                    SKIP=true
+                    break
+                fi
+            done
+            
+            if [[ $SKIP == false ]]; then
+                cp "$app" "$EXPORT_DIR/home/.local/share/applications/"
+                ((USER_APP_COUNT++))
+            fi
+        fi
+    done
+    
+    # Back up custom icons for user web apps
+    if [ -d "$HOME/.local/share/applications/icons" ] && [ $USER_APP_COUNT -gt 0 ]; then
+        mkdir -p "$EXPORT_DIR/home/.local/share/applications/icons"
+        
+        # Only copy icons for user-created apps
+        for app in "$EXPORT_DIR/home/.local/share/applications"/*.desktop; do
+            if [ -f "$app" ]; then
+                APP_NAME=$(basename "$app" .desktop)
+                if [ -f "$HOME/.local/share/applications/icons/$APP_NAME.png" ]; then
+                    cp "$HOME/.local/share/applications/icons/$APP_NAME.png" \
+                       "$EXPORT_DIR/home/.local/share/applications/icons/"
+                fi
+            fi
+        done
+        echo "  Backed up $USER_APP_COUNT user-created web apps with icons"
+    elif [ $USER_APP_COUNT -gt 0 ]; then
+        echo "  Backed up $USER_APP_COUNT user-created web apps"
+    else
+        echo "  No user-created web apps found (all are Omarchy defaults)"
+    fi
+else
+    echo "  No applications directory found"
+fi
+
+
+# 3. Save package lists (includes packages beyond Omarchy defaults)
+echo "Saving package lists..."
+pacman -Qqe > "$EXPORT_DIR/pkglist.txt"
+echo "  Saved explicitly installed packages (includes Omarchy packages + your additions)"
+
+
+pacman -Qqm > "$EXPORT_DIR/aurlist.txt" 2>/dev/null
+echo "  Saved AUR packages"
+
+
+# Create a referencelist of packages you installed yourself (beyond Omarchy)
+echo "  Creating reference list of all installed packages..."
+pacman -Qq > "$EXPORT_DIR/all_packages.txt"
+
+
+# 4. Create a README with export/import instructions
+cat > "$EXPORT_DIR/README.txt" << 'EOF'
+OMARCHY CUSTOM SETTINGS IMPORT GUIDE
+
+To import settings from export directory:
+
+1. Copy the exported directory of files to your home directory on the new machine
+
+2. Open the Omarchy menu (Super + Space) and search for "Export/Import"
+   Or run: omarchy-import
+
+3. Follow the prompts to restore your settings
+
+Reboot after setup!
+EOF
+
+
+echo ""
+echo "Export complete!"
+echo "Export location: $EXPORT_DIR"
+echo ""
+echo "IMPORTANT NOTES:"
+echo "- Omarchy will install with all its default packages and configs"
+echo "- You will need to restore the following items separately: SSH/GPG keys, fingerprint settings, fido2 settings, personal files, and non-included customizations"
+echo "- Review the README.txt in the backup folder for restoration steps"
+echo ""
+echo "Save this export directory to the cloud or external storage for importing to a fresh install or new machine."
