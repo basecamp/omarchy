@@ -49,6 +49,12 @@ if command -v systemd-detect-virt &>/dev/null; then
   fi
 fi
 
+# Suppress gum help text on ARM/Asahi/VMs (Unicode doesn't render properly in raw TTY)
+if [[ -n "$OMARCHY_ARM" ]] || [[ -n "$ASAHI_ALARM" ]] || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
+  export GUM_CONFIRM_SHOW_HELP=false
+  export GUM_CHOOSE_SHOW_HELP=false
+fi
+
 # Install
 source "$OMARCHY_INSTALL/helpers/all.sh"
 source "$OMARCHY_INSTALL/preflight/all.sh"
