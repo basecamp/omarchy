@@ -6,10 +6,10 @@ if [ -n "$SKIP_YARU" ]; then
   packages=($(printf '%s\n' "${packages[@]}" | grep -v '^yaru-icon-theme$'))
 fi
 
-# Use yay for ARM (no omarchy mirror yet), pacman for x86
+# Use omarchy-aur-install for ARM (no omarchy mirror yet), pacman for x86
 if [ -n "$OMARCHY_ARM" ]; then
-  echo "Installing base packages using yay (ARM)..."
-  yay -S --noconfirm --needed "${packages[@]}"
+  echo "Installing base packages using omarchy-aur-install (ARM)..."
+  "$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" "${packages[@]}"
 else
   omarchy-pkg-add "${packages[@]}"
 fi
