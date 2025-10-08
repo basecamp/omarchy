@@ -62,6 +62,12 @@ start_install_log() {
   sudo touch "$OMARCHY_INSTALL_LOG_FILE"
   sudo chmod 666 "$OMARCHY_INSTALL_LOG_FILE"
 
+  # Create symlink for easy access (scripts can use /var/log/omarchy-install.log)
+  sudo ln -sf "$OMARCHY_INSTALL_LOG_FILE" "/var/log/omarchy-install.log" 2>/dev/null || true
+
+  # Clean up old logs (keep last 10)
+  sudo find /var/log -name "omarchy-install-*.log" -type f 2>/dev/null | sort -r | tail -n +11 | xargs -r sudo rm -f 2>/dev/null || true
+
   export OMARCHY_START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 
   echo "=== Omarchy Installation Started: $OMARCHY_START_TIME ===" >>"$OMARCHY_INSTALL_LOG_FILE"
