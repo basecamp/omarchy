@@ -1,0 +1,10 @@
+# Official ARM repository packages
+
+asahi-alarm/widevine  # Widevine DRM libraries for Omarchy Chromium
+e2fsprogs             # ext2/ext3/ext4 filesystem utilities
+fuse2                 # FUSE library for userspace filesystems (AppImage support)
+gst-plugin-pipewire   # GStreamer plugin for PipeWire
+libpulse              # PulseAudio client libraries
+pipewire              # Modern audio/video server
+pipewire-alsa         # ALSA compatibility layer for PipeWire
+pipewire-pulse        # PulseAudio compatibility layer for PipeWire
