@@ -1,4 +1,4 @@
-echo "Migrate to Walker 1.0.0-Beta"
+echo "Migrate to Walker 2.0.0"
 
 # Ensure we kill walker even if there's a restarting service running
 kill -9 $(pgrep -x walker)
@@ -22,5 +22,5 @@ omarchy-pkg-add elephant \
 
 source $OMARCHY_PATH/install/config/walker-elephant.sh
 
-rm -f ~/.config/walker/themes
+rm -rf ~/.config/walker/themes
 omarchy-refresh-walker
