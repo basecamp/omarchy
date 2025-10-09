@@ -125,9 +125,9 @@ select_best_ico_image() {
   local best_icon=""
   local max_size=0
   
-  # Find all generated PNG files from the ico extraction
+  # Find all generated PNG files from the ico extraction, excluding the target
   for icon_file in "${base_name}"-*.png; do
-    if [[ -f "$icon_file" ]]; then
+    if [[ -f "$icon_file" && "$icon_file" != "$target_png" ]]; then
       # Get the dimensions of the image
       local dimensions
       dimensions=$(magick identify -format "%wx%h" "$icon_file" 2>/dev/null || echo "0x0")
@@ -148,8 +148,12 @@ select_best_ico_image() {
   # If we found a best icon, move it to the target location
   if [[ -n "$best_icon" && -f "$best_icon" ]]; then
     mv "$best_icon" "$target_png"
-    # Clean up the other generated files
-    rm -f "${base_name}"-*.png 2>/dev/null || true
+    # Clean up the other generated files (excluding the target)
+    for file in "${base_name}"-*.png; do
+      if [[ -f "$file" && "$file" != "$target_png" ]]; then
+        rm -f "$file"
+      fi
+    done
     return 0
   fi
   
@@ -168,7 +172,7 @@ download_and_convert() {
     ext="ico"
   fi
   
-  local tmp="${png%.png}.${ext}"
+  local tmp="${png%.png}.tmp.${ext}"
   
   if curl -sfL -o "$tmp" "$url"; then
     # If it's already a PNG, just use it directly
