@@ -1,4 +1,16 @@
 #!/bin/bash
 
 cmd="$*"
+
+case $TERMINAL in
+    ghostty) font_size_arg="--font-size=9" ;;
+    alacritty) font_size_arg="-o font.size=9" ;;
+    kitty) font_size_arg="-o font_size=9" ;;
+esac
+
 exec setsid uwsm-app -- alacritty -o font.size=9 --class=Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; $cmd; omarchy-show-done"
+exec setsid uwsm app -- $TERMINAL \
+  $font_size_arg \
+  --class=com.omarchy.floating \
+  --title=Omarchy \
+  -e bash -c "omarchy-show-logo; $cmd; omarchy-show-done"

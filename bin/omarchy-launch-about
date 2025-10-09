@@ -1,3 +1,12 @@
 #!/bin/bash
 
-exec setsid uwsm-app -- alacritty --class=Omarchy -o font.size=9 -e bash -c 'fastfetch; read -n 1 -s'
+case $TERMINAL in
+    ghostty) font_size_arg="--font-size=9" ;;
+    alacritty) font_size_arg="-o font.size=9" ;;
+    kitty) font_size_arg="-o font_size=9" ;;
+esac
+
+exec setsid uwsm app -- $TERMINAL \
+    --class=com.omarchy.floating \
+    $font_size_arg \
+    -e bash -c 'fastfetch; read -n 1 -s'

@@ -33,9 +33,9 @@ else
 fi
 
 if [[ $WINDOW_STYLE == "float" ]]; then
-  APP_CLASS="TUI.float"
+  APP_CLASS="com.omarchy.tui.float"
 else
-  APP_CLASS="TUI.tile"
+  APP_CLASS="com.omarchy.tui.tile"
 fi
 
 cat >"$DESKTOP_FILE" <<EOF
