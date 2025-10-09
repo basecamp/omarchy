@@ -45,7 +45,22 @@ extract_icon_from_html() {
   local html
   html=$(curl -sfL "$fetch" || true)
   if [[ -n "$html" ]]; then
-    printf '%s' "$(printf '%s' "$html" | tr '\n' ' ' | grep -iEo '<link[^>]+rel=[^>]*icon[^>]*>' | sed -nE 's/.*href="([^"]+)".*/\1/ip' | head -n1)"
+    # First try to find an icon link and extract both href and type
+    local icon_link
+    icon_link=$(printf '%s' "$html" | tr '\n' ' ' | grep -iEo '<link[^>]+rel=[^>]*icon[^>]*>' | head -n1)
+    
+    if [[ -n "$icon_link" ]]; then
+      local href type_attr
+      href=$(printf '%s' "$icon_link" | sed -nE 's/.*href="([^"]+)".*/\1/ip')
+      type_attr=$(printf '%s' "$icon_link" | sed -nE 's/.*type="([^"]+)".*/\1/ip')
+      
+      # If it's an SVG type and the URL doesn't end with .svg, append .svg
+      if [[ "$type_attr" == "image/svg+xml" && ! "$href" =~ \.svg$ ]]; then
+        printf '%s.svg' "$href"
+      else
+        printf '%s' "$href"
+      fi
+    fi
   fi
 }
 
@@ -64,14 +79,76 @@ resolve_icon_url() {
   fi
 }
 
+select_best_ico_image() {
+  local target_png="$1"
+  local base_name="${target_png%.png}"
+  local best_icon=""
+  local max_size=0
+  
+  # Find all generated PNG files from the ico extraction
+  for icon_file in "${base_name}"-*.png; do
+    if [[ -f "$icon_file" ]]; then
+      # Get the dimensions of the image
+      local dimensions
+      dimensions=$(magick identify -format "%wx%h" "$icon_file" 2>/dev/null || echo "0x0")
+      local width="${dimensions%x*}"
+      local height="${dimensions#*x}"
+      
+      # Calculate total pixels (width * height)
+      local size=$((width * height))
+      
+      # Keep track of the largest image
+      if [[ $size -gt $max_size ]]; then
+        max_size=$size
+        best_icon="$icon_file"
+      fi
+    fi
+  done
+  
+  # If we found a best icon, move it to the target location
+  if [[ -n "$best_icon" && -f "$best_icon" ]]; then
+    mv "$best_icon" "$target_png"
+    # Clean up the other generated files
+    rm -f "${base_name}"-*.png 2>/dev/null || true
+    return 0
+  fi
+  
+  return 1
+}
+
 download_and_convert() {
-  local url="$1" tmp="$2" png="$3"
+  local url="$1" png="$2"
+  
+  # Extract file extension from URL or default to common formats
+  local ext
+  ext=$(echo "$url" | sed -E 's/.*\.([^?&#]+).*/\1/' | tr '[:upper:]' '[:lower:]')
+  
+  # If no extension detected or it's not a common image format, try ico first
+  if [[ ! "$ext" =~ ^(png|jpg|jpeg|gif|svg|ico|webp)$ ]]; then
+    ext="ico"
+  fi
+  
+  local tmp="${png%.png}.${ext}"
+  
   if curl -sfL -o "$tmp" "$url"; then
-    if magick "$tmp" "$png" >/dev/null 2>&1; then
+    # If it's already a PNG, just use it directly
+    if [[ "$ext" == "png" ]]; then
+      mv "$tmp" "$png"
       printf '%s' "$png"
-      rm -f "$tmp" || true
     else
-      printf '%s' "$tmp"
+      # Try to convert to PNG
+      if magick "$tmp" "$png" >/dev/null 2>&1; then
+        # Special handling for .ico files that create multiple images
+        if [[ "$ext" == "ico" ]]; then
+          select_best_ico_image "$png"
+        fi
+        
+        printf '%s' "$png"
+        rm -f "$tmp" || true
+      else
+        # If conversion fails, keep the original file
+        printf '%s' "$tmp"
+      fi
     fi
     return 0
   fi
@@ -95,7 +172,6 @@ else
 
     ICO_PATH="$ICON_DIR/$APP_NAME.ico"
     PNG_PATH="$ICON_DIR/$APP_NAME.png"
-    TMP_PATH="$ICON_DIR/$APP_NAME.tmp"
 
     ICON_URL="$(extract_icon_from_html "$FETCH_URL")"
     if [[ -z "$ICON_URL" ]]; then
@@ -104,8 +180,8 @@ else
 
     ICON_URL="$(resolve_icon_url "$ICON_URL" "$FETCH_URL" "$APP_ORIGIN")"
 
-    if ICON_PATH="$(download_and_convert "$ICON_URL" "$TMP_PATH" "$PNG_PATH")"; then
-      : # ICON_PATH set by download_and_convert
+    if ICON_PATH="$(download_and_convert "$ICON_URL" "$PNG_PATH")"; then
+      : # set above
     else
       echo "Error: Could not find or download an icon for $APP_URL. Aborting installation." >&2
       exit 1
