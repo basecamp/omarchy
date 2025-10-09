@@ -45,21 +45,61 @@ extract_icon_from_html() {
   local html
   html=$(curl -sfL "$fetch" || true)
   if [[ -n "$html" ]]; then
-    # First try to find an icon link and extract both href and type
-    local icon_link
-    icon_link=$(printf '%s' "$html" | tr '\n' ' ' | grep -iEo '<link[^>]+rel=[^>]*icon[^>]*>' | head -n1)
+    local best_href=""
+    local best_size=0
     
-    if [[ -n "$icon_link" ]]; then
-      local href type_attr
-      href=$(printf '%s' "$icon_link" | sed -nE 's/.*href="([^"]+)".*/\1/ip')
-      type_attr=$(printf '%s' "$icon_link" | sed -nE 's/.*type="([^"]+)".*/\1/ip')
-      
-      # If it's an SVG type and the URL doesn't end with .svg, append .svg
-      if [[ "$type_attr" == "image/svg+xml" && ! "$href" =~ \.svg$ ]]; then
-        printf '%s.svg' "$href"
-      else
-        printf '%s' "$href"
-      fi
+    # Find all link tags that contain both href and rel attributes with icon
+    # Handle both single and double quotes
+    local icon_links
+    icon_links=$(printf '%s' "$html" | tr '\n' ' ' | grep -iEo '<link[^>]*>' | grep -iE "rel=['\"]?[^'\"]*icon[^'\"]*['\"]?" | grep -v -iE "rel=['\"]?[^'\"]*apple-touch-icon[^'\"]*['\"]?")
+    
+    if [[ -n "$icon_links" ]]; then
+      while IFS= read -r icon_link; do
+        [[ -z "$icon_link" ]] && continue
+        
+        local href type_attr sizes_attr
+        # Handle both single and double quotes for href
+        href=$(printf '%s' "$icon_link" | sed -nE "s/.*href=['\"]([^'\"]+)['\"].*/\1/ip")
+        # Handle both single and double quotes for type
+        type_attr=$(printf '%s' "$icon_link" | sed -nE "s/.*type=['\"]([^'\"]+)['\"].*/\1/ip")
+        # Handle both single and double quotes for sizes
+        sizes_attr=$(printf '%s' "$icon_link" | sed -nE "s/.*sizes=['\"]([^'\"]+)['\"].*/\1/ip")
+        
+        # Skip if no href found
+        [[ -z "$href" ]] && continue
+        
+        # Calculate size priority - prefer larger icons
+        local size_priority=0
+        if [[ -n "$sizes_attr" ]]; then
+          # Extract the largest dimension from sizes like "16x16", "32x32", "48x48"
+          local max_dimension
+          max_dimension=$(echo "$sizes_attr" | grep -oE '[0-9]+' | sort -n | tail -n1)
+          if [[ -n "$max_dimension" ]]; then
+            size_priority=$max_dimension
+          fi
+        fi
+        
+        # If no sizes attribute, give it a medium priority
+        if [[ $size_priority -eq 0 ]]; then
+          size_priority=24
+        fi
+        
+        # Update best choice if this is larger
+        if [[ $size_priority -gt $best_size ]]; then
+          best_size=$size_priority
+          best_href="$href"
+          
+          # If it's an SVG type and the URL doesn't end with .svg, append .svg
+          if [[ "$type_attr" == "image/svg+xml" && ! "$best_href" =~ \.svg$ ]]; then
+            best_href="$best_href.svg"
+          fi
+        fi
+      done <<< "$icon_links"
+    fi
+    
+    # Output the best icon URL found
+    if [[ -n "$best_href" ]]; then
+      printf '%s' "$best_href"
     fi
   fi
 }
