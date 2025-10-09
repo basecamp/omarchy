@@ -453,8 +453,8 @@ show_system_menu() {
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
   *Relaunch*) omarchy-state clear relaunch-required && sudo systemctl restart sddm ;;
-  *Restart*) omarchy-state clear re*-required && systemctl reboot ;;
-  *Shutdown*) omarchy-state clear re*-required && systemctl poweroff ;;
+  *Restart*) omarchy-state clear re*-required && systemctl reboot --no-wall ;;
+  *Shutdown*) omarchy-state clear re*-required && systemctl poweroff --no-wall ;;
   *) back_to show_main_menu ;;
   esac
 }
