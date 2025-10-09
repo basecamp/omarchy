@@ -1,4 +1,4 @@
-# Omarchy core package list installed via install/packages.sh
+# Omarchy core package list installed via install/packaging/base.sh
 # This file is also used by the ISO builder when determining needs
 
 1password-beta
