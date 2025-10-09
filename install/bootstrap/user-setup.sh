@@ -293,6 +293,8 @@ if [[ $EUID -eq 0 ]]; then
     OMARCHY_REF='${OMARCHY_REF}' \
     OMARCHY_USER_NAME=${escaped_fullname} \
     OMARCHY_USER_EMAIL=${escaped_email} \
+    OMARCHY_SIMULATE_AUR_DOWN='${OMARCHY_SIMULATE_AUR_DOWN:-}' \
+    OMARCHY_SIMULATE_MIRROR_DOWN='${OMARCHY_SIMULATE_MIRROR_DOWN:-}' \
     SKIP_YARU='${SKIP_YARU:-}' \
     SKIP_OBS='${SKIP_OBS:-}' \
     SKIP_PINTA='${SKIP_PINTA:-}'; \

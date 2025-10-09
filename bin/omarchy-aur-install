@@ -124,6 +124,13 @@ record_aur_success() {
 
 # --- AUR Availability Check ---
 check_aur_available() {
+  # TESTING: Simulate AUR being down
+  if [[ -n "${OMARCHY_SIMULATE_AUR_DOWN:-}" ]]; then
+    print_warning "AUR DOWN SIMULATION ENABLED - Forcing AUR unavailable"
+    record_aur_failure
+    return 1
+  fi
+
   # Check if in cooldown period
   if is_aur_in_cooldown; then
     return 1
