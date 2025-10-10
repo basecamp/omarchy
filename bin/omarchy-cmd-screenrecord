@@ -1,5 +1,4 @@
 #!/bin/bash
-
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
 
@@ -10,22 +9,20 @@ fi
 
 # Selects region or output
 SCOPE="$1"
-
 # Selects audio inclusion or not
 AUDIO=$([[ $2 == "audio" ]] && echo "--audio")
+
+vaapi_available() {
+  command -v vainfo >/dev/null && vainfo >/dev/null 2>&1
+}
 
 start_screenrecording() {
   filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
   
   if lspci | grep -qi 'nvidia'; then
     wf-recorder $AUDIO -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@" &
-  elif command -v wl-screenrec >/dev/null; then
+  elif vaapi_available; then
     wl-screenrec $AUDIO -f "$filename" --ffmpeg-encoder-options="-c:v libx264 -crf 23 -preset medium -movflags +faststart" "$@" &
-
-    sleep 1
-    if ! pgrep -x wl-screenrec >/dev/null; then 
-      wf-recorder $AUDIO -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@" &
-    fi
   else
     wf-recorder $AUDIO -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@" &
   fi
@@ -36,9 +33,7 @@ start_screenrecording() {
 stop_screenrecording() {
   pkill -x wl-screenrec
   pkill -x wf-recorder
-
   notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
-
   sleep 0.2 # ensures the process is actually dead before we check
   toggle_screenrecording_indicator
 }
@@ -54,7 +49,8 @@ screenrecording_active() {
 if screenrecording_active; then
   stop_screenrecording
 elif [[ "$SCOPE" == "output" ]]; then
-  start_screenrecording
+  output=$(slurp -o) || exit 1
+  start_screenrecording -g "$output"
 else
   region=$(slurp) || exit 1
   start_screenrecording -g "$region"
