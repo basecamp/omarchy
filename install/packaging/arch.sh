@@ -2,6 +2,9 @@
 
 # Architecture-specific package installation
 
+# Source common helpers
+source "$OMARCHY_INSTALL/helpers/common.sh"
+
 # Check if running on ARM architecture
 if [ -n "$OMARCHY_ARM" ]; then
   echo "Installing ARM-specific packages..."
@@ -13,7 +16,7 @@ if [ -n "$OMARCHY_ARM" ]; then
     echo "Installing official ARM packages..."
     mapfile -t official_packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-arm-official.packages" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
     if [ ${#official_packages[@]} -gt 0 ]; then
-      yes 1 | yay -S --noconfirm --needed "${official_packages[@]}"
+      yes_finite | yay -S --noconfirm --needed "${official_packages[@]}"
     fi
   fi
 
@@ -33,7 +36,7 @@ if [ -n "$OMARCHY_ARM" ]; then
     if [ -s "$OMARCHY_INSTALL/omarchy-asahi.packages" ]; then
       mapfile -t asahi_packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-asahi.packages" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
       if [ ${#asahi_packages[@]} -gt 0 ]; then
-        yes 1 | yay -S --noconfirm --needed "${asahi_packages[@]}"
+        yes_finite | yay -S --noconfirm --needed "${asahi_packages[@]}"
       fi
     fi
   else
@@ -77,6 +80,6 @@ else
   # Install x86-specific packages using pacman with omarchy mirror
   mapfile -t packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-x86.packages" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
   if [ ${#packages[@]} -gt 0 ]; then
-    yes 1 | sudo pacman -S --noconfirm --needed "${packages[@]}"
+    yes_finite | sudo pacman -S --noconfirm --needed "${packages[@]}"
   fi
 fi

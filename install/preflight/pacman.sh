@@ -1,3 +1,6 @@
+# Source common helpers
+source "$OMARCHY_INSTALL/helpers/common.sh"
+
 if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
   # Install build tools
   omarchy-pkg-add base-devel

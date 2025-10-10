@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Source common helpers
+source "$OMARCHY_INSTALL/helpers/common.sh"
+
 # Skip if not virtualization and not VMware
 if command -v systemd-detect-virt &>/dev/null; then
   virt_type=$(systemd-detect-virt)
@@ -19,7 +22,7 @@ echo "Detected VMware, installing Open VM Tools..."
 
 # Install build dependencies
 echo "Installing build dependencies..."
-yes 1 | sudo pacman -S --noconfirm --needed base-devel git autoconf automake libtool make \
+yes_finite | sudo pacman -S --noconfirm --needed base-devel git autoconf automake libtool make \
   pkgconf glib2 glib2-devel libmspack rpcsvc-proto fuse3 procps-ng xmlsec gtkmm3
 
 # Clone and build open-vm-tools

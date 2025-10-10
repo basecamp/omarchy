@@ -17,7 +17,7 @@ if [[ $EUID -eq 0 ]]; then
   if ! command -v gum &>/dev/null; then
     echo
     echo "Installing gum for interactive setup..."
-    yes 1 | pacman -S --needed --noconfirm gum >/dev/null 2>&1 || {
+    pacman -S --needed --noconfirm gum >/dev/null 2>&1 || {
       echo "Error: Failed to install the 'gum' package"
       exit 1
     }
