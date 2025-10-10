@@ -1,0 +1,94 @@
+#!/bin/bash
+if [[ -z "$1" ]]; then
+  echo "What would you like to install?"
+  echo " 0 - Nothing (exit)"
+  echo " 1 - full"
+  echo " 2 - clion"
+  echo " 3 - datagrip"
+  echo " 4 - dataspell"
+  echo " 5 - intellij-idea"
+  echo " 6 - phpstorm"
+  echo " 7 - pycharm"
+  echo " 8 - rider"
+  echo " 9 - webstorm"
+  while true; do
+    read -r -p "Enter the number of your choice: " selection
+    case "$selection" in
+      0)
+        echo "Exiting without installing anything."
+        exit 0
+        ;;
+      1) set -- full; break ;;
+      2) set -- clion; break ;;
+      3) set -- datagrip; break ;;
+      4) set -- dataspell; break ;;
+      5) set -- intellij-idea; break ;;
+      6) set -- phpstorm; break ;;
+      7) set -- pycharm; break ;;
+      8) set -- rider; break ;;
+      9) set -- webstorm; break ;;
+      *)
+        echo "Invalid option. Please enter a number from 0 to 9."
+        ;;
+    esac
+  done
+fi
+
+case "$1" in
+full)
+  echo -e "Installing everything...\n"
+  yay -S --noconfirm clion clion-jre datagrip datagrip-jre dataspell dataspell-jre intellij-idea-ultimate-edition \
+      phpstorm phpstorm-jre pycharm rider webstorm webstorm-jre
+  sudo updatedb
+  omarchy-show-done
+  ;;
+clion)
+  echo -e "Installing CLion...\n"
+  yay -S --noconfirm clion clion-jre
+  sudo updatedb
+  omarchy-show-done
+  ;;
+datagrip)
+  echo -e "Installing DataGrip...\n"
+  yay -S --noconfirm datagrip datagrip-jre
+  sudo updatedb
+  omarchy-show-done
+  ;;
+dataspell)
+  echo -e "Installing DataSpell...\n"
+  yay -S --noconfirm dataspell dataspell-jre
+  sudo updatedb
+  omarchy-show-done
+  ;;
+intellij-idea)
+  echo -e "Installing IntelliJ IDEA...\n"
+  yay -S --noconfirm intellij-idea-ultimate-edition
+  sudo updatedb
+  omarchy-show-done
+  ;;
+phpstorm)
+  echo -e "Installing PhpStorm...\n"
+  yay -S --noconfirm phpstorm phpstorm-jre
+  sudo updatedb
+  omarchy-show-done
+  ;;
+pycharm)
+  echo -e "Installing PyCharm...\n"
+  yay -S --noconfirm pycharm
+  sudo updatedb
+  omarchy-show-done
+  ;;
+rider)
+  echo -e "Installing Rider...\n"
+  yay -S --noconfirm rider
+  sudo updatedb
+  omarchy-show-done
+  ;;
+webstorm)
+  echo -e "Installing WebStorm...\n"
+  yay -S --noconfirm webstorm webstorm-jre
+  sudo updatedb
+  omarchy-show-done
+  ;;
+esac
+  
