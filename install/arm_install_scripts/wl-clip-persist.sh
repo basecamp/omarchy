@@ -1,8 +1,9 @@
 #!/bin/bash
 #
 # Build and install wl-clip-persist from source for ARM
-# ARM repos have 0.4.3 which doesn't support negative lookahead regex
-# We need 0.5.0+ for proper password manager exclusion
+# ARM package page shows v0.5.0 (build date Sept 26, 2025) but mirrors still serve v0.4.3
+# v0.4.3 doesn't support negative lookahead regex - we need 0.5.0+ for proper password manager exclusion
+# TODO: Remove this once ARM mirrors actually sync v0.5.0
 #
 
 set -euo pipefail
