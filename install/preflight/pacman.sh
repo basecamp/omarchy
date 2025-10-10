@@ -64,6 +64,28 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
     exit 1
   fi
 
+  # CRITICAL (ARM only): Install pipewire-jack early to prevent jack2 conflicts
+  # Many packages can pull in jack2 as a dependency, but jack2 doesn't work
+  # properly on ARM/Asahi systems. pipewire-jack provides the jack interface
+  # and conflicts with jack2, preventing it from being installed.
+  # This MUST happen before any other package installation (including base-devel).
+  if [ -n "$OMARCHY_ARM" ]; then
+    echo "Installing pipewire-jack to prevent audio dependency conflicts..."
+    if ! pacman -Q pipewire-jack &>/dev/null; then
+      if pacman -Q jack2 &>/dev/null; then
+        echo "Found jack2 installed, replacing with pipewire-jack..."
+        sudo pacman -Rdd --noconfirm jack2
+      fi
+      sudo pacman -S --noconfirm --needed pipewire-jack || {
+        echo "Error: Failed to install pipewire-jack"
+        echo "See error output above for details"
+        exit 1
+      }
+    else
+      echo "pipewire-jack already installed"
+    fi
+  fi
+
   # Install build tools (using yes_finite to auto-select provider option 1)
   echo "Installing build tools..."
   yes_finite | sudo pacman -S --needed --noconfirm base-devel
