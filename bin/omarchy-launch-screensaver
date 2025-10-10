@@ -15,14 +15,14 @@ fi
 
 focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
 
-for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
+hyprctl monitors -j | jq -r '.[] | "\(.name) \(.refreshRate | ceil)"' | while read -r m r; do
   hyprctl dispatch focusmonitor $m
 
   # FIXME: Find a way to make this generic where we it can work for kitty + ghostty
   hyprctl dispatch exec -- \
     alacritty --class Screensaver \
     --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
-    -e omarchy-cmd-screensaver
+    -e omarchy-cmd-screensaver $r
 done
 
 hyprctl dispatch focusmonitor $focused
