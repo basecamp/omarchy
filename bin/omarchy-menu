@@ -29,11 +29,11 @@ menu() {
     local index
     index=$(echo -e "$options" | grep -nxF "$preselect" | cut -d: -f1)
     if [[ -n "$index" ]]; then
-      args+=("-a" "$index")
+      args+=("-c" "$index")
     fi
   fi
 
-  echo -e "$options" | walker --dmenu --theme dmenu_250 -p "$prompt…" "${args[@]}"
+  echo -e "$options" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 600 -p "$prompt…" "${args[@]}" 2>/dev/null
 }
 
 terminal() {

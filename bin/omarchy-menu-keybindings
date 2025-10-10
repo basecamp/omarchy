@@ -156,4 +156,4 @@ dynamic_bindings |
   sort -u |
   parse_keycodes |
   parse_bindings |
-  walker --dmenu --theme keybindings -p 'Keybindings' -w 800 -h "$menu_height"
+  walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
