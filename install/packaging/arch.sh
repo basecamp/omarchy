@@ -68,6 +68,10 @@ if [ -n "$OMARCHY_ARM" ]; then
   # Custom build required until ARM mirrors actually sync the new version
   source $OMARCHY_INSTALL/arm_install_scripts/wl-clip-persist.sh
 
+  # signal-desktop-beta: Requires nodejs-lts-jod which conflicts with current nodejs
+  # Custom installer handles the conflict by removing nodejs before installation
+  source $OMARCHY_INSTALL/arm_install_scripts/signal-desktop-beta.sh
+
   # Post-install tasks for ARM packages
   # Update icon cache for yaru-icon-theme (needed on ARM)
   if [ -d "/usr/share/icons/Yaru" ]; then

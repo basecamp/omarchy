@@ -3,4 +3,3 @@
 
 localsend-bin         # Local network file sharing app
 omarchy-chromium-bin  # Omarchy's Chromium fork with Widevine DRM support
-signal-desktop-beta   # Signal messenger (beta ARM build)
