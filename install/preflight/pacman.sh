@@ -1,3 +1,6 @@
+# Source common helpers
+source "$OMARCHY_INSTALL/helpers/common.sh"
+
 if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
   # Configure pacman - use ARM-specific configs on ARM systems
   if [ -n "$OMARCHY_ARM" ]; then
@@ -51,11 +54,11 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
     exit 1
   fi
 
-  # Install build tools (using 'yes 1' to auto-select provider option 1)
+  # Install build tools (using yes_finite to auto-select provider option 1)
   echo "Installing build tools..."
-  yes 1 | sudo pacman -S --needed --noconfirm base-devel
+  yes_finite | sudo pacman -S --needed --noconfirm base-devel
 
-  # Now do full system upgrade (using 'yes 1' to auto-select provider option 1)
+  # Now do full system upgrade (using yes_finite to auto-select provider option 1)
   echo "Upgrading system packages..."
-  yes 1 | sudo pacman -Su --noconfirm
+  yes_finite | sudo pacman -Su --noconfirm
 fi

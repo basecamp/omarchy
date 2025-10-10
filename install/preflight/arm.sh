@@ -27,7 +27,7 @@ if ! pacman -Q pipewire-jack &>/dev/null; then
     echo "Found jack2 installed, replacing with pipewire-jack..."
     sudo pacman -Rdd --noconfirm jack2 >/dev/null 2>&1
   fi
-  yes 1 | sudo pacman -S --noconfirm --needed pipewire-jack >/dev/null 2>&1 || {
+  sudo pacman -S --noconfirm --needed pipewire-jack >/dev/null 2>&1 || {
     echo "Error: Failed to install pipewire-jack"
     exit 1
   }
