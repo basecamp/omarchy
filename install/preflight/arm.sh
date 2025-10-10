@@ -15,22 +15,3 @@ if [[ -f "$envs_file" ]]; then
     fi
   fi
 fi
-
-# CRITICAL: Install pipewire-jack early to prevent jack2 conflicts
-# Many packages can pull in jack2 as a dependency, but jack2 doesn't work
-# properly on ARM/Asahi systems. pipewire-jack provides the jack interface
-# and conflicts with jack2, preventing it from being installed.
-# This MUST happen before any other package installation.
-echo "Installing pipewire-jack to prevent audio dependency conflicts..."
-if ! pacman -Q pipewire-jack &>/dev/null; then
-  if pacman -Q jack2 &>/dev/null; then
-    echo "Found jack2 installed, replacing with pipewire-jack..."
-    sudo pacman -Rdd --noconfirm jack2 >/dev/null 2>&1
-  fi
-  sudo pacman -S --noconfirm --needed pipewire-jack >/dev/null 2>&1 || {
-    echo "Error: Failed to install pipewire-jack"
-    exit 1
-  }
-else
-  echo "pipewire-jack already installed"
-fi
