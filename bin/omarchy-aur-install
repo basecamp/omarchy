@@ -424,8 +424,9 @@ install_package() {
     read -ra extra_array <<< "$extra_flags"
     makepkg_flags+=("${extra_array[@]}")
   fi
-  # Use 'yes 1' to auto-select option 1 for any provider selection prompts during dependency installation
-  yes 1 | makepkg "${makepkg_flags[@]}" || {
+  # Use printf to generate finite number of "1" selections for provider prompts
+  # This avoids EPIPE errors that occur with 'yes 1 |' when build processes write verbose output
+  printf '1\n%.0s' {1..100} | makepkg "${makepkg_flags[@]}" || {
     print_error "Failed to build/install '$package_name'"
     return 1
   }
