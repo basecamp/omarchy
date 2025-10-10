@@ -1,5 +1,8 @@
 # Install base packages (split by source for reliability)
 
+# Source common helpers
+source "$OMARCHY_INSTALL/helpers/common.sh"
+
 # Install official packages first (fast, reliable)
 echo "Installing official base packages..."
 mapfile -t official_packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-base-official.packages" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
@@ -7,7 +10,7 @@ mapfile -t official_packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-base-off
 if [ ${#official_packages[@]} -gt 0 ]; then
   if [ -n "$OMARCHY_ARM" ]; then
     # ARM: Use yay (handles official repos via pacman)
-    yes 1 | yay -S --noconfirm --needed "${official_packages[@]}"
+    yes_finite | yay -S --noconfirm --needed "${official_packages[@]}"
   else
     # x86: Use pacman directly (omarchy mirror)
     omarchy-pkg-add "${official_packages[@]}"
