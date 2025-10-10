@@ -1,10 +1,10 @@
-# Omarchy core package list installed via install/packages.sh
+# Omarchy core package list installed via install/packaging/base.sh
 # This file is also used by the ISO builder when determining needs
 
 1password-beta
 1password-cli
 alacritty
-asdcontrol-git
+asdcontrol
 avahi
 bash-completion
 bat
@@ -21,6 +21,19 @@ docker
 docker-buildx
 docker-compose
 dust
+elephant
+elephant-bluetooth
+elephant-calc
+elephant-clipboard
+elephant-desktopapplications
+elephant-files
+elephant-menus
+elephant-providerlist
+elephant-runner
+elephant-symbols
+elephant-todo
+elephant-unicode
+elephant-websearch
 evince
 eza
 fastfetch
@@ -31,7 +44,6 @@ fd
 ffmpegthumbnailer
 fontconfig
 fzf
-gcc14
 github-cli
 gnome-calculator
 gnome-keyring
@@ -57,6 +69,8 @@ kvantum-qt5
 lazydocker
 lazygit
 less
+libsecret
+libyaml
 libqalculate
 libreoffice
 llvm
@@ -68,6 +82,7 @@ mariadb-libs
 mise
 mpv
 nautilus
+gnome-disk-utility
 noto-fonts
 noto-fonts-cjk
 noto-fonts-emoji
@@ -92,6 +107,7 @@ python-terminaltexteffects
 qt5-wayland
 ripgrep
 satty
+sddm
 signal-desktop
 slurp
 spotify
@@ -111,7 +127,7 @@ ufw
 ufw-docker
 unzip
 uwsm
-walker-bin
+walker
 waybar
 wayfreeze
 wf-recorder

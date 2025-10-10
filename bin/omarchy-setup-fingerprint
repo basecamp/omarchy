@@ -20,7 +20,7 @@ print_info() {
 }
 
 check_fingerprint_hardware() {
-  if ! lsusb | grep -Eiq 'fingerprint|synaptics|goodix|elan|validity'; then
+  if ! lsusb | grep -Eiq 'fingerprint|synaptics|goodix|elan|validity|FPC'; then
     print_error "\nNo fingerprint sensor detected."
     return 1
   fi
