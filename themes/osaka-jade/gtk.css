@@ -1,0 +1,65 @@
+/* Same colors used by Alacritty */
+@define-color background #111c18;
+@define-color foreground #C1C497;
+
+@define-color color0 #23372B;
+@define-color color1 #FF5345;
+@define-color color2 #549e6a;
+@define-color color3 #459451;
+@define-color color4 #509475;
+@define-color color5 #D2689C;
+@define-color color6 #2DD5B7;
+@define-color color7 #F6F5DD;
+@define-color color8 #53685B;
+@define-color color9 #db9f9c;
+@define-color color10 #143614;
+@define-color color11 #E5C736;
+@define-color color12 #ACD4CF;
+@define-color color13 #75bbb3;
+@define-color color14 #8CD3CB;
+@define-color color15 #9eebb3;
+
+/* Adwaita Color Overrides */
+@define-color accent_bg_color @color4;
+@define-color accent_fg_color @background;
+@define-color accent_color @color6;
+
+@define-color window_bg_color @background;
+@define-color window_fg_color @foreground;
+
+/* Sidebar background and content */
+@define-color view_bg_color @color0;
+@define-color view_fg_color @foreground;
+@define-color sidebar_bg_color @color0;
+@define-color sidebar_fg_color @foreground;
+@define-color sidebar_backdrop_color @color0;
+@define-color sidebar_shade_color @color0;
+
+@define-color headerbar_bg_color rgba(83, 104, 91, 0.1);
+@define-color headerbar_fg_color @foreground;
+@define-color headerbar_backdrop_color @color0;
+@define-color headerbar_shade_color @color0;
+@define-color card_bg_color rgba(83, 104, 91, 0.1);
+@define-color card_fg_color @foreground;
+
+@define-color popover_bg_color @color0;
+@define-color popover_fg_color @foreground;
+
+@define-color destructive_bg_color @color1;
+@define-color destructive_fg_color @background;
+
+@define-color success_bg_color @color2;
+@define-color success_fg_color @background;
+
+@define-color warning_bg_color @color3;
+@define-color warning_fg_color @background;
+
+@define-color error_bg_color @color1;
+@define-color error_fg_color @background;
+
+@define-color borders rgba(83, 104, 91, 0.1);
+
+/* Sharp corners, Hyprland-inspired */
+* {
+    border-radius: 0;
+}

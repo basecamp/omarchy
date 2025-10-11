@@ -16,3 +16,16 @@ if [[ -f $GNOME_ICONS_THEME ]]; then
 else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
 fi
+
+# Copy gtk.css to GTK 3.0 and 4.0 config directories
+THEME_GTK_CSS=~/.config/omarchy/current/theme/gtk.css
+if [[ -f $THEME_GTK_CSS ]]; then
+  chmod 0644 "$THEME_GTK_CSS"
+  mkdir -p ~/.config/gtk-3.0
+  cp "$THEME_GTK_CSS" ~/.config/gtk-3.0/gtk.css
+  mkdir -p ~/.config/gtk-4.0
+  cp "$THEME_GTK_CSS" ~/.config/gtk-4.0/gtk.css
+else
+  rm -f ~/.config/gtk-3.0/gtk.css
+  rm -f ~/.config/gtk-4.0/gtk.css
+fi
