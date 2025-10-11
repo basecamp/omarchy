@@ -27,6 +27,42 @@ print_info() { echo -e "${BLUE}==>${NC} $*"; }
 print_success() { echo -e "${GREEN}==>${NC} $*"; }
 print_warning() { echo -e "${YELLOW}==>${NC} $*"; }
 print_error() { echo -e "${RED}==>${NC} $*"; }
+debug_log() { [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "$*"; }
+
+# --- Helper Functions ---
+
+# Strip version constraints from package name
+strip_version_constraints() {
+  local name="$1"
+  echo "$name" | sed 's/[<>=].*$//'
+}
+
+# Strip version constraints and library references from dependency name
+strip_dep_name() {
+  local dep="$1"
+  echo "$dep" | sed 's/[<>=].*$//' | sed 's/\.so.*$//'
+}
+
+# Clone package from GitHub AUR mirror
+clone_from_github_mirror() {
+  local package_name="$1"
+  git clone --depth 1 --single-branch --branch "$package_name" "$GITHUB_MIRROR_URL" "$package_name" 2>/dev/null
+}
+
+# Handle package not found error (check if in official repos)
+handle_package_not_found() {
+  local package_name="$1"
+
+  if is_official_package "$package_name"; then
+    print_error "Package '$package_name' is available in official repositories"
+    print_error "Use 'pacman -S $package_name' instead of omarchy-aur-install"
+    return 1
+  else
+    print_error "Package '$package_name' not found in AUR or official repositories"
+    print_error "Verify the package name is correct"
+    return 1
+  fi
+}
 
 # --- Pre-flight Checks ---
 if [ $# -eq 0 ]; then
@@ -154,16 +190,16 @@ check_aur_available() {
 is_official_package() {
   local package="$1"
   # Strip version constraints (>=, =, <, etc.)
-  package=$(echo "$package" | sed 's/[<>=].*$//')
+  package=$(strip_version_constraints "$package")
 
   # Check if package can be resolved from sync databases
   # Use -Sp (show package download URL) which will succeed for official packages
   if pacman -Sp "$package" &>/dev/null; then
-    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "  DEBUG: '$package' found in official repos (pacman -Sp)"
+    debug_log "  DEBUG: '$package' found in official repos (pacman -Sp)"
     return 0
   fi
 
-  [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "  DEBUG: '$package' NOT in official repos (AUR package)"
+  debug_log "  DEBUG: '$package' NOT in official repos (AUR package)"
   return 1
 }
 
@@ -183,10 +219,8 @@ extract_pkgbuild_deps() {
     export CHOST="${CARCH}-unknown-linux-gnu"
 
     # Debug: Show what CARCH is set to
-    if [[ -n "${OMARCHY_AUR_DEBUG:-}" ]]; then
-      echo "DEBUG:CARCH=$CARCH" >&2
-      echo "DEBUG:CHOST=$CHOST" >&2
-    fi
+    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && echo "DEBUG:CARCH=$CARCH" >&2
+    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && echo "DEBUG:CHOST=$CHOST" >&2
 
     # Temporarily disable errexit in subshell to allow PKGBUILD sourcing
     set +e
@@ -255,13 +289,8 @@ resolve_aur_deps_recursive() {
   cd "$temp_dir"
 
   # Clone from GitHub mirror (since we're in fallback mode)
-  local clone_output
-  clone_output=$(git clone --depth 1 --single-branch --branch "$package" "$GITHUB_MIRROR_URL" "$package" 2>&1)
-  local clone_result=$?
-
-  if [ $clone_result -ne 0 ]; then
+  if ! clone_from_github_mirror "$package"; then
     print_warning "Could not fetch PKGBUILD for '$package' from GitHub mirror - may not exist in AUR"
-    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && echo "$clone_output" | head -5
     return 1
   fi
 
@@ -278,15 +307,15 @@ resolve_aur_deps_recursive() {
   fi
 
   # Extract dependencies from PKGBUILD
-  [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "Extracting dependencies from PKGBUILD for '$package'..."
+  debug_log "Extracting dependencies from PKGBUILD for '$package'..."
   local deps=$(extract_pkgbuild_deps "PKGBUILD")
   local extract_result=$?
 
   if [[ -n "${OMARCHY_AUR_DEBUG:-}" ]]; then
-    print_info "Extract result code: $extract_result"
-    print_info "Dependencies for '$package': $(echo "$deps" | wc -l) items"
+    debug_log "Extract result code: $extract_result"
+    debug_log "Dependencies for '$package': $(echo "$deps" | wc -l) items"
     if [[ -n "$deps" ]]; then
-      echo "$deps" | while read line; do print_info "  -> $line"; done
+      echo "$deps" | while read line; do debug_log "  -> $line"; done
     else
       print_warning "No dependencies extracted from PKGBUILD"
     fi
@@ -294,7 +323,7 @@ resolve_aur_deps_recursive() {
 
   if [[ -z "$deps" ]]; then
     # No dependencies found - this is OK, package might have no AUR deps
-    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "Adding '$package' to deps file (no dependencies)"
+    debug_log "Adding '$package' to deps file (no dependencies)"
     echo "$package" >> "$deps_file"
     return 0
   fi
@@ -305,22 +334,22 @@ resolve_aur_deps_recursive() {
 
     local dep_name=$(echo "$dep_line" | cut -d: -f2)
     # Strip version constraints and library references
-    dep_name=$(echo "$dep_name" | sed 's/[<>=].*$//' | sed 's/\.so.*$//')
+    dep_name=$(strip_dep_name "$dep_name")
 
     # Skip empty or library dependencies
     if [[ -z "$dep_name" ]] || [[ "$dep_name" =~ ^lib.*\.so ]]; then
-      [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "  Skipping library: $dep_name"
+      debug_log "  Skipping library: $dep_name"
       continue
     fi
 
     # Skip if it's an official package
     if is_official_package "$dep_name"; then
-      [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "  Skipping official package: $dep_name"
+      debug_log "  Skipping official package: $dep_name"
       continue
     fi
 
     # Recursively resolve this AUR dependency
-    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "  Resolving AUR dependency: $dep_name"
+    debug_log "  Resolving AUR dependency: $dep_name"
     resolve_aur_deps_recursive "$dep_name" "$resolved_file" "$deps_file"
   done <<< "$deps"
 
@@ -357,23 +386,21 @@ install_package() {
 
   if [ "$use_branch" = "true" ]; then
     # GitHub mirror uses branch-per-package
-    if git clone --depth 1 --single-branch --branch "$package_name" "$git_url" "$package_name" 2>/dev/null; then
+    if clone_from_github_mirror "$package_name"; then
       clone_success=true
     else
-      print_error "Failed to clone '$package_name' from GitHub mirror"
-      print_error "Package may not exist in AUR"
-      return 1
+      handle_package_not_found "$package_name"
+      return $?
     fi
   else
     # Check if AUR is marked as down or in cooldown
     if [ "$aur_status" = "down" ] && is_aur_in_cooldown; then
       print_info "AUR is in cooldown, using GitHub mirror directly"
-      if git clone --depth 1 --single-branch --branch "$package_name" "$GITHUB_MIRROR_URL" "$package_name" 2>/dev/null; then
+      if clone_from_github_mirror "$package_name"; then
         clone_success=true
       else
-        print_error "Failed to clone '$package_name' from GitHub mirror"
-        print_error "Package may not exist"
-        return 1
+        handle_package_not_found "$package_name"
+        return $?
       fi
     else
       # Try AUR first (with minimal retries if degraded)
@@ -397,13 +424,12 @@ install_package() {
       if [ "$clone_success" = "false" ]; then
         record_aur_failure  # Increment failure counter
         print_warning "AUR clone failed, trying GitHub mirror..."
-        if git clone --depth 1 --single-branch --branch "$package_name" "$GITHUB_MIRROR_URL" "$package_name" 2>/dev/null; then
+        if clone_from_github_mirror "$package_name"; then
           clone_success=true
           print_success "Successfully cloned from GitHub mirror"
         else
-          print_error "Failed to clone '$package_name' from both AUR and GitHub mirror"
-          print_error "Package may not exist or network issues persist"
-          return 1
+          handle_package_not_found "$package_name"
+          return $?
         fi
       fi
     fi
