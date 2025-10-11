@@ -3,7 +3,7 @@
 set -e
 
 if (($# == 0)); then
-  echo "Usage: omarchy-verion-branch-set [master|dev]"
+  echo "Usage: omarchy-update-branch <branch-name>"
   exit 1
 fi
 
@@ -19,8 +19,17 @@ else
   stashed=false
 fi
 
-# Switch branches
-git -C "$OMARCHY_PATH" switch "$branch"
+# Switch branches - handle both local and remote branches
+if git -C "$OMARCHY_PATH" show-ref --verify --quiet "refs/heads/$branch"; then
+  # Branch exists locally
+  git -C "$OMARCHY_PATH" switch "$branch"
+elif git -C "$OMARCHY_PATH" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+  # Branch exists remotely, create local tracking branch
+  git -C "$OMARCHY_PATH" switch -c "$branch" "origin/$branch"
+else
+  echo "❌ Branch '$branch' not found locally or remotely"
+  exit 1
+fi
 
 # Reapply stash if we made one
 if [[ $stashed == true ]]; then

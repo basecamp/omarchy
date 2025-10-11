@@ -399,11 +399,51 @@ show_update_menu() {
 }
 
 show_update_branch_menu() {
-  case $(menu "Branch" "master\ndev" "" "$(omarchy-version-branch)") in
-  *master*) present_terminal "omarchy-update-branch master" ;;
-  *dev*) present_terminal "omarchy-update-branch dev" ;;
-  *) show_update_menu ;;
-  esac
+  # Always include master and dev at the top, even if they don't exist locally
+  menu_options="master\ndev\n"
+  
+  # Get all local branches, excluding HEAD, master, and dev (to avoid duplicates)
+  local_branches=$(git -C "$OMARCHY_PATH" branch --format='%(refname:short)' | grep -v '^HEAD$' | grep -v '^master$' | grep -v '^dev$')
+  
+  # Add other local branches
+  if [[ -n "$local_branches" ]]; then
+    menu_options+="$local_branches"
+  fi
+  
+  # Create menu options with current branch highlighted
+  current_branch=$(omarchy-version-branch)
+  highlighted_options=""
+  
+  while IFS= read -r branch; do
+    if [[ -n "$branch" ]]; then
+      if [[ "$branch" == "$current_branch" ]]; then
+        highlighted_options+="* $branch\n"
+      else
+        highlighted_options+="$branch\n"
+      fi
+    fi
+  done <<< "$menu_options"
+  
+  # Remove trailing newline
+  highlighted_options=$(echo -e "$highlighted_options" | sed '$d')
+  
+  selected=$(menu "Branch" "$highlighted_options" "" "$current_branch")
+  
+  # Extract branch name from selection (remove any asterisk prefix and whitespace)
+  selected_branch=$(echo "$selected" | sed 's/^\*\s*//' | sed 's/\s*$//')
+  
+  # Check if a valid branch was selected and it's different from current
+  if [[ -n "$selected_branch" && "$selected_branch" != "$current_branch" ]]; then
+    # Check if branch exists locally or remotely
+    if git -C "$OMARCHY_PATH" show-ref --verify --quiet "refs/heads/$selected_branch" || \
+       git -C "$OMARCHY_PATH" show-ref --verify --quiet "refs/remotes/origin/$selected_branch"; then
+      present_terminal "omarchy-update-branch $selected_branch"
+    else
+      show_update_menu
+    fi
+  else
+    show_update_menu
+  fi
 }
 show_update_process_menu() {
   case $(menu "Restart" "  Hypridle\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
