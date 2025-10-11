@@ -33,8 +33,19 @@ start_webcam_overlay() {
   # Target width (base 360px, scaled to monitor)
   local target_width=$(awk "BEGIN {printf \"%.0f\", 360 * $scale}")
 
-  # Scale maintaining aspect ratio (-1 means auto-calculate to maintain ratio)
-  ffplay -f v4l2 -framerate 30 /dev/video0 \
+  # Try preferred 16:9 resolutions in order, use first available
+  local preferred_resolutions=("640x360" "1280x720" "1920x1080")
+  local video_size_arg=""
+  local available_formats=$(v4l2-ctl --list-formats-ext -d /dev/video0 2>/dev/null)
+
+  for resolution in "${preferred_resolutions[@]}"; do
+    if echo "$available_formats" | grep -q "$resolution"; then
+      video_size_arg="-video_size $resolution"
+      break
+    fi
+  done
+
+  ffplay -f v4l2 $video_size_arg -framerate 30 /dev/video0 \
     -vf "scale=${target_width}:-1" \
     -window_title "WebcamOverlay" \
     -noborder \
