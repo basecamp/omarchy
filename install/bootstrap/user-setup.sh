@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# Set defaults for repo/ref if not provided
+OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}"
+OMARCHY_REF="${OMARCHY_REF:-master}"
+
+# Detect ARM architecture if not already set
+if [ -z "$OMARCHY_ARM" ]; then
+  arch=$(uname -m)
+  if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
+    export OMARCHY_ARM=true
+  fi
+fi
+
 # Detect if we're on Asahi Linux
 is_asahi=false
 if uname -r | grep -qi "asahi"; then
@@ -13,19 +25,64 @@ fi
 existing_users=$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd)
 
 if [[ $EUID -eq 0 ]]; then
-  # Install gum for user interaction (needed in bootstrap mode when helpers aren't sourced)
-  if ! command -v gum &>/dev/null; then
+  # Update mirrorlist to avoid broken geo mirror before syncing database
+  if [[ -n "$OMARCHY_ARM" ]]; then
     echo
-    echo "Installing gum for interactive setup..."
-    pacman -S --needed --noconfirm gum >/dev/null 2>&1 || {
-      echo "Error: Failed to install the 'gum' package"
-      exit 1
-    }
-    echo "Gum installed successfully!"
-    echo
-    echo "------------------------------------------------------"
+    echo "Configuring ARM mirrors (downloading from GitHub)..."
+    if curl -fsSL "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/default/pacman/mirrorlist.arm" -o /tmp/omarchy-mirrorlist.arm 2>/dev/null; then
+      cp -f /tmp/omarchy-mirrorlist.arm /etc/pacman.d/mirrorlist
+      rm -f /tmp/omarchy-mirrorlist.arm
+      echo "Updated mirrorlist to use Florida mirror (avoiding broken geo mirror)"
+    else
+      echo "Warning: Could not download mirrorlist, using system default"
+    fi
   fi
 
+  # Sync package database first to ensure we have current package versions
+  echo
+  echo "Syncing package database..."
+  sync_attempts=0
+  max_sync_attempts=3
+  sync_success=false
+
+  while [ $sync_attempts -lt $max_sync_attempts ]; do
+    if pacman -Sy --noconfirm 2>&1; then
+      sync_success=true
+      break
+    fi
+    sync_attempts=$((sync_attempts + 1))
+    if [ $sync_attempts -lt $max_sync_attempts ]; then
+      echo "Database sync failed (attempt $sync_attempts/$max_sync_attempts), retrying in 3 seconds..."
+      sleep 3
+    fi
+  done
+
+  if [ "$sync_success" = false ]; then
+    echo "ERROR: Failed to sync package database after $max_sync_attempts attempts"
+    echo "This may be due to slow/unreachable mirrors or network issues."
+    echo "Please check your network connection and try again."
+    exit 1
+  fi
+  echo
+
+  # Install gum for user interaction (needed in bootstrap mode when helpers aren't sourced)
+  if ! command -v gum &>/dev/null; then
+    echo "Installing gum for interactive setup..."
+    gum_output=$(mktemp)
+    if ! pacman -S --needed --noconfirm gum >"$gum_output" 2>&1; then
+      echo "Error: Failed to install the 'gum' package"
+      echo "--- pacman output ---"
+      cat "$gum_output"
+      echo "---------------------"
+      rm -f "$gum_output"
+      exit 1
+    fi
+    rm -f "$gum_output"
+    echo "Gum installed successfully!"
+    echo
+  fi
+
+  echo "------------------------------------------------------"
   echo "Use arrow keys to navigate, and press Enter to confirm"
   echo "------------------------------------------------------"
 
@@ -260,10 +317,16 @@ if [[ $EUID -eq 0 ]]; then
 
   if ! command -v sudo &>/dev/null; then
     echo "  - Installing sudo..."
-    pacman -S --needed --noconfirm sudo >/dev/null 2>&1 || {
+    sudo_output=$(mktemp)
+    if ! pacman -S --needed --noconfirm sudo >"$sudo_output" 2>&1; then
       echo "    Error: Failed to install the 'sudo' package"
+      echo "--- pacman output ---"
+      cat "$sudo_output"
+      echo "---------------------"
+      rm -f "$sudo_output"
       exit 1
-    }
+    fi
+    rm -f "$sudo_output"
     echo "  - Sudo installed successfully"
   fi
 
@@ -307,17 +370,23 @@ if [[ $EUID -eq 0 ]]; then
   # Ensure runuser is available for better terminal handling
   if ! command -v runuser &>/dev/null; then
     echo "  - Installing runuser for better terminal handling..."
-    pacman -S --needed --noconfirm util-linux >/dev/null 2>&1 || {
+    runuser_output=$(mktemp)
+    if ! pacman -S --needed --noconfirm util-linux >"$runuser_output" 2>&1; then
       echo "    Error: Failed to install util-linux package"
+      echo "--- pacman output ---"
+      cat "$runuser_output"
+      echo "---------------------"
+      rm -f "$runuser_output"
       exit 1
-    }
+    fi
+    rm -f "$runuser_output"
     echo "  - Runuser installed successfully"
   fi
 
   echo
 
   # Confirm before proceeding with installation
-  if ! gum confirm "Ready to install Omarchy as $username?" < /dev/tty; then
+  if ! GUM_CONFIRM_PADDING="0 0 2 0" gum confirm "Ready to install Omarchy as $username?" < /dev/tty; then
     echo
     echo "Installation cancelled."
     echo

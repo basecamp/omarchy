@@ -1,6 +1,15 @@
 # Ensure we have gum available
 if ! command -v gum &>/dev/null; then
-  sudo pacman -S --needed --noconfirm gum
+  gum_output=$(mktemp)
+  if ! sudo pacman -S --needed --noconfirm gum >"$gum_output" 2>&1; then
+    echo "Error: Failed to install gum package"
+    echo "--- pacman output ---"
+    cat "$gum_output"
+    echo "---------------------"
+    rm -f "$gum_output"
+    exit 1
+  fi
+  rm -f "$gum_output"
 fi
 
 # Get terminal size from /dev/tty (works in all scenarios: direct, sourced, or piped)

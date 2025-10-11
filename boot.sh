@@ -50,9 +50,6 @@ fi
 clear
 echo -e "\n$omarchy_art\n"
 
-# Use custom branch if instructed, otherwise default to master
-OMARCHY_REF="${OMARCHY_REF:-master}"
-
 # Set mirror based on branch
 if [[ $OMARCHY_REF == "dev" ]]; then
   export OMARCHY_MIRROR=edge
@@ -65,40 +62,90 @@ else
   echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' | sudo tee /etc/pacman.d/mirrorlist >/dev/null
 fi
 
-sudo pacman -Syu --noconfirm --needed git
-
-# Install git early since it's needed when running boot.sh as a non-root user
-if ! command -v git &>/dev/null; then
-  echo "Installing git..."
-  sudo pacman -S --noconfirm --needed git >/dev/null 2>&1 || {
-    echo "Error: Failed to install git"
-    exit 1
-  }
-  echo "Git installed successfully"
-  echo
-fi
-
-# Install the 'less' package early in case we error out and need to show logs
-if ! command -v less &>/dev/null; then
-  echo "Installing less..."
-  sudo pacman -S --noconfirm --needed less >/dev/null 2>&1 || {
-    echo "Error: Failed to install less"
-    exit 1
-  }
-  echo "Less installed successfully"
-  echo
-fi
-
 if [[ $EUID -eq 0 ]]; then
   echo "------------------------------------------------------"
   echo "Running as Root - Setting up non-root user for Omarchy"
   echo "------------------------------------------------------"
 
   curl -s "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/install/bootstrap/user-setup.sh" | \
-    OMARCHY_REPO="${OMARCHY_REPO}" OMARCHY_REF="${OMARCHY_REF}" bash
+    OMARCHY_REPO="${OMARCHY_REPO}" OMARCHY_REF="${OMARCHY_REF}" OMARCHY_ARM="${OMARCHY_ARM:-}" bash
 
   # user-setup.sh will create user and re-run boot.sh as that user, then exit
   exit 0 # exit to not run the rest of the script, and avoid cloning as root
+fi
+
+# Update mirrorlist to avoid broken geo mirror before syncing database
+if [[ -n "$OMARCHY_ARM" ]]; then
+  echo "Configuring ARM mirrors (downloading from GitHub)..."
+  if curl -fsSL "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/default/pacman/mirrorlist.arm" -o /tmp/omarchy-mirrorlist.arm 2>/dev/null; then
+    sudo cp -f /tmp/omarchy-mirrorlist.arm /etc/pacman.d/mirrorlist
+    rm -f /tmp/omarchy-mirrorlist.arm
+    echo "Updated mirrorlist to use Florida mirror (avoiding broken geo mirror)"
+  else
+    echo "Warning: Could not download mirrorlist, using system default"
+  fi
+fi
+
+# Sync package database first to ensure we have current package versions
+# This prevents 404 errors when trying to install git and less
+echo
+echo "Syncing package database..."
+sync_attempts=0
+max_sync_attempts=3
+sync_success=false
+
+while [ $sync_attempts -lt $max_sync_attempts ]; do
+  if sudo pacman -Sy --noconfirm 2>&1; then
+    sync_success=true
+    break
+  fi
+  sync_attempts=$((sync_attempts + 1))
+  if [ $sync_attempts -lt $max_sync_attempts ]; then
+    echo "Database sync failed (attempt $sync_attempts/$max_sync_attempts), retrying in 3 seconds..."
+    sleep 3
+  fi
+done
+
+if [ "$sync_success" = false ]; then
+  echo
+  echo "ERROR: Failed to sync package database after $max_sync_attempts attempts"
+  echo "This may be due to slow/unreachable mirrors or network issues."
+  echo "Please check your network connection and try again."
+  exit 1
+fi
+
+# Install git early since it's needed when running boot.sh as a non-root user
+if ! command -v git &>/dev/null; then
+  echo
+  echo "Installing git..."
+  git_output=$(mktemp)
+  if ! sudo pacman -S --noconfirm --needed git >"$git_output" 2>&1; then
+    echo "Error: Failed to install git"
+    echo "--- pacman output ---"
+    cat "$git_output"
+    echo "---------------------"
+    rm -f "$git_output"
+    exit 1
+  fi
+  rm -f "$git_output"
+  echo "Git installed successfully"
+fi
+
+# Install the 'less' package early in case we error out and need to show logs
+if ! command -v less &>/dev/null; then
+  echo
+  echo "Installing less..."
+  less_output=$(mktemp)
+  if ! sudo pacman -S --noconfirm --needed less >"$less_output" 2>&1; then
+    echo "Error: Failed to install less"
+    echo "--- pacman output ---"
+    cat "$less_output"
+    echo "---------------------"
+    rm -f "$less_output"
+    exit 1
+  fi
+  rm -f "$less_output"
+  echo "Less installed successfully"
 fi
 
 if [[ -n $OMARCHY_RESUME_INSTALL ]]; then
