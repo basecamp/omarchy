@@ -1,12 +1,6 @@
 # AUR packages
 # Installed via omarchy-aur-install (with GitHub mirror fallback)
 
-dust
-hyprland-qtutils
-hyprshot
-impala
-lazydocker
-mise
 python-terminaltexteffects
 ttf-ia-writer
 typora
