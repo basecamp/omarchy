@@ -24,8 +24,11 @@ fi
 
 echo "mkinitcpio hooks re-enabled"
 
-echo "Installing Limine, snapper, and mkinitcpio hook..."
-"$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed -r" snapper limine limine-mkinitcpio-hook
+echo "Installing Limine and snapper from official repos..."
+sudo pacman -S --needed --noconfirm snapper limine
+
+echo "Installing limine-mkinitcpio-hook from AUR..."
+"$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed -r" limine-mkinitcpio-hook
 
 # Configure mkinitcpio hooks (no microcode for ARM)
 echo "Configuring mkinitcpio hooks..."
