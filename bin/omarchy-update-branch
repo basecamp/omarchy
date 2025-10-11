@@ -3,7 +3,7 @@
 set -e
 
 if (($# == 0)); then
-  echo "Usage: omarchy-verion-branch-set [master|dev]"
+  echo "Usage: omarchy-update-branch [master|dev]"
   exit 1
 fi
 
