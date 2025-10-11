@@ -17,6 +17,7 @@ cups-pdf
 docker
 docker-buildx
 docker-compose
+dust
 evince
 eza
 fastfetch
@@ -37,16 +38,20 @@ gvfs-mtp
 gvfs-smb
 hypridle
 hyprland
+hyprland-qtutils
 hyprlock
+hyprshot
 hyprpicker
 hyprsunset
 imagemagick
+impala
 imv
 inetutils
 iwd
 jq
 kdenlive
 kvantum-qt5
+lazydocker
 lazygit
 less
 libyaml
@@ -57,6 +62,7 @@ luarocks
 mako
 man
 mariadb-libs
+mise
 mpv
 nautilus
 noto-fonts
