@@ -27,12 +27,15 @@ cleanup_webcam() {
 start_webcam_overlay() {
   cleanup_webcam
 
+  # Get monitor scale
   local scale=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .scale')
-  local width=$(awk "BEGIN {printf \"%.0f\", 360 * $scale}")
-  local height=$(awk "BEGIN {printf \"%.0f\", 203 * $scale}")
 
+  # Target width (base 360px, scaled to monitor)
+  local target_width=$(awk "BEGIN {printf \"%.0f\", 360 * $scale}")
+
+  # Scale maintaining aspect ratio (-1 means auto-calculate to maintain ratio)
   ffplay -f v4l2 -framerate 30 /dev/video0 \
-    -vf "scale=${width}:${height}" \
+    -vf "scale=${target_width}:-1" \
     -window_title "WebcamOverlay" \
     -noborder \
     -fflags nobuffer -flags low_delay \
