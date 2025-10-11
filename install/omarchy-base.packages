@@ -48,6 +48,7 @@ github-cli
 gnome-calculator
 gnome-keyring
 gnome-themes-extra
+gpu-screen-recorder
 gum
 gvfs-mtp
 gvfs-smb
@@ -129,7 +130,6 @@ unzip
 uwsm
 walker
 waybar
-wf-recorder
 whois
 wireless-regdb
 wiremix
