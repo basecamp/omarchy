@@ -69,16 +69,21 @@ start_screenrecording() {
 stop_screenrecording() {
   pkill -SIGINT -f "gpu-screen-recorder"  # SIGINT required to save video properly
 
+  # Wait a maximum of 5 seconds to finish before hard killing
   local count=0
   while pgrep -f "gpu-screen-recorder" >/dev/null && [ $count -lt 50 ]; do
     sleep 0.1
     count=$((count + 1))
   done
 
-  pgrep -f "gpu-screen-recorder" >/dev/null && pkill -9 -f "gpu-screen-recorder"
-  cleanup_webcam
-
-  notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+  if pgrep -f "gpu-screen-recorder" >/dev/null; then
+    pkill -9 -f "gpu-screen-recorder"
+    cleanup_webcam
+    notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
+  else
+    cleanup_webcam
+    notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+  fi
   toggle_screenrecording_indicator
 }
 
