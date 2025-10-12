@@ -15,6 +15,12 @@ if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
   if omarchy-cmd-present chromium; then
     rm -f /etc/chromium/policies/managed/color.json
     chromium --no-startup-window --set-theme-color="$THEME_RGB_COLOR"
+
+    if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
+      chromium --no-startup-window --set-color-scheme="light"
+    else
+      chromium --no-startup-window --set-color-scheme="dark"
+    fi
   fi
 
   if omarchy-cmd-present brave; then
