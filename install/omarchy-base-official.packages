@@ -54,8 +54,9 @@ kvantum-qt5
 lazydocker
 lazygit
 less
-libyaml
 libqalculate
+libsecret
+libyaml
 libreoffice
 llvm
 luarocks
@@ -83,6 +84,7 @@ python-poetry-core
 qt5-wayland
 ripgrep
 satty
+sddm
 slurp
 starship
 sushi
