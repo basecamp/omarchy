@@ -3,7 +3,8 @@
 
 1password-beta
 1password-cli
-asdcontrol-git
+asdcontrol
+gpu-screen-recorder
 localsend
 obs-studio
 obsidian
@@ -12,7 +13,7 @@ omarchy-lazyvim
 pinta
 signal-desktop
 spotify
-walker-bin
+walker
 wl-clip-persist # Exists here because we have a custom built version for ARM to reliably get v0.5.0+, but on x86 it's already up to date.
 wl-screenrec
 yay
