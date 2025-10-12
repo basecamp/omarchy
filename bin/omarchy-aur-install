@@ -366,6 +366,12 @@ install_package() {
   local use_branch="${3:-false}"
   local extra_flags="${4:-}"
 
+  # Check if package is already installed
+  if pacman -Q "$package_name" &>/dev/null; then
+    print_success "'$package_name' is already installed, skipping"
+    return 0
+  fi
+
   print_info "Installing '$package_name'..."
 
   # Create temporary build directory
@@ -474,15 +480,31 @@ else
   GIT_SOURCE="$GITHUB_MIRROR_URL"
 fi
 
+# Check if all requested packages are already installed
+PACKAGES_TO_INSTALL=()
+for package_name in "${PACKAGES[@]}"; do
+  if ! pacman -Q "$package_name" &>/dev/null; then
+    PACKAGES_TO_INSTALL+=("$package_name")
+  else
+    print_success "'$package_name' is already installed, skipping"
+  fi
+done
+
+# If all packages are already installed, exit early
+if [ ${#PACKAGES_TO_INSTALL[@]} -eq 0 ]; then
+  print_success "All requested packages are already installed"
+  exit 0
+fi
+
 # ALWAYS resolve AUR dependencies recursively (whether using AUR or GitHub mirror)
 # This ensures AUR dependencies of AUR packages are installed automatically
 # Official repo dependencies are still handled by makepkg's -s flag
-print_info "Resolving AUR dependencies recursively..."
+print_info "Resolving AUR dependencies recursively for ${#PACKAGES_TO_INSTALL[@]} packages..."
 RESOLVED_FILE=$(mktemp -p "/tmp" "aur-resolved-XXXX")
 DEPS_FILE=$(mktemp -p "/tmp" "aur-deps-XXXX")
 trap 'rm -f "$RESOLVED_FILE" "$DEPS_FILE"' EXIT
 
-for package_name in "${PACKAGES[@]}"; do
+for package_name in "${PACKAGES_TO_INSTALL[@]}"; do
   print_info "Resolving dependencies for '$package_name'..."
   if ! resolve_aur_deps_recursive "$package_name" "$RESOLVED_FILE" "$DEPS_FILE"; then
     print_warning "Failed to fully resolve dependencies for '$package_name' - will attempt installation anyway"
@@ -503,7 +525,7 @@ fi
 # Remove requested packages from dependency list (we'll install them separately)
 DEPS_TO_INSTALL=()
 for dep in "${ALL_DEPS[@]}"; do
-  if [[ ! " ${PACKAGES[@]} " =~ " ${dep} " ]]; then
+  if [[ ! " ${PACKAGES_TO_INSTALL[@]} " =~ " ${dep} " ]]; then
     DEPS_TO_INSTALL+=("$dep")
   fi
 done
@@ -522,9 +544,9 @@ else
   print_info "No additional AUR dependencies needed"
 fi
 
-# Install requested packages
+# Install requested packages (only those that aren't already installed)
 FAILED_PACKAGES=()
-for package_name in "${PACKAGES[@]}"; do
+for package_name in "${PACKAGES_TO_INSTALL[@]}"; do
   if install_package "$package_name" "$GIT_SOURCE" "$USE_GITHUB_MIRROR" "$EXTRA_MAKEPKG_FLAGS"; then
     :  # Success
   else
