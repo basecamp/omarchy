@@ -1,0 +1,4 @@
+#!/bin/bash
+
+omarchy-refresh-config elephant/desktopapplications.toml
+omarchy-restart-elephant
