@@ -24,7 +24,9 @@ ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 omarchy-theme-bg-next
 
 # Restart components to apply new theme
-omarchy-restart-waybar
+if pgrep -x waybar >/dev/null; then
+  omarchy-restart-waybar
+fi
 omarchy-restart-swayosd
 hyprctl reload
 pkill -SIGUSR2 btop
