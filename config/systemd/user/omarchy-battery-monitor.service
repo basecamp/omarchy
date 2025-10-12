@@ -6,3 +6,4 @@ After=graphical-session.target
 Type=oneshot
 ExecStart=%h/.local/share/omarchy/bin/omarchy-battery-monitor
 Environment=DISPLAY=:0
+LogLevelMax=warning
