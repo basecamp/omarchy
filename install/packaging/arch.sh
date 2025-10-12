@@ -62,8 +62,6 @@ if [ -n "$OMARCHY_ARM" ]; then
     source $OMARCHY_INSTALL/arm_install_scripts/pinta.sh
   fi
 
-  source $OMARCHY_INSTALL/arm_install_scripts/walker-prebuilt.sh
-
   # wl-clip-persist: ARM repos claim v0.5.0 (Sept 26 build) but mirrors still serve v0.4.3
   # Custom build required until ARM mirrors actually sync the new version
   source $OMARCHY_INSTALL/arm_install_scripts/wl-clip-persist.sh
