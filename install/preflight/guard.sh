@@ -31,8 +31,10 @@ if pacman -Qe gnome-shell &>/dev/null || pacman -Qe plasma-desktop &>/dev/null; 
   abort "Fresh + Vanilla Arch"
 fi
 
-# Must have limine installed
-command -v limine &>/dev/null || abort "Limine bootloader"
+# Must have limine installed (skip on ARM/non-Limine systems - will be installed during setup or using alternative bootloader)
+if [ -z "$OMARCHY_ARM" ] && [ -z "$ASAHI_ALARM" ] && [ -z "$OMARCHY_SKIP_LIMINE" ]; then
+  command -v limine &>/dev/null || abort "Limine bootloader"
+fi
 
 # Must have btrfs root filesystem
 [[ $(findmnt -n -o FSTYPE /) = "btrfs" ]] || abort "Btrfs root filesystem" 
