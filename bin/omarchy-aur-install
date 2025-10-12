@@ -468,56 +468,58 @@ if check_aur_available; then
   USE_GITHUB_MIRROR=false
   GIT_SOURCE="$AUR_GIT_URL"
 else
-  # AUR is down, use GitHub mirror with dependency resolution
+  # AUR is down, use GitHub mirror
   print_warning "Falling back to GitHub mirror: $GITHUB_MIRROR_URL"
   USE_GITHUB_MIRROR=true
   GIT_SOURCE="$GITHUB_MIRROR_URL"
+fi
 
-  # Resolve dependencies for all requested packages
-  print_info "Resolving AUR dependencies recursively..."
-  RESOLVED_FILE=$(mktemp -p "/tmp" "aur-resolved-XXXX")
-  DEPS_FILE=$(mktemp -p "/tmp" "aur-deps-XXXX")
-  trap 'rm -f "$RESOLVED_FILE" "$DEPS_FILE"' EXIT
+# ALWAYS resolve AUR dependencies recursively (whether using AUR or GitHub mirror)
+# This ensures AUR dependencies of AUR packages are installed automatically
+# Official repo dependencies are still handled by makepkg's -s flag
+print_info "Resolving AUR dependencies recursively..."
+RESOLVED_FILE=$(mktemp -p "/tmp" "aur-resolved-XXXX")
+DEPS_FILE=$(mktemp -p "/tmp" "aur-deps-XXXX")
+trap 'rm -f "$RESOLVED_FILE" "$DEPS_FILE"' EXIT
 
-  for package_name in "${PACKAGES[@]}"; do
-    print_info "Resolving dependencies for '$package_name'..."
-    if ! resolve_aur_deps_recursive "$package_name" "$RESOLVED_FILE" "$DEPS_FILE"; then
-      print_warning "Failed to fully resolve dependencies for '$package_name' - will attempt installation anyway"
-    fi
-  done
-
-  # Build list of all AUR dependencies (in order, without duplicates)
-  ALL_DEPS=()
-  if [[ -f "$DEPS_FILE" ]]; then
-    while IFS= read -r dep; do
-      # Skip if already in list (deduplication)
-      if [[ ! " ${ALL_DEPS[@]} " =~ " ${dep} " ]]; then
-        ALL_DEPS+=("$dep")
-      fi
-    done < "$DEPS_FILE"
+for package_name in "${PACKAGES[@]}"; do
+  print_info "Resolving dependencies for '$package_name'..."
+  if ! resolve_aur_deps_recursive "$package_name" "$RESOLVED_FILE" "$DEPS_FILE"; then
+    print_warning "Failed to fully resolve dependencies for '$package_name' - will attempt installation anyway"
   fi
+done
 
-  # Remove requested packages from dependency list (we'll install them separately)
-  DEPS_TO_INSTALL=()
-  for dep in "${ALL_DEPS[@]}"; do
-    if [[ ! " ${PACKAGES[@]} " =~ " ${dep} " ]]; then
-      DEPS_TO_INSTALL+=("$dep")
+# Build list of all AUR dependencies (in order, without duplicates)
+ALL_DEPS=()
+if [[ -f "$DEPS_FILE" ]]; then
+  while IFS= read -r dep; do
+    # Skip if already in list (deduplication)
+    if [[ ! " ${ALL_DEPS[@]} " =~ " ${dep} " ]]; then
+      ALL_DEPS+=("$dep")
     fi
-  done
+  done < "$DEPS_FILE"
+fi
 
-  # Install dependencies first
-  if [[ ${#DEPS_TO_INSTALL[@]} -gt 0 ]]; then
-    print_info "Installing ${#DEPS_TO_INSTALL[@]} AUR dependencies: ${DEPS_TO_INSTALL[*]}"
-    for dep in "${DEPS_TO_INSTALL[@]}"; do
-      print_info "Installing AUR dependency: $dep"
-      if ! install_package "$dep" "$GIT_SOURCE" "$USE_GITHUB_MIRROR" "$EXTRA_MAKEPKG_FLAGS"; then
-        print_error "Failed to install dependency '$dep' - continuing anyway"
-      fi
-      echo  # Blank line between packages
-    done
-  else
-    print_info "No additional AUR dependencies needed"
+# Remove requested packages from dependency list (we'll install them separately)
+DEPS_TO_INSTALL=()
+for dep in "${ALL_DEPS[@]}"; do
+  if [[ ! " ${PACKAGES[@]} " =~ " ${dep} " ]]; then
+    DEPS_TO_INSTALL+=("$dep")
   fi
+done
+
+# Install AUR dependencies first
+if [[ ${#DEPS_TO_INSTALL[@]} -gt 0 ]]; then
+  print_info "Installing ${#DEPS_TO_INSTALL[@]} AUR dependencies: ${DEPS_TO_INSTALL[*]}"
+  for dep in "${DEPS_TO_INSTALL[@]}"; do
+    print_info "Installing AUR dependency: $dep"
+    if ! install_package "$dep" "$GIT_SOURCE" "$USE_GITHUB_MIRROR" "$EXTRA_MAKEPKG_FLAGS"; then
+      print_error "Failed to install dependency '$dep' - continuing anyway"
+    fi
+    echo  # Blank line between packages
+  done
+else
+  print_info "No additional AUR dependencies needed"
 fi
 
 # Install requested packages
