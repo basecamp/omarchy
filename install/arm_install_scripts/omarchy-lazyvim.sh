@@ -22,7 +22,23 @@ sudo pacman -S --needed --noconfirm neovim git nodejs npm tree-sitter-cli base-d
 echo "Cloning omarchy-lazyvim repository..."
 cd /tmp
 rm -rf omarchy-lazyvim
-git clone https://github.com/omacom-io/omarchy-lazyvim.git
+
+# Try to clone with retry logic (repository is archived but still accessible)
+clone_attempts=0
+max_clone_attempts=3
+while [ $clone_attempts -lt $max_clone_attempts ]; do
+  if git clone https://github.com/omacom-io/omarchy-lazyvim.git 2>&1; then
+    break
+  fi
+  clone_attempts=$((clone_attempts + 1))
+  if [ $clone_attempts -lt $max_clone_attempts ]; then
+    echo "Clone failed (attempt $clone_attempts/$max_clone_attempts), retrying in 5 seconds..."
+    sleep 5
+  else
+    echo "Failed to clone omarchy-lazyvim after $max_clone_attempts attempts"
+    exit 1
+  fi
+done
 
 # Build and install the package
 echo "Building and installing omarchy-lazyvim (this may take a while)..."
