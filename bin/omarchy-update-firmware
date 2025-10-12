@@ -1,6 +1,8 @@
 #!/bin/bash
 
 set -e
+echo -e "\e[32mUpdate Firmare\e[0m"
 
+omarchy-pkg-add fwupd
 fwupdmgr refresh
 sudo fwupdmgr update
