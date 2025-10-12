@@ -53,5 +53,3 @@ fi
 sudo rm -f /usr/local/bin/seamless-login
 sudo rm -f /etc/systemd/system/plymouth-quit.service.d/wait-for-graphical.conf
 sudo rm -f /etc/systemd/system/omarchy-seamless-login.service
-
-echo "Migration completed successfully"
