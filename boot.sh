@@ -149,7 +149,7 @@ if ! command -v less &>/dev/null; then
 fi
 
 if [[ -n $OMARCHY_RESUME_INSTALL ]]; then
-  echo -e "\n\e[32mResuming Omarchy installation from where it left off...\e[0m\n"
+  echo -e "\n\e[32mResuming Omarchy installation from where it left off...\e[0m"
 else
   echo -e "\nCloning Omarchy from: https://github.com/${OMARCHY_REPO}.git"
 

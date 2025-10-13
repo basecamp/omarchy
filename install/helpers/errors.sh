@@ -304,6 +304,7 @@ catch_errors() {
         fi
       fi
 
+      echo
       gum style --foreground 2 "  - Omarchy updated successfully, restarting installation..."
       sleep 2
 
