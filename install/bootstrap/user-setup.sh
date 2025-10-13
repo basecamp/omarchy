@@ -360,7 +360,8 @@ if [[ $EUID -eq 0 ]]; then
     OMARCHY_SIMULATE_MIRROR_DOWN='${OMARCHY_SIMULATE_MIRROR_DOWN:-}' \
     SKIP_YARU='${SKIP_YARU:-}' \
     SKIP_OBS='${SKIP_OBS:-}' \
-    SKIP_PINTA='${SKIP_PINTA:-}'; \
+    SKIP_PINTA='${SKIP_PINTA:-}' \
+    SKIP_SIGNAL_DESKTOP_BETA='${SKIP_SIGNAL_DESKTOP_BETA:-}'; \
     cd /home/$username; \
     curl -fsSL https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/boot.sh | bash; \
     install_result=\$?; \
