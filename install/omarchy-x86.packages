@@ -14,5 +14,4 @@ pinta
 signal-desktop
 spotify
 wl-clip-persist # Exists here because we have a custom built version for ARM to reliably get v0.5.0+, but on x86 it's already up to date.
-wl-screenrec
 yay
