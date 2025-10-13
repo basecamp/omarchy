@@ -21,7 +21,7 @@ ExecStart=/bin/bash -c 'echo 0 > /sys/bus/pci/devices/0000\:01\:00.0/d3cold_allo
 WantedBy=multi-user.target
 EOF
 
-    sudo systemctl enable omarchy-nvme-suspend-fix.service
+    chrootable_systemctl_enable omarchy-nvme-suspend-fix.service
     sudo systemctl daemon-reload
   else
     echo "Warning: NVMe device not found at expected PCI address (0000:01:00.0)"
