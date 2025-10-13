@@ -8,3 +8,4 @@ libpulse              # PulseAudio client libraries
 pipewire              # Modern audio/video server
 pipewire-alsa         # ALSA compatibility layer for PipeWire
 pipewire-pulse        # PulseAudio compatibility layer for PipeWire
+wf-recorder           # Wayland screen recorder
