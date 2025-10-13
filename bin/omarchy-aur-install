@@ -50,6 +50,12 @@ declare -A KNOWN_SPLIT_PACKAGES=(
   ["yaru-gtk-theme"]="yaru"
   ["yaru-gnome-shell-theme"]="yaru"
   ["yaru-sound-theme"]="yaru"
+  ["dotnet-host-bin"]="dotnet-core-bin"
+  ["dotnet-sdk-8.0-bin"]="dotnet-core-8.0-bin"
+  ["dotnet-runtime-8.0-bin"]="dotnet-core-8.0-bin"
+  ["dotnet-targeting-pack-8.0-bin"]="dotnet-core-8.0-bin"
+  ["aspnet-runtime-8.0-bin"]="dotnet-core-8.0-bin"
+  ["aspnet-targeting-pack-8.0-bin"]="dotnet-core-8.0-bin"
 )
 
 # Get PackageBase from AUR RPC API for a given package name
