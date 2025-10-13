@@ -3,50 +3,14 @@
 set -e
 
 echo "Now pick dependencies matching your graphics card"
-echo "Installing Steam..."
 sudo pacman -Syu --noconfirm steam
 
-# Ask about controller support
-echo ""
-echo "Do you want to install enhanced controller support?"
-echo "This installs xpadneo driver to fix common Xbox/Bluetooth controller issues."
-echo "Learn more: https://github.com/atar-axis/xpadneo"
-echo ""
-echo "Fixes reported by users:"
-echo "  • Steam not detecting Xbox controllers (Bazzite #602, EndeavourOS forums)"
-echo "  • Missing rumble/vibration support"
-echo "  • Bluetooth connectivity problems"
-echo ""
-read -p "Install controller fix? (y/N): " -n 1 -r
-echo ""
+# Install xpadneo to ensure controllers work out of the box
+sudo pacman -S --noconfirm linux-headers
+yay -S --noconfirm xpadneo-dkms
+echo 'blacklist xpad' | sudo tee /etc/modprobe.d/blacklist-xpad.conf >/dev/null
+sudo modprobe hid_xpadneo
+echo 'hid_xpadneo' | sudo tee /etc/modules-load.d/xpadneo.conf >/dev/null
+sudo usermod -a -G input $USER
 
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Setting up xpadneo enhanced controller support..."
-
-    # Install kernel headers
-    KERNEL=$(uname -r)
-    if [[ $KERNEL == *"zen"* ]]; then
-        sudo pacman -S --noconfirm linux-zen-headers
-    elif [[ $KERNEL == *"lts"* ]]; then
-        sudo pacman -S --noconfirm linux-lts-headers
-    else
-        sudo pacman -S --noconfirm linux-headers
-    fi
-
-    # Install xpadneo driver
-    echo "Installing xpadneo from AUR..."
-    yay -S --noconfirm xpadneo-dkms
-
-    # Replace default driver
-    echo 'blacklist xpad' | sudo tee /etc/modprobe.d/blacklist-xpad.conf >/dev/null
-    sudo modprobe hid_xpadneo
-    echo 'hid_xpadneo' | sudo tee /etc/modules-load.d/xpadneo.conf >/dev/null
-
-    # Add input group permission
-    sudo usermod -a -G input $USER
-
-    echo "Controller support installed!"
-fi
-
-echo "Launching Steam..."
 setsid gtk-launch steam >/dev/null 2>&1 &
