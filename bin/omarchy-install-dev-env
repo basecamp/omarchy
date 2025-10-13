@@ -47,6 +47,7 @@ install_node() {
 case "$1" in
 ruby)
   echo -e "Installing Ruby on Rails...\n"
+  omarchy-pkg-add libyaml
   mise use --global ruby@latest
   mise settings add idiomatic_version_file_enable_tools ruby
   mise x ruby -- gem install rails --no-document
@@ -119,6 +120,7 @@ java)
 zig)
   echo -e "Installing Zig...\n"
   mise use --global zig@latest
+  mise use -g zls@latest
   ;;
 ocaml)
   echo -e "Installing OCaml...\n"

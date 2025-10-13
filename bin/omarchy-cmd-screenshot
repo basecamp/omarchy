@@ -8,7 +8,7 @@ if [[ ! -d "$OUTPUT_DIR" ]]; then
   exit 1
 fi
 
-pkill slurp || hyprshot -m ${1:-region} --raw --freeze |
+pkill slurp || hyprshot -m ${1:-region} --raw |
   satty --filename - \
     --output-filename "$OUTPUT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png" \
     --early-exit \
