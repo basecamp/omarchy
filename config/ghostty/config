@@ -24,5 +24,8 @@ keybind = f11=toggle_fullscreen
 keybind = shift+insert=paste_from_clipboard
 keybind = control+insert=copy_to_clipboard
 
+# Don't toggle fullscreen on Ctrl+Enter
+keybind = control+enter=unbind
+
 # SSH session terminfo
 shell-integration-features = ssh-env
