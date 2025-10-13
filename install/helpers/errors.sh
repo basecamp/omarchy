@@ -197,6 +197,7 @@ catch_errors() {
         SKIP_YARU="${SKIP_YARU:-}" \
         SKIP_OBS="${SKIP_OBS:-}" \
         SKIP_PINTA="${SKIP_PINTA:-}" \
+        SKIP_SIGNAL_DESKTOP_BETA="${SKIP_SIGNAL_DESKTOP_BETA:-}" \
         bash ~/.local/share/omarchy/install.sh
       break
       ;;
@@ -317,6 +318,7 @@ catch_errors() {
         SKIP_YARU="${SKIP_YARU:-}" \
         SKIP_OBS="${SKIP_OBS:-}" \
         SKIP_PINTA="${SKIP_PINTA:-}" \
+        SKIP_SIGNAL_DESKTOP_BETA="${SKIP_SIGNAL_DESKTOP_BETA:-}" \
         bash ~/.local/share/omarchy/install.sh
       break
       ;;
