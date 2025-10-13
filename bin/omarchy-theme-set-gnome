@@ -19,13 +19,16 @@ fi
 
 # Copy gtk.css to GTK 3.0 and 4.0 config directories
 THEME_GTK_CSS=~/.config/omarchy/current/theme/gtk.css
+GTK_3_PATH=~/.config/gtk-3.0/
+GTK_4_PATH=~/.config/gtk-4.0/
+GTK_FILE=gtk.css
+
 if [[ -f $THEME_GTK_CSS ]]; then
   chmod 0644 "$THEME_GTK_CSS"
-  mkdir -p ~/.config/gtk-3.0
-  cp "$THEME_GTK_CSS" ~/.config/gtk-3.0/gtk.css
-  mkdir -p ~/.config/gtk-4.0
-  cp "$THEME_GTK_CSS" ~/.config/gtk-4.0/gtk.css
+  mkdir -p "$GTK_3_PATH"
+  ln -sf "$THEME_GTK_CSS" "$GTK_3_PATH$GTK_FILE"
+  mkdir -p "$GTK_4_PATH"
+  ln -sf "$THEME_GTK_CSS" "$GTK_4_PATH$GTK_FILE"
 else
-  rm -f ~/.config/gtk-3.0/gtk.css
-  rm -f ~/.config/gtk-4.0/gtk.css
+  rm "$GTK_3_PATH$GTK_FILE" "$GTK_4_PATH$GTK_FILE"
 fi
