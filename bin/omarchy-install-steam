@@ -21,5 +21,3 @@ fi
 
 sudo usermod -a -G input $USER
 omarchy-state set relaunch-required
-
-setsid gtk-launch steam >/dev/null 2>&1 &
