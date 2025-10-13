@@ -76,11 +76,11 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
     fi
   fi
 
-  # Install build tools (using yes_finite to auto-select provider option 1)
+  # Install build tools (using with_yes to auto-select provider option 1)
   echo "Installing build tools..."
-  yes_finite | sudo pacman -S --needed --noconfirm base-devel
+  with_yes sudo pacman -S --needed --noconfirm base-devel
 
-  # Now do full system upgrade (using yes_finite to auto-select provider option 1)
+  # Now do full system upgrade (using with_yes to auto-select provider option 1)
   echo "Upgrading system packages..."
-  yes_finite | sudo pacman -Su --noconfirm
+  with_yes sudo pacman -Su --noconfirm
 fi
