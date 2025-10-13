@@ -273,6 +273,8 @@ resolve_aur_deps_recursive() {
   local package="$1"
   local resolved_file="$2"  # File to track resolved packages (avoid cycles)
   local deps_file="$3"      # File to accumulate dependencies
+  local git_source="$4"     # AUR or GitHub mirror URL
+  local use_mirror="$5"     # true/false - whether to use GitHub mirror branch mode
 
   # Check if already resolved
   if grep -q "^${package}$" "$resolved_file" 2>/dev/null; then
@@ -288,9 +290,22 @@ resolve_aur_deps_recursive() {
 
   cd "$temp_dir"
 
-  # Clone from GitHub mirror (since we're in fallback mode)
-  if ! clone_from_github_mirror "$package"; then
-    print_warning "Could not fetch PKGBUILD for '$package' from GitHub mirror - may not exist in AUR"
+  # Clone from appropriate source (AUR or GitHub mirror)
+  local clone_success=false
+  if [ "$use_mirror" = "true" ]; then
+    # Use GitHub mirror branch mode
+    if clone_from_github_mirror "$package"; then
+      clone_success=true
+    fi
+  else
+    # Use AUR directly
+    if git clone --depth 1 "$git_source/$package.git" "$package" 2>/dev/null; then
+      clone_success=true
+    fi
+  fi
+
+  if [ "$clone_success" = "false" ]; then
+    print_warning "Could not fetch PKGBUILD for '$package' - may not exist in AUR"
     return 1
   fi
 
@@ -350,7 +365,7 @@ resolve_aur_deps_recursive() {
 
     # Recursively resolve this AUR dependency
     debug_log "  Resolving AUR dependency: $dep_name"
-    resolve_aur_deps_recursive "$dep_name" "$resolved_file" "$deps_file"
+    resolve_aur_deps_recursive "$dep_name" "$resolved_file" "$deps_file" "$git_source" "$use_mirror"
   done <<< "$deps"
 
   # Add this package to the dependency list (after its dependencies)
@@ -409,9 +424,9 @@ install_package() {
         return $?
       fi
     else
-      # Try AUR first (with minimal retries if degraded)
-      local max_attempts=1
-      [ "$aur_status" = "up" ] && max_attempts=2
+      # Try AUR first (with retries, unless degraded)
+      local max_attempts=2
+      [ "$aur_status" = "degraded" ] && max_attempts=1
 
       for attempt in 1 $max_attempts; do
         if git clone --depth 1 "$git_url/$package_name.git" "$package_name" 2>/dev/null; then
@@ -427,8 +442,9 @@ install_package() {
       done
 
       # If AUR failed, try GitHub mirror as fallback
+      # Still increment failure counter - after 3 failures, AUR will be marked as down
       if [ "$clone_success" = "false" ]; then
-        record_aur_failure  # Increment failure counter
+        record_aur_failure  # Increment failure counter (contributes to marking AUR down)
         print_warning "AUR clone failed, trying GitHub mirror..."
         if clone_from_github_mirror "$package_name"; then
           clone_success=true
@@ -506,7 +522,7 @@ trap 'rm -f "$RESOLVED_FILE" "$DEPS_FILE"' EXIT
 
 for package_name in "${PACKAGES_TO_INSTALL[@]}"; do
   print_info "Resolving dependencies for '$package_name'..."
-  if ! resolve_aur_deps_recursive "$package_name" "$RESOLVED_FILE" "$DEPS_FILE"; then
+  if ! resolve_aur_deps_recursive "$package_name" "$RESOLVED_FILE" "$DEPS_FILE" "$GIT_SOURCE" "$USE_GITHUB_MIRROR"; then
     print_warning "Failed to fully resolve dependencies for '$package_name' - will attempt installation anyway"
   fi
 done
