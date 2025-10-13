@@ -119,15 +119,17 @@ restore_outputs() {
 
 # Error handler
 catch_errors() {
+  # Accept exit code as parameter (from exit_handler) or capture from $?
+  # MUST capture/accept exit code as the VERY FIRST operation (before any if-statements)
+  # The if-statement below will reset $? to 0, losing the original error code
+  local exit_code=${1:-$?}
+
   # Prevent recursive error handling
   if [[ $ERROR_HANDLING == "true" ]]; then
     return
   else
     ERROR_HANDLING=true
   fi
-
-  # Store exit code immediately before it gets overwritten
-  local exit_code=$?
 
   stop_log_output
   restore_outputs
@@ -353,8 +355,9 @@ exit_handler() {
   local exit_code=$?
 
   # Only run if we're exiting with an error and haven't already handled it
-  if (( exit_code != 0 )) && [[ $ERROR_HANDLING != "true" ]]; then
-    catch_errors
+  if [[ $exit_code -ne 0 && $ERROR_HANDLING != true ]]; then
+    # Pass exit code as parameter to preserve it through the call
+    catch_errors "$exit_code"
   else
     stop_log_output
     show_cursor
