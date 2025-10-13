@@ -2,59 +2,59 @@
 @define-color background #2c2525;
 @define-color foreground #e6d9db;
 
-@define-color color0 #72696a;
-@define-color color1 #fd6883;
-@define-color color2 #adda78;
-@define-color color3 #f9cc6c;
-@define-color color4 #f38d70;
-@define-color color5 #a8a9eb;
-@define-color color6 #85dacc;
-@define-color color7 #e6d9db;
-@define-color color8 #948a8b;
-@define-color color9 #ff8297;
-@define-color color10 #c8e292;
-@define-color color11 #fcd675;
-@define-color color12 #f8a788;
-@define-color color13 #bebffd;
-@define-color color14 #9bf1e1;
-@define-color color15 #f1e5e7;
+@define-color black #72696a;
+@define-color red #fd6883;
+@define-color green #adda78;
+@define-color yellow #f9cc6c;
+@define-color blue #f38d70;
+@define-color magenta #a8a9eb;
+@define-color cyan #85dacc;
+@define-color white #e6d9db;
+@define-color bright_black #948a8b;
+@define-color bright_red #ff8297;
+@define-color bright_green #c8e292;
+@define-color bright_yellow #fcd675;
+@define-color bright_blue #f8a788;
+@define-color bright_magenta #bebffd;
+@define-color bright_cyan #9bf1e1;
+@define-color bright_white #f1e5e7;
 
 /* Adwaita Color Overrides */
-@define-color accent_bg_color @color4;
+@define-color accent_bg_color @blue;
 @define-color accent_fg_color @background;
-@define-color accent_color @color6;
+@define-color accent_color @cyan;
 
 @define-color window_bg_color @background;
 @define-color window_fg_color @foreground;
 
 /* Sidebar background and content */
-@define-color view_bg_color @color0;
+@define-color view_bg_color @black;
 @define-color view_fg_color @foreground;
-@define-color sidebar_bg_color @color0;
+@define-color sidebar_bg_color @black;
 @define-color sidebar_fg_color @foreground;
-@define-color sidebar_backdrop_color @color0;
-@define-color sidebar_shade_color @color0;
+@define-color sidebar_backdrop_color @black;
+@define-color sidebar_shade_color @black;
 
 @define-color headerbar_bg_color rgba(148, 138, 139, 0.1);
 @define-color headerbar_fg_color @foreground;
-@define-color headerbar_backdrop_color @color0;
-@define-color headerbar_shade_color @color0;
+@define-color headerbar_backdrop_color @black;
+@define-color headerbar_shade_color @black;
 @define-color card_bg_color rgba(148, 138, 139, 0.1);
 @define-color card_fg_color @foreground;
 
-@define-color popover_bg_color @color0;
+@define-color popover_bg_color @black;
 @define-color popover_fg_color @foreground;
 
-@define-color destructive_bg_color @color1;
+@define-color destructive_bg_color @red;
 @define-color destructive_fg_color @background;
 
-@define-color success_bg_color @color2;
+@define-color success_bg_color @green;
 @define-color success_fg_color @background;
 
-@define-color warning_bg_color @color3;
+@define-color warning_bg_color @yellow;
 @define-color warning_fg_color @background;
 
-@define-color error_bg_color @color1;
+@define-color error_bg_color @red;
 @define-color error_fg_color @background;
 
 @define-color borders rgba(148, 138, 139, 0.1);
