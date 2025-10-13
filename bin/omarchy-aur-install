@@ -17,11 +17,22 @@ AUR_COOLDOWN_MINUTES=20        # Don't retry AUR for this long after marking it 
 AUR_STATE_FILE="/tmp/omarchy-aur-state-$(id -u)"  # Per-user state file
 
 # --- Color Output ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Respect NO_COLOR standard and detect TTY for clean logs
+if [[ -n "${NO_COLOR:-}" ]] || ! [ -t 1 ]; then
+  # stdout is redirected or NO_COLOR is set - disable colors
+  RED=''
+  GREEN=''
+  YELLOW=''
+  BLUE=''
+  NC=''
+else
+  # stdout is a terminal - enable colors
+  RED='\033[0;31m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[1;33m'
+  BLUE='\033[0;34m'
+  NC='\033[0m' # No Color
+fi
 
 print_info() { echo -e "${BLUE}==>${NC} $*"; }
 print_success() { echo -e "${GREEN}==>${NC} $*"; }
