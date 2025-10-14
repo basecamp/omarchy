@@ -49,7 +49,7 @@ echo "Creating initial Limine configuration..."
 sudo tee "$EFI_DIR/limine.conf" <<EOF >/dev/null
 ### Read more at config document: https://github.com/limine-bootloader/limine/blob/trunk/CONFIG.md
 #timeout: 3
-default_entry: 1
+default_entry: 2
 interface_branding: Omarchy Bootloader
 interface_branding_color: 2
 hash_mismatch_panic: no
