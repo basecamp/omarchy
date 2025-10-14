@@ -36,8 +36,10 @@ if [ -z "$OMARCHY_ARM" ] && [ -z "$ASAHI_ALARM" ] && [ -z "$OMARCHY_SKIP_LIMINE"
   command -v limine &>/dev/null || abort "Limine bootloader"
 fi
 
-# Must have btrfs root filesystem
-[[ $(findmnt -n -o FSTYPE /) = "btrfs" ]] || abort "Btrfs root filesystem" 
+# Must have btrfs root filesystem (skip on ARM/Asahi - uses ext4, can't use btrfs)
+if [ -z "$OMARCHY_ARM" ] && [ -z "$ASAHI_ALARM" ]; then
+  [[ $(findmnt -n -o FSTYPE /) = "btrfs" ]] || abort "Btrfs root filesystem"
+fi
 
 # Cleared all guards
 if [[ "$OMARCHY_RETRY_INSTALL" == "true" ]]; then
