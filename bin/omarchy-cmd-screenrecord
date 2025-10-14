@@ -20,6 +20,15 @@ for arg in "$@"; do
   esac
 done
 
+get_recorder_process_name() {
+  # Use wf-recorder for ARM64 or when running in a VM
+  if [[ "$(uname -m)" == "aarch64" ]] || systemd-detect-virt -q; then
+    echo "wf-recorder"
+  else
+    echo "gpu-screen-recorder"
+  fi
+}
+
 cleanup_webcam() {
   pkill -f "WebcamOverlay" 2>/dev/null
 }
@@ -57,16 +66,14 @@ start_webcam_overlay() {
 
 start_screenrecording() {
   local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
+  local audio_args=""
 
-  if [[ "$(uname -m)" == "aarch64" ]]; then
-    # ARM systems: use wf-recorder (gpu-screen-recorder not available for ARM)
-    local audio_args=""
+  # Use wf-recorder for ARM64 or VMs (no GPU hardware encoding available)
+  if [[ "$(uname -m)" == "aarch64" ]] || systemd-detect-virt -q; then
     [[ "$AUDIO" == "true" ]] && audio_args="--audio"
-
     wf-recorder $audio_args -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart "$@" &
   else
-    # x86_64 systems: use gpu-screen-recorder
-    local audio_args=""
+    # x86_64 bare metal with GPU: use gpu-screen-recorder for hardware encoding
     # Merge audio tracks into one - separate tracks only play one at a time in most players
     [[ "$AUDIO" == "true" ]] && audio_args="-a default_output|default_input"
 
@@ -77,8 +84,7 @@ start_screenrecording() {
 }
 
 stop_screenrecording() {
-  local process_name="gpu-screen-recorder"
-  [[ "$(uname -m)" == "aarch64" ]] && process_name="wf-recorder"
+  local process_name=$(get_recorder_process_name)
 
   pkill -SIGINT -f "$process_name"  # SIGINT required to save video properly
 
@@ -105,9 +111,7 @@ toggle_screenrecording_indicator() {
 }
 
 screenrecording_active() {
-  local process_name="gpu-screen-recorder"
-  [[ "$(uname -m)" == "aarch64" ]] && process_name="wf-recorder"
-
+  local process_name=$(get_recorder_process_name)
   pgrep -f "$process_name" >/dev/null || pgrep -x slurp >/dev/null || pgrep -f "WebcamOverlay" >/dev/null
 }
 
@@ -115,8 +119,7 @@ if screenrecording_active; then
   if pgrep -x slurp >/dev/null; then
     pkill -x slurp 2>/dev/null
   elif pgrep -f "WebcamOverlay" >/dev/null; then
-    local process_name="gpu-screen-recorder"
-    [[ "$(uname -m)" == "aarch64" ]] && process_name="wf-recorder"
+    local process_name=$(get_recorder_process_name)
 
     if ! pgrep -f "$process_name" >/dev/null; then
       cleanup_webcam
