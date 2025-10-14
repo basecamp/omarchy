@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Shared clipboard sync installation for VMware/Parallels
 # Sets up bidirectional X11 ↔ Wayland clipboard synchronization
 
@@ -49,5 +48,16 @@ EOF
 # Enable clipboard sync services
 sudo systemctl --global enable omarchy-clipboard-wl-to-x11.service
 sudo systemctl --global enable omarchy-clipboard-x11-to-wl.service
+
+# Add wl-clip-persist to Hyprland autostart if not already present
+AUTOSTART_FILE="$HOME/.config/omarchy/current/config/hypr/autostart.conf"
+if [ -f "$AUTOSTART_FILE" ]; then
+    if ! grep -q "wl-clip-persist" "$AUTOSTART_FILE"; then
+        echo "" >> "$AUTOSTART_FILE"
+        echo "# Clipboard persistence for Wayland (added by VM tools)" >> "$AUTOSTART_FILE"
+        echo "exec-once = wl-clip-persist --clipboard regular" >> "$AUTOSTART_FILE"
+        echo "Added wl-clip-persist to Hyprland autostart"
+    fi
+fi
 
 echo "Clipboard synchronization configured for Wayland ↔ X11"
