@@ -18,7 +18,6 @@ if omarchy-cmd-present "$EDITOR_CMD" && [[ ! -f "$SKIP_FLAG" ]]; then
 
     # Install $EDITOR_NAME theme extension
     if [[ -n "$extension" ]] && ! "$EDITOR_CMD" --list-extensions | grep -Fxq "$extension"; then
-      notify-send "   Installing $EDITOR_NAME theme for $theme_name"
       "$EDITOR_CMD" --install-extension "$extension" >/dev/null
     fi
 
