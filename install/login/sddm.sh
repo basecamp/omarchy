@@ -11,4 +11,5 @@ Current=breeze
 EOF
 fi
 
-chrootable_systemctl_enable sddm.service
+# Don't use chrootable here as --now will cause issues for manual installs
+sudo systemctl enable sddm.service
