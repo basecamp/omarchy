@@ -55,7 +55,7 @@ if [ -n "$OMARCHY_ARM" ]; then
   fi
 
   source $OMARCHY_INSTALL/arm_install_scripts/obsidian-appimage.sh # Required fuse2 package included in omarchy-arm-official.packages
-  source $OMARCHY_INSTALL/arm_install_scripts/omarchy-lazyvim.sh
+  source $OMARCHY_INSTALL/arm_install_scripts/omarchy-nvim.sh
 
   # Skip Pinta if SKIP_PINTA is set (for faster testing)
   if [ -z "$SKIP_PINTA" ]; then
