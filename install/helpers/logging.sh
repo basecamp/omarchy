@@ -131,7 +131,6 @@ run_logged() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting: $script" >>"$OMARCHY_INSTALL_LOG_FILE"
 
   # Use bash -c to create a clean subshell, preserving critical environment variables
-  # Export important variables explicitly to ensure they're available in the subshell
   bash -c "
     export OMARCHY_ARM='$OMARCHY_ARM'
     export ASAHI_ALARM='$ASAHI_ALARM'
