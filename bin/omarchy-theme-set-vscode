@@ -25,15 +25,14 @@ if omarchy-cmd-present "$EDITOR_CMD" && [[ ! -f "$SKIP_FLAG" ]]; then
     # Create config file if there isn't already one
     mkdir -p "$(dirname "$SETTINGS_PATH")"
     if [[ ! -f "$SETTINGS_PATH" ]]; then
-      printf '{\n}\n' > "$SETTINGS_PATH"
+      printf '{\n}\n' >"$SETTINGS_PATH"
     fi
 
     # Create a `workbench.colorTheme` entry in settings.
     if ! grep -q '"workbench.colorTheme"' "$SETTINGS_PATH"; then
       # Insert `"workbench.colorTheme": "",` immediately after the first `{`
       # Use sed's first-match range (0,/{/) to only replace the first `{`
-      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\
-  "workbench.colorTheme": "",/}' "$SETTINGS_PATH"
+      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\ "workbench.colorTheme": "",/}' "$SETTINGS_PATH"
     fi
 
     # Update theme
@@ -44,7 +43,6 @@ if omarchy-cmd-present "$EDITOR_CMD" && [[ ! -f "$SKIP_FLAG" ]]; then
     # Remove theme from settings.json when the theme doesn't have $EDITOR_NAME support
     if [[ -f "$SETTINGS_PATH" ]]; then
       sed -i --follow-symlinks -E '/"workbench\.colorTheme"[[:space:]]*:[^,}]*,?/d' "$SETTINGS_PATH"
-
     fi
   fi
 fi
