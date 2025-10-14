@@ -47,11 +47,6 @@ RestartSec=3
 WantedBy=graphical-session.target
 EOF
 
-# Disable old clipboard services if they exist
-sudo systemctl --global disable omarchy-clipboard-sync.service 2>/dev/null || true
-sudo systemctl --global disable vmware-clipboard-bridge.service 2>/dev/null || true
-sudo systemctl --global disable vmware-clipboard-bridge-x11.service 2>/dev/null || true
-
 # Enable new services
 sudo systemctl --global enable omarchy-clipboard-wl-to-x11.service
 sudo systemctl --global enable omarchy-clipboard-x11-to-wl.service
