@@ -3,14 +3,7 @@ if [ -z "$OMARCHY_ARM" ]; then
   return 0
 fi
 
-# Skip if Limine is not supported (Asahi uses U-Boot, VMware uses GRUB)
-if [ -n "$ASAHI_ALARM" ] || [ -n "$OMARCHY_SKIP_LIMINE" ]; then
-  echo "Skipping Limine installation (bootloader not supported on this platform)"
-  return 0
-fi
-
-echo "Setting up Limine bootloader for ARM64..."
-
+# Re-enable mkinitcpio hooks (required for all bootloaders)
 echo "Re-enabling mkinitcpio hooks..."
 
 # Restore the specific mkinitcpio pacman hooks
@@ -24,17 +17,62 @@ fi
 
 echo "mkinitcpio hooks re-enabled"
 
+# Configure hooks based on platform
+# Base hooks shared across all ARM platforms (no microcode on ARM)
+HOOKS="base udev plymouth keyboard autodetect modconf kms keymap consolefont block encrypt filesystems fsck"
+
+# Add btrfs hook for systems using btrfs (VMware and Parallels, but not Asahi)
+if [ -z "$ASAHI_ALARM" ]; then
+  HOOKS="$HOOKS btrfs-overlayfs"
+fi
+
+# Configure hooks for all platforms
+if [ -n "$ASAHI_ALARM" ]; then
+  echo "Configuring mkinitcpio hooks for Asahi (ext4 + U-Boot)..."
+elif [ -n "$OMARCHY_SKIP_LIMINE" ]; then
+  echo "Configuring mkinitcpio hooks for VMware (btrfs + GRUB)..."
+else
+  echo "Configuring mkinitcpio hooks for Parallels (btrfs + Limine)..."
+fi
+
+sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
+HOOKS=($HOOKS)
+EOF
+
+# Skip Limine installation for Asahi and VMware
+if [ -n "$ASAHI_ALARM" ] || [ -n "$OMARCHY_SKIP_LIMINE" ]; then
+  if [ -n "$ASAHI_ALARM" ]; then
+    echo "Skipping Limine installation (Asahi uses U-Boot)"
+    echo "Regenerating initramfs for U-Boot..."
+  else
+    echo "Skipping Limine installation (VMware uses GRUB)"
+    echo "Regenerating initramfs for GRUB..."
+  fi
+
+  # Run mkinitcpio but don't fail on warnings (like missing fsck helpers)
+  # The initramfs is still created, just without optional features
+  sudo mkinitcpio -P || {
+    exit_code=$?
+    echo "mkinitcpio exited with code $exit_code - checking if initramfs was created..."
+    if [ -f /boot/initramfs-linux.img ]; then
+      echo "Initramfs created successfully despite warnings, continuing..."
+    else
+      echo "Failed to create initramfs, exiting..."
+      exit $exit_code
+    fi
+  }
+
+  return 0
+fi
+
+# Parallels (or other): btrfs + Limine
+echo "Setting up Limine bootloader for ARM64..."
+
 echo "Installing Limine and snapper from official repos..."
 sudo pacman -S --needed --noconfirm snapper limine
 
 echo "Installing limine-mkinitcpio-hook from AUR..."
 "$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed -r" limine-mkinitcpio-hook
-
-# Configure mkinitcpio hooks (no microcode for ARM)
-echo "Configuring mkinitcpio hooks..."
-sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
-HOOKS=(base udev plymouth keyboard autodetect modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
-EOF
 
 echo "Regenerating initramfs..."
 sudo mkinitcpio -P
