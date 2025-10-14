@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Hide the window buttons (minimize, maximize, close)
+gsettings set org.gnome.desktop.wm.preferences button-layout ""
+
 # Change gnome modes
 if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
   gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
