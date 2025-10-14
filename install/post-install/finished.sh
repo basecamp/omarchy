@@ -70,8 +70,8 @@ if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
   sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
 fi
 
-# --negative "": no negative button (press Enter to continue style)
-if gum confirm --padding "0 0 0 $((PADDING_LEFT + 32))" --default --affirmative "Reboot Now" --negative "" "" </dev/tty; then
+# Exit gracefully if user chooses not to reboot
+if gum confirm --padding "0 0 0 $((PADDING_LEFT + 32))" --show-help=false --default --affirmative "Reboot Now" --negative "" ""; then
   # Clear screen to hide any shutdown messages
   clear
 
