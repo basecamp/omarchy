@@ -1,52 +1,35 @@
 #!/bin/bash
 
-# Define packages used by Windows VM
-WINDOWS_VM_PACKAGES=("freerdp" "openbsd-netcat")
-
 install_windows() {
-  echo "Installing Windows VM requirements..."
-  
-  # Install required packages
-  local missing_packages=()
+  omarchy-pkg-add freerdp openbsd-netcat
 
-  for package in "${WINDOWS_VM_PACKAGES[@]}"; do
-    if ! pacman -Qi "$package" &>/dev/null; then
-      missing_packages+=("$package")
-    fi
-  done
-  
-  if [ ${#missing_packages[@]} -gt 0 ]; then
-    echo "Installing required packages: ${missing_packages[*]}"
-    sudo pacman -S --needed "${missing_packages[@]}"
-  fi
-  
   # Create Windows storage directory
   mkdir -p "$HOME/.windows"
-  
+
   # Install Windows VM icon and desktop file to system
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
   ICON_PATH="$SCRIPT_DIR/../applications/icons/windows.png"
   DESKTOP_PATH="$SCRIPT_DIR/../applications/windows-vm.desktop"
-  
+
   if [ -f "$ICON_PATH" ]; then
     sudo cp "$ICON_PATH" /usr/share/pixmaps/windows-vm.png
     echo "Installed Windows VM icon"
   fi
-  
+
   if [ -f "$DESKTOP_PATH" ]; then
     sudo cp "$DESKTOP_PATH" ~/.local/share/applications/windows-vm.desktop
     echo "Installed Windows VM desktop application"
   fi
-  
+
   # Navigate to docker-compose directory
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
   COMPOSE_DIR="$SCRIPT_DIR/../config/windows-vm"
-  
+
   cd "$COMPOSE_DIR" || {
     echo "Error: Could not change to $COMPOSE_DIR"
     exit 1
   }
-  
+
   echo ""
   echo "Starting Windows VM installation..."
   echo "This will download a 64GB Windows image and takes 10-15 minutes to install."
@@ -57,14 +40,14 @@ install_windows() {
   echo "          and change the KEY environment variable."
   echo ""
   echo "Opening browser to monitor installation..."
-  
+
   # Open browser to monitor installation
   (sleep 10 && xdg-open "http://127.0.0.1:8006") &
-  
+
   # Start docker-compose in background
   docker-compose up &
   COMPOSE_PID=$!
-  
+
   echo ""
   echo "Windows installation started!"
   echo "Monitor progress at: http://127.0.0.1:8006"
@@ -74,7 +57,7 @@ install_windows() {
   echo "(You can then launch it anytime using the 'Windows VM' application via Launcher)"
   echo ""
   echo "Waiting for window to close..."
-  
+
   # Set up trap to cleanup when script exits (window closed)
   cleanup() {
     echo "Window closed, stopping Windows VM..."
@@ -82,9 +65,9 @@ install_windows() {
     docker-compose down 2>/dev/null || true
     exit 0
   }
-  
+
   trap cleanup EXIT SIGTERM SIGINT
-  
+
   # Keep the script running until window is closed
   while kill -0 $COMPOSE_PID 2>/dev/null; do
     sleep 5
@@ -106,7 +89,7 @@ install_windows() {
 
   # If docker-compose exits naturally, also cleanup
   cleanup
-  
+
   echo ""
   echo "Windows VM installation completed!"
   echo "You can now launch it using the 'Windows VM' application or 'omarchy-launch-windows-vm'"
@@ -114,19 +97,19 @@ install_windows() {
 
 remove_windows() {
   echo "Removing Windows VM..."
-  
+
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
   COMPOSE_DIR="$SCRIPT_DIR/../config/windows-vm"
-  
+
   cd "$COMPOSE_DIR" || {
     echo "Error: Could not change to $COMPOSE_DIR"
     exit 1
   }
-  
+
   # Stop and remove containers
   echo "Stopping Windows VM containers..."
   docker-compose down
-  
+
   # Remove the Docker image
   echo "Removing Windows VM Docker image..."
   docker rmi dockurr/windows 2>/dev/null || echo "Image already removed or not found"
@@ -140,12 +123,12 @@ remove_windows() {
     sudo rm /usr/share/pixmaps/windows-vm.png
     echo "Removed Windows VM icon"
   fi
-  
+
   if [ -f /usr/share/applications/windows-vm.desktop ]; then
     sudo rm ~/.local/share/applications/windows-vm.desktop
     echo "Removed Windows VM desktop application"
   fi
-  
+
   # Ask if user wants to remove storage directory
   echo ""
   read -p "Do you want to remove the Windows storage directory (~/.windows) and all VM data? [y/N]: " -n 1 -r
@@ -156,7 +139,7 @@ remove_windows() {
   else
     echo "Windows storage directory kept."
   fi
-  
+
   echo ""
   echo "Windows VM removal completed!"
 }
