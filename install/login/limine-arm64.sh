@@ -3,6 +3,11 @@ if [ -z "$OMARCHY_ARM" ]; then
   return 0
 fi
 
+if [ -n "$ASAHI_ALARM" ]; then
+  echo "This script is for non-Asahi ARM64 systems only"
+  return 0
+fi
+
 # Re-enable mkinitcpio hooks (required for all bootloaders)
 echo "Re-enabling mkinitcpio hooks..."
 
@@ -27,9 +32,7 @@ if [ -z "$ASAHI_ALARM" ]; then
 fi
 
 # Configure hooks for all platforms
-if [ -n "$ASAHI_ALARM" ]; then
-  echo "Configuring mkinitcpio hooks for Asahi (ext4 + U-Boot)..."
-elif [ -n "$OMARCHY_SKIP_LIMINE" ]; then
+if [ -n "$OMARCHY_SKIP_LIMINE" ]; then
   echo "Configuring mkinitcpio hooks for VMware (btrfs + GRUB)..."
 else
   echo "Configuring mkinitcpio hooks for Parallels (btrfs + Limine)..."
