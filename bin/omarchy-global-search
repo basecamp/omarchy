@@ -1,0 +1,568 @@
+#!/bin/bash
+
+MENU_JSON="${MENU_JSON:-menu.json}"
+MENU_SCRIPT="${MENU_SCRIPT:-$HOME/.local/share/omarchy/bin/omarchy-menu}"
+APPS_CACHE="${APPS_CACHE:-$HOME/.local/share/omarchy/apps.cache}"
+APPS_LIST_CACHE="${APPS_LIST_CACHE:-$HOME/.local/share/omarchy/apps.list}"
+
+# Ensure data directory exists
+mkdir -p "$(dirname "$APPS_CACHE")"
+
+# -------------------------------
+# 🔹 Fast Application Change Detection 
+# -------------------------------
+get_apps_hash_fast() {
+    local app_dirs=(
+        "/usr/share/applications"
+        "/usr/local/share/applications"
+        "$HOME/.local/share/applications"
+    )
+    
+    local hash_input=""
+    for dir in "${app_dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            # Use directory modification time instead of scanning all files
+            hash_input+="$(stat -c '%Y' "$dir" 2>/dev/null || stat -f '%m' "$dir" 2>/dev/null)|"
+        fi
+    done
+    
+    echo -n "$hash_input" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$hash_input" | md5 2>/dev/null
+}
+
+check_apps_changed() {
+    local current_hash=$(get_apps_hash_fast)
+    local stored_hash=""
+    
+    [[ -f "$APPS_CACHE" ]] && stored_hash=$(cat "$APPS_CACHE" 2>/dev/null)
+    
+    if [[ "$current_hash" != "$stored_hash" ]]; then
+        echo "$current_hash" > "$APPS_CACHE"
+        return 0  # Changed
+    fi
+    return 1  # Not changed
+}
+
+check_menu_changed() {
+    local menu_script="$1"
+    local cache_file="${APPS_CACHE}.menu"
+    
+    [[ ! -f "$menu_script" ]] && return 1
+    
+    local current_hash
+    current_hash=$(stat -c '%Y' "$menu_script" 2>/dev/null || stat -f '%m' "$menu_script" 2>/dev/null)
+    
+    local stored_hash=""
+    [[ -f "$cache_file" ]] && stored_hash=$(cat "$cache_file" 2>/dev/null)
+    
+    if [[ "$current_hash" != "$stored_hash" ]]; then
+        echo "$current_hash" > "$cache_file"
+        return 0  # Changed
+    fi
+    return 1  # Not changed
+}
+
+# -------------------------------
+# 🔹 Background Menu JSON Generation
+# -------------------------------
+generate_menu_json() {
+    local script_path="$1"
+    local output_file="${2:--}"
+    
+    if [[ ! -f "$script_path" ]]; then
+        echo "Error: Script file not found: $script_path" >&2
+        return 1
+    fi
+    
+    local json_output
+    json_output=$(cat <<'EOF_JSON_GEN'
+{
+  "menus": [
+EOF_JSON_GEN
+)
+    
+    # Parse menu structure (same AWK logic, but runs in background)
+    local menu_items
+    menu_items=$(awk '
+        BEGIN {
+            first = 1
+        }
+        
+        /^show_[a-zA-Z0-9_]+_menu\s*\(\)\s*\{/ {
+            menu_name = gensub(/^show_([a-zA-Z0-9_]+)_menu.*/, "\\1", 1)
+            gsub(/_/, " ", menu_name)
+            menu_stack[depth] = menu_name
+            depth++
+            next
+        }
+        
+        /^\}/ {
+            if (depth > 0) depth--
+            next
+        }
+        
+        in_menu && /\*[^)]*\*\)/ {
+            match($0, /\*([^)]*)\*\)/, pattern)
+            item = pattern[1]
+            cmd_line = $0
+            sub(/.*\*\)/, "", cmd_line)
+            sub(/;;.*/, "", cmd_line)
+            gsub(/^[ \t]+|[ \t]+$/, "", item)
+            gsub(/^[ \t]+|[ \t]+$/, "", cmd_line)
+            
+            if (cmd_line ~ /^:/ || item == "" || cmd_line == "") next
+            if (item ~ /CNCLD/) next
+            if (cmd_line ~ /^\) / || cmd_line ~ /^esac/) next
+            if (cmd_line ~ /^case /) next
+            if (cmd_line ~ /^show_.*_menu$/ || cmd_line ~ /^back_to /) next
+            
+            full_path = ""
+            for (i = 0; i < depth; i++) {
+                if (menu_stack[i] != "") {
+                    full_path = (full_path == "" ? menu_stack[i] : full_path " > " menu_stack[i])
+                }
+            }
+            if (full_path != "") full_path = full_path " > " item
+            else full_path = item
+            
+            gsub(/\\/, "\\\\", full_path)
+            gsub(/"/, "\\\"", full_path)
+            gsub(/\\/, "\\\\", cmd_line)
+            gsub(/"/, "\\\"", cmd_line)
+            
+            if (!first) print ","
+            printf "    {\n"
+            printf "      \"path\": \"%s\",\n", full_path
+            printf "      \"command\": \"%s\"\n", cmd_line
+            printf "    }"
+            first = 0
+        }
+        
+        /case \$\(menu/ { in_menu = 1; next }
+        /esac/ && in_menu { in_menu = 0 }
+    ' "$script_path")
+    
+    json_output+="$menu_items"
+    
+    # Dynamic options (themes, fonts, power profiles)
+    if command -v omarchy-theme-list &>/dev/null; then
+        while IFS= read -r theme; do
+            if [[ -n "$theme" ]]; then
+                json_output+=$',\n'
+                json_output+=$(printf '    {\n      "path": "Style > Theme > %s",\n      "command": "omarchy-theme-set '\''%s'\''"\n    }' \
+                    "$(echo "$theme" | sed 's/"/\\"/g')" \
+                    "$(echo "$theme" | sed 's/"/\\"/g')")
+            fi
+        done < <(omarchy-theme-list)
+    fi
+    
+    if command -v omarchy-font-list &>/dev/null; then
+        while IFS= read -r font; do
+            if [[ -n "$font" ]]; then
+                json_output+=$',\n'
+                json_output+=$(printf '    {\n      "path": "Style > Font > %s",\n      "command": "omarchy-font-set '\''%s'\''"\n    }' \
+                    "$(echo "$font" | sed 's/"/\\"/g')" \
+                    "$(echo "$font" | sed 's/"/\\"/g')")
+            fi
+        done < <(omarchy-font-list)
+    fi
+    
+    if command -v omarchy-powerprofiles-list &>/dev/null; then
+        while IFS= read -r profile; do
+            if [[ -n "$profile" ]]; then
+                json_output+=$',\n'
+                json_output+=$(printf '    {\n      "path": "Setup > Power Profile > %s",\n      "command": "powerprofilesctl set '\''%s'\''"\n    }' \
+                    "$(echo "$profile" | sed 's/"/\\"/g')" \
+                    "$(echo "$profile" | sed 's/"/\\"/g')")
+            fi
+        done < <(omarchy-powerprofiles-list)
+    fi
+    
+    json_output+=$'\n  ]\n}'
+    
+    if [[ "$output_file" == "-" ]]; then
+        echo "$json_output"
+    else
+        echo "$json_output" > "$output_file"
+    fi
+}
+
+# -------------------------------
+# 🔹 Fast Menu JSON Ensuring (Background Generation)
+# -------------------------------
+ensure_menu_json() {
+    local json_file="${1:-$MENU_JSON}"
+    local script_path="${2:-$MENU_SCRIPT}"
+    local force_regen="${3:-false}"
+    
+    # Quick existence check for launch speed
+    if [[ -f "$json_file" ]] && [[ "$force_regen" != "true" ]]; then
+        # Trigger background regeneration if needed, but don't wait
+        (
+            if check_apps_changed || check_menu_changed "$script_path"; then
+                generate_menu_json "$script_path" "$json_file" 2>/dev/null
+            fi
+        ) &
+        return 0
+    fi
+    
+    # Force regeneration (blocking)
+    if [[ "$force_regen" == "true" ]] || [[ ! -f "$json_file" ]]; then
+        if [[ -f "$script_path" ]]; then
+            generate_menu_json "$script_path" "$json_file"
+            return $?
+        else
+            return 1
+        fi
+    fi
+}
+
+# -------------------------------
+# 🔹 Cached Application List 
+# -------------------------------
+get_applications_cached() {
+    # Check if cache is fresh
+    if [[ -f "$APPS_LIST_CACHE" ]]; then
+        if ! check_apps_changed; then
+            cat "$APPS_LIST_CACHE"
+            return 0
+        fi
+    fi
+    
+    # Regenerate cache
+    local app_dirs=(
+        "/usr/share/applications"
+        "/usr/local/share/applications"
+        "$HOME/.local/share/applications"
+    )
+
+    local -A seen
+    local output=""
+
+    for dir in "${app_dirs[@]}"; do
+        [[ -d "$dir" ]] || continue
+        for desktop_file in "$dir"/*.desktop; do
+            [[ -f "$desktop_file" ]] || continue
+
+            if grep -q "^NoDisplay=true" "$desktop_file" 2>/dev/null; then
+                continue
+            fi
+
+            local name exec_cmd
+            name=$(grep -E "^Name=" "$desktop_file" | head -n1 | cut -d'=' -f2-)
+            exec_cmd=$(grep -E "^Exec=" "$desktop_file" | head -n1 | cut -d'=' -f2-)
+
+            [[ -z "$name" ]] || [[ -z "$exec_cmd" ]] && continue
+
+            exec_cmd=$(echo "$exec_cmd" | sed -e 's/%[a-zA-Z]//g' -e 's/  */ /g' -e 's/^[[:space:]]*//g' -e 's/[[:space:]]*$//g')
+
+            if [[ -z "${seen[$name]}" ]]; then
+                seen["$name"]=1
+                output+="APP|||${name}|||$(basename "$desktop_file")|||${exec_cmd}"$'\n'
+            fi
+        done
+    done
+    
+    # Save to cache
+    echo -n "$output" > "$APPS_LIST_CACHE"
+    echo -n "$output"
+}
+
+# -------------------------------
+# 🔹 Helper Functions
+# -------------------------------
+get_field() {
+    local str="$1" field_num="$2"
+    if [[ -z "$str" ]] || (( field_num < 1 )); then
+        echo ""
+        return 1
+    fi
+
+    local safe_str
+    safe_str="${str//|||/$'\001'}"
+
+    local -a parts
+    IFS=$'\001' read -r -a parts <<< "$safe_str"
+
+    if (( field_num <= ${#parts[@]} )); then
+        echo "${parts[$((field_num - 1))]}"
+    else
+        echo ""
+    fi
+}
+
+run_launcher() {
+    local prompt="${1:-Search…}"
+    local options="${2:-}"
+
+    if ! command -v walker &>/dev/null; then
+        echo "Error: 'walker' is required but not installed." >&2
+        notify-send "Error" "walker is required"
+        exit 1
+    fi
+
+    if [[ -n "$options" ]]; then
+        printf '%s\n' "$options" | G_MESSAGES_DEBUG=none G_ENABLE_DIAGNOSTIC=0 walker --dmenu -p "$prompt" 2>/dev/null
+    else
+        G_MESSAGES_DEBUG=none G_ENABLE_DIAGNOSTIC=0 walker --dmenu -p "$prompt" 2>/dev/null
+    fi
+}
+
+safe_exec() {
+    local cmd="$1"
+    cmd=$(echo "$cmd" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    if [[ -f "$HOME/.profile" ]]; then
+        source "$HOME/.profile" >/dev/null 2>&1
+    fi
+    if [[ -f "$HOME/.bashrc" ]]; then
+        source "$HOME/.bashrc" >/dev/null 2>&1
+    fi
+
+    if [[ "$cmd" =~ ^terminal[[:space:]](.+)$ ]]; then
+        local inner_cmd="${BASH_REMATCH[1]}"
+        if command -v omarchy-launch-floating-terminal-with-presentation &>/dev/null; then
+            setsid omarchy-launch-floating-terminal-with-presentation "$inner_cmd" >/dev/null 2>&1 &
+        elif command -v omarchy-show-logo &>/dev/null && command -v omarchy-show-done &>/dev/null; then
+            setsid uwsm app -- alacritty --class=Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; $inner_cmd; omarchy-show-done" >/dev/null 2>&1 &
+        else
+            setsid "${TERMINAL:-alacritty}" -e bash -c "$inner_cmd && echo && read -p 'Press Enter to close...'" >/dev/null 2>&1 &
+        fi
+        return
+    fi
+
+    if [[ "$cmd" =~ ^present_terminal[[:space:]](.+)$ ]]; then
+        local inner_cmd="${BASH_REMATCH[1]}"
+        if command -v omarchy-show-logo &>/dev/null && command -v omarchy-show-done &>/dev/null; then
+            exec setsid uwsm app -- alacritty --class=Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; $inner_cmd; omarchy-show-done" >/dev/null 2>&1 &
+        else
+            exec setsid uwsm app -- alacritty --class=Omarchy --title=Omarchy -e bash -c "$inner_cmd" >/dev/null 2>&1 &
+        fi
+        return
+    fi
+    
+    if [[ "$cmd" =~ ^(install_and_launch|aur_install_and_launch|install_terminal|install_font)[[:space:]\(] ]] && [[ -f "$MENU_SCRIPT" ]]; then
+        setsid bash -c "
+            export OMARCHY_SKIP_MENU=1
+            source '$MENU_SCRIPT' 2>/dev/null
+            $cmd
+        " >/dev/null 2>&1 &
+        return
+    fi
+    
+    if [[ "$cmd" =~ ^(install|aur_install)[[:space:]](.+)$ ]]; then
+        local func="${BASH_REMATCH[1]}"
+        local args="${BASH_REMATCH[2]}"
+        
+        if [[ "$func" == "install" ]]; then
+            if command -v omarchy-show-logo &>/dev/null && command -v omarchy-show-done &>/dev/null; then
+                exec setsid uwsm app -- alacritty --class=Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; sudo pacman -S $args; omarchy-show-done" >/dev/null 2>&1 &
+            else
+                exec setsid uwsm app -- alacritty --class=Omarchy --title=Omarchy -e bash -c "sudo pacman -S $args" >/dev/null 2>&1 &
+            fi
+        elif [[ "$func" == "aur_install" ]]; then
+            if command -v omarchy-show-logo &>/dev/null && command -v omarchy-show-done &>/dev/null; then
+                exec setsid uwsm app -- alacritty --class=Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; yay -S $args; omarchy-show-done" >/dev/null 2>&1 &
+            else
+                exec setsid uwsm app -- alacritty --class=Omarchy --title=Omarchy -e bash -c "yay -S $args" >/dev/null 2>&1 &
+            fi
+        fi
+        return
+    fi
+    
+    if [[ "$cmd" =~ ^open_in_editor[[:space:]] ]] && [[ -f "$MENU_SCRIPT" ]]; then
+        local inner_cmd="$cmd"
+        setsid bash -c "
+            export OMARCHY_SKIP_MENU=1
+            eval \"\$(awk '
+                /^open_in_editor\\s*\\(\\)/,/^\\}/ {
+                    print
+                    if (/^\\}/) exit
+                }
+            ' '$MENU_SCRIPT')\"
+            $inner_cmd
+        " >/dev/null 2>&1 &
+        return
+    fi
+
+    if [[ "$cmd" == omarchy-launch-webapp* ]]; then
+        setsid bash -c "$cmd" >/dev/null 2>&1 &
+        return
+    fi
+
+    if [[ "$cmd" == *"hyprpicker"* ]]; then
+        pkill hyprpicker 2>/dev/null
+        setsid bash -c "$cmd" >/dev/null 2>&1 &
+        return
+    fi
+
+    setsid bash -c "$cmd" >/dev/null 2>&1 &
+}
+
+get_menu_options() {
+    local json_file="$1"
+    if [[ ! -f "$json_file" ]] || ! command -v jq &>/dev/null; then
+        return 1
+    fi
+    jq -r '.menus[] | "MENU|||\(.path)|||\(.command)"' "$json_file" 2>/dev/null
+}
+
+# -------------------------------
+# 🔹 Unified Search
+# -------------------------------
+unified_search() {
+    local json_file="${1:-$MENU_JSON}"
+    local filter="$2"
+    
+    # Non-blocking JSON ensure
+    ensure_menu_json "$json_file"
+
+    local all_options=()
+    local menu_count=0
+    local app_count=0
+
+    # Load menu options (fast - file already exists)
+    if [[ -f "$json_file" ]] && command -v jq &>/dev/null; then
+        local menu_opts
+        mapfile -t menu_opts < <(get_menu_options "$json_file")
+        all_options+=("${menu_opts[@]}")
+        menu_count=${#menu_opts[@]}
+    fi
+
+    # Load cached applications (fast - cached list)
+    local app_opts
+    mapfile -t app_opts < <(get_applications_cached)
+    all_options+=("${app_opts[@]}")
+    app_count=${#app_opts[@]}
+
+    if [[ ${#all_options[@]} -eq 0 ]]; then
+        notify-send "Error" "No applications or menu options found"
+        return 1
+    fi
+
+    # Extract display names
+    local display_list=()
+    for item in "${all_options[@]}"; do
+        local display
+        display=$(get_field "$item" 2)
+        [[ -n "$display" ]] && display_list+=("$display")
+    done
+
+    # Apply filter
+    local candidates=()
+    if [[ -n "$filter" ]]; then
+        local f_low="${filter,,}"
+        for name in "${display_list[@]}"; do
+            [[ "${name,,}" == *"$f_low"* ]] && candidates+=("$name")
+        done
+    else
+        candidates=("${display_list[@]}")
+    fi
+
+    if [[ ${#candidates[@]} -eq 0 ]]; then
+        notify-send "No matches" "Nothing matches '$filter'"
+        return 0
+    fi
+
+    # Sort
+    local sorted_candidates
+    mapfile -t sorted_candidates < <(printf '%s\n' "${candidates[@]}" | sort)
+
+    local prompt="Search… [Apps: $app_count | Menu: $menu_count]"
+
+    local selected
+    selected=$(printf '%s\n' "${sorted_candidates[@]}" | run_launcher "$prompt")
+    [[ -z "$selected" ]] && return 0
+
+    # Find entry
+    local full_entry=""
+    for item in "${all_options[@]}"; do
+        local display
+        display=$(get_field "$item" 2)
+        if [[ "$display" == "$selected" ]]; then
+            full_entry="$item"
+            break
+        fi
+    done
+
+    if [[ -z "$full_entry" ]]; then
+        notify-send "Error" "Selection not found: $selected"
+        return 1
+    fi
+
+    local type desktop_id exec_cmd
+    type=$(get_field "$full_entry" 1)
+    desktop_id=$(get_field "$full_entry" 3)
+    exec_cmd=$(get_field "$full_entry" 3)
+
+    if [[ "$type" == "APP" ]]; then
+        if [[ -n "$desktop_id" ]] && command -v gtk-launch &>/dev/null; then
+            gtk-launch "$desktop_id" &>/dev/null &
+        else
+            safe_exec "$exec_cmd"
+        fi
+    elif [[ "$type" == "MENU" ]]; then
+        safe_exec "$exec_cmd"
+    else
+        notify-send "Error" "Unknown type: $type"
+        return 1
+    fi
+}
+
+regenerate_menu() {
+    local json_file="${1:-$MENU_JSON}"
+    local script_path="${2:-$MENU_SCRIPT}"
+    
+    # Clear caches
+    rm -f "$APPS_LIST_CACHE" "$APPS_CACHE" "${APPS_CACHE}.menu" 2>/dev/null
+    
+    ensure_menu_json "$json_file" "$script_path" "true"
+    
+    if [[ $? -eq 0 ]]; then
+        notify-send "Menu Regenerated" "Menu JSON updated"
+        return 0
+    else
+        notify-send "Error" "Failed to regenerate menu"
+        return 1
+    fi
+}
+
+# -------------------------------
+# 🔹 Main
+# -------------------------------
+case "${1:-unified}" in
+    unified|search|-s|--search)
+        unified_search "${2:-$MENU_JSON}" "$3"
+        ;;
+    regenerate|regen|-r|--regenerate)
+        regenerate_menu "${2:-$MENU_JSON}" "${3:-$MENU_SCRIPT}"
+        ;;
+    help|-h|--help)
+        cat <<'EOF'
+Usage: $0 [command] [options]
+
+Commands:
+  unified|search       Unified search (apps + menus) [default]
+  regenerate           Force regenerate menu JSON and update apps
+  help                 Show this help
+
+Optimizations:
+  - Cached application list (persistent)
+  - Background menu regeneration
+  - Fast directory-based change detection
+  - Non-blocking startup
+
+Environment Variables:
+  MENU_JSON            Path to menu JSON file
+  MENU_SCRIPT          Path to menu script
+  APPS_CACHE           Apps hash cache
+  APPS_LIST_CACHE      Cached application list
+
+Examples:
+  $0                   # Fast unified search (<1s)
+  $0 regenerate        # Force cache rebuild
+EOF
+        ;;
+    *)
+        unified_search "${1:-$MENU_JSON}" "$2"
+        ;;
+esac
