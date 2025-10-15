@@ -243,7 +243,7 @@ show_install_menu() {
   *Editor*) show_install_editor_menu ;;
   *Terminal*) show_install_terminal_menu ;;
   *AI*) show_install_ai_menu ;;
-  *Windows*) present_terminal omarchy-install-windows-vm ;;
+  *Windows*) present_terminal "omarchy-windows-vm install" ;;
   *Gaming*) show_install_gaming_menu ;;
   *) show_main_menu ;;
   esac
@@ -379,7 +379,7 @@ show_remove_menu() {
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
-  *Windows*) present_terminal "omarchy-install-windows-vm --remove" ;;
+  *Windows*) present_terminal "omarchy-windows-vm remove" ;;
   *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
   *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
   *) show_main_menu ;;
