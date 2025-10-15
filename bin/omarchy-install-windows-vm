@@ -3,23 +3,23 @@
 install_windows() {
   omarchy-pkg-add freerdp openbsd-netcat
 
-  # Create Windows storage directory
   mkdir -p "$HOME/.windows"
 
   # Install Windows VM icon and desktop file to system
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
-  ICON_PATH="$SCRIPT_DIR/../applications/icons/windows.png"
-  DESKTOP_PATH="$SCRIPT_DIR/../applications/windows-vm.desktop"
 
-  if [ -f "$ICON_PATH" ]; then
-    sudo cp "$ICON_PATH" /usr/share/pixmaps/windows-vm.png
-    echo "Installed Windows VM icon"
-  fi
+  sudo cp "$OMARCHY_PATH/applications/icons/windows.png" "$HOME/.local/share/applications/icons/windows.png"
 
-  if [ -f "$DESKTOP_PATH" ]; then
-    sudo cp "$DESKTOP_PATH" ~/.local/share/applications/windows-vm.desktop
-    echo "Installed Windows VM desktop application"
-  fi
+  cat << EOF | tee "$HOME/.local/share/applications/windows-vm.desktop" > /dev/null
+[Desktop Entry]
+Name=Windows
+Comment=Start Windows VM via Docker and connect with RDP
+Exec=uwsm app -- omarchy-launch-windows-vm
+Icon=$HOME/.local/share/applications/icons/windows.png
+Terminal=false
+Type=Application
+Categories=System;Virtualization;
+EOF
+
 
   # Navigate to docker-compose directory
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
