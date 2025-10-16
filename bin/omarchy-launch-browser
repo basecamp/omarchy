@@ -9,4 +9,13 @@ else
   private_flag="--incognito"
 fi
 
-exec setsid uwsm app -- "$browser_exec" "${@/--private/$private_flag}"
+args=()
+for arg in "$@"; do
+  if [[ $arg == "--private" ]]; then
+    args+=("$private_flag")
+  else
+    args+=("$arg")
+  fi
+done
+
+exec setsid uwsm app -- "$browser_exec" "${args[@]}"
