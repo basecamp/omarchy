@@ -68,7 +68,6 @@ EOF
   echo "  Total CPU Cores: $TOTAL_CORES"
   echo ""
 
-  echo "How much RAM would you like to allocate to Windows VM?"
   RAM_OPTIONS=""
   for size in 2 4 8 16 32 64; do
     if [ $size -le $TOTAL_RAM_GB ]; then
@@ -76,7 +75,7 @@ EOF
     fi
   done
 
-  SELECTED_RAM=$(echo $RAM_OPTIONS | tr ' ' '\n' | gum choose --selected="4G" --header="Select RAM allocation:")
+  SELECTED_RAM=$(echo $RAM_OPTIONS | tr ' ' '\n' | gum choose --selected="4G" --header="How much RAM would you like to allocate to Windows VM?")
 
   # Check if user cancelled
   if [ -z "$SELECTED_RAM" ]; then
@@ -84,8 +83,7 @@ EOF
     exit 1
   fi
 
-  echo "How many CPU cores would you like to allocate to Windows VM?"
-  SELECTED_CORES=$(gum input --placeholder="Number of CPU cores (1-$TOTAL_CORES)" --value="2" --header="Enter CPU cores:" --char-limit=2)
+  SELECTED_CORES=$(gum input --placeholder="Number of CPU cores (1-$TOTAL_CORES)" --value="2" --header="How many CPU cores would you like to allocate to Windows VM?" --char-limit=2)
 
   # Check if user cancelled (Ctrl+C in gum input returns empty string)
   if [ -z "$SELECTED_CORES" ]; then
@@ -98,7 +96,6 @@ EOF
     SELECTED_CORES=2
   fi
 
-  echo "How much disk space would you like to allocate to Windows VM?"
   AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
   MAX_DISK_GB=$((AVAILABLE_SPACE - 10))  # Leave 10GB for Windows image
 
@@ -123,7 +120,7 @@ EOF
     DEFAULT_DISK="32G"
   fi
 
-  SELECTED_DISK=$(echo $DISK_OPTIONS | tr ' ' '\n' | gum choose --selected="$DEFAULT_DISK" --header="Select disk size (64GB+ recommended):")
+  SELECTED_DISK=$(echo $DISK_OPTIONS | tr ' ' '\n' | gum choose --selected="$DEFAULT_DISK" --header="How much disk space would you like to give Windows VM? (64GB+ recommended)")
 
   # Check if user cancelled
   if [ -z "$SELECTED_DISK" ]; then
@@ -138,9 +135,6 @@ EOF
   check_prerequisites "$DISK_SIZE_NUM"
 
   # Prompt for username and password
-  echo ""
-  echo "Windows User Account Configuration"
-
   USERNAME=$(gum input --placeholder="Username (Press enter to use default: docker)" --header="Enter Windows username:")
   if [ -z "$USERNAME" ]; then
     USERNAME="docker"
@@ -236,9 +230,7 @@ EOF
   echo "Installation is running in the background."
   echo "You can monitor progress at: http://127.0.0.1:8006"
   echo ""
-  echo "Once Windows is installed and configured:"
-  echo "  - Use 'omarchy-windows-vm launch' to connect via RDP"
-  echo "  - Or use the 'Windows' application from your launcher"
+  echo "Once finished, launch 'Windows' via Super + Space"
   echo ""
   echo "To stop the VM: omarchy-windows-vm stop"
   echo ""
