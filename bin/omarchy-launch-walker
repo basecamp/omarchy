@@ -2,7 +2,7 @@
 
 # Ensure elephant is running before launching walker
 if ! pgrep -x elephant > /dev/null; then
-  setsid uwsm app -- elephant &
+  setsid uwsm-app -- elephant &
 fi
 
 exec walker "$@"

@@ -113,10 +113,11 @@ show_screenshot_menu() {
 }
 
 show_screenrecord_menu() {
-  case $(menu "Screenrecord" "  Region\n  Region + Audio\n  Display\n  Display + Audio") in
+  case $(menu "Screenrecord" "  Region\n  Region + Audio\n  Display\n  Display + Audio\n  Display + Webcam") in
   *"Region + Audio"*) omarchy-cmd-screenrecord region --with-audio ;;
   *Region*) omarchy-cmd-screenrecord ;;
   *"Display + Audio"*) omarchy-cmd-screenrecord output --with-audio ;;
+  *"Display + Webcam"*) omarchy-cmd-screenrecord output --with-audio --with-webcam ;;
   *Display*) omarchy-cmd-screenrecord output ;;
   *) back_to show_capture_menu ;;
   esac
