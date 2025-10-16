@@ -1,4 +1,5 @@
 #!/bin/bash
 
 omarchy-refresh-config walker/config.toml
+omarchy-refresh-config elephant/desktopapplications.toml
 omarchy-restart-walker
