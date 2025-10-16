@@ -233,6 +233,7 @@ EOF
   echo "Once finished, launch 'Windows' via Super + Space"
   echo ""
   echo "To stop the VM: omarchy-windows-vm stop"
+  echo "To change resources: ~/.config/windows/docker-compose.yml"
   echo ""
 }
 
