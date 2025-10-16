@@ -48,7 +48,7 @@ if [ -d "$HOME/.config" ]; then
     done
     cd - > /dev/null
     
-    echo "  Backed up all .config files"
+    echo "  Backed up .config files"
 fi
 
 
@@ -106,9 +106,9 @@ if [ -d "$HOME/.local/share/applications" ]; then
                 fi
             fi
         done
-        echo "  Backed up $USER_APP_COUNT user-created web apps with icons"
+        echo "  Backed up user-created web apps with icons"
     elif [ $USER_APP_COUNT -gt 0 ]; then
-        echo "  Backed up $USER_APP_COUNT user-created web apps"
+        echo "  Backed up user-created web apps"
     else
         echo "  No user-created web apps found (all are Omarchy defaults)"
     fi
@@ -137,14 +137,10 @@ cat > "$EXPORT_DIR/README.txt" << 'EOF'
 OMARCHY CUSTOM SETTINGS IMPORT GUIDE
 
 To import settings from export tar.gz archive:
-
-1. Copy the exported tar.gz archive to the home directory on the new machine.
-
+1. Copy the exported tar.gz archive to the home directory on the new machine
 2. Open the Omarchy menu (Super + ALT Space) > Setup > Config > Export/Import
-
 3. Follow the prompts to restore your settings
-
-Reboot after setup!
+4. Reboot after import to ensure all changes take effect
 EOF
 
 
@@ -164,10 +160,7 @@ echo "- Omarchy will install with all its default packages and configs"
 echo "- You will need to restore the following items separately: SSH/GPG keys, fingerprint settings, fido2 settings, personal files, and non-included customizations"
 echo "- Review the README.txt in the backup folder for restoration steps"
 echo ""
-echo "To import settings:"
-echo ""
+echo "To import:"
 echo "1. Copy this tar.gz archive to the home directory on the machine you are importing to."
-echo ""
 echo "2. Open the Omarchy menu (Super + ALT + Space) > Setup > Config > Export/Import"
-echo ""   
 echo "3. Follow the prompts to restore your settings"
