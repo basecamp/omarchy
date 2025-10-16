@@ -1,1 +1,1 @@
-omarchy-lazyvim-setup
+omarchy-nvim-setup
