@@ -23,9 +23,6 @@ ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 # Change background with theme
 omarchy-theme-bg-next
 
-# Update Obsidian themes if any vaults are registered
-omarchy-obsidian-theme-update
-
 # Restart components to apply new theme
 if pgrep -x waybar >/dev/null; then
   omarchy-restart-waybar
@@ -42,3 +39,4 @@ omarchy-theme-set-eza
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
 omarchy-theme-set-cursor
+omarchy-theme-set-obsidian

@@ -1,15 +1,76 @@
 #!/bin/bash
 
-# omarchy-obsidian-theme-update: Update all registered Obsidian vaults with current Omarchy theme
-# This script reads the vault registry and updates each vault's theme
+# omarchy-theme-set-obsidian: Bootstrap and update Omarchy theme for Obsidian
+#
+# - Ensures registry at ~/.local/state/omarchy/obsidian-vaults
+#   - If missing/empty, bootstraps by scanning ~/Documents/*/.obsidian and ~/Dropbox/*/.obsidian
+# - For each valid vault:
+#   - Ensures .obsidian/themes/Omarchy/{manifest.json, theme.css}
+#   - Updates theme.css (uses current theme’s obsidian.css if present; otherwise generates -- see below)
+
+# Theme automagic generation logic:
+#
+# - Background/foreground: read from ~/.config/omarchy/current/theme/alacritty.toml [colors.primary]
+#   (background/foreground). Fallbacks: bg=#1a1b26, fg=#a9b1d6. Compute bg brightness for light/dark handling.
+# - Palette extraction: collect colors from Alacritty (primary/normal/bright/dim/selection), Waybar (@define-color),
+#   and Hyprland (col.*_border; rgba->hex). Normalize, dedupe, and count frequencies.
+# - Slot ordering: remove bg/fg, sort remaining colors by frequency, then fill 13 slots by cycling. Map slots to:
+#   h1–h6, links, inline code, marks, interactive accent, blockquote border; muted/faint use border color.
+# - Code colors: code background = closest color to bg (Euclidean RGB); if none, make a subtle bg variant (+/− RGB).
+#   code foreground = closest color to fg; fallback #e0e0e0.
+# - Border color: from btop.theme theme[div_line]; else blended mix biased toward bg (≈ (bg+fg)/3).
+# - Selection: from Alacritty [colors.selection] (background/text), honoring CellForeground/Background.
+#   If missing, background = 75% bg + 25% fg; text chosen for contrast vs selection background.
+# - Fonts: monospace from Alacritty [font] or fontconfig monospace; UI font from fontconfig sans-serif.
 
 VAULTS_FILE="$HOME/.local/state/omarchy/obsidian-vaults"
 CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 
-# Exit early if no vaults registered
-if [ ! -f "$VAULTS_FILE" ] || [ ! -s "$VAULTS_FILE" ]; then
-  exit 0
-fi
+# Ensure the vaults registry exists, or bootstrap from known locations
+ensure_vaults_file() {
+  mkdir -p "$(dirname "$VAULTS_FILE")"
+  # If file exists (even empty), do not scan; treat as authoritative
+  if [ -f "$VAULTS_FILE" ]; then
+    return
+  fi
+  local tmpfile
+  tmpfile="$(mktemp)"
+  # Scan a couple of common locations for <base>/<vault>/.obsidian
+  for base in "$HOME/Documents" "$HOME/Dropbox"; do
+    [ -d "$base" ] || continue
+    for d in "$base"/*/.obsidian; do
+      [ -d "$d" ] || continue
+      vault_dir="${d%/.obsidian}"
+      printf "%s\n" "$vault_dir" >>"$tmpfile"
+    done
+  done
+  if [ -s "$tmpfile" ]; then
+    sort -u "$tmpfile" >"$VAULTS_FILE"
+  else
+    : >"$VAULTS_FILE"
+  fi
+  rm -f "$tmpfile"
+}
+
+# Ensure theme directory and minimal manifest exist in a vault
+ensure_theme_scaffold() {
+  local vault_path="$1"
+  local theme_dir="$vault_path/.obsidian/themes/Omarchy"
+  mkdir -p "$theme_dir"
+  if [ ! -f "$theme_dir/manifest.json" ]; then
+    cat >"$theme_dir/manifest.json" <<'EOF'
+{
+  "name": "Omarchy",
+  "version": "1.0.0",
+  "minAppVersion": "0.16.0",
+  "description": "Automatically syncs with your current Omarchy system theme colors and fonts",
+  "author": "Omarchy",
+  "authorUrl": "https://omarchy.org"
+}
+EOF
+  fi
+  [ -f "$theme_dir/theme.css" ] || : >"$theme_dir/theme.css"
+}
 
 # Function to extract hex color from string
 extract_hex_color() {
@@ -544,34 +605,55 @@ mark {
 EOF
 }
 
+# Option handling
+if [ "${1:-}" = "--reset" ]; then
+  echo "♻️  Resetting Omarchy themes and registry..."
+  if [ -f "$VAULTS_FILE" ] && [ -s "$VAULTS_FILE" ]; then
+    while IFS= read -r vault_path || [ -n "$vault_path" ]; do
+      case "$vault_path" in ""|\#*) continue ;; esac
+      vault_path="${vault_path%/}"
+      vault_name=$(basename "$vault_path")
+      theme_dir="$vault_path/.obsidian/themes/Omarchy"
+      if [ -d "$theme_dir" ]; then
+        rm -rf "$theme_dir"
+        echo "   ✅ $vault_name (theme removed)"
+      else
+        echo "   ℹ️  $vault_name (no theme present)"
+      fi
+    done <"$VAULTS_FILE"
+  fi
+  rm -f "$VAULTS_FILE"
+  echo "✅ Registry removed"
+  exit 0
+fi
+
 # Main update logic
 echo "🔄 Updating Obsidian vaults..."
 
-while IFS= read -r vault_path; do
+# Step 1: ensure registry exists (bootstrap if needed)
+ensure_vaults_file
+
+while IFS= read -r vault_path || [ -n "$vault_path" ]; do
+  case "$vault_path" in "" | \#*) continue ;; esac
+  vault_path="${vault_path%/}"
   vault_name=$(basename "$vault_path")
 
-  # Skip if vault doesn't exist or is invalid
+  # Step 2: verify path exists; log/skip gracefully if invalid
   if [ ! -d "$vault_path" ] || [ ! -d "$vault_path/.obsidian" ]; then
-    echo "   ❌ $vault_name (vault no longer exists)"
+    echo "   ❌ $vault_name (invalid entry: missing directory or .obsidian)"
     continue
   fi
 
+  # Ensure theme files exist for this vault
+  ensure_theme_scaffold "$vault_path"
   THEME_DIR="$vault_path/.obsidian/themes/Omarchy"
 
-  # Skip if theme not installed in this vault
-  if [ ! -d "$THEME_DIR" ]; then
-    echo "   ⚠️  $vault_name (theme not installed)"
-    continue
-  fi
-
-  # Check if current theme has a custom obsidian.css
+  # Step 3: update theme.css
   if [ -f "$CURRENT_THEME_DIR/obsidian.css" ]; then
-    # Use theme-specific CSS
     cp "$CURRENT_THEME_DIR/obsidian.css" "$THEME_DIR/theme.css"
     echo "   ✅ $vault_name (custom theme)"
   else
-    # Extract and generate CSS
     extract_theme_data >"$THEME_DIR/theme.css"
-    echo "   ✅ $vault_name"
+    echo "   ✅ $vault_name (generated theme)"
   fi
 done <"$VAULTS_FILE"
