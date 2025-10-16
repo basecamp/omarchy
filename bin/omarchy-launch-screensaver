@@ -13,6 +13,9 @@ if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]
   exit 1
 fi
 
+# Turn off keyboard backlight if possible
+brightnessctl -s -d '*::kbd_backlight' set 0 &>/dev/null || true
+
 focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
 
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
