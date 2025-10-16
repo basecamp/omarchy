@@ -5,5 +5,5 @@ if [[ ! -d ~/.config/swayosd ]]; then
   cp -r ~/.local/share/omarchy/config/swayosd/* ~/.config/swayosd/
 
   pkill swayosd-server
-  setsid uwsm app -- swayosd-server &>/dev/null &
+  setsid uwsm-app -- swayosd-server &>/dev/null &
 fi
