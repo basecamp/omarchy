@@ -23,19 +23,21 @@ for file in .bashrc .bash_profile .zshrc .profile; do
     fi
 done
 
-# Back up all .config customizations (excluding caches)
+# Back up .config customizations (excluding caches, browser profiles, and large app data)
 echo "Backing up configuration files..."
 if [ -d "$HOME/.config" ]; then
     mkdir -p "$EXPORT_DIR/config"
     
-    # Copy all config files, excluding cache directories
+    # Copy config files
     cd "$HOME/.config" || exit 1
     find . -type f -o -type l | while read -r file; do
-        # Skip cache and temporary files
+        # Skip cache, temporary files, browser profiles, and large application data
         case "$file" in
             */Cache/*|*/cache/*|*/CachedData/*|*/logs/*|*/GPUCache/*|*/Code\ Cache/*|\
             */GrShaderCache/*|*/ShaderCache/*|*/DawnCache/*|*/Crash\ Reports/*|\
-            */crashes/*|*/Crashpad/*) 
+            */crashes/*|*/Crashpad/*|\
+            ./BraveSoftware/*|./chromium/*|./google-chrome*/*|./vivaldi*/*|./microsoft-edge*/*|\
+            ./Microsoft/*|./Cursor/*|./1Password/*|./obsidian/*|./Insync/*|./spotify/*) 
                 continue
                 ;;
         esac
