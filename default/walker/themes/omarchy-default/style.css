@@ -103,10 +103,6 @@ child:selected .item-box * {
   -gtk-icon-transform: scale(0.9);
 }
 
-.item-box.calc .item-image {
-  -gtk-icon-source: url("file:///home/ryan/Downloads/gitlab.svg");
-}
-
 .current {
   font-style: italic;
 }
