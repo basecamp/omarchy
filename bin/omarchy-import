@@ -16,70 +16,83 @@ fi
 
 echo -e "\e[32mOmarchy Customization Import\e[0m"
 echo ""
-echo -e "\e[33m⚠️  WARNING: This will overwrite your current configurations!\e[0m"
+echo -e "\e[33m⚠️  WARNING: This will overwrite your current configurations for the imported settings.\e[0m"
 echo "Before starting, make sure you've:"
-echo "  1. Copied your export directory to your home folder"
-echo "  2. Backed up any current configurations you want to keep"
+echo "  1. Copied your export tar archive to your home folder"
+echo "  2. Backed up any current configurations you don't want to overwrite"
 echo ""
 
-# Look for export directories in home folder
-EXPORT_DIRS=($(find "$HOME" -maxdepth 1 -type d -name "omarchy_export_*" 2>/dev/null | sort -r))
+# Look for export tar archives in home folder
+EXPORT_ARCHIVES=($(find "$HOME" -maxdepth 1 -type f -name "omarchy_export_*.tar.gz" 2>/dev/null | sort -r))
 
 if [ "$#" -lt 1 ]; then
   INTERACTIVE_MODE=true
   
-  if [ ${#EXPORT_DIRS[@]} -eq 0 ]; then
-    # No export directories found
-    echo "No export directories found in home folder."
-    echo "Looking for directories named: omarchy_export_YYYYMMDD_HHMMSS"
+  if [ ${#EXPORT_ARCHIVES[@]} -eq 0 ]; then
+    # No export archives found
+    echo "No export archives found in home folder."
+    echo "Looking for archives named: omarchy_export_YYYYMMDD_HHMMSS.tar.gz"
     echo ""
-    EXPORT_DIR=$(gum input --prompt "Enter export directory path> " --placeholder "$HOME/omarchy_export_20251006_150000")
-  elif [ ${#EXPORT_DIRS[@]} -eq 1 ]; then
+    TARBALL_PATH=$(gum input --prompt "Enter export archive path> " --placeholder "$HOME/omarchy_export_20251006_150000.tar.gz")
+  elif [ ${#EXPORT_ARCHIVES[@]} -eq 1 ]; then
     # Only one export found
-    echo "Found export: ${EXPORT_DIRS[0]}"
-    if gum confirm "Use this export?"; then
-      EXPORT_DIR="${EXPORT_DIRS[0]}"
+    echo "Found export archive: $(basename "${EXPORT_ARCHIVES[0]}")"
+    if gum confirm "Use this archive?"; then
+      TARBALL_PATH="${EXPORT_ARCHIVES[0]}"
     else
-      EXPORT_DIR=$(gum input --prompt "Enter export directory path> " --placeholder "$HOME/omarchy_export_20251006_150000")
+      TARBALL_PATH=$(gum input --prompt "Enter export archive path> " --placeholder "$HOME/omarchy_export_20251006_150000.tar.gz")
     fi
   else
     # Multiple exports found
-    echo "Found multiple export directories:"
+    echo "Found multiple export archives:"
     echo ""
     
-    # Create array of just the directory names for display
+    # Create array of just the archive names for display
     DISPLAY_OPTIONS=()
-    for dir in "${EXPORT_DIRS[@]}"; do
-      DISPLAY_OPTIONS+=("$(basename "$dir")")
+    for archive in "${EXPORT_ARCHIVES[@]}"; do
+      DISPLAY_OPTIONS+=("$(basename "$archive")")
     done
     
-    SELECTED=$(printf '%s\n' "${DISPLAY_OPTIONS[@]}" | gum choose --header "Select an export to import:")
+    SELECTED=$(printf '%s\n' "${DISPLAY_OPTIONS[@]}" | gum choose --header "Select an archive to import:")
     
     if [[ -n "$SELECTED" ]]; then
-      EXPORT_DIR="$HOME/$SELECTED"
+      TARBALL_PATH="$HOME/$SELECTED"
     else
       echo ""
-      EXPORT_DIR=$(gum input --prompt "Or enter a custom path> " --placeholder "$HOME/omarchy_export_20251006_150000")
+      TARBALL_PATH=$(gum input --prompt "Or enter a custom path> " --placeholder "$HOME/omarchy_export_20251006_150000.tar.gz")
     fi
   fi
 else
-  EXPORT_DIR="$1"
+  TARBALL_PATH="$1"
   INTERACTIVE_MODE=false
 fi
 
-# Validate export directory
-if [[ -z "$EXPORT_DIR" ]]; then
-  echo "Error: You must provide an export directory path!"
+# Validate and extract the tarball
+if [[ -z "$TARBALL_PATH" ]]; then
+  echo "Error: You must provide an export archive path!"
   exit 1
 fi
 
-if [[ ! -d "$EXPORT_DIR" ]]; then
-  echo "Error: Export directory not found: $EXPORT_DIR"
+if [[ ! -f "$TARBALL_PATH" ]]; then
+  echo "Error: Export archive not found: $TARBALL_PATH"
   exit 1
 fi
 
+# Extract the tarball
 echo ""
-echo "Using export: $EXPORT_DIR"
+echo "Extracting archive: $(basename "$TARBALL_PATH")"
+EXTRACT_DIR="$HOME"
+tar -xzf "$TARBALL_PATH" -C "$EXTRACT_DIR"
+
+# Find the extracted directory
+EXPORT_DIR=$(find "$EXTRACT_DIR" -maxdepth 1 -type d -name "omarchy_export_*" 2>/dev/null | sort -r | head -n 1)
+
+if [[ -z "$EXPORT_DIR" ]]; then
+  echo "Error: Could not find extracted export directory"
+  exit 1
+fi
+
+echo "Extracted to: $EXPORT_DIR"
 echo ""
 
 if [[ $INTERACTIVE_MODE == true ]]; then
@@ -164,7 +177,14 @@ if [[ -f "$EXPORT_DIR/aurlist.txt" ]]; then
   AUR_COUNT=$(wc -l < "$EXPORT_DIR/aurlist.txt")
   if [[ $AUR_COUNT -gt 0 ]]; then
     echo "  Found $AUR_COUNT AUR packages in export"
-    echo "  To install AUR packages, use your AUR helper with: $EXPORT_DIR/aurlist.txt"
+    
+    if [[ $INTERACTIVE_MODE == true ]]; then
+      echo "  Installing AUR packages..."
+      yay -S --needed - < "$EXPORT_DIR/aurlist.txt"
+      echo "  AUR packages installed"
+    else
+      echo "  To install AUR packages: yay -S --needed - < $EXPORT_DIR/aurlist.txt"
+    fi
   fi
 fi
 

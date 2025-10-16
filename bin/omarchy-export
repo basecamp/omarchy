@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Omarchy backup script
-# This backs up personal customizations which can be imported/restored after a fresh install or to a new machine    
+# Omarchy export script
+# This exports personal customizations which can be imported/restored to a new machine    
 
 EXPORT_DIR="$HOME/omarchy_export_$(date +%Y%m%d_%H%M%S)"
 
@@ -134,12 +134,11 @@ pacman -Qq > "$EXPORT_DIR/all_packages.txt"
 cat > "$EXPORT_DIR/README.txt" << 'EOF'
 OMARCHY CUSTOM SETTINGS IMPORT GUIDE
 
-To import settings from export directory:
+To import settings from export tar.gz archive:
 
-1. Copy the exported directory of files to your home directory on the new machine
+1. Copy the exported tar.gz archive to the home directory on the new machine.
 
-2. Open the Omarchy menu (Super + Space) and search for "Export/Import"
-   Or run: omarchy-import
+2. Open the Omarchy menu (Super + ALT Space) > Setup > Config > Export/Import
 
 3. Follow the prompts to restore your settings
 
@@ -147,13 +146,26 @@ Reboot after setup!
 EOF
 
 
+# Create a tarball for easy transport (preserves symlinks, works on any USB filesystem)
+echo ""
+echo "Creating tarball archive..."
+cd "$HOME" || exit 1
+TARBALL_NAME="$(basename "$EXPORT_DIR").tar.gz"
+tar -czf "$TARBALL_NAME" "$(basename "$EXPORT_DIR")"
+
 echo ""
 echo "Export complete!"
-echo "Export location: $EXPORT_DIR"
+echo "Archive created: $HOME/$TARBALL_NAME"
 echo ""
 echo "IMPORTANT NOTES:"
 echo "- Omarchy will install with all its default packages and configs"
 echo "- You will need to restore the following items separately: SSH/GPG keys, fingerprint settings, fido2 settings, personal files, and non-included customizations"
 echo "- Review the README.txt in the backup folder for restoration steps"
 echo ""
-echo "Save this export directory to the cloud or external storage for importing to a fresh install or new machine."
+echo "To import settings:"
+echo ""
+echo "1. Copy this tar.gz archive to the home directory on the machine you are importing to."
+echo ""
+echo "2. Open the Omarchy menu (Super + ALT + Space) > Setup > Config > Export/Import"
+echo ""   
+echo "3. Follow the prompts to restore your settings"

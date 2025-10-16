@@ -226,8 +226,8 @@ show_setup_config_menu() {
 
 show_export_import_menu() {
   case $(menu "Export/Import" "  Export Settings\n  Import Settings") in
-  *Export Settings*) present_terminal omarchy-export ;;
-  *Import Settings*) present_terminal omarchy-import ;;
+  *"Export Settings"*) present_terminal omarchy-export ;;
+  *"Import Settings"*) present_terminal omarchy-import ;;
   *) show_setup_config_menu ;;
   esac
 }
