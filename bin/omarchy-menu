@@ -458,45 +458,43 @@ show_system_menu() {
   esac
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 show_main_menu() {
   local selection
-  selection=$(menu  "Go" "󰀻  Apps\n󰍉  Search\n󰧑  Learn\n󱓞  Trigger\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")
+  selection=$(menu  "Go" "󰀻  Apps\n󰍉  Search\n󰧑  Learn\n󱓞  Trigger\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")  
   if [[ -z "$selection" ]]; then
-    $HOME/test/test.sh
+    "$SCRIPT_DIR/omarchy-global-search"
   else
     go_to_menu "$selection"
   fi
 }
 
-LAUNCHER="${LAUNCHER:-$HOME/test/test.sh}"
+LAUNCHER="${LAUNCHER:-$SCRIPT_DIR/omarchy-global-search}"
 launch_unified_search() {
-    export OMARCHY_MENU_ACTIVE=1
-    "$LAUNCHER" unified
-    unset OMARCHY_MENU_ACTIVE
+  export OMARCHY_MENU_ACTIVE=1
+  "$LAUNCHER" unified
+  unset OMARCHY_MENU_ACTIVE
 }
-
-# --bindhold "Alt_L:launch_unified_search"
 
 go_to_menu() {
   case "${1,,}" in
-  *apps*) walker -p "Launch…" ;;
-  *search*) /omarchy-global-search ;;
-  *learn*) show_learn_menu ;;
-  *trigger*) show_trigger_menu ;;
-  *share*) show_share_menu ;;
-  *style*) show_style_menu ;;
-  *theme*) show_theme_menu ;;
-  *screenshot*) show_screenshot_menu ;;
-  *screenrecord*) show_screenrecord_menu ;;
-  *setup*) show_setup_menu ;;
-  *power*) show_setup_power_menu ;;
-  *install*) show_install_menu ;;
-  *remove*) show_remove_menu ;;
-  *update*) show_update_menu ;;
-  *about*) omarchy-launch-about ;;
-  *system*) show_system_menu ;;
-  
-  
+    *apps*) walker -p "Launch…" ;;
+    *search*) "$SCRIPT_DIR/omarchy-global-search" ;;
+    *learn*) show_learn_menu ;;
+    *trigger*) show_trigger_menu ;;
+    *share*) show_share_menu ;;
+    *style*) show_style_menu ;;
+    *theme*) show_theme_menu ;;
+    *screenshot*) show_screenshot_menu ;;
+    *screenrecord*) show_screenrecord_menu ;;
+    *setup*) show_setup_menu ;;
+    *power*) show_setup_power_menu ;;
+    *install*) show_install_menu ;;
+    *remove*) show_remove_menu ;;
+    *update*) show_update_menu ;;
+    *about*) omarchy-launch-about ;;
+    *system*) show_system_menu ;;
   esac
 }
 
