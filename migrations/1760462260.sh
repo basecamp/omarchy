@@ -9,7 +9,7 @@ cat <<EOF
 * Move toggling tiling/floating to SUPER + T
 EOF
 
-echo -e "\nSwitching to new hotkeys will change your existing bindings.\nThe old ones will be backed up as ~/.config/hypr/bindings.conf.bak"
+echo -e "\nSwitching to new hotkeys will change your existing bindings.\nThe old ones will be backed up as ~/.config/hypr/bindings.conf.bak\n"
 
 if gum confirm "Switch to new hotkeys?"; then
   cp ~/.config/hypr/bindings.conf ~/.config/hypr/bindings.conf.bak
