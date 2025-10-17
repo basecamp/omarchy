@@ -104,10 +104,9 @@ show_capture_menu() {
 }
 
 show_screenshot_menu() {
-  case $(menu "Screenshot" "  Region\n  Window\n  Display") in
-  *Region*) omarchy-cmd-screenshot ;;
-  *Window*) omarchy-cmd-screenshot window ;;
-  *Display*) omarchy-cmd-screenshot output ;;
+  case $(menu "Screenshot" "  Snap with Editing\n  Straight to Clipboard") in
+  *Editing*) omarchy-cmd-screenshot smart ;;
+  *Clipboard*) omarchy-cmd-screenshot smart clipboard ;;
   *) show_capture_menu ;;
   esac
 }
