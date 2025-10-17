@@ -170,6 +170,8 @@ EOF
     exit 1
   fi
 
+  mkdir -p $HOME/Windows
+
   # Create docker-compose.yml in user config directory
   cat << EOF | tee "$COMPOSE_FILE" > /dev/null
 services:
@@ -194,7 +196,7 @@ services:
       - 3389:3389/udp
     volumes:
       - $HOME/.windows:/storage
-      # - $HOME/Documents:/Documents # Uncomment to mount local volume in Windows. It will show in file explorer under "network -> host.lan -> Documents" or \\host.lan\Documents
+      - $HOME/Windows:/shared
     restart: always
     stop_grace_period: 2m
 EOF
