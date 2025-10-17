@@ -8,19 +8,9 @@ kill $PID 2>/dev/null
 
 [ -z "$SELECTION" ] && exit 0
 
-if ! TEXT=$(grim -g "$SELECTION" - \
-    | tesseract stdin stdout \
-        --oem 1 --psm 6 -l eng --dpi 300 \
-        -c preserve_interword_spaces=1 2>/dev/null); then
-    exit 1
-fi
+TEXT=$(grim -g "$SELECTION" - | tesseract stdin stdout --oem 1 --psm 6 -l eng --dpi 300 -c preserve_interword_spaces=1 2>/dev/null) || exit 1
 
-# Exit if no text was found
-if [ -z "$TEXT" ]; then
-    exit 1
-fi
+[ -z "$TEXT" ] && exit 1
 
-# Remove leading/trailing whitespace
 printf "%s" "$TEXT" | wl-copy
-
 notify-send "Copied text from selection to clipboard"
