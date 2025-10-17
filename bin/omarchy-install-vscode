@@ -18,4 +18,7 @@ cat > ~/.vscode/argv.json << 'EOF'
 }
 EOF
 
+# Ensure VSC's own auto-update feature is turned off
+printf '{\n  "update.mode": "none"\n}\n' > ~/.config/Code/User/settings.json
+
 setsid gtk-launch code

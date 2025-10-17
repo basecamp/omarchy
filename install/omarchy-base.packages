@@ -93,7 +93,7 @@ nvim
 obs-studio
 obsidian
 omarchy-chromium
-omarchy-lazyvim
+omarchy-nvim
 pamixer
 pinta
 playerctl
@@ -135,7 +135,6 @@ whois
 wireless-regdb
 wiremix
 wireplumber
-wl-clip-persist
 wl-clipboard
 woff2-font-awesome
 xdg-desktop-portal-gtk
