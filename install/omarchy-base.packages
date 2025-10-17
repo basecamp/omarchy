@@ -48,6 +48,7 @@ github-cli
 gnome-calculator
 gnome-keyring
 gnome-themes-extra
+grim
 gpu-screen-recorder
 gum
 gvfs-mtp
@@ -57,7 +58,6 @@ hyprland
 hyprland-qtutils
 hyprlock
 hyprpicker
-hyprshot
 hyprsunset
 imagemagick
 impala
@@ -130,6 +130,7 @@ unzip
 uwsm
 walker
 waybar
+wayfreeze
 whois
 wireless-regdb
 wiremix
