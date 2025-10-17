@@ -9,9 +9,11 @@ cat <<EOF
 * Move toggling tiling/floating to SUPER + T
 EOF
 
-echo
+echo -e "\nSwitching to new hotkeys will change your existing bindings.\nThe old ones will be backed up as ~/.config/hypr/bindings.conf.bak"
 
 if gum confirm "Switch to new hotkeys?"; then
+  cp ~/.config/hypr/bindings.conf ~/.config/hypr/bindings.conf.bak
+
   sed -i 's/SUPER SHIFT,/SUPER SHIFT ALT,/g' ~/.config/hypr/bindings.conf
   sed -i 's/SUPER,/SUPER SHIFT,/g' ~/.config/hypr/bindings.conf
   sed -i 's/SUPER SHIFT, return, Terminal/SUPER, RETURN, Terminal/gI' ~/.config/hypr/bindings.conf
