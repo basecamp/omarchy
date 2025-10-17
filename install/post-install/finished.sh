@@ -16,6 +16,8 @@ if [[ -f $OMARCHY_INSTALL_LOG_FILE ]] && grep -q "Total:" "$OMARCHY_INSTALL_LOG_
   if [ -n "$TOTAL_TIME" ]; then
     echo_in_style "Installed in $TOTAL_TIME"
   fi
+else
+  echo_in_style "Finished installing"
 fi
 
 if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
@@ -29,10 +31,10 @@ if gum confirm --padding "0 0 0 $((PADDING_LEFT + 32))" --show-help=false --defa
   # Clear screen to hide any shutdown messages
   clear
 
-  # Use systemctl if available, otherwise fallback to reboot command
-  if command -v systemctl &>/dev/null; then
-    systemctl reboot --no-wall 2>/dev/null
+  if [[ -n "${OMARCHY_CHROOT_INSTALL:-}" ]]; then
+    touch /var/tmp/omarchy-install-completed
+    exit 0
   else
-    reboot 2>/dev/null
+    sudo reboot 2>/dev/null
   fi
 fi

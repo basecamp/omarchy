@@ -1,1 +1,2 @@
-notify-send "👋   Welcome to Omarchy!" "Hit SUPER + ALT + SPACE to start the Omarchy Menu." -u critical -t 30000
+notify-send "    Update System" "When you have internet, click to update the system." -u critical
+notify-send "    Learn Keybindings" "Super + K for cheatsheet.\nSuper + Space for application launcher.\nSuper + Alt + Space for Omarchy Menu." -u critical
