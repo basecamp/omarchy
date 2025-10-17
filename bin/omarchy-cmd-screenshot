@@ -11,6 +11,7 @@ fi
 pkill slurp && exit 0
 
 MODE="${1:-smart}"
+PROCESSING="${2:-slurp}"
 
 get_rectangles() {
   local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
@@ -69,6 +70,7 @@ esac
 
 [ -z "$SELECTION" ] && exit 0
 
+if [[ $PROCESSING == "slurp" ]]; then
 grim -g "$SELECTION" - |
   satty --filename - \
     --output-filename "$OUTPUT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png" \
@@ -76,3 +78,6 @@ grim -g "$SELECTION" - |
     --actions-on-enter save-to-clipboard \
     --save-after-copy \
     --copy-command 'wl-copy'
+else
+  grim -g "$SELECTION" - | wl-copy
+fi
