@@ -10,12 +10,9 @@ else
 fi
 
 args=()
-for arg in "$@"; do
-  if [[ $arg == "--private" ]]; then
-    args+=("$private_flag")
-  else
-    args+=("$arg")
-  fi
+for arg; do
+  [[ $arg == "--private" ]] && arg=$private_flag
+  args+=("$arg")
 done
 
 exec setsid uwsm app -- "$browser_exec" "${args[@]}"
