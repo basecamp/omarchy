@@ -1,3 +1,3 @@
-echo "Ensure new pkg/cmd functions are available to old-run migrations"
+echo "Ensure all indexes and packages are up to date"
 
-source $OMARCHY_PATH/default/bash/functions
+sudo pacman -Syu --noconfirm

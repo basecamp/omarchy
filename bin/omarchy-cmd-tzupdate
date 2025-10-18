@@ -1,7 +1,0 @@
-#!/bin/bash
-
-sudo systemctl restart systemd-timesyncd
-sudo tzupdate
-new_timezone=$(timedatectl show -p Timezone --value)
-omarchy-restart-waybar
-notify-send "Time synced and timezone set to $new_timezone"

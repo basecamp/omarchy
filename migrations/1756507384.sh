@@ -1,4 +1,4 @@
 echo "Replace JetBrains Mono font with the Nerd Font edition"
 
-pkg-add ttf-jetbrains-mono-nerd
-pkg-remove ttf-jetbrains-mono
+omarchy-pkg-add ttf-jetbrains-mono-nerd
+omarchy-pkg-drop ttf-jetbrains-mono

@@ -1,11 +1,9 @@
 #!/bin/bash
 
-set -e
-
 fzf_args=(
   --multi
   --preview 'pacman -Sii {1}'
-  --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select, F11: maximize'
+  --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select'
   --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
   --bind 'alt-p:toggle-preview'
@@ -19,6 +17,5 @@ pkg_names=$(pacman -Slq | fzf "${fzf_args[@]}")
 if [[ -n "$pkg_names" ]]; then
   # Convert newline-separated selections to space-separated for yay
   echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -S --noconfirm
-  sudo updatedb
   omarchy-show-done
 fi

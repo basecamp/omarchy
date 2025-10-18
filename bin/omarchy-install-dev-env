@@ -1,12 +1,12 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure>" >&2
   exit 1
 fi
 
 install_php() {
-  sudo pacman -S php composer php-sqlite --noconfirm
+  sudo pacman -S php composer php-sqlite xdebug --noconfirm
 
   # Install Path for Composer
   if [[ ":$PATH:" != *":$HOME/.config/composer/vendor/bin:"* ]]; then
@@ -28,6 +28,12 @@ install_php() {
     "pdo_mysql"
   )
 
+  # Enable Xdebug
+  sudo sed -i \
+    -e 's/^;zend_extension=xdebug.so/zend_extension=xdebug.so/' \
+    -e 's/^;xdebug.mode=debug/xdebug.mode=debug/' \
+    /etc/php/conf.d/xdebug.ini
+
   for ext in "${extensions_to_enable[@]}"; do
     sudo sed -i "s/^;extension=${ext}/extension=${ext}/" "$php_ini_path"
   done
@@ -41,6 +47,7 @@ install_node() {
 case "$1" in
 ruby)
   echo -e "Installing Ruby on Rails...\n"
+  omarchy-pkg-add libyaml
   mise use --global ruby@latest
   mise settings add idiomatic_version_file_enable_tools ruby
   mise x ruby -- gem install rails --no-document
@@ -75,7 +82,7 @@ laravel)
 symfony)
   echo -e "Installing PHP and Symfony...\n"
   install_php
-  yay -S symfony-cli --noconfirm
+  omarchy-pkg-add symfony-cli
   echo -e "\nYou can now run: symfony new --webapp myproject"
   ;;
 python)
@@ -113,6 +120,7 @@ java)
 zig)
   echo -e "Installing Zig...\n"
   mise use --global zig@latest
+  mise use -g zls@latest
   ;;
 ocaml)
   echo -e "Installing OCaml...\n"
@@ -124,5 +132,10 @@ ocaml)
 dotnet)
   echo -e "Installing .NET...\n"
   mise use --global dotnet@latest
+  ;;
+clojure)
+  echo -e "Installing Clojure...\n"
+  omarchy-pkg-add rlwrap
+  mise use --global clojure@latest
   ;;
 esac
