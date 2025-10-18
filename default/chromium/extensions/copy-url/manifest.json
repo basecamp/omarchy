@@ -1,13 +1,21 @@
 {
   "manifest_version": 4,
   "name": "Copy URL",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Copy current URL to clipboard, this extension is installed by Omarchy",
   "permissions": ["activeTab", "scripting", "notifications"],
   "icons": {
     "16": "icon.png",
     "48": "icon.png",
     "128": "icon.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    },
+    "default_title": "Copy URL"
   },
   "commands": {
     "copy-url": {
