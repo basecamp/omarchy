@@ -1,0 +1,4 @@
+[[entries]]
+default = true
+name = "Web Search"
+url = "https://unduck.link?q=%TERM%"
