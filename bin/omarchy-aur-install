@@ -58,6 +58,13 @@ declare -A KNOWN_SPLIT_PACKAGES=(
   ["aspnet-targeting-pack-8.0-bin"]="dotnet-core-8.0-bin"
 )
 
+# Packages with flaky test suites on ARM that should skip tests
+# Format: "package_name:reason"
+# Only affects ARM builds (aarch64) to avoid test failures on VMs/different timing
+declare -A SKIP_TESTS_ON_ARM=(
+  ["ruby-stud"]="timing tests flaky on ARM VMs (expects 0.5s ± 0.02s, gets 0.56s)"
+)
+
 # Get PackageBase from AUR RPC API for a given package name
 # This is critical for split packages where package name != repository name
 # Example: yaru-icon-theme (package) vs yaru (repository/PackageBase)
@@ -711,6 +718,12 @@ install_package() {
   local makepkg_flags=(-si --noconfirm)
   if [[ "$(uname -m)" == "aarch64" ]]; then
     makepkg_flags+=(--ignorearch)
+
+    # Check if this package has flaky tests on ARM
+    if [[ -n "${SKIP_TESTS_ON_ARM[$package_name]:-}" ]]; then
+      print_warning "Skipping tests on ARM: ${SKIP_TESTS_ON_ARM[$package_name]}"
+      makepkg_flags+=(--nocheck)
+    fi
   fi
   # Add any extra flags passed by caller
   if [[ -n "$extra_flags" ]]; then
