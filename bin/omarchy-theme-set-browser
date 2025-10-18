@@ -26,7 +26,6 @@ if omarchy-cmd-present chromium || omarchy-cmd-present helium-browser || omarchy
   if omarchy-cmd-present helium-browser; then
     echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
     helium-browser --no-startup-window --refresh-platform-policy
-    fi
   fi
 
   if omarchy-cmd-present brave; then
