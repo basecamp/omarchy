@@ -41,7 +41,7 @@ if omarchy-cmd-present "$EDITOR_CMD" && [[ ! -f "$SKIP_FLAG" ]]; then
   else
     # Remove theme from settings.json when the theme doesn't have $EDITOR_NAME support
     if [[ -f "$SETTINGS_PATH" ]]; then
-      sed -i --follow-symlinks -E '/"workbench\.colorTheme"[[:space:]]*:[^,}]*,?/d' "$SETTINGS_PATH"
+      sed -i --follow-symlinks -E 's/\"workbench\.colorTheme\"[[:space:]]*:[^,}]*,?//' "$SETTINGS_PATH"
     fi
   fi
 fi
