@@ -1,6 +1,7 @@
 # AUR packages
 # Installed via omarchy-aur-install (with GitHub mirror fallback)
 
+aether
 elephant
 elephant-bluetooth
 elephant-calc
