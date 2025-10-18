@@ -2,7 +2,7 @@ echo -e "Offer new Omarchy hotkeys\n"
 
 cat <<EOF
 * Add SUPER + C / V for unified clipboard in both terminal and other apps
-* Add SUPER + SHIFT + V for clipboard manager
+* Add SUPER + CTRL + V for clipboard manager
 * Move fullscreen from F11 to SUPER + F
 * Keep terminal on SUPER + RETURN
 * Move app keys from SUPER + [LETTER] to SHIFT + SUPER + [LETTER]
