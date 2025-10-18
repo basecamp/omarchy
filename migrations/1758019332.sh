@@ -3,7 +3,7 @@ echo "Set \$TERMINAL and \$EDITOR in ~/.config/uwsm/default so entire system can
 # Set terminal and editor default in uwsm
 omarchy-refresh-config uwsm/default
 omarchy-refresh-config uwsm/env
-omarchy-state set relaunch-required
+omarchy-state set reboot-required
 
 # Ensure scrolltouchpad setting applies to all terminals
 if grep -q "scrolltouchpad 1.5, class:Alacritty" ~/.config/hypr/input.conf; then
