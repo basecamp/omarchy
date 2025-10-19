@@ -33,3 +33,17 @@ alias g='git'
 alias gcm='git commit -m'
 alias gcam='git commit -a -m'
 alias gcad='git commit -a --amend'
+
+# Edit config files.
+alias h_auto='n ~/.config/hypr/autostart.conf'
+alias h_binds='n ~/.config/hypr/bindings.conf'
+alias h_envs='n ~/.config/hypr/envs.conf'
+alias h_idle='n ~/.config/hypr/hypridle.conf'
+alias h_land='n ~/.config/hypr/hyprland.conf'
+alias h_lock='n ~/.config/hypr/hyprlock.conf'
+alias h_sunset='n ~/.config/hypr/hyprsunset.conf'
+alias h_input='n ~/.config/hypr/input.conf'
+alias h_look='n ~/.config/hypr/looknfeel.conf'
+alias h_monitors='n ~/.config/hypr/monitors.conf'
+
+
