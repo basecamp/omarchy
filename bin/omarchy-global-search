@@ -176,7 +176,11 @@ EOF_JSON_GEN
             fi
         done < <(omarchy-powerprofiles-list)
     fi
-    
+
+    # Manual regenerate menu JSON option
+    json_output+=$',\n'
+    json_output+=$(printf '    {\n      "path": "Setup > Regenerate Menu JSON",\n      "command": "omarchy-global-search regenerate"\n    }')
+
     json_output+=$'\n  ]\n}'
     
     if [[ "$output_file" == "-" ]]; then
