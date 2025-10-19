@@ -5,6 +5,11 @@ if ! command -v tte &>/dev/null; then
   exit 1
 fi
 
+# Exit early if we are using power-saver
+if [[ "$(powerprofilesctl get)" == "power-saver" ]]; then 
+  exit 1
+fi
+
 # Exit early if screensave is already running
 pgrep -f "alacritty --class Screensaver" && exit 0
 

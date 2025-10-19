@@ -451,7 +451,15 @@ show_update_password_menu() {
 }
 
 show_system_menu() {
-  case $(menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n󰜉  Restart\n󰐥  Shutdown") in
+  current_power_mode=$(powerprofilesctl get)
+
+  options="  Lock\n"
+  if [[ "$current_power_mode" != "power-saver" ]]; then
+    options+="󱄄  Screensaver\n"
+  fi
+  options+="󰤄  Suspend\n󰜉  Restart\n󰐥  Shutdown"
+
+  case $(menu "System" "$options") in
   *Lock*) omarchy-lock-screen ;;
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
