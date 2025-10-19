@@ -14,6 +14,6 @@ omarchy-pkg-add $package
 echo "Setting $package as new default terminal..."
 sed -i "/export TERMINAL=/ c\export TERMINAL=$package" ~/.config/uwsm/default
 
-# Relaunch is needed for new default to take effect
+# Restart is needed for new default to take effect
 echo
-gum confirm "Relaunch Hyprland to use new terminal?" && uwsm stop
+gum confirm "Restart to use new terminal?" && systemctl reboot --no-wall
