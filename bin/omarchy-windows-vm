@@ -1,6 +1,28 @@
 #!/bin/bash
 COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
 
+detect_container_runtime() {
+  if command -v docker &> /dev/null; then
+    DOCKER_CMD="docker"
+  elif command -v podman &> /dev/null; then
+    DOCKER_CMD="podman"
+  else
+    echo "❌ Neither docker nor podman found! Please install one of them."
+    exit 1
+  fi
+
+  if $DOCKER_CMD compose version &> /dev/null; then
+    COMPOSE_CMD="$DOCKER_CMD compose"
+  elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+  elif command -v podman-compose &> /dev/null; then
+    COMPOSE_CMD="podman-compose"
+  else
+    echo "❌ No compose command found! Please install docker-compose or podman-compose."
+    exit 1
+  fi
+}
+
 check_prerequisites() {
   local DISK_SIZE_GB=${1:-64}
   local REQUIRED_SPACE=$((DISK_SIZE_GB + 10))  # Add 10GB for Windows ISO and overhead
@@ -30,6 +52,8 @@ check_prerequisites() {
 }
 
 install_windows() {
+  detect_container_runtime
+
   # Set up trap to handle Ctrl+C
   trap "echo ''; echo 'Installation cancelled by user'; exit 1" INT
 
@@ -208,12 +232,12 @@ EOF
   echo "Monitor installation progress at: http://127.0.0.1:8006"
   echo ""
 
-  # Start docker-compose with user's config
-  echo "Starting Windows VM with docker-compose..."
-  if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
+  # Start compose with user's config
+  echo "Starting Windows VM with $COMPOSE_CMD..."
+  if ! $COMPOSE_CMD -f "$COMPOSE_FILE" up -d 2>&1; then
     echo "❌ Failed to start Windows VM!"
     echo "   Common issues:"
-    echo "   - Docker daemon not running: sudo systemctl start docker"
+    echo "   - Container daemon not running: sudo systemctl start docker"
     echo "   - Port already in use: check if another VM is running"
     echo "   - Permission issues: make sure you're in the docker group"
     exit 1
@@ -240,11 +264,13 @@ EOF
 }
 
 remove_windows() {
+  detect_container_runtime
+
   echo "Removing Windows VM..."
 
-  docker-compose -f "$COMPOSE_FILE" down 2>/dev/null || true
+  $COMPOSE_CMD -f "$COMPOSE_FILE" down 2>/dev/null || true
 
-  docker rmi dockurr/windows 2>/dev/null || echo "Image already removed or not found"
+  $DOCKER_CMD rmi dockurr/windows 2>/dev/null || echo "Image already removed or not found"
 
   rm "$HOME/.local/share/applications/windows-vm.desktop"
   rm -rf "$HOME/.config/windows"
@@ -255,6 +281,8 @@ remove_windows() {
 }
 
 launch_windows() {
+  detect_container_runtime
+
   KEEP_ALIVE=false
   if [ "$1" = "--keep-alive" ] || [ "$1" = "-k" ]; then
     KEEP_ALIVE=true
@@ -267,7 +295,7 @@ launch_windows() {
   fi
 
   # Check if container is already running
-  CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
+  CONTAINER_STATUS=$($DOCKER_CMD inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
 
   if [ "$CONTAINER_STATUS" != "running" ]; then
     echo "Starting Windows VM..."
@@ -275,10 +303,10 @@ launch_windows() {
     # Send desktop notification
     notify-send "Windows VM" "Starting Windows VM, this may take a moment..."
 
-    if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
+    if ! $COMPOSE_CMD -f "$COMPOSE_FILE" up -d 2>&1; then
       echo "❌ Failed to start Windows VM!"
       echo "   Try checking: omarchy-windows-vm status"
-      echo "   View logs: docker logs omarchy-windows"
+      echo "   View logs: $DOCKER_CMD logs omarchy-windows"
       notify-send -u critical "Windows VM" "Failed to start Windows VM"
       exit 1
     fi
@@ -345,7 +373,7 @@ To stop: omarchy-windows-vm stop"
   if [ "$KEEP_ALIVE" = false ]; then
     echo ""
     echo "RDP session closed. Stopping Windows VM..."
-    docker-compose -f "$COMPOSE_FILE" down
+    $COMPOSE_CMD -f "$COMPOSE_FILE" down
     echo "Windows VM stopped."
   else
     echo ""
@@ -355,24 +383,28 @@ To stop: omarchy-windows-vm stop"
 }
 
 stop_windows() {
+  detect_container_runtime
+
   if [ ! -f "$COMPOSE_FILE" ]; then
     echo "Windows VM not configured."
     exit 1
   fi
 
   echo "Stopping Windows VM..."
-  docker-compose -f "$COMPOSE_FILE" down
+  $COMPOSE_CMD -f "$COMPOSE_FILE" down
   echo "Windows VM stopped."
 }
 
 status_windows() {
+  detect_container_runtime
+
   if [ ! -f "$COMPOSE_FILE" ]; then
     echo "Windows VM not configured."
     echo "To set up: omarchy-windows-vm install"
     exit 1
   fi
 
-  CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
+  CONTAINER_STATUS=$($DOCKER_CMD inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
 
   if [ -z "$CONTAINER_STATUS" ]; then
     echo "Windows VM container not found."
