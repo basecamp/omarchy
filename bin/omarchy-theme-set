@@ -24,15 +24,21 @@ ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 omarchy-theme-bg-next
 
 # Restart components to apply new theme
-omarchy-restart-waybar
+if pgrep -x waybar >/dev/null; then
+  omarchy-restart-waybar
+fi
 omarchy-restart-swayosd
 hyprctl reload
 pkill -SIGUSR2 btop
 makoctl reload
 
-# Change gnome, browser, vscode themes
+# Change gnome, browser, vscode, cursor themes
 omarchy-theme-set-terminal
 omarchy-theme-set-gnome
-omarchy-theme-set-eza
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
+omarchy-theme-set-cursor
+omarchy-theme-set-obsidian
+
+# Call hook on theme set
+omarchy-hook theme-set "$THEME_NAME"

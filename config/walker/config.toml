@@ -1,100 +1,145 @@
-close_when_open = true
-theme = "omarchy-default"
-theme_base = []
-theme_location = ["~/.local/share/omarchy/default/walker/themes/"]
-hotreload_theme = true
-force_keyboard_focus = true
-timeout = 60
+force_keyboard_focus = true                                                 # forces keyboard forcus to stay in Walker
+close_when_open = true                                                      # close walker when invoking while already opened
+selection_wrap = true                                                       # wrap list if at bottom or top
+click_to_close = true                                                       # closes walker if clicking outside of the main content area
+global_argument_delimiter = "#"                                             # query: firefox#https://benz.dev => part after delimiter will be ignored when querying. this should be the same as in the elephant config
+exact_search_prefix = "'"                                                   # disable fuzzy searching
+theme = "omarchy-default"                                                   # theme to use
+disable_mouse = false                                                       # disable mouse (on input and list only)
+additional_theme_location = "~/.local/share/omarchy/default/walker/themes/"
 
-[keys.ai]
-run_last_response = ["ctrl e"]
+[shell]
+anchor_top = true
+anchor_bottom = true
+anchor_left = true
+anchor_right = true
 
-[list]
-max_entries = 200
-cycle = true
+[placeholders]
+"default" = { input = " Search...", list = "No Results" } # placeholders for input and empty list, key is the providers name, so f.e. "desktopapplications" or "menus:other"
 
-[search]
-placeholder = " Search..."
+[keybinds]
+close = ["Escape"]
+next = ["Down"]
+previous = ["Up"]
+toggle_exact = ["ctrl e"]
+resume_last_query = ["ctrl r"]
+quick_activate = []
 
-[builtins.hyprland_keybinds]
-path = "~/.config/hypr/hyprland.conf"
-hidden = true
+[providers]
+default = [
+  "desktopapplications",
+  "menus",
+  "websearch",
+] # providers to be queried by default
+empty = ["desktopapplications"] # providers to be queried when query is empty
+max_results = 50 # global max results
 
-[builtins.applications]
-launch_prefix = "uwsm app -- "
-placeholder = " Search..."
-prioritize_new = false
-context_aware = false
-show_sub_when_single = false
-history = false
-icon = ""
-hidden = true
+[providers.sets] # define your own defaults/empty sets of providers
+[providers.max_results_provider] # define max results per provider in here
 
-[builtins.applications.actions]
-enabled = false
-hide_category = true
+[[providers.prefixes]]
+prefix = "/"
+provider = "providerlist"
 
-[builtins.bookmarks]
-hidden = true
-
-[[builtins.bookmarks.entries]]
-label = "Omarchy - Github"
-url = "https://github.com/basecamp/omarchy"
-keywords = ["omarchy", "github"]
-
-[[builtins.bookmarks.entries]]
-label = "Omarchy Manual"
-url = "https://manuals.omamix.org/2/the-omarchy-manual"
-keywords = ["omarchy"]
-
-[builtins.calc]
-name = "Calculator"
-icon = ""
-min_chars = 3
-prefix = "="
-
-[builtins.windows]
-switcher_only = true
-hidden = true
-
-[builtins.clipboard]
-hidden = true
-
-[builtins.commands]
-hidden = true
-
-[builtins.custom_commands]
-hidden = true
-
-[builtins.emojis]
-name = "Emojis"
-icon = ""
-prefix = ":"
-
-[builtins.symbols]
-after_copy = ""
-hidden = true
-
-[builtins.finder]
-use_fd = true
-cmd_alt = "xdg-open $(dirname ~/%RESULT%)"
-icon = "file"
-name = "Finder"
-preview_images = true
-hidden = false
+[[providers.prefixes]]
 prefix = "."
+provider = "files"
 
-[builtins.runner]
-shell_config = ""
-switcher_only = true
-hidden = true
+[[providers.prefixes]]
+prefix = ":"
+provider = "symbols"
 
-[builtins.ssh]
-hidden = true
+[[providers.prefixes]]
+prefix = "="
+provider = "calc"
 
-[builtins.websearch]
-switcher_only = true
-hidden = true
+[[providers.prefixes]]
+prefix = "@"
+provider = "websearch"
 
-[builtins.translation]
-hidden = true
+[[providers.prefixes]]
+prefix = "$"
+provider = "clipboard"
+
+[providers.actions] # This will be MERGED/OVEWRITTEN with what the user specifies
+dmenu = [{ action = "select", default = true, bind = "Return" }]
+
+providerlist = [
+  { action = "activate", default = true, bind = "Return", after = "ClearReload" },
+]
+
+bluetooth = [
+  { action = "find", global = true, bind = "ctrl f", after = "AsyncClearReload" },
+  { action = "trust", bind = "ctrl t", after = "AsyncReload" },
+  { action = "untrust", bind = "ctrl t", after = "AsyncReload" },
+  { action = "pair", bind = "Return", after = "AsyncReload" },
+  { action = "remove", bind = "ctrl d", after = "AsyncReload" },
+  { action = "connect", bind = "Return", after = "AsyncReload" },
+  { action = "disconnect", bind = "Return", after = "AsyncReload" },
+]
+
+archlinuxpkgs = [
+  { action = "install", bind = "Return", default = true },
+  { action = "remove", bind = "Return" },
+]
+
+calc = [
+  { action = "copy", default = true, bind = "Return" },
+  { action = "delete", bind = "ctrl d", after = "AsyncReload" },
+  { action = "save", bind = "ctrl s", after = "AsyncClearReload" },
+]
+
+websearch = [
+  { action = "search", default = true, bind = "Return" },
+  { action = "erase_history", label = "clear hist", bind = "ctrl h", after = "Reload" },
+]
+
+desktopapplications = [
+  { action = "start", default = true, bind = "Return" },
+  { action = "start:keep", label = "open+next", bind = "shift Return", after = "KeepOpen" },
+  { action = "erase_history", label = "clear hist", bind = "ctrl h", after = "AsyncReload" },
+  { action = "pin", bind = "ctrl p", after = "AsyncReload" },
+  { action = "unpin", bind = "ctrl p", after = "AsyncReload" },
+  { action = "pinup", bind = "ctrl n", after = "AsyncReload" },
+  { action = "pindown", bind = "ctrl m", after = "AsyncReload" },
+]
+
+files = [
+  { action = "open", default = true, bind = "Return" },
+  { action = "opendir", label = "open dir", bind = "ctrl Return" },
+  { action = "copypath", label = "copy path", bind = "ctrl shift c" },
+  { action = "copyfile", label = "copy file", bind = "ctrl c" },
+]
+
+todo = [
+  { action = "save", default = true, bind = "Return", after = "ClearReload" },
+  { action = "delete", bind = "ctrl d", after = "ClearReload" },
+  { action = "active", bind = "Return", after = "ClearReload" },
+  { action = "inactive", bind = "Return", after = "ClearReload" },
+  { action = "done", bind = "ctrl f", after = "ClearReload" },
+  { action = "clear", bind = "ctrl x", after = "ClearReload", global = true },
+]
+
+runner = [
+  { action = "run", default = true, bind = "Return" },
+  { action = "runterminal", label = "run in terminal", bind = "shift Return" },
+  { action = "erase_history", label = "clear hist", bind = "ctrl h", after = "Reload" },
+]
+
+symbols = [
+  { action = "run_cmd", label = "select", default = true, bind = "Return" },
+  { action = "erase_history", label = "clear hist", bind = "ctrl h", after = "Reload" },
+]
+
+unicode = [
+  { action = "run_cmd", label = "select", default = true, bind = "Return" },
+  { action = "erase_history", label = "clear hist", bind = "ctrl h", after = "Reload" },
+]
+
+clipboard = [
+  { action = "copy", default = true, bind = "Return" },
+  { action = "remove", bind = "ctrl d", after = "ClearReload" },
+  { action = "remove_all", global = true, label = "clear", bind = "ctrl shift d", after = "ClearReload" },
+  { action = "toggle_images", global = true, label = "toggle images", bind = "ctrl i", after = "ClearReload" },
+  { action = "edit", bind = "ctrl o" },
+]

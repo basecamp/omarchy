@@ -3,44 +3,45 @@
 # Note: We cannot use `jq` to update settings.json because it’s JSONC (allows comments),
 # which jq doesn’t support.
 
-VS_CODE_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
-VS_CODE_SETTINGS="$HOME/.config/Code/User/settings.json"
-VS_CODE_SKIP_FLAG="$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes"
+# Parameters: EDITOR_CMD SETTINGS_PATH SKIP_FLAG EDITOR_NAME
+EDITOR_CMD="${1:-code}"
+SETTINGS_PATH="${2:-$HOME/.config/Code/User/settings.json}"
+SKIP_FLAG="${3:-$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes}"
+EDITOR_NAME="${4:-VS Code}"
 
-if omarchy-cmd-present code && [[ ! -f "$VS_CODE_SKIP_FLAG" ]]; then
+VS_CODE_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
+
+if omarchy-cmd-present "$EDITOR_CMD" && [[ ! -f "$SKIP_FLAG" ]]; then
   if [[ -f "$VS_CODE_THEME" ]]; then
     theme_name=$(jq -r '.name' "$VS_CODE_THEME")
     extension=$(jq -r '.extension' "$VS_CODE_THEME")
 
-    # Install VS Code theme extension
-    if [[ -n "$extension" ]] && ! code --list-extensions | grep -Fxq "$extension"; then
-      notify-send "   Installing VS Code theme for $theme_name"
-      code --install-extension "$extension" >/dev/null
+    # Install $EDITOR_NAME theme extension
+    if [[ -n "$extension" ]] && ! "$EDITOR_CMD" --list-extensions | grep -Fxq "$extension"; then
+      "$EDITOR_CMD" --install-extension "$extension" >/dev/null
     fi
 
     # Create config file if there isn't already one
-    mkdir -p "$(dirname "$VS_CODE_SETTINGS")"
-    if [[ ! -f "$VS_CODE_SETTINGS" ]]; then
-      printf '{\n}\n' > "$VS_CODE_SETTINGS"
+    mkdir -p "$(dirname "$SETTINGS_PATH")"
+    if [[ ! -f "$SETTINGS_PATH" ]]; then
+      printf '{\n}\n' >"$SETTINGS_PATH"
     fi
 
-    # Create a `workbench.colorTheme` entry in settings.  
-    if ! grep -q '"workbench.colorTheme"' "$VS_CODE_SETTINGS"; then
+    # Create a `workbench.colorTheme` entry in settings.
+    if ! grep -q '"workbench.colorTheme"' "$SETTINGS_PATH"; then
       # Insert `"workbench.colorTheme": "",` immediately after the first `{`
       # Use sed's first-match range (0,/{/) to only replace the first `{`
-      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\
-  "workbench.colorTheme": "",/}' "$VS_CODE_SETTINGS"
+      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\ "workbench.colorTheme": "",/}' "$SETTINGS_PATH"
     fi
 
     # Update theme
     sed -i --follow-symlinks -E \
       "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
-      "$VS_CODE_SETTINGS"
+      "$SETTINGS_PATH"
   else
-    # Remove theme from settings.json when the theme doesn't have vscode support
-    if [[ -f "$VS_CODE_SETTINGS" ]]; then
-      sed -i --follow-symlinks -E '/"workbench\.colorTheme"[[:space:]]*:[^,}]*,?/d' "$VS_CODE_SETTINGS"
-
+    # Remove theme from settings.json when the theme doesn't have $EDITOR_NAME support
+    if [[ -f "$SETTINGS_PATH" ]]; then
+      sed -i --follow-symlinks -E 's/\"workbench\.colorTheme\"[[:space:]]*:[^,}]*,?//' "$SETTINGS_PATH"
     fi
   fi
 fi

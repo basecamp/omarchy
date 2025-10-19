@@ -6,7 +6,7 @@ OFF_TEMP=6000
 
 # Ensure hyprsunset is running
 if ! pgrep -x hyprsunset; then
-  setsid uwsm app -- hyprsunset &
+  setsid uwsm-app -- hyprsunset &
   sleep 1 # Give it time to register
 fi
 
