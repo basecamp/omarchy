@@ -1,7 +1,21 @@
 #!/bin/bash
 
+pkill elephant
 pkill walker
-# FIXME: Just deal with the memory leak for now.
-# See https://github.com/basecamp/omarchy/issues/698
-setsid uwsm app -- walker --gapplication-service &
-echo # Always end in success so we don't terminate further running
+
+# Detect if we're running as root (from pacman hook)
+if [[ $EUID -eq 0 ]]; then
+  # Get the owner of this script to determine which user to run as
+  SCRIPT_OWNER=$(stat -c '%U' "$0")
+  USER_UID=$(id -u "$SCRIPT_OWNER")
+
+  # Restart services as the script owner
+  systemd-run --uid="$SCRIPT_OWNER" --setenv=XDG_RUNTIME_DIR="/run/user/$USER_UID" \
+    bash -c "
+      setsid uwsm-app -- elephant &
+      setsid uwsm-app -- walker --gapplication-service &
+    "
+else
+  setsid uwsm-app -- elephant &
+  setsid uwsm-app -- walker --gapplication-service &
+fi

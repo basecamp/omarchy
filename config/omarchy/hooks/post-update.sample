@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# This hook is called after an Omarchy system update has been performed.
+# To put it into use, remove .sample from the name.
+
+# Example: Show notification after the system has been updated.
+# notify-send "Update Performed" "Your system is now up to date"

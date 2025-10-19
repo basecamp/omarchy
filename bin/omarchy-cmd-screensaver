@@ -13,7 +13,7 @@ exit_screensaver() {
 
 trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
 
-hyprctl keyword cursor:invisible true
+hyprctl keyword cursor:invisible true &>/dev/null
 
 while true; do
   effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)

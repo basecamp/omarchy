@@ -2,18 +2,30 @@
 
 CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
 
-if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
+if omarchy-cmd-present chromium || omarchy-cmd-present helium-browser || omarchy-cmd-present brave; then
   if [[ -f $CHROMIUM_THEME ]]; then
-    rgb=$(<$CHROMIUM_THEME)
-    THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${rgb//,/ })
+    THEME_RGB_COLOR=$(<$CHROMIUM_THEME)
+    THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${THEME_RGB_COLOR//,/ })
   else
     # Use a default, neutral grey if theme doesn't have a color
+    THEME_RGB_COLOR="28,32,39"
     THEME_HEX_COLOR="#1c2027"
   fi
 
   if omarchy-cmd-present chromium; then
+    rm -f /etc/chromium/policies/managed/color.json
+    chromium --no-startup-window --set-theme-color="$THEME_RGB_COLOR"
+
+    if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
+      chromium --no-startup-window --set-color-scheme="light"
+    else
+      chromium --no-startup-window --set-color-scheme="dark"
+    fi
+  fi
+
+  if omarchy-cmd-present helium-browser; then
     echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
-    chromium --refresh-platform-policy --no-startup-window
+    helium-browser --no-startup-window --refresh-platform-policy
   fi
 
   if omarchy-cmd-present brave; then

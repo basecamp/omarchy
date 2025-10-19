@@ -8,7 +8,9 @@ if [[ -f "$FIRST_RUN_MODE" ]]; then
   rm -f "$FIRST_RUN_MODE"
 
   bash "$OMARCHY_PATH/install/first-run/battery-monitor.sh"
+  bash "$OMARCHY_PATH/install/first-run/cleanup-reboot-sudoers.sh"
   bash "$OMARCHY_PATH/install/first-run/firewall.sh"
+  bash "$OMARCHY_PATH/install/first-run/dns-resolver.sh"
   bash "$OMARCHY_PATH/install/first-run/gnome-theme.sh"
   sudo rm -f /etc/sudoers.d/first-run
 

@@ -1,7 +1,8 @@
 #!/bin/bash
 
-case "$TERMINAL" in
-"alacritty") touch ~/.config/alacritty/alacritty.toml ;;
-"kitty") killall -SIGUSR1 kitty ;;
-"ghostty") killall -SIGUSR2 ghostty ;;
-esac
+if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
+  touch ~/.config/alacritty/alacritty.toml
+fi
+
+killall -SIGUSR1 kitty
+killall -SIGUSR2 ghostty

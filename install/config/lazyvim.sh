@@ -1,1 +1,0 @@
-omarchy-lazyvim-setup
