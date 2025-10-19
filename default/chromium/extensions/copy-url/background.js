@@ -1,7 +1,12 @@
 const copyActiveTabUrl = () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const currentTab = tabs[0];
-    if (!currentTab || !currentTab.id) {
+    if (!currentTab || !currentTab.id || !currentTab.url) {
+      return;
+    }
+
+    const restrictedSchemes = ['chrome://', 'chrome-extension://', 'chrome-devtools://'];
+    if (restrictedSchemes.some((scheme) => currentTab.url.startsWith(scheme))) {
       return;
     }
 
