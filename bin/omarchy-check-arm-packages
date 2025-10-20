@@ -49,6 +49,7 @@ declare -A CUSTOM_INSTALLERS=(
   ["1password-beta"]="1password-app"
   ["1password-cli"]="1password-cli"
   ["asdcontrol"]="asdcontrol-prebuilt"
+  ["ghostty"]="ghostty"
   ["obs-studio"]="obs-studio"
   ["obsidian"]="obsidian-appimage"
   ["omarchy-nvim"]="omarchy-nvim"
