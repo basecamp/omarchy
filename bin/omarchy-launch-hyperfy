@@ -20,9 +20,5 @@ for i in {1..20}; do
   sleep 1
 done
 
-# If Omarchy webapp launcher is present, prefer it for focus/launch behavior
-if command -v omarchy-launch-or-focus-webapp >/dev/null 2>&1; then
-  omarchy-launch-or-focus-webapp "${ICON_GLYPH} Hyperfy" || xdg-open "$URL"
-else
-  xdg-open "$URL"
-fi
+# Launch Hyperfy webapp
+xdg-open "$URL"

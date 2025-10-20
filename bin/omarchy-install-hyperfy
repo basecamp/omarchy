@@ -20,8 +20,7 @@ REPO_DIR="${APP_ROOT}/repo"
 STACK_DIR="${APP_ROOT}/compose"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_FILE="${STACK_DIR}/docker-compose.yml"
-ICON_SRC="$(git rev-parse --show-toplevel 2>/dev/null || echo "$(pwd)")/assets/icons/${APP_SLUG}.svg"
-ICON_DEST="${XDG_DATA_HOME:-$HOME/.local/share}/icons/omarchy/${APP_SLUG}.svg"
+# Using text-based lightning bolt icon instead of SVG
 
 TITLE_COLOR="212" # gum color index for headings
 
@@ -170,7 +169,7 @@ gum confirm "Proceed installing ${APP_NAME} dev to: ${APP_ROOT} and expose http:
 # ===========================
 # Clone repo (dev branch)
 # ===========================
-mkdir -p "${APP_ROOT}" "${STACK_DIR}" "$(dirname "${ICON_DEST}")"
+mkdir -p "${APP_ROOT}" "${STACK_DIR}"
 if [ ! -d "${REPO_DIR}/.git" ]; then
   gum spin --title "Cloning ${APP_NAME} (${REPO_BRANCH})..." -- \
     git clone --branch "${REPO_BRANCH}" --single-branch "${REPO_URL}" "${REPO_DIR}"
@@ -261,10 +260,7 @@ AI_EFFORT=${AI_EFFORT}
 AI_API_KEY=${AI_API_KEY}
 EOF
 
-# Copy icon
-if [ -f "${ICON_SRC}" ]; then
-  cp -f "${ICON_SRC}" "${ICON_DEST}"
-fi
+# No icon file copying needed - using text-based icon
 
 # ===========================
 # Start container and health-check
@@ -281,11 +277,32 @@ else
 fi
 
 # ===========================
-# Create desktop webapp
+# Create desktop webapp using Omarchy's webapp system
 # ===========================
 APP_DISPLAY_NAME="${ICON_GLYPH} ${APP_NAME}"
-gum spin --title "Creating desktop launcher/webapp..." -- \
-  bash -lc "omarchy-webapp-install \"${APP_DISPLAY_NAME}\" \"${APP_URL}\" \"${ICON_DEST}\" || true"
+echo
+info "Creating webapp launcher..."
+
+# Create desktop entry for Hyperfy webapp
+DESKTOP_FILE="$HOME/.local/share/applications/hyperfy.desktop"
+mkdir -p "$(dirname "$DESKTOP_FILE")"
+cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Type=Application
+Name=${APP_DISPLAY_NAME}
+Comment=Hyperfy 3D Virtual World Platform
+Exec=omarchy-launch-hyperfy
+Icon=applications-games
+Terminal=false
+Categories=Game;Network;WebBrowser;
+StartupWMClass=Hyperfy
+EOF
+chmod +x "$DESKTOP_FILE"
+
+# Refresh desktop database
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
+fi
 
 echo
 header "Installation Complete"
