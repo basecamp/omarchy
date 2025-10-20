@@ -155,12 +155,85 @@ catch_errors() {
     gum style "Get help from the community at https://discord.gg/tXFUdasqhY"
   fi
 
+  # Helper function to retry installation with preserved environment
+  # Named parameters (Ruby-like syntax):
+  #   disable_tmpfs=true|false  - Force disk-based /tmp (default: false)
+  #   preserve_log=true|false   - Keep same log file (default: true)
+  #
+  # Examples:
+  #   retry_installation disable_tmpfs=true
+  #   retry_installation disable_tmpfs=false preserve_log=false
+  #   retry_installation preserve_log=false
+  retry_installation() {
+    # Set defaults
+    local disable_tmpfs=false
+    local preserve_log=true
+
+    # Parse named arguments
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        disable_tmpfs=*) disable_tmpfs="${1#*=}"; shift ;;
+        preserve_log=*) preserve_log="${1#*=}"; shift ;;
+        *) echo "Unknown argument: $1"; return 1 ;;
+      esac
+    done
+
+    # Build env_vars array
+    # Note: Variables are set even if empty (e.g., SKIP_OBS=) to show users what options are available
+    local env_vars=(
+      OMARCHY_REPO="${OMARCHY_REPO:-}"
+      OMARCHY_REF="${OMARCHY_REF:-}"
+      OMARCHY_USER_NAME="${OMARCHY_USER_NAME:-}"
+      OMARCHY_USER_EMAIL="${OMARCHY_USER_EMAIL:-}"
+      OMARCHY_ONLINE_INSTALL="${OMARCHY_ONLINE_INSTALL:-}"
+      OMARCHY_RETRY_INSTALL=true
+      OMARCHY_SIMULATE_AUR_DOWN="${OMARCHY_SIMULATE_AUR_DOWN:-}"
+      OMARCHY_SIMULATE_MIRROR_DOWN="${OMARCHY_SIMULATE_MIRROR_DOWN:-}"
+      SKIP_YARU="${SKIP_YARU:-}"
+      SKIP_OBS="${SKIP_OBS:-}"
+      SKIP_PINTA="${SKIP_PINTA:-}"
+      SKIP_SIGNAL_DESKTOP_BETA="${SKIP_SIGNAL_DESKTOP_BETA:-}"
+    )
+
+    # Set OMARCHY_DISABLE_TMPFS based on:
+    # 1. Explicit error menu retry request (disable_tmpfs=true)
+    # 2. Already set in environment (manual export by user)
+    # 3. Default to empty (shows users the option exists)
+    if [[ $disable_tmpfs == true ]]; then
+      env_vars+=(OMARCHY_DISABLE_TMPFS=true)
+    else
+      env_vars+=(OMARCHY_DISABLE_TMPFS="${OMARCHY_DISABLE_TMPFS:-}")
+    fi
+
+    # Only preserve log timestamp if requested (for retries)
+    # Fresh code from GitHub update gets fresh log
+    if [[ $preserve_log == true ]]; then
+      env_vars+=(OMARCHY_LOG_INSTALL_TIMESTAMP="${OMARCHY_LOG_INSTALL_TIMESTAMP:-}")
+    fi
+
+    env "${env_vars[@]}" bash ~/.local/share/omarchy/install.sh
+  }
+
   # Offer options menu
   while true; do
     options=()
 
+    # Detect if this is a tmpfs-related "No space left on device" error
+    tmpfs_failure=false
+    if [[ -f $OMARCHY_INSTALL_LOG_FILE ]] && \
+       mountpoint -q /tmp 2>/dev/null && \
+       mount | grep -q "tmpfs on /tmp" && \
+       [[ -z "${OMARCHY_DISABLE_TMPFS:-}" ]] && \
+       tail -n 100 "$OMARCHY_INSTALL_LOG_FILE" | grep -qi "no space left on device"; then
+      tmpfs_failure=true
+    fi
+
     # If online install, show retry first
     if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
+      # If tmpfs failure detected, offer tmpfs-specific retry first
+      if [[ $tmpfs_failure == true ]]; then
+        options+=("Retry with disk-based /tmp (fixes 'no space left' errors)")
+      fi
       options+=("Retry installation")
       options+=("Update Omarchy from GitHub, then retry installation")
     fi
@@ -181,26 +254,40 @@ catch_errors() {
     options+=("Exit")
 
     echo
+
+    # Show explanation if tmpfs failure detected
+    if [[ $tmpfs_failure == true ]]; then
+      # Get tmpfs size info
+      local tmpfs_size=$(df -h /tmp 2>/dev/null | awk 'NR==2 {print $2}')
+      local tmpfs_used=$(df -h /tmp 2>/dev/null | awk 'NR==2 {print $3}')
+
+      gum style --foreground 3 "Detected: 'No space left on device' error during package build"
+      echo
+      gum style "This is caused by /tmp being mounted as tmpfs (RAM-based storage)."
+      if [[ -n "$tmpfs_size" ]]; then
+        gum style "Current /tmp: ${tmpfs_used} used / ${tmpfs_size} total (limited to 50% of RAM)"
+      else
+        gum style "Tmpfs is limited to 50% of RAM, which fills up when building large packages."
+      fi
+      echo
+      gum style "The 'Retry with disk-based /tmp' option will switch /tmp to use actual disk space,"
+      gum style "which has no size limit (beyond available disk space)."
+      echo
+    fi
+
     choice=$(gum choose --header "What would you like to do?" "${options[@]}" --height 7 --padding "1 $PADDING_LEFT")
 
     case "$choice" in
+    "Retry with disk-based /tmp (fixes 'no space left' errors)")
+      echo
+      gum style "Switching /tmp to use disk space instead of RAM..."
+      gum style "This will prevent 'No space left on device' errors during builds."
+      echo
+      retry_installation disable_tmpfs=true
+      break
+      ;;
     "Retry installation")
-      # Preserve critical environment variables for retry (including log timestamp)
-      env \
-        OMARCHY_REPO="${OMARCHY_REPO:-}" \
-        OMARCHY_REF="${OMARCHY_REF:-}" \
-        OMARCHY_USER_NAME="${OMARCHY_USER_NAME:-}" \
-        OMARCHY_USER_EMAIL="${OMARCHY_USER_EMAIL:-}" \
-        OMARCHY_ONLINE_INSTALL="${OMARCHY_ONLINE_INSTALL:-}" \
-        OMARCHY_RETRY_INSTALL=true \
-        OMARCHY_LOG_INSTALL_TIMESTAMP="${OMARCHY_LOG_INSTALL_TIMESTAMP:-}" \
-        OMARCHY_SIMULATE_AUR_DOWN="${OMARCHY_SIMULATE_AUR_DOWN:-}" \
-        OMARCHY_SIMULATE_MIRROR_DOWN="${OMARCHY_SIMULATE_MIRROR_DOWN:-}" \
-        SKIP_YARU="${SKIP_YARU:-}" \
-        SKIP_OBS="${SKIP_OBS:-}" \
-        SKIP_PINTA="${SKIP_PINTA:-}" \
-        SKIP_SIGNAL_DESKTOP_BETA="${SKIP_SIGNAL_DESKTOP_BETA:-}" \
-        bash ~/.local/share/omarchy/install.sh
+      retry_installation
       break
       ;;
     "Update Omarchy from GitHub, then retry installation")
@@ -309,20 +396,7 @@ catch_errors() {
       sleep 2
 
       # Restart installation with preserved environment (but NEW log - fresh code = fresh log)
-      env \
-        OMARCHY_REPO="${OMARCHY_REPO:-}" \
-        OMARCHY_REF="${OMARCHY_REF:-}" \
-        OMARCHY_USER_NAME="${OMARCHY_USER_NAME:-}" \
-        OMARCHY_USER_EMAIL="${OMARCHY_USER_EMAIL:-}" \
-        OMARCHY_ONLINE_INSTALL="${OMARCHY_ONLINE_INSTALL:-}" \
-        OMARCHY_RETRY_INSTALL=true \
-        OMARCHY_SIMULATE_AUR_DOWN="${OMARCHY_SIMULATE_AUR_DOWN:-}" \
-        OMARCHY_SIMULATE_MIRROR_DOWN="${OMARCHY_SIMULATE_MIRROR_DOWN:-}" \
-        SKIP_YARU="${SKIP_YARU:-}" \
-        SKIP_OBS="${SKIP_OBS:-}" \
-        SKIP_PINTA="${SKIP_PINTA:-}" \
-        SKIP_SIGNAL_DESKTOP_BETA="${SKIP_SIGNAL_DESKTOP_BETA:-}" \
-        bash ~/.local/share/omarchy/install.sh
+      retry_installation preserve_log=false
       break
       ;;
     "Show QR code for Discord support")
