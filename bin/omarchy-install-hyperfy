@@ -171,22 +171,25 @@ mkdir -p "${APP_ROOT}" "${STACK_DIR}" "${CONFIG_DIR}"
 # ===========================
 # Generate compose stack
 # ===========================
-# Copy template and write .env
-# First try to find the template relative to the script location
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEMPLATE_PATH="${SCRIPT_DIR}/../templates/compose/hyperfy.yaml"
-
-if [ -f "${TEMPLATE_PATH}" ]; then
-  cp "${TEMPLATE_PATH}" "${COMPOSE_FILE}"
-else
-  # Fallback to git repo detection
-  REPO_TEMPLATE="$(git rev-parse --show-toplevel 2>/dev/null || echo "$(pwd)")/templates/compose/hyperfy.yaml"
-  if [ -f "${REPO_TEMPLATE}" ]; then
-    cp "${REPO_TEMPLATE}" "${COMPOSE_FILE}"
-  else
-    die "Compose template not found. Tried: ${TEMPLATE_PATH} and ${REPO_TEMPLATE}"
-  fi
-fi
+# Create Docker Compose file with embedded YAML
+cat > "${COMPOSE_FILE}" <<'COMPOSE_EOF'
+name: omarchy-hyperfy
+services:
+  hyperfy:
+    image: ghcr.io/hyperfy-xyz/hyperfy:dev
+    container_name: ${HYPERFY_CONTAINER_NAME:-hyperfy-web}
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+    env_file:
+      - ${HOST_REPO_DIR}/.env
+    ports:
+      - "${HYPERFY_PORT}:3000"
+    volumes:
+      - hyperfy_data:/app/world
+volumes:
+  hyperfy_data:
+COMPOSE_EOF
 
 # Create Docker Compose .env file
 cat > "${ENV_FILE}" <<EOF
@@ -287,6 +290,7 @@ ICON_DIR="$HOME/.local/share/applications/icons"
 mkdir -p "${ICON_DIR}"
 
 # First try to use the template icon, fallback to current one
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE_ICON="${SCRIPT_DIR}/../templates/icons/hyperfy.png"
 if [ -f "${TEMPLATE_ICON}" ]; then
   cp "${TEMPLATE_ICON}" "${ICON_DIR}/${APP_NAME}.png"
