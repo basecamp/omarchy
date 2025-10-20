@@ -1,0 +1,24 @@
+#!/bin/bash
+# Drop-in replacement for uwsm-app for autostart scenarios
+# Calls systemd-run directly to avoid uwsm-app pipe bottleneck
+# Usage: omarchy-app <command> [args...]
+
+if [ $# -eq 0 ]; then
+  echo "Usage: omarchy-app <command> [args...]" >&2
+  exit 1
+fi
+
+# Extract app name from first argument for unit naming
+APP_NAME=$(basename "$1")
+
+# Generate a unique unit name with the app name
+UNIT_NAME="app-Hyprland-${APP_NAME}-$(printf '%s' "$*" | md5sum | cut -c1-8).scope"
+
+# Launch via systemd-run with same parameters as uwsm-app would use
+exec systemd-run \
+  --user \
+  --scope \
+  --slice=app-graphical.slice \
+  --unit="$UNIT_NAME" \
+  --collect \
+  -- "$@"
