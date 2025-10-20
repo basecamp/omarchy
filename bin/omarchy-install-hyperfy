@@ -172,10 +172,20 @@ mkdir -p "${APP_ROOT}" "${STACK_DIR}" "${CONFIG_DIR}"
 # Generate compose stack
 # ===========================
 # Copy template and write .env
-if [ -f "$(git rev-parse --show-toplevel 2>/dev/null || echo "$(pwd)")/templates/compose/hyperfy.yaml" ]; then
-  cp "$(git rev-parse --show-toplevel 2>/dev/null || echo "$(pwd)")/templates/compose/hyperfy.yaml" "${COMPOSE_FILE}"
+# First try to find the template relative to the script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEMPLATE_PATH="${SCRIPT_DIR}/../templates/compose/hyperfy.yaml"
+
+if [ -f "${TEMPLATE_PATH}" ]; then
+  cp "${TEMPLATE_PATH}" "${COMPOSE_FILE}"
 else
-  die "Compose template templates/compose/hyperfy.yaml not found."
+  # Fallback to git repo detection
+  REPO_TEMPLATE="$(git rev-parse --show-toplevel 2>/dev/null || echo "$(pwd)")/templates/compose/hyperfy.yaml"
+  if [ -f "${REPO_TEMPLATE}" ]; then
+    cp "${REPO_TEMPLATE}" "${COMPOSE_FILE}"
+  else
+    die "Compose template not found. Tried: ${TEMPLATE_PATH} and ${REPO_TEMPLATE}"
+  fi
 fi
 
 # Create Docker Compose .env file
