@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+APP_SLUG="hyperfy"
+ICON_GLYPH="⚡"
+STACK_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omarchy/games/${APP_SLUG}/compose"
+COMPOSE_FILE="${STACK_DIR}/docker-compose.yml"
+ENV_FILE="${STACK_DIR}/.env"
+
+[ -f "$ENV_FILE" ] || { echo "Not installed. Run: omarchy-install-hyperfy"; exit 1; }
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
+
+URL="http://127.0.0.1:${HYPERFY_PORT}"
+# Optionally wait a bit for readiness
+for i in {1..20}; do
+  if curl -fsS "$URL" >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+
+# If Omarchy webapp launcher is present, prefer it for focus/launch behavior
+if command -v omarchy-launch-or-focus-webapp >/dev/null 2>&1; then
+  omarchy-launch-or-focus-webapp "${ICON_GLYPH} Hyperfy" || xdg-open "$URL"
+else
+  xdg-open "$URL"
+fi

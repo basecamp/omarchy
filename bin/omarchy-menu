@@ -301,10 +301,17 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft") in
+  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft\n⚡  Hyperfy") in
   *Steam*) present_terminal omarchy-install-steam ;;
   *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
   *Minecraft*) aur_install_and_launch "Minecraft [AUR]" "minecraft-launcher" "minecraft-launcher" ;;
+  *Hyperfy*) 
+    if [ -f "${XDG_DATA_HOME:-$HOME/.local/share}/omarchy/games/hyperfy/compose/docker-compose.yml" ]; then
+      omarchy-launch-hyperfy
+    else
+      present_terminal omarchy-install-hyperfy
+    fi
+    ;;
   *) show_install_menu ;;
   esac
 }

@@ -1,0 +1,29 @@
+name: omarchy-hyperfy
+services:
+  hyperfy:
+    image: ${HYPERFY_NODE_IMAGE:-node:22.11-alpine}
+    container_name: ${HYPERFY_CONTAINER_NAME:-hyperfy-web}
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      - NODE_ENV=development
+      - PORT=${HYPERFY_PORT}
+    ports:
+      - "${HYPERFY_PORT}:5173"
+    volumes:
+      - ${HOST_REPO_DIR}:/app
+      - hyperfy_node_modules:/app/node_modules
+      - hyperfy_npm_cache:/root/.npm
+    command: >
+      sh -lc "
+      echo 'Node:' $(node -v);
+      if [ ! -d node_modules ]; then npm ci || npm install; fi;
+      if [ -f package.json ]; then
+        npm run dev -- --host 0.0.0.0 --port ${HYPERFY_PORT};
+      else
+        npx --yes serve -l ${HYPERFY_PORT} .;
+      fi
+      "
+volumes:
+  hyperfy_node_modules:
+  hyperfy_npm_cache:

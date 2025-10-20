@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# ===========================
+# Constants (no magic numbers)
+# ===========================
+APP_NAME="Hyperfy"
+APP_SLUG="hyperfy"
+ICON_GLYPH="⚡"
+REPO_URL="https://github.com/hyperfy-xyz/hyperfy.git"
+REPO_BRANCH="dev"
+DEFAULT_PORT="5173"
+DEFAULT_NODE_IMAGE="node:22.11-alpine"
+CONTAINER_NAME_DEFAULT="hyperfy-web"
+
+DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/omarchy"
+GAMES_ROOT="${DATA_ROOT}/games"
+APP_ROOT="${GAMES_ROOT}/${APP_SLUG}"
+REPO_DIR="${APP_ROOT}/repo"
+STACK_DIR="${APP_ROOT}/compose"
+ENV_FILE="${STACK_DIR}/.env"
+COMPOSE_FILE="${STACK_DIR}/docker-compose.yml"
+ICON_SRC="$(git rev-parse --show-toplevel 2>/dev/null || echo "$(pwd)")/assets/icons/${APP_SLUG}.svg"
+ICON_DEST="${XDG_DATA_HOME:-$HOME/.local/share}/icons/omarchy/${APP_SLUG}.svg"
+
+TITLE_COLOR="212" # gum color index for headings
+
+# ===========================
+# Helpers
+# ===========================
+need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1"; exit 1; }; }
+die() { echo "Error: $*" >&2; exit 1; }
+header() { gum style --border thick --margin "1" --padding "1 2" --border-foreground "$TITLE_COLOR" "${ICON_GLYPH}  $*"; }
+info() { gum style --foreground 244 "$*"; }
+
+is_port_free() {
+  local p="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ! ss -tulpn 2>/dev/null | grep -qE "[:.]${p}\b"
+  else
+    ! lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null | grep -qE "[:.]${p}\b"
+  fi
+}
+
+wait_http_ready() {
+  local url="$1" timeout="${2:-30}" elapsed=0
+  until curl -fsS "$url" >/dev/null 2>&1; do
+    sleep 1
+    elapsed=$((elapsed+1))
+    if [ "$elapsed" -ge "$timeout" ]; then return 1; fi
+  done
+}
+
+ensure_docker_running() {
+  docker info >/dev/null 2>&1 || die "Docker daemon not running. Start it (e.g., 'sudo systemctl start docker') and retry."
+}
+
+# ===========================
+# Preflight
+# ===========================
+header "Install ${APP_NAME} (dev)"
+need gum
+need git
+need docker
+need curl
+
+ensure_docker_running
+
+# Verify Node 22.11+ in container context (satisfies requirement without host Node)
+gum spin --title "Verifying Node 22.11+ in container image..." -- \
+  bash -lc "docker run --rm ${DEFAULT_NODE_IMAGE} node -v | awk -F[.v] '{ exit !(\$2>22 || (\$2==22 && \$3>=11)) }'"
+[ "$?" -eq 0 ] || die "Container image ${DEFAULT_NODE_IMAGE} does not meet Node 22.11.0+ requirement."
+
+# ===========================
+# Gather user choices
+# ===========================
+PORT_INPUT="$(gum input --prompt 'Port to expose (default 5173): ' --value "${DEFAULT_PORT}")"
+HYPERFY_PORT="${PORT_INPUT:-$DEFAULT_PORT}"
+
+if ! is_port_free "$HYPERFY_PORT"; then
+  die "Port ${HYPERFY_PORT} is in use. Choose a free port and re-run."
+fi
+
+CONTAINER_NAME="$(gum input --prompt 'Container name: ' --value "${CONTAINER_NAME_DEFAULT}")"
+[ -n "$CONTAINER_NAME" ] || CONTAINER_NAME="${CONTAINER_NAME_DEFAULT}"
+
+gum confirm "Proceed installing ${APP_NAME} dev to: ${APP_ROOT} and expose http://localhost:${HYPERFY_PORT} ?" || exit 0
+
+# ===========================
+# Clone repo (dev branch)
+# ===========================
+mkdir -p "${APP_ROOT}" "${STACK_DIR}" "$(dirname "${ICON_DEST}")"
+if [ ! -d "${REPO_DIR}/.git" ]; then
+  gum spin --title "Cloning ${APP_NAME} (${REPO_BRANCH})..." -- \
+    git clone --branch "${REPO_BRANCH}" --single-branch "${REPO_URL}" "${REPO_DIR}"
+else
+  gum spin --title "Updating ${APP_NAME} repo (dev)..." -- \
+    bash -lc "git -C '${REPO_DIR}' fetch origin && git -C '${REPO_DIR}' checkout '${REPO_BRANCH}' && git -C '${REPO_DIR}' pull --ff-only"
+fi
+
+# ===========================
+# Generate compose stack
+# ===========================
+# Copy template and write .env
+if [ -f "$(git rev-parse --show-toplevel 2>/dev/null || echo "$(pwd)")/templates/compose/hyperfy.yaml" ]; then
+  cp "$(git rev-parse --show-toplevel 2>/dev/null || echo "$(pwd)")/templates/compose/hyperfy.yaml" "${COMPOSE_FILE}"
+else
+  die "Compose template templates/compose/hyperfy.yaml not found."
+fi
+
+cat > "${ENV_FILE}" <<EOF
+HOST_REPO_DIR=${REPO_DIR}
+HYPERFY_PORT=${HYPERFY_PORT}
+HYPERFY_NODE_IMAGE=${DEFAULT_NODE_IMAGE}
+HYPERFY_CONTAINER_NAME=${CONTAINER_NAME}
+EOF
+
+# Copy icon
+if [ -f "${ICON_SRC}" ]; then
+  cp -f "${ICON_SRC}" "${ICON_DEST}"
+fi
+
+# ===========================
+# Start container and health-check
+# ===========================
+gum spin --title "Starting container..." -- \
+  docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d
+
+APP_URL="http://127.0.0.1:${HYPERFY_PORT}"
+if wait_http_ready "${APP_URL}" 45; then
+  info "Service is reachable at ${APP_URL}"
+else
+  info "Service not reachable yet. It may still be building dependencies. You can check logs:"
+  echo "  docker compose -f '${COMPOSE_FILE}' --env-file '${ENV_FILE}' logs -f"
+fi
+
+# ===========================
+# Create desktop webapp
+# ===========================
+APP_DISPLAY_NAME="${ICON_GLYPH} ${APP_NAME}"
+gum spin --title "Creating desktop launcher/webapp..." -- \
+  bash -lc "omarchy-webapp-install \"${APP_DISPLAY_NAME}\" \"${APP_URL}\" \"${ICON_DEST}\" || true"
+
+echo
+header "Installation Complete"
+echo "Launch now?"
+if gum confirm; then
+  omarchy-launch-hyperfy || xdg-open "${APP_URL}"
+else
+  echo "You can launch later with: omarchy-launch-hyperfy"
+fi
+
+# Optional: Offer uninstall
+if gum confirm "Add an uninstall helper for ${APP_NAME}?"; then
+  cat > "${APP_ROOT}/REMOVE.sh" <<'UNINSTALL'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+STACK_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omarchy/games/hyperfy/compose"
+COMPOSE_FILE="${STACK_DIR}/docker-compose.yml"
+ENV_FILE="${STACK_DIR}/.env"
+[ -f "$COMPOSE_FILE" ] && docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down -v || true
+rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/omarchy/games/hyperfy"
+echo "Hyperfy removed."
+UNINSTALL
+  chmod +x "${APP_ROOT}/REMOVE.sh"
+  echo "Uninstall helper at: ${APP_ROOT}/REMOVE.sh"
+fi
