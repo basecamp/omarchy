@@ -2,6 +2,11 @@
 
 set -e
 
+if ! gum confirm "Are you ready to update Omarchy?"; then
+  echo "Update cancelled by user."
+  exit 0
+fi
+
 omarchy-snapshot create || [ $? -eq 127 ]
 omarchy-update-git
 omarchy-update-perform
