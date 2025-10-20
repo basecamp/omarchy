@@ -10,13 +10,12 @@ ICON_GLYPH="⚡"
 REPO_URL="https://github.com/hyperfy-xyz/hyperfy.git"
 REPO_BRANCH="dev"
 DEFAULT_PORT="3000"
-DEFAULT_NODE_IMAGE="node:22.11-alpine"
 CONTAINER_NAME_DEFAULT="hyperfy-web"
 
 DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/omarchy"
 GAMES_ROOT="${DATA_ROOT}/games"
 APP_ROOT="${GAMES_ROOT}/${APP_SLUG}"
-REPO_DIR="${APP_ROOT}/repo"
+CONFIG_DIR="${APP_ROOT}/config"
 STACK_DIR="${APP_ROOT}/compose"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_FILE="${STACK_DIR}/docker-compose.yml"
@@ -65,10 +64,8 @@ need curl
 
 ensure_docker_running
 
-# Verify Node 22.11+ in container context (satisfies requirement without host Node)
-gum spin --title "Verifying Node 22.11+ in container image..." -- \
-  bash -lc "docker run --rm ${DEFAULT_NODE_IMAGE} node -v | awk -F[.v] '{ exit !(\$2>22 || (\$2==22 && \$3>=11)) }'"
-[ "$?" -eq 0 ] || die "Container image ${DEFAULT_NODE_IMAGE} does not meet Node 22.11.0+ requirement."
+# Using official pre-built Hyperfy image - no Node verification needed
+info "Using official Hyperfy Docker image: ghcr.io/hyperfy-xyz/hyperfy:dev"
 
 # ===========================
 # Gather user choices
@@ -164,19 +161,12 @@ else
   LIVEKIT_API_SECRET=""
 fi
 
-gum confirm "Proceed installing ${APP_NAME} dev to: ${APP_ROOT} and expose http://localhost:${HYPERFY_PORT} ?" || exit 0
+gum confirm "Proceed installing ${APP_NAME} with Docker to: ${APP_ROOT} and expose http://localhost:${HYPERFY_PORT} ?" || exit 0
 
 # ===========================
-# Clone repo (dev branch)
+# Create configuration
 # ===========================
-mkdir -p "${APP_ROOT}" "${STACK_DIR}"
-if [ ! -d "${REPO_DIR}/.git" ]; then
-  gum spin --title "Cloning ${APP_NAME} (${REPO_BRANCH})..." -- \
-    git clone --branch "${REPO_BRANCH}" --single-branch "${REPO_URL}" "${REPO_DIR}"
-else
-  gum spin --title "Updating ${APP_NAME} repo (dev)..." -- \
-    bash -lc "git -C '${REPO_DIR}' fetch origin && git -C '${REPO_DIR}' checkout '${REPO_BRANCH}' && git -C '${REPO_DIR}' pull --ff-only"
-fi
+mkdir -p "${APP_ROOT}" "${STACK_DIR}" "${CONFIG_DIR}"
 
 # ===========================
 # Generate compose stack
@@ -190,14 +180,13 @@ fi
 
 # Create Docker Compose .env file
 cat > "${ENV_FILE}" <<EOF
-HOST_REPO_DIR=${REPO_DIR}
+HOST_REPO_DIR=${CONFIG_DIR}
 HYPERFY_PORT=${HYPERFY_PORT}
-HYPERFY_NODE_IMAGE=${DEFAULT_NODE_IMAGE}
 HYPERFY_CONTAINER_NAME=${CONTAINER_NAME}
 EOF
 
 # Create Hyperfy application .env file
-cat > "${REPO_DIR}/.env" <<EOF
+cat > "${CONFIG_DIR}/.env" <<EOF
 # The world folder to run
 WORLD=${WORLD_NAME}
 
@@ -285,8 +274,8 @@ info "Creating webapp launcher..."
 
 # Use omarchy-webapp-install to create proper webapp integration
 if command -v omarchy-webapp-install >/dev/null 2>&1; then
-  # Create a placeholder icon URL for the webapp system  
-  ICON_URL="https://placehold.co/64x64/ffd400/000000.png?text=%E2%9A%A1"
+  # Use official Hyperfy icon
+  ICON_URL="https://hyperfy.xyz/static/logo-icon-echo.svg"
   gum spin --title "Installing as webapp..." -- \
     omarchy-webapp-install "${APP_DISPLAY_NAME}" "${APP_URL}" "${ICON_URL}" "omarchy-launch-hyperfy"
 else

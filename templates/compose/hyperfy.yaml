@@ -1,29 +1,16 @@
 name: omarchy-hyperfy
 services:
   hyperfy:
-    image: ${HYPERFY_NODE_IMAGE:-node:22.11-alpine}
+    image: ghcr.io/hyperfy-xyz/hyperfy:dev
     container_name: ${HYPERFY_CONTAINER_NAME:-hyperfy-web}
     restart: unless-stopped
-    working_dir: /app
     environment:
       - NODE_ENV=development
-      - PORT=${HYPERFY_PORT}
+    env_file:
+      - ${HOST_REPO_DIR}/.env
     ports:
-      - "${HYPERFY_PORT}:${HYPERFY_PORT}"
+      - "${HYPERFY_PORT}:3000"
     volumes:
-      - ${HOST_REPO_DIR}:/app
-      - hyperfy_node_modules:/app/node_modules
-      - hyperfy_npm_cache:/root/.npm
-    command: >
-      sh -lc "
-      echo 'Node:' $(node -v);
-      echo 'Installing dependencies...';
-      npm install;
-      echo 'Building Hyperfy...';
-      npm run build;
-      echo 'Starting Hyperfy server...';
-      npm start;
-      "
+      - hyperfy_data:/app/world
 volumes:
-  hyperfy_node_modules:
-  hyperfy_npm_cache:
+  hyperfy_data:
