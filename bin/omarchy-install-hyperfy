@@ -87,13 +87,83 @@ CONTAINER_NAME="$(gum input --prompt 'Container name: ' --value "${CONTAINER_NAM
 # Gather Hyperfy environment variables
 echo
 info "Configure Hyperfy Environment:"
+
+# Basic Configuration
 WORLD_NAME="$(gum input --prompt 'World folder name: ' --value 'world')"
 JWT_SECRET="$(gum input --prompt 'JWT Secret: ' --value 'hyper')"
 ADMIN_CODE="$(gum input --prompt 'Admin code (leave empty for everyone admin): ')"
-SAVE_INTERVAL="$(gum input --prompt 'Save interval (seconds): ' --value '60')"
-PLAYER_COLLISION="$(gum choose --header 'Player collision?' 'false' 'true')"
-MAX_UPLOAD_SIZE="$(gum input --prompt 'Max upload size (MB): ' --value '12')"
-CLEAN_ON_START="$(gum choose --header 'Clean unused assets on start?' 'true' 'false')"
+SAVE_INTERVAL="$(gum input --prompt 'Save interval (seconds, 0 to disable): ' --value '60')"
+
+# Player Settings
+PLAYER_COLLISION="$(gum choose --header 'Should players collide with other players?' 'false' 'true')"
+MAX_UPLOAD_SIZE="$(gum input --prompt 'Max upload size for models (MB): ' --value '12')"
+
+# Asset Storage
+ASSETS_TYPE="$(gum choose --header 'Asset storage type:' 'local' 's3')"
+if [[ "$ASSETS_TYPE" == "s3" ]]; then
+  ASSETS_S3_URI="$(gum input --prompt 'S3 URI (s3://bucket/path): ')"
+else
+  ASSETS_S3_URI=""
+fi
+
+# Database Configuration
+DB_TYPE="$(gum choose --header 'Database type:' 'local' 'postgres')"
+if [[ "$DB_TYPE" == "postgres" ]]; then
+  DB_URI="$(gum input --prompt 'Postgres URI (postgres://user:pass@host:port/db): ')"
+  DB_SCHEMA="$(gum input --prompt 'Database schema (optional): ')"
+else
+  DB_URI="local"
+  DB_SCHEMA=""
+fi
+
+# System Settings
+CLEAN_ON_START="$(gum choose --header 'Clean unused assets on startup?' 'true' 'false')"
+
+# AI Configuration (optional)
+echo
+info "AI Configuration (optional):"
+CONFIGURE_AI="$(gum choose --header 'Configure AI integration?' 'Skip' 'Configure')"
+if [[ "$CONFIGURE_AI" == "Configure" ]]; then
+  AI_PROVIDER="$(gum choose --header 'AI Provider:' 'anthropic' 'openai' 'xai' 'google')"
+  case "$AI_PROVIDER" in
+    "anthropic")
+      AI_MODEL="$(gum choose --header 'Anthropic Model:' 'claude-sonnet-4-20250514' 'claude-opus-4-1-20250805')"
+      AI_EFFORT="medium"
+      ;;
+    "openai")
+      AI_MODEL="$(gum choose --header 'OpenAI Model:' 'gpt-5' 'gpt-5-mini' 'gpt-5-nano')"
+      AI_EFFORT="$(gum choose --header 'AI Effort:' 'minimal' 'low' 'medium' 'high')"
+      ;;
+    "xai")
+      AI_MODEL="grok-4-0709"
+      AI_EFFORT="medium"
+      ;;
+    "google")
+      AI_MODEL="$(gum choose --header 'Google Model:' 'gemini-2.5-pro' 'gemini-2.5-flash')"
+      AI_EFFORT="medium"
+      ;;
+  esac
+  AI_API_KEY="$(gum input --prompt 'AI API Key: ' --password)"
+else
+  AI_PROVIDER="anthropic"
+  AI_MODEL="claude-sonnet-4-20250514"
+  AI_EFFORT="medium"
+  AI_API_KEY=""
+fi
+
+# LiveKit Configuration (optional)
+echo
+info "LiveKit Voice Chat (optional):"
+CONFIGURE_LIVEKIT="$(gum choose --header 'Configure LiveKit voice chat?' 'Skip' 'Configure')"
+if [[ "$CONFIGURE_LIVEKIT" == "Configure" ]]; then
+  LIVEKIT_WS_URL="$(gum input --prompt 'LiveKit WebSocket URL: ')"
+  LIVEKIT_API_KEY="$(gum input --prompt 'LiveKit API Key: ')"
+  LIVEKIT_API_SECRET="$(gum input --prompt 'LiveKit API Secret: ' --password)"
+else
+  LIVEKIT_WS_URL=""
+  LIVEKIT_API_KEY=""
+  LIVEKIT_API_SECRET=""
+fi
 
 gum confirm "Proceed installing ${APP_NAME} dev to: ${APP_ROOT} and expose http://localhost:${HYPERFY_PORT} ?" || exit 0
 
@@ -129,32 +199,66 @@ EOF
 
 # Create Hyperfy application .env file
 cat > "${REPO_DIR}/.env" <<EOF
-# Hyperfy Configuration
+# The world folder to run
 WORLD=${WORLD_NAME}
+
+# The port the server runs on 
 PORT=${HYPERFY_PORT}
+
+# The secret the server uses to create/parse json web tokens
 JWT_SECRET=${JWT_SECRET}
+
+# The code used to become admin in the world (type /admin <code> in chat)
+# If left blank, everyone is an admin!
 ADMIN_CODE=${ADMIN_CODE}
+
+# How often the world saves (seconds) 
+# Can be set to 0 to disable saving
 SAVE_INTERVAL=${SAVE_INTERVAL}
+
+# Whether players should collide with other players
 PUBLIC_PLAYER_COLLISION=${PLAYER_COLLISION}
+
+# The maximum upload file size for models etc (mb)
 PUBLIC_MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
+
+# The public web socket url the client connects to
 PUBLIC_WS_URL=ws://localhost:${HYPERFY_PORT}/ws
+
+# The public url used by clients to access api (eg upload assets)
 PUBLIC_API_URL=http://localhost:${HYPERFY_PORT}/api
-ASSETS=local
+
+# How assets are stored, fetched and uploaded (local or s3)
+ASSETS=${ASSETS_TYPE}
 ASSETS_BASE_URL=http://localhost:${HYPERFY_PORT}/assets
-DB_URI=local
-DB_SCHEMA=
+ASSETS_S3_URI=${ASSETS_S3_URI}
+
+# By default world data is stored in a local sqlite database in the world folder
+# Optionally set this to a postgres uri to store remotely, eg 'postgres://username:password@host:port/database'
+DB_URI=${DB_URI}
+DB_SCHEMA=${DB_SCHEMA}
+
+# Whether the server should do a cleanup of unused blueprints and assets before launching
 CLEAN=${CLEAN_ON_START}
 
-# AI Configuration (optional)
-AI_PROVIDER=anthropic
-AI_MODEL=claude-sonnet-4-20250514
-AI_EFFORT=medium
-AI_API_KEY=
+# LiveKit (voice chat)
+LIVEKIT_WS_URL=${LIVEKIT_WS_URL}
+LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
 
-# LiveKit (voice chat) - optional
-LIVEKIT_WS_URL=
-LIVEKIT_API_KEY=
-LIVEKIT_API_SECRET=
+
+##
+# AI
+# --
+# AI_PROVIDER: openai, anthropic, xai, google
+# AI_MODEL: claude-opus-4-1-20250805, claude-sonnet-4-20250514, gpt-5, gpt-5-mini, gpt-5-nano, grok-4-0709, gemini-2.5-pro, gemini-2.5-flash
+# AI_EFFORT: minimal, low, medium, high (OpenAI only)
+# AI_API_KEY: The api key for the selected provider
+##
+AI_PROVIDER=${AI_PROVIDER}
+AI_MODEL=${AI_MODEL}
+AI_EFFORT=${AI_EFFORT}
+AI_API_KEY=${AI_API_KEY}
 EOF
 
 # Copy icon
