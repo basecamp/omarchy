@@ -118,10 +118,11 @@ strip_version_constraints() {
   echo "$name" | sed 's/[<>=].*$//'
 }
 
-# Strip version constraints and library references from dependency name
+# Strip version constraints from dependency name
+# NOTE: Do NOT strip .so suffix - pacman -T needs it to recognize virtual provides
 strip_dep_name() {
   local dep="$1"
-  echo "$dep" | sed 's/[<>=].*$//' | sed 's/\.so.*$//'
+  echo "$dep" | sed 's/[<>=].*$//'
 }
 
 # Clone package from GitHub AUR mirror
@@ -502,14 +503,15 @@ resolve_aur_deps_recursive() {
     if [[ -z "$dep_line" ]]; then continue; fi
 
     local dep_name=$(echo "$dep_line" | cut -d: -f2)
-    # Strip version constraints and library references
-    dep_name=$(strip_dep_name "$dep_name")
 
-    # Skip empty or library dependencies
-    if [[ -z "$dep_name" ]] || [[ "$dep_name" =~ ^lib.*\.so ]]; then
+    # Skip empty or library dependencies (check BEFORE stripping)
+    if [[ -z "$dep_name" ]] || [[ "$dep_name" =~ \.so ]]; then
       debug_log "  Skipping library: $dep_name"
       continue
     fi
+
+    # Strip version constraints (but NOT .so suffix)
+    dep_name=$(strip_dep_name "$dep_name")
 
     # Skip if dependency is already satisfied (installed or provided)
     # pacman -T returns 0 if all packages are satisfied
