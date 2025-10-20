@@ -291,7 +291,7 @@ show_install_ai_menu() {
   *Claude*) install "Claude Code" "claude-code" ;;
   *Cursor*) aur_install "Cursor CLI" "cursor-cli" ;;
   *OpenAI*) aur_install "OpenAI Codex" "openai-codex-bin" ;;
-  *Gemini*) aur_install "Gemini" "gemini-cli" ;;
+  *Gemini*) aur_install "Gemini" "gemini-cli-bin" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
