@@ -38,7 +38,7 @@ ensure_vaults_file() {
   # Scan a couple of common locations for <base>/<vault>/.obsidian
   for base in "$HOME/Documents" "$HOME/Dropbox"; do
     [ -d "$base" ] || continue
-    for d in "$base"/*/.obsidian; do
+    for d in $(find "$base" -type d -name ".obsidian"); do
       [ -d "$d" ] || continue
       vault_dir="${d%/.obsidian}"
       printf "%s\n" "$vault_dir" >>"$tmpfile"
