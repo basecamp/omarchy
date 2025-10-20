@@ -259,7 +259,7 @@ AI_EFFORT=${AI_EFFORT}
 AI_API_KEY=${AI_API_KEY}
 EOF
 
-# No icon file copying needed - using text-based icon
+# Icon file will be handled in webapp creation section
 
 # ===========================
 # Start container and health-check
@@ -282,12 +282,30 @@ APP_DISPLAY_NAME="${APP_NAME}"
 echo
 info "Creating webapp launcher..."
 
-# Use omarchy-webapp-install to create proper webapp integration
-if command -v omarchy-webapp-install >/dev/null 2>&1; then
-  # Use official Hyperfy icon
+# Copy local Hyperfy icon to applications directory
+ICON_DIR="$HOME/.local/share/applications/icons"
+mkdir -p "${ICON_DIR}"
+
+# First try to use the template icon, fallback to current one
+TEMPLATE_ICON="${SCRIPT_DIR}/../templates/icons/hyperfy.png"
+if [ -f "${TEMPLATE_ICON}" ]; then
+  cp "${TEMPLATE_ICON}" "${ICON_DIR}/${APP_NAME}.png"
+elif [ -f "${ICON_DIR}/${APP_NAME}.png" ]; then
+  info "Using existing ${APP_NAME} icon"
+else
+  # Fallback to downloading if no local icon exists
   ICON_URL="https://hyperfy.xyz/static/logo-icon-echo.svg"
+  curl -sL -o "${ICON_DIR}/${APP_NAME}.png" "${ICON_URL}" || {
+    echo "Failed to download icon, using default"
+  }
+fi
+
+# Create desktop webapp entry
+if command -v omarchy-webapp-install >/dev/null 2>&1; then
+  # Use local icon file
+  LOCAL_ICON="${ICON_DIR}/${APP_NAME}.png"
   gum spin --title "Installing as webapp..." -- \
-    omarchy-webapp-install "${APP_DISPLAY_NAME}" "${APP_URL}" "${ICON_URL}" "omarchy-launch-hyperfy"
+    omarchy-webapp-install "${APP_DISPLAY_NAME}" "${APP_URL}" "${LOCAL_ICON}" "omarchy-launch-hyperfy"
 else
   echo "omarchy-webapp-install not found, creating basic desktop entry"
 fi
