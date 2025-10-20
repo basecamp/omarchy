@@ -17,13 +17,12 @@ services:
     command: >
       sh -lc "
       echo 'Node:' $(node -v);
-      if [ ! -d node_modules ]; then npm ci || npm install; fi;
-      if [ -f package.json ]; then
-        npm start;
-      else
-        echo 'No package.json found';
-        exit 1;
-      fi
+      echo 'Installing dependencies...';
+      npm install;
+      echo 'Building Hyperfy...';
+      npm run build;
+      echo 'Starting Hyperfy server...';
+      npm start;
       "
 volumes:
   hyperfy_node_modules:
