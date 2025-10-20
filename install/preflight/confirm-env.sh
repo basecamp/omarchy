@@ -1,8 +1,8 @@
 # Source get-env.sh to get the get_env_vars function
 source "$OMARCHY_INSTALL/preflight/get-env.sh"
 
-# Show environment variable confirmation if custom repo/ref/skips are set
-if [[ -n "${OMARCHY_REPO:-}" ]] || [[ -n "${OMARCHY_REF:-}" ]] || [[ -n "${SKIP_YARU:-}" ]] || [[ -n "${SKIP_OBS:-}" ]] || [[ -n "${SKIP_PINTA:-}" ]] || [[ -n "${SKIP_SIGNAL_DESKTOP_BETA:-}" ]]; then
+# Show environment variable confirmation if custom repo/ref/skips/tmpfs are set
+if [[ -n "${OMARCHY_REPO:-}" ]] || [[ -n "${OMARCHY_REF:-}" ]] || [[ -n "${OMARCHY_DISABLE_TMPFS:-}" ]] || [[ -n "${SKIP_YARU:-}" ]] || [[ -n "${SKIP_OBS:-}" ]] || [[ -n "${SKIP_PINTA:-}" ]] || [[ -n "${SKIP_SIGNAL_DESKTOP_BETA:-}" ]]; then
   echo
 
   # Use gum style for retries, plain echo for first-time installs
