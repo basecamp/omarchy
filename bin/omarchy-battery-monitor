@@ -6,31 +6,46 @@ BATTERY_THRESHOLD=10
 NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
 
 get_battery_percentage() {
-  upower -i "$(upower -e | grep 'BAT')" \
-  | awk -F: '/percentage/ {
-      gsub(/[%[:space:]]/, "", $2);
-      val=$2;
-      printf("%d\n", (val+0.5))
-      exit
-    }'
+	local devices=($(upower -e | grep 'BAT'))
+	local percent sum=0 count=0
+
+	if [[ ${#devices[@]} -eq 0 ]]; then
+		echo "Error: No batteries found" >&2
+		return 1
+	fi
+
+	for device in "${devices[@]}"; do
+		percent=$(upower -i "$device" | awk -F: '/percentage/ {gsub(/%/, "", $2); print int($2 + 0.5)}')
+		if [[ "$percent" =~ ^[0-9]+$ ]]; then
+			sum=$((sum + percent))
+			count=$((count + 1))
+		fi
+	done
+
+	if [[ $count -gt 0 ]]; then
+		echo $((sum / count))
+	else
+		echo "Error: Could not retrieve battery percentage" >&2
+		return 1
+	fi
 }
 
 get_battery_state() {
-  upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}'
+	upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}'
 }
 
 send_notification() {
-  notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
+	notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
 }
 
 BATTERY_LEVEL=$(get_battery_percentage)
 BATTERY_STATE=$(get_battery_state)
 
 if [[ "$BATTERY_STATE" == "discharging" && "$BATTERY_LEVEL" -le "$BATTERY_THRESHOLD" ]]; then
-  if [[ ! -f "$NOTIFICATION_FLAG" ]]; then
-    send_notification "$BATTERY_LEVEL"
-    touch "$NOTIFICATION_FLAG"
-  fi
+	if [[ ! -f "$NOTIFICATION_FLAG" ]]; then
+		send_notification "$BATTERY_LEVEL"
+		touch "$NOTIFICATION_FLAG"
+	fi
 else
-  rm -f "$NOTIFICATION_FLAG"
+	rm -f "$NOTIFICATION_FLAG"
 fi
