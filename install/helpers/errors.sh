@@ -58,13 +58,23 @@ show_cursor() {
 }
 
 # Display truncated log lines from the install log
+# Parameters:
+#   $1 - (optional) tmpfs_failure=true to reserve extra lines for tmpfs explanation
 show_log_tail() {
+  local tmpfs_failure="${1:-false}"
+
   if [[ -f $OMARCHY_INSTALL_LOG_FILE ]]; then
     # On ARM/Asahi/VMs, QR code isn't shown immediately (only as menu option)
     # so we have ~13 more lines available for log output
     local reserved_lines=35
     if [[ -n $OMARCHY_ARM ]] || [[ -n $ASAHI_ALARM ]] || [[ -n $OMARCHY_VIRTUALIZATION ]]; then
       reserved_lines=22
+    fi
+
+    # If tmpfs failure detected, reserve 8 additional lines for the explanation
+    # (4 lines of text + 4 blank lines)
+    if [[ "$tmpfs_failure" == "true" ]]; then
+      reserved_lines=$((reserved_lines + 9))
     fi
 
     local log_lines=$(($TERM_HEIGHT - $LOGO_HEIGHT - $reserved_lines))
@@ -137,8 +147,19 @@ catch_errors() {
   clear_logo
   show_cursor
 
+  # Detect if this is a tmpfs-related "No space left on device" error early
+  # so we can adjust log output accordingly
+  local tmpfs_failure=false
+  if [[ -f $OMARCHY_INSTALL_LOG_FILE ]] && \
+     mountpoint -q /tmp 2>/dev/null && \
+     mount | grep -q "tmpfs on /tmp" && \
+     [[ -z "${OMARCHY_DISABLE_TMPFS:-}" ]] && \
+     tail -n 100 "$OMARCHY_INSTALL_LOG_FILE" | grep -qi "no space left on device"; then
+    tmpfs_failure=true
+  fi
+
   gum style --foreground 1 --padding "1 0 1 $PADDING_LEFT" "Omarchy installation stopped!"
-  show_log_tail
+  show_log_tail "$tmpfs_failure"
 
   gum style "This command halted with exit code $exit_code:"
   show_failed_script_or_command
@@ -217,16 +238,6 @@ catch_errors() {
   # Offer options menu
   while true; do
     options=()
-
-    # Detect if this is a tmpfs-related "No space left on device" error
-    tmpfs_failure=false
-    if [[ -f $OMARCHY_INSTALL_LOG_FILE ]] && \
-       mountpoint -q /tmp 2>/dev/null && \
-       mount | grep -q "tmpfs on /tmp" && \
-       [[ -z "${OMARCHY_DISABLE_TMPFS:-}" ]] && \
-       tail -n 100 "$OMARCHY_INSTALL_LOG_FILE" | grep -qi "no space left on device"; then
-      tmpfs_failure=true
-    fi
 
     # If online install, show retry first
     if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
