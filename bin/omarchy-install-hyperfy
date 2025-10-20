@@ -6,7 +6,7 @@ set -Eeuo pipefail
 # ===========================
 APP_NAME="Hyperfy"
 APP_SLUG="hyperfy"
-ICON_GLYPH="⚡"
+ICON_GLYPH="🌍"
 REPO_URL="https://github.com/hyperfy-xyz/hyperfy.git"
 REPO_BRANCH="dev"
 DEFAULT_PORT="3000"
@@ -278,7 +278,7 @@ fi
 # ===========================
 # Create desktop webapp using Omarchy's webapp system
 # ===========================
-APP_DISPLAY_NAME="${ICON_GLYPH} ${APP_NAME}"
+APP_DISPLAY_NAME="${APP_NAME}"
 echo
 info "Creating webapp launcher..."
 
