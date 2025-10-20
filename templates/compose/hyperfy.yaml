@@ -9,7 +9,7 @@ services:
       - NODE_ENV=development
       - PORT=${HYPERFY_PORT}
     ports:
-      - "${HYPERFY_PORT}:5173"
+      - "${HYPERFY_PORT}:${HYPERFY_PORT}"
     volumes:
       - ${HOST_REPO_DIR}:/app
       - hyperfy_node_modules:/app/node_modules
@@ -19,9 +19,10 @@ services:
       echo 'Node:' $(node -v);
       if [ ! -d node_modules ]; then npm ci || npm install; fi;
       if [ -f package.json ]; then
-        npm run dev -- --host 0.0.0.0 --port ${HYPERFY_PORT};
+        npm start;
       else
-        npx --yes serve -l ${HYPERFY_PORT} .;
+        echo 'No package.json found';
+        exit 1;
       fi
       "
 volumes:

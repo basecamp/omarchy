@@ -9,7 +9,7 @@ APP_SLUG="hyperfy"
 ICON_GLYPH="⚡"
 REPO_URL="https://github.com/hyperfy-xyz/hyperfy.git"
 REPO_BRANCH="dev"
-DEFAULT_PORT="5173"
+DEFAULT_PORT="3000"
 DEFAULT_NODE_IMAGE="node:22.11-alpine"
 CONTAINER_NAME_DEFAULT="hyperfy-web"
 
@@ -74,7 +74,7 @@ gum spin --title "Verifying Node 22.11+ in container image..." -- \
 # ===========================
 # Gather user choices
 # ===========================
-PORT_INPUT="$(gum input --prompt 'Port to expose (default 5173): ' --value "${DEFAULT_PORT}")"
+PORT_INPUT="$(gum input --prompt 'Port to expose (default 3000): ' --value "${DEFAULT_PORT}")"
 HYPERFY_PORT="${PORT_INPUT:-$DEFAULT_PORT}"
 
 if ! is_port_free "$HYPERFY_PORT"; then
@@ -83,6 +83,17 @@ fi
 
 CONTAINER_NAME="$(gum input --prompt 'Container name: ' --value "${CONTAINER_NAME_DEFAULT}")"
 [ -n "$CONTAINER_NAME" ] || CONTAINER_NAME="${CONTAINER_NAME_DEFAULT}"
+
+# Gather Hyperfy environment variables
+echo
+info "Configure Hyperfy Environment:"
+WORLD_NAME="$(gum input --prompt 'World folder name: ' --value 'world')"
+JWT_SECRET="$(gum input --prompt 'JWT Secret: ' --value 'hyper')"
+ADMIN_CODE="$(gum input --prompt 'Admin code (leave empty for everyone admin): ')"
+SAVE_INTERVAL="$(gum input --prompt 'Save interval (seconds): ' --value '60')"
+PLAYER_COLLISION="$(gum choose --header 'Player collision?' 'false' 'true')"
+MAX_UPLOAD_SIZE="$(gum input --prompt 'Max upload size (MB): ' --value '12')"
+CLEAN_ON_START="$(gum choose --header 'Clean unused assets on start?' 'true' 'false')"
 
 gum confirm "Proceed installing ${APP_NAME} dev to: ${APP_ROOT} and expose http://localhost:${HYPERFY_PORT} ?" || exit 0
 
@@ -108,11 +119,42 @@ else
   die "Compose template templates/compose/hyperfy.yaml not found."
 fi
 
+# Create Docker Compose .env file
 cat > "${ENV_FILE}" <<EOF
 HOST_REPO_DIR=${REPO_DIR}
 HYPERFY_PORT=${HYPERFY_PORT}
 HYPERFY_NODE_IMAGE=${DEFAULT_NODE_IMAGE}
 HYPERFY_CONTAINER_NAME=${CONTAINER_NAME}
+EOF
+
+# Create Hyperfy application .env file
+cat > "${REPO_DIR}/.env" <<EOF
+# Hyperfy Configuration
+WORLD=${WORLD_NAME}
+PORT=${HYPERFY_PORT}
+JWT_SECRET=${JWT_SECRET}
+ADMIN_CODE=${ADMIN_CODE}
+SAVE_INTERVAL=${SAVE_INTERVAL}
+PUBLIC_PLAYER_COLLISION=${PLAYER_COLLISION}
+PUBLIC_MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
+PUBLIC_WS_URL=ws://localhost:${HYPERFY_PORT}/ws
+PUBLIC_API_URL=http://localhost:${HYPERFY_PORT}/api
+ASSETS=local
+ASSETS_BASE_URL=http://localhost:${HYPERFY_PORT}/assets
+DB_URI=local
+DB_SCHEMA=
+CLEAN=${CLEAN_ON_START}
+
+# AI Configuration (optional)
+AI_PROVIDER=anthropic
+AI_MODEL=claude-sonnet-4-20250514
+AI_EFFORT=medium
+AI_API_KEY=
+
+# LiveKit (voice chat) - optional
+LIVEKIT_WS_URL=
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
 EOF
 
 # Copy icon
