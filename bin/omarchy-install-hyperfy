@@ -283,25 +283,14 @@ APP_DISPLAY_NAME="${ICON_GLYPH} ${APP_NAME}"
 echo
 info "Creating webapp launcher..."
 
-# Create desktop entry for Hyperfy webapp
-DESKTOP_FILE="$HOME/.local/share/applications/hyperfy.desktop"
-mkdir -p "$(dirname "$DESKTOP_FILE")"
-cat > "$DESKTOP_FILE" << EOF
-[Desktop Entry]
-Type=Application
-Name=${APP_DISPLAY_NAME}
-Comment=Hyperfy 3D Virtual World Platform
-Exec=omarchy-launch-hyperfy
-Icon=applications-games
-Terminal=false
-Categories=Game;Network;WebBrowser;
-StartupWMClass=Hyperfy
-EOF
-chmod +x "$DESKTOP_FILE"
-
-# Refresh desktop database
-if command -v update-desktop-database >/dev/null 2>&1; then
-  update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
+# Use omarchy-webapp-install to create proper webapp integration
+if command -v omarchy-webapp-install >/dev/null 2>&1; then
+  # Create a placeholder icon URL for the webapp system  
+  ICON_URL="https://placehold.co/64x64/ffd400/000000.png?text=%E2%9A%A1"
+  gum spin --title "Installing as webapp..." -- \
+    omarchy-webapp-install "${APP_DISPLAY_NAME}" "${APP_URL}" "${ICON_URL}" "omarchy-launch-hyperfy"
+else
+  echo "omarchy-webapp-install not found, creating basic desktop entry"
 fi
 
 echo

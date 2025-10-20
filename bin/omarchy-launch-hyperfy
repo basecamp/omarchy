@@ -14,11 +14,15 @@ source "$ENV_FILE"
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
 
 URL="http://127.0.0.1:${HYPERFY_PORT}"
-# Optionally wait a bit for readiness
+# Wait for readiness
 for i in {1..20}; do
   if curl -fsS "$URL" >/dev/null 2>&1; then break; fi
   sleep 1
 done
 
-# Launch Hyperfy webapp
-xdg-open "$URL"
+# Launch as webapp using omarchy-launch-webapp if available
+if command -v omarchy-launch-webapp >/dev/null 2>&1; then
+  omarchy-launch-webapp "$URL"
+else
+  xdg-open "$URL"
+fi
