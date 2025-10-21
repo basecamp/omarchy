@@ -172,7 +172,7 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n  Browser\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
@@ -183,6 +183,7 @@ show_setup_menu() {
     rfkill unblock wifi
     omarchy-launch-wifi
     ;;
+  *Browser*) present_terminal omarchy-default-browser select ;;
   *Bluetooth*)
     rfkill unblock bluetooth
     blueberry
