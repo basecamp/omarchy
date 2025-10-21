@@ -1,0 +1,9 @@
+#!/bin/bash
+
+echo "Installing Brave..."
+
+omarchy-pkg-add brave-bin
+
+omarchy-default-browser set brave-browser.desktop
+
+setsid gtk-launch brave-browser.desktop
