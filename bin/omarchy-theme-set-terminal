@@ -4,5 +4,9 @@ if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
   touch ~/.config/alacritty/alacritty.toml
 fi
 
+if [[ -f ~/.config/wezterm/wezterm.lua ]]; then
+  touch ~/.config/wezterm/wezterm.lua
+fi
+
 killall -SIGUSR1 kitty
 killall -SIGUSR2 ghostty
