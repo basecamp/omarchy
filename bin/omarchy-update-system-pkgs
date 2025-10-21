@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Used in package emergencies if a bad package has been pushed and we can't revoke.
+# Requires manually installing the good package using sudo pacman -U <url>
+ignored_packages=$(omarchy-pkg-ignored)
+
+echo -e "\e[32m\nUpdate system packages\e[0m"
+[[ -n $ignored_packages ]] && echo "sudo pacman -Syu --noconfirm --ignore \"$ignored_packages\""
+sudo pacman -Syu --noconfirm --ignore "$ignored_packages"
+
+# Update AUR packages if any are installed
+if pacman -Qem >/dev/null; then
+  if omarchy-pkg-aur-accessible; then
+    echo -e "\e[32m\nUpdate AUR packages\e[0m"
+    [[ -n $ignored_packages ]] && echo "yay -Sua --noconfirm  --ignore \"$ignored_packages\""
+    yay -Sua --noconfirm --ignore "$ignored_packages"
+    echo
+  else
+    echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"
+    echo
+  fi
+fi
+
+orphans=$(pacman -Qtdq)
+if [[ -n $orphans ]]; then
+  echo -e "\e[32m\nRemove orphan system packages\e[0m"
+  for pkg in $orphans; do
+    sudo pacman -Rs --noconfirm "$pkg" || true
+  done
+  echo
+fi

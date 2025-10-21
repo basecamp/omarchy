@@ -9,9 +9,5 @@ if [[ ! -v BASH_COMPLETION_VERSINFO && -f /usr/share/bash-completion/bash_comple
   source /usr/share/bash-completion/bash_completion
 fi
 
-# Set complete path
-export PATH="./bin:$HOME/.local/bin:$HOME/.local/share/omarchy/bin:$PATH"
+# Ensure command hashing is off for mise
 set +h
-
-# Omarchy path
-export OMARCHY_PATH="/home/$USER/.local/share/omarchy"

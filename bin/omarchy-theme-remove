@@ -33,7 +33,7 @@ fi
 
 # Move to the next theme if the current theme is the one being removed
 if [ "$(readlink -f "$CURRENT_DIR/theme")" = "$(readlink -f "$THEME_PATH")" ]; then
-  ~/.local/share/omarchy/bin/omarchy-theme-next
+  omarchy-theme-next
 fi
 
 # Now remove the theme directory for THEME_NAME

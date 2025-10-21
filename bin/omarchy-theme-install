@@ -30,4 +30,4 @@ if ! git clone "$REPO_URL" "$THEME_PATH"; then
 fi
 
 # Apply the new theme with omarchy-theme-set
-~/.local/share/omarchy/bin/omarchy-theme-set $THEME_NAME
+omarchy-theme-set $THEME_NAME

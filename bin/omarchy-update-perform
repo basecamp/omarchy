@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -e
+
+omarchy-update-available-reset
+omarchy-update-system-pkgs
+omarchy-migrate
+omarchy-hook post-update
+omarchy-update-restart
