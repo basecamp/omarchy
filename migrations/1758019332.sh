@@ -16,6 +16,6 @@ if grep -q "bindd = SUPER, N, Neovim" ~/.config/hypr/bindings.conf; then
 fi
 
 # Use default terminal for keybinding
-if grep -q "terminal = uwsm app" ~/.config/hypr/bindings.conf; then
-  sed -i '/terminal = uwsm-app -- alacritty/ c\$terminal = uwsm-app -- $TERMINAL' ~/.config/hypr/bindings.conf
+if grep -q "terminal = uwsm[- ]app" ~/.config/hypr/bindings.conf; then
+  sed -i '/terminal = \(uwsm[- ]app\) -- alacritty/ c\$terminal = \1 -- $TERMINAL' ~/.config/hypr/bindings.conf
 fi
