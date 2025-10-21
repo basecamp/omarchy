@@ -1,0 +1,7 @@
+#!/bin/bash
+
+if pgrep -f "Wiremix.*wiremix" > /dev/null; then
+    pkill -f "Wiremix.*wiremix"
+else
+    $TERMINAL --class=Wiremix -e wiremix &
+fi

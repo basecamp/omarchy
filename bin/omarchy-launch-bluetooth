@@ -1,0 +1,7 @@
+#!/bin/bash
+
+if pgrep -x "blueberry" > /dev/null; then
+    killall blueberry
+else
+    blueberry &
+fi
