@@ -1,0 +1,226 @@
+#!/bin/bash
+
+# omarchy-default-apps - Set and verify default applications for any MIME type
+# General helper for setting default applications using xdg-mime and gio
+
+usage() {
+  echo "Usage: omarchy-default-apps <action> [mime-type] [desktop-file]"
+  echo ""
+  echo "Actions:"
+  echo "  set <mime-type> <desktop-file>    Set default app for MIME type"
+  echo "  get <mime-type>                   Get current default app for MIME type"
+  echo "  verify <mime-type>                Verify current default app for MIME type"
+  echo "  cross-verify <mime-type>          Cross-validate xdg-mime and gio settings"
+  echo "  list <mime-type>                  List available apps for MIME type"
+  echo "  select <mime-type>                Interactive selection of default app"
+  echo ""
+  echo "Examples:"
+  echo "  omarchy-default-apps set text/html firefox.desktop"
+  echo "  omarchy-default-apps select text/html"
+  echo "  omarchy-default-apps get text/html"
+  echo "  omarchy-default-apps cross-verify text/html"
+  echo "  omarchy-default-apps list text/html"
+}
+
+# Check if desktop file exists and is valid for given MIME type
+validate_desktop_file() {
+  local desktop_file="$1"
+  local mime_type="$2"
+  
+  # Ensure .desktop extension if not provided
+  if [[ "$desktop_file" != *.desktop ]]; then
+    desktop_file="${desktop_file}.desktop"
+  fi
+  
+  # Check if file exists in standard locations
+  local desktop_paths=(
+    "$HOME/.local/share/applications/$desktop_file"
+    "/usr/share/applications/$desktop_file"
+    "/var/lib/flatpak/exports/share/applications/$desktop_file"
+    "$HOME/.local/share/flatpak/exports/share/applications/$desktop_file"
+  )
+  
+  local found_path=""
+  for path in "${desktop_paths[@]}"; do
+    if [[ -f "$path" ]]; then
+      found_path="$path"
+      break
+    fi
+  done
+  
+  if [[ -z "$found_path" ]]; then
+    echo "Error: Desktop file '$desktop_file' not found in standard locations"
+    echo "Searched in:"
+    for path in "${desktop_paths[@]}"; do
+      echo "  $path"
+    done
+    return 1
+  fi
+  
+  # Check if it's a valid desktop file with the specified MIME type
+  if ! grep -q "MimeType.*$mime_type" "$found_path" 2>/dev/null; then
+    echo "Error: Desktop file '$desktop_file' does not support MIME type '$mime_type'"
+    echo "Available MIME types in this file:"
+    grep "MimeType=" "$found_path" 2>/dev/null | head -3
+    return 1
+  fi
+  
+  echo "$found_path"
+  return 0
+}
+
+# Set default app for MIME type using xdg-mime and gio
+set_default_app() {
+  local mime_type="$1"
+  local desktop_file="$2"
+  local desktop_path
+  
+  if ! desktop_path=$(validate_desktop_file "$desktop_file" "$mime_type"); then
+    echo "$desktop_path"
+    exit 1
+  fi
+  
+  # Extract just the filename for xdg-mime commands
+  local desktop_filename=$(basename "$desktop_path")
+  
+  # Use xdg-mime to set MIME type association
+  if ! xdg-mime default "$desktop_filename" "$mime_type"; then
+    echo "Error: Failed to set default with xdg-mime"
+    exit 1
+  fi
+  
+  # Use gio as backup/verification (more reliable than xdg-settings)
+  if ! gio mime "$mime_type" "$desktop_filename"; then
+    echo "Error: Failed to set default with gio"
+    exit 1
+  fi
+  
+  # Update desktop database
+  update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+  
+  omarchy-hook default-apps-set "$mime_type" "$desktop_filename"
+}
+
+# Get current default app for MIME type
+get_default_app() {
+  local mime_type="$1"
+  
+  # Use xdg-mime to get current association
+  local current_app=$(xdg-mime query default "$mime_type" 2>/dev/null || echo 'Not set')
+  echo "$current_app"
+}
+
+# Verify current settings for MIME type
+verify_default_app() {
+  local mime_type="$1"
+  
+  local current_app=$(xdg-mime query default "$mime_type" 2>/dev/null)
+  
+  if [[ -z "$current_app" ]]; then
+    echo "Not set"
+    return 1
+  else
+    echo "$current_app"
+    return 0
+  fi
+}
+
+# Cross-validate default app across xdg-mime and gio
+cross_validate_default_app() {
+  local mime_type="$1"
+  
+  local xdg_app=$(xdg-mime query default "$mime_type" 2>/dev/null)
+  local gio_app=$(gio mime "$mime_type" | awk -F': ' '/^Default application/ {print $2; exit}' 2>/dev/null)
+  
+  if [[ -n "$xdg_app" && -n "$gio_app" && "$xdg_app" == "$gio_app" ]]; then
+    echo $gio_app
+    return 0
+  else
+    echo "xdg-mime: $xdg_app"
+    echo "gio: $gio_app"
+    echo "Inconsistent default app settings for '$mime_type'"
+    return 1
+  fi
+}
+
+# List available apps for MIME type
+list_apps() {
+  local mime_type="$1"
+  
+  local search_paths=(
+    "$HOME/.local/share/applications"
+    "/usr/share/applications"
+    "/var/lib/flatpak/exports/share/applications"
+    "$HOME/.local/share/flatpak/exports/share/applications"
+  )
+  
+  for search_path in "${search_paths[@]}"; do
+    if [[ -d "$search_path" ]]; then
+      find "$search_path" -name "*.desktop" -exec grep -l "MimeType.*$mime_type" {} \; 2>/dev/null | \
+      while read -r desktop_file; do
+        local basename=$(basename "$desktop_file")
+        local name=$(grep "^Name=" "$desktop_file" | cut -d'=' -f2 | head -1)
+        echo "$basename - $name"
+      done
+    fi
+  done | sort -u
+}
+
+# Main script logic
+case "${1:-}" in
+  set)
+    if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+      echo "Error: MIME type and desktop file required for 'set' action"
+      echo ""
+      usage
+      exit 1
+    fi
+    set_default_app "$2" "$3"
+    ;;
+  get)
+    if [[ -z "${2:-}" ]]; then
+      echo "Error: MIME type required for 'get' action"
+      echo ""
+      usage
+      exit 1
+    fi
+    get_default_app "$2"
+    ;;
+  verify)
+    if [[ -z "${2:-}" ]]; then
+      echo "Error: MIME type required for 'verify' action"
+      echo ""
+      usage
+      exit 1
+    fi
+    verify_default_app "$2"
+    ;;
+  cross-verify)
+    if [[ -z "${2:-}" ]]; then
+      echo "Error: MIME type required for 'cross-verify' action"
+      echo ""
+      usage
+      exit 1
+    fi
+    cross_validate_default_app "$2"
+    ;;
+  list)
+    if [[ -z "${2:-}" ]]; then
+      echo "Error: MIME type required for 'list' action"
+      echo ""
+      usage
+      exit 1
+    fi
+    list_apps "$2"
+    ;;
+  "")
+    usage
+    exit 1
+    ;;
+  *)
+    echo "Error: Unknown action '$1'"
+    echo ""
+    usage
+    exit 1
+    ;;
+esac

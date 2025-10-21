@@ -1,0 +1,165 @@
+#!/bin/bash
+
+# omarchy-default-browser - Set and verify default browser applications
+# Convenience wrapper around omarchy-default-apps for browser-specific handling
+# Sets text/html, x-scheme-handler/http, x-scheme-handler/https to chosen .desktop
+
+usage() {
+  echo "Usage: omarchy-default-browser <action> [desktop-file]"
+  echo ""
+  echo "Actions:"
+  echo "  get                   Get current default browser"
+  echo "  list                  List available browser .desktop files"
+  echo "  set <desktop-file>    Set default browser to specified .desktop file"
+  echo "  verify                Verify current default browser settings"
+  echo "  select                Interactive selection of default browser"
+  echo ""
+  echo "Examples:"
+  echo "  omarchy-default-browser get"
+  echo "  omarchy-default-browser list"
+  echo "  omarchy-default-browser set firefox.desktop"
+  echo "  omarchy-default-browser verify"
+  echo "  omarchy-default-browser select"
+}
+
+# Set default browser for all web-related MIME types
+set_default_browser() {
+  local desktop_file="$1"
+  local script_dir="$(dirname "$0")"
+  local failed=false
+  
+  # Use the general omarchy-default-apps script for each MIME type
+  if ! "$script_dir/omarchy-default-apps" set text/html "$desktop_file"; then
+    echo "Error: Failed to set text/html handler"
+    failed=true
+  fi
+  
+  if ! "$script_dir/omarchy-default-apps" set x-scheme-handler/http "$desktop_file"; then
+    echo "Error: Failed to set x-scheme-handler/http handler"
+    failed=true
+  fi
+  
+  if ! "$script_dir/omarchy-default-apps" set x-scheme-handler/https "$desktop_file"; then
+    echo "Error: Failed to set x-scheme-handler/https handler"
+    failed=true
+  fi
+  
+  if [[ "$failed" == true ]]; then
+    echo "Error: Failed to set default browser for one or more MIME types"
+    exit 1
+  fi
+  
+  omarchy-hook default-browser-set "$desktop_file"
+}
+
+# Get current default browser settings
+get_default_browser() {
+  # Use the general omarchy-default-apps script for text/html (primary)
+  "$(dirname "$0")/omarchy-default-apps" get text/html
+}
+
+# Verify current browser settings
+verify_default_browser() {
+  local script_dir="$(dirname "$0")"
+  local all_consistent=true
+  
+  # Check each MIME type using the cross-validation helper
+  local mime_types=("text/html" "x-scheme-handler/http" "x-scheme-handler/https")
+  
+  for mime_type in "${mime_types[@]}"; do
+    if ! "$script_dir/omarchy-default-apps" cross-verify "$mime_type" >/dev/null 2>&1; then
+      echo "Inconsistent settings for $mime_type:"
+      "$script_dir/omarchy-default-apps" cross-verify "$mime_type"
+      echo ""
+      all_consistent=false
+    fi
+  done
+  
+  if [[ "$all_consistent" == true ]]; then
+    # All MIME types are consistent, check if they all point to the same browser
+    local text_html_app=$("$script_dir/omarchy-default-apps" get text/html)
+    local http_app=$("$script_dir/omarchy-default-apps" get x-scheme-handler/http)
+    local https_app=$("$script_dir/omarchy-default-apps" get x-scheme-handler/https)
+    
+    if [[ "$text_html_app" == "$http_app" && "$http_app" == "$https_app" ]]; then
+      return 0
+    else
+      echo "Different browsers set for different MIME types:"
+      echo "text/html: $text_html_app"
+      echo "x-scheme-handler/http: $http_app"
+      echo "x-scheme-handler/https: $https_app"
+      echo "Use 'omarchy-default-browser select' to set a consistent default browser."
+      return 1
+    fi
+  else
+    echo "Use 'omarchy-default-browser select' to set the default browser."
+    return 1
+  fi
+}
+
+# List available browser desktop files
+list_browsers() {
+  # Use the general omarchy-default-apps script to list text/html apps
+  yay -Qqs browser
+}
+
+# Interactive selection of default browser
+select_default_browser() {
+
+    fzf_args=(
+    --preview 'yay -Qi {1}'
+    --preview-label='alt-p: toggle description, alt-j/k: scroll'
+    --preview-label-pos='bottom'
+    --preview-window 'down:65%:wrap'
+    --bind 'alt-p:toggle-preview'
+    --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
+    --bind 'alt-k:preview-up,alt-j:preview-down'
+    --color 'pointer:red,marker:red'
+    )
+
+    pkg_name=$(yay -Qqs browser | fzf "${fzf_args[@]}")
+
+    if [[ -n "$pkg_name" ]]; then
+    # Convert newline-separated selections to space-separated for yay
+    desktop_filepath=$(echo "$pkg_name" | xargs yay -Ql | grep 'usr/share/applications/.*\.desktop$')
+    desktop_filename=$(echo "$desktop_filepath" | awk '{print $NF}' | xargs basename)
+    set_default_browser "$desktop_filename"
+    fi
+
+    omarchy-show-done
+}
+
+# Main script logic
+case "${1:-}" in
+  set)
+    if [[ -z "${2:-}" ]]; then
+      echo "Error: Desktop file required for 'set' action"
+      echo ""
+      usage
+      exit 1
+    fi
+    set_default_browser "$2"
+    ;;
+  get)
+    get_default_browser
+    ;;
+  verify)
+    verify_default_browser
+    ;;
+  list)
+    list_browsers
+    ;;
+  select)
+    select_default_browser
+    ;;
+  "")
+    usage
+    exit 1
+    ;;
+  *)
+    echo "Error: Unknown action '$1'"
+    echo ""
+    usage
+    exit 1
+    ;;
+esac
