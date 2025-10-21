@@ -205,7 +205,7 @@ show_setup_power_menu() {
   if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
     back_to show_setup_menu
   else
-    powerprofilesctl set "$profile"
+    omarchy-powerprofile-set "$profile"
   fi
 }
 
