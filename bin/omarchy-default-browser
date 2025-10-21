@@ -100,7 +100,7 @@ verify_default_browser() {
 # List available browser desktop files
 list_browsers() {
   # Use the general omarchy-default-apps script to list text/html apps
-  yay -Qqs browser
+  yay -Qqs browser | xargs yay -Ql | grep 'usr/share/applications/.*\.desktop$' | xargs -I {} basename {}
 }
 
 # Interactive selection of default browser
