@@ -300,7 +300,7 @@ ICON_DIR="$HOME/.local/share/applications/icons"
 mkdir -p "${ICON_DIR}"
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-HYPERFY_ICON="${DATA_ROOT}/applications/icons/hyperfy.png"
+HYPERFY_ICON="${SCRIPT_DIR}/hyperfy.png"
 
 if [ -f "${HYPERFY_ICON}" ]; then
   info "Using provided Hyperfy icon"
