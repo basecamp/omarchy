@@ -77,6 +77,18 @@ sudo pacman -S --needed --noconfirm snapper limine
 echo "Installing limine-mkinitcpio-hook from AUR..."
 "$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed -r" limine-mkinitcpio-hook
 
+echo "Installing Omarchy ARM64 kernel update hook..."
+HOOK_SOURCE="$OMARCHY_PATH/install/login/hooks/99-omarchy-kernel-arm64.hook"
+HOOK_DEST="/etc/pacman.d/hooks/99-omarchy-kernel-arm64.hook"
+
+# Create hooks directory if it doesn't exist
+sudo mkdir -p /etc/pacman.d/hooks
+
+# Copy the hook template and replace @OMARCHY_PATH@ placeholder with actual path
+sudo cp "$HOOK_SOURCE" "$HOOK_DEST"
+sudo sed -i "s|@OMARCHY_PATH@|$OMARCHY_PATH|g" "$HOOK_DEST"
+echo "Kernel update hook installed to $HOOK_DEST"
+
 echo "Regenerating initramfs..."
 sudo mkinitcpio -P
 

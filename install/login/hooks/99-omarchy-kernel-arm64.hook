@@ -1,0 +1,12 @@
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = linux-aarch64
+Target = linux-aarch64-16k
+Target = linux-aarch64-64k
+
+[Action]
+Description = Updating Omarchy bootloader configuration after ARM64 kernel update...
+When = PostTransaction
+Exec = @OMARCHY_PATH@/bin/omarchy-limine-update
