@@ -1,4 +1,0 @@
-#!/bin/bash
-
-# Call the VSCode theme setter with Cursor-specific parameters
-omarchy-theme-set-vscode cursor "$HOME/.config/Cursor/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-cursor-theme-changes" Cursor
