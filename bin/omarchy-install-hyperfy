@@ -285,52 +285,60 @@ APP_DISPLAY_NAME="${APP_NAME}"
 echo
 info "Creating webapp launcher..."
 
-# Create Hyperfy icon from embedded base64 data
+# Create Hyperfy icon from the provided PNG file
 ICON_DIR="$HOME/.local/share/applications/icons"
 mkdir -p "${ICON_DIR}"
 
-# Check if icon already exists and is the same
-ICON_FILE="${ICON_DIR}/${APP_NAME}.png"
-if [ -f "${ICON_FILE}" ]; then
-  info "Using existing ${APP_NAME} icon"
+# Use the provided Hyperfy icon
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+HYPERFY_ICON="${SCRIPT_DIR}/hyperfy.png"
+
+if [ -f "${HYPERFY_ICON}" ]; then
+  info "Using provided Hyperfy icon"
+  # Copy directly to the expected location for omarchy-webapp-install
+  cp -f "${HYPERFY_ICON}" "${ICON_DIR}/Hyperfy.png"
 else
-  # Create icon from embedded base64 data
-  base64 -d > "${ICON_FILE}" <<'ICON_EOF'
-iVBORw0KGgoAAAANSUhEUgAAAJkAAAC3CAMAAAA2JAzOAAACE1BMVEUAAAD///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8Jf43gAAAAsHRSTlMAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eICIjJCUmJykqKywtLzAxMjM0Njc4OTo7PD0/QEFCREVHSUpMTk9RUlNVVlhZXF9gZGdpbW5wc3R2eHl8fX6DhIWJiouOj5KVmJmam5yfoKKjpqirrK6vsbKztLe4vL2/wMPGysvMzc7Q0dLT1dbX2Nrb3t/h4uPk5ebn6Onq6+zt7u/w8fLz9fb3+Pn6+/z9/kcWvaoAAAABYktHRLBDZK7EAAAF4UlEQVR42u3c+XcTVRQH8Je0mbRJ06Rp2s5NS0tFkCXWDdGqpRZEqYIooqKIilbcteBSN2QRVCoFRAGBtrS5f6I/TJJ5k8yWtm/u/WHuzznnfc7L+U5m7rsZIcIKK6ywwgorLA6lRbnCOpnC4nqWKwxSLGFNANDEEdYMAOjiCgOGAUgCAAADAKS+vhYDxigAjZ9aYMDnF+DlSSGESJVhfAJQmJkUQrSWYdDG5pr/E07KMGjhItuHOCnSJgziTGD3zyFOZiQYlwAkTyPieRnG5RbobUTEKVnGJAAbizUyHgHI/IE1Mh4BGMdaGYsAbMFaGYsAdF6wkbEIwBdoI+MQgB1oJ2MQgL6rtjL6AEQPo52MQQBeQFsZfQBW37SXkQeg+Qe0l1EHIPYGOsiIAxAbmnWQEQdA6/0FHWS0AdD0d9BJRhqAuL55zlEWJ4X1n0VHGWEAmgDG0VFGGIBmgCeLzjK6ACQA7phCZ1kLIQw+RxdZnBD2LLrJiALQAgCFf91knXSw/DfoJqMJQAoA4EV0lZEEoBUA4N7/3GVxKlj3UXSXEQTAaI/tRXcZQQCM9tjgtIcsEzisDQAAlv2IHrJkwK6IAYMx9JJpNLDhWU9ZsAGIZI1V+35FL1lHsLD20gXhffSUBRqAaK4E21r0liUpYLf/id4yjQAGB9CHLLgARDvKsO3oQxZcABoqsNUX/MgCC0BDZ+VRbQL9yIIKQKMJ24m+ZAEFoLGrArvzij9ZKh4NFpY/hP5kANCVTTWp5cVMGLzkDcN/RqXaumXzyMYh13qwcwlg66+jgipO3LawLpQJ6/kO1dSldYuDwWuoqk7VPdURl2EPTSuT4bbFwHpPqoPhZ3W3x6R6SyEMT9XbHpNq05xK2c/1NnvMWn5GJQy/yiS1yIJg8IFSGD4HAJBLNfqAJa2w0aJS2G99xjK69z1KixW28pxS2K2RykrJ+mDwidrvcsxcSXcf2IxVwZ5WCzvZK63V6irLWmFrLqr9LoflxVyfICK6Vfal2i173bqa28VDs350l1rYiV7rcq4/l5ZPDlxRCpt5xApzHYy07Fn+W7Vbtrcqba7PgxH5k3vUwo73VMniPvqKAADwwE2lsOnBKpjHKUKsEs5l36vdsleqYLmo35/zfWphx3rqhAkRN57Kh2aVwq6vr4L5uhHSUtkuOKh2y3ZbYe0R3zePDWovZUfyC4WJtFLYtbsXDBMJpfeLzy8cJoTKm/9Dlu8yWx9MvKoOdvWuxcBE7i9lsp2Lggmx4bIi2NeLhAnR//ENFbDL65Zg6jbSs9yrVqxaO3DPfaXa5Ef2TJDjwA1NqWwXABT8PJL7vSFb0mkJH7K/1wYOE2lfsh0mLB3UkUbOj+wgAUzoPmRTqwhgMT8J2EYAEwkfsnGfjYKlHzLxkJ1fSQETOU9Z8akyLNA/dkZ0T9mHJDCju+Uq+30FzQxYwks2/zjRcFraS/Yu1dRczkN2tp9mmqnUEXSWzT9GBCu1d51l+w1YInBYqRviKDvdRwUrjRk6yW49CgAAzQQwIwCOsjfpYKWWeMGt6U8CK59vFFya/jSwcjuw4Nj016negZB2kZ3oJYSVAmArm3mYElbu1Rfsm/463T95Ys6y4z2UsEo/vFZ2YwPoGh2s8h6GWtkeWlg5ALWyY920sMphVaGm6a/HKGHmCXe1bHcXLcw8EKqSHSHeMTMAVbJrA9Qw0WEv29VIDTNPay2yw+Q7Jp1wy7KrfeQwaY5Ilm2nh4mMnWyCAcwMgCS7pDOASeMKpmyUw5ZpNrIDHGDyIF1ZdpHHW4wytbInWMCkAJRlH/GAyfM6hmySyZv/tBrZCA+YZZK0gIj4HhOYHABYg4jnMlxkUgDauxGLw1xgEXnsIo+4nwtMCkB7ROTxDJ/3XiblQZX8/CAbWCUA2YgQIj/GB1YOgDF2kUzwgUUWMQ8SRAAYwowAtAmGleEKEx0U7xLwGQCeMKEFOd1QXwC4woQmwgorrLDCCissFvU/I0Ez8NYb2v0AAAAASUVORK5CYII=
-ICON_EOF
+  info "Hyperfy icon not found at ${HYPERFY_ICON}, creating default icon"
+  # Create a simple default icon if the provided one isn't available
+  convert -size 64x64 xc:transparent -fill "#FF6B35" -draw "polygon 32,8 48,24 32,40 16,24" "${ICON_DIR}/Hyperfy.png" 2>/dev/null || {
+    # Fallback: create a simple text-based icon
+    echo "Creating fallback icon..."
+    # This is a minimal fallback - in practice, you'd want a proper icon
+    touch "${ICON_DIR}/Hyperfy.png"
+  }
 fi
 
 # Create desktop webapp entry
 if command -v omarchy-webapp-install >/dev/null 2>&1; then
-  # Use local icon file
-  LOCAL_ICON="${ICON_DIR}/${APP_NAME}.png"
+  # Use just the filename for omarchy-webapp-install
+  ICON_FILENAME="${APP_NAME}.png"
   gum spin --title "Installing as webapp..." -- \
-    omarchy-webapp-install "${APP_DISPLAY_NAME}" "${APP_URL}" "${LOCAL_ICON}" "omarchy-launch-hyperfy"
+    omarchy-webapp-install "${APP_DISPLAY_NAME}" "${APP_URL}" "${ICON_FILENAME}" "omarchy-launch-hyperfy"
 else
   echo "omarchy-webapp-install not found, creating basic desktop entry"
+  # Create desktop entry manually
+  DESKTOP_FILE="$HOME/.local/share/applications/${APP_DISPLAY_NAME}.desktop"
+  cat >"$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Version=1.0
+Name=${APP_DISPLAY_NAME}
+Comment=${APP_DISPLAY_NAME}
+Exec=omarchy-launch-hyperfy
+Terminal=false
+Type=Application
+Icon=${ICON_FILE}
+StartupNotify=true
+EOF
+  chmod +x "$DESKTOP_FILE"
 fi
 
 echo
 header "Installation Complete"
-echo "Launch now?"
-if gum confirm; then
-  omarchy-launch-hyperfy || xdg-open "${APP_URL}"
-else
-  echo "You can launch later with: omarchy-launch-hyperfy"
-fi
+info "Launching Hyperfy..."
 
-# Optional: Offer uninstall
-if gum confirm "Add an uninstall helper for ${APP_NAME}?"; then
-  cat > "${APP_ROOT}/REMOVE.sh" <<'UNINSTALL'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-STACK_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omarchy/games/hyperfy/compose"
-COMPOSE_FILE="${STACK_DIR}/docker-compose.yml"
-ENV_FILE="${STACK_DIR}/.env"
-[ -f "$COMPOSE_FILE" ] && docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down -v || true
-rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/omarchy/games/hyperfy"
-echo "Hyperfy removed."
-UNINSTALL
-  chmod +x "${APP_ROOT}/REMOVE.sh"
-  echo "Uninstall helper at: ${APP_ROOT}/REMOVE.sh"
-fi
+# Launch Hyperfy in background so installer can continue
+omarchy-launch-hyperfy &
+sleep 2
+
+# Note: Uninstall is now handled through the webapp removal system
+echo "To uninstall Hyperfy, use: omarchy-webapp-remove"
