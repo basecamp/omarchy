@@ -25,7 +25,7 @@ generate_menu_json() {
 EOF_JSON_GEN
 )
 
-    # Parse menu structure (same AWK logic, but runs in background)
+    # Parse menu structure with improved quote handling
     local menu_items
     menu_items=$(awk '
         BEGIN {
@@ -69,10 +69,16 @@ EOF_JSON_GEN
             if (full_path != "") full_path = full_path " > " item
             else full_path = item
 
+            # Escape path for JSON
             gsub(/\\/, "\\\\", full_path)
             gsub(/"/, "\\\"", full_path)
+            
+            # For command: remove shell quotes before escaping for JSON
+            # Convert: present_terminal "foo bar" -> present_terminal foo bar
+            gsub(/"/, "", cmd_line)
+            
+            # Now escape what remains for JSON
             gsub(/\\/, "\\\\", cmd_line)
-            gsub(/"/, "\\\"", cmd_line)
 
             if (!first) print ","
             printf "    {\n"
@@ -92,10 +98,14 @@ EOF_JSON_GEN
     if command -v omarchy-theme-list &>/dev/null; then
         while IFS= read -r theme; do
             if [[ -n "$theme" ]]; then
+                # Escape theme name properly for JSON
+                local escaped_theme="${theme//\\/\\\\}"
+                escaped_theme="${escaped_theme//\"/\\\"}"
+                
                 json_output+=$',\n'
                 json_output+=$(printf '    {\n      "path": "Style > Theme > %s",\n      "command": "omarchy-theme-set '\''%s'\''"\n    }' \
-                    "${theme//\"/\\\"}" \
-                    "${theme//\"/\\\"}")
+                    "$escaped_theme" \
+                    "$escaped_theme")
             fi
         done < <(omarchy-theme-list)
     fi
@@ -103,10 +113,13 @@ EOF_JSON_GEN
     if command -v omarchy-font-list &>/dev/null; then
         while IFS= read -r font; do
             if [[ -n "$font" ]]; then
+                local escaped_font="${font//\\/\\\\}"
+                escaped_font="${escaped_font//\"/\\\"}"
+                
                 json_output+=$',\n'
                 json_output+=$(printf '    {\n      "path": "Style > Font > %s",\n      "command": "omarchy-font-set '\''%s'\''"\n    }' \
-                    "${font//\"/\\\"}" \
-                    "${font//\"/\\\"}")
+                    "$escaped_font" \
+                    "$escaped_font")
             fi
         done < <(omarchy-font-list)
     fi
@@ -114,10 +127,13 @@ EOF_JSON_GEN
     if command -v omarchy-powerprofiles-list &>/dev/null; then
         while IFS= read -r profile; do
             if [[ -n "$profile" ]]; then
+                local escaped_profile="${profile//\\/\\\\}"
+                escaped_profile="${escaped_profile//\"/\\\"}"
+                
                 json_output+=$',\n'
                 json_output+=$(printf '    {\n      "path": "Setup > Power Profile > %s",\n      "command": "powerprofilesctl set '\''%s'\''"\n    }' \
-                    "${profile//\"/\\\"}" \
-                    "${profile//\"/\\\"}")
+                    "$escaped_profile" \
+                    "$escaped_profile")
             fi
         done < <(omarchy-powerprofiles-list)
     fi
@@ -428,6 +444,7 @@ Optimizations:
   - Auto-generates menu.json on first run
   - Fast application scanning
   - Non-blocking startup
+  - Improved quote escaping in AWK
 
 Environment Variables:
   MENU_JSON            Path to menu JSON file (default: ~/.local/share/omarchy/menu.json)
