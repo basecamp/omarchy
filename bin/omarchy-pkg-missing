@@ -1,9 +1,0 @@
-#!/bin/bash
-
-for pkg in "$@"; do
-  if ! pacman -Q "$pkg" &>/dev/null; then
-    exit 0
-  fi
-done
-
-exit 1

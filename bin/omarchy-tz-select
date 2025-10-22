@@ -1,6 +1,0 @@
-#!/bin/bash
-
-timezone=$(timedatectl list-timezones | gum filter --height 20 --header "Set timezone") || exit 1
-sudo timedatectl set-timezone "$timezone"
-echo "Timezone is now set to $timezone"
-omarchy-restart-waybar
