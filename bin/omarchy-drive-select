@@ -5,7 +5,7 @@
 if (($# == 0)); then
   drives=$(lsblk -dpno NAME | grep -E '/dev/(sd|hd|vd|nvme|mmcblk|xv)')
 else
-  drives="$@"
+  drives="$*"
 fi
 
 drives_with_info=""

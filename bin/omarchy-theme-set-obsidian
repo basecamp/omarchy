@@ -334,7 +334,7 @@ extract_theme_data() {
 
     if [ -n "$btop_divline" ]; then
       # Extract the color value after the = sign
-      local extracted=$(echo "$btop_divline" | sed 's/.*=//' | xargs)
+      local extracted=$(sed 's/.*=//' <<< "$btop_divline" | xargs)
 
       # Check if it's a hex color and lowercase it
       if [[ $extracted =~ ^#[0-9a-fA-F]{6}$ ]]; then

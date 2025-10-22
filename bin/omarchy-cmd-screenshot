@@ -46,7 +46,7 @@ case "$MODE" in
     # If the selction area is L * W < 20, we'll assume you were trying to select whichever
     # window or output it was inside of to prevent accidental 2px snapshots
     if [[ "$SELECTION" =~ ^([0-9]+),([0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]]; then
-      if (( ${BASH_REMATCH[3]} * ${BASH_REMATCH[4]} < 20 )); then
+      if (( BASH_REMATCH[3] * BASH_REMATCH[4] < 20 )); then
         click_x="${BASH_REMATCH[1]}"
         click_y="${BASH_REMATCH[2]}"
 

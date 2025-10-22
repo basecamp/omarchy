@@ -129,7 +129,7 @@ EOF
   fi
 
   # Extract just the number for prerequisite check
-  DISK_SIZE_NUM=$(echo "$SELECTED_DISK" | sed 's/G//')
+  DISK_SIZE_NUM=${SELECTED_DISK//G/}
 
   # Re-check prerequisites with selected disk size
   check_prerequisites "$DISK_SIZE_NUM"

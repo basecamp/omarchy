@@ -4,7 +4,7 @@ web_url="https://app.hey.com"
 
 # Handle mailto: URLs
 if [[ $url =~ ^mailto: ]]; then
-  email=$(echo "$url" | sed 's/mailto://')
+  email=${url#mailto:}
   web_url="https://app.hey.com/messages/new?to=$email"
 fi
 

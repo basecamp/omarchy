@@ -3,7 +3,7 @@
 THEMES_DIR="$HOME/.config/omarchy/themes/"
 CURRENT_THEME_LINK="$HOME/.config/omarchy/current/theme"
 
-THEMES=($(find "$THEMES_DIR" -mindepth 1 -maxdepth 1 | sort))
+mapfile -t THEMES < <(find "$THEMES_DIR" -mindepth 1 -maxdepth 1 | sort)
 TOTAL=${#THEMES[@]}
 
 # Get current theme from symlink
