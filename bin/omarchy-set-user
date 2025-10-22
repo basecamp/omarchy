@@ -1,0 +1,3 @@
+#!/bin/bash
+# Track active Omarchy user for package migrations
+echo "$USER:$HOME:$XDG_RUNTIME_DIR" > /tmp/omarchy-active-user
