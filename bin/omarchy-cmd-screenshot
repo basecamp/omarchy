@@ -2,6 +2,8 @@
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
+DATE_FORMAT="${OMARCHY_SCREENSHOT_DATE_FORMAT:-%Y-%m-%d_%H-%M-%S}"
+FILENAME="${OMARCHY_SCREENSHOT_PREFIX:-screenshot}-$(date +"$DATE_FORMAT")${OMARCHY_SCREENSHOT_SUFFIX:-.png}"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
   notify-send "Screenshot directory does not exist: $OUTPUT_DIR" -u critical -t 3000
@@ -73,7 +75,7 @@ esac
 if [[ $PROCESSING == "slurp" ]]; then
 grim -g "$SELECTION" - |
   satty --filename - \
-    --output-filename "$OUTPUT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png" \
+    --output-filename "$OUTPUT_DIR/$FILENAME" \
     --early-exit \
     --actions-on-enter save-to-clipboard \
     --save-after-copy \
