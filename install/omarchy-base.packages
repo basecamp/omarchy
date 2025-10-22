@@ -107,6 +107,7 @@ power-profiles-daemon
 python-gobject
 python-poetry-core
 python-terminaltexteffects
+nautilus-python
 qt5-wayland
 ripgrep
 satty
