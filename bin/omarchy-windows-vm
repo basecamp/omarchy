@@ -58,8 +58,8 @@ Categories=System;Virtualization;
 EOF
 
   # Get system resources
-  TOTAL_RAM=$(free -h | grep "^Mem:" | awk '{print $2}')
-  TOTAL_RAM_GB=$(free -g | grep "^Mem:" | awk '{print $2}')
+  TOTAL_RAM=$(free -h | awk 'NR==2 {print $2}')
+  TOTAL_RAM_GB=$(awk 'NR==1 {printf "%d", $2/1024/1024}' /proc/meminfo)
   TOTAL_CORES=$(nproc)
 
   echo ""
