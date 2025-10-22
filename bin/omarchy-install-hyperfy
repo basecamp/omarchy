@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# ===========================
-# Constants (no magic numbers)
-# ===========================
+# Constants
 APP_NAME="Hyperfy"
 APP_SLUG="hyperfy"
-ICON_GLYPH=""
-REPO_URL="https://github.com/hyperfy-xyz/hyperfy.git"
-REPO_BRANCH="dev"
 DEFAULT_PORT="3000"
 CONTAINER_NAME_DEFAULT="hyperfy-web"
 
@@ -19,16 +14,11 @@ CONFIG_DIR="${APP_ROOT}/config"
 STACK_DIR="${APP_ROOT}/compose"
 ENV_FILE="${STACK_DIR}/.env"
 COMPOSE_FILE="${STACK_DIR}/docker-compose.yml"
-# Using text-based lightning bolt icon instead of SVG
 
-TITLE_COLOR="212" # gum color index for headings
-
-# ===========================
 # Helpers
-# ===========================
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1"; exit 1; }; }
 die() { echo "Error: $*" >&2; exit 1; }
-header() { gum style --border thick --margin "1" --padding "1 2" --border-foreground "$TITLE_COLOR" "${ICON_GLYPH}  $*"; }
+header() { gum style --border thick --margin "1" --padding "1 2" --border-foreground 212 "⚡  $*"; }
 info() { gum style --foreground 244 "$*"; }
 
 is_port_free() {
@@ -53,23 +43,37 @@ ensure_docker_running() {
   docker info >/dev/null 2>&1 || die "Docker daemon not running. Start it (e.g., 'sudo systemctl start docker') and retry."
 }
 
-# ===========================
 # Preflight
-# ===========================
-header "Install ${APP_NAME} (dev)"
-need gum
-need git
-need docker
-need curl
-
+header "Install ${APP_NAME}"
+need gum git docker curl
 ensure_docker_running
 
-# Using official pre-built Hyperfy image - no Node verification needed
-info "Using official Hyperfy Docker image: ghcr.io/hyperfy-xyz/hyperfy:dev"
+# Docker image selection
+echo
+info "Choose Docker image:"
+echo "This determines which version of Hyperfy to run. 'dev' is the latest development version with newest features."
+IMAGE_CHOICE="$(gum choose --header 'Select Hyperfy Docker image:' 'DEV' 'MAIN' 'CUSTOM')"
 
-# ===========================
-# Gather user choices
-# ===========================
+case "$IMAGE_CHOICE" in
+  "DEV")
+    HYPERFY_IMAGE="ghcr.io/hyperfy-xyz/hyperfy:dev"
+    ;;
+  "MAIN")
+    HYPERFY_IMAGE="ghcr.io/hyperfy-xyz/hyperfy:main"
+    ;;
+  "CUSTOM")
+    echo "Custom Image Configuration:"
+    echo "Enter the full Docker image path (e.g., ghcr.io/hyperfy-xyz/hyperfy:latest)"
+    HYPERFY_IMAGE="$(gum input --prompt 'Docker image: ')"
+    ;;
+esac
+
+info "Using Docker image: ${HYPERFY_IMAGE}"
+
+# Basic configuration
+echo
+echo "Port Configuration:"
+echo "This is the port where Hyperfy will be accessible (e.g., http://localhost:3000)"
 PORT_INPUT="$(gum input --prompt 'Port to expose (default 3000): ' --value "${DEFAULT_PORT}")"
 HYPERFY_PORT="${PORT_INPUT:-$DEFAULT_PORT}"
 
@@ -77,47 +81,76 @@ if ! is_port_free "$HYPERFY_PORT"; then
   die "Port ${HYPERFY_PORT} is in use. Choose a free port and re-run."
 fi
 
+echo
+echo "Container Configuration:"
+echo "This is the name of the Docker container (used for management)"
 CONTAINER_NAME="$(gum input --prompt 'Container name: ' --value "${CONTAINER_NAME_DEFAULT}")"
 [ -n "$CONTAINER_NAME" ] || CONTAINER_NAME="${CONTAINER_NAME_DEFAULT}"
 
-# Gather Hyperfy environment variables
+# Hyperfy configuration
 echo
 info "Configure Hyperfy Environment:"
 
-# Basic Configuration
+echo "World Configuration:"
+echo "This is the name of the world folder where your Hyperfy world data will be stored"
 WORLD_NAME="$(gum input --prompt 'World folder name: ' --value 'world')"
-JWT_SECRET="$(gum input --prompt 'JWT Secret: ' --value 'hyper')"
+
+echo
+echo "Admin Configuration:"
+echo "Set an admin code to restrict admin access, or leave empty to make everyone an admin"
 ADMIN_CODE="$(gum input --prompt 'Admin code (leave empty for everyone admin): ')"
+
+echo
+echo "Save Configuration:"
+echo "How often the world saves automatically (in seconds). Set to 0 to disable auto-saving"
 SAVE_INTERVAL="$(gum input --prompt 'Save interval (seconds, 0 to disable): ' --value '60')"
 
-# Player Settings
-PLAYER_COLLISION="$(gum choose --header 'Should players collide with other players?' 'false' 'true')"
+echo
+echo "Player Physics:"
+echo "Whether players can physically collide with each other in the world"
+PLAYER_COLLISION="$(gum choose --header 'Should players collide with other players?' 'true' 'false')"
+
+echo
+echo "Upload Limits:"
+echo "Maximum file size for model uploads (in MB). Larger files will be rejected"
 MAX_UPLOAD_SIZE="$(gum input --prompt 'Max upload size for models (MB): ' --value '12')"
 
-# Asset Storage
+echo
+echo "Asset Storage:"
+echo "How to store uploaded assets (models, textures, etc.). Local stores on disk, S3 uses cloud storage"
 ASSETS_TYPE="$(gum choose --header 'Asset storage type:' 'local' 's3')"
 if [[ "$ASSETS_TYPE" == "s3" ]]; then
+  echo "S3 Configuration:"
+  echo "S3 bucket URI where assets will be stored (e.g., s3://my-bucket/hyperfy-assets)"
   ASSETS_S3_URI="$(gum input --prompt 'S3 URI (s3://bucket/path): ')"
 else
   ASSETS_S3_URI=""
 fi
 
-# Database Configuration
+echo
+echo "Database Configuration:"
+echo "Local uses SQLite (simple), PostgreSQL is for production or shared databases"
 DB_TYPE="$(gum choose --header 'Database type:' 'local' 'postgres')"
 if [[ "$DB_TYPE" == "postgres" ]]; then
+  echo "PostgreSQL Configuration:"
+  echo "Connection string for your PostgreSQL database"
   DB_URI="$(gum input --prompt 'Postgres URI (postgres://user:pass@host:port/db): ')"
+  echo "Optional database schema (leave empty for default)"
   DB_SCHEMA="$(gum input --prompt 'Database schema (optional): ')"
 else
   DB_URI="local"
   DB_SCHEMA=""
 fi
 
-# System Settings
+echo
+echo "System Settings:"
+echo "Whether to clean up unused assets when starting (frees disk space but takes time)"
 CLEAN_ON_START="$(gum choose --header 'Clean unused assets on startup?' 'true' 'false')"
 
-# AI Configuration (optional)
+# Optional AI configuration
 echo
 info "AI Configuration (optional):"
+echo "AI integration allows Hyperfy to use AI models for content generation and assistance"
 CONFIGURE_AI="$(gum choose --header 'Configure AI integration?' 'Skip' 'Configure')"
 if [[ "$CONFIGURE_AI" == "Configure" ]]; then
   AI_PROVIDER="$(gum choose --header 'AI Provider:' 'anthropic' 'openai' 'xai' 'google')"
@@ -147,9 +180,10 @@ else
   AI_API_KEY=""
 fi
 
-# LiveKit Configuration (optional)
+# Optional LiveKit configuration
 echo
 info "LiveKit Voice Chat (optional):"
+echo "LiveKit enables real-time voice chat between players in your Hyperfy world"
 CONFIGURE_LIVEKIT="$(gum choose --header 'Configure LiveKit voice chat?' 'Skip' 'Configure')"
 if [[ "$CONFIGURE_LIVEKIT" == "Configure" ]]; then
   LIVEKIT_WS_URL="$(gum input --prompt 'LiveKit WebSocket URL: ')"
@@ -163,33 +197,28 @@ fi
 
 gum confirm "Proceed installing ${APP_NAME} with Docker to: ${APP_ROOT} and expose http://localhost:${HYPERFY_PORT} ?" || exit 0
 
-# ===========================
 # Create configuration
-# ===========================
 mkdir -p "${APP_ROOT}" "${STACK_DIR}" "${CONFIG_DIR}"
 
-# ===========================
-# Generate compose stack
-# ===========================
-# Create Docker Compose file with embedded YAML
-cat > "${COMPOSE_FILE}" <<'COMPOSE_EOF'
+# Generate Docker Compose file
+cat > "${COMPOSE_FILE}" <<EOF
 name: omarchy-hyperfy
 services:
   hyperfy:
-    image: ghcr.io/hyperfy-xyz/hyperfy:dev
-    container_name: ${HYPERFY_CONTAINER_NAME:-hyperfy-web}
+    image: ${HYPERFY_IMAGE}
+    container_name: \${HYPERFY_CONTAINER_NAME:-hyperfy-web}
     restart: unless-stopped
     environment:
       - NODE_ENV=development
     env_file:
-      - ${HOST_REPO_DIR}/.env
+      - \${HOST_REPO_DIR}/.env
     ports:
-      - "${HYPERFY_PORT}:3000"
+      - "\${HYPERFY_PORT}:3000"
     volumes:
       - hyperfy_data:/app/world
 volumes:
   hyperfy_data:
-COMPOSE_EOF
+EOF
 
 # Create Docker Compose .env file
 cat > "${ENV_FILE}" <<EOF
@@ -207,7 +236,7 @@ WORLD=${WORLD_NAME}
 PORT=${HYPERFY_PORT}
 
 # The secret the server uses to create/parse json web tokens
-JWT_SECRET=${JWT_SECRET}
+JWT_SECRET=hyper
 
 # The code used to become admin in the world (type /admin <code> in chat)
 # If left blank, everyone is an admin!
@@ -247,7 +276,6 @@ LIVEKIT_WS_URL=${LIVEKIT_WS_URL}
 LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
 LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
 
-
 ##
 # AI
 # --
@@ -262,11 +290,52 @@ AI_EFFORT=${AI_EFFORT}
 AI_API_KEY=${AI_API_KEY}
 EOF
 
-# Icon file will be handled in webapp creation section
+# Create webapp launcher
+APP_DISPLAY_NAME="${APP_NAME}"
+echo
+info "Creating webapp launcher..."
 
-# ===========================
+# Create Hyperfy icon
+ICON_DIR="$HOME/.local/share/applications/icons"
+mkdir -p "${ICON_DIR}"
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+HYPERFY_ICON="${SCRIPT_DIR}/hyperfy.png"
+
+if [ -f "${HYPERFY_ICON}" ]; then
+  info "Using provided Hyperfy icon"
+  cp -f "${HYPERFY_ICON}" "${ICON_DIR}/Hyperfy.png"
+else
+  info "Hyperfy icon not found at ${HYPERFY_ICON}, creating default icon"
+  convert -size 64x64 xc:transparent -fill "#FF6B35" -draw "polygon 32,8 48,24 32,40 16,24" "${ICON_DIR}/Hyperfy.png" 2>/dev/null || {
+    echo "Creating fallback icon..."
+    touch "${ICON_DIR}/Hyperfy.png"
+  }
+fi
+
+# Create desktop webapp entry
+if command -v omarchy-webapp-install >/dev/null 2>&1; then
+  ICON_FILENAME="${APP_NAME}.png"
+  gum spin --title "Installing as webapp..." -- \
+    omarchy-webapp-install "${APP_DISPLAY_NAME}" "http://localhost:${HYPERFY_PORT}" "${ICON_FILENAME}" "omarchy-launch-hyperfy"
+else
+  echo "omarchy-webapp-install not found, creating basic desktop entry"
+  DESKTOP_FILE="$HOME/.local/share/applications/${APP_DISPLAY_NAME}.desktop"
+  cat >"$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Version=1.0
+Name=${APP_DISPLAY_NAME}
+Comment=${APP_DISPLAY_NAME}
+Exec=omarchy-launch-hyperfy
+Terminal=false
+Type=Application
+Icon=${ICON_DIR}/Hyperfy.png
+StartupNotify=true
+EOF
+  chmod +x "$DESKTOP_FILE"
+fi
+
 # Start container and health-check
-# ===========================
 gum spin --title "Starting container..." -- \
   docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d
 
@@ -278,67 +347,19 @@ else
   echo "  docker compose -f '${COMPOSE_FILE}' --env-file '${ENV_FILE}' logs -f"
 fi
 
-# ===========================
-# Create desktop webapp using Omarchy's webapp system
-# ===========================
-APP_DISPLAY_NAME="${APP_NAME}"
-echo
-info "Creating webapp launcher..."
-
-# Create Hyperfy icon from the provided PNG file
-ICON_DIR="$HOME/.local/share/applications/icons"
-mkdir -p "${ICON_DIR}"
-
-# Use the provided Hyperfy icon
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-HYPERFY_ICON="${SCRIPT_DIR}/hyperfy.png"
-
-if [ -f "${HYPERFY_ICON}" ]; then
-  info "Using provided Hyperfy icon"
-  # Copy directly to the expected location for omarchy-webapp-install
-  cp -f "${HYPERFY_ICON}" "${ICON_DIR}/Hyperfy.png"
-else
-  info "Hyperfy icon not found at ${HYPERFY_ICON}, creating default icon"
-  # Create a simple default icon if the provided one isn't available
-  convert -size 64x64 xc:transparent -fill "#FF6B35" -draw "polygon 32,8 48,24 32,40 16,24" "${ICON_DIR}/Hyperfy.png" 2>/dev/null || {
-    # Fallback: create a simple text-based icon
-    echo "Creating fallback icon..."
-    # This is a minimal fallback - in practice, you'd want a proper icon
-    touch "${ICON_DIR}/Hyperfy.png"
-  }
-fi
-
-# Create desktop webapp entry
-if command -v omarchy-webapp-install >/dev/null 2>&1; then
-  # Use just the filename for omarchy-webapp-install
-  ICON_FILENAME="${APP_NAME}.png"
-  gum spin --title "Installing as webapp..." -- \
-    omarchy-webapp-install "${APP_DISPLAY_NAME}" "${APP_URL}" "${ICON_FILENAME}" "omarchy-launch-hyperfy"
-else
-  echo "omarchy-webapp-install not found, creating basic desktop entry"
-  # Create desktop entry manually
-  DESKTOP_FILE="$HOME/.local/share/applications/${APP_DISPLAY_NAME}.desktop"
-  cat >"$DESKTOP_FILE" <<EOF
-[Desktop Entry]
-Version=1.0
-Name=${APP_DISPLAY_NAME}
-Comment=${APP_DISPLAY_NAME}
-Exec=omarchy-launch-hyperfy
-Terminal=false
-Type=Application
-Icon=${ICON_FILE}
-StartupNotify=true
-EOF
-  chmod +x "$DESKTOP_FILE"
-fi
-
+# Launch Hyperfy in background so installer can continue
 echo
 header "Installation Complete"
 info "Launching Hyperfy..."
-
-# Launch Hyperfy in background so installer can continue
 omarchy-launch-hyperfy &
 sleep 2
 
 # Note: Uninstall is now handled through the webapp removal system
 echo "To uninstall Hyperfy, use: omarchy-webapp-remove"
+echo
+info "Configuration files location:"
+echo "  • Docker Compose: ${COMPOSE_FILE}"
+echo "  • Environment: ${CONFIG_DIR}/.env"
+echo "  • Data directory: ${APP_ROOT}"
+echo
+echo "You can edit these files to customize your Hyperfy installation."
