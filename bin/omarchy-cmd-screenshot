@@ -12,6 +12,11 @@ pkill slurp && exit 0
 
 MODE="${1:-smart}"
 PROCESSING="${2:-slurp}"
+BITDEPTH10=false
+
+if hyprctl monitors | grep -q 'currentFormat: XBGR2101010'; then
+  BITDEPTH10=true
+fi
 
 get_rectangles() {
   local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
@@ -22,13 +27,17 @@ get_rectangles() {
 # Select based on mode
 case "$MODE" in
   region)
-    wayfreeze & PID=$!
+    if [[ "$BITDEPTH10" != true ]]; then
+      wayfreeze & PID=$!
+    fi
     sleep .1
     SELECTION=$(slurp 2>/dev/null)
     kill $PID 2>/dev/null
     ;;
   windows)
-    wayfreeze & PID=$!
+    if [[ "$BITDEPTH10" != true ]]; then
+      wayfreeze & PID=$!
+    fi
     sleep .1
     SELECTION=$(get_rectangles | slurp -r 2>/dev/null)
     kill $PID 2>/dev/null
@@ -38,7 +47,9 @@ case "$MODE" in
     ;;
   smart|*)
     RECTS=$(get_rectangles)
-    wayfreeze & PID=$!
+    if [[ "$BITDEPTH10" != true ]]; then
+      wayfreeze & PID=$!
+    fi
     sleep .1
     SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
     kill $PID 2>/dev/null
