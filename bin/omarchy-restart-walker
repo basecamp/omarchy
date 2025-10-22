@@ -1,21 +1,32 @@
 #!/bin/bash
 
-pkill elephant
-pkill walker
-
 # Detect if we're running as root (from pacman hook)
 if [[ $EUID -eq 0 ]]; then
-  # Get the owner of this script to determine which user to run as
-  SCRIPT_OWNER=$(stat -c '%U' "$0")
-  USER_UID=$(id -u "$SCRIPT_OWNER")
+  # Find all logged-in users running Hyprland
+  for user_runtime in /run/user/*/; do
+    USER_UID=$(basename "$user_runtime")
+    USER_NAME=$(id -un "$USER_UID" 2>/dev/null)
 
-  # Restart services as the script owner
-  systemd-run --uid="$SCRIPT_OWNER" --setenv=XDG_RUNTIME_DIR="/run/user/$USER_UID" \
-    bash -c "
-      setsid uwsm-app -- elephant &
-      setsid uwsm-app -- walker --gapplication-service &
-    "
+    # Skip if we can't resolve the username or if no Hyprland session
+    [[ -z "$USER_NAME" ]] && continue
+    [[ ! -S "${user_runtime}hypr/"*"/.socket.sock" ]] && continue
+
+    # Kill existing processes for this user
+    pkill -u "$USER_NAME" elephant
+    pkill -u "$USER_NAME" walker
+
+    # Restart services as this user
+    systemd-run --uid="$USER_NAME" --setenv=XDG_RUNTIME_DIR="/run/user/$USER_UID" \
+      bash -c "
+        setsid uwsm-app -- elephant &
+        setsid uwsm-app -- walker --gapplication-service &
+      "
+  done
 else
+  # Running as user directly
+  pkill elephant
+  pkill walker
+
   setsid uwsm-app -- elephant &
   wait 2
   setsid uwsm-app -- walker --gapplication-service &
