@@ -1,4 +1,0 @@
-#!/bin/bash
-
-omarchy-refresh-config hypr/hypridle.conf
-omarchy-restart-hypridle
