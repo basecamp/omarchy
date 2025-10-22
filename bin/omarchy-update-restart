@@ -1,6 +1,10 @@
 #!/bin/bash
 
-if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
+# Compare kernel versions (strip architecture suffix for ARM64 compatibility)
+RUNNING_VERSION=$(uname -r | sed 's/-\(arch\|aarch64\).*$//')
+INSTALLED_VERSION=$(pacman -Q linux 2>/dev/null | awk '{print $2}')
+
+if [ "$RUNNING_VERSION" != "$INSTALLED_VERSION" ]; then
   gum confirm "Linux kernel has been updated. Reboot?" && omarchy-state clear re*-required && sudo reboot now
 
 elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
