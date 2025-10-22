@@ -2,7 +2,6 @@ run_logged $OMARCHY_INSTALL/config/theme.sh
 run_logged $OMARCHY_INSTALL/config/git.sh
 run_logged $OMARCHY_INSTALL/config/timezones.sh
 run_logged $OMARCHY_INSTALL/config/increase-lockout-limit.sh
-run_logged $OMARCHY_INSTALL/config/ssh-flakiness.sh
 run_logged $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
 run_logged $OMARCHY_INSTALL/config/xcompose.sh
 run_logged $OMARCHY_INSTALL/config/mise-work.sh
