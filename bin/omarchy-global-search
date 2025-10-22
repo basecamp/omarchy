@@ -1,65 +1,10 @@
 #!/bin/bash
 
-MENU_JSON="${MENU_JSON:-menu.json}"
+MENU_JSON="${MENU_JSON:-$HOME/.local/share/omarchy/menu.json}"
 MENU_SCRIPT="${MENU_SCRIPT:-$HOME/.local/share/omarchy/bin/omarchy-menu}"
-APPS_CACHE="${APPS_CACHE:-$HOME/.local/share/omarchy/apps.cache}"
-APPS_LIST_CACHE="${APPS_LIST_CACHE:-$HOME/.local/share/omarchy/apps.list}"
 
 # Ensure data directory exists
-mkdir -p "$(dirname "$APPS_CACHE")"
-
-# -------------------------------
-# 🔹 Fast Application Change Detection
-# -------------------------------
-get_apps_hash_fast() {
-    local app_dirs=(
-        "/usr/share/applications"
-        "/usr/local/share/applications"
-        "$HOME/.local/share/applications"
-    )
-
-    local hash_input=""
-    for dir in "${app_dirs[@]}"; do
-        if [[ -d "$dir" ]]; then
-            # Use directory modification time instead of scanning all files
-            hash_input+="$(stat -c '%Y' "$dir" 2>/dev/null || stat -f '%m' "$dir" 2>/dev/null)|"
-        fi
-    done
-
-    echo -n "$hash_input" | md5sum 2>/dev/null | cut -d' ' -f1 || echo -n "$hash_input" | md5 2>/dev/null
-}
-
-check_apps_changed() {
-    local current_hash=$(get_apps_hash_fast)
-    local stored_hash=""
-
-    [[ -f "$APPS_CACHE" ]] && stored_hash=$(cat "$APPS_CACHE" 2>/dev/null)
-
-    if [[ "$current_hash" != "$stored_hash" ]]; then
-        echo "$current_hash" > "$APPS_CACHE"
-        return 0  # Changed
-    fi
-    return 1  # Not changed
-}
-
-check_menu_changed() {
-    local menu_script="$1"
-    local cache_file="${APPS_CACHE}.menu"
-
-    [[ ! -f "$menu_script" ]] && return 1
-
-    local current_hash
-    current_hash=$(stat -c '%Y' "$menu_script" 2>/dev/null || stat -f '%m' "$menu_script" 2>/dev/null)
-
-    local stored_hash=""
-    [[ -f "$cache_file" ]] && stored_hash=$(cat "$cache_file" 2>/dev/null)
-
-    if [[ "$current_hash" != "$stored_hash" ]]; then
-        echo "$current_hash" > "$cache_file"
-        return 0  # Changed
-    fi
-    return 1  # Not changed
-}
+mkdir -p "$(dirname "$MENU_JSON")"
 
 # -------------------------------
 # 🔹 Background Menu JSON Generation
@@ -149,8 +94,8 @@ EOF_JSON_GEN
             if [[ -n "$theme" ]]; then
                 json_output+=$',\n'
                 json_output+=$(printf '    {\n      "path": "Style > Theme > %s",\n      "command": "omarchy-theme-set '\''%s'\''"\n    }' \
-                    "$(echo "$theme" | sed 's/"/\\"/g')" \
-                    "$(echo "$theme" | sed 's/"/\\"/g')")
+                    "${theme//\"/\\\"}" \
+                    "${theme//\"/\\\"}")
             fi
         done < <(omarchy-theme-list)
     fi
@@ -160,8 +105,8 @@ EOF_JSON_GEN
             if [[ -n "$font" ]]; then
                 json_output+=$',\n'
                 json_output+=$(printf '    {\n      "path": "Style > Font > %s",\n      "command": "omarchy-font-set '\''%s'\''"\n    }' \
-                    "$(echo "$font" | sed 's/"/\\"/g')" \
-                    "$(echo "$font" | sed 's/"/\\"/g')")
+                    "${font//\"/\\\"}" \
+                    "${font//\"/\\\"}")
             fi
         done < <(omarchy-font-list)
     fi
@@ -171,15 +116,11 @@ EOF_JSON_GEN
             if [[ -n "$profile" ]]; then
                 json_output+=$',\n'
                 json_output+=$(printf '    {\n      "path": "Setup > Power Profile > %s",\n      "command": "powerprofilesctl set '\''%s'\''"\n    }' \
-                    "$(echo "$profile" | sed 's/"/\\"/g')" \
-                    "$(echo "$profile" | sed 's/"/\\"/g')")
+                    "${profile//\"/\\\"}" \
+                    "${profile//\"/\\\"}")
             fi
         done < <(omarchy-powerprofiles-list)
     fi
-
-    # Manual regenerate menu JSON option
-    json_output+=$',\n'
-    json_output+=$(printf '    {\n      "path": "Setup > Regenerate Menu JSON",\n      "command": "omarchy-global-search regenerate"\n    }')
 
     json_output+=$'\n  ]\n}'
 
@@ -191,39 +132,9 @@ EOF_JSON_GEN
 }
 
 # -------------------------------
-# 🔹 Fast Menu JSON Ensuring (Background Generation)
+# 🔹 Get Application List
 # -------------------------------
-ensure_menu_json() {
-    local json_file="${1:-$MENU_JSON}"
-    local script_path="${2:-$MENU_SCRIPT}"
-    local force_regen="${3:-false}"
-
-    # Quick existence check for launch speed
-    if [[ -f "$json_file" ]] && [[ "$force_regen" != "true" ]]; then
-        # Trigger background regeneration if needed, but don't wait
-        (
-            if check_apps_changed || check_menu_changed "$script_path"; then
-                generate_menu_json "$script_path" "$json_file" 2>/dev/null
-            fi
-        ) &
-        return 0
-    fi
-
-    # Force regeneration (blocking)
-    if [[ "$force_regen" == "true" ]] || [[ ! -f "$json_file" ]]; then
-        if [[ -f "$script_path" ]]; then
-            generate_menu_json "$script_path" "$json_file"
-            return $?
-        else
-            return 1
-        fi
-    fi
-}
-
-# -------------------------------
-# 🔹 Cached Application List
-# -------------------------------
-get_applications_cached() {
+get_applications() {
     app_dirs=(
         "/usr/share/applications"
         "/usr/local/share/applications"
@@ -240,8 +151,8 @@ get_applications_cached() {
                 ;;
             esac
         done <"$desktop_file"
-        printf "APP|||%s|||%s|||xdg-launch %s\n" "$name" "$(basename "$desktop_file")" "$desktop_file"
-    done < <(fd -t f -e desktop -0 . "${app_dirs[@]}" 2>/dev/null)
+        printf "APP|||%s|||%s\n" "$name" "$(basename "$desktop_file")"
+        done < <(fd -t f -e desktop -0 . "${app_dirs[@]}" 2>/dev/null)
 }
 
 # -------------------------------
@@ -390,8 +301,12 @@ unified_search() {
     local json_file="${1:-$MENU_JSON}"
     local filter="$2"
 
-    # Non-blocking JSON ensure
-    ensure_menu_json "$json_file"
+    # Auto-generate menu.json on first run
+    if [[ ! -f "$json_file" ]]; then
+        if [[ -f "$MENU_SCRIPT" ]]; then
+            generate_menu_json "$MENU_SCRIPT" "$json_file" 2>/dev/null
+        fi
+    fi
 
     local all_options=()
     local menu_count=0
@@ -405,9 +320,9 @@ unified_search() {
         menu_count=${#menu_opts[@]}
     fi
 
-    # Load cached applications (fast - cached list)
+    # Load applications (fast - list)
     local app_opts
-    mapfile -t app_opts < <(get_applications_cached)
+    mapfile -t app_opts < <(get_applications)
     all_options+=("${app_opts[@]}")
     app_count=${#app_opts[@]}
 
@@ -485,24 +400,6 @@ unified_search() {
     fi
 }
 
-regenerate_menu() {
-    local json_file="${1:-$MENU_JSON}"
-    local script_path="${2:-$MENU_SCRIPT}"
-
-    # Clear caches
-    rm -f "$APPS_LIST_CACHE" "$APPS_CACHE" "${APPS_CACHE}.menu" 2>/dev/null
-
-    ensure_menu_json "$json_file" "$script_path" "true"
-
-    if [[ $? -eq 0 ]]; then
-        notify-send "Menu Regenerated" "Menu JSON updated"
-        return 0
-    else
-        notify-send "Error" "Failed to regenerate menu"
-        return 1
-    fi
-}
-
 # -------------------------------
 # 🔹 Main
 # -------------------------------
@@ -510,8 +407,13 @@ case "${1:-unified}" in
     unified|search|-s|--search)
         unified_search "${2:-$MENU_JSON}" "$3"
         ;;
-    regenerate|regen|-r|--regenerate)
-        regenerate_menu "${2:-$MENU_JSON}" "${3:-$MENU_SCRIPT}"
+    generate|gen|-g|--generate)
+        generate_menu_json "${2:-$MENU_SCRIPT}" "${3:-$MENU_JSON}"
+        if [[ $? -eq 0 ]]; then
+            notify-send "Menu Generated" "Menu JSON created successfully"
+        else
+            notify-send "Error" "Failed to generate menu"
+        fi
         ;;
     help|-h|--help)
         cat <<'EOF'
@@ -519,24 +421,21 @@ Usage: $0 [command] [options]
 
 Commands:
   unified|search       Unified search (apps + menus) [default]
-  regenerate           Force regenerate menu JSON and update apps
+  generate             Generate menu JSON file
   help                 Show this help
 
 Optimizations:
-  - Cached application list (persistent)
-  - Background menu regeneration
-  - Fast directory-based change detection
+  - Auto-generates menu.json on first run
+  - Fast application scanning
   - Non-blocking startup
 
 Environment Variables:
-  MENU_JSON            Path to menu JSON file
-  MENU_SCRIPT          Path to menu script
-  APPS_CACHE           Apps hash cache
-  APPS_LIST_CACHE      Cached application list
+  MENU_JSON            Path to menu JSON file (default: ~/.local/share/omarchy/menu.json)
+  MENU_SCRIPT          Path to menu script (default: ~/.local/share/omarchy/bin/omarchy-menu)
 
 Examples:
-  $0                   # Fast unified search (<1s)
-  $0 regenerate        # Force cache rebuild
+  $0                   # Fast unified search
+  $0 generate          # Manually regenerate menu.json
 EOF
         ;;
     *)
