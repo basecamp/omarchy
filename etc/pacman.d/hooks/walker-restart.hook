@@ -1,0 +1,11 @@
+[Trigger]
+Type = Package
+Operation = Upgrade
+Target = walker
+Target = walker-debug
+Target = elephant*
+
+[Action]
+Description = Restarting Walker services after system update
+When = PostTransaction
+Exec = /usr/bin/omarchy-restart-walker
