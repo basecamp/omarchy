@@ -1,7 +1,6 @@
 @import "../omarchy/current/theme/waybar.css";
 
 * {
-  background-color: @background;
   color: @foreground;
 
   border: none;
@@ -9,6 +8,10 @@
   min-height: 0;
   font-family: 'CaskaydiaMono Nerd Font';
   font-size: 12px;
+}
+
+window#waybar {
+    background-color: @background;
 }
 
 .modules-left {
