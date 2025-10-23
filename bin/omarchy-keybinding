@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Prints the keybinding for a given Hyprland dispatcher arg
+
+# Ensure an argument is provided
+if [[ $# -eq 0 ]]; then
+  echo "Usage: $(basename "$0") <command>"
+  exit 1
+fi
+
+target="$*"
+
+binding="$(hyprctl -j binds | jq -r --arg t "$target" '.[] | select(.arg == $t) | "\(.modmask) \(.key)"' | head -n1)"
+
+if [[ -z "$binding" ]]; then
+  echo "(unbound)"
+  exit 0
+fi
+
+read -r modmask key <<< "$binding"
+
+case "$modmask" in
+  1) mods="SHIFT" ;;
+  4) mods="CTRL" ;;
+  8) mods="ALT" ;;
+  64) mods="SUPER" ;;
+  72) mods="SUPER + ALT" ;;
+  76) mods="SUPER + CTRL + ALT" ;;
+  73) mods="SUPER + SHIFT + ALT" ;;
+  77) mods="SUPER + SHIFT + CTRL + ALT" ;;
+  *) mods="MODMASK($modmask)" ;;
+esac
+
+echo "$mods + $key"
