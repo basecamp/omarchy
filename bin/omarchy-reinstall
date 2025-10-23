@@ -2,18 +2,20 @@
 
 set -e
 
-if gum confirm "Are you sure you want to reinstall all base packages and reset all default configs?"; then
-  # Reinstall all base packages
+echo -e "This will reinstall all the default Omarchy packages and reset all default configs.\nWarning: All changes to configs will be lost.\n"
+
+if gum confirm "Are you sure you want to reinstall and lose all config changes?"; then
+  echo "Resetting Omarchy repository"
+  git -C "$OMARCHY_PATH" switch master
+  git -C "$OMARCHY_PATH" reset --hard HEAD
+
+  echo "Reinstalling all Omarchy packages"
   mapfile -t packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-base.packages" | grep -v '^$')
   sudo pacman -Syu --noconfirm "${packages[@]}"
 
-  # Copy over Omarchy configs
+  echo "Resetting all Omarchy configs"
   cp -R ~/.local/share/omarchy/config/* ~/.config/
-
-  # Use default bashrc from Omarchy
   cp ~/.local/share/omarchy/default/bashrc ~/.bashrc
-
-  # Reset any conflict from bad .bash_profile
   echo "[[ -f ~/.bashrc ]] && . ~/.bashrc" | tee ~/.bash_profile
 
   # TODO: Should reset limine
