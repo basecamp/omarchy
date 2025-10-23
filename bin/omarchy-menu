@@ -175,7 +175,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
+  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Tweaks\n  Config"
 
   case $(menu "Setup" "$options") in
   *Audio*) $TERMINAL --class=Wiremix -e wiremix ;;
@@ -194,6 +194,7 @@ show_setup_menu() {
   *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
+  *Tweaks*) show_setup_tweaks_menu ;;
   *Config*) show_setup_config_menu ;;
   *) show_main_menu ;;
   esac
@@ -227,6 +228,13 @@ show_setup_security_menu() {
   case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
   *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
   *Fido2*) present_terminal omarchy-setup-fido2 ;;
+  *) show_setup_menu ;;
+  esac
+}
+
+show_setup_tweaks_menu() {
+  case $(menu "Tweaks" "  H265 in Chromium") in
+  *H265*) terminal omarchy-cmd-toggle-chromium-flags "AcceleratedVideoDecodeLinuxZeroCopyGL" "AcceleratedVideoDecodeLinuxGL" ;;
   *) show_setup_menu ;;
   esac
 }

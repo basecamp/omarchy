@@ -1,0 +1,120 @@
+#!/bin/bash
+
+default_browser=$(xdg-settings get default-web-browser)
+browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$default_browser 2>/dev/null | head -1)
+
+if [[ $browser_exec =~ chromium ]]; then
+  FILE="$HOME/.config/chromium-flags.conf"
+elif [[ $browser_exec =~ brave ]]; then
+  FILE="$HOME/.config/brave-flags.conf"
+else
+  exit 1
+fi
+
+FILE="$HOME/.config/chromium-flags.conf"
+
+if [ $# -eq 0 ]; then
+  echo "Usage: $0 flag1 [flag2 ...]"
+  exit 1
+fi
+
+if [ ! -f "$FILE" ]; then
+  echo "Error: File '$FILE' not found."
+  exit 1
+fi
+
+backup_config_file="${FILE}.bak.$(date +%s)"
+cp -f "$FILE" "$backup_config_file" 2>/dev/null
+
+# Read all lines into array (without trailing newlines)
+mapfile -t content <"$FILE"
+
+found=false
+for i in "${!content[@]}"; do
+  line="${content[i]}"
+  if [[ $line =~ ^(--enable-features=)(.*)$ ]]; then
+    found=true
+    prefix="${BASH_REMATCH[1]}"
+    features_str="${BASH_REMATCH[2]}"
+    # Trim leading/trailing spaces from features_str
+    features_str=$(echo "$features_str" | xargs)
+
+    # Split by comma
+    IFS=',' read -ra current_features <<<"$features_str"
+
+    # Trim whitespace from each feature
+    trimmed=()
+    for feat in "${current_features[@]}"; do
+      trimmed+=("$(echo "$feat" | xargs)")
+    done
+
+    flags_to_toggle=("$@")
+
+    # Check if all flags are present
+    was_enabled=true
+    for flag in "${flags_to_toggle[@]}"; do
+      if [[ ! " ${trimmed[*]} " =~ " ${flag} " ]]; then
+        was_enabled=false
+        break
+      fi
+    done
+
+    if [ "$was_enabled" = true ]; then
+      direction="enabled to disabled"
+      # Remove the flags
+      new_features=()
+      for feat in "${trimmed[@]}"; do
+        skip=false
+        for flag in "${flags_to_toggle[@]}"; do
+          if [ "$feat" = "$flag" ]; then
+            skip=true
+            break
+          fi
+        done
+        if [ "$skip" = false ]; then
+          new_features+=("$feat")
+        fi
+      done
+    else
+      direction="disabled to enabled"
+      # Add missing flags
+      new_features=("${trimmed[@]}")
+      for flag in "${flags_to_toggle[@]}"; do
+        if [[ ! " ${new_features[*]} " =~ " ${flag} " ]]; then
+          new_features+=("$flag")
+        fi
+      done
+    fi
+
+    # Join with commas, no spaces
+    IFS=','
+    new_str="${new_features[*]}"
+    unset IFS
+
+    # Update the line (without newline, will be added on write)
+    content[i]="${prefix}${new_str}"
+    break
+  fi
+done
+
+if [ "$found" = false ]; then
+  # Add new line with the flags
+  flags_to_toggle=("$@")
+  new_features=()
+  for flag in "${flags_to_toggle[@]}"; do
+    new_features+=("$flag")
+  done
+  IFS=','
+  new_str="${new_features[*]}"
+  unset IFS
+  new_line="--enable-features=${new_str}"
+  content+=("$new_line")
+  direction="disabled to enabled"
+fi
+
+# Write back with newlines
+printf "%s\n" "${content[@]}" >"$FILE"
+
+MESSAGE="Changed Chromium flags ${@} from $direction"
+
+notify-send "$MESSAGE"
