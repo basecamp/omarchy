@@ -24,6 +24,5 @@ term_background_bright: 24283b
 EOF
   sudo rm -f /boot/EFI/Linux/$(cat /etc/machine-id)_linux.efi
   sudo limine-update
-  sudo limine-scan
   sudo limine-snapper-sync
 fi
