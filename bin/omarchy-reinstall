@@ -15,4 +15,7 @@ if gum confirm "Are you sure you want to reinstall all base packages and reset a
 
   # Reset any conflict from bad .bash_profile
   echo "[[ -f ~/.bashrc ]] && . ~/.bashrc" | tee ~/.bash_profile
+
+  # TODO: Should reset limine
+  # TODO: Should reset plymouth
 fi
