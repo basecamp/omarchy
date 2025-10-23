@@ -387,9 +387,8 @@ show_remove_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" " Omarchy\n Branch\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone") in
+  case $(menu "Update" " Omarchy\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone") in
   *Omarchy*) present_terminal omarchy-update ;;
-  *Branch*) show_update_branch_menu ;;
   *Config*) show_update_config_menu ;;
   *Themes*) present_terminal omarchy-theme-update ;;
   *Process*) show_update_process_menu ;;
@@ -401,13 +400,6 @@ show_update_menu() {
   esac
 }
 
-show_update_branch_menu() {
-  case $(menu "Branch" "master\ndev" "" "$(omarchy-version-branch)") in
-  *master*) present_terminal "omarchy-update-branch master" ;;
-  *dev*) present_terminal "omarchy-update-branch dev" ;;
-  *) show_update_menu ;;
-  esac
-}
 show_update_process_menu() {
   case $(menu "Restart" "  Hypridle\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
   *Hypridle*) omarchy-restart-hypridle ;;
