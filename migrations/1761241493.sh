@@ -1,6 +1,11 @@
 echo "Cleanup extra UKI if needed to prevent errors"
 if [[ -f /boot/EFI/linux/omarchy_linux.efi ]] && [[ -f /boot/EFI/linux/$(cat /etc/machine-id)_linux.efi ]]; then
-  sudo mv /boot/limine.conf /boot/limine.conf.bak
+  sudo rm -f /boot/EFI/Linux/$(cat /etc/machine-id)_linux.efi
+
+  if grep -q "/boot/EFI/Linux/$(cat /etc/machine-id)_linux.efi" /boot/limine.conf; then
+    echo -e "Resetting limine config\n(you may need to re-add other entries via sudo limine-update)"
+
+    sudo mv /boot/limine.conf /boot/limine.conf.bak
   sudo tee /boot/limine.conf <<EOF >/dev/null
 ### Read more at config document: https://github.com/limine-bootloader/limine/blob/trunk/CONFIG.md
 #timeout: 3
@@ -22,7 +27,7 @@ term_foreground_bright: c0caf5
 term_background_bright: 24283b
 
 EOF
-  sudo rm -f /boot/EFI/Linux/$(cat /etc/machine-id)_linux.efi
-  sudo limine-update
-  sudo limine-snapper-sync
+    sudo limine-update
+    sudo limine-snapper-sync
+  fi
 fi
