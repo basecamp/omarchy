@@ -19,6 +19,6 @@ if gum confirm "Are you sure you want to reinstall and lose all config changes?"
   cp ~/.local/share/omarchy/default/bashrc ~/.bashrc
   echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' | tee ~/.bash_profile >/dev/null
 
-  # TODO: Should reset limine
-  # TODO: Should reset plymouth
+  omarchy-refresh-limine
+  omarchy-refresh-plymouth
 fi
