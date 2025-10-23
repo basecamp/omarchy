@@ -1,0 +1,550 @@
+{
+  "󰀻  Apps": {
+    "command": "walker -p \"Launch…\""
+  },
+  "󰍉  Search": {
+    "command": "omarchy-global-search"
+  },
+  "󰧑  Learn": {
+    "  Keybindings": {
+      "command": "omarchy-menu-keybindings"
+    },
+    "  Omarchy": {
+      "command": "omarchy-launch-webapp https://learn.omacom.io/2/the-omarchy-manual"
+    },
+    "  Hyprland": {
+      "command": "omarchy-launch-webapp https://wiki.hypr.land/"
+    },
+    "󰣇  Arch": {
+      "command": "omarchy-launch-webapp https://wiki.archlinux.org/title/Main_page"
+    },
+    "󱆃  Bash": {
+      "command": "omarchy-launch-webapp https://devhints.io/bash"
+    },
+    "  Neovim": {
+      "command": "omarchy-launch-webapp https://www.lazyvim.org/keymaps"
+    }
+  },
+  "󱓞  Trigger": {
+    "  Capture": {
+      "  Screenshot": {
+        "  Editing": {
+          "command": "omarchy-cmd-screenshot smart"
+        },
+        "  Clipboard": {
+          "command": "omarchy-cmd-screenshot smart clipboard"
+        }
+      },
+      "  Screenrecord": {
+        "  Region": {
+          "command": "omarchy-cmd-screenrecord"
+        },
+        "  Region + Audio": {
+          "command": "omarchy-cmd-screenrecord region --with-audio"
+        },
+        "  Display": {
+          "command": "omarchy-cmd-screenrecord output"
+        },
+        "  Display + Audio": {
+          "command": "omarchy-cmd-screenrecord output --with-audio"
+        },
+        "  Display + Webcam": {
+          "command": "omarchy-cmd-screenrecord output --with-audio --with-webcam"
+        }
+      },
+      "󰃉  Color": {
+        "command": "pkill hyprpicker || hyprpicker -a"
+      }
+    },
+    "  Share": {
+      "  Clipboard": {
+        "command": "terminal bash -c omarchy-cmd-share clipboard"
+      },
+      "  File": {
+        "command": "terminal bash -c omarchy-cmd-share file"
+      },
+      "  Folder": {
+        "command": "terminal bash -c omarchy-cmd-share folder"
+      }
+    },
+    "󰔎  Toggle": {
+      "󱄄  Screensaver": {
+        "command": "omarchy-toggle-screensaver"
+      },
+      "󰔎  Nightlight": {
+        "command": "omarchy-toggle-nightlight"
+      },
+      "󱫖  Idle": {
+        "command": "omarchy-toggle-idle"
+      },
+      "󰍜  Bar": {
+        "command": "omarchy-toggle-waybar"
+      }
+    }
+  },
+  "  Style": {
+    "  Background": {
+      "command": "omarchy-theme-bg-next"
+    },
+    "  Hyprland": {
+      "command": "open_in_editor ~/.config/hypr/looknfeel.conf"
+    },
+    "󱄄  Screensaver": {
+      "command": "open_in_editor ~/.config/omarchy/branding/screensaver.txt"
+    },
+    "  About": {
+      "command": "open_in_editor ~/.config/omarchy/branding/about.txt"
+    },
+    "󰸌  Theme": {
+      "Catppuccin": {
+        "command": "omarchy-theme-set 'Catppuccin'"
+      },
+      "Catppuccin Latte": {
+        "command": "omarchy-theme-set 'Catppuccin Latte'"
+      },
+      "Everforest": {
+        "command": "omarchy-theme-set 'Everforest'"
+      },
+      "Flexoki Light": {
+        "command": "omarchy-theme-set 'Flexoki Light'"
+      },
+      "Gruvbox": {
+        "command": "omarchy-theme-set 'Gruvbox'"
+      },
+      "Kanagawa": {
+        "command": "omarchy-theme-set 'Kanagawa'"
+      },
+      "Matte Black": {
+        "command": "omarchy-theme-set 'Matte Black'"
+      },
+      "Nord": {
+        "command": "omarchy-theme-set 'Nord'"
+      },
+      "Osaka Jade": {
+        "command": "omarchy-theme-set 'Osaka Jade'"
+      },
+      "Ristretto": {
+        "command": "omarchy-theme-set 'Ristretto'"
+      },
+      "Rose Pine": {
+        "command": "omarchy-theme-set 'Rose Pine'"
+      },
+      "Tokyo Night": {
+        "command": "omarchy-theme-set 'Tokyo Night'"
+      }
+    },
+    "  Font": {
+      "Adwaita Mono": {
+        "command": "omarchy-font-set 'Adwaita Mono'"
+      },
+      "CaskaydiaMono Nerd Font": {
+        "command": "omarchy-font-set 'CaskaydiaMono Nerd Font'"
+      },
+      "CaskaydiaMono Nerd Font Mono": {
+        "command": "omarchy-font-set 'CaskaydiaMono Nerd Font Mono'"
+      },
+      "iA Writer Mono S": {
+        "command": "omarchy-font-set 'iA Writer Mono S'"
+      },
+      "JetBrainsMono Nerd Font": {
+        "command": "omarchy-font-set 'JetBrainsMono Nerd Font'"
+      },
+      "JetBrainsMono Nerd Font Mono": {
+        "command": "omarchy-font-set 'JetBrainsMono Nerd Font Mono'"
+      },
+      "JetBrainsMonoNL Nerd Font": {
+        "command": "omarchy-font-set 'JetBrainsMonoNL Nerd Font'"
+      },
+      "JetBrainsMonoNL Nerd Font Mono": {
+        "command": "omarchy-font-set 'JetBrainsMonoNL Nerd Font Mono'"
+      },
+      "Liberation Mono": {
+        "command": "omarchy-font-set 'Liberation Mono'"
+      },
+      "Nimbus Mono PS": {
+        "command": "omarchy-font-set 'Nimbus Mono PS'"
+      }
+    }
+  },
+  "  Setup": {
+    "  Audio": {
+      "command": "$TERMINAL --class=Wiremix -e wiremix"
+    },
+    "  Wifi": {
+      "command": "rfkill unblock wifi && omarchy-launch-wifi"
+    },
+    "󰂯  Bluetooth": {
+      "command": "rfkill unblock bluetooth && blueberry"
+    },
+    "󰍹  Monitors": {
+      "command": "open_in_editor ~/.config/hypr/monitors.conf"
+    },
+    "  Keybindings": {
+      "command": "open_in_editor ~/.config/hypr/bindings.conf"
+    },
+    "  Input": {
+      "command": "open_in_editor ~/.config/hypr/input.conf"
+    },
+    "  Defaults": {
+      "command": "open_in_editor ~/.config/uwsm/default"
+    },
+    "󰱔  DNS": {
+      "command": "present_terminal omarchy-setup-dns"
+    },
+    "  Config": {
+      "  Hyprland": {
+        "command": "open_in_editor ~/.config/hypr/hyprland.conf"
+      },
+      "  Hypridle": {
+        "command": "open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle"
+      },
+      "  Hyprlock": {
+        "command": "open_in_editor ~/.config/hypr/hyprlock.conf"
+      },
+      "  Hyprsunset": {
+        "command": "open_in_editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset"
+      },
+      "  Swayosd": {
+        "command": "open_in_editor ~/.config/swayosd/config.toml && omarchy-restart-swayosd"
+      },
+      "󰌧  Walker": {
+        "command": "open_in_editor ~/.config/walker/config.toml && omarchy-restart-walker"
+      },
+      "󰍜  Waybar": {
+        "command": "open_in_editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar"
+      },
+      "󰞅  XCompose": {
+        "command": "open_in_editor ~/.XCompose && omarchy-restart-xcompose"
+      }
+    },
+    "  Security": {
+      "󰈷  Fingerprint": {
+        "command": "present_terminal omarchy-setup-fingerprint"
+      },
+      "  Fido2": {
+        "command": "present_terminal omarchy-setup-fido2"
+      }
+    },
+    "󱐋  Power Profile": {
+      "power-saver": {
+        "command": "powerprofilesctl set 'power-saver'"
+      },
+      "balanced": {
+        "command": "powerprofilesctl set 'balanced'"
+      },
+      "performance": {
+        "command": "powerprofilesctl set 'performance'"
+      }
+    }
+  },
+  "󰉉  Install": {
+    "󰣇  Package": {
+      "command": "terminal omarchy-pkg-install"
+    },
+    "󰣇  AUR": {
+      "command": "terminal omarchy-pkg-aur-install"
+    },
+    "  Web": {
+      "command": "present_terminal omarchy-webapp-install"
+    },
+    "  TUI": {
+      "command": "present_terminal omarchy-tui-install"
+    },
+    "󰍲  Windows": {
+      "command": "present_terminal omarchy-windows-vm install"
+    },
+    "  Service": {
+      "  Dropbox": {
+        "command": "present_terminal omarchy-install-dropbox"
+      },
+      "  Tailscale": {
+        "command": "present_terminal omarchy-install-tailscale"
+      },
+      "󰟵  Bitwarden": {
+        "command": "install_and_launch Bitwarden bitwarden bitwarden-cli bitwarden"
+      },
+      "  Chromium": {
+        "command": "present_terminal omarchy-install-chromium-google-account"
+      }
+    },
+    "  Editor": {
+      "  VSCode": {
+        "command": "present_terminal omarchy-install-vscode"
+      },
+      "  Cursor": {
+        "command": "install_and_launch Cursor cursor-bin cursor"
+      },
+      "  Zed": {
+        "command": "install_and_launch Zed zed dev.zed.Zed"
+      },
+      "  Sublime": {
+        "command": "aur_install_and_launch Sublime Text sublime-text-4 sublime_text"
+      },
+      "  Helix": {
+        "command": "install Helix helix"
+      },
+      "  Emacs": {
+        "command": "install Emacs emacs-wayland && systemctl --user enable --now emacs.service"
+      }
+    },
+    "  Terminal": {
+      "  Alacritty": {
+        "command": "install_terminal alacritty"
+      },
+      "  Ghostty": {
+        "command": "install_terminal ghostty"
+      },
+      "  Kitty": {
+        "command": "install_terminal kitty"
+      }
+    },
+    "󱚤  AI": {
+      "󱚤  Claude": {
+        "command": "install Claude Code claude-code"
+      },
+      "󱚤  Cursor": {
+        "command": "aur_install Cursor CLI cursor-cli"
+      },
+      "󱚤  OpenAI": {
+        "command": "aur_install OpenAI Codex openai-codex-bin"
+      },
+      "󱚤  Gemini": {
+        "command": "aur_install Gemini gemini-cli"
+      },
+      "󱚤  Studio": {
+        "command": "install LM Studio lmstudio"
+      },
+      "󱚤  Ollama": {
+        "command": "install Ollama $ollama_pkg"
+      },
+      "󱚤  Crush": {
+        "command": "install Crush crush-bin"
+      },
+      "󱚤  opencode": {
+        "command": "install opencode opencode"
+      }
+    },
+    "  Gaming": {
+      "  Steam": {
+        "command": "present_terminal omarchy-install-steam"
+      },
+      "  RetroArch": {
+        "command": "aur_install_and_launch RetroArch retroarch retroarch-assets libretro libretro-fbneo com.libretro.RetroArch.desktop"
+      },
+      "󰍳  Minecraft": {
+        "command": "aur_install_and_launch Minecraft [AUR] minecraft-launcher minecraft-launcher"
+      }
+    },
+    "  Style": {
+      "󰸌  Theme": {
+        "command": "present_terminal omarchy-theme-install"
+      },
+      "  Background": {
+        "command": "nautilus ~/.config/omarchy/current/theme/backgrounds"
+      }
+    },
+    "  Font": {
+      "  Meslo": {
+        "command": "install_font Meslo LG Mono ttf-meslo-nerd MesloLGL Nerd Font"
+      },
+      "  Fira": {
+        "command": "install_font Fira Code ttf-firacode-nerd FiraCode Nerd Font"
+      },
+      "  Victor": {
+        "command": "install_font Victor Code ttf-victor-mono-nerd VictorMono Nerd Font"
+      },
+      "  Bistream": {
+        "command": "install_font Bistream Vera Code ttf-bitstream-vera-mono-nerd BitstromWera Nerd Font"
+      }
+    },
+    "󰵮  Development": {
+      "󰫏  Rails": {
+        "command": "present_terminal omarchy-install-dev-env ruby"
+      },
+      "  Docker": {
+        "command": "present_terminal omarchy-install-docker-dbs"
+      },
+      "  Go": {
+        "command": "present_terminal omarchy-install-dev-env go"
+      },
+      "  Python": {
+        "command": "present_terminal omarchy-install-dev-env python"
+      },
+      "  Zig": {
+        "command": "present_terminal omarchy-install-dev-env zig"
+      },
+      "  Rust": {
+        "command": "present_terminal omarchy-install-dev-env rust"
+      },
+      "  Java": {
+        "command": "present_terminal omarchy-install-dev-env java"
+      },
+      "  NET": {
+        "command": "present_terminal omarchy-install-dev-env dotnet"
+      },
+      "  OCaml": {
+        "command": "present_terminal omarchy-install-dev-env ocaml"
+      },
+      "  Clojure": {
+        "command": "present_terminal omarchy-install-dev-env clojure"
+      }
+    },
+    "  Javascript": {
+      "  Node": {
+        "command": "present_terminal omarchy-install-dev-env node"
+      },
+      "  Bun": {
+        "command": "present_terminal omarchy-install-dev-env bun"
+      },
+      "  Deno": {
+        "command": "present_terminal omarchy-install-dev-env deno"
+      }
+    },
+    "  PHP": {
+      "  PHP": {
+        "command": "present_terminal omarchy-install-dev-env php"
+      },
+      "  Laravel": {
+        "command": "present_terminal omarchy-install-dev-env laravel"
+      },
+      "  Symfony": {
+        "command": "present_terminal omarchy-install-dev-env symfony"
+      }
+    },
+    "  Elixir": {
+      "  Elixir": {
+        "command": "present_terminal omarchy-install-dev-env elixir"
+      },
+      "  Phoenix": {
+        "command": "present_terminal omarchy-install-dev-env phoenix"
+      }
+    }
+  },
+  "󰭌  Remove": {
+    "󰣇  Package": {
+      "command": "terminal omarchy-pkg-remove"
+    },
+    "  Web": {
+      "command": "present_terminal omarchy-webapp-remove"
+    },
+    "  TUI": {
+      "command": "present_terminal omarchy-tui-remove"
+    },
+    "󰸌  Theme": {
+      "command": "present_terminal omarchy-theme-remove"
+    },
+    "󰍲  Windows": {
+      "command": "present_terminal omarchy-windows-vm remove"
+    },
+    "󰈷  Fingerprint": {
+      "command": "present_terminal omarchy-setup-fingerprint --remove"
+    },
+    "  Fido2": {
+      "command": "present_terminal omarchy-setup-fido2 --remove"
+    }
+  },
+  "  Update": {
+    "  Omarchy": {
+      "command": "present_terminal omarchy-update"
+    },
+    "󰸌  Themes": {
+      "command": "present_terminal omarchy-theme-update"
+    },
+    "  Firmware": {
+      "command": "present_terminal omarchy-update-firmware"
+    },
+    "  Timezone": {
+      "command": "present_terminal omarchy-tz-select"
+    },
+    "  Branch": {
+      "master": {
+        "command": "present_terminal omarchy-update-branch master"
+      },
+      "dev": {
+        "command": "present_terminal omarchy-update-branch dev"
+      }
+    },
+    "  Process": {
+      "  Hypridle": {
+        "command": "omarchy-restart-hypridle"
+      },
+      "  Hyprsunset": {
+        "command": "omarchy-restart-hyprsunset"
+      },
+      "  Swayosd": {
+        "command": "omarchy-restart-swayosd"
+      },
+      "󰌧  Walker": {
+        "command": "omarchy-restart-walker"
+      },
+      "󰍜  Waybar": {
+        "command": "omarchy-restart-waybar"
+      }
+    },
+    "  Config": {
+      "  Hyprland": {
+        "command": "present_terminal omarchy-refresh-hyprland"
+      },
+      "  Hypridle": {
+        "command": "present_terminal omarchy-refresh-hypridle"
+      },
+      "  Hyprlock": {
+        "command": "present_terminal omarchy-refresh-hyprlock"
+      },
+      "  Hyprsunset": {
+        "command": "present_terminal omarchy-refresh-hyprsunset"
+      },
+      "󱣴  Plymouth": {
+        "command": "present_terminal omarchy-refresh-plymouth"
+      },
+      "  Swayosd": {
+        "command": "present_terminal omarchy-refresh-swayosd"
+      },
+      "󰌧  Walker": {
+        "command": "present_terminal omarchy-refresh-walker"
+      },
+      "󰍜  Waybar": {
+        "command": "present_terminal omarchy-refresh-waybar"
+      }
+    },
+    "󰇅  Hardware": {
+      "  Audio": {
+        "command": "present_terminal omarchy-restart-pipewire"
+      },
+      "󱚾  Wi-Fi": {
+        "command": "present_terminal omarchy-restart-wifi"
+      },
+      "󰂯  Bluetooth": {
+        "command": "present_terminal omarchy-restart-bluetooth"
+      }
+    },
+    "  Password": {
+      "  Drive": {
+        "command": "present_terminal omarchy-drive-set-password"
+      },
+      "  User": {
+        "command": "present_terminal passwd"
+      }
+    }
+  },
+  "  About": {
+    "command": "omarchy-launch-about"
+  },
+  "  System": {
+    "  Lock": {
+      "command": "omarchy-lock-screen"
+    },
+    "󱄄  Screensaver": {
+      "command": "omarchy-launch-screensaver force"
+    },
+    "󰤄  Suspend": {
+      "command": "systemctl suspend"
+    },
+    "󰜉  Restart": {
+      "command": "omarchy-state clear re*-required && systemctl reboot --no-wall"
+    },
+    "󰐥  Shutdown": {
+      "command": "omarchy-state clear re*-required && systemctl poweroff --no-wall"
+    }
+  }
+}

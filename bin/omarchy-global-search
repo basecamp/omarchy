@@ -1,0 +1,333 @@
+#!/bin/bash
+
+MENU_JSON="${MENU_JSON:-$HOME/.local/share/omarchy/menu.json}"
+MENU_SCRIPT="${MENU_SCRIPT:-$HOME/.local/share/omarchy/bin/omarchy-menu}"
+
+# -------------------------------
+#  Get Application List
+# -------------------------------
+get_applications() {
+    # Keep standard application scanning
+    app_dirs=(
+        "/usr/share/applications"
+        "/usr/local/share/applications"
+        "$HOME/.local/share/applications"
+    )
+
+    # Use fd if available for speed, fallback to find if necessary (though fd is standard in Omarchy likely)
+    if command -v fd &>/dev/null; then
+        while IFS= read -r -d '' desktop_file; do
+            process_desktop_file "$desktop_file"
+        done < <(fd -t f -e desktop -0 . "${app_dirs[@]}" 2>/dev/null)
+    else
+        while IFS= read -r -d '' desktop_file; do
+            process_desktop_file "$desktop_file"
+        done < <(find "${app_dirs[@]}" -name "*.desktop" -print0 2>/dev/null)
+    fi
+}
+
+process_desktop_file() {
+    local desktop_file="$1"
+    local name=""
+    # Fast name extraction
+    name=$(grep -m 1 "^Name=" "$desktop_file" | cut -d= -f2-)
+    if [[ -n "$name" ]]; then
+        printf "APP|||%s|||%s\n" "$name" "$(basename "$desktop_file")"
+    fi
+}
+
+# -------------------------------
+#  Get Menu Options (Updated for new JSON)
+# -------------------------------
+get_menu_options() {
+    local json_file="$1"
+    if [[ ! -f "$json_file" ]] || ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    # Use jq to recursively find all objects that have a "command" key.
+    # It flattens the nested structure into "Path > To > Item" format.
+    jq -r '
+        paths(type == "object" and has("command")) as $p 
+        | "MENU|||" + ($p | join(" > ")) + "|||" + (getpath($p).command)
+    ' "$json_file" 2>/dev/null
+}
+
+# -------------------------------
+#  Helper Functions
+# -------------------------------
+get_field() {
+    local str="$1" field_num="$2"
+    if [[ -z "$str" ]] || (( field_num < 1 )); then
+        echo ""
+        return 1
+    fi
+
+    local safe_str
+    safe_str="${str//|||/$'\001'}"
+
+    local -a parts
+    IFS=$'\001' read -r -a parts <<< "$safe_str"
+
+    if (( field_num <= ${#parts[@]} )); then
+        echo "${parts[$((field_num - 1))]}"
+    else
+        echo ""
+    fi
+}
+
+run_launcher() {
+    local prompt="${1:-Search…}"
+    local options="${2:-}"
+
+    if ! command -v walker &>/dev/null; then
+        notify-send "Error" "walker is required"
+        exit 1
+    fi
+
+    # Use standard input for options if provided, otherwise just run walker
+    if [[ -n "$options" ]]; then
+        printf '%s\n' "$options" | G_MESSAGES_DEBUG=none G_ENABLE_DIAGNOSTIC=0 walker --dmenu -p "$prompt" 2>/dev/null
+    else
+        G_MESSAGES_DEBUG=none G_ENABLE_DIAGNOSTIC=0 walker --dmenu -p "$prompt" 2>/dev/null
+    fi
+}
+
+safe_exec() {
+    local cmd="$1"
+    cmd=$(echo "$cmd" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    # Load environment if available
+    [[ -f "$HOME/.profile" ]] && source "$HOME/.profile" >/dev/null 2>&1
+    [[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc" >/dev/null 2>&1
+
+    # --- Specialized Omarchy Execution Handlers ---
+
+    # 1. Floating Terminal Wrappers
+    if [[ "$cmd" =~ ^terminal[[:space:]](.+)$ ]]; then
+        local inner_cmd="${BASH_REMATCH[1]}"
+        if command -v omarchy-launch-floating-terminal-with-presentation &>/dev/null; then
+            setsid omarchy-launch-floating-terminal-with-presentation "$inner_cmd" >/dev/null 2>&1 &
+        else
+            # Fallback if specific launcher is missing
+            setsid "${TERMINAL:-alacritty}" -e bash -c "$inner_cmd && echo && read -p 'Press Enter to close...'" >/dev/null 2>&1 &
+        fi
+        return
+    fi
+
+    if [[ "$cmd" =~ ^present_terminal[[:space:]](.+)$ ]]; then
+        local inner_cmd="${BASH_REMATCH[1]}"
+        # Use uwsm if available for better Wayland integration
+        local runner="setsid"
+        command -v uwsm &>/dev/null && runner="setsid uwsm app --"
+
+        if command -v omarchy-show-logo &>/dev/null && command -v omarchy-show-done &>/dev/null; then
+            $runner alacritty --class=Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; $inner_cmd; omarchy-show-done" >/dev/null 2>&1 &
+        else
+            $runner alacritty --class=Omarchy --title=Omarchy -e bash -c "$inner_cmd" >/dev/null 2>&1 &
+        fi
+        return
+    fi
+
+    # 2. Installation Helpers (relies on sourcing the old menu script if it contains these functions)
+    if [[ "$cmd" =~ ^(install_and_launch|aur_install_and_launch|install_terminal|install_font)[[:space:]\(] ]] && [[ -f "$MENU_SCRIPT" ]]; then
+        setsid bash -c "
+            export OMARCHY_SKIP_MENU=1
+            source '$MENU_SCRIPT' 2>/dev/null
+            $cmd
+        " >/dev/null 2>&1 &
+        return
+    fi
+
+    # 3. Standard Package Installers
+    if [[ "$cmd" =~ ^(install|aur_install)[[:space:]](.+)$ ]]; then
+        local func="${BASH_REMATCH[1]}"
+        local args="${BASH_REMATCH[2]}"
+        local runner="setsid"
+        command -v uwsm &>/dev/null && runner="setsid uwsm app --"
+
+        local final_cmd=""
+        if [[ "$func" == "install" ]]; then
+             final_cmd="sudo pacman -S $args"
+        elif [[ "$func" == "aur_install" ]]; then
+             final_cmd="yay -S $args"
+        fi
+
+        if command -v omarchy-show-logo &>/dev/null && command -v omarchy-show-done &>/dev/null; then
+            $runner alacritty --class=Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; $final_cmd; omarchy-show-done" >/dev/null 2>&1 &
+        else
+            $runner alacritty --class=Omarchy --title=Omarchy -e bash -c "$final_cmd" >/dev/null 2>&1 &
+        fi
+        return
+    fi
+
+    # 4. Editor opener (attempts to extract logic from old menu script if needed, otherwise just runs)
+    if [[ "$cmd" =~ ^open_in_editor[[:space:]] ]] && [[ -f "$MENU_SCRIPT" ]]; then
+        local inner_cmd="$cmd"
+        setsid bash -c "
+            export OMARCHY_SKIP_MENU=1
+            eval \"\$(awk '
+                /^open_in_editor\\s*\\(\\)/,/^\\}/ {
+                    print
+                    if (/^\\}/) exit
+                }
+            ' '$MENU_SCRIPT')\"
+            $inner_cmd
+        " >/dev/null 2>&1 &
+        return
+    fi
+
+
+    # 5. Generic handlers
+    if [[ "$cmd" == omarchy-launch-webapp* ]] || [[ "$cmd" == *"hyprpicker"* ]]; then
+        [[ "$cmd" == *"hyprpicker"* ]] && pkill hyprpicker 2>/dev/null
+        setsid bash -c "$cmd" >/dev/null 2>&1 &
+        return
+    fi
+
+    # Default execution
+    setsid bash -c "$cmd" >/dev/null 2>&1 &
+}
+
+# -------------------------------
+#  Unified Search
+# -------------------------------
+unified_search() {
+    local json_file="${1:-$MENU_JSON}"
+    local filter="$2"
+
+    if [[ ! -f "$json_file" ]]; then
+         notify-send "Error" "Menu JSON not found at $json_file"
+         return 1
+    fi
+
+    local all_options=()
+    local menu_count=0
+    local app_count=0
+
+    # Load menu options (using the new jq parser)
+    if command -v jq &>/dev/null; then
+        local menu_opts
+        mapfile -t menu_opts < <(get_menu_options "$json_file")
+        all_options+=("${menu_opts[@]}")
+        menu_count=${#menu_opts[@]}
+    fi
+
+    # Load applications
+    local app_opts
+    mapfile -t app_opts < <(get_applications)
+    all_options+=("${app_opts[@]}")
+    app_count=${#app_opts[@]}
+
+    if [[ ${#all_options[@]} -eq 0 ]]; then
+        notify-send "Error" "No applications or menu options found"
+        return 1
+    fi
+
+    # Prepare list for display (Field 2 is the display name/path)
+    local display_list=()
+    for item in "${all_options[@]}"; do
+        local display
+        display=$(get_field "$item" 2)
+        [[ -n "$display" ]] && display_list+=("$display")
+    done
+
+    # Apply pre-filter if provided
+    local candidates=()
+    if [[ -n "$filter" ]]; then
+        local f_low="${filter,,}"
+        for name in "${display_list[@]}"; do
+            [[ "${name,,}" == *"$f_low"* ]] && candidates+=("$name")
+        done
+    else
+        candidates=("${display_list[@]}")
+    fi
+
+    if [[ ${#candidates[@]} -eq 0 ]]; then
+         # Optional: don't notify on empty search if it was interactive, but useful if called via CLI with filter
+         [[ -n "$filter" ]] && notify-send "No matches" "Nothing matches '$filter'"
+        return 0
+    fi
+
+    # Sort candidates for presentation
+    local sorted_candidates
+    mapfile -t sorted_candidates < <(printf '%s\n' "${candidates[@]}" | sort -f)
+
+    local prompt="Search… [Apps: $app_count | Menu: $menu_count]"
+    local selected
+    selected=$(printf '%s\n' "${sorted_candidates[@]}" | run_launcher "$prompt")
+
+    [[ -z "$selected" ]] && return 0
+
+    # Find the full entry corresponding to the selection
+    local full_entry=""
+    # Optimization: likely to be near where it was in the sorted list, but linear scan is safe enough for standard menu sizes
+    for item in "${all_options[@]}"; do
+        if [[ "$(get_field "$item" 2)" == "$selected" ]]; then
+            full_entry="$item"
+            break
+        fi
+    done
+
+    if [[ -z "$full_entry" ]]; then
+        notify-send "Error" "Selection not found: $selected"
+        return 1
+    fi
+
+    # Execute based on type
+    local type desktop_id_or_cmd
+    type=$(get_field "$full_entry" 1)
+    desktop_id_or_cmd=$(get_field "$full_entry" 3)
+
+    case "$type" in
+        APP)
+            if command -v gtk-launch &>/dev/null; then
+                 gtk-launch "$desktop_id_or_cmd" &>/dev/null &
+            else
+                 # Fallback if gtk-launch missing (rare)
+                 safe_exec "$desktop_id_or_cmd"
+            fi
+            ;;
+        MENU)
+            safe_exec "$desktop_id_or_cmd"
+            ;;
+        *)
+            notify-send "Error" "Unknown entry type: $type"
+            return 1
+            ;;
+    esac
+}
+
+# -------------------------------
+#  Main
+# -------------------------------
+case "${1:-unified}" in
+    unified|search|-s|--search)
+        unified_search "${2:-$MENU_JSON}" "$3"
+        ;;
+    help|-h|--help)
+        cat <<'EOF'
+Usage: $0 [command] [options]
+
+Commands:
+  unified|search       Unified search (apps + menus) [default]
+  help                 Show this help
+
+Environment Variables:
+  MENU_JSON            Path to menu JSON file (default: ~/.local/share/omarchy/menu.json)
+  MENU_SCRIPT          Path to legacy menu script (for helper functions if needed)
+
+Examples:
+  $0                   # Launch unified search
+  $0 search - "term"   # Search with initial filter "term"
+EOF
+        ;;
+    *)
+        # Default behavior is unified search if unknown argument is passed (or it might be the custom JSON path)
+        if [[ -f "$1" && "$1" == *.json ]]; then
+             unified_search "$1" "$2"
+        else
+             unified_search "${MENU_JSON}" "$1"
+        fi
+        ;;
+esac
