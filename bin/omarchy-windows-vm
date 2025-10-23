@@ -273,7 +273,7 @@ launch_windows() {
     echo "Starting Windows VM..."
 
     # Send desktop notification
-    notify-send "Windows VM" "Starting Windows VM, this may take a moment..."
+    notify-send "    Starting Windows VM" "      This can take 15-30 seconds" -t 15000
 
     if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
       echo "❌ Failed to start Windows VM!"
