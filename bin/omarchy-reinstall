@@ -10,9 +10,9 @@ if gum confirm "Are you sure you want to reinstall and lose all config changes?"
   git -C "$OMARCHY_PATH" reset --hard HEAD
   git -C "$OMARCHY_PATH" pull
 
-  echo "Reinstalling all Omarchy packages"
+  echo "Reinstalling missing Omarchy packages"
   mapfile -t packages < <(grep -v '^#' "$OMARCHY_PATH/install/omarchy-base.packages" | grep -v '^$')
-  sudo pacman -Syu --noconfirm "${packages[@]}"
+  sudo pacman -Syu --noconfirm --needed "${packages[@]}"
 
   echo "Resetting all Omarchy configs"
   cp -R ~/.local/share/omarchy/config/* ~/.config/
