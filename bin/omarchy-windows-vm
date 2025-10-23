@@ -298,7 +298,7 @@ launch_windows() {
     done
 
     # Give it a moment more to fully initialize
-    sleep 3
+    sleep 5
   fi
 
   # Extract credentials from compose file
