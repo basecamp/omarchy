@@ -1,0 +1,18 @@
+#!/bin/bash
+
+set -e
+
+if gum confirm "Are you sure you want to reinstall all base packages and reset all default configs?"; then
+  # Reinstall all base packages
+  mapfile -t packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-base.packages" | grep -v '^$')
+  sudo pacman -Syu --noconfirm "${packages[@]}"
+
+  # Copy over Omarchy configs
+  cp -R ~/.local/share/omarchy/config/* ~/.config/
+
+  # Use default bashrc from Omarchy
+  cp ~/.local/share/omarchy/default/bashrc ~/.bashrc
+
+  # Reset any conflict from bad .bash_profile
+  echo "[[ -f ~/.bashrc ]] && . ~/.bashrc" | tee ~/.bash_profile
+fi
