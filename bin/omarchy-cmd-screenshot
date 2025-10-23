@@ -12,10 +12,11 @@ pkill slurp && exit 0
 
 MODE="${1:-smart}"
 PROCESSING="${2:-slurp}"
-BITDEPTH10=false
+# hotfix: can be removed when https://github.com/Jappie3/wayfreeze/issues/14 is fixed
+DISABLE_WAYFREEZE=false
 
-if hyprctl monitors | grep -q 'currentFormat: XBGR2101010'; then
-  BITDEPTH10=true
+if hyprctl monitors | grep -q 'currentFormat: XBGR2101010' && lspci -d ::03xx | grep -q 'NVIDIA'; then
+  DISABLE_WAYFREEZE=true
 fi
 
 get_rectangles() {
@@ -27,7 +28,7 @@ get_rectangles() {
 # Select based on mode
 case "$MODE" in
   region)
-    if [[ "$BITDEPTH10" != true ]]; then
+    if [[ "$DISABLE_WAYFREEZE" != true ]]; then
       wayfreeze & PID=$!
     fi
     sleep .1
@@ -35,7 +36,7 @@ case "$MODE" in
     kill $PID 2>/dev/null
     ;;
   windows)
-    if [[ "$BITDEPTH10" != true ]]; then
+    if [[ "$DISABLE_WAYFREEZE" != true ]]; then
       wayfreeze & PID=$!
     fi
     sleep .1
@@ -47,7 +48,7 @@ case "$MODE" in
     ;;
   smart|*)
     RECTS=$(get_rectangles)
-    if [[ "$BITDEPTH10" != true ]]; then
+    if [[ "$DISABLE_WAYFREEZE" != true ]]; then
       wayfreeze & PID=$!
     fi
     sleep .1
