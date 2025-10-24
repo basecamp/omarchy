@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Check if a power profile name was provided
+if [[ -z $1 ]]; then
+    echo "Usage: omarchy-powerprofile-set <powerprofile-name>"
+    exit 1
+fi
+
+# Normalize the provided argument for hooks
+POWERPROFILE_NAME=$(echo "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+
+if ! powerprofilesctl list | awk '{gsub(/^[*[:space:]]+|:$/,""); print}' | grep -iq "^$1$"; then
+    echo "Power profile '$1' does not exist"
+    exit 1
+fi
+
+# Set the power profile
+powerprofilesctl set $1
+
+# Call the hook with the normalized profile name
+omarchy-hook powerprofile-set "$POWERPROFILE_NAME"
