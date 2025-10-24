@@ -12,7 +12,7 @@
   "commands": {
     "copy-url": {
       "suggested_key": {"default": "Alt+Shift+L"},
-      "description": "Copy URL"
+      "description": "Copy URL from Web App"
     }
   },
   "background": {"service_worker": "background.js"}
