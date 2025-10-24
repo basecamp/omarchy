@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Used in package emergencies if a bad package has been pushed and we can't revoke.
 # Requires manually installing the good package using sudo pacman -U <url>
 ignored_packages=$(omarchy-pkg-ignored)

@@ -19,5 +19,6 @@ body:
     id: steps
     attributes:
       label: What's wrong?
+      description: Describe the issue, include steps to recreate it if possible, and attach the output of `omarchy-debug` if possible
     validations:
       required: true
