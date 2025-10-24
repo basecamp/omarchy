@@ -1,0 +1,61 @@
+#!/bin/bash
+
+LOG_FILE="/tmp/omarchy-debug.log"
+
+cat > "$LOG_FILE" <<EOF
+Date: $(date)
+Hostname: $(hostname)
+Omarchy Branch: $(git -C "$OMARCHY_PATH" branch --show-current 2>/dev/null || echo "unknown")
+
+=========================================
+SYSTEM INFORMATION
+=========================================
+$(inxi -Farz)
+
+=========================================
+DMESG
+=========================================
+$(sudo dmesg)
+
+=========================================
+JOURNALCTL (CURRENT BOOT, ERRORS ONLY)
+=========================================
+$(journalctl -b -p 4..1)
+
+=========================================
+INSTALLED PACKAGES
+=========================================
+$({ expac -S '%n %v (%r)' $(pacman -Qqe) 2>/dev/null; comm -13 <(pacman -Sql | sort) <(pacman -Qqe | sort) | xargs -r expac -Q '%n %v (AUR)'; } | sort)
+EOF
+
+OPTIONS=("View log" "Save in current directory")
+if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
+  OPTIONS=("Upload log" "${OPTIONS[@]}")
+fi
+
+ACTION=$(gum choose "${OPTIONS[@]}")
+
+case "$ACTION" in
+  "Upload log")
+    echo "Uploading debug log to 0x0.st..."
+    URL=$(curl -sF "file=@$LOG_FILE" -Fexpires=24 https://0x0.st)
+    if [ $? -eq 0 ] && [ -n "$URL" ]; then
+      echo "✓ Log uploaded successfully!"
+      echo "Share this URL:"
+      echo ""
+      echo "  $URL"
+      echo ""
+      echo "This link will expire in 24 hours."
+    else
+      echo "Error: Failed to upload log file"
+      exit 1
+    fi
+    ;;
+  "View log")
+    less "$LOG_FILE"
+    ;;
+  "Save in current directory")
+    cp "$LOG_FILE" "./omarchy-debug.log"
+    echo "✓ Log saved to $(pwd)/omarchy-debug.log"
+    ;;
+esac
