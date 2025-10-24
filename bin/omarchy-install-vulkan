@@ -41,6 +41,8 @@ if [[ -v VULKAN_DRIVER_PACKAGE ]]; then
     if !(pacman -Qi $i ) >/dev/null; then
       echo "Missing Vulkan Drivers, installing ${VULKAN_DRIVER_PACKAGE}"
       sudo pacman -S --needed --noconfirm ${VULKAN_DRIVER_PACKAGE[@]}
+    else
+      echo "Great, Vulkan package installed!"
     fi
   done
   echo "Next, installing Zed!"
