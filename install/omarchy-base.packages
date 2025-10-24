@@ -9,6 +9,7 @@ asdcontrol
 avahi
 bash-completion
 bat
+bc
 blueberry
 brightnessctl
 btop
@@ -18,6 +19,7 @@ cups
 cups-browsed
 cups-filters
 cups-pdf
+cronie
 docker
 docker-buildx
 docker-compose
@@ -49,6 +51,7 @@ github-cli
 gnome-calculator
 gnome-keyring
 gnome-themes-extra
+gnu-netcat
 grim
 gpu-screen-recorder
 gum
@@ -109,7 +112,9 @@ python-poetry-core
 python-terminaltexteffects
 qt5-wayland
 ripgrep
+rsync
 satty
+screen
 sddm
 signal-desktop
 slurp
@@ -120,6 +125,7 @@ swaybg
 swayosd
 system-config-printer
 tldr
+tcpdump
 tree-sitter-cli
 ttf-cascadia-mono-nerd
 ttf-ia-writer
