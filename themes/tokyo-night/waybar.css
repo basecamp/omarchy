@@ -1,2 +1,15 @@
-@define-color foreground #cdd6f4;
+@define-color foreground #c0caf5;
 @define-color background #1a1b26;
+
+/* Tokyo Night color palette */
+@define-color tokyo-red #f7768e;
+@define-color tokyo-orange #ff9e64;
+@define-color tokyo-yellow #e0af68;
+@define-color tokyo-green #9ece6a;
+@define-color tokyo-purple #bb9af7;
+@define-color tokyo-blue #7aa2f7;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @tokyo-red;
+@define-color theme-yellow @tokyo-yellow;
+@define-color theme-green @tokyo-green;

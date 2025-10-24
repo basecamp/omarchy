@@ -1,2 +1,15 @@
 @define-color foreground #d4be98;
 @define-color background #282828;
+
+/* Gruvbox color palette */
+@define-color gruvbox-red #ea6962;
+@define-color gruvbox-orange #e78a4e;
+@define-color gruvbox-yellow #d8a657;
+@define-color gruvbox-green #a9b665;
+@define-color gruvbox-purple #d3869b;
+@define-color gruvbox-blue #7daea3;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @gruvbox-red;
+@define-color theme-yellow @gruvbox-yellow;
+@define-color theme-green @gruvbox-green;

@@ -1,2 +1,15 @@
 @define-color foreground #d3c6aa;
 @define-color background #2d353b;
+
+/* Everforest color palette */
+@define-color everforest-red #e67e80;
+@define-color everforest-orange #e69875;
+@define-color everforest-yellow #dbbc7f;
+@define-color everforest-green #a7c080;
+@define-color everforest-purple #d699b6;
+@define-color everforest-blue #7fbbb3;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @everforest-red;
+@define-color theme-yellow @everforest-yellow;
+@define-color theme-green @everforest-green;

@@ -1,2 +1,15 @@
 @define-color foreground #cdd6f4;
 @define-color background #181824;
+
+/* Catppuccin Mocha color palette */
+@define-color catppuccin-red #f38ba8;
+@define-color catppuccin-orange #fab387;
+@define-color catppuccin-yellow #f9e2af;
+@define-color catppuccin-green #a6e3a1;
+@define-color catppuccin-purple #cba6f7;
+@define-color catppuccin-blue #89b4fa;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @catppuccin-red;
+@define-color theme-yellow @catppuccin-yellow;
+@define-color theme-green @catppuccin-green;
