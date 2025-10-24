@@ -11,5 +11,6 @@ body:
     id: steps
     attributes:
       label: What correction or addition do we need?
+      description: Please provide reference links and specifics of what should be updated
     validations:
       required: true
