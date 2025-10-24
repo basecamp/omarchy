@@ -180,7 +180,7 @@ prioritize_entries() {
     if (match(line, /Color picker/))  prio = 14
     if (match(line, /Screenshot/))  prio = 15
     if (match(line, /Screenrecording/))  prio = 16
-    if (match(line, /Switch to workspace/))  prio = 17
+    if (match(line, /(Switch|Next|Former|Previous).*workspace/))  prio = 17
     if (match(line, /Move window to workspace/))  prio = 18
     if (match(line, /Swap window/))  prio = 19
     if (match(line, /Move window focus/))  prio = 20
