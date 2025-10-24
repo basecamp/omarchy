@@ -1,0 +1,9 @@
+#!/bin/bash
+
+echo "Installing Firefox..."
+
+omarchy-pkg-add firefox-bin
+
+omarchy-default-browser set firefox.desktop
+
+setsid gtk-launch firefox.desktop
