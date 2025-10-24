@@ -12,29 +12,36 @@
 
 # --- Listing all GPU to check for, with their plugin name ---
 # we're assuming they start with 'vulkan-'
+#
+
 declare -A GPU_list
 GPU_list[Intel]="intel"
 GPU_list[AMD]="radeon"
 GPU_list[Apple]="asahi"
 GPU_list[NVIDIA]="nouveau"
+declare -A VULKAN_DRIVER_PACKAGE
 
 # --- GPU Detection --
+echo "Checking GPU ..."
+
 for i in "${!GPU_list[@]}"; do
-    if lspci | grep -i "Display controller: $i"||
-       lspci | grep -i "VGA compatible controller: $i" ; then
-        VULKAN_DRIVER_PACKAGE+="vulkan-${GPU_list[$i]}"
-    else
-        exit 1
-    fi
+  if lspci | grep -i "Display controller: $i" >/dev/null ||
+    lspci | grep -i "VGA compatible controller: $i" >/dev/null; then
+    VULKAN_DRIVER_PACKAGE+="vulkan-${GPU_list[$i]} "
+  fi
 done
 
 # --- Install package ---
 if [[ -v VULKAN_DRIVER_PACKAGE ]]; then
-    if [[ $ans == "y" ]] ; then
-        sudo pacman -S --needed --noconfirm "$VULKAN_DRIVER_PACKAGE"
-    else
-        exit 1
+  echo "Detected display : ${VULKAN_DRIVER_PACKAGE[@]}"
+
+  # checking if the appropriate parckage is installed
+  for i in "${VULKAN_DRIVER_PACKAGE[@]}"; do
+    echo "Checking if package isalready installed: $i"
+    if !(pacman -Qi $i ) >/dev/null; then
+      echo "Missing Vulkan Drivers, installing ${VULKAN_DRIVER_PACKAGE}"
+      sudo pacman -S --needed --noconfirm ${VULKAN_DRIVER_PACKAGE[@]}
     fi
-else
-    exit 1
+  done
+  echo "Next, installing Zed!"
 fi
