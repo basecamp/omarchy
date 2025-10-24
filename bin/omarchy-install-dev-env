@@ -39,6 +39,53 @@ install_php() {
   done
 }
 
+install_laravel_php_extensions() {
+  echo "Installing additional PHP extensions for Laravel..."
+  # Install ALL extensions to match php.new/Herd requirements
+  sudo pacman -S php-gd php-imagick --noconfir
+  # Consider removing php-imap if prefer not to rely on aur extensions
+  yay -S php-imap --noconfirm
+
+  # Enable some extensions
+  local php_ini_path="/etc/php/php.ini"
+  local extensions_to_enable=(
+    "bz2"
+    "calendar"
+    "dba"
+    "exif"
+    "ffi"
+    "ftp"
+    "gd"
+    "gmp"
+    "ldap"
+  )
+
+  for ext in "${extensions_to_enable[@]}"; do
+    sudo sed -i "s/^;extension=${ext}/extension=${ext}/" "$php_ini_path"
+  done
+
+  # Enable Opcache (Zend Module) for CLI performance
+  local opcache_ini="/etc/php/conf.d/opcache.ini"
+  if [ ! -f "$opcache_ini" ]; then
+    echo -e "[Zend Opcache]\n;zend_extension=opcache.so\n;opcache.enable=1\n;opcache.enable_cli=0" | sudo tee "$opcache_ini" > /dev/null
+  fi
+  # Enable the zend_extension and enable for CLI (Crucial for Composer/Artisan performance)
+  sudo sed -i \
+    -e '/^;zend_extension=opcache/s/^;//' \
+    -e '/^;opcache.enable=1/s/^;//' \
+    -e '/^;opcache.enable_cli=0/s/^;opcache.enable_cli=0/opcache.enable_cli=1/' \
+    "$opcache_ini"
+
+  # Enable imagick extention
+  local imagick_ini="/etc/php/conf.d/imagick.ini"
+  if [ -f "$imagick_ini" ]; then
+       echo "Activating Imagick via its conf.d snippet..."
+       sudo sed -i 's/^;\s*extension\s*=\s*imagick/extension=imagick/' "$imagick_ini"
+   else
+       echo "Warning: imagick.ini not found. Imagick may need manual activation."
+   fi
+}
+
 install_node() {
   echo -e "Installing Node.js...\n"
   mise use --global node@lts
@@ -75,6 +122,7 @@ php)
 laravel)
   echo -e "Installing PHP and Laravel...\n"
   install_php
+  install_laravel_php_extensions
   install_node
   composer global require laravel/installer
   echo -e "\nYou can now run: laravel new myproject"
