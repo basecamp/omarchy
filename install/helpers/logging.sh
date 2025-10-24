@@ -145,6 +145,7 @@ run_logged() {
     export SKIP_YARU='$SKIP_YARU'
     export SKIP_OBS='$SKIP_OBS'
     export SKIP_PINTA='$SKIP_PINTA'
+    export SKIP_GHOSTTY='${SKIP_GHOSTTY:-}'
     export SKIP_SIGNAL_DESKTOP_BETA='$SKIP_SIGNAL_DESKTOP_BETA'
     export OMARCHY_REPO='$OMARCHY_REPO'
     export OMARCHY_REF='$OMARCHY_REF'
