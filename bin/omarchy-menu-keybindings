@@ -101,31 +101,9 @@ dynamic_bindings() {
       -e 's/^77,/SUPER SHIFT CTRL ALT,/'
 }
 
-# Fetch browser extension shortcuts from Chromium extensions
-copy_url_extension_binding() {
-  local manifest="$HOME/.local/share/omarchy/default/chromium/extensions/copy-url/manifest.json"
-
-  if [[ -f "$manifest" ]]; then
-    # Get the key combination from the manifest
-    local key_combo=$(jq -r '.commands["copy-url"].suggested_key.default' "$manifest")
-    local description=$(jq -r '.commands["copy-url"].description' "$manifest")
-
-    if [[ "$key_combo" != "null" && -n "$key_combo" ]]; then
-      # Convert Alt+Shift+L to match the existing format: modifiers,key,description,dispatcher,arg
-      echo "$key_combo" | sed -r \
-        -e 's/Alt/ALT/g' \
-        -e 's/Shift/SHIFT/g' \
-        -e 's/Ctrl/CTRL/g' \
-        -e 's/Meta/SUPER/g' \
-        -e 's/\+/ /g' | while read -r converted; do
-        # Split into modifiers and key like the existing code does
-        local words=($converted)
-        local key="${words[-1]}"
-        local mods="${words[@]:0:${#words[@]}-1}"
-        echo "$mods,$key,$description,extension,copy-url"
-      done
-    fi
-  fi
+# Hardcoded bindings, like the copy-url extension and such
+static_bindings() {
+    echo "SHIFT ALT,L,Copy URL from Web App,extension,copy-url"
 }
 
 # Parse and format keybindings
@@ -181,7 +159,7 @@ build_keymap_cache
 
 {
   dynamic_bindings
-  copy_url_extension_binding
+  static_bindings
 } |
   sort -u |
   parse_keycodes |
