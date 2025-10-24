@@ -1,7 +1,28 @@
 #!/bin/bash
 
 default_browser=$(xdg-settings get default-web-browser)
-browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$default_browser 2>/dev/null | head -1)
+
+exec_line=$(sed -n 's/^Exec=//p' {~/.local,~/.nix-profile,/usr}/share/applications/"$default_browser" 2>/dev/null | head -n1)
+browser_exec=""
+env_vars=()
+if [[ -n $exec_line ]]; then
+  read -r -a exec_parts <<< "$exec_line"
+  for part in "${exec_parts[@]}"; do
+    if [[ $part == "env" || $part == */env ]]; then
+      continue
+    fi
+    if [[ $part == *=* ]]; then
+      env_vars+=("$part")
+      continue
+    fi
+    browser_exec=$part
+    break
+  done
+fi
+
+if (( ${#env_vars[@]} )) && [[ ${env_vars[0]} != "env" ]]; then
+  env_vars=("env" "${env_vars[@]}")
+fi
 
 if [[ $browser_exec =~ (firefox|zen|librewolf) ]]; then
   private_flag="--private-window"
@@ -9,4 +30,4 @@ else
   private_flag="--incognito"
 fi
 
-exec setsid uwsm-app -- "$browser_exec" "${@/--private/$private_flag}"
+exec setsid uwsm-app -- "${env_vars[@]}" "$browser_exec" "${@/--private/$private_flag}"
