@@ -1,10 +1,5 @@
 #!/bin/bash
 
-if [ "$EUID" -eq 0 ]; then
-  echo "Error: This script should not be run as root"
-  exit 1
-fi
-
 LOG_FILE="/tmp/omarchy-debug.log"
 
 cat > "$LOG_FILE" <<EOF
