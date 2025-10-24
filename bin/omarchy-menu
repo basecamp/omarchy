@@ -1,6 +1,7 @@
 #!/bin/bash
 
-export PATH="$HOME/.local/share/omarchy/bin:$PATH"
+script_dir=$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+export PATH="$script_dir:$HOME/.local/share/omarchy/bin:$PATH"
 
 # Set to true when going directly to a submenu, so we can exit directly
 BACK_TO_EXIT=false
@@ -175,7 +176,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
+  options="$options\n󰌌  Language\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
   *Audio*) $TERMINAL --class=Wiremix -e wiremix ;;
@@ -191,6 +192,7 @@ show_setup_menu() {
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
+  *Language*) present_terminal omarchy-setup-language ;;
   *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
