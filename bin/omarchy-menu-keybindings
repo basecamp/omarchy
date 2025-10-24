@@ -49,6 +49,17 @@ parse_keycodes() {
       code="${BASH_REMATCH[1]}"
       symbol=$(lookup_keycode_cached "$code" "$XKB_KEYMAP_CACHE")
       echo "${line/code:${code}/$symbol}"
+    elif [[ "$line" =~ mouse:([0-9]+) ]]; then
+      code="${BASH_REMATCH[1]}"
+
+      case "$code" in
+        272) symbol="LEFT MOUSE BUTTON" ;;
+        273) symbol="RIGHT MOUSE BUTTON" ;;
+        274) symbol="MIDDLE MOUSE BUTTON" ;;
+        *)   symbol="mouse:${code}" ;;
+      esac
+
+      echo "${line/mouse:${code}/$symbol}"
     else
       echo "$line"
     fi
@@ -166,14 +177,25 @@ prioritize_entries() {
     if (match(line, /Universal/))  prio = 11
     if (match(line, /Clipboard/))  prio = 12
     if (match(line, /Emoji picker/))  prio = 13
-    if (match(line, /Screenshot/))  prio = 14
-    if (match(line, /Screenrecording/))  prio = 15
-    if (match(line, /Switch to workspace/))  prio = 16
-    if (match(line, /Move window to workspace/))  prio = 17
-    if (match(line, /Swap window/))  prio = 18
-    if (match(line, /Move window focus/))  prio = 19
-    if (match(line, /notification/))  prio = 20
-    if (match(line, /group/))  prio = 97
+    if (match(line, /Color picker/))  prio = 14
+    if (match(line, /Screenshot/))  prio = 15
+    if (match(line, /Screenrecording/))  prio = 16
+    if (match(line, /Switch to workspace/))  prio = 17
+    if (match(line, /Move window to workspace/))  prio = 18
+    if (match(line, /Swap window/))  prio = 19
+    if (match(line, /Move window focus/))  prio = 20
+    if (match(line, /Move window$/))  prio = 21
+    if (match(line, /Resize window/))  prio = 22
+    if (match(line, /Expand window/))  prio = 23
+    if (match(line, /Shrink window/))  prio = 24
+    if (match(line, /notification/))  prio = 25
+    if (match(line, /Toggle window transparency/))  prio = 26
+    if (match(line, /Toggle workspace gaps/))  prio = 27
+    if (match(line, /Toggle nightlight/))  prio = 28
+    if (match(line, /group/))  prio = 94
+    if (match(line, /Scroll active workspace/))  prio = 95
+    if (match(line, /Cycle to/))  prio = 96
+    if (match(line, /Reveal active/))  prio = 97
     if (match(line, /Apple Display/))  prio = 98
     if (match(line, /XF86/))  prio = 99
 
