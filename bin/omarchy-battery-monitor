@@ -16,7 +16,7 @@ get_battery_percentage() {
 }
 
 get_battery_state() {
-  upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}'
+  upower -i "$(upower -e | grep 'BAT')" | grep -E "state" | awk '{print $2}'
 }
 
 send_notification() {

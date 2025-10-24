@@ -8,7 +8,7 @@ if [[ -z "$latest_tag" ]]; then
 fi
 
 # Get local tag
-current_tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
+current_tag=$(git -C "$OMARCHY_PATH" describe --tags "$(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1)")
 if [[ -z "$current_tag" ]]; then
   echo "Error: Could not retrieve current tag."
   exit 1

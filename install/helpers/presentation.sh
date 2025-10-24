@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Ensure we have gum available
 if ! command -v gum &>/dev/null; then
   sudo pacman -S --needed --noconfirm gum
@@ -8,8 +10,10 @@ if [ -e /dev/tty ]; then
   TERM_SIZE=$(stty size 2>/dev/null </dev/tty)
 
   if [ -n "$TERM_SIZE" ]; then
-    export TERM_HEIGHT=$(echo "$TERM_SIZE" | cut -d' ' -f1)
-    export TERM_WIDTH=$(echo "$TERM_SIZE" | cut -d' ' -f2)
+    TERM_HEIGHT=$(echo "$TERM_SIZE" | cut -d' ' -f1)
+    export TERM_HEIGHT
+    TERM_WIDTH=$(echo "$TERM_SIZE" | cut -d' ' -f2)
+    export TERM_WIDTH
   else
     # Fallback to reasonable defaults if stty fails
     export TERM_WIDTH=80
@@ -22,11 +26,14 @@ else
 fi
 
 export LOGO_PATH="$OMARCHY_PATH/logo.txt"
-export LOGO_WIDTH=$(awk '{ if (length > max) max = length } END { print max+0 }' "$LOGO_PATH" 2>/dev/null || echo 0)
-export LOGO_HEIGHT=$(wc -l <"$LOGO_PATH" 2>/dev/null || echo 0)
+LOGO_WIDTH=$(awk '{ if (length > max) max = length } END { print max+0 }' "$LOGO_PATH" 2>/dev/null || echo 0)
+export LOGO_WIDTH
+LOGO_HEIGHT=$(wc -l <"$LOGO_PATH" 2>/dev/null || echo 0)
+export LOGO_HEIGHT
 
-export PADDING_LEFT=$((($TERM_WIDTH - $LOGO_WIDTH) / 2))
-export PADDING_LEFT_SPACES=$(printf "%*s" $PADDING_LEFT "")
+export PADDING_LEFT=$(((TERM_WIDTH - LOGO_WIDTH) / 2))
+PADDING_LEFT_SPACES=$(printf "%*s" $PADDING_LEFT "")
+export PADDING_LEFT_SPACES
 
 # Tokyo Night theme for gum confirm
 export GUM_CONFIRM_PROMPT_FOREGROUND="6"     # Cyan for prompt

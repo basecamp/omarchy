@@ -1,3 +1,5 @@
+#!/bin/bash
+
 sudo mkdir -p /etc/sddm.conf.d
 
 if [ ! -f /etc/sddm.conf.d/autologin.conf ]; then

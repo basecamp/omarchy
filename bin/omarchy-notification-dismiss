@@ -9,5 +9,5 @@ fi
 notification_id=$(makoctl list | grep -F "$1" | head -n1 | sed -E 's/^Notification ([0-9]+):.*/\1/')
 
 if [[ -n $notification_id ]]; then
-  makoctl dismiss -n $notification_id
+  makoctl dismiss -n "$notification_id"
 fi

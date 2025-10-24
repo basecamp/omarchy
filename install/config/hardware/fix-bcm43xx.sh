@@ -1,3 +1,4 @@
+#!/bin/bash
 # Install Wi-Fi drivers for Broadcom chips found in some MacBooks, as well as other systems:
 # - BCM4360 (2013–2015 MacBooks)
 # - BCM4331 (2012, early 2013 MacBooks)

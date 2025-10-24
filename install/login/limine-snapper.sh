@@ -1,3 +1,5 @@
+#!/bin/bash
+
 if command -v limine &>/dev/null; then
   sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
 

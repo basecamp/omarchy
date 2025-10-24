@@ -1,3 +1,5 @@
+#!/bin/bash
+
 sudo mkdir -p /etc/systemd/system.conf.d
 
 cat <<EOF | sudo tee /etc/systemd/system.conf.d/10-faster-shutdown.conf

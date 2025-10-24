@@ -5,7 +5,6 @@ if [[ $# -lt 1 ]]; then
   exit 1
 fi
 
-HOOK=$1
 HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
 shift
 

@@ -28,15 +28,18 @@ start_webcam_overlay() {
   cleanup_webcam
 
   # Get monitor scale
-  local scale=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .scale')
+  local scale 
+  scale=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .scale')
 
   # Target width (base 360px, scaled to monitor)
-  local target_width=$(awk "BEGIN {printf \"%.0f\", 360 * $scale}")
+  local target_width
+  target_width=$(awk "BEGIN {printf \"%.0f\", 360 * $scale}")
 
   # Try preferred 16:9 resolutions in order, use first available
   local preferred_resolutions=("640x360" "1280x720" "1920x1080")
   local video_size_arg=""
-  local available_formats=$(v4l2-ctl --list-formats-ext -d /dev/video0 2>/dev/null)
+  local available_formats
+  available_formats=$(v4l2-ctl --list-formats-ext -d /dev/video0 2>/dev/null)
 
   for resolution in "${preferred_resolutions[@]}"; do
     if echo "$available_formats" | grep -q "$resolution"; then
@@ -45,7 +48,7 @@ start_webcam_overlay() {
     fi
   done
 
-  ffplay -f v4l2 $video_size_arg -framerate 30 /dev/video0 \
+  ffplay -f v4l2 "$video_size_arg" -framerate 30 /dev/video0 \
     -vf "scale=${target_width}:-1" \
     -window_title "WebcamOverlay" \
     -noborder \
@@ -56,13 +59,14 @@ start_webcam_overlay() {
 }
 
 start_screenrecording() {
-  local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
+  local filename
+  filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
   local audio_args=""
 
   # Merge audio tracks into one - separate tracks only play one at a time in most players
   [[ "$AUDIO" == "true" ]] && audio_args="-a default_output|default_input"
 
-  gpu-screen-recorder -w "$@" -f 60 -c mp4 -o "$filename" $audio_args &
+  gpu-screen-recorder -w "$@" -f 60 -c mp4 -o "$filename" "$audio_args" &
   toggle_screenrecording_indicator
 }
 

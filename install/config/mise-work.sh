@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Add ./bin to path for all items in ~/Work
 mkdir -p "$HOME/Work"
 

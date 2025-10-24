@@ -190,7 +190,7 @@ fill_color_slots() {
   # Need 13 slots total (code colors are handled separately)
   local slots_needed=13
 
-  if [ $num_colors -eq 0 ]; then
+  if [ "$num_colors" -eq 0 ]; then
     # No colors available, use defaults
     colors=("#3d3d3d" "#5d5d5d" "#7d7d7d" "#9d9d9d" "#bd93f9" "#50fa7b")
     num_colors=6
@@ -198,7 +198,7 @@ fill_color_slots() {
 
   # Fill slots, cycling if necessary
   for ((i = 0; i < slots_needed; i++)); do
-    slots[$i]="${colors[$((i % num_colors))]}"
+    slots[i]="${colors[$((i % num_colors))]}"
   done
 
   echo "${slots[@]}"
@@ -211,22 +211,27 @@ extract_theme_data() {
   local fg_color="#a9b1d6"
 
   if [ -f "$CURRENT_THEME_DIR/alacritty.toml" ]; then
-    local extracted_bg=$(grep -A 5 "\[colors.primary\]" "$CURRENT_THEME_DIR/alacritty.toml" | grep "^background = " | sed "s/.*[\"']0x/#/;s/.*[\"']#/#/;s/[\"'].*//;s/.*#\([0-9a-fA-F]\{6\}\).*/\#\1/" | head -1 | tr '[:upper:]' '[:lower:]')
-    local extracted_fg=$(grep -A 5 "\[colors.primary\]" "$CURRENT_THEME_DIR/alacritty.toml" | grep "^foreground = " | sed "s/.*[\"']0x/#/;s/.*[\"']#/#/;s/[\"'].*//;s/.*#\([0-9a-fA-F]\{6\}\).*/\#\1/" | head -1 | tr '[:upper:]' '[:lower:]')
+    local extracted_bg
+    local extracted_fg
+    extracted_bg=$(grep -A 5 "\[colors.primary\]" "$CURRENT_THEME_DIR/alacritty.toml" | grep "^background = " | sed "s/.*[\"']0x/#/;s/.*[\"']#/#/;s/[\"'].*//;s/.*#\([0-9a-fA-F]\{6\}\).*/\#\1/" | head -1 | tr '[:upper:]' '[:lower:]')
+    extracted_fg=$(grep -A 5 "\[colors.primary\]" "$CURRENT_THEME_DIR/alacritty.toml" | grep "^foreground = " | sed "s/.*[\"']0x/#/;s/.*[\"']#/#/;s/[\"'].*//;s/.*#\([0-9a-fA-F]\{6\}\).*/\#\1/" | head -1 | tr '[:upper:]' '[:lower:]')
     [ -n "$extracted_bg" ] && bg_color="$extracted_bg"
     [ -n "$extracted_fg" ] && fg_color="$extracted_fg"
   fi
 
   # Determine if light or dark theme
-  local bg_brightness=$(calculate_brightness "$bg_color")
+  local bg_brightness
+  bg_brightness=$(calculate_brightness "$bg_color")
   local is_light_theme=false
-  [ $bg_brightness -gt 127 ] && is_light_theme=true
+  [ "$bg_brightness" -gt 127 ] && is_light_theme=true
 
   # Extract all colors with counts
-  local color_data=$(extract_all_colors_with_count)
+  local color_data
+  color_data=$(extract_all_colors_with_count)
 
   # Filter out background and foreground colors for the main array
-  local filtered_data=$(echo "$color_data" | grep -v "$bg_color" | grep -v "$fg_color")
+  local filtered_data
+  filtered_data=$(echo "$color_data" | grep -v "$bg_color" | grep -v "$fg_color")
 
   # Get all unique colors (including bg/fg) for distance calculations
   local -a all_unique_colors
@@ -256,7 +261,7 @@ extract_theme_data() {
   # If no different color available, create a subtle variant for code blocks
   if [ -z "$code_bg" ]; then
     read -r r g b <<<"$(hex_to_rgb "$bg_color")"
-    if [ $bg_brightness -gt 127 ]; then
+    if [ "$bg_brightness" -gt 127 ]; then
       r=$((r - 10))
       g=$((g - 10))
       b=$((b - 10))
@@ -280,7 +285,7 @@ extract_theme_data() {
   for color in "${all_unique_colors[@]}"; do
     if [ "$color" != "$fg_color" ]; then
       distance=$(color_distance "$color" "$fg_color")
-      if [ $distance -lt $min_distance ]; then
+      if [ "$distance" -lt "$min_distance" ]; then
         min_distance=$distance
         code_fg="$color"
       fi
@@ -293,7 +298,8 @@ extract_theme_data() {
   local selection_fg=""
   if [ -f "$CURRENT_THEME_DIR/alacritty.toml" ]; then
     selection_bg=$(grep -A 5 "\[colors.selection\]" "$CURRENT_THEME_DIR/alacritty.toml" | grep "^background = " | sed "s/.*[\"']0x/#/;s/.*[\"']#/#/;s/[\"'].*//;s/.*#\([0-9a-fA-F]\{6\}\).*/\#\1/" | head -1 | tr '[:upper:]' '[:lower:]')
-    local selection_text=$(grep -A 5 "\[colors.selection\]" "$CURRENT_THEME_DIR/alacritty.toml" | grep "^text = " | sed "s/.*[\"']0x/#/;s/.*[\"']#/#/;s/[\"'].*//;s/.*#\([0-9a-fA-F]\{6\}\).*/\#\1/" | head -1 | tr '[:upper:]' '[:lower:]')
+    local selection_text
+    selection_text=$(grep -A 5 "\[colors.selection\]" "$CURRENT_THEME_DIR/alacritty.toml" | grep "^text = " | sed "s/.*[\"']0x/#/;s/.*[\"']#/#/;s/[\"'].*//;s/.*#\([0-9a-fA-F]\{6\}\).*/\#\1/" | head -1 | tr '[:upper:]' '[:lower:]')
 
     # If text is set to CellForeground/CellBackground, use the appropriate color
     if [ -z "$selection_text" ] || [[ "$(grep -A 5 "\[colors.selection\]" "$CURRENT_THEME_DIR/alacritty.toml" | grep "^text = ")" == *"CellForeground"* ]]; then
@@ -318,8 +324,9 @@ extract_theme_data() {
   # Use contrasting color for selection text if not defined
   if [ -z "$selection_fg" ]; then
     # Calculate brightness of selection background
-    local sel_brightness=$(calculate_brightness "$selection_bg")
-    if [ $sel_brightness -gt 127 ]; then
+    local sel_brightness
+    sel_brightness=$(calculate_brightness "$selection_bg")
+    if [ "$sel_brightness" -gt 127 ]; then
       selection_fg="$bg_color" # Dark text on light selection
     else
       selection_fg="$fg_color" # Light text on dark selection
@@ -330,11 +337,13 @@ extract_theme_data() {
   local border_color=""
   if [ -f "$CURRENT_THEME_DIR/btop.theme" ]; then
     # Look for theme[div_line] in btop theme
-    local btop_divline=$(grep 'theme\[div_line\]' "$CURRENT_THEME_DIR/btop.theme" | head -1)
+    local btop_divline
+    btop_divline=$(grep 'theme\[div_line\]' "$CURRENT_THEME_DIR/btop.theme" | head -1)
 
     if [ -n "$btop_divline" ]; then
       # Extract the color value after the = sign
-      local extracted=$(echo "$btop_divline" | sed 's/.*=//' | xargs)
+      local extracted
+      extracted=$(echo "$btop_divline" | sed 's/.*=//' | xargs)
 
       # Check if it's a hex color and lowercase it
       if [[ $extracted =~ ^#[0-9a-fA-F]{6}$ ]]; then
@@ -370,15 +379,18 @@ extract_theme_data() {
   local ui_font="Liberation Sans"
 
   if [ -f "$CURRENT_THEME_DIR/alacritty.toml" ]; then
-    local alacritty_font=$(grep -A 5 "\[font\]" "$CURRENT_THEME_DIR/alacritty.toml" | grep 'family = ' | head -1 | cut -d'"' -f2)
+    local alacritty_font
+    alacritty_font=$(grep -A 5 "\[font\]" "$CURRENT_THEME_DIR/alacritty.toml" | grep 'family = ' | head -1 | cut -d'"' -f2)
     [ -n "$alacritty_font" ] && monospace_font="$alacritty_font"
   fi
 
   if [ -f "$HOME/.config/fontconfig/fonts.conf" ]; then
-    local fontconfig_mono=$(xmlstarlet sel -t -v '//match[@target="pattern"][test/string="monospace"]/edit[@name="family"]/string' "$HOME/.config/fontconfig/fonts.conf" 2>/dev/null || true)
+    local fontconfig_mono
+    fontconfig_mono=$(xmlstarlet sel -t -v '//match[@target="pattern"][test/string="monospace"]/edit[@name="family"]/string' "$HOME/.config/fontconfig/fonts.conf" 2>/dev/null || true)
     [ -n "$fontconfig_mono" ] && monospace_font="$fontconfig_mono"
 
-    local fontconfig_sans=$(xmlstarlet sel -t -v '//match[@target="pattern"][test/string="sans-serif"]/edit[@name="family"]/string' "$HOME/.config/fontconfig/fonts.conf" 2>/dev/null || true)
+    local fontconfig_sans
+    fontconfig_sans=$(xmlstarlet sel -t -v '//match[@target="pattern"][test/string="sans-serif"]/edit[@name="family"]/string' "$HOME/.config/fontconfig/fonts.conf" 2>/dev/null || true)
     [ -n "$fontconfig_sans" ] && ui_font="$fontconfig_sans"
   fi
 

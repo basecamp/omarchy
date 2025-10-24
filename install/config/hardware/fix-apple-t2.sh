@@ -1,3 +1,4 @@
+#!/bin/bash
 # Detect T2 MacBook models using PCI IDs
 # Vendor: 106b (Apple), Device IDs: 1801 or 1802 (T2 Security Chip)
 if lspci -nn | grep -q "106b:180[12]"; then

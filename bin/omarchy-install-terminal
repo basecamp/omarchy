@@ -8,7 +8,7 @@ fi
 package="$1"
 
 # Install package
-if omarchy-pkg-add $package; then
+if omarchy-pkg-add "$package"; then
   # Set as default terminal
   echo "Setting $package as new default terminal..."
   sed -i "/export TERMINAL=/ c\export TERMINAL=$package" ~/.config/uwsm/default

@@ -70,12 +70,12 @@ EOF
 
   RAM_OPTIONS=""
   for size in 2 4 8 16 32 64; do
-    if [ $size -le $TOTAL_RAM_GB ]; then
+    if [ $size -le "$TOTAL_RAM_GB" ]; then
       RAM_OPTIONS="$RAM_OPTIONS ${size}G"
     fi
   done
 
-  SELECTED_RAM=$(echo $RAM_OPTIONS | tr ' ' '\n' | gum choose --selected="4G" --header="How much RAM would you like to allocate to Windows VM?")
+  SELECTED_RAM=$(echo "$RAM_OPTIONS" | tr ' ' '\n' | gum choose --selected="4G" --header="How much RAM would you like to allocate to Windows VM?")
 
   # Check if user cancelled
   if [ -z "$SELECTED_RAM" ]; then
@@ -120,7 +120,7 @@ EOF
     DEFAULT_DISK="32G"
   fi
 
-  SELECTED_DISK=$(echo $DISK_OPTIONS | tr ' ' '\n' | gum choose --selected="$DEFAULT_DISK" --header="How much disk space would you like to give Windows VM? (64GB+ recommended)")
+  SELECTED_DISK=$(echo "$DISK_OPTIONS" | tr ' ' '\n' | gum choose --selected="$DEFAULT_DISK" --header="How much disk space would you like to give Windows VM? (64GB+ recommended)")
 
   # Check if user cancelled
   if [ -z "$SELECTED_DISK" ]; then
@@ -129,7 +129,7 @@ EOF
   fi
 
   # Extract just the number for prerequisite check
-  DISK_SIZE_NUM=$(echo "$SELECTED_DISK" | sed 's/G//')
+  DISK_SIZE_NUM="${SELECTED_DISK%G}"
 
   # Re-check prerequisites with selected disk size
   check_prerequisites "$DISK_SIZE_NUM"

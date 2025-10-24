@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Fix NVMe suspend issues on MacBook models
 # This prevents NVMe drives from failing to wake from sleep properly
 MACBOOK_MODEL=$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)

@@ -16,7 +16,7 @@ fi
 focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
 
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
-  hyprctl dispatch focusmonitor $m
+  hyprctl dispatch focusmonitor "$m"
 
   # FIXME: Find a way to make this generic where we it can work for kitty + ghostty
   hyprctl dispatch exec -- \
@@ -25,4 +25,4 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
     -e omarchy-cmd-screensaver
 done
 
-hyprctl dispatch focusmonitor $focused
+hyprctl dispatch focusmonitor "$focused"

@@ -1,3 +1,5 @@
+#!/bin/bash
+
 stop_install_log
 
 echo_in_style() {
