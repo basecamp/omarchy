@@ -1,0 +1,57 @@
+[Unit]
+Description=Graceful Chromium-based browser shutdown
+Documentation=https://wiki.archlinux.org/title/Systemd/User
+DefaultDependencies=no
+Before=wayland-session-shutdown.target
+PartOf=wayland-session@.target
+StopWhenUnneeded=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+# Gracefully shutdown Chrome/Chromium/Brave and other chromium-based browsers
+ExecStop=/usr/bin/sh -c ' \
+    __browsers="chrome chromium brave vivaldi opera"; \
+    __running_browsers=""; \
+    for __browser in $__browsers; do \
+        if pgrep -f "^/.*/$__browser( |$)" >/dev/null 2>&1; then \
+            printf "Sending SIGTERM to %s...\\n" "$__browser"; \
+            pkill -15 -f "^/.*/$__browser( |$)"; \
+            __running_browsers="$__running_browsers $__browser"; \
+        fi; \
+    done; \
+    if [ -n "$__running_browsers" ]; then \
+        __timeout=10; \
+        while [ $__timeout -gt 0 ]; do \
+            __all_stopped=1; \
+            for __browser in $__running_browsers; do \
+                if pgrep -f "^/.*/$__browser( |$)" >/dev/null 2>&1; then \
+                    __all_stopped=0; \
+                    break; \
+                fi; \
+            done; \
+            if [ $__all_stopped -eq 1 ]; then \
+                printf "All browsers shutdown gracefully\\n"; \
+                printf "waiting 1 sec before exit (%ds remaining)\\n" "$__timeout"; \
+                sleep 1; \
+                exit 0; \
+            fi; \
+            __timeout=$((__timeout - 1)); \
+        done; \
+        printf "Timeout reached, force terminating remaining __browsers...\\n"; \
+        for __browser in $__running_browsers; do \
+            if pgrep -f "^/.*/$__browser( |$)" >/dev/null 2>&1; then \
+                printf "Force killing %s\\n" "$__browser"; \
+                pkill -9 -f "^/.*/$__browser( |$)" 2>/dev/null; \
+            fi; \
+        done; \
+    fi \
+'
+TimeoutStopSec=15
+# Reduce noise in logs for normal operations
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=wayland-session@.target
