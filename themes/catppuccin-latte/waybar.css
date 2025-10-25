@@ -2,3 +2,16 @@
 @define-color background #eff1f5; /* base */
 @define-color border     #dce0e8; /* crust */
 @define-color accent     #1e66f5; /* blue */
+
+/* Catppuccin Latte color palette */
+@define-color catppuccin-red #d20f39;
+@define-color catppuccin-orange #fe640b;
+@define-color catppuccin-yellow #df8e1d;
+@define-color catppuccin-green #40a02b;
+@define-color catppuccin-purple #8839ef;
+@define-color catppuccin-blue #1e66f5;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @catppuccin-red;
+@define-color theme-yellow @catppuccin-yellow;
+@define-color theme-green @catppuccin-green;

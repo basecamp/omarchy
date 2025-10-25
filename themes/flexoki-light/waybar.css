@@ -1,2 +1,15 @@
 @define-color foreground #100F0F;
 @define-color background #FFFCF0;
+
+/* Flexoki Light color palette */
+@define-color flexoki-red #AF3029;
+@define-color flexoki-orange #BC5215;
+@define-color flexoki-yellow #AD8301;
+@define-color flexoki-green #66800B;
+@define-color flexoki-purple #5E409D;
+@define-color flexoki-blue #205EA6;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @flexoki-red;
+@define-color theme-yellow @flexoki-yellow;
+@define-color theme-green @flexoki-green;

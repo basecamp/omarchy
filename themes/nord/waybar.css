@@ -1,2 +1,15 @@
 @define-color foreground #d8dee9;
 @define-color background #2e3440;
+
+/* Nord color palette */
+@define-color nord-red #BF616A;
+@define-color nord-orange #D08770;
+@define-color nord-yellow #EBCB8B;
+@define-color nord-green #A3BE8C;
+@define-color nord-purple #B48EAD;
+@define-color nord-blue #81A1C1;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @nord-red;
+@define-color theme-yellow @nord-yellow;
+@define-color theme-green @nord-green;
