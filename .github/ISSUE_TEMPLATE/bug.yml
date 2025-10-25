@@ -1,5 +1,5 @@
 name: Bug
-description: Report a problem
+description: Report a validated bug -- NOT FOR SUPPORT REQUESTS
 labels: [bug]
 body:
   - type: markdown
