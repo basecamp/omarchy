@@ -213,6 +213,7 @@ catch_errors() {
       SKIP_YARU="${SKIP_YARU:-}"
       SKIP_OBS="${SKIP_OBS:-}"
       SKIP_PINTA="${SKIP_PINTA:-}"
+      SKIP_GHOSTTY="${SKIP_GHOSTTY:-}"
       SKIP_SIGNAL_DESKTOP_BETA="${SKIP_SIGNAL_DESKTOP_BETA:-}"
     )
 
