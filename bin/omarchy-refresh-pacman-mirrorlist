@@ -1,3 +1,9 @@
 #!/bin/bash
 
-sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist /etc/pacman.d/mirrorlist
+# Check if running on ARM
+arch=$(uname -m)
+if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
+  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist.arm /etc/pacman.d/mirrorlist
+else
+  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist /etc/pacman.d/mirrorlist
+fi

@@ -29,8 +29,14 @@ start_log_output() {
         fi
 
         # Add clear line escape and formatted output for each line
+        # Use simple ASCII arrow on ARM/Asahi/VMs, Unicode elsewhere
+        local arrow="→"
+        if [[ -n "$OMARCHY_ARM" ]] || [[ "$ASAHI_ALARM" == "true" ]] || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
+          arrow="->"
+        fi
+
         if [ -n "$line" ]; then
-          output+="${ANSI_CLEAR_LINE}${ANSI_GRAY}${PADDING_LEFT_SPACES}  → ${line}${ANSI_RESET}\n"
+          output+="${ANSI_CLEAR_LINE}${ANSI_GRAY}${PADDING_LEFT_SPACES}  ${arrow} ${line}${ANSI_RESET}\n"
         else
           output+="${ANSI_CLEAR_LINE}${PADDING_LEFT_SPACES}\n"
         fi
@@ -55,6 +61,12 @@ stop_log_output() {
 start_install_log() {
   sudo touch "$OMARCHY_INSTALL_LOG_FILE"
   sudo chmod 666 "$OMARCHY_INSTALL_LOG_FILE"
+
+  # Create symlink for easy access (scripts can use /var/log/omarchy-install.log)
+  sudo ln -sf "$OMARCHY_INSTALL_LOG_FILE" "/var/log/omarchy-install.log" 2>/dev/null || true
+
+  # Clean up old logs (keep last 10)
+  sudo find /var/log -name "omarchy-install-*.log" -type f 2>/dev/null | sort -r | tail -n +11 | xargs -r sudo rm -f 2>/dev/null || true
 
   export OMARCHY_START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 
@@ -118,8 +130,30 @@ run_logged() {
 
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting: $script" >>"$OMARCHY_INSTALL_LOG_FILE"
 
-  # Use bash -c to create a clean subshell
-  bash -c "source '$script'" </dev/null >>"$OMARCHY_INSTALL_LOG_FILE" 2>&1
+  # Use bash -c to create a clean subshell, preserving critical environment variables
+  bash -c "
+    export OMARCHY_ARM='$OMARCHY_ARM'
+    export ASAHI_ALARM='$ASAHI_ALARM'
+    export OMARCHY_INSTALL='$OMARCHY_INSTALL'
+    export OMARCHY_PATH='$OMARCHY_PATH'
+    export OMARCHY_CHROOT_INSTALL='$OMARCHY_CHROOT_INSTALL'
+    export OMARCHY_ONLINE_INSTALL='$OMARCHY_ONLINE_INSTALL'
+    export OMARCHY_VIRTUALIZATION='$OMARCHY_VIRTUALIZATION'
+    export OMARCHY_VMWARE='$OMARCHY_VMWARE'
+    export OMARCHY_SKIP_LIMINE='$OMARCHY_SKIP_LIMINE'
+    export OMARCHY_VM_SOFTWARE_RENDERING='$OMARCHY_VM_SOFTWARE_RENDERING'
+    export SKIP_YARU='$SKIP_YARU'
+    export SKIP_OBS='$SKIP_OBS'
+    export SKIP_PINTA='$SKIP_PINTA'
+    export SKIP_GHOSTTY='${SKIP_GHOSTTY:-}'
+    export SKIP_SIGNAL_DESKTOP_BETA='$SKIP_SIGNAL_DESKTOP_BETA'
+    export OMARCHY_REPO='$OMARCHY_REPO'
+    export OMARCHY_REF='$OMARCHY_REF'
+    export OMARCHY_USER_NAME='$OMARCHY_USER_NAME'
+    export OMARCHY_USER_EMAIL='$OMARCHY_USER_EMAIL'
+    export PATH='$PATH'
+    source '$script'
+  " >>"$OMARCHY_INSTALL_LOG_FILE" 2>&1
 
   local exit_code=$?
 
