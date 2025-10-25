@@ -1,3 +1,10 @@
 #!/bin/bash
 
-omarchy-restart-app waybar
+if pgrep -x waybar >/dev/null; then
+  # Waybar is running, reload
+  pkill -SIGUSR2 -x waybar
+else
+  # Waybar is not running, launch it
+  setsid uwsm-app -- waybar >/dev/null 2>&1 &
+fi
+
