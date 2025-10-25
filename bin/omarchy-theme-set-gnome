@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Hide the window buttons (minimize, maximize, close)
+gsettings set org.gnome.desktop.wm.preferences button-layout ""
+
 # Change gnome modes
 if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
   gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
@@ -15,4 +18,19 @@ if [[ -f $GNOME_ICONS_THEME ]]; then
   gsettings set org.gnome.desktop.interface icon-theme "$(<$GNOME_ICONS_THEME)"
 else
   gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
+fi
+
+# Copy gtk.css to GTK 3.0 and 4.0 config directories
+THEME_GTK_CSS=~/.config/omarchy/current/theme/gtk.css
+GTK_3_FILE=~/.config/gtk-3.0/gtk.css
+GTK_4_FILE=~/.config/gtk-4.0/gtk.css
+
+if [[ -f $THEME_GTK_CSS ]]; then
+  chmod 0644 "$THEME_GTK_CSS"
+  mkdir -p ~/.config/gtk-3.0
+  mkdir -p ~/.config/gtk-4.0
+  cp "$THEME_GTK_CSS" "$GTK_3_FILE"
+  cp "$THEME_GTK_CSS" "$GTK_4_FILE"
+else
+  rm -f "$GTK_3_FILE" "$GTK_4_FILE"
 fi
