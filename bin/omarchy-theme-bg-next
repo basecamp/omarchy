@@ -42,6 +42,24 @@ else
   # Set new background symlink
   ln -nsf "$NEW_BACKGROUND" "$CURRENT_BACKGROUND_LINK"
 
+  # Set new chromium background
+  CHROMIUM_SKIP_FLAG="$HOME/.local/state/omarchy/toggles/skip-chromium-theme-changes"
+  if [[ ! -f "$CHROMIUM_SKIP_FLAG" ]]; then
+    PREFS="$HOME/.config/chromium/Default/Preferences"
+    CURRENT_CHROMIUM_BACKGROUND=$(jq -r '.ntp.custom_background.background_url // empty' "$PREFS" 2>/dev/null)
+    CURRENT_CHROMIUM_LOCAL_TO_DEVICE=$(jq -r '.ntp.custom_background_local_to_device // false' "$PREFS" 2>/dev/null)
+    CHROMIUM_BACKGROUND_LINK="$HOME/.config/chromium/Default"
+    if [[ "$CURRENT_CHROMIUM_BACKGROUND" != "background.jpg" || "$CURRENT_CHROMIUM_LOCAL_TO_DEVICE" != "true" ]]; then
+      pkill -f chromium 2>/dev/null || true
+      sleep 2
+      cp "$PREFS" "$PREFS.bak"
+      jq '.ntp |= (del(.custom_background_dict, .custom_background_dict2) | .custom_background = {"background_url": "background.jpg"} | .custom_background_local_to_device = true | .custom_background_inspiration = false)' "$PREFS" > "$PREFS.tmp" && mv "$PREFS.tmp" "$PREFS"
+      jq '.theme.theme_id = "temp_trigger"' "$PREFS" > "$PREFS.tmp" && mv "$PREFS.tmp" "$PREFS"
+      jq 'del(.theme.theme_id)' "$PREFS" > "$PREFS.tmp" && mv "$PREFS.tmp" "$PREFS"
+    fi
+    cp -f "$NEW_BACKGROUND" "$CHROMIUM_BACKGROUND_LINK/background.jpg"
+  fi
+
   # Relaunch swaybg
   pkill -x swaybg
   setsid uwsm-app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
