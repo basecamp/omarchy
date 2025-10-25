@@ -1,7 +1,14 @@
 #!/bin/bash
 
-if pgrep -x waybar >/dev/null; then
-  pkill -x waybar
+waybar_config_file="${XDG_CONFIG_HOME:-$HOME/.config}/waybar/config.jsonc"
+is_bar_hidden=$(grep -m1 '"start_hidden"' "$waybar_config_file" | grep -oE '(true|false)')
+
+if [ "$is_bar_hidden" = "true" ]; then
+  sed -i '0,/"start_hidden": *true/s//"start_hidden": false/' "$waybar_config_file"
+elif [ "$is_bar_hidden" = "false" ]; then
+  sed -i '0,/"start_hidden": *false/s//"start_hidden": true/' "$waybar_config_file"
 else
-  uwsm-app -- waybar >/dev/null 2>&1 &
+  exit 1
 fi
+
+omarchy-restart-waybar
