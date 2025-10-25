@@ -112,6 +112,11 @@ dynamic_bindings() {
       -e 's/^77,/SUPER SHIFT CTRL ALT,/'
 }
 
+# Hardcoded bindings, like the copy-url extension and such
+static_bindings() {
+    echo "SHIFT ALT,L,Copy URL from Web App,extension,copy-url"
+}
+
 # Parse and format keybindings
 #
 # `awk` does the heavy lifting:
@@ -211,9 +216,13 @@ menu_height=$((monitor_height * 40 / 100))
 
 build_keymap_cache
 
-dynamic_bindings |
+{
+  dynamic_bindings
+  static_bindings
+} |
   sort -u |
   parse_keycodes |
   parse_bindings |
   prioritize_entries |
   walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+
