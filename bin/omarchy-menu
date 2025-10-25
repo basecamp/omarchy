@@ -73,6 +73,10 @@ aur_install_and_launch() {
   present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2 && setsid gtk-launch $3"
 }
 
+npm_install() {
+  present_terminal "echo 'Installing $1 via npm...'; npm install -g $2"
+}
+
 show_learn_menu() {
   case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
   *Keybindings*) omarchy-menu-keybindings ;;
@@ -287,11 +291,12 @@ show_install_ai_menu() {
       echo ollama
   )
 
-  case $(menu "Install" "󱚤  Claude Code\n󱚤  Cursor CLI [AUR]\n󱚤  Gemini [AUR]\n󱚤  OpenAI Codex [AUR]\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
+  case $(menu "Install" "󱚤  Claude Code\n󱚤  Cursor CLI [AUR]\n󱚤  Gemini [AUR]\n󱚤  OpenAI Codex [AUR]\n󱚤  GitHub Copilot CLI [npm]\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
   *Claude*) install "Claude Code" "claude-code" ;;
   *Cursor*) aur_install "Cursor CLI" "cursor-cli" ;;
   *OpenAI*) aur_install "OpenAI Codex" "openai-codex-bin" ;;
   *Gemini*) aur_install "Gemini" "gemini-cli" ;;
+  *Copilot*) npm_install "GitHub Copilot CLI" "@github/copilot" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
