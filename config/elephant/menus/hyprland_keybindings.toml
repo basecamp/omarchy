@@ -1,0 +1,4 @@
+name = "hyprland_keybindings"
+name_pretty = "Hyprland Keybindings"
+icon = "input-keyboard"
+lua = "hyprland_keybindings.lua"
