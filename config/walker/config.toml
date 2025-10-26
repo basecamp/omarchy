@@ -1,11 +1,11 @@
-force_keyboard_focus = true                                                 # forces keyboard forcus to stay in Walker
-close_when_open = true                                                      # close walker when invoking while already opened
-selection_wrap = true                                                       # wrap list if at bottom or top
-click_to_close = true                                                       # closes walker if clicking outside of the main content area
-global_argument_delimiter = "#"                                             # query: firefox#https://benz.dev => part after delimiter will be ignored when querying. this should be the same as in the elephant config
-exact_search_prefix = "'"                                                   # disable fuzzy searching
-theme = "omarchy-default"                                                   # theme to use
-disable_mouse = false                                                       # disable mouse (on input and list only)
+force_keyboard_focus = true
+close_when_open = true
+selection_wrap = true
+click_to_close = true
+global_argument_delimiter = "#"
+exact_search_prefix = "'"
+theme = "omarchy-default"
+disable_mouse = false
 additional_theme_location = "~/.local/share/omarchy/default/walker/themes/"
 
 [shell]
@@ -15,7 +15,7 @@ anchor_left = true
 anchor_right = true
 
 [placeholders]
-"default" = { input = " Search...", list = "No Results" } # placeholders for input and empty list, key is the providers name, so f.e. "desktopapplications" or "menus:other"
+"default" = { input = " Search...", list = "No Results" }
 
 [keybinds]
 close = ["Escape"]
@@ -28,15 +28,32 @@ quick_activate = []
 [providers]
 default = [
   "desktopapplications",
-  "menus",
   "websearch",
-] # providers to be queried by default
-empty = ["desktopapplications"] # providers to be queried when query is empty
-max_results = 50 # global max results
+]
+empty = ["desktopapplications"]
+max_results = 50
 
-[providers.sets] # define your own defaults/empty sets of providers
-[providers.max_results_provider] # define max results per provider in here
 
+# Configuration for Omarchy Menus
+[providers.sets.omarchy]
+default = [
+    "menus:omarchy",
+    "menus:omarchy_install",
+    "menus:omarchy_learn",
+    "menus:omarchy_remove",
+    "menus:omarchy_setup",
+    "menus:omarchy_style",
+    "menus:omarchy_system",
+    "menus:omarchy_trigger",
+    "menus:omarchy_update",
+    "menus:hyprland_keybindings",
+]
+empty = ["menus:omarchy"]
+max_results = 50
+
+[providers.max_results_provider]
+
+# Prefix shortcuts for quick menu access
 [[providers.prefixes]]
 prefix = "/"
 provider = "providerlist"
@@ -61,11 +78,16 @@ provider = "websearch"
 prefix = "$"
 provider = "clipboard"
 
-[providers.actions] # This will be MERGED/OVEWRITTEN with what the user specifies
+[providers.actions]
 dmenu = [{ action = "select", default = true, bind = "Return" }]
 
 providerlist = [
   { action = "activate", default = true, bind = "Return", after = "ClearReload" },
+]
+
+menus = [
+  { action = "pick", default = true, bind = "Return" },
+  { action = "back", bind = "Escape" },
 ]
 
 bluetooth = [
@@ -143,3 +165,4 @@ clipboard = [
   { action = "toggle_images", global = true, label = "toggle images", bind = "ctrl i", after = "ClearReload" },
   { action = "edit", bind = "ctrl o" },
 ]
+

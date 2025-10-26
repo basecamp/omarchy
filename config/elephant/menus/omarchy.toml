@@ -1,0 +1,50 @@
+# Omarchy Main Menu
+name = "omarchy"
+name_pretty = "Omarchy"
+icon = "applications-system"
+actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-menu'"}
+
+[[entries]]
+text = "Learn"
+icon = "help-browser"
+submenu = "omarchy_learn"
+
+[[entries]]
+text = "Trigger"
+icon = "media-record"
+submenu = "omarchy_trigger"
+
+[[entries]]
+text = "Style"
+icon = "preferences-desktop-theme"
+submenu = "omarchy_style"
+
+[[entries]]
+text = "Setup"
+icon = "preferences-system"
+submenu = "omarchy_setup"
+
+[[entries]]
+text = "Install"
+icon = "system-software-install"
+submenu = "omarchy_install"
+
+[[entries]]
+text = "Remove"
+icon = "edit-delete"
+submenu = "omarchy_remove"
+
+[[entries]]
+text = "Update"
+icon = "system-software-update"
+submenu = "omarchy_update"
+
+[[entries]]
+text = "About"
+icon = "applications-other"
+actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-about'"}
+
+[[entries]]
+text = "System"
+icon = "system-shutdown"
+submenu = "omarchy_system"
