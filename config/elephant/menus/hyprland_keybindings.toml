@@ -1,4 +1,6 @@
 name = "hyprland_keybindings"
-name_pretty = "Hyprland Keybindings"
-icon = "input-keyboard"
-lua = "hyprland_keybindings.lua"
+name_pretty = "Hyprland keybindings"
+icon = "applications-other"
+lua = "hyprland_keybindings"
+# lua_cache = true
+action = "notify-send %VALUE%"
