@@ -91,9 +91,9 @@ child:selected .item-box * {
 }
 
 .item-subtext {
-  font-size: 0px;
-  min-height: 0px;
-  margin: 0px;
+  font-size: 14px;
+  opacity: 0.8;
+  margin-top: 4px;
   padding: 0px;
 }
 

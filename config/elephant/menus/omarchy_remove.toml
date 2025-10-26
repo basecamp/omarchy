@@ -4,36 +4,43 @@ name_pretty = "Remove"
 icon = "edit-delete"
 
 [[entries]]
-text = "Remove > Package"
+text = "Package"
+Subtext = "Remove"
 icon = "package"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal omarchy-pkg-remove'"}
 
 [[entries]]
-text = "Remove > Web"
+text = "Web"
+Subtext = "Remove"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-webapp-remove'"}
 
 [[entries]]
-text = "Remove > TUI"
+text = "TUI"
+Subtext = "Remove"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-tui-remove'"}
 
 [[entries]]
-text = "Remove > Theme"
+text = "Theme"
+Subtext = "Remove"
 icon = "preferences-desktop-theme"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-theme-remove'"}
 
 [[entries]]
-text = "Remove > Windows"
+text = "Windows"
+Subtext = "Remove"
 icon = "computer"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-windows-vm remove'"}
 
 [[entries]]
-text = "Remove > Fingerprint"
+text = "Fingerprint"
+Subtext = "Remove"
 icon = "input-touchpad"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-setup-fingerprint --remove'"}
 
 [[entries]]
-text = "Remove > Fido2"
+text = "Fido2"
+Subtext = "Remove"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-setup-fido2 --remove'"}

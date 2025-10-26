@@ -2,7 +2,6 @@
 name = "omarchy"
 name_pretty = "Omarchy"
 icon = "applications-system"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-menu'"}
 
 [[entries]]
 text = "Learn"
@@ -33,6 +32,13 @@ submenu = "omarchy_install"
 text = "Remove"
 icon = "edit-delete"
 submenu = "omarchy_remove"
+
+
+[[entries]]
+text = "Keybindings"
+icon = "input-keyboard"
+submenu = "hyprland_keybindings.lua"
+
 
 [[entries]]
 text = "Update"
