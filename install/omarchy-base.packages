@@ -18,6 +18,7 @@ cups
 cups-browsed
 cups-filters
 cups-pdf
+ddcutil
 docker
 docker-buildx
 docker-compose
