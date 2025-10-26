@@ -1,0 +1,796 @@
+# Hyprland Keybindings
+name = "hyprland_keybindings"
+name_pretty = "Hyprland Keybindings"
+icon = "preferences-desktop-keyboard"
+[[entries]]
+text = "ALT + PRINT → Screenrecording"
+icon = "media-record"
+keybinding = "ALT + PRINT"
+description = "Screenrecording"
+actions = {"pick" = "sh -c 'omarchy-launch-walker -m screenrecord'"}
+[[entries]]
+text = "ALT + TAB → Cycle to next window"
+icon = "preferences-system-windows"
+keybinding = "ALT + TAB"
+description = "Cycle to next window"
+actions = {"pick" = "hyprctl dispatch cyclenext"}
+[[entries]]
+text = "ALT + TAB → Reveal active window on top"
+icon = "preferences-system-windows"
+keybinding = "ALT + TAB"
+description = "Reveal active window on top"
+actions = {"pick" = "hyprctl dispatch bringactivetotop"}
+[[entries]]
+text = "ALT + XF86AudioLowerVolume → Volume down precise"
+icon = "audio-volume-high"
+keybinding = "ALT + XF86AudioLowerVolume"
+description = "Volume down precise"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --output-volume -1'"}
+[[entries]]
+text = "ALT + XF86AudioRaiseVolume → Volume up precise"
+icon = "audio-volume-high"
+keybinding = "ALT + XF86AudioRaiseVolume"
+description = "Volume up precise"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --output-volume +1'"}
+[[entries]]
+text = "ALT + XF86MonBrightnessDown → Brightness down precise"
+icon = "display-brightness"
+keybinding = "ALT + XF86MonBrightnessDown"
+description = "Brightness down precise"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --brightness -1'"}
+[[entries]]
+text = "ALT + XF86MonBrightnessUp → Brightness up precise"
+icon = "display-brightness"
+keybinding = "ALT + XF86MonBrightnessUp"
+description = "Brightness up precise"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --brightness +1'"}
+[[entries]]
+text = "CTRL + F1 → Apple Display brightness down"
+icon = "display-brightness"
+keybinding = "CTRL + F1"
+description = "Apple Display brightness down"
+actions = {"pick" = "sh -c 'omarchy-cmd-apple-display-brightness -5000'"}
+[[entries]]
+text = "CTRL + F2 → Apple Display brightness up"
+icon = "display-brightness"
+keybinding = "CTRL + F2"
+description = "Apple Display brightness up"
+actions = {"pick" = "sh -c 'omarchy-cmd-apple-display-brightness +5000'"}
+[[entries]]
+text = "CTRL ALT + DELETE → Close all Windows"
+icon = "preferences-system-windows"
+keybinding = "CTRL ALT + DELETE"
+description = "Close all Windows"
+actions = {"pick" = "sh -c 'omarchy-hyprland-window-close-all'"}
+[[entries]]
+text = "PRINT → Screenshot with Editing"
+icon = "camera-photo"
+keybinding = "PRINT"
+description = "Screenshot with Editing"
+actions = {"pick" = "sh -c 'omarchy-cmd-screenshot'"}
+[[entries]]
+text = "SHIFT + PRINT → Screenshot to Clipboard"
+icon = "camera-photo"
+keybinding = "SHIFT + PRINT"
+description = "Screenshot to Clipboard"
+actions = {"pick" = "sh -c 'omarchy-cmd-screenshot smart clipboard'"}
+[[entries]]
+text = "SHIFT ALT + TAB → Cycle to prev window"
+icon = "preferences-system-windows"
+keybinding = "SHIFT ALT + TAB"
+description = "Cycle to prev window"
+actions = {"pick" = "sh -c 'hyprctl dispatch cyclenext prev'"}
+[[entries]]
+text = "SHIFT ALT + TAB → Reveal active window on top"
+icon = "preferences-system-windows"
+keybinding = "SHIFT ALT + TAB"
+description = "Reveal active window on top"
+actions = {"pick" = "hyprctl dispatch bringactivetotop"}
+[[entries]]
+text = "SHIFT CTRL + F2 → Apple Display full brightness"
+icon = "display-brightness"
+keybinding = "SHIFT CTRL + F2"
+description = "Apple Display full brightness"
+actions = {"pick" = "sh -c 'omarchy-cmd-apple-display-brightness +60000'"}
+[[entries]]
+text = "SUPER + 0 → Switch to workspace 10"
+icon = "preferences-desktop"
+keybinding = "SUPER + 0"
+description = "Switch to workspace 10"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace 10'"}
+[[entries]]
+text = "SUPER + 1 → Switch to workspace 1"
+icon = "preferences-desktop"
+keybinding = "SUPER + 1"
+description = "Switch to workspace 1"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace 1'"}
+[[entries]]
+text = "SUPER + 2 → Switch to workspace 2"
+icon = "preferences-desktop"
+keybinding = "SUPER + 2"
+description = "Switch to workspace 2"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace 2'"}
+[[entries]]
+text = "SUPER + 3 → Switch to workspace 3"
+icon = "preferences-desktop"
+keybinding = "SUPER + 3"
+description = "Switch to workspace 3"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace 3'"}
+[[entries]]
+text = "SUPER + 4 → Switch to workspace 4"
+icon = "preferences-desktop"
+keybinding = "SUPER + 4"
+description = "Switch to workspace 4"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace 4'"}
+[[entries]]
+text = "SUPER + 5 → Switch to workspace 5"
+icon = "preferences-desktop"
+keybinding = "SUPER + 5"
+description = "Switch to workspace 5"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace 5'"}
+[[entries]]
+text = "SUPER + 6 → Switch to workspace 6"
+icon = "preferences-desktop"
+keybinding = "SUPER + 6"
+description = "Switch to workspace 6"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace 6'"}
+[[entries]]
+text = "SUPER + 7 → Switch to workspace 7"
+icon = "preferences-desktop"
+keybinding = "SUPER + 7"
+description = "Switch to workspace 7"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace 7'"}
+[[entries]]
+text = "SUPER + 8 → Switch to workspace 8"
+icon = "preferences-desktop"
+keybinding = "SUPER + 8"
+description = "Switch to workspace 8"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace 8'"}
+[[entries]]
+text = "SUPER + 9 → Switch to workspace 9"
+icon = "preferences-desktop"
+keybinding = "SUPER + 9"
+description = "Switch to workspace 9"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace 9'"}
+[[entries]]
+text = "SUPER + BACKSPACE → Toggle window transparency"
+icon = "preferences-system-windows"
+keybinding = "SUPER + BACKSPACE"
+description = "Toggle window transparency"
+actions = {"pick" = "sh -c 'hyprctl dispatch setprop \"address:$(hyprctl activewindow -j | jq -r '\\''.address'\\'')\" opaque toggle'"}
+[[entries]]
+text = "SUPER + C → Copy"
+icon = "preferences-desktop-keyboard"
+keybinding = "SUPER + C"
+description = "Copy"
+actions = {"pick" = "sh -c 'hyprctl dispatch sendshortcut CTRL, Insert,'"}
+[[entries]]
+text = "SUPER + COMMA → Dismiss last notification"
+icon = "system-run"
+keybinding = "SUPER + COMMA"
+description = "Dismiss last notification"
+actions = {"pick" = "sh -c 'makoctl dismiss'"}
+[[entries]]
+text = "SUPER + DOWN → Move focus down"
+icon = "transform-move"
+keybinding = "SUPER + DOWN"
+description = "Move focus down"
+actions = {"pick" = "sh -c 'hyprctl dispatch movefocus d'"}
+[[entries]]
+text = "SUPER + ESCAPE → Power menu"
+icon = "system-shutdown"
+keybinding = "SUPER + ESCAPE"
+description = "Power menu"
+actions = {"pick" = "sh -c 'omarchy-launch-walker -m menus:omarchy_system'"}
+[[entries]]
+text = "SUPER + F → Force full screen"
+icon = "view-fullscreen"
+keybinding = "SUPER + F"
+description = "Force full screen"
+actions = {"pick" = "sh -c 'hyprctl dispatch fullscreen 0'"}
+[[entries]]
+text = "SUPER + G → Toggle window grouping"
+icon = "preferences-system-windows"
+keybinding = "SUPER + G"
+description = "Toggle window grouping"
+actions = {"pick" = "hyprctl dispatch togglegroup"}
+[[entries]]
+text = "SUPER + J → Toggle split"
+icon = "view-split-left-right"
+keybinding = "SUPER + J"
+description = "Toggle split"
+actions = {"pick" = "hyprctl dispatch togglesplit"}
+[[entries]]
+text = "SUPER + K → Show key bindings"
+icon = "system-run"
+keybinding = "SUPER + K"
+description = "Show key bindings"
+actions = {"pick" = "sh -c 'omarchy-menu-keybindings'"}
+[[entries]]
+text = "SUPER + LEFT → Move focus left"
+icon = "transform-move"
+keybinding = "SUPER + LEFT"
+description = "Move focus left"
+actions = {"pick" = "sh -c 'hyprctl dispatch movefocus l'"}
+[[entries]]
+text = "SUPER + P → Pseudo window"
+icon = "preferences-system-windows"
+keybinding = "SUPER + P"
+description = "Pseudo window"
+actions = {"pick" = "hyprctl dispatch pseudo"}
+[[entries]]
+text = "SUPER + PRINT → Color picking"
+icon = "window-close"
+keybinding = "SUPER + PRINT"
+description = "Color picking"
+actions = {"pick" = "sh -c 'pkill hyprpicker || hyprpicker -a'"}
+[[entries]]
+text = "SUPER + RETURN → Terminal"
+icon = "utilities-terminal"
+keybinding = "SUPER + RETURN"
+description = "Terminal"
+actions = {"pick" = "sh -c 'alacritty --working-directory=\"$(omarchy-cmd-terminal-cwd)\"'"}
+[[entries]]
+text = "SUPER + RIGHT → Move focus right"
+icon = "transform-move"
+keybinding = "SUPER + RIGHT"
+description = "Move focus right"
+actions = {"pick" = "sh -c 'hyprctl dispatch movefocus r'"}
+[[entries]]
+text = "SUPER + SPACE → Launch apps"
+icon = "applications-all"
+keybinding = "SUPER + SPACE"
+description = "Launch apps"
+actions = {"pick" = "sh -c 'omarchy-launch-walker'"}
+[[entries]]
+text = "SUPER + T → Toggle floating"
+icon = "window-new"
+keybinding = "SUPER + T"
+description = "Toggle floating"
+actions = {"pick" = "hyprctl dispatch togglefloating"}
+[[entries]]
+text = "SUPER + TAB → Next workspace"
+icon = "preferences-desktop"
+keybinding = "SUPER + TAB"
+description = "Next workspace"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace e+1'"}
+[[entries]]
+text = "SUPER + UP → Move focus up"
+icon = "transform-move"
+keybinding = "SUPER + UP"
+description = "Move focus up"
+actions = {"pick" = "sh -c 'hyprctl dispatch movefocus u'"}
+[[entries]]
+text = "SUPER + V → Paste"
+icon = "preferences-desktop-keyboard"
+keybinding = "SUPER + V"
+description = "Paste"
+actions = {"pick" = "sh -c 'hyprctl dispatch sendshortcut SHIFT, Insert,'"}
+[[entries]]
+text = "SUPER + W → Close active window"
+icon = "preferences-system-windows"
+keybinding = "SUPER + W"
+description = "Close active window"
+actions = {"pick" = "hyprctl dispatch killactive"}
+[[entries]]
+text = "SUPER + X → Cut"
+icon = "preferences-desktop-keyboard"
+keybinding = "SUPER + X"
+description = "Cut"
+actions = {"pick" = "sh -c 'hyprctl dispatch sendshortcut CTRL, X,'"}
+[[entries]]
+text = "SUPER + XF86AudioMute → Switch audio output"
+icon = "system-run"
+keybinding = "SUPER + XF86AudioMute"
+description = "Switch audio output"
+actions = {"pick" = "sh -c 'omarchy-cmd-audio-switch'"}
+[[entries]]
+text = "SUPER + equal → Shrink window left"
+icon = "preferences-system-windows"
+keybinding = "SUPER + equal"
+description = "Shrink window left"
+actions = {"pick" = "sh -c 'hyprctl dispatch resizeactive 100 0'"}
+[[entries]]
+text = "SUPER + minus → Expand window left"
+icon = "preferences-system-windows"
+keybinding = "SUPER + minus"
+description = "Expand window left"
+actions = {"pick" = "sh -c 'hyprctl dispatch resizeactive -100 0'"}
+[[entries]]
+text = "SUPER + mouse:272 → Move window"
+icon = "preferences-system-windows"
+keybinding = "SUPER + mouse:272"
+description = "Move window"
+actions = {"pick" = "sh -c 'hyprctl dispatch mouse movewindow'"}
+[[entries]]
+text = "SUPER + mouse:273 → Resize window"
+icon = "preferences-system-windows"
+keybinding = "SUPER + mouse:273"
+description = "Resize window"
+actions = {"pick" = "sh -c 'hyprctl dispatch mouse resizewindow'"}
+[[entries]]
+text = "SUPER + mouse_down → Scroll active workspace forward"
+icon = "preferences-desktop"
+keybinding = "SUPER + mouse_down"
+description = "Scroll active workspace forward"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace e+1'"}
+[[entries]]
+text = "SUPER + mouse_up → Scroll active workspace backward"
+icon = "preferences-desktop"
+keybinding = "SUPER + mouse_up"
+description = "Scroll active workspace backward"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace e-1'"}
+[[entries]]
+text = "SUPER ALT + 1 → Switch to group window 1"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + 1"
+description = "Switch to group window 1"
+actions = {"pick" = "sh -c 'hyprctl dispatch changegroupactive 1'"}
+[[entries]]
+text = "SUPER ALT + 2 → Switch to group window 2"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + 2"
+description = "Switch to group window 2"
+actions = {"pick" = "sh -c 'hyprctl dispatch changegroupactive 2'"}
+[[entries]]
+text = "SUPER ALT + 3 → Switch to group window 3"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + 3"
+description = "Switch to group window 3"
+actions = {"pick" = "sh -c 'hyprctl dispatch changegroupactive 3'"}
+[[entries]]
+text = "SUPER ALT + 4 → Switch to group window 4"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + 4"
+description = "Switch to group window 4"
+actions = {"pick" = "sh -c 'hyprctl dispatch changegroupactive 4'"}
+[[entries]]
+text = "SUPER ALT + 5 → Switch to group window 5"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + 5"
+description = "Switch to group window 5"
+actions = {"pick" = "sh -c 'hyprctl dispatch changegroupactive 5'"}
+[[entries]]
+text = "SUPER ALT + DOWN → Move window to group on bottom"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + DOWN"
+description = "Move window to group on bottom"
+actions = {"pick" = "sh -c 'hyprctl dispatch moveintogroup d'"}
+[[entries]]
+text = "SUPER ALT + F → Full width"
+icon = "view-fullscreen"
+keybinding = "SUPER ALT + F"
+description = "Full width"
+actions = {"pick" = "sh -c 'hyprctl dispatch fullscreen 1'"}
+[[entries]]
+text = "SUPER ALT + G → Move active window out of group"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + G"
+description = "Move active window out of group"
+actions = {"pick" = "hyprctl dispatch moveoutofgroup"}
+[[entries]]
+text = "SUPER ALT + LEFT → Move window to group on left"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + LEFT"
+description = "Move window to group on left"
+actions = {"pick" = "sh -c 'hyprctl dispatch moveintogroup l'"}
+[[entries]]
+text = "SUPER ALT + RIGHT → Move window to group on right"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + RIGHT"
+description = "Move window to group on right"
+actions = {"pick" = "sh -c 'hyprctl dispatch moveintogroup r'"}
+[[entries]]
+text = "SUPER ALT + SPACE → Omarchy menu"
+icon = "applications-all"
+keybinding = "SUPER ALT + SPACE"
+description = "Omarchy menu"
+actions = {"pick" = "sh -c 'omarchy-launch-walker -s omarchy --width 644 --minheight 300 --maxheight 300'"}
+[[entries]]
+text = "SUPER ALT + TAB → Next window in group"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + TAB"
+description = "Next window in group"
+actions = {"pick" = "sh -c 'hyprctl dispatch changegroupactive f'"}
+[[entries]]
+text = "SUPER ALT + UP → Move window to group on top"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + UP"
+description = "Move window to group on top"
+actions = {"pick" = "sh -c 'hyprctl dispatch moveintogroup u'"}
+[[entries]]
+text = "SUPER ALT + mouse_down → Next window in group"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + mouse_down"
+description = "Next window in group"
+actions = {"pick" = "sh -c 'hyprctl dispatch changegroupactive f'"}
+[[entries]]
+text = "SUPER ALT + mouse_up → Previous window in group"
+icon = "preferences-system-windows"
+keybinding = "SUPER ALT + mouse_up"
+description = "Previous window in group"
+actions = {"pick" = "sh -c 'hyprctl dispatch changegroupactive b'"}
+[[entries]]
+text = "SUPER CTRL + B → Show battery remaining"
+icon = "system-run"
+keybinding = "SUPER CTRL + B"
+description = "Show battery remaining"
+actions = {"pick" = "sh -c 'notify-send \"󰁹    Battery is at $(omarchy-battery-remaining)%\"'"}
+[[entries]]
+text = "SUPER CTRL + COMMA → Toggle silencing notifications"
+icon = "system-run"
+keybinding = "SUPER CTRL + COMMA"
+description = "Toggle silencing notifications"
+actions = {"pick" = "sh -c 'makoctl mode -t do-not-disturb && makoctl mode | grep -q '\\''do-not-disturb'\\'' && notify-send \"Silenced notifications\" || notify-send \"Enabled notifications\"'"}
+[[entries]]
+text = "SUPER CTRL + E → Emoji picker"
+icon = "applications-all"
+keybinding = "SUPER CTRL + E"
+description = "Emoji picker"
+actions = {"pick" = "sh -c 'omarchy-launch-walker -m symbols'"}
+[[entries]]
+text = "SUPER CTRL + F → Tiled full screen"
+icon = "view-fullscreen"
+keybinding = "SUPER CTRL + F"
+description = "Tiled full screen"
+actions = {"pick" = "sh -c 'hyprctl dispatch fullscreenstate 0 2'"}
+[[entries]]
+text = "SUPER CTRL + I → Toggle locking on idle"
+icon = "system-lock-screen"
+keybinding = "SUPER CTRL + I"
+description = "Toggle locking on idle"
+actions = {"pick" = "sh -c 'omarchy-toggle-idle'"}
+[[entries]]
+text = "SUPER CTRL + N → Toggle nightlight"
+icon = "system-run"
+keybinding = "SUPER CTRL + N"
+description = "Toggle nightlight"
+actions = {"pick" = "sh -c 'omarchy-toggle-nightlight'"}
+[[entries]]
+text = "SUPER CTRL + S → Share"
+icon = "applications-all"
+keybinding = "SUPER CTRL + S"
+description = "Share"
+actions = {"pick" = "sh -c 'omarchy-launch-walker -m share'"}
+[[entries]]
+text = "SUPER CTRL + SPACE → Next background in theme"
+icon = "system-run"
+keybinding = "SUPER CTRL + SPACE"
+description = "Next background in theme"
+actions = {"pick" = "sh -c 'omarchy-theme-bg-next'"}
+[[entries]]
+text = "SUPER CTRL + T → Show time"
+icon = "system-run"
+keybinding = "SUPER CTRL + T"
+description = "Show time"
+actions = {"pick" = "sh -c 'notify-send \"    $(date +\"%A %H:%M  —  %d %B W%V %Y\")\"'"}
+[[entries]]
+text = "SUPER CTRL + TAB → Former workspace"
+icon = "preferences-desktop"
+keybinding = "SUPER CTRL + TAB"
+description = "Former workspace"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace previous'"}
+[[entries]]
+text = "SUPER CTRL + V → Clipboard"
+icon = "applications-all"
+keybinding = "SUPER CTRL + V"
+description = "Clipboard"
+actions = {"pick" = "sh -c 'omarchy-launch-walker -m clipboard'"}
+[[entries]]
+text = "SUPER SHIFT + 0 → Move window to workspace 10"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + 0"
+description = "Move window to workspace 10"
+actions = {"pick" = "sh -c 'hyprctl dispatch movetoworkspace 10'"}
+[[entries]]
+text = "SUPER SHIFT + 1 → Move window to workspace 1"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + 1"
+description = "Move window to workspace 1"
+actions = {"pick" = "sh -c 'hyprctl dispatch movetoworkspace 1'"}
+[[entries]]
+text = "SUPER SHIFT + 2 → Move window to workspace 2"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + 2"
+description = "Move window to workspace 2"
+actions = {"pick" = "sh -c 'hyprctl dispatch movetoworkspace 2'"}
+[[entries]]
+text = "SUPER SHIFT + 3 → Move window to workspace 3"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + 3"
+description = "Move window to workspace 3"
+actions = {"pick" = "sh -c 'hyprctl dispatch movetoworkspace 3'"}
+[[entries]]
+text = "SUPER SHIFT + 4 → Move window to workspace 4"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + 4"
+description = "Move window to workspace 4"
+actions = {"pick" = "sh -c 'hyprctl dispatch movetoworkspace 4'"}
+[[entries]]
+text = "SUPER SHIFT + 5 → Move window to workspace 5"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + 5"
+description = "Move window to workspace 5"
+actions = {"pick" = "sh -c 'hyprctl dispatch movetoworkspace 5'"}
+[[entries]]
+text = "SUPER SHIFT + 6 → Move window to workspace 6"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + 6"
+description = "Move window to workspace 6"
+actions = {"pick" = "sh -c 'hyprctl dispatch movetoworkspace 6'"}
+[[entries]]
+text = "SUPER SHIFT + 7 → Move window to workspace 7"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + 7"
+description = "Move window to workspace 7"
+actions = {"pick" = "sh -c 'hyprctl dispatch movetoworkspace 7'"}
+[[entries]]
+text = "SUPER SHIFT + 8 → Move window to workspace 8"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + 8"
+description = "Move window to workspace 8"
+actions = {"pick" = "sh -c 'hyprctl dispatch movetoworkspace 8'"}
+[[entries]]
+text = "SUPER SHIFT + 9 → Move window to workspace 9"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + 9"
+description = "Move window to workspace 9"
+actions = {"pick" = "sh -c 'hyprctl dispatch movetoworkspace 9'"}
+[[entries]]
+text = "SUPER SHIFT + A → ChatGPT"
+icon = "system-run"
+keybinding = "SUPER SHIFT + A"
+description = "ChatGPT"
+actions = {"pick" = "sh -c 'omarchy-launch-webapp \"https://chatgpt.com\"'"}
+[[entries]]
+text = "SUPER SHIFT + B → Browser"
+icon = "applications-internet"
+keybinding = "SUPER SHIFT + B"
+description = "Browser"
+actions = {"pick" = "sh -c 'omarchy-launch-browser'"}
+[[entries]]
+text = "SUPER SHIFT + BACKSPACE → Toggle workspace gaps"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + BACKSPACE"
+description = "Toggle workspace gaps"
+actions = {"pick" = "sh -c 'omarchy-hyprland-workspace-toggle-gaps'"}
+[[entries]]
+text = "SUPER SHIFT + C → Calendar"
+icon = "system-run"
+keybinding = "SUPER SHIFT + C"
+description = "Calendar"
+actions = {"pick" = "sh -c 'omarchy-launch-webapp \"https://app.hey.com/calendar/weeks/\"'"}
+[[entries]]
+text = "SUPER SHIFT + COMMA → Dismiss all notifications"
+icon = "system-run"
+keybinding = "SUPER SHIFT + COMMA"
+description = "Dismiss all notifications"
+actions = {"pick" = "sh -c 'makoctl dismiss --all'"}
+[[entries]]
+text = "SUPER SHIFT + D → Docker"
+icon = "system-run"
+keybinding = "SUPER SHIFT + D"
+description = "Docker"
+actions = {"pick" = "sh -c 'alacritty -e lazydocker'"}
+[[entries]]
+text = "SUPER SHIFT + DOWN → Swap window down"
+icon = "preferences-system-windows"
+keybinding = "SUPER SHIFT + DOWN"
+description = "Swap window down"
+actions = {"pick" = "sh -c 'hyprctl dispatch swapwindow d'"}
+[[entries]]
+text = "SUPER SHIFT + E → Email"
+icon = "system-run"
+keybinding = "SUPER SHIFT + E"
+description = "Email"
+actions = {"pick" = "sh -c 'omarchy-launch-webapp \"https://app.hey.com\"'"}
+[[entries]]
+text = "SUPER SHIFT + F → File manager"
+icon = "system-file-manager"
+keybinding = "SUPER SHIFT + F"
+description = "File manager"
+actions = {"pick" = "sh -c 'nautilus --new-window'"}
+[[entries]]
+text = "SUPER SHIFT + G → Signal"
+icon = "system-run"
+keybinding = "SUPER SHIFT + G"
+description = "Signal"
+actions = {"pick" = "sh -c 'omarchy-launch-or-focus signal \"uwsm app -- signal-desktop\"'"}
+[[entries]]
+text = "SUPER SHIFT + LEFT → Swap window to the left"
+icon = "preferences-system-windows"
+keybinding = "SUPER SHIFT + LEFT"
+description = "Swap window to the left"
+actions = {"pick" = "sh -c 'hyprctl dispatch swapwindow l'"}
+[[entries]]
+text = "SUPER SHIFT + M → Music"
+icon = "system-run"
+keybinding = "SUPER SHIFT + M"
+description = "Music"
+actions = {"pick" = "sh -c 'omarchy-launch-or-focus spotify'"}
+[[entries]]
+text = "SUPER SHIFT + N → Editor"
+icon = "accessories-text-editor"
+keybinding = "SUPER SHIFT + N"
+description = "Editor"
+actions = {"pick" = "sh -c 'omarchy-launch-editor'"}
+[[entries]]
+text = "SUPER SHIFT + O → Obsidian"
+icon = "system-run"
+keybinding = "SUPER SHIFT + O"
+description = "Obsidian"
+actions = {"pick" = "sh -c 'omarchy-launch-or-focus obsidian \"uwsm app -- obsidian -disable-gpu --enable-wayland-ime\"'"}
+[[entries]]
+text = "SUPER SHIFT + RIGHT → Swap window to the right"
+icon = "preferences-system-windows"
+keybinding = "SUPER SHIFT + RIGHT"
+description = "Swap window to the right"
+actions = {"pick" = "sh -c 'hyprctl dispatch swapwindow r'"}
+[[entries]]
+text = "SUPER SHIFT + SPACE → Toggle top bar"
+icon = "system-run"
+keybinding = "SUPER SHIFT + SPACE"
+description = "Toggle top bar"
+actions = {"pick" = "sh -c 'omarchy-toggle-waybar'"}
+[[entries]]
+text = "SUPER SHIFT + T → Activity"
+icon = "system-run"
+keybinding = "SUPER SHIFT + T"
+description = "Activity"
+actions = {"pick" = "sh -c 'alacritty -e btop'"}
+[[entries]]
+text = "SUPER SHIFT + TAB → Previous workspace"
+icon = "preferences-desktop"
+keybinding = "SUPER SHIFT + TAB"
+description = "Previous workspace"
+actions = {"pick" = "sh -c 'hyprctl dispatch workspace e-1'"}
+[[entries]]
+text = "SUPER SHIFT + UP → Swap window up"
+icon = "preferences-system-windows"
+keybinding = "SUPER SHIFT + UP"
+description = "Swap window up"
+actions = {"pick" = "sh -c 'hyprctl dispatch swapwindow u'"}
+[[entries]]
+text = "SUPER SHIFT + X → X"
+icon = "system-run"
+keybinding = "SUPER SHIFT + X"
+description = "X"
+actions = {"pick" = "sh -c 'omarchy-launch-webapp \"https://x.com/\"'"}
+[[entries]]
+text = "SUPER SHIFT + Y → YouTube"
+icon = "system-run"
+keybinding = "SUPER SHIFT + Y"
+description = "YouTube"
+actions = {"pick" = "sh -c 'omarchy-launch-or-focus-webapp YouTube \"https://youtube.com/\"'"}
+[[entries]]
+text = "SUPER SHIFT + equal → Expand window down"
+icon = "preferences-system-windows"
+keybinding = "SUPER SHIFT + equal"
+description = "Expand window down"
+actions = {"pick" = "sh -c 'hyprctl dispatch resizeactive 0 100'"}
+[[entries]]
+text = "SUPER SHIFT + minus → Shrink window up"
+icon = "preferences-system-windows"
+keybinding = "SUPER SHIFT + minus"
+description = "Shrink window up"
+actions = {"pick" = "sh -c 'hyprctl dispatch resizeactive 0 -100'"}
+[[entries]]
+text = "SUPER SHIFT + slash → Passwords"
+icon = "system-run"
+keybinding = "SUPER SHIFT + slash"
+description = "Passwords"
+actions = {"pick" = "sh -c '1password'"}
+[[entries]]
+text = "SUPER SHIFT ALT + A → Grok"
+icon = "system-run"
+keybinding = "SUPER SHIFT ALT + A"
+description = "Grok"
+actions = {"pick" = "sh -c 'omarchy-launch-webapp \"https://grok.com\"'"}
+[[entries]]
+text = "SUPER SHIFT ALT + B → Browser (private)"
+icon = "applications-internet"
+keybinding = "SUPER SHIFT ALT + B"
+description = "Browser (private)"
+actions = {"pick" = "sh -c 'omarchy-launch-browser --private'"}
+[[entries]]
+text = "SUPER SHIFT ALT + G → WhatsApp"
+icon = "system-run"
+keybinding = "SUPER SHIFT ALT + G"
+description = "WhatsApp"
+actions = {"pick" = "sh -c 'omarchy-launch-or-focus-webapp WhatsApp \"https://web.whatsapp.com/\"'"}
+[[entries]]
+text = "SUPER SHIFT ALT + TAB → Previous window in group"
+icon = "preferences-system-windows"
+keybinding = "SUPER SHIFT ALT + TAB"
+description = "Previous window in group"
+actions = {"pick" = "sh -c 'hyprctl dispatch changegroupactive b'"}
+[[entries]]
+text = "SUPER SHIFT ALT + X → X Post"
+icon = "system-run"
+keybinding = "SUPER SHIFT ALT + X"
+description = "X Post"
+actions = {"pick" = "sh -c 'omarchy-launch-webapp \"https://x.com/compose/post\"'"}
+[[entries]]
+text = "SUPER SHIFT CTRL + G → Google Messages"
+icon = "system-run"
+keybinding = "SUPER SHIFT CTRL + G"
+description = "Google Messages"
+actions = {"pick" = "sh -c 'omarchy-launch-or-focus-webapp \"Google Messages\" \"https://messages.google.com/web/conversations\"'"}
+[[entries]]
+text = "SUPER SHIFT CTRL + SPACE → Pick new theme"
+icon = "applications-all"
+keybinding = "SUPER SHIFT CTRL + SPACE"
+description = "Pick new theme"
+actions = {"pick" = "sh -c 'omarchy-launch-walker -m theme'"}
+[[entries]]
+text = "XF86AudioLowerVolume → Volume down"
+icon = "audio-volume-high"
+keybinding = "XF86AudioLowerVolume"
+description = "Volume down"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --output-volume lower'"}
+[[entries]]
+text = "XF86AudioMicMute → Mute microphone"
+icon = "audio-volume-high"
+keybinding = "XF86AudioMicMute"
+description = "Mute microphone"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --input-volume mute-toggle'"}
+[[entries]]
+text = "XF86AudioMute → Mute"
+icon = "audio-volume-high"
+keybinding = "XF86AudioMute"
+description = "Mute"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --output-volume mute-toggle'"}
+[[entries]]
+text = "XF86AudioNext → Next track"
+icon = "system-run"
+keybinding = "XF86AudioNext"
+description = "Next track"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --playerctl next'"}
+[[entries]]
+text = "XF86AudioPause → Pause"
+icon = "system-run"
+keybinding = "XF86AudioPause"
+description = "Pause"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --playerctl play-pause'"}
+[[entries]]
+text = "XF86AudioPlay → Play"
+icon = "system-run"
+keybinding = "XF86AudioPlay"
+description = "Play"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --playerctl play-pause'"}
+[[entries]]
+text = "XF86AudioPrev → Previous track"
+icon = "system-run"
+keybinding = "XF86AudioPrev"
+description = "Previous track"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --playerctl previous'"}
+[[entries]]
+text = "XF86AudioRaiseVolume → Volume up"
+icon = "audio-volume-high"
+keybinding = "XF86AudioRaiseVolume"
+description = "Volume up"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --output-volume raise'"}
+[[entries]]
+text = "XF86Calculator → Calculator"
+icon = "system-run"
+keybinding = "XF86Calculator"
+description = "Calculator"
+actions = {"pick" = "sh -c 'gnome-calculator'"}
+[[entries]]
+text = "XF86MonBrightnessDown → Brightness down"
+icon = "display-brightness"
+keybinding = "XF86MonBrightnessDown"
+description = "Brightness down"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --brightness lower'"}
+[[entries]]
+text = "XF86MonBrightnessUp → Brightness up"
+icon = "display-brightness"
+keybinding = "XF86MonBrightnessUp"
+description = "Brightness up"
+actions = {"pick" = "sh -c 'swayosd-client --monitor \"$(hyprctl monitors -j | jq -r '\\''.[] | select(.focused == true).name'\\'')\" --brightness raise'"}
+[[entries]]
+text = "XF86PowerOff → Power menu"
+icon = "system-shutdown"
+keybinding = "XF86PowerOff"
+description = "Power menu"
+actions = {"pick" = "sh -c 'omarchy-launch-walker -m menus:omarchy_system'"}
