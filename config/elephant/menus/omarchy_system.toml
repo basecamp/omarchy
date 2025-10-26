@@ -4,26 +4,31 @@ name_pretty = "System"
 icon = "system-shutdown"
 
 [[entries]]
-text = "System > Lock"
+text = "Lock"
+Subtext = "System"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-lock-screen'"}
 
 [[entries]]
-text = "System > Screensaver"
+text = "Screensaver"
+Subtext = "System"
 icon = "preferences-desktop-screensaver"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-screensaver force'"}
 
 [[entries]]
-text = "System > Suspend"
+text = "Suspend"
+Subtext = "System"
 icon = "system-suspend"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'systemctl suspend'"}
 
 [[entries]]
-text = "System > Restart"
+text = "Restart"
+Subtext = "System"
 icon = "system-reboot"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-state clear re*-required && systemctl reboot --no-wall'"}
 
 [[entries]]
-text = "System > Shutdown"
+text = "Shutdown"
+Subtext = "System"
 icon = "system-shutdown"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-state clear re*-required && systemctl poweroff --no-wall'"}

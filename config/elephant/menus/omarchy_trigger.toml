@@ -4,76 +4,91 @@ name_pretty = "Trigger"
 icon = "media-record"
 
 [[entries]]
-text = "Trigger > Capture > Screenshot > Editing"
+text = "Editing"
+Subtext = "Trigger > Capture > Screenshot"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenshot smart'"}
 
 [[entries]]
-text = "Trigger > Capture > Screenshot > Clipboard"
+text = "Clipboard"
+Subtext = "Trigger > Capture > Screenshot"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenshot smart clipboard'"}
 
 [[entries]]
-text = "Trigger > Capture > Screenrecord > Region"
+text = "Region"
+Subtext = "Trigger > Capture > Screenrecord"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord'"}
 
 [[entries]]
-text = "Trigger > Capture > Screenrecord > Region + Audio"
+text = "Region + Audio"
+Subtext = "Trigger > Capture > Screenrecord"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord region --with-audio'"}
 
 [[entries]]
-text = "Trigger > Capture > Screenrecord > Display"
+text = "Display"
+Subtext = "Trigger > Capture > Screenrecord"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord output'"}
 
 [[entries]]
-text = "Trigger > Capture > Screenrecord > Display + Audio"
+text = "Display + Audio"
+Subtext = "Trigger > Capture > Screenrecord"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord output --with-audio'"}
 
 [[entries]]
-text = "Trigger > Capture > Screenrecord > Display + Webcam"
+text = "Display + Webcam"
+Subtext = "Trigger > Capture > Screenrecord"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord output --with-audio --with-webcam'"}
 
 [[entries]]
-text = "Trigger > Capture > Color"
+text = "Color"
+Subtext = "Trigger > Capture"
 icon = "color-picker"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'pkill hyprpicker || hyprpicker -a'"}
 
 [[entries]]
-text = "Trigger > Share > Clipboard"
+text = "Clipboard"
+Subtext = "Trigger > Share"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share clipboard'"}
 
 [[entries]]
-text = "Trigger > Share > File"
+text = "File"
+Subtext = "Trigger > Share"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share file'"}
 
 [[entries]]
-text = "Trigger > Share > Folder"
+text = "Folder"
+Subtext = "Trigger > Share"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share folder'"}
 
 [[entries]]
-text = "Trigger > Toggle > Screensaver"
+text = "Screensaver"
+Subtext = "Trigger > Toggle"
 icon = "preferences-desktop-screensaver"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-screensaver'"}
 
 [[entries]]
-text = "Trigger > Toggle > Nightlight"
+text = "Nightlight"
+Subtext = "Trigger > Toggle"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-nightlight'"}
 
 [[entries]]
-text = "Trigger > Toggle > Idle"
+text = "Idle"
+Subtext = "Trigger > Toggle"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-idle'"}
 
 [[entries]]
-text = "Trigger > Toggle > Bar"
+text = "Bar"
+Subtext = "Trigger > Toggle"
 icon = "preferences-desktop"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-waybar'"}

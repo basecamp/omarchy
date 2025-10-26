@@ -4,31 +4,37 @@ name_pretty = "Learn"
 icon = "help-browser"
 
 [[entries]]
-text = "Learn > Keybindings"
+text = "Keybindings"
+Subtext = "Learn"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-menu-keybindings'"}
 
 [[entries]]
-text = "Learn > Omarchy"
+text = "Omarchy"
+Subtext = "Learn"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://learn.omacom.io/2/the-omarchy-manual'"}
 
 [[entries]]
-text = "Learn > Hyprland"
+text = "Hyprland"
+Subtext = "Learn"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://wiki.hypr.land/'"}
 
 [[entries]]
-text = "Learn > Arch"
+text = "Arch"
+Subtext = "Learn"
 icon = "package"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://wiki.archlinux.org/title/Main_page'"}
 
 [[entries]]
-text = "Learn > Bash"
+text = "Bash"
+Subtext = "Learn"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://devhints.io/bash'"}
 
 [[entries]]
-text = "Learn > Neovim"
+text = "Neovim"
+Subtext = "Learn"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://www.lazyvim.org/keymaps'"}

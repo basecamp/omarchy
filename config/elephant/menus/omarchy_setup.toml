@@ -4,106 +4,127 @@ name_pretty = "Setup"
 icon = "preferences-system"
 
 [[entries]]
-text = "Setup > Audio"
+text = "Audio"
+Subtext = "Setup"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec '$TERMINAL --class=Wiremix -e wiremix'"}
 
 [[entries]]
-text = "Setup > Wifi"
+text = "Wifi"
+Subtext = "Setup"
 icon = "network-wireless"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'rfkill unblock wifi && omarchy-launch-wifi'"}
 
 [[entries]]
-text = "Setup > Bluetooth"
+text = "Bluetooth"
+Subtext = "Setup"
 icon = "bluetooth"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'rfkill unblock bluetooth && blueberry'"}
 
 [[entries]]
-text = "Setup > Monitors"
+text = "Monitors"
+Subtext = "Setup"
 icon = "video-display"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/monitors.conf'"}
 
 [[entries]]
-text = "Setup > Keybindings"
+text = "Keybindings"
+Subtext = "Setup"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/bindings.conf'"}
 
 [[entries]]
-text = "Setup > Input"
+text = "Input"
+Subtext = "Setup"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/input.conf'"}
 
 [[entries]]
-text = "Setup > Defaults"
+text = "Defaults"
+Subtext = "Setup"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/uwsm/default'"}
 
 [[entries]]
-text = "Setup > DNS"
+text = "DNS"
+Subtext = "Setup"
 icon = "network-server"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-setup-dns'"}
 
 [[entries]]
-text = "Setup > Config > Hyprland"
+text = "Hyprland"
+Subtext = "Setup > Config"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/hyprland.conf'"}
 
 [[entries]]
-text = "Setup > Config > Hypridle"
+text = "Hypridle"
+Subtext = "Setup > Config"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle'"}
 
 [[entries]]
-text = "Setup > Config > Hyprlock"
+text = "Hyprlock"
+Subtext = "Setup > Config"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/hyprlock.conf'"}
 
 [[entries]]
-text = "Setup > Config > Hyprsunset"
+text = "Hyprsunset"
+Subtext = "Setup > Config"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset'"}
 
 [[entries]]
-text = "Setup > Config > Swayosd"
+text = "Swayosd"
+Subtext = "Setup > Config"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/swayosd/config.toml && omarchy-restart-swayosd'"}
 
 [[entries]]
-text = "Setup > Config > Walker"
+text = "Walker"
+Subtext = "Setup > Config"
 icon = "preferences-system"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/walker/config.toml && omarchy-restart-walker'"}
 
 [[entries]]
-text = "Setup > Config > Waybar"
+text = "Waybar"
+Subtext = "Setup > Config"
 icon = "preferences-desktop"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar'"}
 
 [[entries]]
-text = "Setup > Config > XCompose"
+text = "XCompose"
+Subtext = "Setup > Config"
 icon = "preferences-desktop-keyboard"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.XCompose && omarchy-restart-xcompose'"}
 
 [[entries]]
-text = "Setup > Security > Fingerprint"
+text = "Fingerprint"
+Subtext = "Setup > Security"
 icon = "input-touchpad"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-setup-fingerprint'"}
 
 [[entries]]
-text = "Setup > Security > Fido2"
+text = "Fido2"
+Subtext = "Setup > Security"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-setup-fido2'"}
 
 [[entries]]
-text = "Setup > Power Profile > power-saver"
+text = "power-saver"
+Subtext = "Setup > Power Profile"
 icon = "battery-full"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'powerprofilesctl set '\\''power-saver'\\'''"}
 
 [[entries]]
-text = "Setup > Power Profile > balanced"
+text = "balanced"
+Subtext = "Setup > Power Profile"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'powerprofilesctl set '\\''balanced'\\'''"}
 
 [[entries]]
-text = "Setup > Power Profile > performance"
+text = "performance"
+Subtext = "Setup > Power Profile"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'powerprofilesctl set '\\''performance'\\'''"}
