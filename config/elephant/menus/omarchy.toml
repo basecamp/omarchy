@@ -33,13 +33,6 @@ text = "Remove"
 icon = "edit-delete"
 submenu = "omarchy_remove"
 
-
-[[entries]]
-text = "Keybindings"
-icon = "input-keyboard"
-submenu = "hyprland_keybindings.lua"
-
-
 [[entries]]
 text = "Update"
 icon = "system-software-update"
@@ -49,6 +42,11 @@ submenu = "omarchy_update"
 text = "About"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-about'"}
+
+[[entries]]
+text = "Keybindings"
+icon = "input-keyboard"
+submenu = "hyprland_keybindings"
 
 [[entries]]
 text = "System"

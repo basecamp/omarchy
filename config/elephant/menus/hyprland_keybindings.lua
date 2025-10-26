@@ -73,49 +73,76 @@ end
 
 function GetEntries()
 	local entries = {}
-
+	
+	-- Debug: Add a test entry first
+	table.insert(entries, {
+		Text = "DEBUG: Script is running",
+		Subtext = "Test entry",
+		Value = "test|||test",
+	})
+	
 	-- Build keycode cache
 	build_keymap_cache()
-
+	
 	-- Get bindings from hyprctl
 	local handle = io.popen("hyprctl -j binds 2>/dev/null")
 	if not handle then
+		table.insert(entries, {
+			Text = "ERROR: Could not run hyprctl",
+			Subtext = "hyprctl failed",
+			Value = "error|||error",
+		})
 		return entries
 	end
-
+	
 	local json_str = handle:read("*a")
 	handle:close()
-
+	
+	-- Debug: Check if we got data
+	if json_str == "" then
+		table.insert(entries, {
+			Text = "ERROR: No data from hyprctl",
+			Subtext = "Empty response",
+			Value = "error|||error",
+		})
+		return entries
+	end
+	
+	-- Count matches found
+	local match_count = 0
+	
 	-- Parse JSON manually (simple approach)
 	-- Extract each binding object
 	for binding in json_str:gmatch("{[^}]+}") do
+		match_count = match_count + 1
+		
 		local modmask = tonumber(binding:match('"modmask"%s*:%s*(%d+)')) or 0
 		local key = binding:match('"key"%s*:%s*"([^"]*)"') or ""
 		local keycode = tonumber(binding:match('"keycode"%s*:%s*(%d+)')) or 0
 		local description = binding:match('"description"%s*:%s*"([^"]*)"') or ""
 		local dispatcher = binding:match('"dispatcher"%s*:%s*"([^"]*)"') or ""
 		local arg = binding:match('"arg"%s*:%s*"([^"]*)"') or ""
-
+		
 		-- Skip empty dispatchers
 		if dispatcher ~= "" then
 			-- Build key combination
 			local key_combo = ""
-
+			
 			-- Use keycode if key is empty
 			if key == "" and keycode > 0 then
 				key = resolve_keycode(keycode)
 			end
-
+			
 			local mod_text = modmask_to_text(modmask)
 			if mod_text ~= "" and key ~= "" then
 				key_combo = mod_text .. " + " .. key
 			elseif key ~= "" then
 				key_combo = key
 			end
-
+			
 			-- Clean up key combo
 			key_combo = key_combo:gsub("^%s*+%s*", ""):gsub("%s+", " ")
-
+			
 			-- Build description if empty
 			if description == "" then
 				if arg ~= "" then
@@ -124,12 +151,12 @@ function GetEntries()
 					description = dispatcher
 				end
 			end
-
+			
 			-- Clean up paths in description
 			description = description:gsub("~/.local/share/omarchy/bin/", "")
 			description = description:gsub("uwsm app %-%- ", "")
 			description = description:gsub("uwsm%-app %-%- ", "")
-
+			
 			-- Only add if we have a valid key combo
 			if key_combo ~= "" and key_combo ~= " + " then
 				table.insert(entries, {
@@ -140,7 +167,14 @@ function GetEntries()
 			end
 		end
 	end
-
+	
+	-- Debug: Show how many matches we found
+	table.insert(entries, {
+		Text = "DEBUG: Found " .. match_count .. " bindings",
+		Subtext = "Parsed from hyprctl",
+		Value = "debug|||debug",
+	})
+	
 	return entries
 end
 

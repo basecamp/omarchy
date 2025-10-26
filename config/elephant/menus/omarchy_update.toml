@@ -1,148 +1,147 @@
-# Update
 name = "omarchy_update"
 name_pretty = "Update"
 icon = "system-software-update"
 
 [[entries]]
 text = "Omarchy"
-Subtext = "Update"
+Subtext = "Update Omarchy system"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-update'"}
 
 [[entries]]
-text = "Themes"
-Subtext = "Update"
+text = "Update Themes"
+Subtext = "Update installed themes"
 icon = "preferences-desktop-theme"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-theme-update'"}
 
 [[entries]]
 text = "Firmware"
-Subtext = "Update"
+Subtext = "Update device firmware"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-update-firmware'"}
 
 [[entries]]
 text = "Timezone"
-Subtext = "Update"
+Subtext = "Change system timezone"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-tz-select'"}
 
 [[entries]]
 text = "master"
-Subtext = "Update > Branch"
+Subtext = "Switch to stable branch"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-update-branch master'"}
 
 [[entries]]
 text = "dev"
-Subtext = "Update > Branch"
+Subtext = "Switch to development branch"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-update-branch dev'"}
 
 [[entries]]
 text = "Hypridle"
-Subtext = "Update > Process"
+Subtext = "Restart idle daemon"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-restart-hypridle'"}
 
 [[entries]]
 text = "Hyprsunset"
-Subtext = "Update > Process"
+Subtext = "Restart night light service"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-restart-hyprsunset'"}
 
 [[entries]]
 text = "Swayosd"
-Subtext = "Update > Process"
+Subtext = "Restart on-screen display"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-restart-swayosd'"}
 
 [[entries]]
 text = "Walker"
-Subtext = "Update > Process"
+Subtext = "Restart app launcher"
 icon = "preferences-system"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-restart-walker'"}
 
 [[entries]]
 text = "Waybar"
-Subtext = "Update > Process"
+Subtext = "Restart status bar"
 icon = "preferences-desktop"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-restart-waybar'"}
 
 [[entries]]
 text = "Hyprland"
-Subtext = "Update > Config"
+Subtext = "Refresh compositor config"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-hyprland'"}
 
 [[entries]]
 text = "Hypridle"
-Subtext = "Update > Config"
+Subtext = "Refresh idle config"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-hypridle'"}
 
 [[entries]]
 text = "Hyprlock"
-Subtext = "Update > Config"
+Subtext = "Refresh lock screen config"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-hyprlock'"}
 
 [[entries]]
 text = "Hyprsunset"
-Subtext = "Update > Config"
+Subtext = "Refresh night light config"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-hyprsunset'"}
 
 [[entries]]
 text = "Plymouth"
-Subtext = "Update > Config"
+Subtext = "Refresh boot screen config"
 icon = "applications-graphics"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-plymouth'"}
 
 [[entries]]
 text = "Swayosd"
-Subtext = "Update > Config"
+Subtext = "Refresh OSD config"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-swayosd'"}
 
 [[entries]]
 text = "Walker"
-Subtext = "Update > Config"
+Subtext = "Refresh launcher config"
 icon = "preferences-system"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-walker'"}
 
 [[entries]]
 text = "Waybar"
-Subtext = "Update > Config"
+Subtext = "Refresh status bar config"
 icon = "preferences-desktop"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-waybar'"}
 
 [[entries]]
 text = "Audio"
-Subtext = "Update > Hardware"
+Subtext = "Restart audio system"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-restart-pipewire'"}
 
 [[entries]]
 text = "Wi-Fi"
-Subtext = "Update > Hardware"
+Subtext = "Restart wireless connection"
 icon = "network-wireless"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-restart-wifi'"}
 
 [[entries]]
 text = "Bluetooth"
-Subtext = "Update > Hardware"
+Subtext = "Restart Bluetooth service"
 icon = "bluetooth"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-restart-bluetooth'"}
 
 [[entries]]
 text = "Drive"
-Subtext = "Update > Password"
+Subtext = "Change disk encryption password"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-drive-set-password'"}
 
 [[entries]]
 text = "User"
-Subtext = "Update > Password"
+Subtext = "Change user account password"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal passwd'"}

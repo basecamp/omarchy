@@ -1,322 +1,321 @@
-# Install
 name = "omarchy_install"
 name_pretty = "Install"
 icon = "system-software-install"
 
 [[entries]]
 text = "Package"
-Subtext = "Install"
+Subtext = "Install system packages"
 icon = "package"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal omarchy-pkg-install'"}
 
 [[entries]]
 text = "AUR"
-Subtext = "Install"
+Subtext = "Install from Arch User Repository"
 icon = "package"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal omarchy-pkg-aur-install'"}
 
 [[entries]]
 text = "Web"
-Subtext = "Install"
+Subtext = "Install web applications"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-webapp-install'"}
 
 [[entries]]
 text = "TUI"
-Subtext = "Install"
+Subtext = "Install terminal user interfaces"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-tui-install'"}
 
 [[entries]]
 text = "Windows"
-Subtext = "Install"
+Subtext = "Set up Windows virtual machine"
 icon = "computer"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-windows-vm install'"}
 
 [[entries]]
 text = "Dropbox"
-Subtext = "Install > Service"
+Subtext = "Cloud storage and file sync"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dropbox'"}
 
 [[entries]]
 text = "Tailscale"
-Subtext = "Install > Service"
+Subtext = "Secure mesh VPN network"
 icon = "applications-science"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-tailscale'"}
 
 [[entries]]
 text = "Bitwarden"
-Subtext = "Install > Service"
+Subtext = "Password manager and vault"
 icon = "dialog-password"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_and_launch Bitwarden bitwarden bitwarden-cli bitwarden'"}
 
 [[entries]]
 text = "Chromium"
-Subtext = "Install > Service"
+Subtext = "Browser with Google account sync"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-chromium-google-account'"}
 
 [[entries]]
 text = "VSCode"
-Subtext = "Install > Editor"
+Subtext = "Visual Studio Code editor"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-vscode'"}
 
 [[entries]]
 text = "Cursor"
-Subtext = "Install > Editor"
+Subtext = "AI-powered code editor"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_and_launch Cursor cursor-bin cursor'"}
 
 [[entries]]
 text = "Zed"
-Subtext = "Install > Editor"
+Subtext = "High-performance code editor"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_and_launch Zed zed dev.zed.Zed'"}
 
 [[entries]]
 text = "Sublime"
-Subtext = "Install > Editor"
+Subtext = "Sophisticated text editor"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install_and_launch Sublime Text sublime-text-4 sublime_text'"}
 
 [[entries]]
 text = "Helix"
-Subtext = "Install > Editor"
+Subtext = "Modern modal text editor"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install Helix helix'"}
 
 [[entries]]
 text = "Emacs"
-Subtext = "Install > Editor"
+Subtext = "Extensible text editor"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install Emacs emacs-wayland && systemctl --user enable --now emacs.service'"}
 
 [[entries]]
 text = "Alacritty"
-Subtext = "Install > Terminal"
+Subtext = "GPU-accelerated terminal"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_terminal alacritty'"}
 
 [[entries]]
 text = "Ghostty"
-Subtext = "Install > Terminal"
+Subtext = "Fast native terminal emulator"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_terminal ghostty'"}
 
 [[entries]]
 text = "Kitty"
-Subtext = "Install > Terminal"
+Subtext = "Feature-rich terminal emulator"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_terminal kitty'"}
 
 [[entries]]
 text = "Claude"
-Subtext = "Install > AI"
+Subtext = "AI coding assistant CLI"
 icon = "applications-science"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install Claude Code claude-code'"}
 
 [[entries]]
 text = "Cursor"
-Subtext = "Install > AI"
+Subtext = "AI coding assistant CLI"
 icon = "applications-science"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install Cursor CLI cursor-cli'"}
 
 [[entries]]
 text = "OpenAI"
-Subtext = "Install > AI"
+Subtext = "OpenAI Codex CLI"
 icon = "applications-science"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install OpenAI Codex openai-codex-bin'"}
 
 [[entries]]
 text = "Gemini"
-Subtext = "Install > AI"
+Subtext = "Google Gemini CLI"
 icon = "applications-science"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install Gemini gemini-cli'"}
 
 [[entries]]
 text = "Studio"
-Subtext = "Install > AI"
+Subtext = "Run LLMs locally"
 icon = "applications-science"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install LM Studio lmstudio'"}
 
 [[entries]]
 text = "Ollama"
-Subtext = "Install > AI"
+Subtext = "Local AI model runner"
 icon = "applications-science"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install Ollama $ollama_pkg'"}
 
 [[entries]]
 text = "Crush"
-Subtext = "Install > AI"
+Subtext = "AI coding assistant"
 icon = "applications-science"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install Crush crush-bin'"}
 
 [[entries]]
 text = "opencode"
-Subtext = "Install > AI"
+Subtext = "Open source code assistant"
 icon = "applications-science"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install opencode opencode'"}
 
 [[entries]]
 text = "Steam"
-Subtext = "Install > Gaming"
+Subtext = "Gaming platform and store"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-steam'"}
 
 [[entries]]
 text = "RetroArch"
-Subtext = "Install > Gaming"
+Subtext = "Retro gaming emulator frontend"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install_and_launch RetroArch retroarch retroarch-assets libretro libretro-fbneo com.libretro.RetroArch.desktop'"}
 
 [[entries]]
 text = "Minecraft"
-Subtext = "Install > Gaming"
+Subtext = "Block-building sandbox game"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install_and_launch Minecraft [AUR] minecraft-launcher minecraft-launcher'"}
 
 [[entries]]
-text = "Theme"
-Subtext = "Install > Style"
+text = "Install Theme"
+Subtext = "Install visual themes from github links"
 icon = "preferences-desktop-theme"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-theme-install'"}
 
 [[entries]]
 text = "Background"
-Subtext = "Install > Style"
+Subtext = "Set desktop wallpaper"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'nautilus ~/.config/omarchy/current/theme/backgrounds'"}
 
 [[entries]]
 text = "Meslo"
-Subtext = "Install > Font"
+Subtext = "Meslo LG Mono Nerd Font"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_font Meslo LG Mono ttf-meslo-nerd MesloLGL Nerd Font'"}
 
 [[entries]]
 text = "Fira"
-Subtext = "Install > Font"
+Subtext = "Fira Code Nerd Font"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_font Fira Code ttf-firacode-nerd FiraCode Nerd Font'"}
 
 [[entries]]
 text = "Victor"
-Subtext = "Install > Font"
+Subtext = "Victor Mono Nerd Font"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_font Victor Code ttf-victor-mono-nerd VictorMono Nerd Font'"}
 
 [[entries]]
 text = "Bistream"
-Subtext = "Install > Font"
+Subtext = "Bitstream Vera Mono Nerd Font"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_font Bistream Vera Code ttf-bitstream-vera-mono-nerd BitstromWera Nerd Font'"}
 
 [[entries]]
 text = "Rails"
-Subtext = "Install > Development"
+Subtext = "Ruby on Rails framework"
 icon = "applications-ruby"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env ruby'"}
 
 [[entries]]
 text = "Docker"
-Subtext = "Install > Development"
+Subtext = "Container platform and databases"
 icon = "container"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-docker-dbs'"}
 
 [[entries]]
 text = "Go"
-Subtext = "Install > Development"
+Subtext = "Go programming language"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env go'"}
 
 [[entries]]
 text = "Python"
-Subtext = "Install > Development"
+Subtext = "Python programming language"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env python'"}
 
 [[entries]]
 text = "Zig"
-Subtext = "Install > Development"
+Subtext = "Zig programming language"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env zig'"}
 
 [[entries]]
 text = "Rust"
-Subtext = "Install > Development"
+Subtext = "Rust programming language"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env rust'"}
 
 [[entries]]
 text = "Java"
-Subtext = "Install > Development"
+Subtext = "Java development kit"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env java'"}
 
 [[entries]]
 text = "NET"
-Subtext = "Install > Development"
+Subtext = ".NET development platform"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env dotnet'"}
 
 [[entries]]
 text = "OCaml"
-Subtext = "Install > Development"
+Subtext = "OCaml programming language"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env ocaml'"}
 
 [[entries]]
 text = "Clojure"
-Subtext = "Install > Development"
+Subtext = "Clojure programming language"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env clojure'"}
 
 [[entries]]
 text = "Node"
-Subtext = "Install > Javascript"
+Subtext = "Node.js JavaScript runtime"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env node'"}
 
 [[entries]]
 text = "Bun"
-Subtext = "Install > Javascript"
+Subtext = "Fast JavaScript runtime"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env bun'"}
 
 [[entries]]
 text = "Deno"
-Subtext = "Install > Javascript"
+Subtext = "Secure JavaScript runtime"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env deno'"}
 
 [[entries]]
 text = "PHP"
-Subtext = "Install > PHP"
+Subtext = "PHP programming language"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env php'"}
 
 [[entries]]
 text = "Laravel"
-Subtext = "Install > PHP"
+Subtext = "Laravel PHP framework"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env laravel'"}
 
 [[entries]]
 text = "Symfony"
-Subtext = "Install > PHP"
+Subtext = "Symfony PHP framework"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env symfony'"}
 
 [[entries]]
 text = "Elixir"
-Subtext = "Install > Elixir"
+Subtext = "Elixir programming language"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env elixir'"}
 
 [[entries]]
 text = "Phoenix"
-Subtext = "Install > Elixir"
+Subtext = "Phoenix web framework"
 icon = "applications-other"
 actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env phoenix'"}
