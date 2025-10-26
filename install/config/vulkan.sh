@@ -45,5 +45,4 @@ if [[ -v VULKAN_DRIVER_PACKAGE ]]; then
       echo "Great, Vulkan package installed!"
     fi
   done
-   "Next, installing Zed!"
 fi
