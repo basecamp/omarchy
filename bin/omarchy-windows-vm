@@ -273,7 +273,7 @@ launch_windows() {
     echo "Starting Windows VM..."
 
     # Send desktop notification
-    notify-send "Windows VM" "Starting Windows VM, this may take a moment..."
+    notify-send "    Starting Windows VM" "      This can take 15-30 seconds" -t 15000
 
     if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
       echo "❌ Failed to start Windows VM!"
@@ -298,7 +298,7 @@ launch_windows() {
     done
 
     # Give it a moment more to fully initialize
-    sleep 3
+    sleep 5
   fi
 
   # Extract credentials from compose file
@@ -339,7 +339,7 @@ To stop: omarchy-windows-vm stop"
   # If scale is less than 130%, don't set any scale (use default 100)
 
   # Connect with RDP in fullscreen (auto-detects resolution)
-  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 +f -grab-keyboard /cert:ignore /title:"Windows VM - Omarchy" /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
+  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /cert:ignore /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
 
   # After RDP closes, stop the container unless --keep-alive was specified
   if [ "$KEEP_ALIVE" = false ]; then

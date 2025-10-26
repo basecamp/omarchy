@@ -1,5 +1,5 @@
 name: Enhancement
-description: Feature or change
+description: Suggest a feature or change
 labels: [enhancement]
 body:
   - type: markdown
