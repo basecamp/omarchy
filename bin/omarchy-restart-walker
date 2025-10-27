@@ -1,13 +1,17 @@
 #!/bin/bash
 
-pkill elephant
-pkill walker
-
 # Detect if we're running as root (from pacman hook)
 if [[ $EUID -eq 0 ]]; then
   # Get the owner of this script to determine which user to run as
   SCRIPT_OWNER=$(stat -c '%U' "$0")
   USER_UID=$(id -u "$SCRIPT_OWNER")
+
+  # Stop services gracefully as the script owner
+  systemd-run --uid="$SCRIPT_OWNER" --setenv=XDG_RUNTIME_DIR="/run/user/$USER_UID" \
+    bash -c "
+      systemctl --user stop 'app-Hyprland-elephant*.scope' 2>/dev/null || true
+      systemctl --user stop 'app-Hyprland-walker*.scope' 2>/dev/null || true
+    "
 
   # Restart services as the script owner
   systemd-run --uid="$SCRIPT_OWNER" --setenv=XDG_RUNTIME_DIR="/run/user/$USER_UID" \
@@ -16,6 +20,11 @@ if [[ $EUID -eq 0 ]]; then
       setsid uwsm-app -- walker --gapplication-service &
     "
 else
+  # Stop services gracefully
+  systemctl --user stop 'app-Hyprland-elephant*.scope' 2>/dev/null || true
+  systemctl --user stop 'app-Hyprland-walker*.scope' 2>/dev/null || true
+
+  # Restart services
   setsid uwsm-app -- elephant &
   setsid uwsm-app -- walker --gapplication-service &
 fi
