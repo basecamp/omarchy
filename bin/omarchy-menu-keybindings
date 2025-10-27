@@ -193,10 +193,11 @@ prioritize_entries() {
     if (match(line, /Resize window/))  prio = 22
     if (match(line, /Expand window/))  prio = 23
     if (match(line, /Shrink window/))  prio = 24
-    if (match(line, /notification/))  prio = 25
-    if (match(line, /Toggle window transparency/))  prio = 26
-    if (match(line, /Toggle workspace gaps/))  prio = 27
-    if (match(line, /Toggle nightlight/))  prio = 28
+    if (match(line, /scratchpad/))  prio = 25
+    if (match(line, /notification/))  prio = 26
+    if (match(line, /Toggle window transparency/))  prio = 27
+    if (match(line, /Toggle workspace gaps/))  prio = 28
+    if (match(line, /Toggle nightlight/))  prio = 29
     if (match(line, /group/))  prio = 94
     if (match(line, /Scroll active workspace/))  prio = 95
     if (match(line, /Cycle to/))  prio = 96
