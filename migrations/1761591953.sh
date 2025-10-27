@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-
-sudo cp -f ~/.local/share/omarchy/default/networkmanager/omarchy_networkmanager.conf /etc/NetworkManager/conf.d/omarchy_networkmanager.conf
+echo "Mask wpa_supplicant and disable systemd-networkd, enable NetworkManager"
 
 sudo systemctl mask --now wpa_supplicant.service
 sudo systemctl disable --now systemd-networkd.socket
