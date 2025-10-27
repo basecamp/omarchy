@@ -454,8 +454,8 @@ extract_theme_data() {
   --text-mark: ${color_slots[7]};
   --interactive-accent: ${color_slots[8]};
   --blockquote-border: ${color_slots[9]};
-  --text-muted: $border_color;  /* Use border color for muted text */
-  --text-faint: $border_color;  /* Use border color for faint text */
+  --text-muted: $text_muted_color;  /* Use text-specific color for muted text */
+  --text-faint: $text_faint_color;  /* Use text-specific color for faint text */
 
   /* Additional mappings */
   --text-accent: var(--interactive-accent);
