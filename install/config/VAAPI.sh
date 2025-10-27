@@ -24,27 +24,33 @@ declare -A VULKAN_DRIVER_PACKAGE
 # --- GPU Detection --
 echo "Checking GPU ..."
 
-{
-for i in "${!GPU_list[@]}"; do
+for i in ${!GPU_list[@]}; do
   if lspci | grep -i "Display controller: $i" >/dev/null ||
     lspci | grep -i "VGA compatible controller: $i" >/dev/null; then
-    VULKAN_DRIVER_PACKAGE+="$i"
+    VULKAN_DRIVER_PACKAGE+=${GPU_list[$i]}
   fi
 done
-  echo "Detected GPU: ${VULKAN_DRIVER_PACKAGE[@]}"
-}
 
-# --- Install package ---
-if [[ -v VULKAN_DRIVER_PACKAGE ]]; then
+  echo "GPU_list: ${VULKAN_DRIVER_PACKAGE[@]}" # to remove
+if [[ -z $VULKAN_DRIVER_PACKAGE ]]; then
+  echo "No GPU detected"
+  exit 1
 
-  # checking if the appropriate parckage is installed
+else
+# --- Checking installed package ---
+  declare -A ListToInstall
   for i in "${VULKAN_DRIVER_PACKAGE[@]}"; do
-    echo "Checking if package is already installed: ${GPU_list["Intel"]}"
-    if !(pacman -Qi ${VULKAN_DRIVER_PACKAGE[$i]} ) >/dev/null; then
-      echo "Missing Vulkan Drivers, installing ${GPU_list[ ${VULKAN_DRIVER_PACKAGE[$i]} ]}"
-      sudo pacman -S --needed --noconfirm ${GPU_list[${VULKAN_DRIVER_PACKAGE[$i]}]}
+    echo "Checking if package is already installed: $i"
+    if ! (pacman -Qi $i) >/dev/null ; then
+      echo "Missing VAAPI Driver: $i"
+      ListToInstall+="$i "
     else
-      echo "Great, Vulkan package installed!"
+      echo "Great, $i package already installed!"
     fi
   done
+
+  if ! [[ -z ${ListToInstall} ]]; then #not empty
+    sudo pacman -S --needed --noconfirm ${VULKAN_DRIVER_PACKAGE[@]}
+  fi
+  #sudo pacman -S --needed --noconfirm ${VULKAN_DRIVER_PACKAGE[@]}
 fi
