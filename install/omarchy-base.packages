@@ -1,10 +1,11 @@
-# Omarchy core package list installed via install/packages.sh
+# Omarchy core package list installed via install/packaging/base.sh
 # This file is also used by the ISO builder when determining needs
 
 1password-beta
 1password-cli
+aether
 alacritty
-asdcontrol-git
+asdcontrol
 avahi
 bash-completion
 bat
@@ -21,7 +22,21 @@ docker
 docker-buildx
 docker-compose
 dust
+elephant
+elephant-bluetooth
+elephant-calc
+elephant-clipboard
+elephant-desktopapplications
+elephant-files
+elephant-menus
+elephant-providerlist
+elephant-runner
+elephant-symbols
+elephant-todo
+elephant-unicode
+elephant-websearch
 evince
+expac
 eza
 fastfetch
 fcitx5
@@ -35,20 +50,23 @@ github-cli
 gnome-calculator
 gnome-keyring
 gnome-themes-extra
+grim
+gpu-screen-recorder
 gum
 gvfs-mtp
+gvfs-nfs
 gvfs-smb
 hypridle
 hyprland
 hyprland-qtutils
 hyprlock
 hyprpicker
-hyprshot
 hyprsunset
 imagemagick
 impala
 imv
 inetutils
+inxi
 iwd
 jq
 kdenlive
@@ -56,6 +74,7 @@ kvantum-qt5
 lazydocker
 lazygit
 less
+libsecret
 libyaml
 libqalculate
 libreoffice
@@ -68,6 +87,7 @@ mariadb-libs
 mise
 mpv
 nautilus
+gnome-disk-utility
 noto-fonts
 noto-fonts-cjk
 noto-fonts-emoji
@@ -77,7 +97,7 @@ nvim
 obs-studio
 obsidian
 omarchy-chromium
-omarchy-lazyvim
+omarchy-nvim
 pamixer
 pinta
 playerctl
@@ -92,6 +112,7 @@ python-terminaltexteffects
 qt5-wayland
 ripgrep
 satty
+sddm
 signal-desktop
 slurp
 spotify
@@ -111,16 +132,14 @@ ufw
 ufw-docker
 unzip
 uwsm
-walker-bin
+walker
 waybar
-wf-recorder
+wayfreeze
 whois
 wireless-regdb
 wiremix
 wireplumber
-wl-clip-persist
 wl-clipboard
-wl-screenrec
 woff2-font-awesome
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland

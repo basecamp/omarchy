@@ -8,12 +8,14 @@ fi
 package="$1"
 
 # Install package
-omarchy-pkg-add $package
+if omarchy-pkg-add $package; then
+  # Set as default terminal
+  echo "Setting $package as new default terminal..."
+  sed -i "/export TERMINAL=/ c\export TERMINAL=$package" ~/.config/uwsm/default
 
-# Set as default terminal
-echo "Setting $package as new default terminal..."
-sed -i "/export TERMINAL=/ c\export TERMINAL=$package" ~/.config/uwsm/default
-
-# Relaunch is needed for new default to take effect
-echo
-gum confirm "Relaunch Hyprland to use new terminal?" && uwsm stop
+  # Restart is needed for new default to take effect
+  echo
+  gum confirm "Restart to use new terminal?" && systemctl reboot --no-wall
+else
+  echo "Failed to install $package"
+fi
