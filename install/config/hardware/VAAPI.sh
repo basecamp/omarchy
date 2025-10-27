@@ -31,7 +31,6 @@ for i in ${!GPU_list[@]}; do
   fi
 done
 
-  echo "GPU_list: ${VULKAN_DRIVER_PACKAGE[@]}" # to remove
 if [[ -z $VULKAN_DRIVER_PACKAGE ]]; then
   echo "No GPU detected"
   exit 1
@@ -51,6 +50,7 @@ else
   done
 
   if ! [[ -z ${ListToInstall} ]]; then #not empty
-    sudo pacman -S --needed --noconfirm ${VULKAN_DRIVER_PACKAGE[@]}
+    echo "Installing missing packages..."
+    sudo pacman -S --needed --noconfirm ${ListToInstall[@]}
   fi
 fi
