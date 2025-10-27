@@ -3,7 +3,7 @@
 # omarchy-theme-set-obsidian: Bootstrap and update Omarchy theme for Obsidian
 #
 # - Ensures registry at ~/.local/state/omarchy/obsidian-vaults
-#   - If missing/empty, bootstraps by scanning ~/Documents/*/.obsidian and ~/Dropbox/*/.obsidian
+#   - Populates by extracting vault paths from ~/.config/obsidian/obsidian.json
 # - For each valid vault:
 #   - Ensures .obsidian/themes/Omarchy/{manifest.json, theme.css}
 #   - Updates theme.css (uses current theme’s obsidian.css if present; otherwise generates -- see below)
@@ -26,30 +26,18 @@
 VAULTS_FILE="$HOME/.local/state/omarchy/obsidian-vaults"
 CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 
-# Ensure the vaults registry exists, or bootstrap from known locations
 ensure_vaults_file() {
   mkdir -p "$(dirname "$VAULTS_FILE")"
-  # If file exists (even empty), do not scan; treat as authoritative
-  if [ -f "$VAULTS_FILE" ]; then
-    return
-  fi
   local tmpfile
   tmpfile="$(mktemp)"
-  # Scan a couple of common locations for <base>/<vault>/.obsidian
-  for base in "$HOME/Documents" "$HOME/Dropbox"; do
-    [ -d "$base" ] || continue
-    for d in "$base"/*/.obsidian; do
-      [ -d "$d" ] || continue
-      vault_dir="${d%/.obsidian}"
-      printf "%s\n" "$vault_dir" >>"$tmpfile"
-    done
-  done
-  if [ -s "$tmpfile" ]; then
-    sort -u "$tmpfile" >"$VAULTS_FILE"
-  else
-    : >"$VAULTS_FILE"
-  fi
-  rm -f "$tmpfile"
+  # Extract the Obsidian vault location from config file <base>/<vault>/.obsidian
+  jq -r '.vaults | values[].path' ~/.config/obsidian/obsidian.json 2>/dev/null >>"$tmpfile"
+    if [ -s "$tmpfile" ]; then
+      sort -u "$tmpfile" >"$VAULTS_FILE"
+    else
+      : >"$VAULTS_FILE"
+    fi
+    rm "$tmpfile"
 }
 
 # Ensure theme directory and minimal manifest exist in a vault
