@@ -258,38 +258,30 @@ extract_theme_data() {
     fi
   done
 
-  # Sort by distance and get the closest color for code background
-  local -a closest_to_bg
-  readarray -t closest_to_bg < <(printf '%s\n' "${bg_distances[@]}" | sort -n | head -1 | cut -d: -f2)
-
   # All background variations use the same as primary background
   local bg_primary_alt="$bg_color"
   local bg_secondary="$bg_color"
   local bg_secondary_alt="$bg_color"
 
-  # Code block background uses the closest different color
-  local code_bg="${closest_to_bg[0]}"
-
-  # If no different color available, create a subtle variant for code blocks
-  if [ -z "$code_bg" ]; then
-    read -r r g b <<<"$(hex_to_rgb "$bg_color")"
-    if [ $bg_brightness -gt 127 ]; then
-      r=$((r - 10))
-      g=$((g - 10))
-      b=$((b - 10))
-    else
-      r=$((r + 15))
-      g=$((g + 15))
-      b=$((b + 15))
-    fi
-    [ $r -lt 0 ] && r=0
-    [ $r -gt 255 ] && r=255
-    [ $g -lt 0 ] && g=0
-    [ $g -gt 255 ] && g=255
-    [ $b -lt 0 ] && b=0
-    [ $b -gt 255 ] && b=255
-    code_bg=$(printf "#%02x%02x%02x" "$r" "$g" "$b")
+  # Generate code background color that will contrast with foreground text
+  read -r r g b <<<"$(hex_to_rgb "$bg_color")"
+  if [ $bg_brightness -gt 127 ]; then
+    r=$((r - 10))
+    g=$((g - 10))
+    b=$((b - 10))
+  else
+    r=$((r + 15))
+    g=$((g + 15))
+    b=$((b + 15))
   fi
+  [ $r -lt 0 ] && r=0
+  [ $r -gt 255 ] && r=255
+  [ $g -lt 0 ] && g=0
+  [ $g -gt 255 ] && g=255
+  [ $b -lt 0 ] && b=0
+  [ $b -gt 255 ] && b=255
+  code_bg=$(printf "#%02x%02x%02x" "$r" "$g" "$b")
+
 
   # Find closest color to foreground for code block text
   local code_fg=""
