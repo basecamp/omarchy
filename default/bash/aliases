@@ -1,5 +1,5 @@
 # File system
-if omarchy-cmd-present eza; then
+if command -v eza &> /dev/null; then
   alias ls='eza -lh --group-directories-first --icons=auto'
   alias lsa='ls -a'
   alias lt='eza --tree --level=2 --long --icons --git'
@@ -8,7 +8,7 @@ fi
 
 alias ff="fzf --preview 'bat --style=numbers --color=always {}'"
 
-if omarchy-cmd-present z; then
+if command -v zoxide &> /dev/null; then
   alias cd="zd"
   zd() {
     if [ $# -eq 0 ]; then
