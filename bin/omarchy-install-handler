@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: omarchy-install-handler omarchy://webappinstall?name=...&url=...&icon=..."
+  exit 1
+fi
+
+URI="$1"
+
+case "$URI" in
+  omarchy://webappinstall*|omarchy://install*) ;;
+  *) echo "Unsupported URI"; exit 1 ;;
+esac
+
+urldecode() {
+  local d="${1//+/ }"
+  printf '%b' "${d//%/\\x}"
+}
+
+getp() {
+  local k="$1"
+  printf '%s' "$URI" | sed -n "s/.*[?&]${k}=\([^&]*\).*$/\1/p"
+}
+
+APP_NAME="$(urldecode "$(getp name)")"
+APP_URL="$(urldecode "$(getp url)")"
+ICON_REF="$(urldecode "$(getp icon)")"
+CUSTOM_EXEC="$(urldecode "$(getp exec)")"
+MIME_TYPES="$(urldecode "$(getp mimeTypes)")"
+
+if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_REF" ]]; then
+  echo "Missing: name,url,icon"
+  exit 1
+fi
+
+# Prefer PATH-resolved installer; fall back to local copies if present
+if command -v omarchy-webapp-install >/dev/null 2>&1; then
+  INSTALLER="omarchy-webapp-install"
+elif [[ -x "./omarchy-webapp-install" ]]; then
+  INSTALLER="./omarchy-webapp-install"
+elif [[ -x "./omarchy-webapp-install.txt" ]]; then
+  INSTALLER="./omarchy-webapp-install.txt"
+else
+  INSTALLER="omarchy-webapp-install"
+fi
+
+exec "$INSTALLER" "$APP_NAME" "$APP_URL" "$ICON_REF" "$CUSTOM_EXEC" "$MIME_TYPES"
