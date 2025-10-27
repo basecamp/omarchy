@@ -2,7 +2,7 @@
 Name=Neovim
 GenericName=Text Editor
 Comment=Edit text files
-Exec=omarchy-launch-editor %F
+Exec=$TERMINAL -e nvim %F
 Terminal=false
 Type=Application
 Keywords=Text;editor;
