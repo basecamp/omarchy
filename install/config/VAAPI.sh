@@ -1,17 +1,17 @@
 #!/bin/bash
 
 # ==============================================================================
-# Hyprland Vulkan Setup Script for Arch Linux
+# VAAPI driver Intall Script for Arch Linux
 # ==============================================================================
-# This script automates the installation of VULKAN drivers
-# for use with Hyprland on Arch Linux, following the official Hyprland wiki.
+# This script automates the installation of Video Acceleration API drivers
+# for use with Hyprland on Arch Linux.
 #
-# Author: https://github.com/elbrodino inspired by Kn0ax
+# Author: https://github.com/elbrodino following https://github.com/PinheiroCosta
+# recommendations
 #
 # ==============================================================================
 
 # --- Listing all GPU to check for, with their plugin name ---
-# we're assuming they start with 'vulkan-'
 #
 
 # Driver packages per manufacturer
@@ -36,8 +36,9 @@ if [[ -z $VULKAN_DRIVER_PACKAGE ]]; then
   echo "No GPU detected"
   exit 1
 
-else
 # --- Checking installed package ---
+# Building a list of missing packages
+else
   declare -A ListToInstall
   for i in "${VULKAN_DRIVER_PACKAGE[@]}"; do
     echo "Checking if package is already installed: $i"
@@ -52,5 +53,4 @@ else
   if ! [[ -z ${ListToInstall} ]]; then #not empty
     sudo pacman -S --needed --noconfirm ${VULKAN_DRIVER_PACKAGE[@]}
   fi
-  #sudo pacman -S --needed --noconfirm ${VULKAN_DRIVER_PACKAGE[@]}
 fi
