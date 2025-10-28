@@ -1,12 +1,33 @@
 #!/bin/bash
 
+# The first argument is the theme name
+THEME_NAME="$1"
+
 # Change gnome modes
 if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
-  gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
-  gsettings set org.gnome.desktop.interface gtk-theme "Adwaita"
+  gsettings set org.gnome.desktop.interface color-scheme "default"
+  gsettings set org.gnome.desktop.interface gtk-theme "Colloid-Grey-Light"
 else
   gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"
-  gsettings set org.gnome.desktop.interface gtk-theme "Adwaita-dark"
+  gsettings set org.gnome.desktop.interface gtk-theme "Colloid-Grey-Dark"
+
+  if [[ "$THEME_NAME" == "dracula" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Dracula"
+  elif [[ "$THEME_NAME" == "catppuccin" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Catppuccin-Mauve-Dark"
+  elif [[ "$THEME_NAME" == "osaka-jade" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Osaka-Green-Dark"
+  elif [[ "$THEME_NAME" == "everforest" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Everforest-Grey-Dark"
+  elif [[ "$THEME_NAME" == "nord" ]]; then
+     gsettings set org.gnome.desktop.interface gtk-theme "Nordic"
+  elif [[ "$THEME_NAME" == "gruvbox" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Gruvbox-Grey-Dark"
+  elif [[ "$THEME_NAME" == "tokyo-night" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Tokyonight-Dark-Moon"
+  else
+    gsettings set org.gnome.desktop.interface gtk-theme "Catppuccin-Grey-Dark"
+  fi
 fi
 
 # Change gnome icon theme color
@@ -14,5 +35,5 @@ GNOME_ICONS_THEME=~/.config/omarchy/current/theme/icons.theme
 if [[ -f $GNOME_ICONS_THEME ]]; then
   gsettings set org.gnome.desktop.interface icon-theme "$(<$GNOME_ICONS_THEME)"
 else
-  gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue"
+  gsettings set org.gnome.desktop.interface icon-theme "Nordic-bluish"
 fi
