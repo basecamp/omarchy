@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Grokipedia
+Comment=Grokipedia - AI-Powered Encyclopedia
+Exec=omarchy-launch-webapp https://grokipedia.com/
+Terminal=false
+Type=Application
+Icon=grokipedia
+StartupNotify=true
+Categories=Network;Education;
