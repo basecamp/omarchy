@@ -50,7 +50,7 @@
     "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
     "tooltip-format": "Omarchy update available",
     "signal": 7,
-    "interval": 3600
+    "interval": 21600
   },
 
   "cpu": {
