@@ -438,6 +438,7 @@ show_update_hardware_menu() {
   *Audio*) present_terminal omarchy-restart-pipewire ;;
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
+  *GPU*) present_terminal omarchy-update-GPU ;;
   *) show_update_menu ;;
   esac
 }
