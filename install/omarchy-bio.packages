@@ -1,0 +1,40 @@
+# Omarchy biological software packages
+# Optional biology and bioinformatics tools
+# Note: Python and R are installed via 'omarchy-install-dev-env' (uses mise)
+
+# Programming Languages & Environments
+gcc-fortran
+
+# Genomics & Sequence Analysis
+samtools
+bcftools
+bedtools
+bowtie2
+bwa
+minimap2
+seqtk
+htslib
+
+# Quality Control & Preprocessing
+fastqc
+trimmomatic
+cutadapt
+
+# Phylogenetics & Alignment
+mafft
+muscle
+clustalw
+
+# Visualization
+igv
+
+# Structural Biology
+pymol
+
+# Data Processing & Utilities
+parallel
+bbmap
+
+# Compression utilities for bioinformatics
+pigz
+pbzip2

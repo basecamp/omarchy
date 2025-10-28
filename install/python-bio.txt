@@ -1,0 +1,42 @@
+# Python packages for biology and bioinformatics
+# Optional packages installed at user level
+
+# Core Scientific Computing
+numpy
+scipy
+pandas
+matplotlib
+seaborn
+plotly
+
+# Biology-specific
+biopython
+pysam
+scikit-bio
+pyvcf3
+pybedtools
+dendropy
+
+# Single-cell Analysis
+scanpy
+anndata
+
+# Machine Learning
+scikit-learn
+
+# Jupyter & Interactive Computing
+jupyter
+jupyterlab
+ipython
+
+# Image Analysis
+napari[all]
+scikit-image
+
+# Data Processing
+h5py
+tables
+openpyxl
+
+# Utilities
+tqdm

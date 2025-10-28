@@ -1,0 +1,28 @@
+# R packages for biology and bioinformatics
+# Optional packages installed at user level
+
+BiocManager
+tidyverse
+ggplot2
+dplyr
+tidyr
+readr
+stringr
+Biostrings
+GenomicRanges
+GenomicFeatures
+rtracklayer
+IRanges
+DESeq2
+edgeR
+limma
+tximport
+Seurat
+SingleCellExperiment
+scater
+phyloseq
+vegan
+devtools
+knitr
+rmarkdown
+data.table
