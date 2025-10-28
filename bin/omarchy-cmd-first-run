@@ -14,6 +14,6 @@ if [[ -f "$FIRST_RUN_MODE" ]]; then
   bash "$OMARCHY_PATH/install/first-run/gnome-theme.sh"
   sudo rm -f /etc/sudoers.d/first-run
 
-  bash "$OMARCHY_PATH/install/first-run/wifi.sh"
   bash "$OMARCHY_PATH/install/first-run/welcome.sh"
+  bash "$OMARCHY_PATH/install/first-run/wifi.sh"
 fi
