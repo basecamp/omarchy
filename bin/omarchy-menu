@@ -395,7 +395,7 @@ show_update_menu() {
   *Hardware*) show_update_hardware_menu ;;
   *Firmware*) present_terminal omarchy-update-firmware ;;
   *Timezone*) present_terminal omarchy-tz-select ;;
-  *Time*) present_terminal omarchy-reset-time ;;
+  *Time*) present_terminal omarchy-update-time ;;
   *Password*) show_update_password_menu ;;
   *) show_main_menu ;;
   esac
