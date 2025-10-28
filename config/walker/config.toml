@@ -46,7 +46,6 @@ default = [
     "menus:omarchy_system",
     "menus:omarchy_trigger",
     "menus:omarchy_update",
-    "menus:hyprland_keybindings"
 ]
 empty = ["menus:omarchy"]
 max_results = 50
