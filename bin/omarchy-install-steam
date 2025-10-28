@@ -1,5 +1,27 @@
 #!/bin/bash
 
+set -euo pipefail
+
 echo "Now pick dependencies matching your graphics card"
-sudo pacman -Syu --noconfirm steam
+
+if ! pacman -Si steam >/dev/null 2>&1; then
+  echo "Steam not available via pacman. Ensuring multilib repository is enabled..."
+  if grep -Eq '^[[:space:]]*#[[:space:]]*\[multilib\]' /etc/pacman.conf; then
+    sudo sed -i 's/^[[:space:]]*#[[:space:]]*\[multilib\]/[multilib]/' /etc/pacman.conf
+    sudo sed -i '/^\[multilib\]/{n;s/^[[:space:]]*#[[:space:]]*Include/Include/}' /etc/pacman.conf
+  elif ! grep -Eq '^\[multilib\]' /etc/pacman.conf; then
+    sudo bash -c 'printf "\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n" >> /etc/pacman.conf'
+  fi
+  sudo pacman -Sy
+fi
+
+if pacman -Si steam >/dev/null 2>&1; then
+  sudo pacman -Syu --noconfirm steam
+elif command -v yay >/dev/null 2>&1; then
+  yay -S --noconfirm steam
+else
+  echo "Steam is not available from configured repositories and no AUR helper (yay) was found." >&2
+  exit 1
+fi
+
 setsid gtk-launch steam >/dev/null 2>&1 &
