@@ -10,17 +10,18 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
   else
     sudo cp -f ~/.local/share/omarchy/default/pacman/pacman.conf /etc/pacman.conf
     sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist /etc/pacman.d/mirrorlist
+
+    # Add omarchy signing key
+
+    sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
+    sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
+
+    # Quick sync to make omarchy-keyring available
+    sudo pacman -Sy
+
+    # Install omarchy-keyring
+    yes 1 | sudo pacman -S --noconfirm --needed omarchy-keyring
   fi
-
-  # Add omarchy signing key
-  sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
-  sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
-
-  # Quick sync to make omarchy-keyring available
-  sudo pacman -Sy
-
-  # Install omarchy-keyring
-  yes 1 | sudo pacman -S --noconfirm --needed omarchy-keyring
 
   # Refresh all repos with retry logic
   echo "Syncing package databases..."
