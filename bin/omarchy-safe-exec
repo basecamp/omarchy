@@ -4,11 +4,13 @@
 safe_exec() {
     local cmd="$1"
     cmd=$(echo "$cmd" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    
     # Load environment if available
     [[ -f "$HOME/.profile" ]] && source "$HOME/.profile" >/dev/null 2>&1
     [[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc" >/dev/null 2>&1
-
+    
     # --- Specialized Omarchy Execution Handlers ---
+    
     # 1. Floating Terminal Wrappers
     if [[ "$cmd" =~ ^terminal[[:space:]](.+)$ ]]; then
         local inner_cmd="${BASH_REMATCH[1]}"
@@ -19,10 +21,12 @@ safe_exec() {
         fi
         return
     fi
+    
     if [[ "$cmd" =~ ^present_terminal[[:space:]](.+)$ ]]; then
         local inner_cmd="${BASH_REMATCH[1]}"
         local runner="setsid"
         command -v uwsm &>/dev/null && runner="setsid uwsm app --"
+        
         if command -v omarchy-show-logo &>/dev/null && command -v omarchy-show-done &>/dev/null; then
             $runner alacritty --class=Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; $inner_cmd; omarchy-show-done" >/dev/null 2>&1 &
         else
@@ -30,19 +34,21 @@ safe_exec() {
         fi
         return
     fi
-
+    
     # 2. Standard Package Installers
     if [[ "$cmd" =~ ^(install|aur_install)[[:space:]](.+)$ ]]; then
         local func="${BASH_REMATCH[1]}"
         local args="${BASH_REMATCH[2]}"
         local runner="setsid"
         command -v uwsm &>/dev/null && runner="setsid uwsm app --"
+        
         local final_cmd=""
         if [[ "$func" == "install" ]]; then
-             final_cmd="sudo pacman -S $args"
+            final_cmd="sudo pacman -S $args"
         elif [[ "$func" == "aur_install" ]]; then
-             final_cmd="yay -S $args"
+            final_cmd="yay -S $args"
         fi
+        
         if command -v omarchy-show-logo &>/dev/null && command -v omarchy-show-done &>/dev/null; then
             $runner alacritty --class=Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; $final_cmd; omarchy-show-done" >/dev/null 2>&1 &
         else
@@ -50,14 +56,47 @@ safe_exec() {
         fi
         return
     fi
-
-    # 3. Generic handlers
+    
+    # 2b. Menu script functions (install_and_launch variants)
+    if [[ "$cmd" =~ ^(install_and_launch|aur_install_and_launch|install_terminal|install_font)[[:space:]\(] ]] && [[ -f "$MENU_SCRIPT" ]]; then
+        setsid bash -c "
+            export OMARCHY_SKIP_MENU=1
+            source '$MENU_SCRIPT' 2>/dev/null
+            $cmd
+        " >/dev/null 2>&1 &
+        return
+    fi
+    
+    # 3. Editor opener
+    if [[ "$cmd" =~ ^open_in_editor[[:space:]](.+)$ ]]; then
+        local filepath="${BASH_REMATCH[1]}"
+        
+        # Extract just the filepath if there's a && command after it
+        if [[ "$filepath" =~ ^(.+)[[:space:]]?\&\&[[:space:]]?(.+)$ ]]; then
+            local file_part="${BASH_REMATCH[1]}"
+            local after_cmd="${BASH_REMATCH[2]}"
+            
+            setsid bash -c "
+                notify-send 'Editing config file' '$file_part'
+                omarchy-launch-editor '$file_part'
+                $after_cmd
+            " >/dev/null 2>&1 &
+        else
+            setsid bash -c "
+                notify-send 'Editing config file' '$filepath'
+                omarchy-launch-editor '$filepath'
+            " >/dev/null 2>&1 &
+        fi
+        return
+    fi
+    
+    # 4. Generic handlers
     if [[ "$cmd" == omarchy-launch-webapp* ]] || [[ "$cmd" == *"hyprpicker"* ]]; then
         [[ "$cmd" == *"hyprpicker"* ]] && pkill hyprpicker 2>/dev/null
         setsid bash -c "$cmd" >/dev/null 2>&1 &
         return
     fi
-
+    
     # Default execution
     setsid bash -c "$cmd" >/dev/null 2>&1 &
 }
