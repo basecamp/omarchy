@@ -7,6 +7,4 @@ This will add a config file to disable it:
 
 EOF
 
-if gum confirm "Disable nvim news alert?"; then
-  cp /usr/share/omarchy-nvim/config/lua/plugins/disable-news-alert.lua ~/.config/nvim/lua/plugins/disable-news-alert.lua
-fi
+cp /usr/share/omarchy-nvim/config/lua/plugins/disable-news-alert.lua ~/.config/nvim/lua/plugins/disable-news-alert.lua
