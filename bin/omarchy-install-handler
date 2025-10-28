@@ -1,48 +1,73 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-  echo "Usage: omarchy-install-handler omarchy://webappinstall?name=...&url=...&icon=..."
-  exit 1
+# Usage check
+if [[ $# -lt 1 ]]; then 
+    echo "Usage: omarchy-install-handler omarchy://webappinstall?name=...&url=...&icon=..."
+    exit 1
 fi
 
 URI="$1"
 
-case "$URI" in
-  omarchy://webappinstall*|omarchy://install*) ;;
-  *) echo "Unsupported URI"; exit 1 ;;
+# Validate URI format
+case "$URI" in 
+    omarchy://webappinstall*|omarchy://install*)
+        ;;
+    *)
+        echo "Unsupported URI format"
+        exit 1
+        ;;
 esac
 
+# URL decode function
 urldecode() {
-  local d="${1//+/ }"
-  printf '%b' "${d//%/\\x}"
+    local d="${1//+/ }"
+    printf '%b' "${d//%/\\x}"
 }
 
+# Parameter extraction function
 getp() {
-  local k="$1"
-  printf '%s' "$URI" | sed -n "s/.*[?&]${k}=\([^&]*\).*$/\1/p"
+    local k="$1"
+    printf '%s' "$URI" | sed -n "s/.*[?&]${k}=\([^&]*\).*$/\1/p"
 }
 
+# Extract parameters
 APP_NAME="$(urldecode "$(getp name)")"
 APP_URL="$(urldecode "$(getp url)")"
 ICON_REF="$(urldecode "$(getp icon)")"
 CUSTOM_EXEC="$(urldecode "$(getp exec)")"
 MIME_TYPES="$(urldecode "$(getp mimeTypes)")"
 
+# Validate required parameters
 if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_REF" ]]; then
-  echo "Missing: name,url,icon"
-  exit 1
+    echo "Missing required parameters: name, url, icon"
+    exit 1
 fi
 
-# Prefer PATH-resolved installer; fall back to local copies if present
-if command -v omarchy-webapp-install >/dev/null 2>&1; then
-  INSTALLER="omarchy-webapp-install"
-elif [[ -x "./omarchy-webapp-install" ]]; then
-  INSTALLER="./omarchy-webapp-install"
-elif [[ -x "./omarchy-webapp-install.txt" ]]; then
-  INSTALLER="./omarchy-webapp-install.txt"
-else
-  INSTALLER="omarchy-webapp-install"
-fi
+# Create safe filename from app name
+SAFE_NAME=$(echo "$APP_NAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
+DESKTOP_FILE="$HOME/.local/share/applications/${SAFE_NAME}.desktop"
 
-exec "$INSTALLER" "$APP_NAME" "$APP_URL" "$ICON_REF" "$CUSTOM_EXEC" "$MIME_TYPES"
+# Ensure applications directory exists
+mkdir -p "$HOME/.local/share/applications"
+
+# Create desktop entry
+cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Name=$APP_NAME
+Comment=Web application
+Exec=$CUSTOM_EXEC %u
+Icon=$ICON_REF
+Type=Application
+StartupNotify=true
+MimeType=$MIME_TYPES
+EOF
+
+# Make desktop entry executable
+chmod +x "$DESKTOP_FILE"
+
+# Update desktop database
+update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+
+echo "✅ Installed $APP_NAME successfully!"
+echo "Desktop entry created: $DESKTOP_FILE"
