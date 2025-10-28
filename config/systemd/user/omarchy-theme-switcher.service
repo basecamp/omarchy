@@ -1,0 +1,9 @@
+[Unit]
+Description=Automatically switch Omarchy themes
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/omarchy/bin/theme-switcher
+WorkingDirectory=%h
+StandardOutput=journal
+StandardError=journal

@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG="$HOME/.config/hypr/theme-switcher.conf"
+TIMER_PATH="$HOME/.config/systemd/user/omarchy-theme-switcher.timer"
+
+# --- Check for config file ---
+if [[ ! -f "$CONFIG" ]]; then
+    echo "No config file found at $CONFIG"
+    exit 1
+fi
+
+# --- Load config values safely ---
+mode=""
+interval=""
+while IFS='=' read -r key value; do
+    key=$(echo "$key" | xargs)
+    value=$(echo "$value" | xargs)
+    case "$key" in
+        mode) mode="$value" ;;
+        interval) interval="$value" ;;
+    esac
+done < <(grep -v '^#' "$CONFIG" | grep -E '^[a-zA-Z_]+=')
+
+# --- Validate config ---
+if [[ -z "$mode" ]]; then
+    echo "Invalid or missing 'mode' in $CONFIG" >&2
+    exit 1
+fi
+
+# --- Handle off mode ---
+if [[ "$mode" == "off" ]]; then
+    echo "Theme switching disabled."
+    exit 0
+fi
+
+# --- Validate required commands ---
+for cmd in omarchy-theme-next omarchy-theme-bg-next omarchy-theme-list; do
+    if ! command -v "$cmd" &>/dev/null; then
+        echo "Required command '$cmd' not found. Please install it." >&2
+        exit 1
+    fi
+done
+
+# --- Theme switching logic ---
+case "$mode" in
+    next)
+        echo "Switching to next theme..."
+        omarchy-theme-next
+        ;;
+    bg-next)
+        echo "Switching to next background..."
+        omarchy-theme-bg-next
+        ;;
+    random)
+        echo "Selecting a random theme..."
+        mapfile -t THEMES < <(omarchy-theme-list)
+        COUNT=${#THEMES[@]}
+        if (( COUNT == 0 )); then
+            echo "No themes found!" >&2
+            exit 1
+        fi
+        RAND_INDEX=$(( RANDOM % COUNT ))
+        SELECTED="${THEMES[$RAND_INDEX]}"
+        echo "Applying random theme: $SELECTED"
+        omarchy-theme-next "$SELECTED"
+        ;;
+    *)
+        echo "Invalid mode: $mode" >&2
+        exit 1
+        ;;
+esac
+
+# --- Interval handling ---
+case "$interval" in
+    min)   INTERVAL="1min" ;;
+    hour)  INTERVAL="1h" ;;
+    day)   INTERVAL="1d" ;;
+    week)  INTERVAL="1w" ;;
+    month) INTERVAL="30d" ;;
+    *)
+        INTERVAL="1h"   # default
+        echo "Unknown interval '$interval', defaulting to 1h."
+        ;;
+esac
+echo "Using interval: $INTERVAL"
+
+# --- Create systemd timer ---
+mkdir -p "$(dirname "$TIMER_PATH")"
+if [[ -f "$TIMER_PATH" ]]; then
+    cp "$TIMER_PATH" "${TIMER_PATH}.bak"
+    echo "Existing timer backed up to ${TIMER_PATH}.bak"
+fi
+
+cat > "$TIMER_PATH" <<EOF
+[Unit]
+Description=Timer for Omarchy theme switching
+
+[Timer]
+OnUnitActiveSec=$INTERVAL
+Persistent=true
+Unit=theme-switch.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# --- Reload and restart systemd timer ---
+systemctl --user daemon-reload
+systemctl --user restart theme-switch.timer
+echo "Systemd timer restarted successfully."

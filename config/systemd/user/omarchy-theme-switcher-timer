@@ -1,0 +1,12 @@
+[Unit]
+Description=Timer for Omarchy theme switching
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=1s
+Persistent=true
+Unit=theme-switch.service
+
+[Install]
+WantedBy=timers.target
