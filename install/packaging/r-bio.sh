@@ -32,11 +32,13 @@ install_safe <- function(pkg, bioc = FALSE) {
 }
 
 bioc_packages <- c("Biostrings", "GenomicRanges", "GenomicFeatures", "rtracklayer",
-                   "IRanges", "DESeq2", "edgeR", "limma", "tximport",
-                   "SingleCellExperiment", "scater", "phyloseq")
+                   "IRanges", "BSgenome", "SummarizedExperiment", "VariantAnnotation",
+                   "DESeq2", "edgeR", "limma", "tximport", "sva", "fgsea", "fishpond",
+                   "SingleCellExperiment", "scater", "phyloseq", "ComplexHeatmap",
+                   "clusterProfiler", "ChIPseeker")
 
 packages <- c("BiocManager", "tidyverse", "ggplot2", "dplyr", "tidyr", "readr",
-              "stringr", "Seurat", "vegan", "devtools", "knitr", "rmarkdown", "data.table")
+              "stringr", "Seurat", "monocle3", "vegan", "devtools", "knitr", "rmarkdown", "data.table")
 
 for (pkg in packages) {
   if (pkg %in% bioc_packages) {

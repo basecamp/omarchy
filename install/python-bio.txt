@@ -11,18 +11,25 @@ plotly
 
 # Biology-specific
 biopython
+biotite
 pysam
 scikit-bio
 pyvcf3
 pybedtools
 dendropy
+pyensembl
+pybiomart
+pyranges
 
 # Single-cell Analysis
 scanpy
 anndata
+muon
+squidpy
 
-# Machine Learning
+# Machine Learning & Drug Discovery
 scikit-learn
+deepchem
 
 # Jupyter & Interactive Computing
 jupyter
@@ -37,6 +44,11 @@ scikit-image
 h5py
 tables
 openpyxl
+cooler
+
+# Genomic Analysis
+gseapy
+pydeseq2
 
 # Utilities
 tqdm

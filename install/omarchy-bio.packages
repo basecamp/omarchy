@@ -24,12 +24,28 @@ cutadapt
 mafft
 muscle
 clustalw
+raxml
+
+# RNA-seq Analysis
+star-aligner
+salmon-bin
+kallisto
+hisat2
+
+# Variant Calling
+gatk
+freebayes
 
 # Visualization
 igv
 
 # Structural Biology
 pymol
+
+# Sequence Similarity & Assembly
+blast+
+jellyfish
+spades
 
 # Data Processing & Utilities
 parallel
