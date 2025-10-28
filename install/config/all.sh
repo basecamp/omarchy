@@ -25,7 +25,11 @@ run_logged $OMARCHY_INSTALL/config/hardware/printer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/usb-autosuspend.sh
 run_logged $OMARCHY_INSTALL/config/hardware/ignore-power-button.sh
 run_logged $OMARCHY_INSTALL/config/hardware/nvidia.sh
+<<<<<<< HEAD
 run_logged $OMARCHY_INSTALL/config/hardware/vulkan.sh
+=======
+run_logged $OMARCHY_INSTALL/config/hardware/VAAPI.sh
+>>>>>>> VAAPI2
 run_logged $OMARCHY_INSTALL/config/hardware/fix-f13-amd-audio-input.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-bcm43xx.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-apple-spi-keyboard.sh
