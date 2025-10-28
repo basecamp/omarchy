@@ -2,5 +2,5 @@ name = "hyprland_keybindings"
 name_pretty = "Hyprland keybindings"
 icon = "applications-other"
 lua = "hyprland_keybindings"
-# lua_cache = true
-action = "notify-send %VALUE%"
+-- ensure walker calls Action(), so do NOT set action = "%VALUE%"
+action = "%VALUE%"

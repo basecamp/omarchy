@@ -74,13 +74,6 @@ end
 function GetEntries()
 	local entries = {}
 	
-	-- Debug: Add a test entry first
-	table.insert(entries, {
-		Text = "DEBUG: Script is running",
-		Subtext = "Test entry",
-		Value = "test|||test",
-	})
-	
 	-- Build keycode cache
 	build_keymap_cache()
 	
@@ -159,34 +152,44 @@ function GetEntries()
 			
 			-- Only add if we have a valid key combo
 			if key_combo ~= "" and key_combo ~= " + " then
+				local value
+				if arg and arg ~= "" then
+					value = string.format("hyprctl dispatch %s '%s'", dispatcher, arg)
+				else
+					value = string.format("hyprctl dispatch %s", dispatcher)
+				end
+
 				table.insert(entries, {
 					Text = description,
 					Subtext = key_combo,
-					Value = dispatcher .. "|||" .. arg,
+					Value = value
 				})
 			end
+		
 		end
 	end
-	
-	-- Debug: Show how many matches we found
-	table.insert(entries, {
-		Text = "DEBUG: Found " .. match_count .. " bindings",
-		Subtext = "Parsed from hyprctl",
-		Value = "debug|||debug",
-	})
-	
+
 	return entries
 end
 
 function Action(entry)
-	local value = entry.Value
-	local dispatcher, arg = value:match("([^|]+)|||(.*)")
+    -- Split dispatcher and arg using our new separator
+    local dispatcher, arg = entry.Value:match("^(.-)###(.*)$")
 
-	if dispatcher then
-		if arg and arg ~= "" then
-			os.execute(string.format("hyprctl dispatch %s '%s'", dispatcher, arg))
-		else
-			os.execute(string.format("hyprctl dispatch %s", dispatcher))
-		end
-	end
+    if not dispatcher or dispatcher == "" then
+        return
+    end
+
+    if dispatcher == "test" or dispatcher == "error" or dispatcher == "debug" then
+        return
+    end
+
+    local cmd
+    if arg and arg ~= "" then
+        cmd = string.format("hyprctl dispatch %s '%s' 2>&1", dispatcher, arg)
+    else
+        cmd = string.format("hyprctl dispatch %s 2>&1", dispatcher)
+    end
+
+    os.execute(cmd)
 end

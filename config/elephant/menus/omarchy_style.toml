@@ -1,159 +1,160 @@
 name = "omarchy_style"
 name_pretty = "Style"
 icon = "preferences-desktop-theme"
+action = "%VALUE%"
 
 [[entries]]
 text = "Background"
-subtext = "Cycle to next wallpaper"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-bg-next'"}
+Subtext = "Cycle to next wallpaper"
+icon = "preferences-desktop-wallpaper"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-bg-next'"
 
 [[entries]]
 text = "Hyprland"
-subtext = "Edit appearance settings"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/looknfeel.conf'"}
+Subtext = "Edit appearance settings"
+icon = "preferences-desktop-theme"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/looknfeel.conf'"
 
 [[entries]]
 text = "Screensaver"
-subtext = "Customize screensaver text"
+Subtext = "Customize screensaver text"
 icon = "preferences-desktop-screensaver"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/omarchy/branding/screensaver.txt'"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/omarchy/branding/screensaver.txt'"
 
 [[entries]]
 text = "About"
-subtext = "Customize about text"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/omarchy/branding/about.txt'"}
+Subtext = "Customize about text"
+icon = "help-about"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/omarchy/branding/about.txt'"
 
 [[entries]]
 text = "Catppuccin"
-subtext = "Warm dark pastel theme"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Catppuccin'\\'''"}
+Subtext = "Warm dark pastel theme"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Catppuccin'\\'''
 
 [[entries]]
 text = "Catppuccin Latte"
-subtext = "Warm light pastel theme"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Catppuccin Latte'\\'''"}
+Subtext = "Warm light pastel theme"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Catppuccin Latte'\\'''
 
 [[entries]]
 text = "Everforest"
-subtext = "Comfortable green forest theme"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Everforest'\\'''"}
+Subtext = "Comfortable green forest theme"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Everforest'\\'''
 
 [[entries]]
 text = "Flexoki Light"
-subtext = "Organic light color scheme"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Flexoki Light'\\'''"}
+Subtext = "Organic light color scheme"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Flexoki Light'\\'''
 
 [[entries]]
 text = "Gruvbox"
-subtext = "Retro groove color scheme"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Gruvbox'\\'''"}
+Subtext = "Retro groove color scheme"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Gruvbox'\\'''
 
 [[entries]]
 text = "Kanagawa"
-subtext = "Dark blueish theme inspired by Japan"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Kanagawa'\\'''"}
+Subtext = "Dark blueish theme inspired by Japan"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Kanagawa'\\'''
 
 [[entries]]
 text = "Matte Black"
-subtext = "Pure dark minimalist theme"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Matte Black'\\'''"}
+Subtext = "Pure dark minimalist theme"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Matte Black'\\'''
 
 [[entries]]
 text = "Nord"
-subtext = "Arctic inspired color palette"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Nord'\\'''"}
+Subtext = "Arctic inspired color palette"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Nord'\\'''
 
 [[entries]]
 text = "Osaka Jade"
-subtext = "Elegant jade green theme"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Osaka Jade'\\'''"}
+Subtext = "Elegant jade green theme"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Osaka Jade'\\'''
 
 [[entries]]
 text = "Ristretto"
-subtext = "Rich espresso color scheme"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Ristretto'\\'''"}
+Subtext = "Rich espresso color scheme"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Ristretto'\\'''
 
 [[entries]]
 text = "Rose Pine"
-subtext = "Natural pine and rose theme"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Rose Pine'\\'''"}
+Subtext = "Natural pine and rose theme"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Rose Pine'\\'''
 
 [[entries]]
 text = "Tokyo Night"
-subtext = "Vibrant night Tokyo cityscape"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Tokyo Night'\\'''"}
+Subtext = "Vibrant night Tokyo cityscape"
+icon = "preferences-color"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Tokyo Night'\\'''
 
 [[entries]]
 text = "Adwaita Mono"
-subtext = "GNOME default monospace font"
-icon = "applications-science"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''Adwaita Mono'\\'''"}
+Subtext = "GNOME default monospace font"
+icon = "font-x-generic"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''Adwaita Mono'\\'''
 
 [[entries]]
 text = "CaskaydiaMono Nerd Font"
-subtext = "Cascadia Code with icon glyphs"
+Subtext = "Cascadia Code with icon glyphs"
 icon = "preferences-desktop-font"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''CaskaydiaMono Nerd Font'\\'''"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''CaskaydiaMono Nerd Font'\\'''
 
 [[entries]]
 text = "CaskaydiaMono Nerd Font Mono"
-subtext = "Fixed-width Cascadia with icons"
+Subtext = "Fixed-width Cascadia with icons"
 icon = "preferences-desktop-font"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''CaskaydiaMono Nerd Font Mono'\\'''"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''CaskaydiaMono Nerd Font Mono'\\'''
 
 [[entries]]
 text = "iA Writer Mono S"
-subtext = "Clean writing-focused font"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''iA Writer Mono S'\\'''"}
+Subtext = "Clean writing-focused font"
+icon = "font-x-generic"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''iA Writer Mono S'\\'''
 
 [[entries]]
 text = "JetBrainsMono Nerd Font"
-subtext = "Developer-focused with icon glyphs"
+Subtext = "Developer-focused with icon glyphs"
 icon = "preferences-desktop-font"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMono Nerd Font'\\'''"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMono Nerd Font'\\'''
 
 [[entries]]
 text = "JetBrainsMono Nerd Font Mono"
-subtext = "Fixed-width JetBrains with icons"
+Subtext = "Fixed-width JetBrains with icons"
 icon = "preferences-desktop-font"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMono Nerd Font Mono'\\'''"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMono Nerd Font Mono'\\'''
 
 [[entries]]
 text = "JetBrainsMonoNL Nerd Font"
-subtext = "No ligatures JetBrains with icons"
+Subtext = "No ligatures JetBrains with icons"
 icon = "preferences-desktop-font"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMonoNL Nerd Font'\\'''"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMonoNL Nerd Font'\\'''
 
 [[entries]]
 text = "JetBrainsMonoNL Nerd Font Mono"
-subtext = "Fixed no-ligature JetBrains + icons"
+Subtext = "Fixed no-ligature JetBrains + icons"
 icon = "preferences-desktop-font"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMonoNL Nerd Font Mono'\\'''"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMonoNL Nerd Font Mono'\\'''
 
 [[entries]]
 text = "Liberation Mono"
-subtext = "Free Courier New alternative"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''Liberation Mono'\\'''"}
+Subtext = "Free Courier New alternative"
+icon = "font-x-generic"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''Liberation Mono'\\'''
 
 [[entries]]
 text = "Nimbus Mono PS"
-subtext = "Classic PostScript monospace"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''Nimbus Mono PS'\\'''"}
+Subtext = "Classic PostScript monospace"
+icon = "font-x-generic"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''Nimbus Mono PS'\\'''
