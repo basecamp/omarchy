@@ -23,23 +23,16 @@ The biology tools can be installed at any time, either during initial Omarchy se
 To install all biology tools on an existing Omarchy system:
 
 ```bash
-source ~/.local/share/omarchy/install/helpers/all.sh
-run_logged ~/.local/share/omarchy/install/packaging/bio-all.sh
+omarchy-install-biology
 ```
 
-This will install system packages, Python libraries, and R packages in sequence. If Python or R are not already set up, they will be installed automatically using the standard Omarchy development environment tooling.
-
-### Installing During Initial Setup
-
-To include biology support when first installing Omarchy, edit `~/.local/share/omarchy/install/packaging/all.sh` and add this line at the end:
-
-```bash
-run_logged $OMARCHY_INSTALL/packaging/bio-all.sh
-```
+This will install system packages, Python libraries, and R packages in sequence. If Python or R are not already set up, they will be installed automatically using the standard Omarchy development environment tooling (`omarchy-install-dev-env python` and `omarchy-install-dev-env r`).
 
 ### Partial Installation
 
-You can install individual components separately. For system packages only:
+You can install individual components separately if you only need certain tools.
+
+For system packages only:
 
 ```bash
 source ~/.local/share/omarchy/install/helpers/all.sh

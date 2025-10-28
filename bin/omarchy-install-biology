@@ -1,0 +1,19 @@
+#!/bin/bash
+
+echo "Installing biology and bioinformatics support..."
+echo ""
+echo "This will install:"
+echo "  - System packages (samtools, bcftools, bedtools, etc.)"
+echo "  - Python packages (biopython, scanpy, etc.)"
+echo "  - R packages (Bioconductor, tidyverse, etc.)"
+echo ""
+
+# Source the helpers
+source ~/.local/share/omarchy/install/helpers/all.sh
+
+# Run the biology installation
+run_logged ~/.local/share/omarchy/install/packaging/bio-all.sh
+
+echo ""
+echo "Biology tools installed successfully!"
+echo "See docs/BIOLOGY.md for usage information."
