@@ -8,11 +8,14 @@ echo "  - Python packages (biopython, scanpy, etc.)"
 echo "  - R packages (Bioconductor, tidyverse, etc.)"
 echo ""
 
+# Set OMARCHY_INSTALL environment variable
+export OMARCHY_INSTALL="$HOME/.local/share/omarchy/install"
+
 # Source the helpers
-source ~/.local/share/omarchy/install/helpers/all.sh
+source $OMARCHY_INSTALL/helpers/all.sh
 
 # Run the biology installation
-run_logged ~/.local/share/omarchy/install/packaging/bio-all.sh
+run_logged $OMARCHY_INSTALL/packaging/bio-all.sh
 
 echo ""
 echo "Biology tools installed successfully!"
