@@ -24,6 +24,7 @@ docker-buildx
 docker-compose
 dust
 evince
+expac
 eza
 fastfetch
 fcitx5
@@ -54,6 +55,7 @@ imagemagick
 impala
 imv
 inetutils
+inxi
 iwd
 jq
 kdenlive
@@ -106,6 +108,7 @@ ufw
 unzip
 uwsm
 waybar
+wayfreeze
 whois
 wireless-regdb
 wiremix
