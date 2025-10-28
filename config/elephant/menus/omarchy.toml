@@ -2,6 +2,7 @@
 name = "omarchy"
 name_pretty = "Omarchy"
 icon = "applications-system"
+action = "%VALUE%"
 
 [[entries]]
 text = "Learn"
@@ -40,8 +41,8 @@ submenu = "omarchy_update"
 
 [[entries]]
 text = "About"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-about'"}
+icon = "help-about"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-about'"
 
 [[entries]]
 text = "Keybindings"

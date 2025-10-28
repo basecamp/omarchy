@@ -1,39 +1,40 @@
 name = "omarchy_learn"
 name_pretty = "Learn"
 icon = "help-browser"
+action = "%VALUE%"
 
 [[entries]]
 text = "Keybindings"
 Subtext = "View keyboard shortcuts"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-menu-keybindings'"}
+icon = "preferences-desktop-keyboard-shortcuts"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-menu-keybindings'"
 
 [[entries]]
 text = "Omarchy"
 Subtext = "Official Omarchy manual"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://learn.omacom.io/2/the-omarchy-manual'"}
+icon = "help-contents"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://learn.omacom.io/2/the-omarchy-manual'"
 
 [[entries]]
 text = "Hyprland"
 Subtext = "Hyprland compositor wiki"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://wiki.hypr.land/'"}
+icon = "video-display"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://wiki.hypr.land/'"
 
 [[entries]]
 text = "Arch"
 Subtext = "Arch Linux documentation"
-icon = "package"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://wiki.archlinux.org/title/Main_page'"}
+icon = "system-help"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://wiki.archlinux.org/title/Main_page'"
 
 [[entries]]
 text = "Bash"
 Subtext = "Bash scripting cheat sheet"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://devhints.io/bash'"}
+icon = "utilities-terminal"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://devhints.io/bash'"
 
 [[entries]]
 text = "Neovim"
 Subtext = "LazyVim keybindings reference"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://www.lazyvim.org/keymaps'"}
+icon = "accessories-text-editor"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-webapp https://www.lazyvim.org/keymaps'"

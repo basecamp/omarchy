@@ -1,33 +1,34 @@
 name = "omarchy_system"
 name_pretty = "System"
 icon = "system-shutdown"
+action = "%VALUE%"
 
 [[entries]]
 text = "Lock"
 Subtext = "Lock the screen"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-lock-screen'"}
+icon = "system-lock-screen"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-lock-screen'"
 
 [[entries]]
 text = "Screensaver"
 Subtext = "Activate screensaver"
 icon = "preferences-desktop-screensaver"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-screensaver force'"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-screensaver force'"
 
 [[entries]]
 text = "Suspend"
 Subtext = "Sleep mode to save power"
 icon = "system-suspend"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'systemctl suspend'"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'systemctl suspend'"
 
 [[entries]]
 text = "Restart"
 Subtext = "Reboot the system"
 icon = "system-reboot"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-state clear re*-required && systemctl reboot --no-wall'"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-state clear re*-required && systemctl reboot --no-wall'"
 
 [[entries]]
 text = "Shutdown"
 Subtext = "Power off the system"
 icon = "system-shutdown"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-state clear re*-required && systemctl poweroff --no-wall'"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-state clear re*-required && systemctl poweroff --no-wall'"

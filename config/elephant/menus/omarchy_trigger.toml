@@ -2,93 +2,94 @@
 name = "omarchy_trigger"
 name_pretty = "Trigger"
 icon = "media-record"
+action = "%VALUE%"
 
 [[entries]]
 text = "Editing"
 Subtext = "Screenshot for editing"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenshot smart'"}
+icon = "camera-photo"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenshot smart'"
 
 [[entries]]
 text = "Clipboard"
 Subtext = "Screenshot to clipboard"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenshot smart clipboard'"}
+icon = "edit-copy"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenshot smart clipboard'"
 
 [[entries]]
 text = "Region"
 Subtext = "Record selected area"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord'"}
+icon = "media-record"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord'"
 
 [[entries]]
 text = "Region + Audio"
 Subtext = "Record area with sound"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord region --with-audio'"}
+icon = "audio-input-microphone"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord region --with-audio'"
 
 [[entries]]
 text = "Display"
 Subtext = "Record entire screen"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord output'"}
+icon = "video-display"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord output'"
 
 [[entries]]
 text = "Display + Audio"
 Subtext = "Record screen with sound"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord output --with-audio'"}
+icon = "audio-input-microphone"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord output --with-audio'"
 
 [[entries]]
 text = "Display + Webcam"
 Subtext = "Record screen with camera overlay"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord output --with-audio --with-webcam'"}
+icon = "camera-web"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-cmd-screenrecord output --with-audio --with-webcam'"
 
 [[entries]]
 text = "Color"
 Subtext = "Pick color from screen"
 icon = "color-picker"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'pkill hyprpicker || hyprpicker -a'"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'pkill hyprpicker || hyprpicker -a'"
 
 [[entries]]
 text = "Clipboard"
 Subtext = "Share clipboard contents"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share clipboard'"}
+icon = "edit-paste"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share clipboard'"
 
 [[entries]]
 text = "File"
 Subtext = "Share a file"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share file'"}
+icon = "document-send"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share file'"
 
 [[entries]]
 text = "Folder"
 Subtext = "Share a folder"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share folder'"}
+icon = "folder-open"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share folder'"
 
 [[entries]]
 text = "Screensaver"
 Subtext = "Toggle screensaver on/off"
 icon = "preferences-desktop-screensaver"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-screensaver'"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-screensaver'"
 
 [[entries]]
 text = "Nightlight"
 Subtext = "Toggle night light mode"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-nightlight'"}
+icon = "night-light"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-nightlight'"
 
 [[entries]]
 text = "Idle"
 Subtext = "Toggle idle detection"
-icon = "applications-other"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-idle'"}
+icon = "appointment-soon"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-idle'"
 
 [[entries]]
 text = "Bar"
 Subtext = "Toggle status bar visibility"
 icon = "preferences-desktop"
-actions = {"pick" = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-waybar'"}
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-toggle-waybar'"
