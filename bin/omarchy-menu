@@ -232,7 +232,7 @@ show_setup_security_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming\n󰣇  Hacking") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -245,6 +245,7 @@ show_install_menu() {
   *AI*) show_install_ai_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm install" ;;
   *Gaming*) show_install_gaming_menu ;;
+  *Hacking*) show_install_hacking_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -307,6 +308,31 @@ show_install_gaming_menu() {
   *Minecraft*) aur_install_and_launch "Minecraft [AUR]" "minecraft-launcher" "minecraft-launcher" ;;
   *) show_install_menu ;;
   esac
+}
+
+show_install_hacking_menu(){
+  case $(menu "Install" "󰣇  Black-Arch Repository\n󰣇  BlackArch WebApp\n󰣇  BlackArch Recon\n󰣇  BlackArch Exploitation\n󰣇  BlackArch Complete (~9GB)\n  Metasploit\n  Nmap\n  Wireshark\n Burpsuite") in
+    *"Black-Arch Repository"*) present_terminal "omarchy-install-blackarch" ;;
+    *"BlackArch WebApp"*) install_blackarch_group "BlackArch WebApp" "blackarch-webapp" ;;
+    *"BlackArch Recon"*) install_blackarch_group "BlackArch Recon" "blackarch-recon" ;;
+    *"BlackArch Exploitation"*) install_blackarch_group "BlackArch Exploitation" "blackarch-exploitation" ;;
+    *"BlackArch Complete"*) install_blackarch_group "BlackArch Complete" "blackarch" ;;
+    *Metasploit*) install "Metasploit" "metasploit" ;;
+    *Nmap*) install "Nmap" "nmap" ;;
+    *Burpsuite*) install "Burpsuite" "burpsuite" ;;
+    *Wireshark*) install "Wireshark" "wireshark-qt" ;;
+    *) show_install_menu ;;
+  esac
+}
+
+install_blackarch_group(){
+  local name=$1
+  local group=$2
+  if ! pacman-key --list-sigs 2>/dev/null | grep -q "BlackArch Linux"; then
+    notify-send "BlackArch Not Configured" "Please install Black-Arch Repository first" -u critical
+    return 1
+  fi
+  install "$name" "$group"
 }
 
 show_install_style_menu() {
