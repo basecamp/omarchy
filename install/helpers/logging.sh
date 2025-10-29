@@ -44,7 +44,9 @@ start_log_output() {
 
       printf "${ANSI_RESTORE_CURSOR}%b" "$output"
 
-      sleep 0.1
+      # Use bash built-in read with timeout instead of external sleep command
+      # This prevents "command not found" errors when coreutils is being upgraded
+      read -t 0.1 -N 1 2>/dev/null || true
     done
   ) &
   monitor_pid=$!
