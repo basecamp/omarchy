@@ -6,20 +6,22 @@
 # This script automates the installation of GPU drivers (Vulkan & VAAPI)
 # for use with Hyprland on Arch Linux, following the official Hyprland wiki.
 #
-# Author: https://github.com/elbrodino inspired by Kn0ax
+# Author: https://github.com/elbrodino
 #
 # ==============================================================================
 
 # --- Listing all GPU to check for, with their plugin name ---
 # we're assuming they start with 'vulkan-'
 #
-GPUs=("Intel" "AMD" "Apple" "NVIDIA")
+GPUs=("Intel" "AMD" "NVIDIA")
 
+# Vulkan drivers names
 declare -A VulkanDriverNames
 VulkanDriverNames[Intel]="vulkan-intel"
 VulkanDriverNames[AMD]="vulkan-radeon"
-#VulkanDriverNames[Apple]="asahi"
 VulkanDriverNames[NVIDIA]="vulkan-nouveau"
+
+# VAAPI driver names
 declare -A VAAPIDriverNames
 VAAPIDriverNames[Intel]="intel-media-driver"
 VAAPIDriverNames[AMD]="libva-mesa-driver mesa-vdpau"
@@ -41,5 +43,8 @@ for i in "${!VulkanDriverNames[@]}"; do
   fi
 done
 
-omarchy-launch-floating-terminal-with-presentation
-sudo pacman -S --noconfirm ${DriversToInstall[@]}
+if (sudo pacman -Qi ${DriversToInstall[@]} >/dev/null); then
+  echo "Drivers ${DriversToInstall[@]}already installed"
+else
+  sudo pacman -S --noconfirm ${DriversToInstall[@]}
+fi
