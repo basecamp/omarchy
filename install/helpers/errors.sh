@@ -141,6 +141,13 @@ catch_errors() {
     ERROR_HANDLING=true
   fi
 
+  # Disable set -e and ERR trap inside error handler to prevent recursive traps
+  # Commands inside catch_errors may fail (e.g., tail on missing log file)
+  # and we don't want those failures to trigger ERR trap again
+  # The -E flag in set -eE makes traps inherit, so we must remove the trap itself
+  set +e
+  trap - ERR
+
   stop_log_output
   restore_outputs
 
@@ -435,6 +442,12 @@ catch_errors() {
       ;;
     esac
   done
+
+  # If we somehow exit the while loop without explicitly exiting,
+  # we MUST exit here to prevent the script from continuing.
+  # With set -e and ERR trap, returning from catch_errors() allows
+  # the script to continue to the next command, causing cascading failures.
+  exit 1
 }
 
 # Exit handler - ensures cleanup happens on any exit
