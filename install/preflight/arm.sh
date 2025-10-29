@@ -15,15 +15,3 @@ if [[ -f "$envs_file" ]]; then
     fi
   fi
 fi
-
-# Patch looknfeel.conf for aarch64 - comment out unsupported text_color_inactive option
-# Once Hyprland builds an ARM compatible v0.50+ version that adds support for this, patch can be removed
-looknfeel_file="$HOME/.local/share/omarchy/default/hypr/looknfeel.conf"
-if [[ -f "$looknfeel_file" ]]; then
-  # Check if text_color_inactive is still active (not commented)
-  if grep -q "^[[:space:]]*text_color_inactive" "$looknfeel_file"; then
-    echo "Patching looknfeel.conf for aarch64..."
-    # Comment out text_color_inactive line (not supported on ARM Hyprland)
-    sed -i 's/^[[:space:]]*text_color_inactive/        # text_color_inactive/' "$looknfeel_file"
-  fi
-fi
