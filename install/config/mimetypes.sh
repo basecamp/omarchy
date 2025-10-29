@@ -36,3 +36,6 @@ xdg-mime default mpv.desktop application/ogg
 
 # Use Hey for mailto: links
 xdg-mime default HEY.desktop x-scheme-handler/mailto
+
+# Handle custom Omarchy installer links
+xdg-mime default omarchy-install-handler.desktop x-scheme-handler/omarchy
