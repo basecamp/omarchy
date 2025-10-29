@@ -7,7 +7,7 @@ trap 'echo ""; echo -e "\033[0;31mSomething went wrong during the update!\n\nPle
 gum style --border normal --border-foreground 6 --padding "1 2" --margin "1 0" \
   "Ready to update Omarchy?" \
   "" \
-  "• You cannot stop the update once you start!" \
+  "• Avoid closing this terminal during the update" \
   "• Make sure you're not on battery power or have sufficient charge"
 
 if ! gum confirm --default=false "Continue with update?"; then
