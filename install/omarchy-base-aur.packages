@@ -1,7 +1,10 @@
 # AUR packages
 # Installed via omarchy-aur-install (with GitHub mirror fallback)
 
+# Hyprland ecosystem tools (work with both hyprland and hyprland-git)
+hyprshade
 aether
+
 elephant
 elephant-bluetooth
 elephant-calc
