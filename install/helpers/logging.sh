@@ -11,6 +11,10 @@ start_log_output() {
   printf $ANSI_HIDE_CURSOR
 
   (
+    # Disable all traps in background monitor to prevent duplicate error handling
+    # when this process is killed during error cleanup
+    trap - ERR INT TERM EXIT
+
     local log_lines=20
     local max_line_width=$((LOGO_WIDTH - 4))
 
