@@ -23,8 +23,10 @@ else
      gsettings set org.gnome.desktop.interface gtk-theme "Nordic"
   elif [[ "$THEME_NAME" == "gruvbox" ]]; then
     gsettings set org.gnome.desktop.interface gtk-theme "Gruvbox-Grey-Dark"
+  elif [[ "$THEME_NAME" == "kanagawa" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Kanagawa-Grey-Dark"
   elif [[ "$THEME_NAME" == "tokyo-night" ]]; then
-    gsettings set org.gnome.desktop.interface gtk-theme "Tokyonight-Dark-Moon"
+    gsettings set org.gnome.desktop.interface gtk-theme "Tokyonight-Dark"
   else
     gsettings set org.gnome.desktop.interface gtk-theme "Catppuccin-Grey-Dark"
   fi
