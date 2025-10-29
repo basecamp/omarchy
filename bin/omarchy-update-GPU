@@ -48,3 +48,5 @@ if (sudo pacman -Qi ${DriversToInstall[@]} >/dev/null); then
 else
   sudo pacman -S --noconfirm ${DriversToInstall[@]}
 fi
+
+omarchy-show-done
