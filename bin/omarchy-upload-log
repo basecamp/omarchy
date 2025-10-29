@@ -163,11 +163,15 @@ CURL_EXIT=$?
 if [ $CURL_EXIT -eq 28 ]; then
   print_msg "Error: Upload timed out after 60 seconds"
   print_msg "Log file may be too large. Try: omarchy-upload-log this-boot"
-  exit 1
+  echo
+  read -p "Press Enter to continue..."
+  exit 0
 elif [ $CURL_EXIT -ne 0 ]; then
   print_msg "Error: Upload failed (curl exit code: $CURL_EXIT)"
   print_msg "Check network connection or try again later"
-  exit 1
+  echo
+  read -p "Press Enter to continue..."
+  exit 0
 fi
 
 if [ -n "$URL" ] && [[ "$URL" =~ ^https?:// ]]; then
@@ -180,8 +184,12 @@ if [ -n "$URL" ] && [[ "$URL" =~ ^https?:// ]]; then
   print_msg "  -----------------------"
   echo
   print_msg "This link will expire in 24 hours."
+  echo
+  read -p "Press Enter to continue..."
 else
   print_msg "Error: Invalid response from server"
   print_msg "Response: $URL"
-  exit 1
+  echo
+  read -p "Press Enter to continue..."
+  exit 0
 fi
