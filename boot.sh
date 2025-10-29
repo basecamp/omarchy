@@ -86,29 +86,30 @@ if [[ -n "$OMARCHY_ARM" ]]; then
   fi
 fi
 
-# Sync package database first to ensure we have current package versions
-# This prevents 404 errors when trying to install git and less
+# Upgrade system packages first to prevent library version mismatches
+# Using -Syu instead of -Sy prevents partial upgrades which cause errors like:
+# "git: /usr/lib/libpcre2-8.so.0: no version information available"
 echo
-echo "Syncing package database..."
+echo "Upgrading system packages..."
 sync_attempts=0
 max_sync_attempts=3
 sync_success=false
 
 while [ $sync_attempts -lt $max_sync_attempts ]; do
-  if sudo pacman -Sy --noconfirm 2>&1; then
+  if sudo pacman -Syu --noconfirm 2>&1; then
     sync_success=true
     break
   fi
   sync_attempts=$((sync_attempts + 1))
   if [ $sync_attempts -lt $max_sync_attempts ]; then
-    echo "Database sync failed (attempt $sync_attempts/$max_sync_attempts), retrying in 3 seconds..."
+    echo "System upgrade failed (attempt $sync_attempts/$max_sync_attempts), retrying in 3 seconds..."
     sleep 3
   fi
 done
 
 if [ "$sync_success" = false ]; then
   echo
-  echo "ERROR: Failed to sync package database after $max_sync_attempts attempts"
+  echo "ERROR: Failed to upgrade system packages after $max_sync_attempts attempts"
   echo "This may be due to slow/unreachable mirrors or network issues."
   echo "Please check your network connection and try again."
   exit 1
