@@ -15,8 +15,6 @@
 #
 GPUs=("Intel" "AMD" "Apple" "NVIDIA")
 
-echo "GPUs : ${GPUs[@]}"
-
 declare -A VulkanDriverNames
 VulkanDriverNames[Intel]="vulkan-intel"
 VulkanDriverNames[AMD]="vulkan-radeon"
@@ -32,9 +30,12 @@ declare -A DriversToInstall
 # --- GPU Detection --
 echo "Checking GPU ..."
 
+lspci_txt=$(lspci)
+# echo "lspci_txt:"
+# echo "$lspci_txt"
 for i in "${!VulkanDriverNames[@]}"; do
-  if lspci | grep -i "Display controller: $i" >/dev/null ||
-    lspci | grep -i "VGA compatible controller: $i" >/dev/null; then
+  if echo $lspci_txt | grep -i "Display controller: $i" >/dev/null ||
+    echo $lspci_txt | grep -i "VGA compatible controller: $i" >/dev/null; then
     DriversToInstall+="${VulkanDriverNames[$i]} "
     DriversToInstall+="${VAAPIDriverNames[$i]} "
   fi
