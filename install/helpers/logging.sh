@@ -134,6 +134,10 @@ run_logged() {
 
   # Use bash -c to create a clean subshell, preserving critical environment variables
   bash -c "
+    # Disable error trap in subshell to prevent duplicate error display
+    # Parent shell will handle error display, subshell just logs and exits
+    trap - ERR INT TERM EXIT
+
     export OMARCHY_ARM='$OMARCHY_ARM'
     export ASAHI_ALARM='$ASAHI_ALARM'
     export OMARCHY_INSTALL='$OMARCHY_INSTALL'
