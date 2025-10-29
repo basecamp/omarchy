@@ -106,18 +106,7 @@ if screenrecording_active; then
 elif [[ "$SCOPE" == "output" ]]; then
   [[ "$WEBCAM" == "true" ]] && start_webcam_overlay
 
-  if ! output=$(slurp -o -f "%o"); then
-    [[ "$WEBCAM" == "true" ]] && cleanup_webcam
-    exit 1
-  fi
-
-  if [[ -z "$output" ]]; then
-    notify-send "Error" "Could not detect monitor" -u critical
-    [[ "$WEBCAM" == "true" ]] && cleanup_webcam
-    exit 1
-  fi
-
-  start_screenrecording "$output"
+  start_screenrecording "screen"
 else
   [[ "$WEBCAM" == "true" ]] && start_webcam_overlay
 
