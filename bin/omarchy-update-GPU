@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# ==============================================================================
+# GPU driver update Script for Arch Linux
+# ==============================================================================
+# This script automates the installation of GPU drivers (Vulkan & VAAPI)
+# for use with Hyprland on Arch Linux, following the official Hyprland wiki.
+#
+# Author: https://github.com/elbrodino inspired by Kn0ax
+#
+# ==============================================================================
+
+# --- Listing all GPU to check for, with their plugin name ---
+# we're assuming they start with 'vulkan-'
+#
+GPUs=("Intel" "AMD" "Apple" "NVIDIA")
+
+echo "GPUs : ${GPUs[@]}"
+
+declare -A VulkanDriverNames
+VulkanDriverNames[Intel]="vulkan-intel"
+VulkanDriverNames[AMD]="vulkan-radeon"
+#VulkanDriverNames[Apple]="asahi"
+VulkanDriverNames[NVIDIA]="vulkan-nouveau"
+declare -A VAAPIDriverNames
+VAAPIDriverNames[Intel]="intel-media-driver"
+VAAPIDriverNames[AMD]="libva-mesa-driver mesa-vdpau"
+VAAPIDriverNames[NVIDIA]="libva-nvidia-driver"
+
+declare -A DriversToInstall
+
+# --- GPU Detection --
+echo "Checking GPU ..."
+
+for i in "${!VulkanDriverNames[@]}"; do
+  if lspci | grep -i "Display controller: $i" >/dev/null ||
+    lspci | grep -i "VGA compatible controller: $i" >/dev/null; then
+    DriversToInstall+="${VulkanDriverNames[$i]} "
+    DriversToInstall+="${VAAPIDriverNames[$i]} "
+  fi
+done
+
+omarchy-launch-floating-terminal-with-presentation
+sudo pacman -S --noconfirm ${DriversToInstall[@]}
