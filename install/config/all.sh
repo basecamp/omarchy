@@ -3,6 +3,7 @@ run_logged $OMARCHY_INSTALL/config/theme.sh
 run_logged $OMARCHY_INSTALL/config/branding.sh
 run_logged $OMARCHY_INSTALL/config/git.sh
 run_logged $OMARCHY_INSTALL/config/gpg.sh
+run_logged $OMARCHY_INSTALL/config/hyprlock-pam.sh
 run_logged $OMARCHY_INSTALL/config/timezones.sh
 run_logged $OMARCHY_INSTALL/config/increase-sudo-tries.sh
 run_logged $OMARCHY_INSTALL/config/increase-lockout-limit.sh
