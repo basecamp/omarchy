@@ -1,0 +1,47 @@
+#!/bin/bash
+if ! pacman-key --list-sigs | grep -q "BlackArch Linux"; then
+    echo "Importing BlackArch strap..."
+    curl -o /tmp/strap.sh https://blackarch.org/strap.sh
+    # Verify the SHA1 sum
+    if echo e26445d34490cc06bd14b51f9924debf569e0ecb /tmp/strap.sh | sha1sum -c; then
+        echo "SHA1 sum verified successfully."
+        chmod +x /tmp/strap.sh
+        sudo /tmp/strap.sh
+        sudo pacman -Syu
+    else
+        echo "SHA1 sum verification failed!" >&2
+        rm -f /tmp/strap.sh
+        exit 1
+    fi
+else
+    echo "BlackArch GPG key already imported."
+fi
+
+echo ""
+echo "Select BlackArch installation option:"
+echo "1) Essential Tools (Kali-Tools like)"
+echo "2) blackarch-scanner - Scanner tools (~200MB)"
+echo "3) blackarch-recon - Reconnaissance tools (~150MB)"
+echo "4) blackarch-exploitation - Exploitation tools (~500MB)"
+echo "5) blackarch-webapp - Web application tools (~300MB)"
+echo "6) blackarch-forensic - Forensic tools (~400MB)"
+echo "7) blackarch-crypto - Cryptography tools (~100MB)"
+echo "8) blackarch - Complete collection (~9GB, 2800+ tools)"
+echo "9) Skip installation"
+read -p "Enter option [1-9]: " choice
+
+case $choice in
+    1)
+        echo "Installing essential tools..."
+        sudo pacman -S nmap metasploit wireshark-qt burpsuite sqlmap nikto aircrack-ng john hashcat hydra wpscan dirb gobuster
+        ;;
+    2) sudo pacman -S blackarch-scanner ;;
+    3) sudo pacman -S blackarch-recon ;;
+    4) sudo pacman -S blackarch-exploitation ;;
+    5) sudo pacman -S blackarch-webapp ;;
+    6) sudo pacman -S blackarch-forensic ;;
+    7) sudo pacman -S blackarch-crypto ;;
+    8) sudo pacman -S blackarch ;;
+    9) echo "Skipping tools installation." ;;
+    *) echo "Invalid option. Skipping installation." ;;
+esac
