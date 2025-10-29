@@ -1,3 +1,12 @@
+
+name = "hyprland_keybindings"
+name_pretty = "Hyprland keybindings"
+icon = "applications-other"
+lua = "hyprland_keybindings"
+-- ensure walker calls Action(), so do NOT set action = "%VALUE%"
+action = "%VALUE%"
+
+
 -- Hyprland Keybindings plugin for Walker
 -- Displays keybindings and executes them on selection
 
