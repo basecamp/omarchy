@@ -7,124 +7,125 @@ action = "%VALUE%"
 text = "Audio"
 Subtext = "Configure audio devices"
 icon = "audio-card"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec '$TERMINAL --class=Wiremix -e wiremix'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"$TERMINAL --class=Wiremix -e wiremix\""
 
 [[entries]]
 text = "Wifi"
 Subtext = "Connect to wireless networks"
 icon = "network-wireless"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'rfkill unblock wifi && omarchy-launch-wifi'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"rfkill unblock wifi && omarchy-launch-wifi\""
 
 [[entries]]
 text = "Bluetooth"
 Subtext = "Manage Bluetooth connections"
 icon = "bluetooth"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'rfkill unblock bluetooth && blueberry'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"rfkill unblock bluetooth && blueberry\""
 
 [[entries]]
 text = "Monitors"
 Subtext = "Configure display settings"
 icon = "video-display"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/monitors.conf'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/hypr/monitors.conf\""
 
 [[entries]]
 text = "Keybindings"
 Subtext = "Customize keyboard shortcuts"
 icon = "preferences-desktop-keyboard-shortcuts"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/bindings.conf'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/hypr/bindings.conf\""
 
 [[entries]]
 text = "Input"
 Subtext = "Configure input devices"
 icon = "input-keyboard"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/input.conf'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/hypr/input.conf\""
 
 [[entries]]
 text = "Defaults"
 Subtext = "Set default applications"
 icon = "applications-system"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/uwsm/default'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/uwsm/default\""
 
 [[entries]]
 text = "DNS"
 Subtext = "Configure DNS servers"
 icon = "network-server"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-setup-dns'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"present_terminal omarchy-setup-dns\""
 
 [[entries]]
 text = "Hyprland"
 Subtext = "Edit Hyprland config"
 icon = "preferences-system-windows"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/hyprland.conf'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/hypr/hyprland.conf\""
 
 [[entries]]
 text = "Hypridle"
 Subtext = "Configure idle behavior"
 icon = "preferences-desktop-screensaver"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/hypr/hypridle.conf && omarchy-restart-hypridle\""
 
 [[entries]]
 text = "Hyprlock"
 Subtext = "Configure screen lock"
 icon = "system-lock-screen"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/hyprlock.conf'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/hypr/hyprlock.conf\""
 
 [[entries]]
 text = "Hyprsunset"
 Subtext = "Configure night light"
 icon = "night-light"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset\""
 
 [[entries]]
 text = "Swayosd"
 Subtext = "Configure on-screen display"
 icon = "dialog-information"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/swayosd/config.toml && omarchy-restart-swayosd'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/swayosd/config.toml && omarchy-restart-swayosd\""
 
 [[entries]]
 text = "Walker"
 Subtext = "Configure app launcher"
 icon = "system-run"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/walker/config.toml && omarchy-restart-walker'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/walker/config.toml && omarchy-restart-walker\""
 
 [[entries]]
 text = "Waybar"
 Subtext = "Configure status bar"
 icon = "preferences-desktop"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.config/waybar/config.jsonc && omarchy-restart-waybar\""
 
 [[entries]]
 text = "XCompose"
 Subtext = "Configure compose key sequences"
 icon = "preferences-desktop-keyboard"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.XCompose && omarchy-restart-xcompose'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"open_in_editor $HOME/.XCompose && omarchy-restart-xcompose\""
 
 [[entries]]
 text = "Fingerprint"
 Subtext = "Setup fingerprint authentication"
 icon = "fingerprint"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-setup-fingerprint'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"present_terminal omarchy-setup-fingerprint\""
 
 [[entries]]
 text = "Fido2"
 Subtext = "Setup FIDO2 hardware key"
 icon = "security-high"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-setup-fido2'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"present_terminal omarchy-setup-fido2\""
+
 
 [[entries]]
 text = "power-saver"
 Subtext = "Enable battery saving mode"
 icon = "battery-low"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'powerprofilesctl set '\\''power-saver'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"powerprofilesctl set power-saver; notify-send 'Power Mode' 'Switched to Power Saver mode' -i battery-low\""
 
 [[entries]]
 text = "balanced"
 Subtext = "Balanced performance mode"
 icon = "battery-good"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'powerprofilesctl set '\\''balanced'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"powerprofilesctl set balanced; notify-send 'Power Mode' 'Switched to Balanced mode' -i battery-good\""
 
 [[entries]]
 text = "performance"
 Subtext = "Maximum performance mode"
 icon = "battery-full-charging"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'powerprofilesctl set '\\''performance'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"powerprofilesctl set performance; notify-send 'Power Mode' 'Switched to Performance mode' -i battery-full-charging\""

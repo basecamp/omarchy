@@ -67,19 +67,18 @@ provider = "websearch"
 prefix = "$"
 provider = "clipboard"
 
-
 [providers.actions]
 dmenu = [{ action = "select", default = true, bind = "Return" }]
+
 providerlist = [
   { action = "activate", default = true, bind = "Return", after = "ClearReload" },
 ]
+
 menus = [
   { action = "pick", default = true, bind = "Return" },
   { action = "back", bind = "Escape" },
 ]
-hyprland_keybindings = [
-  { action = "pick", default = true, bind = "Return" }
-]
+
 bluetooth = [
   { action = "find", global = true, bind = "ctrl f", after = "AsyncClearReload" },
   { action = "trust", bind = "ctrl t", after = "AsyncReload" },
@@ -89,8 +88,6 @@ bluetooth = [
   { action = "connect", bind = "Return", after = "AsyncReload" },
   { action = "disconnect", bind = "Return", after = "AsyncReload" },
 ]
-
-
 
 archlinuxpkgs = [
   { action = "install", bind = "Return", default = true },
@@ -157,3 +154,4 @@ clipboard = [
   { action = "toggle_images", global = true, label = "toggle images", bind = "ctrl i", after = "ClearReload" },
   { action = "edit", bind = "ctrl o" },
 ]
+

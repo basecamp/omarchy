@@ -56,19 +56,19 @@ value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'pkill hyprpicker || h
 text = "Clipboard"
 Subtext = "Share clipboard contents"
 icon = "edit-paste"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share clipboard'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"terminal omarchy-cmd-share clipboard\""
 
 [[entries]]
 text = "File"
 Subtext = "Share a file"
 icon = "document-send"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share file'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"terminal omarchy-cmd-share file\""
 
 [[entries]]
 text = "Folder"
 Subtext = "Share a folder"
 icon = "folder-open"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal bash -c omarchy-cmd-share folder'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"terminal omarchy-cmd-share folder\""
 
 [[entries]]
 text = "Screensaver"

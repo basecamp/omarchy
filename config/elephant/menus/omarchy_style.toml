@@ -31,130 +31,130 @@ value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'open_in_editor ~/.con
 text = "Catppuccin"
 Subtext = "Warm dark pastel theme"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Catppuccin'\\'''
+value = '$HOME/.local/share/omarchy/bin/omarchy-safe-exec "omarchy-theme-set Catppuccin"'
 
 [[entries]]
 text = "Catppuccin Latte"
 Subtext = "Warm light pastel theme"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Catppuccin Latte'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Catppuccin Latte'\""
 
 [[entries]]
 text = "Everforest"
 Subtext = "Comfortable green forest theme"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Everforest'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Everforest'\""
 
 [[entries]]
 text = "Flexoki Light"
 Subtext = "Organic light color scheme"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Flexoki Light'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Flexoki Light'\""
 
 [[entries]]
 text = "Gruvbox"
 Subtext = "Retro groove color scheme"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Gruvbox'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Gruvbox'\""
 
 [[entries]]
 text = "Kanagawa"
 Subtext = "Dark blueish theme inspired by Japan"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Kanagawa'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Kanagawa'\""
 
 [[entries]]
 text = "Matte Black"
 Subtext = "Pure dark minimalist theme"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Matte Black'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Matte Black'\""
 
 [[entries]]
 text = "Nord"
 Subtext = "Arctic inspired color palette"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Nord'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Nord'\""
 
 [[entries]]
 text = "Osaka Jade"
 Subtext = "Elegant jade green theme"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Osaka Jade'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Osaka Jade'\""
 
 [[entries]]
 text = "Ristretto"
 Subtext = "Rich espresso color scheme"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Ristretto'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Ristretto'\""
 
 [[entries]]
 text = "Rose Pine"
 Subtext = "Natural pine and rose theme"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Rose Pine'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Rose Pine'\""
 
 [[entries]]
 text = "Tokyo Night"
 Subtext = "Vibrant night Tokyo cityscape"
 icon = "preferences-color"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-theme-set '\\''Tokyo Night'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-theme-set 'Tokyo Night'\""
 
 [[entries]]
 text = "Adwaita Mono"
 Subtext = "GNOME default monospace font"
 icon = "font-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''Adwaita Mono'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-font-set 'Adwaita Mono'\""
 
 [[entries]]
 text = "CaskaydiaMono Nerd Font"
 Subtext = "Cascadia Code with icon glyphs"
 icon = "preferences-desktop-font"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''CaskaydiaMono Nerd Font'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-font-set 'CaskaydiaMono Nerd Font'\""
 
 [[entries]]
 text = "CaskaydiaMono Nerd Font Mono"
 Subtext = "Fixed-width Cascadia with icons"
 icon = "preferences-desktop-font"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''CaskaydiaMono Nerd Font Mono'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-font-set 'CaskaydiaMono Nerd Font Mono'\""
 
 [[entries]]
 text = "iA Writer Mono S"
 Subtext = "Clean writing-focused font"
 icon = "font-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''iA Writer Mono S'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-font-set 'iA Writer Mono S'\""
 
 [[entries]]
 text = "JetBrainsMono Nerd Font"
 Subtext = "Developer-focused with icon glyphs"
 icon = "preferences-desktop-font"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMono Nerd Font'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-font-set 'JetBrainsMono Nerd Font'\""
 
 [[entries]]
 text = "JetBrainsMono Nerd Font Mono"
 Subtext = "Fixed-width JetBrains with icons"
 icon = "preferences-desktop-font"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMono Nerd Font Mono'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-font-set 'JetBrainsMono Nerd Font Mono'\""
 
 [[entries]]
 text = "JetBrainsMonoNL Nerd Font"
 Subtext = "No ligatures JetBrains with icons"
 icon = "preferences-desktop-font"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMonoNL Nerd Font'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-font-set 'JetBrainsMonoNL Nerd Font'\""
 
 [[entries]]
 text = "JetBrainsMonoNL Nerd Font Mono"
 Subtext = "Fixed no-ligature JetBrains + icons"
 icon = "preferences-desktop-font"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''JetBrainsMonoNL Nerd Font Mono'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-font-set 'JetBrainsMonoNL Nerd Font Mono'\""
 
 [[entries]]
 text = "Liberation Mono"
 Subtext = "Free Courier New alternative"
 icon = "font-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''Liberation Mono'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-font-set 'Liberation Mono'\""
 
 [[entries]]
 text = "Nimbus Mono PS"
 Subtext = "Classic PostScript monospace"
 icon = "font-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-font-set '\\''Nimbus Mono PS'\\'''
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec \"omarchy-font-set 'Nimbus Mono PS'\""

@@ -7,181 +7,181 @@ action = "%VALUE%"
 text = "Package"
 Subtext = "Install system packages"
 icon = "package-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal omarchy-pkg-install'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'alacritty --class=Omarchy -e omarchy-pkg-install'"
 
 [[entries]]
 text = "AUR"
 Subtext = "Install from Arch User Repository"
 icon = "system-software-update"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal omarchy-pkg-aur-install'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'alacritty --class=Omarchy -e omarchy-pkg-aur-install'"
 
 [[entries]]
 text = "Web"
 Subtext = "Install web applications"
 icon = "applications-internet"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-webapp-install'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-webapp-install\"'"
 
 [[entries]]
 text = "TUI"
 Subtext = "Install terminal user interfaces"
 icon = "utilities-terminal"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-tui-install'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-tui-install\"'"
 
 [[entries]]
 text = "Windows"
 Subtext = "Set up Windows virtual machine"
 icon = "computer"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-windows-vm install'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-windows-vm install\"'"
 
 [[entries]]
 text = "Dropbox"
 Subtext = "Cloud storage and file sync"
 icon = "folder-cloud"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dropbox'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dropbox\"'"
 
 [[entries]]
 text = "Tailscale"
 Subtext = "Secure mesh VPN network"
 icon = "network-vpn"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-tailscale'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-tailscale\"'"
 
 [[entries]]
 text = "Bitwarden"
 Subtext = "Password manager and vault"
 icon = "dialog-password"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_and_launch Bitwarden bitwarden bitwarden-cli bitwarden'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm bitwarden bitwarden-cli && setsid gtk-launch bitwarden\"'"
 
 [[entries]]
 text = "Chromium"
 Subtext = "Browser with Google account sync"
 icon = "chromium"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-chromium-google-account'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-chromium-google-account\"'"
 
 [[entries]]
 text = "VSCode"
 Subtext = "Visual Studio Code editor"
 icon = "vscode"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-vscode'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-vscode\"'"
 
 [[entries]]
 text = "Cursor"
 Subtext = "AI-powered code editor"
 icon = "accessories-text-editor"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_and_launch Cursor cursor-bin cursor'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"yay -S --noconfirm cursor-bin && setsid gtk-launch cursor\"'"
 
 [[entries]]
 text = "Zed"
 Subtext = "High-performance code editor"
 icon = "accessories-text-editor"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_and_launch Zed zed dev.zed.Zed'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm zed && setsid gtk-launch dev.zed.Zed\"'"
 
 [[entries]]
 text = "Sublime"
 Subtext = "Sophisticated text editor"
 icon = "sublime-text"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install_and_launch Sublime Text sublime-text-4 sublime_text'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"yay -S --noconfirm sublime-text-4 && setsid gtk-launch sublime_text\"'"
 
 [[entries]]
 text = "Helix"
 Subtext = "Modern modal text editor"
 icon = "accessories-text-editor"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install Helix helix'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm helix\"'"
 
 [[entries]]
 text = "Emacs"
 Subtext = "Extensible text editor"
 icon = "emacs"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install Emacs emacs-wayland && systemctl --user enable --now emacs.service'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm emacs-wayland && systemctl --user enable --now emacs.service\"'"
 
 [[entries]]
 text = "Alacritty"
 Subtext = "GPU-accelerated terminal"
 icon = "utilities-terminal"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_terminal alacritty'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-terminal alacritty\"'"
 
 [[entries]]
 text = "Ghostty"
 Subtext = "Fast native terminal emulator"
 icon = "utilities-terminal"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_terminal ghostty'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-terminal ghostty\"'"
 
 [[entries]]
 text = "Kitty"
 Subtext = "Feature-rich terminal emulator"
 icon = "utilities-terminal"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_terminal kitty'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-terminal kitty\"'"
 
 [[entries]]
 text = "Claude"
 Subtext = "AI coding assistant CLI"
 icon = "dialog-information"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install Claude Code claude-code'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm claude-code\"'"
 
 [[entries]]
 text = "Cursor"
 Subtext = "AI coding assistant CLI"
 icon = "dialog-information"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install Cursor CLI cursor-cli'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"yay -S --noconfirm cursor-cli\"'"
 
 [[entries]]
 text = "OpenAI"
 Subtext = "OpenAI Codex CLI"
 icon = "dialog-information"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install OpenAI Codex openai-codex-bin'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"yay -S --noconfirm openai-codex-bin\"'"
 
 [[entries]]
 text = "Gemini"
 Subtext = "Google Gemini CLI"
 icon = "dialog-information"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install Gemini gemini-cli'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"yay -S --noconfirm gemini-cli\"'"
 
 [[entries]]
 text = "Studio"
 Subtext = "Run LLMs locally"
 icon = "applications-science"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install LM Studio lmstudio'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm lmstudio\"'"
 
 [[entries]]
 text = "Ollama"
 Subtext = "Local AI model runner"
 icon = "applications-science"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install Ollama $ollama_pkg'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm $(command -v nvidia-smi &>/dev/null && echo ollama-cuda || command -v rocminfo &>/dev/null && echo ollama-rocm || echo ollama)\"'"
 
 [[entries]]
 text = "Crush"
 Subtext = "AI coding assistant"
 icon = "dialog-information"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install Crush crush-bin'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm crush-bin\"'"
 
 [[entries]]
 text = "opencode"
 Subtext = "Open source code assistant"
 icon = "dialog-information"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install opencode opencode'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm opencode\"'"
 
 [[entries]]
 text = "Steam"
 Subtext = "Gaming platform and store"
 icon = "steam"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-steam'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-steam\"'"
 
 [[entries]]
 text = "RetroArch"
 Subtext = "Retro gaming emulator frontend"
 icon = "applications-games"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install_and_launch RetroArch retroarch retroarch-assets libretro libretro-fbneo com.libretro.RetroArch.desktop'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"yay -S --noconfirm retroarch retroarch-assets libretro libretro-fbneo && setsid gtk-launch com.libretro.RetroArch.desktop\"'"
 
 [[entries]]
 text = "Minecraft"
 Subtext = "Block-building sandbox game"
 icon = "applications-games"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'aur_install_and_launch Minecraft [AUR] minecraft-launcher minecraft-launcher'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"yay -S --noconfirm minecraft-launcher && setsid gtk-launch minecraft-launcher\"'"
 
 [[entries]]
 text = "Install Theme"
 Subtext = "Install visual themes from github links"
 icon = "preferences-desktop-theme"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-theme-install'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-theme-install\"'"
 
 [[entries]]
 text = "Background"
@@ -193,130 +193,130 @@ value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'nautilus ~/.config/om
 text = "Meslo"
 Subtext = "Meslo LG Mono Nerd Font"
 icon = "font-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_font Meslo LG Mono ttf-meslo-nerd MesloLGL Nerd Font'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm --needed ttf-meslo-nerd && sleep 2 && omarchy-font-set MesloLGL-Nerd-Font\"'"
 
 [[entries]]
 text = "Fira"
 Subtext = "Fira Code Nerd Font"
 icon = "font-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_font Fira Code ttf-firacode-nerd FiraCode Nerd Font'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm --needed ttf-firacode-nerd && sleep 2 && omarchy-font-set FiraCode-Nerd-Font\"'"
 
 [[entries]]
 text = "Victor"
 Subtext = "Victor Mono Nerd Font"
 icon = "font-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_font Victor Code ttf-victor-mono-nerd VictorMono Nerd Font'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm --needed ttf-victor-mono-nerd && sleep 2 && omarchy-font-set VictorMono-Nerd-Font\"'"
 
 [[entries]]
 text = "Bistream"
 Subtext = "Bitstream Vera Mono Nerd Font"
 icon = "font-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'install_font Bistream Vera Code ttf-bitstream-vera-mono-nerd BitstromWera Nerd Font'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"sudo pacman -S --noconfirm --needed ttf-bitstream-vera-mono-nerd && sleep 2 && omarchy-font-set BitstromWera-Nerd-Font\"'"
 
 [[entries]]
 text = "Rails"
 Subtext = "Ruby on Rails framework"
 icon = "application-x-ruby"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env ruby'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env ruby\"'"
 
 [[entries]]
 text = "Docker"
 Subtext = "Container platform and databases"
 icon = "docker"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-docker-dbs'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-docker-dbs\"'"
 
 [[entries]]
 text = "Go"
 Subtext = "Go programming language"
 icon = "text-x-go"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env go'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env go\"'"
 
 [[entries]]
 text = "Python"
 Subtext = "Python programming language"
 icon = "text-x-python"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env python'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env python\"'"
 
 [[entries]]
 text = "Zig"
 Subtext = "Zig programming language"
 icon = "text-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env zig'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env zig\"'"
 
 [[entries]]
 text = "Rust"
 Subtext = "Rust programming language"
 icon = "text-rust"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env rust'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env rust\"'"
 
 [[entries]]
 text = "Java"
 Subtext = "Java development kit"
 icon = "application-x-java"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env java'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env java\"'"
 
 [[entries]]
 text = "NET"
 Subtext = ".NET development platform"
 icon = "text-x-csharp"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env dotnet'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env dotnet\"'"
 
 [[entries]]
 text = "OCaml"
 Subtext = "OCaml programming language"
 icon = "text-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env ocaml'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env ocaml\"'"
 
 [[entries]]
 text = "Clojure"
 Subtext = "Clojure programming language"
 icon = "text-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env clojure'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env clojure\"'"
 
 [[entries]]
 text = "Node"
 Subtext = "Node.js JavaScript runtime"
 icon = "text-javascript"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env node'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env node\"'"
 
 [[entries]]
 text = "Bun"
 Subtext = "Fast JavaScript runtime"
 icon = "text-javascript"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env bun'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env bun\"'"
 
 [[entries]]
 text = "Deno"
 Subtext = "Secure JavaScript runtime"
 icon = "text-javascript"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env deno'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env deno\"'"
 
 [[entries]]
 text = "PHP"
 Subtext = "PHP programming language"
 icon = "application-x-php"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env php'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env php\"'"
 
 [[entries]]
 text = "Laravel"
 Subtext = "Laravel PHP framework"
 icon = "application-x-php"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env laravel'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env laravel\"'"
 
 [[entries]]
 text = "Symfony"
 Subtext = "Symfony PHP framework"
 icon = "application-x-php"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env symfony'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env symfony\"'"
 
 [[entries]]
 text = "Elixir"
 Subtext = "Elixir programming language"
 icon = "text-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env elixir'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env elixir\"'"
 
 [[entries]]
 text = "Phoenix"
 Subtext = "Phoenix web framework"
 icon = "text-x-generic"
-value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-install-dev-env phoenix'"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-launch-floating-terminal-with-presentation \"omarchy-install-dev-env phoenix\"'"
