@@ -64,6 +64,10 @@ deno)
   echo -e "Installing Deno...\n"
   mise use -g deno@latest
   ;;
+meteor)
+  echo -e "Installing Meteor...\n"
+  curl https://install.meteor.com/ | sh
+  ;;
 go)
   echo -e "Installing Go...\n"
   mise use --global go@latest

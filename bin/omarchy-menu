@@ -348,10 +348,11 @@ show_install_development_menu() {
 }
 
 show_install_javascript_menu() {
-  case $(menu "Install" "  Node.js\n  Bun\n  Deno") in
+  case $(menu "Install" "  Node.js\n  Bun\n  Deno\n☄ Meteor") in
   *Node*) present_terminal "omarchy-install-dev-env node" ;;
   *Bun*) present_terminal "omarchy-install-dev-env bun" ;;
   *Deno*) present_terminal "omarchy-install-dev-env deno" ;;
+  *Meteor*) present_terminal "omarchy-install-dev-env meteor" ;;
   *) show_install_development_menu ;;
   esac
 }
