@@ -15,18 +15,32 @@ if [ -n "$other_files" ]; then
 fi
 
 # Mask WPA Supplicant to prevent it from being started by NetworkManager
-sudo systemctl mask --now wpa_supplicant.service
+if ! systemctl is-enabled wpa_supplicant.service | grep -q "masked"; then
+    sudo systemctl mask --now wpa_supplicant.service
+fi
 
 # Mask systemd-networkd and its sockets to prevent it from being started
-sudo systemctl mask --now systemd-networkd.socket
-sudo systemctl mask --now systemd-networkd-varlink.socket
-sudo systemctl mask --now systemd-networkd.service
+if ! systemctl is-enabled systemd-networkd.socket | grep -q "masked"; then
+    sudo systemctl mask --now systemd-networkd.socket
+fi
+
+if ! systemctl is-enabled systemd-networkd-varlink.socket | grep -q "masked"; then
+    sudo systemctl mask --now systemd-networkd-varlink.socket
+fi
+
+if ! systemctl is-enabled systemd-networkd.service | grep -q "masked"; then
+    sudo systemctl mask --now systemd-networkd.service
+fi
 
 # Enable and start NetworkManager
-sudo systemctl enable --now NetworkManager.service
+if ! systemctl is-enabled NetworkManager.service | grep -q "enabled"; then
+    sudo systemctl enable --now NetworkManager.service
+fi
 
 # Restart systemd-resolved just to be sure
 sudo systemctl restart systemd-resolved.service
 
 # Prevent NetworkManager-wait-online timeout on boot
-sudo systemctl mask --now NetworkManager-wait-online.service
+if ! systemctl is-enabled NetworkManager-wait-online.service | grep -q "masked"; then
+    sudo systemctl mask --now NetworkManager-wait-online.service
+fi
