@@ -42,3 +42,8 @@ omarchy-theme-set-obsidian
 
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME"
+
+# Reload tmux to apply new theme (exact same as prefix+r)
+if command -v tmux >/dev/null 2>&1 && tmux list-sessions >/dev/null 2>&1; then
+  tmux source-file ~/.tmux.conf \; display-message "Omarchy theme: $THEME_NAME"
+fi
