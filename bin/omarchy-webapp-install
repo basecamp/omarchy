@@ -33,6 +33,7 @@ declare -A BROWSER_BINARIES=(
   [Microsoft Edge]=microsoft-edge-stable
   [Vivaldi]=vivaldi
   [Helium]=helium-browser
+  [Opera]=opera
 )
 
 BROWSERS=()
@@ -52,6 +53,7 @@ declare -A BROWSER_CONFIG_DIRS=(
   [Microsoft Edge]="$HOME/.config/microsoft-edge"
   [Vivaldi]="$HOME/.config/vivaldi"
   [Helium]="$HOME/.config/net.imput.helium"
+  [Opera]="$HOME/.config/opera"
 )
 
  PROFILE_DIR="${BROWSER_CONFIG_DIRS[$BROWSER_CHOICE]:-$HOME/.config/$BROWSER_CHOICE}"
@@ -62,11 +64,13 @@ PROFILES=()
 if [ -f "$PROFILE_DIR/Local State" ]; then
   mapfile -t profile_data < <(jq -r '.profile.info_cache | to_entries[] | "\(.key)|\(.value.name)"' \
     "$PROFILE_DIR/Local State" 2>/dev/null || true)
-  for line in "${profile_data[@]}"; do
-    IFS='|' read -r folder name <<<"$line"
-    PROFILES+=("$name")
-    PROFILE_MAP["$name"]="$folder"
-  done
+    for line in "${profile_data[@]}"; do
+      IFS='|' read -r folder name <<<"$line"
+      name="${name:-$folder}"
+      [ -z "$name" ] && name="Default"
+      PROFILES+=("$name")
+      PROFILE_MAP["$name"]="$folder"
+    done
 elif [ -d "$PROFILE_DIR" ]; then
   for d in "$PROFILE_DIR"/Profile*; do
     [[ -d "$d" ]] || continue
