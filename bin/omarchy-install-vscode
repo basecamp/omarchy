@@ -21,9 +21,6 @@ EOF
 # Ensure VSC's own auto-update feature is turned off
 printf '{\n  "update.mode": "none"\n}\n' > ~/.config/Code/User/settings.json
 
-# Install Neovim extension to LazyVimify the environment
-code --install-extension asvetliakov.vscode-neovim
-
 # Apply Omarchy theme to VSCode
 omarchy-theme-set-vscode
 
