@@ -6,7 +6,7 @@ DESKTOP_DIR="$HOME/.local/share/applications/"
 if [ "$#" -eq 0 ]; then
   # Find all web apps
   while IFS= read -r -d '' file; do
-    if grep -q '^Exec=.*\(omarchy-launch-webapp\|omarchy-webapp-handler\).*' "$file"; then
+    if grep -q '^Exec=.*\(omarchy-launch-webapp\|omarchy-webapp-handler\|omarchy-launch-hyperfy\).*' "$file"; then
       WEB_APPS+=("$(basename "${file%.desktop}")")
     fi
   done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)
@@ -35,6 +35,37 @@ if [[ ${#APP_NAMES[@]} -eq 0 ]]; then
 fi
 
 for APP_NAME in "${APP_NAMES[@]}"; do
+  # Check if this is Hyperfy and needs Docker cleanup
+  if [[ "$APP_NAME" == "Hyperfy" ]]; then
+    echo "Removing Hyperfy and cleaning up Docker containers..."
+    STACK_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omarchy/games/hyperfy/compose"
+    COMPOSE_FILE="${STACK_DIR}/docker-compose.yml"
+    ENV_FILE="${STACK_DIR}/.env"
+    
+    if [ -f "$COMPOSE_FILE" ] && [ -f "$ENV_FILE" ]; then
+      echo "Stopping and removing Docker containers..."
+      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down -v 2>/dev/null || true
+      echo "Removing Hyperfy data directory..."
+      rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/omarchy/games/hyperfy"
+    fi
+    
+    # Also remove any standalone Hyperfy containers
+    echo "Removing any remaining Hyperfy containers..."
+    docker ps -a --filter "name=hyperfy" --format "{{.Names}}" | xargs -r docker rm -f 2>/dev/null || true
+    
+    # Remove Hyperfy Docker images
+    echo "Removing Hyperfy Docker images..."
+    docker images --filter "reference=*hyperfy*" --format "{{.Repository}}:{{.Tag}}" | xargs -r docker rmi -f 2>/dev/null || true
+    
+    # Also remove the specific Hyperfy image that gets downloaded
+    echo "Removing Hyperfy Docker image..."
+    docker rmi ghcr.io/hyperfy-xyz/hyperfy:dev 2>/dev/null || true
+    
+    # Remove any Hyperfy volumes
+    echo "Removing Hyperfy volumes..."
+    docker volume ls --filter "name=hyperfy" --format "{{.Name}}" | xargs -r docker volume rm 2>/dev/null || true
+  fi
+  
   rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
   rm -f "$ICON_DIR/$APP_NAME.png"
   echo "Removed $APP_NAME"
