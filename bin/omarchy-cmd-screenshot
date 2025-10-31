@@ -19,6 +19,24 @@ get_rectangles() {
   hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
 }
 
+get_fullscreen_rect() {
+  local ws="$1"
+  # Try multiple field shapes for robustness across Hyprland versions:
+  hyprctl clients -j | jq -r --arg ws "$ws" '
+    # prefer explicit .fullscreen==true
+    (.[] | select(.workspace.id == ($ws|tonumber) and (.fullscreen == true)) |
+      "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])")
+    //
+    # some versions expose numeric fullscreen state(s)
+    (.[] | select(.workspace.id == ($ws|tonumber) and ((.fullscreen|type=="number") and (.fullscreen==2))) |
+      "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])")
+    //
+    # fallback if a tuple-like fullscreenstate exists (internal/client 0/1/2/3)
+    (.[] | select(.workspace.id == ($ws|tonumber) and (.fullscreenstate? and ((.fullscreenstate[0]==2) or (.fullscreenstate[1]==2)))) |
+      "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])")
+  ' | head -n1
+}
+
 # Select based on mode
 case "$MODE" in
   region)
@@ -38,9 +56,19 @@ case "$MODE" in
     ;;
   smart|*)
     RECTS=$(get_rectangles)
+
+    active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
+    FS_RECT=$(get_fullscreen_rect "$active_workspace")
+
     wayfreeze & PID=$!
     sleep .1
-    SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
+
+    if [[ -n "$FS_RECT" ]]; then
+      SELECTION=$(printf '%s\n' "$FS_RECT" | slurp 2>/dev/null)
+    else
+      SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
+    fi
+
     kill $PID 2>/dev/null
 
     # If the selction area is L * W < 20, we'll assume you were trying to select whichever
