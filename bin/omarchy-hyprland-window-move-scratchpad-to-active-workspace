@@ -1,0 +1,15 @@
+#!/bin/bash
+
+monitors=$(hyprctl monitors -j)
+
+# Check if current workspace is special:scratchpad
+special_ws_name=$(echo $monitors | jq -r '.[] | select(.focused) | .specialWorkspace.name')
+if [[ "$special_ws_name" != "special:scratchpad" ]]; then
+  exit 1
+fi
+
+# Get active workspace ID of the focused monitor
+current_ws=$(echo $monitors | jq '.[] | select(.focused) | .activeWorkspace.id')
+
+# Move the focused window to the active workspace
+hyprctl dispatch movetoworkspacesilent "$current_ws"
