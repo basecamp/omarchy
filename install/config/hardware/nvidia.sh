@@ -37,13 +37,8 @@ PACKAGES_TO_INSTALL=(
 )
 sudo pacman -Syu --needed --noconfirm "${PACKAGES_TO_INSTALL[@]}"
 
-# Configure modprobe for early KMS and hibernation
-cat <<EOF | sudo tee /etc/modprobe.d/nvidia.conf >/dev/null
-options nvidia_drm modeset=1
-EOF
-
 # Configure mkinitcpio for early loading
-echo 'MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)' | sudo tee /etc/mkinitcpio.conf.d/nvidia.conf >/dev/null
+echo 'MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)' | sudo tee /etc/mkinitcpio.conf.d/omarchy_nvidia.conf >/dev/null
 
 # Regenerate initramfs with applied changes
 sudo limine-mkinitcpio
