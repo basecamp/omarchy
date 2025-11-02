@@ -23,6 +23,10 @@ progressbar {
   border-radius: 0;
 }
 
+trough {
+  background-color: @trough;
+}
+
 progress {
   background-color: @progress;
 }
