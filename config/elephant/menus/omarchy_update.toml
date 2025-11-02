@@ -1,0 +1,148 @@
+name = "omarchy_update"
+name_pretty = "Update"
+icon = "system-software-update"
+action = "%VALUE%"
+
+[[entries]]
+text = "Omarchy"
+Subtext = "Update Omarchy system"
+icon = "system-software-update"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-update'"
+
+[[entries]]
+text = "Update Themes"
+Subtext = "Update installed themes"
+icon = "preferences-desktop-theme"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-theme-update'"
+
+[[entries]]
+text = "Firmware"
+Subtext = "Update device firmware"
+icon = "computer"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-update-firmware'"
+
+[[entries]]
+text = "Timezone"
+Subtext = "Change system timezone"
+icon = "preferences-system-time"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-tz-select'"
+
+[[entries]]
+text = "master"
+Subtext = "Switch to stable branch"
+icon = "vcs-normal"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-update-branch master'"
+
+[[entries]]
+text = "dev"
+Subtext = "Switch to development branch"
+icon = "vcs-update-required"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-update-branch dev'"
+
+[[entries]]
+text = "Hypridle"
+Subtext = "Restart idle daemon"
+icon = "view-refresh"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-restart-hypridle'"
+
+[[entries]]
+text = "Hyprsunset"
+Subtext = "Restart night light service"
+icon = "view-refresh"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-restart-hyprsunset'"
+
+[[entries]]
+text = "Swayosd"
+Subtext = "Restart on-screen display"
+icon = "view-refresh"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-restart-swayosd'"
+
+[[entries]]
+text = "Walker"
+Subtext = "Restart app launcher"
+icon = "view-refresh"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-restart-walker'"
+
+[[entries]]
+text = "Waybar"
+Subtext = "Restart status bar"
+icon = "view-refresh"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'omarchy-restart-waybar'"
+
+[[entries]]
+text = "Hyprland"
+Subtext = "Refresh compositor config"
+icon = "document-properties"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-hyprland'"
+
+[[entries]]
+text = "Hypridle"
+Subtext = "Refresh idle config"
+icon = "document-properties"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-hypridle'"
+
+[[entries]]
+text = "Hyprlock"
+Subtext = "Refresh lock screen config"
+icon = "document-properties"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-hyprlock'"
+
+[[entries]]
+text = "Hyprsunset"
+Subtext = "Refresh night light config"
+icon = "document-properties"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-hyprsunset'"
+
+[[entries]]
+text = "Plymouth"
+Subtext = "Refresh boot screen config"
+icon = "document-properties"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-plymouth'"
+
+[[entries]]
+text = "Swayosd"
+Subtext = "Refresh OSD config"
+icon = "document-properties"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-swayosd'"
+
+[[entries]]
+text = "Walker"
+Subtext = "Refresh launcher config"
+icon = "document-properties"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-walker'"
+
+[[entries]]
+text = "Waybar"
+Subtext = "Refresh status bar config"
+icon = "document-properties"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-refresh-waybar'"
+
+[[entries]]
+text = "Audio"
+Subtext = "Restart audio system"
+icon = "audio-card"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-restart-pipewire'"
+
+[[entries]]
+text = "Wi-Fi"
+Subtext = "Restart wireless connection"
+icon = "network-wireless"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-restart-wifi'"
+
+[[entries]]
+text = "Bluetooth"
+Subtext = "Restart Bluetooth service"
+icon = "bluetooth"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-restart-bluetooth'"
+
+[[entries]]
+text = "Drive"
+Subtext = "Change disk encryption password"
+icon = "drive-harddisk"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-drive-set-password'"
+
+[[entries]]
+text = "User"
+Subtext = "Change user account password"
+icon = "system-users"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal passwd'"

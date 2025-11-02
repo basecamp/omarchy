@@ -1,0 +1,46 @@
+name = "omarchy_remove"
+name_pretty = "Remove"
+icon = "edit-delete"
+action = "%VALUE%"
+
+[[entries]]
+text = "Package"
+Subtext = "Uninstall system packages"
+icon = "package-x-generic"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'terminal omarchy-pkg-remove'"
+
+[[entries]]
+text = "Web"
+Subtext = "Remove web applications"
+icon = "applications-internet"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-webapp-remove'"
+
+[[entries]]
+text = "TUI"
+Subtext = "Remove terminal applications"
+icon = "utilities-terminal"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-tui-remove'"
+
+[[entries]]
+text = "Remove Theme"
+Subtext = "Uninstall visual themes installed using github"
+icon = "preferences-desktop-theme"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-theme-remove'"
+
+[[entries]]
+text = "Windows"
+Subtext = "Delete Windows virtual machine"
+icon = "computer"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-windows-vm remove'"
+
+[[entries]]
+text = "Fingerprint"
+Subtext = "Remove fingerprint authentication"
+icon = "fingerprint"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-setup-fingerprint --remove'"
+
+[[entries]]
+text = "Fido2"
+Subtext = "Remove FIDO2 hardware key"
+icon = "security-high"
+value = "$HOME/.local/share/omarchy/bin/omarchy-safe-exec 'present_terminal omarchy-setup-fido2 --remove'"

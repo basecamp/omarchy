@@ -118,7 +118,7 @@
                   <class name="error"></class>
                 </style>
                 <property name="xalign">0</property>
-               <property name="visible">false</property>
+                <property name="visible">false</property>
               </object>
             </child>
           </object>
@@ -126,4 +126,5 @@
       </object>
     </child>
   </object>
+  
 </interface>
