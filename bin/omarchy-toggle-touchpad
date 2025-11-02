@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+# 1. Define the state file path (using .cache is a good practice)
+export CACHE_DIR="$HOME/.cache"
+export STATUS_FILE="$CACHE_DIR/touchpad.status"
+
+# Ensure the cache directory exists
+mkdir -p "$CACHE_DIR"
+
+# 2. Find the touchpad device name dynamically
+TOUCHPAD_NAME=$(hyprctl devices | grep -i 'touchpad' | head -n 1 | xargs)
+
+if [ -z "$TOUCHPAD_NAME" ]; then
+    notify-send -u critical "No Touchpad Found" "Could not find a touchpad in hyprctl."
+    exit 1
+fi
+
+# 3. Define the toggle functions (using the dynamic $TOUCHPAD_NAME)
+enable_touchpad() {
+    printf "true" > "$STATUS_FILE"
+    hyprctl keyword "device[$TOUCHPAD_NAME]:enabled" "true"
+    notify-send "Touchpad Enabled"
+}
+
+disable_touchpad() {
+    printf "false" > "$STATUS_FILE"
+    hyprctl keyword "device[$TOUCHPAD_NAME]:enabled" "false"
+    notify-send "Touchpad Disabled"
+}
+
+# 4. Main logic (this is your original logic, now generalized)
+if ! [ -f "$STATUS_FILE" ]; then
+    # Default state on first run: disable it
+    disable_touchpad
+else
+    # Read the state file and toggle
+    if [ $(cat "$STATUS_FILE") = "true" ]; then
+        disable_touchpad
+    elif [ $(cat "$STATUS_FILE") = "false" ]; then
+        enable_touchpad
+    fi
+fi
