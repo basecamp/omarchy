@@ -11,6 +11,9 @@ fi
 SCOPE=""
 AUDIO="false"
 WEBCAM="false"
+# need a persistent file to store crop params for when stop is called 
+CROP_FILE="/tmp/omarchy_screenrecord.crop"
+INFO_FILE="/tmp/omarchy_screenrecord.info"
 
 for arg in "$@"; do
   case "$arg" in
@@ -22,6 +25,11 @@ done
 
 cleanup_webcam() {
   pkill -f "WebcamOverlay" 2>/dev/null
+}
+
+cleanup_crop_files() {
+  [[ -f "$CROP_FILE" ]] && rm -f "$CROP_FILE"
+  [[ -f "$INFO_FILE" ]] && rm -f "$INFO_FILE"
 }
 
 start_webcam_overlay() {
@@ -58,6 +66,10 @@ start_webcam_overlay() {
 start_screenrecording() {
   local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
   local audio_args=""
+  
+  # Store recording info
+  echo "FILENAME=$filename" > "$INFO_FILE"
+  echo "AUDIO=$AUDIO" >> "$INFO_FILE"
 
   # Merge audio tracks into one - separate tracks only play one at a time in most players
   [[ "$AUDIO" == "true" ]] && audio_args="-a default_output|default_input"
@@ -79,20 +91,83 @@ stop_screenrecording() {
   if pgrep -f "gpu-screen-recorder" >/dev/null; then
     pkill -9 -f "gpu-screen-recorder"
     cleanup_webcam
+    cleanup_crop_files
     notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
   else
     cleanup_webcam
-    notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+    
+    # need to crop post-processing? *assume ffmpeg is installed by default*
+    if [[ -f "$CROP_FILE" ]] && [[ -f "$INFO_FILE" ]]; then
+      source "$INFO_FILE"
+      source "$CROP_FILE"
+      
+      if [[ -n "$CROP_W" && -n "$CROP_H" && -n "$CROP_X" && -n "$CROP_Y" && -f "$FILENAME" ]]; then
+        local temp_file="${FILENAME}.tmp.mp4"
+        notify-send "Processing recording..." "Cropping to selected region" -t 20000
+        
+        local ffmpeg_exit_code
+        if [[ "$AUDIO" == "true" ]]; then
+          ffmpeg -i "$FILENAME" -vf "crop=${CROP_W}:${CROP_H}:${CROP_X}:${CROP_Y}" \
+            -c:v libx264 -preset fast -crf 18 -c:a copy \
+            "$temp_file" -y 2>/dev/null
+          ffmpeg_exit_code=$?
+        else
+          ffmpeg -i "$FILENAME" -vf "crop=${CROP_W}:${CROP_H}:${CROP_X}:${CROP_Y}" \
+            -c:v libx264 -preset fast -crf 18 -an \
+            "$temp_file" -y 2>/dev/null
+          ffmpeg_exit_code=$?
+        fi
+        
+        if [[ $ffmpeg_exit_code -eq 0 ]] && [[ -f "$temp_file" ]] && [[ -s "$temp_file" ]]; then
+          mv "$temp_file" "$FILENAME"
+          notify-send "Screen recording saved to $OUTPUT_DIR" "Region cropped successfully" -t 2000
+        else
+          rm -f "$temp_file"
+          notify-send "Screen recording saved to $OUTPUT_DIR" "Failed to crop region, saved full display" -u warning -t 3000
+        fi
+      else
+        notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+      fi
+      
+      cleanup_crop_files
+    else
+      notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+      cleanup_crop_files
+    fi
   fi
   toggle_screenrecording_indicator
 }
 
 toggle_screenrecording_indicator() {
+  sleep 1.5
   pkill -RTMIN+8 waybar
 }
 
 screenrecording_active() {
   pgrep -f "gpu-screen-recorder" >/dev/null || pgrep -x slurp >/dev/null || pgrep -f "WebcamOverlay" >/dev/null
+}
+
+find_containing_display() {
+  local x=$1
+  local y=$2
+  local w=$3
+  local h=$4
+  local monitors=$(hyprctl monitors -j)
+  local monitor_name=""
+  
+  monitor_name=$(echo "$monitors" | jq -r --argjson x "$x" --argjson y "$y" --argjson w "$w" --argjson h "$h" '
+    .[] | 
+    select(
+      (.x <= $x and $x < .x + .width) or 
+      (.x <= ($x + $w) and ($x + $w) <= .x + .width) or
+      ($x <= .x and .x < ($x + $w))
+    ) | .name' | head -n1)
+  
+  if [[ -n "$monitor_name" ]]; then
+    local monitor_x=$(echo "$monitors" | jq -r --arg name "$monitor_name" '.[] | select(.name == $name) | .x')
+    local monitor_y=$(echo "$monitors" | jq -r --arg name "$monitor_name" '.[] | select(.name == $name) | .y')
+    echo "$monitor_name $monitor_x $monitor_y"
+  fi
 }
 
 if screenrecording_active; then
@@ -117,6 +192,7 @@ elif [[ "$SCOPE" == "output" ]]; then
     exit 1
   fi
 
+  cleanup_crop_files
   start_screenrecording "$output"
 else
   [[ "$WEBCAM" == "true" ]] && start_webcam_overlay
@@ -128,15 +204,53 @@ else
     exit 1
   fi
 
-  if [[ "$region" =~ ^([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)$ ]]; then
-    w=$(awk "BEGIN {printf \"%.0f\", ${BASH_REMATCH[1]} * $scale}")
-    h=$(awk "BEGIN {printf \"%.0f\", ${BASH_REMATCH[2]} * $scale}")
-    x=$(awk "BEGIN {printf \"%.0f\", ${BASH_REMATCH[3]} * $scale}")
-    y=$(awk "BEGIN {printf \"%.0f\", ${BASH_REMATCH[4]} * $scale}")
-    scaled_region="${w}x${h}+${x}+${y}"
+  if [[ "$region" =~ ^([0-9]+)x([0-9]+)\+(-?[0-9]+)\+(-?[0-9]+)$ ]]; then
+    unscaled_w=${BASH_REMATCH[1]}
+    unscaled_h=${BASH_REMATCH[2]}
+    unscaled_x=${BASH_REMATCH[3]}
+    unscaled_y=${BASH_REMATCH[4]}
+    
+    w=$(awk "BEGIN {printf \"%.0f\", $unscaled_w * $scale}")
+    h=$(awk "BEGIN {printf \"%.0f\", $unscaled_h * $scale}")
+    x=$(awk "BEGIN {printf \"%.0f\", $unscaled_x * $scale}")
+    y=$(awk "BEGIN {printf \"%.0f\", $unscaled_y * $scale}")
+    
+    # check for negative coordinates (left of main screen)
+    if [[ $unscaled_x -lt 0 || $unscaled_y -lt 0 ]]; then
+      display_info=$(find_containing_display "$unscaled_x" "$unscaled_y" "$unscaled_w" "$unscaled_h")
+      
+      if [[ -n "$display_info" ]]; then
+        read -r display_name display_x display_y <<< "$display_info"
+        
+        scaled_display_x=$(awk "BEGIN {printf \"%.0f\", $display_x * $scale}")
+        scaled_display_y=$(awk "BEGIN {printf \"%.0f\", $display_y * $scale}")
+        
+        crop_x=$((x - scaled_display_x))
+        crop_y=$((y - scaled_display_y))
+        
+        [[ $crop_x -lt 0 ]] && crop_x=0
+        [[ $crop_y -lt 0 ]] && crop_y=0
+        
+        echo "CROP_W=$w" > "$CROP_FILE"
+        echo "CROP_H=$h" >> "$CROP_FILE"
+        echo "CROP_X=$crop_x" >> "$CROP_FILE"
+        echo "CROP_Y=$crop_y" >> "$CROP_FILE"
+        
+        notify-send "Recording display: $display_name" "Will crop to selected region after recording" -t 2000
+        start_screenrecording "$display_name"
+      else
+        notify-send "Error" "Could not determine display for region with negative coordinates" -u critical
+        [[ "$WEBCAM" == "true" ]] && cleanup_webcam
+        exit 1
+      fi
+    else
+      # normal case, no negative coords (on or right of main screen)
+      scaled_region="${w}x${h}+${x}+${y}"
+      cleanup_crop_files
+      start_screenrecording region -region "$scaled_region"
+    fi
   else
-    scaled_region="$region"
+    cleanup_crop_files
+    start_screenrecording region -region "$region"
   fi
-
-  start_screenrecording region -region "$scaled_region"
 fi
