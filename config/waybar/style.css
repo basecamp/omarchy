@@ -35,7 +35,8 @@
 #pulseaudio,
 #custom-omarchy,
 #custom-screenrecording-indicator,
-#custom-update {
+#custom-update,
+#custom-minimize-counter {
   min-width: 12px;
   margin: 0 7.5px;
 }

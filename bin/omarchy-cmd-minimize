@@ -1,0 +1,91 @@
+#!/bin/bash
+
+MINIMIZE_WORKSPACE="special:minimized"
+MENU_COMMAND="walker --dmenu -p 'Restore Minimized Window'"
+STATE_DIR="$HOME/.local/state/omarchy"
+LIST_FILE="$STATE_DIR/minimized_windows.list"
+
+# Ensure state directory exists
+mkdir -p "$STATE_DIR"
+
+MINIMIZE_ACTION() {
+    WINDOW_INFO=$(hyprctl activewindow -j)
+    ADDRESS=$(echo "$WINDOW_INFO" | jq -r '.address')
+    TITLE=$(echo "$WINDOW_INFO" | jq -r '.title')
+    CLASS=$(echo "$WINDOW_INFO" | jq -r '.class')
+
+    if [[ "$ADDRESS" == "null" ]]; then exit 0; fi
+
+    CLEAN_ADDRESS=$(echo -n "$ADDRESS" | tr -d '\r\n')
+    echo -e "$CLEAN_ADDRESS\t$TITLE\t$CLASS" >> "$LIST_FILE"
+    
+    hyprctl dispatch movetoworkspacesilent "$MINIMIZE_WORKSPACE,address:$CLEAN_ADDRESS"
+    notify-send "Window Minimized" "$TITLE has been moved to $MINIMIZE_WORKSPACE."
+}
+
+RESTORE_ACTION() {
+    if [[ ! -f "$LIST_FILE" ]] || [ ! -s "$LIST_FILE" ]; then
+        notify-send "Minimize Manager" "No windows are currently minimized."
+        exit 0
+    fi
+    
+    # Clean up list file - remove windows that no longer exist or are not on minimized workspace
+    ALL_CLIENTS=$(hyprctl clients -j)
+    CLEANED_LIST=""
+    while IFS=$'\t' read -r ADDRESS TITLE CLASS; do
+        # Check if window exists and is on the minimized workspace
+        WINDOW_WS=$(echo "$ALL_CLIENTS" | jq -r --arg addr "$ADDRESS" '.[] | select(.address == $addr) | .workspace.name')
+        if [[ "$WINDOW_WS" == "special:minimized" ]]; then
+            CLEANED_LIST="${CLEANED_LIST}${ADDRESS}\t${TITLE}\t${CLASS}\n"
+        fi
+    done < "$LIST_FILE"
+    
+    if [[ -z "$CLEANED_LIST" ]]; then
+        # No valid windows left, clear the file
+        > "$LIST_FILE"
+        notify-send "Minimize Manager" "No windows are currently minimized."
+        exit 0
+    fi
+    
+    # Update the list file with cleaned data
+    echo -ne "$CLEANED_LIST" > "$LIST_FILE"
+    
+    WINDOW_LIST=$(awk -F'\t' '{
+        print $2 " - " $3 "\t" $1
+    }' "$LIST_FILE")
+    
+    SELECTION_LINE=$(echo -e "$WINDOW_LIST" | eval "$MENU_COMMAND")
+    
+    if [[ -z "$SELECTION_LINE" ]]; then exit 0; fi
+
+    WINDOW_ADDRESS=$(echo "$SELECTION_LINE" | awk -F'\t' '{print $2}' | tr -d '[:space:]' | sed 's/\r$//')
+    WINDOW_TITLE=$(echo "$SELECTION_LINE" | awk -F'\t' '{print $1}' | sed 's/\s\-.*$//')
+    
+    if [[ -z "$WINDOW_ADDRESS" ]]; then
+        notify-send "Restore Error" "Could not determine window address."
+        exit 1
+    fi
+
+    CURRENT_WS_ID=$(hyprctl activeworkspace -j | jq -r '.id')
+    hyprctl dispatch movetoworkspace "name:$CURRENT_WS_ID,address:$WINDOW_ADDRESS"
+    hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
+    
+    awk -F'\t' -v addr="$WINDOW_ADDRESS" 'BEGIN {OFS="\t"} $1 != addr {print $0}' "$LIST_FILE" > "${LIST_FILE}.tmp" && \
+    mv "${LIST_FILE}.tmp" "$LIST_FILE"
+
+    notify-send "Window Restored" "$WINDOW_TITLE has been moved to workspace $CURRENT_WS_ID."
+}
+
+case "$1" in
+    "minimize")
+        MINIMIZE_ACTION
+        ;;
+    "restore")
+        RESTORE_ACTION
+        ;;
+    *)
+        echo "Usage: $0 {minimize|restore}"
+        exit 1
+        ;;
+esac
+
