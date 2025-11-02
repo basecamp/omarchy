@@ -287,11 +287,11 @@ show_install_ai_menu() {
       echo ollama
   )
 
-  case $(menu "Install" "󱚤  Claude Code\n󱚤  Cursor CLI [AUR]\n󱚤  Gemini [AUR]\n󱚤  OpenAI Codex\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
+  case $(menu "Install" "󱚤  Claude Code\n󱚤  Cursor CLI [AUR]\n󱚤  Gemini\n󱚤  OpenAI Codex\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
   *Claude*) install "Claude Code" "claude-code" ;;
   *Cursor*) aur_install "Cursor CLI" "cursor-cli" ;;
   *OpenAI*) install "OpenAI Codex" "openai-codex-bin" ;;
-  *Gemini*) aur_install "Gemini" "gemini-cli" ;;
+  *Gemini*) install "Gemini" "gemini-cli" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
