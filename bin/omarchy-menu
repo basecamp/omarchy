@@ -147,8 +147,18 @@ show_style_menu() {
   *Font*) show_font_menu ;;
   *Background*) omarchy-theme-bg-next ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
-  *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
-  *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
+  *Screensaver*) 
+    SCREENSAVER_FILE="$HOME/.config/omarchy/current/theme/screensaver.txt"
+    if [[ ! -f "$SCREENSAVER_FILE" ]]; then
+      SCREENSAVER_FILE="$HOME/.config/omarchy/branding/screensaver.txt"
+    fi
+    open_in_editor "$SCREENSAVER_FILE" ;;
+  *About*) 
+    ABOUT_FILE="$HOME/.config/omarchy/current/theme/about.txt"
+    if [[ ! -f "$ABOUT_FILE" ]]; then
+      ABOUT_FILE="$HOME/.config/omarchy/branding/about.txt"
+    fi
+    open_in_editor "$ABOUT_FILE" ;;
   *) show_main_menu ;;
   esac
 }

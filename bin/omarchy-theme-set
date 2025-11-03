@@ -20,6 +20,16 @@ fi
 # Update theme symlinks
 ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
 
+# Update branding files when theme changes
+if [[ -f "$THEME_PATH/about.txt" ]]; then
+  mkdir -p ~/.config/omarchy/branding
+  cp "$THEME_PATH/about.txt" ~/.config/omarchy/branding/about.txt 2>/dev/null || true
+fi
+if [[ -f "$THEME_PATH/screensaver.txt" ]]; then
+  mkdir -p ~/.config/omarchy/branding
+  cp "$THEME_PATH/screensaver.txt" ~/.config/omarchy/branding/screensaver.txt 2>/dev/null || true
+fi
+
 # Change background with theme
 omarchy-theme-bg-next
 

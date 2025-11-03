@@ -6,6 +6,25 @@ screensaver_in_focus() {
 
 exit_screensaver() {
   hyprctl keyword cursor:invisible false
+  
+  # Restore previous shader or turn off screensaver shader
+  if command -v hyprshade &>/dev/null; then
+    PREVIOUS_SHADER_FILE=~/.local/state/omarchy/screensaver-previous-shader
+    if [[ -f "$PREVIOUS_SHADER_FILE" ]]; then
+      PREVIOUS_SHADER=$(cat "$PREVIOUS_SHADER_FILE" 2>/dev/null || echo "")
+      rm -f "$PREVIOUS_SHADER_FILE"
+      
+      if [[ -n "$PREVIOUS_SHADER" ]] && [[ "$PREVIOUS_SHADER" != "off" ]]; then
+        hyprshade on "$PREVIOUS_SHADER" 2>/dev/null || hyprshade off 2>/dev/null || true
+      else
+        hyprshade off 2>/dev/null || true
+      fi
+    else
+      # No previous state, just turn off
+      hyprshade off 2>/dev/null || true
+    fi
+  fi
+  
   pkill -x tte 2>/dev/null
   pkill -f "alacritty --class Screensaver" 2>/dev/null
   exit 0
@@ -17,7 +36,14 @@ hyprctl keyword cursor:invisible true &>/dev/null
 
 while true; do
   effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
-  tte -i ~/.config/omarchy/branding/screensaver.txt \
+  
+  # Use theme-specific screensaver.txt if available, otherwise fallback to global branding
+  SCREENSAVER_BRANDING_FILE="$HOME/.config/omarchy/current/theme/screensaver.txt"
+  if [[ ! -f "$SCREENSAVER_BRANDING_FILE" ]]; then
+    SCREENSAVER_BRANDING_FILE="$HOME/.config/omarchy/branding/screensaver.txt"
+  fi
+  
+  tte -i "$SCREENSAVER_BRANDING_FILE" \
     --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
     "$effect" &
 
