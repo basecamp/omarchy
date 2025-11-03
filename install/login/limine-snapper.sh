@@ -2,7 +2,7 @@ if command -v limine &>/dev/null; then
   sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
 
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
-HOOKS=(base systemd plymouth keyboard autodetect microcode modconf kms sd-vconsole block sd-encrypt filesystems fsck btrfs-overlayfs)
+HOOKS=(base systemd plymouth keyboard autodetect microcode modconf kms block sd-vconsole sd-encrypt filesystems fsck sd-btrfs-overlayfs)
 EOF
 
   [[ -f /boot/EFI/limine/limine.conf ]] || [[ -f /boot/EFI/BOOT/limine.conf ]] && EFI=true
