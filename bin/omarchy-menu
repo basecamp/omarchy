@@ -37,7 +37,7 @@ menu() {
 }
 
 terminal() {
-  alacritty --class=Omarchy -e "$@"
+  xdg-terminal-exec --app-id=com.omarchy.Omarchy "$@"
 }
 
 present_terminal() {
@@ -178,7 +178,7 @@ show_setup_menu() {
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
-  *Audio*) $TERMINAL --class=Wiremix -e wiremix ;;
+  *Audio*) xdg-terminal-exec --app-id=com.omarchy.Wiremix -e wiremix ;;
   *Wifi*)
     rfkill unblock wifi
     omarchy-launch-wifi
@@ -264,7 +264,7 @@ show_install_editor_menu() {
   *VSCode*) present_terminal omarchy-install-vscode ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
   *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
-  *Sublime*) aur_install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
+  *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) install "Helix" "helix" ;;
   *Emacs*) install "Emacs" "emacs-wayland" && systemctl --user enable --now emacs.service ;;
   *) show_install_menu ;;
@@ -287,11 +287,11 @@ show_install_ai_menu() {
       echo ollama
   )
 
-  case $(menu "Install" "󱚤  Claude Code\n󱚤  Cursor CLI [AUR]\n󱚤  Gemini [AUR]\n󱚤  OpenAI Codex\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
+  case $(menu "Install" "󱚤  Claude Code\n󱚤  Cursor CLI\n󱚤  Gemini\n󱚤  OpenAI Codex\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
   *Claude*) install "Claude Code" "claude-code" ;;
-  *Cursor*) aur_install "Cursor CLI" "cursor-cli" ;;
+  *Cursor*) install "Cursor CLI" "cursor-cli" ;;
   *OpenAI*) install "OpenAI Codex" "openai-codex-bin" ;;
-  *Gemini*) aur_install "Gemini" "gemini-cli" ;;
+  *Gemini*) install "Gemini" "gemini-cli" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
@@ -304,7 +304,7 @@ show_install_gaming_menu() {
   case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft") in
   *Steam*) present_terminal omarchy-install-steam ;;
   *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
-  *Minecraft*) aur_install_and_launch "Minecraft [AUR]" "minecraft-launcher" "minecraft-launcher" ;;
+  *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
   *) show_install_menu ;;
   esac
 }

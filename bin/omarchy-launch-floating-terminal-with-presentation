@@ -1,4 +1,4 @@
 #!/bin/bash
 
 cmd="$*"
-exec setsid uwsm-app -- alacritty -o font.size=9 --class=Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; $cmd; omarchy-show-done"
+exec setsid uwsm-app -- xdg-terminal-exec --app-id=com.omarchy.Omarchy --title=Omarchy -e bash -c "omarchy-show-logo; $cmd; omarchy-show-done"
