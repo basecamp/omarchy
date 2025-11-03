@@ -30,7 +30,7 @@ else
 fi
 
 if [[ ${#APP_NAMES[@]} -eq 0 ]]; then
-  echo "You must provide web app names."
+  echo "You must select at least one web app to remove."
   exit 1
 fi
 
