@@ -13,6 +13,30 @@ if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]
   exit 1
 fi
 
+# Get screensaver shader configuration from current theme
+SCREENSAVER_SHADER="${OMARCHY_SCREENSAVER_SHADER:-}"
+CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
+
+if [[ -z "$SCREENSAVER_SHADER" ]] && [[ -f "$CURRENT_THEME_DIR/screensaver.conf" ]]; then
+  source "$CURRENT_THEME_DIR/screensaver.conf"
+  SCREENSAVER_SHADER="${SCREENSAVER_SHADER:-}"
+  
+  # Support random shader selection if SCREENSAVER_SHADERS array is defined
+  if [[ -n "${SCREENSAVER_SHADERS[@]:-}" ]] && [[ ${#SCREENSAVER_SHADERS[@]} -gt 0 ]]; then
+    SCREENSAVER_SHADER="${SCREENSAVER_SHADERS[RANDOM % ${#SCREENSAVER_SHADERS[@]}]}"
+  fi
+fi
+
+# Store current shader state before applying screensaver shader
+if command -v hyprshade &>/dev/null && [[ -n "$SCREENSAVER_SHADER" ]]; then
+  CURRENT_SHADER=$(hyprshade current 2>/dev/null || echo "")
+  mkdir -p ~/.local/state/omarchy
+  echo "$CURRENT_SHADER" > ~/.local/state/omarchy/screensaver-previous-shader 2>/dev/null || true
+  
+  # Apply screensaver shader
+  hyprshade on "$SCREENSAVER_SHADER" 2>/dev/null || true
+fi
+
 focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
 
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
