@@ -7,15 +7,41 @@ fi
 
 package="$1"
 
+# Map package name to desktop entry ID
+case "$package" in
+  alacritty)
+    desktop_id="Alacritty.desktop"
+    ;;
+  ghostty)
+    desktop_id="com.mitchellh.ghostty.desktop"
+    ;;
+  kitty)
+    desktop_id="kitty.desktop"
+    ;;
+  *)
+    echo "Unknown terminal: $package"
+    exit 1
+    ;;
+esac
+
 # Install package
 if omarchy-pkg-add $package; then
   # Set as default terminal
   echo "Setting $package as new default terminal..."
   sed -i "/export TERMINAL=/ c\export TERMINAL=$package" ~/.config/uwsm/default
 
-  # Restart is needed for new default to take effect
-  echo
-  gum confirm "Restart to use new terminal?" && systemctl reboot --no-wall
+  # Copy custom desktop entry for alacritty with X-TerminalArg* keys
+  if [ "$package" = "alacritty" ]; then
+    mkdir -p ~/.local/share/applications
+    cp "$OMARCHY_PATH/applications/Alacritty.desktop" ~/.local/share/applications/
+  fi
+
+  # Update xdg-terminals.list to prioritize the proper terminal
+  cat > ~/.config/xdg-terminals.list << EOF
+# Terminal emulator preference order for xdg-terminal-exec
+# The first found and valid terminal will be used
+$desktop_id
+EOF
 else
   echo "Failed to install $package"
 fi

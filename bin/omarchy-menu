@@ -37,7 +37,7 @@ menu() {
 }
 
 terminal() {
-  alacritty --class=Omarchy -e "$@"
+  xdg-terminal-exec --app-id=com.omarchy.Omarchy "$@"
 }
 
 present_terminal() {
@@ -178,7 +178,7 @@ show_setup_menu() {
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
-  *Audio*) $TERMINAL --class=Wiremix -e wiremix ;;
+  *Audio*) xdg-terminal-exec --app-id=com.omarchy.Wiremix -e wiremix ;;
   *Wifi*)
     rfkill unblock wifi
     omarchy-launch-wifi
