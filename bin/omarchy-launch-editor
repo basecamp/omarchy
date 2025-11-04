@@ -1,8 +1,10 @@
 #!/bin/bash
 
-case "${EDITOR:-nvim}" in
+omarchy-cmd-present "$EDITOR" || EDITOR=nvim
+
+case "$EDITOR" in
 nvim | vim | nano | micro | hx | helix)
-  exec setsid uwsm-app -- "$TERMINAL" -e "$EDITOR" "$@"
+  exec setsid uwsm-app -- xdg-terminal-exec "$EDITOR" "$@"
   ;;
 *)
   exec setsid uwsm-app -- "$EDITOR" "$@"
