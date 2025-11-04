@@ -1,6 +1,9 @@
 add_newline = true
 command_timeout = 200
-format = "[$directory$git_branch$git_status]($style)$character"
+format = "[$python$directory$git_branch$git_status]($style)$character"
+
+[python]
+format = '(\($virtualenv\)) '
 
 [character]
 error_symbol = "[✗](bold cyan)"
