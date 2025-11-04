@@ -26,7 +26,7 @@ if [[ -f "$HOOKS_CONF" ]] && grep -q "base udev.*keymap consolefont.*encrypt" "$
         LUKS_UUID=$(cryptsetup luksUUID "$LUKS_DEVICE" 2>/dev/null)
         if [[ -n "$LUKS_UUID" ]]; then
           sudo cp "$LIMINE_CONF" "$LIMINE_CONF.backup-$(date +%s)"
-          sudo sed -i "s|cryptdevice=PARTUUID=${PARTUUID}:root|rd.luks.name=${LUKS_UUID}=root|g" "$LIMINE_CONF"
+          sudo sed -i "s|cryptdevice=PARTUUID=${PARTUUID}:root|rd.luks.name=${LUKS_UUID}=root rd.luks.options=tries=0|g" "$LIMINE_CONF"
         fi
       fi
     fi
