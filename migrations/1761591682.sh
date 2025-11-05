@@ -34,12 +34,20 @@ fi
 
 # Make sure iwd is enabled
 if ! systemctl is-enabled iwd.service | grep -q "enabled"; then
+    sudo systemctl unmask iwd.service
     sudo systemctl enable --now iwd.service
 fi
 
 # Enable and start NetworkManager
 if ! systemctl is-enabled NetworkManager.service | grep -q "enabled"; then
+    sudo systemctl unmask NetworkManager.service
     sudo systemctl enable --now NetworkManager.service
+fi
+
+# Make sure systemd-resolved is enabled
+if ! systemctl is-enabled systemd-resolved.service | grep -q "enabled"; then
+    sudo systemctl unmask systemd-resolved.service
+    sudo systemctl enable --now systemd-resolved.service
 fi
 
 # Restart systemd-resolved just to be sure
