@@ -28,12 +28,12 @@ if pgrep -x waybar >/dev/null; then
   omarchy-restart-waybar
 fi
 omarchy-restart-swayosd
+omarchy-restart-terminal
 hyprctl reload
 pkill -SIGUSR2 btop
 makoctl reload
 
 # Change gnome, browser, vscode, cursor themes
-omarchy-theme-set-terminal
 omarchy-theme-set-gnome
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
