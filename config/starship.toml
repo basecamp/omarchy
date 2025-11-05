@@ -1,6 +1,6 @@
 add_newline = true
 command_timeout = 200
-format = "[$directory$git_branch$git_status]($style)$character"
+format = "[$directory$git_branch$git_status$nix_shell]($style)$character"
 
 [character]
 error_symbol = "[✗](bold cyan)"
@@ -30,3 +30,9 @@ stashed    = ""
 staged     = ""
 renamed    = ""
 deleted    = ""
+
+[nix_shell]
+format = '$symbol [$name(@$pkg_version)]($style) '
+style  = "cyan"
+symbol = "[](blue)"
+heuristic = true
