@@ -13,6 +13,14 @@ if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]
   exit 1
 fi
 
+# Temporarily unpin all popped windows so screensaver covers them
+popped_windows=$(hyprctl clients -j | jq -r '.[] | select(.tags[] == "pop") | .address')
+if [[ -n "$popped_windows" ]]; then
+  while IFS= read -r addr; do
+    hyprctl dispatch pin address:"$addr"
+  done <<< "$popped_windows"
+fi
+
 focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
 
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
