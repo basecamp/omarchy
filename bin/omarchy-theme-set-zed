@@ -1,0 +1,624 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Generates & applies a Zed theme based on the current Omarchy theme (walker.css)
+# Will also use zed.json overrides if present in the theme directory
+
+# Example zed.json format for overrides:
+# {
+#   "colors": {
+#     "background": "#1e1e2e",
+#     "foreground": "#cdd6f4",
+#     "text": "#cdd6f4",
+#     "selected": "#89b4fa",
+#     "border": "#89b4fa",
+#     "base": "#1e1e2e"
+#   },
+#   "syntax": {
+#     "comment": "#6c7086",
+#     "keyword": "#cba6f7",
+#     "string": "#a6e3a1",
+#     "number": "#fab387",
+#     "type": "#f9e2af",
+#     "operator": "#f5c2e7",
+#     "function": "#89b4fa"
+#   }
+# }
+
+# Parse command line arguments (explicit theme override)
+THEME_NAME_ARG="${1:-}"
+
+# Base Omarchy themes directory
+OMARCHY_THEMES_DIR="${HOME}/.config/omarchy/themes"
+
+# Determine which theme to use
+if [[ -n "$THEME_NAME_ARG" ]]; then
+  THEME_DIR="${OMARCHY_THEMES_DIR}/${THEME_NAME_ARG}"
+  WALKER_CSS="${THEME_DIR}/walker.css"
+  ZED_JSON="${THEME_DIR}/zed.json"
+  THEME_NAME="$THEME_NAME_ARG"
+else
+  WALKER_CSS="${HOME}/.config/omarchy/current/theme/walker.css"
+  ZED_JSON="${HOME}/.config/omarchy/current/theme/zed.json"
+  THEME_NAME=""  # Will be determined from symlink
+fi
+
+# Skip flag for opting out
+SKIP_FLAG="${HOME}/.local/state/omarchy/toggles/skip-zed-theme-changes"
+
+# Zed config paths
+ZED_CONFIG_DIR="${HOME}/.config/zed"
+ZED_THEMES_DIR="${ZED_CONFIG_DIR}/themes"
+ZED_SETTINGS="${ZED_CONFIG_DIR}/settings.json"
+
+# Logging
+LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}"
+LOG_FILE="${LOG_DIR}/omarchy-theme-set-zed.log"
+
+# Ensure directories exist
+mkdir -p "$LOG_DIR" "$ZED_THEMES_DIR"
+
+# Logging function
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+# Error handling
+die() {
+  log "ERROR: $1" >&2
+  exit 1
+}
+
+# Get current theme name from symlink (only if not provided as arg)
+get_theme_name() {
+  if [[ -L "${HOME}/.config/omarchy/current/theme" ]]; then
+    basename "$(readlink -f "${HOME}/.config/omarchy/current/theme")"
+  else
+    echo "unknown"
+  fi
+}
+
+# Extract colors from walker.css (should always exist)
+extract_walker_colors() {
+  local walker_file="${1}"
+
+  # Initialize with defaults
+  local bg="#1e1e2e"
+  local fg="#cdd6f4"
+  local text="#cdd6f4"
+  local selected="#89b4fa"
+  local border="#89b4fa"
+  local base="#1e1e2e"
+
+  # Parse walker.css for color defs
+  while IFS= read -r line; do
+    if [[ "$line" =~ @define-color[[:space:]]+([a-zA-Z-]+)[[:space:]]+([#0-9a-fA-F]+) ]]; then
+      local var_name="${BASH_REMATCH[1]}"
+      local color="${BASH_REMATCH[2]}"
+
+      # Clean up the color vals (remove extra # if present, handle opacity)
+      color="${color/#\#/#}"  # Replace ## with #
+      # If border has opacity (8 digits), extract just the color part
+      if [[ "$var_name" == "border" ]] && [[ "${#color}" -gt 7 ]]; then
+        color="${color:0:7}"
+      fi
+
+      case "$var_name" in
+        background) bg="$color" ;;
+        foreground) fg="$color" ;;
+        text) text="$color" ;;
+        selected-text) selected="$color" ;;
+        border) border="$color" ;;
+        base) base="$color" ;;
+      esac
+    fi
+  done < "$walker_file"
+
+  # Output the colors as JSON-ready variables
+  echo "BG=$bg"
+  echo "FG=$fg"
+  echo "TEXT=$text"
+  echo "SELECTED=$selected"
+  echo "BORDER=$border"
+  echo "BASE=$base"
+}
+
+# Derive syntax colors from base walker.css colors
+derive_syntax_colors() {
+  local bg="$1"
+  local fg="$2"
+  local selected="$3"
+
+  # Parse RGB values from hex
+  local bg_r=$((16#${bg:1:2}))
+  local bg_g=$((16#${bg:3:2}))
+  local bg_b=$((16#${bg:5:2}))
+
+  local fg_r=$((16#${fg:1:2}))
+  local fg_g=$((16#${fg:3:2}))
+  local fg_b=$((16#${fg:5:2}))
+
+  local sel_r=$((16#${selected:1:2}))
+  local sel_g=$((16#${selected:3:2}))
+  local sel_b=$((16#${selected:5:2}))
+
+  # Derive colors by adjusting hue/brightness
+  # String: slightly green-shifted
+  local string_r=$(( (fg_r * 70 + 166 * 30) / 100 ))
+  local string_g=$(( (fg_g * 70 + 227 * 30) / 100 ))
+  local string_b=$(( (fg_b * 70 + 161 * 30) / 100 ))
+  local string_color
+  printf -v string_color "#%02x%02x%02x" $string_r $string_g $string_b
+
+  # Number: orange-shifted
+  local num_r=$(( (fg_r * 70 + 250 * 30) / 100 ))
+  local num_g=$(( (fg_g * 70 + 179 * 30) / 100 ))
+  local num_b=$(( (fg_b * 70 + 135 * 30) / 100 ))
+  local number_color
+  printf -v number_color "#%02x%02x%02x" $num_r $num_g $num_b
+
+  # Operator: red-shifted
+  local op_r=$(( (fg_r * 70 + 243 * 30) / 100 ))
+  local op_g=$(( (fg_g * 70 + 139 * 30) / 100 ))
+  local op_b=$(( (fg_b * 70 + 168 * 30) / 100 ))
+  local operator_color
+  printf -v operator_color "#%02x%02x%02x" $op_r $op_g $op_b
+
+  # Type: yellow-shifted
+  local type_r=$(( (fg_r * 70 + 249 * 30) / 100 ))
+  local type_g=$(( (fg_g * 70 + 226 * 30) / 100 ))
+  local type_b=$(( (fg_b * 70 + 175 * 30) / 100 ))
+  local type_color
+  printf -v type_color "#%02x%02x%02x" $type_r $type_g $type_b
+
+  # Output assignments for eval
+  echo "STRING_COLOR=$string_color"
+  echo "NUMBER_COLOR=$number_color"
+  echo "OPERATOR_COLOR=$operator_color"
+  echo "TYPE_COLOR=$type_color"
+}
+
+# Generate Zed theme JSON
+generate_zed_theme() {
+  local theme_name="${1}"
+  local walker_file="${2}"
+  local zed_json="${3}"
+  local output_file="${4}"
+
+  # Extract colors from walker.css (used as fallback)
+  eval "$(extract_walker_colors "$walker_file")"
+
+  # Check for zed.json overrides?
+  if [[ -f "$zed_json" ]]; then
+    log "Found zed.json, using color overrides"
+
+    # Override base colors if present in zed.json
+    BG=$(get_json_color "$zed_json" ".colors.background" "$BG")
+    FG=$(get_json_color "$zed_json" ".colors.foreground" "$FG")
+    TEXT=$(get_json_color "$zed_json" ".colors.text" "$TEXT")
+    SELECTED=$(get_json_color "$zed_json" ".colors.selected" "$SELECTED")
+    BORDER=$(get_json_color "$zed_json" ".colors.border" "$BORDER")
+    BASE=$(get_json_color "$zed_json" ".colors.base" "$BASE")
+  fi
+
+  # Derive syntax colors from base colors (will be overridden if in zed.json)
+  eval "$(derive_syntax_colors "$BG" "$FG" "$SELECTED")"
+
+  # Override syntax colors if present in zed.json
+  if [[ -f "$zed_json" ]]; then
+    local comment_color=$(get_json_color "$zed_json" ".syntax.comment" "")
+    local keyword_color=$(get_json_color "$zed_json" ".syntax.keyword" "")
+    local string_color=$(get_json_color "$zed_json" ".syntax.string" "")
+    local number_color=$(get_json_color "$zed_json" ".syntax.number" "")
+    local type_color=$(get_json_color "$zed_json" ".syntax.type" "")
+    local operator_color=$(get_json_color "$zed_json" ".syntax.operator" "")
+    local function_color=$(get_json_color "$zed_json" ".syntax.function" "")
+
+    [[ -n "$string_color" ]] && STRING_COLOR="$string_color"
+    [[ -n "$number_color" ]] && NUMBER_COLOR="$number_color"
+    [[ -n "$type_color" ]] && TYPE_COLOR="$type_color"
+    [[ -n "$operator_color" ]] && OPERATOR_COLOR="$operator_color"
+  fi
+
+  # Override terminal colors if present in zed.json
+  local TERM_BLACK="#45475a"
+  local TERM_RED="#f38ba8"
+  local TERM_GREEN="#a6e3a1"
+  local TERM_YELLOW="#f9e2af"
+  local TERM_BLUE="$SELECTED"
+  local TERM_MAGENTA="#f5c2e7"
+  local TERM_CYAN="#94e2d5"
+  local TERM_WHITE="$FG"
+  local TERM_BRIGHT_BLACK="${FG}44"
+
+  if [[ -f "$zed_json" ]]; then
+    TERM_BLACK=$(get_json_color "$zed_json" ".terminal.black" "$TERM_BLACK")
+    TERM_RED=$(get_json_color "$zed_json" ".terminal.red" "$TERM_RED")
+    TERM_GREEN=$(get_json_color "$zed_json" ".terminal.green" "$TERM_GREEN")
+    TERM_YELLOW=$(get_json_color "$zed_json" ".terminal.yellow" "$TERM_YELLOW")
+    TERM_BLUE=$(get_json_color "$zed_json" ".terminal.blue" "$TERM_BLUE")
+    TERM_MAGENTA=$(get_json_color "$zed_json" ".terminal.magenta" "$TERM_MAGENTA")
+    TERM_CYAN=$(get_json_color "$zed_json" ".terminal.cyan" "$TERM_CYAN")
+    TERM_WHITE=$(get_json_color "$zed_json" ".terminal.white" "$TERM_WHITE")
+    TERM_BRIGHT_BLACK=$(get_json_color "$zed_json" ".terminal.bright_black" "$TERM_BRIGHT_BLACK")
+  fi
+
+  # Determine appearance based on background brightness
+  local appearance="dark"
+  local bg_hex="${BG:1}"  # Remove the #
+  local r=$((16#${bg_hex:0:2}))
+  local g=$((16#${bg_hex:2:2}))
+  local b=$((16#${bg_hex:4:2}))
+  local brightness=$(( (r + g + b) / 3 ))
+  [[ $brightness -gt 128 ]] && appearance="light"
+
+  # Generate the theme file
+  cat > "$output_file" <<EOF
+{
+  "\$schema": "https://zed.dev/schema/themes/v0.2.0.json",
+  "name": "${theme_name}",
+  "author": "Omarchy Theme System",
+  "themes": [
+    {
+      "name": "${theme_name}",
+      "appearance": "${appearance}",
+      "style": {
+        "border": "${BORDER}44",
+        "border.variant": "${BORDER}33",
+        "border.focused": "${SELECTED}",
+        "border.selected": "${SELECTED}88",
+        "border.transparent": "#00000000",
+        "border.disabled": "${BORDER}22",
+
+        "elevated_surface.background": "${BASE}",
+        "surface.background": "${BASE}",
+        "background": "${BG}",
+
+        "element.background": "${BASE}",
+        "element.hover": "${SELECTED}22",
+        "element.active": "${SELECTED}44",
+        "element.selected": "${SELECTED}33",
+        "element.disabled": "${BASE}88",
+
+        "drop_target.background": "${SELECTED}44",
+
+        "ghost_element.background": "#00000000",
+        "ghost_element.hover": "${SELECTED}11",
+        "ghost_element.active": "${SELECTED}22",
+        "ghost_element.selected": "${SELECTED}33",
+        "ghost_element.disabled": "${BASE}44",
+
+        "text": "${TEXT}",
+        "text.muted": "${FG}88",
+        "text.placeholder": "${FG}55",
+        "text.disabled": "${FG}44",
+        "text.accent": "${SELECTED}",
+
+        "icon": "${FG}aa",
+        "icon.muted": "${FG}66",
+        "icon.disabled": "${FG}44",
+        "icon.placeholder": "${FG}44",
+        "icon.accent": "${SELECTED}",
+
+        "editor.background": "${BG}",
+        "editor.foreground": "${TEXT}",
+        "editor.line_number": "${FG}66",
+        "editor.active_line_number": "${SELECTED}",
+        "editor.cursor": "${SELECTED}",
+        "editor.selection": "${SELECTED}33",
+        "editor.gutter.background": "${BORDER}11",
+        "editor.active_line_background": "${SELECTED}11",
+
+        "status_bar.background": "${BASE}",
+        "status_bar.foreground": "${FG}",
+
+        "title_bar.background": "${BASE}",
+        "title_bar.inactive_background": "${BASE}ee",
+
+        "toolbar.background": "${BASE}",
+
+        "panel.background": "${BASE}",
+        "panel.focused_border": "${SELECTED}",
+
+        "pane.focused_border": "${SELECTED}",
+        "pane_group.border": "${BORDER}33",
+
+        "tab_bar.background": "${BASE}",
+        "tab.inactive_background": "${BASE}",
+        "tab.inactive_foreground": "${FG}88",
+        "tab.active_background": "${BG}",
+        "tab.active_foreground": "${FG}",
+        "tab.unfocused_active_background": "${BG}ee",
+        "tab.unfocused_active_foreground": "${FG}dd",
+
+        "project_panel.background": "${BASE}",
+        "project_panel.entry": "${BASE}",
+        "project_panel.entry_hover": "${SELECTED}22",
+
+        "search.match_background": "${SELECTED}44",
+
+        "scrollbar.thumb.background": "${BORDER}44",
+        "scrollbar.thumb.hover_background": "${BORDER}66",
+        "scrollbar.thumb.border": "${BORDER}66",
+        "scrollbar.track.background": "#00000000",
+        "scrollbar.track.border": "#00000000",
+
+        "link_text.hover": "${SELECTED}",
+
+        "conflict": "#f9e2af",
+        "created": "#a6e3a1",
+        "deleted": "#f38ba8",
+        "error": "#f38ba8",
+        "hidden": "${FG}66",
+        "hint": "${SELECTED}aa",
+        "ignored": "${FG}44",
+        "info": "${SELECTED}",
+        "modified": "#f9e2af",
+        "predictive": "${FG}55",
+        "renamed": "${SELECTED}",
+        "success": "#a6e3a1",
+        "warning": "#f9e2af",
+
+        "terminal.background": "${BG}",
+        "terminal.foreground": "${TEXT}",
+        "terminal.cursor_background": "${SELECTED}",
+        "terminal.cursor_foreground": "${BG}",
+        "terminal.selection_background": "${SELECTED}33",
+
+        "terminal.ansi.black": "${TERM_BLACK}",
+        "terminal.ansi.red": "${TERM_RED}",
+        "terminal.ansi.green": "${TERM_GREEN}",
+        "terminal.ansi.yellow": "${TERM_YELLOW}",
+        "terminal.ansi.blue": "${TERM_BLUE}",
+        "terminal.ansi.magenta": "${TERM_MAGENTA}",
+        "terminal.ansi.cyan": "${TERM_CYAN}",
+        "terminal.ansi.white": "${TERM_WHITE}",
+        "terminal.ansi.bright_black": "${TERM_BRIGHT_BLACK}",
+        "terminal.ansi.bright_red": "${TERM_RED}",
+        "terminal.ansi.bright_green": "${TERM_GREEN}",
+        "terminal.ansi.bright_yellow": "${TERM_YELLOW}",
+        "terminal.ansi.bright_blue": "${TERM_BLUE}",
+        "terminal.ansi.bright_magenta": "${TERM_MAGENTA}",
+        "terminal.ansi.bright_cyan": "${TERM_CYAN}",
+        "terminal.ansi.bright_white": "${TERM_WHITE}",
+
+        "syntax": {
+          "comment": {
+            "color": "${FG}66",
+            "font_style": "italic"
+          },
+          "keyword": {
+            "color": "${SELECTED}"
+          },
+          "string": {
+            "color": "${STRING_COLOR}"
+          },
+          "number": {
+            "color": "${NUMBER_COLOR}"
+          },
+          "boolean": {
+            "color": "${TYPE_COLOR}"
+          },
+          "function": {
+            "color": "${SELECTED}"
+          },
+          "variable": {
+            "color": "${TEXT}"
+          },
+          "type": {
+            "color": "${TYPE_COLOR}"
+          },
+          "operator": {
+            "color": "${OPERATOR_COLOR}"
+          },
+          "constant": {
+            "color": "${NUMBER_COLOR}"
+          },
+          "punctuation": {
+            "color": "${FG}88"
+          },
+          "attribute": {
+            "color": "${SELECTED}"
+          },
+          "property": {
+            "color": "${OPERATOR_COLOR}"
+          },
+          "tag": {
+            "color": "${OPERATOR_COLOR}"
+          }
+        }
+      }
+    }
+  ]
+}
+EOF
+
+  log "Generated theme: $output_file"
+}
+
+# Check if a command is available (helper matching Omarchy's pattern)
+omarchy_cmd_present() {
+  command -v "$1" &> /dev/null
+}
+
+# Get color from zed.json with fallback to default
+get_json_color() {
+  local json_file="$1"
+  local path="$2"
+  local default="$3"
+
+  if [[ -f "$json_file" ]] && omarchy_cmd_present jq; then
+    local value
+    value=$(jq -r "$path // empty" "$json_file" 2>/dev/null)
+    if [[ -n "$value" && "$value" != "null" ]]; then
+      echo "$value"
+      return 0
+    fi
+  fi
+
+  echo "$default"
+}
+
+# Update Zed settings to use the theme NOW (using sed to preserve JSONC)
+update_zed_settings() {
+  local theme_name="${1}"
+
+  # Create config directory if needed
+  mkdir -p "$ZED_CONFIG_DIR"
+
+  # Ensure settings file exists
+  if [[ ! -f "$ZED_SETTINGS" ]]; then
+    cat > "$ZED_SETTINGS" <<EOF
+{
+  "theme": {
+    "mode": "dark",
+    "dark": "${theme_name}",
+    "light": "${theme_name}"
+  }
+}
+EOF
+    log "Created new settings.json with theme: $theme_name"
+    return 0
+  fi
+
+  # Check if theme is an object (nested format) or string (simple format)
+  local theme_is_object=false
+  if grep -q '"theme"[[:space:]]*:[[:space:]]*{' "$ZED_SETTINGS"; then
+    theme_is_object=true
+  fi
+
+  if [[ "$theme_is_object" == "true" ]]; then
+    # Update nested theme format: theme.dark and theme.light
+    log "Detected nested theme format, updating theme.dark and theme.light"
+
+    # Update dark theme
+    if grep -q '"dark"[[:space:]]*:' "$ZED_SETTINGS"; then
+      sed -i --follow-symlinks -E \
+        's/("dark"[[:space:]]*:[[:space:]]*")[^"]*"/\1'"${theme_name}"'"/' \
+        "$ZED_SETTINGS"
+    fi
+
+    # Update light theme
+    if grep -q '"light"[[:space:]]*:' "$ZED_SETTINGS"; then
+      sed -i --follow-symlinks -E \
+        's/("light"[[:space:]]*:[[:space:]]*")[^"]*"/\1'"${theme_name}"'"/' \
+        "$ZED_SETTINGS"
+    fi
+
+    # Verify at least dark theme was updated
+    if grep -q "\"dark\"[[:space:]]*:[[:space:]]*\"${theme_name}\"" "$ZED_SETTINGS"; then
+      log "Successfully updated theme.dark to: $theme_name"
+    else
+      log "WARNING: Failed to update theme.dark"
+    fi
+  else
+    # Simple string theme format
+    log "Detected simple theme format, updating theme value"
+
+    # Create a theme entry if it doesn't exist
+    if ! grep -q '"theme"' "$ZED_SETTINGS"; then
+      sed -i --follow-symlinks -E '0,/\{/{s/\{/{ "theme": "",/}' "$ZED_SETTINGS"
+    fi
+
+    # Update the theme value
+    sed -i --follow-symlinks -E \
+      's/("theme"[[:space:]]*:[[:space:]]*")[^"]*"/\1'"${theme_name}"'"/' \
+      "$ZED_SETTINGS"
+
+    # Verify the update worked
+    if grep -q "\"theme\"[[:space:]]*:[[:space:]]*\"${theme_name}\"" "$ZED_SETTINGS"; then
+      log "Successfully updated theme to: $theme_name"
+    else
+      log "WARNING: Failed to update theme"
+    fi
+  fi
+}
+
+# Main function - follows Omarchy's application-specific theme setter pattern
+main() {
+  # Check if Zed is installed and skip flag is not set
+  # Check for both 'zed' and 'zeditor' commands
+  if (omarchy_cmd_present zed || omarchy_cmd_present zeditor) && [[ ! -f "$SKIP_FLAG" ]]; then
+    # Determine theme name
+    if [[ -n "$THEME_NAME_ARG" ]]; then
+      # Using specified theme
+      THEME_NAME="$THEME_NAME_ARG"
+      log "Using specified theme: $THEME_NAME"
+
+      # Validate theme exists
+      if [[ ! -d "$THEME_DIR" ]]; then
+        die "Theme directory not found: $THEME_DIR"
+      fi
+
+      if [[ ! -f "$WALKER_CSS" ]]; then
+        die "walker.css not found in theme: $WALKER_CSS"
+      fi
+    else
+      # Using current theme
+      if [[ ! -f "$WALKER_CSS" ]]; then
+        log "No walker.css found in current theme, skipping Zed theme generation"
+        return 0
+      fi
+
+      THEME_NAME=$(get_theme_name)
+      log "Using current theme: $THEME_NAME"
+    fi
+
+    log "Processing Omarchy theme: $THEME_NAME"
+
+    # Generate or update the Zed theme
+    local zed_theme_file="${ZED_THEMES_DIR}/${THEME_NAME}.json"
+    generate_zed_theme "$THEME_NAME" "$WALKER_CSS" "$ZED_JSON" "$zed_theme_file"
+
+    # Validate the generated theme if jq is available
+    if omarchy_cmd_present jq; then
+      if ! jq empty "$zed_theme_file" 2>/dev/null; then
+        log "ERROR: Generated invalid theme JSON"
+        return 1
+      fi
+    fi
+
+    # Update Zed settings to use this theme
+    update_zed_settings "$THEME_NAME"
+
+    log "Successfully set Zed theme to: $THEME_NAME"
+  else
+    if [[ -f "$SKIP_FLAG" ]]; then
+      log "Skip flag detected, not updating Zed theme"
+    else
+      log "Zed/Zeditor not found in PATH"
+    fi
+  fi
+}
+
+# Show usage information
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [THEME_NAME]
+
+Set Zed editor theme from Omarchy theme system.
+
+  THEME_NAME    Optional: Name of specific theme to apply
+                If not provided, uses the current Omarchy theme
+
+Examples:
+  $(basename "$0")                # Use current theme
+  $(basename "$0") catppuccin     # Use specific theme
+  $(basename "$0") dracula        # Use specific theme
+
+The script will:
+  - Extract colors from walker.css and optional zed.json
+  - Generate a complete Zed theme JSON
+  - Update Zed's settings.json to use the theme
+
+EOF
+}
+
+# Parse arguments
+if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+# Run main function
+main
