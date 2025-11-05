@@ -148,6 +148,47 @@ EOF
     PASSWORD_DISPLAY="(user-defined)"
   fi
 
+  languages=$'Arabic
+Bulgarian
+Chinese
+Croatian
+Czech
+Danish
+Dutch
+English
+Estonian
+Finnish
+French
+German
+Greek
+Hebrew
+Hungarian
+Italian
+Japanese
+Korean
+Latvian
+Lithuanian
+Norwegian
+Polish
+Portuguese
+Romanian
+Russian
+Serbian
+Slovak
+Slovenian
+Spanish
+Swedish
+Thai
+Turkish
+Ukrainian
+  '
+
+  LANGUAGE=$(printf '%s\n' "$languages" | gum choose --selected="French" --header="Select OS language:")
+  if [ -z "$LANGUAGE" ]; then
+    echo "Installation cancelled by user"
+    exit 1
+  fi
+
   # Display configuration summary
   gum style \
     --border normal \
@@ -161,7 +202,8 @@ EOF
     "CPU:       $SELECTED_CORES cores" \
     "Disk:      $SELECTED_DISK" \
     "Username:  $USERNAME" \
-    "Password:  $PASSWORD_DISPLAY"
+    "Password:  $PASSWORD_DISPLAY" \
+    "Language:  $LANGUAGE"
 
   # Ask for confirmation
   echo ""
@@ -185,6 +227,7 @@ services:
       DISK_SIZE: "$SELECTED_DISK"
       USERNAME: "$USERNAME"
       PASSWORD: "$PASSWORD"
+      LANGUAGE: "$LANGUAGE"
     devices:
       - /dev/kvm
       - /dev/net/tun
