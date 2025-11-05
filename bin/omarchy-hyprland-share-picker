@@ -23,7 +23,7 @@ show_screen_tab() {
     connectors+=("$connector")
   done < <(hyprctl monitors -j 2>/dev/null | jq -r '.[] | "\(.name)|\(.description)|\(.width)|\(.height)"' 2>/dev/null)
 
-  local selected=$(printf '%s\n' "${options[@]}" | walker --dmenu -w 350 -p "Share Screen…" 2>/dev/null)
+  local selected=$(printf '%s\n' "${options[@]}" | walker --dmenu -p "Share Screen…" 2>/dev/null)
 
   for i in "${!options[@]}"; do
     [[ "${options[$i]}" == "$selected" ]] && output_selection "screen" "${connectors[$i]}"
@@ -57,7 +57,7 @@ show_window_tab() {
     fi
   done
 
-  local selected=$(printf '%s\n' "${options[@]}" | walker --dmenu -w 350 -p "Share Window…" 2>/dev/null)
+  local selected=$(printf '%s\n' "${options[@]}" | walker --dmenu -p "Share Window…" 2>/dev/null)
 
   for i in "${!options[@]}"; do
     [[ "${options[$i]}" == "$selected" ]] && output_selection "window" "${ids[$i]}"
