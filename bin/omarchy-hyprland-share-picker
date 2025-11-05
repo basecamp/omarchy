@@ -1,7 +1,6 @@
 #!/bin/bash
 
-ALLOW_TOKEN=false
-[[ "$1" == "--allow-token" ]] && ALLOW_TOKEN=true
+ALLOW_TOKEN=true  # Always allow restore token to prevent re-prompting
 
 output_selection() {
   local type="$1"
