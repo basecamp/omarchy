@@ -185,7 +185,7 @@ show_setup_menu() {
     ;;
   *Bluetooth*)
     rfkill unblock bluetooth
-    blueberry
+    omarchy-launch-bluetooth
     ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
