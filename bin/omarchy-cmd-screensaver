@@ -16,6 +16,8 @@ trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
 hyprctl keyword cursor:invisible true &>/dev/null
 
 framerate=$(hyprctl monitors -j | jq -r '.[0].refreshRate' | cut -d. -f1)
+# default frame rate set 60
+if [ -z "$framerate" ]; then framerate=60; fi
 
 while true; do
   effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
