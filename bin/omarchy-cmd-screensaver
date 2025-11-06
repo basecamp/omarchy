@@ -23,11 +23,15 @@ printf '\033[48;2;0;0;0m\033[2J\033[H'
 
 hyprctl keyword cursor:invisible true &>/dev/null
 
+framerate=$(hyprctl monitors -j | jq -r '.[0].refreshRate' | cut -d. -f1)
+# default frame rate set 60
+if [ -z "$framerate" ]; then framerate=60; fi
+
 while true; do
   effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
 
   tte -i ~/.config/omarchy/branding/screensaver.txt \
-    --frame-rate 240 --canvas-width 0 --canvas-height 0 --anchor-canvas c --anchor-text c --no-eol \
+    --frame-rate $framerate --canvas-width 0 --canvas-height 0 --anchor-canvas c --anchor-text c --no-eol \
     "$effect" &
 
   while pgrep -x tte >/dev/null; do
