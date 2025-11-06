@@ -1,13 +1,12 @@
 #!/bin/bash
 
-# Exit if arguments are missing
 if [[ -z "$1" ]]; then
   echo "Usage: $0 ['▲' (UP) || '▶' (RIGHT) || '▼' (DOWN) || '◀' (LEFT)]"
   echo "Example: $0 ▲"
   exit 1
 fi
 
-rotate_command="$1" # ['▲' (UP) || '▶' (RIGHT) || '▼' (DOWN) || '◀' (LEFT)]
+rotate_command="$1"
 which_monitor=$(hyprctl activeworkspace | awk -F "on monitor" 'NR==1 {print substr($2, 2, length($2)-2)}')
 
 declare -A monitor_transforms
@@ -17,7 +16,6 @@ while IFS=':' read -r monitor transform; do
   [[ -n "$monitor" && -n "$transform" ]] && monitor_transforms["$monitor"]="$transform"
 done < <(awk -F '[= ,]' '
 /^monitor/ {
-  # Find name: first non-empty field after "monitor"
   for (i=2; i<=NF; i++) {
     if ($i != "" && $i != "=") {
       name = $i
@@ -25,7 +23,7 @@ done < <(awk -F '[= ,]' '
       break
     }
   }
-  # Find transform: last numeric field (0-3), or default 0 if none
+
   transform = 0
   for (j=NF; j>=1; j--) {
     if ($j ~ /^[0-3]$/) {  # Matches 0,1,2,3
@@ -33,12 +31,9 @@ done < <(awk -F '[= ,]' '
       break
     }
   }
-  if (name != "") print name ":" transform
 }' "$config_file")
 
 default_transform="${monitor_transforms[$which_monitor]}"
-
-echo "${default_transform}" > ~/Work/output.txt
 
 if [[ "$rotate_command" == "UP" ]]; then
   new_transform=$(( $default_transform % 4 ))
