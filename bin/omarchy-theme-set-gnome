@@ -15,6 +15,10 @@ else
     gsettings set org.gnome.desktop.interface gtk-theme "Dracula"
   elif [[ "$THEME_NAME" == "catppuccin" ]]; then
     gsettings set org.gnome.desktop.interface gtk-theme "Catppuccin-Mauve-Dark"
+  elif [[ "$THEME_NAME" == "felix" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Colloid-Grey-Dark"
+  elif [[ "$THEME_NAME" == "drac" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Tokyonight-Dark"
   elif [[ "$THEME_NAME" == "osaka-jade" ]]; then
     gsettings set org.gnome.desktop.interface gtk-theme "Osaka-Green-Dark"
   elif [[ "$THEME_NAME" == "everforest" ]]; then
@@ -27,6 +31,10 @@ else
     gsettings set org.gnome.desktop.interface gtk-theme "Kanagawa-Grey-Dark"
   elif [[ "$THEME_NAME" == "tokyo-night" ]]; then
     gsettings set org.gnome.desktop.interface gtk-theme "Tokyonight-Dark"
+  elif [[ "$THEME_NAME" == "matte-black" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Colloid-Grey-Dark"
+  elif [[ "$THEME_NAME" == "blackturq" ]]; then
+    gsettings set org.gnome.desktop.interface gtk-theme "Colloid-Grey-Dark"
   else
     gsettings set org.gnome.desktop.interface gtk-theme "Catppuccin-Grey-Dark"
   fi
