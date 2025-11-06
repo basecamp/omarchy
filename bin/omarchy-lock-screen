@@ -9,4 +9,4 @@ if pgrep -x "1password" >/dev/null; then
 fi
 
 # Avoid running screensaver when locked
-pkill -f "omarchy-cmd-screensaver"
+pkill -f "alacritty --class Screensaver"
