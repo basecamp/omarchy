@@ -1,0 +1,506 @@
+#!/bin/bash
+
+# GTK Theme Generator and Setter for Omarchy
+# Parses colors from current theme and generates + applies custom GTK CSS
+#
+# Usage: omarchy-theme-set-gtk [theme-name]
+#   theme-name - Optional: Name of Omarchy theme to use (default: current theme)
+
+set -euo pipefail
+
+# Show help if requested
+if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
+    cat << 'HELP_EOF'
+omarchy-theme-set-gtk - Generate and apply GTK theme from Omarchy colors
+
+Usage:
+  omarchy-theme-set-gtk [theme-name]
+
+Arguments:
+  theme-name    Optional: Name of Omarchy theme to use
+                If omitted, uses the current active theme
+
+Examples:
+  # Use current theme
+  omarchy-theme-set-gtk
+
+  # Use specific theme
+  omarchy-theme-set-gtk my-theme
+
+  # Use generated theme
+  omarchy-theme-set-gtk generated
+
+Description:
+  This script parses colors from an Omarchy theme's alacritty.toml file,
+  generates matching GTK3/GTK4 CSS, and applies it to all running GTK
+  applications without requiring restarts.
+
+HELP_EOF
+    exit 0
+fi
+
+# Parse command line arguments
+THEME_NAME="${1:-}"
+OMARCHY_THEMES_DIR="$HOME/.config/omarchy/themes"
+
+# Determine theme directory
+if [[ -n "$THEME_NAME" ]]; then
+    # User specified a theme name
+    THEME_DIR="$OMARCHY_THEMES_DIR/$THEME_NAME"
+    if [[ ! -d "$THEME_DIR" ]]; then
+        echo "Error: Theme '$THEME_NAME' not found in $OMARCHY_THEMES_DIR"
+        echo ""
+        echo "Available themes:"
+        ls -1 "$OMARCHY_THEMES_DIR" 2>/dev/null | sed 's/^/  - /' || echo "  (none)"
+        echo ""
+        echo "Run 'omarchy-theme-set-gtk --help' for usage information."
+        exit 1
+    fi
+    echo " Using Omarchy theme: $THEME_NAME"
+else
+    # Use current theme
+    THEME_DIR="$HOME/.config/omarchy/current/theme"
+    THEME_NAME="current"
+fi
+
+ALACRITTY_TOML="$THEME_DIR/alacritty.toml"
+GTK3_DIR="$HOME/.config/gtk-3.0"
+GTK4_DIR="$HOME/.config/gtk-4.0"
+GTK3_FILE="$GTK3_DIR/gtk.css"
+GTK4_FILE="$GTK4_DIR/gtk.css"
+
+# ============================================================================
+# Color Parsing Functions
+# ============================================================================
+
+# Parse color from alacritty.toml using grep
+parse_color() {
+    local section=$1
+    local key=$2
+    local value=$(grep -A 20 "^\[$section\]" "$ALACRITTY_TOML" | \
+                  grep "^$key = " | \
+                  sed "s/^$key = '\(#[0-9A-Fa-f]\{6\}\)'.*/\1/" | \
+                  head -1)
+    echo "$value"
+}
+
+# Parse all colors from alacritty.toml
+parse_theme_colors() {
+    # Primary colors
+    BG_COLOR=$(parse_color "colors.primary" "background")
+    FG_COLOR=$(parse_color "colors.primary" "foreground")
+
+    # Accent color (use cursor color)
+    ACCENT_PRIMARY=$(parse_color "colors.cursor" "cursor")
+
+    # Normal colors
+    COLOR_BLACK=$(parse_color "colors.normal" "black")
+    COLOR_RED=$(parse_color "colors.normal" "red")
+    COLOR_GREEN=$(parse_color "colors.normal" "green")
+    COLOR_YELLOW=$(parse_color "colors.normal" "yellow")
+    COLOR_BLUE=$(parse_color "colors.normal" "blue")
+    COLOR_MAGENTA=$(parse_color "colors.normal" "magenta")
+    COLOR_CYAN=$(parse_color "colors.normal" "cyan")
+    COLOR_WHITE=$(parse_color "colors.normal" "white")
+
+    # Bright colors
+    COLOR_BLACK_BRIGHT=$(parse_color "colors.bright" "black")
+    COLOR_RED_BRIGHT=$(parse_color "colors.bright" "red")
+    COLOR_GREEN_BRIGHT=$(parse_color "colors.bright" "green")
+    COLOR_YELLOW_BRIGHT=$(parse_color "colors.bright" "yellow")
+    COLOR_BLUE_BRIGHT=$(parse_color "colors.bright" "blue")
+    COLOR_MAGENTA_BRIGHT=$(parse_color "colors.bright" "magenta")
+    COLOR_CYAN_BRIGHT=$(parse_color "colors.bright" "cyan")
+    COLOR_WHITE_BRIGHT=$(parse_color "colors.bright" "white")
+
+    # Accent colors (use bright variants for secondary/tertiary)
+    ACCENT_SECONDARY="$COLOR_GREEN_BRIGHT"
+    ACCENT_TERTIARY="$COLOR_BLUE_BRIGHT"
+}
+
+# ============================================================================
+# GTK Theme Reload Function
+# ============================================================================
+
+# Trigger GTK theme reload without killing applications
+# Uses the "theme toggle" trick to force all GTK apps to reload CSS
+reload_gtk_theme() {
+    local current_theme
+    current_theme=$(gsettings get org.gnome.desktop.interface gtk-theme)
+
+    # Remove quotes from theme name
+    current_theme="${current_theme//\'/}"
+
+    # Toggle to a different theme temporarily
+    local temp_theme="Adwaita"
+    [[ "$current_theme" == "Adwaita" ]] && temp_theme="Adwaita-dark"
+
+    # Switch away and back to force reload
+    gsettings set org.gnome.desktop.interface gtk-theme "$temp_theme" 2>/dev/null
+    sleep 0.1
+    gsettings set org.gnome.desktop.interface gtk-theme "$current_theme" 2>/dev/null
+}
+
+# ============================================================================
+# GTK CSS Generation
+# ============================================================================
+
+generate_gtk_css() {
+    cat << 'GTK_EOF'
+@define-color background     GTK_BG_COLOR;
+@define-color foreground     GTK_FG_COLOR;
+@define-color black          GTK_BG_COLOR;
+@define-color red            GTK_RED;
+@define-color green          GTK_GREEN;
+@define-color yellow         GTK_YELLOW;
+@define-color blue           GTK_BLUE;
+@define-color magenta        GTK_MAGENTA;
+@define-color cyan           GTK_CYAN;
+@define-color white          GTK_WHITE;
+@define-color bright_black   GTK_BLACK_BRIGHT;
+@define-color bright_red     GTK_RED_BRIGHT;
+@define-color bright_green   GTK_GREEN_BRIGHT;
+@define-color bright_yellow  GTK_YELLOW_BRIGHT;
+@define-color bright_blue    GTK_BLUE_BRIGHT;
+@define-color bright_magenta GTK_MAGENTA_BRIGHT;
+@define-color bright_cyan    GTK_CYAN_BRIGHT;
+@define-color bright_white   GTK_WHITE_BRIGHT;
+
+@define-color accent_bg_color GTK_ACCENT_PRIMARY;
+@define-color accent_fg_color @background;
+@define-color accent_color GTK_ACCENT_PRIMARY;
+
+@define-color window_bg_color @background;
+@define-color window_fg_color @foreground;
+
+@define-color view_bg_color @black;
+@define-color view_fg_color @foreground;
+@define-color sidebar_bg_color @black;
+@define-color sidebar_fg_color @foreground;
+@define-color sidebar_backdrop_color @black;
+@define-color sidebar_shade_color @black;
+
+@define-color headerbar_bg_color alpha(@foreground, 0.1);
+@define-color headerbar_fg_color @foreground;
+@define-color headerbar_backdrop_color @black;
+@define-color headerbar_shade_color @black;
+@define-color card_bg_color alpha(@foreground, 0.1);
+@define-color card_fg_color @foreground;
+
+@define-color popover_bg_color @black;
+@define-color popover_fg_color @foreground;
+
+@define-color destructive_bg_color @red;
+@define-color destructive_fg_color @background;
+
+@define-color success_bg_color @green;
+@define-color success_fg_color @background;
+
+@define-color warning_bg_color @yellow;
+@define-color warning_fg_color @background;
+
+@define-color error_bg_color @red;
+@define-color error_fg_color @background;
+
+@define-color dialog_bg_color @background;
+@define-color dialog_fg_color @foreground;
+
+@define-color borders alpha(@foreground, 0.1);
+
+@define-color theme_fg_color @foreground;
+@define-color theme_text_color @foreground;
+@define-color theme_bg_color @background;
+@define-color theme_base_color @black;
+@define-color theme_selected_bg_color GTK_ACCENT_PRIMARY;
+@define-color theme_selected_fg_color @background;
+@define-color insensitive_bg_color @background;
+@define-color insensitive_fg_color @bright_black;
+@define-color insensitive_base_color @black;
+@define-color theme_unfocused_fg_color @foreground;
+@define-color theme_unfocused_text_color @foreground;
+@define-color theme_unfocused_bg_color @background;
+@define-color theme_unfocused_base_color @black;
+@define-color theme_unfocused_selected_bg_color GTK_ACCENT_SECONDARY;
+@define-color theme_unfocused_selected_fg_color @background;
+@define-color unfocused_insensitive_color @bright_black;
+@define-color unfocused_borders alpha(@foreground, 0.1);
+@define-color warning_color @yellow;
+@define-color error_color @red;
+@define-color success_color @green;
+@define-color destructive_color @red;
+
+@define-color content_view_bg @black;
+@define-color text_view_bg @black;
+
+messagedialog {
+    background-color: @dialog_bg_color;
+}
+
+messagedialog label {
+    color: @dialog_fg_color;
+    font-size: 14pt;
+    font-weight: bold;
+}
+
+messagedialog .secondary-text {
+    font-size: 10pt;
+    font-style: italic;
+}
+
+messagedialog button {
+    background-color: @black;
+    color: @foreground;
+    border: 1px solid @bright_black;
+    padding: 10px;
+}
+
+messagedialog button:hover {
+    background-color: @accent_bg_color;
+}
+
+banner revealer widget {
+    background: @bright_black;
+    padding: 5px;
+    color: @foreground;
+}
+
+alertdialog.background {
+    background-color: @dialog_bg_color;
+    color: @dialog_fg_color;
+}
+
+alertdialog .titlebar {
+    background-color: @headerbar_bg_color;
+    color: @headerbar_fg_color;
+}
+
+alertdialog box {
+    background-color: @dialog_bg_color;
+}
+
+alertdialog label {
+    color: @dialog_fg_color;
+}
+
+filechooser .dialog-action-box {
+    border-top: 1px solid @bright_black;
+}
+
+filechooser .dialog-action-box:backdrop {
+    border-top-color: @black;
+}
+
+filechooser #pathbarbox {
+    border-bottom: 1px solid @bright_black;
+}
+
+filechooserbutton:drop(active) {
+    box-shadow: none;
+    border-color: transparent;
+}
+
+toast {
+    background-color: @black;
+    color: @foreground;
+}
+
+toast button.circular.flat.image-button:hover {
+    color: @background;
+    background-color: @red;
+}
+
+/* Apply colors to widgets - GTK4/libadwaita needs explicit rules */
+window {
+    background-color: @window_bg_color;
+    color: @window_fg_color;
+}
+
+headerbar {
+    background-color: @headerbar_bg_color;
+    color: @headerbar_fg_color;
+}
+
+.sidebar {
+    background-color: @sidebar_bg_color;
+    color: @sidebar_fg_color;
+}
+
+.view {
+    background-color: @view_bg_color;
+    color: @view_fg_color;
+}
+
+textview text {
+    background-color: @view_bg_color;
+    color: @view_fg_color;
+}
+
+entry {
+    background-color: @view_bg_color;
+    color: @view_fg_color;
+    border-color: @borders;
+}
+
+button {
+    background-color: @card_bg_color;
+    color: @card_fg_color;
+    border-color: @borders;
+}
+
+button:hover {
+    background-color: @accent_bg_color;
+    color: @accent_fg_color;
+}
+
+button.suggested-action {
+    background-color: @accent_bg_color;
+    color: @accent_fg_color;
+}
+
+button.destructive-action {
+    background-color: @destructive_bg_color;
+    color: @destructive_fg_color;
+}
+
+list {
+    background-color: @view_bg_color;
+    color: @view_fg_color;
+}
+
+row:selected {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+}
+
+popover.background {
+    background-color: @popover_bg_color;
+    color: @popover_fg_color;
+}
+
+menu {
+    background-color: @popover_bg_color;
+    color: @popover_fg_color;
+}
+
+menuitem:hover {
+    background-color: @accent_bg_color;
+    color: @accent_fg_color;
+}
+
+/* Nautilus specific */
+.nautilus-window .sidebar {
+    background-color: @sidebar_bg_color;
+    color: @sidebar_fg_color;
+}
+
+.nautilus-window notebook {
+    background-color: @view_bg_color;
+}
+
+.nautilus-canvas-item {
+    color: @view_fg_color;
+}
+GTK_EOF
+}
+
+# Replace color placeholders in GTK CSS
+substitute_colors() {
+    local css="$1"
+
+    # IMPORTANT: Replace longer patterns first to avoid partial matches
+    css="${css//GTK_ACCENT_PRIMARY/$ACCENT_PRIMARY}"
+    css="${css//GTK_ACCENT_SECONDARY/$ACCENT_SECONDARY}"
+    css="${css//GTK_ACCENT_TERTIARY/$ACCENT_TERTIARY}"
+    css="${css//GTK_BLACK_BRIGHT/$COLOR_BLACK_BRIGHT}"
+    css="${css//GTK_RED_BRIGHT/$COLOR_RED_BRIGHT}"
+    css="${css//GTK_GREEN_BRIGHT/$COLOR_GREEN_BRIGHT}"
+    css="${css//GTK_YELLOW_BRIGHT/$COLOR_YELLOW_BRIGHT}"
+    css="${css//GTK_BLUE_BRIGHT/$COLOR_BLUE_BRIGHT}"
+    css="${css//GTK_MAGENTA_BRIGHT/$COLOR_MAGENTA_BRIGHT}"
+    css="${css//GTK_CYAN_BRIGHT/$COLOR_CYAN_BRIGHT}"
+    css="${css//GTK_WHITE_BRIGHT/$COLOR_WHITE_BRIGHT}"
+    css="${css//GTK_BG_COLOR/$BG_COLOR}"
+    css="${css//GTK_FG_COLOR/$FG_COLOR}"
+    css="${css//GTK_RED/$COLOR_RED}"
+    css="${css//GTK_GREEN/$COLOR_GREEN}"
+    css="${css//GTK_YELLOW/$COLOR_YELLOW}"
+    css="${css//GTK_BLUE/$COLOR_BLUE}"
+    css="${css//GTK_MAGENTA/$COLOR_MAGENTA}"
+    css="${css//GTK_CYAN/$COLOR_CYAN}"
+    css="${css//GTK_WHITE/$COLOR_WHITE}"
+    css="${css//GTK_BLACK_BRIGHT/$COLOR_BLACK_BRIGHT}"
+
+    echo "$css"
+}
+
+# ============================================================================
+# Main Script
+# ============================================================================
+
+# Check if theme directory exists
+if [[ ! -d "$THEME_DIR" ]]; then
+    echo "Error: Theme directory not found: $THEME_DIR"
+    echo "Please ensure you have an active Omarchy theme set."
+    exit 1
+fi
+
+# Check if alacritty.toml exists
+if [[ ! -f "$ALACRITTY_TOML" ]]; then
+    echo "Error: alacritty.toml not found in theme directory"
+    echo "Expected: $ALACRITTY_TOML"
+    exit 1
+fi
+
+echo ""
+echo " Generating GTK theme from Omarchy colors ($THEME_NAME)..."
+
+# Parse colors from theme
+parse_theme_colors
+
+# Validate that we got colors
+if [[ -z "$BG_COLOR" ]] || [[ -z "$FG_COLOR" ]]; then
+    echo "Error: Could not parse colors from alacritty.toml"
+    exit 1
+fi
+
+echo "   Background: $BG_COLOR"
+echo "   Foreground: $FG_COLOR"
+echo "   Accent:     $ACCENT_PRIMARY"
+
+# Generate GTK CSS with substituted colors
+echo ""
+echo " Generating GTK CSS..."
+GTK_CSS=$(generate_gtk_css)
+GTK_CSS=$(substitute_colors "$GTK_CSS")
+
+# Create GTK config directories if they don't exist
+mkdir -p "$GTK3_DIR" "$GTK4_DIR"
+
+# Backup original GTK CSS files (only once)
+if [ ! -f "$GTK3_DIR/gtk.css.backup" ] && [ -f "$GTK3_FILE" ]; then
+    echo "   Backing up GTK3 css..."
+    cp "$GTK3_FILE" "$GTK3_DIR/gtk.css.backup"
+fi
+if [ ! -f "$GTK4_DIR/gtk.css.backup" ] && [ -f "$GTK4_FILE" ]; then
+    echo "   Backing up GTK4 css..."
+    cp "$GTK4_FILE" "$GTK4_DIR/gtk.css.backup"
+fi
+
+# Write GTK CSS files
+echo "   Writing GTK3 css..."
+echo "$GTK_CSS" > "$GTK3_FILE"
+echo "   Writing GTK4 css..."
+echo "$GTK_CSS" > "$GTK4_FILE"
+
+echo ""
+echo " Applying GTK theme..."
+
+# Trigger live reload of GTK theme for all running applications
+echo "   Reloading GTK theme (live, no restart needed)..."
+reload_gtk_theme
+
+echo ""
+echo " GTK theme applied successfully!"
+echo ""
+echo "All running GTK applications should reflect the new theme."
+echo "Note: If some apps don't update, try restarting them manually."

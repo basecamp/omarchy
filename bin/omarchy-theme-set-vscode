@@ -1,47 +1,686 @@
 #!/bin/bash
 
-# Note: We cannot use `jq` to update settings.json because it’s JSONC (allows comments),
-# which jq doesn’t support.
+# VSCode Theme Setter for Omarchy (Hybrid Approach)
+# 1. If vscode.json exists: Use extension-based theming (backwards compatible)
+# 2. Otherwise: Auto-generate from alacritty.toml with syntax highlighting
+#
+# Usage: omarchy-theme-set-vscode [theme-name]
+#   theme-name - Optional: Name of Omarchy theme to use (default: current theme)
 
-# Parameters: EDITOR_CMD SETTINGS_PATH SKIP_FLAG EDITOR_NAME
-EDITOR_CMD="${1:-code}"
-SETTINGS_PATH="${2:-$HOME/.config/Code/User/settings.json}"
-SKIP_FLAG="${3:-$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes}"
-EDITOR_NAME="${4:-VS Code}"
+set -euo pipefail
 
-VS_CODE_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
+# Show help if requested
+if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
+    cat << 'HELP_EOF'
+omarchy-theme-set-vscode - Apply VSCode theme from Omarchy
 
-if omarchy-cmd-present "$EDITOR_CMD" && [[ ! -f "$SKIP_FLAG" ]]; then
-  if [[ -f "$VS_CODE_THEME" ]]; then
+Usage:
+  omarchy-theme-set-vscode [theme-name]
+
+Arguments:
+  theme-name    Optional: Name of Omarchy theme to use
+                If omitted, uses the current active theme
+
+Examples:
+  # Use current theme
+  omarchy-theme-set-vscode
+
+  # Use specific theme
+  omarchy-theme-set-vscode my-theme
+
+Description:
+  This script applies VSCode themes from Omarchy in two ways:
+
+  1. If theme has vscode.json (extension metadata):
+     - Installs/switches to the theme extension (standard Omarchy behavior)
+
+  2. Otherwise (auto-generated themes):
+     - Generates colors + syntax highlighting from alacritty.toml
+     - Injects into settings.json with instant live updates
+
+HELP_EOF
+    exit 0
+fi
+
+# Parse command line arguments
+THEME_NAME="${1:-}"
+OMARCHY_THEMES_DIR="$HOME/.config/omarchy/themes"
+VSCODE_SETTINGS="$HOME/.config/Code/User/settings.json"
+EDITOR_CMD="code"
+
+# Determine theme directory
+if [[ -n "$THEME_NAME" ]]; then
+    # User specified a theme name
+    THEME_DIR="$OMARCHY_THEMES_DIR/$THEME_NAME"
+    if [[ ! -d "$THEME_DIR" ]]; then
+        echo "Error: Theme '$THEME_NAME' not found in $OMARCHY_THEMES_DIR"
+        echo ""
+        echo "Available themes:"
+        ls -1 "$OMARCHY_THEMES_DIR" 2>/dev/null | sed 's/^/  - /' || echo "  (none)"
+        echo ""
+        echo "Run 'omarchy-theme-set-vscode --help' for usage information."
+        exit 1
+    fi
+    echo " Using Omarchy theme: $THEME_NAME"
+else
+    # Use current theme
+    THEME_DIR="$HOME/.config/omarchy/current/theme"
+    # Try to get theme name from symlink or use "current"
+    if [[ -L "$HOME/.config/omarchy/current" ]]; then
+        THEME_NAME=$(basename "$(readlink "$HOME/.config/omarchy/current")")
+    else
+        THEME_NAME="current"
+    fi
+fi
+
+VS_CODE_THEME="$THEME_DIR/vscode.json"
+ALACRITTY_TOML="$THEME_DIR/alacritty.toml"
+
+# ============================================================================
+# Path 1: vscode.json Theming (Standard Omarchy - Backwards Compatible)
+# ============================================================================
+
+if [[ -f "$VS_CODE_THEME" ]] && command -v jq >/dev/null 2>&1; then
+    echo ""
+    echo "📦 Found vscode.json..."
+
     theme_name=$(jq -r '.name' "$VS_CODE_THEME")
     extension=$(jq -r '.extension' "$VS_CODE_THEME")
+    has_colors=$(jq 'has("colors")' "$VS_CODE_THEME")
 
-    # Install $EDITOR_NAME theme extension
-    if [[ -n "$extension" ]] && ! "$EDITOR_CMD" --list-extensions | grep -Fxq "$extension"; then
-      "$EDITOR_CMD" --install-extension "$extension" >/dev/null
-    fi
+    # Determine which type of vscode.json this is
+    if [[ -n "$extension" ]] && [[ "$extension" != "null" ]] && [[ "$extension" != "" ]]; then
+        # ========================================================================
+        # Type 1: Extension-based theming (install from marketplace)
+        # ========================================================================
+        echo "   Type: Extension-based theming"
 
-    # Create config file if there isn't already one
-    mkdir -p "$(dirname "$SETTINGS_PATH")"
-    if [[ ! -f "$SETTINGS_PATH" ]]; then
-      printf '{\n}\n' >"$SETTINGS_PATH"
-    fi
+        # Install VSCode theme extension if needed
+        if ! "$EDITOR_CMD" --list-extensions | grep -Fxq "$extension"; then
+            echo "   Installing extension: $extension"
+            "$EDITOR_CMD" --install-extension "$extension" >/dev/null 2>&1
+        fi
 
-    # Create a `workbench.colorTheme` entry in settings.
-    if ! grep -q '"workbench.colorTheme"' "$SETTINGS_PATH"; then
-      # Insert `"workbench.colorTheme": "",` immediately after the first `{`
-      # Use sed's first-match range (0,/{/) to only replace the first `{`
-      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\ "workbench.colorTheme": "",/}' "$SETTINGS_PATH"
-    fi
+        # Create config file if there isn't already one
+        mkdir -p "$(dirname "$VSCODE_SETTINGS")"
+        if [[ ! -f "$VSCODE_SETTINGS" ]]; then
+            printf '{\n}\n' >"$VSCODE_SETTINGS"
+        fi
 
-    # Update theme
-    sed -i --follow-symlinks -E \
-      "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
-      "$SETTINGS_PATH"
-  else
-    # Remove theme from settings.json when the theme doesn't have $EDITOR_NAME support
-    if [[ -f "$SETTINGS_PATH" ]]; then
-      sed -i --follow-symlinks -E 's/\"workbench\.colorTheme\"[[:space:]]*:[^,}]*,?//' "$SETTINGS_PATH"
+        # Use Python to safely update settings.json (handles special chars + JSONC format)
+        if command -v python3 >/dev/null 2>&1; then
+            echo "   Updating VSCode settings..."
+
+            # Backup settings
+            cp "$VSCODE_SETTINGS" "$VSCODE_SETTINGS.backup" 2>/dev/null || true
+
+            # Export variables for Python
+            export VSCODE_SETTINGS
+            export THEME_NAME="$theme_name"
+
+            # Use Python to safely modify settings
+            python3 << 'PYTHON_UPDATE'
+import json
+import re
+import sys
+import os
+
+settings_file = os.environ['VSCODE_SETTINGS']
+theme_name = os.environ['THEME_NAME']
+
+# Read current settings (strip comments and trailing commas for parsing)
+try:
+    with open(settings_file, 'r') as f:
+        content = f.read()
+except FileNotFoundError:
+    # Create new settings file
+    content = '{}'
+
+# Remove comments (simple approach - good enough for most cases)
+content_no_comments = re.sub(r'//.*?$', '', content, flags=re.MULTILINE)
+content_no_comments = re.sub(r'/\*.*?\*/', '', content_no_comments, flags=re.DOTALL)
+
+# Remove trailing commas before closing braces/brackets
+content_clean = re.sub(r',(\s*[}\]])', r'\1', content_no_comments)
+
+try:
+    settings = json.loads(content_clean) if content_clean.strip() else {}
+except json.JSONDecodeError as e:
+    print(f"Warning: Could not parse settings.json: {e}", file=sys.stderr)
+    print(f"Creating new settings file", file=sys.stderr)
+    settings = {}
+
+# Update theme name
+settings['workbench.colorTheme'] = theme_name
+
+# Remove color customizations (they override extension themes)
+removed_customizations = False
+if 'workbench.colorCustomizations' in settings:
+    del settings['workbench.colorCustomizations']
+    removed_customizations = True
+if 'editor.tokenColorCustomizations' in settings:
+    del settings['editor.tokenColorCustomizations']
+    removed_customizations = True
+
+if removed_customizations:
+    print("   ✓ Removed color customizations to enable extension theme")
+
+# Write back with nice formatting
+with open(settings_file, 'w') as f:
+    json.dump(settings, f, indent=4)
+
+print(f"   ✓ Theme set to: {theme_name}")
+PYTHON_UPDATE
+        else
+            echo "   Warning: Python not available, using fallback sed method..."
+            # Fallback to sed (less safe but works without Python)
+            if ! grep -q '"workbench.colorTheme"' "$VSCODE_SETTINGS"; then
+                sed -i --follow-symlinks -E '0,/\{/{s/\{/{ "workbench.colorTheme": "",/}' "$VSCODE_SETTINGS"
+            fi
+            sed -i --follow-symlinks -E \
+              "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
+              "$VSCODE_SETTINGS"
+        fi
+
+        echo ""
+        echo " Theme extension applied: $theme_name"
+        echo "   (Standard Omarchy extension-based theming)"
+        echo ""
+        exit 0
+
+    elif [[ "$has_colors" == "true" ]]; then
+        # ========================================================================
+        # Type 2: Inline colors (vscode.json contains color definitions)
+        # ========================================================================
+        echo "   Type: Inline color definitions"
+
+        # Create config file if there isn't already one
+        mkdir -p "$(dirname "$VSCODE_SETTINGS")"
+        if [[ ! -f "$VSCODE_SETTINGS" ]]; then
+            printf '{\n}\n' >"$VSCODE_SETTINGS"
+        fi
+
+        # Use Python to apply inline colors from vscode.json
+        if command -v python3 >/dev/null 2>&1; then
+            echo "   Applying inline colors to VSCode settings..."
+
+            # Backup settings
+            cp "$VSCODE_SETTINGS" "$VSCODE_SETTINGS.backup" 2>/dev/null || true
+
+            # Export variables for Python
+            export VSCODE_SETTINGS
+            export VS_CODE_THEME
+            export THEME_NAME="$theme_name"
+
+            # Use Python to apply colors from vscode.json
+            python3 << 'PYTHON_INLINE'
+import json
+import re
+import sys
+import os
+
+settings_file = os.environ['VSCODE_SETTINGS']
+vscode_theme_file = os.environ['VS_CODE_THEME']
+theme_name = os.environ['THEME_NAME']
+
+# Read the vscode.json file
+with open(vscode_theme_file, 'r') as f:
+    theme_data = json.load(f)
+
+# Extract colors from vscode.json
+if 'colors' not in theme_data:
+    print("Error: vscode.json has no 'colors' field", file=sys.stderr)
+    sys.exit(1)
+
+theme_colors = theme_data['colors']
+
+# Read current settings (strip comments and trailing commas for parsing)
+try:
+    with open(settings_file, 'r') as f:
+        content = f.read()
+except FileNotFoundError:
+    content = '{}'
+
+# Remove comments
+content_no_comments = re.sub(r'//.*?$', '', content, flags=re.MULTILINE)
+content_no_comments = re.sub(r'/\*.*?\*/', '', content_no_comments, flags=re.DOTALL)
+
+# Remove trailing commas
+content_clean = re.sub(r',(\s*[}\]])', r'\1', content_no_comments)
+
+try:
+    settings = json.loads(content_clean) if content_clean.strip() else {}
+except json.JSONDecodeError as e:
+    print(f"Warning: Could not parse settings.json: {e}", file=sys.stderr)
+    print("Creating new settings file", file=sys.stderr)
+    settings = {}
+
+# Set base theme to the one specified in vscode.json
+settings['workbench.colorTheme'] = theme_name
+
+# Apply inline colors - completely replace any existing customizations
+settings['workbench.colorCustomizations'] = theme_colors
+
+# Remove any token customizations (use the base theme's syntax highlighting)
+if 'editor.tokenColorCustomizations' in settings:
+    del settings['editor.tokenColorCustomizations']
+
+# Write back with nice formatting
+with open(settings_file, 'w') as f:
+    json.dump(settings, f, indent=4)
+
+print(f"   ✓ Theme set to: {theme_name}")
+print(f"   ✓ Applied {len(theme_colors)} color customizations")
+PYTHON_INLINE
+
+            echo ""
+            echo " Inline colors applied: $theme_name"
+            echo "   (Custom colors from vscode.json)"
+            echo ""
+            exit 0
+        else
+            echo "   Error: Python required for inline color application"
+            exit 1
+        fi
+    else
+        echo "   Error: vscode.json has neither extension nor colors field"
+        exit 1
     fi
-  fi
 fi
+
+# ============================================================================
+# Path 2: Auto-Generated Theming (Fallback - with syntax highlighting)
+# ============================================================================
+
+echo ""
+echo " No vscode.json found - auto-generating from alacritty.toml..."
+
+# ============================================================================
+# Color Parsing Functions
+# ============================================================================
+
+# Parse color from alacritty.toml using grep
+parse_color() {
+    local section=$1
+    local key=$2
+    local value=$(grep -A 20 "^\[$section\]" "$ALACRITTY_TOML" | \
+                  grep "^$key[[:space:]]*=" | \
+                  sed "s/^$key[[:space:]]*=[[:space:]]*['\"][[:space:]]*\(#[0-9A-Fa-f]\{6\}\)['\"].*/\1/" | \
+                  head -1)
+    echo "$value"
+}
+
+# Helper function to lighten/darken a color
+adjust_brightness() {
+    local hex="${1#\#}"
+    local factor=$2
+
+    local r=$((16#${hex:0:2}))
+    local g=$((16#${hex:2:2}))
+    local b=$((16#${hex:4:2}))
+
+    read r g b < <(awk -v r="$r" -v g="$g" -v b="$b" -v f="$factor" 'BEGIN {
+        r = int(r * f)
+        g = int(g * f)
+        b = int(b * f)
+
+        if (r > 255) r = 255
+        if (g > 255) g = 255
+        if (b > 255) b = 255
+        if (r < 0) r = 0
+        if (g < 0) g = 0
+        if (b < 0) b = 0
+
+        print r, g, b
+    }')
+
+    printf "#%02X%02X%02X" "$r" "$g" "$b"
+}
+
+# Parse all colors from alacritty.toml
+parse_theme_colors() {
+    # Primary colors
+    BG_COLOR=$(parse_color "colors.primary" "background")
+    FG_COLOR=$(parse_color "colors.primary" "foreground")
+
+    # Accent color (use cursor color)
+    ACCENT_PRIMARY=$(parse_color "colors.cursor" "cursor")
+
+    # Normal colors
+    COLOR_BLACK=$(parse_color "colors.normal" "black")
+    COLOR_RED=$(parse_color "colors.normal" "red")
+    COLOR_GREEN=$(parse_color "colors.normal" "green")
+    COLOR_YELLOW=$(parse_color "colors.normal" "yellow")
+    COLOR_BLUE=$(parse_color "colors.normal" "blue")
+    COLOR_MAGENTA=$(parse_color "colors.normal" "magenta")
+    COLOR_CYAN=$(parse_color "colors.normal" "cyan")
+    COLOR_WHITE=$(parse_color "colors.normal" "white")
+
+    # Bright colors
+    COLOR_BLACK_BRIGHT=$(parse_color "colors.bright" "black")
+    COLOR_RED_BRIGHT=$(parse_color "colors.bright" "red")
+    COLOR_GREEN_BRIGHT=$(parse_color "colors.bright" "green")
+    COLOR_YELLOW_BRIGHT=$(parse_color "colors.bright" "yellow")
+    COLOR_BLUE_BRIGHT=$(parse_color "colors.bright" "blue")
+    COLOR_MAGENTA_BRIGHT=$(parse_color "colors.bright" "magenta")
+    COLOR_CYAN_BRIGHT=$(parse_color "colors.bright" "cyan")
+    COLOR_WHITE_BRIGHT=$(parse_color "colors.bright" "white")
+
+    # Accent colors (use bright variants for secondary)
+    ACCENT_SECONDARY="$COLOR_GREEN_BRIGHT"
+
+    # Calculate dim color for line numbers etc
+    COLOR_WHITE_DIM=$(adjust_brightness "$COLOR_WHITE" 0.85)
+
+    # Orange for variables (or use yellow if not available)
+    COLOR_ORANGE="$COLOR_YELLOW"
+}
+
+# ============================================================================
+# Main Script
+# ============================================================================
+
+# Check if theme directory exists
+if [[ ! -d "$THEME_DIR" ]]; then
+    echo "Error: Theme directory not found: $THEME_DIR"
+    echo "Please ensure you have an active Omarchy theme set."
+    exit 1
+fi
+
+# Check if alacritty.toml exists
+if [[ ! -f "$ALACRITTY_TOML" ]]; then
+    echo "Error: alacritty.toml not found in theme directory"
+    echo "Expected: $ALACRITTY_TOML"
+    exit 1
+fi
+
+echo "   Parsing colors from: alacritty.toml"
+
+# Parse colors from theme
+parse_theme_colors
+
+# Validate that we got colors
+if [[ -z "$BG_COLOR" ]] || [[ -z "$FG_COLOR" ]]; then
+    echo "Error: Could not parse colors from alacritty.toml"
+    exit 1
+fi
+
+echo "   Background: $BG_COLOR"
+echo "   Foreground: $FG_COLOR"
+echo "   Accent:     $ACCENT_PRIMARY"
+
+# Generate colorCustomizations JSON with syntax highlighting
+COLOR_CUSTOMIZATIONS=$(cat << EOF
+{
+  "workbench.colorCustomizations": {
+    "editor.background": "$BG_COLOR",
+    "editor.foreground": "$FG_COLOR",
+    "activityBar.background": "$BG_COLOR",
+    "activityBar.foreground": "$ACCENT_PRIMARY",
+    "activityBarBadge.background": "$ACCENT_PRIMARY",
+    "activityBarBadge.foreground": "$BG_COLOR",
+    "statusBar.background": "$BG_COLOR",
+    "statusBar.foreground": "$FG_COLOR",
+    "statusBar.noFolderBackground": "$BG_COLOR",
+    "titleBar.activeBackground": "$BG_COLOR",
+    "titleBar.activeForeground": "$FG_COLOR",
+    "titleBar.inactiveBackground": "$BG_COLOR",
+    "titleBar.inactiveForeground": "$FG_COLOR",
+    "sideBar.background": "$BG_COLOR",
+    "sideBar.foreground": "$FG_COLOR",
+    "sideBarSectionHeader.background": "$BG_COLOR",
+    "sideBarSectionHeader.foreground": "$ACCENT_PRIMARY",
+    "list.activeSelectionBackground": "$ACCENT_PRIMARY",
+    "list.activeSelectionForeground": "$BG_COLOR",
+    "list.inactiveSelectionBackground": "$ACCENT_PRIMARY",
+    "list.hoverBackground": "$ACCENT_SECONDARY",
+    "terminal.background": "$BG_COLOR",
+    "terminal.foreground": "$FG_COLOR",
+    "terminal.ansiBlack": "$COLOR_BLACK",
+    "terminal.ansiRed": "$COLOR_RED",
+    "terminal.ansiGreen": "$COLOR_GREEN",
+    "terminal.ansiYellow": "$COLOR_YELLOW",
+    "terminal.ansiBlue": "$COLOR_BLUE",
+    "terminal.ansiMagenta": "$COLOR_MAGENTA",
+    "terminal.ansiCyan": "$COLOR_CYAN",
+    "terminal.ansiWhite": "$FG_COLOR",
+    "terminal.ansiBrightBlack": "$COLOR_BLACK_BRIGHT",
+    "terminal.ansiBrightRed": "$COLOR_RED_BRIGHT",
+    "terminal.ansiBrightGreen": "$COLOR_GREEN_BRIGHT",
+    "terminal.ansiBrightYellow": "$COLOR_YELLOW_BRIGHT",
+    "terminal.ansiBrightBlue": "$COLOR_BLUE_BRIGHT",
+    "terminal.ansiBrightMagenta": "$COLOR_MAGENTA_BRIGHT",
+    "terminal.ansiBrightCyan": "$COLOR_CYAN_BRIGHT",
+    "terminal.ansiBrightWhite": "$FG_COLOR",
+    "editorCursor.foreground": "$ACCENT_PRIMARY",
+    "editorLineNumber.foreground": "$COLOR_WHITE_DIM",
+    "editorLineNumber.activeForeground": "$ACCENT_PRIMARY",
+    "selection.background": "$ACCENT_PRIMARY",
+    "editor.selectionBackground": "$ACCENT_PRIMARY",
+    "editor.selectionHighlightBackground": "$ACCENT_SECONDARY",
+    "editor.lineHighlightBackground": "$COLOR_BLACK_BRIGHT",
+    "editorWhitespace.foreground": "$COLOR_WHITE_DIM",
+    "editorIndentGuide.background": "$COLOR_WHITE_DIM",
+    "editorIndentGuide.activeBackground": "$ACCENT_PRIMARY",
+    "editorBracketMatch.background": "$ACCENT_SECONDARY",
+    "editorBracketMatch.border": "$ACCENT_PRIMARY",
+    "focusBorder": "$ACCENT_PRIMARY",
+    "button.background": "$ACCENT_PRIMARY",
+    "button.foreground": "$BG_COLOR",
+    "button.hoverBackground": "$ACCENT_SECONDARY",
+    "input.background": "$BG_COLOR",
+    "input.foreground": "$FG_COLOR",
+    "input.border": "$ACCENT_PRIMARY",
+    "inputOption.activeBorder": "$ACCENT_PRIMARY",
+    "progressBar.background": "$ACCENT_PRIMARY",
+    "badge.background": "$ACCENT_PRIMARY",
+    "badge.foreground": "$BG_COLOR",
+    "panel.background": "$BG_COLOR",
+    "panel.border": "$ACCENT_PRIMARY",
+    "panelTitle.activeBorder": "$ACCENT_PRIMARY",
+    "panelTitle.activeForeground": "$ACCENT_PRIMARY",
+    "panelTitle.inactiveForeground": "$FG_COLOR",
+    "tab.activeBackground": "$BG_COLOR",
+    "tab.activeForeground": "$ACCENT_PRIMARY",
+    "tab.inactiveBackground": "$BG_COLOR",
+    "tab.inactiveForeground": "$FG_COLOR",
+    "tab.border": "$BG_COLOR",
+    "tab.activeBorder": "$ACCENT_PRIMARY",
+    "editorGroupHeader.tabsBackground": "$BG_COLOR",
+    "editorWidget.background": "$BG_COLOR",
+    "editorWidget.border": "$ACCENT_PRIMARY",
+    "peekView.border": "$ACCENT_PRIMARY",
+    "peekViewEditor.background": "$BG_COLOR",
+    "peekViewTitle.background": "$ACCENT_PRIMARY",
+    "notifications.background": "$BG_COLOR",
+    "notifications.foreground": "$FG_COLOR",
+    "notifications.border": "$ACCENT_PRIMARY",
+    "notificationLink.foreground": "$ACCENT_PRIMARY"
+  },
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": ["comment", "punctuation.definition.comment"],
+        "settings": {
+          "foreground": "$COLOR_WHITE_DIM",
+          "fontStyle": "italic"
+        }
+      },
+      {
+        "scope": ["string", "string.quoted"],
+        "settings": {
+          "foreground": "$COLOR_GREEN"
+        }
+      },
+      {
+        "scope": ["constant.numeric", "constant.language"],
+        "settings": {
+          "foreground": "$COLOR_YELLOW"
+        }
+      },
+      {
+        "scope": ["keyword", "storage.type", "storage.modifier"],
+        "settings": {
+          "foreground": "$COLOR_RED"
+        }
+      },
+      {
+        "scope": ["entity.name.function", "support.function"],
+        "settings": {
+          "foreground": "$COLOR_BLUE"
+        }
+      },
+      {
+        "scope": ["entity.name.type", "entity.name.class", "support.class"],
+        "settings": {
+          "foreground": "$COLOR_MAGENTA"
+        }
+      },
+      {
+        "scope": ["variable", "variable.other"],
+        "settings": {
+          "foreground": "$COLOR_ORANGE"
+        }
+      },
+      {
+        "scope": ["variable.parameter", "meta.parameter"],
+        "settings": {
+          "foreground": "$FG_COLOR"
+        }
+      },
+      {
+        "scope": ["keyword.operator", "punctuation"],
+        "settings": {
+          "foreground": "$COLOR_CYAN"
+        }
+      },
+      {
+        "scope": ["entity.name.tag", "support.type.property-name"],
+        "settings": {
+          "foreground": "$COLOR_BLUE_BRIGHT"
+        }
+      },
+      {
+        "scope": ["entity.other.attribute-name"],
+        "settings": {
+          "foreground": "$COLOR_YELLOW_BRIGHT"
+        }
+      },
+      {
+        "scope": ["support.type.property-name.json"],
+        "settings": {
+          "foreground": "$COLOR_CYAN_BRIGHT"
+        }
+      },
+      {
+        "scope": ["markup.heading"],
+        "settings": {
+          "foreground": "$COLOR_RED_BRIGHT",
+          "fontStyle": "bold"
+        }
+      },
+      {
+        "scope": ["markup.bold"],
+        "settings": {
+          "foreground": "$COLOR_YELLOW_BRIGHT",
+          "fontStyle": "bold"
+        }
+      },
+      {
+        "scope": ["markup.italic"],
+        "settings": {
+          "foreground": "$COLOR_MAGENTA_BRIGHT",
+          "fontStyle": "italic"
+        }
+      },
+      {
+        "scope": ["markup.inline.raw", "markup.fenced_code"],
+        "settings": {
+          "foreground": "$COLOR_GREEN_BRIGHT"
+        }
+      }
+    ]
+  }
+}
+EOF
+)
+
+# Use Python to merge JSON if available (handles JSONC properly)
+if command -v python3 >/dev/null 2>&1; then
+    echo ""
+    echo " Updating VSCode settings.json..."
+
+    # Backup settings
+    cp "$VSCODE_SETTINGS" "$VSCODE_SETTINGS.backup"
+
+    # Write colors to temp file
+    COLORS_TEMP=$(mktemp)
+    echo "$COLOR_CUSTOMIZATIONS" > "$COLORS_TEMP"
+
+    # Run Python script
+    python3 << PYTHON_EOF
+import json
+import re
+
+# Read the color customizations from temp file
+with open('$COLORS_TEMP', 'r') as f:
+    new_colors = json.load(f)
+
+settings_file = '$VSCODE_SETTINGS'
+
+# Read current settings (strip comments and trailing commas for parsing)
+with open(settings_file, 'r') as f:
+    content = f.read()
+
+# Remove comments (simple approach - good enough for most cases)
+content_no_comments = re.sub(r'//.*?\$', '', content, flags=re.MULTILINE)
+content_no_comments = re.sub(r'/\*.*?\*/', '', content_no_comments, flags=re.DOTALL)
+
+# Remove trailing commas before closing braces/brackets
+content_clean = re.sub(r',(\s*[}\]])', r'\1', content_no_comments)
+
+try:
+    settings = json.loads(content_clean)
+except json.JSONDecodeError as e:
+    print(f"Warning: Could not parse settings.json: {e}")
+    print("Creating new settings file with colors only")
+    settings = {}
+
+# ALWAYS set base theme to Default Dark Modern for auto-generated themes
+# This ensures we start from a clean slate and old extension themes don't interfere
+settings['workbench.colorTheme'] = 'Default Dark Modern'
+
+# Replace (not merge) colorCustomizations - completely override any previous theme
+settings['workbench.colorCustomizations'] = new_colors['workbench.colorCustomizations']
+settings['editor.tokenColorCustomizations'] = new_colors['editor.tokenColorCustomizations']
+
+# Write back with nice formatting
+with open(settings_file, 'w') as f:
+    json.dump(settings, f, indent=4)
+
+print("✓ Settings updated successfully")
+PYTHON_EOF
+
+    # Clean up temp file
+    rm -f "$COLORS_TEMP"
+
+    echo ""
+    echo " VSCode colors applied!"
+    echo ""
+    echo "   Theme: Auto-generated with syntax highlighting"
+    echo "   (Colors + tokenColors injected into settings.json)"
+    echo ""
+    echo "   Changes are live - VSCode should update INSTANTLY."
+    echo "   (No reload needed!)"
+else
+    echo ""
+    echo "⚠  Python not found - cannot automatically update settings.json"
+    echo ""
+    echo "Please manually add this to your VSCode settings.json:"
+    echo ""
+    echo "$COLOR_CUSTOMIZATIONS"
+    echo ""
+    echo "Location: $VSCODE_SETTINGS"
+fi
+
+echo ""

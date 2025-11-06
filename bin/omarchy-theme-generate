@@ -1,0 +1,1759 @@
+#!/bin/bash
+
+# Omarchy Theme Generator
+# Generates a theme from an input image using ImageMagick for color extraction
+
+# Usage: ./generate-theme.sh <input-image-or-directory> [output-theme-name] [options]
+#
+# Arguments:
+#   input-image-or-directory - Path to an image file OR directory containing images
+#                              If directory, a random image will be selected
+#   output-theme-name       - Name for the generated theme directory (default: "generated")
+#
+# Options:
+#   --walker                - Launch interactive UI to select image folder
+#   --refresh-cache         - Rebuild the walker folder cache (can combine with --walker)
+#   --help                  - Show this help message
+#
+# Environment Variables:
+#   OMARCHY_DEPLOY=0        - Set to 0 to disable deployment to ~/.config/omarchy/themes/ (default: 1)
+#   OMARCHY_SET=0           - Set to 0 to skip running omarchy-theme-set after deployment (default: 1)
+
+# ============================================================================
+# Walker UI Mode - Cache Configuration
+# ============================================================================
+
+# Cache configuration
+CACHE_DIR="$HOME/.cache/omarchy"
+CACHE_FILE="$CACHE_DIR/walker-folders.cache"
+CACHE_MAX_AGE=3600  # 1 hour in seconds
+
+# Function to build/rebuild the folder cache
+build_folder_cache() {
+    mkdir -p "$CACHE_DIR"
+
+    echo "Scanning for image folders..."
+    notify-send "Omarchy Theme Generator" "Scanning for image folders..." -t 4000
+
+    # Create temporary file for atomic write
+    local temp_cache="$CACHE_FILE.tmp.$$"
+
+    # Write timestamp
+    echo "TIMESTAMP=$(date +%s)" > "$temp_cache"
+
+    # Find image files (non-hidden paths only), extract parent folders, unique them
+    # Use array to properly handle paths with spaces
+    mapfile -t FOLDERS < <(find ~ -maxdepth 3 -type f -not -path '*/\.*' \
+        -not -path '*/node_modules/*' \
+        -not -path '*/.cache/*' \
+        -not -path '*/venv/*' \
+        \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.gif" -o -name "*.webp" \) \
+        -exec dirname {} \; 2>/dev/null | sort -u)
+
+    # Build list with counts and write to cache
+    for folder in "${FOLDERS[@]}"; do
+        count=$(find "$folder" -maxdepth 1 -type f \
+            \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.gif" -o -name "*.webp" \) \
+            2>/dev/null | wc -l)
+        echo "$folder|$count" >> "$temp_cache"
+    done
+
+    # Atomic move to prevent corruption
+    mv "$temp_cache" "$CACHE_FILE"
+
+    echo "Cache updated with $(wc -l < "$CACHE_FILE" | xargs) entries"
+}
+
+# Function to check if cache is valid (exists and not expired)
+is_cache_valid() {
+    [[ ! -f "$CACHE_FILE" ]] && return 1
+
+    local cache_ts=$(head -1 "$CACHE_FILE" | cut -d= -f2)
+    local current_ts=$(date +%s)
+    local age=$((current_ts - cache_ts))
+
+    [[ $age -lt $CACHE_MAX_AGE ]]
+}
+
+# Function to get human-readable cache age
+get_cache_age() {
+    [[ ! -f "$CACHE_FILE" ]] && echo "no cache" && return
+
+    local cache_ts=$(head -1 "$CACHE_FILE" | cut -d= -f2)
+    local current_ts=$(date +%s)
+    local age=$((current_ts - cache_ts))
+
+    if [[ $age -lt 60 ]]; then
+        echo "${age}s ago"
+    elif [[ $age -lt 3600 ]]; then
+        echo "$((age / 60))m ago"
+    else
+        echo "$((age / 3600))h $((age % 3600 / 60))m ago"
+    fi
+}
+
+# Function to load folders from cache
+load_folders_from_cache() {
+    # Skip first line (timestamp), output folder|count pairs
+    tail -n +2 "$CACHE_FILE"
+}
+
+# ============================================================================
+# Refresh Cache Mode
+# ============================================================================
+
+# Check for --refresh-cache flag (can be combined with --walker)
+REFRESH_CACHE=0
+for arg in "$@"; do
+    if [[ "$arg" == "--refresh-cache" ]]; then
+        REFRESH_CACHE=1
+        break
+    fi
+done
+
+if [[ $REFRESH_CACHE -eq 1 ]]; then
+    build_folder_cache
+
+    # If only --refresh-cache was provided (not combined with --walker), exit
+    if [[ "${1:-}" == "--refresh-cache" ]] && [[ "${2:-}" != "--walker" ]]; then
+        echo ""
+        echo "Cache refreshed successfully!"
+        echo "Cache location: $CACHE_FILE"
+        exit 0
+    fi
+fi
+
+# ============================================================================
+# Walker UI Mode
+# ============================================================================
+
+if [[ "${1:-}" == "--walker" ]] || [[ "${2:-}" == "--walker" ]]; then
+    # Check if walker is available
+    if ! command -v walker >/dev/null 2>&1; then
+        echo "Error: walker not found in PATH"
+        echo "Please install walker: https://github.com/abenz1267/walker"
+        exit 1
+    fi
+
+    # Check cache validity and rebuild if needed (skip if already refreshed)
+    if [[ $REFRESH_CACHE -eq 0 ]]; then
+        if is_cache_valid; then
+            CACHE_AGE=$(get_cache_age)
+            echo "Using cached folder list ($CACHE_AGE)"
+            notify-send "Omarchy Theme Generator" "Using cached folder list ($CACHE_AGE)" -t 2000
+        else
+            build_folder_cache
+        fi
+    fi
+
+    # Load folders from cache
+    CACHED_DATA=$(load_folders_from_cache)
+
+    # Build list with relative paths for display
+    ITEMS=""
+    FOLDERS=""
+    while IFS='|' read -r folder count; do
+        rel_path=$(echo "$folder" | sed "s|^$HOME|~|")
+        ITEMS="$ITEMS$count\t $rel_path ($count images)\n"
+        # Build FOLDERS list for random selection
+        FOLDERS="$FOLDERS$folder"$'\n'
+    done <<< "$CACHED_DATA"
+
+    echo "Launching walker UI..."
+
+    # Add Random option, sort by count descending
+    # Temporarily disable errexit and pipefail for walker (interactive UI)
+    set +e +o pipefail
+    SELECTED=$( (echo "Random (pick any folder)"; echo -e "$ITEMS" | sort -nr ) | walker --dmenu -p "Select folder for theme:" )
+    set -e -o pipefail
+
+    if [ -n "$SELECTED" ]; then
+        if [ "$SELECTED" = "Random (pick any folder)" ]; then
+            # Pick random folder from list
+            SELECTED=$(echo "$FOLDERS" | shuf -n 1)
+        else
+            # Extract actual path from label: after tab, before " ("
+            SELECTED=$(echo "$SELECTED" | cut -d$'\t' -f2 | sed 's/ (.*//')
+            SELECTED=$(echo "$SELECTED" | sed 's/^ //')  # Remove emoji if present
+            SELECTED=$(echo "$SELECTED" | sed "s|^~|$HOME|")
+        fi
+
+        # Execute the generator with selected folder
+        exec "$0" "$SELECTED" dynamic
+    else
+        echo "No selection made."
+        exit 1
+    fi
+fi
+
+# ============================================================================
+# Help Mode
+# ============================================================================
+
+if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat << 'HELP_EOF'
+Omarchy Theme Generator
+Generates a complete desktop theme from an input image
+
+Usage:
+  omarchy-theme-generate <input-image-or-directory> [theme-name]
+  omarchy-theme-generate --walker
+  omarchy-theme-generate --help
+
+Arguments:
+  input-image-or-directory  Path to an image file OR directory containing images
+                            If directory, a random image will be selected
+  theme-name                Name for the generated theme (default: "generated")
+
+Options:
+  --walker                  Launch interactive UI to select image folder
+  --refresh-cache           Rebuild the walker folder cache (can combine with --walker)
+  --help, -h                Show this help message
+
+Environment Variables:
+  OMARCHY_DEPLOY=0          Disable deployment to ~/.config/omarchy/themes/ (default: 1)
+  OMARCHY_SET=0             Skip running omarchy-theme-set after deployment (default: 1)
+  OMARCHY_TEMPLATE_DIR      Use custom template directory instead of embedded
+
+Examples:
+  # Generate from specific image
+  omarchy-theme-generate ~/Pictures/wallpaper.jpg sunset
+
+  # Generate from random image in directory
+  omarchy-theme-generate ~/Pictures/wallpapers beach
+
+  # Launch interactive folder picker
+  omarchy-theme-generate --walker
+
+  # Refresh the folder cache and launch picker
+  omarchy-theme-generate --refresh-cache --walker
+
+  # Just refresh the cache (for faster subsequent --walker calls)
+  omarchy-theme-generate --refresh-cache
+
+  # Generate without deploying or setting theme
+  OMARCHY_DEPLOY=0 OMARCHY_SET=0 omarchy-theme-generate image.png test
+HELP_EOF
+    exit 0
+fi
+
+# ============================================================================
+# Normal Mode - Parse Arguments
+# ============================================================================
+
+INPUT_IMAGE="${1:-example.webp}"
+THEME_NAME="${2:-generated}"
+
+# Template directory override (optional - will use embedded templates if not found)
+# Search multiple locations: env var > config dir > repo dir > script dir
+USE_EMBEDDED_TEMPLATES=1
+for dir in \
+    "${OMARCHY_TEMPLATE_DIR:-}" \
+    "$HOME/.config/omarchy/templates" \
+    "$HOME/repos/omarchy-theme-gen/drac" \
+    "$(dirname "$0")/drac"; do
+
+    if [[ -n "$dir" ]] && [[ -d "$dir" ]]; then
+        TEMPLATE_DIR="$dir"
+        USE_EMBEDDED_TEMPLATES=0
+        echo " Using custom templates from: $TEMPLATE_DIR"
+        break
+    fi
+done
+
+if [[ "$USE_EMBEDDED_TEMPLATES" == "1" ]]; then
+    echo "📦 Using embedded templates (self-contained mode)"
+fi
+
+# Get deployment mode from environment (default: deploy and set)
+OMARCHY_DEPLOY="${OMARCHY_DEPLOY:-1}"
+OMARCHY_SET="${OMARCHY_SET:-1}"
+
+# Mako config management variables (declared globally)
+MAKO_CONFIG="$HOME/.config/mako/config"
+MAKO_BACKUP=""
+MAKO_RESTORE_PID=""
+
+# Check if we should deploy to Omarchy themes directory
+if [[ "${OMARCHY_DEPLOY}" == "1" ]]; then
+    OUTPUT_DIR="$HOME/.config/omarchy/themes/${THEME_NAME}"
+else
+    OUTPUT_DIR="${THEME_NAME}"
+fi
+
+# Color extraction settings
+NUM_COLORS=100  # Extract many colors, we'll filter for vibrant ones
+
+#notify-send " Omarchy Theme Generator"
+#echo "=========================="
+
+# Check if input is a directory - if so, pick a random image
+if [[ -d "$INPUT_IMAGE" ]]; then
+    #notify-send " Input is a directory, searching for images..."
+
+    # Find all image files in directory (and subdirectories)
+    mapfile -t IMAGE_FILES < <(find "$INPUT_IMAGE" -type f \( \
+        -iname "*.jpg" -o \
+        -iname "*.jpeg" -o \
+        -iname "*.png" -o \
+        -iname "*.webp" -o \
+        -iname "*.gif" -o \
+        -iname "*.bmp" \
+    \) 2>/dev/null)
+
+    if [[ ${#IMAGE_FILES[@]} -eq 0 ]]; then
+        notify-send "Error: No image files found in directory '$INPUT_IMAGE'"
+        exit 1
+    fi
+
+    # Use shuf for truly random selection (more reliable than RANDOM)
+    INPUT_IMAGE=$(printf '%s\n' "${IMAGE_FILES[@]}" | shuf -n 1)
+
+    #notify-send "   Found ${#IMAGE_FILES[@]} images"
+
+    # Show a large preview notification by temporarily modifying mako config
+    if [[ -f "$MAKO_CONFIG" ]]; then
+        # Backup current config
+        MAKO_BACKUP="$MAKO_CONFIG.tmp.$$"
+        cp "$MAKO_CONFIG" "$MAKO_BACKUP"
+
+        # Remove any old theme-preview rules to avoid accumulation
+        sed -i '/^\[app-name=theme-preview\]/,/^$/d' "$MAKO_CONFIG"
+
+        # Add temporary rule for large preview
+        cat >> "$MAKO_CONFIG" << 'PREVIEW_RULE'
+
+[app-name=theme-preview]
+max-icon-size=425
+height=300
+width=425
+PREVIEW_RULE
+
+        # Reload mako to pick up changes
+        makoctl reload 2>/dev/null
+
+        # Show large preview notification
+        notify-send -a "theme-preview" " "  " " -i "$INPUT_IMAGE" -t 6500
+
+        # DON'T restore in background - wait for cleanup section at the end
+        # This ensures proper theme colors are applied after generation
+    else
+        # Fallback if mako config doesn't exist
+        notify-send "Selected: $(basename "$INPUT_IMAGE")" " " -i "$INPUT_IMAGE" -t 5000
+    fi
+
+    notify-send "Creating theme from image..." -t 9500
+    #echo ""
+fi
+
+#notify-send "Input: $INPUT_IMAGE"
+#notify-send "Output: $OUTPUT_DIR"
+#echo ""
+
+# Verify input image exists
+if [[ ! -f "$INPUT_IMAGE" ]]; then
+    notify-send "Error: Input image '$INPUT_IMAGE' not found"
+    exit 1
+fi
+
+# Use temporary directory for atomic generation
+# This prevents race conditions when regenerating an active theme
+TEMP_DIR="${OUTPUT_DIR}.tmp.$$"
+if [[ -d "$OUTPUT_DIR" ]]; then
+    echo "  Theme directory '$OUTPUT_DIR' already exists - will be overwritten"
+fi
+
+# Clean up temp dir if it exists (from previous failed run)
+rm -rf "$TEMP_DIR"
+mkdir -p "$TEMP_DIR/backgrounds"
+
+# ============================================================================
+# STEP 1: Extract dominant colors from image
+# ============================================================================
+
+#notify-send "Extracting colors from image..."
+
+# Extract dominant colors using ImageMagick
+# We resize first for faster processing, then quantize to get dominant colors
+COLORS_RAW=$(magick "$INPUT_IMAGE" \
+    -resize 800x800 \
+    -colors $NUM_COLORS \
+    -unique-colors \
+    txt:- | \
+    grep -v '^#' | \
+    awk '{print $3}' | \
+    grep '^#' | \
+    sed 's/#\([0-9A-Fa-f]\{6\}\).*/\#\1/' | \
+    sort -u)
+
+# Convert to array
+mapfile -t COLOR_ARRAY <<< "$COLORS_RAW"
+
+#notify-send "   Extracted ${#COLOR_ARRAY[@]} unique colors"
+
+# ============================================================================
+# STEP 2: Convert hex to RGB and calculate lightness (for sorting)
+# ============================================================================
+
+#notify-send "Analyzing color properties..."
+
+# Function to convert hex to RGB
+hex_to_rgb() {
+    local hex="${1#\#}"
+    local r=$((16#${hex:0:2}))
+    local g=$((16#${hex:2:2}))
+    local b=$((16#${hex:4:2}))
+    echo "$r $g $b"
+}
+
+# Function to calculate relative luminance (perceived lightness)
+# Using standard luminance formula: 0.299*R + 0.587*G + 0.114*B
+calc_lightness() {
+    local r=$1 g=$2 b=$3
+    awk -v r="$r" -v g="$g" -v b="$b" 'BEGIN {printf "%.2f", (r * 0.299 + g * 0.587 + b * 0.114)}'
+}
+
+# Calculate hue (0-360) from RGB using awk
+calc_hue() {
+    local r=$1 g=$2 b=$3
+    awk -v r="$r" -v g="$g" -v b="$b" 'BEGIN {
+        rf = r / 255.0
+        gf = g / 255.0
+        bf = b / 255.0
+
+        max = rf
+        if (gf > max) max = gf
+        if (bf > max) max = bf
+
+        min = rf
+        if (gf < min) min = gf
+        if (bf < min) min = bf
+
+        delta = max - min
+
+        if (delta < 0.001) {
+            print 0
+            exit
+        }
+
+        hue = 0
+        if (max == rf) {
+            hue = 60 * (((gf - bf) / delta) % 6)
+        } else if (max == gf) {
+            hue = 60 * (((bf - rf) / delta) + 2)
+        } else {
+            hue = 60 * (((rf - gf) / delta) + 4)
+        }
+
+        if (hue < 0) hue = hue + 360
+
+        printf "%.0f", hue
+    }'
+}
+
+# Calculate saturation from RGB using awk
+calc_saturation() {
+    local r=$1 g=$2 b=$3
+    awk -v r="$r" -v g="$g" -v b="$b" 'BEGIN {
+        rf = r / 255.0
+        gf = g / 255.0
+        bf = b / 255.0
+
+        max = rf
+        if (gf > max) max = gf
+        if (bf > max) max = bf
+
+        min = rf
+        if (gf < min) min = gf
+        if (bf < min) min = bf
+
+        delta = max - min
+
+        if (max < 0.001) {
+            print 0
+            exit
+        }
+
+        sat = (delta / max) * 100
+        printf "%.0f", sat
+    }'
+}
+
+# Create array with color data: hex lightness hue saturation
+declare -a COLOR_DATA
+for hex in "${COLOR_ARRAY[@]}"; do
+    read -r r g b <<< $(hex_to_rgb "$hex")
+    lightness=$(calc_lightness "$r" "$g" "$b")
+    hue=$(calc_hue "$r" "$g" "$b")
+    sat=$(calc_saturation "$r" "$g" "$b")
+    COLOR_DATA+=("$hex|$lightness|$hue|$sat")
+done
+
+# ============================================================================
+# STEP 3: Sort and classify colors
+# ============================================================================
+
+echo " Classifying colors by role..."
+
+# Sort by lightness
+mapfile -t SORTED_BY_LIGHT < <(printf '%s\n' "${COLOR_DATA[@]}" | sort -t'|' -k2 -n)
+
+# Get background (darkest color)
+BG_COLOR=$(echo "${SORTED_BY_LIGHT[0]}" | cut -d'|' -f1)
+echo "   Background: $BG_COLOR"
+
+# Get foreground (lightest color) - use portable array access
+LAST_IDX=$((${#SORTED_BY_LIGHT[@]} - 1))
+FG_COLOR=$(echo "${SORTED_BY_LIGHT[$LAST_IDX]}" | cut -d'|' -f1)
+echo "   Foreground: $FG_COLOR"
+
+# Get mid-range colors for terminal palette
+# Prefer highly saturated colors (vibrant/neon colors)
+# First, filter for colors with saturation > 30 and lightness between 30-200
+MIDDLE_START=1
+MIDDLE_END=$((${#SORTED_BY_LIGHT[@]} - 1))
+
+# Separate vibrant colors (high saturation) from muted colors
+declare -a VIBRANT_COLORS
+declare -a ALL_MID_COLORS
+
+for i in $(seq $MIDDLE_START $(($MIDDLE_END - 1))); do
+    color_data="${SORTED_BY_LIGHT[$i]}"
+    lightness=$(echo "$color_data" | cut -d'|' -f2 | cut -d'.' -f1)
+    sat=$(echo "$color_data" | cut -d'|' -f4 | cut -d'.' -f1)
+
+    # Add to all mid colors
+    ALL_MID_COLORS+=("$color_data")
+
+    # Add to vibrant colors if saturation > 30 and lightness is reasonable
+    if [[ $sat -gt 30 && $lightness -gt 30 && $lightness -lt 200 ]]; then
+        VIBRANT_COLORS+=("$color_data")
+    fi
+done
+
+# Use vibrant colors if available, otherwise fall back to all mid colors
+if [[ ${#VIBRANT_COLORS[@]} -gt 10 ]]; then
+    echo "   Found ${#VIBRANT_COLORS[@]} vibrant colors (using these for palette)"
+    mapfile -t MID_COLORS < <(printf '%s\n' "${VIBRANT_COLORS[@]}" | sort -t'|' -k3 -n)
+else
+    echo "   Using all ${#ALL_MID_COLORS[@]} mid-tone colors"
+    mapfile -t MID_COLORS < <(printf '%s\n' "${ALL_MID_COLORS[@]}" | sort -t'|' -k3 -n)
+fi
+
+# ============================================================================
+# STEP 4: Assign colors to terminal palette roles
+# ============================================================================
+
+echo " Building terminal color palette..."
+
+# Helper function to generate a color with specific hue
+generate_color_with_hue() {
+    local target_hue=$1
+    local saturation=${2:-70}  # Default high saturation
+    local lightness=${3:-120}  # Default good lightness for dark themes
+
+    # Convert HSL to RGB
+    awk -v h="$target_hue" -v s="$saturation" -v l="$lightness" 'BEGIN {
+        # Normalize
+        h = h / 360.0
+        s = s / 100.0
+        l = l / 255.0
+
+        # HSL to RGB conversion
+        if (s == 0) {
+            r = g = b = l
+        } else {
+            hue2rgb_p = 0
+            hue2rgb_q = 0
+            hue2rgb_t = 0
+
+            if (l < 0.5) {
+                hue2rgb_q = l * (1 + s)
+            } else {
+                hue2rgb_q = l + s - l * s
+            }
+            hue2rgb_p = 2 * l - hue2rgb_q
+
+            r = h + 1/3.0
+            g = h
+            b = h - 1/3.0
+
+            # Adjust r
+            if (r < 0) r += 1
+            if (r > 1) r -= 1
+            if (r < 1/6.0) {
+                r = hue2rgb_p + (hue2rgb_q - hue2rgb_p) * 6 * r
+            } else if (r < 1/2.0) {
+                r = hue2rgb_q
+            } else if (r < 2/3.0) {
+                r = hue2rgb_p + (hue2rgb_q - hue2rgb_p) * (2/3.0 - r) * 6
+            } else {
+                r = hue2rgb_p
+            }
+
+            # Adjust g
+            if (g < 0) g += 1
+            if (g > 1) g -= 1
+            if (g < 1/6.0) {
+                g = hue2rgb_p + (hue2rgb_q - hue2rgb_p) * 6 * g
+            } else if (g < 1/2.0) {
+                g = hue2rgb_q
+            } else if (g < 2/3.0) {
+                g = hue2rgb_p + (hue2rgb_q - hue2rgb_p) * (2/3.0 - g) * 6
+            } else {
+                g = hue2rgb_p
+            }
+
+            # Adjust b
+            if (b < 0) b += 1
+            if (b > 1) b -= 1
+            if (b < 1/6.0) {
+                b = hue2rgb_p + (hue2rgb_q - hue2rgb_p) * 6 * b
+            } else if (b < 1/2.0) {
+                b = hue2rgb_q
+            } else if (b < 2/3.0) {
+                b = hue2rgb_p + (hue2rgb_q - hue2rgb_p) * (2/3.0 - b) * 6
+            } else {
+                b = hue2rgb_p
+            }
+        }
+
+        r = int(r * 255)
+        g = int(g * 255)
+        b = int(b * 255)
+
+        printf "#%02X%02X%02X", r, g, b
+    }'
+}
+
+# Helper function to find the MOST SATURATED color in a hue range or generate one
+find_color_by_hue() {
+    local hue_min=$1 hue_max=$2 min_sat=${3:-0}
+
+    local best_hex=""
+    local best_sat=0
+
+    # Find the most saturated color in the hue range
+    for color_data in "${MID_COLORS[@]}"; do
+        local hex=$(echo "$color_data" | cut -d'|' -f1)
+        local hue=$(echo "$color_data" | cut -d'|' -f3 | cut -d'.' -f1)
+        local sat=$(echo "$color_data" | cut -d'|' -f4 | cut -d'.' -f1)
+
+        if [[ $hue -ge $hue_min && $hue -le $hue_max && $sat -ge $min_sat ]]; then
+            if [[ $sat -gt $best_sat ]]; then
+                best_hex="$hex"
+                best_sat=$sat
+            fi
+        fi
+    done
+
+    # If we found a color, return it
+    if [[ -n "$best_hex" ]]; then
+        echo "$best_hex"
+        return
+    fi
+
+    # Fallback: find most saturated color without sat requirement
+    for color_data in "${MID_COLORS[@]}"; do
+        local hex=$(echo "$color_data" | cut -d'|' -f1)
+        local hue=$(echo "$color_data" | cut -d'|' -f3 | cut -d'.' -f1)
+        local sat=$(echo "$color_data" | cut -d'|' -f4 | cut -d'.' -f1)
+
+        if [[ $hue -ge $hue_min && $hue -le $hue_max ]]; then
+            if [[ $sat -gt $best_sat ]]; then
+                best_hex="$hex"
+                best_sat=$sat
+            fi
+        fi
+    done
+
+    # If still no color found, generate one synthetically
+    if [[ -z "$best_hex" ]]; then
+        local mid_hue=$(( (hue_min + hue_max) / 2 ))
+        best_hex=$(generate_color_with_hue "$mid_hue" 70 120)
+    fi
+
+    echo "$best_hex"
+}
+
+# Helper function to lighten/darken a color using awk
+adjust_brightness() {
+    local hex="${1#\#}"
+    local factor=$2  # 1.0 = no change, >1.0 = lighter, <1.0 = darker
+
+    local r=$((16#${hex:0:2}))
+    local g=$((16#${hex:2:2}))
+    local b=$((16#${hex:4:2}))
+
+    # Use awk for floating point multiplication and clamping
+    read r g b < <(awk -v r="$r" -v g="$g" -v b="$b" -v f="$factor" 'BEGIN {
+        r = int(r * f)
+        g = int(g * f)
+        b = int(b * f)
+
+        if (r > 255) r = 255
+        if (g > 255) g = 255
+        if (b > 255) b = 255
+        if (r < 0) r = 0
+        if (g < 0) g = 0
+        if (b < 0) b = 0
+
+        print r, g, b
+    }')
+
+    printf "#%02X%02X%02X" "$r" "$g" "$b"
+}
+
+# Assign colors by hue ranges (with synthetic generation if not found)
+# Red: 0-30, 330-360
+COLOR_RED=$(find_color_by_hue 330 360 20)
+[[ -z "$COLOR_RED" ]] && COLOR_RED=$(find_color_by_hue 0 30 20)
+
+# Orange: 15-45 (for warnings, highlights)
+COLOR_ORANGE=$(find_color_by_hue 15 45 20)
+
+# Yellow: 45-75
+COLOR_YELLOW=$(find_color_by_hue 45 75 20)
+
+# Green: 75-150
+COLOR_GREEN=$(find_color_by_hue 75 150 20)
+
+# Cyan: 150-210
+COLOR_CYAN=$(find_color_by_hue 150 210 20)
+
+# Blue: 210-270
+COLOR_BLUE=$(find_color_by_hue 210 270 20)
+
+# Magenta/Purple: 270-330
+COLOR_MAGENTA=$(find_color_by_hue 270 330 20)
+
+# Black and white
+COLOR_BLACK=$(echo "${SORTED_BY_LIGHT[1]}" | cut -d'|' -f1)  # 2nd darkest
+SECOND_LAST_IDX=$((${#SORTED_BY_LIGHT[@]} - 2))
+COLOR_WHITE=$(echo "${SORTED_BY_LIGHT[$SECOND_LAST_IDX]}" | cut -d'|' -f1)  # 2nd lightest
+
+# Generate bright variants (1.3x lighter)
+COLOR_RED_BRIGHT=$(adjust_brightness "$COLOR_RED" 1.3)
+COLOR_ORANGE_BRIGHT=$(adjust_brightness "$COLOR_ORANGE" 1.3)
+COLOR_YELLOW_BRIGHT=$(adjust_brightness "$COLOR_YELLOW" 1.3)
+COLOR_GREEN_BRIGHT=$(adjust_brightness "$COLOR_GREEN" 1.3)
+COLOR_CYAN_BRIGHT=$(adjust_brightness "$COLOR_CYAN" 1.3)
+COLOR_BLUE_BRIGHT=$(adjust_brightness "$COLOR_BLUE" 1.3)
+COLOR_MAGENTA_BRIGHT=$(adjust_brightness "$COLOR_MAGENTA" 1.3)
+COLOR_BLACK_BRIGHT=$(adjust_brightness "$COLOR_BLACK" 1.5)
+COLOR_WHITE_BRIGHT="$FG_COLOR"
+
+# Generate dim variants (0.8x darker) for neovim
+COLOR_RED_DIM=$(adjust_brightness "$COLOR_RED" 0.8)
+COLOR_ORANGE_DIM=$(adjust_brightness "$COLOR_ORANGE" 0.8)
+COLOR_YELLOW_DIM=$(adjust_brightness "$COLOR_YELLOW" 0.8)
+COLOR_GREEN_DIM=$(adjust_brightness "$COLOR_GREEN" 0.8)
+COLOR_CYAN_DIM=$(adjust_brightness "$COLOR_CYAN" 0.8)
+COLOR_BLUE_DIM=$(adjust_brightness "$COLOR_BLUE" 0.8)
+COLOR_MAGENTA_DIM=$(adjust_brightness "$COLOR_MAGENTA" 0.8)
+COLOR_BLACK_DIM=$(adjust_brightness "$COLOR_BLACK" 0.6)
+COLOR_WHITE_DIM=$(adjust_brightness "$COLOR_WHITE" 0.85)
+
+# Generate multiple accent colors from most saturated colors in image
+mapfile -t TOP_SATURATED < <(printf '%s\n' "${MID_COLORS[@]}" | sort -t'|' -k4 -rn | head -5)
+
+ACCENT_PRIMARY=$(echo "${TOP_SATURATED[0]}" | cut -d'|' -f1)
+ACCENT_SECONDARY=$(echo "${TOP_SATURATED[1]}" | cut -d'|' -f1)
+ACCENT_TERTIARY=$(echo "${TOP_SATURATED[2]}" | cut -d'|' -f1)
+
+# If we don't have enough accent colors, use variations
+[[ -z "$ACCENT_PRIMARY" ]] && ACCENT_PRIMARY="$COLOR_CYAN"
+[[ -z "$ACCENT_SECONDARY" ]] && ACCENT_SECONDARY="$COLOR_MAGENTA"
+[[ -z "$ACCENT_TERTIARY" ]] && ACCENT_TERTIARY="$COLOR_BLUE"
+
+# Create selection colors (darkened versions of accent for dark themes)
+SELECTION_BG=$(adjust_brightness "$ACCENT_PRIMARY" 0.4)
+SELECTION_FG="$ACCENT_PRIMARY"
+
+echo "   Color palette generated!"
+echo "   - Red:     $COLOR_RED → $COLOR_RED_BRIGHT"
+echo "   - Orange:  $COLOR_ORANGE → $COLOR_ORANGE_BRIGHT"
+echo "   - Yellow:  $COLOR_YELLOW → $COLOR_YELLOW_BRIGHT"
+echo "   - Green:   $COLOR_GREEN → $COLOR_GREEN_BRIGHT"
+echo "   - Cyan:    $COLOR_CYAN → $COLOR_CYAN_BRIGHT"
+echo "   - Blue:    $COLOR_BLUE → $COLOR_BLUE_BRIGHT"
+echo "   - Magenta: $COLOR_MAGENTA → $COLOR_MAGENTA_BRIGHT"
+echo "   - Accents: $ACCENT_PRIMARY | $ACCENT_SECONDARY | $ACCENT_TERTIARY"
+
+# ============================================================================
+# STEP 5: Copy template files and replace colors
+# ============================================================================
+
+echo ""
+echo " Generating theme files..."
+
+# ============================================================================
+# Generate template files (embedded or from directory)
+# ============================================================================
+
+generate_embedded_templates() {
+    local dest_dir=$1
+
+    # alacritty.toml
+    cat > "$dest_dir/alacritty.toml" << 'ALACRITTY_EOF'
+[colors]
+draw_bold_text_with_bright_colors = true
+
+[colors.primary]
+# The primary colors for the terminal window
+background = '#101428'
+foreground = '#f2f4f8'
+
+[colors.cursor]
+text = '#111111'
+cursor = '#1E90FF'
+
+[colors.normal]
+# Normal colors used by applications
+black = '#1B1D21'
+red = '#FF5555'
+green = '#1E90FF'
+blue = '#50FA7B'
+magenta = '#FF79C6'
+cyan = '#8BE9FD'
+white = '#BBBBBB'
+yellow = '#F1FA8C'
+
+[colors.bright]
+# Bright colors used for emphasis
+black = '#555555'
+red = '#FF6E6E'
+green = '#63B3FF'
+yellow = '#FFFFA5'
+blue = '#69FF94'
+magenta = '#FF92DF'
+cyan = '#A4FFFF'
+white = '#FFFFFF'
+
+[window]
+opacity = 0.92
+
+[font]
+size = 18.0
+normal = { family = "RobotoMono Nerd Font Mono", style = "Regular" }
+
+[cursor]
+style = {shape = "Block", blinking = "On"}
+blink_interval = 800
+blink_timeout = 15
+unfocused_hollow = true
+ALACRITTY_EOF
+
+    # btop.theme
+    cat > "$dest_dir/btop.theme" << 'BTOP_EOF'
+# Background
+theme[main_bg]="#101428"        # Base black
+theme[main_fg]="#FFFFFF"        # Bright white text
+
+# Titles and highlights
+theme[title]="#1E90FF"          # Blue titles (main identity)
+theme[hi_fg]="#8BE9FD"          # Cyan highlight
+
+# Selection
+theme[selected_bg]="#1A7ACC"    # Deep blue selection
+theme[selected_fg]="#FFFFFF"    # White text
+
+# Inactive text
+theme[inactive_fg]="#AAAAAA"    # Dim white
+
+# Processes misc text
+theme[proc_misc]="#FF79C6"      # Pink/magenta accent
+
+# Boxes (rainbow around the dashboard, but blue stays main in CPU/Net)
+theme[cpu_box]="#1E90FF"        # Blue
+theme[mem_box]="#50FA7B"        # Green
+theme[net_box]="#FFB86C"        # Orange
+theme[proc_box]="#9370DB"       # Purple
+theme[div_line]="#63B3FF"       # Brighter blue divider
+
+# Gradients per resource
+theme[temp_start]="#1A7ACC"     # Blue → Cyan
+theme[temp_mid]="#63B3FF"
+theme[temp_end]="#8BE9FD"
+
+theme[cpu_start]="#1A7ACC"      # Blue gradient (dominant)
+theme[cpu_mid]="#1E90FF"
+theme[cpu_end]="#63B3FF"
+
+theme[free_start]="#3CC968"     # Green → Cyan
+theme[free_mid]="#50FA7B"
+theme[free_end]="#8BE9FD"
+
+theme[cached_start]="#FFB86C"   # Orange → Yellow
+theme[cached_mid]="#FFD191"
+theme[cached_end]="#F1FA8C"
+
+theme[available_start]="#9370DB" # Purple → Cyan
+theme[available_mid]="#BA55D3"
+theme[available_end]="#8BE9FD"
+
+theme[used_start]="#FF5555"     # Red → Pink
+theme[used_mid]="#FF6E6E"
+theme[used_end]="#FF79C6"
+
+theme[download_start]="#1E90FF" # Blue (network stays blueish)
+theme[download_mid]="#63B3FF"
+theme[download_end]="#8BE9FD"
+
+theme[upload_start]="#FF79C6"   # Pink → Purple
+theme[upload_mid]="#9370DB"
+theme[upload_end]="#1E90FF"
+BTOP_EOF
+
+    # chromium.theme
+    cat > "$dest_dir/chromium.theme" << 'CHROMIUM_EOF'
+14,9,29
+CHROMIUM_EOF
+
+    # fonts.json
+    cat > "$dest_dir/fonts.json" << 'FONTS_EOF'
+{
+  "monospace": "JetBrainsMono Nerd Font Mono"
+}
+FONTS_EOF
+
+    # ghostty.conf
+    cat > "$dest_dir/ghostty.conf" << 'GHOSTTY_EOF'
+# Background and foreground colors
+background = #101428
+foreground = #f2f4f8
+
+# Standard colors (0–7)
+palette = 0=#1B1D21
+palette = 1=#FF5555
+palette = 2=#1E90FF
+palette = 3=#F1FA8C
+palette = 4=#50FA7B
+palette = 5=#FF79C6
+palette = 6=#8BE9FD
+palette = 7=#BBBBBB
+
+# Bright colors (8–15)
+palette = 8=#555555
+palette = 9=#FF6E6E
+palette = 10=#63B3FF
+palette = 11=#FFFFA5
+palette = 12=#69FF94
+palette = 13=#FF92DF
+palette = 14=#A4FFFF
+palette = 15=#FFFFFF
+
+selection-foreground = #376cdb
+selection-background = #033259
+selection-clear-on-typing = true
+
+
+font-size = 18
+font-family = MesloLGS Nerd Font Mono
+
+shell-integration-features = no-cursor
+cursor-color = #1E90FF
+
+
+background-opacity = 0.92
+window-padding-y = 0
+
+
+GHOSTTY_EOF
+
+    # ghostty-theme
+    cat > "$dest_dir/ghostty-theme" << 'GHOSTTY_THEME_EOF'
+# background and foreground colors
+background = #101428
+foreground = #f2f4f8
+
+# standard colors
+palette = 0=#1b1d21
+palette = 1=#ff5555
+palette = 2=#1e90ff
+palette = 3=#f1fa8c
+palette = 4=#50fa7b
+palette = 5=#ff79c6
+palette = 6=#8be9fd
+palette = 7=#bbbbbb
+
+# bright colors
+palette = 8=#555555
+palette = 9=#ff6e6e
+palette = 10=#63b3ff
+palette = 11=#ffffa5
+palette = 12=#69ff94
+palette = 13=#ff92df
+palette = 14=#a4ffff
+palette = 15=#ffffff
+GHOSTTY_THEME_EOF
+
+    # hyprland.conf
+    cat > "$dest_dir/hyprland.conf" << 'HYPRLAND_EOF'
+# This file is not a full hyprland configuration.
+# It is intended to be included in your main hyprland.conf.
+
+
+general {
+    col.active_border = rgba(1E90FFee) rgba(63B3FFee) 90deg
+    col.inactive_border = rgba(BBBBBB88)
+}
+HYPRLAND_EOF
+
+    # hyprlock.conf
+    cat > "$dest_dir/hyprlock.conf" << 'HYPRLOCK_EOF'
+$color = rgba(16,20,40,1.0)
+$inner_color = rgba(16,20,40,0.8)
+$outer_color = rgba(30,144,255,1.0)
+$font_color = rgba(242,244,248,1.0)
+$placeholder_color = rgba(242,244,248,0.7)
+$check_color = rgba(30,144,255,1.0)
+HYPRLOCK_EOF
+
+    # icons.theme
+    cat > "$dest_dir/icons.theme" << 'ICONS_EOF'
+Yaru-blue
+ICONS_EOF
+
+    # kitty.conf
+    cat > "$dest_dir/kitty.conf" << 'KITTY_EOF'
+# Fonts
+font_family RobotoMono Nerd Font Mono
+font_size 18.0
+bold_font auto
+italic_font auto
+bold_italic_font auto
+# *__________________________________________________*
+# Background-opacity
+background_opacity 0.92
+dynamic_background_opacity yes
+# *__________________________________________________*
+# Colors
+selection_foreground #376cdb
+selection_background #033259
+# Background and foreground colors
+background #101428
+foreground #f2f4f8
+# Standard colors (0–7)  #1E90FF  #63B3FF
+color0 #1B1D21
+color1 #FF5555
+color2 #1E90FF
+color3 #F1FA8C
+color4 #50FA7B
+color5 #FF79C6
+color6 #8BE9FD
+color7 #BBBBBB
+# Bright colors (8–15)
+color8 #555555
+color9 #FF6E6E
+color10 #63B3FF
+color11 #FFFFA5
+color12 #69FF94
+color13 #FF92DF
+color14 #A4FFFF
+color15 #FFFFFF
+# *__________________________________________________*
+# Cursor
+cursor #1E90FF
+cursor_text_color #111111
+cursor_shape Block
+cursor_shape_unfocused hollow
+cursor_blink_interval 0.8 ease-in-out
+cursor_stop_blinking_after 15.0
+cursor_trail 1
+# *__________________________________________________*
+# general settings
+confirm_os_window_close 0
+linux_display_server auto
+scrollback_lines 2000
+wheel_scroll_min_lines 1
+enable_audio_bell no
+window_padding_width 0
+# *__________________________________________________*
+KITTY_EOF
+
+    # mako.ini
+    cat > "$dest_dir/mako.ini" << 'MAKO_EOF'
+text-color=#f2f4f9
+border-color=#1E90FF
+background-color=#101428
+width=420
+height=110
+padding=10
+border-size=2
+font=RobotoMono Nerd Font Mono 11
+anchor=top-right
+outer-margin=20
+default-timeout=5000
+max-icon-size=32
+
+[app-name=Spotify]
+invisible=1
+
+[mode=do-not-disturb]
+invisible=true
+
+[mode=do-not-disturb app-name=notify-send]
+invisible=false
+MAKO_EOF
+
+    # neovim.lua
+    cat > "$dest_dir/neovim.lua" << 'NEOVIM_EOF'
+return {
+	"EdenEast/nightfox.nvim",
+	priority = 1000, -- Ensure it loads first
+	config = function()
+		require("nightfox").setup({
+			options = {
+				-- Compiled file's destination location
+				compile_path = vim.fn.stdpath("cache") .. "/nightfox",
+				compile_file_suffix = "_compiled", -- Compiled file suffix
+				transparent = true, -- Disable setting background
+			},
+			palettes = {
+				all = {
+					bg0 = "None",
+					black = { dim = "#0F1012", base = "#1B1D21", bright = "#2C2E33" },
+					red = { dim = "#CC4444", base = "#FF5555", bright = "#FF6E6E" },
+					green = { dim = "#3CC968", base = "#50FA7B", bright = "#69FF94" },
+					yellow = { dim = "#D4DB77", base = "#F1FA8C", bright = "#FFFFA5" },
+					blue = { dim = "#1A7ACC", base = "#1E90FF", bright = "#63B3FF" },
+					magenta = { dim = "#6A5ACD", base = "#9370DB", bright = "#BA55D3" },
+					cyan = { dim = "#70C9E3", base = "#8BE9FD", bright = "#A4FFFF" },
+					white = { dim = "#AAAAAA", base = "#BBBBBB", bright = "#FFFFFF" },
+					orange = { dim = "#CC8244", base = "#FFB86C", bright = "#FFD191" },
+					pink = { dim = "#CC62A6", base = "#FF79C6", bright = "#FF92DF" },
+				},
+			},
+		})
+	end,
+	{
+		"LazyVim/LazyVim",
+		opts = {
+			colorscheme = "carbonfox",
+		},
+	},
+}
+NEOVIM_EOF
+
+    # swayosd.css
+    cat > "$dest_dir/swayosd.css" << 'SWAYOSD_EOF'
+@define-color background-color #101428;
+@define-color border-color #1E90FF;
+@define-color label #f2f4f8;
+@define-color image #63B3FF;
+@define-color progress #63B3FF;
+SWAYOSD_EOF
+
+    # walker.css
+    cat > "$dest_dir/walker.css" << 'WALKER_EOF'
+@define-color selected-text #1E90FF;
+@define-color text #f2f4f8;
+@define-color base #101428;
+@define-color border #1E90FF;
+@define-color foreground #f2f4f8;
+@define-color background #101428;
+WALKER_EOF
+
+    # waybar.css
+    cat > "$dest_dir/waybar.css" << 'WAYBAR_EOF'
+@define-color background #101432;
+@define-color foreground #f2f4f8;
+WAYBAR_EOF
+}
+
+# Copy or generate template files
+if [[ "$USE_EMBEDDED_TEMPLATES" == "1" ]]; then
+    generate_embedded_templates "$TEMP_DIR"
+else
+    cp -r "$TEMPLATE_DIR"/* "$TEMP_DIR/"
+fi
+
+# Function to replace color in file
+replace_color() {
+    local file=$1
+    local old_color=$2
+    local new_color=$3
+
+    # Case-insensitive replacement for hex colors
+    sed -i "s/${old_color}/${new_color}/gi" "$file"
+}
+
+# Function to replace RGBA color
+replace_rgba() {
+    local file=$1
+    local old_rgba=$2
+    local new_hex=$3
+
+    # Convert hex to RGBA
+    local hex="${new_hex#\#}"
+    local r=$((16#${hex:0:2}))
+    local g=$((16#${hex:2:2}))
+    local b=$((16#${hex:4:2}))
+
+    # Extract alpha from old value
+    local alpha=$(echo "$old_rgba" | grep -oP '\d+\.\d+(?=\))' | tail -1)
+    [[ -z "$alpha" ]] && alpha="1.0"
+
+    local new_rgba="rgba($r,$g,$b,$alpha)"
+
+    sed -i "s/${old_rgba//\//\\/}/${new_rgba}/g" "$file"
+}
+
+# Get list of theme files in temporary directory
+THEME_FILES=$(find "$TEMP_DIR" -type f ! -path "*/backgrounds/*")
+
+# Replace all drac theme colors with generated colors
+for file in $THEME_FILES; do
+    echo "   Processing: $(basename "$file")"
+
+    # Background (drac uses different values in different files)
+    replace_color "$file" "#101428" "$BG_COLOR"
+    replace_color "$file" "#101432" "$BG_COLOR"
+
+    # Foreground (and variants)
+    replace_color "$file" "#f2f4f8" "$FG_COLOR"
+    replace_color "$file" "#f2f4f9" "$FG_COLOR"
+    replace_color "$file" "#FFFFFF" "$FG_COLOR"
+
+    # IMPORTANT: Replace cursor/highlight colors FIRST (before terminal colors)
+    # This ensures #1E90FF (drac blue) becomes our bright accent, not dull terminal blue
+    replace_color "$file" "#1E90FF" "$ACCENT_PRIMARY"
+    replace_color "$file" "#63B3FF" "$ACCENT_SECONDARY"
+
+    # Terminal colors - Normal
+    replace_color "$file" "#1B1D21" "$COLOR_BLACK"
+    replace_color "$file" "#FF5555" "$COLOR_RED"
+    replace_color "$file" "#50FA7B" "$COLOR_GREEN"
+    replace_color "$file" "#F1FA8C" "$COLOR_YELLOW"
+    # Note: #1E90FF already replaced above with ACCENT_PRIMARY
+    replace_color "$file" "#FF79C6" "$COLOR_MAGENTA"
+    replace_color "$file" "#8BE9FD" "$COLOR_CYAN"
+    replace_color "$file" "#BBBBBB" "$COLOR_WHITE"
+
+    # Terminal colors - Bright
+    replace_color "$file" "#555555" "$COLOR_BLACK_BRIGHT"
+    replace_color "$file" "#FF6E6E" "$COLOR_RED_BRIGHT"
+    replace_color "$file" "#69FF94" "$COLOR_GREEN_BRIGHT"
+    replace_color "$file" "#FFFFA5" "$COLOR_YELLOW_BRIGHT"
+    # Note: #63B3FF already replaced earlier with ACCENT_SECONDARY
+    replace_color "$file" "#FF92DF" "$COLOR_MAGENTA_BRIGHT"
+    replace_color "$file" "#A4FFFF" "$COLOR_CYAN_BRIGHT"
+
+    # Terminal colors - Dim (for neovim)
+    replace_color "$file" "#0F1012" "$COLOR_BLACK_DIM"
+    replace_color "$file" "#2C2E33" "$COLOR_BLACK_BRIGHT"
+    replace_color "$file" "#CC4444" "$COLOR_RED_DIM"
+    replace_color "$file" "#CC8244" "$COLOR_ORANGE_DIM"
+    replace_color "$file" "#D4DB77" "$COLOR_YELLOW_DIM"
+    replace_color "$file" "#3CC968" "$COLOR_GREEN_DIM"
+    replace_color "$file" "#70C9E3" "$COLOR_CYAN_DIM"
+    replace_color "$file" "#6A5ACD" "$COLOR_MAGENTA_DIM"
+    replace_color "$file" "#CC62A6" "$COLOR_MAGENTA_DIM"
+    replace_color "$file" "#AAAAAA" "$COLOR_WHITE_DIM"
+
+    # Additional accent colors (orange, purple variants)
+    replace_color "$file" "#FFB86C" "$COLOR_ORANGE"
+    replace_color "$file" "#FFD191" "$COLOR_ORANGE_BRIGHT"
+    replace_color "$file" "#BA55D3" "$ACCENT_SECONDARY"
+    replace_color "$file" "#9370DB" "$ACCENT_TERTIARY"
+
+    # Selection colors - replace with our generated selection colors
+    replace_color "$file" "#1A7ACC" "$ACCENT_PRIMARY"
+    replace_color "$file" "#376cdb" "$ACCENT_PRIMARY"
+    replace_color "$file" "#033259" "$SELECTION_BG"
+    # Note: #1E90FF and #63B3FF already replaced earlier with accent colors
+
+    # RGBA colors (for hyprlock.conf - standard rgba format)
+    if [[ "$file" == *"hyprlock.conf"* ]]; then
+        replace_rgba "$file" "rgba(16,20,40,1.0)" "$BG_COLOR"
+        replace_rgba "$file" "rgba(242,244,248,1.0)" "$FG_COLOR"
+        replace_rgba "$file" "rgba(30,144,255,1.0)" "$ACCENT_PRIMARY"
+    fi
+
+    # RGBA colors for hyprland.conf (special hex-based RGBA format without #)
+    if [[ "$file" == *"hyprland.conf"* ]]; then
+        # Replace active border colors (gradient from primary to secondary accent)
+        sed -i "s/rgba(1E90FFee)/rgba(${ACCENT_PRIMARY#\#}ee)/g" "$file"
+        sed -i "s/rgba(63B3FFee)/rgba(${ACCENT_SECONDARY#\#}ee)/g" "$file"
+        # Replace inactive border
+        sed -i "s/rgba(BBBBBB88)/rgba(${COLOR_WHITE#\#}88)/g" "$file"
+    fi
+done
+
+# Copy input image to backgrounds directory
+cp "$INPUT_IMAGE" "$TEMP_DIR/backgrounds/wallpaper.webp"
+
+# Generate chromium.theme file (RGB format)
+# Use a blend of background + accent for visual character (80% bg + 20% accent)
+echo "   Generating chromium.theme..."
+BG_RGB=($(hex_to_rgb "$BG_COLOR"))
+ACCENT_RGB=($(hex_to_rgb "$ACCENT_PRIMARY"))
+
+# Blend: 80% background + 20% accent
+CHROME_R=$(( (BG_RGB[0] * 80 + ACCENT_RGB[0] * 20) / 100 ))
+CHROME_G=$(( (BG_RGB[1] * 80 + ACCENT_RGB[1] * 20) / 100 ))
+CHROME_B=$(( (BG_RGB[2] * 80 + ACCENT_RGB[2] * 20) / 100 ))
+
+echo "$CHROME_R,$CHROME_G,$CHROME_B" > "$TEMP_DIR/chromium.theme"
+
+# Generate icons.theme file (select best matching Yaru color variant)
+echo "   Generating icons.theme..."
+# Extract RGB from ACCENT_PRIMARY and calculate hue
+ACCENT_RGB=($(hex_to_rgb "$ACCENT_PRIMARY"))
+ACCENT_HUE=$(calc_hue ${ACCENT_RGB[0]} ${ACCENT_RGB[1]} ${ACCENT_RGB[2]})
+ICON_THEME="Yaru-blue"  # Default fallback
+
+# Map hue ranges to Yaru icon theme variants
+# Red: 330-30, Orange: 30-45, Yellow: 45-75, Green: 75-150,
+# Cyan: 150-210, Blue: 210-270, Magenta/Purple: 270-330
+if (( $(echo "$ACCENT_HUE >= 330 || $ACCENT_HUE < 15" | awk '{print ($1 >= 330 || $1 < 15)}') )); then
+    ICON_THEME="Yaru-red"
+elif (( $(echo "$ACCENT_HUE >= 15 && $ACCENT_HUE < 45" | awk '{print ($1 >= 15 && $1 < 45)}') )); then
+    ICON_THEME="Yaru-wartybrown"  # Orange/brown
+elif (( $(echo "$ACCENT_HUE >= 45 && $ACCENT_HUE < 75" | awk '{print ($1 >= 45 && $1 < 75)}') )); then
+    ICON_THEME="Yaru-yellow"
+elif (( $(echo "$ACCENT_HUE >= 75 && $ACCENT_HUE < 150" | awk '{print ($1 >= 75 && $1 < 150)}') )); then
+    ICON_THEME="Yaru-sage"  # Green
+elif (( $(echo "$ACCENT_HUE >= 150 && $ACCENT_HUE < 210" | awk '{print ($1 >= 150 && $1 < 210)}') )); then
+    ICON_THEME="Yaru-prussiangreen"  # Cyan/teal
+elif (( $(echo "$ACCENT_HUE >= 210 && $ACCENT_HUE < 270" | awk '{print ($1 >= 210 && $1 < 270)}') )); then
+    ICON_THEME="Yaru-blue"
+elif (( $(echo "$ACCENT_HUE >= 270 && $ACCENT_HUE < 330" | awk '{print ($1 >= 270 && $1 < 330)}') )); then
+    ICON_THEME="Yaru-purple"
+fi
+
+echo "$ICON_THEME" > "$TEMP_DIR/icons.theme"
+
+
+
+# ============================================================================
+# Generate obsidian.css (Obsidian theming)
+# ============================================================================
+
+echo "   Generating obsidian.css..."
+
+# Calculate a subtle code background variant (slightly lighter/darker than BG)
+BG_RGB=($(hex_to_rgb "$BG_COLOR"))
+BG_BRIGHTNESS=$(calc_lightness ${BG_RGB[0]} ${BG_RGB[1]} ${BG_RGB[2]})
+if (( $(echo "$BG_BRIGHTNESS > 127" | awk '{print ($1 > 127)}') )); then
+    # Light theme - make code bg darker
+    CODE_BG_R=$((${BG_RGB[0]} - 10))
+    CODE_BG_G=$((${BG_RGB[1]} - 10))
+    CODE_BG_B=$((${BG_RGB[2]} - 10))
+else
+    # Dark theme - make code bg lighter
+    CODE_BG_R=$((${BG_RGB[0]} + 15))
+    CODE_BG_G=$((${BG_RGB[1]} + 15))
+    CODE_BG_B=$((${BG_RGB[2]} + 15))
+fi
+# Clamp values to 0-255
+CODE_BG_R=$(( CODE_BG_R < 0 ? 0 : (CODE_BG_R > 255 ? 255 : CODE_BG_R) ))
+CODE_BG_G=$(( CODE_BG_G < 0 ? 0 : (CODE_BG_G > 255 ? 255 : CODE_BG_G) ))
+CODE_BG_B=$(( CODE_BG_B < 0 ? 0 : (CODE_BG_B > 255 ? 255 : CODE_BG_B) ))
+CODE_BG=$(printf "#%02x%02x%02x" "$CODE_BG_R" "$CODE_BG_G" "$CODE_BG_B")
+
+# Calculate border color (blend of bg and fg, closer to bg)
+BORDER_R=$(( (${BG_RGB[0]} * 2 + $(hex_to_rgb "$FG_COLOR" | cut -d' ' -f1)) / 3 ))
+BORDER_G=$(( (${BG_RGB[1]} * 2 + $(hex_to_rgb "$FG_COLOR" | cut -d' ' -f2)) / 3 ))
+BORDER_B=$(( (${BG_RGB[2]} * 2 + $(hex_to_rgb "$FG_COLOR" | cut -d' ' -f3)) / 3 ))
+BORDER_COLOR=$(printf "#%02x%02x%02x" "$BORDER_R" "$BORDER_G" "$BORDER_B")
+
+# Calculate selection background (75% bg + 25% fg)
+FG_RGB=($(hex_to_rgb "$FG_COLOR"))
+SEL_BG_R=$(( (${BG_RGB[0]} * 3 + ${FG_RGB[0]}) / 4 ))
+SEL_BG_G=$(( (${BG_RGB[1]} * 3 + ${FG_RGB[1]}) / 4 ))
+SEL_BG_B=$(( (${BG_RGB[2]} * 3 + ${FG_RGB[2]}) / 4 ))
+SELECTION_BG=$(printf "#%02x%02x%02x" "$SEL_BG_R" "$SEL_BG_G" "$SEL_BG_B")
+
+cat > "$TEMP_DIR/obsidian.css" << 'OBSIDIAN_EOF'
+/* Omarchy Theme for Obsidian */
+/* Auto-generated from extracted image colors */
+
+.theme-dark, .theme-light {
+  /* Core colors */
+  --background-primary: OBSIDIAN_BG_COLOR;
+  --text-normal: OBSIDIAN_FG_COLOR;
+
+  /* Background variations */
+  --background-primary-alt: OBSIDIAN_BG_COLOR;
+  --background-secondary: OBSIDIAN_BG_COLOR;
+  --background-secondary-alt: OBSIDIAN_BG_COLOR;
+
+  /* Code block colors */
+  --code-background: OBSIDIAN_CODE_BG;
+  --code-foreground: OBSIDIAN_FG_COLOR;
+
+  /* Border color */
+  --border-color: OBSIDIAN_BORDER_COLOR;
+
+  /* Selection colors */
+  --text-selection: OBSIDIAN_SELECTION_BG;
+  --text-selection-fg: OBSIDIAN_FG_COLOR;
+
+  /* Header colors - use our vibrant extracted colors */
+  --text-title-h1: OBSIDIAN_RED_BRIGHT;
+  --text-title-h2: OBSIDIAN_GREEN_BRIGHT;
+  --text-title-h3: OBSIDIAN_YELLOW_BRIGHT;
+  --text-title-h4: OBSIDIAN_BLUE_BRIGHT;
+  --text-title-h5: OBSIDIAN_MAGENTA_BRIGHT;
+  --text-title-h6: OBSIDIAN_CYAN_BRIGHT;
+
+  /* Interactive elements - use accent colors */
+  --text-link: OBSIDIAN_ACCENT_PRIMARY;
+  --markup-code: OBSIDIAN_ACCENT_SECONDARY;
+  --text-mark: OBSIDIAN_YELLOW_BRIGHT;
+  --interactive-accent: OBSIDIAN_ACCENT_PRIMARY;
+  --blockquote-border: OBSIDIAN_ACCENT_TERTIARY;
+
+  /* Muted text */
+  --text-muted: OBSIDIAN_BORDER_COLOR;
+  --text-faint: OBSIDIAN_BORDER_COLOR;
+
+  /* Additional mappings */
+  --text-accent: var(--interactive-accent);
+  --text-accent-hover: var(--interactive-accent);
+  --text-error: var(--text-title-h1);
+  --text-error-hover: var(--text-title-h1);
+  --text-highlight-bg: OBSIDIAN_ACCENT_PRIMARY;
+  --text-on-accent: OBSIDIAN_BG_COLOR;
+
+  --interactive-normal: var(--code-background);
+  --interactive-hover: var(--interactive-accent);
+  --interactive-accent-hover: var(--interactive-accent);
+  --interactive-success: var(--text-title-h2);
+
+  --scrollbar-bg: var(--background-primary);
+  --scrollbar-thumb-bg: var(--code-background);
+  --scrollbar-active-thumb-bg: var(--interactive-accent);
+
+  --background-modifier-border: var(--border-color);
+  --background-modifier-form-field: var(--code-background);
+  --background-modifier-form-field-highlighted: var(--code-background);
+  --background-modifier-box-shadow: rgba(0, 0, 0, 0.3);
+  --background-modifier-success: var(--interactive-success);
+  --background-modifier-error: var(--text-error);
+  --background-modifier-error-hover: var(--text-error);
+  --background-modifier-cover: rgba(0, 0, 0, 0.8);
+
+  --link-color: var(--text-link);
+  --link-color-hover: var(--text-link);
+  --link-unresolved-color: var(--text-muted);
+  --link-unresolved-opacity: 0.7;
+
+  --tag-color: var(--text-title-h3);
+  --tag-background: var(--code-background);
+
+  --graph-line: var(--text-muted);
+  --graph-node: var(--interactive-accent);
+  --graph-node-unresolved: var(--text-muted);
+  --graph-node-focused: var(--text-link);
+  --graph-node-tag: var(--text-title-h3);
+  --graph-node-attachment: var(--text-title-h2);
+}
+
+/* Headers */
+.cm-header-1, .markdown-rendered h1 { color: var(--text-title-h1); }
+.cm-header-2, .markdown-rendered h2 { color: var(--text-title-h2); }
+.cm-header-3, .markdown-rendered h3 { color: var(--text-title-h3); }
+.cm-header-4, .markdown-rendered h4 { color: var(--text-title-h4); }
+.cm-header-5, .markdown-rendered h5 { color: var(--text-title-h5); }
+.cm-header-6, .markdown-rendered h6 { color: var(--text-title-h6); }
+
+/* Code blocks */
+.markdown-rendered code {
+  background-color: var(--code-background);
+  color: var(--markup-code);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.markdown-rendered pre {
+  background-color: var(--code-background);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+}
+
+.markdown-rendered pre code {
+  background-color: transparent;
+  color: var(--code-foreground);
+}
+
+/* Syntax highlighting */
+.cm-s-obsidian span.cm-keyword { color: var(--text-title-h1); }
+.cm-s-obsidian span.cm-string { color: var(--text-title-h2); }
+.cm-s-obsidian span.cm-number { color: var(--text-title-h3); }
+.cm-s-obsidian span.cm-comment { color: var(--text-muted); }
+.cm-s-obsidian span.cm-operator { color: var(--text-link); }
+.cm-s-obsidian span.cm-variable { color: var(--text-normal); }
+.cm-s-obsidian span.cm-def { color: var(--text-link); }
+
+/* Highlighted text */
+.markdown-rendered mark,
+.cm-s-obsidian span.cm-highlight,
+mark {
+  background-color: var(--text-highlight-bg) !important;
+  color: var(--code-background) !important;
+}
+
+/* Links */
+.markdown-rendered a {
+  color: var(--text-link);
+}
+
+/* Blockquotes */
+.markdown-rendered blockquote {
+  border-left: 4px solid var(--blockquote-border);
+  padding-left: 1em;
+}
+
+/* Status bar */
+.status-bar {
+  background-color: var(--code-background);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Active file */
+.workspace-leaf.mod-active .workspace-leaf-header-title {
+  color: var(--interactive-accent);
+}
+
+.nav-file-title.is-active {
+  background-color: var(--code-background);
+  color: var(--interactive-accent);
+}
+
+/* Text selection */
+::selection {
+  background-color: var(--text-selection);
+  color: var(--text-selection-fg);
+}
+
+/* Search results */
+.search-result-file-title {
+  color: var(--interactive-accent);
+}
+
+.search-result-file-match {
+  background-color: var(--code-background);
+  color: var(--text-normal);
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.search-result-file-matched-text {
+  color: var(--interactive-accent);
+}
+
+/* Tables */
+.markdown-rendered table {
+  border: 1px solid var(--background-modifier-border);
+}
+
+.markdown-rendered th {
+  background-color: var(--code-background);
+  color: var(--text-accent);
+}
+
+.markdown-rendered td {
+  border: 1px solid var(--background-modifier-border);
+}
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--interactive-accent);
+  background-color: var(--code-background);
+}
+
+/* Modal dialogs */
+.modal {
+  background-color: var(--background-primary);
+  border: 2px solid var(--background-modifier-border);
+}
+
+/* Settings */
+.vertical-tab-header-group-title {
+  color: var(--interactive-accent);
+}
+
+.vertical-tab-nav-item.is-active {
+  background-color: var(--code-background);
+  color: var(--interactive-accent);
+}
+OBSIDIAN_EOF
+
+# Replace color placeholders in obsidian.css
+sed -i "s|OBSIDIAN_BG_COLOR|$BG_COLOR|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_FG_COLOR|$FG_COLOR|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_CODE_BG|$CODE_BG|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_BORDER_COLOR|$BORDER_COLOR|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_SELECTION_BG|$SELECTION_BG|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_ACCENT_PRIMARY|$ACCENT_PRIMARY|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_ACCENT_SECONDARY|$ACCENT_SECONDARY|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_ACCENT_TERTIARY|$ACCENT_TERTIARY|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_RED_BRIGHT|$COLOR_RED_BRIGHT|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_GREEN_BRIGHT|$COLOR_GREEN_BRIGHT|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_YELLOW_BRIGHT|$COLOR_YELLOW_BRIGHT|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_BLUE_BRIGHT|$COLOR_BLUE_BRIGHT|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_MAGENTA_BRIGHT|$COLOR_MAGENTA_BRIGHT|g" "$TEMP_DIR/obsidian.css"
+sed -i "s|OBSIDIAN_CYAN_BRIGHT|$COLOR_CYAN_BRIGHT|g" "$TEMP_DIR/obsidian.css"
+
+# ============================================================================
+# Generate fonts.json (deterministic font selection)
+# ============================================================================
+
+echo "   Generating fonts.json..."
+
+# Check if user provided a fonts.json override in the template directory
+if [[ "$USE_EMBEDDED_TEMPLATES" == "0" ]] && [[ -f "$TEMPLATE_DIR/fonts.json" ]]; then
+    # User override from custom template directory
+    cp "$TEMPLATE_DIR/fonts.json" "$TEMP_DIR/fonts.json"
+    SELECTED_FONT=$(jq -r '.monospace' "$TEMP_DIR/fonts.json" 2>/dev/null || echo "CaskaydiaMono Nerd Font Mono")
+    echo "      Using user-specified font: $SELECTED_FONT"
+else
+    # Get list of available monospace fonts
+    mapfile -t AVAILABLE_FONTS < <(fc-list :spacing=100 -f "%{family[0]}\n" | grep -v -i -E 'emoji|signwriting|omarchy' | sort -u)
+
+    if [[ ${#AVAILABLE_FONTS[@]} -eq 0 ]]; then
+        # Fallback if no fonts found
+        SELECTED_FONT="monospace"
+    else
+        # Create hash from color palette for deterministic selection
+        # Use background + foreground + accents to create unique hash per theme
+        COLOR_HASH=$(echo -n "$BG_COLOR$FG_COLOR$ACCENT_PRIMARY$ACCENT_SECONDARY" | md5sum | cut -d' ' -f1)
+
+        # Convert first 8 chars of hash to decimal and mod by font count
+        HASH_NUM=$((16#${COLOR_HASH:0:8}))
+        FONT_INDEX=$(( HASH_NUM % ${#AVAILABLE_FONTS[@]} ))
+
+        SELECTED_FONT="${AVAILABLE_FONTS[$FONT_INDEX]}"
+    fi
+
+    # Generate fonts.json
+    cat > "$TEMP_DIR/fonts.json" << EOF
+{
+  "monospace": "$SELECTED_FONT"
+}
+EOF
+
+    echo "      Selected font: $SELECTED_FONT"
+fi
+
+# ============================================================================
+# STEP 6: Atomically move temporary directory to final location
+# ============================================================================
+
+# Atomic move to prevent race conditions with active themes
+# This ensures apps never see a half-generated or missing theme
+if [[ -d "$OUTPUT_DIR" ]]; then
+    # Remove old theme
+    rm -rf "$OUTPUT_DIR"
+fi
+# Move temp to final location atomically
+mv "$TEMP_DIR" "$OUTPUT_DIR"
+
+# Generate GTK theme if deployed (using omarchy-theme-set-gtk)
+if [[ "${OMARCHY_DEPLOY}" == "1" ]] && command -v omarchy-theme-set-gtk >/dev/null 2>&1; then
+    THEME_NAME_BASE=$(basename "$THEME_NAME")
+    echo ""
+    echo " Generating GTK theme..."
+    omarchy-theme-set-gtk "$THEME_NAME_BASE"
+fi
+
+# Generate VSCode colors if deployed (using omarchy-theme-set-vscode)
+if [[ "${OMARCHY_DEPLOY}" == "1" ]] && command -v omarchy-theme-set-vscode >/dev/null 2>&1; then
+    THEME_NAME_BASE=$(basename "$THEME_NAME")
+    echo ""
+    echo " Applying VSCode colors..."
+    omarchy-theme-set-vscode "$THEME_NAME_BASE"
+fi
+
+# ============================================================================
+# STEP 7: Optionally deploy and set theme in Omarchy
+# ============================================================================
+
+# If OMARCHY_SET is enabled and theme was deployed, activate the theme
+if [[ "${OMARCHY_DEPLOY}" == "1" ]] && [[ "${OMARCHY_SET}" == "1" ]] && command -v omarchy-theme-set >/dev/null 2>&1; then
+    THEME_NAME_BASE=$(basename $THEME_NAME)
+    echo ""
+    echo " Setting Omarchy theme to '$THEME_NAME_BASE'..."
+    omarchy-theme-set "$THEME_NAME_BASE"
+fi
+
+# ============================================================================
+# Apply new theme's mako config properly
+# ============================================================================
+
+if [[ -n "$MAKO_BACKUP" ]] && [[ -f "$MAKO_BACKUP" ]]; then
+    if [[ "${OMARCHY_DEPLOY}" == "1" ]] && [[ "${OMARCHY_SET}" == "1" ]]; then
+        # Theme was deployed and set - apply the NEW theme's mako.ini
+        NEW_MAKO="$OUTPUT_DIR/mako.ini"
+
+        if [[ -f "$NEW_MAKO" ]]; then
+            # Extract custom app-specific rules from backup that are NOT in the new theme
+            # (only rules like [app-name=omarchy-theme-gen] that users have added)
+            CUSTOM_RULES=$(grep -A 10 '^\[app-name=omarchy-theme-gen\]' "$MAKO_BACKUP" 2>/dev/null | sed '/^\[app-name=[^o]/,$d')
+
+            # Use the complete new theme mako.ini as base
+            cp "$NEW_MAKO" "$MAKO_CONFIG"
+
+            # Append custom rules if they exist
+            if [[ -n "$CUSTOM_RULES" ]]; then
+                echo "" >> "$MAKO_CONFIG"
+                echo "$CUSTOM_RULES" >> "$MAKO_CONFIG"
+            fi
+
+            # Reload mako with new theme colors
+            makoctl reload 2>/dev/null
+        fi
+
+        # Clean up backup
+        rm -f "$MAKO_BACKUP"
+    else
+        # Theme not deployed/set - restore backup
+        mv "$MAKO_BACKUP" "$MAKO_CONFIG"
+        makoctl reload 2>/dev/null
+    fi
+fi
+
+# ============================================================================
+# DONE!
+# ============================================================================
+
+echo ""
+echo " Theme generation complete!"
+echo ""
+echo " Output directory: $OUTPUT_DIR/"
+echo "  Wallpaper: $OUTPUT_DIR/backgrounds/wallpaper.webp"
+echo ""
+echo " Color Palette Summary:"
+echo "   Background:    $BG_COLOR"
+echo "   Foreground:    $FG_COLOR"
+echo "   Red:           $COLOR_RED"
+echo "   Orange:        $COLOR_ORANGE"
+echo "   Yellow:        $COLOR_YELLOW"
+echo "   Green:         $COLOR_GREEN"
+echo "   Cyan:          $COLOR_CYAN"
+echo "   Blue:          $COLOR_BLUE"
+echo "   Magenta:       $COLOR_MAGENTA"
+echo "   Accent 1:      $ACCENT_PRIMARY"
+echo "   Accent 2:      $ACCENT_SECONDARY"
+echo "   Accent 3:      $ACCENT_TERTIARY"
+echo "   Selection:     $SELECTION_FG / $SELECTION_BG"
+echo ""
+
+# Show usage instructions based on deployment mode
+if [[ "${OMARCHY_DEPLOY}" == "1" ]]; then
+    if [[ "${OMARCHY_SET}" == "1" ]]; then
+        echo "Theme has been deployed and activated in Omarchy!"
+    else
+        echo "Theme deployed to Omarchy. To activate, run: omarchy-theme-set $THEME_NAME"
+    fi
+else
+    echo "Theme generated to local directory: $OUTPUT_DIR"
+    echo ""
+    echo "To deploy and activate (default behavior):"
+    echo "  ./generate-theme.sh <image> $THEME_NAME"
+    echo ""
+    echo "Or manually copy the files:"
+    echo "  cp -r $OUTPUT_DIR ~/.config/omarchy/themes/ && omarchy-theme-set $THEME_NAME"
+fi

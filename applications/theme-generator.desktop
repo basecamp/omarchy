@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Theme Generator
+Exec=omarchy-theme-generate --walker  # Replace with full path to your script
+Icon=preferences-desktop-theme
+Categories=Utility;
+Terminal=false
+StartupNotify=false
