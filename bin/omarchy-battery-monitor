@@ -11,11 +11,13 @@ send_notification() {
   notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
 }
 
-if [[ $BATTERY_STATE == "discharging" && $BATTERY_LEVEL -le $BATTERY_THRESHOLD ]]; then
-  if [[ ! -f $NOTIFICATION_FLAG ]]; then
-    send_notification $BATTERY_LEVEL
-    touch $NOTIFICATION_FLAG
+if [[ -n "$BATTERY_LEVEL" && "$BATTERY_LEVEL" =~ ^[0-9]+$ ]]; then
+  if [[ $BATTERY_STATE == "discharging" && $BATTERY_LEVEL -le $BATTERY_THRESHOLD ]]; then
+    if [[ ! -f $NOTIFICATION_FLAG ]]; then
+      send_notification $BATTERY_LEVEL
+      touch $NOTIFICATION_FLAG
+    fi
+  else
+    rm -f $NOTIFICATION_FLAG
   fi
-else
-  rm -f $NOTIFICATION_FLAG
 fi
