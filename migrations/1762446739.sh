@@ -6,10 +6,7 @@ if omarchy-cmd-present limine; then
     exit 1
   fi
 
-  [ -f /boot/EFI/limine/limine.conf ] && sudo rm -f /boot/EFI/limine/limine.conf
-  [ -f /boot/EFI/BOOT/limine.conf ] && sudo rm -f /boot/EFI/BOOT/limine.conf
-  [ -f /boot/limine/limine.conf ] && sudo rm -f /boot/limine/limine.conf
-
-  # Ensure successful exit
-  exit 0
+  sudo rm -f /boot/EFI/limine/limine.conf
+  sudo rm -f /boot/EFI/BOOT/limine.conf
+  sudo rm -f /boot/limine/limine.conf
 fi
