@@ -78,6 +78,11 @@ term_background_bright: 24283b
 
 EOF
 
+  # Remove the original config file if it's not /boot/limine.conf
+  if [[ "$limine_config" != "/boot/limine.conf" ]] && [[ -f "$limine_config" ]]; then
+    sudo rm "$limine_config"
+  fi
+
 
   # Match Snapper configs if not installing from the ISO
   if [[ -z ${OMARCHY_CHROOT_INSTALL:-} ]]; then
