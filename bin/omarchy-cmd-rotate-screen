@@ -1,0 +1,52 @@
+#!/bin/bash
+
+if [[ -z "$1" ]]; then
+  echo "Usage: $0 ['▲' (UP) || '▶' (RIGHT) || '▼' (DOWN) || '◀' (LEFT)]"
+  echo "Example: $0 ▲"
+  exit 1
+fi
+
+rotate_command="$1"
+which_monitor=$(hyprctl activeworkspace | awk -F "on monitor" 'NR==1 {print substr($2, 2, length($2)-2)}')
+
+declare -A monitor_transforms
+config_file="$HOME/.config/hypr/monitors.conf"
+
+while IFS=':' read -r monitor transform; do
+  [[ -n "$monitor" && -n "$transform" ]] && monitor_transforms["$monitor"]="$transform"
+done < <(awk -F '[= ,]' '
+/^monitor/ {
+  for (i=2; i<=NF; i++) {
+    if ($i != "" && $i != "=") {
+      name = $i
+      gsub(/^[ \t]+|[ \t]+$/, "", name)  # Trim any lingering spaces
+      break
+    }
+  }
+
+  transform = 0
+  for (j=NF; j>=1; j--) {
+    if ($j ~ /^[0-3]$/) {  # Matches 0,1,2,3
+      transform = $j
+      break
+    }
+  }
+}' "$config_file")
+
+default_transform="${monitor_transforms[$which_monitor]}"
+
+if [[ "$rotate_command" == "UP" ]]; then
+  new_transform=$(( $default_transform % 4 ))
+fi
+if [[ "$rotate_command" == "LEFT" ]]; then
+  new_transform=$(( ($default_transform + 1) % 4 ))
+fi
+if [[ "$rotate_command" == "DOWN" ]]; then
+  new_transform=$(( ($default_transform + 2) % 4 ))
+fi
+if [[ "$rotate_command" == "RIGHT" ]]; then
+  new_transform=$(( ($default_transform + 3) % 4 ))
+fi
+
+hyprctl keyword monitor "${which_monitor},preferred,auto,auto,transform,${new_transform}"
+
