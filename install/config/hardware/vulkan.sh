@@ -35,9 +35,9 @@ done
 if [[ -v VULKAN_DRIVER_PACKAGE ]]; then
   echo "Detected display : ${VULKAN_DRIVER_PACKAGE[@]}"
 
-  # checking if the appropriate parckage is installed
+  # checking if the appropriate package is installed
   for i in "${VULKAN_DRIVER_PACKAGE[@]}"; do
-    echo "Checking if package isalready installed: $i"
+    echo "Checking if package is already installed: $i"
     if !(pacman -Qi $i ) >/dev/null; then
       echo "Missing Vulkan Drivers, installing ${VULKAN_DRIVER_PACKAGE}"
       sudo pacman -S --needed --noconfirm ${VULKAN_DRIVER_PACKAGE[@]}
