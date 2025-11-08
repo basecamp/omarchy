@@ -1,0 +1,38 @@
+#!/bin/bash
+
+ICON_URL="$1"
+OUTPUT_PATH="$2"
+
+if [[ -z "$ICON_URL" || -z "$OUTPUT_PATH" ]]; then
+  echo "Usage: omarchy-icon-dl <icon_url> <output_path>"
+  exit 1
+fi
+
+ICON_DIR="$(dirname "$OUTPUT_PATH")"
+mkdir -p "$ICON_DIR"
+
+# Extract extension from URL
+EXT=$(echo "${ICON_URL##*.}" | sed 's/\?.*//' | tr '[:upper:]' '[:lower:]')
+SOURCE_ICON="/tmp/icon_download_$$_${RANDOM}.${EXT}"
+
+# Download icon
+if curl -sL -o "$SOURCE_ICON" "$ICON_URL" 2>/dev/null; then
+  if [[ "$EXT" == "png" ]]; then
+    mv "$SOURCE_ICON" "$OUTPUT_PATH"
+  else
+    # Find largest resolution index for multi-resolution formats
+    LARGEST_IDX=$(magick identify "$SOURCE_ICON" 2>/dev/null | awk '{split($3, a, "x"); size=a[1]*a[2]; if(size>max){max=size; idx=NR-1}} END{print idx}')
+
+    # Convert to PNG
+    magick "$SOURCE_ICON[${LARGEST_IDX:-0}]" "$OUTPUT_PATH" 2>/dev/null || \
+    magick "$SOURCE_ICON[${LARGEST_IDX:-0}]" -flatten "$OUTPUT_PATH" 2>/dev/null || {
+      echo "Error: Could not convert icon to PNG."
+      rm -f "$SOURCE_ICON"
+      exit 1
+    }
+    rm -f "$SOURCE_ICON"
+  fi
+else
+  echo "Error: Failed to download icon from $ICON_URL"
+  exit 1
+fi
