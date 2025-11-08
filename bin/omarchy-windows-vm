@@ -183,7 +183,7 @@ Turkish
 Ukrainian
   '
 
-  LANGUAGE=$(printf '%s\n' "$languages" | gum choose --selected="French" --header="Select OS language:")
+  LANGUAGE=$(printf '%s\n' "$languages" | gum choose --selected="English" --header="Select OS language:")
   if [ -z "$LANGUAGE" ]; then
     echo "Installation cancelled by user"
     exit 1
