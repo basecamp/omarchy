@@ -13,8 +13,12 @@ if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]
   exit 1
 fi
 
-focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
+# Save current state
+prior_monitor=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
+prior_window=$(hyprctl activewindow -j | jq -r '.address // empty') # Hex identifier for the window
+prior_fullscreen=$(hyprctl activewindow -j | jq -r '.fullscreen // 0') # 0=none, 1=fullscreen, 2=maximized fullscreen
 
+# Launch Screensaver on each monitor
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   hyprctl dispatch focusmonitor $m
 
@@ -25,4 +29,12 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
     -e omarchy-cmd-screensaver
 done
 
-hyprctl dispatch focusmonitor $focused
+hyprctl dispatch focusmonitor $prior_monitor
+
+if [[ -n "$prior_window" ]]; then
+  hyprctl dispatch focuswindow address:$prior_window
+fi
+
+if [[ -n "$prior_fullscreen" ]] && [[ "$prior_fullscreen" -ne 0 ]]; then
+  hyprctl dispatch fullscreen $prior_fullscreen
+fi
