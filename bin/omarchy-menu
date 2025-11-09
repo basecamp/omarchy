@@ -65,6 +65,10 @@ install_terminal() {
   present_terminal "omarchy-install-terminal $1"
 }
 
+install_password_manager() {
+  present_terminal "omarchy-install-password-manager $1"
+}
+
 aur_install() {
   present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2"
 }
@@ -232,7 +236,7 @@ show_setup_security_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming\n  Password Manager") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -245,15 +249,15 @@ show_install_menu() {
   *AI*) show_install_ai_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm install" ;;
   *Gaming*) show_install_gaming_menu ;;
+  *"Password Manager"*) show_install_password_manager_menu ;;
   *) show_main_menu ;;
   esac
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Tailscale\n󰟵  Bitwarden\n  Chromium Account") in
+  case $(menu "Install" "  Dropbox\n  Tailscale\n  Chromium Account") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
-  *Bitwarden*) install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden" ;;
   *Chromium*) present_terminal omarchy-install-chromium-google-account ;;
   *) show_install_menu ;;
   esac
@@ -276,6 +280,15 @@ show_install_terminal_menu() {
   *Alacritty*) install_terminal "alacritty" ;;
   *Ghostty*) install_terminal "ghostty" ;;
   *Kitty*) install_terminal "kitty" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_password_manager_menu() {
+  case $(menu "Install" "  1Password\n  Bitwarden\n  KeePassXC") in
+  *1Password*) install_password_manager "1password" ;;
+  *Bitwarden*) install_password_manager "bitwarden" ;;
+  *KeePassXC*) install_password_manager "keepassxc" ;;
   *) show_install_menu ;;
   esac
 }
