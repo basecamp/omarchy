@@ -5,7 +5,7 @@ if [ "$#" -ne 4 ]; then
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My TUI")
   APP_EXEC=$(gum input --prompt "Launch Command> " --placeholder "lazydocker or bash -c 'dust; read -n 1 -s'")
   WINDOW_STYLE=$(gum choose --header "Window style" float tile)
-  ICON_URL=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
+  ICON_URL=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG or SVG!)")
 else
   APP_NAME="$1"
   APP_EXEC="$2"
