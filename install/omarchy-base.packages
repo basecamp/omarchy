@@ -1,8 +1,8 @@
 # Omarchy core package list installed via install/packaging/base.sh
 # This file is also used by the ISO builder when determining needs
 
-1password-beta
-1password-cli
+#1password-beta
+#1password-cli
 aether
 alacritty
 asdcontrol
@@ -82,10 +82,11 @@ noto-fonts-extra
 nss-mdns
 nvim
 obs-studio
-obsidian
+# obsidian
 omarchy-chromium
 omarchy-nvim
 omarchy-walker
+openresolv
 pamixer
 pinta
 playerctl
@@ -97,13 +98,13 @@ power-profiles-daemon
 python-gobject
 python-poetry-core
 python-terminaltexteffects
-qt5-wayland
+qt5-wayland 
 ripgrep
 satty
 sddm
-signal-desktop
+# signal-desktop
 slurp
-spotify
+# spotify
 starship
 sushi
 swaybg
@@ -124,6 +125,7 @@ waybar
 wayfreeze
 whois
 wireless-regdb
+wireguard-tools
 wiremix
 wireplumber
 wl-clipboard
