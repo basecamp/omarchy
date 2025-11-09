@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+SECRETS_FILE="$HOME/.totp"
+
+if [[ ! -f "$SECRETS_FILE" ]]; then
+    notify-send "Error" "$SECRETS_FILE not found"
+    exit 1
+fi
+
+CHOICE=$(awk '{print $1}' "$SECRETS_FILE" | walker --dmenu -p "OAuth account:")
+
+if [[ -n "$CHOICE" ]]; then
+    SECRET=$(awk -v acc="$CHOICE" '$1 == acc {print $2}' "$SECRETS_FILE")
+
+    if [[ -n "$SECRET" ]]; then
+        CODE=$(oathtool --totp -b "$SECRET" 2>/dev/null)
+
+        if [[ -n "$CODE" ]]; then
+            echo -n "$CODE" | wl-copy
+            notify-send "TOTP Code Copied" "$CHOICE: $CODE"
+        else
+            notify-send "Error" "Failed to generate TOTP for $CHOICE"
+        fi
+    else
+        notify-send "Error" "No secret found for $CHOICE"
+    fi
+else
+    notify-send "Cancelled" "No account selected"
+fi
