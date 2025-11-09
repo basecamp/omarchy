@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Used in package emergencies if a bad package has been pushed and we can't revoke.
 # Requires manually installing the good package using sudo pacman -U <url>
 ignored_packages=$(omarchy-pkg-ignored)
@@ -21,7 +23,7 @@ if pacman -Qem >/dev/null; then
   fi
 fi
 
-orphans=$(pacman -Qtdq)
+orphans=$(pacman -Qtdq || true)
 if [[ -n $orphans ]]; then
   echo -e "\e[32m\nRemove orphan system packages\e[0m"
   for pkg in $orphans; do
