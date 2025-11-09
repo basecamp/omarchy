@@ -36,9 +36,11 @@ makoctl reload
 omarchy-theme-set-terminal
 omarchy-theme-set-gnome
 omarchy-theme-set-browser
-omarchy-theme-set-vscode
+omarchy-theme-set-vscode "$THEME_NAME"
 omarchy-theme-set-cursor
 omarchy-theme-set-obsidian
+omarchy-theme-set-zed
+omarchy-theme-set-gtk
 
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME"
