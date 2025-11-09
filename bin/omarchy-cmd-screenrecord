@@ -62,7 +62,7 @@ start_screenrecording() {
   # Merge audio tracks into one - separate tracks only play one at a time in most players
   [[ "$AUDIO" == "true" ]] && audio_args="-a default_output|default_input"
 
-  gpu-screen-recorder -w "$@" -f 60 -c mp4 -o "$filename" $audio_args &
+  gpu-screen-recorder -w "$@" -f 60 -c mp4 $audio_args -ac aac -o "$filename" &
   toggle_screenrecording_indicator
 }
 
