@@ -33,7 +33,7 @@ TARGET_OS_NAME="Omarchy"
 ESP_PATH="/boot"
 
 KERNEL_CMDLINE[default]="$CMDLINE"
-KERNEL_CMDLINE[default]+="quiet splash"
+KERNEL_CMDLINE[default]+="quiet splash preempt=full"
 
 ENABLE_UKI=yes
 CUSTOM_UKI_NAME="omarchy"
