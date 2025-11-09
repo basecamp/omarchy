@@ -25,7 +25,6 @@ if [[ -n "$font_name" && "$font_name" != "CNCLD" ]]; then
       -v "$font_name" \
       ~/.config/fontconfig/fonts.conf
 
-    omarchy-restart-terminal
     omarchy-restart-waybar
     omarchy-restart-swayosd
     omarchy-restart-walker
