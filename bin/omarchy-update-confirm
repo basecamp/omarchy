@@ -2,6 +2,31 @@
 
 set -e
 
+is_on_battery() {
+    local bat_path status_file status
+
+    bat_path=$(find /sys/class/power_supply/ -maxdepth 1 -name "BAT*" | head -n 1)
+    if [[ -z "$bat_path" ]]; then
+        return 0   # FALSE — no battery
+    fi
+
+    status_file="$bat_path/status"
+    if [[ ! -f "$status_file" ]]; then
+        return 1   # FALSE — no readable status
+    fi
+
+    status=$(<"$status_file")
+    if [[ "$status" == "Discharging" ]]; then
+        return 0   # FALSE — on battery
+    else
+        return 1   # TRUE — on AC power
+    fi
+}
+
+if is_on_battery; then
+  gum style --width 64 --bold --border double --border-foreground 1 --padding "1 2" "WARNING: YOU ARE RUNNING ON BATTERY POWER"  
+fi
+
 gum style --border normal --border-foreground 6 --padding "1 2" \
   "Ready to update Omarchy?" \
   "" \
