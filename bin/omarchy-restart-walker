@@ -17,6 +17,6 @@ if [[ $EUID -eq 0 ]]; then
     "
 else
   setsid uwsm-app -- elephant &
-  wait 2
+  wait &
   setsid uwsm-app -- walker --gapplication-service &
 fi
