@@ -1,2 +1,15 @@
 @define-color foreground #575279;
 @define-color background #faf4ed;
+
+/* Rose Pine Dawn color palette */
+@define-color rose-red #b4637a;
+@define-color rose-orange #ea9d34;
+@define-color rose-yellow #f6c177;
+@define-color rose-green #56949f;
+@define-color rose-purple #907aa9;
+@define-color rose-blue #56949f;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @rose-red;
+@define-color theme-yellow @rose-yellow;
+@define-color theme-green @rose-green;

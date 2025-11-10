@@ -1,2 +1,15 @@
 @define-color foreground #e6d8ba;
 @define-color background #11221C;
+
+/* Osaka Jade color palette */
+@define-color osaka-red #c34043;
+@define-color osaka-orange #ffa066;
+@define-color osaka-yellow #dca561;
+@define-color osaka-green #9ec967;
+@define-color osaka-purple #a485dd;
+@define-color osaka-blue #7aa89f;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @osaka-red;
+@define-color theme-yellow @osaka-yellow;
+@define-color theme-green @osaka-green;
