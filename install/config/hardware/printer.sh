@@ -1,3 +1,0 @@
-chrootable_systemctl_enable cups.service
-chrootable_systemctl_enable avahi-daemon.service
-chrootable_systemctl_enable cups-browsed.service
