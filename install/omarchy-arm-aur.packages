@@ -1,9 +1,5 @@
 # AUR packages for ARM
 # Installed via omarchy-aur-install (with GitHub mirror fallback)
 
-# Note: Hyprland is built from source via arm_install_scripts/hyprland.sh
-# ARM repos stuck at 0.49.0, but we need 0.51+ for modern hyprshade/aether (GLES 3.0)
-# Dependencies (aquamarine 0.9.5, hyprutils 0.10.0) are already at correct versions in ARM repos
-
 localsend-bin         # Local network file sharing app
 omarchy-chromium-bin  # Omarchy's Chromium fork with Widevine DRM support
