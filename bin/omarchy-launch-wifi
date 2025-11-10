@@ -1,3 +1,18 @@
 #!/bin/bash
 
-exec setsid uwsm-app -- xdg-terminal-exec --app-id=com.omarchy.Impala -e impala "$@"
+APP_ID="com.omarchy.Impala"
+CMD="impala"
+
+# Find existing instance PID
+PID=$(pgrep -f "$CMD")
+
+if [ -n "$PID" ]; then
+  echo "Instance already running (PID: $PID). Focusing..."
+  uwsm-client focus "$APP_ID" 2>/dev/null || \
+  xdotool search --class "Impala" windowactivate 2>/dev/null || \
+  echo "Unable to focus existing window."
+else
+  echo "No instance found. Launching new one..."
+  exec setsid uwsm-app -- xdg-terminal-exec --app-id="$APP_ID" -e "$CMD" "$@"
+fi
+
