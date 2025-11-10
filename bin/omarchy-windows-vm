@@ -1,26 +1,162 @@
 #!/bin/bash
 COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
 
+msg_error() {
+  echo "❌ Error: $*"
+}
+
+msg_warning() {
+  echo "⚠️  Warning: $*"
+}
+
+msg_success() {
+  echo "✓ $*"
+}
+
+msg_info() {
+  echo "ℹ️  $*"
+}
+
+# Check if Docker daemon is running
+check_docker_running() {
+  if docker ps &>/dev/null; then
+    return 0
+  fi
+
+  msg_error "Docker is not running"
+  echo "   Start: sudo systemctl start docker"
+  return 1
+}
+
+# Get container status by name
+get_container_status() {
+  local container_name="${1:-omarchy-windows}"
+  docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null
+}
+
+# Auto-detect RDP scale from Hyprland for HiDPI displays
+get_rdp_scale() {
+  command -v jq &>/dev/null || return
+  local hypr_scale=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select (.focused == true) | .scale' 2>/dev/null)
+  [ -z "$hypr_scale" ] && return
+
+  local scale_percent=$(echo "$hypr_scale" | awk '{print int($1 * 100)}')
+  [[ "$scale_percent" =~ ^[0-9]+$ ]] || return
+
+  [ "$scale_percent" -ge 170 ] && echo "/scale:180" && return
+  [ "$scale_percent" -ge 130 ] && echo "/scale:140"
+}
+
+# Test if RDP service is ready using X.224 protocol handshake
+test_rdp_ready() {
+  local -r X224_CR="\x03\x00\x00\x13\x0e\xe0\x00\x00\x00\x00\x00\x01\x00\x08\x00\x03\x00\x00\x00"
+
+  printf "$X224_CR" | timeout 2 nc -w2 127.0.0.1 3389 2>/dev/null | \
+    head -c2 | od -An -tx1 | tr -d ' \n' | grep -q "^0300$"
+}
+
+# Convert file to Windows CRLF line endings
+convert_to_crlf() {
+  local file="$1"
+  [ ! -f "$file" ] && { msg_error "File not found: $file"; return 1; }
+
+  sed -i -e 's/\r$//' -e 's/$/\r/' "$file" || return 1
+}
+
+# Connect to Windows VM via RDP
+# Parameters:
+#   $1 - USERNAME
+#   $2 - PASSWORD
+#   $3 - BACKGROUND: true (detached) or false (foreground) - default: false
+connect_rdp() {
+  local USERNAME="$1"
+  local PASSWORD="$2"
+  local BACKGROUND="${3:-false}"
+
+  # Auto-detect display scale for HiDPI displays
+  local RDP_SCALE=$(get_rdp_scale)
+
+  # Check if xfreerdp3 is available
+  if ! command -v xfreerdp3 &>/dev/null; then
+    echo ""
+    msg_warning "xfreerdp3 not found - cannot launch RDP"
+    echo "   Install freerdp: omarchy-pkg-add freerdp"
+    echo "   Or manually connect via VNC: http://127.0.0.1:8006"
+    echo ""
+    if [ "$BACKGROUND" = true ]; then
+      echo "Windows VM is running in background."
+      echo "After installing freerdp, connect with: omarchy-windows-vm launch"
+      echo ""
+    fi
+    return 1
+  fi
+
+  echo "Launching RDP connection..."
+
+  # Using array to avoid command injection issues
+  local RDP_ARGS=(
+    /u:"$USERNAME"
+    /p:"$PASSWORD"
+    /v:127.0.0.1:3389
+    -grab-keyboard
+    /sound
+    /microphone
+    /cert:ignore
+    /title:"Windows VM - Omarchy"
+    /dynamic-resolution
+    /gfx:AVC444
+    /floatbar:sticky:off,default:visible,show:fullscreen
+  )
+  [ -n "$RDP_SCALE" ] && RDP_ARGS+=("$RDP_SCALE")
+
+  if [ "$BACKGROUND" = true ]; then
+    # Background mode: Launch detached using uwsm-app
+    # User can close terminal and keep using Windows
+    setsid uwsm-app -- xfreerdp3 "${RDP_ARGS[@]}" &
+
+    echo ""
+    msg_success "RDP window opened in background"
+    echo "   You can close this terminal/browser and keep using Windows"
+    echo ""
+  else
+    # Normal launch: foreground
+    xfreerdp3 "${RDP_ARGS[@]}"
+  fi
+
+  return $?
+}
+
+# Check KVM virtualization support
+check_kvm_available() {
+  if [ ! -e /dev/kvm ]; then
+    msg_error "KVM virtualization not available!"
+    echo ""
+    echo "   Please enable virtualization in BIOS or run:"
+    echo "     sudo modprobe kvm-intel  # for Intel CPUs"
+    echo "     sudo modprobe kvm-amd    # for AMD CPUs"
+    return 1
+  fi
+  return 0
+}
+
 check_prerequisites() {
   local DISK_SIZE_GB=${1:-64}
   local REQUIRED_SPACE=$((DISK_SIZE_GB + 10))  # Add 10GB for Windows ISO and overhead
 
   # Check for KVM support
-  if [ ! -e /dev/kvm ]; then
-    gum style \
-      --border normal \
-      --padding "1 2" \
-      --margin "1" \
-      "❌ KVM virtualization not available!" \
-      "" \
-      "Please enable virtualization in BIOS or run:" \
-      "  sudo modprobe kvm-intel  # for Intel CPUs" \
-      "  sudo modprobe kvm-amd    # for AMD CPUs"
+  if ! check_kvm_available; then
     exit 1
   fi
 
   # Check disk space
   AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
+
+  if ! [[ "$AVAILABLE_SPACE" =~ ^[0-9]+$ ]] || [ "$AVAILABLE_SPACE" -eq 0 ]; then
+    echo "❌ Failed to calculate available disk space!"
+    echo "   Could not determine space on $HOME"
+    exit 1
+  fi
+
   if [ "$AVAILABLE_SPACE" -lt "$REQUIRED_SPACE" ]; then
     echo "❌ Insufficient disk space!"
     echo "   Available: ${AVAILABLE_SPACE}GB"
@@ -29,9 +165,519 @@ check_prerequisites() {
   fi
 }
 
+check_vm_configured() {
+  if [ ! -f "$COMPOSE_FILE" ]; then
+    msg_error "Windows VM not configured"
+    echo "   Run: omarchy-windows-vm install"
+    exit 1
+  fi
+}
+
+create_oem_powershell_script() {
+  local OEM_DIR="$1"
+  local SCRIPT_VERSION="$2"
+
+  # Step 1: Create PowerShell script with UTF-8 BOM from the start
+  printf '\xEF\xBB\xBF' > "$OEM_DIR/install.ps1"
+
+  # Step 2: Append PowerShell script content
+  cat >> "$OEM_DIR/install.ps1" << 'EOFPS1'
+# Omarchy Windows VM Setup Script
+# This script runs automatically after Windows installation completes
+# Logs are saved to C:\OEM\install-log.txt for debugging
+
+$LogFile = "C:\OEM\install-log.txt"
+
+# Initialize log file (create if doesn't exist)
+try {
+    if (-not (Test-Path $LogFile)) {
+        New-Item -ItemType File -Path $LogFile -Force | Out-Null
+    }
+}
+catch {
+    # If we can't create log file, continue anyway (logs will only go to console)
+    Write-Host "WARNING: Could not create log file at $LogFile" -ForegroundColor Yellow
+}
+
+function Write-Log {
+    param([string]$Message, [string]$Color = "White")
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logEntry = "[$timestamp] $Message"
+    Write-Host $Message -ForegroundColor $Color
+
+    try {
+        Add-Content -Path $LogFile -Value $logEntry -Encoding UTF8 -ErrorAction Stop
+    }
+    catch {
+        # Silently continue if log write fails
+    }
+}
+
+Write-Log "=== Omarchy Windows VM Setup Script ===" "Cyan"
+Write-Log "Version: SCRIPT_VERSION_PLACEHOLDER" "Gray"
+Write-Log "Windows installation complete - running Omarchy setup..." "Green"
+Write-Log ""
+
+function Set-InstallationMarker {
+    Write-Log "Creating installation completion marker..."
+
+    try {
+        Write-Log "Mounting shared folder \\host.lan\Data as Z:..."
+        $null = net use Z: \\host.lan\Data /persistent:yes 2>&1
+
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $markerContent = "Installation completed at $timestamp"
+
+        if (Test-Path "Z:\") {
+            $markerContent | Out-File -FilePath "Z:\installation-complete.txt" -Encoding UTF8
+            Write-Log "✓ Marker file created: Z:\installation-complete.txt" "Green"
+        }
+        else {
+            Write-Log "WARNING: Z: drive not available, trying UNC path..." "Yellow"
+            $markerContent | Out-File -FilePath "\\host.lan\Data\installation-complete.txt" -Encoding UTF8
+
+            if (Test-Path "\\host.lan\Data\installation-complete.txt") {
+                Write-Log "✓ Marker file created via UNC path" "Green"
+            }
+            else {
+                Write-Log "ERROR: Failed to create marker file!" "Red"
+            }
+        }
+    }
+    catch {
+        Write-Log "ERROR creating marker: $($_.Exception.Message)" "Red"
+    }
+}
+
+function Set-OmarchyWallpaper {
+    $wallpaperSrc = "C:\OEM\wallpaper\omarchy.png"
+    $wallpaperDst = "C:\Windows\Web\Wallpaper\Omarchy\omarchy.png"
+
+    if (Test-Path $wallpaperSrc) {
+        Write-Log "Setting up Omarchy wallpaper..."
+
+        try {
+            $wallpaperDir = Split-Path -Parent $wallpaperDst
+            if (-not (Test-Path $wallpaperDir)) {
+                New-Item -ItemType Directory -Path $wallpaperDir -Force | Out-Null
+            }
+            Copy-Item -Path $wallpaperSrc -Destination $wallpaperDst -Force
+            Write-Log "  Wallpaper copied to: $wallpaperDst" "Gray"
+
+            Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name Wallpaper -Value $wallpaperDst -ErrorAction SilentlyContinue
+
+            Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Wallpaper {
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+}
+"@ -ErrorAction SilentlyContinue
+
+            $SPI_SETDESKWALLPAPER = 0x0014
+            $SPIF_UPDATEINIFILE = 0x0001
+            $SPIF_SENDCHANGE = 0x0002
+
+            [Wallpaper]::SystemParametersInfo($SPI_SETDESKWALLPAPER, 0, $wallpaperDst, $SPIF_UPDATEINIFILE -bor $SPIF_SENDCHANGE) | Out-Null
+
+            Write-Log "✓ Omarchy wallpaper set successfully" "Green"
+            Write-Log "  Note: Wallpaper applies immediately (no login required)" "Gray"
+        }
+        catch {
+            Write-Log "ERROR setting wallpaper: $($_.Exception.Message)" "Red"
+        }
+    }
+    else {
+        Write-Log "Wallpaper file not found at: $wallpaperSrc" "Yellow"
+    }
+}
+
+Write-Log ""
+Write-Log "Starting OEM setup tasks..."
+Write-Log ""
+
+Set-OmarchyWallpaper
+Set-InstallationMarker
+
+Write-Log ""
+Write-Log "=== OEM setup complete! ===" "Green"
+Write-Log "Log file saved to: C:\OEM\install-log.txt"
+
+Write-Log ""
+Write-Log "Copying log to shared folder..."
+try {
+    $sharedPath = if (Test-Path "Z:\") { "Z:\" } elseif (Test-Path "\\host.lan\Data") { "\\host.lan\Data\" } else { $null }
+
+    if ($sharedPath) {
+        Copy-Item -Path $LogFile -Destination "$sharedPath\install-log.txt" -Force -ErrorAction Stop
+        Write-Log "✓ Log copied to: $sharedPath\install-log.txt" "Green"
+        Write-Log "  (Available on host: ~/Windows/install-log.txt)" "Gray"
+    }
+    else {
+        Write-Log "WARNING: Shared folder not accessible, log not copied" "Yellow"
+    }
+}
+catch {
+    Write-Log "WARNING: Could not copy log to shared folder: $_" "Yellow"
+}
+EOFPS1
+
+  # Step 3: Replace version placeholder (escape special characters for sed)
+  SCRIPT_VERSION_ESCAPED=$(printf '%s\n' "$SCRIPT_VERSION" | sed 's/[&/\]/\\&/g')
+  sed -i "s/SCRIPT_VERSION_PLACEHOLDER/$SCRIPT_VERSION_ESCAPED/" "$OEM_DIR/install.ps1"
+
+  # Step 4: Convert to Windows line endings (CRLF)
+  convert_to_crlf "$OEM_DIR/install.ps1"
+}
+
+create_oem_batch_script() {
+  local OEM_DIR="$1"
+
+  cat > "$OEM_DIR/install.bat" << 'EOFBAT'
+@echo off
+setlocal EnableDelayedExpansion
+
+REM Create marker file to indicate script started
+echo OEM setup started at %DATE% %TIME% > C:\OEM\oem-started.txt
+
+REM ======================================
+REM Omarchy Windows VM OEM Setup
+REM Post-installation customization script
+REM ======================================
+
+REM Check for admin privileges
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo ERROR: This script requires administrator privileges!
+    echo Please run as administrator.
+    pause
+    exit /b 1
+)
+
+echo ======================================
+echo Omarchy Windows VM OEM Setup
+echo ======================================
+echo.
+echo Starting PowerShell setup script...
+echo Logs will be saved to C:\OEM\install-log.txt
+echo.
+
+REM Log basic information
+echo [BATCH] OEM setup started > C:\OEM\batch-log.txt
+echo [BATCH] Current directory: %CD% >> C:\OEM\batch-log.txt
+echo [BATCH] Script location: %~dp0 >> C:\OEM\batch-log.txt
+echo [BATCH] About to execute: powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0install.ps1" >> C:\OEM\batch-log.txt
+echo.
+
+REM Execute PowerShell script and capture exit code
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0install.ps1"
+set PS_EXIT_CODE=%errorLevel%
+
+echo.
+echo ======================================
+if %PS_EXIT_CODE% equ 0 (
+    echo Setup completed successfully!
+    echo Check C:\OEM\install-log.txt for details
+) else (
+    echo WARNING: Setup finished with errors ^(exit code: %PS_EXIT_CODE%^)
+    echo Check C:\OEM\install-log.txt for error details
+    echo.
+    echo Troubleshooting:
+    echo   - Check network connectivity for shared folder
+    echo   - Verify file permissions in C:\OEM\
+    echo   - Review install-log.txt for specific errors
+)
+echo ======================================
+
+REM Wait 5 seconds before closing (gives time to read output)
+timeout /t 5 /nobreak >nul
+
+exit /b %PS_EXIT_CODE%
+EOFBAT
+
+  convert_to_crlf "$OEM_DIR/install.bat"
+}
+
+create_docker_compose_config() {
+  local COMPOSE_FILE="$1"
+  local SELECTED_RAM="$2"
+  local SELECTED_CORES="$3"
+  local SELECTED_DISK="$4"
+  local USERNAME="$5"
+  local PASSWORD="$6"
+
+  cat > "$COMPOSE_FILE" <<EOF
+services:
+  windows:
+    image: dockurr/windows
+    container_name: omarchy-windows
+    environment:
+      VERSION: "11"
+      RAM_SIZE: "$SELECTED_RAM"
+      CPU_CORES: "$SELECTED_CORES"
+      DISK_SIZE: "$SELECTED_DISK"
+      USERNAME: "$USERNAME"
+      PASSWORD: "$PASSWORD"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 8006:8006
+      - 3389:3389/tcp
+      - 3389:3389/udp
+    volumes:
+      - $HOME/.windows:/storage
+      - $HOME/Windows:/shared
+      - $HOME/.config/windows/oem:/oem
+    restart: always
+    stop_grace_period: 2m
+EOF
+
+  chmod 600 "$COMPOSE_FILE"
+}
+
+show_installation_header() {
+  local IS_FRESH_INSTALL="$1"
+
+  echo "╭─────────────────────────────────────────────╮"
+  if [ "$IS_FRESH_INSTALL" = "true" ]; then
+    echo "│  Windows Installation Progress              │"
+  else
+    echo "│  Windows VM Startup                         │"
+  fi
+  echo "╰─────────────────────────────────────────────╯"
+  echo ""
+
+  if [ "$IS_FRESH_INSTALL" = "true" ]; then
+    echo "Waiting for Windows installation to complete..."
+    echo "This typically takes 5-15 minutes."
+    echo ""
+    msg_info "Installation stages:"
+    echo "   1. Downloading Windows 11 image"
+    echo "   2. Installing and configuring Windows"
+    echo "   3. Starting RDP service"
+  else
+    echo "Waiting for Windows VM to boot from existing disk..."
+    echo "This typically takes 1-2 minutes."
+    echo ""
+    msg_info "Startup stages:"
+    echo "   1. Booting Windows"
+    echo "   2. Starting RDP service"
+  fi
+  echo ""
+}
+
+show_disk_usage() {
+  local VM_DISK="$1"
+  local TIME_PREFIX="$2"
+
+  local DISK_SIZE_MB=0
+  if [ -f "$VM_DISK" ]; then
+    DISK_SIZE_MB=$(du -m "$VM_DISK" | cut -f1 2>/dev/null || echo "0")
+    [[ "$DISK_SIZE_MB" =~ ^[0-9]+$ ]] || DISK_SIZE_MB=0
+  fi
+  printf "%s 💾 Storage: %s MB\n" "$TIME_PREFIX" "$DISK_SIZE_MB"
+}
+
+handle_installation_marker() {
+  local COMPLETION_MARKER="$1"
+  local TIME_PREFIX="$2"
+
+  # Remove UTF-8 BOM if present
+  local MARKER_CONTENT=$(cat "$COMPLETION_MARKER" 2>/dev/null | LC_ALL=C sed 's/^\xEF\xBB\xBF//' || echo "marker detected")
+
+  echo ""
+  printf "%s ✓ Installation completion marker detected!\n" "$TIME_PREFIX"
+  printf "%s   Windows reports: %s\n" "$TIME_PREFIX" "$MARKER_CONTENT"
+  echo ""
+  echo "Waiting for RDP service to initialize..."
+  echo ""
+  printf "%s Giving RDP service time to initialize (10 seconds)...\n" "$TIME_PREFIX"
+  sleep 10
+
+  if command -v nc &>/dev/null && nc -z 127.0.0.1 3389 2>/dev/null; then
+    printf "%s ✓ RDP port is accessible!\n" "$TIME_PREFIX"
+  else
+    printf "%s ℹ️  RDP port check skipped (netcat not available)\n" "$TIME_PREFIX"
+  fi
+}
+
+show_installation_complete() {
+  local ELAPSED="$1"
+  local USERNAME="$2"
+  local PASSWORD="$3"
+
+  local MINUTES=$((ELAPSED / 60))
+  local SECONDS=$((ELAPSED % 60))
+
+  echo ""
+  echo "╭─────────────────────────────────────────────╮"
+  echo "│  ✓ Windows Installation Complete!           │"
+  echo "╰─────────────────────────────────────────────╯"
+  echo ""
+  printf "    Total installation time: %d minutes %d seconds\n" "$MINUTES" "$SECONDS"
+  echo ""
+  echo "   Launching RDP connection automatically..."
+  echo "   You can start configuring Windows immediately!"
+  echo ""
+  msg_info "After you close RDP:"
+  echo "   • VM will keep running in background"
+  echo "   • Reconnect: omarchy-windows-vm launch"
+  echo "   • Stop VM: omarchy-windows-vm stop"
+  echo ""
+}
+
+launch_rdp_after_install() {
+  local USERNAME="$1"
+  local PASSWORD="$2"
+
+  sleep 3
+  connect_rdp "$USERNAME" "$PASSWORD" true
+  return $?
+}
+
+monitor_installation_progress() {
+  local USERNAME="$1"
+  local PASSWORD="$2"
+  local IS_FRESH_INSTALL="${3:-true}"
+  local VM_DISK="$HOME/.windows/data.img"
+  local COMPLETION_MARKER="$HOME/Windows/installation-complete.txt"
+  local INSTALL_LOG="$HOME/Windows/install-log.txt"
+  local START_TIME=$(date +%s)
+  local LAST_DISPLAY_TIME=0
+  local DISPLAY_INTERVAL=60
+  local MARKER_CHECK_INTERVAL=5
+  local TIMEOUT=3600
+  local MARKER_DETECTED=false
+
+  rm -f "$COMPLETION_MARKER" "$INSTALL_LOG" 2>/dev/null
+
+  show_installation_header "$IS_FRESH_INSTALL"
+
+  while true; do
+    # Calculate elapsed time and format timestamp
+    local CURRENT_TIME=$(date +%s)
+    local ELAPSED=$((CURRENT_TIME - START_TIME))
+    local ELAPSED_MIN=$((ELAPSED / 60))
+    local ELAPSED_SEC=$((ELAPSED % 60))
+    local TIME_PREFIX=$(printf "[%s | +%dm %02ds]" "$(date +%H:%M:%S)" "$ELAPSED_MIN" "$ELAPSED_SEC")
+
+    # Display storage size every minute
+    if [ $((CURRENT_TIME - LAST_DISPLAY_TIME)) -ge $DISPLAY_INTERVAL ] || [ $LAST_DISPLAY_TIME -eq 0 ]; then
+      LAST_DISPLAY_TIME=$CURRENT_TIME
+      show_disk_usage "$VM_DISK" "$TIME_PREFIX"
+    fi
+
+    # Check for OEM completion marker (created by Windows after installation)
+    if [ "$MARKER_DETECTED" = false ]; then
+      if [ -f "$COMPLETION_MARKER" ]; then
+        MARKER_DETECTED=true
+        handle_installation_marker "$COMPLETION_MARKER" "$TIME_PREFIX"
+      else
+        sleep $MARKER_CHECK_INTERVAL
+        continue
+      fi
+    fi
+
+    if [ "$MARKER_DETECTED" = true ]; then
+      show_installation_complete "$ELAPSED" "$USERNAME" "$PASSWORD"
+      launch_rdp_after_install "$USERNAME" "$PASSWORD"
+      break
+    fi
+
+    if [ $ELAPSED -ge $TIMEOUT ]; then
+      local MINUTES=$((ELAPSED / 60))
+      local SECONDS=$((ELAPSED % 60))
+
+      echo ""
+      echo "⚠️  Installation monitoring timeout (60 minutes)"
+      echo ""
+      printf "    Time elapsed: %d minutes %d seconds\n" "$MINUTES" "$SECONDS"
+      echo ""
+      echo "VM is still running and may be installing."
+      echo ""
+      echo "To check progress or connect:"
+      echo "  • VNC Monitor: http://127.0.0.1:8006"
+      echo "  • RDP: omarchy-windows-vm launch"
+      echo "  • Logs: docker logs -f omarchy-windows"
+      echo ""
+      echo "If installation completed, RDP will work."
+      echo "If still installing, use VNC to monitor."
+      echo ""
+      break
+    fi
+  done
+}
+
 install_windows() {
   # Set up trap to handle Ctrl+C
   trap "echo ''; echo 'Installation cancelled by user'; exit 1" INT
+
+  # Handle existing installation - fresh or quick reinstall
+  if [ -f "$COMPOSE_FILE" ] || [ -d "$HOME/.windows" ]; then
+    echo "⚠️  Previous Windows VM installation detected"
+    echo ""
+    echo "Found:"
+    [ -f "$COMPOSE_FILE" ] && echo "  • Configuration: $COMPOSE_FILE"
+    [ -d "$HOME/.windows" ] && echo "  • VM disk: $HOME/.windows/"
+    echo ""
+    echo "Reinstall options:"
+    echo "  1. Fresh install - Delete everything, reinstall Windows from scratch (~10 min)"
+    echo "  2. Quick reinstall - Keep Windows VM, update Docker config only (~1 min)"
+    echo ""
+
+    if gum confirm "Fresh install (delete all data)?"; then
+      echo ""
+      echo "Fresh installation: Removing all previous data..."
+      echo ""
+      echo "This will DELETE:"
+      echo "  ❌ VM disk and Windows OS ($HOME/.windows/)"
+      echo "  ❌ Configuration files"
+      echo ""
+      echo "This will KEEP:"
+      echo "  ✅ Shared files ($HOME/Windows/) - your data"
+      echo ""
+
+      docker-compose -f "$COMPOSE_FILE" down 2>/dev/null || true
+      rm -f "$COMPOSE_FILE"
+      rm -rf "$HOME/.config/windows"
+
+      if [ -d "$HOME/.windows" ]; then
+        echo "  • Removing VM disk..."
+        sudo rm -rf "$HOME/.windows"
+      fi
+
+      [ -d "$HOME/.config/windows/oem" ] && rm -rf "$HOME/.config/windows/oem" 2>/dev/null
+      rm -f "$HOME/Windows/installation-complete.txt" 2>/dev/null
+      rm -f "$HOME/.local/share/applications/windows-vm.desktop"
+
+      echo ""
+      echo "✓ Previous installation completely removed"
+      echo ""
+    else
+      echo ""
+      echo "Quick reinstall: Keeping VM disk, updating configuration..."
+      echo ""
+
+      docker-compose -f "$COMPOSE_FILE" down 2>/dev/null || true
+      rm -f "$COMPOSE_FILE"
+      rm -rf "$HOME/.config/windows"
+      rm -f "$HOME/Windows/installation-complete.txt" 2>/dev/null
+      rm -f "$HOME/.local/share/applications/windows-vm.desktop"
+
+      echo "✓ Configuration updated (VM disk preserved for quick boot)"
+      echo ""
+      echo "ℹ️  Configuration updates available (wallpaper, etc.)"
+      echo "   To apply, run setup script in Windows: C:\\OEM\\install.ps1"
+      echo ""
+
+      # Skip OEM auto-run since Windows is already installed
+      SKIP_OEM_AUTORUN=true
+    fi
+  fi
 
   check_prerequisites
 
@@ -61,6 +707,18 @@ EOF
   TOTAL_RAM=$(free -h | awk 'NR==2 {print $2}')
   TOTAL_RAM_GB=$(awk 'NR==1 {printf "%d", $2/1024/1024}' /proc/meminfo)
   TOTAL_CORES=$(nproc)
+
+  # Validate RAM detection (must be positive number)
+  if ! [[ "$TOTAL_RAM_GB" =~ ^[0-9]+$ ]] || [ "$TOTAL_RAM_GB" -eq 0 ]; then
+    msg_warning "Could not detect total RAM, using safe default (8GB)"
+    TOTAL_RAM_GB=8
+    TOTAL_RAM="8G"
+  fi
+
+  # Validate TOTAL_RAM display value (Bug #30 fix)
+  if [ -z "$TOTAL_RAM" ]; then
+    TOTAL_RAM="${TOTAL_RAM_GB}G"
+  fi
 
   echo ""
   echo "System Resources Detected:"
@@ -101,7 +759,7 @@ EOF
 
   # Check if we have enough space for minimum
   if [ $MAX_DISK_GB -lt 32 ]; then
-    echo "❌ Insufficient disk space for Windows VM!"
+    msg_error "Insufficient disk space for Windows VM!"
     echo "   Available: ${AVAILABLE_SPACE}GB"
     echo "   Minimum required: 42GB (32GB disk + 10GB for Windows image)"
     exit 1
@@ -140,12 +798,26 @@ EOF
     USERNAME="docker"
   fi
 
+  # Validate username (no quotes or special YAML chars)
+  if [[ "$USERNAME" =~ [\"\'\`\$\\] ]]; then
+    msg_error "Username cannot contain quotes, backticks, dollar signs, or backslashes"
+    echo "   These characters would break the configuration file"
+    exit 1
+  fi
+
   PASSWORD=$(gum input --placeholder="Password (Press enter to use default: admin)" --password --header="Enter Windows password:")
   if [ -z "$PASSWORD" ]; then
     PASSWORD="admin"
     PASSWORD_DISPLAY="(default)"
   else
     PASSWORD_DISPLAY="(user-defined)"
+  fi
+
+  # Validate password (no quotes or special YAML chars)
+  if [[ "$PASSWORD" =~ [\"\'\`\$\\] ]]; then
+    msg_error "Password cannot contain quotes, backticks, dollar signs, or backslashes"
+    echo "   These characters would break the configuration file"
+    exit 1
   fi
 
   # Display configuration summary
@@ -170,104 +842,140 @@ EOF
     exit 1
   fi
 
-  mkdir -p $HOME/Windows
-
-  # Create docker-compose.yml in user config directory
-  cat << EOF | tee "$COMPOSE_FILE" > /dev/null
-services:
-  windows:
-    image: dockurr/windows
-    container_name: omarchy-windows
-    environment:
-      VERSION: "11"
-      RAM_SIZE: "$SELECTED_RAM"
-      CPU_CORES: "$SELECTED_CORES"
-      DISK_SIZE: "$SELECTED_DISK"
-      USERNAME: "$USERNAME"
-      PASSWORD: "$PASSWORD"
-    devices:
-      - /dev/kvm
-      - /dev/net/tun
-    cap_add:
-      - NET_ADMIN
-    ports:
-      - 8006:8006
-      - 3389:3389/tcp
-      - 3389:3389/udp
-    volumes:
-      - $HOME/.windows:/storage
-      - $HOME/Windows:/shared
-    restart: always
-    stop_grace_period: 2m
-EOF
+  mkdir -p "$HOME/Windows"
 
   echo ""
-  echo "Starting Windows VM installation..."
-  echo "This will download a Windows 11 image (may take 10-15 minutes)."
+  [ "${SKIP_OEM_AUTORUN:-false}" = "false" ] && echo "Setting up Windows auto-installation..." || echo "Updating Windows configuration..."
+
+  OEM_DIR="$HOME/.config/windows/oem"
+  mkdir -p "$OEM_DIR/wallpaper"
+
+  [ -f "$OMARCHY_PATH/themes/rose-pine/backgrounds/3-leafy-dawn-omarchy.png" ] && \
+    cp "$OMARCHY_PATH/themes/rose-pine/backgrounds/3-leafy-dawn-omarchy.png" "$OEM_DIR/wallpaper/omarchy.png"
+
+  if [[ -n "$OMARCHY_PATH" ]] && [[ -d "$OMARCHY_PATH/.git" ]]; then
+    SCRIPT_VERSION="$(git -C "$OMARCHY_PATH" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+  else
+    SCRIPT_VERSION="unknown"
+  fi
+  create_oem_powershell_script "$OEM_DIR" "$SCRIPT_VERSION"
+  create_oem_batch_script "$OEM_DIR"
+
+  create_docker_compose_config "$COMPOSE_FILE" "$SELECTED_RAM" "$SELECTED_CORES" "$SELECTED_DISK" \
+    "$USERNAME" "$PASSWORD"
+
   echo ""
-  echo "Monitor installation progress at: http://127.0.0.1:8006"
+  echo "✓ Configuration saved to: $COMPOSE_FILE"
+  echo "  🔒 Secure permissions set (600)"
+  echo ""
+  echo "⚠️  Security Note:"
+  echo "  Password stored in plain text in docker-compose.yml"
+  echo "  Keep this file secure and don't share it"
   echo ""
 
   # Start docker-compose with user's config
   echo "Starting Windows VM with docker-compose..."
-  if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
+  if ! docker-compose -f "$COMPOSE_FILE" up -d >/dev/null 2>&1; then
+    echo ""
     echo "❌ Failed to start Windows VM!"
+    echo ""
     echo "   Common issues:"
     echo "   - Docker daemon not running: sudo systemctl start docker"
     echo "   - Port already in use: check if another VM is running"
     echo "   - Permission issues: make sure you're in the docker group"
+    echo ""
+    echo "   Check logs for details: docker logs omarchy-windows"
     exit 1
   fi
 
+  echo "  ✓ Docker container started"
   echo ""
-  echo "Windows VM is starting up!"
-  echo ""
-  echo "Opening browser to monitor installation..."
 
-  # Open browser to monitor installation
-  sleep 3
-  xdg-open "http://127.0.0.1:8006"
+  if [ "${SKIP_OEM_AUTORUN:-false}" = "false" ]; then
+    echo "Windows installation starting..."
+    echo "Expected time: 5-15 minutes"
+  else
+    echo "Starting Windows VM from existing disk..."
+    echo "Expected time: ~1-2 minutes"
+  fi
+  echo ""
+  echo "Monitor progress: http://127.0.0.1:8006"
+  echo ""
 
-  echo ""
-  echo "Installation is running in the background."
-  echo "You can monitor progress at: http://127.0.0.1:8006"
-  echo ""
-  echo "Once finished, launch 'Windows' via Super + Space"
-  echo ""
-  echo "To stop the VM: omarchy-windows-vm stop"
-  echo "To change resources: ~/.config/windows/docker-compose.yml"
-  echo ""
+  sleep 2
+  (xdg-open "http://127.0.0.1:8006" &>/dev/null &)
+
+  [ "${SKIP_OEM_AUTORUN:-false}" = "false" ] && \
+    monitor_installation_progress "$USERNAME" "$PASSWORD" "true" || \
+    monitor_installation_progress "$USERNAME" "$PASSWORD" "false"
 }
 
 remove_windows() {
-  echo "Removing Windows VM..."
+  echo "Removing Windows VM configuration..."
+  echo ""
+  echo "This will remove Docker container and config files."
+  echo "VM disk and your data will be preserved."
+  echo ""
 
+  if ! gum confirm "Remove VM configuration only (keep VM disk)?"; then
+    echo "Cancelled"
+    return 0
+  fi
+
+  # Stop and remove container
+  echo "• Stopping container..."
   docker-compose -f "$COMPOSE_FILE" down 2>/dev/null || true
 
-  docker rmi dockurr/windows 2>/dev/null || echo "Image already removed or not found"
+  # Remove Docker image
+  echo "• Removing Docker image..."
+  if docker rmi dockurr/windows >/dev/null 2>&1; then
+    echo "  ✓ Docker image removed"
+  else
+    echo "  ℹ️  Image already removed"
+  fi
 
-  rm "$HOME/.local/share/applications/windows-vm.desktop"
+  # Remove desktop files and shortcuts
+  echo "• Removing desktop shortcuts..."
+  rm -f "$HOME/.local/share/applications/windows-vm.desktop"
+
+  # Remove installation log files (not user data)
+  echo "• Removing installation logs..."
+  rm -f "$HOME/Windows/install-log.txt"
+  rm -f "$HOME/Windows/installation-complete.txt"
+
+  # Remove configuration (but keep data)
+  echo "• Removing configuration..."
   rm -rf "$HOME/.config/windows"
-  rm -rf "$HOME/.windows"
 
   echo ""
-  echo "Windows VM removal completed!"
+  echo "✓ Windows VM configuration removed!"
+  echo ""
+  echo "Preserved:"
+  echo "  ✅ VM disk: $HOME/.windows/ (reusable for quick reinstall)"
+  echo "  ✅ Shared files: $HOME/Windows/ (your data)"
+  echo ""
+  echo "To completely remove all data:"
+  echo "  sudo rm -rf $HOME/.windows/      # Delete VM disk and Windows OS"
 }
 
 launch_windows() {
   KEEP_ALIVE=false
-  if [ "$1" = "--keep-alive" ] || [ "$1" = "-k" ]; then
-    KEEP_ALIVE=true
-  fi
 
-  # Check if config exists
-  if [ ! -f "$COMPOSE_FILE" ]; then
-    echo "Windows VM not configured. Please run: omarchy-windows-vm install"
-    exit 1
-  fi
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --keep-alive|-k)
+        KEEP_ALIVE=true
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
 
-  # Check if container is already running
-  CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
+  check_vm_configured
+  check_docker_running
+  CONTAINER_STATUS=$(get_container_status)
 
   if [ "$CONTAINER_STATUS" != "running" ]; then
     echo "Starting Windows VM..."
@@ -275,39 +983,95 @@ launch_windows() {
     # Send desktop notification
     notify-send "    Starting Windows VM" "      This can take 15-30 seconds" -t 15000
 
-    if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
+    if ! docker-compose -f "$COMPOSE_FILE" up -d >/dev/null 2>&1; then
       echo "❌ Failed to start Windows VM!"
       echo "   Try checking: omarchy-windows-vm status"
       echo "   View logs: docker logs omarchy-windows"
       notify-send -u critical "Windows VM" "Failed to start Windows VM"
       exit 1
     fi
+  fi
 
-    # Wait for RDP to be ready
+  if ! nc -z 127.0.0.1 3389 2>/dev/null; then
     echo "Waiting for Windows VM to be ready..."
+    WAIT_START=$(date +%s)
     WAIT_COUNT=0
     while ! nc -z 127.0.0.1 3389 2>/dev/null; do
-      sleep 2
+      sleep 5
       WAIT_COUNT=$((WAIT_COUNT + 1))
-      if [ $WAIT_COUNT -gt 60 ]; then  # 2 minutes timeout
-        echo "❌ Timeout waiting for RDP!"
-        echo "   The VM might still be installing Windows."
-        echo "   Check progress at: http://127.0.0.1:8006"
-        exit 1
+
+      if [ $((WAIT_COUNT % 60)) -eq 0 ]; then
+        TOTAL_ELAPSED=$(($(date +%s) - WAIT_START))
+        echo ""
+        echo "⚠️  Windows is taking longer than expected (${TOTAL_ELAPSED}s elapsed)"
+        echo ""
+        echo "Options:"
+        echo "  1. Keep waiting - VM might still be installing"
+        echo "  2. Check progress at: http://127.0.0.1:8006"
+        echo "  3. View logs: docker logs -f omarchy-windows"
+        echo ""
+        read -p "Continue waiting? (Y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Nn]$ ]]; then
+          echo "VM will keep running in background"
+          echo "Connect later: omarchy-windows-vm launch"
+          exit 0
+        fi
+      elif [ $((WAIT_COUNT % 6)) -eq 0 ]; then
+        ELAPSED=$(($(date +%s) - WAIT_START))
+        echo "Still waiting... (${ELAPSED}s elapsed)"
+        echo "Check progress at: http://127.0.0.1:8006"
       fi
     done
 
-    # Give it a moment more to fully initialize
-    sleep 5
+    WAIT_END=$(date +%s)
+    WAIT_TIME=$((WAIT_END - WAIT_START))
+    echo "✓ RDP port open (took ${WAIT_TIME}s)"
   fi
 
-  # Extract credentials from compose file
-  WIN_USER=$(grep "USERNAME:" "$COMPOSE_FILE" | sed 's/.*USERNAME: "\(.*\)"/\1/')
-  WIN_PASS=$(grep "PASSWORD:" "$COMPOSE_FILE" | sed 's/.*PASSWORD: "\(.*\)"/\1/')
+  # Extract credentials from docker-compose.yml for RDP connection
+  WIN_USER=$(grep -E '^\s*USERNAME:' "$COMPOSE_FILE" | head -1 | sed -E 's/^[^:]*:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/' | xargs)
+  WIN_PASS=$(grep -E '^\s*PASSWORD:' "$COMPOSE_FILE" | head -1 | sed -E 's/^[^:]*:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/' | xargs)
 
-  # Use defaults if not found
-  [ -z "$WIN_USER" ] && WIN_USER="docker"
-  [ -z "$WIN_PASS" ] && WIN_PASS="admin"
+  # Validate that credentials were extracted successfully
+  if [ -z "$WIN_USER" ] || [ -z "$WIN_PASS" ]; then
+    echo "❌ Failed to extract credentials from $COMPOSE_FILE"
+    echo "   Configuration file may be corrupted or in unexpected format."
+    echo ""
+    echo "   Try reinstalling: omarchy-windows-vm remove && omarchy-windows-vm install"
+    exit 1
+  fi
+
+  echo "Waiting for RDP service to become ready..."
+  echo ""
+
+  # Test RDP protocol readiness with X.224 handshake (not just port check)
+  MAX_WAIT=90
+  RETRY_INTERVAL=5
+  ELAPSED=0
+  RDP_READY=false
+
+  while [ $ELAPSED -lt $MAX_WAIT ]; do
+    if test_rdp_ready; then
+      RDP_READY=true
+      break
+    fi
+    ELAPSED=$((ELAPSED + RETRY_INTERVAL))
+    if [ $ELAPSED -lt $MAX_WAIT ]; then
+      echo "  Testing RDP protocol... (${ELAPSED}s elapsed, next check in ${RETRY_INTERVAL}s)"
+      sleep $RETRY_INTERVAL
+    fi
+  done
+
+  echo ""
+  if [ "$RDP_READY" = true ]; then
+    echo "✓ RDP service is ready and responding to protocol requests"
+  else
+    echo "⚠️  RDP service did not respond within ${MAX_WAIT}s"
+    echo "   Proceeding anyway, but connection may fail"
+    echo "   If it fails, wait longer and retry: omarchy-windows-vm launch"
+  fi
+  echo ""
 
   # Build the connection info
   if [ "$KEEP_ALIVE" = true ]; then
@@ -326,27 +1090,19 @@ To stop: omarchy-windows-vm stop"
     "" \
     "$LIFECYCLE"
 
-  # Detect display scale from Hyprland
-  HYPR_SCALE=$(hyprctl monitors -j | jq -r '.[0].scale')
-  SCALE_PERCENT=$(echo "$HYPR_SCALE" | awk '{print int($1 * 100)}')
-
-  RDP_SCALE=""
-  if [ "$SCALE_PERCENT" -ge 170 ]; then
-    RDP_SCALE="/scale:180"
-  elif [ "$SCALE_PERCENT" -ge 130 ]; then
-    RDP_SCALE="/scale:140"
-  fi
-  # If scale is less than 130%, don't set any scale (use default 100)
-
-  # Connect with RDP in fullscreen (auto-detects resolution)
-  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /cert:ignore /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
+  # Connect with RDP (foreground mode)
+  connect_rdp "$WIN_USER" "$WIN_PASS" false
 
   # After RDP closes, stop the container unless --keep-alive was specified
   if [ "$KEEP_ALIVE" = false ]; then
     echo ""
     echo "RDP session closed. Stopping Windows VM..."
-    docker-compose -f "$COMPOSE_FILE" down
+    docker-compose -f "$COMPOSE_FILE" stop
     echo "Windows VM stopped."
+    echo ""
+    echo "ℹ️  Container is stopped but preserved for fast restart"
+    echo "   Quick start: omarchy-windows-vm launch"
+    echo "   Full cleanup: omarchy-windows-vm stop (removes container)"
   else
     echo ""
     echo "RDP session closed. Windows VM is still running."
@@ -355,24 +1111,18 @@ To stop: omarchy-windows-vm stop"
 }
 
 stop_windows() {
-  if [ ! -f "$COMPOSE_FILE" ]; then
-    echo "Windows VM not configured."
-    exit 1
-  fi
+  check_vm_configured
 
-  echo "Stopping Windows VM..."
+  echo "Stopping Windows VM and removing container..."
   docker-compose -f "$COMPOSE_FILE" down
-  echo "Windows VM stopped."
+  echo "Windows VM stopped and container removed."
+  echo "(Container will be recreated fresh on next launch)"
 }
 
 status_windows() {
-  if [ ! -f "$COMPOSE_FILE" ]; then
-    echo "Windows VM not configured."
-    echo "To set up: omarchy-windows-vm install"
-    exit 1
-  fi
+  check_vm_configured
 
-  CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
+  CONTAINER_STATUS=$(get_container_status)
 
   if [ -z "$CONTAINER_STATUS" ]; then
     echo "Windows VM container not found."
@@ -425,7 +1175,8 @@ case "$1" in
     remove_windows
     ;;
   launch|start)
-    launch_windows "$2"
+    shift  # Remove the command name from arguments
+    launch_windows "$@"
     ;;
   stop|down)
     stop_windows
