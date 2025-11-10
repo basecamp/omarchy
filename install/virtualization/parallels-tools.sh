@@ -10,6 +10,12 @@ else
   return 0
 fi
 
+# Allow skipping Parallels Tools installation via environment variable
+if [[ -n "${OMARCHY_SKIP_PARALLELS_TOOLS:-}" ]]; then
+  echo "Skipping Parallels Tools installation (OMARCHY_SKIP_PARALLELS_TOOLS is set)"
+  return 0
+fi
+
 # Check if Parallels Tools are already installed
 if [ -d /usr/lib/parallels-tools ]; then
   echo "Parallels Tools already installed, skipping."
