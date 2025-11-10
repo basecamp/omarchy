@@ -123,7 +123,7 @@ sudo pacman -S --needed --noconfirm \
 
 # Use the same approach as Arch Linux official PKGBUILD
 # Download release tarball instead of git clone (includes properly bundled submodules)
-HYPR_VERSION="0.51.1"
+HYPR_VERSION="0.52.1"
 TARBALL_URL="https://github.com/hyprwm/Hyprland/releases/download/v${HYPR_VERSION}/source-v${HYPR_VERSION}.tar.gz"
 TARBALL_NAME="hyprland-source-v${HYPR_VERSION}.tar.gz"
 
