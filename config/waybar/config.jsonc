@@ -46,7 +46,7 @@
   },
   "custom/update": {
     "format": "",
-    "exec": "omarchy-update-available",
+    "exec": "omarchy-update-available --no-release-notes",
     "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
     "tooltip-format": "Omarchy update available",
     "signal": 7,
