@@ -2,13 +2,11 @@
 sudo ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-previous-symbolic.svg /usr/share/icons/Yaru/scalable/actions/go-previous-symbolic.svg
 sudo ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-next-symbolic.svg /usr/share/icons/Yaru/scalable/actions/go-next-symbolic.svg
 
-# Setup theme links
-mkdir -p ~/.config/omarchy/themes
-for f in /usr/share/omarchy/themes/*; do ln -nfs "$f" ~/.config/omarchy/themes/; done
-
-# Set initial theme
+# Set initial theme to tokyo-night
+# Theme files are managed by the package at /usr/share/omarchy/themes/
+# User's current theme selection is stored at ~/.config/omarchy/current
 mkdir -p ~/.config/omarchy/current
-ln -snf ~/.config/omarchy/themes/tokyo-night ~/.config/omarchy/current/theme
+ln -snf /usr/share/omarchy/themes/tokyo-night ~/.config/omarchy/current/theme
 ln -snf ~/.config/omarchy/current/theme/backgrounds/1-scenery-pink-lakeside-sunset-lake-landscape-scenic-panorama-7680x3215-144.png ~/.config/omarchy/current/background
 
 # Set specific app links for current theme
