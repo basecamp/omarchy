@@ -1,4 +1,3 @@
-if [ "$(plymouth-set-default-theme)" != "omarchy" ]; then
-  sudo cp -r "/usr/share/omarchy/default/plymouth" /usr/share/plymouth/themes/omarchy/
-  sudo plymouth-set-default-theme omarchy
-fi
+# Set omarchy as the default plymouth theme
+# Theme files are installed by the package at /usr/share/plymouth/themes/omarchy/
+sudo plymouth-set-default-theme omarchy
