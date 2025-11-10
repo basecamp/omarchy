@@ -64,12 +64,12 @@ less
 libsecret
 libyaml
 libqalculate
-libreoffice
+libreoffice-still
 llvm
 localsend
 luarocks
 mako
-man
+man-db
 mariadb-libs
 mise
 mpv
