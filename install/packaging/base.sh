@@ -26,11 +26,6 @@ if [ -n "$SKIP_YARU" ]; then
   aur_packages=($(printf '%s\n' "${aur_packages[@]}" | grep -v '^yaru-icon-theme$'))
 fi
 
-# On ARM, skip hyprshade/aether (installed after custom hyprland build in arch.sh)
-if [ -n "$OMARCHY_ARM" ]; then
-  aur_packages=($(printf '%s\n' "${aur_packages[@]}" | grep -v '^hyprshade$' | grep -v '^aether$'))
-fi
-
 if [ ${#aur_packages[@]} -gt 0 ]; then
   if [ -n "$OMARCHY_ARM" ]; then
     # ARM: Use omarchy-aur-install (AUR + GitHub fallback)

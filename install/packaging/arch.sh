@@ -46,13 +46,6 @@ if [ -n "$OMARCHY_ARM" ]; then
   # Run ARM-specific installation scripts
   echo "Running ARM-specific installation scripts..."
 
-  # Build Hyprland from source (ARM repos stuck at 0.49.0, need 0.51+ for GLES 3.0)
-  source $OMARCHY_INSTALL/arm_install_scripts/hyprland.sh
-
-  # Install Hyprland ecosystem packages (skipped in base.sh, now that hyprland is built)
-  echo "Installing Hyprland ecosystem packages (hyprshade, aether)..."
-  "$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" hyprshade aether
-
   source $OMARCHY_INSTALL/arm_install_scripts/1password-app.sh
   source $OMARCHY_INSTALL/arm_install_scripts/1password-cli.sh
   source $OMARCHY_INSTALL/arm_install_scripts/asdcontrol-prebuilt.sh
