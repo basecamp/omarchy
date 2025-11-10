@@ -62,7 +62,10 @@ start_screenrecording() {
   # Merge audio tracks into one - separate tracks only play one at a time in most players
   [[ "$AUDIO" == "true" ]] && audio_args="-a default_output|default_input"
 
-  gpu-screen-recorder -w "$@" -f 60 -c mp4 -o "$filename" $audio_args &
+  if ! gpu-screen-recorder -w "$@" -f 60 -c mp4 -o "$filename" $audio_args 2>&1 & then
+      echo "Primary GPU encoding failed. Falling back to CPU encoder..."
+      gpu-screen-recorder -encoder cpu -w "$@" -f 60 -c mp4 -o "$filename" $audio_args 2>&1 &
+  fi
   toggle_screenrecording_indicator
 }
 
