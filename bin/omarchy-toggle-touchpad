@@ -2,7 +2,7 @@
 
 # 1. Define the state file path
 export STATUS_DIR="$HOME/.local/state/omarchy/toggles/"
-export STATUS_FILE="touchpad-disabled.status"
+export STATUS_FILE="touchpad-off"
 
 # Ensuring the toggle directory exists
 mkdir -p "$STATUS_DIR"
