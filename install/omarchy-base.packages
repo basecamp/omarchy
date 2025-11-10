@@ -4,7 +4,6 @@
 1password-beta
 1password-cli
 aether
-alacritty
 asdcontrol
 avahi
 bash-completion
@@ -12,7 +11,6 @@ bat
 blueberry
 brightnessctl
 btop
-cargo
 clang
 cups
 cups-browsed
@@ -34,6 +32,7 @@ ffmpegthumbnailer
 fontconfig
 fzf
 gazelle-tui
+ghostty
 github-cli
 gnome-calculator
 gnome-keyring
@@ -46,7 +45,7 @@ gvfs-nfs
 gvfs-smb
 hypridle
 hyprland
-hyprland-qtutils
+hyprland-guiutils
 hyprlock
 hyprpicker
 hyprsunset
@@ -64,12 +63,12 @@ less
 libsecret
 libyaml
 libqalculate
-libreoffice
+libreoffice-fresh
 llvm
 localsend
 luarocks
 mako
-man
+man-db
 mariadb-libs
 mise
 mpv
@@ -100,6 +99,7 @@ python-poetry-core
 python-terminaltexteffects
 qt5-wayland
 ripgrep
+rust
 satty
 sddm
 signal-desktop
@@ -120,6 +120,7 @@ tzupdate
 ufw
 ufw-docker
 unzip
+usage
 uwsm
 waybar
 wayfreeze

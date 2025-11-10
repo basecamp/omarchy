@@ -36,7 +36,6 @@ pipewire
 pipewire-alsa
 pipewire-jack
 pipewire-pulse
-qt5-remoteobjects
 qt6-wayland
 sassc
 snapper
