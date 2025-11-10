@@ -27,4 +27,4 @@ keybind = shift+insert=paste_from_clipboard
 keybind = control+insert=copy_to_clipboard
 
 # Slowdown mouse scrolling
-mouse-scroll-multiplier = 0.5
+mouse-scroll-multiplier = 0.8
