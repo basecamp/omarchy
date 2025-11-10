@@ -12,15 +12,9 @@ omarchy-pkg-add xdg-terminal-exec
 # Set up xdg-terminals.list based on current $TERMINAL
 if [ -n "$TERMINAL" ]; then
   case "$TERMINAL" in
-    alacritty)
-      desktop_id="Alacritty.desktop"
-      ;;
-    ghostty)
-      desktop_id="com.mitchellh.ghostty.desktop"
-      ;;
-    kitty)
-      desktop_id="kitty.desktop"
-      ;;
+  alacritty) desktop_id="Alacritty.desktop" ;;
+  ghostty) desktop_id="com.mitchellh.ghostty.desktop" ;;
+  kitty) desktop_id="kitty.desktop" ;;
   esac
 
   if [ -n "$desktop_id" ]; then
