@@ -12,7 +12,6 @@ bat
 blueberry
 brightnessctl
 btop
-cargo
 clang
 cups
 cups-browsed
@@ -99,6 +98,7 @@ python-poetry-core
 python-terminaltexteffects
 qt5-wayland
 ripgrep
+rust
 satty
 sddm
 signal-desktop
