@@ -61,7 +61,8 @@
   "clock": {
     "format": "{:L%A %H:%M}",
     "format-alt": "{:L%d %B W%V %Y}",
-    "locale": "en_GB.UTF-8", // week start on Monday
+    // "locale": "en_GB.UTF-8", // force locale to start week on Monday
+                                // sudo localectl set-locale LC_TIME=en_GB.UTF-8 && sudo locale-gen
     "tooltip-format": "<tt><small>{calendar}</small></tt>",
     "calendar": {
       "mode": "month",
