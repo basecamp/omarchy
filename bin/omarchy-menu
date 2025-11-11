@@ -122,11 +122,15 @@ show_screenrecord_menu() {
   esac
 }
 
+# Updated to run share commands silently in the background using 'nohup' to avoid opening a terminal window.
+# This makes the menu smoother and non-blocking when triggered from Hyprland or Wayland.
 show_share_menu() {
-  case $(menu "Share" "  Clipboard\n  File \n  Folder") in
-  *Clipboard*) terminal bash -c "omarchy-cmd-share clipboard" ;;
-  *File*) terminal bash -c "omarchy-cmd-share file" ;;
-  *Folder*) terminal bash -c "omarchy-cmd-share folder" ;;
+  case $(menu "Share" "  Clipboard\n  File\n  Folder\n  Image\n  Video") in
+  *Clipboard*) nohup omarchy-cmd-share clipboard >/dev/null 2>&1 & ;;
+  *File*) nohup omarchy-cmd-share file >/dev/null 2>&1 & ;;
+  *Folder*) nohup omarchy-cmd-share folder >/dev/null 2>&1 & ;;
+  *Image*) nohup omarchy-cmd-share image >/dev/null 2>&1 & ;;
+  *Video*) nohup omarchy-cmd-share video >/dev/null 2>&1 & ;;
   *) back_to show_trigger_menu ;;
   esac
 }
