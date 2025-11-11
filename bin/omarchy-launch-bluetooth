@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec setsid uwsm-app -- xdg-terminal-exec --app-id=com.omarchy.Bluetui -e bluetui "$@"
