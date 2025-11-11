@@ -51,6 +51,16 @@ EOF
   fi
 }
 
+add_hyprlock_fingerprint_icon() {
+  print_info "Adding fingerprint icon to hyprlock placeholder text..."
+  sed -i 's/placeholder_text = .*/placeholder_text = <span> Enter Password 󰈷 <\/span>/' ~/.config/hypr/hyprlock.conf
+}
+
+remove_hyprlock_fingerprint_icon() {
+  print_info "Removing fingerprint icon from hyprlock placeholder text..."
+  sed -i 's/placeholder_text = .*/placeholder_text = Enter Password/' ~/.config/hypr/hyprlock.conf
+}
+
 remove_pam_config() {
   # Remove from sudo
   if grep -q pam_fprintd.so /etc/pam.d/sudo; then
@@ -71,6 +81,9 @@ if [[ "--remove" == "$1" ]]; then
   # Remove PAM configuration
   remove_pam_config
 
+  # Remove fingerprint icon from hyprlock placeholder text
+  remove_hyprlock_fingerprint_icon
+
   # Uninstall packages
   print_info "Removing fingerprint packages..."
   sudo pacman -Rns --noconfirm fprintd
@@ -89,6 +102,9 @@ else
 
   # Configure PAM
   setup_pam_config
+
+  # Add fingerprint icon to hyprlock placeholder text
+  add_hyprlock_fingerprint_icon
 
   # Enroll first fingerprint
   print_success "\nLet's setup your right index finger as the first fingerprint."
