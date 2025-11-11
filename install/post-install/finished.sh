@@ -22,8 +22,6 @@ fi
 
 if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
   sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
-  echo
-  echo_in_style "Remember to remove USB installer!"
 fi
 
 # Exit gracefully if user chooses not to reboot

@@ -4,7 +4,6 @@
 1password-beta
 1password-cli
 aether
-alacritty
 asdcontrol
 avahi
 bash-completion
@@ -12,7 +11,6 @@ bat
 blueberry
 brightnessctl
 btop
-cargo
 clang
 cups
 cups-browsed
@@ -22,20 +20,8 @@ docker
 docker-buildx
 docker-compose
 dust
-elephant
-elephant-bluetooth
-elephant-calc
-elephant-clipboard
-elephant-desktopapplications
-elephant-files
-elephant-menus
-elephant-providerlist
-elephant-runner
-elephant-symbols
-elephant-todo
-elephant-unicode
-elephant-websearch
 evince
+expac
 eza
 fastfetch
 fcitx5
@@ -45,6 +31,7 @@ fd
 ffmpegthumbnailer
 fontconfig
 fzf
+ghostty
 github-cli
 gnome-calculator
 gnome-keyring
@@ -57,7 +44,7 @@ gvfs-nfs
 gvfs-smb
 hypridle
 hyprland
-hyprland-qtutils
+hyprland-guiutils
 hyprlock
 hyprpicker
 hyprsunset
@@ -65,6 +52,7 @@ imagemagick
 impala
 imv
 inetutils
+inxi
 iwd
 jq
 kdenlive
@@ -75,12 +63,12 @@ less
 libsecret
 libyaml
 libqalculate
-libreoffice
+libreoffice-fresh
 llvm
 localsend
 luarocks
 mako
-man
+man-db
 mariadb-libs
 mise
 mpv
@@ -96,6 +84,7 @@ obs-studio
 obsidian
 omarchy-chromium
 omarchy-nvim
+omarchy-walker
 pamixer
 pinta
 playerctl
@@ -109,6 +98,8 @@ python-poetry-core
 python-terminaltexteffects
 qt5-wayland
 ripgrep
+ruby
+rust
 satty
 sddm
 signal-desktop
@@ -121,6 +112,7 @@ swayosd
 system-config-printer
 tldr
 tree-sitter-cli
+tobi-try
 ttf-cascadia-mono-nerd
 ttf-ia-writer
 ttf-jetbrains-mono-nerd
@@ -129,10 +121,10 @@ tzupdate
 ufw
 ufw-docker
 unzip
+usage
 uwsm
-walker
 waybar
-wayfreeze-git
+wayfreeze
 whois
 wireless-regdb
 wiremix
@@ -141,6 +133,7 @@ wl-clipboard
 woff2-font-awesome
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
+xdg-terminal-exec
 xmlstarlet
 xournalpp
 yaru-icon-theme

@@ -21,4 +21,7 @@ EOF
 # Ensure VSC's own auto-update feature is turned off
 printf '{\n  "update.mode": "none"\n}\n' > ~/.config/Code/User/settings.json
 
+# Apply Omarchy theme to VSCode
+omarchy-theme-set-vscode
+
 setsid gtk-launch code
