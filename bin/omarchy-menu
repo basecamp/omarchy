@@ -124,11 +124,11 @@ show_screenrecord_menu() {
 
 show_share_menu() {
   case $(menu "Share" "  Clipboard\n  File\n  Folder\n  Latest Picture\n  Latest Video") in
-  *Clipboard*) nohup omarchy-cmd-share clipboard >/dev/null 2>&1 & ;;
-  *File*) nohup omarchy-cmd-share file >/dev/null 2>&1 & ;;
-  *Folder*) nohup omarchy-cmd-share folder >/dev/null 2>&1 & ;;
-  *Picture*) nohup omarchy-cmd-share picture >/dev/null 2>&1 & ;;
-  *Video*) nohup omarchy-cmd-share video >/dev/null 2>&1 & ;;
+  *Clipboard*) omarchy-cmd-share clipboard ;;
+  *File*) terminal bash -c "omarchy-cmd-share file" ;;
+  *Folder*) terminal bash -c "omarchy-cmd-share folder" ;;
+  *Picture*) omarchy-cmd-share picture ;;
+  *Video*) omarchy-cmd-share video ;;
   *) back_to show_trigger_menu ;;
   esac
 }
