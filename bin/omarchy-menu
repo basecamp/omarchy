@@ -33,7 +33,7 @@ menu() {
     fi
   fi
 
-  echo -e "$options" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 600 -p "$prompt…" "${args[@]}" 2>/dev/null
+  echo -e "$options" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 630 -p "$prompt…" "${args[@]}" 2>/dev/null
 }
 
 terminal() {
@@ -123,10 +123,12 @@ show_screenrecord_menu() {
 }
 
 show_share_menu() {
-  case $(menu "Share" "  Clipboard\n  File \n  Folder") in
-  *Clipboard*) terminal bash -c "omarchy-cmd-share clipboard" ;;
+  case $(menu "Share" "  Clipboard\n  File\n  Folder\n  Latest Picture\n  Latest Video") in
+  *Clipboard*) omarchy-cmd-share clipboard ;;
   *File*) terminal bash -c "omarchy-cmd-share file" ;;
   *Folder*) terminal bash -c "omarchy-cmd-share folder" ;;
+  *Picture*) omarchy-cmd-share picture ;;
+  *Video*) omarchy-cmd-share video ;;
   *) back_to show_trigger_menu ;;
   esac
 }
