@@ -1,23 +1,4 @@
-echo "Overwrite imv config with new keybindings; backup existing config if present"
+echo "Update imv config with new keybindings"
 
-if [ -f ~/.config/imv/config ]; then
-  cp ~/.config/imv/config ~/.config/imv/config.bak.$(date +%s)
-else
-  mkdir -p ~/.config/imv
-fi
-
-cat >~/.config/imv/config <<'EOF'
-[binds]
-
-# Print the current image file
-<Ctrl+p> = exec lp "$imv_current_file"
-
-# Delete the current image and quit the viewer
-<Ctrl+x> = exec rm "$imv_current_file"; quit
-
-# Delete the current image and move to the next one
-<Ctrl+Shift+X> = exec rm "$imv_current_file"; close
-
-# Rotate the currently open image by 90 degrees
-<Ctrl+r> = exec mogrify -rotate 90 "$imv_current_file"
-EOF
+mkdir -p ~/.config/imv
+cp $OMARCHY_PATH/config/imv/config ~/.config/imv/
