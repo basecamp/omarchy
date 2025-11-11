@@ -303,8 +303,9 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft") in
+  case $(menu "Install" "  Steam\n  Heroic Games Launcher\n  RetroArch [AUR]\n󰍳  Minecraft") in
   *Steam*) present_terminal omarchy-install-steam ;;
+  *"Heroic Games Launcher"*) aur_install_and_launch "Heroic Games Launcher" "heroic-games-launcher" "com.heroicgameslauncher.hgl" ;;
   *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
   *) show_install_menu ;;
