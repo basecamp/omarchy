@@ -23,6 +23,11 @@ if pacman -Qem >/dev/null; then
   fi
 fi
 
+#Update Flatpaks if any are installed
+if command -v flatpak >/dev/null 2>&1; then
+  flatpak update --noninteractive
+fi
+
 orphans=$(pacman -Qtdq || true)
 if [[ -n $orphans ]]; then
   echo -e "\e[32m\nRemove orphan system packages\e[0m"
