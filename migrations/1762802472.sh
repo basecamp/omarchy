@@ -1,4 +1,4 @@
-echo "Append custom Ctrl+X and Ctrl+R bindings for imv; backup existing config if present"
+echo "Overwrite imv config with new keybindings; backup existing config if present"
 
 if [ -f ~/.config/imv/config ]; then
   cp ~/.config/imv/config ~/.config/imv/config.bak.$(date +%s)
@@ -6,11 +6,18 @@ else
   mkdir -p ~/.config/imv
 fi
 
-cat >>~/.config/imv/config <<'EOF'
+cat >~/.config/imv/config <<'EOF'
+[binds]
 
-# Delete and then close an open image by pressing 'Ctrl+x'
-<Ctrl+x> = exec rm "$imv_current_file"; close
+# Print the current image file
+<Ctrl+p> = exec lp "$imv_current_file"
 
-# Rotate the currently open image by 90 degrees by pressing 'Ctrl+r'
+# Delete the current image and quit the viewer
+<Ctrl+x> = exec rm "$imv_current_file"; quit
+
+# Delete the current image and move to the next one
+<Ctrl+Shift+X> = exec rm "$imv_current_file"; close
+
+# Rotate the currently open image by 90 degrees
 <Ctrl+r> = exec mogrify -rotate 90 "$imv_current_file"
 EOF
