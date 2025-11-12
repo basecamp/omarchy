@@ -8,7 +8,7 @@ mkdir -p "$STATE_DIR"
 mkdir -p "$STATE_DIR/skipped"
 
 # Run any pending migrations
-for file in ~/.local/share/omarchy/migrations/*.sh; do
+for file in /usr/share/omarchy/migrations/*.sh; do
   filename=$(basename "$file")
 
   if [[ ! -f "$STATE_DIR/$filename" && ! -f "$STATE_DIR/skipped/$filename" ]]; then
