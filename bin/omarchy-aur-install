@@ -1,0 +1,1094 @@
+#!/bin/bash
+#
+# Omarchy AUR Installer with GitHub Mirror Fallback
+# Automatically detects AUR availability and falls back to GitHub mirror if needed.
+# Usage: omarchy-aur-install <package-name> [package-name...]
+#
+
+set -e
+
+# --- Configuration ---
+AUR_URL="https://aur.archlinux.org"
+AUR_GIT_URL="https://aur.archlinux.org"
+GITHUB_MIRROR_URL="https://github.com/archlinux/aur.git"
+AUR_CHECK_TIMEOUT=5
+AUR_FAILURE_THRESHOLD=3        # Mark AUR as down after this many consecutive failures
+AUR_COOLDOWN_MINUTES=20        # Don't retry AUR for this long after marking it down
+AUR_STATE_FILE="/tmp/omarchy-aur-state-$(id -u)"  # Per-user state file
+
+# --- Color Output ---
+# Respect NO_COLOR standard and detect TTY for clean logs
+if [[ -n "${NO_COLOR:-}" ]] || ! [ -t 1 ]; then
+  # stdout is redirected or NO_COLOR is set - disable colors
+  RED=''
+  GREEN=''
+  YELLOW=''
+  BLUE=''
+  NC=''
+else
+  # stdout is a terminal - enable colors
+  RED='\033[0;31m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[1;33m'
+  BLUE='\033[0;34m'
+  NC='\033[0m' # No Color
+fi
+
+print_info() { echo -e "${BLUE}==>${NC} $*"; }
+print_success() { echo -e "${GREEN}==>${NC} $*"; }
+print_warning() { echo -e "${YELLOW}==>${NC} $*"; }
+print_error() { echo -e "${RED}==>${NC} $*"; }
+debug_log() { [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && print_info "$*" || true; }
+
+# --- Helper Functions ---
+
+# Hardcoded mapping for known split packages
+# Format: "package_name:package_base"
+# This allows split packages to work even when AUR is down
+declare -A KNOWN_SPLIT_PACKAGES=(
+  ["yaru-icon-theme"]="yaru"
+  ["yaru-gtk-theme"]="yaru"
+  ["yaru-gnome-shell-theme"]="yaru"
+  ["yaru-sound-theme"]="yaru"
+  ["dotnet-host-bin"]="dotnet-core-bin"
+  ["dotnet-sdk-8.0-bin"]="dotnet-core-8.0-bin"
+  ["dotnet-runtime-8.0-bin"]="dotnet-core-8.0-bin"
+  ["dotnet-targeting-pack-8.0-bin"]="dotnet-core-8.0-bin"
+  ["aspnet-runtime-8.0-bin"]="dotnet-core-8.0-bin"
+  ["aspnet-targeting-pack-8.0-bin"]="dotnet-core-8.0-bin"
+)
+
+# Split packages that should install ALL built packages (not just requested one)
+# Use this for packages with interdependencies between the split packages themselves
+# Format: "package_base" -> 1
+# NOTE: dotnet-sdk depends on dotnet-runtime AND dotnet-targeting-pack from same split
+#       So we must install all packages together, but netstandard-targeting-pack-bin first
+declare -A INSTALL_ALL_SPLIT_PACKAGES=(
+  ["dotnet-core-8.0-bin"]=1
+  ["dotnet-core-bin"]=1
+)
+
+# Packages with flaky test suites on ARM that should skip tests
+# Format: "package_name:reason"
+# Only affects ARM builds (aarch64) to avoid test failures on VMs/different timing
+declare -A SKIP_TESTS_ON_ARM=(
+  ["ruby-stud"]="timing tests flaky on ARM VMs (expects 0.5s ± 0.02s, gets 0.56s)"
+)
+
+# Get PackageBase from AUR RPC API for a given package name
+# This is critical for split packages where package name != repository name
+# Example: yaru-icon-theme (package) vs yaru (repository/PackageBase)
+get_package_base_from_hardcoded() {
+  local package_name="$1"
+
+  # Check hardcoded split packages (works even when AUR is down)
+  if [[ -n "${KNOWN_SPLIT_PACKAGES[$package_name]:-}" ]]; then
+    local hardcoded_base="${KNOWN_SPLIT_PACKAGES[$package_name]}"
+    debug_log "Using hardcoded PackageBase for '$package_name': '$hardcoded_base'"
+    echo "$hardcoded_base"
+  else
+    # Not in hardcoded list, return package name
+    echo "$package_name"
+  fi
+
+  return 0  # Always return success to avoid set -e exit
+}
+
+# Query AUR RPC to discover PackageBase for split packages
+# Only called when clone fails - avoids unnecessary network calls
+query_package_base_from_aur() {
+  local package_name="$1"
+
+  debug_log "Querying AUR RPC to discover PackageBase for '$package_name'..."
+
+  local rpc_url="https://aur.archlinux.org/rpc/?v=5&type=info&arg=${package_name}"
+  local response
+
+  if response=$(curl -s --max-time 3 "$rpc_url" 2>/dev/null); then
+    # Extract PackageBase from JSON response
+    local package_base=$(echo "$response" | grep -o '"PackageBase":"[^"]*"' | cut -d'"' -f4)
+
+    if [[ -n "$package_base" ]] && [[ "$package_base" != "$package_name" ]]; then
+      print_info "Discovered split package: '$package_name' -> PackageBase: '$package_base'" >&2
+      echo "$package_base"
+      return 0
+    fi
+  else
+    debug_log "Failed to query AUR RPC for '$package_name' (AUR may be down)"
+  fi
+
+  # Could not discover different PackageBase
+  echo "$package_name"
+  return 0  # Always return success to avoid set -e exit
+}
+
+# Strip version constraints from package name
+strip_version_constraints() {
+  local name="$1"
+  echo "$name" | sed 's/[<>=].*$//'
+}
+
+# Strip version constraints from dependency name
+# NOTE: Do NOT strip .so suffix - pacman -T needs it to recognize virtual provides
+strip_dep_name() {
+  local dep="$1"
+  echo "$dep" | sed 's/[<>=].*$//'
+}
+
+# Clone package from GitHub AUR mirror
+clone_from_github_mirror() {
+  local package_name="$1"
+  git clone --depth 1 --single-branch --branch "$package_name" "$GITHUB_MIRROR_URL" "$package_name" 2>/dev/null
+}
+
+# Try to clone from AUR, returns 0 on success, 1 on failure
+try_clone_from_aur() {
+  local package_base="$1"
+  local git_url="$2"
+
+  git clone --depth 1 "$git_url/$package_base.git" "$package_base" 2>/dev/null
+  return $?
+}
+
+# Try to clone from GitHub mirror, returns 0 on success, 1 on failure
+try_clone_from_mirror() {
+  local package_base="$1"
+
+  clone_from_github_mirror "$package_base"
+  return $?
+}
+
+# Handle package not found error (check if in official repos)
+handle_package_not_found() {
+  local package_name="$1"
+
+  if is_official_package "$package_name"; then
+    print_error "Package '$package_name' is available in official repositories"
+    print_error "Use 'pacman -S $package_name' instead of omarchy-aur-install"
+    return 1
+  else
+    print_error "Package '$package_name' not found in AUR or official repositories"
+    print_error "Verify the package name is correct"
+    return 1
+  fi
+}
+
+# --- Pre-flight Checks ---
+if [ $# -eq 0 ]; then
+  print_error "No package name specified."
+  echo "Usage: $0 [--makepkg-flags='FLAGS'] <package-name> [package-name...]"
+  echo "Example: $0 --makepkg-flags='--needed -r' package1 package2"
+  exit 1
+fi
+
+# Parse arguments
+EXTRA_MAKEPKG_FLAGS=""
+PACKAGES=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --makepkg-flags=*)
+      EXTRA_MAKEPKG_FLAGS="${1#*=}"
+      shift
+      ;;
+    --makepkg-flags)
+      EXTRA_MAKEPKG_FLAGS="$2"
+      shift 2
+      ;;
+    *)
+      PACKAGES+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [ ${#PACKAGES[@]} -eq 0 ]; then
+  print_error "No package names specified."
+  exit 1
+fi
+
+# Check if required tools are installed
+for tool in git makepkg curl; do
+  if ! command -v "$tool" &>/dev/null; then
+    print_error "Required tool '$tool' is not installed."
+    exit 1
+  fi
+done
+
+# --- AUR State Management ---
+get_aur_state() {
+  if [ -f "$AUR_STATE_FILE" ]; then
+    cat "$AUR_STATE_FILE"
+  else
+    echo "unknown 0 0"  # status failure_count last_check_time
+  fi
+}
+
+save_aur_state() {
+  local status="$1"
+  local failure_count="$2"
+  local timestamp="$3"
+  echo "$status $failure_count $timestamp" > "$AUR_STATE_FILE"
+}
+
+is_aur_in_cooldown() {
+  local state=($(get_aur_state))
+  local status="${state[0]}"
+  local last_check="${state[2]}"
+  local current_time=$(date +%s)
+  local cooldown_seconds=$((AUR_COOLDOWN_MINUTES * 60))
+
+  if [ "$status" = "down" ]; then
+    local elapsed=$((current_time - last_check))
+    if [ $elapsed -lt $cooldown_seconds ]; then
+      local remaining=$(((cooldown_seconds - elapsed) / 60))
+      print_warning "AUR marked as down, skipping check (retry in ${remaining}m)"
+      return 0  # In cooldown
+    fi
+  fi
+  return 1  # Not in cooldown
+}
+
+record_aur_failure() {
+  local state=($(get_aur_state))
+  local failure_count="${state[1]}"
+  local new_count=$((failure_count + 1))
+  local timestamp=$(date +%s)
+
+  if [ $new_count -ge $AUR_FAILURE_THRESHOLD ]; then
+    print_warning "AUR failed $new_count times, marking as down for ${AUR_COOLDOWN_MINUTES}m"
+    save_aur_state "down" "$new_count" "$timestamp"
+  else
+    save_aur_state "degraded" "$new_count" "$timestamp"
+  fi
+}
+
+record_aur_success() {
+  save_aur_state "up" "0" "$(date +%s)"
+}
+
+# --- AUR Availability Check ---
+check_aur_available() {
+  # TESTING: Simulate AUR being down
+  if [[ -n "${OMARCHY_SIMULATE_AUR_DOWN:-}" ]]; then
+    print_warning "AUR DOWN SIMULATION ENABLED - Forcing AUR unavailable"
+    record_aur_failure
+    return 1
+  fi
+
+  # Check if in cooldown period
+  if is_aur_in_cooldown; then
+    return 1
+  fi
+
+  print_info "Checking AUR availability..."
+  if curl --silent --max-time "$AUR_CHECK_TIMEOUT" --head "$AUR_URL" &>/dev/null; then
+    print_success "AUR is available"
+    record_aur_success
+    return 0
+  else
+    print_warning "AUR is unreachable (timeout: ${AUR_CHECK_TIMEOUT}s)"
+    record_aur_failure
+    return 1
+  fi
+}
+
+# --- Dependency Resolution ---
+
+# Check if a package is available in official repositories
+is_official_package() {
+  local package="$1"
+  # Strip version constraints (>=, =, <, etc.)
+  package=$(strip_version_constraints "$package")
+
+  # Check if package can be resolved from sync databases
+  # Use -Sp (show package download URL) which will succeed for official packages
+  if pacman -Sp "$package" &>/dev/null; then
+    debug_log "  DEBUG: '$package' found in official repos (pacman -Sp)"
+    return 0
+  fi
+
+  debug_log "  DEBUG: '$package' NOT in official repos (AUR package)"
+  return 1
+}
+
+# Extract dependencies from PKGBUILD
+extract_pkgbuild_deps() {
+  local pkgbuild_path="$1"
+
+  if [[ ! -f "$pkgbuild_path" ]]; then
+    print_error "PKGBUILD not found at: $pkgbuild_path"
+    return 0  # Return success to avoid set -e exit (outputs nothing)
+  fi
+
+  # Source PKGBUILD in a subshell to extract dependency arrays
+  (
+    # Set up makepkg environment variables that PKGBUILDs may use
+    export CARCH="$(uname -m)"
+    export CHOST="${CARCH}-unknown-linux-gnu"
+
+    # Debug: Show what CARCH is set to
+    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && echo "DEBUG:CARCH=$CARCH" >&2
+    [[ -n "${OMARCHY_AUR_DEBUG:-}" ]] && echo "DEBUG:CHOST=$CHOST" >&2
+
+    # Temporarily disable errexit in subshell to allow PKGBUILD sourcing
+    set +e
+    source "$pkgbuild_path" 2>/dev/null
+    local source_result=$?
+    set -e
+
+    if [ $source_result -ne 0 ]; then
+      # PKGBUILD sourcing failed, but continue to extract what we can
+      :
+    fi
+
+    # Print depends array
+    for dep in "${depends[@]:-}"; do
+      echo "depend:$dep"
+    done
+
+    # Print makedepends array
+    for dep in "${makedepends[@]:-}"; do
+      echo "makedepend:$dep"
+    done
+
+    # Print architecture-specific depends (depends_$CARCH, depends_x86_64, etc.)
+    local arch_depends_var="depends_${CARCH}"
+    local arch_depends_array="${arch_depends_var}[@]"
+    for dep in "${!arch_depends_array:-}"; do
+      echo "depend:$dep"
+    done
+
+    # Print architecture-specific makedepends (makedepends_$CARCH, makedepends_x86_64, etc.)
+    local arch_makedepends_var="makedepends_${CARCH}"
+    local arch_makedepends_array="${arch_makedepends_var}[@]"
+    for dep in "${!arch_makedepends_array:-}"; do
+      echo "makedepend:$dep"
+    done
+
+    # Debug: Show counts
+    if [[ -n "${OMARCHY_AUR_DEBUG:-}" ]]; then
+      local arch_count=0
+      eval "arch_count=\${#${arch_makedepends_var}[@]}"
+      echo "DEBUG:makedepends_count=${#makedepends[@]}" >&2
+      echo "DEBUG:makedepends_${CARCH}_count=${arch_count}" >&2
+    fi
+  )
+}
+
+# Recursively resolve AUR dependencies
+# Returns a list of AUR packages needed (in reverse dependency order)
+resolve_aur_deps_recursive() {
+  local package="$1"
+  local resolved_file="$2"  # File to track resolved packages (avoid cycles)
+  local deps_file="$3"      # File to accumulate dependencies
+  local git_source="$4"     # AUR or GitHub mirror URL
+  local use_mirror="$5"     # true/false - whether to use GitHub mirror branch mode
+
+  # Check if already resolved
+  if grep -q "^${package}$" "$resolved_file" 2>/dev/null; then
+    return 0
+  fi
+
+  # Mark as resolved to prevent cycles
+  echo "$package" >> "$resolved_file"
+
+  # Get PackageBase for split packages (check hardcoded first)
+  local package_base=$(get_package_base_from_hardcoded "$package")
+
+  # Save current directory to return to after cleanup
+  local original_dir="$PWD"
+
+  # Clone package to temporary location to read PKGBUILD
+  local temp_dir=$(mktemp -d -p "/tmp" "aur-dep-check-XXXX")
+  trap 'cd "$original_dir"; rm -rf "$temp_dir"' RETURN
+
+  cd "$temp_dir"
+
+  # Clone from appropriate source (AUR or GitHub mirror)
+  local clone_success=false
+  local tried_rpc_discovery=false
+
+  if [ "$use_mirror" = "true" ]; then
+    # Use GitHub mirror branch mode (use package_base)
+    if clone_from_github_mirror "$package_base"; then
+      clone_success=true
+    fi
+  else
+    # Use AUR directly (clone using package_base, not package name)
+    if git clone --depth 1 "$git_source/$package_base.git" "$package_base" 2>/dev/null; then
+      clone_success=true
+    fi
+  fi
+
+  # Verify PKGBUILD exists (git clone can "succeed" but create empty directory)
+  if [ "$clone_success" = "true" ]; then
+    if [[ ! -d "$package_base" ]] || [[ ! -f "$package_base/PKGBUILD" ]]; then
+      debug_log "Clone appeared successful but no PKGBUILD found - treating as clone failure"
+      clone_success=false
+      # Clean up empty/broken directory
+      rm -rf "$package_base" 2>/dev/null || true
+    fi
+  fi
+
+  # If clone failed AND we haven't tried RPC discovery yet, try discovering split package
+  if [ "$clone_success" = "false" ] && [ "$tried_rpc_discovery" = "false" ]; then
+    print_info "Clone failed for '$package_base', checking if this is a split package..."
+
+    # Query AUR RPC to discover PackageBase
+    local discovered_base=$(query_package_base_from_aur "$package")
+    tried_rpc_discovery=true
+
+    # If RPC discovered a different PackageBase, retry clone
+    if [[ "$discovered_base" != "$package_base" ]]; then
+      package_base="$discovered_base"
+      print_info "Retrying with discovered PackageBase: '$package_base'..."
+
+      # Retry clone with discovered PackageBase
+      if [ "$use_mirror" = "true" ]; then
+        if clone_from_github_mirror "$package_base"; then
+          clone_success=true
+        fi
+      else
+        if git clone --depth 1 "$git_source/$package_base.git" "$package_base" 2>/dev/null; then
+          clone_success=true
+        fi
+      fi
+
+      # Verify PKGBUILD exists after retry
+      if [ "$clone_success" = "true" ]; then
+        if [[ ! -d "$package_base" ]] || [[ ! -f "$package_base/PKGBUILD" ]]; then
+          debug_log "Retry clone appeared successful but no PKGBUILD found"
+          clone_success=false
+          rm -rf "$package_base" 2>/dev/null || true
+        fi
+      fi
+    else
+      debug_log "RPC query did not discover a different PackageBase (may not exist in AUR)"
+    fi
+  fi
+
+  # If still failed, give up
+  if [ "$clone_success" = "false" ]; then
+    print_warning "Could not fetch PKGBUILD for '$package' - may not exist in AUR"
+    return 1
+  fi
+
+  if [[ ! -d "$package_base" ]]; then
+    print_error "Clone appeared to succeed but directory '$package_base' not found"
+    return 1
+  fi
+
+  cd "$package_base"
+
+  if [[ ! -f "PKGBUILD" ]]; then
+    print_error "No PKGBUILD found in cloned repository for '$package' (base: '$package_base')"
+    return 1
+  fi
+
+  # Extract dependencies from PKGBUILD
+  debug_log "Extracting dependencies from PKGBUILD for '$package'..."
+  local deps=$(extract_pkgbuild_deps "PKGBUILD")
+  local extract_result=$?
+
+  if [[ -n "${OMARCHY_AUR_DEBUG:-}" ]]; then
+    debug_log "Extract result code: $extract_result"
+    debug_log "Dependencies for '$package': $(echo "$deps" | wc -l) items"
+    if [[ -n "$deps" ]]; then
+      echo "$deps" | while read line; do debug_log "  -> $line"; done
+    else
+      print_warning "No dependencies extracted from PKGBUILD"
+    fi
+  fi
+
+  if [[ -z "$deps" ]]; then
+    # No dependencies found - this is OK, package might have no AUR deps
+    debug_log "Adding '$package' to deps file (no dependencies)"
+    echo "$package" >> "$deps_file"
+    return 0
+  fi
+
+  # Process each dependency
+  while IFS= read -r dep_line; do
+    if [[ -z "$dep_line" ]]; then continue; fi
+
+    local dep_name=$(echo "$dep_line" | cut -d: -f2)
+
+    # Skip empty or library dependencies (check BEFORE stripping)
+    if [[ -z "$dep_name" ]] || [[ "$dep_name" =~ \.so ]]; then
+      debug_log "  Skipping library: $dep_name"
+      continue
+    fi
+
+    # Strip version constraints (but NOT .so suffix)
+    dep_name=$(strip_dep_name "$dep_name")
+
+    # Skip if dependency is already satisfied (installed or provided)
+    # pacman -T returns 0 if all packages are satisfied
+    if pacman -T "$dep_name" &>/dev/null; then
+      debug_log "  Skipping '$dep_name' (already satisfied)"
+      continue
+    fi
+
+    # Skip if it's an official package
+    if is_official_package "$dep_name"; then
+      debug_log "  Skipping official package: $dep_name"
+      continue
+    fi
+
+    # Recursively resolve this AUR dependency
+    debug_log "  Resolving AUR dependency: $dep_name"
+    resolve_aur_deps_recursive "$dep_name" "$resolved_file" "$deps_file" "$git_source" "$use_mirror" || true
+  done <<< "$deps"
+
+  # Add this package to the dependency list (after its dependencies)
+  echo "$package" >> "$deps_file"
+
+  return 0
+}
+
+# --- Package Installation ---
+install_package() {
+  local package_name="$1"
+  local git_url="$2"
+  local use_branch="${3:-false}"
+  local extra_flags="${4:-}"
+
+  # Check if package requirement is already satisfied (including via provides)
+  if pacman -T "$package_name" &>/dev/null; then
+    print_success "'$package_name' is already satisfied, skipping"
+    return 0
+  fi
+
+  print_info "Installing '$package_name'..."
+
+  # Step 1: Get initial PackageBase (check hardcoded, default to package_name)
+  local package_base=$(get_package_base_from_hardcoded "$package_name")
+  local tried_rpc_discovery=false
+
+  if [[ "$package_base" != "$package_name" ]]; then
+    print_info "Using hardcoded mapping: '$package_name' -> '$package_base'"
+  fi
+
+  # Check if pre-discovery already cloned this package
+  local prediscovery_dir="/tmp/aur-prediscovery-$(id -u)-${package_name}"
+  local reused_clone=false
+
+  if [[ -d "$prediscovery_dir/$package_name" ]] && [[ -f "$prediscovery_dir/$package_name/PKGBUILD" ]]; then
+    print_info "Reusing clone from pre-discovery phase"
+    local build_dir="$prediscovery_dir"
+    # Don't cleanup pre-discovery dir on exit, just cleanup on success
+    trap '' RETURN
+    reused_clone=true
+  else
+    # Create temporary build directory
+    local build_dir
+    build_dir=$(mktemp -d -p "/tmp" "aur-build-$package_name-XXXX")
+    print_info "Using temporary build directory: $build_dir"
+    # Ensure cleanup on exit
+    trap 'rm -rf "$build_dir"' RETURN
+  fi
+
+  cd "$build_dir"
+
+  # Step 2: Try cloning with initial package_base (skip if reused)
+  local clone_success=false
+  local state=($(get_aur_state))
+  local aur_status="${state[0]}"
+
+  if [[ "$reused_clone" == "true" ]]; then
+    # Already have valid clone from pre-discovery
+    clone_success=true
+    # Update package_base to match the cloned directory name
+    if [[ "$package_base" != "$package_name" ]]; then
+      # Hardcoded mapping, but clone is under package_name
+      # This shouldn't happen in pre-discovery, but handle it
+      :
+    fi
+  else
+    print_info "Cloning repository for '$package_base'..."
+  fi
+
+  if [[ "$reused_clone" == "false" ]]; then
+
+    if [ "$use_branch" = "true" ]; then
+      # GitHub mirror uses branch-per-package (use package_base for branch name)
+      if try_clone_from_mirror "$package_base"; then
+        clone_success=true
+      fi
+    else
+      # Check if AUR is marked as down or in cooldown
+      if [ "$aur_status" = "down" ] && is_aur_in_cooldown; then
+        print_info "AUR is in cooldown, using GitHub mirror directly"
+        if try_clone_from_mirror "$package_base"; then
+          clone_success=true
+        fi
+      else
+        # Try AUR first (with retries, unless degraded)
+        local max_attempts=2
+        [ "$aur_status" = "degraded" ] && max_attempts=1
+
+        for attempt in 1 $max_attempts; do
+          if try_clone_from_aur "$package_base" "$git_url"; then
+            clone_success=true
+            record_aur_success  # Reset failure counter
+            break
+          else
+            if [ $attempt -lt $max_attempts ]; then
+              print_warning "Clone attempt $attempt failed, retrying..."
+              sleep 1
+            fi
+          fi
+        done
+
+        # If AUR clone failed, try GitHub mirror as fallback
+        if [ "$clone_success" = "false" ]; then
+          record_aur_failure  # Increment failure counter
+          print_warning "AUR clone failed, trying GitHub mirror..."
+          if try_clone_from_mirror "$package_base"; then
+            clone_success=true
+            print_success "Successfully cloned from GitHub mirror"
+          fi
+        fi
+      fi
+    fi
+
+    # Step 2.5: Verify PKGBUILD exists (git clone can "succeed" but create empty directory)
+    if [ "$clone_success" = "true" ]; then
+      if [[ ! -d "$package_base" ]] || [[ ! -f "$package_base/PKGBUILD" ]]; then
+        print_warning "Clone appeared successful but no PKGBUILD found - treating as clone failure"
+        clone_success=false
+        # Clean up empty/broken directory
+        rm -rf "$package_base" 2>/dev/null || true
+      fi
+    fi
+
+    # Step 3: If clone failed AND we haven't tried RPC discovery yet, try discovering split package
+    if [ "$clone_success" = "false" ] && [ "$tried_rpc_discovery" = "false" ]; then
+      print_warning "Clone failed for '$package_base', checking if this is a split package..."
+
+      # Query AUR RPC to discover PackageBase
+      local discovered_base=$(query_package_base_from_aur "$package_name")
+      tried_rpc_discovery=true
+
+      # If RPC discovered a different PackageBase, retry clone
+      if [[ "$discovered_base" != "$package_base" ]]; then
+        package_base="$discovered_base"
+        print_info "Retrying with discovered PackageBase: '$package_base'..."
+
+        # Retry clone with discovered PackageBase
+        if [ "$use_branch" = "true" ]; then
+          try_clone_from_mirror "$package_base" && clone_success=true
+        elif [ "$aur_status" = "down" ] && is_aur_in_cooldown; then
+          try_clone_from_mirror "$package_base" && clone_success=true
+        else
+          # Try AUR first, then mirror
+          if try_clone_from_aur "$package_base" "$git_url"; then
+            clone_success=true
+            record_aur_success
+          elif try_clone_from_mirror "$package_base"; then
+            clone_success=true
+          fi
+        fi
+      fi
+    fi
+
+    # Step 3.5: Verify PKGBUILD exists after retry (same validation as Step 2.5)
+    if [ "$clone_success" = "true" ]; then
+      if [[ ! -d "$package_base" ]]; then
+        print_warning "Retry clone appeared successful but directory '$package_base' does not exist"
+        debug_log "Current directory: $(pwd)"
+        debug_log "Contents: $(ls -la)"
+        clone_success=false
+      elif [[ ! -f "$package_base/PKGBUILD" ]]; then
+        print_warning "Retry clone appeared successful but no PKGBUILD found"
+        debug_log "Directory exists but PKGBUILD missing - contents of '$package_base': $(ls -la "$package_base")"
+        clone_success=false
+        # Clean up empty/broken directory
+        rm -rf "$package_base" 2>/dev/null || true
+      fi
+    fi
+
+  fi  # End of: if [[ "$reused_clone" == "false" ]]; then
+
+  # Step 4: If still failed, give up
+  if [ "$clone_success" = "false" ]; then
+    handle_package_not_found "$package_name"
+    return $?
+  fi
+
+  # cd into the package directory (either package_name for pre-discovery, or package_base for new clones)
+  if [[ "$reused_clone" == "true" ]]; then
+    cd "$package_name"
+  else
+    cd "$package_base"
+  fi
+
+  # Build and install
+  print_info "Building and installing '$package_name'..."
+  # Add --ignorearch for ARM systems (many AUR packages don't officially support ARM)
+  local makepkg_flags=(-si --noconfirm)
+  local is_split_package=false
+
+  # Check if this is a split package (package_name != package_base)
+  if [[ "$package_name" != "$package_base" ]]; then
+    is_split_package=true
+  fi
+
+  if [[ "$(uname -m)" == "aarch64" ]]; then
+    makepkg_flags+=(--ignorearch)
+
+    # Check if this package has flaky tests on ARM
+    if [[ -n "${SKIP_TESTS_ON_ARM[$package_name]:-}" ]]; then
+      print_warning "Skipping tests on ARM: ${SKIP_TESTS_ON_ARM[$package_name]}"
+      makepkg_flags+=(--nocheck)
+    fi
+
+    # For split packages on ARM, build only (don't install all packages)
+    # We'll manually install only the requested package afterward
+    if [[ "$is_split_package" == "true" ]]; then
+      print_info "Split package detected on ARM - will install only '$package_name'"
+      # Remove -i flag (install), keep -s (sync dependencies)
+      makepkg_flags=("${makepkg_flags[@]/-si/-s}")
+    fi
+  fi
+  # Add any extra flags passed by caller
+  if [[ -n "$extra_flags" ]]; then
+    # Parse extra flags into array (safe for space-separated tokens)
+    read -ra extra_array <<< "$extra_flags"
+    makepkg_flags+=("${extra_array[@]}")
+  fi
+
+  # Pre-build: Check for conflicting packages and remove them
+  # This handles cases where old versions conflict with new ones (e.g., dotnet-host vs dotnet-host-bin)
+  local srcinfo
+  if srcinfo=$(makepkg --printsrcinfo 2>/dev/null); then
+    # Extract conflicts from .SRCINFO
+    local conflicts=$(echo "$srcinfo" | grep "^\s*conflicts\s*=" | sed 's/.*=\s*//')
+    for conflict_pkg in $conflicts; do
+      # Strip version constraints (e.g., "dotnet-host>=2.0" -> "dotnet-host")
+      conflict_pkg=$(strip_version_constraints "$conflict_pkg")
+
+      # Check if conflicting package is installed (by exact name, not provides)
+      if pacman -Q "$conflict_pkg" &>/dev/null; then
+        print_warning "Removing conflicting package '$conflict_pkg' before installation..."
+        if ! sudo pacman -Rdd --noconfirm "$conflict_pkg" 2>/dev/null; then
+          print_warning "Failed to remove '$conflict_pkg', installation may prompt for conflict resolution"
+        fi
+      fi
+    done
+  fi
+
+  # Use printf to generate finite number of "1" selections for provider prompts
+  # This avoids EPIPE errors that occur with 'yes 1 |' when build processes write verbose output
+  printf '1\n%.0s' {1..100} | makepkg "${makepkg_flags[@]}" || {
+    print_error "Failed to build/install '$package_name'"
+    return 1
+  }
+
+  # For ARM split packages, decide whether to install all or only requested package
+  if [[ "$(uname -m)" == "aarch64" ]] && [[ "$is_split_package" == "true" ]]; then
+    # Check if this split package should install all built packages
+    if [[ -n "${INSTALL_ALL_SPLIT_PACKAGES[$package_base]:-}" ]]; then
+      # Install ALL packages (for packages with interdependencies like dotnet)
+      print_info "Installing all packages from split package '$package_base' (includes '$package_name')..."
+
+      # Find ALL built package files from this split package
+      mapfile -t pkg_files < <(find . -maxdepth 1 \( -name "*.pkg.tar.zst" -o -name "*.pkg.tar.xz" \) -type f)
+
+      if [[ ${#pkg_files[@]} -eq 0 ]]; then
+        print_error "Could not find any built package files for '$package_base'"
+        return 1
+      fi
+
+      print_info "Found ${#pkg_files[@]} packages from split package '$package_base'"
+      # Install all packages together so pacman can resolve dependencies between them
+      if ! sudo pacman -U --noconfirm --needed "${pkg_files[@]}"; then
+        print_error "Failed to install packages from split package '$package_base'"
+        return 1
+      fi
+    else
+      # Install ONLY requested package (for packages like yaru with missing external deps)
+      print_info "Installing only '$package_name' from split package '$package_base'..."
+
+      # Find the built package file for the requested package
+      local pkg_file
+      pkg_file=$(find . -maxdepth 1 -name "${package_name}-*.pkg.tar.zst" -o -name "${package_name}-*.pkg.tar.xz" | head -1)
+
+      if [[ -z "$pkg_file" ]]; then
+        print_error "Could not find built package file for '$package_name'"
+        return 1
+      fi
+
+      print_info "Found package: $pkg_file"
+      if ! sudo pacman -U --noconfirm --needed "$pkg_file"; then
+        print_error "Failed to install '$package_name' from built package"
+        return 1
+      fi
+    fi
+  fi
+
+  print_success "Successfully installed '$package_name'"
+  return 0
+}
+
+# --- Main Logic ---
+# Determine which git source to use
+if check_aur_available; then
+  # AUR is available, use standard AUR git
+  USE_GITHUB_MIRROR=false
+  GIT_SOURCE="$AUR_GIT_URL"
+else
+  # AUR is down, use GitHub mirror
+  print_warning "Falling back to GitHub mirror: $GITHUB_MIRROR_URL"
+  USE_GITHUB_MIRROR=true
+  GIT_SOURCE="$GITHUB_MIRROR_URL"
+fi
+
+# Check if all requested packages are already satisfied (including via provides)
+PACKAGES_TO_INSTALL=()
+for package_name in "${PACKAGES[@]}"; do
+  # Use pacman -T to check if package is satisfied (handles provides relationships)
+  if ! pacman -T "$package_name" &>/dev/null; then
+    PACKAGES_TO_INSTALL+=("$package_name")
+  else
+    print_success "'$package_name' is already satisfied, skipping"
+  fi
+done
+
+# If all packages are already installed, exit early
+if [ ${#PACKAGES_TO_INSTALL[@]} -eq 0 ]; then
+  print_success "All requested packages are already installed"
+  exit 0
+fi
+
+# ALWAYS resolve AUR dependencies recursively (whether using AUR or GitHub mirror)
+# This ensures AUR dependencies of AUR packages are installed automatically
+# Official repo dependencies are still handled by makepkg's -s flag
+print_info "Resolving AUR dependencies recursively for ${#PACKAGES_TO_INSTALL[@]} packages..."
+RESOLVED_FILE=$(mktemp -p "/tmp" "aur-resolved-XXXX")
+DEPS_FILE=$(mktemp -p "/tmp" "aur-deps-XXXX")
+trap 'rm -f "$RESOLVED_FILE" "$DEPS_FILE"' EXIT
+
+for package_name in "${PACKAGES_TO_INSTALL[@]}"; do
+  print_info "Resolving dependencies for '$package_name'..."
+  if ! resolve_aur_deps_recursive "$package_name" "$RESOLVED_FILE" "$DEPS_FILE" "$GIT_SOURCE" "$USE_GITHUB_MIRROR"; then
+    print_warning "Failed to fully resolve dependencies for '$package_name' - will attempt installation anyway"
+  fi
+done
+
+# Build list of all AUR dependencies (in order, without duplicates)
+ALL_DEPS=()
+if [[ -f "$DEPS_FILE" ]]; then
+  while IFS= read -r dep; do
+    # Skip if already in list (deduplication)
+    if [[ ! " ${ALL_DEPS[@]} " =~ " ${dep} " ]]; then
+      ALL_DEPS+=("$dep")
+    fi
+  done < "$DEPS_FILE"
+fi
+
+# Show what will be installed
+if [[ ${#ALL_DEPS[@]} -eq 0 ]]; then
+  print_info "No packages to install (all already installed)"
+  exit 0
+fi
+
+print_info "Will install ${#ALL_DEPS[@]} packages in dependency order: ${ALL_DEPS[*]}"
+
+# Pre-discovery phase: Detect split packages to enable deduplication
+# This runs ONLY if we have unknown packages (not hardcoded) AND multiple packages
+# Reduces RPC queries from 2 per package to 1 per package for unknown split packages
+declare -A PACKAGEBASE_MAP
+
+# Count unknown packages (not in hardcoded list)
+unknown_packages=0
+for package_name in "${ALL_DEPS[@]}"; do
+  if pacman -T "$package_name" &>/dev/null; then
+    continue  # Already satisfied
+  fi
+  package_base=$(get_package_base_from_hardcoded "$package_name")
+  if [[ "$package_base" == "$package_name" ]]; then
+    unknown_packages=$((unknown_packages + 1))
+  fi
+done
+
+# Only do pre-discovery if we have unknown packages AND multiple packages to install
+if [[ $unknown_packages -gt 0 ]] && [[ ${#ALL_DEPS[@]} -gt 1 ]]; then
+  print_info "Detecting split packages for $unknown_packages unknown package(s)..."
+
+  # Diagnostic: Confirm we got here
+  print_info "Starting pre-discovery phase..."
+
+  # Save original directory to return to after each package
+  original_prediscovery_dir="$PWD"
+  print_info "Current directory: $original_prediscovery_dir"
+
+  # Track progress
+  processed_count=0
+  print_info "Initializing loop for ${#ALL_DEPS[@]} total packages..."
+
+  for package_name in "${ALL_DEPS[@]}"; do
+    debug_log "Pre-discovery: checking package '$package_name'"
+
+    if pacman -T "$package_name" &>/dev/null; then
+      debug_log "  → already satisfied, skipping"
+      continue  # Already satisfied
+    fi
+
+    processed_count=$((processed_count + 1))
+    print_info "[$processed_count/$unknown_packages] Checking $package_name..."
+
+    # Try hardcoded first (instant, no network)
+    package_base=$(get_package_base_from_hardcoded "$package_name")
+    debug_log "  → package_base='$package_base'"
+
+    # ONLY query RPC if not in hardcoded list
+    if [[ "$package_base" == "$package_name" ]]; then
+      # Try to clone first - only query RPC if clone fails or no PKGBUILD
+      # Clone to a persistent location that install_package can reuse
+      prediscovery_dir="/tmp/aur-prediscovery-$(id -u)-${package_name}"
+
+      mkdir -p "$prediscovery_dir"
+      cd "$prediscovery_dir"
+      clone_success=false
+
+      # Try clone (use same logic as install_package)
+      if [ "$USE_GITHUB_MIRROR" = "true" ]; then
+        if git clone --depth 1 --single-branch --branch "$package_name" "$GITHUB_MIRROR_URL" "$package_name" 2>/dev/null; then
+          clone_success=true
+        fi
+      else
+        if git clone --depth 1 "$GIT_SOURCE/$package_name.git" "$package_name" 2>/dev/null; then
+          clone_success=true
+        fi
+      fi
+
+      # Verify PKGBUILD exists
+      if [[ "$clone_success" == "true" ]]; then
+        if [[ ! -d "$package_name" ]] || [[ ! -f "$package_name/PKGBUILD" ]]; then
+          clone_success=false
+          # Clean up failed clone (must cd back first before removing directory)
+          cd "$original_prediscovery_dir"
+          rm -rf "$prediscovery_dir"
+        fi
+      fi
+
+      # ONLY query RPC if clone failed or no PKGBUILD found
+      if [[ "$clone_success" == "false" ]]; then
+        discovered_base=$(query_package_base_from_aur "$package_name")
+        if [[ "$discovered_base" != "$package_name" ]]; then
+          package_base="$discovered_base"
+          # Clean up the failed clone attempt
+          rm -rf "$prediscovery_dir"
+        fi
+      fi
+
+      # Always return to original directory (unless we already did due to cleanup)
+      if [[ "$PWD" != "$original_prediscovery_dir" ]]; then
+        cd "$original_prediscovery_dir"
+      fi
+      # Don't cleanup if clone succeeded - install_package will reuse it
+    fi
+
+    # Add to map (group by PackageBase)
+    if [[ -n "${PACKAGEBASE_MAP[$package_base]:-}" ]]; then
+      PACKAGEBASE_MAP[$package_base]+=" $package_name"
+    else
+      PACKAGEBASE_MAP[$package_base]="$package_name"
+    fi
+  done
+
+  # Show deduplication results (only if we found splits)
+  for package_base in "${!PACKAGEBASE_MAP[@]}"; do
+    packages="${PACKAGEBASE_MAP[$package_base]}"
+    package_count=$(echo "$packages" | wc -w)
+    if [ $package_count -gt 1 ]; then
+      print_info "Split package detected: '$package_base' provides $package_count packages: $packages"
+    fi
+  done
+fi
+
+# Track which PackageBases have been built (to avoid rebuilding split packages)
+declare -A BUILT_PACKAGEBASES
+
+# Track failures
+FAILED_PACKAGES=()
+
+# Install all packages in dependency-resolved order
+for package_name in "${ALL_DEPS[@]}"; do
+  # Skip if already satisfied (including via provides)
+  if pacman -T "$package_name" &>/dev/null; then
+    print_success "'$package_name' is already satisfied, skipping"
+    continue
+  fi
+
+  # Get PackageBase for this package (handles split packages)
+  # Use pre-discovered base from PACKAGEBASE_MAP if available, otherwise use hardcoded
+  package_base=""
+  if [[ ${#PACKAGEBASE_MAP[@]} -gt 0 ]]; then
+    # Pre-discovery was done, find this package in the map
+    for base in "${!PACKAGEBASE_MAP[@]}"; do
+      if [[ " ${PACKAGEBASE_MAP[$base]} " =~ " ${package_name} " ]]; then
+        package_base="$base"
+        break
+      fi
+    done
+  fi
+
+  # Fallback to hardcoded if not found in map
+  if [[ -z "$package_base" ]]; then
+    package_base=$(get_package_base_from_hardcoded "$package_name")
+  fi
+
+  # Check if we've already built this PackageBase (split package optimization)
+  if [[ -n "${BUILT_PACKAGEBASES[$package_base]:-}" ]]; then
+    # This PackageBase was already built, check if this specific package was installed
+    if pacman -Q "$package_name" &>/dev/null; then
+      print_success "'$package_name' was installed as part of split package '$package_base'"
+    else
+      # PackageBase was built but this specific package wasn't installed (shouldn't happen)
+      print_warning "'$package_name' should have been installed with '$package_base' but wasn't found"
+      FAILED_PACKAGES+=("$package_name")
+    fi
+    continue
+  fi
+
+  # Install the package (this may install multiple packages if it's a split package)
+  if install_package "$package_name" "$GIT_SOURCE" "$USE_GITHUB_MIRROR" "$EXTRA_MAKEPKG_FLAGS"; then
+    # Mark this PackageBase as built
+    BUILT_PACKAGEBASES[$package_base]=1
+
+    # Verify this specific package was installed
+    if ! pacman -Q "$package_name" &>/dev/null; then
+      FAILED_PACKAGES+=("$package_name")
+    fi
+  else
+    # Installation failed
+    FAILED_PACKAGES+=("$package_name")
+    # Still mark as built to avoid retrying if other packages from this split are in the list
+    BUILT_PACKAGEBASES[$package_base]=1
+  fi
+
+  echo  # Blank line between packages
+done
+
+# Summary - verify failures (some packages may have been installed by split packages)
+ACTUAL_FAILURES=()
+for package_name in "${FAILED_PACKAGES[@]}"; do
+  if ! pacman -Q "$package_name" &>/dev/null; then
+    # Still not installed, actual failure
+    ACTUAL_FAILURES+=("$package_name")
+  else
+    # Package was installed by another split package
+    print_success "'$package_name' was installed as part of a split package"
+  fi
+done
+
+if [ ${#ACTUAL_FAILURES[@]} -eq 0 ]; then
+  print_success "All packages installed successfully"
+  exit 0
+else
+  print_error "Failed to install: ${ACTUAL_FAILURES[*]}"
+  exit 1
+fi
