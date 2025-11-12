@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# This script deploys ~/.local/share/omarchy/config/X/Y/Z -> ~/.config/X/Y/Z
+# This script deploys /etc/skel/.config/X/Y/Z -> ~/.config/X/Y/Z
 config_file=$1
 
 if [[ -z "$config_file" ]]; then
@@ -8,16 +8,16 @@ if [[ -z "$config_file" ]]; then
   Usage: $0 [config_file]
 
   Must provide a file path from the .config directory to be refreshed.
-  To copy ~/.local/share/omarchy/config/hypr/hyprlock.conf to ~/.config/hypr/hyprlock.conf
-    
-    $0 hypr/hyprlock.conf     
+  To copy /etc/skel/.config/hypr/hyprlock.conf to ~/.config/hypr/hyprlock.conf
+
+    $0 hypr/hyprlock.conf
 USAGE
   exit 1
 fi
 
 # Backup the destination file (with timestamp) to avoid clobbering (Ex: hyprlock.conf.bak.1753817951)
 user_config_file="${HOME}/.config/$config_file"
-default_config_file="${HOME}/.local/share/omarchy/config/$config_file"
+default_config_file="/etc/skel/.config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
 
 if [[ -f "$user_config_file" ]]; then
