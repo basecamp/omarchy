@@ -1,30 +1,175 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
 
-# Default temperature values
-ON_TEMP=4000
-OFF_TEMP=6000
+# defaults (used if no valid user config)
+DEFAULT_LIST=(6000 4000)
 
-# Ensure hyprsunset is running
-if ! pgrep -x hyprsunset; then
-  setsid uwsm-app -- hyprsunset &
-  sleep 1 # Give it time to register
-fi
+VALID_MIN=1000
+VALID_MAX=20000
 
-# Query the current temperature
-CURRENT_TEMP=$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+')
+USER_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/nightlight.conf"
 
-restart_nightlighted_waybar() {
-  if grep -q "custom/nightlight" ~/.config/waybar/config.jsonc; then
-    omarchy-restart-waybar # restart waybar in case user has waybar module for hyprsunset
+# State dir for intermittent invalid-config notifications
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
+INVALID_NOTE_FILE="$STATE_DIR/nightlight_invalid_notice"
+NOTIFY_TTL_SECS=1800  # notify at most once every 30 minutes unless config changes
+
+ensure_hyprsunset() {
+  if ! pgrep -x hyprsunset >/dev/null 2>&1; then
+    setsid uwsm-app -- hyprsunset >/dev/null 2>&1 &
+    sleep 0.5
   fi
 }
 
-if [[ "$CURRENT_TEMP" == "$OFF_TEMP" ]]; then
-  hyprctl hyprsunset temperature $ON_TEMP
-  notify-send "  Nightlight screen temperature"
+read_current_temp() {
+  local t
+  t="$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+' || true)"
+  if [[ -z "$t" ]]; then
+    echo "${DEFAULT_LIST[0]}"
+  else
+    echo "$t"
+  fi
+}
+
+# Global flags & arrays populated by loader
+FLAG_INVALID=0
+CFG_TEMPS=()
+
+# Compute a stable checksum for the user config if it exists; empty if not
+cfg_checksum() {
+  if [[ -f "$USER_CFG" ]]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+      sha256sum "$USER_CFG" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+      shasum -a 256 "$USER_CFG" | awk '{print $1}'
+    else
+      # Fallback: bytes+mtime combo (not cryptographic, but stable enough for change detection)
+      stat --printf='%s-%Y' "$USER_CFG" 2>/dev/null || echo "$(wc -c <"$USER_CFG" 2>/dev/null)-0"
+    fi
+  else
+    echo "NOFILE"
+  fi
+}
+
+# Decide whether to show the invalid-config notification now
+should_notify_invalid() {
+  mkdir -p "$STATE_DIR"
+  local epoch last_epoch=0 last_sum=""
+  epoch="$(date +%s)"
+  local sum
+  sum="$(cfg_checksum)"
+
+  if [[ -f "$INVALID_NOTE_FILE" ]]; then
+    # file format: "<epoch> <checksum>"
+    read -r last_epoch < "$INVALID_NOTE_FILE" || true
+    read -r last_sum < <(tail -n +2 "$INVALID_NOTE_FILE") || true
+  fi
+
+  # Re-notify if checksum changed (user edited config), or TTL expired, or no record
+  if [[ "$sum" != "$last_sum" ]] || (( epoch - last_epoch >= NOTIFY_TTL_SECS )); then
+    printf '%s\n%s\n' "$epoch" "$sum" > "$INVALID_NOTE_FILE"
+    return 0
+  fi
+  return 1
+}
+
+# Load/validate config into CFG_TEMPS; set FLAG_INVALID if missing/invalid
+load_config_temps() {
+  FLAG_INVALID=0
+  CFG_TEMPS=()
+
+  if [[ -f "$USER_CFG" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      # Trim
+      line="${line#"${line%%[![:space:]]*}"}"
+      line="${line%"${line##*[![:space:]]}"}"
+      # Skip comments/blank
+      [[ -z "$line" || "$line" =~ ^# ]] && continue
+
+      if ! [[ "$line" =~ ^[0-9]+$ ]]; then
+        FLAG_INVALID=1
+        continue
+      fi
+      if (( line < VALID_MIN || line > VALID_MAX )); then
+        FLAG_INVALID=1
+        continue
+      fi
+
+      CFG_TEMPS+=("$line")
+    done < "$USER_CFG"
+  else
+    # No user config present
+    FLAG_INVALID=1
+  fi
+
+  # If nothing valid collected, mark invalid
+  if [[ ${#CFG_TEMPS[@]} -eq 0 ]]; then
+    FLAG_INVALID=1
+  fi
+}
+
+restart_nightlighted_waybar() {
+  if grep -q "custom/nightlight" "${HOME}/.config/waybar/config.jsonc" 2>/dev/null; then
+    omarchy-restart-waybar || true
+  fi
+}
+
+notify_for_temp() {
+  local k=$1
+  if (( k >= 7500)); then
+    notify-send "  Screen temperature - Cool (${k}K)"
+  elif (( k >= 5500 )); then
+    notify-send "  Screen temperature - Neutral (${k}K)"
+  elif (( k >= 3500 )); then
+    notify-send "󰖚  Screen temperature - Warm (${k}K)"
+  elif (( k >= 1000 )); then
+    notify-send "  Screen temperature - Hot (${k}K)"
+  else
+    notify-send "Error in setting temperature"
+  fi
+}
+
+main() {
+  ensure_hyprsunset
+
+  # Load config or fallback to defaults
+  load_config_temps
+  local -a CYCLE=()
+  if [[ $FLAG_INVALID -eq 1 ]]; then
+    CYCLE=("${DEFAULT_LIST[@]}")
+    if should_notify_invalid; then
+      notify-send "󰂚 Nightlight config not found/invalid" "Using defaults:\n${CYCLE[*]}"
+    fi
+  else
+    CYCLE=("${CFG_TEMPS[@]}")
+  fi
+
+  # Determine next temp
+  local current next_idx=0
+  current="$(read_current_temp)"
+
+  local found_idx=-1
+  for i in "${!CYCLE[@]}"; do
+    if [[ "${CYCLE[$i]}" == "${current}" ]]; then
+      found_idx=$i
+      break
+    fi
+  done
+
+  if [[ $found_idx -ge 0 ]]; then
+    next_idx=$(( (found_idx + 1) % ${#CYCLE[@]} ))
+  else
+    next_idx=0
+  fi
+
+  local next="${CYCLE[$next_idx]}"
+
+  # Apply and refresh UI
+  hyprctl hyprsunset temperature "$next" >/dev/null 2>&1 || true
+  notify_for_temp "$next"
   restart_nightlighted_waybar
-else
-  hyprctl hyprsunset temperature $OFF_TEMP
-  notify-send "   Daylight screen temperature"
-  restart_nightlighted_waybar
-fi
+}
+
+main "$@"
+
