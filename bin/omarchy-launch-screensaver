@@ -6,7 +6,7 @@ if ! command -v tte &>/dev/null; then
 fi
 
 # Exit early if screensave is already running
-pgrep -f "alacritty --class Screensaver" && exit 0
+pgrep -f com.omarchy.Screensaver && exit 0
 
 # Allow screensaver to be turned off but also force started
 if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]]; then
@@ -15,18 +15,37 @@ fi
 
 # Save current state
 prior_monitor=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
-prior_window=$(hyprctl activewindow -j | jq -r '.address // empty') # Hex identifier for the window
+prior_window=$(hyprctl activewindow -j | jq -r '.address // empty') # Hex identifier
 prior_fullscreen=$(hyprctl activewindow -j | jq -r '.fullscreen // 0') # 0=none, 1=fullscreen, 2=maximized fullscreen
+terminal=$(xdg-terminal-exec --print-id)
 
 # Launch Screensaver on each monitor
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   hyprctl dispatch focusmonitor $m
 
-  # FIXME: Find a way to make this generic where we it can work for kitty + ghostty
-  hyprctl dispatch exec -- \
-    alacritty --class Screensaver \
-    --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
-    -e omarchy-cmd-screensaver
+  case $terminal in
+  *Alacritty*)
+    hyprctl dispatch exec -- \
+      alacritty --class=com.omarchy.Screensaver \
+      --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
+      -e omarchy-cmd-screensaver
+    ;;
+  *ghostty*)
+    hyprctl dispatch exec -- \
+      ghostty --class=com.omarchy.Screensaver \
+      --font-size=18 \
+      -e omarchy-cmd-screensaver
+    ;;
+  *kitty*)
+    hyprctl dispatch exec -- \
+      kitty --class=com.omarchy.Screensaver \
+      --override font_size=18 \
+      -e omarchy-cmd-screensaver
+    ;;
+  *)
+    notify-send "✋  Screensaver only runs in Alacritty, Ghostty, or Kitty"
+    ;;
+  esac
 done
 
 hyprctl dispatch focusmonitor $prior_monitor
