@@ -48,6 +48,7 @@
     "format": "",
     "exec": "omarchy-update-available",
     "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
+    "on-click-right": "omarchy-update-notes",
     "tooltip-format": "Omarchy update available",
     "signal": 7,
     "interval": 21600
