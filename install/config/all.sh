@@ -1,3 +1,4 @@
+run_logged $OMARCHY_INSTALL/config/pacman-fixes.sh
 run_logged $OMARCHY_INSTALL/config/config.sh
 run_logged $OMARCHY_INSTALL/config/theme.sh
 run_logged $OMARCHY_INSTALL/config/branding.sh
