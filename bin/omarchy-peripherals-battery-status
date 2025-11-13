@@ -1,0 +1,144 @@
+#!/bin/bash
+
+CRITICAL_THRESHOLD=15
+LOW_THRESHOLD=30
+
+get_device_icon() {
+  case "$1" in
+  mouse) echo "󰍽" ;;
+  keyboard) echo "󰌌" ;;
+  headset) echo "󰋎" ;;
+  headphones) echo "󰋋" ;;
+  gaming-input) echo "󰊗" ;;
+  tablet) echo "󰓶" ;;
+  *) echo "󰂄" ;;
+  esac
+}
+
+get_battery_icon() {
+  local percentage=$1
+  if [ "$percentage" -ge 90 ]; then
+    echo "󰁹"
+  elif [ "$percentage" -ge 70 ]; then
+    echo "󰂀"
+  elif [ "$percentage" -ge 50 ]; then
+    echo "󰁾"
+  elif [ "$percentage" -ge 30 ]; then
+    echo "󰁼"
+  elif [ "$percentage" -ge 15 ]; then
+    echo "󰁺"
+  else
+    echo "󰂎"
+  fi
+}
+
+# Determine color class based on warning-level or percentage
+get_status_color() {
+  local warning_level=$1
+  local percentage=$2
+
+  if [ "$warning_level" != "none" ] && [ "$warning_level" != "" ]; then
+    case "$warning_level" in
+    critical) echo "critical" ;;
+    low) echo "low" ;;
+    *) echo "good" ;;
+    esac
+  else
+    if [ "$percentage" -le "$CRITICAL_THRESHOLD" ]; then
+      echo "critical"
+    elif [ "$percentage" -le "$LOW_THRESHOLD" ]; then
+      echo "low"
+    else
+      echo "good"
+    fi
+  fi
+}
+
+devices_info=""
+min_percentage=100
+worst_status="good"
+
+while IFS= read -r device_path; do
+  # Skip DisplayDevice
+  if [[ "$device_path" == *"DisplayDevice"* ]]; then
+    continue
+  fi
+
+  device_output=$(upower -i "$device_path")
+  device_type=$(echo "$device_output" | grep -E "^  (mouse|keyboard|headset|headphones|gaming-input|tablet)$" | xargs)
+
+  # Skip if no valid device type
+  if [ -z "$device_type" ]; then
+    continue
+  fi
+
+  model=$(echo "$device_output" | grep "model:" | awk -F: '{print $2}' | xargs)
+  percentage=$(echo "$device_output" | grep "percentage:" | awk '{print $2}' | tr -d '%')
+  warning_level=$(echo "$device_output" | grep "warning-level:" | awk '{print $2}' | xargs)
+  state=$(echo "$device_output" | grep "state:" | awk '{print $2}' | xargs)
+
+  # Skip if no percentage or percentage is 0
+  if [ -z "$percentage" ] || [ "$percentage" -eq 0 ]; then
+    continue
+  fi
+
+  # Use model name or device type as fallback
+  if [ -z "$model" ]; then
+    model="$device_type"
+  fi
+
+  device_icon=$(get_device_icon "$device_type")
+  battery_icon=$(get_battery_icon "$percentage")
+  status_color=$(get_status_color "$warning_level" "$percentage")
+
+  if [ "$percentage" -lt "$min_percentage" ]; then
+    min_percentage="$percentage"
+  fi
+
+  if [ "$status_color" == "critical" ]; then
+    worst_status="critical"
+  elif [ "$status_color" == "low" ] && [ "$worst_status" != "critical" ]; then
+    worst_status="low"
+  fi
+
+  color_code=""
+  case "$status_color" in
+  critical) color_code="#ff5555" ;;
+  low) color_code="#f1fa8c" ;;
+  good) color_code="#50fa7b" ;;
+  esac
+
+  tooltip_line="$device_icon <b>$model</b>  <span color='$color_code'>$battery_icon $percentage%</span>"
+  if [ "$state" != "" ] && [ "$state" != "unknown" ]; then
+    tooltip_line="$tooltip_line <span color='#888888'>($state)</span>"
+  fi
+
+  if [ -n "$devices_info" ]; then
+    devices_info="$devices_info\n\n$tooltip_line"
+  else
+    devices_info="$tooltip_line"
+  fi
+done < <(upower -e)
+
+# If no devices found, don't show the icon
+if [ -z "$devices_info" ]; then
+  echo '{"text":"","tooltip":"No battery devices found","class":"good"}'
+  exit 0
+fi
+
+case "$worst_status" in
+critical)
+  icon_color="#ff5555"
+  main_icon=" 󰌐"
+  ;;
+low)
+  icon_color="#f1fa8c"
+  main_icon=" 󰌐"
+  ;;
+*)
+  icon_color="#ffffff"
+  main_icon=" 󰌐"
+  ;;
+esac
+
+echo "{\"text\":\"<span color='$icon_color'>$main_icon</span>\",\"tooltip\":\"$devices_info\",\"class\":\"$worst_status\"}"

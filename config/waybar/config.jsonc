@@ -12,7 +12,8 @@
     "network",
     "pulseaudio",
     "cpu",
-    "battery"
+    "battery",
+    "custom/devices-battery",
   ],
   "hyprland/workspaces": {
     "on-click": "activate",
@@ -52,7 +53,13 @@
     "signal": 7,
     "interval": 21600
   },
-
+  "custom/devices-battery": {
+    "exec": "omarchy-peripherals-battery-status",
+    "return-type": "json",
+    "interval": 30,
+    "format": "{}",
+    "tooltip": true
+  },
   "cpu": {
     "interval": 5,
     "format": "󰍛",
