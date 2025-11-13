@@ -56,7 +56,7 @@
   "cpu": {
     "interval": 5,
     "format": "󰍛",
-    "on-click": "xdg-terminal-exec btop"
+    "on-click": "xdg-terminal-exec --app-id=com.omarchy.btop btop"
   },
   "clock": {
     "format": "{:L%A %H:%M}",
