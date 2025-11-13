@@ -1,10 +1,109 @@
 #!/bin/bash
 
+select_dashboard_icon() {
+  METADATA_URL="https://raw.githubusercontent.com/homarr-labs/dashboard-icons/refs/heads/main/metadata.json"
+  BASE_URL="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons"
+  CACHE_DIR="$HOME/.cache/omarchy"
+  CACHE_FILE="$CACHE_DIR/dashboard-icons-metadata.json"
+  CACHE_MAX_AGE=604800  # 1 week
+  FORMAT="png"
+
+  # Ensure cache directory exists
+  mkdir -p "$CACHE_DIR"
+
+  # Fetch or use cached metadata
+  if [[ -f "$CACHE_FILE" ]]; then
+    CACHE_AGE=$(($(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || stat -f %m "$CACHE_FILE" 2>/dev/null)))
+    if [[ $CACHE_AGE -lt $CACHE_MAX_AGE ]]; then
+      METADATA=$(cat "$CACHE_FILE")
+    fi
+  fi
+
+  if [[ -z "$METADATA" ]]; then
+    echo "Fetching icon metadata..."
+    METADATA=$(curl -sL "$METADATA_URL")
+    echo "$METADATA" > "$CACHE_FILE"
+  fi
+
+  # Build icon list
+  ICON_LIST=$(echo "$METADATA" | jq -r '
+    to_entries[]
+    | .key as $name
+    | .value.aliases // [] | join(", ") as $aliases
+    | if $aliases != "" then
+        "\($name) [\($aliases)]"
+      else
+        $name
+      end
+  ' | sort)
+
+  # Select icon
+  SELECTED=$(echo "$ICON_LIST" | gum filter --placeholder "Find icons (ESC to go back)..." --height 15)
+  if [[ -z "$SELECTED" ]]; then
+    return 1
+  fi
+
+  # Extract details
+  ICON_NAME=$(echo "$SELECTED" | sed 's/ \[.*\]$//')
+  ICON_DATA=$(echo "$METADATA" | jq -r --arg name "$ICON_NAME" '.[$name]')
+  HAS_COLORS=$(echo "$ICON_DATA" | jq -r 'has("colors")')
+
+  if [[ "$HAS_COLORS" == "true" ]]; then
+    DARK_NAME=$(echo "$ICON_DATA" | jq -r '.colors.dark // empty')
+    LIGHT_NAME=$(echo "$ICON_DATA" | jq -r '.colors.light // empty')
+
+    # If both variants exist, let user choose
+    if [[ -n "$DARK_NAME" && -n "$LIGHT_NAME" ]]; then
+      CHOICE=$(echo -e "Dark\nLight" | gum choose --header "Select variant")
+      if [[ -z "$CHOICE" ]]; then
+        return 1
+      fi
+
+      if [[ "$CHOICE" == "Dark" ]]; then
+        echo "$BASE_URL/$FORMAT/$DARK_NAME.$FORMAT"
+      else
+        echo "$BASE_URL/$FORMAT/$LIGHT_NAME.$FORMAT"
+      fi
+    # Only dark variant exists
+    elif [[ -n "$DARK_NAME" ]]; then
+      echo "$BASE_URL/$FORMAT/$DARK_NAME.$FORMAT"
+    # Only light variant exists
+    elif [[ -n "$LIGHT_NAME" ]]; then
+      echo "$BASE_URL/$FORMAT/$LIGHT_NAME.$FORMAT"
+    fi
+  else
+    # No variants, use default
+    echo "$BASE_URL/$FORMAT/$ICON_NAME.$FORMAT"
+  fi
+}
+
 if [ "$#" -lt 3 ]; then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
-  ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
+
+  # Choose icon method
+  while true; do
+    ICON_METHOD=$(echo -e "Search dashboardicons.com\nEnter custom URL" | gum choose --header "Icon source")
+    if [[ -z "$ICON_METHOD" ]]; then
+      echo "Cancelled."
+      exit 1
+    fi
+
+    if [[ "$ICON_METHOD" == "Search dashboardicons.com" ]]; then
+      ICON_REF=$(select_dashboard_icon)
+      if [[ -n "$ICON_REF" ]]; then
+        break
+      fi
+      # If empty, loop continues and user can try again
+    else
+      ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "https://example.com/icon.png")
+      if [[ -n "$ICON_REF" ]]; then
+        break
+      fi
+    fi
+  done
+
   CUSTOM_EXEC=""
   MIME_TYPES=""
   INTERACTIVE_MODE=true
