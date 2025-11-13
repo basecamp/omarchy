@@ -1,50 +1,71 @@
-# Packages installed outside of install/packages.sh or optional packages
-# Utilized by ISO builder to ensure package availability in the ISO
+# System packages and optional hardware support
+# Utilized by ISO builder to ensure package availability
 
-autoconf-archive
+# Base System
 base
 base-devel
-broadcom-wl
-btrfs-progs
-dart
-dkms
-egl-wayland
 git
-gst-plugin-pipewire
-gtk4-layer-shell
-htop
-intltool
-iwd
-jdk-openjdk
-libpulse
-libsass
-libva-intel-driver
-libva-nvidia-driver
-limine
-limine-mkinitcpio-hook
-limine-snapper-sync
+wget
+
+# Kernel
 linux
 linux-firmware
 linux-headers
-macbook12-spi-driver-dkms
-nvidia-dkms
-nvidia-open-dkms
-nvidia-utils
-lib32-nvidia-utils
+
+# Bootloader
+limine
+limine-mkinitcpio-hook
+limine-snapper-sync
+
+# Filesystem
+btrfs-progs
+snapper
+
+# Audio Stack
 pipewire
 pipewire-alsa
 pipewire-jack
 pipewire-pulse
+libpulse
+gst-plugin-pipewire
+
+# Wayland Support
+egl-wayland
+gtk4-layer-shell
 qt5-remoteobjects
 qt6-wayland
-sassc
-snapper
 webp-pixbuf-loader
-wget
-yay-debug
-zram-generator
 
-# T2 MacBook support packages
+# System Utilities
+htop
+zram-generator
+iwd
+
+# Build Dependencies
+autoconf-archive
+intltool
+libsass
+sassc
+dkms
+
+# Hardware Support (conditional installation based on detection)
+# Broadcom WiFi
+broadcom-wl
+
+# Intel Graphics
+libva-intel-driver
+
+# NVIDIA Graphics
+nvidia-dkms
+nvidia-open-dkms
+nvidia-utils
+lib32-nvidia-utils
+libva-nvidia-driver
+
+# MacBook Support
+macbook12-spi-driver-dkms
+
+# Apple T2 MacBook Support
 apple-bcm-firmware
 apple-t2-audio-config
 linux-t2

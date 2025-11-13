@@ -1,138 +1,125 @@
-# Omarchy core package list installed via install/packaging/base.sh
-# This file is also used by the ISO builder when determining needs
+# Core package list for minimal clean distro
+# Installed via install/packaging/base.sh
 
-1password-beta
-1password-cli
-aether
-alacritty
-asdcontrol
-avahi
-bash-completion
-bat
-blueberry
-brightnessctl
+# Window Manager & Compositor
+hyprland
+hyprland-guiutils
+hypridle
+hyprlock
+hyprpicker
+hyprsunset
+uwsm
+
+# Status Bar & Notifications
+waybar
+mako
+
+# App Launcher
+omarchy-walker
+
+# Terminal
+ghostty
+
+# Display Manager & Boot
+sddm
+plymouth
+
+# Audio
+wireplumber
+pamixer
+
+# System Integration
+polkit-gnome
+gnome-keyring
+xdg-desktop-portal-gtk
+xdg-desktop-portal-hyprland
+xdg-terminal-exec
+
+# File Management
+nautilus
+gnome-disk-utility
+gvfs-mtp
+gvfs-nfs
+gvfs-smb
+sushi
+
+# Basic Utilities
+gnome-calculator
+evince
+imv
 btop
-cargo
-clang
+
+# Input & Display Control
+brightnessctl
+playerctl
+wl-clipboard
+
+# Wayland Utilities
+swaybg
+swayosd
+grim
+slurp
+satty
+
+# Fonts
+fontconfig
+noto-fonts
+noto-fonts-emoji
+ttf-jetbrains-mono-nerd
+
+# Icons & Themes
+yaru-icon-theme
+gnome-themes-extra
+kvantum-qt5
+qt5-wayland
+
+# Shell & Terminal Tools
+bash-completion
+man
+less
+starship
+fastfetch
+bat
+eza
+ripgrep
+fd
+fzf
+zoxide
+dust
+plocate
+tree-sitter-cli
+
+# Network
+iwd
+avahi
+nss-mdns
+wireless-regdb
+
+# Printing
 cups
 cups-browsed
 cups-filters
 cups-pdf
-docker
-docker-buildx
-docker-compose
-dust
-evince
-expac
-eza
-fastfetch
-fcitx5
-fcitx5-gtk
-fcitx5-qt
-fd
-ffmpegthumbnailer
-fontconfig
-fzf
-github-cli
-gnome-calculator
-gnome-keyring
-gnome-themes-extra
-grim
-gpu-screen-recorder
-gum
-gvfs-mtp
-gvfs-nfs
-gvfs-smb
-hypridle
-hyprland
-hyprland-guiutils
-hyprlock
-hyprpicker
-hyprsunset
-imagemagick
-impala
-imv
-inetutils
-inxi
-iwd
-jq
-kdenlive
-kvantum-qt5
-lazydocker
-lazygit
-less
-libsecret
-libyaml
-libqalculate
-libreoffice
-llvm
-localsend
-luarocks
-mako
-man
-mariadb-libs
-mise
-mpv
-nautilus
-gnome-disk-utility
-noto-fonts
-noto-fonts-cjk
-noto-fonts-emoji
-noto-fonts-extra
-nss-mdns
-nvim
-obs-studio
-obsidian
-omarchy-chromium
-omarchy-nvim
-omarchy-walker
-pamixer
-pinta
-playerctl
-plocate
-plymouth
-polkit-gnome
-postgresql-libs
-power-profiles-daemon
-python-gobject
-python-poetry-core
-python-terminaltexteffects
-qt5-wayland
-ripgrep
-satty
-sddm
-signal-desktop
-slurp
-spotify
-starship
-sushi
-swaybg
-swayosd
 system-config-printer
-tldr
-tree-sitter-cli
-ttf-cascadia-mono-nerd
-ttf-ia-writer
-ttf-jetbrains-mono-nerd
-typora
-tzupdate
+
+# Bluetooth
+blueberry
+
+# Security & System
 ufw
-ufw-docker
+libsecret
+power-profiles-daemon
+tzupdate
+
+# Utilities
 unzip
-uwsm
-waybar
-wayfreeze
-whois
-wireless-regdb
-wiremix
-wireplumber
-wl-clipboard
-woff2-font-awesome
-xdg-desktop-portal-gtk
-xdg-desktop-portal-hyprland
-xdg-terminal-exec
-xmlstarlet
-xournalpp
-yaru-icon-theme
+imagemagick
+jq
+expac
+ffmpegthumbnailer
 yay
-zoxide
+
+# System Libraries
+python-gobject
+libqalculate
+libyaml

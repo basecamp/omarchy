@@ -1,0 +1,20 @@
+# Ghostty terminal configuration
+
+# Import theme colors
+config-file = ~/.config/omarchy/current/theme/ghostty
+
+# Font configuration
+font-family = CaskaydiaMono Nerd Font
+font-size = 9
+
+# Window appearance
+window-padding-x = 14
+window-padding-y = 14
+window-decoration = false
+
+# Terminal
+term = xterm-256color
+
+# Keybindings
+keybind = shift+insert=paste_from_clipboard
+keybind = ctrl+insert=copy_to_clipboard
