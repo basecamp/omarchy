@@ -113,6 +113,35 @@
               </object>
             </child>
             <child>
+              <object class="GtkBox" id="KeybindsWrapper">
+                <property name="hexpand">true</property>
+                <style>
+                  <class name="keybinds-wrapper"></class>
+                </style>
+                <child>
+                  <object class="GtkBox" id="GlobalKeybinds">
+                    <property name="hexpand">true</property>
+                    <property name="spacing">10</property>
+                    <property name="margin-top">10</property>
+                    <style>
+                      <class name="global-keybinds"></class>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkBox" id="Keybinds">
+                    <property name="hexpand">true</property>
+                    <property name="halign">end</property>
+                    <property name="spacing">10</property>
+                    <property name="margin-top">10</property>
+                    <style>
+                      <class name="keybinds"></class>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
               <object class="GtkLabel" id="Error">
                 <style>
                   <class name="error"></class>
