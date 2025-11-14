@@ -112,12 +112,10 @@ show_screenshot_menu() {
 }
 
 show_screenrecord_menu() {
-  case $(menu "Screenrecord" "  Region\n  Region + Audio\n  Display\n  Display + Audio\n  Display + Webcam") in
-  *"Region + Audio"*) omarchy-cmd-screenrecord region --with-audio ;;
-  *Region*) omarchy-cmd-screenrecord ;;
-  *"Display + Audio"*) omarchy-cmd-screenrecord output --with-audio ;;
-  *"Display + Webcam"*) omarchy-cmd-screenrecord output --with-audio --with-webcam ;;
-  *Display*) omarchy-cmd-screenrecord output ;;
+  case $(menu "Screenrecord" "  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam") in
+  *"With desktop audio"*) omarchy-cmd-screenrecord --with-desktop-audio ;;
+  *"With desktop + microphone audio"*) omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio ;;
+  *"With desktop + microphone audio + webcam"*) omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam ;;
   *) back_to show_capture_menu ;;
   esac
 }
