@@ -1,10 +1,33 @@
 #!/bin/bash
 
+# Cache file for storing rounding state
+ROUNDING_CACHE="$HOME/.cache/hyprland-rounding-state"
+
+# Get workspace gaps state
 workspace_id=$(hyprctl activeworkspace -j | jq -r .id)
 gaps=$(hyprctl workspacerules -j | jq -r ".[] | select(.workspaceString==\"$workspace_id\") | .gapsOut[0] // 0")
 
+# Get current rounding value
+current_rounding=$(hyprctl getoption decoration:rounding -j | jq -r .int)
+
 if [[ $gaps == "0" ]]; then
+  # Toggle ON: restore gaps and rounding
   hyprctl keyword "workspace $workspace_id, gapsout:10, gapsin:5, bordersize:2"
-else \
+
+  # Restore rounding from cache, or use current value if cache doesn't exist
+  if [[ -f "$ROUNDING_CACHE" ]]; then
+    stored_rounding=$(cat "$ROUNDING_CACHE")
+    hyprctl keyword decoration:rounding "$stored_rounding"
+  elif [[ $current_rounding == "0" ]]; then
+    # If no cache and currently 0, query from running config (fallback)
+    hyprctl keyword decoration:rounding 8
+  fi
+else
+  # Toggle OFF: store current rounding and disable both
+  if [[ $current_rounding != "0" ]]; then
+    echo "$current_rounding" > "$ROUNDING_CACHE"
+  fi
+
   hyprctl keyword "workspace $workspace_id, gapsout:0, gapsin:0, bordersize:0"
+  hyprctl keyword decoration:rounding 0
 fi
