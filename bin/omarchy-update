@@ -4,17 +4,7 @@ set -e
 
 trap 'echo ""; echo -e "\033[0;31mSomething went wrong during the update!\n\nPlease review the output above carefully, correct the error, and retry the update.\n\nIf you need assistance, get help from the community at https://omarchy.org/discord\033[0m"' ERR
 
-gum style --border normal --border-foreground 6 --padding "1 2" --margin "1 0" \
-  "Ready to update Omarchy?" \
-  "" \
-  "• You cannot stop the update once you start!" \
-  "• Make sure you're not on battery power or have sufficient charge"
-
-if ! gum confirm --default=false "Continue with update?"; then
-  echo "Update cancelled"
-  exit 0
-fi
-
+omarchy-update-confirm
 omarchy-snapshot create || [ $? -eq 127 ]
 omarchy-update-git
 omarchy-update-perform

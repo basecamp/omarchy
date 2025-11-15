@@ -22,19 +22,6 @@ docker
 docker-buildx
 docker-compose
 dust
-elephant
-elephant-bluetooth
-elephant-calc
-elephant-clipboard
-elephant-desktopapplications
-elephant-files
-elephant-menus
-elephant-providerlist
-elephant-runner
-elephant-symbols
-elephant-todo
-elephant-unicode
-elephant-websearch
 evince
 expac
 eza
@@ -58,7 +45,7 @@ gvfs-nfs
 gvfs-smb
 hypridle
 hyprland
-hyprland-qtutils
+hyprland-guiutils
 hyprlock
 hyprpicker
 hyprsunset
@@ -98,6 +85,7 @@ obs-studio
 obsidian
 omarchy-chromium
 omarchy-nvim
+omarchy-walker
 pamixer
 pinta
 playerctl
@@ -132,7 +120,6 @@ ufw
 ufw-docker
 unzip
 uwsm
-walker
 waybar
 wayfreeze
 whois
@@ -143,6 +130,7 @@ wl-clipboard
 woff2-font-awesome
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
+xdg-terminal-exec
 xmlstarlet
 xournalpp
 yaru-icon-theme
