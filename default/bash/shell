@@ -9,6 +9,5 @@ if [[ ! -v BASH_COMPLETION_VERSINFO && -f /usr/share/bash-completion/bash_comple
   source /usr/share/bash-completion/bash_completion
 fi
 
-# Set complete path
-export PATH="$HOME/.local/bin:$PATH"
+# Ensure command hashing is off for mise
 set +h
