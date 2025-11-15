@@ -15,6 +15,13 @@ trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
 
 hyprctl keyword cursor:invisible true &>/dev/null
 
+# Set background and cursor colors using OSC escape sequences
+printf '\033]11;rgb:00/00/00\007'  # Background color to black
+printf '\033]12;rgb:00/00/00\007'  # Cursor color to black
+
+# Clear screen and fill with black background
+printf '\033[48;2;0;0;0m\033[2J\033[H'
+
 while true; do
   effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
   tte -i ~/.config/omarchy/branding/screensaver.txt \
