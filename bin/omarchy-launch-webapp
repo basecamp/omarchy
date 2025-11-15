@@ -1,10 +1,18 @@
 #!/bin/bash
 
-browser=$(xdg-settings get default-web-browser)
+# use browser passed as arg or the user default one
+browser="${2:-$(xdg-settings get default-web-browser)}"
 
 case $browser in
 google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi* | helium-browser*) ;;
 *) browser="chromium.desktop" ;;
 esac
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+# if second arg was used as browser, use remaining args for flags
+if [[ $# -ge 2 && "$2" == "$browser" ]]; then
+  flags=("${@:3}")
+else
+  flags=("${@:2}")
+fi
+
+exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${flags[@]}"
