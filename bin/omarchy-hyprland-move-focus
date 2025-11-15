@@ -1,0 +1,19 @@
+#!/bin/sh
+
+DIRECTION="$1"
+
+ACTIVE_WINDOW_BEFORE=$(hyprctl activewindow -j | jq .address)
+IS_FLOATING=$(hyprctl activewindow -j | jq .floating)
+
+if [ "$IS_FLOATING" = "true" ]; then
+    hyprctl dispatch cyclenext next
+else
+    hyprctl dispatch movefocus "$DIRECTION"
+
+    ACTIVE_WINDOW_AFTER=$(hyprctl activewindow -j | jq .address)
+
+    if [ "$ACTIVE_WINDOW_BEFORE" = "$ACTIVE_WINDOW_AFTER" ]; then
+        hyprctl dispatch cyclenext next floating
+    fi
+fi
+
