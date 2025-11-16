@@ -1,3 +1,14 @@
+# Handle chroot install completion (non-interactive)
+if [[ -n "${OMARCHY_CHROOT_INSTALL:-}" ]]; then
+  echo "[finished] Chroot installation completed, creating marker file"
+  if sudo test -f /etc/sudoers.d/99-omarchy-installer; then
+    sudo rm -f /etc/sudoers.d/99-omarchy-installer &>/dev/null
+  fi
+  touch /var/tmp/omarchy-install-completed
+  exit 0
+fi
+
+# Normal (non-chroot) finish
 stop_install_log
 
 echo_in_style() {
@@ -28,11 +39,5 @@ fi
 if gum confirm --padding "0 0 0 $((PADDING_LEFT + 32))" --show-help=false --default --affirmative "Reboot Now" --negative "" ""; then
   # Clear screen to hide any shutdown messages
   clear
-
-  if [[ -n "${OMARCHY_CHROOT_INSTALL:-}" ]]; then
-    touch /var/tmp/omarchy-install-completed
-    exit 0
-  else
-    sudo reboot 2>/dev/null
-  fi
+  sudo reboot 2>/dev/null
 fi
