@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if (($# == 0)); then
-  echo "Usage: omarchy-cmd-share [clipboard|file|folder|picture|video]"
+  echo "Usage: omarchy-cmd-share [clipboard|file|folder]"
   exit 1
 fi
 
@@ -9,32 +9,11 @@ MODE="$1"
 shift
 
 if [[ $MODE == "clipboard" ]]; then
-  # Save clipboard content to a temporary text file
   TEMP_FILE=$(mktemp --suffix=.txt)
   wl-paste >"$TEMP_FILE"
   FILES="$TEMP_FILE"
-
-elif [[ $MODE == "picture" ]]; then
-  # Pick the most recent image from ~/Pictures
-  LAST_PICTURE=$(find "$HOME/Pictures" -maxdepth 1 -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -printf "%T@ %p\n" 2>/dev/null | sort -nr | head -n 1 | cut -d' ' -f2-)
-  if [[ -z "$LAST_PICTURE" ]]; then
-    echo "No .png/.jpg found in ~/Pictures"
-    exit 1
-  fi
-  FILES="$LAST_PICTURE"
-
-elif [[ $MODE == "video" ]]; then
-  # Pick the most recent .mp4 video from ~/Videos
-  LAST_VIDEO=$(find "$HOME/Videos" -maxdepth 1 -type f -iname "*.mp4" -printf "%T@ %p\n" 2>/dev/null | sort -nr | head -n 1 | cut -d' ' -f2-)
-  if [[ -z "$LAST_VIDEO" ]]; then
-    echo "No .mp4 found in ~/Videos"
-    exit 1
-  fi
-  FILES="$LAST_VIDEO"
-
 else
   if (($# > 0)); then
-    # Use files/folders provided as arguments
     FILES="$*"
   else
     if [[ $MODE == "folder" ]]; then
