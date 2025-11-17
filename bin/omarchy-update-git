@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 echo -e "\e[32mUpdate Omarchy\e[0m"
 
 git -C $OMARCHY_PATH pull --autostash
