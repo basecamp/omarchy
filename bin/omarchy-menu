@@ -154,7 +154,7 @@ show_style_menu() {
 }
 
 show_theme_menu() {
-  omarchy-launch-walker -m menus:omarchythemes
+  omarchy-launch-walker -m menus:omarchythemes --width 800
 }
 
 show_font_menu() {
