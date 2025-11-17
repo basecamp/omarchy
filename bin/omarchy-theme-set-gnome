@@ -29,5 +29,5 @@ if [[ -f $THEME_GTK_CSS ]]; then
   chmod 0644 "$THEME_GTK_CSS"
   ln -snf "$THEME_GTK_CSS" "$GTK_4_FILE"
 else
-  rm -f "$GTK_4_FILE"
+  rm "$GTK_4_FILE"
 fi
