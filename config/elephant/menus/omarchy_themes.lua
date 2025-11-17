@@ -3,8 +3,6 @@
 --
 Name = "omarchythemes"
 NamePretty = "Omarchy Themes"
-Icon = "applications-graphics"
-SearchName = true
 
 -- The main function elephant will call
 function GetEntries()
