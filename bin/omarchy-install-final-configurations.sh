@@ -12,6 +12,27 @@
 
 set -eEo pipefail
 
+# Setup comprehensive logging for chroot execution
+# This ensures all output is captured even though we're running inside chroot
+CHROOT_LOG_FILE="/var/log/omarchy-install-chroot.log"
+mkdir -p "$(dirname "$CHROOT_LOG_FILE")"
+touch "$CHROOT_LOG_FILE"
+
+# Redirect all output to both the log file and stdout
+# This way:
+# 1. Output is saved to /var/log/omarchy-install-chroot.log (inside chroot = /mnt/var/log on ISO)
+# 2. Output still goes to stdout so arch-chroot can potentially capture it
+# 3. We use exec to redirect the entire script's output from this point forward
+exec > >(tee -a "$CHROOT_LOG_FILE") 2>&1
+
+# Log script start with timestamp
+echo "========================================"
+echo "Omarchy Chroot Install Starting"
+echo "Started at: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "Log file: $CHROOT_LOG_FILE"
+echo "========================================"
+echo
+
 # Find the first non-root user (UID >= 1000, < 60000)
 OMARCHY_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 {print $1; exit}')
 
@@ -73,6 +94,12 @@ if [[ $exit_code -eq 0 ]]; then
     echo
     echo "========================================"
     echo "Omarchy install.sh completed successfully!"
+    echo "========================================"
+    echo
+    echo "========================================"
+    echo "Omarchy Chroot Install Completed"
+    echo "Finished at: $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "Log file: $CHROOT_LOG_FILE"
     echo "========================================"
 else
     echo
