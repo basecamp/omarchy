@@ -1,13 +1,13 @@
 #!/bin/bash
 
-default_browser=$(xdg-settings get default-web-browser)
+browser=$(xdg-settings get default-web-browser)
 
-case $default_browser in
-google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi* | helium-browser*) ;;
-*) default_browser="chromium.desktop" ;;
+case $browser in
+google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
+*) browser="chromium.desktop" ;;
 esac
 
-exec_line=$(sed -n 's/^Exec=//p' {~/.local,~/.nix-profile,/usr}/share/applications/"$default_browser" 2>/dev/null | head -n1)
+exec_line=$(sed -n 's/^Exec=//p' {~/.local,~/.nix-profile,/usr}/share/applications/"$browser" 2>/dev/null | head -n1)
 browser_exec=""
 env_vars=()
 if [[ -n $exec_line ]]; then
