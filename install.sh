@@ -16,9 +16,7 @@ run_logged() {
   local script="$1"
   local script_name=$(basename "$script")
   
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "[$(date '+%H:%M:%S')] Running: $script_name"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "Running: $script_name"
   
   source "$script"
   local exit_code=$?
