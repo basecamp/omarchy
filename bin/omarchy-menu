@@ -112,10 +112,12 @@ show_screenshot_menu() {
 }
 
 show_screenrecord_menu() {
+  omarchy-cmd-screenrecord --stop-recording && exit 0
+
   case $(menu "Screenrecord" "  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam") in
-  *"With desktop audio"*) omarchy-cmd-screenrecord --with-desktop-audio ;;
-  *"With desktop + microphone audio"*) omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio ;;
-  *"With desktop + microphone audio + webcam"*) omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam ;;
+  *"With desktop audio") omarchy-cmd-screenrecord --with-desktop-audio ;;
+  *"With desktop + microphone audio") omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio ;;
+  *"With desktop + microphone audio + webcam") omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam ;;
   *) back_to show_capture_menu ;;
   esac
 }
