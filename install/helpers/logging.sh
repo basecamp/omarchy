@@ -67,13 +67,14 @@ stop_log_output() {
   local ANSI_SHOW_CURSOR="\033[?25h"
   
   if [ -n "${monitor_pid:-}" ]; then
+    # Disown the process to prevent "Killed" message
+    disown $monitor_pid 2>/dev/null || true
+    
     # Kill child processes first (tail -F) with SIGKILL
     pkill -9 -P $monitor_pid 2>/dev/null || true
     
     # Kill the monitor process with SIGKILL for immediate termination
     kill -9 $monitor_pid 2>/dev/null || true
-    
-    # Don't wait - SIGKILL is immediate
     
     # Clean up temp buffer file
     rm -f /tmp/omarchy-log-buffer.txt /tmp/omarchy-log-buffer.tmp 2>/dev/null || true
