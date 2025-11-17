@@ -11,12 +11,14 @@ fi
 DESKTOP_AUDIO="false"
 MICROPHONE_AUDIO="false"
 WEBCAM="false"
+STOP_RECORDING="false"
 
 for arg in "$@"; do
   case "$arg" in
     --with-desktop-audio) DESKTOP_AUDIO="true" ;;
     --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
     --with-webcam) WEBCAM="true" ;;
+    --stop-recording) STOP_RECORDING="true"
   esac
 done
 
@@ -109,8 +111,10 @@ if screenrecording_active; then
   else
     stop_screenrecording
   fi
-else
+elif [[ "$STOP_RECORDING" == "false" ]]; then
   [[ "$WEBCAM" == "true" ]] && start_webcam_overlay
 
   start_screenrecording || cleanup_webcam
+else
+  exit 1
 fi
