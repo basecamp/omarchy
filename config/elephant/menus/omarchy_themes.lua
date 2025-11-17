@@ -22,8 +22,15 @@ function GetEntries()
         local theme_name = file_path:match(".*/(.-)/[^/]+$")
 
         if theme_name then
+            local display_name = theme_name:gsub("_", " "):gsub("%-", " ")
+            display_name = display_name:gsub("(%a)([%w_']*)", function(first, rest)
+                return first:upper() .. rest:lower()
+            end)
+            display_name = display_name .. "  "
+
+
             table.insert(entries, {
-                Text = theme_name,
+                Text = display_name,
 
                 Preview = file_path,
                 PreviewType = "file",
