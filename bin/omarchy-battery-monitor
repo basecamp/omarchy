@@ -7,6 +7,14 @@ NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
 BATTERY_LEVEL=$(omarchy-battery-remaining)
 BATTERY_STATE=$(upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}')
 
+# Log battery status for debugging
+echo "$(date): Battery Level: $BATTERY_LEVEL%, State: $BATTERY_STATE" >> /tmp/omarchy_battery_monitor.log
+
+# Exit if battery level is not available yet
+if [ -z "$BATTERY_LEVEL" ]; then
+  exit 0
+fi
+
 send_notification() {
   notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
 }

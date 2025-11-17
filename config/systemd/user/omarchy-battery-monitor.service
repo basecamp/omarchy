@@ -1,6 +1,7 @@
 [Unit]
 Description=Omarchy Battery Monitor Check
-After=graphical-session.target
+After=graphical-session.target upowerd.service
+BindsTo=upowerd.service
 
 [Service]
 Type=oneshot
