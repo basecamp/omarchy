@@ -23,6 +23,10 @@ ln -snf ~/.config/omarchy/current/theme/mako.ini ~/.config/mako/config
 mkdir -p ~/.config/eza
 ln -snf ~/.config/omarchy/current/theme/eza.yml ~/.config/eza/theme.yml
 
+mkdir -p ~/.config/gtk-4.0
+ln -snf ~/.local/share/omarchy/default/gtk/style.css ~/.config/gtk-4.0/style.css
+ln -snf ~/.config/omarchy/current/theme/gtk.css ~/.config/gtk-4.0/gtk.css
+
 # Add managed policy directories for Chromium and Brave for theme changes
 sudo mkdir -p /etc/chromium/policies/managed
 sudo chmod a+rw /etc/chromium/policies/managed
