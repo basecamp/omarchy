@@ -15,7 +15,7 @@ iso2sd() {
   fi
 }
 
-# Format an entire drive for a single partition using ext4
+# Format an entire drive for a single partition using exFAT
 format-drive() {
   if [ $# -ne 2 ]; then
     echo "Usage: format-drive <device> <name>"
@@ -36,7 +36,6 @@ format-drive() {
       sudo partprobe "$1" || true
       sudo udevadm settle || true
 
-      omarchy-pkg-add exfatprogs
       sudo mkfs.exfat -n "$2" "$partition"
 
       echo "Drive $1 formatted as exFAT and labeled '$2'."

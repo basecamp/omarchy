@@ -21,6 +21,7 @@ docker-buildx
 docker-compose
 dust
 evince
+exfatprogs
 expac
 eza
 fastfetch
