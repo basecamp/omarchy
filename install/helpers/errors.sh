@@ -134,7 +134,7 @@ catch_errors() {
       fi
       ;;
     "Upload log for support")
-      omarchy-upload-install-log
+      omarchy-upload-log
       ;;
     "Exit" | "")
       exit 1
