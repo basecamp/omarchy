@@ -6,11 +6,33 @@ set -eEo pipefail
 # Define Omarchy locations
 export OMARCHY_PATH="/usr/share/omarchy"
 export OMARCHY_INSTALL="$OMARCHY_PATH/install"
-export OMARCHY_INSTALL_LOG_FILE="/var/log/omarchy-install.log"
 
-# Install
-source "$OMARCHY_INSTALL/helpers/all.sh"
-source "$OMARCHY_INSTALL/preflight/all.sh"
+# Load helpers
+source "$OMARCHY_INSTALL/helpers/chroot.sh"
+
+# Simple script runner that outputs to stdout/stderr
+# archinstall captures all output in /var/log/archinstall/install.log
+run_logged() {
+  local script="$1"
+  local script_name=$(basename "$script")
+  
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "[$(date '+%H:%M:%S')] Running: $script_name"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  
+  source "$script"
+  local exit_code=$?
+  
+  if [ $exit_code -eq 0 ]; then
+    echo "✓ Completed: $script_name"
+    echo
+  else
+    echo "✗ Failed: $script_name (exit code: $exit_code)"
+    return $exit_code
+  fi
+}
+
+# Run installation phases
 source "$OMARCHY_INSTALL/packaging/all.sh"
 source "$OMARCHY_INSTALL/config/all.sh"
 source "$OMARCHY_INSTALL/login/all.sh"

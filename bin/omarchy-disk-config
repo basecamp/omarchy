@@ -1,0 +1,344 @@
+#!/usr/bin/env python3
+"""
+Omarchy Disk Configuration Tool
+
+Interactive partition editor and validator for Omarchy installations.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+
+def _find_root_partition(disk_config):
+  for dev_mod in disk_config.device_modifications:
+    for part in dev_mod.partitions:
+      if part.mountpoint == Path('/'):
+        return part
+      
+      if part.btrfs_subvols:
+        for subvol in part.btrfs_subvols:
+          if subvol.mountpoint == Path('/'):
+            return part
+  
+  return None
+
+
+def validate_disk_config(config, interactive=True):
+  from archinstall.lib.models.device import FilesystemType, Size, Unit, EncryptionType
+  from archinstall.lib.output import info, warn
+  
+  if not config.disk_config:
+    return 'CONTINUE'
+  
+  validation_warnings = []
+  
+  boot_partition = None
+  for dev_mod in config.disk_config.device_modifications:
+    for part in dev_mod.partitions:
+      if part.mountpoint == Path('/boot') or part.mountpoint == Path('/efi'):
+        boot_partition = part
+        break
+  
+  if boot_partition:
+    min_boot_size = Size(2, Unit.GiB, boot_partition.length.sector_size)
+    if boot_partition.length >= min_boot_size:
+      size_gb = boot_partition.length.convert(Unit.GiB).value
+      info(f'✓ Boot partition size: {size_gb:.1f} GiB')
+    else:
+      size_mb = boot_partition.length.convert(Unit.MiB).value
+      warn(f'⚠ Boot partition is only {size_mb:.0f} MiB')
+      warn('  Omarchy recommends at least 2 GiB for boot partition')
+      warn('  Multiple kernels may not fit')
+      validation_warnings.append('boot_size')
+  else:
+    warn('⚠ Could not find boot partition (/boot or /efi)')
+    warn('  System may not boot correctly')
+    validation_warnings.append('no_boot')
+  
+  root_partition = _find_root_partition(config.disk_config)
+  
+  if root_partition:
+    if root_partition.fs_type == FilesystemType.Btrfs:
+      info('✓ Root filesystem is btrfs')
+      
+      if root_partition.btrfs_subvols:
+        subvol_names = [str(sv.name) for sv in root_partition.btrfs_subvols]
+        subvol_mounts = {str(sv.mountpoint): str(sv.name) for sv in root_partition.btrfs_subvols}
+        
+        required_subvols = {
+          '/': '@',
+          '/home': '@home',
+          '/var/log': '@log',
+          '/var/cache/pacman/pkg': '@pkg',
+        }
+        
+        missing_subvols = []
+        for mount, expected_name in required_subvols.items():
+          if mount not in subvol_mounts:
+            missing_subvols.append(f'{expected_name} → {mount}')
+          elif subvol_mounts[mount] != expected_name:
+            warn(f'⚠ Subvolume at {mount} is named "{subvol_mounts[mount]}" not "{expected_name}"')
+        
+        if missing_subvols:
+          warn(f'⚠ Missing recommended subvolumes: {", ".join(missing_subvols)}')
+          warn('  Omarchy recommends: @, @home, @log, @pkg')
+          warn('  Some features (like Snapper) may not work optimally')
+          info(f'  Current subvolumes: {", ".join(subvol_names)}')
+          validation_warnings.append('missing_subvols')
+        else:
+          info(f'✓ Btrfs subvolumes: {", ".join(subvol_names)}')
+      else:
+        warn('⚠ Btrfs partition has no subvolumes defined')
+        warn('  Omarchy recommends subvolumes for snapshots')
+        warn('  Required: @ (root), @home, @log, @pkg')
+        validation_warnings.append('no_subvols')
+    else:
+      fs_name = root_partition.fs_type.value if root_partition.fs_type else 'unknown'
+      warn(f'⚠ Root filesystem is {fs_name}, not btrfs')
+      warn('  Omarchy is designed for btrfs with snapshots')
+      warn('  Some features may not work correctly')
+      validation_warnings.append('not_btrfs')
+    
+    is_encrypted = False
+    if config.disk_config.disk_encryption:
+      enc = config.disk_config.disk_encryption
+      if enc.encryption_type != EncryptionType.NoEncryption:
+        is_encrypted = root_partition in enc.partitions
+    
+    if is_encrypted:
+      info('✓ Root partition is encrypted with LUKS')
+      
+      if config.disk_config.disk_encryption.iter_time != 2000:
+        old_time = config.disk_config.disk_encryption.iter_time
+        config.disk_config.disk_encryption.iter_time = 2000
+        info(f'✓ Adjusted iteration time: {old_time}ms → 2000ms')
+      else:
+        info('✓ Iteration time: 2000ms (optimal)')
+    else:
+      warn('⚠ Root partition is NOT encrypted')
+      warn('  Omarchy recommends LUKS encryption for security')
+      validation_warnings.append('no_encryption')
+  else:
+    warn('⚠ Could not identify root partition')
+    validation_warnings.append('no_root')
+  
+  if validation_warnings and interactive:
+    import subprocess
+    import shutil
+    
+    gum_path = shutil.which('gum')
+    if gum_path:
+      warn('')
+      
+      try:
+        result = subprocess.run(
+          ['gum', 'choose', '--header', 'Validation warnings detected. What would you like to do?',
+           'Re-edit partitions', 'Continue anyway', 'Abort'],
+          capture_output=True,
+          text=True,
+        )
+        
+        choice = result.stdout.strip() if result.stdout else ''
+        
+        if choice == 'Re-edit partitions':
+          return 'RE_EDIT'
+        elif choice == 'Abort':
+          return 'ABORT'
+        else:
+          info('Continuing despite warnings')
+          return 'CONTINUE'
+      
+      except (subprocess.CalledProcessError, KeyboardInterrupt):
+        return 'ABORT'
+  
+  return 'CONTINUE'
+
+
+def apply_omarchy_partition_defaults():
+  import archinstall.lib.interactions.disk_conf as disk_conf_module
+  from archinstall.lib.models.device import (
+    PartitionModification, ModificationStatus, PartitionType, 
+    Size, Unit, SectorSize, FilesystemType, PartitionFlag,
+    DeviceModification, BDevice
+  )
+  from archinstall.lib.interactions.disk_conf import get_default_btrfs_subvols
+  from archinstall.lib.disk.device_handler import device_handler
+  
+  def _boot_partition_2gib(sector_size: SectorSize, using_gpt: bool) -> PartitionModification:
+    flags = [PartitionFlag.BOOT]
+    size = Size(2, Unit.GiB, sector_size)
+    start = Size(1, Unit.MiB, sector_size)
+    if using_gpt:
+      flags.append(PartitionFlag.ESP)
+    
+    return PartitionModification(
+      status=ModificationStatus.Create,
+      type=PartitionType.Primary,
+      start=start,
+      length=size,
+      mountpoint=Path('/boot'),
+      fs_type=FilesystemType.Fat32,
+      flags=flags,
+    )
+  
+  def _select_main_filesystem_btrfs() -> FilesystemType:
+    return FilesystemType.Btrfs
+  
+  def _select_mount_options_compressed() -> list[str]:
+    return ['compress=zstd']
+  
+  def _suggest_single_disk_auto_subvolumes(
+    device: BDevice,
+    filesystem_type: FilesystemType | None = None,
+    separate_home: bool | None = None,
+  ):
+    if not filesystem_type:
+      filesystem_type = FilesystemType.Btrfs
+    
+    if filesystem_type == FilesystemType.Btrfs:
+      using_subvolumes = True
+      mount_options = ['compress=zstd']
+    else:
+      using_subvolumes = False
+      mount_options = []
+    
+    sector_size = device.device_info.sector_size
+    device_modification = DeviceModification(device, wipe=True)
+    using_gpt = device_handler.partition_table.is_gpt()
+    
+    boot_partition = _boot_partition_2gib(sector_size, using_gpt)
+    device_modification.add_partition(boot_partition)
+    
+    total_size = device.device_info.total_size
+    available_space = total_size - boot_partition.length - Size(1, Unit.MiB, sector_size)
+    
+    root_partition = PartitionModification(
+      status=ModificationStatus.Create,
+      type=PartitionType.Primary,
+      start=boot_partition.start + boot_partition.length,
+      length=available_space,
+      mountpoint=None if using_subvolumes else Path('/'),
+      fs_type=filesystem_type,
+      mount_options=mount_options,
+    )
+    
+    if using_subvolumes:
+      root_partition.btrfs_subvols = get_default_btrfs_subvols()
+    
+    device_modification.add_partition(root_partition)
+    return device_modification
+  
+  disk_conf_module._boot_partition = _boot_partition_2gib
+  disk_conf_module.select_main_filesystem_format = _select_main_filesystem_btrfs
+  disk_conf_module.select_mount_options = _select_mount_options_compressed
+  disk_conf_module.suggest_single_disk_layout = _suggest_single_disk_auto_subvolumes
+
+
+def load_config(config_file: Path, creds_file: Path | None = None):
+  from archinstall.lib.args import ArchConfig, Arguments
+  
+  with open(config_file) as f:
+    config_data = json.load(f)
+  
+  if creds_file and creds_file.exists():
+    with open(creds_file) as f:
+      creds_data = json.load(f)
+      config_data.update(creds_data)
+  
+  args = Arguments(
+    config=config_file,
+    creds=creds_file,
+    mountpoint=Path('/mnt'),
+    silent=True,
+  )
+  
+  return ArchConfig.from_config(config_data, args)
+
+
+def save_config(config, output_file: Path):
+  from archinstall.lib.output import info
+  
+  try:
+    config_dict = config.safe_json()
+    with open(output_file, 'w') as f:
+      json.dump(config_dict, f, indent=2, default=str)
+    info(f'✓ Configuration saved to: {output_file}')
+  except Exception as e:
+    from archinstall.lib.output import error
+    error(f'Failed to save config: {e}')
+    raise
+
+
+def main():
+  import argparse
+  
+  parser = argparse.ArgumentParser(description='Omarchy Disk Configuration Tool')
+  parser.add_argument('--config', type=Path, required=True, help='Path to config file')
+  parser.add_argument('--creds', type=Path, help='Path to credentials file')
+  parser.add_argument('--output', type=Path, help='Output path (default: overwrites input)')
+  parser.add_argument('--non-interactive', action='store_true', help='Skip interactive prompts')
+  
+  args = parser.parse_args()
+  
+  output_file = args.output or args.config
+  
+  if not args.config.exists():
+    print(f'ERROR: Config file not found: {args.config}', file=sys.stderr)
+    sys.exit(1)
+  
+  if args.creds and not args.creds.exists():
+    print(f'ERROR: Credentials file not found: {args.creds}', file=sys.stderr)
+    sys.exit(1)
+  
+  try:
+    from archinstall.lib.output import info, error
+    from archinstall.lib.disk.disk_menu import DiskLayoutConfigurationMenu
+    from archinstall.tui.curses_menu import Tui
+    
+    apply_omarchy_partition_defaults()
+    
+    info('Loading configuration...')
+    config = load_config(args.config, args.creds)
+    
+    if not config.disk_config:
+      error('No disk configuration found in config file')
+      sys.exit(1)
+    
+    while True:
+      info('Launching partition editor...')
+      
+      with Tui():
+        edited_disk_config = DiskLayoutConfigurationMenu(config.disk_config).run()
+        if edited_disk_config:
+          config.disk_config = edited_disk_config
+          info('✓ Partition configuration updated')
+        else:
+          info('No changes made in partition editor')
+      
+      interactive = not args.non_interactive
+      validation_result = validate_disk_config(config, interactive=interactive)
+      
+      if validation_result == 'RE_EDIT':
+        continue
+      elif validation_result == 'ABORT':
+        info('Disk configuration cancelled by user')
+        sys.exit(1)
+      else:
+        break
+    
+    save_config(config, output_file)
+    info('✓ Disk configuration complete!')
+    
+  except KeyboardInterrupt:
+    print('\nCancelled by user', file=sys.stderr)
+    sys.exit(1)
+  except Exception as e:
+    print(f'ERROR: {e}', file=sys.stderr)
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+
+
+if __name__ == '__main__':
+  main()

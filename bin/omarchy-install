@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""
+Omarchy Install
+
+Installs Arch Linux with Omarchy customizations using archinstall as a library.
+For disk configuration, use omarchy-disk-config.
+"""
+
+import json
+import sys
+import time
+from pathlib import Path
+
+
+def load_config(config_file: Path, creds_file: Path | None = None):
+  from archinstall.lib.args import ArchConfig, Arguments
+
+  with open(config_file) as f:
+    config_data = json.load(f)
+
+  if creds_file and creds_file.exists():
+    with open(creds_file) as f:
+      creds_data = json.load(f)
+      config_data.update(creds_data)
+
+  args = Arguments(
+    config=config_file,
+    creds=creds_file,
+    mountpoint=Path('/mnt'),
+    silent=True,
+    skip_ntp=True,
+    skip_wkd=True,
+  )
+
+  return ArchConfig.from_config(config_data, args)
+
+
+def load_omarchy_packages() -> list[str]:
+  omarchy_path = Path('/usr/share/omarchy/install')
+  packages = []
+
+  base_packages_file = omarchy_path / 'omarchy-base.packages'
+  if base_packages_file.exists():
+    with open(base_packages_file) as f:
+      packages.extend([line.strip() for line in f if line.strip() and not line.startswith('#')])
+
+  return packages
+
+
+def perform_installation(config_file: Path, creds_file: Path | None = None) -> None:
+  from archinstall.lib.disk.filesystem import FilesystemHandler
+  from archinstall.lib.installer import Installer
+  from archinstall.lib.models.device import DiskLayoutType, EncryptionType
+  from archinstall.lib.output import error, info
+  from archinstall.lib.profile.profiles_handler import profile_handler
+  from archinstall.lib.authentication.authentication_handler import auth_handler
+
+  start_time = time.time()
+
+  info('Loading configuration...')
+  config = load_config(config_file, creds_file)
+
+  if not config.disk_config:
+    error('No disk configuration found in config file')
+    error('Use omarchy-disk-config to configure disk layout first')
+    sys.exit(1)
+
+  disk_config = config.disk_config
+
+  if disk_config.config_type != DiskLayoutType.Pre_mount:
+    info('Performing filesystem operations...')
+    fs_handler = FilesystemHandler(disk_config)
+    fs_handler.perform_filesystem_operations()
+
+  mountpoint = Path('/mnt')
+
+  info('Loading Omarchy base packages...')
+  omarchy_packages = load_omarchy_packages()
+
+  info('Starting Omarchy installation...')
+
+  with Installer(
+    mountpoint,
+    disk_config,
+    kernels=config.kernels or ['linux'],
+  ) as installation:
+
+    info('Mounting filesystems...')
+    if disk_config.config_type != DiskLayoutType.Pre_mount:
+      installation.mount_ordered_layout()
+
+    installation.sanity_check()
+
+    if disk_config.disk_encryption and disk_config.disk_encryption.encryption_type != EncryptionType.NoEncryption:
+      info('Generating encryption keys...')
+      installation.generate_key_files()
+
+    if config.mirror_config:
+      info('Configuring mirrors...')
+      installation.set_mirrors(config.mirror_config, on_target=False)
+
+    info('Installing base system...')
+    installation.minimal_installation(
+      optional_repositories=config.mirror_config.optional_repositories if config.mirror_config else [],
+      mkinitcpio=not config.uki,
+      hostname=config.hostname,
+      locale_config=config.locale_config,
+    )
+
+    if config.mirror_config:
+      installation.set_mirrors(config.mirror_config, on_target=True)
+
+    if config.swap:
+      info('Setting up swap...')
+      installation.setup_swap('zram')
+
+    all_packages = omarchy_packages + (config.packages or [])
+    if all_packages:
+      info(f'Installing {len(all_packages)} packages...')
+      installation.add_additional_packages(all_packages)
+
+    if config.bootloader:
+      info(f'Installing bootloader: {config.bootloader.value}...')
+      installation.add_bootloader(config.bootloader, config.uki)
+
+    if config.network_config:
+      info('Configuring network...')
+      config.network_config.install_network_config(installation, config.profile_config)
+
+    if config.auth_config and config.auth_config.users:
+      info('Creating users...')
+      installation.create_users(config.auth_config.users)
+      auth_handler.setup_auth(installation, config.auth_config, config.hostname)
+
+    if config.app_config:
+      info('Installing applications...')
+      from archinstall.lib.applications.application_handler import application_handler
+      application_handler.install_applications(installation, config.app_config)
+
+    if config.profile_config:
+      info('Installing profile...')
+      profile_handler.install_profile_config(installation, config.profile_config)
+
+    if config.timezone:
+      installation.set_timezone(config.timezone)
+
+    if config.ntp:
+      installation.activate_time_synchronization()
+
+    from archinstall.lib.installer import accessibility_tools_in_use
+    if accessibility_tools_in_use():
+      installation.enable_espeakup()
+
+    if config.auth_config and config.auth_config.root_enc_password:
+      from archinstall.lib.models.users import User
+      root_user = User('root', config.auth_config.root_enc_password, False)
+      installation.set_user_password(root_user)
+
+    if config.profile_config and config.profile_config.profile:
+      config.profile_config.profile.post_install(installation)
+
+    if config.services:
+      info('Enabling services...')
+      installation.enable_service(config.services)
+
+    if disk_config.has_default_btrfs_vols():
+      btrfs_options = disk_config.btrfs_options
+      snapshot_config = btrfs_options.snapshot_config if btrfs_options else None
+      snapshot_type = snapshot_config.snapshot_type if snapshot_config else None
+      if snapshot_type:
+        installation.setup_btrfs_snapshot(snapshot_type, config.bootloader)
+
+    info('Mounting offline resources for chroot access...')
+    from archinstall.lib.general import SysCommand
+    import os
+    import shutil
+
+    offline_mirror_src = Path('/var/cache/omarchy/mirror/offline')
+    offline_mirror_dst = mountpoint / 'var/cache/omarchy/mirror/offline'
+    packages_src = Path('/opt/packages')
+    packages_dst = mountpoint / 'opt/packages'
+
+    os.makedirs(offline_mirror_dst, exist_ok=True)
+    os.makedirs(packages_dst, exist_ok=True)
+
+    if offline_mirror_src.exists():
+      SysCommand(f'mount --bind {offline_mirror_src} {offline_mirror_dst}')
+
+    if packages_src.exists():
+      SysCommand(f'mount --bind {packages_src} {packages_dst}')
+
+    pacman_conf_src = Path('/etc/pacman.conf')
+    pacman_conf_dst = mountpoint / 'etc/pacman.conf'
+    if pacman_conf_src.exists():
+      shutil.copy(pacman_conf_src, pacman_conf_dst)
+
+    info('Copying user info to chroot...')
+    os.makedirs(mountpoint / 'tmp', exist_ok=True)
+
+    if os.path.exists('/tmp/omarchy-user-name.txt'):
+      shutil.copy('/tmp/omarchy-user-name.txt', mountpoint / 'tmp/omarchy-user-name.txt')
+    if os.path.exists('/tmp/omarchy-user-email.txt'):
+      shutil.copy('/tmp/omarchy-user-email.txt', mountpoint / 'tmp/omarchy-user-email.txt')
+
+    if config.custom_commands:
+      info('Running Omarchy custom commands...')
+      from archinstall.lib.installer import run_custom_user_commands
+      run_custom_user_commands(config.custom_commands, installation)
+
+    info('Generating fstab...')
+    installation.genfstab()
+
+  end_time = time.time()
+  duration_seconds = int(end_time - start_time)
+  duration_mins = duration_seconds // 60
+  duration_secs = duration_seconds % 60
+
+  timing_file = mountpoint / 'tmp/omarchy-install-time.txt'
+  with open(timing_file, 'w') as f:
+    f.write(f"{duration_mins}m {duration_secs}s\n")
+
+  info(f'Installation complete! Total time: {duration_mins}m {duration_secs}s')
+
+
+def main():
+  import argparse
+
+  parser = argparse.ArgumentParser(description='Omarchy Install')
+  parser.add_argument('--config', type=Path, required=True, help='Path to config file')
+  parser.add_argument('--creds', type=Path, help='Path to credentials file')
+
+  args = parser.parse_args()
+
+  if not args.config.exists():
+    print(f'ERROR: Config file not found: {args.config}', file=sys.stderr)
+    sys.exit(1)
+
+  if args.creds and not args.creds.exists():
+    print(f'ERROR: Credentials file not found: {args.creds}', file=sys.stderr)
+    sys.exit(1)
+
+  try:
+    perform_installation(
+      config_file=args.config,
+      creds_file=args.creds,
+    )
+  except KeyboardInterrupt:
+    print('\nInstallation cancelled by user', file=sys.stderr)
+    sys.exit(1)
+  except Exception as e:
+    print(f'ERROR: Installation failed: {e}', file=sys.stderr)
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+
+
+if __name__ == '__main__':
+  main()
