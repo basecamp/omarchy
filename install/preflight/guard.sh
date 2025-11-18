@@ -22,8 +22,14 @@ if [ "$EUID" -eq 0 ]; then
 fi
 
 # Must be x86 only to fully work
-if [ "$(uname -m)" != "x86_64" ]; then
-  abort "x86_64 CPU"
+arch="$(uname -m)"
+
+if [ "$arch" != "x86_64" ] && [ "$arch" != "arm64" ] && [ "$arch" != "aarch64" ]; then
+  abort "x86_64 or arm64/aarch64 CPU"
+fi
+
+if [ "$arch" = "arm64" ] || [ "$arch" = "aarch64" ]; then
+  echo "Warning: arm64/aarch64 detected – experimental, continuing anyway..."
 fi
 
 # Must have secure boot disabled
