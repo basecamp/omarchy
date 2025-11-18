@@ -56,7 +56,7 @@
   "cpu": {
     "interval": 5,
     "format": "󰍛",
-    "on-click": "omarchy-launch-or-focus com.omarchy.btop omarchy-launch-tui btop"
+    "on-click": "omarchy-launch-or-focus com.omarchy.btop \"omarchy-launch-tui btop\""
   },
   "clock": {
     "format": "{:L%A %H:%M}",
@@ -105,7 +105,7 @@
   },
   "pulseaudio": {
     "format": "{icon}",
-    "on-click": "omarchy-launch-or-focus com.omarchy.wiremix omarchy-launch-tui wiremix",
+    "on-click": "omarchy-launch-or-focus com.omarchy.wiremix \"omarchy-launch-tui wiremix\"",
     "on-click-right": "pamixer -t",
     "tooltip-format": "Playing at {volume}%",
     "scroll-step": 5,
