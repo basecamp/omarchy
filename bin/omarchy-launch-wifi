@@ -1,3 +1,4 @@
 #!/bin/bash
 
+rfkill unblock wifi
 exec setsid omarchy-launch-or-focus org.omarchy.impala "omarchy-launch-tui impala"

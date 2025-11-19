@@ -1,3 +1,4 @@
 #!/bin/bash
 
-exec setsid uwsm-app -- xdg-terminal-exec --app-id=com.omarchy.Bluetui -e bluetui "$@"
+rfkill unblock bluetooth
+exec setsid omarchy-launch-or-focus org.omarchy.bluetui "omarchy-launch-tui bluetui"
