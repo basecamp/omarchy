@@ -11,6 +11,5 @@ Current=breeze
 EOF
 fi
 
-echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart sddm" | sudo tee /etc/sudoers.d/allow-passwordless-restart-sddm
-
-chrootable_systemctl_enable sddm.service
+# Don't use chrootable here as --now will cause issues for manual installs
+sudo systemctl enable sddm.service
