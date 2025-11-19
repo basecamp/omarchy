@@ -1,6 +1,9 @@
-echo "Install bluetui as new bluetooth selection TUI"
+echo "Replace bluetooth GUI with TUI"
 
-if omarchy-cmd-missing bluetui; then
-  omarchy-pkg-add bluetui
-  omarchy-refresh-waybar
+omarchy-pkg-add bluetui
+omarchy-pkg-drop blueberry
+
+if ! grep -q "omarchy-launch-bluetooth" ~/.config/waybar/config.jsonc; then
+  sed -i 's/blueberry/omarchy-launch-bluetooth/' ~/.config/waybar/config.jsonc
+  omarchy-restart-waybar
 fi
