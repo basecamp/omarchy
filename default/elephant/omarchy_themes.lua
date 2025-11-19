@@ -50,6 +50,7 @@ function GetEntries()
         display_name = display_name:gsub("(%a)([%w_']*)", function(first, rest)
           return first:upper() .. rest:lower()
         end)
+        display_name = display_name .. "  "
 
         table.insert(entries, {
           Text = display_name,
