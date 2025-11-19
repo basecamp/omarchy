@@ -41,5 +41,8 @@ if $NEEDS_MIGRATION; then
   source $OMARCHY_PATH/install/config/walker-elephant.sh
 
   rm -rf ~/.config/walker/themes
-  omarchy-refresh-walker
+
+  omarchy-refresh-config walker/config.toml
+  omarchy-refresh-config elephant/calc.toml
+  omarchy-refresh-config elephant/desktopapplications.toml
 fi
