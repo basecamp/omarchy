@@ -46,3 +46,5 @@ if $NEEDS_MIGRATION; then
   omarchy-refresh-config elephant/calc.toml
   omarchy-refresh-config elephant/desktopapplications.toml
 fi
+
+echo # Assure final success
