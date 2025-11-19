@@ -3,21 +3,5 @@
 set -e
 
 echo "Now pick dependencies matching your graphics card"
-sudo pacman -Syu --noconfirm steam
+sudo pacman -S --noconfirm --needed steam
 
-# Install xpadneo to ensure controllers work out of the box
-sudo pacman -S --noconfirm --needed linux-headers
-yay -S --noconfirm xpadneo-dkms
-
-if [[ ! -f /etc/modprobe.d/blacklist-xpad.conf ]]; then
-  echo 'blacklist xpad' | sudo tee /etc/modprobe.d/blacklist-xpad.conf >/dev/null  # Prevent xpad/xpadneo driver conflict
-fi
-
-sudo modprobe hid_xpadneo
-
-if [[ ! -f /etc/modules-load.d/xpadneo.conf ]]; then
-  echo 'hid_xpadneo' | sudo tee /etc/modules-load.d/xpadneo.conf >/dev/null
-fi
-
-sudo usermod -a -G input $USER
-omarchy-state set relaunch-required
