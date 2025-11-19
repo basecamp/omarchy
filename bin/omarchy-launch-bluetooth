@@ -1,4 +1,4 @@
 #!/bin/bash
 
 rfkill unblock bluetooth
-exec setsid omarchy-launch-or-focus org.omarchy.bluetui "omarchy-launch-tui bluetui"
+exec omarchy-launch-or-focus-tui bluetui
