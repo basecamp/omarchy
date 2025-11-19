@@ -27,6 +27,13 @@ return {
         base0F = "#f7dc9c", -- Deprecated, brown/yellow
       },
     },
+    config = function(_, opts)
+      require("aether").setup(opts)
+      vim.cmd.colorscheme("aether")
+
+      -- Enable hot reload
+      require("aether.hotreload").setup()
+    end,
   },
   {
     "LazyVim/LazyVim",
