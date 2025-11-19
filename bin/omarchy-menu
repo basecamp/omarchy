@@ -37,7 +37,7 @@ menu() {
 }
 
 terminal() {
-  xdg-terminal-exec --app-id=com.omarchy.Omarchy "$@"
+  xdg-terminal-exec --app-id=org.omarchy.terminal "$@"
 }
 
 present_terminal() {
@@ -173,7 +173,7 @@ show_setup_menu() {
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
-  *Audio*) xdg-terminal-exec --app-id=com.omarchy.Wiremix -e wiremix ;;
+  *Audio*) omarchy-launch-or-focus org.omarchy.wiremix "omarchy-launch-tui wiremix" ;;
   *Wifi*)
     rfkill unblock wifi
     omarchy-launch-wifi

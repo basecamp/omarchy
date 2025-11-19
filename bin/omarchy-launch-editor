@@ -4,7 +4,7 @@ omarchy-cmd-present "$EDITOR" || EDITOR=nvim
 
 case "$EDITOR" in
 nvim | vim | nano | micro | hx | helix)
-  exec setsid uwsm-app -- xdg-terminal-exec "$EDITOR" "$@"
+  exec omarchy-launch-tui "$EDITOR" "$@"
   ;;
 *)
   exec setsid uwsm-app -- "$EDITOR" "$@"
