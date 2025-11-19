@@ -1,0 +1,311 @@
+#!/bin/bash
+# omarchy-looking-glass-install - Install Looking Glass client for VM display
+
+# Preserve original script arguments for exec sg kvm (group refresh)
+ORIGINAL_SCRIPT_ARGS=("$@")
+
+SPICE_DIR="/var/run/omarchy-windows"      # SPICE socket directory (tmpfs, auto-cleaned on reboot)
+SPICE_SOCKET_PATH="$SPICE_DIR/spice.sock" # SPICE Unix socket
+
+echo "Installing Looking Glass B7..."
+echo "Ultra-low latency VM display as an alternative to RDP."
+echo ""
+
+# Request sudo access upfront (avoids password prompt during compilation)
+if ! sudo -v 2>/dev/null; then
+  echo "❌ sudo access required for installation"
+  exit 1
+fi
+
+# Install kernel headers (required for DKMS)
+echo "Installing kernel headers..."
+KERNEL=$(uname -r)
+
+# Validate kernel modules directory exists
+if [[ ! -d "/lib/modules/$KERNEL" ]]; then
+  echo "⚠️  Kernel modules directory not found, using default kernel package"
+  KERNEL_PACKAGE="linux"
+else
+  KERNEL_PACKAGE=$(pacman -Qo "/lib/modules/$KERNEL" 2>/dev/null | sed -n 's/.* is owned by \([^ ]*\) .*/\1/p' | head -1)
+
+  if [[ -z "$KERNEL_PACKAGE" ]]; then
+    echo "⚠️  Could not detect kernel package, defaulting to linux"
+    KERNEL_PACKAGE="linux"
+  fi
+fi
+
+if [[ "$KERNEL_PACKAGE" == "linux" ]]; then
+  if ! omarchy-pkg-add linux-headers; then
+    echo "❌ Failed to install linux-headers"
+    exit 1
+  fi
+elif [[ "$KERNEL_PACKAGE" == "linux-lts" ]]; then
+  if ! omarchy-pkg-add linux-lts-headers; then
+    echo "❌ Failed to install linux-lts-headers"
+    exit 1
+  fi
+elif [[ "$KERNEL_PACKAGE" == "linux-zen" ]]; then
+  if ! omarchy-pkg-add linux-zen-headers; then
+    echo "❌ Failed to install linux-zen-headers"
+    exit 1
+  fi
+else
+  echo "⚠️  Unknown kernel package: $KERNEL_PACKAGE, installing linux-headers"
+  if ! omarchy-pkg-add linux-headers; then
+    echo "❌ Failed to install linux-headers"
+    exit 1
+  fi
+fi
+echo "✓ Kernel headers installed"
+
+# Install packages from AUR (yay is pre-installed in Omarchy)
+if pacman -Q looking-glass looking-glass-module-dkms &>/dev/null; then
+  echo "✓ Looking Glass packages already installed"
+else
+  echo "Installing packages (looking-glass, looking-glass-module-dkms)..."
+  echo "  This may take a few minutes (downloading and compiling)..."
+  echo ""
+  if ! yay -S --noconfirm --needed looking-glass looking-glass-module-dkms; then
+    echo ""
+    echo "❌ Failed to install Looking Glass packages"
+    echo "   Please check the errors above and try again"
+    exit 1
+  fi
+  echo ""
+  echo "✓ Packages installed"
+fi
+
+# Configure udev rules
+echo "Configuring udev rules..."
+sudo tee /etc/udev/rules.d/99-kvmfr.rules >/dev/null <<'EOF'
+SUBSYSTEM=="kvmfr", OWNER="root", GROUP="kvm", MODE="0660"
+EOF
+
+if ! sudo udevadm control --reload-rules 2>/dev/null; then
+  echo "⚠️  Failed to reload udev rules (non-fatal)"
+fi
+
+if ! sudo udevadm trigger 2>/dev/null; then
+  echo "⚠️  Failed to trigger udev (non-fatal)"
+fi
+
+echo "✓ Udev rules configured"
+
+# Configure kernel module size (interactive resolution selection)
+# Check if already configured (unless FORCE_RECONFIGURE=1 to allow changing size)
+if [[ "${FORCE_RECONFIGURE:-0}" != "1" ]] && [[ -f /etc/modprobe.d/kvmfr.conf ]]; then
+  IVSHMEM_SIZE=$(grep -oP 'static_size_mb=\K\d+' /etc/modprobe.d/kvmfr.conf 2>/dev/null || echo "")
+  if [[ -n "$IVSHMEM_SIZE" ]]; then
+    echo "✓ Kernel module already configured (${IVSHMEM_SIZE}MB)"
+  else
+    # Config file exists but malformed - remove and reconfigure
+    sudo rm -f /etc/modprobe.d/kvmfr.conf
+    IVSHMEM_SIZE=""
+  fi
+fi
+
+# If not configured or force reconfigure, prompt user
+if [[ -z "$IVSHMEM_SIZE" ]] || [[ "${FORCE_RECONFIGURE:-0}" == "1" ]]; then
+  echo ""
+  echo "Select target display resolution for Looking Glass:"
+  echo ""
+  echo "  Resolution     Minimum   Recommended (2x safety margin)"
+  echo "  ─────────────────────────────────────────────────────────"
+  echo "  1920×1080      32 MB     64 MB  ← safe for 1080p/1200p"
+  echo "  2560×1440      64 MB     128 MB ← safe for 1440p"
+  echo "  3840×2160      128 MB    256 MB ← safe for 4K"
+  echo ""
+  echo "  Note: Extra margin prevents truncated display if resolution changes"
+  echo ""
+
+  RESOLUTION_CHOICE=$(gum choose --selected="1440p (128MB)" \
+    "1080p (64MB)" \
+    "1440p (128MB)" \
+    "4K (256MB)")
+
+  # Check if user cancelled the selection (Ctrl+C returns empty string)
+  if [[ -z "$RESOLUTION_CHOICE" ]]; then
+    echo ""
+    echo "Installation cancelled by user"
+    exit 1
+  fi
+
+  case "$RESOLUTION_CHOICE" in
+  *1080p*) IVSHMEM_SIZE=64 ;;
+  *1440p*) IVSHMEM_SIZE=128 ;;
+  *4K*) IVSHMEM_SIZE=256 ;;
+  *) IVSHMEM_SIZE=64 ;;
+  esac
+
+  echo "Selected: $RESOLUTION_CHOICE"
+
+  # Validate IVSHMEM_SIZE before use (security check)
+  if ! [[ "$IVSHMEM_SIZE" =~ ^[0-9]+$ ]] || [[ "$IVSHMEM_SIZE" -lt 32 ]] || [[ "$IVSHMEM_SIZE" -gt 512 ]]; then
+    echo "❌ Invalid IVSHMEM_SIZE: $IVSHMEM_SIZE (must be 32-512)"
+    exit 1
+  fi
+
+  echo "Configuring kernel module size..."
+  sudo tee /etc/modprobe.d/kvmfr.conf >/dev/null <<EOF
+options kvmfr static_size_mb=$IVSHMEM_SIZE
+EOF
+  echo "✓ Kernel module size configured (${IVSHMEM_SIZE}MB)"
+fi
+
+# Configure kernel module auto-load (after modprobe.d to ensure consistency)
+if [[ ! -f /etc/modules-load.d/kvmfr.conf ]]; then
+  echo "Configuring kernel module auto-load..."
+  echo "kvmfr" | sudo tee /etc/modules-load.d/kvmfr.conf >/dev/null
+  echo "✓ Kernel module auto-load configured"
+fi
+
+# Add user to kvm group
+echo "Checking kvm group..."
+ADDED_TO_KVM=false
+if ! groups "$USER" | grep -q kvm; then
+  sudo usermod -aG kvm "$USER"
+  echo "✓ Added to kvm group"
+  ADDED_TO_KVM=true
+
+  # Auto-refresh group membership using sg to avoid logout/login
+  echo "  Refreshing group membership for current session..."
+  exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
+else
+  echo "✓ Already in kvm group"
+fi
+
+# Create client configuration
+echo "Creating client configuration..."
+mkdir -p ~/.config/looking-glass
+cat >~/.config/looking-glass/client.ini <<EOF
+[app]
+shmFile=/dev/kvmfr0
+
+[input]
+rawMouse=yes
+autoCapture=no
+captureOnly=no
+escapeKey=KEY_SCROLLLOCK
+grabKeyboard=yes
+captureOnFocus=no
+
+[win]
+fullScreen=no
+borderless=no
+
+[spice]
+enable=yes
+host=$SPICE_SOCKET_PATH
+port=0
+input=yes
+audio=yes
+clipboard=yes
+clipboardToVM=yes
+clipboardToLocal=yes
+
+[audio]
+periodSize=256
+bufferLatency=5
+micDefault=allow
+micShowIndicator=no
+EOF
+echo "✓ Configuration created with SPICE support (~/.config/looking-glass/client.ini)"
+
+# Install desktop file for Walker launcher
+echo "Installing desktop launcher..."
+mkdir -p "$HOME/.local/share/applications"
+
+# Try to find OMARCHY_PATH if not set
+if [[ -z "$OMARCHY_PATH" ]]; then
+  # Try to detect from script location
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "$SCRIPT_DIR/../applications/windows-looking-glass.desktop" ]]; then
+    OMARCHY_PATH="$(cd "$SCRIPT_DIR/.." && pwd)"
+  fi
+fi
+
+if [[ -n "$OMARCHY_PATH" ]] && [[ -f "$OMARCHY_PATH/applications/windows-looking-glass.desktop" ]]; then
+  cp "$OMARCHY_PATH/applications/windows-looking-glass.desktop" "$HOME/.local/share/applications/"
+  echo "✓ Desktop launcher installed (Windows [Looking Glass])"
+else
+  echo "⚠️  Desktop file not found - creating basic launcher"
+  cat >"$HOME/.local/share/applications/windows-looking-glass.desktop" <<'DESKEOF'
+[Desktop Entry]
+Name=Windows [Looking Glass]
+Comment=Connect to Windows VM via Looking Glass (ultra-low latency)
+Exec=omarchy-looking-glass-launch
+Terminal=false
+Type=Application
+Categories=System;Virtualization;
+DESKEOF
+  echo "✓ Basic desktop launcher created"
+fi
+
+# Load kernel module (reload if already loaded to apply new configuration)
+echo "Loading kvmfr module..."
+if lsmod | grep -q kvmfr; then
+  # Module already loaded - check if device exists with correct size
+  if [[ ! -e /dev/kvmfr0 ]]; then
+    echo "Module loaded but /dev/kvmfr0 missing - reloading with new config..."
+    sudo rmmod kvmfr 2>/dev/null || true
+    if sudo modprobe kvmfr; then
+      echo "✓ Module reloaded"
+    else
+      echo "⚠️  Module reload failed (reboot required)"
+    fi
+  else
+    # Device exists - verify via modinfo instead of unreliable dmesg parsing
+    # Check if module parameters match configuration
+    module_size=$(cat /sys/module/kvmfr/parameters/static_size_mb 2>/dev/null || echo "0")
+    if [[ "$module_size" != "$IVSHMEM_SIZE" ]]; then
+      echo "Module loaded with wrong size (${module_size}MB, expected ${IVSHMEM_SIZE}MB) - reloading..."
+      sudo rmmod kvmfr 2>/dev/null || true
+      if sudo modprobe kvmfr; then
+        echo "✓ Module reloaded with ${IVSHMEM_SIZE}MB"
+      else
+        echo "⚠️  Module reload failed (reboot required)"
+      fi
+    else
+      echo "✓ Module already loaded (${IVSHMEM_SIZE}MB)"
+    fi
+  fi
+else
+  # Module not loaded - load it
+  if sudo modprobe kvmfr; then
+    echo "✓ Module loaded"
+  else
+    echo "⚠️  Module load failed (reboot required)"
+  fi
+fi
+
+echo ""
+echo "Installation complete!"
+echo ""
+
+# Check what needs to be done
+NEEDS_REBOOT=false
+REBOOT_REASONS=""
+
+# Check if module is loaded and device exists
+if ! lsmod | grep -q kvmfr || [[ ! -e /dev/kvmfr0 ]]; then
+  NEEDS_REBOOT=true
+  REBOOT_REASONS="  - Kernel module not active"$'\n'"$REBOOT_REASONS"
+fi
+
+# Note: No need to check kvm group here - we already refreshed it with sg if needed
+
+if [[ "$NEEDS_REBOOT" == true ]]; then
+  echo "⚠️  Reboot required for:"
+  echo "$REBOOT_REASONS"
+  echo ""
+  echo "After reboot, enable Looking Glass during Windows VM installation:"
+  echo "  omarchy-windows-vm install"
+  echo ""
+else
+  echo "✓ Looking Glass client ready!"
+  echo ""
+  echo "Next step: Install Windows VM with Looking Glass support"
+  echo "  omarchy-windows-vm install"
+  echo "  (Select 'Yes' when asked about Looking Glass)"
+  echo ""
+fi
