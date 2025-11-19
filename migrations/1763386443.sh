@@ -4,5 +4,5 @@ echo "Uniquely identify terminal apps with custom app-ids using omarchy-launch-t
 sed -i 's/\$terminal -e \([^ ]*\)/omarchy-launch-tui \1/g' ~/.config/hypr/bindings.conf
 
 # Update waybar to use omarchy-launch-or-focus with omarchy-launch-tui for TUI apps
-sed -i 's/xdg-terminal-exec btop/omarchy-launch-or-focus org.omarchy.btop "omarchy-launch-tui btop"/' ~/.config/waybar/config.jsonc
-sed -i 's/xdg-terminal-exec --app-id=com\.omarchy\.Wiremix -e wiremix/omarchy-launch-or-focus org.omarchy.wiremix "omarchy-launch-tui wiremix"/' ~/.config/waybar/config.jsonc
+sed -i 's|xdg-terminal-exec btop|omarchy-launch-or-focus org.omarchy.btop \\\"omarchy-launch-tui btop\\\"|' ~/.config/waybar/config.jsonc
+sed -i 's|xdg-terminal-exec --app-id=com\.omarchy\.Wiremix -e wiremix|omarchy-launch-or-focus org.omarchy.wiremix \\\"omarchy-launch-tui wiremix\\\"|' ~/.config/waybar/config.jsonc
