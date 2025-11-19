@@ -1,7 +1,7 @@
 return {
   {
     "bjarneo/aether.nvim",
-    name = "ethereal",
+    name = "aether",
     priority = 1000,
     opts = {
       disable_italics = false,
@@ -31,7 +31,7 @@ return {
   {
     "LazyVim/LazyVim",
     opts = {
-      colorscheme = "ethereal",
+      colorscheme = "aether",
     },
   },
 }
