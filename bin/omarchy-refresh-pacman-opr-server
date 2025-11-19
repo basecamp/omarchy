@@ -1,0 +1,7 @@
+#!/bin/bash
+
+if [[ $1 == "edge" ]]; then
+  sudo sed -i 's|https://pkgs.omarchy.org/.*$arch|https://pkgs.omarchy.org/edge/$arch|' /etc/pacman.conf
+else
+  sudo sed -i 's|https://pkgs.omarchy.org/.*$arch|https://pkgs.omarchy.org/stable/$arch|' /etc/pacman.conf
+fi
