@@ -174,14 +174,8 @@ show_setup_menu() {
 
   case $(menu "Setup" "$options") in
   *Audio*) omarchy-launch-or-focus org.omarchy.wiremix "omarchy-launch-tui wiremix" ;;
-  *Wifi*)
-    rfkill unblock wifi
-    omarchy-launch-wifi
-    ;;
-  *Bluetooth*)
-    rfkill unblock bluetooth
-    blueberry
-    ;;
+  *Wifi*) omarchy-launch-wifi ;;
+  *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
