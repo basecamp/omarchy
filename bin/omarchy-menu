@@ -154,12 +154,7 @@ show_style_menu() {
 }
 
 show_theme_menu() {
-  theme=$(menu "Theme" "$(omarchy-theme-list)" "" "$(omarchy-theme-current)")
-  if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    back_to show_style_menu
-  else
-    omarchy-theme-set "$theme"
-  fi
+  omarchy-launch-walker -m menus:omarchythemes --width 800 --minheight 400
 }
 
 show_font_menu() {
