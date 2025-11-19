@@ -50,6 +50,7 @@ ruby)
   omarchy-pkg-add libyaml
   mise use --global ruby@latest
   mise settings add idiomatic_version_file_enable_tools ruby
+  echo "gem: --no-document" > ~/.gemrc
   mise x ruby -- gem install rails --no-document
   echo -e "\nYou can now run: rails new myproject"
   ;;

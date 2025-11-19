@@ -26,7 +26,6 @@ scrollbar {
   background: alpha(@base, 0.95);
   padding: 20px;
   border: 2px solid @border;
-  border-radius: 0px;
 }
 
 .preview-box {
@@ -103,10 +102,6 @@ child:selected .item-box * {
   -gtk-icon-transform: scale(0.9);
 }
 
-.item-box.calc .item-image {
-  -gtk-icon-source: url("file:///home/ryan/Downloads/gitlab.svg");
-}
-
 .current {
   font-style: italic;
 }
@@ -118,5 +113,4 @@ child:selected .item-box * {
 }
 
 .preview {
-  background: @background;
 }

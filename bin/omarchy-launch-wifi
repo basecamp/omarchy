@@ -1,3 +1,4 @@
 #!/bin/bash
 
-exec setsid uwsm-app -- "$TERMINAL" --class=Impala -e impala "$@"
+rfkill unblock wifi
+omarchy-launch-or-focus-tui impala
