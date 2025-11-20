@@ -6,7 +6,7 @@ if ! command -v tte &>/dev/null; then
 fi
 
 # Exit early if screensave is already running
-pgrep -f com.omarchy.Screensaver && exit 0
+pgrep -f org.omarchy.screensaver && exit 0
 
 # Allow screensaver to be turned off but also force started
 if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]]; then
@@ -22,19 +22,19 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   case $terminal in
   *Alacritty*)
     hyprctl dispatch exec -- \
-      alacritty --class=com.omarchy.Screensaver \
+      alacritty --class=org.omarchy.screensaver \
       --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
       -e omarchy-cmd-screensaver
     ;;
   *ghostty*)
     hyprctl dispatch exec -- \
-      ghostty --class=com.omarchy.Screensaver \
+      ghostty --class=org.omarchy.screensaver \
       --font-size=18 \
       -e omarchy-cmd-screensaver
     ;;
   *kitty*)
     hyprctl dispatch exec -- \
-      kitty --class=com.omarchy.Screensaver \
+      kitty --class=org.omarchy.screensaver \
       --override font_size=18 \
       -e omarchy-cmd-screensaver
     ;;

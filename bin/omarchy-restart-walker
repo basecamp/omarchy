@@ -13,9 +13,9 @@ if [[ $EUID -eq 0 ]]; then
   systemd-run --uid="$SCRIPT_OWNER" --setenv=XDG_RUNTIME_DIR="/run/user/$USER_UID" \
     bash -c "
       systemctl --user restart elephant.service
-      systemctl --user restart app-walker@autostart.service
+      setsid walker --gapplication-service &
     "
 else
   systemctl --user restart elephant.service
-  systemctl --user restart app-walker@autostart.service
+  setsid walker --gapplication-service &
 fi
