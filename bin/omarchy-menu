@@ -143,9 +143,9 @@ show_toggle_menu() {
 
 show_style_menu() {
   case $(menu "Style" \
-    "󰸌  Theme\n Auto Theme Switcher\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
+    "󰸌  Theme\n Theme-Switcher\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
     *Theme*) show_theme_menu ;;
-    *"Auto Theme Switcher"*) omarchy-theme-auto-switcher ;;
+    *Theme-Switcher*) present_terminal omarchy-theme-auto-switcher ;;
     *Font*) show_font_menu ;;
     *Background*) omarchy-theme-bg-next ;;
     *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
