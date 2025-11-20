@@ -1,14 +1,80 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 set -e
 
+REPO="basecamp/omarchy"
+API_URL="https://api.github.com/repos/$REPO/releases/latest"
+
+# Grab latest release info
+gum spin --spinner dot --title "Fetching latest changelog..." -- curl -s "$API_URL" > /tmp/omarchy_release.json
+RELEASE_DATA=$(cat /tmp/omarchy_release.json)
+rm -f /tmp/omarchy_release.json
+
+# Parse what we need
+VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name // "Unknown"')
+PUBLISHED_AT=$(echo "$RELEASE_DATA" | jq -r '.published_at // "Unknown"' | cut -d'T' -f1)
+BODY=$(echo "$RELEASE_DATA" | jq -r '.body // "No changelog available"')
+
+# Pull out download links if they exist
+ISO_URL=$(echo "$BODY" | grep -oP 'https://iso\.omarchy\.org/omarchy-[^)]+\.iso' | head -1 || echo "")
+SHA256=$(echo "$BODY" | grep -oP 'SHA256:\s*\K[a-f0-9]{64}' | head -1 || echo "")
+
+# Show header
+gum style \
+  --foreground 212 \
+  --border double \
+  --padding "1 2" \
+  --margin "1 0" \
+  --align center \
+  --width 70 \
+  "Omarchy $VERSION" \
+  "Released: $PUBLISHED_AT"
+
+echo ""
+
+# Build the pager content
+{
+  echo "$BODY" | gum format
+  
+  if [[ -n "$ISO_URL" ]] || [[ -n "$SHA256" ]]; then
+    echo ""
+    gum style --foreground 212 --bold "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    gum style --foreground 212 --bold "Download Information"
+    gum style --foreground 212 --bold "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    [[ -n "$ISO_URL" ]] && {
+      gum style --foreground 120 --bold "ISO:"
+      gum style --foreground 120 "  $ISO_URL"
+      echo ""
+    }
+    
+    [[ -n "$SHA256" ]] && {
+      gum style --foreground 141 --bold "SHA256:"
+      gum style --foreground 141 "  $SHA256"
+      echo ""
+    }
+  fi
+} | gum pager --soft-wrap
+
+echo ""
+
+# Confirmation prompt
 gum style --border normal --border-foreground 6 --padding "1 2" \
   "Ready to update Omarchy?" \
   "" \
   "• You cannot stop the update once you start!" \
-  "• Make sure you're connected to power or have a full battery"
+  "• Make sure you're connected to power or have a full battery" \
+  "• If your config has any conflict with the current one, it may raise issues"
 
-if ! gum confirm "Continue with update?"; then
-  echo "Update cancelled"
+echo ""
+
+if gum confirm "Continue with update?"; then
+  echo ""
+  gum style --foreground 120 "✓ Proceeding with update..."
+  echo ""
   exit 0
+else
+  echo ""
+  gum style --foreground 208 "Update cancelled"
+  exit 1
 fi
