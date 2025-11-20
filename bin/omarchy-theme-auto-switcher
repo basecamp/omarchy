@@ -1,0 +1,50 @@
+#!/bin/bash
+
+TIMER="omarchy-theme-auto-switcher.timer"
+UNIT_PATH="$HOME/.config/systemd/user/$TIMER"
+
+# Ensure timer unit exists
+[[ -f "$UNIT_PATH" ]] || {
+    echo "Theme Switcher: Timer unit not found."
+    exit 1
+}
+
+# Choose schedule
+choice=$(gum choose --limit 1 \
+    --header "Auto Theme Switcher — Choose how often the theme should update:" \
+    "off" "minute" "hour" "day" "week" "month")
+
+[[ -n "$choice" ]] || {
+    echo "No option selected. Theme Switcher settings unchanged."
+    exit 1
+}
+
+declare -A map=(
+    [minute]="*-*-* *:*:00"
+    [hour]="hourly"
+    [day]="daily"
+    [week]="weekly"
+    [month]="monthly"
+)
+
+# Stop timer before editing
+systemctl --user stop "$TIMER" || true
+systemctl --user disable "$TIMER" || true
+
+if [[ "$choice" == "off" ]]; then
+    echo "Auto Theme Switcher has been disabled."
+    exit 0
+fi
+
+ONCAL="${map[$choice]}"
+
+echo "Updating Auto Theme Switcher schedule…"
+
+# Update OnCalendar in-place
+sed -i "s/^OnCalendar=.*/OnCalendar=${ONCAL}/" "$UNIT_PATH"
+
+# Reload and restart timer
+systemctl --user daemon-reload
+systemctl --user enable --now "$TIMER"
+
+echo "Auto Theme Switcher updated!"

@@ -1,0 +1,6 @@
+[Unit]
+Description=Theme Auto Switcher Service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/omarchy/bin/omarchy-theme-next
