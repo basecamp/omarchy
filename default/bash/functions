@@ -55,19 +55,28 @@ transcode-video-4K() {
 
 # Transcode any image to JPG image that's great for shrinking wallpapers
 img2jpg() {
-  magick $1 -quality 95 -strip ${1%.*}.jpg
+  img="$1"
+  shift
+
+  magick "$img" $@ -quality 95 -strip ${img%.*}-optimized.jpg
 }
 
 # Transcode any image to JPG image that's great for sharing online without being too big
 img2jpg-small() {
-  magick $1 -resize 1080x\> -quality 95 -strip ${1%.*}.jpg
+  img="$1"
+  shift
+
+  magick "$img" $@ -resize 1080x\> -quality 95 -strip ${img%.*}-optimized.jpg
 }
 
 # Transcode any image to compressed-but-lossless PNG
 img2png() {
-  magick "$1" -strip -define png:compression-filter=5 \
+  img="$1"
+  shift
+
+  magick "$img" $@ -strip -define png:compression-filter=5 \
     -define png:compression-level=9 \
     -define png:compression-strategy=1 \
     -define png:exclude-chunk=all \
-    "${1%.*}.png"
+    "${img%.*}-optimized.png"
 }
