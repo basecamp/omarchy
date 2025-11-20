@@ -8,7 +8,7 @@ asdcontrol
 avahi
 bash-completion
 bat
-blueberry
+bluetui
 brightnessctl
 btop
 clang
@@ -21,6 +21,7 @@ docker-buildx
 docker-compose
 dust
 evince
+exfatprogs
 expac
 eza
 fastfetch
@@ -99,6 +100,7 @@ python-poetry-core
 python-terminaltexteffects
 qt5-wayland
 ripgrep
+ruby
 rust
 satty
 sddm
@@ -112,6 +114,7 @@ swayosd
 system-config-printer
 tldr
 tree-sitter-cli
+tobi-try
 ttf-cascadia-mono-nerd
 ttf-ia-writer
 ttf-jetbrains-mono-nerd

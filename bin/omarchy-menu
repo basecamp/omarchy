@@ -37,7 +37,7 @@ menu() {
 }
 
 terminal() {
-  xdg-terminal-exec --app-id=com.omarchy.Omarchy "$@"
+  xdg-terminal-exec --app-id=org.omarchy.terminal "$@"
 }
 
 present_terminal() {
@@ -124,7 +124,7 @@ show_screenrecord_menu() {
 
 show_share_menu() {
   case $(menu "Share" "  Clipboard\n  File \n  Folder") in
-  *Clipboard*) terminal bash -c "omarchy-cmd-share clipboard" ;;
+  *Clipboard*) omarchy-cmd-share clipboard ;;
   *File*) terminal bash -c "omarchy-cmd-share file" ;;
   *Folder*) terminal bash -c "omarchy-cmd-share folder" ;;
   *) back_to show_trigger_menu ;;
@@ -154,12 +154,7 @@ show_style_menu() {
 }
 
 show_theme_menu() {
-  theme=$(menu "Theme" "$(omarchy-theme-list)" "" "$(omarchy-theme-current)")
-  if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    back_to show_style_menu
-  else
-    omarchy-theme-set "$theme"
-  fi
+  omarchy-launch-walker -m menus:omarchythemes --width 800 --minheight 400
 }
 
 show_font_menu() {
@@ -178,15 +173,9 @@ show_setup_menu() {
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
-  *Audio*) xdg-terminal-exec --app-id=com.omarchy.Wiremix -e wiremix ;;
-  *Wifi*)
-    rfkill unblock wifi
-    omarchy-launch-wifi
-    ;;
-  *Bluetooth*)
-    rfkill unblock bluetooth
-    blueberry
-    ;;
+  *Audio*) omarchy-launch-or-focus-tui wiremix ;;
+  *Wifi*) omarchy-launch-wifi ;;
+  *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
@@ -301,10 +290,11 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft") in
+  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft\n󰖺  Xbox Controller [AUR]") in
   *Steam*) present_terminal omarchy-install-steam ;;
   *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
+  *Xbox*) present_terminal omarchy-install-xbox-controllers ;;
   *) show_install_menu ;;
   esac
 }
