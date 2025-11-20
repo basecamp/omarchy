@@ -2,7 +2,7 @@
 Description=Run Auto Theme Switcher periodically
 
 [Timer]
-OnCalendar=*-*-* *:*:00
+OnCalendar=monthly
 Persistent=true
 
 [Install]
