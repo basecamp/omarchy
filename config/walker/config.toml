@@ -1,6 +1,6 @@
-force_keyboard_focus = true                                                 # forces keyboard forcus to stay in Walker
-selection_wrap = true                                                       # wrap list if at bottom or top
-theme = "omarchy-default"                                                   # theme to use
+force_keyboard_focus = true # forces keyboard forcus to stay in Walker
+selection_wrap = true       # wrap list if at bottom or top
+theme = "omarchy-default"   # theme to use
 additional_theme_location = "~/.local/share/omarchy/default/walker/themes/"
 
 [placeholders]
@@ -10,6 +10,7 @@ additional_theme_location = "~/.local/share/omarchy/default/walker/themes/"
 quick_activate = []
 
 [providers]
+max_results = 256 # 256 should be enough for everyone
 default = [
   "desktopapplications",
   "menus",
