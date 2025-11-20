@@ -97,6 +97,7 @@ power-profiles-daemon
 python-gobject
 python-poetry-core
 python-terminaltexteffects
+python-vosk
 qt5-wayland
 ripgrep
 satty
@@ -135,4 +136,5 @@ xmlstarlet
 xournalpp
 yaru-icon-theme
 yay
+ydotool
 zoxide

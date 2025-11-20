@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# Voice dictation control script for Hyprland
+# Hold CTRL ALT, J to start record, press again to stop and submit (ENTER)
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PID_FILE="/tmp/voice-dictation.pid"
+START_TIME_FILE="/tmp/voice-dictation-start.time"
+
+# Notification function (mako-specific)
+notify() {
+  local message="$1"
+  local icon="$2"
+  notify-send "Voice Dictation" "$message" -i "$icon" -t 1500 -a "Voice Dictation"
+}
+
+case "$1" in
+"start")
+  # Record start time for 1-second delay
+  echo "$(date +%s)" >"$START_TIME_FILE"
+
+  # Start recording after O.1 second delay
+  (
+    sleep 0.1
+    # Check if start time file still exists (means not yet released)
+    if [[ -f "$START_TIME_FILE" ]]; then
+      ~/.config/nerd-dictation/nerd-dictation begin --simulate-input-tool=YDOTOOL &
+      echo $! >"$PID_FILE"
+      notify "Recording started 🎤" "audio-input-microphone"
+    fi
+  ) &
+  ;;
+
+"stop")
+  # Small delay to ensure clean transition
+  sleep 0.1
+
+  # Remove start time file to prevent late start
+  rm -f "$START_TIME_FILE"
+
+  # Stop recording if active
+  if [[ -f "$PID_FILE" ]]; then
+    PID=$(cat "$PID_FILE")
+    if kill -0 "$PID" 2>/dev/null; then
+      ~/.config/nerd-dictation/nerd-dictation end
+      kill "$PID" 2>/dev/null
+      rm -f "$PID_FILE"
+      notify "Recording stopped ✍️" "text-x-generic"
+
+      # Submit immediately with enter
+      sleep 0.3
+      ydotool key 28:1 28:0
+    fi
+  fi
+  ;;
+
+*)
+  echo "Usage: $0 {start|stop}"
+  exit 1
+  ;;
+esac
