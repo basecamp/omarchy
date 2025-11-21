@@ -57,6 +57,7 @@ if [ -n "$OMARCHY_ARM" ]; then
 
   source $OMARCHY_INSTALL/arm_install_scripts/obsidian-appimage.sh # Required fuse2 package included in omarchy-arm-official.packages
   source $OMARCHY_INSTALL/arm_install_scripts/omarchy-nvim.sh
+  source $OMARCHY_INSTALL/arm_install_scripts/tobi-try.sh
   if [ -z "$SKIP_GHOSTTY" ]; then
     source $OMARCHY_INSTALL/arm_install_scripts/ghostty.sh
   fi
