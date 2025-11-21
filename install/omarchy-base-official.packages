@@ -10,6 +10,7 @@ avahi
 bash-completion
 bat
 blueberry
+bluetui
 brightnessctl
 btop
 cargo
@@ -25,6 +26,7 @@ dust
 evince
 expac
 eza
+exfatprogs
 fastfetch
 fcitx5
 fcitx5-gtk
@@ -94,6 +96,7 @@ python-poetry-core
 qt5-wayland
 ripgrep
 rust
+ruby
 satty
 sddm
 slurp
@@ -106,6 +109,7 @@ tldr
 tree-sitter-cli
 ttf-cascadia-mono-nerd
 ttf-jetbrains-mono-nerd
+tobi-try
 ufw
 unzip
 usage
