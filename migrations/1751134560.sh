@@ -18,7 +18,7 @@ mkdir -p ~/.local/state/omarchy/migrations
 touch ~/.local/state/omarchy/migrations/1751134560.sh
 
 # Remove old AUR packages to prevent a super lengthy build on old Omarchy installs
-sudo pacman -Rns --noconfirm zoom qt5-remoteobjects wf-recorder wl-screenrec
+omarchy-pkg-drop zoom qt5-remoteobjects wf-recorder wl-screenrec
 
 # Get rid of old AUR packages
 bash $OMARCHY_PATH/migrations/1756060611.sh
