@@ -49,6 +49,10 @@ open_in_editor() {
   omarchy-launch-editor "$1"
 }
 
+has_bluetooth() {
+  [ -d /sys/class/bluetooth ]
+}
+
 install() {
   present_terminal "echo 'Installing $1...'; sudo pacman -S --noconfirm $2"
 }
@@ -167,7 +171,9 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
+  local options="  Audio\n  Wifi"
+  has_bluetooth && options="$options\n󰂯  Bluetooth"
+  options="$options\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
@@ -417,7 +423,9 @@ show_update_config_menu() {
 }
 
 show_update_hardware_menu() {
-  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth") in
+  local options="  Audio\n󱚾  Wi-Fi"
+  has_bluetooth && options="$options\n󰂯  Bluetooth"
+  case $(menu "Restart" "$options") in
   *Audio*) present_terminal omarchy-restart-pipewire ;;
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
