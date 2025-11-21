@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Rotate workspaces across all monitors in Hyprland/Omarchy
+
+readonly APP_NAME="Omarchy"
+
+dispatch() {
+    local output
+    if ! output=$(hyprctl dispatch "$@" 2>&1); then
+        notify-send "$APP_NAME" "hyprctl dispatch failed: $output"
+        exit 1
+    fi
+
+    if [[ "$output" != "ok" ]]; then
+        notify-send "$APP_NAME" "$output"
+        exit 1
+    fi
+}
+
+get_active_workspace() {
+    hyprctl monitors -j | jq -r ".[] | select(.name==\"$1\") | .activeWorkspace.id"
+}
+
+mapfile -t MONITORS < <(hyprctl monitors -j | jq -r '.[].name')
+
+if (( ${#MONITORS[@]} < 2 )); then
+    notify-send "$APP_NAME" "Only one monitor detected — nothing to rotate."
+    exit 0
+fi
+
+ORIGINAL_MONITOR=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .name')
+
+if [[ -z "$ORIGINAL_MONITOR" || "$ORIGINAL_MONITOR" == "null" ]]; then
+    notify-send "$APP_NAME" "Could not detect the focused monitor."
+    exit 1
+fi
+
+# Validate that every monitor has an active workspace before rotating.
+for mon in "${MONITORS[@]}"; do
+    ws=$(get_active_workspace "$mon")
+    if [[ -z "$ws" || "$ws" == "null" ]]; then
+        notify-send "$APP_NAME" "Could not detect workspace on $mon."
+        exit 1
+    fi
+done
+
+# Swap neighbouring monitors from right-to-left to rotate without creating temps.
+for (( i=${#MONITORS[@]}-1; i>=1; i-- )); do
+    dispatch swapactiveworkspaces "${MONITORS[$((i-1))]}" "${MONITORS[$i]}"
+done
+
+# Ensure focus returns to the monitor the user was on.
+dispatch focusmonitor "$ORIGINAL_MONITOR"
+
+notify-send "$APP_NAME" "Rotated workspaces across ${#MONITORS[@]} monitors."
