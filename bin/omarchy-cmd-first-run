@@ -12,6 +12,7 @@ if [[ -f "$FIRST_RUN_MODE" ]]; then
   bash "$OMARCHY_PATH/install/first-run/firewall.sh"
   bash "$OMARCHY_PATH/install/first-run/dns-resolver.sh"
   bash "$OMARCHY_PATH/install/first-run/gnome-theme.sh"
+  bash "$OMARCHY_PATH/install/first-run/elephant.sh"
   sudo rm -f /etc/sudoers.d/first-run
 
   bash "$OMARCHY_PATH/install/first-run/welcome.sh"

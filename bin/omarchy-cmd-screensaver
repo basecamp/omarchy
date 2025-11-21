@@ -1,25 +1,26 @@
 #!/bin/bash
 
 screensaver_in_focus() {
-  hyprctl activewindow -j | jq -e '.class == "Screensaver"' >/dev/null 2>&1
+  hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
 }
 
 exit_screensaver() {
   hyprctl keyword cursor:invisible false
   pkill -x tte 2>/dev/null
-  pkill -f "alacritty --class Screensaver" 2>/dev/null
+  pkill -f org.omarchy.screensaver 2>/dev/null
   exit 0
 }
 
 trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
 
+printf '\033]11;rgb:00/00/00\007'  # Set background color to black
+
 hyprctl keyword cursor:invisible true &>/dev/null
 
 while true; do
-  effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
   tte -i ~/.config/omarchy/branding/screensaver.txt \
-    --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
-    "$effect" &
+    --frame-rate 120 --canvas-width 0 --canvas-height 0 --anchor-canvas c --anchor-text c\
+    --no-eol --no-restore-cursor random_effect &
 
   while pgrep -x tte >/dev/null; do
     if read -n 1 -t 3 || ! screensaver_in_focus; then

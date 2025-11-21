@@ -1,3 +1,8 @@
+echo "Make Alacritty compatible with X-TerminalArgs"
+
+if omarchy-pkg-present alacritty; then
+  mkdir -p ~/.local/share/applications
+  cat > ~/.local/share/applications/Alacritty.desktop << EOF
 [Desktop Entry]
 Type=Application
 TryExec=alacritty
@@ -19,3 +24,5 @@ X-TerminalArgDir=--working-directory=
 [Desktop Action New]
 Name=New Terminal
 Exec=alacritty
+EOF
+fi
