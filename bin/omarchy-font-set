@@ -28,7 +28,6 @@ if [[ -n "$font_name" && "$font_name" != "CNCLD" ]]; then
 
     omarchy-restart-waybar
     omarchy-restart-swayosd
-    omarchy-restart-walker
 
     if pgrep -x ghostty; then
       notify-send "    You must restart Ghostty to see font change"
