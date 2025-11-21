@@ -171,7 +171,7 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi"
+  local options="  Audio\n󱚾  Wi-Fi"
   has_bluetooth && options="$options\n󰂯  Bluetooth"
   options="$options\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
@@ -180,7 +180,7 @@ show_setup_menu() {
 
   case $(menu "Setup" "$options") in
   *Audio*) omarchy-launch-or-focus-tui wiremix ;;
-  *Wifi*) omarchy-launch-wifi ;;
+  *Wi-Fi*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
