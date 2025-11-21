@@ -6,7 +6,6 @@
 # - Include omarchy-x68.packages
 # - Include omarchy-base-aur.packages
 
-alacritty
 avahi
 bash-completion
 bat

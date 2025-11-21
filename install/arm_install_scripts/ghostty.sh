@@ -67,7 +67,7 @@ echo "Wrapper script created at ~/.local/share/omarchy/bin/ghostty"
 echo "Creating desktop file override..."
 mkdir -p ~/.local/share/applications
 
-cat > ~/.local/share/applications/com.mitchellh.ghostty.desktop << 'EOF'
+cat > ~/.local/share/applications/com.mitchellh.ghostty.desktop << EOF
 [Desktop Entry]
 Version=1.0
 Name=Ghostty
