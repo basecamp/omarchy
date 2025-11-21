@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# Script to control keyboard backlight brightness
+# Usage: omarchy-cmd-keyboard-backlight [cycle|up|down|toggle]
+# Default action (no arguments): cycle
+
+DEVICE="*::kbd_backlight"
+
+# Get current and max brightness
+get_brightness() {
+  brightnessctl --device="$DEVICE" get 2>/dev/null || echo "0"
+}
+
+get_max_brightness() {
+  brightnessctl --device="$DEVICE" max 2>/dev/null || echo "1"
+}
+
+# Check if keyboard backlight device exists
+if ! brightnessctl --list 2>/dev/null | grep -q "kbd_backlight"; then
+  notify-send "Keyboard Backlight" "No keyboard backlight device found"
+  exit 1
+fi
+
+CURRENT=$(get_brightness)
+MAX=$(get_max_brightness)
+ACTION="${1:-cycle}"
+
+case "$ACTION" in
+  toggle)
+    # Toggle between off (0) and max
+    if [[ "$CURRENT" -eq 0 ]]; then
+      NEW_VALUE="$MAX"
+      brightnessctl --device="$DEVICE" set "$NEW_VALUE"
+      notify-send "⌨  Keyboard Backlight" "On"
+    else
+      brightnessctl --device="$DEVICE" set 0
+      notify-send "⌨  Keyboard Backlight" "Off"
+    fi
+    ;;
+
+  cycle)
+    # Cycle through brightness levels: 0 -> 1 -> 2 -> ... -> max -> 0
+    if [[ "$CURRENT" -ge "$MAX" ]]; then
+      NEW_VALUE=0
+      brightnessctl --device="$DEVICE" set "$NEW_VALUE"
+      notify-send "⌨  Keyboard Backlight" "Off"
+    else
+      NEW_VALUE=$((CURRENT + 1))
+      brightnessctl --device="$DEVICE" set "$NEW_VALUE"
+      PERCENT=$(awk -v c="$NEW_VALUE" -v m="$MAX" 'BEGIN{printf "%.0f", (c/m)*100}')
+      notify-send "⌨  Keyboard Backlight" "${PERCENT}%"
+    fi
+    ;;
+
+  up)
+    # Increase by 1, wrapping to 0 if at max
+    if [[ "$CURRENT" -ge "$MAX" ]]; then
+      NEW_VALUE=0
+      brightnessctl --device="$DEVICE" set "$NEW_VALUE"
+      notify-send "⌨  Keyboard Backlight" "Off (0/$MAX) - Wrapped from max"
+    else
+      NEW_VALUE=$((CURRENT + 1))
+      brightnessctl --device="$DEVICE" set "$NEW_VALUE"
+      PERCENT=$(awk -v c="$NEW_VALUE" -v m="$MAX" 'BEGIN{printf "%.0f", (c/m)*100}')
+      notify-send "⌨  Keyboard Backlight" "Level $NEW_VALUE/$MAX ($PERCENT%)"
+    fi
+    ;;
+
+  down)
+    # Decrease by 1
+    if [[ "$CURRENT" -le 0 ]]; then
+      notify-send "⌨  Keyboard Backlight" "Already at minimum (0/$MAX)"
+    else
+      NEW_VALUE=$((CURRENT - 1))
+      brightnessctl --device="$DEVICE" set "$NEW_VALUE"
+      if [[ "$NEW_VALUE" -eq 0 ]]; then
+        notify-send "⌨  Keyboard Backlight" "Off (0/$MAX)"
+      else
+        PERCENT=$(awk -v c="$NEW_VALUE" -v m="$MAX" 'BEGIN{printf "%.0f", (c/m)*100}')
+        notify-send "⌨  Keyboard Backlight" "Level $NEW_VALUE/$MAX ($PERCENT%)"
+      fi
+    fi
+    ;;
+
+  *)
+    echo "Usage: omarchy-cmd-keyboard-backlight-toggle [cycle|up|down|toggle]"
+    echo "  cycle  - Cycle through all brightness levels (wraps to 0 at max) [DEFAULT]"
+    echo "  up     - Increase by 1 level (wraps to 0 at max)"
+    echo "  down   - Decrease by 1 level"
+    echo "  toggle - Switch between off and max brightness"
+    exit 1
+    ;;
+esac
