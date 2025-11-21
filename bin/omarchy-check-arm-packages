@@ -55,6 +55,7 @@ declare -A CUSTOM_INSTALLERS=(
   ["omarchy-nvim"]="omarchy-nvim"
   ["pinta"]="pinta"
   ["signal-desktop"]="signal-desktop-beta"
+  ["tobi-try"]="tobi-try"
 )
 
 # Unavailable on ARM: packages with no ARM equivalent
@@ -416,39 +417,36 @@ main() {
     print_success "All base packages accounted for"
   fi
 
-  # Check 5: Find x86 packages that should be removed from base.packages
-  print_header "Checking for Platform-Specific Packages in Base"
+  # Check 5: Verify platform-specific packages are in omarchy-x86.packages
+  print_header "Checking Platform-Specific Package Placement"
 
-  local should_remove=()
+  local x86_packages
+  x86_packages=$(grep -v '^#' "$INSTALL_DIR/omarchy-x86.packages" 2>/dev/null | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
 
-  while IFS= read -r pkg; do
-    [[ -z "$pkg" ]] && continue
+  local missing_from_x86=()
 
-    # Check if package is x86-only
-    for unavail in "${UNAVAILABLE_ON_ARM[@]}"; do
-      if [[ "$pkg" == "$unavail" ]]; then
-        should_remove+=("$pkg")
-        break
-      fi
-    done
+  # Check packages with custom ARM installers are in x86 packages
+  for x86_pkg in "${!CUSTOM_INSTALLERS[@]}"; do
+    if ! echo "$x86_packages" | grep -qx "$x86_pkg"; then
+      missing_from_x86+=("$x86_pkg (has custom ARM installer)")
+    fi
+  done
 
-    # Check if package has custom installer
-    for x86_pkg in "${!CUSTOM_INSTALLERS[@]}"; do
-      if [[ "$pkg" == "$x86_pkg" ]]; then
-        should_remove+=("$pkg")
-        break
-      fi
-    done
-  done <<< "$base_packages"
+  # Check unavailable packages are in x86 packages
+  for unavail in "${UNAVAILABLE_ON_ARM[@]}"; do
+    if ! echo "$x86_packages" | grep -qx "$unavail"; then
+      missing_from_x86+=("$unavail (unavailable on ARM)")
+    fi
+  done
 
-  if [[ ${#should_remove[@]} -gt 0 ]]; then
-    print_warning "The following platform-specific packages should be removed from omarchy-base.packages:"
-    for pkg in "${should_remove[@]}"; do
-      print_info "  $pkg (x86-only or has custom ARM installer)"
+  if [[ ${#missing_from_x86[@]} -gt 0 ]]; then
+    print_warning "The following packages should be added to omarchy-x86.packages:"
+    for pkg in "${missing_from_x86[@]}"; do
+      print_info "  $pkg"
     done
     ((warnings++)) || true
   else
-    print_success "No platform-specific packages in base list"
+    print_success "All platform-specific packages correctly in omarchy-x86.packages"
   fi
 
   # Check 6: Verify custom installer scripts exist and are sourced
