@@ -45,8 +45,11 @@ echo "Found CD-ROM device: $CDROM_DEV"
 MOUNT_POINT="/tmp/parallels-tools-check"
 sudo mkdir -p "$MOUNT_POINT"
 
+# Load iso9660 filesystem module (may not be loaded by default)
+sudo modprobe iso9660 2>/dev/null || true
+
 echo "Attempting to mount $CDROM_DEV..."
-if sudo mount "$CDROM_DEV" "$MOUNT_POINT" 2>/dev/null; then
+if sudo mount -t iso9660 "$CDROM_DEV" "$MOUNT_POINT" 2>/dev/null; then
   echo "Successfully mounted CD-ROM"
 
   # List contents for debugging
