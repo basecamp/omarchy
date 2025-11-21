@@ -1,3 +1,5 @@
+echo "Switch Elephant to run as a systemd service and walker to be autostarted on login"
+
 pkill elephant
 elephant service enable
 systemctl --user start elephant.service
