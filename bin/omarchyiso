@@ -1,0 +1,426 @@
+#!/bin/bash
+
+REPO_URL="https://github.com/omacom-io/omarchy-iso"
+WORK_DIR="$(pwd)/omarchyiso_build"
+
+function cleanup_on_exit() {
+    echo ""
+    log_error "Interrupted by user. Cleaning up..."
+    
+    if [ -n "$ORIGINAL_DIR" ] && [ -d "$ORIGINAL_DIR" ]; then
+        cd "$ORIGINAL_DIR"
+    fi
+    
+    # Remove work directory if it exists
+    if [ -d "$WORK_DIR" ]; then
+        rm -rf "$WORK_DIR"
+    fi
+    
+    exit 130
+}
+
+trap cleanup_on_exit SIGINT
+
+ORIGINAL_DIR="$(pwd)"
+
+# Style
+function log_header() { gum style --foreground 6 --padding "1 0" "$1"; }
+function log_info() { gum style --foreground 8 --padding "1 0" "! $1"; }
+function log_success() { gum style --foreground 2 --padding "1 0" "✓ $1"; }
+function log_error() { gum style --foreground 196 --padding "1 0" "✗ $1"; }
+function prompt() { gum style --foreground 4 --padding "1 0" "$1"; }
+
+# ------------------------------------------------------------------------------
+# Welcome
+# ------------------------------------------------------------------------------
+function welcome() {
+    clear
+    gum style \
+        --padding "1 0" \
+        "Create a customized Omarchy Linux ISO with:" \
+        "  • Your personal .config folders" \
+        "  • Your installed AUR packages" \
+        "  • Any official Arch packages you want" \
+        "" \
+        "The ISO will be placed in the current directory." \
+    
+    gum confirm "Ready to build your ISO?"
+    local exit_code=$?
+    
+    if [ $exit_code -eq 130 ] || [ $exit_code -ne 0 ]; then
+        log_error "Cancelled."
+        exit 0
+    fi
+    clear
+}
+
+# ------------------------------------------------------------------------------
+# Setup
+# ------------------------------------------------------------------------------
+function setup() {
+    # Remove existing build directory to start fresh
+    if [ -d "$WORK_DIR" ]; then
+        rm -rf "$WORK_DIR"
+    fi
+    
+    gum spin --spinner dot --title "Initializing..." -- git clone -q "$REPO_URL" "$WORK_DIR"
+    
+    cd "$WORK_DIR" || exit
+    clear
+}
+
+# ------------------------------------------------------------------------------
+# Configuration
+# ------------------------------------------------------------------------------
+function collect_dotfiles_selection() {
+    local user_home="/home/$SUDO_USER"
+    [ -z "$SUDO_USER" ] && user_home="$HOME"
+    
+    local config_dir="$user_home/.config"
+    
+    if [ ! -d "$config_dir" ]; then
+        log_error "No .config directory found in your home directory."
+        return 1
+    fi
+    
+    local config_folders=()
+    
+    # Discover all folders in .config
+    while IFS= read -r folder; do
+        [ -n "$folder" ] && config_folders+=("$(basename "$folder")")
+    done < <(find "$config_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+    
+    if [ ${#config_folders[@]} -eq 0 ]; then
+        log_error "No folders found in .config directory."
+        return 1
+    fi
+    
+    prompt "Filter and select .config folders to include:"
+
+    local selected
+    selected=$(printf '%s\n' "${config_folders[@]}" | gum filter --no-limit --placeholder "Type to filter..." --height 20)
+    local exit_code=$?
+    
+    if [ $exit_code -eq 130 ]; then
+        cleanup_on_exit
+    fi
+    
+    if [ -z "$selected" ]; then
+        log_error "No folders selected."
+        return 1
+    fi
+    
+    # Store selections
+    SELECTED_DOTFILES=()
+    while IFS= read -r item; do
+        SELECTED_DOTFILES+=(".config/$item")
+    done <<< "$selected"
+    
+    log_success "Selected ${#SELECTED_DOTFILES[@]} config folder(s)"
+    
+    return 0
+}
+
+function apply_dotfiles() {
+    if [ ${#SELECTED_DOTFILES[@]} -eq 0 ]; then
+        return 0
+    fi
+    
+    local user_home="/home/$SUDO_USER"
+    [ -z "$SUDO_USER" ] && user_home="$HOME"
+        
+    local target_dir="${WORK_DIR}/configs/airootfs/root/custom-config"
+    mkdir -p "$target_dir"
+    
+    for item in "${SELECTED_DOTFILES[@]}"; do
+        local src_path="$user_home/$item"
+        local folder_name=$(basename "$item")
+        local dest_path="$target_dir/$folder_name"
+        
+        if [ -e "$src_path" ]; then
+            cp -r "$src_path" "$dest_path"
+        fi
+    done
+    
+    clear
+}
+
+# Idealy this will be implemented upstream
+function modify_automated_script() {
+    if [ ${#SELECTED_DOTFILES[@]} -eq 0 ]; then
+        return 0
+    fi
+    
+    local script_path="${WORK_DIR}/configs/airootfs/root/.automated_script.sh"
+    
+    if [ ! -f "$script_path" ]; then
+        log_error "Error: .automated_script.sh not found"
+        return 1
+    fi
+        
+    awk '
+    /cp -r \/root\/omarchy \/mnt\/home\/\$OMARCHY_USER\/\.local\/share\// {
+        print
+        print ""
+        print "  # Overlay user-provided configs into .local/share/omarchy/config"
+        print "  if [[ -d /root/custom-config ]]; then"
+        print "    target_config=\"/mnt/home/$OMARCHY_USER/.local/share/omarchy/config\""
+        print "    mkdir -p \"$target_config\""
+        print "    # For each top-level folder (e.g., hypr, waybar, kitty), replace Omarchy'\''s version"
+        print "    for folder in /root/custom-config/*; do"
+        print "      name=$(basename \"$folder\")"
+        print "      rm -rf \"$target_config/$name\""
+        print "      cp -r \"$folder\" \"$target_config/$name\""
+        print "    done"
+        print "  fi"
+        next
+    }
+    { print }
+    ' "$script_path" > "$script_path.tmp" && chmod --reference="$script_path" "$script_path.tmp" && mv "$script_path.tmp" "$script_path"
+      
+}
+
+# Idealy this will be implemented upstream
+function modify_build_iso_script() {
+    local script_path="${WORK_DIR}/builder/build-iso.sh"
+    
+    if [ ! -f "$script_path" ]; then
+        log_error "Error: build-iso.sh not found"
+        return 1
+    fi
+        
+    awk '
+    /all_packages\+=\(\$\(grep -v .*archinstall\.packages.*\)\)/ {
+        print
+        print ""
+        print "# Optional: user-defined custom packages"
+        print "if [[ -f /builder/custom-arch.packages ]]; then"
+        print "  all_packages+=($(grep -v '\''^#'\'' /builder/custom-arch.packages | grep -v '\''^$'\''))"
+        print "fi"
+        next
+    }
+    { print }
+    ' "$script_path" > "$script_path.tmp" && chmod --reference="$script_path" "$script_path.tmp" && mv "$script_path.tmp" "$script_path"
+    
+    awk '
+    /^repo-add --new "\$offline_mirror_dir\/offline\.db\.tar\.gz" "\$offline_mirror_dir\/".*\.pkg\.tar\.zst/ {
+        print ""
+        print "# Build and package AUR packages if specified"
+        print "if [[ -f /builder/custom-aur.packages ]]; then"
+        print "  aur_packages=($(grep -v '\''^#'\'' /builder/custom-aur.packages | grep -v '\''^$'\''))"
+        print "  "
+        print "  if [[ ${#aur_packages[@]} -gt 0 ]]; then"
+        print "    echo \"Building ${#aur_packages[@]} AUR package(s)...\""
+        print "    "
+        print "    # Create a build user (makepkg doesn'\''t run as root)"
+        print "    useradd -m -G wheel builduser"
+        print "    echo \"builduser ALL=(ALL) NOPASSWD: ALL\" >> /etc/sudoers"
+        print "    "
+        print "    # Install yay for the build user"
+        print "    su - builduser -c \""
+        print "      cd /tmp"
+        print "      git clone https://aur.archlinux.org/yay-bin.git"
+        print "      cd yay-bin"
+        print "      makepkg -si --noconfirm"
+        print "    \""
+        print "    "
+        print "    # Create build directory"
+        print "    mkdir -p /tmp/aur-builds"
+        print "    chown builduser:builduser /tmp/aur-builds"
+        print "    "
+        print "    # Build each AUR package"
+        print "    for pkg in \"${aur_packages[@]}\"; do"
+        print "      echo \"Building AUR package: $pkg\""
+        print "      su - builduser -c \"yay -S --noconfirm --needed --builddir /tmp/aur-builds $pkg\""
+        print "      "
+        print "      # Copy built package to offline mirror"
+        print "      find /tmp/aur-builds -name \"*.pkg.tar.zst\" -exec cp {} $offline_mirror_dir/ \\;"
+        print "    done"
+        print "  fi"
+        print "fi"
+        print ""
+        print "# Add all packages to the offline repository database"
+        print $0
+        next
+    }
+    { print }
+    ' "$script_path" > "$script_path.tmp" && chmod --reference="$script_path" "$script_path.tmp" && mv "$script_path.tmp" "$script_path"
+        
+}
+
+function collect_configuration() {
+    log_header "Configuration"
+
+    # 1. Select AUR Packages
+    AUR_PKGS=$(gum spin --spinner dot --title "Scanning for AUR packages..." -- pacman -Qmq 2>/dev/null)
+
+    if [ -n "$AUR_PKGS" ]; then
+        prompt "Select AUR packages to include:"
+        SELECTED_AUR=$(echo "$AUR_PKGS" | gum choose --no-limit --height 15)
+        if [ $? -eq 130 ]; then
+            cleanup_on_exit
+        fi
+    else
+        log_info "No AUR packages found."
+        SELECTED_AUR=""
+    fi
+    
+    # 2. Select Official Arch packages
+    prompt "Add official Arch packages (installed with pacman):"
+    OFFICIAL_PKGS=$(gum input --placeholder "e.g. neovim firefox vlc docker")
+    if [ $? -eq 130 ]; then
+        cleanup_on_exit
+    fi
+
+    # Write official packages to custom-arch.packages file
+    if [ -n "$OFFICIAL_PKGS" ]; then
+        local custom_pkg_file="${WORK_DIR}/builder/custom-arch.packages"
+        mkdir -p "$(dirname "$custom_pkg_file")"
+        echo "$OFFICIAL_PKGS" | tr ' ' '\n' | grep -v '^$' > "$custom_pkg_file"
+        local pkg_count=$(wc -l < "$custom_pkg_file" | tr -d ' ')
+        log_success "Added $pkg_count official package(s)"
+        clear
+    else
+        log_info "No official packages selected"
+    fi
+    
+    # Write AUR packages to builder/custom-aur.packages file
+    if [ -n "$SELECTED_AUR" ]; then
+        local aur_pkg_file="${WORK_DIR}/builder/custom-aur.packages"
+        mkdir -p "$(dirname "$aur_pkg_file")"
+        echo "$SELECTED_AUR" | tr '\n' ' ' | tr ' ' '\n' | grep -v '^$' > "$aur_pkg_file"
+        local aur_count=$(wc -l < "$aur_pkg_file" | tr -d ' ')
+        log_success "Added $aur_count AUR package(s)"
+    fi
+
+    # 3. Dotfiles Injection
+    SELECTED_DOTFILES=()
+    collect_dotfiles_selection
+    
+    log_success "Configuration collected"
+    sleep 0.3
+    clear
+}
+
+# ------------------------------------------------------------------------------
+# Build Summary
+# ------------------------------------------------------------------------------
+function show_build_summary() {
+    local custom_pkg_file="${WORK_DIR}/builder/custom-arch.packages"
+    local aur_pkg_file="${WORK_DIR}/builder/custom-aur.packages"
+    
+    local summary="BUILD SUMMARY"
+    summary+="\n"
+    summary+="\nDotfiles: ${#SELECTED_DOTFILES[@]}"
+    
+    if [ ${#SELECTED_DOTFILES[@]} -gt 0 ]; then
+        for item in "${SELECTED_DOTFILES[@]}"; do
+            summary+="\n  • $item"
+        done
+    fi
+    
+    summary+="\n"
+    summary+="\nOfficial Packages: $([ -f "$custom_pkg_file" ] && grep -v '^$' "$custom_pkg_file" 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
+    
+    if [ -f "$custom_pkg_file" ]; then
+        while IFS= read -r pkg; do
+            [ -n "$pkg" ] && summary+="\n  • $pkg"
+        done < "$custom_pkg_file"
+    fi
+    
+    summary+="\n"
+    summary+="\nAUR Packages: $([ -f "$aur_pkg_file" ] && grep -v '^$' "$aur_pkg_file" 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
+    
+    if [ -f "$aur_pkg_file" ]; then
+        while IFS= read -r pkg; do
+            [ -n "$pkg" ] && summary+="\n  • $pkg"
+        done < "$aur_pkg_file"
+    fi
+    
+    echo -e "$summary" | gum style \
+        --border normal \
+        --border-foreground 250 \
+        --padding "2 3" \
+        --margin "1 0"
+}
+
+# ------------------------------------------------------------------------------
+# Build
+# ------------------------------------------------------------------------------
+function execute_build() {
+    log_success "Ready to Build."
+    
+    show_build_summary
+    
+    gum confirm "Start Build Process? This will take a while."
+    local confirm_exit=$?
+    
+    if [ $confirm_exit -eq 130 ]; then
+        cleanup_on_exit
+    fi
+    
+    if [ $confirm_exit -eq 0 ]; then
+        
+        # Run the build script from the repo
+        cd "$WORK_DIR"
+        ./bin/omarchy-iso-make --no-boot-offer --no-cache --dev
+        
+        if [ $? -eq 0 ]; then
+            latest_iso=$(ls -t "$WORK_DIR/release"/*.iso 2>/dev/null | head -n1)
+            
+            if [ -n "$latest_iso" ]; then
+                # Move ISO to parent folder
+                parent_dir="$(dirname "$WORK_DIR")"
+                iso_name="$(basename "$latest_iso")"
+                final_location="$parent_dir/$iso_name"
+                
+                mv "$latest_iso" "$final_location"
+                
+                # Clean up build directory
+                cd "$parent_dir"
+                rm -rf "$WORK_DIR"
+                
+                clear
+
+                gum style --border double --border-foreground 2 --padding "1" --margin "1" \
+                    "BUILD SUCCESSFUL" \
+                    "" \
+                    "ISO located at: $final_location"
+            else
+                log_error "Build completed but ISO file not found"
+            fi
+        else
+            log_error "Build Failed. Check output above for details."
+        fi
+    else
+        log_error "Aborted."
+        exit 0
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# Main Flow
+# ------------------------------------------------------------------------------
+welcome
+
+setup
+
+collect_configuration
+
+if ! apply_dotfiles; then
+    log_error "Failed to apply dotfiles"
+    exit 1
+fi
+
+if ! modify_automated_script; then
+    log_error "Failed to modify automated script"
+    exit 1
+fi
+
+if ! modify_build_iso_script; then
+    log_error "Failed to modify build ISO script"
+    exit 1
+fi
+
+execute_build
+        
