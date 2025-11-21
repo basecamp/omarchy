@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -eEo pipefail
+
+# Omarchy cli launcher: open applications, files, or URLs
+#  Launches $1 with $2+ as arguments
+#
+#  $1 can be:
+#    - A url (dispatched to xdg-open)
+#    - A file (dispatched to xdg-open)
+#    - A directory (dispatched to xdg-open, should open file manager)
+#    - A command (executed directly)
+#    - A .desktop file (launched with uwsm-app)
+#
+#  If $1 is not found, we will search through $XDG_DATA_DIRS for .desktop files or $PATH for executables
+#
+#  Uses uwsm-app for proper wayland session management.
+
+if [ -z "$1" ]; then
+  echo "Usage: $0 <app|url|file> [args...]"
+  exit 1
+fi
+
+target=$1
+shift
+
+launch_app() {
+  echo -e "\e[32mLaunching app:\e[0m $*" >&2
+  exec setsid uwsm-app -- "$@"
+}
+
+launch_cli() {
+  echo -e "\e[32mLaunching cli:\e[0m $*" >&2
+  exec "$@"
+}
+
+# Check if it's a URL (http://, https://, file://, etc.)
+if [[ "$target" =~ ^[a-z][a-z0-9+.-]*:// ]]; then
+  launch_app xdg-open "$target" "$@"
+fi
+
+# If open was called on an existing file or directory..
+if [ -e "$target" ]; then
+  target=$(realpath "$target")
+
+  # ... if its not executable (e.g. mp4, mp3, etc.) delegate to xdg-open
+  if [ ! -x "$target" ]; then
+    launch_app xdg-open "$target" "$@"
+  fi
+
+  # ... if it's a directory, delegate to xdg-open
+  if [ -d "$target" ]; then
+    launch_app xdg-open "$target" "$@"
+  fi
+
+  # ... if it's a .desktop file, launch it
+  if [[ "$target" == *.desktop && -f "$target" ]]; then
+    launch_app "$target" "$@"
+  fi
+
+  # ... if we get here, and its executable, just launch it in shell
+  if [[ -x "$target" ]]; then
+    launch_cli "$target" "$@"
+  fi
+fi
+
+# Search $XDG_DATA_HOME + all $XDG_DATA_DIRS for applications to launch
+xdg_data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+IFS=: read -ra search_dirs <<< "$xdg_data_home:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+
+# Search for .desktop file in XDG directories
+for dir in "${search_dirs[@]}"; do
+  if [ -d "$dir/applications" ]; then
+    desktop_file=$(find $dir/applications -maxdepth 1 -iname "${target}*.desktop" 2>/dev/null | head -1)
+    if [ -n "$desktop_file" ]; then
+      launch_app "$desktop_file" "$@"
+    fi
+  fi
+done
+
+# If still not found, try as command name in PATH
+if command -v "$target" &>/dev/null; then
+  launch_cli "$target" "$@"
+fi
+
+# Give up if nothing found
+echo -e "\e[31mError:\e[0m Application not found: $target"
+exit 1
+
