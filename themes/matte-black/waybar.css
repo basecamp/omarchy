@@ -1,2 +1,15 @@
 @define-color foreground #8a8a8d;
 @define-color background #1e1e1e;
+
+/* Matte Black color palette */
+@define-color matte-red #e06c75;
+@define-color matte-orange #d19a66;
+@define-color matte-yellow #e5c07b;
+@define-color matte-green #98c379;
+@define-color matte-purple #c678dd;
+@define-color matte-blue #61afef;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @matte-red;
+@define-color theme-yellow @matte-yellow;
+@define-color theme-green @matte-green;

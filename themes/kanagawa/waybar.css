@@ -1,2 +1,15 @@
 @define-color foreground #dcd7ba;
 @define-color background #1f1f28;
+
+/* Kanagawa color palette */
+@define-color kanagawa-red #c34043;
+@define-color kanagawa-orange #ffa066;
+@define-color kanagawa-yellow #c0a36e;
+@define-color kanagawa-green #76946a;
+@define-color kanagawa-purple #957fb8;
+@define-color kanagawa-blue #7e9cd8;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @kanagawa-red;
+@define-color theme-yellow @kanagawa-yellow;
+@define-color theme-green @kanagawa-green;
