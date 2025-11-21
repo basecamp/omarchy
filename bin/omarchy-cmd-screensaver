@@ -18,7 +18,7 @@ hyprctl keyword cursor:invisible true &>/dev/null
 while true; do
   effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | sort -u | shuf -n1)
   tte -i ~/.config/omarchy/branding/screensaver.txt \
-    --frame-rate 240 --canvas-width 0 --canvas-height 0 --anchor-canvas c --anchor-text c --no-eol \
+    --frame-rate 240 --canvas-width 0 --canvas-height 0 --anchor-canvas c --anchor-text c --no-eol --no-restore-cursor \
     "$effect" &
 
   while pgrep -x tte >/dev/null; do
