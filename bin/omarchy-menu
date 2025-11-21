@@ -226,18 +226,21 @@ show_font_menu() {
 show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
+  options="$options\n  Key Remapping"
   [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
-  *Audio*) omarchy-launch-audio ;;
-  *Wifi*) omarchy-launch-wifi ;;
+  *Audio*) omarchy-launch-or-focus-tui wiremix ;;
+  *Wi-Fi*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
   *System*) show_setup_system_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
+  *Key\ Remapping*) omarchy-setup-makima && open_in_editor "$HOME/.config/makima/AT Translated Set 2 keyboard.toml" && omarchy-restart-makima ;;
+  *Defaults*) show_setup_defaults_menu ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
@@ -562,12 +565,10 @@ show_update_config_menu() {
 show_update_hardware_menu() {
   local options="  Audio\n󱚾  Wi-Fi"
   has_bluetooth && options="$options\n󰂯  Bluetooth"
-  options="$options\n󰟸  Trackpad"
   case $(menu "Restart" "$options") in
   *Audio*) present_terminal omarchy-restart-pipewire ;;
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
-  *Trackpad*) present_terminal omarchy-restart-trackpad ;;
   *) show_update_menu ;;
   esac
 }
