@@ -76,15 +76,9 @@
     },
     {
       "type": "command",
-      "key": "│ ├󱞠",
+      "key": "│ ├󰔫",
       "keyColor": "blue",
-      "text": "mirror=$(omarchy-version-mirror); echo \"$mirror\""
-    },
-    {
-      "type": "command",
-      "key": "│ ├",
-      "keyColor": "blue",
-      "text": "pkgs=$(omarchy-version-pkgs); echo \"$pkgs\""
+      "text": "channel=$(omarchy-version-channel); echo \"$channel\""
     },
     {
       "type": "kernel",

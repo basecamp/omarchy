@@ -1,9 +1,0 @@
-#!/bin/bash
-
-if grep -q "https://pkgs.omarchy.org/stable/" /etc/pacman.conf; then
-  echo "stable"
-elif grep -q "https://pkgs.omarchy.org/edge/" /etc/pacman.conf; then
-  echo "edge"
-else
-  echo "unknown"
-fi

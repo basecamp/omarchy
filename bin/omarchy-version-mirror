@@ -1,9 +1,0 @@
-#!/bin/bash
-
-if grep -q "https://stable-mirror.omarchy.org/" /etc/pacman.d/mirrorlist; then
-  echo "stable"
-elif grep -q "https://mirror.omarchy.org/" /etc/pacman.d/mirrorlist; then
-  echo "edge"
-else
-  echo "unknown"
-fi
