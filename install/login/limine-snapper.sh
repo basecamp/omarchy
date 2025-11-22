@@ -16,7 +16,11 @@ EOF
       limine_config="/boot/EFI/limine/limine.conf"
     fi
   else
-    limine_config="/boot/limine/limine.conf"
+    if [[ -f /boot/limine/limine.conf ]]; then
+      limine_config="/boot/limine/limine.conf"
+    else
+      limine_config="/boot/limine.conf"
+    fi
   fi
 
   # Double-check and exit if we don't have a config file for some reason
