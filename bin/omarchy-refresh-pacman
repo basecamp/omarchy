@@ -1,4 +1,16 @@
 #!/bin/bash
 
 sudo cp -f ~/.local/share/omarchy/default/pacman/pacman.conf /etc/pacman.conf
-omarchy-refresh-pacman-mirrorlist
+
+if [[ $1 == "edge" ]]; then
+  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-edge /etc/pacman.d/mirrorlist
+  sudo sed -i 's|https://pkgs.omarchy.org/.*$arch|https://pkgs.omarchy.org/edge/$arch|' /etc/pacman.conf
+  echo "Setting mirror and pkgs channel to edge"
+else
+  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-stable /etc/pacman.d/mirrorlist
+  sudo sed -i 's|https://pkgs.omarchy.org/.*$arch|https://pkgs.omarchy.org/stable/$arch|' /etc/pacman.conf
+  echo "Setting mirror and pkgs channel to stable"
+fi
+
+echo
+sudo pacman -Syu --noconfirm
