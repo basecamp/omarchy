@@ -142,6 +142,12 @@
       "keyColor": "magenta"
     },
     {
+      "type": "command",
+      "key": " Latest",
+      "keyColor": "magenta",
+      "text": "updated=$(omarchy-version-pkgs); echo \"$updated\""
+    },
+    {
       "type": "custom",
       "format": "\u001b[90m└────────────────────────────────────────────────────┘"
     },
