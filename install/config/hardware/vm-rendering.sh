@@ -12,7 +12,7 @@ imv_desktop="$HOME/.local/share/applications/imv.desktop"
 if [[ -f "$imv_desktop" ]]; then
   if ! grep -q "LIBGL_ALWAYS_SOFTWARE=1" "$imv_desktop"; then
     echo "Patching imv.desktop for software rendering..."
-    sed -i 's/Exec=imv\(.*\)/Exec=env LIBGL_ALWAYS_SOFTWARE=1 imv\1/' "$imv_desktop"
+    sed -i 's/Exec=imv\(.*\)/Exec=env LIBGL_ALWAYS_SOFTWARE=1 imv-x11\1/' "$imv_desktop"
     echo "imv.desktop configured for software rendering"
   else
     echo "imv.desktop already configured for software rendering"
@@ -26,7 +26,7 @@ if [[ -f "$bashrc_file" ]]; then
     echo "Adding imv software rendering alias to .bashrc..."
     echo "" >> "$bashrc_file"
     echo "# VM software rendering for imv" >> "$bashrc_file"
-    echo "alias imv='LIBGL_ALWAYS_SOFTWARE=1 imv'" >> "$bashrc_file"
+    echo "alias imv='LIBGL_ALWAYS_SOFTWARE=1 imv-x11'" >> "$bashrc_file"
     echo "imv alias added to .bashrc"
   else
     echo "imv alias already present in .bashrc"
