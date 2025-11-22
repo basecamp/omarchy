@@ -23,7 +23,7 @@ while true; do
     --no-eol --no-restore-cursor random_effect &
 
   while pgrep -x tte >/dev/null; do
-    if read -n 1 -t 3 || ! screensaver_in_focus; then
+    if read -n 1 -t 1 || ! screensaver_in_focus; then
       exit_screensaver
     fi
   done
