@@ -75,6 +75,18 @@
       "text": "branch=$(omarchy-version-branch); echo \"$branch\""
     },
     {
+      "type": "command",
+      "key": "│ ├󱞠",
+      "keyColor": "blue",
+      "text": "mirror=$(omarchy-version-mirror); echo \"$mirror\""
+    },
+    {
+      "type": "command",
+      "key": "│ ├",
+      "keyColor": "blue",
+      "text": "pkgs=$(omarchy-version-pkgs); echo \"$pkgs\""
+    },
+    {
       "type": "kernel",
       "key": "│ ├",
       "keyColor": "blue"
