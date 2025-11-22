@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Take backup of existing files
+sudo cp -f /etc/pacman.conf /etc/pacman.conf.bak
+sudo cp -f /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
+
 sudo cp -f ~/.local/share/omarchy/default/pacman/pacman.conf /etc/pacman.conf
 
 if [[ $1 == "edge" ]]; then
