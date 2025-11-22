@@ -19,7 +19,7 @@ hyprctl keyword cursor:invisible true &>/dev/null
 
 while true; do
   tte -i ~/.config/omarchy/branding/screensaver.txt \
-    --frame-rate 120 --canvas-width 0 --canvas-height 0 --anchor-canvas c --anchor-text c\
+    --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas --anchor-canvas c --anchor-text c\
     --no-eol --no-restore-cursor random_effect &
 
   while pgrep -x tte >/dev/null; do
