@@ -13,47 +13,46 @@ if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]
   exit 1
 fi
 
-# Save current state
-prior_monitor=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
-prior_window=$(hyprctl activewindow -j | jq -r '.address // empty') # Hex identifier
-prior_fullscreen=$(hyprctl activewindow -j | jq -r '.fullscreen // 0') # 0=none, 1=fullscreen, 2=maximized fullscreen
 terminal=$(xdg-terminal-exec --print-id)
 
-# Launch Screensaver on each monitor
+# Launch Screensaver on each monitor in a unique special workspace
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   hyprctl dispatch focusmonitor $m
 
   case $terminal in
   *Alacritty*)
-    hyprctl dispatch exec -- \
+    hyprctl dispatch exec "[workspace special:screensaver-$m] \
       alacritty --class=org.omarchy.screensaver \
       --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
-      -e omarchy-cmd-screensaver
+      -e omarchy-cmd-screensaver"
     ;;
   *ghostty*)
-    hyprctl dispatch exec -- \
+    hyprctl dispatch exec "[workspace special:screensaver-$m] \
       ghostty --class=org.omarchy.screensaver \
       --font-size=18 \
-      -e omarchy-cmd-screensaver
+      -e omarchy-cmd-screensaver"
     ;;
   *kitty*)
-    hyprctl dispatch exec -- \
+    hyprctl dispatch exec "[workspace special:screensaver-$m] \
       kitty --class=org.omarchy.screensaver \
       --override font_size=18 \
-      -e omarchy-cmd-screensaver
+      -e omarchy-cmd-screensaver"
     ;;
   *)
     notify-send "✋  Screensaver only runs in Alacritty, Ghostty, or Kitty"
     ;;
   esac
+  
+  # Switch to monitor-specific special workspace
+  hyprctl dispatch togglespecialworkspace "screensaver-$m"
 done
 
-hyprctl dispatch focusmonitor $prior_monitor
+# Wait for screensaver process to terminate
+while pgrep -f org.omarchy.screensaver &>/dev/null; do
+  sleep 0.1
+done
 
-if [[ -n "$prior_window" ]]; then
-  hyprctl dispatch focuswindow address:$prior_window
-fi
-
-if [[ -n "$prior_fullscreen" ]] && [[ "$prior_fullscreen" -ne 0 ]]; then
-  hyprctl dispatch fullscreen $prior_fullscreen
-fi
+# Close special workspaces
+for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
+  hyprctl dispatch togglespecialworkspace "screensaver-$m"
+done
