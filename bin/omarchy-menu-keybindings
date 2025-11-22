@@ -49,6 +49,17 @@ parse_keycodes() {
       code="${BASH_REMATCH[1]}"
       symbol=$(lookup_keycode_cached "$code" "$XKB_KEYMAP_CACHE")
       echo "${line/code:${code}/$symbol}"
+    elif [[ "$line" =~ mouse:([0-9]+) ]]; then
+      code="${BASH_REMATCH[1]}"
+
+      case "$code" in
+        272) symbol="LEFT MOUSE BUTTON" ;;
+        273) symbol="RIGHT MOUSE BUTTON" ;;
+        274) symbol="MIDDLE MOUSE BUTTON" ;;
+        *)   symbol="mouse:${code}" ;;
+      esac
+
+      echo "${line/mouse:${code}/$symbol}"
     else
       echo "$line"
     fi
@@ -101,6 +112,11 @@ dynamic_bindings() {
       -e 's/^77,/SUPER SHIFT CTRL ALT,/'
 }
 
+# Hardcoded bindings, like the copy-url extension and such
+static_bindings() {
+    echo "SHIFT ALT,L,Copy URL from Web App,extension,copy-url"
+}
+
 # Parse and format keybindings
 #
 # `awk` does the heavy lifting:
@@ -147,13 +163,67 @@ parse_bindings() {
 }'
 }
 
+prioritize_entries() {
+  awk '
+  {
+    line = $0
+    prio = 50
+    if (match(line, /Terminal/)) prio = 0
+    if (match(line, /Browser/) && !match(line, /Browser[[:space:]]*\(/)) prio = 1
+    if (match(line, /File manager/))  prio = 2
+    if (match(line, /Launch apps/))  prio = 3
+    if (match(line, /Omarchy menu/))  prio = 4
+    if (match(line, /System menu/))  prio = 5
+    if (match(line, /Theme menu/))  prio = 6
+    if (match(line, /Full screen/))  prio = 7
+    if (match(line, /Close window/))  prio = 8
+    if (match(line, /Toggle window floating/))  prio = 9
+    if (match(line, /Toggle window split/))  prio = 10
+    if (match(line, /Universal/))  prio = 11
+    if (match(line, /Clipboard/))  prio = 12
+    if (match(line, /Emoji picker/))  prio = 13
+    if (match(line, /Color picker/))  prio = 14
+    if (match(line, /Screenshot/))  prio = 15
+    if (match(line, /Screenrecording/))  prio = 16
+    if (match(line, /(Switch|Next|Former|Previous).*workspace/))  prio = 17
+    if (match(line, /Move window to workspace/))  prio = 18
+    if (match(line, /Swap window/))  prio = 19
+    if (match(line, /Move window focus/))  prio = 20
+    if (match(line, /Move window$/))  prio = 21
+    if (match(line, /Resize window/))  prio = 22
+    if (match(line, /Expand window/))  prio = 23
+    if (match(line, /Shrink window/))  prio = 24
+    if (match(line, /scratchpad/))  prio = 25
+    if (match(line, /notification/))  prio = 26
+    if (match(line, /Toggle window transparency/))  prio = 27
+    if (match(line, /Toggle workspace gaps/))  prio = 28
+    if (match(line, /Toggle nightlight/))  prio = 29
+    if (match(line, /group/))  prio = 94
+    if (match(line, /Scroll active workspace/))  prio = 95
+    if (match(line, /Cycle to/))  prio = 96
+    if (match(line, /Reveal active/))  prio = 97
+    if (match(line, /Apple Display/))  prio = 98
+    if (match(line, /XF86/))  prio = 99
+
+    # print "priority<TAB>line"
+    printf "%d\t%s\n", prio, line
+  }' |
+  sort -k1,1n -k2,2 |
+  cut -f2-
+}
+
 monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
 menu_height=$((monitor_height * 40 / 100))
 
 build_keymap_cache
 
-dynamic_bindings |
+{
+  dynamic_bindings
+  static_bindings
+} |
   sort -u |
   parse_keycodes |
   parse_bindings |
+  prioritize_entries |
   walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+

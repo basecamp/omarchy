@@ -3,7 +3,7 @@
 echo "Installing VSCode..."
 omarchy-pkg-add visual-studio-code-bin
 
-mkdir -p ~/.vscode
+mkdir -p ~/.vscode ~/.config/Code/User
 
 cat > ~/.vscode/argv.json << 'EOF'
 // This configuration file allows you to pass permanent command line arguments to VS Code.
@@ -20,5 +20,8 @@ EOF
 
 # Ensure VSC's own auto-update feature is turned off
 printf '{\n  "update.mode": "none"\n}\n' > ~/.config/Code/User/settings.json
+
+# Apply Omarchy theme to VSCode
+omarchy-theme-set-vscode
 
 setsid gtk-launch code
