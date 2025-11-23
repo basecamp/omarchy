@@ -1,15 +1,15 @@
 # Omarchy
 
-**Omarchy** is a modern, opinionated Linux distribution created by **DHH** — built with care, clarity, and a little personality. It doesn’t try to be everything. It tries to be *right*.
+**Omarchy** is a modern, opinionated Linux distribution created by **DHH** — built with care, clarity, and a little personality. It doesn’t try to be everything. It tries to be _right_.
 
 ## ✨ What Makes Omarchy Different?
 
 Omarchy isn’t a loud distro. It’s not trying to win a feature war. It’s designed for people who want:
 
-* A clean, distraction‑free environment 🧼
-* Thoughtful defaults that actually feel thoughtful 🧠
-* A system that respects your time and attention ⏳
-* A developer‑friendly base without the clutter 💻
+- A clean, distraction‑free environment 🧼
+- Thoughtful defaults that actually feel thoughtful 🧠
+- A system that respects your time and attention ⏳
+- A developer‑friendly base without the clutter 💻
 
 It’s the kind of distro that feels like it was made by a human, for humans.
 
@@ -30,4 +30,4 @@ Omarchy is open‑source and released under the **MIT License**.
 
 ---
 
-Made with a little curiosity, a bit of minimalism, and a whole lot of intention.
+Made with curiosity, minimalism, and a whole lot of intention.
