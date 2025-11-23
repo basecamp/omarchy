@@ -8,7 +8,7 @@ SPICE_DIR="/var/run/omarchy-windows"      # SPICE socket directory (tmpfs, auto-
 SPICE_SOCKET_PATH="$SPICE_DIR/spice.sock" # SPICE Unix socket
 
 msg_error() {
-  echo "❌ Error: $*"
+  echo "❌  Error: $*"
 }
 
 msg_warning() {
@@ -16,7 +16,7 @@ msg_warning() {
 }
 
 msg_success() {
-  echo "✓ $*"
+  echo "✓  $*"
 }
 
 msg_info() {
@@ -108,7 +108,7 @@ if [[ ! -r /dev/kvmfr0 ]]; then
     msg_info "Refreshing group membership for current session..."
     echo ""
 
-    # Use sg to run with refreshed kvm group (no logout needed)
+    # Auto-refresh group membership using sg to avoid logout/login
     exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
     ;;
   0)
@@ -119,8 +119,7 @@ if [[ ! -r /dev/kvmfr0 ]]; then
     msg_info "Refreshing group membership for current session..."
     echo ""
 
-    # Use sg (newgrp substitute) to run Looking Glass with refreshed kvm group
-    # This avoids requiring logout/login
+    # Auto-refresh group membership using sg to avoid logout/login
     exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
     ;;
   2)

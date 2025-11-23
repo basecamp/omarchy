@@ -3,6 +3,9 @@
 # omarchy-gpu-passthrough-setup - Setup wizard for GPU passthrough
 #
 
+# Preserve original script arguments for exec sg kvm (group refresh)
+ORIGINAL_SCRIPT_ARGS=("$@")
+
 set -euo pipefail
 
 # Load shared utilities
@@ -48,7 +51,7 @@ create_backup_snapshot() {
 
   # Validate user_home before using in path
   if [[ -z "$user_home" ]]; then
-    msg_warn "Cannot determine home directory for user $real_user"
+    msg_warning "Cannot determine home directory for user $real_user"
     log_warn "Skipping Hyprland config backup - user home not found"
   elif [[ -f "$user_home/.config/hypr/hyprland.conf" ]]; then
     sudo cp -a "$user_home/.config/hypr/hyprland.conf" "$snapshot_dir/hyprland.conf" 2>/dev/null && files_backed_up+=("hyprland.conf")
@@ -148,7 +151,7 @@ configure_omarchy_limine() {
     echo ""
     msg_error "Conflicting IOMMU parameter detected (iommu=off)"
     msg_info "Found IOMMU explicitly disabled in kernel parameters"
-    msg_warn "Please edit $LIMINE_DEFAULT and remove iommu=off parameter"
+    msg_warning "Please edit $LIMINE_DEFAULT and remove iommu=off parameter"
     echo ""
     log_error "Setup aborted: Conflicting IOMMU parameter (iommu=off) found in Limine config"
     return 1
@@ -191,7 +194,7 @@ configure_gpu_blacklist() {
   1002) gpu_vendor="amdgpu" ;;
   8086) gpu_vendor="i915" ;;
   *)
-    msg_warn "Unknown GPU vendor: $vendor_id"
+    msg_warning "Unknown GPU vendor: $vendor_id"
     return 1
     ;;
   esac
@@ -287,7 +290,12 @@ EOF
     msg_info "Adding user to kvm group..."
     if sudo usermod -aG kvm "$USER"; then
       msg_success "User added to kvm group"
-      msg_warning "You must LOG OUT and LOG BACK IN for group changes to take effect"
+      echo ""
+      msg_info "Refreshing group membership for current session..."
+      echo ""
+
+      # Auto-refresh group membership using sg to avoid logout/login
+      exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
     else
       msg_error "Failed to add user to kvm group"
       msg_info "  Run manually: sudo usermod -aG kvm $USER"
@@ -301,7 +309,7 @@ EOF
 
 configure_vfio_modules_mkinitcpio() {
   if [[ ! -f "$MKINITCPIO_CONF" ]]; then
-    msg_warn "$MKINITCPIO_CONF not found"
+    msg_warning "$MKINITCPIO_CONF not found"
     return 1
   fi
 
@@ -364,7 +372,7 @@ configure_system_environment() {
 
     if [[ -z "$igpu_card_path" ]]; then
       # DRM device not yet available - skip configuration but don't fail
-      msg_warn "Cannot resolve DRM device for iGPU ($igpu_pci) yet"
+      msg_warning "Cannot resolve DRM device for iGPU ($igpu_pci) yet"
       msg_info "  This is normal on first setup (iGPU driver may not be loaded)"
       msg_info "  Configuration will be applied automatically after reboot"
       msg_info "  If black screen persists, run setup again after reboot"
@@ -419,7 +427,7 @@ configure_hyprland_igpu() {
 
   local hypr_conf="$user_home/.config/hypr/hyprland.conf"
   if [[ ! -f "$hypr_conf" ]]; then
-    msg_warn "Hyprland config not found - skipping Hyprland configuration"
+    msg_warning "Hyprland config not found - skipping Hyprland configuration"
     log_info "Hyprland config not found at $hypr_conf - user may not use Hyprland"
     return 0
   fi
@@ -454,7 +462,7 @@ configure_hyprland_igpu() {
 
     if [[ -z "$igpu_card_path" ]]; then
       # DRM device not yet available - skip configuration but don't fail
-      msg_warn "Cannot resolve DRM device for iGPU ($igpu_pci) yet"
+      msg_warning "Cannot resolve DRM device for iGPU ($igpu_pci) yet"
       msg_info "  This is normal on first setup (iGPU driver may not be loaded)"
       msg_info "  Hyprland config will be updated automatically after reboot"
       msg_info "  If black screen persists, run setup again after reboot"
@@ -637,10 +645,10 @@ check_passthrough_feasibility() {
     echo ""
     echo "Detected virtualization: $VIRTUALIZATION_TYPE"
     echo ""
-    msg_warn "GPU passthrough requires bare metal (physical hardware)"
+    msg_warning "GPU passthrough requires bare metal (physical hardware)"
     echo ""
     echo "This tool is for:"
-    echo "  ✓ Physical Omarchy installations (bare metal)"
+    msg_success "Physical Omarchy installations (bare metal)"
     echo "  ✗ NOT for Omarchy running inside a VM"
     echo ""
     echo "If you want to use GPU inside a VM:"
@@ -775,7 +783,7 @@ validate_gpu_selection() {
   # Warn if selecting iGPU
   if [[ "$type" == "integrated" ]]; then
     msg_error "WARNING: iGPU selected - NOT recommended!"
-    msg_warn "Linux will have no display after passthrough"
+    msg_warning "Linux will have no display after passthrough"
     echo ""
 
     gum confirm "Continue anyway?" || return 1
@@ -808,7 +816,7 @@ validate_gpu_selection() {
 
   # Display monitor connection instructions
   echo ""
-  msg_warn "After reboot, dedicated GPU ($selected_gpu_name) will be INACTIVE!"
+  msg_warning "After reboot, dedicated GPU ($selected_gpu_name) will be INACTIVE!"
   echo ""
   echo "For host display:"
   echo "  • Connect monitor(s) to MOTHERBOARD ports (HDMI/DP on back panel)"
@@ -868,8 +876,8 @@ validate_gpu_selection() {
   if [[ "$igpu_monitor_count" -eq 0 ]] && [[ "$dgpu_monitor_count" -gt 0 ]]; then
     msg_error "CRITICAL: No monitors on iGPU, but monitors detected on dedicated GPU!"
     echo ""
-    msg_warn "After reboot, ALL your monitors will go BLANK (dedicated GPU blacklisted)."
-    msg_warn "You MUST connect at least one monitor to motherboard ports!"
+    msg_warning "After reboot, ALL your monitors will go BLANK (dedicated GPU blacklisted)."
+    msg_warning "You MUST connect at least one monitor to motherboard ports!"
     echo ""
     log_warn "Critical: No iGPU monitors, $dgpu_monitor_count monitor(s) on dGPU - user at risk of black screen"
 
@@ -879,7 +887,7 @@ validate_gpu_selection() {
     }
   elif [[ "$dgpu_monitor_count" -gt 0 ]] && [[ "$igpu_monitor_count" -gt 0 ]]; then
     msg_success "Good: $igpu_monitor_count monitor(s) on iGPU (will work after reboot)"
-    msg_warn "Note: $dgpu_monitor_count monitor(s) on dedicated GPU will go blank after reboot"
+    msg_warning "Note: $dgpu_monitor_count monitor(s) on dedicated GPU will go blank after reboot"
     echo ""
     log_info "User has $igpu_monitor_count iGPU monitors + $dgpu_monitor_count dGPU monitors"
 
@@ -896,7 +904,7 @@ validate_gpu_selection() {
       return 1
     }
   else
-    msg_warn "Cannot detect monitor connections - asking user to confirm"
+    msg_warning "Cannot detect monitor connections - asking user to confirm"
     log_warn "Cannot detect monitor connections"
 
     gum confirm "At least one monitor is connected to motherboard ports?" || {
@@ -929,7 +937,7 @@ cmd_setup() {
   echo "  • BIOS: Set Primary Display = IGD or Auto (recommended)"
   echo "  • Monitor: Connect to motherboard ports (iGPU), not GPU ports"
   echo ""
-  msg_warn "Important: Dedicated GPU will be blacklisted (mode=none at boot)"
+  msg_warning "Important: Dedicated GPU will be blacklisted (mode=none at boot)"
   echo "           Use 'omarchy-gpu-passthrough mode vm' to bind for VM"
   echo "           Use 'omarchy-gpu-passthrough mode host' to bind for host use (optional)"
   echo ""
@@ -937,7 +945,7 @@ cmd_setup() {
   gum confirm "Continue with setup?" || exit 0
 
   echo ""
-  msg_warn "WARNING: This will modify critical system configuration!"
+  msg_warning "WARNING: This will modify critical system configuration!"
   echo ""
   echo "What will be changed:"
   echo "  • Kernel boot parameters (/etc/default/limine)"
@@ -980,11 +988,11 @@ cmd_setup() {
     ;;
   esac
   echo ""
-  msg_warn "If not enabled, GPU passthrough will NOT work!"
+  msg_warning "If not enabled, GPU passthrough will NOT work!"
   echo ""
 
   gum confirm "Have you enabled these settings in BIOS?" || {
-    msg_warn "Please enable IOMMU in BIOS first, then run setup again"
+    msg_warning "Please enable IOMMU in BIOS first, then run setup again"
     exit 0
   }
   echo ""
@@ -1042,7 +1050,7 @@ cmd_setup() {
     case "$vendor_id" in
     10de) # NVIDIA
       if ! command -v nvidia-smi &>/dev/null; then
-        msg_warn "  NVIDIA GPU detected but nvidia-smi not found"
+        msg_warning "  NVIDIA GPU detected but nvidia-smi not found"
         msg_info "    GPU: $name"
         msg_info "    This is OK if you haven't installed NVIDIA drivers yet"
         driver_warnings=$((driver_warnings + 1))
@@ -1054,7 +1062,7 @@ cmd_setup() {
       if [[ "$driver" == "amdgpu" ]]; then
         msg_success "  AMD GPU using amdgpu driver"
       elif [[ "$driver" == "none" ]]; then
-        msg_warn "  AMD GPU detected but no driver loaded"
+        msg_warning "  AMD GPU detected but no driver loaded"
         msg_info "    GPU: $name"
         msg_info "    This is OK if you haven't installed AMD drivers yet"
         driver_warnings=$((driver_warnings + 1))
@@ -1084,7 +1092,7 @@ cmd_setup() {
   # IOMMU not detected - warn but allow to continue
   if [[ "$feasibility_errors" -gt 0 ]]; then
     echo ""
-    msg_warn "IOMMU not currently detected - you will need to:"
+    msg_warning "IOMMU not currently detected - you will need to:"
     msg_info "  1. Complete this setup to configure kernel parameters"
     msg_info "  2. Enable IOMMU in BIOS (AMD-Vi or Intel VT-d)"
     msg_info "  3. Reboot"
@@ -1206,8 +1214,8 @@ cmd_setup() {
       exit 1
     }
   else
-    msg_warn "No iGPU detected, skipping Hyprland/environment configuration"
-    msg_warn "You may need to manually configure your compositor"
+    msg_warning "No iGPU detected, skipping Hyprland/environment configuration"
+    msg_warning "You may need to manually configure your compositor"
   fi
 
   # Rebuild initramfs with new configuration (Omarchy uses limine-mkinitcpio)
@@ -1248,7 +1256,7 @@ cmd_setup() {
   log_info "GPU configured: $name ($pci)"
   log_info "Next step: REBOOT REQUIRED"
 
-  msg_warn "SYSTEM REBOOT REQUIRED"
+  msg_warning "SYSTEM REBOOT REQUIRED"
   echo ""
   msg_info "Kernel parameters require reboot to take effect"
   echo ""
@@ -1262,7 +1270,7 @@ cmd_setup() {
   msg_info "No driver will be loaded until you manually bind it."
   echo ""
   echo ""
-  msg_warn "⚠️  IF YOU SEE BLACK SCREEN AFTER REBOOT:"
+  msg_warning "⚠️  IF YOU SEE BLACK SCREEN AFTER REBOOT:"
   echo ""
   echo "This can happen on first setup if iGPU driver wasn't loaded yet."
   echo ""
@@ -1299,7 +1307,7 @@ cmd_uninstall() {
   fi
 
   echo ""
-  msg_warn "This will remove ALL GPU passthrough configuration!"
+  msg_warning "This will remove ALL GPU passthrough configuration!"
   echo ""
   echo "What will be removed:"
   echo "  • Kernel parameters (amd_iommu, iommu=pt)"
@@ -1352,12 +1360,12 @@ cmd_uninstall() {
   echo "  • /etc/mkinitcpio.conf.backup.uninstall.*"
   echo "  • ~/.config/hypr/hyprland.conf.backup.uninstall.*"
   echo ""
-  msg_warn "REBOOT REQUIRED"
+  msg_warning "REBOOT REQUIRED"
   echo ""
   echo "After reboot:"
-  echo "  ✓ Your GPU will be available to Linux"
-  echo "  ✓ GPU drivers (nvidia/amdgpu) will load normally"
-  echo "  ✓ You can use your GPU for gaming, rendering, etc."
+  msg_success "Your GPU will be available to Linux"
+  msg_success "GPU drivers (nvidia/amdgpu) will load normally"
+  msg_success "You can use your GPU for gaming, rendering, etc."
   echo ""
   msg_info "To reboot now: sudo reboot"
 }

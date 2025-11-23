@@ -78,7 +78,7 @@ check_gpu_processes() {
           echo ""
           sudo fuser -v /dev/nvidia* 2>&1 | grep -iE "Hyprland|USER" | head -10
           echo ""
-          msg_warn "Solution: Run from TTY or SSH"
+          msg_warning "Solution: Run from TTY or SSH"
           echo "  1. Switch to TTY (Ctrl+Alt+F2) or SSH from another machine"
           echo "  2. Run: omarchy-gpu-passthrough mode vm"
           echo "  3. Start VM from there"
@@ -157,7 +157,7 @@ check_gpu_processes() {
       echo ""
     fi
 
-    msg_warn "GPU is bound to vfio-pci and in use (likely by running VM)"
+    msg_warning "GPU is bound to vfio-pci and in use (likely by running VM)"
     echo ""
     echo "To unbind GPU:"
     echo "  1. Stop your VM: omarchy-windows-vm stop"
@@ -253,7 +253,7 @@ check_display_safety() {
           echo ""
           msg_error "Detected $connected_displays monitor(s) on $gpu_drm_card - unbind will cause BLACKSCREEN!"
           echo ""
-          msg_warn "Solution:"
+          msg_warning "Solution:"
           echo "  1. Move monitor cable to iGPU port (motherboard HDMI/DP)"
           echo "  2. Set BIOS: Primary Display = IGD"
           echo "  3. Reboot and run: omarchy-gpu-passthrough setup"
@@ -651,7 +651,7 @@ cmd_unbind() {
       log_warn "Failed to update state marker (continuing anyway)"
     fi
   else
-    msg_warn "Unbound but driver not auto-loaded (current: ${current_driver:-none})"
+    msg_warning "Unbound but driver not auto-loaded (current: ${current_driver:-none})"
     msg_info "Manual reload: sudo modprobe -i $GPU_DRIVER_ORIGINAL"
     log_warn "=== UNBIND PARTIAL: driver not loaded (${current_driver:-none}) ==="
 

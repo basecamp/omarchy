@@ -44,19 +44,19 @@ declare -a GPU_AUDIO_ID
 declare -i GPU_COUNT=0
 
 msg_error() {
-  echo -e "${RED}✗${NC} $*" >&2
+  echo "❌  Error: $*" >&2
 }
 
 msg_success() {
-  echo -e "${GREEN}✓${NC} $*"
+  echo "✓  $*"
 }
 
 msg_info() {
-  echo -e "${BLUE}ℹ${NC} $*"
+  echo "ℹ️  $*"
 }
 
-msg_warn() {
-  echo -e "${YELLOW}⚠${NC} $*"
+msg_warning() {
+  echo "⚠️  Warning: $*"
 }
 
 msg_section() {

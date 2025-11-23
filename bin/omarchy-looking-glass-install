@@ -7,96 +7,112 @@ ORIGINAL_SCRIPT_ARGS=("$@")
 SPICE_DIR="/var/run/omarchy-windows"      # SPICE socket directory (tmpfs, auto-cleaned on reboot)
 SPICE_SOCKET_PATH="$SPICE_DIR/spice.sock" # SPICE Unix socket
 
+msg_error() {
+  echo "❌  Error: $*"
+}
+
+msg_warning() {
+  echo "⚠️  Warning: $*"
+}
+
+msg_success() {
+  echo "✓  $*"
+}
+
+msg_info() {
+  echo "ℹ️  $*"
+}
+
 echo "Installing Looking Glass B7..."
 echo "Ultra-low latency VM display as an alternative to RDP."
 echo ""
 
 # Request sudo access upfront (avoids password prompt during compilation)
 if ! sudo -v 2>/dev/null; then
-  echo "❌ sudo access required for installation"
+  msg_error "sudo access required for installation"
   exit 1
 fi
 
 # Install kernel headers (required for DKMS)
-echo "Installing kernel headers..."
+msg_info "Installing kernel headers..."
 KERNEL=$(uname -r)
 
 # Validate kernel modules directory exists
 if [[ ! -d "/lib/modules/$KERNEL" ]]; then
-  echo "⚠️  Kernel modules directory not found, using default kernel package"
+  msg_warning "Kernel modules directory not found, using default kernel package"
   KERNEL_PACKAGE="linux"
 else
   KERNEL_PACKAGE=$(pacman -Qo "/lib/modules/$KERNEL" 2>/dev/null | sed -n 's/.* is owned by \([^ ]*\) .*/\1/p' | head -1)
 
   if [[ -z "$KERNEL_PACKAGE" ]]; then
-    echo "⚠️  Could not detect kernel package, defaulting to linux"
+    msg_warning "Could not detect kernel package, defaulting to linux"
     KERNEL_PACKAGE="linux"
   fi
 fi
 
 if [[ "$KERNEL_PACKAGE" == "linux" ]]; then
   if ! omarchy-pkg-add linux-headers; then
-    echo "❌ Failed to install linux-headers"
+    msg_error "Failed to install linux-headers"
     exit 1
   fi
 elif [[ "$KERNEL_PACKAGE" == "linux-lts" ]]; then
   if ! omarchy-pkg-add linux-lts-headers; then
-    echo "❌ Failed to install linux-lts-headers"
+    msg_error "Failed to install linux-lts-headers"
     exit 1
   fi
 elif [[ "$KERNEL_PACKAGE" == "linux-zen" ]]; then
   if ! omarchy-pkg-add linux-zen-headers; then
-    echo "❌ Failed to install linux-zen-headers"
+    msg_error "Failed to install linux-zen-headers"
     exit 1
   fi
 else
-  echo "⚠️  Unknown kernel package: $KERNEL_PACKAGE, installing linux-headers"
+  msg_warning "Unknown kernel package: $KERNEL_PACKAGE, installing linux-headers"
   if ! omarchy-pkg-add linux-headers; then
-    echo "❌ Failed to install linux-headers"
+    msg_error "Failed to install linux-headers"
     exit 1
   fi
 fi
-echo "✓ Kernel headers installed"
+msg_success "Kernel headers installed"
 
 # Install packages from AUR (yay is pre-installed in Omarchy)
 if pacman -Q looking-glass looking-glass-module-dkms &>/dev/null; then
-  echo "✓ Looking Glass packages already installed"
+  msg_success "Looking Glass packages already installed"
 else
-  echo "Installing packages (looking-glass, looking-glass-module-dkms)..."
+  msg_info "Installing packages (looking-glass, looking-glass-module-dkms)..."
   echo "  This may take a few minutes (downloading and compiling)..."
   echo ""
   if ! yay -S --noconfirm --needed looking-glass looking-glass-module-dkms; then
     echo ""
-    echo "❌ Failed to install Looking Glass packages"
+    msg_error "Failed to install Looking Glass packages"
     echo "   Please check the errors above and try again"
     exit 1
   fi
   echo ""
-  echo "✓ Packages installed"
+  msg_success "Packages installed"
 fi
 
 # Configure udev rules
-echo "Configuring udev rules..."
+msg_info "Configuring udev rules..."
 sudo tee /etc/udev/rules.d/99-kvmfr.rules >/dev/null <<'EOF'
 SUBSYSTEM=="kvmfr", OWNER="root", GROUP="kvm", MODE="0660"
 EOF
 
 if ! sudo udevadm control --reload-rules 2>/dev/null; then
-  echo "⚠️  Failed to reload udev rules (non-fatal)"
+  msg_warning "Failed to reload udev rules (non-fatal)"
 fi
 
 if ! sudo udevadm trigger 2>/dev/null; then
-  echo "⚠️  Failed to trigger udev (non-fatal)"
+  msg_warning "Failed to trigger udev (non-fatal)"
 fi
 
-echo "✓ Udev rules configured"
+msg_success "Udev rules configured"
 
 # Configure kernel module size (interactive resolution selection)
 # Check if already configured (unless FORCE_RECONFIGURE=1 to allow changing size)
 if [[ "${FORCE_RECONFIGURE:-0}" != "1" ]] && [[ -f /etc/modprobe.d/kvmfr.conf ]]; then
   IVSHMEM_SIZE=$(grep -oP 'static_size_mb=\K\d+' /etc/modprobe.d/kvmfr.conf 2>/dev/null || echo "")
   if [[ -n "$IVSHMEM_SIZE" ]]; then
-    echo "✓ Kernel module already configured (${IVSHMEM_SIZE}MB)"
+    msg_success "Kernel module already configured (${IVSHMEM_SIZE}MB)"
   else
     # Config file exists but malformed - remove and reconfigure
     sudo rm -f /etc/modprobe.d/kvmfr.conf
@@ -141,41 +157,42 @@ if [[ -z "$IVSHMEM_SIZE" ]] || [[ "${FORCE_RECONFIGURE:-0}" == "1" ]]; then
 
   # Validate IVSHMEM_SIZE before use (security check)
   if ! [[ "$IVSHMEM_SIZE" =~ ^[0-9]+$ ]] || [[ "$IVSHMEM_SIZE" -lt 32 ]] || [[ "$IVSHMEM_SIZE" -gt 512 ]]; then
-    echo "❌ Invalid IVSHMEM_SIZE: $IVSHMEM_SIZE (must be 32-512)"
+    msg_error "Invalid IVSHMEM_SIZE: $IVSHMEM_SIZE (must be 32-512)"
     exit 1
   fi
 
-  echo "Configuring kernel module size..."
+  msg_info "Configuring kernel module size..."
   sudo tee /etc/modprobe.d/kvmfr.conf >/dev/null <<EOF
 options kvmfr static_size_mb=$IVSHMEM_SIZE
 EOF
-  echo "✓ Kernel module size configured (${IVSHMEM_SIZE}MB)"
+  msg_success "Kernel module size configured (${IVSHMEM_SIZE}MB)"
 fi
 
 # Configure kernel module auto-load (after modprobe.d to ensure consistency)
 if [[ ! -f /etc/modules-load.d/kvmfr.conf ]]; then
-  echo "Configuring kernel module auto-load..."
+  msg_info "Configuring kernel module auto-load..."
   echo "kvmfr" | sudo tee /etc/modules-load.d/kvmfr.conf >/dev/null
-  echo "✓ Kernel module auto-load configured"
+  msg_success "Kernel module auto-load configured"
 fi
 
 # Add user to kvm group
-echo "Checking kvm group..."
+msg_info "Checking kvm group..."
 ADDED_TO_KVM=false
 if ! groups "$USER" | grep -q kvm; then
   sudo usermod -aG kvm "$USER"
-  echo "✓ Added to kvm group"
-  ADDED_TO_KVM=true
+  msg_success "Added to kvm group"
+  echo ""
+  msg_info "Refreshing group membership for current session..."
+  echo ""
 
   # Auto-refresh group membership using sg to avoid logout/login
-  echo "  Refreshing group membership for current session..."
   exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
 else
-  echo "✓ Already in kvm group"
+  msg_success "Already in kvm group"
 fi
 
 # Create client configuration
-echo "Creating client configuration..."
+msg_info "Creating client configuration..."
 mkdir -p ~/.config/looking-glass
 cat >~/.config/looking-glass/client.ini <<EOF
 [app]
@@ -209,10 +226,10 @@ bufferLatency=5
 micDefault=allow
 micShowIndicator=no
 EOF
-echo "✓ Configuration created with SPICE support (~/.config/looking-glass/client.ini)"
+msg_success "Configuration created with SPICE support (~/.config/looking-glass/client.ini)"
 
 # Install desktop file for Walker launcher
-echo "Installing desktop launcher..."
+msg_info "Installing desktop launcher..."
 mkdir -p "$HOME/.local/share/applications"
 
 # Try to find OMARCHY_PATH if not set
@@ -226,9 +243,9 @@ fi
 
 if [[ -n "$OMARCHY_PATH" ]] && [[ -f "$OMARCHY_PATH/applications/windows-looking-glass.desktop" ]]; then
   cp "$OMARCHY_PATH/applications/windows-looking-glass.desktop" "$HOME/.local/share/applications/"
-  echo "✓ Desktop launcher installed (Windows [Looking Glass])"
+  msg_success "Desktop launcher installed (Windows [Looking Glass])"
 else
-  echo "⚠️  Desktop file not found - creating basic launcher"
+  msg_warning "Desktop file not found - creating basic launcher"
   cat >"$HOME/.local/share/applications/windows-looking-glass.desktop" <<'DESKEOF'
 [Desktop Entry]
 Name=Windows [Looking Glass]
@@ -238,20 +255,20 @@ Terminal=false
 Type=Application
 Categories=System;Virtualization;
 DESKEOF
-  echo "✓ Basic desktop launcher created"
+  msg_success "Basic desktop launcher created"
 fi
 
 # Load kernel module (reload if already loaded to apply new configuration)
-echo "Loading kvmfr module..."
+msg_info "Loading kvmfr module..."
 if lsmod | grep -q kvmfr; then
   # Module already loaded - check if device exists with correct size
   if [[ ! -e /dev/kvmfr0 ]]; then
     echo "Module loaded but /dev/kvmfr0 missing - reloading with new config..."
     sudo rmmod kvmfr 2>/dev/null || true
     if sudo modprobe kvmfr; then
-      echo "✓ Module reloaded"
+      msg_success "Module reloaded"
     else
-      echo "⚠️  Module reload failed (reboot required)"
+      msg_warning "Module reload failed (reboot required)"
     fi
   else
     # Device exists - verify via modinfo instead of unreliable dmesg parsing
@@ -261,20 +278,20 @@ if lsmod | grep -q kvmfr; then
       echo "Module loaded with wrong size (${module_size}MB, expected ${IVSHMEM_SIZE}MB) - reloading..."
       sudo rmmod kvmfr 2>/dev/null || true
       if sudo modprobe kvmfr; then
-        echo "✓ Module reloaded with ${IVSHMEM_SIZE}MB"
+        msg_success "Module reloaded with ${IVSHMEM_SIZE}MB"
       else
-        echo "⚠️  Module reload failed (reboot required)"
+        msg_warning "Module reload failed (reboot required)"
       fi
     else
-      echo "✓ Module already loaded (${IVSHMEM_SIZE}MB)"
+      msg_success "Module already loaded (${IVSHMEM_SIZE}MB)"
     fi
   fi
 else
   # Module not loaded - load it
   if sudo modprobe kvmfr; then
-    echo "✓ Module loaded"
+    msg_success "Module loaded"
   else
-    echo "⚠️  Module load failed (reboot required)"
+    msg_warning "Module load failed (reboot required)"
   fi
 fi
 
@@ -295,14 +312,14 @@ fi
 # Note: No need to check kvm group here - we already refreshed it with sg if needed
 
 if [[ "$NEEDS_REBOOT" == true ]]; then
-  echo "⚠️  Reboot required for:"
+  msg_warning "Reboot required for:"
   echo "$REBOOT_REASONS"
   echo ""
   echo "After reboot, enable Looking Glass during Windows VM installation:"
   echo "  omarchy-windows-vm install"
   echo ""
 else
-  echo "✓ Looking Glass client ready!"
+  msg_success "Looking Glass client ready!"
   echo ""
   echo "Next step: Install Windows VM with Looking Glass support"
   echo "  omarchy-windows-vm install"
