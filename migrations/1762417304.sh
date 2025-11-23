@@ -5,5 +5,4 @@ omarchy-pkg-drop blueberry
 
 if ! grep -q "omarchy-launch-bluetooth" ~/.config/waybar/config.jsonc; then
   sed -i 's/blueberry/omarchy-launch-bluetooth/' ~/.config/waybar/config.jsonc
-  omarchy-restart-waybar
 fi

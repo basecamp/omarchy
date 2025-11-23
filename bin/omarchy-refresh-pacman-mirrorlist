@@ -1,7 +1,0 @@
-#!/bin/bash
-
-if [[ $1 == "edge" ]]; then
-  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-edge /etc/pacman.d/mirrorlist
-else
-  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-stable /etc/pacman.d/mirrorlist
-fi
