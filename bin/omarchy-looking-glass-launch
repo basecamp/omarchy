@@ -105,17 +105,18 @@ if [[ ! -r /dev/kvmfr0 ]]; then
   1)
     msg_success "Added to kvm group"
     echo ""
-    msg_warning "You must LOG OUT and LOG BACK IN for group changes to take effect"
+    msg_info "Refreshing group membership for current session..."
     echo ""
-    echo "   After logging back in, run: omarchy-looking-glass-launch"
-    exit 0
+
+    # Use sg to run with refreshed kvm group (no logout needed)
+    exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
     ;;
   0)
     echo "   You are in the 'kvm' group but still cannot read the device."
     echo ""
     echo "   This usually means your session hasn't refreshed the group membership yet."
     echo ""
-    msg_info "Workaround: Using 'sg kvm' to refresh group membership for this session..."
+    msg_info "Refreshing group membership for current session..."
     echo ""
 
     # Use sg (newgrp substitute) to run Looking Glass with refreshed kvm group
@@ -185,8 +186,9 @@ echo ""
 # Ensure SPICE socket has correct permissions (if it exists)
 if [[ -S "$SPICE_SOCKET_PATH" ]]; then
   if [[ ! -r "$SPICE_SOCKET_PATH" ]]; then
-    echo "Fixing SPICE socket permissions..."
-    sudo chmod 666 "$SPICE_SOCKET_PATH" 2>/dev/null || true
+    msg_info "Fixing SPICE socket permissions..."
+    sudo chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
+    sudo chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
   fi
 fi
 
