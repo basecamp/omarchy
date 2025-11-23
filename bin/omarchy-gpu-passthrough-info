@@ -42,7 +42,7 @@ verify_hardware_requirements() {
     fi
     [[ "$quiet" != "true" ]] && msg_success "  $GPU_COUNT GPUs detected$iommu_status"
   elif [[ "$GPU_COUNT" -eq 1 ]]; then
-    [[ "$quiet" != "true" ]] && msg_warn "  Only 1 GPU detected (need 2+ for passthrough)"
+    [[ "$quiet" != "true" ]] && msg_warning "  Only 1 GPU detected (need 2+ for passthrough)"
     if [[ "$is_configured" == "true" ]]; then
       ((errors++))
     fi
@@ -125,7 +125,7 @@ verify_kernel_config() {
     if echo "$limine_params" | grep -qE "amd_iommu=on|intel_iommu=on"; then
       msg_success "    IOMMU parameters present ✓"
     else
-      msg_warn "    IOMMU parameters NOT in config - run setup to reconfigure"
+      msg_warning "    IOMMU parameters NOT in config - run setup to reconfigure"
     fi
   fi
 
@@ -237,7 +237,7 @@ verify_setup() {
         msg_success "$status_msg (ready for VM) ✓"
         ((vfio_gpus++))
       elif [[ "$driver" == "none" ]]; then
-        msg_warn "$status_msg (no driver)"
+        msg_warning "$status_msg (no driver)"
       else
         if [[ "$type" == "integrated" ]]; then
           msg_info "$status_msg (host display)"
@@ -263,7 +263,7 @@ verify_setup() {
       [[ -n "$renderer" ]] && msg_success "  Renderer: $renderer"
       [[ -n "$version" ]] && echo "  OpenGL:   $version"
     else
-      msg_warn "  Unable to query OpenGL info"
+      msg_warning "  Unable to query OpenGL info"
     fi
   fi
 
@@ -282,9 +282,9 @@ verify_setup() {
       msg_success "Status: Ready for GPU passthrough! ✓"
       echo ""
       echo "GPU passthrough is properly configured:"
-      echo "  ✓ $vfio_gpus GPU(s) bound to vfio-pci"
-      echo "  ✓ IOMMU enabled and configured"
-      echo "  ✓ Kernel parameters active"
+      msg_success "$vfio_gpus GPU(s) bound to vfio-pci"
+      msg_success "IOMMU enabled and configured"
+      msg_success "Kernel parameters active"
     elif [[ "$total_errors" -eq 0 ]] && [[ "$vfio_gpus" -eq 0 ]]; then
       # Detect current GPU mode (dynamic binding design supports 3 states)
       local gpu_mode="unknown"
@@ -298,8 +298,8 @@ verify_setup() {
         msg_success "Status: GPU in boot state (dynamic binding) ✓"
         echo ""
         echo "GPU is blacklisted and inactive (by design)."
-        echo "  ✓ IOMMU enabled and configured"
-        echo "  ✓ Kernel parameters active"
+        msg_success "IOMMU enabled and configured"
+        msg_success "Kernel parameters active"
         echo ""
         echo "To use GPU:"
         echo "  • For VM: omarchy-gpu-passthrough mode vm"
@@ -309,15 +309,15 @@ verify_setup() {
         msg_success "Status: GPU bound to native driver ✓"
         echo ""
         echo "GPU is available for host use (CUDA/compute)."
-        echo "  ✓ IOMMU enabled and configured"
-        echo "  ✓ GPU bound to native driver"
+        msg_success "IOMMU enabled and configured"
+        msg_success "GPU bound to native driver"
         echo ""
         echo "To use GPU in VM:"
         echo "  • Run: omarchy-gpu-passthrough mode vm"
         ;;
       *)
         # Unknown state (shouldn't happen, but keep old message as fallback)
-        msg_warn "Status: Configured (GPU mode: $gpu_mode)"
+        msg_warning "Status: Configured (GPU mode: $gpu_mode)"
         echo ""
         echo "Configuration exists. GPU not bound to vfio-pci."
         echo "  Hint: Use 'omarchy-gpu-passthrough mode vm' to bind for VM"
@@ -715,7 +715,7 @@ cmd_detect() {
   if check_iommu_support; then
     msg_success "IOMMU: Enabled"
   else
-    msg_warn "IOMMU: Not detected (enable in BIOS)"
+    msg_warning "IOMMU: Not detected (enable in BIOS)"
   fi
 }
 
@@ -727,7 +727,7 @@ cmd_status() {
   if ! load_gpu_config 2>/dev/null; then
     # Not configured - show helpful message
     echo ""
-    msg_warn "GPU passthrough not configured"
+    msg_warning "GPU passthrough not configured"
     echo ""
     echo "Next steps:"
     echo "  1. omarchy-gpu-passthrough setup"

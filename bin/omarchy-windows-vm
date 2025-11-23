@@ -12,7 +12,7 @@ SPICE_DIR="/var/run/omarchy-windows"      # SPICE socket directory (tmpfs, auto-
 SPICE_SOCKET_PATH="$SPICE_DIR/spice.sock" # SPICE Unix socket from dockurr/windows container
 
 msg_error() {
-  echo "❌ Error: $*"
+  echo "❌  Error: $*"
 }
 
 msg_warning() {
@@ -20,7 +20,7 @@ msg_warning() {
 }
 
 msg_success() {
-  echo "✓ $*"
+  echo "✓  $*"
 }
 
 msg_info() {
@@ -208,13 +208,13 @@ check_prerequisites() {
   AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
 
   if ! [[ "$AVAILABLE_SPACE" =~ ^[0-9]+$ ]] || [[ "$AVAILABLE_SPACE" -eq 0 ]]; then
-    echo "❌ Failed to calculate available disk space!"
+    msg_error "Failed to calculate available disk space!"
     echo "   Could not determine space on $HOME"
     exit 1
   fi
 
   if [[ "$AVAILABLE_SPACE" -lt "$REQUIRED_SPACE" ]]; then
-    echo "❌ Insufficient disk space!"
+    msg_error "Insufficient disk space!"
     echo "   Available: ${AVAILABLE_SPACE}GB"
     echo "   Required: ${REQUIRED_SPACE}GB (${DISK_SIZE_GB}GB disk + 10GB for Windows image)"
     exit 1
@@ -235,7 +235,7 @@ install_looking_glass_client() {
 
   # Check if already installed and configured
   if is_looking_glass_ready; then
-    echo "✓ Looking Glass already installed"
+    msg_success "Looking Glass already installed"
     # Read IVSHMEM size from config
     if [[ -f /etc/modprobe.d/kvmfr.conf ]]; then
       IVSHMEM_SIZE=$(grep -oP 'static_size_mb=\K\d+' /etc/modprobe.d/kvmfr.conf 2>/dev/null || echo "128")
@@ -248,7 +248,7 @@ install_looking_glass_client() {
 
   # Check if installation script is available
   if ! command -v omarchy-looking-glass-install &>/dev/null; then
-    echo "❌ omarchy-looking-glass-install not found"
+    msg_error "omarchy-looking-glass-install not found"
     echo "   Make sure Omarchy scripts are in PATH"
     return 2
   fi
@@ -272,14 +272,14 @@ install_looking_glass_client() {
     # Check if reboot is needed
     if ! is_looking_glass_ready; then
       echo ""
-      echo "⚠️  Looking Glass installed but requires reboot to activate"
+      msg_warning "Looking Glass installed but requires reboot to activate"
       return 1
     fi
     return 0
   else
     # Installation failed
     echo ""
-    echo "❌ Looking Glass installation failed"
+    msg_error "Looking Glass installation failed"
     return 2
   fi
 }
@@ -741,7 +741,7 @@ detect_smbios_and_disk_info() {
 
   # Check if dmidecode available (requires root)
   if ! command -v dmidecode &>/dev/null; then
-    echo "⚠️  dmidecode not found - SMBIOS spoofing disabled" >&2
+    msg_warning "dmidecode not found - SMBIOS spoofing disabled" >&2
     echo "   Install dmidecode for better anti-cheat compatibility" >&2
     return 0
   fi
@@ -1279,13 +1279,13 @@ connect_looking_glass() {
     if grep -q "host=/tmp/spice/spice.sock" "$LG_CONFIG" 2>/dev/null; then
       echo "  Updating Looking Glass config to new SPICE socket path..."
       sed -i 's|host=/tmp/spice/spice.sock|host=/var/run/omarchy-windows/spice.sock|g' "$LG_CONFIG"
-      echo "  ✓ Config updated"
+      msg_success "Config updated"
     fi
   fi
 
   # Validate Looking Glass requirements: client, module, device, permissions
   if ! command -v looking-glass-client &>/dev/null; then
-    echo "❌ Looking Glass is not installed!"
+    msg_error "Looking Glass is not installed!"
     echo ""
     echo "Install it with: omarchy-looking-glass-install"
     echo "Or search for 'Install Looking Glass' in the application menu"
@@ -1293,12 +1293,12 @@ connect_looking_glass() {
   fi
 
   if ! lsmod | grep -q kvmfr; then
-    echo "⚠️  kvmfr module not loaded, attempting to load..."
+    msg_warning "kvmfr module not loaded, attempting to load..."
     if sudo modprobe kvmfr 2>/dev/null; then
-      echo "✓ Module loaded successfully"
+      msg_success "Module loaded successfully"
       sleep 1 # Give udev time to create device
     else
-      echo "❌ Failed to load kvmfr module"
+      msg_error "Failed to load kvmfr module"
       echo "   Install: omarchy-looking-glass-install"
       echo "   Then reboot"
       exit 1
@@ -1306,7 +1306,7 @@ connect_looking_glass() {
   fi
 
   if [[ ! -e /dev/kvmfr0 ]]; then
-    echo "❌ /dev/kvmfr0 not found (module loaded but device missing)"
+    msg_error "/dev/kvmfr0 not found (module loaded but device missing)"
     echo "   Reinstall: omarchy-looking-glass-install"
     echo "   Then reboot"
     exit 1
@@ -1330,7 +1330,7 @@ connect_looking_glass() {
     2)
       # Failed to add user to kvm group - show error and exit
       echo ""
-      echo "❌ Cannot access /dev/kvmfr0"
+      msg_error "Cannot access /dev/kvmfr0"
       echo ""
       echo "   Failed to add user to kvm group."
       echo ""
@@ -1344,7 +1344,7 @@ connect_looking_glass() {
     *)
       # Unexpected return code from ensure_user_in_kvm_group
       echo ""
-      echo "❌ Cannot access /dev/kvmfr0"
+      msg_error "Cannot access /dev/kvmfr0"
       echo ""
       echo "   Unexpected error (code: $kvm_status)"
       echo "   Please report this issue."
@@ -1391,7 +1391,7 @@ connect_looking_glass() {
 
   if [[ "$SPICE_READY" != true ]]; then
     echo ""
-    echo "❌ QEMU SPICE listener not ready after ${MAX_WAIT}s"
+    msg_error "QEMU SPICE listener not ready after ${MAX_WAIT}s"
     echo "   Try RDP instead: omarchy-windows-vm launch"
     echo ""
     exit 1
@@ -1464,7 +1464,7 @@ To stop: omarchy-windows-vm stop"
   else
     LG_EXIT_CODE=$?
     echo ""
-    echo "❌ Looking Glass client exited with error (code: $LG_EXIT_CODE)"
+    msg_error "Looking Glass client exited with error (code: $LG_EXIT_CODE)"
     echo ""
     echo "Possible causes:"
     echo "  • Looking Glass host not installed in Windows VM"
@@ -1714,7 +1714,7 @@ monitor_installation_progress() {
       local SECONDS=$((ELAPSED % 60))
 
       echo ""
-      echo "⚠️  Installation monitoring timeout (60 minutes)"
+      msg_warning "Installation monitoring timeout (60 minutes)"
       echo ""
       printf "    Time elapsed: %d minutes %d seconds\n" "$MINUTES" "$SECONDS"
       echo ""
@@ -1871,7 +1871,7 @@ install_windows() {
 
   # Request sudo access upfront (avoids password prompt during installation)
   if ! sudo -v 2>/dev/null; then
-    echo "❌ sudo access required for installation"
+    msg_error "sudo access required for installation"
     exit 1
   fi
 
@@ -1905,7 +1905,7 @@ install_windows() {
       fi
     fi
 
-    echo "⚠️  Previous Windows VM installation detected"
+    msg_warning "Previous Windows VM installation detected"
     echo ""
     echo "Found:"
     [[ -f "$COMPOSE_FILE" ]] && echo "  • Configuration: $COMPOSE_FILE"
@@ -1943,8 +1943,8 @@ install_windows() {
       echo "Fresh installation: Removing all previous data..."
       echo ""
       echo "This will DELETE:"
-      echo "  ❌ VM disk and Windows OS ($HOME/.windows/)"
-      echo "  ❌ Configuration files"
+      msg_error "VM disk and Windows OS ($HOME/.windows/)"
+      msg_error "Configuration files"
       echo ""
       echo "This will KEEP:"
       echo "  ✅ Shared files ($HOME/Windows/) - your data"
@@ -1969,7 +1969,7 @@ install_windows() {
       fi
 
       echo ""
-      echo "✓ Previous installation completely removed"
+      msg_success "Previous installation completely removed"
       echo ""
 
       # Clear previous values to use intelligent defaults for fresh install
@@ -1986,7 +1986,7 @@ install_windows() {
       # Stop VM but keep configuration until user confirms new settings
       docker-compose -f "$COMPOSE_FILE" down 2>/dev/null || true
 
-      echo "✓ VM stopped, configuration preserved (will update after confirmation)"
+      msg_success "VM stopped, configuration preserved (will update after confirmation)"
       echo ""
       echo "ℹ️  Quick reinstall only updates docker-compose configuration"
       echo "   Windows installation and all your files remain unchanged"
@@ -2154,7 +2154,7 @@ install_windows() {
     echo ""
     if gum confirm --default=false "Change Windows password in docker-compose configuration?"; then
       echo ""
-      echo "⚠️  Important: This only updates docker-compose.yml configuration"
+      msg_warning "Important: This only updates docker-compose.yml configuration"
       echo "   Password in Windows VM remains unchanged"
       echo "   To match: Change password in Windows first, then update here"
       echo ""
@@ -2169,7 +2169,7 @@ install_windows() {
       # Keep previous password (already extracted before COMPOSE_FILE was deleted)
       if [[ -z "$PREVIOUS_PASSWORD" ]]; then
         echo ""
-        echo "⚠️  Warning: Could not extract previous password from docker-compose.yml"
+        msg_warning "Warning: Could not extract previous password from docker-compose.yml"
         echo "   Please enter password for configuration:"
         echo ""
         PASSWORD=$(gum input --placeholder="Enter password" --password --header="Windows password:")
@@ -2236,12 +2236,12 @@ install_windows() {
         GPU_NAME="$GPU_INFO"
       fi
 
-      echo "✓ Dedicated GPU detected: $GPU_NAME"
+      msg_success "Dedicated GPU detected: $GPU_NAME"
     else
-      echo "⚠️  No dedicated GPU detected (NVIDIA/AMD/Arc required for Looking Glass)"
+      msg_warning "No dedicated GPU detected (NVIDIA/AMD/Arc required for Looking Glass)"
     fi
   else
-    echo "⚠️  lspci not available - cannot detect GPU"
+    msg_warning "lspci not available - cannot detect GPU"
   fi
 
   # Check GPU passthrough configuration
@@ -2252,7 +2252,7 @@ install_windows() {
     if command -v omarchy-gpu-passthrough-info &>/dev/null; then
       # Check if GPU passthrough is already configured
       if omarchy-gpu-passthrough-info is-configured &>/dev/null; then
-        echo "✓ GPU passthrough configured and ready"
+        msg_success "GPU passthrough configured and ready"
         echo "GPU passthrough provides:"
         echo "  • Native GPU performance in Windows VM"
         echo "  • Full GPU features (ray tracing, DLSS, gaming)"
@@ -2273,15 +2273,15 @@ install_windows() {
             read GPU_PCI_ADDR GPU_AUDIO_PCI GPU_IOMMU_GROUP <<<"$GPU_CONFIG"
           fi
 
-          echo "✓ GPU passthrough will be enabled for this VM"
+          msg_success "GPU passthrough will be enabled for this VM"
         else
           GPU_PASSTHROUGH_READY=false
           GPU_PASSTHROUGH_ENABLED=false
-          echo "✓ VM will use CPU-only graphics (QXL)"
+          msg_success "VM will use CPU-only graphics (QXL)"
           echo "  You can enable GPU passthrough later by reinstalling"
         fi
       else
-        echo "⚠️  GPU passthrough not configured yet"
+        msg_warning "GPU passthrough not configured yet"
         echo ""
         echo "GPU passthrough provides:"
         echo "  • Native GPU performance in Windows VM"
@@ -2339,12 +2339,12 @@ install_windows() {
   if [[ "$GPU_PASSTHROUGH_ENABLED" == true ]]; then
     if is_looking_glass_ready; then
       echo ""
-      echo "✓ Looking Glass already installed and ready"
+      msg_success "Looking Glass already installed and ready"
       LG_ENABLED=true
     else
       echo ""
       # Show dummy plug requirement BEFORE prompting
-      echo "⚠️  Looking Glass Requirements:"
+      msg_warning "Looking Glass Requirements:"
       echo ""
       echo "   Your GPU MUST have a monitor or dummy plug connected!"
       echo "   Windows will disable the GPU without a connected display."
@@ -2363,12 +2363,12 @@ install_windows() {
           LG_INSTALL_STATUS=$?
 
           if [[ "$LG_INSTALL_STATUS" -eq 0 ]]; then
-            echo "✓ Looking Glass client ready"
+            msg_success "Looking Glass client ready"
           elif [[ "$LG_INSTALL_STATUS" -eq 1 ]]; then
-            echo "⚠️  Looking Glass client installed - reboot required"
+            msg_warning "Looking Glass client installed - reboot required"
             NEEDS_REBOOT_FOR_LG=true
           else
-            echo "❌ Looking Glass client installation failed"
+            msg_error "Looking Glass client installation failed"
             [[ -d "$HOME/.config/windows/oem" ]] && rm -rf "$HOME/.config/windows/oem" && echo "   Cleaned up partial installation"
             echo "   You can install it manually later: omarchy-looking-glass-install"
             if ! gum confirm "Continue without Looking Glass?"; then
@@ -2447,7 +2447,7 @@ install_windows() {
 
       if [[ -n "$GPU_PROCESSES" ]]; then
         echo ""
-        echo "⚠️  GPU is currently in use by processes:"
+        msg_warning "GPU is currently in use by processes:"
         echo ""
         echo "$GPU_PROCESSES"
         echo ""
@@ -2472,10 +2472,10 @@ install_windows() {
           fi
 
           if [[ -z "$GPU_PROCESSES_AFTER" ]]; then
-            echo "✓ GPU processes terminated"
+            msg_success "GPU processes terminated"
           else
             echo ""
-            echo "⚠️  Some GPU processes still running:"
+            msg_warning "Some GPU processes still running:"
             echo "$GPU_PROCESSES_AFTER"
             echo ""
             echo "Installation cancelled - close GPU applications manually"
@@ -2489,7 +2489,7 @@ install_windows() {
         fi
       fi
 
-      echo "✓ GPU available for passthrough"
+      msg_success "GPU available for passthrough"
       echo ""
     fi
   fi
@@ -2573,13 +2573,13 @@ install_windows() {
       if unzip -q -o "$LG_ZIP" -d "$OEM_DIR" 2>/dev/null; then
         rm "$LG_ZIP"
       else
-        echo "⚠️  Looking Glass extraction failed"
+        msg_warning "Looking Glass extraction failed"
         echo "   Try manually: unzip $LG_ZIP -d $OEM_DIR"
         echo "   Or download from: https://looking-glass.io/downloads"
         rm -f "$LG_ZIP"
       fi
     else
-      echo "⚠️  Looking Glass download failed (check internet connection)"
+      msg_warning "Looking Glass download failed (check internet connection)"
       echo "   Download manually: https://looking-glass.io/downloads"
       echo "   Save to: $OEM_DIR/looking-glass-host-setup.exe"
     fi
@@ -2589,7 +2589,7 @@ install_windows() {
 
   if [[ ! -f "$SPICE_INSTALLER" ]]; then
     if ! curl -L --tlsv1.2 --max-time 300 --connect-timeout 30 -o "$SPICE_INSTALLER" "https://www.spice-space.org/download/windows/spice-guest-tools/spice-guest-tools-latest.exe" 2>/dev/null; then
-      echo "⚠️  SPICE Guest Tools download failed (check internet connection)"
+      msg_warning "SPICE Guest Tools download failed (check internet connection)"
       echo "   Download manually: https://www.spice-space.org/download/windows/spice-guest-tools/spice-guest-tools-latest.exe"
       echo "   Save to: $OEM_DIR/spice-guest-tools-setup.exe"
     fi
@@ -2630,9 +2630,9 @@ install_windows() {
     "$GPU_PASSTHROUGH_ENABLED" "$GPU_PCI_ADDR" "$GPU_AUDIO_PCI" "$GPU_IOMMU_GROUP"
 
   echo ""
-  echo "✓ Configuration saved to: $COMPOSE_FILE"
+  msg_success "Configuration saved to: $COMPOSE_FILE"
   echo ""
-  echo "⚠️  Security Note:"
+  msg_warning "Security Note:"
   echo "  Password stored in plain text in docker-compose.yml"
   echo "  Keep this file secure and don't share it"
   echo ""
@@ -2694,10 +2694,10 @@ EOF
       if [[ "$CURRENT_DRIVER" != "vfio-pci" ]]; then
         echo "Binding GPU to VFIO for passthrough..."
         if omarchy-gpu-passthrough mode vm 2>&1; then
-          echo "  ✓ GPU bound to VFIO successfully"
+          msg_success "GPU bound to VFIO successfully"
         else
           echo ""
-          echo "❌ Failed to bind GPU to VFIO!"
+          msg_error "Failed to bind GPU to VFIO!"
           echo ""
           echo "   GPU passthrough requires VFIO driver binding."
           echo "   Fix: omarchy-gpu-passthrough mode vm"
@@ -2705,11 +2705,11 @@ EOF
           exit 1
         fi
       else
-        echo "✓ GPU bound to VFIO (ready for passthrough)"
+        msg_success "GPU bound to VFIO (ready for passthrough)"
       fi
     else
       echo ""
-      echo "❌ GPU passthrough enabled but omarchy-gpu-passthrough not found!"
+      msg_error "GPU passthrough enabled but omarchy-gpu-passthrough not found!"
       echo ""
       echo "   GPU passthrough requires omarchy-gpu-passthrough tools."
       echo "   These should be installed in your PATH."
@@ -2740,7 +2740,7 @@ EOF
   if [[ "$LG_ENABLED" == true ]]; then
     if [[ ! -e /dev/kvmfr0 ]]; then
       echo ""
-      echo "❌ Looking Glass device /dev/kvmfr0 not found!"
+      msg_error "Looking Glass device /dev/kvmfr0 not found!"
       echo ""
       echo "   Looking Glass requires /dev/kvmfr0 device from kvmfr kernel module."
       echo ""
@@ -2758,7 +2758,7 @@ EOF
   # Start container (suppress verbose Docker output)
   if ! docker-compose -f "$COMPOSE_FILE" up -d >/dev/null 2>&1; then
     echo ""
-    echo "❌ Failed to start Windows VM!"
+    msg_error "Failed to start Windows VM!"
     echo ""
     echo "   Common causes:"
     echo "   • Docker daemon not running: sudo systemctl start docker"
@@ -2778,7 +2778,7 @@ EOF
 
   if ! docker ps --filter "name=omarchy-windows" --filter "status=running" --format "{{.Names}}" | grep -q "omarchy-windows"; then
     echo ""
-    echo "❌ Container started but crashed immediately!"
+    msg_error "Container started but crashed immediately!"
     echo ""
 
     # Try to extract ERROR lines first, fall back to last 10 lines if none found
@@ -2808,12 +2808,12 @@ EOF
     exit 1
   fi
 
-  echo "✓ Docker container started"
+  msg_success "Docker container started"
   echo ""
 
   # Check if this is quick reinstall with VM already booted and RDP ready
   if [[ "${SKIP_OEM_AUTORUN:-false}" == "true" ]] && nc -z 127.0.0.1 3389 2>/dev/null; then
-    echo "✓ Windows is ready (RDP service responding)"
+    msg_success "Windows is ready (RDP service responding)"
     echo ""
 
     # Auto-launch RDP or Looking Glass
@@ -2851,7 +2851,7 @@ EOF
       if grep -q "host=/tmp/spice/spice.sock" "$LG_CONFIG" 2>/dev/null; then
         echo "  Updating Looking Glass config to new SPICE socket path..."
         sed -i 's|host=/tmp/spice/spice.sock|host=/var/run/omarchy-windows/spice.sock|g' "$LG_CONFIG"
-        echo "  ✓ Config updated"
+        msg_success "Config updated"
       fi
     fi
 
@@ -2886,10 +2886,10 @@ EOF
       echo ""
     fi
     if [[ "$LG_REBOOT_REASON" == "kvm group membership" ]]; then
-      echo "⚠️  LOG OUT and LOG BACK IN required for Looking Glass (kvm group)"
+      msg_warning "LOG OUT and LOG BACK IN required for Looking Glass (kvm group)"
       echo "   After re-login: omarchy-windows-vm launch --lg"
     else
-      echo "⚠️  REBOOT REQUIRED for Looking Glass ($LG_REBOOT_REASON)"
+      msg_warning "REBOOT REQUIRED for Looking Glass ($LG_REBOOT_REASON)"
       echo "   After reboot: omarchy-windows-vm launch --lg"
     fi
     echo ""
@@ -2919,7 +2919,7 @@ remove_windows() {
   # Remove Docker image
   echo "• Removing Docker image..."
   if docker rmi dockurr/windows >/dev/null 2>&1; then
-    echo "  ✓ Docker image removed"
+    msg_success "Docker image removed"
   else
     echo "  ℹ️  Image already removed"
   fi
@@ -2944,7 +2944,7 @@ remove_windows() {
   rm -rf "$HOME/.config/windows"
 
   echo ""
-  echo "✓ Windows VM configuration removed!"
+  msg_success "Windows VM configuration removed!"
   echo ""
   echo "Preserved:"
   echo "  ✅ VM disk: $HOME/.windows/ (reusable for quick reinstall)"
@@ -3068,7 +3068,7 @@ launch_windows() {
 
             # Validate PCI address format (security check)
             if [[ ! "$GPU_PCI_ADDR" =~ ^([0-9a-fA-F]{4}:)?[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$ ]]; then
-              echo "  ⚠️  Invalid PCI address format: $GPU_PCI_ADDR"
+              msg_warning "Invalid PCI address format: $GPU_PCI_ADDR"
             else
               # Check current driver binding
               CURRENT_DRIVER=$(lspci -k -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use" | awk '{print $5}')
@@ -3077,13 +3077,13 @@ launch_windows() {
                 echo "  GPU not bound to VFIO, binding now..."
                 if command -v omarchy-gpu-passthrough &>/dev/null; then
                   if omarchy-gpu-passthrough mode vm 2>&1; then
-                    echo "  ✓ GPU switched to VM mode successfully"
+                    msg_success "GPU switched to VM mode successfully"
                   else
-                    echo "  ⚠️  GPU mode switch may have failed, check with: omarchy-gpu-passthrough mode"
+                    msg_warning "GPU mode switch may have failed, check with: omarchy-gpu-passthrough mode"
                   fi
                 fi
               else
-                echo "  ✓ GPU already bound to VFIO"
+                msg_success "GPU already bound to VFIO"
               fi
             fi
           fi
@@ -3095,7 +3095,7 @@ launch_windows() {
         echo "  Creating SPICE directory..."
         mkdir -p "$SPICE_DIR"
         chmod 770 "$SPICE_DIR"
-        echo "  ✓ SPICE directory created"
+        msg_success "SPICE directory created"
       fi
     fi
 
@@ -3136,7 +3136,7 @@ launch_windows() {
       SPICE_WAIT=0
       while [[ "$SPICE_WAIT" -lt 30 ]]; do
         if [[ -S "$SPICE_SOCKET_PATH" ]]; then
-          echo "  ✓ SPICE socket created"
+          msg_success "SPICE socket created"
           # Fix permissions
           sudo chmod 666 "$SPICE_SOCKET_PATH" 2>/dev/null || true
           break
@@ -3146,7 +3146,7 @@ launch_windows() {
       done
 
       if [[ "$SPICE_WAIT" -ge 30 ]]; then
-        echo "  ⚠️  SPICE socket not created within 30s"
+        msg_warning "SPICE socket not created within 30s"
         echo "     Looking Glass input may not work properly"
       fi
     fi
@@ -3177,7 +3177,7 @@ launch_windows() {
         CURRENT_TIME=$(date +%s)
         TOTAL_ELAPSED=$((CURRENT_TIME - WAIT_START))
         echo ""
-        echo "⚠️  Windows is taking longer than expected (${TOTAL_ELAPSED}s elapsed)"
+        msg_warning "Windows is taking longer than expected (${TOTAL_ELAPSED}s elapsed)"
         echo ""
         echo "Options:"
         echo "  1. Keep waiting - VM might still be installing"
@@ -3201,7 +3201,7 @@ launch_windows() {
 
     WAIT_END=$(date +%s)
     WAIT_TIME=$((WAIT_END - WAIT_START))
-    echo "✓ RDP port open (took ${WAIT_TIME}s)"
+    msg_success "RDP port open (took ${WAIT_TIME}s)"
   fi
 
   if [[ "$USE_LOOKING_GLASS" == true ]]; then
@@ -3213,7 +3213,7 @@ launch_windows() {
     WIN_PASS=$(grep -E '^\s*PASSWORD:' "$COMPOSE_FILE" | head -1 | sed -E 's/^[^:]*:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/' | xargs)
 
     if [[ -z "$WIN_USER" ]] || [[ -z "$WIN_PASS" ]]; then
-      echo "❌ Failed to extract credentials from $COMPOSE_FILE"
+      msg_error "Failed to extract credentials from $COMPOSE_FILE"
       echo "   Configuration file may be corrupted or in unexpected format."
       echo ""
       echo "   Try reinstalling: omarchy-windows-vm remove && omarchy-windows-vm install"
@@ -3245,9 +3245,9 @@ launch_windows() {
 
       echo ""
       if [[ "$RDP_READY" == true ]]; then
-        echo "✓ RDP service is ready and responding to protocol requests"
+        msg_success "RDP service is ready and responding to protocol requests"
       else
-        echo "⚠️  RDP service did not respond within ${MAX_WAIT}s"
+        msg_warning "RDP service did not respond within ${MAX_WAIT}s"
         echo "   Proceeding anyway, but connection may fail"
       fi
       echo ""
@@ -3343,7 +3343,7 @@ stop_windows() {
           echo "✅ GPU restored to mode=none (blacklisted)"
           notify_silent "Windows VM" "GPU restored to mode=none" "normal"
         else
-          echo "⚠️  Warning: Failed to restore GPU"
+          msg_warning "Warning: Failed to restore GPU"
           echo "   You can manually restore: omarchy-gpu-passthrough mode none"
           notify_silent "Windows VM" "Failed to restore GPU" "critical"
         fi
@@ -3353,7 +3353,7 @@ stop_windows() {
         sudo rm -f /var/run/omarchy-vm-gpu-mode 2>/dev/null || true
       fi
     else
-      echo "⚠️  Warning: GPU passthrough tools not found"
+      msg_warning "Warning: GPU passthrough tools not found"
       echo "   GPU may still be bound to vfio-pci"
       echo "   Manual restore: omarchy-gpu-passthrough mode none"
     fi
