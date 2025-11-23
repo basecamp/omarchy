@@ -1733,6 +1733,138 @@ monitor_installation_progress() {
   done
 }
 
+# Build dockurr/windows:latest with SPICE support
+# SPICE module (qemu-system-modules-spice) was rejected from upstream
+# See: https://github.com/dockur/windows/pull/1567
+build_dockurr_windows_with_spice() {
+  local build_dir="/tmp/dockurr-windows-spice-$$"
+
+  # Cleanup on exit (success, failure, or Ctrl+C)
+  trap "rm -rf '$build_dir' 2>/dev/null || true" EXIT INT TERM
+
+  echo ""
+  msg_info "Building dockurr/windows:latest with SPICE support..."
+  echo "This may take 5-10 minutes..."
+  echo ""
+
+  # Clone dockur/windows repository
+  if ! git clone --quiet --depth 1 https://github.com/dockur/windows.git "$build_dir" 2>/dev/null; then
+    msg_error "Failed to clone dockur/windows repository"
+    echo "   Check internet connection or try again later"
+    return 1
+  fi
+
+  cd "$build_dir" || {
+    msg_error "Failed to enter build directory"
+    return 1
+  }
+
+  msg_success "Repository cloned"
+  msg_info "Modifying Dockerfile to add SPICE support..."
+
+  # Check if SPICE already present (prevent duplicate additions)
+  if grep -q 'qemu-system-modules-spice' Dockerfile; then
+    msg_success "Dockerfile already has SPICE support (no modification needed)"
+  else
+    # Modify Dockerfile: add qemu-system-modules-spice after libarchive-tools
+    # Change: libarchive-tools && \
+    #    to:  libarchive-tools \
+    #         qemu-system-modules-spice && \
+    if ! sed -i 's/libarchive-tools && \\/libarchive-tools \\\n        qemu-system-modules-spice \&\& \\/' Dockerfile; then
+      msg_error "Failed to modify Dockerfile"
+      msg_error "Dockerfile format may have changed - sed pattern didn't match"
+      echo "   Expected line: libarchive-tools && \\"
+      echo "   Please report this issue with your dockur/windows version"
+      return 1
+    fi
+
+    # Verify modification succeeded
+    if ! grep -q 'qemu-system-modules-spice' Dockerfile; then
+      msg_error "Dockerfile modification verification failed"
+      echo "   sed completed but SPICE not found in result"
+      echo "   This may indicate Dockerfile format changed"
+      return 1
+    fi
+
+    msg_success "Dockerfile modified (qemu-system-modules-spice added)"
+  fi
+
+  echo ""
+  msg_info "Building Docker image..."
+  echo "(This step downloads base image and installs packages)"
+  echo ""
+
+  # Build image (show output for transparency)
+  if ! docker build -t dockurr/windows:latest .; then
+    echo ""
+    msg_error "Docker build failed"
+    echo "   Check Docker daemon status: systemctl status docker"
+    echo "   Check disk space: df -h"
+    return 1
+  fi
+
+  echo ""
+  msg_success "dockurr/windows:latest built successfully with SPICE support"
+  echo ""
+
+  # trap EXIT will cleanup $build_dir automatically
+  return 0
+}
+
+# Ensure dockurr/windows:latest has SPICE support
+# Checks if image exists and has qemu-system-modules-spice
+# Rebuilds if missing or lacks SPICE
+ensure_dockurr_windows_with_spice() {
+  msg_info "Checking dockurr/windows:latest Docker image..."
+  echo ""
+
+  # Check Docker daemon is running
+  if ! docker info &>/dev/null; then
+    msg_error "Docker daemon is not running"
+    echo "   Start Docker: sudo systemctl start docker"
+    echo "   Enable on boot: sudo systemctl enable docker"
+    return 1
+  fi
+
+  # Check if image exists locally
+  if docker image inspect dockurr/windows:latest &>/dev/null; then
+    msg_success "Image exists locally"
+    msg_info "Checking for SPICE support..."
+
+    # Check image history for qemu-system-modules-spice (faster than docker run)
+    # Image built by our script will have SPICE in layer commands
+    if docker history --no-trunc dockurr/windows:latest 2>/dev/null | grep -q 'qemu-system-modules-spice'; then
+      msg_success "SPICE support detected in image layers"
+      echo ""
+      return 0
+    else
+      msg_warning "Image lacks SPICE support in build history"
+      msg_info "Removing old image and rebuilding with SPICE..."
+      echo ""
+
+      # Remove old image
+      docker rmi dockurr/windows:latest 2>/dev/null || true
+    fi
+  else
+    msg_warning "Image not found locally"
+    msg_info "Building with SPICE support..."
+    echo ""
+  fi
+
+  # Build image with SPICE
+  if ! build_dockurr_windows_with_spice; then
+    echo ""
+    msg_error "Failed to build dockurr/windows:latest with SPICE support"
+    echo ""
+    echo "   Looking Glass requires SPICE for input handling"
+    echo "   Build failed - cannot continue with Looking Glass enabled"
+    echo ""
+    return 1
+  fi
+
+  return 0
+}
+
 install_windows() {
   # Set up trap to handle Ctrl+C
   trap "echo ''; echo 'Installation cancelled by user'; exit 1" INT
@@ -2590,8 +2722,18 @@ EOF
     echo ""
   fi
 
+  # Ensure Docker image has SPICE support (required for Looking Glass)
+  if [[ "$LG_ENABLED" == true ]]; then
+    if ! ensure_dockurr_windows_with_spice; then
+      msg_error "Failed to prepare Docker image with SPICE support"
+      echo "   Looking Glass requires SPICE for keyboard/mouse input"
+      echo ""
+      exit 1
+    fi
+  fi
+
   # Start or restart docker-compose with user's config
-  echo "Starting Windows VM..."
+  msg_info "Starting Windows VM..."
   echo ""
 
   # Verify Looking Glass device exists before starting VM
