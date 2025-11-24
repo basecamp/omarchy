@@ -23,8 +23,6 @@ msg_info() {
   echo "ℹ️  $*"
 }
 
-# Check if user is in kvm group and add if needed
-# Returns: 0=already in group, 1=added (relogin needed), 2=failed
 ensure_user_in_kvm_group() {
   if groups "$USER" | grep -q kvm; then
     return 0
@@ -37,7 +35,6 @@ ensure_user_in_kvm_group() {
   fi
 }
 
-# Check if Docker daemon is running
 check_docker_running() {
   if docker ps &>/dev/null; then
     return 0
@@ -48,78 +45,57 @@ check_docker_running() {
   return 1
 }
 
-# Get container status by name
 get_container_status() {
   local container_name="${1:-omarchy-windows}"
   docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null
 }
 
-# Check if Looking Glass is installed
 if ! command -v looking-glass-client &>/dev/null; then
   msg_error "Looking Glass is not installed"
   echo "   Install: omarchy-looking-glass-install"
   exit 1
 fi
 
-# Check if kvmfr module is loaded
 if ! lsmod | grep -q kvmfr; then
   msg_warning "kvmfr module not loaded, attempting to load..."
-  # Use timeout to prevent hanging if modprobe requires manual intervention
-  if timeout 10 sudo modprobe kvmfr 2>/dev/null; then
+  if timeout 10 sudo -n /usr/bin/modprobe kvmfr 2>/dev/null; then
     msg_success "Module loaded successfully"
-    sleep 1 # Give udev time to create device
+    sleep 1
   else
     msg_error "Failed to load kvmfr module (timeout or error)"
-    echo ""
     echo "   Make sure Looking Glass is installed:"
     echo "     omarchy-looking-glass-install"
-    echo ""
     echo "   Then reboot your system."
     exit 1
   fi
 fi
 
-# Check if kvmfr device exists
 if [[ ! -e /dev/kvmfr0 ]]; then
   msg_error "/dev/kvmfr0 device not found!"
-  echo ""
   echo "   The kvmfr module is loaded but device was not created."
   echo "   This usually means:"
   echo "     1. DKMS module compilation failed during installation"
   echo "     2. Udev rules are not active"
-  echo ""
   echo "   Try:"
   echo "     1. Reinstall: omarchy-looking-glass-install"
   echo "     2. Reboot system"
   exit 1
 fi
 
-# Check device permissions
 if [[ ! -r /dev/kvmfr0 ]]; then
   msg_error "Cannot read /dev/kvmfr0"
-  echo ""
 
-  # Check if user is in kvm group and add if needed
   ensure_user_in_kvm_group
   case "$?" in
   1)
     msg_success "Added to kvm group"
-    echo ""
     msg_info "Refreshing group membership for current session..."
-    echo ""
-
-    # Auto-refresh group membership using sg to avoid logout/login
     exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
     ;;
   0)
     echo "   You are in the 'kvm' group but still cannot read the device."
-    echo ""
     echo "   This usually means your session hasn't refreshed the group membership yet."
-    echo ""
     msg_info "Refreshing group membership for current session..."
-    echo ""
-
-    # Auto-refresh group membership using sg to avoid logout/login
     exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
     ;;
   2)
@@ -129,7 +105,6 @@ if [[ ! -r /dev/kvmfr0 ]]; then
   esac
 fi
 
-# Check if Windows VM is configured
 COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
 if [[ ! -f "$COMPOSE_FILE" ]]; then
   msg_error "Windows VM not configured"
@@ -137,29 +112,22 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
   exit 1
 fi
 
-# Check if Windows VM is configured with Looking Glass (IVSHMEM device)
 if ! grep -q "ivshmem-plain" "$COMPOSE_FILE"; then
   msg_error "Windows VM is not configured with Looking Glass support!"
-  echo ""
   echo "   Your VM was installed without IVSHMEM device."
   echo "   To enable Looking Glass, you need to reinstall:"
-  echo ""
   echo "     omarchy-windows-vm remove"
   echo "     omarchy-windows-vm install"
-  echo ""
   echo "   During installation, select 'Yes' when asked about Looking Glass."
-  echo ""
   echo "   Alternatively, connect via RDP:"
   echo "     omarchy-windows-vm launch"
   exit 1
 fi
 
-# Check if Docker is running
 if ! check_docker_running; then
   exit 1
 fi
 
-# Check if Windows VM is running
 CONTAINER_STATUS=$(get_container_status "omarchy-windows")
 if [[ "$CONTAINER_STATUS" != "running" ]]; then
   msg_error "Windows VM is not running"
@@ -167,31 +135,21 @@ if [[ "$CONTAINER_STATUS" != "running" ]]; then
   exit 1
 fi
 
-# Note: We can't reliably check if Looking Glass host is running from here
-# User will see black screen if host is not running in Windows
-
-# Validate SPICE socket exists and is accessible
 if [[ ! -S "$SPICE_SOCKET_PATH" ]]; then
   msg_warning "SPICE socket not found: $SPICE_SOCKET_PATH"
   echo "   VM may still be starting, or SPICE is not configured correctly."
   echo "   Looking Glass will launch without audio/clipboard integration."
-  echo ""
 fi
 
 echo "Connecting to Windows VM via Looking Glass..."
 echo "Scroll Lock: release | Right Ctrl+F: fullscreen | Right Ctrl+Q: quit"
-echo ""
 
-# Ensure SPICE socket has correct permissions (if it exists)
-if [[ -S "$SPICE_SOCKET_PATH" ]]; then
-  if [[ ! -r "$SPICE_SOCKET_PATH" ]]; then
-    msg_info "Fixing SPICE socket permissions..."
-    sudo chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
-    sudo chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
-  fi
+if [[ -S "$SPICE_SOCKET_PATH" ]] && [[ ! -r "$SPICE_SOCKET_PATH" ]]; then
+  msg_info "Fixing SPICE socket permissions..."
+  sudo chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
+  sudo chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
 fi
 
-# Launch Looking Glass client (fullscreen by default if no args)
 if [[ "$#" -eq 0 ]]; then
   exec setsid uwsm-app -- looking-glass-client -F
 else

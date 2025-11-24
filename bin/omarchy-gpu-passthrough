@@ -15,7 +15,6 @@ if ! source "$SCRIPT_DIR/omarchy-gpu-passthrough-utils"; then
 fi
 
 # Main Help Function
-
 show_main_help() {
   cat <<EOF
 GPU Passthrough for Virtual Machines
@@ -83,11 +82,9 @@ EOF
 }
 
 # Main Dispatcher
-
 case "${1:-}" in
 mode)
   shift
-  # Handle mode --help specially
   if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || "${1:-}" == "help" ]]; then
     exec "$SCRIPT_DIR/omarchy-gpu-passthrough-bind" mode --help
   else
@@ -106,10 +103,8 @@ info)
   show_main_help
   ;;
 *)
-  echo ""
   echo "Unknown command: \"$1\""
   echo "Run 'omarchy-gpu-passthrough --help' for usage information"
-  echo ""
   exit 1
   ;;
 esac
