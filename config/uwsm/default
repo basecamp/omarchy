@@ -1,0 +1,13 @@
+# Changes require a restart to take effect.
+
+# Install other terminals via Install > Terminal
+export TERMINAL=xdg-terminal-exec
+
+# Use code for VSCode
+export EDITOR=nvim
+
+# Use a custom directory for screenshots (remember to make the directory!)
+# export OMARCHY_SCREENSHOT_DIR="$HOME/Pictures/Screenshots"
+
+# Use a custom directory for screenrecordings (remember to make the directory!)
+# export OMARCHY_SCREENRECORD_DIR="$HOME/Videos/Screencasts"

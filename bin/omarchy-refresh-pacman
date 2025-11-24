@@ -1,0 +1,4 @@
+#!/bin/bash
+
+sudo cp -f ~/.local/share/omarchy/default/pacman/pacman.conf /etc/pacman.conf
+omarchy-refresh-pacman-mirrorlist

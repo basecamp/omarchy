@@ -1,0 +1,59 @@
+#!/bin/bash
+
+if (($# == 0)); then
+  echo "Usage: omarchy-install-terminal [alacritty|ghostty|kitty]"
+  exit 1
+fi
+
+package="$1"
+
+# Map package name to desktop entry ID
+case "$package" in
+alacritty) desktop_id="Alacritty.desktop" ;;
+ghostty) desktop_id="com.mitchellh.ghostty.desktop" ;;
+kitty) desktop_id="kitty.desktop" ;;
+*)
+  echo "Unknown terminal: $package"
+  exit 1
+  ;;
+esac
+
+# Install package
+if omarchy-pkg-add $package; then
+  # Copy custom desktop entry for alacritty with X-TerminalArg* keys
+  if [[ $package == "alacritty" ]]; then
+    mkdir -p ~/.local/share/applications
+    cat > ~/.local/share/applications/Alacritty.desktop << EOF
+[Desktop Entry]
+Type=Application
+TryExec=alacritty
+Exec=alacritty
+Icon=Alacritty
+Terminal=false
+Categories=System;TerminalEmulator;
+Name=Alacritty
+GenericName=Terminal
+Comment=A fast, cross-platform, OpenGL terminal emulator
+StartupNotify=true
+StartupWMClass=Alacritty
+Actions=New;
+X-TerminalArgExec=-e
+X-TerminalArgAppId=--class=
+X-TerminalArgTitle=--title=
+X-TerminalArgDir=--working-directory=
+
+[Desktop Action New]
+Name=New Terminal
+Exec=alacritty
+EOF
+  fi
+
+  # Update xdg-terminals.list to prioritize the proper terminal
+  cat > ~/.config/xdg-terminals.list << EOF
+# Terminal emulator preference order for xdg-terminal-exec
+# The first found and valid terminal will be used
+$desktop_id
+EOF
+else
+  echo "Failed to install $package"
+fi
