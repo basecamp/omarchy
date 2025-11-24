@@ -32,7 +32,7 @@ alias ....='cd ../../..'
 
 # Tools
 alias d='docker'
-alias r='rails'
+r() {if [ -x "bin/rails" ]; then bin/rails "$@"; else rails "$@"; fi}
 n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
 
 # Git
