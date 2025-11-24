@@ -3,9 +3,6 @@
 # omarchy-gpu-passthrough-setup - Setup wizard for GPU passthrough
 #
 
-# Preserve original script arguments for exec sg kvm (group refresh)
-ORIGINAL_SCRIPT_ARGS=("$@")
-
 set -euo pipefail
 
 # Load shared utilities
@@ -282,16 +279,28 @@ EOF
     sudo chgrp kvm /sys/bus/pci/drivers/i915/{bind,unbind,new_id,remove_id} 2>/dev/null || true
   fi
 
-  msg_success "PCI binding permissions configured: $udev_rules_file"
-  msg_info "  Users in 'kvm' group can now bind/unbind PCI devices without sudo"
+  msg_success "PCI permissions: kvm group can bind/unbind devices"
+  return 0
+}
 
-  # Verify user is in kvm group (should always pass - checked at setup start)
-  if ! groups "$USER" | grep -q '\bkvm\b'; then
-    msg_error "User not in kvm group - this should have been handled at setup start"
-    return 1
+configure_gpu_state_tmpfiles() {
+  local tmpfiles_gpu_state_file="/etc/tmpfiles.d/omarchy-gpu-passthrough.conf"
+
+  msg_info "Configuring GPU state marker tmpfiles..."
+
+  sudo tee "$tmpfiles_gpu_state_file" >/dev/null <<'EOF'
+# Omarchy GPU Passthrough - State marker file
+# Tracks current GPU mode (none/vm/host)
+# Auto-recreated on boot (tmpfs cleanup)
+f /var/run/omarchy-vm-gpu-mode 0664 root kvm - none
+EOF
+
+  # Apply immediately (don't wait for reboot)
+  if ! sudo systemd-tmpfiles --create "$tmpfiles_gpu_state_file" 2>/dev/null; then
+    msg_warning "Failed to apply tmpfiles now (will work after reboot)"
   fi
 
-  msg_success "User already in kvm group"
+  msg_success "GPU state marker tmpfiles configured"
 
   return 0
 }
@@ -765,9 +774,13 @@ validate_gpu_selection() {
   local idx="$SELECTED_GPU_INDEX"
   local type="${GPU_TYPE[$idx]}"
   local name="${GPU_NAME[$idx]}"
+  local pci="${GPU_PCI_ADDR[$idx]}"
+  local vram=$(get_gpu_memory "$pci" "${GPU_VENDOR_ID[$idx]}")
 
   echo ""
-  msg_info "Selected: ${name}"
+  msg_success "Selected for passthrough: ${name}"
+  msg_info "  PCI: $pci | Memory: $vram"
+  echo ""
 
   # Warn if selecting iGPU
   if [[ "$type" == "integrated" ]]; then
@@ -789,35 +802,19 @@ validate_gpu_selection() {
     gum confirm "Proceed?" || return 1
   fi
 
-  # Find iGPU to display monitor connection instructions
+  # Monitor setup check
+  msg_section "Monitor Setup"
+  echo ""
+
   local selected_gpu_pci="${GPU_PCI_ADDR[$idx]}"
-  local selected_gpu_name="$name"
-  local igpu_name=""
   local igpu_pci=""
 
   for i in "${!GPU_PCI_ADDR[@]}"; do
     if [[ "${GPU_TYPE[$i]}" == "integrated" ]]; then
-      igpu_name="${GPU_NAME[$i]}"
       igpu_pci="${GPU_PCI_ADDR[$i]}"
       break
     fi
   done
-
-  # Display monitor connection instructions
-  echo ""
-  msg_warning "After reboot, dedicated GPU ($selected_gpu_name) will be INACTIVE!"
-  echo ""
-  echo "For host display:"
-  echo "  • Connect monitor(s) to MOTHERBOARD ports (HDMI/DP on back panel)"
-  if [[ -n "$igpu_name" ]]; then
-    echo "  • Host will use: $igpu_name (iGPU)"
-  fi
-  echo "  • Passthrough GPU will be blacklisted (mode=none at boot)"
-  echo ""
-  msg_info "Note: You can keep monitors on both GPUs if you understand the consequences:"
-  msg_info "      • Monitors on dedicated GPU will go blank after reboot (normal)"
-  msg_info "      • At least one monitor must be on motherboard ports for host display"
-  echo ""
 
   # Check monitor connections on both GPUs
   local dgpu_monitor_count=0
@@ -853,56 +850,48 @@ validate_gpu_selection() {
     fi
   fi
 
-  # Display current monitor setup
-  echo "Current monitor setup:"
-  if [[ -n "$igpu_name" ]]; then
-    echo "  • iGPU ($igpu_name): $igpu_monitor_count monitor(s)"
+  # Display monitor setup compactly
+  if [[ "$igpu_monitor_count" -gt 0 ]]; then
+    msg_success "iGPU: $igpu_monitor_count monitor(s)"
+  else
+    msg_warning "iGPU: 0 monitors"
   fi
-  echo "  • Dedicated GPU ($selected_gpu_name): $dgpu_monitor_count monitor(s)"
+
+  if [[ "$dgpu_monitor_count" -gt 0 ]]; then
+    msg_warning "Dedicated GPU: $dgpu_monitor_count monitor(s) (will go blank after reboot)"
+  fi
   echo ""
 
-  # Validation and warnings
+  # Validation
   if [[ "$igpu_monitor_count" -eq 0 ]] && [[ "$dgpu_monitor_count" -gt 0 ]]; then
-    msg_error "CRITICAL: No monitors on iGPU, but monitors detected on dedicated GPU!"
+    msg_error "No monitors on iGPU - ALL monitors will go BLANK after reboot!"
+    msg_info "Connect at least one monitor to motherboard ports before rebooting"
     echo ""
-    msg_warning "After reboot, ALL your monitors will go BLANK (dedicated GPU blacklisted)."
-    msg_warning "You MUST connect at least one monitor to motherboard ports!"
-    echo ""
-    log_warn "Critical: No iGPU monitors, $dgpu_monitor_count monitor(s) on dGPU - user at risk of black screen"
+    log_warn "Critical: No iGPU monitors, $dgpu_monitor_count on dGPU"
 
-    gum confirm "I understand and will move at least one monitor to motherboard BEFORE rebooting" || {
-      msg_error "Setup aborted - please connect monitor to motherboard ports first"
-      return 1
-    }
-  elif [[ "$dgpu_monitor_count" -gt 0 ]] && [[ "$igpu_monitor_count" -gt 0 ]]; then
-    msg_success "Good: $igpu_monitor_count monitor(s) on iGPU (will work after reboot)"
-    msg_warning "Note: $dgpu_monitor_count monitor(s) on dedicated GPU will go blank after reboot"
-    echo ""
-    log_info "User has $igpu_monitor_count iGPU monitors + $dgpu_monitor_count dGPU monitors"
-
-    gum confirm "I understand that $dgpu_monitor_count monitor(s) will go blank after reboot" || {
+    gum confirm "I will connect monitor to motherboard BEFORE reboot" || {
       msg_error "Setup aborted"
       return 1
     }
   elif [[ "$igpu_monitor_count" -gt 0 ]]; then
-    msg_success "Perfect: $igpu_monitor_count monitor(s) on iGPU (will work after reboot)"
-    log_info "User has $igpu_monitor_count iGPU monitors, no dGPU monitors"
+    msg_info "After reboot, use monitors connected to motherboard (iGPU)"
+    log_info "Monitor setup: $igpu_monitor_count iGPU, $dgpu_monitor_count dGPU"
 
-    gum confirm "Continue with setup?" || {
+    gum confirm "Continue?" || {
       msg_error "Setup aborted"
       return 1
     }
   else
-    msg_warning "Cannot detect monitor connections - asking user to confirm"
+    msg_warning "Cannot detect monitors - ensure at least one on motherboard ports"
     log_warn "Cannot detect monitor connections"
 
-    gum confirm "At least one monitor is connected to motherboard ports?" || {
-      msg_error "Setup aborted - please connect monitor to motherboard ports first"
+    gum confirm "Monitor connected to motherboard?" || {
+      msg_error "Setup aborted"
       return 1
     }
   fi
 
-  log_info "User confirmed monitor is connected to motherboard ports (iGPU)"
+  log_info "User confirmed monitor setup"
 
   return 0
 }
@@ -932,7 +921,8 @@ EOF
   • Dedicated GPU will be INACTIVE (blacklisted, no driver loaded)
   • Connect ALL monitors to MOTHERBOARD ports (iGPU only)
   • Host display uses iGPU, dedicated GPU ready for VM
-  • Run 'omarchy-gpu-passthrough mode vm' before starting VM
+  • VMs (omarchy-windows-vm) handle GPU automatically
+  • For host use (CUDA/gaming): omarchy-gpu-passthrough mode host
 EOF
 
   echo ""
@@ -979,12 +969,23 @@ EOF
 # Main Commands
 
 cmd_setup() {
-  # Check kvm group first - avoids showing banner twice on exec sg kvm
+  log_init
+  log_info "=== SETUP WIZARD START ==="
+  log_info "User: $USER"
+  log_info "System: $(uname -r)"
+
+  show_intro_banner
+
+  # Single confirmation - get user consent BEFORE any system changes
+  if ! gum confirm "I understand the risks and have checked BIOS settings. Continue?"; then
+    msg_warning "Setup cancelled. Run again when ready."
+    exit 0
+  fi
+  echo ""
+
+  # Add to kvm group if needed (will be active after reboot)
   if ! groups "$USER" | grep -q '\bkvm\b'; then
-    echo ""
-    msg_info "First-time setup: Adding user to kvm group..."
-    msg_info "This is required for passwordless GPU mode switching"
-    echo ""
+    msg_info "Adding user to kvm group (for passwordless GPU switching)..."
 
     if ! sudo usermod -aG kvm "$USER"; then
       msg_error "Failed to add user to kvm group"
@@ -992,29 +993,10 @@ cmd_setup() {
       exit 1
     fi
 
-    msg_success "User added to kvm group"
-    msg_info "Restarting wizard with updated group membership..."
+    msg_success "User added to kvm group (active after reboot)"
+    log_info "User $USER added to kvm group"
     echo ""
-    sleep 1
-
-    # Re-exec with group membership refreshed (avoids logout/login)
-    exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
   fi
-
-  log_init
-  log_info "=== SETUP WIZARD START ==="
-  log_info "User: $USER"
-  log_info "System: $(uname -r)"
-
-  # Show consolidated intro banner (replaces scattered warnings)
-  show_intro_banner
-
-  # Single confirmation (replaces 3 separate gum confirms)
-  if ! gum confirm "I understand the risks and have checked BIOS settings. Continue?"; then
-    msg_warning "Setup cancelled. Run again when ready."
-    exit 0
-  fi
-  echo ""
 
   # Ensure sudo access early (refresh timestamp to avoid multiple prompts)
   msg_info "Checking sudo access..."
@@ -1146,7 +1128,8 @@ cmd_setup() {
   # Log user selection
   log_info "User selected GPU for passthrough: $name ($pci)"
 
-  # Log host GPU (iGPU) if available
+  # Log selection for debugging
+  log_info "GPU for passthrough: $name ($pci) - ${vendor_id}:${device_id}"
   for i in "${!GPU_PCI_ADDR[@]}"; do
     if [[ "${GPU_TYPE[$i]}" == "integrated" ]]; then
       log_info "Host GPU (iGPU): ${GPU_NAME[$i]} (${GPU_PCI_ADDR[$i]})"
@@ -1154,36 +1137,25 @@ cmd_setup() {
     fi
   done
 
+  # Proceed with configuration
   echo ""
-  msg_info "Selected GPU: $name ($pci)"
-  msg_info "  Vendor:Device IDs: ${vendor_id}:${device_id}"
-  if [[ -n "$audio_id" ]]; then
-    msg_info "  Audio Device ID: ${audio_id}"
-  fi
-  echo ""
-
-  # Proceed with configuration (user already confirmed in intro + GPU selection)
   msg_section "Configuring GPU Passthrough"
+  echo ""
 
   # Create system snapshot (BTRFS) if snapper is available
-  msg_info "Creating system snapshot (BTRFS)..."
-
   local snapshot_desc="GPU Passthrough: $name"
   omarchy-snapshot create "$snapshot_desc" 2>/dev/null
   local snapshot_exit_code=$?
 
   if [[ $snapshot_exit_code -eq 0 ]]; then
-    msg_success "System snapshot created (rollback available in boot menu)"
+    msg_success "System snapshot created"
+    log_info "Snapshot: $snapshot_desc"
   elif [[ $snapshot_exit_code -eq 127 ]]; then
-    # Snapper not installed - skip silently
     log_info "Snapper not available - skipping system snapshot"
   else
-    # Other error - warn but continue
-    msg_warning "System snapshot failed (continuing with config backup)"
+    msg_warning "Snapshot failed (continuing)"
     log_warn "omarchy-snapshot failed with exit code $snapshot_exit_code"
   fi
-
-  echo ""
 
   # Create config file backup (always, even if snapper worked)
   if ! create_backup_snapshot; then
@@ -1205,13 +1177,11 @@ cmd_setup() {
   # Configure PCI binding permissions (allows passwordless bind/unbind for kvm group)
   configure_pci_binding_permissions
 
+  # Configure GPU state marker tmpfiles
+  configure_gpu_state_tmpfiles
+
   # Configure GPU driver blacklist
   configure_gpu_blacklist "$vendor_id"
-
-  echo ""
-  msg_info "GPU will be blacklisted at boot (mode=none, inactive)"
-  msg_info "Run 'omarchy-gpu-passthrough mode vm' before starting VM"
-  echo ""
 
   # Configure VFIO modules in initramfs
   configure_vfio_modules_mkinitcpio
@@ -1253,69 +1223,37 @@ cmd_setup() {
     msg_error "Failed to rebuild initramfs"
     exit 1
   fi
-  msg_success "  Initramfs and boot entries rebuilt"
+  msg_success "Initramfs rebuilt"
   log_info "limine-mkinitcpio completed successfully"
 
-  # Summary - Next Steps
-  msg_section "IMPORTANT: Next Steps"
-  echo ""
-  echo "1. REBOOT your system to apply kernel parameters"
-  echo ""
-  echo "2. After reboot:"
-  echo "   • Dedicated GPU ($name) will be INACTIVE (mode=none, blacklisted)"
-  echo "   • Monitor must be on motherboard ports (iGPU)"
-  echo "   • Host display will use iGPU"
-  echo ""
-  echo "3. To use GPU in VM:"
-  echo "   omarchy-gpu-passthrough mode vm    # Before starting VM"
-  echo "   [start your VM]"
-  echo "   omarchy-gpu-passthrough mode none  # After VM (optional)"
-  echo ""
-  echo "4. Verify after reboot:"
-  echo "   omarchy-gpu-passthrough info verify"
-  echo ""
-
-  # Summary
+  # Final Summary
   echo ""
   msg_section "Setup Complete!"
+  echo ""
 
   log_info "=== SETUP WIZARD COMPLETED SUCCESSFULLY ==="
-  log_info "GPU configured: $name ($pci)"
-  log_info "Next step: REBOOT REQUIRED"
+  log_info "GPU configured: $name ($pci) - ${vendor_id}:${device_id}"
 
-  msg_warning "SYSTEM REBOOT REQUIRED"
+  msg_success "GPU configured: $name"
+  msg_info "  PCI: $pci | IDs: ${vendor_id}:${device_id}"
   echo ""
-  msg_info "Kernel parameters require reboot to take effect"
+
+  msg_info "After reboot:"
+  msg_info "  • GPU inactive (mode=none, blacklisted)"
+  msg_info "  • Monitors: use motherboard ports (iGPU)"
+  msg_info "  • VMs: GPU switched automatically"
+  msg_info "  • Host: omarchy-gpu-passthrough mode host"
   echo ""
-  msg_success "GPU Passthrough configured successfully!"
-  echo ""
-  msg_info "Selected GPU: $name"
-  msg_info "  PCI Address: $pci"
-  msg_info "  IDs: ${vendor_id}:${device_id}"
-  echo ""
-  msg_info "After reboot, your GPU will be INACTIVE (mode=none, blacklisted)."
-  msg_info "No driver will be loaded until you manually bind it."
-  echo ""
-  echo ""
-  msg_warning "⚠️  IF YOU SEE BLACK SCREEN AFTER REBOOT:"
-  echo ""
-  echo "This can happen on first setup if iGPU driver wasn't loaded yet."
-  echo ""
-  echo "Recovery steps:"
-  echo "  1. Press Ctrl+Alt+F2 to switch to TTY2"
-  echo "  2. Login with your credentials"
-  echo "  3. Run: omarchy-gpu-passthrough setup"
-  echo "  4. Complete wizard again (configuration will be updated)"
-  echo "  5. Reboot"
-  echo ""
-  echo "Prevention (recommended):"
-  echo "  • Set \"Primary Display = IGD\" in BIOS"
-  echo "  • This makes iGPU the boot device (auto-detected by Hyprland)"
-  echo ""
+
   msg_info "Next steps:"
-  msg_info "  1. Reboot your system"
-  msg_info "  2. Verify setup: omarchy-gpu-passthrough info verify"
-  msg_info "  3. Before starting VM: omarchy-gpu-passthrough mode vm"
+  msg_info "  1. Reboot system"
+  msg_info "  2. Verify: omarchy-gpu-passthrough info verify"
+  echo ""
+
+  msg_info "💡 Tip: Set \"Primary Display = IGD\" in BIOS to avoid black screen"
+  echo ""
+
+  msg_warning "Reboot required to apply kernel parameters"
   echo ""
 
   if gum confirm "Reboot now?"; then

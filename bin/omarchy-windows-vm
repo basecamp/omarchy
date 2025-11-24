@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Preserve original script arguments for exec sg kvm (group refresh)
-ORIGINAL_SCRIPT_ARGS=("$@")
-
 # Get script directory for accessing resources (icons, etc.)
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
@@ -132,7 +129,6 @@ connect_rdp() {
     if [[ "$BACKGROUND" == true ]]; then
       echo "Windows VM is running in background."
       echo "After installing freerdp, connect with: omarchy-windows-vm launch"
-      echo ""
     fi
     return 1
   fi
@@ -255,7 +251,6 @@ install_looking_glass_client() {
 
   # Run the installation script
   echo "Running Looking Glass installation..."
-  echo ""
 
   # Note: Script handles all installation steps interactively
   # It will ask user for resolution choice (1080p/1440p/4K)
@@ -1138,7 +1133,6 @@ handle_installation_marker() {
   printf "%s   Windows reports: %s\n" "$TIME_PREFIX" "$MARKER_CONTENT"
   echo ""
   echo "Waiting for RDP service to initialize..."
-  echo ""
   printf "%s Giving RDP service time to initialize (10 seconds)...\n" "$TIME_PREFIX"
   sleep 10
 
@@ -1176,7 +1170,6 @@ show_installation_summary() {
   echo "╰──────────────────────────────────────────────────────────╯"
   echo ""
   printf "  Total time: %dm %ds\n" "$MINUTES" "$SECONDS"
-  echo ""
 
   # Calculate individual stage durations (show only non-zero)
   echo "  Stage Timing:"
@@ -1234,7 +1227,6 @@ show_installation_summary() {
   # Show performance metrics
   echo "  Performance:"
   printf "    Total time:          %dm %ds\n" "$MINUTES" "$SECONDS"
-  echo ""
 
   # Desktop notification
   notify_silent "Windows VM" "Installation complete! (${MINUTES}m ${SECONDS}s)" "normal"
@@ -1269,10 +1261,8 @@ show_installation_summary() {
 connect_looking_glass() {
   local KEEP_ALIVE="${1:-true}"
 
-  # Pre-authenticate sudo for SPICE socket permissions
-  # Note: This is needed for separate launch flow. During install, credentials are
-  # already fresh from previous sudo -v, so this won't prompt again.
-  sudo -v
+  # Note: sudo -v removed - no longer needed with sudoers rules configured
+  # Socket permissions are fixed automatically via passwordless sudo rules
 
   # Auto-fix Looking Glass config if using old SPICE socket path
   LG_CONFIG="$HOME/.config/looking-glass/client.ini"
@@ -1394,7 +1384,6 @@ connect_looking_glass() {
     echo ""
     msg_error "QEMU SPICE listener not ready after ${MAX_WAIT}s"
     echo "   Try RDP instead: omarchy-windows-vm launch"
-    echo ""
     exit 1
   fi
 
@@ -1453,7 +1442,6 @@ To stop: omarchy-windows-vm stop"
       echo "Looking Glass session closed. Stopping Windows VM..."
       docker-compose -f "$COMPOSE_FILE" stop
       echo "Windows VM stopped."
-      echo ""
       echo "ℹ️  Container is stopped but preserved for fast restart"
       echo "   Quick start: omarchy-windows-vm launch --lg"
       echo "   Full cleanup: omarchy-windows-vm stop (removes container)"
@@ -1928,7 +1916,6 @@ install_windows() {
 
     echo ""
     echo "What would you like to do?"
-    echo ""
 
     REINSTALL_CHOICE=$(gum choose --selected="Quick reinstall (keep VM data, update config)" \
       "Quick reinstall (keep VM data, update config)" \
@@ -2062,6 +2049,9 @@ install_windows() {
     exit 1
   fi
 
+  echo ""
+  msg_success "Selected: $SELECTED_RAM RAM"
+
   # Use previous CPU cores if available, otherwise calculate intelligent default (quarter of total)
   if [[ -n "$PREVIOUS_CPU" ]]; then
     DEFAULT_CORES="$PREVIOUS_CPU"
@@ -2082,6 +2072,9 @@ install_windows() {
     echo "Invalid input. Using default: 2 cores"
     SELECTED_CORES=2
   fi
+
+  msg_success "Selected: $SELECTED_CORES CPU cores"
+  echo ""
 
   AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
   MAX_DISK_GB=$((AVAILABLE_SPACE - 10)) # Leave 10GB for Windows image
@@ -2123,6 +2116,9 @@ install_windows() {
     echo "Installation cancelled by user"
     exit 1
   fi
+
+  msg_success "Selected: $SELECTED_DISK disk space"
+  echo ""
 
   # Extract just the number for prerequisite check
   DISK_SIZE_NUM=$(echo "$SELECTED_DISK" | sed 's/G//')
@@ -2204,14 +2200,20 @@ install_windows() {
     exit 1
   fi
 
+  msg_success "Credentials configured: $USERNAME"
+  echo ""
+
   mkdir -p "$HOME/Windows"
 
+  # GPU detection and configuration prompts (decision only, no execution yet)
   echo ""
   echo "Detecting GPU configuration..."
 
   HAS_DEDICATED_GPU=false
   GPU_INFO=""
   GPU_PASSTHROUGH_READY=false
+  GPU_PASSTHROUGH_ENABLED=false
+  GPU_PASSTHROUGH_NEEDS_SETUP=false
 
   # Looking Glass requires dedicated GPU (NVIDIA/AMD/Intel Arc), not integrated
   if command -v lspci &>/dev/null; then
@@ -2240,27 +2242,32 @@ install_windows() {
       fi
 
       msg_success "Dedicated GPU detected: $GPU_NAME"
+      echo ""
     else
       msg_warning "No dedicated GPU detected (NVIDIA/AMD/Arc required for Looking Glass)"
+      echo ""
     fi
   else
     msg_warning "lspci not available - cannot detect GPU"
+    echo ""
   fi
 
   # Check GPU passthrough configuration
   if [[ "$HAS_DEDICATED_GPU" == true ]]; then
+    echo "GPU Passthrough Configuration"
     echo ""
-    echo "Checking GPU passthrough configuration..."
 
     if command -v omarchy-gpu-passthrough-info &>/dev/null; then
       # Check if GPU passthrough is already configured
       if omarchy-gpu-passthrough-info is-configured &>/dev/null; then
-        msg_success "GPU passthrough configured and ready"
+        msg_success "GPU passthrough already configured"
+        echo ""
         echo "GPU passthrough provides:"
         echo "  • Native GPU performance in Windows VM"
         echo "  • Full GPU features (ray tracing, DLSS, gaming)"
         echo "  • Looking Glass support"
-        echo "Note: GPU will be bound to VM and unavailable to host during VM runtime"
+        echo ""
+        echo "⚠️  Note: GPU will be bound to VM and unavailable to host during VM runtime"
         echo ""
 
         if gum confirm "Enable GPU passthrough for this Windows VM?"; then
@@ -2276,11 +2283,11 @@ install_windows() {
             read GPU_PCI_ADDR GPU_AUDIO_PCI GPU_IOMMU_GROUP <<<"$GPU_CONFIG"
           fi
 
-          msg_success "GPU passthrough will be enabled for this VM"
+          msg_success "GPU passthrough will be enabled"
         else
           GPU_PASSTHROUGH_READY=false
           GPU_PASSTHROUGH_ENABLED=false
-          msg_success "VM will use CPU-only graphics (QXL)"
+          msg_info "VM will use CPU-only graphics (QXL)"
           echo "  You can enable GPU passthrough later by reinstalling"
         fi
       else
@@ -2292,39 +2299,12 @@ install_windows() {
         echo "  • Best gaming and GPU compute performance"
         echo ""
 
-        if gum confirm "Configure GPU passthrough now?"; then
-          echo ""
-          # Run GPU passthrough setup
-          if omarchy-gpu-passthrough setup; then
-            echo ""
-            msg_success "GPU passthrough configured successfully!"
-            echo ""
-            msg_warning "SYSTEM REBOOT REQUIRED"
-            echo ""
-            echo "Kernel parameters have been configured and require reboot."
-            echo ""
-            echo "After reboot:"
-            echo "  1. Verify GPU passthrough: omarchy-gpu-passthrough info verify"
-            echo "  2. Re-run Windows VM installation: omarchy-windows-vm install"
-            echo ""
-            exit 0
-          else
-            msg_warning "GPU passthrough setup was cancelled or failed"
-            echo ""
-
-            if ! gum confirm "Continue without GPU passthrough?"; then
-              echo "Installation cancelled by user"
-              exit 1
-            fi
-
-            msg_info "Continuing without GPU passthrough"
-            msg_info "You can configure it later with: omarchy-gpu-passthrough setup"
-            echo ""
-          fi
+        if gum confirm "Configure GPU passthrough now? (requires reboot after)"; then
+          GPU_PASSTHROUGH_NEEDS_SETUP=true
+          GPU_PASSTHROUGH_ENABLED=true
+          msg_info "GPU passthrough will be configured after confirmation"
         else
-          msg_info "Skipping GPU passthrough configuration"
-          msg_info "You can configure it later with: omarchy-gpu-passthrough setup"
-          echo ""
+          msg_info "Skipping GPU passthrough - you can configure later with: omarchy-gpu-passthrough setup"
         fi
       fi
     else
@@ -2334,11 +2314,10 @@ install_windows() {
     fi
   fi
 
-  NEEDS_REBOOT_FOR_LG=false
-  LG_REBOOT_REASON=""
+  # Looking Glass configuration
   LG_ENABLED=false
+  LG_NEEDS_INSTALL=false
 
-  # Looking Glass only makes sense with GPU passthrough
   if [[ "$GPU_PASSTHROUGH_ENABLED" == true ]]; then
     if is_looking_glass_ready; then
       echo ""
@@ -2346,40 +2325,25 @@ install_windows() {
       LG_ENABLED=true
     else
       echo ""
-      # Show dummy plug requirement BEFORE prompting
+      echo "Looking Glass Configuration"
+      echo ""
+
       msg_warning "Looking Glass Requirements:"
       echo ""
-      echo "   Your GPU MUST have a monitor or dummy plug connected!"
-      echo "   Windows will disable the GPU without a connected display."
+      echo "  ⚠️  Your GPU MUST have a monitor or dummy plug connected!"
       echo ""
-      echo "   Options:"
-      echo "   • Connect a real monitor to the GPU"
-      echo "   • Use an HDMI/DisplayPort dummy plug (4K 60Hz recommended)"
+      echo "  Why? Windows will disable the GPU without a connected display."
+      echo ""
+      echo "  Options:"
+      echo "    • Connect a real monitor to the GPU"
+      echo "    • Use an HDMI/DisplayPort dummy plug (4K 60Hz recommended)"
       echo ""
 
       if gum confirm "Do you have a monitor or dummy plug connected to the GPU?"; then
-        if gum confirm "Enable Looking Glass support?"; then
+        if gum confirm "Enable Looking Glass support? (installation takes 5-10 minutes)"; then
           LG_ENABLED=true
-          echo "Installing Looking Glass client..."
-
-          install_looking_glass_client
-          LG_INSTALL_STATUS=$?
-
-          if [[ "$LG_INSTALL_STATUS" -eq 0 ]]; then
-            msg_success "Looking Glass client ready"
-          elif [[ "$LG_INSTALL_STATUS" -eq 1 ]]; then
-            msg_warning "Looking Glass client installed - reboot required"
-            NEEDS_REBOOT_FOR_LG=true
-          else
-            msg_error "Looking Glass client installation failed"
-            [[ -d "$HOME/.config/windows/oem" ]] && rm -rf "$HOME/.config/windows/oem" && echo "   Cleaned up partial installation"
-            echo "   You can install it manually later: omarchy-looking-glass-install"
-            if ! gum confirm "Continue without Looking Glass?"; then
-              echo "Installation cancelled"
-              exit 1
-            fi
-            LG_ENABLED=false
-          fi
+          LG_NEEDS_INSTALL=true
+          msg_info "Looking Glass will be installed after confirmation"
         else
           # User said NO to Looking Glass despite having dummy plug
           echo ""
@@ -2392,7 +2356,6 @@ install_windows() {
           echo "   • Looking Glass latency: ~1-2ms"
           echo ""
           echo "  You can add Looking Glass later with: omarchy-looking-glass-install"
-          echo ""
         fi
       else
         # User does NOT have monitor/dummy plug connected
@@ -2404,7 +2367,7 @@ install_windows() {
         echo "  • Looking Glass will not work"
         echo ""
         echo "You can:"
-        echo "  1. Add a monitor or dummy plug later"
+        echo "  1. Connect a monitor or dummy plug later"
         echo "  2. Reinstall Windows VM: omarchy-windows-vm remove && omarchy-windows-vm install"
         echo ""
         echo "For now, you can connect to Windows VM via:"
@@ -2415,6 +2378,160 @@ install_windows() {
     fi
   fi
 
+  # Show configuration summary before proceeding
+  echo ""
+  echo "────────────────────────────────────────"
+  echo "Configuration Summary"
+  echo "────────────────────────────────────────"
+  echo ""
+  echo "Resources:"
+  echo "  ✓ RAM:  $SELECTED_RAM"
+  echo "  ✓ CPU:  $SELECTED_CORES cores"
+  echo "  ✓ Disk: $SELECTED_DISK"
+  echo ""
+  echo "Credentials:"
+  echo "  ✓ Username: $USERNAME"
+  echo "  ✓ Password: $PASSWORD_DISPLAY"
+  echo ""
+  echo "Graphics:"
+  if [[ "$GPU_PASSTHROUGH_ENABLED" == true ]]; then
+    if [[ "$GPU_PASSTHROUGH_NEEDS_SETUP" == true ]]; then
+      echo "  ✓ GPU Passthrough: Will be configured (reboot required)"
+    else
+      echo "  ✓ GPU Passthrough: Enabled ($GPU_NAME)"
+    fi
+  else
+    echo "  ○ GPU Passthrough: Disabled (CPU-only graphics)"
+  fi
+  if [[ "$LG_ENABLED" == true ]]; then
+    if [[ "$LG_NEEDS_INSTALL" == true ]]; then
+      echo "  ✓ Looking Glass: Will be installed (5-10 minutes)"
+    else
+      echo "  ✓ Looking Glass: Already installed"
+    fi
+  else
+    echo "  ○ Looking Glass: Disabled"
+  fi
+  echo ""
+  echo "────────────────────────────────────────"
+  echo ""
+
+  # Show installation plan with time estimates
+  WILL_DO_LONG_OPERATIONS=false
+  echo "This installation will:"
+  echo ""
+  STEP=1
+  if [[ "$GPU_PASSTHROUGH_NEEDS_SETUP" == true ]]; then
+    echo "  $STEP. Configure GPU passthrough (requires reboot)"
+    WILL_DO_LONG_OPERATIONS=true
+    ((STEP++))
+  elif [[ "$GPU_PASSTHROUGH_ENABLED" == true ]]; then
+    echo "  $STEP. Bind GPU to VFIO for passthrough"
+    ((STEP++))
+  fi
+
+  if [[ "$LG_NEEDS_INSTALL" == true ]]; then
+    echo "  $STEP. Install Looking Glass client (5-10 minutes)"
+    WILL_DO_LONG_OPERATIONS=true
+    ((STEP++))
+  fi
+
+  echo "  $STEP. Build Docker image with SPICE support (2-5 minutes)"
+  ((STEP++))
+  echo "  $STEP. Create and start Windows VM (1-2 minutes)"
+  echo ""
+
+  if [[ "$WILL_DO_LONG_OPERATIONS" == true ]]; then
+    msg_warning "Total time: 15-25 minutes (automated, no user input needed)"
+  else
+    echo "Estimated time: 5-10 minutes"
+  fi
+  echo ""
+
+  # Confirmation prompt
+  if ! gum confirm "Proceed with installation?"; then
+    echo ""
+    echo "Installation cancelled by user"
+    echo ""
+    echo "You can restart installation later with: omarchy-windows-vm install"
+    exit 0
+  fi
+
+  echo ""
+
+  # Execute GPU passthrough setup if needed (may exit with reboot required)
+  if [[ "$GPU_PASSTHROUGH_NEEDS_SETUP" == true ]]; then
+    echo "Configuring GPU passthrough..."
+    echo ""
+
+    if omarchy-gpu-passthrough setup; then
+      msg_success "GPU passthrough configured successfully!"
+      echo ""
+      msg_warning "SYSTEM REBOOT REQUIRED"
+      echo ""
+      echo "Kernel parameters have been configured and require reboot."
+      echo ""
+      echo "After reboot:"
+      echo "  1. Verify GPU passthrough: omarchy-gpu-passthrough info verify"
+      echo "  2. Re-run Windows VM installation: omarchy-windows-vm install"
+      echo ""
+      exit 0
+    else
+      msg_error "GPU passthrough setup failed or was cancelled"
+      echo ""
+
+      if ! gum confirm "Continue installation without GPU passthrough?"; then
+        echo ""
+        echo "Installation cancelled"
+        exit 1
+      fi
+
+      echo ""
+      msg_info "Continuing without GPU passthrough"
+      msg_info "You can configure it later with: omarchy-gpu-passthrough setup"
+      echo ""
+
+      GPU_PASSTHROUGH_ENABLED=false
+      GPU_PASSTHROUGH_NEEDS_SETUP=false
+      LG_ENABLED=false
+      LG_NEEDS_INSTALL=false
+    fi
+  fi
+
+  # Execute Looking Glass installation if needed
+  NEEDS_REBOOT_FOR_LG=false
+  if [[ "$LG_NEEDS_INSTALL" == true ]]; then
+    echo "Installing Looking Glass client..."
+    echo ""
+
+    install_looking_glass_client
+    LG_INSTALL_STATUS=$?
+
+    if [[ "$LG_INSTALL_STATUS" -eq 0 ]]; then
+      msg_success "Looking Glass client ready"
+      echo ""
+    elif [[ "$LG_INSTALL_STATUS" -eq 1 ]]; then
+      msg_warning "Looking Glass client installed - reboot required"
+      NEEDS_REBOOT_FOR_LG=true
+      echo ""
+    else
+      msg_error "Looking Glass client installation failed"
+      echo ""
+      [[ -d "$HOME/.config/windows/oem" ]] && rm -rf "$HOME/.config/windows/oem" && echo "   Cleaned up partial installation"
+      echo "   You can install it manually later: omarchy-looking-glass-install"
+      echo ""
+
+      if ! gum confirm "Continue without Looking Glass?"; then
+        echo ""
+        echo "Installation cancelled"
+        exit 1
+      fi
+
+      echo ""
+      LG_ENABLED=false
+    fi
+  fi
+
   # Refresh sudo credentials (interactive wizard may have taken time)
   # This covers: GPU process detection, system configuration (dmidecode), Docker operations
   if ! sudo -v 2>/dev/null; then
@@ -2422,23 +2539,7 @@ install_windows() {
     exit 1
   fi
 
-  # Display final configuration summary with GPU/LG status
-  echo ""
-  GPU_STATUS="Disabled (CPU-only graphics)"
-  LG_STATUS="Disabled"
-  CONNECTION_INFO="RDP + VNC"
-
-  if [[ "${GPU_PASSTHROUGH_ENABLED:-false}" == true ]]; then
-    GPU_STATUS="Enabled"
-    if [[ "$LG_ENABLED" == true ]]; then
-      LG_STATUS="Enabled"
-      CONNECTION_INFO="Looking Glass + RDP + VNC"
-    else
-      CONNECTION_INFO="RDP + VNC"
-    fi
-  fi
-
-  # Pre-check: Verify GPU is not in use (before showing summary)
+  # Pre-check: Verify GPU is not in use (before GPU binding)
   if [[ "${GPU_PASSTHROUGH_ENABLED:-false}" == true ]]; then
     if command -v lspci &>/dev/null && [[ -n "${GPU_PCI_ADDR:-}" ]]; then
       echo ""
@@ -2504,44 +2605,9 @@ install_windows() {
     fi
   fi
 
-  # Different header and confirmation for Quick reinstall vs Fresh install
-  if [[ "${SKIP_OEM_AUTORUN:-false}" == "true" ]]; then
-    SUMMARY_TITLE="Updated Configuration"
-    CONFIRM_MESSAGE="Apply this configuration to existing Windows VM?"
-  else
-    SUMMARY_TITLE="Final Configuration Summary"
-    CONFIRM_MESSAGE="Start installation with this configuration?"
-  fi
-
-  gum style \
-    --border double \
-    --padding "1 2" \
-    --margin "1" \
-    --align left \
-    --bold \
-    "$SUMMARY_TITLE" \
-    "" \
-    "Resources:" \
-    "  RAM:              $SELECTED_RAM" \
-    "  CPU:              $SELECTED_CORES cores" \
-    "  Disk:             $SELECTED_DISK" \
-    "" \
-    "Credentials:" \
-    "  Username:         $USERNAME" \
-    "  Password:         $PASSWORD_DISPLAY" \
-    "" \
-    "Graphics:" \
-    "  GPU Passthrough:  $GPU_STATUS" \
-    "  Looking Glass:    $LG_STATUS"
-
-  echo ""
-  if ! gum confirm "$CONFIRM_MESSAGE"; then
-    echo "Configuration cancelled by user"
-    exit 1
-  fi
-
-  echo ""
+  # Start OEM configuration
   [[ "${SKIP_OEM_AUTORUN:-false}" == "false" ]] && echo "Setting up Windows auto-installation..." || echo "Updating Windows configuration..."
+  echo ""
 
   OEM_DIR="$HOME/.config/windows/oem"
   mkdir -p "$OEM_DIR/wallpaper"
@@ -2711,7 +2777,6 @@ EOF
           echo ""
           echo "   GPU passthrough requires VFIO driver binding."
           echo "   Fix: omarchy-gpu-passthrough mode vm"
-          echo ""
           exit 1
         fi
       else
@@ -2726,10 +2791,8 @@ EOF
       echo ""
       echo "   Fix: Disable GPU passthrough and use CPU-only VM"
       echo "   Then reinstall with GPU passthrough disabled"
-      echo ""
       exit 1
     fi
-    echo ""
   fi
 
   # Ensure Docker image has SPICE support (required for Looking Glass)
@@ -2737,14 +2800,12 @@ EOF
     if ! ensure_dockurr_windows_with_spice; then
       msg_error "Failed to prepare Docker image with SPICE support"
       echo "   Looking Glass requires SPICE for keyboard/mouse input"
-      echo ""
       exit 1
     fi
   fi
 
   # Start or restart docker-compose with user's config
   msg_info "Starting Windows VM..."
-  echo ""
 
   # Verify Looking Glass device exists before starting VM
   if [[ "$LG_ENABLED" == true ]]; then
@@ -2760,7 +2821,6 @@ EOF
       echo "   3. If still missing: reboot (module will auto-load on boot)"
       echo ""
       echo "   Or reinstall Looking Glass: omarchy-looking-glass-install"
-      echo ""
       exit 1
     fi
   fi
@@ -2789,7 +2849,6 @@ EOF
   if ! docker ps --filter "name=omarchy-windows" --filter "status=running" --format "{{.Names}}" | grep -q "omarchy-windows"; then
     echo ""
     msg_error "Container started but crashed immediately!"
-    echo ""
 
     # Try to extract ERROR lines first, fall back to last 10 lines if none found
     ERROR_LOGS=$(docker logs omarchy-windows 2>&1 | grep -i "ERROR:" | head -5)
@@ -2797,14 +2856,12 @@ EOF
     if [[ -n "$ERROR_LOGS" ]]; then
       echo "   Error details:"
       echo "$ERROR_LOGS" | sed 's/^/   /'
-      echo ""
     else
       # No ERROR lines found, show last 10 lines of logs
       RECENT_LOGS=$(docker logs omarchy-windows 2>&1 | tail -10)
       if [[ -n "$RECENT_LOGS" ]]; then
         echo "   Recent logs (last 10 lines):"
         echo "$RECENT_LOGS" | sed 's/^/   /'
-        echo ""
       fi
     fi
 
@@ -2819,24 +2876,20 @@ EOF
   fi
 
   msg_success "Docker container started"
-  echo ""
 
   # Check if this is quick reinstall with VM already booted and RDP ready
   if [[ "${SKIP_OEM_AUTORUN:-false}" == "true" ]] && nc -z 127.0.0.1 3389 2>/dev/null; then
     msg_success "Windows is ready (RDP service responding)"
-    echo ""
 
     # Auto-launch RDP or Looking Glass
     if [[ "$LG_ENABLED" == true ]]; then
       echo "Launching Looking Glass..."
       echo "  Toggle fullscreen: Scroll Lock"
-      echo ""
       sleep 1
       launch_windows --lg
     else
       echo "Launching RDP connection..."
       echo "  Toggle fullscreen: Super + F"
-      echo ""
       sleep 1
       # Extract credentials
       WIN_USER=$(grep -E '^\s*USERNAME:' "$COMPOSE_FILE" | head -1 | sed -E 's/^[^:]*:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/' | xargs)
@@ -2964,6 +3017,67 @@ remove_windows() {
   echo "  sudo rm -rf $HOME/.windows/      # Delete VM disk and Windows OS"
 }
 
+check_passwordless_configuration() {
+  # Check if system is configured for passwordless VM operations
+  # Returns: 0 if OK, 1 if missing configuration
+
+  local issues_found=false
+  local issue_list=""
+
+  if [[ ! -f /etc/tmpfiles.d/omarchy-windows.conf ]]; then
+    issues_found=true
+    issue_list="${issue_list}  ❌ Missing: /etc/tmpfiles.d/omarchy-windows.conf\n"
+  elif [[ ! -d /var/run/omarchy-windows ]]; then
+    issues_found=true
+    issue_list="${issue_list}  ❌ SPICE directory not created by tmpfiles.d\n"
+  fi
+
+  if [[ ! -f /etc/sudoers.d/omarchy-windows ]]; then
+    issues_found=true
+    issue_list="${issue_list}  ❌ Missing: /etc/sudoers.d/omarchy-windows\n"
+  fi
+
+  if [[ "$issues_found" == false ]]; then
+    return 0
+  fi
+
+  echo ""
+  msg_warning "System configuration incomplete for desktop launcher:"
+  echo ""
+  echo -e "$issue_list"
+  echo ""
+  echo "Desktop launcher may not work (requires terminal for password prompt)."
+  echo ""
+  echo "Fix: omarchy-looking-glass-install"
+  echo ""
+
+  # If running from desktop (no TTY), fail immediately
+  if [[ ! -t 0 ]]; then
+    msg_error "Cannot continue: No terminal available for password prompts"
+    echo ""
+    echo "Run from terminal: omarchy-windows-vm launch --lg"
+    echo "Or fix configuration: omarchy-looking-glass-install"
+    notify_silent "Windows VM" "Configuration error - check terminal" "critical"
+    exit 1
+  fi
+
+  if command -v gum &>/dev/null; then
+    if ! gum confirm "Continue anyway (you will be prompted for password)?"; then
+      echo "Cancelled"
+      exit 0
+    fi
+  else
+    read -p "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+      echo "Cancelled"
+      exit 0
+    fi
+  fi
+
+  return 0
+}
+
 launch_windows() {
   KEEP_ALIVE=false
   USE_LOOKING_GLASS=false
@@ -2990,6 +3104,7 @@ launch_windows() {
 
   check_vm_configured
   check_docker_running
+  check_passwordless_configuration
 
   # Interactive mode if no params provided
   if [[ "$USER_PROVIDED_PARAMS" == false ]]; then
@@ -3020,8 +3135,6 @@ launch_windows() {
         "RDP + Auto-stop" \
         "RDP + Keep-alive")
 
-      echo ""
-
       # Parse combined choice
       if [[ "$LAUNCH_CONFIG" == "Looking Glass"* ]]; then
         USE_LOOKING_GLASS=true
@@ -3040,13 +3153,10 @@ launch_windows() {
       echo "VM lifecycle:"
       echo "  • Auto-stop: VM stops when you disconnect"
       echo "  • Keep-alive: VM keeps running in background"
-      echo ""
 
       LAUNCH_CONFIG=$(gum choose --selected="RDP + Auto-stop" \
         "RDP + Auto-stop" \
         "RDP + Keep-alive")
-
-      echo ""
 
       if [[ "$LAUNCH_CONFIG" == *"Keep-alive"* ]]; then
         KEEP_ALIVE=true
@@ -3098,14 +3208,6 @@ launch_windows() {
             fi
           fi
         fi
-      fi
-
-      # Create SPICE directory for socket
-      if ! [[ -d "$SPICE_DIR" ]]; then
-        echo "  Creating SPICE directory..."
-        mkdir -p "$SPICE_DIR"
-        chmod 770 "$SPICE_DIR"
-        msg_success "SPICE directory created"
       fi
     fi
 
@@ -3196,7 +3298,7 @@ launch_windows() {
         echo ""
         read -p "Continue waiting? (Y/n) " -n 1 -r
         echo
-        if [[ $REPLY =~ ^[Nn]$ ]]; then
+        if [[ "$REPLY" =~ ^[Nn]$ ]]; then
           echo "VM will keep running in background"
           echo "Connect later: omarchy-windows-vm launch"
           exit 0
@@ -3233,7 +3335,6 @@ launch_windows() {
     # Test RDP service readiness only if port was closed (service may not be fully initialized yet)
     if [[ "$RDP_PORT_WAS_CLOSED" == true ]]; then
       echo "Waiting for RDP service to become ready..."
-      echo ""
 
       # Test RDP readiness with X.224 handshake
       MAX_WAIT=90
@@ -3260,7 +3361,6 @@ launch_windows() {
         msg_warning "RDP service did not respond within ${MAX_WAIT}s"
         echo "   Proceeding anyway, but connection may fail"
       fi
-      echo ""
     fi
 
     # Build the connection info
@@ -3293,7 +3393,6 @@ To stop: omarchy-windows-vm stop"
     fi
     echo ""
     echo "  Manual connect: xfreerdp3 /u:$WIN_USER /p:yourPassword /v:127.0.0.1:3389 (requires running VM)"
-    echo ""
 
     # Connect with RDP (foreground mode)
     connect_rdp "$WIN_USER" "$WIN_PASS" false
