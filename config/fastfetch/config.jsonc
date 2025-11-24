@@ -128,7 +128,7 @@
     "break",
     {
       "type": "custom",
-      "format": "\u001b[90m┌────────────────────Uptime / Age────────────────────┐"
+      "format": "\u001b[90m┌────────────────Age / Uptime / Update───────────────┐"
     },
     {
       "type": "command",
@@ -143,7 +143,7 @@
     },
     {
       "type": "command",
-      "key": " Latest",
+      "key": " Update",
       "keyColor": "magenta",
       "text": "updated=$(omarchy-version-pkgs); echo \"$updated\""
     },
