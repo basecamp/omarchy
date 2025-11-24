@@ -81,7 +81,7 @@ else
   msg_info "Installing packages (looking-glass, looking-glass-module-dkms)..."
   echo "  This may take a few minutes (downloading and compiling)..."
   echo ""
-  if ! yay -S --noconfirm --needed looking-glass looking-glass-module-dkms; then
+  if ! yay -S --noconfirm --needed --removemake --answerdiff=None looking-glass looking-glass-module-dkms; then
     echo ""
     msg_error "Failed to install Looking Glass packages"
     echo "   Please check the errors above and try again"
@@ -251,7 +251,7 @@ else
 Name=Windows [Looking Glass]
 Comment=Connect to Windows VM via Looking Glass (ultra-low latency)
 Exec=omarchy-looking-glass-launch
-Terminal=false
+Terminal=true
 Type=Application
 Categories=System;Virtualization;
 DESKEOF

@@ -1270,7 +1270,8 @@ connect_looking_glass() {
   local KEEP_ALIVE="${1:-true}"
 
   # Pre-authenticate sudo for SPICE socket permissions
-  # (SPICE socket may need chmod during wait loop)
+  # Note: This is needed for separate launch flow. During install, credentials are
+  # already fresh from previous sudo -v, so this won't prompt again.
   sudo -v
 
   # Auto-fix Looking Glass config if using old SPICE socket path
@@ -1744,7 +1745,7 @@ build_dockurr_windows_with_spice() {
 
   echo ""
   msg_info "Building dockurr/windows:latest with SPICE support..."
-  echo "This may take 5-10 minutes..."
+  echo "This may take 1-2 minutes..."
   echo ""
 
   # Clone dockur/windows repository
@@ -1794,17 +1795,19 @@ build_dockurr_windows_with_spice() {
   echo "(This step downloads base image and installs packages)"
   echo ""
 
-  # Build image (show output for transparency)
-  if ! docker build -t dockurr/windows:latest .; then
+  # Build image (redirect output for cleaner UX)
+  DOCKER_BUILD_LOG="/tmp/docker-build-$(date +%Y%m%d-%H%M%S).log"
+  if ! docker build -t dockurr/windows:latest . >"$DOCKER_BUILD_LOG" 2>&1; then
     echo ""
     msg_error "Docker build failed"
-    echo "   Check Docker daemon status: systemctl status docker"
+    echo "   Check build log: $DOCKER_BUILD_LOG"
+    echo "   Check Docker daemon: systemctl status docker"
     echo "   Check disk space: df -h"
     return 1
   fi
 
   echo ""
-  msg_success "dockurr/windows:latest built successfully with SPICE support"
+  msg_success "Docker image built successfully with SPICE support"
   echo ""
 
   # trap EXIT will cleanup $build_dir automatically
@@ -2410,6 +2413,13 @@ install_windows() {
         echo ""
       fi
     fi
+  fi
+
+  # Refresh sudo credentials (interactive wizard may have taken time)
+  # This covers: GPU process detection, system configuration (dmidecode), Docker operations
+  if ! sudo -v 2>/dev/null; then
+    msg_error "sudo access required for system configuration"
+    exit 1
   fi
 
   # Display final configuration summary with GPU/LG status
