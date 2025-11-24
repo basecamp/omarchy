@@ -285,24 +285,13 @@ EOF
   msg_success "PCI binding permissions configured: $udev_rules_file"
   msg_info "  Users in 'kvm' group can now bind/unbind PCI devices without sudo"
 
-  # Add user to kvm group if not already a member
-  if ! groups "$USER" | grep -q kvm; then
-    msg_info "Adding user to kvm group..."
-    if sudo usermod -aG kvm "$USER"; then
-      msg_success "User added to kvm group"
-      echo ""
-      msg_info "Refreshing group membership for current session..."
-      echo ""
-
-      # Auto-refresh group membership using sg to avoid logout/login
-      exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
-    else
-      msg_error "Failed to add user to kvm group"
-      msg_info "  Run manually: sudo usermod -aG kvm $USER"
-    fi
-  else
-    msg_success "User already in kvm group"
+  # Verify user is in kvm group (should always pass - checked at setup start)
+  if ! groups "$USER" | grep -q '\bkvm\b'; then
+    msg_error "User not in kvm group - this should have been handled at setup start"
+    return 1
   fi
+
+  msg_success "User already in kvm group"
 
   return 0
 }
@@ -918,83 +907,113 @@ validate_gpu_selection() {
   return 0
 }
 
+# Banner & Intro Functions
+
+show_intro_banner() {
+  local cpu_vendor=$(get_cpu_vendor)
+
+  msg_section "GPU Passthrough Setup Wizard"
+
+  echo ""
+  msg_warning "⚠️  Experimental - use with caution"
+  echo ""
+  msg_info "WHAT WILL BE CHANGED:"
+  cat <<EOF
+  • Kernel boot parameters (/etc/default/limine)
+  • GPU driver blacklist (dedicated GPU set to mode=none at boot)
+  • Initramfs modules + rebuild (/etc/mkinitcpio.conf)
+  • Hyprland configuration (~/.config/hypr/hyprland.conf)
+  • System REBOOT required
+EOF
+
+  echo ""
+  msg_info "AFTER REBOOT:"
+  cat <<EOF
+  • Dedicated GPU will be INACTIVE (blacklisted, no driver loaded)
+  • Connect ALL monitors to MOTHERBOARD ports (iGPU only)
+  • Host display uses iGPU, dedicated GPU ready for VM
+  • Run 'omarchy-gpu-passthrough mode vm' before starting VM
+EOF
+
+  echo ""
+  msg_success "SAFETY MEASURES:"
+  cat <<EOF
+  ✓ Automatic backups created before changes
+  ✓ Limine snapshots available in boot menu (rollback option)
+  ✓ Undo anytime with: omarchy-gpu-passthrough setup --uninstall
+EOF
+
+  echo ""
+  msg_info "REQUIREMENTS:"
+  cat <<EOF
+  • 2+ GPUs (1 for VM passthrough, 1 for host display)
+  • BIOS: Primary Display = IGD or Auto (recommended)
+EOF
+
+  case "$cpu_vendor" in
+  amd)
+    cat <<EOF
+  • BIOS: SVM Mode = Enabled
+  • BIOS: IOMMU = Enabled (or AMD-Vi)
+EOF
+    ;;
+  intel)
+    cat <<EOF
+  • BIOS: Intel VT-x = Enabled
+  • BIOS: Intel VT-d = Enabled
+EOF
+    ;;
+  *)
+    cat <<EOF
+  • BIOS: Virtualization = Enabled
+  • BIOS: IOMMU = Enabled
+EOF
+    ;;
+  esac
+
+  echo ""
+  msg_info "Recommended: Create full system backup before proceeding (optional)"
+  echo ""
+}
+
 # Main Commands
 
 cmd_setup() {
-  msg_section "GPU Passthrough Setup Wizard"
+  # Check kvm group first - avoids showing banner twice on exec sg kvm
+  if ! groups "$USER" | grep -q '\bkvm\b'; then
+    echo ""
+    msg_info "First-time setup: Adding user to kvm group..."
+    msg_info "This is required for passwordless GPU mode switching"
+    echo ""
+
+    if ! sudo usermod -aG kvm "$USER"; then
+      msg_error "Failed to add user to kvm group"
+      msg_info "  Run manually: sudo usermod -aG kvm \$USER"
+      exit 1
+    fi
+
+    msg_success "User added to kvm group"
+    msg_info "Restarting wizard with updated group membership..."
+    echo ""
+    sleep 1
+
+    # Re-exec with group membership refreshed (avoids logout/login)
+    exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
+  fi
 
   log_init
   log_info "=== SETUP WIZARD START ==="
   log_info "User: $USER"
   log_info "System: $(uname -r)"
 
-  echo ""
-  echo "This wizard will configure GPU passthrough for VM use."
-  echo ""
-  echo "Requirements:"
-  echo "  • 2+ GPUs (dedicated GPU + iGPU)"
-  echo "  • BIOS: Enable VT-d/VT-x (Intel) or AMD-Vi/SVM (AMD)"
-  echo "  • BIOS: Set Primary Display = IGD or Auto (recommended)"
-  echo "  • Monitor: Connect to motherboard ports (iGPU), not GPU ports"
-  echo ""
-  msg_warning "Important: Dedicated GPU will be blacklisted (mode=none at boot)"
-  echo "           Use 'omarchy-gpu-passthrough mode vm' to bind for VM"
-  echo "           Use 'omarchy-gpu-passthrough mode host' to bind for host use (optional)"
-  echo ""
+  # Show consolidated intro banner (replaces scattered warnings)
+  show_intro_banner
 
-  gum confirm "Continue with setup?" || exit 0
-
-  echo ""
-  msg_warning "WARNING: This will modify critical system configuration!"
-  echo ""
-  echo "What will be changed:"
-  echo "  • Kernel boot parameters (/etc/default/limine)"
-  echo "  • Initramfs modules (/etc/mkinitcpio.conf)"
-  echo "  • GPU driver blacklist (/etc/modprobe.d/)"
-  echo "  • Hyprland configuration (~/.config/hypr/hyprland.conf)"
-  echo ""
-  msg_info "✓ Backups will be created automatically"
-  msg_info "✓ Limine snapshots available in boot menu (rollback)"
-  msg_info "✓ You can undo with: omarchy-gpu-passthrough setup --uninstall"
-  echo ""
-  msg_info "Recommended: Create system backup before proceeding"
-  echo ""
-
-  gum confirm "Do you understand the risks and want to continue?" || exit 0
-  echo ""
-
-  # BIOS Requirements Check
-  msg_section "Prerequisites Check"
-  echo ""
-  msg_info "Before continuing, ensure your BIOS has:"
-  echo ""
-
-  local cpu_vendor=$(get_cpu_vendor)
-  case "$cpu_vendor" in
-  amd)
-    echo "  AMD CPU Settings:"
-    echo "    • SVM Mode = Enabled"
-    echo "    • IOMMU = Enabled (or AMD-Vi)"
-    ;;
-  intel)
-    echo "  Intel CPU Settings:"
-    echo "    • Intel VT-x = Enabled"
-    echo "    • Intel VT-d = Enabled"
-    ;;
-  *)
-    echo "  BIOS Settings:"
-    echo "    • Virtualization = Enabled"
-    echo "    • IOMMU = Enabled"
-    ;;
-  esac
-  echo ""
-  msg_warning "If not enabled, GPU passthrough will NOT work!"
-  echo ""
-
-  gum confirm "Have you enabled these settings in BIOS?" || {
-    msg_warning "Please enable IOMMU in BIOS first, then run setup again"
+  # Single confirmation (replaces 3 separate gum confirms)
+  if ! gum confirm "I understand the risks and have checked BIOS settings. Continue?"; then
+    msg_warning "Setup cancelled. Run again when ready."
     exit 0
-  }
+  fi
   echo ""
 
   # Ensure sudo access early (refresh timestamp to avoid multiple prompts)
@@ -1143,13 +1162,30 @@ cmd_setup() {
   fi
   echo ""
 
-  # Confirm
-  gum confirm "Configure $name for passthrough?" || exit 0
-
-  echo ""
+  # Proceed with configuration (user already confirmed in intro + GPU selection)
   msg_section "Configuring GPU Passthrough"
 
-  # Create backup snapshot before making any changes
+  # Create system snapshot (BTRFS) if snapper is available
+  msg_info "Creating system snapshot (BTRFS)..."
+
+  local snapshot_desc="GPU Passthrough: $name"
+  omarchy-snapshot create "$snapshot_desc" 2>/dev/null
+  local snapshot_exit_code=$?
+
+  if [[ $snapshot_exit_code -eq 0 ]]; then
+    msg_success "System snapshot created (rollback available in boot menu)"
+  elif [[ $snapshot_exit_code -eq 127 ]]; then
+    # Snapper not installed - skip silently
+    log_info "Snapper not available - skipping system snapshot"
+  else
+    # Other error - warn but continue
+    msg_warning "System snapshot failed (continuing with config backup)"
+    log_warn "omarchy-snapshot failed with exit code $snapshot_exit_code"
+  fi
+
+  echo ""
+
+  # Create config file backup (always, even if snapper worked)
   if ! create_backup_snapshot; then
     msg_error "Failed to create backup - setup aborted"
     exit 1
@@ -1173,17 +1209,8 @@ cmd_setup() {
   configure_gpu_blacklist "$vendor_id"
 
   echo ""
-  msg_info "GPU Lifecycle after reboot:"
-  echo "  1. Boot: GPU is BLACKLISTED (mode=none, no driver loaded)"
-  echo "  2. Before VM: Run 'omarchy-gpu-passthrough mode vm' (bind to vfio-pci)"
-  echo "  3. During VM: GPU used by virtual machine"
-  echo "  4. After VM: Run 'omarchy-gpu-passthrough mode none' (unbind from vfio-pci)"
-  echo "  5. Optional: Run 'omarchy-gpu-passthrough mode host' (bind to nvidia/amdgpu)"
-  echo ""
-  echo "Why blacklist?"
-  echo "  • Prevents compositor from holding GPU handles (safe bind from GUI)"
-  echo "  • GPU available on-demand via 'mode' command"
-  echo "  • No /dev/nvidia* devices at boot (Hyprland stays on iGPU)"
+  msg_info "GPU will be blacklisted at boot (mode=none, inactive)"
+  msg_info "Run 'omarchy-gpu-passthrough mode vm' before starting VM"
   echo ""
 
   # Configure VFIO modules in initramfs
@@ -1399,8 +1426,6 @@ Examples:
 Logs: $LOG_FILE
 EOF
 }
-
-# Main Dispatcher
 
 case "${1:-}" in
 --uninstall)

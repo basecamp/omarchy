@@ -229,31 +229,24 @@ log_warn() {
 check_dependencies() {
   local recommended_deps=("mesa-utils" "dmidecode")
 
-  # Check if any packages are missing (using Omarchy's pkg system)
-  if omarchy-pkg-missing "${recommended_deps[@]}" 2>/dev/null; then
-    echo ""
-    msg_info "Recommended packages for full diagnostics: ${recommended_deps[*]}"
-
-    local should_install=false
-    if command -v gum &>/dev/null; then
-      if gum confirm "Install now?"; then
-        should_install=true
-      fi
-    else
-      echo -n "Install now? (Y/n): "
-      read -r answer
-      if [[ ! "$answer" =~ ^[Nn] ]]; then
-        should_install=true
-      fi
+  # Check if any packages are missing
+  local missing=()
+  for pkg in "${recommended_deps[@]}"; do
+    if ! pacman -Qi "$pkg" &>/dev/null; then
+      missing+=("$pkg")
     fi
+  done
 
-    # If user wants to install, ensure sudo access first
-    if [[ "$should_install" == "true" ]]; then
-      if sudo -v 2>/dev/null; then
-        omarchy-pkg-add "${recommended_deps[@]}"
-      else
-        msg_error "sudo access required to install packages"
-      fi
+  # Auto-install missing packages (user already confirmed setup in intro)
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    msg_info "Installing optional diagnostic tools: ${missing[*]}"
+
+    # Use --noconfirm and --needed to avoid interactive prompts
+    if sudo pacman -S --needed --noconfirm "${missing[@]}" >/dev/null 2>&1; then
+      msg_success "Diagnostic tools installed"
+    else
+      msg_warning "Optional tools not installed (diagnostics may be limited)"
+      msg_info "  Install manually if needed: sudo pacman -S ${missing[*]}"
     fi
   fi
   echo ""

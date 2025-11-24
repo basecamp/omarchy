@@ -3,10 +3,15 @@
 set -e
 
 COMMAND="$1"
+DESCRIPTION="${2:-}"  # Optional custom description
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
 if [[ -z $COMMAND ]]; then
-  echo "Usage: omarchy-snapshot <create|restore>" >&2
+  echo "Usage: omarchy-snapshot <create|restore> [description]" >&2
+  echo "" >&2
+  echo "Examples:" >&2
+  echo "  omarchy-snapshot create                    # Uses omarchy version as description" >&2
+  echo "  omarchy-snapshot create \"GPU Passthrough\"  # Custom description" >&2
   exit 1
 fi
 
@@ -16,9 +21,15 @@ fi
 
 case "$COMMAND" in
 create)
-  DESC="$(omarchy-version)"
+  # Use custom description if provided, otherwise use omarchy version
+  if [[ -n "$DESCRIPTION" ]]; then
+    DESC="$DESCRIPTION"
+  else
+    DESC="$(omarchy-version)"
+  fi
 
   echo -e "\e[32mCreate system snapshot\e[0m"
+  echo "  Description: $DESC"
 
   # Get existing snapper config names from CSV output
   mapfile -t CONFIGS < <(sudo snapper --csvout list-configs | awk -F, 'NR>1 {print $1}')
