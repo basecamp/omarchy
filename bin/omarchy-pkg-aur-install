@@ -2,15 +2,15 @@
 
 fzf_args=(
 	--multi
-	--preview 'sh -c "pacman -Si {1} 2>/dev/null || /usr/bin/yay -Siia {1} 2>/dev/null"'
+	--preview 'sh -c "pacman -Si {1} 2>/dev/null || yay -Siia {1} 2>/dev/null"'
 	--preview-label='alt-p: toggle description, alt-b/B: toggle PKGBUILD, alt-j/k: scroll, tab: multi-select'
 	--preview-label-pos='bottom'
 	--preview-window 'down:65%:wrap'
 	--bind 'alt-p:toggle-preview'
 	--bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
 	--bind 'alt-k:preview-up,alt-j:preview-down'
-	--bind 'alt-b:change-preview:sh -c "(/usr/bin/yay -Gpa {1} 2>/dev/null | tail -n +5) || echo \"PKGBUILD not available (repo package)\""'
-	--bind 'alt-B:change-preview:sh -c "pacman -Si {1} 2>/dev/null || /usr/bin/yay -Siia {1} 2>/dev/null"'
+	--bind 'alt-b:change-preview:sh -c "(yay -Gpa {1} 2>/dev/null | tail -n +5) || echo \"PKGBUILD not available (repo package)\""'
+	--bind 'alt-B:change-preview:sh -c "pacman -Si {1} 2>/dev/null || yay -Siia {1} 2>/dev/null"'
 	--color 'pointer:green,marker:green'
 )
 
