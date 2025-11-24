@@ -56,11 +56,18 @@ declare -A KNOWN_SPLIT_PACKAGES=(
   ["dotnet-targeting-pack-bin"]="dotnet-core-bin"
   ["aspnet-runtime-bin"]="dotnet-core-bin"
   ["aspnet-targeting-pack-bin"]="dotnet-core-bin"
+  ["dotnet-host-8.0-bin"]="dotnet-core-8.0-bin"
   ["dotnet-sdk-8.0-bin"]="dotnet-core-8.0-bin"
   ["dotnet-runtime-8.0-bin"]="dotnet-core-8.0-bin"
   ["dotnet-targeting-pack-8.0-bin"]="dotnet-core-8.0-bin"
   ["aspnet-runtime-8.0-bin"]="dotnet-core-8.0-bin"
   ["aspnet-targeting-pack-8.0-bin"]="dotnet-core-8.0-bin"
+  ["dotnet-host-10.0-bin"]="dotnet-core-10.0-bin"
+  ["dotnet-sdk-10.0-bin"]="dotnet-core-10.0-bin"
+  ["dotnet-runtime-10.0-bin"]="dotnet-core-10.0-bin"
+  ["dotnet-targeting-pack-10.0-bin"]="dotnet-core-10.0-bin"
+  ["aspnet-runtime-10.0-bin"]="dotnet-core-10.0-bin"
+  ["aspnet-targeting-pack-10.0-bin"]="dotnet-core-10.0-bin"
 )
 
 # Split packages that should install ALL built packages (not just requested one)
@@ -70,6 +77,7 @@ declare -A KNOWN_SPLIT_PACKAGES=(
 #       So we must install all packages together, but netstandard-targeting-pack-bin first
 declare -A INSTALL_ALL_SPLIT_PACKAGES=(
   ["dotnet-core-8.0-bin"]=1
+  ["dotnet-core-10.0-bin"]=1
   ["dotnet-core-bin"]=1
 )
 
