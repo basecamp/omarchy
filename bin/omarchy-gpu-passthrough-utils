@@ -65,45 +65,38 @@ msg_section() {
   echo ""
 }
 
-# Show critical warning box (for system modifications, experimental features)
 show_warning_box() {
   local message="$1"
   local box_width=65
-  local content_width=$((box_width - 2)) # Account for borders
+  local content_width=$((box_width - 2))
 
-  # Default to placeholder if message is empty
   [[ -z "$message" ]] && message="(No message provided)"
 
-  # Generate border line (portable - no seq dependency)
   local border_line=""
-  for ((i = 0; i < box_width; i++)); do border_line+="═"; done
+  for ((i = 0; i < box_width; i++)); do border_line+="-"; done
 
   echo ""
-  echo -e "${RED}╔${border_line}╗${NC}"
-  echo -e "${RED}║$(printf '%*s' $(((box_width + 8) / 2)) "WARNING")$(printf '%*s' $(((box_width - 8) / 2)) "")║${NC}"
-  echo -e "${RED}╠${border_line}╣${NC}"
+  echo -e "${RED}+${border_line}+${NC}"
+  echo -e "${RED}|$(printf '%*s' $(((box_width + 8) / 2)) "WARNING")$(printf '%*s' $(((box_width - 8) / 2)) "")|${NC}"
+  echo -e "${RED}+${border_line}+${NC}"
 
-  # Word wrap message - use fold if available, otherwise print as-is
   if command -v fold &>/dev/null; then
     echo "$message" | fold -s -w "$content_width" | while IFS= read -r line; do
-      printf "${RED}║${NC} %-${content_width}s ${RED}║${NC}\n" "$line"
+      printf "${RED}|${NC} %-${content_width}s ${RED}|${NC}\n" "$line"
     done
   else
-    # Fallback: print message without wrapping
-    printf "${RED}║${NC} %-${content_width}s ${RED}║${NC}\n" "$message"
+    printf "${RED}|${NC} %-${content_width}s ${RED}|${NC}\n" "$message"
   fi
 
-  echo -e "${RED}╚${border_line}╝${NC}"
+  echo -e "${RED}+${border_line}+${NC}"
   echo ""
 }
 
-# Visual feedback
 show_spinner() {
   local duration="$1"
   local message="${2:-Processing...}"
   local spinner=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
 
-  # Validate duration is a positive number
   if ! [[ "$duration" =~ ^[0-9]+$ ]] || [[ "$duration" -lt 1 ]]; then
     duration=1
   fi
@@ -118,7 +111,6 @@ show_spinner() {
     for frame in "${spinner[@]}"; do
       echo -ne "\r$message $frame"
       sleep 0.1
-      # Check time once per frame instead of in loop condition
       current_time=$(date +%s)
       [[ "$current_time" -ge "$end_time" ]] && break 2
     done
@@ -127,16 +119,14 @@ show_spinner() {
   echo -ne "\r$message ✓\n"
 }
 
-# Desktop notifications
 notify_silent() {
   local title="$1"
   local message="$2"
-  local urgency="${3:-normal}" # low, normal, critical
+  local urgency="${3:-normal}"
 
   notify-send -u "$urgency" -- "$title" "$message" 2>/dev/null || true
 }
 
-# Map driver to user-facing mode for state marker sync (none/vm/host/unknown)
 detect_gpu_mode_from_driver() {
   local driver="$1"
   case "$driver" in
@@ -155,19 +145,15 @@ detect_gpu_mode_from_driver() {
   esac
 }
 
-# Create log directory and rotate old logs (keeps last 5, max 10MB per file)
 log_init() {
-  # Create log directory if it doesn't exist
   if [[ ! -d "$LOG_DIR" ]]; then
     sudo mkdir -p "$LOG_DIR" 2>/dev/null || {
-      # Fallback to user home if /var/log is not writable
       LOG_DIR="$HOME/.local/share/omarchy-gpu-passthrough/logs"
       LOG_FILE="$LOG_DIR/gpu-passthrough.log"
       mkdir -p "$LOG_DIR" 2>/dev/null || return 1
     }
   fi
 
-  # Rotate log if it exceeds max size
   if [[ -f "$LOG_FILE" ]]; then
     local log_size=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)
     if [[ "$log_size" -gt "$LOG_MAX_SIZE" ]]; then
@@ -175,7 +161,6 @@ log_init() {
       sudo mv "$LOG_FILE" "$LOG_FILE.$timestamp" 2>/dev/null ||
         mv "$LOG_FILE" "$LOG_FILE.$timestamp" 2>/dev/null
 
-      # Keep only last 5 rotated logs (atomic deletion with xargs)
       find "$LOG_DIR" -maxdepth 1 -type f -name "gpu-passthrough.log.*" -printf '%T@ %p\n' 2>/dev/null |
         sort -rn | tail -n +6 | cut -d' ' -f2- | xargs -r rm -f
     fi
@@ -184,52 +169,42 @@ log_init() {
   return 0
 }
 
-# Timestamped logging with sudo fallback for permission-restricted directories
 log_message() {
   local category="$1"
   shift
   local message="$*"
   local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
-  # Initialize logging if not done yet
   if [[ ! -d "$LOG_DIR" ]]; then
     log_init || return 1
   fi
 
-  # Write to log file (try direct write first, fall back to sudo if needed)
   if [[ -w "$LOG_DIR" ]]; then
     echo "[$timestamp] [$category] $message" >>"$LOG_FILE" 2>/dev/null
   else
-    # Use sudo only if direct write fails (avoid hanging on password prompt)
     echo "[$timestamp] [$category] $message" | sudo tee -a "$LOG_FILE" >/dev/null 2>&1
   fi
 }
 
-# Log with INFO level
 log_info() {
   log_message "INFO" "$@"
 }
 
-# Log with SUCCESS level
 log_success() {
   log_message "SUCCESS" "$@"
 }
 
-# Log with ERROR level
 log_error() {
   log_message "ERROR" "$@"
 }
 
-# Log with WARN level
 log_warn() {
   log_message "WARN" "$@"
 }
 
-# Prompt to install recommended tools for GPU diagnostics
 check_dependencies() {
   local recommended_deps=("mesa-utils" "dmidecode")
 
-  # Check if any packages are missing
   local missing=()
   for pkg in "${recommended_deps[@]}"; do
     if ! pacman -Qi "$pkg" &>/dev/null; then
@@ -237,11 +212,9 @@ check_dependencies() {
     fi
   done
 
-  # Auto-install missing packages (user already confirmed setup in intro)
   if [[ "${#missing[@]}" -gt 0 ]]; then
     msg_info "Installing optional diagnostic tools: ${missing[*]}"
 
-    # Use --noconfirm and --needed to avoid interactive prompts
     if sudo pacman -S --needed --noconfirm "${missing[@]}" >/dev/null 2>&1; then
       msg_success "Diagnostic tools installed"
     else
@@ -249,10 +222,8 @@ check_dependencies() {
       msg_info "  Install manually if needed: sudo pacman -S ${missing[*]}"
     fi
   fi
-  echo ""
 }
 
-# Parse /proc/cpuinfo for IOMMU parameter selection (amd_iommu=on vs intel_iommu=on)
 get_cpu_vendor() {
   local vendor=$(grep -m1 "vendor_id" /proc/cpuinfo | awk '{print $3}')
   case "$vendor" in
@@ -268,19 +239,16 @@ get_cpu_vendor() {
   esac
 }
 
-# Check if CPU supports IOMMU/virtualization
 check_cpu_iommu_capability() {
   local vendor=$(get_cpu_vendor)
 
   case "$vendor" in
   amd)
-    # Check for AMD-V and NPT
     if grep -q "svm" /proc/cpuinfo; then
       return 0
     fi
     ;;
   intel)
-    # Check for VT-x and VT-d
     if grep -q "vmx" /proc/cpuinfo; then
       return 0
     fi
@@ -290,11 +258,9 @@ check_cpu_iommu_capability() {
   return 1
 }
 
-# Prevent setup inside VMs (GPU passthrough requires bare metal, sets IS_VIRTUAL_MACHINE)
 detect_virtualization() {
   IS_VIRTUAL_MACHINE=false
 
-  # Method 1: systemd-detect-virt (most reliable)
   if command -v systemd-detect-virt &>/dev/null; then
     local virt_type=$(systemd-detect-virt 2>/dev/null)
     if [[ "$virt_type" != "none" && -n "$virt_type" ]]; then
@@ -304,7 +270,6 @@ detect_virtualization() {
     fi
   fi
 
-  # Method 2: Check DMI product name
   if [[ -f /sys/class/dmi/id/product_name ]]; then
     local product=$(cat /sys/class/dmi/id/product_name 2>/dev/null)
     if echo "$product" | grep -qiE "virtual|vmware|qemu|kvm|xen|bochs|parallels"; then
@@ -314,14 +279,12 @@ detect_virtualization() {
     fi
   fi
 
-  # Method 3: Check for hypervisor flag in CPU
   if grep -q "^flags.*hypervisor" /proc/cpuinfo 2>/dev/null; then
     IS_VIRTUAL_MACHINE=true
     VIRTUALIZATION_TYPE="unknown hypervisor"
     return 1
   fi
 
-  # Method 4: Check dmesg for hypervisor messages
   if dmesg 2>/dev/null | grep -qiE "hypervisor detected|kvm|qemu|vmware|xen|virtualbox"; then
     IS_VIRTUAL_MACHINE=true
     VIRTUALIZATION_TYPE="detected via dmesg"
@@ -331,24 +294,19 @@ detect_virtualization() {
   return 0
 }
 
-# Check if IOMMU is supported and enabled
 check_iommu_support() {
-  # Try dmesg first (requires sudo or special permissions)
   if dmesg 2>/dev/null | grep -qi "IOMMU enabled\|AMD-Vi\|DMAR"; then
     return 0
   fi
 
-  # Try journalctl (more reliable, doesn't require as many permissions)
   if journalctl -b 2>/dev/null | grep -qi "IOMMU enabled\|AMD-Vi\|DMAR"; then
     return 0
   fi
 
-  # Check kernel command line
   if grep -qE "amd_iommu=on|intel_iommu=on" /proc/cmdline; then
     return 0
   fi
 
-  # Check if IOMMU hardware exists in /sys
   if [[ -d /sys/kernel/iommu_groups ]] && [[ -n "$(ls -A /sys/kernel/iommu_groups 2>/dev/null)" ]]; then
     return 0
   fi
@@ -356,7 +314,6 @@ check_iommu_support() {
   return 1
 }
 
-# Infer native driver from vendor ID (needed when GPU blacklisted during setup)
 save_gpu_config() {
   local idx="$1"
   local pci="${GPU_PCI_ADDR[$idx]}"
@@ -366,15 +323,12 @@ save_gpu_config() {
   local audio_id="${GPU_AUDIO_ID[$idx]}"
   local driver="${GPU_DRIVER[$idx]}"
 
-  # Infer native driver from vendor ID (more reliable than current driver)
-  # Current driver may be "none" if GPU is blacklisted during setup
   local native_driver="none"
   case "$vendor_id" in
-  10de) native_driver="nvidia" ;; # NVIDIA
-  1002) native_driver="amdgpu" ;; # AMD
-  8086) native_driver="i915" ;;   # Intel
+  10de) native_driver="nvidia" ;;
+  1002) native_driver="amdgpu" ;;
+  8086) native_driver="i915" ;;
   *)
-    # Fallback: use current driver if detected and not "none"
     if [[ -n "$driver" && "$driver" != "none" ]]; then
       native_driver="$driver"
     fi
@@ -401,13 +355,11 @@ EOF
   msg_success "Config saved: $GPU_PASSTHROUGH_CONF"
 }
 
-# Prevent command injection by validating PCI address format before use in sysfs paths
 validate_pci_address() {
   local pci="$1"
   [[ "$pci" =~ ^([0-9a-fA-F]{4}:)?[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$ ]]
 }
 
-# Detect all GPUs and populate global arrays
 detect_gpus() {
   local i=0
 
@@ -466,7 +418,6 @@ detect_gpus() {
   return 0
 }
 
-# Classify GPU as integrated or dedicated based on vendor and name patterns
 classify_gpu() {
   local name="$1"
   local vendor_id="$2"
@@ -488,7 +439,6 @@ classify_gpu() {
   echo "dedicated"
 }
 
-# Find GPU audio device on same PCI bus (function .1)
 get_gpu_audio_device() {
   local gpu_pci="$1"
   local bus_dev=$(echo "$gpu_pci" | cut -d. -f1)
@@ -502,18 +452,14 @@ get_gpu_audio_device() {
   fi
 }
 
-# Get GPU VRAM size via nvidia-smi, sysfs (AMD), or BAR size fallback
 get_gpu_memory() {
   local gpu_pci="$1"
   local vendor_id="${2:-}"
 
-  # NVIDIA: Find GPU index by PCI address, then query VRAM
   if [[ "$vendor_id" == "10de" ]] && command -v nvidia-smi &>/dev/null; then
-    # Normalize PCI address (add 0000: prefix if missing)
     local pci_normalized="$gpu_pci"
     [[ ! "$pci_normalized" =~ ^[0-9a-f]{4}: ]] && pci_normalized="0000:${pci_normalized}"
 
-    # Find GPU index matching PCI address
     local gpu_index=$(nvidia-smi --query-gpu=index,pci.bus_id --format=csv,noheader 2>/dev/null |
       grep -i "$(echo "$pci_normalized" | tr '[:lower:]' '[:upper:]')" | cut -d',' -f1)
 
@@ -549,11 +495,8 @@ get_gpu_memory() {
     done
   fi
 
-  # Universal fallback: Use lspci to detect memory from prefetchable BAR
-  # Works for any GPU regardless of driver (nvidia, vfio-pci, amdgpu, etc.)
   local max_size_mb=0
   while IFS= read -r line; do
-    # Extract size (e.g., "Memory at ... [size=16G]")
     if [[ "$line" =~ \[size=([0-9]+)([GMK])\] ]]; then
       local size="${BASH_REMATCH[1]}"
       local unit="${BASH_REMATCH[2]}"
@@ -583,7 +526,6 @@ get_gpu_memory() {
   echo "Unknown"
 }
 
-# Validate config format before sourcing (prevents code injection via shell metacharacters)
 load_gpu_config() {
   local config_file="/etc/omarchy-gpu-passthrough.conf"
 
@@ -591,7 +533,6 @@ load_gpu_config() {
     return 1
   fi
 
-  # Check file ownership and permissions
   local config_owner=$(stat -c "%U" "$config_file" 2>/dev/null)
   local config_perm=$(stat -c "%a" "$config_file" 2>/dev/null)
 
@@ -604,34 +545,28 @@ load_gpu_config() {
     log_warn "Config file has unusual permissions: $config_perm (expected 644 or 600)"
   fi
 
-  # Check that every non-comment/non-blank line matches the valid format
   if grep -vE '^\s*(#|$)' "$config_file" | grep -vqE '^[A-Z_]+="[^"]*"$'; then
     log_error "Config file validation failed: invalid line format detected"
     return 1
   fi
 
-  # Check for dangerous shell metacharacters and commands (including variable expansion)
   if grep -qE '`|\$|;|\||&|<|>|\bexec\b|\beval\b|\bsource\b|\b\.\s' "$config_file"; then
     log_error "Config file validation failed: potentially malicious content detected"
     return 1
   fi
 
-  # Source configuration file
   source "$config_file" 2>/dev/null || return 1
 
-  # Validate required variables
   if [[ -z "$GPU_PCI_ADDR" ]]; then
     log_error "Config file missing required GPU_PCI_ADDR"
     return 1
   fi
 
-  # Validate PCI address format (prevent command injection)
   if ! validate_pci_address "$GPU_PCI_ADDR"; then
     log_error "Invalid PCI address in config: $GPU_PCI_ADDR"
     return 1
   fi
 
-  # Export for use in calling scripts
   export GPU_PCI_ADDR
   export GPU_VENDOR_ID
   export GPU_DEVICE_ID
@@ -643,11 +578,9 @@ load_gpu_config() {
   return 0
 }
 
-# Resolve IOMMU group via sysfs for docker-compose device assignment
 get_iommu_group() {
   local pci_addr="$1"
 
-  # Add 0000: prefix if not present
   if [[ ! "$pci_addr" =~ ^[0-9a-f]{4}: ]]; then
     pci_addr="0000:${pci_addr}"
   fi
@@ -661,17 +594,13 @@ get_iommu_group() {
   fi
 }
 
-# Find DRM card via sysfs (no symlink dependency - works even if /dev/dri/by-path missing)
 get_drm_card_for_pci() {
   local pci_addr="$1"
 
-  # Normalize PCI address (add 0000: prefix if missing)
   if [[ ! "$pci_addr" =~ ^[0-9a-f]{4}: ]]; then
     pci_addr="0000:${pci_addr}"
   fi
 
-  # Find card via sysfs (no symlink dependency - works even if /dev/dri/by-path doesn't exist)
-  # Pattern: /sys/bus/pci/devices/0000:01:00.0/drm/card0 (but NOT card0-DP-1, card0-HDMI-A-1, etc.)
   for card_dir in /sys/bus/pci/devices/${pci_addr}/drm/card[0-9]*; do
     if [[ -d "$card_dir" ]] && [[ ! "$card_dir" =~ card[0-9]+-. ]]; then
       basename "$card_dir"

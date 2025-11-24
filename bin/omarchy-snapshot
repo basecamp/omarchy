@@ -29,7 +29,6 @@ create)
   fi
 
   echo -e "\e[32mCreate system snapshot\e[0m"
-  echo "  Description: $DESC"
 
   # Get existing snapper config names from CSV output
   mapfile -t CONFIGS < <(sudo snapper --csvout list-configs | awk -F, 'NR>1 {print $1}')

@@ -28,15 +28,15 @@ check_gpu_processes() {
 
   local gpu_processes=""
   if [[ "$current_driver" == "nvidia" ]]; then
-    gpu_processes=$(sudo fuser /dev/nvidia* 2>/dev/null | tr -d '\n')
+    gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>/dev/null | grep -v "USER" | tr -d '\n')
   elif [[ "$current_driver" == "amdgpu" ]]; then
-    gpu_processes=$(sudo fuser /dev/dri/card* /dev/dri/renderD* 2>/dev/null | tr -d '\n')
+    gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>/dev/null | grep -v "USER" | tr -d '\n')
   elif [[ "$current_driver" == "vfio-pci" ]]; then
     # Check for QEMU/VM processes (fuser on /dev/vfio/* may not work reliably)
     gpu_processes=$(pgrep -f 'qemu.*vfio' 2>/dev/null | tr '\n' ' ')
     if [[ -z "$gpu_processes" ]]; then
-      # Fallback: check fuser
-      gpu_processes=$(sudo fuser /dev/vfio/* 2>/dev/null | tr -d '\n')
+      # Fallback: check fuser (no sudoers rule, may prompt)
+      gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/vfio/* 2>/dev/null | grep -v "USER" | tr -d '\n')
     fi
   fi
 
@@ -63,20 +63,19 @@ check_gpu_processes() {
       sudo fuser -k -HUP /dev/nvidia* 2>/dev/null || true
       sleep 1
 
-      gpu_processes=$(sudo fuser /dev/nvidia* 2>/dev/null | tr -d '\n')
+      gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>/dev/null | grep -v "USER" | tr -d '\n')
 
       if [[ -n "$gpu_processes" ]]; then
         log_info "Checking if Hyprland is holding handles..."
 
-        local compositor_pids=$(sudo fuser -v /dev/nvidia* 2>&1 | grep -i "Hyprland" | awk '{print $2}' | tr '\n' ' ')
+        local compositor_pids=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>&1 | grep -i "Hyprland" | awk '{print $2}' | tr '\n' ' ')
 
         if [[ -n "$compositor_pids" ]]; then
           echo ""
           msg_error "SAFETY: Compositor has NVIDIA handle!"
-          echo ""
           msg_error "Compositor holding NVIDIA device - unbind will crash it (blackscreen)!"
           echo ""
-          sudo fuser -v /dev/nvidia* 2>&1 | grep -iE "Hyprland|USER" | head -10
+          sudo -n /usr/bin/fuser -v /dev/nvidia* 2>&1 | grep -iE "Hyprland|USER" | head -10
           echo ""
           msg_warning "Solution: Run from TTY or SSH"
           echo "  1. Switch to TTY (Ctrl+Alt+F2) or SSH from another machine"
@@ -94,8 +93,7 @@ check_gpu_processes() {
     else
       echo ""
       msg_error "GPU actively in use (${gpu_memory_usage}MiB memory):"
-      echo ""
-      GPU_PROCESSES=$(sudo fuser -v /dev/nvidia* 2>&1 | grep -v "USER\|kernel" | head -20)
+      GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>&1 | grep -v "USER\|kernel" | head -20)
       echo "$GPU_PROCESSES"
       echo ""
 
@@ -116,34 +114,27 @@ check_gpu_processes() {
           gpu_memory_usage=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | awk '{print int($1)}')
           if [[ "$gpu_memory_usage" -lt 10 ]]; then
             log_success "GPU processes terminated, continuing..."
-            # Continue with binding (fall through to binding code)
           else
             echo ""
             msg_error "GPU still in use (${gpu_memory_usage}MiB memory)"
-            echo ""
             log_error "Cannot bind: GPU actively in use after kill attempt"
             exit 1
           fi
         else
           msg_info "Close GPU apps manually: sudo pkill -9 -f '<name>'"
-          echo ""
           log_error "Cannot bind: GPU actively in use (${gpu_memory_usage}MiB memory used)"
           exit 1
         fi
       else
         msg_info "Close GPU apps or kill processes: sudo pkill -9 -f '<name>'"
-        echo ""
         log_error "Cannot bind: GPU actively in use (${gpu_memory_usage}MiB memory used)"
         exit 1
       fi
     fi
   elif [[ "$current_driver" == "vfio-pci" ]]; then
-    # VFIO GPU in use (likely VM running)
     echo ""
     msg_error "GPU in use by VM or VFIO process"
     echo ""
-
-    # Show process details (PIDs from gpu_processes variable set at line 36)
     local first_pid=""
     if [[ -n "$gpu_processes" ]]; then
       echo "Processes using GPU:"
@@ -158,7 +149,6 @@ check_gpu_processes() {
     fi
 
     msg_warning "GPU is bound to vfio-pci and in use (likely by running VM)"
-    echo ""
     echo "To unbind GPU:"
     echo "  1. Stop your VM: omarchy-windows-vm stop"
     if [[ -n "$first_pid" ]]; then
@@ -171,11 +161,9 @@ check_gpu_processes() {
     log_error "Cannot unbind: GPU in use by VFIO process (VM likely running)"
     exit 1
   else
-    # AMD GPU in use
     echo ""
     msg_error "AMD GPU in use by processes:"
-    echo ""
-    GPU_PROCESSES=$(sudo fuser -v /dev/dri/card* /dev/dri/renderD* 2>&1 | grep -v "USER\|kernel" | head -20)
+    GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" | head -20)
     echo "$GPU_PROCESSES"
     echo ""
 
@@ -193,27 +181,23 @@ check_gpu_processes() {
         sleep 2
 
         # Re-check GPU usage
-        GPU_PROCESSES_AFTER=$(sudo fuser -v /dev/dri/card* /dev/dri/renderD* 2>&1 | grep -v "USER\|kernel" || true)
+        GPU_PROCESSES_AFTER=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" || true)
         if [[ -z "$GPU_PROCESSES_AFTER" ]]; then
           log_success "GPU processes terminated, continuing..."
-          # Continue with binding (fall through to binding code)
         else
           echo ""
           msg_error "GPU still in use by processes"
           echo "$GPU_PROCESSES_AFTER"
-          echo ""
           log_error "Cannot bind: AMD GPU still in use after kill attempt"
           exit 1
         fi
       else
         msg_info "Close GPU apps manually: sudo pkill -9 -f '<name>'"
-        echo ""
         log_error "Cannot bind: AMD GPU in use by processes"
         exit 1
       fi
     else
       msg_info "Close GPU apps or kill processes: sudo pkill -9 -f '<name>'"
-      echo ""
       log_error "Cannot bind: AMD GPU in use by processes"
       exit 1
     fi
@@ -250,7 +234,6 @@ check_display_safety() {
         if [[ "$connected_displays" -gt 0 ]]; then
           echo ""
           msg_error "SAFETY: Monitor connected to dedicated GPU!"
-          echo ""
           msg_error "Detected $connected_displays monitor(s) on $gpu_drm_card - unbind will cause BLACKSCREEN!"
           echo ""
           msg_warning "Solution:"
@@ -277,12 +260,12 @@ unload_nvidia_modules() {
   log_info "Unloading NVIDIA compute modules..."
 
   if lsmod | grep -q "nvidia_uvm"; then
-    sudo modprobe -r nvidia_uvm 2>/dev/null || true
+    sudo -n /usr/bin/modprobe -r nvidia_uvm 2>/dev/null || true
     log_success "nvidia_uvm unloaded"
   fi
 
   if lsmod | grep -q "^nvidia "; then
-    if sudo modprobe -r nvidia 2>/dev/null; then
+    if sudo -n /usr/bin/modprobe -r nvidia 2>/dev/null; then
       log_success "nvidia module unloaded"
     else
       log_info "nvidia module will auto-unload during unbind"
@@ -295,7 +278,6 @@ unload_nvidia_modules() {
 cmd_bind() {
   log_init
 
-  # Check configuration first (before printing headers)
   if ! load_gpu_config; then
     msg_section "GPU Mode: VM"
     echo ""
@@ -306,9 +288,6 @@ cmd_bind() {
   fi
 
   msg_section "GPU Mode: Switch to VM"
-
-  echo ""
-  echo "Binding GPU to vfio-pci (VM passthrough mode)..."
   echo ""
 
   local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
@@ -346,7 +325,7 @@ cmd_bind() {
 
   if ! lsmod | grep -q "^vfio_pci"; then
     log_info "Loading vfio-pci module..."
-    sudo modprobe vfio-pci
+    sudo -n /usr/bin/modprobe vfio-pci
     log_success "vfio-pci module loaded"
   fi
 
@@ -355,9 +334,6 @@ cmd_bind() {
     sudo chmod 0660 /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null || true
     sudo chgrp kvm /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null || true
   fi
-
-  msg_info "Binding to vfio-pci..."
-  log_info "Binding GPU to vfio-pci..."
 
   echo "$GPU_VENDOR_ID $GPU_DEVICE_ID" | tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
 
@@ -388,14 +364,10 @@ cmd_bind() {
   echo ""
   if [[ "$current_driver" == "vfio-pci" ]]; then
     msg_success "GPU bound to vfio-pci (ready for VM)"
-    echo ""
-    echo "Next: Start VM (GPU will be used by VM)"
-    echo "Optional: 'omarchy-gpu-passthrough mode none' to unbind GPU"
-    echo ""
     log_success "=== BIND SUCCESS: GPU ready for VM passthrough ==="
 
     # Update state marker
-    if ! echo "vm" | sudo tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+    if ! echo "vm" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
       log_warn "Failed to update state marker (continuing anyway)"
     fi
   else
@@ -408,7 +380,6 @@ cmd_bind() {
 cmd_set_none() {
   log_init
 
-  # Check configuration first (before printing headers)
   if ! load_gpu_config; then
     msg_section "GPU Mode: None"
     echo ""
@@ -419,9 +390,6 @@ cmd_set_none() {
   fi
 
   msg_section "GPU Mode: Switch to None"
-
-  echo ""
-  echo "Unbinding GPU from all drivers (inactive state)..."
   echo ""
 
   local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
@@ -435,7 +403,7 @@ cmd_set_none() {
     log_info "Already in none mode"
 
     # Update state marker
-    if ! echo "none" | sudo tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+    if ! echo "none" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
       log_warn "Failed to update state marker (continuing anyway)"
     fi
     exit 0
@@ -476,14 +444,10 @@ cmd_set_none() {
   echo ""
   if [[ -z "$current_driver" ]]; then
     msg_success "GPU set to none mode (no driver loaded)"
-    echo ""
-    echo "GPU is now inactive (same as boot state)"
-    echo "To use: 'omarchy-gpu-passthrough mode vm' or 'mode host'"
-    echo ""
     log_success "=== SET NONE SUCCESS: GPU inactive ==="
 
     # Update state marker
-    if ! echo "none" | sudo tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+    if ! echo "none" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
       log_warn "Failed to update state marker (continuing anyway)"
     fi
   else
@@ -496,7 +460,6 @@ cmd_set_none() {
 cmd_unbind() {
   log_init
 
-  # Check configuration first (before printing headers)
   if ! load_gpu_config; then
     msg_section "GPU Mode: Host"
     echo ""
@@ -507,9 +470,6 @@ cmd_unbind() {
   fi
 
   msg_section "GPU Mode: Switch to Host"
-
-  echo ""
-  echo "Restoring GPU to original driver (make available to host)..."
   echo ""
 
   local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
@@ -583,7 +543,7 @@ cmd_unbind() {
 
     # Auto-update config file (fix old configs permanently)
     if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
-      if sudo sed -i "s/^GPU_DRIVER_ORIGINAL=.*/GPU_DRIVER_ORIGINAL=\"$inferred_driver\"/" "$GPU_PASSTHROUGH_CONF" 2>/dev/null; then
+      if sudo -n /usr/bin/sed -i "s/^GPU_DRIVER_ORIGINAL=.*/GPU_DRIVER_ORIGINAL=\"$inferred_driver\"/" "$GPU_PASSTHROUGH_CONF" 2>/dev/null; then
         log_info "Config updated: GPU_DRIVER_ORIGINAL=\"$inferred_driver\""
       else
         log_warn "Failed to update config file (continuing with inferred driver)"
@@ -598,20 +558,20 @@ cmd_unbind() {
   if [[ "$GPU_DRIVER_ORIGINAL" == "nvidia" ]]; then
     log_info "Loading NVIDIA compute modules (CUDA mode)..."
 
-    if sudo modprobe -i nvidia 2>/dev/null; then
+    if sudo -n /usr/bin/modprobe -i nvidia 2>/dev/null; then
       log_success "nvidia module loaded"
     else
       log_warn "nvidia module may already be loaded"
     fi
 
-    if sudo modprobe -i nvidia_uvm 2>/dev/null; then
+    if sudo -n /usr/bin/modprobe -i nvidia_uvm 2>/dev/null; then
       log_success "nvidia_uvm module loaded"
     fi
 
     log_info "Display modules NOT loaded (blacklisted for Hyprland safety)"
   else
     log_info "Loading $GPU_DRIVER_ORIGINAL driver..."
-    if sudo modprobe "$GPU_DRIVER_ORIGINAL" 2>/dev/null; then
+    if sudo -n /usr/bin/modprobe "$GPU_DRIVER_ORIGINAL" 2>/dev/null; then
       log_success "$GPU_DRIVER_ORIGINAL module loaded"
     else
       log_warn "Failed to load $GPU_DRIVER_ORIGINAL module (may already be loaded)"
@@ -633,21 +593,16 @@ cmd_unbind() {
 
   show_spinner 2 "Loading driver..."
 
-  # Verify
   current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
   log_info "Final driver: ${current_driver:-none}"
 
   echo ""
   if [[ "$current_driver" == "$GPU_DRIVER_ORIGINAL" ]] || [[ -n "$current_driver" && "$current_driver" != "vfio-pci" ]]; then
     msg_success "GPU restored to $GPU_DRIVER_ORIGINAL (available to host)"
-    echo ""
-    echo "GPU available for host use (CUDA/compute tasks)"
-    echo "To rebind for VM: omarchy-gpu-passthrough mode vm"
-    echo ""
     log_success "=== UNBIND SUCCESS: GPU restored to $GPU_DRIVER_ORIGINAL ==="
 
     # Update state marker
-    if ! echo "host" | sudo tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+    if ! echo "host" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
       log_warn "Failed to update state marker (continuing anyway)"
     fi
   else
@@ -656,7 +611,7 @@ cmd_unbind() {
     log_warn "=== UNBIND PARTIAL: driver not loaded (${current_driver:-none}) ==="
 
     # Still update marker to host (partial success)
-    if ! echo "host" | sudo tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+    if ! echo "host" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
       log_warn "Failed to update state marker (continuing anyway)"
     fi
   fi
@@ -664,7 +619,6 @@ cmd_unbind() {
 
 # Mode Command Functions
 
-# Ensure state marker exists and matches reality (/var/run is tmpfs, marker recreated after reboot)
 ensure_state_marker() {
   # Use flock for atomic state marker operations (prevent race conditions)
   # Use user runtime directory (systemd standard) to avoid permission issues
@@ -692,7 +646,7 @@ ensure_state_marker() {
       local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')
       local detected_mode=$(detect_gpu_mode_from_driver "$current_driver")
 
-      if ! echo "$detected_mode" | sudo tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+      if ! echo "$detected_mode" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
         log_warn "Failed to create state marker (state detection may be incorrect)"
       else
         log_info "State marker initialized to: $detected_mode (detected from actual GPU state)"
@@ -721,7 +675,7 @@ ensure_state_marker() {
 
     if [[ "$marker_mode" != "$actual_mode" ]]; then
       log_warn "State marker mismatch: marker=$marker_mode, actual=$actual_mode (fixing)"
-      if ! echo "$actual_mode" | sudo tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+      if ! echo "$actual_mode" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
         log_warn "Failed to update state marker (state may be out of sync)"
       fi
     fi
@@ -751,7 +705,6 @@ cmd_mode_set() {
   *)
     echo ""
     msg_error "Invalid mode: $target"
-    echo ""
     echo "Valid modes: none, vm, host"
     echo "Usage: omarchy-gpu-passthrough mode [none|vm|host]"
     echo ""
@@ -770,7 +723,6 @@ cmd_mode_get() {
     echo ""
     msg_error "GPU passthrough not configured"
     msg_info "Run: omarchy-gpu-passthrough setup"
-    echo ""
     exit 1
   fi
 
@@ -778,8 +730,6 @@ cmd_mode_get() {
 
   echo ""
   echo "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
-  echo ""
-
   case "$current_driver" in
   vfio-pci)
     msg_success "Mode: vm"
@@ -845,7 +795,6 @@ cmd_quick_status() {
   echo ""
   echo "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
   echo "Driver: ${current_driver:-none}"
-  echo ""
 
   if [[ "$current_driver" == "vfio-pci" ]]; then
     msg_success "Status: Bound to vfio-pci (ready for VM)"
