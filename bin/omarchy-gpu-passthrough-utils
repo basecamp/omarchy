@@ -335,6 +335,11 @@ save_gpu_config() {
     ;;
   esac
 
+  # Get IOMMU group info (supports multi-device groups on laptops)
+  local iommu_group=$(get_iommu_group "$pci")
+  local iommu_devices=$(get_iommu_group_devices "$pci")
+
+  # Legacy audio_pci for backwards compatibility
   local audio_pci=""
   if [[ -n "$audio_id" ]]; then
     local bus_dev=$(echo "$pci" | cut -d. -f1)
@@ -350,6 +355,8 @@ GPU_NAME="$name"
 GPU_DRIVER_ORIGINAL="$native_driver"
 GPU_AUDIO_PCI="$audio_pci"
 GPU_AUDIO_IDS="$audio_id"
+GPU_IOMMU_GROUP="$iommu_group"
+GPU_IOMMU_DEVICES="$iommu_devices"
 EOF
 
   msg_success "Config saved: $GPU_PASSTHROUGH_CONF"
@@ -574,6 +581,8 @@ load_gpu_config() {
   export GPU_DRIVER_ORIGINAL
   export GPU_AUDIO_PCI
   export GPU_AUDIO_IDS
+  export GPU_IOMMU_GROUP
+  export GPU_IOMMU_DEVICES
 
   return 0
 }
@@ -592,6 +601,32 @@ get_iommu_group() {
   else
     echo "unknown"
   fi
+}
+
+# Get all devices in an IOMMU group
+# Returns: space-separated list of PCI addresses (without 0000: prefix)
+get_iommu_group_devices() {
+  local pci_addr="$1"
+
+  if [[ ! "$pci_addr" =~ ^[0-9a-f]{4}: ]]; then
+    pci_addr="0000:${pci_addr}"
+  fi
+
+  local iommu_group_path=$(readlink -f /sys/bus/pci/devices/${pci_addr}/iommu_group 2>/dev/null)
+  if [[ -z "$iommu_group_path" ]] || [[ ! -d "$iommu_group_path/devices" ]]; then
+    return 1
+  fi
+
+  local devices=()
+  for dev_path in "$iommu_group_path/devices"/*; do
+    if [[ -d "$dev_path" ]]; then
+      local dev_addr=$(basename "$dev_path")
+      dev_addr="${dev_addr#0000:}"
+      devices+=("$dev_addr")
+    fi
+  done
+
+  echo "${devices[*]}"
 }
 
 get_drm_card_for_pci() {

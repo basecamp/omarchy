@@ -335,28 +335,40 @@ cmd_bind() {
     sudo chgrp kvm /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null || true
   fi
 
+  # Get all IOMMU group devices (supports laptops with 4-5 devices in group)
+  local iommu_devices="${GPU_IOMMU_DEVICES:-}"
+  if [[ -z "$iommu_devices" ]]; then
+    iommu_devices=$(get_iommu_group_devices "$GPU_PCI_ADDR")
+  fi
+
+  local device_count=$(echo "$iommu_devices" | wc -w)
+  log_info "IOMMU group contains $device_count device(s): $iommu_devices"
+
   echo "$GPU_VENDOR_ID $GPU_DEVICE_ID" | tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
 
-  if [[ ! -d "/sys/bus/pci/drivers/vfio-pci/0000:$GPU_PCI_ADDR" ]]; then
-    echo "0000:$GPU_PCI_ADDR" | tee /sys/bus/pci/drivers/vfio-pci/bind >/dev/null 2>&1
-  fi
-
-  if [[ -n "$GPU_AUDIO_PCI" && -e "/sys/bus/pci/devices/0000:$GPU_AUDIO_PCI" ]]; then
-    log_info "Binding audio device ($GPU_AUDIO_PCI) to vfio-pci..."
-
-    if [[ -f "/sys/bus/pci/devices/0000:$GPU_AUDIO_PCI/driver/unbind" ]]; then
-      echo "0000:$GPU_AUDIO_PCI" | tee "/sys/bus/pci/devices/0000:$GPU_AUDIO_PCI/driver/unbind" >/dev/null 2>&1 || true
+  for dev_pci in $iommu_devices; do
+    if [[ ! -e "/sys/bus/pci/devices/0000:$dev_pci" ]]; then
+      log_warn "Device $dev_pci not found, skipping"
+      continue
     fi
 
-    if [[ -n "$GPU_AUDIO_IDS" ]]; then
-      local audio_vendor=$(echo "$GPU_AUDIO_IDS" | cut -d: -f1)
-      local audio_device=$(echo "$GPU_AUDIO_IDS" | cut -d: -f2)
-      echo "$audio_vendor $audio_device" | tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
+    if [[ -f "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" ]]; then
+      echo "0000:$dev_pci" | tee "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" >/dev/null 2>&1 || true
     fi
 
-    echo "0000:$GPU_AUDIO_PCI" | tee /sys/bus/pci/drivers/vfio-pci/bind >/dev/null 2>&1 || true
-    log_success "Audio device bound to vfio-pci"
-  fi
+    local dev_ids=$(lspci -nn -s "$dev_pci" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
+    if [[ -n "$dev_ids" ]]; then
+      local dev_vendor=$(echo "$dev_ids" | cut -d: -f1)
+      local dev_device=$(echo "$dev_ids" | cut -d: -f2)
+      echo "$dev_vendor $dev_device" | tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
+    fi
+
+    if [[ ! -d "/sys/bus/pci/drivers/vfio-pci/0000:$dev_pci" ]]; then
+      echo "0000:$dev_pci" | tee /sys/bus/pci/drivers/vfio-pci/bind >/dev/null 2>&1 || true
+    fi
+    log_info "Bound $dev_pci to vfio-pci"
+  done
+  log_success "All IOMMU group devices bound to vfio-pci"
 
   show_spinner 1 "Verifying GPU binding..."
   current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
@@ -412,30 +424,41 @@ cmd_set_none() {
   msg_info "Unbinding GPU from $current_driver..."
   log_info "Unbinding from $current_driver to none state"
 
-  if [[ -n "$GPU_AUDIO_PCI" ]] && [[ -f "/sys/bus/pci/devices/0000:$GPU_AUDIO_PCI/driver/unbind" ]]; then
-    log_info "Unbinding audio device ($GPU_AUDIO_PCI)..."
-    echo "0000:$GPU_AUDIO_PCI" | tee "/sys/bus/pci/devices/0000:$GPU_AUDIO_PCI/driver/unbind" >/dev/null 2>&1 || true
-    log_success "Audio device unbound"
+  # Get all IOMMU group devices (supports laptops with 4-5 devices in group)
+  local iommu_devices="${GPU_IOMMU_DEVICES:-}"
+  if [[ -z "$iommu_devices" ]]; then
+    iommu_devices=$(get_iommu_group_devices "$GPU_PCI_ADDR")
   fi
 
-  if [[ -f "/sys/bus/pci/devices/0000:$GPU_PCI_ADDR/driver/unbind" ]]; then
-    log_info "Unbinding GPU from driver..."
-    if ! echo "0000:$GPU_PCI_ADDR" | tee "/sys/bus/pci/devices/0000:$GPU_PCI_ADDR/driver/unbind" >/dev/null 2>&1; then
-      msg_error "Failed to unbind GPU from $current_driver"
-      msg_info "This usually means a process is still using the GPU"
-      log_error "Failed to unbind GPU (process still using GPU)"
-      exit 1
+  local device_count=$(echo "$iommu_devices" | wc -w)
+  log_info "IOMMU group contains $device_count device(s): $iommu_devices"
+
+  for dev_pci in $iommu_devices; do
+    if [[ -f "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" ]]; then
+      log_info "Unbinding $dev_pci from driver..."
+      if ! echo "0000:$dev_pci" | tee "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" >/dev/null 2>&1; then
+        # Only fail on main GPU, others are non-fatal
+        if [[ "$dev_pci" == "$GPU_PCI_ADDR" ]]; then
+          msg_error "Failed to unbind GPU from $current_driver"
+          msg_info "This usually means a process is still using the GPU"
+          log_error "Failed to unbind GPU (process still using GPU)"
+          exit 1
+        fi
+        log_warn "Failed to unbind $dev_pci (non-fatal)"
+      fi
     fi
-    log_success "GPU unbound from $current_driver"
-  fi
+  done
+  log_success "All IOMMU group devices unbound"
 
   if [[ "$current_driver" == "vfio-pci" ]]; then
-    echo "$GPU_VENDOR_ID $GPU_DEVICE_ID" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
-    if [[ -n "$GPU_AUDIO_IDS" ]]; then
-      local audio_vendor=$(echo "$GPU_AUDIO_IDS" | cut -d: -f1)
-      local audio_device=$(echo "$GPU_AUDIO_IDS" | cut -d: -f2)
-      echo "$audio_vendor $audio_device" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
-    fi
+    for dev_pci in $iommu_devices; do
+      local dev_ids=$(lspci -nn -s "$dev_pci" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
+      if [[ -n "$dev_ids" ]]; then
+        local dev_vendor=$(echo "$dev_ids" | cut -d: -f1)
+        local dev_device=$(echo "$dev_ids" | cut -d: -f2)
+        echo "$dev_vendor $dev_device" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
+      fi
+    done
   fi
 
   show_spinner 1 "Verifying GPU state..."
@@ -492,27 +515,32 @@ cmd_unbind() {
     msg_info "Unbinding from vfio-pci..."
     log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
 
-    # Unbind audio device first
-    if [[ -n "$GPU_AUDIO_PCI" && -d "/sys/bus/pci/drivers/vfio-pci/0000:$GPU_AUDIO_PCI" ]]; then
-      log_info "Unbinding audio device ($GPU_AUDIO_PCI) from vfio-pci..."
-      echo "0000:$GPU_AUDIO_PCI" | tee /sys/bus/pci/drivers/vfio-pci/unbind >/dev/null 2>&1 || true
-      log_success "Audio device unbound from vfio-pci"
+    # Get all IOMMU group devices (supports laptops with 4-5 devices in group)
+    local iommu_devices="${GPU_IOMMU_DEVICES:-}"
+    if [[ -z "$iommu_devices" ]]; then
+      iommu_devices=$(get_iommu_group_devices "$GPU_PCI_ADDR")
     fi
 
-    # Unbind GPU from vfio-pci
-    log_info "Unbinding GPU from vfio-pci..."
-    echo "0000:$GPU_PCI_ADDR" | tee /sys/bus/pci/drivers/vfio-pci/unbind >/dev/null 2>&1
+    local device_count=$(echo "$iommu_devices" | wc -w)
+    log_info "IOMMU group contains $device_count device(s): $iommu_devices"
 
-    # Remove device IDs
-    echo "$GPU_VENDOR_ID $GPU_DEVICE_ID" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
+    for dev_pci in $iommu_devices; do
+      if [[ -d "/sys/bus/pci/drivers/vfio-pci/0000:$dev_pci" ]]; then
+        log_info "Unbinding $dev_pci from vfio-pci..."
+        echo "0000:$dev_pci" | tee /sys/bus/pci/drivers/vfio-pci/unbind >/dev/null 2>&1 || true
+      fi
+    done
 
-    if [[ -n "$GPU_AUDIO_IDS" ]]; then
-      local audio_vendor=$(echo "$GPU_AUDIO_IDS" | cut -d: -f1)
-      local audio_device=$(echo "$GPU_AUDIO_IDS" | cut -d: -f2)
-      echo "$audio_vendor $audio_device" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
-    fi
+    for dev_pci in $iommu_devices; do
+      local dev_ids=$(lspci -nn -s "$dev_pci" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
+      if [[ -n "$dev_ids" ]]; then
+        local dev_vendor=$(echo "$dev_ids" | cut -d: -f1)
+        local dev_device=$(echo "$dev_ids" | cut -d: -f2)
+        echo "$dev_vendor $dev_device" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
+      fi
+    done
 
-    log_success "GPU unbound from vfio-pci"
+    log_success "All IOMMU group devices unbound from vfio-pci"
   else
     # GPU not bound to vfio-pci (e.g., driver is "none")
     msg_info "GPU driver: ${current_driver:-none} (binding to $GPU_DRIVER_ORIGINAL)..."
