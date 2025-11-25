@@ -212,6 +212,8 @@ fi
 
 msg_success "Udev rules configured"
 
+IVSHMEM_SIZE_FROM_ENV="${IVSHMEM_SIZE:-}"
+
 if [[ "${FORCE_RECONFIGURE:-0}" != "1" ]] && [[ -f /etc/modprobe.d/kvmfr.conf ]]; then
   IVSHMEM_SIZE=$(grep -oP 'static_size_mb=\K\d+' /etc/modprobe.d/kvmfr.conf 2>/dev/null || echo "")
   if [[ -n "$IVSHMEM_SIZE" ]]; then
@@ -222,7 +224,12 @@ if [[ "${FORCE_RECONFIGURE:-0}" != "1" ]] && [[ -f /etc/modprobe.d/kvmfr.conf ]]
   fi
 fi
 
-if [[ -z "$IVSHMEM_SIZE" ]] || [[ "${FORCE_RECONFIGURE:-0}" == "1" ]]; then
+if [[ -n "$IVSHMEM_SIZE_FROM_ENV" ]]; then
+  IVSHMEM_SIZE="$IVSHMEM_SIZE_FROM_ENV"
+  msg_success "Using ${IVSHMEM_SIZE}MB shared memory (from VM config)"
+fi
+
+if [[ -z "$IVSHMEM_SIZE" ]] || { [[ "${FORCE_RECONFIGURE:-0}" == "1" ]] && [[ -z "$IVSHMEM_SIZE_FROM_ENV" ]]; }; then
   echo ""
   echo "Select target display resolution for Looking Glass:"
   echo ""
@@ -340,19 +347,7 @@ create_sudoers_config
 msg_info "Installing desktop launcher..."
 mkdir -p "$HOME/.local/share/applications"
 
-if [[ -z "$OMARCHY_PATH" ]]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  if [[ -f "$SCRIPT_DIR/../applications/windows-looking-glass.desktop" ]]; then
-    OMARCHY_PATH="$(cd "$SCRIPT_DIR/.." && pwd)"
-  fi
-fi
-
-if [[ -n "$OMARCHY_PATH" ]] && [[ -f "$OMARCHY_PATH/applications/windows-looking-glass.desktop" ]]; then
-  cp "$OMARCHY_PATH/applications/windows-looking-glass.desktop" "$HOME/.local/share/applications/"
-  msg_success "Desktop launcher installed (Windows [Looking Glass])"
-else
-  msg_warning "Desktop file not found - creating basic launcher"
-  cat >"$HOME/.local/share/applications/windows-looking-glass.desktop" <<'DESKEOF'
+cat >"$HOME/.local/share/applications/windows-looking-glass.desktop" <<'DESKEOF'
 [Desktop Entry]
 Name=Windows [Looking Glass]
 Comment=Connect to Windows VM via Looking Glass (ultra-low latency)
@@ -361,8 +356,7 @@ Terminal=true
 Type=Application
 Categories=System;Virtualization;
 DESKEOF
-  msg_success "Basic desktop launcher created"
-fi
+msg_success "Desktop launcher installed"
 
 msg_info "Loading kvmfr module..."
 if lsmod | grep -q kvmfr; then

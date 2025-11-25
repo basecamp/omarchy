@@ -288,7 +288,6 @@ cmd_bind() {
   fi
 
   msg_section "GPU Mode: Switch to VM"
-  echo ""
 
   local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
 
@@ -402,7 +401,6 @@ cmd_set_none() {
   fi
 
   msg_section "GPU Mode: Switch to None"
-  echo ""
 
   local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
 
@@ -493,7 +491,6 @@ cmd_unbind() {
   fi
 
   msg_section "GPU Mode: Switch to Host"
-  echo ""
 
   local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
 
