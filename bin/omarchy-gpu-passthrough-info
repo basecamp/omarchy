@@ -438,10 +438,31 @@ cmd_diagnose() {
 
       local iommu_group=$(basename "$(readlink -f /sys/bus/pci/devices/${pci_full}/iommu_group 2>/dev/null)" 2>/dev/null)
       if [[ -n "$iommu_group" ]]; then
-        echo "GPU ${GPU_NAME[$i]} (${pci}): IOMMU Group $iommu_group"
+        echo "[GPU $((i+1)): ${GPU_NAME[$i]}]"
+        echo "  PCI Address: $pci"
+        echo "  IOMMU Group: $iommu_group"
+
+        # List ALL devices in this IOMMU group (critical for passthrough)
+        local iommu_group_path="/sys/kernel/iommu_groups/${iommu_group}/devices"
+        if [[ -d "$iommu_group_path" ]]; then
+          local device_count=$(ls -1 "$iommu_group_path" 2>/dev/null | wc -l)
+          echo "  Devices in group ($device_count):"
+          for dev_path in "$iommu_group_path"/*; do
+            if [[ -d "$dev_path" ]]; then
+              local dev_addr=$(basename "$dev_path")
+              local dev_addr_short="${dev_addr#0000:}"
+              local dev_info=$(lspci -nns "$dev_addr_short" 2>/dev/null)
+              if [[ -n "$dev_info" ]]; then
+                echo "    $dev_info"
+              else
+                echo "    $dev_addr_short (unknown)"
+              fi
+            fi
+          done
+        fi
+        echo ""
       fi
     done
-    echo ""
 
     echo "[KERNEL CONFIGURATION]"
     echo ""
@@ -831,8 +852,19 @@ cmd_get_docker_config() {
     exit 1
   fi
 
-  local iommu_group=$(get_iommu_group "$GPU_PCI_ADDR")
-  echo "$GPU_PCI_ADDR ${GPU_AUDIO_PCI:-} $iommu_group"
+  local iommu_group="${GPU_IOMMU_GROUP:-}"
+  if [[ -z "$iommu_group" ]] || [[ "$iommu_group" == "unknown" ]]; then
+    iommu_group=$(get_iommu_group "$GPU_PCI_ADDR")
+  fi
+
+  local iommu_devices="${GPU_IOMMU_DEVICES:-}"
+  if [[ -z "$iommu_devices" ]]; then
+    iommu_devices=$(get_iommu_group_devices "$GPU_PCI_ADDR")
+  fi
+
+  # Format: GPU_PCI_ADDR IOMMU_GROUP DEVICE1 DEVICE2 DEVICE3 ...
+  # First device is always the main GPU address
+  echo "$GPU_PCI_ADDR $iommu_group $iommu_devices"
 }
 
 cmd_hardware_report() {
@@ -1034,6 +1066,39 @@ cmd_hardware_report() {
     echo "      Type: ${type^} | Driver: ${driver:-none}${mode_info}${vram_info}"
     echo ""
   done
+
+  echo "IOMMU GROUPS (for passthrough)"
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local name="${GPU_NAME[$i]}"
+    local type="${GPU_TYPE[$i]}"
+    local pci_full="$pci"
+    [[ ! "$pci_full" =~ ^[0-9a-f]{4}: ]] && pci_full="0000:${pci_full}"
+
+    local iommu_group=$(basename "$(readlink -f /sys/bus/pci/devices/${pci_full}/iommu_group 2>/dev/null)" 2>/dev/null)
+    if [[ -n "$iommu_group" ]]; then
+      local iommu_group_path="/sys/kernel/iommu_groups/${iommu_group}/devices"
+      local device_count=0
+      [[ -d "$iommu_group_path" ]] && device_count=$(ls -1 "$iommu_group_path" 2>/dev/null | wc -l)
+
+      echo "  [$((i + 1))] $name - IOMMU Group $iommu_group ($device_count devices)"
+
+      if [[ -d "$iommu_group_path" ]] && [[ "$type" == "dedicated" ]]; then
+        for dev_path in "$iommu_group_path"/*; do
+          if [[ -d "$dev_path" ]]; then
+            local dev_addr=$(basename "$dev_path")
+            local dev_addr_short="${dev_addr#0000:}"
+            local dev_class=$(lspci -s "$dev_addr_short" 2>/dev/null | cut -d: -f3- | xargs)
+            [[ -z "$dev_class" ]] && dev_class="Unknown device"
+            echo "      $dev_addr_short: $dev_class"
+          fi
+        done
+      fi
+    else
+      echo "  [$((i + 1))] $name - IOMMU Group: Not found"
+    fi
+  done
+  echo ""
 
   echo "DISPLAY CONFIGURATION"
 

@@ -827,8 +827,8 @@ create_docker_compose_config() {
   local IVSHMEM_SIZE="${8:-128}"
   local GPU_PASSTHROUGH_ENABLED="${9:-false}"
   local GPU_PCI_ADDR="${10:-}"
-  local GPU_AUDIO_PCI="${11:-}"
-  local GPU_IOMMU_GROUP="${12:-}"
+  local GPU_IOMMU_GROUP="${11:-}"
+  local GPU_IOMMU_DEVICES="${12:-}"
 
   # Detect SMBIOS and disk info for anti-cheat spoofing
   detect_smbios_and_disk_info
@@ -893,9 +893,12 @@ create_docker_compose_config() {
         $DISK_FLAGS"
     ARGUMENTS_SECTION+="
         -device ivshmem-plain,id=shmem0,memdev=looking-glass
-        -object memory-backend-file,id=looking-glass,mem-path=/dev/kvmfr0,size=${IVSHMEM_SIZE}M,share=yes
-        -device vfio-pci,host=0000:${GPU_PCI_ADDR}
-        -device vfio-pci,host=0000:${GPU_AUDIO_PCI}
+        -object memory-backend-file,id=looking-glass,mem-path=/dev/kvmfr0,size=${IVSHMEM_SIZE}M,share=yes"
+    for dev_pci in $GPU_IOMMU_DEVICES; do
+      ARGUMENTS_SECTION+="
+        -device vfio-pci,host=0000:${dev_pci}"
+    done
+    ARGUMENTS_SECTION+="
         -audiodev spice,id=spice
         -device intel-hda
         -device hda-duplex,audiodev=spice
@@ -2064,13 +2067,12 @@ install_windows() {
           GPU_PASSTHROUGH_READY=true
           GPU_PASSTHROUGH_ENABLED=true
 
-          # Load GPU configuration (PCI address, audio, IOMMU group)
           GPU_PCI_ADDR=""
-          GPU_AUDIO_PCI=""
           GPU_IOMMU_GROUP=""
+          GPU_IOMMU_DEVICES=""
           GPU_CONFIG=$(omarchy-gpu-passthrough-info get-docker-config 2>/dev/null)
           if [[ -n "$GPU_CONFIG" ]]; then
-            read GPU_PCI_ADDR GPU_AUDIO_PCI GPU_IOMMU_GROUP <<<"$GPU_CONFIG"
+            read -r GPU_PCI_ADDR GPU_IOMMU_GROUP GPU_IOMMU_DEVICES <<<"$GPU_CONFIG"
           fi
         else
           GPU_PASSTHROUGH_READY=false
@@ -2341,15 +2343,16 @@ install_windows() {
   # Detect GPU passthrough configuration
   GPU_PASSTHROUGH_ENABLED=false
   GPU_PCI_ADDR=""
-  GPU_AUDIO_PCI=""
   GPU_IOMMU_GROUP=""
+  GPU_IOMMU_DEVICES=""
 
   if [[ "$LG_ENABLED" == true ]] && command -v omarchy-gpu-passthrough-info &>/dev/null; then
     if omarchy-gpu-passthrough-info is-configured &>/dev/null; then
       GPU_PASSTHROUGH_ENABLED=true
       GPU_CONFIG=$(omarchy-gpu-passthrough-info get-docker-config 2>/dev/null)
       if [[ -n "$GPU_CONFIG" ]]; then
-        read GPU_PCI_ADDR GPU_AUDIO_PCI GPU_IOMMU_GROUP <<<"$GPU_CONFIG"
+        # Format: GPU_PCI_ADDR IOMMU_GROUP DEVICE1 DEVICE2 ...
+        read -r GPU_PCI_ADDR GPU_IOMMU_GROUP GPU_IOMMU_DEVICES <<<"$GPU_CONFIG"
       fi
     fi
   fi
@@ -2368,7 +2371,7 @@ install_windows() {
 
   create_docker_compose_config "$COMPOSE_FILE" "$SELECTED_RAM" "$SELECTED_CORES" "$SELECTED_DISK" \
     "$USERNAME" "$PASSWORD" "$LG_ENABLED" "$IVSHMEM_SIZE" \
-    "$GPU_PASSTHROUGH_ENABLED" "$GPU_PCI_ADDR" "$GPU_AUDIO_PCI" "$GPU_IOMMU_GROUP"
+    "$GPU_PASSTHROUGH_ENABLED" "$GPU_PCI_ADDR" "$GPU_IOMMU_GROUP" "$GPU_IOMMU_DEVICES"
 
   msg_success "Configuration saved"
   echo ""
@@ -2749,7 +2752,8 @@ launch_windows() {
           # Check if GPU is already bound to VFIO
           GPU_CONFIG=$(omarchy-gpu-passthrough-info get-docker-config 2>/dev/null)
           if [[ -n "$GPU_CONFIG" ]]; then
-            read GPU_PCI_ADDR GPU_AUDIO IOMMU_GROUP <<<"$GPU_CONFIG"
+            # Format: GPU_PCI_ADDR IOMMU_GROUP DEVICE1 DEVICE2 ...
+            read -r GPU_PCI_ADDR _IOMMU_GROUP _REST <<<"$GPU_CONFIG"
 
             # Validate PCI address format (security check)
             if [[ ! "$GPU_PCI_ADDR" =~ ^([0-9a-fA-F]{4}:)?[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$ ]]; then
@@ -3059,15 +3063,14 @@ show_compose() {
   # Detect GPU passthrough (check for vfio devices)
   local GPU_PASSTHROUGH_ENABLED=false
   local GPU_PCI_ADDR=""
-  local GPU_AUDIO_PCI=""
   local GPU_IOMMU_GROUP=""
+  local GPU_IOMMU_DEVICES=""
 
   if grep -q 'vfio-pci,host=' "$COMPOSE_FILE"; then
     GPU_PASSTHROUGH_ENABLED=true
 
-    # Extract GPU addresses from ARGUMENTS
-    GPU_PCI_ADDR=$(grep -oP 'vfio-pci,host=0000:\K[0-9a-f:.]+' "$COMPOSE_FILE" | head -1)
-    GPU_AUDIO_PCI=$(grep -oP 'vfio-pci,host=0000:\K[0-9a-f:.]+' "$COMPOSE_FILE" | tail -1)
+    GPU_IOMMU_DEVICES=$(grep -oP 'vfio-pci,host=0000:\K[0-9a-f:.]+' "$COMPOSE_FILE" | tr '\n' ' ' | sed 's/ $//')
+    GPU_PCI_ADDR=$(echo "$GPU_IOMMU_DEVICES" | awk '{print $1}')
 
     # Extract IOMMU group from devices section
     GPU_IOMMU_GROUP=$(grep -oP '/dev/vfio/\K[0-9]+' "$COMPOSE_FILE" | head -1)
@@ -3082,7 +3085,7 @@ show_compose() {
   # Generate docker-compose.yml to stdout
   create_docker_compose_config "-" "$SELECTED_RAM" "$SELECTED_CORES" "$SELECTED_DISK" \
     "$USERNAME" "$PASSWORD" "$LG_ENABLED" "$IVSHMEM_SIZE" \
-    "$GPU_PASSTHROUGH_ENABLED" "$GPU_PCI_ADDR" "$GPU_AUDIO_PCI" "$GPU_IOMMU_GROUP"
+    "$GPU_PASSTHROUGH_ENABLED" "$GPU_PCI_ADDR" "$GPU_IOMMU_GROUP" "$GPU_IOMMU_DEVICES"
 }
 
 status_windows() {
