@@ -8,11 +8,11 @@ SPICE_DIR="/var/run/omarchy-windows"      # SPICE socket directory (tmpfs, auto-
 SPICE_SOCKET_PATH="$SPICE_DIR/spice.sock" # SPICE Unix socket
 
 msg_error() {
-  echo "❌  Error: $*"
+  echo "❌  Error: $*" >&2
 }
 
 msg_warning() {
-  echo "⚠️  Warning: $*"
+  echo "⚠️  Warning: $*" >&2
 }
 
 msg_success() {
@@ -97,8 +97,8 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe kvmfr
       msg_success "Overall sudoers configuration OK"
     else
       msg_error "Overall sudoers check failed!"
-      echo "  This may indicate a conflict with existing sudoers rules"
-      echo "  Check with: sudo visudo -c"
+      echo "   This may indicate a conflict with existing sudoers rules"
+      echo "   Check with: sudo visudo -c"
       sudo rm -f "$sudoers_file"
       rm -f "$temp_file"
       return 1
@@ -158,7 +158,7 @@ if pacman -Q looking-glass looking-glass-module-dkms &>/dev/null; then
   msg_success "Looking Glass packages already installed"
 else
   msg_info "Installing packages (looking-glass, looking-glass-module-dkms)..."
-  echo "  This may take a few minutes (downloading and compiling)..."
+  echo "   This may take a few minutes (downloading and compiling)..."
 
   LG_LOG_FILE="/tmp/looking-glass-install-$$.log"
 
@@ -407,13 +407,13 @@ if [[ "$NEEDS_REBOOT" == true ]]; then
   echo "$REBOOT_REASONS"
   echo ""
   echo "After reboot, enable Looking Glass during Windows VM installation:"
-  echo "  omarchy-windows-vm install"
+  echo "   omarchy-windows-vm install"
   echo ""
 else
   msg_success "Looking Glass client ready!"
   echo ""
   echo "Next step: Install Windows VM with Looking Glass support"
-  echo "  omarchy-windows-vm install"
-  echo "  (Select 'Yes' when asked about Looking Glass)"
+  echo "   omarchy-windows-vm install"
+  echo "   (Select 'Yes' when asked about Looking Glass)"
   echo ""
 fi

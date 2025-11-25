@@ -78,9 +78,9 @@ check_gpu_processes() {
           sudo -n /usr/bin/fuser -v /dev/nvidia* 2>&1 | grep -iE "Hyprland|USER" | head -10
           echo ""
           msg_warning "Solution: Run from TTY or SSH"
-          echo "  1. Switch to TTY (Ctrl+Alt+F2) or SSH from another machine"
-          echo "  2. Run: omarchy-gpu-passthrough mode vm"
-          echo "  3. Start VM from there"
+          echo "   1. Switch to TTY (Ctrl+Alt+F2) or SSH from another machine"
+          echo "   2. Run: omarchy-gpu-passthrough mode vm"
+          echo "   3. Start VM from there"
           echo ""
           log_error "Bind aborted: Compositor (${compositor_pids}) holding NVIDIA handle (would crash on unbind)"
           exit 1
@@ -142,7 +142,7 @@ check_gpu_processes() {
         if ps -p "$pid" &>/dev/null; then
           [[ -z "$first_pid" ]] && first_pid="$pid"
           local proc_info=$(ps -p "$pid" -o pid,comm,cmd --no-headers 2>/dev/null)
-          echo "  PID $proc_info"
+          echo "   PID $proc_info"
         fi
       done
       echo ""
@@ -150,13 +150,13 @@ check_gpu_processes() {
 
     msg_warning "GPU is bound to vfio-pci and in use (likely by running VM)"
     echo "To unbind GPU:"
-    echo "  1. Stop your VM: omarchy-windows-vm stop"
+    echo "   1. Stop your VM: omarchy-windows-vm stop"
     if [[ -n "$first_pid" ]]; then
-      echo "  2. Or kill QEMU: sudo kill -9 $first_pid"
+      echo "   2. Or kill QEMU: sudo kill -9 $first_pid"
     else
-      echo "  2. Or kill QEMU: sudo pkill -9 qemu-system-x86_64"
+      echo "   2. Or kill QEMU: sudo pkill -9 qemu-system-x86_64"
     fi
-    echo "  3. Then retry: omarchy-gpu-passthrough mode host"
+    echo "   3. Then retry: omarchy-gpu-passthrough mode host"
     echo ""
     log_error "Cannot unbind: GPU in use by VFIO process (VM likely running)"
     exit 1
@@ -237,9 +237,9 @@ check_display_safety() {
           msg_error "Detected $connected_displays monitor(s) on $gpu_drm_card - unbind will cause BLACKSCREEN!"
           echo ""
           msg_warning "Solution:"
-          echo "  1. Move monitor cable to iGPU port (motherboard HDMI/DP)"
-          echo "  2. Set BIOS: Primary Display = IGD"
-          echo "  3. Reboot and run: omarchy-gpu-passthrough setup"
+          echo "   1. Move monitor cable to iGPU port (motherboard HDMI/DP)"
+          echo "   2. Set BIOS: Primary Display = IGD"
+          echo "   3. Reboot and run: omarchy-gpu-passthrough setup"
           echo ""
           log_error "Bind aborted: Monitor connected to dedicated GPU (would cause blackscreen)"
           exit 1

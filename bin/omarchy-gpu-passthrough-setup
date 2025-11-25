@@ -62,7 +62,7 @@ Created: $(date)
 User: $real_user
 
 Files backed up:
-$(for file in "${files_backed_up[@]}"; do echo "  ✓ $file"; done)
+$(for file in "${files_backed_up[@]}"; do echo "  ✓  $file"; done)
 
 To restore this backup:
   1. Copy files from this directory back to their original locations
@@ -620,10 +620,10 @@ check_passthrough_feasibility() {
     :
   else
     msg_error "Running inside a virtual machine detected!"
-    echo "  Detected: $VIRTUALIZATION_TYPE"
+    echo "   Detected: $VIRTUALIZATION_TYPE"
     msg_warning "GPU passthrough requires bare metal (physical hardware)"
-    echo "  This tool is for physical Omarchy installations"
-    echo "  To use GPU in a VM, configure passthrough on the HOST system"
+    echo "   This tool is for physical Omarchy installations"
+    echo "   To use GPU in a VM, configure passthrough on the HOST system"
     log_error "Setup aborted: Running inside a virtual machine ($VIRTUALIZATION_TYPE)"
     exit 1
   fi
@@ -745,7 +745,7 @@ validate_gpu_selection() {
   echo "  PCI: $pci | Memory: $vram"
 
   if [[ "$type" == "integrated" ]]; then
-    msg_error "WARNING: iGPU selected - NOT recommended!"
+    msg_warning "iGPU selected - NOT recommended!"
     msg_warning "Linux will have no display after passthrough"
     gum confirm "Continue anyway?" || return 1
   fi
@@ -869,9 +869,9 @@ EOF
 
   echo ""
   echo "SAFETY MEASURES:"
-  echo "  ✓ Automatic backups created before changes"
-  echo "  ✓ Limine snapshots available in boot menu (rollback option)"
-  echo "  ✓ Undo anytime with: omarchy-gpu-passthrough setup --uninstall"
+  echo "  ✓  Automatic backups created before changes"
+  echo "  ✓  Limine snapshots available in boot menu (rollback option)"
+  echo "  ✓  Undo anytime with: omarchy-gpu-passthrough setup --uninstall"
 
   echo ""
   echo "REQUIREMENTS:"
@@ -1141,8 +1141,8 @@ cmd_setup() {
   echo "  • Host: omarchy-gpu-passthrough mode host"
   echo ""
   echo "Next steps:"
-  echo "  1. Reboot system"
-  echo "  2. Verify: omarchy-gpu-passthrough info verify"
+  echo "   1. Reboot system"
+  echo "   2. Verify: omarchy-gpu-passthrough info verify"
   echo ""
   msg_info "Tip: Set \"Primary Display = IGD\" in BIOS to avoid black screen"
   msg_warning "Reboot required to apply kernel parameters"

@@ -8,11 +8,11 @@ SPICE_DIR="/var/run/omarchy-windows"      # SPICE socket directory (tmpfs, auto-
 SPICE_SOCKET_PATH="$SPICE_DIR/spice.sock" # SPICE Unix socket
 
 msg_error() {
-  echo "❌  Error: $*"
+  echo "❌  Error: $*" >&2
 }
 
 msg_warning() {
-  echo "⚠️  Warning: $*"
+  echo "⚠️  Warning: $*" >&2
 }
 
 msg_success() {
