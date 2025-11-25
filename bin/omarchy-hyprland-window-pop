@@ -26,9 +26,9 @@ addr=$(echo "$active" | jq -r ".address")
 
 if [[ $pinned == "true" ]]; then
   hyprctl -q --batch \
-    dispatch pin address:$addr; \
-    dispatch togglefloating address:$addr; \
-    dispatch tagwindow -pop address:$addr;
+    "dispatch pin address:$addr;" \
+    "dispatch togglefloating address:$addr;" \
+    "dispatch tagwindow -pop address:$addr;"
 elif [[ -n $addr ]]; then
   hyprctl dispatch togglefloating address:$addr
   hyprctl dispatch resizeactive exact $width $height address:$addr
@@ -40,7 +40,7 @@ elif [[ -n $addr ]]; then
   fi
 
   hyprctl -q --batch \
-    dispatch pin address:$addr; \
-    dispatch alterzorder top address:$addr; \
-    dispatch tagwindow +pop address:$addr;
+    "dispatch pin address:$addr;" \
+    "dispatch alterzorder top address:$addr;" \
+    "dispatch tagwindow +pop address:$addr;"
 fi
