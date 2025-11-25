@@ -2111,6 +2111,26 @@ install_windows() {
         if gum confirm "Enable Looking Glass?"; then
           LG_ENABLED=true
           LG_NEEDS_INSTALL=true
+
+          echo ""
+          echo "Select display resolution:"
+          RESOLUTION_CHOICE=$(gum choose --selected="1440p (128MB)" \
+            "1080p (64MB)" \
+            "1440p (128MB)" \
+            "4K (256MB)")
+
+          if [[ -z "$RESOLUTION_CHOICE" ]]; then
+            echo ""
+            echo "Installation cancelled by user"
+            exit 0
+          fi
+
+          case "$RESOLUTION_CHOICE" in
+          *1080p*) IVSHMEM_SIZE=64 ;;
+          *1440p*) IVSHMEM_SIZE=128 ;;
+          *4K*) IVSHMEM_SIZE=256 ;;
+          esac
+          export IVSHMEM_SIZE
         else
           msg_info "Skipping - use VNC/RDP instead (add later: omarchy-looking-glass-install)"
         fi
@@ -2144,21 +2164,13 @@ install_windows() {
     echo "  Display:    RDP/VNC"
   fi
 
-  # Calculate and show time estimate once
-  TOTAL_TIME_MIN=10
-  TOTAL_TIME_MAX=30
   if [[ "$GPU_PASSTHROUGH_NEEDS_SETUP" == true ]]; then
     echo ""
     msg_warning "GPU setup requires reboot - other steps will run after"
   fi
-  if [[ "$LG_NEEDS_INSTALL" == true ]]; then
-    TOTAL_TIME_MIN=$((TOTAL_TIME_MIN + 5))
-    TOTAL_TIME_MAX=$((TOTAL_TIME_MAX + 10))
-  fi
   echo ""
-  echo "Estimated time: ${TOTAL_TIME_MIN}-${TOTAL_TIME_MAX} minutes"
+  echo "Estimated time: 10-30 minutes"
 
-  # Confirmation prompt
   if ! gum confirm "Proceed with installation?"; then
     echo ""
     echo "Installation cancelled by user"
@@ -2166,7 +2178,6 @@ install_windows() {
     echo "You can restart installation later with: omarchy-windows-vm install"
     exit 0
   fi
-
   echo ""
 
   # Execute GPU passthrough setup if needed (may exit with reboot required)
