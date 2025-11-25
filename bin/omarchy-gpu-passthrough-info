@@ -113,7 +113,7 @@ verify_kernel_config() {
     echo "  Limine config ($LIMINE_DEFAULT):"
     local limine_params=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null)
     if echo "$limine_params" | grep -qE "amd_iommu=on|intel_iommu=on"; then
-      msg_success "    IOMMU parameters present ✓"
+      msg_success "    IOMMU parameters present"
     else
       msg_warning "    IOMMU parameters NOT in config - run setup to reconfigure"
     fi
@@ -216,7 +216,7 @@ verify_setup() {
       local status_msg="  [$((i + 1))] $name ($pci) → $driver"
 
       if [[ "$driver" == "vfio-pci" ]]; then
-        msg_success "$status_msg (ready for VM) ✓"
+        msg_success "$status_msg (ready for VM)"
         ((vfio_gpus++))
       elif [[ "$driver" == "none" ]]; then
         msg_warning "$status_msg (no driver)"
@@ -257,11 +257,11 @@ verify_setup() {
       msg_info "Status: Not configured"
       echo ""
       echo "Next steps:"
-      echo "  1. Run: omarchy-gpu-passthrough setup"
-      echo "  2. Reboot system"
-      echo "  3. Run: omarchy-gpu-passthrough info verify"
+      echo "   1. Run: omarchy-gpu-passthrough setup"
+      echo "   2. Reboot system"
+      echo "   3. Run: omarchy-gpu-passthrough info verify"
     elif [[ "$total_errors" -eq 0 ]] && [[ "$vfio_gpus" -gt 0 ]]; then
-      msg_success "Status: Ready for GPU passthrough! ✓"
+      msg_success "Status: Ready for GPU passthrough!"
       echo ""
       echo "GPU passthrough is properly configured:"
       msg_success "$vfio_gpus GPU(s) bound to vfio-pci"
@@ -277,7 +277,7 @@ verify_setup() {
 
       case "$gpu_mode" in
       none)
-        msg_success "Status: GPU in boot state (dynamic binding) ✓"
+        msg_success "Status: GPU in boot state (dynamic binding)"
         echo ""
         echo "GPU is blacklisted and inactive (by design)."
         msg_success "IOMMU enabled and configured"
@@ -288,7 +288,7 @@ verify_setup() {
         echo "  • For host (CUDA/compute): omarchy-gpu-passthrough mode host"
         ;;
       host)
-        msg_success "Status: GPU bound to native driver ✓"
+        msg_success "Status: GPU bound to native driver"
         echo ""
         echo "GPU is available for host use (CUDA/compute)."
         msg_success "IOMMU enabled and configured"
@@ -302,8 +302,8 @@ verify_setup() {
         msg_warning "Status: Configured (GPU mode: $gpu_mode)"
         echo ""
         echo "Configuration exists. GPU not bound to vfio-pci."
-        echo "  Hint: Use 'omarchy-gpu-passthrough mode vm' to bind for VM"
-        echo "  Hint: Use 'omarchy-gpu-passthrough mode host' for host use"
+        echo "   Hint: Use 'omarchy-gpu-passthrough mode vm' to bind for VM"
+        echo "   Hint: Use 'omarchy-gpu-passthrough mode host' for host use"
         ;;
       esac
     else
@@ -718,9 +718,9 @@ cmd_status() {
     msg_warning "GPU passthrough not configured"
     echo ""
     echo "Next steps:"
-    echo "  1. omarchy-gpu-passthrough setup"
-    echo "  2. Reboot"
-    echo "  3. omarchy-gpu-passthrough info verify"
+    echo "   1. omarchy-gpu-passthrough setup"
+    echo "   2. Reboot"
+    echo "   3. omarchy-gpu-passthrough info verify"
     echo ""
     return
   fi
@@ -848,7 +848,7 @@ cmd_mode() {
 
 cmd_get_docker_config() {
   if ! load_gpu_config; then
-    echo "ERROR: GPU passthrough not configured" >&2
+    msg_error "GPU passthrough not configured"
     exit 1
   fi
 
@@ -1222,7 +1222,7 @@ cmd_hardware_report() {
     fi
   else
     echo "  Configured: No"
-    echo "  Run: omarchy-gpu-passthrough setup"
+    echo "   Run: omarchy-gpu-passthrough setup"
   fi
   echo ""
 

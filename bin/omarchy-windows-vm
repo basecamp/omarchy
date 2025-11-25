@@ -9,11 +9,11 @@ SPICE_DIR="/var/run/omarchy-windows"      # SPICE socket directory (tmpfs, auto-
 SPICE_SOCKET_PATH="$SPICE_DIR/spice.sock" # SPICE Unix socket from dockurr/windows container
 
 msg_error() {
-  echo "❌  Error: $*"
+  echo "❌  Error: $*" >&2
 }
 
 msg_warning() {
-  echo "⚠️  Warning: $*"
+  echo "⚠️  Warning: $*" >&2
 }
 
 msg_success() {
@@ -1180,17 +1180,17 @@ show_installation_summary() {
   if [[ "$LG_ENABLED" == true ]]; then
     echo "  Looking Glass Configuration (complete setup in Windows):"
     echo ""
-    echo "  1. Device Manager → Display adapters"
-    echo "     → Right-click 'Red Hat VirtIO GPU DOD controller' → Disable"
+    echo "   1. Device Manager → Display adapters"
+    echo "      → Right-click 'Red Hat VirtIO GPU DOD controller' → Disable"
     echo ""
-    echo "  2. Display Settings"
-    echo "     → Set primary display to GPU-connected monitor"
-    echo "     → Set correct Display resolution"
-    echo "     → May require reconnection if settings not immediately available"
+    echo "   2. Display Settings"
+    echo "      → Set primary display to GPU-connected monitor"
+    echo "      → Set correct Display resolution"
+    echo "      → May require reconnection if settings not immediately available"
     echo ""
-    echo "  3. If you experience issues:"
-    echo "     → Restart VM for optimal GPU initialization"
-    echo "     → Command: omarchy-windows-vm stop && omarchy-windows-vm launch --lg"
+    echo "   3. If you experience issues:"
+    echo "      → Restart VM for optimal GPU initialization"
+    echo "      → Command: omarchy-windows-vm stop && omarchy-windows-vm launch --lg"
     echo ""
   fi
 
@@ -1587,7 +1587,7 @@ monitor_installation_progress() {
 
     if [[ "$ELAPSED" -ge "$TIMEOUT" ]]; then
       msg_warning "Monitoring timeout - VM still running"
-      echo "  Check: http://127.0.0.1:8006 or omarchy-windows-vm launch"
+      echo "   Check: http://127.0.0.1:8006 or omarchy-windows-vm launch"
       break
     fi
   done
@@ -1738,11 +1738,11 @@ install_windows() {
       echo "Fresh installation: Removing all previous data..."
       echo ""
       echo "This will DELETE:"
-      msg_error "VM disk and Windows OS ($HOME/.windows/)"
-      msg_error "Configuration files"
+      echo "  ⚠️  VM disk and Windows OS ($HOME/.windows/)"
+      echo "  ⚠️  Configuration files"
       echo ""
       echo "This will KEEP:"
-      echo "  ✅ Shared files ($HOME/Windows/) - your data"
+      echo "  ✓  Shared files ($HOME/Windows/) - your data"
       echo ""
 
       docker-compose -f "$COMPOSE_FILE" down 2>/dev/null || true
@@ -1783,7 +1783,7 @@ install_windows() {
 
       msg_success "VM stopped, configuration preserved (will update after confirmation)"
       echo ""
-      echo "ℹ️  Quick reinstall only updates docker-compose configuration"
+      msg_info "Quick reinstall only updates docker-compose configuration"
       echo "   Windows installation and all your files remain unchanged"
       echo "   VM will boot to existing Windows system with new config"
       echo ""
@@ -1980,7 +1980,7 @@ install_windows() {
       # Keep previous password (already extracted before COMPOSE_FILE was deleted)
       if [[ -z "$PREVIOUS_PASSWORD" ]]; then
         echo ""
-        msg_warning "Warning: Could not extract previous password from docker-compose.yml"
+        msg_warning "Could not extract previous password from docker-compose.yml"
         echo "   Please enter password for configuration:"
         echo ""
         PASSWORD=$(gum input --placeholder="Enter password" --password --header="Windows password:")
@@ -2193,8 +2193,8 @@ install_windows() {
       echo "Kernel parameters have been configured and require reboot."
       echo ""
       echo "After reboot:"
-      echo "  1. Verify GPU passthrough: omarchy-gpu-passthrough info verify"
-      echo "  2. Re-run Windows VM installation: omarchy-windows-vm install"
+      echo "   1. Verify GPU passthrough: omarchy-gpu-passthrough info verify"
+      echo "   2. Re-run Windows VM installation: omarchy-windows-vm install"
       echo ""
       exit 0
     else
@@ -2495,12 +2495,12 @@ EOF
     # Auto-launch RDP or Looking Glass
     if [[ "$LG_ENABLED" == true ]]; then
       echo "Launching Looking Glass..."
-      echo "  Toggle fullscreen: Scroll Lock"
+      echo "   Toggle fullscreen: Scroll Lock"
       sleep 1
       launch_windows --lg
     else
       echo "Launching RDP connection..."
-      echo "  Toggle fullscreen: Super + F"
+      echo "   Toggle fullscreen: Super + F"
       sleep 1
       # Extract credentials
       WIN_USER=$(grep -E '^\s*USERNAME:' "$COMPOSE_FILE" | head -1 | sed -E 's/^[^:]*:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/' | xargs)
@@ -2563,7 +2563,7 @@ remove_windows() {
   if docker rmi dockurr/windows >/dev/null 2>&1; then
     msg_success "Docker image removed"
   else
-    echo "  ℹ️  Image already removed"
+    msg_info "Image already removed"
   fi
 
   # Remove desktop files and shortcuts
@@ -2589,11 +2589,11 @@ remove_windows() {
   msg_success "Windows VM configuration removed!"
   echo ""
   echo "Preserved:"
-  echo "  ✅ VM disk: $HOME/.windows/ (reusable for quick reinstall)"
-  echo "  ✅ Shared files: $HOME/Windows/ (your data)"
+  echo "  ✓  VM disk: $HOME/.windows/ (reusable for quick reinstall)"
+  echo "  ✓  Shared files: $HOME/Windows/ (your data)"
   echo ""
   echo "To completely remove all data:"
-  echo "  sudo rm -rf $HOME/.windows/      # Delete VM disk and Windows OS"
+  echo "   sudo rm -rf $HOME/.windows/      # Delete VM disk and Windows OS"
 }
 
 check_passwordless_configuration() {
@@ -2872,9 +2872,9 @@ launch_windows() {
         msg_warning "Windows is taking longer than expected (${TOTAL_ELAPSED}s elapsed)"
         echo ""
         echo "Options:"
-        echo "  1. Keep waiting - VM might still be installing"
-        echo "  2. Check progress at: http://127.0.0.1:8006"
-        echo "  3. View logs: docker logs -f omarchy-windows"
+        echo "   1. Keep waiting - VM might still be installing"
+        echo "   2. Check progress at: http://127.0.0.1:8006"
+        echo "   3. View logs: docker logs -f omarchy-windows"
         echo ""
         read -p "Continue waiting? (Y/n) " -n 1 -r
         echo
@@ -2966,13 +2966,13 @@ To stop: omarchy-windows-vm stop"
       sleep 10
       echo ""
     fi
-    echo "  Toggle fullscreen: Super + F"
-    echo "  Close RDP window: Super + W (or shutdown Windows)"
+    echo "   Toggle fullscreen: Super + F"
+    echo "   Close RDP window: Super + W (or shutdown Windows)"
     if [[ "$KEEP_ALIVE" == false ]]; then
-      echo "  Ctrl+C            - Close terminal (RDP/VM keep running)"
+      echo "   Ctrl+C            - Close terminal (RDP/VM keep running)"
     fi
     echo ""
-    echo "  Manual connect: xfreerdp3 /u:$WIN_USER /p:yourPassword /v:127.0.0.1:3389 (requires running VM)"
+    echo "   Manual connect: xfreerdp3 /u:$WIN_USER /p:yourPassword /v:127.0.0.1:3389 (requires running VM)"
 
     # Connect with RDP (foreground mode)
     connect_rdp "$WIN_USER" "$WIN_PASS" false
@@ -2984,7 +2984,7 @@ To stop: omarchy-windows-vm stop"
       docker-compose -f "$COMPOSE_FILE" stop
       echo "Windows VM stopped."
       echo ""
-      echo "ℹ️  Container is stopped but preserved for fast restart"
+      msg_info "Container is stopped but preserved for fast restart"
       echo "   Quick start: omarchy-windows-vm launch"
       echo "   Full cleanup: omarchy-windows-vm stop (removes container)"
     else
@@ -3029,20 +3029,20 @@ stop_windows() {
 
       if [[ "$actual_mode" == "vm" ]]; then
         if omarchy-gpu-passthrough mode none 2>/dev/null; then
-          echo "✅ GPU restored to mode=none (blacklisted)"
+          msg_success "GPU restored to mode=none (blacklisted)"
           notify_silent "Windows VM" "GPU restored to mode=none" "normal"
         else
-          msg_warning "Warning: Failed to restore GPU"
+          msg_warning "Failed to restore GPU"
           echo "   You can manually restore: omarchy-gpu-passthrough mode none"
           notify_silent "Windows VM" "Failed to restore GPU" "critical"
         fi
       else
-        echo "ℹ️  GPU already restored (marker was stale, actual mode: ${actual_mode:-none})"
+        msg_info "GPU already restored (marker was stale, actual mode: ${actual_mode:-none})"
         # Clean up stale marker
         sudo -n /usr/bin/rm -f /var/run/omarchy-vm-gpu-mode 2>/dev/null || true
       fi
     else
-      msg_warning "Warning: GPU passthrough tools not found"
+      msg_warning "GPU passthrough tools not found"
       echo "   GPU may still be bound to vfio-pci"
       echo "   Manual restore: omarchy-gpu-passthrough mode none"
     fi

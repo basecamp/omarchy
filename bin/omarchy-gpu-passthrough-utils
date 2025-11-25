@@ -56,7 +56,7 @@ msg_info() {
 }
 
 msg_warning() {
-  echo "⚠️  Warning: $*"
+  echo "⚠️  Warning: $*" >&2
 }
 
 msg_section() {
