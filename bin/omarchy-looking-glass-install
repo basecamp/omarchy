@@ -72,7 +72,7 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/chgrp kvm /var/run/omarchy-windows/spice.sock
 $USER ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/run/omarchy-windows
 
 # KVMFR module (Looking Glass shared memory)
-$USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe kvmfr
+$USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe kvmfr, /usr/bin/modprobe kvmfr static_size_mb=*
 "
 
   local temp_file=$(mktemp)
@@ -121,6 +121,16 @@ echo ""
 if ! sudo -v 2>/dev/null; then
   msg_error "sudo access required for installation"
   exit 1
+fi
+
+# Check Secure Boot (may block unsigned DKMS modules)
+if command -v mokutil &>/dev/null; then
+  if mokutil --sb-state 2>/dev/null | grep -qi "enabled"; then
+    msg_warning "Secure Boot is ENABLED"
+    echo "   DKMS modules (like kvmfr) may fail to load with Secure Boot."
+    echo "   If installation fails, disable Secure Boot in BIOS settings."
+    echo ""
+  fi
 fi
 
 # Install kernel headers (required for DKMS)
@@ -194,6 +204,44 @@ else
 
   rm -f "$LG_LOG_FILE"
   msg_success "Packages installed"
+fi
+
+# Verify DKMS actually built the module (always check, even if packages were pre-installed)
+msg_info "Verifying DKMS module build..."
+dkms_status=$(dkms status 2>/dev/null | grep -i looking-glass || echo "")
+
+if [[ -z "$dkms_status" ]]; then
+  msg_error "DKMS module not found!"
+  echo "   The package is installed but DKMS failed to build the kernel module."
+  echo ""
+  echo "   Common causes:"
+  echo "   - Kernel headers not installed for current kernel"
+  echo "   - Non-standard kernel without DKMS support"
+  echo "   - Secure Boot blocking unsigned modules"
+  echo ""
+  echo "   Check: dkms status"
+  echo "   Check: pacman -Q linux-headers (or linux-zen-headers, etc.)"
+  exit 1
+fi
+
+if ! echo "$dkms_status" | grep -qi "installed"; then
+  msg_warning "DKMS module may not be properly installed"
+  echo "   Status: $dkms_status"
+else
+  msg_success "DKMS module built: $dkms_status"
+fi
+
+# Verify module file exists
+if ! modinfo kvmfr &>/dev/null; then
+  msg_error "kvmfr module file not found!"
+  echo "   DKMS reported success but module file doesn't exist."
+  echo "   This may indicate a kernel mismatch."
+  echo ""
+  echo "   Your kernel: $(uname -r)"
+  echo "   Installed headers: $(pacman -Q linux-headers 2>/dev/null || echo "not found")"
+  echo ""
+  echo "   Make sure kernel and headers match, then reinstall."
+  exit 1
 fi
 
 # Configure udev rules
@@ -363,7 +411,8 @@ if lsmod | grep -q kvmfr; then
   if [[ ! -e /dev/kvmfr0 ]]; then
     echo "Module loaded but /dev/kvmfr0 missing - reloading with new config..."
     sudo rmmod kvmfr 2>/dev/null || true
-    if sudo modprobe kvmfr; then
+    if sudo modprobe kvmfr static_size_mb="$IVSHMEM_SIZE"; then
+      udevadm settle --timeout=5 2>/dev/null || sleep 1
       msg_success "Module reloaded"
     else
       msg_warning "Module reload failed (reboot required)"
@@ -373,7 +422,8 @@ if lsmod | grep -q kvmfr; then
     if [[ "$module_size" != "$IVSHMEM_SIZE" ]]; then
       echo "Module loaded with wrong size (${module_size}MB, expected ${IVSHMEM_SIZE}MB) - reloading..."
       sudo rmmod kvmfr 2>/dev/null || true
-      if sudo modprobe kvmfr; then
+      if sudo modprobe kvmfr static_size_mb="$IVSHMEM_SIZE"; then
+        udevadm settle --timeout=5 2>/dev/null || sleep 1
         msg_success "Module reloaded with ${IVSHMEM_SIZE}MB"
       else
         msg_warning "Module reload failed (reboot required)"
@@ -383,10 +433,23 @@ if lsmod | grep -q kvmfr; then
     fi
   fi
 else
-  if sudo modprobe kvmfr; then
+  if sudo modprobe kvmfr static_size_mb="$IVSHMEM_SIZE"; then
+    # Wait for udev to create /dev/kvmfr0
+    udevadm settle --timeout=5 2>/dev/null || sleep 1
     msg_success "Module loaded"
   else
-    msg_warning "Module load failed (reboot required)"
+    msg_warning "Module load failed"
+    # Check if Secure Boot might be the cause
+    if command -v mokutil &>/dev/null; then
+      if mokutil --sb-state 2>/dev/null | grep -qi "enabled"; then
+        echo "   Secure Boot is enabled - this may block unsigned modules!"
+        echo "   Either disable Secure Boot in BIOS or sign the module."
+      else
+        echo "   Try rebooting, or check: dmesg | grep -i kvmfr"
+      fi
+    else
+      echo "   Try rebooting, or check: dmesg | grep -i kvmfr"
+    fi
   fi
 fi
 
