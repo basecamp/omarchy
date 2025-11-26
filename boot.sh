@@ -22,7 +22,9 @@ if command -v systemd-detect-virt &>/dev/null; then
   virt_type=$(systemd-detect-virt || echo "none")
 
   # Set universal virtualization flag for any VM
-  if [[ "$virt_type" != "none" ]]; then
+  # Exception: Asahi is always bare metal, even if systemd-detect-virt reports otherwise
+  # (Apple Silicon can trigger false positives due to hypervisor-like characteristics)
+  if [[ "$virt_type" != "none" ]] && [[ -z "$ASAHI_ALARM" ]]; then
     export OMARCHY_VIRTUALIZATION=true
   fi
 fi
