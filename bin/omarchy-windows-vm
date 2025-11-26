@@ -281,8 +281,6 @@ install_looking_glass_client() {
     export IVSHMEM_SIZE
 
     if ! is_looking_glass_ready; then
-      echo ""
-      msg_warning "Looking Glass installed but requires reboot to activate"
       return 1
     fi
     return 0
@@ -2468,7 +2466,10 @@ EOF
 
   # Verify Looking Glass device exists before starting VM
   if [[ "$LG_ENABLED" == true ]] && [[ ! -e /dev/kvmfr0 ]]; then
-    msg_error "/dev/kvmfr0 not found - try: sudo modprobe kvmfr (or reboot)"
+    msg_error "/dev/kvmfr0 not found"
+    echo "   Looking Glass kernel module is not loaded."
+    echo "   Run: omarchy-looking-glass-launch (shows diagnostics)"
+    echo "   Or reinstall: omarchy-looking-glass-install"
     exit 1
   fi
 
@@ -2611,9 +2612,9 @@ check_passwordless_configuration() {
     issue_list="${issue_list}  ❌ SPICE directory not created by tmpfiles.d\n"
   fi
 
-  if [[ ! -f /etc/sudoers.d/omarchy-windows ]]; then
+  if [[ ! -f /etc/sudoers.d/omarchy-looking-glass ]]; then
     issues_found=true
-    issue_list="${issue_list}  ❌ Missing: /etc/sudoers.d/omarchy-windows\n"
+    issue_list="${issue_list}  ❌ Missing: /etc/sudoers.d/omarchy-looking-glass\n"
   fi
 
   if [[ "$issues_found" == false ]]; then
@@ -2799,15 +2800,8 @@ launch_windows() {
       if [[ ! -e /dev/kvmfr0 ]]; then
         echo ""
         msg_error "Looking Glass device /dev/kvmfr0 not found!"
-        echo ""
-        echo "   Looking Glass requires /dev/kvmfr0 device from kvmfr kernel module."
-        echo ""
-        echo "   Fix:"
-        echo "   1. Reload kvmfr module: sudo rmmod kvmfr && sudo modprobe kvmfr"
-        echo "   2. Verify device exists: ls -la /dev/kvmfr0"
-        echo "   3. If still missing: reboot (module will auto-load on boot)"
-        echo ""
-        echo "   Or reinstall Looking Glass: omarchy-looking-glass-install"
+        echo "   Run: omarchy-looking-glass-launch (shows diagnostics)"
+        echo "   Or reinstall: omarchy-looking-glass-install"
         echo ""
         notify_silent "Windows VM" "Looking Glass device not found" "critical"
         exit 1
