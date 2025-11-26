@@ -207,8 +207,7 @@ check_vm_configured() {
 configure_sudoers_windows_vm() {
   local sudoers_file="/etc/sudoers.d/omarchy-windows-vm"
 
-  # Skip if already configured
-  if [[ -f "$sudoers_file" ]]; then
+  if sudo test -f "$sudoers_file"; then
     return 0
   fi
 
@@ -2612,9 +2611,11 @@ check_passwordless_configuration() {
     issue_list="${issue_list}  ❌ SPICE directory not created by tmpfiles.d\n"
   fi
 
-  if [[ ! -f /etc/sudoers.d/omarchy-looking-glass ]]; then
-    issues_found=true
-    issue_list="${issue_list}  ❌ Missing: /etc/sudoers.d/omarchy-looking-glass\n"
+  if ! sudo -n test -f /etc/sudoers.d/omarchy-looking-glass 2>/dev/null; then
+    if ! sudo -n /usr/bin/mkdir -p /var/run/omarchy-windows 2>/dev/null; then
+      issues_found=true
+      issue_list="${issue_list}  ❌ Missing: /etc/sudoers.d/omarchy-looking-glass\n"
+    fi
   fi
 
   if [[ "$issues_found" == false ]]; then
