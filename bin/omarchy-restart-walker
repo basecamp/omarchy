@@ -12,11 +12,11 @@ if [[ $EUID -eq 0 ]]; then
   # Restart services as the script owner
   systemd-run --uid="$SCRIPT_OWNER" --setenv=XDG_RUNTIME_DIR="/run/user/$USER_UID" \
     bash -c "
-      setsid uwsm-app -- elephant &
-      setsid uwsm-app -- walker --gapplication-service &
+      systemctl --user restart elephant.service
+      setsid walker --gapplication-service &
     "
 else
-  setsid uwsm-app -- elephant &
-  wait 2
-  setsid uwsm-app -- walker --gapplication-service &
+  elephant service enable 2>/dev/null
+  systemctl --user restart elephant.service
+  setsid walker --gapplication-service &
 fi

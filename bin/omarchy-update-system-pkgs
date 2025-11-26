@@ -2,20 +2,14 @@
 
 set -e
 
-# Used in package emergencies if a bad package has been pushed and we can't revoke.
-# Requires manually installing the good package using sudo pacman -U <url>
-ignored_packages=$(omarchy-pkg-ignored)
-
 echo -e "\e[32m\nUpdate system packages\e[0m"
-[[ -n $ignored_packages ]] && echo "sudo pacman -Syu --noconfirm --ignore \"$ignored_packages\""
-sudo pacman -Syu --noconfirm --ignore "$ignored_packages"
+sudo pacman -Syu --noconfirm
 
 # Update AUR packages if any are installed
 if pacman -Qem >/dev/null; then
   if omarchy-pkg-aur-accessible; then
     echo -e "\e[32m\nUpdate AUR packages\e[0m"
-    [[ -n $ignored_packages ]] && echo "yay -Sua --noconfirm  --ignore \"$ignored_packages\""
-    yay -Sua --noconfirm --ignore "$ignored_packages"
+    yay -Sua --noconfirm
     echo
   else
     echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"

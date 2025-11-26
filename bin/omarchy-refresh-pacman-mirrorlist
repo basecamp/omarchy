@@ -1,3 +1,0 @@
-#!/bin/bash
-
-sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist /etc/pacman.d/mirrorlist

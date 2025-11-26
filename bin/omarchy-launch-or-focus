@@ -12,5 +12,5 @@ WINDOW_ADDRESS=$(hyprctl clients -j | jq -r --arg p "$WINDOW_PATTERN" '.[]|selec
 if [[ -n $WINDOW_ADDRESS ]]; then
   hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
 else
-  eval exec $LAUNCH_COMMAND
+  eval exec setsid $LAUNCH_COMMAND
 fi

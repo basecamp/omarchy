@@ -4,15 +4,13 @@
 1password-beta
 1password-cli
 aether
-alacritty
 asdcontrol
 avahi
 bash-completion
 bat
-blueberry
+bluetui
 brightnessctl
 btop
-cargo
 clang
 cups
 cups-browsed
@@ -23,6 +21,7 @@ docker-buildx
 docker-compose
 dust
 evince
+exfatprogs
 expac
 eza
 fastfetch
@@ -33,6 +32,7 @@ fd
 ffmpegthumbnailer
 fontconfig
 fzf
+ghostty
 github-cli
 gnome-calculator
 gnome-keyring
@@ -64,12 +64,12 @@ less
 libsecret
 libyaml
 libqalculate
-libreoffice
+libreoffice-fresh
 llvm
 localsend
 luarocks
 mako
-man
+man-db
 mariadb-libs
 mise
 mpv
@@ -99,6 +99,8 @@ python-poetry-core
 python-terminaltexteffects
 qt5-wayland
 ripgrep
+ruby
+rust
 satty
 sddm
 signal-desktop
@@ -111,6 +113,7 @@ swayosd
 system-config-printer
 tldr
 tree-sitter-cli
+tobi-try
 ttf-cascadia-mono-nerd
 ttf-ia-writer
 ttf-jetbrains-mono-nerd
@@ -119,6 +122,7 @@ tzupdate
 ufw
 ufw-docker
 unzip
+usage
 uwsm
 waybar
 wayfreeze

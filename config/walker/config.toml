@@ -2,6 +2,7 @@ force_keyboard_focus = true                                                 # fo
 selection_wrap = true                                                       # wrap list if at bottom or top
 theme = "omarchy-default"                                                   # theme to use
 additional_theme_location = "~/.local/share/omarchy/default/walker/themes/"
+hide_action_hints = true                                                    # globally hide the action hints
 
 [placeholders]
 "default" = { input = " Search...", list = "No Results" } # placeholders for input and empty list, key is the providers name, so f.e. "desktopapplications" or "menus:other"
@@ -10,9 +11,9 @@ additional_theme_location = "~/.local/share/omarchy/default/walker/themes/"
 quick_activate = []
 
 [providers]
+max_results = 256 # 256 should be enough for everyone
 default = [
   "desktopapplications",
-  "menus",
   "websearch",
 ] # providers to be queried by default
 

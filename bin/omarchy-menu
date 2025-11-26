@@ -33,11 +33,11 @@ menu() {
     fi
   fi
 
-  echo -e "$options" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 600 -p "$prompt…" "${args[@]}" 2>/dev/null
+  echo -e "$options" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 630 -p "$prompt…" "${args[@]}" 2>/dev/null
 }
 
 terminal() {
-  xdg-terminal-exec --app-id=com.omarchy.Omarchy "$@"
+  xdg-terminal-exec --app-id=org.omarchy.terminal "$@"
 }
 
 present_terminal() {
@@ -112,19 +112,19 @@ show_screenshot_menu() {
 }
 
 show_screenrecord_menu() {
-  case $(menu "Screenrecord" "  Region\n  Region + Audio\n  Display\n  Display + Audio\n  Display + Webcam") in
-  *"Region + Audio"*) omarchy-cmd-screenrecord region --with-audio ;;
-  *Region*) omarchy-cmd-screenrecord ;;
-  *"Display + Audio"*) omarchy-cmd-screenrecord output --with-audio ;;
-  *"Display + Webcam"*) omarchy-cmd-screenrecord output --with-audio --with-webcam ;;
-  *Display*) omarchy-cmd-screenrecord output ;;
+  omarchy-cmd-screenrecord --stop-recording && exit 0
+
+  case $(menu "Screenrecord" "  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam") in
+  *"With desktop audio") omarchy-cmd-screenrecord --with-desktop-audio ;;
+  *"With desktop + microphone audio") omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio ;;
+  *"With desktop + microphone audio + webcam") omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam ;;
   *) back_to show_capture_menu ;;
   esac
 }
 
 show_share_menu() {
   case $(menu "Share" "  Clipboard\n  File \n  Folder") in
-  *Clipboard*) terminal bash -c "omarchy-cmd-share clipboard" ;;
+  *Clipboard*) omarchy-cmd-share clipboard ;;
   *File*) terminal bash -c "omarchy-cmd-share file" ;;
   *Folder*) terminal bash -c "omarchy-cmd-share folder" ;;
   *) back_to show_trigger_menu ;;
@@ -154,12 +154,7 @@ show_style_menu() {
 }
 
 show_theme_menu() {
-  theme=$(menu "Theme" "$(omarchy-theme-list)" "" "$(omarchy-theme-current)")
-  if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
-    back_to show_style_menu
-  else
-    omarchy-theme-set "$theme"
-  fi
+  omarchy-launch-walker -m menus:omarchythemes --width 800 --minheight 400
 }
 
 show_font_menu() {
@@ -178,15 +173,9 @@ show_setup_menu() {
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
-  *Audio*) xdg-terminal-exec --app-id=com.omarchy.Wiremix -e wiremix ;;
-  *Wifi*)
-    rfkill unblock wifi
-    omarchy-launch-wifi
-    ;;
-  *Bluetooth*)
-    rfkill unblock bluetooth
-    blueberry
-    ;;
+  *Audio*) omarchy-launch-or-focus-tui wiremix ;;
+  *Wifi*) omarchy-launch-wifi ;;
+  *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
@@ -263,7 +252,7 @@ show_install_editor_menu() {
   case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Emacs") in
   *VSCode*) present_terminal omarchy-install-vscode ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
-  *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+  *Zed*) present_terminal "echo 'Installing Zed...'; sudo pacman -S zed && setsid gtk-launch dev.zed.Zed" ;;
   *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) install "Helix" "helix" ;;
   *Emacs*) install "Emacs" "emacs-wayland" && systemctl --user enable --now emacs.service ;;
@@ -301,10 +290,11 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft") in
+  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft\n󰖺  Xbox Controller [AUR]") in
   *Steam*) present_terminal omarchy-install-steam ;;
   *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
+  *Xbox*) present_terminal omarchy-install-xbox-controllers ;;
   *) show_install_menu ;;
   esac
 }
@@ -448,8 +438,8 @@ show_system_menu() {
   *Lock*) omarchy-lock-screen ;;
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
-  *Restart*) omarchy-state clear re*-required && systemctl reboot --no-wall ;;
-  *Shutdown*) omarchy-state clear re*-required && systemctl poweroff --no-wall ;;
+  *Restart*) omarchy-cmd-reboot ;;
+  *Shutdown*) omarchy-cmd-shutdown ;;
   *) back_to show_main_menu ;;
   esac
 }
