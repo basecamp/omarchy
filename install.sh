@@ -33,7 +33,9 @@ if command -v systemd-detect-virt &>/dev/null; then
   virt_type=$(systemd-detect-virt || echo "none")
 
   # Set universal virtualization flag for any VM
-  if [[ "$virt_type" != "none" ]]; then
+  # Exception: Asahi is always bare metal, even if systemd-detect-virt reports otherwise
+  # (Apple Silicon can trigger false positives due to hypervisor-like characteristics)
+  if [[ "$virt_type" != "none" ]] && [[ -z "$ASAHI_ALARM" ]]; then
     export OMARCHY_VIRTUALIZATION=true
   fi
 
@@ -44,7 +46,8 @@ if command -v systemd-detect-virt &>/dev/null; then
   fi
 
   # Enable software rendering for any VM except Parallels (which has good GPU virtualization)
-  if [[ "$virt_type" != "none" && "$virt_type" != "parallels" ]]; then
+  # Exception: Asahi is bare metal, don't enable software rendering
+  if [[ "$virt_type" != "none" && "$virt_type" != "parallels" ]] && [[ -z "$ASAHI_ALARM" ]]; then
     export OMARCHY_VM_SOFTWARE_RENDERING=true
   fi
 fi

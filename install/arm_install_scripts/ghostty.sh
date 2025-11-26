@@ -47,7 +47,8 @@ cat > ~/.local/share/omarchy/bin/ghostty << 'EOF'
 # Ghostty wrapper - Auto-detects VM and uses software rendering when needed
 
 # Check if running in a VM
-if command -v systemd-detect-virt &>/dev/null; then
+# Exception: Asahi is always bare metal (even if systemd-detect-virt reports otherwise)
+if command -v systemd-detect-virt &>/dev/null && ! uname -r | grep -qi "asahi"; then
   virt_type=$(systemd-detect-virt)
   if [[ "$virt_type" != "none" ]]; then
     # Running in a VM - enable software rendering
