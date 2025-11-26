@@ -584,7 +584,7 @@ show_system_menu() {
   *Lock*) omarchy-lock-screen ;;
   *Suspend*) systemctl suspend ;;
   *Hibernate*) systemctl hibernate ;;
-  *Relaunch*) omarchy-state clear re*-required && hyprctl dispatch exit ;;
+  *Relaunch*) omarchy-cmd-relaunch ;;
   *Logout*) omarchy-system-logout ;;
   *Restart*) omarchy-cmd-reboot ;;
   *Shutdown*) omarchy-cmd-shutdown ;;
