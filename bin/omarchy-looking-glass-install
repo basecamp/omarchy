@@ -395,12 +395,13 @@ create_sudoers_config
 msg_info "Installing desktop launcher..."
 mkdir -p "$HOME/.local/share/applications"
 
-cat >"$HOME/.local/share/applications/windows-looking-glass.desktop" <<'DESKEOF'
+cat >"$HOME/.local/share/applications/windows-looking-glass.desktop" <<DESKEOF
 [Desktop Entry]
 Name=Windows [Looking Glass]
 Comment=Connect to Windows VM via Looking Glass (ultra-low latency)
-Exec=omarchy-looking-glass-launch
-Terminal=true
+Exec=uwsm-app -- omarchy-windows-vm launch --lg
+Icon=$HOME/.local/share/applications/icons/windows.png
+Terminal=false
 Type=Application
 Categories=System;Virtualization;
 DESKEOF

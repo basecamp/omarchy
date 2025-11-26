@@ -352,7 +352,7 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/rm -f /var/run/omarchy-vm-gpu-mode
 unconfigure_sudoers_gpu_passthrough() {
   local sudoers_file="/etc/sudoers.d/omarchy-gpu-passthrough"
 
-  if [[ -f "$sudoers_file" ]]; then
+  if sudo test -f "$sudoers_file"; then
     sudo rm -f "$sudoers_file"
     msg_success "GPU passthrough sudoers removed"
   fi
