@@ -29,6 +29,7 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   *ghostty*)
     hyprctl dispatch exec -- \
       ghostty --class=org.omarchy.screensaver \
+      --config-file=~/.local/share/omarchy/default/ghostty/screensaver \
       --font-size=18 \
       -e omarchy-cmd-screensaver
     ;;
@@ -36,6 +37,7 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
     hyprctl dispatch exec -- \
       kitty --class=org.omarchy.screensaver \
       --override font_size=18 \
+      --override window_padding_width=0 \
       -e omarchy-cmd-screensaver
     ;;
   *)

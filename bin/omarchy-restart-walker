@@ -16,6 +16,7 @@ if [[ $EUID -eq 0 ]]; then
       setsid walker --gapplication-service &
     "
 else
+  elephant service enable 2>/dev/null
   systemctl --user restart elephant.service
   setsid walker --gapplication-service &
 fi
