@@ -34,6 +34,27 @@ notify_silent() {
   fi
 }
 
+run_with_spinner() {
+  local message="$1"
+  shift
+  local spinner=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+  local spin_idx=0
+
+  "$@" &
+  local pid=$!
+
+  while kill -0 $pid 2>/dev/null; do
+    printf "\r%s %s " "$message" "${spinner[$spin_idx]}"
+    spin_idx=$(( (spin_idx + 1) % ${#spinner[@]} ))
+    sleep 0.1
+  done
+
+  wait $pid
+  local exit_code=$?
+  printf "\r%s   \r" "$message"
+  return $exit_code
+}
+
 # Returns: 0=already in group, 1=added (relogin needed), 2=failed
 ensure_user_in_kvm_group() {
   if groups "$USER" | grep -q kvm; then
@@ -1617,9 +1638,8 @@ build_dockurr_windows_with_spice() {
     fi
   fi
 
-  # Build image (redirect output for cleaner UX)
   local DOCKER_BUILD_LOG="/tmp/docker-build-$(date +%Y%m%d-%H%M%S).log"
-  if ! docker build -t dockurr/windows:latest . >"$DOCKER_BUILD_LOG" 2>&1; then
+  if ! run_with_spinner "   Building Docker image..." bash -c 'docker build -t dockurr/windows:latest . >"$1" 2>&1' _ "$DOCKER_BUILD_LOG"; then
     msg_error "Docker build failed (log: $DOCKER_BUILD_LOG)"
     return 1
   fi
