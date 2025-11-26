@@ -37,7 +37,6 @@ makoctl reload
 omarchy-theme-set-gnome
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
-omarchy-theme-set-cursor
 omarchy-theme-set-obsidian
 
 # Call hook on theme set
