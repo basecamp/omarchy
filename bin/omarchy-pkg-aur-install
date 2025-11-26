@@ -14,7 +14,8 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-pkg_names=$(yay -Slqa | fzf "${fzf_args[@]}")
+# Usar curl directamente porque yay -Slqa tiene un bug que genera datos corruptos
+pkg_names=$(curl -s "https://aur.archlinux.org/packages.gz" | gunzip | fzf "${fzf_args[@]}")
 
 if [[ -n "$pkg_names" ]]; then
   # Convert newline-separated selections to space-separated for yay
