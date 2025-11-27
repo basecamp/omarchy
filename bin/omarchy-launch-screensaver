@@ -1,20 +1,7 @@
 #!/bin/bash
 
-if (($# > 1)); then
-  echo "Usage: omarchy-launch-screensaver [datetime_format]"
-  exit 1
-fi
-
 # Exit early if we don't have the tte show
 if ! command -v tte &>/dev/null; then
-  exit 1
-fi
-
-datetime_format=$(grep '^datetime=' ~/.config/omarchy/branding/screensaver.conf | cut -d '=' -f2)
-
-# Exit early if we want to display the time but don't have figlet installed
-if [[ -z "$datetime_format" ]] && ! command -v figlet &>/dev/null; then
-  echo "figlet is not installed. Install figlet to display time"
   exit 1
 fi
 
@@ -37,21 +24,21 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
     hyprctl dispatch exec -- \
       alacritty --class=org.omarchy.screensaver \
       --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
-      -e omarchy-cmd-screensaver "$datetime_format"
+      -e omarchy-cmd-screensaver
     ;;
   *ghostty*)
     hyprctl dispatch exec -- \
       ghostty --class=org.omarchy.screensaver \
       --config-file=~/.local/share/omarchy/default/ghostty/screensaver \
       --font-size=18 \
-      -e omarchy-cmd-screensaver "$datetime_format"
+      -e omarchy-cmd-screensaver
     ;;
   *kitty*)
     hyprctl dispatch exec -- \
       kitty --class=org.omarchy.screensaver \
       --override font_size=18 \
       --override window_padding_width=0 \
-      -e omarchy-cmd-screensaver "$datetime_format"
+      -e omarchy-cmd-screensaver
     ;;
   *)
     notify-send "✋  Screensaver only runs in Alacritty, Ghostty, or Kitty"

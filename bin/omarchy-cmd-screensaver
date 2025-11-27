@@ -17,11 +17,24 @@ printf '\033]11;rgb:00/00/00\007' # Set background color to black
 
 hyprctl keyword cursor:invisible true &>/dev/null
 
+config_file=~/.config/omarchy/branding/screensaver.conf
+
+datetime_format=$(grep '^datetime=' "$config_file" | cut -d '=' -f2- | tr -d '"')
+font=$(grep '^font=' "$config_file" | cut -d '=' -f2- | tr -d '"')
+
+figcmd=(figlet)
+
+# Only add the -f argument if font is set
+[[ -f "$font" ]] || font="" # Check if font file exists
+if [[ -n "$font" ]]; then
+  figcmd+=(-f "$font")
+fi
+
 while true; do
   effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | grep -Ev '^(dev_worm)$' | sort -u | shuf -n1)
 
-  if [ "$#" -eq 1 ] && command -v figlet &>/dev/null; then
-    date "$1" | figlet | tte \
+  if [[ -n "$datetime_format" ]] && command -v figlet &>/dev/null; then
+    date "$datetime_format" | "${figcmd[@]}" | tte \
       --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas --anchor-canvas c --anchor-text c --no-eol --no-restore-cursor $effect &
   else
     tte -i ~/.config/omarchy/branding/screensaver.txt \
