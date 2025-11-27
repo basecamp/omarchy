@@ -1,5 +1,14 @@
 #!/bin/bash
 
+if (($# > 1)); then
+  echo "Usage: omarchy-launch-screensaver [datetime_format]"
+  exit 1
+fi
+
+if [ "$#" -eq 1 ]; then
+  datetime_format="$1"
+fi
+
 # Exit early if we don't have the tte show
 if ! command -v tte &>/dev/null; then
   exit 1
