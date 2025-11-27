@@ -5,17 +5,15 @@ if (($# > 1)); then
   exit 1
 fi
 
-if [ "$#" -eq 1 ]; then
-  datetime_format="$1"
-fi
-
 # Exit early if we don't have the tte show
 if ! command -v tte &>/dev/null; then
   exit 1
 fi
 
+datetime_format=$(grep '^datetime=' ~/.config/omarchy/branding/screensaver.conf | cut -d '=' -f2)
+
 # Exit early if we want to display the time but don't have figlet installed
-if [ "$#" -eq 1 ] && ! command -v figlet &>/dev/null; then
+if [[ -z "$datetime_format" ]] && ! command -v figlet &>/dev/null; then
   echo "figlet is not installed. Install figlet to display time"
   exit 1
 fi
