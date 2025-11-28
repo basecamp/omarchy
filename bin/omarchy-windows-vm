@@ -876,6 +876,9 @@ create_docker_compose_config() {
   elif grep -qi 'GenuineIntel' /proc/cpuinfo 2>/dev/null; then
     # Intel CPU detected
     CPU_FLAGS="-cpu host,kvm=on"
+    # Intel with ivshmem (Looking Glass) needs phys-bits limit to avoid VFIO DMA
+    # mapping failures. Use 39 bits per QEMU maintainer recommendation for Intel CPUs.
+    [[ "$LG_ENABLED" == true ]] && CPU_FLAGS="${CPU_FLAGS},host-phys-bits-limit=39"
     [[ -n "$CPU_FAMILY" ]] && CPU_FLAGS="${CPU_FLAGS},family=${CPU_FAMILY}"
     [[ -n "$CPU_MODEL" ]] && CPU_FLAGS="${CPU_FLAGS},model=${CPU_MODEL}"
     [[ -n "$CPU_STEPPING" ]] && CPU_FLAGS="${CPU_FLAGS},stepping=${CPU_STEPPING}"
