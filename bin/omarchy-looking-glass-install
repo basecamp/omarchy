@@ -279,18 +279,19 @@ fi
 
 if [[ -z "$IVSHMEM_SIZE" ]] || { [[ "${FORCE_RECONFIGURE:-0}" == "1" ]] && [[ -z "$IVSHMEM_SIZE_FROM_ENV" ]]; }; then
   echo ""
-  echo "Select target display resolution for Looking Glass:"
+  echo "Select Looking Glass shared memory size:"
   echo ""
-  echo "  Resolution     Minimum   Recommended (2x safety margin)"
-  echo "  1920×1080      32 MB     64 MB  ← safe for 1080p/1200p"
-  echo "  2560×1440      64 MB     128 MB ← safe for 1440p"
-  echo "  3840×2160      128 MB    256 MB ← safe for 4K"
+  echo "  Resolution     Minimum   Recommended"
+  echo "  1920×1080      32 MB     64 MB"
+  echo "  2560×1440      64 MB     128 MB"
+  echo "  3840×2160      128 MB    256 MB"
   echo ""
-  echo "  Note: Extra margin prevents truncated display if resolution changes"
+  echo "  Higher refresh rate (144Hz+) needs more memory."
   echo ""
 
-  RESOLUTION_CHOICE=$(gum choose --selected="1440p (128MB)" \
-    "1080p (64MB)" \
+  RESOLUTION_CHOICE=$(gum choose --selected="1080p (64MB) - recommended" \
+    "1080p (32MB) - minimal, low RAM" \
+    "1080p (64MB) - recommended" \
     "1440p (128MB)" \
     "4K (256MB)")
 
@@ -301,15 +302,19 @@ if [[ -z "$IVSHMEM_SIZE" ]] || { [[ "${FORCE_RECONFIGURE:-0}" == "1" ]] && [[ -z
   fi
 
   case "$RESOLUTION_CHOICE" in
-  *1080p*)
+  *32MB*)
+    IVSHMEM_SIZE=32
+    RES_DISPLAY="1080p (minimal)"
+    ;;
+  *64MB*)
     IVSHMEM_SIZE=64
     RES_DISPLAY="1080p"
     ;;
-  *1440p*)
+  *128MB*)
     IVSHMEM_SIZE=128
     RES_DISPLAY="1440p"
     ;;
-  *4K*)
+  *256MB*)
     IVSHMEM_SIZE=256
     RES_DISPLAY="4K"
     ;;
