@@ -273,9 +273,9 @@ install_looking_glass_client() {
   if is_looking_glass_ready; then
     msg_success "Looking Glass already installed"
     if [[ -f /etc/modprobe.d/kvmfr.conf ]]; then
-      IVSHMEM_SIZE=$(grep -oP 'static_size_mb=\K\d+' /etc/modprobe.d/kvmfr.conf 2>/dev/null || echo "128")
+      IVSHMEM_SIZE=$(grep -oP 'static_size_mb=\K\d+' /etc/modprobe.d/kvmfr.conf 2>/dev/null || echo "64")
     else
-      IVSHMEM_SIZE=128
+      IVSHMEM_SIZE=64
     fi
     export IVSHMEM_SIZE
     return 0
@@ -294,9 +294,9 @@ install_looking_glass_client() {
   # FORCE_RECONFIGURE=1 allows user to change resolution on each install
   if FORCE_RECONFIGURE=1 omarchy-looking-glass-install; then
     if [[ -f /etc/modprobe.d/kvmfr.conf ]]; then
-      IVSHMEM_SIZE=$(grep -oP 'static_size_mb=\K\d+' /etc/modprobe.d/kvmfr.conf 2>/dev/null || echo "128")
+      IVSHMEM_SIZE=$(grep -oP 'static_size_mb=\K\d+' /etc/modprobe.d/kvmfr.conf 2>/dev/null || echo "64")
     else
-      IVSHMEM_SIZE=128
+      IVSHMEM_SIZE=64
     fi
     export IVSHMEM_SIZE
 
@@ -842,7 +842,7 @@ create_docker_compose_config() {
   local USERNAME="$5"
   local PASSWORD="$6"
   local LG_ENABLED="$7"
-  local IVSHMEM_SIZE="${8:-128}"
+  local IVSHMEM_SIZE="${8:-64}"
   local GPU_PASSTHROUGH_ENABLED="${9:-false}"
   local GPU_PCI_ADDR="${10:-}"
   local GPU_IOMMU_GROUP="${11:-}"
@@ -2130,9 +2130,19 @@ install_windows() {
           LG_NEEDS_INSTALL=true
 
           echo ""
-          echo "Select display resolution:"
-          RESOLUTION_CHOICE=$(gum choose --selected="1440p (128MB)" \
-            "1080p (64MB)" \
+          echo "Select Looking Glass shared memory size:"
+          echo ""
+          echo "  Resolution     Minimum   Recommended"
+          echo "  1920×1080      32 MB     64 MB"
+          echo "  2560×1440      64 MB     128 MB"
+          echo "  3840×2160      128 MB    256 MB"
+          echo ""
+          echo "  Higher refresh rate (144Hz+) needs more memory."
+          echo "  If VM fails to start, try smaller size."
+          echo ""
+          RESOLUTION_CHOICE=$(gum choose --selected="1080p (64MB) - recommended" \
+            "1080p (32MB) - minimal, low RAM" \
+            "1080p (64MB) - recommended" \
             "1440p (128MB)" \
             "4K (256MB)")
 
@@ -2143,9 +2153,11 @@ install_windows() {
           fi
 
           case "$RESOLUTION_CHOICE" in
-          *1080p*) IVSHMEM_SIZE=64 ;;
-          *1440p*) IVSHMEM_SIZE=128 ;;
-          *4K*) IVSHMEM_SIZE=256 ;;
+          *32MB*) IVSHMEM_SIZE=32 ;;
+          *64MB*) IVSHMEM_SIZE=64 ;;
+          *128MB*) IVSHMEM_SIZE=128 ;;
+          *256MB*) IVSHMEM_SIZE=256 ;;
+          *) IVSHMEM_SIZE=64 ;;
           esac
           export IVSHMEM_SIZE
         else
@@ -2366,7 +2378,7 @@ install_windows() {
     fi
   fi
 
-  IVSHMEM_SIZE=${IVSHMEM_SIZE:-128}
+  IVSHMEM_SIZE=${IVSHMEM_SIZE:-64}
 
   # Detect GPU passthrough configuration
   GPU_PASSTHROUGH_ENABLED=false
@@ -3102,8 +3114,8 @@ show_compose() {
     GPU_IOMMU_GROUP=$(grep -oP '/dev/vfio/\K[0-9]+' "$COMPOSE_FILE" | head -1)
   fi
 
-  # Detect IVSHMEM size (default 128)
-  local IVSHMEM_SIZE=128
+  # Detect IVSHMEM size (default 64)
+  local IVSHMEM_SIZE=64
   if grep -q 'size=' "$COMPOSE_FILE"; then
     IVSHMEM_SIZE=$(grep -oP 'size=\K[0-9]+' "$COMPOSE_FILE" | head -1)
   fi
