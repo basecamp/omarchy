@@ -18,8 +18,5 @@ fi
 
 echo
 
-# Reset all package DBs
-sudo pacman -Syy --noconfirm
-
-# Update all packages from latest DB
-sudo pacman -Syu --noconfirm
+# Reset all package DBs and then update
+sudo pacman -Syyu --noconfirm
