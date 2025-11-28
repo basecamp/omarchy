@@ -366,6 +366,19 @@ cmd_diagnose() {
     echo "$bootloader"
     echo ""
 
+    echo "[Motherboard]"
+    if [[ "$has_sudo" == "true" ]] && command -v dmidecode &>/dev/null; then
+      local mobo_vendor=$(sudo dmidecode -t baseboard 2>/dev/null | grep "Manufacturer:" | cut -d: -f2 | xargs)
+      local mobo_model=$(sudo dmidecode -t baseboard 2>/dev/null | grep "Product Name:" | cut -d: -f2 | xargs)
+      local bios_version=$(sudo dmidecode -t bios 2>/dev/null | grep "Version:" | cut -d: -f2 | xargs)
+      echo "Vendor: ${mobo_vendor:-Unknown}"
+      echo "Model: ${mobo_model:-Unknown}"
+      [[ -n "$bios_version" ]] && echo "BIOS: $bios_version"
+    else
+      echo "dmidecode not available or no sudo"
+    fi
+    echo ""
+
     echo "[Display Session]"
     echo "Session Type: ${XDG_SESSION_TYPE:-not set}"
     echo "Wayland Display: ${WAYLAND_DISPLAY:-not set}"
