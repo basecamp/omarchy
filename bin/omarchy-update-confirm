@@ -4,7 +4,8 @@ gum style --border normal --border-foreground 6 --padding "1 2" \
   "Ready to update Omarchy?" \
   "" \
   "• You cannot stop the update once you start!" \
-  "• Make sure you're connected to power or have a full battery"
+  "• Make sure you're connected to power or have a full battery" \
+  "• Changes: https://github.com/basecamp/omarchy/releases"
 
 if ! gum confirm "Continue with update?"; then
   echo "Update cancelled"
