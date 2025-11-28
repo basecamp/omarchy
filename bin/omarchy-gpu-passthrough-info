@@ -1084,6 +1084,8 @@ cmd_hardware_report() {
       echo "  [$((i + 1))] $name - IOMMU Group $iommu_group ($device_count devices)"
 
       if [[ -d "$iommu_group_path" ]] && [[ "$type" == "dedicated" ]]; then
+        local has_usb_controller=false
+        local usb_has_driver=false
         for dev_path in "$iommu_group_path"/*; do
           if [[ -d "$dev_path" ]]; then
             local dev_addr=$(basename "$dev_path")
@@ -1091,8 +1093,19 @@ cmd_hardware_report() {
             local dev_class=$(lspci -s "$dev_addr_short" 2>/dev/null | cut -d: -f3- | xargs)
             [[ -z "$dev_class" ]] && dev_class="Unknown device"
             echo "      $dev_addr_short: $dev_class"
+            if echo "$dev_class" | grep -qi "usb"; then
+              has_usb_controller=true
+              local usb_driver=$(lspci -ks "$dev_addr_short" 2>/dev/null | grep "Kernel driver" | awk '{print $NF}')
+              [[ -n "$usb_driver" && "$usb_driver" != "vfio-pci" ]] && usb_has_driver=true
+            fi
           fi
         done
+        if [[ "$has_usb_controller" == true ]]; then
+          echo "      ⚠ USB controller in IOMMU group (GPU has USB-C port)"
+          if [[ "$usb_has_driver" == true ]]; then
+            echo "      ⚠ Unplug USB devices from GPU's USB-C before VM start"
+          fi
+        fi
       fi
     else
       echo "  [$((i + 1))] $name - IOMMU Group: Not found"
