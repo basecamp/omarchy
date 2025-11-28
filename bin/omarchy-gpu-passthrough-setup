@@ -115,7 +115,13 @@ configure_kernel_parameters() {
   esac
 
   if [[ ! -f "$LIMINE_DEFAULT" ]]; then
-    msg_error "Limine config not found: $LIMINE_DEFAULT"
+    msg_error "Limine bootloader not found"
+    echo ""
+    echo "   Currently only Limine is supported."
+    echo "   GRUB/systemd-boot support may be added in future versions."
+    echo ""
+    echo "   For manual GRUB setup, add to kernel cmdline:"
+    echo "     ${iommu_param} iommu=pt"
     return 1
   fi
 

@@ -1817,7 +1817,14 @@ install_windows() {
   # Install dependencies quietly
   msg_info "Installing dependencies..."
   DEPS_LOG="/tmp/omarchy-windows-deps-$$.log"
-  if ! omarchy-pkg-add freerdp openbsd-netcat dmidecode > "$DEPS_LOG" 2>&1; then
+
+  # Build dependency list (skip netcat if nc already available - avoids gnu-netcat conflict)
+  local deps="freerdp dmidecode"
+  if ! command -v nc &>/dev/null; then
+    deps="$deps openbsd-netcat"
+  fi
+
+  if ! omarchy-pkg-add $deps > "$DEPS_LOG" 2>&1; then
     msg_error "Failed to install dependencies"
     echo ""
     tail -15 "$DEPS_LOG"
