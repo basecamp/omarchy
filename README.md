@@ -10,6 +10,25 @@ Install: wget -qO- https://u11g.com/install | bash
 
 TODOs: Install eza
 
+Graphics Intel: https://fostips.com/hardware-acceleration-video-fedora/?amp=1
+Start Zoom:
+
+```
+[Desktop Entry]
+Name=Zoom Workplace
+Comment=Zoom Video Conference
+Exec=env QT_QPA_PLATFORM=xcb /usr/bin/zoom %U
+Icon=Zoom
+Terminal=false
+Type=Application
+Encoding=UTF-8
+Categories=Network;Application;
+StartupWMClass=zoom
+MimeType=x-scheme-handler/zoommtg;x-scheme-handler/zoomus;x-scheme-handler/tel;x-scheme-handler/callto;x-scheme-handler/zoomphonecall;x-scheme-handler/zoomphonesms;x-sche>
+X-KDE-Protocols=zoommtg;zoomus;tel;callto;zoomphonecall;zoomphonesms;zoomcontactcentercall;
+Name[en_US]=Zoom Workplace
+```
+
 ## License
 
 Omarchy is released under the [MIT License](https://opensource.org/licenses/MIT).
