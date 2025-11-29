@@ -533,6 +533,27 @@ get_gpu_memory() {
   echo "Unknown"
 }
 
+
+# Returns comma-separated vendor:device IDs for USB controllers (e.g., "10de:1ada,10de:1adb")
+get_usb_controller_ids_in_iommu_group() {
+  local gpu_pci="$1"
+  local usb_ids=""
+
+  local iommu_devices=$(get_iommu_group_devices "$gpu_pci")
+  for dev_pci in $iommu_devices; do
+    local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+    # USB controller class: 0c03
+    if [[ "$dev_class" == "0c03" ]]; then
+      local dev_ids=$(lspci -nn -s "$dev_pci" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
+      if [[ -n "$dev_ids" ]]; then
+        [[ -n "$usb_ids" ]] && usb_ids="$usb_ids,"
+        usb_ids="$usb_ids$dev_ids"
+      fi
+    fi
+  done
+
+  echo "$usb_ids"
+}
 load_gpu_config() {
   local config_file="/etc/omarchy-gpu-passthrough.conf"
 

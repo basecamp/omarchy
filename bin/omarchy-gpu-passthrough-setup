@@ -167,9 +167,21 @@ configure_omarchy_limine() {
 }
 
 configure_vfio_modules() {
+  local gpu_pci="$1"
+
+  local usb_ids=$(get_usb_controller_ids_in_iommu_group "$gpu_pci")
+  local ids_line=""
+
+  if [[ -n "$usb_ids" ]]; then
+    ids_line="options vfio-pci ids=$usb_ids"
+    log_info "USB controllers in IOMMU group need early binding: $usb_ids"
+    msg_info "USB controller detected in IOMMU group - enabling early binding"
+  fi
+
   sudo tee "$VFIO_CONF" >/dev/null <<EOF
 # VFIO GPU Passthrough - Generated $(date +%Y-%m-%d)
-options vfio-pci disable_vga=1
+${ids_line:+$ids_line
+}options vfio-pci disable_vga=1
 options vfio-pci disable_idle_d3=1
 EOF
 
@@ -1088,7 +1100,7 @@ cmd_setup() {
 
   save_gpu_config "$idx"
   configure_kernel_parameters
-  configure_vfio_modules
+  configure_vfio_modules "$pci"
   configure_pci_binding_permissions
   configure_gpu_state_tmpfiles
   configure_gpu_blacklist "$vendor_id"

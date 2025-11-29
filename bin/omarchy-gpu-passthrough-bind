@@ -351,6 +351,13 @@ cmd_bind() {
       continue
     fi
 
+    # Skip PCI bridges (class 0604) - defense in depth
+    local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+    if [[ "$dev_class" == "0604" ]]; then
+      log_info "Skipping PCI bridge $dev_pci (class 0604)"
+      continue
+    fi
+
     if [[ -f "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" ]]; then
       echo "0000:$dev_pci" | tee "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" >/dev/null 2>&1 || true
     fi
@@ -368,6 +375,26 @@ cmd_bind() {
     log_info "Bound $dev_pci to vfio-pci"
   done
   log_success "All IOMMU group devices bound to vfio-pci"
+
+  # Verify all devices are actually bound (USB controllers may be rebound by xhci_hcd)
+  local bind_issues=0
+  for dev_pci in $iommu_devices; do
+    local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+    [[ "$dev_class" == "0604" ]] && continue  # Skip bridges
+
+    local dev_driver=$(lspci -nnk -s "$dev_pci" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')
+    if [[ "$dev_driver" != "vfio-pci" ]]; then
+      log_warn "Device $dev_pci not bound to vfio-pci (driver: ${dev_driver:-none})"
+      if [[ "$dev_class" == "0c03" ]]; then
+        bind_issues=1
+        msg_warning "USB controller $dev_pci rebound to ${dev_driver:-none}"
+      fi
+    fi
+  done
+
+  if [[ "$bind_issues" -eq 1 ]]; then
+    msg_info "Fix: Re-run 'omarchy-gpu-passthrough setup' then reboot"
+  fi
 
   show_spinner 1 "Verifying GPU binding..."
   current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
@@ -538,6 +565,17 @@ cmd_unbind() {
     done
 
     log_success "All IOMMU group devices unbound from vfio-pci"
+
+    # Rebind USB controllers to xhci_hcd (they were claimed by vfio-pci via ids= at boot)
+    for dev_pci in $iommu_devices; do
+      local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+      if [[ "$dev_class" == "0c03" ]]; then
+        if [[ -d "/sys/bus/pci/drivers/xhci_hcd" ]]; then
+          log_info "Rebinding USB controller $dev_pci to xhci_hcd..."
+          echo "0000:$dev_pci" | tee /sys/bus/pci/drivers/xhci_hcd/bind >/dev/null 2>&1 || true
+        fi
+      fi
+    done
   else
     # GPU not bound to vfio-pci (e.g., driver is "none")
     msg_info "GPU driver: ${current_driver:-none} (binding to $GPU_DRIVER_ORIGINAL)..."
