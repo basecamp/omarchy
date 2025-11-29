@@ -1880,9 +1880,10 @@ install_windows() {
       RAM_OPTIONS="$RAM_OPTIONS ${size}G"
     fi
   done
+  RAM_OPTIONS="$RAM_OPTIONS Custom"
 
-  # Use previous RAM if available, otherwise calculate intelligent default (half of total, choose smaller)
-  if [[ -n "$PREVIOUS_RAM" ]]; then
+  # Use previous RAM if available AND in options list, otherwise calculate intelligent default
+  if [[ -n "$PREVIOUS_RAM" ]] && echo "$RAM_OPTIONS" | grep -q "$PREVIOUS_RAM"; then
     DEFAULT_RAM="$PREVIOUS_RAM"
   else
     # Calculate half of total RAM, find largest value from options that is smaller than half
@@ -1901,6 +1902,25 @@ install_windows() {
   if [[ -z "$SELECTED_RAM" ]]; then
     echo "Installation cancelled by user"
     exit 1
+  fi
+
+  # Handle Custom RAM option
+  if [[ "$SELECTED_RAM" == "Custom" ]]; then
+    local MAX_RAM_GB=$((TOTAL_RAM_GB - 4))
+    [[ "$MAX_RAM_GB" -lt 2 ]] && MAX_RAM_GB=2
+    while true; do
+      CUSTOM_RAM=$(gum input --placeholder "Enter RAM in GB (2-${MAX_RAM_GB})" --header="Custom RAM size")
+      if [[ -z "$CUSTOM_RAM" ]]; then
+        echo "Installation cancelled by user"
+        exit 1
+      fi
+      if [[ "$CUSTOM_RAM" =~ ^[0-9]+$ ]] && [[ "$CUSTOM_RAM" -ge 2 ]] && [[ "$CUSTOM_RAM" -le "$MAX_RAM_GB" ]]; then
+        SELECTED_RAM="${CUSTOM_RAM}G"
+        break
+      else
+        msg_warning "RAM must be between 2 and ${MAX_RAM_GB} GB"
+      fi
+    done
   fi
 
   msg_success "RAM: $SELECTED_RAM"
@@ -1940,11 +1960,12 @@ install_windows() {
   fi
 
   DISK_OPTIONS=""
-  for size in 32 64 128 256 512 1024; do
+  for size in 32 64 128 256 512 1024 2048 4096 8192; do
     if [[ "$size" -le "$MAX_DISK_GB" ]]; then
       DISK_OPTIONS="$DISK_OPTIONS ${size}G"
     fi
   done
+  DISK_OPTIONS="$DISK_OPTIONS Custom"
 
   # Use previous disk if available, otherwise calculate intelligent default (half of max, choose smaller, cap at 256GB)
   if [[ -n "$PREVIOUS_DISK" ]] && echo "$DISK_OPTIONS" | grep -q "$PREVIOUS_DISK"; then
@@ -1967,6 +1988,23 @@ install_windows() {
   if [[ -z "$SELECTED_DISK" ]]; then
     echo "Installation cancelled by user"
     exit 1
+  fi
+
+  # Handle Custom disk option
+  if [[ "$SELECTED_DISK" == "Custom" ]]; then
+    while true; do
+      CUSTOM_DISK=$(gum input --placeholder "Enter size in GB (32-${MAX_DISK_GB})" --header="Custom disk size")
+      if [[ -z "$CUSTOM_DISK" ]]; then
+        echo "Installation cancelled by user"
+        exit 1
+      fi
+      if [[ "$CUSTOM_DISK" =~ ^[0-9]+$ ]] && [[ "$CUSTOM_DISK" -ge 32 ]] && [[ "$CUSTOM_DISK" -le "$MAX_DISK_GB" ]]; then
+        SELECTED_DISK="${CUSTOM_DISK}G"
+        break
+      else
+        msg_warning "Disk size must be between 32 and ${MAX_DISK_GB} GB"
+      fi
+    done
   fi
 
   msg_success "Disk: $SELECTED_DISK"
