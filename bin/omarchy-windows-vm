@@ -1200,7 +1200,8 @@ show_installation_summary() {
 
   if [[ "$LG_ENABLED" == true ]]; then
     msg_section "Looking Glass Setup"
-    echo "  1. Ensure display is connected to GPU (monitor, dummy plug, or 2nd cable)"
+    echo "  1. Ensure display is connected to GPU (monitor, 2nd cable, or dummy plug)"
+    echo "     Note: dummy plugs limit Windows refresh rate"
     echo ""
     echo "  2. Wait for Windows to install GPU drivers (few minutes)"
     echo "     Looking Glass will auto-switch to GPU output when ready"
@@ -2138,7 +2139,10 @@ install_windows() {
       LG_ENABLED=true
     else
       msg_warning "Looking Glass requires a display connected to GPU"
-      echo "  Options: second monitor, same monitor with 2 cables, or dummy plug (~\$5)"
+      echo "  Options:"
+      echo "    • Second monitor on GPU"
+      echo "    • Same monitor with 2 cables"
+      echo "    • HDMI dummy plug (~\$5)"
       echo "  Without GPU display, only slow RDP will work"
 
       if gum confirm "Do you have a display connected to GPU?"; then
@@ -2156,6 +2160,8 @@ install_windows() {
           echo ""
           echo "  Higher refresh rate (144Hz+) needs more memory."
           echo "  If VM fails to start, try smaller size."
+          echo ""
+          echo "  Note: IVSHMEM size controls memory, not resolution."
           echo ""
           RESOLUTION_CHOICE=$(gum choose --selected="1080p (64MB) - recommended" \
             "1080p (32MB) - minimal, low RAM" \
