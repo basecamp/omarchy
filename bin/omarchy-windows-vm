@@ -1199,19 +1199,25 @@ show_installation_summary() {
   notify_silent "Windows VM" "Installation complete! (${MINUTES}m ${SECONDS}s)" "normal"
 
   if [[ "$LG_ENABLED" == true ]]; then
-    echo "  Looking Glass Configuration (complete setup in Windows):"
+    msg_section "Looking Glass Setup"
+    echo "  1. Ensure display is connected to GPU (monitor, dummy plug, or 2nd cable)"
     echo ""
-    echo "   1. Device Manager → Display adapters"
-    echo "      → Right-click 'Red Hat VirtIO GPU DOD controller' → Disable"
+    echo "  2. Wait for Windows to install GPU drivers (few minutes)"
+    echo "     Looking Glass will auto-switch to GPU output when ready"
     echo ""
-    echo "   2. Display Settings"
-    echo "      → Set primary display to GPU-connected monitor"
-    echo "      → Set correct Display resolution"
-    echo "      → May require reconnection if settings not immediately available"
+    echo "  3. Device Manager → Disable 'Red Hat VirtIO GPU DOD controller'"
+    echo "     This removes virtual display so LG shows everything"
     echo ""
-    echo "   3. If you experience issues:"
-    echo "      → Restart VM for optimal GPU initialization"
-    echo "      → Command: omarchy-windows-vm stop && omarchy-windows-vm launch --lg"
+    echo "  4. Display Settings:"
+    echo "     → Set GPU display as primary"
+    echo "     → Set correct resolution"
+    echo "     → May require reconnection if settings not immediately available"
+    echo ""
+    echo "  5. If Looking Glass goes black during setup:"
+    echo "     Closing LG won't help - you need to restart the VM:"
+    echo "     → omarchy-windows-vm stop"
+    echo "     → omarchy-windows-vm launch --lg --keep-alive"
+    echo "     This is normal after driver install or VirtIO disable"
     echo ""
   fi
 
@@ -2131,10 +2137,11 @@ install_windows() {
       msg_success "Looking Glass ready"
       LG_ENABLED=true
     else
-      msg_warning "Looking Glass requires monitor/dummy plug on GPU"
-      echo "  Without display: Windows disables GPU, Looking Glass won't work"
+      msg_warning "Looking Glass requires a display connected to GPU"
+      echo "  Options: second monitor, same monitor with 2 cables, or dummy plug (~\$5)"
+      echo "  Without GPU display, only slow RDP will work"
 
-      if gum confirm "Do you have a monitor or dummy plug connected?"; then
+      if gum confirm "Do you have a display connected to GPU?"; then
         if gum confirm "Enable Looking Glass?"; then
           LG_ENABLED=true
           LG_NEEDS_INSTALL=true
@@ -2207,6 +2214,12 @@ install_windows() {
     echo ""
     msg_warning "GPU setup requires reboot - other steps will run after"
   fi
+
+  if [[ "$LG_ENABLED" == true ]]; then
+    echo ""
+    msg_info "Reminder: Looking Glass needs display connected to GPU"
+  fi
+
   echo ""
   echo "Estimated time: 10-30 minutes"
 

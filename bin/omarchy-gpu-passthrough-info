@@ -323,8 +323,10 @@ cmd_diagnose() {
   check_dependencies
 
   local has_sudo=false
-  if sudo -v 2>/dev/null; then
+  if sudo -v; then
     has_sudo=true
+  else
+    msg_warning "Some data incomplete (no sudo)"
   fi
 
   msg_info "Collecting system information..."
@@ -884,8 +886,10 @@ cmd_hardware_report() {
   check_dependencies
 
   local has_sudo=false
-  if sudo -v 2>/dev/null; then
+  if sudo -v; then
     has_sudo=true
+  else
+    msg_warning "Some data incomplete (no sudo)"
   fi
 
   detect_gpus
