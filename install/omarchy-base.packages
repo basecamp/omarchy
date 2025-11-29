@@ -32,6 +32,7 @@ fd
 ffmpegthumbnailer
 fontconfig
 fzf
+gazelle-tui
 ghostty
 github-cli
 gnome-calculator
@@ -50,7 +51,6 @@ hyprlock
 hyprpicker
 hyprsunset
 imagemagick
-impala
 imv
 inetutils
 inxi
@@ -74,6 +74,7 @@ mariadb-libs
 mise
 mpv
 nautilus
+networkmanager
 gnome-disk-utility
 noto-fonts
 noto-fonts-cjk
