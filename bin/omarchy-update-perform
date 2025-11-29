@@ -1,11 +1,57 @@
 #!/bin/bash
 
-set -e
+set -e -o pipefail
 
+# === Signal Handling & State Management ===
+UPDATE_STATUS=0
+
+# Perform cleanup and validation on any exit (error or signal)
+cleanup() {
+  exit_code=$?
+  
+  # Only run recovery logic if we failed during or after pacman update
+  if [[ $exit_code -ne 0 ]] && [[ $UPDATE_STATUS -eq 1 ]]; then
+    echo ""
+    echo -e "\033[0;31m=== UPDATE INTERRUPTED OR FAILED ===" >&2
+    echo "System state may be inconsistent. Validating boot files..." >&2
+    
+    # Validate unified kernel image presence
+    if ! [[ -f /boot/EFI/Linux/omarchy_linux.efi ]]; then
+      echo "CRITICAL: Unified kernel image is missing!" >&2
+      echo "System may not boot. Rolling back to snapshot..." >&2
+      omarchy-snapshot restore || true
+      echo -e "Reboot required. If system won't boot, use USB rescue disk.\033[0m" >&2
+      exit 1
+    fi
+    
+    echo "Boot files are present. System should boot." >&2
+    echo -e "Please verify system state after reboot.\033[0m" >&2
+  fi
+  
+  exit $exit_code
+}
+
+trap cleanup EXIT
+
+# === Validate Boot Files Post-Update ===
+validate_kernel_post_update() {
+  if ! [[ -f /boot/EFI/Linux/omarchy_linux.efi ]]; then
+    echo -e "\033[0;31m" >&2
+    echo "ERROR: Unified kernel image missing after update!" >&2
+    echo "System will not boot. Rolling back..." >&2
+    echo -e "\033[0m" >&2
+    omarchy-snapshot restore || true
+    exit 1
+  fi
+}
+
+# === Execute Update ===
 omarchy-update-time
 omarchy-update-keyring
 omarchy-update-available-reset
+UPDATE_STATUS=1  # Mark that we're about to do risky pacman operations
 omarchy-update-system-pkgs
+validate_kernel_post_update
 omarchy-migrate
 omarchy-hook post-update
 omarchy-update-restart
