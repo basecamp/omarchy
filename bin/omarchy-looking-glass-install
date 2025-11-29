@@ -278,6 +278,14 @@ if [[ -n "$IVSHMEM_SIZE_FROM_ENV" ]]; then
 fi
 
 if [[ -z "$IVSHMEM_SIZE" ]] || { [[ "${FORCE_RECONFIGURE:-0}" == "1" ]] && [[ -z "$IVSHMEM_SIZE_FROM_ENV" ]]; }; then
+  # Check available RAM before selection
+  available_ram_mb=$(free -m | awk '/^Mem:/{print $7}')
+  if [[ "$available_ram_mb" -lt 512 ]]; then
+    echo ""
+    msg_warning "Low available RAM: ${available_ram_mb}MB"
+    echo "  IVSHMEM uses system RAM. Consider smaller size (32MB) or close applications."
+  fi
+
   echo ""
   echo "Select Looking Glass shared memory size:"
   echo ""
@@ -457,6 +465,12 @@ else
       echo "   Try rebooting, or check: dmesg | grep -i kvmfr"
     fi
   fi
+fi
+
+# Check device readability (kvm group membership may need re-login)
+if [[ -e /dev/kvmfr0 ]] && [[ ! -r /dev/kvmfr0 ]]; then
+  msg_warning "Device /dev/kvmfr0 exists but not readable by $USER"
+  echo "  This will be fixed after re-login or reboot (kvm group membership)"
 fi
 
 echo ""
