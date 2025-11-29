@@ -926,14 +926,25 @@ cmd_hardware_report() {
   echo "  OS: $os_name"
 
   local ram_total="Unknown"
+  local ram_available="Unknown"
   if [[ -f /proc/meminfo ]]; then
-    local ram_kb=$(grep "^MemTotal:" /proc/meminfo | awk '{print $2}')
-    if [[ -n "$ram_kb" ]]; then
-      local ram_gb=$((ram_kb / 1024 / 1024))
-      ram_total="$ram_gb GB"
+    local ram_total_kb=$(grep "^MemTotal:" /proc/meminfo | awk '{print $2}')
+    local ram_avail_kb=$(grep "^MemAvailable:" /proc/meminfo | awk '{print $2}')
+    if [[ -n "$ram_total_kb" ]]; then
+      local ram_gb=$((ram_total_kb / 1024 / 1024))
+      ram_total="${ram_gb}GB"
+    fi
+    if [[ -n "$ram_avail_kb" ]]; then
+      local ram_avail_gb=$((ram_avail_kb / 1024 / 1024))
+      local ram_avail_mb=$((ram_avail_kb / 1024))
+      if [[ "$ram_avail_gb" -gt 0 ]]; then
+        ram_available="${ram_avail_gb}GB"
+      else
+        ram_available="${ram_avail_mb}MB"
+      fi
     fi
   fi
-  echo "  RAM: $ram_total"
+  echo "  RAM: $ram_total (available: $ram_available)"
 
   local omarchy_version=""
   local omarchy_branch=""
