@@ -310,7 +310,7 @@ configure_sudoers_gpu_passthrough() {
   local gpu_passthrough_path
   if ! gpu_passthrough_path=$(command -v omarchy-gpu-passthrough 2>/dev/null); then
     msg_warning "omarchy-gpu-passthrough not found in PATH - using fallback"
-    gpu_passthrough_path="$OMARCHY_PATH/bin/omarchy-gpu-passthrough"
+    gpu_passthrough_path="${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-gpu-passthrough"
   fi
 
   local sudoers_content="# Omarchy GPU Passthrough - Passwordless Operations
