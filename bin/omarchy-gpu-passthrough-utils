@@ -605,6 +605,7 @@ get_iommu_group() {
 
 # Get all devices in an IOMMU group
 # Returns: space-separated list of PCI addresses (without 0000: prefix)
+# Note: Filters out PCI bridges (class 0604) - they're host infrastructure, not for VM passthrough
 get_iommu_group_devices() {
   local pci_addr="$1"
 
@@ -621,6 +622,13 @@ get_iommu_group_devices() {
   for dev_path in "$iommu_group_path/devices"/*; do
     if [[ -d "$dev_path" ]]; then
       local dev_addr=$(basename "$dev_path")
+
+      # Skip PCI bridges (class 0604) - they're host infrastructure
+      local dev_class=$(lspci -Dn -s "$dev_addr" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+      if [[ "$dev_class" == "0604" ]]; then
+        continue
+      fi
+
       dev_addr="${dev_addr#0000:}"
       devices+=("$dev_addr")
     fi

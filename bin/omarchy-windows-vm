@@ -916,6 +916,11 @@ create_docker_compose_config() {
         -device ivshmem-plain,id=shmem0,memdev=looking-glass
         -object memory-backend-file,id=looking-glass,mem-path=/dev/kvmfr0,size=${IVSHMEM_SIZE}M,share=yes"
     for dev_pci in $GPU_IOMMU_DEVICES; do
+      # Skip PCI bridges (class 0604) - they're host infrastructure
+      local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+      if [[ "$dev_class" == "0604" ]]; then
+        continue
+      fi
       ARGUMENTS_SECTION+="
         -device vfio-pci,host=0000:${dev_pci}"
     done
