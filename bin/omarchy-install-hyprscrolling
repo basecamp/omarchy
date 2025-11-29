@@ -1,0 +1,12 @@
+#!/bin/bash
+
+echo "Installing hyprscrolling plugin"
+
+omarchy-pkg-add meson cpio cmake
+hyprpm update
+hyprpm add https://github.com/hyprwm/hyprland-plugins
+hyprpm enable hyprscrolling
+
+if ! grep -q '/hypr/scrolling\.conf' ~/.config/hypr/hyprland.conf; then
+  sed -i '/source = ~\/\.local\/share\/omarchy\/default\/hypr\/windows\.conf/a source = ~/.local/share/omarchy/default/hypr/scrolling.conf' ~/.config/hypr/hyprland.conf
+fi
