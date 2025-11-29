@@ -63,10 +63,11 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
   sudo sed -i -E "s/^(MODULES=\\()/\\1${NVIDIA_MODULES} /" "$MKINITCPIO_CONF"
   # Clean up potential double spaces
   sudo sed -i -E 's/  +/ /g' "$MKINITCPIO_CONF"
+### FIX: Use the correct command Limine for UKI rebuild instead of mkinitcpio -P that was failed to
+# solve resume/suspend problem on Omarhcy system.
+sudo limine-update
 
-  sudo mkinitcpio -P
-
-  # Add NVIDIA environment variables to hyprland.conf
+# Add NVIDIA environment variables to hyprland.conf
   HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
   if [ -f "$HYPRLAND_CONF" ]; then
     cat >>"$HYPRLAND_CONF" <<'EOF'

@@ -28,6 +28,9 @@ term_foreground: c0caf5
 term_foreground_bright: c0caf5
 term_background_bright: 24283b
 
+# NVIDIA Suspend Fix: Add Kernel sleep mode parameter
+KERNEL_CMDLINE=mem_sleep_default=deep
+
 EOF
 
 sudo limine-update
