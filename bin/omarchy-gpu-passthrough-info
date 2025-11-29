@@ -1,0 +1,1441 @@
+#!/bin/bash
+#
+# omarchy-gpu-passthrough-info - Information and diagnostics
+#
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+if ! source "$SCRIPT_DIR/omarchy-gpu-passthrough-utils"; then
+  echo "ERROR: Cannot load omarchy-gpu-passthrough-utils" >&2
+  echo "Please ensure omarchy-gpu-passthrough-utils exists in: $SCRIPT_DIR" >&2
+  exit 1
+fi
+
+verify_hardware_requirements() {
+  local quiet="$1"
+  local is_configured="$2"
+  local errors=0
+
+  [[ "$quiet" != "true" ]] && echo ""
+  [[ "$quiet" != "true" ]] && echo "Hardware:"
+
+  if [[ "$GPU_COUNT" -ge 2 ]]; then
+    local iommu_status=""
+    if check_iommu_support; then
+      local iommu_groups=$(find /dev/vfio/ -maxdepth 1 -type c -name '[0-9]*' 2>/dev/null | wc -l)
+      if [[ "$iommu_groups" -gt 0 ]]; then
+        iommu_status=", IOMMU enabled ($iommu_groups groups)"
+      else
+        iommu_status=", IOMMU enabled"
+      fi
+    else
+      iommu_status=", IOMMU not detected"
+      [[ "$quiet" != "true" ]] && msg_error "  IOMMU not detected"
+      [[ "$quiet" != "true" ]] && echo "    Fix: omarchy-gpu-passthrough setup (adds kernel params + BIOS guidance)"
+      ((errors++))
+    fi
+    [[ "$quiet" != "true" ]] && msg_success "  $GPU_COUNT GPUs detected$iommu_status"
+  elif [[ "$GPU_COUNT" -eq 1 ]]; then
+    [[ "$quiet" != "true" ]] && msg_warning "  Only 1 GPU detected (need 2+ for passthrough)"
+    if [[ "$is_configured" == "true" ]]; then
+      ((errors++))
+    fi
+  else
+    [[ "$quiet" != "true" ]] && msg_error "  No GPUs detected"
+    ((errors++))
+  fi
+
+  return "$errors"
+}
+
+verify_kernel_config() {
+  local quiet="$1"
+  local is_configured="$2"
+  local cmdline="$3"
+  local errors=0
+
+  [[ "$quiet" != "true" ]] && echo ""
+  [[ "$quiet" != "true" ]] && echo "Kernel Configuration:"
+
+  if [[ "$quiet" != "true" ]]; then
+    echo "  Current cmdline:"
+    local line_width=120
+    local remaining="$cmdline"
+    while [[ -n "$remaining" ]]; do
+      if [[ "${#remaining}" -le "$line_width" ]]; then
+        echo "    $remaining"
+        break
+      else
+        # Find last space before line_width
+        local cut_pos="$line_width"
+        local substring="${remaining:0:$line_width}"
+        if [[ "$substring" =~ (.* ) ]]; then
+          cut_pos="${#BASH_REMATCH[1]}"
+        fi
+        echo "    ${remaining:0:$cut_pos}"
+        remaining="${remaining:$cut_pos}"
+        remaining="${remaining# }" # Trim leading space
+      fi
+    done
+  fi
+
+  local has_iommu_param=false
+  local has_iommu_pt=false
+  local has_vfio_ids=false
+
+  echo "$cmdline" | grep -qE "amd_iommu=on|intel_iommu=on" && has_iommu_param=true
+  echo "$cmdline" | grep -q "iommu=pt" && has_iommu_pt=true
+  echo "$cmdline" | grep -q "vfio-pci.ids=" && has_vfio_ids=true
+
+  if [[ "$has_iommu_param" == "true" ]]; then
+    local kernel_status="IOMMU parameter ✓"
+    [[ "$has_iommu_pt" == "true" ]] && kernel_status+=", iommu=pt ✓"
+
+    if [[ "$has_vfio_ids" == "true" ]]; then
+      local vfio_ids=$(echo "$cmdline" | grep -oP 'vfio-pci\.ids=\S+' | cut -d= -f2)
+      kernel_status+=", vfio-pci.ids=$vfio_ids (static)"
+    else
+      kernel_status+=", dynamic binding"
+    fi
+
+    [[ "$quiet" != "true" ]] && msg_success "  $kernel_status"
+  else
+    if [[ "$is_configured" == "true" ]]; then
+      [[ "$quiet" != "true" ]] && msg_error "  IOMMU parameter missing - did you reboot after setup?"
+      ((errors++))
+    else
+      [[ "$quiet" != "true" ]] && msg_info "  Not configured - run setup first"
+    fi
+  fi
+
+  if [[ "$quiet" != "true" ]] && [[ -f "$LIMINE_DEFAULT" ]] && [[ "$is_configured" == "true" ]]; then
+    echo ""
+    echo "  Limine config ($LIMINE_DEFAULT):"
+    local limine_params=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null)
+    if echo "$limine_params" | grep -qE "amd_iommu=on|intel_iommu=on"; then
+      msg_success "    IOMMU parameters present"
+    else
+      msg_warning "    IOMMU parameters NOT in config - run setup to reconfigure"
+    fi
+  fi
+
+  return "$errors"
+}
+
+verify_vfio_setup() {
+  local quiet="$1"
+  local is_configured="$2"
+
+  [[ "$quiet" != "true" ]] && echo ""
+  [[ "$quiet" != "true" ]] && echo "VFIO Setup:"
+
+  local vfio_module_loaded=false
+  local vfio_conf_exists=false
+  local vfio_dev_exists=false
+
+  lsmod | grep -q "^vfio_pci" && vfio_module_loaded=true
+  [[ -f "$VFIO_CONF" ]] && vfio_conf_exists=true
+  [[ -c /dev/vfio/vfio ]] && vfio_dev_exists=true
+
+  if [[ "$is_configured" == "true" ]]; then
+    local vfio_status=""
+    [[ "$vfio_module_loaded" == "true" ]] && vfio_status="vfio-pci loaded"
+    [[ "$vfio_conf_exists" == "true" ]] && vfio_status="${vfio_status:+$vfio_status, }config exists"
+    [[ "$vfio_dev_exists" == "true" ]] && vfio_status="${vfio_status:+$vfio_status, }/dev/vfio/vfio exists"
+
+    if [[ -n "$vfio_status" ]]; then
+      [[ "$quiet" != "true" ]] && msg_success "  $vfio_status"
+    else
+      [[ "$quiet" != "true" ]] && msg_info "  VFIO not active (normal if no GPU bound yet)"
+    fi
+  else
+    [[ "$quiet" != "true" ]] && msg_info "  VFIO not configured - run setup first"
+  fi
+
+  return 0
+}
+
+verify_setup() {
+  local quiet="${1:-false}"
+  local total_errors=0
+  local is_configured=false
+
+  [[ "$quiet" != "true" ]] && msg_section "GPU Passthrough Verification"
+
+  detect_gpus
+
+  if [[ -f "$VFIO_CONF" ]] || grep -qE "amd_iommu=on|intel_iommu=on" /proc/cmdline 2>/dev/null; then
+    is_configured=true
+  fi
+
+  if [[ "$quiet" != "true" ]]; then
+    echo ""
+    echo "System Information:"
+    local cpu_vendor=$(get_cpu_vendor)
+    case "$cpu_vendor" in
+    amd) echo "  CPU Vendor:     AMD" ;;
+    intel) echo "  CPU Vendor:     Intel" ;;
+    *) echo "  CPU Vendor:     Unknown" ;;
+    esac
+
+    # Detect bootloader
+    local bootloader="Unknown"
+    if [[ -f /etc/default/limine ]]; then
+      bootloader="Limine"
+    elif [[ -d /boot/grub ]]; then
+      bootloader="GRUB"
+    elif [[ -d /boot/loader ]]; then
+      bootloader="systemd-boot"
+    fi
+    echo "  Bootloader:     $bootloader"
+
+    echo "  Passthrough:    $(if [[ "$is_configured" == "true" ]]; then echo "Configured ✓"; else echo "Not configured"; fi)"
+  fi
+
+  verify_hardware_requirements "$quiet" "$is_configured"
+  ((total_errors += $?))
+
+  local cmdline=$(cat /proc/cmdline)
+  verify_kernel_config "$quiet" "$is_configured" "$cmdline"
+  ((total_errors += $?))
+
+  verify_vfio_setup "$quiet" "$is_configured"
+
+  [[ "$quiet" != "true" ]] && echo ""
+  [[ "$quiet" != "true" ]] && echo "GPU Status:"
+
+  local vfio_gpus=0
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local name="${GPU_NAME[$i]}"
+    local driver="${GPU_DRIVER[$i]}"
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local type="${GPU_TYPE[$i]}"
+
+    if [[ "$quiet" != "true" ]]; then
+      # Build one-line status per GPU
+      local status_msg="  [$((i + 1))] $name ($pci) → $driver"
+
+      if [[ "$driver" == "vfio-pci" ]]; then
+        msg_success "$status_msg (ready for VM)"
+        ((vfio_gpus++))
+      elif [[ "$driver" == "none" ]]; then
+        msg_warning "$status_msg (no driver)"
+      else
+        if [[ "$type" == "integrated" ]]; then
+          msg_info "$status_msg (host display)"
+        else
+          msg_info "$status_msg (host)"
+        fi
+      fi
+    fi
+  done
+
+  # DISPLAY INFO
+  if [[ "$quiet" != "true" ]] && command -v glxinfo &>/dev/null; then
+    echo ""
+    echo "Display Rendering:"
+
+    local glx_output=$(glxinfo 2>/dev/null)
+    if [[ -n "$glx_output" ]]; then
+      local renderer=$(echo "$glx_output" | grep "OpenGL renderer" | cut -d: -f2- | xargs)
+      local version=$(echo "$glx_output" | grep "OpenGL version" | cut -d: -f2- | xargs)
+      local vendor=$(echo "$glx_output" | grep "OpenGL vendor" | cut -d: -f2- | xargs)
+
+      [[ -n "$vendor" ]] && echo "  Vendor:   $vendor"
+      [[ -n "$renderer" ]] && msg_success "  Renderer: $renderer"
+      [[ -n "$version" ]] && echo "  OpenGL:   $version"
+    else
+      msg_warning "  Unable to query OpenGL info"
+    fi
+  fi
+
+  # SUMMARY
+  if [[ "$quiet" != "true" ]]; then
+    echo ""
+
+    if [[ "$is_configured" == "false" ]]; then
+      msg_info "Status: Not configured"
+      echo ""
+      echo "Next steps:"
+      echo "   1. Run: omarchy-gpu-passthrough setup"
+      echo "   2. Reboot system"
+      echo "   3. Run: omarchy-gpu-passthrough info verify"
+    elif [[ "$total_errors" -eq 0 ]] && [[ "$vfio_gpus" -gt 0 ]]; then
+      msg_success "Status: Ready for GPU passthrough!"
+      echo ""
+      echo "GPU passthrough is properly configured:"
+      msg_success "$vfio_gpus GPU(s) bound to vfio-pci"
+      msg_success "IOMMU enabled and configured"
+      msg_success "Kernel parameters active"
+    elif [[ "$total_errors" -eq 0 ]] && [[ "$vfio_gpus" -eq 0 ]]; then
+      # Detect current GPU mode (dynamic binding design supports 3 states)
+      local gpu_mode="unknown"
+      if load_gpu_config 2>/dev/null; then
+        local current_driver="$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')"
+        gpu_mode="$(detect_gpu_mode_from_driver "$current_driver")"
+      fi
+
+      case "$gpu_mode" in
+      none)
+        msg_success "Status: GPU in boot state (dynamic binding)"
+        echo ""
+        echo "GPU is blacklisted and inactive (by design)."
+        msg_success "IOMMU enabled and configured"
+        msg_success "Kernel parameters active"
+        echo ""
+        echo "To use GPU:"
+        echo "  • For VM: omarchy-gpu-passthrough mode vm"
+        echo "  • For host (CUDA/compute): omarchy-gpu-passthrough mode host"
+        ;;
+      host)
+        msg_success "Status: GPU bound to native driver"
+        echo ""
+        echo "GPU is available for host use (CUDA/compute)."
+        msg_success "IOMMU enabled and configured"
+        msg_success "GPU bound to native driver"
+        echo ""
+        echo "To use GPU in VM:"
+        echo "  • Run: omarchy-gpu-passthrough mode vm"
+        ;;
+      *)
+        # Unknown state (shouldn't happen, but keep old message as fallback)
+        msg_warning "Status: Configured (GPU mode: $gpu_mode)"
+        echo ""
+        echo "Configuration exists. GPU not bound to vfio-pci."
+        echo "   Hint: Use 'omarchy-gpu-passthrough mode vm' to bind for VM"
+        echo "   Hint: Use 'omarchy-gpu-passthrough mode host' for host use"
+        ;;
+      esac
+    else
+      msg_error "Status: $total_errors issue(s) found"
+      echo ""
+      msg_info "Fix issues above and run: omarchy-gpu-passthrough info verify"
+    fi
+  fi
+
+  return $total_errors
+}
+
+cmd_diagnose() {
+  msg_section "GPU Passthrough Diagnostics"
+
+  # Check and install dependencies if needed
+  check_dependencies
+
+  local has_sudo=false
+  if sudo -v; then
+    has_sudo=true
+  else
+    msg_warning "Some data incomplete (no sudo)"
+  fi
+
+  msg_info "Collecting system information..."
+
+  local output_file="/tmp/omarchy-gpu-passthrough-diagnostics-$(date +%Y%m%d_%H%M%S).txt"
+
+  {
+    echo "[GPU PASSTHROUGH DIAGNOSTICS REPORT]"
+    echo "Generated: $(date)"
+    echo "Hostname: $(hostname)"
+    echo ""
+
+    echo "[SYSTEM INFORMATION]"
+    echo ""
+
+    echo "[CPU]"
+    if [[ -f /proc/cpuinfo ]]; then
+      grep "model name" /proc/cpuinfo | head -1 | sed 's/model name\s*: //'
+      echo "CPU Vendor: $(get_cpu_vendor)"
+    fi
+    echo ""
+
+    echo "[Operating System]"
+    if command -v lsb_release &>/dev/null; then
+      lsb_release -d | sed 's/Description:\s*//'
+    fi
+    uname -r | sed 's/^/Kernel: /'
+    echo ""
+
+    echo "[Bootloader]"
+    local bootloader="Unknown"
+    if [[ -f /etc/default/limine ]]; then
+      bootloader="Limine"
+    elif [[ -d /boot/grub ]]; then
+      bootloader="GRUB"
+    elif [[ -d /boot/loader ]]; then
+      bootloader="systemd-boot"
+    fi
+    echo "$bootloader"
+    echo ""
+
+    echo "[Motherboard]"
+    if [[ "$has_sudo" == "true" ]] && command -v dmidecode &>/dev/null; then
+      local mobo_vendor=$(sudo dmidecode -t baseboard 2>/dev/null | grep "Manufacturer:" | cut -d: -f2 | xargs)
+      local mobo_model=$(sudo dmidecode -t baseboard 2>/dev/null | grep "Product Name:" | cut -d: -f2 | xargs)
+      local bios_version=$(sudo dmidecode -t bios 2>/dev/null | grep "Version:" | cut -d: -f2 | xargs)
+      echo "Vendor: ${mobo_vendor:-Unknown}"
+      echo "Model: ${mobo_model:-Unknown}"
+      [[ -n "$bios_version" ]] && echo "BIOS: $bios_version"
+    else
+      echo "dmidecode not available or no sudo"
+    fi
+    echo ""
+
+    echo "[Display Session]"
+    echo "Session Type: ${XDG_SESSION_TYPE:-not set}"
+    echo "Wayland Display: ${WAYLAND_DISPLAY:-not set}"
+    echo "Desktop: ${XDG_CURRENT_DESKTOP:-not set}"
+    echo ""
+
+    echo "[GPU INFORMATION]"
+    echo ""
+
+    detect_gpus
+
+    for i in "${!GPU_PCI_ADDR[@]}"; do
+      echo "[GPU $((i + 1)): ${GPU_NAME[$i]}]"
+      echo "  PCI Address: ${GPU_PCI_ADDR[$i]}"
+      echo "  Vendor:Device ID: ${GPU_VENDOR_ID[$i]}:${GPU_DEVICE_ID[$i]}"
+      echo "  Type: ${GPU_TYPE[$i]}"
+      echo "  Current Driver: ${GPU_DRIVER[$i]}"
+      if [[ -n "${GPU_AUDIO_ID[$i]:-}" ]]; then
+        local bus_dev=$(echo "${GPU_PCI_ADDR[$i]}" | cut -d. -f1)
+        local audio_pci="${bus_dev}.1"
+        echo "  Audio Device: $audio_pci"
+      fi
+
+      # Show BAR info and ReBAR status for dedicated GPUs
+      if [[ "${GPU_TYPE[$i]}" == "dedicated" ]]; then
+        local bar_size=$(get_largest_bar_size_gb "${GPU_PCI_ADDR[$i]}")
+        if [[ "$bar_size" -gt 0 ]]; then
+          echo "  Largest BAR: ${bar_size}GB"
+        fi
+        if check_resizable_bar "${GPU_PCI_ADDR[$i]}"; then
+          echo "  Resizable BAR: Enabled"
+        else
+          echo "  Resizable BAR: Disabled"
+        fi
+      fi
+      echo ""
+
+      local gpu_drm_card=$(get_drm_card_for_pci "${GPU_PCI_ADDR[$i]}")
+      if [[ -n "$gpu_drm_card" ]]; then
+        echo "  DRM Card: $gpu_drm_card"
+        echo "  Display Connectors:"
+
+        local found_connectors=false
+        for connector in /sys/class/drm/${gpu_drm_card}-*/status; do
+          if [[ -f "$connector" ]]; then
+            found_connectors=true
+            local connector_name=$(basename "$(dirname "$connector")")
+            local connector_status=$(cat "$connector" 2>/dev/null)
+            echo "    $connector_name: $connector_status"
+          fi
+        done
+
+        if [[ "$found_connectors" == "false" ]]; then
+          echo "    (no connectors found)"
+        fi
+        echo ""
+      fi
+    done
+
+    echo "[IOMMU INFORMATION]"
+    echo ""
+
+    if [[ -d /sys/class/iommu ]]; then
+      echo "IOMMU Status: Enabled"
+      echo "IOMMU Devices: $(ls -1 /sys/class/iommu | wc -l)"
+    else
+      echo "IOMMU Status: Disabled or not available"
+    fi
+    echo ""
+
+    if [[ -d /dev/vfio ]]; then
+      local iommu_groups=$(find /dev/vfio/ -maxdepth 1 -type c -name '[0-9]*' 2>/dev/null | wc -l)
+      echo "Active VFIO IOMMU Groups: $iommu_groups"
+    else
+      echo "VFIO not available"
+    fi
+    echo ""
+
+    for i in "${!GPU_PCI_ADDR[@]}"; do
+      local pci="${GPU_PCI_ADDR[$i]}"
+      local pci_full="$pci"
+      [[ ! "$pci_full" =~ ^[0-9a-f]{4}: ]] && pci_full="0000:${pci_full}"
+
+      local iommu_group=$(basename "$(readlink -f /sys/bus/pci/devices/${pci_full}/iommu_group 2>/dev/null)" 2>/dev/null)
+      if [[ -n "$iommu_group" ]]; then
+        echo "[GPU $((i+1)): ${GPU_NAME[$i]}]"
+        echo "  PCI Address: $pci"
+        echo "  IOMMU Group: $iommu_group"
+
+        # List ALL devices in this IOMMU group (critical for passthrough)
+        local iommu_group_path="/sys/kernel/iommu_groups/${iommu_group}/devices"
+        if [[ -d "$iommu_group_path" ]]; then
+          local device_count=$(ls -1 "$iommu_group_path" 2>/dev/null | wc -l)
+          echo "  Devices in group ($device_count):"
+          for dev_path in "$iommu_group_path"/*; do
+            if [[ -d "$dev_path" ]]; then
+              local dev_addr=$(basename "$dev_path")
+              local dev_addr_short="${dev_addr#0000:}"
+              local dev_info=$(lspci -nns "$dev_addr_short" 2>/dev/null)
+              if [[ -n "$dev_info" ]]; then
+                echo "    $dev_info"
+              else
+                echo "    $dev_addr_short (unknown)"
+              fi
+            fi
+          done
+        fi
+        echo ""
+      fi
+    done
+
+    echo "[KERNEL CONFIGURATION]"
+    echo ""
+
+    echo "[Kernel Command Line]"
+    cat /proc/cmdline
+    echo ""
+    echo ""
+
+    echo "[IOMMU Parameters]"
+    if grep -qE "amd_iommu=on|intel_iommu=on" /proc/cmdline; then
+      grep -oE "(amd_iommu|intel_iommu)=[^ ]+" /proc/cmdline || echo "  (enabled)"
+      echo "  Status: ✓ Enabled"
+    else
+      echo "  Status: ✗ Not found in kernel cmdline"
+    fi
+    echo ""
+
+    if grep -q "iommu=pt" /proc/cmdline; then
+      echo "  iommu=pt: ✓ Enabled"
+    else
+      echo "  iommu=pt: ✗ Not found"
+    fi
+    echo ""
+
+    echo "[LOADED KERNEL MODULES]"
+    echo ""
+
+    echo "[VFIO Modules]"
+    lsmod | grep "^vfio" || echo "  None loaded"
+    echo ""
+
+    echo "[NVIDIA Modules]"
+    lsmod | grep "^nvidia" || echo "  None loaded"
+    echo ""
+
+    echo "[AMD GPU Modules]"
+    lsmod | grep "^amdgpu" || echo "  None loaded"
+    echo ""
+
+    echo "[DRIVER VERSIONS]"
+    echo ""
+
+    echo "[NVIDIA Driver]"
+    if lsmod | grep -q "^nvidia"; then
+      local nvidia_version=$(cat /proc/driver/nvidia/version 2>/dev/null | head -1)
+      if [[ -n "$nvidia_version" ]]; then
+        echo "$nvidia_version"
+      elif command -v nvidia-smi &>/dev/null; then
+        nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 | awk '{print "NVIDIA Driver Version: " $1}'
+      else
+        echo "  Version info not available"
+      fi
+    else
+      echo "  Not loaded"
+    fi
+    echo ""
+
+    echo "[AMD GPU Driver]"
+    if lsmod | grep -q "^amdgpu"; then
+      local amdgpu_version=$(modinfo amdgpu 2>/dev/null | grep "^version:" | awk '{print $2}')
+      if [[ -n "$amdgpu_version" ]]; then
+        echo "  Kernel module version: $amdgpu_version"
+      fi
+      # Mesa version (if available)
+      if command -v glxinfo &>/dev/null; then
+        local mesa_version=$(glxinfo 2>/dev/null | grep "OpenGL version" | cut -d: -f2 | xargs)
+        [[ -n "$mesa_version" ]] && echo "  Mesa/OpenGL: $mesa_version"
+      fi
+    else
+      echo "  Not loaded"
+    fi
+    echo ""
+
+    echo "[VFIO Driver]"
+    if lsmod | grep -q "^vfio_pci"; then
+      local vfio_version=$(modinfo vfio_pci 2>/dev/null | grep "^version:" | awk '{print $2}')
+      if [[ -n "$vfio_version" ]]; then
+        echo "  Kernel module version: $vfio_version"
+      else
+        echo "  Version: Built-in (kernel $(uname -r))"
+      fi
+    else
+      echo "  Not loaded"
+    fi
+    echo ""
+
+    echo "[GPU PASSTHROUGH CONFIGURATION]"
+    echo ""
+
+    if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
+      echo "[GPU Configuration: $GPU_PASSTHROUGH_CONF]"
+      cat "$GPU_PASSTHROUGH_CONF"
+      echo ""
+    else
+      echo "GPU passthrough not configured (run: omarchy-gpu-passthrough setup)"
+      echo ""
+    fi
+
+    if [[ -f "$LIMINE_DEFAULT" ]]; then
+      echo "[Limine Configuration: $LIMINE_DEFAULT]"
+      echo "(Showing KERNEL_CMDLINE entries only)"
+      grep "^KERNEL_CMDLINE" "$LIMINE_DEFAULT" || echo "  No KERNEL_CMDLINE entries found"
+      echo ""
+    fi
+
+    if [[ -f "$VFIO_CONF" ]]; then
+      echo "[VFIO Configuration: $VFIO_CONF]"
+      cat "$VFIO_CONF"
+      echo ""
+    else
+      echo "VFIO configuration not found"
+      echo ""
+    fi
+
+    if [[ -f "$BLACKLIST_CONF" ]]; then
+      echo "[Driver Blacklist: $BLACKLIST_CONF]"
+      cat "$BLACKLIST_CONF"
+      echo ""
+    else
+      echo "No driver blacklist configured"
+      echo ""
+    fi
+
+    if [[ -f /etc/environment ]]; then
+      echo "[System Environment (/etc/environment)]"
+      echo "(GPU-related variables only)"
+      grep -E "AQ_DRM_DEVICES|WLR_DRM_DEVICES|CUDA" /etc/environment 2>/dev/null || echo "  No GPU-related variables found"
+      echo ""
+    fi
+
+    echo "[PROCESSES USING GPU]"
+    echo ""
+
+    echo "[NVIDIA GPU Processes]"
+    if command -v nvidia-smi &>/dev/null; then
+      local nvidia_output=$(nvidia-smi --query-compute-apps=pid,name,used_memory --format=csv 2>&1)
+      if echo "$nvidia_output" | grep -q "Failed to initialize NVML"; then
+        echo "  nvidia-smi unavailable (GPU likely bound to vfio-pci)"
+      elif [[ -z "$nvidia_output" ]] || echo "$nvidia_output" | grep -q "No running"; then
+        echo "  No active processes"
+      else
+        echo "$nvidia_output"
+      fi
+    else
+      echo "  nvidia-smi not available"
+    fi
+    echo ""
+
+    echo "[DRI Device Handles]"
+    fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" | head -20 || echo "  No processes found"
+    echo ""
+
+    echo "[NVIDIA Device Handles]"
+    fuser -v /dev/nvidia* 2>&1 | grep -v "USER\|kernel" | head -20 || echo "  No NVIDIA devices or no processes"
+    echo ""
+
+    echo "[RECENT GPU PASSTHROUGH LOGS]"
+    echo ""
+
+    if [[ -f "$LOG_FILE" ]]; then
+      echo "[Last 50 lines of $LOG_FILE]"
+      tail -50 "$LOG_FILE"
+      echo ""
+    else
+      echo "No logs found at $LOG_FILE"
+      echo ""
+    fi
+
+    echo "RELEVANT BOOT MESSAGES (dmesg)"
+    echo ""
+
+    if [[ "$has_sudo" == "true" ]]; then
+      echo "[IOMMU Messages]"
+      sudo dmesg | grep -i iommu | head -20 || echo "  No IOMMU messages"
+      echo ""
+
+      echo "[VFIO Messages]"
+      sudo dmesg | grep -i vfio | head -20 || echo "  No VFIO messages"
+      echo ""
+
+      echo "[Boot VGA Device]"
+      sudo dmesg | grep -i "boot vga" || echo "  No boot VGA messages"
+      echo ""
+
+      echo "[PCI Passthrough Messages]"
+      sudo dmesg | grep -iE "pci.*passthrough|vfio-pci" | head -20 || echo "  No passthrough messages"
+      echo ""
+    else
+      echo "  sudo access declined - dmesg output unavailable"
+      echo "  (some diagnostic information may be incomplete)"
+      echo ""
+    fi
+
+    echo "[END OF DIAGNOSTICS REPORT]"
+    echo ""
+    echo "Report saved to: $output_file"
+    echo "Generated: $(date)"
+
+  } >"$output_file" 2>&1
+
+  cat "$output_file"
+  echo ""
+  msg_success "Report saved: $output_file"
+}
+
+# Command Implementations
+
+cmd_detect() {
+  msg_section "GPU Detection"
+
+  detect_gpus
+
+  echo "Detected $GPU_COUNT GPU(s):"
+  echo ""
+
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local name="${GPU_NAME[$i]}"
+    local vendor_id="${GPU_VENDOR_ID[$i]}"
+    local device_id="${GPU_DEVICE_ID[$i]}"
+    local driver="${GPU_DRIVER[$i]}"
+    local type="${GPU_TYPE[$i]}"
+    local audio_id="${GPU_AUDIO_ID[$i]}"
+
+    echo "GPU $((i + 1)): $name"
+    echo "  PCI Address:   $pci"
+    echo "  Vendor:Device: ${vendor_id}:${device_id}"
+    echo "  Type:          $type"
+    echo "  Driver:        $driver"
+    if [[ -n "$audio_id" ]]; then
+      echo "  Audio Device:  ${audio_id}"
+    fi
+    echo ""
+  done
+
+  # IOMMU status
+  if check_iommu_support; then
+    msg_success "IOMMU: Enabled"
+  else
+    msg_warning "IOMMU: Not detected"
+    echo "  Possible causes:"
+    echo "    1. IOMMU not enabled in BIOS (AMD-Vi or Intel VT-d)"
+    echo "    2. Kernel parameters not set → run: omarchy-gpu-passthrough setup"
+    echo "    3. Reboot needed after setup"
+  fi
+}
+
+cmd_status() {
+  detect_gpus
+
+  # Check if GPU passthrough is configured
+  local is_configured=false
+  if ! load_gpu_config 2>/dev/null; then
+    # Not configured - show helpful message
+    echo ""
+    msg_warning "GPU passthrough not configured"
+    echo ""
+    echo "Next steps:"
+    echo "   1. omarchy-gpu-passthrough setup"
+    echo "   2. Reboot"
+    echo "   3. omarchy-gpu-passthrough info verify"
+    echo ""
+    return
+  fi
+
+  # Get passthrough GPU mode
+  local current_driver="$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')"
+  local mode="$(detect_gpu_mode_from_driver "${current_driver:-}")"
+
+  echo ""
+  echo "GPU Status:"
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local name="${GPU_NAME[$i]}"
+    local driver="${GPU_DRIVER[$i]}"
+    local type="${GPU_TYPE[$i]}"
+
+    # Shorten GPU name for display
+    local short_name="$name"
+    short_name="${short_name//NVIDIA Corporation /}"
+    short_name="${short_name//Advanced Micro Devices, Inc. /}"
+    short_name="${short_name//\[AMD\/ATI\] /}"
+
+    # Build status line
+    local status_line="  [$((i + 1))] $short_name ($pci)"
+
+    # Normalize PCI addresses for comparison (add 0000: prefix if missing)
+    local pci_normalized="$pci"
+    [[ ! "$pci_normalized" =~ ^[0-9a-f]{4}: ]] && pci_normalized="0000:${pci_normalized}"
+
+    local config_pci_normalized="$GPU_PCI_ADDR"
+    [[ ! "$config_pci_normalized" =~ ^[0-9a-f]{4}: ]] && config_pci_normalized="0000:${config_pci_normalized}"
+
+    # Add driver and mode info
+    if [[ "$pci_normalized" == "$config_pci_normalized" ]]; then
+      # This is the passthrough GPU - show mode
+      status_line+=" → ${driver:-none} (mode: ${mode})"
+      if [[ "$mode" == "vm" ]]; then
+        status_line+=" ✓"
+      fi
+    else
+      # Other GPU - show driver and role
+      status_line+=" → ${driver:-none}"
+      if [[ "$type" == "integrated" ]]; then
+        status_line+=" (host display)"
+      fi
+    fi
+
+    echo "$status_line"
+  done
+
+  # IOMMU status (if active)
+  if [[ -d /dev/vfio ]]; then
+    local iommu_groups=$(find /dev/vfio/ -maxdepth 1 -type c -name '[0-9]*' 2>/dev/null | wc -l)
+    if [[ "$iommu_groups" -gt 0 ]]; then
+      echo ""
+      echo "IOMMU: $iommu_groups group(s) active"
+    fi
+  fi
+  echo ""
+}
+
+# Query commands (for scripting)
+
+cmd_driver() {
+  if ! load_gpu_config; then
+    echo "not-configured"
+    exit 1
+  fi
+
+  local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')
+
+  if [[ -z "$current_driver" ]]; then
+    echo "none"
+  else
+    echo "$current_driver"
+  fi
+}
+
+cmd_is_bound() {
+  if ! load_gpu_config; then
+    exit 2
+  fi
+
+  local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')
+
+  if [[ "$current_driver" == "vfio-pci" ]]; then
+    exit 0
+  else
+    exit 1
+  fi
+}
+
+cmd_is_configured() {
+  if [[ ! -f "$GPU_PASSTHROUGH_CONF" ]]; then
+    exit 1
+  fi
+
+  if ! grep -qE "amd_iommu=on|intel_iommu=on" /proc/cmdline; then
+    exit 1
+  fi
+
+  if [[ ! -f "$VFIO_CONF" ]]; then
+    exit 1
+  fi
+
+  exit 0
+}
+
+cmd_mode() {
+  if ! load_gpu_config; then
+    echo "not-configured"
+    exit 1
+  fi
+
+  local current_driver="$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')"
+  local mode="$(detect_gpu_mode_from_driver "$current_driver")"
+  echo "$mode"
+
+  if [[ "$mode" == "unknown" ]]; then
+    exit 1
+  else
+    exit 0
+  fi
+}
+
+cmd_get_docker_config() {
+  if ! load_gpu_config; then
+    msg_error "GPU passthrough not configured"
+    exit 1
+  fi
+
+  local iommu_group="${GPU_IOMMU_GROUP:-}"
+  if [[ -z "$iommu_group" ]] || [[ "$iommu_group" == "unknown" ]]; then
+    iommu_group=$(get_iommu_group "$GPU_PCI_ADDR")
+  fi
+
+  local iommu_devices="${GPU_IOMMU_DEVICES:-}"
+  if [[ -z "$iommu_devices" ]]; then
+    iommu_devices=$(get_iommu_group_devices "$GPU_PCI_ADDR")
+  fi
+
+  # Format: GPU_PCI_ADDR IOMMU_GROUP DEVICE1 DEVICE2 DEVICE3 ...
+  # First device is always the main GPU address
+  echo "$GPU_PCI_ADDR $iommu_group $iommu_devices"
+}
+
+cmd_hardware_report() {
+  check_dependencies
+
+  local has_sudo=false
+  # Request sudo for complete hardware info (motherboard, BIOS)
+  if [[ $EUID -eq 0 ]]; then
+    has_sudo=true
+  elif sudo -n true 2>/dev/null; then
+    has_sudo=true
+  else
+    msg_info "Full report requires sudo (for motherboard/BIOS info)"
+    if sudo true; then
+      has_sudo=true
+    else
+      msg_warning "Continuing without sudo - some data will be incomplete"
+    fi
+  fi
+
+  detect_gpus
+
+  echo ""
+  echo "=== Hardware Configuration Report ==="
+
+  # SYSTEM
+  echo ""
+  echo "SYSTEM"
+
+  local base_os="Linux"
+  if [[ -f /etc/os-release ]]; then
+    base_os="$(grep "^PRETTY_NAME=" /etc/os-release | cut -d= -f2 | tr -d '"')"
+  fi
+
+  local omarchy_ver=""
+  if [[ -n "${OMARCHY_PATH:-}" ]] && [[ -f "${OMARCHY_PATH}/version" ]]; then
+    omarchy_ver=$(cat "${OMARCHY_PATH}/version" 2>/dev/null | head -1 | tr -d '[:space:]')
+  elif command -v omarchy-version &>/dev/null; then
+    omarchy_ver=$(omarchy-version 2>/dev/null | head -1 | tr -d '[:space:]')
+  fi
+
+  if [[ -n "$omarchy_ver" ]]; then
+    echo "  OS: Omarchy $omarchy_ver ($base_os)"
+  else
+    echo "  OS: $base_os"
+  fi
+
+  local kernel="$(uname -r 2>/dev/null || echo "Unknown")"
+  echo "  Kernel: $kernel"
+
+  local bootloader="Unknown"
+  if [[ -f /etc/default/limine ]]; then
+    bootloader="Limine"
+  elif [[ -d /boot/grub ]]; then
+    bootloader="GRUB"
+  elif [[ -d /boot/loader ]]; then
+    bootloader="systemd-boot"
+  fi
+  echo "  Bootloader: $bootloader"
+
+  local omarchy_branch=""
+  local omarchy_commit=""
+  if [[ -n "${OMARCHY_PATH:-}" ]] && [[ -d "${OMARCHY_PATH}/.git" ]]; then
+    omarchy_branch=$(git -C "${OMARCHY_PATH}" rev-parse --abbrev-ref HEAD 2>/dev/null | tr -d '[:space:]')
+    omarchy_commit=$(git -C "${OMARCHY_PATH}" rev-parse --short HEAD 2>/dev/null | tr -d '[:space:]')
+  elif command -v omarchy-version-branch &>/dev/null; then
+    omarchy_branch=$(omarchy-version-branch 2>/dev/null | head -1 | tr -d '[:space:]')
+  fi
+  [[ -n "$omarchy_branch" ]] && echo "  Branch: $omarchy_branch"
+  [[ -n "$omarchy_commit" ]] && echo "  Commit: $omarchy_commit"
+
+  # HARDWARE
+  echo ""
+  echo "HARDWARE"
+
+  # CPU info
+  local cpu_model="Unknown"
+  local cpu_physical=""
+  local cpu_threads=""
+  local cpu_vendor="$(get_cpu_vendor)"
+
+  if command -v lscpu &>/dev/null; then
+    cpu_model="$(lscpu | grep "Model name:" | head -1 | cut -d: -f2 | xargs)"
+    cpu_physical="$(lscpu | grep "^Core(s) per socket:" | awk '{print $4}')"
+    local sockets="$(lscpu | grep "^Socket(s):" | awk '{print $2}')"
+    [[ -n "$cpu_physical" && -n "$sockets" ]] && cpu_physical=$((cpu_physical * sockets))
+    cpu_threads="$(lscpu | grep "^CPU(s):" | awk '{print $2}')"
+  elif [[ -f /proc/cpuinfo ]]; then
+    cpu_model="$(grep "model name" /proc/cpuinfo | head -1 | cut -d: -f2 | xargs)"
+    cpu_threads="$(grep -c "^processor" /proc/cpuinfo)"
+  fi
+
+  # Clean up CPU model
+  cpu_model="${cpu_model//(R)/}"
+  cpu_model="${cpu_model//(TM)/}"
+  cpu_model="${cpu_model//CPU /}"
+  cpu_model="$(echo "$cpu_model" | xargs)"
+
+  local cpu_cores_info=""
+  if [[ -n "$cpu_physical" && -n "$cpu_threads" ]]; then
+    cpu_cores_info=" (${cpu_physical}C/${cpu_threads}T)"
+  elif [[ -n "$cpu_threads" ]]; then
+    cpu_cores_info=" (${cpu_threads}T)"
+  fi
+
+  echo "  CPU: ${cpu_model}${cpu_cores_info}"
+
+  # Virtualization capabilities
+  local virt_info=""
+  if check_cpu_iommu_capability 2>/dev/null; then
+    if [[ "$cpu_vendor" == "intel" ]]; then
+      virt_info="VT-x ✓"
+      if check_iommu_support 2>/dev/null; then
+        virt_info="$virt_info  VT-d ✓"
+      fi
+    elif [[ "$cpu_vendor" == "amd" ]]; then
+      virt_info="AMD-V ✓"
+      if check_iommu_support 2>/dev/null; then
+        virt_info="$virt_info  AMD-Vi ✓"
+      fi
+    fi
+  fi
+  [[ -n "$virt_info" ]] && echo "       $virt_info"
+
+  # Extended virtualization
+  local ext_virt=""
+  if [[ -f /proc/cpuinfo ]]; then
+    local cpu_flags=$(grep -m1 "^flags" /proc/cpuinfo | cut -d: -f2)
+    [[ "$cpu_flags" == *" ept "* ]] && ext_virt="EPT"
+    [[ "$cpu_flags" == *" vpid "* ]] && ext_virt="${ext_virt:+$ext_virt  }VPID"
+  fi
+  if command -v lscpu &>/dev/null; then
+    local phys_bits=$(lscpu | grep "Address sizes:" | grep -oP '\d+(?= bits physical)')
+    [[ -n "$phys_bits" ]] && ext_virt="${ext_virt:+$ext_virt  }${phys_bits}-bit phys"
+  fi
+  [[ -n "$ext_virt" ]] && echo "       $ext_virt"
+
+  # NUMA topology
+  local numa_nodes=""
+  if command -v lscpu &>/dev/null; then
+    numa_nodes=$(lscpu | grep "^NUMA node(s):" | awk '{print $3}')
+  fi
+  [[ -n "$numa_nodes" && "$numa_nodes" != "1" ]] && echo "       NUMA: ${numa_nodes} nodes"
+
+  # RAM info
+  local ram_total="Unknown"
+  local ram_free="Unknown"
+  if [[ -f /proc/meminfo ]]; then
+    local ram_total_kb=$(grep "^MemTotal:" /proc/meminfo | awk '{print $2}')
+    local ram_avail_kb=$(grep "^MemAvailable:" /proc/meminfo | awk '{print $2}')
+    if [[ -n "$ram_total_kb" ]]; then
+      ram_total="$((ram_total_kb / 1024 / 1024)) GB"
+    fi
+    if [[ -n "$ram_avail_kb" ]]; then
+      ram_free="$((ram_avail_kb / 1024 / 1024)) GB"
+    fi
+  fi
+  echo "  RAM: $ram_total ($ram_free free)"
+
+  # Motherboard info
+  local mobo_vendor=""
+  local mobo_model=""
+  local bios_version=""
+
+  if [[ "$has_sudo" == "true" ]] && command -v dmidecode &>/dev/null; then
+    mobo_vendor="$(sudo dmidecode -t baseboard 2>/dev/null | grep "Manufacturer:" | cut -d: -f2 | xargs)"
+    mobo_model="$(sudo dmidecode -t baseboard 2>/dev/null | grep "Product Name:" | cut -d: -f2 | xargs)"
+    bios_version="$(sudo dmidecode -t bios 2>/dev/null | grep "Version:" | cut -d: -f2 | xargs)"
+  fi
+
+  if [[ -n "$mobo_vendor" || -n "$mobo_model" ]]; then
+    local mobo_line="  Motherboard: "
+    [[ -n "$mobo_vendor" ]] && mobo_line+="$mobo_vendor "
+    [[ -n "$mobo_model" ]] && mobo_line+="$mobo_model"
+    [[ -n "$bios_version" ]] && mobo_line+=" (BIOS $bios_version)"
+    echo "$mobo_line"
+  fi
+
+  # GPUs
+  echo ""
+  echo "GPUs"
+
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local name="${GPU_NAME[$i]}"
+    local driver="${GPU_DRIVER[$i]}"
+    local type="${GPU_TYPE[$i]}"
+    local vendor_id="${GPU_VENDOR_ID[$i]}"
+    local device_id="${GPU_DEVICE_ID[$i]}"
+
+    # Get vRAM
+    local vram_info=""
+    if [[ "$type" == "integrated" ]]; then
+      vram_info="Shared"
+    else
+      local max_size_mb=0
+      if [[ "$vendor_id" == "10de" ]] && [[ "$driver" == "nvidia" ]] && command -v nvidia-smi &>/dev/null; then
+        local nvidia_vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits --id="$pci" 2>/dev/null | head -1)
+        [[ -n "$nvidia_vram" && "$nvidia_vram" =~ ^[0-9]+$ ]] && max_size_mb="$nvidia_vram"
+      fi
+      if [[ "$max_size_mb" -eq 0 ]]; then
+        while IFS= read -r line; do
+          if [[ "$line" =~ \[size=([0-9]+)([GMK])\] ]]; then
+            local size="${BASH_REMATCH[1]}"
+            local unit="${BASH_REMATCH[2]}"
+            local size_mb=0
+            case "$unit" in
+              G) size_mb=$((size * 1024)) ;;
+              M) size_mb="$size" ;;
+              K) size_mb=$((size / 1024)) ;;
+            esac
+            [[ "$size_mb" -gt "$max_size_mb" ]] && max_size_mb="$size_mb"
+          fi
+        done < <(lspci -v -s "$pci" 2>/dev/null | grep "Memory.*prefetchable")
+      fi
+      if [[ "$max_size_mb" -ge 1024 ]]; then
+        vram_info="$((max_size_mb / 1024)) GB"
+      elif [[ "$max_size_mb" -gt 0 ]]; then
+        vram_info="${max_size_mb} MB"
+      fi
+    fi
+
+    # Get IOMMU group
+    local pci_full="0000:$pci"
+    local iommu_group=$(basename "$(readlink -f /sys/bus/pci/devices/${pci_full}/iommu_group 2>/dev/null)" 2>/dev/null)
+
+    echo "  $((i + 1)). $name [${vendor_id}:${device_id}]"
+    echo "     PCI: $pci | Driver: ${driver:-none} | vRAM: ${vram_info:-Unknown}"
+
+    # Show IOMMU group devices for dedicated GPUs
+    if [[ -n "$iommu_group" && "$type" == "dedicated" ]]; then
+      local iommu_group_path="/sys/kernel/iommu_groups/${iommu_group}/devices"
+      if [[ -d "$iommu_group_path" ]]; then
+        local group_devices=()
+        for dev_path in "$iommu_group_path"/*; do
+          if [[ -d "$dev_path" ]]; then
+            local dev_full=$(basename "$dev_path")
+            group_devices+=("${dev_full#0000:}")
+          fi
+        done
+        echo "     IOMMU Group $iommu_group: ${group_devices[*]}"
+      fi
+    fi
+    echo ""
+  done
+
+  # DISPLAY
+  echo "DISPLAY"
+
+  local primary_gpu="Unknown"
+  if command -v glxinfo &>/dev/null; then
+    local glx_output="$(glxinfo 2>/dev/null)"
+    if [[ -n "$glx_output" ]]; then
+      primary_gpu="$(echo "$glx_output" | grep "OpenGL renderer" | cut -d: -f2 | xargs)"
+    fi
+  fi
+
+  if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+    local compositor=""
+    if pgrep -x Hyprland &>/dev/null; then
+      compositor="Hyprland"
+    elif pgrep -x sway &>/dev/null; then
+      compositor="Sway"
+    fi
+    if [[ -n "$compositor" ]]; then
+      echo "  Session: Wayland ($compositor)"
+    else
+      echo "  Session: Wayland"
+    fi
+  elif [[ -n "${DISPLAY:-}" ]]; then
+    echo "  Session: X11"
+  else
+    echo "  Session: None (TTY/SSH)"
+  fi
+
+  echo "  Primary GPU: $primary_gpu"
+
+  echo "  Monitors:"
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local name="${GPU_NAME[$i]}"
+    local driver="${GPU_DRIVER[$i]}"
+
+    local gpu_drm_card=$(get_drm_card_for_pci "$pci")
+
+    if [[ -n "$gpu_drm_card" ]]; then
+      local connectors_path="/sys/class/drm"
+      local connected_count=0
+      local connected_ports=()
+
+      for status_file in "$connectors_path"/${gpu_drm_card}-*/status; do
+        [[ -f "$status_file" ]] || continue
+        if grep -q "^connected$" "$status_file" 2>/dev/null; then
+          local connector_name=$(basename "$(dirname "$status_file")")
+          local port_type=$(echo "$connector_name" | sed "s/^${gpu_drm_card}-//" | sed 's/[0-9-]*$//')
+          connected_ports+=("$port_type")
+          ((connected_count++))
+        fi
+      done
+
+      if [[ "$connected_count" -gt 0 ]]; then
+        local port_list=$(IFS=,; echo "${connected_ports[*]}")
+        echo "    ${name}: ${connected_count} (${port_list})"
+      else
+        echo "    ${name}: 0"
+      fi
+    else
+      if [[ "$driver" == "vfio-pci" ]]; then
+        echo "    ${name}: N/A (vfio-pci)"
+      else
+        echo "    ${name}: Unknown"
+      fi
+    fi
+  done
+  echo ""
+
+  # PASSTHROUGH STATUS
+  echo "PASSTHROUGH STATUS"
+
+  local issues=()
+
+  # GPU count check
+  local gpu_count="${#GPU_PCI_ADDR[@]}"
+  if [[ "$gpu_count" -lt 2 ]]; then
+    issues+=("Only ${gpu_count} GPU detected (passthrough requires 2: iGPU for host + dGPU for VM)")
+  fi
+
+  # IOMMU status
+  if check_iommu_support 2>/dev/null; then
+    local cmdline="$(cat /proc/cmdline 2>/dev/null)"
+    if [[ "$cmdline" =~ iommu=pt ]]; then
+      echo "  IOMMU: Active (passthrough mode)"
+    else
+      echo "  IOMMU: Active"
+    fi
+  else
+    echo "  IOMMU: Not detected"
+    issues+=("IOMMU not enabled in BIOS or kernel")
+  fi
+
+  # Current mode
+  if load_gpu_config 2>/dev/null; then
+    local current_driver="$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')"
+    local current_mode="$(detect_gpu_mode_from_driver "$current_driver")"
+    echo "  Current Mode: ${current_mode:-unknown}"
+    echo ""
+
+    # Passthrough GPU info
+    echo "  Passthrough GPU:"
+    echo "    $GPU_NAME → ${current_driver:-none}"
+
+    # Get audio device in same IOMMU group
+    local gpu_iommu_group=$(basename "$(readlink -f /sys/bus/pci/devices/0000:${GPU_PCI_ADDR}/iommu_group 2>/dev/null)" 2>/dev/null)
+    if [[ -n "$gpu_iommu_group" ]]; then
+      local iommu_group_path="/sys/kernel/iommu_groups/${gpu_iommu_group}/devices"
+      for dev_path in "$iommu_group_path"/*; do
+        [[ -d "$dev_path" ]] || continue
+        local dev_addr_full=$(basename "$dev_path")
+        local dev_addr="${dev_addr_full#0000:}"
+        [[ "$dev_addr" == "$GPU_PCI_ADDR" ]] && continue
+
+        local dev_desc=$(lspci -s "$dev_addr" 2>/dev/null | cut -d: -f3- | xargs)
+        local dev_driver=$(lspci -ks "$dev_addr" 2>/dev/null | grep "Kernel driver" | awk '{print $NF}')
+
+        if echo "$dev_desc" | grep -qi "audio"; then
+          echo "    ${dev_desc%% *} Audio → ${dev_driver:-none}"
+        fi
+      done
+    fi
+
+    echo ""
+    echo "  IOMMU Group $gpu_iommu_group:"
+
+    if [[ -n "$gpu_iommu_group" && -d "/sys/kernel/iommu_groups/${gpu_iommu_group}/devices" ]]; then
+      for dev_path in "/sys/kernel/iommu_groups/${gpu_iommu_group}/devices"/*; do
+        [[ -d "$dev_path" ]] || continue
+        local dev_addr_full=$(basename "$dev_path")
+        local dev_addr="${dev_addr_full#0000:}"
+        local dev_class_code=$(lspci -Dn -s "$dev_addr" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+        local dev_driver=$(lspci -ks "$dev_addr" 2>/dev/null | grep "Kernel driver" | awk '{print $NF}')
+
+        local dev_type="Device"
+        case "$dev_class_code" in
+          03*) dev_type="GPU" ;;
+          04*) dev_type="Audio" ;;
+          0c03) dev_type="USB" ;;
+          06*) dev_type="Bridge" ;;
+        esac
+
+        echo "    $dev_addr $dev_type → ${dev_driver:-none}"
+
+        if [[ "$dev_type" == "USB" && "$dev_driver" != "vfio-pci" && "$current_mode" == "vm" ]]; then
+          issues+=("USB controller $dev_addr not bound to vfio-pci")
+        fi
+      done
+    fi
+
+    echo ""
+
+    # VFIO modules
+    if lsmod | grep -q "^vfio_pci"; then
+      echo "  VFIO Modules: loaded"
+    else
+      echo "  VFIO Modules: not loaded"
+      [[ "$current_mode" == "vm" ]] && issues+=("VFIO modules not loaded")
+    fi
+
+    # VM Ready
+    if [[ "$current_mode" == "vm" ]]; then
+      echo "  VM Ready: Yes"
+    else
+      echo "  VM Ready: No (run 'omarchy-gpu-passthrough mode vm')"
+    fi
+  else
+    echo "  Current Mode: not configured"
+    echo ""
+    echo "  Run: omarchy-gpu-passthrough setup"
+    issues+=("GPU passthrough not configured")
+  fi
+
+  if [[ ${#issues[@]} -gt 0 ]]; then
+    echo ""
+    echo "  Issues:"
+    for issue in "${issues[@]}"; do
+      echo "    ⚠ $issue"
+    done
+  fi
+
+  # DRIVERS
+  echo ""
+  echo "DRIVERS"
+
+  local loaded_modules
+  loaded_modules=$(lsmod 2>/dev/null)
+  local has_driver_info=false
+
+  if echo "$loaded_modules" | grep -q "^nvidia "; then
+    has_driver_info=true
+    local nvidia_version=""
+    if [[ -f /proc/driver/nvidia/version ]]; then
+      nvidia_version=$(grep -oP 'Kernel Module\s+\K[0-9.]+' /proc/driver/nvidia/version 2>/dev/null | head -1)
+    fi
+    if [[ -z "$nvidia_version" ]] && command -v nvidia-smi &>/dev/null; then
+      nvidia_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)
+    fi
+    echo "  NVIDIA: ${nvidia_version:-loaded}"
+  fi
+
+  if echo "$loaded_modules" | grep -q "^amdgpu "; then
+    has_driver_info=true
+    local mesa_version=""
+    if command -v glxinfo &>/dev/null; then
+      mesa_version=$(glxinfo 2>/dev/null | grep "OpenGL version" | grep -oP 'Mesa \K[0-9.]+')
+    fi
+    echo "  AMD/Mesa: ${mesa_version:-loaded}"
+  fi
+
+  if echo "$loaded_modules" | grep -q "^i915 "; then
+    has_driver_info=true
+    echo "  Intel i915: loaded"
+  fi
+
+  if echo "$loaded_modules" | grep -q "^vfio_pci "; then
+    has_driver_info=true
+    echo "  VFIO: kernel $(uname -r)"
+  fi
+
+  [[ "$has_driver_info" == false ]] && echo "  No GPU drivers loaded"
+
+  echo ""
+  echo "Generated: $(date '+%Y-%m-%d %H:%M:%S')"
+  echo ""
+}
+
+show_info_help() {
+  cat <<EOF
+GPU Passthrough Information & Diagnostics
+
+COMMANDS:
+  status       Quick GPU status and binding state (any time)
+  detect       Hardware check: GPUs, IOMMU, suitability (before setup)
+  verify       Full system verification (after setup & reboot)
+  report       Shareable hardware config
+  diagnose     Full diagnostic dump (detailed, saves to /tmp)
+
+SCRIPTING (exit codes):
+  mode           Print GPU mode: none/vm/host/not-configured (0=valid, 1=error)
+  driver         Print current GPU driver (0=success, 1=not-configured)
+  is-bound       Silent check if vfio-pci bound (0=bound, 1=not, 2=not-configured)
+  is-configured  Silent check if configured (0=yes, 1=no)
+EOF
+}
+
+# Main Dispatcher
+
+case "${1:-}" in
+verify)
+  shift
+  verify_setup "$@"
+  ;;
+diagnose)
+  shift
+  cmd_diagnose "$@"
+  ;;
+report)
+  cmd_hardware_report
+  ;;
+status)
+  cmd_status
+  ;;
+detect)
+  cmd_detect
+  ;;
+driver)
+  cmd_driver
+  ;;
+mode)
+  cmd_mode
+  ;;
+is-bound)
+  cmd_is_bound
+  ;;
+is-configured)
+  cmd_is_configured
+  ;;
+get-docker-config)
+  cmd_get_docker_config
+  ;;
+-h | --help | help)
+  show_info_help
+  ;;
+"")
+  show_info_help
+  exit 1
+  ;;
+*)
+  echo "Unknown command: $1"
+  show_info_help
+  exit 1
+  ;;
+esac
