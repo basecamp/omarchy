@@ -31,7 +31,8 @@ verify_hardware_requirements() {
       fi
     else
       iommu_status=", IOMMU not detected"
-      [[ "$quiet" != "true" ]] && msg_error "  IOMMU not detected - enable AMD-Vi/SVM or VT-d/VT-x in BIOS"
+      [[ "$quiet" != "true" ]] && msg_error "  IOMMU not detected"
+      [[ "$quiet" != "true" ]] && echo "    Fix: omarchy-gpu-passthrough setup (adds kernel params + BIOS guidance)"
       ((errors++))
     fi
     [[ "$quiet" != "true" ]] && msg_success "  $GPU_COUNT GPUs detected$iommu_status"
@@ -718,7 +719,11 @@ cmd_detect() {
   if check_iommu_support; then
     msg_success "IOMMU: Enabled"
   else
-    msg_warning "IOMMU: Not detected (enable in BIOS)"
+    msg_warning "IOMMU: Not detected"
+    echo "  Possible causes:"
+    echo "    1. IOMMU not enabled in BIOS (AMD-Vi or Intel VT-d)"
+    echo "    2. Kernel parameters not set → run: omarchy-gpu-passthrough setup"
+    echo "    3. Reboot needed after setup"
   fi
 }
 
