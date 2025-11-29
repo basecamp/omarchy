@@ -3,7 +3,11 @@
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
 DATE_FORMAT="${OMARCHY_SCREENSHOT_DATE_FORMAT:-%Y-%m-%d_%H-%M-%S}"
-FILENAME="${OMARCHY_SCREENSHOT_PREFIX:-screenshot}-$(date +"$DATE_FORMAT")${OMARCHY_SCREENSHOT_SUFFIX:-.png}"
+if [[ $OMARCHY_SCREENSHOT_PREFIX == false ]]; then
+  FILENAME="$(date +"$DATE_FORMAT")${OMARCHY_SCREENSHOT_SUFFIX:-.png}"
+else
+  FILENAME="${OMARCHY_SCREENSHOT_PREFIX:-screenshot_}$(date +"$DATE_FORMAT")${OMARCHY_SCREENSHOT_SUFFIX:-.png}"
+fi
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
   notify-send "Screenshot directory does not exist: $OUTPUT_DIR" -u critical -t 3000
