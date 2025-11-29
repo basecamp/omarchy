@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [[ -f /boot/EFI/linux/omarchy_linux.efi ]] && [[ -f /boot/EFI/linux/$(cat /etc/machine-id)_linux.efi ]]; then
+if [[ -f /boot/EFI/Linux/omarchy_linux.efi ]] && [[ -f /boot/EFI/Linux/$(cat /etc/machine-id)_linux.efi ]]; then
   echo "Cleanup extra UKI"
   sudo rm -f /boot/EFI/Linux/$(cat /etc/machine-id)_linux.efi
 fi
