@@ -77,4 +77,12 @@ env = LIBVA_DRIVER_NAME,nvidia
 env = __GLX_VENDOR_LIBRARY_NAME,nvidia
 EOF
   fi
+  # Install NVIDIA Container Toolkit for Docker GPU support
+  sudo pacman -S --needed --noconfirm nvidia-container-toolkit
+
+  # Configure Docker to use NVIDIA runtime
+  sudo nvidia-ctk runtime configure --runtime=docker
+
+  # Restart Docker to apply changes
+  sudo systemctl restart docker
 fi
