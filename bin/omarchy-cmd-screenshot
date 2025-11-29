@@ -43,7 +43,7 @@ case "$MODE" in
     SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
     kill $PID 2>/dev/null
 
-    # If the selction area is L * W < 20, we'll assume you were trying to select whichever
+    # If the selection area is L * W < 20, we'll assume you were trying to select whichever
     # window or output it was inside of to prevent accidental 2px snapshots
     if [[ "$SELECTION" =~ ^([0-9]+),([0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]]; then
       if (( ${BASH_REMATCH[3]} * ${BASH_REMATCH[4]} < 20 )); then
