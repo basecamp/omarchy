@@ -18,11 +18,10 @@ printf '\033]11;rgb:00/00/00\007'  # Set background color to black
 hyprctl keyword cursor:invisible true &>/dev/null
 
 while true; do
-  effect=$(tte 2>&1 | grep -oP '{\K[^}]+' | tr ',' ' ' | tr ' ' '\n' | sed -n '/^beams$/,$p' | grep -Ev '^(dev_worm)$' | sort -u | shuf -n1)
-
   tte -i ~/.config/omarchy/branding/screensaver.txt \
     --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas --anchor-canvas c --anchor-text c\
-    --no-eol --no-restore-cursor $effect &
+    --random-effect --exclude-effects dev_worm \
+    --no-eol --no-restore-cursor &
 
   while pgrep -x tte >/dev/null; do
     if read -n 1 -t 1 || ! screensaver_in_focus; then

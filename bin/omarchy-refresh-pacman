@@ -17,4 +17,6 @@ else
 fi
 
 echo
-sudo pacman -Syu --noconfirm
+
+# Reset all package DBs and then update
+sudo pacman -Syyu --noconfirm
