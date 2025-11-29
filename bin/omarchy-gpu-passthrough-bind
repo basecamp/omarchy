@@ -484,6 +484,17 @@ cmd_set_none() {
         echo "$dev_vendor $dev_device" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
       fi
     done
+
+    # Rebind USB controllers to xhci_hcd
+    for dev_pci in $iommu_devices; do
+      local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+      if [[ "$dev_class" == "0c03" ]]; then
+        if [[ -d "/sys/bus/pci/drivers/xhci_hcd" ]]; then
+          log_info "Rebinding USB controller $dev_pci to xhci_hcd..."
+          echo "0000:$dev_pci" | tee /sys/bus/pci/drivers/xhci_hcd/bind >/dev/null 2>&1 || true
+        fi
+      fi
+    done
   fi
 
   show_spinner 1 "Verifying GPU state..."

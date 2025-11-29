@@ -373,6 +373,15 @@ unconfigure_sudoers_gpu_passthrough() {
   fi
 }
 
+unconfigure_gpu_state_tmpfiles() {
+  local tmpfiles_file="/etc/tmpfiles.d/omarchy-gpu-passthrough.conf"
+
+  if sudo test -f "$tmpfiles_file"; then
+    sudo rm -f "$tmpfiles_file"
+    msg_success "GPU state marker tmpfiles removed"
+  fi
+}
+
 configure_vfio_modules_mkinitcpio() {
   if [[ ! -f "$MKINITCPIO_CONF" ]]; then
     msg_warning "$MKINITCPIO_CONF not found"
@@ -1195,6 +1204,7 @@ cmd_uninstall() {
   unconfigure_vfio_modules_mkinitcpio
   unconfigure_gpu_blacklist
   unconfigure_pci_binding_permissions
+  unconfigure_gpu_state_tmpfiles
   unconfigure_vfio_modules
   unconfigure_kernel_parameters
   unconfigure_sudoers_gpu_passthrough
