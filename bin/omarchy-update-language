@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Select a locale to enable
+selected=$(
+    grep -E '^[#]?[[:alnum:]_]+\.[[:alnum:]_-]+' /etc/locale.gen | \
+    sed 's/^#//' | \
+    gum filter --height 20 --header "Select locale to enable"
+) || exit 1
+
+# Comment out all locales and uncomment the chosen one to ensure Waybar displays time correctly
+sudo sed -i 's/^[^#]/#&/; s|^#\s*'"$selected"'|'"$selected"'|' /etc/locale.gen
+
+sudo locale-gen
+
+default_lang=${selected%% *}
+echo "System language is now set to $default_lang"
+echo "LANG=$default_lang" | sudo tee /etc/locale.conf >/dev/null
+
+# Restart waybar with new LANG
+env LANG="$default_lang" omarchy-restart-waybar
