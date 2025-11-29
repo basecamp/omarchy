@@ -533,6 +533,37 @@ get_gpu_memory() {
   echo "Unknown"
 }
 
+# Check if Resizable BAR is enabled for a GPU
+check_resizable_bar() {
+  local gpu_pci="$1"
+  lspci -vvs "$gpu_pci" 2>/dev/null | grep -qi "Resizable BAR"
+}
+
+# Get largest BAR size in GB (for large BAR detection)
+get_largest_bar_size_gb() {
+  local gpu_pci="$1"
+  local max_size_gb=0
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ \[size=([0-9]+)([GMK])\] ]]; then
+      local size="${BASH_REMATCH[1]}"
+      local unit="${BASH_REMATCH[2]}"
+
+      local size_gb=0
+      case "$unit" in
+      G) size_gb="$size" ;;
+      M) size_gb=0 ;;
+      K) size_gb=0 ;;
+      esac
+
+      if [[ "$size_gb" -gt "$max_size_gb" ]]; then
+        max_size_gb="$size_gb"
+      fi
+    fi
+  done < <(lspci -vvs "$gpu_pci" 2>/dev/null | grep -E "Region [0-9]+:")
+
+  echo "$max_size_gb"
+}
 
 # Returns comma-separated vendor:device IDs for USB controllers (e.g., "10de:1ada,10de:1adb")
 get_usb_controller_ids_in_iommu_group() {
@@ -554,6 +585,7 @@ get_usb_controller_ids_in_iommu_group() {
 
   echo "$usb_ids"
 }
+
 load_gpu_config() {
   local config_file="/etc/omarchy-gpu-passthrough.conf"
 

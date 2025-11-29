@@ -404,6 +404,19 @@ cmd_diagnose() {
         local audio_pci="${bus_dev}.1"
         echo "  Audio Device: $audio_pci"
       fi
+
+      # Show BAR info and ReBAR status for dedicated GPUs
+      if [[ "${GPU_TYPE[$i]}" == "dedicated" ]]; then
+        local bar_size=$(get_largest_bar_size_gb "${GPU_PCI_ADDR[$i]}")
+        if [[ "$bar_size" -gt 0 ]]; then
+          echo "  Largest BAR: ${bar_size}GB"
+        fi
+        if check_resizable_bar "${GPU_PCI_ADDR[$i]}"; then
+          echo "  Resizable BAR: Enabled"
+        else
+          echo "  Resizable BAR: Disabled"
+        fi
+      fi
       echo ""
 
       local gpu_drm_card=$(get_drm_card_for_pci "${GPU_PCI_ADDR[$i]}")
@@ -1101,7 +1114,13 @@ cmd_hardware_report() {
     fi
 
     echo "  [$((i + 1))] $name ($pci)"
-    echo "      Type: ${type^} | Driver: ${driver:-none}${mode_info}${vram_info}"
+    # ReBAR status for dedicated GPUs
+    local rebar_info=""
+    if [[ "$type" == "dedicated" ]] && check_resizable_bar "$pci"; then
+      rebar_info=" | ReBAR: Enabled"
+    fi
+
+    echo "      Type: ${type^} | Driver: ${driver:-none}${mode_info}${vram_info}${rebar_info}"
     echo ""
   done
 
