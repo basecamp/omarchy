@@ -1,14 +1,16 @@
 #!/bin/bash
 
-set -e
-
 gum style --border normal --border-foreground 6 --padding "1 2" \
-  "Ready to update Omarchy?" \
+  "Ready to update?" \
   "" \
   "• You cannot stop the update once you start!" \
-  "• Make sure you're connected to power or have a full battery"
+  "• Make sure you're connected to power or have a full battery" \
+  "" \
+  "What's new: https://github.com/basecamp/omarchy/releases"
+
+echo
 
 if ! gum confirm "Continue with update?"; then
   echo "Update cancelled"
-  exit 0
+  exit 1
 fi
