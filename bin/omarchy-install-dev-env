@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure|flutter>" >&2
   exit 1
 fi
 
@@ -138,5 +138,8 @@ clojure)
   echo -e "Installing Clojure...\n"
   omarchy-pkg-add rlwrap
   mise use --global clojure@latest
+flutter)
+  echo -e "Installing Flutter...\n"
+  mise use --global flutter@latest
   ;;
 esac
