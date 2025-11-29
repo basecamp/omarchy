@@ -937,6 +937,7 @@ cmd_hardware_report() {
 
   local omarchy_version=""
   local omarchy_branch=""
+  local omarchy_commit=""
 
   if [[ -n "$OMARCHY_PATH" ]] && [[ -f "$OMARCHY_PATH/version" ]]; then
     omarchy_version=$(cat "$OMARCHY_PATH/version" 2>/dev/null | head -1 | tr -d '[:space:]')
@@ -946,6 +947,7 @@ cmd_hardware_report() {
 
   if [[ -n "$OMARCHY_PATH" ]] && [[ -d "$OMARCHY_PATH/.git" ]]; then
     omarchy_branch=$(git -C "$OMARCHY_PATH" rev-parse --abbrev-ref HEAD 2>/dev/null | tr -d '[:space:]')
+    omarchy_commit=$(git -C "$OMARCHY_PATH" rev-parse --short HEAD 2>/dev/null | tr -d '[:space:]')
   elif command -v omarchy-version-branch &>/dev/null; then
     omarchy_branch=$(omarchy-version-branch 2>/dev/null | head -1 | tr -d '[:space:]')
   fi
@@ -957,6 +959,9 @@ cmd_hardware_report() {
   fi
   if [[ -n "$omarchy_branch" ]]; then
     echo "    Branch: $omarchy_branch"
+  fi
+  if [[ -n "$omarchy_commit" ]]; then
+    echo "    Commit: $omarchy_commit"
   fi
 
   local bootloader="Unknown"
