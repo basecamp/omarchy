@@ -339,6 +339,17 @@ save_gpu_config() {
   local iommu_group=$(get_iommu_group "$pci")
   local iommu_devices=$(get_iommu_group_devices "$pci")
 
+  # Debug logging for IOMMU detection (helps diagnose laptop issues)
+  if [[ "$iommu_group" == "unknown" ]]; then
+    log_warn "IOMMU group detection failed for $pci"
+    log_warn "  This is expected before first reboot with IOMMU enabled"
+  fi
+  if [[ -z "$iommu_devices" ]]; then
+    log_warn "IOMMU devices detection returned empty for $pci"
+    log_warn "  USB controller binding will use fallback detection in configure_vfio_modules()"
+  fi
+  log_info "Saving config: IOMMU group=$iommu_group, devices=${iommu_devices:-NONE}"
+
   # Legacy audio_pci for backwards compatibility
   local audio_pci=""
   if [[ -n "$audio_id" ]]; then

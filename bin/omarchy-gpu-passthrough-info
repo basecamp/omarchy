@@ -156,6 +156,93 @@ verify_vfio_setup() {
   return 0
 }
 
+verify_usb_controller_setup() {
+  local quiet="$1"
+  local is_configured="$2"
+  local errors=0
+
+  [[ "$quiet" != "true" ]] && echo ""
+  [[ "$quiet" != "true" ]] && echo "USB Controller Setup (laptops with NVIDIA USB-C):"
+
+  if [[ "$is_configured" != "true" ]]; then
+    [[ "$quiet" != "true" ]] && msg_info "  Not configured - run setup first"
+    return 0
+  fi
+
+  # Check if vfio.conf has ids= line for USB controllers
+  local has_usb_ids=false
+  if [[ -f "$VFIO_CONF" ]] && grep -q "^options vfio-pci ids=" "$VFIO_CONF"; then
+    has_usb_ids=true
+    [[ "$quiet" != "true" ]] && msg_success "  vfio.conf has ids= line for early binding"
+  fi
+
+  # Check softdep
+  local has_softdep=false
+  if [[ -f "$VFIO_CONF" ]] && grep -q "softdep xhci" "$VFIO_CONF"; then
+    has_softdep=true
+    [[ "$quiet" != "true" ]] && msg_success "  softdep configured (vfio-pci loads before xhci_pci)"
+  fi
+
+  # Check udev rule
+  local usb_udev_rule="/etc/udev/rules.d/99-vfio-usb-override.rules"
+  local has_udev_rule=false
+  if [[ -f "$usb_udev_rule" ]]; then
+    has_udev_rule=true
+    [[ "$quiet" != "true" ]] && msg_success "  udev driver_override rule exists"
+  fi
+
+  # Find USB controllers in IOMMU groups and check their driver
+  local found_usb_issue=false
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local pci_full="$pci"
+    [[ ! "$pci_full" =~ ^[0-9a-f]{4}: ]] && pci_full="0000:${pci_full}"
+
+    local iommu_group_path=$(readlink -f "/sys/bus/pci/devices/${pci_full}/iommu_group" 2>/dev/null)
+    if [[ -d "$iommu_group_path/devices" ]]; then
+      for dev_path in "$iommu_group_path/devices"/*; do
+        if [[ -d "$dev_path" ]]; then
+          local dev_addr=$(basename "$dev_path")
+          local dev_addr_short="${dev_addr#0000:}"
+          local dev_class=$(lspci -Dn -s "$dev_addr_short" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+          # USB controller class: 0c03
+          if [[ "$dev_class" == "0c03" ]]; then
+            local current_driver=$(lspci -nnk -s "$dev_addr_short" 2>/dev/null | grep "Kernel driver" | awk '{print $NF}')
+            if [[ "$current_driver" == "vfio-pci" ]]; then
+              [[ "$quiet" != "true" ]] && msg_success "  USB $dev_addr_short bound to vfio-pci ✓"
+            elif [[ "$current_driver" == "xhci_hcd" ]]; then
+              found_usb_issue=true
+              [[ "$quiet" != "true" ]] && msg_warning "USB $dev_addr_short bound to xhci_hcd (should be vfio-pci)"
+              ((errors++))
+            fi
+          fi
+        fi
+      done
+    fi
+  done
+
+  # Summary and recommendations
+  if [[ "$found_usb_issue" == "true" ]]; then
+    [[ "$quiet" != "true" ]] && echo ""
+    [[ "$quiet" != "true" ]] && msg_info "USB controller is bound to wrong driver. Possible fixes:"
+    [[ "$quiet" != "true" ]] && echo "    1. Re-run: omarchy-gpu-passthrough setup"
+    [[ "$quiet" != "true" ]] && echo "    2. Reboot after setup"
+    if [[ "$has_usb_ids" != "true" ]]; then
+      [[ "$quiet" != "true" ]] && echo "    Note: vfio.conf missing ids= line"
+    fi
+    if [[ "$has_softdep" != "true" ]]; then
+      [[ "$quiet" != "true" ]] && echo "    Note: vfio.conf missing softdep"
+    fi
+    if [[ "$has_udev_rule" != "true" ]]; then
+      [[ "$quiet" != "true" ]] && echo "    Note: udev driver_override rule missing"
+    fi
+  elif [[ "$has_usb_ids" != "true" && "$has_softdep" != "true" && "$has_udev_rule" != "true" ]]; then
+    [[ "$quiet" != "true" ]] && msg_info "  No USB controllers in GPU IOMMU groups (or not detected)"
+  fi
+
+  return $errors
+}
+
 verify_setup() {
   local quiet="${1:-false}"
   local total_errors=0
@@ -201,6 +288,9 @@ verify_setup() {
   ((total_errors += $?))
 
   verify_vfio_setup "$quiet" "$is_configured"
+
+  verify_usb_controller_setup "$quiet" "$is_configured"
+  ((total_errors += $?))
 
   [[ "$quiet" != "true" ]] && echo ""
   [[ "$quiet" != "true" ]] && echo "GPU Status:"
@@ -318,17 +408,17 @@ verify_setup() {
 }
 
 cmd_diagnose() {
+  # Require sudo for complete diagnostics
+  if ! sudo -v 2>/dev/null; then
+    msg_error "Diagnostics requires sudo for complete system information"
+    echo "  Run: sudo omarchy-gpu-passthrough info diagnose"
+    return 1
+  fi
+
   msg_section "GPU Passthrough Diagnostics"
 
   # Check and install dependencies if needed
   check_dependencies
-
-  local has_sudo=false
-  if sudo -v; then
-    has_sudo=true
-  else
-    msg_warning "Some data incomplete (no sudo)"
-  fi
 
   msg_info "Collecting system information..."
 
@@ -370,7 +460,7 @@ cmd_diagnose() {
     echo ""
 
     echo "[Motherboard]"
-    if [[ "$has_sudo" == "true" ]] && command -v dmidecode &>/dev/null; then
+    if command -v dmidecode &>/dev/null; then
       local mobo_vendor=$(sudo dmidecode -t baseboard 2>/dev/null | grep "Manufacturer:" | cut -d: -f2 | xargs)
       local mobo_model=$(sudo dmidecode -t baseboard 2>/dev/null | grep "Product Name:" | cut -d: -f2 | xargs)
       local bios_version=$(sudo dmidecode -t bios 2>/dev/null | grep "Version:" | cut -d: -f2 | xargs)
@@ -378,7 +468,7 @@ cmd_diagnose() {
       echo "Model: ${mobo_model:-Unknown}"
       [[ -n "$bios_version" ]] && echo "BIOS: $bios_version"
     else
-      echo "dmidecode not available or no sudo"
+      echo "dmidecode not available"
     fi
     echo ""
 
@@ -616,6 +706,99 @@ cmd_diagnose() {
       echo ""
     fi
 
+    echo "[USB CONTROLLER DIAGNOSTICS]"
+    echo ""
+
+    # Check udev rule for USB controller override
+    local usb_udev_rule="/etc/udev/rules.d/99-vfio-usb-override.rules"
+    echo "[USB Controller udev Rule: $usb_udev_rule]"
+    if [[ -f "$usb_udev_rule" ]]; then
+      cat "$usb_udev_rule"
+    else
+      echo "  Not configured (may cause xhci_hcd rebind issues)"
+    fi
+    echo ""
+
+    # Check if xhci_hcd is built-in or module
+    echo "[xhci_hcd Module Status]"
+    if grep -q "^xhci_hcd" /proc/modules 2>/dev/null; then
+      echo "  xhci_hcd: Loaded as MODULE"
+      lsmod | grep xhci | head -5
+    elif grep -q "xhci_hcd" /lib/modules/$(uname -r)/modules.builtin 2>/dev/null; then
+      echo "  xhci_hcd: BUILT-IN to kernel (softdep won't work!)"
+    else
+      echo "  xhci_hcd: Status unknown"
+    fi
+    echo ""
+
+    # Check softdep in vfio.conf
+    echo "[softdep Configuration]"
+    if [[ -f "$VFIO_CONF" ]] && grep -q "softdep xhci" "$VFIO_CONF"; then
+      grep "softdep" "$VFIO_CONF"
+      echo "  Status: ✓ Configured"
+    else
+      echo "  Status: ✗ Not configured (xhci_pci may load before vfio-pci)"
+    fi
+    echo ""
+
+    # Find USB controllers in GPU IOMMU groups
+    echo "[USB Controllers in GPU IOMMU Groups]"
+    local found_usb=false
+    for i in "${!GPU_PCI_ADDR[@]}"; do
+      local pci="${GPU_PCI_ADDR[$i]}"
+      local pci_full="$pci"
+      [[ ! "$pci_full" =~ ^[0-9a-f]{4}: ]] && pci_full="0000:${pci_full}"
+
+      local iommu_group_path=$(readlink -f "/sys/bus/pci/devices/${pci_full}/iommu_group" 2>/dev/null)
+      if [[ -d "$iommu_group_path/devices" ]]; then
+        for dev_path in "$iommu_group_path/devices"/*; do
+          if [[ -d "$dev_path" ]]; then
+            local dev_addr=$(basename "$dev_path")
+            local dev_class=$(lspci -Dn -s "${dev_addr#0000:}" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+            # USB controller class: 0c03
+            if [[ "$dev_class" == "0c03" ]]; then
+              found_usb=true
+              local dev_addr_short="${dev_addr#0000:}"
+              echo "  GPU: ${GPU_NAME[$i]} (${GPU_PCI_ADDR[$i]})"
+              echo "  USB Controller: $dev_addr_short"
+
+              # Show lspci info
+              local usb_info=$(lspci -nnk -s "$dev_addr_short" 2>/dev/null)
+              echo "$usb_info" | sed 's/^/    /'
+
+              # Check driver_override
+              local override_file="/sys/bus/pci/devices/${dev_addr}/driver_override"
+              if [[ -f "$override_file" ]]; then
+                local override_value=$(cat "$override_file" 2>/dev/null)
+                if [[ -n "$override_value" ]]; then
+                  echo "    driver_override: $override_value"
+                else
+                  echo "    driver_override: (empty - not set)"
+                fi
+              else
+                echo "    driver_override: (file not found)"
+              fi
+              echo ""
+            fi
+          fi
+        done
+      fi
+    done
+    if [[ "$found_usb" == "false" ]]; then
+      echo "  No USB controllers found in GPU IOMMU groups"
+      echo ""
+    fi
+
+    # Check vfio.conf for ids= line
+    echo "[vfio-pci ids= Configuration]"
+    if [[ -f "$VFIO_CONF" ]] && grep -q "^options vfio-pci ids=" "$VFIO_CONF"; then
+      grep "^options vfio-pci ids=" "$VFIO_CONF"
+      echo "  Status: ✓ USB controller IDs configured for early binding"
+    else
+      echo "  Status: ✗ No ids= line (USB controllers may not bind to vfio-pci at boot)"
+    fi
+    echo ""
+
     if [[ -f /etc/environment ]]; then
       echo "[System Environment (/etc/environment)]"
       echo "(GPU-related variables only)"
@@ -664,27 +847,25 @@ cmd_diagnose() {
     echo "RELEVANT BOOT MESSAGES (dmesg)"
     echo ""
 
-    if [[ "$has_sudo" == "true" ]]; then
-      echo "[IOMMU Messages]"
-      sudo dmesg | grep -i iommu | head -20 || echo "  No IOMMU messages"
-      echo ""
+    echo "[IOMMU Messages]"
+    sudo dmesg | grep -i iommu | head -20 || echo "  No IOMMU messages"
+    echo ""
 
-      echo "[VFIO Messages]"
-      sudo dmesg | grep -i vfio | head -20 || echo "  No VFIO messages"
-      echo ""
+    echo "[VFIO Messages]"
+    sudo dmesg | grep -i vfio | head -20 || echo "  No VFIO messages"
+    echo ""
 
-      echo "[Boot VGA Device]"
-      sudo dmesg | grep -i "boot vga" || echo "  No boot VGA messages"
-      echo ""
+    echo "[Boot VGA Device]"
+    sudo dmesg | grep -i "boot vga" || echo "  No boot VGA messages"
+    echo ""
 
-      echo "[PCI Passthrough Messages]"
-      sudo dmesg | grep -iE "pci.*passthrough|vfio-pci" | head -20 || echo "  No passthrough messages"
-      echo ""
-    else
-      echo "  sudo access declined - dmesg output unavailable"
-      echo "  (some diagnostic information may be incomplete)"
-      echo ""
-    fi
+    echo "[PCI Passthrough Messages]"
+    sudo dmesg | grep -iE "pci.*passthrough|vfio-pci" | head -20 || echo "  No passthrough messages"
+    echo ""
+
+    echo "[xhci/USB Controller Messages]"
+    sudo dmesg | grep -iE "xhci|usb.*controller" | head -20 || echo "  No xhci messages"
+    echo ""
 
     echo "[END OF DIAGNOSTICS REPORT]"
     echo ""

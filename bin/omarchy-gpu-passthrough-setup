@@ -170,6 +170,21 @@ configure_vfio_modules() {
   local gpu_pci="$1"
   local usb_ids=$(get_usb_controller_ids_in_iommu_group "$gpu_pci")
 
+  # Fallback: detect USB controllers by GPU vendor + USB class when IOMMU not active
+  if [[ -z "$usb_ids" ]]; then
+    local gpu_vendor="${GPU_VENDOR_ID[$SELECTED_GPU_INDEX]}"
+    gpu_vendor=$(echo "$gpu_vendor" | tr '[:upper:]' '[:lower:]')
+
+    if [[ "$gpu_vendor" == "10de" ]]; then
+      # NVIDIA USB controllers: find all 10de devices with class 0c03 (USB controller)
+      usb_ids=$(lspci -nn | grep -i "\[0c03\]" | grep -i "\[10de:" | grep -oP '\[10de:[0-9a-f]{4}\]' | tr -d '[]' | tr '\n' ',' | sed 's/,$//')
+      if [[ -n "$usb_ids" ]]; then
+        log_warn "IOMMU not active - detected NVIDIA USB controllers by vendor ID: $usb_ids"
+        msg_warning "IOMMU not yet active (first boot) - using vendor-based USB detection"
+      fi
+    fi
+  fi
+
   if [[ -n "$usb_ids" ]]; then
     log_info "USB controllers in IOMMU group need early binding: $usb_ids"
     msg_info "USB controller detected in IOMMU group - enabling early binding"
@@ -180,7 +195,27 @@ configure_vfio_modules() {
     [[ -n "$usb_ids" ]] && echo "options vfio-pci ids=$usb_ids"
     echo "options vfio-pci disable_vga=1"
     echo "options vfio-pci disable_idle_d3=1"
+    # Ensure vfio-pci loads before xhci_pci to prevent USB controller rebind
+    [[ -n "$usb_ids" ]] && echo "softdep xhci_pci pre: vfio-pci"
   } | sudo tee "$VFIO_CONF" >/dev/null
+
+  # Create udev rule for persistent driver_override (prevents xhci_hcd rebind)
+  # Using RUN+= instead of ATTR{} because ATTR doesn't trigger bind
+  if [[ -n "$usb_ids" ]]; then
+    local udev_rules_file="/etc/udev/rules.d/99-vfio-usb-override.rules"
+    {
+      echo "# Prevent xhci_hcd from rebinding USB controllers in GPU IOMMU group"
+      echo "# Generated $(date +%Y-%m-%d) by omarchy-gpu-passthrough"
+      local id
+      for id in $(echo "$usb_ids" | tr ',' ' '); do
+        local vendor="${id%%:*}"
+        local device="${id##*:}"
+        echo "ACTION==\"add\", SUBSYSTEM==\"pci\", ATTR{vendor}==\"0x$vendor\", ATTR{device}==\"0x$device\", RUN+=\"/bin/sh -c 'echo vfio-pci > /sys/bus/pci/devices/%k/driver_override'\""
+      done
+    } | sudo tee "$udev_rules_file" >/dev/null
+    sudo udevadm control --reload-rules
+    log_info "USB controller udev rule created: $udev_rules_file"
+  fi
 
   msg_success "VFIO config: $VFIO_CONF"
 }
@@ -592,12 +627,19 @@ unconfigure_gpu_blacklist() {
 }
 
 unconfigure_vfio_modules() {
-  if [[ ! -f "$VFIO_CONF" ]]; then
-    return 0
+  if [[ -f "$VFIO_CONF" ]]; then
+    sudo rm -f "$VFIO_CONF"
+    msg_success "VFIO config removed"
   fi
 
-  sudo rm -f "$VFIO_CONF"
-  msg_success "VFIO config removed"
+  # Remove USB controller udev rule if it exists
+  local udev_usb_override="/etc/udev/rules.d/99-vfio-usb-override.rules"
+  if [[ -f "$udev_usb_override" ]]; then
+    sudo rm -f "$udev_usb_override"
+    sudo udevadm control --reload-rules
+    msg_success "USB controller udev rule removed"
+  fi
+
   return 0
 }
 
