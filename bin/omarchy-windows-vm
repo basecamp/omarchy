@@ -847,6 +847,7 @@ create_docker_compose_config() {
   local GPU_PCI_ADDR="${10:-}"
   local GPU_IOMMU_GROUP="${11:-}"
   local GPU_IOMMU_DEVICES="${12:-}"
+  local TPM_ENABLED="${13:-true}"
 
   # Detect SMBIOS and disk info for anti-cheat spoofing
   detect_smbios_and_disk_info
@@ -986,6 +987,14 @@ create_docker_compose_config() {
       - $SPICE_DIR:/tmp/spice"
   fi
 
+  # Build TPM/Secure Boot section
+  local TPM_SECTION=""
+  if [[ "$TPM_ENABLED" == true ]]; then
+    TPM_SECTION="
+      TPM: \"Y\"
+      BOOT_MODE: \"windows_secure\""
+  fi
+
   # Create docker-compose.yml with clean variable substitution
   # If COMPOSE_FILE is "-" or "/dev/stdout", print to stdout instead of file
   if [[ "$COMPOSE_FILE" == "-" ]] || [[ "$COMPOSE_FILE" == "/dev/stdout" ]]; then
@@ -1002,7 +1011,7 @@ services:
       DISK_SIZE: "$SELECTED_DISK"
       USERNAME: "$USERNAME"
       PASSWORD: "$PASSWORD"
-      TZ: "$HOST_TZ"$ARGUMENTS_SECTION
+      TZ: "$HOST_TZ"$TPM_SECTION$ARGUMENTS_SECTION
     devices:
       - /dev/kvm
       - /dev/net/tun$DEVICES_KVMFR$DEVICES_VFIO
@@ -1033,7 +1042,7 @@ services:
       DISK_SIZE: "$SELECTED_DISK"
       USERNAME: "$USERNAME"
       PASSWORD: "$PASSWORD"
-      TZ: "$HOST_TZ"$ARGUMENTS_SECTION
+      TZ: "$HOST_TZ"$TPM_SECTION$ARGUMENTS_SECTION
     devices:
       - /dev/kvm
       - /dev/net/tun$DEVICES_KVMFR$DEVICES_VFIO
@@ -1703,6 +1712,9 @@ install_windows() {
     exit 1
   fi
 
+  # Initialize previous config variables
+  PREVIOUS_TPM_ENABLED=""
+
   # Handle existing installation - fresh or quick reinstall
   if [[ -f "$COMPOSE_FILE" ]] || [[ -d "$HOME/.windows" ]]; then
     # Read previous configuration before showing reinstall choice
@@ -1713,6 +1725,7 @@ install_windows() {
     PREVIOUS_PASSWORD=""
     PREVIOUS_LG_ENABLED=false
     PREVIOUS_GPU_ENABLED=false
+    PREVIOUS_TPM_ENABLED=false
 
     if [[ -f "$COMPOSE_FILE" ]]; then
       # Extract values from docker-compose.yml
@@ -1730,6 +1743,11 @@ install_windows() {
       # Check GPU passthrough (vfio-pci in ARGUMENTS)
       if grep -q 'vfio-pci' "$COMPOSE_FILE"; then
         PREVIOUS_GPU_ENABLED=true
+      fi
+
+      # Check TPM (TPM: "Y" in environment)
+      if grep -q 'TPM:.*Y' "$COMPOSE_FILE"; then
+        PREVIOUS_TPM_ENABLED=true
       fi
     fi
 
@@ -1749,6 +1767,7 @@ install_windows() {
       echo "  Username:         $PREVIOUS_USERNAME"
       echo "  GPU Passthrough:  $([[ "$PREVIOUS_GPU_ENABLED" == true ]] && echo "Enabled" || echo "Disabled")"
       echo "  Looking Glass:    $([[ "$PREVIOUS_LG_ENABLED" == true ]] && echo "Enabled" || echo "Disabled")"
+      echo "  TPM/Secure Boot:  $([[ "$PREVIOUS_TPM_ENABLED" == true ]] && echo "Enabled" || echo "Disabled")"
     fi
 
     echo ""
@@ -2235,6 +2254,16 @@ install_windows() {
     fi
   fi
 
+  # TPM & Secure Boot (optional, enables BitLocker/Windows Hello)
+  local TPM_DEFAULT=true
+  [[ "$PREVIOUS_TPM_ENABLED" == false ]] && TPM_DEFAULT=false
+
+  if gum confirm --default=$TPM_DEFAULT "Enable TPM & Secure Boot?"; then
+    TPM_ENABLED=true
+  else
+    TPM_ENABLED=false
+  fi
+
   # Configuration summary
   echo ""
   echo "Configuration Summary"
@@ -2257,6 +2286,11 @@ install_windows() {
     fi
   else
     echo "  Display:    RDP/VNC"
+  fi
+  if [[ "$TPM_ENABLED" == true ]]; then
+    echo "  Security:   TPM 2.0 + Secure Boot"
+  else
+    echo "  Security:   Disabled"
   fi
 
   if [[ "$GPU_PASSTHROUGH_NEEDS_SETUP" == true ]]; then
@@ -2483,7 +2517,8 @@ install_windows() {
 
   create_docker_compose_config "$COMPOSE_FILE" "$SELECTED_RAM" "$SELECTED_CORES" "$SELECTED_DISK" \
     "$USERNAME" "$PASSWORD" "$LG_ENABLED" "$IVSHMEM_SIZE" \
-    "$GPU_PASSTHROUGH_ENABLED" "$GPU_PCI_ADDR" "$GPU_IOMMU_GROUP" "$GPU_IOMMU_DEVICES"
+    "$GPU_PASSTHROUGH_ENABLED" "$GPU_PCI_ADDR" "$GPU_IOMMU_GROUP" "$GPU_IOMMU_DEVICES" \
+    "$TPM_ENABLED"
 
   msg_success "Configuration saved"
   echo ""
@@ -3192,10 +3227,17 @@ show_compose() {
     IVSHMEM_SIZE=$(grep -oP 'size=\K[0-9]+' "$COMPOSE_FILE" | head -1)
   fi
 
+  # Detect TPM (check for TPM: "Y")
+  local TPM_ENABLED=false
+  if grep -q 'TPM:.*Y' "$COMPOSE_FILE"; then
+    TPM_ENABLED=true
+  fi
+
   # Generate docker-compose.yml to stdout
   create_docker_compose_config "-" "$SELECTED_RAM" "$SELECTED_CORES" "$SELECTED_DISK" \
     "$USERNAME" "$PASSWORD" "$LG_ENABLED" "$IVSHMEM_SIZE" \
-    "$GPU_PASSTHROUGH_ENABLED" "$GPU_PCI_ADDR" "$GPU_IOMMU_GROUP" "$GPU_IOMMU_DEVICES"
+    "$GPU_PASSTHROUGH_ENABLED" "$GPU_PCI_ADDR" "$GPU_IOMMU_GROUP" "$GPU_IOMMU_DEVICES" \
+    "$TPM_ENABLED"
 }
 
 status_windows() {
