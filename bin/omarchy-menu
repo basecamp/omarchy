@@ -468,6 +468,12 @@ go_to_menu() {
   esac
 }
 
+# Close walker if it's already open
+if hyprctl layers | grep -q walker; then
+  walker -q
+  exit 0
+fi
+
 if [[ -n "$1" ]]; then
   BACK_TO_EXIT=true
   go_to_menu "$1"
