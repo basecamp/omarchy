@@ -15,3 +15,7 @@ Description = Restarting Walker services after system update
 When = PostTransaction
 Exec = $OMARCHY_PATH/bin/omarchy-restart-walker
 EOF
+
+# Link the visual theme menu config
+mkdir -p ~/.config/elephant/menus
+ln -snf $OMARCHY_PATH/default/elephant/omarchy_themes.lua ~/.config/elephant/menus/omarchy_themes.lua

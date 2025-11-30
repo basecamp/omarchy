@@ -1,3 +1,3 @@
 echo "Pull packages from stable Arch mirror"
 
-omarchy-refresh-pacman-mirrorlist stable
+omarchy-refresh-pacman
