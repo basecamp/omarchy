@@ -774,6 +774,12 @@ detect_smbios_and_disk_info() {
     echo "$value"
   }
 
+  # Helper to check for placeholder values (case-insensitive)
+  is_valid_smbios_value() {
+    local val="${1,,}"  # lowercase
+    [[ -n "$1" ]] && [[ "$val" != "unknown" ]] && [[ "$val" != "not specified" ]] && [[ "$val" != *"to be filled"* ]] && [[ "$val" != "default string" ]] && [[ "$val" != "default" ]] && [[ "$val" != "n/a" ]]
+  }
+
   # SMBIOS Type 0: BIOS Information
   local BIOS_VENDOR="$(sudo -n /usr/bin/dmidecode -s bios-vendor 2>/dev/null | head -1)"
   local BIOS_VERSION="$(sudo -n /usr/bin/dmidecode -s bios-version 2>/dev/null | head -1)"
@@ -792,10 +798,10 @@ detect_smbios_and_disk_info() {
   local SYS_SERIAL="$(sudo -n /usr/bin/dmidecode -s system-serial-number 2>/dev/null | head -1)"
   local SYS_UUID="$(sudo -n /usr/bin/dmidecode -s system-uuid 2>/dev/null | head -1)"
 
-  if [[ -n "$SYS_MANUFACTURER" ]] && [[ -n "$SYS_PRODUCT" ]]; then
+  if is_valid_smbios_value "$SYS_MANUFACTURER" && is_valid_smbios_value "$SYS_PRODUCT"; then
     SMBIOS_FLAGS="${SMBIOS_FLAGS} -smbios type=1,manufacturer=$(escape_for_qemu "$SYS_MANUFACTURER"),product=$(escape_for_qemu "$SYS_PRODUCT")"
-    [[ -n "$SYS_VERSION" ]] && SMBIOS_FLAGS="${SMBIOS_FLAGS},version=$(escape_for_qemu "$SYS_VERSION")"
-    [[ -n "$SYS_SERIAL" ]] && SMBIOS_FLAGS="${SMBIOS_FLAGS},serial=$(escape_for_qemu "$SYS_SERIAL")"
+    is_valid_smbios_value "$SYS_VERSION" && SMBIOS_FLAGS="${SMBIOS_FLAGS},version=$(escape_for_qemu "$SYS_VERSION")"
+    is_valid_smbios_value "$SYS_SERIAL" && SMBIOS_FLAGS="${SMBIOS_FLAGS},serial=$(escape_for_qemu "$SYS_SERIAL")"
     # UUID must be in format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (only add if valid)
     if [[ "$SYS_UUID" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]; then
       SMBIOS_FLAGS="${SMBIOS_FLAGS},uuid=$SYS_UUID"
@@ -819,12 +825,6 @@ detect_smbios_and_disk_info() {
   local BOARD_PRODUCT="$(sudo -n /usr/bin/dmidecode -s baseboard-product-name 2>/dev/null | head -1)"
   local BOARD_VERSION="$(sudo -n /usr/bin/dmidecode -s baseboard-version 2>/dev/null | head -1)"
   local BOARD_SERIAL="$(sudo -n /usr/bin/dmidecode -s baseboard-serial-number 2>/dev/null | head -1)"
-
-  # Helper to check for placeholder values
-  is_valid_smbios_value() {
-    local val="${1,,}"  # lowercase
-    [[ -n "$1" ]] && [[ "$val" != "unknown" ]] && [[ "$val" != "not specified" ]] && [[ "$val" != *"to be filled"* ]] && [[ "$val" != "default string" ]] && [[ "$val" != "default" ]] && [[ "$val" != "n/a" ]]
-  }
 
   if is_valid_smbios_value "$BOARD_MANUFACTURER" && is_valid_smbios_value "$BOARD_PRODUCT"; then
     SMBIOS_FLAGS="${SMBIOS_FLAGS} -smbios type=2,manufacturer=$(escape_for_qemu "$BOARD_MANUFACTURER"),product=$(escape_for_qemu "$BOARD_PRODUCT")"
@@ -1487,10 +1487,10 @@ launch_after_install() {
       echo "  VM is running - access via: http://127.0.0.1:8006"
       return
     fi
-    echo "Launching Looking Glass (detached)..."
-    sleep 2
+    echo ""
+    msg_info "Launching Looking Glass..."
 
-    # Check if user needs temporary kvm group access
+    # Check permissions
     local use_sg_kvm=false
     if [[ ! -r /dev/kvmfr0 ]]; then
       ensure_user_in_kvm_group
@@ -1498,17 +1498,18 @@ launch_after_install() {
       [[ "$kvm_status" -le 1 ]] && use_sg_kvm=true
     fi
 
-    # Launch with setsid for proper detachment
+    # Launch LG in windowed mode, detached (don't block)
     if [[ "$use_sg_kvm" == true ]]; then
-      sg kvm -c "setsid uwsm-app -- looking-glass-client -F >/dev/null 2>&1" &
+      sg kvm -c "setsid uwsm-app -- looking-glass-client win:fullScreen=no >/dev/null 2>&1" &
     else
-      setsid uwsm-app -- looking-glass-client -F >/dev/null 2>&1 &
+      setsid uwsm-app -- looking-glass-client win:fullScreen=no >/dev/null 2>&1 &
     fi
     disown
+
     echo ""
     msg_info "Windows VM is running in background"
     echo "  → Looking Glass opened in separate window"
-    echo "  → Closing LG window does NOT stop the VM"
+    echo "  → Scroll Lock + F to toggle fullscreen"
     echo "  → To stop VM: omarchy-windows-vm stop"
     echo ""
   else
