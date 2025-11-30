@@ -8,15 +8,17 @@ if [[ ! -d "$OUTPUT_DIR" ]]; then
   exit 1
 fi
 
-SCOPE=""
-AUDIO="false"
+DESKTOP_AUDIO="false"
+MICROPHONE_AUDIO="false"
 WEBCAM="false"
+STOP_RECORDING="false"
 
 for arg in "$@"; do
   case "$arg" in
-    --with-audio) AUDIO="true" ;;
+    --with-desktop-audio) DESKTOP_AUDIO="true" ;;
+    --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
     --with-webcam) WEBCAM="true" ;;
-    output|region) SCOPE="$arg" ;;
+    --stop-recording) STOP_RECORDING="true"
   esac
 done
 
@@ -57,27 +59,35 @@ start_webcam_overlay() {
 
 start_screenrecording() {
   local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
+  local audio_devices=""
   local audio_args=""
 
-  # Merge audio tracks into one - separate tracks only play one at a time in most players
-  [[ "$AUDIO" == "true" ]] && audio_args="-a default_output|default_input"
+  [[ "$DESKTOP_AUDIO" == "true" ]] && audio_devices+="default_output"
 
-  gpu-screen-recorder -w "$@" -f 60 -c mp4 -o "$filename" $audio_args &
+  if [[ "$MICROPHONE_AUDIO" == "true" ]]; then
+    # Merge audio tracks into one - separate tracks only play one at a time in most players
+    [[ -n "$audio_devices" ]] && audio_devices+="|"
+    audio_devices+="default_input"
+  fi
+
+  [[ -n "$audio_devices" ]] && audio_args+="-a $audio_devices"
+
+  gpu-screen-recorder -w portal -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
   toggle_screenrecording_indicator
 }
 
 stop_screenrecording() {
-  pkill -SIGINT -f "gpu-screen-recorder"  # SIGINT required to save video properly
+  pkill -SIGINT -f "^gpu-screen-recorder"  # SIGINT required to save video properly
 
   # Wait a maximum of 5 seconds to finish before hard killing
   local count=0
-  while pgrep -f "gpu-screen-recorder" >/dev/null && [ $count -lt 50 ]; do
+  while pgrep -f "^gpu-screen-recorder" >/dev/null && [ $count -lt 50 ]; do
     sleep 0.1
     count=$((count + 1))
   done
 
-  if pgrep -f "gpu-screen-recorder" >/dev/null; then
-    pkill -9 -f "gpu-screen-recorder"
+  if pgrep -f "^gpu-screen-recorder" >/dev/null; then
+    pkill -9 -f "^gpu-screen-recorder"
     cleanup_webcam
     notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
   else
@@ -92,51 +102,19 @@ toggle_screenrecording_indicator() {
 }
 
 screenrecording_active() {
-  pgrep -f "gpu-screen-recorder" >/dev/null || pgrep -x slurp >/dev/null || pgrep -f "WebcamOverlay" >/dev/null
+  pgrep -f "^gpu-screen-recorder" >/dev/null || pgrep -f "WebcamOverlay" >/dev/null
 }
 
 if screenrecording_active; then
-  if pgrep -x slurp >/dev/null; then
-    pkill -x slurp 2>/dev/null
-  elif pgrep -f "WebcamOverlay" >/dev/null && ! pgrep -f "gpu-screen-recorder" >/dev/null; then
+  if pgrep -f "WebcamOverlay" >/dev/null && ! pgrep -f "^gpu-screen-recorder" >/dev/null; then
     cleanup_webcam
   else
     stop_screenrecording
   fi
-elif [[ "$SCOPE" == "output" ]]; then
+elif [[ "$STOP_RECORDING" == "false" ]]; then
   [[ "$WEBCAM" == "true" ]] && start_webcam_overlay
 
-  if ! output=$(slurp -o -f "%o"); then
-    [[ "$WEBCAM" == "true" ]] && cleanup_webcam
-    exit 1
-  fi
-
-  if [[ -z "$output" ]]; then
-    notify-send "Error" "Could not detect monitor" -u critical
-    [[ "$WEBCAM" == "true" ]] && cleanup_webcam
-    exit 1
-  fi
-
-  start_screenrecording "$output"
+  start_screenrecording || cleanup_webcam
 else
-  [[ "$WEBCAM" == "true" ]] && start_webcam_overlay
-
-  scale=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .scale')
-
-  if ! region=$(slurp -f "%wx%h+%x+%y"); then
-    [[ "$WEBCAM" == "true" ]] && cleanup_webcam
-    exit 1
-  fi
-
-  if [[ "$region" =~ ^([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)$ ]]; then
-    w=$(awk "BEGIN {printf \"%.0f\", ${BASH_REMATCH[1]} * $scale}")
-    h=$(awk "BEGIN {printf \"%.0f\", ${BASH_REMATCH[2]} * $scale}")
-    x=$(awk "BEGIN {printf \"%.0f\", ${BASH_REMATCH[3]} * $scale}")
-    y=$(awk "BEGIN {printf \"%.0f\", ${BASH_REMATCH[4]} * $scale}")
-    scaled_region="${w}x${h}+${x}+${y}"
-  else
-    scaled_region="$region"
-  fi
-
-  start_screenrecording region -region "$scaled_region"
+  exit 1
 fi
