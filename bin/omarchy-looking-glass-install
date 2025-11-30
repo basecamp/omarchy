@@ -275,6 +275,15 @@ fi
 if [[ -n "$IVSHMEM_SIZE_FROM_ENV" ]]; then
   IVSHMEM_SIZE="$IVSHMEM_SIZE_FROM_ENV"
   msg_success "Using ${IVSHMEM_SIZE}MB shared memory (from VM config)"
+
+  # Update kvmfr.conf if size differs from current
+  current_size=$(grep -oP 'static_size_mb=\K\d+' /etc/modprobe.d/kvmfr.conf 2>/dev/null || echo "0")
+  if [[ "$current_size" != "$IVSHMEM_SIZE" ]]; then
+    msg_info "Updating kernel module configuration (${current_size}MB → ${IVSHMEM_SIZE}MB)..."
+    sudo tee /etc/modprobe.d/kvmfr.conf >/dev/null <<EOF
+options kvmfr static_size_mb=$IVSHMEM_SIZE
+EOF
+  fi
 fi
 
 if [[ -z "$IVSHMEM_SIZE" ]] || { [[ "${FORCE_RECONFIGURE:-0}" == "1" ]] && [[ -z "$IVSHMEM_SIZE_FROM_ENV" ]]; }; then

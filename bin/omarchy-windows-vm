@@ -1207,6 +1207,14 @@ show_installation_summary() {
   local CURRENT="${12}"
   local IS_FRESH_INSTALL="${13:-false}"
 
+  # Wait for Windows to finish post-install configuration
+  echo ""
+  echo "Finalizing Windows configuration..."
+  if [[ "$LG_ENABLED" == true ]]; then
+    echo "  Looking Glass will open automatically in ~30 seconds"
+  fi
+  sleep 30
+
   local MINUTES=$((ELAPSED / 60))
   local SECONDS=$((ELAPSED % 60))
 
@@ -1260,7 +1268,8 @@ show_installation_summary() {
   notify_silent "Windows VM" "Installation complete! (${MINUTES}m ${SECONDS}s)" "normal"
 
   if [[ "$LG_ENABLED" == true ]]; then
-    msg_section "Looking Glass Setup"
+    echo ""
+    echo "Looking Glass Setup"
     echo "  1. Ensure display is connected to GPU (monitor, 2nd cable, or dummy plug)"
     echo "     Note: dummy plugs limit Windows refresh rate"
     echo ""
@@ -1268,18 +1277,23 @@ show_installation_summary() {
     echo "     Looking Glass will auto-switch to GPU output when ready"
     echo ""
     echo "  3. Device Manager → Disable 'Red Hat VirtIO GPU DOD controller'"
-    echo "     This removes virtual display so LG shows everything"
+    echo "     WARNING: Screen will FREEZE after this - this is normal!"
     echo ""
-    echo "  4. Display Settings:"
-    echo "     → Set GPU display as primary"
-    echo "     → Set correct resolution"
-    echo "     → May require reconnection if settings not immediately available"
-    echo ""
-    echo "  5. If Looking Glass goes black during setup:"
-    echo "     Closing LG won't help - you need to restart the VM:"
+    echo "  4. Immediately restart the VM:"
     echo "     → omarchy-windows-vm stop"
     echo "     → omarchy-windows-vm launch --lg --keep-alive"
-    echo "     This is normal after driver install or VirtIO disable"
+    echo ""
+    echo "  5. After restart, wait for Windows to configure the GPU display"
+    echo "     → Close noVNC browser tab (no longer needed)"
+    echo "     → Looking Glass will show native GPU output"
+    echo ""
+    echo "  6. Optional: Set resolution and refresh rate in Windows Display Settings"
+    echo ""
+    echo "  7. Install GPU drivers (NVIDIA/AMD) for best performance"
+    echo "     Screen may FREEZE during install - restart VM as in step 4"
+    echo ""
+    echo "Done! You now have full GPU performance in Looking Glass."
+    echo "     Now you can update Windows, install games and apps."
     echo ""
   fi
 
@@ -1463,19 +1477,33 @@ launch_after_install() {
   local USE_LG="${3:-false}"
 
   if [[ "$USE_LG" == true ]]; then
-    echo "Launching Looking Glass..."
+    if ! command -v looking-glass-client &>/dev/null; then
+      msg_warning "Looking Glass client not found"
+      echo "  Install: omarchy-looking-glass-install"
+      echo "  VM is running - access via: http://127.0.0.1:8006"
+      return
+    fi
+    if [[ ! -e /dev/kvmfr0 ]]; then
+      msg_warning "KVMFR device not ready (/dev/kvmfr0)"
+      echo "  Reboot required after Looking Glass installation"
+      echo "  VM is running - access via: http://127.0.0.1:8006"
+      return
+    fi
+    echo "Launching Looking Glass (detached)..."
+    sleep 2
+    uwsm-app -- looking-glass-client -F win:fullScreen=no &>/dev/null &
+    disown
+    echo ""
+    msg_info "Windows VM is running in background"
+    echo "  → Looking Glass opened in separate window"
+    echo "  → Closing LG window does NOT stop the VM"
+    echo "  → To stop VM: omarchy-windows-vm stop"
+    echo ""
   else
     echo "Launching RDP connection..."
-  fi
-
-  sleep 3
-
-  if [[ "$USE_LG" == true ]]; then
-    connect_looking_glass true
-  else
+    sleep 3
     connect_rdp "$USERNAME" "$PASSWORD" true
   fi
-  return $?
 }
 
 monitor_installation_progress() {
@@ -2292,6 +2320,7 @@ install_windows() {
           *) IVSHMEM_SIZE=64 ;;
           esac
           export IVSHMEM_SIZE
+          msg_success "IVSHMEM: ${IVSHMEM_SIZE}MB"
         else
           msg_info "Skipping - use VNC/RDP instead (add later: omarchy-looking-glass-install)"
         fi
@@ -2307,8 +2336,10 @@ install_windows() {
 
   if gum confirm --default=$TPM_DEFAULT "Enable TPM & Secure Boot?"; then
     TPM_ENABLED=true
+    msg_success "Security: TPM + Secure Boot"
   else
     TPM_ENABLED=false
+    msg_info "Security: Disabled"
   fi
 
   # Configuration summary

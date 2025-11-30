@@ -831,7 +831,11 @@ validate_gpu_selection() {
   fi
 
   if [[ "$dgpu_monitor_count" -gt 0 ]]; then
-    msg_warning "Dedicated GPU: $dgpu_monitor_count monitor(s) (will go blank after reboot)"
+    if [[ "$igpu_monitor_count" -gt 0 ]]; then
+      msg_info "Dedicated GPU: $dgpu_monitor_count monitor(s) (reserved for VM)"
+    else
+      msg_warning "Dedicated GPU: $dgpu_monitor_count monitor(s) (will go blank after reboot)"
+    fi
   fi
 
   if [[ "$igpu_monitor_count" -eq 0 ]] && [[ "$dgpu_monitor_count" -gt 0 ]]; then
