@@ -61,7 +61,8 @@ ensure_user_in_kvm_group() {
     return 0
   fi
 
-  if sudo usermod -aG kvm "$USER" 2>/dev/null; then
+  # Use -n to avoid blocking in background processes
+  if sudo -n usermod -aG kvm "$USER" 2>/dev/null; then
     return 1
   else
     return 2
@@ -1301,6 +1302,7 @@ show_installation_summary() {
 
 connect_looking_glass() {
   local KEEP_ALIVE="${1:-true}"
+  local WINDOWED="${2:-false}"
 
   # Note: sudo -v removed - no longer needed with sudoers rules configured
   # Socket permissions are fixed automatically via passwordless sudo rules
@@ -1387,7 +1389,7 @@ connect_looking_glass() {
   fi
 
   # Try to read escape key from client.ini
-  local escape_key="Right Ctrl"
+  local escape_key="Scroll Lock"
   local lg_config="$HOME/.config/looking-glass/client.ini"
   if [[ -f "$lg_config" ]]; then
     local raw_key=$(grep -E '^\s*escapeKey\s*=' "$lg_config" | sed 's/^.*=\s*//' | tr -d ' "')
@@ -1395,7 +1397,7 @@ connect_looking_glass() {
     KEY_SCROLLLOCK | 71) escape_key="Scroll Lock" ;;
     KEY_RIGHTCTRL | 97) escape_key="Right Ctrl" ;;
     KEY_LEFTCTRL | 29) escape_key="Left Ctrl" ;;
-    *) escape_key="${raw_key:-Right Ctrl}" ;;
+    *) escape_key="${raw_key:-Scroll Lock}" ;;
     esac
   fi
 
@@ -1406,9 +1408,9 @@ connect_looking_glass() {
 
   while [[ "$ELAPSED" -lt "$MAX_WAIT" ]]; do
     # Check socket and fix permissions if needed
-    if sudo test -S "$SPICE_SOCKET_PATH" 2>/dev/null; then
-      sudo chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
-      sudo chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
+    if sudo -n test -S "$SPICE_SOCKET_PATH" 2>/dev/null; then
+      sudo -n chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
+      sudo -n chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
     fi
 
     if timeout 1 env SOCKET_PATH="$SPICE_SOCKET_PATH" python3 -c "import socket, os; s=socket.socket(socket.AF_UNIX); s.connect(os.environ['SOCKET_PATH'])" 2>/dev/null; then
@@ -1435,13 +1437,16 @@ connect_looking_glass() {
   sleep 3
 
   # Launch Looking Glass client in background (hide logs, immune to Ctrl+C)
+  local lg_args="-F"
+  [[ "$WINDOWED" == true ]] && lg_args="win:fullScreen=no"
+
   if [[ "$USE_SG_KVM" == true ]]; then
     # User needs temporary kvm group access - run through sg kvm
-    sg kvm -c "setsid uwsm-app -- looking-glass-client -F >/dev/null 2>&1" &
+    sg kvm -c "setsid uwsm-app -- looking-glass-client $lg_args >/dev/null 2>&1" &
     LG_PID=$!
   else
     # Normal launch (user has direct access to /dev/kvmfr0)
-    setsid uwsm-app -- looking-glass-client -F >/dev/null 2>&1 &
+    setsid uwsm-app -- looking-glass-client $lg_args >/dev/null 2>&1 &
     LG_PID=$!
   fi
 
@@ -1487,31 +1492,14 @@ launch_after_install() {
       echo "  VM is running - access via: http://127.0.0.1:8006"
       return
     fi
-    echo ""
-    msg_info "Launching Looking Glass..."
-
-    # Check permissions
-    local use_sg_kvm=false
-    if [[ ! -r /dev/kvmfr0 ]]; then
-      ensure_user_in_kvm_group
-      local kvm_status=$?
-      [[ "$kvm_status" -le 1 ]] && use_sg_kvm=true
-    fi
-
-    # Launch LG in windowed mode, detached (don't block)
-    if [[ "$use_sg_kvm" == true ]]; then
-      sg kvm -c "setsid uwsm-app -- looking-glass-client win:fullScreen=no >/dev/null 2>&1" &
-    else
-      setsid uwsm-app -- looking-glass-client win:fullScreen=no >/dev/null 2>&1 &
-    fi
-    disown
 
     echo ""
-    msg_info "Windows VM is running in background"
-    echo "  → Looking Glass opened in separate window"
-    echo "  → Scroll Lock + F to toggle fullscreen"
-    echo "  → To stop VM: omarchy-windows-vm stop"
+    echo "Launching Looking Glass..."
+    echo "  To stop VM: omarchy-windows-vm stop"
     echo ""
+
+    # Launch via the same command that works manually, in new session
+    setsid "$0" launch --lg -k --windowed >/dev/null 2>&1 &
   else
     echo "Launching RDP connection..."
     sleep 3
@@ -2890,6 +2878,7 @@ check_passwordless_configuration() {
 launch_windows() {
   KEEP_ALIVE=false
   USE_LOOKING_GLASS=false
+  USE_WINDOWED=false
   USER_PROVIDED_PARAMS=false
 
   # Parse command line arguments
@@ -2905,6 +2894,11 @@ launch_windows() {
       USER_PROVIDED_PARAMS=true
       shift
       ;;
+    --windowed | -w)
+      USE_WINDOWED=true
+      USER_PROVIDED_PARAMS=true
+      shift
+      ;;
     *)
       shift
       ;;
@@ -2913,7 +2907,7 @@ launch_windows() {
 
   check_vm_configured
   check_docker_running
-  check_passwordless_configuration
+  [[ "$USE_WINDOWED" != true ]] && check_passwordless_configuration
 
   # Interactive mode if no params provided
   if [[ "$USER_PROVIDED_PARAMS" == false ]]; then
@@ -3051,10 +3045,10 @@ launch_windows() {
       SPICE_WAIT=0
       while [[ "$SPICE_WAIT" -lt 30 ]]; do
         # Check socket and fix permissions if needed
-        if sudo test -S "$SPICE_SOCKET_PATH" 2>/dev/null; then
+        if sudo -n test -S "$SPICE_SOCKET_PATH" 2>/dev/null; then
           msg_success "SPICE socket created"
-          sudo chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
-          sudo chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
+          sudo -n chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
+          sudo -n chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
           break
         fi
         sleep 1
@@ -3071,9 +3065,9 @@ launch_windows() {
   # Fix SPICE socket permissions if GPU passthrough is enabled (even if container already running)
   if grep -q "vfio-pci" "$COMPOSE_FILE" 2>/dev/null; then
     # Check socket and fix permissions if needed
-    if sudo test -S "$SPICE_SOCKET_PATH" 2>/dev/null && [[ ! -r "$SPICE_SOCKET_PATH" ]]; then
-      sudo chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
-      sudo chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
+    if sudo -n test -S "$SPICE_SOCKET_PATH" 2>/dev/null && [[ ! -r "$SPICE_SOCKET_PATH" ]]; then
+      sudo -n chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
+      sudo -n chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
     fi
   fi
 
@@ -3120,7 +3114,7 @@ launch_windows() {
   fi
 
   if [[ "$USE_LOOKING_GLASS" == true ]]; then
-    connect_looking_glass "$KEEP_ALIVE"
+    connect_looking_glass "$KEEP_ALIVE" "$USE_WINDOWED"
 
   else
     # Extract credentials for RDP connection
@@ -3376,6 +3370,7 @@ show_usage() {
   echo "                       Options:"
   echo "                         --keep-alive, -k        Keep VM running after RDP closes"
   echo "                         --looking-glass, --lg   Connect via Looking Glass"
+  echo "                         --windowed, -w          Start Looking Glass in windowed mode"
   echo "  stop                 Stop the running Windows VM"
   echo "  status               Show current VM status"
   echo "  show-compose         Display generated docker-compose.yml configuration (for testing/debugging)"
