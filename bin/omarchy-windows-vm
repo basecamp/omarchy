@@ -814,6 +814,53 @@ detect_smbios_and_disk_info() {
     [[ -n "$CPU_MAX_SPEED" ]] && SMBIOS_FLAGS="${SMBIOS_FLAGS},max-speed=${CPU_MAX_SPEED}"
   fi
 
+  # SMBIOS Type 2: Baseboard Information
+  local BOARD_MANUFACTURER="$(sudo -n /usr/bin/dmidecode -s baseboard-manufacturer 2>/dev/null | head -1)"
+  local BOARD_PRODUCT="$(sudo -n /usr/bin/dmidecode -s baseboard-product-name 2>/dev/null | head -1)"
+  local BOARD_VERSION="$(sudo -n /usr/bin/dmidecode -s baseboard-version 2>/dev/null | head -1)"
+  local BOARD_SERIAL="$(sudo -n /usr/bin/dmidecode -s baseboard-serial-number 2>/dev/null | head -1)"
+
+  # Helper to check for placeholder values
+  is_valid_smbios_value() {
+    [[ -n "$1" ]] && [[ "$1" != "Unknown" ]] && [[ "$1" != "Not Specified" ]] && [[ "$1" != "To Be Filled By O.E.M." ]] && [[ "$1" != "Default string" ]]
+  }
+
+  if is_valid_smbios_value "$BOARD_MANUFACTURER" && is_valid_smbios_value "$BOARD_PRODUCT"; then
+    SMBIOS_FLAGS="${SMBIOS_FLAGS} -smbios type=2,manufacturer=$(escape_for_qemu "$BOARD_MANUFACTURER"),product=$(escape_for_qemu "$BOARD_PRODUCT")"
+    is_valid_smbios_value "$BOARD_VERSION" && SMBIOS_FLAGS="${SMBIOS_FLAGS},version=$(escape_for_qemu "$BOARD_VERSION")"
+    is_valid_smbios_value "$BOARD_SERIAL" && SMBIOS_FLAGS="${SMBIOS_FLAGS},serial=$(escape_for_qemu "$BOARD_SERIAL")"
+  fi
+
+  # SMBIOS Type 3: Chassis Information
+  local CHASSIS_MANUFACTURER="$(sudo -n /usr/bin/dmidecode -s chassis-manufacturer 2>/dev/null | head -1)"
+  local CHASSIS_TYPE="$(sudo -n /usr/bin/dmidecode -t chassis 2>/dev/null | grep -m1 'Type:' | sed 's/.*Type: //')"
+  local CHASSIS_SERIAL="$(sudo -n /usr/bin/dmidecode -s chassis-serial-number 2>/dev/null | head -1)"
+
+  if is_valid_smbios_value "$CHASSIS_MANUFACTURER"; then
+    # Map chassis type to QEMU numeric value (Desktop=3, Laptop=9, Notebook=10)
+    local CHASSIS_TYPE_NUM="3"
+    case "${CHASSIS_TYPE,,}" in
+      *laptop*|*portable*) CHASSIS_TYPE_NUM="9" ;;
+      *notebook*) CHASSIS_TYPE_NUM="10" ;;
+      *desktop*|*tower*) CHASSIS_TYPE_NUM="3" ;;
+    esac
+    SMBIOS_FLAGS="${SMBIOS_FLAGS} -smbios type=3,manufacturer=$(escape_for_qemu "$CHASSIS_MANUFACTURER"),type=${CHASSIS_TYPE_NUM}"
+    is_valid_smbios_value "$CHASSIS_SERIAL" && SMBIOS_FLAGS="${SMBIOS_FLAGS},serial=$(escape_for_qemu "$CHASSIS_SERIAL")"
+  fi
+
+  # SMBIOS Type 17: Memory Device (find first populated DIMM)
+  local MEM_MANUFACTURER="$(sudo -n /usr/bin/dmidecode -t memory 2>/dev/null | grep 'Manufacturer:' | grep -v 'Not Specified' | head -1 | sed 's/.*Manufacturer: //' | xargs)"
+  local MEM_PART="$(sudo -n /usr/bin/dmidecode -t memory 2>/dev/null | grep 'Part Number:' | grep -v 'Not Specified' | head -1 | sed 's/.*Part Number: //' | xargs)"
+  local MEM_SPEED="$(sudo -n /usr/bin/dmidecode -t memory 2>/dev/null | grep 'Speed:' | grep -v 'Unknown' | head -1 | grep -oP '\d+' | head -1)"
+  local MEM_SERIAL="$(sudo -n /usr/bin/dmidecode -t memory 2>/dev/null | grep 'Serial Number:' | grep -v 'Not Specified' | head -1 | sed 's/.*Serial Number: //' | xargs)"
+
+  if is_valid_smbios_value "$MEM_MANUFACTURER"; then
+    SMBIOS_FLAGS="${SMBIOS_FLAGS} -smbios type=17,manufacturer=$(escape_for_qemu "$MEM_MANUFACTURER"),loc_pfx=DIMM_A1,bank=Bank_0"
+    is_valid_smbios_value "$MEM_SERIAL" && SMBIOS_FLAGS="${SMBIOS_FLAGS},serial=$(escape_for_qemu "$MEM_SERIAL")"
+    is_valid_smbios_value "$MEM_PART" && SMBIOS_FLAGS="${SMBIOS_FLAGS},part=$(escape_for_qemu "$MEM_PART")"
+    [[ -n "$MEM_SPEED" ]] && SMBIOS_FLAGS="${SMBIOS_FLAGS},speed=${MEM_SPEED}"
+  fi
+
   # Disk spoofing - detect primary disk
   local DISK_VENDOR="$(lsblk -ndo VENDOR /dev/nvme0n1 2>/dev/null | xargs)"
   local DISK_MODEL="$(lsblk -ndo MODEL /dev/nvme0n1 2>/dev/null | xargs)"
@@ -871,9 +918,9 @@ create_docker_compose_config() {
     [[ -n "$CPU_FAMILY" ]] && CPU_FLAGS="${CPU_FLAGS},family=${CPU_FAMILY}"
     [[ -n "$CPU_MODEL" ]] && CPU_FLAGS="${CPU_FLAGS},model=${CPU_MODEL}"
     [[ -n "$CPU_STEPPING" ]] && CPU_FLAGS="${CPU_FLAGS},stepping=${CPU_STEPPING}"
-    CPU_FLAGS="${CPU_FLAGS},-hypervisor,hv_vendor_id=AuthenticAMD,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,+invtsc,+pdpe1gb,+tsc-deadline,migratable=no"
+    CPU_FLAGS="${CPU_FLAGS},-hypervisor,hv_vendor_id=AuthenticAMD,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,hv_reset,hv_vpindex,hv_runtime,hv_synic,hv_stimer,hv_frequencies,+invtsc,+pdpe1gb,+tsc-deadline,migratable=no"
 
-    MACHINE_FLAGS="-machine type=q35,vmport=off,hpet=off,accel=kvm"
+    MACHINE_FLAGS="-machine type=q35,vmport=off,hpet=off,accel=kvm,kernel-irqchip=on"
   elif grep -qi 'GenuineIntel' /proc/cpuinfo 2>/dev/null; then
     # Intel CPU detected
     CPU_FLAGS="-cpu host,kvm=on"
@@ -883,9 +930,9 @@ create_docker_compose_config() {
     [[ -n "$CPU_FAMILY" ]] && CPU_FLAGS="${CPU_FLAGS},family=${CPU_FAMILY}"
     [[ -n "$CPU_MODEL" ]] && CPU_FLAGS="${CPU_FLAGS},model=${CPU_MODEL}"
     [[ -n "$CPU_STEPPING" ]] && CPU_FLAGS="${CPU_FLAGS},stepping=${CPU_STEPPING}"
-    CPU_FLAGS="${CPU_FLAGS},-hypervisor,hv_vendor_id=GenuineIntel,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,+invtsc,+pdpe1gb,+tsc-deadline,migratable=no"
+    CPU_FLAGS="${CPU_FLAGS},-hypervisor,hv_vendor_id=GenuineIntel,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,hv_reset,hv_vpindex,hv_runtime,hv_synic,hv_stimer,hv_frequencies,+invtsc,+pdpe1gb,+tsc-deadline,migratable=no"
 
-    MACHINE_FLAGS="-machine type=q35,vmport=off,hpet=off,accel=kvm"
+    MACHINE_FLAGS="-machine type=q35,vmport=off,hpet=off,accel=kvm,kernel-irqchip=on"
   fi
 
   # Auto-detect host timezone
