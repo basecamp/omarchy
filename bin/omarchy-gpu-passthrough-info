@@ -458,15 +458,7 @@ cmd_diagnose() {
     echo ""
 
     echo "[Bootloader]"
-    local bootloader="Unknown"
-    if [[ -f /etc/default/limine ]]; then
-      bootloader="Limine"
-    elif [[ -d /boot/grub ]]; then
-      bootloader="GRUB"
-    elif [[ -d /boot/loader ]]; then
-      bootloader="systemd-boot"
-    fi
-    echo "$bootloader"
+    echo "$(detect_bootloader)"
     echo ""
 
     echo "[Motherboard]"
@@ -597,8 +589,9 @@ cmd_diagnose() {
     echo ""
 
     echo "[Kernel Command Line]"
+    echo '```'
     cat /proc/cmdline
-    echo ""
+    echo '```'
     echo ""
 
     echo "[IOMMU Parameters]"
@@ -684,7 +677,9 @@ cmd_diagnose() {
 
     if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
       echo "[GPU Configuration: $GPU_PASSTHROUGH_CONF]"
+      echo '```'
       cat "$GPU_PASSTHROUGH_CONF"
+      echo '```'
       echo ""
     else
       echo "GPU passthrough not configured (run: omarchy-gpu-passthrough setup)"
@@ -694,13 +689,17 @@ cmd_diagnose() {
     if [[ -f "$LIMINE_DEFAULT" ]]; then
       echo "[Limine Configuration: $LIMINE_DEFAULT]"
       echo "(Showing KERNEL_CMDLINE entries only)"
-      grep "^KERNEL_CMDLINE" "$LIMINE_DEFAULT" || echo "  No KERNEL_CMDLINE entries found"
+      echo '```'
+      grep "^KERNEL_CMDLINE" "$LIMINE_DEFAULT" || echo "No KERNEL_CMDLINE entries found"
+      echo '```'
       echo ""
     fi
 
     if [[ -f "$VFIO_CONF" ]]; then
       echo "[VFIO Configuration: $VFIO_CONF]"
+      echo '```'
       cat "$VFIO_CONF"
+      echo '```'
       echo ""
     else
       echo "VFIO configuration not found"
@@ -709,10 +708,21 @@ cmd_diagnose() {
 
     if [[ -f "$BLACKLIST_CONF" ]]; then
       echo "[Driver Blacklist: $BLACKLIST_CONF]"
+      echo '```'
       cat "$BLACKLIST_CONF"
+      echo '```'
       echo ""
     else
       echo "No driver blacklist configured"
+      echo ""
+    fi
+
+    if [[ -f /etc/mkinitcpio.conf ]]; then
+      echo "[Initramfs Configuration: /etc/mkinitcpio.conf]"
+      echo "(MODULES and HOOKS lines only)"
+      echo '```'
+      grep -E "^MODULES=|^HOOKS=" /etc/mkinitcpio.conf || echo "No MODULES/HOOKS found"
+      echo '```'
       echo ""
     fi
 
@@ -723,9 +733,11 @@ cmd_diagnose() {
     local usb_udev_rule="/etc/udev/rules.d/99-vfio-usb-override.rules"
     echo "[USB Controller udev Rule: $usb_udev_rule]"
     if [[ -f "$usb_udev_rule" ]]; then
+      echo '```'
       cat "$usb_udev_rule"
+      echo '```'
     else
-      echo "  Not configured (may cause xhci_hcd rebind issues)"
+      echo "Not configured (may cause xhci_hcd rebind issues)"
     fi
     echo ""
 
@@ -812,7 +824,9 @@ cmd_diagnose() {
     if [[ -f /etc/environment ]]; then
       echo "[System Environment (/etc/environment)]"
       echo "(GPU-related variables only)"
-      grep -E "AQ_DRM_DEVICES|WLR_DRM_DEVICES|CUDA" /etc/environment 2>/dev/null || echo "  No GPU-related variables found"
+      echo '```'
+      grep -E "AQ_DRM_DEVICES|WLR_DRM_DEVICES|CUDA" /etc/environment 2>/dev/null || echo "No GPU-related variables found"
+      echo '```'
       echo ""
     fi
 
@@ -847,14 +861,16 @@ cmd_diagnose() {
 
     if [[ -f "$LOG_FILE" ]]; then
       echo "[Last 50 lines of $LOG_FILE]"
+      echo '```'
       tail -50 "$LOG_FILE"
+      echo '```'
       echo ""
     else
       echo "No logs found at $LOG_FILE"
       echo ""
     fi
 
-    echo "RELEVANT BOOT MESSAGES (dmesg)"
+    echo "[RELEVANT BOOT MESSAGES (dmesg)]"
     echo ""
 
     echo "[IOMMU Messages]"
@@ -877,6 +893,39 @@ cmd_diagnose() {
     sudo dmesg | grep -iE "xhci|usb.*controller" | head -20 || echo "  No xhci messages"
     echo ""
 
+    echo "[TROUBLESHOOTING HINTS]"
+    echo ""
+
+    # Check IOMMU status once
+    local iommu_cmdline=false iommu_firmware=false
+    grep -qE "intel_iommu|amd_iommu" /proc/cmdline 2>/dev/null && iommu_cmdline=true
+    sudo dmesg 2>/dev/null | grep -q "Intel-IOMMU force enabled" && iommu_firmware=true
+
+    if [[ "$iommu_firmware" == "true" ]]; then
+      echo "  ℹ️  IOMMU enabled by firmware (intel_iommu=on may not be needed)"
+    fi
+
+    if ! grep -q "iommu=pt" /proc/cmdline 2>/dev/null; then
+      echo "  ⚠️  iommu=pt not set - recommended for better performance"
+    fi
+
+    # Only warn about bootloader/config if IOMMU not active
+    if [[ "$iommu_cmdline" == "false" && "$iommu_firmware" == "false" ]]; then
+      local bootloader=$(detect_bootloader)
+      [[ "$bootloader" != "limine" ]] && \
+        echo "  ⚠️  Bootloader '$bootloader' requires manual kernel parameter configuration"
+      [[ -f /etc/omarchy-gpu-passthrough.conf ]] && \
+        echo "  ⚠️  Setup may be incomplete - config saved but IOMMU not active"
+    fi
+
+    # Laptop detection
+    detect_hybrid_graphics_laptop
+    if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
+      echo "  ℹ️  Laptop detected (MUX-less hybrid graphics)"
+      echo "  ℹ️  Internal display on iGPU - safe for dGPU passthrough"
+    fi
+    echo ""
+
     echo "[END OF DIAGNOSTICS REPORT]"
     echo ""
     echo "Report saved to: $output_file"
@@ -888,8 +937,6 @@ cmd_diagnose() {
   echo ""
   msg_success "Report saved: $output_file"
 }
-
-# Command Implementations
 
 cmd_detect() {
   msg_section "GPU Detection"
@@ -919,9 +966,25 @@ cmd_detect() {
     echo ""
   done
 
-  # IOMMU status
+  echo "IOMMU Status:"
+  local iommu_cmdline=false
+  local iommu_firmware=false
+
+  if grep -qE "(intel_iommu|amd_iommu)=on" /proc/cmdline 2>/dev/null; then
+    iommu_cmdline=true
+  fi
+
+  if journalctl -k -b 2>/dev/null | grep -q "Intel-IOMMU force enabled"; then
+    iommu_firmware=true
+  fi
+
   if check_iommu_support; then
     msg_success "IOMMU: Enabled"
+    if [[ "$iommu_firmware" == "true" ]]; then
+      echo "  Source: Firmware-enabled (Tiger Lake or similar)"
+    elif [[ "$iommu_cmdline" == "true" ]]; then
+      echo "  Source: Kernel cmdline"
+    fi
   else
     msg_warning "IOMMU: Not detected"
     echo "  Possible causes:"
@@ -929,6 +992,9 @@ cmd_detect() {
     echo "    2. Kernel parameters not set → run: omarchy-gpu-passthrough setup"
     echo "    3. Reboot needed after setup"
   fi
+
+  echo ""
+  echo "Bootloader: $(detect_bootloader)"
 }
 
 cmd_status() {

@@ -1297,6 +1297,10 @@ show_installation_summary() {
     echo "Done! You now have full GPU performance in Looking Glass."
     echo "     Now you can update Windows, install games and apps."
     echo ""
+    echo "If Looking Glass doesn't start automatically:"
+    echo "  → omarchy-windows-vm launch --lg --keep-alive"
+    echo "  → or use app menu: 'Windows [Looking Glass]'"
+    echo ""
   fi
 }
 
@@ -2208,7 +2212,7 @@ install_windows() {
 
   # Looking Glass requires dedicated GPU (NVIDIA/AMD/Intel Arc), not integrated
   if command -v lspci &>/dev/null; then
-    GPU_INFO=$(lspci | grep -iE 'VGA|3D|Display' | grep -E 'NVIDIA|AMD|Arc' | grep -vE 'Intel.*(UHD|HD Graphics [0-9]{3,4}$)' | head -1)
+    GPU_INFO=$(lspci | grep -iE 'VGA compatible|3D controller|Display controller' | grep -E 'NVIDIA|AMD|Arc' | grep -vE 'Intel.*(UHD|HD Graphics [0-9]{3,4}$)' | head -1)
     if [[ -n "$GPU_INFO" ]]; then
       HAS_DEDICATED_GPU=true
 

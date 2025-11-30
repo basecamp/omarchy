@@ -222,6 +222,8 @@ check_dependencies() {
       msg_info "  Install manually if needed: sudo pacman -S ${missing[*]}"
     fi
   fi
+
+  return 0
 }
 
 get_cpu_vendor() {
@@ -285,9 +287,9 @@ detect_virtualization() {
     return 1
   fi
 
-  if dmesg 2>/dev/null | grep -qiE "hypervisor detected|kvm|qemu|vmware|xen|virtualbox"; then
+  if journalctl -k -b 2>/dev/null | grep -qiE "hypervisor detected|kvm|qemu|vmware|xen|virtualbox"; then
     IS_VIRTUAL_MACHINE=true
-    VIRTUALIZATION_TYPE="detected via dmesg"
+    VIRTUALIZATION_TYPE="detected via kernel log"
     return 1
   fi
 
@@ -295,11 +297,7 @@ detect_virtualization() {
 }
 
 check_iommu_support() {
-  if dmesg 2>/dev/null | grep -qi "IOMMU enabled\|AMD-Vi\|DMAR"; then
-    return 0
-  fi
-
-  if journalctl -b 2>/dev/null | grep -qi "IOMMU enabled\|AMD-Vi\|DMAR"; then
+  if journalctl -k -b 2>/dev/null | grep -qi "IOMMU enabled\|AMD-Vi\|DMAR"; then
     return 0
   fi
 
@@ -371,6 +369,7 @@ GPU_IOMMU_DEVICES="$iommu_devices"
 EOF
 
   msg_success "Config saved: $GPU_PASSTHROUGH_CONF"
+  return 0
 }
 
 validate_pci_address() {
@@ -403,6 +402,12 @@ detect_gpus() {
       continue
     fi
 
+    # Filter non-GPU devices (class 03xx = display controllers)
+    local pci_class=$(lspci -Dn -s "$pci_addr" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+    if [[ ! "$pci_class" =~ ^03 ]]; then
+      continue
+    fi
+
     local ids=$(echo "$line" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
     if [[ -z "$ids" ]]; then
       continue
@@ -429,7 +434,7 @@ detect_gpus() {
     GPU_AUDIO_ID+=("$audio_id")
 
     i=$((i + 1))
-  done < <(lspci -nn | grep -iE 'VGA|3D|Display')
+  done < <(lspci -nn | grep -iE 'VGA compatible|3D controller|Display controller')
 
   GPU_COUNT=$i
 
@@ -714,6 +719,87 @@ get_drm_card_for_pci() {
       return 0
     fi
   done
+
+  return 1
+}
+
+detect_bootloader() {
+  if [[ -f /etc/default/limine ]]; then
+    echo "limine"
+  elif [[ -d /boot/grub ]] || [[ -f /etc/default/grub ]]; then
+    echo "grub"
+  elif [[ -d /boot/loader/entries ]]; then
+    echo "systemd-boot"
+  elif [[ -d /boot/EFI/refind ]]; then
+    echo "refind"
+  else
+    echo "unknown"
+  fi
+}
+
+# Sets IS_MUXLESS_LAPTOP and DGPU_HAS_EXTERNAL_MONITOR globals
+detect_hybrid_graphics_laptop() {
+  local has_igpu=false
+  local has_dgpu=false
+  local igpu_has_edp=false
+  local dgpu_has_edp=false
+  local dgpu_has_external=false
+
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local type="${GPU_TYPE[$i]}"
+    local drm_card=$(get_drm_card_for_pci "$pci")
+
+    [[ -z "$drm_card" ]] && continue
+
+    if [[ "$type" == "integrated" ]]; then
+      has_igpu=true
+      for connector in /sys/class/drm/${drm_card}-eDP-*/status; do
+        if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
+          igpu_has_edp=true
+        fi
+      done
+    else
+      has_dgpu=true
+      for connector in /sys/class/drm/${drm_card}-eDP-*/status; do
+        if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
+          dgpu_has_edp=true
+        fi
+      done
+      for connector_type in HDMI DP VGA; do
+        for connector in /sys/class/drm/${drm_card}-${connector_type}*/status; do
+          if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
+            dgpu_has_external=true
+            break 2
+          fi
+        done
+      done
+    fi
+  done
+
+  # MUX-less: iGPU has eDP (laptop screen), dGPU doesn't
+  if [[ "$has_igpu" == "true" && "$has_dgpu" == "true" &&
+        "$igpu_has_edp" == "true" && "$dgpu_has_edp" == "false" ]]; then
+    IS_MUXLESS_LAPTOP=true
+    DGPU_HAS_EXTERNAL_MONITOR="$dgpu_has_external"
+    return 0
+  fi
+
+  IS_MUXLESS_LAPTOP=false
+  DGPU_HAS_EXTERNAL_MONITOR=false
+  return 1
+}
+
+check_iommu_enabled_cmdline() {
+  local cmdline=$(cat /proc/cmdline 2>/dev/null)
+
+  if echo "$cmdline" | grep -qE "(intel_iommu|amd_iommu)=on"; then
+    return 0
+  fi
+
+  if journalctl -k -b 2>/dev/null | grep -q "Intel-IOMMU force enabled"; then
+    return 0
+  fi
 
   return 1
 }

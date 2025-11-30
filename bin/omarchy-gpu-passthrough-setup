@@ -3,7 +3,7 @@
 # omarchy-gpu-passthrough-setup - Setup wizard for GPU passthrough
 #
 
-set -euo pipefail
+set -uo pipefail
 
 # Load shared utilities
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -114,18 +114,78 @@ configure_kernel_parameters() {
   *) iommu_param="amd_iommu=on" ;;
   esac
 
-  if [[ ! -f "$LIMINE_DEFAULT" ]]; then
-    msg_error "Limine bootloader not found"
-    echo ""
-    echo "   Currently only Limine is supported."
-    echo "   GRUB/systemd-boot support may be added in future versions."
-    echo ""
-    echo "   For manual GRUB setup, add to kernel cmdline:"
-    echo "     ${iommu_param} iommu=pt"
-    return 1
+  local bootloader=$(detect_bootloader)
+
+  if [[ "$bootloader" == "limine" ]]; then
+    log_info "Bootloader: Limine (automatic configuration)"
+    configure_omarchy_limine "$iommu_param"
+    return $?
   fi
 
-  configure_omarchy_limine "$iommu_param"
+  log_info "Bootloader: $bootloader (manual configuration)"
+
+  # Check if IOMMU is already enabled
+  if check_iommu_enabled_cmdline; then
+    msg_success "IOMMU already enabled"
+    return 0
+  fi
+
+  # Non-Limine bootloader requires manual configuration
+  msg_section "IOMMU Configuration Required"
+
+  echo "Bootloader: $bootloader (manual config needed)"
+  echo ""
+  echo "Add to kernel cmdline:  ${iommu_param} iommu=pt"
+
+  case "$bootloader" in
+  grub)
+    echo ""
+    echo "Edit /etc/default/grub → GRUB_CMDLINE_LINUX_DEFAULT"
+    echo "Then: sudo grub-mkconfig -o /boot/grub/grub.cfg && reboot"
+    ;;
+  systemd-boot)
+    echo ""
+    echo "Edit /boot/loader/entries/*.conf → options line"
+    echo "Then: reboot"
+    ;;
+  refind)
+    echo ""
+    echo "Edit /boot/refind_linux.conf → add to options"
+    echo "Then: reboot"
+    ;;
+  esac
+
+  echo ""
+
+  local choice=$(gum choose \
+    "Exit - I'll configure and reboot first" \
+    "Continue - IOMMU is already configured" \
+    "Cancel")
+
+  case "$choice" in
+  *"Exit"*)
+    msg_info "After configuring and rebooting: omarchy-gpu-passthrough setup"
+    log_info "User chose to configure bootloader manually"
+    exit 0
+    ;;
+  *"Continue"*)
+    if ! check_iommu_enabled_cmdline; then
+      msg_warning "IOMMU not detected in kernel cmdline"
+      if ! gum confirm "Continue anyway?"; then
+        exit 1
+      fi
+    fi
+    return 0
+    ;;
+  *"Cancel"*)
+    log_info "User cancelled setup"
+    exit 0
+    ;;
+  *)
+    # Empty = Ctrl+C or gum failure
+    exit 1
+    ;;
+  esac
 }
 
 configure_omarchy_limine() {
@@ -136,7 +196,7 @@ configure_omarchy_limine() {
     sudo sed -i -E 's/[[:space:]]+/ /g' "$LIMINE_DEFAULT"
   fi
 
-  local all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT")
+  local all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" || true)
 
   if echo "$all_cmdlines" | grep -qE "amd_iommu=off|intel_iommu=off"; then
     echo ""
@@ -164,6 +224,8 @@ configure_omarchy_limine() {
   else
     msg_info "Kernel parameters already set"
   fi
+
+  return 0
 }
 
 configure_vfio_modules() {
@@ -218,6 +280,7 @@ configure_vfio_modules() {
   fi
 
   msg_success "VFIO config: $VFIO_CONF"
+  return 0
 }
 
 configure_gpu_blacklist() {
@@ -406,6 +469,8 @@ unconfigure_sudoers_gpu_passthrough() {
     sudo rm -f "$sudoers_file"
     msg_success "GPU passthrough sudoers removed"
   fi
+
+  return 0
 }
 
 unconfigure_gpu_state_tmpfiles() {
@@ -415,6 +480,8 @@ unconfigure_gpu_state_tmpfiles() {
     sudo rm -f "$tmpfiles_file"
     msg_success "GPU state marker tmpfiles removed"
   fi
+
+  return 0
 }
 
 configure_vfio_modules_mkinitcpio() {
@@ -662,7 +729,7 @@ unconfigure_kernel_parameters() {
     return 1
   fi
 
-  local all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT")
+  local all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" || true)
   if ! echo "$all_cmdlines" | grep -qE "amd_iommu=on|intel_iommu=on|iommu=pt"; then
     return 0
   fi
@@ -786,7 +853,16 @@ select_gpu_for_passthrough() {
   done
 
   echo "Select GPU to pass through to VM:"
-  local selection=$(gum choose "${choices[@]}")
+  local selection
+  selection=$(gum choose "${choices[@]}") || {
+    msg_warning "GPU selection cancelled"
+    return 1
+  }
+
+  if [[ -z "$selection" ]]; then
+    msg_warning "No GPU selected"
+    return 1
+  fi
 
   for i in "${!GPU_PCI_ADDR[@]}"; do
     local pci="${GPU_PCI_ADDR[$i]}"
@@ -798,6 +874,9 @@ select_gpu_for_passthrough() {
       return 0
     fi
   done
+
+  msg_error "Failed to match GPU selection"
+  return 1
 }
 
 validate_gpu_selection() {
@@ -1122,6 +1201,12 @@ cmd_setup() {
 
   log_info "User selected GPU for passthrough: $name ($pci)"
   log_info "GPU for passthrough: $name ($pci) - ${vendor_id}:${device_id}"
+
+  log_info "GPU detection results (${#GPU_PCI_ADDR[@]} GPUs):"
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    log_info "  [$i] ${GPU_NAME[$i]} (${GPU_PCI_ADDR[$i]}) vendor=${GPU_VENDOR_ID[$i]} type=${GPU_TYPE[$i]}"
+  done
+
   for i in "${!GPU_PCI_ADDR[@]}"; do
     if [[ "${GPU_TYPE[$i]}" == "integrated" ]]; then
       log_info "Host GPU (iGPU): ${GPU_NAME[$i]} (${GPU_PCI_ADDR[$i]})"
@@ -1159,16 +1244,40 @@ cmd_setup() {
   configure_vfio_modules_mkinitcpio
   configure_sudoers_gpu_passthrough
 
-  local igpu_pci=""
+  # Find iGPU for host display (priority: Intel > AMD > other)
+  local igpu_pci="" igpu_vendor="" igpu_name="" igpu_priority=99
 
   for i in "${!GPU_PCI_ADDR[@]}"; do
-    if [[ "${GPU_TYPE[$i]}" == "integrated" ]]; then
+    [[ "${GPU_TYPE[$i]}" != "integrated" ]] && continue
+
+    local vendor="${GPU_VENDOR_ID[$i]}"
+    local priority=3  # default: other
+
+    case "$vendor" in
+      8086) priority=1 ;;  # Intel
+      1002) priority=2 ;;  # AMD
+      10de)  # NVIDIA should never be iGPU
+        log_error "BUG: NVIDIA GPU classified as integrated: ${GPU_NAME[$i]}"
+        msg_error "Internal error - please report to omarchy maintainer"
+        exit 1
+        ;;
+    esac
+
+    if [[ "$priority" -lt "$igpu_priority" ]]; then
       igpu_pci="${GPU_PCI_ADDR[$i]}"
-      break
+      igpu_vendor="$vendor"
+      igpu_name="${GPU_NAME[$i]}"
+      igpu_priority="$priority"
     fi
   done
 
   if [[ -n "$igpu_pci" ]]; then
+    case "$igpu_priority" in
+      1) log_info "Found Intel iGPU: $igpu_name ($igpu_pci)" ;;
+      2) log_info "Found AMD iGPU: $igpu_name ($igpu_pci)" ;;
+      *) log_warn "Using non-Intel/AMD iGPU: $igpu_name ($igpu_pci)" ;;
+    esac
+
     log_info "Configuring system environment for iGPU: $igpu_pci"
     configure_system_environment "$igpu_pci" || {
       log_error "configure_system_environment failed"
@@ -1182,19 +1291,36 @@ cmd_setup() {
       exit 1
     }
   else
-    msg_warning "No iGPU detected, skipping Hyprland/environment configuration"
-    msg_warning "You may need to manually configure your compositor"
+    msg_warning "No iGPU detected, skipping environment configuration"
   fi
 
-  log_info "Rebuilding initramfs and UKI..."
+  local bootloader=$(detect_bootloader)
   msg_info "Rebuilding initramfs..."
-  if ! sudo limine-mkinitcpio; then
-    log_error "limine-mkinitcpio failed"
-    msg_error "Failed to rebuild initramfs"
-    exit 1
+  log_info "Rebuilding initramfs via $bootloader"
+  if [[ "$bootloader" == "limine" ]]; then
+    if ! sudo limine-mkinitcpio; then
+      log_error "limine-mkinitcpio failed"
+      msg_error "Failed to rebuild initramfs"
+      exit 1
+    fi
+    log_info "limine-mkinitcpio completed successfully"
+  else
+    if ! sudo mkinitcpio -P; then
+      log_error "mkinitcpio -P failed"
+      msg_error "Failed to rebuild initramfs"
+      exit 1
+    fi
+    log_info "mkinitcpio -P completed successfully"
   fi
   msg_success "Initramfs rebuilt"
-  log_info "limine-mkinitcpio completed successfully"
+
+  detect_hybrid_graphics_laptop
+  if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
+    log_info "MUX-less laptop detected (hybrid graphics)"
+    if [[ "$DGPU_HAS_EXTERNAL_MONITOR" == "true" ]]; then
+      log_warn "External monitor on dGPU - will go blank after reboot"
+    fi
+  fi
 
   msg_section "Setup Complete!"
 
@@ -1209,6 +1335,18 @@ cmd_setup() {
   echo "  • Monitors: use motherboard ports (iGPU)"
   echo "  • VMs: GPU switched automatically"
   echo "  • Host: omarchy-gpu-passthrough mode host"
+
+  if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
+    echo ""
+    if [[ "$DGPU_HAS_EXTERNAL_MONITOR" == "true" ]]; then
+      msg_warning "LAPTOP: External monitor (dGPU) will go blank after reboot"
+      echo "  Laptop screen (iGPU) stays active. Use Looking Glass for VM display."
+    else
+      msg_info "LAPTOP: Hybrid graphics - laptop screen OK, VM via Looking Glass"
+    fi
+    echo "  Install: omarchy-looking-glass-install"
+  fi
+
   echo ""
   echo "Next steps:"
   echo "   1. Reboot system"
@@ -1260,9 +1398,15 @@ cmd_uninstall() {
     msg_success "GPU configuration removed"
   fi
 
+  local bootloader=$(detect_bootloader)
   msg_info "Rebuilding initramfs..."
-  sudo limine-mkinitcpio
-  msg_success "Initramfs and boot entries rebuilt"
+  log_info "Rebuilding initramfs via $bootloader"
+  if [[ "$bootloader" == "limine" ]]; then
+    sudo limine-mkinitcpio
+  else
+    sudo mkinitcpio -P
+  fi
+  msg_success "Initramfs rebuilt"
 
   msg_section "Uninstall Complete!"
 
