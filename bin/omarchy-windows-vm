@@ -822,7 +822,8 @@ detect_smbios_and_disk_info() {
 
   # Helper to check for placeholder values
   is_valid_smbios_value() {
-    [[ -n "$1" ]] && [[ "$1" != "Unknown" ]] && [[ "$1" != "Not Specified" ]] && [[ "$1" != "To Be Filled By O.E.M." ]] && [[ "$1" != "Default string" ]]
+    local val="${1,,}"  # lowercase
+    [[ -n "$1" ]] && [[ "$val" != "unknown" ]] && [[ "$val" != "not specified" ]] && [[ "$val" != *"to be filled"* ]] && [[ "$val" != "default string" ]] && [[ "$val" != "default" ]] && [[ "$val" != "n/a" ]]
   }
 
   if is_valid_smbios_value "$BOARD_MANUFACTURER" && is_valid_smbios_value "$BOARD_PRODUCT"; then
@@ -957,9 +958,9 @@ create_docker_compose_config() {
     ARGUMENTS_SECTION+="
         $CPU_FLAGS"
     [[ -n "$SMBIOS_FLAGS" ]] && ARGUMENTS_SECTION+="
-        $SMBIOS_FLAGS"
+        ${SMBIOS_FLAGS# }"
     [[ -n "$DISK_FLAGS" ]] && ARGUMENTS_SECTION+="
-        $DISK_FLAGS"
+        ${DISK_FLAGS# }"
     ARGUMENTS_SECTION+="
         -device ivshmem-plain,id=shmem0,memdev=looking-glass
         -object memory-backend-file,id=looking-glass,mem-path=/dev/kvmfr0,size=${IVSHMEM_SIZE}M,share=yes"
@@ -1296,8 +1297,6 @@ show_installation_summary() {
     echo "     Now you can update Windows, install games and apps."
     echo ""
   fi
-
-  echo "Launching connection..."
 }
 
 connect_looking_glass() {
@@ -1436,14 +1435,13 @@ connect_looking_glass() {
   sleep 3
 
   # Launch Looking Glass client in background (hide logs, immune to Ctrl+C)
-  # -F: Fork to background, win:fullScreen=no: windowed mode
   if [[ "$USE_SG_KVM" == true ]]; then
     # User needs temporary kvm group access - run through sg kvm
-    sg kvm -c "setsid uwsm-app -- looking-glass-client -F win:fullScreen=no >/dev/null 2>&1" &
+    sg kvm -c "setsid uwsm-app -- looking-glass-client -F >/dev/null 2>&1" &
     LG_PID=$!
   else
     # Normal launch (user has direct access to /dev/kvmfr0)
-    setsid uwsm-app -- looking-glass-client -F win:fullScreen=no >/dev/null 2>&1 &
+    setsid uwsm-app -- looking-glass-client -F >/dev/null 2>&1 &
     LG_PID=$!
   fi
 
@@ -1491,7 +1489,21 @@ launch_after_install() {
     fi
     echo "Launching Looking Glass (detached)..."
     sleep 2
-    uwsm-app -- looking-glass-client -F win:fullScreen=no &>/dev/null &
+
+    # Check if user needs temporary kvm group access
+    local use_sg_kvm=false
+    if [[ ! -r /dev/kvmfr0 ]]; then
+      ensure_user_in_kvm_group
+      local kvm_status=$?
+      [[ "$kvm_status" -le 1 ]] && use_sg_kvm=true
+    fi
+
+    # Launch with setsid for proper detachment
+    if [[ "$use_sg_kvm" == true ]]; then
+      sg kvm -c "setsid uwsm-app -- looking-glass-client -F >/dev/null 2>&1" &
+    else
+      setsid uwsm-app -- looking-glass-client -F >/dev/null 2>&1 &
+    fi
     disown
     echo ""
     msg_info "Windows VM is running in background"
@@ -2186,6 +2198,18 @@ install_windows() {
   msg_success "Credentials: $USERNAME"
   mkdir -p "$HOME/Windows"
 
+  # TPM & Secure Boot (optional, enables BitLocker/Windows Hello)
+  local TPM_DEFAULT=true
+  [[ "$PREVIOUS_TPM_ENABLED" == false ]] && TPM_DEFAULT=false
+
+  if gum confirm --default="$TPM_DEFAULT" "Enable TPM & Secure Boot?"; then
+    TPM_ENABLED=true
+    msg_success "Security: TPM + Secure Boot"
+  else
+    TPM_ENABLED=false
+    msg_info "Security: Disabled"
+  fi
+
   # GPU detection and configuration prompts (decision only, no execution yet)
   HAS_DEDICATED_GPU=false
   GPU_INFO=""
@@ -2275,13 +2299,6 @@ install_windows() {
       msg_success "Looking Glass ready"
       LG_ENABLED=true
     else
-      msg_warning "Looking Glass requires a display connected to GPU"
-      echo "  Options:"
-      echo "    • Second monitor on GPU"
-      echo "    • Same monitor with 2 cables"
-      echo "    • HDMI dummy plug (~\$5)"
-      echo "  Without GPU display, only slow RDP will work"
-
       if gum confirm "Do you have a display connected to GPU?"; then
         if gum confirm "Enable Looking Glass?"; then
           LG_ENABLED=true
@@ -2325,21 +2342,14 @@ install_windows() {
           msg_info "Skipping - use VNC/RDP instead (add later: omarchy-looking-glass-install)"
         fi
       else
-        msg_info "Connect display later, then reinstall to enable Looking Glass"
+        msg_info "Looking Glass requires display connected to GPU"
+        echo "  Options:"
+        echo "    • Second monitor on GPU"
+        echo "    • Same monitor with 2 cables"
+        echo "    • HDMI dummy plug (~\$5)"
+        echo "  Run: omarchy-looking-glass-install (after connecting display)"
       fi
     fi
-  fi
-
-  # TPM & Secure Boot (optional, enables BitLocker/Windows Hello)
-  local TPM_DEFAULT=true
-  [[ "$PREVIOUS_TPM_ENABLED" == false ]] && TPM_DEFAULT=false
-
-  if gum confirm --default=$TPM_DEFAULT "Enable TPM & Secure Boot?"; then
-    TPM_ENABLED=true
-    msg_success "Security: TPM + Secure Boot"
-  else
-    TPM_ENABLED=false
-    msg_info "Security: Disabled"
   fi
 
   # Configuration summary

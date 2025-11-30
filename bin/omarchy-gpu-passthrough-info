@@ -250,6 +250,12 @@ verify_setup() {
 
   [[ "$quiet" != "true" ]] && msg_section "GPU Passthrough Verification"
 
+  # Load config to get configured GPU address BEFORE detect_gpus resets the arrays
+  local configured_gpu_pci=""
+  if load_gpu_config 2>/dev/null; then
+    configured_gpu_pci="$GPU_PCI_ADDR"
+  fi
+
   detect_gpus
 
   if [[ -f "$VFIO_CONF" ]] || grep -qE "amd_iommu=on|intel_iommu=on" /proc/cmdline 2>/dev/null; then
@@ -310,7 +316,12 @@ verify_setup() {
         msg_success "$status_msg (ready for VM)"
         ((vfio_gpus++))
       elif [[ "$driver" == "none" ]]; then
-        msg_warning "$status_msg (no driver)"
+        # Check if this is the configured passthrough GPU - "none" is expected state after boot
+        if [[ -n "$configured_gpu_pci" ]] && [[ "$pci" == "$configured_gpu_pci" ]]; then
+          msg_info "$status_msg (ready for passthrough)"
+        else
+          msg_warning "$status_msg (no driver)"
+        fi
       else
         if [[ "$type" == "integrated" ]]; then
           msg_info "$status_msg (host display)"
@@ -409,9 +420,8 @@ verify_setup() {
 
 cmd_diagnose() {
   # Require sudo for complete diagnostics
-  if ! sudo -v 2>/dev/null; then
-    msg_error "Diagnostics requires sudo for complete system information"
-    echo "  Run: sudo omarchy-gpu-passthrough info diagnose"
+  if ! sudo -v; then
+    msg_error "Diagnostics requires sudo access"
     return 1
   fi
 
