@@ -853,9 +853,7 @@ select_gpu_for_passthrough() {
 
   local configured_pci=""
   if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
-    if load_gpu_config; then
-      configured_pci="$GPU_PCI_ADDR"
-    fi
+    configured_pci=$(grep -oPm1 '^GPU_PCI_ADDR="\K[^"]+' "$GPU_PASSTHROUGH_CONF" 2>/dev/null || true)
   fi
 
   for i in "${!GPU_PCI_ADDR[@]}"; do
@@ -1307,7 +1305,9 @@ cmd_setup() {
       1002) priority=2 ;;  # AMD
       10de)  # NVIDIA should never be iGPU
         log_error "BUG: NVIDIA GPU classified as integrated: ${GPU_NAME[$i]}"
-        msg_error "Internal error - please report to omarchy maintainer"
+        msg_error "Unexpected GPU detection error"
+        echo "  Run: omarchy-gpu-passthrough info diagnose"
+        echo "  Post output: https://github.com/basecamp/omarchy/discussions/3455"
         exit 1
         ;;
     esac

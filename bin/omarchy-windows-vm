@@ -1556,15 +1556,9 @@ connect_looking_glass() {
       exit 1
       ;;
     *)
-      echo ""
-      msg_error "Cannot access /dev/kvmfr0"
-      echo "   Unexpected error (code: $kvm_status)"
-      echo "   Please report this issue."
-      echo ""
-      echo "   Temporary workaround:"
-      echo "   1. sudo usermod -aG kvm \"$USER\""
-      echo "   2. Logout and login again (or reboot)"
-      echo ""
+      msg_error "Cannot access /dev/kvmfr0 (code: $kvm_status)"
+      echo "  Fix: sudo usermod -aG kvm \"$USER\" && reboot"
+      echo "  Help: https://github.com/basecamp/omarchy/discussions/3455"
       exit 1
       ;;
     esac
