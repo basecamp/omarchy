@@ -1628,7 +1628,7 @@ connect_looking_glass() {
 
   # Launch Looking Glass client in background (hide logs, immune to Ctrl+C)
   local lg_args="-F"
-  [[ "$WINDOWED" == true ]] && lg_args="win:fullScreen=no"
+  [[ "$WINDOWED" == true ]] && lg_args="$lg_args win:fullScreen=no"
 
   if [[ "$USE_SG_KVM" == true ]]; then
     # User needs temporary kvm group access - run through sg kvm
@@ -1645,7 +1645,7 @@ connect_looking_glass() {
   LG_EXIT=$?
 
   # After Looking Glass closes
-  if [[ "$LG_EXIT" -eq 0 ]]; then
+  if [[ "$LG_EXIT" -eq 0 ]] || [[ "$LG_EXIT" -eq 255 ]] || [[ "$LG_EXIT" -eq 130 ]]; then
     if [[ "$KEEP_ALIVE" == false ]]; then
       echo ""
       echo "Looking Glass session closed. Stopping Windows VM..."
@@ -1688,8 +1688,34 @@ launch_after_install() {
     echo "  To stop VM: omarchy-windows-vm stop"
     echo ""
 
-    # Launch via the same command that works manually, in new session
-    setsid "$0" launch --lg -k --windowed >/dev/null 2>&1 &
+    # Wait for SPICE socket
+    local spice_wait=0
+    while [[ "$spice_wait" -lt 10 ]]; do
+      if sudo -n test -S "$SPICE_SOCKET_PATH" 2>/dev/null; then
+        sudo -n chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
+        sudo -n chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
+        break
+      fi
+      sleep 1
+      spice_wait=$((spice_wait + 1))
+    done
+
+    # Launch Looking Glass directly in background (windowed mode, non-blocking)
+    local use_sg_kvm=false
+    if [[ ! -r /dev/kvmfr0 ]]; then
+      ensure_user_in_kvm_group
+      local kvm_status=$?
+      [[ "$kvm_status" -le 1 ]] && use_sg_kvm=true
+    fi
+
+    local lg_args="-F win:fullScreen=no"
+    if [[ "$use_sg_kvm" == true ]]; then
+      sg kvm -c "setsid uwsm-app -- looking-glass-client $lg_args >/dev/null 2>&1" &
+    else
+      setsid uwsm-app -- looking-glass-client $lg_args >/dev/null 2>&1 &
+    fi
+
+    msg_info "Looking Glass started in background (windowed mode)"
   else
     echo "Launching RDP connection..."
     sleep 3
