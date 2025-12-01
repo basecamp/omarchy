@@ -1703,9 +1703,9 @@ launch_after_install() {
 
     local lg_args="-F win:fullScreen=no"
     if [[ "$use_sg_kvm" == true ]]; then
-      sg kvm -c "setsid uwsm-app -- looking-glass-client $lg_args" &
+      sg kvm -c "setsid uwsm-app -- looking-glass-client $lg_args >/dev/null 2>&1" &
     else
-      setsid uwsm-app -- looking-glass-client $lg_args &
+      setsid uwsm-app -- looking-glass-client $lg_args >/dev/null 2>&1 &
     fi
 
     sleep 3
