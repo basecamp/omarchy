@@ -1454,23 +1454,23 @@ show_installation_summary() {
     echo "     Note: dummy plugs limit Windows refresh rate"
     echo ""
     echo "  2. Wait for Windows to install GPU drivers (few minutes)"
-    echo "     Looking Glass will auto-switch to GPU output when ready"
+    echo "     → Close noVNC browser tab (no longer needed)"
     echo ""
     echo "  3. Device Manager → Disable 'Red Hat VirtIO GPU DOD controller'"
     echo "     WARNING: Screen will FREEZE after this - this is normal!"
     echo ""
     echo "  4. Immediately restart the VM:"
     echo "     → omarchy-windows-vm stop"
-    echo "     → omarchy-windows-vm launch --lg --keep-alive"
+    echo "     → omarchy-windows-vm launch --lg --keep-alive --windowed"
     echo ""
     echo "  5. After restart, wait for Windows to configure the GPU display"
-    echo "     → Close noVNC browser tab (no longer needed)"
     echo "     → Looking Glass will show native GPU output"
     echo ""
     echo "  6. Optional: Set resolution and refresh rate in Windows Display Settings"
     echo ""
     echo "  7. Install GPU drivers (NVIDIA/AMD) for best performance"
     echo "     Screen may FREEZE during install - restart VM as in step 4"
+    echo "     Tip: RDP works even when LG freezes (omarchy-windows-vm launch)"
     echo ""
     echo "Done! You now have full GPU performance in Looking Glass."
     echo "     Now you can update Windows, install games and apps."
@@ -1606,9 +1606,11 @@ connect_looking_glass() {
   echo ""
   echo "Connecting to Windows VM via Looking Glass..."
   echo ""
-  echo "  $escape_key         - Release mouse/keyboard"
-  echo "  $escape_key + F     - Toggle fullscreen"
+  echo "  $escape_key         - Release mouse/keyboard (hold for info menu)"
+  echo "  $escape_key + F     - Toggle fullscreen (or SUPER + F)"
   echo "  $escape_key + Q     - Quit Looking Glass"
+  echo ""
+  echo "Press Ctrl+C to return to shell (Looking Glass will keep running)"
   echo ""
   sleep 3
 
@@ -2968,10 +2970,6 @@ EOF
     else
       msg_warning "Reboot required for Looking Glass ($LG_REBOOT_REASON)"
     fi
-  fi
-
-  if [[ "$LG_ENABLED" == true ]]; then
-    msg_info "Looking Glass host will auto-install in Windows on first boot"
   fi
 }
 
