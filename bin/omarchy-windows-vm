@@ -1395,14 +1395,6 @@ show_installation_summary() {
   local CURRENT="${12}"
   local IS_FRESH_INSTALL="${13:-false}"
 
-  # Wait for Windows to finish post-install configuration
-  echo ""
-  echo "Finalizing Windows configuration..."
-  if [[ "$LG_ENABLED" == true ]]; then
-    echo "  Looking Glass will open automatically in ~30 seconds"
-  fi
-  sleep 30
-
   local MINUTES=$((ELAPSED / 60))
   local SECONDS=$((ELAPSED % 60))
 
@@ -1671,36 +1663,43 @@ launch_after_install() {
 
   if [[ "$USE_LG" == true ]]; then
     if ! command -v looking-glass-client &>/dev/null; then
-      msg_warning "Looking Glass client not found"
-      echo "  Install: omarchy-looking-glass-install"
-      echo "  VM is running - access via: http://127.0.0.1:8006"
+      msg_warning "Looking Glass not installed - run: omarchy-looking-glass-install"
       return
     fi
     if [[ ! -e /dev/kvmfr0 ]]; then
-      msg_warning "KVMFR device not ready (/dev/kvmfr0)"
-      echo "  Reboot required after Looking Glass installation"
-      echo "  VM is running - access via: http://127.0.0.1:8006"
+      msg_warning "KVMFR not ready - reboot required after Looking Glass installation"
       return
     fi
 
+    # Wait 30s for Windows post-install configuration, then launch Looking Glass
     echo ""
-    echo "Launching Looking Glass..."
-    echo "  To stop VM: omarchy-windows-vm stop"
-    echo ""
-
-    # Wait for SPICE socket
+    printf "Waiting for Windows to finish configuration"
     local spice_wait=0
+    local spice_ready=false
     while [[ "$spice_wait" -lt 10 ]]; do
+      sleep 3
+      spice_wait=$((spice_wait + 1))
+      printf "."
+
+      # Fix permissions if socket exists
       if sudo -n test -S "$SPICE_SOCKET_PATH" 2>/dev/null; then
         sudo -n chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
         sudo -n chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
-        break
       fi
-      sleep 1
-      spice_wait=$((spice_wait + 1))
     done
+    echo ""
 
-    # Launch Looking Glass directly in background (windowed mode, non-blocking)
+    # Verify socket accepts connections
+    if timeout 1 env SOCKET_PATH="$SPICE_SOCKET_PATH" python3 -c "import socket, os; s=socket.socket(socket.AF_UNIX); s.connect(os.environ['SOCKET_PATH'])" 2>/dev/null; then
+      spice_ready=true
+    fi
+
+    if [[ "$spice_ready" != true ]]; then
+      msg_warning "SPICE not ready - try later: omarchy-windows-vm launch --lg"
+      return
+    fi
+
+    # Launch Looking Glass in background (windowed mode)
     local use_sg_kvm=false
     if [[ ! -r /dev/kvmfr0 ]]; then
       ensure_user_in_kvm_group
@@ -1710,15 +1709,23 @@ launch_after_install() {
 
     local lg_args="-F win:fullScreen=no"
     if [[ "$use_sg_kvm" == true ]]; then
-      sg kvm -c "setsid uwsm-app -- looking-glass-client $lg_args >/dev/null 2>&1" &
+      sg kvm -c "setsid uwsm-app -- looking-glass-client $lg_args" &
     else
-      setsid uwsm-app -- looking-glass-client $lg_args >/dev/null 2>&1 &
+      setsid uwsm-app -- looking-glass-client $lg_args &
     fi
 
-    msg_info "Looking Glass started in background (windowed mode)"
-  else
-    echo "Launching RDP connection..."
     sleep 3
+    if pgrep -x looking-glass-c >/dev/null 2>&1; then
+      msg_success "Looking Glass started (windowed mode)"
+    else
+      msg_warning "Looking Glass may not have started - try: omarchy-windows-vm launch --lg"
+    fi
+  else
+    # RDP: wait briefly then connect
+    echo ""
+    printf "Connecting via RDP"
+    for _ in {1..3}; do sleep 1; printf "."; done
+    echo ""
     connect_rdp "$USERNAME" "$PASSWORD" true
   fi
 }
