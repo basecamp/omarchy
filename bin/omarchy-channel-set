@@ -1,0 +1,15 @@
+#!/bin/bash
+
+if (($# == 0)); then
+  echo "Usage: omarchy-channel-set [stable|edge|dev]"
+  exit 1
+else
+  channel="$1"
+fi
+
+case "$channel" in
+"stable") omarchy-branch-set "master" && omarchy-refresh-pacman "stable" ;;
+"edge") omarchy-branch-set "master" && omarchy-refresh-pacman "edge" ;;
+"dev") omarchy-branch-set "dev" && omarchy-refresh-pacman "edge" ;;
+*) echo "Unknown channel: $channel"; exit 1; ;;
+esac

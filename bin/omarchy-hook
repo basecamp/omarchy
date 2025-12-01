@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -e
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: omarchy-hook [name] [args...]"
+  exit 1
+fi
+
+HOOK=$1
+HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
+shift
+
+if [[ -f $HOOK_PATH ]]; then
+  bash "$HOOK_PATH" "$@"
+fi

@@ -5,13 +5,13 @@
 BACKGROUNDS_DIR="$HOME/.config/omarchy/current/theme/backgrounds/"
 CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
 
-mapfile -d '' -t BACKGROUNDS < <(find "$BACKGROUNDS_DIR" -type f -print0 | sort -z)
+mapfile -d '' -t BACKGROUNDS < <(find -L "$BACKGROUNDS_DIR" -type f -print0 | sort -z)
 TOTAL=${#BACKGROUNDS[@]}
 
 if [[ $TOTAL -eq 0 ]]; then
   notify-send "No background was found for theme" -t 2000
   pkill -x swaybg
-  setsid uwsm app -- swaybg --color '#000000' >/dev/null 2>&1 &
+  setsid uwsm-app -- swaybg --color '#000000' >/dev/null 2>&1 &
 else
   # Get current background from symlink
   if [[ -L "$CURRENT_BACKGROUND_LINK" ]]; then
@@ -44,5 +44,5 @@ else
 
   # Relaunch swaybg
   pkill -x swaybg
-  setsid uwsm app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
+  setsid uwsm-app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
 fi

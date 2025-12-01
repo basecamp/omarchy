@@ -2,7 +2,10 @@
 
 set -e
 
+omarchy-update-time
+omarchy-update-keyring
 omarchy-update-available-reset
 omarchy-update-system-pkgs
 omarchy-migrate
+omarchy-hook post-update
 omarchy-update-restart

@@ -1,7 +1,0 @@
-# Technicolor dreams
-force_color_prompt=yes
-color_prompt=yes
-
-# Simple prompt with path in the window/pane title and caret for typing line
-PS1=$'\uf0a9 '
-PS1="\[\e]0;\w\a\]$PS1"
