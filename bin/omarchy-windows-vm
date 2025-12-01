@@ -863,17 +863,21 @@ detect_smbios_and_disk_info() {
     [[ -n "$MEM_SPEED" ]] && SMBIOS_FLAGS="${SMBIOS_FLAGS},speed=${MEM_SPEED}"
   fi
 
-  # Disk spoofing - detect primary disk
-  local DISK_VENDOR="$(lsblk -ndo VENDOR /dev/nvme0n1 2>/dev/null | xargs)"
-  local DISK_MODEL="$(lsblk -ndo MODEL /dev/nvme0n1 2>/dev/null | xargs)"
-  local DISK_SERIAL="$(lsblk -ndo SERIAL /dev/nvme0n1 2>/dev/null | xargs)"
-
-  # Fallback to /dev/sda if nvme not found
-  if [[ -z "$DISK_MODEL" ]]; then
-    DISK_VENDOR="$(lsblk -ndo VENDOR /dev/sda 2>/dev/null | xargs)"
-    DISK_MODEL="$(lsblk -ndo MODEL /dev/sda 2>/dev/null | xargs)"
-    DISK_SERIAL="$(lsblk -ndo SERIAL /dev/sda 2>/dev/null | xargs)"
+  # Disk spoofing - detect disk containing $HOME (where VM data lives)
+  local HOME_PARTITION DISK_DEVICE=""
+  HOME_PARTITION=$(df -P "$HOME" 2>/dev/null | tail -1 | awk '{print $1}')
+  if [[ -n "$HOME_PARTITION" ]] && [[ -b "$HOME_PARTITION" ]]; then
+    # Get parent device (strip partition): /dev/nvme1n1p2 → nvme1n1, /dev/sda2 → sda
+    DISK_DEVICE="/dev/$(lsblk -no PKNAME "$HOME_PARTITION" 2>/dev/null | head -1)"
   fi
+
+  # Fallback chain: detected disk → nvme0n1 → sda
+  [[ ! -b "$DISK_DEVICE" ]] && DISK_DEVICE="/dev/nvme0n1"
+  [[ ! -b "$DISK_DEVICE" ]] && DISK_DEVICE="/dev/sda"
+
+  local DISK_VENDOR="$(lsblk -ndo VENDOR "$DISK_DEVICE" 2>/dev/null | xargs)"
+  local DISK_MODEL="$(lsblk -ndo MODEL "$DISK_DEVICE" 2>/dev/null | xargs)"
+  local DISK_SERIAL="$(lsblk -ndo SERIAL "$DISK_DEVICE" 2>/dev/null | xargs)"
 
   if [[ -n "$DISK_MODEL" ]]; then
     [[ -n "$DISK_VENDOR" ]] && DISK_FLAGS="${DISK_FLAGS} -global scsi-hd.vendor=$(escape_for_qemu "$DISK_VENDOR")"
@@ -881,6 +885,179 @@ detect_smbios_and_disk_info() {
     [[ -n "$DISK_SERIAL" ]] && DISK_FLAGS="${DISK_FLAGS} -global scsi-hd.serial=$(escape_for_qemu "$DISK_SERIAL")"
     # Performance optimization: removed rotation_rate=1 (metadata only, no anti-cheat value)
   fi
+}
+
+# Format CPU range: "X" for single, "X-Y" for range
+format_cpu_range() {
+  local start=$1 end=$2
+  if ((end == start)); then
+    echo "$start"
+  else
+    echo "${start}-${end}"
+  fi
+}
+
+# Detect CPU pinning for Intel Hybrid CPUs (P-core + E-core)
+# Limits VM to P-cores for better gaming performance (E-cores are slower)
+# Note: Host can still use all cores - cpuset only limits the container
+detect_cpu_pinning_set() {
+  local selected_cores="${1:-}"
+  CPU_PINNING_SET=""
+
+  local total_threads
+  total_threads=$(nproc --all 2>/dev/null) || return 1
+  ((total_threads < 6)) && return 1
+
+  local -a cpu_freqs=()
+  local -A freq_seen=()
+  local -a unique_freqs=()
+  local cpu freq
+
+  for ((cpu = 0; cpu < total_threads; cpu++)); do
+    local freq_file="/sys/devices/system/cpu/cpu${cpu}/cpufreq/cpuinfo_max_freq"
+    [[ -r "$freq_file" ]] || continue
+    freq=$(<"$freq_file") || continue
+    [[ "$freq" =~ ^[0-9]+$ ]] || continue
+    cpu_freqs[$cpu]=$freq
+    if [[ -z "${freq_seen[$freq]:-}" ]]; then
+      freq_seen[$freq]=1
+      unique_freqs+=("$freq")
+    fi
+  done
+
+  if [[ ${#cpu_freqs[@]} -eq 0 ]]; then
+    detect_cpu_pinning_set_simple "$selected_cores"
+    return $?
+  fi
+
+  # Hybrid CPU: multiple max frequencies - use P-cores (faster) for VM
+  if [[ ${#unique_freqs[@]} -gt 1 ]]; then
+    local lowest_freq
+    lowest_freq=$(printf '%s\n' "${unique_freqs[@]}" | sort -n | head -1)
+
+    local -a vm_cpus=()
+    for ((cpu = 0; cpu < total_threads; cpu++)); do
+      [[ -z "${cpu_freqs[$cpu]:-}" ]] && continue
+      [[ "${cpu_freqs[$cpu]}" != "$lowest_freq" ]] && vm_cpus+=("$cpu")
+    done
+
+    if [[ ${#vm_cpus[@]} -lt 4 ]]; then
+      detect_cpu_pinning_set_simple "$selected_cores"
+      return $?
+    fi
+
+    if [[ -n "$selected_cores" ]] && [[ "$selected_cores" =~ ^[0-9]+$ ]] && ((selected_cores < ${#vm_cpus[@]})); then
+      vm_cpus=("${vm_cpus[@]:0:$selected_cores}")
+    fi
+
+    CPU_PINNING_SET=$(compact_cpu_list "${vm_cpus[@]}")
+  else
+    detect_cpu_pinning_set_simple "$selected_cores"
+    return $?
+  fi
+
+  return 0
+}
+
+# CPU pinning: reserves core 0 (IRQs) or core 0,1 for host to reduce micro-stutters
+# Dynamic: max vCPU=no reserve, max-2=1 core, ≤max-4=2 cores, fallback if can't fit
+detect_cpu_pinning_set_simple() {
+  local selected_cores="${1:-}"
+  local total_threads threads_per_core physical_cores
+
+  total_threads=$(nproc --all 2>/dev/null) || return 1
+  ((total_threads < 4)) && return 1
+
+  if [[ -z "$selected_cores" ]] || ! [[ "$selected_cores" =~ ^[0-9]+$ ]] || ((selected_cores >= total_threads)); then
+    CPU_PINNING_SET="0-$((total_threads - 1))"
+    return 0
+  fi
+
+  threads_per_core=$(lscpu 2>/dev/null | grep -E "^Thread\(s\) per core:" | awk '{print $NF}')
+  [[ -z "$threads_per_core" ]] && threads_per_core=1
+  physical_cores=$((total_threads / threads_per_core))
+
+  local vm_start phys_cores_needed
+  phys_cores_needed=$(( (selected_cores + threads_per_core - 1) / threads_per_core ))
+
+  # Dynamic reservation: prefer 2 cores, fallback to 1, then 0
+  if ((selected_cores >= total_threads - 2)); then
+    vm_start=1
+  else
+    vm_start=2
+  fi
+
+  # Reduce if can't fit requested cores
+  while ((vm_start > 0)) && ((phys_cores_needed > physical_cores - vm_start)); do
+    ((vm_start--))
+  done
+
+  if ((vm_start == 0)); then
+    CPU_PINNING_SET="0-$((total_threads - 1))"
+    return 0
+  fi
+
+  if ((threads_per_core == 1)); then
+    local vm_end=$((vm_start + selected_cores - 1))
+    ((vm_end >= physical_cores)) && vm_end=$((physical_cores - 1))
+    CPU_PINNING_SET=$(format_cpu_range "$vm_start" "$vm_end")
+  else
+    # SMT: use full physical cores for cache locality
+    local available_cores=$((physical_cores - vm_start))
+    local primary_end sibling_start sibling_end
+
+    if ((phys_cores_needed >= available_cores)); then
+      primary_end=$((physical_cores - 1))
+      sibling_start=$((physical_cores + vm_start))
+      sibling_end=$((total_threads - 1))
+    else
+      primary_end=$((vm_start + phys_cores_needed - 1))
+      sibling_start=$((physical_cores + vm_start))
+      sibling_end=$((sibling_start + phys_cores_needed - 1))
+    fi
+
+    CPU_PINNING_SET="$(format_cpu_range "$vm_start" "$primary_end"),$(format_cpu_range "$sibling_start" "$sibling_end")"
+  fi
+
+  return 0
+}
+
+# Convert "0 1 2 5 6 7" → "0-2,5-7"
+compact_cpu_list() {
+  local -a cpus=("$@")
+  [[ ${#cpus[@]} -eq 0 ]] && return
+
+  local -a sorted_cpus
+  mapfile -t sorted_cpus < <(printf '%s\n' "${cpus[@]}" | sort -n)
+
+  local result="" start="" prev=""
+  for current in "${sorted_cpus[@]}"; do
+    if [[ -z "$start" ]]; then
+      start=$current
+      prev=$current
+    elif ((current == prev + 1)); then
+      prev=$current
+    else
+      if [[ "$start" == "$prev" ]]; then
+        result+="${result:+,}$start"
+      else
+        result+="${result:+,}${start}-${prev}"
+      fi
+      start=$current
+      prev=$current
+    fi
+  done
+
+  # Close final range
+  if [[ -n "$start" ]]; then
+    if [[ "$start" == "$prev" ]]; then
+      result+="${result:+,}$start"
+    else
+      result+="${result:+,}${start}-${prev}"
+    fi
+  fi
+
+  echo "$result"
 }
 
 create_docker_compose_config() {
@@ -900,6 +1077,9 @@ create_docker_compose_config() {
 
   # Detect SMBIOS and disk info for anti-cheat spoofing
   detect_smbios_and_disk_info
+
+  # Detect CPU pinning based on selected cores
+  detect_cpu_pinning_set "$SELECTED_CORES"
 
   # Detect CPU info
   local CPU_FLAGS="-cpu host"
@@ -1044,6 +1224,12 @@ create_docker_compose_config() {
       BOOT_MODE: \"windows_secure\""
   fi
 
+  local CPUSET_SECTION=""
+  if [[ -n "$CPU_PINNING_SET" ]]; then
+    CPUSET_SECTION="
+    cpuset: \"$CPU_PINNING_SET\""
+  fi
+
   # Create docker-compose.yml with clean variable substitution
   # If COMPOSE_FILE is "-" or "/dev/stdout", print to stdout instead of file
   if [[ "$COMPOSE_FILE" == "-" ]] || [[ "$COMPOSE_FILE" == "/dev/stdout" ]]; then
@@ -1065,7 +1251,7 @@ services:
       - /dev/kvm
       - /dev/net/tun$DEVICES_KVMFR$DEVICES_VFIO
     cap_add:
-      - NET_ADMIN$ULIMITS_SECTION
+      - NET_ADMIN$ULIMITS_SECTION$CPUSET_SECTION
     ports:
       - 8006:8006
       - 3389:3389/tcp
@@ -1096,7 +1282,7 @@ services:
       - /dev/kvm
       - /dev/net/tun$DEVICES_KVMFR$DEVICES_VFIO
     cap_add:
-      - NET_ADMIN$ULIMITS_SECTION
+      - NET_ADMIN$ULIMITS_SECTION$CPUSET_SECTION
     ports:
       - 8006:8006
       - 3389:3389/tcp

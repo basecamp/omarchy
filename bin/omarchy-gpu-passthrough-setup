@@ -218,9 +218,20 @@ configure_omarchy_limine() {
     params_to_add="$params_to_add iommu=pt"
   fi
 
+  # pci=realloc only for NVIDIA + ReBAR (can cause issues on some systems without it)
+  if [[ -n "${GPU_VENDOR_ID:-}" ]] && [[ "${GPU_VENDOR_ID}" == "10de" || "${GPU_VENDOR_ID[0]:-}" == "10de" ]]; then
+    if ! echo "$all_cmdlines" | grep -q "pci=realloc"; then
+      local gpu_pci="${GPU_PCI_ADDR:-}"
+      [[ -z "$gpu_pci" ]] && gpu_pci="${GPU_PCI_ADDR[0]:-}"
+      if [[ -n "$gpu_pci" ]] && check_resizable_bar "$gpu_pci" 2>/dev/null; then
+        params_to_add="$params_to_add pci=realloc"
+      fi
+    fi
+  fi
+
   if [[ -n "$params_to_add" ]]; then
     echo "KERNEL_CMDLINE[default]+=\" $params_to_add\"" | sudo tee -a "$LIMINE_DEFAULT" >/dev/null
-    msg_success "Kernel parameters: $iommu_param iommu=pt"
+    msg_success "Kernel parameters:$params_to_add"
   else
     msg_info "Kernel parameters already set"
   fi
@@ -280,6 +291,33 @@ configure_vfio_modules() {
   fi
 
   msg_success "VFIO config: $VFIO_CONF"
+  return 0
+}
+
+configure_kvm_options() {
+  local cpu_vendor
+  cpu_vendor=$(get_cpu_vendor)
+
+  if [[ -f "$KVM_CONF" ]] && grep -q "ignore_msrs=1" "$KVM_CONF" 2>/dev/null; then
+    msg_info "KVM options already configured"
+    return 0
+  fi
+
+  local kvm_content="# KVM options for Windows VM - Generated $(date +%Y-%m-%d)
+options kvm ignore_msrs=1
+options kvm report_ignored_msrs=0"
+
+  case "$cpu_vendor" in
+    amd) kvm_content+=$'\n'"options kvm_amd nested=1" ;;
+    intel) kvm_content+=$'\n'"options kvm_intel nested=1" ;;
+  esac
+
+  if ! echo "$kvm_content" | sudo tee "$KVM_CONF" >/dev/null; then
+    msg_error "Failed to write $KVM_CONF"
+    return 1
+  fi
+
+  msg_success "KVM options: $KVM_CONF"
   return 0
 }
 
@@ -690,6 +728,16 @@ unconfigure_gpu_blacklist() {
 
   sudo rm -f "$BLACKLIST_CONF"
   msg_success "Blacklist removed"
+  return 0
+}
+
+unconfigure_kvm_options() {
+  if [[ ! -f "$KVM_CONF" ]]; then
+    return 0
+  fi
+
+  sudo rm -f "$KVM_CONF"
+  msg_success "KVM options removed"
   return 0
 }
 
@@ -1238,6 +1286,7 @@ cmd_setup() {
   save_gpu_config "$idx"
   configure_kernel_parameters
   configure_vfio_modules "$pci"
+  configure_kvm_options
   configure_pci_binding_permissions
   configure_gpu_state_tmpfiles
   configure_gpu_blacklist "$vendor_id"
@@ -1351,8 +1400,9 @@ cmd_setup() {
   echo "Next steps:"
   echo "   1. Reboot system"
   echo "   2. Verify: omarchy-gpu-passthrough info verify"
+  echo "   3. Install Windows VM: omarchy-windows-vm install"
   echo ""
-  msg_info "Tip: Set \"Primary Display = IGD\" in BIOS to avoid black screen"
+  msg_info "BIOS tip: Set \"Primary Display = IGD\" to avoid black screen"
   msg_warning "Reboot required to apply kernel parameters"
 
   if gum confirm "Reboot now?"; then
@@ -1376,6 +1426,7 @@ cmd_uninstall() {
   echo "  • PCI binding permissions (udev rules)"
   echo "  • VFIO modules from initramfs"
   echo "  • Hyprland iGPU configuration"
+  echo "  • KVM options (ignore_msrs, nested)"
   echo "  • GPU passthrough config file"
   msg_info "Your system will return to normal GPU configuration after reboot"
 
@@ -1391,6 +1442,7 @@ cmd_uninstall() {
   unconfigure_gpu_state_tmpfiles
   unconfigure_vfio_modules
   unconfigure_kernel_parameters
+  unconfigure_kvm_options
   unconfigure_sudoers_gpu_passthrough
 
   if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then

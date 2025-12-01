@@ -15,6 +15,7 @@ fi
 LIMINE_DEFAULT="/etc/default/limine"
 VFIO_CONF="/etc/modprobe.d/vfio.conf"
 BLACKLIST_CONF="/etc/modprobe.d/blacklist-gpu-passthrough.conf"
+KVM_CONF="/etc/modprobe.d/kvm.conf"
 MKINITCPIO_CONF="/etc/mkinitcpio.conf"
 GPU_PASSTHROUGH_CONF="/etc/omarchy-gpu-passthrough.conf"
 
@@ -549,10 +550,29 @@ get_gpu_memory() {
   echo "Unknown"
 }
 
-# Check if Resizable BAR is enabled for a GPU
+# Check if ReBAR enabled (BAR > 256MB)
 check_resizable_bar() {
   local gpu_pci="$1"
-  lspci -vvs "$gpu_pci" 2>/dev/null | grep -qi "Resizable BAR"
+
+  # Method 1: Check actual BAR size
+  local largest_bar
+  largest_bar=$(get_largest_bar_size_gb "$gpu_pci")
+  [[ "$largest_bar" -gt 0 ]] && return 0
+
+  # Method 2: Parse lspci "current size"
+  local current_size size_mb=0
+  current_size=$(lspci -vvvs "$gpu_pci" 2>/dev/null | \
+    grep -A2 "Resizable BAR" | grep -oP 'current size: \K[0-9]+[GM]B' | head -1)
+  [[ -z "$current_size" ]] && return 1
+
+  if [[ "$current_size" =~ ^([0-9]+)GB$ ]]; then
+    size_mb=$(( ${BASH_REMATCH[1]} * 1024 ))
+  elif [[ "$current_size" =~ ^([0-9]+)MB$ ]]; then
+    size_mb="${BASH_REMATCH[1]}"
+  fi
+  [[ "$size_mb" -gt 256 ]] && return 0
+
+  return 1
 }
 
 # Get largest BAR size in GB (for large BAR detection)
