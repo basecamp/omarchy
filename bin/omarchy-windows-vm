@@ -1772,11 +1772,19 @@ monitor_installation_progress() {
     if [[ "$IS_FRESH_INSTALL" == "true" ]] && [[ "$((CURRENT_TIME - LAST_LOG_CHECK))" -ge "$LOG_CHECK_INTERVAL" ]]; then
       LAST_LOG_CHECK=$CURRENT_TIME
 
-      # Check if container exists before trying to get logs
+      # Check if container exists and is running
       if ! docker inspect omarchy-windows &>/dev/null; then
         # Container doesn't exist yet, skip log parsing this iteration
         sleep "$MARKER_CHECK_INTERVAL"
         continue
+      fi
+
+      # Check if container crashed during installation
+      local CONTAINER_STATUS=$(docker ps -a --filter "name=omarchy-windows" --format "{{.Status}}" 2>/dev/null)
+      if [[ "$CONTAINER_STATUS" =~ ^Exited ]]; then
+        msg_error "VM crashed during installation"
+        echo "  Check logs: docker logs omarchy-windows"
+        return 1
       fi
 
       # Get last 500 lines from Docker logs (covers full download cycle + previous stages)
@@ -1908,6 +1916,13 @@ monitor_installation_progress() {
         MARKER_DETECTED=true
         handle_installation_marker "$COMPLETION_MARKER" "$TIME_PREFIX"
       else
+        # Check if container crashed while waiting for marker
+        local CONTAINER_STATUS=$(docker ps -a --filter "name=omarchy-windows" --format "{{.Status}}" 2>/dev/null)
+        if [[ "$CONTAINER_STATUS" =~ ^Exited ]]; then
+          msg_error "VM crashed during installation"
+          echo "  Check logs: docker logs omarchy-windows"
+          return 1
+        fi
         sleep $MARKER_CHECK_INTERVAL
         continue
       fi
@@ -2909,19 +2924,52 @@ EOF
 
   # Start container (suppress verbose Docker output)
   if ! docker-compose -f "$COMPOSE_FILE" up -d >/dev/null 2>&1; then
-    msg_error "Failed to start VM (check: docker logs omarchy-windows)"
+    msg_error "Failed to start VM"
+    echo "  Check logs: docker logs omarchy-windows"
     exit 1
   fi
 
-  # Verify container is actually running (docker-compose up -d returns 0 even if container crashes)
-  sleep 2
+  # Verify container is running (docker-compose up returns 0 even if QEMU crashes)
+  CONTAINER_RUNNING=false
+  for ((i = 0; i < 10; i++)); do
+    CONTAINER_STATUS=$(docker ps -a --filter "name=omarchy-windows" --format "{{.Status}}" 2>/dev/null)
 
-  if ! docker ps --filter "name=omarchy-windows" --filter "status=running" --format "{{.Names}}" | grep -q "omarchy-windows"; then
-    msg_error "Container crashed - check: docker logs omarchy-windows"
+    if [[ "$CONTAINER_STATUS" =~ ^Up ]]; then
+      CONTAINER_RUNNING=true
+      break
+    elif [[ "$CONTAINER_STATUS" =~ ^Exited ]]; then
+      msg_error "VM crashed on startup"
+      echo "  Check logs: docker logs omarchy-windows"
+      exit 1
+    fi
+
+    sleep 3
+  done
+
+  if [[ "$CONTAINER_RUNNING" != true ]]; then
+    msg_error "VM failed to start within 30s"
+    echo "  Check logs: docker logs omarchy-windows"
     exit 1
   fi
 
   msg_success "Docker container started"
+
+  # Verify QEMU is running (noVNC on 8006 indicates QEMU is alive)
+  echo "  Verifying VM startup..."
+  QEMU_CHECK=0
+  while [[ "$QEMU_CHECK" -lt 15 ]]; do
+    if nc -z 127.0.0.1 8006 2>/dev/null; then
+      break
+    fi
+    sleep 2
+    QEMU_CHECK=$((QEMU_CHECK + 2))
+  done
+
+  if ! nc -z 127.0.0.1 8006 2>/dev/null; then
+    msg_error "VM failed to start (QEMU not responding)"
+    echo "  Check logs: docker logs omarchy-windows"
+    exit 1
+  fi
 
   # Check if this is quick reinstall with VM already booted and RDP ready
   if [[ "${SKIP_OEM_AUTORUN:-false}" == "true" ]] && nc -z 127.0.0.1 3389 2>/dev/null; then
@@ -3247,10 +3295,34 @@ launch_windows() {
     fi
 
     if ! docker-compose -f "$COMPOSE_FILE" up -d >/dev/null 2>&1; then
-      msg_error "Failed to start Windows VM!"
-      echo "   Try checking: omarchy-windows-vm status"
-      echo "   View logs: docker logs omarchy-windows"
-      notify_silent "Windows VM" "Failed to start Windows VM" "critical"
+      msg_error "Failed to start VM"
+      echo "  Check logs: docker logs omarchy-windows"
+      notify_silent "Windows VM" "VM failed to start" "critical"
+      exit 1
+    fi
+
+    # Verify container is running (docker-compose up returns 0 even if QEMU crashes)
+    CONTAINER_RUNNING=false
+    for ((i = 0; i < 10; i++)); do
+      CONTAINER_STATUS=$(docker ps -a --filter "name=omarchy-windows" --format "{{.Status}}" 2>/dev/null)
+
+      if [[ "$CONTAINER_STATUS" =~ ^Up ]]; then
+        CONTAINER_RUNNING=true
+        break
+      elif [[ "$CONTAINER_STATUS" =~ ^Exited ]]; then
+        msg_error "VM crashed on startup"
+        echo "  Check logs: docker logs omarchy-windows"
+        notify_silent "Windows VM" "VM crashed" "critical"
+        exit 1
+      fi
+
+      sleep 3
+    done
+
+    if [[ "$CONTAINER_RUNNING" != true ]]; then
+      msg_error "VM failed to start within 30s"
+      echo "  Check logs: docker logs omarchy-windows"
+      notify_silent "Windows VM" "VM startup timeout" "critical"
       exit 1
     fi
 
@@ -3284,6 +3356,24 @@ launch_windows() {
       sudo -n chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
       sudo -n chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
     fi
+  fi
+
+  # Verify QEMU is running before waiting for RDP (noVNC on 8006 indicates QEMU is alive)
+  echo "  Verifying VM startup..."
+  QEMU_CHECK=0
+  while [[ "$QEMU_CHECK" -lt 15 ]]; do
+    if nc -z 127.0.0.1 8006 2>/dev/null; then
+      break
+    fi
+    sleep 2
+    QEMU_CHECK=$((QEMU_CHECK + 2))
+  done
+
+  if ! nc -z 127.0.0.1 8006 2>/dev/null; then
+    msg_error "VM failed to start (QEMU not responding)"
+    echo "  Check logs: docker logs omarchy-windows"
+    notify_silent "Windows VM" "QEMU failed" "critical"
+    exit 1
   fi
 
   # Wait for RDP port if not already open (check actual RDP state, not just container state)
