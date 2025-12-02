@@ -1695,6 +1695,14 @@ launch_after_install() {
       return
     fi
 
+    echo ""
+    echo "Connecting to Windows VM via Looking Glass..."
+    echo ""
+    echo "  Scroll Lock         - Release mouse/keyboard (hold for info menu)"
+    echo "  Scroll Lock + F     - Toggle fullscreen (or SUPER + F)"
+    echo "  Scroll Lock + Q     - Quit Looking Glass"
+    echo ""
+
     # Launch Looking Glass in background (windowed mode)
     local use_sg_kvm=false
     if [[ ! -r /dev/kvmfr0 ]]; then
@@ -3344,7 +3352,7 @@ launch_windows() {
 
       if [[ "$SPICE_WAIT" -ge 30 ]]; then
         msg_warning "SPICE socket not created within 30s"
-        echo "     Looking Glass input may not work properly"
+        echo "  Looking Glass input may not work properly"
       fi
     fi
   fi
