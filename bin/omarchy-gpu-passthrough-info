@@ -381,8 +381,8 @@ verify_setup() {
     elif [[ "$total_errors" -eq 0 ]] && [[ "$vfio_gpus" -eq 0 ]]; then
       # Detect current GPU mode (dynamic binding design supports 3 states)
       local gpu_mode="unknown"
-      if load_gpu_config 2>/dev/null; then
-        local current_driver="$(get_pci_driver "$GPU_PCI_ADDR")"
+      if [[ -n "$configured_gpu_pci" ]]; then
+        local current_driver="$(get_pci_driver "$configured_gpu_pci")"
         gpu_mode="$(detect_gpu_mode_from_driver "$current_driver")"
       fi
 
@@ -1096,12 +1096,15 @@ cmd_detect() {
 }
 
 cmd_status() {
+  local config_gpu_pci=""
+  if load_gpu_config 2>/dev/null; then
+    config_gpu_pci="$GPU_PCI_ADDR"
+  fi
+
   detect_gpus
 
   # Check if GPU passthrough is configured
-  local is_configured=false
-  if ! load_gpu_config 2>/dev/null; then
-    # Not configured - show helpful message
+  if [[ -z "$config_gpu_pci" ]]; then
     echo ""
     msg_warning "GPU passthrough not configured"
     echo ""
@@ -1114,7 +1117,7 @@ cmd_status() {
   fi
 
   # Get passthrough GPU mode
-  local current_driver="$(get_pci_driver "$GPU_PCI_ADDR")"
+  local current_driver="$(get_pci_driver "$config_gpu_pci")"
   local mode="$(detect_gpu_mode_from_driver "${current_driver:-}")"
 
   echo ""
@@ -1137,7 +1140,7 @@ cmd_status() {
     # Normalize PCI addresses for comparison
     local pci_normalized config_pci_normalized
     pci_normalized=$(normalize_pci_addr "$pci") || continue
-    config_pci_normalized=$(normalize_pci_addr "$GPU_PCI_ADDR") || continue
+    config_pci_normalized=$(normalize_pci_addr "$config_gpu_pci") || continue
 
     # Add driver and mode info
     if [[ "$pci_normalized" == "$config_pci_normalized" ]]; then

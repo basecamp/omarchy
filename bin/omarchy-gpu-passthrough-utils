@@ -142,7 +142,7 @@ detect_gpu_mode_from_driver() {
   vfio-pci)
     echo "vm"
     ;;
-  nvidia | amdgpu)
+  nvidia | amdgpu | i915)
     echo "host"
     ;;
   "")
@@ -893,4 +893,57 @@ check_iommu_enabled_cmdline() {
   fi
 
   return 1
+}
+
+get_cached_iommu_devices() {
+  local pci_addr="$1"
+  local devices="${GPU_IOMMU_DEVICES:-}"
+
+  if [[ -z "$devices" ]]; then
+    devices=$(get_iommu_group_devices "$pci_addr")
+  fi
+
+  echo "$devices"
+}
+
+update_state_marker() {
+  local mode="$1"
+
+  if ! echo "$mode" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+    log_warn "Failed to update state marker (continuing anyway)"
+    return 1
+  fi
+  return 0
+}
+
+rebind_usb_controllers_to_xhci() {
+  local iommu_devices="$1"
+
+  [[ ! -d "/sys/bus/pci/drivers/xhci_hcd" ]] && return 0
+
+  for dev_pci in $iommu_devices; do
+    local dev_pci_full
+    dev_pci_full=$(normalize_pci_addr "$dev_pci") || continue
+
+    local dev_class=$(get_pci_class "$dev_pci")
+    if [[ "$dev_class" == "0c03" ]]; then
+      log_info "Rebinding USB controller $dev_pci to xhci_hcd..."
+      echo "$dev_pci_full" | tee /sys/bus/pci/drivers/xhci_hcd/bind >/dev/null 2>&1 || true
+    fi
+  done
+
+  return 0
+}
+
+remove_vfio_device_ids() {
+  local iommu_devices="$1"
+
+  for dev_pci in $iommu_devices; do
+    local dev_ids=$(get_pci_device_id "$dev_pci")
+    if [[ -n "$dev_ids" ]]; then
+      echo "${dev_ids/:/ }" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
+    fi
+  done
+
+  return 0
 }

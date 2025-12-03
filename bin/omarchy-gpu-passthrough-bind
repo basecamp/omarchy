@@ -15,7 +15,7 @@ fi
 
 # GPU Binding Functions
 
-# Safety Check: Check for processes using GPU (NVIDIA/AMD)
+# Safety Check: Check for processes using GPU
 # Returns: 0 if safe to proceed, exits with 1 if GPU in use
 check_gpu_processes() {
   local current_driver="$1"
@@ -29,7 +29,7 @@ check_gpu_processes() {
   local gpu_processes=""
   if [[ "$current_driver" == "nvidia" ]]; then
     gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>/dev/null | grep -v "USER" | tr -d '\n')
-  elif [[ "$current_driver" == "amdgpu" ]]; then
+  elif [[ "$current_driver" == "amdgpu" || "$current_driver" == "i915" ]]; then
     gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>/dev/null | grep -v "USER" | tr -d '\n')
   elif [[ "$current_driver" == "vfio-pci" ]]; then
     # Check for QEMU/VM processes (fuser on /dev/vfio/* may not work reliably)
@@ -162,7 +162,7 @@ check_gpu_processes() {
     exit 1
   else
     echo ""
-    msg_error "AMD GPU in use by processes:"
+    msg_error "GPU in use by processes:"
     GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" | head -20)
     echo "$GPU_PROCESSES"
     echo ""
@@ -188,17 +188,17 @@ check_gpu_processes() {
           echo ""
           msg_error "GPU still in use by processes"
           echo "$GPU_PROCESSES_AFTER"
-          log_error "Cannot bind: AMD GPU still in use after kill attempt"
+          log_error "Cannot bind: GPU still in use after kill attempt"
           exit 1
         fi
       else
         msg_info "Close GPU apps manually: sudo pkill -9 -f '<name>'"
-        log_error "Cannot bind: AMD GPU in use by processes"
+        log_error "Cannot bind: GPU in use by processes"
         exit 1
       fi
     else
       msg_info "Close GPU apps or kill processes: sudo pkill -9 -f '<name>'"
-      log_error "Cannot bind: AMD GPU in use by processes"
+      log_error "Cannot bind: GPU in use by processes"
       exit 1
     fi
   fi
@@ -275,6 +275,12 @@ cmd_bind() {
     exit 1
   fi
 
+  local gpu_pci_full
+  gpu_pci_full=$(normalize_pci_addr "$GPU_PCI_ADDR") || {
+    msg_error "Invalid GPU PCI address: $GPU_PCI_ADDR"
+    exit 1
+  }
+
   msg_section "GPU Mode: Switch to VM"
 
   local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
@@ -299,8 +305,8 @@ cmd_bind() {
 
   if [[ -n "$current_driver" && "$current_driver" != "none" ]]; then
     log_info "Unbinding GPU from $current_driver..."
-    if [[ -f "/sys/bus/pci/devices/0000:$GPU_PCI_ADDR/driver/unbind" ]]; then
-      if ! echo "0000:$GPU_PCI_ADDR" | tee "/sys/bus/pci/devices/0000:$GPU_PCI_ADDR/driver/unbind" >/dev/null 2>&1; then
+    if [[ -f "/sys/bus/pci/devices/${gpu_pci_full}/driver/unbind" ]]; then
+      if ! echo "$gpu_pci_full" | tee "/sys/bus/pci/devices/${gpu_pci_full}/driver/unbind" >/dev/null 2>&1; then
         msg_error "Failed to unbind GPU from $current_driver"
         msg_info "This usually means a process is still using the GPU"
         log_error "Failed to unbind GPU from $current_driver (process still using GPU)"
@@ -323,10 +329,8 @@ cmd_bind() {
   fi
 
   # Get all IOMMU group devices (supports laptops with 4-5 devices in group)
-  local iommu_devices="${GPU_IOMMU_DEVICES:-}"
-  if [[ -z "$iommu_devices" ]]; then
-    iommu_devices=$(get_iommu_group_devices "$GPU_PCI_ADDR")
-  fi
+  local iommu_devices
+  iommu_devices=$(get_cached_iommu_devices "$GPU_PCI_ADDR")
 
   local device_count=$(echo "$iommu_devices" | wc -w)
   log_info "IOMMU group contains $device_count device(s): $iommu_devices"
@@ -334,7 +338,10 @@ cmd_bind() {
   echo "$GPU_VENDOR_ID $GPU_DEVICE_ID" | tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
 
   for dev_pci in $iommu_devices; do
-    if [[ ! -e "/sys/bus/pci/devices/0000:$dev_pci" ]]; then
+    local dev_pci_full
+    dev_pci_full=$(normalize_pci_addr "$dev_pci") || continue
+
+    if [[ ! -e "/sys/bus/pci/devices/${dev_pci_full}" ]]; then
       log_warn "Device $dev_pci not found, skipping"
       continue
     fi
@@ -346,8 +353,8 @@ cmd_bind() {
       continue
     fi
 
-    if [[ -f "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" ]]; then
-      echo "0000:$dev_pci" | tee "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" >/dev/null 2>&1 || true
+    if [[ -f "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" ]]; then
+      echo "$dev_pci_full" | tee "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" >/dev/null 2>&1 || true
     fi
 
     local dev_ids=$(get_pci_device_id "$dev_pci")
@@ -355,8 +362,8 @@ cmd_bind() {
       echo "${dev_ids/:/ }" | tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
     fi
 
-    if [[ ! -d "/sys/bus/pci/drivers/vfio-pci/0000:$dev_pci" ]]; then
-      echo "0000:$dev_pci" | tee /sys/bus/pci/drivers/vfio-pci/bind >/dev/null 2>&1 || true
+    if [[ ! -d "/sys/bus/pci/drivers/vfio-pci/${dev_pci_full}" ]]; then
+      echo "$dev_pci_full" | tee /sys/bus/pci/drivers/vfio-pci/bind >/dev/null 2>&1 || true
     fi
     log_info "Bound $dev_pci to vfio-pci"
   done
@@ -390,10 +397,7 @@ cmd_bind() {
     msg_success "GPU bound to vfio-pci (ready for VM)"
     log_success "=== BIND SUCCESS: GPU ready for VM passthrough ==="
 
-    # Update state marker
-    if ! echo "vm" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
-      log_warn "Failed to update state marker (continuing anyway)"
-    fi
+    update_state_marker "vm"
   else
     msg_error "Failed to bind (current: ${current_driver:-none})"
     log_error "=== BIND FAILED: driver ${current_driver:-none} ==="
@@ -412,6 +416,12 @@ cmd_set_none() {
     exit 1
   fi
 
+  local gpu_pci_full
+  gpu_pci_full=$(normalize_pci_addr "$GPU_PCI_ADDR") || {
+    msg_error "Invalid GPU PCI address: $GPU_PCI_ADDR"
+    exit 1
+  }
+
   msg_section "GPU Mode: Switch to None"
 
   local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
@@ -424,10 +434,7 @@ cmd_set_none() {
     msg_success "GPU already in none mode (no driver)"
     log_info "Already in none mode"
 
-    # Update state marker
-    if ! echo "none" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
-      log_warn "Failed to update state marker (continuing anyway)"
-    fi
+    update_state_marker "none"
     exit 0
   fi
 
@@ -435,20 +442,21 @@ cmd_set_none() {
   log_info "Unbinding from $current_driver to none state"
 
   # Get all IOMMU group devices (supports laptops with 4-5 devices in group)
-  local iommu_devices="${GPU_IOMMU_DEVICES:-}"
-  if [[ -z "$iommu_devices" ]]; then
-    iommu_devices=$(get_iommu_group_devices "$GPU_PCI_ADDR")
-  fi
+  local iommu_devices
+  iommu_devices=$(get_cached_iommu_devices "$GPU_PCI_ADDR")
 
   local device_count=$(echo "$iommu_devices" | wc -w)
   log_info "IOMMU group contains $device_count device(s): $iommu_devices"
 
   for dev_pci in $iommu_devices; do
-    if [[ -f "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" ]]; then
+    local dev_pci_full
+    dev_pci_full=$(normalize_pci_addr "$dev_pci") || continue
+
+    if [[ -f "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" ]]; then
       log_info "Unbinding $dev_pci from driver..."
-      if ! echo "0000:$dev_pci" | tee "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" >/dev/null 2>&1; then
+      if ! echo "$dev_pci_full" | tee "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" >/dev/null 2>&1; then
         # Only fail on main GPU, others are non-fatal
-        if [[ "$dev_pci" == "$GPU_PCI_ADDR" ]]; then
+        if [[ "$dev_pci_full" == "$gpu_pci_full" ]]; then
           msg_error "Failed to unbind GPU from $current_driver"
           msg_info "This usually means a process is still using the GPU"
           log_error "Failed to unbind GPU (process still using GPU)"
@@ -461,23 +469,8 @@ cmd_set_none() {
   log_success "All IOMMU group devices unbound"
 
   if [[ "$current_driver" == "vfio-pci" ]]; then
-    for dev_pci in $iommu_devices; do
-      local dev_ids=$(get_pci_device_id "$dev_pci")
-      if [[ -n "$dev_ids" ]]; then
-        echo "${dev_ids/:/ }" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
-      fi
-    done
-
-    # Rebind USB controllers to xhci_hcd
-    for dev_pci in $iommu_devices; do
-      local dev_class=$(get_pci_class "$dev_pci")
-      if [[ "$dev_class" == "0c03" ]]; then
-        if [[ -d "/sys/bus/pci/drivers/xhci_hcd" ]]; then
-          log_info "Rebinding USB controller $dev_pci to xhci_hcd..."
-          echo "0000:$dev_pci" | tee /sys/bus/pci/drivers/xhci_hcd/bind >/dev/null 2>&1 || true
-        fi
-      fi
-    done
+    remove_vfio_device_ids "$iommu_devices"
+    rebind_usb_controllers_to_xhci "$iommu_devices"
   fi
 
   show_spinner 1 "Verifying GPU state..."
@@ -488,10 +481,7 @@ cmd_set_none() {
     msg_success "GPU set to none mode (no driver loaded)"
     log_success "=== SET NONE SUCCESS: GPU inactive ==="
 
-    # Update state marker
-    if ! echo "none" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
-      log_warn "Failed to update state marker (continuing anyway)"
-    fi
+    update_state_marker "none"
   else
     msg_error "Failed to unbind (current: $current_driver)"
     log_error "=== SET NONE FAILED: driver $current_driver still loaded ==="
@@ -509,6 +499,12 @@ cmd_unbind() {
     log_error "Unbind failed: GPU passthrough not configured"
     exit 1
   fi
+
+  local gpu_pci_full
+  gpu_pci_full=$(normalize_pci_addr "$GPU_PCI_ADDR") || {
+    msg_error "Invalid GPU PCI address: $GPU_PCI_ADDR"
+    exit 1
+  }
 
   msg_section "GPU Mode: Switch to Host"
 
@@ -533,40 +529,27 @@ cmd_unbind() {
     log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
 
     # Get all IOMMU group devices (supports laptops with 4-5 devices in group)
-    local iommu_devices="${GPU_IOMMU_DEVICES:-}"
-    if [[ -z "$iommu_devices" ]]; then
-      iommu_devices=$(get_iommu_group_devices "$GPU_PCI_ADDR")
-    fi
+    local iommu_devices
+    iommu_devices=$(get_cached_iommu_devices "$GPU_PCI_ADDR")
 
     local device_count=$(echo "$iommu_devices" | wc -w)
     log_info "IOMMU group contains $device_count device(s): $iommu_devices"
 
     for dev_pci in $iommu_devices; do
-      if [[ -d "/sys/bus/pci/drivers/vfio-pci/0000:$dev_pci" ]]; then
+      local dev_pci_full
+      dev_pci_full=$(normalize_pci_addr "$dev_pci") || continue
+
+      if [[ -d "/sys/bus/pci/drivers/vfio-pci/${dev_pci_full}" ]]; then
         log_info "Unbinding $dev_pci from vfio-pci..."
-        echo "0000:$dev_pci" | tee /sys/bus/pci/drivers/vfio-pci/unbind >/dev/null 2>&1 || true
+        echo "$dev_pci_full" | tee /sys/bus/pci/drivers/vfio-pci/unbind >/dev/null 2>&1 || true
       fi
     done
 
-    for dev_pci in $iommu_devices; do
-      local dev_ids=$(get_pci_device_id "$dev_pci")
-      if [[ -n "$dev_ids" ]]; then
-        echo "${dev_ids/:/ }" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
-      fi
-    done
+    remove_vfio_device_ids "$iommu_devices"
 
     log_success "All IOMMU group devices unbound from vfio-pci"
 
-    # Rebind USB controllers to xhci_hcd (they were claimed by vfio-pci via ids= at boot)
-    for dev_pci in $iommu_devices; do
-      local dev_class=$(get_pci_class "$dev_pci")
-      if [[ "$dev_class" == "0c03" ]]; then
-        if [[ -d "/sys/bus/pci/drivers/xhci_hcd" ]]; then
-          log_info "Rebinding USB controller $dev_pci to xhci_hcd..."
-          echo "0000:$dev_pci" | tee /sys/bus/pci/drivers/xhci_hcd/bind >/dev/null 2>&1 || true
-        fi
-      fi
-    done
+    rebind_usb_controllers_to_xhci "$iommu_devices"
   else
     # GPU not bound to vfio-pci (e.g., driver is "none")
     msg_info "GPU driver: ${current_driver:-none} (binding to $GPU_DRIVER_ORIGINAL)..."
@@ -640,7 +623,7 @@ cmd_unbind() {
   # Bind via sysfs
   if [[ -d "/sys/bus/pci/drivers/$GPU_DRIVER_ORIGINAL" ]]; then
     log_info "Binding GPU to $GPU_DRIVER_ORIGINAL via sysfs..."
-    if echo "0000:$GPU_PCI_ADDR" | tee "/sys/bus/pci/drivers/$GPU_DRIVER_ORIGINAL/bind" >/dev/null 2>&1; then
+    if echo "$gpu_pci_full" | tee "/sys/bus/pci/drivers/$GPU_DRIVER_ORIGINAL/bind" >/dev/null 2>&1; then
       log_success "GPU bound to $GPU_DRIVER_ORIGINAL"
     fi
   fi
@@ -655,19 +638,14 @@ cmd_unbind() {
     msg_success "GPU restored to $GPU_DRIVER_ORIGINAL (available to host)"
     log_success "=== UNBIND SUCCESS: GPU restored to $GPU_DRIVER_ORIGINAL ==="
 
-    # Update state marker
-    if ! echo "host" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
-      log_warn "Failed to update state marker (continuing anyway)"
-    fi
+    update_state_marker "host"
   else
     msg_warning "Unbound but driver not auto-loaded (current: ${current_driver:-none})"
     msg_info "Manual reload: sudo modprobe -i $GPU_DRIVER_ORIGINAL"
     log_warn "=== UNBIND PARTIAL: driver not loaded (${current_driver:-none}) ==="
 
     # Still update marker to host (partial success)
-    if ! echo "host" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
-      log_warn "Failed to update state marker (continuing anyway)"
-    fi
+    update_state_marker "host"
   fi
 }
 
@@ -789,7 +767,7 @@ cmd_mode_get() {
     echo "Driver: vfio-pci"
     echo "Status: Ready for VM passthrough"
     ;;
-  nvidia | amdgpu)
+  nvidia | amdgpu | i915)
     msg_success "Mode: host"
     echo "Driver: $current_driver"
     echo "Status: Available to host"
@@ -831,31 +809,6 @@ EXAMPLES:
   omarchy-gpu-passthrough mode vm      # For VM
   omarchy-gpu-passthrough mode host    # For host
 EOF
-}
-
-# Quick Status Function
-
-cmd_quick_status() {
-  detect_gpus
-
-  if ! load_gpu_config; then
-    msg_error "Not configured. Run: omarchy-gpu-passthrough setup"
-    exit 1
-  fi
-
-  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
-
-  echo ""
-  echo "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
-  echo "Driver: ${current_driver:-none}"
-
-  if [[ "$current_driver" == "vfio-pci" ]]; then
-    msg_success "Status: Bound to vfio-pci (ready for VM)"
-    exit 0
-  else
-    msg_info "Status: Not bound (driver: ${current_driver:-none})"
-    exit 0
-  fi
 }
 
 # Main Dispatcher
