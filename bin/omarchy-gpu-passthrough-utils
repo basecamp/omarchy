@@ -489,6 +489,77 @@ get_gpu_audio_device() {
   fi
 }
 
+# Get GPU vRAM in MB
+get_gpu_vram_mb() {
+  local gpu_pci="$1"
+  local vendor_id="${2:-}"
+  local driver="${3:-}"
+
+  # NVIDIA: use nvidia-smi
+  if [[ "$vendor_id" == "10de" ]] && [[ "$driver" == "nvidia" ]] && command -v nvidia-smi &>/dev/null; then
+    local pci_normalized="$gpu_pci"
+    [[ ! "$pci_normalized" =~ ^[0-9a-f]{4}: ]] && pci_normalized="0000:${pci_normalized}"
+
+    local nvidia_vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits \
+      --id="$pci_normalized" 2>/dev/null | head -1)
+    if [[ -n "$nvidia_vram" && "$nvidia_vram" =~ ^[0-9]+$ ]]; then
+      echo "$nvidia_vram"
+      return
+    fi
+  fi
+
+  # AMD: use sysfs
+  if [[ "$vendor_id" == "1002" ]] && [[ "$driver" == "amdgpu" ]]; then
+    local drm_card=$(get_drm_card_for_pci "$gpu_pci")
+    if [[ -n "$drm_card" ]]; then
+      local sysfs_vram="/sys/class/drm/${drm_card}/device/mem_info_vram_total"
+      if [[ -r "$sysfs_vram" ]]; then
+        local vram_bytes=$(<"$sysfs_vram")
+        if [[ -n "$vram_bytes" && "$vram_bytes" =~ ^[0-9]+$ ]]; then
+          echo "$((vram_bytes / 1024 / 1024))"
+          return
+        fi
+      fi
+    fi
+  fi
+
+  echo "0"
+}
+
+# Get GPU BAR size in MB
+get_gpu_bar_size_mb() {
+  local gpu_pci="$1"
+  local max_size_mb=0
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ \[size=([0-9]+)([GMK])\] ]]; then
+      local size="${BASH_REMATCH[1]}"
+      local unit="${BASH_REMATCH[2]}"
+      local size_mb=0
+      case "$unit" in
+        G) size_mb=$((size * 1024)) ;;
+        M) size_mb="$size" ;;
+        K) size_mb=$((size / 1024)) ;;
+      esac
+      [[ "$size_mb" -gt "$max_size_mb" ]] && max_size_mb="$size_mb"
+    fi
+  done < <(lspci -v -s "$gpu_pci" 2>/dev/null | grep "Memory.*prefetchable")
+
+  echo "$max_size_mb"
+}
+
+# Format memory size for display (MB -> "X GB" or "X MB")
+format_memory_size() {
+  local size_mb="$1"
+  if [[ "$size_mb" -ge 1024 ]]; then
+    echo "$((size_mb / 1024)) GB"
+  elif [[ "$size_mb" -gt 0 ]]; then
+    echo "${size_mb} MB"
+  else
+    echo ""
+  fi
+}
+
 get_gpu_memory() {
   local gpu_pci="$1"
   local vendor_id="${2:-}"

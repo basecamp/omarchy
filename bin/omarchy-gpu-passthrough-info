@@ -1440,36 +1440,22 @@ cmd_hardware_report() {
     local vendor_id="${GPU_VENDOR_ID[$i]}"
     local device_id="${GPU_DEVICE_ID[$i]}"
 
-    # Get vRAM
-    local vram_info=""
+    # Get vRAM and BAR size
+    local vram_info="N/A"
+    local bar_info="N/A"
+
     if [[ "$type" == "integrated" ]]; then
       vram_info="Shared"
+      bar_info="Shared"
     else
-      local max_size_mb=0
-      if [[ "$vendor_id" == "10de" ]] && [[ "$driver" == "nvidia" ]] && command -v nvidia-smi &>/dev/null; then
-        local nvidia_vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits --id="$pci" 2>/dev/null | head -1)
-        [[ -n "$nvidia_vram" && "$nvidia_vram" =~ ^[0-9]+$ ]] && max_size_mb="$nvidia_vram"
-      fi
-      if [[ "$max_size_mb" -eq 0 ]]; then
-        while IFS= read -r line; do
-          if [[ "$line" =~ \[size=([0-9]+)([GMK])\] ]]; then
-            local size="${BASH_REMATCH[1]}"
-            local unit="${BASH_REMATCH[2]}"
-            local size_mb=0
-            case "$unit" in
-              G) size_mb=$((size * 1024)) ;;
-              M) size_mb="$size" ;;
-              K) size_mb=$((size / 1024)) ;;
-            esac
-            [[ "$size_mb" -gt "$max_size_mb" ]] && max_size_mb="$size_mb"
-          fi
-        done < <(lspci -v -s "$pci" 2>/dev/null | grep "Memory.*prefetchable")
-      fi
-      if [[ "$max_size_mb" -ge 1024 ]]; then
-        vram_info="$((max_size_mb / 1024)) GB"
-      elif [[ "$max_size_mb" -gt 0 ]]; then
-        vram_info="${max_size_mb} MB"
-      fi
+      local vram_mb=$(get_gpu_vram_mb "$pci" "$vendor_id" "$driver")
+      local bar_mb=$(get_gpu_bar_size_mb "$pci")
+
+      vram_info=$(format_memory_size "$vram_mb")
+      bar_info=$(format_memory_size "$bar_mb")
+
+      [[ -z "$vram_info" ]] && vram_info="N/A"
+      [[ -z "$bar_info" ]] && bar_info="N/A"
     fi
 
     # Get IOMMU group
@@ -1477,7 +1463,7 @@ cmd_hardware_report() {
     local iommu_group=$(basename "$(readlink -f /sys/bus/pci/devices/${pci_full}/iommu_group 2>/dev/null)" 2>/dev/null)
 
     echo "  $((i + 1)). $name [${vendor_id}:${device_id}]"
-    echo "     PCI: $pci | Driver: ${driver:-none} | vRAM: ${vram_info:-Unknown}"
+    echo "     PCI: $pci | Driver: ${driver:-none} | vRAM: $vram_info | BAR: $bar_info"
 
     # Show IOMMU group devices for dedicated GPUs
     if [[ -n "$iommu_group" && "$type" == "dedicated" ]]; then
