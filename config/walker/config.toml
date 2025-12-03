@@ -43,3 +43,7 @@ provider = "websearch"
 [[providers.prefixes]]
 prefix = "$"
 provider = "clipboard"
+
+[[providers.prefixes]]
+prefix = "!"
+provider = "runner"
