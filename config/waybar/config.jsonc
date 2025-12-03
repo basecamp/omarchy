@@ -49,7 +49,7 @@
     "format": "",
     "exec": "omarchy-update-available",
     "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
-    "tooltip-format": "Omarchy update available",
+    "tooltip-format": "{text}",
     "signal": 7,
     "interval": 21600
   },
