@@ -365,8 +365,7 @@ save_gpu_config() {
   # Legacy audio_pci for backwards compatibility
   local audio_pci=""
   if [[ -n "$audio_id" ]]; then
-    local bus_dev=$(echo "$pci" | cut -d. -f1)
-    audio_pci="${bus_dev}.1"
+    audio_pci="${pci%%.*}.1"
   fi
 
   sudo tee "$GPU_PASSTHROUGH_CONF" >/dev/null <<EOF
@@ -417,7 +416,7 @@ detect_gpus() {
     fi
 
     # Filter non-GPU devices (class 03xx = display controllers)
-    local pci_class=$(lspci -Dn -s "$pci_addr" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+    local pci_class=$(get_pci_class "$pci_addr")
     if [[ ! "$pci_class" =~ ^03 ]]; then
       continue
     fi
@@ -427,12 +426,12 @@ detect_gpus() {
       continue
     fi
 
-    local vendor_id=$(echo "$ids" | cut -d: -f1)
-    local device_id=$(echo "$ids" | cut -d: -f2)
+    local vendor_id="${ids%%:*}"
+    local device_id="${ids##*:}"
 
     local name=$(echo "$line" | sed -E 's/^[^]]*\]: //' | sed -E 's/ \[[0-9a-f]{4}:[0-9a-f]{4}\].*//' | sed 's/[[:space:]]*$//')
 
-    local driver=$(lspci -nnk -s "$pci_addr" | grep "Kernel driver in use:" | awk '{print $5}')
+    local driver=$(get_pci_driver "$pci_addr")
     [[ -z "$driver" ]] && driver="none"
 
     local gpu_type=$(classify_gpu "$name" "$vendor_id")
@@ -478,11 +477,10 @@ classify_gpu() {
 
 get_gpu_audio_device() {
   local gpu_pci="$1"
-  local bus_dev=$(echo "$gpu_pci" | cut -d. -f1)
-  local audio_pci="${bus_dev}.1"
+  local audio_pci="${gpu_pci%%.*}.1"
 
   if lspci -s "$audio_pci" 2>/dev/null | grep -qi "audio"; then
-    local audio_id=$(lspci -nn -s "$audio_pci" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
+    local audio_id=$(get_pci_device_id "$audio_pci")
     echo "$audio_id"
   else
     echo ""
@@ -564,71 +562,24 @@ get_gpu_memory() {
   local gpu_pci="$1"
   local vendor_id="${2:-}"
 
-  if [[ "$vendor_id" == "10de" ]] && command -v nvidia-smi &>/dev/null; then
-    local pci_normalized="$gpu_pci"
-    [[ ! "$pci_normalized" =~ ^[0-9a-f]{4}: ]] && pci_normalized="0000:${pci_normalized}"
-
-    local gpu_index=$(nvidia-smi --query-gpu=index,pci.bus_id --format=csv,noheader 2>/dev/null |
-      grep -i "$(echo "$pci_normalized" | tr '[:lower:]' '[:upper:]')" | cut -d',' -f1)
-
-    if [[ -n "$gpu_index" && "$gpu_index" =~ ^[0-9]+$ ]]; then
-      local vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits -i "$gpu_index" 2>/dev/null)
-      if [[ -n "$vram" && "$vram" =~ ^[0-9]+$ ]]; then
-        local vram_gb=$((vram / 1024))
-        if [[ "$vram_gb" -gt 0 ]]; then
-          echo "${vram_gb} GB"
-          return
-        fi
-      fi
-    fi
+  # Detect driver for vRAM lookup
+  local driver=""
+  if [[ "$vendor_id" == "10de" || "$vendor_id" == "1002" ]]; then
+    driver=$(get_pci_driver "$gpu_pci")
   fi
 
-  if [[ "$vendor_id" == "1002" ]]; then
-    for card_path in /sys/class/drm/card*/device; do
-      if [[ -d "$card_path" ]]; then
-        local card_pci=$(basename "$(readlink -f "$card_path")" 2>/dev/null)
-        if [[ "$card_pci" == "$gpu_pci" || "$card_pci" == "0000:$gpu_pci" ]]; then
-          if [[ -f "$card_path/mem_info_vram_total" ]]; then
-            local vram_bytes=$(cat "$card_path/mem_info_vram_total" 2>/dev/null)
-            if [[ -n "$vram_bytes" && "$vram_bytes" =~ ^[0-9]+$ ]]; then
-              local vram_gb=$((vram_bytes / 1073741824))
-              if [[ "$vram_gb" -gt 0 ]]; then
-                echo "${vram_gb} GB"
-                return
-              fi
-            fi
-          fi
-        fi
-      fi
-    done
+  # Try vRAM first
+  local vram_mb=$(get_gpu_vram_mb "$gpu_pci" "$vendor_id" "$driver")
+  if [[ "$vram_mb" -gt 0 ]]; then
+    local result=$(format_memory_size "$vram_mb")
+    [[ -n "$result" ]] && echo "$result" && return
   fi
 
-  local max_size_mb=0
-  while IFS= read -r line; do
-    if [[ "$line" =~ \[size=([0-9]+)([GMK])\] ]]; then
-      local size="${BASH_REMATCH[1]}"
-      local unit="${BASH_REMATCH[2]}"
-
-      local size_mb=0
-      case "$unit" in
-      G) size_mb=$((size * 1024)) ;;
-      M) size_mb="$size" ;;
-      K) size_mb=$((size / 1024)) ;;
-      esac
-
-      if [[ "$size_mb" -gt "$max_size_mb" ]]; then
-        max_size_mb="$size_mb"
-      fi
-    fi
-  done < <(lspci -v -s "$gpu_pci" 2>/dev/null | grep "Memory.*prefetchable")
-
-  if [[ "$max_size_mb" -ge 1024 ]]; then
-    local vram_gb=$((max_size_mb / 1024))
-    echo "${vram_gb} GB"
-    return
-  elif [[ "$max_size_mb" -gt 0 ]]; then
-    echo "${max_size_mb} MB"
-    return
+  # Fall back to BAR size
+  local bar_mb=$(get_gpu_bar_size_mb "$gpu_pci")
+  if [[ "$bar_mb" -gt 0 ]]; then
+    local result=$(format_memory_size "$bar_mb")
+    [[ -n "$result" ]] && echo "$result" && return
   fi
 
   echo "Unknown"
@@ -638,10 +589,9 @@ get_gpu_memory() {
 check_resizable_bar() {
   local gpu_pci="$1"
 
-  # Method 1: Check actual BAR size
-  local largest_bar
-  largest_bar=$(get_largest_bar_size_gb "$gpu_pci")
-  [[ "$largest_bar" -gt 0 ]] && return 0
+  # Method 1: Check prefetchable BAR size
+  local bar_mb=$(get_gpu_bar_size_mb "$gpu_pci")
+  [[ "$bar_mb" -gt 256 ]] && return 0
 
   # Method 2: Parse lspci "current size"
   local current_size size_mb=0
@@ -659,32 +609,6 @@ check_resizable_bar() {
   return 1
 }
 
-# Get largest BAR size in GB (for large BAR detection)
-get_largest_bar_size_gb() {
-  local gpu_pci="$1"
-  local max_size_gb=0
-
-  while IFS= read -r line; do
-    if [[ "$line" =~ \[size=([0-9]+)([GMK])\] ]]; then
-      local size="${BASH_REMATCH[1]}"
-      local unit="${BASH_REMATCH[2]}"
-
-      local size_gb=0
-      case "$unit" in
-      G) size_gb="$size" ;;
-      M) size_gb=0 ;;
-      K) size_gb=0 ;;
-      esac
-
-      if [[ "$size_gb" -gt "$max_size_gb" ]]; then
-        max_size_gb="$size_gb"
-      fi
-    fi
-  done < <(lspci -vvs "$gpu_pci" 2>/dev/null | grep -E "Region [0-9]+:")
-
-  echo "$max_size_gb"
-}
-
 # Returns comma-separated vendor:device IDs for USB controllers (e.g., "10de:1ada,10de:1adb")
 get_usb_controller_ids_in_iommu_group() {
   local gpu_pci="$1"
@@ -692,10 +616,10 @@ get_usb_controller_ids_in_iommu_group() {
 
   local iommu_devices=$(get_iommu_group_devices "$gpu_pci")
   for dev_pci in $iommu_devices; do
-    local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+    local dev_class=$(get_pci_class "$dev_pci")
     # USB controller class: 0c03
     if [[ "$dev_class" == "0c03" ]]; then
-      local dev_ids=$(lspci -nn -s "$dev_pci" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
+      local dev_ids=$(get_pci_device_id "$dev_pci")
       if [[ -n "$dev_ids" ]]; then
         [[ -n "$usb_ids" ]] && usb_ids="$usb_ids,"
         usb_ids="$usb_ids$dev_ids"
@@ -707,7 +631,7 @@ get_usb_controller_ids_in_iommu_group() {
 }
 
 load_gpu_config() {
-  local config_file="/etc/omarchy-gpu-passthrough.conf"
+  local config_file="$GPU_PASSTHROUGH_CONF"
 
   if [[ ! -f "$config_file" ]]; then
     return 1
@@ -797,7 +721,7 @@ get_iommu_group_devices() {
       local dev_addr=$(basename "$dev_path")
 
       # Skip PCI bridges (class 0604) - they're host infrastructure
-      local dev_class=$(lspci -Dn -s "$dev_addr" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+      local dev_class=$(get_pci_class "$dev_addr")
       if [[ "$dev_class" == "0604" ]]; then
         continue
       fi
@@ -825,6 +749,43 @@ get_drm_card_for_pci() {
   done
 
   return 1
+}
+
+get_pci_driver() {
+  local pci_addr="$1"
+  lspci -nnk -s "$pci_addr" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}'
+}
+
+get_pci_class() {
+  local pci_addr="$1"
+  lspci -Dn -s "$pci_addr" 2>/dev/null | awk '{print $2}' | cut -d: -f1
+}
+
+get_pci_device_id() {
+  local pci_addr="$1"
+  lspci -nn -s "$pci_addr" 2>/dev/null | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1
+}
+
+is_module_loaded() {
+  local module="$1"
+  [[ -z "$module" ]] && return 1
+  lsmod 2>/dev/null | grep -q "^${module}[[:space:]]"
+}
+
+count_connected_monitors_for_pci() {
+  local pci_addr="$1"
+  local count=0
+
+  local drm_card=$(get_drm_card_for_pci "$pci_addr")
+  if [[ -n "$drm_card" ]]; then
+    for connector in /sys/class/drm/${drm_card}-*/status; do
+      if [[ -f "$connector" ]] && grep -q "^connected$" "$connector" 2>/dev/null; then
+        ((count++))
+      fi
+    done
+  fi
+
+  echo "$count"
 }
 
 detect_bootloader() {

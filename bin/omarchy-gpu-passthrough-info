@@ -152,7 +152,7 @@ verify_vfio_setup() {
   local vfio_conf_exists=false
   local vfio_dev_exists=false
 
-  lsmod | grep -q "^vfio_pci" && vfio_module_loaded=true
+  is_module_loaded vfio_pci && vfio_module_loaded=true
   [[ -f "$VFIO_CONF" ]] && vfio_conf_exists=true
   [[ -c /dev/vfio/vfio ]] && vfio_dev_exists=true
 
@@ -222,10 +222,10 @@ verify_usb_controller_setup() {
         if [[ -d "$dev_path" ]]; then
           local dev_addr=$(basename "$dev_path")
           local dev_addr_short="${dev_addr#0000:}"
-          local dev_class=$(lspci -Dn -s "$dev_addr_short" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+          local dev_class=$(get_pci_class "$dev_addr_short")
           # USB controller class: 0c03
           if [[ "$dev_class" == "0c03" ]]; then
-            local current_driver=$(lspci -nnk -s "$dev_addr_short" 2>/dev/null | grep "Kernel driver" | awk '{print $NF}')
+            local current_driver=$(get_pci_driver "$dev_addr_short")
             if [[ "$current_driver" == "vfio-pci" ]]; then
               [[ "$quiet" != "true" ]] && msg_success "  USB $dev_addr_short bound to vfio-pci ✓"
             elif [[ "$current_driver" == "xhci_hcd" ]]; then
@@ -382,7 +382,7 @@ verify_setup() {
       # Detect current GPU mode (dynamic binding design supports 3 states)
       local gpu_mode="unknown"
       if load_gpu_config 2>/dev/null; then
-        local current_driver="$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')"
+        local current_driver="$(get_pci_driver "$GPU_PCI_ADDR")"
         gpu_mode="$(detect_gpu_mode_from_driver "$current_driver")"
       fi
 
@@ -512,16 +512,14 @@ cmd_diagnose() {
       echo "Type: ${GPU_TYPE[$i]}"
       echo "Current Driver: ${GPU_DRIVER[$i]}"
       if [[ -n "${GPU_AUDIO_ID[$i]:-}" ]]; then
-        local bus_dev=$(echo "${GPU_PCI_ADDR[$i]}" | cut -d. -f1)
-        local audio_pci="${bus_dev}.1"
+        local audio_pci="${GPU_PCI_ADDR[$i]%%.*}.1"
         echo "Audio Device: $audio_pci"
       fi
 
       if [[ "${GPU_TYPE[$i]}" == "dedicated" ]]; then
-        local bar_size=$(get_largest_bar_size_gb "${GPU_PCI_ADDR[$i]}")
-        if [[ "$bar_size" -gt 0 ]]; then
-          echo "Largest BAR: ${bar_size}GB"
-        fi
+        local bar_mb=$(get_gpu_bar_size_mb "${GPU_PCI_ADDR[$i]}")
+        local bar_formatted=$(format_memory_size "$bar_mb")
+        [[ -n "$bar_formatted" ]] && echo "Largest BAR: $bar_formatted"
         if check_resizable_bar "${GPU_PCI_ADDR[$i]}"; then
           echo "Resizable BAR: Enabled"
         else
@@ -570,11 +568,8 @@ cmd_diagnose() {
 
     for i in "${!GPU_PCI_ADDR[@]}"; do
       local pci="${GPU_PCI_ADDR[$i]}"
-      local pci_full="$pci"
-      [[ ! "$pci_full" =~ ^[0-9a-f]{4}: ]] && pci_full="0000:${pci_full}"
-
-      local iommu_group=$(basename "$(readlink -f /sys/bus/pci/devices/${pci_full}/iommu_group 2>/dev/null)" 2>/dev/null)
-      if [[ -n "$iommu_group" ]]; then
+      local iommu_group=$(get_iommu_group "$pci")
+      if [[ -n "$iommu_group" && "$iommu_group" != "unknown" ]]; then
         echo "[GPU $((i+1)): ${GPU_NAME[$i]} - IOMMU Group $iommu_group]"
         echo '```'
         echo "PCI Address: $pci"
@@ -651,7 +646,7 @@ cmd_diagnose() {
 
     echo "[NVIDIA Driver]"
     echo '```'
-    if lsmod | grep -q "^nvidia"; then
+    if is_module_loaded nvidia; then
       local nvidia_version=$(cat /proc/driver/nvidia/version 2>/dev/null | head -1)
       if [[ -n "$nvidia_version" ]]; then
         echo "$nvidia_version"
@@ -668,7 +663,7 @@ cmd_diagnose() {
 
     echo "[AMD GPU Driver]"
     echo '```'
-    if lsmod | grep -q "^amdgpu"; then
+    if is_module_loaded amdgpu; then
       local amdgpu_version=$(modinfo amdgpu 2>/dev/null | grep "^version:" | awk '{print $2}')
       if [[ -n "$amdgpu_version" ]]; then
         echo "Kernel module version: $amdgpu_version"
@@ -685,7 +680,7 @@ cmd_diagnose() {
 
     echo "[VFIO Driver]"
     echo '```'
-    if lsmod | grep -q "^vfio_pci"; then
+    if is_module_loaded vfio_pci; then
       local vfio_version=$(modinfo vfio_pci 2>/dev/null | grep "^version:" | awk '{print $2}')
       if [[ -n "$vfio_version" ]]; then
         echo "Kernel module version: $vfio_version"
@@ -851,7 +846,7 @@ cmd_diagnose() {
         for dev_path in "$iommu_group_path/devices"/*; do
           if [[ -d "$dev_path" ]]; then
             local dev_addr=$(basename "$dev_path")
-            local dev_class=$(lspci -Dn -s "${dev_addr#0000:}" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+            local dev_class=$(get_pci_class "${dev_addr#0000:}")
             if [[ "$dev_class" == "0c03" ]]; then
               found_usb=true
               local dev_addr_short="${dev_addr#0000:}"
@@ -1017,7 +1012,7 @@ cmd_diagnose() {
       if ! is_bootloader_supported "$bootloader"; then
         echo "  ⚠️  Bootloader '$(get_bootloader_display_name "$bootloader")' requires manual kernel parameter configuration"
       fi
-      [[ -f /etc/omarchy-gpu-passthrough.conf ]] && \
+      [[ -f "$GPU_PASSTHROUGH_CONF" ]] && \
         echo "  ⚠️  Setup may be incomplete - config saved but IOMMU not active"
     fi
 
@@ -1119,7 +1114,7 @@ cmd_status() {
   fi
 
   # Get passthrough GPU mode
-  local current_driver="$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')"
+  local current_driver="$(get_pci_driver "$GPU_PCI_ADDR")"
   local mode="$(detect_gpu_mode_from_driver "${current_driver:-}")"
 
   echo ""
@@ -1183,7 +1178,7 @@ cmd_driver() {
     exit 1
   fi
 
-  local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
 
   if [[ -z "$current_driver" ]]; then
     echo "none"
@@ -1197,7 +1192,7 @@ cmd_is_bound() {
     exit 2
   fi
 
-  local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
 
   if [[ "$current_driver" == "vfio-pci" ]]; then
     exit 0
@@ -1228,7 +1223,7 @@ cmd_mode() {
     exit 1
   fi
 
-  local current_driver="$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')"
+  local current_driver="$(get_pci_driver "$GPU_PCI_ADDR")"
   local mode="$(detect_gpu_mode_from_driver "$current_driver")"
   echo "$mode"
 
@@ -1265,7 +1260,7 @@ cmd_hardware_report() {
 
   local has_sudo=false
   # Request sudo for complete hardware info (motherboard, BIOS)
-  if [[ $EUID -eq 0 ]]; then
+  if [[ "$EUID" -eq 0 ]]; then
     has_sudo=true
   elif sudo -n true 2>/dev/null; then
     has_sudo=true
@@ -1459,8 +1454,8 @@ cmd_hardware_report() {
     fi
 
     # Get IOMMU group
-    local pci_full="0000:$pci"
-    local iommu_group=$(basename "$(readlink -f /sys/bus/pci/devices/${pci_full}/iommu_group 2>/dev/null)" 2>/dev/null)
+    local iommu_group=$(get_iommu_group "$pci")
+    [[ "$iommu_group" == "unknown" ]] && iommu_group=""
 
     echo "  $((i + 1)). $name [${vendor_id}:${device_id}]"
     echo "     PCI: $pci | Driver: ${driver:-none} | vRAM: $vram_info | BAR: $bar_info"
@@ -1558,9 +1553,8 @@ cmd_hardware_report() {
   local issues=()
 
   # GPU count check
-  local gpu_count="${#GPU_PCI_ADDR[@]}"
-  if [[ "$gpu_count" -lt 2 ]]; then
-    issues+=("Only ${gpu_count} GPU detected (passthrough requires 2: iGPU for host + dGPU for VM)")
+  if [[ "$GPU_COUNT" -lt 2 ]]; then
+    issues+=("Only ${GPU_COUNT} GPU detected (passthrough requires 2: iGPU for host + dGPU for VM)")
   fi
 
   # IOMMU status
@@ -1578,7 +1572,7 @@ cmd_hardware_report() {
 
   # Current mode
   if load_gpu_config 2>/dev/null; then
-    local current_driver="$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')"
+    local current_driver="$(get_pci_driver "$GPU_PCI_ADDR")"
     local current_mode="$(detect_gpu_mode_from_driver "$current_driver")"
     echo "  Current Mode: ${current_mode:-unknown}"
     echo ""
@@ -1588,8 +1582,8 @@ cmd_hardware_report() {
     echo "    $GPU_NAME → ${current_driver:-none}"
 
     # Get audio device in same IOMMU group
-    local gpu_iommu_group=$(basename "$(readlink -f /sys/bus/pci/devices/0000:${GPU_PCI_ADDR}/iommu_group 2>/dev/null)" 2>/dev/null)
-    if [[ -n "$gpu_iommu_group" ]]; then
+    local gpu_iommu_group=$(get_iommu_group "$GPU_PCI_ADDR")
+    if [[ -n "$gpu_iommu_group" && "$gpu_iommu_group" != "unknown" ]]; then
       local iommu_group_path="/sys/kernel/iommu_groups/${gpu_iommu_group}/devices"
       for dev_path in "$iommu_group_path"/*; do
         [[ -d "$dev_path" ]] || continue
@@ -1598,7 +1592,7 @@ cmd_hardware_report() {
         [[ "$dev_addr" == "$GPU_PCI_ADDR" ]] && continue
 
         local dev_desc=$(lspci -s "$dev_addr" 2>/dev/null | cut -d: -f3- | xargs)
-        local dev_driver=$(lspci -ks "$dev_addr" 2>/dev/null | grep "Kernel driver" | awk '{print $NF}')
+        local dev_driver=$(get_pci_driver "$dev_addr")
 
         if echo "$dev_desc" | grep -qi "audio"; then
           echo "    ${dev_desc%% *} Audio → ${dev_driver:-none}"
@@ -1614,8 +1608,8 @@ cmd_hardware_report() {
         [[ -d "$dev_path" ]] || continue
         local dev_addr_full=$(basename "$dev_path")
         local dev_addr="${dev_addr_full#0000:}"
-        local dev_class_code=$(lspci -Dn -s "$dev_addr" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
-        local dev_driver=$(lspci -ks "$dev_addr" 2>/dev/null | grep "Kernel driver" | awk '{print $NF}')
+        local dev_class_code=$(get_pci_class "$dev_addr")
+        local dev_driver=$(get_pci_driver "$dev_addr")
 
         local dev_type="Device"
         case "$dev_class_code" in
@@ -1636,7 +1630,7 @@ cmd_hardware_report() {
     echo ""
 
     # VFIO modules
-    if lsmod | grep -q "^vfio_pci"; then
+    if is_module_loaded vfio_pci; then
       echo "  VFIO Modules: loaded"
     else
       echo "  VFIO Modules: not loaded"

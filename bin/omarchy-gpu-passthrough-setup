@@ -91,26 +91,6 @@ EOF
 
 # Configuration Functions
 
-resolve_drm_device_for_pci() {
-  local pci_addr="$1"
-  local stable_path="/dev/dri/by-path/pci-0000:${pci_addr}-card"
-  if [[ -e "$stable_path" ]]; then
-    echo "$stable_path"
-    return 0
-  fi
-
-  local pci_sysfs="/sys/bus/pci/devices/0000:${pci_addr}"
-  if [[ -d "$pci_sysfs" ]]; then
-    local drm_card=$(find "$pci_sysfs" -type d -path "*/drm/card[0-9]*" -not -path "*/card*-*" 2>/dev/null | head -1)
-    if [[ -n "$drm_card" ]]; then
-      echo "$stable_path"
-      return 0
-    fi
-  fi
-
-  return 1
-}
-
 configure_kernel_parameters() {
   local cpu_vendor=$(get_cpu_vendor)
   local iommu_param=""
@@ -482,23 +462,23 @@ EOF
   sudo chgrp kvm /sys/bus/pci/drivers_probe 2>/dev/null || true
 
   # If vfio-pci is already loaded, apply permissions now
-  if lsmod | grep -q vfio_pci; then
+  if is_module_loaded vfio_pci; then
     sudo chmod 0660 /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null || true
     sudo chgrp kvm /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null || true
   fi
 
   # If native GPU drivers are loaded, apply permissions now
-  if lsmod | grep -q "^nvidia "; then
+  if is_module_loaded nvidia; then
     sudo chmod 0660 /sys/bus/pci/drivers/nvidia/{bind,unbind,new_id,remove_id} 2>/dev/null || true
     sudo chgrp kvm /sys/bus/pci/drivers/nvidia/{bind,unbind,new_id,remove_id} 2>/dev/null || true
   fi
 
-  if lsmod | grep -q "^amdgpu "; then
+  if is_module_loaded amdgpu; then
     sudo chmod 0660 /sys/bus/pci/drivers/amdgpu/{bind,unbind,new_id,remove_id} 2>/dev/null || true
     sudo chgrp kvm /sys/bus/pci/drivers/amdgpu/{bind,unbind,new_id,remove_id} 2>/dev/null || true
   fi
 
-  if lsmod | grep -q "^i915 "; then
+  if is_module_loaded i915; then
     sudo chmod 0660 /sys/bus/pci/drivers/i915/{bind,unbind,new_id,remove_id} 2>/dev/null || true
     sudo chgrp kvm /sys/bus/pci/drivers/i915/{bind,unbind,new_id,remove_id} 2>/dev/null || true
   fi
@@ -1085,34 +1065,9 @@ validate_gpu_selection() {
     fi
   done
 
-  local dgpu_monitor_count=0
+  local dgpu_monitor_count=$(count_connected_monitors_for_pci "$selected_gpu_pci")
   local igpu_monitor_count=0
-
-  local selected_gpu_drm_path="/dev/dri/by-path/pci-0000:${selected_gpu_pci}-card"
-  if [[ -e "$selected_gpu_drm_path" ]]; then
-    local selected_gpu_drm=$(basename "$(readlink -f "$selected_gpu_drm_path" 2>/dev/null)" 2>/dev/null)
-    if [[ -n "$selected_gpu_drm" ]]; then
-      for connector in /sys/class/drm/${selected_gpu_drm}-*/status; do
-        if [[ -f "$connector" ]] && grep -q "^connected$" "$connector" 2>/dev/null; then
-          ((dgpu_monitor_count++))
-        fi
-      done
-    fi
-  fi
-
-  if [[ -n "$igpu_pci" ]]; then
-    local igpu_drm_path="/dev/dri/by-path/pci-0000:${igpu_pci}-card"
-    if [[ -e "$igpu_drm_path" ]]; then
-      local igpu_drm=$(basename "$(readlink -f "$igpu_drm_path" 2>/dev/null)" 2>/dev/null)
-      if [[ -n "$igpu_drm" ]]; then
-        for connector in /sys/class/drm/${igpu_drm}-*/status; do
-          if [[ -f "$connector" ]] && grep -q "^connected$" "$connector" 2>/dev/null; then
-            ((igpu_monitor_count++))
-          fi
-        done
-      fi
-    fi
-  fi
+  [[ -n "$igpu_pci" ]] && igpu_monitor_count=$(count_connected_monitors_for_pci "$igpu_pci")
 
   if [[ "$igpu_monitor_count" -gt 0 ]]; then
     msg_success "iGPU: $igpu_monitor_count monitor(s)"
@@ -1291,8 +1246,8 @@ cmd_setup() {
     # Load and show current config
     if load_gpu_config; then
       local current_mode="unknown"
-      if [[ -f /var/run/omarchy-vm-gpu-mode ]]; then
-        current_mode=$(cat /var/run/omarchy-vm-gpu-mode 2>/dev/null || echo "unknown")
+      if [[ -f "$STATE_MARKER_FILE" ]]; then
+        current_mode=$(cat "$STATE_MARKER_FILE" 2>/dev/null || echo "unknown")
       fi
       msg_info "  GPU: $GPU_NAME ($GPU_PCI_ADDR)"
       msg_info "  Mode: $current_mode"
@@ -1384,7 +1339,7 @@ cmd_setup() {
   log_info "User selected GPU for passthrough: $name ($pci)"
   log_info "GPU for passthrough: $name ($pci) - ${vendor_id}:${device_id}"
 
-  log_info "GPU detection results (${#GPU_PCI_ADDR[@]} GPUs):"
+  log_info "GPU detection results ($GPU_COUNT GPUs):"
   for i in "${!GPU_PCI_ADDR[@]}"; do
     log_info "  [$i] ${GPU_NAME[$i]} (${GPU_PCI_ADDR[$i]}) vendor=${GPU_VENDOR_ID[$i]} type=${GPU_TYPE[$i]}"
   done

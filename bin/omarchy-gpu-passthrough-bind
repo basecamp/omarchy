@@ -219,34 +219,23 @@ check_display_safety() {
   log_info "Checking if display is using dedicated GPU..."
 
   if [[ -n "${WAYLAND_DISPLAY:-}" ]] || [[ -n "${XDG_SESSION_TYPE:-}" ]]; then
-    local gpu_drm_card=$(get_drm_card_for_pci "$GPU_PCI_ADDR")
+    local connected_displays=$(count_connected_monitors_for_pci "$GPU_PCI_ADDR")
 
-    if [[ -n "$gpu_drm_card" ]]; then
-      local connectors_path="/sys/class/drm/${gpu_drm_card}"
-      if [[ -d "$connectors_path" ]]; then
-        local connected_displays=0
-        while IFS= read -r connector; do
-          if [[ -f "$connector" ]] && grep -q "^connected$" "$connector" 2>/dev/null; then
-            connected_displays=$((connected_displays + 1))
-          fi
-        done < <(find "$connectors_path" -maxdepth 2 -name "status" -path "*/card*-*/*" 2>/dev/null)
-
-        if [[ "$connected_displays" -gt 0 ]]; then
-          echo ""
-          msg_error "SAFETY: Monitor connected to dedicated GPU!"
-          msg_error "Detected $connected_displays monitor(s) on $gpu_drm_card - unbind will cause BLACKSCREEN!"
-          echo ""
-          msg_warning "Solution:"
-          echo "   1. Move monitor cable to iGPU port (motherboard HDMI/DP)"
-          echo "   2. Set BIOS: Primary Display = IGD"
-          echo "   3. Reboot and run: omarchy-gpu-passthrough setup"
-          echo ""
-          log_error "Bind aborted: Monitor connected to dedicated GPU (would cause blackscreen)"
-          exit 1
-        else
-          log_success "Display safety check passed (no monitors on dedicated GPU)"
-        fi
-      fi
+    if [[ "$connected_displays" -gt 0 ]]; then
+      local gpu_drm_card=$(get_drm_card_for_pci "$GPU_PCI_ADDR")
+      echo ""
+      msg_error "SAFETY: Monitor connected to dedicated GPU!"
+      msg_error "Detected $connected_displays monitor(s) on ${gpu_drm_card:-GPU} - unbind will cause BLACKSCREEN!"
+      echo ""
+      msg_warning "Solution:"
+      echo "   1. Move monitor cable to iGPU port (motherboard HDMI/DP)"
+      echo "   2. Set BIOS: Primary Display = IGD"
+      echo "   3. Reboot and run: omarchy-gpu-passthrough setup"
+      echo ""
+      log_error "Bind aborted: Monitor connected to dedicated GPU (would cause blackscreen)"
+      exit 1
+    else
+      log_success "Display safety check passed (no monitors on dedicated GPU)"
     fi
   fi
 
@@ -259,12 +248,12 @@ unload_nvidia_modules() {
   msg_info "Unloading NVIDIA modules..."
   log_info "Unloading NVIDIA compute modules..."
 
-  if lsmod | grep -q "nvidia_uvm"; then
+  if is_module_loaded nvidia_uvm; then
     sudo -n /usr/bin/modprobe -r nvidia_uvm 2>/dev/null || true
     log_success "nvidia_uvm unloaded"
   fi
 
-  if lsmod | grep -q "^nvidia "; then
+  if is_module_loaded nvidia; then
     if sudo -n /usr/bin/modprobe -r nvidia 2>/dev/null; then
       log_success "nvidia module unloaded"
     else
@@ -280,7 +269,6 @@ cmd_bind() {
 
   if ! load_gpu_config; then
     msg_section "GPU Mode: VM"
-    echo ""
     msg_error "GPU passthrough not configured"
     msg_info "Run: omarchy-gpu-passthrough setup"
     log_error "Bind failed: GPU passthrough not configured"
@@ -289,7 +277,7 @@ cmd_bind() {
 
   msg_section "GPU Mode: Switch to VM"
 
-  local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
 
   log_info "=== BIND OPERATION START ==="
   log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
@@ -322,7 +310,7 @@ cmd_bind() {
     fi
   fi
 
-  if ! lsmod | grep -q "^vfio_pci"; then
+  if ! is_module_loaded vfio_pci; then
     log_info "Loading vfio-pci module..."
     sudo -n /usr/bin/modprobe vfio-pci
     log_success "vfio-pci module loaded"
@@ -352,7 +340,7 @@ cmd_bind() {
     fi
 
     # Skip PCI bridges (class 0604) - defense in depth
-    local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+    local dev_class=$(get_pci_class "$dev_pci")
     if [[ "$dev_class" == "0604" ]]; then
       log_info "Skipping PCI bridge $dev_pci (class 0604)"
       continue
@@ -362,11 +350,9 @@ cmd_bind() {
       echo "0000:$dev_pci" | tee "/sys/bus/pci/devices/0000:$dev_pci/driver/unbind" >/dev/null 2>&1 || true
     fi
 
-    local dev_ids=$(lspci -nn -s "$dev_pci" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
+    local dev_ids=$(get_pci_device_id "$dev_pci")
     if [[ -n "$dev_ids" ]]; then
-      local dev_vendor=$(echo "$dev_ids" | cut -d: -f1)
-      local dev_device=$(echo "$dev_ids" | cut -d: -f2)
-      echo "$dev_vendor $dev_device" | tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
+      echo "${dev_ids/:/ }" | tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
     fi
 
     if [[ ! -d "/sys/bus/pci/drivers/vfio-pci/0000:$dev_pci" ]]; then
@@ -379,10 +365,10 @@ cmd_bind() {
   # Verify all devices are actually bound (USB controllers may be rebound by xhci_hcd)
   local bind_issues=0
   for dev_pci in $iommu_devices; do
-    local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+    local dev_class=$(get_pci_class "$dev_pci")
     [[ "$dev_class" == "0604" ]] && continue  # Skip bridges
 
-    local dev_driver=$(lspci -nnk -s "$dev_pci" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')
+    local dev_driver=$(get_pci_driver "$dev_pci")
     if [[ "$dev_driver" != "vfio-pci" ]]; then
       log_warn "Device $dev_pci not bound to vfio-pci (driver: ${dev_driver:-none})"
       if [[ "$dev_class" == "0c03" ]]; then
@@ -397,7 +383,7 @@ cmd_bind() {
   fi
 
   show_spinner 1 "Verifying GPU binding..."
-  current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
+  current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
 
   echo ""
   if [[ "$current_driver" == "vfio-pci" ]]; then
@@ -420,7 +406,6 @@ cmd_set_none() {
 
   if ! load_gpu_config; then
     msg_section "GPU Mode: None"
-    echo ""
     msg_error "GPU passthrough not configured"
     msg_info "Run: omarchy-gpu-passthrough setup"
     log_error "Set none failed: GPU passthrough not configured"
@@ -429,7 +414,7 @@ cmd_set_none() {
 
   msg_section "GPU Mode: Switch to None"
 
-  local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
 
   log_info "=== SET NONE OPERATION START ==="
   log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
@@ -477,17 +462,15 @@ cmd_set_none() {
 
   if [[ "$current_driver" == "vfio-pci" ]]; then
     for dev_pci in $iommu_devices; do
-      local dev_ids=$(lspci -nn -s "$dev_pci" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
+      local dev_ids=$(get_pci_device_id "$dev_pci")
       if [[ -n "$dev_ids" ]]; then
-        local dev_vendor=$(echo "$dev_ids" | cut -d: -f1)
-        local dev_device=$(echo "$dev_ids" | cut -d: -f2)
-        echo "$dev_vendor $dev_device" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
+        echo "${dev_ids/:/ }" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
       fi
     done
 
     # Rebind USB controllers to xhci_hcd
     for dev_pci in $iommu_devices; do
-      local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+      local dev_class=$(get_pci_class "$dev_pci")
       if [[ "$dev_class" == "0c03" ]]; then
         if [[ -d "/sys/bus/pci/drivers/xhci_hcd" ]]; then
           log_info "Rebinding USB controller $dev_pci to xhci_hcd..."
@@ -498,7 +481,7 @@ cmd_set_none() {
   fi
 
   show_spinner 1 "Verifying GPU state..."
-  current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
+  current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
 
   echo ""
   if [[ -z "$current_driver" ]]; then
@@ -521,7 +504,6 @@ cmd_unbind() {
 
   if ! load_gpu_config; then
     msg_section "GPU Mode: Host"
-    echo ""
     msg_error "GPU passthrough not configured"
     msg_info "Run: omarchy-gpu-passthrough setup"
     log_error "Unbind failed: GPU passthrough not configured"
@@ -530,7 +512,7 @@ cmd_unbind() {
 
   msg_section "GPU Mode: Switch to Host"
 
-  local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
 
   log_info "=== UNBIND OPERATION START ==="
   log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
@@ -567,11 +549,9 @@ cmd_unbind() {
     done
 
     for dev_pci in $iommu_devices; do
-      local dev_ids=$(lspci -nn -s "$dev_pci" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
+      local dev_ids=$(get_pci_device_id "$dev_pci")
       if [[ -n "$dev_ids" ]]; then
-        local dev_vendor=$(echo "$dev_ids" | cut -d: -f1)
-        local dev_device=$(echo "$dev_ids" | cut -d: -f2)
-        echo "$dev_vendor $dev_device" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
+        echo "${dev_ids/:/ }" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
       fi
     done
 
@@ -579,7 +559,7 @@ cmd_unbind() {
 
     # Rebind USB controllers to xhci_hcd (they were claimed by vfio-pci via ids= at boot)
     for dev_pci in $iommu_devices; do
-      local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
+      local dev_class=$(get_pci_class "$dev_pci")
       if [[ "$dev_class" == "0c03" ]]; then
         if [[ -d "/sys/bus/pci/drivers/xhci_hcd" ]]; then
           log_info "Rebinding USB controller $dev_pci to xhci_hcd..."
@@ -667,7 +647,7 @@ cmd_unbind() {
 
   show_spinner 2 "Loading driver..."
 
-  current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
+  current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
   log_info "Final driver: ${current_driver:-none}"
 
   echo ""
@@ -717,7 +697,7 @@ ensure_state_marker() {
         return 0
       fi
 
-      local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')
+      local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
       local detected_mode=$(detect_gpu_mode_from_driver "$current_driver")
 
       if ! echo "$detected_mode" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
@@ -729,7 +709,6 @@ ensure_state_marker() {
     fi
 
     local marker_mode=$(cat "$STATE_MARKER_FILE" 2>/dev/null)
-    local marker_original="$marker_mode"
 
     # Validate marker content (must be none/vm/host)
     case "$marker_mode" in
@@ -744,7 +723,7 @@ ensure_state_marker() {
       return 0
     fi
 
-    local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}')
+    local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
     local actual_mode=$(detect_gpu_mode_from_driver "$current_driver")
 
     if [[ "$marker_mode" != "$actual_mode" ]]; then
@@ -800,7 +779,7 @@ cmd_mode_get() {
     exit 1
   fi
 
-  local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
 
   echo ""
   echo "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
@@ -864,7 +843,7 @@ cmd_quick_status() {
     exit 1
   fi
 
-  local current_driver=$(lspci -nnk -s "$GPU_PCI_ADDR" | grep "Kernel driver in use:" | awk '{print $5}')
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
 
   echo ""
   echo "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
