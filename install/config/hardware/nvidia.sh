@@ -10,6 +10,12 @@
 
 # --- GPU Detection ---
 if [ -n "$(lspci | grep -i 'nvidia')" ]; then
+  echo 'IMPORTANT: Nvidia card detected. Currently the only automatic option is to install proprietary drivers and configure from there.'
+  echo 'If you skip this step, you'"'"'ll be missing some optimisations and configurations for your card for Hyperland, and your card probably won'"'"'t be doing much until you manually install a driver. :('
+  echo 'If you know more about Nvidia on Linux than I do, please contribute to this script on GitHub!: https://github.com/SerrpentDagger/omarch-me/blob/master/install/config/hardware/nvidia.sh'
+  if ! gum confirm 'Proceed with proprietary driver installation and configuration?'; then
+    exit
+  fi
   # --- Driver Selection ---
   # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
   if echo "$(lspci | grep -i 'nvidia')" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then

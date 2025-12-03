@@ -1,0 +1,10 @@
+# Packages related to software development.
+
+# Software dev (check me!)
+ruby
+rust
+docker # All over in system: config/docker.sh
+docker-buildx
+docker-compose
+lazydocker
+ufw-docker

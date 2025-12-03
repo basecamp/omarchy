@@ -1,0 +1,18 @@
+# User-facing packages which deal with media files/production.
+
+# Media dev
+kdenlive
+obs-studio
+gpu-screen-recorder
+gimp
+pinta
+krita
+
+# Media use
+vlc
+
+# Text
+libreoffice-fresh
+
+# Communication
+signal-desktop

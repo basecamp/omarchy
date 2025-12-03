@@ -1,0 +1,16 @@
+# Extra system packages. 'Basic functionality' that is more obviously user-facing.
+# nvidia?
+
+# Passwords
+keepassxc
+
+# Terminals
+ghostty
+
+# Text editor
+nvim
+omarchy-nvim # requires extra setup to install later (omarchy-nvim-setup)
+
+# Browsers
+#mullvad
+omarchy-chromium

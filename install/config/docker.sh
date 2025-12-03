@@ -1,3 +1,9 @@
+# Only if docker was installed.
+if ! pacman -Q docker &>/dev/null; then
+  echo 'Skipping docker config (not installed).'
+  exit  
+fi
+
 # Configure Docker daemon:
 # - limit log size to avoid running out of disk
 # - use host's DNS resolver
