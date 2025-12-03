@@ -786,7 +786,7 @@ detect_smbios_and_disk_info() {
   local BIOS_VERSION="$(sudo -n /usr/bin/dmidecode -s bios-version 2>/dev/null | head -1)"
   local BIOS_DATE="$(sudo -n /usr/bin/dmidecode -s bios-release-date 2>/dev/null | head -1)"
 
-  if [[ -n "$BIOS_VENDOR" ]] && [[ -n "$BIOS_VERSION" ]]; then
+  if is_valid_smbios_value "$BIOS_VENDOR" && is_valid_smbios_value "$BIOS_VERSION"; then
     SMBIOS_FLAGS="${SMBIOS_FLAGS} -smbios type=0,vendor=$(escape_for_qemu "$BIOS_VENDOR"),version=$(escape_for_qemu "$BIOS_VERSION")"
     [[ -n "$BIOS_DATE" ]] && SMBIOS_FLAGS="${SMBIOS_FLAGS},date=$(escape_for_qemu "$BIOS_DATE")"
     SMBIOS_FLAGS="${SMBIOS_FLAGS},uefi=on"
@@ -835,18 +835,10 @@ detect_smbios_and_disk_info() {
 
   # SMBIOS Type 3: Chassis Information
   local CHASSIS_MANUFACTURER="$(sudo -n /usr/bin/dmidecode -s chassis-manufacturer 2>/dev/null | head -1)"
-  local CHASSIS_TYPE="$(sudo -n /usr/bin/dmidecode -t chassis 2>/dev/null | grep -m1 'Type:' | sed 's/.*Type: //')"
   local CHASSIS_SERIAL="$(sudo -n /usr/bin/dmidecode -s chassis-serial-number 2>/dev/null | head -1)"
 
   if is_valid_smbios_value "$CHASSIS_MANUFACTURER"; then
-    # Map chassis type to QEMU numeric value (Desktop=3, Laptop=9, Notebook=10)
-    local CHASSIS_TYPE_NUM="3"
-    case "${CHASSIS_TYPE,,}" in
-      *laptop*|*portable*) CHASSIS_TYPE_NUM="9" ;;
-      *notebook*) CHASSIS_TYPE_NUM="10" ;;
-      *desktop*|*tower*) CHASSIS_TYPE_NUM="3" ;;
-    esac
-    SMBIOS_FLAGS="${SMBIOS_FLAGS} -smbios type=3,manufacturer=$(escape_for_qemu "$CHASSIS_MANUFACTURER"),type=${CHASSIS_TYPE_NUM}"
+    SMBIOS_FLAGS="${SMBIOS_FLAGS} -smbios type=3,manufacturer=$(escape_for_qemu "$CHASSIS_MANUFACTURER")"
     is_valid_smbios_value "$CHASSIS_SERIAL" && SMBIOS_FLAGS="${SMBIOS_FLAGS},serial=$(escape_for_qemu "$CHASSIS_SERIAL")"
   fi
 
