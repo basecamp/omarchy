@@ -32,6 +32,10 @@ create_backup_snapshot() {
     sudo cp -a "$LIMINE_DEFAULT" "$snapshot_dir/limine" 2>/dev/null && files_backed_up+=("limine")
   fi
 
+  if [[ -f "$GRUB_DEFAULT" ]]; then
+    sudo cp -a "$GRUB_DEFAULT" "$snapshot_dir/grub" 2>/dev/null && files_backed_up+=("grub")
+  fi
+
   if [[ -f "$MKINITCPIO_CONF" ]]; then
     sudo cp -a "$MKINITCPIO_CONF" "$snapshot_dir/mkinitcpio.conf" 2>/dev/null && files_backed_up+=("mkinitcpio.conf")
   fi
@@ -66,11 +70,14 @@ $(for file in "${files_backed_up[@]}"; do echo "  ✓  $file"; done)
 
 To restore this backup:
   1. Copy files from this directory back to their original locations
-  2. Rebuild initramfs: sudo limine-mkinitcpio
+  2. Rebuild initramfs and bootloader config:
+     - Limine: sudo limine-mkinitcpio
+     - GRUB:   sudo mkinitcpio -P && sudo update-grub
   3. Reboot
 
 Original locations:
   limine           → /etc/default/limine
+  grub             → /etc/default/grub
   mkinitcpio.conf  → /etc/mkinitcpio.conf
   environment      → /etc/environment
   hyprland.conf    → ~/.config/hypr/hyprland.conf
@@ -116,11 +123,18 @@ configure_kernel_parameters() {
 
   local bootloader=$(detect_bootloader)
 
-  if [[ "$bootloader" == "limine" ]]; then
+  case "$bootloader" in
+  limine)
     log_info "Bootloader: Limine (automatic configuration)"
     configure_omarchy_limine "$iommu_param"
     return $?
-  fi
+    ;;
+  grub)
+    log_info "Bootloader: GRUB (automatic configuration)"
+    configure_grub_bootloader "$iommu_param"
+    return $?
+    ;;
+  esac
 
   log_info "Bootloader: $bootloader (manual configuration)"
 
@@ -130,7 +144,7 @@ configure_kernel_parameters() {
     return 0
   fi
 
-  # Non-Limine bootloader requires manual configuration
+  # Unsupported bootloader requires manual configuration
   msg_section "IOMMU Configuration Required"
 
   echo "Bootloader: $bootloader (manual config needed)"
@@ -138,11 +152,6 @@ configure_kernel_parameters() {
   echo "Add to kernel cmdline:  ${iommu_param} iommu=pt"
 
   case "$bootloader" in
-  grub)
-    echo ""
-    echo "Edit /etc/default/grub → GRUB_CMDLINE_LINUX_DEFAULT"
-    echo "Then: sudo grub-mkconfig -o /boot/grub/grub.cfg && reboot"
-    ;;
   systemd-boot)
     echo ""
     echo "Edit /boot/loader/entries/*.conf → options line"
@@ -234,6 +243,84 @@ configure_omarchy_limine() {
     msg_success "Kernel parameters:$params_to_add"
   else
     msg_info "Kernel parameters already set"
+  fi
+
+  return 0
+}
+
+configure_grub_bootloader() {
+  local iommu_param="$1"
+
+  # Validate GRUB config BEFORE creating backup
+  if ! grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT"; then
+    msg_error "GRUB_CMDLINE_LINUX_DEFAULT not found in $GRUB_DEFAULT"
+    msg_info "Please add: GRUB_CMDLINE_LINUX_DEFAULT=\"\" to your GRUB config"
+    log_error "GRUB config missing GRUB_CMDLINE_LINUX_DEFAULT line"
+    return 1
+  fi
+
+  if ! sudo cp "$GRUB_DEFAULT" "${GRUB_DEFAULT}.backup.$(date +%Y%m%d-%H%M%S)"; then
+    msg_error "Failed to create GRUB backup"
+    log_error "Failed to backup $GRUB_DEFAULT"
+    return 1
+  fi
+  log_info "GRUB config backed up"
+
+  local current_cmdline=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" | cut -d'"' -f2)
+
+  if echo "$current_cmdline" | grep -qE "amd_iommu=off|intel_iommu=off"; then
+    echo ""
+    msg_error "Conflicting IOMMU parameter detected (iommu=off)"
+    msg_info "Found IOMMU explicitly disabled in kernel parameters"
+    msg_warning "Please edit $GRUB_DEFAULT and remove iommu=off parameter"
+    echo ""
+    log_error "Setup aborted: Conflicting IOMMU parameter (iommu=off) found in GRUB config"
+    return 1
+  fi
+
+  local params_to_add=""
+
+  if ! echo "$current_cmdline" | grep -qE "amd_iommu=on|intel_iommu=on"; then
+    params_to_add="$params_to_add $iommu_param"
+  fi
+
+  if ! echo "$current_cmdline" | grep -q "iommu=pt"; then
+    params_to_add="$params_to_add iommu=pt"
+  fi
+
+  if [[ -n "${GPU_VENDOR_ID:-}" ]] && [[ "${GPU_VENDOR_ID}" == "10de" || "${GPU_VENDOR_ID[0]:-}" == "10de" ]]; then
+    if ! echo "$current_cmdline" | grep -q "pci=realloc"; then
+      local gpu_pci="${GPU_PCI_ADDR:-}"
+      [[ -z "$gpu_pci" ]] && gpu_pci="${GPU_PCI_ADDR[0]:-}"
+      if [[ -n "$gpu_pci" ]] && check_resizable_bar "$gpu_pci" 2>/dev/null; then
+        params_to_add="$params_to_add pci=realloc"
+      fi
+    fi
+  fi
+
+  if [[ -n "$params_to_add" ]]; then
+    params_to_add=$(echo "$params_to_add" | sed 's/^ //')
+    local new_cmdline="$current_cmdline $params_to_add"
+    # Escape sed special chars in replacement: & (backreference) and \ (escape)
+    local new_cmdline_escaped="${new_cmdline//\\/\\\\}"
+    new_cmdline_escaped="${new_cmdline_escaped//&/\\&}"
+    sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline_escaped\"|" "$GRUB_DEFAULT"
+    msg_success "Kernel parameters: $params_to_add"
+  else
+    msg_info "Kernel parameters already set"
+  fi
+
+  local regen_cmd=$(get_grub_regenerate_cmd)
+  if [[ -n "$regen_cmd" ]]; then
+    msg_info "Regenerating GRUB config..."
+    if sudo $regen_cmd >/dev/null 2>&1; then
+      msg_success "GRUB config regenerated"
+    else
+      msg_warning "GRUB regeneration failed - run manually: $regen_cmd"
+    fi
+  else
+    msg_warning "Could not determine GRUB regenerate command"
+    msg_info "Run manually: grub-mkconfig -o /boot/grub/grub.cfg"
   fi
 
   return 0
@@ -773,21 +860,57 @@ unconfigure_pci_binding_permissions() {
 }
 
 unconfigure_kernel_parameters() {
-  if [[ ! -f "$LIMINE_DEFAULT" ]]; then
+  local bootloader=$(detect_bootloader)
+
+  case "$bootloader" in
+  limine)
+    if [[ ! -f "$LIMINE_DEFAULT" ]]; then
+      return 1
+    fi
+
+    local all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" || true)
+    if ! echo "$all_cmdlines" | grep -qE "amd_iommu=on|intel_iommu=on|iommu=pt"; then
+      return 0
+    fi
+
+    sudo cp "$LIMINE_DEFAULT" "${LIMINE_DEFAULT}.backup.uninstall.$(date +%s)"
+    sudo sed -i -E 's/[[:space:]]*(amd_iommu=on|intel_iommu=on)//g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]*iommu=pt//g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]*vfio-pci\.ids=[0-9a-f:,]+//g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]*pci=realloc//g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]+/ /g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]+"$/"/' "$LIMINE_DEFAULT"
+    ;;
+  grub)
+    if [[ ! -f "$GRUB_DEFAULT" ]]; then
+      return 1
+    fi
+
+    local current_cmdline=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" | cut -d'"' -f2)
+    if ! echo "$current_cmdline" | grep -qE "amd_iommu=on|intel_iommu=on|iommu=pt"; then
+      return 0
+    fi
+
+    sudo cp "$GRUB_DEFAULT" "${GRUB_DEFAULT}.backup.uninstall.$(date +%s)"
+    local new_cmdline="$current_cmdline"
+    new_cmdline=$(echo "$new_cmdline" | sed -E 's/[[:space:]]*(amd_iommu=on|intel_iommu=on)//g')
+    new_cmdline=$(echo "$new_cmdline" | sed -E 's/[[:space:]]*iommu=pt//g')
+    new_cmdline=$(echo "$new_cmdline" | sed -E 's/[[:space:]]*pci=realloc//g')
+    new_cmdline=$(echo "$new_cmdline" | sed -E 's/[[:space:]]+/ /g' | sed 's/^ //' | sed 's/ $//')
+    # Escape sed special chars in replacement: & (backreference) and \ (escape)
+    local new_cmdline_escaped="${new_cmdline//\\/\\\\}"
+    new_cmdline_escaped="${new_cmdline_escaped//&/\\&}"
+    sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline_escaped\"|" "$GRUB_DEFAULT"
+
+    local regen_cmd=$(get_grub_regenerate_cmd)
+    if [[ -n "$regen_cmd" ]]; then
+      sudo $regen_cmd >/dev/null 2>&1 || true
+    fi
+    ;;
+  *)
     return 1
-  fi
-
-  local all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" || true)
-  if ! echo "$all_cmdlines" | grep -qE "amd_iommu=on|intel_iommu=on|iommu=pt"; then
-    return 0
-  fi
-
-  sudo cp "$LIMINE_DEFAULT" "${LIMINE_DEFAULT}.backup.uninstall.$(date +%s)"
-  sudo sed -i -E 's/[[:space:]]*(amd_iommu=on|intel_iommu=on)//g' "$LIMINE_DEFAULT"
-  sudo sed -i -E 's/[[:space:]]*iommu=pt//g' "$LIMINE_DEFAULT"
-  sudo sed -i -E 's/[[:space:]]*vfio-pci\.ids=[0-9a-f:,]+//g' "$LIMINE_DEFAULT"
-  sudo sed -i -E 's/[[:space:]]+/ /g' "$LIMINE_DEFAULT"
-  sudo sed -i -E 's/[[:space:]]+"$/"/' "$LIMINE_DEFAULT"
+    ;;
+  esac
 
   msg_success "Kernel parameters removed"
   return 0
@@ -1040,12 +1163,25 @@ validate_gpu_selection() {
 
 show_intro_banner() {
   local cpu_vendor=$(get_cpu_vendor)
+  local bootloader=$(detect_bootloader)
+  local bootloader_path=$(get_bootloader_config_path "$bootloader")
+  local bootloader_safety
+
+  if is_bootloader_supported "$bootloader"; then
+    if [[ "$bootloader" == "limine" ]]; then
+      bootloader_safety="Limine snapshots available in boot menu (rollback option)"
+    else
+      bootloader_safety="$(get_bootloader_display_name "$bootloader") config backed up before changes"
+    fi
+  else
+    bootloader_safety="Manual configuration required (instructions provided)"
+  fi
 
   msg_section "GPU Passthrough Setup Wizard"
   msg_warning "Experimental - use with caution"
   echo "WHAT WILL BE CHANGED:"
   cat <<EOF
-  • Kernel boot parameters (/etc/default/limine)
+  • Kernel boot parameters ($bootloader_path)
   • GPU driver blacklist (dedicated GPU set to mode=none at boot)
   • Initramfs modules + rebuild (/etc/mkinitcpio.conf)
   • Hyprland configuration (~/.config/hypr/hyprland.conf)
@@ -1065,7 +1201,7 @@ EOF
   echo ""
   echo "SAFETY MEASURES:"
   echo "  ✓  Automatic backups created before changes"
-  echo "  ✓  Limine snapshots available in boot menu (rollback option)"
+  echo "  ✓  $bootloader_safety"
   echo "  ✓  Undo anytime with: omarchy-gpu-passthrough setup --uninstall"
 
   echo ""
@@ -1441,7 +1577,19 @@ cmd_uninstall() {
   unconfigure_pci_binding_permissions
   unconfigure_gpu_state_tmpfiles
   unconfigure_vfio_modules
-  unconfigure_kernel_parameters
+
+  local bootloader=$(detect_bootloader)
+  if ! unconfigure_kernel_parameters; then
+    if ! is_bootloader_supported "$bootloader"; then
+      msg_warning "Kernel parameters NOT automatically removed"
+      echo "  Your bootloader ($(get_bootloader_display_name "$bootloader")) requires manual configuration."
+      echo "  Remove these parameters from $(get_bootloader_config_path "$bootloader"):"
+      echo "    • amd_iommu=on or intel_iommu=on"
+      echo "    • iommu=pt"
+      echo "    • pci=realloc (if present)"
+    fi
+  fi
+
   unconfigure_kvm_options
   unconfigure_sudoers_gpu_passthrough
 
@@ -1449,22 +1597,33 @@ cmd_uninstall() {
     sudo rm -f "$GPU_PASSTHROUGH_CONF"
     msg_success "GPU configuration removed"
   fi
-
-  local bootloader=$(detect_bootloader)
   msg_info "Rebuilding initramfs..."
   log_info "Rebuilding initramfs via $bootloader"
   if [[ "$bootloader" == "limine" ]]; then
-    sudo limine-mkinitcpio
+    if ! sudo limine-mkinitcpio; then
+      log_error "limine-mkinitcpio failed during uninstall"
+      msg_warning "Initramfs rebuild failed - run manually: sudo limine-mkinitcpio"
+    else
+      msg_success "Initramfs rebuilt"
+    fi
   else
-    sudo mkinitcpio -P
+    if ! sudo mkinitcpio -P; then
+      log_error "mkinitcpio -P failed during uninstall"
+      msg_warning "Initramfs rebuild failed - run manually: sudo mkinitcpio -P"
+    else
+      msg_success "Initramfs rebuilt"
+    fi
   fi
-  msg_success "Initramfs rebuilt"
 
   msg_section "Uninstall Complete!"
 
   msg_success "GPU passthrough configuration has been removed"
   echo "Backups created (can be deleted manually if not needed):"
-  echo "  • /etc/default/limine.backup.uninstall.*"
+  if [[ "$bootloader" == "limine" ]]; then
+    echo "  • /etc/default/limine.backup.uninstall.*"
+  elif [[ "$bootloader" == "grub" ]]; then
+    echo "  • /etc/default/grub.backup.uninstall.*"
+  fi
   echo "  • /etc/mkinitcpio.conf.backup.uninstall.*"
   echo "  • ~/.config/hypr/hyprland.conf.backup.uninstall.*"
   echo ""

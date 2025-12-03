@@ -109,15 +109,33 @@ verify_kernel_config() {
     fi
   fi
 
-  if [[ "$quiet" != "true" ]] && [[ -f "$LIMINE_DEFAULT" ]] && [[ "$is_configured" == "true" ]]; then
+  if [[ "$quiet" != "true" ]] && [[ "$is_configured" == "true" ]]; then
+    local bootloader=$(detect_bootloader)
     echo ""
-    echo "  Limine config ($LIMINE_DEFAULT):"
-    local limine_params=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null)
-    if echo "$limine_params" | grep -qE "amd_iommu=on|intel_iommu=on"; then
-      msg_success "    IOMMU parameters present"
-    else
-      msg_warning "    IOMMU parameters NOT in config - run setup to reconfigure"
-    fi
+    case "$bootloader" in
+      limine)
+        echo "  Limine config ($LIMINE_DEFAULT):"
+        local limine_params=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null)
+        if echo "$limine_params" | grep -qE "amd_iommu=on|intel_iommu=on"; then
+          msg_success "    IOMMU parameters present"
+        else
+          msg_warning "    IOMMU parameters NOT in config - run setup to reconfigure"
+        fi
+        ;;
+      grub)
+        echo "  GRUB config ($GRUB_DEFAULT):"
+        local grub_params=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" 2>/dev/null | cut -d'"' -f2)
+        if echo "$grub_params" | grep -qE "amd_iommu=on|intel_iommu=on"; then
+          msg_success "    IOMMU parameters present"
+        else
+          msg_warning "    IOMMU parameters NOT in config - run setup to reconfigure"
+        fi
+        ;;
+      *)
+        echo "  $(get_bootloader_display_name "$bootloader") config ($(get_bootloader_config_path "$bootloader")):"
+        msg_info "    Manual configuration - check bootloader config directly"
+        ;;
+    esac
   fi
 
   return "$errors"
@@ -272,16 +290,7 @@ verify_setup() {
     *) echo "  CPU Vendor:     Unknown" ;;
     esac
 
-    # Detect bootloader
-    local bootloader="Unknown"
-    if [[ -f /etc/default/limine ]]; then
-      bootloader="Limine"
-    elif [[ -d /boot/grub ]]; then
-      bootloader="GRUB"
-    elif [[ -d /boot/loader ]]; then
-      bootloader="systemd-boot"
-    fi
-    echo "  Bootloader:     $bootloader"
+    echo "  Bootloader:     $(get_bootloader_display_name)"
 
     echo "  Passthrough:    $(if [[ "$is_configured" == "true" ]]; then echo "Configured ✓"; else echo "Not configured"; fi)"
   fi
@@ -715,10 +724,10 @@ cmd_diagnose() {
         fi
         ;;
       grub)
-        if [[ -f /etc/default/grub ]]; then
-          grep "^GRUB_CMDLINE_LINUX" /etc/default/grub || echo "No GRUB_CMDLINE entries found"
+        if [[ -f "$GRUB_DEFAULT" ]]; then
+          grep "^GRUB_CMDLINE_LINUX" "$GRUB_DEFAULT" || echo "No GRUB_CMDLINE entries found"
         else
-          echo "/etc/default/grub not found"
+          echo "$GRUB_DEFAULT not found"
         fi
         ;;
       systemd-boot)
@@ -1005,8 +1014,9 @@ cmd_diagnose() {
     # Only warn about bootloader/config if IOMMU not active
     if [[ "$iommu_cmdline" == "false" && "$iommu_firmware" == "false" ]]; then
       local bootloader=$(detect_bootloader)
-      [[ "$bootloader" != "limine" ]] && \
-        echo "  ⚠️  Bootloader '$bootloader' requires manual kernel parameter configuration"
+      if ! is_bootloader_supported "$bootloader"; then
+        echo "  ⚠️  Bootloader '$(get_bootloader_display_name "$bootloader")' requires manual kernel parameter configuration"
+      fi
       [[ -f /etc/omarchy-gpu-passthrough.conf ]] && \
         echo "  ⚠️  Setup may be incomplete - config saved but IOMMU not active"
     fi
@@ -1087,7 +1097,7 @@ cmd_detect() {
   fi
 
   echo ""
-  echo "Bootloader: $(detect_bootloader)"
+  echo "Bootloader: $(get_bootloader_display_name)"
 }
 
 cmd_status() {
@@ -1298,15 +1308,7 @@ cmd_hardware_report() {
   local kernel="$(uname -r 2>/dev/null || echo "Unknown")"
   echo "  Kernel: $kernel"
 
-  local bootloader="Unknown"
-  if [[ -f /etc/default/limine ]]; then
-    bootloader="Limine"
-  elif [[ -d /boot/grub ]]; then
-    bootloader="GRUB"
-  elif [[ -d /boot/loader ]]; then
-    bootloader="systemd-boot"
-  fi
-  echo "  Bootloader: $bootloader"
+  echo "  Bootloader: $(get_bootloader_display_name)"
 
   local omarchy_branch=""
   local omarchy_commit=""

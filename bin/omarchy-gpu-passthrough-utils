@@ -13,6 +13,7 @@ fi
 
 # Configuration paths
 LIMINE_DEFAULT="/etc/default/limine"
+GRUB_DEFAULT="/etc/default/grub"
 VFIO_CONF="/etc/modprobe.d/vfio.conf"
 BLACKLIST_CONF="/etc/modprobe.d/blacklist-gpu-passthrough.conf"
 KVM_CONF="/etc/modprobe.d/kvm.conf"
@@ -225,6 +226,18 @@ check_dependencies() {
   fi
 
   return 0
+}
+
+get_grub_regenerate_cmd() {
+  if command -v update-grub &>/dev/null; then
+    echo "update-grub"
+  elif [[ -f /boot/grub2/grub.cfg ]]; then
+    echo "grub2-mkconfig -o /boot/grub2/grub.cfg"
+  elif [[ -f /boot/grub/grub.cfg ]]; then
+    echo "grub-mkconfig -o /boot/grub/grub.cfg"
+  else
+    echo ""
+  fi
 }
 
 get_cpu_vendor() {
@@ -744,9 +757,9 @@ get_drm_card_for_pci() {
 }
 
 detect_bootloader() {
-  if [[ -f /etc/default/limine ]]; then
+  if [[ -f "$LIMINE_DEFAULT" ]]; then
     echo "limine"
-  elif [[ -d /boot/grub ]] || [[ -f /etc/default/grub ]]; then
+  elif [[ -d /boot/grub ]] || [[ -f "$GRUB_DEFAULT" ]]; then
     echo "grub"
   elif [[ -d /boot/loader/entries ]]; then
     echo "systemd-boot"
@@ -755,6 +768,33 @@ detect_bootloader() {
   else
     echo "unknown"
   fi
+}
+
+get_bootloader_display_name() {
+  local id="${1:-$(detect_bootloader)}"
+  case "$id" in
+    limine) echo "Limine" ;;
+    grub) echo "GRUB" ;;
+    systemd-boot) echo "systemd-boot" ;;
+    refind) echo "rEFInd" ;;
+    *) echo "Unknown" ;;
+  esac
+}
+
+get_bootloader_config_path() {
+  local id="${1:-$(detect_bootloader)}"
+  case "$id" in
+    limine) echo "/etc/default/limine" ;;
+    grub) echo "/etc/default/grub" ;;
+    systemd-boot) echo "/boot/loader/entries/*.conf" ;;
+    refind) echo "/boot/refind_linux.conf" ;;
+    *) echo "(unknown)" ;;
+  esac
+}
+
+is_bootloader_supported() {
+  local id="${1:-$(detect_bootloader)}"
+  [[ "$id" == "limine" || "$id" == "grub" ]]
 }
 
 # Sets IS_MUXLESS_LAPTOP and DGPU_HAS_EXTERNAL_MONITOR globals
