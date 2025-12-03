@@ -448,13 +448,20 @@ show_main_menu() {
   go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n󱓞  Trigger\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
 }
 
+# note: some entries (e.g. 'Share', 'Power') are available through submenus but not in the top level show_main_menu()
+# but they should stay in this list so that you can call omarchy-menu <submenu>, e.g. in your hyprland keybinds.
 go_to_menu() {
   case "${1,,}" in
   *apps*) walker -p "Launch…" ;;
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
+  *share*) show_share_menu ;;
   *style*) show_style_menu ;;
+  *theme*) show_theme_menu ;;
+  *screenshot*) show_screenshot_menu ;;
+  *screenrecord*) show_screenrecord_menu ;;
   *setup*) show_setup_menu ;;
+  *power*) show_setup_power_menu ;;
   *install*) show_install_menu ;;
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
