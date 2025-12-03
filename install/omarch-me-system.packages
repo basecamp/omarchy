@@ -1,8 +1,6 @@
 # Omarch-me 'system' packages.
 # These should be lightweight open-source utilities or important to the system's function.
-# NEEDS FURTHER AUDITING to the selection menu files.
 
-aether
 asdcontrol
 avahi
 bash-completion
@@ -16,7 +14,6 @@ cups-browsed
 cups-filters
 cups-pdf
 dust
-evince
 exfatprogs
 expac
 eza
@@ -55,15 +52,12 @@ lazygit
 less
 libsecret
 libyaml
-libqalculate
 llvm
 localsend
 luarocks
 mako
 man-db
 mariadb-libs
-mise
-mpv
 nautilus
 gnome-disk-utility
 noto-fonts
@@ -115,7 +109,6 @@ xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
 xdg-terminal-exec
 xmlstarlet
-xournalpp
 yaru-icon-theme
 yay
 zoxide

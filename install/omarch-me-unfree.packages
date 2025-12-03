@@ -4,7 +4,7 @@
 1password-beta
 1password-cli
 
-docker # All over in system: install/tuis.sh, config/docker.sh
+docker
 docker-buildx
 docker-compose
 lazydocker

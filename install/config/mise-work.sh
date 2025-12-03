@@ -1,3 +1,9 @@
+# Only if mise was installed.
+if ! pacman -Q mise &>/dev/null; then
+  echo 'Skipping mise work config (not installed).'
+  exit  
+fi
+
 # Setup default work directory (and tries)
 mkdir -p "$HOME/Work"
 mkdir -p "$HOME/Work/tries"

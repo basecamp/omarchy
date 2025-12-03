@@ -7,6 +7,12 @@ keepassxc
 # Terminals
 ghostty
 
+# Calculators
+libqalculate
+
+# Doc viewers
+evince
+
 # Text editor
 nvim
 omarchy-nvim # requires extra setup to install later (omarchy-nvim-setup)
@@ -14,3 +20,6 @@ omarchy-nvim # requires extra setup to install later (omarchy-nvim-setup)
 # Browsers
 #mullvad
 omarchy-chromium
+
+# Theming
+aether

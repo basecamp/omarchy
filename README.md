@@ -1,9 +1,8 @@
-# Omarchy
+# Omarch-me
+Omarch-me is a fork of [Omarchy](https://omarchy.org) by DHH: "a beautiful, modern & opinionated Linux distribution". This fork makes minor modifications to the install scripts that allow you to choose yourself which default apps to install with the OS.
 
-Omarchy is a beautiful, modern & opinionated Linux distribution by DHH.
-
-Read more at [omarchy.org](https://omarchy.org).
+Open-source apps are prioritised, with unfree options being clearly placed in their own group for selection.
 
 ## License
 
-Omarchy is released under the [MIT License](https://opensource.org/licenses/MIT).
+Omarch-me is released under the [MIT License](https://opensource.org/licenses/MIT).

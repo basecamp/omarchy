@@ -10,9 +10,11 @@ krita
 
 # Media use
 vlc
+mpv
 
 # Text
 libreoffice-fresh
+xournalpp
 
 # Communication
 signal-desktop
