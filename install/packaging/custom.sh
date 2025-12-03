@@ -5,7 +5,7 @@ echo 'Installing basic system packages (open source)...'
 sleep 1
 run_logged $OMARCHY_INSTALL/packaging/omarch-me-system.sh
 
-source $OMARCHY_INSTALL/packaging/select-install.sh $OMARCHY_INSTALL/omarch-me-sys-extra.packages 'extra system'
-source $OMARCHY_INSTALL/packaging/select-install.sh $OMARCHY_INSTALL/omarch-me-media.packages 'media/communications'
-source $OMARCHY_INSTALL/packaging/select-install.sh $OMARCHY_INSTALL/omarch-me-dev.packages 'developer'
-source $OMARCHY_INSTALL/packaging/select-install.sh $OMARCHY_INSTALL/omarch-me-unfree.packages 'unfree (proprietary)'
+source $OMARCHY_INSTALL/packaging/select-install.sh omarch-me-sys-extra.packages 'extra system'
+source $OMARCHY_INSTALL/packaging/select-install.sh omarch-me-media.packages 'media/communications'
+source $OMARCHY_INSTALL/packaging/select-install.sh omarch-me-dev.packages 'developer'
+source $OMARCHY_INSTALL/packaging/select-install.sh omarch-me-unfree.packages 'unfree (proprietary)'
