@@ -213,8 +213,8 @@ verify_usb_controller_setup() {
   local found_usb_issue=false
   for i in "${!GPU_PCI_ADDR[@]}"; do
     local pci="${GPU_PCI_ADDR[$i]}"
-    local pci_full="$pci"
-    [[ ! "$pci_full" =~ ^[0-9a-f]{4}: ]] && pci_full="0000:${pci_full}"
+    local pci_full
+    pci_full=$(normalize_pci_addr "$pci") || continue
 
     local iommu_group_path=$(readlink -f "/sys/bus/pci/devices/${pci_full}/iommu_group" 2>/dev/null)
     if [[ -d "$iommu_group_path/devices" ]]; then
@@ -838,8 +838,8 @@ cmd_diagnose() {
     local found_usb=false
     for i in "${!GPU_PCI_ADDR[@]}"; do
       local pci="${GPU_PCI_ADDR[$i]}"
-      local pci_full="$pci"
-      [[ ! "$pci_full" =~ ^[0-9a-f]{4}: ]] && pci_full="0000:${pci_full}"
+      local pci_full
+      pci_full=$(normalize_pci_addr "$pci") || continue
 
       local iommu_group_path=$(readlink -f "/sys/bus/pci/devices/${pci_full}/iommu_group" 2>/dev/null)
       if [[ -d "$iommu_group_path/devices" ]]; then
@@ -1134,12 +1134,10 @@ cmd_status() {
     # Build status line
     local status_line="  [$((i + 1))] $short_name ($pci)"
 
-    # Normalize PCI addresses for comparison (add 0000: prefix if missing)
-    local pci_normalized="$pci"
-    [[ ! "$pci_normalized" =~ ^[0-9a-f]{4}: ]] && pci_normalized="0000:${pci_normalized}"
-
-    local config_pci_normalized="$GPU_PCI_ADDR"
-    [[ ! "$config_pci_normalized" =~ ^[0-9a-f]{4}: ]] && config_pci_normalized="0000:${config_pci_normalized}"
+    # Normalize PCI addresses for comparison
+    local pci_normalized config_pci_normalized
+    pci_normalized=$(normalize_pci_addr "$pci") || continue
+    config_pci_normalized=$(normalize_pci_addr "$GPU_PCI_ADDR") || continue
 
     # Add driver and mode info
     if [[ "$pci_normalized" == "$config_pci_normalized" ]]; then

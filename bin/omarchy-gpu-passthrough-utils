@@ -45,6 +45,13 @@ declare -a GPU_TYPE
 declare -a GPU_AUDIO_ID
 declare -i GPU_COUNT=0
 
+normalize_pci_addr() {
+  local pci_addr="$1"
+  [[ -z "$pci_addr" ]] && return 1
+  [[ ! "$pci_addr" =~ ^[0-9a-fA-F]{4}: ]] && pci_addr="0000:${pci_addr}"
+  echo "$pci_addr"
+}
+
 msg_error() {
   echo "❌  Error: $*" >&2
 }
@@ -495,10 +502,11 @@ get_gpu_vram_mb() {
 
   # NVIDIA: use nvidia-smi
   if [[ "$vendor_id" == "10de" ]] && [[ "$driver" == "nvidia" ]] && command -v nvidia-smi &>/dev/null; then
-    local pci_normalized="$gpu_pci"
-    [[ ! "$pci_normalized" =~ ^[0-9a-f]{4}: ]] && pci_normalized="0000:${pci_normalized}"
+    local pci_normalized
+    pci_normalized=$(normalize_pci_addr "$gpu_pci") || return 0
 
-    local nvidia_vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits \
+    local nvidia_vram
+    nvidia_vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits \
       --id="$pci_normalized" 2>/dev/null | head -1)
     if [[ -n "$nvidia_vram" && "$nvidia_vram" =~ ^[0-9]+$ ]]; then
       echo "$nvidia_vram"
@@ -685,11 +693,8 @@ load_gpu_config() {
 }
 
 get_iommu_group() {
-  local pci_addr="$1"
-
-  if [[ ! "$pci_addr" =~ ^[0-9a-f]{4}: ]]; then
-    pci_addr="0000:${pci_addr}"
-  fi
+  local pci_addr
+  pci_addr=$(normalize_pci_addr "$1") || { echo "unknown"; return 1; }
 
   local iommu_group=$(basename "$(readlink /sys/bus/pci/devices/${pci_addr}/iommu_group 2>/dev/null)" 2>/dev/null)
 
@@ -704,11 +709,8 @@ get_iommu_group() {
 # Returns: space-separated list of PCI addresses (without 0000: prefix)
 # Note: Filters out PCI bridges (class 0604) - they're host infrastructure, not for VM passthrough
 get_iommu_group_devices() {
-  local pci_addr="$1"
-
-  if [[ ! "$pci_addr" =~ ^[0-9a-f]{4}: ]]; then
-    pci_addr="0000:${pci_addr}"
-  fi
+  local pci_addr
+  pci_addr=$(normalize_pci_addr "$1") || return 1
 
   local iommu_group_path=$(readlink -f /sys/bus/pci/devices/${pci_addr}/iommu_group 2>/dev/null)
   if [[ -z "$iommu_group_path" ]] || [[ ! -d "$iommu_group_path/devices" ]]; then
@@ -735,11 +737,8 @@ get_iommu_group_devices() {
 }
 
 get_drm_card_for_pci() {
-  local pci_addr="$1"
-
-  if [[ ! "$pci_addr" =~ ^[0-9a-f]{4}: ]]; then
-    pci_addr="0000:${pci_addr}"
-  fi
+  local pci_addr
+  pci_addr=$(normalize_pci_addr "$1") || return 1
 
   for card_dir in /sys/bus/pci/devices/${pci_addr}/drm/card[0-9]*; do
     if [[ -d "$card_dir" ]] && [[ ! "$card_dir" =~ card[0-9]+-. ]]; then
