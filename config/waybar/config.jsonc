@@ -49,6 +49,7 @@
     "format": "",
     "exec": "omarchy-update-available",
     "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
+    "on-click-right": "xdg-open https://github.com/basecamp/omarchy/releases",
     "tooltip-format": "{text}",
     "signal": 7,
     "interval": 21600
