@@ -2047,6 +2047,7 @@ install_windows() {
     PREVIOUS_LG_ENABLED=false
     PREVIOUS_GPU_ENABLED=false
     PREVIOUS_TPM_ENABLED=false
+    PREVIOUS_IVSHMEM_SIZE=""
 
     if [[ -f "$COMPOSE_FILE" ]]; then
       # Extract values from docker-compose.yml
@@ -2056,9 +2057,11 @@ install_windows() {
       PREVIOUS_USERNAME=$(grep '^\s*USERNAME:' "$COMPOSE_FILE" | sed 's/.*USERNAME: "\(.*\)".*/\1/' | tr -d '"')
       PREVIOUS_PASSWORD=$(grep '^\s*PASSWORD:' "$COMPOSE_FILE" | sed 's/.*PASSWORD: "\(.*\)".*/\1/' | tr -d '"')
 
-      # Check Looking Glass (ivshmem-plain in ARGUMENTS)
+      # Check Looking Glass (ivshmem-plain in ARGUMENTS) and extract IVSHMEM size
       if grep -q 'ivshmem-plain' "$COMPOSE_FILE"; then
         PREVIOUS_LG_ENABLED=true
+        PREVIOUS_IVSHMEM_SIZE=$(grep -oP 'size=\K[0-9]+' "$COMPOSE_FILE" | head -1)
+        [[ -z "$PREVIOUS_IVSHMEM_SIZE" ]] && PREVIOUS_IVSHMEM_SIZE=64
       fi
 
       # Check GPU passthrough (vfio-pci in ARGUMENTS)
@@ -2806,7 +2809,8 @@ install_windows() {
     fi
   fi
 
-  IVSHMEM_SIZE=${IVSHMEM_SIZE:-64}
+  # Use previous IVSHMEM size for quick reinstall, otherwise default 64
+  IVSHMEM_SIZE=${IVSHMEM_SIZE:-${PREVIOUS_IVSHMEM_SIZE:-64}}
 
   # Detect GPU passthrough configuration
   GPU_PASSTHROUGH_ENABLED=false
