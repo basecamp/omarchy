@@ -16,9 +16,9 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-stop_log_output
+pause_log
 pkg_names=$(grep -v '^#' "$OMARCHY_INSTALL/$1" | grep -v '^$' | fzf "${fzf_args[@]}")
-start_log_output
+unpause_log
 
 if [[ -n "$pkg_names" ]]; then # If nonempty selection.
   # Convert newline-separated selections to space-separated for yay
