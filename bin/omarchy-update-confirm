@@ -1,8 +1,11 @@
 #!/bin/bash
 
+REPO_URL="https://github.com/basecamp/omarchy/releases"
+
 gum style --border normal --border-foreground 6 --padding "1 2" \
   "Ready to update?" \
   "" \
+  "• Check new changes $REPO_URL" \
   "• You cannot stop the update once you start!" \
   "• Make sure you're connected to power or have a full battery" \
   "" \
