@@ -406,6 +406,10 @@ configure_gpu_blacklist() {
     sudo tee "$BLACKLIST_CONF" >/dev/null <<EOF
 # GPU Passthrough - Prevent NVIDIA auto-load at boot
 install nvidia /bin/false
+
+# Enable nvidia_drm modeset for Wayland support in host mode
+# Required for external monitors when using 'mode host'
+options nvidia_drm modeset=1
 EOF
     msg_success "NVIDIA blacklist: $BLACKLIST_CONF"
   else
@@ -532,9 +536,12 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/fuser -v /dev/vfio/*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe vfio-pci
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -r nvidia*
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -r amdgpu
+$USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -r i915
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia_uvm
+$USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia_drm
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe amdgpu
+$USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe i915
 
 # State marker file (GPU mode tracking)
 $USER ALL=(ALL) NOPASSWD: /usr/bin/tee /var/run/omarchy-vm-gpu-mode

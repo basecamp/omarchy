@@ -404,6 +404,25 @@ verify_setup() {
         echo "GPU is available for host use (CUDA/compute)."
         msg_success "IOMMU enabled and configured"
         msg_success "GPU bound to native driver"
+
+        # Check nvidia_drm for display output support (NVIDIA only)
+        if [[ "$current_driver" == "nvidia" ]]; then
+          if is_module_loaded nvidia_drm; then
+            local modeset_param="/sys/module/nvidia_drm/parameters/modeset"
+            local modeset_val=""
+            [[ -r "$modeset_param" ]] && modeset_val=$(<"$modeset_param")
+            # Kernel params can be Y/y/1 for enabled
+            if [[ "$modeset_val" =~ ^[Yy1]$ ]]; then
+              msg_success "nvidia_drm loaded with modeset=1 (display output ready)"
+            else
+              msg_warning "nvidia_drm loaded but modeset disabled (value: ${modeset_val:-unreadable})"
+              echo "  External displays may not work. Fix: re-run setup"
+            fi
+          else
+            msg_warning "nvidia_drm not loaded (external displays won't work)"
+            echo "  Fix: re-run 'omarchy-gpu-passthrough setup' then reboot"
+          fi
+        fi
         echo ""
         echo "To use GPU in VM:"
         echo "  • Run: omarchy-gpu-passthrough mode vm"
@@ -632,6 +651,10 @@ cmd_diagnose() {
     echo "[NVIDIA Modules]"
     echo '```'
     lsmod | grep "^nvidia" || echo "None loaded"
+    local modeset_param="/sys/module/nvidia_drm/parameters/modeset"
+    if [[ -r "$modeset_param" ]]; then
+      echo "nvidia_drm modeset: $(<"$modeset_param")"
+    fi
     echo '```'
     echo ""
 
@@ -689,6 +712,26 @@ cmd_diagnose() {
       fi
     else
       echo "Not loaded"
+    fi
+    echo '```'
+    echo ""
+
+    echo "[DRM Devices]"
+    echo '```'
+    if [[ -d /sys/class/drm ]]; then
+      ls -la /sys/class/drm/ 2>/dev/null | grep "card[0-9]" | head -10
+      echo ""
+      for card_link in /sys/class/drm/card[0-9]*; do
+        [[ -d "$card_link" ]] || continue
+        [[ "$card_link" =~ card[0-9]+-. ]] && continue
+        local card_name=$(basename "$card_link")
+        local pci_path=$(readlink -f "$card_link/device" 2>/dev/null)
+        local pci_addr="${pci_path:+$(basename "$pci_path")}"
+        local driver=$(basename "$(readlink -f "$card_link/device/driver" 2>/dev/null)" 2>/dev/null)
+        echo "$card_name → PCI: ${pci_addr:-unknown}, Driver: ${driver:-none}"
+      done
+    else
+      echo "No DRM devices found"
     fi
     echo '```'
     echo ""

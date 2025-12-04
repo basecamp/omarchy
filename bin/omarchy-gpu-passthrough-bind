@@ -242,24 +242,20 @@ check_display_safety() {
   return 0
 }
 
-# Unload NVIDIA modules before unbinding
-# Returns: always 0 (uses || true for non-critical operations)
+# Unload NVIDIA modules in dependency order (drm→modeset→uvm→nvidia)
 unload_nvidia_modules() {
   msg_info "Unloading NVIDIA modules..."
-  log_info "Unloading NVIDIA compute modules..."
+  log_info "Unloading NVIDIA modules..."
 
-  if is_module_loaded nvidia_uvm; then
-    sudo -n /usr/bin/modprobe -r nvidia_uvm 2>/dev/null || true
-    log_success "nvidia_uvm unloaded"
-  fi
-
-  if is_module_loaded nvidia; then
-    if sudo -n /usr/bin/modprobe -r nvidia 2>/dev/null; then
-      log_success "nvidia module unloaded"
-    else
-      log_info "nvidia module will auto-unload during unbind"
+  for mod in nvidia_drm nvidia_modeset nvidia_uvm nvidia; do
+    if is_module_loaded "$mod"; then
+      if sudo -n /usr/bin/modprobe -r "$mod" 2>/dev/null; then
+        log_info "$mod unloaded"
+      else
+        log_warn "$mod: in use (will retry during unbind)"
+      fi
     fi
-  fi
+  done
 
   return 0
 }
@@ -318,8 +314,17 @@ cmd_bind() {
 
   if ! is_module_loaded vfio_pci; then
     log_info "Loading vfio-pci module..."
-    sudo -n /usr/bin/modprobe vfio-pci
-    log_success "vfio-pci module loaded"
+    if sudo -n /usr/bin/modprobe vfio-pci 2>/dev/null; then
+      log_success "vfio-pci module loaded"
+    else
+      if is_module_loaded vfio_pci; then
+        log_info "vfio-pci already loaded"
+      else
+        msg_error "Failed to load vfio-pci module"
+        log_error "vfio-pci module failed to load - cannot bind GPU"
+        exit 1
+      fi
+    fi
   fi
 
   # Fix permissions (udev rule may not trigger if module was loaded at boot)
@@ -437,6 +442,9 @@ cmd_set_none() {
     update_state_marker "none"
     exit 0
   fi
+
+  check_gpu_processes "$current_driver"
+  [[ "$current_driver" == "nvidia" ]] && unload_nvidia_modules
 
   msg_info "Unbinding GPU from $current_driver..."
   log_info "Unbinding from $current_driver to none state"
@@ -591,27 +599,25 @@ cmd_unbind() {
   msg_info "Binding to native driver ($GPU_DRIVER_ORIGINAL)..."
   log_info "Binding to native driver ($GPU_DRIVER_ORIGINAL)..."
 
-  # For NVIDIA: Load ONLY compute modules (not display modules)
   if [[ "$GPU_DRIVER_ORIGINAL" == "nvidia" ]]; then
-    log_info "Loading NVIDIA compute modules (CUDA mode)..."
-
-    if sudo -n /usr/bin/modprobe -i nvidia 2>/dev/null; then
-      log_success "nvidia module loaded"
-    else
-      log_warn "nvidia module may already be loaded"
-    fi
-
-    if sudo -n /usr/bin/modprobe -i nvidia_uvm 2>/dev/null; then
-      log_success "nvidia_uvm module loaded"
-    fi
-
-    log_info "Display modules NOT loaded (blacklisted for Hyprland safety)"
+    # Use -i flag to bypass blacklist (install nvidia /bin/false)
+    for mod in nvidia nvidia_uvm; do
+      if sudo -n /usr/bin/modprobe -i "$mod" 2>/dev/null; then
+        log_success "$mod loaded"
+      elif is_module_loaded "$mod"; then
+        log_info "$mod already loaded"
+      else
+        log_warn "$mod failed to load"
+      fi
+    done
+    log_info "Display modules NOT loaded (Hyprland safety)"
   else
-    log_info "Loading $GPU_DRIVER_ORIGINAL driver..."
     if sudo -n /usr/bin/modprobe "$GPU_DRIVER_ORIGINAL" 2>/dev/null; then
-      log_success "$GPU_DRIVER_ORIGINAL module loaded"
+      log_success "$GPU_DRIVER_ORIGINAL loaded"
+    elif is_module_loaded "$GPU_DRIVER_ORIGINAL"; then
+      log_info "$GPU_DRIVER_ORIGINAL already loaded"
     else
-      log_warn "Failed to load $GPU_DRIVER_ORIGINAL module (may already be loaded)"
+      log_warn "$GPU_DRIVER_ORIGINAL failed to load"
     fi
   fi
 
@@ -828,7 +834,7 @@ mode)
 *)
   if [[ -z "${1:-}" ]]; then
     echo ""
-    echo "Missing command. Usage: omarchy-gpu-passthrough-bind mode [none|vm|host]"
+    echo "Missing command. Usage: omarchy-gpu-passthrough mode [none|vm|host]"
     echo ""
   else
     echo ""
