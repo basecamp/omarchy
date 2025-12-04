@@ -20,7 +20,9 @@ pkg_names=$(grep -v '^#' "$OMARCHY_INSTALL/$1" | grep -v '^$' | fzf "${fzf_args[
 
 if [[ -n "$pkg_names" ]]; then # If nonempty selection.
   # Convert newline-separated selections to space-separated for yay
+  start_log_output
   echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -S --noconfirm --needed
+  stop_log_output
 #  echo 'Selected following from file:'
 #  echo "$pkg_names"
 #else

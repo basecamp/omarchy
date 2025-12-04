@@ -3,7 +3,9 @@
 #gum spin --title 'Press any key to continue.' -- bash -c 'read -n 1 -s'
 echo 'Installing basic system packages (open source)...'
 sleep 1
+start_log_output
 run_logged $OMARCHY_INSTALL/packaging/omarch-me-system.sh
+stop_log_output
 
 source $OMARCHY_INSTALL/packaging/select-install.sh omarch-me-sys-extra.packages 'extra system'
 source $OMARCHY_INSTALL/packaging/select-install.sh omarch-me-media.packages 'media/communications'
