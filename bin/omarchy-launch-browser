@@ -5,6 +5,8 @@ browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/
 
 if [[ $browser_exec =~ (firefox|zen|librewolf) ]]; then
   private_flag="--private-window"
+elif [[ $browser_exec =~ edge ]]; then
+  private_flag="--inprivate"
 else
   private_flag="--incognito"
 fi
