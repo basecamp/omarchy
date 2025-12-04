@@ -7,7 +7,7 @@ fzf_args=(
   --multi
   --header="Select which $2 packages to install."
   --preview 'pacman -Sii {1}' #'echo Preview for {1}!' 
-  --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select'
+  --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select, escape: none of them'
   --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
   --bind 'alt-p:toggle-preview'
