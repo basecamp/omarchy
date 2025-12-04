@@ -23,6 +23,27 @@ msg_info() {
   echo "ℹ️  $*"
 }
 
+get_escape_key_display() {
+  local lg_config="$HOME/.config/looking-glass/client.ini"
+  local escape_key="Scroll Lock"
+
+  if [[ -f "$lg_config" ]]; then
+    local raw_key=$(grep -E '^\s*escapeKey\s*=' "$lg_config" 2>/dev/null | sed 's/^.*=\s*//' | tr -d ' "')
+    case "$raw_key" in
+      KEY_SCROLLLOCK) escape_key="Scroll Lock" ;;
+      KEY_RIGHTCTRL)  escape_key="Right Ctrl" ;;
+      KEY_LEFTCTRL)   escape_key="Left Ctrl" ;;
+      KEY_RIGHTALT)   escape_key="Right Alt" ;;
+      KEY_PAUSE)      escape_key="Pause" ;;
+      KEY_INSERT)     escape_key="Insert" ;;
+      "") ;;  # No key set, use default
+      *) escape_key="${raw_key#KEY_}" ;;  # Strip KEY_ prefix for unknown keys
+    esac
+  fi
+
+  echo "$escape_key"
+}
+
 ensure_user_in_kvm_group() {
   if groups "$USER" | grep -q kvm; then
     return 0
@@ -236,8 +257,9 @@ if [[ ! -S "$SPICE_SOCKET_PATH" ]]; then
   echo "   Looking Glass will launch without audio/clipboard integration."
 fi
 
+escape_key=$(get_escape_key_display)
 echo "Connecting to Windows VM via Looking Glass..."
-echo "Scroll Lock: release | Right Ctrl+F: fullscreen | Right Ctrl+Q: quit"
+echo "$escape_key: release | $escape_key + F: fullscreen | $escape_key + Q: quit"
 
 if [[ -S "$SPICE_SOCKET_PATH" ]] && [[ ! -r "$SPICE_SOCKET_PATH" ]]; then
   msg_info "Fixing SPICE socket permissions..."

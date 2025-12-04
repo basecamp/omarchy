@@ -75,6 +75,27 @@ is_looking_glass_ready() {
     [[ -e /dev/kvmfr0 ]]
 }
 
+get_escape_key_display() {
+  local lg_config="$HOME/.config/looking-glass/client.ini"
+  local escape_key="Scroll Lock"
+
+  if [[ -f "$lg_config" ]]; then
+    local raw_key=$(grep -E '^\s*escapeKey\s*=' "$lg_config" 2>/dev/null | sed 's/^.*=\s*//' | tr -d ' "')
+    case "$raw_key" in
+      KEY_SCROLLLOCK) escape_key="Scroll Lock" ;;
+      KEY_RIGHTCTRL)  escape_key="Right Ctrl" ;;
+      KEY_LEFTCTRL)   escape_key="Left Ctrl" ;;
+      KEY_RIGHTALT)   escape_key="Right Alt" ;;
+      KEY_PAUSE)      escape_key="Pause" ;;
+      KEY_INSERT)     escape_key="Insert" ;;
+      "") ;;  # No key set, use default
+      *) escape_key="${raw_key#KEY_}" ;;  # Strip KEY_ prefix for unknown keys
+    esac
+  fi
+
+  echo "$escape_key"
+}
+
 check_docker_running() {
   if docker ps &>/dev/null; then
     return 0
@@ -1556,18 +1577,7 @@ connect_looking_glass() {
     esac
   fi
 
-  # Try to read escape key from client.ini
-  local escape_key="Scroll Lock"
-  local lg_config="$HOME/.config/looking-glass/client.ini"
-  if [[ -f "$lg_config" ]]; then
-    local raw_key=$(grep -E '^\s*escapeKey\s*=' "$lg_config" | sed 's/^.*=\s*//' | tr -d ' "')
-    case "$raw_key" in
-    KEY_SCROLLLOCK | 71) escape_key="Scroll Lock" ;;
-    KEY_RIGHTCTRL | 97) escape_key="Right Ctrl" ;;
-    KEY_LEFTCTRL | 29) escape_key="Left Ctrl" ;;
-    *) escape_key="${raw_key:-Scroll Lock}" ;;
-    esac
-  fi
+  local escape_key=$(get_escape_key_display)
 
   # Wait for QEMU SPICE listener to be ready
   MAX_WAIT=30
@@ -1687,12 +1697,13 @@ launch_after_install() {
       return
     fi
 
+    local escape_key=$(get_escape_key_display)
     echo ""
     echo "Connecting to Windows VM via Looking Glass..."
     echo ""
-    echo "  Scroll Lock         - Release mouse/keyboard (hold for info menu)"
-    echo "  Scroll Lock + F     - Toggle fullscreen (or SUPER + F)"
-    echo "  Scroll Lock + Q     - Quit Looking Glass"
+    echo "  $escape_key         - Release mouse/keyboard (hold for info menu)"
+    echo "  $escape_key + F     - Toggle fullscreen (or SUPER + F)"
+    echo "  $escape_key + Q     - Quit Looking Glass"
     echo ""
 
     # Launch Looking Glass in background (windowed mode)
@@ -2978,7 +2989,7 @@ EOF
     # Auto-launch RDP or Looking Glass
     if [[ "$LG_ENABLED" == true ]]; then
       echo "Launching Looking Glass..."
-      echo "   Toggle fullscreen: Scroll Lock"
+      echo "   Toggle fullscreen: $(get_escape_key_display)"
       sleep 1
       launch_windows --lg
     else

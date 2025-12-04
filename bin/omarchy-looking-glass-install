@@ -23,6 +23,18 @@ msg_info() {
   echo "ℹ️  $*"
 }
 
+format_escape_key_name() {
+  case "$1" in
+    KEY_SCROLLLOCK) echo "Scroll Lock" ;;
+    KEY_RIGHTCTRL)  echo "Right Ctrl" ;;
+    KEY_LEFTCTRL)   echo "Left Ctrl" ;;
+    KEY_RIGHTALT)   echo "Right Alt" ;;
+    KEY_PAUSE)      echo "Pause" ;;
+    KEY_INSERT)     echo "Insert" ;;
+    *) echo "${1#KEY_}" ;;
+  esac
+}
+
 create_tmpfiles_config() {
   local tmpfiles_config_file="/etc/tmpfiles.d/omarchy-windows.conf"
 
@@ -374,10 +386,79 @@ else
   msg_success "Already in kvm group"
 fi
 
+LG_CONFIG="$HOME/.config/looking-glass/client.ini"
+ESCAPE_KEY_FROM_ENV="${ESCAPE_KEY:-}"
+ESCAPE_KEY=""
+ESCAPE_KEY_SOURCE=""
+
+# Check env override (highest priority)
+if [[ -n "$ESCAPE_KEY_FROM_ENV" ]]; then
+  ESCAPE_KEY="$ESCAPE_KEY_FROM_ENV"
+  ESCAPE_KEY_SOURCE="env"
+# Check existing config (if not forcing reconfigure)
+elif [[ "${FORCE_RECONFIGURE:-0}" != "1" ]] && [[ -f "$LG_CONFIG" ]]; then
+  ESCAPE_KEY=$(grep '^escapeKey=' "$LG_CONFIG" 2>/dev/null | cut -d= -f2 | head -1)
+  [[ -n "$ESCAPE_KEY" ]] && ESCAPE_KEY_SOURCE="existing config"
+fi
+
+# Prompt user if no key set
+if [[ -z "$ESCAPE_KEY" ]]; then
+  IS_LAPTOP=false
+  for bat in /sys/class/power_supply/BAT*; do
+    [[ -d "$bat" ]] && IS_LAPTOP=true && break
+  done
+
+  if [[ "$IS_LAPTOP" == true ]]; then
+    DEFAULT_KEY="KEY_RIGHTCTRL"
+    DEFAULT_DESC="Right Ctrl (recommended for laptops)"
+  else
+    DEFAULT_KEY="KEY_SCROLLLOCK"
+    DEFAULT_DESC="Scroll Lock (default)"
+  fi
+
+  echo ""
+  echo "Select Looking Glass capture toggle key:"
+  echo "  Press this key to toggle mouse/keyboard capture."
+  echo "  When captured: mouse stays inside VM."
+  echo "  Press again to release and use host desktop."
+  echo ""
+
+  ESCAPE_CHOICE=$(gum choose --selected="$DEFAULT_DESC" \
+    "Scroll Lock (default)" \
+    "Right Ctrl (recommended for laptops)" \
+    "Right Alt" \
+    "Pause" \
+    "Insert")
+
+  if [[ -z "$ESCAPE_CHOICE" ]]; then
+    echo ""
+    echo "Installation cancelled by user"
+    exit 1
+  fi
+
+  case "$ESCAPE_CHOICE" in
+    *"Scroll Lock"*)  ESCAPE_KEY="KEY_SCROLLLOCK" ;;
+    *"Right Ctrl"*)   ESCAPE_KEY="KEY_RIGHTCTRL" ;;
+    *"Right Alt"*)    ESCAPE_KEY="KEY_RIGHTALT" ;;
+    *"Pause"*)        ESCAPE_KEY="KEY_PAUSE" ;;
+    *"Insert"*)       ESCAPE_KEY="KEY_INSERT" ;;
+    *)                ESCAPE_KEY="$DEFAULT_KEY" ;;
+  esac
+fi
+
+if [[ -n "$ESCAPE_KEY_SOURCE" ]]; then
+  msg_success "Capture toggle key: $(format_escape_key_name "$ESCAPE_KEY") (from $ESCAPE_KEY_SOURCE)"
+else
+  msg_success "Capture toggle key: $(format_escape_key_name "$ESCAPE_KEY")"
+fi
+
 # Create client configuration
-msg_info "Creating client configuration..."
-mkdir -p ~/.config/looking-glass
-cat >~/.config/looking-glass/client.ini <<EOF
+if [[ "$ESCAPE_KEY_SOURCE" == "existing config" ]]; then
+  msg_success "Using existing configuration (preserved)"
+else
+  msg_info "Creating client configuration..."
+  mkdir -p "$HOME/.config/looking-glass"
+  cat >"$LG_CONFIG" <<EOF
 [app]
 shmFile=/dev/kvmfr0
 
@@ -385,7 +466,7 @@ shmFile=/dev/kvmfr0
 rawMouse=yes
 autoCapture=no
 captureOnly=no
-escapeKey=KEY_SCROLLLOCK
+escapeKey=$ESCAPE_KEY
 grabKeyboard=yes
 captureOnFocus=no
 
@@ -409,7 +490,8 @@ bufferLatency=5
 micDefault=allow
 micShowIndicator=no
 EOF
-msg_success "Configuration created with SPICE support (~/.config/looking-glass/client.ini)"
+  msg_success "Configuration created with SPICE support ($LG_CONFIG)"
+fi
 
 create_tmpfiles_config
 create_sudoers_config
@@ -484,6 +566,10 @@ fi
 
 echo ""
 echo "Installation complete!"
+echo ""
+echo "Capture toggle key: $(format_escape_key_name "$ESCAPE_KEY")"
+echo "  To change, edit: ~/.config/looking-glass/client.ini"
+echo "  Set escapeKey= to: KEY_SCROLLLOCK, KEY_RIGHTCTRL, KEY_RIGHTALT, KEY_PAUSE, KEY_INSERT"
 echo ""
 
 NEEDS_REBOOT=false
