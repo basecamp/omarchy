@@ -103,7 +103,7 @@ check_docker_running() {
 
   msg_error "Docker is not running"
   echo "   Start: sudo systemctl start docker"
-  return 1
+  exit 1
 }
 
 # Get container status by name
@@ -3101,10 +3101,12 @@ check_passwordless_configuration() {
     issue_list="${issue_list}  ❌ SPICE directory not created by tmpfiles.d\n"
   fi
 
-  if ! sudo -n test -f /etc/sudoers.d/omarchy-looking-glass 2>/dev/null; then
-    if ! sudo -n /usr/bin/mkdir -p /var/run/omarchy-windows 2>/dev/null; then
-      issues_found=true
+  if ! sudo -n /usr/bin/mkdir -p /var/run/omarchy-windows 2>/dev/null; then
+    issues_found=true
+    if [[ ! -f /etc/sudoers.d/omarchy-looking-glass ]]; then
       issue_list="${issue_list}  ❌ Missing: /etc/sudoers.d/omarchy-looking-glass\n"
+    else
+      issue_list="${issue_list}  ❌ Sudoers rules not working (run: omarchy-looking-glass-install)\n"
     fi
   fi
 
@@ -3181,7 +3183,6 @@ launch_windows() {
 
   check_vm_configured
   check_docker_running
-  [[ "$USE_WINDOWED" != true ]] && check_passwordless_configuration
 
   # Interactive mode if no params provided
   if [[ "$USER_PROVIDED_PARAMS" == false ]]; then
@@ -3240,6 +3241,8 @@ launch_windows() {
       fi
     fi
   fi
+
+  [[ "$USE_LOOKING_GLASS" == true ]] && check_passwordless_configuration
 
   CONTAINER_STATUS=$(get_container_status)
 
