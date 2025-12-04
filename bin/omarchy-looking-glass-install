@@ -515,8 +515,8 @@ msg_info "Loading kvmfr module..."
 if lsmod | grep -q kvmfr; then
   if [[ ! -e /dev/kvmfr0 ]]; then
     echo "Module loaded but /dev/kvmfr0 missing - reloading with new config..."
-    sudo rmmod kvmfr 2>/dev/null || true
-    if sudo modprobe kvmfr static_size_mb="$IVSHMEM_SIZE"; then
+    sudo -n rmmod kvmfr 2>/dev/null || true
+    if sudo -n modprobe kvmfr static_size_mb="$IVSHMEM_SIZE" 2>/dev/null; then
       udevadm settle --timeout=5 2>/dev/null || sleep 1
       msg_success "Module reloaded"
     else
@@ -526,8 +526,8 @@ if lsmod | grep -q kvmfr; then
     module_size=$(cat /sys/module/kvmfr/parameters/static_size_mb 2>/dev/null || echo "0")
     if [[ "$module_size" != "$IVSHMEM_SIZE" ]]; then
       echo "Module loaded with wrong size (${module_size}MB, expected ${IVSHMEM_SIZE}MB) - reloading..."
-      sudo rmmod kvmfr 2>/dev/null || true
-      if sudo modprobe kvmfr static_size_mb="$IVSHMEM_SIZE"; then
+      sudo -n rmmod kvmfr 2>/dev/null || true
+      if sudo -n modprobe kvmfr static_size_mb="$IVSHMEM_SIZE" 2>/dev/null; then
         udevadm settle --timeout=5 2>/dev/null || sleep 1
         msg_success "Module reloaded with ${IVSHMEM_SIZE}MB"
       else
@@ -538,7 +538,7 @@ if lsmod | grep -q kvmfr; then
     fi
   fi
 else
-  if sudo modprobe kvmfr static_size_mb="$IVSHMEM_SIZE"; then
+  if sudo -n modprobe kvmfr static_size_mb="$IVSHMEM_SIZE" 2>/dev/null; then
     # Wait for udev to create /dev/kvmfr0
     udevadm settle --timeout=5 2>/dev/null || sleep 1
     msg_success "Module loaded"

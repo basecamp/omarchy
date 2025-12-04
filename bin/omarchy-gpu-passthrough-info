@@ -447,10 +447,24 @@ verify_setup() {
 }
 
 cmd_diagnose() {
-  # Require sudo for complete diagnostics
-  if ! sudo -v; then
-    msg_error "Diagnostics requires sudo access"
-    return 1
+  # Check sudo access - use -n first to avoid blocking in non-interactive contexts
+  local has_sudo=false
+  if [[ "$EUID" -eq 0 ]]; then
+    has_sudo=true
+  elif sudo -n true 2>/dev/null; then
+    has_sudo=true
+  else
+    # Interactive fallback - only prompt if terminal available
+    if [[ -t 0 ]]; then
+      msg_info "Full diagnostics requires sudo (for motherboard/BIOS info)"
+      if sudo -v 2>/dev/null; then
+        has_sudo=true
+      fi
+    fi
+  fi
+
+  if [[ "$has_sudo" != "true" ]]; then
+    msg_warning "Running diagnostics without sudo (some data will be incomplete)"
   fi
 
   msg_section "GPU Passthrough Diagnostics"
@@ -497,15 +511,15 @@ cmd_diagnose() {
 
     echo "[Motherboard]"
     echo '```'
-    if command -v dmidecode &>/dev/null; then
-      local mobo_vendor=$(sudo dmidecode -t baseboard 2>/dev/null | grep "Manufacturer:" | cut -d: -f2 | xargs)
-      local mobo_model=$(sudo dmidecode -t baseboard 2>/dev/null | grep "Product Name:" | cut -d: -f2 | xargs)
-      local bios_version=$(sudo dmidecode -t bios 2>/dev/null | grep "Version:" | cut -d: -f2 | xargs)
+    if command -v dmidecode &>/dev/null && [[ "$has_sudo" == "true" ]]; then
+      local mobo_vendor=$(sudo -n dmidecode -t baseboard 2>/dev/null | grep "Manufacturer:" | cut -d: -f2 | xargs)
+      local mobo_model=$(sudo -n dmidecode -t baseboard 2>/dev/null | grep "Product Name:" | cut -d: -f2 | xargs)
+      local bios_version=$(sudo -n dmidecode -t bios 2>/dev/null | grep "Version:" | cut -d: -f2 | xargs)
       echo "Vendor: ${mobo_vendor:-Unknown}"
       echo "Model: ${mobo_model:-Unknown}"
       [[ -n "$bios_version" ]] && echo "BIOS: $bios_version"
     else
-      echo "dmidecode not available"
+      echo "(requires sudo for motherboard info)"
     fi
     echo '```'
     echo ""

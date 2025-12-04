@@ -1617,8 +1617,7 @@ connect_looking_glass() {
   sleep 3
 
   # Launch Looking Glass client in background (hide logs, immune to Ctrl+C)
-  local lg_args="-F"
-  [[ "$WINDOWED" == true ]] && lg_args="$lg_args win:fullScreen=no"
+  local lg_args=""
 
   if [[ "$USE_SG_KVM" == true ]]; then
     # User needs temporary kvm group access - run through sg kvm
@@ -2148,6 +2147,10 @@ install_windows() {
       PREVIOUS_DISK=""
       PREVIOUS_USERNAME=""
       PREVIOUS_PASSWORD=""
+      PREVIOUS_LG_ENABLED=false
+      PREVIOUS_GPU_ENABLED=false
+      PREVIOUS_TPM_ENABLED=false
+      PREVIOUS_IVSHMEM_SIZE=""
     else
       echo ""
       echo "Quick reinstall: Keeping VM disk, updating configuration..."
@@ -2726,7 +2729,7 @@ install_windows() {
       if gum confirm "Kill GPU processes?"; then
         PROCESS_NAMES=$(echo "$GPU_PROCESSES" | awk '{print $NF}' | grep -v "^$" | sort -u)
         for proc in $PROCESS_NAMES; do
-          sudo pkill -9 "$proc" 2>/dev/null || true
+          sudo -n pkill -9 "$proc" 2>/dev/null || true
         done
         sleep 2
 
@@ -2880,7 +2883,7 @@ EOF
 [Desktop Entry]
 Name=Windows [Looking Glass]
 Comment=Connect to Windows VM via Looking Glass
-Exec=uwsm-app -- omarchy-windows-vm launch --lg --keep-alive
+Exec=uwsm-app -- omarchy-windows-vm launch --lg --keep-alive --windowed
 Icon=$HOME/.local/share/applications/icons/windows.png
 Terminal=false
 Type=Application

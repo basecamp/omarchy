@@ -60,7 +60,7 @@ check_gpu_processes() {
       log_info "Detected idle file handles, attempting to close (${gpu_memory_usage}MiB usage)"
       log_info "Sending HUP signal to close idle handles..."
 
-      sudo fuser -k -HUP /dev/nvidia* 2>/dev/null || true
+      sudo -n fuser -k -HUP /dev/nvidia* 2>/dev/null || true
       sleep 1
 
       gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>/dev/null | grep -v "USER" | tr -d '\n')
@@ -105,7 +105,7 @@ check_gpu_processes() {
 
           for proc in $PROCESS_NAMES; do
             echo "Killing $proc..."
-            sudo pkill -9 "$proc" 2>/dev/null || true
+            sudo -n pkill -9 "$proc" 2>/dev/null || true
           done
 
           sleep 2
@@ -175,7 +175,7 @@ check_gpu_processes() {
 
         for proc in $PROCESS_NAMES; do
           echo "Killing $proc..."
-          sudo pkill -9 "$proc" 2>/dev/null || true
+          sudo -n pkill -9 "$proc" 2>/dev/null || true
         done
 
         sleep 2
@@ -302,7 +302,7 @@ cmd_bind() {
   if [[ -n "$current_driver" && "$current_driver" != "none" ]]; then
     log_info "Unbinding GPU from $current_driver..."
     if [[ -f "/sys/bus/pci/devices/${gpu_pci_full}/driver/unbind" ]]; then
-      if ! echo "$gpu_pci_full" | tee "/sys/bus/pci/devices/${gpu_pci_full}/driver/unbind" >/dev/null 2>&1; then
+      if ! echo "$gpu_pci_full" | sudo -n tee "/sys/bus/pci/devices/${gpu_pci_full}/driver/unbind" >/dev/null 2>&1; then
         msg_error "Failed to unbind GPU from $current_driver"
         msg_info "This usually means a process is still using the GPU"
         log_error "Failed to unbind GPU from $current_driver (process still using GPU)"
@@ -327,12 +327,6 @@ cmd_bind() {
     fi
   fi
 
-  # Fix permissions (udev rule may not trigger if module was loaded at boot)
-  if [[ -d "/sys/bus/pci/drivers/vfio-pci" ]]; then
-    sudo chmod 0660 /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null || true
-    sudo chgrp kvm /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null || true
-  fi
-
   # Get all IOMMU group devices (supports laptops with 4-5 devices in group)
   local iommu_devices
   iommu_devices=$(get_cached_iommu_devices "$GPU_PCI_ADDR")
@@ -340,7 +334,8 @@ cmd_bind() {
   local device_count=$(echo "$iommu_devices" | wc -w)
   log_info "IOMMU group contains $device_count device(s): $iommu_devices"
 
-  echo "$GPU_VENDOR_ID $GPU_DEVICE_ID" | tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
+  # Register GPU vendor/device ID with vfio-pci (requires root)
+  echo "$GPU_VENDOR_ID $GPU_DEVICE_ID" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
 
   for dev_pci in $iommu_devices; do
     local dev_pci_full
@@ -358,17 +353,20 @@ cmd_bind() {
       continue
     fi
 
+    # Unbind from current driver (requires root)
     if [[ -f "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" ]]; then
-      echo "$dev_pci_full" | tee "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" >/dev/null 2>&1 || true
+      echo "$dev_pci_full" | sudo -n tee "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" >/dev/null 2>&1 || true
     fi
 
+    # Register device ID with vfio-pci (requires root)
     local dev_ids=$(get_pci_device_id "$dev_pci")
     if [[ -n "$dev_ids" ]]; then
-      echo "${dev_ids/:/ }" | tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
+      echo "${dev_ids/:/ }" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
     fi
 
+    # Bind to vfio-pci (requires root)
     if [[ ! -d "/sys/bus/pci/drivers/vfio-pci/${dev_pci_full}" ]]; then
-      echo "$dev_pci_full" | tee /sys/bus/pci/drivers/vfio-pci/bind >/dev/null 2>&1 || true
+      echo "$dev_pci_full" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/bind >/dev/null 2>&1 || true
     fi
     log_info "Bound $dev_pci to vfio-pci"
   done
@@ -462,7 +460,7 @@ cmd_set_none() {
 
     if [[ -f "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" ]]; then
       log_info "Unbinding $dev_pci from driver..."
-      if ! echo "$dev_pci_full" | tee "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" >/dev/null 2>&1; then
+      if ! echo "$dev_pci_full" | sudo -n tee "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" >/dev/null 2>&1; then
         # Only fail on main GPU, others are non-fatal
         if [[ "$dev_pci_full" == "$gpu_pci_full" ]]; then
           msg_error "Failed to unbind GPU from $current_driver"
@@ -549,7 +547,7 @@ cmd_unbind() {
 
       if [[ -d "/sys/bus/pci/drivers/vfio-pci/${dev_pci_full}" ]]; then
         log_info "Unbinding $dev_pci from vfio-pci..."
-        echo "$dev_pci_full" | tee /sys/bus/pci/drivers/vfio-pci/unbind >/dev/null 2>&1 || true
+        echo "$dev_pci_full" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/unbind >/dev/null 2>&1 || true
       fi
     done
 
@@ -621,15 +619,15 @@ cmd_unbind() {
     fi
   fi
 
-  # Trigger PCI rescan
+  # Trigger PCI rescan (requires root)
   log_info "Triggering PCI rescan..."
-  echo 1 | tee /sys/bus/pci/rescan >/dev/null 2>&1
+  echo 1 | sudo -n tee /sys/bus/pci/rescan >/dev/null 2>&1
   show_spinner 1 "Scanning PCI bus..."
 
-  # Bind via sysfs
+  # Bind via sysfs (requires root)
   if [[ -d "/sys/bus/pci/drivers/$GPU_DRIVER_ORIGINAL" ]]; then
     log_info "Binding GPU to $GPU_DRIVER_ORIGINAL via sysfs..."
-    if echo "$gpu_pci_full" | tee "/sys/bus/pci/drivers/$GPU_DRIVER_ORIGINAL/bind" >/dev/null 2>&1; then
+    if echo "$gpu_pci_full" | sudo -n tee "/sys/bus/pci/drivers/$GPU_DRIVER_ORIGINAL/bind" >/dev/null 2>&1; then
       log_success "GPU bound to $GPU_DRIVER_ORIGINAL"
     fi
   fi

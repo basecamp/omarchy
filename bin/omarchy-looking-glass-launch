@@ -49,7 +49,7 @@ ensure_user_in_kvm_group() {
     return 0
   fi
 
-  if sudo usermod -aG kvm "$USER" 2>/dev/null; then
+  if sudo -n usermod -aG kvm "$USER" 2>/dev/null; then
     return 1
   else
     return 2
@@ -263,8 +263,8 @@ echo "$escape_key: release | $escape_key + F: fullscreen | $escape_key + Q: quit
 
 if [[ -S "$SPICE_SOCKET_PATH" ]] && [[ ! -r "$SPICE_SOCKET_PATH" ]]; then
   msg_info "Fixing SPICE socket permissions..."
-  sudo chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
-  sudo chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
+  sudo -n chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
+  sudo -n chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
 fi
 
 if [[ "$#" -eq 0 ]]; then

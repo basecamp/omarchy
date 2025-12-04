@@ -156,7 +156,7 @@ detect_gpu_mode_from_driver() {
 
 log_init() {
   if [[ ! -d "$LOG_DIR" ]]; then
-    sudo mkdir -p "$LOG_DIR" 2>/dev/null || {
+    sudo -n mkdir -p "$LOG_DIR" 2>/dev/null || {
       LOG_DIR="$HOME/.local/share/omarchy-gpu-passthrough/logs"
       LOG_FILE="$LOG_DIR/gpu-passthrough.log"
       mkdir -p "$LOG_DIR" 2>/dev/null || return 1
@@ -167,7 +167,7 @@ log_init() {
     local log_size=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)
     if [[ "$log_size" -gt "$LOG_MAX_SIZE" ]]; then
       local timestamp=$(date +%Y%m%d_%H%M%S)
-      sudo mv "$LOG_FILE" "$LOG_FILE.$timestamp" 2>/dev/null ||
+      sudo -n mv "$LOG_FILE" "$LOG_FILE.$timestamp" 2>/dev/null ||
         mv "$LOG_FILE" "$LOG_FILE.$timestamp" 2>/dev/null
 
       find "$LOG_DIR" -maxdepth 1 -type f -name "gpu-passthrough.log.*" -printf '%T@ %p\n' 2>/dev/null |
@@ -191,7 +191,7 @@ log_message() {
   if [[ -w "$LOG_DIR" ]]; then
     echo "[$timestamp] [$category] $message" >>"$LOG_FILE" 2>/dev/null
   else
-    echo "[$timestamp] [$category] $message" | sudo tee -a "$LOG_FILE" >/dev/null 2>&1
+    echo "[$timestamp] [$category] $message" | sudo -n tee -a "$LOG_FILE" >/dev/null 2>&1 || true
   fi
 }
 
@@ -928,7 +928,7 @@ rebind_usb_controllers_to_xhci() {
     local dev_class=$(get_pci_class "$dev_pci")
     if [[ "$dev_class" == "0c03" ]]; then
       log_info "Rebinding USB controller $dev_pci to xhci_hcd..."
-      echo "$dev_pci_full" | tee /sys/bus/pci/drivers/xhci_hcd/bind >/dev/null 2>&1 || true
+      echo "$dev_pci_full" | sudo -n tee /sys/bus/pci/drivers/xhci_hcd/bind >/dev/null 2>&1 || true
     fi
   done
 
@@ -941,7 +941,7 @@ remove_vfio_device_ids() {
   for dev_pci in $iommu_devices; do
     local dev_ids=$(get_pci_device_id "$dev_pci")
     if [[ -n "$dev_ids" ]]; then
-      echo "${dev_ids/:/ }" | tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
+      echo "${dev_ids/:/ }" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
     fi
   done
 
