@@ -5,7 +5,7 @@ fi
 
 filter_user_selected_aur() {
   for package in "$@"; do
-    is_aur_package "$package" && echo "$package" >> "user-selected-aur.packages" || echo "$package" >> "user-selected.packages"
+    is_aur_package "$package" && echo "$package" >> "$OMARCHY_INSTALL/user-selected-aur.packages" || echo "$package" >> "$OMARCHY_INSTALL/user-selected.packages"
   done
 }
 
