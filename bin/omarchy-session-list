@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# Session list and selector for Omarchy
+# Lists all saved sessions and allows selection for restore
+
+SESSION_DIR="$HOME/.local/state/omarchy/sessions"
+mkdir -p "$SESSION_DIR"
+
+# Get all sessions
+SESSIONS=$(find "$SESSION_DIR" -maxdepth 1 -name "*.json" -type f 2>/dev/null | sort)
+
+if [[ -z "$SESSIONS" ]]; then
+  notify-send "Session List" "No saved sessions found" -i dialog-information
+  exit 0
+fi
+
+# Build menu options
+OPTIONS=""
+while IFS= read -r session_file; do
+  SESSION_NAME=$(basename "$session_file" .json)
+  
+  # Read session info
+  WINDOW_COUNT=$(jq -r '.windows | length' "$session_file" 2>/dev/null || echo "?")
+  WORKSPACE_COUNT=$(jq -r '[.windows[].workspace] | unique | length' "$session_file" 2>/dev/null || echo "?")
+  CREATED=$(jq -r '.created' "$session_file" 2>/dev/null || echo "Unknown")
+  CREATED_DATE=$(date -d "$CREATED" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "$CREATED")
+  
+  # Format session name nicely
+  DISPLAY_NAME=$(echo "$SESSION_NAME" | sed -E 's/(^|-)([a-z])/\U\2/g; s/-/ /g')
+  
+  # Add icon based on session type
+  ICON="📁"
+  case "$SESSION_NAME" in
+    persistent) ICON="💾" ;;
+    last) ICON="🕐" ;;
+    slot-*) ICON="🎯" ;;
+    autosave*) ICON="🔄" ;;
+  esac
+  
+  OPTIONS="${OPTIONS}${ICON} ${DISPLAY_NAME} (${WINDOW_COUNT} windows, ${WORKSPACE_COUNT} workspaces) - ${CREATED_DATE}
+"
+done <<< "$SESSIONS"
+
+# Show menu
+CHOICE=$(echo -e "$OPTIONS" | sed '/^$/d' | omarchy-launch-walker --dmenu -p "Select session to restore…" 2>/dev/null)
+
+if [[ -z "$CHOICE" ]]; then
+  exit 0
+fi
+
+# Extract session name from choice
+SESSION_NAME=$(echo "$CHOICE" | sed -E 's/^[^ ]+ ([^(]+).*/\1/' | sed 's/ *$//' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+
+# Restore the selected session
+exec omarchy-session-restore "$SESSION_NAME"

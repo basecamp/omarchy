@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Save session if persistent mode is enabled
+# Called before shutdown/reboot
+
+PERSISTENT_FLAG="$HOME/.local/state/omarchy/session-persistent.enabled"
+
+if [[ -f "$PERSISTENT_FLAG" ]]; then
+  omarchy-session-save persistent --quick
+fi

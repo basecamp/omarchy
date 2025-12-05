@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Restore session if persistent mode is enabled
+# Called from Hyprland autostart
+
+PERSISTENT_FLAG="$HOME/.local/state/omarchy/session-persistent.enabled"
+PERSISTENT_SESSION="$HOME/.local/state/omarchy/sessions/persistent.json"
+
+if [[ -f "$PERSISTENT_FLAG" ]] && [[ -f "$PERSISTENT_SESSION" ]]; then
+  # Wait a bit for system to fully start
+  sleep 3
+  omarchy-session-restore persistent --silent
+fi

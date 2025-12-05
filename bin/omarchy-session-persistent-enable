@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Enable persistent session mode for Omarchy
+# Sessions will auto-save on shutdown and auto-restore on boot
+
+SESSION_DIR="$HOME/.local/state/omarchy/sessions"
+PERSISTENT_FLAG="$HOME/.local/state/omarchy/session-persistent.enabled"
+AUTOSTART_HOOK="$HOME/.config/hypr/autostart.conf"
+
+mkdir -p "$SESSION_DIR"
+mkdir -p "$(dirname "$PERSISTENT_FLAG")"
+
+# Create flag
+touch "$PERSISTENT_FLAG"
+
+# Save current session as persistent
+omarchy-session-save persistent --quick
+
+# Enable systemd service for shutdown save
+systemctl --user enable omarchy-session-save.service 2>/dev/null || true
+
+# Add autostart hook if not already present
+if ! grep -q "omarchy-session-restore-if-persistent" "$AUTOSTART_HOOK" 2>/dev/null; then
+  echo "" >> "$AUTOSTART_HOOK"
+  echo "# Auto-restore persistent session" >> "$AUTOSTART_HOOK"
+  echo "exec-once = omarchy-session-restore-if-persistent" >> "$AUTOSTART_HOOK"
+fi
+
+notify-send "Persistent Session" "Enabled - Session will auto-restore on boot" -i emblem-default
+
+echo "Persistent session mode: ENABLED"

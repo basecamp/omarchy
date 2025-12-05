@@ -1,0 +1,226 @@
+#!/bin/bash
+
+set -e
+
+# Session save script for Omarchy
+# Saves current Hyprland session (windows, workspaces, layout)
+
+SESSION_DIR="$HOME/.local/state/omarchy/sessions"
+mkdir -p "$SESSION_DIR"
+
+# Parse arguments
+SESSION_NAME=""
+QUICK_MODE=false
+WORKSPACE_ONLY=false
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --quick)
+      QUICK_MODE=true
+      shift
+      ;;
+    --workspace-only)
+      WORKSPACE_ONLY=true
+      shift
+      ;;
+    *)
+      SESSION_NAME="$1"
+      shift
+      ;;
+  esac
+done
+
+# Determine session name
+if [[ -z "$SESSION_NAME" ]]; then
+  if [[ "$QUICK_MODE" == true ]]; then
+    SESSION_NAME="last"
+  else
+    # Prompt for session name
+    SESSION_NAME=$(echo "" | omarchy-launch-walker --dmenu -p "Session name…" 2>/dev/null)
+    if [[ -z "$SESSION_NAME" ]]; then
+      notify-send "Session Save" "Cancelled" -i dialog-error
+      exit 1
+    fi
+  fi
+fi
+
+SESSION_FILE="$SESSION_DIR/${SESSION_NAME}.json"
+
+# Get active workspace
+ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
+
+# Get all clients (windows)
+if [[ "$WORKSPACE_ONLY" == true ]]; then
+  CLIENTS=$(hyprctl clients -j | jq --arg ws "$ACTIVE_WORKSPACE" '[.[] | select(.workspace.id == ($ws | tonumber))]')
+else
+  CLIENTS=$(hyprctl clients -j)
+fi
+
+# Function to determine launch command based on class
+get_launch_command() {
+  local class="$1"
+  local title="$2"
+  local pid="$3"
+  
+  # Check for known applications with optimized Omarchy launch methods
+  case "$class" in
+    brave-browser|Brave-browser)
+      echo "omarchy-launch-browser"
+      ;;
+    chromium-browser|Chromium)
+      echo "omarchy-launch-browser chromium"
+      ;;
+    firefox)
+      echo "uwsm-app -- firefox"
+      ;;
+    ghostty|Ghostty)
+      echo "xdg-terminal-exec"
+      ;;
+    kitty)
+      echo "xdg-terminal-exec"
+      ;;
+    Alacritty|alacritty)
+      echo "xdg-terminal-exec"
+      ;;
+    obsidian|Obsidian)
+      echo "omarchy-launch-or-focus obsidian \"uwsm-app -- obsidian --disable-gpu --enable-wayland-ime\""
+      ;;
+    Code|code|code-url-handler)
+      echo "omarchy-launch-editor"
+      ;;
+    cursor)
+      echo "uwsm-app -- cursor"
+      ;;
+    org.gnome.Nautilus|nautilus)
+      echo "uwsm-app -- nautilus"
+      ;;
+    signal|Signal)
+      echo "uwsm-app -- signal-desktop"
+      ;;
+    Slack|slack)
+      echo "uwsm-app -- slack"
+      ;;
+    discord|Discord)
+      echo "uwsm-app -- discord"
+      ;;
+    Spotify|spotify)
+      echo "uwsm-app -- spotify"
+      ;;
+    mpv)
+      echo "uwsm-app -- mpv"
+      ;;
+    imv)
+      echo "uwsm-app -- imv"
+      ;;
+    btop|Btop)
+      echo "omarchy-launch-tui btop"
+      ;;
+    lazygit)
+      echo "omarchy-launch-tui lazygit"
+      ;;
+    lazydocker)
+      echo "omarchy-launch-tui lazydocker"
+      ;;
+    *)
+      # Try to get actual command from process
+      if [[ -n "$pid" ]] && [[ -f "/proc/$pid/cmdline" ]]; then
+        local cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | sed 's/ *$//')
+        if [[ -n "$cmdline" ]]; then
+          # Use the actual command if available
+          echo "uwsm-app -- $cmdline"
+        else
+          echo "uwsm-app -- $class"
+        fi
+      else
+        # Fallback: use class name (works for most apps)
+        echo "uwsm-app -- $class"
+      fi
+      ;;
+  esac
+}
+
+# Function to get terminal working directory
+get_terminal_cwd() {
+  local pid="$1"
+  local class="$2"
+  
+  # Only for terminal applications
+  case "$class" in
+    ghostty|Ghostty|kitty|Alacritty|alacritty)
+      # Try to get the working directory of the shell process
+      local shell_pid=$(pgrep -P "$pid" | head -1)
+      if [[ -n "$shell_pid" ]] && [[ -d "/proc/$shell_pid/cwd" ]]; then
+        readlink "/proc/$shell_pid/cwd" 2>/dev/null || echo ""
+      fi
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
+
+# Build window array
+WINDOWS_JSON=$(echo "$CLIENTS" | jq -c '[.[] | {
+  class: .class,
+  title: .title,
+  workspace: .workspace.id,
+  position: .at,
+  size: .size,
+  floating: .floating,
+  fullscreen: (.fullscreen != 0),
+  fullscreenMode: .fullscreen,
+  monitor: .monitor,
+  pid: .pid,
+  xwayland: .xwayland,
+  pinned: .pinned
+}]')
+
+# Add launch commands and cwd to each window
+ENHANCED_WINDOWS=$(echo "$WINDOWS_JSON" | jq -c '[.[] | . + {
+  launch_command: "placeholder",
+  cwd: ""
+}]')
+
+# Process each window to add launch command and cwd
+WINDOW_COUNT=$(echo "$ENHANCED_WINDOWS" | jq 'length')
+FINAL_WINDOWS="[]"
+
+for i in $(seq 0 $((WINDOW_COUNT - 1))); do
+  WINDOW=$(echo "$ENHANCED_WINDOWS" | jq -c ".[$i]")
+  CLASS=$(echo "$WINDOW" | jq -r '.class')
+  TITLE=$(echo "$WINDOW" | jq -r '.title')
+  PID=$(echo "$WINDOW" | jq -r '.pid')
+  
+  LAUNCH_CMD=$(get_launch_command "$CLASS" "$TITLE" "$PID")
+  CWD=$(get_terminal_cwd "$PID" "$CLASS")
+  
+  WINDOW=$(echo "$WINDOW" | jq --arg cmd "$LAUNCH_CMD" --arg cwd "$CWD" '. + {launch_command: $cmd, cwd: $cwd}')
+  FINAL_WINDOWS=$(echo "$FINAL_WINDOWS" | jq --argjson window "$WINDOW" '. + [$window]')
+done
+
+# Create session JSON
+SESSION_JSON=$(jq -n \
+  --arg name "$SESSION_NAME" \
+  --arg created "$(date -Iseconds)" \
+  --argjson workspace "$ACTIVE_WORKSPACE" \
+  --argjson windows "$FINAL_WINDOWS" \
+  '{
+    name: $name,
+    created: $created,
+    active_workspace: $workspace,
+    windows: $windows
+  }')
+
+# Save to file
+echo "$SESSION_JSON" > "$SESSION_FILE"
+
+# Count windows
+WINDOW_COUNT=$(echo "$FINAL_WINDOWS" | jq 'length')
+WORKSPACE_COUNT=$(echo "$FINAL_WINDOWS" | jq '[.[].workspace] | unique | length')
+
+# Notification
+if [[ "$QUICK_MODE" == false ]]; then
+  notify-send "Session Saved" "$WINDOW_COUNT windows, $WORKSPACE_COUNT workspaces → '$SESSION_NAME'" -i document-save
+fi
+
+echo "Session '$SESSION_NAME' saved: $WINDOW_COUNT windows"

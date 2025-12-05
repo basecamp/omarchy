@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# Delete a session
+
+SESSION_DIR="$HOME/.local/state/omarchy/sessions"
+
+# Parse arguments
+INTERACTIVE=false
+SESSION_NAME=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --interactive)
+      INTERACTIVE=true
+      shift
+      ;;
+    *)
+      SESSION_NAME="$1"
+      shift
+      ;;
+  esac
+done
+
+# Interactive mode - show list and select
+if [[ "$INTERACTIVE" == true ]] || [[ -z "$SESSION_NAME" ]]; then
+  SESSIONS=$(find "$SESSION_DIR" -maxdepth 1 -name "*.json" -type f 2>/dev/null | sort)
+  
+  if [[ -z "$SESSIONS" ]]; then
+    notify-send "Session Delete" "No sessions to delete" -i dialog-information
+    exit 0
+  fi
+  
+  # Build menu
+  OPTIONS=""
+  while IFS= read -r session_file; do
+    name=$(basename "$session_file" .json)
+    WINDOW_COUNT=$(jq -r '.windows | length' "$session_file" 2>/dev/null || echo "?")
+    OPTIONS="${OPTIONS}${name} (${WINDOW_COUNT} windows)
+"
+  done <<< "$SESSIONS"
+  
+  CHOICE=$(echo -e "$OPTIONS" | sed '/^$/d' | omarchy-launch-walker --dmenu -p "Select session to delete…" 2>/dev/null)
+  
+  if [[ -z "$CHOICE" ]]; then
+    exit 0
+  fi
+  
+  SESSION_NAME=$(echo "$CHOICE" | awk '{print $1}')
+fi
+
+SESSION_FILE="$SESSION_DIR/${SESSION_NAME}.json"
+
+if [[ ! -f "$SESSION_FILE" ]]; then
+  echo "Error: Session '$SESSION_NAME' not found"
+  exit 1
+fi
+
+# Confirm deletion
+if command -v gum &>/dev/null; then
+  gum confirm "Delete session '$SESSION_NAME'?" || exit 0
+fi
+
+rm -f "$SESSION_FILE"
+notify-send "Session Deleted" "'$SESSION_NAME' has been removed" -i edit-delete
+
+echo "Session '$SESSION_NAME' deleted"

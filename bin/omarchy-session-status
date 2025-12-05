@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Show session status for Waybar/status bar
+
+SESSION_DIR="$HOME/.local/state/omarchy/sessions"
+PERSISTENT_FLAG="$HOME/.local/state/omarchy/session-persistent.enabled"
+LAST_SESSION="$SESSION_DIR/last.json"
+
+if [[ -f "$PERSISTENT_FLAG" ]]; then
+  # Persistent mode is enabled
+  PERSISTENT_SESSION="$SESSION_DIR/persistent.json"
+  if [[ -f "$PERSISTENT_SESSION" ]]; then
+    WINDOW_COUNT=$(jq -r '.windows | length' "$PERSISTENT_SESSION" 2>/dev/null || echo "0")
+    echo "💾 Persistent ($WINDOW_COUNT)"
+  else
+    echo "💾 Persistent"
+  fi
+elif [[ -f "$LAST_SESSION" ]]; then
+  # Show last session info
+  WINDOW_COUNT=$(jq -r '.windows | length' "$LAST_SESSION" 2>/dev/null || echo "0")
+  echo "📁 Last ($WINDOW_COUNT)"
+else
+  # No session saved
+  echo "📁 No session"
+fi

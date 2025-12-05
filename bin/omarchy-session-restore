@@ -1,0 +1,173 @@
+#!/bin/bash
+
+set -e
+
+# Session restore script for Omarchy
+# Restores a saved Hyprland session (windows, workspaces, layout)
+
+SESSION_DIR="$HOME/.local/state/omarchy/sessions"
+
+# Parse arguments
+SESSION_NAME=""
+QUICK_MODE=false
+CLOSE_ALL=false
+APPEND=false
+SILENT=false
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --quick)
+      QUICK_MODE=true
+      shift
+      ;;
+    --last)
+      SESSION_NAME="last"
+      shift
+      ;;
+    --close-all)
+      CLOSE_ALL=true
+      shift
+      ;;
+    --append)
+      APPEND=true
+      shift
+      ;;
+    --silent)
+      SILENT=true
+      shift
+      ;;
+    *)
+      SESSION_NAME="$1"
+      shift
+      ;;
+  esac
+done
+
+# Determine session name
+if [[ -z "$SESSION_NAME" ]]; then
+  if [[ "$QUICK_MODE" == true ]]; then
+    SESSION_NAME="last"
+  else
+    # Use omarchy-session-list for selection
+    omarchy-session-list
+    exit 0
+  fi
+fi
+
+SESSION_FILE="$SESSION_DIR/${SESSION_NAME}.json"
+
+# Check if session exists
+if [[ ! -f "$SESSION_FILE" ]]; then
+  if [[ "$SILENT" == false ]]; then
+    notify-send "Session Restore" "Session '$SESSION_NAME' not found" -i dialog-error
+  fi
+  echo "Error: Session '$SESSION_NAME' not found"
+  exit 1
+fi
+
+# Read session
+SESSION_JSON=$(cat "$SESSION_FILE")
+WINDOWS=$(echo "$SESSION_JSON" | jq -c '.windows')
+ACTIVE_WORKSPACE=$(echo "$SESSION_JSON" | jq -r '.active_workspace')
+WINDOW_COUNT=$(echo "$WINDOWS" | jq 'length')
+
+# Close all windows if requested
+if [[ "$CLOSE_ALL" == true ]]; then
+  omarchy-hyprland-window-close-all
+  sleep 0.5
+fi
+
+# Notification
+if [[ "$SILENT" == false ]]; then
+  notify-send "Session Restore" "Restoring $WINDOW_COUNT windows from '$SESSION_NAME'..." -i folder-saved-search
+fi
+
+# Function to launch window
+launch_window() {
+  local window="$1"
+  local class=$(echo "$window" | jq -r '.class')
+  local workspace=$(echo "$window" | jq -r '.workspace')
+  local launch_cmd=$(echo "$window" | jq -r '.launch_command')
+  local cwd=$(echo "$window" | jq -r '.cwd // empty')
+  local floating=$(echo "$window" | jq -r '.floating')
+  local fullscreen=$(echo "$window" | jq -r '.fullscreen')
+  local fullscreen_mode=$(echo "$window" | jq -r '.fullscreenMode')
+  local position=$(echo "$window" | jq -r '.position | @json')
+  local size=$(echo "$window" | jq -r '.size | @json')
+  
+  # Check if window already exists (for smart restore)
+  local existing_window=$(hyprctl clients -j | jq -r --arg class "$class" '.[] | select(.class == $class) | .address' | head -1)
+  
+  if [[ -n "$existing_window" ]] && [[ "$APPEND" == false ]]; then
+    # Window already exists, just focus it
+    hyprctl dispatch focuswindow "address:$existing_window" >/dev/null 2>&1
+    hyprctl dispatch movetoworkspace "$workspace,address:$existing_window" >/dev/null 2>&1
+    return
+  fi
+  
+  # Launch the application
+  if [[ -n "$cwd" ]] && [[ "$cwd" != "null" ]] && [[ -d "$cwd" ]]; then
+    # Terminal with specific working directory
+    (cd "$cwd" && eval "$launch_cmd" &) >/dev/null 2>&1
+  else
+    eval "$launch_cmd &" >/dev/null 2>&1
+  fi
+  
+  # Wait for window to appear
+  sleep 0.5
+  
+  # Get the newly created window
+  local new_window=$(hyprctl clients -j | jq -r --arg class "$class" '.[] | select(.class == $class) | .address' | tail -1)
+  
+  if [[ -z "$new_window" ]]; then
+    echo "Warning: Could not find window for $class"
+    return
+  fi
+  
+  # Move to correct workspace
+  hyprctl dispatch movetoworkspacesilent "$workspace,address:$new_window" >/dev/null 2>&1
+  
+  # Set floating state
+  if [[ "$floating" == "true" ]]; then
+    hyprctl dispatch togglefloating "address:$new_window" >/dev/null 2>&1
+    
+    # Set position and size for floating windows
+    local pos_x=$(echo "$position" | jq -r '.[0]')
+    local pos_y=$(echo "$position" | jq -r '.[1]')
+    local size_w=$(echo "$size" | jq -r '.[0]')
+    local size_h=$(echo "$size" | jq -r '.[1]')
+    
+    hyprctl dispatch resizewindowpixel "exact ${size_w} ${size_h},address:$new_window" >/dev/null 2>&1
+    hyprctl dispatch movewindowpixel "exact ${pos_x} ${pos_y},address:$new_window" >/dev/null 2>&1
+  fi
+  
+  # Set fullscreen state
+  if [[ "$fullscreen" == "true" ]]; then
+    if [[ "$fullscreen_mode" == "2" ]]; then
+      # Fullscreen mode 2 (fullscreen without gaps)
+      hyprctl dispatch fullscreen "address:$new_window" >/dev/null 2>&1
+      hyprctl dispatch fullscreen "address:$new_window" >/dev/null 2>&1
+    else
+      # Regular fullscreen
+      hyprctl dispatch fullscreen "address:$new_window" >/dev/null 2>&1
+    fi
+  fi
+}
+
+# Restore each window
+echo "Restoring $WINDOW_COUNT windows..."
+for i in $(seq 0 $((WINDOW_COUNT - 1))); do
+  WINDOW=$(echo "$WINDOWS" | jq -c ".[$i]")
+  launch_window "$WINDOW"
+done
+
+# Switch to the active workspace
+sleep 0.5
+hyprctl dispatch workspace "$ACTIVE_WORKSPACE" >/dev/null 2>&1
+
+# Final notification
+if [[ "$SILENT" == false ]]; then
+  notify-send "Session Restored" "$WINDOW_COUNT windows restored from '$SESSION_NAME'" -i emblem-default
+fi
+
+echo "Session '$SESSION_NAME' restored: $WINDOW_COUNT windows"
