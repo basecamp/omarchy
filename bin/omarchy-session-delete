@@ -26,20 +26,27 @@ if [[ "$INTERACTIVE" == true ]] || [[ -z "$SESSION_NAME" ]]; then
   SESSIONS=$(find "$SESSION_DIR" -maxdepth 1 -name "*.json" -type f 2>/dev/null | sort)
   
   if [[ -z "$SESSIONS" ]]; then
-    notify-send "Session Delete" "No sessions to delete" -i dialog-information
+    notify-send "No Sessions" "Save a session first to delete it later" -i dialog-information
     exit 0
   fi
   
-  # Build menu
+  # Build menu (exclude persistent session from manual deletion)
   OPTIONS=""
   while IFS= read -r session_file; do
     name=$(basename "$session_file" .json)
+    # Skip persistent session
+    [[ "$name" == "persistent" ]] && continue
     WINDOW_COUNT=$(jq -r '.windows | length' "$session_file" 2>/dev/null || echo "?")
     OPTIONS="${OPTIONS}${name} (${WINDOW_COUNT} windows)
 "
   done <<< "$SESSIONS"
   
-  CHOICE=$(echo -e "$OPTIONS" | sed '/^$/d' | omarchy-launch-walker --dmenu -p "Select session to delete…" 2>/dev/null)
+  if [[ -z "$OPTIONS" ]]; then
+    notify-send "No Sessions" "No deletable sessions found" -i dialog-information
+    exit 0
+  fi
+  
+  CHOICE=$(echo -e "$OPTIONS" | sed '/^$/d' | omarchy-launch-walker --dmenu -p "Choose session to delete" 2>/dev/null)
   
   if [[ -z "$CHOICE" ]]; then
     exit 0
@@ -55,10 +62,16 @@ if [[ ! -f "$SESSION_FILE" ]]; then
   exit 1
 fi
 
+# Prevent deletion of persistent session
+if [[ "$SESSION_NAME" == "persistent" ]]; then
+  notify-send "Protected Session" "Disable persistent mode first to clear this session" -i dialog-warning
+  exit 1
+fi
+
 # Confirm deletion when in interactive mode
 if [[ "$INTERACTIVE" == true ]]; then
-  CONFIRM=$(echo -e "Yes\nNo" | omarchy-launch-walker --dmenu -p "Delete session '$SESSION_NAME'?" 2>/dev/null)
-  if [[ "$CONFIRM" != "Yes" ]]; then
+  CONFIRM=$(echo -e "Delete\nCancel" | omarchy-launch-walker --dmenu -p "Delete '$SESSION_NAME'?" 2>/dev/null)
+  if [[ "$CONFIRM" != "Delete" ]]; then
     exit 0
   fi
 fi

@@ -79,7 +79,7 @@ fi
 
 # Notification
 if [[ "$SILENT" == false ]]; then
-  notify-send "Session Restore" "Restoring $WINDOW_COUNT windows from '$SESSION_NAME'..." -i folder-saved-search
+  notify-send "Restoring Session" "Loading $WINDOW_COUNT windows..." -i folder-saved-search
 fi
 
 # Function to launch window
@@ -167,7 +167,7 @@ hyprctl dispatch workspace "$ACTIVE_WORKSPACE" >/dev/null 2>&1
 
 # Final notification
 if [[ "$SILENT" == false ]]; then
-  notify-send "Session Restored" "$WINDOW_COUNT windows restored from '$SESSION_NAME'" -i emblem-default
+  notify-send "Session Restored" "$WINDOW_COUNT windows loaded" -i emblem-default
 fi
 
 echo "Session '$SESSION_NAME' restored: $WINDOW_COUNT windows"

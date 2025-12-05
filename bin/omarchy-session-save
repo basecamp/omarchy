@@ -36,12 +36,18 @@ if [[ -z "$SESSION_NAME" ]]; then
     SESSION_NAME="last"
   else
     # Prompt for session name
-    SESSION_NAME=$(echo "" | omarchy-launch-walker --dmenu -p "Session name…" 2>/dev/null)
+    SESSION_NAME=$(echo "" | omarchy-launch-walker --dmenu -p "Name this session" 2>/dev/null)
     if [[ -z "$SESSION_NAME" ]]; then
       notify-send "Session Save" "Cancelled" -i dialog-error
       exit 1
     fi
   fi
+fi
+
+# Prevent using reserved name 'persistent' for manual saves
+if [[ "$SESSION_NAME" == "persistent" ]] && [[ "$QUICK_MODE" == false ]]; then
+  notify-send "Session Save" "Name 'persistent' is reserved for auto-restore mode" -i dialog-error
+  exit 1
 fi
 
 SESSION_FILE="$SESSION_DIR/${SESSION_NAME}.json"
@@ -220,7 +226,7 @@ WORKSPACE_COUNT=$(echo "$FINAL_WINDOWS" | jq '[.[].workspace] | unique | length'
 
 # Notification
 if [[ "$QUICK_MODE" == false ]]; then
-  notify-send "Session Saved" "$WINDOW_COUNT windows, $WORKSPACE_COUNT workspaces → '$SESSION_NAME'" -i document-save
+  notify-send "Session Saved" "$WINDOW_COUNT windows saved as '$SESSION_NAME'" -i document-save
 fi
 
 echo "Session '$SESSION_NAME' saved: $WINDOW_COUNT windows"

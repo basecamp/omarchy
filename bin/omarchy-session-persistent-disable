@@ -18,6 +18,6 @@ if [[ -f "$AUTOSTART_HOOK" ]]; then
   sed -i '/# Auto-restore persistent session/d' "$AUTOSTART_HOOK"
 fi
 
-notify-send "Persistent Session" "Disabled - Manual session management only" -i emblem-important
+notify-send "Persistent Mode" "Auto-restore disabled" -i emblem-important
 
 echo "Persistent session mode: DISABLED"

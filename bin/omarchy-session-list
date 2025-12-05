@@ -10,7 +10,7 @@ mkdir -p "$SESSION_DIR"
 SESSIONS=$(find "$SESSION_DIR" -maxdepth 1 -name "*.json" -type f 2>/dev/null | sort)
 
 if [[ -z "$SESSIONS" ]]; then
-  notify-send "Session List" "No saved sessions found" -i dialog-information
+  notify-send "No Sessions" "Save your current windows first" -i dialog-information
   exit 0
 fi
 
@@ -42,7 +42,7 @@ while IFS= read -r session_file; do
 done <<< "$SESSIONS"
 
 # Show menu
-CHOICE=$(echo -e "$OPTIONS" | sed '/^$/d' | omarchy-launch-walker --dmenu -p "Select session to restore…" 2>/dev/null)
+CHOICE=$(echo -e "$OPTIONS" | sed '/^$/d' | omarchy-launch-walker --dmenu -p "Restore session" 2>/dev/null)
 
 if [[ -z "$CHOICE" ]]; then
   exit 0
