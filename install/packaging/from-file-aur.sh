@@ -8,6 +8,6 @@ if [[ -f "$OMARCHY_INSTALL/$1" ]]; then
   mapfile -t packages < <(grep -v '^#' "$OMARCHY_INSTALL/$1" | grep -v '^$')
   if [[ ${#packages[@]} -ne 0 ]]; then
     # Install all of them
-    yay -Sua --noconfirm --needed "${packages[@]}"
+    yay -Sua --noconfirm "${packages[@]}"
   fi
 fi

@@ -11,8 +11,8 @@ libqalculate
 evince
 
 # Browsers
-mullvad-browser
-brave
+#mullvad-browser
+#brave
 omarchy-chromium
 
 # Theming
