@@ -3,10 +3,16 @@ if [[ $# -lt 2 ]]; then
   exit
 fi
 
+filter_user_selected_aur() {
+  for package in "$@"; do
+    is_aur_package "$package" && echo "$package" >> "user-selected-aur.packages" || echo "$package" >> "user-selected.packages"
+  done
+}
+
 fzf_args=(
   --multi
   --header="Select which $2 packages to install."
-  --preview 'pacman -Sii {1}' #'echo Preview for {1}!' 
+  --preview 'get_package_info {1}' 
   --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select, escape: none of them'
   --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
@@ -16,17 +22,5 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-grep -v '^#' "$OMARCHY_INSTALL/$1" | grep -v '^$' | fzf "${fzf_args[@]}" >> "$OMARCHY_INSTALL/user-selected.packages"
-
-#pause_log
-#pkg_names=$(grep -v '^#' "$OMARCHY_INSTALL/$1" | grep -v '^$' | fzf "${fzf_args[@]}")
-#unpause_log
-
-#if [[ -n "$pkg_names" ]]; then # If nonempty selection.
-  # Convert newline-separated selections to space-separated for yay
-#  echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -S --noconfirm --needed
-#  echo 'Selected following from file:'
-#  echo "$pkg_names"
-#else
-#  echo 'No package selected! :'"'"'('
-#fi
+pkg_names=$(grep -v '^#' "$1" | grep -v '^$' | fzf "${fzf_args[@]}")
+filter_user_selected_aur $pkg_names
