@@ -6,16 +6,28 @@
 SESSION_DIR="$HOME/.local/state/omarchy/sessions"
 PERSISTENT_FLAG="$HOME/.local/state/omarchy/session-persistent.enabled"
 AUTOSTART_HOOK="$HOME/.config/hypr/autostart.conf"
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+SERVICE_FILE="omarchy-session-save.service"
 
 mkdir -p "$SESSION_DIR"
 mkdir -p "$(dirname "$PERSISTENT_FLAG")"
+mkdir -p "$SYSTEMD_USER_DIR"
 
 # Create flag
 touch "$PERSISTENT_FLAG"
 
+# Install systemd service if not present
+if [[ ! -f "$SYSTEMD_USER_DIR/$SERVICE_FILE" ]]; then
+  if [[ -f "$HOME/.local/share/omarchy/config/systemd/user/$SERVICE_FILE" ]]; then
+    cp "$HOME/.local/share/omarchy/config/systemd/user/$SERVICE_FILE" "$SYSTEMD_USER_DIR/"
+  else
+    echo "Warning: Service file not found in omarchy config"
+  fi
+fi
+
 # Enable and start systemd service for shutdown save
-systemctl --user enable omarchy-session-save.service 2>/dev/null || true
 systemctl --user daemon-reload 2>/dev/null || true
+systemctl --user enable "$SERVICE_FILE" 2>/dev/null || true
 
 # Add autostart hook if not already present
 if ! grep -q "omarchy-session-restore-if-persistent" "$AUTOSTART_HOOK" 2>/dev/null; then
