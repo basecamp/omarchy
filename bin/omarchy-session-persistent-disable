@@ -6,7 +6,6 @@
 PERSISTENT_FLAG="$HOME/.local/state/omarchy/session-persistent.enabled"
 AUTOSTART_HOOK="$HOME/.config/hypr/autostart.conf"
 
-# Remove flag
 rm -f "$PERSISTENT_FLAG"
 
 # Disable systemd service
@@ -15,9 +14,9 @@ systemctl --user disable omarchy-session-save.service 2>/dev/null || true
 # Remove autostart hook
 if [[ -f "$AUTOSTART_HOOK" ]]; then
   sed -i '/omarchy-session-restore-if-persistent/d' "$AUTOSTART_HOOK"
-  sed -i '/# Auto-restore persistent session/d' "$AUTOSTART_HOOK"
+  sed -i '/# Auto-restore session/d' "$AUTOSTART_HOOK"
 fi
 
-notify-send "Persistent Mode" "Auto-restore disabled" -i emblem-important
+notify-send "Persistent Mode" "Auto-save & restore disabled" -i emblem-important
 
-echo "Persistent session mode: DISABLED"
+echo "Persistent mode: OFF"

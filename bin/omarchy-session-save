@@ -8,7 +8,6 @@ set -e
 SESSION_DIR="$HOME/.local/state/omarchy/sessions"
 mkdir -p "$SESSION_DIR"
 
-# Parse arguments
 SESSION_NAME=""
 QUICK_MODE=false
 WORKSPACE_ONLY=false
@@ -30,32 +29,24 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Determine session name
 if [[ -z "$SESSION_NAME" ]]; then
   if [[ "$QUICK_MODE" == true ]]; then
     SESSION_NAME="last"
   else
-    # Prompt for session name
-    SESSION_NAME=$(echo "" | omarchy-launch-walker --dmenu -p "Name this session" 2>/dev/null)
-    if [[ -z "$SESSION_NAME" ]]; then
-      notify-send "Session Save" "Cancelled" -i dialog-error
-      exit 1
-    fi
+    SESSION_NAME=$(echo "" | omarchy-launch-walker --dmenu -p "Session Name" 2>/dev/null)
+    [[ -z "$SESSION_NAME" ]] && exit 1
   fi
 fi
 
-# Prevent using reserved name 'persistent' for manual saves
 if [[ "$SESSION_NAME" == "persistent" ]] && [[ "$QUICK_MODE" == false ]]; then
-  notify-send "Session Save" "Name 'persistent' is reserved for auto-restore mode" -i dialog-error
+  notify-send "Cannot Save" "'persistent' is reserved" -i dialog-error
   exit 1
 fi
 
 SESSION_FILE="$SESSION_DIR/${SESSION_NAME}.json"
 
-# Get active workspace
 ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
 
-# Get all clients (windows)
 if [[ "$WORKSPACE_ONLY" == true ]]; then
   CLIENTS=$(hyprctl clients -j | jq --arg ws "$ACTIVE_WORKSPACE" '[.[] | select(.workspace.id == ($ws | tonumber))]')
 else
@@ -217,16 +208,10 @@ SESSION_JSON=$(jq -n \
     windows: $windows
   }')
 
-# Save to file
 echo "$SESSION_JSON" > "$SESSION_FILE"
 
-# Count windows
 WINDOW_COUNT=$(echo "$FINAL_WINDOWS" | jq 'length')
-WORKSPACE_COUNT=$(echo "$FINAL_WINDOWS" | jq '[.[].workspace] | unique | length')
 
-# Notification
-if [[ "$QUICK_MODE" == false ]]; then
-  notify-send "Session Saved" "$WINDOW_COUNT windows saved as '$SESSION_NAME'" -i document-save
-fi
+[[ "$QUICK_MODE" == false ]] && notify-send "Saved" "$WINDOW_COUNT windows • $SESSION_NAME" -i document-save
 
-echo "Session '$SESSION_NAME' saved: $WINDOW_COUNT windows"
+echo "Saved: $WINDOW_COUNT windows"

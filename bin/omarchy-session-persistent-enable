@@ -13,7 +13,6 @@ mkdir -p "$SESSION_DIR"
 mkdir -p "$(dirname "$PERSISTENT_FLAG")"
 mkdir -p "$SYSTEMD_USER_DIR"
 
-# Create flag
 touch "$PERSISTENT_FLAG"
 
 # Install systemd service if not present
@@ -32,10 +31,10 @@ systemctl --user enable "$SERVICE_FILE" 2>/dev/null || true
 # Add autostart hook if not already present
 if ! grep -q "omarchy-session-restore-if-persistent" "$AUTOSTART_HOOK" 2>/dev/null; then
   echo "" >> "$AUTOSTART_HOOK"
-  echo "# Auto-restore persistent session" >> "$AUTOSTART_HOOK"
+  echo "# Auto-restore session" >> "$AUTOSTART_HOOK"
   echo "exec-once = omarchy-session-restore-if-persistent" >> "$AUTOSTART_HOOK"
 fi
 
-notify-send "Persistent Mode" "Windows will save on shutdown and restore on boot" -i emblem-default
+notify-send "Persistent Mode" "Auto-save & restore enabled" -i emblem-default
 
-echo "Persistent session mode: ENABLED"
+echo "Persistent mode: ON"

@@ -7,7 +7,6 @@ set -e
 
 SESSION_DIR="$HOME/.local/state/omarchy/sessions"
 
-# Parse arguments
 SESSION_NAME=""
 QUICK_MODE=false
 CLOSE_ALL=false
@@ -43,12 +42,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Determine session name
 if [[ -z "$SESSION_NAME" ]]; then
   if [[ "$QUICK_MODE" == true ]]; then
     SESSION_NAME="last"
   else
-    # Use omarchy-session-list for selection
     omarchy-session-list
     exit 0
   fi
@@ -56,31 +53,19 @@ fi
 
 SESSION_FILE="$SESSION_DIR/${SESSION_NAME}.json"
 
-# Check if session exists
 if [[ ! -f "$SESSION_FILE" ]]; then
-  if [[ "$SILENT" == false ]]; then
-    notify-send "Session Restore" "Session '$SESSION_NAME' not found" -i dialog-error
-  fi
-  echo "Error: Session '$SESSION_NAME' not found"
+  [[ "$SILENT" == false ]] && notify-send "Not Found" "Session '$SESSION_NAME' doesn't exist" -i dialog-error
   exit 1
 fi
 
-# Read session
 SESSION_JSON=$(cat "$SESSION_FILE")
 WINDOWS=$(echo "$SESSION_JSON" | jq -c '.windows')
 ACTIVE_WORKSPACE=$(echo "$SESSION_JSON" | jq -r '.active_workspace')
 WINDOW_COUNT=$(echo "$WINDOWS" | jq 'length')
 
-# Close all windows if requested
-if [[ "$CLOSE_ALL" == true ]]; then
-  omarchy-hyprland-window-close-all
-  sleep 0.5
-fi
+[[ "$CLOSE_ALL" == true ]] && omarchy-hyprland-window-close-all && sleep 0.5
 
-# Notification
-if [[ "$SILENT" == false ]]; then
-  notify-send "Restoring Session" "Loading $WINDOW_COUNT windows..." -i folder-saved-search
-fi
+[[ "$SILENT" == false ]] && notify-send "Restoring" "$WINDOW_COUNT windows" -i folder-saved-search
 
 # Function to launch window
 launch_window() {
@@ -166,8 +151,6 @@ sleep 0.5
 hyprctl dispatch workspace "$ACTIVE_WORKSPACE" >/dev/null 2>&1
 
 # Final notification
-if [[ "$SILENT" == false ]]; then
-  notify-send "Session Restored" "$WINDOW_COUNT windows loaded" -i emblem-default
-fi
+[[ "$SILENT" == false ]] && notify-send "Restored" "$WINDOW_COUNT windows" -i emblem-default
 
-echo "Session '$SESSION_NAME' restored: $WINDOW_COUNT windows"
+echo "Restored: $WINDOW_COUNT windows"
