@@ -11,6 +11,8 @@ is_aur_package() {
   yay -Q --aur "$package_name" &> /dev/null && return 1
   echo "Unknown package in neither official nor AUR!: $package_name"
 }
+# Have to export functions for fzf
+export -f is_aur_package
 
 get_package_info() {
   local package_name=$1
@@ -20,6 +22,7 @@ get_package_info() {
     pacman -Sii "$package_name"
   fi
 }
+# Have to export functions for fzf
 export -f get_package_info
 
 filter_user_selected_aur() {
