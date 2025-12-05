@@ -4,21 +4,14 @@
 # Passwords
 keepassxc
 
-# Terminals
-ghostty
-
 # Calculators
 libqalculate
 
 # Doc viewers
 evince
 
-# Text editor
-nvim
-omarchy-nvim # requires extra setup to install later (omarchy-nvim-setup)
-
 # Browsers
-#mullvad
+# mullvad
 omarchy-chromium
 
 # Theming
