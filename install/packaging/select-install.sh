@@ -20,6 +20,7 @@ get_package_info() {
     pacman -Sii "$package_name"
   fi
 }
+export -f get_package_info
 
 filter_user_selected_aur() {
   for package in "$@"; do
