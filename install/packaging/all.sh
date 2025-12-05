@@ -1,9 +1,9 @@
 pause_log
 if gum confirm 'Install all default Omarchy apps?' --negative 'Customise'; then
-  unpause_log
+  unpause_log 'Installing all default Omarchy packages...'
   run_logged $OMARCHY_INSTALL/packaging/base.sh
 else
-  unpause_log
+  unpause_log 'Installing only basic system packages (open source)...'
   run_logged $OMARCHY_INSTALL/packaging/custom.sh
 fi
 
