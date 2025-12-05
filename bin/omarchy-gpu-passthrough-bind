@@ -608,7 +608,18 @@ cmd_unbind() {
         log_warn "$mod failed to load"
       fi
     done
-    log_info "Display modules NOT loaded (Hyprland safety)"
+    # Load nvidia_drm only if monitor is on dGPU (detected during setup)
+    if [[ "${DGPU_HAS_EXTERNAL_MONITOR:-false}" == "true" ]]; then
+      if sudo -n /usr/bin/modprobe -i nvidia_drm modeset=1 2>/dev/null; then
+        log_success "nvidia_drm loaded with modeset=1 (external monitor on dGPU)"
+      elif is_module_loaded nvidia_drm; then
+        log_info "nvidia_drm already loaded"
+      else
+        log_warn "nvidia_drm failed to load"
+      fi
+    else
+      log_info "Display modules NOT loaded (monitor on iGPU)"
+    fi
   else
     if sudo -n /usr/bin/modprobe "$GPU_DRIVER_ORIGINAL" 2>/dev/null; then
       log_success "$GPU_DRIVER_ORIGINAL loaded"

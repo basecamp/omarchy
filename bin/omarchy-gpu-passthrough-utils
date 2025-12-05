@@ -375,6 +375,33 @@ save_gpu_config() {
     audio_pci="${pci%%.*}.1"
   fi
 
+  # Detect external monitor on the SPECIFIC passthrough GPU (not all dGPUs)
+  local dgpu_has_external="false"
+  local drm_card_passthrough=$(get_drm_card_for_pci "$pci")
+
+  if [[ -n "$drm_card_passthrough" ]]; then
+    # DRM card exists - can detect connectors directly
+    for connector_type in HDMI DP VGA; do
+      for connector in /sys/class/drm/${drm_card_passthrough}-${connector_type}*/status; do
+        if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
+          dgpu_has_external="true"
+          log_info "External monitor detected on passthrough GPU ($connector_type)"
+          break 2
+        fi
+      done
+    done
+  else
+    # No DRM card (driver blacklisted) - preserve existing value from config
+    if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
+      local existing_value
+      existing_value=$(grep "^DGPU_HAS_EXTERNAL_MONITOR=" "$GPU_PASSTHROUGH_CONF" 2>/dev/null | cut -d'"' -f2)
+      if [[ "$existing_value" == "true" ]]; then
+        log_info "Preserving DGPU_HAS_EXTERNAL_MONITOR=true from existing config (driver blacklisted)"
+        dgpu_has_external="true"
+      fi
+    fi
+  fi
+
   sudo tee "$GPU_PASSTHROUGH_CONF" >/dev/null <<EOF
 # GPU Passthrough Config - Generated $(date +%Y-%m-%d)
 GPU_PCI_ADDR="$pci"
@@ -386,6 +413,7 @@ GPU_AUDIO_PCI="$audio_pci"
 GPU_AUDIO_IDS="$audio_id"
 GPU_IOMMU_GROUP="$iommu_group"
 GPU_IOMMU_DEVICES="$iommu_devices"
+DGPU_HAS_EXTERNAL_MONITOR="$dgpu_has_external"
 EOF
 
   msg_success "Config saved: $GPU_PASSTHROUGH_CONF"
@@ -877,7 +905,7 @@ detect_hybrid_graphics_laptop() {
   fi
 
   IS_MUXLESS_LAPTOP=false
-  DGPU_HAS_EXTERNAL_MONITOR=false
+  DGPU_HAS_EXTERNAL_MONITOR="$dgpu_has_external"
   return 1
 }
 

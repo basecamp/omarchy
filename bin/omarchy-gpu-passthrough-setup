@@ -405,11 +405,8 @@ configure_gpu_blacklist() {
   if [[ "$gpu_vendor" == "nvidia" ]]; then
     sudo tee "$BLACKLIST_CONF" >/dev/null <<EOF
 # GPU Passthrough - Prevent NVIDIA auto-load at boot
+# Display handled by iGPU, NVIDIA used only for VM passthrough
 install nvidia /bin/false
-
-# Enable nvidia_drm modeset for Wayland support in host mode
-# Required for external monitors when using 'mode host'
-options nvidia_drm modeset=1
 EOF
     msg_success "NVIDIA blacklist: $BLACKLIST_CONF"
   else
@@ -530,6 +527,7 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -r i915
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia_uvm
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia_drm
+$USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia_drm modeset=1
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe amdgpu
 $USER ALL=(ALL) NOPASSWD: /usr/bin/modprobe i915
 
@@ -1382,7 +1380,10 @@ cmd_setup() {
     exit 1
   fi
 
+  detect_hybrid_graphics_laptop
+
   save_gpu_config "$idx"
+
   configure_kernel_parameters
   configure_vfio_modules "$pci"
   configure_kvm_options
@@ -1464,7 +1465,6 @@ cmd_setup() {
   fi
   msg_success "Initramfs rebuilt"
 
-  detect_hybrid_graphics_laptop
   if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
     log_info "MUX-less laptop detected (hybrid graphics)"
     if [[ "$DGPU_HAS_EXTERNAL_MONITOR" == "true" ]]; then
