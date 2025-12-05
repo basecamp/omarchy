@@ -1,13 +1,15 @@
 #!/bin/bash
 
 # omarchy-theme-install: Install a new theme from a git repo for Omarchy
-# Usage: omarchy-theme-install <git-repo-url>
+# Usage: omarchy-theme-install <git-repo-url> [branch-name]
 
 if [ -z "$1" ]; then
   echo -e "\e[32mSee https://manuals.omamix.org/2/the-omarchy-manual/90/extra-themes\n\e[0m"
   REPO_URL=$(gum input --placeholder="Git repo URL for theme" --header="")
+  BRANCH=$(gum input --placeholder="Branch name" --header="")
 else
   REPO_URL="$1"
+  BRANCH="${2:-}"
 fi
 
 if [ -z "$REPO_URL" ]; then
@@ -15,7 +17,17 @@ if [ -z "$REPO_URL" ]; then
 fi
 
 THEMES_DIR="$HOME/.config/omarchy/themes"
-THEME_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-theme$//')
+
+# Extract base theme name from repo
+BASE_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-theme$//')
+
+# If branch is specified, append it to the theme name for unique identification
+if [ -n "$BRANCH" ]; then
+  THEME_NAME="${BASE_NAME}-${BRANCH}"
+else
+  THEME_NAME="$BASE_NAME"
+fi
+
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Remove existing theme if present
@@ -23,11 +35,18 @@ if [ -d "$THEME_PATH" ]; then
   rm -rf "$THEME_PATH"
 fi
 
-# Clone the repo directly to ~/.config/omarchy/themes
-if ! git clone "$REPO_URL" "$THEME_PATH"; then
-  echo "Error: Failed to clone theme repo."
-  exit 1
+# Clone the repo with specific branch if provided
+if [ -n "$BRANCH" ]; then
+  if ! git clone -b "$BRANCH" "$REPO_URL" "$THEME_PATH"; then
+    echo "Error: Failed to clone theme repo from branch '$BRANCH'."
+    exit 1
+  fi
+else
+  if ! git clone "$REPO_URL" "$THEME_PATH"; then
+    echo "Error: Failed to clone theme repo."
+    exit 1
+  fi
 fi
 
 # Apply the new theme with omarchy-theme-set
-omarchy-theme-set $THEME_NAME
+omarchy-theme-set "$THEME_NAME"
