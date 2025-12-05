@@ -16,7 +16,7 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-cat $1 | fzf "${fzf_args[@]}" >> "$OMARCHY_INSTALL/user-selected.packages"
+cat "$OMARCHY_INSTALL/$1" | fzf "${fzf_args[@]}" >> "$OMARCHY_INSTALL/user-selected.packages"
 
 #pause_log
 #pkg_names=$(grep -v '^#' "$OMARCHY_INSTALL/$1" | grep -v '^$' | fzf "${fzf_args[@]}")
