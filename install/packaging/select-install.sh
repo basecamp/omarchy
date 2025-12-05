@@ -22,5 +22,5 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-pkg_names=$(grep -v '^#' "$1" | grep -v '^$' | fzf "${fzf_args[@]}")
+pkg_names=$(grep -v '^#' "$OMARCHY_INSTALL/$1" | grep -v '^$' | fzf "${fzf_args[@]}")
 filter_user_selected_aur $pkg_names
