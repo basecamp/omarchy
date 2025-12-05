@@ -12,7 +12,7 @@ evince
 
 # Browsers
 mullvad-browser
-brave
+# brave # tries to run makepkg during install; not allowed as root -> error.
 omarchy-chromium
 
 # Theming

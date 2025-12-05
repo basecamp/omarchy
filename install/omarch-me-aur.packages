@@ -1,0 +1,4 @@
+# Local list of packages in AUR, to avoid querying remote for info.
+
+mullvad-browser
+brave

@@ -1,15 +1,16 @@
 if [[ $# -lt 2 ]]; then
   echo "Must specify selection file and kind of thing!"
-  exit
+  exit 1
 fi
 
 is_aur_package() {
   local package_name=$1
-  
-  # Check if in official
-  pacman -Qi "$package_name" &> /dev/null && return 0
-  yay -Q --aur "$package_name" &> /dev/null && return 1
-  echo "Unknown package in neither official nor AUR!: $package_name"
+  # Check if in aur list
+  if grep -q "^$package_name\$" "$OMARCHY_INSTALL/omarch-me-aur.packages"; then
+    return 0
+  else
+    return 1
+  fi
 }
 # Have to export functions for fzf
 export -f is_aur_package
@@ -17,9 +18,9 @@ export -f is_aur_package
 get_package_info() {
   local package_name=$1
   if is_aur_package "$package_name"; then
-    yay -Siia "$package_name"
+    yay -Siia "$package_name" || echo "Failed to get info for $package_name"
   else
-    pacman -Sii "$package_name"
+    pacman -Sii "$package_name" || echo "Failed to get info for $package_name"
   fi
 }
 # Have to export functions for fzf

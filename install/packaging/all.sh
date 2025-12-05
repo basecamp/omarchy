@@ -1,3 +1,4 @@
+# Need to pause log for TUIs to display properly.
 pause_log
 if gum confirm 'Install all default Omarchy apps?' --negative 'Customise'; then
   unpause_log 'Installing all default Omarchy packages...'
