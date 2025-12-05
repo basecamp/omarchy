@@ -447,65 +447,43 @@ show_system_menu() {
 show_session_menu() {
   local persistent_status
   if [[ -f ~/.local/state/omarchy/session-persistent.enabled ]]; then
-    persistent_status="✅ Persistent Mode: ON"
+    persistent_status="  Persistent Mode"
   else
-    persistent_status="⬜ Persistent Mode: OFF"
+    persistent_status="  Persistent Mode"
   fi
 
-  local options="💾 Quick Save (SUPER+SHIFT+S)
-📂 Quick Restore (SUPER+SHIFT+R)
-📋 List All Sessions (SUPER+SHIFT+L)
-─────────────────────
-📁 Save As Named Session
-🔄 Restore Named Session
-─────────────────────
-1️⃣  Quick Slot 1 (Save: ALT+1, Restore: SHIFT+ALT+1)
-2️⃣  Quick Slot 2 (Save: ALT+2, Restore: SHIFT+ALT+2)
-3️⃣  Quick Slot 3 (Save: ALT+3, Restore: SHIFT+ALT+3)
-─────────────────────
-$persistent_status (SUPER+SHIFT+ALT+P)
-─────────────────────
-🗑️  Delete Session
-⬅️  Back"
+  case $(menu "Session" "  Save\n  Restore\n  List\n  Slots\n$persistent_status\n  Delete") in
+  *Save*) omarchy-session-save ;;
+  *Restore*) omarchy-session-restore ;;
+  *List*) omarchy-session-list ;;
+  *Slots*) show_session_slots_menu ;;
+  *Persistent*) omarchy-session-persistent-toggle && show_session_menu ;;
+  *Delete*) omarchy-session-delete --interactive && show_session_menu ;;
+  *) show_main_menu ;;
+  esac
+}
 
-  local choice=$(menu "Session Management" "$options")
-  
-  case "$choice" in
-    "💾 Quick Save"*) omarchy-session-save --quick ;;
-    "📂 Quick Restore"*) omarchy-session-restore --last --quick ;;
-    "📋 List"*) omarchy-session-list ;;
-    "📁 Save As"*) omarchy-session-save ;;
-    "🔄 Restore Named"*) omarchy-session-restore ;;
-    "1️⃣"*) show_session_slot_menu 1 ;;
-    "2️⃣"*) show_session_slot_menu 2 ;;
-    "3️⃣"*) show_session_slot_menu 3 ;;
-    *"Persistent Mode"*) omarchy-session-persistent-toggle && show_session_menu ;;
-    "🗑️"*) omarchy-session-delete --interactive && show_session_menu ;;
-    "⬅️"*) back_to show_main_menu ;;
-    *) back_to show_main_menu ;;
+show_session_slots_menu() {
+  case $(menu "Session Slots" "  Slot 1\n  Slot 2\n  Slot 3") in
+  *"Slot 1"*) show_session_slot_menu 1 ;;
+  *"Slot 2"*) show_session_slot_menu 2 ;;
+  *"Slot 3"*) show_session_slot_menu 3 ;;
+  *) show_session_menu ;;
   esac
 }
 
 show_session_slot_menu() {
   local slot=$1
-  local options="💾 Save to Slot $slot
-📂 Restore from Slot $slot
-🗑️  Clear Slot $slot
-⬅️  Back"
-
-  local choice=$(menu "Slot $slot" "$options")
-  
-  case "$choice" in
-    "💾 Save"*) omarchy-session-save "slot-$slot" --quick && back_to show_session_menu ;;
-    "📂 Restore"*) omarchy-session-restore "slot-$slot" --quick ;;
-    "🗑️  Clear"*) omarchy-session-delete "slot-$slot" && back_to show_session_menu ;;
-    "⬅️"*) show_session_menu ;;
-    *) show_session_menu ;;
+  case $(menu "Slot $slot" "  Save\n  Restore\n  Clear") in
+  *Save*) omarchy-session-save "slot-$slot" --quick && back_to show_session_menu ;;
+  *Restore*) omarchy-session-restore "slot-$slot" --quick ;;
+  *Clear*) omarchy-session-delete "slot-$slot" && back_to show_session_menu ;;
+  *) show_session_slots_menu ;;
   esac
 }
 
 show_main_menu() {
-  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n󱓞  Trigger\n  Style\n📁 Session\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
+  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n󱓞  Trigger\n  Style\n  Session\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
 }
 
 go_to_menu() {

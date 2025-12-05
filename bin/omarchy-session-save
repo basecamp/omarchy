@@ -86,7 +86,7 @@ get_launch_command() {
       echo "omarchy-launch-or-focus obsidian \"uwsm-app -- obsidian --disable-gpu --enable-wayland-ime\""
       ;;
     Code|code|code-url-handler)
-      echo "omarchy-launch-editor"
+      echo "uwsm-app -- code"
       ;;
     cursor)
       echo "uwsm-app -- cursor"
