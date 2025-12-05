@@ -28,11 +28,9 @@ if [[ "$INTERACTIVE" == true ]] || [[ -z "$SESSION_NAME" ]]; then
     exit 0
   fi
   
-  # Build menu (exclude persistent)
   OPTIONS=""
   while IFS= read -r session_file; do
     name=$(basename "$session_file" .json)
-    [[ "$name" == "persistent" ]] && continue
     WINDOW_COUNT=$(jq -r '.windows | length' "$session_file" 2>/dev/null || echo "?")
     OPTIONS="${OPTIONS}${name} • ${WINDOW_COUNT} windows
 "
