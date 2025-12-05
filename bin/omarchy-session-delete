@@ -55,9 +55,12 @@ if [[ ! -f "$SESSION_FILE" ]]; then
   exit 1
 fi
 
-# Confirm deletion
-if command -v gum &>/dev/null; then
-  gum confirm "Delete session '$SESSION_NAME'?" || exit 0
+# Confirm deletion when in interactive mode
+if [[ "$INTERACTIVE" == true ]]; then
+  CONFIRM=$(echo -e "Yes\nNo" | omarchy-launch-walker --dmenu -p "Delete session '$SESSION_NAME'?" 2>/dev/null)
+  if [[ "$CONFIRM" != "Yes" ]]; then
+    exit 0
+  fi
 fi
 
 rm -f "$SESSION_FILE"
