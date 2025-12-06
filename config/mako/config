@@ -1,0 +1,5 @@
+include ~/.config/omarchy/current/theme/mako.ini
+
+## Add custom Mako configurations below here
+#border-size=4
+#border-radius=5
