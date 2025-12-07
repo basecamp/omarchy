@@ -5,13 +5,20 @@ if command -v limine &>/dev/null; then
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
 
-  [[ -f /boot/EFI/limine/limine.conf ]] || [[ -f /boot/EFI/BOOT/limine.conf ]] && EFI=true
+  # Detect Limine config in EFI setups (USB, default, or new archinstall path)
+  if [[ -f /boot/EFI/BOOT/limine.conf ]] || \
+    [[ -f /boot/EFI/limine/limine.conf ]] || \
+    [[ -f /boot/EFI/arch-limine/limine.conf ]]; then
+    EFI=true
+  fi
 
   # Conf location is different between EFI and BIOS
   if [[ -n "$EFI" ]]; then
-    # Check USB location first, then regular EFI location
+    # Check USB location first, then arch-limine, then default EFI location
     if [[ -f /boot/EFI/BOOT/limine.conf ]]; then
       limine_config="/boot/EFI/BOOT/limine.conf"
+    elif [[ -f /boot/EFI/arch-limine/limine.conf ]]; then
+      limine_config="/boot/EFI/arch-limine/limine.conf"
     else
       limine_config="/boot/EFI/limine/limine.conf"
     fi
