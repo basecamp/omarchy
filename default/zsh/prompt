@@ -1,0 +1,8 @@
+# Technicolor dreams
+force_color_prompt=yes
+color_prompt=yes
+
+# Simple prompt with path in the window/pane title and caret for typing line
+PROMPT=$'\uf0a9 '
+precmd() { print -Pn "\e]0;%~\a"; }
+

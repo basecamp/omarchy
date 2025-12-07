@@ -1,0 +1,20 @@
+# History control
+setopt APPEND_HISTORY
+setopt HIST_IGNORE_DUPS
+setopt HIST_IGNORE_SPACE
+setopt SHARE_HISTORY
+HISTSIZE=32768
+SAVEHIST=32768
+HISTFILE=~/.zsh_history
+
+# Autocompletion
+autoload -Uz compinit
+compinit
+
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+zstyle ':completion:*' menu select
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+
+# Ensure command hashing is off for mise
+setopt NO_HASH_CMDS
+

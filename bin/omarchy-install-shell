@@ -1,0 +1,35 @@
+#!/bin/bash
+
+if (($# == 0)); then
+  echo "Usage: omarchy-install-shell [bash|zsh]"
+  exit 1
+fi
+
+shell="$1"
+
+case "$shell" in
+  bash)
+    rc_file="bashrc"
+    ;;
+  zsh)
+    rc_file="zshrc"
+    ;;
+  *)
+    echo "Unknown shell: $shell"
+    exit 1
+    ;;
+esac
+
+# Install package (zsh needs installing, bash is always present)
+if [ "$shell" = "zsh" ]; then
+  if ! omarchy-pkg-add zsh; then
+    echo "Failed to install $shell"
+    exit 1
+  fi
+fi
+
+# Copy shell config
+echo "Setting up $shell configuration..."
+cp ~/.local/share/omarchy/default/$rc_file ~/.$rc_file
+
+echo "$shell configuration installed."

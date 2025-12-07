@@ -1,0 +1,44 @@
+#!/bin/bash
+
+if (($# == 0)); then
+  echo "Usage: omarchy-shell-set [bash|zsh]"
+  exit 1
+fi
+
+shell="$1"
+shell_path="/bin/$shell"
+
+# Validate shell exists
+if [[ ! -x "$shell_path" ]]; then
+  echo "Shell not found: $shell_path"
+  echo "Run 'omarchy-install-shell $shell' first."
+  exit 1
+fi
+
+# Check if already using this shell
+if [[ "$SHELL" == "$shell_path" ]]; then
+  echo "Already using $shell as default shell."
+  exit 0
+fi
+
+gum style --border normal --border-foreground 6 --padding "1 2" \
+  "Change default shell to $shell?" \
+  "" \
+  "• Your password will be required" \
+  "• You'll need to log out for the change to take effect"
+
+if ! gum confirm "Continue?"; then
+  echo "Cancelled"
+  exit 0
+fi
+
+# chsh prompts for password automatically
+if chsh -s "$shell_path"; then
+  echo ""
+  if gum confirm "Shell changed to $shell. Log out now to apply?"; then
+    hyprctl dispatch exit
+  fi
+else
+  echo "Failed to change shell."
+  exit 1
+fi

@@ -65,6 +65,10 @@ install_terminal() {
   present_terminal "omarchy-install-terminal $1"
 }
 
+install_shell() {
+  present_terminal "omarchy-install-shell $1"
+}
+
 aur_install() {
   present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2"
 }
@@ -175,7 +179,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
+  options="$options\n  Defaults\n󱆃  Shell\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
   *Audio*) xdg-terminal-exec --app-id=com.omarchy.Wiremix -e wiremix ;;
@@ -192,6 +196,7 @@ show_setup_menu() {
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
   *Defaults*) open_in_editor ~/.config/uwsm/default ;;
+  *Shell*) show_setup_shell_menu ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
@@ -209,6 +214,14 @@ show_setup_power_menu() {
   fi
 }
 
+
+show_setup_shell_menu() {
+  case $(menu "Shell" "bash\nzsh") in
+  *bash*) present_terminal "omarchy-shell-set bash" ;;
+  *zsh*) present_terminal "omarchy-shell-set zsh" ;;
+  *) show_setup_menu ;;
+  esac
+}
 show_setup_config_menu() {
   case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
   *Hyprland*) open_in_editor ~/.config/hypr/hyprland.conf ;;
@@ -232,7 +245,7 @@ show_setup_security_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱆃  Shell\n󱚤  AI\n󰍲  Windows\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -242,6 +255,7 @@ show_install_menu() {
   *Development*) show_install_development_menu ;;
   *Editor*) show_install_editor_menu ;;
   *Terminal*) show_install_terminal_menu ;;
+  *Shell*) show_install_shell_menu ;;
   *AI*) show_install_ai_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm install" ;;
   *Gaming*) show_install_gaming_menu ;;
@@ -276,6 +290,14 @@ show_install_terminal_menu() {
   *Alacritty*) install_terminal "alacritty" ;;
   *Ghostty*) install_terminal "ghostty" ;;
   *Kitty*) install_terminal "kitty" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_shell_menu() {
+  case $(menu "Install" "bash\nzsh") in
+  *bash*) install_shell "bash" ;;
+  *zsh*) install_shell "zsh" ;;
   *) show_install_menu ;;
   esac
 }
