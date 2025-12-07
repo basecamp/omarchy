@@ -24,7 +24,7 @@ zstyle ':completion:*' menu select
 zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}" 'ma=30;45'
 
 # Set complete path
-export PATH="./bin:$HOME/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
 # Enable advanced globbing
 setopt EXTENDED_GLOB
