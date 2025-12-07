@@ -3515,7 +3515,7 @@ To stop: omarchy-windows-vm stop"
       echo "   Ctrl+C            - Close terminal (RDP/VM keep running)"
     fi
     echo ""
-    echo "   Manual connect: xfreerdp3 /u:$WIN_USER /p:yourPassword /v:127.0.0.1:3389 (requires running VM)"
+    echo "   Manual connect: xfreerdp3 /u:$WIN_USER /p:yourPassword /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /cert:ignore /dynamic-resolution /gfx:AVC444 (requires running VM)"
 
     # Connect with RDP (foreground mode)
     connect_rdp "$WIN_USER" "$WIN_PASS" false
