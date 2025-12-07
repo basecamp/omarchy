@@ -75,5 +75,5 @@ img2png() {
     -define png:compression-level=9 \
     -define png:compression-strategy=1 \
     -define png:exclude-chunk=all \
-    "${img%.*}-optimized.png"
+    "${img%.*}.png"
 }
