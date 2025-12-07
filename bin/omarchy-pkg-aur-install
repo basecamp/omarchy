@@ -12,9 +12,10 @@ fzf_args=(
   --bind 'alt-b:change-preview:yay -Gpa {1} | tail -n +5'
   --bind 'alt-B:change-preview:yay -Siia {1}'
   --color 'pointer:green,marker:green'
+  --bind "change:reload(yay -qSs {q})"
 )
 
-pkg_names=$(yay -Slqa | fzf "${fzf_args[@]}")
+pkg_names=$(yay -qSs | fzf "${fzf_args[@]}")
 
 if [[ -n "$pkg_names" ]]; then
   # Convert newline-separated selections to space-separated for yay
