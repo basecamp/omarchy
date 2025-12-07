@@ -55,10 +55,7 @@ transcode-video-4K() {
 
 # Transcode any image to JPG image that's great for shrinking wallpapers
 img2jpg() {
-  img="$1"
-  shift
-
-  magick "$img" $@ -quality 95 -strip ${img%.*}-optimized.jpg
+  magick "$1" -quality 95 -strip "${1%.*}.jpg"
 }
 
 # Transcode any image to JPG image that's great for sharing online without being too big
