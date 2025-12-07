@@ -63,7 +63,7 @@ img2jpg-small() {
   img="$1"
   shift
 
-  magick "$img" $@ -resize 1080x\> -quality 95 -strip ${img%.*}-optimized.jpg
+  magick "$img" $@ -resize 1080x\> -quality 95 -strip ${img%.*}.jpg
 }
 
 # Transcode any image to compressed-but-lossless PNG
