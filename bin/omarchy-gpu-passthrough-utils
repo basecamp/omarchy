@@ -493,6 +493,7 @@ classify_gpu() {
   local name="$1"
   local vendor_id="$2"
 
+  # Intel integrated GPUs
   if [[ "$vendor_id" == "8086" ]]; then
     if echo "$name" | grep -qiE "UHD|HD Graphics [0-9]{3,4}$|Iris"; then
       echo "integrated"
@@ -500,8 +501,9 @@ classify_gpu() {
     fi
   fi
 
+  # AMD integrated GPUs (APUs)
   if [[ "$vendor_id" == "1002" ]]; then
-    if echo "$name" | grep -qiE "[0-9]+M$|Vega.*iGPU|Phoenix|Rembrandt|Cezanne|Renoir"; then
+    if echo "$name" | grep -qiE "Radeon [0-9]+M|Vega.*iGPU|Phoenix|Rembrandt|Cezanne|Renoir|Strix"; then
       echo "integrated"
       return
     fi
@@ -856,39 +858,51 @@ is_bootloader_supported() {
   [[ "$id" == "limine" || "$id" == "grub" ]]
 }
 
-# Sets IS_MUXLESS_LAPTOP and DGPU_HAS_EXTERNAL_MONITOR globals
 detect_hybrid_graphics_laptop() {
-  local has_igpu=false
-  local has_dgpu=false
-  local igpu_has_edp=false
-  local dgpu_has_edp=false
-  local dgpu_has_external=false
+  IS_MUXLESS_LAPTOP=false
+  DGPU_HAS_EXTERNAL_MONITOR=false
+  IGPU_PCI=""
+  DGPU_PCI=""
+
+  local dgpu_count=0
 
   for i in "${!GPU_PCI_ADDR[@]}"; do
     local pci="${GPU_PCI_ADDR[$i]}"
-    local type="${GPU_TYPE[$i]}"
     local drm_card=$(get_drm_card_for_pci "$pci")
 
-    [[ -z "$drm_card" ]] && continue
+    # GPU without DRM card = driver not loaded (blacklisted/vfio-pci)
+    # This is a dGPU - iGPU always has driver loaded to display screen
+    if [[ -z "$drm_card" ]]; then
+      DGPU_PCI="$pci"
+      ((dgpu_count++))
+      continue
+    fi
 
-    if [[ "$type" == "integrated" ]]; then
-      has_igpu=true
-      for connector in /sys/class/drm/${drm_card}-eDP-*/status; do
-        if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
-          igpu_has_edp=true
-        fi
-      done
+    # Check for eDP connector (laptop internal display)
+    local has_edp=false
+    for connector in /sys/class/drm/${drm_card}-eDP-*/status; do
+      if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
+        has_edp=true
+        break
+      fi
+    done
+
+    if [[ "$has_edp" == "true" ]]; then
+      # GPU with eDP = iGPU (drives laptop internal screen)
+      IGPU_PCI="$pci"
+      if [[ "${GPU_TYPE[$i]}" != "integrated" ]]; then
+        GPU_TYPE[$i]="integrated"
+      fi
     else
-      has_dgpu=true
-      for connector in /sys/class/drm/${drm_card}-eDP-*/status; do
-        if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
-          dgpu_has_edp=true
-        fi
-      done
+      # GPU without eDP = dGPU
+      DGPU_PCI="$pci"
+      ((dgpu_count++))
+
+      # Check for external monitor on dGPU
       for connector_type in HDMI DP VGA; do
         for connector in /sys/class/drm/${drm_card}-${connector_type}*/status; do
           if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
-            dgpu_has_external=true
+            DGPU_HAS_EXTERNAL_MONITOR=true
             break 2
           fi
         done
@@ -896,16 +910,12 @@ detect_hybrid_graphics_laptop() {
     fi
   done
 
-  # MUX-less: iGPU has eDP (laptop screen), dGPU doesn't
-  if [[ "$has_igpu" == "true" && "$has_dgpu" == "true" &&
-        "$igpu_has_edp" == "true" && "$dgpu_has_edp" == "false" ]]; then
+  # MUX-less = has both iGPU (with eDP) and dGPU (without eDP or without DRM)
+  if [[ -n "$IGPU_PCI" && -n "$DGPU_PCI" ]]; then
     IS_MUXLESS_LAPTOP=true
-    DGPU_HAS_EXTERNAL_MONITOR="$dgpu_has_external"
     return 0
   fi
 
-  IS_MUXLESS_LAPTOP=false
-  DGPU_HAS_EXTERNAL_MONITOR="$dgpu_has_external"
   return 1
 }
 
