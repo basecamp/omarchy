@@ -1,0 +1,17 @@
+# Use emacs key bindings
+bindkey -e
+
+# History search with arrow keys
+autoload -U up-line-or-beginning-search
+autoload -U down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+bindkey "^[[A" up-line-or-beginning-search
+bindkey "^[[B" down-line-or-beginning-search
+
+# Better word movement
+bindkey "^[[1;5C" forward-word      # Ctrl+Right
+bindkey "^[[1;5D" backward-word     # Ctrl+Left
+
+# Delete word backwards
+bindkey "^H" backward-kill-word     # Ctrl+Backspace

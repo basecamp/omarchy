@@ -1,0 +1,11 @@
+# Since you're using Starship, this file can be minimal or empty
+# But if you want a fallback prompt when Starship isn't available:
+
+if ! command -v starship &> /dev/null; then
+  # Simple fallback prompt
+  PROMPT=$'\uf0a9 '
+  # Set window title to current directory
+  precmd() {
+    print -Pn "\e]0;%~\a"
+  }
+fi

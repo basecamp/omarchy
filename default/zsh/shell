@@ -1,0 +1,35 @@
+# History control
+setopt HIST_APPEND              # Append to history file
+setopt HIST_IGNORE_DUPS         # Don't record duplicate entries
+setopt HIST_IGNORE_SPACE        # Don't record entries starting with space
+setopt SHARE_HISTORY            # Share history between sessions
+setopt EXTENDED_HISTORY         # Record timestamp and duration
+setopt HIST_VERIFY              # Show command before executing from history
+
+# History size
+HISTSIZE=32768
+SAVEHIST=32768
+HISTFILE=~/.zsh_history
+
+# Autocompletion
+autoload -Uz compinit
+compinit
+
+# Case-insensitive completion
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+
+# Completion menu with selection highlight
+# 'ma=30;45' = black text (30) on magenta/mauve (45) - uses terminal palette for dynamic theming
+zstyle ':completion:*' menu select
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}" 'ma=30;45'
+
+# Set complete path
+export PATH="./bin:$HOME/.local/bin:$PATH"
+
+# Enable advanced globbing
+setopt EXTENDED_GLOB
+
+# Better directory navigation
+setopt AUTO_CD              # cd by typing directory name
+setopt AUTO_PUSHD           # Push directories to stack
+setopt PUSHD_IGNORE_DUPS    # Don't push duplicates
