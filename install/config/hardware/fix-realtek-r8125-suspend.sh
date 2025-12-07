@@ -22,4 +22,3 @@ done
 EOF
   sudo chmod +x /usr/lib/systemd/system-sleep/omarchy-r8125-resume.sh
 fi
-
