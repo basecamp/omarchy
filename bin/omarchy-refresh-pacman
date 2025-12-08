@@ -20,3 +20,6 @@ echo
 
 # Reset all package DBs and then update
 sudo pacman -Syyu --noconfirm
+
+# Offer a reboot if a new kernel was installed
+omarchy-update-restart
