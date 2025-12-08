@@ -49,6 +49,10 @@ open_in_editor() {
   omarchy-launch-editor "$1"
 }
 
+has_bluetooth() {
+  [ -d /sys/class/bluetooth ]
+}
+
 install() {
   present_terminal "echo 'Installing $1...'; sudo pacman -S --noconfirm $2"
 }
@@ -66,11 +70,11 @@ install_terminal() {
 }
 
 aur_install() {
-  present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2"
+  present_terminal "echo 'Installing $1 from AUR...'; omarchy-aur-install $2"
 }
 
 aur_install_and_launch() {
-  present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2 && setsid gtk-launch $3"
+  present_terminal "echo 'Installing $1 from AUR...'; omarchy-aur-install $2 && setsid gtk-launch $3"
 }
 
 show_learn_menu() {
@@ -167,14 +171,16 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
+  local options="  Audio\n󱚾  Wi-Fi"
+  has_bluetooth && options="$options\n󰂯  Bluetooth"
+  options="$options\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
   *Audio*) omarchy-launch-or-focus-tui wiremix ;;
-  *Wifi*) omarchy-launch-wifi ;;
+  *Wi-Fi*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
@@ -417,7 +423,9 @@ show_update_config_menu() {
 }
 
 show_update_hardware_menu() {
-  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth") in
+  local options="  Audio\n󱚾  Wi-Fi"
+  has_bluetooth && options="$options\n󰂯  Bluetooth"
+  case $(menu "Restart" "$options") in
   *Audio*) present_terminal omarchy-restart-pipewire ;;
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
@@ -434,10 +442,11 @@ show_update_password_menu() {
 }
 
 show_system_menu() {
-  case $(menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n󰜉  Restart\n󰐥  Shutdown") in
+  case $(menu "System" "  Lock\n󱄄  Screensaver\n󰤄  Suspend\n  Relaunch\n󰜉  Restart\n󰐥  Shutdown") in
   *Lock*) omarchy-lock-screen ;;
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Suspend*) systemctl suspend ;;
+  *Relaunch*) omarchy-cmd-relaunch ;;
   *Restart*) omarchy-cmd-reboot ;;
   *Shutdown*) omarchy-cmd-shutdown ;;
   *) back_to show_main_menu ;;

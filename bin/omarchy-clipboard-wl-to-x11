@@ -1,0 +1,5 @@
+#!/bin/bash
+# Original simple approach
+while true; do
+    wl-paste -n --watch xclip -selection clipboard -r -i 2>/dev/null || sleep 1
+done
