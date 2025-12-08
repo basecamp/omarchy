@@ -2,6 +2,13 @@
 
 set -e
 
+# Check if updates are disabled
+CONFIG_FILE="$HOME/.config/omarchy/updates.conf"
+if [[ -f "$CONFIG_FILE" ]] && [[ "$(cat "$CONFIG_FILE")" == "disabled" ]]; then
+  echo "Omarchy updates are disabled by user. Skipping git update."
+  exit 0
+fi
+
 echo -e "\e[32mUpdate Omarchy\e[0m"
 
 git -C $OMARCHY_PATH pull --autostash

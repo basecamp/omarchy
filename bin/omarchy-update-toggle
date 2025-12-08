@@ -1,0 +1,20 @@
+#!/bin/bash
+
+CONFIG_FILE="$HOME/.config/omarchy/updates.conf"
+mkdir -p "$(dirname "$CONFIG_FILE")"
+
+if [[ "$1" == "on" ]]; then
+    echo "enabled" > "$CONFIG_FILE"
+    echo "Omarchy updates enabled."
+elif [[ "$1" == "off" ]]; then
+    echo "disabled" > "$CONFIG_FILE"
+    echo "Omarchy updates disabled."
+else
+    if [[ -f "$CONFIG_FILE" ]]; then
+        STATUS=$(cat "$CONFIG_FILE")
+    else
+        STATUS="enabled"
+    fi
+    echo "Omarchy updates are currently: $STATUS"
+    echo "Usage: omarchy-update-toggle [on|off]"
+fi

@@ -2,6 +2,13 @@
 
 set -e
 
+# Check if updates are disabled
+CONFIG_FILE="$HOME/.config/omarchy/updates.conf"
+if [[ -f "$CONFIG_FILE" ]] && [[ "$(cat "$CONFIG_FILE")" == "disabled" ]]; then
+  echo "Omarchy updates are disabled by user. Skipping update performance."
+  exit 0
+fi
+
 omarchy-update-time
 omarchy-update-keyring
 omarchy-update-available-reset
