@@ -2,22 +2,58 @@
 
 # Designed to be run by systemd timer every 30 seconds and alerts if battery is low
 
-BATTERY_THRESHOLD=10
-NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
-BATTERY_LEVEL=$(omarchy-battery-remaining)
-BATTERY_STATE=$(upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}')
+CRIT_BATTERY_THRESHOLD=10
+WARN_BATTERY_THRESHOLD=20
+
+CRIT_NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified_crit"
+WARN_NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified_warn"
+
+BATTERY_PATH=$(upower -e | grep 'BAT' | head -n 1)
+BATTERY_INFO=$(upower -i "$BATTERY_PATH")
+
+BATTERY_STATE=$(echo "$BATTERY_INFO" | grep "state" | awk '{print $2}')
+BATTERY_LEVEL=$(echo "$BATTERY_INFO" | grep "percentage" | awk '{print $2}' | tr -d '%')
+#BATTERY_LEVEL=$(echo "$BATTERY_INFO" | grep "percentage" \
+#  | awk -F: '/percentage/ {
+#    gsub(/[%[:space:]]/, "", $2);
+#    val=$2;
+#    printf("%d\n", (val+0.5))
+#    exit
+#    }'
+#  )
 
 send_notification() {
-  notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
+  local level=$1
+  local title=$2
+  local msg=$3
+  local urgency=$4
+
+  notify-send -u "$urgency" -a "System Power" "$title" "$msg" -i battery-caution -t 50000
 }
 
+
 if [[ -n "$BATTERY_LEVEL" && "$BATTERY_LEVEL" =~ ^[0-9]+$ ]]; then
-  if [[ $BATTERY_STATE == "discharging" && $BATTERY_LEVEL -le $BATTERY_THRESHOLD ]]; then
-    if [[ ! -f $NOTIFICATION_FLAG ]]; then
-      send_notification $BATTERY_LEVEL
-      touch $NOTIFICATION_FLAG
+
+  if [[ $BATTERY_STATE == "discharging" ]]; then
+
+    if [[ "$BATTERY_LEVEL" -le "$CRIT_BATTERY_THRESHOLD" ]]; then
+      if [[ ! -f "$CRIT_NOTIFICATION_FLAG" ]]; then
+        send_notification "$BATTERY_LEVEL" " 🔴 Critical Battery" "Battery is critical (${BATTERY_LEVEL}%)" "critical"
+        touch "$CRIT_NOTIFICATION_FLAG"
+        # Also creates WARN flag to prevent duplicate flags
+        touch "$WARN_NOTIFICATION_FLAG"
+      fi
+
+    elif [[ "$BATTERY_LEVEL" -le "$WARN_BATTERY_THRESHOLD" ]] then
+      if [[ ! -f "$WARN_NOTIFICATION_FLAG" ]]; then
+        send_notification "$BATTERY_LEVEL" " 🟠 Low Battery" "Battery is Low (${BATTERY_LEVEL}%)" "critical"
+        touch "$WARN_NOTIFICATION_FLAG"
+      fi
     fi
+  # Remove notified flags when plugged in
   else
-    rm -f $NOTIFICATION_FLAG
+    if [[ -f "$WARN_NOTIFICATION_FLAG" || -f "$CRIT_NOTIFICATION_FLAG" ]]; then
+      rm -f "$WARN_NOTIFICATION_FLAG" "$CRIT_NOTIFICATION_FLAG"
+    fi
   fi
 fi
