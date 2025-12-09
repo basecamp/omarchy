@@ -84,16 +84,17 @@ verify_kernel_config() {
   local has_iommu_pt=false
   local has_vfio_ids=false
 
-  echo "$cmdline" | grep -qE "amd_iommu=on|intel_iommu=on" && has_iommu_param=true
-  echo "$cmdline" | grep -q "iommu=pt" && has_iommu_pt=true
-  echo "$cmdline" | grep -q "vfio-pci.ids=" && has_vfio_ids=true
+  [[ "$cmdline" =~ (amd_iommu|intel_iommu)=on ]] && has_iommu_param=true
+  [[ "$cmdline" =~ iommu=pt ]] && has_iommu_pt=true
+  [[ "$cmdline" =~ vfio-pci\.ids= ]] && has_vfio_ids=true
 
   if [[ "$has_iommu_param" == "true" ]]; then
     local kernel_status="IOMMU parameter ✓"
     [[ "$has_iommu_pt" == "true" ]] && kernel_status+=", iommu=pt ✓"
 
     if [[ "$has_vfio_ids" == "true" ]]; then
-      local vfio_ids=$(echo "$cmdline" | grep -oP 'vfio-pci\.ids=\S+' | cut -d= -f2)
+      local vfio_ids=""
+      [[ "$cmdline" =~ vfio-pci\.ids=([^[:space:]]+) ]] && vfio_ids="${BASH_REMATCH[1]}"
       kernel_status+=", vfio-pci.ids=$vfio_ids (static)"
     else
       kernel_status+=", dynamic binding"
@@ -115,8 +116,9 @@ verify_kernel_config() {
     case "$bootloader" in
       limine)
         echo "  Limine config ($LIMINE_DEFAULT):"
-        local limine_params=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null)
-        if echo "$limine_params" | grep -qE "amd_iommu=on|intel_iommu=on"; then
+        local limine_params
+        limine_params=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null) || limine_params=""
+        if [[ "$limine_params" =~ (amd_iommu|intel_iommu)=on ]]; then
           msg_success "    IOMMU parameters present"
         else
           msg_warning "    IOMMU parameters NOT in config - run setup to reconfigure"
@@ -124,8 +126,10 @@ verify_kernel_config() {
         ;;
       grub)
         echo "  GRUB config ($GRUB_DEFAULT):"
-        local grub_params=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" 2>/dev/null | cut -d'"' -f2)
-        if echo "$grub_params" | grep -qE "amd_iommu=on|intel_iommu=on"; then
+        local grub_line grub_params=""
+        grub_line=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" 2>/dev/null) || grub_line=""
+        [[ "$grub_line" =~ ^GRUB_CMDLINE_LINUX_DEFAULT=\"([^\"]*)\" ]] && grub_params="${BASH_REMATCH[1]}"
+        if [[ "$grub_params" =~ (amd_iommu|intel_iommu)=on ]]; then
           msg_success "    IOMMU parameters present"
         else
           msg_warning "    IOMMU parameters NOT in config - run setup to reconfigure"
@@ -298,7 +302,8 @@ verify_setup() {
   verify_hardware_requirements "$quiet" "$is_configured"
   ((total_errors += $?))
 
-  local cmdline=$(cat /proc/cmdline)
+  local cmdline=""
+  [[ -r /proc/cmdline ]] && cmdline=$(<"/proc/cmdline")
   verify_kernel_config "$quiet" "$is_configured" "$cmdline"
   ((total_errors += $?))
 
@@ -569,7 +574,8 @@ cmd_diagnose() {
           if [[ -f "$connector" ]]; then
             found_connectors=true
             local connector_name=$(basename "$(dirname "$connector")")
-            local connector_status=$(cat "$connector" 2>/dev/null)
+            local connector_status=""
+            [[ -r "$connector" ]] && connector_status=$(<"$connector")
             echo "  $connector_name: $connector_status"
           fi
         done
@@ -684,7 +690,8 @@ cmd_diagnose() {
     echo "[NVIDIA Driver]"
     echo '```'
     if is_module_loaded nvidia; then
-      local nvidia_version=$(cat /proc/driver/nvidia/version 2>/dev/null | head -1)
+      local nvidia_version=""
+      [[ -r /proc/driver/nvidia/version ]] && nvidia_version=$(head -1 /proc/driver/nvidia/version 2>/dev/null)
       if [[ -n "$nvidia_version" ]]; then
         echo "$nvidia_version"
       elif command -v nvidia-smi &>/dev/null; then
@@ -911,8 +918,9 @@ cmd_diagnose() {
               echo "USB Controller: $dev_addr_short"
               lspci -nnk -s "$dev_addr_short" 2>/dev/null | sed 's/^/  /'
               local override_file="/sys/bus/pci/devices/${dev_addr}/driver_override"
-              if [[ -f "$override_file" ]]; then
-                local override_value=$(cat "$override_file" 2>/dev/null)
+              if [[ -r "$override_file" ]]; then
+                local override_value=""
+                override_value=$(<"$override_file") 2>/dev/null
                 if [[ -n "$override_value" ]]; then
                   echo "  driver_override: $override_value"
                 else
@@ -957,10 +965,11 @@ cmd_diagnose() {
     echo "[NVIDIA GPU Processes]"
     echo '```'
     if command -v nvidia-smi &>/dev/null; then
-      local nvidia_output=$(nvidia-smi --query-compute-apps=pid,name,used_memory --format=csv 2>&1)
-      if echo "$nvidia_output" | grep -q "Failed to initialize NVML"; then
+      local nvidia_output
+      nvidia_output=$(nvidia-smi --query-compute-apps=pid,name,used_memory --format=csv 2>&1) || nvidia_output=""
+      if [[ "$nvidia_output" =~ Failed\ to\ initialize\ NVML ]]; then
         echo "nvidia-smi unavailable (GPU likely bound to vfio-pci)"
-      elif [[ -z "$nvidia_output" ]] || echo "$nvidia_output" | grep -q "No running"; then
+      elif [[ -z "$nvidia_output" ]] || [[ "$nvidia_output" =~ No\ running ]]; then
         echo "No active processes"
       else
         echo "$nvidia_output"
@@ -1346,8 +1355,9 @@ cmd_hardware_report() {
   fi
 
   local omarchy_ver=""
-  if [[ -n "${OMARCHY_PATH:-}" ]] && [[ -f "${OMARCHY_PATH}/version" ]]; then
-    omarchy_ver=$(cat "${OMARCHY_PATH}/version" 2>/dev/null | head -1 | tr -d '[:space:]')
+  if [[ -n "${OMARCHY_PATH:-}" ]] && [[ -r "${OMARCHY_PATH}/version" ]]; then
+    omarchy_ver=$(head -1 "${OMARCHY_PATH}/version" 2>/dev/null)
+    omarchy_ver="${omarchy_ver//[[:space:]]/}"
   elif command -v omarchy-version &>/dev/null; then
     omarchy_ver=$(omarchy-version 2>/dev/null | head -1 | tr -d '[:space:]')
   fi
@@ -1617,7 +1627,8 @@ cmd_hardware_report() {
 
   # IOMMU status
   if check_iommu_support 2>/dev/null; then
-    local cmdline="$(cat /proc/cmdline 2>/dev/null)"
+    local cmdline=""
+    [[ -r /proc/cmdline ]] && cmdline=$(<"/proc/cmdline")
     if [[ "$cmdline" =~ iommu=pt ]]; then
       echo "  IOMMU: Active (passthrough mode)"
     else
@@ -1649,10 +1660,12 @@ cmd_hardware_report() {
         local dev_addr="${dev_addr_full#0000:}"
         [[ "$dev_addr" == "$GPU_PCI_ADDR" ]] && continue
 
-        local dev_desc=$(lspci -s "$dev_addr" 2>/dev/null | cut -d: -f3- | xargs)
+        local dev_desc
+        dev_desc=$(lspci -s "$dev_addr" 2>/dev/null) || dev_desc=""
+        dev_desc="${dev_desc#*: }"; dev_desc="${dev_desc#*: }"  # Remove PCI addr and class
         local dev_driver=$(get_pci_driver "$dev_addr")
 
-        if echo "$dev_desc" | grep -qi "audio"; then
+        if [[ "${dev_desc,,}" =~ audio ]]; then
           echo "    ${dev_desc%% *} Audio → ${dev_driver:-none}"
         fi
       done
@@ -1721,14 +1734,16 @@ cmd_hardware_report() {
   echo "DRIVERS"
 
   local loaded_modules
-  loaded_modules=$(lsmod 2>/dev/null)
+  loaded_modules=$(lsmod 2>/dev/null) || loaded_modules=""
   local has_driver_info=false
 
-  if echo "$loaded_modules" | grep -q "^nvidia "; then
+  if [[ "$loaded_modules" =~ ^nvidia\  ]] || [[ "$loaded_modules" =~ $'\n'nvidia\  ]]; then
     has_driver_info=true
     local nvidia_version=""
-    if [[ -f /proc/driver/nvidia/version ]]; then
-      nvidia_version=$(grep -oP 'Kernel Module\s+\K[0-9.]+' /proc/driver/nvidia/version 2>/dev/null | head -1)
+    if [[ -r /proc/driver/nvidia/version ]]; then
+      local nv_ver_line
+      nv_ver_line=$(<"/proc/driver/nvidia/version")
+      [[ "$nv_ver_line" =~ Kernel\ Module[[:space:]]+([0-9.]+) ]] && nvidia_version="${BASH_REMATCH[1]}"
     fi
     if [[ -z "$nvidia_version" ]] && command -v nvidia-smi &>/dev/null; then
       nvidia_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)
@@ -1736,21 +1751,23 @@ cmd_hardware_report() {
     echo "  NVIDIA: ${nvidia_version:-loaded}"
   fi
 
-  if echo "$loaded_modules" | grep -q "^amdgpu "; then
+  if [[ "$loaded_modules" =~ ^amdgpu\  ]] || [[ "$loaded_modules" =~ $'\n'amdgpu\  ]]; then
     has_driver_info=true
     local mesa_version=""
     if command -v glxinfo &>/dev/null; then
-      mesa_version=$(glxinfo 2>/dev/null | grep "OpenGL version" | grep -oP 'Mesa \K[0-9.]+')
+      local glx_ver
+      glx_ver=$(glxinfo 2>/dev/null | grep "OpenGL version") || glx_ver=""
+      [[ "$glx_ver" =~ Mesa\ ([0-9.]+) ]] && mesa_version="${BASH_REMATCH[1]}"
     fi
     echo "  AMD/Mesa: ${mesa_version:-loaded}"
   fi
 
-  if echo "$loaded_modules" | grep -q "^i915 "; then
+  if [[ "$loaded_modules" =~ ^i915\  ]] || [[ "$loaded_modules" =~ $'\n'i915\  ]]; then
     has_driver_info=true
     echo "  Intel i915: loaded"
   fi
 
-  if echo "$loaded_modules" | grep -q "^vfio_pci "; then
+  if [[ "$loaded_modules" =~ ^vfio_pci\  ]] || [[ "$loaded_modules" =~ $'\n'vfio_pci\  ]]; then
     has_driver_info=true
     echo "  VFIO: kernel $(uname -r)"
   fi

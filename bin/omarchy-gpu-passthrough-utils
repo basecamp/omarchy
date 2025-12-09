@@ -49,6 +49,10 @@ normalize_pci_addr() {
   local pci_addr="$1"
   [[ -z "$pci_addr" ]] && return 1
   [[ ! "$pci_addr" =~ ^[0-9a-fA-F]{4}: ]] && pci_addr="0000:${pci_addr}"
+  if [[ ! "$pci_addr" =~ ^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$ ]]; then
+    return 1
+  fi
+
   echo "$pci_addr"
 }
 
@@ -142,7 +146,7 @@ detect_gpu_mode_from_driver() {
   vfio-pci)
     echo "vm"
     ;;
-  nvidia | amdgpu | i915)
+  nvidia | nvidia_drm | amdgpu | i915)
     echo "host"
     ;;
   "")
@@ -283,26 +287,29 @@ check_cpu_iommu_capability() {
 
 detect_virtualization() {
   IS_VIRTUAL_MACHINE=false
+  VIRTUALIZATION_TYPE=""
 
   if command -v systemd-detect-virt &>/dev/null; then
-    local virt_type=$(systemd-detect-virt 2>/dev/null)
-    if [[ "$virt_type" != "none" && -n "$virt_type" ]]; then
+    local virt_type
+    virt_type=$(systemd-detect-virt 2>/dev/null) || virt_type=""
+    if [[ -n "$virt_type" && "$virt_type" != "none" ]]; then
       IS_VIRTUAL_MACHINE=true
       VIRTUALIZATION_TYPE="$virt_type"
       return 1
     fi
   fi
 
-  if [[ -f /sys/class/dmi/id/product_name ]]; then
-    local product=$(cat /sys/class/dmi/id/product_name 2>/dev/null)
-    if echo "$product" | grep -qiE "virtual|vmware|qemu|kvm|xen|bochs|parallels"; then
+  if [[ -r /sys/class/dmi/id/product_name ]]; then
+    local product
+    product=$(<"/sys/class/dmi/id/product_name") 2>/dev/null || product=""
+    if [[ "$product" =~ [Vv]irtual|[Vv][Mm]ware|[Qq][Ee][Mm][Uu]|[Kk][Vv][Mm]|[Xx]en|[Bb]ochs|[Pp]arallels ]]; then
       IS_VIRTUAL_MACHINE=true
-      VIRTUALIZATION_TYPE="${product}"
+      VIRTUALIZATION_TYPE="$product"
       return 1
     fi
   fi
 
-  if grep -q "^flags.*hypervisor" /proc/cpuinfo 2>/dev/null; then
+  if [[ -r /proc/cpuinfo ]] && grep -q "^flags.*hypervisor" /proc/cpuinfo; then
     IS_VIRTUAL_MACHINE=true
     VIRTUALIZATION_TYPE="unknown hypervisor"
     return 1
@@ -383,7 +390,7 @@ save_gpu_config() {
     # DRM card exists - can detect connectors directly
     for connector_type in HDMI DP VGA; do
       for connector in /sys/class/drm/${drm_card_passthrough}-${connector_type}*/status; do
-        if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
+        if [[ -f "$connector" ]] && grep -qx "connected" "$connector" 2>/dev/null; then
           dgpu_has_external="true"
           log_info "External monitor detected on passthrough GPU ($connector_type)"
           break 2
@@ -402,6 +409,11 @@ save_gpu_config() {
     fi
   fi
 
+  local hybrid_mode="false"
+  if [[ "${HYBRID_MUXLESS_MODE:-false}" == "true" ]]; then
+    hybrid_mode="true"
+  fi
+
   sudo tee "$GPU_PASSTHROUGH_CONF" >/dev/null <<EOF
 # GPU Passthrough Config - Generated $(date +%Y-%m-%d)
 GPU_PCI_ADDR="$pci"
@@ -414,6 +426,7 @@ GPU_AUDIO_IDS="$audio_id"
 GPU_IOMMU_GROUP="$iommu_group"
 GPU_IOMMU_DEVICES="$iommu_devices"
 DGPU_HAS_EXTERNAL_MONITOR="$dgpu_has_external"
+HYBRID_MUXLESS_MODE="$hybrid_mode"
 EOF
 
   msg_success "Config saved: $GPU_PASSTHROUGH_CONF"
@@ -441,7 +454,7 @@ detect_gpus() {
       continue
     fi
 
-    local pci_addr=$(echo "$line" | awk '{print $1}')
+    local pci_addr="${line%% *}"
     if [[ -z "$pci_addr" ]]; then
       continue
     fi
@@ -456,15 +469,17 @@ detect_gpus() {
       continue
     fi
 
-    local ids=$(echo "$line" | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1)
-    if [[ -z "$ids" ]]; then
+    local vendor_id="" device_id=""
+    if [[ "$line" =~ \[([0-9a-f]{4}):([0-9a-f]{4})\][^[]*$ ]]; then
+      vendor_id="${BASH_REMATCH[1]}"
+      device_id="${BASH_REMATCH[2]}"
+    else
       continue
     fi
 
-    local vendor_id="${ids%%:*}"
-    local device_id="${ids##*:}"
-
-    local name=$(echo "$line" | sed -E 's/^[^]]*\]: //' | sed -E 's/ \[[0-9a-f]{4}:[0-9a-f]{4}\].*//' | sed 's/[[:space:]]*$//')
+    local name="${line#*]: }"
+    name="${name% \[[0-9a-f][0-9a-f][0-9a-f][0-9a-f]:[0-9a-f][0-9a-f][0-9a-f][0-9a-f]\]*}"
+    name="${name%"${name##*[![:space:]]}"}"
 
     local driver=$(get_pci_driver "$pci_addr")
     [[ -z "$driver" ]] && driver="none"
@@ -492,10 +507,11 @@ detect_gpus() {
 classify_gpu() {
   local name="$1"
   local vendor_id="$2"
+  local name_lower="${name,,}"
 
   # Intel integrated GPUs
   if [[ "$vendor_id" == "8086" ]]; then
-    if echo "$name" | grep -qiE "UHD|HD Graphics [0-9]{3,4}$|Iris"; then
+    if [[ "$name_lower" =~ uhd|hd\ graphics\ [0-9]{3,4}$|iris|intel\ graphics|meteor\ lake ]]; then
       echo "integrated"
       return
     fi
@@ -503,7 +519,7 @@ classify_gpu() {
 
   # AMD integrated GPUs (APUs)
   if [[ "$vendor_id" == "1002" ]]; then
-    if echo "$name" | grep -qiE "Radeon [0-9]+M|Vega.*iGPU|Phoenix|Rembrandt|Cezanne|Renoir|Strix"; then
+    if [[ "$name_lower" =~ radeon\ [0-9]+m|vega.*igpu|phoenix|rembrandt|cezanne|renoir|strix ]]; then
       echo "integrated"
       return
     fi
@@ -538,9 +554,17 @@ get_gpu_vram_mb() {
     local nvidia_vram
     nvidia_vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits \
       --id="$pci_normalized" 2>/dev/null | head -1)
-    if [[ -n "$nvidia_vram" && "$nvidia_vram" =~ ^[0-9]+$ ]]; then
-      echo "$nvidia_vram"
-      return
+    if [[ -n "$nvidia_vram" ]]; then
+      if [[ "$nvidia_vram" =~ ^([0-9]+)$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return
+      elif [[ "$nvidia_vram" =~ ^([0-9]+)\ GB$ ]]; then
+        echo $((${BASH_REMATCH[1]} * 1024))
+        return
+      elif [[ "$nvidia_vram" =~ ^([0-9]+)\ MiB$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return
+      fi
     fi
   fi
 
@@ -718,6 +742,11 @@ load_gpu_config() {
   export GPU_AUDIO_IDS
   export GPU_IOMMU_GROUP
   export GPU_IOMMU_DEVICES
+  export HYBRID_MUXLESS_MODE
+  export IGPU_PCI
+  export DGPU_PCI
+  export IS_MUXLESS_LAPTOP
+  export DGPU_HAS_EXTERNAL_MONITOR
 
   return 0
 }
@@ -770,8 +799,16 @@ get_drm_card_for_pci() {
   local pci_addr
   pci_addr=$(normalize_pci_addr "$1") || return 1
 
-  for card_dir in /sys/bus/pci/devices/${pci_addr}/drm/card[0-9]*; do
-    if [[ -d "$card_dir" ]] && [[ ! "$card_dir" =~ card[0-9]+-. ]]; then
+  [[ ! -d /sys/class/drm ]] && return 1
+
+  local device_path="/sys/bus/pci/devices/${pci_addr}"
+  [[ -e "$device_path" ]] || return 1
+
+  for card_dir in "${device_path}"/drm/card*; do
+    [[ "$card_dir" =~ -[A-Za-z] ]] && continue
+
+    [[ "$card_dir" == "/sys/bus/pci/devices/${pci_addr}/drm/card"* ]] || continue
+    if [[ -d "$card_dir" ]]; then
       basename "$card_dir"
       return 0
     fi
@@ -863,72 +900,167 @@ detect_hybrid_graphics_laptop() {
   DGPU_HAS_EXTERNAL_MONITOR=false
   IGPU_PCI=""
   DGPU_PCI=""
+  BIOS_DISPLAY_CONTROL_MISSING=false
 
-  local dgpu_count=0
+  if [[ ${#GPU_PCI_ADDR[@]} -eq 0 ]]; then
+    log_warn "No GPUs detected - cannot detect MUX-less laptop"
+    return 1
+  fi
+
+  CACHED_CHASSIS_TYPE=""
+  [[ -r /sys/class/dmi/id/chassis_type ]] && CACHED_CHASSIS_TYPE=$(<"/sys/class/dmi/id/chassis_type") 2>/dev/null
 
   for i in "${!GPU_PCI_ADDR[@]}"; do
     local pci="${GPU_PCI_ADDR[$i]}"
     local drm_card=$(get_drm_card_for_pci "$pci")
 
-    # GPU without DRM card = driver not loaded (blacklisted/vfio-pci)
-    # This is a dGPU - iGPU always has driver loaded to display screen
-    if [[ -z "$drm_card" ]]; then
-      DGPU_PCI="$pci"
-      ((dgpu_count++))
-      continue
-    fi
+    # Check for internal display connectors (eDP or internal DP)
+    local has_internal_display=false
+    if [[ -n "$drm_card" && -d /sys/class/drm ]]; then
+      # Check eDP first
+      for connector in /sys/class/drm/${drm_card}-eDP-*/status; do
+        if [[ -f "$connector" ]] && grep -qx "connected" "$connector" 2>/dev/null; then
+          has_internal_display=true
+          log_info "Found connected eDP for GPU $pci: $(basename "$(dirname "$connector")")"
+          break
+        fi
+      done
 
-    # Check for eDP connector (laptop internal display)
-    local has_edp=false
-    for connector in /sys/class/drm/${drm_card}-eDP-*/status; do
-      if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
-        has_edp=true
-        break
-      fi
-    done
+      # If no eDP, check for DP
+      if [[ "$has_internal_display" == "false" ]]; then
+        local dp_connectors=()
 
-    if [[ "$has_edp" == "true" ]]; then
-      # GPU with eDP = iGPU (drives laptop internal screen)
-      IGPU_PCI="$pci"
-      if [[ "${GPU_TYPE[$i]}" != "integrated" ]]; then
-        GPU_TYPE[$i]="integrated"
-      fi
-    else
-      # GPU without eDP = dGPU
-      DGPU_PCI="$pci"
-      ((dgpu_count++))
-
-      # Check for external monitor on dGPU
-      for connector_type in HDMI DP VGA; do
-        for connector in /sys/class/drm/${drm_card}-${connector_type}*/status; do
-          if [[ -f "$connector" ]] && grep -q "connected" "$connector" 2>/dev/null; then
-            DGPU_HAS_EXTERNAL_MONITOR=true
-            break 2
+        for connector in /sys/class/drm/${drm_card}-DP-*/status; do
+          if [[ -f "$connector" ]] && grep -qx "connected" "$connector" 2>/dev/null; then
+            local connector_name=$(basename "$(dirname "$connector")")
+            dp_connectors+=("$connector_name")
           fi
         done
-      done
+
+        if [[ ${#dp_connectors[@]} -gt 0 ]]; then
+          local system_has_edp=false
+          if compgen -G "/sys/class/drm/card*-eDP-*/status" > /dev/null 2>&1; then
+            system_has_edp=true
+          fi
+
+          if [[ "$system_has_edp" == "true" ]]; then
+            log_info "System has eDP, treating DP connectors as external for GPU $pci"
+          elif [[ ${#dp_connectors[@]} -eq 1 ]]; then
+            case "$CACHED_CHASSIS_TYPE" in
+              3|4|5|6|7)
+                log_info "Desktop chassis, treating DP-1 as external monitor"
+                ;;
+              8|9|10|14|15)
+                local single_dp="${dp_connectors[0]}"
+                if [[ "$single_dp" == *-DP-1 ]]; then
+                  has_internal_display=true
+                  log_info "Laptop with no eDP, single DP-1 likely internal: $single_dp"
+                fi
+                ;;
+              *)
+                log_info "Unknown chassis type $CACHED_CHASSIS_TYPE, treating DP as external"
+                ;;
+            esac
+          else
+            log_info "Multiple DPs without eDP, treating as external for GPU $pci"
+          fi
+        fi
+      fi
+    fi
+
+    if [[ "$has_internal_display" == "true" ]]; then
+      IGPU_PCI="$pci"
+      log_info "Detected iGPU with internal display: $pci"
+      if [[ "${GPU_TYPE[$i]:-}" != "integrated" ]]; then
+        GPU_TYPE[$i]="integrated"
+        log_info "Updated GPU $pci type to integrated"
+      fi
+    else
+      # GPU without internal display = dGPU
+      if [[ -z "$DGPU_PCI" ]]; then
+        DGPU_PCI="$pci"
+        if [[ -z "$drm_card" ]]; then
+          log_info "Detected dGPU without DRM (driver not loaded): $pci"
+        else
+          log_info "Detected dGPU with external ports only: $pci (DRM: $drm_card)"
+        fi
+      else
+        log_warn "Multiple dGPUs detected ($DGPU_PCI, $pci) - using first"
+      fi
+
+      # Check for external monitor on dGPU
+      if [[ -n "$drm_card" ]]; then
+        for connector_type in HDMI DP VGA; do
+          for connector in /sys/class/drm/${drm_card}-${connector_type}*/status; do
+            if [[ -f "$connector" ]] && grep -qx "connected" "$connector" 2>/dev/null; then
+              DGPU_HAS_EXTERNAL_MONITOR=true
+              log_info "External monitor detected on dGPU $pci: $(basename "$connector")"
+              break 2
+            fi
+          done
+        done
+      fi
     fi
   done
 
-  # MUX-less = has both iGPU (with eDP) and dGPU (without eDP or without DRM)
+  # MUX-less = has both iGPU (with internal display) and dGPU
   if [[ -n "$IGPU_PCI" && -n "$DGPU_PCI" ]]; then
-    IS_MUXLESS_LAPTOP=true
-    return 0
+    if validate_pci_address "$IGPU_PCI" && validate_pci_address "$DGPU_PCI"; then
+      IS_MUXLESS_LAPTOP=true
+      log_info "MUX-less laptop detected (iGPU: $IGPU_PCI, dGPU: $DGPU_PCI)"
+
+      if ! check_bios_display_control; then
+        BIOS_DISPLAY_CONTROL_MISSING=true
+        log_info "Note: System may lack BIOS display control - Hybrid Mode"
+      fi
+
+      return 0
+    else
+      log_warn "Invalid PCI addresses detected (iGPU: $IGPU_PCI, dGPU: $DGPU_PCI) - not MUX-less"
+      IGPU_PCI=""
+      DGPU_PCI=""
+      return 1
+    fi
+  fi
+
+  return 1
+}
+
+check_bios_display_control() {
+  local chassis="${CACHED_CHASSIS_TYPE:-}"
+  if [[ -z "$chassis" && -r /sys/class/dmi/id/chassis_type ]]; then
+    chassis=$(<"/sys/class/dmi/id/chassis_type") 2>/dev/null || chassis=""
+  fi
+
+  case "$chassis" in
+    3|4|5|6|7) return 0 ;;
+  esac
+
+  if [[ -d /sys/firmware/efi/efivars ]]; then
+    local patterns=(
+      "DisplayInit*" "PrimaryDisplay*" "InitDisplayFirst*"
+      "VBIOSDisplayInit*" "AMIBIOSCDisplayInit*" "SetupDisplayInit*"
+      "VBIOSPrimaryDisplay*" "AMIBIOSCPrimaryDisplay*" "SetupPrimaryDisplay*"
+    )
+    for pattern in "${patterns[@]}"; do
+      for file in /sys/firmware/efi/efivars/${pattern}; do
+        if [[ -f "$file" ]]; then
+          log_info "BIOS display control: ${file##*/}"
+          return 0
+        fi
+      done
+    done
   fi
 
   return 1
 }
 
 check_iommu_enabled_cmdline() {
-  local cmdline=$(cat /proc/cmdline 2>/dev/null)
+  local cmdline=""
+  [[ -r /proc/cmdline ]] && cmdline=$(<"/proc/cmdline")
 
-  if echo "$cmdline" | grep -qE "(intel_iommu|amd_iommu)=on"; then
-    return 0
-  fi
-
-  if journalctl -k -b 2>/dev/null | grep -q "Intel-IOMMU force enabled"; then
-    return 0
-  fi
+  [[ "$cmdline" =~ (intel_iommu|amd_iommu)=on ]] && return 0
+  journalctl -k -b 2>/dev/null | grep -q "Intel-IOMMU force enabled" && return 0
 
   return 1
 }

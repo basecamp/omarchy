@@ -185,9 +185,10 @@ configure_omarchy_limine() {
     sudo sed -i -E 's/[[:space:]]+/ /g' "$LIMINE_DEFAULT"
   fi
 
-  local all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" || true)
+  local all_cmdlines
+  all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null) || all_cmdlines=""
 
-  if echo "$all_cmdlines" | grep -qE "amd_iommu=off|intel_iommu=off"; then
+  if [[ "$all_cmdlines" =~ (amd_iommu|intel_iommu)=off ]]; then
     echo ""
     msg_error "Conflicting IOMMU parameter detected (iommu=off)"
     msg_info "Found IOMMU explicitly disabled in kernel parameters"
@@ -199,17 +200,17 @@ configure_omarchy_limine() {
 
   local params_to_add=""
 
-  if ! echo "$all_cmdlines" | grep -qE "amd_iommu=on|intel_iommu=on"; then
+  if ! [[ "$all_cmdlines" =~ (amd_iommu|intel_iommu)=on ]]; then
     params_to_add="$params_to_add $iommu_param"
   fi
 
-  if ! echo "$all_cmdlines" | grep -q "iommu=pt"; then
+  if ! [[ "$all_cmdlines" =~ iommu=pt ]]; then
     params_to_add="$params_to_add iommu=pt"
   fi
 
   # pci=realloc only for NVIDIA + ReBAR (can cause issues on some systems without it)
   if [[ -n "${GPU_VENDOR_ID:-}" ]] && [[ "${GPU_VENDOR_ID}" == "10de" || "${GPU_VENDOR_ID[0]:-}" == "10de" ]]; then
-    if ! echo "$all_cmdlines" | grep -q "pci=realloc"; then
+    if ! [[ "$all_cmdlines" =~ pci=realloc ]]; then
       local gpu_pci="${GPU_PCI_ADDR:-}"
       [[ -z "$gpu_pci" ]] && gpu_pci="${GPU_PCI_ADDR[0]:-}"
       if [[ -n "$gpu_pci" ]] && check_resizable_bar "$gpu_pci" 2>/dev/null; then
@@ -246,9 +247,11 @@ configure_grub_bootloader() {
   fi
   log_info "GRUB config backed up"
 
-  local current_cmdline=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" | cut -d'"' -f2)
+  local grub_line current_cmdline=""
+  grub_line=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" 2>/dev/null) || grub_line=""
+  [[ "$grub_line" =~ ^GRUB_CMDLINE_LINUX_DEFAULT=\"([^\"]*)\" ]] && current_cmdline="${BASH_REMATCH[1]}"
 
-  if echo "$current_cmdline" | grep -qE "amd_iommu=off|intel_iommu=off"; then
+  if [[ "$current_cmdline" =~ (amd_iommu|intel_iommu)=off ]]; then
     echo ""
     msg_error "Conflicting IOMMU parameter detected (iommu=off)"
     msg_info "Found IOMMU explicitly disabled in kernel parameters"
@@ -260,16 +263,16 @@ configure_grub_bootloader() {
 
   local params_to_add=""
 
-  if ! echo "$current_cmdline" | grep -qE "amd_iommu=on|intel_iommu=on"; then
+  if ! [[ "$current_cmdline" =~ (amd_iommu|intel_iommu)=on ]]; then
     params_to_add="$params_to_add $iommu_param"
   fi
 
-  if ! echo "$current_cmdline" | grep -q "iommu=pt"; then
+  if ! [[ "$current_cmdline" =~ iommu=pt ]]; then
     params_to_add="$params_to_add iommu=pt"
   fi
 
   if [[ -n "${GPU_VENDOR_ID:-}" ]] && [[ "${GPU_VENDOR_ID}" == "10de" || "${GPU_VENDOR_ID[0]:-}" == "10de" ]]; then
-    if ! echo "$current_cmdline" | grep -q "pci=realloc"; then
+    if ! [[ "$current_cmdline" =~ pci=realloc ]]; then
       local gpu_pci="${GPU_PCI_ADDR:-}"
       [[ -z "$gpu_pci" ]] && gpu_pci="${GPU_PCI_ADDR[0]:-}"
       if [[ -n "$gpu_pci" ]] && check_resizable_bar "$gpu_pci" 2>/dev/null; then
@@ -279,7 +282,7 @@ configure_grub_bootloader() {
   fi
 
   if [[ -n "$params_to_add" ]]; then
-    params_to_add=$(echo "$params_to_add" | sed 's/^ //')
+    params_to_add="${params_to_add# }"
     local new_cmdline="$current_cmdline $params_to_add"
     # Escape sed special chars in replacement: & (backreference) and \ (escape)
     local new_cmdline_escaped="${new_cmdline//\\/\\\\}"
@@ -348,34 +351,41 @@ configure_vfio_modules() {
   # For MUX-less laptops: add dGPU + audio to vfio-pci.ids to prevent driver load at boot
   local gpu_device_ids=""
   if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
-    # Validate that vendor_id and device_id were passed (system boundary input)
-    if [[ -z "$vendor_id" ]] || [[ -z "$device_id" ]]; then
-      log_error "configure_vfio_modules: MUX-less mode requires vendor_id and device_id parameters"
-      msg_error "MUX-less mode requires GPU vendor and device IDs"
-      return 1
-    fi
-
-    # Validate ID format - must be 4 hex digits (prevents malformed kernel parameters)
-    if ! [[ "$vendor_id" =~ ^[0-9a-fA-F]{4}$ ]]; then
-      log_error "configure_vfio_modules: Invalid vendor ID format: $vendor_id (expected 4 hex digits)"
-      msg_error "Invalid GPU vendor ID: $vendor_id (expected 4 hex digits)"
-      return 1
-    fi
-    if ! [[ "$device_id" =~ ^[0-9a-fA-F]{4}$ ]]; then
-      log_error "configure_vfio_modules: Invalid device ID format: $device_id (expected 4 hex digits)"
-      msg_error "Invalid GPU device ID: $device_id (expected 4 hex digits)"
-      return 1
-    fi
-
-    gpu_device_ids="${vendor_id}:${device_id}"
-
-    # Also bind audio device if present (same IOMMU group, needed for clean passthrough)
-    local audio_id=$(get_gpu_audio_device "$gpu_pci")
-    if [[ -n "$audio_id" ]]; then
-      gpu_device_ids="${gpu_device_ids},${audio_id}"
-      log_info "MUX-less laptop: binding dGPU + audio to vfio-pci at boot (${vendor_id}:${device_id}, ${audio_id})"
+    # For Hybrid Mode: don't bind GPU to vfio-pci at boot
+    if [[ "${HYBRID_MUXLESS_MODE:-false}" == "true" ]]; then
+      log_info "Hybrid Mode: GPU will use runtime binding"
+      msg_info "VFIO: Runtime binding (driver stays active)"
     else
-      log_info "MUX-less laptop: binding dGPU to vfio-pci at boot (${vendor_id}:${device_id})"
+      # Standard Reverse Optimus: bind GPU to vfio-pci at boot
+      # Validate that vendor_id and device_id were passed (system boundary input)
+      if [[ -z "$vendor_id" ]] || [[ -z "$device_id" ]]; then
+        log_error "configure_vfio_modules: MUX-less mode requires vendor_id and device_id parameters"
+        msg_error "MUX-less mode requires GPU vendor and device IDs"
+        return 1
+      fi
+
+      # Validate ID format - must be 4 hex digits (prevents malformed kernel parameters)
+      if ! [[ "$vendor_id" =~ ^[0-9a-fA-F]{4}$ ]]; then
+        log_error "configure_vfio_modules: Invalid vendor ID format: $vendor_id (expected 4 hex digits)"
+        msg_error "Invalid GPU vendor ID: $vendor_id (expected 4 hex digits)"
+        return 1
+      fi
+      if ! [[ "$device_id" =~ ^[0-9a-fA-F]{4}$ ]]; then
+        log_error "configure_vfio_modules: Invalid device ID format: $device_id (expected 4 hex digits)"
+        msg_error "Invalid GPU device ID: $device_id (expected 4 hex digits)"
+        return 1
+      fi
+
+      gpu_device_ids="${vendor_id}:${device_id}"
+
+      # Also bind audio device if present (same IOMMU group, needed for clean passthrough)
+      local audio_id=$(get_gpu_audio_device "$gpu_pci")
+      if [[ -n "$audio_id" ]]; then
+        gpu_device_ids="${gpu_device_ids},${audio_id}"
+        log_info "Reverse Optimus: binding dGPU + audio to vfio-pci at boot (${vendor_id}:${device_id}, ${audio_id})"
+      else
+        log_info "Reverse Optimus: binding dGPU to vfio-pci at boot (${vendor_id}:${device_id})"
+      fi
     fi
   fi
 
@@ -678,9 +688,10 @@ configure_vfio_modules_mkinitcpio() {
     return 1
   fi
 
-  local current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" | head -1)
+  local current_modules
+  current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_modules=""
 
-  if echo "$current_modules" | grep -qE "nvidia"; then
+  if [[ "$current_modules" =~ nvidia ]]; then
     msg_info "Removing NVIDIA modules from initramfs (conflicts with blacklist)..."
     sudo sed -i -E 's/\bnvidia\b//g' "$MKINITCPIO_CONF"
     sudo sed -i -E 's/\bnvidia_modeset\b//g' "$MKINITCPIO_CONF"
@@ -694,12 +705,12 @@ configure_vfio_modules_mkinitcpio() {
     msg_success "  NVIDIA modules removed from initramfs"
   fi
 
-  current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" | head -1)
-  if echo "$current_modules" | grep -qE "vfio_pci|vfio-pci"; then
+  current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_modules=""
+  if [[ "$current_modules" =~ vfio_pci|vfio-pci ]]; then
     msg_info "VFIO modules already in initramfs"
     return 0
   fi
-  if echo "$current_modules" | grep -qE "^MODULES=\([[:space:]]*\)"; then
+  if [[ "$current_modules" =~ ^MODULES=\([[:space:]]*\)$ ]]; then
     sudo sed -i 's/^MODULES=([[:space:]]*)$/MODULES=(vfio_pci vfio vfio_iommu_type1)/' "$MKINITCPIO_CONF"
   else
     sudo sed -i 's/^MODULES=([[:space:]]*/MODULES=(vfio_pci vfio vfio_iommu_type1 /' "$MKINITCPIO_CONF"
@@ -856,8 +867,9 @@ unconfigure_vfio_modules_mkinitcpio() {
     return 0
   fi
 
-  local current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" | head -1)
-  if ! echo "$current_modules" | grep -qE "vfio_pci|vfio-pci"; then
+  local current_modules
+  current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_modules=""
+  if ! [[ "$current_modules" =~ vfio_pci|vfio-pci ]]; then
     return 0
   fi
 
@@ -931,8 +943,9 @@ unconfigure_kernel_parameters() {
       return 1
     fi
 
-    local all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" || true)
-    if ! echo "$all_cmdlines" | grep -qE "amd_iommu=on|intel_iommu=on|iommu=pt"; then
+    local all_cmdlines
+    all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null) || all_cmdlines=""
+    if ! [[ "$all_cmdlines" =~ (amd_iommu|intel_iommu)=on|iommu=pt ]]; then
       return 0
     fi
 
@@ -949,17 +962,16 @@ unconfigure_kernel_parameters() {
       return 1
     fi
 
-    local current_cmdline=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" | cut -d'"' -f2)
-    if ! echo "$current_cmdline" | grep -qE "amd_iommu=on|intel_iommu=on|iommu=pt"; then
+    local grub_line current_cmdline=""
+    grub_line=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" 2>/dev/null) || grub_line=""
+    [[ "$grub_line" =~ ^GRUB_CMDLINE_LINUX_DEFAULT=\"([^\"]*)\" ]] && current_cmdline="${BASH_REMATCH[1]}"
+    if ! [[ "$current_cmdline" =~ (amd_iommu|intel_iommu)=on|iommu=pt ]]; then
       return 0
     fi
 
     sudo cp "$GRUB_DEFAULT" "${GRUB_DEFAULT}.backup.uninstall.$(date +%s)"
     local new_cmdline="$current_cmdline"
-    new_cmdline=$(echo "$new_cmdline" | sed -E 's/[[:space:]]*(amd_iommu=on|intel_iommu=on)//g')
-    new_cmdline=$(echo "$new_cmdline" | sed -E 's/[[:space:]]*iommu=pt//g')
-    new_cmdline=$(echo "$new_cmdline" | sed -E 's/[[:space:]]*pci=realloc//g')
-    new_cmdline=$(echo "$new_cmdline" | sed -E 's/[[:space:]]+/ /g' | sed 's/^ //' | sed 's/ $//')
+    new_cmdline=$(sed -E 's/(^|[[:space:]])(amd_iommu|intel_iommu)=on([[:space:]]|$)/\3/g; s/(^|[[:space:]])iommu=pt([[:space:]]|$)/\2/g; s/(^|[[:space:]])pci=realloc([[:space:]]|$)/\2/g; s/[[:space:]]+/ /g; s/^ //; s/ $//' <<< "$new_cmdline")
     # Escape sed special chars in replacement: & (backreference) and \ (escape)
     local new_cmdline_escaped="${new_cmdline//\\/\\\\}"
     new_cmdline_escaped="${new_cmdline_escaped//&/\\&}"
@@ -1335,8 +1347,8 @@ cmd_setup() {
     # Load and show current config
     if load_gpu_config; then
       local current_mode="unknown"
-      if [[ -f "$STATE_MARKER_FILE" ]]; then
-        current_mode=$(cat "$STATE_MARKER_FILE" 2>/dev/null || echo "unknown")
+      if [[ -r "$STATE_MARKER_FILE" ]]; then
+        current_mode=$(<"$STATE_MARKER_FILE") 2>/dev/null || current_mode="unknown"
       fi
       msg_info "  GPU: $GPU_NAME ($GPU_PCI_ADDR)"
       msg_info "  Mode: $current_mode"
@@ -1426,14 +1438,19 @@ cmd_setup() {
     echo "Detected configuration:"
     echo "  iGPU: $igpu_name → Linux display"
     echo "  dGPU: $dgpu_name → VM passthrough"
-    echo ""
-    echo "Mode: Reverse Optimus (dGPU bound to vfio-pci at boot)"
-    echo "Display: Looking Glass for VM output"
-    echo ""
-    echo "Recovery: Ctrl+Alt+F2 → omarchy-gpu-passthrough setup --uninstall"
-    echo ""
-    if ! gum confirm "Continue with Reverse Optimus setup?"; then
-      exit 0
+
+    if [[ "$BIOS_DISPLAY_CONTROL_MISSING" == "true" ]]; then
+      HYBRID_MUXLESS_MODE=true
+      log_info "MUX-less laptop: no BIOS display control detected"
+      log_info "Mode: Hybrid (automatic)"
+      echo ""
+      echo "Mode: Hybrid (GPU bound to VM only when needed)"
+    else
+      HYBRID_MUXLESS_MODE=false
+      log_info "MUX-less laptop: BIOS display control available"
+      log_info "Mode: Standard (automatic) - GPU bound to vfio-pci at boot"
+      echo ""
+      echo "Mode: Standard (GPU reserved for VM at boot)"
     fi
 
     # Auto-select dGPU (no need to ask user - only valid option for MUX-less)
@@ -1520,8 +1537,13 @@ cmd_setup() {
       exit 1
     fi
   else
-    log_info "MUX-less laptop: skipping GPU blacklist (using vfio-pci.ids binding instead)"
-    msg_info "GPU blacklist: skipped (MUX-less mode)"
+    if [[ "${HYBRID_MUXLESS_MODE:-false}" == "true" ]]; then
+      log_info "Hybrid Mode: GPU driver stays active"
+      msg_info "GPU driver: active (Hybrid Mode)"
+    else
+      log_info "Standard Mode: GPU bound to vfio-pci at boot"
+      msg_info "GPU binding: vfio-pci.ids (Standard Mode)"
+    fi
   fi
 
   configure_vfio_modules_mkinitcpio
@@ -1589,9 +1611,13 @@ cmd_setup() {
   msg_success "GPU: $name ($pci)"
 
   if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
-    echo "Mode: Reverse Optimus (dGPU → vfio-pci, VM via Looking Glass)"
-    if [[ "$DGPU_HAS_EXTERNAL_MONITOR" == "true" ]]; then
-      msg_warning "External monitor on dGPU will go blank - laptop screen stays active"
+    if [[ "${HYBRID_MUXLESS_MODE:-false}" == "true" ]]; then
+      echo "Mode: Hybrid (both GPUs active)"
+    else
+      echo "Mode: Standard (GPU configured at boot)"
+      if [[ "$DGPU_HAS_EXTERNAL_MONITOR" == "true" ]]; then
+        msg_warning "External monitor on GPU may go blank"
+      fi
     fi
   else
     echo "Mode: Standard passthrough (dGPU blacklisted at boot)"

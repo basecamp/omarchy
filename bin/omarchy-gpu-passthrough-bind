@@ -701,7 +701,8 @@ ensure_state_marker() {
       return 0
     fi
 
-    local marker_mode=$(cat "$STATE_MARKER_FILE" 2>/dev/null)
+    local marker_mode=""
+    [[ -r "$STATE_MARKER_FILE" ]] && marker_mode=$(<"$STATE_MARKER_FILE") 2>/dev/null
 
     # Validate marker content (must be none/vm/host)
     case "$marker_mode" in
