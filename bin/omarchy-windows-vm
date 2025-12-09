@@ -1096,46 +1096,26 @@ create_docker_compose_config() {
 
   # Detect CPU info
   local CPU_FLAGS="-cpu host"
-  local MACHINE_FLAGS=""
-
-  local CPU_FAMILY="$(grep -m1 'cpu family' /proc/cpuinfo 2>/dev/null | awk '{print $4}')"
-  local CPU_MODEL="$(grep -m1 '^model' /proc/cpuinfo 2>/dev/null | awk '{print $3}')"
-  local CPU_STEPPING="$(grep -m1 'stepping' /proc/cpuinfo 2>/dev/null | awk '{print $3}')"
-
-  # Validate numeric (some systems report "unknown")
-  [[ "$CPU_FAMILY" =~ ^[0-9]+$ ]] || CPU_FAMILY=""
-  [[ "$CPU_MODEL" =~ ^[0-9]+$ ]] || CPU_MODEL=""
-  [[ "$CPU_STEPPING" =~ ^[0-9]+$ ]] || CPU_STEPPING=""
+  local MACHINE_FLAGS="-machine type=q35,vmport=off,hpet=off,accel=kvm,kernel-irqchip=on"
 
   if grep -qi 'AuthenticAMD' /proc/cpuinfo 2>/dev/null; then
-    # AMD CPU detected
-    CPU_FLAGS="-cpu host,kvm=on"
-    [[ -n "$CPU_FAMILY" ]] && CPU_FLAGS="${CPU_FLAGS},family=${CPU_FAMILY}"
-    [[ -n "$CPU_MODEL" ]] && CPU_FLAGS="${CPU_FLAGS},model=${CPU_MODEL}"
-    [[ -n "$CPU_STEPPING" ]] && CPU_FLAGS="${CPU_FLAGS},stepping=${CPU_STEPPING}"
-    CPU_FLAGS="${CPU_FLAGS},-hypervisor,hv_vendor_id=AuthenticAMD,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,hv_reset,hv_vpindex,hv_runtime,hv_synic,hv_stimer,hv_frequencies,+invtsc,+pdpe1gb,+tsc-deadline,migratable=no"
-
-    MACHINE_FLAGS="-machine type=q35,vmport=off,hpet=off,accel=kvm,kernel-irqchip=on"
+    # AMD CPU:
+    CPU_FLAGS="-cpu host,kvm=on,-hypervisor,hv_vendor_id=AuthenticAMD,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,hv_reset,hv_vpindex,hv_runtime,hv_synic,hv_stimer,hv_frequencies,migratable=no"
   elif grep -qi 'GenuineIntel' /proc/cpuinfo 2>/dev/null; then
-    # Intel CPU detected
-    CPU_FLAGS="-cpu host,kvm=on"
-    # Intel with ivshmem (Looking Glass) needs phys-bits limit to avoid VFIO DMA
-    # mapping failures. Use 39 bits per QEMU maintainer recommendation for Intel CPUs.
+    # Intel CPU:
+    CPU_FLAGS="-cpu host,kvm=on,-hypervisor"
     [[ "$LG_ENABLED" == true ]] && CPU_FLAGS="${CPU_FLAGS},host-phys-bits-limit=39"
-    [[ -n "$CPU_FAMILY" ]] && CPU_FLAGS="${CPU_FLAGS},family=${CPU_FAMILY}"
-    [[ -n "$CPU_MODEL" ]] && CPU_FLAGS="${CPU_FLAGS},model=${CPU_MODEL}"
-    [[ -n "$CPU_STEPPING" ]] && CPU_FLAGS="${CPU_FLAGS},stepping=${CPU_STEPPING}"
-    CPU_FLAGS="${CPU_FLAGS},-hypervisor,hv_vendor_id=GenuineIntel,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,hv_reset,hv_vpindex,hv_runtime,hv_synic,hv_stimer,hv_frequencies,+invtsc,+pdpe1gb,+tsc-deadline,migratable=no"
-
-    MACHINE_FLAGS="-machine type=q35,vmport=off,hpet=off,accel=kvm,kernel-irqchip=on"
+    CPU_FLAGS="${CPU_FLAGS},hv_vendor_id=GenuineIntel,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,hv_reset,hv_vpindex,hv_runtime,hv_synic,hv_stimer,hv_frequencies,migratable=no"
   fi
 
   # Auto-detect host timezone
-  local HOST_TZ="UTC"
-  if [[ -f /etc/timezone ]]; then
-    HOST_TZ=$(cat /etc/timezone 2>/dev/null | tr -d '[:space:]')
+  local HOST_TZ=""
+  if [[ -r /etc/timezone ]]; then
+    HOST_TZ=$(<"/etc/timezone")
+    HOST_TZ="${HOST_TZ//[[:space:]]/}"
   elif command -v timedatectl &>/dev/null; then
-    HOST_TZ=$(timedatectl show -p Timezone --value 2>/dev/null | tr -d '[:space:]')
+    HOST_TZ=$(timedatectl show -p Timezone --value 2>/dev/null)
+    HOST_TZ="${HOST_TZ//[[:space:]]/}"
   fi
   [[ -z "$HOST_TZ" ]] && HOST_TZ="UTC"
 
@@ -3543,9 +3523,7 @@ stop_windows() {
 
   # Check if GPU restore will be needed (read once, use multiple times)
   local gpu_mode=""
-  if [[ -f /var/run/omarchy-vm-gpu-mode ]]; then
-    gpu_mode=$(cat /var/run/omarchy-vm-gpu-mode 2>/dev/null)
-  fi
+  [[ -r /var/run/omarchy-vm-gpu-mode ]] && gpu_mode=$(<"/var/run/omarchy-vm-gpu-mode") 2>/dev/null
 
   # Pre-authenticate sudo immediately before docker operations
   # (GPU restore needs sudo, better to ask upfront than mid-operation)
