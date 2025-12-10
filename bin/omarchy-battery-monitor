@@ -8,19 +8,11 @@ WARN_BATTERY_THRESHOLD=20
 CRIT_NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified_crit"
 WARN_NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified_warn"
 
-BATTERY_PATH=$(upower -e | grep 'BAT' | head -n 1)
+BATTERY_PATH=$(upower -e | grep 'DisplayDevice' | head -n 1)
 BATTERY_INFO=$(upower -i "$BATTERY_PATH")
 
 BATTERY_STATE=$(echo "$BATTERY_INFO" | grep "state" | awk '{print $2}')
 BATTERY_LEVEL=$(echo "$BATTERY_INFO" | grep "percentage" | awk '{print $2}' | tr -d '%')
-#BATTERY_LEVEL=$(echo "$BATTERY_INFO" | grep "percentage" \
-#  | awk -F: '/percentage/ {
-#    gsub(/[%[:space:]]/, "", $2);
-#    val=$2;
-#    printf("%d\n", (val+0.5))
-#    exit
-#    }'
-#  )
 
 send_notification() {
   local level=$1
