@@ -1094,19 +1094,17 @@ create_docker_compose_config() {
   # Detect CPU pinning based on selected cores
   detect_cpu_pinning_set "$SELECTED_CORES"
 
-  # Detect CPU info
-  local CPU_FLAGS="-cpu host"
-  local MACHINE_FLAGS="-machine type=q35,vmport=off,hpet=off,accel=kvm,kernel-irqchip=on"
+  local MACHINE_FLAGS="-machine kernel-irqchip=on"
+  local HV_VENDOR_ID="AuthenticAMD"
+  local CPU_EXTRA=""
 
-  if grep -qi 'AuthenticAMD' /proc/cpuinfo 2>/dev/null; then
-    # AMD CPU:
-    CPU_FLAGS="-cpu host,kvm=on,-hypervisor,hv_vendor_id=AuthenticAMD,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,hv_reset,hv_vpindex,hv_runtime,hv_synic,hv_stimer,hv_frequencies,migratable=no"
-  elif grep -qi 'GenuineIntel' /proc/cpuinfo 2>/dev/null; then
-    # Intel CPU:
-    CPU_FLAGS="-cpu host,kvm=on,-hypervisor"
-    [[ "$LG_ENABLED" == true ]] && CPU_FLAGS="${CPU_FLAGS},host-phys-bits-limit=39"
-    CPU_FLAGS="${CPU_FLAGS},hv_vendor_id=GenuineIntel,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,hv_reset,hv_vpindex,hv_runtime,hv_synic,hv_stimer,hv_frequencies,migratable=no"
+  if grep -qi 'GenuineIntel' /proc/cpuinfo 2>/dev/null; then
+    HV_VENDOR_ID="GenuineIntel"
+    CPU_EXTRA=",+hv-evmcs"
+    [[ "$LG_ENABLED" == true ]] && CPU_EXTRA="${CPU_EXTRA},host-phys-bits-limit=39"
   fi
+
+  local CPU_FLAGS="-cpu host,-hypervisor,hv_vendor_id=${HV_VENDOR_ID},+pdpe1gb,+tsc-deadline${CPU_EXTRA}"
 
   # Auto-detect host timezone
   local HOST_TZ=""
