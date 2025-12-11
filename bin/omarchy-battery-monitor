@@ -12,25 +12,18 @@ BATTERY_PATH=$(upower -e | grep 'DisplayDevice' | head -n 1)
 BATTERY_INFO=$(upower -i "$BATTERY_PATH")
 
 BATTERY_STATE=$(echo "$BATTERY_INFO" | grep "state" | awk '{print $2}')
-BATTERY_LEVEL=$(echo "$BATTERY_INFO" | grep "percentage" | awk '{print $2}' | tr -d '%')
+BATTERY_LEVEL=$(omarchy-battery-remaining)
 
 send_notification() {
-  local level=$1
-  local title=$2
-  local msg=$3
-  local urgency=$4
-
-  notify-send -u "$urgency" -a "System Power" "$title" "$msg" -i battery-caution -t 50000
+  notify-send -u critical -a "System Power" "$1" "$2" -i battery-caution -t 50000
 }
 
-
 if [[ -n "$BATTERY_LEVEL" && "$BATTERY_LEVEL" =~ ^[0-9]+$ ]]; then
-
   if [[ $BATTERY_STATE == "discharging" ]]; then
 
     if [[ "$BATTERY_LEVEL" -le "$CRIT_BATTERY_THRESHOLD" ]]; then
       if [[ ! -f "$CRIT_NOTIFICATION_FLAG" ]]; then
-        send_notification "$BATTERY_LEVEL" " 🔴 Critical Battery" "Battery is critical (${BATTERY_LEVEL}%)" "critical"
+        send_notification " 🔴 Critical Battery" "Battery is critically low (${BATTERY_LEVEL}%)"
         touch "$CRIT_NOTIFICATION_FLAG"
         # Also creates WARN flag to prevent duplicate flags
         touch "$WARN_NOTIFICATION_FLAG"
@@ -38,14 +31,12 @@ if [[ -n "$BATTERY_LEVEL" && "$BATTERY_LEVEL" =~ ^[0-9]+$ ]]; then
 
     elif [[ "$BATTERY_LEVEL" -le "$WARN_BATTERY_THRESHOLD" ]] then
       if [[ ! -f "$WARN_NOTIFICATION_FLAG" ]]; then
-        send_notification "$BATTERY_LEVEL" " 🟠 Low Battery" "Battery is Low (${BATTERY_LEVEL}%)" "critical"
+        send_notification " 🟠 Low Battery" "Battery is low (${BATTERY_LEVEL}%)"
         touch "$WARN_NOTIFICATION_FLAG"
       fi
     fi
   # Remove notified flags when plugged in
   else
-    if [[ -f "$WARN_NOTIFICATION_FLAG" || -f "$CRIT_NOTIFICATION_FLAG" ]]; then
-      rm -f "$WARN_NOTIFICATION_FLAG" "$CRIT_NOTIFICATION_FLAG"
-    fi
+    rm -f "$WARN_NOTIFICATION_FLAG" "$CRIT_NOTIFICATION_FLAG"
   fi
 fi
