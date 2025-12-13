@@ -2,7 +2,7 @@
 config-file = ?"~/.config/omarchy/current/theme/ghostty.conf"
 
 # Font
-font-family = "CaskaydiaMono Nerd Font"
+font-family = "JetBrainsMono Nerd Font"
 font-style = Regular
 font-size = 9
 
@@ -17,11 +17,18 @@ gtk-toolbar-style = flat
 # Cursor styling
 cursor-style = "block"
 cursor-style-blink = false
-shell-integration-features = no-cursor
+
+# Cursor styling + SSH session terminfo
+# (all shell integration options must be passed together)
+shell-integration-features = no-cursor,ssh-env
 
 # Keyboard bindings
 keybind = shift+insert=paste_from_clipboard
 keybind = control+insert=copy_to_clipboard
+keybind = super+control+shift+alt+arrow_down=resize_split:down,100
+keybind = super+control+shift+alt+arrow_up=resize_split:up,100
+keybind = super+control+shift+alt+arrow_left=resize_split:left,100
+keybind = super+control+shift+alt+arrow_right=resize_split:right,100
 
-# SSH session terminfo
-shell-integration-features = ssh-env
+# Slowdown mouse scrolling
+mouse-scroll-multiplier = 0.95
