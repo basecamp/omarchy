@@ -75,7 +75,6 @@ term_palette_bright: 414868;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;c0caf5
 term_foreground: c0caf5
 term_foreground_bright: c0caf5
 term_background_bright: 24283b
-
 EOF
 
   # Remove the original config file if it's not /boot/limine.conf
@@ -83,6 +82,10 @@ EOF
     sudo rm "$limine_config"
   fi
 
+  # Enable Btrfs qgroups for accurate Snapper space accounting
+  if command -v btrfs &>/dev/null; then
+    sudo btrfs quota enable / 2>/dev/null || true
+  fi
 
   # Match Snapper configs if not installing from the ISO
   if [[ -z ${OMARCHY_CHROOT_INSTALL:-} ]]; then
@@ -95,10 +98,23 @@ EOF
     fi
   fi
 
-  # Tweak default Snapper configs
-  sudo sed -i 's/^TIMELINE_CREATE="yes"/TIMELINE_CREATE="no"/' /etc/snapper/configs/{root,home}
-  sudo sed -i 's/^NUMBER_LIMIT="50"/NUMBER_LIMIT="5"/' /etc/snapper/configs/{root,home}
-  sudo sed -i 's/^NUMBER_LIMIT_IMPORTANT="10"/NUMBER_LIMIT_IMPORTANT="5"/' /etc/snapper/configs/{root,home}
+  # Tweak default Snapper configs to prevent disk pressure
+  for cfg in /etc/snapper/configs/{root,home}; do
+    sudo sed -i \
+      -e 's/^TIMELINE_CREATE="yes"/TIMELINE_CREATE="no"/' \
+      -e 's/^NUMBER_LIMIT="50"/NUMBER_LIMIT="5"/' \
+      -e 's/^NUMBER_LIMIT_IMPORTANT="10"/NUMBER_LIMIT_IMPORTANT="5"/' \
+      -e 's/^SPACE_LIMIT=.*/SPACE_LIMIT="0.2"/' \
+      -e 's/^FREE_LIMIT=.*/FREE_LIMIT="0.3"/' \
+      -e 's/^BACKGROUND_COMPARISON=.*/BACKGROUND_COMPARISON="no"/' \
+      "$cfg"
+  done
+
+  # Apply stricter limits to /home snapshots (higher churn)
+  sudo sed -i \
+    -e 's/^NUMBER_LIMIT="5"/NUMBER_LIMIT="3"/' \
+    -e 's/^NUMBER_LIMIT_IMPORTANT="5"/NUMBER_LIMIT_IMPORTANT="3"/' \
+    /etc/snapper/configs/home
 
   chrootable_systemctl_enable limine-snapper-sync.service
 fi
@@ -124,19 +140,3 @@ if [[ -n $EFI ]] && efibootmgr &>/dev/null; then
     sudo efibootmgr -b "$bootnum" -B >/dev/null 2>&1
   done < <(efibootmgr | grep -E "^Boot[0-9]{4}\*? Arch Linux Limine" | sed 's/^Boot\([0-9]\{4\}\).*/\1/')
 fi
-
-# Move this to a utility to allow manual activation
-# if [[ -n $EFI ]] && efibootmgr &>/dev/null &&
-#   ! cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "American Megatrends" &&
-#   ! cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "Apple"; then
-#
-#   uki_file=$(find /boot/EFI/Linux/ -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | head -1)
-#
-#   if [[ -n "$uki_file" ]]; then
-#     sudo efibootmgr --create \
-#       --disk "$(findmnt -n -o SOURCE /boot | sed 's/p\?[0-9]*$//')" \
-#       --part "$(findmnt -n -o SOURCE /boot | grep -o 'p\?[0-9]*$' | sed 's/^p//')" \
-#       --label "Omarchy" \
-#       --loader "\\EFI\\Linux\\$uki_file"
-#   fi
-# fi
