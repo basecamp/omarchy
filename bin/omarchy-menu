@@ -378,7 +378,7 @@ show_remove_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" " Omarchy\n󰘬  Channel\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone\n  Time") in
+  case $(menu "Update" " Omarchy\n󰔫  Channel\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone\n  Time") in
   *Omarchy*) present_terminal omarchy-update ;;
   *Channel*) show_update_channel_menu ;;
   *Config*) show_update_config_menu ;;
@@ -394,9 +394,10 @@ show_update_menu() {
 }
 
 show_update_channel_menu() {
-  case $(menu "Update channel" "󰘬  Stable\n󰘬  Edge") in
+  case $(menu "Update channel" "🟢 Stable\n🟡 Edge\n🔴 Dev") in
   *Stable*) present_terminal "omarchy-channel-set stable" ;;
   *Edge*) present_terminal "omarchy-channel-set edge" ;;
+  *Dev*) present_terminal "omarchy-channel-set dev" ;;
   *) show_update_menu ;;
   esac
 }
