@@ -5,23 +5,20 @@ if command -v limine &>/dev/null; then
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
 
-  [[ -f /boot/EFI/limine/limine.conf ]] || [[ -f /boot/EFI/BOOT/limine.conf ]] && EFI=true
+  # Detect boot mode
+  [[ -d /sys/firmware/efi ]] && EFI=true
 
-  # Conf location is different between EFI and BIOS
-  if [[ -n "$EFI" ]]; then
-    # Check USB location first, then regular EFI location
-    if [[ -f /boot/EFI/BOOT/limine.conf ]]; then
-      limine_config="/boot/EFI/BOOT/limine.conf"
-    else
-      limine_config="/boot/EFI/limine/limine.conf"
-    fi
-  else
+  # Find config location
+  if [[ -f /boot/EFI/BOOT/limine.conf ]]; then
+    limine_config="/boot/EFI/BOOT/limine.conf"
+  elif [[ -f /boot/EFI/limine/limine.conf ]]; then
+    limine_config="/boot/EFI/limine/limine.conf"
+  elif [[ -f /boot/limine/limine.conf ]]; then
     limine_config="/boot/limine/limine.conf"
-  fi
-
-  # Double-check and exit if we don't have a config file for some reason
-  if [[ ! -f $limine_config ]]; then
-    echo "Error: Limine config not found at $limine_config" >&2
+  elif [[ -f /boot/limine.conf ]]; then
+    limine_config="/boot/limine.conf"
+  else
+    echo "Error: Limine config not found" >&2
     exit 1
   fi
 
