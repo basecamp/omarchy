@@ -9,7 +9,9 @@ EOF
   [[ -d /sys/firmware/efi ]] && EFI=true
 
   # Find config location
-  if [[ -f /boot/EFI/BOOT/limine.conf ]]; then
+  if [[ -f /boot/EFI/arch-limine/limine.conf ]]; then
+    limine_config="/boot/EFI/arch-limine/limine.conf"
+  elif [[ -f /boot/EFI/BOOT/limine.conf ]]; then
     limine_config="/boot/EFI/BOOT/limine.conf"
   elif [[ -f /boot/EFI/limine/limine.conf ]]; then
     limine_config="/boot/EFI/limine/limine.conf"
