@@ -1,0 +1,11 @@
+[Unit]
+Description=Save Omarchy session before shutdown
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/omarchy/bin/omarchy-session-save-if-persistent
+
+[Install]
+WantedBy=halt.target reboot.target shutdown.target

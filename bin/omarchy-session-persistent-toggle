@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# Toggle persistent session mode for Omarchy
+
+PERSISTENT_FLAG="$HOME/.local/state/omarchy/session-persistent.enabled"
+
+if [[ -f "$PERSISTENT_FLAG" ]]; then
+  exec omarchy-session-persistent-disable
+else
+  exec omarchy-session-persistent-enable
+fi

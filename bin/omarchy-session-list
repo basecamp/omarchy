@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Session list and selector for Omarchy
+# Lists all saved sessions and allows selection for restore
+
+SESSION_DIR="$HOME/.local/state/omarchy/sessions"
+mkdir -p "$SESSION_DIR"
+
+SESSIONS=$(find "$SESSION_DIR" -maxdepth 1 -name "*.json" -type f 2>/dev/null | sort)
+
+if [[ -z "$SESSIONS" ]]; then
+  notify-send "No Sessions" "Save your current windows first" -i dialog-information
+  exit 0
+fi
+
+OPTIONS=""
+while IFS= read -r session_file; do
+  SESSION_NAME=$(basename "$session_file" .json)
+  WINDOW_COUNT=$(jq -r '.windows | length' "$session_file" 2>/dev/null || echo "?")
+  CREATED=$(jq -r '.created' "$session_file" 2>/dev/null || echo "Unknown")
+  CREATED_DATE=$(date -d "$CREATED" "+%b %d, %H:%M" 2>/dev/null || echo "$CREATED")
+  
+  DISPLAY_NAME=$(echo "$SESSION_NAME" | sed 's/-/ /g; s/\b\w/\u&/g')
+  
+  case "$SESSION_NAME" in
+    persistent) ICON="💾" ;;
+    last) ICON="⏱" ;;
+    *) ICON="📋" ;;
+  esac
+  
+  OPTIONS="${OPTIONS}${ICON} ${DISPLAY_NAME} • ${WINDOW_COUNT} windows • ${CREATED_DATE}
+"
+done <<< "$SESSIONS"
+
+CHOICE=$(echo -e "$OPTIONS" | sed '/^$/d' | omarchy-launch-walker --dmenu -p "Restore Session" 2>/dev/null)
+
+[[ -z "$CHOICE" ]] && exit 0
+
+SESSION_NAME=$(echo "$CHOICE" | sed -E 's/^[^ ]+ ([^•]+).*/\1/' | sed 's/ *$//; s/ /-/g' | tr '[:upper:]' '[:lower:]')
+
+exec omarchy-session-restore "$SESSION_NAME"
