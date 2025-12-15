@@ -17,5 +17,27 @@ pkg_names=$(yay -Qqe | fzf "${fzf_args[@]}")
 if [[ -n "$pkg_names" ]]; then
   # Convert newline-separated selections to space-separated for yay
   echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -Rns --noconfirm
-  omarchy-show-done
+
+  echo "Cleaning up user-local desktop entries..."
+  # Read Each Package Individually from the selection.
+  while read -r PKG_NAME; do
+    find "$HOME/.local/share/applications" \
+    -name "${PKG_NAME}.desktop" \
+    -o -name "${PKG_NAME,,}.desktop" \
+    -o -name "$(echo "$PKG_NAME" | sed 's/-//g').desktop" \
+    -o -name "$(echo "$PKG_NAME" | sed 's/\(.*\)/\L\1/; s/-//g').desktop" \
+    -o -name "$(echo "$PKG_NAME" | sed 's/\(.*\)/\U\1/; s/-//g').desktop" \
+    -exec echo "--> Deleting {}" \; \
+    -exec rm -f {} \; -quit 2>/dev/null
+  done <<< "$pkg_names"
+
+  # Refresh the application menu cache.
+  if command -v omarchy-refresh-applications &> /dev/null; then
+    omarchy-refresh-applications
+  fi
+
+  # Final Success Notification (Only once, after all operations)
+  if command -v omarchy-show-done &> /dev/null; then
+    omarchy-show-done
+  fi
 fi
