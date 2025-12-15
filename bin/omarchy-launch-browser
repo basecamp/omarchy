@@ -3,8 +3,10 @@
 default_browser=$(xdg-settings get default-web-browser)
 browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$default_browser 2>/dev/null | head -1)
 
-if [[ $browser_exec =~ (firefox|zen|librewolf) ]]; then
+if [[ $browser_exec =~ (firefox|zen|librewolf|mullvad) ]]; then
   private_flag="--private-window"
+elif [[ $browser_exec =~ edge ]]; then
+  private_flag="--inprivate"
 else
   private_flag="--incognito"
 fi

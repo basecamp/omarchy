@@ -11,11 +11,16 @@ exit_screensaver() {
   exit 0
 }
 
+# Exit the screensaver on signals and input from keyboard and mouse
 trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+printf '\e[?1000h\e[?1003h' # Enable mouse tracking (clicks: 1000, movement: 1003)
+while read -rsn1 -t 0.1; do :; done # Flush any pending input
 
 printf '\033]11;rgb:00/00/00\007'  # Set background color to black
 
 hyprctl keyword cursor:invisible true &>/dev/null
+
+tty=$(tty 2>/dev/null)
 
 while true; do
   tte -i ~/.config/omarchy/branding/screensaver.txt \
@@ -23,8 +28,8 @@ while true; do
     --random-effect --exclude-effects dev_worm \
     --no-eol --no-restore-cursor &
 
-  while pgrep -x tte >/dev/null; do
-    if read -n 1 -t 1 || ! screensaver_in_focus; then
+  while pgrep -t "${tty#/dev/}" -x tte >/dev/null; do
+    if read -rsn1 -t 1 || ! screensaver_in_focus; then
       exit_screensaver
     fi
   done
