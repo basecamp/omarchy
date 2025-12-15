@@ -140,13 +140,25 @@ EOF
     USERNAME="docker"
   fi
 
-  PASSWORD=$(gum input --placeholder="Password (Press enter to use default: admin)" --password --header="Enter Windows password:")
-  if [ -z "$PASSWORD" ]; then
-    PASSWORD="admin"
-    PASSWORD_DISPLAY="(default)"
-  else
-    PASSWORD_DISPLAY="(user-defined)"
-  fi
+  # Password input with validation loop
+  while true; do
+    PASSWORD=$(gum input --placeholder="Enter password (leave empty to use default 'admin' with confirmation)" --password --header="Enter Windows password:")
+    
+    if [ -z "$PASSWORD" ]; then
+      # If password is empty, ask user what they want to do
+      if gum confirm "Use default password 'admin'?"; then
+        PASSWORD="admin"
+        PASSWORD_DISPLAY="(default)"
+        break
+      else
+        # User wants to enter a password, loop again
+        continue
+      fi
+    else
+      PASSWORD_DISPLAY="(user-defined)"
+      break
+    fi
+  done
 
   # Display configuration summary
   gum style \
