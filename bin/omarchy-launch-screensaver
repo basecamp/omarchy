@@ -13,6 +13,9 @@ if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]
   exit 1
 fi
 
+# Silently quit Walker on overlay
+walker -q
+
 focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
 terminal=$(xdg-terminal-exec --print-id)
 
