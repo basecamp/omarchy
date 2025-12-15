@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+# 1. Define the state file path
+export STATUS_DIR="$HOME/.local/state/omarchy/toggles/"
+export STATUS_FILE="touchpad-off"
+
+# Ensuring the toggle directory exists
+mkdir -p "$STATUS_DIR"
+cd $STATUS_DIR
+
+# 2. Finding the touchpad device name dynamically
+TOUCHPAD_NAME=$(hyprctl devices | grep -i 'touchpad' | head -n 1 | xargs)
+
+if [ -z "$TOUCHPAD_NAME" ]; then
+  notify-send -u critical "No Touchpad Found" "Could not find a touchpad in hyprctl."
+  exit 1
+fi
+
+# 3. Defining the toggle functions
+enable_touchpad() {
+  rm "$STATUS_FILE"
+  hyprctl keyword "device[$TOUCHPAD_NAME]:enabled" "true"
+  notify-send "Touchpad Enabled"
+}
+
+disable_touchpad() {
+  touch "$STATUS_FILE"
+  hyprctl keyword "device[$TOUCHPAD_NAME]:enabled" "false"
+  notify-send "Touchpad Disabled"
+}
+
+# 4. Main logic
+if [ -f "$STATUS_FILE" ]; then
+  enable_touchpad
+else
+  disable_touchpad
+fi
