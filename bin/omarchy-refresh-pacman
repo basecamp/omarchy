@@ -6,7 +6,12 @@ sudo cp -f /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
 
 sudo cp -f ~/.local/share/omarchy/default/pacman/pacman.conf /etc/pacman.conf
 
-if [[ $1 == "edge" ]]; then
+# Check if user wants to use China mirrors
+if [[ $1 == "china" ]]; then
+  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-china /etc/pacman.d/mirrorlist
+  sudo sed -i 's|https://pkgs.omarchy.org/.*$arch|https://pkgs.omarchy.org/stable/$arch|' /etc/pacman.conf
+  echo "Setting mirrors to China region for better connectivity"
+elif [[ $1 == "edge" ]]; then
   sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-edge /etc/pacman.d/mirrorlist
   sudo sed -i 's|https://pkgs.omarchy.org/.*$arch|https://pkgs.omarchy.org/edge/$arch|' /etc/pacman.conf
   echo "Setting channel to edge"
