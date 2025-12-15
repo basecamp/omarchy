@@ -14,8 +14,4 @@ case "$channel" in
 *) echo "Unknown channel: $channel"; exit 1; ;;
 esac
 
-# Run any new migrations
-omarchy-migrate
-
-# Offer a reboot if a new kernel was installed
-omarchy-update-restart
+omarchy-update -y
