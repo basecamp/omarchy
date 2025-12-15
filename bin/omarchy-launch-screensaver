@@ -13,6 +13,10 @@ if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]
   exit 1
 fi
 
+# Silently quit Walker on overlay
+walker -q
+
+focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
 terminal=$(xdg-terminal-exec --print-id)
 
 # Launch Screensaver on each monitor in a unique special workspace
@@ -45,16 +49,14 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
     ;;
   esac
   
-  # Switch to monitor-specific special workspace
+  # Switch to monitor-specific special workspace to display screensaver
   hyprctl dispatch togglespecialworkspace "screensaver-$m"
-done
-
-# Wait for screensaver process to terminate
-while pgrep -f org.omarchy.screensaver &>/dev/null; do
-  sleep 0.1
 done
 
 # Close special workspaces
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   hyprctl dispatch togglespecialworkspace "screensaver-$m"
 done
+
+# Return focus to orginal monitor
+hyprctl dispatch focusmonitor $focused
