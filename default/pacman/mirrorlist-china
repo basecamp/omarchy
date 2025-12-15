@@ -1,0 +1,20 @@
+# China mirrors for Arch Linux
+# These mirrors are known to work well in mainland China
+
+# Tsinghua University (清华大学)
+Server = https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch
+
+# USTC (中国科学技术大学)
+Server = https://mirrors.ustc.edu.cn/archlinux/$repo/os/$arch
+
+# Aliyun (阿里云)
+Server = https://mirrors.aliyun.com/archlinux/$repo/os/$arch
+
+# Tencent Cloud (腾讯云)
+Server = https://mirrors.cloud.tencent.com/archlinux/$repo/os/$arch
+
+# Netease (网易)
+Server = https://mirrors.163.com/archlinux/$repo/os/$arch
+
+# Huawei Cloud (华为云)
+Server = https://repo.huaweicloud.com/archlinux/$repo/os/$arch
