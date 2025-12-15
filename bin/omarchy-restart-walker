@@ -9,10 +9,20 @@ if [[ $EUID -eq 0 ]]; then
   # Restart services as the script owner
   systemd-run --uid="$SCRIPT_OWNER" --setenv=XDG_RUNTIME_DIR="/run/user/$USER_UID" \
     bash -c "
-      systemctl --user restart elephant.service
-      systemctl --user restart app-walker@autostart.service
+      if systemctl --user is-enabled elephant.service &>/dev/null; then
+        systemctl --user restart elephant.service
+      fi
+
+      if systemctl --user is-enabled app-walker@autostart.service &>/dev/null; then
+        systemctl --user restart app-walker@autostart.service
+      fi
     "
 else
-  systemctl --user restart elephant.service
-  systemctl --user restart app-walker@autostart.service
+  if systemctl --user is-enabled elephant.service &>/dev/null; then
+    systemctl --user restart elephant.service
+  fi
+
+  if systemctl --user is-enabled app-walker@autostart.service &>/dev/null; then
+    systemctl --user restart app-walker@autostart.service
+  fi
 fi
