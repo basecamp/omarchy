@@ -1,5 +1,4 @@
 #!/bin/bash
-hyprctl dispatch tagwindow +noidle
 
 gum style --border normal --border-foreground 6 --padding "1 2" \
   "Ready to update?" \
