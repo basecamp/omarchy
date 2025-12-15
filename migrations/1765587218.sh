@@ -13,4 +13,5 @@ if ! grep -q "custom_picker_binary" ~/.config/hypr/xdph.conf; then
   /usr/lib/xdg-desktop-portal &
 fi
 
+mkdir -p ~/.config/hyprland-preview-share-picker
 omarchy-refresh-config hyprland-preview-share-picker/config.yaml
