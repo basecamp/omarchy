@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Ensure screensaver/sleep doesn't set in during updates
+hyprctl dispatch tagwindow +noidle &> /dev/null

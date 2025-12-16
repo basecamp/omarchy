@@ -13,3 +13,5 @@ case "$channel" in
 "dev") omarchy-branch-set "dev" && omarchy-refresh-pacman "edge" ;;
 *) echo "Unknown channel: $channel"; exit 1; ;;
 esac
+
+omarchy-update -y

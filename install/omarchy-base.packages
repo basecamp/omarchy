@@ -4,11 +4,13 @@
 1password-beta
 1password-cli
 aether
+alacritty
 asdcontrol
 avahi
 bash-completion
 bat
 bluetui
+bolt
 brightnessctl
 btop
 clang
@@ -46,6 +48,7 @@ gvfs-smb
 hypridle
 hyprland
 hyprland-guiutils
+hyprland-preview-share-picker
 hyprlock
 hyprpicker
 hyprsunset
