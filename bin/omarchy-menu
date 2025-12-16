@@ -279,7 +279,7 @@ show_install_ai_menu() {
   case $(menu "Install" "󱚤  Claude Code\n󱚤  Cursor CLI\n󱚤  Gemini\n󱚤  OpenAI Codex\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
   *Claude*) install "Claude Code" "claude-code" ;;
   *Cursor*) install "Cursor CLI" "cursor-cli" ;;
-  *OpenAI*) install "OpenAI Codex" "openai-codex-bin" ;;
+  *OpenAI*) install "OpenAI Codex" "openai-codex" ;;
   *Gemini*) install "Gemini" "gemini-cli" ;;
   *Studio*) install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
