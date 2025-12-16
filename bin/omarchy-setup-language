@@ -1,0 +1,342 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+SUDO=""
+[[ $EUID -ne 0 ]] && SUDO="sudo"
+LOCALE_GEN_FILE="/etc/locale.gen"
+
+escape_sed() {
+  printf '%s' "$1" | sed -e 's/[\^$\.*+?()[{\\|]/\\&/g'
+}
+
+get_current_lang() {
+  local current=""
+  if command -v localectl >/dev/null 2>&1; then
+    current=$(localectl status 2>/dev/null | awk -F= '/LANG=/{print $2; exit}')
+  fi
+  if [[ -z "$current" && -f /etc/locale.conf ]]; then
+    current=$(awk -F= '/^LANG=/{print $2; exit}' /etc/locale.conf)
+  fi
+  printf '%s\n' "$current"
+}
+
+get_enabled_locales() {
+  [[ -f "$LOCALE_GEN_FILE" ]] || return 0
+  awk '
+    /^[[:space:]]*#/ { next }
+    NF { print $1 }
+  ' "$LOCALE_GEN_FILE" | sort -u
+}
+
+get_generated_locales() {
+  locale -a 2>/dev/null | sort -u
+}
+
+normalize_locale_key() {
+  local key
+  key=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  key=${key//utf-8/utf8}
+  printf '%s\n' "$key"
+}
+
+get_locale_gen_candidates() {
+  [[ -f "$LOCALE_GEN_FILE" ]] || return 0
+  awk '
+    {
+      line=$0
+      sub(/^[[:space:]]*#[[:space:]]*/, "", line)
+      if (line == "") next
+      split(line, parts)
+      if (parts[1] != "" && parts[2] ~ /^[A-Z0-9_.-]+$/) print parts[1]
+    }
+  ' "$LOCALE_GEN_FILE" | awk '!seen[$0]++'
+}
+
+collect_locale_candidates() {
+  declare -A seen=()
+  local -a result=()
+
+  mapfile -t from_gen < <(get_locale_gen_candidates || true)
+  mapfile -t generated < <(get_generated_locales || true)
+  mapfile -t localectl_list < <(localectl list-locales 2>/dev/null || true)
+  if [[ ${#localectl_list[@]} -eq 0 && -f /usr/share/i18n/SUPPORTED ]]; then
+    mapfile -t localectl_list < <(awk '/UTF-8/ { print $1 }' /usr/share/i18n/SUPPORTED)
+  fi
+
+  local loc key
+  for loc in "${from_gen[@]}"; do
+    [[ -z "$loc" ]] && continue
+    key=$(normalize_locale_key "$loc")
+    [[ -z $key || -n ${seen[$key]+x} ]] && continue
+    seen[$key]=1
+    result+=("$loc")
+  done
+
+  for loc in "${generated[@]}"; do
+    [[ -z "$loc" ]] && continue
+    key=$(normalize_locale_key "$loc")
+    [[ -z $key || -n ${seen[$key]+x} ]] && continue
+    seen[$key]=1
+    result+=("$loc")
+  done
+
+  for loc in "${localectl_list[@]}"; do
+    [[ -z "$loc" ]] && continue
+    key=$(normalize_locale_key "$loc")
+    [[ -z $key || -n ${seen[$key]+x} ]] && continue
+    seen[$key]=1
+    result+=("$loc")
+  done
+
+  printf '%s\n' "${result[@]}"
+}
+
+locale_in_array() {
+  local needle
+  needle=$(normalize_locale_key "$1")
+  shift || return 1
+  local entry
+  for entry in "$@"; do
+    if [[ $(normalize_locale_key "$entry") == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+locale_is_generated() {
+  local needle
+  needle=$(normalize_locale_key "$1")
+  while IFS= read -r entry; do
+    if [[ $(normalize_locale_key "$entry") == "$needle" ]]; then
+      return 0
+    fi
+  done < <(locale -a 2>/dev/null)
+  return 1
+}
+
+join_by() {
+  local sep="$1"
+  shift || return 0
+  local out="$1"
+  shift || { printf '%s' "$out"; return; }
+  for arg in "$@"; do
+    out+="$sep$arg"
+  done
+  printf '%s' "$out"
+}
+
+format_list() {
+  local -n ref=$1
+  local max=${2:-6}
+
+  if [[ ${#ref[@]} -eq 0 ]]; then
+    printf 'none'
+    return
+  fi
+
+  local count=${#ref[@]}
+  local -a subset=()
+  subset=("${ref[@]:0:max}")
+  local text
+  text=$(join_by ', ' "${subset[@]}")
+
+  if (( count > max )); then
+    local remaining=$((count - max))
+    text+=" … (+$remaining more)"
+  fi
+
+  printf '%s' "$text"
+}
+
+prompt_apply_language() {
+  local new_lang="$1"
+
+  gum format --type markdown -- \
+    "Language updated to \`$new_lang\`" \
+    "Reboot is recommended so every app picks up the new locale."
+
+  local action
+  action=$(gum choose --header "Apply new language?" "Reboot" "Skip") || return
+
+  case "$action" in
+    "Reboot")
+      gum format "Rebooting now..."
+      $SUDO reboot now
+      ;;
+    *)
+      gum format "Remember to reboot later so the locale change is fully applied."
+      ;;
+  esac
+}
+
+show_summary() {
+  local current enabled generated
+  current=$(get_current_lang)
+  mapfile -t enabled < <(get_enabled_locales || true)
+  mapfile -t generated < <(get_generated_locales || true)
+
+  local enabled_text
+  enabled_text=$(format_list enabled)
+  local generated_text
+  generated_text=$(format_list generated)
+  [[ -z "$current" ]] && current="not set"
+
+  gum format --type markdown -- \
+    "### Language Setup" \
+    "- Current: \`$current\`" \
+    "- Enabled locales (/etc/locale.gen): \`$enabled_text\`" \
+    "- Generated locales (locale -a): \`$generated_text\`"
+  echo
+}
+
+ensure_locale_entry() {
+  local locale="$1"
+  local escaped
+  escaped=$(escape_sed "$locale")
+
+  if [[ -f "$LOCALE_GEN_FILE" ]]; then
+    if grep -Eq "^\\s*#?\\s*${escaped}\\s+" "$LOCALE_GEN_FILE"; then
+      $SUDO sed -i -E "s|^\\s*#\\s*(${escaped}\\s+UTF-8)|\\1|" "$LOCALE_GEN_FILE"
+      return
+    fi
+  fi
+
+  printf '%s UTF-8\n' "$locale" | $SUDO tee -a "$LOCALE_GEN_FILE" >/dev/null
+}
+
+comment_locale_entry() {
+  local locale="$1"
+  local escaped
+  escaped=$(escape_sed "$locale")
+  [[ -f "$LOCALE_GEN_FILE" ]] || return
+  $SUDO sed -i -E "s|^\\s*(${escaped}\\s+UTF-8)|# \1|" "$LOCALE_GEN_FILE"
+}
+
+regenerate_locales() {
+  echo
+  gum spin --spinner dot --title "Rebuilding locales" -- $SUDO locale-gen
+  echo
+}
+
+remove_language() {
+  mapfile -t enabled < <(get_enabled_locales || true)
+  if [[ ${#enabled[@]} -eq 0 ]]; then
+    gum format "No locales are enabled in $LOCALE_GEN_FILE."
+    return
+  fi
+
+  local current
+  current=$(get_current_lang)
+
+  local selection
+  selection=$(printf '%s\n' "${enabled[@]}" | gum choose --header "Select locale to disable") || return
+
+  [[ -n "$selection" ]] || return
+
+  if [[ -n "$current" && "$selection" == "$current" ]]; then
+    gum format "Cannot disable current LANG ($current)."
+    return
+  fi
+
+  comment_locale_entry "$selection"
+  regenerate_locales
+}
+
+set_current_language() {
+  mapfile -t candidates < <(collect_locale_candidates || true)
+  if [[ ${#candidates[@]} -eq 0 ]]; then
+    gum format "No locale definitions found."
+    return
+  fi
+
+  local previous
+  previous=$(get_current_lang)
+
+  mapfile -t generated_list < <(get_generated_locales || true)
+  declare -A generated_map=()
+  local loc key
+  for loc in "${generated_list[@]}"; do
+    [[ -z "$loc" ]] && continue
+    key=$(normalize_locale_key "$loc")
+    [[ -z "$key" ]] && continue
+    generated_map[$key]=1
+  done
+
+  declare -a installed_entries=()
+  declare -a other_entries=()
+  declare -A display_map=()
+  local display
+  for loc in "${candidates[@]}"; do
+    [[ -z "$loc" ]] && continue
+    key=$(normalize_locale_key "$loc")
+    if [[ -n ${generated_map[$key]+x} ]]; then
+      display="$loc (installed)"
+      installed_entries+=("$display")
+    else
+      display="$loc"
+      other_entries+=("$display")
+    fi
+    display_map["$display"]="$loc"
+  done
+
+  local selection_display
+  selection_display=$(printf '%s\n' "${installed_entries[@]}" "${other_entries[@]}" | gum filter --placeholder "Search locales" --header "Select default locale") || return
+
+  [[ -z "$selection_display" ]] && return
+
+  local selection
+  selection=${display_map[$selection_display]:-}
+  [[ -z "$selection" ]] && return
+
+  local regen_needed=false
+  local regen_performed=false
+  mapfile -t enabled < <(get_enabled_locales || true)
+  if ! locale_in_array "$selection" "${enabled[@]}"; then
+    ensure_locale_entry "$selection"
+    regen_needed=true
+  fi
+
+  if ! locale_is_generated "$selection"; then
+    regen_needed=true
+  fi
+
+  if [[ "$regen_needed" == true ]]; then
+    regenerate_locales
+    regen_performed=true
+  fi
+
+  if [[ $(normalize_locale_key "$selection") == $(normalize_locale_key "$previous") ]]; then
+    if [[ "$regen_performed" == true ]]; then
+      gum format "Locales rebuilt for \`$selection\`. LANG remains unchanged."
+    else
+      gum format "LANG remains \`$selection\`."
+    fi
+    return
+  fi
+
+  if command -v localectl >/dev/null 2>&1; then
+    $SUDO localectl set-locale LANG="$selection"
+  else
+    printf 'LANG=%s\n' "$selection" | $SUDO tee /etc/locale.conf >/dev/null
+  fi
+
+  gum format "Set LANG to \`$selection\`."
+  prompt_apply_language "$selection"
+}
+
+main_menu() {
+  while true; do
+    show_summary
+    local choice
+    choice=$(gum choose --header "Language setup" "Select current language" "Remove language" "Exit") || return
+
+    case "$choice" in
+      "Select current language") set_current_language ;;
+      "Remove language") remove_language ;;
+      "Exit") return ;;
+    esac
+  done
+}
+
+main_menu
