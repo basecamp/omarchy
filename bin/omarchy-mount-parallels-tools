@@ -41,29 +41,6 @@ fi
 
 echo "✓ Found CD-ROM device: $CDROM_DEV"
 
-# Check device size
-if command -v blockdev >/dev/null 2>&1; then
-  DEVICE_SIZE=$(sudo blockdev --getsize64 "$CDROM_DEV" 2>/dev/null || echo "0")
-  DEVICE_SIZE_MB=$((DEVICE_SIZE / 1024 / 1024))
-  echo "  Device size: ${DEVICE_SIZE_MB}MB"
-
-  if [ "$DEVICE_SIZE_MB" -lt 10 ]; then
-    echo
-    echo "ERROR: CD-ROM device is empty or too small (${DEVICE_SIZE_MB}MB)"
-    echo
-    echo "The Parallels Tools ISO is not inserted."
-    echo
-    echo "To insert it:"
-    echo "  1. In Parallels Desktop menu bar: Actions > Install Parallels Tools"
-    echo "  2. Wait 5 seconds"
-    echo "  3. Run this script again"
-    echo
-    exit 1
-  fi
-else
-  echo "  (blockdev not available, skipping size check)"
-fi
-
 # Try to mount
 MOUNT_POINT="/tmp/parallels-tools-mount"
 sudo mkdir -p "$MOUNT_POINT"
