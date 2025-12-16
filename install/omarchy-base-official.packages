@@ -6,11 +6,13 @@
 # - Include omarchy-x68.packages
 # - Include omarchy-base-aur.packages
 
+alacritty
 avahi
 bash-completion
 bat
 blueberry
 bluetui
+bolt
 brightnessctl
 btop
 cargo
@@ -48,6 +50,7 @@ gvfs-smb
 hypridle
 hyprland
 hyprland-guiutils
+hyprland-preview-share-picker
 hyprlock
 hyprpicker
 hyprshot
