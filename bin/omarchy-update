@@ -6,7 +6,7 @@ trap 'echo ""; echo -e "\033[0;31mSomething went wrong during the update!\n\nPle
 
 if [[ $1 == "-y" ]] || omarchy-update-confirm; then
   omarchy-update-without-idle
-  omarchy-snapshot create || [ $? -eq 127 ]
+  omarchy-snapshot create "$(omarchy-version) - omarchy-update: before omarchy update" || [ $? -eq 127 ]
   omarchy-update-git
   omarchy-update-perform
 fi
