@@ -25,4 +25,42 @@ display="$drive"
 [[ -n "$size" ]] && display="$display ($size)"
 [[ -n "$model" ]] && display="$display - $model"
 
+# Build compact partition summary
+part_summary=""
+
+while IFS= read -r line; do
+  NAME=""
+  TYPE=""
+  FSTYPE=""
+  MOUNTPOINT=""
+
+  eval "$line" 2>/dev/null
+
+  # Only care about actual partitions
+  [[ "$TYPE" != "part" ]] && continue
+
+  part_name="${NAME##*/}"
+
+  entry="$part_name"
+  if [[ -n "$FSTYPE" ]]; then
+    entry+=":$FSTYPE"
+  else
+    entry+=":unknown"
+  fi
+
+  if [[ -n "$MOUNTPOINT" ]]; then
+    entry+="($MOUNTPOINT)"
+  fi
+
+  if [[ -z "$part_summary" ]]; then
+    part_summary="$entry"
+  else
+    part_summary+=", $entry"
+  fi
+done < <(lsblk -P -o NAME,TYPE,FSTYPE,MOUNTPOINT "$root_drive" 2>/dev/null)
+
+if [[ -n "$part_summary" ]]; then
+  display+=" [${part_summary}]"
+fi
+
 echo "$display"
