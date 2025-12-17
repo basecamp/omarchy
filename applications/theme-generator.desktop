@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Theme Generator
+Exec=omarchy-theme-generate --walker
+Icon=preferences-desktop-theme
+Categories=Utility;
+Terminal=false
+StartupNotify=false
