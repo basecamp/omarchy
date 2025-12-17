@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Close all windows except current workspace, move remaining to workspace 1
+WS=$(hyprctl activeworkspace -j | jq '.id')
+
+hyprctl clients -j | jq -r ".[] | select(.workspace.id != $WS) | .address" | \
+  xargs -I{} hyprctl dispatch closewindow address:{}
+
+# Move remaining windows to workspace 1 (if not already there)
+if [ "$WS" != "1" ]; then
+  hyprctl clients -j | jq -r '.[].address' | \
+    xargs -I{} hyprctl dispatch movetoworkspacesilent 1,address:{}
+fi
+
+hyprctl dispatch workspace 1
