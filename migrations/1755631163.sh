@@ -44,7 +44,7 @@ done
 if $NEED_PATCH; then
   # Insert all needed modules immediately after 'btrfs' in the MODULES line
   sudo sed -Ei \
-    "s/^(MODULES=\([^)]*\bbtrfs\b)([^)]*\))$/\1 $(echo $NEEDED_MODS) \2/" \
+    "s/^(MODULES=\([^)]*\bbtrfs\b)([^)]*\))$/\1 $(echo $NEEDED_MODS)\2/" \
     "$CONF"
   echo "Added boot modules to mkinitcpio.conf"
 fi
