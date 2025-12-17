@@ -13,7 +13,7 @@ exit_screensaver() {
 
 # Exit the screensaver on signals and input from keyboard and mouse
 trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
-printf '\e[?1000h\e[?1003h' # Enable mouse tracking (clicks: 1000, movement: 1003)
+printf '\e[?1000h' # Enable mouse tracking (clicks: 1000)
 while read -rsn1 -t 0.1; do :; done # Flush any pending input
 
 printf '\033]11;rgb:00/00/00\007'  # Set background color to black
