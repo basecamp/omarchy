@@ -38,10 +38,10 @@ for SERIAL in $SERIALS; do
     KEEPID=$(echo "$KEEP" | jq -r '.id')
     echo "[ghost-fix] keeping id=$KEEPID serial=$SERIAL"
     # Disable the rest
-    for M in $(echo "$MATCHING" | jq -r '.id'); do
-      if [ "$M" != "$KEEPID" ]; then
-        echo "[ghost-fix] disabling phantom id=$M serial=$SERIAL"
-        hyprctl keyword monitor "id:$M,disable" >/dev/null
+    echo "$MATCHING" | jq -r '.name + ":" + (.id|tostring)' | while IFS=: read -r NAME ID; do
+      if [ "$ID" != "$KEEPID" ]; then
+        echo "[ghost-fix] disabling phantom $NAME (id=$ID) serial=$SERIAL"
+        hyprctl keyword monitor "$NAME,disable,add" >/dev/null
       fi
     done
   fi
