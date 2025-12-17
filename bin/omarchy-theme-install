@@ -5,7 +5,7 @@
 
 if [ -z "$1" ]; then
   echo -e "\e[32mSee https://manuals.omamix.org/2/the-omarchy-manual/90/extra-themes\n\e[0m"
-  REPO_URL=$(gum input --placeholder="Git repo URL for theme" --header="")
+  REPO_URL=$(gum input --placeholder="Git repo URL (https or git@host:org/repo.git)" --header="")
 else
   REPO_URL="$1"
 fi
@@ -15,7 +15,20 @@ if [ -z "$REPO_URL" ]; then
 fi
 
 THEMES_DIR="$HOME/.config/omarchy/themes"
-THEME_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-theme$//')
+
+# Handle scp-style SSH URLs (git@host:org/repo.git) when deriving the theme name.
+REPO_PATH="$REPO_URL"
+if [[ "$REPO_PATH" != *"://"* && "$REPO_PATH" == *:*/* ]]; then
+  REPO_PATH="${REPO_PATH#*:}"
+fi
+REPO_PATH="${REPO_PATH%/}"
+
+REPO_BASENAME=$(basename "$REPO_PATH")
+REPO_BASENAME="${REPO_BASENAME%.git}"
+
+THEME_NAME=$(
+  echo "$REPO_BASENAME" | sed -E 's/^omarchy-//; s/-theme$//'
+)
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Remove existing theme if present
