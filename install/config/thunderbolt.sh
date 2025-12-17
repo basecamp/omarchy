@@ -1,12 +1,8 @@
 #!/bin/bash
 
-# Auto-authorize Thunderbolt devices on hotplug (runtime)
-sudo tee /etc/udev/rules.d/99-thunderbolt.rules > /dev/null <<'EOF'
-ACTION=="add", SUBSYSTEM=="thunderbolt", ATTR{authorized}=="0", \
-  RUN+="/bin/sh -c 'echo 1 > /sys$devpath/authorized'"
-EOF
-
 # Setup early boot Thunderbolt authorization for LUKS password entry
+# Devices connected at boot are authorized for LUKS entry and will be
+# automatically enrolled by bolt when it starts in userspace
 INSTALL_DIR="/etc/initcpio/install"
 HOOKS_DIR="/etc/initcpio/hooks"
 CONF="/etc/mkinitcpio.conf"
@@ -44,44 +40,14 @@ if ! grep -q "thunderbolt_autoauth" "$CONF"; then
     "$CONF"
 fi
 
-# Create initcpio install script
-sudo tee "$INSTALL_DIR/thunderbolt_autoauth" > /dev/null <<'EOF'
-#!/bin/sh
-build() { add_runscript; }
-help() {
-    cat <<'HELPEOF'
-Conservative TB auth (delay, skip 0-0, auth once) to keep DP link stable for splash/LUKS.
-HELPEOF
-}
-EOF
+# Copy initcpio install script
+sudo cp "$OMARCHY_PATH/default/thunderbolt/boot/thunderbolt_autoauth.install" "$INSTALL_DIR/thunderbolt_autoauth"
 sudo chmod +x "$INSTALL_DIR/thunderbolt_autoauth"
 
-# Create runtime hook script
-sudo tee "$HOOKS_DIR/thunderbolt_autoauth" > /dev/null <<'EOF'
-#!/bin/sh
-# Conservative Thunderbolt authorization to avoid killing DP link at KMS time.
-
-run_hook() {
-    # Give amdgpu+kms a moment to light the panel before we touch TB
-    sleep 2
-
-    for dev in /sys/bus/thunderbolt/devices/*; do
-        base="$(basename "$dev")"
-        # Skip domain/root (0-0) – writing there errors and can flap the bus
-        [ "$base" = "0-0" ] && continue
-
-        auth="$dev/authorized"
-        [ -f "$auth" ] || continue
-
-        cur="$(cat "$auth" 2>/dev/null || echo "?")"
-        if [ "$cur" = "0" ]; then
-            echo 1 > "$auth" 2>/dev/null
-        fi
-    done
-}
-EOF
+# Copy runtime hook script
+sudo cp "$OMARCHY_PATH/default/thunderbolt/boot/thunderbolt_autoauth.hook" "$HOOKS_DIR/thunderbolt_autoauth"
 sudo chmod +x "$HOOKS_DIR/thunderbolt_autoauth"
 
 # TODO: Consider optimizing to run mkinitcpio -P once at end of install.sh instead of multiple times
 # Currently runs in: nvidia.sh, login.sh, and here (thunderbolt.sh)
-sudo mkinitcpio -P
+echo "Y" | sudo mkinitcpio -P
