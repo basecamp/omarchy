@@ -12,6 +12,5 @@ cp ~/.local/share/omarchy/applications/hidden/*.desktop ~/.local/share/applicati
 
 # Refresh the webapps
 bash $OMARCHY_PATH/install/packaging/icons.sh
-bash $OMARCHY_PATH/install/packaging/webapps.sh
 
 update-desktop-database ~/.local/share/applications
