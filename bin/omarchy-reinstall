@@ -18,6 +18,7 @@ if gum confirm "Are you sure you want to reinstall and lose all config changes?"
   echo "Reinstalling missing Omarchy packages"
   mapfile -t packages < <(grep -v '^#' "$OMARCHY_PATH/install/omarchy-base.packages" | grep -v '^$')
   sudo pacman -Syu --noconfirm --needed "${packages[@]}"
+  echo "Reinstalling missing AUR packages"
   mapfile -t aurpackages < <(grep -v '^#' "$OMARCHY_PATH/install/omarchy-aur.packages" | grep -v '^$')
   yay -S --noconfirm --needed "${aurpackages[@]}"
 
