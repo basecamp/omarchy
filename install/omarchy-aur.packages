@@ -1,0 +1,4 @@
+# Omarchy AUR package list installed via install/packaging/aur.sh
+# This file is also used by the ISO builder when determining needs
+
+hyprmon-bin
