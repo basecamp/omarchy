@@ -1,20 +1,22 @@
-#!/usr/bin/env bash
-set -e
+echo "Add interactive calendar (calcurse)"
 
-echo "[omarchy] Migration: add calcurse calendar"
+# Install dependency
+omarchy-pkg-add calcurse
 
-# Install dependency if missing
-if ! command -v calcurse >/dev/null 2>&1; then
-  echo "[omarchy] Installing calcurse"
-  sudo pacman -S --noconfirm calcurse
-else
-  echo "[omarchy] calcurse already installed"
+# Add calendar to clock click ONLY if not already customized
+WAYBAR_CFG="$HOME/.config/waybar/config.jsonc"
+
+if [ -f "$WAYBAR_CFG" ]; then
+  if ! grep -q "omarchy-launch-or-focus-tui calendar" "$WAYBAR_CFG"; then
+    echo "Patching Waybar clock click to open calendar"
+
+    # Replace existing on-click if present
+    sed -i \
+      's|"on-click":[^,]*|"on-click": "omarchy-launch-or-focus-tui calendar"|' \
+      "$WAYBAR_CFG"
+  fi
 fi
 
-# Reload Hyprland (ignore if not running)
-if command -v hyprctl >/dev/null 2>&1; then
-  hyprctl reload || true
-fi
-
-# Restart Waybar to pick up new bindings
+# Reload UI
+hyprctl reload 2>/dev/null || true
 pkill waybar || true
