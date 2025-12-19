@@ -65,7 +65,6 @@
     "format-alt": "{:L%d %B W%V %Y}",
     "tooltip": false,
     "on-click-right": "omarchy-launch-or-focus-tui calcurse"
-    // "on-click-right": "omarchy-launch-floating-terminal-with-presentation omarchy-tz-select"
   },
   "network": {
     "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
