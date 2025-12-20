@@ -1,2 +1,15 @@
 @define-color foreground #e6d9db;
 @define-color background #2c2525;
+
+/* Ristretto color palette */
+@define-color ristretto-red #d3869b;
+@define-color ristretto-orange #e69875;
+@define-color ristretto-yellow #e0b98a;
+@define-color ristretto-green #a7c080;
+@define-color ristretto-purple #c4a5db;
+@define-color ristretto-blue #83a1b3;
+
+/* Theme-agnostic semantic colors */
+@define-color theme-red @ristretto-red;
+@define-color theme-yellow @ristretto-yellow;
+@define-color theme-green @ristretto-green;

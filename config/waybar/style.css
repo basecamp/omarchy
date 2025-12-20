@@ -79,5 +79,17 @@ tooltip {
 }
 
 #custom-screenrecording-indicator.active {
-  color: #a55555;
+  color: @theme-red;
+}
+
+#battery {
+  color: @theme-green;
+}
+
+#battery.warning {
+  color: @theme-yellow;
+}
+
+#battery.critical {
+  color: @theme-red;
 }
