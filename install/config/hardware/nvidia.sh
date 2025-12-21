@@ -41,7 +41,7 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
   )
 
   # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
-  # Pascal (10xx), Maxwell (9xx), Kepler (7xx) and older use legacy kernel modules that can only be installed from AUR
+  # Pascal (10xx), Maxwell (9xx), Kepler (7xx) and older use legacy branch that can only be installed from AUR
   if [ "$NVIDIA_DRIVER" = "$NVIDIA_DRIVER_CURRENT" ]; then
     DRIVER_PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
     sudo pacman -S --needed --noconfirm "${GENERAL_PACKAGES[@]}" "${DRIVER_PACKAGES[@]}"
