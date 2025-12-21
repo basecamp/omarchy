@@ -11,11 +11,12 @@
 # --- GPU Detection ---
 if [ -n "$(lspci | grep -i 'nvidia')" ]; then
   # --- Driver Selection ---
-  # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
+  NVIDIA_DRIVER_CURRENT="current"
+  NVIDIA_DRIVER_LEGACY="legacy"
   if echo "$(lspci | grep -i 'nvidia')" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
-    NVIDIA_DRIVER_PACKAGE="nvidia-open-dkms"
+    NVIDIA_DRIVER="$NVIDIA_DRIVER_CURRENT"
   else
-    NVIDIA_DRIVER_PACKAGE="nvidia-dkms"
+    NVIDIA_DRIVER="$NVIDIA_DRIVER_LEGACY"
   fi
 
   # Check which kernel is installed and set appropriate headers package
@@ -31,19 +32,29 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
   # force package database refresh
   sudo pacman -Syu --noconfirm
 
-  # Install packages
-  PACKAGES_TO_INSTALL=(
+  # Initial install packages
+  GENERAL_PACKAGES=(
     "${KERNEL_HEADERS}"
-    "${NVIDIA_DRIVER_PACKAGE}"
-    "nvidia-utils"
-    "lib32-nvidia-utils"
     "egl-wayland"
-    "libva-nvidia-driver" # For VA-API hardware acceleration
     "qt5-wayland"
     "qt6-wayland"
   )
 
-  sudo pacman -S --needed --noconfirm "${PACKAGES_TO_INSTALL[@]}"
+  # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
+  # Pascal (10xx), Maxwell (9xx), Kepler (7xx) and older use legacy kernel modules that can only be installed from AUR
+  if [ "$NVIDIA_DRIVER" = "$NVIDIA_DRIVER_CURRENT" ]; then
+    DRIVER_PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
+    sudo pacman -S --needed --noconfirm "${GENERAL_PACKAGES[@]}" "${DRIVER_PACKAGES[@]}"
+  elif [ "$NVIDIA_DRIVER" = "$NVIDIA_DRIVER_LEGACY" ]; then
+    sudo pacman -S --needed --noconfirm "${GENERAL_PACKAGES[@]}"
+    if ! command -v yay &>/dev/null; then
+      echo "ERROR: Older NVIDIA GPUs require nvidia-580xx-dkms from AUR."
+      echo "Please install yay."
+      exit 1
+    fi
+    LEGACY_DRIVER_PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
+    yay -S --needed "${LEGACY_DRIVER_PACKAGES[@]}"
+  fi
 
   # Configure modprobe for early KMS
   echo "options nvidia_drm modeset=1" | sudo tee /etc/modprobe.d/nvidia.conf >/dev/null
