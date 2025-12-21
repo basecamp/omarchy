@@ -682,6 +682,16 @@ unconfigure_gpu_state_tmpfiles() {
   return 0
 }
 
+remove_vfio_from_mkinitcpio() {
+  sudo sed -i -E '/^MODULES=/s/\bvfio_pci\b//g; /^MODULES=/s/\bvfio-pci\b//g; /^MODULES=/s/\bvfio\b//g; /^MODULES=/s/\bvfio_iommu_type1\b//g' "$MKINITCPIO_CONF"
+}
+
+cleanup_mkinitcpio_modules_whitespace() {
+  sudo sed -i -E '/^MODULES=/s/[[:space:]]{2,}/ /g' "$MKINITCPIO_CONF"
+  sudo sed -i -E '/^MODULES=/s/\([[:space:]]+/(/g' "$MKINITCPIO_CONF"
+  sudo sed -i -E '/^MODULES=/s/[[:space:]]+\)/)/g' "$MKINITCPIO_CONF"
+}
+
 configure_vfio_modules_mkinitcpio() {
   if [[ ! -f "$MKINITCPIO_CONF" ]]; then
     msg_warning "$MKINITCPIO_CONF not found"
@@ -692,31 +702,63 @@ configure_vfio_modules_mkinitcpio() {
   current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_modules=""
 
   if [[ "$current_modules" =~ nvidia ]]; then
-    msg_info "Removing NVIDIA modules from initramfs (conflicts with blacklist)..."
-    sudo sed -i -E 's/\bnvidia\b//g' "$MKINITCPIO_CONF"
-    sudo sed -i -E 's/\bnvidia_modeset\b//g' "$MKINITCPIO_CONF"
-    sudo sed -i -E 's/\bnvidia_uvm\b//g' "$MKINITCPIO_CONF"
-    sudo sed -i -E 's/\bnvidia_drm\b//g' "$MKINITCPIO_CONF"
+    msg_info "Removing NVIDIA modules from initramfs..."
+    sudo sed -i -E '/^MODULES=/s/\bnvidia\b//g' "$MKINITCPIO_CONF"
+    sudo sed -i -E '/^MODULES=/s/\bnvidia_modeset\b//g' "$MKINITCPIO_CONF"
+    sudo sed -i -E '/^MODULES=/s/\bnvidia_uvm\b//g' "$MKINITCPIO_CONF"
+    sudo sed -i -E '/^MODULES=/s/\bnvidia_drm\b//g' "$MKINITCPIO_CONF"
+    msg_success "  NVIDIA modules removed"
+  fi
 
-    sudo sed -i -E 's/MODULES=\([[:space:]]+/MODULES=(/g' "$MKINITCPIO_CONF"
-    sudo sed -i -E 's/[[:space:]]+\)/)/g' "$MKINITCPIO_CONF"
-    sudo sed -i -E 's/[[:space:]]{2,}/ /g' "$MKINITCPIO_CONF"
-
-    msg_success "  NVIDIA modules removed from initramfs"
+  local host_driver=""
+  if [[ -n "${IGPU_PCI:-}" ]]; then
+    local igpu_vendor
+    igpu_vendor=$(lspci -n -s "$IGPU_PCI" 2>/dev/null | awk '{print $3}' | cut -d: -f1)
+    case "$igpu_vendor" in
+      8086) host_driver="i915" ;;
+      1002) host_driver="amdgpu" ;;
+    esac
   fi
 
   current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_modules=""
+
+  local vfio_modules="vfio_pci vfio vfio_iommu_type1"
+
   if [[ "$current_modules" =~ vfio_pci|vfio-pci ]]; then
-    msg_info "VFIO modules already in initramfs"
-    return 0
-  fi
-  if [[ "$current_modules" =~ ^MODULES=\([[:space:]]*\)$ ]]; then
-    sudo sed -i 's/^MODULES=([[:space:]]*)$/MODULES=(vfio_pci vfio vfio_iommu_type1)/' "$MKINITCPIO_CONF"
-  else
-    sudo sed -i 's/^MODULES=([[:space:]]*/MODULES=(vfio_pci vfio vfio_iommu_type1 /' "$MKINITCPIO_CONF"
+    if [[ -z "$host_driver" ]]; then
+      msg_info "VFIO modules already in initramfs"
+      return 0
+    elif [[ "$current_modules" =~ $host_driver.*vfio_pci ]]; then
+      msg_info "VFIO modules already in initramfs (order OK)"
+      return 0
+    else
+      msg_warning "Fixing module order ($host_driver must load before vfio)"
+      remove_vfio_from_mkinitcpio
+      current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_modules=""
+    fi
   fi
 
-  msg_success "VFIO modules added to initramfs"
+  if [[ "$current_modules" =~ ^MODULES=\([[:space:]]*\)$ ]]; then
+    if [[ -n "$host_driver" ]]; then
+      sudo sed -i "s/^MODULES=([[:space:]]*)$/MODULES=($host_driver $vfio_modules)/" "$MKINITCPIO_CONF"
+    else
+      sudo sed -i "s/^MODULES=([[:space:]]*)$/MODULES=($vfio_modules)/" "$MKINITCPIO_CONF"
+    fi
+  elif [[ -n "$host_driver" ]] && [[ "$current_modules" =~ $host_driver ]]; then
+    sudo sed -i "/^MODULES=/s/\b$host_driver\b/$host_driver $vfio_modules/" "$MKINITCPIO_CONF"
+  elif [[ -n "$host_driver" ]]; then
+    sudo sed -i "s/^MODULES=([[:space:]]*/MODULES=($host_driver $vfio_modules /" "$MKINITCPIO_CONF"
+  else
+    sudo sed -i "s/^MODULES=([[:space:]]*/MODULES=($vfio_modules /" "$MKINITCPIO_CONF"
+  fi
+
+  cleanup_mkinitcpio_modules_whitespace
+
+  if [[ -n "$host_driver" ]]; then
+    msg_success "VFIO modules added (order: $host_driver → vfio)"
+  else
+    msg_success "VFIO modules added to initramfs"
+  fi
   return 0
 }
 
@@ -874,10 +916,8 @@ unconfigure_vfio_modules_mkinitcpio() {
   fi
 
   sudo cp "$MKINITCPIO_CONF" "${MKINITCPIO_CONF}.backup.uninstall.$(date +%s)"
-  sudo sed -i -E 's/\bvfio_pci\b//g; s/\bvfio-pci\b//g; s/\bvfio\b//g; s/\bvfio_iommu_type1\b//g' "$MKINITCPIO_CONF"
-  sudo sed -i -E 's/MODULES=\([[:space:]]+/MODULES=(/g' "$MKINITCPIO_CONF"
-  sudo sed -i -E 's/[[:space:]]+\)/)/g' "$MKINITCPIO_CONF"
-  sudo sed -i -E 's/[[:space:]]+/ /g' "$MKINITCPIO_CONF"
+  remove_vfio_from_mkinitcpio
+  cleanup_mkinitcpio_modules_whitespace
 
   msg_success "VFIO modules removed from initramfs"
   return 0
