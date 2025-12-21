@@ -21,13 +21,30 @@
 
 #workspaces button {
   all: initial;
-  padding: 0 6px;
-  margin: 0 1.5px;
+  padding: 0 5px;
+  margin: 3px 2.5px;
+  min-width: 9px;
+  border: 1px solid @background;
+}
+
+
+#workspaces button.empty {
+  opacity: 0.25;
+}
+
+#workspaces button.active.hosting-monitor, #workspaces button.active.hosting-monitor label {
+  color: @background;
+  background-color: @foreground;
+  font-weight: 900;
   min-width: 9px;
 }
 
-#workspaces button.empty {
-  opacity: 0.5;
+#workspaces button.active.hosting-monitor {
+  border: 1px solid @foreground;
+}
+
+#workspaces button.hosting-monitor:not(.empty):not(.active) {
+  border: 1px solid #666;
 }
 
 #cpu,
