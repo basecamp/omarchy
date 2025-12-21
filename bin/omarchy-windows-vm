@@ -309,6 +309,32 @@ launch_windows() {
       notify-send -u critical "Windows VM" "Failed to start Windows VM"
       exit 1
     fi
+
+    echo "Waiting for RDP to be ready..."
+    WAIT_COUNT=0
+    while ! nc -z 127.0.0.1 3389 2>/dev/null; do
+      sleep 2
+      WAIT_COUNT=$((WAIT_COUNT + 1))
+      if [ $WAIT_COUNT -gt 60 ]; then  # 2 minutes timeout
+        echo "❌ Timeout waiting for RDP!"
+        echo "   The VM might still be installing Windows."
+        echo "   Check progress at: http://127.0.0.1:8006"
+        exit 1
+      fi
+    done
+
+    echo "Waiting for Windows VM to start..."
+    WAIT_COUNT=0
+    until docker logs omarchy-windows 2>&1 | grep -qi "windows started successfully"; do
+      sleep 2
+      WAIT_COUNT=$((WAIT_COUNT + 1))
+      if [ $WAIT_COUNT -gt 60 ]; then  # 2 minutes timeout
+        echo ""
+        echo "❌ Timeout: Windows VM failed to start within 2 minutes"
+        echo "   Check logs: docker logs omarchy-windows"
+        exit 1
+      fi
+    done
   fi
 
   if ! wait_for_rdp_ready "$WIN_USER" "$WIN_PASS"; then
