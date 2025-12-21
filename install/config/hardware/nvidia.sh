@@ -53,7 +53,7 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
       exit 1
     fi
     LEGACY_DRIVER_PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
-    yay -S --needed "${LEGACY_DRIVER_PACKAGES[@]}"
+    yay -S --needed --noconfirm "${LEGACY_DRIVER_PACKAGES[@]}"
   fi
 
   # Configure modprobe for early KMS
