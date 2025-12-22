@@ -1,6 +1,6 @@
 [colors.bright]
 black = "#100F0F"
-blue = "#205EA6"
+blue = "#4385BE"
 cyan = "#3AA99F"
 green = "#879A39"
 magenta = "#CE5D97"
@@ -14,7 +14,7 @@ text = "#FFFCF0"
 
 [colors.dim]
 black = "#100F0F"
-blue = "#205EA6"
+blue = "#4385BE"
 cyan = "#3AA99F"
 green = "#879A39"
 magenta = "#CE5D97"
@@ -24,7 +24,7 @@ yellow = "#D0A215"
 
 [colors.normal]
 black = "#100F0F"
-blue = "#205EA6"
+blue = "#4385BE"
 cyan = "#3AA99F"
 green = "#879A39"
 magenta = "#CE5D97"
