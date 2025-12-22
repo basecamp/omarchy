@@ -1,4 +1,23 @@
 #!/bin/bash
 
+title="Done! Press 'r' to run again or any other key to close..."
+
+# Exit gum spin command with exit code 10 if pressed 'r', otherwise exit like normal
 echo
-gum spin --spinner "globe" --title "Done! Press any key to close..." -- bash -c 'read -n 1 -s'
+gum spin --spinner "globe" --title "$title" -- bash -c 'read -rsn1 key; [[ "${key,,}" == "r" ]] && exit 10'
+code=$?
+
+# If user pressed 'r' (code 10) - run command again
+if [[ $code -eq 10 ]]; then
+  # If caller provided restart command, run exec
+  if [[ -n "$1" ]]; then
+    exec "$@"
+  fi
+
+  # Fallback, restart logic handled by caller
+  # Exit 0 means "Run script again"
+  exit 0
+fi
+
+# Exit 1 means "Exit script" (Error code on clean exit to avoid looping on real script errors)
+exit 1
