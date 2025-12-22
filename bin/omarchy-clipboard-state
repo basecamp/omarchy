@@ -1,0 +1,29 @@
+#!/bin/bash
+
+COMMAND="$1"
+
+if [[ -z "$COMMAND" ]]; then
+  echo "Usage: omarchy-clipboard-state <get|toggle>"
+  exit 1
+fi
+
+case "$COMMAND" in
+get)
+  states=$(elephant state --json clipboard | jq .states)
+  if printf '%s' "$states" | grep -q '"unpaused"'; then
+    printf "󰅎\nClipboard unpaused"
+  elif printf '%s' "$states" | grep -q '"paused"'; then
+    printf "󱘚\nClipboard paused"
+  else
+    printf "󰅉\nClipboard state unknown"
+  fi
+  ;;
+toggle)
+  if elephant state --json clipboard | jq .states | grep -q '"unpaused"'; then
+    elephant activate "clipboard;;pause;;"
+  else
+    elephant activate "clipboard;;unpause;;"
+  fi
+  pkill -RTMIN+9 waybar
+  ;;
+esac

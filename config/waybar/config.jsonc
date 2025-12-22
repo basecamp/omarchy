@@ -5,9 +5,14 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-  "modules-center": ["clock", "custom/update", "custom/screenrecording-indicator"],
+  "modules-center": [
+    "clock",
+    "custom/update",
+    "custom/screenrecording-indicator"
+  ],
   "modules-right": [
     "group/tray-expander",
+    "custom/clipboard",
     "bluetooth",
     "network",
     "pulseaudio",
@@ -52,6 +57,12 @@
     "tooltip-format": "Omarchy update available",
     "signal": 7,
     "interval": 21600
+  },
+  "custom/clipboard": {
+    "exec": "omarchy-clipboard-state get",
+    "signal": 9,
+    "on-click": "omarchy-clipboard-state toggle",
+    "on-click-right": "omarchy-launch-walker -m clipboard"
   },
 
   "cpu": {
