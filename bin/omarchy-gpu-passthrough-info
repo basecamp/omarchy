@@ -853,6 +853,14 @@ cmd_diagnose() {
       grep -E "^MODULES=|^HOOKS=" /etc/mkinitcpio.conf || echo "No MODULES/HOOKS found"
       echo '```'
       echo ""
+      # Check if modconf hook is present (required for softdep to work)
+      local hooks_line
+      hooks_line=$(grep "^HOOKS=" /etc/mkinitcpio.conf 2>/dev/null | head -1)
+      if [[ -n "$hooks_line" ]] && [[ ! "$hooks_line" =~ modconf ]]; then
+        echo "⚠️  WARNING: modconf hook missing from HOOKS!"
+        echo "   softdep in /etc/modprobe.d/ will NOT work without modconf"
+        echo ""
+      fi
     else
       echo "mkinitcpio not found"
       echo ""
@@ -888,11 +896,27 @@ cmd_diagnose() {
 
     echo "[softdep Configuration]"
     echo '```'
-    if [[ -f "$VFIO_CONF" ]] && grep -q "softdep xhci" "$VFIO_CONF"; then
-      grep "softdep" "$VFIO_CONF"
-      echo "Status: ✓ Configured"
+    local has_xhci_softdep=false
+    local has_nvidia_softdep=false
+    local is_nvidia_gpu=false
+
+    # Check if any GPU is NVIDIA
+    for vendor in "${GPU_VENDOR[@]}"; do
+      [[ "$vendor" == "10de" ]] && is_nvidia_gpu=true && break
+    done
+
+    if [[ -f "$VFIO_CONF" ]]; then
+      grep -q "softdep xhci" "$VFIO_CONF" && has_xhci_softdep=true
+      grep -q "softdep nvidia pre: vfio-pci" "$VFIO_CONF" && has_nvidia_softdep=true
+      grep "softdep" "$VFIO_CONF" 2>/dev/null || echo "(no softdep entries)"
     else
-      echo "Status: ✗ Not configured (xhci_pci may load before vfio-pci)"
+      echo "(vfio.conf not found)"
+    fi
+
+    echo ""
+    echo "USB (xhci_pci): $( [[ "$has_xhci_softdep" == "true" ]] && echo "✓ Configured" || echo "✗ Not configured" )"
+    if [[ "$is_nvidia_gpu" == "true" ]]; then
+      echo "NVIDIA modules: $( [[ "$has_nvidia_softdep" == "true" ]] && echo "✓ Configured" || echo "✗ MISSING - nvidia may load before vfio-pci!" )"
     fi
     echo '```'
     echo ""

@@ -401,6 +401,13 @@ configure_vfio_modules() {
     echo "options vfio-pci disable_idle_d3=1"
     # Ensure vfio-pci loads before xhci_pci to prevent USB controller rebind
     [[ -n "$usb_ids" ]] && echo "softdep xhci_pci pre: vfio-pci"
+    # Ensure vfio-pci loads before nvidia modules (MUX-less laptops)
+    if [[ "$vendor_id" == "10de" ]]; then
+      echo "softdep nvidia pre: vfio-pci"
+      echo "softdep nvidia_modeset pre: vfio-pci"
+      echo "softdep nvidia_uvm pre: vfio-pci"
+      echo "softdep nvidia_drm pre: vfio-pci"
+    fi
   } | sudo tee "$VFIO_CONF" >/dev/null
 
   # Create udev rule for persistent driver_override (prevents xhci_hcd rebind)
@@ -696,6 +703,14 @@ configure_vfio_modules_mkinitcpio() {
   if [[ ! -f "$MKINITCPIO_CONF" ]]; then
     msg_warning "$MKINITCPIO_CONF not found"
     return 1
+  fi
+
+  # Verify modconf hook is present (required for /etc/modprobe.d/* in initramfs)
+  local current_hooks
+  current_hooks=$(grep "^HOOKS=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_hooks=""
+  if [[ -n "$current_hooks" ]] && [[ ! "$current_hooks" =~ modconf ]]; then
+    msg_warning "modconf hook missing from HOOKS - softdep may not work"
+    log_warn "modconf not in HOOKS: $current_hooks"
   fi
 
   local current_modules
