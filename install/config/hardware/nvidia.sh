@@ -7,18 +7,10 @@
 # Author: https://github.com/Kn0ax
 #
 # ==============================================================================
+NVIDIA="$(lspci | grep -i 'nvidia')"
 
 # --- GPU Detection ---
-if [ -n "$(lspci | grep -i 'nvidia')" ]; then
-  # --- Driver Selection ---
-  NVIDIA_DRIVER_CURRENT="current"
-  NVIDIA_DRIVER_LEGACY="legacy"
-  if echo "$(lspci | grep -i 'nvidia')" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
-    NVIDIA_DRIVER="$NVIDIA_DRIVER_CURRENT"
-  else
-    NVIDIA_DRIVER="$NVIDIA_DRIVER_LEGACY"
-  fi
-
+if [ -n "$NVIDIA" ]; then
   # Check which kernel is installed and set appropriate headers package
   KERNEL_HEADERS="linux-headers" # Default
   if pacman -Q linux-zen &>/dev/null; then
@@ -41,19 +33,19 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
   )
 
   # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
-  # Pascal (10xx), Maxwell (9xx), Kepler (7xx) and older use legacy branch that can only be installed from AUR
-  if [ "$NVIDIA_DRIVER" = "$NVIDIA_DRIVER_CURRENT" ]; then
+  # Pascal (10xx) and Maxwell (9xx) use legacy branch that can only be installed from AUR
+  # All older drivers are directed to wiki
+  if echo "$NVIDIA" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
     DRIVER_PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
     sudo pacman -S --needed --noconfirm "${GENERAL_PACKAGES[@]}" "${DRIVER_PACKAGES[@]}"
-  elif [ "$NVIDIA_DRIVER" = "$NVIDIA_DRIVER_LEGACY" ]; then
+  elif echo "$NVIDIA" | grep -q -E "GTX 9|GTX 10"; then
     sudo pacman -S --needed --noconfirm "${GENERAL_PACKAGES[@]}"
-    if ! command -v yay &>/dev/null; then
-      echo "ERROR: Older NVIDIA GPUs require nvidia-580xx-dkms from AUR."
-      echo "Please install yay."
-      exit 1
-    fi
     LEGACY_DRIVER_PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
     yay -S --needed --noconfirm "${LEGACY_DRIVER_PACKAGES[@]}"
+  else
+    echo "Your GPU is unsupported by NVIDIA or Arch."
+    echo "See: https://wiki.archlinux.org/title/NVIDIA"
+    exit 1
   fi
 
   # Configure modprobe for early KMS
