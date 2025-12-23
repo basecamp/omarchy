@@ -4,7 +4,7 @@
   "position": "top",
   "spacing": 0,
   "height": 26,
-  "modules-left": ["custom/omarchy", "hyprland/workspaces"],
+  "modules-left": ["hyprland/workspaces"],
   "modules-center": [
     "clock",
     "custom/update",
@@ -41,12 +41,6 @@
       "4": [],
       "5": [],
     },
-  },
-  "custom/omarchy": {
-    "format": "",
-    "on-click": "omarchy-menu",
-    "on-click-right": "xdg-terminal-exec",
-    "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space",
   },
   "custom/update": {
     "format": "",
