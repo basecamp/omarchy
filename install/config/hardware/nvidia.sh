@@ -7,17 +7,10 @@
 # Author: https://github.com/Kn0ax
 #
 # ==============================================================================
+NVIDIA="$(lspci | grep -i 'nvidia')"
 
 # --- GPU Detection ---
-if [ -n "$(lspci | grep -i 'nvidia')" ]; then
-  # --- Driver Selection ---
-  # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
-  if echo "$(lspci | grep -i 'nvidia')" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
-    NVIDIA_DRIVER_PACKAGE="nvidia-open-dkms"
-  else
-    NVIDIA_DRIVER_PACKAGE="nvidia-dkms"
-  fi
-
+if [ -n "$NVIDIA" ]; then
   # Check which kernel is installed and set appropriate headers package
   KERNEL_HEADERS="linux-headers" # Default
   if pacman -Q linux-zen &>/dev/null; then
@@ -31,19 +24,29 @@ if [ -n "$(lspci | grep -i 'nvidia')" ]; then
   # force package database refresh
   sudo pacman -Syu --noconfirm
 
-  # Install packages
-  PACKAGES_TO_INSTALL=(
+  # Initial install packages
+  GENERAL_PACKAGES=(
     "${KERNEL_HEADERS}"
-    "${NVIDIA_DRIVER_PACKAGE}"
-    "nvidia-utils"
-    "lib32-nvidia-utils"
     "egl-wayland"
-    "libva-nvidia-driver" # For VA-API hardware acceleration
     "qt5-wayland"
     "qt6-wayland"
   )
 
-  sudo pacman -S --needed --noconfirm "${PACKAGES_TO_INSTALL[@]}"
+  # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
+  # Pascal (10xx) and Maxwell (9xx) use legacy branch that can only be installed from AUR
+  # All older drivers are directed to wiki
+  if echo "$NVIDIA" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
+    DRIVER_PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
+    sudo pacman -S --needed --noconfirm "${GENERAL_PACKAGES[@]}" "${DRIVER_PACKAGES[@]}"
+  elif echo "$NVIDIA" | grep -q -E "GTX 9|GTX 10"; then
+    sudo pacman -S --needed --noconfirm "${GENERAL_PACKAGES[@]}"
+    LEGACY_DRIVER_PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
+    yay -S --needed --noconfirm "${LEGACY_DRIVER_PACKAGES[@]}"
+  else
+    echo "Your GPU is unsupported by NVIDIA or Arch."
+    echo "See: https://wiki.archlinux.org/title/NVIDIA"
+    exit 1
+  fi
 
   # Configure modprobe for early KMS
   echo "options nvidia_drm modeset=1" | sudo tee /etc/modprobe.d/nvidia.conf >/dev/null
