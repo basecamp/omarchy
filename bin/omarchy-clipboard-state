@@ -26,4 +26,9 @@ toggle)
   fi
   pkill -RTMIN+9 waybar
   ;;
+*)
+  echo "Invalid command: $COMMAND"
+  echo "Usage: omarchy-clipboard-state <get|toggle>"
+  exit 1
+  ;;
 esac
