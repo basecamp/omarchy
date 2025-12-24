@@ -1,0 +1,24 @@
+#!/bin/bash
+
+COMMAND="$1"
+
+if [[ -z "$COMMAND" ]]; then
+  echo "Usage: omarchy-toggle-tagwindow-idle <on|off>"
+  exit 1
+fi
+
+case "$COMMAND" in
+  on)
+    # Ensure screensaver/sleep doesn't set in during updates
+    hyprctl dispatch tagwindow +noidle &> /dev/null
+    ;;
+  off)
+    # Re-enable screensaver/sleep after updates
+    hyprctl dispatch tagwindow -- -noidle &> /dev/null 
+    ;;
+  *)
+    echo "Invalid command: $COMMAND"
+    echo "Usage: omarchy-toggle-tagwindow-idle <on|off>"
+    exit 1
+    ;;
+esac
