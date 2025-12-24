@@ -265,6 +265,7 @@ show_install_terminal_menu() {
   *Alacritty*) install_terminal "alacritty" ;;
   *Ghostty*) install_terminal "ghostty" ;;
   *Kitty*) install_terminal "kitty" ;;
+  *Wezterm*) aur_install "wezterm" ;;
   *) show_install_menu ;;
   esac
 }
