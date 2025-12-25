@@ -1,2 +1,14 @@
 #!/bin/bash
-cat $OMARCHY_PATH/version
+if [[ $1 == "latest" ]]; then
+    # Get the remote tag from the upstream repository    
+    UPSTREAM_REPO="basecamp/omarchy"
+    version=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+else
+    # Get the 'currently installed' Omarchy version
+    version=$($OMARCHY_PATH/version)
+fi
+
+if [[ -z "$version" ]]; then
+  echo "Error: Could not retrieve version."
+  exit 1
+fi
