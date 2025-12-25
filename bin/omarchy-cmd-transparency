@@ -1,0 +1,131 @@
+#!/bin/bash
+# Window Transparency TUI for Omarchy/Hyprland
+
+set -e
+
+get_windows() {
+    hyprctl clients -j | jq -r '.[] | "\(.address) | \(.class) | \(.title)"'
+}
+
+select_window() {
+    local windows
+    windows=$(get_windows)
+
+    if [[ -z "$windows" ]]; then
+        gum style --foreground 196 "No windows found"
+        exit 1
+    fi
+
+    echo "$windows" | gum filter --placeholder "Select a window..."
+}
+
+set_transparency() {
+    local address=$1
+    local percent=$2
+
+    local opacity
+    opacity=$(awk "BEGIN {printf \"%.2f\", 1 - ($percent / 100)}")
+
+    hyprctl setprop "address:$address" alpha "$opacity" >/dev/null 2>&1
+    hyprctl setprop "address:$address" alphainactive "$opacity" >/dev/null 2>&1
+}
+
+draw_bar() {
+    local percent=$1
+    local width=30
+    local filled=$((percent * width / 100))
+    local empty=$((width - filled))
+
+    printf "["
+    printf "%${filled}s" | tr ' ' '#'
+    printf "%${empty}s" | tr ' ' '-'
+    printf "] %3d%%" "$percent"
+}
+
+main() {
+    gum style \
+        --border normal \
+        --padding "0 1" \
+        --border-foreground 212 \
+        "Window Transparency"
+
+    echo ""
+
+    # Select window
+    local selection
+    selection=$(select_window) || exit 0
+
+    local address
+    address=$(echo "$selection" | cut -d'|' -f1 | tr -d ' ')
+    local class
+    class=$(echo "$selection" | cut -d'|' -f2 | tr -d ' ')
+
+    echo ""
+    gum style --foreground 39 "Selected: $class"
+    echo ""
+    echo "Use up/down to adjust, Enter to confirm, q to quit"
+    echo ""
+
+    local percent=15
+    local step=5
+
+    # Hide cursor and setup terminal
+    tput civis
+    trap 'tput cnorm; stty echo' EXIT
+
+    # Apply initial transparency
+    set_transparency "$address" "$percent"
+
+    while true; do
+        # Draw the bar
+        printf "\r                                            \r"
+        printf "Transparency: "
+        draw_bar "$percent"
+
+        # Read single keypress
+        IFS= read -rsn1 key
+
+        # Handle arrow keys (escape sequences)
+        if [[ "$key" == $'\x1b' ]]; then
+            read -rsn2 -t 0.1 key
+            case "$key" in
+                '[A') # Up arrow
+                    if (( percent < 90 )); then
+                        percent=$((percent + step))
+                        set_transparency "$address" "$percent"
+                    fi
+                    ;;
+                '[B') # Down arrow
+                    if (( percent > 0 )); then
+                        percent=$((percent - step))
+                        set_transparency "$address" "$percent"
+                    fi
+                    ;;
+            esac
+        elif [[ "$key" == "" ]]; then
+            # Enter pressed
+            echo ""
+            break
+        elif [[ "$key" == "q" || "$key" == "Q" ]]; then
+            echo ""
+            gum style --foreground 214 "Cancelled"
+            exit 0
+        fi
+    done
+
+    local opacity
+    opacity=$(awk "BEGIN {printf \"%.2f\", 1 - ($percent / 100)}")
+
+    gum style --foreground 82 "Set ${percent}% transparency on $class"
+
+    # Ask about persistent rule
+    echo ""
+    if gum confirm "Add permanent rule to hyprland.conf?"; then
+        local rule="windowrule = opacity $opacity $opacity, class:$class"
+        echo "" >> ~/.config/hypr/hyprland.conf
+        echo "$rule" >> ~/.config/hypr/hyprland.conf
+        gum style --foreground 82 "Added: $rule"
+    fi
+}
+
+main "$@"
