@@ -8,6 +8,7 @@
   "modules-center": ["clock", "custom/update", "custom/screenrecording-indicator"],
   "modules-right": [
     "group/tray-expander",
+    "custom/headphone",
     "bluetooth",
     "network",
     "pulseaudio",
@@ -105,6 +106,12 @@
     "format-no-controller": "",
     "tooltip-format": "Devices connected: {num_connections}",
     "on-click": "omarchy-launch-bluetooth"
+  },
+  "custom/headphone": {
+    "exec": "omarchy-headphone-status",
+    "interval": 3,
+    "format": "{}",
+    "tooltip-format": "Headphones connected"
   },
   "pulseaudio": {
     "format": "{icon}",

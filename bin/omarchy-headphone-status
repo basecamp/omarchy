@@ -1,0 +1,23 @@
+#!/bin/bash
+# Shows headphone icon with battery level if bluetooth audio device is the active sink
+
+# Get the active audio sink (marked with *)
+ACTIVE_SINK=$(wpctl status 2>/dev/null | sed -n '/Audio/,/Video/p' | grep -E "^\s*│\s+\*" | head -1)
+
+if echo "$ACTIVE_SINK" | grep -qiE "WH-|WF-|airpods|buds|headphone|headset|earbuds|bose|jabra|beats|galaxy|sony|xm[0-9]"; then
+    # Get battery percentage from upower for headset devices
+    BATTERY=""
+    for device in $(upower -e 2>/dev/null | grep headset); do
+        PERCENTAGE=$(upower -i "$device" 2>/dev/null | grep -oP 'percentage:\s+\K\d+')
+        if [ -n "$PERCENTAGE" ]; then
+            BATTERY="$PERCENTAGE%"
+            break
+        fi
+    done
+
+    if [ -n "$BATTERY" ]; then
+        echo "󰋋 <span font_size='10pt'>$BATTERY</span>"
+    else
+        echo "󰋋"
+    fi
+fi
