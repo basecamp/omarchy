@@ -1,0 +1,110 @@
+#!/bin/bash
+#
+# omarchy-gpu-passthrough - GPU Passthrough for VMs
+# Purpose: Main entry point for GPU passthrough tool suite
+#
+
+set -uo pipefail
+
+# Load shared utilities
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+if ! source "$SCRIPT_DIR/omarchy-gpu-passthrough-utils"; then
+  echo "ERROR: Cannot load omarchy-gpu-passthrough-utils" >&2
+  echo "Please ensure omarchy-gpu-passthrough-utils exists in: $SCRIPT_DIR" >&2
+  exit 1
+fi
+
+# Main Help Function
+show_main_help() {
+  cat <<EOF
+GPU Passthrough for Virtual Machines
+
+USAGE:
+  omarchy-gpu-passthrough <command> [options]
+
+COMMANDS:
+  mode [none|vm|host]   Control GPU driver binding
+                        none - No driver (power saving, boot state)
+                        vm   - Bind to vfio-pci (ready for VM passthrough)
+                        host - Bind to native driver (nvidia/amdgpu)
+
+  setup                 Interactive setup wizard (one-time configuration)
+                        Configures kernel parameters, IOMMU, drivers
+
+  info <subcommand>     Information and diagnostics
+    status              Show current system status
+    verify              Verify configuration is correct
+    detect              Check if hardware supports passthrough
+    diagnose            Generate diagnostic report
+
+  help                  Show this help message
+
+GPU MODES:
+  Mode lifecycle: none (boot) → vm (for VM) → host (for host) → none
+
+  none  - GPU blacklisted, no driver loaded (power saving)
+  vm    - GPU bound to vfio-pci driver (ready for VM passthrough)
+  host  - GPU bound to native driver (available for host: CUDA, gaming)
+
+EXAMPLES:
+  omarchy-gpu-passthrough info detect   # Check if hardware compatible
+  omarchy-gpu-passthrough setup         # Run setup wizard (one-time)
+  omarchy-gpu-passthrough mode vm       # Before starting VM
+  omarchy-gpu-passthrough mode host     # After stopping VM (optional)
+  omarchy-gpu-passthrough info status   # Check current state
+
+TROUBLESHOOTING:
+  omarchy-gpu-passthrough info diagnose # Full diagnostic report
+  omarchy-gpu-passthrough info verify   # Verify configuration
+
+BIOS REQUIREMENTS (one-time setup):
+  • Enable CPU Virtualization (AMD-V/SVM or Intel VT-x)
+  • Enable IOMMU (AMD-Vi or Intel VT-d)
+  • Set Primary Display to IGD (integrated graphics)
+  • Connect monitor to MOTHERBOARD ports (not GPU)
+
+  After BIOS changes, run: omarchy-gpu-passthrough setup
+
+QUICK START (typical workflow):
+  1. omarchy-gpu-passthrough info detect   # Verify hardware
+  2. Configure BIOS (see BIOS REQUIREMENTS above)
+  3. omarchy-gpu-passthrough setup         # One-time setup
+  4. reboot                                # Apply kernel parameters
+  5. omarchy-gpu-passthrough mode vm       # Before starting VM
+  6. [start your VM with GPU passthrough]
+  7. omarchy-gpu-passthrough mode host     # After VM (optional)
+
+MORE HELP:
+  omarchy-gpu-passthrough mode --help   # GPU mode operations details
+  omarchy-gpu-passthrough info --help   # Information commands details
+  omarchy-gpu-passthrough setup --help  # Setup wizard details
+EOF
+}
+
+# Main Dispatcher
+case "${1:-}" in
+mode)
+  shift
+  if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || "${1:-}" == "help" ]]; then
+    exec "$SCRIPT_DIR/omarchy-gpu-passthrough-bind" mode --help
+  else
+    exec "$SCRIPT_DIR/omarchy-gpu-passthrough-bind" mode "$@"
+  fi
+  ;;
+setup)
+  shift
+  exec "$SCRIPT_DIR/omarchy-gpu-passthrough-setup" "$@"
+  ;;
+info)
+  shift
+  exec "$SCRIPT_DIR/omarchy-gpu-passthrough-info" "$@"
+  ;;
+-h | --help | help | "")
+  show_main_help
+  ;;
+*)
+  echo "Unknown command: \"$1\""
+  echo "Run 'omarchy-gpu-passthrough --help' for usage information"
+  exit 1
+  ;;
+esac

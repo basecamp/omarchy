@@ -1,0 +1,274 @@
+#!/bin/bash
+# omarchy-looking-glass-launch - Launch Looking Glass client for VM display
+
+# Preserve original script arguments for exec sg kvm (group refresh)
+ORIGINAL_SCRIPT_ARGS=("$@")
+
+SPICE_DIR="/var/run/omarchy-windows"      # SPICE socket directory (tmpfs, auto-cleaned on reboot)
+SPICE_SOCKET_PATH="$SPICE_DIR/spice.sock" # SPICE Unix socket
+
+msg_error() {
+  echo "❌  Error: $*" >&2
+}
+
+msg_warning() {
+  echo "⚠️  Warning: $*" >&2
+}
+
+msg_success() {
+  echo "✓  $*"
+}
+
+msg_info() {
+  echo "ℹ️  $*"
+}
+
+get_escape_key_display() {
+  local lg_config="$HOME/.config/looking-glass/client.ini"
+  local escape_key="Scroll Lock"
+
+  if [[ -f "$lg_config" ]]; then
+    local raw_key=$(grep -E '^\s*escapeKey\s*=' "$lg_config" 2>/dev/null | sed 's/^.*=\s*//' | tr -d ' "')
+    case "$raw_key" in
+      KEY_SCROLLLOCK) escape_key="Scroll Lock" ;;
+      KEY_RIGHTCTRL)  escape_key="Right Ctrl" ;;
+      KEY_LEFTCTRL)   escape_key="Left Ctrl" ;;
+      KEY_RIGHTALT)   escape_key="Right Alt" ;;
+      KEY_PAUSE)      escape_key="Pause" ;;
+      KEY_INSERT)     escape_key="Insert" ;;
+      "") ;;  # No key set, use default
+      *) escape_key="${raw_key#KEY_}" ;;  # Strip KEY_ prefix for unknown keys
+    esac
+  fi
+
+  echo "$escape_key"
+}
+
+ensure_user_in_kvm_group() {
+  if groups "$USER" | grep -q kvm; then
+    return 0
+  fi
+
+  if sudo -n usermod -aG kvm "$USER" 2>/dev/null; then
+    return 1
+  else
+    return 2
+  fi
+}
+
+diagnose_kvmfr_issue() {
+  echo ""
+  echo "Diagnosing kvmfr module issue..."
+  echo ""
+
+  # Kernel info
+  local kernel_ver kernel_pkg
+  kernel_ver=$(uname -r)
+  kernel_pkg=$(pacman -Qo "/lib/modules/$kernel_ver" 2>/dev/null | awk '{print $5}' || echo "unknown")
+  echo "  Kernel: $kernel_ver ($kernel_pkg)"
+
+  # Kernel headers
+  local headers_pkg="${kernel_pkg}-headers"
+  if pacman -Q "$headers_pkg" &>/dev/null; then
+    echo "  Headers: $headers_pkg installed"
+  else
+    echo "  Headers: $headers_pkg NOT installed"
+    echo "   Reinstall: omarchy-looking-glass-install"
+  fi
+
+  # DKMS status
+  if command -v dkms &>/dev/null; then
+    local dkms_status
+    dkms_status=$(dkms status 2>/dev/null | grep -i looking-glass || echo "")
+    if [[ -n "$dkms_status" ]]; then
+      echo "  DKMS: $dkms_status"
+    else
+      echo "  DKMS: looking-glass NOT found"
+      echo "   Reinstall: omarchy-looking-glass-install"
+    fi
+  else
+    echo "  DKMS: not installed"
+  fi
+
+  # Module file
+  if modinfo kvmfr &>/dev/null; then
+    echo "  Module: Found"
+  else
+    echo "  Module: NOT found (DKMS build failed?)"
+  fi
+
+  # Secure Boot
+  if command -v mokutil &>/dev/null; then
+    local sb_state
+    sb_state=$(mokutil --sb-state 2>/dev/null || echo "unknown")
+    if echo "$sb_state" | grep -qi "enabled"; then
+      echo "  Secure Boot: ENABLED (may block unsigned modules)"
+      echo "   Disable Secure Boot in BIOS, or sign the module"
+    else
+      echo "  Secure Boot: Disabled"
+    fi
+  fi
+
+  # Config files
+  if [[ -f /etc/modprobe.d/kvmfr.conf ]]; then
+    local ivshmem_size
+    ivshmem_size=$(grep -oP 'static_size_mb=\K\d+' /etc/modprobe.d/kvmfr.conf 2>/dev/null || echo "?")
+    echo "  Module config: Found (${ivshmem_size}MB)"
+  else
+    echo "  Module config: MISSING"
+  fi
+
+  if [[ -f /etc/modules-load.d/kvmfr.conf ]]; then
+    echo "  Auto-load: Enabled"
+  else
+    echo "  Auto-load: NOT configured"
+  fi
+
+  # Udev rules
+  if [[ -f /etc/udev/rules.d/99-kvmfr.rules ]]; then
+    echo "  Udev rules: Found"
+  else
+    echo "  Udev rules: MISSING"
+    echo "   Reinstall: omarchy-looking-glass-install"
+  fi
+
+  # User in kvm group
+  if groups "$USER" 2>/dev/null | grep -q '\bkvm\b'; then
+    echo "  KVM group: $USER is member"
+  else
+    echo "  KVM group: $USER NOT in kvm group"
+    echo "   Reinstall: omarchy-looking-glass-install"
+  fi
+
+  # Kernel log (use sudo if available for full access)
+  local dmesg_errors
+  if sudo -n dmesg &>/dev/null; then
+    dmesg_errors=$(sudo -n dmesg 2>/dev/null | grep -i kvmfr | tail -5 || echo "")
+  else
+    dmesg_errors=$(dmesg 2>/dev/null | grep -i kvmfr | tail -5 || echo "")
+  fi
+  if [[ -n "$dmesg_errors" ]]; then
+    echo "  Kernel log:"
+    echo "$dmesg_errors" | while read -r line; do
+      echo "   $line"
+    done
+  else
+    echo "  Kernel log: No kvmfr messages"
+  fi
+
+  echo ""
+}
+
+check_docker_running() {
+  if docker ps &>/dev/null; then
+    return 0
+  fi
+
+  msg_error "Docker is not running"
+  echo "   Start: sudo systemctl start docker"
+  return 1
+}
+
+get_container_status() {
+  local container_name="${1:-omarchy-windows}"
+  docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null
+}
+
+if ! command -v looking-glass-client &>/dev/null; then
+  msg_error "Looking Glass is not installed"
+  echo "   Install: omarchy-looking-glass-install"
+  exit 1
+fi
+
+if ! lsmod | grep -q kvmfr; then
+  msg_warning "kvmfr module not loaded, attempting to load..."
+  if timeout 10 sudo -n /usr/bin/modprobe kvmfr 2>/dev/null; then
+    msg_success "Module loaded successfully"
+    sleep 1
+  else
+    msg_error "Failed to load kvmfr module"
+    diagnose_kvmfr_issue
+    exit 1
+  fi
+fi
+
+if [[ ! -e /dev/kvmfr0 ]]; then
+  msg_error "/dev/kvmfr0 device not found!"
+  diagnose_kvmfr_issue
+  exit 1
+fi
+
+if [[ ! -r /dev/kvmfr0 ]]; then
+  msg_error "Cannot read /dev/kvmfr0"
+
+  ensure_user_in_kvm_group
+  case "$?" in
+  1)
+    msg_success "Added to kvm group"
+    msg_info "Refreshing group membership for current session..."
+    exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
+    ;;
+  0)
+    echo "   You are in the 'kvm' group but still cannot read the device."
+    echo "   This usually means your session hasn't refreshed the group membership yet."
+    msg_info "Refreshing group membership for current session..."
+    exec sg kvm "$0" "${ORIGINAL_SCRIPT_ARGS[@]}"
+    ;;
+  2)
+    msg_error "Failed to add user to kvm group"
+    exit 1
+    ;;
+  esac
+fi
+
+COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
+if [[ ! -f "$COMPOSE_FILE" ]]; then
+  msg_error "Windows VM not configured"
+  echo "   Run: omarchy-windows-vm install"
+  exit 1
+fi
+
+if ! grep -q "ivshmem-plain" "$COMPOSE_FILE"; then
+  msg_error "Windows VM is not configured with Looking Glass support!"
+  echo "   Your VM was installed without IVSHMEM device."
+  echo "   To enable Looking Glass, you need to reinstall:"
+  echo "     omarchy-windows-vm remove"
+  echo "     omarchy-windows-vm install"
+  echo "   During installation, select 'Yes' when asked about Looking Glass."
+  echo "   Alternatively, connect via RDP:"
+  echo "     omarchy-windows-vm launch"
+  exit 1
+fi
+
+if ! check_docker_running; then
+  exit 1
+fi
+
+CONTAINER_STATUS=$(get_container_status "omarchy-windows")
+if [[ "$CONTAINER_STATUS" != "running" ]]; then
+  msg_error "Windows VM is not running"
+  echo "   Start: omarchy-windows-vm launch --keep-alive"
+  exit 1
+fi
+
+if [[ ! -S "$SPICE_SOCKET_PATH" ]]; then
+  msg_warning "SPICE socket not found: $SPICE_SOCKET_PATH"
+  echo "   VM may still be starting, or SPICE is not configured correctly."
+  echo "   Looking Glass will launch without audio/clipboard integration."
+fi
+
+escape_key=$(get_escape_key_display)
+echo "Connecting to Windows VM via Looking Glass..."
+echo "$escape_key: release | $escape_key + F: fullscreen | $escape_key + Q: quit"
+
+if [[ -S "$SPICE_SOCKET_PATH" ]] && [[ ! -r "$SPICE_SOCKET_PATH" ]]; then
+  msg_info "Fixing SPICE socket permissions..."
+  sudo -n chmod 660 "$SPICE_SOCKET_PATH" 2>/dev/null || true
+  sudo -n chgrp kvm "$SPICE_SOCKET_PATH" 2>/dev/null || true
+fi
+
+if [[ "$#" -eq 0 ]]; then
+  exec setsid uwsm-app -- looking-glass-client -F
+else
+  exec setsid uwsm-app -- looking-glass-client "$@"
+fi
