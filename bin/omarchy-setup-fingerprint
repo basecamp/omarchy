@@ -20,7 +20,11 @@ print_info() {
 }
 
 check_fingerprint_hardware() {
-  if ! lsusb | grep -Eiq 'fingerprint|synaptics|goodix|elan|validity|FPC'; then
+  # Get fingerprint devices for the user
+  devices=$(fprintd-list "$USER" 2>/dev/null)
+
+  # Exit if no devices found
+  if [[ -z "$devices" ]]; then
     print_error "\nNo fingerprint sensor detected."
     return 1
   fi
