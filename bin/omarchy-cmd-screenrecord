@@ -2,6 +2,7 @@
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+PICTURES_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
   notify-send "Screen recording directory does not exist: $OUTPUT_DIR" -u critical -t 3000
@@ -11,6 +12,7 @@ fi
 DESKTOP_AUDIO="false"
 MICROPHONE_AUDIO="false"
 WEBCAM="false"
+AS_GIF="false"
 STOP_RECORDING="false"
 
 for arg in "$@"; do
@@ -18,6 +20,7 @@ for arg in "$@"; do
     --with-desktop-audio) DESKTOP_AUDIO="true" ;;
     --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
     --with-webcam) WEBCAM="true" ;;
+    --as-gif) AS_GIF="true" ;;
     --stop-recording) STOP_RECORDING="true"
   esac
 done
@@ -72,6 +75,10 @@ start_screenrecording() {
 
   [[ -n "$audio_devices" ]] && audio_args+="-a $audio_devices"
 
+  # to remember the temp file name and gif flag when stopping the recording
+  echo "$filename" > /tmp/omarchy-screenrecord-filename.txt
+  echo "$AS_GIF" > /tmp/omarchy-screenrecord-as-gif.txt
+
   gpu-screen-recorder -w portal -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
   toggle_screenrecording_indicator
 }
@@ -92,9 +99,44 @@ stop_screenrecording() {
     notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
   else
     cleanup_webcam
-    notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+
+    local recorded_file=""
+    local should_convert_to_gif="false"
+    
+    if [[ -f /tmp/omarchy-screenrecord-filename.txt ]]; then
+      recorded_file=$(cat /tmp/omarchy-screenrecord-filename.txt)
+      rm -f /tmp/omarchy-screenrecord-filename.txt
+    fi
+    
+    if [[ -f /tmp/omarchy-screenrecord-as-gif.txt ]]; then
+      should_convert_to_gif=$(cat /tmp/omarchy-screenrecord-as-gif.txt)
+      rm -f /tmp/omarchy-screenrecord-as-gif.txt
+    fi
+
+    if [[ "$should_convert_to_gif" == "true" && -n "$recorded_file" && -f "$recorded_file" ]]; then
+      convert_to_gif "$recorded_file"
+    else
+      notify-send "Screen recording saved to $recorded_file" -t 2000
+    fi
   fi
   toggle_screenrecording_indicator
+}
+
+convert_to_gif() {
+  local mp4_file="$1"
+  local gif_file="$PICTURES_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').gif"
+  
+  notify-send "Converting to GIF..." -t 2000
+  
+  # palette-based conversion for better quality
+  if ffmpeg -i "$mp4_file" \
+    -vf "fps=10,scale=800:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" \
+    -y "$gif_file" 2>/dev/null; then
+    rm -f "$mp4_file"
+    notify-send "GIF saved to $PICTURES_DIR" -t 2000
+  else
+    notify-send "GIF conversion failed" "The MP4 file was saved instead: $mp4_file" -u critical -t 5000
+  fi
 }
 
 toggle_screenrecording_indicator() {
