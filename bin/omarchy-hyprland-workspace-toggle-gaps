@@ -3,8 +3,14 @@
 workspace_id=$(hyprctl activeworkspace -j | jq -r .id)
 gaps=$(hyprctl workspacerules -j | jq -r ".[] | select(.workspaceString==\"$workspace_id\") | .gapsOut[0] // 0")
 
+configured_gap_out_array=($(hyprctl -j getoption general:gaps_out | jq -r '.custom'))
+configured_gap_out=${configured_gap_out_array[*]:0:1}
+configured_gap_in_array=($(hyprctl -j getoption general:gaps_in | jq -r '.custom'))
+configured_gap_in=${configured_gap_in_array[*]:0:1}
+configured_border=$(hyprctl -j getoption general:border_size | jq -r '.int')
+
 if [[ $gaps == "0" ]]; then
-  hyprctl keyword "workspace $workspace_id, gapsout:10, gapsin:5, bordersize:2"
+  hyprctl keyword "workspace $workspace_id, gapsout:$configured_gap_out, gapsin:$configured_gap_in, bordersize:$configured_border"
 else \
   hyprctl keyword "workspace $workspace_id, gapsout:0, gapsin:0, bordersize:0"
 fi
