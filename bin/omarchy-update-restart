@@ -1,6 +1,10 @@
 #!/bin/bash
 
-if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
+kernel_info=$(pacman -Qo "/usr/lib/modules/$(uname -r)" 2>/dev/null | grep -v headers | head -1)
+kernel_pkg=$(echo "$kernel_info" | awk '{print $5}')
+running_kernel_version=$(echo "$kernel_info" | awk '{print $6}')
+installed_kernel_version=$(pacman -Q "$kernel_pkg" 2>/dev/null | awk '{print $2}')
+if [ "$running_kernel_version" != "$installed_kernel_version" ]; then
   gum confirm "Linux kernel has been updated. Reboot?" && omarchy-state clear re*-required && sudo reboot now
 
 elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
