@@ -1,0 +1,9 @@
+#!/bin/bash
+
+echo "Installing Vivaldi..."
+
+omarchy-pkg-add vivaldi
+
+omarchy-default-browser set vivaldi-stable.desktop
+
+setsid gtk-launch vivaldi-stable.desktop
