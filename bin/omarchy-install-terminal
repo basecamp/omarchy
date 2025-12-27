@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if (($# == 0)); then
-  echo "Usage: omarchy-install-terminal [alacritty|ghostty|kitty]"
+  echo "Usage: omarchy-install-terminal [alacritty|ghostty|kitty|wezterm]"
   exit 1
 fi
 
@@ -12,6 +12,7 @@ case "$package" in
 alacritty) desktop_id="Alacritty.desktop" ;;
 ghostty) desktop_id="com.mitchellh.ghostty.desktop" ;;
 kitty) desktop_id="kitty.desktop" ;;
+wezterm) desktop_id="org.wezfurlong.wezterm.desktop" ;;
 *)
   echo "Unknown terminal: $package"
   exit 1

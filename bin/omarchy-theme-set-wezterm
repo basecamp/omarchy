@@ -1,0 +1,18 @@
+#!/bin/bash
+
+WEZTERM_THEME=~/.config/omarchy/current/theme/wezterm.lua
+
+if omarchy-cmd-present wezterm; then
+  if [[ -f "$WEZTERM_THEME" ]]; then
+    # Ensure the wezterm config directory exists
+    mkdir -p ~/.config/wezterm
+
+    # Create or update the symlink from current theme to wezterm config
+    ln -snf "$WEZTERM_THEME" ~/.config/wezterm/theme.lua
+
+    # Reload wezterm instances if any are running
+    if pgrep -x wezterm >/dev/null; then
+      killall -SIGUSR3 wezterm
+    fi
+  fi
+fi

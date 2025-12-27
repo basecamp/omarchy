@@ -11,3 +11,7 @@ fi
 if pgrep -x ghostty; then
   killall -SIGUSR2 ghostty
 fi
+
+if pgrep -x wezterm; then
+  killall -SIGUSR3 wezterm
+fi
