@@ -45,10 +45,9 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
     ;;
   *wezterm*)
     hyprctl dispatch exec -- \
-      wezterm --class=org.omarchy.screensaver \
-      --config window_padding={left=0,right=0,top=0,bottom=0,} \
-      --config font_size=18 \
-      -e omarchy-cmd-screensaver
+      wezterm --config-file ~/.local/share/omarchy/default/wezterm/screensaver.lua \
+      start --class org.omarchy.screensaver \
+      -- omarchy-cmd-screensaver
     ;;
   *)
     notify-send "✋  Screensaver only runs in Alacritty, Ghostty, Kitty, or WezTerm"
