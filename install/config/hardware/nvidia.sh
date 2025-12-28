@@ -1,6 +1,5 @@
 NVIDIA="$(lspci | grep -i 'nvidia')"
 
-# --- GPU Detection ---
 if [ -n "$NVIDIA" ]; then
   # Check which kernel is installed and set appropriate headers package
   KERNEL_HEADERS="$(pacman -Qqs '^linux(-zen|-lts|-hardened)?$' | head -1)-headers"
