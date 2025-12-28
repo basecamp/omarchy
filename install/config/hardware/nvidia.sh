@@ -12,17 +12,7 @@ NVIDIA="$(lspci | grep -i 'nvidia')"
 # --- GPU Detection ---
 if [ -n "$NVIDIA" ]; then
   # Check which kernel is installed and set appropriate headers package
-  KERNEL_HEADERS="linux-headers" # Default
-  if pacman -Q linux-zen &>/dev/null; then
-    KERNEL_HEADERS="linux-zen-headers"
-  elif pacman -Q linux-lts &>/dev/null; then
-    KERNEL_HEADERS="linux-lts-headers"
-  elif pacman -Q linux-hardened &>/dev/null; then
-    KERNEL_HEADERS="linux-hardened-headers"
-  fi
-
-  # force package database refresh
-  sudo pacman -Syu --noconfirm
+  KERNEL_HEADERS="$(pacman -Qqs '^linux(-zen|-lts|-hardened)?$' | head -1)-headers"
 
   # Initial install packages
   GENERAL_PACKAGES=(
