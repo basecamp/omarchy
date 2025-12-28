@@ -38,8 +38,6 @@ EOF
 MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)
 EOF
 
-  sudo mkinitcpio -P
-
   # Add NVIDIA environment variables to hyprland.conf
   HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
   if [ -f "$HYPRLAND_CONF" ]; then
