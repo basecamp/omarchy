@@ -11,7 +11,11 @@ if [ -n "$NVIDIA" ]; then
     # Pascal (10xx) and Maxwell (9xx) use legacy branch that can only be installed from AUR
     PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
   fi
-  # < GTX 9, See: https://wiki.archlinux.org/title/NVIDIA
+  # Bail if no supported GPU
+  if [ -z "${PACKAGES+x}" ]; then
+    echo "No compatible driver for your NVIDIA GPU. See: https://wiki.archlinux.org/title/NVIDIA"
+    exit 0
+  fi
 
   pacman -S --needed --noconfirm "$KERNEL_HEADERS" "${PACKAGES[@]}"
 
