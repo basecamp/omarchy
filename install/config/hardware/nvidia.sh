@@ -4,17 +4,14 @@ if [ -n "$NVIDIA" ]; then
   # Check which kernel is installed and set appropriate headers package
   KERNEL_HEADERS="$(pacman -Qqs '^linux(-zen|-lts|-hardened)?$' | head -1)-headers"
 
-  # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
-  # Pascal (10xx) and Maxwell (9xx) use legacy branch that can only be installed from AUR
   if echo "$NVIDIA" | grep -qE "RTX [2-9][0-9]|GTX 16"; then
+    # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
     PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
   elif echo "$NVIDIA" | grep -qE "GTX 9|GTX 10"; then
+    # Pascal (10xx) and Maxwell (9xx) use legacy branch that can only be installed from AUR
     PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
-  else
-    echo "Your GPU is unsupported by NVIDIA or Arch."
-    echo "See: https://wiki.archlinux.org/title/NVIDIA"
-    exit 1
   fi
+  # < GTX 9, See: https://wiki.archlinux.org/title/NVIDIA
 
   pacman -S --needed --noconfirm "$KERNEL_HEADERS" "${PACKAGES[@]}"
 
