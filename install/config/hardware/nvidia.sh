@@ -14,14 +14,6 @@ if [ -n "$NVIDIA" ]; then
   # Check which kernel is installed and set appropriate headers package
   KERNEL_HEADERS="$(pacman -Qqs '^linux(-zen|-lts|-hardened)?$' | head -1)-headers"
 
-  # Initial install packages
-  GENERAL_PACKAGES=(
-    "${KERNEL_HEADERS}"
-    "egl-wayland"
-    "qt5-wayland"
-    "qt6-wayland"
-  )
-
   # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
   # Pascal (10xx) and Maxwell (9xx) use legacy branch that can only be installed from AUR
   # All older drivers are directed to wiki
