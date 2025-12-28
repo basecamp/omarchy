@@ -477,6 +477,13 @@ go_to_menu() {
   esac
 }
 
+# User's overrides
+EXTENSIONS="$HOME/.config/walker/omarchy/menu-extensions.sh"
+
+if [[ -f "$EXTENSIONS" ]]; then
+  source "$EXTENSIONS"
+fi
+
 if [[ -n "$1" ]]; then
   BACK_TO_EXIT=true
   go_to_menu "$1"
