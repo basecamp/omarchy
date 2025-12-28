@@ -1,12 +1,3 @@
-# ==============================================================================
-# Hyprland NVIDIA Setup Script for Arch Linux
-# ==============================================================================
-# This script automates the installation and configuration of NVIDIA drivers
-# for use with Hyprland on Arch Linux, following the official Hyprland wiki.
-#
-# Author: https://github.com/Kn0ax
-#
-# ==============================================================================
 NVIDIA="$(lspci | grep -i 'nvidia')"
 
 # --- GPU Detection ---
@@ -38,15 +29,12 @@ EOF
 MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)
 EOF
 
-  # Add NVIDIA environment variables to hyprland.conf
-  HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
-  if [ -f "$HYPRLAND_CONF" ]; then
-    cat >>"$HYPRLAND_CONF" <<'EOF'
+  # Add NVIDIA environment variables
+  cat >>$HOME/.config/hypr/envs.conf <<'EOF'
 
-# NVIDIA environment variables
+# NVIDIA
 env = NVD_BACKEND,direct
 env = LIBVA_DRIVER_NAME,nvidia
 env = __GLX_VENDOR_LIBRARY_NAME,nvidia
 EOF
-  fi
 fi
