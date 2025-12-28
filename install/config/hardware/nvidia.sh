@@ -16,38 +16,27 @@ if [ -n "$NVIDIA" ]; then
 
   # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
   # Pascal (10xx) and Maxwell (9xx) use legacy branch that can only be installed from AUR
-  # All older drivers are directed to wiki
-  if echo "$NVIDIA" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
-    DRIVER_PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
-    sudo pacman -S --needed --noconfirm "${GENERAL_PACKAGES[@]}" "${DRIVER_PACKAGES[@]}"
-  elif echo "$NVIDIA" | grep -q -E "GTX 9|GTX 10"; then
-    sudo pacman -S --needed --noconfirm "${GENERAL_PACKAGES[@]}"
-    LEGACY_DRIVER_PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
-    yay -S --needed --noconfirm "${LEGACY_DRIVER_PACKAGES[@]}"
+  if echo "$NVIDIA" | grep -qE "RTX [2-9][0-9]|GTX 16"; then
+    PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
+  elif echo "$NVIDIA" | grep -qE "GTX 9|GTX 10"; then
+    PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
   else
     echo "Your GPU is unsupported by NVIDIA or Arch."
     echo "See: https://wiki.archlinux.org/title/NVIDIA"
     exit 1
   fi
 
+  pacman -S --needed --noconfirm "$KERNEL_HEADERS" "${PACKAGES[@]}"
+
   # Configure modprobe for early KMS
-  echo "options nvidia_drm modeset=1" | sudo tee /etc/modprobe.d/nvidia.conf >/dev/null
+  sudo tee /etc/modprobe.d/nvidia.conf <<EOF >/dev/null
+options nvidia_drm modeset=1
+EOF
 
   # Configure mkinitcpio for early loading
-  MKINITCPIO_CONF="/etc/mkinitcpio.conf"
-
-  # Define modules
-  NVIDIA_MODULES="nvidia nvidia_modeset nvidia_uvm nvidia_drm"
-
-  # Create backup
-  sudo cp "$MKINITCPIO_CONF" "${MKINITCPIO_CONF}.backup"
-
-  # Remove any old nvidia modules to prevent duplicates
-  sudo sed -i -E 's/ nvidia_drm//g; s/ nvidia_uvm//g; s/ nvidia_modeset//g; s/ nvidia//g;' "$MKINITCPIO_CONF"
-  # Add the new modules at the start of the MODULES array
-  sudo sed -i -E "s/^(MODULES=\\()/\\1${NVIDIA_MODULES} /" "$MKINITCPIO_CONF"
-  # Clean up potential double spaces
-  sudo sed -i -E 's/  +/ /g' "$MKINITCPIO_CONF"
+  sudo tee /etc/mkinitcpio.conf.d/nvidia.conf <<EOF >/dev/null
+MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)
+EOF
 
   sudo mkinitcpio -P
 
