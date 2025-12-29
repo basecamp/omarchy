@@ -1184,8 +1184,12 @@ create_docker_compose_config() {
 
   local DEVICES_VFIO=""
   if [[ "$GPU_PASSTHROUGH_ENABLED" == true ]]; then
-    DEVICES_VFIO="
-      - /dev/vfio/${GPU_IOMMU_GROUP}:/dev/vfio/${GPU_IOMMU_GROUP}
+    DEVICES_VFIO=""
+    for group in $(echo "$GPU_IOMMU_GROUP" | tr ',' ' '); do
+      DEVICES_VFIO+="
+      - /dev/vfio/${group}:/dev/vfio/${group}"
+    done
+    DEVICES_VFIO+="
       - /dev/vfio/vfio:/dev/vfio/vfio"
   fi
 
@@ -1248,9 +1252,9 @@ services:
       - 3389:3389/tcp
       - 3389:3389/udp
     volumes:
-      - $HOME/.windows:/storage
-      - $HOME/Windows:/shared
-      - $HOME/.config/windows/oem:/oem$VOLUMES_SPICE
+      - \${HOME}/.windows:/storage
+      - \${HOME}/Windows:/shared
+      - \${HOME}/.config/windows/oem:/oem$VOLUMES_SPICE
     restart: "no"
     stop_grace_period: 2m
 EOF
@@ -1279,9 +1283,9 @@ services:
       - 3389:3389/tcp
       - 3389:3389/udp
     volumes:
-      - $HOME/.windows:/storage
-      - $HOME/Windows:/shared
-      - $HOME/.config/windows/oem:/oem$VOLUMES_SPICE
+      - \${HOME}/.windows:/storage
+      - \${HOME}/Windows:/shared
+      - \${HOME}/.config/windows/oem:/oem$VOLUMES_SPICE
     restart: "no"
     stop_grace_period: 2m
 EOF
@@ -3602,8 +3606,9 @@ show_compose() {
     GPU_IOMMU_DEVICES=$(grep -oP 'vfio-pci,host=0000:\K[0-9a-f:.]+' "$COMPOSE_FILE" | tr '\n' ' ' | sed 's/ $//')
     GPU_PCI_ADDR=$(echo "$GPU_IOMMU_DEVICES" | awk '{print $1}')
 
-    # Extract IOMMU group from devices section
-    GPU_IOMMU_GROUP=$(grep -oP '/dev/vfio/\K[0-9]+' "$COMPOSE_FILE" | head -1)
+    # Extract all IOMMU groups from devices section
+    # Returns comma-separated list of unique group numbers
+    GPU_IOMMU_GROUP=$(grep -oP '/dev/vfio/\K[0-9]+' "$COMPOSE_FILE" | sort -u | tr '\n' ',' | sed 's/,$//')
   fi
 
   # Detect IVSHMEM size (default 64)

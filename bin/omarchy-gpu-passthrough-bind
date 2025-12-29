@@ -242,6 +242,87 @@ check_display_safety() {
   return 0
 }
 
+# Try to reset GPU using SBR (Secondary Bus Reset) or FLR (Function Level Reset)
+# Required for AMD GPUs to properly unbind from vfio-pci
+try_reset_gpu() {
+  local pci_addr="$1"
+  local pci_full
+  pci_full=$(normalize_pci_addr "$pci_addr") || return 1
+
+  local reset_file="/sys/bus/pci/devices/${pci_full}/reset"
+
+  if [[ -w "$reset_file" ]] || sudo -n test -w "$reset_file" 2>/dev/null; then
+    log_info "Attempting GPU reset via sysfs..."
+    if echo 1 | sudo -n tee "$reset_file" >/dev/null 2>&1; then
+      log_success "GPU reset successful"
+      sleep 1
+      return 0
+    else
+      log_warn "GPU reset failed (may not support FLR)"
+    fi
+  else
+    log_info "GPU reset not available (no reset file or permission denied)"
+  fi
+
+  return 1
+}
+
+# Set driver_override to prevent automatic driver binding
+# Critical for AMD GPUs with vfio-pci.ids in kernel cmdline
+set_driver_override() {
+  local pci_addr="$1"
+  local driver="$2"
+  local pci_full
+  pci_full=$(normalize_pci_addr "$pci_addr") || return 1
+
+  local override_file="/sys/bus/pci/devices/${pci_full}/driver_override"
+
+  if [[ -e "$override_file" ]]; then
+    if echo "$driver" | sudo -n tee "$override_file" >/dev/null 2>&1; then
+      log_info "Set driver_override=$driver for $pci_addr"
+      return 0
+    else
+      log_warn "Failed to set driver_override for $pci_addr"
+    fi
+  else
+    log_info "driver_override not available for $pci_addr"
+  fi
+
+  return 1
+}
+
+# Clear driver_override to allow automatic driver binding
+clear_driver_override() {
+  local pci_addr="$1"
+  local pci_full
+  pci_full=$(normalize_pci_addr "$pci_addr") || return 1
+
+  local override_file="/sys/bus/pci/devices/${pci_full}/driver_override"
+
+  if [[ -e "$override_file" ]]; then
+    # Writing empty string clears the override (use -n to avoid trailing newline)
+    if echo -n "" | sudo -n tee "$override_file" >/dev/null 2>&1; then
+      log_info "Cleared driver_override for $pci_addr"
+      return 0
+    else
+      log_warn "Failed to clear driver_override for $pci_addr"
+    fi
+  fi
+
+  return 1
+}
+
+# Clear driver_override for all AMD GPU IOMMU devices
+# Ensures clean state before bind/unbind operations
+clear_amd_driver_overrides() {
+  local iommu_devices="$1"
+  [[ "$GPU_VENDOR_ID" != "1002" ]] && return 0
+
+  for dev_pci in $iommu_devices; do
+    clear_driver_override "$dev_pci"
+  done
+}
+
 # Unload NVIDIA modules in dependency order (drm→modeset→uvm→nvidia)
 unload_nvidia_modules() {
   msg_info "Unloading NVIDIA modules..."
@@ -327,12 +408,14 @@ cmd_bind() {
     fi
   fi
 
-  # Get all IOMMU group devices (supports laptops with 4-5 devices in group)
+  # Get all IOMMU group devices (supports laptops with 4-5 devices in group and AMD with separate audio group)
   local iommu_devices
   iommu_devices=$(get_cached_iommu_devices "$GPU_PCI_ADDR")
 
   local device_count=$(echo "$iommu_devices" | wc -w)
   log_info "IOMMU group contains $device_count device(s): $iommu_devices"
+
+  clear_amd_driver_overrides "$iommu_devices"
 
   # Register GPU vendor/device ID with vfio-pci (requires root)
   echo "$GPU_VENDOR_ID $GPU_DEVICE_ID" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
@@ -527,6 +610,20 @@ cmd_unbind() {
     exit 0
   fi
 
+  # AMD Vega check: these GPUs need reboot after vfio-pci use to work with native driver
+  if gpu_needs_reboot_for_native_driver "$GPU_PCI_ADDR" "$GPU_VENDOR_ID"; then
+    echo ""
+    msg_warning "AMD Vega GPU detected"
+    msg_warning "This GPU cannot rebind to amdgpu after vfio-pci use without reboot"
+    echo ""
+    echo "Options:"
+    echo "  1. Reboot the system to use GPU on host"
+    echo "  2. Keep GPU in VM mode for another VM session"
+    echo ""
+    log_warn "AMD Vega GPU needs reboot to use native driver after vfio-pci"
+    exit 1
+  fi
+
   # Safety check: ensure no processes using GPU before unbind
   check_gpu_processes "$current_driver"
 
@@ -534,12 +631,14 @@ cmd_unbind() {
     msg_info "Unbinding from vfio-pci..."
     log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
 
-    # Get all IOMMU group devices (supports laptops with 4-5 devices in group)
+    # Get all IOMMU group devices (supports laptops with 4-5 devices in group and AMD with separate audio group)
     local iommu_devices
     iommu_devices=$(get_cached_iommu_devices "$GPU_PCI_ADDR")
 
     local device_count=$(echo "$iommu_devices" | wc -w)
     log_info "IOMMU group contains $device_count device(s): $iommu_devices"
+
+    clear_amd_driver_overrides "$iommu_devices"
 
     for dev_pci in $iommu_devices; do
       local dev_pci_full
@@ -552,6 +651,12 @@ cmd_unbind() {
     done
 
     remove_vfio_device_ids "$iommu_devices"
+
+    # For AMD GPUs: try GPU reset before rebinding to native driver
+    if [[ "$GPU_VENDOR_ID" == "1002" ]]; then
+      msg_info "Resetting AMD GPU..."
+      try_reset_gpu "$GPU_PCI_ADDR" || log_warn "GPU reset not available (continuing anyway)"
+    fi
 
     log_success "All IOMMU group devices unbound from vfio-pci"
 

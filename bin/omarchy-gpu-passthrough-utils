@@ -45,6 +45,15 @@ declare -a GPU_TYPE
 declare -a GPU_AUDIO_ID
 declare -i GPU_COUNT=0
 
+# Intel iGPU: Legacy (UHD, HD Graphics, Iris) + Modern codenames
+INTEL_IGPU_REGEX='uhd|hd graphics|iris|intel.*graphics|meteor|lunar|arrow|panther'
+
+# AMD APU: Desktop + Mobile + Legacy codenames
+AMD_APU_REGEX='radeon [0-9]+m|vega.*igpu|phoenix|rembrandt|cezanne|renoir|lucienne|barcelo|strix|raphael|hawk|mendocino|krackan'
+
+# AMD Vega device IDs (Vega 10/20 - need reboot after vfio-pci)
+AMD_VEGA_DEVICE_IDS='687f|6863|6867|6868|66af|66a0|66a1|66a2|66a3|66a7'
+
 normalize_pci_addr() {
   local pci_addr="$1"
   [[ -z "$pci_addr" ]] && return 1
@@ -361,9 +370,11 @@ save_gpu_config() {
     ;;
   esac
 
-  # Get IOMMU group info (supports multi-device groups on laptops)
-  local iommu_group=$(get_iommu_group "$pci")
-  local iommu_devices=$(get_iommu_group_devices "$pci")
+  # Get IOMMU group info (supports multi-device groups on laptops and AMD Vega with separate audio group)
+  local iommu_group
+  iommu_group=$(get_gpu_passthrough_iommu_groups "$pci" "$vendor_id")
+  local iommu_devices
+  iommu_devices=$(get_gpu_passthrough_devices "$pci" "$vendor_id")
 
   # Debug logging for IOMMU detection (helps diagnose laptop issues)
   if [[ "$iommu_group" == "unknown" ]]; then
@@ -511,15 +522,15 @@ classify_gpu() {
 
   # Intel integrated GPUs
   if [[ "$vendor_id" == "8086" ]]; then
-    if [[ "$name_lower" =~ uhd|hd\ graphics\ [0-9]{3,4}$|iris|intel\ graphics|meteor\ lake ]]; then
+    if [[ "$name_lower" =~ $INTEL_IGPU_REGEX ]]; then
       echo "integrated"
       return
     fi
   fi
 
-  # AMD integrated GPUs (APUs)
+  # AMD integrated GPUs
   if [[ "$vendor_id" == "1002" ]]; then
-    if [[ "$name_lower" =~ radeon\ [0-9]+m|vega.*igpu|phoenix|rembrandt|cezanne|renoir|strix ]]; then
+    if [[ "$name_lower" =~ $AMD_APU_REGEX ]]; then
       echo "integrated"
       return
     fi
@@ -1067,10 +1078,12 @@ check_iommu_enabled_cmdline() {
 
 get_cached_iommu_devices() {
   local pci_addr="$1"
+  local vendor_id="${GPU_VENDOR_ID:-}"
   local devices="${GPU_IOMMU_DEVICES:-}"
 
   if [[ -z "$devices" ]]; then
-    devices=$(get_iommu_group_devices "$pci_addr")
+    # Use get_gpu_passthrough_devices for AMD GPUs with separate audio IOMMU group
+    devices=$(get_gpu_passthrough_devices "$pci_addr" "$vendor_id")
   fi
 
   echo "$devices"
@@ -1116,4 +1129,121 @@ remove_vfio_device_ids() {
   done
 
   return 0
+}
+
+# Check if GPU is AMD Vega (Vega 10/20) - these GPUs have issues with vfio-pci unbind
+is_vega_gpu() {
+  local pci_addr="$1"
+  local device_id
+  device_id=$(lspci -ns "$pci_addr" 2>/dev/null | awk '{print $3}' | cut -d: -f2)
+
+  [[ "${device_id,,}" =~ ^($AMD_VEGA_DEVICE_IDS)$ ]]
+}
+
+# Check if GPU was bound to vfio-pci during this boot session
+# Used to determine if AMD Vega needs reboot before binding to native driver
+was_gpu_on_vfio_this_boot() {
+  local pci_addr="$1"
+  local pci_full
+  pci_full=$(normalize_pci_addr "$pci_addr") || return 1
+
+  # Check dmesg for vfio-pci claiming this device
+  if journalctl -k -b --no-pager 2>/dev/null | grep -F "vfio" | grep -qF "$pci_full"; then
+    return 0
+  fi
+
+  return 1
+}
+
+# Check if GPU needs reboot to use native driver (AMD Vega after vfio-pci use)
+gpu_needs_reboot_for_native_driver() {
+  local pci_addr="$1"
+  local vendor_id="$2"
+
+  # Only affects AMD GPUs
+  [[ "$vendor_id" != "1002" ]] && return 1
+
+  # Check if it's a Vega GPU
+  if ! is_vega_gpu "$pci_addr"; then
+    return 1
+  fi
+
+  # Check if GPU was on vfio-pci this boot
+  if was_gpu_on_vfio_this_boot "$pci_addr"; then
+    return 0
+  fi
+
+  return 1
+}
+
+# Get all devices for GPU passthrough including audio in separate IOMMU groups
+# Returns: space-separated list of PCI addresses (short format without 0000: prefix)
+get_gpu_passthrough_devices() {
+  local gpu_pci="$1"
+  local vendor_id="${2:-}"
+  local devices=()
+
+  # Get devices from main IOMMU group
+  local iommu_devices
+  iommu_devices=$(get_iommu_group_devices "$gpu_pci") || iommu_devices=""
+  for dev in $iommu_devices; do
+    devices+=("$dev")
+  done
+
+  # For AMD GPUs, check if audio device is in a separate IOMMU group
+  if [[ "$vendor_id" == "1002" ]]; then
+    local audio_pci="${gpu_pci%%.*}.1"
+    if lspci -s "$audio_pci" 2>/dev/null | grep -qi "audio"; then
+      local gpu_group audio_group
+      gpu_group=$(get_iommu_group "$gpu_pci")
+      audio_group=$(get_iommu_group "$audio_pci")
+
+      if [[ -n "$audio_group" && "$audio_group" != "unknown" && "$audio_group" != "$gpu_group" ]]; then
+        # Audio is in different group - add it and any other devices in that group
+        log_info "AMD GPU audio in separate IOMMU group (GPU=$gpu_group, Audio=$audio_group)"
+        local audio_group_devices
+        audio_group_devices=$(get_iommu_group_devices "$audio_pci") || audio_group_devices=""
+        for dev in $audio_group_devices; do
+          # Avoid duplicates
+          local found=false
+          for existing in "${devices[@]}"; do
+            [[ "$existing" == "$dev" ]] && found=true && break
+          done
+          [[ "$found" == "false" ]] && devices+=("$dev")
+        done
+      fi
+    fi
+  fi
+
+  echo "${devices[*]}"
+}
+
+# Get all IOMMU groups used by GPU passthrough devices (comma-separated)
+get_gpu_passthrough_iommu_groups() {
+  local gpu_pci="$1"
+  local vendor_id="${2:-}"
+  local groups=()
+
+  # Get main GPU group
+  local gpu_group
+  gpu_group=$(get_iommu_group "$gpu_pci")
+  [[ -n "$gpu_group" && "$gpu_group" != "unknown" ]] && groups+=("$gpu_group")
+
+  # For AMD GPUs, check if audio device is in a separate IOMMU group
+  if [[ "$vendor_id" == "1002" ]]; then
+    local audio_pci="${gpu_pci%%.*}.1"
+    if lspci -s "$audio_pci" 2>/dev/null | grep -qi "audio"; then
+      local audio_group
+      audio_group=$(get_iommu_group "$audio_pci")
+      if [[ -n "$audio_group" && "$audio_group" != "unknown" && "$audio_group" != "$gpu_group" ]]; then
+        groups+=("$audio_group")
+        log_info "Adding separate audio IOMMU group: $audio_group"
+      fi
+    fi
+  fi
+
+  # Return comma-separated list
+  local result
+  result=$(IFS=,; echo "${groups[*]}")
+  echo "$result"
 }

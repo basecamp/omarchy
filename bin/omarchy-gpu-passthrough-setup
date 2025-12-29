@@ -177,6 +177,27 @@ configure_kernel_parameters() {
   esac
 }
 
+# Remove dangerous kernel parameters from bootloader config
+# These can cause issues with GPU passthrough:
+#   pci=noats - disables ATS, can break IOMMU
+#   video=efifb:off - disables EFI framebuffer, can break display on AMD
+#   iommu.strict=1 - forces strict mode, can cause performance issues
+remove_dangerous_params() {
+  local config_file="$1"
+  local dangerous_params=("pci=noats" "video=efifb:off" "iommu.strict=1")
+
+  for param in "${dangerous_params[@]}"; do
+    if grep -qF "$param" "$config_file"; then
+      log_info "Removing dangerous parameter: $param"
+      local param_escaped="${param//./\\.}"
+      # Handle param at start/middle/end of line
+      sudo sed -i -E "s/(^|[[:space:]])${param_escaped}([[:space:]]|$)/\\1\\2/g" "$config_file"
+      sudo sed -i -E 's/[[:space:]]+/ /g' "$config_file"
+      msg_warning "Removed dangerous kernel parameter: $param"
+    fi
+  done
+}
+
 configure_omarchy_limine() {
   local iommu_param="$1"
 
@@ -184,6 +205,8 @@ configure_omarchy_limine() {
     sudo sed -i -E 's/[[:space:]]*vfio-pci\.ids=[0-9a-f:,]+//g' "$LIMINE_DEFAULT"
     sudo sed -i -E 's/[[:space:]]+/ /g' "$LIMINE_DEFAULT"
   fi
+
+  remove_dangerous_params "$LIMINE_DEFAULT"
 
   local all_cmdlines
   all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null) || all_cmdlines=""
@@ -246,6 +269,8 @@ configure_grub_bootloader() {
     return 1
   fi
   log_info "GRUB config backed up"
+
+  remove_dangerous_params "$GRUB_DEFAULT"
 
   local grub_line current_cmdline=""
   grub_line=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" 2>/dev/null) || grub_line=""
@@ -623,6 +648,7 @@ $real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/rescan
 # PCI device operations (for dynamic PCI device paths)
 $real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/devices/*/driver/unbind
 $real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/devices/*/driver_override
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/devices/*/reset
 
 # Audio device unbinding (required for complete IOMMU group)
 $real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/snd_hda_intel/bind
