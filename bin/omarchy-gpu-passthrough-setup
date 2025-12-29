@@ -856,8 +856,6 @@ configure_hyprland_igpu() {
   fi
 
   # Clean any old GPU-related env vars from Hyprland config
-  # We don't need to set AQ_DRM_DEVICES - when dGPU is blacklisted,
-  # Hyprland will automatically select the only available GPU (iGPU)
   if [[ -w "$hypr_conf" ]]; then
     sed -i '/^env = WLR_DRM_DEVICES,/d' "$hypr_conf"
     sed -i '/^env = AQ_DRM_DEVICES,/d' "$hypr_conf"
@@ -880,9 +878,119 @@ configure_hyprland_igpu() {
 
   [[ -n "${SUDO_USER:-}" ]] && chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$hypr_conf" 2>/dev/null
 
+  # For MUX-less laptops: dGPU is NOT blacklisted (uses vfio-pci.ids)
+  # EGL probing will still open /dev/nvidia* handles unless we force Mesa
+  if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
+    configure_uwsm_env_muxless "$igpu_pci" "$user_home"
+    msg_success "Hyprland: GPU passthrough environment configured (MUX-less)"
+    return 0
+  fi
+
   msg_success "Hyprland: cleaned GPU settings (auto-detect enabled)"
   msg_info "Hyprland will auto-select iGPU (dGPU is blacklisted)"
 
+  return 0
+}
+
+configure_uwsm_env_muxless() {
+  local igpu_pci="$1"
+  local user_home="$2"
+  local uwsm_env="$user_home/.config/uwsm/env"
+  local uwsm_dir="$user_home/.config/uwsm"
+  local use_sudo=""
+
+  # Get DRM card for iGPU
+  local drm_card
+  drm_card=$(get_drm_card_for_pci "$igpu_pci")
+  if [[ -z "$drm_card" ]]; then
+    log_warn "Could not find DRM card for iGPU $igpu_pci - skipping UWSM config"
+    msg_warning "Could not detect iGPU display device"
+    return 0
+  fi
+
+  local drm_device="/dev/dri/$drm_card"
+  log_info "Configuring UWSM env for MUX-less: iGPU=$igpu_pci → $drm_device"
+
+  # Determine if we need sudo (check parent dir writability)
+  local config_dir="$user_home/.config"
+  if [[ -d "$uwsm_dir" ]]; then
+    [[ ! -w "$uwsm_dir" ]] && use_sudo="sudo"
+  elif [[ -d "$config_dir" ]]; then
+    [[ ! -w "$config_dir" ]] && use_sudo="sudo"
+  else
+    use_sudo="sudo"
+  fi
+
+  # Ensure directory exists
+  if [[ ! -d "$uwsm_dir" ]]; then
+    if ! $use_sudo mkdir -p "$uwsm_dir" 2>/dev/null; then
+      log_warn "Could not create UWSM config dir: $uwsm_dir"
+      msg_warning "Could not create UWSM config directory"
+      return 0
+    fi
+    [[ -n "${SUDO_USER:-}" ]] && $use_sudo chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$uwsm_dir" 2>/dev/null
+  fi
+
+  # Create env file if it doesn't exist
+  if [[ ! -f "$uwsm_env" ]]; then
+    if ! $use_sudo touch "$uwsm_env" 2>/dev/null; then
+      log_warn "Could not create UWSM env file: $uwsm_env"
+      msg_warning "Could not create UWSM environment file"
+      return 0
+    fi
+    [[ -n "${SUDO_USER:-}" ]] && $use_sudo chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$uwsm_env" 2>/dev/null
+  fi
+
+  # Determine sudo for file operations (file may have different perms than dir)
+  if [[ -f "$uwsm_env" && ! -w "$uwsm_env" ]]; then
+    use_sudo="sudo"
+  fi
+
+  # Remove old GPU passthrough section if exists
+  if grep -q "# BEGIN GPU Passthrough" "$uwsm_env" 2>/dev/null; then
+    $use_sudo sed -i '/# BEGIN GPU Passthrough/,/# END GPU Passthrough/d' "$uwsm_env"
+  fi
+
+  # Check if Mesa EGL vendor file exists
+  local mesa_egl="/usr/share/glvnd/egl_vendor.d/50_mesa.json"
+  if [[ ! -f "$mesa_egl" ]]; then
+    log_warn "Mesa EGL vendor file not found: $mesa_egl"
+    msg_warning "Mesa EGL not found - GPU isolation may not work"
+    return 0
+  fi
+
+  # Add GPU passthrough configuration
+  # Forces EGL to use Mesa only, preventing NVIDIA handles from being opened
+  local config_content
+  config_content=$(cat << EOF
+
+# BEGIN GPU Passthrough Configuration
+# Prevents EGL from probing NVIDIA GPU (opens /dev/nvidia* handles)
+export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa_egl"
+export AQ_DRM_DEVICES="$drm_device"
+export __GLX_VENDOR_LIBRARY_NAME="mesa"
+export __NV_PRIME_RENDER_OFFLOAD=0
+# END GPU Passthrough Configuration
+EOF
+)
+
+  if [[ -n "$use_sudo" ]]; then
+    if ! echo "$config_content" | $use_sudo tee -a "$uwsm_env" >/dev/null; then
+      log_warn "Failed to write GPU passthrough config to $uwsm_env"
+      msg_warning "Could not write GPU passthrough configuration"
+      return 1
+    fi
+  else
+    if ! echo "$config_content" >> "$uwsm_env"; then
+      log_warn "Failed to write GPU passthrough config to $uwsm_env"
+      msg_warning "Could not write GPU passthrough configuration"
+      return 1
+    fi
+  fi
+
+  [[ -n "${SUDO_USER:-}" ]] && $use_sudo chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$uwsm_env" 2>/dev/null
+
+  msg_info "UWSM env: Force Mesa EGL, restrict to $drm_device"
   return 0
 }
 
@@ -921,27 +1029,56 @@ unconfigure_hyprland_igpu() {
     return 0
   fi
 
+  # Clean Hyprland config
   local hypr_conf="$user_home/.config/hypr/hyprland.conf"
-  if [[ ! -f "$hypr_conf" ]]; then
-    return 0
+  if [[ -f "$hypr_conf" ]]; then
+    if grep -qE "^env = (WLR_DRM_DEVICES|AQ_DRM_DEVICES|DRI_PRIME|LIBVA_DRIVER_NAME|__GLX_VENDOR_LIBRARY_NAME)," "$hypr_conf" ||
+       grep -q "# GPU Passthrough Configuration" "$hypr_conf"; then
+      cp -a "$hypr_conf" "${hypr_conf}.backup.uninstall.$(date +%s)"
+      sed -i '/^env = WLR_DRM_DEVICES,/d' "$hypr_conf"
+      sed -i '/^env = AQ_DRM_DEVICES,/d' "$hypr_conf"
+      sed -i '/^env = DRI_PRIME,/d' "$hypr_conf"
+      sed -i '/^env = LIBVA_DRIVER_NAME,/d' "$hypr_conf"
+      sed -i '/^env = __GLX_VENDOR_LIBRARY_NAME,/d' "$hypr_conf"
+      sed -i '/# GPU Passthrough Configuration/d' "$hypr_conf"
+      [[ -n "${SUDO_USER:-}" ]] && chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$hypr_conf" 2>/dev/null
+    fi
   fi
 
-  if ! grep -qE "^env = (WLR_DRM_DEVICES|AQ_DRM_DEVICES|DRI_PRIME|LIBVA_DRIVER_NAME|__GLX_VENDOR_LIBRARY_NAME)," "$hypr_conf" &&
-    ! grep -q "# GPU Passthrough Configuration" "$hypr_conf"; then
-    return 0
-  fi
-
-  cp -a "$hypr_conf" "${hypr_conf}.backup.uninstall.$(date +%s)"
-  sed -i '/^env = WLR_DRM_DEVICES,/d' "$hypr_conf"
-  sed -i '/^env = AQ_DRM_DEVICES,/d' "$hypr_conf"
-  sed -i '/^env = DRI_PRIME,/d' "$hypr_conf"
-  sed -i '/^env = LIBVA_DRIVER_NAME,/d' "$hypr_conf"
-  sed -i '/^env = __GLX_VENDOR_LIBRARY_NAME,/d' "$hypr_conf"
-  sed -i '/# GPU Passthrough Configuration/d' "$hypr_conf"
-
-  [[ -n "${SUDO_USER:-}" ]] && chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$hypr_conf" 2>/dev/null
+  # Clean UWSM env (MUX-less configuration)
+  unconfigure_uwsm_env_muxless "$user_home"
 
   msg_success "Hyprland config cleaned"
+  return 0
+}
+
+unconfigure_uwsm_env_muxless() {
+  local user_home="$1"
+  local uwsm_env="$user_home/.config/uwsm/env"
+  local use_sudo=""
+
+  [[ ! -f "$uwsm_env" ]] && return 0
+
+  if ! grep -q "# BEGIN GPU Passthrough" "$uwsm_env" 2>/dev/null; then
+    return 0
+  fi
+
+  # Determine if we need sudo
+  [[ ! -w "$uwsm_env" ]] && use_sudo="sudo"
+
+  # Backup before modification
+  if ! $use_sudo cp -a "$uwsm_env" "${uwsm_env}.backup.uninstall.$(date +%s)" 2>/dev/null; then
+    log_warn "Could not backup UWSM env file"
+  fi
+
+  if ! $use_sudo sed -i '/# BEGIN GPU Passthrough/,/# END GPU Passthrough/d' "$uwsm_env" 2>/dev/null; then
+    log_warn "Could not remove GPU Passthrough section from UWSM env"
+    return 0
+  fi
+
+  [[ -n "${SUDO_USER:-}" ]] && $use_sudo chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$uwsm_env" 2>/dev/null
+
+  log_info "Removed GPU Passthrough section from UWSM env"
   return 0
 }
 
