@@ -3,7 +3,7 @@
 set -e
 
 echo -e "\e[32m\nUpdate system packages\e[0m"
-sudo pacman -Syu --noconfirm
+sudo pacman -Syyu --noconfirm
 
 # Update AUR packages if any are installed
 if pacman -Qem >/dev/null; then

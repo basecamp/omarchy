@@ -4,24 +4,26 @@ if command -v limine &>/dev/null; then
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
+  sudo tee /etc/mkinitcpio.conf.d/thunderbolt_module.conf <<EOF >/dev/null
+MODULES+=(thunderbolt)
+EOF
 
-  [[ -f /boot/EFI/limine/limine.conf ]] || [[ -f /boot/EFI/BOOT/limine.conf ]] && EFI=true
+  # Detect boot mode
+  [[ -d /sys/firmware/efi ]] && EFI=true
 
-  # Conf location is different between EFI and BIOS
-  if [[ -n "$EFI" ]]; then
-    # Check USB location first, then regular EFI location
-    if [[ -f /boot/EFI/BOOT/limine.conf ]]; then
-      limine_config="/boot/EFI/BOOT/limine.conf"
-    else
-      limine_config="/boot/EFI/limine/limine.conf"
-    fi
-  else
+  # Find config location
+  if [[ -f /boot/EFI/arch-limine/limine.conf ]]; then
+    limine_config="/boot/EFI/arch-limine/limine.conf"
+  elif [[ -f /boot/EFI/BOOT/limine.conf ]]; then
+    limine_config="/boot/EFI/BOOT/limine.conf"
+  elif [[ -f /boot/EFI/limine/limine.conf ]]; then
+    limine_config="/boot/EFI/limine/limine.conf"
+  elif [[ -f /boot/limine/limine.conf ]]; then
     limine_config="/boot/limine/limine.conf"
-  fi
-
-  # Double-check and exit if we don't have a config file for some reason
-  if [[ ! -f $limine_config ]]; then
-    echo "Error: Limine config not found at $limine_config" >&2
+  elif [[ -f /boot/limine.conf ]]; then
+    limine_config="/boot/limine.conf"
+  else
+    echo "Error: Limine config not found" >&2
     exit 1
   fi
 
@@ -95,10 +97,15 @@ EOF
     fi
   fi
 
+  # Enable quota to allow space-aware algorithms to work
+  sudo btrfs quota enable /
+
   # Tweak default Snapper configs
   sudo sed -i 's/^TIMELINE_CREATE="yes"/TIMELINE_CREATE="no"/' /etc/snapper/configs/{root,home}
   sudo sed -i 's/^NUMBER_LIMIT="50"/NUMBER_LIMIT="5"/' /etc/snapper/configs/{root,home}
   sudo sed -i 's/^NUMBER_LIMIT_IMPORTANT="10"/NUMBER_LIMIT_IMPORTANT="5"/' /etc/snapper/configs/{root,home}
+  sudo sed -i 's/^SPACE_LIMIT="0.5"/SPACE_LIMIT="0.3"/' /etc/snapper/configs/{root,home}
+  sudo sed -i 's/^FREE_LIMIT="0.2"/FREE_LIMIT="0.3"/' /etc/snapper/configs/{root,home}
 
   chrootable_systemctl_enable limine-snapper-sync.service
 fi
