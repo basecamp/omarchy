@@ -910,6 +910,45 @@ format_cpu_range() {
   fi
 }
 
+# Detect SMP topology for proper hyperthreading/SMT support in guest
+detect_smp_topology() {
+  local selected_vcpus="${1:-}"
+  SMP_FLAGS=""
+  SMT_ENABLED=false
+  THREADS_PER_CORE=1
+  VM_PHYSICAL_CORES=0
+
+  [[ -z "$selected_vcpus" ]] || ! [[ "$selected_vcpus" =~ ^[0-9]+$ ]] && return 1
+
+  # Detect host threads per core
+  local host_threads_per_core
+  host_threads_per_core=$(lscpu 2>/dev/null | grep -E "^Thread\(s\) per core:" | awk '{print $NF}')
+  [[ -z "$host_threads_per_core" ]] && host_threads_per_core=1
+
+  if ((host_threads_per_core >= 2)); then
+    SMT_ENABLED=true
+    THREADS_PER_CORE=2
+  fi
+
+  # Calculate physical cores and threads for VM
+  # selected_vcpus = number of physical cores user wants
+  # With SMT: each core has 2 threads, so total vCPUs = cores × 2
+  if [[ "$SMT_ENABLED" == true ]]; then
+    VM_PHYSICAL_CORES=$selected_vcpus
+    local vm_threads=$((VM_PHYSICAL_CORES * 2))
+
+    # -smp total,sockets=1,cores=X,threads=2
+    # Example: 8 cores with SMT → -smp 16,sockets=1,cores=8,threads=2
+    SMP_FLAGS="-smp ${vm_threads},sockets=1,cores=${VM_PHYSICAL_CORES},threads=2"
+  else
+    # Without SMT: each vCPU is a physical core
+    VM_PHYSICAL_CORES=$selected_vcpus
+    SMP_FLAGS="-smp ${selected_vcpus},sockets=1,cores=${selected_vcpus},threads=1"
+  fi
+
+  return 0
+}
+
 # Detect CPU pinning for Intel Hybrid CPUs (P-core + E-core)
 # Limits VM to P-cores for better gaming performance (E-cores are slower)
 # Note: Host can still use all cores - cpuset only limits the container
@@ -959,8 +998,14 @@ detect_cpu_pinning_set() {
       return $?
     fi
 
-    if [[ -n "$selected_cores" ]] && [[ "$selected_cores" =~ ^[0-9]+$ ]] && ((selected_cores < ${#vm_cpus[@]})); then
-      vm_cpus=("${vm_cpus[@]:0:$selected_cores}")
+    # selected_cores = number of physical cores user wants
+    # With SMT, need selected_cores * threads_per_core host threads
+    # Use global THREADS_PER_CORE set by detect_smp_topology()
+    if [[ -n "$selected_cores" ]] && [[ "$selected_cores" =~ ^[0-9]+$ ]]; then
+      local needed_threads=$((selected_cores * THREADS_PER_CORE))
+      if ((needed_threads < ${#vm_cpus[@]})); then
+        vm_cpus=("${vm_cpus[@]:0:$needed_threads}")
+      fi
     fi
 
     CPU_PINNING_SET=$(compact_cpu_list "${vm_cpus[@]}")
@@ -976,7 +1021,7 @@ detect_cpu_pinning_set() {
 # Dynamic: max vCPU=no reserve, max-2=1 core, ≤max-4=2 cores, fallback if can't fit
 detect_cpu_pinning_set_simple() {
   local selected_cores="${1:-}"
-  local total_threads threads_per_core physical_cores
+  local total_threads physical_cores
 
   total_threads=$(nproc --all 2>/dev/null) || return 1
   ((total_threads < 4)) && return 1
@@ -986,12 +1031,10 @@ detect_cpu_pinning_set_simple() {
     return 0
   fi
 
-  threads_per_core=$(lscpu 2>/dev/null | grep -E "^Thread\(s\) per core:" | awk '{print $NF}')
-  [[ -z "$threads_per_core" ]] && threads_per_core=1
-  physical_cores=$((total_threads / threads_per_core))
+  physical_cores=$((total_threads / THREADS_PER_CORE))
 
   local vm_start phys_cores_needed
-  phys_cores_needed=$(( (selected_cores + threads_per_core - 1) / threads_per_core ))
+  phys_cores_needed=$selected_cores
 
   # Dynamic reservation: prefer 2 cores, fallback to 1, then 0
   if ((selected_cores >= total_threads - 2)); then
@@ -1010,7 +1053,7 @@ detect_cpu_pinning_set_simple() {
     return 0
   fi
 
-  if ((threads_per_core == 1)); then
+  if ((THREADS_PER_CORE == 1)); then
     local vm_end=$((vm_start + selected_cores - 1))
     ((vm_end >= physical_cores)) && vm_end=$((physical_cores - 1))
     CPU_PINNING_SET=$(format_cpu_range "$vm_start" "$vm_end")
@@ -1091,6 +1134,9 @@ create_docker_compose_config() {
   # Detect SMBIOS and disk info for anti-cheat spoofing
   detect_smbios_and_disk_info
 
+  # Detect SMP topology
+  detect_smp_topology "$SELECTED_CORES"
+
   # Detect CPU pinning based on selected cores
   detect_cpu_pinning_set "$SELECTED_CORES"
 
@@ -1102,6 +1148,10 @@ create_docker_compose_config() {
     HV_VENDOR_ID="GenuineIntel"
     CPU_EXTRA=",+hv-evmcs"
     [[ "$LG_ENABLED" == true ]] && CPU_EXTRA="${CPU_EXTRA},host-phys-bits-limit=39"
+  else
+    if [[ "$SMT_ENABLED" == true ]]; then
+      CPU_EXTRA=",+topoext"
+    fi
   fi
 
   local CPU_FLAGS="-cpu host,-hypervisor,hv_vendor_id=${HV_VENDOR_ID},+pdpe1gb,+tsc-deadline${CPU_EXTRA}"
@@ -1129,6 +1179,8 @@ create_docker_compose_config() {
         $MACHINE_FLAGS"
     ARGUMENTS_SECTION+="
         $CPU_FLAGS"
+    [[ -n "$SMP_FLAGS" ]] && ARGUMENTS_SECTION+="
+        $SMP_FLAGS"
     [[ -n "$SMBIOS_FLAGS" ]] && ARGUMENTS_SECTION+="
         ${SMBIOS_FLAGS# }"
     [[ -n "$DISK_FLAGS" ]] && ARGUMENTS_SECTION+="
@@ -1161,14 +1213,14 @@ create_docker_compose_config() {
       USB: \"no\""
   elif [[ "$LG_ENABLED" == true ]]; then
     # Looking Glass only (no GPU passthrough)
-    local LG_ARGS="$MACHINE_FLAGS $CPU_FLAGS $SMBIOS_FLAGS $DISK_FLAGS -device ivshmem-plain,id=shmem0,memdev=looking-glass -object memory-backend-file,id=looking-glass,mem-path=/dev/kvmfr0,size=${IVSHMEM_SIZE}M,share=yes"
+    local LG_ARGS="$MACHINE_FLAGS $CPU_FLAGS $SMP_FLAGS $SMBIOS_FLAGS $DISK_FLAGS -device ivshmem-plain,id=shmem0,memdev=looking-glass -object memory-backend-file,id=looking-glass,mem-path=/dev/kvmfr0,size=${IVSHMEM_SIZE}M,share=yes"
     LG_ARGS="${LG_ARGS# }" # Trim leading space
     ARGUMENTS_SECTION="
       ARGUMENTS: \"$LG_ARGS\""
   else
     # No GPU passthrough, no Looking Glass - CPU-only VM with anti-cheat flags
-    if [[ -n "$MACHINE_FLAGS" ]] || [[ "$CPU_FLAGS" != "-cpu host" ]] || [[ -n "$SMBIOS_FLAGS" ]] || [[ -n "$DISK_FLAGS" ]]; then
-      local CPU_ARGS="$MACHINE_FLAGS $CPU_FLAGS $SMBIOS_FLAGS $DISK_FLAGS"
+    if [[ -n "$MACHINE_FLAGS" ]] || [[ "$CPU_FLAGS" != "-cpu host" ]] || [[ -n "$SMBIOS_FLAGS" ]] || [[ -n "$DISK_FLAGS" ]] || [[ -n "$SMP_FLAGS" ]]; then
+      local CPU_ARGS="$MACHINE_FLAGS $CPU_FLAGS $SMP_FLAGS $SMBIOS_FLAGS $DISK_FLAGS"
       CPU_ARGS="${CPU_ARGS# }" # Trim leading space
       ARGUMENTS_SECTION="
       ARGUMENTS: \"$CPU_ARGS\""
