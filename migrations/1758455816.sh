@@ -8,4 +8,6 @@ MODULES+=(thunderbolt)
 EOF
 fi
 
-sudo limine-update
+if omarchy-cmd-present limine-update; then
+  sudo limine-update
+fi
