@@ -14,13 +14,26 @@ if omarchy-cmd-present chromium || omarchy-cmd-present helium-browser || omarchy
 
   if omarchy-cmd-present chromium; then
     rm -f /etc/chromium/policies/managed/color.json
-    chromium --no-startup-window --set-theme-color="$THEME_RGB_COLOR"
-
-    if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
-      chromium --no-startup-window --set-color-scheme="light"
-    else
-      chromium --no-startup-window --set-color-scheme="dark"
-    fi
+    
+    # Apply theme to all Chromium profiles
+    CHROMIUM_DIR=~/.config/chromium
+    
+    # Find all profile directories (Default, Profile 1, Profile 2, etc.)
+    for profile_dir in "$CHROMIUM_DIR"/Default "$CHROMIUM_DIR"/Profile*; do
+      if [[ -d "$profile_dir" ]]; then
+        profile_name=$(basename "$profile_dir")
+        
+        # Apply theme color for this profile
+        chromium --no-startup-window --profile-directory="$profile_name" --set-theme-color="$THEME_RGB_COLOR"
+        
+        # Apply color scheme (light/dark) for this profile
+        if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
+          chromium --no-startup-window --profile-directory="$profile_name" --set-color-scheme="light"
+        else
+          chromium --no-startup-window --profile-directory="$profile_name" --set-color-scheme="dark"
+        fi
+      fi
+    done
   fi
 
   if omarchy-cmd-present brave; then
