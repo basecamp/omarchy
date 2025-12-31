@@ -1,0 +1,15 @@
+{
+  "extensions": {
+    "theme": {
+      "id": "",
+      "use_system": false,
+      "use_custom": false
+    }
+  },
+  "browser": {
+    "theme": {
+      "color_scheme": 2,
+      "user_color": 2
+    }
+  }
+}

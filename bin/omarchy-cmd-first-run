@@ -1,0 +1,20 @@
+#!/bin/bash
+
+set -e
+
+FIRST_RUN_MODE=~/.local/state/omarchy/first-run.mode
+
+if [[ -f "$FIRST_RUN_MODE" ]]; then
+  rm -f "$FIRST_RUN_MODE"
+
+  bash "$OMARCHY_PATH/install/first-run/battery-monitor.sh"
+  bash "$OMARCHY_PATH/install/first-run/cleanup-reboot-sudoers.sh"
+  bash "$OMARCHY_PATH/install/first-run/firewall.sh"
+  bash "$OMARCHY_PATH/install/first-run/dns-resolver.sh"
+  bash "$OMARCHY_PATH/install/first-run/gnome-theme.sh"
+  bash "$OMARCHY_PATH/install/first-run/elephant.sh"
+  sudo rm -f /etc/sudoers.d/first-run
+
+  bash "$OMARCHY_PATH/install/first-run/welcome.sh"
+  bash "$OMARCHY_PATH/install/first-run/wifi.sh"
+fi

@@ -1,2 +1,3 @@
 echo "Add support for accessing Android phone data via file manager"
-yay -S --noconfirm --needed gvfs-mtp
+
+omarchy-pkg-add gvfs-mtp

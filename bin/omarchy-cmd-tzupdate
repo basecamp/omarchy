@@ -1,5 +1,0 @@
-#!/bin/bash
-
-sudo tzupdate
-new_timezone=$(timedatectl show -p Timezone --value)
-notify-send "Timezone has been set to $new_timezone"

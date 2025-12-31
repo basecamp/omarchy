@@ -1,0 +1,12 @@
+#!/bin/bash
+
+omarchy-cmd-present "$EDITOR" || EDITOR=nvim
+
+case "$EDITOR" in
+nvim | vim | nano | micro | hx | helix)
+  exec omarchy-launch-tui "$EDITOR" "$@"
+  ;;
+*)
+  exec setsid uwsm-app -- "$EDITOR" "$@"
+  ;;
+esac

@@ -1,4 +1,18 @@
 #!/bin/bash
 
-pkill walker
-setsid uwsm app -- walker --gapplication-service &
+# Detect if we're running as root (from pacman hook)
+if [[ $EUID -eq 0 ]]; then
+  # Get the owner of this script to determine which user to run as
+  SCRIPT_OWNER=$(stat -c '%U' "$0")
+  USER_UID=$(id -u "$SCRIPT_OWNER")
+
+  # Restart services as the script owner
+  systemd-run --uid="$SCRIPT_OWNER" --setenv=XDG_RUNTIME_DIR="/run/user/$USER_UID" \
+    bash -c "
+      systemctl --user restart elephant.service
+      systemctl --user restart app-walker@autostart.service
+    "
+else
+  systemctl --user restart elephant.service
+  systemctl --user restart app-walker@autostart.service
+fi
