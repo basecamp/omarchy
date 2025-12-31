@@ -1,4 +1,5 @@
 #!/bin/bash
 
-# Ensure screensaver/sleep doesn't set in during updates
-hyprctl dispatch tagwindow +noidle &> /dev/null
+# No-op now that omarchy-update-perform is responsible for idle management.
+# But this file can't be removed since it was referenced in old omarchy-update files,
+# which would fail if this file is missing.
