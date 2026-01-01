@@ -1,0 +1,92 @@
+# ────────────────────────────────────────────────────────────
+# Bashtop theme - Omarchy Matte Black
+# by tahayvr
+# https://github.com/tahayvr
+# ────────────────────────────────────────────────────────────
+
+# Colors should be in 6 or 2 character hexadecimal or single spaced rgb decimal: "#RRGGBB", "#BW" or "0-255 0-255 0-255"
+# example for white: "#ffffff", "#ff" or "255 255 255".
+
+# All graphs and meters can be gradients
+# For single color graphs leave "mid" and "end" variable empty.
+# Use "start" and "end" variables for two color gradient
+# Use "start", "mid" and "end" for three color gradient
+
+# Main background, empty for terminal default, need to be empty if you want transparent background
+theme[main_bg]=""
+
+# Main text color
+theme[main_fg]="#EAEAEA"
+
+# Title color for boxes
+theme[title]="#8a8a8d"
+
+# Highlight color for keyboard shortcuts
+theme[hi_fg]="#f59e0b"
+
+# Background color of selected item in processes box
+theme[selected_bg]="#f59e0b"
+
+# Foreground color of selected item in processes box
+theme[selected_fg]="#EAEAEA"
+
+# Color of inactive/disabled text
+theme[inactive_fg]="#333333"
+
+# Misc colors for processes box including mini cpu graphs, details memory graph and details status text
+theme[proc_misc]="#8a8a8d"
+
+# Cpu box outline color
+theme[cpu_box]="#8a8a8d"
+
+# Memory/disks box outline color
+theme[mem_box]="#8a8a8d"
+
+# Net up/down box outline color
+theme[net_box]="#8a8a8d"
+
+# Processes box outline color
+theme[proc_box]="#8a8a8d"
+
+# Box divider line and small boxes line color
+theme[div_line]="#8a8a8d"
+
+# Temperature graph colors
+theme[temp_start]="#8a8a8d"
+theme[temp_mid]="#f59e0b"
+theme[temp_end]="#b91c1c"
+
+# CPU graph colors
+theme[cpu_start]="#8a8a8d"
+theme[cpu_mid]="#f59e0b"
+theme[cpu_end]="#b91c1c"
+
+# Mem/Disk free meter
+theme[free_start]="#8a8a8d"
+theme[free_mid]="#f59e0b"
+theme[free_end]="#b91c1c"
+
+# Mem/Disk cached meter
+theme[cached_start]="#8a8a8d"
+theme[cached_mid]="#f59e0b"
+theme[cached_end]="#b91c1c"
+
+# Mem/Disk available meter
+theme[available_start]="#8a8a8d"
+theme[available_mid]="#f59e0b"
+theme[available_end]="#b91c1c"
+
+# Mem/Disk used meter
+theme[used_start]="#8a8a8d"
+theme[used_mid]="#f59e0b"
+theme[used_end]="#b91c1c"
+
+# Download graph colors
+theme[download_start]="#8a8a8d"
+theme[download_mid]="#f59e0b"
+theme[download_end]="#b91c1c"
+
+# Upload graph colors
+theme[upload_start]="#8a8a8d"
+theme[upload_mid]="#f59e0b"
+theme[upload_end]="#b91c1c"
