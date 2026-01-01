@@ -7,6 +7,7 @@ fi
 
 THEMES_DIR="$HOME/.config/omarchy/themes/"
 CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
+NEXT_THEME_DIR="$HOME/.config/omarchy/current/next-theme"
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
@@ -16,15 +17,19 @@ if [[ ! -d "$THEME_PATH" ]]; then
   exit 1
 fi
 
-# Setup clean theme directory
-rm -rf "$CURRENT_THEME_DIR"
-mkdir -p "$CURRENT_THEME_DIR"
+# Setup clean next theme directory
+rm -rf "$NEXT_THEME_DIR"
+mkdir -p "$NEXT_THEME_DIR"
 
 # Copy static configs
-cp -r "$THEME_PATH/"* "$CURRENT_THEME_DIR/" 2>/dev/null
+cp -r "$THEME_PATH/"* "$NEXT_THEME_DIR/" 2>/dev/null
 
 # Generate dynamic configs
 omarchy-theme-set-templates
+
+# Swap next theme in as current
+rm -rf "$CURRENT_THEME_DIR"
+mv "$NEXT_THEME_DIR" "$CURRENT_THEME_DIR"
 
 # Change background with theme
 omarchy-theme-bg-next
