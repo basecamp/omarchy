@@ -25,26 +25,13 @@ elif [[ -d "$CURRENT_THEME_DIR" ]]; then
 fi
 mkdir -p "$CURRENT_THEME_DIR"
 
-# Copy static assets (excluding templates, if any found in theme dir, though they shouldn't be there)
-# We copy everything from the theme directory first.
+# Copy static configs
 cp -r "$THEME_PATH/"* "$CURRENT_THEME_DIR/" 2>/dev/null
 
 # Generate configuration files from templates
 TEMPLATES_DIR="$THEMES_DIR/templates.d"
 COLORS_FILE="$THEME_PATH/colors.toml"
-
-if [[ -x "$(command -v omarchy-theme-render)" ]]; then
-    omarchy-theme-render "$COLORS_FILE" "$TEMPLATES_DIR" "$CURRENT_THEME_DIR"
-else
-    # Fallback to local script if not in PATH (development scenario)
-    SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-    if [[ -x "$SCRIPT_DIR/omarchy-theme-render" ]]; then
-        "$SCRIPT_DIR/omarchy-theme-render" "$COLORS_FILE" "$TEMPLATES_DIR" "$CURRENT_THEME_DIR"
-    else
-        echo "Error: omarchy-theme-render not found"
-        exit 1
-    fi
-fi
+omarchy-theme-render "$COLORS_FILE" "$TEMPLATES_DIR" "$CURRENT_THEME_DIR"
 
 # Change background with theme
 omarchy-theme-bg-next
