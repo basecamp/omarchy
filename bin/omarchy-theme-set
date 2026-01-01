@@ -35,6 +35,9 @@ omarchy-theme-set-templates
 rm -rf "$CURRENT_THEME_PATH"
 mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
 
+# Store theme name for reference
+echo "$THEME_NAME" > "$HOME/.config/omarchy/current/theme.name"
+
 # Change background with theme
 omarchy-theme-bg-next
 

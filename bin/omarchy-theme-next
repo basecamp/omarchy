@@ -1,48 +1,38 @@
 #!/bin/bash
 
-CURRENT_THEME_LINK="$HOME/.config/omarchy/current/theme"
+# Get all theme names (user themes override default by name)
+declare -A seen
+THEMES=()
 
-declare -A theme_paths
+for dir in ~/.config/omarchy/themes "$OMARCHY_PATH/themes"; do
+  for path in "$dir"/*/; do
+    [[ -d "$path" ]] || continue
+    name=$(basename "$path")
+    if [[ -z "${seen[$name]}" ]]; then
+      seen[$name]=1
+      THEMES+=("$name")
+    fi
+  done
+done
 
-while IFS= read -r path; do
-  name=$(basename "$path")
-  theme_paths[$name]="$path"
-done < <(find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | sort)
+IFS=$'\n' THEMES=($(printf '%s\n' "${THEMES[@]}" | sort))
 
-while IFS= read -r path; do
-  name=$(basename "$path")
-  if [[ -z "${theme_paths[$name]}" ]]; then
-    theme_paths[$name]="$path"
-  fi
-done < <(find "$OMARCHY_PATH/themes/" -mindepth 1 -maxdepth 1 -type d | sort)
-
-IFS=$'\n' THEMES=($(for name in "${!theme_paths[@]}"; do echo "$name"; done | sort))
-IFS=$'\n' THEMES_FULL=($(for name in "${!theme_paths[@]}"; do echo "${theme_paths[$name]}"; done | sort))
-
-TOTAL=${#THEMES[@]}
-
-# Get current theme from symlink
-if [[ -L "$CURRENT_THEME_LINK" ]]; then
-  CURRENT_THEME=$(realpath "$CURRENT_THEME_LINK")
+# Get current theme name
+if [[ -f "$HOME/.config/omarchy/current/theme.name" ]]; then
+  CURRENT=$(cat "$HOME/.config/omarchy/current/theme.name")
 else
-  # Default to first theme if no symlink exists
-  CURRENT_THEME=$(realpath "${THEMES_FULL[0]}")
+  CURRENT=""
 fi
 
-# Find current theme index
-INDEX=0
-for i in "${!THEMES_FULL[@]}"; do
-  THEME_REAL=$(realpath "${THEMES_FULL[$i]}")
-
-  if [[ "$THEME_REAL" == "$CURRENT_THEME" ]]; then
-    INDEX=$i
+# Find next theme
+TOTAL=${#THEMES[@]}
+for i in "${!THEMES[@]}"; do
+  if [[ "${THEMES[$i]}" == "$CURRENT" ]]; then
+    NEXT_INDEX=$(((i + 1) % TOTAL))
     break
   fi
 done
+NEXT_INDEX=${NEXT_INDEX:-0}
 
-# Get next theme (wrap around)
-NEXT_INDEX=$(((INDEX + 1) % TOTAL))
-NEW_THEME_NAME=${THEMES[$NEXT_INDEX]}
-
-omarchy-theme-set $NEW_THEME_NAME
-notify-send "Theme changed to $NEW_THEME_NAME" -t 2000
+omarchy-theme-set "${THEMES[$NEXT_INDEX]}"
+notify-send "Theme changed to ${THEMES[$NEXT_INDEX]}" -t 2000
