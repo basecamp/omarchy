@@ -6,6 +6,7 @@ cursor = "#ffcead"
 foreground = "#ffcead"
 background = "#060B1E"
 selection_foreground = "#060B1E"
+selection_background = "#ffcead"
 
 color0 = "#060B1E"
 color1 = "#ED5B5A"
