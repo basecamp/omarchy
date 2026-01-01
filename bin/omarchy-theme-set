@@ -17,7 +17,7 @@ if [[ ! -d "$THEME_PATH" ]]; then
   exit 1
 fi
 
-# Setup clean next theme directory
+# Setup clean next theme directory (for atomic theme config swapping)
 rm -rf "$NEXT_THEME_DIR"
 mkdir -p "$NEXT_THEME_DIR"
 
