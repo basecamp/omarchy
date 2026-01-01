@@ -212,6 +212,12 @@ prioritize_entries() {
   cut -f2-
 }
 
+# Close walker if it's already open
+if hyprctl layers | grep -q walker; then
+  walker -q
+  exit 0
+fi
+
 monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
 menu_height=$((monitor_height * 40 / 100))
 
