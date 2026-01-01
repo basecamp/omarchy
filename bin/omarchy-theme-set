@@ -14,8 +14,8 @@ THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr
 
 if [[ -d "$USER_THEMES_PATH/$THEME_NAME" ]]; then
   THEME_PATH="$USER_THEMES_PATH/$THEME_NAME"
-elif [[ -d "$USER_THEMES_PATH/$THEME_NAME" ]]; then
-  THEME_PATH="$OMARCHY_PATH/$THEME_NAME"
+elif [[ -d "$OMARCHY_THEMES_PATH/$THEME_NAME" ]]; then
+  THEME_PATH="$OMARCHY_THEMES_PATH/$THEME_NAME"
 else
   echo "Theme '$THEME_NAME' does not exist"
   exit 1
