@@ -5,12 +5,11 @@ if [[ -z $1 ]]; then
   exit 1
 fi
 
-THEMES_DIR="$HOME/.config/omarchy/themes/"
 CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 NEXT_THEME_DIR="$HOME/.config/omarchy/current/next-theme"
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-THEME_PATH="$THEMES_DIR/$THEME_NAME"
+THEME_PATH="$HOME/.config/omarchy/themes/$THEME_NAME"
 
 if [[ ! -d "$THEME_PATH" ]]; then
   echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR"
