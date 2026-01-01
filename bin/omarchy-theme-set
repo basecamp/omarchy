@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [[ -z $1 && $1 != "CNCLD" ]]; then
+if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-set <theme-name>"
   exit 1
 fi
