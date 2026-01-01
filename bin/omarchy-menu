@@ -173,7 +173,7 @@ show_setup_menu() {
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
-  *Audio*) omarchy-launch-or-focus-tui wiremix ;;
+  *Audio*) omarchy-launch-audio ;;
   *Wifi*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
