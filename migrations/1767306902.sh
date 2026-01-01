@@ -7,6 +7,8 @@ CURRENT_THEME_LINK="$HOME/.config/omarchy/current/theme"
 CURRENT_THEME_NAME=""
 if [[ -L $CURRENT_THEME_LINK ]]; then
   CURRENT_THEME_NAME=$(basename "$(readlink "$CURRENT_THEME_LINK")")
+elif [[ -f "$HOME/.config/omarchy/current/theme.name" ]]; then
+  CURRENT_THEME_NAME=$(cat "$HOME/.config/omarchy/current/theme.name")
 fi
 
 # Remove all symlinks from ~/.config/omarchy/themes
