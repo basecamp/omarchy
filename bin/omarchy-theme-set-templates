@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TEMPLATES_DIR="$OMARCHY_PATH/themes/templates.d"
+TEMPLATES_DIR="$OMARCHY_PATH/default/themed"
 NEXT_THEME_DIR="$HOME/.config/omarchy/current/next-theme"
 COLORS_FILE="$NEXT_THEME_DIR/colors.toml"
 
