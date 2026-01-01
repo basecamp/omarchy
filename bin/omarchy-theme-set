@@ -7,11 +7,16 @@ fi
 
 CURRENT_THEME_PATH="$HOME/.config/omarchy/current/theme"
 NEXT_THEME_PATH="$HOME/.config/omarchy/current/next-theme"
+USER_THEMES_PATH="$HOME/.config/omarchy/themes"
+OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-THEME_PATH="$HOME/.config/omarchy/themes/$THEME_NAME"
 
-if [[ ! -d "$THEME_PATH" ]]; then
+if [[ -d "$USER_THEMES_PATH/$THEME_NAME" ]]; then
+  THEME_PATH="$USER_THEMES_PATH/$THEME_NAME"
+elif [[ -d "$USER_THEMES_PATH/$THEME_NAME" ]]; then
+  THEME_PATH="$OMARCHY_PATH/$THEME_NAME"
+else
   echo "Theme '$THEME_NAME' does not exist"
   exit 1
 fi

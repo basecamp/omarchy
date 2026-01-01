@@ -1,9 +1,24 @@
 #!/bin/bash
 
-THEMES_DIR="$HOME/.config/omarchy/themes/"
 CURRENT_THEME_LINK="$HOME/.config/omarchy/current/theme"
 
-THEMES=($(find "$THEMES_DIR" -mindepth 1 -maxdepth 1 | sort))
+declare -A theme_paths
+
+while IFS= read -r path; do
+  name=$(basename "$path")
+  theme_paths[$name]="$path"
+done < <(find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) | sort)
+
+while IFS= read -r path; do
+  name=$(basename "$path")
+  if [[ -z "${theme_paths[$name]}" ]]; then
+    theme_paths[$name]="$path"
+  fi
+done < <(find "$OMARCHY_PATH/themes/" -mindepth 1 -maxdepth 1 -type d | sort)
+
+IFS=$'\n' THEMES=($(for name in "${!theme_paths[@]}"; do echo "$name"; done | sort))
+IFS=$'\n' THEMES_FULL=($(for name in "${!theme_paths[@]}"; do echo "${theme_paths[$name]}"; done | sort))
+
 TOTAL=${#THEMES[@]}
 
 # Get current theme from symlink
@@ -11,15 +26,15 @@ if [[ -L "$CURRENT_THEME_LINK" ]]; then
   CURRENT_THEME=$(realpath "$CURRENT_THEME_LINK")
 else
   # Default to first theme if no symlink exists
-  CURRENT_THEME=$(realpath "${THEMES[0]}")
+  CURRENT_THEME=$(realpath "${THEMES_FULL[0]}")
 fi
 
 # Find current theme index
 INDEX=0
-for i in "${!THEMES[@]}"; do
-  THEMES[$i]=$(realpath "${THEMES[$i]}")
+for i in "${!THEMES_FULL[@]}"; do
+  THEME_REAL=$(realpath "${THEMES_FULL[$i]}")
 
-  if [[ "${THEMES[$i]}" == "$CURRENT_THEME" ]]; then
+  if [[ "$THEME_REAL" == "$CURRENT_THEME" ]]; then
     INDEX=$i
     break
   fi
@@ -27,8 +42,7 @@ done
 
 # Get next theme (wrap around)
 NEXT_INDEX=$(((INDEX + 1) % TOTAL))
-NEW_THEME=${THEMES[$NEXT_INDEX]}
-NEW_THEME_NAME=$(basename "$NEW_THEME")
+NEW_THEME_NAME=${THEMES[$NEXT_INDEX]}
 
 omarchy-theme-set $NEW_THEME_NAME
 notify-send "Theme changed to $NEW_THEME_NAME" -t 2000
