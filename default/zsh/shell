@@ -1,0 +1,20 @@
+# History control
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=32768
+SAVEHIST=32768
+setopt APPEND_HISTORY
+setopt HIST_IGNORE_DUPS
+setopt HIST_IGNORE_SPACE
+setopt SHARE_HISTORY
+
+# Autocompletion
+autoload -Uz compinit
+compinit
+
+# Completion Options (matching inputrc styles where possible)
+zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+zstyle ':completion:*' menu select
+
+# Ensure command hashing is off for mise (Zsh equivalent if needed, usually not)
+# set +h is bash specific. Zsh rehash is automatic usually.

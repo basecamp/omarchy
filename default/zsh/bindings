@@ -1,0 +1,15 @@
+# Key bindings
+# Standard Emacs mode
+bindkey -e
+
+# Arrow keys match what you've typed so far against your command history
+bindkey '^[[A' history-search-backward
+bindkey '^[[B' history-search-forward
+
+# Standard cursor movement (usually default, but ensuring)
+bindkey '^[[C' forward-char
+bindkey '^[[D' backward-char
+
+# Common Ctrl+Left/Right for word movement
+bindkey '^[[1;5C' forward-word
+bindkey '^[[1;5D' backward-word

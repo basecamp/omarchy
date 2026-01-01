@@ -1,0 +1,16 @@
+# Main Zsh RC file
+# Source modules in order
+
+# 1. Environment variables and Shell Options
+source ~/.local/share/omarchy/default/bash/envs
+source ~/.local/share/omarchy/default/zsh/shell
+
+# 2. Aliases and Functions
+source ~/.local/share/omarchy/default/bash/aliases
+source ~/.local/share/omarchy/default/bash/functions
+
+# 3. Key Bindings
+source ~/.local/share/omarchy/default/zsh/bindings
+
+# 4. Tool Initialization (mise, starship, etc.)
+source ~/.local/share/omarchy/default/zsh/init
