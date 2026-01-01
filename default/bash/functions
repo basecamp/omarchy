@@ -24,7 +24,10 @@ format-drive() {
     lsblk -d -o NAME -n | awk '{print "/dev/"$1}'
   else
     echo "WARNING: This will completely erase all data on $1 and label it '$2'."
-    read -rp "Are you sure you want to continue? (y/N): " confirm
+
+    # read -rp broken into printf + read for bash + zsh compatibility
+    printf "Are you sure you want to continue? (y/N): "
+    read -r confirm
 
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
       sudo wipefs -a "$1"
