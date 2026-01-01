@@ -1,7 +1,8 @@
 #!/bin/bash
 
 TEMPLATES_DIR="$OMARCHY_PATH/themes/templates.d"
-COLORS_FILE="$HOME/.config/omarchy/current/theme/colors.toml"
+CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
+COLORS_FILE="$CURRENT_THEME_DIR/colors.toml"
 
 # Only generate dynamic templates for themes with a colors.toml definition
 if [[ -f $COLORS_FILE ]]; then
@@ -10,7 +11,6 @@ if [[ -f $COLORS_FILE ]]; then
   SED_SCRIPT=$(mktemp)
   sed 's/=/:/' "$COLORS_FILE" | yq -r 'to_entries[] | "s|{{ \(.key) }}|\(.value)|g"' > "$SED_SCRIPT"
 
-  # Process each template file
   shopt -s nullglob
   for tpl in "$TEMPLATES_DIR"/*.tpl; do
     filename=$(basename "$tpl" .tpl)
