@@ -12,7 +12,7 @@ THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr
 THEME_PATH="$HOME/.config/omarchy/themes/$THEME_NAME"
 
 if [[ ! -d "$THEME_PATH" ]]; then
-  echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR"
+  echo "Theme '$THEME_NAME' does not exist"
   exit 1
 fi
 
