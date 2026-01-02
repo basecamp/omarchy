@@ -131,6 +131,17 @@ test_rdp_ready() {
     head -c2 | od -An -tx1 | tr -d ' \n' | grep -q "^0300$"
 }
 
+# Check and warn about GPU IOTLB errors (AMD reset bug)
+warn_if_gpu_iotlb_error() {
+  if command -v omarchy-gpu-passthrough-info &>/dev/null; then
+    if omarchy-gpu-passthrough-info gpu-health &>/dev/null; then
+      msg_warning "GPU Health: IOTLB_INV_TIMEOUT detected"
+      echo "   The GPU may need a cold boot (poweroff + unplug power 30s)"
+      echo "   Details: omarchy-gpu-passthrough-info health"
+    fi
+  fi
+}
+
 convert_to_crlf() {
   local file="$1"
   [[ ! -f "$file" ]] && {
@@ -192,13 +203,46 @@ connect_rdp() {
   else
     # Foreground mode: Wait for RDP to close (for --keep-alive logic)
     # Note: Keyboard shortcuts are printed by launch_windows() before calling connect_rdp()
-    setsid xfreerdp3 "${RDP_ARGS[@]}" >/dev/null 2>&1 &
-    local RDP_PID=$!
+    local MAX_RETRIES=3
+    local ATTEMPT=1
 
-    wait $RDP_PID
-    local RDP_EXIT=$?
+    while [[ $ATTEMPT -le $MAX_RETRIES ]]; do
+      setsid xfreerdp3 "${RDP_ARGS[@]}" >/dev/null 2>&1 &
+      local RDP_PID=$!
+      local START_TIME=$(date +%s)
 
-    return $RDP_EXIT
+      wait $RDP_PID
+      local RDP_EXIT=$?
+      local END_TIME=$(date +%s)
+      local ELAPSED=$((END_TIME - START_TIME))
+
+      # If RDP session lasted more than 3 seconds, consider it a real session (user closed it)
+      # If it failed quickly (<3s) with error, it was likely a connection failure - retry
+      if [[ $ELAPSED -gt 3 ]] || [[ $RDP_EXIT -eq 0 ]]; then
+        return $RDP_EXIT
+      fi
+
+      ATTEMPT=$((ATTEMPT + 1))
+      if [[ $ATTEMPT -le $MAX_RETRIES ]]; then
+        echo "RDP connection failed, waiting for Windows to be ready... (attempt $ATTEMPT/$MAX_RETRIES)"
+
+        # Wait for RDP service to be ready (up to 30s per retry)
+        local WAIT_ELAPSED=0
+        local WAIT_MAX=30
+        while [[ $WAIT_ELAPSED -lt $WAIT_MAX ]]; do
+          if test_rdp_ready; then
+            echo "  RDP ready, connecting..."
+            break
+          fi
+          sleep 3
+          WAIT_ELAPSED=$((WAIT_ELAPSED + 3))
+          echo "  Waiting for RDP service... (${WAIT_ELAPSED}s)"
+        done
+      fi
+    done
+
+    echo "RDP connection failed after $MAX_RETRIES attempts"
+    return 1
   fi
 }
 
@@ -1188,14 +1232,54 @@ create_docker_compose_config() {
     ARGUMENTS_SECTION+="
         -device ivshmem-plain,id=shmem0,memdev=looking-glass
         -object memory-backend-file,id=looking-glass,mem-path=/dev/kvmfr0,size=${IVSHMEM_SIZE}M,share=yes"
+
+    # AMD GPU requires dedicated PCIe root-port for Windows drivers
+    # Check if GPU is multifunction device (has multiple functions like .0, .1)
+    local gpu_base_addr="${GPU_PCI_ADDR%.*}"  # e.g., 03:00.0 -> 03:00
+    local gpu_function_count=0
+    local gpu_devices_filtered=()
+
     for dev_pci in $GPU_IOMMU_DEVICES; do
       # Skip PCI bridges (class 0604) - they're host infrastructure
       local dev_class=$(lspci -Dn -s "$dev_pci" 2>/dev/null | awk '{print $2}' | cut -d: -f1)
       if [[ "$dev_class" == "0604" ]]; then
         continue
       fi
-      ARGUMENTS_SECTION+="
-        -device vfio-pci,host=0000:${dev_pci}"
+      gpu_devices_filtered+=("$dev_pci")
+      # Count functions on same base address (multifunction detection)
+      if [[ "${dev_pci%.*}" == "$gpu_base_addr" ]]; then
+        ((gpu_function_count++))
+      fi
+    done
+
+    # Multifunction if more than one function on same base address
+    local is_multifunction=false
+    [[ "$gpu_function_count" -gt 1 ]] && is_multifunction=true
+
+    ARGUMENTS_SECTION+="
+        -device pcie-root-port,id=pcie_gpu,bus=pcie.0,addr=1c.0,slot=1,chassis=1,multifunction=on"
+
+    local gpu_device_idx=0
+
+    for dev_pci in "${gpu_devices_filtered[@]}"; do
+      # Get function number from PCI address (e.g., 03:00.0 -> 0, 03:00.1 -> 1)
+      local func_num="${dev_pci##*.}"
+
+      if [[ "$gpu_device_idx" -eq 0 ]]; then
+        # First device (GPU video)
+        if [[ "$is_multifunction" == true ]]; then
+          ARGUMENTS_SECTION+="
+        -device vfio-pci,host=0000:${dev_pci},bus=pcie_gpu,addr=00.${func_num},multifunction=on"
+        else
+          ARGUMENTS_SECTION+="
+        -device vfio-pci,host=0000:${dev_pci},bus=pcie_gpu,addr=00.${func_num}"
+        fi
+      else
+        # Subsequent devices (audio etc.) - same bus, addr=00.X
+        ARGUMENTS_SECTION+="
+        -device vfio-pci,host=0000:${dev_pci},bus=pcie_gpu,addr=00.${func_num}"
+      fi
+      ((gpu_device_idx++))
     done
     ARGUMENTS_SECTION+="
         -audiodev spice,id=spice
@@ -3299,6 +3383,26 @@ launch_windows() {
     if grep -q "vfio-pci" "$COMPOSE_FILE" 2>/dev/null; then
       echo "  Detected GPU passthrough configuration"
 
+      # Check GPU health before attempting to start VM (IOTLB errors require cold boot)
+      if command -v omarchy-gpu-passthrough-info &>/dev/null; then
+        if omarchy-gpu-passthrough-info gpu-health &>/dev/null; then
+          echo ""
+          msg_error "GPU Health: IOTLB_INV_TIMEOUT detected"
+          echo ""
+          echo "The GPU cannot be used for passthrough in this state."
+          echo "This happens when AMD GPUs with 'reset bug' are reset too many times."
+          echo ""
+          echo "Solution: Cold boot"
+          echo ""
+          echo "  1. sudo poweroff"
+          echo "  2. Unplug power for 30 seconds"
+          echo "  3. Power on"
+          echo ""
+          echo "Details: omarchy-gpu-passthrough-info health"
+          exit 1
+        fi
+      fi
+
       # Load GPU configuration and auto-bind if needed
       if command -v omarchy-gpu-passthrough-info &>/dev/null; then
         if omarchy-gpu-passthrough-info is-configured &>/dev/null; then
@@ -3431,16 +3535,25 @@ launch_windows() {
     exit 1
   fi
 
-  # Wait for RDP port if not already open (check actual RDP state, not just container state)
-  RDP_PORT_WAS_CLOSED=false
+  # Wait for RDP port to open (Windows may still be booting or installing)
   if ! nc -z 127.0.0.1 3389 2>/dev/null; then
-    RDP_PORT_WAS_CLOSED=true
     echo "Waiting for Windows VM to be ready..."
     WAIT_START=$(date +%s)
     WAIT_COUNT=0
     while ! nc -z 127.0.0.1 3389 2>/dev/null; do
       sleep 5
       WAIT_COUNT=$((WAIT_COUNT + 1))
+
+      # Check if container is still running
+      if [[ "$(get_container_status)" != "running" ]]; then
+        echo ""
+        msg_error "VM crashed while waiting for Windows to boot"
+        echo ""
+        echo "   Check logs: docker logs omarchy-windows"
+        echo ""
+        warn_if_gpu_iotlb_error
+        exit 1
+      fi
 
       if [[ "$((WAIT_COUNT % 60))" -eq 0 ]]; then
         CURRENT_TIME=$(date +%s)
@@ -3489,34 +3602,63 @@ launch_windows() {
       exit 1
     fi
 
-    # Test RDP service readiness only if port was closed (service may not be fully initialized yet)
-    if [[ "$RDP_PORT_WAS_CLOSED" == true ]]; then
+    # Always verify RDP service readiness before connecting
+    # Port being open (nc -z) doesn't mean Windows RDP service is ready -
+    # QEMU may forward the port before Windows finishes booting.
+    MAX_WAIT=90
+    if [[ "$WAS_ALREADY_RUNNING" == false ]]; then
       echo "Waiting for RDP service to become ready..."
+    else
+      echo "Verifying RDP service..."
+    fi
 
-      # Test RDP readiness with X.224 handshake
-      MAX_WAIT=90
-      RETRY_INTERVAL=5
-      ELAPSED=0
-      RDP_READY=false
+    # Test RDP readiness with X.224 handshake
+    RETRY_INTERVAL=5
+    ELAPSED=0
+    RDP_READY=false
+    CONTAINER_DIED=false
 
+    # Quick first check (don't wait if already ready)
+    if test_rdp_ready; then
+      RDP_READY=true
+    else
       while [[ "$ELAPSED" -lt "$MAX_WAIT" ]]; do
+        sleep "$RETRY_INTERVAL"
+        ELAPSED=$((ELAPSED + RETRY_INTERVAL))
+
+        # Check if container is still running
+        if [[ "$(get_container_status)" != "running" ]]; then
+          CONTAINER_DIED=true
+          break
+        fi
+
         if test_rdp_ready; then
           RDP_READY=true
           break
         fi
-        ELAPSED=$((ELAPSED + RETRY_INTERVAL))
         if [[ "$ELAPSED" -lt "$MAX_WAIT" ]]; then
           echo "  Testing RDP protocol... (${ELAPSED}s elapsed, next check in ${RETRY_INTERVAL}s)"
-          sleep "$RETRY_INTERVAL"
         fi
       done
+    fi
 
+    echo ""
+    if [[ "$CONTAINER_DIED" == true ]]; then
+      msg_error "VM crashed during startup"
       echo ""
-      if [[ "$RDP_READY" == true ]]; then
-        msg_success "RDP service is ready and responding to protocol requests"
-      else
+      echo "   Check logs: docker logs omarchy-windows"
+      echo ""
+      warn_if_gpu_iotlb_error
+      exit 1
+    elif [[ "$RDP_READY" == true ]]; then
+      msg_success "RDP service is ready"
+    else
+      if [[ "$WAS_ALREADY_RUNNING" == false ]]; then
         msg_warning "RDP service did not respond within ${MAX_WAIT}s"
         echo "   Proceeding anyway, but connection may fail"
+      else
+        msg_warning "RDP not responding - Windows may be restarting"
+        echo "   Will retry connection..."
       fi
     fi
 
@@ -3537,12 +3679,6 @@ To stop: omarchy-windows-vm stop"
       "" \
       "$LIFECYCLE"
 
-    # Wait for Windows services only if container was just started
-    if [[ "$WAS_ALREADY_RUNNING" == false ]]; then
-      echo "Waiting 10s for Windows services to fully initialize..."
-      sleep 10
-      echo ""
-    fi
     echo "   Toggle fullscreen: Super + F"
     echo "   Close RDP window: Super + W (or shutdown Windows)"
     if [[ "$KEEP_ALIVE" == false ]]; then
@@ -3591,30 +3727,52 @@ stop_windows() {
   echo "(Container will be recreated fresh on next launch)"
 
   # Phase 2: Auto-unbind GPU if it was bound for this VM
+  # NOTE: For AMD GPUs with "reset bug" (Vega, Fiji, Navi, etc.), we skip auto-unbind
+  # because these GPUs cannot be reliably rebound after unbind without a system reboot.
+  # The GPU stays in vm mode (vfio-pci) for the next VM session.
   if [[ "$gpu_mode" == "vm" ]]; then
     echo ""
-    echo "GPU passthrough detected - restoring GPU to host..."
 
     if command -v omarchy-gpu-passthrough &>/dev/null; then
-      # Verify GPU mode (marker may be stale after reboot)
-      local actual_mode=""
+      # Check if GPU has AMD reset bug (requires reboot to rebind to native driver)
+      # Affected: Vega 10/20, Fiji, Tonga, Hawaii, some Polaris, some Navi 10/14
+      local has_reset_bug=false
       if command -v omarchy-gpu-passthrough-info &>/dev/null; then
-        actual_mode=$(omarchy-gpu-passthrough-info mode 2>/dev/null)
+        if omarchy-gpu-passthrough-info needs-reset 2>/dev/null; then
+          has_reset_bug=true
+        fi
       fi
 
-      if [[ "$actual_mode" == "vm" ]]; then
-        if omarchy-gpu-passthrough mode none 2>/dev/null; then
-          msg_success "GPU restored to mode=none (blacklisted)"
-          notify_silent "Windows VM" "GPU restored to mode=none" "normal"
-        else
-          msg_warning "Failed to restore GPU"
-          echo "   You can manually restore: omarchy-gpu-passthrough mode none"
-          notify_silent "Windows VM" "Failed to restore GPU" "critical"
-        fi
+      if [[ "$has_reset_bug" == true ]]; then
+        # GPUs with reset bug: keep in vm mode (vfio-pci) for next session
+        msg_info "AMD GPU with reset bug: keeping in VM mode (vfio-pci)"
+        echo "   GPU stays ready for next VM session"
+        echo "   To use on host: reboot system, then: omarchy-gpu-passthrough mode host"
+        notify_silent "Windows VM" "GPU stays in VM mode (reset bug)" "normal"
       else
-        msg_info "GPU already restored (marker was stale, actual mode: ${actual_mode:-none})"
-        # Clean up stale marker
-        sudo -n /usr/bin/rm -f /var/run/omarchy-vm-gpu-mode 2>/dev/null || true
+        # GPUs without reset bug: restore to none mode
+        echo "GPU passthrough detected - restoring GPU to host..."
+
+        # Verify GPU mode (marker may be stale after reboot)
+        local actual_mode=""
+        if command -v omarchy-gpu-passthrough-info &>/dev/null; then
+          actual_mode=$(omarchy-gpu-passthrough-info mode 2>/dev/null)
+        fi
+
+        if [[ "$actual_mode" == "vm" ]]; then
+          if omarchy-gpu-passthrough mode none 2>/dev/null; then
+            msg_success "GPU restored to mode=none"
+            notify_silent "Windows VM" "GPU restored to mode=none" "normal"
+          else
+            msg_warning "Failed to restore GPU"
+            echo "   You can manually restore: omarchy-gpu-passthrough mode none"
+            notify_silent "Windows VM" "Failed to restore GPU" "critical"
+          fi
+        else
+          msg_info "GPU already restored (marker was stale, actual mode: ${actual_mode:-none})"
+          # Clean up stale marker
+          sudo -n /usr/bin/rm -f /var/run/omarchy-vm-gpu-mode 2>/dev/null || true
+        fi
       fi
     else
       msg_warning "GPU passthrough tools not found"
