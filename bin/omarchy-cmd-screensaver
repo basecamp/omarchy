@@ -13,12 +13,19 @@ exit_screensaver() {
 
 # Exit the screensaver on signals and input from keyboard and mouse
 trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+printf '\e[?1000h\e[?1003h' # Enable mouse tracking (clicks: 1000, movement: 1003)
+while read -rsn1 -t 0.1; do :; done # Flush any pending input
 
 printf '\033]11;rgb:00/00/00\007'  # Set background color to black
 
 hyprctl keyword cursor:invisible true &>/dev/null
 
 tty=$(tty 2>/dev/null)
+
+# Mouse movement threshold and timing
+MOUSE_WINDOW=5  # seconds
+mouse_count=0
+first_move_time=0
 
 while true; do
   tte -i ~/.config/omarchy/branding/screensaver.txt \
@@ -27,8 +34,33 @@ while true; do
     --no-eol --no-restore-cursor &
 
   while pgrep -t "${tty#/dev/}" -x tte >/dev/null; do
-    if read -n1 -t 1 || ! screensaver_in_focus; then
+    if read -rsn1 -t 1 esc; then
+      # Detect mouse movement sequences
+      if [[ "$esc" == $'\e' ]]; then
+        read -rsn2 -t 0.1 seq
+        if [[ "$esc$seq" == $'\e[M'* ]]; then
+          now=$(date +%s)
+          # Reset counter if first move or time window exceeded
+          if (( mouse_count == 0 || now - first_move_time > MOUSE_WINDOW )); then
+            mouse_count=1
+            first_move_time=$now
+          else
+            ((mouse_count++))
+          fi
+          # Exit if threshold (10 mouse movements) was reached within the time window
+          if (( mouse_count >= 10 )); then
+            exit_screensaver
+          fi
+          continue
+        fi
+      fi
+
+      # Any other input (keyboard or click) exits immediately
       exit_screensaver
+    fi
+
+    if ! screensaver_in_focus; then
+        exit_screensaver
     fi
   done
 done
