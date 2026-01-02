@@ -716,9 +716,92 @@ cmd_diagnose() {
         local mesa_version=$(glxinfo 2>/dev/null | grep "OpenGL version" | cut -d: -f2 | xargs)
         [[ -n "$mesa_version" ]] && echo "Mesa/OpenGL: $mesa_version"
       fi
+      if command -v vulkaninfo &>/dev/null; then
+        local vulkan_info
+        vulkan_info=$(vulkaninfo --summary 2>/dev/null | grep -A2 "vendorID.*0x1002" | grep "driverInfo" | head -1)
+        [[ -n "$vulkan_info" ]] && echo "Vulkan: $(echo "$vulkan_info" | cut -d= -f2 | xargs)"
+      fi
     else
       echo "Not loaded"
     fi
+    echo '```'
+    echo ""
+
+    echo "[GPU Runtime Stats]"
+    echo '```'
+    for i in "${!GPU_PCI_ADDR[@]}"; do
+      local pci="${GPU_PCI_ADDR[$i]}"
+      local vendor_id="${GPU_VENDOR_ID[$i]}"
+      local name="${GPU_NAME[$i]}"
+      local driver="${GPU_DRIVER[$i]}"
+
+      # Shorten name
+      local short_name="${name//Advanced Micro Devices, Inc. /}"
+      short_name="${short_name//\[AMD\/ATI\] /}"
+      short_name="${short_name//Intel Corporation /}"
+      short_name="${short_name//NVIDIA Corporation /}"
+
+      # AMD GPUs with amdgpu driver
+      if [[ "$vendor_id" == "1002" && "$driver" == "amdgpu" ]]; then
+        echo "--- $short_name ($pci) [AMD] ---"
+
+        local stats_output
+        if stats_output=$(get_amd_gpu_stats "$pci" 2>/dev/null); then
+          eval "$stats_output"
+          [[ "$vram_total_mb" -gt 0 ]] && echo "VRAM: ${vram_used_mb}MB / ${vram_total_mb}MB ($((vram_used_mb * 100 / vram_total_mb))%)"
+          [[ "$gtt_total_mb" -gt 0 ]] && echo "GTT:  ${gtt_used_mb}MB / ${gtt_total_mb}MB"
+          [[ "$temp_c" -gt 0 ]] && echo "Temp: ${temp_c}°C"
+          [[ "$power_w" -gt 0 ]] && echo "Power: ${power_w}W"
+          [[ "$fan_rpm" -gt 0 ]] && echo "Fan: ${fan_rpm} RPM"
+          [[ -n "$vbios" ]] && echo "VBIOS: $vbios"
+          [[ -n "$gpu_clock_mhz" ]] && echo "GPU Clock: ${gpu_clock_mhz} MHz"
+          [[ -n "$mem_clock_mhz" ]] && echo "Mem Clock: ${mem_clock_mhz} MHz"
+        else
+          echo "(stats not available - GPU may be on vfio-pci)"
+        fi
+        echo ""
+
+      # Intel GPUs (i915 for legacy, xe for Arc)
+      elif [[ "$vendor_id" == "8086" && ( "$driver" == "i915" || "$driver" == "xe" ) ]]; then
+        echo "--- $short_name ($pci) [Intel] ---"
+
+        local stats_output
+        if stats_output=$(get_intel_gpu_stats "$pci" 2>/dev/null); then
+          eval "$stats_output"
+          if [[ "$gpu_freq_mhz" -gt 0 ]]; then
+            if [[ "$gpu_freq_max_mhz" -gt 0 ]]; then
+              echo "GPU Clock: ${gpu_freq_mhz} MHz (range: ${gpu_freq_min_mhz}-${gpu_freq_max_mhz} MHz)"
+            else
+              echo "GPU Clock: ${gpu_freq_mhz} MHz"
+            fi
+          fi
+          [[ "$temp_c" -gt 0 ]] && echo "Temp: ${temp_c}°C"
+          [[ "$power_w" -gt 0 ]] && echo "Power: ${power_w}W"
+          echo "Memory: Shared (system RAM)"
+        else
+          echo "(stats not available)"
+        fi
+        echo ""
+
+      # NVIDIA GPUs
+      elif [[ "$vendor_id" == "10de" && "$driver" == "nvidia" ]]; then
+        echo "--- $short_name ($pci) [NVIDIA] ---"
+
+        local stats_output
+        if stats_output=$(get_nvidia_gpu_stats "$pci" 2>/dev/null); then
+          eval "$stats_output"
+          [[ "$vram_total_mb" -gt 0 ]] && echo "VRAM: ${vram_used_mb}MB / ${vram_total_mb}MB ($((vram_used_mb * 100 / vram_total_mb))%)"
+          [[ "$temp_c" -gt 0 ]] && echo "Temp: ${temp_c}°C"
+          [[ "$power_w" -gt 0 ]] && echo "Power: ${power_w}W"
+          [[ "$gpu_clock_mhz" -gt 0 ]] && echo "GPU Clock: ${gpu_clock_mhz} MHz"
+          [[ "$mem_clock_mhz" -gt 0 ]] && echo "Mem Clock: ${mem_clock_mhz} MHz"
+          [[ -n "$vbios" ]] && echo "VBIOS: $vbios"
+        else
+          echo "(nvidia-smi not available)"
+        fi
+        echo ""
+      fi
+    done
     echo '```'
     echo ""
 
@@ -901,7 +984,7 @@ cmd_diagnose() {
     local is_nvidia_gpu=false
 
     # Check if any GPU is NVIDIA
-    for vendor in "${GPU_VENDOR[@]}"; do
+    for vendor in "${GPU_VENDOR_ID[@]}"; do
       [[ "$vendor" == "10de" ]] && is_nvidia_gpu=true && break
     done
 
@@ -986,6 +1069,60 @@ cmd_diagnose() {
     echo "[PROCESSES USING GPU]"
     echo ""
 
+    echo "[DRI Device Handles (all GPUs)]"
+    echo '```'
+    local dri_output
+    dri_output=$(fuser -v /dev/dri/* 2>&1 | grep -v "^$" | head -30) || dri_output=""
+    if [[ -n "$dri_output" ]]; then
+      echo "$dri_output"
+    else
+      echo "No processes using /dev/dri/*"
+    fi
+    echo '```'
+    echo ""
+
+    # Per-GPU process breakdown
+    echo "[Per-GPU Process Breakdown]"
+    echo '```'
+    for card_path in /sys/class/drm/card[0-9]*; do
+      [[ -d "$card_path" ]] || continue
+      [[ "$(basename "$card_path")" =~ - ]] && continue  # Skip connectors
+
+      local card_name=$(basename "$card_path")
+      local pci_path=$(readlink -f "$card_path/device" 2>/dev/null)
+      local pci_addr="${pci_path##*/}"
+      pci_addr="${pci_addr#0000:}"
+      local driver=$(basename "$(readlink -f "$card_path/device/driver" 2>/dev/null)" 2>/dev/null)
+      local gpu_name=$(lspci -s "$pci_addr" 2>/dev/null | cut -d: -f3 | head -c40)
+
+      echo "--- $card_name: $gpu_name ($driver) ---"
+
+      # Render nodes are /dev/dri/renderD128, renderD129, etc.
+      local render_node="/dev/dri/renderD$((128 + ${card_name#card}))"
+
+      local card_procs=""
+      if [[ -e "/dev/dri/$card_name" ]]; then
+        card_procs=$(fuser "/dev/dri/$card_name" 2>/dev/null | xargs)
+      fi
+      local render_procs=""
+      if [[ -e "$render_node" ]]; then
+        render_procs=$(fuser "$render_node" 2>/dev/null | xargs)
+      fi
+
+      if [[ -n "$card_procs" || -n "$render_procs" ]]; then
+        local all_pids=$(echo "$card_procs $render_procs" | tr ' ' '\n' | sort -u | xargs)
+        for pid in $all_pids; do
+          local cmdline=$(cat "/proc/$pid/comm" 2>/dev/null || echo "unknown")
+          echo "  PID $pid: $cmdline"
+        done
+      else
+        echo "  (no processes)"
+      fi
+      echo ""
+    done
+    echo '```'
+    echo ""
+
     echo "[NVIDIA GPU Processes]"
     echo '```'
     if command -v nvidia-smi &>/dev/null; then
@@ -994,25 +1131,23 @@ cmd_diagnose() {
       if [[ "$nvidia_output" =~ Failed\ to\ initialize\ NVML ]]; then
         echo "nvidia-smi unavailable (GPU likely bound to vfio-pci)"
       elif [[ -z "$nvidia_output" ]] || [[ "$nvidia_output" =~ No\ running ]]; then
-        echo "No active processes"
+        echo "No active NVIDIA compute processes"
       else
         echo "$nvidia_output"
       fi
     else
-      echo "nvidia-smi not available"
+      echo "nvidia-smi not available (no NVIDIA GPU or driver not loaded)"
     fi
-    echo '```'
-    echo ""
-
-    echo "[DRI Device Handles]"
-    echo '```'
-    fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" | head -20 || echo "No processes found"
     echo '```'
     echo ""
 
     echo "[NVIDIA Device Handles]"
     echo '```'
-    fuser -v /dev/nvidia* 2>&1 | grep -v "USER\|kernel" | head -20 || echo "No NVIDIA devices or no processes"
+    if ls /dev/nvidia* &>/dev/null; then
+      fuser -v /dev/nvidia* 2>&1 | grep -v "USER\|kernel" | head -20 || echo "No processes using NVIDIA devices"
+    else
+      echo "No NVIDIA devices found"
+    fi
     echo '```'
     echo ""
 
@@ -1308,6 +1443,110 @@ cmd_is_configured() {
   exit 0
 }
 
+# Check if configured GPU has AMD reset bug (requires special handling for unbind)
+# These GPUs cannot rebind to native driver after vfio-pci use without reboot
+# Exit 0 if has reset bug, 1 if not, 2 if not configured
+cmd_needs_reset() {
+  if ! load_gpu_config; then
+    exit 2
+  fi
+
+  # Check vendor (must be AMD - only AMD GPUs have this bug)
+  if [[ "$GPU_VENDOR_ID" != "1002" ]]; then
+    exit 1
+  fi
+
+  if gpu_has_reset_bug "$GPU_PCI_ADDR"; then
+    exit 0
+  else
+    exit 1
+  fi
+}
+
+# Check if GPU has IOTLB_INV_TIMEOUT error in current boot (requires cold boot to fix)
+# Exit 0 if has error (unhealthy), 1 if OK, 2 if not configured
+cmd_gpu_health() {
+  if ! load_gpu_config; then
+    exit 2
+  fi
+
+  local pci_addr="$GPU_PCI_ADDR"
+  local pci_full
+  pci_full=$(normalize_pci_addr "$pci_addr") || pci_full="0000:${pci_addr}"
+
+  # Check kernel log for IOTLB_INV_TIMEOUT on this device (current boot only)
+  local iotlb_error
+  iotlb_error=$(journalctl -k -b --no-pager 2>/dev/null | grep -i "IOTLB_INV_TIMEOUT" | grep -i "$pci_addr\|$pci_full" | tail -1)
+
+  if [[ -n "$iotlb_error" ]]; then
+    # GPU is unhealthy - IOTLB timeout detected
+    exit 0
+  else
+    # GPU is healthy
+    exit 1
+  fi
+}
+
+# Check GPU health and print status
+cmd_check_health() {
+  local quiet="${1:-false}"
+
+  if ! load_gpu_config 2>/dev/null; then
+    [[ "$quiet" != "true" ]] && echo "not-configured"
+    return 2
+  fi
+
+  local pci_addr="$GPU_PCI_ADDR"
+  local pci_full
+  pci_full=$(normalize_pci_addr "$pci_addr") || pci_full="0000:${pci_addr}"
+
+  # Check kernel log for IOTLB_INV_TIMEOUT on this device (current boot only)
+  local iotlb_error
+  iotlb_error=$(journalctl -k -b --no-pager 2>/dev/null | grep -i "IOTLB_INV_TIMEOUT" | grep -i "$pci_addr\|$pci_full" | tail -1)
+
+  # Shorten GPU name for display
+  local short_name="$GPU_NAME"
+  short_name="${short_name//Advanced Micro Devices, Inc. /}"
+  short_name="${short_name//\[AMD\/ATI\] /}"
+  short_name="${short_name//NVIDIA Corporation /}"
+
+  if [[ -n "$iotlb_error" ]]; then
+    if [[ "$quiet" != "true" ]]; then
+      echo ""
+      echo "GPU Health Check: FAILED"
+      echo "────────────────────────"
+      echo ""
+      echo "Status: IOTLB_INV_TIMEOUT detected"
+      echo "GPU:    $short_name ($pci_addr)"
+      echo ""
+      echo "The GPU cannot be used for VM passthrough in this state."
+      echo "This happens when AMD GPUs with 'reset bug' are reset too many times."
+      echo ""
+      echo "Kernel error:"
+      echo "  $iotlb_error"
+      echo ""
+      echo "Solution: Cold boot"
+      echo ""
+      echo "  1. sudo poweroff"
+      echo "  2. Unplug power for 30 seconds"
+      echo "  3. Power on"
+      echo ""
+    fi
+    return 1  # Failure - IOTLB error found
+  else
+    if [[ "$quiet" != "true" ]]; then
+      echo ""
+      echo "GPU Health Check: OK"
+      echo "────────────────────"
+      echo ""
+      echo "GPU: $short_name ($pci_addr)"
+      echo "No IOTLB errors detected."
+      echo ""
+    fi
+    return 0  # Success - GPU is healthy
+  fi
+}
+
 cmd_mode() {
   if ! load_gpu_config; then
     echo "not-configured"
@@ -1551,6 +1790,33 @@ cmd_hardware_report() {
 
     echo "  $((i + 1)). $name [${vendor_id}:${device_id}]"
     echo "     PCI: $pci | Driver: ${driver:-none} | vRAM: $vram_info | BAR: $bar_info"
+
+    # Show runtime stats for AMD GPUs
+    if [[ "$vendor_id" == "1002" && "$driver" == "amdgpu" ]]; then
+      local stats_output
+      if stats_output=$(get_amd_gpu_stats "$pci" 2>/dev/null); then
+        eval "$stats_output"
+        local runtime_info=""
+        [[ "$temp_c" -gt 0 ]] && runtime_info+="Temp: ${temp_c}°C"
+        [[ "$power_w" -gt 0 ]] && runtime_info+="${runtime_info:+ | }Power: ${power_w}W"
+        [[ "$fan_rpm" -gt 0 ]] && runtime_info+="${runtime_info:+ | }Fan: ${fan_rpm} RPM"
+        [[ -n "$runtime_info" ]] && echo "     $runtime_info"
+        [[ -n "$vbios" ]] && echo "     VBIOS: $vbios"
+      fi
+    fi
+
+    # Show runtime stats for NVIDIA GPUs
+    if [[ "$vendor_id" == "10de" && "$driver" == "nvidia" ]]; then
+      local stats_output
+      if stats_output=$(get_nvidia_gpu_stats "$pci" 2>/dev/null); then
+        eval "$stats_output"
+        local runtime_info=""
+        [[ "$temp_c" -gt 0 ]] && runtime_info+="Temp: ${temp_c}°C"
+        [[ "$power_w" -gt 0 ]] && runtime_info+="${runtime_info:+ | }Power: ${power_w}W"
+        [[ -n "$runtime_info" ]] && echo "     $runtime_info"
+        [[ -n "$vbios" ]] && echo "     VBIOS: $vbios"
+      fi
+    fi
 
     # Show IOMMU group devices for dedicated GPUs
     if [[ -n "$iommu_group" && "$type" == "dedicated" ]]; then
@@ -1803,22 +2069,105 @@ cmd_hardware_report() {
   echo ""
 }
 
+cmd_stats() {
+  detect_gpus
+
+  echo ""
+  echo "GPU Runtime Stats"
+  echo "─────────────────"
+
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local name="${GPU_NAME[$i]}"
+    local vendor_id="${GPU_VENDOR_ID[$i]}"
+    local driver="${GPU_DRIVER[$i]}"
+
+    # Shorten name
+    local short_name="${name//Advanced Micro Devices, Inc. /}"
+    short_name="${short_name//\[AMD\/ATI\] /}"
+    short_name="${short_name//NVIDIA Corporation /}"
+
+    echo ""
+    echo "[$((i+1))] $short_name ($pci)"
+    echo "    Driver: ${driver:-none}"
+
+    # AMD GPU stats
+    if [[ "$vendor_id" == "1002" && "$driver" == "amdgpu" ]]; then
+      local stats_output
+      if stats_output=$(get_amd_gpu_stats "$pci" 2>/dev/null); then
+        eval "$stats_output"
+        [[ "$vram_total_mb" -gt 0 ]] && echo "    VRAM: ${vram_used_mb}MB / ${vram_total_mb}MB ($((vram_used_mb * 100 / vram_total_mb))%)"
+        [[ "$temp_c" -gt 0 ]] && echo "    Temp: ${temp_c}°C"
+        [[ "$power_w" -gt 0 ]] && echo "    Power: ${power_w}W"
+        [[ "$fan_rpm" -gt 0 ]] && echo "    Fan: ${fan_rpm} RPM"
+        [[ -n "$gpu_clock_mhz" ]] && echo "    GPU Clock: ${gpu_clock_mhz} MHz"
+        [[ -n "$mem_clock_mhz" ]] && echo "    Mem Clock: ${mem_clock_mhz} MHz"
+        [[ -n "$vbios" ]] && echo "    VBIOS: $vbios"
+      else
+        echo "    (stats not available)"
+      fi
+    # Intel GPU stats (i915 for legacy, xe for Arc)
+    elif [[ "$vendor_id" == "8086" && ( "$driver" == "i915" || "$driver" == "xe" ) ]]; then
+      local stats_output
+      if stats_output=$(get_intel_gpu_stats "$pci" 2>/dev/null); then
+        eval "$stats_output"
+        if [[ "$gpu_freq_mhz" -gt 0 ]]; then
+          if [[ "$gpu_freq_max_mhz" -gt 0 ]]; then
+            echo "    GPU Clock: ${gpu_freq_mhz} MHz (max: ${gpu_freq_max_mhz} MHz)"
+          else
+            echo "    GPU Clock: ${gpu_freq_mhz} MHz"
+          fi
+        fi
+        [[ "$temp_c" -gt 0 ]] && echo "    Temp: ${temp_c}°C"
+        [[ "$power_w" -gt 0 ]] && echo "    Power: ${power_w}W"
+        echo "    Memory: Shared (system RAM)"
+      else
+        echo "    (stats not available)"
+      fi
+    # NVIDIA GPU stats
+    elif [[ "$vendor_id" == "10de" && "$driver" == "nvidia" ]]; then
+      local stats_output
+      if stats_output=$(get_nvidia_gpu_stats "$pci" 2>/dev/null); then
+        eval "$stats_output"
+        [[ "$vram_total_mb" -gt 0 ]] && echo "    VRAM: ${vram_used_mb}MB / ${vram_total_mb}MB ($((vram_used_mb * 100 / vram_total_mb))%)"
+        [[ "$temp_c" -gt 0 ]] && echo "    Temp: ${temp_c}°C"
+        [[ "$power_w" -gt 0 ]] && echo "    Power: ${power_w}W"
+        [[ "$gpu_clock_mhz" -gt 0 ]] && echo "    GPU Clock: ${gpu_clock_mhz} MHz"
+        [[ "$mem_clock_mhz" -gt 0 ]] && echo "    Mem Clock: ${mem_clock_mhz} MHz"
+        [[ -n "$vbios" ]] && echo "    VBIOS: $vbios"
+      else
+        echo "    (nvidia-smi not available)"
+      fi
+    elif [[ "$driver" == "vfio-pci" ]]; then
+      echo "    (bound to vfio-pci for VM passthrough)"
+    elif [[ -z "$driver" || "$driver" == "none" ]]; then
+      echo "    (no driver loaded)"
+    fi
+  done
+
+  echo ""
+}
+
 show_info_help() {
   cat <<EOF
 GPU Passthrough Information & Diagnostics
 
 COMMANDS:
   status       Quick GPU status and binding state (any time)
+  stats        GPU runtime stats: VRAM, temp, power, clocks
   detect       Hardware check: GPUs, IOMMU, suitability (before setup)
   verify       Full system verification (after setup & reboot)
   report       Shareable hardware config
   diagnose     Full diagnostic dump (detailed, saves to /tmp)
+  health       Check GPU health (IOTLB errors)
 
 SCRIPTING (exit codes):
   mode           Print GPU mode: none/vm/host/not-configured (0=valid, 1=error)
   driver         Print current GPU driver (0=success, 1=not-configured)
   is-bound       Silent check if vfio-pci bound (0=bound, 1=not, 2=not-configured)
   is-configured  Silent check if configured (0=yes, 1=no)
+  needs-reset    Silent check if GPU has AMD reset bug (0=yes, 1=no, 2=not-configured)
+  gpu-health     Silent check for IOTLB errors (0=unhealthy, 1=ok, 2=not-configured)
 EOF
 }
 
@@ -1839,6 +2188,9 @@ report)
 status)
   cmd_status
   ;;
+stats)
+  cmd_stats
+  ;;
 detect)
   cmd_detect
   ;;
@@ -1853,6 +2205,15 @@ is-bound)
   ;;
 is-configured)
   cmd_is_configured
+  ;;
+needs-reset)
+  cmd_needs_reset
+  ;;
+gpu-health)
+  cmd_gpu_health
+  ;;
+health)
+  cmd_check_health "$@"
   ;;
 get-docker-config)
   cmd_get_docker_config

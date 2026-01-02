@@ -369,6 +369,25 @@ cmd_bind() {
   if [[ "$current_driver" == "vfio-pci" ]]; then
     msg_success "GPU already bound to vfio-pci (ready for VM)"
     log_info "GPU already bound to vfio-pci (no action needed)"
+
+    # Still check and enable persistent mode for reset-bug GPUs
+    if [[ "$GPU_VENDOR_ID" == "1002" ]] && gpu_has_reset_bug "$GPU_PCI_ADDR"; then
+      if ! is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+        echo ""
+        msg_info "AMD GPU with reset bug - enabling persistent VM mode"
+        msg_info "GPU will boot directly to vfio-pci after reboot"
+        if enable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+          msg_success "Persistent VM mode enabled (effective after reboot)"
+          log_success "Persistent VFIO enabled for reset-bug GPU"
+        else
+          msg_warning "Failed to enable persistent mode"
+          msg_info "GPU may require rebind after each reboot"
+          log_warn "Failed to enable persistent VFIO for reset-bug GPU"
+        fi
+      else
+        log_info "Persistent VFIO already enabled for this GPU"
+      fi
+    fi
     exit 0
   fi
 
@@ -484,6 +503,26 @@ cmd_bind() {
     log_success "=== BIND SUCCESS: GPU ready for VM passthrough ==="
 
     update_state_marker "vm"
+
+    # For AMD GPUs with reset bug: enable persistent VFIO mode
+    # This ensures GPU stays on vfio-pci after reboot (avoids rebind problem)
+    if [[ "$GPU_VENDOR_ID" == "1002" ]] && gpu_has_reset_bug "$GPU_PCI_ADDR"; then
+      if ! is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+        echo ""
+        msg_info "AMD GPU with reset bug - enabling persistent VM mode"
+        msg_info "GPU will boot directly to vfio-pci after reboot"
+        if enable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+          msg_success "Persistent VM mode enabled (effective after reboot)"
+          log_success "Persistent VFIO enabled for reset-bug GPU"
+        else
+          msg_warning "Failed to enable persistent mode"
+          msg_info "GPU may require rebind after each reboot"
+          log_warn "Failed to enable persistent VFIO for reset-bug GPU"
+        fi
+      else
+        log_info "Persistent VFIO already enabled for this GPU"
+      fi
+    fi
   else
     msg_error "Failed to bind (current: ${current_driver:-none})"
     log_error "=== BIND FAILED: driver ${current_driver:-none} ==="
@@ -610,17 +649,73 @@ cmd_unbind() {
     exit 0
   fi
 
-  # AMD Vega check: these GPUs need reboot after vfio-pci use to work with native driver
+  # AMD Reset Bug check: affected GPUs need reboot after vfio-pci use to work with native driver
+  # Affected: Vega 10/20, Fiji, Tonga, Hawaii, some Polaris, some Navi 10/14
   if gpu_needs_reboot_for_native_driver "$GPU_PCI_ADDR" "$GPU_VENDOR_ID"; then
     echo ""
-    msg_warning "AMD Vega GPU detected"
-    msg_warning "This GPU cannot rebind to amdgpu after vfio-pci use without reboot"
+    msg_warning "AMD GPU with reset bug detected"
+    msg_warning "This GPU cannot rebind to amdgpu without reboot"
     echo ""
-    echo "Options:"
-    echo "  1. Reboot the system to use GPU on host"
-    echo "  2. Keep GPU in VM mode for another VM session"
-    echo ""
-    log_warn "AMD Vega GPU needs reboot to use native driver after vfio-pci"
+
+    local has_persistent=false
+    is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID" && has_persistent=true
+
+    if command -v gum &>/dev/null && [[ -t 0 ]]; then
+      local choice
+      if [[ "$has_persistent" == "true" ]]; then
+        choice=$(gum choose \
+          "Prepare for host (disable VM mode, then reboot)" \
+          "Keep VM mode" \
+          "Cancel")
+      else
+        choice=$(gum choose \
+          "Reboot now to use GPU on host" \
+          "Keep VM mode" \
+          "Cancel")
+      fi
+
+      case "$choice" in
+      "Prepare for host"*)
+        echo ""
+        msg_info "Disabling persistent VM mode..."
+        if disable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+          echo ""
+          msg_success "Persistent VM mode disabled"
+          msg_info "GPU will use $GPU_DRIVER_ORIGINAL after reboot"
+          echo ""
+          if gum confirm "Reboot now?"; then
+            log_info "User chose to reboot after disabling persistent VFIO"
+            sudo reboot
+          else
+            msg_info "Run 'sudo reboot' when ready"
+          fi
+        else
+          msg_error "Failed to disable persistent mode"
+        fi
+        ;;
+      "Reboot now"*)
+        log_info "User chose to reboot for host mode"
+        sudo reboot
+        ;;
+      "Keep VM mode")
+        msg_info "GPU stays in VM mode"
+        ;;
+      *)
+        msg_info "Cancelled"
+        ;;
+      esac
+    else
+      # Fallback without gum
+      if [[ "$has_persistent" == "true" ]]; then
+        echo "To use GPU on host:"
+        echo "  1. Disable persistent mode: omarchy-gpu-passthrough persistent off"
+        echo "  2. Reboot: sudo reboot"
+      else
+        echo "To use GPU on host: sudo reboot"
+      fi
+    fi
+
+    log_warn "AMD GPU with reset bug needs reboot to use native driver after vfio-pci"
     exit 1
   fi
 
@@ -759,6 +854,22 @@ cmd_unbind() {
     log_success "=== UNBIND SUCCESS: GPU restored to $GPU_DRIVER_ORIGINAL ==="
 
     update_state_marker "host"
+
+    # Disable persistent VFIO mode if it was enabled
+    # This allows GPU to boot with native driver after next reboot
+    if is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+      echo ""
+      msg_info "Disabling persistent VM mode"
+      msg_info "GPU will boot with native driver after reboot"
+      if disable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+        msg_success "Persistent VM mode disabled (effective after reboot)"
+        log_success "Persistent VFIO disabled"
+      else
+        msg_warning "Failed to disable persistent mode"
+        msg_info "GPU may still boot to vfio-pci after reboot"
+        log_warn "Failed to disable persistent VFIO"
+      fi
+    fi
   else
     msg_warning "Unbound but driver not auto-loaded (current: ${current_driver:-none})"
     msg_info "Manual reload: sudo modprobe -i $GPU_DRIVER_ORIGINAL"
@@ -836,6 +947,78 @@ ensure_state_marker() {
   ) 200>"$lockfile"
 }
 
+cmd_persistent() {
+  local action="${1:-}"
+  log_init
+
+  if ! load_gpu_config; then
+    msg_section "GPU Persistent Mode"
+    msg_error "GPU passthrough not configured"
+    msg_info "Run: omarchy-gpu-passthrough setup"
+    exit 1
+  fi
+
+  local is_enabled=false
+  is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID" && is_enabled=true
+
+  case "$action" in
+  on)
+    msg_section "GPU Persistent Mode: Enable"
+    if [[ "$is_enabled" == "true" ]]; then
+      msg_info "Persistent VM mode already enabled"
+      msg_info "GPU will boot to vfio-pci (ready for VM)"
+      exit 0
+    fi
+    msg_info "Enabling persistent VM mode..."
+    if enable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+      echo ""
+      msg_success "Persistent VM mode enabled"
+      msg_info "GPU will boot to vfio-pci after reboot"
+      log_success "Persistent VFIO enabled"
+    else
+      msg_error "Failed to enable persistent mode"
+      exit 1
+    fi
+    ;;
+  off)
+    msg_section "GPU Persistent Mode: Disable"
+    if [[ "$is_enabled" == "false" ]]; then
+      msg_info "Persistent VM mode not enabled"
+      msg_info "GPU will boot with native driver ($GPU_DRIVER_ORIGINAL)"
+      exit 0
+    fi
+    msg_info "Disabling persistent VM mode..."
+    if disable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+      echo ""
+      msg_success "Persistent VM mode disabled"
+      msg_info "GPU will boot with $GPU_DRIVER_ORIGINAL after reboot"
+      log_success "Persistent VFIO disabled"
+    else
+      msg_error "Failed to disable persistent mode"
+      exit 1
+    fi
+    ;;
+  ""|status)
+    msg_section "GPU Persistent Mode"
+    echo "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
+    if [[ "$is_enabled" == "true" ]]; then
+      msg_success "Persistent: on"
+      echo "GPU will boot to vfio-pci (ready for VM)"
+    else
+      msg_info "Persistent: off"
+      echo "GPU will boot with native driver ($GPU_DRIVER_ORIGINAL)"
+    fi
+    echo ""
+    echo "Usage: omarchy-gpu-passthrough persistent [on|off]"
+    ;;
+  *)
+    msg_error "Invalid action: $action"
+    echo "Usage: omarchy-gpu-passthrough persistent [on|off]"
+    exit 1
+    ;;
+  esac
+}
+
 cmd_mode_set() {
   local target="$1"
 
@@ -879,6 +1062,21 @@ cmd_mode_get() {
   fi
 
   local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
+  local binding_type="runtime"
+  local persistent_mode="false"
+
+  if is_early_binding_enabled "$GPU_PCI_ADDR"; then
+    binding_type="early"
+  fi
+
+  if is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+    persistent_mode="true"
+  fi
+
+  local has_reset_bug="false"
+  if [[ "$GPU_VENDOR_ID" == "1002" ]] && gpu_has_reset_bug "$GPU_PCI_ADDR"; then
+    has_reset_bug="true"
+  fi
 
   echo ""
   echo "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
@@ -886,21 +1084,47 @@ cmd_mode_get() {
   vfio-pci)
     msg_success "Mode: vm"
     echo "Driver: vfio-pci"
+    if [[ "$persistent_mode" == "true" ]]; then
+      echo "Binding: persistent (vfio-pci from boot)"
+    else
+      echo "Binding: $binding_type (vfio-pci $([ "$binding_type" == "early" ] && echo "from boot" || echo "on demand"))"
+    fi
     echo "Status: Ready for VM passthrough"
+    if [[ "$has_reset_bug" == "true" ]]; then
+      if [[ "$persistent_mode" == "true" ]]; then
+        echo "Note: AMD reset bug GPU - persistent mode active"
+      else
+        echo "Note: AMD reset bug GPU - reboot needed to return to host"
+      fi
+    fi
     ;;
   nvidia | amdgpu | i915)
     msg_success "Mode: host"
     echo "Driver: $current_driver"
+    if [[ "$persistent_mode" == "true" ]]; then
+      echo "Binding: persistent (vfio-pci at next boot)"
+    else
+      echo "Binding: $binding_type"
+    fi
     echo "Status: Available to host"
+    if [[ "$has_reset_bug" == "true" && "$persistent_mode" != "true" ]]; then
+      echo "Note: AMD reset bug GPU - use 'mode vm' to enable persistent mode"
+    fi
     ;;
   "")
     msg_success "Mode: none"
     echo "Driver: none"
+    if [[ "$persistent_mode" == "true" ]]; then
+      echo "Binding: persistent (vfio-pci at next boot)"
+    else
+      echo "Binding: $binding_type$([ "$binding_type" == "early" ] && echo " (vfio-pci at next boot)")"
+    fi
     echo "Status: No driver loaded (boot state)"
     ;;
   *)
     msg_info "Mode: unknown"
     echo "Driver: $current_driver"
+    echo "Binding: $binding_type"
     echo "Status: Unknown state"
     ;;
   esac
@@ -914,21 +1138,34 @@ show_bind_help() {
 GPU Passthrough Binding Operations
 
 Usage: omarchy-gpu-passthrough mode [none|vm|host]
-       omarchy-gpu-passthrough mode [OPTIONS]
+       omarchy-gpu-passthrough persistent [on|off]
 
-MODE COMMAND:
+MODE COMMANDS:
   mode              Show current GPU mode
-  mode none         No driver (inactive, boot state, power save)
-  mode vm           Bind to vfio-pci (ready for VM passthrough)
-  mode host         Bind to nvidia/amdgpu (available to host)
+  mode none         No driver (inactive, power save)
+  mode vm           Bind to vfio-pci (ready for VM)
+  mode host         Bind to native driver (available to host)
+
+PERSISTENT MODE:
+  persistent        Show persistent mode status
+  persistent on     GPU boots to vfio-pci (for VM)
+  persistent off    GPU boots with native driver (for host)
 
 OPTIONS:
   -h, --help        Show this help
 
 EXAMPLES:
-  omarchy-gpu-passthrough mode         # Show current
-  omarchy-gpu-passthrough mode vm      # For VM
-  omarchy-gpu-passthrough mode host    # For host
+  omarchy-gpu-passthrough mode         # Show current mode
+  omarchy-gpu-passthrough mode vm      # Switch to VM mode
+  omarchy-gpu-passthrough persistent   # Show persistent status
+  omarchy-gpu-passthrough persistent off  # Disable, then reboot for host
+
+AMD RESET BUG:
+  Some AMD GPUs (Vega, Navi, Polaris) cannot rebind to native driver
+  after vfio-pci without reboot. For these GPUs:
+  - 'mode vm' auto-enables persistent mode
+  - 'mode host' shows TUI to disable persistent + reboot
+  - Or manually: 'persistent off' then reboot
 EOF
 }
 
@@ -942,6 +1179,10 @@ mode)
   else
     cmd_mode_set "$1"
   fi
+  ;;
+persistent)
+  shift
+  cmd_persistent "${1:-}"
   ;;
 -h | --help | help)
   show_bind_help

@@ -201,9 +201,12 @@ remove_dangerous_params() {
 configure_omarchy_limine() {
   local iommu_param="$1"
 
+  log_info "Configuring Limine kernel parameters (IOMMU: $iommu_param)"
+
   if grep -q 'vfio-pci\.ids=' "$LIMINE_DEFAULT"; then
     sudo sed -i -E 's/[[:space:]]*vfio-pci\.ids=[0-9a-f:,]+//g' "$LIMINE_DEFAULT"
     sudo sed -i -E 's/[[:space:]]+/ /g' "$LIMINE_DEFAULT"
+    log_info "Removed legacy vfio-pci.ids from Limine config"
   fi
 
   remove_dangerous_params "$LIMINE_DEFAULT"
@@ -225,10 +228,16 @@ configure_omarchy_limine() {
 
   if ! [[ "$all_cmdlines" =~ (amd_iommu|intel_iommu)=on ]]; then
     params_to_add="$params_to_add $iommu_param"
+    log_info "Adding IOMMU parameter: $iommu_param"
+  else
+    log_info "IOMMU parameter already present"
   fi
 
   if ! [[ "$all_cmdlines" =~ iommu=pt ]]; then
     params_to_add="$params_to_add iommu=pt"
+    log_info "Adding iommu=pt parameter"
+  else
+    log_info "iommu=pt already present"
   fi
 
   # pci=realloc only for NVIDIA + ReBAR (can cause issues on some systems without it)
@@ -238,15 +247,23 @@ configure_omarchy_limine() {
       [[ -z "$gpu_pci" ]] && gpu_pci="${GPU_PCI_ADDR[0]:-}"
       if [[ -n "$gpu_pci" ]] && check_resizable_bar "$gpu_pci" 2>/dev/null; then
         params_to_add="$params_to_add pci=realloc"
+        log_info "Adding pci=realloc (NVIDIA ReBAR detected)"
       fi
     fi
   fi
 
   if [[ -n "$params_to_add" ]]; then
-    echo "KERNEL_CMDLINE[default]+=\" $params_to_add\"" | sudo tee -a "$LIMINE_DEFAULT" >/dev/null
-    msg_success "Kernel parameters:$params_to_add"
+    if echo "KERNEL_CMDLINE[default]+=\" $params_to_add\"" | sudo tee -a "$LIMINE_DEFAULT" >/dev/null; then
+      msg_success "Kernel parameters:$params_to_add"
+      log_info "Limine config updated:$params_to_add"
+    else
+      msg_error "Failed to update Limine config"
+      log_error "Failed to write to $LIMINE_DEFAULT"
+      return 1
+    fi
   else
     msg_info "Kernel parameters already set"
+    log_info "Limine kernel parameters already configured"
   fi
 
   return 0
@@ -254,6 +271,8 @@ configure_omarchy_limine() {
 
 configure_grub_bootloader() {
   local iommu_param="$1"
+
+  log_info "Configuring GRUB kernel parameters (IOMMU: $iommu_param)"
 
   # Validate GRUB config BEFORE creating backup
   if ! grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT"; then
@@ -290,10 +309,16 @@ configure_grub_bootloader() {
 
   if ! [[ "$current_cmdline" =~ (amd_iommu|intel_iommu)=on ]]; then
     params_to_add="$params_to_add $iommu_param"
+    log_info "Adding IOMMU parameter: $iommu_param"
+  else
+    log_info "IOMMU parameter already present"
   fi
 
   if ! [[ "$current_cmdline" =~ iommu=pt ]]; then
     params_to_add="$params_to_add iommu=pt"
+    log_info "Adding iommu=pt parameter"
+  else
+    log_info "iommu=pt already present"
   fi
 
   if [[ -n "${GPU_VENDOR_ID:-}" ]] && [[ "${GPU_VENDOR_ID}" == "10de" || "${GPU_VENDOR_ID[0]:-}" == "10de" ]]; then
@@ -302,6 +327,7 @@ configure_grub_bootloader() {
       [[ -z "$gpu_pci" ]] && gpu_pci="${GPU_PCI_ADDR[0]:-}"
       if [[ -n "$gpu_pci" ]] && check_resizable_bar "$gpu_pci" 2>/dev/null; then
         params_to_add="$params_to_add pci=realloc"
+        log_info "Adding pci=realloc (NVIDIA ReBAR detected)"
       fi
     fi
   fi
@@ -312,10 +338,17 @@ configure_grub_bootloader() {
     # Escape sed special chars in replacement: & (backreference) and \ (escape)
     local new_cmdline_escaped="${new_cmdline//\\/\\\\}"
     new_cmdline_escaped="${new_cmdline_escaped//&/\\&}"
-    sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline_escaped\"|" "$GRUB_DEFAULT"
-    msg_success "Kernel parameters: $params_to_add"
+    if sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline_escaped\"|" "$GRUB_DEFAULT"; then
+      msg_success "Kernel parameters: $params_to_add"
+      log_info "GRUB config updated: $params_to_add"
+    else
+      msg_error "Failed to update GRUB config"
+      log_error "Failed to write to $GRUB_DEFAULT"
+      return 1
+    fi
   else
     msg_info "Kernel parameters already set"
+    log_info "GRUB kernel parameters already configured"
   fi
 
   local regen_cmd=$(get_grub_regenerate_cmd)
@@ -892,64 +925,153 @@ configure_hyprland_igpu() {
   return 0
 }
 
-configure_uwsm_env_muxless() {
-  local igpu_pci="$1"
+# Helper: Ensure UWSM env file exists and is writable
+_ensure_uwsm_file() {
+  local file_path="$1"
   local user_home="$2"
-  local uwsm_env="$user_home/.config/uwsm/env"
   local uwsm_dir="$user_home/.config/uwsm"
-  local use_sudo=""
-
-  # Get DRM card for iGPU
-  local drm_card
-  drm_card=$(get_drm_card_for_pci "$igpu_pci")
-  if [[ -z "$drm_card" ]]; then
-    log_warn "Could not find DRM card for iGPU $igpu_pci - skipping UWSM config"
-    msg_warning "Could not detect iGPU display device"
-    return 0
-  fi
-
-  local drm_device="/dev/dri/$drm_card"
-  log_info "Configuring UWSM env for MUX-less: iGPU=$igpu_pci → $drm_device"
+  local config_dir="$user_home/.config"
+  USE_SUDO=""
 
   # Determine if we need sudo (check parent dir writability)
-  local config_dir="$user_home/.config"
   if [[ -d "$uwsm_dir" ]]; then
-    [[ ! -w "$uwsm_dir" ]] && use_sudo="sudo"
+    [[ ! -w "$uwsm_dir" ]] && USE_SUDO="sudo"
   elif [[ -d "$config_dir" ]]; then
-    [[ ! -w "$config_dir" ]] && use_sudo="sudo"
+    [[ ! -w "$config_dir" ]] && USE_SUDO="sudo"
   else
-    use_sudo="sudo"
+    USE_SUDO="sudo"
   fi
 
   # Ensure directory exists
   if [[ ! -d "$uwsm_dir" ]]; then
-    if ! $use_sudo mkdir -p "$uwsm_dir" 2>/dev/null; then
+    if ! $USE_SUDO mkdir -p "$uwsm_dir" 2>/dev/null; then
       log_warn "Could not create UWSM config dir: $uwsm_dir"
-      msg_warning "Could not create UWSM config directory"
-      return 0
+      return 1
     fi
-    [[ -n "${SUDO_USER:-}" ]] && $use_sudo chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$uwsm_dir" 2>/dev/null
+    [[ -n "${SUDO_USER:-}" ]] && $USE_SUDO chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$uwsm_dir" 2>/dev/null
   fi
 
-  # Create env file if it doesn't exist
-  if [[ ! -f "$uwsm_env" ]]; then
-    if ! $use_sudo touch "$uwsm_env" 2>/dev/null; then
-      log_warn "Could not create UWSM env file: $uwsm_env"
-      msg_warning "Could not create UWSM environment file"
-      return 0
+  # Create file if it doesn't exist
+  if [[ ! -f "$file_path" ]]; then
+    if ! $USE_SUDO touch "$file_path" 2>/dev/null; then
+      log_warn "Could not create UWSM file: $file_path"
+      return 1
     fi
-    [[ -n "${SUDO_USER:-}" ]] && $use_sudo chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$uwsm_env" 2>/dev/null
+    [[ -n "${SUDO_USER:-}" ]] && $USE_SUDO chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$file_path" 2>/dev/null
   fi
 
-  # Determine sudo for file operations (file may have different perms than dir)
-  if [[ -f "$uwsm_env" && ! -w "$uwsm_env" ]]; then
-    use_sudo="sudo"
+  # Update sudo requirement for file operations
+  if [[ -f "$file_path" && ! -w "$file_path" ]]; then
+    USE_SUDO="sudo"
   fi
 
-  # Remove old GPU passthrough section if exists
-  if grep -q "# BEGIN GPU Passthrough" "$uwsm_env" 2>/dev/null; then
-    $use_sudo sed -i '/# BEGIN GPU Passthrough/,/# END GPU Passthrough/d' "$uwsm_env"
+  return 0
+}
+
+# Helper: Write content to UWSM file with proper section markers
+# Args: $1 = file path, $2 = content (without markers), $3 = section name (optional, default: "GPU Passthrough")
+_write_uwsm_section() {
+  local file_path="$1"
+  local content="$2"
+  local section_name="${3:-GPU Passthrough}"
+  local begin_marker="# BEGIN ${section_name} Configuration"
+  local end_marker="# END ${section_name} Configuration"
+
+  # Remove old section if exists
+  if grep -q "$begin_marker" "$file_path" 2>/dev/null; then
+    $USE_SUDO sed -i "/${begin_marker//\//\\/}/,/${end_marker//\//\\/}/d" "$file_path"
   fi
+
+  # Add newline prefix if file is non-empty and doesn't end with newline
+  local prefix_newline=""
+  if [[ -s "$file_path" ]]; then
+    if [[ "$(tail -c1 "$file_path" 2>/dev/null | wc -l)" -eq 0 ]]; then
+      prefix_newline=$'\n'
+    fi
+  fi
+
+  local full_content="${prefix_newline}${begin_marker}
+${content}
+${end_marker}"
+
+  if [[ -n "$USE_SUDO" ]]; then
+    if ! echo "$full_content" | $USE_SUDO tee -a "$file_path" >/dev/null; then
+      log_warn "Failed to write to $file_path"
+      return 1
+    fi
+  else
+    if ! echo "$full_content" >> "$file_path"; then
+      log_warn "Failed to write to $file_path"
+      return 1
+    fi
+  fi
+
+  [[ -n "${SUDO_USER:-}" ]] && $USE_SUDO chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$file_path" 2>/dev/null
+  return 0
+}
+
+# Configure UWSM environment for AMD runtime binding (iGPU + dGPU same vendor)
+# Writes AQ_DRM_DEVICES to env-hyprland (Hyprland-specific variables)
+# Ref: https://wiki.hypr.land/Configuring/Environment-variables/
+configure_uwsm_env_amd_runtime() {
+  local igpu_pci="$1"
+  local user_home="$2"
+  local uwsm_env_hyprland="$user_home/.config/uwsm/env-hyprland"
+
+  # Use stable symlink created by udev rule (create_gpu_symlink_udev_rule)
+  # /dev/dri/igpu is stable across reboots, unlike card0/card1/card2
+  local drm_device="/dev/dri/igpu"
+
+  # Verify symlink exists (created by udev rule)
+  if [[ ! -L "$drm_device" ]] && [[ ! -e "$drm_device" ]]; then
+    log_warn "Stable symlink $drm_device not found - udev rule may not be applied yet"
+    msg_warning "GPU symlink not ready (will work after reboot)"
+  fi
+
+  log_info "Configuring UWSM env-hyprland for AMD runtime binding: iGPU=$igpu_pci → $drm_device"
+
+  # Configure env-hyprland for AQ_* variables (Hyprland-specific)
+  if ! _ensure_uwsm_file "$uwsm_env_hyprland" "$user_home"; then
+    msg_warning "Could not create UWSM env-hyprland file"
+    return 0
+  fi
+
+  local hyprland_content="# Use iGPU only - dGPU free for VM passthrough
+# Uses stable /dev/dri/igpu symlink (created by udev rule based on PCI slot)
+export AQ_DRM_DEVICES=\"${drm_device}\""
+
+  if ! _write_uwsm_section "$uwsm_env_hyprland" "$hyprland_content"; then
+    msg_warning "Could not write GPU passthrough configuration"
+    return 1
+  fi
+
+  msg_info "UWSM env-hyprland: Restrict Hyprland to $drm_device (iGPU)"
+  return 0
+}
+
+# Configure UWSM environment for MUX-less laptops (NVIDIA dGPU + AMD/Intel iGPU)
+# Writes to TWO files per UWSM documentation:
+#   - env: Mesa EGL forcing (prevents NVIDIA handles from opening)
+#   - env-hyprland: AQ_DRM_DEVICES (Hyprland-specific Aquamarine settings)
+# Ref: https://wiki.hypr.land/Configuring/Environment-variables/
+# Ref: https://github.com/Vladimir-csp/uwsm
+configure_uwsm_env_muxless() {
+  local igpu_pci="$1"
+  local user_home="$2"
+  local uwsm_env="$user_home/.config/uwsm/env"
+  local uwsm_env_hyprland="$user_home/.config/uwsm/env-hyprland"
+
+  # Use stable symlink created by udev rule (create_gpu_symlink_udev_rule)
+  # /dev/dri/igpu is stable across reboots, unlike card0/card1/card2
+  local drm_device="/dev/dri/igpu"
+
+  # Verify symlink exists (created by udev rule)
+  if [[ ! -L "$drm_device" ]] && [[ ! -e "$drm_device" ]]; then
+    log_warn "Stable symlink $drm_device not found - udev rule may not be applied yet"
+    msg_warning "GPU symlink not ready (will work after reboot)"
+  fi
+
+  log_info "Configuring UWSM for MUX-less: iGPU=$igpu_pci → $drm_device"
 
   # Check if Mesa EGL vendor file exists
   local mesa_egl="/usr/share/glvnd/egl_vendor.d/50_mesa.json"
@@ -959,38 +1081,40 @@ configure_uwsm_env_muxless() {
     return 0
   fi
 
-  # Add GPU passthrough configuration
-  # Forces EGL to use Mesa only, preventing NVIDIA handles from being opened
-  local config_content
-  config_content=$(cat << EOF
-
-# BEGIN GPU Passthrough Configuration
-# Prevents EGL from probing NVIDIA GPU (opens /dev/nvidia* handles)
-export __EGL_VENDOR_LIBRARY_FILENAMES="$mesa_egl"
-export AQ_DRM_DEVICES="$drm_device"
-export __GLX_VENDOR_LIBRARY_NAME="mesa"
-export __NV_PRIME_RENDER_OFFLOAD=0
-# END GPU Passthrough Configuration
-EOF
-)
-
-  if [[ -n "$use_sudo" ]]; then
-    if ! echo "$config_content" | $use_sudo tee -a "$uwsm_env" >/dev/null; then
-      log_warn "Failed to write GPU passthrough config to $uwsm_env"
-      msg_warning "Could not write GPU passthrough configuration"
-      return 1
-    fi
-  else
-    if ! echo "$config_content" >> "$uwsm_env"; then
-      log_warn "Failed to write GPU passthrough config to $uwsm_env"
-      msg_warning "Could not write GPU passthrough configuration"
-      return 1
-    fi
+  # Configure env (Mesa/toolkit variables - common to all compositors) ===
+  if ! _ensure_uwsm_file "$uwsm_env" "$user_home"; then
+    msg_warning "Could not create UWSM env file"
+    return 0
   fi
 
-  [[ -n "${SUDO_USER:-}" ]] && $use_sudo chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$uwsm_env" 2>/dev/null
+  local env_content="# Force Mesa EGL to prevent NVIDIA handles from being opened by Hyprland
+export __EGL_VENDOR_LIBRARY_FILENAMES=\"${mesa_egl}\"
+export __GLX_VENDOR_LIBRARY_NAME=\"mesa\"
+export __NV_PRIME_RENDER_OFFLOAD=0"
 
-  msg_info "UWSM env: Force Mesa EGL, restrict to $drm_device"
+  if ! _write_uwsm_section "$uwsm_env" "$env_content"; then
+    msg_warning "Could not write GPU passthrough configuration to env"
+    return 1
+  fi
+  log_info "UWSM env: Force Mesa EGL (prevents NVIDIA handle probing)"
+
+  # Configure env-hyprland (Hyprland-specific AQ_* variables) ===
+  if ! _ensure_uwsm_file "$uwsm_env_hyprland" "$user_home"; then
+    msg_warning "Could not create UWSM env-hyprland file"
+    return 0
+  fi
+
+  local hyprland_content="# Use iGPU only - dGPU free for VM passthrough
+# Uses stable /dev/dri/igpu symlink (created by udev rule based on PCI slot)
+export AQ_DRM_DEVICES=\"${drm_device}\""
+
+  if ! _write_uwsm_section "$uwsm_env_hyprland" "$hyprland_content"; then
+    msg_warning "Could not write GPU passthrough configuration to env-hyprland"
+    return 1
+  fi
+  log_info "UWSM env-hyprland: Restrict Hyprland to $drm_device (iGPU)"
+
+  msg_info "UWSM configured: Mesa EGL (env) + AQ_DRM_DEVICES (env-hyprland)"
   return 0
 }
 
@@ -1052,33 +1176,44 @@ unconfigure_hyprland_igpu() {
   return 0
 }
 
-unconfigure_uwsm_env_muxless() {
-  local user_home="$1"
-  local uwsm_env="$user_home/.config/uwsm/env"
+# Helper: Remove GPU Passthrough section from a single UWSM file
+_unconfigure_uwsm_file() {
+  local file_path="$1"
   local use_sudo=""
 
-  [[ ! -f "$uwsm_env" ]] && return 0
+  [[ ! -f "$file_path" ]] && return 0
 
-  if ! grep -q "# BEGIN GPU Passthrough" "$uwsm_env" 2>/dev/null; then
+  if ! grep -q "# BEGIN GPU Passthrough" "$file_path" 2>/dev/null; then
     return 0
   fi
 
   # Determine if we need sudo
-  [[ ! -w "$uwsm_env" ]] && use_sudo="sudo"
+  [[ ! -w "$file_path" ]] && use_sudo="sudo"
 
   # Backup before modification
-  if ! $use_sudo cp -a "$uwsm_env" "${uwsm_env}.backup.uninstall.$(date +%s)" 2>/dev/null; then
-    log_warn "Could not backup UWSM env file"
+  if ! $use_sudo cp -a "$file_path" "${file_path}.backup.uninstall.$(date +%s)" 2>/dev/null; then
+    log_warn "Could not backup UWSM file: $file_path"
   fi
 
-  if ! $use_sudo sed -i '/# BEGIN GPU Passthrough/,/# END GPU Passthrough/d' "$uwsm_env" 2>/dev/null; then
-    log_warn "Could not remove GPU Passthrough section from UWSM env"
+  if ! $use_sudo sed -i '/# BEGIN GPU Passthrough/,/# END GPU Passthrough/d' "$file_path" 2>/dev/null; then
+    log_warn "Could not remove GPU Passthrough section from $file_path"
     return 0
   fi
 
-  [[ -n "${SUDO_USER:-}" ]] && $use_sudo chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$uwsm_env" 2>/dev/null
+  [[ -n "${SUDO_USER:-}" ]] && $use_sudo chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$file_path" 2>/dev/null
 
-  log_info "Removed GPU Passthrough section from UWSM env"
+  log_info "Removed GPU Passthrough section from $(basename "$file_path")"
+  return 0
+}
+
+# Remove GPU Passthrough configuration from all UWSM env files
+unconfigure_uwsm_env_muxless() {
+  local user_home="$1"
+
+  # Clean both env and env-hyprland files
+  _unconfigure_uwsm_file "$user_home/.config/uwsm/env"
+  _unconfigure_uwsm_file "$user_home/.config/uwsm/env-hyprland"
+
   return 0
 }
 

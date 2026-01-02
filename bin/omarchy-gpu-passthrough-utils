@@ -23,6 +23,10 @@ GPU_PASSTHROUGH_CONF="/etc/omarchy-gpu-passthrough.conf"
 # Runtime state paths
 STATE_MARKER_FILE="/var/run/omarchy-vm-gpu-mode"
 
+# Late binding systemd service (for AMD reset bug GPUs)
+# This service runs AFTER amdgpu does POST, then rebinds to vfio-pci
+VFIO_SERVICE="/etc/systemd/system/omarchy-gpu-passthrough.service"
+
 # Logging configuration
 LOG_DIR="/var/log/omarchy-gpu-passthrough"
 LOG_FILE="$LOG_DIR/gpu-passthrough.log"
@@ -51,8 +55,26 @@ INTEL_IGPU_REGEX='uhd|hd graphics|iris|intel.*graphics|meteor|lunar|arrow|panthe
 # AMD APU: Desktop + Mobile + Legacy codenames
 AMD_APU_REGEX='radeon [0-9]+m|vega.*igpu|phoenix|rembrandt|cezanne|renoir|lucienne|barcelo|strix|raphael|hawk|mendocino|krackan'
 
-# AMD Vega device IDs (Vega 10/20 - need reboot after vfio-pci)
-AMD_VEGA_DEVICE_IDS='687f|6863|6867|6868|66af|66a0|66a1|66a2|66a3|66a7'
+# AMD GPU device IDs with "reset bug" - require full power cycle after vfio-pci use
+# These GPUs cannot rebind to native driver (amdgpu) without reboot after VM use.
+# Source: https://github.com/lowell80/vendor-reset (device-db.h)
+#
+# Breakdown (by GPU family):
+#   Polaris 10 (RX 470/480/570/580/590): 67c0-67cf, 67d0, 67df, 6fdf
+#   Polaris 11 (RX 460/560): 67e0-67ef, 67ff
+#   Polaris 12 (RX 540/550): 6980-699f
+#   Vega 10 (Vega 56/64/FE): 6860-686f, 687f
+#   Vega 20 (Radeon VII, MI50/60): 66a0-66af, 164c
+#   Navi 10 (RX 5600/5700): 7310-731f
+#   Navi 10 APU (Renoir/Cezanne/Barcelo): 15bf, 15e7, 1636, 1638
+#   Navi 12 (Pro 5600M): 7360, 7362
+#   Navi 14 (RX 5300/5500): 7340-734f
+#   Navi 23 (RX 6600/6600XT): 73ff
+#   Arcturus (MI100): 738c
+#   Fiji (Fury/Fury X/Nano): 7300, 7301
+#   Hawaii (R9 290/390): 67b0, 67b1
+#   Tonga (R9 380/285): 6920-6929
+AMD_RESET_BUG_DEVICE_IDS='67c0|67c1|67c2|67c4|67c7|67c8|67c9|67ca|67cc|67cf|67d0|67df|6fdf|67e0|67e1|67e3|67e7|67e8|67e9|67eb|67ef|67ff|6980|6981|6985|6986|6987|6995|6997|699f|6860|6861|6862|6863|6864|6867|6868|6869|686a|686b|686c|686d|686e|686f|687f|66a0|66a1|66a2|66a3|66a4|66a7|66af|164c|7310|7312|7318|7319|731a|731b|731e|731f|15bf|15e7|1636|1638|7360|7362|7340|7341|7347|734f|73ff|738c|7300|7301|67b0|67b1|6920|6921|6928|6929'
 
 normalize_pci_addr() {
   local pci_addr="$1"
@@ -226,6 +248,25 @@ log_warn() {
 
 check_dependencies() {
   local recommended_deps=("mesa-utils" "dmidecode")
+
+  # Check if Vulkan tools are missing (for diagnostics only)
+  if ! command -v vulkaninfo &>/dev/null; then
+    recommended_deps+=("vulkan-tools")
+  fi
+
+  # Check if AMD GPU is present - add radeontop for monitoring
+  if lspci 2>/dev/null | grep -qiE "VGA.*AMD|3D.*AMD|Display.*AMD"; then
+    if ! command -v radeontop &>/dev/null; then
+      recommended_deps+=("radeontop")
+    fi
+  fi
+
+  # Check if Intel GPU is present - add intel-gpu-tools for monitoring
+  if lspci 2>/dev/null | grep -qiE "VGA.*Intel|Display.*Intel"; then
+    if ! command -v intel_gpu_top &>/dev/null; then
+      recommended_deps+=("intel-gpu-tools")
+    fi
+  fi
 
   local missing=()
   for pkg in "${recommended_deps[@]}"; do
@@ -551,6 +592,293 @@ get_gpu_audio_device() {
   fi
 }
 
+# GPU PCI class codes
+GPU_CLASS_VGA="0300"
+GPU_CLASS_3D="0302"
+GPU_CLASS_DISPLAY="0380"
+GPU_CLASS_AUDIO="0403"
+GPU_CLASS_USB="0c03"
+
+# Get Intel GPU stats from sysfs
+# Returns: shell variables for temp, freq, etc.
+get_intel_gpu_stats() {
+  local pci_addr="$1"
+  local drm_card
+  drm_card=$(get_drm_card_for_pci "$pci_addr") || return 1
+
+  local device_path="/sys/class/drm/${drm_card}/device"
+  [[ ! -d "$device_path" ]] && return 1
+
+  # Find hwmon path
+  local hwmon_path=""
+  for hwmon in "$device_path"/hwmon/hwmon*; do
+    [[ -d "$hwmon" ]] && hwmon_path="$hwmon" && break
+  done
+
+  # GPU frequency (current)
+  local gpu_freq=0
+  if [[ -r "$device_path/gt_cur_freq_mhz" ]]; then
+    gpu_freq=$(<"$device_path/gt_cur_freq_mhz")
+  elif [[ -r "$device_path/gt/gt0/rps_cur_freq_mhz" ]]; then
+    gpu_freq=$(<"$device_path/gt/gt0/rps_cur_freq_mhz")
+  fi
+
+  # GPU frequency limits
+  local gpu_freq_min=0 gpu_freq_max=0
+  [[ -r "$device_path/gt_min_freq_mhz" ]] && gpu_freq_min=$(<"$device_path/gt_min_freq_mhz")
+  [[ -r "$device_path/gt_max_freq_mhz" ]] && gpu_freq_max=$(<"$device_path/gt_max_freq_mhz")
+
+  # Temperature (milliCelsius) - Intel GPUs often report via hwmon
+  local temp=0
+  if [[ -n "$hwmon_path" && -r "$hwmon_path/temp1_input" ]]; then
+    temp=$(<"$hwmon_path/temp1_input")
+  fi
+
+  # Power (microWatts)
+  local power=0
+  if [[ -n "$hwmon_path" ]]; then
+    if [[ -r "$hwmon_path/power1_input" ]]; then
+      power=$(<"$hwmon_path/power1_input")
+    elif [[ -r "$hwmon_path/energy1_input" ]]; then
+      # Some Intel GPUs report energy counter, not power
+      power=0  # Would need delta calculation
+    fi
+  fi
+
+  # Output as shell variables
+  echo "gpu_freq_mhz=$gpu_freq"
+  echo "gpu_freq_min_mhz=$gpu_freq_min"
+  echo "gpu_freq_max_mhz=$gpu_freq_max"
+  echo "temp_c=$((temp / 1000))"
+  echo "power_w=$((power / 1000000))"
+}
+
+# Get NVIDIA GPU stats via nvidia-smi
+# Returns: shell variables for vram, temp, power, clocks, vbios
+get_nvidia_gpu_stats() {
+  local pci_addr="$1"
+
+  command -v nvidia-smi &>/dev/null || return 1
+
+  local pci_normalized
+  pci_normalized=$(normalize_pci_addr "$pci_addr") || return 1
+
+  local vram_used vram_total temp power gpu_clock mem_clock vbios
+
+  vram_used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  vram_total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  temp=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  power=$(nvidia-smi --query-gpu=power.draw --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  gpu_clock=$(nvidia-smi --query-gpu=clocks.gr --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  mem_clock=$(nvidia-smi --query-gpu=clocks.mem --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  vbios=$(nvidia-smi --query-gpu=vbios_version --format=csv,noheader --id="$pci_normalized" 2>/dev/null | head -1)
+
+  # Validate and default values
+  [[ ! "$vram_used" =~ ^[0-9]+$ ]] && vram_used=0
+  [[ ! "$vram_total" =~ ^[0-9]+$ ]] && vram_total=0
+  [[ ! "$temp" =~ ^[0-9]+$ ]] && temp=0
+  [[ ! "$gpu_clock" =~ ^[0-9]+$ ]] && gpu_clock=0
+  [[ ! "$mem_clock" =~ ^[0-9]+$ ]] && mem_clock=0
+
+  # Power can be float
+  if [[ "$power" =~ ^[0-9.]+$ ]]; then
+    power=$(printf "%.0f" "$power")
+  else
+    power=0
+  fi
+
+  # Escape vbios string
+  vbios="${vbios//\\/\\\\}"
+  vbios="${vbios//\"/\\\"}"
+  vbios="${vbios//\$/\\\$}"
+  vbios="${vbios//\`/\\\`}"
+
+  echo "vram_used_mb=$vram_used"
+  echo "vram_total_mb=$vram_total"
+  echo "temp_c=$temp"
+  echo "power_w=$power"
+  echo "gpu_clock_mhz=\"$gpu_clock\""
+  echo "mem_clock_mhz=\"$mem_clock\""
+  echo "vbios=\"$vbios\""
+}
+
+# Get AMD GPU stats from sysfs
+# Returns: associative array with vram_used, vram_total, temp, power, fan, vbios, gtt_used, gtt_total
+get_amd_gpu_stats() {
+  local pci_addr="$1"
+  local drm_card
+  drm_card=$(get_drm_card_for_pci "$pci_addr") || return 1
+
+  local device_path="/sys/class/drm/${drm_card}/device"
+  [[ ! -d "$device_path" ]] && return 1
+
+  local hwmon_path=""
+  for hwmon in "$device_path"/hwmon/hwmon*; do
+    [[ -d "$hwmon" ]] && hwmon_path="$hwmon" && break
+  done
+
+  # VRAM
+  local vram_used=0 vram_total=0
+  [[ -r "$device_path/mem_info_vram_used" ]] && vram_used=$(<"$device_path/mem_info_vram_used")
+  [[ -r "$device_path/mem_info_vram_total" ]] && vram_total=$(<"$device_path/mem_info_vram_total")
+
+  # GTT (system RAM used by GPU)
+  local gtt_used=0 gtt_total=0
+  [[ -r "$device_path/mem_info_gtt_used" ]] && gtt_used=$(<"$device_path/mem_info_gtt_used")
+  [[ -r "$device_path/mem_info_gtt_total" ]] && gtt_total=$(<"$device_path/mem_info_gtt_total")
+
+  # Temperature (milliCelsius)
+  local temp=0
+  [[ -n "$hwmon_path" && -r "$hwmon_path/temp1_input" ]] && temp=$(<"$hwmon_path/temp1_input")
+
+  # Power (microWatts) - try average first, then current
+  local power=0
+  if [[ -n "$hwmon_path" ]]; then
+    if [[ -r "$hwmon_path/power1_average" ]]; then
+      power=$(<"$hwmon_path/power1_average")
+    elif [[ -r "$hwmon_path/power1_input" ]]; then
+      power=$(<"$hwmon_path/power1_input")
+    fi
+  fi
+
+  # Fan speed (RPM)
+  local fan=0
+  [[ -n "$hwmon_path" && -r "$hwmon_path/fan1_input" ]] && fan=$(<"$hwmon_path/fan1_input")
+
+  # VBIOS version
+  local vbios=""
+  [[ -r "$device_path/vbios_version" ]] && vbios=$(<"$device_path/vbios_version")
+
+  # GPU clock levels
+  local gpu_clock="" mem_clock=""
+  if [[ -r "$device_path/pp_dpm_sclk" ]]; then
+    gpu_clock=$(grep '\*' "$device_path/pp_dpm_sclk" 2>/dev/null | grep -oP '\d+(?=Mhz)' | head -1)
+  fi
+  if [[ -r "$device_path/pp_dpm_mclk" ]]; then
+    mem_clock=$(grep '\*' "$device_path/pp_dpm_mclk" 2>/dev/null | grep -oP '\d+(?=Mhz)' | head -1)
+  fi
+
+  # Output as shell variables (MB/Celsius/Watts)
+  vbios="${vbios//\\/\\\\}"
+  vbios="${vbios//\"/\\\"}"
+  vbios="${vbios//\$/\\\$}"
+  vbios="${vbios//\`/\\\`}"
+
+  echo "vram_used_mb=$((vram_used / 1024 / 1024))"
+  echo "vram_total_mb=$((vram_total / 1024 / 1024))"
+  echo "gtt_used_mb=$((gtt_used / 1024 / 1024))"
+  echo "gtt_total_mb=$((gtt_total / 1024 / 1024))"
+  echo "temp_c=$((temp / 1000))"
+  echo "power_w=$((power / 1000000))"
+  echo "fan_rpm=$fan"
+  echo "vbios=\"$vbios\""
+  echo "gpu_clock_mhz=\"$gpu_clock\""
+  echo "mem_clock_mhz=\"$mem_clock\""
+}
+
+# Get GPU power consumption in Watts
+get_gpu_power_watts() {
+  local pci_addr="$1"
+  local vendor_id="${2:-}"
+  local driver="${3:-}"
+
+  # AMD: use sysfs
+  if [[ "$vendor_id" == "1002" ]]; then
+    local drm_card
+    drm_card=$(get_drm_card_for_pci "$pci_addr") || { echo "0"; return; }
+    local hwmon_path=""
+    for hwmon in "/sys/class/drm/${drm_card}/device/hwmon/hwmon"*; do
+      [[ -d "$hwmon" ]] && hwmon_path="$hwmon" && break
+    done
+    if [[ -n "$hwmon_path" ]]; then
+      local power=0
+      if [[ -r "$hwmon_path/power1_average" ]]; then
+        power=$(<"$hwmon_path/power1_average")
+      elif [[ -r "$hwmon_path/power1_input" ]]; then
+        power=$(<"$hwmon_path/power1_input")
+      fi
+      echo "$((power / 1000000))"
+      return
+    fi
+  fi
+
+  # NVIDIA: use nvidia-smi
+  if [[ "$vendor_id" == "10de" ]] && command -v nvidia-smi &>/dev/null; then
+    local pci_normalized
+    pci_normalized=$(normalize_pci_addr "$pci_addr") || { echo "0"; return; }
+    local power
+    power=$(nvidia-smi --query-gpu=power.draw --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+    if [[ "$power" =~ ^[0-9.]+$ ]]; then
+      printf "%.0f" "$power"
+      return
+    fi
+  fi
+
+  echo "0"
+}
+
+# Get GPU temperature in Celsius
+get_gpu_temp_celsius() {
+  local pci_addr="$1"
+  local vendor_id="${2:-}"
+
+  # AMD: use sysfs
+  if [[ "$vendor_id" == "1002" ]]; then
+    local drm_card
+    drm_card=$(get_drm_card_for_pci "$pci_addr") || { echo "0"; return; }
+    local hwmon_path=""
+    for hwmon in "/sys/class/drm/${drm_card}/device/hwmon/hwmon"*; do
+      [[ -d "$hwmon" ]] && hwmon_path="$hwmon" && break
+    done
+    if [[ -n "$hwmon_path" && -r "$hwmon_path/temp1_input" ]]; then
+      local temp=$(<"$hwmon_path/temp1_input")
+      echo "$((temp / 1000))"
+      return
+    fi
+  fi
+
+  # NVIDIA: use nvidia-smi
+  if [[ "$vendor_id" == "10de" ]] && command -v nvidia-smi &>/dev/null; then
+    local pci_normalized
+    pci_normalized=$(normalize_pci_addr "$pci_addr") || { echo "0"; return; }
+    local temp
+    temp=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+    if [[ "$temp" =~ ^[0-9]+$ ]]; then
+      echo "$temp"
+      return
+    fi
+  fi
+
+  echo "0"
+}
+
+# Get VBIOS version
+get_gpu_vbios() {
+  local pci_addr="$1"
+  local vendor_id="${2:-}"
+
+  # AMD: use sysfs
+  if [[ "$vendor_id" == "1002" ]]; then
+    local drm_card
+    drm_card=$(get_drm_card_for_pci "$pci_addr") || { echo ""; return; }
+    local vbios_path="/sys/class/drm/${drm_card}/device/vbios_version"
+    if [[ -r "$vbios_path" ]]; then
+      cat "$vbios_path"
+      return
+    fi
+  fi
+
+  # NVIDIA: use nvidia-smi
+  if [[ "$vendor_id" == "10de" ]] && command -v nvidia-smi &>/dev/null; then
+    local pci_normalized
+    pci_normalized=$(normalize_pci_addr "$pci_addr") || { echo ""; return; }
+    nvidia-smi --query-gpu=vbios_version --format=csv,noheader --id="$pci_normalized" 2>/dev/null | head -1
+    return
+  fi
+
+  echo ""
+}
+
 # Get GPU vRAM in MB
 get_gpu_vram_mb() {
   local gpu_pci="$1"
@@ -680,6 +1008,36 @@ check_resizable_bar() {
   [[ "$size_mb" -gt 256 ]] && return 0
 
   return 1
+}
+
+# Check if early binding is enabled for a GPU
+# Early binding = vfio-pci ids= contains GPU's device ID
+# Returns: 0 = early binding enabled, 1 = runtime binding (or not configured)
+is_early_binding_enabled() {
+  local gpu_pci="${1:-}"
+  local vfio_conf="/etc/modprobe.d/vfio.conf"
+
+  [[ ! -f "$vfio_conf" ]] && return 1
+
+  # Get GPU device ID (e.g., 1002:687f)
+  local device_id=""
+  if [[ -n "$gpu_pci" ]]; then
+    device_id=$(lspci -ns "$gpu_pci" 2>/dev/null | awk '{print $3}')
+  fi
+
+  # Check if vfio.conf has ids= option with this device ID
+  local ids_line
+  ids_line=$(grep -E "^options vfio-pci ids=" "$vfio_conf" 2>/dev/null)
+  [[ -z "$ids_line" ]] && return 1
+
+  # If we have a specific device ID, check if it's in the list
+  if [[ -n "$device_id" ]]; then
+    echo "$ids_line" | grep -qi "${device_id}" && return 0
+    return 1
+  fi
+
+  # No specific GPU, just check if any ids= is configured
+  return 0
 }
 
 # Returns comma-separated vendor:device IDs for USB controllers (e.g., "10de:1ada,10de:1adb")
@@ -1131,17 +1489,19 @@ remove_vfio_device_ids() {
   return 0
 }
 
-# Check if GPU is AMD Vega (Vega 10/20) - these GPUs have issues with vfio-pci unbind
-is_vega_gpu() {
+# Check if GPU has AMD reset bug (cannot rebind to native driver after vfio-pci use)
+# Affected: Vega 10/20, Fiji, Tonga, Hawaii, some Polaris, some Navi 10/14
+# Returns: 0 if GPU has reset bug, 1 if not
+gpu_has_reset_bug() {
   local pci_addr="$1"
   local device_id
   device_id=$(lspci -ns "$pci_addr" 2>/dev/null | awk '{print $3}' | cut -d: -f2)
 
-  [[ "${device_id,,}" =~ ^($AMD_VEGA_DEVICE_IDS)$ ]]
+  [[ "${device_id,,}" =~ ^($AMD_RESET_BUG_DEVICE_IDS)$ ]]
 }
 
 # Check if GPU was bound to vfio-pci during this boot session
-# Used to determine if AMD Vega needs reboot before binding to native driver
+# Used to determine if GPU with reset bug needs reboot before binding to native driver
 was_gpu_on_vfio_this_boot() {
   local pci_addr="$1"
   local pci_full
@@ -1155,7 +1515,8 @@ was_gpu_on_vfio_this_boot() {
   return 1
 }
 
-# Check if GPU needs reboot to use native driver (AMD Vega after vfio-pci use)
+# Check if GPU needs reboot to use native driver (AMD GPU with reset bug after vfio-pci use)
+# This is the "AMD Reset Bug" - GPU cannot be reset properly without full power cycle
 gpu_needs_reboot_for_native_driver() {
   local pci_addr="$1"
   local vendor_id="$2"
@@ -1163,8 +1524,8 @@ gpu_needs_reboot_for_native_driver() {
   # Only affects AMD GPUs
   [[ "$vendor_id" != "1002" ]] && return 1
 
-  # Check if it's a Vega GPU
-  if ! is_vega_gpu "$pci_addr"; then
+  # Check if GPU has reset bug
+  if ! gpu_has_reset_bug "$pci_addr"; then
     return 1
   fi
 
@@ -1246,4 +1607,157 @@ get_gpu_passthrough_iommu_groups() {
   local result
   result=$(IFS=,; echo "${groups[*]}")
   echo "$result"
+}
+
+# Check if persistent VFIO mode is enabled for a GPU
+# Returns: 0 if enabled, 1 if not
+is_persistent_vfio_enabled() {
+  local gpu_pci="${1:-}"
+  local vendor_id="${2:-}"
+  local device_id="${3:-}"
+
+  # Check if late binding service exists and is enabled
+  [[ -f "$VFIO_SERVICE" ]] && systemctl is-enabled omarchy-gpu-passthrough.service &>/dev/null
+}
+
+# Enable persistent VFIO mode - GPU will be bound to vfio-pci at boot
+# Uses "late binding" via systemd service (GPU boots on amdgpu for POST, then rebinds)
+enable_persistent_vfio() {
+  local gpu_pci="$1"
+  local vendor_id="$2"
+  local device_id="$3"
+  local skip_initramfs="${4:-false}"
+
+  # Validate inputs
+  if [[ -z "$gpu_pci" ]] || [[ -z "$vendor_id" ]] || [[ -z "$device_id" ]]; then
+    log_error "enable_persistent_vfio: missing required parameters"
+    return 1
+  fi
+
+  if ! [[ "$vendor_id" =~ ^[0-9a-fA-F]{4}$ ]] || ! [[ "$device_id" =~ ^[0-9a-fA-F]{4}$ ]]; then
+    log_error "enable_persistent_vfio: invalid vendor_id or device_id format"
+    return 1
+  fi
+
+  local gpu_id="${vendor_id}:${device_id}"
+
+  # Check if already enabled
+  if is_persistent_vfio_enabled "$gpu_pci" "$vendor_id" "$device_id"; then
+    log_info "Persistent VFIO already enabled for $gpu_id"
+    return 0
+  fi
+
+  # Get all devices in IOMMU group (GPU + audio)
+  # Normalize PCI address to full format (0000:XX:XX.X)
+  local normalized_pci
+  normalized_pci=$(normalize_pci_addr "$gpu_pci")
+  [[ -z "$normalized_pci" ]] && normalized_pci="0000:${gpu_pci}"
+
+  # Get GPU and audio device (function .0 and .1)
+  local base_addr="${normalized_pci%.*}"
+  local devices="$normalized_pci"
+  # Add audio device if exists
+  if [[ -d "/sys/bus/pci/devices/${base_addr}.1" ]]; then
+    devices="$devices ${base_addr}.1"
+  fi
+
+  log_info "Enabling persistent VFIO (late binding) for: $devices"
+
+  # Remove any old early binding ids= from vfio.conf (legacy cleanup)
+  if [[ -f "$VFIO_CONF" ]] && grep -qE "^options vfio-pci ids=" "$VFIO_CONF"; then
+    log_info "Removing legacy early binding ids from vfio.conf..."
+    sudo sed -i '/^options vfio-pci ids=/d' "$VFIO_CONF"
+  fi
+
+  # Create systemd service for late binding
+  # This runs AFTER amdgpu does POST, but BEFORE display-manager
+  local service_content
+  service_content=$(cat <<EOF
+[Unit]
+Description=GPU Passthrough VFIO Late Binding
+Documentation=man:vfio-pci(4)
+DefaultDependencies=no
+# Run after amdgpu loads and does POST
+After=systemd-modules-load.service
+After=systemd-udev-settle.service
+# Run before graphical session starts
+Before=display-manager.service
+Before=graphical.target
+# Don't start if no GPUs configured
+ConditionPathExists=/etc/omarchy-gpu-passthrough.conf
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Rebind each device from amdgpu to vfio-pci
+# Uses driver_override for clean rebind without ids= parameter
+EOF
+)
+
+  # Add ExecStart for each device
+  for dev in $devices; do
+    service_content+=$'\n'"ExecStart=/bin/bash -c 'dev=\"$dev\"; driver=\$(basename \$(readlink /sys/bus/pci/devices/\$dev/driver 2>/dev/null) 2>/dev/null); if [[ \"\$driver\" != \"vfio-pci\" ]]; then echo \$dev > /sys/bus/pci/devices/\$dev/driver/unbind 2>/dev/null || true; echo vfio-pci > /sys/bus/pci/devices/\$dev/driver_override; echo \$dev > /sys/bus/pci/drivers_probe; fi'"
+  done
+
+  service_content+=$'\n'
+  service_content+=$(cat <<EOF
+
+[Install]
+WantedBy=multi-user.target
+EOF
+)
+
+  # Write and enable service
+  echo "$service_content" | sudo tee "$VFIO_SERVICE" >/dev/null
+  sudo systemctl daemon-reload
+  sudo systemctl enable omarchy-gpu-passthrough.service
+
+  log_success "Late binding service created and enabled"
+  log_info "GPU will boot on amdgpu (POST), then rebind to vfio-pci before login"
+
+  return 0
+}
+
+# Disable persistent VFIO mode - GPU will boot with native driver
+# Removes late binding systemd service
+disable_persistent_vfio() {
+  local gpu_pci="$1"
+  local vendor_id="$2"
+  local device_id="$3"
+  local skip_initramfs="${4:-false}"
+
+  # Validate inputs
+  if [[ -z "$vendor_id" ]] || [[ -z "$device_id" ]]; then
+    log_error "disable_persistent_vfio: missing required parameters"
+    return 1
+  fi
+
+  local gpu_id="${vendor_id}:${device_id}"
+
+  # Check if enabled
+  if ! is_persistent_vfio_enabled "$gpu_pci" "$vendor_id" "$device_id"; then
+    log_info "Persistent VFIO not enabled for $gpu_id"
+    return 0
+  fi
+
+  log_info "Disabling persistent VFIO (late binding) for: $gpu_id"
+
+  # Disable and remove systemd service
+  if [[ -f "$VFIO_SERVICE" ]]; then
+    sudo systemctl disable omarchy-gpu-passthrough.service 2>/dev/null || true
+    sudo rm -f "$VFIO_SERVICE"
+    sudo systemctl daemon-reload
+    log_info "Removed late binding service"
+  fi
+
+  # Also clean up any legacy early binding ids= from vfio.conf
+  if [[ -f "$VFIO_CONF" ]] && grep -qE "^options vfio-pci ids=" "$VFIO_CONF"; then
+    sudo sed -i '/^options vfio-pci ids=/d' "$VFIO_CONF"
+    log_info "Removed legacy early binding ids from vfio.conf"
+  fi
+
+  log_success "Persistent VFIO mode disabled"
+  log_info "GPU will boot with amdgpu after reboot"
+
+  return 0
 }
