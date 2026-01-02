@@ -8,9 +8,6 @@ if ! grep -q "map shift+insert paste_from_clipboard" "$KITTY_CONF"; then
   sed -i '/map ctrl+insert copy_to_clipboard/a map shift+insert paste_from_clipboard' "$KITTY_CONF"
 fi
 
-echo "Update Walker configs"
-omarchy-refresh-walker
-
 echo "Copy hooks examples"
 cp -r $OMARCHY_PATH/config/omarchy/* $HOME/.config/omarchy/
 
