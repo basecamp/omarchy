@@ -3,7 +3,7 @@
   "name": "Copy URL",
   "version": "1.0",
   "description": "Copy current URL to clipboard, this extension is installed by Omarchy",
-  "permissions": ["activeTab", "scripting", "notifications"],
+  "permissions": ["activeTab", "scripting", "notifications", "offscreen", "clipboardWrite"],
   "icons": {
     "16": "icon.png",
     "48": "icon.png",
