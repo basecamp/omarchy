@@ -1066,6 +1066,141 @@ cmd_diagnose() {
       echo ""
     fi
 
+    echo "[PERSISTENT VFIO STATUS]"
+    echo '```'
+    if [[ -f "$GPU_PASSTHROUGH_CONF" ]] && load_gpu_config 2>/dev/null; then
+      if is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID" 2>/dev/null; then
+        echo "Persistent VFIO: ✓ Enabled"
+        echo "  GPU stays bound to vfio-pci across reboots"
+        local vfio_service="/etc/systemd/system/vfio-late-bind-gpu.service"
+        [[ -f "$vfio_service" ]] && echo "  Service: $vfio_service"
+      else
+        echo "Persistent VFIO: ✗ Disabled (standard mode)"
+        echo "  GPU unbound on each boot, requires 'mode vm' before VM"
+      fi
+    else
+      echo "Persistent VFIO: N/A (not configured)"
+    fi
+    echo '```'
+    echo ""
+
+    echo "[GPU HEALTH CHECK]"
+    echo '```'
+    if [[ -f "$GPU_PASSTHROUGH_CONF" ]] && load_gpu_config 2>/dev/null; then
+      local pci_full
+      pci_full=$(normalize_pci_addr "$GPU_PCI_ADDR") || pci_full="0000:${GPU_PCI_ADDR}"
+      local iotlb_error
+      iotlb_error=$(journalctl -k -b --no-pager 2>/dev/null | grep -i "IOTLB_INV_TIMEOUT" | grep -i "$GPU_PCI_ADDR\|$pci_full" | tail -1)
+      if [[ -n "$iotlb_error" ]]; then
+        echo "IOTLB Status: ⚠️  IOTLB_INV_TIMEOUT detected"
+        echo "  This indicates GPU reset failure. Cold boot required:"
+        echo "  1. sudo poweroff"
+        echo "  2. Unplug power for 30 seconds"
+        echo "  3. Power on"
+      else
+        echo "IOTLB Status: ✓ No errors detected"
+      fi
+      # Check if GPU has AMD reset bug
+      if gpu_has_reset_bug "$GPU_DEVICE_ID" 2>/dev/null; then
+        echo "AMD Reset Bug: ⚠️  This GPU (${GPU_DEVICE_ID}) has known reset issues"
+        echo "  Consider: omarchy-gpu-passthrough mode persistent enable"
+      fi
+    else
+      echo "GPU Health: N/A (not configured)"
+    fi
+    echo '```'
+    echo ""
+
+    echo "[CPU TOPOLOGY]"
+    echo '```'
+    local threads_per_core cores_per_socket sockets
+    threads_per_core=$(lscpu 2>/dev/null | grep "Thread(s) per core:" | awk '{print $NF}')
+    cores_per_socket=$(lscpu 2>/dev/null | grep "Core(s) per socket:" | awk '{print $NF}')
+    sockets=$(lscpu 2>/dev/null | grep "Socket(s):" | awk '{print $NF}')
+    local total_cores=$((cores_per_socket * sockets))
+    local total_threads=$((total_cores * threads_per_core))
+    echo "Sockets: ${sockets:-?}"
+    echo "Cores per socket: ${cores_per_socket:-?}"
+    echo "Threads per core: ${threads_per_core:-?} (SMT: $( [[ "${threads_per_core:-1}" -ge 2 ]] && echo "enabled" || echo "disabled" ))"
+    echo "Total: $total_cores cores, $total_threads threads"
+    echo '```'
+    echo ""
+
+    echo "[SUDO/PERMISSIONS CHECK]"
+    echo '```'
+    echo "Current user: $(whoami) (UID: $EUID)"
+    # Check groups
+    local user_groups=$(groups 2>/dev/null)
+    echo "Groups: $user_groups"
+    # Check for important groups (use word boundaries to avoid false positives)
+    local missing_groups=""
+    [[ ! " $user_groups " =~ " kvm " ]] && missing_groups+="kvm "
+    [[ ! " $user_groups " =~ " libvirt " ]] && missing_groups+="libvirt "
+    [[ ! " $user_groups " =~ " input " ]] && missing_groups+="input "
+    if [[ -n "$missing_groups" ]]; then
+      echo "⚠️  Missing groups: $missing_groups"
+      echo "   Run: sudo usermod -aG kvm,libvirt,input $(whoami)"
+    else
+      echo "✓ User in required groups (kvm, libvirt, input)"
+    fi
+    # Check sudo access
+    if [[ "$EUID" -eq 0 ]]; then
+      echo "✓ Running as root"
+    elif sudo -n true 2>/dev/null; then
+      echo "✓ Passwordless sudo available"
+    else
+      echo "ℹ️  Sudo requires password (normal)"
+    fi
+    # Check /dev/kvm access
+    if [[ -c /dev/kvm ]]; then
+      if [[ -r /dev/kvm ]] && [[ -w /dev/kvm ]]; then
+        echo "✓ /dev/kvm accessible"
+      else
+        echo "⚠️  /dev/kvm not accessible - check kvm group membership"
+      fi
+    else
+      echo "⚠️  /dev/kvm not found - KVM not available"
+    fi
+    # Check /dev/vfio access
+    if [[ -d /dev/vfio ]]; then
+      local vfio_accessible=true
+      for vfio_dev in /dev/vfio/*; do
+        [[ -e "$vfio_dev" ]] || continue
+        if ! [[ -r "$vfio_dev" ]] || ! [[ -w "$vfio_dev" ]]; then
+          vfio_accessible=false
+          break
+        fi
+      done
+      if [[ "$vfio_accessible" == "true" ]]; then
+        echo "✓ /dev/vfio/* accessible"
+      else
+        echo "⚠️  /dev/vfio/* not accessible - may need udev rules"
+      fi
+    fi
+    echo '```'
+    echo ""
+
+    # UWSM Configuration (MUX-less laptops)
+    local uwsm_env="$HOME/.config/uwsm/env"
+    local uwsm_env_hyprland="$HOME/.config/uwsm/env-hyprland"
+    if [[ -f "$uwsm_env" ]] || [[ -f "$uwsm_env_hyprland" ]]; then
+      echo "[UWSM CONFIGURATION]"
+      echo "(MUX-less laptop EGL/DRM isolation)"
+      if [[ -f "$uwsm_env" ]]; then
+        echo "[UWSM env: $uwsm_env]"
+        echo '```'
+        cat "$uwsm_env"
+        echo '```'
+      fi
+      if [[ -f "$uwsm_env_hyprland" ]]; then
+        echo "[UWSM env-hyprland: $uwsm_env_hyprland]"
+        echo '```'
+        cat "$uwsm_env_hyprland"
+        echo '```'
+      fi
+      echo ""
+    fi
+
     echo "[PROCESSES USING GPU]"
     echo ""
 
@@ -1128,7 +1263,7 @@ cmd_diagnose() {
     if command -v nvidia-smi &>/dev/null; then
       local nvidia_output
       nvidia_output=$(nvidia-smi --query-compute-apps=pid,name,used_memory --format=csv 2>&1) || nvidia_output=""
-      if [[ "$nvidia_output" =~ Failed\ to\ initialize\ NVML ]]; then
+      if [[ "$nvi dia_output" =~ Failed\ to\ initialize\ NVML ]]; then
         echo "nvidia-smi unavailable (GPU likely bound to vfio-pci)"
       elif [[ -z "$nvidia_output" ]] || [[ "$nvidia_output" =~ No\ running ]]; then
         echo "No active NVIDIA compute processes"
@@ -1393,6 +1528,11 @@ cmd_status() {
       echo "IOMMU: $iommu_groups group(s) active"
     fi
   fi
+
+  # Show persistent VFIO mode if enabled
+  if is_persistent_vfio_enabled "$config_gpu_pci" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID" 2>/dev/null; then
+    echo "Persistent VFIO: enabled (GPU stays bound to vfio-pci across reboots)"
+  fi
   echo ""
 }
 
@@ -1544,6 +1684,20 @@ cmd_check_health() {
       echo ""
     fi
     return 0  # Success - GPU is healthy
+  fi
+}
+
+# Check if persistent VFIO mode is enabled
+# Exit codes: 0 = enabled, 1 = disabled, 2 = not-configured
+cmd_is_persistent() {
+  if ! load_gpu_config 2>/dev/null; then
+    exit 2
+  fi
+
+  if is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+    exit 0
+  else
+    exit 1
   fi
 }
 
@@ -2166,6 +2320,7 @@ SCRIPTING (exit codes):
   driver         Print current GPU driver (0=success, 1=not-configured)
   is-bound       Silent check if vfio-pci bound (0=bound, 1=not, 2=not-configured)
   is-configured  Silent check if configured (0=yes, 1=no)
+  is-persistent  Silent check if persistent VFIO enabled (0=yes, 1=no, 2=not-configured)
   needs-reset    Silent check if GPU has AMD reset bug (0=yes, 1=no, 2=not-configured)
   gpu-health     Silent check for IOTLB errors (0=unhealthy, 1=ok, 2=not-configured)
 EOF
@@ -2205,6 +2360,9 @@ is-bound)
   ;;
 is-configured)
   cmd_is_configured
+  ;;
+is-persistent)
+  cmd_is_persistent
   ;;
 needs-reset)
   cmd_needs_reset
