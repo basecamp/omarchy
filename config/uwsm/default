@@ -11,3 +11,11 @@ export EDITOR=nvim
 
 # Use a custom directory for screenrecordings (remember to make the directory!)
 # export OMARCHY_SCREENRECORD_DIR="$HOME/Videos/Screencasts"
+
+# Background backend: choose 'swaybg' (default) or 'awww'.
+# Note: 'awww' must be installed separately (e.g., via AUR: yay -S awww-git).
+# export BACKGROUND_BACKEND=awww
+
+# Transition effects for awww when changing wallpapers.
+# See `awww img --help` for available options and parameters.
+# export AWWW_TRANSITION_ARGS="--transition-type wave --transition-angle 30"

@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# Source user-defined environment variables
+source "$HOME/.config/uwsm/env" 2>/dev/null
+
+# Normalize BACKGROUND_BACKEND: treat empty or unset as "swaybg"
+if [ -z "$BACKGROUND_BACKEND" ]; then
+    BACKGROUND_BACKEND="swaybg"
+fi
+
+if [ -z "$AWWW_TRANSITION_ARGS" ]; then
+    AWWW_TRANSITION_ARGS="--transition-type wave --transition-angle 30"
+fi
+echo $BACKGROUND_BACKEND
+
+# Assume we'll use the current value as the backend name
+backend_name="$BACKGROUND_BACKEND"
+required_cmd=""
+
+# Map known backends to their required commands
+case "$backend_name" in
+    swaybg)
+        # No check needed; fallback backend
+        ;;
+    awww)
+        required_cmd="awww"
+        ;;
+    # Example one of more
+    # mpvpaper)
+    #     required_cmd="mpvpaper"
+    #     ;;
+    *)
+        notify-send "Unknown background backend: $backend_name" \
+                    "Falling back to swaybg." -t 3000
+        BACKGROUND_BACKEND="swaybg"
+        backend_name="swaybg"
+        ;;
+esac
+
+# Check if the required command exists; if not, fall back with customized message
+if [ -n "$required_cmd" ] && ! command -v "$required_cmd" >/dev/null; then
+    if [ "$backend_name" = "awww" ]; then
+        notify-send "Warning: 'awww' not found!" \
+                    "Falling back to swaybg." \
+                    "Please install it with: yay -S awww-git" \
+                    -t 3000
+    else
+        notify-send "Warning: '$required_cmd' not found!" \
+                    "Falling back to swaybg." \
+                    -t 3000
+    fi
+    BACKGROUND_BACKEND="swaybg"
+fi
+
+# Accept wallpaper path as first argument; fall back to default symlink
+CURRENT_BACKGROUND_LINK="${1:-$HOME/.config/omarchy/current/background}"
+
+if pgrep -x "swaybg" > /dev/null; then
+  pkill -x "swaybg"
+fi
+
+# awww uses awww-daemon as the background process,
+# can switch directly using the awww command (no need to kill and restart the process)
+if [ "$BACKGROUND_BACKEND" = "awww" ]; then
+  if ! pgrep -x "awww-daemon" > /dev/null; then
+    setsid uwsm-app -- awww-daemon >/dev/null 2>&1 &
+    sleep 0.1
+  fi
+else
+  if pgrep -x "awww-daemon" > /dev/null; then
+    awww kill
+  fi
+fi
+
+# Start the currently selected wallpaper software
+if [ "$BACKGROUND_BACKEND" = "swaybg" ]; then
+  setsid uwsm-app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
+
+elif [ "$BACKGROUND_BACKEND" = "awww" ]; then
+  setsid uwsm-app -- awww img "$CURRENT_BACKGROUND_LINK" $AWWW_TRANSITION_ARGS  >/dev/null 2>&1 &
+
+fi
