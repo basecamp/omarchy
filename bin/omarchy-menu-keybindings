@@ -212,18 +212,26 @@ prioritize_entries() {
   cut -f2-
 }
 
-monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
-menu_height=$((monitor_height * 40 / 100))
+output_keybindings() {
+  build_keymap_cache
 
-build_keymap_cache
+  {
+    dynamic_bindings
+    static_bindings
+  } |
+    sort -u |
+    parse_keycodes |
+    parse_bindings |
+    prioritize_entries
+}
 
-{
-  dynamic_bindings
-  static_bindings
-} |
-  sort -u |
-  parse_keycodes |
-  parse_bindings |
-  prioritize_entries |
-  walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+if [[ "$1" == "--print" || "$1" == "-p" ]]; then
+  output_keybindings
+else
+  monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
+  menu_height=$((monitor_height * 40 / 100))
+
+  output_keybindings |
+    walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+fi
 
