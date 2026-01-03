@@ -7,8 +7,6 @@
 EDITOR_CMD="${1:-code}"
 SETTINGS_PATH="${2:-$HOME/.config/Code/User/settings.json}"
 SKIP_FLAG="${3:-$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes}"
-EDITOR_NAME="${4:-VS Code}"
-
 VS_CODE_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
 
 if omarchy-cmd-present "$EDITOR_CMD" && [[ ! -f "$SKIP_FLAG" ]]; then
@@ -16,7 +14,7 @@ if omarchy-cmd-present "$EDITOR_CMD" && [[ ! -f "$SKIP_FLAG" ]]; then
     theme_name=$(jq -r '.name' "$VS_CODE_THEME")
     extension=$(jq -r '.extension' "$VS_CODE_THEME")
 
-    # Install $EDITOR_NAME theme extension
+    # Install theme extension
     if [[ -n "$extension" ]] && ! "$EDITOR_CMD" --list-extensions | grep -Fxq "$extension"; then
       "$EDITOR_CMD" --install-extension "$extension" >/dev/null
     fi
@@ -39,7 +37,7 @@ if omarchy-cmd-present "$EDITOR_CMD" && [[ ! -f "$SKIP_FLAG" ]]; then
       "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
       "$SETTINGS_PATH"
   else
-    # Remove theme from settings.json when the theme doesn't have $EDITOR_NAME support
+    # Remove theme from settings.json when the theme doesn't have editor support
     if [[ -f "$SETTINGS_PATH" ]]; then
       sed -i --follow-symlinks -E 's/\"workbench\.colorTheme\"[[:space:]]*:[^,}]*,?//' "$SETTINGS_PATH"
     fi
