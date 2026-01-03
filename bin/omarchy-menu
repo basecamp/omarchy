@@ -366,15 +366,60 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
+  *Development*) show_remove_development_menu ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
   *Windows*) present_terminal "omarchy-windows-vm remove" ;;
   *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
   *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_remove_development_menu() {
+  case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure") in
+  *Rails*) present_terminal "omarchy-remove-dev-env ruby" ;;
+  *JavaScript*) show_remove_javascript_menu ;;
+  *Go*) present_terminal "omarchy-remove-dev-env go" ;;
+  *PHP*) show_remove_php_menu ;;
+  *Python*) present_terminal "omarchy-remove-dev-env python" ;;
+  *Elixir*) show_remove_elixir_menu ;;
+  *Zig*) present_terminal "omarchy-remove-dev-env zig" ;;
+  *Rust*) present_terminal "omarchy-remove-dev-env rust" ;;
+  *Java*) present_terminal "omarchy-remove-dev-env java" ;;
+  *NET*) present_terminal "omarchy-remove-dev-env dotnet" ;;
+  *OCaml*) present_terminal "omarchy-remove-dev-env ocaml" ;;
+  *Clojure*) present_terminal "omarchy-remove-dev-env clojure" ;;
+  *) show_remove_menu ;;
+  esac
+}
+
+show_remove_javascript_menu() {
+  case $(menu "Remove" "  Node.js\n  Bun\n  Deno") in
+  *Node*) present_terminal "omarchy-remove-dev-env node" ;;
+  *Bun*) present_terminal "omarchy-remove-dev-env bun" ;;
+  *Deno*) present_terminal "omarchy-remove-dev-env deno" ;;
+  *) show_remove_development_menu ;;
+  esac
+}
+
+show_remove_php_menu() {
+  case $(menu "Remove" "  PHP\n  Laravel\n  Symfony") in
+  *PHP*) present_terminal "omarchy-remove-dev-env php" ;;
+  *Laravel*) present_terminal "omarchy-remove-dev-env laravel" ;;
+  *Symfony*) present_terminal "omarchy-remove-dev-env symfony" ;;
+  *) show_remove_development_menu ;;
+  esac
+}
+
+show_remove_elixir_menu() {
+  case $(menu "Remove" "  Elixir\n  Phoenix") in
+  *Elixir*) present_terminal "omarchy-remove-dev-env elixir" ;;
+  *Phoenix*) present_terminal "omarchy-remove-dev-env phoenix" ;;
+  *) show_remove_development_menu ;;
   esac
 }
 
