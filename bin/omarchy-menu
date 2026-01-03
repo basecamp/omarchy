@@ -524,6 +524,10 @@ go_to_menu() {
   esac
 }
 
+# Allow user extensions and overrides
+USER_EXTENSIONS="$HOME/.config/omarchy/extensions/menu.sh"
+[[ -f $USER_EXTENSIONS ]] && source "$USER_EXTENSIONS"
+
 if [[ -n "$1" ]]; then
   BACK_TO_EXIT=true
   go_to_menu "$1"
