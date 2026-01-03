@@ -1,5 +1,7 @@
 echo "Migrate to new theme setup"
 
+omarchy-pkg-add yq
+
 THEMES_DIR="$HOME/.config/omarchy/themes"
 CURRENT_THEME_LINK="$HOME/.config/omarchy/current/theme"
 
