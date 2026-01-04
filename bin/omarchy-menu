@@ -261,7 +261,7 @@ show_install_editor_menu() {
 }
 
 show_install_terminal_menu() {
-  case $(menu "Install" "  Alacritty\n  Ghostty\n  Kitty\n  WezTerm") in
+  case $(menu "Install" "  Alacritty\n  Ghostty\n  Kitty\n  WezTerm") in
   *Alacritty*) install_terminal "alacritty" ;;
   *Ghostty*) install_terminal "ghostty" ;;
   *Kitty*) install_terminal "kitty" ;;

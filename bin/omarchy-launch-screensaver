@@ -43,8 +43,16 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
       --override window_padding_width=0 \
       -e omarchy-cmd-screensaver
     ;;
+  *wezterm*)
+    hyprctl dispatch exec -- \
+      wezterm start --class=org.omarchy.screensaver \
+      --config colors='{background="#000000",cursor_bg="#000000",cursor_border="#000000"}' \
+      --config font_size=18 \
+      --config 'window_padding={left=0,right=0,top=0,bottom=0}' \
+      -- omarchy-cmd-screensaver
+    ;;
   *)
-    notify-send "✋  Screensaver only runs in Alacritty, Ghostty, or Kitty"
+    notify-send "✋  Screensaver only runs in Alacritty, Ghostty, Kitty, or WezTerm"
     ;;
   esac
 done
