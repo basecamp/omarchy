@@ -1,5 +1,5 @@
 local wezterm = require('wezterm')
-local config = wezterm.config_builder()
+config = wezterm.config_builder()
 
 -- Dynamic theme colors
 -- Import theme from symlink (Omarchy's dynamic theme system)
