@@ -276,7 +276,7 @@ show_install_ai_menu() {
       echo ollama
   )
 
-  case $(menu "Install" "  Dictation [AUR]\n󱚤  Claude Code\n󱚤  Copilot CLI [AUR]\n󱚤  Cursor CLI\n󱚤  Gemini\n󱚤  OpenAI Codex\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  opencode") in
+  case $(menu "Install" "  Dictation [AUR]\n󱚤  Claude Code\n󱚤  Copilot CLI [AUR]\n󱚤  Cursor CLI\n󱚤  Gemini\n󱚤  OpenAI Codex\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush") in
   *Dictation*) present_terminal "echo 'Installing Hyprwhspr from AUR...'; yay -S --noconfirm hyprwhspr && hyprwhspr setup" ;;
   *Claude*) install "Claude Code" "claude-code" ;;
   *Copilot*) aur_install "Copilot CLI" "github-copilot-cli" ;;
@@ -286,7 +286,6 @@ show_install_ai_menu() {
   *Studio*) install "LM Studio" "lmstudio" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
-  *opencode*) install "opencode" "opencode" ;;
   *) show_install_menu ;;
   esac
 }
