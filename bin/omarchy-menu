@@ -303,7 +303,7 @@ show_install_gaming_menu() {
 show_install_style_menu() {
   case $(menu "Install" "󰸌  Theme\n  Background\n  Font") in
   *Theme*) present_terminal omarchy-theme-install ;;
-  *Background*) nautilus ~/.config/omarchy/current/theme/backgrounds ;;
+  *Background*) omarchy-theme-bg-install ;;
   *Font*) show_install_font_menu ;;
   *) show_install_menu ;;
   esac
