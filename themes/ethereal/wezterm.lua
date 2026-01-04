@@ -28,4 +28,12 @@ config.colors = {
     '#dfeaf0',  -- bright cyan
     '#ffcead',  -- bright white
   },
+  tab_bar = {
+    background = '#060B1E',
+    active_tab = { bg_color = '#7d82d9', fg_color = '#ffcead' },
+    inactive_tab = { bg_color = '#060B1E', fg_color = '#6d7db6' },
+    inactive_tab_hover = { bg_color = '#1a1f3a', fg_color = '#ffcead' },
+    new_tab = { bg_color = '#060B1E', fg_color = '#6d7db6' },
+    new_tab_hover = { bg_color = '#7d82d9', fg_color = '#ffcead' },
+  },
 }
