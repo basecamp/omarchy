@@ -1,5 +1,5 @@
-$color = {{ background }}
-$inner_color = {{ background }}
-$outer_color = {{ foreground }}
-$font_color = {{ foreground }}
-$check_color = {{ accent }}
+$color = rgba({{ background_rgb }}, 1.0)
+$inner_color = rgba({{ background_rgb }}, 0.8)
+$outer_color = rgba({{ foreground_rgb }}, 1.0)
+$font_color = rgba({{ foreground_rgb }}, 1.0)
+$check_color = rgba({{ accent_rgb }}, 1.0)
