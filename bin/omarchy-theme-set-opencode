@@ -1,9 +1,0 @@
-#!/bin/bash
-
-OPENCODE_THEME="$HOME/.config/omarchy/current/theme/opencode.json"
-OPENCODE_THEMES_DIR="$HOME/.config/opencode/themes"
-
-if [[ -f "$OPENCODE_THEME" ]]; then
-  mkdir -p "$OPENCODE_THEMES_DIR"
-  cp "$OPENCODE_THEME" "$OPENCODE_THEMES_DIR/omarchy.json"
-fi
