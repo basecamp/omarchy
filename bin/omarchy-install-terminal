@@ -69,7 +69,7 @@ EOF
 [Desktop Entry]
 Type=Application
 TryExec=wezterm
-Exec=wezterm start
+Exec=omarchy-wezterm-launcher start
 Icon=org.wezfurlong.wezterm
 Terminal=false
 Categories=System;TerminalEmulator;
@@ -86,7 +86,7 @@ X-TerminalArgDir=--cwd
 
 [Desktop Action New]
 Name=New Terminal
-Exec=wezterm start
+Exec=omarchy-wezterm-launcher start
 EOF
   fi
 

@@ -1,0 +1,134 @@
+#!/bin/bash
+
+# omarchy-wezterm-launcher - Workspace-aware WezTerm launcher
+# Detects the current WezTerm workspace and spawns new windows in it
+# Falls back to standard `wezterm` behavior for non-WezTerm launches
+
+# Function to extract WEZTERM_PANE from a process environment
+get_wezterm_pane_from_pid() {
+  local shell_pid="$1"
+  if [[ -z "$shell_pid" || ! -f "/proc/$shell_pid/environ" ]]; then
+    return 1
+  fi
+
+  # Read the environ file and extract WEZTERM_PANE value
+  # environ uses null bytes as separators
+  local wezterm_pane
+  wezterm_pane=$(tr '\0' '\n' < "/proc/$shell_pid/environ" 2>/dev/null | grep '^WEZTERM_PANE=' | cut -d= -f2)
+
+  if [[ -n "$wezterm_pane" ]]; then
+    echo "$wezterm_pane"
+    return 0
+  fi
+  return 1
+}
+
+# Function to get current workspace from WEZTERM_PANE
+get_workspace_from_pane() {
+  local pane_id="$1"
+
+  # Check if wezterm and jq are available
+  if ! command -v wezterm >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+    return 1
+  fi
+
+  # Query wezterm for workspace info
+  local workspace
+  workspace=$(wezterm cli list --format json 2>/dev/null | \
+    jq -r --arg pane "$pane_id" '.[] | select(.pane_id == ($pane | tonumber)) | .workspace' 2>/dev/null)
+
+  if [[ -n "$workspace" ]]; then
+    echo "$workspace"
+    return 0
+  fi
+  return 1
+}
+
+# Main logic: detect if we should use workspace-aware spawning
+workspace=""
+wezterm_pane=""
+
+# Try to detect WEZTERM_PANE from the active window
+if command -v hyprctl >/dev/null 2>&1; then
+  # Get the active window's PID (similar to omarchy-cmd-terminal-cwd)
+  terminal_pid=$(hyprctl activewindow 2>/dev/null | awk '/pid:/ {print $2}')
+
+  if [[ -n "$terminal_pid" ]]; then
+    # Find the shell process child
+    shell_pid=$(pgrep -P "$terminal_pid" 2>/dev/null | tail -n1)
+
+    if [[ -n "$shell_pid" ]]; then
+      # Try to extract WEZTERM_PANE from the shell's environment
+      wezterm_pane=$(get_wezterm_pane_from_pid "$shell_pid")
+
+      if [[ -n "$wezterm_pane" ]]; then
+        # Get the workspace for this pane
+        workspace=$(get_workspace_from_pane "$wezterm_pane")
+      fi
+    fi
+  fi
+fi
+
+# If we successfully detected a workspace, use workspace-aware spawning
+if [[ -n "$workspace" ]]; then
+  # Parse arguments to extract --cwd and other flags
+  # xdg-terminal-exec passes args like: start --cwd /path --class foo
+
+  args=()
+  cwd_arg=""
+
+  # Skip the first argument if it's "start" (wezterm subcommand)
+  skip_next=false
+  for arg in "$@"; do
+    if [[ "$skip_next" == true ]]; then
+      skip_next=false
+      continue
+    fi
+
+    # Extract --cwd value
+    if [[ "$arg" == --cwd* ]]; then
+      if [[ "$arg" == *=* ]]; then
+        # --cwd=/path format
+        cwd_arg="${arg#*=}"
+      else
+        # --cwd /path format (value is next arg)
+        skip_next=true
+        continue
+      fi
+    elif [[ "$arg" != "start" ]]; then
+      # Keep other arguments
+      args+=("$arg")
+    fi
+  done
+
+  # Find the next argument after --cwd flag if it was separate
+  prev_arg=""
+  for arg in "$@"; do
+    if [[ "$prev_arg" == "--cwd" ]]; then
+      cwd_arg="$arg"
+      break
+    fi
+    prev_arg="$arg"
+  done
+
+  # Build the spawn command
+  spawn_args=("--new-window" "--workspace" "$workspace")
+
+  # Add --cwd if provided
+  if [[ -n "$cwd_arg" ]]; then
+    spawn_args+=("--cwd" "$cwd_arg")
+  fi
+
+  # Add other arguments
+  spawn_args+=("${args[@]}")
+
+  # Execute wezterm cli spawn with workspace awareness
+  exec wezterm cli spawn "${spawn_args[@]}"
+fi
+
+# Fallback: execute wezterm with original arguments
+# This handles:
+# - Non-WezTerm launches (from walker, menu, etc.)
+# - Failed workspace detection
+# - Any other edge cases
+exec wezterm "$@"
