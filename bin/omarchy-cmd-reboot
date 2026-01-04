@@ -1,6 +1,10 @@
 #!/bin/bash
 
 omarchy-state clear re*-required
+
+# Schedule the reboot to happen after closing windows
+(sleep 2 && systemctl reboot --no-wall) &
+
+# Now close all windows
 omarchy-hyprland-window-close-all
 sleep 1 # Allow apps like Chrome to shutdown correctly
-systemctl reboot --no-wall
