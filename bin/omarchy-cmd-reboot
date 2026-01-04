@@ -2,8 +2,8 @@
 
 omarchy-state clear re*-required
 
-# Schedule the reboot to happen after closing windows
-(sleep 2 && systemctl reboot --no-wall) &
+# Schedule the reboot to happen after closing windows (detached from terminal)
+nohup bash -c "sleep 2 && systemctl reboot --no-wall" >/dev/null 2>&1 &
 
 # Now close all windows
 omarchy-hyprland-window-close-all
