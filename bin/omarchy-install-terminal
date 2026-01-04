@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if (($# == 0)); then
-  echo "Usage: omarchy-install-terminal [alacritty|ghostty|kitty]"
+  echo "Usage: omarchy-install-terminal [alacritty|ghostty|kitty|wezterm]"
   exit 1
 fi
 
@@ -12,6 +12,7 @@ case "$package" in
 alacritty) desktop_id="Alacritty.desktop" ;;
 ghostty) desktop_id="com.mitchellh.ghostty.desktop" ;;
 kitty) desktop_id="kitty.desktop" ;;
+wezterm) desktop_id="org.wezfurlong.wezterm.desktop" ;;
 *)
   echo "Unknown terminal: $package"
   exit 1
@@ -19,7 +20,20 @@ kitty) desktop_id="kitty.desktop" ;;
 esac
 
 # Install package
-if omarchy-pkg-add $package; then
+install_success=false
+if [[ $package == "wezterm" ]]; then
+  # Install wezterm-git from AUR
+  if yay -S --noconfirm wezterm-git; then
+    install_success=true
+  fi
+else
+  # Install other terminals from official repos
+  if omarchy-pkg-add $package; then
+    install_success=true
+  fi
+fi
+
+if [[ $install_success == true ]]; then
   # Copy custom desktop entry for alacritty with X-TerminalArg* keys
   if [[ $package == "alacritty" ]]; then
     mkdir -p ~/.local/share/applications
@@ -45,6 +59,34 @@ X-TerminalArgDir=--working-directory=
 [Desktop Action New]
 Name=New Terminal
 Exec=alacritty
+EOF
+  fi
+
+  # Copy custom desktop entry for wezterm with X-TerminalArg* keys
+  if [[ $package == "wezterm" ]]; then
+    mkdir -p ~/.local/share/applications
+    cat > ~/.local/share/applications/org.wezfurlong.wezterm.desktop << EOF
+[Desktop Entry]
+Type=Application
+TryExec=wezterm
+Exec=wezterm start
+Icon=org.wezfurlong.wezterm
+Terminal=false
+Categories=System;TerminalEmulator;
+Name=WezTerm
+GenericName=Terminal
+Comment=Wez's Terminal Emulator
+StartupNotify=true
+StartupWMClass=org.wezfurlong.wezterm
+Actions=New;
+X-TerminalArgExec=start --
+X-TerminalArgAppId=--class
+X-TerminalArgTitle=
+X-TerminalArgDir=--cwd
+
+[Desktop Action New]
+Name=New Terminal
+Exec=wezterm start
 EOF
   fi
 
