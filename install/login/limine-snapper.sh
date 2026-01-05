@@ -37,6 +37,11 @@ EOF
     sudo sed -i '/^ENABLE_UKI=/d; /^ENABLE_LIMINE_FALLBACK=/d' /etc/default/limine
   fi
 
+  # Remove the original config file if it's not /boot/limine.conf
+  if [[ "$limine_config" != "/boot/limine.conf" ]] && [[ -f "$limine_config" ]]; then
+    sudo rm "$limine_config"
+  fi
+
   # We overwrite the whole thing knowing the limine-update will add the entries for us
   sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
 
