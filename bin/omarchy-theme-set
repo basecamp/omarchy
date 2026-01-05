@@ -47,10 +47,9 @@ if pgrep -x waybar >/dev/null; then
 fi
 omarchy-restart-swayosd
 omarchy-restart-terminal
-hyprctl reload >/dev/null
-pkill -SIGUSR2 btop
-# pkill -SIGUSR2 opencode
-makoctl reload
+omarchy-restart-hyprctl
+omarchy-restart-btop
+omarchy-restart-mako
 
 # Change app-specific themes
 omarchy-theme-set-gnome
