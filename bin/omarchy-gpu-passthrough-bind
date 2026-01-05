@@ -26,11 +26,28 @@ check_gpu_processes() {
 
   log_info "Checking for processes using GPU..."
 
+  # For AMD/Intel: detect passthrough GPU's DRM card (used throughout function)
+  local drm_card="" card_num="" render_num=""
+  if [[ "$current_driver" == "amdgpu" || "$current_driver" == "i915" ]]; then
+    drm_card=$(get_drm_card_for_pci "$GPU_PCI_ADDR" 2>/dev/null) || drm_card=""
+    if [[ -n "$drm_card" ]]; then
+      card_num="${drm_card#card}"
+      render_num=$((128 + card_num))
+      log_info "Passthrough GPU DRM: /dev/dri/$drm_card, /dev/dri/renderD${render_num}"
+    fi
+  fi
+
   local gpu_processes=""
   if [[ "$current_driver" == "nvidia" ]]; then
     gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>/dev/null | grep -v "USER" | tr -d '\n')
   elif [[ "$current_driver" == "amdgpu" || "$current_driver" == "i915" ]]; then
-    gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>/dev/null | grep -v "USER" | tr -d '\n')
+    # Only check the passthrough GPU's DRM card, not all cards (hybrid GPU fix)
+    if [[ -n "$drm_card" ]]; then
+      gpu_processes=$(sudo -n /usr/bin/fuser -v "/dev/dri/$drm_card" "/dev/dri/renderD${render_num}" 2>/dev/null | grep -v "USER" | tr -d '\n')
+    else
+      # Fallback if we can't determine specific card
+      gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>/dev/null | grep -v "USER" | tr -d '\n')
+    fi
   elif [[ "$current_driver" == "vfio-pci" ]]; then
     # Check for QEMU/VM processes (fuser on /dev/vfio/* may not work reliably)
     gpu_processes=$(pgrep -f 'qemu.*vfio' 2>/dev/null | tr '\n' ' ')
@@ -163,7 +180,12 @@ check_gpu_processes() {
   else
     echo ""
     msg_error "GPU in use by processes:"
-    GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" | head -20)
+    # Use passthrough GPU's DRM card if detected, fallback to all
+    if [[ -n "$drm_card" ]]; then
+      GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v "/dev/dri/$drm_card" "/dev/dri/renderD${render_num}" 2>&1 | grep -v "USER\|kernel" | head -20)
+    else
+      GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" | head -20)
+    fi
     echo "$GPU_PROCESSES"
     echo ""
 
@@ -180,8 +202,12 @@ check_gpu_processes() {
 
         sleep 2
 
-        # Re-check GPU usage
-        GPU_PROCESSES_AFTER=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" || true)
+        # Re-check GPU usage (passthrough GPU only)
+        if [[ -n "$drm_card" ]]; then
+          GPU_PROCESSES_AFTER=$(sudo -n /usr/bin/fuser -v "/dev/dri/$drm_card" "/dev/dri/renderD${render_num}" 2>&1 | grep -v "USER\|kernel" || true)
+        else
+          GPU_PROCESSES_AFTER=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" || true)
+        fi
         if [[ -z "$GPU_PROCESSES_AFTER" ]]; then
           log_success "GPU processes terminated, continuing..."
         else

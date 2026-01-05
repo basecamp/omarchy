@@ -392,7 +392,7 @@ verify_setup() {
       none)
         msg_success "Status: GPU in boot state (dynamic binding)"
         echo ""
-        echo "GPU is blacklisted and inactive (by design)."
+        echo "GPU is reserved for VM and inactive (by design)."
         msg_success "IOMMU enabled and configured"
         msg_success "Kernel parameters active"
         echo ""

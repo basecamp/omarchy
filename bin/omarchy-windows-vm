@@ -2828,48 +2828,6 @@ install_windows() {
     exit 1
   fi
 
-  # Pre-check: Verify GPU is not in use (before GPU binding)
-  if [[ "${GPU_PASSTHROUGH_ENABLED:-false}" == true ]] && [[ -n "${GPU_PCI_ADDR:-}" ]]; then
-    CURRENT_DRIVER=$(lspci -k -s "$GPU_PCI_ADDR" 2>/dev/null | grep "Kernel driver in use" | awk '{print $5}')
-
-    # Check if GPU is in use
-    GPU_PROCESSES=""
-    if [[ "$CURRENT_DRIVER" == "nvidia" ]]; then
-      GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>&1 | grep -v "USER\|kernel" || true)
-    elif [[ "$CURRENT_DRIVER" == "amdgpu" ]]; then
-      GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" || true)
-    fi
-
-    if [[ -n "$GPU_PROCESSES" ]]; then
-      msg_warning "GPU in use by:"
-      echo "$GPU_PROCESSES"
-
-      if gum confirm "Kill GPU processes?"; then
-        PROCESS_NAMES=$(echo "$GPU_PROCESSES" | awk '{print $NF}' | grep -v "^$" | sort -u)
-        for proc in $PROCESS_NAMES; do
-          sudo -n pkill -9 "$proc" 2>/dev/null || true
-        done
-        sleep 2
-
-        # Re-check after killing
-        if [[ "$CURRENT_DRIVER" == "nvidia" ]]; then
-          GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>&1 | grep -v "USER\|kernel" || true)
-        elif [[ "$CURRENT_DRIVER" == "amdgpu" ]]; then
-          GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" || true)
-        fi
-
-        if [[ -n "$GPU_PROCESSES" ]]; then
-          msg_error "GPU still in use - close applications manually"
-          exit 1
-        fi
-        msg_success "GPU processes terminated"
-      else
-        msg_error "GPU in use - close applications and retry"
-        exit 1
-      fi
-    fi
-  fi
-
   # Start OEM configuration
   OEM_DIR="$HOME/.config/windows/oem"
   mkdir -p "$OEM_DIR/wallpaper"
