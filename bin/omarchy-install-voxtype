@@ -1,0 +1,55 @@
+#!/bin/bash
+set -e
+
+# Install voxtype and configure it for use.
+
+omarchy-pkg-add wtype
+omarchy-pkg-aur-add voxtype
+
+# Setup voxtype
+mkdir -p ~/.config/voxtype
+cp $OMARCHY_PATH/default/voxtype/config.toml ~/.config/voxtype/
+
+voxtype setup --download
+voxtype setup systemd
+
+# Add to waybar
+waybar_config=~/.config/waybar/config.jsonc
+waybar_style=~/.config/waybar/style.css
+
+if ! grep -q "custom-voxtype" $waybar_style; then
+  cat >> $waybar_style <<'EOF'
+
+#custom-voxtype {
+  min-width: 12px;
+  margin: 0 7.5px;
+}
+EOF
+fi
+
+if ! grep -q '"custom/voxtype"' $waybar_config; then
+  sed -i '/"custom\/screenrecording-indicator"$/i\    "custom/voxtype",' $waybar_config
+  sed -i '/"custom\/screenrecording-indicator"[[:space:]]*:[[:space:]]*{/,/^[[:space:]]*},/{
+  /^[[:space:]]*},/a\
+  "custom/voxtype": {\
+    "exec": "voxtype status --follow --extended --format json",\
+    "return-type": "json",\
+    "format": "{}",\
+    "tooltip": true,\
+    "on-click": "systemctl --user restart voxtype"\
+  },
+}' $waybar_config
+fi
+
+# Add user to input group and ask for reboot, if not already there.
+if ! id -nG "$USER" | grep -qw input; then
+  sudo usermod -aG input ${USER}
+  echo
+
+  if gum confirm "Restart now to enable dictation via voxtype?"; then
+    omarchy-cmd-reboot
+  fi
+else
+  omarchy-restart-waybar
+  notify-send "    Voxtype Installed" "Hold Super + Ctrl + Q to start dictating." -t 30000
+fi
