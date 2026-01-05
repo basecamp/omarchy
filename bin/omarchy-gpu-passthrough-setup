@@ -1869,7 +1869,11 @@ cmd_setup() {
     exit 1
   fi
 
-  save_gpu_config "$idx"
+  if ! save_gpu_config "$idx"; then
+    msg_error "Failed to save GPU configuration"
+    msg_info "Check if sudo is working: sudo -v"
+    exit 1
+  fi
 
   configure_kernel_parameters
   if ! configure_vfio_modules "$pci" "$vendor_id" "$device_id"; then
@@ -1976,6 +1980,17 @@ cmd_setup() {
     echo "Mode: Standard passthrough (dGPU blacklisted at boot)"
     msg_info "Tip: Set BIOS Primary Display = IGD"
   fi
+
+  # Final verification - ensure config is valid before declaring success
+  msg_section "Final Verification"
+  if ! load_gpu_config; then
+    msg_error "Configuration verification FAILED"
+    msg_info "The config file may be corrupted or have wrong permissions"
+    msg_info "Debug: sudo cat $GPU_PASSTHROUGH_CONF"
+    msg_info "Debug: ls -la $GPU_PASSTHROUGH_CONF"
+    exit 1
+  fi
+  msg_success "Configuration verified successfully"
 
   echo ""
   echo "Next steps:"

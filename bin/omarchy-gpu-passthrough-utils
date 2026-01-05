@@ -466,7 +466,7 @@ save_gpu_config() {
     hybrid_mode="true"
   fi
 
-  sudo tee "$GPU_PASSTHROUGH_CONF" >/dev/null <<EOF
+  if ! sudo tee "$GPU_PASSTHROUGH_CONF" >/dev/null <<EOF
 # GPU Passthrough Config - Generated $(date +%Y-%m-%d)
 GPU_PCI_ADDR="$pci"
 GPU_VENDOR_ID="$vendor_id"
@@ -479,7 +479,33 @@ GPU_IOMMU_GROUP="$iommu_group"
 GPU_IOMMU_DEVICES="$iommu_devices"
 DGPU_HAS_EXTERNAL_MONITOR="$dgpu_has_external"
 HYBRID_MUXLESS_MODE="$hybrid_mode"
+IGPU_PCI="${IGPU_PCI:-}"
+DGPU_PCI="${DGPU_PCI:-$pci}"
+IS_MUXLESS_LAPTOP="${IS_MUXLESS_LAPTOP:-false}"
 EOF
+  then
+    log_error "Failed to write config file (sudo tee failed)"
+    return 1
+  fi
+
+  # Verify file was created with correct owner
+  if [[ ! -f "$GPU_PASSTHROUGH_CONF" ]]; then
+    log_error "Config file not created: $GPU_PASSTHROUGH_CONF"
+    return 1
+  fi
+
+  local file_owner
+  file_owner=$(stat -c "%U" "$GPU_PASSTHROUGH_CONF" 2>/dev/null)
+  if [[ "$file_owner" != "root" ]]; then
+    log_error "Config file has wrong owner: $file_owner (expected root)"
+    return 1
+  fi
+
+  # Verify config can be loaded (validates format and content)
+  if ! load_gpu_config; then
+    log_error "Config file created but validation failed"
+    return 1
+  fi
 
   msg_success "Config saved: $GPU_PASSTHROUGH_CONF"
   return 0
@@ -1080,13 +1106,23 @@ load_gpu_config() {
     log_warn "Config file has unusual permissions: $config_perm (expected 644 or 600)"
   fi
 
-  if grep -vE '^\s*(#|$)' "$config_file" | grep -vqE '^[A-Z_]+="[^"]*"$'; then
-    log_error "Config file validation failed: invalid line format detected"
+  local bad_format_line
+  bad_format_line=$(grep -vE '^\s*(#|$)' "$config_file" 2>/dev/null | grep -vE '^[A-Z_]+="[^"]*"$' | head -1)
+  if [[ -n "$bad_format_line" ]]; then
+    log_error "Config file validation failed: invalid format: $bad_format_line"
     return 1
   fi
 
-  if grep -qE '`|\$|;|\||&|<|>|\bexec\b|\beval\b|\bsource\b|\b\.\s' "$config_file"; then
-    log_error "Config file validation failed: potentially malicious content detected"
+  local bad_line
+  bad_line=$(grep -E '`|\$\(|\$\{|;|\||&|<|>|\bexec\b|\beval\b|\bsource\b' "$config_file" 2>/dev/null | head -1)
+  if [[ -n "$bad_line" ]]; then
+    log_error "Config file validation failed: dangerous pattern in: $bad_line"
+    return 1
+  fi
+  # Check for `. script` source shorthand only at line start (outside values)
+  bad_line=$(grep -E '^\s*\.\s+' "$config_file" 2>/dev/null | head -1)
+  if [[ -n "$bad_line" ]]; then
+    log_error "Config file validation failed: source shorthand: $bad_line"
     return 1
   fi
 

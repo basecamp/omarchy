@@ -276,13 +276,10 @@ verify_setup() {
   local configured_gpu_pci=""
   if load_gpu_config 2>/dev/null; then
     configured_gpu_pci="$GPU_PCI_ADDR"
+    is_configured=true
   fi
 
   detect_gpus
-
-  if [[ -f "$VFIO_CONF" ]] || grep -qE "amd_iommu=on|intel_iommu=on" /proc/cmdline 2>/dev/null; then
-    is_configured=true
-  fi
 
   if [[ "$quiet" != "true" ]]; then
     echo ""
@@ -537,6 +534,46 @@ cmd_diagnose() {
     echo '```'
     echo ""
 
+    echo "[System Memory]"
+    echo '```'
+    local mem_total_kb mem_available_kb mem_total_mb mem_available_mb
+    mem_total_kb=$(grep "^MemTotal:" /proc/meminfo 2>/dev/null | awk '{print $2}')
+    mem_available_kb=$(grep "^MemAvailable:" /proc/meminfo 2>/dev/null | awk '{print $2}')
+    mem_total_kb="${mem_total_kb:-0}"
+    mem_available_kb="${mem_available_kb:-0}"
+    mem_total_mb=$((mem_total_kb / 1024))
+    mem_available_mb=$((mem_available_kb / 1024))
+    if [[ "$mem_total_mb" -gt 0 ]]; then
+      echo "Total RAM: ${mem_total_mb} MB ($((mem_total_mb / 1024)) GB)"
+      echo "Available: ${mem_available_mb} MB ($((mem_available_mb / 1024)) GB)"
+    else
+      echo "(memory info not available)"
+    fi
+
+    # VM sizing recommendations (only if memory info available)
+    if [[ "$mem_total_mb" -gt 0 ]]; then
+      local recommended_vm_ram=$((mem_total_mb / 2))
+      local ivshmem_size=64
+      if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
+        local conf_ivshmem
+        conf_ivshmem=$(grep "^IVSHMEM_SIZE=" "$GPU_PASSTHROUGH_CONF" 2>/dev/null | cut -d'"' -f2)
+        [[ -n "$conf_ivshmem" ]] && ivshmem_size="${conf_ivshmem%M}"
+      fi
+      echo ""
+      echo "VM Sizing Recommendations:"
+      echo "  Recommended VM RAM: ${recommended_vm_ram} MB (50% of total)"
+      echo "  IVSHMEM (Looking Glass): ${ivshmem_size} MB"
+      echo "  Host reserved: $((mem_total_mb - recommended_vm_ram - ivshmem_size)) MB"
+
+      # Warning if low memory
+      if [[ "$mem_total_mb" -lt 16384 ]]; then
+        echo ""
+        echo "⚠️  Less than 16GB RAM - VM performance may be limited"
+      fi
+    fi
+    echo '```'
+    echo ""
+
     echo "[GPU INFORMATION]"
     echo ""
 
@@ -586,6 +623,120 @@ cmd_diagnose() {
       echo '```'
       echo ""
     done
+
+    # GPU Classification Debug - shows how each GPU was classified
+    echo "[GPU Classification Debug]"
+    echo '```'
+    for i in "${!GPU_PCI_ADDR[@]}"; do
+      local name="${GPU_NAME[$i]}"
+      local vendor_id="${GPU_VENDOR_ID[$i]}"
+      local gpu_type="${GPU_TYPE[$i]}"
+      local name_lower="${name,,}"
+
+      # Shorten name for display
+      local short_name="${name//Advanced Micro Devices, Inc. /}"
+      short_name="${short_name//\[AMD\/ATI\] /}"
+      short_name="${short_name//Intel Corporation /}"
+      short_name="${short_name//NVIDIA Corporation /}"
+
+      echo "GPU $((i+1)): $short_name"
+      echo "  Result: $gpu_type"
+
+      # Show which pattern matched (extract just the keyword)
+      local matched_keyword="(none - default dedicated)"
+      if [[ "$vendor_id" == "8086" ]]; then
+        # Test each Intel keyword (sync with INTEL_IGPU_REGEX in utils)
+        for kw in uhd "hd graphics" iris "intel.*graphics" meteor lunar arrow panther; do
+          if [[ "$name_lower" =~ $kw ]]; then
+            matched_keyword="Intel iGPU pattern: '$kw'"
+            break
+          fi
+        done
+      elif [[ "$vendor_id" == "1002" ]]; then
+        # Test each AMD APU keyword (sync with AMD_APU_REGEX in utils)
+        for kw in "radeon [0-9]+m" "vega.*igpu" phoenix rembrandt cezanne renoir lucienne barcelo strix raphael hawk mendocino krackan; do
+          if [[ "$name_lower" =~ $kw ]]; then
+            matched_keyword="AMD APU pattern: '$kw'"
+            break
+          fi
+        done
+      fi
+      echo "  Matched: $matched_keyword"
+      echo ""
+    done
+    echo '```'
+    echo ""
+
+    # PCIe Link Status - shows current/max link speed and width
+    echo "[PCIe Link Status]"
+    echo '```'
+    for i in "${!GPU_PCI_ADDR[@]}"; do
+      local pci="${GPU_PCI_ADDR[$i]}"
+      local name="${GPU_NAME[$i]}"
+      local pci_full
+      pci_full=$(normalize_pci_addr "$pci") || pci_full="0000:${pci}"
+
+      # Shorten name
+      local short_name="${name//Advanced Micro Devices, Inc. /}"
+      short_name="${short_name//\[AMD\/ATI\] /}"
+      short_name="${short_name//Intel Corporation /}"
+      short_name="${short_name//NVIDIA Corporation /}"
+      short_name="${short_name:0:40}"
+
+      echo "GPU $((i+1)): $short_name ($pci)"
+
+      # Read link status from sysfs
+      local link_speed="" link_width="" max_speed="" max_width=""
+      local sysfs_path="/sys/bus/pci/devices/${pci_full}"
+
+      if [[ -r "$sysfs_path/current_link_speed" ]]; then
+        link_speed=$(<"$sysfs_path/current_link_speed")
+      fi
+      if [[ -r "$sysfs_path/current_link_width" ]]; then
+        link_width=$(<"$sysfs_path/current_link_width")
+      fi
+      if [[ -r "$sysfs_path/max_link_speed" ]]; then
+        max_speed=$(<"$sysfs_path/max_link_speed")
+      fi
+      if [[ -r "$sysfs_path/max_link_width" ]]; then
+        max_width=$(<"$sysfs_path/max_link_width")
+      fi
+
+      # Check for valid link info (not "Unknown" or "0")
+      local has_valid_link=false
+      if [[ -n "$link_speed" && "$link_speed" != "Unknown" && -n "$link_width" && "$link_width" != "0" ]]; then
+        has_valid_link=true
+      fi
+
+      if [[ "$has_valid_link" == "true" ]]; then
+        local status_icon="✓"
+        # Check if running at max speed/width
+        if [[ -n "$max_speed" && -n "$max_width" && ( "$link_speed" != "$max_speed" || "$link_width" != "$max_width" ) ]]; then
+          status_icon="⚠️"
+        fi
+        echo "  Current: ${link_speed} x${link_width} $status_icon"
+        [[ -n "$max_speed" && "$max_speed" != "Unknown" && -n "$max_width" && "$max_width" != "0" ]] && \
+          echo "  Maximum: ${max_speed} x${max_width}"
+      else
+        # Try lspci as fallback
+        local lspci_link
+        lspci_link=$(lspci -vvs "$pci" 2>/dev/null | grep -i "LnkSta:" | head -1 | sed 's/^[[:space:]]*//')
+        if [[ -n "$lspci_link" ]]; then
+          echo "  $lspci_link"
+        else
+          # Integrated GPU or no PCIe link
+          local gpu_type="${GPU_TYPE[$i]}"
+          if [[ "$gpu_type" == "integrated" ]]; then
+            echo "  N/A (integrated GPU - no PCIe link)"
+          else
+            echo "  (link info not available)"
+          fi
+        fi
+      fi
+      echo ""
+    done
+    echo '```'
+    echo ""
 
     echo "[IOMMU INFORMATION]"
     echo '```'
@@ -849,10 +1000,157 @@ cmd_diagnose() {
       cat "$GPU_PASSTHROUGH_CONF"
       echo '```'
       echo ""
+
+      # Config validation debug - shows exactly which step fails
+      echo "[Config Validation Status]"
+      echo '```'
+      local val_file_exists=false val_owner_ok=false val_perms_ok=false
+      local val_format_ok=false val_security_ok=false val_pci_ok=false
+      local val_gpu_pci_set=false val_load_ok=false
+      local file_owner file_perms
+
+      # Step 1: File exists
+      if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
+        val_file_exists=true
+        echo "✓ File exists"
+      else
+        echo "✗ File does not exist"
+      fi
+
+      # Step 2: Owner is root
+      if [[ "$val_file_exists" == "true" ]]; then
+        file_owner=$(stat -c "%U" "$GPU_PASSTHROUGH_CONF" 2>/dev/null)
+        if [[ "$file_owner" == "root" ]]; then
+          val_owner_ok=true
+          echo "✓ Owner is root"
+        else
+          echo "✗ Owner is '$file_owner' (expected: root)"
+        fi
+      fi
+
+      # Step 3: Permissions
+      if [[ "$val_file_exists" == "true" ]]; then
+        file_perms=$(stat -c "%a" "$GPU_PASSTHROUGH_CONF" 2>/dev/null)
+        if [[ "$file_perms" == "644" || "$file_perms" == "600" ]]; then
+          val_perms_ok=true
+          echo "✓ Permissions $file_perms"
+        else
+          echo "✗ Permissions $file_perms (expected: 644 or 600)"
+        fi
+      fi
+
+      # Step 4: Line format validation
+      if [[ "$val_file_exists" == "true" ]]; then
+        local bad_lines
+        bad_lines=$(grep -vE '^\s*(#|$)' "$GPU_PASSTHROUGH_CONF" | grep -vE '^[A-Z_]+="[^"]*"$' | head -3)
+        if [[ -z "$bad_lines" ]]; then
+          val_format_ok=true
+          echo "✓ Line format valid"
+        else
+          echo "✗ Invalid line format:"
+          echo "$bad_lines" | sed 's/^/    /'
+        fi
+      fi
+
+      # Step 5: Security check (no malicious content)
+      # Must match load_gpu_config() validation exactly
+      if [[ "$val_file_exists" == "true" ]]; then
+        local bad_line=""
+        # Check for command injection patterns (anywhere in file)
+        bad_line=$(grep -E '`|\$\(|\$\{|;|\||&|<|>|\bexec\b|\beval\b|\bsource\b' "$GPU_PASSTHROUGH_CONF" 2>/dev/null | head -1)
+        if [[ -n "$bad_line" ]]; then
+          echo "✗ Dangerous pattern found:"
+          echo "    $bad_line"
+        else
+          # Check for `. script` source shorthand (only at line start)
+          bad_line=$(grep -E '^\s*\.\s+' "$GPU_PASSTHROUGH_CONF" 2>/dev/null | head -1)
+          if [[ -n "$bad_line" ]]; then
+            echo "✗ Source shorthand found:"
+            echo "    $bad_line"
+          else
+            val_security_ok=true
+            echo "✓ No suspicious content"
+          fi
+        fi
+      fi
+
+      # Step 6: GPU_PCI_ADDR present and valid
+      if [[ "$val_file_exists" == "true" && "$val_format_ok" == "true" && "$val_security_ok" == "true" ]]; then
+        local conf_gpu_pci
+        conf_gpu_pci=$(grep "^GPU_PCI_ADDR=" "$GPU_PASSTHROUGH_CONF" 2>/dev/null | cut -d'"' -f2)
+        if [[ -n "$conf_gpu_pci" ]]; then
+          val_gpu_pci_set=true
+          echo "✓ GPU_PCI_ADDR set: $conf_gpu_pci"
+          # Validate format
+          if [[ "$conf_gpu_pci" =~ ^([0-9a-fA-F]{4}:)?[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$ ]]; then
+            val_pci_ok=true
+            echo "✓ PCI address format valid"
+          else
+            echo "✗ PCI address format invalid"
+          fi
+        else
+          echo "✗ GPU_PCI_ADDR is empty or missing"
+        fi
+      fi
+
+      # Step 7: Full load test
+      echo ""
+      if load_gpu_config 2>/dev/null; then
+        val_load_ok=true
+        echo "✓ load_gpu_config() SUCCESS"
+        echo "  Loaded: GPU_PCI_ADDR=$GPU_PCI_ADDR"
+        [[ -n "${GPU_VENDOR_ID:-}" ]] && echo "  Loaded: GPU_VENDOR_ID=$GPU_VENDOR_ID"
+        [[ -n "${IGPU_PCI:-}" ]] && echo "  Loaded: IGPU_PCI=$IGPU_PCI"
+        [[ -n "${DGPU_PCI:-}" ]] && echo "  Loaded: DGPU_PCI=$DGPU_PCI"
+        [[ -n "${IS_MUXLESS_LAPTOP:-}" ]] && echo "  Loaded: IS_MUXLESS_LAPTOP=$IS_MUXLESS_LAPTOP"
+      else
+        echo "✗ load_gpu_config() FAILED"
+        echo "  This is why 'mode vm' reports 'not configured'"
+      fi
+      echo '```'
+      echo ""
     else
       echo "GPU passthrough not configured (run: omarchy-gpu-passthrough setup)"
       echo ""
     fi
+
+    # State Marker Debug - shows runtime mode status
+    echo "[State Marker Status]"
+    echo '```'
+    local state_marker="/var/run/omarchy-vm-gpu-mode"
+    local lock_file="/run/user/${UID:-$(id -u)}/omarchy-gpu-mode.lock"
+
+    echo "Mode marker: $state_marker"
+    if [[ -f "$state_marker" ]]; then
+      local marker_content marker_age_sec age_str
+      marker_content=$(<"$state_marker")
+      marker_age_sec=$(( $(date +%s) - $(stat -c %Y "$state_marker" 2>/dev/null || echo 0) ))
+
+      # Format age
+      if [[ "$marker_age_sec" -lt 60 ]]; then
+        age_str="${marker_age_sec}s ago"
+      elif [[ "$marker_age_sec" -lt 3600 ]]; then
+        age_str="$((marker_age_sec / 60))m ago"
+      else
+        age_str="$((marker_age_sec / 3600))h ago"
+      fi
+
+      # Validate and display
+      if [[ "$marker_content" =~ ^(none|vm|host)$ ]]; then
+        echo "  Value: $marker_content ($age_str) ✓"
+      else
+        echo "  Value: $marker_content ($age_str) ⚠️  Invalid!"
+      fi
+    else
+      echo "  Not present (created by 'mode vm/host')"
+    fi
+
+    # Lock status - only show if locked (unusual)
+    if [[ -f "$lock_file" ]] && ! flock -n "$lock_file" true 2>/dev/null; then
+      echo "Lock: ⚠️  Currently held (operation in progress)"
+    fi
+    echo '```'
+    echo ""
 
     local bootloader=$(detect_bootloader)
     echo "[Bootloader Configuration: $bootloader]"
@@ -1200,6 +1498,63 @@ cmd_diagnose() {
       fi
       echo ""
     fi
+
+    # Looking Glass Status
+    echo "[LOOKING GLASS STATUS]"
+    echo '```'
+
+    # KVMFR module
+    local kvmfr_status="✗ Not loaded"
+    if lsmod | grep -q "^kvmfr"; then
+      local kvmfr_version
+      kvmfr_version=$(modinfo kvmfr 2>/dev/null | grep "^version:" | awk '{print $2}')
+      kvmfr_status="✓ Loaded${kvmfr_version:+ (v$kvmfr_version)}"
+    fi
+    echo "KVMFR Module:  $kvmfr_status"
+
+    # /dev/kvmfr0
+    local kvmfr_dev_status="Not present (created on VM start)"
+    if [[ -c /dev/kvmfr0 ]]; then
+      local kvmfr_perms
+      kvmfr_perms=$(stat -c "%a" /dev/kvmfr0 2>/dev/null)
+      if [[ -r /dev/kvmfr0 ]] && [[ -w /dev/kvmfr0 ]]; then
+        kvmfr_dev_status="✓ Accessible (mode $kvmfr_perms)"
+      else
+        kvmfr_dev_status="⚠️  Not accessible (mode $kvmfr_perms)"
+      fi
+    fi
+    echo "/dev/kvmfr0:   $kvmfr_dev_status"
+
+    # IVSHMEM size from config
+    local ivshmem_configured="64M (default)"
+    if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
+      local conf_size
+      conf_size=$(grep "^IVSHMEM_SIZE=" "$GPU_PASSTHROUGH_CONF" 2>/dev/null | cut -d'"' -f2)
+      [[ -n "$conf_size" ]] && ivshmem_configured="$conf_size"
+    fi
+    echo "IVSHMEM Size:  $ivshmem_configured"
+
+    # Looking Glass client
+    local lg_client_status="✗ Not installed"
+    if command -v looking-glass-client &>/dev/null; then
+      local lg_version
+      lg_version=$(looking-glass-client --version 2>&1 | head -1 | grep -oE 'B[0-9]+-?[a-z0-9]*' || echo "installed")
+      lg_client_status="✓ $lg_version"
+    fi
+    echo "Client:        $lg_client_status"
+
+    # SPICE in docker image
+    if command -v docker &>/dev/null; then
+      local spice_status="✗ Not found"
+      if docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -q "dockurr/windows:spice"; then
+        spice_status="✓ dockurr/windows:spice"
+      elif docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -q "dockurr/windows"; then
+        spice_status="⚠️  dockurr/windows (may lack SPICE)"
+      fi
+      echo "Docker Image:  $spice_status"
+    fi
+    echo '```'
+    echo ""
 
     echo "[PROCESSES USING GPU]"
     echo ""
