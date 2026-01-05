@@ -312,7 +312,7 @@ launch_windows() {
   fi
 
   if ! wait_for_rdp_ready "$WIN_USER" "$WIN_PASS"; then
-    notify-send -u critical "Windows VM" "RDP not ready yet. Please try again shortly."
+    notify-send -u critical "Windows VM" "Did not come alive in time."
     exit 1
   fi
 
