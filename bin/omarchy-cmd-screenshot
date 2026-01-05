@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Take a screenshot of the whole screen, a specific window, or a user-drawn region.
+# Saves to ~/Pictures by default, but that can be changed via OMARCHY_SCREENSHOT_DIR or XDG_PICTURES_DIR ENVs.
+
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
 

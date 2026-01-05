@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Attempt to reinstall all default Omarchy packages and reset all the default configs.
+
 set -e
 
 if [ "$EUID" -eq 0 ]; then

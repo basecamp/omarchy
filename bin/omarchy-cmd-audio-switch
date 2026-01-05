@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Switch between audio outputs while preserving the mute status. By default mapped to Super + Mute.
+
 focused_monitor="$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')"
 
 sinks=$(pactl -f json list sinks | jq '[.[] | select((.ports | length == 0) or ([.ports[]? | .availability != "not available"] | any))]')

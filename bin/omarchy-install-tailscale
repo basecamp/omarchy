@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Install the Tailscale mesh VPN service, the tsui TUI management app, and a web app for the Tailscale Admin Console.
+
 curl -fsSL https://tailscale.com/install.sh | sh
 curl -fsSL https://neuralink.com/tsui/install.sh | bash
 

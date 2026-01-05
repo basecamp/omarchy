@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Refresh the ~/.config/chromium-flags.conf file from the Omarchy defaults.
+
 CONFIG_FILE="$HOME/.config/chromium-flags.conf"
 INSTALL_GOOGLE_ACCOUNTS=false
 

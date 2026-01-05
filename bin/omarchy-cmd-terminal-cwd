@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Returns the current working directory of the active terminal window,
+# so a new terminal window can be started in the same directory.
+
 # Go from current active terminal to its child shell process and run cwd there
 terminal_pid=$(hyprctl activewindow | awk '/pid:/ {print $2}')
 shell_pid=$(pgrep -P "$terminal_pid" | tail -n1)

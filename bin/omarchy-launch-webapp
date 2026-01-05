@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Launch the passed in URL as a web app in the default browser (or chromium if the default doesn't support --app).
+
 browser=$(xdg-settings get default-web-browser)
 
 case $browser in

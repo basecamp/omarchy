@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Return exhaustive debugging information about the system to help diagnose problems.
+
 NO_SUDO=false
 PRINT_ONLY=false
 

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Adjust the brightness on Apple Studio Displays and Apple XDR Displays using asdcontrol.
+
 if [[ $# -eq 0 ]]; then
   echo "Adjust Apple Display Brightness by passing +5000 or -5000 (or any range from 0-60000)"
 else

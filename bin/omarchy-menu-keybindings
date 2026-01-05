@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# A script to display Hyprland keybindings defined in your configuration
-# using walker for an interactive search menu.
+# Display Hyprland keybindings defined in your configuration using walker for an interactive search menu.
 
 declare -A KEYCODE_SYM_MAP
 
