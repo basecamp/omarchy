@@ -257,47 +257,19 @@ remove_windows() {
 wait_for_rdp_ready() {
   local WIN_USER="$1"
   local WIN_PASS="$2"
+  local TIMEOUT=240
+  local SECONDS=0
 
   echo "Waiting for Windows VM to be ready..."
 
-  local WAIT_COUNT=0
-  while ! nc -z 127.0.0.1 3389 2>/dev/null; do
+  while ! timeout 5s xfreerdp3 /auth-only /cert:ignore /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 &>/dev/null; do
     sleep 2
-    WAIT_COUNT=$((WAIT_COUNT + 1))
-    if [ $WAIT_COUNT -gt 60 ]; then  # 2 minutes timeout for port availability
-      echo "❌ Timeout waiting for RDP port!"
+    if [ $SECONDS -gt $TIMEOUT ]; then
+      echo "❌ Timeout waiting for RDP!"
       echo "   The VM might still be installing Windows."
       echo "   Check progress at: http://127.0.0.1:8006"
       return 1
     fi
-  done
-
-  echo "RDP port detected. Verifying login availability..."
-
-  local VERIFY_START=$(date +%s)
-  local VERIFY_LOG
-  if ! VERIFY_LOG=$(mktemp); then
-    echo "❌ Failed to create temporary file for RDP verification."
-    return 1
-  fi
-
-  while true; do
-    if timeout 5s xfreerdp3 /auth-only /cert:ignore /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 >"$VERIFY_LOG" 2>&1; then
-      rm -f "$VERIFY_LOG"
-      return 0
-    fi
-
-    if [ $(( $(date +%s) - VERIFY_START )) -ge 25 ]; then
-      echo "❌ Timeout verifying RDP login readiness!"
-      if [ -s "$VERIFY_LOG" ]; then
-        echo "   Last attempt output:"
-        tail -n 10 "$VERIFY_LOG"
-      fi
-      rm -f "$VERIFY_LOG"
-      return 1
-    fi
-
-    sleep 1
   done
 }
 
