@@ -4,7 +4,7 @@ set -e
 # Install voxtype and configure it for use.
 
 omarchy-pkg-add wtype
-omarchy-pkg-aur-add voxtype
+omarchy-pkg-aur-add voxtype-bin
 
 # Setup voxtype
 mkdir -p ~/.config/voxtype
