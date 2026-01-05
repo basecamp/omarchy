@@ -10,4 +10,8 @@ mkdir -p ~/.local/share/applications
 cp ~/.local/share/omarchy/applications/*.desktop ~/.local/share/applications/
 cp ~/.local/share/omarchy/applications/hidden/*.desktop ~/.local/share/applications/
 
+# Refresh the webapps
+bash $OMARCHY_PATH/install/packaging/icons.sh
+bash $OMARCHY_PATH/install/packaging/webapps.sh
+
 update-desktop-database ~/.local/share/applications

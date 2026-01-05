@@ -28,6 +28,7 @@
       "7": "7",
       "8": "8",
       "9": "9",
+      "10": "0",
       "active": "󱓻"
     },
     "persistent-workspaces": {
@@ -41,6 +42,7 @@
   "custom/omarchy": {
     "format": "<span font='omarchy'>\ue900</span>",
     "on-click": "omarchy-menu",
+    "on-click-right": "xdg-terminal-exec",
     "tooltip-format": "Omarchy Menu\n\nSuper + Alt + Space"
   },
   "custom/update": {
@@ -49,13 +51,14 @@
     "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
     "tooltip-format": "Omarchy update available",
     "signal": 7,
-    "interval": 3600
+    "interval": 21600
   },
 
   "cpu": {
     "interval": 5,
     "format": "󰍛",
-    "on-click": "$TERMINAL -e btop"
+    "on-click": "omarchy-launch-or-focus-tui btop",
+    "on-click-right": "alacritty"
   },
   "clock": {
     "format": "{:L%A %H:%M}",
@@ -97,14 +100,16 @@
   },
   "bluetooth": {
     "format": "",
+    "format-off": "󰂲",
     "format-disabled": "󰂲",
-    "format-connected": "",
+    "format-connected": "󰂱",
+    "format-no-controller": "",
     "tooltip-format": "Devices connected: {num_connections}",
-    "on-click": "blueberry"
+    "on-click": "omarchy-launch-bluetooth"
   },
   "pulseaudio": {
     "format": "{icon}",
-    "on-click": "$TERMINAL --class=Wiremix -e wiremix",
+    "on-click": "omarchy-launch-audio",
     "on-click-right": "pamixer -t",
     "tooltip-format": "Playing at {volume}%",
     "scroll-step": 5,
@@ -122,8 +127,12 @@
     "modules": ["custom/expand-icon", "tray"]
   },
   "custom/expand-icon": {
-    "format": "",
-    "tooltip": false
+    "format": "",
+    "tooltip": false,
+    "on-scroll-up": "",
+    "on-scroll-down": "",
+    "on-scroll-left": "",
+    "on-scroll-right": ""
   },
   "custom/screenrecording-indicator": {
     "on-click": "omarchy-cmd-screenrecord",

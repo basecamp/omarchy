@@ -328,7 +328,7 @@ launch_windows() {
     echo "Starting Windows VM..."
 
     # Send desktop notification
-    notify-send "Windows VM" "Starting Windows VM, this may take a moment..."
+    notify-send "    Starting Windows VM" "      This can take 15-30 seconds" -t 15000
 
     if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
       echo "❌ Failed to start Windows VM!"
@@ -337,6 +337,23 @@ launch_windows() {
       notify-send -u critical "Windows VM" "Failed to start Windows VM"
       exit 1
     fi
+
+    # Wait for RDP to be ready
+    echo "Waiting for Windows VM to be ready..."
+    WAIT_COUNT=0
+    while ! nc -z 127.0.0.1 3389 2>/dev/null; do
+      sleep 2
+      WAIT_COUNT=$((WAIT_COUNT + 1))
+      if [ $WAIT_COUNT -gt 60 ]; then  # 2 minutes timeout
+        echo "❌ Timeout waiting for RDP!"
+        echo "   The VM might still be installing Windows."
+        echo "   Check progress at: http://127.0.0.1:8006"
+        exit 1
+      fi
+    done
+
+    # Give it a moment more to fully initialize
+    sleep 5
   fi
 
   if ! wait_for_rdp_ready "$WIN_USER" "$WIN_PASS"; then
@@ -362,7 +379,7 @@ To stop: omarchy-windows-vm stop"
     "$LIFECYCLE"
 
   # Detect display scale from Hyprland
-  HYPR_SCALE=$(hyprctl monitors -j | jq -r '.[0].scale')
+  HYPR_SCALE=$(hyprctl monitors -j | jq -r '.[] | select (.focused == true) | .scale')
   SCALE_PERCENT=$(echo "$HYPR_SCALE" | awk '{print int($1 * 100)}')
 
   RDP_SCALE=""
@@ -374,7 +391,7 @@ To stop: omarchy-windows-vm stop"
   # If scale is less than 130%, don't set any scale (use default 100)
 
   # Connect with RDP in fullscreen (auto-detects resolution)
-  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 +f -grab-keyboard /cert:ignore /title:"Windows VM - Omarchy" /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
+  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /cert:ignore /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
 
   # After RDP closes, stop the container unless --keep-alive was specified
   if [ "$KEEP_ALIVE" = false ]; then
