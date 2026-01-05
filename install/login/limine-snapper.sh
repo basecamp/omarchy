@@ -29,28 +29,8 @@ EOF
 
   CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
-  sudo tee /etc/default/limine <<EOF >/dev/null
-TARGET_OS_NAME="Omarchy"
-
-ESP_PATH="/boot"
-
-KERNEL_CMDLINE[default]="$CMDLINE"
-KERNEL_CMDLINE[default]+="quiet splash"
-
-ENABLE_UKI=yes
-CUSTOM_UKI_NAME="omarchy"
-
-ENABLE_LIMINE_FALLBACK=yes
-
-# Find and add other bootloaders
-FIND_BOOTLOADERS=yes
-
-BOOT_ORDER="*, *fallback, Snapshots"
-
-MAX_SNAPSHOT_ENTRIES=5
-
-SNAPSHOT_FORMAT_CHOICE=5
-EOF
+  sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
+  sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
 
   # UKI and EFI fallback are EFI only
   if [[ -z $EFI ]]; then
