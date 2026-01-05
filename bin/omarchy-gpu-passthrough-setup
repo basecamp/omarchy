@@ -1,0 +1,2169 @@
+#!/bin/bash
+#
+# omarchy-gpu-passthrough-setup - Setup wizard for GPU passthrough
+#
+
+set -uo pipefail
+
+# Load shared utilities
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+if ! source "$SCRIPT_DIR/omarchy-gpu-passthrough-utils"; then
+  echo "ERROR: Cannot load omarchy-gpu-passthrough-utils" >&2
+  echo "Please ensure omarchy-gpu-passthrough-utils exists in: $SCRIPT_DIR" >&2
+  exit 1
+fi
+
+# Backup Functions
+
+create_backup_snapshot() {
+  local backup_dir="/var/backups/omarchy-gpu-passthrough"
+  local snapshot_dir="$backup_dir/setup-$(date +%Y%m%d-%H%M%S)"
+
+  msg_info "Creating backup snapshot..."
+
+  sudo mkdir -p "$snapshot_dir" 2>/dev/null || {
+    msg_error "Failed to create backup directory"
+    return 1
+  }
+
+  local files_backed_up=()
+
+  if [[ -f "$LIMINE_DEFAULT" ]]; then
+    sudo cp -a "$LIMINE_DEFAULT" "$snapshot_dir/limine" 2>/dev/null && files_backed_up+=("limine")
+  fi
+
+  if [[ -f "$GRUB_DEFAULT" ]]; then
+    sudo cp -a "$GRUB_DEFAULT" "$snapshot_dir/grub" 2>/dev/null && files_backed_up+=("grub")
+  fi
+
+  if [[ -f "$MKINITCPIO_CONF" ]]; then
+    sudo cp -a "$MKINITCPIO_CONF" "$snapshot_dir/mkinitcpio.conf" 2>/dev/null && files_backed_up+=("mkinitcpio.conf")
+  fi
+
+  if [[ -f "/etc/environment" ]]; then
+    sudo cp -a "/etc/environment" "$snapshot_dir/environment" 2>/dev/null && files_backed_up+=("environment")
+  fi
+
+  local real_user="${SUDO_USER:-$USER}"
+  local user_home=$(getent passwd "$real_user" | cut -d: -f6)
+
+  if [[ -z "$user_home" ]]; then
+    msg_warning "Cannot determine home directory for user $real_user"
+    log_warn "Skipping Hyprland config backup - user home not found"
+  elif [[ -f "$user_home/.config/hypr/hyprland.conf" ]]; then
+    sudo cp -a "$user_home/.config/hypr/hyprland.conf" "$snapshot_dir/hyprland.conf" 2>/dev/null && files_backed_up+=("hyprland.conf")
+  fi
+
+  if [[ "${#files_backed_up[@]}" -eq 0 ]]; then
+    msg_error "No files were backed up"
+    log_error "Backup failed: no configuration files found to backup"
+    return 1
+  fi
+
+  sudo tee "$snapshot_dir/BACKUP-INFO.txt" >/dev/null <<EOF
+GPU Passthrough Setup - Backup Snapshot
+Created: $(date)
+User: $real_user
+
+Files backed up:
+$(for file in "${files_backed_up[@]}"; do echo "  ✓  $file"; done)
+
+To restore this backup:
+  1. Copy files from this directory back to their original locations
+  2. Rebuild initramfs and bootloader config:
+     - Limine: sudo limine-mkinitcpio
+     - GRUB:   sudo mkinitcpio -P && sudo update-grub
+  3. Reboot
+
+Original locations:
+  limine           → /etc/default/limine
+  grub             → /etc/default/grub
+  mkinitcpio.conf  → /etc/mkinitcpio.conf
+  environment      → /etc/environment
+  hyprland.conf    → ~/.config/hypr/hyprland.conf
+EOF
+
+  msg_success "Backup created: $snapshot_dir (${#files_backed_up[@]} files)"
+  log_info "Backup snapshot created: $snapshot_dir (${#files_backed_up[@]} files)"
+
+  return 0
+}
+
+# Configuration Functions
+
+configure_kernel_parameters() {
+  local cpu_vendor=$(get_cpu_vendor)
+  local iommu_param=""
+
+  case "$cpu_vendor" in
+  amd) iommu_param="amd_iommu=on" ;;
+  intel) iommu_param="intel_iommu=on" ;;
+  *) iommu_param="amd_iommu=on" ;;
+  esac
+
+  local bootloader=$(detect_bootloader)
+
+  case "$bootloader" in
+  limine)
+    log_info "Bootloader: Limine (automatic configuration)"
+    configure_omarchy_limine "$iommu_param"
+    return $?
+    ;;
+  grub)
+    log_info "Bootloader: GRUB (automatic configuration)"
+    configure_grub_bootloader "$iommu_param"
+    return $?
+    ;;
+  esac
+
+  log_info "Bootloader: $bootloader (manual configuration)"
+
+  # Check if IOMMU is already enabled
+  if check_iommu_enabled_cmdline; then
+    msg_success "IOMMU already enabled"
+    return 0
+  fi
+
+  # Unsupported bootloader requires manual configuration
+  msg_section "IOMMU Configuration Required"
+
+  echo "Bootloader: $bootloader (manual config needed)"
+  echo ""
+  echo "Add to kernel cmdline:  ${iommu_param} iommu=pt"
+
+  case "$bootloader" in
+  systemd-boot)
+    echo ""
+    echo "Edit /boot/loader/entries/*.conf → options line"
+    echo "Then: reboot"
+    ;;
+  refind)
+    echo ""
+    echo "Edit /boot/refind_linux.conf → add to options"
+    echo "Then: reboot"
+    ;;
+  esac
+
+  echo ""
+
+  local choice=$(gum choose \
+    "Exit - I'll configure and reboot first" \
+    "Continue - IOMMU is already configured" \
+    "Cancel")
+
+  case "$choice" in
+  *"Exit"*)
+    msg_info "After configuring and rebooting: omarchy-gpu-passthrough setup"
+    log_info "User chose to configure bootloader manually"
+    exit 0
+    ;;
+  *"Continue"*)
+    if ! check_iommu_enabled_cmdline; then
+      msg_warning "IOMMU not detected in kernel cmdline"
+      if ! gum confirm "Continue anyway?"; then
+        exit 1
+      fi
+    fi
+    return 0
+    ;;
+  *"Cancel"*)
+    log_info "User cancelled setup"
+    exit 0
+    ;;
+  *)
+    # Empty = Ctrl+C or gum failure
+    exit 1
+    ;;
+  esac
+}
+
+# Remove dangerous kernel parameters from bootloader config
+# These can cause issues with GPU passthrough:
+#   pci=noats - disables ATS, can break IOMMU
+#   video=efifb:off - disables EFI framebuffer, can break display on AMD
+#   iommu.strict=1 - forces strict mode, can cause performance issues
+remove_dangerous_params() {
+  local config_file="$1"
+  local dangerous_params=("pci=noats" "video=efifb:off" "iommu.strict=1")
+
+  for param in "${dangerous_params[@]}"; do
+    if grep -qF "$param" "$config_file"; then
+      log_info "Removing dangerous parameter: $param"
+      local param_escaped="${param//./\\.}"
+      # Handle param at start/middle/end of line
+      sudo sed -i -E "s/(^|[[:space:]])${param_escaped}([[:space:]]|$)/\\1\\2/g" "$config_file"
+      sudo sed -i -E 's/[[:space:]]+/ /g' "$config_file"
+      msg_warning "Removed dangerous kernel parameter: $param"
+    fi
+  done
+}
+
+configure_omarchy_limine() {
+  local iommu_param="$1"
+
+  log_info "Configuring Limine kernel parameters (IOMMU: $iommu_param)"
+
+  if grep -q 'vfio-pci\.ids=' "$LIMINE_DEFAULT"; then
+    sudo sed -i -E 's/[[:space:]]*vfio-pci\.ids=[0-9a-f:,]+//g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]+/ /g' "$LIMINE_DEFAULT"
+    log_info "Removed legacy vfio-pci.ids from Limine config"
+  fi
+
+  remove_dangerous_params "$LIMINE_DEFAULT"
+
+  local all_cmdlines
+  all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null) || all_cmdlines=""
+
+  if [[ "$all_cmdlines" =~ (amd_iommu|intel_iommu)=off ]]; then
+    echo ""
+    msg_error "Conflicting IOMMU parameter detected (iommu=off)"
+    msg_info "Found IOMMU explicitly disabled in kernel parameters"
+    msg_warning "Please edit $LIMINE_DEFAULT and remove iommu=off parameter"
+    echo ""
+    log_error "Setup aborted: Conflicting IOMMU parameter (iommu=off) found in Limine config"
+    return 1
+  fi
+
+  local params_to_add=""
+
+  if ! [[ "$all_cmdlines" =~ (amd_iommu|intel_iommu)=on ]]; then
+    params_to_add="$params_to_add $iommu_param"
+    log_info "Adding IOMMU parameter: $iommu_param"
+  else
+    log_info "IOMMU parameter already present"
+  fi
+
+  if ! [[ "$all_cmdlines" =~ iommu=pt ]]; then
+    params_to_add="$params_to_add iommu=pt"
+    log_info "Adding iommu=pt parameter"
+  else
+    log_info "iommu=pt already present"
+  fi
+
+  # pci=realloc only for NVIDIA + ReBAR (can cause issues on some systems without it)
+  if [[ -n "${GPU_VENDOR_ID:-}" ]] && [[ "${GPU_VENDOR_ID}" == "10de" || "${GPU_VENDOR_ID[0]:-}" == "10de" ]]; then
+    if ! [[ "$all_cmdlines" =~ pci=realloc ]]; then
+      local gpu_pci="${GPU_PCI_ADDR:-}"
+      [[ -z "$gpu_pci" ]] && gpu_pci="${GPU_PCI_ADDR[0]:-}"
+      if [[ -n "$gpu_pci" ]] && check_resizable_bar "$gpu_pci" 2>/dev/null; then
+        params_to_add="$params_to_add pci=realloc"
+        log_info "Adding pci=realloc (NVIDIA ReBAR detected)"
+      fi
+    fi
+  fi
+
+  if [[ -n "$params_to_add" ]]; then
+    if echo "KERNEL_CMDLINE[default]+=\" $params_to_add\"" | sudo tee -a "$LIMINE_DEFAULT" >/dev/null; then
+      msg_success "Kernel parameters:$params_to_add"
+      log_info "Limine config updated:$params_to_add"
+    else
+      msg_error "Failed to update Limine config"
+      log_error "Failed to write to $LIMINE_DEFAULT"
+      return 1
+    fi
+  else
+    msg_info "Kernel parameters already set"
+    log_info "Limine kernel parameters already configured"
+  fi
+
+  return 0
+}
+
+configure_grub_bootloader() {
+  local iommu_param="$1"
+
+  log_info "Configuring GRUB kernel parameters (IOMMU: $iommu_param)"
+
+  # Validate GRUB config BEFORE creating backup
+  if ! grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT"; then
+    msg_error "GRUB_CMDLINE_LINUX_DEFAULT not found in $GRUB_DEFAULT"
+    msg_info "Please add: GRUB_CMDLINE_LINUX_DEFAULT=\"\" to your GRUB config"
+    log_error "GRUB config missing GRUB_CMDLINE_LINUX_DEFAULT line"
+    return 1
+  fi
+
+  if ! sudo cp "$GRUB_DEFAULT" "${GRUB_DEFAULT}.backup.$(date +%Y%m%d-%H%M%S)"; then
+    msg_error "Failed to create GRUB backup"
+    log_error "Failed to backup $GRUB_DEFAULT"
+    return 1
+  fi
+  log_info "GRUB config backed up"
+
+  remove_dangerous_params "$GRUB_DEFAULT"
+
+  local grub_line current_cmdline=""
+  grub_line=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" 2>/dev/null) || grub_line=""
+  [[ "$grub_line" =~ ^GRUB_CMDLINE_LINUX_DEFAULT=\"([^\"]*)\" ]] && current_cmdline="${BASH_REMATCH[1]}"
+
+  if [[ "$current_cmdline" =~ (amd_iommu|intel_iommu)=off ]]; then
+    echo ""
+    msg_error "Conflicting IOMMU parameter detected (iommu=off)"
+    msg_info "Found IOMMU explicitly disabled in kernel parameters"
+    msg_warning "Please edit $GRUB_DEFAULT and remove iommu=off parameter"
+    echo ""
+    log_error "Setup aborted: Conflicting IOMMU parameter (iommu=off) found in GRUB config"
+    return 1
+  fi
+
+  local params_to_add=""
+
+  if ! [[ "$current_cmdline" =~ (amd_iommu|intel_iommu)=on ]]; then
+    params_to_add="$params_to_add $iommu_param"
+    log_info "Adding IOMMU parameter: $iommu_param"
+  else
+    log_info "IOMMU parameter already present"
+  fi
+
+  if ! [[ "$current_cmdline" =~ iommu=pt ]]; then
+    params_to_add="$params_to_add iommu=pt"
+    log_info "Adding iommu=pt parameter"
+  else
+    log_info "iommu=pt already present"
+  fi
+
+  if [[ -n "${GPU_VENDOR_ID:-}" ]] && [[ "${GPU_VENDOR_ID}" == "10de" || "${GPU_VENDOR_ID[0]:-}" == "10de" ]]; then
+    if ! [[ "$current_cmdline" =~ pci=realloc ]]; then
+      local gpu_pci="${GPU_PCI_ADDR:-}"
+      [[ -z "$gpu_pci" ]] && gpu_pci="${GPU_PCI_ADDR[0]:-}"
+      if [[ -n "$gpu_pci" ]] && check_resizable_bar "$gpu_pci" 2>/dev/null; then
+        params_to_add="$params_to_add pci=realloc"
+        log_info "Adding pci=realloc (NVIDIA ReBAR detected)"
+      fi
+    fi
+  fi
+
+  if [[ -n "$params_to_add" ]]; then
+    params_to_add="${params_to_add# }"
+    local new_cmdline="$current_cmdline $params_to_add"
+    # Escape sed special chars in replacement: & (backreference) and \ (escape)
+    local new_cmdline_escaped="${new_cmdline//\\/\\\\}"
+    new_cmdline_escaped="${new_cmdline_escaped//&/\\&}"
+    if sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline_escaped\"|" "$GRUB_DEFAULT"; then
+      msg_success "Kernel parameters: $params_to_add"
+      log_info "GRUB config updated: $params_to_add"
+    else
+      msg_error "Failed to update GRUB config"
+      log_error "Failed to write to $GRUB_DEFAULT"
+      return 1
+    fi
+  else
+    msg_info "Kernel parameters already set"
+    log_info "GRUB kernel parameters already configured"
+  fi
+
+  local regen_cmd=$(get_grub_regenerate_cmd)
+  if [[ -n "$regen_cmd" ]]; then
+    msg_info "Regenerating GRUB config..."
+    if sudo $regen_cmd >/dev/null 2>&1; then
+      msg_success "GRUB config regenerated"
+    else
+      msg_warning "GRUB regeneration failed - run manually: $regen_cmd"
+    fi
+  else
+    msg_warning "Could not determine GRUB regenerate command"
+    msg_info "Run manually: grub-mkconfig -o /boot/grub/grub.cfg"
+  fi
+
+  return 0
+}
+
+configure_vfio_modules() {
+  local gpu_pci="$1"
+  local vendor_id="$2"
+  local device_id="$3"
+
+  # Validate gpu_pci parameter (required, system boundary)
+  if [[ -z "$gpu_pci" ]]; then
+    log_error "configure_vfio_modules: gpu_pci parameter is empty"
+    msg_error "GPU PCI address is missing"
+    return 1
+  fi
+  if ! validate_pci_address "$gpu_pci"; then
+    log_error "configure_vfio_modules: Invalid gpu_pci: $gpu_pci"
+    msg_error "Invalid GPU PCI address: $gpu_pci"
+    return 1
+  fi
+
+  local usb_ids=$(get_usb_controller_ids_in_iommu_group "$gpu_pci")
+
+  # Fallback: detect USB controllers by GPU vendor + USB class when IOMMU not active
+  if [[ -z "$usb_ids" ]] && [[ -n "$vendor_id" ]]; then
+    local gpu_vendor="$vendor_id"
+    gpu_vendor=$(echo "$gpu_vendor" | tr '[:upper:]' '[:lower:]')
+
+    if [[ "$gpu_vendor" == "10de" ]]; then
+      # NVIDIA USB controllers: find all 10de devices with class 0c03 (USB controller)
+      usb_ids=$(lspci -nn | grep -i "\[0c03\]" | grep -i "\[10de:" | grep -oP '\[10de:[0-9a-fA-F]{4}\]' | tr -d '[]' | tr '\n' ',' | sed 's/,$//')
+      if [[ -n "$usb_ids" ]]; then
+        log_warn "IOMMU not active - detected NVIDIA USB controllers by vendor ID: $usb_ids"
+        msg_warning "IOMMU not yet active (first boot) - using vendor-based USB detection"
+      fi
+    fi
+  fi
+
+  if [[ -n "$usb_ids" ]]; then
+    log_info "USB controllers in IOMMU group need early binding: $usb_ids"
+    msg_info "USB controller detected in IOMMU group - enabling early binding"
+  fi
+
+  # Determine if GPU needs vfio-pci.ids (early binding at boot)
+  # Required when we can't blacklist the driver:
+  # - MUX-less laptops: dGPU driver (nvidia/amdgpu) can't be blacklisted
+  # - AMD desktops: amdgpu used by both iGPU and dGPU, can't blacklist
+  local gpu_device_ids=""
+  local use_vfio_ids=false
+
+  if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
+    # MUX-less laptops: check for Hybrid Mode
+    if [[ "${HYBRID_MUXLESS_MODE:-false}" == "true" ]]; then
+      log_info "Hybrid Mode: GPU will use runtime binding"
+      msg_info "VFIO: Runtime binding (driver stays active)"
+    else
+      use_vfio_ids=true
+    fi
+  elif [[ "$vendor_id" == "1002" ]]; then
+    # AMD dGPU on desktop: can't blacklist amdgpu (iGPU uses it too)
+    use_vfio_ids=true
+    log_info "AMD desktop: using vfio-pci.ids (can't blacklist amdgpu)"
+  fi
+
+  if [[ "$use_vfio_ids" == "true" ]]; then
+    # Validate that vendor_id and device_id were passed (system boundary input)
+    if [[ -z "$vendor_id" ]] || [[ -z "$device_id" ]]; then
+      log_error "configure_vfio_modules: vfio-pci.ids requires vendor_id and device_id parameters"
+      msg_error "vfio-pci.ids configuration requires GPU vendor and device IDs"
+      return 1
+    fi
+
+    # Validate ID format - must be 4 hex digits (prevents malformed kernel parameters)
+    if ! [[ "$vendor_id" =~ ^[0-9a-fA-F]{4}$ ]]; then
+      log_error "configure_vfio_modules: Invalid vendor ID format: $vendor_id (expected 4 hex digits)"
+      msg_error "Invalid GPU vendor ID: $vendor_id (expected 4 hex digits)"
+      return 1
+    fi
+    if ! [[ "$device_id" =~ ^[0-9a-fA-F]{4}$ ]]; then
+      log_error "configure_vfio_modules: Invalid device ID format: $device_id (expected 4 hex digits)"
+      msg_error "Invalid GPU device ID: $device_id (expected 4 hex digits)"
+      return 1
+    fi
+
+    gpu_device_ids="${vendor_id}:${device_id}"
+
+    # Also bind audio device if present (same IOMMU group, needed for clean passthrough)
+    local audio_id=$(get_gpu_audio_device "$gpu_pci")
+    if [[ -n "$audio_id" ]]; then
+      gpu_device_ids="${gpu_device_ids},${audio_id}"
+      log_info "Early binding: dGPU + audio to vfio-pci at boot (${vendor_id}:${device_id}, ${audio_id})"
+    else
+      log_info "Early binding: dGPU to vfio-pci at boot (${vendor_id}:${device_id})"
+    fi
+  fi
+
+  # Combine GPU device IDs and USB controller IDs
+  local all_ids=""
+  [[ -n "$gpu_device_ids" ]] && all_ids="$gpu_device_ids"
+  [[ -n "$usb_ids" ]] && all_ids="${all_ids:+${all_ids},}${usb_ids}"
+
+  {
+    echo "# VFIO GPU Passthrough - Generated $(date +%Y-%m-%d)"
+    [[ -n "$all_ids" ]] && echo "options vfio-pci ids=$all_ids"
+    echo "options vfio-pci disable_vga=1"
+    echo "options vfio-pci disable_idle_d3=1"
+    # Ensure vfio-pci loads before xhci_pci to prevent USB controller rebind
+    [[ -n "$usb_ids" ]] && echo "softdep xhci_pci pre: vfio-pci"
+    # Ensure vfio-pci loads before nvidia modules (MUX-less laptops)
+    if [[ "$vendor_id" == "10de" ]]; then
+      echo "softdep nvidia pre: vfio-pci"
+      echo "softdep nvidia_modeset pre: vfio-pci"
+      echo "softdep nvidia_uvm pre: vfio-pci"
+      echo "softdep nvidia_drm pre: vfio-pci"
+    fi
+  } | sudo tee "$VFIO_CONF" >/dev/null
+
+  # Create udev rule for persistent driver_override (prevents xhci_hcd rebind)
+  # Using RUN+= instead of ATTR{} because ATTR doesn't trigger bind
+  if [[ -n "$usb_ids" ]]; then
+    local udev_rules_file="/etc/udev/rules.d/99-vfio-usb-override.rules"
+    {
+      echo "# Prevent xhci_hcd from rebinding USB controllers in GPU IOMMU group"
+      echo "# Generated $(date +%Y-%m-%d) by omarchy-gpu-passthrough"
+      local id
+      for id in $(echo "$usb_ids" | tr ',' ' '); do
+        local vendor="${id%%:*}"
+        local device="${id##*:}"
+        echo "ACTION==\"add\", SUBSYSTEM==\"pci\", ATTR{vendor}==\"0x$vendor\", ATTR{device}==\"0x$device\", RUN+=\"/bin/sh -c 'echo vfio-pci > /sys/bus/pci/devices/%k/driver_override'\""
+      done
+    } | sudo tee "$udev_rules_file" >/dev/null
+    sudo udevadm control --reload-rules
+    log_info "USB controller udev rule created: $udev_rules_file"
+  fi
+
+  msg_success "VFIO config: $VFIO_CONF"
+  return 0
+}
+
+configure_kvm_options() {
+  local cpu_vendor
+  cpu_vendor=$(get_cpu_vendor)
+
+  if [[ -f "$KVM_CONF" ]] && grep -q "ignore_msrs=1" "$KVM_CONF" 2>/dev/null; then
+    msg_info "KVM options already configured"
+    return 0
+  fi
+
+  local kvm_content="# KVM options for Windows VM - Generated $(date +%Y-%m-%d)
+options kvm ignore_msrs=1
+options kvm report_ignored_msrs=0"
+
+  case "$cpu_vendor" in
+    amd) kvm_content+=$'\n'"options kvm_amd nested=1" ;;
+    intel) kvm_content+=$'\n'"options kvm_intel nested=1" ;;
+  esac
+
+  if ! echo "$kvm_content" | sudo tee "$KVM_CONF" >/dev/null; then
+    msg_error "Failed to write $KVM_CONF"
+    return 1
+  fi
+
+  msg_success "KVM options: $KVM_CONF"
+  return 0
+}
+
+configure_gpu_blacklist() {
+  local vendor_id="$1"
+
+  local gpu_vendor=""
+  case "$vendor_id" in
+  10de) gpu_vendor="nvidia" ;;
+  1002) gpu_vendor="amdgpu" ;;
+  8086) gpu_vendor="i915" ;;
+  *)
+    msg_warning "Unknown GPU vendor: $vendor_id"
+    return 1
+    ;;
+  esac
+
+  if [[ "$gpu_vendor" == "nvidia" ]]; then
+    sudo tee "$BLACKLIST_CONF" >/dev/null <<EOF
+# GPU Passthrough - Prevent NVIDIA auto-load at boot
+# Display handled by iGPU, NVIDIA used only for VM passthrough
+install nvidia /bin/false
+EOF
+    msg_success "NVIDIA blacklist: $BLACKLIST_CONF"
+  else
+    if [[ -f "$BLACKLIST_CONF" ]]; then
+      sudo rm -f "$BLACKLIST_CONF"
+    fi
+  fi
+
+  return 0
+}
+
+configure_pci_binding_permissions() {
+  local udev_rules_file="/etc/udev/rules.d/90-vfio-pci-permissions.rules"
+
+  sudo tee "$udev_rules_file" >/dev/null <<'EOF'
+# Allow kvm group to bind/unbind PCI devices for GPU passthrough
+# This allows passwordless GPU mode switching (omarchy-gpu-passthrough mode vm/host/none)
+
+# Allow kvm group to rescan PCI bus
+SUBSYSTEM=="pci", KERNEL=="pci*", \
+  RUN+="/bin/sh -c 'chmod 0660 /sys/bus/pci/rescan 2>/dev/null; chgrp kvm /sys/bus/pci/rescan 2>/dev/null'"
+
+# When vfio-pci module is loaded, make control files writable by kvm group
+KERNEL=="vfio-pci", SUBSYSTEM=="module", \
+  RUN+="/bin/sh -c 'chmod 0660 /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null; chgrp kvm /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null'"
+
+# Allow kvm group to bind/unbind from native GPU drivers (nvidia, amdgpu, i915)
+KERNEL=="nvidia", SUBSYSTEM=="module", \
+  RUN+="/bin/sh -c 'chmod 0660 /sys/bus/pci/drivers/nvidia/{bind,unbind,new_id,remove_id} 2>/dev/null; chgrp kvm /sys/bus/pci/drivers/nvidia/{bind,unbind,new_id,remove_id} 2>/dev/null'"
+
+KERNEL=="amdgpu", SUBSYSTEM=="module", \
+  RUN+="/bin/sh -c 'chmod 0660 /sys/bus/pci/drivers/amdgpu/{bind,unbind,new_id,remove_id} 2>/dev/null; chgrp kvm /sys/bus/pci/drivers/amdgpu/{bind,unbind,new_id,remove_id} 2>/dev/null'"
+
+KERNEL=="i915", SUBSYSTEM=="module", \
+  RUN+="/bin/sh -c 'chmod 0660 /sys/bus/pci/drivers/i915/{bind,unbind,new_id,remove_id} 2>/dev/null; chgrp kvm /sys/bus/pci/drivers/i915/{bind,unbind,new_id,remove_id} 2>/dev/null'"
+
+# For each PCI device bound to any driver, allow kvm group to unbind it
+SUBSYSTEM=="pci", ACTION=="bind", \
+  RUN+="/bin/sh -c 'chmod 0660 /sys/bus/pci/devices/$kernel/driver/unbind 2>/dev/null; chgrp kvm /sys/bus/pci/devices/$kernel/driver/unbind 2>/dev/null'"
+
+# Allow kvm group to probe drivers
+SUBSYSTEM=="pci", ACTION=="add", \
+  RUN+="/bin/sh -c 'chmod 0660 /sys/bus/pci/drivers_probe 2>/dev/null; chgrp kvm /sys/bus/pci/drivers_probe 2>/dev/null'"
+EOF
+
+  # Reload udev rules
+  sudo udevadm control --reload-rules
+  sudo udevadm trigger --subsystem-match=pci
+
+  # Apply permissions immediately (don't wait for reboot/module reload)
+  sudo chmod 0660 /sys/bus/pci/rescan 2>/dev/null || true
+  sudo chgrp kvm /sys/bus/pci/rescan 2>/dev/null || true
+  sudo chmod 0660 /sys/bus/pci/drivers_probe 2>/dev/null || true
+  sudo chgrp kvm /sys/bus/pci/drivers_probe 2>/dev/null || true
+
+  # If vfio-pci is already loaded, apply permissions now
+  if is_module_loaded vfio_pci; then
+    sudo chmod 0660 /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null || true
+    sudo chgrp kvm /sys/bus/pci/drivers/vfio-pci/{bind,unbind,new_id,remove_id} 2>/dev/null || true
+  fi
+
+  # If native GPU drivers are loaded, apply permissions now
+  if is_module_loaded nvidia; then
+    sudo chmod 0660 /sys/bus/pci/drivers/nvidia/{bind,unbind,new_id,remove_id} 2>/dev/null || true
+    sudo chgrp kvm /sys/bus/pci/drivers/nvidia/{bind,unbind,new_id,remove_id} 2>/dev/null || true
+  fi
+
+  if is_module_loaded amdgpu; then
+    sudo chmod 0660 /sys/bus/pci/drivers/amdgpu/{bind,unbind,new_id,remove_id} 2>/dev/null || true
+    sudo chgrp kvm /sys/bus/pci/drivers/amdgpu/{bind,unbind,new_id,remove_id} 2>/dev/null || true
+  fi
+
+  if is_module_loaded i915; then
+    sudo chmod 0660 /sys/bus/pci/drivers/i915/{bind,unbind,new_id,remove_id} 2>/dev/null || true
+    sudo chgrp kvm /sys/bus/pci/drivers/i915/{bind,unbind,new_id,remove_id} 2>/dev/null || true
+  fi
+
+  msg_success "PCI permissions: kvm group can bind/unbind devices"
+  return 0
+}
+
+configure_gpu_state_tmpfiles() {
+  local tmpfiles_gpu_state_file="/etc/tmpfiles.d/omarchy-gpu-passthrough.conf"
+
+  sudo tee "$tmpfiles_gpu_state_file" >/dev/null <<'EOF'
+# Omarchy GPU Passthrough - State marker file
+# Tracks current GPU mode (none/vm/host)
+# Auto-recreated on boot (tmpfs cleanup)
+f /var/run/omarchy-vm-gpu-mode 0664 root kvm - none
+EOF
+
+  # Apply immediately (don't wait for reboot)
+  if ! sudo systemd-tmpfiles --create "$tmpfiles_gpu_state_file" 2>/dev/null; then
+    msg_warning "Failed to apply tmpfiles now (will work after reboot)"
+  fi
+
+  msg_success "GPU state marker tmpfiles configured"
+
+  return 0
+}
+
+configure_sudoers_gpu_passthrough() {
+  local sudoers_file="/etc/sudoers.d/omarchy-gpu-passthrough"
+  local real_user="${SUDO_USER:-$USER}"
+
+  if [[ -z "$real_user" ]] || [[ "$real_user" =~ [^a-zA-Z0-9_-] ]]; then
+    msg_error "Invalid username: $real_user"
+    return 1
+  fi
+
+  local sudoers_content="# Omarchy GPU Passthrough - Passwordless Operations
+# Generated by omarchy-gpu-passthrough setup
+
+# GPU process detection
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/fuser -v /dev/nvidia*
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/fuser -v /dev/dri/*
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/fuser -v /dev/dri/card*
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/fuser -v /dev/vfio/*
+
+# GPU module operations
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/modprobe vfio-pci
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/modprobe -r nvidia*
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/modprobe -r amdgpu
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/modprobe -r i915
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia_uvm
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia_drm
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/modprobe -i nvidia_drm modeset=1
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/modprobe amdgpu
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/modprobe i915
+
+# PCI sysfs operations (driver bind/unbind)
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/vfio-pci/new_id
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/vfio-pci/bind
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/vfio-pci/unbind
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/vfio-pci/remove_id
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/nvidia/bind
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/amdgpu/bind
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/i915/bind
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/xhci_hcd/bind
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/rescan
+
+# PCI device operations (for dynamic PCI device paths)
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/devices/*/driver/unbind
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/devices/*/driver_override
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/devices/*/reset
+
+# Audio device unbinding (required for complete IOMMU group)
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/snd_hda_intel/bind
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/bus/pci/drivers/snd_hda_intel/unbind
+
+# State marker file (GPU mode tracking)
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/tee /var/run/omarchy-vm-gpu-mode
+$real_user ALL=(ALL) NOPASSWD: /usr/bin/rm -f /var/run/omarchy-vm-gpu-mode
+"
+
+  # Create temporary file with error handling
+  local temp_file
+  temp_file=$(mktemp) || {
+    msg_error "Failed to create temporary file"
+    return 1
+  }
+
+  # Write content with error handling
+  if ! echo "$sudoers_content" > "$temp_file"; then
+    msg_error "Failed to write to temporary file"
+    rm -f "$temp_file"
+    return 1
+  fi
+
+  # Validate sudoers syntax
+  if ! sudo visudo -c -f "$temp_file" 2>&1 | grep -q "parsed OK"; then
+    msg_error "Sudoers syntax validation failed!"
+    rm -f "$temp_file"
+    return 1
+  fi
+
+  # Install sudoers file
+  if ! sudo install -m 440 -o root -g root "$temp_file" "$sudoers_file"; then
+    msg_error "Failed to install sudoers file"
+    rm -f "$temp_file"
+    return 1
+  fi
+
+  # Cleanup
+  rm -f "$temp_file"
+
+  return 0
+}
+
+unconfigure_sudoers_gpu_passthrough() {
+  local sudoers_file="/etc/sudoers.d/omarchy-gpu-passthrough"
+
+  if sudo test -f "$sudoers_file"; then
+    sudo rm -f "$sudoers_file"
+    msg_success "GPU passthrough sudoers removed"
+  fi
+
+  return 0
+}
+
+unconfigure_gpu_state_tmpfiles() {
+  local tmpfiles_file="/etc/tmpfiles.d/omarchy-gpu-passthrough.conf"
+
+  if sudo test -f "$tmpfiles_file"; then
+    sudo rm -f "$tmpfiles_file"
+    msg_success "GPU state marker tmpfiles removed"
+  fi
+
+  return 0
+}
+
+remove_vfio_from_mkinitcpio() {
+  sudo sed -i -E '/^MODULES=/s/\bvfio_pci\b//g; /^MODULES=/s/\bvfio-pci\b//g; /^MODULES=/s/\bvfio\b//g; /^MODULES=/s/\bvfio_iommu_type1\b//g' "$MKINITCPIO_CONF"
+}
+
+cleanup_mkinitcpio_modules_whitespace() {
+  sudo sed -i -E '/^MODULES=/s/[[:space:]]{2,}/ /g' "$MKINITCPIO_CONF"
+  sudo sed -i -E '/^MODULES=/s/\([[:space:]]+/(/g' "$MKINITCPIO_CONF"
+  sudo sed -i -E '/^MODULES=/s/[[:space:]]+\)/)/g' "$MKINITCPIO_CONF"
+}
+
+configure_vfio_modules_mkinitcpio() {
+  if [[ ! -f "$MKINITCPIO_CONF" ]]; then
+    msg_warning "$MKINITCPIO_CONF not found"
+    return 1
+  fi
+
+  # Verify modconf hook is present (required for /etc/modprobe.d/* in initramfs)
+  local current_hooks
+  current_hooks=$(grep "^HOOKS=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_hooks=""
+  if [[ -n "$current_hooks" ]] && [[ ! "$current_hooks" =~ modconf ]]; then
+    msg_warning "modconf hook missing from HOOKS - softdep may not work"
+    log_warn "modconf not in HOOKS: $current_hooks"
+  fi
+
+  local current_modules
+  current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_modules=""
+
+  if [[ "$current_modules" =~ nvidia ]]; then
+    msg_info "Removing NVIDIA modules from initramfs..."
+    sudo sed -i -E '/^MODULES=/s/\bnvidia\b//g' "$MKINITCPIO_CONF"
+    sudo sed -i -E '/^MODULES=/s/\bnvidia_modeset\b//g' "$MKINITCPIO_CONF"
+    sudo sed -i -E '/^MODULES=/s/\bnvidia_uvm\b//g' "$MKINITCPIO_CONF"
+    sudo sed -i -E '/^MODULES=/s/\bnvidia_drm\b//g' "$MKINITCPIO_CONF"
+    msg_success "  NVIDIA modules removed"
+  fi
+
+  local host_driver=""
+  if [[ -n "${IGPU_PCI:-}" ]]; then
+    local igpu_vendor
+    igpu_vendor=$(lspci -n -s "$IGPU_PCI" 2>/dev/null | awk '{print $3}' | cut -d: -f1)
+    case "$igpu_vendor" in
+      8086) host_driver="i915" ;;
+      1002) host_driver="amdgpu" ;;
+    esac
+  fi
+
+  current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_modules=""
+
+  local vfio_modules="vfio_pci vfio vfio_iommu_type1"
+
+  if [[ "$current_modules" =~ vfio_pci|vfio-pci ]]; then
+    if [[ -z "$host_driver" ]]; then
+      msg_info "VFIO modules already in initramfs"
+      return 0
+    elif [[ "$current_modules" =~ $host_driver.*vfio_pci ]]; then
+      msg_info "VFIO modules already in initramfs (order OK)"
+      return 0
+    else
+      msg_warning "Fixing module order ($host_driver must load before vfio)"
+      remove_vfio_from_mkinitcpio
+      current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_modules=""
+    fi
+  fi
+
+  if [[ "$current_modules" =~ ^MODULES=\([[:space:]]*\)$ ]]; then
+    if [[ -n "$host_driver" ]]; then
+      sudo sed -i "s/^MODULES=([[:space:]]*)$/MODULES=($host_driver $vfio_modules)/" "$MKINITCPIO_CONF"
+    else
+      sudo sed -i "s/^MODULES=([[:space:]]*)$/MODULES=($vfio_modules)/" "$MKINITCPIO_CONF"
+    fi
+  elif [[ -n "$host_driver" ]] && [[ "$current_modules" =~ $host_driver ]]; then
+    sudo sed -i "/^MODULES=/s/\b$host_driver\b/$host_driver $vfio_modules/" "$MKINITCPIO_CONF"
+  elif [[ -n "$host_driver" ]]; then
+    sudo sed -i "s/^MODULES=([[:space:]]*/MODULES=($host_driver $vfio_modules /" "$MKINITCPIO_CONF"
+  else
+    sudo sed -i "s/^MODULES=([[:space:]]*/MODULES=($vfio_modules /" "$MKINITCPIO_CONF"
+  fi
+
+  cleanup_mkinitcpio_modules_whitespace
+
+  if [[ -n "$host_driver" ]]; then
+    msg_success "VFIO modules added (order: $host_driver → vfio)"
+  else
+    msg_success "VFIO modules added to initramfs"
+  fi
+  return 0
+}
+
+configure_system_environment() {
+  local igpu_pci="$1"
+
+  if ! validate_pci_address "$igpu_pci"; then
+    msg_error "Invalid PCI address: $igpu_pci"
+    return 1
+  fi
+
+  local env_file="/etc/environment"
+
+  # Clean any old GPU-related env vars from /etc/environment
+  # We don't need to set AQ_DRM_DEVICES - when dGPU is blacklisted,
+  # compositors will automatically select the only available GPU (iGPU)
+  if [[ -f "$env_file" ]]; then
+    sudo sed -i '/^WLR_DRM_DEVICES=/d' "$env_file"
+    sudo sed -i '/^AQ_DRM_DEVICES=/d' "$env_file"
+    sudo sed -i '/# GPU Passthrough Configuration/d' "$env_file"
+    sudo sed -i '/# GPU Passthrough - Force Hyprland to iGPU/d' "$env_file"
+  fi
+
+  msg_success "System env: cleaned GPU settings (auto-detect enabled)"
+
+  return 0
+}
+
+configure_hyprland_igpu() {
+  local igpu_pci="$1"
+
+  if ! validate_pci_address "$igpu_pci"; then
+    msg_error "Invalid PCI address: $igpu_pci"
+    return 1
+  fi
+
+  local real_user="${SUDO_USER:-$USER}"
+  if ! id "$real_user" &>/dev/null; then
+    msg_error "User $real_user not found"
+    return 1
+  fi
+
+  local user_home=$(getent passwd "$real_user" | cut -d: -f6)
+  if [[ -z "$user_home" ]]; then
+    msg_error "Could not determine home directory"
+    return 1
+  fi
+
+  local hypr_conf="$user_home/.config/hypr/hyprland.conf"
+  if [[ ! -f "$hypr_conf" ]]; then
+    msg_warning "Hyprland config not found - skipping Hyprland configuration"
+    log_info "Hyprland config not found at $hypr_conf - user may not use Hyprland"
+    return 0
+  fi
+
+  # Clean any old GPU-related env vars from Hyprland config
+  if [[ -w "$hypr_conf" ]]; then
+    sed -i '/^env = WLR_DRM_DEVICES,/d' "$hypr_conf"
+    sed -i '/^env = AQ_DRM_DEVICES,/d' "$hypr_conf"
+    sed -i '/^env = DRI_PRIME,/d' "$hypr_conf"
+    sed -i '/^env = __GLX_VENDOR_LIBRARY_NAME,/d' "$hypr_conf"
+    sed -i '/^env = LIBVA_DRIVER_NAME,/d' "$hypr_conf"
+    sed -i '/^env = NVD_BACKEND,/d' "$hypr_conf"
+    sed -i '/# GPU Passthrough Configuration/d' "$hypr_conf"
+    sed -i '/# GPU Passthrough - Force iGPU/d' "$hypr_conf"
+  else
+    sudo sed -i '/^env = WLR_DRM_DEVICES,/d' "$hypr_conf"
+    sudo sed -i '/^env = AQ_DRM_DEVICES,/d' "$hypr_conf"
+    sudo sed -i '/^env = DRI_PRIME,/d' "$hypr_conf"
+    sudo sed -i '/^env = __GLX_VENDOR_LIBRARY_NAME,/d' "$hypr_conf"
+    sudo sed -i '/^env = LIBVA_DRIVER_NAME,/d' "$hypr_conf"
+    sudo sed -i '/^env = NVD_BACKEND,/d' "$hypr_conf"
+    sudo sed -i '/# GPU Passthrough Configuration/d' "$hypr_conf"
+    sudo sed -i '/# GPU Passthrough - Force iGPU/d' "$hypr_conf"
+  fi
+
+  [[ -n "${SUDO_USER:-}" ]] && chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$hypr_conf" 2>/dev/null
+
+  # For MUX-less laptops: dGPU is NOT blacklisted (uses vfio-pci.ids)
+  # EGL probing will still open /dev/nvidia* handles unless we force Mesa
+  if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
+    configure_uwsm_env_muxless "$igpu_pci" "$user_home"
+    msg_success "Hyprland: GPU passthrough environment configured (MUX-less)"
+    return 0
+  fi
+
+  msg_success "Hyprland: cleaned GPU settings (auto-detect enabled)"
+  # Message depends on binding method - check if vfio-pci.ids is configured
+  if [[ -f "$VFIO_CONF" ]] && grep -q "^options vfio-pci ids=" "$VFIO_CONF" 2>/dev/null; then
+    msg_info "Hyprland will auto-select iGPU (dGPU bound to vfio-pci at boot)"
+  else
+    msg_info "Hyprland will auto-select iGPU (dGPU is blacklisted)"
+  fi
+
+  return 0
+}
+
+# Helper: Ensure UWSM env file exists and is writable
+_ensure_uwsm_file() {
+  local file_path="$1"
+  local user_home="$2"
+  local uwsm_dir="$user_home/.config/uwsm"
+  local config_dir="$user_home/.config"
+  USE_SUDO=""
+
+  # Determine if we need sudo (check parent dir writability)
+  if [[ -d "$uwsm_dir" ]]; then
+    [[ ! -w "$uwsm_dir" ]] && USE_SUDO="sudo"
+  elif [[ -d "$config_dir" ]]; then
+    [[ ! -w "$config_dir" ]] && USE_SUDO="sudo"
+  else
+    USE_SUDO="sudo"
+  fi
+
+  # Ensure directory exists
+  if [[ ! -d "$uwsm_dir" ]]; then
+    if ! $USE_SUDO mkdir -p "$uwsm_dir" 2>/dev/null; then
+      log_warn "Could not create UWSM config dir: $uwsm_dir"
+      return 1
+    fi
+    [[ -n "${SUDO_USER:-}" ]] && $USE_SUDO chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$uwsm_dir" 2>/dev/null
+  fi
+
+  # Create file if it doesn't exist
+  if [[ ! -f "$file_path" ]]; then
+    if ! $USE_SUDO touch "$file_path" 2>/dev/null; then
+      log_warn "Could not create UWSM file: $file_path"
+      return 1
+    fi
+    [[ -n "${SUDO_USER:-}" ]] && $USE_SUDO chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$file_path" 2>/dev/null
+  fi
+
+  # Update sudo requirement for file operations
+  if [[ -f "$file_path" && ! -w "$file_path" ]]; then
+    USE_SUDO="sudo"
+  fi
+
+  return 0
+}
+
+# Helper: Write content to UWSM file with proper section markers
+# Args: $1 = file path, $2 = content (without markers), $3 = section name (optional, default: "GPU Passthrough")
+_write_uwsm_section() {
+  local file_path="$1"
+  local content="$2"
+  local section_name="${3:-GPU Passthrough}"
+  local begin_marker="# BEGIN ${section_name} Configuration"
+  local end_marker="# END ${section_name} Configuration"
+
+  # Remove old section if exists
+  if grep -q "$begin_marker" "$file_path" 2>/dev/null; then
+    $USE_SUDO sed -i "/${begin_marker//\//\\/}/,/${end_marker//\//\\/}/d" "$file_path"
+  fi
+
+  # Add newline prefix if file is non-empty and doesn't end with newline
+  local prefix_newline=""
+  if [[ -s "$file_path" ]]; then
+    if [[ "$(tail -c1 "$file_path" 2>/dev/null | wc -l)" -eq 0 ]]; then
+      prefix_newline=$'\n'
+    fi
+  fi
+
+  local full_content="${prefix_newline}${begin_marker}
+${content}
+${end_marker}"
+
+  if [[ -n "$USE_SUDO" ]]; then
+    if ! echo "$full_content" | $USE_SUDO tee -a "$file_path" >/dev/null; then
+      log_warn "Failed to write to $file_path"
+      return 1
+    fi
+  else
+    if ! echo "$full_content" >> "$file_path"; then
+      log_warn "Failed to write to $file_path"
+      return 1
+    fi
+  fi
+
+  [[ -n "${SUDO_USER:-}" ]] && $USE_SUDO chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$file_path" 2>/dev/null
+  return 0
+}
+
+# Configure UWSM environment for AMD runtime binding (iGPU + dGPU same vendor)
+# Writes AQ_DRM_DEVICES to env-hyprland (Hyprland-specific variables)
+# Ref: https://wiki.hypr.land/Configuring/Environment-variables/
+configure_uwsm_env_amd_runtime() {
+  local igpu_pci="$1"
+  local user_home="$2"
+  local uwsm_env_hyprland="$user_home/.config/uwsm/env-hyprland"
+
+  # Use stable symlink created by udev rule (create_gpu_symlink_udev_rule)
+  # /dev/dri/igpu is stable across reboots, unlike card0/card1/card2
+  local drm_device="/dev/dri/igpu"
+
+  # Verify symlink exists (created by udev rule)
+  if [[ ! -L "$drm_device" ]] && [[ ! -e "$drm_device" ]]; then
+    log_warn "Stable symlink $drm_device not found - udev rule may not be applied yet"
+    msg_warning "GPU symlink not ready (will work after reboot)"
+  fi
+
+  log_info "Configuring UWSM env-hyprland for AMD runtime binding: iGPU=$igpu_pci → $drm_device"
+
+  # Configure env-hyprland for AQ_* variables (Hyprland-specific)
+  if ! _ensure_uwsm_file "$uwsm_env_hyprland" "$user_home"; then
+    msg_warning "Could not create UWSM env-hyprland file"
+    return 0
+  fi
+
+  local hyprland_content="# Use iGPU only - dGPU free for VM passthrough
+# Uses stable /dev/dri/igpu symlink (created by udev rule based on PCI slot)
+export AQ_DRM_DEVICES=\"${drm_device}\""
+
+  if ! _write_uwsm_section "$uwsm_env_hyprland" "$hyprland_content"; then
+    msg_warning "Could not write GPU passthrough configuration"
+    return 1
+  fi
+
+  msg_info "UWSM env-hyprland: Restrict Hyprland to $drm_device (iGPU)"
+  return 0
+}
+
+# Configure UWSM environment for MUX-less laptops (NVIDIA dGPU + AMD/Intel iGPU)
+# Writes to TWO files per UWSM documentation:
+#   - env: Mesa EGL forcing (prevents NVIDIA handles from opening)
+#   - env-hyprland: AQ_DRM_DEVICES (Hyprland-specific Aquamarine settings)
+# Ref: https://wiki.hypr.land/Configuring/Environment-variables/
+# Ref: https://github.com/Vladimir-csp/uwsm
+configure_uwsm_env_muxless() {
+  local igpu_pci="$1"
+  local user_home="$2"
+  local uwsm_env="$user_home/.config/uwsm/env"
+  local uwsm_env_hyprland="$user_home/.config/uwsm/env-hyprland"
+
+  # Use stable symlink created by udev rule (create_gpu_symlink_udev_rule)
+  # /dev/dri/igpu is stable across reboots, unlike card0/card1/card2
+  local drm_device="/dev/dri/igpu"
+
+  # Verify symlink exists (created by udev rule)
+  if [[ ! -L "$drm_device" ]] && [[ ! -e "$drm_device" ]]; then
+    log_warn "Stable symlink $drm_device not found - udev rule may not be applied yet"
+    msg_warning "GPU symlink not ready (will work after reboot)"
+  fi
+
+  log_info "Configuring UWSM for MUX-less: iGPU=$igpu_pci → $drm_device"
+
+  # Check if Mesa EGL vendor file exists
+  local mesa_egl="/usr/share/glvnd/egl_vendor.d/50_mesa.json"
+  if [[ ! -f "$mesa_egl" ]]; then
+    log_warn "Mesa EGL vendor file not found: $mesa_egl"
+    msg_warning "Mesa EGL not found - GPU isolation may not work"
+    return 0
+  fi
+
+  # Configure env (Mesa/toolkit variables - common to all compositors) ===
+  if ! _ensure_uwsm_file "$uwsm_env" "$user_home"; then
+    msg_warning "Could not create UWSM env file"
+    return 0
+  fi
+
+  local env_content="# Force Mesa EGL to prevent NVIDIA handles from being opened by Hyprland
+export __EGL_VENDOR_LIBRARY_FILENAMES=\"${mesa_egl}\"
+export __GLX_VENDOR_LIBRARY_NAME=\"mesa\"
+export __NV_PRIME_RENDER_OFFLOAD=0"
+
+  if ! _write_uwsm_section "$uwsm_env" "$env_content"; then
+    msg_warning "Could not write GPU passthrough configuration to env"
+    return 1
+  fi
+  log_info "UWSM env: Force Mesa EGL (prevents NVIDIA handle probing)"
+
+  # Configure env-hyprland (Hyprland-specific AQ_* variables) ===
+  if ! _ensure_uwsm_file "$uwsm_env_hyprland" "$user_home"; then
+    msg_warning "Could not create UWSM env-hyprland file"
+    return 0
+  fi
+
+  local hyprland_content="# Use iGPU only - dGPU free for VM passthrough
+# Uses stable /dev/dri/igpu symlink (created by udev rule based on PCI slot)
+export AQ_DRM_DEVICES=\"${drm_device}\""
+
+  if ! _write_uwsm_section "$uwsm_env_hyprland" "$hyprland_content"; then
+    msg_warning "Could not write GPU passthrough configuration to env-hyprland"
+    return 1
+  fi
+  log_info "UWSM env-hyprland: Restrict Hyprland to $drm_device (iGPU)"
+
+  msg_info "UWSM configured: Mesa EGL (env) + AQ_DRM_DEVICES (env-hyprland)"
+  return 0
+}
+
+# Unconfiguration Functions
+
+unconfigure_system_environment() {
+  local env_file="/etc/environment"
+
+  if [[ ! -f "$env_file" ]]; then
+    return 0
+  fi
+
+  if ! grep -q "^WLR_DRM_DEVICES=" "$env_file" &&
+    ! grep -q "^AQ_DRM_DEVICES=" "$env_file" &&
+    ! grep -q "# GPU Passthrough Configuration" "$env_file"; then
+    return 0
+  fi
+
+  sudo cp "$env_file" "${env_file}.backup.uninstall.$(date +%s)"
+  sudo sed -i '/^WLR_DRM_DEVICES=/d' "$env_file"
+  sudo sed -i '/^AQ_DRM_DEVICES=/d' "$env_file"
+  sudo sed -i '/# GPU Passthrough Configuration/d' "$env_file"
+
+  msg_success "System env vars removed"
+  return 0
+}
+
+unconfigure_hyprland_igpu() {
+  local real_user="${SUDO_USER:-$USER}"
+  if ! id "$real_user" &>/dev/null; then
+    return 0
+  fi
+
+  local user_home=$(getent passwd "$real_user" | cut -d: -f6)
+  if [[ -z "$user_home" ]]; then
+    return 0
+  fi
+
+  # Clean Hyprland config
+  local hypr_conf="$user_home/.config/hypr/hyprland.conf"
+  if [[ -f "$hypr_conf" ]]; then
+    if grep -qE "^env = (WLR_DRM_DEVICES|AQ_DRM_DEVICES|DRI_PRIME|LIBVA_DRIVER_NAME|__GLX_VENDOR_LIBRARY_NAME)," "$hypr_conf" ||
+       grep -q "# GPU Passthrough Configuration" "$hypr_conf"; then
+      cp -a "$hypr_conf" "${hypr_conf}.backup.uninstall.$(date +%s)"
+      sed -i '/^env = WLR_DRM_DEVICES,/d' "$hypr_conf"
+      sed -i '/^env = AQ_DRM_DEVICES,/d' "$hypr_conf"
+      sed -i '/^env = DRI_PRIME,/d' "$hypr_conf"
+      sed -i '/^env = LIBVA_DRIVER_NAME,/d' "$hypr_conf"
+      sed -i '/^env = __GLX_VENDOR_LIBRARY_NAME,/d' "$hypr_conf"
+      sed -i '/# GPU Passthrough Configuration/d' "$hypr_conf"
+      [[ -n "${SUDO_USER:-}" ]] && chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$hypr_conf" 2>/dev/null
+    fi
+  fi
+
+  # Clean UWSM env (MUX-less configuration)
+  unconfigure_uwsm_env_muxless "$user_home"
+
+  msg_success "Hyprland config cleaned"
+  return 0
+}
+
+# Helper: Remove GPU Passthrough section from a single UWSM file
+_unconfigure_uwsm_file() {
+  local file_path="$1"
+  local use_sudo=""
+
+  [[ ! -f "$file_path" ]] && return 0
+
+  if ! grep -q "# BEGIN GPU Passthrough" "$file_path" 2>/dev/null; then
+    return 0
+  fi
+
+  # Determine if we need sudo
+  [[ ! -w "$file_path" ]] && use_sudo="sudo"
+
+  # Backup before modification
+  if ! $use_sudo cp -a "$file_path" "${file_path}.backup.uninstall.$(date +%s)" 2>/dev/null; then
+    log_warn "Could not backup UWSM file: $file_path"
+  fi
+
+  if ! $use_sudo sed -i '/# BEGIN GPU Passthrough/,/# END GPU Passthrough/d' "$file_path" 2>/dev/null; then
+    log_warn "Could not remove GPU Passthrough section from $file_path"
+    return 0
+  fi
+
+  [[ -n "${SUDO_USER:-}" ]] && $use_sudo chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$file_path" 2>/dev/null
+
+  log_info "Removed GPU Passthrough section from $(basename "$file_path")"
+  return 0
+}
+
+# Remove GPU Passthrough configuration from all UWSM env files
+unconfigure_uwsm_env_muxless() {
+  local user_home="$1"
+
+  # Clean both env and env-hyprland files
+  _unconfigure_uwsm_file "$user_home/.config/uwsm/env"
+  _unconfigure_uwsm_file "$user_home/.config/uwsm/env-hyprland"
+
+  return 0
+}
+
+unconfigure_vfio_modules_mkinitcpio() {
+  if [[ ! -f "$MKINITCPIO_CONF" ]]; then
+    return 0
+  fi
+
+  local current_modules
+  current_modules=$(grep "^MODULES=" "$MKINITCPIO_CONF" 2>/dev/null | head -1) || current_modules=""
+  if ! [[ "$current_modules" =~ vfio_pci|vfio-pci ]]; then
+    return 0
+  fi
+
+  sudo cp "$MKINITCPIO_CONF" "${MKINITCPIO_CONF}.backup.uninstall.$(date +%s)"
+  remove_vfio_from_mkinitcpio
+  cleanup_mkinitcpio_modules_whitespace
+
+  msg_success "VFIO modules removed from initramfs"
+  return 0
+}
+
+unconfigure_gpu_blacklist() {
+  if [[ ! -f "$BLACKLIST_CONF" ]]; then
+    return 0
+  fi
+
+  sudo rm -f "$BLACKLIST_CONF"
+  msg_success "Blacklist removed"
+  return 0
+}
+
+unconfigure_kvm_options() {
+  if [[ ! -f "$KVM_CONF" ]]; then
+    return 0
+  fi
+
+  sudo rm -f "$KVM_CONF"
+  msg_success "KVM options removed"
+  return 0
+}
+
+unconfigure_vfio_modules() {
+  if [[ -f "$VFIO_CONF" ]]; then
+    sudo rm -f "$VFIO_CONF"
+    msg_success "VFIO config removed"
+  fi
+
+  # Remove USB controller udev rule if it exists
+  local udev_usb_override="/etc/udev/rules.d/99-vfio-usb-override.rules"
+  if [[ -f "$udev_usb_override" ]]; then
+    sudo rm -f "$udev_usb_override"
+    sudo udevadm control --reload-rules
+    msg_success "USB controller udev rule removed"
+  fi
+
+  return 0
+}
+
+unconfigure_pci_binding_permissions() {
+  local udev_rules_file="/etc/udev/rules.d/90-vfio-pci-permissions.rules"
+
+  if [[ -f "$udev_rules_file" ]]; then
+    msg_info "Removing PCI binding permissions..."
+    sudo rm -f "$udev_rules_file"
+    sudo udevadm control --reload-rules 2>/dev/null || true
+    sudo udevadm trigger --subsystem-match=pci 2>/dev/null || true
+    msg_success "  PCI binding permissions removed"
+  fi
+
+  return 0
+}
+
+unconfigure_kernel_parameters() {
+  local bootloader=$(detect_bootloader)
+
+  case "$bootloader" in
+  limine)
+    if [[ ! -f "$LIMINE_DEFAULT" ]]; then
+      return 1
+    fi
+
+    local all_cmdlines
+    all_cmdlines=$(grep '^KERNEL_CMDLINE\[default\]' "$LIMINE_DEFAULT" 2>/dev/null) || all_cmdlines=""
+    if ! [[ "$all_cmdlines" =~ (amd_iommu|intel_iommu)=on|iommu=pt ]]; then
+      return 0
+    fi
+
+    sudo cp "$LIMINE_DEFAULT" "${LIMINE_DEFAULT}.backup.uninstall.$(date +%s)"
+    sudo sed -i -E 's/[[:space:]]*(amd_iommu=on|intel_iommu=on)//g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]*iommu=pt//g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]*vfio-pci\.ids=[0-9a-f:,]+//g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]*pci=realloc//g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]+/ /g' "$LIMINE_DEFAULT"
+    sudo sed -i -E 's/[[:space:]]+"$/"/' "$LIMINE_DEFAULT"
+    ;;
+  grub)
+    if [[ ! -f "$GRUB_DEFAULT" ]]; then
+      return 1
+    fi
+
+    local grub_line current_cmdline=""
+    grub_line=$(grep '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEFAULT" 2>/dev/null) || grub_line=""
+    [[ "$grub_line" =~ ^GRUB_CMDLINE_LINUX_DEFAULT=\"([^\"]*)\" ]] && current_cmdline="${BASH_REMATCH[1]}"
+    if ! [[ "$current_cmdline" =~ (amd_iommu|intel_iommu)=on|iommu=pt ]]; then
+      return 0
+    fi
+
+    sudo cp "$GRUB_DEFAULT" "${GRUB_DEFAULT}.backup.uninstall.$(date +%s)"
+    local new_cmdline="$current_cmdline"
+    new_cmdline=$(sed -E 's/(^|[[:space:]])(amd_iommu|intel_iommu)=on([[:space:]]|$)/\3/g; s/(^|[[:space:]])iommu=pt([[:space:]]|$)/\2/g; s/(^|[[:space:]])pci=realloc([[:space:]]|$)/\2/g; s/[[:space:]]+/ /g; s/^ //; s/ $//' <<< "$new_cmdline")
+    # Escape sed special chars in replacement: & (backreference) and \ (escape)
+    local new_cmdline_escaped="${new_cmdline//\\/\\\\}"
+    new_cmdline_escaped="${new_cmdline_escaped//&/\\&}"
+    sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$new_cmdline_escaped\"|" "$GRUB_DEFAULT"
+
+    local regen_cmd=$(get_grub_regenerate_cmd)
+    if [[ -n "$regen_cmd" ]]; then
+      sudo $regen_cmd >/dev/null 2>&1 || true
+    fi
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+
+  msg_success "Kernel parameters removed"
+  return 0
+}
+
+check_passthrough_feasibility() {
+  local errors=0
+  local vendor=$(get_cpu_vendor)
+
+  if detect_virtualization; then
+    :
+  else
+    msg_error "Running inside a virtual machine detected!"
+    echo "   Detected: $VIRTUALIZATION_TYPE"
+    msg_warning "GPU passthrough requires bare metal (physical hardware)"
+    echo "   This tool is for physical Omarchy installations"
+    echo "   To use GPU in a VM, configure passthrough on the HOST system"
+    log_error "Setup aborted: Running inside a virtual machine ($VIRTUALIZATION_TYPE)"
+    exit 1
+  fi
+
+  if [[ "$GPU_COUNT" -lt 2 ]]; then
+    msg_error "Only 1 GPU detected (need 2: VM + host)"
+    errors=$((errors + 1))
+  fi
+
+  if ! check_cpu_iommu_capability; then
+    msg_error "CPU virtualization not detected"
+    case "$vendor" in
+    amd) msg_info "  Enable SVM/AMD-V in BIOS" ;;
+    intel) msg_info "  Enable VT-x in BIOS" ;;
+    *) msg_info "  Enable virtualization in BIOS" ;;
+    esac
+    errors=$((errors + 1))
+  fi
+
+  if ! check_iommu_support; then
+    msg_error "IOMMU not enabled"
+    case "$vendor" in
+    amd) msg_info "  Enable AMD-Vi in BIOS + add amd_iommu=on to kernel" ;;
+    intel) msg_info "  Enable VT-d in BIOS + add intel_iommu=on to kernel" ;;
+    *) msg_info "  Enable IOMMU in BIOS and kernel" ;;
+    esac
+    errors=$((errors + 1))
+  fi
+
+  return $errors
+}
+
+# GPU Selection
+
+select_gpu_for_passthrough() {
+  msg_section "GPU Selection"
+  echo "Available GPUs:"
+
+  local recommended_idx=-1
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    if [[ "${GPU_TYPE[$i]}" == "dedicated" ]]; then
+      recommended_idx=$i
+      break
+    fi
+  done
+
+  local configured_pci=""
+  if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
+    configured_pci=$(grep -oPm1 '^GPU_PCI_ADDR="\K[^"]+' "$GPU_PASSTHROUGH_CONF" 2>/dev/null || true)
+  fi
+
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local name="${GPU_NAME[$i]}"
+    local driver="${GPU_DRIVER[$i]}"
+    local type="${GPU_TYPE[$i]}"
+    local vendor_id="${GPU_VENDOR_ID[$i]}"
+    local device_id="${GPU_DEVICE_ID[$i]}"
+    local vram=$(get_gpu_memory "$pci" "$vendor_id")
+
+    local star=""
+    if [[ "$pci" == "$configured_pci" ]]; then
+      star=" [CURRENTLY CONFIGURED]"
+    elif [[ "$i" -eq "$recommended_idx" ]]; then
+      star=" ★ RECOMMENDED"
+    fi
+
+    echo "  $((i + 1)). ${name}${star}"
+    echo "     Memory: ${vram}"
+    echo "     PCI: $pci | IDs: ${vendor_id}:${device_id}"
+    echo "     Type: $type | Driver: $driver"
+
+    if [[ "$type" == "dedicated" ]]; then
+      echo "     💡 Best for VM passthrough"
+    else
+      echo "     Keep for Linux display"
+    fi
+    echo ""
+  done
+
+  local choices=()
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local vram=$(get_gpu_memory "$pci" "${GPU_VENDOR_ID[$i]}")
+    local prefix=""
+    if [[ "$pci" == "$configured_pci" ]]; then
+      prefix="[CONFIGURED] "
+    elif [[ "$i" -eq "$recommended_idx" ]]; then
+      prefix="★ "
+    fi
+    choices+=("${prefix}${GPU_NAME[$i]} - ${vram} ($pci)")
+  done
+
+  echo "Select GPU to pass through to VM:"
+  local selection
+  selection=$(gum choose "${choices[@]}") || {
+    msg_warning "GPU selection cancelled"
+    return 1
+  }
+
+  if [[ -z "$selection" ]]; then
+    msg_warning "No GPU selected"
+    return 1
+  fi
+
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local vram=$(get_gpu_memory "$pci" "${GPU_VENDOR_ID[$i]}")
+    if [[ "$selection" == "${GPU_NAME[$i]} - ${vram} ($pci)" ]] ||
+      [[ "$selection" == "★ ${GPU_NAME[$i]} - ${vram} ($pci)" ]] ||
+      [[ "$selection" == "[CONFIGURED] ${GPU_NAME[$i]} - ${vram} ($pci)" ]]; then
+      SELECTED_GPU_INDEX=$i
+      return 0
+    fi
+  done
+
+  msg_error "Failed to match GPU selection"
+  return 1
+}
+
+validate_gpu_selection() {
+  local idx="$SELECTED_GPU_INDEX"
+  local type="${GPU_TYPE[$idx]}"
+  local name="${GPU_NAME[$idx]}"
+  local pci="${GPU_PCI_ADDR[$idx]}"
+  local vram=$(get_gpu_memory "$pci" "${GPU_VENDOR_ID[$idx]}")
+
+  # MUX-less: Skip validation - already confirmed in MUX-less dialog, eDP always works
+  if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
+    log_info "MUX-less laptop: skipping standard validation (eDP always active)"
+    return 0
+  fi
+
+  msg_success "Selected for passthrough: ${name}"
+  echo "  PCI: $pci | Memory: $vram"
+
+  if [[ "$type" == "integrated" ]]; then
+    msg_warning "iGPU selected - NOT recommended!"
+    msg_warning "Linux will have no display after passthrough"
+    gum confirm "Continue anyway?" || return 1
+  fi
+
+  if [[ "$GPU_COUNT" -eq 1 ]]; then
+    msg_error "Only 1 GPU detected - passthrough requires 2"
+    return 1
+  fi
+
+  if [[ "$type" == "dedicated" ]]; then
+    gum confirm "Proceed?" || return 1
+  fi
+
+  msg_section "Monitor Setup"
+
+  local selected_gpu_pci="${GPU_PCI_ADDR[$idx]}"
+  local igpu_pci=""
+
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    if [[ "${GPU_TYPE[$i]}" == "integrated" ]]; then
+      igpu_pci="${GPU_PCI_ADDR[$i]}"
+      break
+    fi
+  done
+
+  local dgpu_monitor_count=$(count_connected_monitors_for_pci "$selected_gpu_pci")
+  local igpu_monitor_count=0
+  [[ -n "$igpu_pci" ]] && igpu_monitor_count=$(count_connected_monitors_for_pci "$igpu_pci")
+
+  if [[ "$igpu_monitor_count" -gt 0 ]]; then
+    msg_success "iGPU: $igpu_monitor_count monitor(s)"
+  else
+    msg_warning "iGPU: 0 monitors"
+  fi
+
+  if [[ "$dgpu_monitor_count" -gt 0 ]]; then
+    if [[ "$igpu_monitor_count" -gt 0 ]]; then
+      msg_info "Dedicated GPU: $dgpu_monitor_count monitor(s) (reserved for VM)"
+    else
+      msg_warning "Dedicated GPU: $dgpu_monitor_count monitor(s) (will go blank after reboot)"
+    fi
+  fi
+
+  if [[ "$igpu_monitor_count" -eq 0 ]] && [[ "$dgpu_monitor_count" -gt 0 ]]; then
+    msg_error "No monitors on iGPU - ALL monitors will go BLANK after reboot!"
+    msg_info "Connect at least one monitor to motherboard ports before rebooting"
+    log_warn "Critical: No iGPU monitors, $dgpu_monitor_count on dGPU"
+    gum confirm "I will connect monitor to motherboard BEFORE reboot" || {
+      msg_error "Setup aborted"
+      return 1
+    }
+  elif [[ "$igpu_monitor_count" -gt 0 ]]; then
+    msg_info "After reboot, use monitors connected to motherboard (iGPU)"
+    log_info "Monitor setup: $igpu_monitor_count iGPU, $dgpu_monitor_count dGPU"
+
+    gum confirm "Continue?" || {
+      msg_error "Setup aborted"
+      return 1
+    }
+  else
+    msg_warning "Cannot detect monitors - ensure at least one on motherboard ports"
+    log_warn "Cannot detect monitor connections"
+
+    gum confirm "Monitor connected to motherboard?" || {
+      msg_error "Setup aborted"
+      return 1
+    }
+  fi
+
+  log_info "User confirmed monitor setup"
+
+  return 0
+}
+
+# Banner & Intro Functions
+
+show_intro_banner() {
+  local cpu_vendor=$(get_cpu_vendor)
+  local bootloader=$(detect_bootloader)
+  local bootloader_path=$(get_bootloader_config_path "$bootloader")
+  local bootloader_safety
+
+  if is_bootloader_supported "$bootloader"; then
+    if [[ "$bootloader" == "limine" ]]; then
+      bootloader_safety="Limine snapshots available in boot menu (rollback option)"
+    else
+      bootloader_safety="$(get_bootloader_display_name "$bootloader") config backed up before changes"
+    fi
+  else
+    bootloader_safety="Manual configuration required (instructions provided)"
+  fi
+
+  msg_section "GPU Passthrough Setup Wizard"
+  msg_warning "Experimental - use with caution"
+  echo "WHAT WILL BE CHANGED:"
+  cat <<EOF
+  • Kernel boot parameters ($bootloader_path)
+  • GPU driver configuration (dedicated GPU reserved for VM)
+  • Initramfs modules + rebuild (/etc/mkinitcpio.conf)
+  • Hyprland configuration (~/.config/hypr/hyprland.conf)
+  • System REBOOT required
+EOF
+
+  echo ""
+  echo "AFTER REBOOT:"
+  cat <<EOF
+  • Dedicated GPU will be INACTIVE (reserved for VM, no native driver)
+  • Connect ALL monitors to MOTHERBOARD ports (iGPU only)
+  • Host display uses iGPU, dedicated GPU ready for VM
+  • VMs (omarchy-windows-vm) handle GPU automatically
+  • For host use (CUDA/gaming): omarchy-gpu-passthrough mode host
+EOF
+
+  echo ""
+  echo "SAFETY MEASURES:"
+  echo "  ✓  Automatic backups created before changes"
+  echo "  ✓  $bootloader_safety"
+  echo "  ✓  Undo anytime with: omarchy-gpu-passthrough setup --uninstall"
+
+  echo ""
+  echo "REQUIREMENTS:"
+  cat <<EOF
+  • 2+ GPUs (1 for VM passthrough, 1 for host display)
+  • BIOS: Primary Display = IGD or Auto (recommended)
+EOF
+
+  case "$cpu_vendor" in
+  amd)
+    cat <<EOF
+  • BIOS: SVM Mode = Enabled
+  • BIOS: IOMMU = Enabled (or AMD-Vi)
+EOF
+    ;;
+  intel)
+    cat <<EOF
+  • BIOS: Intel VT-x = Enabled
+  • BIOS: Intel VT-d = Enabled
+EOF
+    ;;
+  *)
+    cat <<EOF
+  • BIOS: Virtualization = Enabled
+  • BIOS: IOMMU = Enabled
+EOF
+    ;;
+  esac
+
+  echo ""
+  msg_info "Recommended: Create full system backup before proceeding (optional)"
+}
+
+# Main Commands
+
+cmd_setup() {
+  log_init
+  log_info "=== SETUP WIZARD START ==="
+  log_info "User: $USER"
+  log_info "System: $(uname -r)"
+
+  show_intro_banner
+
+  # Single confirmation - get user consent BEFORE any system changes
+  if ! gum confirm "I understand the risks and have checked BIOS settings. Continue?"; then
+    msg_warning "Setup cancelled. Run again when ready."
+    exit 0
+  fi
+
+  # Add to kvm group if needed (will be active after reboot)
+  if ! groups "$USER" | grep -q '\bkvm\b'; then
+    msg_info "Adding user to kvm group..."
+    if ! sudo usermod -aG kvm "$USER"; then
+      msg_error "Failed to add user to kvm group"
+      msg_info "  Run manually: sudo usermod -aG kvm \$USER"
+      exit 1
+    fi
+    msg_success "User added to kvm group (active after reboot)"
+    log_info "User $USER added to kvm group"
+  fi
+
+  # Add to video group if needed (required for DRI access)
+  if ! groups "$USER" | grep -q '\bvideo\b'; then
+    msg_info "Adding user to video group..."
+    if ! sudo usermod -aG video "$USER"; then
+      msg_error "Failed to add user to video group"
+      msg_info "  Run manually: sudo usermod -aG video \$USER"
+      exit 1
+    fi
+    msg_success "User added to video group (active after reboot)"
+    log_info "User $USER added to video group"
+  fi
+
+  # Ensure sudo access early (refresh timestamp to avoid multiple prompts)
+  if ! sudo -v; then
+    msg_error "sudo access required for setup"
+    exit 1
+  fi
+
+  # Check and install dependencies
+  check_dependencies
+
+  # Check if already configured
+  if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
+    msg_info "GPU passthrough is already configured"
+    # Load and show current config
+    if load_gpu_config; then
+      local current_mode="unknown"
+      if [[ -r "$STATE_MARKER_FILE" ]]; then
+        current_mode=$(<"$STATE_MARKER_FILE") 2>/dev/null || current_mode="unknown"
+      fi
+      msg_info "  GPU: $GPU_NAME ($GPU_PCI_ADDR)"
+      msg_info "  Mode: $current_mode"
+    fi
+    msg_info "This wizard will re-apply/update the configuration"
+  fi
+
+  detect_gpus
+
+  if [[ "$GPU_COUNT" -eq 0 ]]; then
+    msg_error "No GPUs detected!"
+    exit 1
+  fi
+
+  msg_success "Found $GPU_COUNT GPU(s)"
+
+  detect_hybrid_graphics_laptop
+
+  local driver_warnings=0
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local vendor_id="${GPU_VENDOR_ID[$i]}"
+    local name="${GPU_NAME[$i]}"
+    local driver="${GPU_DRIVER[$i]}"
+
+    case "$vendor_id" in
+    10de)
+      if ! command -v nvidia-smi &>/dev/null; then
+        msg_warning "  NVIDIA GPU detected but nvidia-smi not found"
+        msg_info "    GPU: $name"
+        msg_info "    This is OK if you haven't installed NVIDIA drivers yet"
+        driver_warnings=$((driver_warnings + 1))
+      else
+        msg_success "  NVIDIA drivers detected (nvidia-smi available)"
+      fi
+      ;;
+    1002)
+      if [[ "$driver" == "amdgpu" ]]; then
+        msg_success "  AMD GPU using amdgpu driver"
+      elif [[ "$driver" == "none" ]]; then
+        msg_warning "  AMD GPU detected but no driver loaded"
+        msg_info "    GPU: $name"
+        msg_info "    This is OK if you haven't installed AMD drivers yet"
+        driver_warnings=$((driver_warnings + 1))
+      fi
+      ;;
+    esac
+  done
+
+  if [[ "$driver_warnings" -gt 0 ]]; then
+    msg_info "Note: GPU passthrough works even without drivers (will be blacklisted)"
+  fi
+
+  local feasibility_errors=0
+  check_passthrough_feasibility || feasibility_errors=$?
+
+  if [[ "$GPU_COUNT" -lt 2 ]]; then
+    msg_error "GPU passthrough requires at least 2 GPUs"
+    exit 1
+  fi
+
+  if [[ "$feasibility_errors" -gt 0 ]]; then
+    msg_warning "IOMMU not currently detected - you will need to:"
+    msg_info "  1. Complete this setup to configure kernel parameters"
+    msg_info "  2. Enable IOMMU in BIOS (AMD-Vi or Intel VT-d)"
+    msg_info "  3. Reboot"
+    msg_info "  4. Run 'omarchy-gpu-passthrough info verify' to confirm"
+    gum confirm "Continue with setup anyway?" || exit 0
+  else
+    msg_success "System is capable of GPU passthrough"
+  fi
+
+  # MUX-less laptop: auto-select dGPU, show info and confirm BEFORE regular GPU selection
+  if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
+    # Get GPU names and find dGPU index for auto-selection
+    local igpu_name="" dgpu_name="" dgpu_idx=-1
+    for i in "${!GPU_PCI_ADDR[@]}"; do
+      if [[ "${GPU_PCI_ADDR[$i]}" == "$IGPU_PCI" ]]; then
+        igpu_name="${GPU_NAME[$i]}"
+      fi
+      if [[ "${GPU_PCI_ADDR[$i]}" == "$DGPU_PCI" ]]; then
+        dgpu_name="${GPU_NAME[$i]}"
+        dgpu_idx=$i
+      fi
+    done
+
+    msg_section "Hybrid Graphics Laptop (MUX-less)"
+    echo "Detected configuration:"
+    echo "  iGPU: $igpu_name → Linux display"
+    echo "  dGPU: $dgpu_name → VM passthrough"
+
+    if [[ "$BIOS_DISPLAY_CONTROL_MISSING" == "true" ]]; then
+      HYBRID_MUXLESS_MODE=true
+      log_info "MUX-less laptop: no BIOS display control detected"
+      log_info "Mode: Hybrid (automatic)"
+      echo ""
+      echo "Mode: Hybrid (GPU bound to VM only when needed)"
+    else
+      HYBRID_MUXLESS_MODE=false
+      log_info "MUX-less laptop: BIOS display control available"
+      log_info "Mode: Standard (automatic) - GPU bound to vfio-pci at boot"
+      echo ""
+      echo "Mode: Standard (GPU reserved for VM at boot)"
+    fi
+
+    # Auto-select dGPU (no need to ask user - only valid option for MUX-less)
+    SELECTED_GPU_INDEX=$dgpu_idx
+    msg_success "Auto-selected: $dgpu_name"
+  else
+    # Standard passthrough: user selects GPU
+    if ! select_gpu_for_passthrough; then
+      msg_error "GPU selection failed"
+      exit 1
+    fi
+  fi
+
+  # Validate selection
+  if ! validate_gpu_selection; then
+    msg_error "Invalid GPU selection"
+    exit 1
+  fi
+
+  local idx=$SELECTED_GPU_INDEX
+  local name="${GPU_NAME[$idx]}"
+  local pci="${GPU_PCI_ADDR[$idx]}"
+  local vendor_id="${GPU_VENDOR_ID[$idx]}"
+  local device_id="${GPU_DEVICE_ID[$idx]}"
+  local audio_id="${GPU_AUDIO_ID[$idx]}"
+
+  log_info "User selected GPU for passthrough: $name ($pci)"
+  log_info "GPU for passthrough: $name ($pci) - ${vendor_id}:${device_id}"
+
+  log_info "GPU detection results ($GPU_COUNT GPUs):"
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    log_info "  [$i] ${GPU_NAME[$i]} (${GPU_PCI_ADDR[$i]}) vendor=${GPU_VENDOR_ID[$i]} type=${GPU_TYPE[$i]}"
+  done
+
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    if [[ "${GPU_TYPE[$i]}" == "integrated" ]]; then
+      log_info "Host GPU (iGPU): ${GPU_NAME[$i]} (${GPU_PCI_ADDR[$i]})"
+      break
+    fi
+  done
+
+  msg_section "Configuring GPU Passthrough"
+
+  local snapshot_desc="GPU Passthrough: $name"
+  omarchy-snapshot create "$snapshot_desc" >/dev/null 2>&1
+  local snapshot_exit_code=$?
+
+  if [[ "$snapshot_exit_code" -eq 0 ]]; then
+    msg_success "System snapshot created"
+    log_info "Snapshot: $snapshot_desc"
+  elif [[ "$snapshot_exit_code" -eq 127 ]]; then
+    log_info "Snapper not available - skipping system snapshot"
+  else
+    msg_warning "Snapshot failed (continuing)"
+    log_warn "omarchy-snapshot failed with exit code $snapshot_exit_code"
+  fi
+
+  msg_info "Configuring sudoers rules..."
+  configure_sudoers_gpu_passthrough
+
+  if ! create_backup_snapshot; then
+    msg_error "Failed to create backup - setup aborted"
+    exit 1
+  fi
+
+  if ! save_gpu_config "$idx"; then
+    msg_error "Failed to save GPU configuration"
+    msg_info "Check if sudo is working: sudo -v"
+    exit 1
+  fi
+
+  configure_kernel_parameters
+  if ! configure_vfio_modules "$pci" "$vendor_id" "$device_id"; then
+    log_error "configure_vfio_modules failed"
+    msg_error "Failed to configure VFIO"
+    exit 1
+  fi
+  configure_kvm_options
+  configure_pci_binding_permissions
+  configure_gpu_state_tmpfiles
+
+  # For traditional passthrough: blacklist the GPU driver
+  # For MUX-less (Reverse Optimus): skip blacklist, let vfio-pci.ids claim GPU at boot
+  if [[ "$IS_MUXLESS_LAPTOP" != "true" ]]; then
+    if ! configure_gpu_blacklist "$vendor_id"; then
+      log_error "configure_gpu_blacklist failed for $vendor_id"
+      msg_error "Failed to blacklist GPU driver"
+      exit 1
+    fi
+  else
+    if [[ "${HYBRID_MUXLESS_MODE:-false}" == "true" ]]; then
+      log_info "Hybrid Mode: GPU driver stays active"
+      msg_info "GPU driver: active (Hybrid Mode)"
+    else
+      log_info "Standard Mode: GPU bound to vfio-pci at boot"
+      msg_info "GPU binding: vfio-pci.ids (Standard Mode)"
+    fi
+  fi
+
+  configure_vfio_modules_mkinitcpio
+
+  # Configure iGPU for host display
+  # IGPU_PCI is set by detect_hybrid_graphics_laptop() via eDP detection
+  # For desktops without eDP, scan GPU_TYPE array
+  local igpu_pci="${IGPU_PCI:-}"
+
+  if [[ -z "$igpu_pci" ]]; then
+    # Desktop fallback: find GPU marked as integrated
+    for i in "${!GPU_PCI_ADDR[@]}"; do
+      if [[ "${GPU_TYPE[$i]}" == "integrated" ]]; then
+        igpu_pci="${GPU_PCI_ADDR[$i]}"
+        break
+      fi
+    done
+  fi
+
+  if [[ -n "$igpu_pci" ]]; then
+    configure_system_environment "$igpu_pci" || {
+      msg_error "Failed to configure system environment"
+      exit 1
+    }
+    configure_hyprland_igpu "$igpu_pci" || {
+      msg_error "Failed to configure Hyprland"
+      exit 1
+    }
+  else
+    msg_warning "No iGPU detected, skipping environment configuration"
+  fi
+
+  local bootloader=$(detect_bootloader)
+  msg_info "Rebuilding initramfs..."
+  log_info "Rebuilding initramfs via $bootloader"
+  if [[ "$bootloader" == "limine" ]]; then
+    if ! sudo limine-mkinitcpio; then
+      log_error "limine-mkinitcpio failed"
+      msg_error "Failed to rebuild initramfs"
+      exit 1
+    fi
+    log_info "limine-mkinitcpio completed successfully"
+  else
+    if ! sudo mkinitcpio -P; then
+      log_error "mkinitcpio -P failed"
+      msg_error "Failed to rebuild initramfs"
+      exit 1
+    fi
+    log_info "mkinitcpio -P completed successfully"
+  fi
+  msg_success "Initramfs rebuilt"
+
+  if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
+    log_info "MUX-less laptop detected (hybrid graphics)"
+    if [[ "$DGPU_HAS_EXTERNAL_MONITOR" == "true" ]]; then
+      log_warn "External monitor on dGPU - will go blank after reboot"
+    fi
+  fi
+
+  msg_section "Setup Complete!"
+
+  log_info "=== SETUP WIZARD COMPLETED SUCCESSFULLY ==="
+  log_info "GPU configured: $name ($pci) - ${vendor_id}:${device_id}"
+
+  msg_success "GPU: $name ($pci)"
+
+  if [[ "$IS_MUXLESS_LAPTOP" == "true" ]]; then
+    if [[ "${HYBRID_MUXLESS_MODE:-false}" == "true" ]]; then
+      echo "Mode: Hybrid (both GPUs active)"
+    else
+      echo "Mode: Standard (GPU configured at boot)"
+      if [[ "$DGPU_HAS_EXTERNAL_MONITOR" == "true" ]]; then
+        msg_warning "External monitor on GPU may go blank"
+      fi
+    fi
+  else
+    if [[ -f "$VFIO_CONF" ]] && grep -q "^options vfio-pci ids=" "$VFIO_CONF" 2>/dev/null; then
+      echo "Mode: Standard passthrough (dGPU bound to vfio-pci at boot)"
+    else
+      echo "Mode: Standard passthrough (dGPU blacklisted at boot)"
+    fi
+    msg_info "Tip: Set BIOS Primary Display = IGD"
+  fi
+
+  # Final verification - ensure config is valid before declaring success
+  msg_section "Final Verification"
+  if ! load_gpu_config; then
+    msg_error "Configuration verification FAILED"
+    msg_info "The config file may be corrupted or have wrong permissions"
+    msg_info "Debug: sudo cat $GPU_PASSTHROUGH_CONF"
+    msg_info "Debug: ls -la $GPU_PASSTHROUGH_CONF"
+    exit 1
+  fi
+  msg_success "Configuration verified successfully"
+
+  echo ""
+  echo "Next steps:"
+  echo "   1. Reboot system"
+  echo "   2. Verify: omarchy-gpu-passthrough info verify"
+  echo "   3. Install Windows VM: omarchy-windows-vm install"
+  echo ""
+  msg_info "BIOS tip: Set \"Primary Display = IGD\" to avoid black screen"
+  msg_warning "Reboot required to apply kernel parameters"
+  echo ""
+  echo "Recovery: Ctrl+Alt+F2 → omarchy-gpu-passthrough setup --uninstall → reboot"
+  echo ""
+
+  if gum confirm "Reboot now?"; then
+    sudo reboot
+  fi
+}
+
+cmd_uninstall() {
+  msg_section "GPU Passthrough Uninstall"
+
+  if ! sudo -v; then
+    msg_error "sudo access required for uninstall"
+    exit 1
+  fi
+
+  msg_warning "This will remove ALL GPU passthrough configuration!"
+  echo "What will be removed:"
+  echo "  • Kernel parameters (amd_iommu, iommu=pt)"
+  echo "  • VFIO modprobe configuration"
+  echo "  • GPU driver blacklist"
+  echo "  • PCI binding permissions (udev rules)"
+  echo "  • VFIO modules from initramfs"
+  echo "  • Hyprland iGPU configuration"
+  echo "  • KVM options (ignore_msrs, nested)"
+  echo "  • GPU passthrough config file"
+  msg_info "Your system will return to normal GPU configuration after reboot"
+
+  gum confirm "Continue with uninstall?" || exit 0
+
+  msg_section "Removing GPU Passthrough Configuration"
+
+  unconfigure_system_environment
+  unconfigure_hyprland_igpu
+  unconfigure_vfio_modules_mkinitcpio
+  unconfigure_gpu_blacklist
+  unconfigure_pci_binding_permissions
+  unconfigure_gpu_state_tmpfiles
+  unconfigure_vfio_modules
+
+  local bootloader=$(detect_bootloader)
+  if ! unconfigure_kernel_parameters; then
+    if ! is_bootloader_supported "$bootloader"; then
+      msg_warning "Kernel parameters NOT automatically removed"
+      echo "  Your bootloader ($(get_bootloader_display_name "$bootloader")) requires manual configuration."
+      echo "  Remove these parameters from $(get_bootloader_config_path "$bootloader"):"
+      echo "    • amd_iommu=on or intel_iommu=on"
+      echo "    • iommu=pt"
+      echo "    • pci=realloc (if present)"
+    fi
+  fi
+
+  unconfigure_kvm_options
+  unconfigure_sudoers_gpu_passthrough
+
+  if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
+    sudo rm -f "$GPU_PASSTHROUGH_CONF"
+    msg_success "GPU configuration removed"
+  fi
+  msg_info "Rebuilding initramfs..."
+  log_info "Rebuilding initramfs via $bootloader"
+  if [[ "$bootloader" == "limine" ]]; then
+    if ! sudo limine-mkinitcpio; then
+      log_error "limine-mkinitcpio failed during uninstall"
+      msg_warning "Initramfs rebuild failed - run manually: sudo limine-mkinitcpio"
+    else
+      msg_success "Initramfs rebuilt"
+    fi
+  else
+    if ! sudo mkinitcpio -P; then
+      log_error "mkinitcpio -P failed during uninstall"
+      msg_warning "Initramfs rebuild failed - run manually: sudo mkinitcpio -P"
+    else
+      msg_success "Initramfs rebuilt"
+    fi
+  fi
+
+  msg_section "Uninstall Complete!"
+
+  msg_success "GPU passthrough configuration has been removed"
+  echo "Backups created (can be deleted manually if not needed):"
+  if [[ "$bootloader" == "limine" ]]; then
+    echo "  • /etc/default/limine.backup.uninstall.*"
+  elif [[ "$bootloader" == "grub" ]]; then
+    echo "  • /etc/default/grub.backup.uninstall.*"
+  fi
+  echo "  • /etc/mkinitcpio.conf.backup.uninstall.*"
+  echo "  • ~/.config/hypr/hyprland.conf.backup.uninstall.*"
+  echo ""
+  msg_warning "REBOOT REQUIRED"
+  echo "After reboot:"
+  echo "  • GPU available to Linux"
+  echo "  • GPU drivers (nvidia/amdgpu) load normally"
+  echo "  • GPU usable for gaming, rendering, etc."
+  echo ""
+  msg_info "To reboot now: sudo reboot"
+}
+
+# Help
+
+show_setup_help() {
+  cat <<EOF
+GPU Passthrough Setup Wizard
+
+Usage: omarchy-gpu-passthrough setup [OPTIONS]
+
+Options:
+  (default)     Run interactive setup wizard
+  --uninstall   Remove GPU passthrough configuration
+  -h, --help    Show this help
+
+Description:
+  Interactive wizard to configure GPU passthrough for virtual machines.
+  Configures VFIO, kernel parameters, bootloader, and system environment.
+
+Requirements:
+  • 2+ GPUs (1 for VM, 1 for host)
+  • CPU with IOMMU support (AMD-Vi or Intel VT-d)
+  • IOMMU enabled in BIOS
+
+Examples:
+  omarchy-gpu-passthrough setup              # Run setup wizard
+  omarchy-gpu-passthrough setup --uninstall  # Remove configuration
+
+Logs: $LOG_FILE
+EOF
+}
+
+case "${1:-}" in
+--uninstall)
+  shift
+  cmd_uninstall "$@"
+  ;;
+-h | --help | help)
+  show_setup_help
+  ;;
+"")
+  cmd_setup
+  ;;
+*)
+  echo "Unknown option: $1"
+  show_setup_help
+  exit 1
+  ;;
+esac

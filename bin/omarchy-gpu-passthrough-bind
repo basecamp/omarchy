@@ -1,0 +1,1229 @@
+#!/bin/bash
+#
+# omarchy-gpu-passthrough-bind - Bind/unbind GPU operations
+#
+
+set -uo pipefail
+
+# Load shared utilities
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+if ! source "$SCRIPT_DIR/omarchy-gpu-passthrough-utils"; then
+  echo "ERROR: Cannot load omarchy-gpu-passthrough-utils" >&2
+  echo "Please ensure omarchy-gpu-passthrough-utils exists in: $SCRIPT_DIR" >&2
+  exit 1
+fi
+
+# GPU Binding Functions
+
+# Safety Check: Check for processes using GPU
+# Returns: 0 if safe to proceed, exits with 1 if GPU in use
+check_gpu_processes() {
+  local current_driver="$1"
+
+  if [[ -z "$current_driver" || "$current_driver" == "none" ]]; then
+    return 0
+  fi
+
+  log_info "Checking for processes using GPU..."
+
+  # For AMD/Intel: detect passthrough GPU's DRM card (used throughout function)
+  local drm_card="" card_num="" render_num=""
+  if [[ "$current_driver" == "amdgpu" || "$current_driver" == "i915" ]]; then
+    drm_card=$(get_drm_card_for_pci "$GPU_PCI_ADDR" 2>/dev/null) || drm_card=""
+    if [[ -n "$drm_card" ]]; then
+      card_num="${drm_card#card}"
+      render_num=$((128 + card_num))
+      log_info "Passthrough GPU DRM: /dev/dri/$drm_card, /dev/dri/renderD${render_num}"
+    fi
+  fi
+
+  local gpu_processes=""
+  if [[ "$current_driver" == "nvidia" ]]; then
+    gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>/dev/null | grep -v "USER" | tr -d '\n')
+  elif [[ "$current_driver" == "amdgpu" || "$current_driver" == "i915" ]]; then
+    # Only check the passthrough GPU's DRM card, not all cards (hybrid GPU fix)
+    if [[ -n "$drm_card" ]]; then
+      gpu_processes=$(sudo -n /usr/bin/fuser -v "/dev/dri/$drm_card" "/dev/dri/renderD${render_num}" 2>/dev/null | grep -v "USER" | tr -d '\n')
+    else
+      # Fallback if we can't determine specific card
+      gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>/dev/null | grep -v "USER" | tr -d '\n')
+    fi
+  elif [[ "$current_driver" == "vfio-pci" ]]; then
+    # Check for QEMU/VM processes (fuser on /dev/vfio/* may not work reliably)
+    gpu_processes=$(pgrep -f 'qemu.*vfio' 2>/dev/null | tr '\n' ' ')
+    if [[ -z "$gpu_processes" ]]; then
+      # Fallback: check fuser (no sudoers rule, may prompt)
+      gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/vfio/* 2>/dev/null | grep -v "USER" | tr -d '\n')
+    fi
+  fi
+
+  if [[ -z "$gpu_processes" ]]; then
+    log_info "No processes using GPU"
+    return 0
+  fi
+
+  log_info "Processes detected using GPU, checking if active or idle..."
+
+  if [[ "$current_driver" == "nvidia" ]]; then
+    local gpu_memory_usage=0
+    if command -v nvidia-smi &>/dev/null; then
+      gpu_memory_usage=$(nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
+    fi
+
+    log_info "GPU memory usage: ${gpu_memory_usage}MiB"
+
+    if [[ "$gpu_memory_usage" -le 10 ]]; then
+      msg_info "Closing idle GPU file handles (${gpu_memory_usage}MiB usage)..."
+      log_info "Detected idle file handles, attempting to close (${gpu_memory_usage}MiB usage)"
+      log_info "Sending HUP signal to close idle handles..."
+
+      sudo -n fuser -k -HUP /dev/nvidia* 2>/dev/null || true
+      sleep 1
+
+      gpu_processes=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>/dev/null | grep -v "USER" | tr -d '\n')
+
+      if [[ -n "$gpu_processes" ]]; then
+        log_info "Checking if Hyprland is holding handles..."
+
+        local compositor_pids=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>&1 | grep -i "Hyprland" | awk '{print $2}' | tr '\n' ' ')
+
+        if [[ -n "$compositor_pids" ]]; then
+          echo ""
+          msg_error "SAFETY: Compositor has NVIDIA handle!"
+          msg_error "Compositor holding NVIDIA device - unbind will crash it (blackscreen)!"
+          echo ""
+          sudo -n /usr/bin/fuser -v /dev/nvidia* 2>&1 | grep -iE "Hyprland|USER" | head -10
+          echo ""
+          msg_warning "Solution: Run from TTY or SSH"
+          echo "   1. Switch to TTY (Ctrl+Alt+F2) or SSH from another machine"
+          echo "   2. Run: omarchy-gpu-passthrough mode vm"
+          echo "   3. Start VM from there"
+          echo ""
+          log_error "Bind aborted: Compositor (${compositor_pids}) holding NVIDIA handle (would crash on unbind)"
+          exit 1
+        fi
+
+        log_info "Handles still present but GPU is idle (${gpu_memory_usage}MiB), proceeding with caution"
+      else
+        log_success "Idle file handles closed successfully"
+      fi
+    else
+      echo ""
+      msg_error "GPU actively in use (${gpu_memory_usage}MiB memory):"
+      GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/nvidia* 2>&1 | grep -v "USER\|kernel" | head -20)
+      echo "$GPU_PROCESSES"
+      echo ""
+
+      # Offer to kill processes interactively
+      if command -v gum &>/dev/null; then
+        if gum confirm "Kill all GPU processes and continue?"; then
+          # Extract process names and kill
+          PROCESS_NAMES=$(echo "$GPU_PROCESSES" | awk '{print $NF}' | grep -v "^$" | sort -u)
+
+          for proc in $PROCESS_NAMES; do
+            echo "Killing $proc..."
+            sudo -n pkill -9 "$proc" 2>/dev/null || true
+          done
+
+          sleep 2
+
+          # Re-check GPU usage
+          gpu_memory_usage=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | awk '{print int($1)}')
+          if [[ "$gpu_memory_usage" -lt 10 ]]; then
+            log_success "GPU processes terminated, continuing..."
+          else
+            echo ""
+            msg_error "GPU still in use (${gpu_memory_usage}MiB memory)"
+            log_error "Cannot bind: GPU actively in use after kill attempt"
+            exit 1
+          fi
+        else
+          msg_info "Close GPU apps manually: sudo pkill -9 -f '<name>'"
+          log_error "Cannot bind: GPU actively in use (${gpu_memory_usage}MiB memory used)"
+          exit 1
+        fi
+      else
+        msg_info "Close GPU apps or kill processes: sudo pkill -9 -f '<name>'"
+        log_error "Cannot bind: GPU actively in use (${gpu_memory_usage}MiB memory used)"
+        exit 1
+      fi
+    fi
+  elif [[ "$current_driver" == "vfio-pci" ]]; then
+    echo ""
+    msg_error "GPU in use by VM or VFIO process"
+    echo ""
+    local first_pid=""
+    if [[ -n "$gpu_processes" ]]; then
+      echo "Processes using GPU:"
+      for pid in $gpu_processes; do
+        if ps -p "$pid" &>/dev/null; then
+          [[ -z "$first_pid" ]] && first_pid="$pid"
+          local proc_info=$(ps -p "$pid" -o pid,comm,cmd --no-headers 2>/dev/null)
+          echo "   PID $proc_info"
+        fi
+      done
+      echo ""
+    fi
+
+    msg_warning "GPU is bound to vfio-pci and in use (likely by running VM)"
+    echo "To unbind GPU:"
+    echo "   1. Stop your VM: omarchy-windows-vm stop"
+    if [[ -n "$first_pid" ]]; then
+      echo "   2. Or kill QEMU: sudo kill -9 $first_pid"
+    else
+      echo "   2. Or kill QEMU: sudo pkill -9 qemu-system-x86_64"
+    fi
+    echo "   3. Then retry: omarchy-gpu-passthrough mode host"
+    echo ""
+    log_error "Cannot unbind: GPU in use by VFIO process (VM likely running)"
+    exit 1
+  else
+    echo ""
+    msg_error "GPU in use by processes:"
+    # Use passthrough GPU's DRM card if detected, fallback to all
+    if [[ -n "$drm_card" ]]; then
+      GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v "/dev/dri/$drm_card" "/dev/dri/renderD${render_num}" 2>&1 | grep -v "USER\|kernel" | head -20)
+    else
+      GPU_PROCESSES=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" | head -20)
+    fi
+    echo "$GPU_PROCESSES"
+    echo ""
+
+    # Offer to kill processes interactively
+    if command -v gum &>/dev/null; then
+      if gum confirm "Kill all GPU processes and continue?"; then
+        # Extract process names and kill
+        PROCESS_NAMES=$(echo "$GPU_PROCESSES" | awk '{print $NF}' | grep -v "^$" | sort -u)
+
+        for proc in $PROCESS_NAMES; do
+          echo "Killing $proc..."
+          sudo -n pkill -9 "$proc" 2>/dev/null || true
+        done
+
+        sleep 2
+
+        # Re-check GPU usage (passthrough GPU only)
+        if [[ -n "$drm_card" ]]; then
+          GPU_PROCESSES_AFTER=$(sudo -n /usr/bin/fuser -v "/dev/dri/$drm_card" "/dev/dri/renderD${render_num}" 2>&1 | grep -v "USER\|kernel" || true)
+        else
+          GPU_PROCESSES_AFTER=$(sudo -n /usr/bin/fuser -v /dev/dri/* 2>&1 | grep -v "USER\|kernel" || true)
+        fi
+        if [[ -z "$GPU_PROCESSES_AFTER" ]]; then
+          log_success "GPU processes terminated, continuing..."
+        else
+          echo ""
+          msg_error "GPU still in use by processes"
+          echo "$GPU_PROCESSES_AFTER"
+          log_error "Cannot bind: GPU still in use after kill attempt"
+          exit 1
+        fi
+      else
+        msg_info "Close GPU apps manually: sudo pkill -9 -f '<name>'"
+        log_error "Cannot bind: GPU in use by processes"
+        exit 1
+      fi
+    else
+      msg_info "Close GPU apps or kill processes: sudo pkill -9 -f '<name>'"
+      log_error "Cannot bind: GPU in use by processes"
+      exit 1
+    fi
+  fi
+
+  return 0
+}
+
+# Safety Check: Check if display is connected to dedicated GPU
+# Returns: 0 if safe, exits with 1 if monitor connected
+check_display_safety() {
+  local current_driver="$1"
+
+  if [[ -z "$current_driver" || "$current_driver" == "none" ]]; then
+    return 0
+  fi
+
+  msg_info "Checking display safety..."
+  log_info "Checking if display is using dedicated GPU..."
+
+  if [[ -n "${WAYLAND_DISPLAY:-}" ]] || [[ -n "${XDG_SESSION_TYPE:-}" ]]; then
+    local connected_displays=$(count_connected_monitors_for_pci "$GPU_PCI_ADDR")
+
+    if [[ "$connected_displays" -gt 0 ]]; then
+      local gpu_drm_card=$(get_drm_card_for_pci "$GPU_PCI_ADDR")
+      echo ""
+      msg_error "SAFETY: Monitor connected to dedicated GPU!"
+      msg_error "Detected $connected_displays monitor(s) on ${gpu_drm_card:-GPU} - unbind will cause BLACKSCREEN!"
+      echo ""
+      msg_warning "Solution:"
+      echo "   1. Move monitor cable to iGPU port (motherboard HDMI/DP)"
+      echo "   2. Set BIOS: Primary Display = IGD"
+      echo "   3. Reboot and run: omarchy-gpu-passthrough setup"
+      echo ""
+      log_error "Bind aborted: Monitor connected to dedicated GPU (would cause blackscreen)"
+      exit 1
+    else
+      log_success "Display safety check passed (no monitors on dedicated GPU)"
+    fi
+  fi
+
+  return 0
+}
+
+# Try to reset GPU using SBR (Secondary Bus Reset) or FLR (Function Level Reset)
+# Required for AMD GPUs to properly unbind from vfio-pci
+try_reset_gpu() {
+  local pci_addr="$1"
+  local pci_full
+  pci_full=$(normalize_pci_addr "$pci_addr") || return 1
+
+  local reset_file="/sys/bus/pci/devices/${pci_full}/reset"
+
+  if [[ -w "$reset_file" ]] || sudo -n test -w "$reset_file" 2>/dev/null; then
+    log_info "Attempting GPU reset via sysfs..."
+    if echo 1 | sudo -n tee "$reset_file" >/dev/null 2>&1; then
+      log_success "GPU reset successful"
+      sleep 1
+      return 0
+    else
+      log_warn "GPU reset failed (may not support FLR)"
+    fi
+  else
+    log_info "GPU reset not available (no reset file or permission denied)"
+  fi
+
+  return 1
+}
+
+# Set driver_override to prevent automatic driver binding
+# Critical for AMD GPUs with vfio-pci.ids in kernel cmdline
+set_driver_override() {
+  local pci_addr="$1"
+  local driver="$2"
+  local pci_full
+  pci_full=$(normalize_pci_addr "$pci_addr") || return 1
+
+  local override_file="/sys/bus/pci/devices/${pci_full}/driver_override"
+
+  if [[ -e "$override_file" ]]; then
+    if echo "$driver" | sudo -n tee "$override_file" >/dev/null 2>&1; then
+      log_info "Set driver_override=$driver for $pci_addr"
+      return 0
+    else
+      log_warn "Failed to set driver_override for $pci_addr"
+    fi
+  else
+    log_info "driver_override not available for $pci_addr"
+  fi
+
+  return 1
+}
+
+# Clear driver_override to allow automatic driver binding
+clear_driver_override() {
+  local pci_addr="$1"
+  local pci_full
+  pci_full=$(normalize_pci_addr "$pci_addr") || return 1
+
+  local override_file="/sys/bus/pci/devices/${pci_full}/driver_override"
+
+  if [[ -e "$override_file" ]]; then
+    # Writing empty string clears the override (use -n to avoid trailing newline)
+    if echo -n "" | sudo -n tee "$override_file" >/dev/null 2>&1; then
+      log_info "Cleared driver_override for $pci_addr"
+      return 0
+    else
+      log_warn "Failed to clear driver_override for $pci_addr"
+    fi
+  fi
+
+  return 1
+}
+
+# Clear driver_override for all AMD GPU IOMMU devices
+# Ensures clean state before bind/unbind operations
+clear_amd_driver_overrides() {
+  local iommu_devices="$1"
+  [[ "$GPU_VENDOR_ID" != "1002" ]] && return 0
+
+  for dev_pci in $iommu_devices; do
+    clear_driver_override "$dev_pci"
+  done
+}
+
+# Unload NVIDIA modules in dependency order (drm→modeset→uvm→nvidia)
+unload_nvidia_modules() {
+  msg_info "Unloading NVIDIA modules..."
+  log_info "Unloading NVIDIA modules..."
+
+  for mod in nvidia_drm nvidia_modeset nvidia_uvm nvidia; do
+    if is_module_loaded "$mod"; then
+      if sudo -n /usr/bin/modprobe -r "$mod" 2>/dev/null; then
+        log_info "$mod unloaded"
+      else
+        log_warn "$mod: in use (will retry during unbind)"
+      fi
+    fi
+  done
+
+  return 0
+}
+
+cmd_bind() {
+  log_init
+
+  if ! load_gpu_config; then
+    msg_section "GPU Mode: VM"
+    msg_error "GPU passthrough not configured"
+    msg_info "Run: omarchy-gpu-passthrough setup"
+    log_error "Bind failed: GPU passthrough not configured"
+    exit 1
+  fi
+
+  local gpu_pci_full
+  gpu_pci_full=$(normalize_pci_addr "$GPU_PCI_ADDR") || {
+    msg_error "Invalid GPU PCI address: $GPU_PCI_ADDR"
+    exit 1
+  }
+
+  msg_section "GPU Mode: Switch to VM"
+
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
+
+  log_info "=== BIND OPERATION START ==="
+  log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
+  log_info "Current driver: ${current_driver:-none}"
+
+  if [[ "$current_driver" == "vfio-pci" ]]; then
+    msg_success "GPU already bound to vfio-pci (ready for VM)"
+    log_info "GPU already bound to vfio-pci (no action needed)"
+
+    # Still check and enable persistent mode for reset-bug GPUs
+    if [[ "$GPU_VENDOR_ID" == "1002" ]] && gpu_has_reset_bug "$GPU_PCI_ADDR"; then
+      if ! is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+        echo ""
+        msg_info "AMD GPU with reset bug - enabling persistent VM mode"
+        msg_info "GPU will boot directly to vfio-pci after reboot"
+        if enable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+          msg_success "Persistent VM mode enabled (effective after reboot)"
+          log_success "Persistent VFIO enabled for reset-bug GPU"
+        else
+          msg_warning "Failed to enable persistent mode"
+          msg_info "GPU may require rebind after each reboot"
+          log_warn "Failed to enable persistent VFIO for reset-bug GPU"
+        fi
+      else
+        log_info "Persistent VFIO already enabled for this GPU"
+      fi
+    fi
+    exit 0
+  fi
+
+  msg_info "Binding GPU to vfio-pci..."
+  log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR), Current: ${current_driver:-none}"
+
+  check_gpu_processes "$current_driver"
+  check_display_safety "$current_driver"
+
+  [[ "$current_driver" == "nvidia" ]] && unload_nvidia_modules
+
+  if [[ -n "$current_driver" && "$current_driver" != "none" ]]; then
+    log_info "Unbinding GPU from $current_driver..."
+    if [[ -f "/sys/bus/pci/devices/${gpu_pci_full}/driver/unbind" ]]; then
+      if ! echo "$gpu_pci_full" | sudo -n tee "/sys/bus/pci/devices/${gpu_pci_full}/driver/unbind" >/dev/null 2>&1; then
+        msg_error "Failed to unbind GPU from $current_driver"
+        msg_info "This usually means a process is still using the GPU"
+        log_error "Failed to unbind GPU from $current_driver (process still using GPU)"
+        exit 1
+      fi
+      log_success "GPU unbound from $current_driver"
+    fi
+  fi
+
+  if ! is_module_loaded vfio_pci; then
+    log_info "Loading vfio-pci module..."
+    if sudo -n /usr/bin/modprobe vfio-pci 2>/dev/null; then
+      log_success "vfio-pci module loaded"
+    else
+      if is_module_loaded vfio_pci; then
+        log_info "vfio-pci already loaded"
+      else
+        msg_error "Failed to load vfio-pci module"
+        log_error "vfio-pci module failed to load - cannot bind GPU"
+        exit 1
+      fi
+    fi
+  fi
+
+  # Get all IOMMU group devices (supports laptops with 4-5 devices in group and AMD with separate audio group)
+  local iommu_devices
+  iommu_devices=$(get_cached_iommu_devices "$GPU_PCI_ADDR")
+
+  local device_count=$(echo "$iommu_devices" | wc -w)
+  log_info "IOMMU group contains $device_count device(s): $iommu_devices"
+
+  clear_amd_driver_overrides "$iommu_devices"
+
+  # Register GPU vendor/device ID with vfio-pci (requires root)
+  echo "$GPU_VENDOR_ID $GPU_DEVICE_ID" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
+
+  for dev_pci in $iommu_devices; do
+    local dev_pci_full
+    dev_pci_full=$(normalize_pci_addr "$dev_pci") || continue
+
+    if [[ ! -e "/sys/bus/pci/devices/${dev_pci_full}" ]]; then
+      log_warn "Device $dev_pci not found, skipping"
+      continue
+    fi
+
+    # Skip PCI bridges (class 0604) - defense in depth
+    local dev_class=$(get_pci_class "$dev_pci")
+    if [[ "$dev_class" == "0604" ]]; then
+      log_info "Skipping PCI bridge $dev_pci (class 0604)"
+      continue
+    fi
+
+    # Unbind from current driver (requires root)
+    if [[ -f "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" ]]; then
+      echo "$dev_pci_full" | sudo -n tee "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" >/dev/null 2>&1 || true
+    fi
+
+    # Register device ID with vfio-pci (requires root)
+    local dev_ids=$(get_pci_device_id "$dev_pci")
+    if [[ -n "$dev_ids" ]]; then
+      echo "${dev_ids/:/ }" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/new_id >/dev/null 2>&1 || true
+    fi
+
+    # Bind to vfio-pci (requires root)
+    if [[ ! -d "/sys/bus/pci/drivers/vfio-pci/${dev_pci_full}" ]]; then
+      echo "$dev_pci_full" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/bind >/dev/null 2>&1 || true
+    fi
+    log_info "Bound $dev_pci to vfio-pci"
+  done
+  log_success "All IOMMU group devices bound to vfio-pci"
+
+  # Verify all devices are actually bound (USB controllers may be rebound by xhci_hcd)
+  local bind_issues=0
+  for dev_pci in $iommu_devices; do
+    local dev_class=$(get_pci_class "$dev_pci")
+    [[ "$dev_class" == "0604" ]] && continue  # Skip bridges
+
+    local dev_driver=$(get_pci_driver "$dev_pci")
+    if [[ "$dev_driver" != "vfio-pci" ]]; then
+      log_warn "Device $dev_pci not bound to vfio-pci (driver: ${dev_driver:-none})"
+      if [[ "$dev_class" == "0c03" ]]; then
+        bind_issues=1
+        msg_warning "USB controller $dev_pci rebound to ${dev_driver:-none}"
+      fi
+    fi
+  done
+
+  if [[ "$bind_issues" -eq 1 ]]; then
+    msg_info "Fix: Re-run 'omarchy-gpu-passthrough setup' then reboot"
+  fi
+
+  show_spinner 1 "Verifying GPU binding..."
+  current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
+
+  echo ""
+  if [[ "$current_driver" == "vfio-pci" ]]; then
+    msg_success "GPU bound to vfio-pci (ready for VM)"
+    log_success "=== BIND SUCCESS: GPU ready for VM passthrough ==="
+
+    update_state_marker "vm"
+
+    # For AMD GPUs with reset bug: enable persistent VFIO mode
+    # This ensures GPU stays on vfio-pci after reboot (avoids rebind problem)
+    if [[ "$GPU_VENDOR_ID" == "1002" ]] && gpu_has_reset_bug "$GPU_PCI_ADDR"; then
+      if ! is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+        echo ""
+        msg_info "AMD GPU with reset bug - enabling persistent VM mode"
+        msg_info "GPU will boot directly to vfio-pci after reboot"
+        if enable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+          msg_success "Persistent VM mode enabled (effective after reboot)"
+          log_success "Persistent VFIO enabled for reset-bug GPU"
+        else
+          msg_warning "Failed to enable persistent mode"
+          msg_info "GPU may require rebind after each reboot"
+          log_warn "Failed to enable persistent VFIO for reset-bug GPU"
+        fi
+      else
+        log_info "Persistent VFIO already enabled for this GPU"
+      fi
+    fi
+  else
+    msg_error "Failed to bind (current: ${current_driver:-none})"
+    log_error "=== BIND FAILED: driver ${current_driver:-none} ==="
+    exit 1
+  fi
+}
+
+cmd_set_none() {
+  log_init
+
+  if ! load_gpu_config; then
+    msg_section "GPU Mode: None"
+    msg_error "GPU passthrough not configured"
+    msg_info "Run: omarchy-gpu-passthrough setup"
+    log_error "Set none failed: GPU passthrough not configured"
+    exit 1
+  fi
+
+  local gpu_pci_full
+  gpu_pci_full=$(normalize_pci_addr "$GPU_PCI_ADDR") || {
+    msg_error "Invalid GPU PCI address: $GPU_PCI_ADDR"
+    exit 1
+  }
+
+  msg_section "GPU Mode: Switch to None"
+
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
+
+  log_info "=== SET NONE OPERATION START ==="
+  log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
+  log_info "Current driver: ${current_driver:-none}"
+
+  if [[ -z "$current_driver" ]]; then
+    msg_success "GPU already in none mode (no driver)"
+    log_info "Already in none mode"
+
+    update_state_marker "none"
+    exit 0
+  fi
+
+  check_gpu_processes "$current_driver"
+  [[ "$current_driver" == "nvidia" ]] && unload_nvidia_modules
+
+  msg_info "Unbinding GPU from $current_driver..."
+  log_info "Unbinding from $current_driver to none state"
+
+  # Get all IOMMU group devices (supports laptops with 4-5 devices in group)
+  local iommu_devices
+  iommu_devices=$(get_cached_iommu_devices "$GPU_PCI_ADDR")
+
+  local device_count=$(echo "$iommu_devices" | wc -w)
+  log_info "IOMMU group contains $device_count device(s): $iommu_devices"
+
+  for dev_pci in $iommu_devices; do
+    local dev_pci_full
+    dev_pci_full=$(normalize_pci_addr "$dev_pci") || continue
+
+    if [[ -f "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" ]]; then
+      log_info "Unbinding $dev_pci from driver..."
+      if ! echo "$dev_pci_full" | sudo -n tee "/sys/bus/pci/devices/${dev_pci_full}/driver/unbind" >/dev/null 2>&1; then
+        # Only fail on main GPU, others are non-fatal
+        if [[ "$dev_pci_full" == "$gpu_pci_full" ]]; then
+          msg_error "Failed to unbind GPU from $current_driver"
+          msg_info "This usually means a process is still using the GPU"
+          log_error "Failed to unbind GPU (process still using GPU)"
+          exit 1
+        fi
+        log_warn "Failed to unbind $dev_pci (non-fatal)"
+      fi
+    fi
+  done
+  log_success "All IOMMU group devices unbound"
+
+  if [[ "$current_driver" == "vfio-pci" ]]; then
+    remove_vfio_device_ids "$iommu_devices"
+    rebind_usb_controllers_to_xhci "$iommu_devices"
+  fi
+
+  show_spinner 1 "Verifying GPU state..."
+  current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
+
+  echo ""
+  if [[ -z "$current_driver" ]]; then
+    msg_success "GPU set to none mode (no driver loaded)"
+    log_success "=== SET NONE SUCCESS: GPU inactive ==="
+
+    update_state_marker "none"
+  else
+    msg_error "Failed to unbind (current: $current_driver)"
+    log_error "=== SET NONE FAILED: driver $current_driver still loaded ==="
+    exit 1
+  fi
+}
+
+cmd_unbind() {
+  log_init
+
+  if ! load_gpu_config; then
+    msg_section "GPU Mode: Host"
+    msg_error "GPU passthrough not configured"
+    msg_info "Run: omarchy-gpu-passthrough setup"
+    log_error "Unbind failed: GPU passthrough not configured"
+    exit 1
+  fi
+
+  local gpu_pci_full
+  gpu_pci_full=$(normalize_pci_addr "$GPU_PCI_ADDR") || {
+    msg_error "Invalid GPU PCI address: $GPU_PCI_ADDR"
+    exit 1
+  }
+
+  msg_section "GPU Mode: Switch to Host"
+
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
+
+  log_info "=== UNBIND OPERATION START ==="
+  log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
+  log_info "Current driver: ${current_driver:-none}"
+
+  # Early exit only if GPU is already using native driver
+  if [[ "$current_driver" == "$GPU_DRIVER_ORIGINAL" ]]; then
+    msg_success "GPU already using $GPU_DRIVER_ORIGINAL"
+    log_info "Already using original driver ($GPU_DRIVER_ORIGINAL)"
+    exit 0
+  fi
+
+  # AMD Reset Bug check: affected GPUs need reboot after vfio-pci use to work with native driver
+  # Affected: Vega 10/20, Fiji, Tonga, Hawaii, some Polaris, some Navi 10/14
+  if gpu_needs_reboot_for_native_driver "$GPU_PCI_ADDR" "$GPU_VENDOR_ID"; then
+    echo ""
+    msg_warning "AMD GPU with reset bug detected"
+    msg_warning "This GPU cannot rebind to amdgpu without reboot"
+    echo ""
+
+    local has_persistent=false
+    is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID" && has_persistent=true
+
+    if command -v gum &>/dev/null && [[ -t 0 ]]; then
+      local choice
+      if [[ "$has_persistent" == "true" ]]; then
+        choice=$(gum choose \
+          "Prepare for host (disable VM mode, then reboot)" \
+          "Keep VM mode" \
+          "Cancel")
+      else
+        choice=$(gum choose \
+          "Reboot now to use GPU on host" \
+          "Keep VM mode" \
+          "Cancel")
+      fi
+
+      case "$choice" in
+      "Prepare for host"*)
+        echo ""
+        msg_info "Disabling persistent VM mode..."
+        if disable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+          echo ""
+          msg_success "Persistent VM mode disabled"
+          msg_info "GPU will use $GPU_DRIVER_ORIGINAL after reboot"
+          echo ""
+          if gum confirm "Reboot now?"; then
+            log_info "User chose to reboot after disabling persistent VFIO"
+            sudo reboot
+          else
+            msg_info "Run 'sudo reboot' when ready"
+          fi
+        else
+          msg_error "Failed to disable persistent mode"
+        fi
+        ;;
+      "Reboot now"*)
+        log_info "User chose to reboot for host mode"
+        sudo reboot
+        ;;
+      "Keep VM mode")
+        msg_info "GPU stays in VM mode"
+        ;;
+      *)
+        msg_info "Cancelled"
+        ;;
+      esac
+    else
+      # Fallback without gum
+      if [[ "$has_persistent" == "true" ]]; then
+        echo "To use GPU on host:"
+        echo "  1. Disable persistent mode: omarchy-gpu-passthrough persistent off"
+        echo "  2. Reboot: sudo reboot"
+      else
+        echo "To use GPU on host: sudo reboot"
+      fi
+    fi
+
+    log_warn "AMD GPU with reset bug needs reboot to use native driver after vfio-pci"
+    exit 1
+  fi
+
+  # Safety check: ensure no processes using GPU before unbind
+  check_gpu_processes "$current_driver"
+
+  if [[ "$current_driver" == "vfio-pci" ]]; then
+    msg_info "Unbinding from vfio-pci..."
+    log_info "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
+
+    # Get all IOMMU group devices (supports laptops with 4-5 devices in group and AMD with separate audio group)
+    local iommu_devices
+    iommu_devices=$(get_cached_iommu_devices "$GPU_PCI_ADDR")
+
+    local device_count=$(echo "$iommu_devices" | wc -w)
+    log_info "IOMMU group contains $device_count device(s): $iommu_devices"
+
+    clear_amd_driver_overrides "$iommu_devices"
+
+    for dev_pci in $iommu_devices; do
+      local dev_pci_full
+      dev_pci_full=$(normalize_pci_addr "$dev_pci") || continue
+
+      if [[ -d "/sys/bus/pci/drivers/vfio-pci/${dev_pci_full}" ]]; then
+        log_info "Unbinding $dev_pci from vfio-pci..."
+        echo "$dev_pci_full" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/unbind >/dev/null 2>&1 || true
+      fi
+    done
+
+    remove_vfio_device_ids "$iommu_devices"
+
+    # For AMD GPUs: try GPU reset before rebinding to native driver
+    if [[ "$GPU_VENDOR_ID" == "1002" ]]; then
+      msg_info "Resetting AMD GPU..."
+      try_reset_gpu "$GPU_PCI_ADDR" || log_warn "GPU reset not available (continuing anyway)"
+    fi
+
+    log_success "All IOMMU group devices unbound from vfio-pci"
+
+    rebind_usb_controllers_to_xhci "$iommu_devices"
+  else
+    # GPU not bound to vfio-pci (e.g., driver is "none")
+    msg_info "GPU driver: ${current_driver:-none} (binding to $GPU_DRIVER_ORIGINAL)..."
+    log_info "Current driver: ${current_driver:-none}, binding to $GPU_DRIVER_ORIGINAL"
+  fi
+
+  # Bind to native driver (works from any state: vfio-pci, none, or other)
+
+  # Fallback: infer native driver from vendor ID if config has "none" or empty
+  # (backwards compatibility with old configs)
+  if [[ "$GPU_DRIVER_ORIGINAL" == "none" || -z "$GPU_DRIVER_ORIGINAL" ]]; then
+    local inferred_driver=""
+    case "$GPU_VENDOR_ID" in
+    10de) inferred_driver="nvidia" ;;
+    1002) inferred_driver="amdgpu" ;;
+    8086) inferred_driver="i915" ;;
+    *)
+      msg_error "Cannot determine native driver for vendor: $GPU_VENDOR_ID"
+      msg_info "Re-run setup: omarchy-gpu-passthrough setup"
+      log_error "Invalid GPU_DRIVER_ORIGINAL and cannot infer from vendor ID"
+      exit 1
+      ;;
+    esac
+
+    GPU_DRIVER_ORIGINAL="$inferred_driver"
+    log_info "Inferred native driver: $GPU_DRIVER_ORIGINAL (from vendor $GPU_VENDOR_ID)"
+    msg_info "Auto-updating config: GPU_DRIVER_ORIGINAL=$GPU_DRIVER_ORIGINAL"
+
+    # Auto-update config file (fix old configs permanently)
+    if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
+      if sudo -n /usr/bin/sed -i "s/^GPU_DRIVER_ORIGINAL=.*/GPU_DRIVER_ORIGINAL=\"$inferred_driver\"/" "$GPU_PASSTHROUGH_CONF" 2>/dev/null; then
+        log_info "Config updated: GPU_DRIVER_ORIGINAL=\"$inferred_driver\""
+      else
+        log_warn "Failed to update config file (continuing with inferred driver)"
+      fi
+    fi
+  fi
+
+  msg_info "Binding to native driver ($GPU_DRIVER_ORIGINAL)..."
+  log_info "Binding to native driver ($GPU_DRIVER_ORIGINAL)..."
+
+  if [[ "$GPU_DRIVER_ORIGINAL" == "nvidia" ]]; then
+    # Use -i flag to bypass blacklist (install nvidia /bin/false)
+    for mod in nvidia nvidia_uvm; do
+      if sudo -n /usr/bin/modprobe -i "$mod" 2>/dev/null; then
+        log_success "$mod loaded"
+      elif is_module_loaded "$mod"; then
+        log_info "$mod already loaded"
+      else
+        log_warn "$mod failed to load"
+      fi
+    done
+    # Load nvidia_drm only if monitor is on dGPU (detected during setup)
+    if [[ "${DGPU_HAS_EXTERNAL_MONITOR:-false}" == "true" ]]; then
+      if sudo -n /usr/bin/modprobe -i nvidia_drm modeset=1 2>/dev/null; then
+        log_success "nvidia_drm loaded with modeset=1 (external monitor on dGPU)"
+      elif is_module_loaded nvidia_drm; then
+        log_info "nvidia_drm already loaded"
+      else
+        log_warn "nvidia_drm failed to load"
+      fi
+    else
+      log_info "Display modules NOT loaded (monitor on iGPU)"
+    fi
+  else
+    if sudo -n /usr/bin/modprobe "$GPU_DRIVER_ORIGINAL" 2>/dev/null; then
+      log_success "$GPU_DRIVER_ORIGINAL loaded"
+    elif is_module_loaded "$GPU_DRIVER_ORIGINAL"; then
+      log_info "$GPU_DRIVER_ORIGINAL already loaded"
+    else
+      log_warn "$GPU_DRIVER_ORIGINAL failed to load"
+    fi
+  fi
+
+  # Trigger PCI rescan (requires root)
+  log_info "Triggering PCI rescan..."
+  echo 1 | sudo -n tee /sys/bus/pci/rescan >/dev/null 2>&1
+  show_spinner 1 "Scanning PCI bus..."
+
+  # Bind via sysfs (requires root)
+  if [[ -d "/sys/bus/pci/drivers/$GPU_DRIVER_ORIGINAL" ]]; then
+    log_info "Binding GPU to $GPU_DRIVER_ORIGINAL via sysfs..."
+    if echo "$gpu_pci_full" | sudo -n tee "/sys/bus/pci/drivers/$GPU_DRIVER_ORIGINAL/bind" >/dev/null 2>&1; then
+      log_success "GPU bound to $GPU_DRIVER_ORIGINAL"
+    fi
+  fi
+
+  show_spinner 2 "Loading driver..."
+
+  current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
+  log_info "Final driver: ${current_driver:-none}"
+
+  echo ""
+  if [[ "$current_driver" == "$GPU_DRIVER_ORIGINAL" ]] || [[ -n "$current_driver" && "$current_driver" != "vfio-pci" ]]; then
+    msg_success "GPU restored to $GPU_DRIVER_ORIGINAL (available to host)"
+    log_success "=== UNBIND SUCCESS: GPU restored to $GPU_DRIVER_ORIGINAL ==="
+
+    update_state_marker "host"
+
+    # Disable persistent VFIO mode if it was enabled
+    # This allows GPU to boot with native driver after next reboot
+    if is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+      echo ""
+      msg_info "Disabling persistent VM mode"
+      msg_info "GPU will boot with native driver after reboot"
+      if disable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+        msg_success "Persistent VM mode disabled (effective after reboot)"
+        log_success "Persistent VFIO disabled"
+      else
+        msg_warning "Failed to disable persistent mode"
+        msg_info "GPU may still boot to vfio-pci after reboot"
+        log_warn "Failed to disable persistent VFIO"
+      fi
+    fi
+  else
+    msg_warning "Unbound but driver not auto-loaded (current: ${current_driver:-none})"
+    msg_info "Manual reload: sudo modprobe -i $GPU_DRIVER_ORIGINAL"
+    log_warn "=== UNBIND PARTIAL: driver not loaded (${current_driver:-none}) ==="
+
+    # Still update marker to host (partial success)
+    update_state_marker "host"
+  fi
+}
+
+# Mode Command Functions
+
+ensure_state_marker() {
+  # Use flock for atomic state marker operations (prevent race conditions)
+  # Use user runtime directory (systemd standard) to avoid permission issues
+  local lockfile
+  if [[ -d "/run/user/$UID" ]]; then
+    lockfile="/run/user/$UID/omarchy-gpu-mode.lock"
+  else
+    # Fallback to /tmp with user suffix
+    lockfile="/tmp/omarchy-gpu-mode-$USER.lock"
+  fi
+
+  # Execute with exclusive lock
+  (
+    # Acquire exclusive lock (FD 200)
+    if ! flock -x -w 5 200; then
+      log_warn "Failed to acquire lock for state marker (timeout)"
+      return 1
+    fi
+
+    if [[ ! -f "$STATE_MARKER_FILE" ]]; then
+      if ! load_gpu_config 2>/dev/null; then
+        return 0
+      fi
+
+      local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
+      local detected_mode=$(detect_gpu_mode_from_driver "$current_driver")
+
+      if ! echo "$detected_mode" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+        log_warn "Failed to create state marker (state detection may be incorrect)"
+      else
+        log_info "State marker initialized to: $detected_mode (detected from actual GPU state)"
+      fi
+      return 0
+    fi
+
+    local marker_mode=""
+    [[ -r "$STATE_MARKER_FILE" ]] && marker_mode=$(<"$STATE_MARKER_FILE") 2>/dev/null
+
+    # Validate marker content (must be none/vm/host)
+    case "$marker_mode" in
+    none | vm | host) ;; # Valid
+    *)
+      log_warn "Invalid state marker content: '$marker_mode' (treating as missing)"
+      marker_mode="" # Treat as invalid/missing
+      ;;
+    esac
+
+    if ! load_gpu_config 2>/dev/null; then
+      return 0
+    fi
+
+    local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
+    local actual_mode=$(detect_gpu_mode_from_driver "$current_driver")
+
+    if [[ "$marker_mode" != "$actual_mode" ]]; then
+      log_warn "State marker mismatch: marker=$marker_mode, actual=$actual_mode (fixing)"
+      if ! echo "$actual_mode" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+        log_warn "Failed to update state marker (state may be out of sync)"
+      fi
+    fi
+
+    return 0
+  ) 200>"$lockfile"
+}
+
+cmd_persistent() {
+  local action="${1:-}"
+  log_init
+
+  if ! load_gpu_config; then
+    msg_section "GPU Persistent Mode"
+    msg_error "GPU passthrough not configured"
+    msg_info "Run: omarchy-gpu-passthrough setup"
+    exit 1
+  fi
+
+  local is_enabled=false
+  is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID" && is_enabled=true
+
+  case "$action" in
+  on)
+    msg_section "GPU Persistent Mode: Enable"
+    if [[ "$is_enabled" == "true" ]]; then
+      msg_info "Persistent VM mode already enabled"
+      msg_info "GPU will boot to vfio-pci (ready for VM)"
+      exit 0
+    fi
+    msg_info "Enabling persistent VM mode..."
+    if enable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+      echo ""
+      msg_success "Persistent VM mode enabled"
+      msg_info "GPU will boot to vfio-pci after reboot"
+      log_success "Persistent VFIO enabled"
+    else
+      msg_error "Failed to enable persistent mode"
+      exit 1
+    fi
+    ;;
+  off)
+    msg_section "GPU Persistent Mode: Disable"
+    if [[ "$is_enabled" == "false" ]]; then
+      msg_info "Persistent VM mode not enabled"
+      msg_info "GPU will boot with native driver ($GPU_DRIVER_ORIGINAL)"
+      exit 0
+    fi
+    msg_info "Disabling persistent VM mode..."
+    if disable_persistent_vfio "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+      echo ""
+      msg_success "Persistent VM mode disabled"
+      msg_info "GPU will boot with $GPU_DRIVER_ORIGINAL after reboot"
+      log_success "Persistent VFIO disabled"
+    else
+      msg_error "Failed to disable persistent mode"
+      exit 1
+    fi
+    ;;
+  ""|status)
+    msg_section "GPU Persistent Mode"
+    echo "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
+    if [[ "$is_enabled" == "true" ]]; then
+      msg_success "Persistent: on"
+      echo "GPU will boot to vfio-pci (ready for VM)"
+    else
+      msg_info "Persistent: off"
+      echo "GPU will boot with native driver ($GPU_DRIVER_ORIGINAL)"
+    fi
+    echo ""
+    echo "Usage: omarchy-gpu-passthrough persistent [on|off]"
+    ;;
+  *)
+    msg_error "Invalid action: $action"
+    echo "Usage: omarchy-gpu-passthrough persistent [on|off]"
+    exit 1
+    ;;
+  esac
+}
+
+cmd_mode_set() {
+  local target="$1"
+
+  # Ensure state marker exists (non-fatal if it fails - continue with operation)
+  if ! ensure_state_marker; then
+    log_warn "State marker sync failed - continuing anyway (state detection may be inaccurate)"
+  fi
+
+  case "$target" in
+  none)
+    cmd_set_none
+    ;;
+  vm)
+    cmd_bind
+    ;;
+  host)
+    cmd_unbind
+    ;;
+  *)
+    echo ""
+    msg_error "Invalid mode: $target"
+    echo "Valid modes: none, vm, host"
+    echo "Usage: omarchy-gpu-passthrough mode [none|vm|host]"
+    echo ""
+    exit 1
+    ;;
+  esac
+}
+
+cmd_mode_get() {
+  # Ensure state marker exists (non-fatal if it fails)
+  if ! ensure_state_marker; then
+    log_warn "State marker sync failed - mode detection may be inaccurate"
+  fi
+
+  if ! load_gpu_config; then
+    echo ""
+    msg_error "GPU passthrough not configured"
+    msg_info "Run: omarchy-gpu-passthrough setup"
+    exit 1
+  fi
+
+  local current_driver=$(get_pci_driver "$GPU_PCI_ADDR")
+  local binding_type="runtime"
+  local persistent_mode="false"
+
+  if is_early_binding_enabled "$GPU_PCI_ADDR"; then
+    binding_type="early"
+  fi
+
+  if is_persistent_vfio_enabled "$GPU_PCI_ADDR" "$GPU_VENDOR_ID" "$GPU_DEVICE_ID"; then
+    persistent_mode="true"
+  fi
+
+  local has_reset_bug="false"
+  if [[ "$GPU_VENDOR_ID" == "1002" ]] && gpu_has_reset_bug "$GPU_PCI_ADDR"; then
+    has_reset_bug="true"
+  fi
+
+  echo ""
+  echo "GPU: $GPU_NAME ($GPU_PCI_ADDR)"
+  case "$current_driver" in
+  vfio-pci)
+    msg_success "Mode: vm"
+    echo "Driver: vfio-pci"
+    if [[ "$persistent_mode" == "true" ]]; then
+      echo "Binding: persistent (vfio-pci from boot)"
+    else
+      echo "Binding: $binding_type (vfio-pci $([ "$binding_type" == "early" ] && echo "from boot" || echo "on demand"))"
+    fi
+    echo "Status: Ready for VM passthrough"
+    if [[ "$has_reset_bug" == "true" ]]; then
+      if [[ "$persistent_mode" == "true" ]]; then
+        echo "Note: AMD reset bug GPU - persistent mode active"
+      else
+        echo "Note: AMD reset bug GPU - reboot needed to return to host"
+      fi
+    fi
+    ;;
+  nvidia | amdgpu | i915)
+    msg_success "Mode: host"
+    echo "Driver: $current_driver"
+    if [[ "$persistent_mode" == "true" ]]; then
+      echo "Binding: persistent (vfio-pci at next boot)"
+    else
+      echo "Binding: $binding_type"
+    fi
+    echo "Status: Available to host"
+    if [[ "$has_reset_bug" == "true" && "$persistent_mode" != "true" ]]; then
+      echo "Note: AMD reset bug GPU - use 'mode vm' to enable persistent mode"
+    fi
+    ;;
+  "")
+    msg_success "Mode: none"
+    echo "Driver: none"
+    if [[ "$persistent_mode" == "true" ]]; then
+      echo "Binding: persistent (vfio-pci at next boot)"
+    else
+      echo "Binding: $binding_type$([ "$binding_type" == "early" ] && echo " (vfio-pci at next boot)")"
+    fi
+    echo "Status: No driver loaded (boot state)"
+    ;;
+  *)
+    msg_info "Mode: unknown"
+    echo "Driver: $current_driver"
+    echo "Binding: $binding_type"
+    echo "Status: Unknown state"
+    ;;
+  esac
+  echo ""
+}
+
+# Help Function
+
+show_bind_help() {
+  cat <<EOF
+GPU Passthrough Binding Operations
+
+Usage: omarchy-gpu-passthrough mode [none|vm|host]
+       omarchy-gpu-passthrough persistent [on|off]
+
+MODE COMMANDS:
+  mode              Show current GPU mode
+  mode none         No driver (inactive, power save)
+  mode vm           Bind to vfio-pci (ready for VM)
+  mode host         Bind to native driver (available to host)
+
+PERSISTENT MODE:
+  persistent        Show persistent mode status
+  persistent on     GPU boots to vfio-pci (for VM)
+  persistent off    GPU boots with native driver (for host)
+
+OPTIONS:
+  -h, --help        Show this help
+
+EXAMPLES:
+  omarchy-gpu-passthrough mode         # Show current mode
+  omarchy-gpu-passthrough mode vm      # Switch to VM mode
+  omarchy-gpu-passthrough persistent   # Show persistent status
+  omarchy-gpu-passthrough persistent off  # Disable, then reboot for host
+
+AMD RESET BUG:
+  Some AMD GPUs (Vega, Navi, Polaris) cannot rebind to native driver
+  after vfio-pci without reboot. For these GPUs:
+  - 'mode vm' auto-enables persistent mode
+  - 'mode host' shows TUI to disable persistent + reboot
+  - Or manually: 'persistent off' then reboot
+EOF
+}
+
+# Main Dispatcher
+
+case "${1:-}" in
+mode)
+  shift
+  if [[ -z "${1:-}" ]]; then
+    cmd_mode_get
+  else
+    cmd_mode_set "$1"
+  fi
+  ;;
+persistent)
+  shift
+  cmd_persistent "${1:-}"
+  ;;
+-h | --help | help)
+  show_bind_help
+  ;;
+*)
+  if [[ -z "${1:-}" ]]; then
+    echo ""
+    echo "Missing command. Usage: omarchy-gpu-passthrough mode [none|vm|host]"
+    echo ""
+  else
+    echo ""
+    echo "Unknown option: $1"
+    echo ""
+  fi
+  show_bind_help
+  exit 1
+  ;;
+esac

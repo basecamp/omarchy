@@ -1,0 +1,1799 @@
+#!/bin/bash
+#
+# omarchy-gpu-passthrough-utils - Shared utilities
+# This file is sourced by omarchy-gpu-passthrough-* binaries
+#
+
+# Prevent direct execution
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  echo "ERROR: This file should be sourced, not executed directly" >&2
+  echo "Usage: source omarchy-gpu-passthrough-utils" >&2
+  exit 1
+fi
+
+# Configuration paths
+LIMINE_DEFAULT="/etc/default/limine"
+GRUB_DEFAULT="/etc/default/grub"
+VFIO_CONF="/etc/modprobe.d/vfio.conf"
+BLACKLIST_CONF="/etc/modprobe.d/blacklist-gpu-passthrough.conf"
+KVM_CONF="/etc/modprobe.d/kvm.conf"
+MKINITCPIO_CONF="/etc/mkinitcpio.conf"
+GPU_PASSTHROUGH_CONF="/etc/omarchy-gpu-passthrough.conf"
+
+# Runtime state paths
+STATE_MARKER_FILE="/var/run/omarchy-vm-gpu-mode"
+
+# Late binding systemd service (for AMD reset bug GPUs)
+# This service runs AFTER amdgpu does POST, then rebinds to vfio-pci
+VFIO_SERVICE="/etc/systemd/system/omarchy-gpu-passthrough.service"
+
+# Logging configuration
+LOG_DIR="/var/log/omarchy-gpu-passthrough"
+LOG_FILE="$LOG_DIR/gpu-passthrough.log"
+LOG_MAX_SIZE=$((10 * 1024 * 1024)) # 10 MB
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Global arrays for GPU detection (populated by detect_gpus)
+declare -a GPU_PCI_ADDR
+declare -a GPU_VENDOR_ID
+declare -a GPU_DEVICE_ID
+declare -a GPU_NAME
+declare -a GPU_DRIVER
+declare -a GPU_TYPE
+declare -a GPU_AUDIO_ID
+declare -i GPU_COUNT=0
+
+# Intel iGPU: Legacy (UHD, HD Graphics, Iris) + Modern codenames
+INTEL_IGPU_REGEX='uhd|hd graphics|iris|intel.*graphics|meteor|lunar|arrow|panther'
+
+# AMD APU: Desktop + Mobile + Legacy codenames
+AMD_APU_REGEX='radeon [0-9]+m|vega.*igpu|phoenix|rembrandt|cezanne|renoir|lucienne|barcelo|strix|raphael|hawk|mendocino|krackan'
+
+# AMD GPU device IDs with "reset bug" - require full power cycle after vfio-pci use
+# These GPUs cannot rebind to native driver (amdgpu) without reboot after VM use.
+# Source: https://github.com/lowell80/vendor-reset (device-db.h)
+#
+# Breakdown (by GPU family):
+#   Polaris 10 (RX 470/480/570/580/590): 67c0-67cf, 67d0, 67df, 6fdf
+#   Polaris 11 (RX 460/560): 67e0-67ef, 67ff
+#   Polaris 12 (RX 540/550): 6980-699f
+#   Vega 10 (Vega 56/64/FE): 6860-686f, 687f
+#   Vega 20 (Radeon VII, MI50/60): 66a0-66af, 164c
+#   Navi 10 (RX 5600/5700): 7310-731f
+#   Navi 10 APU (Renoir/Cezanne/Barcelo): 15bf, 15e7, 1636, 1638
+#   Navi 12 (Pro 5600M): 7360, 7362
+#   Navi 14 (RX 5300/5500): 7340-734f
+#   Navi 23 (RX 6600/6600XT): 73ff
+#   Arcturus (MI100): 738c
+#   Fiji (Fury/Fury X/Nano): 7300, 7301
+#   Hawaii (R9 290/390): 67b0, 67b1
+#   Tonga (R9 380/285): 6920-6929
+AMD_RESET_BUG_DEVICE_IDS='67c0|67c1|67c2|67c4|67c7|67c8|67c9|67ca|67cc|67cf|67d0|67df|6fdf|67e0|67e1|67e3|67e7|67e8|67e9|67eb|67ef|67ff|6980|6981|6985|6986|6987|6995|6997|699f|6860|6861|6862|6863|6864|6867|6868|6869|686a|686b|686c|686d|686e|686f|687f|66a0|66a1|66a2|66a3|66a4|66a7|66af|164c|7310|7312|7318|7319|731a|731b|731e|731f|15bf|15e7|1636|1638|7360|7362|7340|7341|7347|734f|73ff|738c|7300|7301|67b0|67b1|6920|6921|6928|6929'
+
+normalize_pci_addr() {
+  local pci_addr="$1"
+  [[ -z "$pci_addr" ]] && return 1
+  [[ ! "$pci_addr" =~ ^[0-9a-fA-F]{4}: ]] && pci_addr="0000:${pci_addr}"
+  if [[ ! "$pci_addr" =~ ^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$ ]]; then
+    return 1
+  fi
+
+  echo "$pci_addr"
+}
+
+msg_error() {
+  echo "❌  Error: $*" >&2
+}
+
+msg_success() {
+  echo "✓  $*"
+}
+
+msg_info() {
+  echo "ℹ️  $*"
+}
+
+msg_warning() {
+  echo "⚠️  Warning: $*" >&2
+}
+
+msg_section() {
+  echo ""
+  echo "$*"
+  echo ""
+}
+
+show_warning_box() {
+  local message="$1"
+  local box_width=65
+  local content_width=$((box_width - 2))
+
+  [[ -z "$message" ]] && message="(No message provided)"
+
+  local border_line=""
+  for ((i = 0; i < box_width; i++)); do border_line+="-"; done
+
+  echo ""
+  echo -e "${RED}+${border_line}+${NC}"
+  echo -e "${RED}|$(printf '%*s' $(((box_width + 8) / 2)) "WARNING")$(printf '%*s' $(((box_width - 8) / 2)) "")|${NC}"
+  echo -e "${RED}+${border_line}+${NC}"
+
+  if command -v fold &>/dev/null; then
+    echo "$message" | fold -s -w "$content_width" | while IFS= read -r line; do
+      printf "${RED}|${NC} %-${content_width}s ${RED}|${NC}\n" "$line"
+    done
+  else
+    printf "${RED}|${NC} %-${content_width}s ${RED}|${NC}\n" "$message"
+  fi
+
+  echo -e "${RED}+${border_line}+${NC}"
+  echo ""
+}
+
+show_spinner() {
+  local duration="$1"
+  local message="${2:-Processing...}"
+  local spinner=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+
+  if ! [[ "$duration" =~ ^[0-9]+$ ]] || [[ "$duration" -lt 1 ]]; then
+    duration=1
+  fi
+
+  local start_time=$(date +%s)
+  local end_time=$((start_time + duration))
+  local current_time=$start_time
+
+  echo -n "$message "
+
+  while [[ "$current_time" -lt "$end_time" ]]; do
+    for frame in "${spinner[@]}"; do
+      echo -ne "\r$message $frame"
+      sleep 0.1
+      current_time=$(date +%s)
+      [[ "$current_time" -ge "$end_time" ]] && break 2
+    done
+  done
+
+  echo -ne "\r$message ✓\n"
+}
+
+notify_silent() {
+  local title="$1"
+  local message="$2"
+  local urgency="${3:-normal}"
+
+  notify-send -u "$urgency" -- "$title" "$message" 2>/dev/null || true
+}
+
+detect_gpu_mode_from_driver() {
+  local driver="$1"
+  case "$driver" in
+  vfio-pci)
+    echo "vm"
+    ;;
+  nvidia | nvidia_drm | amdgpu | i915)
+    echo "host"
+    ;;
+  "")
+    echo "none"
+    ;;
+  *)
+    echo "unknown"
+    ;;
+  esac
+}
+
+log_init() {
+  if [[ ! -d "$LOG_DIR" ]]; then
+    sudo -n mkdir -p "$LOG_DIR" 2>/dev/null || {
+      LOG_DIR="$HOME/.local/share/omarchy-gpu-passthrough/logs"
+      LOG_FILE="$LOG_DIR/gpu-passthrough.log"
+      mkdir -p "$LOG_DIR" 2>/dev/null || return 1
+    }
+  fi
+
+  if [[ -f "$LOG_FILE" ]]; then
+    local log_size=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)
+    if [[ "$log_size" -gt "$LOG_MAX_SIZE" ]]; then
+      local timestamp=$(date +%Y%m%d_%H%M%S)
+      sudo -n mv "$LOG_FILE" "$LOG_FILE.$timestamp" 2>/dev/null ||
+        mv "$LOG_FILE" "$LOG_FILE.$timestamp" 2>/dev/null
+
+      find "$LOG_DIR" -maxdepth 1 -type f -name "gpu-passthrough.log.*" -printf '%T@ %p\n' 2>/dev/null |
+        sort -rn | tail -n +6 | cut -d' ' -f2- | xargs -r rm -f
+    fi
+  fi
+
+  return 0
+}
+
+log_message() {
+  local category="$1"
+  shift
+  local message="$*"
+  local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+  if [[ ! -d "$LOG_DIR" ]]; then
+    log_init || return 1
+  fi
+
+  if [[ -w "$LOG_DIR" ]]; then
+    echo "[$timestamp] [$category] $message" >>"$LOG_FILE" 2>/dev/null
+  else
+    echo "[$timestamp] [$category] $message" | sudo -n tee -a "$LOG_FILE" >/dev/null 2>&1 || true
+  fi
+}
+
+log_info() {
+  log_message "INFO" "$@"
+}
+
+log_success() {
+  log_message "SUCCESS" "$@"
+}
+
+log_error() {
+  log_message "ERROR" "$@"
+}
+
+log_warn() {
+  log_message "WARN" "$@"
+}
+
+check_dependencies() {
+  local recommended_deps=("mesa-utils" "dmidecode")
+
+  # Check if Vulkan tools are missing (for diagnostics only)
+  if ! command -v vulkaninfo &>/dev/null; then
+    recommended_deps+=("vulkan-tools")
+  fi
+
+  # Check if AMD GPU is present - add radeontop for monitoring
+  if lspci 2>/dev/null | grep -qiE "VGA.*AMD|3D.*AMD|Display.*AMD"; then
+    if ! command -v radeontop &>/dev/null; then
+      recommended_deps+=("radeontop")
+    fi
+  fi
+
+  # Check if Intel GPU is present - add intel-gpu-tools for monitoring
+  if lspci 2>/dev/null | grep -qiE "VGA.*Intel|Display.*Intel"; then
+    if ! command -v intel_gpu_top &>/dev/null; then
+      recommended_deps+=("intel-gpu-tools")
+    fi
+  fi
+
+  local missing=()
+  for pkg in "${recommended_deps[@]}"; do
+    if ! pacman -Qi "$pkg" &>/dev/null; then
+      missing+=("$pkg")
+    fi
+  done
+
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    msg_info "Installing optional diagnostic tools: ${missing[*]}"
+
+    if sudo pacman -S --needed --noconfirm "${missing[@]}" >/dev/null 2>&1; then
+      msg_success "Diagnostic tools installed"
+    else
+      msg_warning "Optional tools not installed (diagnostics may be limited)"
+      msg_info "  Install manually if needed: sudo pacman -S ${missing[*]}"
+    fi
+  fi
+
+  return 0
+}
+
+get_grub_regenerate_cmd() {
+  if command -v update-grub &>/dev/null; then
+    echo "update-grub"
+  elif [[ -f /boot/grub2/grub.cfg ]]; then
+    echo "grub2-mkconfig -o /boot/grub2/grub.cfg"
+  elif [[ -f /boot/grub/grub.cfg ]]; then
+    echo "grub-mkconfig -o /boot/grub/grub.cfg"
+  else
+    echo ""
+  fi
+}
+
+get_cpu_vendor() {
+  local vendor=$(grep -m1 "vendor_id" /proc/cpuinfo | awk '{print $3}')
+  case "$vendor" in
+  AuthenticAMD)
+    echo "amd"
+    ;;
+  GenuineIntel)
+    echo "intel"
+    ;;
+  *)
+    echo "unknown"
+    ;;
+  esac
+}
+
+check_cpu_iommu_capability() {
+  local vendor=$(get_cpu_vendor)
+
+  case "$vendor" in
+  amd)
+    if grep -q "svm" /proc/cpuinfo; then
+      return 0
+    fi
+    ;;
+  intel)
+    if grep -q "vmx" /proc/cpuinfo; then
+      return 0
+    fi
+    ;;
+  esac
+
+  return 1
+}
+
+detect_virtualization() {
+  IS_VIRTUAL_MACHINE=false
+  VIRTUALIZATION_TYPE=""
+
+  if command -v systemd-detect-virt &>/dev/null; then
+    local virt_type
+    virt_type=$(systemd-detect-virt 2>/dev/null) || virt_type=""
+    if [[ -n "$virt_type" && "$virt_type" != "none" ]]; then
+      IS_VIRTUAL_MACHINE=true
+      VIRTUALIZATION_TYPE="$virt_type"
+      return 1
+    fi
+  fi
+
+  if [[ -r /sys/class/dmi/id/product_name ]]; then
+    local product
+    product=$(<"/sys/class/dmi/id/product_name") 2>/dev/null || product=""
+    if [[ "$product" =~ [Vv]irtual|[Vv][Mm]ware|[Qq][Ee][Mm][Uu]|[Kk][Vv][Mm]|[Xx]en|[Bb]ochs|[Pp]arallels ]]; then
+      IS_VIRTUAL_MACHINE=true
+      VIRTUALIZATION_TYPE="$product"
+      return 1
+    fi
+  fi
+
+  if [[ -r /proc/cpuinfo ]] && grep -q "^flags.*hypervisor" /proc/cpuinfo; then
+    IS_VIRTUAL_MACHINE=true
+    VIRTUALIZATION_TYPE="unknown hypervisor"
+    return 1
+  fi
+
+  if journalctl -k -b 2>/dev/null | grep -qiE "hypervisor detected|kvm|qemu|vmware|xen|virtualbox"; then
+    IS_VIRTUAL_MACHINE=true
+    VIRTUALIZATION_TYPE="detected via kernel log"
+    return 1
+  fi
+
+  return 0
+}
+
+check_iommu_support() {
+  if journalctl -k -b 2>/dev/null | grep -qi "IOMMU enabled\|AMD-Vi\|DMAR"; then
+    return 0
+  fi
+
+  if grep -qE "amd_iommu=on|intel_iommu=on" /proc/cmdline; then
+    return 0
+  fi
+
+  if [[ -d /sys/kernel/iommu_groups ]] && [[ -n "$(ls -A /sys/kernel/iommu_groups 2>/dev/null)" ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+save_gpu_config() {
+  local idx="$1"
+  local pci="${GPU_PCI_ADDR[$idx]}"
+  local vendor_id="${GPU_VENDOR_ID[$idx]}"
+  local device_id="${GPU_DEVICE_ID[$idx]}"
+  local name="${GPU_NAME[$idx]}"
+  local audio_id="${GPU_AUDIO_ID[$idx]}"
+  local driver="${GPU_DRIVER[$idx]}"
+
+  local native_driver="none"
+  case "$vendor_id" in
+  10de) native_driver="nvidia" ;;
+  1002) native_driver="amdgpu" ;;
+  8086) native_driver="i915" ;;
+  *)
+    if [[ -n "$driver" && "$driver" != "none" ]]; then
+      native_driver="$driver"
+    fi
+    ;;
+  esac
+
+  # Get IOMMU group info (supports multi-device groups on laptops and AMD Vega with separate audio group)
+  local iommu_group
+  iommu_group=$(get_gpu_passthrough_iommu_groups "$pci" "$vendor_id")
+  local iommu_devices
+  iommu_devices=$(get_gpu_passthrough_devices "$pci" "$vendor_id")
+
+  # Debug logging for IOMMU detection (helps diagnose laptop issues)
+  if [[ "$iommu_group" == "unknown" ]]; then
+    log_warn "IOMMU group detection failed for $pci"
+    log_warn "  This is expected before first reboot with IOMMU enabled"
+  fi
+  if [[ -z "$iommu_devices" ]]; then
+    log_warn "IOMMU devices detection returned empty for $pci"
+    log_warn "  USB controller binding will use fallback detection in configure_vfio_modules()"
+  fi
+  log_info "Saving config: IOMMU group=$iommu_group, devices=${iommu_devices:-NONE}"
+
+  # Legacy audio_pci for backwards compatibility
+  local audio_pci=""
+  if [[ -n "$audio_id" ]]; then
+    audio_pci="${pci%%.*}.1"
+  fi
+
+  # Detect external monitor on the SPECIFIC passthrough GPU (not all dGPUs)
+  local dgpu_has_external="false"
+  local drm_card_passthrough=$(get_drm_card_for_pci "$pci")
+
+  if [[ -n "$drm_card_passthrough" ]]; then
+    # DRM card exists - can detect connectors directly
+    for connector_type in HDMI DP VGA; do
+      for connector in /sys/class/drm/${drm_card_passthrough}-${connector_type}*/status; do
+        if [[ -f "$connector" ]] && grep -qx "connected" "$connector" 2>/dev/null; then
+          dgpu_has_external="true"
+          log_info "External monitor detected on passthrough GPU ($connector_type)"
+          break 2
+        fi
+      done
+    done
+  else
+    # No DRM card (driver blacklisted) - preserve existing value from config
+    if [[ -f "$GPU_PASSTHROUGH_CONF" ]]; then
+      local existing_value
+      existing_value=$(grep "^DGPU_HAS_EXTERNAL_MONITOR=" "$GPU_PASSTHROUGH_CONF" 2>/dev/null | cut -d'"' -f2)
+      if [[ "$existing_value" == "true" ]]; then
+        log_info "Preserving DGPU_HAS_EXTERNAL_MONITOR=true from existing config (driver blacklisted)"
+        dgpu_has_external="true"
+      fi
+    fi
+  fi
+
+  local hybrid_mode="false"
+  if [[ "${HYBRID_MUXLESS_MODE:-false}" == "true" ]]; then
+    hybrid_mode="true"
+  fi
+
+  if ! sudo tee "$GPU_PASSTHROUGH_CONF" >/dev/null <<EOF
+# GPU Passthrough Config - Generated $(date +%Y-%m-%d)
+GPU_PCI_ADDR="$pci"
+GPU_VENDOR_ID="$vendor_id"
+GPU_DEVICE_ID="$device_id"
+GPU_NAME="$name"
+GPU_DRIVER_ORIGINAL="$native_driver"
+GPU_AUDIO_PCI="$audio_pci"
+GPU_AUDIO_IDS="$audio_id"
+GPU_IOMMU_GROUP="$iommu_group"
+GPU_IOMMU_DEVICES="$iommu_devices"
+DGPU_HAS_EXTERNAL_MONITOR="$dgpu_has_external"
+HYBRID_MUXLESS_MODE="$hybrid_mode"
+IGPU_PCI="${IGPU_PCI:-}"
+DGPU_PCI="${DGPU_PCI:-$pci}"
+IS_MUXLESS_LAPTOP="${IS_MUXLESS_LAPTOP:-false}"
+EOF
+  then
+    log_error "Failed to write config file (sudo tee failed)"
+    return 1
+  fi
+
+  # Verify file was created with correct owner
+  if [[ ! -f "$GPU_PASSTHROUGH_CONF" ]]; then
+    log_error "Config file not created: $GPU_PASSTHROUGH_CONF"
+    return 1
+  fi
+
+  local file_owner
+  file_owner=$(stat -c "%U" "$GPU_PASSTHROUGH_CONF" 2>/dev/null)
+  if [[ "$file_owner" != "root" ]]; then
+    log_error "Config file has wrong owner: $file_owner (expected root)"
+    return 1
+  fi
+
+  # Verify config can be loaded (validates format and content)
+  if ! load_gpu_config; then
+    log_error "Config file created but validation failed"
+    return 1
+  fi
+
+  msg_success "Config saved: $GPU_PASSTHROUGH_CONF"
+  return 0
+}
+
+validate_pci_address() {
+  local pci="$1"
+  [[ "$pci" =~ ^([0-9a-fA-F]{4}:)?[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$ ]]
+}
+
+detect_gpus() {
+  local i=0
+
+  GPU_PCI_ADDR=()
+  GPU_VENDOR_ID=()
+  GPU_DEVICE_ID=()
+  GPU_NAME=()
+  GPU_DRIVER=()
+  GPU_TYPE=()
+  GPU_AUDIO_ID=()
+
+  while IFS= read -r line; do
+    if [[ -z "$line" ]]; then
+      continue
+    fi
+
+    local pci_addr="${line%% *}"
+    if [[ -z "$pci_addr" ]]; then
+      continue
+    fi
+
+    if ! validate_pci_address "$pci_addr"; then
+      continue
+    fi
+
+    # Filter non-GPU devices (class 03xx = display controllers)
+    local pci_class=$(get_pci_class "$pci_addr")
+    if [[ ! "$pci_class" =~ ^03 ]]; then
+      continue
+    fi
+
+    local vendor_id="" device_id=""
+    if [[ "$line" =~ \[([0-9a-f]{4}):([0-9a-f]{4})\][^[]*$ ]]; then
+      vendor_id="${BASH_REMATCH[1]}"
+      device_id="${BASH_REMATCH[2]}"
+    else
+      continue
+    fi
+
+    local name="${line#*]: }"
+    name="${name% \[[0-9a-f][0-9a-f][0-9a-f][0-9a-f]:[0-9a-f][0-9a-f][0-9a-f][0-9a-f]\]*}"
+    name="${name%"${name##*[![:space:]]}"}"
+
+    local driver=$(get_pci_driver "$pci_addr")
+    [[ -z "$driver" ]] && driver="none"
+
+    local gpu_type=$(classify_gpu "$name" "$vendor_id")
+
+    local audio_id=$(get_gpu_audio_device "$pci_addr")
+
+    GPU_PCI_ADDR+=("$pci_addr")
+    GPU_VENDOR_ID+=("$vendor_id")
+    GPU_DEVICE_ID+=("$device_id")
+    GPU_NAME+=("$name")
+    GPU_DRIVER+=("$driver")
+    GPU_TYPE+=("$gpu_type")
+    GPU_AUDIO_ID+=("$audio_id")
+
+    i=$((i + 1))
+  done < <(lspci -nn | grep -iE 'VGA compatible|3D controller|Display controller')
+
+  GPU_COUNT=$i
+
+  return 0
+}
+
+classify_gpu() {
+  local name="$1"
+  local vendor_id="$2"
+  local name_lower="${name,,}"
+
+  # Intel integrated GPUs
+  if [[ "$vendor_id" == "8086" ]]; then
+    if [[ "$name_lower" =~ $INTEL_IGPU_REGEX ]]; then
+      echo "integrated"
+      return
+    fi
+  fi
+
+  # AMD integrated GPUs
+  if [[ "$vendor_id" == "1002" ]]; then
+    if [[ "$name_lower" =~ $AMD_APU_REGEX ]]; then
+      echo "integrated"
+      return
+    fi
+  fi
+
+  echo "dedicated"
+}
+
+get_gpu_audio_device() {
+  local gpu_pci="$1"
+  local audio_pci="${gpu_pci%%.*}.1"
+
+  if lspci -s "$audio_pci" 2>/dev/null | grep -qi "audio"; then
+    local audio_id=$(get_pci_device_id "$audio_pci")
+    echo "$audio_id"
+  else
+    echo ""
+  fi
+}
+
+# GPU PCI class codes
+GPU_CLASS_VGA="0300"
+GPU_CLASS_3D="0302"
+GPU_CLASS_DISPLAY="0380"
+GPU_CLASS_AUDIO="0403"
+GPU_CLASS_USB="0c03"
+
+# Get Intel GPU stats from sysfs
+# Returns: shell variables for temp, freq, etc.
+get_intel_gpu_stats() {
+  local pci_addr="$1"
+  local drm_card
+  drm_card=$(get_drm_card_for_pci "$pci_addr") || return 1
+
+  local device_path="/sys/class/drm/${drm_card}/device"
+  [[ ! -d "$device_path" ]] && return 1
+
+  # Find hwmon path
+  local hwmon_path=""
+  for hwmon in "$device_path"/hwmon/hwmon*; do
+    [[ -d "$hwmon" ]] && hwmon_path="$hwmon" && break
+  done
+
+  # GPU frequency (current)
+  local gpu_freq=0
+  if [[ -r "$device_path/gt_cur_freq_mhz" ]]; then
+    gpu_freq=$(<"$device_path/gt_cur_freq_mhz")
+  elif [[ -r "$device_path/gt/gt0/rps_cur_freq_mhz" ]]; then
+    gpu_freq=$(<"$device_path/gt/gt0/rps_cur_freq_mhz")
+  fi
+
+  # GPU frequency limits
+  local gpu_freq_min=0 gpu_freq_max=0
+  [[ -r "$device_path/gt_min_freq_mhz" ]] && gpu_freq_min=$(<"$device_path/gt_min_freq_mhz")
+  [[ -r "$device_path/gt_max_freq_mhz" ]] && gpu_freq_max=$(<"$device_path/gt_max_freq_mhz")
+
+  # Temperature (milliCelsius) - Intel GPUs often report via hwmon
+  local temp=0
+  if [[ -n "$hwmon_path" && -r "$hwmon_path/temp1_input" ]]; then
+    temp=$(<"$hwmon_path/temp1_input")
+  fi
+
+  # Power (microWatts)
+  local power=0
+  if [[ -n "$hwmon_path" ]]; then
+    if [[ -r "$hwmon_path/power1_input" ]]; then
+      power=$(<"$hwmon_path/power1_input")
+    elif [[ -r "$hwmon_path/energy1_input" ]]; then
+      # Some Intel GPUs report energy counter, not power
+      power=0  # Would need delta calculation
+    fi
+  fi
+
+  # Output as shell variables
+  echo "gpu_freq_mhz=$gpu_freq"
+  echo "gpu_freq_min_mhz=$gpu_freq_min"
+  echo "gpu_freq_max_mhz=$gpu_freq_max"
+  echo "temp_c=$((temp / 1000))"
+  echo "power_w=$((power / 1000000))"
+}
+
+# Get NVIDIA GPU stats via nvidia-smi
+# Returns: shell variables for vram, temp, power, clocks, vbios
+get_nvidia_gpu_stats() {
+  local pci_addr="$1"
+
+  command -v nvidia-smi &>/dev/null || return 1
+
+  local pci_normalized
+  pci_normalized=$(normalize_pci_addr "$pci_addr") || return 1
+
+  local vram_used vram_total temp power gpu_clock mem_clock vbios
+
+  vram_used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  vram_total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  temp=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  power=$(nvidia-smi --query-gpu=power.draw --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  gpu_clock=$(nvidia-smi --query-gpu=clocks.gr --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  mem_clock=$(nvidia-smi --query-gpu=clocks.mem --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+  vbios=$(nvidia-smi --query-gpu=vbios_version --format=csv,noheader --id="$pci_normalized" 2>/dev/null | head -1)
+
+  # Validate and default values
+  [[ ! "$vram_used" =~ ^[0-9]+$ ]] && vram_used=0
+  [[ ! "$vram_total" =~ ^[0-9]+$ ]] && vram_total=0
+  [[ ! "$temp" =~ ^[0-9]+$ ]] && temp=0
+  [[ ! "$gpu_clock" =~ ^[0-9]+$ ]] && gpu_clock=0
+  [[ ! "$mem_clock" =~ ^[0-9]+$ ]] && mem_clock=0
+
+  # Power can be float
+  if [[ "$power" =~ ^[0-9.]+$ ]]; then
+    power=$(printf "%.0f" "$power")
+  else
+    power=0
+  fi
+
+  # Escape vbios string
+  vbios="${vbios//\\/\\\\}"
+  vbios="${vbios//\"/\\\"}"
+  vbios="${vbios//\$/\\\$}"
+  vbios="${vbios//\`/\\\`}"
+
+  echo "vram_used_mb=$vram_used"
+  echo "vram_total_mb=$vram_total"
+  echo "temp_c=$temp"
+  echo "power_w=$power"
+  echo "gpu_clock_mhz=\"$gpu_clock\""
+  echo "mem_clock_mhz=\"$mem_clock\""
+  echo "vbios=\"$vbios\""
+}
+
+# Get AMD GPU stats from sysfs
+# Returns: associative array with vram_used, vram_total, temp, power, fan, vbios, gtt_used, gtt_total
+get_amd_gpu_stats() {
+  local pci_addr="$1"
+  local drm_card
+  drm_card=$(get_drm_card_for_pci "$pci_addr") || return 1
+
+  local device_path="/sys/class/drm/${drm_card}/device"
+  [[ ! -d "$device_path" ]] && return 1
+
+  local hwmon_path=""
+  for hwmon in "$device_path"/hwmon/hwmon*; do
+    [[ -d "$hwmon" ]] && hwmon_path="$hwmon" && break
+  done
+
+  # VRAM
+  local vram_used=0 vram_total=0
+  [[ -r "$device_path/mem_info_vram_used" ]] && vram_used=$(<"$device_path/mem_info_vram_used")
+  [[ -r "$device_path/mem_info_vram_total" ]] && vram_total=$(<"$device_path/mem_info_vram_total")
+
+  # GTT (system RAM used by GPU)
+  local gtt_used=0 gtt_total=0
+  [[ -r "$device_path/mem_info_gtt_used" ]] && gtt_used=$(<"$device_path/mem_info_gtt_used")
+  [[ -r "$device_path/mem_info_gtt_total" ]] && gtt_total=$(<"$device_path/mem_info_gtt_total")
+
+  # Temperature (milliCelsius)
+  local temp=0
+  [[ -n "$hwmon_path" && -r "$hwmon_path/temp1_input" ]] && temp=$(<"$hwmon_path/temp1_input")
+
+  # Power (microWatts) - try average first, then current
+  local power=0
+  if [[ -n "$hwmon_path" ]]; then
+    if [[ -r "$hwmon_path/power1_average" ]]; then
+      power=$(<"$hwmon_path/power1_average")
+    elif [[ -r "$hwmon_path/power1_input" ]]; then
+      power=$(<"$hwmon_path/power1_input")
+    fi
+  fi
+
+  # Fan speed (RPM)
+  local fan=0
+  [[ -n "$hwmon_path" && -r "$hwmon_path/fan1_input" ]] && fan=$(<"$hwmon_path/fan1_input")
+
+  # VBIOS version
+  local vbios=""
+  [[ -r "$device_path/vbios_version" ]] && vbios=$(<"$device_path/vbios_version")
+
+  # GPU clock levels
+  local gpu_clock="" mem_clock=""
+  if [[ -r "$device_path/pp_dpm_sclk" ]]; then
+    gpu_clock=$(grep '\*' "$device_path/pp_dpm_sclk" 2>/dev/null | grep -oP '\d+(?=Mhz)' | head -1)
+  fi
+  if [[ -r "$device_path/pp_dpm_mclk" ]]; then
+    mem_clock=$(grep '\*' "$device_path/pp_dpm_mclk" 2>/dev/null | grep -oP '\d+(?=Mhz)' | head -1)
+  fi
+
+  # Output as shell variables (MB/Celsius/Watts)
+  vbios="${vbios//\\/\\\\}"
+  vbios="${vbios//\"/\\\"}"
+  vbios="${vbios//\$/\\\$}"
+  vbios="${vbios//\`/\\\`}"
+
+  echo "vram_used_mb=$((vram_used / 1024 / 1024))"
+  echo "vram_total_mb=$((vram_total / 1024 / 1024))"
+  echo "gtt_used_mb=$((gtt_used / 1024 / 1024))"
+  echo "gtt_total_mb=$((gtt_total / 1024 / 1024))"
+  echo "temp_c=$((temp / 1000))"
+  echo "power_w=$((power / 1000000))"
+  echo "fan_rpm=$fan"
+  echo "vbios=\"$vbios\""
+  echo "gpu_clock_mhz=\"$gpu_clock\""
+  echo "mem_clock_mhz=\"$mem_clock\""
+}
+
+# Get GPU power consumption in Watts
+get_gpu_power_watts() {
+  local pci_addr="$1"
+  local vendor_id="${2:-}"
+  local driver="${3:-}"
+
+  # AMD: use sysfs
+  if [[ "$vendor_id" == "1002" ]]; then
+    local drm_card
+    drm_card=$(get_drm_card_for_pci "$pci_addr") || { echo "0"; return; }
+    local hwmon_path=""
+    for hwmon in "/sys/class/drm/${drm_card}/device/hwmon/hwmon"*; do
+      [[ -d "$hwmon" ]] && hwmon_path="$hwmon" && break
+    done
+    if [[ -n "$hwmon_path" ]]; then
+      local power=0
+      if [[ -r "$hwmon_path/power1_average" ]]; then
+        power=$(<"$hwmon_path/power1_average")
+      elif [[ -r "$hwmon_path/power1_input" ]]; then
+        power=$(<"$hwmon_path/power1_input")
+      fi
+      echo "$((power / 1000000))"
+      return
+    fi
+  fi
+
+  # NVIDIA: use nvidia-smi
+  if [[ "$vendor_id" == "10de" ]] && command -v nvidia-smi &>/dev/null; then
+    local pci_normalized
+    pci_normalized=$(normalize_pci_addr "$pci_addr") || { echo "0"; return; }
+    local power
+    power=$(nvidia-smi --query-gpu=power.draw --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+    if [[ "$power" =~ ^[0-9.]+$ ]]; then
+      printf "%.0f" "$power"
+      return
+    fi
+  fi
+
+  echo "0"
+}
+
+# Get GPU temperature in Celsius
+get_gpu_temp_celsius() {
+  local pci_addr="$1"
+  local vendor_id="${2:-}"
+
+  # AMD: use sysfs
+  if [[ "$vendor_id" == "1002" ]]; then
+    local drm_card
+    drm_card=$(get_drm_card_for_pci "$pci_addr") || { echo "0"; return; }
+    local hwmon_path=""
+    for hwmon in "/sys/class/drm/${drm_card}/device/hwmon/hwmon"*; do
+      [[ -d "$hwmon" ]] && hwmon_path="$hwmon" && break
+    done
+    if [[ -n "$hwmon_path" && -r "$hwmon_path/temp1_input" ]]; then
+      local temp=$(<"$hwmon_path/temp1_input")
+      echo "$((temp / 1000))"
+      return
+    fi
+  fi
+
+  # NVIDIA: use nvidia-smi
+  if [[ "$vendor_id" == "10de" ]] && command -v nvidia-smi &>/dev/null; then
+    local pci_normalized
+    pci_normalized=$(normalize_pci_addr "$pci_addr") || { echo "0"; return; }
+    local temp
+    temp=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits --id="$pci_normalized" 2>/dev/null | head -1)
+    if [[ "$temp" =~ ^[0-9]+$ ]]; then
+      echo "$temp"
+      return
+    fi
+  fi
+
+  echo "0"
+}
+
+# Get VBIOS version
+get_gpu_vbios() {
+  local pci_addr="$1"
+  local vendor_id="${2:-}"
+
+  # AMD: use sysfs
+  if [[ "$vendor_id" == "1002" ]]; then
+    local drm_card
+    drm_card=$(get_drm_card_for_pci "$pci_addr") || { echo ""; return; }
+    local vbios_path="/sys/class/drm/${drm_card}/device/vbios_version"
+    if [[ -r "$vbios_path" ]]; then
+      cat "$vbios_path"
+      return
+    fi
+  fi
+
+  # NVIDIA: use nvidia-smi
+  if [[ "$vendor_id" == "10de" ]] && command -v nvidia-smi &>/dev/null; then
+    local pci_normalized
+    pci_normalized=$(normalize_pci_addr "$pci_addr") || { echo ""; return; }
+    nvidia-smi --query-gpu=vbios_version --format=csv,noheader --id="$pci_normalized" 2>/dev/null | head -1
+    return
+  fi
+
+  echo ""
+}
+
+# Get GPU vRAM in MB
+get_gpu_vram_mb() {
+  local gpu_pci="$1"
+  local vendor_id="${2:-}"
+  local driver="${3:-}"
+
+  # NVIDIA: use nvidia-smi
+  if [[ "$vendor_id" == "10de" ]] && [[ "$driver" == "nvidia" ]] && command -v nvidia-smi &>/dev/null; then
+    local pci_normalized
+    pci_normalized=$(normalize_pci_addr "$gpu_pci") || return 0
+
+    local nvidia_vram
+    nvidia_vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits \
+      --id="$pci_normalized" 2>/dev/null | head -1)
+    if [[ -n "$nvidia_vram" ]]; then
+      if [[ "$nvidia_vram" =~ ^([0-9]+)$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return
+      elif [[ "$nvidia_vram" =~ ^([0-9]+)\ GB$ ]]; then
+        echo $((${BASH_REMATCH[1]} * 1024))
+        return
+      elif [[ "$nvidia_vram" =~ ^([0-9]+)\ MiB$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return
+      fi
+    fi
+  fi
+
+  # AMD: use sysfs
+  if [[ "$vendor_id" == "1002" ]] && [[ "$driver" == "amdgpu" ]]; then
+    local drm_card=$(get_drm_card_for_pci "$gpu_pci")
+    if [[ -n "$drm_card" ]]; then
+      local sysfs_vram="/sys/class/drm/${drm_card}/device/mem_info_vram_total"
+      if [[ -r "$sysfs_vram" ]]; then
+        local vram_bytes=$(<"$sysfs_vram")
+        if [[ -n "$vram_bytes" && "$vram_bytes" =~ ^[0-9]+$ ]]; then
+          echo "$((vram_bytes / 1024 / 1024))"
+          return
+        fi
+      fi
+    fi
+  fi
+
+  echo "0"
+}
+
+# Get GPU BAR size in MB
+get_gpu_bar_size_mb() {
+  local gpu_pci="$1"
+  local max_size_mb=0
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ \[size=([0-9]+)([GMK])\] ]]; then
+      local size="${BASH_REMATCH[1]}"
+      local unit="${BASH_REMATCH[2]}"
+      local size_mb=0
+      case "$unit" in
+        G) size_mb=$((size * 1024)) ;;
+        M) size_mb="$size" ;;
+        K) size_mb=$((size / 1024)) ;;
+      esac
+      [[ "$size_mb" -gt "$max_size_mb" ]] && max_size_mb="$size_mb"
+    fi
+  done < <(lspci -v -s "$gpu_pci" 2>/dev/null | grep "Memory.*prefetchable")
+
+  echo "$max_size_mb"
+}
+
+# Format memory size for display (MB -> "X GB" or "X MB")
+format_memory_size() {
+  local size_mb="$1"
+  if [[ "$size_mb" -ge 1024 ]]; then
+    echo "$((size_mb / 1024)) GB"
+  elif [[ "$size_mb" -gt 0 ]]; then
+    echo "${size_mb} MB"
+  else
+    echo ""
+  fi
+}
+
+get_gpu_memory() {
+  local gpu_pci="$1"
+  local vendor_id="${2:-}"
+
+  # Detect driver for vRAM lookup
+  local driver=""
+  if [[ "$vendor_id" == "10de" || "$vendor_id" == "1002" ]]; then
+    driver=$(get_pci_driver "$gpu_pci")
+  fi
+
+  # Try vRAM first
+  local vram_mb=$(get_gpu_vram_mb "$gpu_pci" "$vendor_id" "$driver")
+  if [[ "$vram_mb" -gt 0 ]]; then
+    local result=$(format_memory_size "$vram_mb")
+    [[ -n "$result" ]] && echo "$result" && return
+  fi
+
+  # Fall back to BAR size
+  local bar_mb=$(get_gpu_bar_size_mb "$gpu_pci")
+  if [[ "$bar_mb" -gt 0 ]]; then
+    local result=$(format_memory_size "$bar_mb")
+    [[ -n "$result" ]] && echo "$result" && return
+  fi
+
+  echo "Unknown"
+}
+
+# Check if ReBAR enabled (BAR > 256MB)
+check_resizable_bar() {
+  local gpu_pci="$1"
+
+  # Method 1: Check prefetchable BAR size
+  local bar_mb=$(get_gpu_bar_size_mb "$gpu_pci")
+  [[ "$bar_mb" -gt 256 ]] && return 0
+
+  # Method 2: Parse lspci "current size"
+  local current_size size_mb=0
+  current_size=$(lspci -vvvs "$gpu_pci" 2>/dev/null | \
+    grep -A2 "Resizable BAR" | grep -oP 'current size: \K[0-9]+[GM]B' | head -1)
+  [[ -z "$current_size" ]] && return 1
+
+  if [[ "$current_size" =~ ^([0-9]+)GB$ ]]; then
+    size_mb=$(( ${BASH_REMATCH[1]} * 1024 ))
+  elif [[ "$current_size" =~ ^([0-9]+)MB$ ]]; then
+    size_mb="${BASH_REMATCH[1]}"
+  fi
+  [[ "$size_mb" -gt 256 ]] && return 0
+
+  return 1
+}
+
+# Check if early binding is enabled for a GPU
+# Early binding = vfio-pci ids= contains GPU's device ID
+# Returns: 0 = early binding enabled, 1 = runtime binding (or not configured)
+is_early_binding_enabled() {
+  local gpu_pci="${1:-}"
+  local vfio_conf="/etc/modprobe.d/vfio.conf"
+
+  [[ ! -f "$vfio_conf" ]] && return 1
+
+  # Get GPU device ID (e.g., 1002:687f)
+  local device_id=""
+  if [[ -n "$gpu_pci" ]]; then
+    device_id=$(lspci -ns "$gpu_pci" 2>/dev/null | awk '{print $3}')
+  fi
+
+  # Check if vfio.conf has ids= option with this device ID
+  local ids_line
+  ids_line=$(grep -E "^options vfio-pci ids=" "$vfio_conf" 2>/dev/null)
+  [[ -z "$ids_line" ]] && return 1
+
+  # If we have a specific device ID, check if it's in the list
+  if [[ -n "$device_id" ]]; then
+    echo "$ids_line" | grep -qi "${device_id}" && return 0
+    return 1
+  fi
+
+  # No specific GPU, just check if any ids= is configured
+  return 0
+}
+
+# Returns comma-separated vendor:device IDs for USB controllers (e.g., "10de:1ada,10de:1adb")
+get_usb_controller_ids_in_iommu_group() {
+  local gpu_pci="$1"
+  local usb_ids=""
+
+  local iommu_devices=$(get_iommu_group_devices "$gpu_pci")
+  for dev_pci in $iommu_devices; do
+    local dev_class=$(get_pci_class "$dev_pci")
+    # USB controller class: 0c03
+    if [[ "$dev_class" == "0c03" ]]; then
+      local dev_ids=$(get_pci_device_id "$dev_pci")
+      if [[ -n "$dev_ids" ]]; then
+        [[ -n "$usb_ids" ]] && usb_ids="$usb_ids,"
+        usb_ids="$usb_ids$dev_ids"
+      fi
+    fi
+  done
+
+  echo "$usb_ids"
+}
+
+load_gpu_config() {
+  local config_file="$GPU_PASSTHROUGH_CONF"
+
+  if [[ ! -f "$config_file" ]]; then
+    return 1
+  fi
+
+  local config_owner=$(stat -c "%U" "$config_file" 2>/dev/null)
+  local config_perm=$(stat -c "%a" "$config_file" 2>/dev/null)
+
+  if [[ "$config_owner" != "root" ]]; then
+    log_error "Config file has unsafe owner: $config_owner (expected root)"
+    return 1
+  fi
+
+  if [[ "$config_perm" != "644" && "$config_perm" != "600" ]]; then
+    log_warn "Config file has unusual permissions: $config_perm (expected 644 or 600)"
+  fi
+
+  local bad_format_line
+  bad_format_line=$(grep -vE '^\s*(#|$)' "$config_file" 2>/dev/null | grep -vE '^[A-Z_]+="[^"]*"$' | head -1)
+  if [[ -n "$bad_format_line" ]]; then
+    log_error "Config file validation failed: invalid format: $bad_format_line"
+    return 1
+  fi
+
+  local bad_line
+  bad_line=$(grep -E '`|\$\(|\$\{|;|\||&|<|>|\bexec\b|\beval\b|\bsource\b' "$config_file" 2>/dev/null | head -1)
+  if [[ -n "$bad_line" ]]; then
+    log_error "Config file validation failed: dangerous pattern in: $bad_line"
+    return 1
+  fi
+  # Check for `. script` source shorthand only at line start (outside values)
+  bad_line=$(grep -E '^\s*\.\s+' "$config_file" 2>/dev/null | head -1)
+  if [[ -n "$bad_line" ]]; then
+    log_error "Config file validation failed: source shorthand: $bad_line"
+    return 1
+  fi
+
+  source "$config_file" 2>/dev/null || return 1
+
+  if [[ -z "$GPU_PCI_ADDR" ]]; then
+    log_error "Config file missing required GPU_PCI_ADDR"
+    return 1
+  fi
+
+  if ! validate_pci_address "$GPU_PCI_ADDR"; then
+    log_error "Invalid PCI address in config: $GPU_PCI_ADDR"
+    return 1
+  fi
+
+  export GPU_PCI_ADDR
+  export GPU_VENDOR_ID
+  export GPU_DEVICE_ID
+  export GPU_NAME
+  export GPU_DRIVER_ORIGINAL
+  export GPU_AUDIO_PCI
+  export GPU_AUDIO_IDS
+  export GPU_IOMMU_GROUP
+  export GPU_IOMMU_DEVICES
+  export HYBRID_MUXLESS_MODE
+  export IGPU_PCI
+  export DGPU_PCI
+  export IS_MUXLESS_LAPTOP
+  export DGPU_HAS_EXTERNAL_MONITOR
+
+  return 0
+}
+
+get_iommu_group() {
+  local pci_addr
+  pci_addr=$(normalize_pci_addr "$1") || { echo "unknown"; return 1; }
+
+  local iommu_group=$(basename "$(readlink /sys/bus/pci/devices/${pci_addr}/iommu_group 2>/dev/null)" 2>/dev/null)
+
+  if [[ -n "$iommu_group" ]]; then
+    echo "$iommu_group"
+  else
+    echo "unknown"
+  fi
+}
+
+# Get all devices in an IOMMU group
+# Returns: space-separated list of PCI addresses (without 0000: prefix)
+# Note: Filters out PCI bridges (class 0604) - they're host infrastructure, not for VM passthrough
+get_iommu_group_devices() {
+  local pci_addr
+  pci_addr=$(normalize_pci_addr "$1") || return 1
+
+  local iommu_group_path=$(readlink -f /sys/bus/pci/devices/${pci_addr}/iommu_group 2>/dev/null)
+  if [[ -z "$iommu_group_path" ]] || [[ ! -d "$iommu_group_path/devices" ]]; then
+    return 1
+  fi
+
+  local devices=()
+  for dev_path in "$iommu_group_path/devices"/*; do
+    if [[ -d "$dev_path" ]]; then
+      local dev_addr=$(basename "$dev_path")
+
+      # Skip PCI bridges (class 0604) - they're host infrastructure
+      local dev_class=$(get_pci_class "$dev_addr")
+      if [[ "$dev_class" == "0604" ]]; then
+        continue
+      fi
+
+      dev_addr="${dev_addr#0000:}"
+      devices+=("$dev_addr")
+    fi
+  done
+
+  echo "${devices[*]}"
+}
+
+get_drm_card_for_pci() {
+  local pci_addr
+  pci_addr=$(normalize_pci_addr "$1") || return 1
+
+  [[ ! -d /sys/class/drm ]] && return 1
+
+  local device_path="/sys/bus/pci/devices/${pci_addr}"
+  [[ -e "$device_path" ]] || return 1
+
+  for card_dir in "${device_path}"/drm/card*; do
+    [[ "$card_dir" =~ -[A-Za-z] ]] && continue
+
+    [[ "$card_dir" == "/sys/bus/pci/devices/${pci_addr}/drm/card"* ]] || continue
+    if [[ -d "$card_dir" ]]; then
+      basename "$card_dir"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+get_pci_driver() {
+  local pci_addr="$1"
+  lspci -nnk -s "$pci_addr" 2>/dev/null | grep "Kernel driver in use:" | awk '{print $5}'
+}
+
+get_pci_class() {
+  local pci_addr="$1"
+  lspci -Dn -s "$pci_addr" 2>/dev/null | awk '{print $2}' | cut -d: -f1
+}
+
+get_pci_device_id() {
+  local pci_addr="$1"
+  lspci -nn -s "$pci_addr" 2>/dev/null | grep -oP '\[\K[0-9a-f]{4}:[0-9a-f]{4}(?=\])' | tail -1
+}
+
+is_module_loaded() {
+  local module="$1"
+  [[ -z "$module" ]] && return 1
+  lsmod 2>/dev/null | grep -q "^${module}[[:space:]]"
+}
+
+count_connected_monitors_for_pci() {
+  local pci_addr="$1"
+  local count=0
+
+  local drm_card=$(get_drm_card_for_pci "$pci_addr")
+  if [[ -n "$drm_card" ]]; then
+    for connector in /sys/class/drm/${drm_card}-*/status; do
+      if [[ -f "$connector" ]] && grep -q "^connected$" "$connector" 2>/dev/null; then
+        ((count++))
+      fi
+    done
+  fi
+
+  echo "$count"
+}
+
+detect_bootloader() {
+  if [[ -f "$LIMINE_DEFAULT" ]]; then
+    echo "limine"
+  elif [[ -d /boot/grub ]] || [[ -f "$GRUB_DEFAULT" ]]; then
+    echo "grub"
+  elif [[ -d /boot/loader/entries ]]; then
+    echo "systemd-boot"
+  elif [[ -d /boot/EFI/refind ]]; then
+    echo "refind"
+  else
+    echo "unknown"
+  fi
+}
+
+get_bootloader_display_name() {
+  local id="${1:-$(detect_bootloader)}"
+  case "$id" in
+    limine) echo "Limine" ;;
+    grub) echo "GRUB" ;;
+    systemd-boot) echo "systemd-boot" ;;
+    refind) echo "rEFInd" ;;
+    *) echo "Unknown" ;;
+  esac
+}
+
+get_bootloader_config_path() {
+  local id="${1:-$(detect_bootloader)}"
+  case "$id" in
+    limine) echo "/etc/default/limine" ;;
+    grub) echo "/etc/default/grub" ;;
+    systemd-boot) echo "/boot/loader/entries/*.conf" ;;
+    refind) echo "/boot/refind_linux.conf" ;;
+    *) echo "(unknown)" ;;
+  esac
+}
+
+is_bootloader_supported() {
+  local id="${1:-$(detect_bootloader)}"
+  [[ "$id" == "limine" || "$id" == "grub" ]]
+}
+
+detect_hybrid_graphics_laptop() {
+  IS_MUXLESS_LAPTOP=false
+  DGPU_HAS_EXTERNAL_MONITOR=false
+  IGPU_PCI=""
+  DGPU_PCI=""
+  BIOS_DISPLAY_CONTROL_MISSING=false
+
+  if [[ ${#GPU_PCI_ADDR[@]} -eq 0 ]]; then
+    log_warn "No GPUs detected - cannot detect MUX-less laptop"
+    return 1
+  fi
+
+  CACHED_CHASSIS_TYPE=""
+  [[ -r /sys/class/dmi/id/chassis_type ]] && CACHED_CHASSIS_TYPE=$(<"/sys/class/dmi/id/chassis_type") 2>/dev/null
+
+  for i in "${!GPU_PCI_ADDR[@]}"; do
+    local pci="${GPU_PCI_ADDR[$i]}"
+    local drm_card=$(get_drm_card_for_pci "$pci")
+
+    # Check for internal display connectors (eDP or internal DP)
+    local has_internal_display=false
+    if [[ -n "$drm_card" && -d /sys/class/drm ]]; then
+      # Check eDP first
+      for connector in /sys/class/drm/${drm_card}-eDP-*/status; do
+        if [[ -f "$connector" ]] && grep -qx "connected" "$connector" 2>/dev/null; then
+          has_internal_display=true
+          log_info "Found connected eDP for GPU $pci: $(basename "$(dirname "$connector")")"
+          break
+        fi
+      done
+
+      # If no eDP, check for DP
+      if [[ "$has_internal_display" == "false" ]]; then
+        local dp_connectors=()
+
+        for connector in /sys/class/drm/${drm_card}-DP-*/status; do
+          if [[ -f "$connector" ]] && grep -qx "connected" "$connector" 2>/dev/null; then
+            local connector_name=$(basename "$(dirname "$connector")")
+            dp_connectors+=("$connector_name")
+          fi
+        done
+
+        if [[ ${#dp_connectors[@]} -gt 0 ]]; then
+          local system_has_edp=false
+          if compgen -G "/sys/class/drm/card*-eDP-*/status" > /dev/null 2>&1; then
+            system_has_edp=true
+          fi
+
+          if [[ "$system_has_edp" == "true" ]]; then
+            log_info "System has eDP, treating DP connectors as external for GPU $pci"
+          elif [[ ${#dp_connectors[@]} -eq 1 ]]; then
+            case "$CACHED_CHASSIS_TYPE" in
+              3|4|5|6|7)
+                log_info "Desktop chassis, treating DP-1 as external monitor"
+                ;;
+              8|9|10|14|15)
+                local single_dp="${dp_connectors[0]}"
+                if [[ "$single_dp" == *-DP-1 ]]; then
+                  has_internal_display=true
+                  log_info "Laptop with no eDP, single DP-1 likely internal: $single_dp"
+                fi
+                ;;
+              *)
+                log_info "Unknown chassis type $CACHED_CHASSIS_TYPE, treating DP as external"
+                ;;
+            esac
+          else
+            log_info "Multiple DPs without eDP, treating as external for GPU $pci"
+          fi
+        fi
+      fi
+    fi
+
+    if [[ "$has_internal_display" == "true" ]]; then
+      IGPU_PCI="$pci"
+      log_info "Detected iGPU with internal display: $pci"
+      if [[ "${GPU_TYPE[$i]:-}" != "integrated" ]]; then
+        GPU_TYPE[$i]="integrated"
+        log_info "Updated GPU $pci type to integrated"
+      fi
+    else
+      # GPU without internal display = dGPU
+      if [[ -z "$DGPU_PCI" ]]; then
+        DGPU_PCI="$pci"
+        if [[ -z "$drm_card" ]]; then
+          log_info "Detected dGPU without DRM (driver not loaded): $pci"
+        else
+          log_info "Detected dGPU with external ports only: $pci (DRM: $drm_card)"
+        fi
+      else
+        log_warn "Multiple dGPUs detected ($DGPU_PCI, $pci) - using first"
+      fi
+
+      # Check for external monitor on dGPU
+      if [[ -n "$drm_card" ]]; then
+        for connector_type in HDMI DP VGA; do
+          for connector in /sys/class/drm/${drm_card}-${connector_type}*/status; do
+            if [[ -f "$connector" ]] && grep -qx "connected" "$connector" 2>/dev/null; then
+              DGPU_HAS_EXTERNAL_MONITOR=true
+              log_info "External monitor detected on dGPU $pci: $(basename "$connector")"
+              break 2
+            fi
+          done
+        done
+      fi
+    fi
+  done
+
+  # MUX-less = has both iGPU (with internal display) and dGPU
+  if [[ -n "$IGPU_PCI" && -n "$DGPU_PCI" ]]; then
+    if validate_pci_address "$IGPU_PCI" && validate_pci_address "$DGPU_PCI"; then
+      IS_MUXLESS_LAPTOP=true
+      log_info "MUX-less laptop detected (iGPU: $IGPU_PCI, dGPU: $DGPU_PCI)"
+
+      if ! check_bios_display_control; then
+        BIOS_DISPLAY_CONTROL_MISSING=true
+        log_info "Note: System may lack BIOS display control - Hybrid Mode"
+      fi
+
+      return 0
+    else
+      log_warn "Invalid PCI addresses detected (iGPU: $IGPU_PCI, dGPU: $DGPU_PCI) - not MUX-less"
+      IGPU_PCI=""
+      DGPU_PCI=""
+      return 1
+    fi
+  fi
+
+  return 1
+}
+
+check_bios_display_control() {
+  local chassis="${CACHED_CHASSIS_TYPE:-}"
+  if [[ -z "$chassis" && -r /sys/class/dmi/id/chassis_type ]]; then
+    chassis=$(<"/sys/class/dmi/id/chassis_type") 2>/dev/null || chassis=""
+  fi
+
+  case "$chassis" in
+    3|4|5|6|7) return 0 ;;
+  esac
+
+  if [[ -d /sys/firmware/efi/efivars ]]; then
+    local patterns=(
+      "DisplayInit*" "PrimaryDisplay*" "InitDisplayFirst*"
+      "VBIOSDisplayInit*" "AMIBIOSCDisplayInit*" "SetupDisplayInit*"
+      "VBIOSPrimaryDisplay*" "AMIBIOSCPrimaryDisplay*" "SetupPrimaryDisplay*"
+    )
+    for pattern in "${patterns[@]}"; do
+      for file in /sys/firmware/efi/efivars/${pattern}; do
+        if [[ -f "$file" ]]; then
+          log_info "BIOS display control: ${file##*/}"
+          return 0
+        fi
+      done
+    done
+  fi
+
+  return 1
+}
+
+check_iommu_enabled_cmdline() {
+  local cmdline=""
+  [[ -r /proc/cmdline ]] && cmdline=$(<"/proc/cmdline")
+
+  [[ "$cmdline" =~ (intel_iommu|amd_iommu)=on ]] && return 0
+  journalctl -k -b 2>/dev/null | grep -q "Intel-IOMMU force enabled" && return 0
+
+  return 1
+}
+
+get_cached_iommu_devices() {
+  local pci_addr="$1"
+  local vendor_id="${GPU_VENDOR_ID:-}"
+  local devices="${GPU_IOMMU_DEVICES:-}"
+
+  if [[ -z "$devices" ]]; then
+    # Use get_gpu_passthrough_devices for AMD GPUs with separate audio IOMMU group
+    devices=$(get_gpu_passthrough_devices "$pci_addr" "$vendor_id")
+  fi
+
+  echo "$devices"
+}
+
+update_state_marker() {
+  local mode="$1"
+
+  if ! echo "$mode" | sudo -n /usr/bin/tee "$STATE_MARKER_FILE" >/dev/null 2>&1; then
+    log_warn "Failed to update state marker (continuing anyway)"
+    return 1
+  fi
+  return 0
+}
+
+rebind_usb_controllers_to_xhci() {
+  local iommu_devices="$1"
+
+  [[ ! -d "/sys/bus/pci/drivers/xhci_hcd" ]] && return 0
+
+  for dev_pci in $iommu_devices; do
+    local dev_pci_full
+    dev_pci_full=$(normalize_pci_addr "$dev_pci") || continue
+
+    local dev_class=$(get_pci_class "$dev_pci")
+    if [[ "$dev_class" == "0c03" ]]; then
+      log_info "Rebinding USB controller $dev_pci to xhci_hcd..."
+      echo "$dev_pci_full" | sudo -n tee /sys/bus/pci/drivers/xhci_hcd/bind >/dev/null 2>&1 || true
+    fi
+  done
+
+  return 0
+}
+
+remove_vfio_device_ids() {
+  local iommu_devices="$1"
+
+  for dev_pci in $iommu_devices; do
+    local dev_ids=$(get_pci_device_id "$dev_pci")
+    if [[ -n "$dev_ids" ]]; then
+      echo "${dev_ids/:/ }" | sudo -n tee /sys/bus/pci/drivers/vfio-pci/remove_id >/dev/null 2>&1 || true
+    fi
+  done
+
+  return 0
+}
+
+# Check if GPU has AMD reset bug (cannot rebind to native driver after vfio-pci use)
+# Affected: Vega 10/20, Fiji, Tonga, Hawaii, some Polaris, some Navi 10/14
+# Returns: 0 if GPU has reset bug, 1 if not
+gpu_has_reset_bug() {
+  local pci_addr="$1"
+  local device_id
+  device_id=$(lspci -ns "$pci_addr" 2>/dev/null | awk '{print $3}' | cut -d: -f2)
+
+  [[ "${device_id,,}" =~ ^($AMD_RESET_BUG_DEVICE_IDS)$ ]]
+}
+
+# Check if GPU was bound to vfio-pci during this boot session
+# Used to determine if GPU with reset bug needs reboot before binding to native driver
+was_gpu_on_vfio_this_boot() {
+  local pci_addr="$1"
+  local pci_full
+  pci_full=$(normalize_pci_addr "$pci_addr") || return 1
+
+  # Check dmesg for vfio-pci claiming this device
+  if journalctl -k -b --no-pager 2>/dev/null | grep -F "vfio" | grep -qF "$pci_full"; then
+    return 0
+  fi
+
+  return 1
+}
+
+# Check if GPU needs reboot to use native driver (AMD GPU with reset bug after vfio-pci use)
+# This is the "AMD Reset Bug" - GPU cannot be reset properly without full power cycle
+gpu_needs_reboot_for_native_driver() {
+  local pci_addr="$1"
+  local vendor_id="$2"
+
+  # Only affects AMD GPUs
+  [[ "$vendor_id" != "1002" ]] && return 1
+
+  # Check if GPU has reset bug
+  if ! gpu_has_reset_bug "$pci_addr"; then
+    return 1
+  fi
+
+  # Check if GPU was on vfio-pci this boot
+  if was_gpu_on_vfio_this_boot "$pci_addr"; then
+    return 0
+  fi
+
+  return 1
+}
+
+# Get all devices for GPU passthrough including audio in separate IOMMU groups
+# Returns: space-separated list of PCI addresses (short format without 0000: prefix)
+get_gpu_passthrough_devices() {
+  local gpu_pci="$1"
+  local vendor_id="${2:-}"
+  local devices=()
+
+  # Get devices from main IOMMU group
+  local iommu_devices
+  iommu_devices=$(get_iommu_group_devices "$gpu_pci") || iommu_devices=""
+  for dev in $iommu_devices; do
+    devices+=("$dev")
+  done
+
+  # For AMD GPUs, check if audio device is in a separate IOMMU group
+  if [[ "$vendor_id" == "1002" ]]; then
+    local audio_pci="${gpu_pci%%.*}.1"
+    if lspci -s "$audio_pci" 2>/dev/null | grep -qi "audio"; then
+      local gpu_group audio_group
+      gpu_group=$(get_iommu_group "$gpu_pci")
+      audio_group=$(get_iommu_group "$audio_pci")
+
+      if [[ -n "$audio_group" && "$audio_group" != "unknown" && "$audio_group" != "$gpu_group" ]]; then
+        # Audio is in different group - add it and any other devices in that group
+        log_info "AMD GPU audio in separate IOMMU group (GPU=$gpu_group, Audio=$audio_group)"
+        local audio_group_devices
+        audio_group_devices=$(get_iommu_group_devices "$audio_pci") || audio_group_devices=""
+        for dev in $audio_group_devices; do
+          # Avoid duplicates
+          local found=false
+          for existing in "${devices[@]}"; do
+            [[ "$existing" == "$dev" ]] && found=true && break
+          done
+          [[ "$found" == "false" ]] && devices+=("$dev")
+        done
+      fi
+    fi
+  fi
+
+  echo "${devices[*]}"
+}
+
+# Get all IOMMU groups used by GPU passthrough devices (comma-separated)
+get_gpu_passthrough_iommu_groups() {
+  local gpu_pci="$1"
+  local vendor_id="${2:-}"
+  local groups=()
+
+  # Get main GPU group
+  local gpu_group
+  gpu_group=$(get_iommu_group "$gpu_pci")
+  [[ -n "$gpu_group" && "$gpu_group" != "unknown" ]] && groups+=("$gpu_group")
+
+  # For AMD GPUs, check if audio device is in a separate IOMMU group
+  if [[ "$vendor_id" == "1002" ]]; then
+    local audio_pci="${gpu_pci%%.*}.1"
+    if lspci -s "$audio_pci" 2>/dev/null | grep -qi "audio"; then
+      local audio_group
+      audio_group=$(get_iommu_group "$audio_pci")
+      if [[ -n "$audio_group" && "$audio_group" != "unknown" && "$audio_group" != "$gpu_group" ]]; then
+        groups+=("$audio_group")
+        log_info "Adding separate audio IOMMU group: $audio_group"
+      fi
+    fi
+  fi
+
+  # Return comma-separated list
+  local result
+  result=$(IFS=,; echo "${groups[*]}")
+  echo "$result"
+}
+
+# Check if persistent VFIO mode is enabled for a GPU
+# Returns: 0 if enabled, 1 if not
+is_persistent_vfio_enabled() {
+  local gpu_pci="${1:-}"
+  local vendor_id="${2:-}"
+  local device_id="${3:-}"
+
+  # Check if late binding service exists and is enabled
+  [[ -f "$VFIO_SERVICE" ]] && systemctl is-enabled omarchy-gpu-passthrough.service &>/dev/null
+}
+
+# Enable persistent VFIO mode - GPU will be bound to vfio-pci at boot
+# Uses "late binding" via systemd service (GPU boots on amdgpu for POST, then rebinds)
+enable_persistent_vfio() {
+  local gpu_pci="$1"
+  local vendor_id="$2"
+  local device_id="$3"
+  local skip_initramfs="${4:-false}"
+
+  # Validate inputs
+  if [[ -z "$gpu_pci" ]] || [[ -z "$vendor_id" ]] || [[ -z "$device_id" ]]; then
+    log_error "enable_persistent_vfio: missing required parameters"
+    return 1
+  fi
+
+  if ! [[ "$vendor_id" =~ ^[0-9a-fA-F]{4}$ ]] || ! [[ "$device_id" =~ ^[0-9a-fA-F]{4}$ ]]; then
+    log_error "enable_persistent_vfio: invalid vendor_id or device_id format"
+    return 1
+  fi
+
+  local gpu_id="${vendor_id}:${device_id}"
+
+  # Check if already enabled
+  if is_persistent_vfio_enabled "$gpu_pci" "$vendor_id" "$device_id"; then
+    log_info "Persistent VFIO already enabled for $gpu_id"
+    return 0
+  fi
+
+  # Get all devices in IOMMU group (GPU + audio)
+  # Normalize PCI address to full format (0000:XX:XX.X)
+  local normalized_pci
+  normalized_pci=$(normalize_pci_addr "$gpu_pci")
+  [[ -z "$normalized_pci" ]] && normalized_pci="0000:${gpu_pci}"
+
+  # Get GPU and audio device (function .0 and .1)
+  local base_addr="${normalized_pci%.*}"
+  local devices="$normalized_pci"
+  # Add audio device if exists
+  if [[ -d "/sys/bus/pci/devices/${base_addr}.1" ]]; then
+    devices="$devices ${base_addr}.1"
+  fi
+
+  log_info "Enabling persistent VFIO (late binding) for: $devices"
+
+  # Remove any old early binding ids= from vfio.conf (legacy cleanup)
+  if [[ -f "$VFIO_CONF" ]] && grep -qE "^options vfio-pci ids=" "$VFIO_CONF"; then
+    log_info "Removing legacy early binding ids from vfio.conf..."
+    sudo sed -i '/^options vfio-pci ids=/d' "$VFIO_CONF"
+  fi
+
+  # Create systemd service for late binding
+  # This runs AFTER amdgpu does POST, but BEFORE display-manager
+  local service_content
+  service_content=$(cat <<EOF
+[Unit]
+Description=GPU Passthrough VFIO Late Binding
+Documentation=man:vfio-pci(4)
+DefaultDependencies=no
+# Run after amdgpu loads and does POST
+After=systemd-modules-load.service
+After=systemd-udev-settle.service
+# Run before graphical session starts
+Before=display-manager.service
+Before=graphical.target
+# Don't start if no GPUs configured
+ConditionPathExists=/etc/omarchy-gpu-passthrough.conf
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Rebind each device from amdgpu to vfio-pci
+# Uses driver_override for clean rebind without ids= parameter
+EOF
+)
+
+  # Add ExecStart for each device
+  for dev in $devices; do
+    service_content+=$'\n'"ExecStart=/bin/bash -c 'dev=\"$dev\"; driver=\$(basename \$(readlink /sys/bus/pci/devices/\$dev/driver 2>/dev/null) 2>/dev/null); if [[ \"\$driver\" != \"vfio-pci\" ]]; then echo \$dev > /sys/bus/pci/devices/\$dev/driver/unbind 2>/dev/null || true; echo vfio-pci > /sys/bus/pci/devices/\$dev/driver_override; echo \$dev > /sys/bus/pci/drivers_probe; fi'"
+  done
+
+  service_content+=$'\n'
+  service_content+=$(cat <<EOF
+
+[Install]
+WantedBy=multi-user.target
+EOF
+)
+
+  # Write and enable service
+  echo "$service_content" | sudo tee "$VFIO_SERVICE" >/dev/null
+  sudo systemctl daemon-reload
+  sudo systemctl enable omarchy-gpu-passthrough.service
+
+  log_success "Late binding service created and enabled"
+  log_info "GPU will boot on amdgpu (POST), then rebind to vfio-pci before login"
+
+  return 0
+}
+
+# Disable persistent VFIO mode - GPU will boot with native driver
+# Removes late binding systemd service
+disable_persistent_vfio() {
+  local gpu_pci="$1"
+  local vendor_id="$2"
+  local device_id="$3"
+  local skip_initramfs="${4:-false}"
+
+  # Validate inputs
+  if [[ -z "$vendor_id" ]] || [[ -z "$device_id" ]]; then
+    log_error "disable_persistent_vfio: missing required parameters"
+    return 1
+  fi
+
+  local gpu_id="${vendor_id}:${device_id}"
+
+  # Check if enabled
+  if ! is_persistent_vfio_enabled "$gpu_pci" "$vendor_id" "$device_id"; then
+    log_info "Persistent VFIO not enabled for $gpu_id"
+    return 0
+  fi
+
+  log_info "Disabling persistent VFIO (late binding) for: $gpu_id"
+
+  # Disable and remove systemd service
+  if [[ -f "$VFIO_SERVICE" ]]; then
+    sudo systemctl disable omarchy-gpu-passthrough.service 2>/dev/null || true
+    sudo rm -f "$VFIO_SERVICE"
+    sudo systemctl daemon-reload
+    log_info "Removed late binding service"
+  fi
+
+  # Also clean up any legacy early binding ids= from vfio.conf
+  if [[ -f "$VFIO_CONF" ]] && grep -qE "^options vfio-pci ids=" "$VFIO_CONF"; then
+    sudo sed -i '/^options vfio-pci ids=/d' "$VFIO_CONF"
+    log_info "Removed legacy early binding ids from vfio.conf"
+  fi
+
+  log_success "Persistent VFIO mode disabled"
+  log_info "GPU will boot with amdgpu after reboot"
+
+  return 0
+}
