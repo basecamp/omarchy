@@ -10,7 +10,7 @@ echo "Reinstalling missing Omarchy packages from stable repository"
 omarchy-refresh-pacman
 
 # Downgrade any packages to the stable setup
-sudo pacman -Suu
+sudo pacman -Suu --noconfirm
 
 # Ensure all packages are installed
 mapfile -t packages < <(grep -v '^#' "$OMARCHY_PATH/install/omarchy-base.packages" | grep -v '^$')
