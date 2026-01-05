@@ -1,0 +1,4 @@
+#!/bin/bash
+voxtype status --follow --extended --format json | while read -r line; do
+  echo "$line" | jq -c '. + {alt: .class}'
+done

@@ -24,6 +24,17 @@ if ! grep -q "custom-voxtype" $waybar_style; then
   min-width: 12px;
   margin: 0 7.5px;
 }
+
+#custom-voxtype.recording {
+  color: #ff5555;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
 EOF
 fi
 
@@ -32,9 +43,14 @@ if ! grep -q '"custom/voxtype"' $waybar_config; then
   sed -i '/"custom\/screenrecording-indicator"[[:space:]]*:[[:space:]]*{/,/^[[:space:]]*},/{
   /^[[:space:]]*},/a\
   "custom/voxtype": {\
-    "exec": "voxtype status --follow --extended --format json",\
+    "exec": "omarchy-voxtype-status",\
     "return-type": "json",\
-    "format": "{}",\
+    "format": "{icon}",\
+    "format-icons": {\
+      "idle": "󰍬",\
+      "recording": "󰍬",\
+      "transcribing": "󰔟"\
+    },\
     "tooltip": true,\
     "on-click": "systemctl --user restart voxtype"\
   },
