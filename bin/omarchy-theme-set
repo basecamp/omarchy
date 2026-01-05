@@ -47,7 +47,7 @@ if pgrep -x waybar >/dev/null; then
 fi
 omarchy-restart-swayosd
 omarchy-restart-terminal
-hyprctl reload
+hyprctl reload >/dev/null
 pkill -SIGUSR2 btop
 # pkill -SIGUSR2 opencode
 makoctl reload
