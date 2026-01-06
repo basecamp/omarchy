@@ -172,7 +172,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
+  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config\n  Tweaks"
 
   case $(menu "Setup" "$options") in
   *Audio*) omarchy-launch-audio ;;
@@ -186,6 +186,7 @@ show_setup_menu() {
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
+  *Tweaks*) show_setup_tweaks_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -198,6 +199,14 @@ show_setup_power_menu() {
   else
     powerprofilesctl set "$profile"
   fi
+}
+
+show_setup_security_menu() {
+  case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
+  *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
+  *Fido2*) present_terminal omarchy-setup-fido2 ;;
+  *) show_setup_menu ;;
+  esac
 }
 
 show_setup_config_menu() {
@@ -214,11 +223,17 @@ show_setup_config_menu() {
   esac
 }
 
-show_setup_security_menu() {
-  case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
-  *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
-  *Fido2*) present_terminal omarchy-setup-fido2 ;;
-  *) show_setup_menu ;;
+show_setup_tweaks_menu() {
+  local options=""
+  if [ -f ~/.local/state/omarchy/toggles/suspend-on ]; then
+    options="$options󰒲  Hide System Menu Suspend"
+  else
+    options="$options󰒲  Reveal System Menu Suspend"
+  fi
+
+  case $(menu "Tweaks" "$options") in
+  *Suspend*) omarchy-toggle-suspend ;;
+  *) show_main_menu ;;
   esac
 }
 
@@ -493,9 +508,14 @@ show_update_password_menu() {
 }
 
 show_system_menu() {
-  case $(menu "System" "  Lock\n󱄄  Screensaver\n󰜉  Restart\n󰐥  Shutdown") in
+  local options="  Lock\n󱄄  Screensaver"
+  [ -f ~/.local/state/omarchy/toggles/suspend-on ] && options="$options\n󰒲  Suspend"
+  options="$options\n󰜉  Restart\n󰐥  Shutdown"
+
+  case $(menu "System" "$options") in
   *Lock*) omarchy-lock-screen ;;
   *Screensaver*) omarchy-launch-screensaver force ;;
+  *Suspend*) systemctl suspend ;;
   *Restart*) omarchy-cmd-reboot ;;
   *Shutdown*) omarchy-cmd-shutdown ;;
   *) back_to show_main_menu ;;
