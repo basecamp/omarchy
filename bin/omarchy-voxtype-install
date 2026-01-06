@@ -15,5 +15,5 @@ if gum confirm "Install Voxtype + AI model (~400MB) to enable dictation?"; then
   voxtype setup systemd
 
   omarchy-restart-waybar
-  omarchy-voxtype-help
+  notify-send "    Voxtype Dictation Ready" "Hold Super + Ctrl + X to dictate.\nEdit ~/.config/voxtype/config.toml for options." -t 10000
 fi

@@ -1,5 +1,0 @@
-#!/bin/bash
-
-# Reminds the user of the dictation hotkey when the Voxtype mic in the Waybar is clicked.
-
-notify-send "    Voxtype Dictation Ready" "Hold Super + Ctrl + X to dictate.\nEdit ~/.config/voxtype/config.toml for options." -t 10000
