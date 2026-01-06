@@ -225,7 +225,7 @@ omarchy-refresh-hyprland
 ```bash
 omarchy-theme-list              # Show available themes
 omarchy-theme-current           # Show current theme
-omarchy-theme-set <name>        # Apply theme
+omarchy-theme-set <name>        # Apply theme (use "Tokyo Night" not "tokyo-night")
 omarchy-theme-next              # Cycle to next theme
 omarchy-theme-bg-next           # Cycle wallpaper
 omarchy-theme-install <url>     # Install from git repo
