@@ -4,7 +4,7 @@ STYLE_FILE=~/.config/waybar/style.css
 CONFIG_FILE=~/.config/waybar/config.jsonc
 
 # Add voxtype CSS if not present
-if ! grep -q "#custom-voxtype" "$STYLE_FILE" 2>/dev/null; then
+if ! grep -q "#custom-voxtype" "$STYLE_FILE"; then
   sed -i 's/margin-left: 8\.75px;/margin-left: 5px;/' "$STYLE_FILE"
   sed -i '/#custom-screenrecording-indicator {/,/}/ s/font-size: 10px;/font-size: 10px;\n  padding-bottom: 1px;/' "$STYLE_FILE"
   cat >> "$STYLE_FILE" << 'EOF'
@@ -17,7 +17,7 @@ EOF
 fi
 
 # Add voxtype to modules-center if not present
-if ! grep -q "custom/voxtype" "$CONFIG_FILE" 2>/dev/null; then
+if ! grep -q "custom/voxtype" "$CONFIG_FILE"; then
   # Add to modules-center array
   sed -i 's/"custom\/screenrecording-indicator"]/"custom\/voxtype", "custom\/screenrecording-indicator"]/' "$CONFIG_FILE"
 
