@@ -2,7 +2,7 @@
 #
 # Location: ~/.config/voxtype/config.toml
 # All settings can be overridden via CLI flags
-
+#
 # State file for external integrations (Waybar, polybar, etc.)
 # Use "auto" for default location ($XDG_RUNTIME_DIR/voxtype/state),
 # a custom path, or "disabled" to turn off. The daemon writes state
@@ -11,6 +11,7 @@
 state_file = "auto"
 
 [hotkey]
+# Hotkey is configured in Hyprland. Default is Super + Ctrl + X
 enabled = false
 
 [audio]
