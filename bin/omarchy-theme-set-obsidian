@@ -652,9 +652,6 @@ if [ "${1:-}" = "--reset" ]; then
   exit 0
 fi
 
-# Main update logic
-echo "🔄 Updating Obsidian vaults..."
-
 # Step 1: ensure registry exists (bootstrap if needed)
 ensure_vaults_file
 
@@ -676,9 +673,7 @@ while IFS= read -r vault_path || [ -n "$vault_path" ]; do
   # Step 3: update theme.css
   if [ -f "$CURRENT_THEME_DIR/obsidian.css" ]; then
     cp "$CURRENT_THEME_DIR/obsidian.css" "$THEME_DIR/theme.css"
-    echo "   ✅ $vault_name (custom theme)"
   else
     extract_theme_data >"$THEME_DIR/theme.css"
-    echo "   ✅ $vault_name (generated theme)"
   fi
 done <"$VAULTS_FILE"

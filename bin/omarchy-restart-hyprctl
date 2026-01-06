@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Reload hyprland configuration (used by the Omarchy theme switching).
+
+hyprctl reload >/dev/null

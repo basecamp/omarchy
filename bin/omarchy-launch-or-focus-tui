@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Launch or focus on a given TUI identified by the passed in as the command.
+# Use by commands like omarchy-launch-wifi to ensure there is only one wifi configuration screen open.
+
 APP_ID="org.omarchy.$(basename "$1")"
 LAUNCH_COMMAND="omarchy-launch-tui $@"
 

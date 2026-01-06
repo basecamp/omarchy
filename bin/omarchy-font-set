@@ -1,8 +1,11 @@
 #!/bin/bash
 
+# Set the system-wide monospace font that should be used by the terminal, hyprlock, waybar, swayosd, etc.
+# The font name must be one of the ones returned by omarchy-font-list.
+
 font_name="$1"
 
-if [[ -n "$font_name" && "$font_name" != "CNCLD" ]]; then
+if [[ -n "$font_name" ]]; then
   if fc-list | grep -iq "$font_name"; then
     if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
       sed -i "s/family = \".*\"/family = \"$font_name\"/g" ~/.config/alacritty/alacritty.toml

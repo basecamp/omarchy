@@ -31,10 +31,5 @@ if [ ! -d "$THEME_PATH" ]; then
   exit 1
 fi
 
-# Move to the next theme if the current theme is the one being removed
-if [ "$(readlink -f "$CURRENT_DIR/theme")" = "$(readlink -f "$THEME_PATH")" ]; then
-  omarchy-theme-next
-fi
-
 # Now remove the theme directory for THEME_NAME
 rm -rf "$THEME_PATH"
