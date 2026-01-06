@@ -150,6 +150,7 @@
       "transcribing": "󰔟"
     },
     "tooltip": true,
+    "on-click-right": "omarchy-voxtype-config",
     "on-click": "omarchy-voxtype-help"
   },
   "tray": {

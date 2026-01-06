@@ -35,7 +35,7 @@ patch -N ~/.config/waybar/config.jsonc << 'EOF'
    "modules-right": [
      "group/tray-expander",
      "bluetooth",
-@@ -140,6 +140,18 @@
+@@ -140,6 +140,19 @@
      "signal": 8,
      "return-type": "json"
    },
@@ -49,6 +49,7 @@ patch -N ~/.config/waybar/config.jsonc << 'EOF'
 +      "transcribing": "󰔟"
 +    },
 +    "tooltip": true,
++    "on-click-right": "omarchy-voxtype-config",
 +    "on-click": "omarchy-voxtype-help"
 +  },
    "tray": {
