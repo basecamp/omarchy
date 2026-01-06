@@ -233,9 +233,9 @@ show_setup_system_menu() {
   fi
 
   if omarchy-hibernation-available; then
-    options="$options\n󰤁  Disable Hibernation"
+    options="$options\n󰤁  Disable Hibernate"
   else
-    options="$options\n󰤁  Enable Hibernation"
+    options="$options\n󰤁  Enable Hibernate"
   fi
 
   case $(menu "System" "$options") in
