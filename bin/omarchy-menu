@@ -520,7 +520,6 @@ show_system_menu() {
   local options="  Lock\n󱄄  Screensaver"
   [ -f ~/.local/state/omarchy/toggles/suspend-on ] && options="$options\n󰒲  Suspend"
   omarchy-hibernation-available && options="$options\n󰤁  Hibernate"
-
   options="$options\n󰜉  Restart\n󰐥  Shutdown"
 
   case $(menu "System" "$options") in
