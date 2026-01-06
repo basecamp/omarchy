@@ -24,6 +24,6 @@ if gum confirm "Install Voxtype + AI model (~400MB) to enable dictation?"; then
     fi
   else
     omarchy-restart-waybar
-    notify-send "    Voxtype Installed" "Hold Super + Ctrl + Q to start dictating." -t 10000
+    omarchy-voxtype-help
   fi
 fi
