@@ -49,7 +49,7 @@ patch -N ~/.config/waybar/config.jsonc << 'EOF'
 +      "transcribing": "󰔟"
 +    },
 +    "tooltip": true,
-+    "on-click-right": "omarchy-voxtype-config",
++    "on-click-right": "omarchy-voxtype-model",
 +    "on-click": "omarchy-voxtype-help"
 +  },
    "tray": {
