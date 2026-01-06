@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Launch the passed in URL as a web app in the default browser (or chromium if the default doesn't support --app).
+# Allow setting the browser via environment variable if you don't want to change the default browser
 
-browser=$(xdg-settings get default-web-browser)
+browser="${OMARCHY_WEBAPP_BROWSER:-$(xdg-settings get default-web-browser)}"
 
 case $browser in
 google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
