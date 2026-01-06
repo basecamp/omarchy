@@ -1,8 +1,8 @@
-# Changes require a relaunch of Hyprland to take effect.
+# Changes require a restart to take effect.
 
 # Ensure Omarchy bins are in the path
 export OMARCHY_PATH=$HOME/.local/share/omarchy
-export PATH=$OMARCHY_PATH/bin/:$PATH
+export PATH=$OMARCHY_PATH/bin:$PATH
 
 # Set default terminal and editor
 source ~/.config/uwsm/default
