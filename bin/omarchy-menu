@@ -240,7 +240,8 @@ show_setup_system_menu() {
 
   case $(menu "System" "$options") in
   *Suspend*) omarchy-toggle-suspend ;;
-  *Hibernation*) present_terminal omarchy-hibernation-setup ;;
+  *"Enable Hibernation"*) present_terminal omarchy-hibernation-setup ;;
+  *"Disable Hibernation"*) present_terminal omarchy-hibernation-remove ;;
   *) show_setup_menu ;;
   esac
 }
