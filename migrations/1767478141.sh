@@ -1,3 +1,3 @@
-echo "Add Omarchy skill"
-mkdir -p ~/.claude/skills
-ln -s ~/.local/share/omarchy/default/omarchy-skill ~/.claude/skills/omarchy
+echo "Add Omarchy AI skill for assistance tailoring the system"
+
+source $OMARCHY_PATH/install/config/omarchy-ai-skill.sh
