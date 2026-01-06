@@ -1,3 +1,5 @@
 #!/bin/bash
 
-notify-send "    Voxtype Installed" "Hold Super + Ctrl + Q to dictate." -t 5000
+# Reminds the user of the dictation hotkey when the Voxtype mic in the Waybar is clicked.
+
+notify-send "    Voxtype Installed" "Hold Super + Ctrl + X to dictate." -t 5000
