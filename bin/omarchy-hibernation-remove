@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# Removes hibernation setup: disables swap, removes swapfile, removes fstab entry, and removes resume hook.
+
+# Check if hibernation is configured
+if [ ! -f /etc/mkinitcpio.conf.d/omarchy_resume.conf ] || ! grep -q "^HOOKS+=(resume)$" /etc/mkinitcpio.conf.d/omarchy_resume.conf; then
+  echo "Hibernation is not set up"
+  exit 0
+fi
+
+if gum confirm "Remove hibernation setup?"; then
+  SWAP_SUBVOLUME="/swap"
+  SWAP_FILE="$SWAP_SUBVOLUME/swapfile"
+  MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+
+  # Disable swap if active
+  if swapon --show | grep -q "$SWAP_FILE"; then
+    echo "Disabling swap on $SWAP_FILE"
+    sudo swapoff "$SWAP_FILE"
+  fi
+
+  # Remove swapfile
+  if [ -f "$SWAP_FILE" ]; then
+    echo "Removing swapfile"
+    sudo rm "$SWAP_FILE"
+  fi
+
+  # Remove swap subvolume
+  if sudo btrfs subvolume show "$SWAP_SUBVOLUME" &>/dev/null; then
+    echo "Removing Btrfs subvolume $SWAP_SUBVOLUME"
+    sudo btrfs subvolume delete "$SWAP_SUBVOLUME"
+  fi
+
+  # Remove fstab entry
+  if grep -Fq "$SWAP_FILE" /etc/fstab; then
+    echo "Removing swapfile from /etc/fstab"
+    sudo cp -a /etc/fstab "/etc/fstab.$(date +%Y%m%d%H%M%S).back"
+    sudo sed -i "\|$SWAP_FILE|d" /etc/fstab
+    # Also remove the comment line if present
+    sudo sed -i '/^# Btrfs swapfile for system hibernation$/d' /etc/fstab
+  fi
+
+  # Remove mkinitcpio resume hook
+  if [ -f "$MKINITCPIO_CONF" ]; then
+    echo "Removing resume hook from $MKINITCPIO_CONF"
+    sudo rm "$MKINITCPIO_CONF"
+
+    echo "Regenerating initramfs..."
+    sudo limine-mkinitcpio
+  fi
+
+  echo "Hibernation removed"
+fi
