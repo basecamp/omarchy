@@ -227,9 +227,9 @@ show_setup_system_menu() {
   local options=""
 
   if [ -f ~/.local/state/omarchy/toggles/suspend-on ]; then
-    options="$options󰒲  Hide Suspend"
+    options="$options󰒲  Disable Suspend"
   else
-    options="$options󰒲  Reveal Suspend"
+    options="$options󰒲  Enable Suspend"
   fi
 
   if omarchy-hibernation-available; then
