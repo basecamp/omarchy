@@ -43,6 +43,10 @@
   margin: 0 7.5px;
 }
 
+#pulseaudio {
+  font-size: 17px;
+}
+
 #custom-expand-icon {
   margin-right: 7px;
 }
