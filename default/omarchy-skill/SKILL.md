@@ -327,7 +327,7 @@ When user requests system changes:
 
 1. **Is it a stock omarchy command?** Use it directly
 2. **Is it a config edit?** Edit in `~/.config/`, never `~/.local/share/omarchy/`
-3. **Is it a theme customization?** Create a NEW custom theme directory (never edit symlinked stock themes)
+3. **Is it a theme customization?** Create a NEW custom theme directory
 4. **Is it automation?** Use hooks in `~/.config/omarchy/hooks/`
 5. **Is it a package install?** Use `yay`
 6. **Unsure if command exists?** Search with `compgen -c | grep omarchy`
