@@ -86,12 +86,6 @@ on_recording_stop = false
 # Show notification with transcribed text after transcription completes
 on_transcription = false
 
-[status.icons]
-idle = ""
-recording = "󰍬"
-transcribing = "󰔟"
-stopped = "󰍭"
-
 # [text]
 # Text processing options (word replacements, spoken punctuation)
 #
