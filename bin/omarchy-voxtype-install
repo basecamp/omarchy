@@ -14,16 +14,6 @@ if gum confirm "Install Voxtype + AI model (~400MB) to enable dictation?"; then
   voxtype setup --download
   voxtype setup systemd
 
-  # Add user to input group and ask for reboot, if not already there.
-  if ! id -nG "$USER" | grep -qw input; then
-    sudo usermod -aG input ${USER}
-    echo
-
-    if gum confirm "Restart now to enable dictation via voxtype?"; then
-      omarchy-cmd-reboot
-    fi
-  else
-    omarchy-restart-waybar
-    omarchy-voxtype-help
-  fi
+  omarchy-restart-waybar
+  omarchy-voxtype-help
 fi
