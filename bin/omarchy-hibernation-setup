@@ -23,6 +23,7 @@ SWAP_FILE="$SWAP_SUBVOLUME/swapfile"
 if ! sudo btrfs subvolume show "$SWAP_SUBVOLUME" &>/dev/null; then
   echo "Creating Btrfs subvolume"
   sudo btrfs subvolume create "$SWAP_SUBVOLUME"
+  sudo chattr +C "$SWAP_SUBVOLUME"
 fi
 
 # Create swapfile
