@@ -1,0 +1,3 @@
+#!/bin/bash
+
+notify-send "    Voxtype Installed" "Hold Super + Ctrl + Q to dictate." -t 5000

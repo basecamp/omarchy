@@ -1,0 +1,29 @@
+#!/bin/bash
+set -e
+
+# Install voxtype and configure it for use.
+
+if gum confirm "Install Voxtype + AI model (~400MB) to enable dictation?"; then
+  omarchy-pkg-add wtype
+  omarchy-pkg-aur-add voxtype-bin
+
+  # Setup voxtype
+  mkdir -p ~/.config/voxtype
+  cp $OMARCHY_PATH/default/voxtype/config.toml ~/.config/voxtype/
+
+  voxtype setup --download
+  voxtype setup systemd
+
+  # Add user to input group and ask for reboot, if not already there.
+  if ! id -nG "$USER" | grep -qw input; then
+    sudo usermod -aG input ${USER}
+    echo
+
+    if gum confirm "Restart now to enable dictation via voxtype?"; then
+      omarchy-cmd-reboot
+    fi
+  else
+    omarchy-restart-waybar
+    notify-send "    Voxtype Installed" "Hold Super + Ctrl + Q to start dictating." -t 10000
+  fi
+fi
