@@ -183,6 +183,13 @@ cp ~/.config/hypr/bindings.conf ~/.config/hypr/bindings.conf.bak.$(date +%s)
 # - Terminals: MUST restart with omarchy-restart-terminal
 ```
 
+### Pattern 2: Make a new theme
+
+1. Create a directory under ~/.config/omarchy/themes.
+2. See how an existing theme is done via ~/.local/share/omarchy/themes/catppuccin.
+3. Download a matching background (or several) from the internet and put them in ~/.config/omarchy/themes/[name-of-new-theme]
+4. When done with the theme, run omarchy-theme-set "Name of new theme"
+
 ### Pattern 3: Use Hooks for Automation
 
 Create scripts in `~/.config/omarchy/hooks/` to run automatically on events:
