@@ -3,7 +3,7 @@ set -e
 
 # Install voxtype and configure it for use.
 
-if gum confirm "Install Voxtype + AI model (~400MB) to enable dictation?"; then
+if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
   omarchy-pkg-add wtype
   omarchy-pkg-aur-add voxtype-bin
 
