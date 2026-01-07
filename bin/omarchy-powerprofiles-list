@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Returns a list of all the available power profiles on the system.
+# Used by the Omarchy Menu under Setup > Power Profile.
+
 powerprofilesctl list |
   awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }' |
   tac

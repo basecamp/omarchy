@@ -1,33 +1,14 @@
 #!/bin/bash
-
 set -e
 
-if [ "$EUID" -eq 0 ]; then
-  echo "Error: This script should not be run as root"
-  exit 1
-fi
+# Attempt to reinstall all default Omarchy packages and reset all the default configs.
 
-echo -e "This will reinstall all the default Omarchy packages and reset all default configs.\nWarning: All changes to configs will be lost.\n"
+echo -e "This will reinstall all the default Omarchy packages and reset all default configs.\nWarning: All user changes to configs will be lost.\n"
 
 if gum confirm "Are you sure you want to reinstall and lose all config changes?"; then
-  echo "Resetting Omarchy repository"
-  git clone "https://github.com/basecamp/omarchy.git" ~/.local/share/omarchy-new >/dev/null
-  rm -rf $OMARCHY_PATH
-  mv ~/.local/share/omarchy-new $OMARCHY_PATH
+  omarchy-reinstall-git
+  omarchy-reinstall-pkgs
+  omarchy-reinstall-configs
 
-  echo "Reinstalling missing Omarchy packages"
-  mapfile -t packages < <(grep -v '^#' "$OMARCHY_PATH/install/omarchy-base.packages" | grep -v '^$')
-  sudo pacman -Syu --noconfirm --needed "${packages[@]}"
-
-  echo "Resetting all Omarchy configs"
-  cp -R ~/.local/share/omarchy/config/* ~/.config/
-  cp ~/.local/share/omarchy/default/bashrc ~/.bashrc
-  echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' | tee ~/.bash_profile >/dev/null
-
-  $(bash $OMARCHY_PATH/install/config/theme.sh)
-  $(bash $OMARCHY_PATH/install/config/git.sh)
-
-  omarchy-refresh-limine
-  omarchy-refresh-plymouth
-  omarchy-nvim-setup
+  gum confirm "System has been reinstalled. Reboot?" && omarchy-cmd-reboot
 fi

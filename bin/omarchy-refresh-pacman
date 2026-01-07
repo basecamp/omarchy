@@ -1,18 +1,19 @@
 #!/bin/bash
 
+# Overwrite the package configuration for /etc/pacman with the Omarchy default of using its dedicated mirrors and repositories, then update all packages.
+# This is used after switching between Omarchy release channels to ensure the right packages for the right channel are available.
+
 # Take backup of existing files
 sudo cp -f /etc/pacman.conf /etc/pacman.conf.bak
 sudo cp -f /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
 
-sudo cp -f ~/.local/share/omarchy/default/pacman/pacman.conf /etc/pacman.conf
-
 if [[ $1 == "edge" ]]; then
+  sudo cp -f ~/.local/share/omarchy/default/pacman/pacman-edge.conf /etc/pacman.conf
   sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-edge /etc/pacman.d/mirrorlist
-  sudo sed -i 's|https://pkgs.omarchy.org/.*$arch|https://pkgs.omarchy.org/edge/$arch|' /etc/pacman.conf
   echo "Setting channel to edge"
 else
+  sudo cp -f ~/.local/share/omarchy/default/pacman/pacman-stable.conf /etc/pacman.conf
   sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-stable /etc/pacman.d/mirrorlist
-  sudo sed -i 's|https://pkgs.omarchy.org/.*$arch|https://pkgs.omarchy.org/stable/$arch|' /etc/pacman.conf
   echo "Setting channel to stable"
 fi
 

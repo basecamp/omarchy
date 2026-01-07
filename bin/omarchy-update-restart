@@ -1,10 +1,10 @@
 #!/bin/bash
 
 if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
-  gum confirm "Linux kernel has been updated. Reboot?" && omarchy-state clear re*-required && sudo reboot now
+  gum confirm "Linux kernel has been updated. Reboot?" && omarchy-cmd-reboot
 
 elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
-  gum confirm "Updates require reboot. Ready?" && omarchy-state clear re*-required && sudo reboot now
+  gum confirm "Updates require reboot. Ready?" && omarchy-cmd-reboot
 fi
 
 for file in "$HOME"/.local/state/omarchy/restart-*-required; do

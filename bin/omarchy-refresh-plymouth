@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Overwrite the user config for the Plymouth drive decryption and boot sequence with the Omarchy default and rebuild it.
+
 sudo cp ~/.local/share/omarchy/default/plymouth/* /usr/share/plymouth/themes/omarchy/
 sudo plymouth-set-default-theme omarchy
 

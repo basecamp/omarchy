@@ -254,6 +254,25 @@ remove_windows() {
   echo "Windows VM removal completed!"
 }
 
+wait_for_rdp_ready() {
+  local WIN_USER="$1"
+  local WIN_PASS="$2"
+  local TIMEOUT=240
+  local SECONDS=0
+
+  echo "Waiting for Windows VM to be ready..."
+
+  while ! timeout 5s xfreerdp3 /auth-only /cert:ignore /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 &>/dev/null; do
+    sleep 2
+    if [ $SECONDS -gt $TIMEOUT ]; then
+      echo "❌ Timeout waiting for RDP!"
+      echo "   The VM might still be installing Windows."
+      echo "   Check progress at: http://127.0.0.1:8006"
+      return 1
+    fi
+  done
+}
+
 launch_windows() {
   KEEP_ALIVE=false
   if [ "$1" = "--keep-alive" ] || [ "$1" = "-k" ]; then
@@ -265,6 +284,14 @@ launch_windows() {
     echo "Windows VM not configured. Please run: omarchy-windows-vm install"
     exit 1
   fi
+
+  # Extract credentials from compose file
+  WIN_USER=$(grep "USERNAME:" "$COMPOSE_FILE" | sed 's/.*USERNAME: "\(.*\)"/\1/')
+  WIN_PASS=$(grep "PASSWORD:" "$COMPOSE_FILE" | sed 's/.*PASSWORD: "\(.*\)"/\1/')
+
+  # Use defaults if not found
+  [ -z "$WIN_USER" ] && WIN_USER="docker"
+  [ -z "$WIN_PASS" ] && WIN_PASS="admin"
 
   # Check if container is already running
   CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
@@ -282,32 +309,12 @@ launch_windows() {
       notify-send -u critical "Windows VM" "Failed to start Windows VM"
       exit 1
     fi
-
-    # Wait for RDP to be ready
-    echo "Waiting for Windows VM to be ready..."
-    WAIT_COUNT=0
-    while ! nc -z 127.0.0.1 3389 2>/dev/null; do
-      sleep 2
-      WAIT_COUNT=$((WAIT_COUNT + 1))
-      if [ $WAIT_COUNT -gt 60 ]; then  # 2 minutes timeout
-        echo "❌ Timeout waiting for RDP!"
-        echo "   The VM might still be installing Windows."
-        echo "   Check progress at: http://127.0.0.1:8006"
-        exit 1
-      fi
-    done
-
-    # Give it a moment more to fully initialize
-    sleep 5
   fi
 
-  # Extract credentials from compose file
-  WIN_USER=$(grep "USERNAME:" "$COMPOSE_FILE" | sed 's/.*USERNAME: "\(.*\)"/\1/')
-  WIN_PASS=$(grep "PASSWORD:" "$COMPOSE_FILE" | sed 's/.*PASSWORD: "\(.*\)"/\1/')
-
-  # Use defaults if not found
-  [ -z "$WIN_USER" ] && WIN_USER="docker"
-  [ -z "$WIN_PASS" ] && WIN_PASS="admin"
+  if ! wait_for_rdp_ready "$WIN_USER" "$WIN_PASS"; then
+    notify-send -u critical "Windows VM" "Did not come alive in time."
+    exit 1
+  fi
 
   # Build the connection info
   if [ "$KEEP_ALIVE" = true ]; then

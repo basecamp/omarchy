@@ -1,0 +1,102 @@
+#!/bin/bash
+
+if [[ -z "$1" ]]; then
+  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure>" >&2
+  exit 1
+fi
+
+remove_php() {
+  sudo pacman -Rns --noconfirm php composer php-sqlite xdebug 2>/dev/null || true
+}
+
+case "$1" in
+ruby)
+  echo -e "Removing Ruby...\n"
+  mise uninstall ruby --all
+  mise rm -g ruby
+  rm -f ~/.gemrc
+  ;;
+node)
+  echo -e "Removing Node.js...\n"
+  mise uninstall node --all
+  mise rm -g node
+  ;;
+bun)
+  echo -e "Removing Bun...\n"
+  mise uninstall bun --all
+  mise rm -g bun
+  ;;
+deno)
+  echo -e "Removing Deno...\n"
+  mise uninstall deno --all
+  mise rm -g deno
+  ;;
+go)
+  echo -e "Removing Go...\n"
+  mise uninstall go --all
+  mise rm -g go
+  ;;
+php)
+  echo -e "Removing PHP...\n"
+  remove_php
+  ;;
+laravel)
+  echo -e "Removing Laravel...\n"
+  composer global remove laravel/installer 2>/dev/null || true
+  ;;
+symfony)
+  echo -e "Removing Symfony CLI...\n"
+  sudo pacman -Rns --noconfirm symfony-cli 2>/dev/null || true
+  ;;
+python)
+  echo -e "Removing Python...\n"
+  mise uninstall python --all
+  mise rm -g python
+  rm -rf ~/.local/bin/uv ~/.local/bin/uvx ~/.cargo/bin/uv 2>/dev/null || true
+  ;;
+elixir|phoenix)
+  echo -e "Removing Elixir/Erlang...\n"
+  mise uninstall elixir --all
+  mise uninstall erlang --all
+  mise rm -g elixir
+  mise rm -g erlang
+  ;;
+zig)
+  echo -e "Removing Zig...\n"
+  mise uninstall zig --all
+  mise uninstall zls --all
+  mise rm -g zig
+  mise rm -g zls
+  ;;
+rust)
+  echo -e "Removing Rust...\n"
+  rustup self uninstall -y 2>/dev/null || true
+  ;;
+java)
+  echo -e "Removing Java...\n"
+  mise uninstall java --all
+  mise rm -g java
+  ;;
+dotnet)
+  echo -e "Removing .NET...\n"
+  mise uninstall dotnet --all
+  mise rm -g dotnet
+  ;;
+ocaml)
+  echo -e "Removing OCaml...\n"
+  opam switch remove default -y 2>/dev/null || true
+  rm -rf ~/.opam 2>/dev/null || true
+  sudo rm -f /usr/local/bin/opam 2>/dev/null || true
+  ;;
+clojure)
+  echo -e "Removing Clojure...\n"
+  mise uninstall clojure --all
+  mise rm -g clojure
+  ;;
+*)
+  echo "Unknown environment: $1"
+  exit 1
+  ;;
+esac
+
+echo -e "\nDone!"

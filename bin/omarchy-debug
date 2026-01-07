@@ -1,6 +1,35 @@
 #!/bin/bash
 
+# Return exhaustive debugging information about the system to help diagnose problems.
+
+NO_SUDO=false
+PRINT_ONLY=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-sudo)
+      NO_SUDO=true
+      shift
+      ;;
+    --print)
+      PRINT_ONLY=true
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Usage: omarchy-debug [--no-sudo] [--print]"
+      exit 1
+      ;;
+  esac
+done
+
 LOG_FILE="/tmp/omarchy-debug.log"
+
+if [ "$NO_SUDO" = true ]; then
+  DMESG_OUTPUT="(skipped - --no-sudo flag used)"
+else
+  DMESG_OUTPUT="$(sudo dmesg)"
+fi
 
 cat > "$LOG_FILE" <<EOF
 Date: $(date)
@@ -15,7 +44,7 @@ $(inxi -Farz)
 =========================================
 DMESG
 =========================================
-$(sudo dmesg)
+$DMESG_OUTPUT
 
 =========================================
 JOURNALCTL (CURRENT BOOT, ERRORS ONLY)
@@ -27,6 +56,11 @@ INSTALLED PACKAGES
 =========================================
 $({ expac -S '%n %v (%r)' $(pacman -Qqe) 2>/dev/null; comm -13 <(pacman -Sql | sort) <(pacman -Qqe | sort) | xargs -r expac -Q '%n %v (AUR)'; } | sort)
 EOF
+
+if [ "$PRINT_ONLY" = true ]; then
+  cat "$LOG_FILE"
+  exit 0
+fi
 
 OPTIONS=("View log" "Save in current directory")
 if ping -c 1 8.8.8.8 >/dev/null 2>&1; then

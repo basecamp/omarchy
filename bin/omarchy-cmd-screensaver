@@ -1,11 +1,13 @@
 #!/bin/bash
 
+# Run the Omarchy screensaver using random effects from TTE.
+
 screensaver_in_focus() {
   hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
 }
 
 exit_screensaver() {
-  hyprctl keyword cursor:invisible false
+  hyprctl keyword cursor:invisible false &>/dev/null || true
   pkill -x tte 2>/dev/null
   pkill -f org.omarchy.screensaver 2>/dev/null
   exit 0
@@ -13,8 +15,6 @@ exit_screensaver() {
 
 # Exit the screensaver on signals and input from keyboard and mouse
 trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
-printf '\e[?1000h\e[?1003h' # Enable mouse tracking (clicks: 1000, movement: 1003)
-while read -rsn1 -t 0.1; do :; done # Flush any pending input
 
 printf '\033]11;rgb:00/00/00\007'  # Set background color to black
 
@@ -29,7 +29,7 @@ while true; do
     --no-eol --no-restore-cursor &
 
   while pgrep -t "${tty#/dev/}" -x tte >/dev/null; do
-    if read -rsn1 -t 1 || ! screensaver_in_focus; then
+    if read -n1 -t 1 || ! screensaver_in_focus; then
       exit_screensaver
     fi
   done

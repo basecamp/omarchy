@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Show a fuzzy-finder TUI for picking packages installed on the system to be removed.
+
 fzf_args=(
   --multi
   --preview 'yay -Qi {1}'

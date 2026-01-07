@@ -29,61 +29,21 @@ EOF
 
   CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
-  sudo tee /etc/default/limine <<EOF >/dev/null
-TARGET_OS_NAME="Omarchy"
-
-ESP_PATH="/boot"
-
-KERNEL_CMDLINE[default]="$CMDLINE"
-KERNEL_CMDLINE[default]+="quiet splash"
-
-ENABLE_UKI=yes
-CUSTOM_UKI_NAME="omarchy"
-
-ENABLE_LIMINE_FALLBACK=yes
-
-# Find and add other bootloaders
-FIND_BOOTLOADERS=yes
-
-BOOT_ORDER="*, *fallback, Snapshots"
-
-MAX_SNAPSHOT_ENTRIES=5
-
-SNAPSHOT_FORMAT_CHOICE=5
-EOF
+  sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
+  sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
 
   # UKI and EFI fallback are EFI only
   if [[ -z $EFI ]]; then
     sudo sed -i '/^ENABLE_UKI=/d; /^ENABLE_LIMINE_FALLBACK=/d' /etc/default/limine
   fi
 
-  # We overwrite the whole thing knowing the limine-update will add the entries for us
-  sudo tee /boot/limine.conf <<EOF >/dev/null
-### Read more at config document: https://github.com/limine-bootloader/limine/blob/trunk/CONFIG.md
-#timeout: 3
-default_entry: 2
-interface_branding: Omarchy Bootloader
-interface_branding_color: 2
-hash_mismatch_panic: no
-
-term_background: 1a1b26
-backdrop: 1a1b26
-
-# Terminal colors (Tokyo Night palette)
-term_palette: 15161e;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;a9b1d6
-term_palette_bright: 414868;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;c0caf5
-
-# Text colors
-term_foreground: c0caf5
-term_foreground_bright: c0caf5
-term_background_bright: 24283b
-
-EOF
-
   # Remove the original config file if it's not /boot/limine.conf
   if [[ "$limine_config" != "/boot/limine.conf" ]] && [[ -f "$limine_config" ]]; then
     sudo rm "$limine_config"
   fi
+
+  # We overwrite the whole thing knowing the limine-update will add the entries for us
+  sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
 
 
   # Match Snapper configs if not installing from the ISO

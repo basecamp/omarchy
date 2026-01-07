@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# A script to display Hyprland keybindings defined in your configuration
-# using walker for an interactive search menu.
+# Display Hyprland keybindings defined in your configuration using walker for an interactive search menu.
 
 declare -A KEYCODE_SYM_MAP
 
@@ -176,28 +175,37 @@ prioritize_entries() {
     if (match(line, /System menu/))  prio = 5
     if (match(line, /Theme menu/))  prio = 6
     if (match(line, /Full screen/))  prio = 7
-    if (match(line, /Close window/))  prio = 8
-    if (match(line, /Toggle window floating/))  prio = 9
-    if (match(line, /Toggle window split/))  prio = 10
-    if (match(line, /Universal/))  prio = 11
-    if (match(line, /Clipboard/))  prio = 12
-    if (match(line, /Emoji picker/))  prio = 13
-    if (match(line, /Color picker/))  prio = 14
-    if (match(line, /Screenshot/))  prio = 15
-    if (match(line, /Screenrecording/))  prio = 16
-    if (match(line, /(Switch|Next|Former|Previous).*workspace/))  prio = 17
-    if (match(line, /Move window to workspace/))  prio = 18
-    if (match(line, /Swap window/))  prio = 19
-    if (match(line, /Move window focus/))  prio = 20
-    if (match(line, /Move window$/))  prio = 21
-    if (match(line, /Resize window/))  prio = 22
-    if (match(line, /Expand window/))  prio = 23
-    if (match(line, /Shrink window/))  prio = 24
-    if (match(line, /scratchpad/))  prio = 25
-    if (match(line, /notification/))  prio = 26
-    if (match(line, /Toggle window transparency/))  prio = 27
-    if (match(line, /Toggle workspace gaps/))  prio = 28
-    if (match(line, /Toggle nightlight/))  prio = 29
+    if (match(line, /Full width/))  prio = 8
+    if (match(line, /Close window/))  prio = 9
+    if (match(line, /Close all windows/))  prio = 10
+    if (match(line, /Lock system/))  prio = 11
+    if (match(line, /Toggle window floating/))  prio = 12
+    if (match(line, /Toggle window split/))  prio = 13
+    if (match(line, /Pop window/))  prio = 14
+    if (match(line, /Universal/))  prio = 15
+    if (match(line, /Clipboard/))  prio = 16
+    if (match(line, /Audio controls/))  prio = 17
+    if (match(line, /Bluetooth controls/))  prio = 18
+    if (match(line, /Wifi controls/))  prio = 19
+    if (match(line, /Emoji picker/))  prio = 20
+    if (match(line, /Color picker/))  prio = 21
+    if (match(line, /Screenshot/))  prio = 22
+    if (match(line, /Screenrecording/))  prio = 23
+    if (match(line, /(Switch|Next|Former|Previous).*workspace/))  prio = 24
+    if (match(line, /Move window to workspace/))  prio = 25
+    if (match(line, /Move window silently to workspace/))  prio = 26
+    if (match(line, /Swap window/))  prio = 27
+    if (match(line, /Move window focus/))  prio = 28
+    if (match(line, /Move window$/))  prio = 29
+    if (match(line, /Resize window/))  prio = 30
+    if (match(line, /Expand window/))  prio = 31
+    if (match(line, /Shrink window/))  prio = 32
+    if (match(line, /scratchpad/))  prio = 33
+    if (match(line, /notification/))  prio = 34
+    if (match(line, /Toggle window transparency/))  prio = 35
+    if (match(line, /Toggle workspace gaps/))  prio = 36
+    if (match(line, /Toggle nightlight/))  prio = 37
+    if (match(line, /Toggle locking/))  prio = 38
     if (match(line, /group/))  prio = 94
     if (match(line, /Scroll active workspace/))  prio = 95
     if (match(line, /Cycle to/))  prio = 96
@@ -212,18 +220,26 @@ prioritize_entries() {
   cut -f2-
 }
 
-monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
-menu_height=$((monitor_height * 40 / 100))
+output_keybindings() {
+  build_keymap_cache
 
-build_keymap_cache
+  {
+    dynamic_bindings
+    static_bindings
+  } |
+    sort -u |
+    parse_keycodes |
+    parse_bindings |
+    prioritize_entries
+}
 
-{
-  dynamic_bindings
-  static_bindings
-} |
-  sort -u |
-  parse_keycodes |
-  parse_bindings |
-  prioritize_entries |
-  walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+if [[ "$1" == "--print" || "$1" == "-p" ]]; then
+  output_keybindings
+else
+  monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
+  menu_height=$((monitor_height * 40 / 100))
+
+  output_keybindings |
+    walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+fi
 

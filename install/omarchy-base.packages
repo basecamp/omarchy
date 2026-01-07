@@ -21,6 +21,7 @@ cups-pdf
 docker
 docker-buildx
 docker-compose
+dotnet-runtime-9.0
 dust
 evince
 exfatprogs
@@ -89,6 +90,7 @@ obsidian
 omarchy-chromium
 omarchy-nvim
 omarchy-walker
+opencode
 pamixer
 pinta
 playerctl
@@ -142,4 +144,5 @@ xmlstarlet
 xournalpp
 yaru-icon-theme
 yay
+yq
 zoxide

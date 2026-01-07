@@ -1,4 +1,7 @@
 #!/bin/bash
 
+# Launch the Omarchy wifi controls (provided by the Impala TUI).
+# Attempts to unblock the wifi service first in case it should be been blocked.
+
 rfkill unblock wifi
 omarchy-launch-or-focus-tui impala

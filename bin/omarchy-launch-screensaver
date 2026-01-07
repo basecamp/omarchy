@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Launch the Omarchy screensaver in the default terminal on the system with the correct font configuration.
+
 # Exit early if we don't have the tte show
 if ! command -v tte &>/dev/null; then
   exit 1

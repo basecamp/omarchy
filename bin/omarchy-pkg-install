@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Show a fuzzy-finder TUI for picking new Arch and OPR packages to install.
+
 fzf_args=(
   --multi
   --preview 'pacman -Sii {1}'

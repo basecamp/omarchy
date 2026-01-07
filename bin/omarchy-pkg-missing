@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Returns true if any of the named packages are missing from the system (or false if they're all there).
+
 for pkg in "$@"; do
   if ! pacman -Q "$pkg" &>/dev/null; then
     exit 0
