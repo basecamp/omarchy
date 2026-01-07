@@ -3,11 +3,11 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
   sudo pacman -S --needed --noconfirm base-devel
 
   # Configure pacman
-  sudo cp -f ~/.local/share/omarchy/default/pacman/pacman.conf /etc/pacman.conf
-
-  if [[ ${OMARCHY_REF:-} == "dev" ]]; then
+  if [[ ${OMARCHY_MIRROR:-} == "edge" ]] || ; then
+    sudo cp -f ~/.local/share/omarchy/default/pacman/pacman-edge.conf /etc/pacman.conf
     sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-edge /etc/pacman.d/mirrorlist
   else
+    sudo cp -f ~/.local/share/omarchy/default/pacman/pacman-stable.conf /etc/pacman.conf
     sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-stable /etc/pacman.d/mirrorlist
   fi
 

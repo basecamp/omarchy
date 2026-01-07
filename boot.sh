@@ -27,12 +27,19 @@ rm -rf ~/.local/share/omarchy/
 git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
 
 # Use custom branch if instructed, otherwise default to master
-export OMARCHY_REF="${OMARCHY_REF:-master}"
+OMARCHY_REF="${OMARCHY_REF:-master}"
 if [[ $OMARCHY_REF != "master" ]]; then
   echo -e "\e[32mUsing branch: $OMARCHY_REF\e[0m"
   cd ~/.local/share/omarchy
   git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
   cd -
+fi
+
+# Set edge mirror for dev installs
+if [[ $OMARCHY_REF == "dev" ]]; then
+  export OMARCHY_MIRROR=edge
+else
+  export OMARCHY_MIRROR=stable
 fi
 
 echo -e "\nInstallation starting..."
