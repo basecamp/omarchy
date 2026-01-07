@@ -54,8 +54,8 @@ echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
 # Configure suspend-then-hibernate
 echo "Configuring suspend-then-hibernate"
 sudo mkdir -p /etc/systemd/logind.conf.d /etc/systemd/sleep.conf.d
-sudo cp "$OMARCHY_PATH/defaults/systemd/lid.conf" /etc/systemd/logind.conf.d/
-sudo cp "$OMARCHY_PATH/defaults/systemd/hibernate.conf" /etc/systemd/sleep.conf.d/
+sudo cp "$OMARCHY_PATH/default/systemd/lid.conf" /etc/systemd/logind.conf.d/
+sudo cp "$OMARCHY_PATH/default/systemd/hibernate.conf" /etc/systemd/sleep.conf.d/
 
 # Regenerate initramfs
 echo "Regenerating initramfs..."
