@@ -1,6 +1,6 @@
 # Configure pacman
 
-if [[ ${OMARCHY_MIRROR:-} == "edge" ]] || ; then
+if [[ ${OMARCHY_MIRROR:-} == "edge" ]] ; then
   sudo cp -f ~/.local/share/omarchy/default/pacman/pacman-edge.conf /etc/pacman.conf
   sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-edge /etc/pacman.d/mirrorlist
 else
