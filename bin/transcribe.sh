@@ -29,8 +29,8 @@ if [ -f "$PID_FILE" ]; then
     fi
     rm "$PID_FILE"
 
-    # 2. Notify: Processing
-    notify-send -u low -t 2000 "Whisper" "🧠 Transcribing..."
+    # 2. Notify: Processing (using same stack tag to replace the recording notification)
+    notify-send -u low -t 2000 -h string:x-dunst-stack-tag:whisper-recording "Whisper" "🧠 Transcribing..."
 
     # 3. Transcribe
     # -nt: no timestamps
@@ -62,6 +62,6 @@ else
     # 2. Save PID to file
     echo $! > "$PID_FILE"
 
-    # 3. Notify User
-    notify-send -u critical -t 0 "🎙️ Recording Started" "Press SUPER+R to stop."
+    # 3. Notify User (with replace-id so we can close it later)
+    notify-send -u critical -t 0 -h string:x-dunst-stack-tag:whisper-recording "🎙️ Recording Started" "Press SUPER+R to stop."
 fi
