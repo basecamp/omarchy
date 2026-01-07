@@ -3,6 +3,12 @@
 # Creates a swap file in the btrfs subvolume, adds the swap file to /etc/fstab,
 # adds a resume hook to mkinitcpio, and configures suspend-then-hibernate.
 
+if [[ ! -f /sys/power/image_size ]]; then
+  echo -e "\033[31mError: Hibernation is not supported on your system\033[0m" >&2
+  exit 1
+fi
+
+
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 
 # Check if hibernation is already configured
