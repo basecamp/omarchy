@@ -13,6 +13,10 @@ if ! grep -q "#custom-voxtype" "$STYLE_FILE"; then
   min-width: 12px;
   margin: 0 0 0 7.5px;
 }
+
+#custom-voxtype.recording {
+  color: #a55555;
+}
 EOF
 fi
 
@@ -22,7 +26,7 @@ if ! grep -q "custom/voxtype" "$CONFIG_FILE"; then
   sed -i 's/"custom\/screenrecording-indicator"]/"custom\/voxtype", "custom\/screenrecording-indicator"]/' "$CONFIG_FILE"
 
   # Add voxtype config block before tray config
-  sed -i '/"tray": {/i\  "custom/voxtype": {\n    "exec": "omarchy-voxtype-status",\n    "return-type": "json",\n    "format": "{icon}",\n    "format-icons": {\n      "idle": "",\n      "recording": "󰍬",\n      "transcribing": "󰔟"\n    },\n    "tooltip": true,\n    "on-click-right": "omarchy-voxtype-config",\n    "on-click": "omarchy-voxtype-model"\n  },' "$CONFIG_FILE"
+  sed -i '/"tray": {/i\  "custom/voxtype": {\n    "exec": "omarchy-voxtype-status",\n    "return-type": "json",\n    "format": "{icon}",\n    "format-icons": {\n      "idle": "",\n      "recording": "󰍬",\n      "transcribing": "󰔟"\n    },\n    "tooltip": true,\n    "on-click-right": "omarchy-voxtype-config",\n    "on-click": "omarchy-voxtype-model"\n  },' "$CONFIG_FILE"
 fi
 
 omarchy-restart-waybar
