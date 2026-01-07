@@ -49,7 +49,7 @@ omarchy-restart-swayosd
 omarchy-restart-terminal
 omarchy-restart-hyprctl
 omarchy-restart-btop
-# omarchy-restart-opencode
+omarchy-restart-opencode
 omarchy-restart-mako
 
 # Change app-specific themes
