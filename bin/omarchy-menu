@@ -209,8 +209,7 @@ show_setup_security_menu() {
 }
 
 show_setup_config_menu() {
-  case $(menu "Config" "󰂡  Vibe With AI\n  Defaults\n  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
-  *Vibe*) terminal opencode ~/.config ;;
+  case $(menu "Config" "  Defaults\n  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
   *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *Hyprland*) open_in_editor ~/.config/hypr/hyprland.conf ;;
   *Hypridle*) open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
