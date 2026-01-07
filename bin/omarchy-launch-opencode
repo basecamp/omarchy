@@ -1,5 +1,0 @@
-#!/bin/bash
-
-# Launch opencode in a terminal that has first been placed in ~/Work.
-
-exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.opencode -e bash -c 'cd ~/Work; opencode'
