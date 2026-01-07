@@ -1,23 +1,167 @@
 #!/bin/bash
 
-# Designed to be run by systemd timer every 30 seconds and alerts if battery is low
+notify_levels=""
+profile_ac=""
+profile_bat_high=""
+profile_bat_low=""
+profile_bat_low_threshold=""
 
-BATTERY_THRESHOLD=10
-NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
-BATTERY_LEVEL=$(omarchy-battery-remaining)
-BATTERY_STATE=$(upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}')
+config_file="$HOME/.config/omarchy/battery.conf"
+if [[ -f "$config_file" ]]; then
+  source "$config_file"
+fi
 
-send_notification() {
-  notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
+state_file="/run/user/$UID/omarchy-battery-state"
+if [[ -f "$state_file" ]]; then
+  source "$state_file"
+else
+  last_status="unknown"
+  last_notified_threshold=101
+fi
+
+find_battery_path() {
+  for bat in /sys/class/power_supply/BAT*; do
+    if [[ -d "$bat" ]]; then
+      echo "$bat"
+      return
+    fi
+  done
 }
 
-if [[ -n "$BATTERY_LEVEL" && "$BATTERY_LEVEL" =~ ^[0-9]+$ ]]; then
-  if [[ $BATTERY_STATE == "discharging" && $BATTERY_LEVEL -le $BATTERY_THRESHOLD ]]; then
-    if [[ ! -f $NOTIFICATION_FLAG ]]; then
-      send_notification $BATTERY_LEVEL
-      touch $NOTIFICATION_FLAG
-    fi
+bat_path=$(find_battery_path)
+
+if [[ -z "$bat_path" ]]; then
+  exit 0
+fi
+
+read_sys_value() {
+  local file="$bat_path/$1"
+  if [[ -f "$file" ]]; then
+    cat "$file"
   else
-    rm -f $NOTIFICATION_FLAG
+    echo "0"
+  fi
+}
+
+get_time_estimate() {
+  local status="$1"
+  local energy_now=$(read_sys_value "energy_now")
+  local energy_full=$(read_sys_value "energy_full")
+  local power_now=$(read_sys_value "power_now")
+
+  if [[ "$energy_now" == "0" && -f "$bat_path/charge_now" ]]; then
+    local voltage_now=$(read_sys_value "voltage_now")
+    local charge_now=$(read_sys_value "charge_now")
+    local charge_full=$(read_sys_value "charge_full")
+    local current_now=$(read_sys_value "current_now")
+    
+    energy_now=$charge_now
+    energy_full=$charge_full
+    power_now=$current_now
+  fi
+
+  if [[ "$power_now" -eq 0 ]]; then
+    echo ""
+    return
+  fi
+
+  local hours=0
+  local msg=""
+
+  if [[ "$status" == "Discharging" ]]; then
+    hours=$(awk "BEGIN {print $energy_now / $power_now}")
+    msg="until empty"
+  elif [[ "$status" == "Charging" ]]; then
+    hours=$(awk "BEGIN {print ($energy_full - $energy_now) / $power_now}")
+    msg="until full"
+  else
+    echo ""
+    return
+  fi
+
+  local formatted_time=$(awk -v h="$hours" 'BEGIN {
+    hours = int(h)
+    minutes = int((h - hours) * 60)
+    if (hours > 0) printf "%dh %dm", hours, minutes
+    else printf "%dm", minutes
+  }')
+  
+  echo "~$formatted_time $msg"
+}
+
+current_level=$(omarchy-battery-remaining)
+current_status=$(read_sys_value "status")
+
+if [[ -z "$current_level" || ! "$current_level" =~ ^[0-9]+$ ]]; then
+  exit 0
+fi
+
+set_profile() {
+  local target="$1"
+  if [[ -z "$target" ]]; then return; fi
+
+  local current
+  current=$(powerprofilesctl get)
+  if [[ "$current" != "$target" ]]; then
+    if powerprofilesctl list | grep -q "$target"; then
+        powerprofilesctl set "$target"
+    fi
+  fi
+}
+
+send_notification() {
+  local level="$1"
+  local time_msg="$2"
+  local body="Battery is down to ${level}%"
+  
+  if [[ -n "$time_msg" ]]; then
+      body="${body}\n${time_msg}"
+  fi
+
+  notify-send -u critical "󱐋 Time to recharge!" "$body" -i battery-caution -t 30000
+}
+
+# --- Status Preview ---
+if [[ "$1" == "status" ]]; then
+  time_msg=$(get_time_estimate "$current_status")
+  send_notification "$current_level" "$time_msg"
+  echo "Notification sent: $current_level% $time_msg"
+  exit 0
+fi
+
+if [[ "$current_status" == "Charging" || "$current_status" == "Full" ]]; then
+  if [[ -n "$profile_ac" ]]; then
+    set_profile "$profile_ac"
+  fi
+  last_notified_threshold=101
+
+elif [[ "$current_status" == "Discharging" ]]; then
+  if [[ -n "$profile_bat_low_threshold" ]]; then
+    if [[ "$current_level" -le "$profile_bat_low_threshold" ]]; then
+      set_profile "$profile_bat_low"
+    else
+      set_profile "$profile_bat_high"
+    fi
+  fi
+
+  time_msg=$(get_time_estimate "$current_status")
+
+  if [[ -n "$notify_levels" ]]; then
+    IFS=' ' read -r -a levels_array <<< "$notify_levels"
+    IFS=$'\n' sorted_levels=($(sort -rn <<<"${levels_array[*]}"))
+    unset IFS
+
+    for level in "${sorted_levels[@]}"; do
+      if [[ "$current_level" -le "$level" && "$last_notified_threshold" -gt "$level" ]]; then
+        send_notification "$current_level" "$time_msg"
+        last_notified_threshold="$level"
+        break
+      fi
+    done
   fi
 fi
+
+cat <<EOF > "$state_file"
+last_status="$current_status"
+last_notified_threshold="$last_notified_threshold"
+EOF
