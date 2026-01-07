@@ -115,6 +115,7 @@
     "scroll-step": 5,
     "format-muted": "",
     "format-icons": {
+      "headphone": "",
       "default": ["", "", ""]
     }
   },

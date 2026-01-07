@@ -3,14 +3,11 @@
 #
 # WARNING: Overwritten functions will obviously not be updated when Omarchy changes.
 #
-# Example adding suspend to the system menu:
+# Example of minimal system menu:
 #
 # show_system_menu() {
-#   case $(menu "System" "  Lock\n󱄄  Screensaver\n󰒲  Suspend\n󰜉  Restart\n󰐥  Shutdown") in
+#   case $(menu "System" "  Lock\n󰐥  Shutdown") in
 #   *Lock*) omarchy-lock-screen ;;
-#   *Screensaver*) omarchy-launch-screensaver force ;;
-#   *Suspend*) systemctl suspend ;;
-#   *Restart*) omarchy-cmd-reboot ;;
 #   *Shutdown*) omarchy-cmd-shutdown ;;
 #   *) back_to show_main_menu ;;
 #   esac
