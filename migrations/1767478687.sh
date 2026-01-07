@@ -1,4 +1,4 @@
-echo "Add opencode with dynamic themeing and Super + Shift + Ctrl + A binding"
+echo "Add opencode with system themeing"
 
 omarchy-pkg-add opencode
 
