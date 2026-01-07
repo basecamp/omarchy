@@ -5,7 +5,8 @@
   "height": 26,
   "modules-left": [
     "hyprland/workspaces",
-    "hyprland/submap"
+    "hyprland/submap",
+    "custom/recorder"
   ],
   "modules-center": [
     "clock"
@@ -152,5 +153,13 @@
     "interval": 5,
     "tooltip": true,
     "tooltip-format": "{}"
+  },
+  "custom/recorder": {
+    "format": "🎙️ Rec",
+    "format-alt": "🎙️ Rec",
+    "return-type": "json",
+    "interval": 1,
+    "exec": "echo '{\"class\": \"recording\"}'",
+    "exec-if": "test -f /tmp/whisper_rec.pid"
   }
 }

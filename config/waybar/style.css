@@ -36,4 +36,25 @@ tooltip label {
   padding: 2px;
 }
 
+#custom-recorder {
+  background-color: #ff0000;
+  color: #ffffff;
+  padding: 0 10px;
+  margin: 0 5px;
+  border-radius: 5px;
+  font-weight: bold;
+  /* Optional: Blinking Animation */
+  animation-name: blink;
+  animation-duration: 1s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+@keyframes blink {
+  to {
+    background-color: #bf0000;
+  }
+}
+
 @import "../omarchy/current/theme/waybar.css";
