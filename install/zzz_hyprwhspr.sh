@@ -10,7 +10,7 @@ echo "🚀 Starting hyprwhspr installation..."
 
 # 1. Install System Dependencies (Fedora)
 echo "📦 Installing dependencies..."
-sudo dnf install -y git make automake gcc gcc-c++ SDL2 SDL2-devel wl-clipboard pulseaudio-utils cmake libnotify
+sudo dnf install -y git make automake gcc gcc-c++ SDL2 SDL2-devel wl-clipboard pulseaudio-utils cmake libnotify wtype
 
 # 2. Setup Directories & Clone
 mkdir -p "$BASE_DIR"

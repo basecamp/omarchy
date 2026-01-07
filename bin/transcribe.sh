@@ -46,6 +46,8 @@ if [ -f "$PID_FILE" ]; then
     else
         echo "$CLEAN_TEXT" | wl-copy
         notify-send -u normal "Whisper" "✅ Copied to clipboard!"
+        wtype -d 5 -s 50 "$CLEAN_TEXT"
+        notify-send -u low "Whisper" "✅ Typed into active window!"
     fi
 
     # Cleanup audio
