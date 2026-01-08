@@ -4,7 +4,7 @@ echo "Migrate legacy NVIDIA GPUs to nvidia-580xx driver (if needed)"
 NVIDIA="$(lspci | grep -i 'nvidia')"
 if echo "$NVIDIA" | grep -qE "GTX 9|GTX 10"; then
   if ! pacman -Qq | grep -qE '^linux(-[a-z0-9]+)?-headers$'; then
-    echo "Skipping: no linux headers package installed (required for DKMS drivers)"
+    echo "Error: no linux headers package installed (required for DKMS drivers). Please install the appropriate headers and re-run this migration."
     exit 1
   fi
 
