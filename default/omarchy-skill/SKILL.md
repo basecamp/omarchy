@@ -119,8 +119,7 @@ cat $(which omarchy-theme-set)
 ├── envs.conf          # Environment variables
 ├── autostart.conf     # Startup applications
 ├── hypridle.conf      # Idle behavior (screen off, lock, suspend)
-├── hyprlock.conf      # Lock screen appearance
-└── hyprsunset.conf    # Night light / blue light filter
+└── hyprlock.conf      # Lock screen appearance
 ```
 
 **Key behaviors:**
@@ -159,6 +158,7 @@ cat $(which omarchy-theme-set)
 | lazygit | `~/.config/lazygit/config.yml` |
 | starship | `~/.config/starship.toml` |
 | git | `~/.config/git/config` |
+| sunsetr | `~/.config/sunsetr/sunsetr.toml` |
 | walker | `~/.config/walker/config.toml` |
 
 ## Safe Customization Patterns
@@ -363,7 +363,7 @@ This creates a new migration file and outputs its path without opening an editor
 - "Add a keybinding for Super+E to open file manager" -> Check existing bindings first, add `unbind` if needed, then add `bind` in `~/.config/hypr/bindings.conf`
 - "Configure my external monitor" -> Edit `~/.config/hypr/monitors.conf`
 - "Make the window gaps smaller" -> Edit `~/.config/hypr/looknfeel.conf`
-- "Set up night light to turn on at sunset" -> `omarchy-toggle-nightlight` or edit `~/.config/hypr/hyprsunset.conf`
+- "Set up night light to turn on at sunset" -> `omarchy-toggle-nightlight` or edit `~/.config/sunsetr/sunsetr.toml`
 - "Customize the catppuccin theme colors" -> Create `~/.config/omarchy/themes/catppuccin-custom/` by copying from stock, then edit
 - "Run a script every time I change themes" -> Create `~/.config/omarchy/hooks/theme-set`
 - "Reset waybar to defaults" -> `omarchy-refresh-waybar`
