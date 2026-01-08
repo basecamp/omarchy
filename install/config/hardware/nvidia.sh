@@ -17,7 +17,7 @@ if [ -n "$NVIDIA" ]; then
     exit 0
   fi
 
-  pacman -S --needed --noconfirm "$KERNEL_HEADERS" "${PACKAGES[@]}"
+  omarchy-pkg-add "$KERNEL_HEADERS" "${PACKAGES[@]}"
 
   # Configure modprobe for early KMS
   sudo tee /etc/modprobe.d/nvidia.conf <<EOF >/dev/null
