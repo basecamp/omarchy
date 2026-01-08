@@ -21,34 +21,44 @@ walker -q
 focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
 terminal=$(xdg-terminal-exec --print-id)
 
+# Launch Screensaver on each monitor in a unique special workspace
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   hyprctl dispatch focusmonitor $m
 
   case $terminal in
   *Alacritty*)
-    hyprctl dispatch exec -- \
+    hyprctl dispatch exec "[workspace special:screensaver-$m] \
       alacritty --class=org.omarchy.screensaver \
       --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
-      -e omarchy-cmd-screensaver
+      -e omarchy-cmd-screensaver"
     ;;
   *ghostty*)
-    hyprctl dispatch exec -- \
+    hyprctl dispatch exec "[workspace special:screensaver-$m] \
       ghostty --class=org.omarchy.screensaver \
       --config-file=~/.local/share/omarchy/default/ghostty/screensaver \
       --font-size=18 \
-      -e omarchy-cmd-screensaver
+      -e omarchy-cmd-screensaver"
     ;;
   *kitty*)
-    hyprctl dispatch exec -- \
+    hyprctl dispatch exec "[workspace special:screensaver-$m] \
       kitty --class=org.omarchy.screensaver \
       --override font_size=18 \
       --override window_padding_width=0 \
-      -e omarchy-cmd-screensaver
+      -e omarchy-cmd-screensaver"
     ;;
   *)
     notify-send "✋  Screensaver only runs in Alacritty, Ghostty, or Kitty"
     ;;
   esac
+  
+  # Switch to monitor-specific special workspace to display screensaver
+  hyprctl dispatch togglespecialworkspace "screensaver-$m"
 done
 
+# Close special workspaces
+for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
+  hyprctl dispatch togglespecialworkspace "screensaver-$m"
+done
+
+# Return focus to orginal monitor
 hyprctl dispatch focusmonitor $focused
