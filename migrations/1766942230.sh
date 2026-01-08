@@ -5,4 +5,10 @@ NVIDIA="$(lspci | grep -i 'nvidia')"
 if echo "$NVIDIA" | grep -qE "GTX 9|GTX 10"; then
   # Piping yes to override existing packages
   yes | sudo pacman -S nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils
+
+  # Verify packages were installed
+  if ! pacman -Qq nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils &>/dev/null; then
+    echo "Error: NVIDIA 580xx driver packages failed to install"
+    exit 1
+  fi
 fi
