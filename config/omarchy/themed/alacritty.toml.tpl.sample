@@ -21,8 +21,6 @@
 #   {{ accent }}                - Theme accent color
 #   {{ selection_background }}  - Selection highlight background
 #   {{ selection_foreground }}  - Selection highlight foreground
-#   {{ active_border_color }}   - Active window/element border
-#   {{ active_tab_background }} - Active tab background
 #
 #   {{ color0 }} through {{ color15 }} - Standard 16-color terminal palette
 #     color0-7:  Normal colors (black, red, green, yellow, blue, magenta, cyan, white)
