@@ -10,7 +10,7 @@ echo "$NVIDIA"
 echo
 # If GPU is GTX 9xx or 10xx (Maxwell / Pascal), FORCE migration to legacy 580xx DKMS stack, Turing+ USE the nvidia-open-dkms
 if echo "$NVIDIA" | grep -qE "GTX 9|GTX 10"; then
-  DRIVER_PKGS=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
+  DRIVER_PKGS=(omarchy/nvidia-580xx-dkms omarchy/nvidia-580xx-utils omarchy/lib32-nvidia-580xx-utils)
 else
   DRIVER_PKGS=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils)
 fi
