@@ -26,10 +26,14 @@ if [ -n "$NVIDIA" ]; then
     echo "No compatible driver for your NVIDIA GPU. See: https://wiki.archlinux.org/title/NVIDIA"
     exit 0
   fi
+
   echo "Reinstalling kernel headers for: ${KERNEL_HEADERS[*]}"
   sudo pacman -S --noconfirm "${KERNEL_HEADERS[@]}"
+
   echo "Installing / updating NVIDIA packages: ${PACKAGES[*]}"
-  sudo pacman -S --needed --noconfirm "${PACKAGES[@]}"
+  # use omarchy helper for drivers (expands args, not the array name)
+  omarchy-pkg-add "${PACKAGES[@]}"
+
   # Explicitly rebuild DKMS
   if command -v dkms > /dev/null 2>&1; then
     if ! sudo dkms autoinstall --force; then
