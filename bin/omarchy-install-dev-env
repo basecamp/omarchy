@@ -3,7 +3,7 @@
 # Install one of the supported development environments. Usually called via Install > Development > * in the Omarchy Menu.
 
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure|scala>" >&2
   exit 1
 fi
 
@@ -140,5 +140,10 @@ clojure)
   echo -e "Installing Clojure...\n"
   omarchy-pkg-add rlwrap
   mise use --global clojure@latest
+  ;;
+scala)
+  echo -e "Installing Scala...\n"
+  mise use --global scala@latest
+  mise use --global scala-cli@latest
   ;;
 esac
