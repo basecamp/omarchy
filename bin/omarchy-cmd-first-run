@@ -9,6 +9,9 @@ FIRST_RUN_MODE=~/.local/state/omarchy/first-run.mode
 if [[ -f "$FIRST_RUN_MODE" ]]; then
   rm -f "$FIRST_RUN_MODE"
 
+  # FIXME: Find out why this is here before chromium has even been started!
+  rm -rf ~/.config/chromium/SingletonLock
+
   bash "$OMARCHY_PATH/install/first-run/battery-monitor.sh"
   bash "$OMARCHY_PATH/install/first-run/cleanup-reboot-sudoers.sh"
   bash "$OMARCHY_PATH/install/first-run/firewall.sh"
