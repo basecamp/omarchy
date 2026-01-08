@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# This script deploys ~/.local/share/omarchy/config/X/Y/Z -> ~/.config/X/Y/Z
+# Copies the named config from ~/.local/share/omarchy/config/X/Y/Z -> ~/.config/X/Y/Z.
+# If the config already exists, a backup of the existing will be taken as .bak.TIMESTAMP.
+
 config_file=$1
 
 if [[ -z "$config_file" ]]; then
@@ -9,8 +11,8 @@ if [[ -z "$config_file" ]]; then
 
   Must provide a file path from the .config directory to be refreshed.
   To copy ~/.local/share/omarchy/config/hypr/hyprlock.conf to ~/.config/hypr/hyprlock.conf
-    
-    $0 hypr/hyprlock.conf     
+
+    $0 hypr/hyprlock.conf
 USAGE
   exit 1
 fi

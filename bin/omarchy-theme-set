@@ -1,24 +1,42 @@
 #!/bin/bash
 
-if [[ -z $1 && $1 != "CNCLD" ]]; then
+if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-set <theme-name>"
   exit 1
 fi
 
-THEMES_DIR="$HOME/.config/omarchy/themes/"
-CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
+CURRENT_THEME_PATH="$HOME/.config/omarchy/current/theme"
+NEXT_THEME_PATH="$HOME/.config/omarchy/current/next-theme"
+USER_THEMES_PATH="$HOME/.config/omarchy/themes"
+OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
-# Check if the theme entered exists
-if [[ ! -d "$THEME_PATH" ]]; then
-  echo "Theme '$THEME_NAME' does not exist in $THEMES_DIR"
+if [[ -d "$USER_THEMES_PATH/$THEME_NAME" ]]; then
+  THEME_PATH="$USER_THEMES_PATH/$THEME_NAME"
+elif [[ -d "$OMARCHY_THEMES_PATH/$THEME_NAME" ]]; then
+  THEME_PATH="$OMARCHY_THEMES_PATH/$THEME_NAME"
+else
+  echo "Theme '$THEME_NAME' does not exist"
   exit 1
 fi
 
-# Update theme symlinks
-ln -nsf "$THEME_PATH" "$CURRENT_THEME_DIR"
+# Setup clean next theme directory (for atomic theme config swapping)
+rm -rf "$NEXT_THEME_PATH"
+mkdir -p "$NEXT_THEME_PATH"
+
+# Copy static configs
+cp -r "$THEME_PATH/"* "$NEXT_THEME_PATH/" 2>/dev/null
+
+# Generate dynamic configs
+omarchy-theme-set-templates
+
+# Swap next theme in as current
+rm -rf "$CURRENT_THEME_PATH"
+mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
+
+# Store theme name for reference
+echo "$THEME_NAME" > "$HOME/.config/omarchy/current/theme.name"
 
 # Change background with theme
 omarchy-theme-bg-next
@@ -29,15 +47,15 @@ if pgrep -x waybar >/dev/null; then
 fi
 omarchy-restart-swayosd
 omarchy-restart-terminal
-hyprctl reload
-pkill -SIGUSR2 btop
-makoctl reload
+omarchy-restart-hyprctl
+omarchy-restart-btop
+omarchy-restart-opencode
+omarchy-restart-mako
 
-# Change gnome, browser, vscode, cursor themes
+# Change app-specific themes
 omarchy-theme-set-gnome
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
-omarchy-theme-set-cursor
 omarchy-theme-set-obsidian
 
 # Call hook on theme set

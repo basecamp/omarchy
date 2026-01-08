@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Run all pending migrations to bring the system in line with the installed version.
+
 # Where we store an empty file for each migration that has already been performed.
 STATE_DIR="$HOME/.local/state/omarchy/migrations"
 mkdir -p "$STATE_DIR"
