@@ -1,5 +1,18 @@
 #!/bin/bash
 
+# Set the Omarchy channel, which dictates what git branch and package repository is used.
+#
+# Stable uses the master branch, which only sees updates on official releases, and
+# the stable package repository, which typically lags the edge by a month to ensure
+# better compatibility.
+#
+# Edge tracks the latest package repository, but still relies on the master branch,
+# so new packages which require config changes may cause conflicts or errors.
+#
+# Dev tracks the active development dev branch, which may include partial or broken updates,
+# as well as the latest package repository. This should only be used by Omarchy developers
+# and people with a lot of experience managing Linux systems.
+
 if (($# == 0)); then
   echo "Usage: omarchy-channel-set [stable|edge|dev]"
   exit 1
@@ -8,7 +21,7 @@ else
 fi
 
 case "$channel" in
-"stable") omarchy-branch-set "master" && omarchy-refresh-pacman "stable" ;;
+"stable") omarchy-branch-set "master" && omarchy-refresh-pacman "stable" && sudo pacman -Suu --noconfirm ;;
 "edge") omarchy-branch-set "master" && omarchy-refresh-pacman "edge" ;;
 "dev") omarchy-branch-set "dev" && omarchy-refresh-pacman "edge" ;;
 *) echo "Unknown channel: $channel"; exit 1; ;;

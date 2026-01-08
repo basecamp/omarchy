@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Finish the installation of Omarchy with items that can only be done after logging in.
+
 set -e
 
 FIRST_RUN_MODE=~/.local/state/omarchy/first-run.mode

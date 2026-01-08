@@ -1,8 +1,10 @@
 #!/bin/bash
 
+# Overwrite the user configs for the Walker application launcher (which also powers the Omarchy Menu) and restart the services.
+
 # Ensure walker is set to autostart
 mkdir -p ~/.config/autostart/
-cp $OMARCHY_PATH/autostart/walker.desktop ~/.config/autostart/
+cp $OMARCHY_PATH/default/walker/walker.desktop ~/.config/autostart/
 systemctl --user daemon-reload
 
 omarchy-refresh-config walker/config.toml

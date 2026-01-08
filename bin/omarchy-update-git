@@ -5,4 +5,4 @@ set -e
 echo -e "\e[32mUpdate Omarchy\e[0m"
 
 git -C $OMARCHY_PATH pull --autostash
-git -C $OMARCHY_PATH diff --check || git -C $OMARCHY_PATH reset --merge
+git -C $OMARCHY_PATH --no-pager diff --check || git -C $OMARCHY_PATH reset --merge

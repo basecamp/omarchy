@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Add the named packages to the system if they're missing. Returns false if it couldn't be done.
+
 if omarchy-pkg-missing "$@"; then
   sudo pacman -S --noconfirm --needed "$@" || exit 1
 fi

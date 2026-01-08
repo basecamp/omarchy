@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Call the VSCode theme setter with VSCodium-specific parameters
+omarchy-theme-set-vscode codium "$HOME/.config/VSCodium/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-codium-theme-changes"

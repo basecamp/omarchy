@@ -1,4 +1,7 @@
 #!/bin/bash
 
+# Returns true if the AUR is up and available.
+# Used by omarchy-update-system-pkgs to ensure the AUR is available before updating packages from it.
+
 curl -sf --connect-timeout 30 --retry 3 --retry-delay 3 -A "omarchy-update" \
   "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" >/dev/null

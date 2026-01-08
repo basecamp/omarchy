@@ -2,10 +2,12 @@
 
 # Cycles through the background images available
 
-BACKGROUNDS_DIR="$HOME/.config/omarchy/current/theme/backgrounds/"
+THEME_NAME=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
+THEME_BACKGROUNDS_PATH="$HOME/.config/omarchy/current/theme/backgrounds/"
+USER_BACKGROUNDS_PATH="$HOME/.config/omarchy/backgrounds/$THEME_NAME/"
 CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
 
-mapfile -d '' -t BACKGROUNDS < <(find -L "$BACKGROUNDS_DIR" -type f -print0 | sort -z)
+mapfile -d '' -t BACKGROUNDS < <(find -L "$USER_BACKGROUNDS_PATH" "$THEME_BACKGROUNDS_PATH" -maxdepth 1 -type f -print0 2>/dev/null | sort -z)
 TOTAL=${#BACKGROUNDS[@]}
 
 if [[ $TOTAL -eq 0 ]]; then

@@ -5,7 +5,6 @@ set -e
 trap 'echo ""; echo -e "\033[0;31mSomething went wrong during the update!\n\nPlease review the output above carefully, correct the error, and retry the update.\n\nIf you need assistance, get help from the community at https://omarchy.org/discord\033[0m"' ERR
 
 if [[ $1 == "-y" ]] || omarchy-update-confirm; then
-  omarchy-update-without-idle
   omarchy-snapshot create || [ $? -eq 127 ]
   omarchy-update-git
   omarchy-update-perform
