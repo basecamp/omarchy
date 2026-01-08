@@ -241,7 +241,7 @@ output_keybindings() {
 }
 
 print_usage() {
-  echo "Usage: omarch-menu-keybindings [--print|-p] [--submap|-s <submap>] [--help|-h]"
+  echo "Usage: omarchy-menu-keybindings [--print|-p] [--submap|-s <submap>] [--help|-h]"
 }
 
 PRINT_ONLY=false
