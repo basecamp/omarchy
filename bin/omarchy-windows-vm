@@ -258,7 +258,7 @@ wait_for_rdp_ready() {
   local WIN_USER="$1"
   local WIN_PASS="$2"
   local TIMEOUT=240
-  local SECONDS=0
+  SECONDS=0
 
   echo "Waiting for Windows VM to be ready..."
 
