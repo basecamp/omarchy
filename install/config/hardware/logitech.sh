@@ -28,15 +28,15 @@ EOF
   cat <<EOF > ~/.config/systemd/user/solaar.service
 [Unit]
 Description=Solaar
-After=graphical-session.target
+PartOf=graphical-session.target
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/solaar -w hide -b solaar
-Environment=DISPLAY=:0
+Restart=on-failure
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target
 EOF
 
   systemctl --user daemon-reload
