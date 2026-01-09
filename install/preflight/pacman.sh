@@ -19,5 +19,5 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
 
 
   # Refresh all repos
-  sudo pacman -Syu --noconfirm
+  sudo pacman -Syyu --noconfirm
 fi
