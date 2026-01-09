@@ -25,13 +25,13 @@ get_rectangles() {
 # Select based on mode
 case "$MODE" in
   region)
-    wayfreeze & PID=$!
+    hyprpicker -r -z >/dev/null 2>&1 & PID=$!
     sleep .1
     SELECTION=$(slurp 2>/dev/null)
     kill $PID 2>/dev/null
     ;;
   windows)
-    wayfreeze & PID=$!
+    hyprpicker -r -z >/dev/null 2>&1 & PID=$!
     sleep .1
     SELECTION=$(get_rectangles | slurp -r 2>/dev/null)
     kill $PID 2>/dev/null
@@ -41,7 +41,7 @@ case "$MODE" in
     ;;
   smart|*)
     RECTS=$(get_rectangles)
-    wayfreeze & PID=$!
+    hyprpicker -r -z >/dev/null 2>&1 & PID=$!
     sleep .1
     SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
     kill $PID 2>/dev/null
