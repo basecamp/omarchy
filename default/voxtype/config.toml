@@ -69,7 +69,6 @@ type_delay_ms = 1
 
 # Modifier key suppression for Hyprland
 # Prevents held modifier keys from interfering with transcription output
-# See: https://github.com/basecamp/omarchy/issues/4159
 pre_output_command = "hyprctl dispatch submap voxtype_suppress"
 post_output_command = "hyprctl dispatch submap reset"
 
