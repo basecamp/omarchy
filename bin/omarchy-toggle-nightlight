@@ -1,30 +1,38 @@
 #!/bin/bash
 
-# Default temperature values
-ON_TEMP=4000
-OFF_TEMP=6000
+# Toggle nightlight (blue light filter) on/off
+#
+# Default temperatures based on research:
+#   Day:   6500K - standard monitor calibration, matches noon sunlight
+#   Night: 3500K - warm light to reduce eye strain and support circadian rhythm
+#                  (consensus default from f.lux research, gammastep, redshift)
 
-# Ensure hyprsunset is running
-if ! pgrep -x hyprsunset; then
-  setsid uwsm-app -- hyprsunset &
-  sleep 1 # Give it time to register
+DAY_TEMP=6500
+NIGHT_TEMP=3500
+
+# Start sunsetr if not running
+if ! pgrep -x sunsetr >/dev/null; then
+  setsid uwsm-app -- sunsetr &
+  sleep 1
 fi
 
-# Query the current temperature
-CURRENT_TEMP=$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+')
+# Get current temperature
+CURRENT_TEMP=$(sunsetr get static_temp 2>/dev/null | grep -oE '[0-9]+' || echo "$DAY_TEMP")
 
 restart_nightlighted_waybar() {
-  if grep -q "custom/nightlight" ~/.config/waybar/config.jsonc; then
-    omarchy-restart-waybar # restart waybar in case user has waybar module for hyprsunset
+  if grep -q "custom/nightlight" ~/.config/waybar/config.jsonc 2>/dev/null; then
+    omarchy-restart-waybar
   fi
 }
 
-if [[ "$CURRENT_TEMP" == "$OFF_TEMP" ]]; then
-  hyprctl hyprsunset temperature $ON_TEMP
-  notify-send "  Nightlight screen temperature"
+if [[ "$CURRENT_TEMP" -ge "$DAY_TEMP" ]]; then
+  # Currently day temp (or higher) -> switch to night
+  sunsetr set static_temp=$NIGHT_TEMP
+  notify-send "  Nightlight on (${NIGHT_TEMP}K)"
   restart_nightlighted_waybar
 else
-  hyprctl hyprsunset temperature $OFF_TEMP
-  notify-send "   Daylight screen temperature"
+  # Currently night temp -> switch to day
+  sunsetr set static_temp=$DAY_TEMP
+  notify-send "   Nightlight off (${DAY_TEMP}K)"
   restart_nightlighted_waybar
 fi

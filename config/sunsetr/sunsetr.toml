@@ -1,0 +1,59 @@
+# Sunsetr - Blue light filter for Wayland
+# https://github.com/disluckyguy/sunsetr
+#
+# Sunsetr is NOT started automatically. To enable:
+#   1. Manual toggle: Press SUPER+CTRL+N or use Omarchy Menu > Trigger > Toggle > Nightlight
+#   2. Auto-start: Add to ~/.config/hypr/autostart.conf:
+#      exec-once = uwsm-app -- sunsetr
+#
+# After enabling, sunsetr will automatically adjust color temperature
+# based on your location and time of day (geo mode) or your manual settings.
+
+# Backend selection
+# Options: "auto", "hyprland", "hyprsunset", "wayland"
+backend = "auto"
+
+# Transition mode - how color temperature changes throughout the day
+# Options:
+#   "geo"       - Automatic based on sunrise/sunset at your location (recommended)
+#   "static"    - Fixed temperature, no automatic changes
+#   "finish_by" - Transition completes by sunset/sunrise time
+#   "start_at"  - Transition starts at sunset/sunrise time
+#   "center"    - Transition centered on sunset/sunrise time
+transition_mode = "static"
+
+# Static mode settings (used when transition_mode = "static")
+# Standard daylight is 6500K - this means no color shift when first started
+static_temp = 6500
+static_gamma = 100
+
+# Day/Night temperatures (used in geo and time-based modes)
+# Research-based defaults:
+#   - 6500K: Standard monitor calibration, matches noon sunlight
+#   - 3500K: Warm incandescent, reduces blue light for evening use
+#            (consensus default from f.lux research, gammastep, redshift)
+day_temp = 6500
+night_temp = 3500
+
+# Gamma adjustment (10-200%)
+# 100% = no change, lower = dimmer
+# Research suggests 80-90% at night can help, but 100% is simpler
+day_gamma = 100
+night_gamma = 100
+
+# Smooth transitions
+smoothing = true
+startup_duration = 0.5    # Seconds to fade in on start (0.1-60, 0 = instant)
+shutdown_duration = 0.5   # Seconds to fade out on stop (0.1-60, 0 = instant)
+adaptive_interval = 1     # Base interval for smooth transitions (1-1000ms)
+
+# Transition timing (for time-based modes)
+update_interval = 60      # How often to update during transitions (10-300 seconds)
+transition_duration = 45  # Length of dawn/dusk transition (5-120 minutes)
+
+# Manual sunrise/sunset times (used if geo mode can't determine location)
+sunrise = "06:00:00"
+sunset = "19:00:00"
+
+# Geolocation is auto-detected on first run when using geo mode.
+# To set manually, run: sunsetr geo

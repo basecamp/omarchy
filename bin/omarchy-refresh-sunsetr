@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Reset sunsetr config to Omarchy defaults and restart
+omarchy-refresh-config sunsetr/sunsetr.toml
+omarchy-restart-sunsetr
