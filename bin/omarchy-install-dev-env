@@ -133,8 +133,21 @@ ocaml)
   opam install ocaml-lsp-server odoc ocamlformat utop --yes
   ;;
 dotnet)
-  echo -e "Installing .NET...\n"
-  mise use --global dotnet@latest
+  
+  # List available stable .NET versions, filtering out RC and preview versions, and sort them in descending order
+  versions=$(mise ls-remote dotnet \
+  | grep -vE 'rc|preview' \
+  | sort -Vr \
+  | awk -F. '!seen[$1"."$2]++')
+
+  dotnet_version=$(echo "$versions" | gum choose --header "Select .NET version to install...")
+
+  if [[ -n "$dotnet_version" ]]; then
+    echo -e "\nInstalling .NET ${dotnet_version}...\n"
+
+    # Install the selected .NET version
+    mise use --global "dotnet@${dotnet_version}"
+  fi
   ;;
 clojure)
   echo -e "Installing Clojure...\n"
