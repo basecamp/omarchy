@@ -25,6 +25,11 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   hyprctl dispatch focusmonitor $m
 
   case $terminal in
+  *wezterm*)
+    hyprctl dispatch exec -- \
+      wezterm start --class=org.omarchy.screensaver --no-auto-connect \
+        --always-new-process omarchy-cmd-screensaver
+    ;;
   *Alacritty*)
     hyprctl dispatch exec -- \
       alacritty --class=org.omarchy.screensaver \
@@ -46,7 +51,7 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
       -e omarchy-cmd-screensaver
     ;;
   *)
-    notify-send "✋  Screensaver only runs in Alacritty, Ghostty, or Kitty"
+    notify-send "✋  Screensaver only runs in Wezterm, Alacritty, Ghostty, or Kitty"
     ;;
   esac
 done
