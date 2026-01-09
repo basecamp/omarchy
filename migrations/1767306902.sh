@@ -1,7 +1,5 @@
 echo "Migrate to new theme setup"
 
-omarchy-pkg-add yq
-
 # Move user-added backgrounds from Omarchy theme folders to user config
 OMARCHY_DIR="$HOME/.local/share/omarchy"
 USER_BACKGROUNDS_DIR="$HOME/.config/omarchy/backgrounds"
