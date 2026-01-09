@@ -67,6 +67,12 @@ fallback_to_clipboard = true
 # 0 = fastest possible, increase if characters are dropped
 type_delay_ms = 1
 
+# Modifier key suppression for Hyprland
+# Prevents held modifier keys from interfering with transcription output
+# See: https://github.com/basecamp/omarchy/issues/4159
+pre_output_command = "hyprctl dispatch submap voxtype_suppress"
+post_output_command = "hyprctl dispatch submap reset"
+
 # Post-processing command (optional)
 # Pipe transcribed text through an external command for cleanup before output.
 # The command receives text on stdin and outputs processed text on stdout.
