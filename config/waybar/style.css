@@ -35,6 +35,7 @@
 #pulseaudio,
 #custom-omarchy,
 #custom-screenrecording-indicator,
+#custom-do-not-disturb-indicator,
 #custom-update {
   min-width: 12px;
   margin: 0 7.5px;
@@ -72,6 +73,7 @@ tooltip {
   opacity: 0;
 }
 
+#custom-do-not-disturb-indicator,
 #custom-screenrecording-indicator {
   min-width: 12px;
   margin-left: 5px;
