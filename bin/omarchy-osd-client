@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Only display the OSD on the currently focused monitor
+swayosd-client --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')" "$@"

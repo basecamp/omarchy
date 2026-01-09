@@ -8,8 +8,20 @@ if grep -q 'Logitech USB Receiver' /proc/bus/input/devices; then
   cat <<EOF > ~/.config/solaar/rules.yaml
 %YAML 1.3
 ---
+- Key: [Dictation, pressed]
+- Execute: [/usr/bin/voxtype,record,start]
+...
+---
+- Key: [Dictation, released]
+- Execute: [/usr/bin/voxtype,record,stop]
+...
+---
 - Key: [Emoji, pressed]
 - Execute: [$HOME/.local/share/omarchy/bin/omarchy-launch-walker,-m,symbols]
+...
+---
+- Key: [Mute Microphone, pressed]
+- Execute: [$HOME/.local/share/omarchy/bin/omarchy-osd-client,--input-volume,mute-toggle]
 ...
 ---
 - Key: [Screen Capture, pressed]
@@ -21,7 +33,9 @@ if grep -q 'Logitech USB Receiver' /proc/bus/input/devices; then
 ...
 EOF
 
+  sudo solaar config "MX Keys S" divert-keys "Dictation" Diverted
   sudo solaar config "MX Keys S" divert-keys "Emoji" Diverted
+  sudo solaar config "MX Keys S" divert-keys "Mute Microphone" Diverted
   sudo solaar config "MX Keys S" divert-keys "Screen Capture" Diverted
   sudo solaar config "MX Keys S" divert-keys "Screen Lock" Diverted
 
