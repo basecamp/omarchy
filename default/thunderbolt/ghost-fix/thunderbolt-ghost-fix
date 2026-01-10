@@ -1,0 +1,27 @@
+#!/bin/bash
+# Run ghost display fix for Hyprland when Thunderbolt connects
+
+# Get Hyprland process (exit if none)
+pid=$(pgrep -x Hyprland | head -n1) || exit 0
+
+# Get user who owns the process
+user=$(stat -c %U /proc/$pid) || exit 0
+uid=$(id -u $user)
+
+# Find the Hyprland socket and derive the instance signature
+sock=$(find /run/user/$uid -maxdepth 4 -type s -path "*/hypr/*/.socket.sock" 2>/dev/null | head -n1)
+if [ -n "$sock" ]; then
+    inst_dir=$(dirname "$sock")
+    XDG_RUNTIME_DIR="/run/user/$uid"
+    HYPRLAND_INSTANCE_SIGNATURE=$(basename "$inst_dir")
+    
+    # Run the fix as that user with proper environment
+    sudo -u $user \
+        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+        HYPRLAND_INSTANCE_SIGNATURE="$HYPRLAND_INSTANCE_SIGNATURE" \
+        /home/$user/.config/hypr/fix-ghost-displays.sh
+else
+    # Fallback: just try to run it anyway
+    [ -f /home/$user/.config/hypr/fix-ghost-displays.sh ] && \
+        sudo -u $user /home/$user/.config/hypr/fix-ghost-displays.sh
+fi

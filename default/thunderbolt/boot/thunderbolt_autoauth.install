@@ -1,0 +1,7 @@
+#!/bin/sh
+build() { add_runscript; }
+help() {
+    cat <<'HELPEOF'
+Conservative TB auth (delay, skip 0-0, auth once) to keep DP link stable for splash/LUKS.
+HELPEOF
+}
