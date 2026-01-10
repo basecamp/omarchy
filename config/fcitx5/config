@@ -1,0 +1,4 @@
+[Hotkey]
+# Prevents Shift+Space from typing "space" - fcitx5 default binds Shift+Space
+# to cycle through input methods, which breaks normal typing
+EnumerateWithTriggerKeys=False
