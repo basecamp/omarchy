@@ -19,9 +19,10 @@ if [ -n "$NVIDIA" ]; then
 
   omarchy-pkg-add "$KERNEL_HEADERS" "${PACKAGES[@]}"
 
-  # Configure modprobe for early KMS
+  # Configure modprobe for early KMS and suspend/resume support
   sudo tee /etc/modprobe.d/nvidia.conf <<EOF >/dev/null
 options nvidia_drm modeset=1
+options nvidia NVreg_PreserveVideoMemoryAllocations=1
 EOF
 
   # Configure mkinitcpio for early loading
