@@ -1,5 +1,6 @@
 # Set default XCompose that is triggered with CapsLock
 tee ~/.XCompose >/dev/null <<EOF
+# Please run "omarchy-restart-xcompose" to apply changes
 include "%H/.local/share/omarchy/default/xcompose"
 
 # Identification
