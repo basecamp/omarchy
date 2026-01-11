@@ -58,5 +58,8 @@ omarchy-theme-set-browser
 omarchy-theme-set-vscode
 omarchy-theme-set-obsidian
 
+# sync user specified configs
+omarchy-theme-sync
+
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME"

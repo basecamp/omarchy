@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_DIR="$HOME/.config"
+THEME_DIR="$CONFIG_DIR/omarchy/current"
+SYNC_DIR="$CONFIG_DIR/omarchy-theme-sync"
+THEME_STORE="$HOME/.local/share/omarchy/themes"
+
+COLORS_FILE=""
+
+load_colors() {
+    COLORS_FILE=""
+
+    # Identify current theme
+    if [[ -f "$THEME_DIR/theme.name" ]]; then
+        THEME_NAME=$(tr -d '[:space:]' < "$THEME_DIR/theme.name")
+
+        if [[ -f "$THEME_DIR/theme/colors.toml" ]]; then
+            COLORS_FILE="$THEME_DIR/theme/colors.toml"
+        fi
+    fi
+
+    # Fallback to safe colors
+    if [[ -z "$COLORS_FILE" || ! -f "$COLORS_FILE" ]]; then
+        echo "Theme colors not found, using system default..."
+
+        mode=$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null || echo "'prefer-light'")
+        if [[ $mode == "'prefer-dark'" ]]; then
+            DEFAULT="dark"
+        else
+            DEFAULT="light"
+        fi
+
+        COLORS_FILE="$SYNC_DIR/$DEFAULT.toml"
+    fi
+
+    if [[ ! -f "$COLORS_FILE" ]]; then
+        echo "ERROR: colors.toml not found: $COLORS_FILE" >&2
+        exit 1
+    fi
+
+    echo "Using colors from: $COLORS_FILE"
+}
+
+replace_vars() {
+    local src="$SYNC_DIR"
+
+    find "$src" -mindepth 1 -maxdepth 1 -type d | while read -r sub; do
+        if [[ ! -f "$sub/dir" ]]; then
+            echo "No dir file in $sub, skipping..."
+            continue
+        fi
+
+        raw_dest=$(tr -d '\r\n' < "$sub/dir")
+
+        if [[ -z "$raw_dest" ]]; then
+            echo "Empty dir file in $sub, skipping..."
+            continue
+        fi
+
+        dest=$(eval echo "$raw_dest")
+        mkdir -p "$dest"
+
+        tmp=$(mktemp -d)
+
+        # Copy config templates (exclude dir)
+        cp -a "$sub"/. "$tmp/"
+        rm -f "$tmp/dir"
+
+
+        # Extract placeholders and replace
+        grep -rhoP '\$\{\K[^}]+' "$tmp" | sort -u | while read -r var; do
+            value=$(grep -E "^$var\s*=" "$COLORS_FILE" \
+                | cut -d'=' -f2- \
+                | tr -d ' "')
+
+            if [[ -n "$value" ]]; then
+                find "$tmp" -type f -exec sed -i "s|\${$var}|$value|g" {} +
+            fi
+        done
+
+        # Copy into destination
+        cp -af "$tmp"/. "$dest/"
+        rm -rf "$tmp"
+    done
+}
+
+echo "Theme change detected. Syncing..."
+load_colors
+replace_vars
