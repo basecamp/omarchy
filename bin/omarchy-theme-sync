@@ -4,7 +4,6 @@ set -euo pipefail
 CONFIG_DIR="$HOME/.config"
 THEME_DIR="$CONFIG_DIR/omarchy/current"
 SYNC_DIR="$CONFIG_DIR/omarchy-theme-sync"
-THEME_STORE="$HOME/.local/share/omarchy/themes"
 
 COLORS_FILE=""
 
