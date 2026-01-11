@@ -1,5 +1,29 @@
 #!/bin/bash
 
+configure_single_label_dns() {
+  local resolved_conf_d="/etc/systemd/resolved.conf.d"
+  local single_label_conf="$resolved_conf_d/15-single-label.conf"
+  
+  if gum confirm "Enable single-label DNS resolution (e.g., 'server/' instead of 'server.local') for your DNS server?"; then
+    sudo mkdir -p "$resolved_conf_d"
+    sudo tee "$single_label_conf" >/dev/null <<'EOF'
+[Resolve]
+ResolveUnicastSingleLabel=yes
+EOF
+  else
+    if [[ -f "$single_label_conf" ]]; then
+      sudo rm "$single_label_conf"
+    fi
+  fi
+}
+
+remove_single_label_dns() {
+  local single_label_conf="/etc/systemd/resolved.conf.d/15-single-label.conf"
+  if [[ -f "$single_label_conf" ]]; then
+    sudo rm "$single_label_conf"
+  fi
+}
+
 if [[ -z $1 ]]; then
   dns=$(gum choose --height 5 --header "Select DNS provider" Cloudflare DHCP Custom)
 else
@@ -31,6 +55,8 @@ EOF
     fi
   done
   
+  remove_single_label_dns
+  
   sudo systemctl restart systemd-networkd systemd-resolved
   ;;
 
@@ -45,6 +71,8 @@ EOF
     [[ -f "$file" ]] || continue
     sudo sed -i '/^UseDNS=no/d' "$file"
   done
+  
+  configure_single_label_dns
   
   sudo systemctl restart systemd-networkd systemd-resolved
   ;;
@@ -79,6 +107,8 @@ EOF
       sudo sed -i '/^\[IPv6AcceptRA\]/a UseDNS=no' "$file"
     fi
   done
+  
+  configure_single_label_dns
   
   sudo systemctl restart systemd-networkd systemd-resolved
 
