@@ -31,7 +31,7 @@ EOF
     fi
   done
   
-  sudo systemctl restart systemd-networkd systemd-resolved
+  sudo systemctl restart NetworkManager systemd-resolved
   ;;
 
 DHCP)
@@ -46,7 +46,7 @@ EOF
     sudo sed -i '/^UseDNS=no/d' "$file"
   done
   
-  sudo systemctl restart systemd-networkd systemd-resolved
+  sudo systemctl restart NetworkManager systemd-resolved
   ;;
 
 Custom)
@@ -80,7 +80,7 @@ EOF
     fi
   done
   
-  sudo systemctl restart systemd-networkd systemd-resolved
+  sudo systemctl restart NetworkManager systemd-resolved
 
   ;;
 esac
