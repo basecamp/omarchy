@@ -3,10 +3,5 @@
 # Returns the battery percentage remaining as an integer.
 # Used by the battery monitor and the Ctrl + Shift + Super + B hotkey.
 
-upower -i $(upower -e | grep BAT) \
-| awk -F: '/percentage/ {
-    gsub(/[%[:space:]]/, "", $2);
-    val=$2;
-    printf("%d\n", (val+0.5))
-    exit
-  }'
+upower -i $(upower -e | grep 'DisplayDevice' | head -n 1 ) \
+  | grep "percentage" | awk '{print $2}' | tr -dc '0-9'
