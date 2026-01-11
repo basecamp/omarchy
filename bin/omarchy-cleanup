@@ -1,0 +1,444 @@
+#!/bin/bash
+
+# Omarchy system cleanup utility
+# Clean package cache, AUR build files, orphaned packages, user cache, old snapshots, and journal logs
+
+set -e
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+
+DRY_RUN=false
+ALL_MODE=false
+TOTAL_FREED=0
+
+show_help() {
+  cat << EOF
+Usage: omarchy-cleanup [OPTIONS]
+
+Omarchy system cleanup utility for removing cached and orphaned data.
+
+Options:
+  -h, --help      Show this help message
+  --dry-run       Preview what would be cleaned without actually deleting
+  --all           Clean all categories (still asks for confirmation)
+
+Cleanup Categories:
+  • Package Cache    - Keep only 2 most recent versions (paccache)
+  • AUR Build Files  - Clean ~/.cache/yay/
+  • Orphaned Packages - Remove packages no longer needed as dependencies
+  • User Cache       - Clean thumbnails and shader cache
+  • Old Snapshots    - Remove btrfs snapshots older than 30 days
+  • Systemd Journal  - Vacuum logs older than 2 weeks
+
+Examples:
+  omarchy-cleanup              # Interactive mode with multi-select menu
+  omarchy-cleanup --dry-run    # Preview what would be cleaned
+  omarchy-cleanup --all        # Clean all categories with confirmation
+EOF
+}
+
+# Get human-readable size
+get_size() {
+  local path="$1"
+  if [[ -d "$path" ]]; then
+    du -sh "$path" 2>/dev/null | cut -f1
+  else
+    echo "0"
+  fi
+}
+
+# Get size in bytes for calculation
+get_size_bytes() {
+  local path="$1"
+  if [[ -d "$path" ]]; then
+    du -sb "$path" 2>/dev/null | cut -f1
+  else
+    echo "0"
+  fi
+}
+
+# Format bytes to human readable
+format_bytes() {
+  local bytes=$1
+  if [[ $bytes -ge 1073741824 ]]; then
+    echo "$(echo "scale=1; $bytes/1073741824" | bc)G"
+  elif [[ $bytes -ge 1048576 ]]; then
+    echo "$(echo "scale=1; $bytes/1048576" | bc)M"
+  elif [[ $bytes -ge 1024 ]]; then
+    echo "$(echo "scale=1; $bytes/1024" | bc)K"
+  else
+    echo "${bytes}B"
+  fi
+}
+
+# Clean package cache
+clean_package_cache() {
+  echo -e "\n\e[36m\e[1mPackage Cache\e[0m"
+  
+  if ! command -v paccache &>/dev/null; then
+    echo -e "  \e[33mpaccache not found (install pacman-contrib)\e[0m"
+    return
+  fi
+
+  # Get current cache size
+  local cache_dir="/var/cache/pacman/pkg"
+  local before_size
+  local before_bytes
+  before_size=$(get_size "$cache_dir")
+  before_bytes=$(get_size_bytes "$cache_dir")
+  
+  echo -e "  Current size: \e[1m$before_size\e[0m"
+  
+  # Preview what would be removed
+  local dry_output
+  local pkg_count
+  dry_output=$(paccache -dk2 2>/dev/null || true)
+  pkg_count=$(echo "$dry_output" | grep -c "\.pkg\.tar" || echo "0")
+  
+  if [[ $pkg_count -eq 0 ]]; then
+    echo -e "  \e[32mNothing to clean\e[0m"
+    return
+  fi
+  
+  echo -e "  Packages to remove: \e[1m$pkg_count\e[0m"
+  
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "  \e[33m[DRY RUN] Would run: sudo paccache -rk2\e[0m"
+    return
+  fi
+  
+  if gum confirm "Remove old package cache versions?"; then
+    sudo paccache -rk2
+    local after_bytes
+    after_bytes=$(get_size_bytes "$cache_dir")
+    local freed=$((before_bytes - after_bytes))
+    TOTAL_FREED=$((TOTAL_FREED + freed))
+    echo -e "  \e[32mFreed: $(format_bytes $freed)\e[0m"
+  else
+    echo -e "  \e[33mSkipped\e[0m"
+  fi
+}
+
+# Clean AUR build files
+clean_aur_cache() {
+  echo -e "\n\e[36m\e[1mAUR Build Files\e[0m"
+  
+  local yay_cache="$HOME/.cache/yay"
+  
+  if [[ ! -d "$yay_cache" ]]; then
+    echo -e "  \e[32mNo AUR cache found\e[0m"
+    return
+  fi
+  
+  local cache_size
+  local cache_bytes
+  cache_size=$(get_size "$yay_cache")
+  cache_bytes=$(get_size_bytes "$yay_cache")
+  
+  if [[ $cache_bytes -eq 0 ]]; then
+    echo -e "  \e[32mNothing to clean\e[0m"
+    return
+  fi
+  
+  echo -e "  Size: \e[1m$cache_size\e[0m"
+  
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "  \e[33m[DRY RUN] Would remove: $yay_cache/*\e[0m"
+    return
+  fi
+  
+  if gum confirm "Clean AUR build cache ($cache_size)?"; then
+    rm -rf "${yay_cache:?}"/*
+    TOTAL_FREED=$((TOTAL_FREED + cache_bytes))
+    echo -e "  \e[32mFreed: $cache_size\e[0m"
+  else
+    echo -e "  \e[33mSkipped\e[0m"
+  fi
+}
+
+# Clean orphaned packages
+clean_orphans() {
+  echo -e "\n\e[36m\e[1mOrphaned Packages\e[0m"
+  
+  local orphans
+  orphans=$(pacman -Qtdq 2>/dev/null || true)
+  
+  if [[ -z "$orphans" ]]; then
+    echo -e "  \e[32mNo orphaned packages\e[0m"
+    return
+  fi
+  
+  local orphan_count
+  orphan_count=$(echo "$orphans" | wc -l)
+  echo -e "  Found: \e[1m$orphan_count\e[0m orphaned packages"
+  echo "$orphans" | while read -r pkg; do
+    echo -e "    - $pkg"
+  done
+  
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "  \e[33m[DRY RUN] Would run: sudo pacman -Rns ...\e[0m"
+    return
+  fi
+  
+  if gum confirm "Remove $orphan_count orphaned packages?"; then
+    # shellcheck disable=SC2086
+    sudo pacman -Rns --noconfirm $orphans
+    echo -e "  \e[32mRemoved $orphan_count packages\e[0m"
+  else
+    echo -e "  \e[33mSkipped\e[0m"
+  fi
+}
+
+# Clean user cache directories
+clean_user_cache() {
+  echo -e "\n\e[36m\e[1mUser Cache\e[0m"
+  
+  local cache_dirs=(
+    "$HOME/.cache/thumbnails"
+    "$HOME/.cache/mesa_shader_cache"
+  )
+  
+  local total_bytes=0
+  local found_any=false
+  
+  for dir in "${cache_dirs[@]}"; do
+    if [[ -d "$dir" ]]; then
+      local dir_size
+      local dir_bytes
+      dir_size=$(get_size "$dir")
+      dir_bytes=$(get_size_bytes "$dir")
+      if [[ $dir_bytes -gt 0 ]]; then
+        echo -e "  ${dir/$HOME/\~}: \e[1m$dir_size\e[0m"
+        total_bytes=$((total_bytes + dir_bytes))
+        found_any=true
+      fi
+    fi
+  done
+  
+  if [[ "$found_any" == "false" ]]; then
+    echo -e "  \e[32mNothing to clean\e[0m"
+    return
+  fi
+  
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "  \e[33m[DRY RUN] Would remove: $(format_bytes $total_bytes)\e[0m"
+    return
+  fi
+  
+  if gum confirm "Clean user cache ($(format_bytes $total_bytes))?"; then
+    for dir in "${cache_dirs[@]}"; do
+      if [[ -d "$dir" ]]; then
+        rm -rf "$dir"
+      fi
+    done
+    TOTAL_FREED=$((TOTAL_FREED + total_bytes))
+    echo -e "  \e[32mFreed: $(format_bytes $total_bytes)\e[0m"
+  else
+    echo -e "  \e[33mSkipped\e[0m"
+  fi
+}
+
+# Clean old btrfs snapshots
+clean_old_snapshots() {
+  echo -e "\n\e[36m\e[1mOld Btrfs Snapshots\e[0m"
+  
+  if ! command -v snapper &>/dev/null; then
+    echo -e "  \e[33msnapper not found\e[0m"
+    return
+  fi
+  
+  # Get snapper configs
+  local configs
+  configs=$(sudo snapper --csvout list-configs 2>/dev/null | awk -F, 'NR>1 {print $1}') || true
+  
+  if [[ -z "$configs" ]]; then
+    echo -e "  \e[32mNo snapper configs found\e[0m"
+    return
+  fi
+  
+  local cutoff_date
+  cutoff_date=$(date -d "30 days ago" +%Y-%m-%d 2>/dev/null || date -v-30d +%Y-%m-%d 2>/dev/null)
+  
+  local old_snapshots=()
+  local found_any=false
+  
+  while read -r config; do
+    [[ -z "$config" ]] && continue
+    
+    # List snapshots and find old ones (using _ for unused CSV fields)
+    while IFS=, read -r num _ _ _ date _ _ _ _; do
+      [[ "$num" == "number" ]] && continue  # Skip header
+      [[ -z "$date" ]] && continue
+      
+      if [[ "$date" < "$cutoff_date" ]]; then
+        old_snapshots+=("$config:$num ($date)")
+        found_any=true
+      fi
+    done < <(sudo snapper -c "$config" --csvout list 2>/dev/null || true)
+  done <<< "$configs"
+  
+  if [[ "$found_any" == "false" ]]; then
+    echo -e "  \e[32mNo snapshots older than 30 days\e[0m"
+    return
+  fi
+  
+  echo -e "  Found \e[1m${#old_snapshots[@]}\e[0m snapshots older than 30 days:"
+  for snap in "${old_snapshots[@]}"; do
+    echo -e "    - $snap"
+  done
+  
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "  \e[33m[DRY RUN] Would remove ${#old_snapshots[@]} snapshots\e[0m"
+    return
+  fi
+  
+  if gum confirm "Remove ${#old_snapshots[@]} old snapshots?"; then
+    for snap in "${old_snapshots[@]}"; do
+      local config="${snap%%:*}"
+      local num="${snap#*:}"
+      num="${num%% *}"
+      sudo snapper -c "$config" delete "$num" 2>/dev/null || true
+    done
+    echo -e "  \e[32mRemoved ${#old_snapshots[@]} snapshots\e[0m"
+  else
+    echo -e "  \e[33mSkipped\e[0m"
+  fi
+}
+
+# Vacuum systemd journal
+clean_journal() {
+  echo -e "\n\e[36m\e[1mSystemd Journal\e[0m"
+  
+  # Get current journal size
+  local journal_size
+  journal_size=$(journalctl --disk-usage 2>/dev/null | grep -oP '\d+\.?\d*[GMK]' | head -1 || echo "unknown")
+  
+  echo -e "  Current size: \e[1m$journal_size\e[0m"
+  
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "  \e[33m[DRY RUN] Would run: sudo journalctl --vacuum-time=2weeks\e[0m"
+    return
+  fi
+  
+  if gum confirm "Vacuum journal logs older than 2 weeks?"; then
+    sudo journalctl --vacuum-time=2weeks
+    local new_size
+    new_size=$(journalctl --disk-usage 2>/dev/null | grep -oP '\d+\.?\d*[GMK]' | head -1 || echo "unknown")
+    echo -e "  \e[32mJournal size now: $new_size\e[0m"
+  else
+    echo -e "  \e[33mSkipped\e[0m"
+  fi
+}
+
+# Interactive mode - let user select categories
+run_interactive() {
+  local options=(
+    "󰏗  Package Cache (paccache -rk2)"
+    "  AUR Build Files (~/.cache/yay/)"
+    "󰆴  Orphaned Packages"
+    "󰃨  User Cache (thumbnails, shaders)"
+    "  Old Btrfs Snapshots (>30 days)"
+    "󰔚  Systemd Journal (>2 weeks)"
+  )
+  
+  gum style --border normal --border-foreground 6 --padding "1 2" \
+    "Omarchy Cleanup" \
+    "" \
+    "Select cleanup tasks (use space to select, enter to confirm)"
+  
+  echo
+  
+  local selected
+  selected=$(printf '%s\n' "${options[@]}" | gum choose --no-limit) || true
+  
+  if [[ -z "$selected" ]]; then
+    echo -e "\e[33mNo categories selected. Exiting.\e[0m"
+    exit 0
+  fi
+  
+  [[ "$selected" == *"Package Cache"* ]] && clean_package_cache
+  [[ "$selected" == *"AUR Build"* ]] && clean_aur_cache
+  [[ "$selected" == *"Orphaned"* ]] && clean_orphans
+  [[ "$selected" == *"User Cache"* ]] && clean_user_cache
+  [[ "$selected" == *"Snapshots"* ]] && clean_old_snapshots
+  [[ "$selected" == *"Journal"* ]] && clean_journal
+}
+
+# Run all cleanup tasks
+run_all() {
+  gum style --border normal --border-foreground 6 --padding "1 2" \
+    "Omarchy Cleanup - All Categories" \
+    "" \
+    "This will clean all categories with individual confirmations"
+  
+  echo
+  
+  if ! gum confirm "Proceed with full system cleanup?"; then
+    echo -e "\e[33mCleanup cancelled.\e[0m"
+    exit 0
+  fi
+  
+  clean_package_cache
+  clean_aur_cache
+  clean_orphans
+  clean_user_cache
+  clean_old_snapshots
+  clean_journal
+}
+
+# Show summary
+show_summary() {
+  echo
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "\e[32mCleanup Preview Complete\e[0m"
+    echo "Run without --dry-run to perform cleanup"
+  else
+    echo -e "\e[32mCleanup Complete\e[0m"
+    if [[ $TOTAL_FREED -gt 0 ]]; then
+      echo "Total space freed: $(format_bytes $TOTAL_FREED)"
+    fi
+  fi
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      show_help
+      exit 0
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    --all)
+      ALL_MODE=true
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Run 'omarchy-cleanup --help' for usage"
+      exit 1
+      ;;
+  esac
+done
+
+# Show dry-run banner
+if [[ "$DRY_RUN" == "true" ]]; then
+  gum style --border double --border-foreground 3 --padding "0 2" \
+    "DRY RUN MODE - No changes will be made"
+  echo
+fi
+
+# Main execution
+if [[ "$ALL_MODE" == "true" ]]; then
+  run_all
+else
+  run_interactive
+fi
+
+show_summary
+
+if [[ "$DRY_RUN" != "true" ]]; then
+  omarchy-show-done
+fi
