@@ -1,0 +1,24 @@
+#!/bin/bash
+
+if (($# == 0)); then
+	echo "Usage: omarchy-launch-or-focus-special-workspace [window-pattern] [special-workspace] [launch-command]"
+	exit 1
+fi
+
+WINDOW_PATTERN="$1"
+SPECIAL_WORKSPACE="$2"
+LAUNCH_COMMAND="${@:3}"
+LAUNCH_COMMAND="${LAUNCH_COMMAND:-"uwsm-app -- $WINDOW_PATTERN"}"
+WINDOW_ADDRESS=$(hyprctl clients -j | jq -r --arg p "$WINDOW_PATTERN" '.[]|select((.class|test("\\b" + $p + "\\b";"i")) or (.title|test("\\b" + $p + "\\b";"i")))|.address' | head -n1)
+APP_WORKSPACE=$(hyprctl clients -j | jq -r --arg p "$WINDOW_PATTERN" '.[]|select((.class|test("\\b" + $p + "\\b";"i")) or (.title|test("\\b" + $p + "\\b";"i")))|.workspace.name' | head -n1)
+
+if [[ -n $WINDOW_ADDRESS ]]; then
+	if [[ "$APP_WORKSPACE" == "special:$SPECIAL_WORKSPACE" ]]; then
+		hyprctl dispatch togglespecialworkspace "$SPECIAL_WORKSPACE"
+	else
+		hyprctl dispatch movetoworkspace "special:$SPECIAL_WORKSPACE","address:$WINDOW_ADDRESS"
+	fi
+else
+	hyprctl dispatch workspace "special:$SPECIAL_WORKSPACE"
+	eval exec setsid $LAUNCH_COMMAND
+fi
