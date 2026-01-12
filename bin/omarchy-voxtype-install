@@ -13,24 +13,6 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
   voxtype setup --download --no-post-install
   voxtype setup systemd
 
-  # Add voxtype bindings to hyprland config if not present
-  if [[ -f ~/.config/hypr/bindings.conf ]] && ! grep -q "voxtype_recording" ~/.config/hypr/bindings.conf; then
-    cat >> ~/.config/hypr/bindings.conf << 'EOF'
-
-# Voxtype dictation bindings
-# Press SUPER+CTRL+X to record, release X first to stop (keep modifiers held), ESCAPE to cancel
-# Or release a modifier first to keep dictation going, then press SUPER+CTRL+X again to stop
-bindd = SUPER CTRL, X, Start dictation, exec, voxtype record start
-
-# Voxtype recording submap - active during recording/transcription
-submap = voxtype_recording
-binddr = SUPER CTRL, X, Stop dictation, exec, voxtype record stop
-binddi = , ESCAPE, Cancel dictation, exec, voxtype record cancel; hyprctl dispatch submap reset
-submap = reset
-EOF
-    hyprctl reload
-  fi
-
   omarchy-restart-waybar
   notify-send "    Voxtype Dictation Ready" "Hold Super + Ctrl + X to dictate.\nEdit ~/.config/voxtype/config.toml for options." -t 10000
 fi

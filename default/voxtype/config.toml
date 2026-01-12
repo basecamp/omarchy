@@ -67,8 +67,8 @@ fallback_to_clipboard = true
 # 0 = fastest possible, increase if characters are dropped
 type_delay_ms = 1
 
-# Compositor integration hooks for Hyprland
-pre_recording_command = "hyprctl dispatch submap voxtype_recording"
+# Modifier key suppression for Hyprland
+# Prevents held modifier keys from interfering with transcription output
 pre_output_command = "hyprctl dispatch submap voxtype_suppress"
 post_output_command = "hyprctl dispatch submap reset"
 
