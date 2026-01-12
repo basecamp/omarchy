@@ -18,7 +18,7 @@ if [[ -f $COLORS_FILE ]]; then
   sed_script=$(mktemp)
 
   # Generate standard and _strip substitutions
-  sed 's/=/:/' "$COLORS_FILE" | yq -r 'to_entries[] | "s|{{ \(.key) }}|\(.value)|g", "s|{{ \(.key)_strip }}|\(.value | sub("^#";""))|g"' > "$sed_script"
+  sed 's/=/:/' "$COLORS_FILE" | yq -r 'to_entries[] | ["s|{{ \(.key) }}|\(.value)|g", "s|{{ \(.key)_strip }}|\(.value | sub(\"^#\"; \"\"))|g"] | .[]' > "$sed_script"
 
   # Generate _rgb substitutions for hex colors
   while IFS='=' read -r key value; do
