@@ -58,7 +58,7 @@ img2jpg() {
   img="$1"
   shift
 
-  magick "$img" $@ -quality 95 -strip ${img%.*}-optimized.jpg
+  magick "$img" $@ -quality 95 -strip ${img%.*}-converted.jpg
 }
 
 # Transcode any image to JPG image that's great for sharing online without being too big
@@ -66,7 +66,14 @@ img2jpg-small() {
   img="$1"
   shift
 
-  magick "$img" $@ -resize 1080x\> -quality 95 -strip ${img%.*}-optimized.jpg
+  magick "$img" $@ -resize 1080x\> -quality 95 -strip ${img%.*}-small.jpg
+}
+# Transcode any image to JPG image that's great for sharing online without being too big
+img2jpg-medium() {
+  img="$1"
+  shift
+
+  magick "$img" $@ -resize 1800x\> -quality 95 -strip ${img%.*}-medium.jpg
 }
 
 # Transcode any image to compressed-but-lossless PNG
