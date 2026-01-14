@@ -17,13 +17,10 @@ done
 brightnessctl -d "$device" set "$step" >/dev/null
 
 # Use SwayOSD to display the new brightness setting.
-current=$(brightnessctl -d "$device" g)
-max=$(brightnessctl -d "$device" m)
-percent=$(( current * 100 / max ))
-progress=$(awk -v c="$current" -v m="$max" 'BEGIN{printf "%.2f", c/m}')
+percent=$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')
 
 swayosd-client \
   --monitor "$(hyprctl monitors -j | jq -r '.[]|select(.focused==true).name')" \
   --custom-icon display-brightness \
-  --custom-progress "$progress" \
+  --custom-progress "$(awk -v p="$percent" 'BEGIN{printf "%.2f", p/100}')" \
   --custom-progress-text "${percent}%"
