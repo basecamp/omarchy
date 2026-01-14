@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Adjust brightness on the most likely display device.
+# Usage: omarchy-cmd-brightness <step>
 
 step="${1:-+5%}"
 
@@ -17,10 +18,4 @@ done
 brightnessctl -d "$device" set "$step" >/dev/null
 
 # Use SwayOSD to display the new brightness setting.
-percent=$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')
-
-swayosd-client \
-  --monitor "$(hyprctl monitors -j | jq -r '.[]|select(.focused==true).name')" \
-  --custom-icon display-brightness \
-  --custom-progress "$(awk -v p="$percent" 'BEGIN{printf "%.2f", p/100}')" \
-  --custom-progress-text "${percent}%"
+omarchy-swayosd-brightness "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"
