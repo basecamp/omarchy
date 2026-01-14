@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Install one of the supported development environments. Usually called via Install > Development > * in the Omarchy Menu.
+
 if [[ -z "$1" ]]; then
   echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure>" >&2
   exit 1
@@ -41,7 +43,7 @@ install_php() {
 
 install_node() {
   echo -e "Installing Node.js...\n"
-  mise use --global node@lts
+  mise use --global node
 }
 
 case "$1" in

@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+
+# Install voxtype and configure it for use.
+
+if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
+  omarchy-pkg-add wtype voxtype-bin
+
+  # Setup voxtype
+  mkdir -p ~/.config/voxtype
+  cp $OMARCHY_PATH/default/voxtype/config.toml ~/.config/voxtype/
+
+  voxtype setup --download --no-post-install
+  voxtype setup systemd
+
+  omarchy-restart-waybar
+  notify-send "    Voxtype Dictation Ready" "Hold Super + Ctrl + X to dictate.\nEdit ~/.config/voxtype/config.toml for options." -t 10000
+fi

@@ -266,6 +266,14 @@ launch_windows() {
     exit 1
   fi
 
+  # Extract credentials from compose file
+  WIN_USER=$(grep "USERNAME:" "$COMPOSE_FILE" | sed 's/.*USERNAME: "\(.*\)"/\1/')
+  WIN_PASS=$(grep "PASSWORD:" "$COMPOSE_FILE" | sed 's/.*PASSWORD: "\(.*\)"/\1/')
+
+  # Use defaults if not found
+  [ -z "$WIN_USER" ] && WIN_USER="docker"
+  [ -z "$WIN_PASS" ] && WIN_PASS="admin"
+
   # Check if container is already running
   CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
 
@@ -283,31 +291,19 @@ launch_windows() {
       exit 1
     fi
 
-    # Wait for RDP to be ready
-    echo "Waiting for Windows VM to be ready..."
+    echo "Waiting for Windows VM to start..."
     WAIT_COUNT=0
-    while ! nc -z 127.0.0.1 3389 2>/dev/null; do
+    until docker logs omarchy-windows 2>&1 | grep -qi "windows started successfully"; do
       sleep 2
       WAIT_COUNT=$((WAIT_COUNT + 1))
       if [ $WAIT_COUNT -gt 60 ]; then  # 2 minutes timeout
-        echo "❌ Timeout waiting for RDP!"
-        echo "   The VM might still be installing Windows."
-        echo "   Check progress at: http://127.0.0.1:8006"
+        echo ""
+        echo "❌ Timeout: Windows VM failed to start within 2 minutes"
+        echo "   Check logs: docker logs omarchy-windows"
         exit 1
       fi
     done
-
-    # Give it a moment more to fully initialize
-    sleep 5
   fi
-
-  # Extract credentials from compose file
-  WIN_USER=$(grep "USERNAME:" "$COMPOSE_FILE" | sed 's/.*USERNAME: "\(.*\)"/\1/')
-  WIN_PASS=$(grep "PASSWORD:" "$COMPOSE_FILE" | sed 's/.*PASSWORD: "\(.*\)"/\1/')
-
-  # Use defaults if not found
-  [ -z "$WIN_USER" ] && WIN_USER="docker"
-  [ -z "$WIN_PASS" ] && WIN_PASS="admin"
 
   # Build the connection info
   if [ "$KEEP_ALIVE" = true ]; then
@@ -339,7 +335,7 @@ To stop: omarchy-windows-vm stop"
   # If scale is less than 130%, don't set any scale (use default 100)
 
   # Connect with RDP in fullscreen (auto-detects resolution)
-  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /cert:ignore /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
+  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /clipboard /cert:ignore /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
 
   # After RDP closes, stop the container unless --keep-alive was specified
   if [ "$KEEP_ALIVE" = false ]; then

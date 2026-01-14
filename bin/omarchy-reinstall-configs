@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+
+# Overwrite all user configs with the Omarchy defaults.
+
+if [ "$EUID" -eq 0 ]; then
+  echo "Error: This script should not be run as root"
+  exit 1
+fi
+
+echo "Resetting all Omarchy configs"
+cp -R ~/.local/share/omarchy/config/* ~/.config/
+cp ~/.local/share/omarchy/default/bashrc ~/.bashrc
+echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' | tee ~/.bash_profile >/dev/null
+
+$(bash $OMARCHY_PATH/install/config/theme.sh)
+
+omarchy-refresh-limine
+omarchy-refresh-plymouth
+omarchy-nvim-setup
