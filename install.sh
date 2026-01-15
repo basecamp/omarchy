@@ -16,3 +16,6 @@ source "$OMARCHY_INSTALL/packaging/all.sh"
 source "$OMARCHY_INSTALL/config/all.sh"
 source "$OMARCHY_INSTALL/login/all.sh"
 source "$OMARCHY_INSTALL/post-install/all.sh"
+
+# ML/DL/Rust additions
+source "$OMARCHY_PATH/install/ml-dl-rust.sh"
