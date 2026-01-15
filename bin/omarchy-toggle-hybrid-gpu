@@ -23,7 +23,7 @@ case "$gpu_mode" in
   # Let hybrid mode be the default after system sleep
   sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu.sh
 
-  notify-send "   Hybrid GPU" "Switching to dedicated GPU. Rebooting..."
+  notify-send "   Hybrid GPU" "Enabling dedicated GPU. Rebooting..."
   omarchy-cmd-reboot
   ;;
 "Hybrid")
@@ -34,7 +34,7 @@ case "$gpu_mode" in
   sudo mkdir -p /usr/lib/systemd/system-sleep
   sudo cp $OMARCHY_PATH/default/systemd/system-sleep/force-igpu.sh /usr/lib/systemd/system-sleep/
 
-  notify-send "   Hybrid GPU" "Switching to integrated GPU. Rebooting..."
+  notify-send "   Hybrid GPU" "Restricting to integrated GPU. Rebooting..."
   omarchy-cmd-reboot
   ;;
 *)
