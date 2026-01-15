@@ -8,15 +8,18 @@ if [[ ! -f "$MPV_CONFIG_PATH" ]]; then
 fi
 
 # If line does not match (could fail if overwritten by user below it)
-if ! grep -Fxq "gpu-context=wayland" "$MPV_CONFIG_PATH"; then
+if ! grep -Fxq "target-colorspace-hint=no" "$MPV_CONFIG_PATH"; then
 
   # Delete all semi-matching lines
-  sed -i "/^#\? *gpu-context=/d" "$MPV_CONFIG_PATH"
+  sed -i "/^#\? *target-colorspace-hint/d" "$MPV_CONFIG_PATH"
 
   # File mightn't end on a newline
   [[ -n $(tail -c1 "$MPV_CONFIG_PATH") ]] && echo "" >> "$MPV_CONFIG_PATH"
 
-  echo "gpu-context=wayland" >> "$MPV_CONFIG_PATH"
+  {
+      echo "# Temporary fullscreen support to prevent washed-out colors"
+      echo "target-colorspace-hint=no"
+  } >> "$MPV_CONFIG_PATH"
 
-  echo "Added wayland compatibility for mpv"
+  echo "Added temporary Wayland compatibility for mpv"
 fi
