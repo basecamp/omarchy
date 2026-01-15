@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Toggle dedicated vs integrated GPU mode via supergfxd (for hybrid gpu laptops, like Asus G14).
+# Requires reboot to take effect.
+
+# Ensure supergfxctl has been installed
+if omarchy-cmd-missing supergfxctl; then
+  omarchy-pkg-aur-add supergfxctl
+  systemctl enable supergfxd
+  systemctl start supergfxd
+
+  # Needed to deal with restoring to sleep where going through VFIO first means we don't need to reboot.
+  sudo sed -i "s/\"vfio_enable\": \".*\"/\"vfio_enable\": true/" /etc/supergfxd.conf
+fi
+
+gpu_mode=$(supergfxctl -g)
+
+case "$gpu_mode" in
+"Integrated")
+  # Switch to hybrid mode
+  sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Hybrid\"/" /etc/supergfxd.conf
+
+  # Let hybrid mode be the default after system sleep
+  sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu.sh
+
+  notify-send "   Hybrid GPU" "Switching to dedicated GPU. Rebooting..."
+  omarchy-cmd-reboot
+  ;;
+"Hybrid")
+  # Switch to integrated mode
+  sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
+
+  # Force igpu mode after system sleep (or dgpu could get activated)
+  sudo mkdir -p /usr/lib/systemd/system-sleep
+  sudo cp $OMARCHY_PATH/default/systemd/system-sleep/force-igpu.sh /usr/lib/systemd/system-sleep/
+
+  notify-send "   Hybrid GPU" "Switching to integrated GPU. Rebooting..."
+  omarchy-cmd-reboot
+  ;;
+*)
+  notify-send "   Hybrid GPU" "Hybrid GPU not found or in unknown mode."
+  return 1
+  ;;
+esac
