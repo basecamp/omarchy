@@ -39,6 +39,6 @@ case "$gpu_mode" in
   ;;
 *)
   notify-send "   Hybrid GPU" "Hybrid GPU not found or in unknown mode."
-  return 1
+  exit 1
   ;;
 esac
