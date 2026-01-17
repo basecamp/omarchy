@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# Close the active window, with optional confirmation for protected apps.
+# Protected app classes are listed in ~/.config/omarchy/protected-windows (one per line).
+
+set -euo pipefail
+
+PROTECTED_FILE="$HOME/.config/omarchy/protected-windows"
+
+# Get active window info
+win_json="$(hyprctl activewindow -j 2>/dev/null || true)"
+[[ -z "$win_json" || "$win_json" == "null" ]] && exit 0
+
+cls="$(jq -r '.class // ""' <<<"$win_json")"
+icls="$(jq -r '.initialClass // ""' <<<"$win_json")"
+addr="$(jq -r '.address // ""' <<<"$win_json")"
+title="$(jq -r '.title // ""' <<<"$win_json")"
+
+# Check if window is protected
+is_protected=false
+if [[ -f "$PROTECTED_FILE" ]]; then
+  while IFS= read -r pattern || [[ -n "$pattern" ]]; do
+    # Skip empty lines and comments
+    [[ -z "$pattern" || "$pattern" =~ ^[[:space:]]*# ]] && continue
+    
+    if [[ "$cls" == "$pattern" || "$icls" == "$pattern" ]]; then
+      is_protected=true
+      break
+    fi
+  done < "$PROTECTED_FILE"
+fi
+
+# Not protected, close immediately
+if [[ "$is_protected" == false ]]; then
+  hyprctl dispatch killactive
+  exit 0
+fi
+
+# Protected: confirm in a floating terminal
+TITLE="$title" ADDR="$addr"
+
+if command -v alacritty >/dev/null 2>&1; then
+  TITLE="$TITLE" ADDR="$ADDR" alacritty --class "TUI.float" -e bash -lc '
+    gum confirm "Close $TITLE?" \
+      && hyprctl dispatch closewindow address:$ADDR
+  '
+else
+  TITLE="$TITLE" ADDR="$ADDR" xdg-terminal-exec bash -lc '
+    gum confirm "Close $TITLE?" \
+      && hyprctl dispatch closewindow address:$ADDR
+  '
+fi

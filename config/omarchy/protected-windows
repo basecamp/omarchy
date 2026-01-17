@@ -1,0 +1,7 @@
+# Protected windows configuration
+# List window classes (one per line) that require confirmation before closing.
+# Use `hyprctl clients -j | jq '.[] | {class, initialClass, title}'` to see all open windows.
+#
+# Examples:
+# steam_app_XXXXXX
+# vesktop
