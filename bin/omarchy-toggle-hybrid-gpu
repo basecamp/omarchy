@@ -24,9 +24,6 @@ case "$gpu_mode" in
     # Let hybrid mode be the default after system sleep
     sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu
 
-    echo "Enabling dedicated GPU..."
-    supergfxctl -m Hybrid
-
     omarchy-cmd-reboot
   fi
   ;;
