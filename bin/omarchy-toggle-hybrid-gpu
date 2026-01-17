@@ -17,28 +17,36 @@ gpu_mode=$(supergfxctl -g)
 
 case "$gpu_mode" in
 "Integrated")
-  # Switch to hybrid mode
-  sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Hybrid\"/" /etc/supergfxd.conf
+  if gum confirm "Enable dedicated GPU and reboot?"; then
+    # Switch to hybrid mode
+    sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Hybrid\"/" /etc/supergfxd.conf
 
-  # Let hybrid mode be the default after system sleep
-  sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu.sh
+    # Let hybrid mode be the default after system sleep
+    sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu.sh
 
-  notify-send "   Hybrid GPU" "Enabling dedicated GPU. Rebooting..."
-  omarchy-cmd-reboot
+    echo "Enabling dedicated GPU..."
+
+    supergfxctl -m Hybrid
+    omarchy-cmd-reboot
+  fi
   ;;
 "Hybrid")
-  # Switch to integrated mode
-  sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
+  if gum confirm "Use only integrated GPU and reboot?"; then
+    # Switch to integrated mode
+    sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
 
-  # Force igpu mode after system sleep (or dgpu could get activated)
-  sudo mkdir -p /usr/lib/systemd/system-sleep
-  sudo cp $OMARCHY_PATH/default/systemd/system-sleep/force-igpu.sh /usr/lib/systemd/system-sleep/
+    # Force igpu mode after system sleep (or dgpu could get activated)
+    sudo mkdir -p /usr/lib/systemd/system-sleep
+    sudo cp $OMARCHY_PATH/default/systemd/system-sleep/force-igpu.sh /usr/lib/systemd/system-sleep/
 
-  notify-send "   Hybrid GPU" "Restricting to integrated GPU. Rebooting..."
-  omarchy-cmd-reboot
+    echo "Disabling dedicated GPU..."
+
+    supergfxctl -m Vfio
+    supergfxctl -m Integrated
+  fi
   ;;
 *)
-  notify-send "   Hybrid GPU" "Hybrid GPU not found or in unknown mode."
+  echo "Hybrid GPU not found or in unknown mode."
   exit 1
   ;;
 esac
