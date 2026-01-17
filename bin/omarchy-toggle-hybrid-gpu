@@ -25,8 +25,8 @@ case "$gpu_mode" in
     sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu.sh
 
     echo "Enabling dedicated GPU..."
-
     supergfxctl -m Hybrid
+
     omarchy-cmd-reboot
   fi
   ;;
@@ -40,7 +40,6 @@ case "$gpu_mode" in
     sudo cp $OMARCHY_PATH/default/systemd/system-sleep/force-igpu.sh /usr/lib/systemd/system-sleep/
 
     echo "Disabling dedicated GPU..."
-
     supergfxctl -m Vfio
     supergfxctl -m Integrated
   fi
