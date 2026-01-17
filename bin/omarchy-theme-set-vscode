@@ -1,47 +1,39 @@
 #!/bin/bash
 
-# Note: We cannot use `jq` to update settings.json because it’s JSONC (allows comments),
-# which jq doesn’t support.
-
-# Parameters: EDITOR_CMD SETTINGS_PATH SKIP_FLAG EDITOR_NAME
-EDITOR_CMD="${1:-code}"
-SETTINGS_PATH="${2:-$HOME/.config/Code/User/settings.json}"
-SKIP_FLAG="${3:-$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes}"
-EDITOR_NAME="${4:-VS Code}"
+# Sync Omarchy theme to VS Code, VSCodium, and Cursor
 
 VS_CODE_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
 
-if omarchy-cmd-present "$EDITOR_CMD" && [[ ! -f "$SKIP_FLAG" ]]; then
+set_theme() {
+  local editor_cmd="$1"
+  local settings_path="$2"
+  local skip_flag="$3"
+
+  omarchy-cmd-present "$editor_cmd" && [[ ! -f "$skip_flag" ]] || return 0
+
   if [[ -f "$VS_CODE_THEME" ]]; then
     theme_name=$(jq -r '.name' "$VS_CODE_THEME")
     extension=$(jq -r '.extension' "$VS_CODE_THEME")
 
-    # Install $EDITOR_NAME theme extension
-    if [[ -n "$extension" ]] && ! "$EDITOR_CMD" --list-extensions | grep -Fxq "$extension"; then
-      "$EDITOR_CMD" --install-extension "$extension" >/dev/null
+    if [[ -n "$extension" ]] && ! "$editor_cmd" --list-extensions | grep -Fxq "$extension"; then
+      "$editor_cmd" --install-extension "$extension" >/dev/null
     fi
 
-    # Create config file if there isn't already one
-    mkdir -p "$(dirname "$SETTINGS_PATH")"
-    if [[ ! -f "$SETTINGS_PATH" ]]; then
-      printf '{\n}\n' >"$SETTINGS_PATH"
+    mkdir -p "$(dirname "$settings_path")"
+    [[ -f "$settings_path" ]] || printf '{\n}\n' >"$settings_path"
+
+    if ! grep -q '"workbench.colorTheme"' "$settings_path"; then
+      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\ "workbench.colorTheme": "",/}' "$settings_path"
     fi
 
-    # Create a `workbench.colorTheme` entry in settings.
-    if ! grep -q '"workbench.colorTheme"' "$SETTINGS_PATH"; then
-      # Insert `"workbench.colorTheme": "",` immediately after the first `{`
-      # Use sed's first-match range (0,/{/) to only replace the first `{`
-      sed -i --follow-symlinks -E '0,/\{/{s/\{/{\ "workbench.colorTheme": "",/}' "$SETTINGS_PATH"
-    fi
-
-    # Update theme
     sed -i --follow-symlinks -E \
       "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
-      "$SETTINGS_PATH"
-  else
-    # Remove theme from settings.json when the theme doesn't have $EDITOR_NAME support
-    if [[ -f "$SETTINGS_PATH" ]]; then
-      sed -i --follow-symlinks -E 's/\"workbench\.colorTheme\"[[:space:]]*:[^,}]*,?//' "$SETTINGS_PATH"
-    fi
+      "$settings_path"
+  elif [[ -f "$settings_path" ]]; then
+    sed -i --follow-symlinks -E 's/\"workbench\.colorTheme\"[[:space:]]*:[^,}]*,?//' "$settings_path"
   fi
-fi
+}
+
+set_theme "code" "$HOME/.config/Code/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes"
+set_theme "codium" "$HOME/.config/VSCodium/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-codium-theme-changes"
+set_theme "cursor" "$HOME/.config/Cursor/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-cursor-theme-changes"

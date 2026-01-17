@@ -3,15 +3,15 @@
 # Set install mode to online since boot.sh is used for curl installations
 export OMARCHY_ONLINE_INSTALL=true
 
-ansi_art='                 ▄▄▄                                                   
- ▄█████▄    ▄███████████▄    ▄███████   ▄███████   ▄███████   ▄█   █▄    ▄█   █▄ 
+ansi_art='                 ▄▄▄
+ ▄█████▄    ▄███████████▄    ▄███████   ▄███████   ▄███████   ▄█   █▄    ▄█   █▄
 ███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███
 ███   ███  ███   ███   ███  ███   ███  ███   ███  ███   █▀   ███   ███  ███   ███
 ███   ███  ███   ███   ███ ▄███▄▄▄███ ▄███▄▄▄██▀  ███       ▄███▄▄▄███▄ ███▄▄▄███
 ███   ███  ███   ███   ███ ▀███▀▀▀███ ▀███▀▀▀▀    ███      ▀▀███▀▀▀███  ▀▀▀▀▀▀███
 ███   ███  ███   ███   ███  ███   ███ ██████████  ███   █▄   ███   ███  ▄██   ███
 ███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███
- ▀█████▀    ▀█   ███   █▀   ███   █▀   ███   ███  ███████▀   ███   █▀    ▀█████▀ 
+ ▀█████▀    ▀█   ███   █▀   ███   █▀   ███   ███  ███████▀   ███   █▀    ▀█████▀
                                        ███   █▀                                  '
 
 clear
@@ -33,6 +33,13 @@ if [[ $OMARCHY_REF != "master" ]]; then
   cd ~/.local/share/omarchy
   git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
   cd -
+fi
+
+# Set edge mirror for dev installs
+if [[ $OMARCHY_REF == "dev" ]]; then
+  export OMARCHY_MIRROR=edge
+else
+  export OMARCHY_MIRROR=stable
 fi
 
 echo -e "\nInstallation starting..."

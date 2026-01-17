@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Start and stop a screenrecording, which will be saved to ~/Videos by default.
+# Alternative location can be set via OMARCHY_SCREENRECORD_DIR or XDG_VIDEOS_DIR ENVs.
+
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
 
@@ -11,6 +14,7 @@ fi
 DESKTOP_AUDIO="false"
 MICROPHONE_AUDIO="false"
 WEBCAM="false"
+WEBCAM_DEVICE=""
 STOP_RECORDING="false"
 
 for arg in "$@"; do
@@ -18,6 +22,7 @@ for arg in "$@"; do
     --with-desktop-audio) DESKTOP_AUDIO="true" ;;
     --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
     --with-webcam) WEBCAM="true" ;;
+    --webcam-device=*) WEBCAM_DEVICE="${arg#*=}" ;;
     --stop-recording) STOP_RECORDING="true"
   esac
 done
@@ -29,6 +34,15 @@ cleanup_webcam() {
 start_webcam_overlay() {
   cleanup_webcam
 
+  # Auto-detect first available webcam if none specified
+  if [[ -z "$WEBCAM_DEVICE" ]]; then
+    WEBCAM_DEVICE=$(v4l2-ctl --list-devices 2>/dev/null | grep -m1 "^\s*/dev/video" | tr -d '\t')
+    if [[ -z "$WEBCAM_DEVICE" ]]; then
+      notify-send "No webcam devices found" -u critical -t 3000
+      return 1
+    fi
+  fi
+
   # Get monitor scale
   local scale=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .scale')
 
@@ -38,7 +52,7 @@ start_webcam_overlay() {
   # Try preferred 16:9 resolutions in order, use first available
   local preferred_resolutions=("640x360" "1280x720" "1920x1080")
   local video_size_arg=""
-  local available_formats=$(v4l2-ctl --list-formats-ext -d /dev/video0 2>/dev/null)
+  local available_formats=$(v4l2-ctl --list-formats-ext -d "$WEBCAM_DEVICE" 2>/dev/null)
 
   for resolution in "${preferred_resolutions[@]}"; do
     if echo "$available_formats" | grep -q "$resolution"; then
@@ -47,7 +61,7 @@ start_webcam_overlay() {
     fi
   done
 
-  ffplay -f v4l2 $video_size_arg -framerate 30 /dev/video0 \
+  ffplay -f v4l2 $video_size_arg -framerate 30 "$WEBCAM_DEVICE" \
     -vf "scale=${target_width}:-1" \
     -window_title "WebcamOverlay" \
     -noborder \
