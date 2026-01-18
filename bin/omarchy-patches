@@ -29,7 +29,7 @@ remove_patch() {
   fi
 }
 
-echo "These fixes are of relative functionality, therefore optional and transitory"
+echo "These changes are of relative functionality, therefore optional and reversible"
 echo ""
 
 if is_patch_applied;
@@ -44,7 +44,7 @@ fi
 gum join --horizontal "$(gum style --foreground 73 --bold 'MPV fullscreen (tone mapping) is currently: ')" "$(gum style --foreground "$STATE_COLOR" --bold "$STATE")"
 
 gum style \
-  --foreground 249 '  This patch addresses washed-out colors in MPV while on fullscren.
+  --foreground 249 '  Addresses washed-out colors in MPV while on fullscren.
   It may be removed when fixed upstream.'
 
 CHOICE=$(gum choose "On" "Off")
