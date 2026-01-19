@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Adjust brightness on the most likely display device.
-# Usage: omarchy-cmd-brightness <step>
+# Usage: omarchy-brightness-display <step>
 
 step="${1:-+5%}"
 
