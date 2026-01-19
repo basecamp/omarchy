@@ -48,10 +48,8 @@ if [[ -n "$pkg_list" ]]; then
         IFS=' ' read -r pkg repo <<< "$pkg_repo"
         # use yay for AUR, pacman for official repos (including omarchy)
         if [[ $repo == "aur" ]]; then
-            echo "using yay"
             yay -S --noconfirm "$repo/$pkg"
         else
-            echo "using pacman"
             sudo pacman -S --noconfirm "$repo/$pkg"
         fi
     done <<< "$pkg_list"
