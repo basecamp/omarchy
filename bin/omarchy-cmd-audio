@@ -1,0 +1,44 @@
+#!/bin/bash
+set -euo pipefail
+
+prog=$(basename "$0")
+
+usage() {
+  cat <<EOF
+Controls input and output audio volume, mute and device.
+
+Usage:
+  $prog input mute-toggle
+  $prog output mute-toggle
+  $prog output raise
+  $prog output lower
+  $prog output +1
+  $prog output -1
+  $prog output switch
+EOF
+  exit 1
+}
+
+osd() {
+  swayosd-client --monitor "$(hyprctl monitors -j | jq -r '.[] | select(.focused).name')" "$@"
+}
+
+[[ $# -eq 2 ]] || usage
+
+mode="$1"
+action="$2"
+
+case "$mode:$action" in
+  input:mute-toggle)
+    osd --input-volume mute-toggle
+    ;;
+  output:mute-toggle|output:raise|output:lower|output:+1|output:-1)
+    osd --output-volume "$action"
+    ;;
+  output:switch)
+    omarchy-cmd-audio-switch
+    ;;
+  *)
+    usage
+    ;;
+esac
