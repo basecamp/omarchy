@@ -7,12 +7,12 @@ if [[ ! -f ~/.config/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf ]]; the
   cp $OMARCHY_PATH/default/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf ~/.config/wireplumber/wireplumber.conf.d/
   rm -rf ~/.local/state/wireplumber/default-routes
 
-  notify-send "Enabled audio soft mixing"
+  notify-send "󰽟    Enabled audio soft mixing"
 else
   rm -rf ~/.config/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf
   rm -rf ~/.local/state/wireplumber/default-routes
 
-  notify-send "Disabled audio soft mixing"
+  notify-send "󰽟    Disabled audio soft mixing"
 fi
 
 systemctl --user restart wireplumber

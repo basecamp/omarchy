@@ -145,8 +145,9 @@ show_toggle_menu() {
 }
 
 show_tweaks_menu() {
-  case $(menu "Tweaks" "  Toggle Hybrid GPU") in
+  case $(menu "Tweaks" "  Toggle Hybrid GPU\n󰽟  Toggle Audio Soft Mixer") in
   *"Toggle Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
+  *"Toggle Audio Soft Mixer"*) omarchy-toggle-audio-soft-mixer ;;
   *) show_trigger_menu ;;
   esac
 }
