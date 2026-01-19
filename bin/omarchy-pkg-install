@@ -4,44 +4,57 @@
 
 preview_with_aur_warning() {
     local pkg="$1"
-    local description=$(yay -Sii "$pkg")
-    local repo=$(grep -Po '^Repository\s*:\s*\K.*' <<< "$description")
+    local repo="$2"
+    
+    local description=$(yay -Sii "$repo/$pkg")
     if [[ $repo == "aur" ]]; then
         printf '\033[4;31mUnofficial Package Warning:\033[0m %s is from the AUR\n\n' "$pkg"
     fi
     echo "$description"
 }
 
+preview_pkgbuild() {
+    local pkg="$1"
+    local repo="$2"
+    yay -Gp "$repo/$pkg" | tail -n +5
+}
+
 export -f preview_with_aur_warning
+export -f preview_pkgbuild
 
 fzf_args=(
     --multi
-    --ansi
-    --preview 'preview_with_aur_warning {1}'
+    --delimiter=' '
+    --nth=1
+    --with-nth=1
+    --preview 'preview_with_aur_warning {1} {2}'
     --preview-label='alt-p: toggle description, alt-b/B: toggle PKGBUILD, alt-j/k: scroll, tab: multi-select'
     --preview-label-pos='bottom'
     --preview-window 'down:65%:wrap'
     --bind 'alt-p:toggle-preview'
     --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
     --bind 'alt-k:preview-up,alt-j:preview-down'
-    --bind 'alt-b:change-preview:yay -Gp {1} | tail -n +5'
-    --bind 'alt-B:change-preview:preview_with_aur_warning {1}'
+    --bind 'alt-b:change-preview:preview_pkgbuild {1} {2}'
+    --bind 'alt-B:change-preview:preview_with_aur_warning {1} {2}'
     --color 'pointer:green,marker:green'
 )
 
-pkg_names=$(yay -Slq | fzf "${fzf_args[@]}")
+# Pass "pkg repo" so fzf matches only on pkg but still returns repo for unique identification
+pkg_list=$(yay -Sl | awk '{printf "%s %s\n", $2, $1}' | fzf "${fzf_args[@]}")
 
-if [[ -n "$pkg_names" ]]; then
-    while IFS= read -r pkg; do
-        [[ -z "$pkg" ]] && continue
-        repo=$(yay -Sii "$pkg" | grep -Po '^Repository\s*:\s*\K.*')
-        # use yay for AUR, pacman for official repos
+if [[ -n "$pkg_list" ]]; then
+    while IFS= read -r pkg_repo; do
+        [[ -z "$pkg_repo" ]] && continue
+        IFS=' ' read -r pkg repo <<< "$pkg_repo"
+        # use yay for AUR, pacman for official repos (including omarchy)
         if [[ $repo == "aur" ]]; then
-            yay -S --noconfirm "$pkg"
+            echo "using yay"
+            yay -S --noconfirm "$repo/$pkg"
         else
-            sudo pacman -S --noconfirm "$pkg"
+            echo "using pacman"
+            sudo pacman -S --noconfirm "$repo/$pkg"
         fi
-    done <<< "$pkg_names"
+    done <<< "$pkg_list"
     echo "Updating database..."
     sudo updatedb
     omarchy-show-done
