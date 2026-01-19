@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -e
-
 # Update AUR packages if any are installed
 if pacman -Qem >/dev/null; then
   if omarchy-pkg-aur-accessible; then
@@ -12,13 +10,4 @@ if pacman -Qem >/dev/null; then
     echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"
     echo
   fi
-fi
-
-orphans=$(pacman -Qtdq || true)
-if [[ -n $orphans ]]; then
-  echo -e "\e[32m\nRemove orphan system packages\e[0m"
-  for pkg in $orphans; do
-    sudo pacman -Rs --noconfirm "$pkg" || true
-  done
-  echo
 fi
