@@ -145,9 +145,8 @@ show_toggle_menu() {
 }
 
 show_hardware_menu() {
-  case $(menu "Toggle" "  Hybrid GPU\n󰽟  Audio Soft Mixer") in
+  case $(menu "Toggle" "  Hybrid GPU") in
   *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
-  *"Audio Soft Mixer"*) omarchy-toggle-audio-soft-mixer ;;
   *) show_trigger_menu ;;
   esac
 }
