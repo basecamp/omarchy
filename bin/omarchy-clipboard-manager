@@ -1,0 +1,43 @@
+#!/bin/bash
+# Alternative clipboard manager using cliphist + fzf
+# Fixes Walker clipboard crash with non-UTF-8 multibyte characters
+# See: https://github.com/basecamp/omarchy/issues/4316
+
+set -euo pipefail
+
+HISTORY_SIZE=500
+PREVIEW_LENGTH=100
+
+show_clipboard_history() {
+    local selection
+    selection=$(cliphist list | head -n "$HISTORY_SIZE" | \
+        fzf --height=100% \
+            --layout=reverse \
+            --border=rounded \
+            --prompt="Clipboard: " \
+            --preview="echo {} | cliphist decode | head -c $PREVIEW_LENGTH" \
+            --preview-window=down:3:wrap \
+            --bind="ctrl-d:execute-silent(echo {} | cliphist delete)+reload(cliphist list | head -n $HISTORY_SIZE)")
+
+    if [[ -n "$selection" ]]; then
+        echo "$selection" | cliphist decode | wl-copy
+    fi
+}
+
+clear_history() {
+    cliphist wipe
+    notify-send "Clipboard" "History cleared" -i edit-clear
+}
+
+case "${1:-show}" in
+    show)
+        show_clipboard_history
+        ;;
+    clear)
+        clear_history
+        ;;
+    *)
+        echo "Usage: omarchy-clipboard-manager [show|clear]"
+        exit 1
+        ;;
+esac
