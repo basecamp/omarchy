@@ -5,8 +5,7 @@
 
 # Ensure supergfxctl has been installed
 if omarchy-cmd-missing supergfxctl; then
-  # FIXME: Convert this to OPR instead of AUR
-  omarchy-pkg-aur-add supergfxctl
+  omarchy-pkg-add supergfxctl
   sudo systemctl enable supergfxd
   sudo systemctl start supergfxd
 
