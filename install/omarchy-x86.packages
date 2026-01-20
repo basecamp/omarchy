@@ -1,9 +1,13 @@
 # Omarchy x86 specific package list
 # This file is also used by the ISO builder when determining needs
 
+hyprland-preview-share-picker
+nvim
+omarchy-walker
 1password-beta
 1password-cli
 asdcontrol
+dotnet-runtime-9.0
 ghostty
 gpu-screen-recorder
 localsend

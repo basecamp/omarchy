@@ -50,7 +50,6 @@ gvfs-smb
 hypridle
 hyprland
 hyprland-guiutils
-hyprland-preview-share-picker
 hyprlock
 hyprpicker
 hyprshot
@@ -68,14 +67,12 @@ lazydocker
 lazygit
 less
 libqalculate
-libreoffice
 libreoffice-fresh
 libsecret
 libyaml
 llvm
 luarocks
 mako
-man
 man-db
 mariadb-libs
 mise
@@ -86,7 +83,7 @@ noto-fonts-cjk
 noto-fonts-emoji
 noto-fonts-extra
 nss-mdns
-nvim
+opencode
 pamixer
 playerctl
 plocate
