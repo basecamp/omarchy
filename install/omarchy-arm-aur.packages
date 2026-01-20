@@ -1,5 +1,7 @@
 # AUR packages for ARM
 # Installed via omarchy-aur-install (with GitHub mirror fallback)
 
-localsend-bin         # Local network file sharing app
-omarchy-chromium-bin  # Omarchy's Chromium fork with Widevine DRM support
+hyprland-preview-share-picker-git  # Screen share picker (replaces hyprland-preview-share-picker on x86)
+localsend-bin                      # Local network file sharing app
+omarchy-chromium-bin               # Omarchy's Chromium fork with Widevine DRM support
+walker                             # Application launcher (replaces omarchy-walker on ARM)
