@@ -364,8 +364,13 @@ main() {
   while IFS= read -r pkg; do
     [[ -z "$pkg" ]] && continue
 
-    # Skip if already in split files
+    # Skip if already in ARM split files (cross-platform packages)
     if echo "$all_arm_packages" | grep -q "^$pkg$"; then
+      continue
+    fi
+
+    # Skip if in x86-only packages (platform-specific, accounted for)
+    if echo "$x86_packages" | grep -q "^$pkg$"; then
       continue
     fi
 
