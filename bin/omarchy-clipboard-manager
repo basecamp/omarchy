@@ -1,0 +1,58 @@
+#!/bin/bash
+# Alternative clipboard manager using cliphist + fzf
+# Fixes Walker clipboard crash with non-UTF-8 multibyte characters
+# See: https://github.com/basecamp/omarchy/issues/4316
+
+set -euo pipefail
+
+HISTORY_SIZE=500
+
+show_clipboard_history() {
+    local selection
+
+    # Preview command with image support via kitty's icat
+    local preview_cmd='
+entry={}
+if [[ "$entry" == *"[[ binary data"* ]]; then
+    if command -v kitten &>/dev/null; then
+        echo "$entry" | cliphist decode 2>/dev/null | kitten icat --clear --transfer-mode=memory --unicode-placeholder --stdin=yes --place="${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}@0x0"
+    else
+        echo "[Binary data - install kitty for image preview]"
+    fi
+else
+    echo "$entry" | cliphist decode 2>/dev/null
+fi
+'
+
+    selection=$(cliphist list | head -n "$HISTORY_SIZE" | \
+        fzf --height=100% \
+            --layout=reverse \
+            --border=rounded \
+            --prompt="📋 Clipboard: " \
+            --header="Enter: paste | Ctrl-D: delete" \
+            --preview="$preview_cmd" \
+            --preview-window=right:50%:wrap \
+            --bind="ctrl-d:execute-silent(echo {} | cliphist delete)+reload(cliphist list | head -n $HISTORY_SIZE)")
+
+    if [[ -n "$selection" ]]; then
+        echo "$selection" | cliphist decode | wl-copy
+    fi
+}
+
+clear_history() {
+    cliphist wipe
+    notify-send "Clipboard" "History cleared" -i edit-clear
+}
+
+case "${1:-show}" in
+    show)
+        show_clipboard_history
+        ;;
+    clear)
+        clear_history
+        ;;
+    *)
+        echo "Usage: omarchy-clipboard-manager [show|clear]"
+        exit 1
+        ;;
+esac
