@@ -1,0 +1,21 @@
+#!/bin/sh
+# Conservative Thunderbolt authorization to avoid killing DP link at KMS time.
+
+run_hook() {
+    # Give amdgpu+kms a moment to light the panel before we touch TB
+    sleep 2
+
+    for dev in /sys/bus/thunderbolt/devices/*; do
+        base="$(basename "$dev")"
+        # Skip domain/root (0-0) – writing there errors and can flap the bus
+        [ "$base" = "0-0" ] && continue
+
+        auth="$dev/authorized"
+        [ -f "$auth" ] || continue
+
+        cur="$(cat "$auth" 2>/dev/null || echo "?")"
+        if [ "$cur" = "0" ]; then
+            echo 1 > "$auth" 2>/dev/null
+        fi
+    done
+}
