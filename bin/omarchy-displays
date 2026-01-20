@@ -1,0 +1,52 @@
+#!/bin/bash
+# omarchy-displays - Display configuration tool launcher
+# Provides a unified interface for monitor configuration
+
+set -euo pipefail
+
+launch_wdisplays() {
+    if command -v wdisplays &>/dev/null; then
+        exec wdisplays
+    else
+        notify-send "Display Configuration" "wdisplays not installed. Run: yay -S wdisplays" -i display
+        exit 1
+    fi
+}
+
+show_current() {
+    hyprctl monitors -j | jq -r '.[] | "[\(.name)] \(.width)x\(.height)@\(.refreshRate)Hz scale:\(.scale) pos:\(.x),\(.y)"'
+}
+
+usage() {
+    cat <<EOF
+Usage: omarchy-displays [COMMAND]
+
+Commands:
+    gui      Launch wdisplays GUI (default)
+    show     Show current monitor configuration
+    help     Show this help message
+
+The GUI allows you to:
+- Arrange multiple displays
+- Set resolution and refresh rate
+- Configure scaling
+- Enable/disable displays
+EOF
+}
+
+case "${1:-gui}" in
+    gui|"")
+        launch_wdisplays
+        ;;
+    show|status)
+        show_current
+        ;;
+    -h|--help|help)
+        usage
+        ;;
+    *)
+        echo "Unknown command: $1"
+        usage
+        exit 1
+        ;;
+esac
