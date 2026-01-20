@@ -9,6 +9,7 @@ asdcontrol
 avahi
 bash-completion
 bat
+bc
 bluetui
 bolt
 brightnessctl
@@ -91,6 +92,7 @@ omarchy-chromium
 omarchy-nvim
 omarchy-walker
 opencode
+pacman-contrib
 pamixer
 pinta
 playerctl

@@ -11,6 +11,19 @@ DRY_RUN=false
 ALL_MODE=false
 TOTAL_FREED=0
 
+# Check for required dependencies
+if ! command -v bc &>/dev/null; then
+  echo -e "\e[31mError: 'bc' is required but not installed\e[0m"
+  echo -e "Install it with: sudo pacman -S bc"
+  exit 1
+fi
+
+if ! command -v gum &>/dev/null; then
+  echo -e "\e[31mError: 'gum' is required but not installed\e[0m"
+  echo -e "Install it with: sudo pacman -S gum"
+  exit 1
+fi
+
 show_help() {
   cat << EOF
 Usage: omarchy-cleanup [OPTIONS]
@@ -93,7 +106,8 @@ clean_package_cache() {
   local dry_output
   local pkg_count
   dry_output=$(paccache -dk2 2>/dev/null || true)
-  pkg_count=$(echo "$dry_output" | grep -c "\.pkg\.tar" || echo "0")
+
+  pkg_count=$(echo "$dry_output" | grep -c "\.pkg\.tar" || true)
   
   if [[ $pkg_count -eq 0 ]]; then
     echo -e "  \e[32mNothing to clean\e[0m"
