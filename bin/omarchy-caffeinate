@@ -1,0 +1,91 @@
+#!/bin/bash
+# omarchy-caffeinate - Keep system awake during presentations or long tasks
+# Prevents hypridle from triggering screensaver/lock
+
+set -euo pipefail
+
+LOCKFILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-caffeinate.lock"
+ICON_ON="caffeine-cup-full"
+ICON_OFF="caffeine-cup-empty"
+
+status() {
+    if [[ -f "$LOCKFILE" ]]; then
+        echo "Caffeinate: ON (system will stay awake)"
+        return 0
+    else
+        echo "Caffeinate: OFF (normal sleep behavior)"
+        return 1
+    fi
+}
+
+enable_caffeinate() {
+    if [[ -f "$LOCKFILE" ]]; then
+        echo "Already caffeinated"
+        return 0
+    fi
+
+    systemctl --user stop hypridle.service 2>/dev/null || true
+    touch "$LOCKFILE"
+    notify-send "Caffeinate" "System will stay awake" -i "$ICON_ON" -t 3000
+    echo "Caffeinate enabled"
+}
+
+disable_caffeinate() {
+    if [[ ! -f "$LOCKFILE" ]]; then
+        echo "Already decaffeinated"
+        return 0
+    fi
+
+    rm -f "$LOCKFILE"
+    systemctl --user start hypridle.service 2>/dev/null || true
+    notify-send "Caffeinate" "Normal sleep behavior restored" -i "$ICON_OFF" -t 3000
+    echo "Caffeinate disabled"
+}
+
+toggle() {
+    if [[ -f "$LOCKFILE" ]]; then
+        disable_caffeinate
+    else
+        enable_caffeinate
+    fi
+}
+
+usage() {
+    cat <<EOF
+Usage: omarchy-caffeinate [COMMAND]
+
+Commands:
+    on       Enable caffeinate (prevent sleep/lock)
+    off      Disable caffeinate (restore normal behavior)
+    toggle   Toggle caffeinate state (default)
+    status   Show current state
+
+Examples:
+    omarchy-caffeinate          # Toggle
+    omarchy-caffeinate on       # Enable for presentation
+    omarchy-caffeinate off      # Disable after presentation
+EOF
+}
+
+case "${1:-toggle}" in
+    on|enable)
+        enable_caffeinate
+        ;;
+    off|disable)
+        disable_caffeinate
+        ;;
+    toggle)
+        toggle
+        ;;
+    status)
+        status
+        ;;
+    -h|--help|help)
+        usage
+        ;;
+    *)
+        echo "Unknown command: $1"
+        usage
+        exit 1
+        ;;
+esac
