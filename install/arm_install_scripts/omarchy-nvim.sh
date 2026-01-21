@@ -42,7 +42,7 @@ done
 
 # Build and install the package
 echo "Building and installing omarchy-nvim (this may take a while)..."
-cd omarchy-pkgs/pkgbuilds/omarchy-nvim
+cd omarchy-pkgs/pkgbuilds/edge/omarchy-nvim
 makepkg -si --noconfirm
 
 cd ~
