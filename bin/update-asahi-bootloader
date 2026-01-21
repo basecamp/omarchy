@@ -6,13 +6,14 @@ set -euo pipefail
 echo "=== Asahi Bootloader Configuration Update ==="
 echo ""
 
-# Verify we're on Asahi
-if ! uname -r | grep -qi "asahi"; then
-  echo "ERROR: This script is only for Asahi Linux systems"
+# Verify we're on Apple Silicon (Asahi)
+# Check kernel name OR device tree for Apple hardware (newer kernels may not have "asahi" in name)
+if ! uname -r | grep -qi "asahi" && ! grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
+  echo "ERROR: This script is only for Apple Silicon (Asahi Linux) systems"
   exit 1
 fi
 
-echo "Detected Asahi Linux"
+echo "Detected Apple Silicon"
 echo ""
 
 # Check if Omarchy is installed

@@ -30,8 +30,9 @@ else
   export TERM_HEIGHT=24
 fi
 
-# Detect if we're on a system that needs simple ASCII (ARM, Asahi, or VM)
-if [[ -n $OMARCHY_ARM ]] || uname -r | grep -qi "asahi" || [[ -n $OMARCHY_VIRTUALIZATION ]]; then
+# Detect if we're on a system that needs simple ASCII (ARM, Apple Silicon, or VM)
+# Check kernel name OR device tree for Apple hardware (newer kernels may not have "asahi" in name)
+if [[ -n "$OMARCHY_ARM" ]] || uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
   export USE_SIMPLE_ASCII=true
   export LOGO_PATH="$OMARCHY_PATH/logo-ascii.txt"
 else

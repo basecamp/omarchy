@@ -37,8 +37,8 @@ if [[ -n "$OMARCHY_ARM" ]] || [[ -n "$ASAHI_ALARM" ]] || [[ -n "$OMARCHY_VIRTUAL
 fi
 
 omarchy_art="Omarchy"
-# Use simple ASCII on Asahi and VMs, Unicode elsewhere
-if uname -r | grep -qi "asahi" || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
+# Use simple ASCII on Apple Silicon and VMs, Unicode elsewhere
+if [[ -n "$ASAHI_ALARM" ]] || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
   curl -fsSL "https://raw.githubusercontent.com/${OMARCHY_REPO}/${OMARCHY_REF}/logo-ascii.txt" -o /tmp/omarchy-logo-ascii.txt 2>/dev/null
   if [ -f /tmp/omarchy-logo-ascii.txt ]; then
     omarchy_art="$(cat /tmp/omarchy-logo-ascii.txt)"
