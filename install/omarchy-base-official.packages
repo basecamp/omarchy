@@ -83,7 +83,6 @@ noto-fonts-cjk
 noto-fonts-emoji
 noto-fonts-extra
 nss-mdns
-opencode
 pamixer
 playerctl
 plocate
@@ -114,7 +113,6 @@ unzip
 usage
 uwsm
 waybar
-wayfreeze
 whois
 wireless-regdb
 wiremix
@@ -123,7 +121,6 @@ wl-clipboard
 woff2-font-awesome
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
-xdg-terminal-exec
 xmlstarlet
 xournalpp
 zoxide
