@@ -11,8 +11,9 @@ arch=$(uname -m)
 if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
   export OMARCHY_ARM=true
 
-  # Detect Asahi Linux specifically
-  if uname -r | grep -qi "asahi"; then
+  # Detect Asahi Linux / Apple Silicon hardware
+  # Check kernel name OR device tree for Apple hardware (newer kernels may not have "asahi" in name)
+  if uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
     export ASAHI_ALARM=true
   fi
 fi
