@@ -28,7 +28,15 @@ fi
 if [ ${#aur_packages[@]} -gt 0 ]; then
   if [ -n "$OMARCHY_ARM" ]; then
     # ARM: Pre-install bun to avoid hours-long compilation (required by opencode)
-    source "$OMARCHY_INSTALL/arm_install_scripts/bun-prebuilt.sh"
+    if ! source "$OMARCHY_INSTALL/arm_install_scripts/bun-prebuilt.sh"; then
+      echo "WARNING: bun-prebuilt installation failed, opencode build will be slow"
+    fi
+
+    # Verify bun is installed before proceeding
+    if ! pacman -T bun &>/dev/null; then
+      echo "WARNING: bun dependency not satisfied after prebuilt install"
+      echo "The opencode build may take hours compiling JavaScriptCore"
+    fi
 
     # ARM: Use omarchy-aur-install (AUR + GitHub fallback)
     "$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" "${aur_packages[@]}"
