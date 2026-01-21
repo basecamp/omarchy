@@ -25,8 +25,9 @@ esac
 temp_dir=$(mktemp -d)
 trap "rm -rf $temp_dir" EXIT
 
-wget -q "https://cache.agilebits.com/dist/1P/op2/pkg/${OP_VERSION}/op_linux_${arch}_${OP_VERSION}.zip" -O "${temp_dir}/op.zip"
-unzip -q -d "${temp_dir}/op" "${temp_dir}/op.zip"
+curl -fsSL "https://cache.agilebits.com/dist/1P/op2/pkg/${OP_VERSION}/op_linux_${arch}_${OP_VERSION}.zip" -o "${temp_dir}/op.zip"
+mkdir -p "${temp_dir}/op"
+bsdtar -xf "${temp_dir}/op.zip" -C "${temp_dir}/op"
 
 # Install
 sudo mv "${temp_dir}/op/op" "$INSTALL_PATH"
