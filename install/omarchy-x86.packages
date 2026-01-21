@@ -1,6 +1,7 @@
 # Omarchy x86 specific package list
 # This file is also used by the ISO builder when determining needs
 
+blueberry
 wayfreeze
 hyprland-preview-share-picker
 nvim
