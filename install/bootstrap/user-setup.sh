@@ -12,9 +12,10 @@ if [ -z "$OMARCHY_ARM" ]; then
   fi
 fi
 
-# Detect if we're on Asahi Linux
+# Detect if we're on Asahi Linux / Apple Silicon
+# Check kernel name OR device tree for Apple hardware (newer kernels may not have "asahi" in name)
 is_asahi=false
-if uname -r | grep -qi "asahi"; then
+if uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
   is_asahi=true
   export GUM_CHOOSE_CURSOR="> "
   export GUM_CHOOSE_CURSOR_PREFIX="* "
