@@ -1,3 +1,4 @@
 if [[ ! -d "$HOME/.config/nvim" ]]; then
-  omarchy-nvim-setup
+  # Auto-answer yes to any prompts during setup
+  yes | omarchy-nvim-setup
 fi
