@@ -81,9 +81,10 @@ if [ -n "$OMARCHY_ARM" ]; then
 
   # Post-install tasks for ARM packages
   # Update icon cache for yaru-icon-theme (needed on ARM)
+  # Use || true because gtk-update-icon-cache fails if index.theme is missing
   if [ -d "/usr/share/icons/Yaru" ]; then
     echo "Updating Yaru icon cache for ARM..."
-    sudo gtk-update-icon-cache /usr/share/icons/Yaru
+    sudo gtk-update-icon-cache /usr/share/icons/Yaru || true
   fi
 else
   echo "Installing x86_64-specific packages..."
