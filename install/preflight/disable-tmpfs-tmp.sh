@@ -28,6 +28,12 @@ should_disable_tmpfs=false
 if [[ "${OMARCHY_DISABLE_TMPFS:-false}" == "true" ]]; then
   echo "  Force disabling tmpfs /tmp (requested after build failure)"
   should_disable_tmpfs=true
+# Always disable on Asahi (Apple Silicon) - SSDs are fast enough that tmpfs benefit is minimal,
+# and Signal Desktop + other large Electron apps exceed 8GB tmpfs limit on 16GB systems
+elif [[ -n "${ASAHI_ALARM:-}" ]]; then
+  echo "  Asahi (Apple Silicon) detected"
+  echo "  Disabling tmpfs /tmp (Apple SSDs are fast, large packages need >8GB)"
+  should_disable_tmpfs=true
 # Disable proactively if system has less than 16GB RAM
 elif [[ $TOTAL_RAM_GB -lt 16 ]]; then
   echo "  System has ${TOTAL_RAM_GB}GB RAM (less than 16GB)"
