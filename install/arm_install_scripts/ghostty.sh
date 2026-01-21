@@ -47,8 +47,13 @@ cat > ~/.local/share/omarchy/bin/ghostty << 'EOF'
 # Ghostty wrapper - Auto-detects VM and uses software rendering when needed
 
 # Check if running in a VM
-# Exception: Asahi is always bare metal (even if systemd-detect-virt reports otherwise)
-if command -v systemd-detect-virt &>/dev/null && ! uname -r | grep -qi "asahi"; then
+# Exception: Apple Silicon is always bare metal (even if systemd-detect-virt reports otherwise)
+# Check kernel name OR device tree for Apple hardware (newer kernels may not have "asahi" in name)
+is_apple_silicon=false
+if uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
+  is_apple_silicon=true
+fi
+if command -v systemd-detect-virt &>/dev/null && [ "\$is_apple_silicon" = "false" ]; then
   virt_type=$(systemd-detect-virt)
   if [[ "$virt_type" != "none" ]]; then
     # Running in a VM - enable software rendering

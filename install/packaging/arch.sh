@@ -29,10 +29,11 @@ if [ -n "$OMARCHY_ARM" ]; then
     fi
   fi
 
-  # Install Asahi-specific packages if running on Asahi kernel (not VM)
+  # Install Asahi-specific packages if running on Apple Silicon (not VM)
   # Note: All Asahi packages are from official Asahi repos
-  if uname -r | grep -qi "asahi"; then
-    echo "Detected Asahi kernel - installing Asahi-specific packages..."
+  # Check kernel name OR device tree for Apple hardware (newer kernels may not have "asahi" in name)
+  if uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
+    echo "Detected Apple Silicon - installing Asahi-specific packages..."
     if [ -s "$OMARCHY_INSTALL/omarchy-asahi.packages" ]; then
       mapfile -t asahi_packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-asahi.packages" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
       if [ ${#asahi_packages[@]} -gt 0 ]; then
@@ -40,7 +41,7 @@ if [ -n "$OMARCHY_ARM" ]; then
       fi
     fi
   else
-    echo "Skipping Asahi-specific packages (not running on Asahi kernel)"
+    echo "Skipping Asahi-specific packages (not running on Apple Silicon)"
   fi
 
   # Run ARM-specific installation scripts
