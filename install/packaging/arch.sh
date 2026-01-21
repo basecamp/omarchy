@@ -11,12 +11,12 @@ if [ -n "$OMARCHY_ARM" ]; then
 
   # Install ARM-specific packages (split by source)
 
-  # Official ARM packages first
+  # Official ARM packages first (use pacman directly to avoid yay's AUR scanning)
   if [ -s "$OMARCHY_INSTALL/omarchy-arm-official.packages" ]; then
     echo "Installing official ARM packages..."
     mapfile -t official_packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-arm-official.packages" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
     if [ ${#official_packages[@]} -gt 0 ]; then
-      with_yes yay -S --noconfirm --needed "${official_packages[@]}"
+      with_yes sudo pacman -S --noconfirm --needed "${official_packages[@]}"
     fi
   fi
 
@@ -36,7 +36,7 @@ if [ -n "$OMARCHY_ARM" ]; then
     if [ -s "$OMARCHY_INSTALL/omarchy-asahi.packages" ]; then
       mapfile -t asahi_packages < <(grep -v '^#' "$OMARCHY_INSTALL/omarchy-asahi.packages" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
       if [ ${#asahi_packages[@]} -gt 0 ]; then
-        with_yes yay -S --noconfirm --needed "${asahi_packages[@]}"
+        with_yes sudo pacman -S --noconfirm --needed "${asahi_packages[@]}"
       fi
     fi
   else
