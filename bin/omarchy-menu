@@ -109,7 +109,7 @@ show_menu_from_def() {
 #=============================================================================
 # Def-based menu wrappers
 #=============================================================================
-show_main_menu() { show_menu_from_def "Main" "Go"; }
+show_main_menu() { omarchy-launch-walker -p "Go…"; }
 show_learn_menu() { show_menu_from_def "Learn" "Learn"; }
 show_trigger_menu() { show_menu_from_def "Trigger" "Trigger"; }
 show_capture_menu() { show_menu_from_def "Capture" "Capture"; }
@@ -240,7 +240,7 @@ USER_EXTENSIONS="$HOME/.config/omarchy/extensions/menu.sh"
 [[ -f $USER_EXTENSIONS ]] && source "$USER_EXTENSIONS"
 
 if [[ -n "$1" ]]; then
-  BACK_TO_EXIT=true
+  BACK_TO_EXIT=${BACK_TO_EXIT:-true}
   go_to_menu "$1"
 else
   show_main_menu
