@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Reload opencode configuration (used by the Omarchy theme switching).
+
+killall -SIGUSR2 opencode

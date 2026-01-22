@@ -4,84 +4,46 @@ if command -v limine &>/dev/null; then
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
+  sudo tee /etc/mkinitcpio.conf.d/thunderbolt_module.conf <<EOF >/dev/null
+MODULES+=(thunderbolt)
+EOF
 
-  [[ -f /boot/EFI/limine/limine.conf ]] || [[ -f /boot/EFI/BOOT/limine.conf ]] && EFI=true
+  # Detect boot mode
+  [[ -d /sys/firmware/efi ]] && EFI=true
 
-  # Conf location is different between EFI and BIOS
-  if [[ -n "$EFI" ]]; then
-    # Check USB location first, then regular EFI location
-    if [[ -f /boot/EFI/BOOT/limine.conf ]]; then
-      limine_config="/boot/EFI/BOOT/limine.conf"
-    else
-      limine_config="/boot/EFI/limine/limine.conf"
-    fi
-  else
+  # Find config location
+  if [[ -f /boot/EFI/arch-limine/limine.conf ]]; then
+    limine_config="/boot/EFI/arch-limine/limine.conf"
+  elif [[ -f /boot/EFI/BOOT/limine.conf ]]; then
+    limine_config="/boot/EFI/BOOT/limine.conf"
+  elif [[ -f /boot/EFI/limine/limine.conf ]]; then
+    limine_config="/boot/EFI/limine/limine.conf"
+  elif [[ -f /boot/limine/limine.conf ]]; then
     limine_config="/boot/limine/limine.conf"
-  fi
-
-  # Double-check and exit if we don't have a config file for some reason
-  if [[ ! -f $limine_config ]]; then
-    echo "Error: Limine config not found at $limine_config" >&2
+  elif [[ -f /boot/limine.conf ]]; then
+    limine_config="/boot/limine.conf"
+  else
+    echo "Error: Limine config not found" >&2
     exit 1
   fi
 
   CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
-  sudo tee /etc/default/limine <<EOF >/dev/null
-TARGET_OS_NAME="Omarchy"
-
-ESP_PATH="/boot"
-
-KERNEL_CMDLINE[default]="$CMDLINE"
-KERNEL_CMDLINE[default]+="quiet splash"
-
-ENABLE_UKI=yes
-CUSTOM_UKI_NAME="omarchy"
-
-ENABLE_LIMINE_FALLBACK=yes
-
-# Find and add other bootloaders
-FIND_BOOTLOADERS=yes
-
-BOOT_ORDER="*, *fallback, Snapshots"
-
-MAX_SNAPSHOT_ENTRIES=5
-
-SNAPSHOT_FORMAT_CHOICE=5
-EOF
+  sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
+  sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
 
   # UKI and EFI fallback are EFI only
   if [[ -z $EFI ]]; then
     sudo sed -i '/^ENABLE_UKI=/d; /^ENABLE_LIMINE_FALLBACK=/d' /etc/default/limine
   fi
 
-  # We overwrite the whole thing knowing the limine-update will add the entries for us
-  sudo tee /boot/limine.conf <<EOF >/dev/null
-### Read more at config document: https://github.com/limine-bootloader/limine/blob/trunk/CONFIG.md
-#timeout: 3
-default_entry: 2
-interface_branding: Omarchy Bootloader
-interface_branding_color: 2
-hash_mismatch_panic: no
-
-term_background: 1a1b26
-backdrop: 1a1b26
-
-# Terminal colors (Tokyo Night palette)
-term_palette: 15161e;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;a9b1d6
-term_palette_bright: 414868;f7768e;9ece6a;e0af68;7aa2f7;bb9af7;7dcfff;c0caf5
-
-# Text colors
-term_foreground: c0caf5
-term_foreground_bright: c0caf5
-term_background_bright: 24283b
-
-EOF
-
   # Remove the original config file if it's not /boot/limine.conf
   if [[ "$limine_config" != "/boot/limine.conf" ]] && [[ -f "$limine_config" ]]; then
     sudo rm "$limine_config"
   fi
+
+  # We overwrite the whole thing knowing the limine-update will add the entries for us
+  sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
 
 
   # Match Snapper configs if not installing from the ISO
@@ -95,10 +57,15 @@ EOF
     fi
   fi
 
+  # Enable quota to allow space-aware algorithms to work
+  sudo btrfs quota enable /
+
   # Tweak default Snapper configs
   sudo sed -i 's/^TIMELINE_CREATE="yes"/TIMELINE_CREATE="no"/' /etc/snapper/configs/{root,home}
   sudo sed -i 's/^NUMBER_LIMIT="50"/NUMBER_LIMIT="5"/' /etc/snapper/configs/{root,home}
   sudo sed -i 's/^NUMBER_LIMIT_IMPORTANT="10"/NUMBER_LIMIT_IMPORTANT="5"/' /etc/snapper/configs/{root,home}
+  sudo sed -i 's/^SPACE_LIMIT="0.5"/SPACE_LIMIT="0.3"/' /etc/snapper/configs/{root,home}
+  sudo sed -i 's/^FREE_LIMIT="0.2"/FREE_LIMIT="0.3"/' /etc/snapper/configs/{root,home}
 
   chrootable_systemctl_enable limine-snapper-sync.service
 fi

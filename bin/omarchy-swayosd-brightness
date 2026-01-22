@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Display brightness level using SwayOSD on the current monitor.
+# Usage: omarchy-swayosd-brightness <percent>
+
+percent="$1"
+
+progress="$(awk -v p="$percent" 'BEGIN{printf "%.2f", p/100}')"
+[[ "$progress" == "0.00" ]] && progress="0.01"
+
+swayosd-client \
+  --monitor "$(hyprctl monitors -j | jq -r '.[]|select(.focused==true).name')" \
+  --custom-icon display-brightness \
+  --custom-progress "$progress" \
+  --custom-progress-text "${percent}%"

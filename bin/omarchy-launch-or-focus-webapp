@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Launch or focus on a given web app identified by the window-pattern.
+# Use by some default bindings, like the one for WhatsApp, to ensure there is only one instance of the application open.
+
 if (($# == 0)); then
   echo "Usage: omarchy-launch-or-focus-webapp [window-pattern] [url-and-flags...]"
   exit 1

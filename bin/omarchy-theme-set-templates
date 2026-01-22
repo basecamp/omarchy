@@ -1,0 +1,46 @@
+#!/bin/bash
+
+TEMPLATES_DIR="$OMARCHY_PATH/default/themed"
+USER_TEMPLATES_DIR="$HOME/.config/omarchy/themed"
+NEXT_THEME_DIR="$HOME/.config/omarchy/current/next-theme"
+COLORS_FILE="$NEXT_THEME_DIR/colors.toml"
+
+# Convert hex color to decimal RGB (e.g., "#1e1e2e" -> "30,30,46")
+hex_to_rgb() {
+  local hex="${1#\#}"
+  printf "%d,%d,%d" "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
+}
+
+# Only generate dynamic templates for themes with a colors.toml definition
+if [[ -f $COLORS_FILE ]]; then
+  sed_script=$(mktemp)
+
+  while IFS='=' read -r key value; do
+    key="${key//[\"\' ]/}"                # strip quotes and spaces from key
+    [[ $key && $key != \#* ]] || continue # skip empty lines and comments
+    value="${value#*[\"\']}"
+    value="${value%%[\"\']*}" # extract value between quotes (ignores inline comments)
+
+    printf 's|{{ %s }}|%s|g\n' "$key" "$value"            # {{ key }} -> value
+    printf 's|{{ %s_strip }}|%s|g\n' "$key" "${value#\#}" # {{ key_strip }} -> value without leading #
+    if [[ $value =~ ^# ]]; then
+      rgb=$(hex_to_rgb "$value")
+      echo "s|{{ ${key}_rgb }}|${rgb}|g"
+    fi
+  done <"$COLORS_FILE" >"$sed_script"
+
+  shopt -s nullglob
+
+  # Process user templates first, then built-in templates (user overrides built-in)
+  for tpl in "$USER_TEMPLATES_DIR"/*.tpl "$TEMPLATES_DIR"/*.tpl; do
+    filename=$(basename "$tpl" .tpl)
+    output_path="$NEXT_THEME_DIR/$filename"
+
+    # Don't overwrite configs already exists in the output directory (copied from theme specific folder)
+    if [[ ! -f $output_path ]]; then
+      sed -f "$sed_script" "$tpl" >"$output_path"
+    fi
+  done
+
+  rm "$sed_script"
+fi

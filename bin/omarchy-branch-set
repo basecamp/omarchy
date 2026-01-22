@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Set the branch for Omarchy's git repository.
+
 if (($# == 0)); then
   echo "Usage: omarchy-branch-set [master|dev]"
   exit 1

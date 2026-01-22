@@ -1,0 +1,86 @@
+# Omarchy User Template Example: Alacritty
+#
+# This is a sample template file demonstrating how to create custom themed
+# configurations. Templates use placeholder variables that get replaced with
+# your current theme's colors when you switch themes.
+#
+# HOW TO USE:
+#   1. Rename this file to: alacritty.toml.tpl (remove the .sample extension)
+#   2. Customize it as needed
+#   3. Change your theme to apply the template
+#
+# User templates in ~/.config/omarchy/themed/ take priority over the built-in
+# templates in the Omarchy default/themed/ directory. This lets you override
+# any built-in template or create templates for applications not included
+# by default.
+#
+# AVAILABLE VARIABLES:
+#   {{ background }}            - Main background color (e.g., "#1a1b26")
+#   {{ foreground }}            - Main foreground/text color
+#   {{ cursor }}                - Cursor color
+#   {{ accent }}                - Theme accent color
+#   {{ selection_background }}  - Selection highlight background
+#   {{ selection_foreground }}  - Selection highlight foreground
+#
+#   {{ color0 }} through {{ color15 }} - Standard 16-color terminal palette
+#     color0-7:  Normal colors (black, red, green, yellow, blue, magenta, cyan, white)
+#     color8-15: Bright variants
+#
+# VARIABLE MODIFIERS:
+#   {{ variable_strip }} - Hex color without the # prefix (e.g., "1a1b26")
+#   {{ variable_rgb }}   - Decimal RGB values (e.g., "26,27,38")
+#
+# Example using modifiers:
+#   background = "{{ background }}"       -> background = "#1a1b26"
+#   background = "{{ background_strip }}" -> background = "1a1b26"
+#   background = "rgb({{ background_rgb }})" -> background = "rgb(26,27,38)"
+#
+# ---------------------------------------------------------------------------
+
+[colors.primary]
+background = "{{ background }}"
+foreground = "{{ foreground }}"
+
+[colors.cursor]
+text = "{{ background }}"
+cursor = "{{ cursor }}"
+
+[colors.vi_mode_cursor]
+text = "{{ background }}"
+cursor = "{{ cursor }}"
+
+[colors.search.matches]
+foreground = "{{ background }}"
+background = "{{ color3 }}"
+
+[colors.search.focused_match]
+foreground = "{{ background }}"
+background = "{{ color1 }}"
+
+[colors.footer_bar]
+foreground = "{{ background }}"
+background = "{{ foreground }}"
+
+[colors.selection]
+text = "{{ selection_foreground }}"
+background = "{{ selection_background }}"
+
+[colors.normal]
+black = "{{ color0 }}"
+red = "{{ color1 }}"
+green = "{{ color2 }}"
+yellow = "{{ color3 }}"
+blue = "{{ color4 }}"
+magenta = "{{ color5 }}"
+cyan = "{{ color6 }}"
+white = "{{ color7 }}"
+
+[colors.bright]
+black = "{{ color8 }}"
+red = "{{ color9 }}"
+green = "{{ color10 }}"
+yellow = "{{ color11 }}"
+blue = "{{ color12 }}"
+magenta = "{{ color13 }}"
+cyan = "{{ color14 }}"
+white = "{{ color15 }}"

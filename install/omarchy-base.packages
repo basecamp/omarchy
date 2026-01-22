@@ -4,11 +4,13 @@
 1password-beta
 1password-cli
 aether
+alacritty
 asdcontrol
 avahi
 bash-completion
 bat
 bluetui
+bolt
 brightnessctl
 btop
 clang
@@ -19,6 +21,7 @@ cups-pdf
 docker
 docker-buildx
 docker-compose
+dotnet-runtime-9.0
 dust
 evince
 exfatprogs
@@ -46,6 +49,7 @@ gvfs-smb
 hypridle
 hyprland
 hyprland-guiutils
+hyprland-preview-share-picker
 hyprlock
 hyprpicker
 hyprsunset
@@ -86,6 +90,7 @@ obsidian
 omarchy-chromium
 omarchy-nvim
 omarchy-walker
+opencode
 pamixer
 pinta
 playerctl

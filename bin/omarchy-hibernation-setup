@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# Creates a swap file in the btrfs subvolume, adds the swap file to /etc/fstab,
+# adds a resume hook to mkinitcpio, and configures suspend-then-hibernate.
+
+if [[ ! -f /sys/power/image_size ]]; then
+  echo -e "\033[31mError: Hibernation is not supported on your system\033[0m" >&2
+  exit 1
+fi
+
+
+MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+
+# Check if hibernation is already configured
+if [ -f "$MKINITCPIO_CONF" ] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+  echo "Hibernation is already set up"
+  exit 0
+fi
+
+MEM_TOTAL_HUMAN=$(free --human | awk '/Mem/ {print $2}')
+if ! gum confirm "Use $MEM_TOTAL_HUMAN on boot drive to make hibernation available?"; then
+  exit 0
+fi
+
+SWAP_SUBVOLUME="/swap"
+SWAP_FILE="$SWAP_SUBVOLUME/swapfile"
+
+# Create btrfs subvolume for swap
+if ! sudo btrfs subvolume show "$SWAP_SUBVOLUME" &>/dev/null; then
+  echo "Creating Btrfs subvolume"
+  sudo btrfs subvolume create "$SWAP_SUBVOLUME"
+  sudo chattr +C "$SWAP_SUBVOLUME"
+fi
+
+# Create swapfile
+if ! sudo swaplabel "$SWAP_FILE" &>/dev/null; then
+  echo "Creating swapfile in Btrfs subvolume"
+  MEM_TOTAL_KB="$(awk '/MemTotal/ {print $2}' /proc/meminfo)k"
+  sudo btrfs filesystem mkswapfile -s "$MEM_TOTAL_KB" "$SWAP_FILE"
+fi
+
+# Add swapfile to fstab
+if ! grep -Fq "$SWAP_FILE" /etc/fstab; then
+  echo "Adding swapfile to /etc/fstab"
+  sudo cp -a /etc/fstab "/etc/fstab.$(date +%Y%m%d%H%M%S).back"
+  printf "\n# Btrfs swapfile for system hibernation\n%s none swap defaults,pri=0 0 0\n" "$SWAP_FILE" | sudo tee -a /etc/fstab >/dev/null
+fi
+
+# Enable swap
+if ! swapon --show | grep -q "$SWAP_FILE"; then
+  echo "Enabling swap on $SWAP_FILE"
+  sudo swapon -p 0 "$SWAP_FILE"
+fi
+
+# Add resume hook to mkinitcpio
+sudo mkdir -p /etc/mkinitcpio.conf.d
+echo "Adding resume hook to $MKINITCPIO_CONF"
+echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
+
+# Configure suspend-then-hibernate
+echo "Configuring suspend-then-hibernate"
+sudo mkdir -p /etc/systemd/logind.conf.d /etc/systemd/sleep.conf.d
+sudo cp "$OMARCHY_PATH/default/systemd/lid.conf" /etc/systemd/logind.conf.d/
+sudo cp "$OMARCHY_PATH/default/systemd/hibernate.conf" /etc/systemd/sleep.conf.d/
+
+# Regenerate initramfs
+echo "Regenerating initramfs..."
+sudo limine-mkinitcpio
+
+echo "Hibernation enabled"
