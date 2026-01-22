@@ -6,6 +6,9 @@ export TERMINAL=xdg-terminal-exec
 # Use code for VSCode
 export EDITOR=nvim
 
+# Use a different default browser (make sure browser is installed)
+# export BROWSER=firefox.desktop
+
 # Use a custom directory for screenshots (remember to make the directory!)
 # export OMARCHY_SCREENSHOT_DIR="$HOME/Pictures/Screenshots"
 
