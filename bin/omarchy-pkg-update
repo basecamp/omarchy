@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Show a fuzzy-finder TUI for updating Arch and OPR packages
+
+fzf_args=(
+  --multi
+  --header 'Premere "a" per selezionare e aggiornare TUTTO'
+  --preview 'pacman -Si {1}'
+  --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select'
+  --preview-label-pos='bottom'
+  --preview-window 'down:65%:wrap'
+  --bind 'alt-p:toggle-preview'
+  --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
+  --bind 'alt-k:preview-up,alt-j:preview-down'
+  --bind 'a:select-all+accept'
+  --color 'pointer:green,marker:green'
+)
+
+updates=$(pacman -Qu)
+
+if [[ -z "$updates" ]]; then
+  echo "The packages are up to date."
+  if command -v omarchy-show-done &> /dev/null; then
+    omarchy-show-done
+  fi
+  exit 0
+fi
+
+selection=$(echo "$updates" | fzf "${fzf_args[@]}")
+
+if [[ -n "$selection" ]]; then
+  pkg_names=$(echo "$selection" | awk '{print $1}' | tr '\n' ' ')
+  
+  sudo pacman -S --noconfirm $pkg_names
+  
+  if command -v omarchy-show-done &> /dev/null; then
+    omarchy-show-done
+  fi
+fi
