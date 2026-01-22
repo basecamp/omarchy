@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Skip if Asahi (bare metal with its own GPU drivers)
-if [ -n "$ASAHI_ALARM" ]; then
+# Skip if not running in a VM (bare metal systems like Pi or Asahi have proper GPU)
+if [ -z "$OMARCHY_VIRTUALIZATION" ]; then
   return 0
 fi
 
