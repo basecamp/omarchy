@@ -7,18 +7,18 @@
 # Main Menu
 Main	*		exit
 Main	Apps	󰀻	walker -p "Launch…"
-Main	Learn	󰧑	@Learn
-Main	Trigger	󱓞	@Trigger
-Main	Style		@Style
-Main	Setup		@Setup
-Main	Install	󰉉	@Install
-Main	Remove	󰭌	@Remove
-Main	Update		@Update
+Main	Learn	󰧑	show_learn_menu
+Main	Trigger	󱓞	show_trigger_menu
+Main	Style		show_style_menu
+Main	Setup		show_setup_menu
+Main	Install	󰉉	show_install_menu
+Main	Remove	󰭌	show_remove_menu
+Main	Update		show_update_menu
 Main	About		omarchy-launch-about
-Main	System		@System
+Main	System		show_system_menu
 
 # Learn Menu
-Learn	*		@Main
+Learn	*		show_main_menu
 Learn	Keybindings		omarchy-menu-keybindings
 Learn	Omarchy		omarchy-launch-webapp "https://learn.omacom.io/2/the-omarchy-manual"
 Learn	Hyprland		omarchy-launch-webapp "https://wiki.hypr.land/"
@@ -27,83 +27,82 @@ Learn	Neovim		omarchy-launch-webapp "https://www.lazyvim.org/keymaps"
 Learn	Bash	󱆃	omarchy-launch-webapp "https://devhints.io/bash"
 
 # Trigger Menu
-Trigger	*		@Main
-Trigger	Capture		@Capture
-Trigger	Share		@Share
-Trigger	Toggle	󰔎	@Toggle
+Trigger	*		show_main_menu
+Trigger	Capture		show_capture_menu
+Trigger	Share		show_share_menu
+Trigger	Toggle	󰔎	show_toggle_menu
 
 # Capture Menu
-Capture	*		@Trigger
-Capture	Screenshot		@Screenshot
-Capture	Screenrecord		@Screenrecord
+Capture	*		show_trigger_menu
+Capture	Screenshot		show_screenshot_menu
+Capture	Screenrecord		show_screenrecord_menu
 Capture	Color	󰃉	pkill hyprpicker || hyprpicker -a
 
 # Screenshot Menu
-Screenshot	*		@Capture
+Screenshot	*		show_capture_menu
 Screenshot	Snap with Editing		omarchy-cmd-screenshot smart
 Screenshot	Straight to Clipboard		omarchy-cmd-screenshot smart clipboard
 
 # Screenrecord Menu
-Screenrecord	*		@Capture
+Screenrecord	*		show_capture_menu
 Screenrecord	With desktop audio		omarchy-cmd-screenrecord --with-desktop-audio
 Screenrecord	With desktop + microphone audio		omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio
 Screenrecord	With desktop + microphone audio + webcam		omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam
 
 # Share Menu
-Share	*		@Trigger
+Share	*		show_trigger_menu
 Share	Clipboard		omarchy-cmd-share clipboard
 Share	File 		terminal bash -c "omarchy-cmd-share file"
 Share	Folder		terminal bash -c "omarchy-cmd-share folder"
 
 # Toggle Menu
-Toggle	*		@Trigger
+Toggle	*		show_trigger_menu
 Toggle	Screensaver	󱄄	omarchy-toggle-screensaver
 Toggle	Nightlight	󰔎	omarchy-toggle-nightlight
 Toggle	Idle Lock	󱫖	omarchy-toggle-idle
 Toggle	Top Bar	󰍜	omarchy-toggle-waybar
 
 # Style Menu
-Style	*		@Main
+Style	*		show_main_menu
 Style	Theme	󰸌	omarchy-launch-walker -m menus:omarchythemes
-Style	Font		@Font
+Style	Font		show_font_menu
 Style	Background		omarchy-theme-bg-next
 Style	Hyprland		open_in_editor ~/.config/hypr/looknfeel.conf
 Style	Screensaver	󱄄	open_in_editor ~/.config/omarchy/branding/screensaver.txt
 Style	About		open_in_editor ~/.config/omarchy/branding/about.txt
 
 # Font Menu (dynamic)
-Font	*		@Style
+Font	*		show_style_menu
 Font	(dynamic)		omarchy-font-set
 
 # Setup Menu
-Setup	*		@Main
+Setup	*		show_main_menu
 Setup	Audio		omarchy-launch-audio
 Setup	Wifi		omarchy-launch-wifi
 Setup	Bluetooth	󰂯	omarchy-launch-bluetooth
-Setup	Power Profile	󱐋	@Power
-Setup	System Sleep		@SystemSleep
+Setup	Power Profile	󱐋	show_setup_power_menu
+Setup	System Sleep		show_setup_system_menu
 Setup	Monitors	󰍹	open_in_editor ~/.config/hypr/monitors.conf
-Setup	Keybindings		open_in_editor ~/.config/hypr/bindings.conf
-Setup	Input		open_in_editor ~/.config/hypr/input.conf
-
-# Power Menu (dynamic)
-Power	*		@Setup
-Power	(dynamic)		powerprofilesctl set
+Setup	Keybindings		open_in_editor ~/.config/hypr/bindings.conf	file:~/.config/hypr/bindings.conf
+Setup	Input		open_in_editor ~/.config/hypr/input.conf	file:~/.config/hypr/input.conf
+Setup	DNS	󱔐	present_terminal omarchy-setup-dns
+Setup	Security	󰱔	show_setup_security_menu
+Setup	Config		show_setup_config_menu
 
 # SystemSleep Menu
-SystemSleep	*		@Setup
-SystemSleep	Disable Suspend	󰒲	omarchy-toggle-suspend
-SystemSleep	Enable Suspend	󰒲	omarchy-toggle-suspend
-SystemSleep	Disable Hibernate	󰤁	present_terminal omarchy-hibernation-remove
-SystemSleep	Enable Hibernate	󰤁	present_terminal omarchy-hibernation-setup
+SystemSleep	*		show_setup_menu
+SystemSleep	Disable Suspend	󰒲	omarchy-toggle-suspend	file:~/.local/state/omarchy/toggles/suspend-on
+SystemSleep	Enable Suspend	󰒲	omarchy-toggle-suspend	!file:~/.local/state/omarchy/toggles/suspend-on
+SystemSleep	Disable Hibernate	󰤁	present_terminal omarchy-hibernation-remove	cmd:omarchy-hibernation-available
+SystemSleep	Enable Hibernate	󰤁	present_terminal omarchy-hibernation-setup	!cmd:omarchy-hibernation-available
 
 # Security Menu
-Security	*		@Setup
+Security	*		show_setup_menu
 Security	Fingerprint	󰈷	present_terminal omarchy-setup-fingerprint
 Security	Fido2		present_terminal omarchy-setup-fido2
 
 # Config Menu
-Config	*		@Setup
+Config	*		show_setup_menu
 Config	Defaults		open_in_editor ~/.config/uwsm/default
 Config	Hyprland		open_in_editor ~/.config/hypr/hyprland.conf
 Config	Hypridle		open_in_editor ~/.config/hypr/hypridle.conf
@@ -115,29 +114,29 @@ Config	Waybar	󰍜	open_in_editor ~/.config/waybar/config.jsonc
 Config	XCompose	󰞅	open_in_editor ~/.XCompose
 
 # Install Menu
-Install	*		@Main
+Install	*		show_main_menu
 Install	Package	󰣇	terminal omarchy-pkg-install
 Install	AUR	󰣇	terminal omarchy-pkg-aur-install
 Install	Web App		present_terminal omarchy-webapp-install
 Install	TUI		present_terminal omarchy-tui-install
-Install	Service		@Service
-Install	Style		@InstallStyle
-Install	Development	󰵮	@Development
-Install	Editor		@Editor
-Install	Terminal		@Terminal
-Install	AI	󱚤	@AI
+Install	Service		show_install_service_menu
+Install	Style		show_install_style_menu
+Install	Development	󰵮	show_install_development_menu
+Install	Editor		show_install_editor_menu
+Install	Terminal		show_install_terminal_menu
+Install	AI	󱚤	show_install_ai_menu
 Install	Windows	󰍲	present_terminal "omarchy-windows-vm install"
-Install	Gaming		@Gaming
+Install	Gaming		show_install_gaming_menu
 
 # Service Menu
-Service	*		@Install
+Service	*		show_install_menu
 Service	Dropbox		present_terminal omarchy-install-dropbox
 Service	Tailscale		present_terminal omarchy-install-tailscale
 Service	Bitwarden	󰟵	install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden"
 Service	Chromium Account		present_terminal omarchy-install-chromium-google-account
 
 # Editor Menu
-Editor	*		@Install
+Editor	*		show_install_menu
 Editor	VSCode		present_terminal omarchy-install-vscode
 Editor	Cursor		install_and_launch "Cursor" "cursor-bin" "cursor"
 Editor	Zed		present_terminal "sudo pacman -S zed && setsid gtk-launch dev.zed.Zed"
@@ -146,13 +145,13 @@ Editor	Helix		install "Helix" "helix"
 Editor	Emacs		install "Emacs" "emacs-wayland"
 
 # Terminal Menu
-Terminal	*		@Install
+Terminal	*		show_install_menu
 Terminal	Alacritty		install_terminal "alacritty"
 Terminal	Ghostty		install_terminal "ghostty"
 Terminal	Kitty		install_terminal "kitty"
 
 # AI Menu
-AI	*		@Install
+AI	*		show_install_menu
 AI	Dictation		present_terminal omarchy-voxtype-install
 AI	Claude Code	󱚤	install "Claude Code" "claude-code"
 AI	Copilot CLI	󱚤	install "Copilot CLI" "github-copilot-cli"
@@ -160,24 +159,24 @@ AI	Cursor CLI	󱚤	install "Cursor CLI" "cursor-cli"
 AI	Gemini	󱚤	install "Gemini" "gemini-cli"
 AI	OpenAI Codex	󱚤	install "OpenAI Codex" "openai-codex"
 AI	LM Studio	󱚤	install "LM Studio" "lmstudio"
-AI	Ollama	󱚤	install "Ollama" "$ollama_pkg"
+AI	Ollama	󱚤	install "Ollama" "$(command -v nvidia-smi &>/dev/null && echo ollama-cuda || command -v rocminfo &>/dev/null && echo ollama-rocm || echo ollama)"
 AI	Crush	󱚤	install "Crush" "crush-bin"
 
 # Gaming Menu
-Gaming	*		@Install
+Gaming	*		show_install_menu
 Gaming	Steam		present_terminal omarchy-install-steam
 Gaming	RetroArch [AUR]		aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop"
 Gaming	Minecraft	󰍳	install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher"
 Gaming	Xbox Controller [AUR]	󰖺	present_terminal omarchy-install-xbox-controllers
 
 # InstallStyle Menu
-InstallStyle	*		@Install
+InstallStyle	*		show_install_menu
 InstallStyle	Theme	󰸌	present_terminal omarchy-theme-install
 InstallStyle	Background		omarchy-theme-bg-install
-InstallStyle	Font		@InstallFont
+InstallStyle	Font		show_install_font_menu
 
 # InstallFont Menu
-InstallFont	*		@InstallStyle
+InstallFont	*		show_install_style_menu
 InstallFont	Meslo LG Mono		install_font "Meslo LG Mono" "ttf-meslo-nerd" "MesloLGL Nerd Font"
 InstallFont	Fira Code		install_font "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font"
 InstallFont	Victor Code		install_font "Victor Code" "ttf-victor-mono-nerd" "VictorMono Nerd Font"
@@ -185,14 +184,14 @@ InstallFont	Bistream Vera Mono		install_font "Bistream Vera Code" "ttf-bitstr
 InstallFont	Iosevka		install_font "Iosevka" "ttf-iosevka-nerd" "Iosevka Nerd Font Mono"
 
 # Development Menu
-Development	*		@Install
+Development	*		show_install_menu
 Development	Ruby on Rails	󰫏	present_terminal "omarchy-install-dev-env ruby"
 Development	Docker DB		present_terminal omarchy-install-docker-dbs
-Development	JavaScript		@JavaScript
+Development	JavaScript		show_install_javascript_menu
 Development	Go		present_terminal "omarchy-install-dev-env go"
-Development	PHP		@PHP
+Development	PHP		show_install_php_menu
 Development	Python		present_terminal "omarchy-install-dev-env python"
-Development	Elixir		@Elixir
+Development	Elixir		show_install_elixir_menu
 Development	Zig		present_terminal "omarchy-install-dev-env zig"
 Development	Rust		present_terminal "omarchy-install-dev-env rust"
 Development	Java		present_terminal "omarchy-install-dev-env java"
@@ -201,28 +200,28 @@ Development	OCaml		present_terminal "omarchy-install-dev-env ocaml"
 Development	Clojure		present_terminal "omarchy-install-dev-env clojure"
 
 # JavaScript Menu
-JavaScript	*		@Development
+JavaScript	*		show_install_development_menu
 JavaScript	Node.js		present_terminal "omarchy-install-dev-env node"
 JavaScript	Bun		present_terminal "omarchy-install-dev-env bun"
 JavaScript	Deno		present_terminal "omarchy-install-dev-env deno"
 
 # PHP Menu
-PHP	*		@Development
+PHP	*		show_install_development_menu
 PHP	PHP		present_terminal "omarchy-install-dev-env php"
 PHP	Laravel		present_terminal "omarchy-install-dev-env laravel"
 PHP	Symfony		present_terminal "omarchy-install-dev-env symfony"
 
 # Elixir Menu
-Elixir	*		@Development
+Elixir	*		show_install_development_menu
 Elixir	Elixir		present_terminal "omarchy-install-dev-env elixir"
 Elixir	Phoenix		present_terminal "omarchy-install-dev-env phoenix"
 
 # Remove Menu
-Remove	*		@Main
+Remove	*		show_main_menu
 Remove	Package	󰣇	terminal omarchy-pkg-remove
 Remove	Web App		present_terminal omarchy-webapp-remove
 Remove	TUI		present_terminal omarchy-tui-remove
-Remove	Development	󰵮	@RemoveDev
+Remove	Development	󰵮	show_remove_development_menu
 Remove	Dictation		present_terminal omarchy-voxtype-remove
 Remove	Theme	󰸌	present_terminal omarchy-theme-remove
 Remove	Windows	󰍲	present_terminal "omarchy-windows-vm remove"
@@ -230,13 +229,13 @@ Remove	Fingerprint	󰈷	present_terminal "omarchy-setup-fingerprint --remove"
 Remove	Fido2		present_terminal "omarchy-setup-fido2 --remove"
 
 # RemoveDev Menu
-RemoveDev	*		@Remove
+RemoveDev	*		show_remove_menu
 RemoveDev	Ruby on Rails	󰫏	present_terminal "omarchy-remove-dev-env ruby"
-RemoveDev	JavaScript		@RemoveJS
+RemoveDev	JavaScript		show_remove_javascript_menu
 RemoveDev	Go		present_terminal "omarchy-remove-dev-env go"
-RemoveDev	PHP		@RemovePHP
+RemoveDev	PHP		show_remove_php_menu
 RemoveDev	Python		present_terminal "omarchy-remove-dev-env python"
-RemoveDev	Elixir		@RemoveElixir
+RemoveDev	Elixir		show_remove_elixir_menu
 RemoveDev	Zig		present_terminal "omarchy-remove-dev-env zig"
 RemoveDev	Rust		present_terminal "omarchy-remove-dev-env rust"
 RemoveDev	Java		present_terminal "omarchy-remove-dev-env java"
@@ -245,43 +244,43 @@ RemoveDev	OCaml		present_terminal "omarchy-remove-dev-env ocaml"
 RemoveDev	Clojure		present_terminal "omarchy-remove-dev-env clojure"
 
 # RemoveJS Menu
-RemoveJS	*		@RemoveDev
+RemoveJS	*		show_remove_development_menu
 RemoveJS	Node.js		present_terminal "omarchy-remove-dev-env node"
 RemoveJS	Bun		present_terminal "omarchy-remove-dev-env bun"
 RemoveJS	Deno		present_terminal "omarchy-remove-dev-env deno"
 
 # RemovePHP Menu
-RemovePHP	*		@RemoveDev
+RemovePHP	*		show_remove_development_menu
 RemovePHP	PHP		present_terminal "omarchy-remove-dev-env php"
 RemovePHP	Laravel		present_terminal "omarchy-remove-dev-env laravel"
 RemovePHP	Symfony		present_terminal "omarchy-remove-dev-env symfony"
 
 # RemoveElixir Menu
-RemoveElixir	*		@RemoveDev
+RemoveElixir	*		show_remove_development_menu
 RemoveElixir	Elixir		present_terminal "omarchy-remove-dev-env elixir"
 RemoveElixir	Phoenix		present_terminal "omarchy-remove-dev-env phoenix"
 
 # Update Menu
-Update	*		@Main
-Update	Omarchy 	  	present_terminal omarchy-update
-Update	Channel	󰔫	@Channel
-Update	Config		@UpdateConfig
+Update	*		show_main_menu
+Update	Omarchy		present_terminal omarchy-update
+Update	Channel	󰔫	show_update_channel_menu
+Update	Config		show_update_config_menu
 Update	Extra Themes	󰸌	present_terminal omarchy-theme-update
-Update	Process		@Process
-Update	Hardware	󰇅	@Hardware
+Update	Process		show_update_process_menu
+Update	Hardware	󰇅	show_update_hardware_menu
 Update	Firmware		present_terminal omarchy-update-firmware
-Update	Password		@Password
+Update	Password		show_update_password_menu
 Update	Timezone		present_terminal omarchy-tz-select
 Update	Time		present_terminal omarchy-update-time
 
 # Channel Menu
-Channel	*		@Update
+Channel	*		show_update_menu
 Channel	Stable	🟢	present_terminal "omarchy-channel-set stable"
 Channel	Edge	🟡	present_terminal "omarchy-channel-set edge"
 Channel	Dev	🔴	present_terminal "omarchy-channel-set dev"
 
 # Process Menu
-Process	*		@Update
+Process	*		show_update_menu
 Process	Hypridle		omarchy-restart-hypridle
 Process	Hyprsunset		omarchy-restart-hyprsunset
 Process	Swayosd		omarchy-restart-swayosd
@@ -289,7 +288,7 @@ Process	Walker	󰌧	omarchy-restart-walker
 Process	Waybar	󰍜	omarchy-restart-waybar
 
 # UpdateConfig Menu
-UpdateConfig	*		@Update
+UpdateConfig	*		show_update_menu
 UpdateConfig	Hyprland		present_terminal omarchy-refresh-hyprland
 UpdateConfig	Hypridle		present_terminal omarchy-refresh-hypridle
 UpdateConfig	Hyprlock		present_terminal omarchy-refresh-hyprlock
@@ -300,21 +299,21 @@ UpdateConfig	Walker	󰌧	present_terminal omarchy-refresh-walker
 UpdateConfig	Waybar	󰍜	present_terminal omarchy-refresh-waybar
 
 # Hardware Menu
-Hardware	*		@Update
+Hardware	*		show_update_menu
 Hardware	Audio		present_terminal omarchy-restart-pipewire
 Hardware	Wi-Fi	󱚾	present_terminal omarchy-restart-wifi
 Hardware	Bluetooth	󰂯	present_terminal omarchy-restart-bluetooth
 
 # Password Menu
-Password	*		@Update
+Password	*		show_update_menu
 Password	Drive Encryption		present_terminal omarchy-drive-set-password
 Password	User		present_terminal passwd
 
 # System Menu
-System	*		@Main
+System	*		show_main_menu
 System	Lock		omarchy-lock-screen
 System	Screensaver	󱄄	omarchy-launch-screensaver force
-System	Suspend	󰒲	systemctl suspend
-System	Hibernate	󰤁	systemctl hibernate
+System	Suspend	󰒲	systemctl suspend	file:~/.local/state/omarchy/toggles/suspend-on
+System	Hibernate	󰤁	systemctl hibernate	cmd:omarchy-hibernation-available
 System	Restart	󰜉	omarchy-cmd-reboot
 System	Shutdown	󰐥	omarchy-cmd-shutdown
