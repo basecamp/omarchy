@@ -9,16 +9,21 @@ hide_action_hints = true                                                    # gl
 
 [keybinds]
 quick_activate = []
+next = ["Down", "ctrl j"]
+previous = ["Up", "ctrl k"]
 
 [columns]
-symbols = 1 # providers to be queried by default
+symbols = 3 # providers to be queried by default
 
 [providers]
 max_results = 256 # 256 should be enough for everyone
 default = [
+  "menus:omarchymenu_main",
+  "menus:omarchymenu_global",
   "desktopapplications",
   "websearch",
 ]
+empty = ["menus:omarchymenu_main"]
 
 [[providers.prefixes]]
 prefix = "/"

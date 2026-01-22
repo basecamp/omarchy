@@ -12,4 +12,4 @@ if ! pgrep -f "walker --gapplication-service" > /dev/null; then
   setsid uwsm-app -- walker --gapplication-service &
 fi
 
-exec walker --width 644 --maxheight 300 --minheight 300 "$@"
+exec walker --width 644 --maxheight 530 --minheight 300 "$@"

@@ -20,6 +20,8 @@ When = PostTransaction
 Exec = $OMARCHY_PATH/bin/omarchy-restart-walker
 EOF
 
-# Link the visual theme menu config
+# Link elephant menu plugins
 mkdir -p ~/.config/elephant/menus
 ln -snf $OMARCHY_PATH/default/elephant/omarchy_themes.lua ~/.config/elephant/menus/omarchy_themes.lua
+ln -snf $OMARCHY_PATH/default/elephant/omarchy_main_menu.lua ~/.config/elephant/menus/omarchy_main_menu.lua
+ln -snf $OMARCHY_PATH/default/elephant/omarchy_menu.lua ~/.config/elephant/menus/omarchy_menu.lua

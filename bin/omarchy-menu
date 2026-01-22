@@ -44,9 +44,6 @@ install_terminal() { present_terminal "omarchy-install-terminal $1"; }
 aur_install() { present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2"; }
 aur_install_and_launch() { present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2 && setsid gtk-launch $3"; }
 
-#=============================================================================
-# Condition evaluation for def-based menus
-#=============================================================================
 eval_condition() {
   local cond="$1"
   [[ -z "$cond" ]] && return 0  # No condition = always show
@@ -77,9 +74,6 @@ eval_condition() {
   fi
 }
 
-#=============================================================================
-# Generic def-based menu function
-#=============================================================================
 show_menu_from_def() {
   local menu_name="$1"
   local prompt="${2:-$menu_name}"
@@ -106,9 +100,6 @@ show_menu_from_def() {
   fi
 }
 
-#=============================================================================
-# Def-based menu wrappers
-#=============================================================================
 show_main_menu() { omarchy-launch-walker -p "Go…"; }
 show_learn_menu() { show_menu_from_def "Learn" "Learn"; }
 show_trigger_menu() { show_menu_from_def "Trigger" "Trigger"; }
@@ -146,9 +137,6 @@ show_setup_menu() { show_menu_from_def "Setup" "Setup"; }
 show_setup_system_menu() { show_menu_from_def "SystemSleep" "System Sleep"; }
 show_system_menu() { show_menu_from_def "System" "System"; }
 
-#=============================================================================
-# Dynamic/conditional menus (kept intact)
-#=============================================================================
 show_theme_menu() {
   omarchy-launch-walker -m menus:omarchythemes --width 800 --minheight 400
 }
@@ -213,9 +201,6 @@ show_setup_power_menu() {
   fi
 }
 
-#=============================================================================
-# Navigation and entry point
-#=============================================================================
 go_to_menu() {
   case "${1,,}" in
   *apps*) walker -p "Launch…" ;;
