@@ -83,8 +83,8 @@ Setup	Bluetooth	󰂯	omarchy-launch-bluetooth
 Setup	Power Profile	󱐋	@Power
 Setup	System Sleep		@SystemSleep
 Setup	Monitors	󰍹	open_in_editor ~/.config/hypr/monitors.conf
-Setup	Keybindings		open_in_editor ~/.config/hypr/bindings.conf
-Setup	Input		open_in_editor ~/.config/hypr/input.conf
+Setup	Keybindings		open_in_editor ~/.config/hypr/bindings.conf
+Setup	Input		open_in_editor ~/.config/hypr/input.conf
 
 # Power Menu (dynamic)
 Power	*		@Setup
@@ -263,7 +263,7 @@ RemoveElixir	Phoenix		present_terminal "omarchy-remove-dev-env phoenix"
 
 # Update Menu
 Update	*		@Main
-Update	 Omarchy	 Omarchy	present_terminal omarchy-update
+Update	Omarchy 	  	present_terminal omarchy-update
 Update	Channel	󰔫	@Channel
 Update	Config		@UpdateConfig
 Update	Extra Themes	󰸌	present_terminal omarchy-theme-update
@@ -276,9 +276,9 @@ Update	Time		present_terminal omarchy-update-time
 
 # Channel Menu
 Channel	*		@Update
-Channel	🟢 Stable	🟢 Stable	present_terminal "omarchy-channel-set stable"
-Channel	🟡 Edge	🟡 Edge	present_terminal "omarchy-channel-set edge"
-Channel	🔴 Dev	🔴 Dev	present_terminal "omarchy-channel-set dev"
+Channel	Stable	🟢	present_terminal "omarchy-channel-set stable"
+Channel	Edge	🟡	present_terminal "omarchy-channel-set edge"
+Channel	Dev	🔴	present_terminal "omarchy-channel-set dev"
 
 # Process Menu
 Process	*		@Update
@@ -312,7 +312,7 @@ Password	User		present_terminal passwd
 
 # System Menu
 System	*		@Main
-System	Lock		omarchy-lock-screen
+System	Lock		omarchy-lock-screen
 System	Screensaver	󱄄	omarchy-launch-screensaver force
 System	Suspend	󰒲	systemctl suspend
 System	Hibernate	󰤁	systemctl hibernate
