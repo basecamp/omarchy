@@ -41,6 +41,10 @@ get_recorder_process_name() {
   fi
 }
 
+getaudiooutput() {
+  pactl list sources | grep 'Name' | grep 'monitor' | cut -d ' ' -f2
+}
+
 cleanup_webcam() {
   pkill -f "WebcamOverlay" 2>/dev/null
 }
@@ -102,7 +106,11 @@ start_screenrecording() {
   if [[ "$process_name" == "wf-recorder" ]]; then
     # ARM or VM: use wf-recorder (no GPU hardware encoding available)
     local audio_args=""
-    if [[ "$DESKTOP_AUDIO" == "true" ]] || [[ "$MICROPHONE_AUDIO" == "true" ]]; then
+    if [[ "$DESKTOP_AUDIO" == "true" ]]; then
+      # Desktop audio requires specifying the monitor source explicitly
+      audio_args="--audio=$(getaudiooutput)"
+    elif [[ "$MICROPHONE_AUDIO" == "true" ]]; then
+      # Microphone-only uses default input
       audio_args="--audio"
     fi
 
