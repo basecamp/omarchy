@@ -59,6 +59,14 @@ if [[ -n "$OMARCHY_ARM" ]] || [[ -n "$ASAHI_ALARM" ]] || [[ -n "$OMARCHY_VIRTUAL
   export GUM_CHOOSE_SHOW_HELP=false
 fi
 
+# SKIP_ALL sets all skip flags except SKIP_YARU (for faster testing)
+if [[ -n "${SKIP_ALL:-}" ]]; then
+  export SKIP_OBS=true
+  export SKIP_PINTA=true
+  export SKIP_GHOSTTY=true
+  export SKIP_SIGNAL_DESKTOP_BETA=true
+fi
+
 # Install
 source "$OMARCHY_INSTALL/helpers/all.sh"
 source "$OMARCHY_INSTALL/preflight/all.sh"
