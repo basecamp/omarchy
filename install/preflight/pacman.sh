@@ -46,14 +46,18 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
     echo "MIRROR DOWN SIMULATION ENABLED - Forcing database sync to fail"
     sync_success=false
   else
-    while [ $attempt -le $max_attempts ]; do
+    # Ensure log file is writable (may have been created by root in previous run)
+  sync_log="/tmp/pacman-sync-$$.log"
+
+  while [ $attempt -le $max_attempts ]; do
       echo "Database sync attempt $attempt/$max_attempts..."
 
-      if sudo pacman -Sy --noconfirm 2>&1 | tee /tmp/pacman-sync.log; then
+      if sudo pacman -Sy --noconfirm 2>&1 | tee "$sync_log"; then
         # Check if sync actually succeeded (not just returned 0)
-        if ! grep -q "failed to synchronize\|failed retrieving file\|Unrecognized archive format" /tmp/pacman-sync.log; then
+        if ! grep -q "failed to synchronize\|failed retrieving file\|Unrecognized archive format" "$sync_log"; then
           echo "Database sync successful"
           sync_success=true
+          rm -f "$sync_log"
           break
         fi
       fi
@@ -72,6 +76,7 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
   fi
 
   if [ "$sync_success" = false ]; then
+    rm -f "$sync_log"
     echo "ERROR: Failed to sync package databases after $max_attempts attempts"
     echo "This may be due to slow/unreachable mirrors. Check network connection."
     exit 1
