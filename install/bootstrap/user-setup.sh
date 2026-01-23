@@ -331,16 +331,21 @@ if [[ $EUID -eq 0 ]]; then
     echo "  - Sudo installed successfully"
   fi
 
+  # Handle both formats: %wheel ALL=(ALL:ALL) ALL and %wheel ALL=(ALL) ALL
   if grep -q "^# %wheel ALL=(ALL:ALL) ALL" /etc/sudoers; then
     sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
     echo "  - Enabled sudo for wheel group"
-  elif ! grep -q "^%wheel ALL=(ALL:ALL) ALL" /etc/sudoers; then
+  elif grep -q "^# %wheel ALL=(ALL) ALL" /etc/sudoers; then
+    sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers
+    echo "  - Enabled sudo for wheel group"
+  elif ! grep -qE "^%wheel ALL=\(ALL(:ALL)?\) ALL" /etc/sudoers; then
     echo "%wheel ALL=(ALL:ALL) ALL" >>/etc/sudoers
     echo "  - Added wheel group to sudoers"
   fi
 
   # Temporarily allow passwordless sudo for the installation
   echo "$username ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/omarchy-temp
+  chmod 440 /etc/sudoers.d/omarchy-temp
   echo "  - Enabled temporary passwordless sudo for installation"
 
   # Re-run the boot script as the new user to continue installation
