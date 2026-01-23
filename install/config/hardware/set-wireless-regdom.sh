@@ -24,9 +24,9 @@ if [[ ! -n ${WIRELESS_REGDOM} ]]; then
       # Append it to the wireless-regdom conf file that is used at boot
       echo "WIRELESS_REGDOM=\"$COUNTRY\"" | sudo tee -a /etc/conf.d/wireless-regdom >/dev/null
 
-      # Also set it one off now
+      # Also set it one off now (may fail if WiFi driver not loaded yet, that's OK)
       if command -v iw &>/dev/null; then
-        sudo iw reg set ${COUNTRY}
+        sudo iw reg set ${COUNTRY} 2>/dev/null || true
       fi
     fi
   fi
