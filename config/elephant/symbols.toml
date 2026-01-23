@@ -1,0 +1,2 @@
+command = 'wl-copy && hyprctl dispatch sendshortcut "SHIFT, Insert,"'
+
