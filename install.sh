@@ -27,6 +27,13 @@ if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
   if uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
     export ASAHI_ALARM=true
   fi
+
+  # Detect ARM bare metal hardware (Pi, Pine64, Rock64, BeagleBone, etc.)
+  # All ARM SBCs have device tree model files; VMs typically don't
+  # This prevents false positives from systemd-detect-virt on real hardware
+  if [[ -f /sys/firmware/devicetree/base/model ]]; then
+    export OMARCHY_ARM_BARE_METAL=true
+  fi
 fi
 
 # Detect virtualization
@@ -34,9 +41,8 @@ if command -v systemd-detect-virt &>/dev/null; then
   virt_type=$(systemd-detect-virt || echo "none")
 
   # Set universal virtualization flag for any VM
-  # Exception: Asahi is always bare metal, even if systemd-detect-virt reports otherwise
-  # (Apple Silicon can trigger false positives due to hypervisor-like characteristics)
-  if [[ "$virt_type" != "none" ]] && [[ -z "$ASAHI_ALARM" ]]; then
+  # Exception: ARM bare metal (Asahi, Pi, other SBCs) triggers false positives in systemd-detect-virt
+  if [[ "$virt_type" != "none" ]] && [[ -z "$OMARCHY_ARM_BARE_METAL" ]]; then
     export OMARCHY_VIRTUALIZATION=true
   fi
 
@@ -47,8 +53,8 @@ if command -v systemd-detect-virt &>/dev/null; then
   fi
 
   # Enable software rendering for any VM except Parallels (which has good GPU virtualization)
-  # Exception: Asahi is bare metal, don't enable software rendering
-  if [[ "$virt_type" != "none" && "$virt_type" != "parallels" ]] && [[ -z "$ASAHI_ALARM" ]]; then
+  # ARM bare metal has real GPUs, don't force software rendering
+  if [[ "$virt_type" != "none" && "$virt_type" != "parallels" ]] && [[ -z "$OMARCHY_ARM_BARE_METAL" ]]; then
     export OMARCHY_VM_SOFTWARE_RENDERING=true
   fi
 fi
