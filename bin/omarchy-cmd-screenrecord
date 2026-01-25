@@ -6,10 +6,7 @@
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
 PIDFILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/omarchy-screenrecord.pid"
 
-if [[ ! -d "$OUTPUT_DIR" ]]; then
-  @notify-send@ "Screen recording directory does not exist: $OUTPUT_DIR" -u critical -t 3000
-  exit 1
-fi
+mkdir -p "$OUTPUT_DIR"
 
 DESKTOP_AUDIO="false"
 MICROPHONE_AUDIO="false"
@@ -99,10 +96,10 @@ stop_screenrecording() {
       if kill -0 "$pid" 2>/dev/null; then
         kill -9 "$pid"
         cleanup_webcam
-        notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
+        @notify-send@ "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
       else
         cleanup_webcam
-        notify-send "Screen recording saved" "$recording_file" -t 2000
+        @notify-send@ "Screen recording saved" "$recording_file" -t 2000
       fi
     else
       cleanup_webcam
