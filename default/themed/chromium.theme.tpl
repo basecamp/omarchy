@@ -1,1 +1,1 @@
-{{ background_rgb }}
+@background_rgb@

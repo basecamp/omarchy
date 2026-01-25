@@ -1,12 +1,12 @@
-general.import = [ "~/.config/omarchy/current/theme/alacritty.toml" ]
+general.import = ["@themeFile@"]
 
 [env]
 TERM = "xterm-256color"
 
 [font]
-normal = { family = "JetBrainsMono Nerd Font", style = "Regular" }
-bold = { family = "JetBrainsMono Nerd Font", style = "Bold" }
-italic = { family = "JetBrainsMono Nerd Font", style = "Italic" }
+normal = { family = "@font@", style = "Regular" }
+bold = { family = "@font@", style = "Bold" }
+italic = { family = "@font@", style = "Italic" }
 size = 9
 
 [window]
@@ -16,6 +16,6 @@ decorations = "None"
 
 [keyboard]
 bindings = [
-{ key = "Insert", mods = "Shift", action = "Paste" },
-{ key = "Insert", mods = "Control", action = "Copy" }
+  { key = "Insert", mods = "Shift", action = "Paste" },
+  { key = "Insert", mods = "Control", action = "Copy" },
 ]

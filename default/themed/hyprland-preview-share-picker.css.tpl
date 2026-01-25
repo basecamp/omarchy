@@ -1,12 +1,12 @@
-@define-color foreground {{ foreground }};
-@define-color background {{ background }};
-@define-color accent {{ accent }};
-@define-color muted {{ color8 }};
-@define-color card_bg {{ color0 }};
-@define-color text_dark {{ background }};
-@define-color accent_hover {{ color12 }};
-@define-color selected_tab {{ accent }};
-@define-color text {{ foreground }};
+@define-color foreground @foreground@;
+@define-color background @background@;
+@define-color accent @accent@;
+@define-color muted @color8@;
+@define-color card_bg @color0@;
+@define-color text_dark @background@;
+@define-color accent_hover @color12@;
+@define-color selected_tab @accent@;
+@define-color text @foreground@;
 
 * {
   all: unset;

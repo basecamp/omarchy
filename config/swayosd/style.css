@@ -1,4 +1,4 @@
-@import "../omarchy/current/theme/swayosd.css";
+@import "@themeCss@";
 
 window {
   border-radius: 0;
@@ -9,7 +9,7 @@ window {
 }
 
 label {
-  font-family: 'JetBrainsMono Nerd Font';
+  font-family: '@font@';
   font-size: 11pt;
 
   color: @label;
