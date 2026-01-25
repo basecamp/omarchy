@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Set the Omarchy channel, which dictates what git branch and package repository is used.
 #

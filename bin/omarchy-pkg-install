@@ -1,10 +1,9 @@
-#!/bin/bash
 
 # Show a fuzzy-finder TUI for picking new Arch and OPR packages to install.
 
 fzf_args=(
   --multi
-  --preview 'pacman -Sii {1}'
+  --preview 'nix eval --offline nixpkgs#{1}.meta --json 2>/dev/null | @jq@ -r "\"Description: \" + (.description // \"N/A\") + \"\n\nHomepage: \" + (.homepage // \"N/A\") + \"\n\nLicense: \" + (.license.spdxId // .license.shortName // \"N/A\")"'
   --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select'
   --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
@@ -14,10 +13,16 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-pkg_names=$(pacman -Slq | fzf "${fzf_args[@]}")
+pkg_names=$(stdbuf -o0 nix search --offline nixpkgs '^' 2>/dev/null |
+  @sed@ -u 's/\x1b\[[0-9;]*m//g' |
+  @awk@ '/^\* /{print $2; fflush()}' |
+  @sed@ -u 's/^legacyPackages\.[^.]*\.//' |
+  @fzf@ "${fzf_args[@]}")
 
 if [[ -n "$pkg_names" ]]; then
-  # Convert newline-separated selections to space-separated for yay
-  echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -S --noconfirm
+  # Prefix each package with nixpkgs# and run nix profile add
+  export NIXPKGS_ALLOW_UNFREE=1
+  echo "$pkg_names" | @sed@ 's/^/nixpkgs#/' | xargs nix profile add --impure
+  omarchy-restart-walker
   omarchy-show-done
 fi

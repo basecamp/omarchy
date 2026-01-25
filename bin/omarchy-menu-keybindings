@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Display Hyprland keybindings defined in your configuration using walker for an interactive search menu.
 
@@ -6,7 +5,7 @@ declare -A KEYCODE_SYM_MAP
 
 build_keymap_cache() {
   local keymap
-  keymap="$(xkbcli compile-keymap)" || {
+  keymap="$(@xkbcli@ compile-keymap)" || {
     echo "Failed to compile keymap" >&2
     return 1
   }
@@ -52,10 +51,10 @@ parse_keycodes() {
       code="${BASH_REMATCH[1]}"
 
       case "$code" in
-        272) symbol="LEFT MOUSE BUTTON" ;;
-        273) symbol="RIGHT MOUSE BUTTON" ;;
-        274) symbol="MIDDLE MOUSE BUTTON" ;;
-        *)   symbol="mouse:${code}" ;;
+      272) symbol="LEFT MOUSE BUTTON" ;;
+      273) symbol="RIGHT MOUSE BUTTON" ;;
+      274) symbol="MIDDLE MOUSE BUTTON" ;;
+      *) symbol="mouse:${code}" ;;
       esac
 
       echo "${line/mouse:${code}/$symbol}"
@@ -66,12 +65,7 @@ parse_keycodes() {
 
   if [[ "$DEBUG" == "1" ]]; then
     end=$(date +%s.%N)
-    # fall back to awk if bc is missing
-    if command -v bc >/dev/null 2>&1; then
-      elapsed=$(echo "$end - $start" | bc)
-    else
-      elapsed=$(awk -v s="$start" -v e="$end" 'BEGIN{printf "%.6f", (e - s)}')
-    fi
+    elapsed=$(echo "$end - $start" | @bc@)
     echo "[DEBUG] parse_keycodes elapsed: ${elapsed}s" >&2
   fi
 }
@@ -84,9 +78,9 @@ parse_keycodes() {
 # - Map numeric modifier key mask to a textual rendition
 # - Output comma-separated values that the parser can understand
 dynamic_bindings() {
-  hyprctl -j binds |
-    jq -r '.[] | {modmask, key, keycode, description, dispatcher, arg} | "\(.modmask),\(.key)@\(.keycode),\(.description),\(.dispatcher),\(.arg)"' |
-    sed -r \
+  @hyprctl@ -j binds |
+    @jq@ -r '.[] | {modmask, key, keycode, description, dispatcher, arg} | "\(.modmask),\(.key)@\(.keycode),\(.description),\(.dispatcher),\(.arg)"' |
+    @sed@ -r \
       -e 's/null//' \
       -e 's,~/.local/share/omarchy/bin/,,' \
       -e 's,uwsm app -- ,,' \
@@ -113,7 +107,7 @@ dynamic_bindings() {
 
 # Hardcoded bindings, like the copy-url extension and such
 static_bindings() {
-    echo "SHIFT ALT,L,Copy URL from Web App,extension,copy-url"
+  echo "SHIFT ALT,L,Copy URL from Web App,extension,copy-url"
 }
 
 # Parse and format keybindings
@@ -124,7 +118,7 @@ static_bindings() {
 # - Joins the command that the key executes.
 # - Prints everything in a nicely aligned format.
 parse_bindings() {
-  awk -F, '
+  @awk@ -F, '
 {
     # Combine the modifier and key (first two fields)
     key_combo = $1 " + " $2;
@@ -163,7 +157,7 @@ parse_bindings() {
 }
 
 prioritize_entries() {
-  awk '
+  @awk@ '
   {
     line = $0
     prio = 50
@@ -216,8 +210,8 @@ prioritize_entries() {
     # print "priority<TAB>line"
     printf "%d\t%s\n", prio, line
   }' |
-  sort -k1,1n -k2,2 |
-  cut -f2-
+    sort -k1,1n -k2,2 |
+    cut -f2-
 }
 
 output_keybindings() {
@@ -236,10 +230,10 @@ output_keybindings() {
 if [[ "$1" == "--print" || "$1" == "-p" ]]; then
   output_keybindings
 else
-  monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
+  monitor_height=$(@hyprctl@ monitors -j | @jq@ -r '.[] | select(.focused == true) | .height')
   menu_height=$((monitor_height * 40 / 100))
 
   output_keybindings |
-    walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+    @walker@ --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
 fi
 

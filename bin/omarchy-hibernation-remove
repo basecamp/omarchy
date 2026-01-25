@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Removes hibernation setup: disables swap, removes swapfile, removes fstab entry,
 # removes resume hook, and removes suspend-then-hibernate configuration.

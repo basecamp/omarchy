@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Returns true if any of the commands passed in as arguments are missing on the system.
 

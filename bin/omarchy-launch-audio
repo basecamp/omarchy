@@ -1,5 +1,4 @@
-#!/bin/bash
 
 # Launch the Omarchy audio controls TUI (provided by wiremix).
 
-omarchy-launch-or-focus-tui wiremix
+omarchy-launch-or-focus-tui @wiremix@

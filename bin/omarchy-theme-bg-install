@@ -1,4 +1,3 @@
-#!/bin/bash
 
 CURRENT_THEME_NAME=$(cat "$HOME/.config/omarchy/current/theme.name")
 THEME_USER_BACKGROUNDS="$HOME/.config/omarchy/backgrounds/$CURRENT_THEME_NAME"

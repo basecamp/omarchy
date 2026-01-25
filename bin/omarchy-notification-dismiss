@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Dismiss a mako notification on the basis of its summary. Used by the first-run notifications to dismiss them after clicking for action.
 
@@ -8,8 +7,8 @@ if (($# == 0)); then
 fi
 
 # Find the first notification whose 'summary' matches the regex in $1
-notification_id=$(makoctl list | grep -F "$1" | head -n1 | sed -E 's/^Notification ([0-9]+):.*/\1/')
+notification_id=$(@makoctl@ list | @grep@ -F "$1" | head -n1 | @sed@ -E 's/^Notification ([0-9]+):.*/\1/')
 
 if [[ -n $notification_id ]]; then
-  makoctl dismiss -n $notification_id
+  @makoctl@ dismiss -n $notification_id
 fi

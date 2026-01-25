@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Install and start the Dropbox service. Must then be authenticated via the web.
 

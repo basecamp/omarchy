@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Install one of the supported databases in a Docker container with the suitable development options.
 # Usually called via Install > Development > Docker DB from the Omarchy Menu.

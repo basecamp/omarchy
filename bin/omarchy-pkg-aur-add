@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Add the named packages to the system from the AUR if they're missing. Returns false if it couldn't be done.
 

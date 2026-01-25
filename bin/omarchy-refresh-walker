@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Overwrite the user configs for the Walker application launcher (which also powers the Omarchy Menu) and restart the services.
 

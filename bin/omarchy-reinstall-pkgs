@@ -1,4 +1,3 @@
-#!/bin/bash
 set -e
 
 # Reinstall all default Omarchy packages from the stable channel and downgrade any packages that are too new.

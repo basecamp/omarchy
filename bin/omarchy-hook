@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Run a named hook, like post-update (available in ~/.config/omarchy/hooks/post-update).
 

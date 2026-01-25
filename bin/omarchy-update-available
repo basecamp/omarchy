@@ -1,4 +1,7 @@
-#!/bin/bash
+
+# On NixOS, updates are managed via flake inputs, not git tags.
+# TODO: Implement flake input update checking
+exit 1
 
 # Get remote tag
 latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)

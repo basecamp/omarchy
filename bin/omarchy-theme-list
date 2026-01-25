@@ -1,4 +1,3 @@
-#!/bin/bash
 
 {
   find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -printf '%f\n'

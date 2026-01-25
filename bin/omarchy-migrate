@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Run all pending migrations to bring the system in line with the installed version.
 

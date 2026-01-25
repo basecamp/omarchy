@@ -1,4 +1,3 @@
-#!/bin/bash
 
 CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
 

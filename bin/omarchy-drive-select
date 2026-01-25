@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Select a drive from a list with info that includes space and brand. Used by omarchy-drive-set-password.
 

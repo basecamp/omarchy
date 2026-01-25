@@ -1,4 +1,3 @@
-#!/bin/bash
 
 STATE_DIR="$HOME/.local/state/omarchy"
 mkdir -p "$STATE_DIR"
@@ -18,5 +17,5 @@ fi
 
 case "$COMMAND" in
 set) touch "$STATE_DIR/$STATE_NAME" ;;
-clear) find "$STATE_DIR" -maxdepth 1 -type f -name "$STATE_NAME" -delete ;;
+clear) @find@ "$STATE_DIR" -maxdepth 1 -type f -name "$STATE_NAME" -delete ;;
 esac

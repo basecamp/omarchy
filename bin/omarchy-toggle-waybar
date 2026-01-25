@@ -1,7 +1,6 @@
-#!/bin/bash
 
-if pgrep -x waybar >/dev/null; then
-  pkill -x waybar
+if @systemctl@ --user is-active waybar.service >/dev/null 2>&1; then
+  @systemctl@ --user stop waybar.service
 else
-  uwsm-app -- waybar >/dev/null 2>&1 &
+  @systemctl@ --user start waybar.service
 fi

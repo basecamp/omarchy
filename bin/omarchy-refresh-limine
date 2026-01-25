@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Overwrite the user config for the Limine bootloader and rebuild it.
 

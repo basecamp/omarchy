@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Install and launch Steam after first letting the user pick the correct grahics card drivers.
 

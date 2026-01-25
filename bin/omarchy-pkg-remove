@@ -1,23 +1,26 @@
-#!/bin/bash
 
 # Show a fuzzy-finder TUI for picking packages installed on the system to be removed.
 
+preview_cmd='nix eval --offline nixpkgs#{1}.meta --json 2>/dev/null | @jq@ -r "\"Description: \" + (.description // \"N/A\") + \"\n\nHomepage: \" + (.homepage // \"N/A\")"'
+
 fzf_args=(
   --multi
-  --preview 'yay -Qi {1}'
-  --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select'
+  --preview "$preview_cmd"
+  --preview-label='alt-p: toggle preview, alt-j/k: scroll, tab: multi-select'
   --preview-label-pos='bottom'
-  --preview-window 'down:65%:wrap'
+  --preview-window 'down:40%:wrap'
   --bind 'alt-p:toggle-preview'
   --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
   --bind 'alt-k:preview-up,alt-j:preview-down'
   --color 'pointer:red,marker:red'
 )
 
-pkg_names=$(yay -Qqe | fzf "${fzf_args[@]}")
+pkg_names=$(nix profile list --json |
+  @jq@ -r '.elements | keys[]' |
+  @fzf@ "${fzf_args[@]}")
 
 if [[ -n "$pkg_names" ]]; then
-  # Convert newline-separated selections to space-separated for yay
-  echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -Rns --noconfirm
+  echo "$pkg_names" | tr '\n' ' ' | xargs nix profile remove
+  omarchy-restart-walker
   omarchy-show-done
 fi

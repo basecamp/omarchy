@@ -1,4 +1,3 @@
-#!/bin/bash
 set -e
 
 # Attempt to reinstall all default Omarchy packages and reset all the default configs.

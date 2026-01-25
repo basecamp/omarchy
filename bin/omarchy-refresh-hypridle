@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Overwrite the user config for hypridle with the Omarchy default and restart the service.
 

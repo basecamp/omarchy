@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Copies the named config from ~/.local/share/omarchy/config/X/Y/Z -> ~/.config/X/Y/Z.
 # If the config already exists, a backup of the existing will be taken as .bak.TIMESTAMP.

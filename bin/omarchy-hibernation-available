@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Check if hibernation is supported
 if [[ ! -f /sys/power/image_size ]]; then

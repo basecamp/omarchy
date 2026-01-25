@@ -1,6 +1,17 @@
-#!/bin/bash
 
-timezone=$(timedatectl list-timezones | gum filter --height 20 --header "Set timezone") || exit 1
-sudo timedatectl set-timezone "$timezone"
-echo "Timezone is now set to $timezone"
-omarchy-restart-waybar
+timezone=$(timedatectl list-timezones | @gum@ filter --height 20 --header "Set timezone") || exit 1
+
+# Update configuration file
+if [ -f "@CONFIG_FILE@" ]; then
+  @sed@ -i "s|^[[:space:]]*time\.timeZone[[:space:]]*=[[:space:]]*\".*\";|  time.timeZone = \"$timezone\";|" "@CONFIG_FILE@"
+  echo "Configuration updated to $timezone."
+  if @gum@ confirm "Do you want to rebuild the system now?"; then
+    nh os build || exit 1
+
+    echo "Timezone is now set to $timezone"
+    omarchy-restart-waybar
+  fi
+else
+  echo "Error: Could not find @CONFIG_FILE@"
+  exit 1
+fi

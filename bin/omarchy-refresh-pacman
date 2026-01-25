@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Overwrite the package configuration for /etc/pacman with the Omarchy default of using its dedicated mirrors and repositories, then update all packages.
 # This is used after switching between Omarchy release channels to ensure the right packages for the right channel are available.

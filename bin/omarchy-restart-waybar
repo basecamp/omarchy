@@ -1,3 +1,2 @@
-#!/bin/bash
 
-omarchy-restart-app waybar
+@systemctl@ --user restart waybar.service

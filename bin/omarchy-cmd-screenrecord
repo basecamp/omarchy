@@ -1,13 +1,13 @@
-#!/bin/bash
 
 # Start and stop a screenrecording, which will be saved to ~/Videos by default.
 # Alternative location can be set via OMARCHY_SCREENRECORD_DIR or XDG_VIDEOS_DIR ENVs.
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+PIDFILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/omarchy-screenrecord.pid"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
-  notify-send "Screen recording directory does not exist: $OUTPUT_DIR" -u critical -t 3000
+  @notify-send@ "Screen recording directory does not exist: $OUTPUT_DIR" -u critical -t 3000
   exit 1
 fi
 
@@ -18,10 +18,10 @@ STOP_RECORDING="false"
 
 for arg in "$@"; do
   case "$arg" in
-    --with-desktop-audio) DESKTOP_AUDIO="true" ;;
-    --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
-    --with-webcam) WEBCAM="true" ;;
-    --stop-recording) STOP_RECORDING="true"
+  --with-desktop-audio) DESKTOP_AUDIO="true" ;;
+  --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
+  --with-webcam) WEBCAM="true" ;;
+  --stop-recording) STOP_RECORDING="true" ;;
   esac
 done
 
@@ -33,7 +33,7 @@ start_webcam_overlay() {
   cleanup_webcam
 
   # Get monitor scale
-  local scale=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .scale')
+  local scale=$(@hyprctl@ monitors -j | @jq@ -r '.[] | select(.focused == true) | .scale')
 
   # Target width (base 360px, scaled to monitor)
   local target_width=$(awk "BEGIN {printf \"%.0f\", 360 * $scale}")
@@ -41,7 +41,7 @@ start_webcam_overlay() {
   # Try preferred 16:9 resolutions in order, use first available
   local preferred_resolutions=("640x360" "1280x720" "1920x1080")
   local video_size_arg=""
-  local available_formats=$(v4l2-ctl --list-formats-ext -d /dev/video0 2>/dev/null)
+  local available_formats=$(@v4l2-ctl@ --list-formats-ext -d /dev/video0 2>/dev/null)
 
   for resolution in "${preferred_resolutions[@]}"; do
     if echo "$available_formats" | grep -q "$resolution"; then
@@ -50,7 +50,7 @@ start_webcam_overlay() {
     fi
   done
 
-  ffplay -f v4l2 $video_size_arg -framerate 30 /dev/video0 \
+  @ffplay@ -f v4l2 $video_size_arg -framerate 30 /dev/video0 \
     -vf "scale=${target_width}:-1" \
     -window_title "WebcamOverlay" \
     -noborder \
@@ -75,27 +75,41 @@ start_screenrecording() {
 
   [[ -n "$audio_devices" ]] && audio_args+="-a $audio_devices"
 
-  gpu-screen-recorder -w portal -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
+  @gpu-screen-recorder@ -w portal -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
+  echo $! > "$PIDFILE"
+  echo "$filename" >> "$PIDFILE"
   toggle_screenrecording_indicator
 }
 
 stop_screenrecording() {
-  pkill -SIGINT -f "^gpu-screen-recorder"  # SIGINT required to save video properly
+  if [[ -f "$PIDFILE" ]]; then
+    local pid=$(head -n 1 "$PIDFILE")
+    local recording_file=$(tail -n 1 "$PIDFILE")
 
-  # Wait a maximum of 5 seconds to finish before hard killing
-  local count=0
-  while pgrep -f "^gpu-screen-recorder" >/dev/null && [ $count -lt 50 ]; do
-    sleep 0.1
-    count=$((count + 1))
-  done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -SIGINT "$pid" # SIGINT required to save video properly
 
-  if pgrep -f "^gpu-screen-recorder" >/dev/null; then
-    pkill -9 -f "^gpu-screen-recorder"
-    cleanup_webcam
-    notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
+      # Wait a maximum of 5 seconds to finish before hard killing
+      local count=0
+      while kill -0 "$pid" 2>/dev/null && [ $count -lt 50 ]; do
+        sleep 0.1
+        count=$((count + 1))
+      done
+
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid"
+        cleanup_webcam
+        notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
+      else
+        cleanup_webcam
+        notify-send "Screen recording saved" "$recording_file" -t 2000
+      fi
+    else
+      cleanup_webcam
+    fi
+    rm -f "$PIDFILE"
   else
     cleanup_webcam
-    notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
   fi
   toggle_screenrecording_indicator
 }
@@ -105,15 +119,14 @@ toggle_screenrecording_indicator() {
 }
 
 screenrecording_active() {
-  pgrep -f "^gpu-screen-recorder" >/dev/null || pgrep -f "WebcamOverlay" >/dev/null
+  if [[ -f "$PIDFILE" ]] && kill -0 $(head -n 1 "$PIDFILE") 2>/dev/null; then
+    return 0
+  fi
+  pgrep -f "WebcamOverlay" >/dev/null
 }
 
 if screenrecording_active; then
-  if pgrep -f "WebcamOverlay" >/dev/null && ! pgrep -f "^gpu-screen-recorder" >/dev/null; then
-    cleanup_webcam
-  else
-    stop_screenrecording
-  fi
+  stop_screenrecording
 elif [[ "$STOP_RECORDING" == "false" ]]; then
   [[ "$WEBCAM" == "true" ]] && start_webcam_overlay
 

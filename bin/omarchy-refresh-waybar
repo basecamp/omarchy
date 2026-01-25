@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Overwrite the user configs for the Waybar menu bar with the Omarchy defaults and restart the service.
 

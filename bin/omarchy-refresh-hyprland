@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Overwrite all the user configs in ~/.config/hypr with the Omarchy defaults.
 

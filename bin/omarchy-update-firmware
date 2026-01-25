@@ -1,4 +1,3 @@
-#!/bin/bash
 
 set -e
 echo -e "\e[32mUpdate Firmware\e[0m"

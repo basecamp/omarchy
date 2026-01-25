@@ -1,11 +1,5 @@
-#!/bin/bash
 
 # Launch the Omarchy screensaver in the default terminal on the system with the correct font configuration.
-
-# Exit early if we don't have the tte show
-if ! command -v tte &>/dev/null; then
-  exit 1
-fi
 
 # Exit early if screensave is already running
 pgrep -f org.omarchy.screensaver && exit 0
@@ -16,39 +10,39 @@ if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]
 fi
 
 # Silently quit Walker on overlay
-walker -q
+@walker@ --close
 
-focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
-terminal=$(xdg-terminal-exec --print-id)
+focused=$(@hyprctl@ monitors -j | @jq@ -r '.[] | select(.focused == true).name')
+terminal=$(@xdg-terminal-exec@ --print-id)
 
-for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
-  hyprctl dispatch focusmonitor $m
+for m in $(@hyprctl@ monitors -j | @jq@ -r '.[] | .name'); do
+  @hyprctl@ dispatch focusmonitor $m
 
   case $terminal in
   *Alacritty*)
-    hyprctl dispatch exec -- \
+    @hyprctl@ dispatch exec -- \
       alacritty --class=org.omarchy.screensaver \
-      --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
+      --config-file @alacrittyConf@ \
       -e omarchy-cmd-screensaver
     ;;
   *ghostty*)
-    hyprctl dispatch exec -- \
+    @hyprctl@ dispatch exec -- \
       ghostty --class=org.omarchy.screensaver \
-      --config-file=~/.local/share/omarchy/default/ghostty/screensaver \
+      --config-file=@ghosttyConf@ \
       --font-size=18 \
       -e omarchy-cmd-screensaver
     ;;
   *kitty*)
-    hyprctl dispatch exec -- \
+    @hyprctl@ dispatch exec -- \
       kitty --class=org.omarchy.screensaver \
       --override font_size=18 \
       --override window_padding_width=0 \
       -e omarchy-cmd-screensaver
     ;;
   *)
-    notify-send "✋  Screensaver only runs in Alacritty, Ghostty, or Kitty"
+    @notify-send@ "✋  Screensaver only runs in Alacritty, Ghostty, or Kitty"
     ;;
   esac
 done
 
-hyprctl dispatch focusmonitor $focused
+@hyprctl@ dispatch focusmonitor $focused

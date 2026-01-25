@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Returns drive information about a given volumne, like /dev/nvme0, which is used by omarchy-drive-select.
 

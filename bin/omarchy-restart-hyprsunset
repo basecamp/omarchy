@@ -1,3 +1,2 @@
-#!/bin/bash
 
-omarchy-restart-app hyprsunset
+systemctl restart --user hyprsunset.service

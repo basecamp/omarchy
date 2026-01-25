@@ -1,4 +1,3 @@
-#!/bin/bash
 set -e
 
 # Used by Voxtype waybar module to open config on right click

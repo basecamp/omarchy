@@ -1,4 +1,3 @@
-#!/bin/bash
 
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-set <theme-name>"

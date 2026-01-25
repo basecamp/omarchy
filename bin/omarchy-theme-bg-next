@@ -1,19 +1,19 @@
-#!/bin/bash
 
 # Cycles through the background images available
 
-THEME_NAME=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
-THEME_BACKGROUNDS_PATH="$HOME/.config/omarchy/current/theme/backgrounds/"
+THEME_NAME=@theme@
+THEME_BACKGROUNDS_PATH="@backgroundsDir@"
+# TODO: nixify custom backgrounds
 USER_BACKGROUNDS_PATH="$HOME/.config/omarchy/backgrounds/$THEME_NAME/"
 CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
 
-mapfile -d '' -t BACKGROUNDS < <(find -L "$USER_BACKGROUNDS_PATH" "$THEME_BACKGROUNDS_PATH" -maxdepth 1 -type f -print0 2>/dev/null | sort -z)
+mapfile -d '' -t BACKGROUNDS < <(@find@ -L "$USER_BACKGROUNDS_PATH" "$THEME_BACKGROUNDS_PATH" -maxdepth 1 -type f -print0 2>/dev/null | sort -z)
 TOTAL=${#BACKGROUNDS[@]}
 
 if [[ $TOTAL -eq 0 ]]; then
-  notify-send "No background was found for theme" -t 2000
-  pkill -x swaybg
-  setsid uwsm-app -- swaybg --color '#000000' >/dev/null 2>&1 &
+  @notify-send@ "No background was found for theme" -t 2000
+  @pkill@ -x .swaybg-wrapped
+  setsid @uwsm-app@ -- @swaybg@ --color '#000000' >/dev/null 2>&1 &
 else
   # Get current background from symlink
   if [[ -L "$CURRENT_BACKGROUND_LINK" ]]; then
@@ -45,6 +45,6 @@ else
   ln -nsf "$NEW_BACKGROUND" "$CURRENT_BACKGROUND_LINK"
 
   # Relaunch swaybg
-  pkill -x swaybg
-  setsid uwsm-app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
+  @pkill@ -x .swaybg-wrapped
+  setsid @uwsm-app@ -- @swaybg@ -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
 fi

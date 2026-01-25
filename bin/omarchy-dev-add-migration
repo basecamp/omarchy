@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Creates a new Omarchy migration named after the unix timestamp of the last commit.
 # Only intended for Omarchy developers.

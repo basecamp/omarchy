@@ -1,4 +1,3 @@
-#!/bin/bash
 
 if grep -q "https://stable-mirror.omarchy.org/" /etc/pacman.d/mirrorlist; then
   mirror="stable"

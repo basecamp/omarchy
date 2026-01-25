@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Show a fuzzy-finder TUI for picking new AUR packages to install.
 

@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Allow Chromium to sign in to Google accounts by adding the correct
 # oauth client id and secret to ~/.config/chromium-flags.conf.

@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # No-op now that omarchy-update-perform is responsible for idle management.
 # But this file can't be removed since it was referenced in old omarchy-update files,

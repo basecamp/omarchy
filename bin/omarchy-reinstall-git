@@ -1,4 +1,3 @@
-#!/bin/bash
 set -e
 
 # Reinstall the Omarchy configuration directory from the git source.

@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Remove all the named packages from the system if they're installed (otherwise ignore).
 

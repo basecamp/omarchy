@@ -1,4 +1,3 @@
-#!/bin/bash
 
 THEME_NAME_PATH="$HOME/.config/omarchy/current/theme.name"
 

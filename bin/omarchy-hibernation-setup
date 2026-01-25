@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Creates a swap file in the btrfs subvolume, adds the swap file to /etc/fstab,
 # adds a resume hook to mkinitcpio, and configures suspend-then-hibernate.

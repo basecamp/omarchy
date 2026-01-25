@@ -1,8 +1,5 @@
-#!/bin/bash
 
 # Launch the Omarchy Menu or takes a parameter to jump straight to a submenu.
-
-export PATH="$HOME/.local/share/omarchy/bin:$PATH"
 
 # Set to true when going directly to a submenu, so we can exit directly
 BACK_TO_EXIT=false
@@ -39,7 +36,7 @@ menu() {
 }
 
 terminal() {
-  xdg-terminal-exec --app-id=org.omarchy.terminal "$@"
+  @xdg-terminal-exec@ --app-id=org.omarchy.terminal "$@"
 }
 
 present_terminal() {
@@ -47,7 +44,7 @@ present_terminal() {
 }
 
 open_in_editor() {
-  notify-send "Editing config file" "$1"
+  @notify-send@ "Editing config file" "$1"
   omarchy-launch-editor "$1"
 }
 
@@ -76,12 +73,12 @@ aur_install_and_launch() {
 }
 
 show_learn_menu() {
-  case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n󰣇  Arch\n  Neovim\n󱆃  Bash") in
+  case $(menu "Learn" "  Keybindings\n  Omarchy\n  Hyprland\n  Nix\n  Neovim\n󱆃  Fish") in
   *Keybindings*) omarchy-menu-keybindings ;;
   *Omarchy*) omarchy-launch-webapp "https://learn.omacom.io/2/the-omarchy-manual" ;;
   *Hyprland*) omarchy-launch-webapp "https://wiki.hypr.land/" ;;
-  *Arch*) omarchy-launch-webapp "https://wiki.archlinux.org/title/Main_page" ;;
-  *Bash*) omarchy-launch-webapp "https://devhints.io/bash" ;;
+  *Nix*) omarchy-launch-webapp "https://nixos.org/learn/" ;;
+  *Fish*) omarchy-launch-webapp "https://fishshell.com/docs/current" ;;
   *Neovim*) omarchy-launch-webapp "https://www.lazyvim.org/keymaps" ;;
   *) show_main_menu ;;
   esac
@@ -100,7 +97,7 @@ show_capture_menu() {
   case $(menu "Capture" "  Screenshot\n  Screenrecord\n󰃉  Color") in
   *Screenshot*) show_screenshot_menu ;;
   *Screenrecord*) show_screenrecord_menu ;;
-  *Color*) pkill hyprpicker || hyprpicker -a ;;
+  *Color*) pkill hyprpicker || @hyprpicker@ -a ;;
   *) show_trigger_menu ;;
   esac
 }
@@ -127,8 +124,8 @@ show_screenrecord_menu() {
 show_share_menu() {
   case $(menu "Share" "  Clipboard\n  File \n  Folder") in
   *Clipboard*) omarchy-cmd-share clipboard ;;
-  *File*) terminal bash -c "omarchy-cmd-share file" ;;
-  *Folder*) terminal bash -c "omarchy-cmd-share folder" ;;
+  *File*) terminal @bash@ -c "omarchy-cmd-share file" ;;
+  *Folder*) terminal @bash@ -c "omarchy-cmd-share folder" ;;
   *) back_to show_trigger_menu ;;
   esac
 }
@@ -191,12 +188,12 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
-  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
+  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(@powerprofilesctl@ get)")
 
   if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
     back_to show_setup_menu
   else
-    powerprofilesctl set "$profile"
+    @powerprofilesctl@ set "$profile"
   fi
 }
 
@@ -247,9 +244,8 @@ show_setup_system_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
+  case $(menu "Install" "  Package\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
-  *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
   *TUI*) present_terminal omarchy-tui-install ;;
   *Service*) show_install_service_menu ;;
@@ -392,7 +388,7 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "  Package\n  Web App\n  TUI\n󰵮  Development\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
@@ -539,7 +535,7 @@ show_main_menu() {
 
 go_to_menu() {
   case "${1,,}" in
-  *apps*) walker -p "Launch…" ;;
+  *apps*) @walker@ --placeholder "Launch…" ;;
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
   *share*) show_share_menu ;;

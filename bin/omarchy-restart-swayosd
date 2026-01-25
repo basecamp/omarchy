@@ -1,3 +1,4 @@
-#!/bin/bash
 
-omarchy-restart-app swayosd-server
+# omarchy-restart-app swayosd-server
+
+systemctl restart --user swayosd.service

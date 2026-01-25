@@ -1,4 +1,3 @@
-#!/bin/bash
 COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
 
 check_prerequisites() {

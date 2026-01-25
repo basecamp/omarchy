@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Returns true if all the commands passed in as arguments exit on the system.
 

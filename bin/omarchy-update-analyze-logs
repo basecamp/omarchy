@@ -1,4 +1,3 @@
-#!/bin/bash
 
 update_log="/tmp/omarchy-update.log"
 

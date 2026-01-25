@@ -1,4 +1,3 @@
-#!/bin/bash
 
 if [[ -z "$1" ]]; then
   echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure>" >&2

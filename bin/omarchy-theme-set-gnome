@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Change gnome modes
 if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then

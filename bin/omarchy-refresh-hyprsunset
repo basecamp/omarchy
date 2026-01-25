@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Overwrite the user config for hyprsunset with the Omarchy default and restart the service.
 #

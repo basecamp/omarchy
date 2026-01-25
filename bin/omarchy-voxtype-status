@@ -1,4 +1,3 @@
-#!/bin/bash
 
 if omarchy-cmd-present voxtype; then
   voxtype status --follow --extended --format json | while read -r line; do

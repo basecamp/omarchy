@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Returns true if any of the named packages are missing from the system (or false if they're all there).
 

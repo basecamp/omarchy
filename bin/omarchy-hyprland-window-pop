@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Toggle to pop-out a tile to stay fixed on a display basis.
 
@@ -20,26 +19,26 @@ height=${2:-900}
 x=${3:-}
 y=${4:-}
 
-active=$(hyprctl activewindow -j)
-pinned=$(echo "$active" | jq ".pinned")
-addr=$(echo "$active" | jq -r ".address")
+active=$(@hyprctl@ activewindow -j)
+pinned=$(echo "$active" | @jq@ ".pinned")
+addr=$(echo "$active" | @jq@ -r ".address")
 
 if [[ $pinned == "true" ]]; then
-  hyprctl -q --batch \
+  @hyprctl@ -q --batch \
     "dispatch pin address:$addr;" \
     "dispatch togglefloating address:$addr;" \
     "dispatch tagwindow -pop address:$addr;"
 elif [[ -n $addr ]]; then
-  hyprctl dispatch togglefloating address:$addr
-  hyprctl dispatch resizeactive exact $width $height address:$addr
+  @hyprctl@ dispatch togglefloating address:$addr
+  @hyprctl@ dispatch resizeactive exact $width $height address:$addr
 
   if [[ -n $x && -n $y ]]; then
-    hyprctl dispatch moveactive $x $y address:$addr
+    @hyprctl@ dispatch moveactive $x $y address:$addr
   else
-    hyprctl dispatch centerwindow address:$addr
+    @hyprctl@ dispatch centerwindow address:$addr
   fi
 
-  hyprctl -q --batch \
+  @hyprctl@ -q --batch \
     "dispatch pin address:$addr;" \
     "dispatch alterzorder top address:$addr;" \
     "dispatch tagwindow +pop address:$addr;"

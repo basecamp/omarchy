@@ -1,4 +1,3 @@
-#!/bin/bash
 
 TEMPLATES_DIR="$OMARCHY_PATH/default/themed"
 USER_TEMPLATES_DIR="$HOME/.config/omarchy/themed"

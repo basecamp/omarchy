@@ -1,16 +1,16 @@
-#!/bin/bash
 
-if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
-  gum confirm "Linux kernel has been updated. Reboot?" && omarchy-cmd-reboot
+# TODO: NixOS kernel update detection
+# if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
+#   gum confirm "Linux kernel has been updated. Reboot?" && omarchy-cmd-reboot
 
-elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
-  gum confirm "Updates require reboot. Ready?" && omarchy-cmd-reboot
+if [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
+  @gum@ confirm "Updates require reboot. Ready?" && omarchy-cmd-reboot
 fi
 
 for file in "$HOME"/.local/state/omarchy/restart-*-required; do
   if [ -f "$file" ]; then
     filename=$(basename "$file")
-    service=$(echo "$filename" | sed 's/restart-\(.*\)-required/\1/')
+    service=$(echo "$filename" | @sed@ 's/restart-\(.*\)-required/\1/')
     echo "Restarting $service"
     omarchy-state clear "$filename"
     omarchy-restart-"$service"

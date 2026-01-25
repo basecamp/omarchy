@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Returns true if the AUR is up and available.
 # Used by omarchy-update-system-pkgs to ensure the AUR is available before updating packages from it.
