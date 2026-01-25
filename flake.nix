@@ -64,6 +64,8 @@
             default = self.nixosModules.omarchy;
             omarchy = importApply ./nix/modules/nixos.nix { inherit self inputs; };
           };
+
+          stylixTheme = import ./nix/modules/stylix-theme.nix;
         };
 
         perSystem =
