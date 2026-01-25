@@ -25,3 +25,10 @@ if [[ -n $orphans ]]; then
   done
   echo
 fi
+
+# Clean package cache if paccache is available
+if command -v paccache &>/dev/null; then
+  echo -e "\e[32m\nClean package cache\e[0m"
+  paccache -rk2
+  echo
+fi
