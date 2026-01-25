@@ -25,15 +25,11 @@ sample_rate = 16000
 # Maximum recording duration in seconds (safety limit)
 max_duration_secs = 60
 
-# [audio.feedback]
-# Enable audio feedback sounds (beeps when recording starts/stops)
-# enabled = true
-#
-# Sound theme: "default", "subtle", "mechanical", or path to custom theme directory
-# theme = "default"
-#
-# Volume level (0.0 to 1.0)
-# volume = 0.7
+[audio.feedback]
+# Audio feedback sounds (beeps when recording starts/stops)
+enabled = @audioFeedbackEnabled@
+theme = "@audioFeedbackTheme@"
+volume = @audioFeedbackVolume@
 
 [whisper]
 # Model to use for transcription
@@ -41,7 +37,7 @@ max_duration_secs = 60
 # .en models are English-only but faster and more accurate for English
 # large-v3-turbo is faster than large-v3 with minimal accuracy loss (recommended for GPU)
 # Or provide absolute path to a custom .bin model file
-model = "base.en"
+model = "@whisperModel@"
 
 # Language for transcription
 # Use "en" for English, "auto" for auto-detection
