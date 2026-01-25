@@ -343,9 +343,42 @@ if [[ $EUID -eq 0 ]]; then
     echo "  - Added wheel group to sudoers"
   fi
 
+  # Remove user-specific sudo rules from /etc/sudoers that override sudoers.d
+  # Some ARM images (Arch ARM, EndeavourOS) add user rules AFTER #includedir,
+  # which override anything in sudoers.d (last match wins in sudoers)
+  if grep -qE "^${username}[[:space:]]+ALL=" /etc/sudoers; then
+    sed -i "/^${username}[[:space:]]\+ALL=/d" /etc/sudoers
+    echo "  - Removed '$username' rule from /etc/sudoers (was overriding sudoers.d)"
+  fi
+  if grep -qE "^alarm[[:space:]]+ALL=" /etc/sudoers; then
+    sed -i "/^alarm[[:space:]]\+ALL=/d" /etc/sudoers
+    echo "  - Removed 'alarm' rule from /etc/sudoers (Arch ARM default, overrides sudoers.d)"
+  fi
+
   # Temporarily allow passwordless sudo for the installation
+  # Ensure sudoers.d directory exists (should on standard Arch, but be safe)
+  mkdir -p /etc/sudoers.d
+
+  # Create the temp sudoers file
   echo "$username ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/omarchy-temp
   chmod 440 /etc/sudoers.d/omarchy-temp
+
+  # Verify the file was created and has correct syntax
+  if [ ! -f /etc/sudoers.d/omarchy-temp ]; then
+    echo "  - ERROR: Failed to create temporary sudoers file"
+    exit 1
+  fi
+
+  # Validate sudoers syntax (visudo -c checks all sudoers files)
+  if ! visudo -c -q 2>/dev/null; then
+    echo "  - ERROR: Invalid sudoers syntax, removing temp file"
+    rm -f /etc/sudoers.d/omarchy-temp
+    exit 1
+  fi
+
+  # Clear any cached sudo credentials to ensure new rules take effect
+  sudo -k 2>/dev/null || true
+
   echo "  - Enabled temporary passwordless sudo for installation"
 
   # Re-run the boot script as the new user to continue installation
