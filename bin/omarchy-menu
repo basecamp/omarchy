@@ -225,7 +225,6 @@ show_setup_menu() {
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
-  *Defaults*) show_setup_defaults_menu ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
