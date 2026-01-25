@@ -1,3 +1,9 @@
+# Disable firewalld if present (e.g., EndeavourOS default)
+if systemctl is-active --quiet firewalld 2>/dev/null; then
+  sudo systemctl stop firewalld
+  sudo systemctl disable firewalld
+fi
+
 # Allow nothing in, everything out
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
