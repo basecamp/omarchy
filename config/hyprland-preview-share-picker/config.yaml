@@ -1,7 +1,7 @@
 # paths to stylesheets on the filesystem which should be applied to the application
 #
 # relative paths are resolved relative to the location of the config file
-stylesheets: ["../omarchy/current/theme/hyprland-preview-share-picker.css"]
+stylesheets: ["@themeFile@"]
 # default page selected when the picker is opened
 default_page: windows
 
@@ -63,7 +63,7 @@ outputs:
 region:
   # command to run for region selection
   # the output needs to be in the <output>@<x>,<y>,<w>,<h> (e.g. DP-3@2789,436,756,576) format
-  command: slurp -f '%o@%x,%y,%w,%h'
+  command: @slurp@/bin/slurp -f '%o@%x,%y,%w,%h'
 
 # hide the token restore checkbox and use the default value instead
 hide_token_restore: true

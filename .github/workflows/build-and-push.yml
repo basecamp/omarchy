@@ -1,0 +1,40 @@
+name: Build and Push
+
+on:
+  push:
+    branches:
+      - nix
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    strategy:
+      matrix:
+        system: [x86_64-linux, aarch64-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install QEMU
+        if: matrix.system == 'aarch64-linux'
+        uses: docker/setup-qemu-action@v3
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            extra-platforms = aarch64-linux
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: Install Attic
+        run: nix profile install nixpkgs#attic-client
+
+      - name: Authenticate Attic
+        run: attic login omarchy https://nix-cache.codingismy11to7.us/ $ATTIC_TOKEN
+        env:
+          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
+
+      - name: Build and Push
+        run: |
+          nix build .#devShells.${{ matrix.system }}.default .#checks.${{ matrix.system }}.test-build --print-out-paths --no-link \
+            | xargs attic push omarchy

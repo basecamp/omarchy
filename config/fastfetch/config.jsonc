@@ -1,8 +1,8 @@
 {
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
   "logo": {
-    "type": "file",
-    "source": "~/.config/omarchy/branding/about.txt",
+    // "type": "file",
+    // "source": "~/.config/omarchy/branding/about.txt",
     "color": { "1": "green" },
     "padding": {
       "top": 2,
@@ -66,7 +66,7 @@
       "type": "command",
       "key": "\ue900 OS",
       "keyColor": "blue",
-      "text": "version=$(omarchy-version); echo \"Omarchy $version\""
+      "text": "version=$(omarchy-version); echo \"Omarchy/NixOS $version\""
     },
     {
       "type": "command",

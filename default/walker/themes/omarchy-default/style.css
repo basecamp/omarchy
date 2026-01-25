@@ -1,4 +1,4 @@
-@import "../../../../../../../.config/omarchy/current/theme/walker.css";
+@import "@styleImport@";
 
 * {
   all: unset;
