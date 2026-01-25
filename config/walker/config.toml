@@ -10,6 +10,11 @@ hide_action_hints = true                                                    # gl
 [keybinds]
 quick_activate = []
 
+next = ["Down", "ctrl j"]
+down = ["Down", "ctrl j"]
+up = ["Up", "ctrl k"]
+previous = ["Up", "ctrl k"]
+
 [columns]
 symbols = 1 # providers to be queried by default
 
@@ -17,6 +22,7 @@ symbols = 1 # providers to be queried by default
 max_results = 256 # 256 should be enough for everyone
 default = [
   "desktopapplications",
+  "calc",
   "websearch",
 ]
 
