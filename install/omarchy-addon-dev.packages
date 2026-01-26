@@ -1,0 +1,32 @@
+# +dev addon set
+# Development tools and languages
+
+# Editors
+nvim
+omarchy-nvim
+tree-sitter-cli
+vscodium
+
+# Containers
+docker
+docker-buildx
+docker-compose
+lazydocker
+
+# Git tools
+lazygit
+github-cli
+
+# Languages & runtimes
+mise
+clang
+llvm
+rust
+ruby
+python-poetry-core
+luarocks
+dotnet-runtime-9.0
+
+# Database libs
+postgresql-libs
+mariadb-libs

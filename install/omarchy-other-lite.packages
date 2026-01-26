@@ -1,0 +1,50 @@
+# Omarchy Lite - Other packages (drivers, system, etc.)
+# Keep ALL critical OS packages - only remove pure dev tools
+#
+# REMOVED: dart, jdk-openjdk, autoconf-archive, intltool, libsass, sassc, yay-debug
+
+base
+base-devel
+broadcom-wl
+btrfs-progs
+dkms
+egl-wayland
+git
+gst-plugin-pipewire
+gtk4-layer-shell
+htop
+iwd
+libpulse
+libva-intel-driver
+libva-nvidia-driver
+limine
+limine-mkinitcpio-hook
+limine-snapper-sync
+linux
+linux-firmware
+linux-headers
+macbook12-spi-driver-dkms
+nvidia-580xx-dkms
+nvidia-dkms
+nvidia-open-dkms
+nvidia-580xx-utils
+nvidia-utils
+lib32-nvidia-580xx-utils
+lib32-nvidia-utils
+pipewire
+pipewire-alsa
+pipewire-jack
+pipewire-pulse
+qt6-wayland
+snapper
+webp-pixbuf-loader
+wget
+zram-generator
+
+# T2 MacBook support packages
+apple-bcm-firmware
+apple-t2-audio-config
+linux-t2
+linux-t2-headers
+t2fanrd
+tiny-dfr
