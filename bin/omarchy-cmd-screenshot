@@ -81,6 +81,15 @@ grim -g "$SELECTION" - |
     --actions-on-enter save-to-clipboard \
     --save-after-copy \
     --copy-command 'wl-copy'
+elif [[ $PROCESSING == "clipboard-path" ]]; then
+  FILENAME="$OUTPUT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png"
+  grim -g "$SELECTION" - |
+    satty --filename - \
+      --output-filename "$FILENAME" \
+      --early-exit \
+      --actions-on-enter save-to-clipboard \
+      --save-after-copy \
+      --copy-command "sh -c 'cat >/dev/null; echo -n \"$FILENAME\" | wl-copy'"
 else
   grim -g "$SELECTION" - | wl-copy
 fi
