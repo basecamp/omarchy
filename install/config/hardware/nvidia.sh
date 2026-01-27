@@ -7,8 +7,8 @@ if [ -n "$NVIDIA" ]; then
   if echo "$NVIDIA" | grep -qE "RTX [2-9][0-9]|GTX 16"; then
     # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
     PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
-  elif echo "$NVIDIA" | grep -qE "GTX 9|GTX 10|Quadro P"; then
-    # Pascal (10xx or Quadro Pxxx) and Maxwell (9xx) use legacy branch that can only be installed from AUR
+  elif echo "$NVIDIA" | grep -qE "GTX 9|GTX 10|Quadro P|MX1|MX2|MX3"; then
+    # Pascal (10xx, Quadro Pxxx, MX150, MX2xx, and MX3xx) and Maxwell (9xx, MX110, and MX130) use legacy branch that can only be installed from AUR
     PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
   fi
   # Bail if no supported GPU
