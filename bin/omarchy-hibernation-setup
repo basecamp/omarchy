@@ -67,4 +67,8 @@ sudo cp "$OMARCHY_PATH/default/systemd/hibernate.conf" /etc/systemd/sleep.conf.d
 echo "Regenerating initramfs..."
 sudo limine-mkinitcpio
 
-echo "Hibernation enabled"
+echo
+
+if gum confirm "Reboot to enable hiberation?"; then
+  omarchy-cmd-reboot
+fi
