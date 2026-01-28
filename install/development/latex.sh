@@ -4,6 +4,5 @@
 sudo pacman -S --noconfirm --needed \
   python-pylatexenc texlive-basic texlive-latex texlive-latexextra \
   texlive-latexrecommended texlive-fontsextra \
-  texlive-fontsrecommended texlive-mathscience \
-  texlive-xetex
+  texlive-fontsrecommended texlive-mathscience texlive-xetex
 

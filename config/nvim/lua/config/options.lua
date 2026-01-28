@@ -1,7 +1,7 @@
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "
 vim.g.have_nerd_font = true
--- vim.g.slime_bracketed_paste = 1
+vim.g.slime_bracketed_paste = 1
 vim.g.slime_python_ipython = 0
 -- start with no gutter
 vim.o.number = false

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "theme": "system",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local)",
+      "options": {
+        "baseURL": "http://localhost:8090/v1"
+      },
+      "models": {
+        "gpt-oss-context": {
+          "name": "GPT-OSS (big context)"
+        },
+        "gemma3": {
+          "name": "Gemma3"
+        },
+        "deepseek-r1:14b": {
+          "name": "Deepseek 14b"
+        },
+        "qwen3-vl:30b": {
+          "name": "Qwen3-vl"
+        },
+        "qwen3-coder:latest": {
+          "name": "Qwen3-coder"
+        },
+        "devstral-mini-2-context:latest": {
+          "name": "devstral-mini-2 (larger context)"
+        },
+      }
+    }
+  }
+}

@@ -86,6 +86,10 @@ local function new_terminal_python()
 	new_terminal("python")
 end
 
+local function new_terminal_ipython()
+	new_terminal("ipython")
+end
+
 local function new_terminal_R()
 	new_terminal("R")
 end
@@ -94,14 +98,19 @@ local slime_send_region_cmd = ":<C-u>call slime#send_op(visualmode(), 1)<CR>"
 slime_send_region_cmd = vim.api.nvim_replace_termcodes(slime_send_region_cmd, true, false, true)
 local function send_region()
 	-- save location before sending the chunk
-	-- local bufnum, line, col, _ = unpack(vim.fn.getpos("'>"))
 	local _, line, col, _ = unpack(vim.fn.getpos("."))
 
 	-- if filetype is not quarto, just send_region
 	if vim.bo.filetype ~= "quarto" or vim.b["quarto_is_r_mode"] == nil then
-		vim.cmd("normal" .. slime_send_region_cmd)
-		-- recover position before returning
-		vim.api.nvim_win_set_cursor(0, { line, col - 1 })
+		-- vim.cmd("normal" .. slime_send_region_cmd)
+		local _, start_row, _, _ = unpack(vim.fn.getpos("v"))
+		local _, end_row, _, _ = unpack(vim.fn.getpos("."))
+		start_line = math.min(start_row, end_row) - 1
+		end_line = math.max(start_row, end_row)
+		local lines = vim.api.nvim_buf_get_lines(0, start_line, end_line + 1, false)
+		vim.fn["slime#send"]('exec("""\n' .. table.concat(lines, "\n") .. '""")\n\r')
+		vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "n", false)
+		-- vim.cmd("normal! <Esc>") does not fucking work!
 		return
 	end
 	if vim.b["quarto_is_r_mode"] == true then
@@ -165,16 +174,16 @@ wk.add({
 	{ "<leader>iz", "<CMD>Telescope spell_suggest<CR>", desc = "Spell Suggestions", nor },
 	{ "<leader>is", group = "Snippets", icon = { icon = "󰅩 ", color = "yellow" } },
 	{ "<leader>isl", "<ESC>i```{lua}<cr>```<ESC>O", desc = "Lua", nor },
-	{ "<leader>isp", "<ESC>i```{python}<cr>```<ESC>O", desc = "Python", nor },
+	{ "<leader>isp", "<ESC>i```{python,python.reticulate=FALSE}<cr>```<ESC>O", desc = "Python", nor },
 	{ "<leader>isr", "<ESC>i```{r}<cr>```<ESC>O", desc = "R", nor },
 	{ "<leader>d", group = "Debug", icon = { icon = "󰨰 ", color = "purple" } },
 	{ "<leader>dqq", vim.diagnostic.setloclist, desc = "Diagnostics List", nor },
 	{ "<leader>dqf", vim.diagnostic.open_float, desc = "Diagnostics List (float)", nor },
 	{ "<leader>e", group = "Harpoon", icon = { icon = "󰛢", color = "purple" } },
 	{ "<leader>q", group = "Quarto", icon = { icon = "󱡓 ", color = "purple" } },
-	{ "<leader>qp", "<CMD>QuartoPreview<CR>", desc = "Preview", nor },
-	{ "<leader>qa", "<CMD>QuartoSendAbove<CR>", desc = "Run Above", nor },
-	{ "<leader>qc", "<CMD>QuartoSend<CR>", desc = "Run Cell", nor },
+	{ "<leader>qp", "<CMD>QuartoPreview --no-clean<CR>", desc = "[P]review", nor },
+	{ "<leader>qa", "<CMD>QuartoSendAbove<CR>", desc = "Run [A]bove", nor },
+	{ "<leader>qc", "<CMD>QuartoSend<CR>", desc = "Run [C]ell", nor },
 	{ "<leader>qe", require("otter").export, desc = "[E]xport code to file", nor },
 	{ "<leader>g", group = "Guardar", icon = { icon = " ", color = "purple" } },
 	{ "<leader>gn", "<CMD>noautocmd w<CR>", desc = "Save w/o Formatting", nor },
@@ -194,6 +203,7 @@ wk.add({
 	{ "<leader>op", new_terminal_python, desc = "new [p]ython terminal", nor },
 	{ "<leader>or", new_terminal_R, desc = "new [r]-code terminal", nor },
 	{ "<leader>oz", new_terminal, desc = "new [z]sh", nor },
+	{ "<leader>oi", new_terminal_ipython, desc = "new [i]python", nor },
 	{ "<leader>of", ":lua MiniFiles.open()<CR>", desc = "File Browser (MiniFiles)", nor },
 	{ "<leader>x", group = "Close", icon = { icon = "󰰰 ", color = "purple" } },
 	{ "<leader>xt", "<CMD>tabclose<CR>", desc = "Close Tab", nor },
