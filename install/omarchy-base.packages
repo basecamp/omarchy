@@ -13,6 +13,7 @@ bluetui
 bolt
 brightnessctl
 btop
+chromium
 clang
 cups
 cups-browsed
@@ -87,7 +88,6 @@ nss-mdns
 nvim
 obs-studio
 obsidian
-omarchy-chromium
 omarchy-nvim
 omarchy-walker
 opencode
