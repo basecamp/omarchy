@@ -51,9 +51,10 @@ fi
 while true; do
   if [ -f "$STATE_FILE" ]; then
     interval=$(cat "$INTERVAL_FILE" 2>/dev/null)
-    [[ ! "$interval" =~ ^[0-9]+$ ]] && interval=30
+    # Default to 30m if invalid or empty
+    [[ ! "$interval" =~ ^[0-9]+[smhd]?$ ]] && interval="30m"
     
-    sleep "${interval}m"
+    sleep "$interval"
     
     # Check again if still active after sleep
     [[ -f "$STATE_FILE" ]] && omarchy-theme-bg-next

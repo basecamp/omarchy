@@ -197,17 +197,17 @@ show_style_menu() {
 show_bg_cycle_menu() {
   local state="Off"
   [ -f "$HOME/.local/state/omarchy/bg-cycle-active" ] && state="On"
-  local interval=$(cat "$HOME/.local/state/omarchy/bg-cycle-interval" 2>/dev/null || echo "30")
+  local interval=$(cat "$HOME/.local/state/omarchy/bg-cycle-interval" 2>/dev/null || echo "30m")
 
-  case $(menu "Cycle Backgrounds" "󰔎  Cycle: $state\n󱎫  Interval: ${interval}m") in
+  case $(menu "Cycle Backgrounds" "󰔎  Cycle: $state\n󱎫  Interval: $interval") in
   *Cycle*)
     omarchy-bg-cycle --toggle
     show_bg_cycle_menu
     ;;
   *Interval*)
-    local new_interval=$(menu "Select Interval" "1m\n5m\n10m\n15m\n30m\n60m\n120m")
+    local new_interval=$(menu "Select Interval" "5m\n15m\n30m\n1h\n2h\n4h\n8h\n12h\n24h")
     if [[ -n "$new_interval" && "$new_interval" != "CNCLD" ]]; then
-      omarchy-bg-cycle --set "${new_interval//m/}"
+      omarchy-bg-cycle --set "$new_interval"
     fi
     show_bg_cycle_menu
     ;;
