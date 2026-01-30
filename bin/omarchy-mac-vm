@@ -175,7 +175,7 @@ EOF
   # Create docker-compose.yml in user config directory
   cat << EOF | tee "$COMPOSE_FILE" > /dev/null
 services:
-  windows:
+  macos:
     image: dockurr/macos
     container_name: omarchy-macos
     environment:
