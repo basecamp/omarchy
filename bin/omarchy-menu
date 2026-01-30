@@ -67,6 +67,11 @@ install_terminal() {
   present_terminal "omarchy-install-terminal $1"
 }
 
+
+install_shell() {
+  present_terminal "omarchy-install-shell $1"
+}
+
 aur_install() {
   present_terminal "echo 'Installing $1 from AUR...'; yay -S --noconfirm $2"
 }
@@ -285,7 +290,7 @@ show_setup_system_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Shell\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -294,6 +299,7 @@ show_install_menu() {
   *Style*) show_install_style_menu ;;
   *Development*) show_install_development_menu ;;
   *Editor*) show_install_editor_menu ;;
+  *Shell*) show_install_shell_menu ;;
   *Terminal*) show_install_terminal_menu ;;
   *AI*) show_install_ai_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm install" ;;
@@ -320,6 +326,15 @@ show_install_editor_menu() {
   *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) install "Helix" "helix" ;;
   *Emacs*) install "Emacs" "emacs-wayland" && systemctl --user enable --now emacs.service ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_shell_menu() {
+  case $(menu "Install" " Fish\n Zsh\n Bash") in
+  *Fish*) install_shell "fish" ;;
+  *Zsh*)  install_shell "zsh" ;;
+  *Bash*) install_shell "bash" ;;
   *) show_install_menu ;;
   esac
 }

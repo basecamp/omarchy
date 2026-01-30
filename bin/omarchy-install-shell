@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Install one of the custom shells and set it as the default.
+
+if (($# == 0)); then
+  echo "Usage: omarchy-install-shell [zsh|fish|bash]"
+  exit 1
+fi
+
+package="$1"
+
+# Install package
+
+if [[ $package != bash ]]; then
+  if omarchy-pkg-add omarchy-$package; then
+    omarchy-setup-"$package"
+  else
+    echo "Failed to install $package"
+  fi
+else
+  omarchy-pkg-drop omarchy-fish omarchy-zsh
+  rm ~/.zshrc
+  rm -rf ~/.config/fish
+fi
