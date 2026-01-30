@@ -201,13 +201,13 @@ show_bg_cycle_menu() {
 
   case $(menu "Cycle Backgrounds" "󰔎  Cycle: $state\n󱎫  Interval: ${interval}m") in
   *Cycle*)
-    omarchy-toggle-bg-cycle
+    omarchy-bg-cycle --toggle
     show_bg_cycle_menu
     ;;
   *Interval*)
     local new_interval=$(menu "Select Interval" "1m\n5m\n10m\n15m\n30m\n60m\n120m")
     if [[ -n "$new_interval" && "$new_interval" != "CNCLD" ]]; then
-      omarchy-set-bg-cycle-interval "${new_interval//m/}"
+      omarchy-bg-cycle --set "${new_interval//m/}"
     fi
     show_bg_cycle_menu
     ;;

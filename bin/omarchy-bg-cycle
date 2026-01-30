@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# Manage automated background cycling.
+# Usage: 
+#   omarchy-bg-cycle           (Start the daemon loop)
+#   omarchy-bg-cycle --toggle  (Enable/Disable)
+#   omarchy-bg-cycle --set <m> (Set interval in minutes)
+
+STATE_FILE="$HOME/.local/state/omarchy/bg-cycle-active"
+INTERVAL_FILE="$HOME/.local/state/omarchy/bg-cycle-interval"
+DAEMON_NAME="omarchy-bg-cycle"
+
+mkdir -p "$(dirname "$STATE_FILE")"
+
+# --- Logic for subcommands ---
+
+case "$1" in
+  --toggle)
+    if [ -f "$STATE_FILE" ]; then
+      rm "$STATE_FILE"
+      pkill -f "^/bin/bash .*/$DAEMON_NAME$" || pkill -f "$DAEMON_NAME"
+      notify-send "Background Cycling" "Disabled" -i preferences-desktop-wallpaper
+    else
+      touch "$STATE_FILE"
+      # Start the daemon in the background
+      nohup "$DAEMON_NAME" >/dev/null 2>&1 &
+      notify-send "Background Cycling" "Enabled" -i preferences-desktop-wallpaper
+    fi
+    exit 0
+    ;;
+
+  --set)
+    if [[ -n "$2" ]]; then
+      echo "$2" > "$INTERVAL_FILE"
+      notify-send "Background Cycling" "Interval set to $2 minutes" -i preferences-desktop-wallpaper
+    fi
+    exit 0
+    ;;
+esac
+
+# --- Daemon Loop (Default Action) ---
+
+# Ensure we don't run multiple daemons
+if [[ $(pgrep -f "^/bin/bash .*/$DAEMON_NAME$" | wc -l) -gt 1 ]]; then
+  exit 0
+fi
+
+# Default interval 30 minutes if not set
+[[ ! -f "$INTERVAL_FILE" ]] && echo "30" > "$INTERVAL_FILE"
+
+while true; do
+  if [ -f "$STATE_FILE" ]; then
+    interval=$(cat "$INTERVAL_FILE" 2>/dev/null)
+    [[ ! "$interval" =~ ^[0-9]+$ ]] && interval=30
+    
+    sleep "${interval}m"
+    
+    # Check again if still active after sleep
+    [[ -f "$STATE_FILE" ]] && omarchy-theme-bg-next
+  else
+    # If not active, sleep and check again
+    sleep 60
+  fi
+done
