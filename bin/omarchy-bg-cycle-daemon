@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Cycles through the background images automatically at a set interval.
+
+STATE_FILE="$HOME/.local/state/omarchy/bg-cycle-active"
+INTERVAL_FILE="$HOME/.local/state/omarchy/bg-cycle-interval"
+
+mkdir -p "$(dirname "$STATE_FILE")"
+
+# Default interval 30 minutes if not set
+if [ ! -f "$INTERVAL_FILE" ]; then
+    echo "30" > "$INTERVAL_FILE"
+fi
+
+while true; do
+    if [ -f "$STATE_FILE" ]; then
+        interval=$(cat "$INTERVAL_FILE" 2>/dev/null)
+        # Ensure interval is a number
+        if [[ ! "$interval" =~ ^[0-9]+$ ]]; then
+            interval=30
+        fi
+        
+        sleep "${interval}m"
+        
+        # Check again if still active after sleep
+        if [ -f "$STATE_FILE" ]; then
+            omarchy-theme-bg-next
+        fi
+    else
+        # If not active, sleep a bit and check again
+        sleep 60
+    fi
+done

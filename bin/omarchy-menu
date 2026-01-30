@@ -182,14 +182,36 @@ show_hardware_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About\n  Cycle Backgrounds") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
+  *Cycle*) show_bg_cycle_menu ;;
   *Background*) omarchy-theme-bg-next ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
   *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
   *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_bg_cycle_menu() {
+  local state="Off"
+  [ -f "$HOME/.local/state/omarchy/bg-cycle-active" ] && state="On"
+  local interval=$(cat "$HOME/.local/state/omarchy/bg-cycle-interval" 2>/dev/null || echo "30")
+
+  case $(menu "Cycle Backgrounds" "󰔎  Cycle: $state\n󱎫  Interval: ${interval}m") in
+  *Cycle*)
+    omarchy-toggle-bg-cycle
+    show_bg_cycle_menu
+    ;;
+  *Interval*)
+    local new_interval=$(menu "Select Interval" "1m\n5m\n10m\n15m\n30m\n60m\n120m")
+    if [[ -n "$new_interval" && "$new_interval" != "CNCLD" ]]; then
+      omarchy-set-bg-cycle-interval "${new_interval//m/}"
+    fi
+    show_bg_cycle_menu
+    ;;
+  *) show_style_menu ;;
   esac
 }
 

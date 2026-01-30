@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# Set the interval in minutes for background cycling.
+
+INTERVAL_FILE="$HOME/.local/state/omarchy/bg-cycle-interval"
+mkdir -p "$(dirname "$INTERVAL_FILE")"
+
+if [[ -n "$1" ]]; then
+    echo "$1" > "$INTERVAL_FILE"
+    notify-send "Background Cycling" "Interval set to $1 minutes" -i preferences-desktop-wallpaper
+fi
