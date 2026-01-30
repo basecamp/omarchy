@@ -1,3 +1,3 @@
-echo "Set Power Profiles Rules when plugged in (balanced) and unplugged (power-saver)"
+echo "Set power profile based on source switching (AC or Battery)"
 
 source $OMARCHY_PATH/install/config/powerprofilesctl-rules.sh
