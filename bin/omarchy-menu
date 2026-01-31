@@ -198,7 +198,7 @@ show_background_menu() {
   [ -f "$HOME/.local/state/omarchy/bg-cycle-active" ] && state="On"
   local interval=$(cat "$HOME/.local/state/omarchy/bg-cycle-interval" 2>/dev/null || echo "30m")
 
-  case $(menu "Background" "󰔎  Cycle: $state\n󱎫  Interval: $interval\n  Trigger Change") in
+  case $(menu "Background" "󰔎  Cycle: $state\n󱎫  Interval: $interval\n  Change Background") in
   *Cycle*)
     omarchy-bg-cycle --toggle
     show_background_menu
@@ -210,7 +210,7 @@ show_background_menu() {
     fi
     show_background_menu
     ;;
-  *Trigger*)
+  *"Change Background"*)
     omarchy-theme-bg-next
     show_background_menu
     ;;
