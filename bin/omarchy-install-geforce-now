@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Install and launch Geforce Now.
+
+set -e
+
+omarchy-pkg-add flatpak
+cd /tmp
+curl -LO https://international.download.nvidia.com/GFNLinux/GeForceNOWSetup.bin
+chmod +x GeForceNOWSetup.bin
+./GeForceNOWSetup.bin
+cd -
