@@ -12,8 +12,6 @@ curl -LO https://international.download.nvidia.com/GFNLinux/GeForceNOWSetup.bin
 chmod +x GeForceNOWSetup.bin
 ./GeForceNOWSetup.bin
 
-# Seems like some computers get stuck with geforce settings after install that blocks startup
-pkill -9 -f geforce && pkill -9 -f GeForce
-rm -rf .var/app/com.nvidia.geforcenow*
-
-notify-send "󰢹    NVIDIA GeForce NOW" "Start it from the app launcher (Super + Space)"
+# Ensure a separate browser process not started by GFN is available.
+# If not, it seems like GFN has a tendency to hang on login.
+setsid omarchy-launch-browser
