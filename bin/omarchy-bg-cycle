@@ -57,7 +57,7 @@ while true; do
     sleep "$interval"
     
     # Check again if still active after sleep
-    [[ -f "$STATE_FILE" ]] && omarchy-theme-bg-next
+    [[ -f "$STATE_FILE" ]] && omarchy-theme-bg-next --random
   else
     # If not active, sleep and check again
     sleep 60

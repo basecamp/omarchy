@@ -32,8 +32,11 @@ else
     fi
   done
 
-  # Get next background (wrap around)
-  if [[ $INDEX -eq -1 ]]; then
+  # Get next background
+  if [[ "$1" == "--random" ]]; then
+    RANDOM_INDEX=$((RANDOM % TOTAL))
+    NEW_BACKGROUND="${BACKGROUNDS[$RANDOM_INDEX]}"
+  elif [[ $INDEX -eq -1 ]]; then
     # Use the first background when no match was found
     NEW_BACKGROUND="${BACKGROUNDS[0]}"
   else
