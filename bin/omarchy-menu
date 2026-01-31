@@ -506,9 +506,9 @@ show_update_menu() {
 }
 
 show_update_channel_menu() {
-  case $(menu "Update channel" "🟢 Stable\n🟡 Release Candidate\n🟠 Edge\n🔴 Dev") in
+  case $(menu "Update channel" "🟢 Stable\n🟡 RC\n🟠 Edge\n🔴 Dev") in
   *Stable*) present_terminal "omarchy-channel-set stable" ;;
-  *Candidate*) present_terminal "omarchy-channel-set rc" ;;
+  *RC*) present_terminal "omarchy-channel-set rc" ;;
   *Edge*) present_terminal "omarchy-channel-set edge" ;;
   *Dev*) present_terminal "omarchy-channel-set dev" ;;
   *) show_update_menu ;;
