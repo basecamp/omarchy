@@ -3,6 +3,11 @@
 STATE_FILE=~/.local/state/omarchy/toggles/suspend-on
 
 if [[ ! -f $STATE_FILE ]]; then
+  # Unmask sleep.target if needed
+  if systemctl show -p LoadState sleep.target 2>/dev/null | grep -q "LoadState=masked"; then
+    sudo systemctl unmask sleep.target
+  fi
+  
   mkdir -p "$(dirname $STATE_FILE)"
   touch $STATE_FILE
   notify-send "󰒲   Suspend now available in system menu"
