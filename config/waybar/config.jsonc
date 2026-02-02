@@ -5,7 +5,7 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-  "modules-center": ["clock", "custom/update", "custom/voxtype", "custom/screenrecording-indicator"],
+  "modules-center": ["custom/timer", "clock", "custom/update", "custom/voxtype", "custom/screenrecording-indicator"],
   "modules-right": [
     "group/tray-expander",
     "bluetooth",
@@ -141,6 +141,14 @@
     "exec": "$OMARCHY_PATH/default/waybar/indicators/screen-recording.sh",
     "signal": 8,
     "return-type": "json"
+  },
+  "custom/timer": {
+      "exec": "$OMARCHY_PATH/default/waybar/indicators/timer.sh",
+      "return-type": "json",
+      "on-click-right": "rm -f $XDG_RUNTIME_DIR/omarchy-active-timer",
+      "format": "{text}",
+      "format-alt": "{alt}",
+      "hide-empty-text": true
   },
   "custom/voxtype": {
     "exec": "omarchy-voxtype-status",

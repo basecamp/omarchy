@@ -1,0 +1,217 @@
+#!/bin/bash
+
+ACTIVE_TIMER_FILE=$XDG_RUNTIME_DIR/omarchy-active-timer
+
+if omarchy-cmd-missing gum hyprctl paplay waybar; then
+  echo "Requires gum, hyprctl, paplay and waybar commands to be present."
+  exit 1
+fi
+
+[ $# -eq 0 ] && INTERACTIVE_MODE=true || INTERACTIVE_MODE=false
+
+initial_prompt() {
+  clear
+  gum style \
+  	--border thick \
+  	--padding "1" \
+  	"OMARCHY TUI TIMER"
+}
+
+# returns the valid duration in seconds or "" if invalid
+validate_duration() {
+  local input="$1"
+  local token value unit
+  local seconds_total=0
+
+  if [[ -z "$input" ]]; then
+    echo ""
+    return
+  fi
+
+  # Strip all whitespace to allow inputs like "1h 30m"
+  input=${input//[[:space:]]/}
+
+  # If it's only digits, treat as seconds
+  if [[ "$input" =~ ^[0-9]+$ ]]; then
+    echo "$input"
+    return
+  fi
+
+  # Validate overall pattern (one or more number+unit groups)
+  if [[ ! "$input" =~ ^([0-9]+[smh])+$ ]]; then
+    echo ""
+    return
+  fi
+
+  # Sum up all groups
+  while [[ -n "$input" ]]; do
+    token=$(echo "$input" | sed -E 's/^([0-9]+[smh]).*/\1/')
+    value=${token%?}
+    unit=${token: -1}
+    case "$unit" in
+      s) seconds_total=$((seconds_total + value)) ;;
+      m) seconds_total=$((seconds_total + value * 60)) ;;
+      h) seconds_total=$((seconds_total + value * 3600)) ;;
+    esac
+    input=${input#${token}}
+  done
+
+  echo "$seconds_total"
+}
+
+# format seconds to a human-readable h/m/s string
+format_duration() {
+  local total="$1"
+  local h m s out=""
+
+  h=$((total / 3600))
+  m=$(((total % 3600) / 60))
+  s=$((total % 60))
+
+  if (( h > 0 )); then
+    out+="${h}h "
+  fi
+  if (( m > 0 )); then
+    out+="${m}m "
+  fi
+  if (( s > 0 )) || [[ -z "$out" ]]; then
+    out+="${s}s"
+  fi
+
+  echo "${out% }"
+}
+
+# Check if a timer is already active
+if [ -f $ACTIVE_TIMER_FILE   ]; then
+  if $INTERACTIVE_MODE; then
+    gum style "A timer is already active!"
+    sleep 2
+  fi
+  echo "A timer is already active!"
+  exit 1
+fi
+
+# If arguments are provided, use them directly without TUI
+if ! $INTERACTIVE_MODE; then
+  USER_INPUT="$*"
+  # strip out all whitespace
+  USER_INPUT=${USER_INPUT//[[:space:]]/}
+
+  # split by /
+  IFS='/' read -r WORK_INPUT BREAK_INPUT <<< "$USER_INPUT"
+
+  WORK_DURATION=$(validate_duration $WORK_INPUT)
+  BREAK_DURATION=$(validate_duration $BREAK_INPUT)
+
+  # Validate input
+  if ([[ -z $WORK_DURATION ]]) || ([[ -n $BREAK_INPUT && -z $BREAK_DURATION ]]); then
+    echo -e "Usage: omarchy-timer [DURATION[/BREAK_DURATION]]\nExamples: omarchy-timer 10m 30s\n          omarchy-timer 25m/5m"
+    exit 1
+  fi
+else
+  # TUI mode
+  initial_prompt
+
+  # Get the Duration (with placeholder)
+  while true; do
+    echo -e "Set duration (e.g. 10s, 5m, 1h)\nor pomodoro (e.g. 25m/5m, 50m/10m)"
+    USER_INPUT=$(gum input --placeholder "15m" --width 10)
+    # strip out all whitespace
+    USER_INPUT=${USER_INPUT//[[:space:]]/}
+
+    # Validate input
+    if [ -z "$USER_INPUT" ]; then
+      exit 1
+    fi
+
+    # split by /
+    IFS='/' read -r WORK_INPUT BREAK_INPUT <<< "$USER_INPUT"
+
+    WORK_DURATION=$(validate_duration $WORK_INPUT)
+    BREAK_DURATION=$(validate_duration $BREAK_INPUT)
+
+    if ([[ -z $WORK_DURATION ]]) || ([[ -n $BREAK_INPUT && -z $BREAK_DURATION ]]); then
+      gum style "Invalid format."
+      sleep 1.5
+      initial_prompt
+    else
+      break
+    fi
+  done
+fi
+
+# t: regular timer, w: work timer, b: break timer
+TIMER_TYPE="t"
+
+# pomodoro timer, start with work
+if [[ -n $BREAK_DURATION ]]; then
+  TIMER_TYPE="w"
+  if $INTERACTIVE_MODE; then
+    gum style "Pomodoro Timer set for $(format_duration "$WORK_DURATION") / $(format_duration "$BREAK_DURATION")"
+  fi
+else
+  if $INTERACTIVE_MODE; then
+    gum style "Timer set $(format_duration "$WORK_DURATION")"
+  fi
+fi
+
+# Show confirmation (only in TUI mode)
+if $INTERACTIVE_MODE; then
+  sleep 1
+fi
+
+# Create Timer script
+read -r -d '' TIMER_SCRIPT  << EOF
+DURATION_OF_WORK=$WORK_DURATION
+DURATION_OF_BREAK=$BREAK_DURATION
+TYPE_OF_TIMER=$TIMER_TYPE
+
+# outer loop for pomodoro
+while true; do
+  # pick correct time
+  if [[ "\$TYPE_OF_TIMER" == "w" || "\$TYPE_OF_TIMER" == "t" ]]; then
+    TIMER_ENDS=\$(( \$(date +%s) + \$DURATION_OF_WORK ))
+  else
+    TIMER_ENDS=\$(( \$(date +%s) + \$DURATION_OF_BREAK ))
+  fi
+  echo "\$TYPE_OF_TIMER \$TIMER_ENDS" > $ACTIVE_TIMER_FILE
+
+  # Countdown loop
+  while [ \$(( \$(date +%s) )) -lt \$TIMER_ENDS ]; do
+    # Check if timer was cancelled (file removed)
+    [ ! -f "$ACTIVE_TIMER_FILE" ] && exit 0
+    sleep 1
+  done
+ 
+  # Timer finished
+  if [[ "\$TYPE_OF_TIMER" == "t" ]]; then
+    # Regular timer just ends
+    rm -f $ACTIVE_TIMER_FILE
+    # Notify user
+    paplay /usr/share/sounds/freedesktop/stereo/complete.oga &
+    notify-send --expire-time 60000 "Time is up!"
+    exit 0
+  fi
+
+  # In Pomodoro mode switch to other mode
+  if [[ "\$TYPE_OF_TIMER" == "w" ]]; then
+    TYPE_OF_TIMER="b"
+    # Notify user
+    paplay /usr/share/sounds/freedesktop/stereo/complete.oga &
+    notify-send --expire-time 60000 "Break time!"
+  else
+    TYPE_OF_TIMER="w"
+    # Notify user
+    paplay /usr/share/sounds/freedesktop/stereo/complete.oga &
+    notify-send --expire-time 60000 "Time for work!"
+  fi
+  
+  # check first if deleted, before overwriting
+  [ ! -f "$ACTIVE_TIMER_FILE" ] && exit 0
+done
+EOF
+
+# Use hyprctl to spawn a completely independent process via Hyprland
+hyprctl dispatch exec "bash -c '$TIMER_SCRIPT'" > /dev/null
+
+exit 0
