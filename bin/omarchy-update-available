@@ -14,7 +14,7 @@ if [[ -z "$current_tag" ]]; then
   exit 1
 fi
 
-if [[ "$current_tag" != "$latest_tag" ]]; then
+if [[ "$current_tag" != "$latest_tag" && "$(printf '%s\n' "$current_tag" "$latest_tag" | sort -V | tail -n 1)" == "$latest_tag" ]]; then
   echo "Omarchy update available ($latest_tag)"
   exit 0
 else
