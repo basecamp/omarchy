@@ -1,4 +1,4 @@
-# Set links for Nautilius action icons
+# Set links for Nautilus action icons
 sudo ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-previous-symbolic.svg /usr/share/icons/Yaru/scalable/actions/go-previous-symbolic.svg
 sudo ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-next-symbolic.svg /usr/share/icons/Yaru/scalable/actions/go-next-symbolic.svg
 
@@ -7,6 +7,7 @@ mkdir -p ~/.config/omarchy/themes
 
 # Set initial theme
 omarchy-theme-set "Tokyo Night"
+rm -rf ~/.config/chromium/SingletonLock # otherwise archiso will own the chromium singleton
 
 # Set specific app links for current theme
 mkdir -p ~/.config/btop/themes

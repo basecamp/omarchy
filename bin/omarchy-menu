@@ -88,10 +88,11 @@ show_learn_menu() {
 }
 
 show_trigger_menu() {
-  case $(menu "Trigger" "  Capture\n  Share\n󰔎  Toggle") in
+  case $(menu "Trigger" "  Capture\n  Share\n󰔎  Toggle\n  Hardware") in
   *Capture*) show_capture_menu ;;
   *Share*) show_share_menu ;;
   *Toggle*) show_toggle_menu ;;
+  *Hardware*) show_hardware_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -113,13 +114,43 @@ show_screenshot_menu() {
   esac
 }
 
+get_webcam_list() {
+  v4l2-ctl --list-devices 2>/dev/null | while IFS= read -r line; do
+    if [[ "$line" != $'\t'* && -n "$line" ]]; then
+      local name="$line"
+      IFS= read -r device || break
+      device=$(echo "$device" | tr -d '\t' | head -1)
+      [[ -n "$device" ]] && echo "$device  $name"
+    fi
+  done
+}
+
+show_webcam_select_menu() {
+  local devices=$(get_webcam_list)
+  local count=$(echo "$devices" | grep -c . 2>/dev/null || echo 0)
+
+  if [[ -z "$devices" || "$count" -eq 0 ]]; then
+    notify-send "No webcam devices found" -u critical -t 3000
+    return 1
+  fi
+
+  if [[ "$count" -eq 1 ]]; then
+    echo "$devices" | awk '{print $1}'
+  else
+    menu "Select Webcam" "$devices" | awk '{print $1}'
+  fi
+}
+
 show_screenrecord_menu() {
   omarchy-cmd-screenrecord --stop-recording && exit 0
 
   case $(menu "Screenrecord" "  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam") in
   *"With desktop audio") omarchy-cmd-screenrecord --with-desktop-audio ;;
   *"With desktop + microphone audio") omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio ;;
-  *"With desktop + microphone audio + webcam") omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam ;;
+  *"With desktop + microphone audio + webcam")
+    local device=$(show_webcam_select_menu) || { back_to show_capture_menu; return; }
+    omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device"
+    ;;
   *) back_to show_capture_menu ;;
   esac
 }
@@ -139,6 +170,13 @@ show_toggle_menu() {
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
   *Bar*) omarchy-toggle-waybar ;;
+  *) show_trigger_menu ;;
+  esac
+}
+
+show_hardware_menu() {
+  case $(menu "Toggle" "  Hybrid GPU") in
+  *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
   *) show_trigger_menu ;;
   esac
 }
@@ -169,20 +207,20 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
+  options="$options\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
   *Audio*) omarchy-launch-audio ;;
   *Wifi*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
+  *System*) show_setup_system_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
-  *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
@@ -200,8 +238,17 @@ show_setup_power_menu() {
   fi
 }
 
+show_setup_security_menu() {
+  case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
+  *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
+  *Fido2*) present_terminal omarchy-setup-fido2 ;;
+  *) show_setup_menu ;;
+  esac
+}
+
 show_setup_config_menu() {
-  case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  case $(menu "Setup" "  Defaults\n  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *Hyprland*) open_in_editor ~/.config/hypr/hyprland.conf ;;
   *Hypridle*) open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
   *Hyprlock*) open_in_editor ~/.config/hypr/hyprlock.conf ;;
@@ -210,14 +257,29 @@ show_setup_config_menu() {
   *Walker*) open_in_editor ~/.config/walker/config.toml && omarchy-restart-walker ;;
   *Waybar*) open_in_editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
   *XCompose*) open_in_editor ~/.XCompose && omarchy-restart-xcompose ;;
-  *) show_main_menu ;;
+  *) show_setup_menu ;;
   esac
 }
 
-show_setup_security_menu() {
-  case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
-  *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
-  *Fido2*) present_terminal omarchy-setup-fido2 ;;
+show_setup_system_menu() {
+  local options=""
+
+  if [ -f ~/.local/state/omarchy/toggles/suspend-on ]; then
+    options="$options󰒲  Disable Suspend"
+  else
+    options="$options󰒲  Enable Suspend"
+  fi
+
+  if omarchy-hibernation-available; then
+    options="$options\n󰤁  Disable Hibernate"
+  else
+    options="$options\n󰤁  Enable Hibernate"
+  fi
+
+  case $(menu "System" "$options") in
+  *Suspend*) omarchy-toggle-suspend ;;
+  *"Enable Hibernate"*) present_terminal omarchy-hibernation-setup ;;
+  *"Disable Hibernate"*) present_terminal omarchy-hibernation-remove ;;
   *) show_setup_menu ;;
   esac
 }
@@ -278,10 +340,10 @@ show_install_ai_menu() {
       echo ollama
   )
 
-  case $(menu "Install" "  Dictation\n󱚤  Claude Code\n󱚤  Copilot CLI [AUR]\n󱚤  Cursor CLI\n󱚤  Gemini\n󱚤  OpenAI Codex\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush") in
+  case $(menu "Install" "  Dictation\n󱚤  Claude Code\n󱚤  Copilot CLI\n󱚤  Cursor CLI\n󱚤  Gemini\n󱚤  OpenAI Codex\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush") in
   *Dictation*) present_terminal omarchy-voxtype-install ;;
   *Claude*) install "Claude Code" "claude-code" ;;
-  *Copilot*) aur_install "Copilot CLI" "github-copilot-cli" ;;
+  *Copilot*) install "Copilot CLI" "github-copilot-cli" ;;
   *Cursor*) install "Cursor CLI" "cursor-cli" ;;
   *Gemini*) install "Gemini" "gemini-cli" ;;
   *OpenAI*) install "OpenAI Codex" "openai-codex" ;;
@@ -293,8 +355,9 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft\n󰖺  Xbox Controller [AUR]") in
+  case $(menu "Install" "  Steam\n󰢹  NVIDIA GeForce NOW\n  RetroArch [AUR]\n󰍳  Minecraft\n󰖺  Xbox Controller [AUR]") in
   *Steam*) present_terminal omarchy-install-steam ;;
+  *GeForce*) present_terminal omarchy-install-geforce-now ;;
   *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
   *Xbox*) present_terminal omarchy-install-xbox-controllers ;;
@@ -383,7 +446,7 @@ show_remove_menu() {
 }
 
 show_remove_development_menu() {
-  case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure") in
+  case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure") in
   *Rails*) present_terminal "omarchy-remove-dev-env ruby" ;;
   *JavaScript*) show_remove_javascript_menu ;;
   *Go*) present_terminal "omarchy-remove-dev-env go" ;;
@@ -401,7 +464,7 @@ show_remove_development_menu() {
 }
 
 show_remove_javascript_menu() {
-  case $(menu "Remove" "  Node.js\n  Bun\n  Deno") in
+  case $(menu "Remove" "  Node.js\n  Bun\n  Deno") in
   *Node*) present_terminal "omarchy-remove-dev-env node" ;;
   *Bun*) present_terminal "omarchy-remove-dev-env bun" ;;
   *Deno*) present_terminal "omarchy-remove-dev-env deno" ;;
@@ -410,7 +473,7 @@ show_remove_javascript_menu() {
 }
 
 show_remove_php_menu() {
-  case $(menu "Remove" "  PHP\n  Laravel\n  Symfony") in
+  case $(menu "Remove" "  PHP\n  Laravel\n  Symfony") in
   *PHP*) present_terminal "omarchy-remove-dev-env php" ;;
   *Laravel*) present_terminal "omarchy-remove-dev-env laravel" ;;
   *Symfony*) present_terminal "omarchy-remove-dev-env symfony" ;;
@@ -419,7 +482,7 @@ show_remove_php_menu() {
 }
 
 show_remove_elixir_menu() {
-  case $(menu "Remove" "  Elixir\n  Phoenix") in
+  case $(menu "Remove" "  Elixir\n  Phoenix") in
   *Elixir*) present_terminal "omarchy-remove-dev-env elixir" ;;
   *Phoenix*) present_terminal "omarchy-remove-dev-env phoenix" ;;
   *) show_remove_development_menu ;;
@@ -443,8 +506,9 @@ show_update_menu() {
 }
 
 show_update_channel_menu() {
-  case $(menu "Update channel" "🟢 Stable\n🟡 Edge\n🔴 Dev") in
+  case $(menu "Update channel" "🟢 Stable\n🟡 RC\n🟠 Edge\n🔴 Dev") in
   *Stable*) present_terminal "omarchy-channel-set stable" ;;
+  *RC*) present_terminal "omarchy-channel-set rc" ;;
   *Edge*) present_terminal "omarchy-channel-set edge" ;;
   *Dev*) present_terminal "omarchy-channel-set dev" ;;
   *) show_update_menu ;;
@@ -492,10 +556,21 @@ show_update_password_menu() {
   esac
 }
 
+show_about() {
+  omarchy-launch-about
+}
+
 show_system_menu() {
-  case $(menu "System" "  Lock\n󱄄  Screensaver\n󰜉  Restart\n󰐥  Shutdown") in
+  local options="  Lock\n󱄄  Screensaver"
+  [ -f ~/.local/state/omarchy/toggles/suspend-on ] && options="$options\n󰒲  Suspend"
+  omarchy-hibernation-available && options="$options\n󰤁  Hibernate"
+  options="$options\n󰜉  Restart\n󰐥  Shutdown"
+
+  case $(menu "System" "$options") in
   *Lock*) omarchy-lock-screen ;;
   *Screensaver*) omarchy-launch-screensaver force ;;
+  *Suspend*) systemctl suspend ;;
+  *Hibernate*) systemctl hibernate ;;
   *Restart*) omarchy-cmd-reboot ;;
   *Shutdown*) omarchy-cmd-shutdown ;;
   *) back_to show_main_menu ;;
@@ -512,6 +587,7 @@ go_to_menu() {
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
   *share*) show_share_menu ;;
+  *capture*) show_capture_menu ;;
   *style*) show_style_menu ;;
   *theme*) show_theme_menu ;;
   *screenshot*) show_screenshot_menu ;;
@@ -521,7 +597,7 @@ go_to_menu() {
   *install*) show_install_menu ;;
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
-  *about*) omarchy-launch-about ;;
+  *about*) show_about ;;
   *system*) show_system_menu ;;
   esac
 }

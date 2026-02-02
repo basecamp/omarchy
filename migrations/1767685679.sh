@@ -13,6 +13,10 @@ if ! grep -q "#custom-voxtype" "$STYLE_FILE"; then
   min-width: 12px;
   margin: 0 0 0 7.5px;
 }
+
+#custom-voxtype.recording {
+  color: #a55555;
+}
 EOF
 fi
 

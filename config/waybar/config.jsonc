@@ -115,6 +115,8 @@
     "scroll-step": 5,
     "format-muted": "",
     "format-icons": {
+      "headphone": "",
+      "headset": "",
       "default": ["", "", ""]
     }
   },
@@ -145,7 +147,7 @@
     "return-type": "json",
     "format": "{icon}",
     "format-icons": {
-      "idle": "",
+      "idle": "",
       "recording": "󰍬",
       "transcribing": "󰔟"
     },

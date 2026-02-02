@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Adjust keyboard backlight brightness using available steps.
+# Usage: omarchy-brightness-keyboard <up|down>
+
+direction="${1:-up}"
+
+# Find keyboard backlight device (look for *kbd_backlight* pattern in leds class).
+device=""
+for candidate in /sys/class/leds/*kbd_backlight*; do
+  if [[ -e "$candidate" ]]; then
+    device="$(basename "$candidate")"
+    break
+  fi
+done
+
+if [[ -z "$device" ]]; then
+  echo "No keyboard backlight device found" >&2
+  exit 1
+fi
+
+# Get current and max brightness to determine step size.
+max_brightness="$(brightnessctl -d "$device" max)"
+current_brightness="$(brightnessctl -d "$device" get)"
+
+# Calculate step as one unit (keyboards typically have discrete levels like 0-3).
+if [[ "$direction" == "up" ]]; then
+  new_brightness=$((current_brightness + 1))
+  [[ $new_brightness -gt $max_brightness ]] && new_brightness=$max_brightness
+else
+  new_brightness=$((current_brightness - 1))
+  [[ $new_brightness -lt 0 ]] && new_brightness=0
+fi
+
+# Set the new brightness.
+brightnessctl -d "$device" set "$new_brightness" >/dev/null
+
+# Use SwayOSD to display the new brightness setting.
+percent=$((new_brightness * 100 / max_brightness))
+omarchy-swayosd-brightness "$percent"
