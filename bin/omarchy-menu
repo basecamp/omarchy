@@ -288,7 +288,7 @@ show_install_menu() {
   case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
-  *Web*) present_terminal omarchy-webapp-install ;;
+  *Web*) show_install_webapp_menu ;;
   *TUI*) present_terminal omarchy-tui-install ;;
   *Service*) show_install_service_menu ;;
   *Style*) show_install_style_menu ;;
@@ -301,7 +301,20 @@ show_install_menu() {
   *) show_main_menu ;;
   esac
 }
-
+show_install_webapp_menu() {
+  case $(menu "Install Web App" "  YouTube\n  X (Twitter)\n  Reddit\n  Whatsapp\n󰙯  Discord\n󰊫  Gmail\n  Spotify\n󰝆  Netflix\n  Custom") in
+  *YouTube*) present_terminal 'omarchy-webapp-install "YouTube" "https://youtube.com" "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/youtube.png"' ;;
+  *X*) present_terminal 'omarchy-webapp-install "X" "https://x.com" "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/x.png"' ;;
+  *Reddit*) present_terminal 'omarchy-webapp-install "Reddit" "https://reddit.com" "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/reddit.png"' ;;
+  *Discord*) present_terminal 'omarchy-webapp-install "Discord" "https://discord.com/app" "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/discord.png"' ;;
+  *WhatsApp*) present_terminal 'omarchy-webapp-install "WhatsApp" "https://web.whatsapp.com" "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/whatsapp.png"' ;;
+  *Gmail*) present_terminal 'omarchy-webapp-install "Gmail" "https://mail.google.com" "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/gmail.png"' ;;
+  *Spotify*) present_terminal 'omarchy-webapp-install "Spotify" "https://open.spotify.com" "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/spotify.png"' ;;
+  *Netflix*) present_terminal 'omarchy-webapp-install "Netflix" "https://netflix.com" "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/netflix.png"' ;;
+  *Custom*) present_terminal omarchy-webapp-install ;;
+  *) show_install_menu ;;
+  esac
+}
 show_install_service_menu() {
   case $(menu "Install" "  Dropbox\n  Tailscale\n󰟵  Bitwarden\n  Chromium Account") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
