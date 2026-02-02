@@ -9,8 +9,8 @@ else
   branch="$1"
 fi
 
-if [[ "$branch" != "master" && "$branch" != "rc" && "$branch" != "edge" ]]; then
-  echo "Error: Invalid branch '$branch'. Must be one of: master, rc, edge"
+if [[ "$branch" != "master" && "$branch" != "rc" && "$branch" != "dev" ]]; then
+  echo "Error: Invalid branch '$branch'. Must be one of: master, rc, dev"
   exit 1
 fi
 
