@@ -15,19 +15,22 @@ hex_to_rgb() {
 if [[ -f $COLORS_FILE ]]; then
   sed_script=$(mktemp)
 
-  while IFS='=' read -r key value; do
-    key="${key//[\"\' ]/}"                # strip quotes and spaces from key
-    [[ $key && $key != \#* ]] || continue # skip empty lines and comments
-    value="${value#*[\"\']}"
-    value="${value%%[\"\']*}" # extract value between quotes (ignores inline comments)
+  # Generate standard substitutions
+  # Note: Split into two yq calls to avoid nested interpolation bug in yq v4.50+
+  sed 's/=/:/' "$COLORS_FILE" | yq -r 'to_entries[] | "s|{{ \(.key) }}|\(.value)|g"' > "$sed_script"
+  
+  # Generate _strip substitutions (removes # prefix from hex colors)
+  sed 's/=/:/' "$COLORS_FILE" | yq -r 'to_entries[] | "s|{{ \(.key)_strip }}|\(.value | sub(\"#\"; \"\"))|g"' >> "$sed_script"
 
-    printf 's|{{ %s }}|%s|g\n' "$key" "$value"            # {{ key }} -> value
-    printf 's|{{ %s_strip }}|%s|g\n' "$key" "${value#\#}" # {{ key_strip }} -> value without leading #
+  # Generate _rgb substitutions for hex colors
+  while IFS='=' read -r key value; do
+    key=$(echo "$key" | xargs)
+    value=$(echo "$value" | xargs | tr -d '"')
     if [[ $value =~ ^# ]]; then
       rgb=$(hex_to_rgb "$value")
-      echo "s|{{ ${key}_rgb }}|${rgb}|g"
+      echo "s|{{ ${key}_rgb }}|${rgb}|g" >> "$sed_script"
     fi
-  done <"$COLORS_FILE" >"$sed_script"
+  done < "$COLORS_FILE"
 
   shopt -s nullglob
 
@@ -38,7 +41,7 @@ if [[ -f $COLORS_FILE ]]; then
 
     # Don't overwrite configs already exists in the output directory (copied from theme specific folder)
     if [[ ! -f $output_path ]]; then
-      sed -f "$sed_script" "$tpl" >"$output_path"
+      sed -f "$sed_script" "$tpl" > "$output_path"
     fi
   done
 
