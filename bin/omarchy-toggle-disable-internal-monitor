@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+set -u
+detect_internal_monitor() {
+  if command -v jq >/dev/null 2>&1; then
+    for cmd in "hyprctl -j monitors all" "hyprctl -j monitors"; do
+      INT="$($cmd 2>/dev/null \
+        | jq -r '.[]? | .name // empty' \
+        | grep -E '^(eDP|LVDS|DSI)-' \
+        | head -n1)"
+      [ -n "$INT" ] && { printf '%s\n' "$INT"; return 0; }
+    done
+  fi
+
+  # Sysfs fallback (works even if disabled in Hyprland)
+  local cand=""
+  for p in $(ls /sys/class/drm/card*-{eDP,LVDS,DSI}-*/status 2>/dev/null); do
+    [ -f "$p" ] || continue
+    conn="$(basename "${p%/status}" | sed -E 's/^card[0-9]+-//')"
+    if [ "$(cat "$p")" = "connected" ]; then
+      printf '%s\n' "$conn"; return 0
+    fi
+    [ -z "$cand" ] && cand="$conn"
+  done
+  [ -n "$cand" ] && { printf '%s\n' "$cand"; return 0; }
+
+  return 1
+}
+INT="$(detect_internal_monitor)" 
+
+output=$(hyprctl monitors 2>/dev/null) || {
+    echo "Error: hyprctl not found or command failed" >&2
+    exit 1
+}
+
+mapfile -t monitors < <(
+    grep -oP '(?<=^Monitor ).*?(?= \(ID )' <<<"$output"
+)
+
+len=${#monitors[@]}
+
+# Checks if the internal monitor is already disabled
+if [ "${output#*$INT}" == "$output" ]; then
+    hyprctl keyword monitor $INT, preferred,auto,1.5 &> /dev/null
+    hyprctl reload &> /dev/null
+    exit 0
+fi
+
+if (( len == 2 )); then
+    hyprctl keyword monitor $INT, disable &> /dev/null
+    hyprctl keyword workspace r[0-9] m[${monitors[1]}] &> /dev/null
+elif (( len >= 3 )); then
+    hyprctl keyword monitor $INT, disable &> /dev/null
+    hyprctl keyword workspace r[1-5] m[${monitors[1]}] &> /dev/null
+    hyprctl keyword workspace r[6-9] m[${monitors[2]}] &> /dev/null
+    hyprctl keyword workspace r[0] m[${monitors[2]}] &> /dev/null
+fi
