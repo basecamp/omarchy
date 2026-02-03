@@ -185,6 +185,8 @@ services:
       DISK_SIZE: "$SELECTED_DISK"
       USERNAME: "$USERNAME"
       PASSWORD: "$PASSWORD"
+      TZ: "$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)"
+      ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
     devices:
       - /dev/kvm
       - /dev/net/tun
