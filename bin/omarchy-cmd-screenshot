@@ -13,6 +13,23 @@ fi
 
 pkill slurp && exit 0
 
+was_animations_enabled=
+if command -v hyprctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+  current_enabled=$(hyprctl getoption animations:enabled -j 2>/dev/null | jq -r '.int')
+  if [[ "$current_enabled" == "1" ]]; then
+    was_animations_enabled=1
+    hyprctl keyword animations:enabled 0 >/dev/null 2>&1 || true
+  fi
+fi
+
+restore_animations() {
+  if [[ "$was_animations_enabled" == "1" ]]; then
+    hyprctl keyword animations:enabled 1 >/dev/null 2>&1 || true
+  fi
+}
+
+trap restore_animations EXIT
+
 MODE="${1:-smart}"
 PROCESSING="${2:-slurp}"
 
