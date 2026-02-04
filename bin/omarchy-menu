@@ -88,10 +88,11 @@ show_learn_menu() {
 }
 
 show_trigger_menu() {
-  case $(menu "Trigger" "  Capture\n  Share\n󰔎  Toggle") in
+  case $(menu "Trigger" "  Capture\n  Share\n󰔎  Toggle\n  Hardware") in
   *Capture*) show_capture_menu ;;
   *Share*) show_share_menu ;;
   *Toggle*) show_toggle_menu ;;
+  *Hardware*) show_hardware_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -169,6 +170,13 @@ show_toggle_menu() {
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
   *Bar*) omarchy-toggle-waybar ;;
+  *) show_trigger_menu ;;
+  esac
+}
+
+show_hardware_menu() {
+  case $(menu "Toggle" "  Hybrid GPU") in
+  *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
   *) show_trigger_menu ;;
   esac
 }
@@ -347,8 +355,9 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch [AUR]\n󰍳  Minecraft\n󰖺  Xbox Controller [AUR]") in
+  case $(menu "Install" "  Steam\n󰢹  NVIDIA GeForce NOW\n  RetroArch [AUR]\n󰍳  Minecraft\n󰖺  Xbox Controller [AUR]") in
   *Steam*) present_terminal omarchy-install-steam ;;
+  *GeForce*) present_terminal omarchy-install-geforce-now ;;
   *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
   *Xbox*) present_terminal omarchy-install-xbox-controllers ;;
@@ -437,7 +446,7 @@ show_remove_menu() {
 }
 
 show_remove_development_menu() {
-  case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure") in
+  case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure") in
   *Rails*) present_terminal "omarchy-remove-dev-env ruby" ;;
   *JavaScript*) show_remove_javascript_menu ;;
   *Go*) present_terminal "omarchy-remove-dev-env go" ;;
@@ -455,7 +464,7 @@ show_remove_development_menu() {
 }
 
 show_remove_javascript_menu() {
-  case $(menu "Remove" "  Node.js\n  Bun\n  Deno") in
+  case $(menu "Remove" "  Node.js\n  Bun\n  Deno") in
   *Node*) present_terminal "omarchy-remove-dev-env node" ;;
   *Bun*) present_terminal "omarchy-remove-dev-env bun" ;;
   *Deno*) present_terminal "omarchy-remove-dev-env deno" ;;
@@ -464,7 +473,7 @@ show_remove_javascript_menu() {
 }
 
 show_remove_php_menu() {
-  case $(menu "Remove" "  PHP\n  Laravel\n  Symfony") in
+  case $(menu "Remove" "  PHP\n  Laravel\n  Symfony") in
   *PHP*) present_terminal "omarchy-remove-dev-env php" ;;
   *Laravel*) present_terminal "omarchy-remove-dev-env laravel" ;;
   *Symfony*) present_terminal "omarchy-remove-dev-env symfony" ;;
@@ -473,7 +482,7 @@ show_remove_php_menu() {
 }
 
 show_remove_elixir_menu() {
-  case $(menu "Remove" "  Elixir\n  Phoenix") in
+  case $(menu "Remove" "  Elixir\n  Phoenix") in
   *Elixir*) present_terminal "omarchy-remove-dev-env elixir" ;;
   *Phoenix*) present_terminal "omarchy-remove-dev-env phoenix" ;;
   *) show_remove_development_menu ;;
@@ -497,8 +506,9 @@ show_update_menu() {
 }
 
 show_update_channel_menu() {
-  case $(menu "Update channel" "🟢 Stable\n🟡 Edge\n🔴 Dev") in
+  case $(menu "Update channel" "🟢 Stable\n🟡 RC\n🟠 Edge\n🔴 Dev") in
   *Stable*) present_terminal "omarchy-channel-set stable" ;;
+  *RC*) present_terminal "omarchy-channel-set rc" ;;
   *Edge*) present_terminal "omarchy-channel-set edge" ;;
   *Dev*) present_terminal "omarchy-channel-set dev" ;;
   *) show_update_menu ;;
@@ -546,6 +556,10 @@ show_update_password_menu() {
   esac
 }
 
+show_about() {
+  omarchy-launch-about
+}
+
 show_system_menu() {
   local options="  Lock\n󱄄  Screensaver"
   [ -f ~/.local/state/omarchy/toggles/suspend-on ] && options="$options\n󰒲  Suspend"
@@ -573,6 +587,7 @@ go_to_menu() {
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
   *share*) show_share_menu ;;
+  *capture*) show_capture_menu ;;
   *style*) show_style_menu ;;
   *theme*) show_theme_menu ;;
   *screenshot*) show_screenshot_menu ;;
@@ -582,7 +597,7 @@ go_to_menu() {
   *install*) show_install_menu ;;
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
-  *about*) omarchy-launch-about ;;
+  *about*) show_about ;;
   *system*) show_system_menu ;;
   esac
 }
