@@ -185,6 +185,8 @@ services:
       DISK_SIZE: "$SELECTED_DISK"
       USERNAME: "$USERNAME"
       PASSWORD: "$PASSWORD"
+      TZ: "$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)"
+      ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
     devices:
       - /dev/kvm
       - /dev/net/tun
@@ -240,6 +242,11 @@ EOF
 }
 
 remove_windows() {
+  if ! gum confirm --default=false "Remove Windows VM and delete all associated data?"; then
+    echo "Removal cancelled by user"
+    exit 1
+  fi
+
   echo "Removing Windows VM..."
 
   docker-compose -f "$COMPOSE_FILE" down 2>/dev/null || true
