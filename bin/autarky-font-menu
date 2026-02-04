@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 font=$(
   fc-list :spacing=100 -f "%{family[0]}\n" |

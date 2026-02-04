@@ -1,10 +1,10 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Copy over Autarky configs
 cp -R ~/.local/share/autarky/config/* ~/.config/
 
-# zshrc, tmux.conf and starship.toml
-cp ~/.local/share/autarky/default/zshrc ~/.zshrc
+# bashrc, tmux.conf and starship.toml
+cp ~/.local/share/autarky/default/bashrc ~/.bashrc
 cp ~/.local/share/autarky/default/tmux.conf ~/.tmux.conf
 cp ~/.local/share/autarky/default/starship.toml ~/.config/starship.toml
 
@@ -52,6 +52,6 @@ fi
 # include "%H/.local/share/autarky/default/xcompose"
 
 # Identification
-<Multi_key> <space> <n> : "$AUTARKY_USER_NAME"
-<Multi_key> <space> <e> : "$AUTARKY_USER_EMAIL"
-EOF
+# <Multi_key> <space> <n> : "$AUTARKY_USER_NAME"
+# <Multi_key> <space> <e> : "$AUTARKY_USER_EMAIL"
+# EOF

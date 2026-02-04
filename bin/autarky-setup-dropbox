@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 echo "Installing all dependencies..."
 yay -S --noconfirm --needed \

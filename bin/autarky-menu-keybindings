@@ -1,10 +1,10 @@
-#!/bin/zsh
+#!/bin/bash
 
 # A script to display Hyprland keybindings defined in your configuration
 # using walker for an interactive search menu.
 
 USER_HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
-AUTARKY_BINDINGS_CONF=($HOME/.local/share/autarky/default/hypr/bindings/*.conf)
+AUTARKY_BINDINGS_CONF=($(ls $HOME/.local/share/autarky/default/hypr/bindings/*.conf 2>/dev/null))
 
 # Process the configuration file to extract and format keybindings
 # 1. `grep` finds all lines starting with 'bind' (allowing for leading spaces).

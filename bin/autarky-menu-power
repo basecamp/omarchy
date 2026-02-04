@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 show_power_menu() {
   # The first characters are invisible sort keys.

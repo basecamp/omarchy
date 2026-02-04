@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Install iwd explicitly if it wasn't included in archinstall
 # This can happen if archinstall used ethernet

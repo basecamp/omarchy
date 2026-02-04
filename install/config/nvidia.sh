@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # ==============================================================================
 # Hyprland NVIDIA Setup Script for Arch Linux

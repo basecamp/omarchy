@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -8,7 +8,7 @@ AUTARKY_INSTALL=~/.local/share/autarky/install
 # Give people a chance to retry running the installation
 catch_errors() {
   echo -e "\n\e[31mAutarky installation failed!\e[0m"
-  echo "You can retry by running: zsh ~/.local/share/autarky/install.sh"
+  echo "You can retry by running: bash ~/.local/share/autarky/install.sh"
   echo "Get help from the community: https://discord.gg/tXFUdasqhY"
 }
 
@@ -33,7 +33,7 @@ source $AUTARKY_INSTALL/preflight/presentation.sh
 show_logo beams 240
 show_subtext "Let's install Autarky! [1/5]"
 source $AUTARKY_INSTALL/config/identification.sh
-source $AUTARKY_INSTALL/config/zsh.sh
+source $AUTARKY_INSTALL/config/termtools.sh
 source $AUTARKY_INSTALL/config/config.sh
 source $AUTARKY_INSTALL/config/detect-keyboard-layout.sh
 source $AUTARKY_INSTALL/config/fix-fkeys.sh

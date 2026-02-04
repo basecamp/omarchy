@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 sudo pacman -S --noconfirm --needed udisks2 usb_modeswitch tree reflector
 
 yay -S --noconfirm --needed \

@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # get cool icons
 yay -S --noconfirm suru-plus-aspromauros

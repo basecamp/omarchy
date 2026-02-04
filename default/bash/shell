@@ -3,7 +3,7 @@ export PATH="./bin:$HOME/.local/bin:$HOME/.local/share/autarky/bin:$PATH"
 # re-hash executables everytime you run them
 # set +h
 
-export ZSH_COMPDUMP="$ZSH/cache/completions/.zcompdump-$HOST"
+# export ZSH_COMPDUMP="$ZSH/cache/completions/.zcompdump-$HOST"
 # Autarky path
 export AUTARKY_PATH="/home/$USER/.local/share/autarky"
 

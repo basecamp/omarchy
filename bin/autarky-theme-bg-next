@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Cycles through the background images available
 
@@ -24,26 +24,26 @@ else
     CURRENT_BACKGROUND=""
   fi
 
-  # Find current background index
-  INDEX=-1
-  for i in {1..$TOTAL}; do
-    if [[ "${BACKGROUNDS[$i]}" == "$CURRENT_BACKGROUND" ]]; then
-      INDEX=$i
-      break
-    fi
-  done
-
-  # Get next background (wrap around)
-  MODE="fill"
-  if [[ $INDEX -eq -1 ]]; then
-    # Use the first background when no match is found
-    NEW_BACKGROUND="${BACKGROUNDS[1]}"
-  else
-    NEXT_INDEX=$((INDEX % TOTAL))
-    NEW_BACKGROUND="${BACKGROUNDS[($NEXT_INDEX + 1)]}"
-    IFS='-' read -A parts <<< "$NEW_BACKGROUND"
-    MODE="$parts[2]"
+# Find current background index
+INDEX=-1
+for ((i=0; i<TOTAL; i++)); do
+  if [[ "${BACKGROUNDS[$i]}" == "$CURRENT_BACKGROUND" ]]; then
+    INDEX=$i
+    break
   fi
+done
+
+# Get next background (wrap around)
+MODE="fill"
+if [[ $INDEX -eq -1 ]]; then
+  # Use the first background when no match is found
+  NEW_BACKGROUND="${BACKGROUNDS[0]}"
+else
+  NEXT_INDEX=$(((INDEX + 1) % TOTAL))
+  NEW_BACKGROUND="${BACKGROUNDS[$NEXT_INDEX]}"
+  IFS='-' read -a parts <<< "$NEW_BACKGROUND"
+  MODE="${parts[2]}"
+fi
 
   # Set new background symlink
   ln -nsf "$NEW_BACKGROUND" "$CURRENT_BACKGROUND_LINK"

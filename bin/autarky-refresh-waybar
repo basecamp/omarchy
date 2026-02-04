@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 autarky-refresh-config waybar/config.jsonc
 autarky-refresh-config waybar/style.css

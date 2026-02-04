@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # takes pre-made pywal colors and writes config files to .config/autarky/template
 # wal use:

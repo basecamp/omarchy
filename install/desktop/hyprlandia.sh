@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 yay -S --noconfirm --needed \
   hyprland hyprshot hyprpicker hyprlock hypridle polkit-gnome hyprland-guiutils \

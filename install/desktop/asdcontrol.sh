@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Install asdcontrol for controlling brightness on Apple Displays
 if [ -z "$AUTARKY_BARE" ] && ! command -v asdcontrol &>/dev/null; then

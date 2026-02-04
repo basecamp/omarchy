@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # install everything, it's about 600 MB, might be skimmable to 350 but w/e
 sudo pacman -S --noconfirm --needed \

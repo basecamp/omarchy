@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 if [ -z "$AUTARKY_BARE" ]; then
   yay -S --noconfirm --needed \

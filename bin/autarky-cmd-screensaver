@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 trap "exit" SIGINT
 

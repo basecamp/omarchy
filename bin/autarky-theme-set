@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # autarky-theme-set: Set a theme, specified by its name.
 # Usage: autarky-theme-set <theme-name>

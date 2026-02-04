@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 if [ -z "$AUTARKY_BARE" ]; then
   source ~/.local/share/autarky/default/zsh/functions

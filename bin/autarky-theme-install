@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # autarky-theme-install: Install a new theme from a git repo for Autarky
 # Usage: autarky-theme-install <git-repo-url>

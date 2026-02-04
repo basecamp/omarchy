@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 if [[ "--remove" == "$1" ]]; then
   yay -Rns --noconfirm libfido2 pam-u2f

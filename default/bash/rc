@@ -1,0 +1,6 @@
+# Autarky-specific configuration
+source ~/.local/share/autarky/default/bash/shell
+source ~/.local/share/autarky/default/bash/aliases
+source ~/.local/share/autarky/default/bash/functions
+source ~/.local/share/autarky/default/bash/init
+source ~/.local/share/autarky/default/bash/envs

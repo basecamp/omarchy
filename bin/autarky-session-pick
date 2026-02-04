@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Ensure each exists and gettem
 pre_sessions=(cururo monito-del-monte pudu)
@@ -9,19 +9,19 @@ sessions=($(tmux list-sessions -F '#S'))
 
 # Print menu
 echo "Select a tmux session to attach to by pressing its number:"
-for ((i=1; i<=${#sessions[@]}; i++)); do
-  printf "%d) %s\n" "$i" "${sessions[i]}"
+for ((i=0; i<${#sessions[@]}; i++)); do
+  printf "%d) %s\n" "$((i+1))" "${sessions[i]}"
 done
 echo "q) Quit"
 
 # Wait for a single key press
 while true; do
-  read -rk1 key
+  read -r -n 1 key
   if [[ "$key" == "q" ]]; then
     break
   elif [[ "$key" =~ [1-9] ]]; then
-    idx=$key
-    if (( idx <= ${#sessions[@]} )); then
+    idx=$((key - 1))  # Convert to 0-based index
+    if (( idx < ${#sessions[@]} )); then
       tmux attach -t "${sessions[idx]}"
       break
     fi

@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 yay -S --noconfirm --needed gum python-terminaltexteffects python-gobject
 

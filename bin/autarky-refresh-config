@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # This script deploys ~/.local/share/autarky/config/X/Y/Z -> ~/.config/X/Y/Z
 config_file=$1

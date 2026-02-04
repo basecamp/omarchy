@@ -1,10 +1,14 @@
 # All the default Autarky aliases and functions
 # (don't mess with these directly, just overwrite them here!)
-source ~/.local/share/autarky/default/zsh/rc
+source ~/.local/share/autarky/default/bash/rc
 
-HISTFILE=~/.zhistfile
+HISTFILE=~/.bash_history
 HISTSIZE=1000
-SAVEHIST=1000
+HISTFILESIZE=1000
+
+shopt -s histappend
+PROMPT_COMMAND="history -a; $PROMPT_COMMAND"
+
 # Add your own exports, aliases, and functions here.
 alias v='nvim'
 alias vi='nvim'
@@ -47,7 +51,7 @@ export TEXMFHOME=/var/empty
 export TEXMFVAR=/var/empty
 export TEXMFCONFIG=/var/empty
 
-source /usr/share/zsh/plugins/zsh-vi-mode/zsh-vi-mode.plugin.zsh
-source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh
+# source /usr/share/zsh/plugins/zsh-vi-mode/zsh-vi-mode.plugin.zsh
+# source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh
 
-eval "$(starship init zsh)"
+eval "$(starship init bash)"

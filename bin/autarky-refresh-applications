@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Copy and sync icon files
 mkdir -p ~/.local/share/icons/hicolor/48x48/apps/

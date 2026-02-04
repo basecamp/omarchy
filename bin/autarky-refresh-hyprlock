@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Overwrite local Hyprlock settings with the latest in Autarky
 autarky-refresh-config hypr/hyprlock.conf

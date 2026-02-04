@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 sudo tzupdate
 new_timezone=$(timedatectl show -p Timezone --value)

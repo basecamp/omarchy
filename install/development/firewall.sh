@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 if ! command -v ufw &>/dev/null; then
   yay -S --noconfirm --needed ufw ufw-docker

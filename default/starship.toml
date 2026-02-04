@@ -3,7 +3,7 @@
 
 # Inserts a blank line between shell prompts
 add_newline = false
-format = '''$directory$pixi$git_branch$git_status$hostname$cmd_duration$fill
+format = '''$directory$pixi$git_branch$git_status$hostname$cmd_duration
 '''
 right_format = ''''''
 

@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 if pgrep -x hypridle >/dev/null; then
   pkill -x hypridle

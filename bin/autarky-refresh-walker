@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # autarky-refresh-config walker/config.toml
 

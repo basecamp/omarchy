@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 THEMES_DIR="$HOME/.config/autarky/themes/"
 CURRENT_THEME_DIR="$HOME/.config/autarky/current/theme"

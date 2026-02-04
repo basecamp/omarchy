@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 autarky_VERSION=$(git -C ~/.local/share/autarky describe --tags --abbrev=0 2>/dev/null)
 PATH="$PATH:$HOME/.local/share/autarky/bin"

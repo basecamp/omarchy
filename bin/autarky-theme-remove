@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # autarky-theme-remove: Remove a theme from Autarky by name
 # Usage: autarky-theme-remove <theme-name>

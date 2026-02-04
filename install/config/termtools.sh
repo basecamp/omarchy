@@ -1,10 +1,11 @@
-#!/bin/zsh
+#!/bin/bash
 
-echo "Installing/Configuring Zsh, Starship, and Tmux"
+echo "Installing/Configuring keyd, Starship, and Tmux"
 
 # Install zsh and related packages
 sudo pacman -S --noconfirm --needed starship tmux keyd
-yay -S --noconfirm --needed zsh zsh-syntax-highlighting zsh-autosuggestions zsh-vi-mode kitty
+# yay -S --noconfirm --needed zsh zsh-syntax-highlighting zsh-autosuggestions zsh-vi-mode kitty
+yay -S --noconfirm --needed kitty
 
 # enable plugins for tmux
 rm -rf ~/.tmux/plugins/tpm
@@ -18,7 +19,7 @@ if ! systemctl is-enabled keyd.service | grep -q enabled; then
 fi
 
 # Change default shell to zsh
-if [ "$SHELL" != "$(which zsh)" ]; then
-  chsh -s $(which zsh)
-  echo "Default shell changed to zsh. You may need to log out and back in for this to take effect."
-fi
+# if [ "$SHELL" != "$(which zsh)" ]; then
+#   chsh -s $(which zsh)
+#   echo "Default shell changed to zsh. You may need to log out and back in for this to take effect."
+# fi

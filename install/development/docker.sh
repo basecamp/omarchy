@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 yay -S --noconfirm --needed docker docker-compose docker-buildx
 
