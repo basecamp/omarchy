@@ -18,28 +18,27 @@ fi
 # Silently quit Walker on overlay
 walker -q
 
-focused=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
+rules() {
+  echo "[monitor ${1-0}]"
+}
 terminal=$(xdg-terminal-exec --print-id)
-
-for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
-  hyprctl dispatch focusmonitor $m
-
+for m in $(hyprctl monitors -j | jq 'sort_by(.focused == true)' | jq -r '.[] |.name'); do
   case $terminal in
   *Alacritty*)
-    hyprctl dispatch exec -- \
+    hyprctl dispatch exec -- "$(rules "$m")" \
       alacritty --class=org.omarchy.screensaver \
       --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
       -e omarchy-cmd-screensaver
     ;;
   *ghostty*)
-    hyprctl dispatch exec -- \
+    hyprctl dispatch exec -- "$(rules "$m")" \
       ghostty --class=org.omarchy.screensaver \
       --config-file=~/.local/share/omarchy/default/ghostty/screensaver \
       --font-size=18 \
       -e omarchy-cmd-screensaver
     ;;
   *kitty*)
-    hyprctl dispatch exec -- \
+    hyprctl dispatch exec -- "$(rules "$m")" \
       kitty --class=org.omarchy.screensaver \
       --override font_size=18 \
       --override window_padding_width=0 \
@@ -49,6 +48,5 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
     notify-send "✋  Screensaver only runs in Alacritty, Ghostty, or Kitty"
     ;;
   esac
+  sleep 0.5
 done
-
-hyprctl dispatch focusmonitor $focused
