@@ -21,11 +21,10 @@ ensure_tte() {
   fi
 
   # Last resort: use the known site-packages path when present.
-  if [[ -d /usr/lib/python3.13/site-packages/terminaltexteffects ]]; then
+  if [[ -d /usr/lib/python3.13/site-packages/terminaltexteffects ]] && \
+     PYTHONPATH=/usr/lib/python3.13/site-packages python3 -m terminaltexteffects --version >/dev/null 2>&1; then
     tte() { PYTHONPATH=/usr/lib/python3.13/site-packages exec python3 -m terminaltexteffects "$@"; }
-    if tte --version >/dev/null 2>&1; then
-      return 0
-    fi
+    return 0
   fi
 
   notify-send "Screensaver error" "tte failed to start. Try reinstalling python-terminaltexteffects."
@@ -37,8 +36,12 @@ screensaver_in_focus() {
   hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
 }
 
-exit_screensaver() {
+cleanup_cursor() {
   hyprctl keyword cursor:invisible false &>/dev/null || true
+}
+
+exit_screensaver() {
+  cleanup_cursor
   if [[ -n "${TTE_PID:-}" ]]; then
     kill "$TTE_PID" 2>/dev/null || true
   else
@@ -51,14 +54,15 @@ exit_screensaver() {
 
 # Exit the screensaver on signals and input from keyboard and mouse
 trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+trap cleanup_cursor EXIT
 
 printf '\033]11;rgb:00/00/00\007'  # Set background color to black
-
-hyprctl keyword cursor:invisible true &>/dev/null
 
 tty=$(tty 2>/dev/null)
 
 ensure_tte
+
+hyprctl keyword cursor:invisible true &>/dev/null
 
 while true; do
   tte -i ~/.config/omarchy/branding/screensaver.txt \
@@ -66,6 +70,11 @@ while true; do
     --random-effect --exclude-effects dev_worm \
     --no-eol --no-restore-cursor &
   TTE_PID=$!
+
+  sleep 0.1
+  if ! kill -0 "$TTE_PID" 2>/dev/null; then
+    exit_screensaver
+  fi
 
   while kill -0 "$TTE_PID" 2>/dev/null; do
     if read -n1 -t 1 || ! screensaver_in_focus; then
