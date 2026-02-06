@@ -40,7 +40,7 @@ tte_is_alive() {
   [[ -n "${TTE_PID:-}" ]] || return 1
   [[ -r "/proc/$TTE_PID/cmdline" ]] || return 1
   kill -0 "$TTE_PID" 2>/dev/null || return 1
-  tr '\0' ' ' <"/proc/$TTE_PID/cmdline" | rg -q 'terminaltexteffects|/usr/bin/tte'
+  tr '\0' ' ' <"/proc/$TTE_PID/cmdline" | grep -Eq 'terminaltexteffects|/usr/bin/tte'
 }
 
 cleanup_cursor() {
