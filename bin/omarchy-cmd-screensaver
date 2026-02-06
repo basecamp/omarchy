@@ -36,6 +36,13 @@ screensaver_in_focus() {
   hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
 }
 
+tte_is_alive() {
+  [[ -n "${TTE_PID:-}" ]] || return 1
+  [[ -r "/proc/$TTE_PID/cmdline" ]] || return 1
+  kill -0 "$TTE_PID" 2>/dev/null || return 1
+  tr '\0' ' ' <"/proc/$TTE_PID/cmdline" | rg -q 'terminaltexteffects|/usr/bin/tte'
+}
+
 cleanup_cursor() {
   hyprctl keyword cursor:invisible false &>/dev/null || true
 }
@@ -72,11 +79,11 @@ while true; do
   TTE_PID=$!
 
   sleep 0.1
-  if ! kill -0 "$TTE_PID" 2>/dev/null; then
+  if ! tte_is_alive; then
     exit_screensaver
   fi
 
-  while kill -0 "$TTE_PID" 2>/dev/null; do
+  while tte_is_alive; do
     if read -n1 -t 1 || ! screensaver_in_focus; then
       exit_screensaver
     fi
