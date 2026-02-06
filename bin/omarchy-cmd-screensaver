@@ -10,19 +10,19 @@ ensure_tte() {
 
   # Fall back to running the module via python3 -m.
   if python3 -m terminaltexteffects --version >/dev/null 2>&1; then
-    tte() { python3 -m terminaltexteffects "$@"; }
+    tte() { exec python3 -m terminaltexteffects "$@"; }
     return 0
   fi
 
   # If the module only exists for an older system python, use it directly.
   if command -v python3.13 >/dev/null 2>&1 && python3.13 -m terminaltexteffects --version >/dev/null 2>&1; then
-    tte() { python3.13 -m terminaltexteffects "$@"; }
+    tte() { exec python3.13 -m terminaltexteffects "$@"; }
     return 0
   fi
 
   # Last resort: use the known site-packages path when present.
   if [[ -d /usr/lib/python3.13/site-packages/terminaltexteffects ]]; then
-    tte() { PYTHONPATH=/usr/lib/python3.13/site-packages python3 -m terminaltexteffects "$@"; }
+    tte() { PYTHONPATH=/usr/lib/python3.13/site-packages exec python3 -m terminaltexteffects "$@"; }
     if tte --version >/dev/null 2>&1; then
       return 0
     fi
