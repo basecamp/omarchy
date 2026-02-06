@@ -29,18 +29,18 @@ theme[meter_bg]="{{ color8 }}"
 theme[proc_misc]="{{ foreground }}"
 
 # CPU, Memory, Network, Proc box outline colors
-theme[cpu_box]="{{ spectrum4 }}"
-theme[mem_box]="{{ spectrum0 }}"
-theme[net_box]="{{ spectrum6 }}"
+theme[cpu_box]="{{ color5 }}"
+theme[mem_box]="{{ color2 }}"
+theme[net_box]="{{ color1 }}"
 theme[proc_box]="{{ accent }}"
 
 # Box divider line and small boxes line color
 theme[div_line]="{{ color8 }}"
 
-# Temperature graph color
-theme[temp_start]="{{ spectrum0 }}"
+# Temperature graph color (Green -> Yellow -> Red)
+theme[temp_start]="{{ color2 }}"
 theme[temp_mid]="{{ spectrum3 }}"
-theme[temp_end]="{{ spectrum7 }}"
+theme[temp_end]="{{ color1 }}"
 
 # CPU graph colors
 theme[cpu_start]="{{ spectrum0 }}"
@@ -48,38 +48,38 @@ theme[cpu_mid]="{{ spectrum3 }}"
 theme[cpu_end]="{{ spectrum6 }}"
 
 # Mem/Disk free meter
-theme[free_start]="{{ spectrum5 }}"
+theme[free_start]="{{ color5 }}"
 theme[free_mid]="{{ spectrum3 }}"
 theme[free_end]="{{ spectrum1 }}"
 
 # Mem/Disk cached meter
 theme[cached_start]="{{ spectrum2 }}"
-theme[cached_mid]="{{ spectrum4 }}"
-theme[cached_end]="{{ spectrum6 }}"
+theme[cached_mid]="{{ color4 }}"
+theme[cached_end]="{{ spectrum5 }}"
 
 # Mem/Disk available meter
-theme[available_start]="{{ spectrum3 }}"
+theme[available_start]="{{ color3 }}"
 theme[available_mid]="{{ spectrum5 }}"
 theme[available_end]="{{ spectrum7 }}"
 
 # Mem/Disk used meter
 theme[used_start]="{{ spectrum0 }}"
-theme[used_mid]="{{ spectrum3 }}"
+theme[used_mid]="{{ color4 }}"
 theme[used_end]="{{ spectrum7 }}"
 
 # Download graph colors
-theme[download_start]="{{ spectrum5 }}"
+theme[download_start]="{{ color3 }}"
 theme[download_mid]="{{ spectrum6 }}"
-theme[download_end]="{{ spectrum7 }}"
+theme[download_end]="{{ color1 }}"
 
 # Upload graph colors
-theme[upload_start]="{{ spectrum0 }}"
+theme[upload_start]="{{ color2 }}"
 theme[upload_mid]="{{ spectrum1 }}"
 theme[upload_end]="{{ spectrum2 }}"
 
 # Process box color gradient for threads, mem and cpu usage
 theme[process_start]="{{ spectrum1 }}"
-theme[process_mid]="{{ spectrum3 }}"
+theme[process_mid]="{{ color4 }}"
 theme[process_end]="{{ spectrum5 }}"
 
 # Graph gradient colors
