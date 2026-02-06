@@ -3,8 +3,8 @@
 # Run the Omarchy screensaver using random effects from TTE.
 
 ensure_tte() {
-  # Prefer the system command if it exists.
-  if command -v tte >/dev/null 2>&1; then
+  # Prefer the system command if it exists and works.
+  if command -v tte >/dev/null 2>&1 && tte --version >/dev/null 2>&1; then
     return 0
   fi
 
@@ -12,6 +12,20 @@ ensure_tte() {
   if python3 -m terminaltexteffects --version >/dev/null 2>&1; then
     tte() { python3 -m terminaltexteffects "$@"; }
     return 0
+  fi
+
+  # If the module only exists for an older system python, use it directly.
+  if command -v python3.13 >/dev/null 2>&1 && python3.13 -m terminaltexteffects --version >/dev/null 2>&1; then
+    tte() { python3.13 -m terminaltexteffects "$@"; }
+    return 0
+  fi
+
+  # Last resort: use the known site-packages path when present.
+  if [[ -d /usr/lib/python3.13/site-packages/terminaltexteffects ]]; then
+    tte() { PYTHONPATH=/usr/lib/python3.13/site-packages python3 -m terminaltexteffects "$@"; }
+    if tte --version >/dev/null 2>&1; then
+      return 0
+    fi
   fi
 
   notify-send "Screensaver error" "tte failed to start. Try reinstalling python-terminaltexteffects."
