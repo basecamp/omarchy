@@ -49,7 +49,7 @@ cleanup_cursor() {
 
 exit_screensaver() {
   cleanup_cursor
-  if [[ -n "${TTE_PID:-}" ]]; then
+  if tte_is_alive; then
     kill "$TTE_PID" 2>/dev/null || true
   else
     pkill -x tte 2>/dev/null || true
