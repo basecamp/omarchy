@@ -2,7 +2,7 @@
 
 FRAMEWORK16_THEME=~/.config/omarchy/current/theme/framework16-kbd.rgb
 
-if omarchy-cmd-present qmk_hid; then
+if omarchy-cmd-present qmk_hid && [[ -f "$FRAMEWORK16_THEME" ]]; then
   hex=$(cat "$FRAMEWORK16_THEME")
   hex="${hex#\#}"
 
@@ -14,7 +14,9 @@ h, s, v = colorsys.rgb_to_hsv(r, g, b)
 print(int(h * 255), int(s * 255))
 ")
 
-  qmk_hid via --rgb-effect 1
-  qmk_hid via --rgb-hue "$h" --rgb-saturation "$s" --rgb-brightness 100
-  qmk_hid via --save
+  qmk_hid via --rgb-effect 1 2>/dev/null
+  qmk_hid via --rgb-hue "$h" 2>/dev/null
+  qmk_hid via --rgb-saturation "$s" 2>/dev/null
+  qmk_hid via --rgb-brightness 100 2>/dev/null
+  qmk_hid via --save 2>/dev/null
 fi
