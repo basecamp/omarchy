@@ -52,8 +52,8 @@ exit_screensaver() {
   if tte_is_alive; then
     kill "$TTE_PID" 2>/dev/null || true
   else
-    pkill -x tte 2>/dev/null || true
-    pkill -f terminaltexteffects 2>/dev/null || true
+    pkill -t "${tty#/dev/}" -x tte 2>/dev/null || true
+    pkill -t "${tty#/dev/}" -f terminaltexteffects 2>/dev/null || true
   fi
   pkill -f org.omarchy.screensaver 2>/dev/null
   exit 0
