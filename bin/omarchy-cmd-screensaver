@@ -3,27 +3,20 @@
 # Run the Omarchy screensaver using random effects from TTE.
 
 ensure_tte() {
-  if tte --version >/dev/null 2>&1; then
+  # Prefer the system command if it exists.
+  if command -v tte >/dev/null 2>&1; then
     return 0
   fi
 
-  local tte_site=""
-  for p in /usr/lib/python*/site-packages/terminaltexteffects; do
-    if [[ -d "$p" ]]; then
-      tte_site="${p%/terminaltexteffects}"
-      break
-    fi
-  done
-
-  if [[ -n "$tte_site" ]]; then
-    export PYTHONPATH="$tte_site${PYTHONPATH:+:$PYTHONPATH}"
+  # Fall back to running the module via python3 -m.
+  if python3 -m terminaltexteffects --version >/dev/null 2>&1; then
+    tte() { python3 -m terminaltexteffects "$@"; }
+    return 0
   fi
 
-  if ! tte --version >/dev/null 2>&1; then
-    notify-send "Screensaver error" "tte failed to start. Try reinstalling python-terminaltexteffects."
-    echo "tte failed to start. Reinstall python-terminaltexteffects." >&2
-    exit 1
-  fi
+  notify-send "Screensaver error" "tte failed to start. Try reinstalling python-terminaltexteffects."
+  echo "Error: terminaltexteffects not found (command or module)." >&2
+  exit 1
 }
 
 screensaver_in_focus() {
