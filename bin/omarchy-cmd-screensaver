@@ -2,6 +2,30 @@
 
 # Run the Omarchy screensaver using random effects from TTE.
 
+ensure_tte() {
+  if tte --version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local tte_site=""
+  for p in /usr/lib/python*/site-packages/terminaltexteffects; do
+    if [[ -d "$p" ]]; then
+      tte_site="${p%/terminaltexteffects}"
+      break
+    fi
+  done
+
+  if [[ -n "$tte_site" ]]; then
+    export PYTHONPATH="$tte_site${PYTHONPATH:+:$PYTHONPATH}"
+  fi
+
+  if ! tte --version >/dev/null 2>&1; then
+    notify-send "Screensaver error" "tte failed to start. Try reinstalling python-terminaltexteffects."
+    echo "tte failed to start. Reinstall python-terminaltexteffects." >&2
+    exit 1
+  fi
+}
+
 screensaver_in_focus() {
   hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
 }
@@ -21,6 +45,8 @@ printf '\033]11;rgb:00/00/00\007'  # Set background color to black
 hyprctl keyword cursor:invisible true &>/dev/null
 
 tty=$(tty 2>/dev/null)
+
+ensure_tte
 
 while true; do
   tte -i ~/.config/omarchy/branding/screensaver.txt \
