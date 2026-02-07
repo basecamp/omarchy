@@ -11,83 +11,83 @@ theme[title]="{{ foreground }}"
 theme[hi_fg]="{{ accent }}"
 
 # Background color of selected item in processes box
-theme[selected_bg]="{{ spectrum2 }}"
+theme[selected_bg]="{{ base02 }}"
 
 # Foreground color of selected item in processes box
 theme[selected_fg]="{{ accent }}"
 
 # Color of inactive/disabled text
-theme[inactive_fg]="{{ spectrum3 }}"
+theme[inactive_fg]="{{ base03 }}"
 
 # Color of text appearing on top of graphs, i.e uptime and current network graph scaling
-theme[graph_text]="{{ spectrum6 }}"
+theme[graph_text]="{{ base06 }}"
 
 # Background color of the percentage meters
-theme[meter_bg]="{{ spectrum2 }}"
+theme[meter_bg]="{{ base02 }}"
 
 # Misc colors for processes box including mini cpu graphs, details memory graph and details status text
-theme[proc_misc]="{{ spectrum6 }}"
+theme[proc_misc]="{{ base06 }}"
 
 # CPU, Memory, Network, Proc box outline colors
-theme[cpu_box]="{{ color5 }}"
-theme[mem_box]="{{ color2 }}"
-theme[net_box]="{{ color1 }}"
+theme[cpu_box]="{{ base0D }}"
+theme[mem_box]="{{ base0A }}"
+theme[net_box]="{{ base09 }}"
 theme[proc_box]="{{ accent }}"
 
 # Box divider line and small boxes line color
-theme[div_line]="{{ spectrum3 }}"
+theme[div_line]="{{ base03 }}"
 
 # Temperature graph color (Green -> Yellow -> Red)
-theme[temp_start]="{{ color2 }}"
-theme[temp_mid]="{{ color3 }}"
-theme[temp_end]="{{ color1 }}"
+theme[temp_start]="{{ base0A }}"
+theme[temp_mid]="{{ base0B }}"
+theme[temp_end]="{{ base09 }}"
 
 # CPU graph colors (Teal -> Blue -> Purple)
-theme[cpu_start]="{{ color6 }}"
-theme[cpu_mid]="{{ color4 }}"
-theme[cpu_end]="{{ color5 }}"
+theme[cpu_start]="{{ base0E }}"
+theme[cpu_mid]="{{ base0C }}"
+theme[cpu_end]="{{ base0D }}"
 
 # Mem/Disk free meter
-theme[free_start]="{{ color5 }}"
-theme[free_mid]="{{ color4 }}"
-theme[free_end]="{{ color6 }}"
+theme[free_start]="{{ base0D }}"
+theme[free_mid]="{{ base0C }}"
+theme[free_end]="{{ base0E }}"
 
 # Mem/Disk cached meter
-theme[cached_start]="{{ color4 }}"
-theme[cached_mid]="{{ color6 }}"
-theme[cached_end]="{{ color5 }}"
+theme[cached_start]="{{ base0C }}"
+theme[cached_mid]="{{ base0E }}"
+theme[cached_end]="{{ base0D }}"
 
 # Mem/Disk available meter
-theme[available_start]="{{ color3 }}"
-theme[available_mid]="{{ color1 }}"
-theme[available_end]="{{ color1 }}"
+theme[available_start]="{{ base0B }}"
+theme[available_mid]="{{ base09 }}"
+theme[available_end]="{{ base09 }}"
 
 # Mem/Disk used meter (Green -> Teal -> Blue)
-theme[used_start]="{{ color2 }}"
-theme[used_mid]="{{ color6 }}"
-theme[used_end]="{{ color4 }}"
+theme[used_start]="{{ base0A }}"
+theme[used_mid]="{{ base0E }}"
+theme[used_end]="{{ base0C }}"
 
 # Download graph colors
-theme[download_start]="{{ color3 }}"
-theme[download_mid]="{{ color1 }}"
-theme[download_end]="{{ color1 }}"
+theme[download_start]="{{ base0B }}"
+theme[download_mid]="{{ base09 }}"
+theme[download_end]="{{ base09 }}"
 
 # Upload graph colors (Green -> Teal -> Blue)
-theme[upload_start]="{{ color2 }}"
-theme[upload_mid]="{{ color6 }}"
-theme[upload_end]="{{ color4 }}"
+theme[upload_start]="{{ base0A }}"
+theme[upload_mid]="{{ base0E }}"
+theme[upload_end]="{{ base0C }}"
 
 # Process box color gradient for threads, mem and cpu usage
-theme[process_start]="{{ color6 }}"
-theme[process_mid]="{{ color4 }}"
-theme[process_end]="{{ color5 }}"
+theme[process_start]="{{ base0E }}"
+theme[process_mid]="{{ base0C }}"
+theme[process_end]="{{ base0D }}"
 
 # Graph gradient colors (spectrum shades from background to foreground)
-theme[gradient_color_0]="{{ spectrum0 }}"
-theme[gradient_color_1]="{{ spectrum1 }}"
-theme[gradient_color_2]="{{ spectrum2 }}"
-theme[gradient_color_3]="{{ spectrum3 }}"
-theme[gradient_color_4]="{{ spectrum4 }}"
-theme[gradient_color_5]="{{ spectrum5 }}"
-theme[gradient_color_6]="{{ spectrum6 }}"
-theme[gradient_color_7]="{{ spectrum7 }}"
+theme[gradient_color_0]="{{ base00 }}"
+theme[gradient_color_1]="{{ base01 }}"
+theme[gradient_color_2]="{{ base02 }}"
+theme[gradient_color_3]="{{ base03 }}"
+theme[gradient_color_4]="{{ base04 }}"
+theme[gradient_color_5]="{{ base05 }}"
+theme[gradient_color_6]="{{ base06 }}"
+theme[gradient_color_7]="{{ base07 }}"

@@ -11,9 +11,31 @@ hex_to_rgb() {
   printf "%d,%d,%d" "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
 }
 
+# Emit sed substitution rules for a given key/value pair (plain, _strip, _rgb)
+emit_sed_rules() {
+  local key="$1" value="$2"
+  printf 's|{{ %s }}|%s|g\n' "$key" "$value"
+  printf 's|{{ %s_strip }}|%s|g\n' "$key" "${value#\#}"
+  if [[ $value =~ ^# ]]; then
+    local rgb
+    rgb=$(hex_to_rgb "$value")
+    echo "s|{{ ${key}_rgb }}|${rgb}|g"
+  fi
+}
+
+# Backward-compatible aliases: map legacy colorN names to base08-base17
+# color0-7 -> base08-base0F, color8-15 -> base10-base17
+declare -A COLOR_FALLBACKS=(
+  [color0]=base08  [color1]=base09  [color2]=base0A  [color3]=base0B
+  [color4]=base0C  [color5]=base0D  [color6]=base0E  [color7]=base0F
+  [color8]=base10  [color9]=base11  [color10]=base12 [color11]=base13
+  [color12]=base14 [color13]=base15 [color14]=base16 [color15]=base17
+)
+
 # Only generate dynamic templates for themes with a colors.toml definition
 if [[ -f $COLORS_FILE ]]; then
   sed_script=$(mktemp)
+  declare -A base_values=()
 
   while IFS='=' read -r key value; do
     key="${key//[\"\' ]/}"                # strip quotes and spaces from key
@@ -21,13 +43,17 @@ if [[ -f $COLORS_FILE ]]; then
     value="${value#*[\"\']}"
     value="${value%%[\"\']*}" # extract value between quotes (ignores inline comments)
 
-    printf 's|{{ %s }}|%s|g\n' "$key" "$value"            # {{ key }} -> value
-    printf 's|{{ %s_strip }}|%s|g\n' "$key" "${value#\#}" # {{ key_strip }} -> value without leading #
-    if [[ $value =~ ^# ]]; then
-      rgb=$(hex_to_rgb "$value")
-      echo "s|{{ ${key}_rgb }}|${rgb}|g"
-    fi
+    emit_sed_rules "$key" "$value"
+
+    # Store base08-base17 values for colorN fallback aliases
+    [[ $key == base0[89A-F] || $key == base1[0-7] ]] && base_values[$key]="$value"
   done <"$COLORS_FILE" >"$sed_script"
+
+  # Emit backward-compatible colorN aliases mapped to base00-base07 shades
+  for alias_name in "${!COLOR_FALLBACKS[@]}"; do
+    local_base="${COLOR_FALLBACKS[$alias_name]}"
+    [[ -n ${base_values[$local_base]+x} ]] && emit_sed_rules "$alias_name" "${base_values[$local_base]}"
+  done >>"$sed_script"
 
   shopt -s nullglob
 
