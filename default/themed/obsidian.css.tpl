@@ -12,45 +12,45 @@
   --text-selection: {{ selection_background }};
 
   /* Border color */
-  --background-modifier-border: {{ base03 }};
+  --background-modifier-border: {{ muted }};
 
   /* Semantic heading colors */
-  --text-title-h1: {{ base08 }};
-  --text-title-h2: {{ base0B }};
-  --text-title-h3: {{ base0A }};
-  --text-title-h4: {{ base0D }};
-  --text-title-h5: {{ base0E }};
-  --text-title-h6: {{ base0E }};
+  --text-title-h1: {{ red }};
+  --text-title-h2: {{ green }};
+  --text-title-h3: {{ yellow }};
+  --text-title-h4: {{ blue }};
+  --text-title-h5: {{ purple }};
+  --text-title-h6: {{ purple }};
 
   /* Links and accents */
-  --text-link: {{ base0D }};
+  --text-link: {{ blue }};
   --text-accent: {{ accent }};
   --text-accent-hover: {{ accent }};
   --interactive-accent: {{ accent }};
   --interactive-accent-hover: {{ accent }};
 
   /* Muted text */
-  --text-muted: {{ base03 }};
-  --text-faint: {{ base03 }};
+  --text-muted: {{ muted }};
+  --text-faint: {{ muted }};
 
   /* Code */
-  --code-normal: {{ base0C }};
+  --code-normal: {{ cyan }};
 
   /* Errors and success */
-  --text-error: {{ base08 }};
-  --text-error-hover: {{ base08 }};
-  --text-success: {{ base0B }};
+  --text-error: {{ red }};
+  --text-error-hover: {{ red }};
+  --text-success: {{ green }};
 
   /* Tags */
-  --tag-color: {{ base0C }};
-  --tag-background: {{ base03 }};
+  --tag-color: {{ cyan }};
+  --tag-background: {{ muted }};
 
   /* Graph */
-  --graph-line: {{ base03 }};
+  --graph-line: {{ muted }};
   --graph-node: {{ accent }};
-  --graph-node-focused: {{ base0D }};
-  --graph-node-tag: {{ base0C }};
-  --graph-node-attachment: {{ base0B }};
+  --graph-node-focused: {{ blue }};
+  --graph-node-tag: {{ cyan }};
+  --graph-node-attachment: {{ green }};
 }
 
 /* Headers */
@@ -63,16 +63,16 @@
 
 /* Code blocks */
 .markdown-rendered code {
-  color: {{ base0C }};
+  color: {{ cyan }};
 }
 
 /* Syntax highlighting */
-.cm-s-obsidian span.cm-keyword { color: {{ base08 }}; }
-.cm-s-obsidian span.cm-string { color: {{ base0B }}; }
-.cm-s-obsidian span.cm-number { color: {{ base0A }}; }
-.cm-s-obsidian span.cm-comment { color: {{ base03 }}; }
-.cm-s-obsidian span.cm-operator { color: {{ base0D }}; }
-.cm-s-obsidian span.cm-def { color: {{ base0D }}; }
+.cm-s-obsidian span.cm-keyword { color: {{ red }}; }
+.cm-s-obsidian span.cm-string { color: {{ green }}; }
+.cm-s-obsidian span.cm-number { color: {{ yellow }}; }
+.cm-s-obsidian span.cm-comment { color: {{ muted }}; }
+.cm-s-obsidian span.cm-operator { color: {{ blue }}; }
+.cm-s-obsidian span.cm-def { color: {{ blue }}; }
 
 /* Links */
 .markdown-rendered a {
