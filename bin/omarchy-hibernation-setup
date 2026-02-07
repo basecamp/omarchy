@@ -17,9 +17,11 @@ if [ -f "$MKINITCPIO_CONF" ] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; 
   exit 0
 fi
 
-MEM_TOTAL_HUMAN=$(free --human | awk '/Mem/ {print $2}')
-if ! gum confirm "Use $MEM_TOTAL_HUMAN on boot drive to make hibernation available?"; then
-  exit 0
+if [[ $1 != "--force" ]]; then
+  MEM_TOTAL_HUMAN=$(free --human | awk '/Mem/ {print $2}')
+  if ! gum confirm "Use $MEM_TOTAL_HUMAN on boot drive to make hibernation available?"; then
+    exit 0
+  fi
 fi
 
 SWAP_SUBVOLUME="/swap"
@@ -70,6 +72,6 @@ sudo limine-mkinitcpio
 
 echo
 
-if gum confirm "Reboot to enable hiberation?"; then
+if [[ $1 != "--force" ]] && gum confirm "Reboot to enable hibernation?"; then
   omarchy-cmd-reboot
 fi
