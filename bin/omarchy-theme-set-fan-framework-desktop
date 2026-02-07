@@ -1,10 +1,64 @@
 #!/bin/bash
 
 # Apply theme accent color to Framework Desktop ARGB fan via framework_tool.
+#
+# Color selection priority:
+# 1. User override: ~/.config/omarchy/fan-colors/<theme-name>.txt (8 hex colors, one per line)
+# 2. Auto-generated: Theme accent color with boosted saturation
 
+if ! omarchy-hw-framework-desktop || ! omarchy-cmd-present framework_tool; then
+  exit 0
+fi
+
+THEME_NAME=$(cat ~/.config/omarchy/current/theme.name 2>/dev/null)
+OVERRIDE_FILE=~/.config/omarchy/fan-colors/${THEME_NAME}.txt
 THEME_FILE=~/.config/omarchy/current/theme/framework-desktop-fan.rgb
 
-if omarchy-hw-framework-desktop && omarchy-cmd-present framework_tool && [[ -f "$THEME_FILE" ]]; then
-  color=$(sed 's/^#/0x/' "$THEME_FILE")
+# Check for user override first
+if [[ -f "$OVERRIDE_FILE" ]]; then
+  # Read 8 colors from override file (one hex color per line)
+  mapfile -t colors < "$OVERRIDE_FILE"
+  
+  # Pad with first color if fewer than 8 provided
+  while [[ ${#colors[@]} -lt 8 ]]; do
+    colors+=("${colors[0]}")
+  done
+  
+  # Convert # to 0x prefix
+  for i in {0..7}; do
+    colors[$i]=$(echo "${colors[$i]}" | sed 's/^#/0x/')
+  done
+  
+  sudo framework_tool --rgbkbd 0 \
+    "${colors[0]}" "${colors[1]}" "${colors[2]}" "${colors[3]}" \
+    "${colors[4]}" "${colors[5]}" "${colors[6]}" "${colors[7]}" \
+    2>/dev/null || true
+  exit 0
+fi
+
+# Fall back to auto-generated color with saturation boost
+if [[ -f "$THEME_FILE" ]]; then
+  hex=$(cat "$THEME_FILE" | sed 's/^#//')
+  
+  # Boost saturation using Python's colorsys
+  boosted=$(python3 -c "
+import colorsys
+hex_color = '$hex'
+r, g, b = int(hex_color[0:2], 16)/255, int(hex_color[2:4], 16)/255, int(hex_color[4:6], 16)/255
+h, s, v = colorsys.rgb_to_hsv(r, g, b)
+# Boost saturation (min 0.85) and value (min 0.9) for LED vibrancy
+s = max(s, 0.85)
+v = max(v, 0.9)
+r, g, b = colorsys.hsv_to_rgb(h, s, v)
+print(f'0x{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}')
+" 2>/dev/null)
+  
+  if [[ -n "$boosted" ]]; then
+    color="$boosted"
+  else
+    # Fallback if Python fails
+    color="0x${hex}"
+  fi
+  
   sudo framework_tool --rgbkbd 0 "$color" "$color" "$color" "$color" "$color" "$color" "$color" "$color" 2>/dev/null || true
 fi
