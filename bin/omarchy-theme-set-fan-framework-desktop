@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Apply theme accent color to Framework Desktop ARGB fan via framework_tool.
+
+THEME_FILE=~/.config/omarchy/current/theme/framework-desktop-fan.rgb
+
+if omarchy-hw-framework-desktop && omarchy-cmd-present framework_tool && [[ -f "$THEME_FILE" ]]; then
+  color=$(sed 's/^#/0x/' "$THEME_FILE")
+  sudo framework_tool --rgbkbd 0 "$color" "$color" "$color" "$color" "$color" "$color" "$color" "$color" 2>/dev/null || true
+fi

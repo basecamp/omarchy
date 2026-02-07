@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Unified fan RGB theme setter.
+# Calls hardware-specific fan RGB setters.
+
+omarchy-theme-set-fan-framework-desktop
+
+# Add other fan RGB implementations here as needed.
