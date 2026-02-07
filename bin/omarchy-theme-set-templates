@@ -23,13 +23,13 @@ emit_sed_rules() {
   fi
 }
 
-# Backward-compatible aliases: map legacy colorN names to base08-base17
-# color0-7 -> base08-base0F, color8-15 -> base10-base17
+# Backward-compatible aliases: map legacy colorN names to proper base24 terminal slots
+# Follows base24 terminal palette mapping (non-sequential)
 declare -A COLOR_FALLBACKS=(
-  [color0]=base08  [color1]=base09  [color2]=base0A  [color3]=base0B
-  [color4]=base0C  [color5]=base0D  [color6]=base0E  [color7]=base0F
-  [color8]=base10  [color9]=base11  [color10]=base12 [color11]=base13
-  [color12]=base14 [color13]=base15 [color14]=base16 [color15]=base17
+  [color0]=base00  [color1]=base08  [color2]=base0B  [color3]=base0A
+  [color4]=base0D  [color5]=base0E  [color6]=base0C  [color7]=base05
+  [color8]=base03  [color9]=base12  [color10]=base14 [color11]=base13
+  [color12]=base16 [color13]=base17 [color14]=base15 [color15]=base07
 )
 
 # Only generate dynamic templates for themes with a colors.toml definition
@@ -45,11 +45,11 @@ if [[ -f $COLORS_FILE ]]; then
 
     emit_sed_rules "$key" "$value"
 
-    # Store base08-base17 values for colorN fallback aliases
-    [[ $key == base0[89A-F] || $key == base1[0-7] ]] && base_values[$key]="$value"
+    # Store base values for colorN fallback aliases
+    [[ $key == base0[0-9A-F] || $key == base1[0-7] ]] && base_values[$key]="$value"
   done <"$COLORS_FILE" >"$sed_script"
 
-  # Emit backward-compatible colorN aliases mapped to base00-base07 shades
+  # Emit backward-compatible colorN aliases using base24 terminal mapping
   for alias_name in "${!COLOR_FALLBACKS[@]}"; do
     local_base="${COLOR_FALLBACKS[$alias_name]}"
     [[ -n ${base_values[$local_base]+x} ]] && emit_sed_rules "$alias_name" "${base_values[$local_base]}"

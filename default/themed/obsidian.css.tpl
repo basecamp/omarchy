@@ -12,45 +12,45 @@
   --text-selection: {{ selection_background }};
 
   /* Border color */
-  --background-modifier-border: {{ base10 }};
+  --background-modifier-border: {{ base03 }};
 
   /* Semantic heading colors */
-  --text-title-h1: {{ base09 }};
-  --text-title-h2: {{ base0A }};
-  --text-title-h3: {{ base0B }};
-  --text-title-h4: {{ base0C }};
-  --text-title-h5: {{ base0D }};
-  --text-title-h6: {{ base0D }};
+  --text-title-h1: {{ base08 }};
+  --text-title-h2: {{ base0B }};
+  --text-title-h3: {{ base0A }};
+  --text-title-h4: {{ base0D }};
+  --text-title-h5: {{ base0E }};
+  --text-title-h6: {{ base0E }};
 
   /* Links and accents */
-  --text-link: {{ base0C }};
+  --text-link: {{ base0D }};
   --text-accent: {{ accent }};
   --text-accent-hover: {{ accent }};
   --interactive-accent: {{ accent }};
   --interactive-accent-hover: {{ accent }};
 
   /* Muted text */
-  --text-muted: {{ base10 }};
-  --text-faint: {{ base10 }};
+  --text-muted: {{ base03 }};
+  --text-faint: {{ base03 }};
 
   /* Code */
-  --code-normal: {{ base0E }};
+  --code-normal: {{ base0C }};
 
   /* Errors and success */
-  --text-error: {{ base09 }};
-  --text-error-hover: {{ base09 }};
-  --text-success: {{ base0A }};
+  --text-error: {{ base08 }};
+  --text-error-hover: {{ base08 }};
+  --text-success: {{ base0B }};
 
   /* Tags */
-  --tag-color: {{ base0E }};
-  --tag-background: {{ base10 }};
+  --tag-color: {{ base0C }};
+  --tag-background: {{ base03 }};
 
   /* Graph */
-  --graph-line: {{ base10 }};
+  --graph-line: {{ base03 }};
   --graph-node: {{ accent }};
-  --graph-node-focused: {{ base0C }};
-  --graph-node-tag: {{ base0E }};
-  --graph-node-attachment: {{ base0A }};
+  --graph-node-focused: {{ base0D }};
+  --graph-node-tag: {{ base0C }};
+  --graph-node-attachment: {{ base0B }};
 }
 
 /* Headers */
@@ -63,16 +63,16 @@
 
 /* Code blocks */
 .markdown-rendered code {
-  color: {{ base0E }};
+  color: {{ base0C }};
 }
 
 /* Syntax highlighting */
-.cm-s-obsidian span.cm-keyword { color: {{ base09 }}; }
-.cm-s-obsidian span.cm-string { color: {{ base0A }}; }
-.cm-s-obsidian span.cm-number { color: {{ base0B }}; }
-.cm-s-obsidian span.cm-comment { color: {{ base10 }}; }
-.cm-s-obsidian span.cm-operator { color: {{ base0C }}; }
-.cm-s-obsidian span.cm-def { color: {{ base0C }}; }
+.cm-s-obsidian span.cm-keyword { color: {{ base08 }}; }
+.cm-s-obsidian span.cm-string { color: {{ base0B }}; }
+.cm-s-obsidian span.cm-number { color: {{ base0A }}; }
+.cm-s-obsidian span.cm-comment { color: {{ base03 }}; }
+.cm-s-obsidian span.cm-operator { color: {{ base0D }}; }
+.cm-s-obsidian span.cm-def { color: {{ base0D }}; }
 
 /* Links */
 .markdown-rendered a {

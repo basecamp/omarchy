@@ -1,10 +1,10 @@
 @define-color foreground {{ foreground }};
 @define-color background {{ background }};
 @define-color accent {{ accent }};
-@define-color muted {{ base10 }};
-@define-color card_bg {{ base08 }};
+@define-color muted {{ base03 }};
+@define-color card_bg {{ base01 }};
 @define-color text_dark {{ background }};
-@define-color accent_hover {{ base14 }};
+@define-color accent_hover {{ base16 }};
 @define-color selected_tab {{ accent }};
 @define-color text {{ foreground }};
 

@@ -29,58 +29,58 @@ theme[meter_bg]="{{ base02 }}"
 theme[proc_misc]="{{ base06 }}"
 
 # CPU, Memory, Network, Proc box outline colors
-theme[cpu_box]="{{ base0D }}"
-theme[mem_box]="{{ base0A }}"
-theme[net_box]="{{ base09 }}"
+theme[cpu_box]="{{ base0E }}"
+theme[mem_box]="{{ base0B }}"
+theme[net_box]="{{ base08 }}"
 theme[proc_box]="{{ accent }}"
 
 # Box divider line and small boxes line color
 theme[div_line]="{{ base03 }}"
 
 # Temperature graph color (Green -> Yellow -> Red)
-theme[temp_start]="{{ base0A }}"
-theme[temp_mid]="{{ base0B }}"
-theme[temp_end]="{{ base09 }}"
+theme[temp_start]="{{ base0B }}"
+theme[temp_mid]="{{ base0A }}"
+theme[temp_end]="{{ base08 }}"
 
 # CPU graph colors (Teal -> Blue -> Purple)
-theme[cpu_start]="{{ base0E }}"
-theme[cpu_mid]="{{ base0C }}"
-theme[cpu_end]="{{ base0D }}"
+theme[cpu_start]="{{ base0C }}"
+theme[cpu_mid]="{{ base0D }}"
+theme[cpu_end]="{{ base0E }}"
 
 # Mem/Disk free meter
-theme[free_start]="{{ base0D }}"
-theme[free_mid]="{{ base0C }}"
-theme[free_end]="{{ base0E }}"
+theme[free_start]="{{ base0E }}"
+theme[free_mid]="{{ base0D }}"
+theme[free_end]="{{ base0C }}"
 
 # Mem/Disk cached meter
-theme[cached_start]="{{ base0C }}"
-theme[cached_mid]="{{ base0E }}"
-theme[cached_end]="{{ base0D }}"
+theme[cached_start]="{{ base0D }}"
+theme[cached_mid]="{{ base0C }}"
+theme[cached_end]="{{ base0E }}"
 
 # Mem/Disk available meter
-theme[available_start]="{{ base0B }}"
-theme[available_mid]="{{ base09 }}"
-theme[available_end]="{{ base09 }}"
+theme[available_start]="{{ base0A }}"
+theme[available_mid]="{{ base08 }}"
+theme[available_end]="{{ base08 }}"
 
 # Mem/Disk used meter (Green -> Teal -> Blue)
-theme[used_start]="{{ base0A }}"
-theme[used_mid]="{{ base0E }}"
-theme[used_end]="{{ base0C }}"
+theme[used_start]="{{ base0B }}"
+theme[used_mid]="{{ base0C }}"
+theme[used_end]="{{ base0D }}"
 
 # Download graph colors
-theme[download_start]="{{ base0B }}"
-theme[download_mid]="{{ base09 }}"
-theme[download_end]="{{ base09 }}"
+theme[download_start]="{{ base0A }}"
+theme[download_mid]="{{ base08 }}"
+theme[download_end]="{{ base08 }}"
 
 # Upload graph colors (Green -> Teal -> Blue)
-theme[upload_start]="{{ base0A }}"
-theme[upload_mid]="{{ base0E }}"
-theme[upload_end]="{{ base0C }}"
+theme[upload_start]="{{ base0B }}"
+theme[upload_mid]="{{ base0C }}"
+theme[upload_end]="{{ base0D }}"
 
 # Process box color gradient for threads, mem and cpu usage
-theme[process_start]="{{ base0E }}"
-theme[process_mid]="{{ base0C }}"
-theme[process_end]="{{ base0D }}"
+theme[process_start]="{{ base0C }}"
+theme[process_mid]="{{ base0D }}"
+theme[process_end]="{{ base0E }}"
 
 # Graph gradient colors (spectrum shades from background to foreground)
 theme[gradient_color_0]="{{ base00 }}"
