@@ -1,6 +1,6 @@
 return {
   {
-    dir = "~/Code/vantablack.nvim",
+    "bjarneo/vantablack.nvim",
     priority = 1000,
   },
   {
