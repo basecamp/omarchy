@@ -2,6 +2,7 @@
 # Utilized by ISO builder to ensure package availability in the ISO
 
 autoconf-archive
+asusctl
 base
 base-devel
 broadcom-wl

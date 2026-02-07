@@ -59,9 +59,10 @@ echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
 
 # Configure suspend-then-hibernate
 echo "Configuring suspend-then-hibernate"
-sudo mkdir -p /etc/systemd/logind.conf.d /etc/systemd/sleep.conf.d
+sudo mkdir -p /etc/systemd/logind.conf.d /etc/systemd/sleep.conf.d /usr/lib/systemd/system-sleep
 sudo cp "$OMARCHY_PATH/default/systemd/lid.conf" /etc/systemd/logind.conf.d/
 sudo cp "$OMARCHY_PATH/default/systemd/hibernate.conf" /etc/systemd/sleep.conf.d/
+sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
 
 # Regenerate initramfs
 echo "Regenerating initramfs..."
