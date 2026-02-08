@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Remove LG TV control config, cache, and packages.
+
+rm -rf ~/.config/lgtv
+rm -f ~/.cache/lgtv-brightness ~/.cache/lgtv-brightness.lock
+omarchy-pkg-drop lgwebosremote-git
+
+echo "Removed LG TV control. Brightness keys will use swayosd-client for all monitors."

@@ -1,0 +1,265 @@
+#!/usr/bin/env python3
+"""
+LG TV OLED brightness control with OSD feedback.
+
+Usage:
+  lgtv-brightness get       - Get current backlight value
+  lgtv-brightness set <N>   - Set backlight to N (0-100)
+  lgtv-brightness +<N>      - Increase backlight by N
+  lgtv-brightness -<N>      - Decrease backlight by N
+
+Design notes (DO NOT REMOVE without understanding):
+- FILE LOCKING: LG TV cannot handle concurrent WebSocket connections properly.
+  When user holds brightness key, multiple script instances launch simultaneously.
+  Only one instance should talk to TV; others show estimated OSD from cache.
+- CACHE: Avoids querying TV on every adjustment. Cache expires after 30s to
+  stay in sync if brightness changed via TV remote.
+"""
+import fcntl
+import json
+import sys
+import time
+from contextlib import contextmanager
+from pathlib import Path
+from typing import IO
+
+from lgtv_common import (
+    BRIGHTNESS_CACHE_PATH,
+    get_system_setting,
+    load_config_or_notify,
+    make_retry_notifier,
+    notify,
+    run_cmd,
+    set_system_setting,
+    with_retry,
+)
+
+# =============================================================================
+# Configuration
+# =============================================================================
+LOCK_PATH = Path.home() / ".cache/lgtv-brightness.lock"
+
+# Cache expiry - balance between responsiveness and sync with TV remote changes
+CACHE_EXPIRY_SECONDS = 30
+
+# Brightness bounds
+BRIGHTNESS_MIN = 0
+BRIGHTNESS_MAX = 100
+
+# UI
+NOTIFICATION_TITLE = "TV Brightness"
+
+# Retry notification callback
+notify_retry = make_retry_notifier(NOTIFICATION_TITLE)
+
+
+# =============================================================================
+# Cache Management
+# =============================================================================
+def read_cache() -> dict | None:
+    """Read cached brightness value if not expired."""
+    if not BRIGHTNESS_CACHE_PATH.exists():
+        return None
+    try:
+        data = json.loads(BRIGHTNESS_CACHE_PATH.read_text())
+        if time.time() - data.get("timestamp", 0) < CACHE_EXPIRY_SECONDS:
+            return data
+    except (json.JSONDecodeError, KeyError):
+        pass
+    return None
+
+
+def write_cache(backlight: int) -> None:
+    """Write brightness value to cache."""
+    BRIGHTNESS_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    BRIGHTNESS_CACHE_PATH.write_text(json.dumps({
+        "backlight": backlight,
+        "timestamp": time.time()
+    }))
+
+
+# =============================================================================
+# File Locking
+# =============================================================================
+@contextmanager
+def file_lock():
+    """
+    Context manager for exclusive file lock. Yields True if acquired, False otherwise.
+
+    IMPORTANT: This lock prevents concurrent TV connections when user holds brightness key.
+    LG TV drops connections or returns SSL errors when multiple WebSocket clients connect.
+    Non-blocking (LOCK_NB) so rapid key presses show OSD immediately instead of queuing.
+    """
+    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd: IO | None = None
+    acquired = False
+    try:
+        fd = open(LOCK_PATH, 'w')
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        acquired = True
+    except (IOError, OSError):
+        if fd:
+            fd.close()
+            fd = None
+    try:
+        yield acquired
+    finally:
+        if fd:
+            try:
+                fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+                fd.close()
+            except (IOError, OSError):
+                pass
+
+
+# =============================================================================
+# OSD and Notifications
+# =============================================================================
+def show_osd(value: int) -> None:
+    """Show swayosd progress bar."""
+    progress = value / BRIGHTNESS_MAX
+    run_cmd(["swayosd-client", "--custom-icon", "display-brightness-symbolic",
+             "--custom-progress", str(progress), "--custom-progress-text", f"{value}%"])
+
+
+def on_brightness_changed(value: int) -> None:
+    """Handle successful brightness change - update cache and show OSD."""
+    write_cache(value)
+    show_osd(value)
+
+
+# =============================================================================
+# TV Operations
+# =============================================================================
+def clamp_brightness(value: int) -> int:
+    """Clamp brightness value to valid range."""
+    return max(BRIGHTNESS_MIN, min(BRIGHTNESS_MAX, value))
+
+
+def get_brightness(ip: str, key: str) -> int | None:
+    """Get brightness from TV with retry."""
+    return with_retry(
+        ip, key,
+        lambda client: get_system_setting(client, "picture", "backlight"),
+        "Failed to get brightness",
+        notification_title=NOTIFICATION_TITLE, on_retry=notify_retry,
+    )
+
+
+def set_brightness(ip: str, key: str, value: int) -> bool:
+    """Set brightness on TV with retry."""
+    return with_retry(
+        ip, key,
+        lambda client: set_system_setting(client, "picture", backlight=value),
+        "Failed to set brightness",
+        notification_title=NOTIFICATION_TITLE, on_retry=notify_retry,
+    )
+
+
+# =============================================================================
+# Commands
+# =============================================================================
+def cmd_get(ip: str, key: str) -> int:
+    """Get current brightness, always from TV."""
+    value = get_brightness(ip, key)
+    if value is None:
+        return 1
+    write_cache(value)
+    print(value)
+    return 0
+
+
+def cmd_set(ip: str, key: str, value: int) -> int:
+    """Set brightness to specific value."""
+    value = clamp_brightness(value)
+    if set_brightness(ip, key, value):
+        on_brightness_changed(value)
+        return 0
+    return 1
+
+
+def cmd_adjust(ip: str, key: str, delta: int) -> int:
+    """
+    Adjust brightness by delta (+/-).
+
+    Uses file lock to serialize TV access. When lock unavailable (another instance
+    is talking to TV), shows estimated brightness on OSD for responsive UX.
+    """
+    with file_lock() as acquired:
+        if not acquired:
+            # Another instance is talking to TV - don't queue, just show estimated OSD.
+            # This gives responsive feedback when user holds brightness key rapidly.
+            # We don't update cache here to avoid race conditions with the locked instance.
+            cache = read_cache()
+            if cache:
+                estimated = clamp_brightness(cache["backlight"] + delta)
+                show_osd(estimated)
+            return 0
+
+        # We have exclusive TV access - the actual brightness change happens here.
+        # Use cache if fresh to avoid unnecessary TV query on every key press.
+        cache = read_cache()
+
+        if cache:
+            current = cache["backlight"]
+        else:
+            # Cache expired or missing - must query TV for current value
+            current = get_brightness(ip, key)
+            if current is None:
+                return 1
+
+        new_value = clamp_brightness(current + delta)
+        if set_brightness(ip, key, new_value):
+            on_brightness_changed(new_value)
+            return 0
+        return 1
+
+
+# =============================================================================
+# Main
+# =============================================================================
+def _parse_delta(arg: str) -> int | None:
+    """Parse brightness delta. Supports +N, -N, +N%, and N%- formats."""
+    s = arg.replace("%", "")
+    if s.endswith("-"):
+        s = "-" + s[:-1]
+    if s.lstrip("+-").isdigit() and (s.startswith("+") or s.startswith("-")):
+        return int(s)
+    return None
+
+
+def _usage() -> int:
+    """Print usage and return error code."""
+    print(__doc__)
+    return 1
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        return _usage()
+
+    config = load_config_or_notify(NOTIFICATION_TITLE)
+    if config is None:
+        return 1
+    ip, key = config
+
+    arg = sys.argv[1]
+
+    if arg == "get":
+        return cmd_get(ip, key)
+    elif arg == "set" and len(sys.argv) >= 3:
+        try:
+            value = int(sys.argv[2])
+            return cmd_set(ip, key, value)
+        except ValueError:
+            notify(NOTIFICATION_TITLE, "Invalid value", "critical")
+            return 1
+    else:
+        delta = _parse_delta(arg)
+        if delta is not None:
+            return cmd_adjust(ip, key, delta)
+        return _usage()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

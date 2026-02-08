@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# Install LG TV brightness control and pair with your TV.
+
+set -e
+
+echo "Installing LG TV control dependencies..."
+omarchy-pkg-aur-add lgwebosremote-git
+
+echo ""
+echo "Make sure the TV is on and connected to the same network."
+tv_ip=$(gum input --placeholder "192.168.x.x" --prompt "TV IP address: ")
+
+if [[ -z "$tv_ip" ]]; then
+  echo "No IP provided. You can pair later from Menu → Install → Service → LG TV Brightness."
+  exit 0
+fi
+
+while true; do
+  echo ""
+  echo "Pairing with $tv_ip — you have 30 seconds to accept the prompt on the TV..."
+
+  # --ssl required: LG TVs use WSS on port 3001
+  # timeout 30s: lgtv auth hangs forever if user doesn't respond on TV
+  # MyTV: config key name (matches lgtv_common.py fallback names)
+  # 2>/dev/null: suppress Python tracebacks on connection errors
+  if timeout 30s lgtv --ssl auth "$tv_ip" MyTV 2>/dev/null; then
+    # Verify config was actually written with a valid key
+    if grep -q '"key": "' ~/.config/lgtv/config.json 2>/dev/null; then
+      echo ""
+      echo "Paired successfully! Config saved to ~/.config/lgtv/config.json"
+      exit 0
+    else
+      echo "Pairing was not accepted. Did you approve the prompt on the TV?"
+    fi
+  else
+    exit_code=$?
+    if [[ $exit_code -eq 124 ]]; then
+      echo "Timed out after 30 seconds. Make sure the TV is on and you accept the prompt."
+    else
+      echo "Connection failed. Check that the IP is correct and the TV is on the same network."
+    fi
+  fi
+
+  echo ""
+  read -p "Try again? [Y/n] " retry
+  [[ "$retry" == "n" || "$retry" == "N" ]] && exit 1
+
+  tv_ip=$(gum input --placeholder "$tv_ip" --value "$tv_ip" --prompt "TV IP address: ")
+  [[ -z "$tv_ip" ]] && exit 1
+done
