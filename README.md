@@ -9,7 +9,7 @@ This is a personal fork with CachyOS adaptations and some personal preferences. 
 ## Install
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/vitaliiorlov/omarchy/master/boot.sh)
+curl -s https://raw.githubusercontent.com/vitaliiorlov/omarchy/master/boot.sh | bash
 ```
 
 ## Sync with upstream

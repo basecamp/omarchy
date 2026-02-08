@@ -15,4 +15,9 @@ user = $USER
 EOF
 fi
 
+# Disable conflicting display managers
+sudo systemctl disable sddm.service 2>/dev/null || true
+sudo systemctl disable gdm.service 2>/dev/null || true
+sudo systemctl disable lightdm.service 2>/dev/null || true
+
 sudo systemctl enable greetd.service
