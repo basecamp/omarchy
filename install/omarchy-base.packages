@@ -107,7 +107,11 @@ ripgrep
 ruby
 rust
 satty
-sddm
+# sddm            # using greetd instead
+greetd
+greetd-tuigreet
+greetd-regreet
+cage
 signal-desktop
 slurp
 spotify
