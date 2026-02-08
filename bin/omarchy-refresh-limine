@@ -13,4 +13,4 @@ sudo mv /boot/limine.conf /boot/limine.conf.bak
 sudo cp ~/.local/share/omarchy/default/limine/limine.conf /boot/limine.conf
 
 sudo limine-update
-sudo limine-snapper-sync
+# [omarchy] sudo limine-snapper-sync
