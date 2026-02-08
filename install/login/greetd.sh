@@ -1,7 +1,6 @@
 sudo mkdir -p /etc/greetd
 
-if [ ! -f /etc/greetd/config.toml ]; then
-  cat <<EOF | sudo tee /etc/greetd/config.toml
+cat <<EOF | sudo tee /etc/greetd/config.toml
 [terminal]
 vt = 1
 
@@ -13,7 +12,6 @@ user = "greeter"
 command = "uwsm start -e -D Hyprland hyprland.desktop"
 user = $USER
 EOF
-fi
 
 # Disable conflicting display managers
 sudo systemctl disable sddm.service 2>/dev/null || true

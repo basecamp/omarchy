@@ -33,6 +33,7 @@ echo -e "\e[32mUsing branch: $OMARCHY_REF\e[0m"
 cd ~/.local/share/omarchy
 git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
 
+OMARCHY_PATH="$HOME/.local/share/omarchy" omarchy-fork-setup-upstream
 cd -
 
 # Set edge mirror for dev installs
@@ -44,5 +45,3 @@ fi
 
 echo -e "\nInstallation starting..."
 source ~/.local/share/omarchy/install.sh
-
-omarchy-fork-setup-upstream
