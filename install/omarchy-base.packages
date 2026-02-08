@@ -28,9 +28,9 @@ exfatprogs
 expac
 eza
 fastfetch
-fcitx5
-fcitx5-gtk
-fcitx5-qt
+# fcitx5        # CachyOS uses Hyprland native keyboard switching
+# fcitx5-gtk
+# fcitx5-qt
 fd
 ffmpegthumbnailer
 fontconfig
@@ -116,7 +116,7 @@ sushi
 swaybg
 swayosd
 system-config-printer
-tldr
+# tldr          # CachyOS ships tealdeer instead
 tree-sitter-cli
 tobi-try
 ttf-cascadia-mono-nerd
