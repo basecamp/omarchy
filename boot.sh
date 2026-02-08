@@ -20,7 +20,8 @@ echo -e "\n$ansi_art\n"
 sudo pacman -Syu --noconfirm --needed git
 
 # Use custom repo if specified, otherwise default to basecamp/omarchy
-OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}"
+# [omarchy] OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}"
+OMARCHY_REPO="${OMARCHY_REPO:-vitaliiorlov/omarchy}"
 
 echo -e "\nCloning Omarchy from: https://github.com/${OMARCHY_REPO}.git"
 rm -rf ~/.local/share/omarchy/
@@ -31,6 +32,11 @@ OMARCHY_REF="${OMARCHY_REF:-master}"
 echo -e "\e[32mUsing branch: $OMARCHY_REF\e[0m"
 cd ~/.local/share/omarchy
 git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
+
+# Add upstream remote for syncing with original omarchy
+if ! git remote get-url upstream &>/dev/null; then
+  git remote add upstream https://github.com/basecamp/omarchy.git
+fi
 cd -
 
 # Set edge mirror for dev installs

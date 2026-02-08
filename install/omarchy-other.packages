@@ -22,7 +22,7 @@ libva-intel-driver
 libva-nvidia-driver
 limine
 limine-mkinitcpio-hook
-limine-snapper-sync
+# [omarchy] limine-snapper-sync
 # [omarchy] linux
 linux-cachyos
 linux-firmware
@@ -42,7 +42,7 @@ pipewire-jack
 pipewire-pulse
 qt6-wayland
 sassc
-snapper
+# [omarchy] snapper
 webp-pixbuf-loader
 wget
 yay-debug

@@ -47,6 +47,12 @@ Manage [Omarchy](https://omarchy.org/) Linux systems - a beautiful, modern, opin
 
 ## Fork Editing Convention
 
+**Repo:** `vitaliiorlov/omarchy` (fork of `basecamp/omarchy`, adapted for CachyOS)
+- Git remotes: `origin` = fork (`vitaliiorlov/omarchy`), `upstream` = original (`basecamp/omarchy`)
+- `omarchy-update` and `omarchy-reinstall-git` pull from the fork (origin)
+- Upstream sync: `git fetch upstream master && git merge upstream/master && git push origin master`
+- On fresh install, add upstream: `git remote add upstream https://github.com/basecamp/omarchy.git`
+
 When editing files in `~/.local/share/omarchy/`:
 
 1. **Never delete original omarchy code** — comment it out with `# [omarchy]` prefix
