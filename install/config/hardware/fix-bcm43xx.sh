@@ -6,5 +6,7 @@ pci_info=$(lspci -nnv)
 
 if (echo "$pci_info" | grep -q "14e4:43a0" || echo "$pci_info" | grep -q "14e4:4331"); then
   echo "BCM4360 / BCM4331 detected"
-  sudo pacman -S --noconfirm --needed broadcom-wl dkms linux-headers
+  # [omarchy] sudo pacman -S --noconfirm --needed broadcom-wl dkms linux-headers
+  KERNEL_HEADERS="$(cat /usr/lib/modules/$(uname -r)/pkgbase 2>/dev/null)-headers"
+  sudo pacman -S --noconfirm --needed broadcom-wl dkms "$KERNEL_HEADERS"
 fi

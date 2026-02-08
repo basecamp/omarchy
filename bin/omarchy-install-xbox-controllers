@@ -5,7 +5,9 @@
 set -e
 
 # Install xpadneo to ensure controllers work out of the box
-sudo pacman -S --noconfirm --needed linux-headers
+# [omarchy] sudo pacman -S --noconfirm --needed linux-headers
+KERNEL_HEADERS="$(cat /usr/lib/modules/$(uname -r)/pkgbase 2>/dev/null)-headers"
+sudo pacman -S --noconfirm --needed "$KERNEL_HEADERS"
 yay -S --noconfirm xpadneo-dkms
 
 # Prevent xpad/xpadneo driver conflict

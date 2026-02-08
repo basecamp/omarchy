@@ -28,9 +28,9 @@ exfatprogs
 expac
 eza
 fastfetch
-# fcitx5        # CachyOS uses Hyprland native keyboard switching
-# fcitx5-gtk
-# fcitx5-qt
+# [omarchy] fcitx5
+# [omarchy] fcitx5-gtk
+# [omarchy] fcitx5-qt
 fd
 ffmpegthumbnailer
 fontconfig
@@ -107,7 +107,7 @@ ripgrep
 ruby
 rust
 satty
-# sddm            # using greetd instead
+# [omarchy] sddm
 greetd
 greetd-tuigreet
 greetd-regreet
@@ -120,7 +120,7 @@ sushi
 swaybg
 swayosd
 system-config-printer
-# tldr          # CachyOS ships tealdeer instead
+# [omarchy] tldr
 tree-sitter-cli
 tobi-try
 ttf-cascadia-mono-nerd

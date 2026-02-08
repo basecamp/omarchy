@@ -9,12 +9,12 @@ if [[ ! -f /etc/arch-release ]]; then
   abort "Vanilla Arch"
 fi
 
-# Must not be an Arch derivative distro
-for marker in /etc/cachyos-release /etc/eos-release /etc/garuda-release /etc/manjaro-release; do
-  if [[ -f "$marker" ]]; then
-    abort "Vanilla Arch"
-  fi
-done
+# [omarchy] # Must not be an Arch derivative distro
+# [omarchy] for marker in /etc/cachyos-release /etc/eos-release /etc/garuda-release /etc/manjaro-release; do
+# [omarchy]   if [[ -f "$marker" ]]; then
+# [omarchy]     abort "Vanilla Arch"
+# [omarchy]   fi
+# [omarchy] done
 
 # Must not be running as root
 if [ "$EUID" -eq 0 ]; then
@@ -36,8 +36,8 @@ if pacman -Qe gnome-shell &>/dev/null || pacman -Qe plasma-desktop &>/dev/null; 
   abort "Fresh + Vanilla Arch"
 fi
 
-# Must have limine installed
-command -v limine &>/dev/null || abort "Limine bootloader"
+# [omarchy] # Must have limine installed
+# [omarchy] command -v limine &>/dev/null || abort "Limine bootloader"
 
 # Must have btrfs root filesystem
 [ "$(findmnt -n -o FSTYPE /)" = "btrfs" ] || abort "Btrfs root filesystem" 

@@ -32,33 +32,33 @@ Manage [Omarchy](https://omarchy.org/) Linux systems - a beautiful, modern, opin
 
 ## Critical Safety Rules
 
-**NEVER modify anything in `~/.local/share/omarchy/`** - but READING is safe and encouraged.
+**This is a personal fork** (`vitaliiorlov/omarchy`) adapted for CachyOS. Editing `~/.local/share/omarchy/` IS allowed, but follow the fork convention below.
 
-This directory contains Omarchy's source files managed by git. Any changes will be:
-- Lost on next `omarchy-update`
-- Cause conflicts with upstream
-- Break the system's update mechanism
+**For user-level configs, always prefer these safe locations:**
+- `~/.config/` - User configuration (safe to edit)
+- `~/.config/omarchy/themes/<custom-name>/` - Custom themes (must be real directories)
+- `~/.config/omarchy/hooks/` - Custom automation hooks
 
-```
-~/.local/share/omarchy/     # READ-ONLY - NEVER EDIT (reading is OK)
-├── bin/                    # Source scripts (symlinked to PATH)
-├── config/                 # Default config templates
-├── themes/                 # Stock themes
-├── default/                # System defaults
-├── migrations/             # Update migrations
-└── install/                # Installation scripts
-```
-
-**Reading `~/.local/share/omarchy/` is SAFE and useful** - do it freely to:
+**Reading `~/.local/share/omarchy/` is useful** to:
 - Understand how omarchy commands work: `cat $(which omarchy-theme-set)`
 - See default configs before customizing: `cat ~/.local/share/omarchy/config/waybar/config.jsonc`
 - Check stock theme files to copy for customization
 - Reference default hyprland settings: `cat ~/.local/share/omarchy/default/hypr/*`
 
-**Always use these safe locations instead:**
-- `~/.config/` - User configuration (safe to edit)
-- `~/.config/omarchy/themes/<custom-name>/` - Custom themes (must be real directories)
-- `~/.config/omarchy/hooks/` - Custom automation hooks
+## Fork Editing Convention
+
+When editing files in `~/.local/share/omarchy/`:
+
+1. **Never delete original omarchy code** — comment it out with `# [omarchy]` prefix
+2. Add replacement code below the commented-out line
+3. Code that is NOT from upstream (your own additions) can be freely edited or deleted
+4. Grep for all fork changes: `grep -rn '\[omarchy\]' ~/.local/share/omarchy/`
+
+**Example:**
+```bash
+# [omarchy] pacman -Q linux
+pacman -Q linux-cachyos  # CachyOS kernel package
+```
 
 ## System Architecture
 

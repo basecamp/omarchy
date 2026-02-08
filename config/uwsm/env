@@ -8,7 +8,7 @@ export PATH=$OMARCHY_PATH/bin:$PATH
 source ~/.config/uwsm/default
 
 # Activate mise if present on the system
-# omarchy-cmd-present mise && eval "$(mise activate bash)"  # original bash-only activation
+# [omarchy] omarchy-cmd-present mise && eval "$(mise activate bash)"
 if [ "$SHELL" = "/bin/bash" ] && command -v mise &> /dev/null; then
   eval "$(mise activate bash)"
 elif [ "$SHELL" = "/bin/fish" ] && command -v mise &> /dev/null; then

@@ -2,7 +2,8 @@ NVIDIA="$(lspci | grep -i 'nvidia')"
 
 if [ -n "$NVIDIA" ]; then
   # Check which kernel is installed and set appropriate headers package
-  KERNEL_HEADERS="$(pacman -Qqs '^linux(-zen|-lts|-hardened)?$' | head -1)-headers"
+  # [omarchy] KERNEL_HEADERS="$(pacman -Qqs '^linux(-zen|-lts|-hardened)?$' | head -1)-headers"
+  KERNEL_HEADERS="$(cat /usr/lib/modules/$(uname -r)/pkgbase 2>/dev/null)-headers"
 
   if echo "$NVIDIA" | grep -qE "RTX [2-9][0-9]|GTX 16"; then
     # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
