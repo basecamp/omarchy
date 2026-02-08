@@ -66,6 +66,16 @@ sudo cp "$OMARCHY_PATH/default/systemd/lid.conf" /etc/systemd/logind.conf.d/
 sudo cp "$OMARCHY_PATH/default/systemd/hibernate.conf" /etc/systemd/sleep.conf.d/
 sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
 
+# Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)
+if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
+  LIMINE_DROP_IN="/etc/limine-entry-tool.d/rtc-alarm.conf"
+  if [[ ! -f "$LIMINE_DROP_IN" ]]; then
+    echo "Enabling ACPI RTC alarm for s2idle suspend"
+    sudo mkdir -p /etc/limine-entry-tool.d
+    echo 'KERNEL_CMDLINE[default]+="rtc_cmos.use_acpi_alarm=1"' | sudo tee "$LIMINE_DROP_IN" >/dev/null
+  fi
+fi
+
 # Regenerate initramfs
 echo "Regenerating initramfs..."
 sudo limine-mkinitcpio
