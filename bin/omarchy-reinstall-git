@@ -7,3 +7,5 @@ set -e
 git clone "https://github.com/vitaliiorlov/omarchy.git" ~/.local/share/omarchy-new >/dev/null
 mv $OMARCHY_PATH ~/.local/share/omarchy-old
 mv ~/.local/share/omarchy-new $OMARCHY_PATH
+
+omarchy-fork-setup-upstream

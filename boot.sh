@@ -33,10 +33,6 @@ echo -e "\e[32mUsing branch: $OMARCHY_REF\e[0m"
 cd ~/.local/share/omarchy
 git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
 
-# Add upstream remote for syncing with original omarchy
-if ! git remote get-url upstream &>/dev/null; then
-  git remote add upstream https://github.com/basecamp/omarchy.git
-fi
 cd -
 
 # Set edge mirror for dev installs
@@ -48,3 +44,5 @@ fi
 
 echo -e "\nInstallation starting..."
 source ~/.local/share/omarchy/install.sh
+
+omarchy-fork-setup-upstream

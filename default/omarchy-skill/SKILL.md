@@ -51,7 +51,7 @@ Manage [Omarchy](https://omarchy.org/) Linux systems - a beautiful, modern, opin
 - Git remotes: `origin` = fork (`vitaliiorlov/omarchy`), `upstream` = original (`basecamp/omarchy`)
 - `omarchy-update` and `omarchy-reinstall-git` pull from the fork (origin)
 - Upstream sync: `git fetch upstream master && git merge upstream/master && git push origin master`
-- On fresh install, add upstream: `git remote add upstream https://github.com/basecamp/omarchy.git`
+- Upstream remote is set up automatically by `omarchy-fork-setup-upstream` (called from `boot.sh` and `omarchy-reinstall-git`)
 
 When editing files in `~/.local/share/omarchy/`:
 
@@ -59,6 +59,7 @@ When editing files in `~/.local/share/omarchy/`:
 2. Add replacement code below the commented-out line
 3. Code that is NOT from upstream (your own additions) can be freely edited or deleted
 4. Grep for all fork changes: `grep -rn '\[omarchy\]' ~/.local/share/omarchy/`
+5. New bin scripts for fork-only functionality **must** use the `omarchy-fork-` prefix, following the same `<category>-<action>` pattern (e.g. `omarchy-fork-setup-upstream`, `omarchy-fork-pkg-cleanup`)
 
 **Example:**
 ```bash
@@ -110,6 +111,7 @@ cat $(which omarchy-theme-set)
 | `omarchy-pkg-*` | Package management | `omarchy-pkg-install <pkg>` |
 | `omarchy-setup-*` | Initial setup tasks | `omarchy-setup-fingerprint` |
 | `omarchy-update-*` | System updates | `omarchy-update` |
+| `omarchy-fork-*` | Fork-only scripts following same `<category>-<action>` pattern | `omarchy-fork-setup-upstream` |
 
 ## Configuration Locations
 

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Add upstream remote for syncing with original omarchy
+if ! git -C "$OMARCHY_PATH" remote get-url upstream &>/dev/null; then
+  git -C "$OMARCHY_PATH" remote add upstream https://github.com/basecamp/omarchy.git
+fi
