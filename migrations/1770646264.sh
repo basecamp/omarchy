@@ -10,4 +10,4 @@ sudo tee /etc/mkinitcpio.conf.d/uhid_module.conf <<EOF >/dev/null
 MODULES+=(uhid)
 EOF
 
-sudo mkinitcpio -P
+sudo limine-mkinitcpio -P
