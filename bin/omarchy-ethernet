@@ -1,0 +1,62 @@
+#!/bin/bash
+
+ethernet_ifaces=()
+
+for iface_path in /sys/class/net/*; do
+  iface=$(basename "$iface_path")
+  [[ "$iface" == "lo" ]] && continue
+
+  # Only consider physical devices.
+  [[ -e "$iface_path/device" ]] || continue
+
+  # Skip Wi-Fi adapters.
+  [[ -d "$iface_path/wireless" || -L "$iface_path/phy80211" ]] && continue
+
+  ethernet_ifaces+=("$iface")
+done
+
+if ((${#ethernet_ifaces[@]} == 0)); then
+  echo "No ethernet adapters found."
+  echo ""
+  echo "If you expected an ethernet device, check:"
+  echo "  - BIOS/UEFI settings"
+  echo "  - cable and port"
+  echo "  - kernel modules / hardware detection"
+  exit 1
+fi
+
+echo "Ethernet adapters:"
+echo ""
+
+for iface in "${ethernet_ifaces[@]}"; do
+  operstate=$(cat "/sys/class/net/$iface/operstate" 2>/dev/null || echo "?")
+  carrier=$(cat "/sys/class/net/$iface/carrier" 2>/dev/null || echo "?")
+  mac=$(cat "/sys/class/net/$iface/address" 2>/dev/null || echo "?")
+  speed=$(cat "/sys/class/net/$iface/speed" 2>/dev/null || echo "?")
+
+  ipv4=$(ip -br -4 addr show dev "$iface" 2>/dev/null | awk '{print $3}' | head -n1)
+  ipv6=$(ip -br -6 addr show dev "$iface" 2>/dev/null | awk '{print $3}' | head -n1)
+
+  [[ -z "$ipv4" ]] && ipv4="-"
+  [[ -z "$ipv6" ]] && ipv6="-"
+
+  echo "  $iface"
+  echo "    state:   $operstate  (carrier: $carrier)"
+  echo "    mac:     $mac"
+  echo "    speed:   ${speed}Mb/s"
+  echo "    ipv4:    $ipv4"
+  echo "    ipv6:    $ipv6"
+  echo ""
+done
+
+if command -v networkctl >/dev/null 2>&1; then
+  echo "networkctl:"
+  echo ""
+  networkctl --no-pager status 2>/dev/null || true
+  echo ""
+fi
+
+echo "Hints:"
+echo "  - If carrier is 0, plug in the cable or check the switch/router port."
+echo "  - If you have no IP address, DHCP might not be running for that interface."
+

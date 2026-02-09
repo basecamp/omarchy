@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Launch a simple ethernet status screen.
+#
+# This is used as a fallback when the Waybar network module is clicked on machines
+# without a Wi-Fi adapter.
+
+exec omarchy-launch-floating-terminal-with-presentation omarchy-ethernet
+

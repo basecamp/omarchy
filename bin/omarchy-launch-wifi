@@ -1,7 +1,48 @@
 #!/bin/bash
 
 # Launch the Omarchy wifi controls (provided by the Impala TUI).
-# Attempts to unblock the wifi service first in case it should be been blocked.
+#
+# Waybar uses the same "network" module for wifi and ethernet, so this click handler must
+# behave sensibly on machines without a wifi adapter. If no wifi adapter is detected,
+# fall back to an ethernet status screen. If neither is present, notify the user.
 
-rfkill unblock wifi
-omarchy-launch-or-focus-tui impala
+has_wifi_adapter() {
+  for iface_path in /sys/class/net/*; do
+    iface=$(basename "$iface_path")
+    [[ "$iface" == "lo" ]] && continue
+
+    # Only consider physical devices.
+    [[ -e "$iface_path/device" ]] || continue
+
+    if [[ -d "$iface_path/wireless" || -L "$iface_path/phy80211" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+has_ethernet_adapter() {
+  for iface_path in /sys/class/net/*; do
+    iface=$(basename "$iface_path")
+    [[ "$iface" == "lo" ]] && continue
+
+    [[ -e "$iface_path/device" ]] || continue
+
+    if [[ ! -d "$iface_path/wireless" && ! -L "$iface_path/phy80211" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+if has_wifi_adapter; then
+  rfkill unblock wifi 2>/dev/null || true
+  exec omarchy-launch-or-focus-tui impala
+elif has_ethernet_adapter; then
+  exec omarchy-launch-ethernet
+else
+  notify-send "󰤮    No Network Adapter Found" "No Wi-Fi or Ethernet adapter was detected." -u critical -t 5000
+  exit 1
+fi
