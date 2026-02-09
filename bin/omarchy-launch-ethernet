@@ -5,5 +5,9 @@
 # This is used as a fallback when the Waybar network module is clicked on machines
 # without a Wi-Fi adapter.
 
-exec omarchy-launch-floating-terminal-with-presentation omarchy-ethernet
-
+if command -v ethtui >/dev/null 2>&1; then
+  # Prefer a dedicated TUI (Impala/BlueTUI style) when available.
+  exec omarchy-launch-or-focus-tui ethtui
+else
+  exec omarchy-launch-floating-terminal-with-presentation omarchy-ethernet
+fi
