@@ -4,6 +4,78 @@
 
 set -e
 
-echo "Now pick dependencies matching your graphics card"
-sudo pacman -S steam
+echo "Detecting GPU"
+
+# Detect GPU
+
+POSSIBLE_GPUS=$(lspci | grep VGA)
+
+
+NVIDIA_PKGS=(
+  # Drivers
+  nvidia
+  nvidia-utils
+  lib32-nvidia-utils
+  # Vulkan
+  vulkan-icd-loader
+  lib32-vulkan-icd-loader
+)
+
+
+AMD_PKGS=(
+  # Drivers
+  mesa
+  lib32-mesa
+  # Vulkan
+  vulkan-radeon
+  lib32-vulkan-radeon
+)
+
+INTEL_PKGS=(
+  # Drivers
+  mesa
+  lib32-mesa
+  # Vulkan
+  vulkan-intel
+  lib32-vulkan-intel
+  )
+
+
+
+install_drivers () {
+
+  case "$1" in
+    NVIDIA) pkgs=${NVIDIA_PKGS[@]}
+    ;;
+    Intel) pkgs=${INTEL_PKGS[@]}
+    ;;
+    AMD) pkgs=${AMD_PKGS[@]}
+    ;;
+  esac
+
+  echo "Installing $1 drivers"
+  for pkg in ${pkgs[@]}
+  do
+    omarchy-pkg-add pkg
+  done
+
+}
+
+if echo $POSSIBLE_GPUS | grep NVIDIA; then
+  install_drivers NVIDIA
+elif echo $POSSIBLE_GPUS | grep Intel; then
+  install_drivers Intel
+elif echo $POSSIBLE_GPUS | grep AMD; then
+  install_drivers AMD
+fi
+
+
+
+echo "" >> ~/.config/hypr/hyprland.conf
+echo "#Steam" >> ~/.config/hypr/hyprland.conf
+echo "source = ~/.local/share/omarchy/default/hypr/apps/steam.conf" >> ~/.config/hypr/hyprland.conf
+
+# Install steam with gamemode for optimizations
+omarchy-pkg-add steam gamemode lib32-gamemode
+
 setsid gtk-launch steam >/dev/null 2>&1 &
