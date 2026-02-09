@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Detect whether the computer is a Lenovo Legion or IdeaPad Gaming machine.
+
+[[ "$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)" == "LENOVO" ]] &&
+  {
+    grep -qE "Legion|IdeaPad Gaming" /sys/class/dmi/id/product_family 2>/dev/null ||
+    grep -qE "Legion|IdeaPad Gaming" /sys/class/dmi/id/product_name 2>/dev/null
+  }
