@@ -76,9 +76,10 @@ if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
   fi
 fi
 
-# Regenerate initramfs
+# Regenerate initramfs and boot entry
 echo "Regenerating initramfs..."
 sudo limine-mkinitcpio
+sudo limine-update
 
 echo
 
