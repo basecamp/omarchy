@@ -1,0 +1,12 @@
+#!/bin/bash
+
+KEYBOARD_THEME=~/.config/omarchy/current/theme/keyboard.rgb
+COLOR=$(sed 's/^#//' $KEYBOARD_THEME)
+
+if omarchy-cmd-present asusctl; then
+  asusctl aura effect static -c $COLOR
+fi
+
+if omarchy-cmd-present legionaura; then
+  legionaura static $COLOR
+fi
