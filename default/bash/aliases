@@ -34,7 +34,7 @@ alias ....='cd ../../..'
 alias c='opencode'
 alias d='docker'
 alias r='rails'
-alias t='tmux'
+alias t='tmux attach || tmux new'
 n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
 
 # Git
