@@ -35,8 +35,7 @@ alias ....='cd ../../..'
 alias c='opencode'
 alias d='docker'
 alias r='rails'
-alias t='tmux attach || tmux new -s Work'
-n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
+n() { if [ "$#" -eq 0 ]; then command nvim ; else command nvim "$@"; fi; }
 
 # Git
 alias g='git'
