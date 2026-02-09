@@ -78,6 +78,7 @@ mako
 man-db
 mariadb-libs
 mise
+mkinitcpio-bluetooth
 mpv
 nautilus
 nautilus-python
