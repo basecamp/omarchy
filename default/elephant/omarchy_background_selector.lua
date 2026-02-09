@@ -1,9 +1,7 @@
 Name = "omarchyBackgroundSelector"
 NamePretty = "Omarchy Background Selector"
-Icon = "applications-other"
 Cache = true
-HideFromProviderlist = false
-Description = "lua test menu"
+HideFromProviderlist = true
 SearchName = true
 
 function GetEntries()
@@ -21,7 +19,6 @@ function GetEntries()
       if filename then
         table.insert(entries, {
           Text = filename,
-          Subtext = "wallpaper",
           Value = background,
           Actions = {
             activate = "ln -sf '"
@@ -34,7 +31,6 @@ function GetEntries()
           },
           Preview = background,
           PreviewType = "file",
-          Icon = background,
         })
       end
     end
