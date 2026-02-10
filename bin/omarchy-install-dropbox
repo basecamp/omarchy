@@ -3,7 +3,21 @@
 # Install and start the Dropbox service. Must then be authenticated via the web.
 
 echo "Installing all dependencies..."
-omarchy-pkg-add dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
+omarchy-pkg-add dropbox dropbox-cli libappindicator-gtk3 python-gpgme
+
+
+echo "Adding file explorer integration"
+
+if ! omarchy-pkg-missing nautilus; then
+ omarchy-pkg-add nautilus-dropbox
+elif ! omarchy-pkg-missing thunar; then
+  omarchy-pkg-aur-add thunar-dropbox
+elif ! omarchy-pkg-missing caja; then
+  omarchy-pkg-aur-add caja-dropbox
+elif ! omarchy-pkg-missing nemo; then
+  omarchy-pkg-aur-add nemo-dropbox
+fi
+
 
 echo "Starting Dropbox..."
 uwsm-app -- dropbox-cli start &>/dev/null &
