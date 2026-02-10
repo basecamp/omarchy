@@ -90,13 +90,19 @@ img2png() {
 
 # SSH Port Forwarding Functions
 fip() {
-  [[ -z "$1" || -z "$2" ]] && echo "Usage: fip <port> <host>" && return 1
-  ssh -f -N -L "$1:localhost:$1" "$2" && echo "Forwarding localhost:$1 -> $2:$1"
+  [[ $# -lt 2 ]] && echo "Usage: fip <host> <port1> [port2] ..." && return 1
+  local host="$1"
+  shift
+  for port in "$@"; do
+    ssh -f -N -L "$port:localhost:$port" "$host" && echo "Forwarding localhost:$port -> $host:$port"
+  done
 }
 
 dip() {
-  [[ -z "$1" ]] && echo "Usage: dip <port>" && return 1
-  pkill -f "ssh.*-L $1:localhost:$1" && echo "Stopped forwarding port $1" || echo "No forwarding on port $1"
+  [[ $# -eq 0 ]] && echo "Usage: dip <port1> [port2] ..." && return 1
+  for port in "$@"; do
+    pkill -f "ssh.*-L $port:localhost:$port" && echo "Stopped forwarding port $port" || echo "No forwarding on port $port"
+  done
 }
 
 lip() {
