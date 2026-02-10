@@ -76,6 +76,6 @@ echo "#Steam" >> ~/.config/hypr/hyprland.conf
 echo "source = ~/.local/share/omarchy/default/hypr/apps/steam.conf" >> ~/.config/hypr/hyprland.conf
 
 # Install steam with gamemode for optimizations
-omarchy-pkg-add steam gamemode lib32-gamemode
+omarchy-pkg-add steam gamemode gamescope lib32-gamemode
 
 setsid gtk-launch steam >/dev/null 2>&1 &
