@@ -73,11 +73,14 @@ esac
 
 [ -z "$SELECTION" ] && exit 0
 
+EARLY_EXIT=()
+[[ "$PROCESSING" == "clipboard" ]] && EARLY_EXIT=(--early-exit)
+
 if [[ $PROCESSING == "slurp" ]]; then
 grim -g "$SELECTION" - |
   satty --filename - \
     --output-filename "$OUTPUT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png" \
-    --early-exit \
+    "${EARLY_EXIT[@]}" \
     --actions-on-enter save-to-clipboard \
     --save-after-copy \
     --copy-command 'wl-copy'
