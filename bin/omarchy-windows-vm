@@ -5,18 +5,24 @@ check_prerequisites() {
   local DISK_SIZE_GB=${1:-64}
   local REQUIRED_SPACE=$((DISK_SIZE_GB + 10))  # Add 10GB for Windows ISO and overhead
 
-  # Check for KVM support
+  # Add KVM support
   if [ ! -e /dev/kvm ]; then
-    gum style \
-      --border normal \
-      --padding "1 2" \
-      --margin "1" \
-      "❌ KVM virtualization not available!" \
-      "" \
-      "Please enable virtualization in BIOS or run:" \
-      "  sudo modprobe kvm-intel  # for Intel CPUs" \
-      "  sudo modprobe kvm-amd    # for AMD CPUs"
-    exit 1
+    if lspci | grep PCI | grep Intel; then
+      sudo modprobe kvm-intel
+    else if lspci | grep PCI | grep AMD; then
+      sudo modprobe kvm-amd
+    fi
+
+   # gum style \
+   #   --border normal \
+   #   --padding "1 2" \
+   #   --margin "1" \
+   #   "❌ KVM virtualization not available!" \
+   #   "" \
+   #   "Please enable virtualization in BIOS or run:" \
+   #   "  sudo modprobe kvm-intel  # for Intel CPUs" \
+   #   "  sudo modprobe kvm-amd    # for AMD CPUs"
+   # exit 1
   fi
 
   # Check disk space
