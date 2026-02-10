@@ -35,7 +35,7 @@ alias ....='cd ../../..'
 alias c='opencode'
 alias d='docker'
 alias r='rails'
-n() { if [ "$#" -eq 0 ]; then command nvim ; else command nvim "$@"; fi; }
+n() { if [ "$#" -eq 0 ]; then command nvim . ; else command nvim "$@"; fi; }
 
 # Git
 alias g='git'
