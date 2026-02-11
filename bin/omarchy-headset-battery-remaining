@@ -1,0 +1,15 @@
+#!/usr/bin/bash
+
+DEV=$(upower -e | grep -i headset | head -n1)
+[ -z "$DEV" ] && exit 0
+
+BAT=$(upower -i "$DEV" | awk -F: '/percentage/ { gsub(/[%[:space:]]/, "", $2); if ($2=="") exit; printf("%d\n", $2); exit }')
+[ -z "$BAT" ] && exit 0
+
+if [ "$BAT" -ge 80 ]; then ICON=""
+elif [ "$BAT" -ge 60 ]; then ICON=""
+elif [ "$BAT" -ge 40 ]; then ICON=""
+elif [ "$BAT" -ge 20 ]; then ICON=""
+else ICON=""; fi
+
+notify-send "   Headset Battery is $ICON   $BAT%"
