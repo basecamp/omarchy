@@ -1,10 +1,21 @@
 #!/bin/bash
 
-# Overwrite the user config for the Plymouth drive decryption and boot sequence with the Omarchy default and rebuild it.
+# Overwrite the Plymouth theme with the DedSec default and rebuild initramfs.
 
-sudo cp ~/.local/share/omarchy/default/plymouth/* /usr/share/plymouth/themes/omarchy/
-sudo plymouth-set-default-theme omarchy
+sudo mkdir -p /usr/share/plymouth/themes/omarchy
+sudo cp -f ~/.local/share/omarchy/default/plymouth/* /usr/share/plymouth/themes/omarchy/
+sudo rm -rf /usr/share/plymouth/themes/omarchy/plymouth 2>/dev/null
 
+# Write Plymouth config directly (plymouth-set-default-theme can silently fail)
+sudo mkdir -p /etc/plymouth
+sudo tee /etc/plymouth/plymouthd.conf > /dev/null << 'EOF'
+[Daemon]
+Theme=omarchy
+ShowDelay=0
+DeviceTimeout=8
+EOF
+
+# Rebuild initramfs
 if command -v limine-mkinitcpio &>/dev/null; then
   sudo limine-mkinitcpio
 else

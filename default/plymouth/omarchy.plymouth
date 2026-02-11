@@ -1,11 +1,11 @@
 [Plymouth Theme]
-Name=Omarchy
-Description=Omarchy splash screen.
+Name=DedSec
+Description=DedSec boot sequence.
 ModuleName=script
 
 [script]
 ImageDir=/usr/share/plymouth/themes/omarchy
 ScriptFile=/usr/share/plymouth/themes/omarchy/omarchy.script
-ConsoleLogBackgroundColor=0x1a1b26
-MonospaceFont=Cantarell 11
-Font=Cantarell 11
+ConsoleLogBackgroundColor=0x050A0E
+MonospaceFont=JetBrainsMono Nerd Font 11
+Font=JetBrainsMono Nerd Font 11

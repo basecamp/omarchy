@@ -1,0 +1,11 @@
+/* DedSec // TELEMETRY STRIP THEME */
+/* No icons. No glow. Pure data readout. */
+
+@define-color foreground #B0F4E6;
+@define-color background #050A0E;
+@define-color accent #00FF41;
+@define-color cyan #00E5FF;
+@define-color muted #1E3044;
+@define-color dim #6B8F85;
+@define-color alert #FF2D6F;
+@define-color surface #0A1018;

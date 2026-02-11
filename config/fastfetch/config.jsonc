@@ -14,22 +14,22 @@
     "break",
     {
       "type": "custom",
-      "format": "\u001b[90m┌──────────────────────Hardware──────────────────────┐"
+      "format": "\u001b[32m// HARDWARE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     },
     {
       "type": "host",
-      "key": " PC",
+      "key": " PC",
       "keyColor": "green"
     },
     {
       "type": "cpu",
-      "key": "│ ├",
+      "key": "│ ├",
       "showPeCoreCount": true,
       "keyColor": "green"
     },
     {
       "type": "gpu",
-      "key": "│ ├",
+      "key": "│ ├",
       "detectionMethod": "pci",
       "keyColor": "green"
     },
@@ -45,7 +45,7 @@
     },
     {
       "type": "memory",
-      "key": "│ ├",
+      "key": "│ ├",
       "keyColor": "green"
     },
     {
@@ -53,103 +53,91 @@
       "key": "└ └󰓡 ",
       "keyColor": "green"
     },
-    {
-      "type": "custom",
-      "format": "\u001b[90m└────────────────────────────────────────────────────┘"
-    },
     "break",
     {
       "type": "custom",
-      "format": "\u001b[90m┌──────────────────────Software──────────────────────┐"
+      "format": "\u001b[32m// SOFTWARE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     },
     {
       "type": "command",
       "key": "\ue900 OS",
-      "keyColor": "blue",
-      "text": "version=$(omarchy-version); echo \"Omarchy $version\""
+      "keyColor": "green",
+      "text": "version=$(omarchy-version); echo \"DedSec $version\""
     },
     {
       "type": "command",
       "key": "│ ├󰘬",
-      "keyColor": "blue",
+      "keyColor": "green",
       "text": "branch=$(omarchy-version-branch); echo \"$branch\""
     },
     {
       "type": "command",
       "key": "│ ├󰔫",
-      "keyColor": "blue",
+      "keyColor": "green",
       "text": "channel=$(omarchy-version-channel); echo \"$channel\""
     },
     {
       "type": "kernel",
-      "key": "│ ├",
-      "keyColor": "blue"
+      "key": "│ ├",
+      "keyColor": "green"
     },
     {
       "type": "wm",
-      "key": "│ ├",
-      "keyColor": "blue"
+      "key": "│ ├",
+      "keyColor": "green"
     },
     {
       "type": "de",
-      "key": " DE",
-      "keyColor": "blue"
+      "key": " DE",
+      "keyColor": "green"
     },
     {
       "type": "terminal",
-      "key": "│ ├",
-      "keyColor": "blue"
+      "key": "│ ├",
+      "keyColor": "green"
     },
     {
       "type": "packages",
       "key": "│ ├󰏖",
-      "keyColor": "blue"
+      "keyColor": "green"
     },
     {
       "type": "wmtheme",
       "key": "│ ├󰉼",
-      "keyColor": "blue"
+      "keyColor": "green"
     },
     {
       "type": "command",
       "key": "│ ├󰸌",
-      "keyColor": "blue",
-      "text": "theme=$(omarchy-theme-current); echo -e \"$theme \\e[38m●\\e[37m●\\e[36m●\\e[35m●\\e[34m●\\e[33m●\\e[32m●\\e[31m●\""
+      "keyColor": "green",
+      "text": "theme=$(omarchy-theme-current); echo -e \"$theme \\e[32m●\\e[36m●\\e[35m●\\e[34m●\\e[37m●\\e[33m●\\e[31m●\\e[38m●\""
     },
     {
       "type": "terminalfont",
-      "key": "└ └",
-      "keyColor": "blue"
-    },
-    {
-      "type": "custom",
-      "format": "\u001b[90m└────────────────────────────────────────────────────┘"
+      "key": "└ └",
+      "keyColor": "green"
     },
     "break",
     {
       "type": "custom",
-      "format": "\u001b[90m┌────────────────Age / Uptime / Update───────────────┐"
+      "format": "\u001b[32m// STATUS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     },
     {
       "type": "command",
       "key": "󱦟 OS Age",
-      "keyColor": "magenta",
+      "keyColor": "green",
       "text": "echo $(( ($(date +%s) - $(stat -c %W /)) / 86400 )) days"
     },
     {
       "type": "uptime",
       "key": "󱫐 Uptime",
-      "keyColor": "magenta"
+      "keyColor": "green"
     },
     {
       "type": "command",
-      "key": " Update",
-      "keyColor": "magenta",
+      "key": " Update",
+      "keyColor": "green",
       "text": "updated=$(omarchy-version-pkgs); echo \"$updated\""
-    },
-    {
-      "type": "custom",
-      "format": "\u001b[90m└────────────────────────────────────────────────────┘"
     },
     "break"
   ]

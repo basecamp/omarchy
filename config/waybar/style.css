@@ -1,93 +1,188 @@
 @import "../omarchy/current/theme/waybar.css";
 
+/* ═══════════════════════════════════════════════════════════════
+   DedSec // DATA READOUT STRIP
+   Not a desktop bar. A system telemetry feed.
+   ═══════════════════════════════════════════════════════════════ */
+
 * {
-  background-color: @background;
-  color: @foreground;
+  background-color: transparent;
+  color: @dim;
 
   border: none;
   border-radius: 0;
   min-height: 0;
   font-family: 'JetBrainsMono Nerd Font';
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: normal;
 }
+
+window#waybar {
+  background-color: @background;
+  border-bottom: 1px solid alpha(@muted, 0.35);
+}
+
+/* ── Left: Identity + Workspaces ────────────────── */
 
 .modules-left {
-  margin-left: 8px;
+  margin-left: 10px;
 }
 
-.modules-right {
-  margin-right: 8px;
+#custom-dedsec {
+  color: @accent;
+  font-weight: bold;
+  font-size: 12px;
+  letter-spacing: 2px;
+  margin-right: 6px;
+  padding: 0 4px;
+}
+
+#custom-tag-open,
+#custom-tag-close {
+  color: @muted;
+  font-size: 12px;
+  padding: 0;
+  margin: 0 1px;
 }
 
 #workspaces button {
   all: initial;
-  padding: 0 6px;
-  margin: 0 1.5px;
-  min-width: 9px;
+  color: @dim;
+  background-color: transparent;
+  font-family: 'JetBrainsMono Nerd Font';
+  font-size: 11px;
+  font-weight: bold;
+  padding: 0 5px;
+  margin: 0;
+  min-width: 8px;
+  transition: none;
 }
 
 #workspaces button.empty {
+  color: @muted;
   opacity: 0.5;
 }
 
-#cpu,
-#battery,
-#pulseaudio,
-#custom-omarchy,
-#custom-screenrecording-indicator,
+#workspaces button.active {
+  color: @accent;
+}
+
+#workspaces button:hover {
+  color: @foreground;
+}
+
+#custom-divider,
+#custom-divider2,
+#custom-divider3,
+#custom-divider4 {
+  color: @muted;
+  font-size: 10px;
+  margin: 0 8px;
+  opacity: 0.5;
+}
+
+#window {
+  color: @dim;
+  font-size: 10px;
+  font-style: italic;
+  margin-left: 2px;
+}
+
+/* ── Center: Status indicators ──────────────────── */
+
 #custom-update {
+  color: @accent;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+#custom-screenrecording-indicator {
   min-width: 12px;
-  margin: 0 7.5px;
-}
-
-#tray {
-  margin-right: 16px;
-}
-
-#bluetooth {
-  margin-right: 17px;
-}
-
-#network {
-  margin-right: 13px;
-}
-
-#custom-expand-icon {
-  margin-right: 18px;
-}
-
-tooltip {
-  padding: 2px;
-}
-
-#custom-update {
+  margin: 0 4px;
   font-size: 10px;
 }
 
+#custom-screenrecording-indicator.active {
+  color: @alert;
+}
+
+#custom-voxtype {
+  min-width: 12px;
+  margin: 0 4px;
+}
+
+#custom-voxtype.recording {
+  color: @alert;
+  font-weight: bold;
+}
+
+/* ── Right: System telemetry ────────────────────── */
+
+.modules-right {
+  margin-right: 10px;
+}
+
+#network {
+  color: @foreground;
+  margin: 0 4px;
+}
+
+#pulseaudio {
+  margin: 0 4px;
+}
+
+#cpu {
+  color: @cyan;
+  margin: 0 4px;
+}
+
+#memory {
+  color: @cyan;
+  margin: 0 4px;
+}
+
+#battery {
+  color: @foreground;
+  margin: 0 4px;
+}
+
+#battery.warning {
+  color: #BFFF00;
+}
+
+#battery.critical {
+  color: @alert;
+}
+
 #clock {
-  margin-left: 8.75px;
+  color: @accent;
+  font-weight: bold;
+  font-size: 12px;
+  margin: 0 4px;
+  letter-spacing: 1px;
+}
+
+#tray {
+  margin-left: 8px;
+  margin-right: 4px;
+}
+
+#custom-expand-icon {
+  margin-right: 8px;
 }
 
 .hidden {
   opacity: 0;
 }
 
-#custom-screenrecording-indicator {
-  min-width: 12px;
-  margin-left: 5px;
-  font-size: 10px;
-  padding-bottom: 1px;
-}
+/* ── Tooltips ───────────────────────────────────── */
 
-#custom-screenrecording-indicator.active {
-  color: #a55555;
-}
-
-#custom-voxtype {
-  min-width: 12px;
-  margin: 0 0 0 7.5px;
-}
-
-#custom-voxtype.recording {
-  color: #a55555;
+tooltip {
+  padding: 6px 10px;
+  background-color: @surface;
+  border: 1px solid @muted;
+  border-radius: 0;
+  color: @foreground;
+  font-size: 11px;
 }

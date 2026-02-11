@@ -1,0 +1,42 @@
+/* ═══════════════════════════════════════════════════════════════
+   DedSec -- Rofi App Launcher Theme
+   Centered, wider layout for application search + launch
+   ═══════════════════════════════════════════════════════════════ */
+
+@import "dedsec"
+
+window {
+    width:            580px;
+    location:         center;
+    x-offset:         0;
+    y-offset:         -80;
+}
+
+inputbar {
+    children:         [ prompt, entry ];
+    padding:          12px 16px;
+}
+
+prompt {
+    text-color: @accent;
+    content:    "LAUNCH //";
+}
+
+entry {
+    placeholder: "search applications...";
+}
+
+listview {
+    lines:            10;
+    padding:          4px 0;
+}
+
+element {
+    padding:          10px 16px;
+    spacing:          12px;
+}
+
+element-icon {
+    size:             20px;
+    background-color: inherit;
+}

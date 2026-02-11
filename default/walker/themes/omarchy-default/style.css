@@ -5,8 +5,8 @@
 }
 
 * {
-  font-family: monospace;
-  font-size: 18px;
+  font-family: 'JetBrainsMono Nerd Font', monospace;
+  font-size: 16px;
   color: @text;
 }
 
@@ -23,9 +23,10 @@ scrollbar {
 }
 
 .box-wrapper {
-  background: alpha(@base, 0.95);
-  padding: 20px;
-  border: 2px solid @border;
+  background: alpha(@base, 0.92);
+  padding: 16px;
+  border: 3px solid @accent;
+  box-shadow: 0 0 20px alpha(@accent, 0.15);
 }
 
 .preview-box {
@@ -37,13 +38,15 @@ scrollbar {
 .search-container {
   background: @base;
   padding: 10px;
+  border-left: 3px solid @accent;
 }
 
 .input placeholder {
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .input {
+  letter-spacing: 1px;
 }
 
 .input:focus,
@@ -69,9 +72,12 @@ child > * {
 }
 
 child:hover .item-box {
+  background: alpha(@accent, 0.04);
 }
 
 child:selected .item-box {
+  border-left: 3px solid @accent;
+  background: alpha(@accent, 0.08);
 }
 
 child:selected .item-box * {
@@ -84,10 +90,11 @@ child:selected .item-box * {
 
 .item-text-box {
   all: unset;
-  padding: 14px 0;
+  padding: 12px 0;
 }
 
 .item-text {
+  font-weight: 500;
 }
 
 .item-subtext {
@@ -109,7 +116,8 @@ child:selected .item-box * {
 .keybind-hints {
   background: @background;
   padding: 10px;
-  margin-top: 10px;
+  margin-top: 8px;
+  border-top: 1px solid @accent;
 }
 
 .preview {

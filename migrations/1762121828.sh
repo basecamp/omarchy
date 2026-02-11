@@ -1,6 +1,6 @@
 echo "Setting up xdg-terminal-exec for gtk-launch terminal support"
 # Solve for hardcoded glib terminals
-# https://github.com/basecamp/omarchy/issues/1852
+# https://github.com/VaheOfficial/DedMarchy/issues/1852
 
 # Remove old symlink if it exists -- if someone ran the previous migration early
 if [ -L /usr/local/bin/xdg-terminal-exec ]; then

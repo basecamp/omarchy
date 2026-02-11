@@ -1,0 +1,20 @@
+{
+  "name": "dedsec-theme",
+  "displayName": "DedSec",
+  "description": "DedSec surveillance-console color theme inspired by Watch Dogs",
+  "version": "1.0.0",
+  "publisher": "DedMarchy",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": ["Themes"],
+  "contributes": {
+    "themes": [
+      {
+        "label": "DedSec",
+        "uiTheme": "vs-dark",
+        "path": "./themes/dedsec-color-theme.json"
+      }
+    ]
+  }
+}

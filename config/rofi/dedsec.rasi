@@ -1,0 +1,116 @@
+/* ═══════════════════════════════════════════════════════════════
+   DedSec -- Rofi Theme
+   Cold. Flat. Institutional. Terminal access interface.
+   ═══════════════════════════════════════════════════════════════ */
+
+* {
+    bg:           #050A0Eee;
+    bg-solid:     #0A1018;
+    fg:           #B0F4E6;
+    accent:       #00FF41;
+    cyan:         #00E5FF;
+    muted:        #1E3044;
+    dim:          #B0F4E680;
+    alert:        #FF2D6F;
+    transparent:  #00000000;
+
+    background-color: @transparent;
+    text-color:       @fg;
+    font:             "JetBrainsMono Nerd Font 13";
+}
+
+window {
+    background-color: @bg;
+    border:           1px solid;
+    border-color:     @muted;
+    border-radius:    0px;
+    width:            320px;
+    location:         northwest;
+    x-offset:         8;
+    y-offset:         30;
+}
+
+mainbox {
+    children:   [ inputbar, message, listview ];
+    spacing:    0;
+    padding:    0;
+}
+
+inputbar {
+    children:         [ prompt, entry ];
+    background-color: @bg-solid;
+    padding:          10px 14px;
+    border:           0 0 1px 0;
+    border-color:     @muted;
+}
+
+prompt {
+    text-color: @accent;
+    padding:    0 8px 0 0;
+}
+
+entry {
+    text-color:       @fg;
+    placeholder:      "...";
+    placeholder-color: @dim;
+}
+
+listview {
+    columns:          1;
+    lines:            12;
+    fixed-height:     false;
+    dynamic:          true;
+    scrollbar:        false;
+    padding:          4px 0;
+    spacing:          0;
+    border:           0;
+}
+
+element {
+    padding:          8px 14px;
+    spacing:          8px;
+}
+
+element normal.normal {
+    background-color: @transparent;
+    text-color:       @fg;
+}
+
+element selected.normal {
+    background-color: @muted;
+    text-color:       @accent;
+    border:           0 0 0 3px solid;
+    border-color:     @accent;
+}
+
+element alternate.normal {
+    background-color: @transparent;
+    text-color:       @fg;
+}
+
+element-text {
+    background-color: inherit;
+    text-color:       inherit;
+    vertical-align:   0.5;
+}
+
+element-icon {
+    background-color: inherit;
+    size:             0;
+}
+
+message {
+    padding:          8px 14px;
+    border:           0 0 1px 0;
+    border-color:     @muted;
+}
+
+textbox {
+    text-color: @dim;
+}
+
+scrollbar {
+    handle-color: @muted;
+    handle-width: 4px;
+    border:       0;
+}

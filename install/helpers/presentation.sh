@@ -28,7 +28,7 @@ export LOGO_HEIGHT=$(wc -l <"$LOGO_PATH" 2>/dev/null || echo 0)
 export PADDING_LEFT=$((($TERM_WIDTH - $LOGO_WIDTH) / 2))
 export PADDING_LEFT_SPACES=$(printf "%*s" $PADDING_LEFT "")
 
-# Tokyo Night theme for gum confirm
+# DedSec theme for gum confirm
 export GUM_CONFIRM_PROMPT_FOREGROUND="6"     # Cyan for prompt
 export GUM_CONFIRM_SELECTED_FOREGROUND="0"   # Black text on selected
 export GUM_CONFIRM_SELECTED_BACKGROUND="2"   # Green background for selected

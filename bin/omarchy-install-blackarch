@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# Install additional BlackArch tool categories or ALL tools.
+# Can be run interactively (picks via gum) or with arguments.
+
+set -e
+
+export PATH="$HOME/.local/share/omarchy/bin:$PATH"
+
+# Ensure BlackArch repo is available
+if ! grep -q "\[blackarch\]" /etc/pacman.conf 2>/dev/null; then
+  echo "BlackArch repository not found. Adding it now..."
+  curl -O https://blackarch.org/strap.sh
+  chmod +x strap.sh
+  sudo ./strap.sh
+  rm -f strap.sh
+  sudo pacman -Sy --noconfirm
+fi
+
+# All available BlackArch groups
+GROUPS=(
+  "blackarch (ALL ~2800 tools, 50GB+)"
+  "blackarch-anti-forensic"
+  "blackarch-automation"
+  "blackarch-backdoor"
+  "blackarch-binary"
+  "blackarch-bluetooth"
+  "blackarch-code-audit"
+  "blackarch-cracker"
+  "blackarch-crypto"
+  "blackarch-database"
+  "blackarch-debugger"
+  "blackarch-decompiler"
+  "blackarch-defensive"
+  "blackarch-disassembler"
+  "blackarch-dos"
+  "blackarch-drone"
+  "blackarch-exploitation"
+  "blackarch-fingerprint"
+  "blackarch-firmware"
+  "blackarch-forensic"
+  "blackarch-fuzzer"
+  "blackarch-hardware"
+  "blackarch-honeypot"
+  "blackarch-keylogger"
+  "blackarch-malware"
+  "blackarch-misc"
+  "blackarch-mobile"
+  "blackarch-networking"
+  "blackarch-nfc"
+  "blackarch-packer"
+  "blackarch-proxy"
+  "blackarch-recon"
+  "blackarch-reversing"
+  "blackarch-scanner"
+  "blackarch-sniffer"
+  "blackarch-social"
+  "blackarch-spoof"
+  "blackarch-threat-model"
+  "blackarch-tunnel"
+  "blackarch-unpacker"
+  "blackarch-voip"
+  "blackarch-webapp"
+  "blackarch-windows"
+  "blackarch-wireless"
+)
+
+if [[ -n "$1" ]]; then
+  # Direct install from argument
+  selected="$1"
+else
+  # Interactive selection
+  if omarchy-cmd-present gum; then
+    selected=$(printf '%s\n' "${GROUPS[@]}" | gum choose --header "Select BlackArch group to install")
+  else
+    echo "Available groups:"
+    for i in "${!GROUPS[@]}"; do
+      echo "  $((i + 1)). ${GROUPS[$i]}"
+    done
+    echo
+    read -rp "Enter number: " num
+    selected="${GROUPS[$((num - 1))]}"
+  fi
+fi
+
+if [[ -z "$selected" ]]; then
+  echo "No group selected."
+  exit 0
+fi
+
+# Extract actual package group name (strip description)
+group_name="${selected%% (*}"
+
+echo ""
+echo "Installing $group_name..."
+echo ""
+
+sudo pacman -S --noconfirm --needed --overwrite '*' "$group_name"
+
+echo ""
+echo "Done. $group_name tools installed."

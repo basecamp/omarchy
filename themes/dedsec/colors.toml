@@ -1,0 +1,32 @@
+# DedSec — Watch Dogs inspired palette
+# Primary: neon green (#00FF41) + electric cyan (#00E5FF)
+# Alert: hot magenta (#FF2D6F) — DedSec danger/glitch color
+# Background: near-black with cold blue undertone
+# Philosophy: high contrast, readable, surveillance-console aesthetic
+
+accent = "#00FF41"
+cursor = "#C8FFF4"
+foreground = "#B0F4E6"
+background = "#050A0E"
+selection_foreground = "#050A0E"
+selection_background = "#00FF41"
+
+# Normal colors (ANSI 0-7)
+color0 = "#0A1018"
+color1 = "#FF2D6F"
+color2 = "#00FF41"
+color3 = "#BFFF00"
+color4 = "#00E5FF"
+color5 = "#A855F7"
+color6 = "#22D3EE"
+color7 = "#94F0E0"
+color8 = "#1E3044"
+
+# Bright colors (ANSI 8-15)
+color9 = "#FF6B99"
+color10 = "#69FF97"
+color11 = "#E0FF66"
+color12 = "#67EEFF"
+color13 = "#C084FC"
+color14 = "#7DFCF3"
+color15 = "#C8FFF4"

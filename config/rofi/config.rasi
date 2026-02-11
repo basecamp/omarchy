@@ -1,0 +1,11 @@
+configuration {
+  show-icons:     false;
+  font:           "JetBrainsMono Nerd Font 13";
+  drun-display-format: "{name}";
+  hover-select:   true;
+  me-select-entry: "";
+  me-accept-entry: "MousePrimary";
+  scroll-method:  1;
+}
+
+@theme "dedsec"

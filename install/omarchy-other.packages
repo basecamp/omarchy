@@ -10,6 +10,7 @@ btrfs-progs
 dart
 dkms
 egl-wayland
+eww
 git
 gst-plugin-pipewire
 gtk4-layer-shell
@@ -28,6 +29,7 @@ linux
 linux-firmware
 linux-headers
 macbook12-spi-driver-dkms
+
 nvidia-580xx-dkms
 nvidia-dkms
 nvidia-open-dkms

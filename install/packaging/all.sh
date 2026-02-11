@@ -4,4 +4,7 @@ run_logged $OMARCHY_INSTALL/packaging/nvim.sh
 run_logged $OMARCHY_INSTALL/packaging/icons.sh
 run_logged $OMARCHY_INSTALL/packaging/webapps.sh
 run_logged $OMARCHY_INSTALL/packaging/tuis.sh
+run_logged $OMARCHY_INSTALL/packaging/eww.sh
+run_logged $OMARCHY_INSTALL/packaging/blackarch-repo.sh
+run_logged $OMARCHY_INSTALL/packaging/blackarch-essentials.sh
 run_logged $OMARCHY_INSTALL/packaging/asus-rog.sh

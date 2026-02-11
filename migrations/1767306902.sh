@@ -61,5 +61,5 @@ if [[ -n $CURRENT_THEME_NAME ]]; then
   omarchy-theme-set "$CURRENT_THEME_NAME"
 else
   # Backup to ensure a theme is set if we can't deduce the name
-  omarchy-theme-set "Tokyo Night"
+  omarchy-theme-set "dedsec"
 fi

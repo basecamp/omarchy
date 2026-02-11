@@ -1,0 +1,81 @@
+// DedSec Desktop HUD -- EWW Stylesheet
+// Cold. Flat. Institutional. No decoration.
+
+$accent: #00FF41;
+$foreground: #B0F4E6;
+$muted: #1E3044;
+$dim: rgba(176, 244, 230, 0.35);
+$background: #050A0E;
+$font: "JetBrainsMono Nerd Font";
+
+* {
+  all: unset;
+  font-family: $font;
+  color: $foreground;
+}
+
+// ── Top-right: Node identity ──────────────────────
+.node-info {
+  margin: 44px 20px 0 0;
+}
+
+.node-box {
+  background-color: rgba(5, 10, 14, 0.80);
+  border: 1px solid $muted;
+  padding: 8px 16px;
+  margin-bottom: 3px;
+  min-width: 260px;
+
+  label {
+    font-size: 13px;
+    color: $foreground;
+    letter-spacing: 1px;
+  }
+}
+
+// ── Bottom-left: Log feed ─────────────────────────
+.log-feed {
+  margin: 0 0 20px 20px;
+  min-width: 600px;
+}
+
+.log-header {
+  font-size: 12px;
+  color: $accent;
+  margin-bottom: 6px;
+  letter-spacing: 1px;
+}
+
+.log-line {
+  font-size: 10px;
+  color: $dim;
+  letter-spacing: 0.3px;
+  margin-bottom: 2px;
+  min-width: 500px;
+}
+
+// ── Bottom-right: Diagnostic readout ──────────────
+.diag-readout {
+  margin: 0 20px 20px 0;
+}
+
+.diag-line {
+  font-size: 12px;
+  color: $dim;
+  letter-spacing: 1px;
+  margin-bottom: 3px;
+}
+
+// ── Center: Watermark ─────────────────────────────
+.watermark {
+  min-width: 800px;
+  min-height: 200px;
+}
+
+.watermark-text {
+  font-size: 140px;
+  font-weight: bold;
+  color: rgba(0, 255, 65, 0.05);
+  letter-spacing: 12px;
+  min-width: 700px;
+}

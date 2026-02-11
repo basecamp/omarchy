@@ -1,0 +1,107 @@
+; DedSec Desktop HUD -- EWW Widget Definitions
+; Persistent on-screen overlays: node info, log feed, diagnostics, watermark
+
+; ── Poll variables ──────────────────────────────────────────────
+(defpoll hostname :interval "60s"
+  `hostname 2>/dev/null || echo 'UNKNOWN'`)
+
+(defpoll ipaddr :interval "10s"
+  `ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}' || echo 'OFFLINE'`)
+
+(defpoll log_1 :interval "5s"
+  `journalctl --user -n 5 --no-pager -o short 2>/dev/null | sed -n '1p' || echo ''`)
+
+(defpoll log_2 :interval "5s"
+  `journalctl --user -n 5 --no-pager -o short 2>/dev/null | sed -n '2p' || echo ''`)
+
+(defpoll log_3 :interval "5s"
+  `journalctl --user -n 5 --no-pager -o short 2>/dev/null | sed -n '3p' || echo ''`)
+
+(defpoll log_4 :interval "5s"
+  `journalctl --user -n 5 --no-pager -o short 2>/dev/null | sed -n '4p' || echo ''`)
+
+(defpoll log_5 :interval "5s"
+  `journalctl --user -n 5 --no-pager -o short 2>/dev/null | sed -n '5p' || echo ''`)
+
+(defpoll uptime_val :interval "30s"
+  `uptime -p 2>/dev/null | sed 's/up //' || echo '?'`)
+
+(defpoll kernel_val :interval "3600s"
+  `uname -r`)
+
+; ── Top-right: Node identity boxes ──────────────────────────────
+(defwidget node-info []
+  (box :class "node-info"
+       :orientation "v"
+       :space-evenly false
+       :halign "end"
+       :valign "start"
+       :hexpand true
+       :vexpand true
+    (box :class "node-box" :halign "end"
+      (label :text "ENV // ${hostname}" :wrap false))
+    (box :class "node-box" :halign "end"
+      (label :text "NODE // ${ipaddr}" :wrap false))))
+
+; ── Bottom-left: System log feed ────────────────────────────────
+(defwidget log-feed []
+  (box :class "log-feed"
+       :orientation "v"
+       :space-evenly false
+       :halign "start"
+       :valign "end"
+       :hexpand true
+       :vexpand true
+       :width 700
+    (label :class "log-header" :text "> SYS_LOG : ACTIVE" :halign "start" :wrap false)
+    (label :class "log-line" :text log_1 :halign "start" :wrap false :truncate true)
+    (label :class "log-line" :text log_2 :halign "start" :wrap false :truncate true)
+    (label :class "log-line" :text log_3 :halign "start" :wrap false :truncate true)
+    (label :class "log-line" :text log_4 :halign "start" :wrap false :truncate true)
+    (label :class "log-line" :text log_5 :halign "start" :wrap false :truncate true)))
+
+; ── Bottom-right: Diagnostic readout ────────────────────────────
+(defwidget diag-readout []
+  (box :class "diag-readout"
+       :orientation "v"
+       :space-evenly false
+       :halign "end"
+       :valign "end"
+       :hexpand true
+       :vexpand true
+    (label :class "diag-line" :text "KERNEL // ${kernel_val}" :halign "end" :wrap false)
+    (label :class "diag-line" :text "UPTIME // ${uptime_val}" :halign "end" :wrap false)))
+
+; ── Center: Watermark ───────────────────────────────────────────
+(defwidget watermark []
+  (box :class "watermark"
+       :halign "center"
+       :valign "center"
+       :hexpand true
+       :vexpand true
+    (label :class "watermark-text" :text "DEDSEC" :wrap false)))
+
+; ── Combined HUD layout ─────────────────────────────────────────
+(defwidget ctos-hud []
+  (overlay
+    (watermark)
+    (node-info)
+    (log-feed)
+    (diag-readout)))
+
+; ── Window definition ───────────────────────────────────────────
+(defwindow ctos-hud
+  :monitor 0
+  :geometry (geometry
+    :x "0px"
+    :y "0px"
+    :width "100%"
+    :height "100%"
+    :anchor "center")
+  :stacking "bottom"
+  :exclusive false
+  :focusable false
+  :windowtype "desktop"
+  :wm-ignore false
+  :namespace "eww-ctos-hud"
+  (ctos-hud))

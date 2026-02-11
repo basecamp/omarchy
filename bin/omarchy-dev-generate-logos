@@ -1,0 +1,118 @@
+#!/bin/bash
+set -e
+
+# Generate SVG and PNG logos from text art files (logo.txt, icon.txt)
+# Requires: python3, imagemagick (convert)
+#
+# Usage: omarchy-dev-generate-logos [--color COLOR]
+#   --color   Hex color for the logo (default: #9ece6a)
+
+COLOR="${1:-#9ece6a}"
+if [[ "$1" == "--color" ]]; then
+  COLOR="${2:-#9ece6a}"
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+python3 - "$SCRIPT_DIR" "$COLOR" << 'PYTHON_SCRIPT'
+import sys, os
+
+base_dir = sys.argv[1]
+color = sys.argv[2]
+
+# Character opacity map for block/shade characters
+CHAR_OPACITY = {
+    '█': 1.0,
+    '▓': 0.75,
+    '▒': 0.50,
+    '░': 0.25,
+    '▀': 1.0,   # upper half
+    '▄': 1.0,   # lower half
+    '▌': 1.0,   # left half
+    ' ': 0.0,
+}
+
+def text_to_svg(text_path, svg_path, cell_w=12, cell_h=20, color="#9ece6a"):
+    with open(text_path, 'r') as f:
+        lines = [line.rstrip('\n') for line in f.readlines()]
+
+    # Remove trailing empty lines
+    while lines and not lines[-1].strip():
+        lines.pop()
+
+    if not lines:
+        return
+
+    max_cols = max(len(line) for line in lines)
+    rows = len(lines)
+    width = max_cols * cell_w
+    height = rows * cell_h
+
+    rects = []
+    for row, line in enumerate(lines):
+        for col, ch in enumerate(line):
+            if ch == ' ':
+                continue
+
+            x = col * cell_w
+            y = row * cell_h
+            opacity = CHAR_OPACITY.get(ch, 0.6)
+
+            if ch == '▀':
+                # Upper half block
+                rects.append(f'<rect x="{x}" y="{y}" width="{cell_w}" height="{cell_h // 2}" fill="{color}" opacity="{opacity}"/>')
+            elif ch == '▄':
+                # Lower half block
+                rects.append(f'<rect x="{x}" y="{y + cell_h // 2}" width="{cell_w}" height="{cell_h // 2}" fill="{color}" opacity="{opacity}"/>')
+            elif ch == '▌':
+                # Left half block
+                rects.append(f'<rect x="{x}" y="{y}" width="{cell_w // 2}" height="{cell_h}" fill="{color}" opacity="{opacity}"/>')
+            else:
+                rects.append(f'<rect x="{x}" y="{y}" width="{cell_w}" height="{cell_h}" fill="{color}" opacity="{opacity}"/>')
+
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}">
+<rect width="{width}" height="{height}" fill="transparent"/>
+{"".join(rects)}
+</svg>'''
+
+    with open(svg_path, 'w') as f:
+        f.write(svg)
+
+    print(f"  Generated {svg_path} ({width}x{height})")
+
+# Generate logo SVG from logo.txt
+logo_txt = os.path.join(base_dir, "logo.txt")
+logo_svg = os.path.join(base_dir, "logo.svg")
+if os.path.exists(logo_txt):
+    text_to_svg(logo_txt, logo_svg, cell_w=12, cell_h=20, color=color)
+
+# Generate icon SVG from icon.txt (square cells for icon)
+icon_txt = os.path.join(base_dir, "icon.txt")
+icon_svg = os.path.join(base_dir, "icon.svg")
+if os.path.exists(icon_txt):
+    text_to_svg(icon_txt, icon_svg, cell_w=16, cell_h=16, color=color)
+
+PYTHON_SCRIPT
+
+echo -e "\e[32mSVGs generated from text art.\e[0m"
+
+# Ensure ImageMagick is available for PNG conversion
+if ! command -v magick &>/dev/null && ! command -v convert &>/dev/null; then
+  echo "Installing ImageMagick for PNG conversion..."
+  omarchy-pkg-add imagemagick
+fi
+
+CMD="convert"
+command -v magick &>/dev/null && CMD="magick"
+
+if [[ -f "$SCRIPT_DIR/logo.svg" ]]; then
+  $CMD -background none "$SCRIPT_DIR/logo.svg" "$SCRIPT_DIR/default/plymouth/logo.png"
+  echo "  Generated default/plymouth/logo.png"
+fi
+
+if [[ -f "$SCRIPT_DIR/icon.svg" ]]; then
+  $CMD -background none -resize 512x512 "$SCRIPT_DIR/icon.svg" "$SCRIPT_DIR/icon.png"
+  echo "  Generated icon.png (512x512)"
+fi
+
+echo -e "\e[32mPNGs generated from SVGs.\e[0m"
