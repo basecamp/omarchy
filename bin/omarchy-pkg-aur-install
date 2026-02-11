@@ -4,6 +4,9 @@
 
 fzf_args=(
   --multi
+  --delimiter=' '
+  --nth=1
+  --with-nth=1
   --preview 'yay -Siia {1}'
   --preview-label='alt-p: toggle description, alt-b/B: toggle PKGBUILD, alt-j/k: scroll, tab: multi-select'
   --preview-label-pos='bottom'
@@ -16,11 +19,17 @@ fzf_args=(
   --color 'pointer:green,marker:green'
 )
 
-pkg_names=$(yay -Slqa | fzf "${fzf_args[@]}")
+# Pass "pkg repo" so fzf matches only on pkg but still returns repo for unique identification
+pkg_list=$(yay -Sla | awk '{printf "%s %s\n", $2, $1}' | fzf "${fzf_args[@]}")
 
-if [[ -n "$pkg_names" ]]; then
-  # Convert newline-separated selections to space-separated for yay
-  echo "$pkg_names" | tr '\n' ' ' | xargs yay -S --noconfirm
-  sudo updatedb
-  omarchy-show-done
+if [[ -n "$pkg_list" ]]; then
+    while IFS= read -r pkg_repo; do
+        [[ -z "$pkg_repo" ]] && continue
+        IFS=' ' read -r pkg repo <<< "$pkg_repo"
+        # use yay for AUR packages
+        yay -S --noconfirm "$repo/$pkg"
+    done <<< "$pkg_list"
+    echo "Updating database..."
+    sudo updatedb
+    omarchy-show-done
 fi
