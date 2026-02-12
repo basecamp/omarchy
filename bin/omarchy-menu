@@ -148,7 +148,10 @@ show_screenrecord_menu() {
   *"With desktop audio") omarchy-cmd-screenrecord --with-desktop-audio ;;
   *"With desktop + microphone audio") omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio ;;
   *"With desktop + microphone audio + webcam")
-    local device=$(show_webcam_select_menu) || { back_to show_capture_menu; return; }
+    local device=$(show_webcam_select_menu) || {
+      back_to show_capture_menu
+      return
+    }
     omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device"
     ;;
   *) back_to show_capture_menu ;;
@@ -185,7 +188,7 @@ show_style_menu() {
   case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
-  *Background*) omarchy-theme-bg-next ;;
+  *Background*) terminal omarchy-theme-bg-select ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
   *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
   *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
@@ -585,6 +588,7 @@ show_main_menu() {
 go_to_menu() {
   case "${1,,}" in
   *apps*) walker -p "Launch…" ;;
+  *background*) terminal omarchy-theme-bg-select ;;
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
   *share*) show_share_menu ;;

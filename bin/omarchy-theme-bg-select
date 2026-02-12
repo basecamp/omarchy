@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# Paths
+WALLPAPER_DIR="$HOME/.config/omarchy/current/theme/backgrounds"
+TARGET_LINK="$HOME/.config/omarchy/current/background"
+CACHE_DIR="$HOME/.cache/bg_selector_thumbs"
+FINAL_PREVIEW="/tmp/bg_grid_fast.png"
+
+mkdir -p "$CACHE_DIR"
+
+# 1. Load images
+mapfile -t images < <(find "$WALLPAPER_DIR" -maxdepth 1 -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.bmp" -o -name "*.webp" \) 2>/dev/null)
+count=${#images[@]}
+[[ $count -eq 0 ]] && echo "No wallpapers found." && exit 1
+
+# 2. Pre-generate thumbnails (only if they don't exist)
+echo "Syncing thumbnails..."
+for img in "${images[@]}"; do
+  thumb_name=$(echo -n "$img" | md5sum | cut -d' ' -f1)
+  thumb_path="$CACHE_DIR/${thumb_name}.png"
+  if [[ ! -f "$thumb_path" ]]; then
+    magick "$img" -resize 300x200^ -gravity center -extent 300x200 "$thumb_path"
+  fi
+done
+
+index=0
+
+render_grid() {
+  local start_idx=$(((index / 4) * 4))
+  local cmd=(magick)
+
+  for i in {0..3}; do
+    local current=$((start_idx + i))
+    if [ $current -lt $count ]; then
+      local thumb_name=$(echo -n "${images[$current]}" | md5sum | cut -d' ' -f1)
+      local thumb_path="$CACHE_DIR/${thumb_name}.png"
+
+      # Add image with conditional border in a single process
+      if [ $current -eq $index ]; then
+        cmd+=(\( "$thumb_path" -bordercolor "#ffcc66" -border 6 \))
+      else
+        cmd+=(\( "$thumb_path" -bordercolor "none" -border 6 \))
+      fi
+    else
+      # Fill empty space with a transparent tile
+      cmd+=(\( -size 312x212 xc:none \))
+    fi
+  done
+
+  # Stitch 4x1 and output
+  "${cmd[@]}" +append "$FINAL_PREVIEW"
+
+  clear
+  echo -e "\n  --- [ Background Selector ] ---\n"
+  chafa --size=130x20 "$FINAL_PREVIEW"
+  echo -e "\n  (h/l) Navigate  |  (Enter) Set  |  (q) Quit"
+}
+
+# Main Loop
+while true; do
+  render_grid
+  read -rsn1 key
+  case "$key" in
+  l) index=$(((index + 1) % count)) ;;
+  h) index=$(((index - 1 + count) % count)) ;;
+  "")
+    selected="${images[$index]}"
+    ln -sf "$selected" "$TARGET_LINK"
+    pkill -x swaybg
+    setsid uwsm-app -- swaybg -i "$selected" -m fill >/dev/null 2>&1 &
+    # break
+    ;;
+  q)
+    rm -rf $CACHE_DIR &&
+      exit 0
+    ;;
+  esac
+done
