@@ -70,9 +70,13 @@ fi
 
 
 # Add steam windowrules to hyprland config
-echo "" >> ~/.config/hypr/hyprland.conf
-echo "# Steam" >> ~/.config/hypr/hyprland.conf
-echo "source = ~/.local/share/omarchy/default/hypr/apps/steam.conf" >> ~/.config/hypr/hyprland.conf
+#
+
+if ! grep -Fxq "source = ~/.local/share/omarchy/default/hypr/apps/steam.conf" "~/.config/hypr/hyprland.conf"; then
+  echo "" >> "~/.config/hypr/hyprland.conf"
+  echo "# Steam" >> "~/.config/hypr/hyprland.conf"
+  echo "source = ~/.local/share/omarchy/default/hypr/apps/steam.conf" >> "~/.config/hypr/hyprland.conf"
+fi
 
 # Force steam to use xwayland because it doesn't run that well on wayland native
 echo "export STEAM_FORCE_DESKTOPUI_SCALING=1" >> ~/.config/uwsm/env
