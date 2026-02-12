@@ -41,8 +41,6 @@ INTEL_PKGS=(
   lib32-vulkan-intel
   )
 
-
-
 install_drivers () {
 
   case "$1" in
@@ -73,16 +71,21 @@ fi
 
 # Add steam windowrules to hyprland config
 echo "" >> ~/.config/hypr/hyprland.conf
-echo "#Steam" >> ~/.config/hypr/hyprland.conf
+echo "# Steam" >> ~/.config/hypr/hyprland.conf
 echo "source = ~/.local/share/omarchy/default/hypr/apps/steam.conf" >> ~/.config/hypr/hyprland.conf
-# Force steam to use xwayland because it doesn't run that well on wayland
+
+# Force steam to use xwayland because it doesn't run that well on wayland native
 echo "export STEAM_FORCE_DESKTOPUI_SCALING=1" >> ~/.config/uwsm/env
 
-# Install steam with gamemode for optimizations
-omarchy-pkg-add steam gamemode gamescope lib32-gamemode
+# Install steam with gamemode,gamescope and proton-ge for optimizations (windetricks was a recommended dependency for proton-ge)
+omarchy-pkg-aur-add proton-ge-bin
+omarchy-pkg-add steam gamemode gamescope lib32-gamemode winetricks
+
+# Set Proton-GE by default automatically
+sed -i -e 's/proton_experimental/Proton-GE/g' ~/.local/share/Steam/config/config.vdf
 
 setsid gtk-launch steam >/dev/null 2>&1 &
 
-echo "Make sure to add gamescope gamemoderun %command% to the games in your steam library to make proper use of these tools"
+echo "Make sure to add \"gamescope gamemoderun %command%\" to the games in your steam library to make proper use of these tools"
 
 # Note: this is a WIP, as of now, I don't know of a more automated way to add these launch options, but that would be ideal
