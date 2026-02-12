@@ -8,13 +8,13 @@ omarchy-pkg-add dropbox dropbox-cli libappindicator-gtk3 python-gpgme
 
 echo "Adding file explorer integration"
 
-if ! omarchy-pkg-missing nautilus; then
+if omarchy-pkg-present nautilus; then
  omarchy-pkg-add nautilus-dropbox
-elif ! omarchy-pkg-missing thunar; then
+elif omarchy-pkg-present thunar; then
   omarchy-pkg-aur-add thunar-dropbox
-elif ! omarchy-pkg-missing caja; then
+elif omarchy-pkg-present caja; then
   omarchy-pkg-aur-add caja-dropbox
-elif ! omarchy-pkg-missing nemo; then
+elif omarchy-pkg-present nemo; then
   omarchy-pkg-aur-add nemo-dropbox
 fi
 
