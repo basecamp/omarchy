@@ -70,7 +70,6 @@ fi
 
 
 # Add steam windowrules to hyprland config
-#
 
 if ! grep -Fxq "source = ~/.local/share/omarchy/default/hypr/apps/steam.conf" "~/.config/hypr/hyprland.conf"; then
   echo "" >> "~/.config/hypr/hyprland.conf"
