@@ -17,7 +17,9 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
   sudo pacman -Sy
   sudo pacman -S --noconfirm --needed omarchy-keyring
 
-
   # Refresh all repos
   sudo pacman -Syyu --noconfirm
+else
+  # Sync package databases for local installs so new packages are discoverable
+  sudo pacman -Sy
 fi
