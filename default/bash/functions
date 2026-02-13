@@ -6,8 +6,7 @@ alias decompress="tar -xzf"
 iso2sd() {
   set -- "$1" "$(omarchy-drive-select)"
   caligula burn $1 -o $2
- # if [ $# -ne 2 ]; then
- #   echo "Usage: iso2sd <input_file> <output_device>"
+ echo "Usage: iso2sd <input_file>"
  #   echo "Example: iso2sd ~/Downloads/ubuntu-25.04-desktop-amd64.iso /dev/sda"
  #   echo -e "\nAvailable SD cards:"
  #   lsblk -d -o NAME | grep -E '^sd[a-z]' | awk '{print "/dev/"$1}'
