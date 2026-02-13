@@ -2,6 +2,7 @@
 
 # Take a screenshot of the whole screen, a specific window, or a user-drawn region.
 # Saves to ~/Pictures by default, but that can be changed via OMARCHY_SCREENSHOT_DIR or XDG_PICTURES_DIR ENVs.
+# Editor defaults to Satty but can be changed via --editor=<name> or OMARCHY_SCREENSHOT_EDITOR env
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
@@ -12,6 +13,33 @@ if [[ ! -d "$OUTPUT_DIR" ]]; then
 fi
 
 pkill slurp && exit 0
+
+SCREENSHOT_EDITOR="${OMARCHY_SCREENSHOT_EDITOR:-satty}"
+
+# Parse --editor flag from any position
+ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == --editor=* ]]; then
+    SCREENSHOT_EDITOR="${arg#--editor=}"
+  else
+    ARGS+=("$arg")
+  fi
+done
+set -- "${ARGS[@]}"
+
+open_editor() {
+  local filepath="$1"
+  if [[ "$SCREENSHOT_EDITOR" == "satty" ]]; then
+    satty --filename "$filepath" \
+      --output-filename "$filepath" \
+      --early-exit \
+      --actions-on-enter save-to-clipboard \
+      --save-after-copy \
+      --copy-command 'wl-copy'
+  else
+    $SCREENSHOT_EDITOR "$filepath"
+  fi
+}
 
 MODE="${1:-smart}"
 PROCESSING="${2:-slurp}"
@@ -46,7 +74,7 @@ case "$MODE" in
     SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
     kill $PID 2>/dev/null
 
-    # If the selction area is L * W < 20, we'll assume you were trying to select whichever
+    # If the selection area is L * W < 20, we'll assume you were trying to select whichever
     # window or output it was inside of to prevent accidental 2px snapshots
     if [[ "$SELECTION" =~ ^([0-9]+),([0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]]; then
       if (( ${BASH_REMATCH[3]} * ${BASH_REMATCH[4]} < 20 )); then
@@ -71,16 +99,19 @@ case "$MODE" in
     ;;
 esac
 
-[ -z "$SELECTION" ] && exit 0
+[[ -z $SELECTION ]] && exit 0
+
+FILENAME="screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png"
+FILEPATH="$OUTPUT_DIR/$FILENAME"
 
 if [[ $PROCESSING == "slurp" ]]; then
-grim -g "$SELECTION" - |
-  satty --filename - \
-    --output-filename "$OUTPUT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png" \
-    --early-exit \
-    --actions-on-enter save-to-clipboard \
-    --save-after-copy \
-    --copy-command 'wl-copy'
+  grim -g "$SELECTION" "$FILEPATH" || exit 1
+  wl-copy < "$FILEPATH"
+
+  (
+    ACTION=$(notify-send "Screenshot copied & saved" "Click to edit" -t 10000 -i "$FILEPATH" -A "default=edit")
+    [[ "$ACTION" == "default" ]] && open_editor "$FILEPATH"
+  ) &
 else
   grim -g "$SELECTION" - | wl-copy
 fi
