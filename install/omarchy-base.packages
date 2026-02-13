@@ -105,12 +105,13 @@ python-gobject
 python-poetry-core
 python-terminaltexteffects
 qt5-wayland
+quickshell
 ripgrep
 rofi
 ruby
 rust
 satty
-sddm
+greetd
 signal-desktop
 slurp
 spotify

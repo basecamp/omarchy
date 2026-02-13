@@ -1,0 +1,10 @@
+module Common
+
+singleton Theme 1.0 Theme.qml
+singleton Units 1.0 Units.qml
+singleton Utils 1.0 Utils.qml
+singleton Faker 1.0 Faker.qml
+singleton Env 1.0 Env.qml
+
+ConfigFile 1.0 ConfigFile.qml
+Logger 1.0 Logger.qml

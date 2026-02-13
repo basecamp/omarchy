@@ -1,0 +1,92 @@
+{
+  "$id": "dedsec-greeter",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DedSec Greeter Config",
+  "type": "object",
+  "properties": {
+    "user": { "type": "string", "description": "The default user." },
+    "monitor": {
+      "type": "string",
+      "description": "The primary monitor with login field."
+    },
+
+    "animations": {
+      "$ref": "#/$defs/animationProfile",
+      "Title": "Default Animation Profile"
+    },
+    "fontFamily": {
+      "type": "string",
+      "description": "The monospace font to use."
+    },
+    "identity": {
+      "title": "Identity",
+      "type": "object",
+      "description": "Configure the operator identity card shown after logging in.",
+      "properties": {
+        "id": { "type": "string", "description": "Operator ID (auto-generated from machine-id)" },
+        "class": { "type": "string", "description": "Access level (auto-detected from user groups)" },
+        "fullName": { "type": "string", "description": "Full name (auto-detected from system user)" }
+      }
+    },
+    "systemInfo": {
+      "title": "System Info",
+      "type": "object",
+      "description": "Configure the system info shown in the top right.",
+      "properties": {
+        "env": { "type": "string", "description": "Environment label (defaults to hostname)" },
+        "node": { "type": "string", "description": "Node identifier (defaults to hostname)" }
+      }
+    },
+    "modes": {
+      "title": "Mode Settings",
+      "type": "object",
+      "description": "Mode specific settings",
+      "properties": {
+        "greetd": {
+          "title": "Greetd Mode Settings",
+          "type": "object",
+          "properties": {
+            "animations": { "$ref": "#/$defs/animationProfile" },
+            "exit": {
+              "description": "The command that is run to exit from the minimal compositor setup.",
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            },
+            "launch": {
+              "description": "The command that is run after successful login, this should launch your main session (Hyprland, etc.)",
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          },
+          "required": ["exit", "launch"]
+        },
+        "lockd": {
+          "title": "Lockd Mode Settings",
+          "type": "object",
+          "properties": {
+            "animations": { "$ref": "#/$defs/animationProfile" }
+          }
+        },
+        "test": {
+          "title": "Test Mode Settings",
+          "type": "object",
+          "properties": {
+            "animations": { "$ref": "#/$defs/animationProfile" }
+          }
+        }
+      },
+      "required": ["greetd"]
+    }
+  },
+  "required": ["modes"],
+
+  "$defs": {
+    "animationProfile": {
+      "type": "string",
+      "enum": ["reduced", "all"],
+      "description": "UI animation profile: 'all' for full transitions, 'reduced' for no splash."
+    }
+  }
+}

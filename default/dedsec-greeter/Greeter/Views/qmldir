@@ -1,0 +1,5 @@
+module Views
+
+Locker 1.0 Locker.qml
+Greeter 1.0 Greeter.qml
+Tester 1.0 Tester.qml

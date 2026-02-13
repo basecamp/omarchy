@@ -160,7 +160,8 @@
   "pulseaudio": {
     "format": "VOL:{volume}%",
     "on-click": "omarchy-launch-audio",
-    "on-click-right": "pamixer -t",
+    "on-click-right": "omarchy-cmd-audio-pick",
+    "on-click-middle": "pamixer -t",
     "tooltip-format": "VOL: {volume}% // {desc}",
     "scroll-step": 5,
     "format-muted": "VOL:MUTE",

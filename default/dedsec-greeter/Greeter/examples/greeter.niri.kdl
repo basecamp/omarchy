@@ -1,0 +1,13 @@
+spawn-sh-at-startup "env DEDSEC_MODE=greetd quickshell --path /opt/dedsec/Greeter"
+
+animations {
+    off
+}
+
+hotkey-overlay {
+    skip-at-startup
+}
+
+layout {
+    background-color "#050A0E"
+}

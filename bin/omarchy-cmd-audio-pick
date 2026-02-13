@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# Audio device picker via rofi -- select an output device from a list.
+# Complements omarchy-cmd-audio-switch (which cycles) by letting you pick directly.
+
+temp_file=$(mktemp)
+
+current_sink=$(pactl get-default-sink)
+
+menu_options=""
+index=0
+
+while IFS= read -r line; do
+  if [[ $line =~ Name:\ (.+) ]]; then
+    name="${BASH_REMATCH[1]}"
+  elif [[ $line =~ Description:\ (.+) ]]; then
+    desc="${BASH_REMATCH[1]}"
+    ((index++))
+    echo "$index|$name|$desc" >> "$temp_file"
+
+    if [[ "$name" == "$current_sink" ]]; then
+      menu_options="$menu_options$index. > $desc\n"
+    else
+      menu_options="$menu_options$index.   $desc\n"
+    fi
+  fi
+done < <(pactl list sinks)
+
+menu_options=$(echo -e "$menu_options" | sed '$s/.$//')
+
+choice=$(echo -e "$menu_options" | rofi -dmenu -p "Audio //" -i -theme dedsec 2>/dev/null)
+
+if [[ -n "$choice" ]]; then
+  selected_num=$(echo "$choice" | sed 's/^\([0-9]\+\)\..*/\1/')
+  selected_line=$(grep "^$selected_num|" "$temp_file")
+  selected_sink=$(echo "$selected_line" | cut -d'|' -f2)
+  selected_desc=$(echo "$selected_line" | cut -d'|' -f3)
+
+  if [[ -n "$selected_sink" ]]; then
+    pactl set-default-sink "$selected_sink"
+    pactl list short sink-inputs | cut -f1 | xargs -I {} pactl move-sink-input {} "$selected_sink" 2>/dev/null || true
+    notify-send "Audio" "Switched to: $selected_desc" -t 2000
+  fi
+fi
+
+rm -f "$temp_file"

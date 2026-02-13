@@ -1,0 +1,15 @@
+module Components
+
+Accents 1.0 Accents.qml
+PasswordField 1.0 PasswordField.qml
+Splash 1.0 Splash.qml
+Terminal 1.0 Terminal.qml
+Time 1.0 Time.qml
+DeviceId 1.0 DeviceId.qml
+MainLayout 1.0 MainLayout.qml
+Spinner 1.0 Spinner.qml
+Surface 1.0 Surface.qml
+IdentityCard 1.0 IdentityCard.qml
+Disclaimer 1.0 Disclaimer.qml
+Typewriter 1.0 Typewriter.qml
+Status 1.0 Status.qml

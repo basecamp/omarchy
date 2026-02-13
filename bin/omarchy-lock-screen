@@ -1,9 +1,13 @@
 #!/bin/bash
 
-# Locks the system using hyprlock, but not before ensuring 1password has also been locked, and the screensaver stopped.
+# Locks the system using DedSec lockd (Quickshell), but not before ensuring 1password has also been locked, and the screensaver stopped.
 
-# Lock the screen
-pidof hyprlock || hyprlock &
+# Lock the screen with DedSec lockd (falls back to hyprlock if quickshell is missing)
+if command -v quickshell &>/dev/null; then
+  pgrep -f "DEDSEC_MODE=lockd" || DEDSEC_MODE=lockd quickshell --path /opt/dedsec/Greeter &
+else
+  pidof hyprlock || hyprlock &
+fi
 
 # Set keyboard layout to default (first layout)
 hyprctl switchxkblayout all 0 > /dev/null 2>&1

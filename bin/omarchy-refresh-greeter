@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Copies the DedSec greeter files from the repo to /opt/dedsec/ and updates the Hyprland config.
+
+sudo mkdir -p /opt/dedsec
+sudo cp -rLf ~/.local/share/omarchy/default/dedsec-greeter/* /opt/dedsec/
+
+# Fix Common directory symlinks (git on Windows stores symlinks as plain text files)
+sudo rm -f /opt/dedsec/Greeter/Common /opt/dedsec/Bar/Common
+sudo ln -sf ../Common /opt/dedsec/Greeter/Common
+sudo ln -sf ../Common /opt/dedsec/Bar/Common
+
+sudo chown -R greeter:greeter /opt/dedsec 2>/dev/null || true
+sudo chmod -R 755 /opt/dedsec 2>/dev/null || true
+
+# Update the greeter's minimal Hyprland config
+sudo mkdir -p /etc/dedsec
+sudo cp -f ~/.local/share/omarchy/default/dedsec-greeter/Greeter/examples/greeter.hyprland.conf /etc/dedsec/

@@ -1,0 +1,131 @@
+#!/bin/bash
+
+# Application Hide Manager -- hide/show apps from the launcher.
+# Uses gum for interactive toggle. Hidden apps get Hidden=true in their .desktop files.
+
+USER_APPS_DIR="$HOME/.local/share/applications"
+SYSTEM_APPS_DIR="/usr/share/applications"
+
+if omarchy-cmd-missing gum; then
+  echo "gum is required. Install with: omarchy-pkg-add gum"
+  exit 1
+fi
+
+get_app_name() {
+  local path="$1"
+  if [[ -f "$path" ]]; then
+    grep "^Name=" "$path" 2>/dev/null | head -1 | cut -d= -f2 || basename "$path" .desktop
+  else
+    basename "$path" .desktop
+  fi
+}
+
+is_hidden() {
+  local path="$1"
+  grep -q "^Hidden=true" "$path" 2>/dev/null
+}
+
+build_app_list() {
+  local -A seen
+  local temp=$(mktemp)
+
+  # User apps first, then system apps (skip duplicates)
+  for dir in "$USER_APPS_DIR" "$SYSTEM_APPS_DIR"; do
+    [[ -d "$dir" ]] || continue
+    for f in "$dir"/*.desktop; do
+      [[ -f "$f" ]] || continue
+      local base=$(basename "$f")
+      [[ -n "${seen[$base]}" ]] && continue
+      seen[$base]=1
+
+      # Skip NoDisplay apps
+      grep -q "^NoDisplay=true" "$f" 2>/dev/null && continue
+
+      local name=$(get_app_name "$f")
+      printf '%s\t%s\t%s\n' "$name" "$base" "$f" >> "$temp"
+    done
+  done
+
+  sort -t$'\t' -k1,1 "$temp"
+  rm -f "$temp"
+}
+
+apply_changes() {
+  local -A hide_map
+  for app in "$@"; do
+    hide_map["$app"]=1
+  done
+
+  while IFS=$'\t' read -r name base path; do
+    [[ -z "$base" ]] && continue
+
+    if [[ -n "${hide_map[$base]}" ]]; then
+      # Hide this app
+      local target="$path"
+      if [[ "$path" == "$SYSTEM_APPS_DIR"* ]]; then
+        # System app -- copy to user dir to override
+        if [[ ! -f "$USER_APPS_DIR/$base" ]]; then
+          cp "$path" "$USER_APPS_DIR/$base" 2>/dev/null
+        fi
+        target="$USER_APPS_DIR/$base"
+      fi
+      sed -i '/^\[Desktop Entry\]/,/^\[/{/^Hidden=/d;}' "$target" 2>/dev/null
+      sed -i '/^\[Desktop Entry\]/a Hidden=true' "$target" 2>/dev/null
+    else
+      # Show this app
+      if [[ -f "$path" ]]; then
+        sed -i '/^\[Desktop Entry\]/,/^\[/{/^Hidden=true$/d;}' "$path" 2>/dev/null
+      fi
+      if [[ -f "$USER_APPS_DIR/$base" ]] && [[ "$path" != "$USER_APPS_DIR"* ]]; then
+        sed -i '/^\[Desktop Entry\]/,/^\[/{/^Hidden=true$/d;}' "$USER_APPS_DIR/$base" 2>/dev/null
+      fi
+    fi
+  done < <(build_app_list)
+}
+
+main() {
+  gum style --foreground "#00FF41" --bold "DedSec // App Visibility Manager"
+  gum style --foreground "#6B8F85" "Space = toggle  |  Enter = apply  |  Ctrl+C = cancel"
+  echo ""
+
+  local -a items
+  local -a pre_hidden
+
+  while IFS=$'\t' read -r name base path; do
+    [[ -z "$base" ]] && continue
+    local item="$name ($base)"
+    items+=("$item")
+    if is_hidden "$path"; then
+      pre_hidden+=("$item")
+    fi
+  done < <(build_app_list)
+
+  if [[ ${#items[@]} -eq 0 ]]; then
+    echo "No applications found."
+    return 0
+  fi
+
+  local selected
+  selected=$(printf '%s\n' "${items[@]}" |
+    gum choose --no-limit \
+      --header "Select apps to HIDE ([ ] = hidden, [x] = visible)" \
+      --height 20 \
+      --selected-prefix="[ ] " \
+      --unselected-prefix="[x] " \
+      --cursor-prefix="[x] " \
+      --selected.foreground 8 \
+      "${pre_hidden[@]/#/--selected=}") || return 0
+
+  local -a to_hide
+  while IFS= read -r line; do
+    [[ "$line" =~ \(([^\)]+)\)$ ]] && to_hide+=("${BASH_REMATCH[1]}")
+  done <<<"$selected"
+
+  apply_changes "${to_hide[@]}"
+
+  echo ""
+  gum style --foreground "#00FF41" --bold "Changes applied."
+  gum style --foreground "#6B8F85" "Restart your launcher for changes to take effect."
+}
+
+main "$@"

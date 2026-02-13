@@ -1,0 +1,6 @@
+module Components
+
+SystemLabel 1.0 SystemLabel.qml
+Workspace 1.0 Workspace.qml
+CornerFrame 1.0 CornerFrame.qml
+Divider 1.0 Divider.qml

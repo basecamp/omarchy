@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# List installed TUI shortcuts with details
+
+DESKTOP_DIR="$HOME/.local/share/applications"
+
+count=0
+declare -a names commands styles
+
+for file in "$DESKTOP_DIR"/*.desktop; do
+  if [[ -f "$file" ]] && grep -q 'xdg-terminal-exec.*-e' "$file" 2>/dev/null; then
+    app_name=$(basename "${file%.desktop}")
+    command=$(grep '^Exec=' "$file" | sed 's/^Exec=xdg-terminal-exec --app-id=[^ ]* -e //' | sed 's/ *$//')
+    window_style=$(grep '^Exec=' "$file" | grep -o 'TUI\.\(float\|tile\)' | cut -d. -f2)
+
+    names[$count]="$app_name"
+    commands[$count]="$command"
+    styles[$count]="${window_style:-tile}"
+    ((count++))
+  fi
+done
+
+if [[ $count -eq 0 ]]; then
+  echo "No TUIs installed."
+  exit 0
+fi
+
+printf "%-25s %-12s %s\n" "NAME" "STYLE" "COMMAND"
+printf "%-25s %-12s %s\n" "------------------------" "-----------" "--------------------------------------------------"
+
+for i in $(seq 0 $((count - 1))); do
+  printf "%-25s %-12s %s\n" "${names[$i]}" "${styles[$i]}" "${commands[$i]}"
+done

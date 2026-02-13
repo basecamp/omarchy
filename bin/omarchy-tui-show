@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Show details of a specific TUI shortcut
+
+DESKTOP_DIR="$HOME/.local/share/applications"
+
+if [[ "$#" -ne 1 ]]; then
+  echo "Usage: omarchy-tui-show <tui-name>"
+  exit 1
+fi
+
+TUI_NAME="$1"
+DESKTOP_FILE="$DESKTOP_DIR/$TUI_NAME.desktop"
+
+if [[ ! -f "$DESKTOP_FILE" ]]; then
+  echo "TUI not found: $TUI_NAME"
+  exit 1
+fi
+
+name=$(grep '^Name=' "$DESKTOP_FILE" | cut -d= -f2)
+command=$(grep '^Exec=' "$DESKTOP_FILE" | sed 's/^Exec=xdg-terminal-exec --app-id=[^ ]* -e //')
+window_style=$(grep '^Exec=' "$DESKTOP_FILE" | grep -o 'TUI\.\(float\|tile\)' | cut -d. -f2)
+icon=$(grep '^Icon=' "$DESKTOP_FILE" | cut -d= -f2)
+
+echo "TUI: $TUI_NAME"
+echo "================================================"
+echo "  Name:    $name"
+echo "  Command: $command"
+echo "  Style:   ${window_style:-tile}"
+[[ -n "$icon" ]] && echo "  Icon:    $icon"
+echo "  Desktop: $DESKTOP_FILE"

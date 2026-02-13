@@ -1,0 +1,8 @@
+module Services
+
+singleton GreetdHandler 1.0 GreetdHandler.qml
+singleton TerminalManager 1.0 TerminalManager.qml
+singleton LockdHandler 1.0 LockdHandler.qml
+singleton AuthManager 1.0 AuthManager.qml
+singleton FakeHandler 1.0 FakeHandler.qml
+

@@ -210,9 +210,11 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n󰱔  DNS\n  Security\n  Config"
+  options="$options\n󰱔  DNS\n  Security\n  Config\n  Audio Device\n  App Visibility"
 
   case $(menu "Config" "$options") in
+  *"Audio Device"*) omarchy-cmd-audio-pick ;;
+  *"App Visibility"*) present_terminal omarchy-cmd-hide-manager ;;
   *Audio*) omarchy-launch-audio ;;
   *Wifi*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;

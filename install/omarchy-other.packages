@@ -29,7 +29,6 @@ linux
 linux-firmware
 linux-headers
 macbook12-spi-driver-dkms
-
 nvidia-580xx-dkms
 nvidia-dkms
 nvidia-open-dkms
@@ -42,6 +41,7 @@ pipewire-alsa
 pipewire-jack
 pipewire-pulse
 qt6-wayland
+rustscan
 sassc
 snapper
 webp-pixbuf-loader
@@ -49,7 +49,6 @@ wget
 yay-debug
 yt6801-dkms
 zram-generator
-
 # T2 MacBook support packages
 apple-bcm-firmware
 apple-t2-audio-config
