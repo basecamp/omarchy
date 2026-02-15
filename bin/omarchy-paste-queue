@@ -1,0 +1,129 @@
+#!/bin/bash
+# omarchy-paste-queue: Sequential copy/paste (FIFO) like macOS Pastebot
+# Usage: omarchy-paste-queue push|paste|clear|panel
+
+QUEUE_DIR="${XDG_RUNTIME_DIR:-/tmp}/paste-queue-${UID}"
+COUNTERFILE="${XDG_RUNTIME_DIR:-/tmp}/paste-queue-counter"
+PIDFILE="${XDG_RUNTIME_DIR:-/tmp}/paste-queue-panel.pid"
+PANEL_TITLE="paste-queue-panel"
+
+next_id() {
+  local n=0
+  [[ -f "$COUNTERFILE" ]] && n=$(cat "$COUNTERFILE")
+  n=$((n + 1))
+  echo "$n" > "$COUNTERFILE"
+  printf "%06d" "$n"
+}
+
+is_panel_open() {
+  [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+}
+
+open_panel() {
+  if ! is_panel_open; then
+    setsid uwsm-app -- xdg-terminal-exec --title="$PANEL_TITLE" -e "$0" panel &
+    echo $! > "$PIDFILE"
+    disown
+  fi
+}
+
+close_panel() {
+  if [[ -f "$PIDFILE" ]]; then
+    local pid
+    pid=$(cat "$PIDFILE")
+    kill "$pid" 2>/dev/null
+    rm -f "$PIDFILE"
+  fi
+  hyprctl dispatch closewindow "title:$PANEL_TITLE" > /dev/null 2>&1
+}
+
+push() {
+  hyprctl dispatch sendshortcut "CTRL, Insert," > /dev/null
+  sleep 0.15
+
+  local content
+  content=$(wl-paste 2>/dev/null)
+
+  if [[ -z "$content" ]]; then
+    notify-send -t 2000 "Paste Queue" "Clipboard is empty"
+    return 1
+  fi
+
+  mkdir -p "$QUEUE_DIR"
+  echo -n "$content" > "$QUEUE_DIR/$(next_id)"
+  open_panel
+}
+
+paste() {
+  local oldest
+  oldest=$(ls -1 "$QUEUE_DIR" 2>/dev/null | sort -n | head -1)
+
+  if [[ -z "$oldest" ]]; then
+    notify-send -t 2000 "Paste Queue" "Queue is empty"
+    return 1
+  fi
+
+  wl-copy < "$QUEUE_DIR/$oldest"
+  rm "$QUEUE_DIR/$oldest"
+
+  hyprctl dispatch sendshortcut "SHIFT, Insert," > /dev/null
+
+  local remaining
+  remaining=$(ls -1 "$QUEUE_DIR" 2>/dev/null | wc -l)
+  if [[ "$remaining" -eq 0 ]]; then
+    sleep 0.5
+    close_panel
+  fi
+}
+
+clear_queue() {
+  rm -rf "$QUEUE_DIR"
+  rm -f "$COUNTERFILE"
+  close_panel
+}
+
+panel() {
+  mkdir -p "$QUEUE_DIR"
+  trap 'rm -f "$PIDFILE"; exit' EXIT INT TERM
+
+  while true; do
+    clear
+    printf "\033[1m  PASTE QUEUE\033[0m\n"
+    echo "  ───────────"
+
+    local files
+    files=$(ls -1 "$QUEUE_DIR" 2>/dev/null | sort -n)
+
+    if [[ -z "$files" ]]; then
+      echo ""
+      printf "  \033[2m(empty)\033[0m\n"
+    else
+      local i=1
+      while IFS= read -r f; do
+        local content
+        content=$(tr '\n' ' ' < "$QUEUE_DIR/$f" | cut -c1-50)
+        if [[ $(wc -c < "$QUEUE_DIR/$f") -gt 50 ]]; then
+          content="${content}…"
+        fi
+        printf "  \033[36m%d.\033[0m %s\n" "$i" "$content"
+        ((i++))
+      done <<< "$files"
+    fi
+
+    echo ""
+    printf "  \033[2mC queue · V paste · X clear\033[0m\n"
+
+    inotifywait -qq -t 10 -e create,delete,moved_to "$QUEUE_DIR" 2>/dev/null
+  done
+}
+
+case "${1:-}" in
+  push)  push ;;
+  paste) paste ;;
+  clear) clear_queue ;;
+  panel) panel ;;
+  *)
+    echo "Usage: omarchy-paste-queue {push|paste|clear|panel}"
+    exit 1
+    ;;
+esac

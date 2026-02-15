@@ -58,6 +58,7 @@ imagemagick
 impala
 imv
 inetutils
+inotify-tools
 inxi
 iwd
 jq
