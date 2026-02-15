@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# Select a screen region and copy recognized text to clipboard (like CleanShot X OCR).
+# Uses the same selection logic as omarchy-cmd-screenshot.
+#
+# Usage: omarchy-cmd-ocr [compact]
+#   (default)  Keep original formatting
+#   compact    Join lines into a single line, collapse whitespace
+
+if ! command -v tesseract &>/dev/null; then
+  notify-send -t 3000 "OCR" "tesseract is not installed"
+  exit 1
+fi
+
+MODE="${1:-formatted}"
+
+pkill slurp && exit 0
+
+get_rectangles() {
+  local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
+  hyprctl monitors -j | jq -r --arg ws "$active_workspace" '.[] | select(.activeWorkspace.id == ($ws | tonumber)) | "\(.x),\(.y) \((.width / .scale) | floor)x\((.height / .scale) | floor)"'
+  hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+}
+
+RECTS=$(get_rectangles)
+wayfreeze & PID=$!
+sleep .1
+SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
+kill $PID 2>/dev/null
+
+[ -z "$SELECTION" ] && exit 0
+
+TEXT=$(grim -g "$SELECTION" -t png - | tesseract -l eng stdin stdout 2>/dev/null)
+
+if [[ -z "$TEXT" || "$TEXT" =~ ^[[:space:]]*$ ]]; then
+  notify-send -t 2000 "OCR" "No text recognized"
+  exit 0
+fi
+
+# Trim leading/trailing whitespace
+TEXT=$(echo "$TEXT" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+if [[ "$MODE" == "compact" ]]; then
+  TEXT=$(echo "$TEXT" | tr '\n' ' ' | sed 's/  */ /g')
+fi
+
+echo -n "$TEXT" | wl-copy
+notify-send -t 2000 "OCR" "$(echo "$TEXT" | head -c 200)"
