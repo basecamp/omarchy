@@ -491,7 +491,7 @@ show_remove_elixir_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" " Omarchy\n󰔫  Channel\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone\n  Time") in
+  case $(menu "Update" "  Omarchy\n󰔫  Channel\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone\n  Time") in
   *Omarchy*) present_terminal omarchy-update ;;
   *Channel*) show_update_channel_menu ;;
   *Config*) show_update_config_menu ;;
