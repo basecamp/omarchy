@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# Shutdown command that first closes all application windows with shutdown dialogue (thus giving them a chance to save state).
+# This is particularly helpful for applications like Chromium that otherwise won't shutdown cleanly.
+
+COMMAND="$1"
+if [[ -z $COMMAND ]]; then
+  echo "Usage: omarchy-cmd-pre-shutdown <reboot|poweroff>"
+  exit 1
+fi
+
+time_left=15 # Max timeout before shutting down anyway
+update_rate=4 # Times per second to update the displayed list
+max_size=6 # Max number of windows to be shown in list before elipses
+vert_offset=13 # To avoid clearing the presented terminal logo
+list_offset=$((vert_offset + 1))
+list_indent=4
+
+get-open-windows() {
+  mapfile -t windows < <(hyprctl clients -j | jq -r ".[].title")
+}
+
+draw-open-windows() {
+  tput sc
+
+  size=${#windows[@]}
+  v_timer=$(( list_offset + start_size + 1 ))
+  for ind in $(seq 1 $start_size); do
+    row=$((ind - 1))
+    v_coord=$(( list_offset + row ))
+
+    tput cup $v_coord 0
+    tput el
+    tput cup $v_coord $list_indent
+    count_extra=$(( size - start_size + 1 ))
+    if [ $ind -gt $size ]; then
+      echo ""
+    elif [ $ind -eq $start_size ] && [ $count_extra -gt 1 ]; then
+      echo "   ... and $count_extra more ..."
+    else
+      echo "$ind: ${windows[$row]}"
+    fi
+  done
+
+  rounded_time=$(printf "%.0f" "$time_left")
+  tput cup $v_timer 0
+  tput el
+  echo "Automatic shutdown in $rounded_time"
+
+  tput rc
+}
+
+shutdown-proceed() {
+  omarchy-state clear re*-required
+
+  systemctl $COMMAND --no-wall >/dev/null 2>&1
+}
+
+shutdown-query() {
+  gum confirm "Force-shutdown immediately?" && shutdown-proceed
+}
+
+sleep 0.2 # Give quick-closing windows a chance
+get-open-windows # For initial calculations
+
+# Prep for display, and spawn gum for user input
+tput civis
+start_size=$(( ${#windows[@]}>$max_size ? $max_size : ${#windows[@]} ))
+gum_offset=$(( list_offset + start_size + 3 ))
+tput cup $vert_offset 0
+echo "Waiting for the following windows to close:"
+tput cup $gum_offset 0
+shutdown-query &
+gum_id=$!
+
+partial=0
+update_time=$(awk "BEGIN {print 1 / $update_rate}")
+timer_tick() {
+  partial=$(( partial + 1 ))
+  if [ $partial -eq $update_rate ]; then
+    partial=0
+    time_left=$(( time_left - 1 ))
+  fi
+  sleep $update_time
+}
+
+# Periodically update list of windows
+while [ $time_left -gt 0 ]; do
+  get-open-windows
+  draw-open-windows
+
+  if ! pgrep -P $gum_id > /dev/null 2>&1; then # Exit if gum has been responded to
+    exit 0
+  elif [ ${#windows[@]} -le 1 ]; then # We ignore 'this' window
+    pkill -P $gum_id > /dev/null 2>&1 # shutdown-proceed will run when gum dies
+  fi
+
+  timer_tick
+done
+
+# Fallback to shutting down anyway.
+pkill -P $gum_id > /dev/null 2>&1
+sleep 0.1 # Give shutdown-proceed a chance to run

@@ -3,5 +3,12 @@
 # Launch a floating terminal with the Omarchy logo presentation, then execute the command passed in, and finally end with the omarchy-show-done presentation.
 # Used by actions such as Update System.
 
+# Allow for the '--no-done' flag to avoid finishing with omarchy-show-done
+no_done=0
+if [[ "--no-done" == "$1" ]]; then
+  no_done=1
+  shift
+fi
+
 cmd="$*"
-exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title=Omarchy -e bash -c "omarchy-show-logo; $cmd; if [ \$? -ne 130 ]; then omarchy-show-done; fi"
+exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title=Omarchy -e bash -c "omarchy-show-logo; $cmd; if [ \$? -ne 130 ] && [ $no_done -eq 0 ]; then omarchy-show-done; fi"
