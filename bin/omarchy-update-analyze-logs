@@ -2,10 +2,50 @@
 
 update_log="/tmp/omarchy-update.log"
 
-# Check for errors
-if grep -qi "error" "$update_log"; then
+
+# Case-Insensitive Excludes.
+EXCLUDES=(
+    "Compiling thiserror"
+    "-Werror="
+)
+
+
+FOUND_ERROR_START_ANSI=$'\e[31m'
+FOUND_ERROR_END_ANSI=$'\e[0m'
+
+check_logs() {
+    # 1. Pre-filter: Only grab lines that contain "error"
+    grep -i "error" "$update_log" | while read -r line; do
+        
+        # 2. Create a "scratchpad" copy and convert to LOWERCASE
+        # ${var,,} converts the whole string to lowercase
+        clean_line="${line,,}"
+        
+        # 3. Loop through excludes
+        # While probably a little confusing, this covers the `error compiling thiserror` edge case,
+        # where an exclude string is on the same line as a real error
+        for ignore in "${EXCLUDES[@]}"; do
+            # Convert the exclude pattern to lowercase match the scratchpad
+            ignore_lower="${ignore,,}"
+            
+            # Remove the pattern from the scratchpad
+            clean_line="${clean_line//$ignore_lower/}" 
+        done
+        
+        # 4. Check if "error" still exists in the cleaned (lowercase) line
+        # We use standard bash matching [[ ]] which is faster than grep here
+        if [[ "$clean_line" == *"error"* ]]; then
+             # 5. It's a real error. Print the ORIGINAL line.
+             echo "$line" | sed "s/error/${FOUND_ERROR_START_ANSI}&${FOUND_ERROR_END_ANSI}/Ig"
+        fi
+    done
+}
+
+errors=$(check_logs)
+
+if [ -n "$errors" ]; then
   echo -e "\e[31mNon-stopping errors detected during update:\e[0m"
-  grep -i "error" "$update_log"
+  echo "$errors"
   echo
 fi
 
