@@ -9,21 +9,66 @@ mkdir -p "$STATE_DIR"
 # Skipped migrations are tracked separately
 mkdir -p "$STATE_DIR/skipped"
 
+# Count pending migrations for progress reporting
+count_pending_migrations() {
+  local count=0
+  for file in ~/.local/share/omarchy/migrations/*.sh; do
+    [[ -f "$file" ]] || continue
+    local filename
+    filename=$(basename "$file")
+    if [[ ! -f "$STATE_DIR/$filename" && ! -f "$STATE_DIR/skipped/$filename" ]]; then
+      ((count++))
+    fi
+  done
+  echo "$count"
+}
+
+# Run a single migration file and record its result
+run_migration() {
+  local file="$1"
+  local filename
+  filename=$(basename "$file")
+  local migration_id="${filename%.sh}"
+
+  echo -e "\e[32m\nRunning migration ($migration_id)\e[0m"
+
+  if bash "$file"; then
+    touch "$STATE_DIR/$filename"
+    return 0
+  fi
+
+  echo -e "\e[31mMigration $migration_id failed\e[0m" >&2
+
+  if command -v gum &>/dev/null && gum confirm "Migration $migration_id failed. Skip and continue?"; then
+    touch "$STATE_DIR/skipped/$filename"
+    return 0
+  fi
+
+  return 1
+}
+
 # Run any pending migrations
+pending=$(count_pending_migrations)
+
+if [[ "$pending" -eq 0 ]]; then
+  exit 0
+fi
+
+completed=0
+
 for file in ~/.local/share/omarchy/migrations/*.sh; do
+  [[ -f "$file" ]] || continue
   filename=$(basename "$file")
 
   if [[ ! -f "$STATE_DIR/$filename" && ! -f "$STATE_DIR/skipped/$filename" ]]; then
-    echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
-
-    if bash $file; then
-      touch "$STATE_DIR/$filename"
-    else
-      if gum confirm "Migration ${filename%.sh} failed. Skip and continue?"; then
-        touch "$STATE_DIR/skipped/$filename"
-      else
-        exit 1
-      fi
+    if ! run_migration "$file"; then
+      echo -e "\e[31mMigration aborted. $completed/$pending migrations completed.\e[0m" >&2
+      exit 1
     fi
+    ((completed++))
   fi
 done
+
+if [[ "$completed" -gt 0 ]]; then
+  echo -e "\e[32m\nAll $completed migrations completed successfully.\e[0m"
+fi

@@ -6,7 +6,7 @@ COMMAND="$1"
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
 if [[ -z $COMMAND ]]; then
-  echo "Usage: omarchy-snapshot <create|restore>" >&2
+  echo "Usage: omarchy-snapshot <create|restore|delete>" >&2
   exit 1
 fi
 
@@ -14,14 +14,23 @@ if ! command -v snapper &>/dev/null; then
   exit 127 # omarchy-update can use this to just ignore if snapper is not available
 fi
 
+# Retrieve all snapper config names from CSV output
+get_snapper_configs() {
+  mapfile -t CONFIGS < <(sudo snapper --csvout list-configs | awk -F, 'NR>1 {print $1}')
+
+  if [[ ${#CONFIGS[@]} -eq 0 ]]; then
+    echo "No snapper configs found" >&2
+    return 1
+  fi
+}
+
 case "$COMMAND" in
 create)
   DESC="$(omarchy-version)"
 
   echo -e "\e[32mCreate system snapshot\e[0m"
 
-  # Get existing snapper config names from CSV output
-  mapfile -t CONFIGS < <(sudo snapper --csvout list-configs | awk -F, 'NR>1 {print $1}')
+  get_snapper_configs || exit 1
 
   for config in "${CONFIGS[@]}"; do
     sudo snapper -c "$config" create -c number -d "$DESC"
@@ -32,5 +41,15 @@ restore)
   sudo limine-snapper-restore
   ;;
 delete)
-  sudo snapper -c "$config" delete 0
+  get_snapper_configs || exit 1
+
+  for config in "${CONFIGS[@]}"; do
+    sudo snapper -c "$config" delete 0
+  done
+  ;;
+*)
+  echo "Unknown command: $COMMAND" >&2
+  echo "Usage: omarchy-snapshot <create|restore|delete>" >&2
+  exit 1
+  ;;
 esac

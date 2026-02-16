@@ -2,8 +2,10 @@
 
 # Install one of the supported development environments. Usually called via Install > Development > * in the Omarchy Menu.
 
+SUPPORTED_ENVS="ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure"
+
 if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure>" >&2
+  echo "Usage: omarchy-install-dev-env <$SUPPORTED_ENVS>" >&2
   exit 1
 fi
 
@@ -140,5 +142,10 @@ clojure)
   echo -e "Installing Clojure...\n"
   omarchy-pkg-add rlwrap
   mise use --global clojure@latest
+  ;;
+*)
+  echo "Unknown environment: $1" >&2
+  echo "Usage: omarchy-install-dev-env <$SUPPORTED_ENVS>" >&2
+  exit 1
   ;;
 esac

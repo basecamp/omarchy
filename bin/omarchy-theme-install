@@ -3,31 +3,67 @@
 # omarchy-theme-install: Install a new theme from a git repo for Omarchy
 # Usage: omarchy-theme-install <git-repo-url>
 
-if [ -z "$1" ]; then
+set -e
+
+THEMES_DIR="$HOME/.config/omarchy/themes"
+
+validate_repo_url() {
+  local url="$1"
+  if [[ ! "$url" =~ ^https?:// ]] && [[ ! "$url" =~ ^git@ ]]; then
+    echo "Error: Invalid repository URL. Must start with https:// or git@" >&2
+    return 1
+  fi
+}
+
+extract_theme_name() {
+  local url="$1"
+  basename "$url" .git | sed -E 's/^omarchy-//; s/-theme$//'
+}
+
+clone_theme() {
+  local url="$1"
+  local dest="$2"
+
+  # Remove existing theme if present
+  if [[ -d "$dest" ]]; then
+    echo "Replacing existing theme at $dest"
+    rm -rf "$dest"
+  fi
+
+  if ! git clone "$url" "$dest" 2>&1; then
+    echo "Error: Failed to clone theme repo from $url" >&2
+    return 1
+  fi
+}
+
+validate_theme_contents() {
+  local theme_path="$1"
+  local theme_name="$2"
+
+  if [[ ! -f "$theme_path/colors.toml" ]]; then
+    echo "Warning: Theme '$theme_name' is missing colors.toml — it may not work correctly." >&2
+  fi
+}
+
+if [[ -z "$1" ]]; then
   echo -e "\e[32mSee https://manuals.omamix.org/2/the-omarchy-manual/90/extra-themes\n\e[0m"
   REPO_URL=$(gum input --placeholder="Git repo URL for theme" --header="")
 else
   REPO_URL="$1"
 fi
 
-if [ -z "$REPO_URL" ]; then
+if [[ -z "$REPO_URL" ]]; then
   exit 1
 fi
 
-THEMES_DIR="$HOME/.config/omarchy/themes"
-THEME_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-theme$//')
+validate_repo_url "$REPO_URL"
+
+THEME_NAME=$(extract_theme_name "$REPO_URL")
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
-# Remove existing theme if present
-if [ -d "$THEME_PATH" ]; then
-  rm -rf "$THEME_PATH"
-fi
-
-# Clone the repo directly to ~/.config/omarchy/themes
-if ! git clone "$REPO_URL" "$THEME_PATH"; then
-  echo "Error: Failed to clone theme repo."
-  exit 1
-fi
+mkdir -p "$THEMES_DIR"
+clone_theme "$REPO_URL" "$THEME_PATH"
+validate_theme_contents "$THEME_PATH" "$THEME_NAME"
 
 # Apply the new theme with omarchy-theme-set
-omarchy-theme-set $THEME_NAME
+omarchy-theme-set "$THEME_NAME"

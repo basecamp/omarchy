@@ -3,44 +3,71 @@
 # Set the system-wide monospace font that should be used by the terminal, hyprlock, waybar, swayosd, etc.
 # The font name must be one of the ones returned by omarchy-font-list.
 
+set -e
+
 font_name="$1"
 
-if [[ -n "$font_name" ]]; then
-  if fc-list | grep -iq "$font_name"; then
-    if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
-      sed -i "s/family = \".*\"/family = \"$font_name\"/g" ~/.config/alacritty/alacritty.toml
-    fi
-
-    if [[ -f ~/.config/kitty/kitty.conf ]]; then
-      sed -i "s/^font_family .*/font_family $font_name/g" ~/.config/kitty/kitty.conf
-      pkill -USR1 kitty
-    fi
-
-    if [[ -f ~/.config/ghostty/config ]]; then
-      sed -i "s/font-family = \".*\"/font-family = \"$font_name\"/g" ~/.config/ghostty/config
-      pkill -SIGUSR2 ghostty
-    fi
-
-    sed -i "s/font_family = .*/font_family = $font_name/g" ~/.config/hypr/hyprlock.conf
-    sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/waybar/style.css
-    sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/swayosd/style.css
-    xmlstarlet ed -L \
-      -u '//match[@target="pattern"][test/string="monospace"]/edit[@name="family"]/string' \
-      -v "$font_name" \
-      ~/.config/fontconfig/fonts.conf
-
-    omarchy-restart-waybar
-    omarchy-restart-swayosd
-
-    if pgrep -x ghostty; then
-      notify-send "    You must restart Ghostty to see font change"
-    fi
-
-    omarchy-hook font-set "$font_name"
-  else
-    echo "Font '$font_name' not found."
-    exit 1
-  fi
-else
+if [[ -z "$font_name" ]]; then
   echo "Usage: omarchy-font-set <font-name>"
+  exit 1
 fi
+
+validate_font() {
+  if ! fc-list | grep -iq "$1"; then
+    echo "Font '$1' not found." >&2
+    echo "Use 'omarchy-font-list' to see available fonts." >&2
+    return 1
+  fi
+}
+
+update_alacritty() {
+  local font="$1"
+  if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
+    sed -i "s/family = \".*\"/family = \"$font\"/g" ~/.config/alacritty/alacritty.toml
+  fi
+}
+
+update_kitty() {
+  local font="$1"
+  if [[ -f ~/.config/kitty/kitty.conf ]]; then
+    sed -i "s/^font_family .*/font_family $font/g" ~/.config/kitty/kitty.conf
+    pkill -USR1 kitty 2>/dev/null || true
+  fi
+}
+
+update_ghostty() {
+  local font="$1"
+  if [[ -f ~/.config/ghostty/config ]]; then
+    sed -i "s/font-family = \".*\"/font-family = \"$font\"/g" ~/.config/ghostty/config
+    pkill -SIGUSR2 ghostty 2>/dev/null || true
+  fi
+}
+
+update_system_configs() {
+  local font="$1"
+  sed -i "s/font_family = .*/font_family = $font/g" ~/.config/hypr/hyprlock.conf
+  sed -i "s/font-family: .*/font-family: '$font';/g" ~/.config/waybar/style.css
+  sed -i "s/font-family: .*/font-family: '$font';/g" ~/.config/swayosd/style.css
+  xmlstarlet ed -L \
+    -u '//match[@target="pattern"][test/string="monospace"]/edit[@name="family"]/string' \
+    -v "$font" \
+    ~/.config/fontconfig/fonts.conf
+}
+
+restart_components() {
+  omarchy-restart-waybar
+  omarchy-restart-swayosd
+
+  if pgrep -x ghostty >/dev/null 2>&1; then
+    notify-send "    You must restart Ghostty to see font change"
+  fi
+}
+
+validate_font "$font_name"
+update_alacritty "$font_name"
+update_kitty "$font_name"
+update_ghostty "$font_name"
+update_system_configs "$font_name"
+restart_components
+
+omarchy-hook font-set "$font_name"
