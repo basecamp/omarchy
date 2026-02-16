@@ -60,8 +60,12 @@ shutdown-query() {
   gum confirm "Force-shutdown immediately?" && shutdown-proceed
 }
 
-sleep 0.2 # Give quick-closing windows a chance
+sleep 0.1 # Give quick-closing windows a chance
 get-open-windows # For initial calculations
+if [ ${#windows[@]} -le 1 ]; then # Immediate shutdown if windows are closed
+  shutdown-proceed
+  exit 0
+fi
 
 # Prep for display, and spawn gum for user input
 tput civis
