@@ -136,8 +136,8 @@ tml() {
   # Get current pane ID (will become editor pane after splits)
   editor_pane=$(tmux display-message -p '#{pane_id}')
 
-  # Split window vertically - top 90%, bottom 10%
-  tmux split-window -v -p 10 -c "$current_dir"
+  # Split window vertically - top 85%, bottom 15%
+  tmux split-window -v -p 15 -c "$current_dir"
 
   # Go back to top pane (editor_pane) and split it horizontally
   tmux select-pane -t "$editor_pane"
