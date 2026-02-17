@@ -7,6 +7,7 @@ if command -v eza &> /dev/null; then
 fi
 
 alias ff="fzf --preview 'bat --style=numbers --color=always {}'"
+alias eff='$EDITOR $(ff)'
 
 if command -v zoxide &> /dev/null; then
   alias cd="zd"
@@ -21,9 +22,9 @@ if command -v zoxide &> /dev/null; then
   }
 fi
 
-open() {
+open() (
   xdg-open "$@" >/dev/null 2>&1 &
-}
+)
 
 # Directories
 alias ..='cd ..'
@@ -34,6 +35,7 @@ alias ....='cd ../../..'
 alias c='opencode'
 alias d='docker'
 alias r='rails'
+alias t='tmux attach || tmux new -s Work'
 n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
 
 # Git

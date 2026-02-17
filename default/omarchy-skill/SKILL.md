@@ -1,5 +1,5 @@
 ---
-name: Omarchy
+name: omarchy
 description: >
   REQUIRED for ANY changes to Linux desktop, window manager, or system config.
   Use when editing ~/.config/hypr/, ~/.config/waybar/, ~/.config/walker/,

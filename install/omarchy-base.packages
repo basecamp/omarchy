@@ -5,6 +5,7 @@
 1password-cli
 aether
 alacritty
+alsa-utils
 asdcontrol
 avahi
 bash-completion
@@ -13,6 +14,7 @@ bluetui
 bolt
 brightnessctl
 btop
+chromium
 clang
 cups
 cups-browsed
@@ -78,6 +80,7 @@ mariadb-libs
 mise
 mpv
 nautilus
+nautilus-python
 gnome-disk-utility
 noto-fonts
 noto-fonts-cjk
@@ -87,7 +90,6 @@ nss-mdns
 nvim
 obs-studio
 obsidian
-omarchy-chromium
 omarchy-nvim
 omarchy-walker
 opencode
@@ -118,6 +120,7 @@ swayosd
 system-config-printer
 tldr
 tree-sitter-cli
+tmux
 tobi-try
 ttf-cascadia-mono-nerd
 ttf-ia-writer
