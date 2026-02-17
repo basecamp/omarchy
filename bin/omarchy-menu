@@ -99,18 +99,10 @@ show_trigger_menu() {
 
 show_capture_menu() {
   case $(menu "Capture" "  Screenshot\n  Screenrecord\n󰃉  Color") in
-  *Screenshot*) show_screenshot_menu ;;
+  *Screenshot*) omarchy-cmd-screenshot ;;
   *Screenrecord*) show_screenrecord_menu ;;
   *Color*) pkill hyprpicker || hyprpicker -a ;;
   *) show_trigger_menu ;;
-  esac
-}
-
-show_screenshot_menu() {
-  case $(menu "Screenshot" "  Snap with Editing\n  Straight to Clipboard") in
-  *Editing*) omarchy-cmd-screenshot smart ;;
-  *Clipboard*) omarchy-cmd-screenshot smart clipboard ;;
-  *) show_capture_menu ;;
   esac
 }
 
@@ -498,7 +490,7 @@ show_remove_elixir_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" " Omarchy\n󰔫  Channel\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone\n  Time") in
+  case $(menu "Update" "  Omarchy\n󰔫  Channel\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone\n  Time") in
   *Omarchy*) present_terminal omarchy-update ;;
   *Channel*) show_update_channel_menu ;;
   *Config*) show_update_config_menu ;;
