@@ -19,6 +19,9 @@ run_logged $OMARCHY_INSTALL/config/fast-shutdown.sh
 run_logged $OMARCHY_INSTALL/config/sudoless-asdcontrol.sh
 run_logged $OMARCHY_INSTALL/config/input-group.sh
 run_logged $OMARCHY_INSTALL/config/omarchy-ai-skill.sh
+run_logged $OMARCHY_INSTALL/config/powerprofilesctl-rules.sh
+run_logged $OMARCHY_INSTALL/config/wifi-powersave-rules.sh
+run_logged $OMARCHY_INSTALL/config/hibernation.sh
 run_logged $OMARCHY_INSTALL/config/hardware/network.sh
 run_logged $OMARCHY_INSTALL/config/hardware/set-wireless-regdom.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-fkeys.sh
@@ -36,3 +39,5 @@ run_logged $OMARCHY_INSTALL/config/hardware/fix-apple-t2.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-surface-keyboard.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-asus-rog-audio-mixer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-asus-rog-mic.sh
+run_logged $OMARCHY_INSTALL/config/hardware/fix-yt6801-ethernet-adapter.sh
+run_logged $OMARCHY_INSTALL/config/hardware/fix-synaptic-touchpad.sh

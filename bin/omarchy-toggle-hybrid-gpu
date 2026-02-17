@@ -7,7 +7,6 @@
 if omarchy-cmd-missing supergfxctl; then
   omarchy-pkg-add supergfxctl
   sudo systemctl enable supergfxd
-  sudo systemctl start supergfxd
 
   # Needed to deal with restoring to sleep where going through VFIO first means we don't need to reboot.
   sudo sed -i "s/\"vfio_enable\": \".*\"/\"vfio_enable\": true/" /etc/supergfxd.conf
