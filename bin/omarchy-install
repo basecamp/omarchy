@@ -168,7 +168,17 @@ def perform_installation(config_file: Path, creds_file: Path | None = None) -> N
       snapshot_config = btrfs_options.snapshot_config if btrfs_options else None
       snapshot_type = snapshot_config.snapshot_type if snapshot_config else None
       if snapshot_type:
+        # Disable limine-snapper-sync plugin during install (limine not configured yet)
+        plugin_path = mountpoint / 'usr/lib/snapper/plugins/10-limine-snapper-sync'
+        plugin_disabled = mountpoint / 'usr/lib/snapper/plugins/10-limine-snapper-sync.disabled'
+        if plugin_path.exists():
+          plugin_path.rename(plugin_disabled)
+        
         installation.setup_btrfs_snapshot(snapshot_type, config.bootloader)
+        
+        # Re-enable the plugin after snapper is configured
+        if plugin_disabled.exists():
+          plugin_disabled.rename(plugin_path)
 
     info('Mounting offline resources for chroot access...')
     from archinstall.lib.general import SysCommand
