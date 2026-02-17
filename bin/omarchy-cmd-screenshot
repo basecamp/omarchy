@@ -108,7 +108,7 @@ if [[ $PROCESSING == "slurp" ]]; then
   wl-copy < "$FILEPATH"
 
   (
-    ACTION=$(notify-send "Screenshot copied & saved" "Click to edit" -t 10000 -i "$FILEPATH" -A "default=edit")
+    ACTION=$(notify-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" -t 10000 -i "$FILEPATH" -A "default=edit")
     [[ "$ACTION" == "default" ]] && open_editor "$FILEPATH"
   ) &
 else
