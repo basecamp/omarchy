@@ -25,7 +25,7 @@ function GetEntries()
                 .. background
                 .. "' "
                 .. os.getenv("HOME")
-                .. "/.config/themes/current/background && killall swaybg 2>/dev/null ; swaybg -o '*' -i '"
+                .. "/.config/omarchy/current/background && killall swaybg 2>/dev/null ; swaybg -o '*' -i '"
                 .. background
                 .. "' -m fill &",
           },
