@@ -32,7 +32,6 @@ open_editor() {
   if [[ "$SCREENSHOT_EDITOR" == "satty" ]]; then
     satty --filename "$filepath" \
       --output-filename "$filepath" \
-      --early-exit \
       --actions-on-enter save-to-clipboard \
       --save-after-copy \
       --copy-command 'wl-copy'
