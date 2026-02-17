@@ -1,6 +1,6 @@
 Name = "omarchyBackgroundSelector"
 NamePretty = "Omarchy Background Selector"
-Cache = true
+Cache = false
 HideFromProviderlist = true
 SearchName = true
 
@@ -11,7 +11,9 @@ function GetEntries()
   -- Read current theme name
   local theme_name_file = io.open(home .. "/.config/omarchy/current/theme.name", "r")
   local theme_name = theme_name_file and theme_name_file:read("*l") or nil
-  if theme_name_file then theme_name_file:close() end
+  if theme_name_file then
+    theme_name_file:close()
+  end
 
   -- Directories to search
   local dirs = {
@@ -27,9 +29,8 @@ function GetEntries()
   for _, wallpaper_dir in ipairs(dirs) do
     local handle = io.popen(
       "find '"
-      .. wallpaper_dir
-      ..
-      "' -maxdepth 1 -type f -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.gif' -o -name '*.bmp' -o -name '*.webp' 2>/dev/null"
+        .. wallpaper_dir
+        .. "' -maxdepth 1 -type f -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.gif' -o -name '*.bmp' -o -name '*.webp' 2>/dev/null"
     )
     if handle then
       for background in handle:lines() do
@@ -41,12 +42,12 @@ function GetEntries()
             Value = background,
             Actions = {
               activate = "ln -sf '"
-                  .. background
-                  .. "' "
-                  .. home
-                  .. "/.config/omarchy/current/background && killall swaybg 2>/dev/null ; swaybg -o '*' -i '"
-                  .. background
-                  .. "' -m fill &",
+                .. background
+                .. "' "
+                .. home
+                .. "/.config/omarchy/current/background && killall swaybg 2>/dev/null ; swaybg -o '*' -i '"
+                .. background
+                .. "' -m fill &",
             },
             Preview = background,
             PreviewType = "file",
