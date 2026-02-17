@@ -6,35 +6,56 @@ SearchName = true
 
 function GetEntries()
   local entries = {}
-  local wallpaper_dir = os.getenv("HOME") .. "/.config/omarchy/current/theme/backgrounds"
-  local handle = io.popen(
-    "find '"
-    .. wallpaper_dir
-    ..
-    "' -maxdepth 1 -type f -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.gif' -o -name '*.bmp' -o -name '*.webp' 2>/dev/null"
-  )
-  if handle then
-    for background in handle:lines() do
-      local filename = background:match("([^/]+)$")
-      if filename then
-        table.insert(entries, {
-          Text = filename,
-          Value = background,
-          Actions = {
-            activate = "ln -sf '"
-                .. background
-                .. "' "
-                .. os.getenv("HOME")
-                .. "/.config/omarchy/current/background && killall swaybg 2>/dev/null ; swaybg -o '*' -i '"
-                .. background
-                .. "' -m fill &",
-          },
-          Preview = background,
-          PreviewType = "file",
-        })
-      end
-    end
-    handle:close()
+  local home = os.getenv("HOME")
+
+  -- Read current theme name
+  local theme_name_file = io.open(home .. "/.config/omarchy/current/theme.name", "r")
+  local theme_name = theme_name_file and theme_name_file:read("*l") or nil
+  if theme_name_file then theme_name_file:close() end
+
+  -- Directories to search
+  local dirs = {
+    home .. "/.config/omarchy/current/theme/backgrounds",
+  }
+  if theme_name then
+    table.insert(dirs, home .. "/.config/omarchy/backgrounds/" .. theme_name)
   end
+
+  -- Track added files to avoid duplicates
+  local seen = {}
+
+  for _, wallpaper_dir in ipairs(dirs) do
+    local handle = io.popen(
+      "find '"
+      .. wallpaper_dir
+      ..
+      "' -maxdepth 1 -type f -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.gif' -o -name '*.bmp' -o -name '*.webp' 2>/dev/null"
+    )
+    if handle then
+      for background in handle:lines() do
+        local filename = background:match("([^/]+)$")
+        if filename and not seen[filename] then
+          seen[filename] = true
+          table.insert(entries, {
+            Text = filename,
+            Value = background,
+            Actions = {
+              activate = "ln -sf '"
+                  .. background
+                  .. "' "
+                  .. home
+                  .. "/.config/omarchy/current/background && killall swaybg 2>/dev/null ; swaybg -o '*' -i '"
+                  .. background
+                  .. "' -m fill &",
+            },
+            Preview = background,
+            PreviewType = "file",
+          })
+        end
+      end
+      handle:close()
+    end
+  end
+
   return entries
 end
