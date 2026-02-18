@@ -4,7 +4,7 @@ echo "Replace Impala with Gazelle"
 omarchy-pkg-drop impala
 
 if omarchy-cmd-missing gazelle; then
-  yay -S --noconfirm gazelle-tui
+  omarchy-pkg-aur-add gazelle-tui
 fi
 
 omarchy-restart-waybar
