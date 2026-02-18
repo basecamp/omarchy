@@ -136,7 +136,8 @@ show_webcam_select_menu() {
 show_screenrecord_menu() {
   omarchy-cmd-screenrecord --stop-recording && exit 0
 
-  case $(menu "Screenrecord" "  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam\n  Without audio") in
+  case $(menu "Screenrecord" "  With no audio\n  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam") in
+  *"With no audio") omarchy-cmd-screenrecord ;;
   *"With desktop audio") omarchy-cmd-screenrecord --with-desktop-audio ;;
   *"With desktop + microphone audio") omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio ;;
   *"With desktop + microphone audio + webcam")
@@ -146,7 +147,6 @@ show_screenrecord_menu() {
     }
     omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device"
     ;;
-  *"Without audio") omarchy-cmd-screenrecord ;;
   *) back_to show_capture_menu ;;
   esac
 }
