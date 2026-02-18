@@ -4,6 +4,20 @@ Cache = false
 HideFromProviderlist = true
 SearchName = true
 
+function FormatName(filename)
+  -- Remove leading number and dash
+  local name = filename:gsub("^%d+", ""):gsub("^%-", "")
+  -- Remove extension
+  name = name:gsub("%.[^%.]+$", "")
+  -- Replace dashes with spaces
+  name = name:gsub("-", " ")
+  -- Capitalize each word
+  name = name:gsub("%S+", function(word)
+    return word:sub(1, 1):upper() .. word:sub(2):lower()
+  end)
+  return name
+end
+
 function GetEntries()
   local entries = {}
   local home = os.getenv("HOME")
@@ -38,7 +52,7 @@ function GetEntries()
         if filename and not seen[filename] then
           seen[filename] = true
           table.insert(entries, {
-            Text = filename,
+            Text = FormatName(filename),
             Value = background,
             Actions = {
               activate = "omarchy-theme-bg-set '" .. background .. "'",
