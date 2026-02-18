@@ -1,0 +1,123 @@
+#!/bin/bash
+
+set -euo pipefail
+
+OMARCHY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+THEMES_DIR="$OMARCHY_ROOT/themes"
+
+required_semantic_keys=(
+  accent
+  cursor
+  foreground
+  background
+  selection_foreground
+  selection_background
+)
+
+required_base_keys=(
+  base00 base01 base02 base03 base04 base05 base06 base07
+  base08 base09 base0A base0B base0C base0D base0E base0F
+)
+
+required_outputs=(
+  alacritty.toml
+  btop.theme
+  ghostty.conf
+  hyprland-preview-share-picker.css
+  kitty.conf
+  mako.ini
+  swayosd.css
+  walker.css
+  waybar.css
+)
+
+if [[ ! -d $THEMES_DIR ]]; then
+  echo "Themes directory not found: $THEMES_DIR" >&2
+  exit 1
+fi
+
+if ! command -v rg >/dev/null 2>&1; then
+  echo "Missing required command: rg" >&2
+  exit 1
+fi
+
+themes=()
+if [[ $# -gt 0 ]]; then
+  themes=("$@")
+else
+  while IFS= read -r theme; do
+    themes+=("$theme")
+  done < <(find "$THEMES_DIR" -mindepth 1 -maxdepth 1 -type d -printf "%f\n" | sort)
+fi
+
+if [[ ${#themes[@]} -eq 0 ]]; then
+  echo "No themes selected for validation." >&2
+  exit 1
+fi
+
+schema_failures=0
+render_failures=0
+
+for theme in "${themes[@]}"; do
+  colors_file="$THEMES_DIR/$theme/colors.toml"
+
+  if [[ ! -f $colors_file ]]; then
+    echo "[schema] missing colors.toml: themes/$theme/colors.toml" >&2
+    schema_failures=$((schema_failures + 1))
+    continue
+  fi
+
+  for key in "${required_semantic_keys[@]}"; do
+    if ! rg -q "^$key\\s*=" "$colors_file"; then
+      echo "[schema] missing key '$key' in themes/$theme/colors.toml" >&2
+      schema_failures=$((schema_failures + 1))
+    fi
+  done
+
+  for key in "${required_base_keys[@]}"; do
+    if ! rg -q "^$key\\s*=" "$colors_file"; then
+      echo "[schema] missing key '$key' in themes/$theme/colors.toml" >&2
+      schema_failures=$((schema_failures + 1))
+    fi
+  done
+done
+
+tmp_root=$(mktemp -d)
+trap 'rm -rf "$tmp_root"' EXIT
+
+for theme in "${themes[@]}"; do
+  theme_dir="$THEMES_DIR/$theme"
+  next_theme_dir="$tmp_root/home/.config/omarchy/current/next-theme"
+
+  rm -rf "$next_theme_dir"
+  mkdir -p "$next_theme_dir" "$tmp_root/home/.config/omarchy/themed"
+
+  cp -r "$theme_dir/"* "$next_theme_dir/" 2>/dev/null || true
+
+  if ! HOME="$tmp_root/home" OMARCHY_PATH="$OMARCHY_ROOT" "$OMARCHY_ROOT/bin/omarchy-theme-set-templates"; then
+    echo "[render] template generation failed for theme '$theme'" >&2
+    render_failures=$((render_failures + 1))
+    continue
+  fi
+
+  if rg -n '\{\{[^}]+\}\}' "$next_theme_dir" >/dev/null; then
+    echo "[render] unresolved placeholders found for theme '$theme'" >&2
+    render_failures=$((render_failures + 1))
+  fi
+
+  for output in "${required_outputs[@]}"; do
+    if [[ ! -f $next_theme_dir/$output ]]; then
+      echo "[render] missing generated file '$output' for theme '$theme'" >&2
+      render_failures=$((render_failures + 1))
+    fi
+  done
+done
+
+if [[ $schema_failures -ne 0 || $render_failures -ne 0 ]]; then
+  echo "Validation failed: schema_failures=$schema_failures render_failures=$render_failures" >&2
+  exit 1
+fi
+
+echo "Validation passed for ${#themes[@]} theme(s)."
+echo "Schema checks: OK"
+echo "Render checks: OK"

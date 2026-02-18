@@ -12,11 +12,11 @@ cursor = "{{ cursor }}"
 
 [colors.search.matches]
 foreground = "{{ background }}"
-background = "{{ color3 }}"
+background = "{{ base0A }}"
 
 [colors.search.focused_match]
 foreground = "{{ background }}"
-background = "{{ color1 }}"
+background = "{{ base08 }}"
 
 [colors.footer_bar]
 foreground = "{{ background }}"
@@ -27,21 +27,21 @@ text = "{{ selection_foreground }}"
 background = "{{ selection_background }}"
 
 [colors.normal]
-black = "{{ color0 }}"
-red = "{{ color1 }}"
-green = "{{ color2 }}"
-yellow = "{{ color3 }}"
-blue = "{{ color4 }}"
-magenta = "{{ color5 }}"
-cyan = "{{ color6 }}"
-white = "{{ color7 }}"
+black = "{{ base00 }}"
+red = "{{ base08 }}"
+green = "{{ base0B }}"
+yellow = "{{ base0A }}"
+blue = "{{ base0D }}"
+magenta = "{{ base0E }}"
+cyan = "{{ base0C }}"
+white = "{{ base05 }}"
 
 [colors.bright]
-black = "{{ color8 }}"
-red = "{{ color9 }}"
-green = "{{ color10 }}"
-yellow = "{{ color11 }}"
-blue = "{{ color12 }}"
-magenta = "{{ color13 }}"
-cyan = "{{ color14 }}"
-white = "{{ color15 }}"
+black = "{{ base03 }}"
+red = "{{ base08 }}"
+green = "{{ base0B }}"
+yellow = "{{ base0A }}"
+blue = "{{ base0D }}"
+magenta = "{{ base0E }}"
+cyan = "{{ base0C }}"
+white = "{{ base07 }}"

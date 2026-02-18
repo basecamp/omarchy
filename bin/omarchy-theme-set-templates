@@ -5,6 +5,15 @@ USER_TEMPLATES_DIR="$HOME/.config/omarchy/themed"
 NEXT_THEME_DIR="$HOME/.config/omarchy/current/next-theme"
 COLORS_FILE="$NEXT_THEME_DIR/colors.toml"
 
+# Escape replacement text for sed replacement strings.
+escape_sed_replacement() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//&/\\&}"
+  value="${value//|/\\|}"
+  printf "%s" "$value"
+}
+
 # Convert hex color to decimal RGB (e.g., "#1e1e2e" -> "30,30,46")
 hex_to_rgb() {
   local hex="${1#\#}"
@@ -13,21 +22,95 @@ hex_to_rgb() {
 
 # Only generate dynamic templates for themes with a colors.toml definition
 if [[ -f $COLORS_FILE ]]; then
-  sed_script=$(mktemp)
+  declare -A colors
+  base_keys=(base00 base01 base02 base03 base04 base05 base06 base07 base08 base09 base0A base0B base0C base0D base0E base0F)
+  ansi_keys=(color0 color1 color2 color3 color4 color5 color6 color7 color8 color9 color10 color11 color12 color13 color14 color15)
 
   while IFS='=' read -r key value; do
     key="${key//[\"\' ]/}"                # strip quotes and spaces from key
     [[ $key && $key != \#* ]] || continue # skip empty lines and comments
     value="${value#*[\"\']}"
     value="${value%%[\"\']*}" # extract value between quotes (ignores inline comments)
+    colors["$key"]="$value"
+  done <"$COLORS_FILE"
 
-    printf 's|{{ %s }}|%s|g\n' "$key" "$value"            # {{ key }} -> value
-    printf 's|{{ %s_strip }}|%s|g\n' "$key" "${value#\#}" # {{ key_strip }} -> value without leading #
+  has_base_palette=true
+  for key in "${base_keys[@]}"; do
+    if [[ -z ${colors[$key]+x} ]]; then
+      has_base_palette=false
+      break
+    fi
+  done
+
+  has_ansi_palette=true
+  for key in "${ansi_keys[@]}"; do
+    if [[ -z ${colors[$key]+x} ]]; then
+      has_ansi_palette=false
+      break
+    fi
+  done
+
+  if [[ $has_base_palette == false && $has_ansi_palette == false ]]; then
+    echo "Theme colors are incomplete in $COLORS_FILE" >&2
+    echo "Provide either full Base16 keys (base00-base0F) or full ANSI keys (color0-color15)." >&2
+    exit 1
+  fi
+
+  # Derive Base16 keys from ANSI when ANSI exists and Base16 keys are missing.
+  # This keeps ANSI-only themes working during transition to Base16 templates.
+  if [[ $has_ansi_palette == true ]]; then
+    [[ -n ${colors[base00]+x} ]] || colors[base00]="${colors[color0]}"
+    [[ -n ${colors[base01]+x} ]] || colors[base01]="${colors[color0]}"
+    [[ -n ${colors[base02]+x} ]] || colors[base02]="${colors[color8]}"
+    [[ -n ${colors[base03]+x} ]] || colors[base03]="${colors[color8]}"
+    [[ -n ${colors[base04]+x} ]] || colors[base04]="${colors[color7]}"
+    [[ -n ${colors[base05]+x} ]] || colors[base05]="${colors[color7]}"
+    [[ -n ${colors[base06]+x} ]] || colors[base06]="${colors[color15]}"
+    [[ -n ${colors[base07]+x} ]] || colors[base07]="${colors[color15]}"
+    [[ -n ${colors[base08]+x} ]] || colors[base08]="${colors[color1]}"
+    [[ -n ${colors[base09]+x} ]] || colors[base09]="${colors[color11]}"
+    [[ -n ${colors[base0A]+x} ]] || colors[base0A]="${colors[color3]}"
+    [[ -n ${colors[base0B]+x} ]] || colors[base0B]="${colors[color2]}"
+    [[ -n ${colors[base0C]+x} ]] || colors[base0C]="${colors[color6]}"
+    [[ -n ${colors[base0D]+x} ]] || colors[base0D]="${colors[color4]}"
+    [[ -n ${colors[base0E]+x} ]] || colors[base0E]="${colors[color5]}"
+    [[ -n ${colors[base0F]+x} ]] || colors[base0F]="${colors[color9]}"
+  fi
+
+  # Derive ANSI keys from Base16 when Base16 exists and ANSI keys are missing.
+  if [[ $has_base_palette == true ]]; then
+    [[ -n ${colors[color0]+x} ]] || colors[color0]="${colors[base00]}"
+    [[ -n ${colors[color1]+x} ]] || colors[color1]="${colors[base08]}"
+    [[ -n ${colors[color2]+x} ]] || colors[color2]="${colors[base0B]}"
+    [[ -n ${colors[color3]+x} ]] || colors[color3]="${colors[base0A]}"
+    [[ -n ${colors[color4]+x} ]] || colors[color4]="${colors[base0D]}"
+    [[ -n ${colors[color5]+x} ]] || colors[color5]="${colors[base0E]}"
+    [[ -n ${colors[color6]+x} ]] || colors[color6]="${colors[base0C]}"
+    [[ -n ${colors[color7]+x} ]] || colors[color7]="${colors[base05]}"
+    [[ -n ${colors[color8]+x} ]] || colors[color8]="${colors[base03]}"
+    [[ -n ${colors[color9]+x} ]] || colors[color9]="${colors[base08]}"
+    [[ -n ${colors[color10]+x} ]] || colors[color10]="${colors[base0B]}"
+    [[ -n ${colors[color11]+x} ]] || colors[color11]="${colors[base0A]}"
+    [[ -n ${colors[color12]+x} ]] || colors[color12]="${colors[base0D]}"
+    [[ -n ${colors[color13]+x} ]] || colors[color13]="${colors[base0E]}"
+    [[ -n ${colors[color14]+x} ]] || colors[color14]="${colors[base0C]}"
+    [[ -n ${colors[color15]+x} ]] || colors[color15]="${colors[base07]}"
+  fi
+
+  sed_script=$(mktemp)
+
+  for key in "${!colors[@]}"; do
+    value="${colors[$key]}"
+    escaped_value=$(escape_sed_replacement "$value")
+    escaped_strip_value=$(escape_sed_replacement "${value#\#}")
+
+    printf 's|{{ %s }}|%s|g\n' "$key" "$escaped_value"            # {{ key }} -> value
+    printf 's|{{ %s_strip }}|%s|g\n' "$key" "$escaped_strip_value" # {{ key_strip }} -> value without leading #
     if [[ $value =~ ^# ]]; then
       rgb=$(hex_to_rgb "$value")
       echo "s|{{ ${key}_rgb }}|${rgb}|g"
     fi
-  done <"$COLORS_FILE" >"$sed_script"
+  done >"$sed_script"
 
   shopt -s nullglob
 
