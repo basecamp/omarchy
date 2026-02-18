@@ -1,22 +1,165 @@
 #!/bin/bash
 
-# Get the current scale from the first monitor
-CURRENT_SCALE=$(hyprctl monitors -j | jq -r '.[0].scale')
+# Get the active monitor (the one with the cursor)
+ACTIVE_MONITOR=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .name')
+MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true)')
 
-# Define the scaling cycle based on current scale
-# Cycles through 1.00 → 1.60 → 2.00 → 3.13 → 1.00
-case "$CURRENT_SCALE" in
-1.00) NEW_SCALE="1.6" ;;
-1.60) NEW_SCALE="2" ;;
-2.00) NEW_SCALE="3.13" ;;
-3.13) NEW_SCALE="1" ;;
-*) NEW_SCALE="2" ;;
-esac
+# Get current scale and pixel dimensions of active monitor
+CURRENT_SCALE=$(echo "$MONITOR_INFO" | jq -r '.scale')
+PIXEL_WIDTH=$(echo "$MONITOR_INFO" | jq -r '.width')
+PIXEL_HEIGHT=$(echo "$MONITOR_INFO" | jq -r '.height')
 
-# Apply the new scale to all monitors
-hyprctl monitors -j | jq -r '.[].name' | while read -r monitor; do
-  hyprctl keyword monitor "$monitor,preferred,auto,$NEW_SCALE"
-done
+# Function to check if a scale produces integer logical dimensions using awk
+is_valid_scale() {
+  local scale=$1
+  local width=$2
+  local height=$3
+
+  awk -v w="$width" -v h="$height" -v s="$scale" 'BEGIN {
+    logical_w = w / s
+    logical_h = h / s
+    rounded_w = int(logical_w + 0.5)
+    rounded_h = int(logical_h + 0.5)
+    diff_w = (logical_w - rounded_w) < 0 ? -(logical_w - rounded_w) : (logical_w - rounded_w)
+    diff_h = (logical_h - rounded_h) < 0 ? -(logical_h - rounded_h) : (logical_h - rounded_h)
+    if (diff_w < 0.0001 && diff_h < 0.0001) exit 0
+    exit 1
+  }'
+}
+
+# Function to find the nearest valid scale for a target
+find_nearest_valid_scale() {
+  local target=$1
+  local width=$2
+  local height=$3
+
+  # Round to nearest 1/120th (Hyprland's precision)
+  awk -v t="$target" -v w="$width" -v h="$height" 'BEGIN {
+    base = t * 120
+    rounded = int(base + 0.5)
+    scale_zero = rounded / 120
+
+    # Test scale_zero first
+    logical_w = w / scale_zero
+    logical_h = h / scale_zero
+    rnd_w = int(logical_w + 0.5)
+    rnd_h = int(logical_h + 0.5)
+    diff_w = (logical_w - rnd_w) < 0 ? -(logical_w - rnd_w) : (logical_w - rnd_w)
+    diff_h = (logical_h - rnd_h) < 0 ? -(logical_h - rnd_h) : (logical_h - rnd_h)
+
+    if (diff_w < 0.0001 && diff_h < 0.0001) {
+      printf "%.6f\n", scale_zero
+      exit 0
+    }
+
+    # Search outward
+    for (i = 1; i <= 90; i++) {
+      scale_up = (rounded + i) / 120
+      scale_down = (rounded - i) / 120
+
+      # Test scale_up
+      logical_w = w / scale_up
+      logical_h = h / scale_up
+      rnd_w = int(logical_w + 0.5)
+      rnd_h = int(logical_h + 0.5)
+      diff_w = (logical_w - rnd_w) < 0 ? -(logical_w - rnd_w) : (logical_w - rnd_w)
+      diff_h = (logical_h - rnd_h) < 0 ? -(logical_h - rnd_h) : (logical_h - rnd_h)
+
+      if (diff_w < 0.0001 && diff_h < 0.0001) {
+        printf "%.6f\n", scale_up
+        exit 0
+      }
+
+      # Test scale_down (must be > 0.1)
+      if (scale_down > 0.1) {
+        logical_w = w / scale_down
+        logical_h = h / scale_down
+        rnd_w = int(logical_w + 0.5)
+        rnd_h = int(logical_h + 0.5)
+        diff_w = (logical_w - rnd_w) < 0 ? -(logical_w - rnd_w) : (logical_w - rnd_w)
+        diff_h = (logical_h - rnd_h) < 0 ? -(logical_h - rnd_h) : (logical_h - rnd_h)
+
+        if (diff_w < 0.0001 && diff_h < 0.0001) {
+          printf "%.6f\n", scale_down
+          exit 0
+        }
+      }
+    }
+
+    # Fallback
+    printf "%.6f\n", scale_zero
+  }'
+}
+
+# Define target scales and find their nearest valid equivalents
+TARGET_SCALE_1=$(find_nearest_valid_scale "1" "$PIXEL_WIDTH" "$PIXEL_HEIGHT")
+TARGET_SCALE_1_6=$(find_nearest_valid_scale "1.6" "$PIXEL_WIDTH" "$PIXEL_HEIGHT")
+TARGET_SCALE_2=$(find_nearest_valid_scale "2" "$PIXEL_WIDTH" "$PIXEL_HEIGHT")
+TARGET_SCALE_3=$(find_nearest_valid_scale "3" "$PIXEL_WIDTH" "$PIXEL_HEIGHT")
+
+# Convert to comparable integers (multiply by 100) to avoid floating point issues
+CURRENT_INT=$(echo "$CURRENT_SCALE" | awk '{printf "%.0f", $1 * 100}')
+SCALE_1_INT=$(echo "$TARGET_SCALE_1" | awk '{printf "%.0f", $1 * 100}')
+SCALE_1_6_INT=$(echo "$TARGET_SCALE_1_6" | awk '{printf "%.0f", $1 * 100}')
+SCALE_2_INT=$(echo "$TARGET_SCALE_2" | awk '{printf "%.0f", $1 * 100}')
+SCALE_3_INT=$(echo "$TARGET_SCALE_3" | awk '{printf "%.0f", $1 * 100}')
+
+# Determine next scale using integer comparison
+if [[ "$CURRENT_INT" -eq "$SCALE_1_INT" ]]; then
+  NEW_SCALE="$TARGET_SCALE_1_6"
+elif [[ "$CURRENT_INT" -eq "$SCALE_1_6_INT" ]]; then
+  NEW_SCALE="$TARGET_SCALE_2"
+elif [[ "$CURRENT_INT" -eq "$SCALE_2_INT" ]]; then
+  NEW_SCALE="$TARGET_SCALE_3"
+elif [[ "$CURRENT_INT" -eq "$SCALE_3_INT" ]]; then
+  NEW_SCALE="$TARGET_SCALE_1"
+else
+  # Find closest target to determine where we are
+  DIFF_1=$((CURRENT_INT - SCALE_1_INT))
+  [[ $DIFF_1 -lt 0 ]] && DIFF_1=$((-DIFF_1))
+
+  DIFF_1_6=$((CURRENT_INT - SCALE_1_6_INT))
+  [[ $DIFF_1_6 -lt 0 ]] && DIFF_1_6=$((-DIFF_1_6))
+
+  DIFF_2=$((CURRENT_INT - SCALE_2_INT))
+  [[ $DIFF_2 -lt 0 ]] && DIFF_2=$((-DIFF_2))
+
+  DIFF_3=$((CURRENT_INT - SCALE_3_INT))
+  [[ $DIFF_3 -lt 0 ]] && DIFF_3=$((-DIFF_3))
+
+  # Find minimum
+  MIN=$DIFF_1
+  CLOSEST="1"
+
+  if [[ $DIFF_1_6 -lt $MIN ]]; then
+    MIN=$DIFF_1_6
+    CLOSEST="1.6"
+  fi
+
+  if [[ $DIFF_2 -lt $MIN ]]; then
+    MIN=$DIFF_2
+    CLOSEST="2"
+  fi
+
+  if [[ $DIFF_3 -lt $MIN ]]; then
+    MIN=$DIFF_3
+    CLOSEST="3"
+  fi
+
+  # Set next based on closest
+  case "$CLOSEST" in
+  "1") NEW_SCALE="$TARGET_SCALE_1_6" ;;
+  "1.6") NEW_SCALE="$TARGET_SCALE_2" ;;
+  "2") NEW_SCALE="$TARGET_SCALE_3" ;;
+  "3") NEW_SCALE="$TARGET_SCALE_1" ;;
+  esac
+fi
+
+# Apply the new scale to the active monitor only
+hyprctl keyword monitor "$ACTIVE_MONITOR,preferred,auto,$NEW_SCALE"
+
+# Format for display (remove trailing zeros)
+DISPLAY_SCALE=$(echo "$NEW_SCALE" | sed 's/0*$//;s/\.$//')
 
 # Notify the user
-notify-send "󰍹  Display scaling set to ${NEW_SCALE}x"
+notify-send "󰍹  Display scaling set to ${DISPLAY_SCALE}x"
