@@ -41,13 +41,7 @@ function GetEntries()
             Text = filename,
             Value = background,
             Actions = {
-              activate = "ln -sf '"
-                .. background
-                .. "' "
-                .. home
-                .. "/.config/omarchy/current/background && killall swaybg 2>/dev/null ; swaybg -o '*' -i '"
-                .. background
-                .. "' -m fill &",
+              activate = "omarchy-theme-bg-set '" .. background .. "'",
             },
             Preview = background,
             PreviewType = "file",
