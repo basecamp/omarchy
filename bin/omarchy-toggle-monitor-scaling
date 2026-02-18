@@ -1,22 +1,19 @@
 #!/bin/bash
 
-# Get the current scale from the first monitor
-CURRENT_SCALE=$(hyprctl monitors -j | jq -r '.[0].scale')
+# Get the active monitor (the one with the cursor)
+MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true)')
+ACTIVE_MONITOR=$(echo "$MONITOR_INFO" | jq -r '.name')
+CURRENT_SCALE=$(echo "$MONITOR_INFO" | jq -r '.scale')
 
-# Define the scaling cycle based on current scale
-# Cycles through 1.00 → 1.60 → 2.00 → 3.13 → 1.00
-case "$CURRENT_SCALE" in
-1.00) NEW_SCALE="1.6" ;;
-1.60) NEW_SCALE="2" ;;
-2.00) NEW_SCALE="3.13" ;;
-3.13) NEW_SCALE="1" ;;
-*) NEW_SCALE="2" ;;
+# Cycle through scales: 1 → 1.6 → 2 → 3 → 1
+CURRENT_INT=$(awk -v s="$CURRENT_SCALE" 'BEGIN { printf "%.0f", s * 10 }')
+
+case "$CURRENT_INT" in
+10) NEW_SCALE=1.6 ;;
+16) NEW_SCALE=2 ;;
+20) NEW_SCALE=3 ;;
+*) NEW_SCALE=1 ;;
 esac
 
-# Apply the new scale to all monitors
-hyprctl monitors -j | jq -r '.[].name' | while read -r monitor; do
-  hyprctl keyword monitor "$monitor,preferred,auto,$NEW_SCALE"
-done
-
-# Notify the user
+hyprctl keyword monitor "$ACTIVE_MONITOR,preferred,auto,$NEW_SCALE"
 notify-send "󰍹  Display scaling set to ${NEW_SCALE}x"
