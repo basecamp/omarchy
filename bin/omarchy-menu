@@ -181,7 +181,7 @@ show_style_menu() {
   case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
-  *Background*) omarchy-theme-bg-next ;;
+  *Background*) show_background_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
   *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
   *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
@@ -191,6 +191,10 @@ show_style_menu() {
 
 show_theme_menu() {
   omarchy-launch-walker -m menus:omarchythemes --width 800 --minheight 400
+}
+
+show_background_menu() {
+  omarchy-launch-walker -m menus:omarchyBackgroundSelector
 }
 
 show_font_menu() {
@@ -584,6 +588,7 @@ go_to_menu() {
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
   *share*) show_share_menu ;;
+  *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
   *style*) show_style_menu ;;
   *theme*) show_theme_menu ;;
