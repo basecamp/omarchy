@@ -14,4 +14,5 @@ if omarchy-pkg-missing omarchy-keyring || ! sudo pacman-key --list-keys 40DFB630
 fi
 
 # Ensure we have the latest archlinux-keyring, maintainer keys might have changed
-sudo pacman -Sy --noconfirm archlinux-keyring
+echo -e "\e[32m\nUpdate Arch signing keys\e[0m"
+sudo pacman -Sy --noconfirm archlinux-keyring >/dev/null
