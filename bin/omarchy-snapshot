@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -e
 
 COMMAND="${1:-}"
 OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
