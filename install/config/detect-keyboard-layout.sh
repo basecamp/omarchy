@@ -2,12 +2,31 @@
 conf="/etc/vconsole.conf"
 hyprconf="$HOME/.config/hypr/input.conf"
 
-if grep -q '^XKBLAYOUT=' "$conf"; then
-  layout=$(grep '^XKBLAYOUT=' "$conf" | cut -d= -f2 | tr -d '"')
-  sed -i "/^[[:space:]]*kb_options *=/i\  kb_layout = $layout" "$hyprconf"
-fi
+if grep -q '^KEYMAP=' "$conf"; then
+  keymap=$(grep '^KEYMAP=' "$conf" | cut -d= -f2 | tr -d '"')
 
-if grep -q '^XKBVARIANT=' "$conf"; then
-  variant=$(grep '^XKBVARIANT=' "$conf" | cut -d= -f2 | tr -d '"')
-  sed -i "/^[[:space:]]*kb_options *=/i\  kb_variant = $variant" "$hyprconf"
+  layout=""
+  variant=""
+
+  case "$keymap" in
+  de_CH*)
+    layout="ch"
+    variant="de"
+    ;;
+  fr_CH*)
+    layout="ch"
+    variant="fr"
+    ;;
+  *)
+    layout="$keymap"
+    ;;
+  esac
+
+  # Write to hypr config
+  if [[ -n "$layout" ]]; then
+    sed -i "/^[[:space:]]*kb_options *=/i\  kb_layout = $layout" "$hyprconf"
+  fi
+  if [[ -n "$variant" ]]; then
+    sed -i "/^[[:space:]]*kb_options *=/i\  kb_variant = $variant" "$hyprconf"
+  fi
 fi
