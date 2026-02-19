@@ -7,6 +7,11 @@ if [[ -z "$1" ]]; then
   exit 1
 fi
 
+if ! command -v mise >/dev/null 2>&1; then
+  echo "Error: mise is required but not installed (or not in PATH)." >&2
+  exit 1
+fi
+
 install_php() {
   sudo pacman -S php composer php-sqlite xdebug --noconfirm
 
