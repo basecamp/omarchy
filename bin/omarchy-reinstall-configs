@@ -13,7 +13,7 @@ cp -R ~/.local/share/omarchy/config/* ~/.config/
 cp ~/.local/share/omarchy/default/bashrc ~/.bashrc
 echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' | tee ~/.bash_profile >/dev/null
 
-$(bash $OMARCHY_PATH/install/config/theme.sh)
+bash "${OMARCHY_PATH}/install/config/theme.sh"
 
 omarchy-refresh-limine
 omarchy-refresh-plymouth
