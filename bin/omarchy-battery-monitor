@@ -2,22 +2,41 @@
 
 # Designed to be run by systemd timer every 30 seconds and alerts if battery is low
 
-BATTERY_THRESHOLD=10
-NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
+CRIT_BATTERY_THRESHOLD=10
+WARN_BATTERY_THRESHOLD=20
+
+CRIT_NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified_crit"
+WARN_NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified_warn"
+
+BATTERY_PATH=$(upower -e | grep 'DisplayDevice' | head -n 1)
+BATTERY_INFO=$(upower -i "$BATTERY_PATH")
+
+BATTERY_STATE=$(echo "$BATTERY_INFO" | grep "state" | awk '{print $2}')
 BATTERY_LEVEL=$(omarchy-battery-remaining)
-BATTERY_STATE=$(upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}')
 
 send_notification() {
-  notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
+  notify-send -u critical -a "System Power" "$1" "$2" -i battery-caution -t 50000
 }
 
 if [[ -n "$BATTERY_LEVEL" && "$BATTERY_LEVEL" =~ ^[0-9]+$ ]]; then
-  if [[ $BATTERY_STATE == "discharging" && $BATTERY_LEVEL -le $BATTERY_THRESHOLD ]]; then
-    if [[ ! -f $NOTIFICATION_FLAG ]]; then
-      send_notification $BATTERY_LEVEL
-      touch $NOTIFICATION_FLAG
+  if [[ $BATTERY_STATE == "discharging" ]]; then
+
+    if [[ "$BATTERY_LEVEL" -le "$CRIT_BATTERY_THRESHOLD" ]]; then
+      if [[ ! -f "$CRIT_NOTIFICATION_FLAG" ]]; then
+        send_notification " 🔴 Critical Battery" "Battery is critically low (${BATTERY_LEVEL}%)"
+        touch "$CRIT_NOTIFICATION_FLAG"
+        # Also creates WARN flag to prevent duplicate flags
+        touch "$WARN_NOTIFICATION_FLAG"
+      fi
+
+    elif [[ "$BATTERY_LEVEL" -le "$WARN_BATTERY_THRESHOLD" ]] then
+      if [[ ! -f "$WARN_NOTIFICATION_FLAG" ]]; then
+        send_notification " 🟠 Low Battery" "Battery is low (${BATTERY_LEVEL}%)"
+        touch "$WARN_NOTIFICATION_FLAG"
+      fi
     fi
+  # Remove notified flags when plugged in
   else
-    rm -f $NOTIFICATION_FLAG
+    rm -f "$WARN_NOTIFICATION_FLAG" "$CRIT_NOTIFICATION_FLAG"
   fi
 fi
