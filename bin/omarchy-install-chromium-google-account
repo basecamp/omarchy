@@ -3,14 +3,14 @@
 # Allow Chromium to sign in to Google accounts by adding the correct
 # oauth client id and secret to ~/.config/chromium-flags.conf.
 
-if [[ -f ~/.config/chromium-flags.conf ]]; then
-  CONF=~/.config/chromium-flags.conf
+CONF="$HOME/.config/chromium-flags.conf"
+mkdir -p "$(dirname "$CONF")"
+touch "$CONF"
 
-  grep -qxF -- "--oauth2-client-id=77185425430.apps.googleusercontent.com" "$CONF" ||
-    echo "--oauth2-client-id=77185425430.apps.googleusercontent.com" >>"$CONF"
+grep -qxF -- "--oauth2-client-id=77185425430.apps.googleusercontent.com" "$CONF" ||
+  echo "--oauth2-client-id=77185425430.apps.googleusercontent.com" >>"$CONF"
 
-  grep -qxF -- "--oauth2-client-secret=OTJgUOQcT7lO7GsGZq2G4IlT" "$CONF" ||
-    echo "--oauth2-client-secret=OTJgUOQcT7lO7GsGZq2G4IlT" >>"$CONF"
+grep -qxF -- "--oauth2-client-secret=OTJgUOQcT7lO7GsGZq2G4IlT" "$CONF" ||
+  echo "--oauth2-client-secret=OTJgUOQcT7lO7GsGZq2G4IlT" >>"$CONF"
 
-  echo "Now you can login to your Google Account in Chromium."
-fi
+echo "Now you can login to your Google Account in Chromium."
