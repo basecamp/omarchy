@@ -141,4 +141,9 @@ clojure)
   omarchy-pkg-add rlwrap
   mise use --global clojure@latest
   ;;
+*)
+  echo "Unknown environment: $1" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure>" >&2
+  exit 1
+  ;;
 esac
