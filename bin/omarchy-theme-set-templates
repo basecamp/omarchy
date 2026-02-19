@@ -66,6 +66,13 @@ if [[ -f $COLORS_FILE ]]; then
   [[ ${colors[bright_blue]} ]]   || colors[bright_blue]=$(lighten_color "${colors[blue]}" 20)
   [[ ${colors[bright_purple]} ]] || colors[bright_purple]=$(lighten_color "${colors[purple]}" 20)
 
+  # Auto-detect theme type (dark/light) from background luminance
+  if [[ ! ${colors[theme_type]} ]]; then
+    bg_hex="${colors[background]#\#}"
+    lum=$(( $(printf "%d" "0x${bg_hex:0:2}") + $(printf "%d" "0x${bg_hex:2:2}") + $(printf "%d" "0x${bg_hex:4:2}") ))
+    [[ $lum -gt 382 ]] && colors[theme_type]="light" || colors[theme_type]="dark"
+  fi
+
   sed_script=$(mktemp)
 
   for key in "${!colors[@]}"; do

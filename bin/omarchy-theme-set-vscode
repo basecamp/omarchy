@@ -3,22 +3,68 @@
 # Sync Omarchy theme to VS Code, VSCodium, and Cursor
 
 VS_CODE_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
+GENERATED_THEME="$HOME/.config/omarchy/current/theme/vscode-theme.json"
+
+# Install generated theme as a local extension for a given editor
+install_generated_extension() {
+  local ext_dir="$1"
+  local theme_type
+
+  theme_type=$(jq -r '.type // "dark"' "$GENERATED_THEME")
+
+  mkdir -p "$ext_dir/themes"
+  cp "$GENERATED_THEME" "$ext_dir/themes/omarchy-color-theme.json"
+
+  cat > "$ext_dir/package.json" <<EOF
+{
+    "name": "omarchy-theme",
+    "displayName": "Omarchy",
+    "description": "Omarchy color theme",
+    "publisher": "local",
+    "version": "1.0.0",
+    "engines": { "vscode": "^1.70.0" },
+    "categories": ["Themes"],
+    "contributes": {
+        "themes": [{
+            "label": "Omarchy",
+            "uiTheme": "vs-${theme_type}",
+            "path": "./themes/omarchy-color-theme.json"
+        }]
+    }
+}
+EOF
+}
 
 set_theme() {
   local editor_cmd="$1"
   local settings_path="$2"
   local skip_flag="$3"
+  local ext_base="$4"
 
   omarchy-cmd-present "$editor_cmd" && [[ ! -f "$skip_flag" ]] || return 0
 
+  local theme_name=""
+
+  # Always deploy the generated theme so it's available in the theme picker
+  if [[ -f "$GENERATED_THEME" ]]; then
+    install_generated_extension "$ext_base/omarchy-theme"
+  fi
+
   if [[ -f "$VS_CODE_THEME" ]]; then
+    # Theme specifies a preferred 3rd-party extension
     theme_name=$(jq -r '.name' "$VS_CODE_THEME")
+    local extension
     extension=$(jq -r '.extension' "$VS_CODE_THEME")
 
     if [[ -n "$extension" ]] && ! "$editor_cmd" --list-extensions | grep -Fxq "$extension"; then
       "$editor_cmd" --install-extension "$extension" >/dev/null
     fi
+  elif [[ -f "$GENERATED_THEME" ]]; then
+    # No 3rd-party preference, activate the generated theme
+    theme_name="Omarchy"
+  fi
 
+  if [[ -n "$theme_name" ]]; then
     mkdir -p "$(dirname "$settings_path")"
     [[ -f "$settings_path" ]] || printf '{\n}\n' >"$settings_path"
 
@@ -34,6 +80,5 @@ set_theme() {
   fi
 }
 
-set_theme "code" "$HOME/.config/Code/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes"
-set_theme "codium" "$HOME/.config/VSCodium/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-codium-theme-changes"
-set_theme "cursor" "$HOME/.config/Cursor/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-cursor-theme-changes"
+set_theme "code" "$HOME/.config/Code/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes" "$HOME/.vscode/extensions"
+set_theme "cursor" "$HOME/.config/Cursor/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-cursor-theme-changes" "$HOME/.cursor/extensions"
