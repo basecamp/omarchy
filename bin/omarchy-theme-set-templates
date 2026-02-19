@@ -23,9 +23,29 @@ emit_sed_rules() {
   fi
 }
 
+# Darken a hex color by a percentage (0 = black, 100 = unchanged)
+darken_color() {
+  local hex="${1#\#}" pct="$2"
+  local r g b
+  r=$(printf "%d" "0x${hex:0:2}")
+  g=$(printf "%d" "0x${hex:2:2}")
+  b=$(printf "%d" "0x${hex:4:2}")
+  printf "#%02x%02x%02x" $(( r * pct / 100 )) $(( g * pct / 100 )) $(( b * pct / 100 ))
+}
+
+# Lighten a hex color by blending toward white (0 = unchanged, 100 = white)
+lighten_color() {
+  local hex="${1#\#}" pct="$2"
+  local r g b
+  r=$(printf "%d" "0x${hex:0:2}")
+  g=$(printf "%d" "0x${hex:2:2}")
+  b=$(printf "%d" "0x${hex:4:2}")
+  printf "#%02x%02x%02x" $(( r + (255 - r) * pct / 100 )) $(( g + (255 - g) * pct / 100 )) $(( b + (255 - b) * pct / 100 ))
+}
+
 # Only generate dynamic templates for themes with a colors.toml definition
 if [[ -f $COLORS_FILE ]]; then
-  sed_script=$(mktemp)
+  declare -A colors
 
   while IFS='=' read -r key value; do
     key="${key//[\"\' ]/}"                # strip quotes and spaces from key
@@ -33,8 +53,24 @@ if [[ -f $COLORS_FILE ]]; then
     value="${value#*[\"\']}"
     value="${value%%[\"\']*}" # extract value between quotes (ignores inline comments)
 
-    emit_sed_rules "$key" "$value"
-  done <"$COLORS_FILE" >"$sed_script"
+    colors[$key]="$value"
+  done <"$COLORS_FILE"
+
+  # Auto-generate base24 colors from base16 shades when not defined
+  [[ ${colors[dark_bg]} ]]       || colors[dark_bg]=$(darken_color "${colors[bg]}" 75)
+  [[ ${colors[darker_bg]} ]]     || colors[darker_bg]=$(darken_color "${colors[bg]}" 50)
+  [[ ${colors[bright_red]} ]]    || colors[bright_red]=$(lighten_color "${colors[red]}" 20)
+  [[ ${colors[bright_yellow]} ]] || colors[bright_yellow]=$(lighten_color "${colors[yellow]}" 20)
+  [[ ${colors[bright_green]} ]]  || colors[bright_green]=$(lighten_color "${colors[green]}" 20)
+  [[ ${colors[bright_cyan]} ]]   || colors[bright_cyan]=$(lighten_color "${colors[cyan]}" 20)
+  [[ ${colors[bright_blue]} ]]   || colors[bright_blue]=$(lighten_color "${colors[blue]}" 20)
+  [[ ${colors[bright_purple]} ]] || colors[bright_purple]=$(lighten_color "${colors[purple]}" 20)
+
+  sed_script=$(mktemp)
+
+  for key in "${!colors[@]}"; do
+    emit_sed_rules "$key" "${colors[$key]}"
+  done >"$sed_script"
 
   shopt -s nullglob
 
