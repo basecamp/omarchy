@@ -18,4 +18,4 @@ esac
 hyprctl keyword misc:disable_scale_notification true
 hyprctl keyword monitor "$ACTIVE_MONITOR,preferred,auto,$NEW_SCALE"
 hyprctl keyword misc:disable_scale_notification false
-notify-send "󰍹  Display scaling set to ${NEW_SCALE}x"
+notify-send "󰍹    Display scaling set to ${NEW_SCALE}x"
