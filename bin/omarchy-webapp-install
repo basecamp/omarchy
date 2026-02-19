@@ -6,7 +6,7 @@ if [ "$#" -lt 3 ]; then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
-  ICON_REF=$(gum input --prompt "Icon URL> " --placenholder "Leave blank to use favicon or see https://dashboardicons.com (must be PNG!)")
+  ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "Leave blank to use favicon or see https://dashboardicons.com (must be PNG!)")
   CUSTOM_EXEC=""
   MIME_TYPES=""
   INTERACTIVE_MODE=true
