@@ -151,6 +151,11 @@ tml() {
   # Run nvim in the left pane
   tmux send-keys -t "$editor_pane" "$EDITOR ." C-m
 
+  # Short pause to avoid OpenCode terminal control sequence from leaking into the editor pane
+  if [[ "$ai" == "c" ]]; then
+    sleep 2
+  fi
+
   # Select the nvim pane for focus
   tmux select-pane -t "$editor_pane"
 }
