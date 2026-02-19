@@ -81,4 +81,5 @@ set_theme() {
 }
 
 set_theme "code" "$HOME/.config/Code/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes" "$HOME/.vscode/extensions"
+set_theme "codium" "$HOME/.config/VSCodium/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-codium-theme-changes" "$HOME/.vscode-oss/extensions"
 set_theme "cursor" "$HOME/.config/Cursor/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-cursor-theme-changes" "$HOME/.cursor/extensions"
