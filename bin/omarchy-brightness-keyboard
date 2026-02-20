@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Adjust keyboard backlight brightness using available steps.
-# Usage: omarchy-brightness-keyboard <up|down|cycle|toggle>
+# Usage: omarchy-brightness-keyboard <up|down|cycle>
 
 direction="${1:-up}"
 
@@ -24,7 +24,7 @@ max_brightness="$(brightnessctl -d "$device" max)"
 current_brightness="$(brightnessctl -d "$device" get)"
 
 # Calculate step as one unit (keyboards typically have discrete levels like 0-3).
-if [[ "$direction" == "cycle" || "$direction" == "toggle" ]]; then
+if [[ "$direction" == "cycle" ]]; then
   new_brightness=$(( (current_brightness + 1) % (max_brightness + 1) ))
 elif [[ "$direction" == "up" ]]; then
   new_brightness=$((current_brightness + 1))
