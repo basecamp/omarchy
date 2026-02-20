@@ -72,7 +72,8 @@ tooltip {
 }
 
 #custom-screenrecording-indicator,
-#custom-idle-indicator {
+#custom-idle-indicator,
+#custom-notification-silencing-indicator {
   min-width: 12px;
   margin-left: 5px;
   margin-right: 0;
@@ -84,7 +85,8 @@ tooltip {
   color: #a55555;
 }
 
-#custom-idle-indicator.active {
+#custom-idle-indicator.active,
+#custom-notification-silencing-indicator.active {
   color: #a55555;
 }
 
