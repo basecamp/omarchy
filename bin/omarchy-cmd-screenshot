@@ -51,30 +51,27 @@ get_rectangles() {
 
 # Select based on mode
 case "$MODE" in
-region)
-  wayfreeze &
-  PID=$!
-  sleep .1
-  SELECTION=$(slurp 2>/dev/null)
-  kill $PID 2>/dev/null
-  ;;
-windows)
-  wayfreeze &
-  PID=$!
-  sleep .1
-  SELECTION=$(get_rectangles | slurp -r 2>/dev/null)
-  kill $PID 2>/dev/null
-  ;;
-fullscreen)
-  SELECTION=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | "\(.x),\(.y) \((.width / .scale) | floor)x\((.height / .scale) | floor)"')
-  ;;
-smart | *)
-  RECTS=$(get_rectangles)
-  wayfreeze &
-  PID=$!
-  sleep .1
-  SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
-  kill $PID 2>/dev/null
+  region)
+    hyprpicker -r -z >/dev/null 2>&1 & PID=$!
+    sleep .1
+    SELECTION=$(slurp 2>/dev/null)
+    kill $PID 2>/dev/null
+    ;;
+  windows)
+    hyprpicker -r -z >/dev/null 2>&1 & PID=$!
+    sleep .1
+    SELECTION=$(get_rectangles | slurp -r 2>/dev/null)
+    kill $PID 2>/dev/null
+    ;;
+  fullscreen)
+    SELECTION=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | "\(.x),\(.y) \((.width / .scale) | floor)x\((.height / .scale) | floor)"')
+    ;;
+  smart|*)
+    RECTS=$(get_rectangles)
+    hyprpicker -r -z >/dev/null 2>&1 & PID=$!
+    sleep .1
+    SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
+    kill $PID 2>/dev/null
 
   # If the selection area is L * W < 20, we'll assume you were trying to select whichever
   # window or output it was inside of to prevent accidental 2px snapshots
