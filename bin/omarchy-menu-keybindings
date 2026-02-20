@@ -84,8 +84,14 @@ parse_keycodes() {
 # - Map numeric modifier key mask to a textual rendition
 # - Output comma-separated values that the parser can understand
 dynamic_bindings() {
+  local submap_filter="$1"
   hyprctl -j binds |
-    jq -r '.[] | {modmask, key, keycode, description, dispatcher, arg} | "\(.modmask),\(.key)@\(.keycode),\(.description),\(.dispatcher),\(.arg)"' |
+    jq -r --arg submap "$submap_filter" '
+      .[] |
+      select((.submap) == $submap) |
+      {modmask, key, keycode, description, dispatcher, arg} |
+      "\(.modmask),\(.key)@\(.keycode),\(.description),\(.dispatcher),\(.arg)"
+    ' |
     sed -r \
       -e 's/null//' \
       -e 's,~/.local/share/omarchy/bin/,,' \
@@ -221,10 +227,11 @@ prioritize_entries() {
 }
 
 output_keybindings() {
+  local submap_filter="$1"
   build_keymap_cache
 
   {
-    dynamic_bindings
+    dynamic_bindings $submap_filter
     static_bindings
   } |
     sort -u |
@@ -233,13 +240,59 @@ output_keybindings() {
     prioritize_entries
 }
 
-if [[ "$1" == "--print" || "$1" == "-p" ]]; then
-  output_keybindings
+print_usage() {
+  echo "Usage: omarchy-menu-keybindings [--print|-p] [--submap|-s <submap>] [--help|-h]"
+}
+
+PRINT_ONLY=false
+SUBMAP_ARG=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --print|-p)
+      PRINT_ONLY=true
+      shift
+      ;;
+    --submap|-s)
+      if [[ -z "$2" ]]; then
+        echo "Error: --submap requires an argument." >&2
+        print_usage
+        exit 1
+      fi
+      SUBMAP_ARG="$2"
+      shift 2
+      ;;
+    --help|-h)
+      print_usage
+      exit 0
+      ;;
+    *)
+      print_usage
+      exit 1
+      ;;
+  esac
+done
+
+activemap=$(hyprctl submap)
+if [[ "$activemap" == "default" ]]; then
+  activemap=""
+fi
+
+if [[ "$PRINT_ONLY" == "true" ]]; then
+  if [[ -z "$SUBMAP_ARG" ]]; then
+    submap_filter=$activemap
+  elif [[ "$SUBMAP_ARG" == "default" ]]; then
+    submap_filter=""
+  else
+    submap_filter=$SUBMAP_ARG
+  fi
+  output_keybindings $submap_filter
 else
   monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
   menu_height=$((monitor_height * 40 / 100))
 
-  output_keybindings |
-    walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+  # Menu always shown for active map
+  output_keybindings $activemap |
+    walker --dmenu -p "Keybindings$( if [[ ! -z "$activemap" ]]; then echo " for $activemap"; fi )" --width 800 --height "$menu_height"
 fi
 
