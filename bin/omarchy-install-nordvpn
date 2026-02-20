@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# Install the NordVPN service with optional GUI.
+
+echo "Installing NordVPN..."
+omarchy-pkg-aur-add nordvpn-bin
+
+echo "Enabling NordVPN daemon..."
+sudo systemctl enable --now nordvpnd
+
+echo "Adding user to nordvpn group..."
+sudo usermod -aG nordvpn "$USER"
+
+echo -e "\nNordVPN installed! After reboot, run 'nordvpn login' to authenticate."
+
+echo
+gum confirm "Reboot now to make NordVPN usable?" && sudo reboot now
