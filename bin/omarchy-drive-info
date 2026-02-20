@@ -26,4 +26,9 @@ display="$drive"
 [[ -n "$size" ]] && display="$display ($size)"
 [[ -n "$model" ]] && display="$display - $model"
 
+# Append compact partition summary
+part_summary=$(lsblk -nro TYPE,NAME,FSTYPE,MOUNTPOINT "$root_drive" 2>/dev/null | \
+  awk '$1=="part" { printf "%s%s%s", s, ($3==""?"unknown":$3), ($4==""?"":"("$4")"); s=", " }')
+[[ -n "$part_summary" ]] && display+=" [$part_summary]"
+
 echo "$display"
