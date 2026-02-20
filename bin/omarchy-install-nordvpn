@@ -11,6 +11,7 @@ sudo systemctl enable --now nordvpnd
 echo "Adding user to nordvpn group..."
 sudo usermod -aG nordvpn "$USER"
 
-echo ""
-echo "NordVPN installed! Please log out and back in for group changes to take effect."
-echo "Then run 'nordvpn login' to authenticate with your NordVPN account."
+echo -e "\nNordVPN installed! After reboot, run 'nordvpn login' to authenticate."
+
+echo
+gum confirm "Reboot now to make NordVPN usable?" && sudo reboot now
