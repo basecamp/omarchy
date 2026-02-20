@@ -47,7 +47,7 @@ DMESG
 $DMESG_OUTPUT
 
 =========================================
-JOURNALCTL (CURRENT BOOT, ERRORS ONLY)
+JOURNALCTL (CURRENT BOOT, WARNINGS+ERRORS)
 =========================================
 $(journalctl -b -p 4..1)
 
