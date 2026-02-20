@@ -492,7 +492,7 @@ show_remove_elixir_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" "  Omarchy\n󰔫  Channel\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone\n  Time") in
+  case $(menu "Update" "  Omarchy\n󰔫  Channel\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n⌨  Keyboard\n  Timezone\n  Time") in
   *Omarchy*) present_terminal omarchy-update ;;
   *Channel*) show_update_channel_menu ;;
   *Config*) show_update_config_menu ;;
@@ -500,6 +500,7 @@ show_update_menu() {
   *Process*) show_update_process_menu ;;
   *Hardware*) show_update_hardware_menu ;;
   *Firmware*) present_terminal omarchy-update-firmware ;;
+  *Keyboard*) present_terminal omarchy-keyboard-select ;;
   *Timezone*) present_terminal omarchy-tz-select ;;
   *Time*) present_terminal omarchy-update-time ;;
   *Password*) show_update_password_menu ;;
