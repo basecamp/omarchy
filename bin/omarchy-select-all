@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+# Universal select all: detects if the active window is a terminal and sends the
+# appropriate shortcut. Terminals use Ctrl+Shift+A (mapped to select-all in each
+# terminal's config), while all other apps receive the standard Ctrl+A.
+
+window_class=$(hyprctl activewindow -j | grep -oP '"class":\s*"\K[^"]+')
+
+if [[ "$window_class" =~ ^(Alacritty|kitty|com\.mitchellh\.ghostty)$ ]]; then
+  hyprctl dispatch sendshortcut CTRL_SHIFT, A,
+else
+  hyprctl dispatch sendshortcut CTRL, A,
+fi
