@@ -6,10 +6,21 @@
 # Ensure supergfxctl has been installed
 if omarchy-cmd-missing supergfxctl; then
   omarchy-pkg-add supergfxctl
-  sudo systemctl enable --now supergfxd
 
-  # Needed to deal with restoring to sleep where going through VFIO first means we don't need to reboot.
-  sudo sed -i "s/\"vfio_enable\": \".*\"/\"vfio_enable\": true/" /etc/supergfxd.conf
+  # Create config before starting service to prevent hang on first boot
+  sudo tee /etc/supergfxd.conf >/dev/null <<'CONF'
+{
+  "mode": "Hybrid",
+  "vfio_enable": true,
+  "vfio_save": false,
+  "always_reboot": false,
+  "no_logind": false,
+  "logout_timeout_s": 180,
+  "hotplug_type": "None"
+}
+CONF
+
+  sudo systemctl enable --now supergfxd
 fi
 
 gpu_mode=$(supergfxctl -g)
