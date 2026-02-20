@@ -63,6 +63,7 @@ inxi
 iwd
 jq
 kdenlive
+kernel-modules-hook
 kvantum-qt5
 lazydocker
 lazygit
