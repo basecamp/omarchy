@@ -80,7 +80,7 @@ last-boot)
   echo "Uploading previous boot logs to 0x0.st..."
   ;;
 
-installed)
+installed|system-info)
   # System info plus all installed packages
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   {
@@ -100,7 +100,7 @@ installed)
   ;;
 
 *)
-  echo "Usage: $0 [install|this-boot|last-boot|system-info]"
+  echo "Usage: $0 [install|this-boot|last-boot|installed|system-info]"
   echo "  install      - Upload installation logs (default)"
   echo "  this-boot    - Upload logs from current boot"
   echo "  last-boot    - Upload logs from previous boot"

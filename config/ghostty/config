@@ -23,6 +23,8 @@ cursor-style-blink = false
 shell-integration-features = no-cursor,ssh-env
 
 # Keyboard bindings
+keybind = ctrl+shift+page_up=unbind
+keybind = ctrl+shift+page_down=unbind
 keybind = shift+insert=paste_from_clipboard
 keybind = control+insert=copy_to_clipboard
 keybind = super+control+shift+alt+arrow_down=resize_split:down,100

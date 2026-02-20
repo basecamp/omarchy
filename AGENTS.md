@@ -1,7 +1,7 @@
 # Style
 
 - Two spaces for indentation, no tabs
-- Use Bash syntax for conditionals: `[[ -f $file ]]`, not `[ -f "$file" ]`
+- Use bash 5 syntax: `[[ ]]` for conditionals, not `[ ]`. Don't quote variables inside `[[ ]]` (e.g., `[[ -n $var ]]` not `[[ -n "$var" ]]`)
 
 # Command Naming
 
@@ -51,6 +51,7 @@ To create a new migration, run `omarchy-dev-add-migration --no-edit`. This creat
 Migration format:
 - No shebang line
 - Start with an `echo` describing what the migration does
+- Use `$OMARCHY_PATH` to reference the omarchy directory
 
 Example:
 ```bash
