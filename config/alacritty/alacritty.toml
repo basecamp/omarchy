@@ -17,6 +17,5 @@ decorations = "None"
 [keyboard]
 bindings = [
 { key = "Insert", mods = "Shift", action = "Paste" },
-{ key = "Insert", mods = "Control", action = "Copy" },
-{ key = "A", mods = "Control|Shift", action = "SelectAll" }
+{ key = "Insert", mods = "Control", action = "Copy" }
 ]
