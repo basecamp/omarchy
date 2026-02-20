@@ -141,4 +141,9 @@ clojure)
   omarchy-pkg-add rlwrap
   mise use --global clojure@latest
   ;;
+scala)
+  echo -e "Installing Scala...\n"
+  mise use --global scala@latest
+  mise use --global scala-cli@latest
+  ;;
 esac
