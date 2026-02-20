@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Install the NordVPN service with optional GUI.
+
+echo "Installing NordVPN..."
+omarchy-pkg-aur-add nordvpn-bin
+
+echo "Enabling NordVPN daemon..."
+sudo systemctl enable --now nordvpnd
+
+echo "Adding user to nordvpn group..."
+sudo usermod -aG nordvpn "$USER"
+
+echo "Installing NordVPN GUI..."
+omarchy-pkg-aur-add nordvpn-gui
+omarchy-tui-install "NordVPN" "nordvpn-gui" float https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/nordvpn.png
+
+echo ""
+echo "NordVPN installed! Please log out and back in for group changes to take effect."
+echo "Then run 'nordvpn login' to authenticate with your NordVPN account."
