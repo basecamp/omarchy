@@ -3,28 +3,17 @@
 # Install the NordVPN service with optional GUI.
 
 echo "Installing NordVPN..."
-yay -S --noconfirm nordvpn-bin
+omarchy-pkg-aur-add nordvpn-bin
 
-# Enable and start the NordVPN daemon
 echo "Enabling NordVPN daemon..."
 sudo systemctl enable --now nordvpnd
 
-# Add user to nordvpn group for unprivileged access
 echo "Adding user to nordvpn group..."
-sudo usermod -aG nordvpn $USER
+sudo usermod -aG nordvpn "$USER"
 
-# Ask if user wants to install the GUI (if not already installed)
-if ! pacman -Qi nordvpn-gui &>/dev/null && ! pacman -Qi nordvpn-gui-bin &>/dev/null; then
-  if gum confirm "Would you like to install the NordVPN GUI?"; then
-    echo "Installing NordVPN GUI..."
-    yay -S --noconfirm nordvpn-gui
-    omarchy-tui-install "NordVPN" "nordvpn-gui" float https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/nordvpn.png
-  fi
-else
-  echo "NordVPN GUI is already installed."
-  # Ensure TUI entry exists
-  omarchy-tui-install "NordVPN" "nordvpn-gui" float https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/nordvpn.png
-fi
+echo "Installing NordVPN GUI..."
+omarchy-pkg-aur-add nordvpn-gui
+omarchy-tui-install "NordVPN" "nordvpn-gui" float https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/nordvpn.png
 
 echo ""
 echo "NordVPN installed! Please log out and back in for group changes to take effect."
