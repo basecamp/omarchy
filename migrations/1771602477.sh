@@ -35,5 +35,3 @@ if ! grep -q "#custom-idle-indicator" "$STYLE_FILE"; then
 }
 EOF
 fi
-
-omarchy-restart-waybar
