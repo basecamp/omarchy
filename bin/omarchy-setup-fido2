@@ -94,21 +94,41 @@ else
     exit 1
   fi
 
-  # Create the pamu2fcfg file
-  if [ ! -f /etc/fido2/fido2 ]; then
-    sudo mkdir -p /etc/fido2
+  register_new_device() {
     print_success "\nLet's setup your device by confirming on the device now."
     print_info "Touch your FIDO2 key when it lights up...\n"
 
-    if pamu2fcfg >/tmp/fido2; then
-      sudo mv /tmp/fido2 /etc/fido2/fido2
-      print_success "FIDO2 device registered successfully!"
+    if pamu2fcfg >/tmp/fido2_new; then
+      if [ -f /etc/fido2/fido2 ]; then
+        # Append to existing file
+        sudo cat /tmp/fido2_new >> /etc/fido2/fido2
+        print_success "Additional FIDO2 device registered successfully!"
+      else
+        # First device registration
+        sudo mv /tmp/fido2_new /etc/fido2/fido2
+        print_success "FIDO2 device registered successfully!"
+      fi
+      sudo rm -f /tmp/fido2_new
     else
       print_error "\nFIDO2 registration failed. Please try again."
+      sudo rm -f /tmp/fido2_new
       exit 1
     fi
+  }
+
+  # Create or update the pamu2fcfg file
+  if [ ! -f /etc/fido2/fido2 ]; then
+    sudo mkdir -p /etc/fido2
+    register_new_device
   else
-    print_info "FIDO2 device already registered."
+    print_info "FIDO2 device(s) already registered."
+    read -p "Do you want to add another FIDO2 device? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      register_new_device
+    else
+      print_info "Keeping existing FIDO2 configuration."
+    fi
   fi
 
   # Configure PAM
