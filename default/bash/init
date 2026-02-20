@@ -3,6 +3,9 @@ if command -v mise &> /dev/null; then
 fi
 
 if command -v starship &> /dev/null; then
+  # clear stale readline state before rendering prompt (prevents artifacts in prompt after abnormal exits like SIGQUIT)
+  __sanitize_prompt() { printf '\r\033[K'; }
+  PROMPT_COMMAND="__sanitize_prompt${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
   eval "$(starship init bash)"
 fi
 
@@ -11,7 +14,7 @@ if command -v zoxide &> /dev/null; then
 fi
 
 if command -v try &> /dev/null; then
-  eval "$(try init ~/Work/tries)"
+  eval "$(SHELL=/bin/bash try init ~/Work/tries)"
 fi
 
 if command -v fzf &> /dev/null; then

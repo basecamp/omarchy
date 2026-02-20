@@ -1,7 +1,3 @@
 sudo mkdir -p /etc/systemd/system.conf.d
-
-cat <<EOF | sudo tee /etc/systemd/system.conf.d/10-faster-shutdown.conf
-[Manager]
-DefaultTimeoutStopSec=5s
-EOF
+sudo cp "$OMARCHY_PATH/default/systemd/faster-shutdown.conf" /etc/systemd/system.conf.d/10-faster-shutdown.conf
 sudo systemctl daemon-reload

@@ -4,15 +4,33 @@ alias decompress="tar -xzf"
 
 # Write iso file to sd card
 iso2sd() {
-  if [ $# -ne 2 ]; then
-    echo "Usage: iso2sd <input_file> <output_device>"
+  if [[ $# -lt 1 ]]; then
+    echo "Usage: iso2sd <input_file> [output_device]"
     echo "Example: iso2sd ~/Downloads/ubuntu-25.04-desktop-amd64.iso /dev/sda"
-    echo -e "\nAvailable SD cards:"
-    lsblk -d -o NAME | grep -E '^sd[a-z]' | awk '{print "/dev/"$1}'
-  else
-    sudo dd bs=4M status=progress oflag=sync if="$1" of="$2"
-    sudo eject $2
+    return 1
   fi
+
+  local iso="$1"
+  local drive="$2"
+
+  if [[ -z $drive ]]; then
+    local available_sds=$(lsblk -dpno NAME | grep -E '/dev/sd')
+
+    if [[ -z $available_sds ]]; then
+      echo "No SD drives found and no drive specified"
+      return 1
+    fi
+
+    drive=$(omarchy-drive-select "$available_sds")
+
+    if [[ -z $drive ]]; then
+      echo "No drive selected"
+      return 1
+    fi
+  fi
+
+  sudo dd bs=4M status=progress oflag=sync if="$iso" of="$drive"
+  sudo eject "$drive"
 }
 
 # Format an entire drive for a single partition using exFAT
@@ -86,4 +104,63 @@ img2png() {
     -define png:compression-strategy=1 \
     -define png:exclude-chunk=all \
     "${img%.*}-optimized.png"
+}
+
+# SSH Port Forwarding Functions
+fip() {
+  [[ $# -lt 2 ]] && echo "Usage: fip <host> <port1> [port2] ..." && return 1
+  local host="$1"
+  shift
+  for port in "$@"; do
+    ssh -f -N -L "$port:localhost:$port" "$host" && echo "Forwarding localhost:$port -> $host:$port"
+  done
+}
+
+dip() {
+  [[ $# -eq 0 ]] && echo "Usage: dip <port1> [port2] ..." && return 1
+  for port in "$@"; do
+    pkill -f "ssh.*-L $port:localhost:$port" && echo "Stopped forwarding port $port" || echo "No forwarding on port $port"
+  done
+}
+
+lip() {
+  pgrep -af "ssh.*-L [0-9]+:localhost:[0-9]+" || echo "No active forwards"
+}
+
+# Create a tmux layout for dev with editor, ai, and terminal
+tml() {
+  local current_dir="${PWD}"
+  local editor_pane ai_pane
+  local ai="$1"
+
+  # Get current pane ID (will become editor pane after splits)
+  editor_pane=$(tmux display-message -p '#{pane_id}')
+
+  # Split window vertically - top 85%, bottom 15%
+  tmux split-window -v -p 15 -c "$current_dir"
+
+  # Go back to top pane (editor_pane) and split it horizontally
+  tmux select-pane -t "$editor_pane"
+  tmux split-window -h -p 30 -c "$current_dir"
+
+  # After horizontal split, cursor is in the right pane (new pane)
+  # Get its ID and run ai there
+  ai_pane=$(tmux display-message -p '#{pane_id}')
+  tmux send-keys -t "$ai_pane" "$ai" C-m
+
+  # Run nvim in the left pane
+  tmux send-keys -t "$editor_pane" "$EDITOR ." C-m
+
+  # Select the nvim pane for focus
+  tmux select-pane -t "$editor_pane"
+}
+
+# Create a dev layout using tmux with editor, opencode, and terminal
+nic() {
+  tml c
+}
+
+# Create a dev layout using tmux with editor, claude, and terminal
+nicx() {
+  tml cx
 }
