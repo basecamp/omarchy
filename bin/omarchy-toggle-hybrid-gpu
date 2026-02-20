@@ -31,8 +31,9 @@ case "$gpu_mode" in
   ;;
 "Hybrid")
   if gum confirm "Use only integrated GPU and reboot?"; then
-    # Switch to integrated mode
+    # Switch to integrated mode and ensure vfio is enabled (needed for sleep/wake trick)
     sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
+    sudo sed -i 's/"vfio_enable": false/"vfio_enable": true/' /etc/supergfxd.conf
 
     # Force igpu mode after system sleep (or dgpu could get activated)
     sudo mkdir -p /usr/lib/systemd/system-sleep
