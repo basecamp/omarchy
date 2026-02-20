@@ -49,6 +49,7 @@ format-drive() {
       sudo dd if=/dev/zero of="$1" bs=1M count=100 status=progress
       sudo parted -s "$1" mklabel gpt
       sudo parted -s "$1" mkpart primary 1MiB 100%
+      sudo parted -s "$1" set 1 msftdata on
 
       partition="$([[ $1 == *"nvme"* ]] && echo "${1}p1" || echo "${1}1")"
       sudo partprobe "$1" || true
