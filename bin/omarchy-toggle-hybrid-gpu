@@ -6,7 +6,7 @@
 # Ensure supergfxctl has been installed
 if omarchy-cmd-missing supergfxctl; then
   omarchy-pkg-add supergfxctl
-  sudo systemctl enable supergfxd
+  sudo systemctl enable --now supergfxd
 
   # Needed to deal with restoring to sleep where going through VFIO first means we don't need to reboot.
   sudo sed -i "s/\"vfio_enable\": \".*\"/\"vfio_enable\": true/" /etc/supergfxd.conf
@@ -36,7 +36,7 @@ case "$gpu_mode" in
 
     # Force igpu mode after system sleep (or dgpu could get activated)
     sudo mkdir -p /usr/lib/systemd/system-sleep
-    sudo cp -p  $OMARCHY_PATH/default/systemd/system-sleep/force-igpu /usr/lib/systemd/system-sleep/
+    sudo cp -p $OMARCHY_PATH/default/systemd/system-sleep/force-igpu /usr/lib/systemd/system-sleep/
 
     # Delay supergfxd startup to avoid race condition with display manager
     # that can cause system freeze when booting in Integrated mode
