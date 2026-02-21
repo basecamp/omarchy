@@ -11,5 +11,16 @@ Current=breeze
 EOF
 fi
 
+if [ ! -f /etc/sddm.conf.d/toWayland.conf ]; then
+  cat <<EOF | sudo tee /etc/sddm.conf.d/toWayland.conf
+[General]
+DisplayServer=wayland
+GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell
+
+[Wayland]
+CompositorCommand=Hyprland
+EOF
+fi
+
 # Don't use chrootable here as --now will cause issues for manual installs
 sudo systemctl enable sddm.service
