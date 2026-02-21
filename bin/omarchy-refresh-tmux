@@ -3,4 +3,7 @@
 # Overwrite the user tmux config with the Omarchy default and reload tmux.
 
 omarchy-refresh-config tmux/tmux.conf
-tmux source-file ~/.config/tmux/tmux.conf
+
+if pgrep -x tmux; then
+  tmux source-file ~/.config/tmux/tmux.conf
+fi
