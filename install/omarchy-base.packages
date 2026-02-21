@@ -63,6 +63,7 @@ inxi
 iwd
 jq
 kdenlive
+kernel-modules-hook
 kvantum-qt5
 lazydocker
 lazygit
@@ -120,6 +121,7 @@ swayosd
 system-config-printer
 tldr
 tree-sitter-cli
+tmux
 tobi-try
 ttf-cascadia-mono-nerd
 ttf-ia-writer
@@ -132,7 +134,6 @@ unzip
 usage
 uwsm
 waybar
-wayfreeze
 whois
 wireless-regdb
 wiremix

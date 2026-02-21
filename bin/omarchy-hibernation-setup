@@ -59,16 +59,23 @@ sudo mkdir -p /etc/mkinitcpio.conf.d
 echo "Adding resume hook to $MKINITCPIO_CONF"
 echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
 
-# Configure suspend-then-hibernate
-echo "Configuring suspend-then-hibernate"
-sudo mkdir -p /etc/systemd/logind.conf.d /etc/systemd/sleep.conf.d /usr/lib/systemd/system-sleep
-sudo cp "$OMARCHY_PATH/default/systemd/lid.conf" /etc/systemd/logind.conf.d/
-sudo cp "$OMARCHY_PATH/default/systemd/hibernate.conf" /etc/systemd/sleep.conf.d/
+# Ensure keyboard backlight doesn't prevent sleep
 sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
 
-# Regenerate initramfs
+# Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)
+if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
+  LIMINE_DROP_IN="/etc/limine-entry-tool.d/rtc-alarm.conf"
+  if [[ ! -f "$LIMINE_DROP_IN" ]]; then
+    echo "Enabling ACPI RTC alarm for s2idle suspend"
+    sudo mkdir -p /etc/limine-entry-tool.d
+    echo 'KERNEL_CMDLINE[default]+="rtc_cmos.use_acpi_alarm=1"' | sudo tee "$LIMINE_DROP_IN" >/dev/null
+  fi
+fi
+
+# Regenerate initramfs and boot entry
 echo "Regenerating initramfs..."
 sudo limine-mkinitcpio
+sudo limine-update
 
 echo
 

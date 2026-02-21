@@ -30,8 +30,8 @@
   --interactive-accent-hover: {{ accent }};
 
   /* Muted text */
-  --text-muted: {{ muted }};
-  --text-faint: {{ muted }};
+  --text-muted: color-mix(in srgb, {{ foreground }} 70%, transparent);
+  --text-faint: color-mix(in srgb, {{ foreground }} 55%, transparent);
 
   /* Code */
   --code-normal: {{ cyan }};

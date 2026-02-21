@@ -99,18 +99,10 @@ show_trigger_menu() {
 
 show_capture_menu() {
   case $(menu "Capture" "  Screenshot\n  Screenrecord\n󰃉  Color") in
-  *Screenshot*) show_screenshot_menu ;;
+  *Screenshot*) omarchy-cmd-screenshot ;;
   *Screenrecord*) show_screenrecord_menu ;;
   *Color*) pkill hyprpicker || hyprpicker -a ;;
   *) show_trigger_menu ;;
-  esac
-}
-
-show_screenshot_menu() {
-  case $(menu "Screenshot" "  Snap with Editing\n  Straight to Clipboard") in
-  *Editing*) omarchy-cmd-screenshot smart ;;
-  *Clipboard*) omarchy-cmd-screenshot smart clipboard ;;
-  *) show_capture_menu ;;
   esac
 }
 
@@ -144,11 +136,15 @@ show_webcam_select_menu() {
 show_screenrecord_menu() {
   omarchy-cmd-screenrecord --stop-recording && exit 0
 
-  case $(menu "Screenrecord" "  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam") in
+  case $(menu "Screenrecord" "  With no audio\n  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam") in
+  *"With no audio") omarchy-cmd-screenrecord ;;
   *"With desktop audio") omarchy-cmd-screenrecord --with-desktop-audio ;;
   *"With desktop + microphone audio") omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio ;;
   *"With desktop + microphone audio + webcam")
-    local device=$(show_webcam_select_menu) || { back_to show_capture_menu; return; }
+    local device=$(show_webcam_select_menu) || {
+      back_to show_capture_menu
+      return
+    }
     omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device"
     ;;
   *) back_to show_capture_menu ;;
@@ -185,7 +181,7 @@ show_style_menu() {
   case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Font*) show_font_menu ;;
-  *Background*) omarchy-theme-bg-next ;;
+  *Background*) show_background_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
   *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
   *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
@@ -195,6 +191,10 @@ show_style_menu() {
 
 show_theme_menu() {
   omarchy-launch-walker -m menus:omarchythemes --width 800 --minheight 400
+}
+
+show_background_menu() {
+  omarchy-launch-walker -m menus:omarchyBackgroundSelector --width 800 --minheight 400
 }
 
 show_font_menu() {
@@ -303,9 +303,10 @@ show_install_menu() {
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Tailscale\n󰟵  Bitwarden\n  Chromium Account") in
+  case $(menu "Install" "  Dropbox\n  Tailscale\n󱇱  NordVPN\n󰟵  Bitwarden\n  Chromium Account") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
+  *NordVPN*) present_terminal omarchy-install-nordvpn ;;
   *Bitwarden*) install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden" ;;
   *Chromium*) present_terminal omarchy-install-chromium-google-account ;;
   *) show_install_menu ;;
@@ -386,7 +387,7 @@ show_install_font_menu() {
 }
 
 show_install_development_menu() {
-  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure") in
+  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure\n  Scala") in
   *Rails*) present_terminal "omarchy-install-dev-env ruby" ;;
   *Docker*) present_terminal omarchy-install-docker-dbs ;;
   *JavaScript*) show_install_javascript_menu ;;
@@ -400,6 +401,7 @@ show_install_development_menu() {
   *NET*) present_terminal "omarchy-install-dev-env dotnet" ;;
   *OCaml*) present_terminal "omarchy-install-dev-env ocaml" ;;
   *Clojure*) present_terminal "omarchy-install-dev-env clojure" ;;
+  *Scala*) present_terminal "omarchy-install-dev-env scala" ;;
   *) show_install_menu ;;
   esac
 }
@@ -447,7 +449,7 @@ show_remove_menu() {
 }
 
 show_remove_development_menu() {
-  case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure") in
+  case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure\n  Scala") in
   *Rails*) present_terminal "omarchy-remove-dev-env ruby" ;;
   *JavaScript*) show_remove_javascript_menu ;;
   *Go*) present_terminal "omarchy-remove-dev-env go" ;;
@@ -460,6 +462,7 @@ show_remove_development_menu() {
   *NET*) present_terminal "omarchy-remove-dev-env dotnet" ;;
   *OCaml*) present_terminal "omarchy-remove-dev-env ocaml" ;;
   *Clojure*) present_terminal "omarchy-remove-dev-env clojure" ;;
+  *Scala*) present_terminal "omarchy-remove-dev-env scala" ;;
   *) show_remove_menu ;;
   esac
 }
@@ -491,7 +494,7 @@ show_remove_elixir_menu() {
 }
 
 show_update_menu() {
-  case $(menu "Update" " Omarchy\n󰔫  Channel\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone\n  Time") in
+  case $(menu "Update" "  Omarchy\n󰔫  Channel\n  Config\n󰸌  Extra Themes\n  Process\n󰇅  Hardware\n  Firmware\n  Password\n  Timezone\n  Time") in
   *Omarchy*) present_terminal omarchy-update ;;
   *Channel*) show_update_channel_menu ;;
   *Config*) show_update_config_menu ;;
@@ -527,13 +530,14 @@ show_update_process_menu() {
 }
 
 show_update_config_menu() {
-  case $(menu "Use default config" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n󱣴  Plymouth\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
+  case $(menu "Use default config" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n󱣴  Plymouth\n  Swayosd\n  Tmux\n󰌧  Walker\n󰍜  Waybar") in
   *Hyprland*) present_terminal omarchy-refresh-hyprland ;;
   *Hypridle*) present_terminal omarchy-refresh-hypridle ;;
   *Hyprlock*) present_terminal omarchy-refresh-hyprlock ;;
   *Hyprsunset*) present_terminal omarchy-refresh-hyprsunset ;;
   *Plymouth*) present_terminal omarchy-refresh-plymouth ;;
   *Swayosd*) present_terminal omarchy-refresh-swayosd ;;
+  *Tmux*) present_terminal omarchy-refresh-tmux ;;
   *Walker*) present_terminal omarchy-refresh-walker ;;
   *Waybar*) present_terminal omarchy-refresh-waybar ;;
   *) show_update_menu ;;
@@ -588,6 +592,7 @@ go_to_menu() {
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
   *share*) show_share_menu ;;
+  *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
   *style*) show_style_menu ;;
   *theme*) show_theme_menu ;;
