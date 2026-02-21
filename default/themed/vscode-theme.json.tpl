@@ -8,11 +8,11 @@
         "parameter.declaration": "{{ cyan }}",
         "variable": "{{ foreground }}",
         "variable.declaration": "{{ foreground }}",
-        "variable.readonly": "{{ bright_purple }}",
+        "variable.readonly": "{{ bright_yellow }}",
         "variable.defaultLibrary": "{{ foreground }}",
-        "property": "{{ foreground }}",
-        "property.declaration": "{{ foreground }}",
-        "property.readonly": "{{ foreground }}",
+        "property": "{{ cyan }}",
+        "property.declaration": "{{ cyan }}",
+        "property.readonly": "{{ cyan }}",
         "function": "{{ blue }}",
         "function.declaration": "{{ blue }}",
         "function.defaultLibrary": "{{ cyan }}",
@@ -24,7 +24,7 @@
         "interface": "{{ yellow }}",
         "interface.declaration": "{{ yellow }}",
         "enum": "{{ yellow }}",
-        "enumMember": "{{ bright_purple }}",
+        "enumMember": "{{ orange }}",
         "type": "{{ yellow }}",
         "type.declaration": "{{ yellow }}",
         "type.defaultLibrary": "{{ foreground }}",
@@ -651,10 +651,10 @@
         "symbolIcon.booleanForeground": "{{ orange }}",
         "symbolIcon.classForeground": "{{ yellow }}",
         "symbolIcon.colorForeground": "{{ cyan }}",
-        "symbolIcon.constantForeground": "{{ bright_purple }}",
+        "symbolIcon.constantForeground": "{{ bright_yellow }}",
         "symbolIcon.constructorForeground": "{{ blue }}",
         "symbolIcon.enumeratorForeground": "{{ yellow }}",
-        "symbolIcon.enumeratorMemberForeground": "{{ bright_purple }}",
+        "symbolIcon.enumeratorMemberForeground": "{{ orange }}",
         "symbolIcon.eventForeground": "{{ yellow }}",
         "symbolIcon.fieldForeground": "{{ foreground }}",
         "symbolIcon.fileForeground": "{{ foreground }}",
@@ -781,14 +781,21 @@
             "name": "Variable Property",
             "scope": ["variable.other.property", "variable.other.object.property"],
             "settings": {
-                "foreground": "{{ foreground }}"
+                "foreground": "{{ cyan }}"
             }
         },
         {
             "name": "Variable Constant",
-            "scope": ["variable.other.constant", "variable.other.enummember"],
+            "scope": ["variable.other.constant"],
             "settings": {
-                "foreground": "{{ bright_purple }}"
+                "foreground": "{{ bright_yellow }}"
+            }
+        },
+        {
+            "name": "Enum Member",
+            "scope": ["variable.other.enummember"],
+            "settings": {
+                "foreground": "{{ orange }}"
             }
         },
         {
