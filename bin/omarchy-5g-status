@@ -1,0 +1,57 @@
+#!/bin/bash
+# Waybar module for 5G/LTE modem status
+# Returns JSON for waybar custom module
+
+MODEM=$(mmcli -L 2>/dev/null | grep -oP '/Modem/\K\d+' | head -1)
+
+if [ -z "$MODEM" ]; then
+    echo '{"text": "", "tooltip": "No modem found", "class": "hidden"}'
+    exit 0
+fi
+
+# Strip ANSI color codes from output
+STATUS=$(mmcli -m "$MODEM" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+STATE=$(echo "$STATUS" | grep -P '^\s+\|\s+state:' | grep -oP 'state:\s+\K\w+')
+SIGNAL=$(echo "$STATUS" | grep -oP 'signal quality:\s+\K\d+')
+OPERATOR=$(echo "$STATUS" | grep -oP 'operator name:\s+\K.+' | head -1)
+ACCESS=$(echo "$STATUS" | grep -oP 'access tech:\s+\K\w+')
+
+# Get bearer info if connected
+BEARER=$(echo "$STATUS" | grep -oP 'Bearer\s+\|.*paths:.*Bearer/\K\d+' | tail -1)
+if [ -n "$BEARER" ]; then
+    IP=$(mmcli -b "$BEARER" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -oP 'address:\s+\K[\d.]+')
+fi
+
+# Default signal if not available
+[ -z "$SIGNAL" ] && SIGNAL=0
+
+# Select icon based on signal strength and connection state
+if [ "$STATE" = "connected" ]; then
+    if [ "$SIGNAL" -ge 80 ]; then
+        ICON="󰀳"
+    elif [ "$SIGNAL" -ge 60 ]; then
+        ICON="󰀵"
+    elif [ "$SIGNAL" -ge 40 ]; then
+        ICON="󰀷"
+    elif [ "$SIGNAL" -ge 20 ]; then
+        ICON="󰀹"
+    else
+        ICON="󰀻"
+    fi
+    CLASS="connected"
+    TOOLTIP="$OPERATOR ($ACCESS)\nSignal: $SIGNAL%\nIP: $IP\nClick to manage"
+elif [ "$STATE" = "registered" ]; then
+    ICON="󰀽"
+    CLASS="registered"
+    TOOLTIP="$OPERATOR ($ACCESS)\nSignal: $SIGNAL%\nClick to connect"
+elif [ "$STATE" = "disabled" ]; then
+    ICON="󰀿"
+    CLASS="disabled"
+    TOOLTIP="5G Modem disabled\nClick to enable"
+else
+    ICON="󰀿"
+    CLASS="disconnected"
+    TOOLTIP="5G Modem: $STATE\nClick to manage"
+fi
+
+echo "{\"text\": \"$ICON\", \"tooltip\": \"$TOOLTIP\", \"class\": \"$CLASS\", \"percentage\": $SIGNAL}"
