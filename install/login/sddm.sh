@@ -14,8 +14,6 @@ fi
 if [ ! -f /etc/sddm.conf.d/toWayland.conf ]; then
   cat <<EOF | sudo tee /etc/sddm.conf.d/toWayland.conf
 [General]
-HaltCommand=/usr/bin/systemctl poweroff
-RebootCommand=/usr/bin/systemctl reboot
 DisplayServer=wayland
 GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell
 
