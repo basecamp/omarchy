@@ -8,7 +8,7 @@ if [[ -z $1 ]]; then
 fi
 
 install_php() {
-  sudo pacman -S php composer php-sqlite xdebug --noconfirm
+  omarchy-pkg-add php composer php-sqlite xdebug
 
   # Install Path for Composer
   if [[ ":$PATH:" != *":$HOME/.config/composer/vendor/bin:"* ]]; then

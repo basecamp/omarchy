@@ -3,7 +3,7 @@
 if lspci -nn | grep -q "106b:180[12]"; then
   echo "Detected MacBook with T2 chip. Installing support items..."
 
-  sudo pacman -S --noconfirm --needed \
+  omarchy-pkg-add \
     linux-t2 \
     linux-t2-headers \
     apple-t2-audio-config \

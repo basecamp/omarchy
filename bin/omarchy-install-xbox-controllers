@@ -5,8 +5,8 @@
 set -e
 
 # Install xpadneo to ensure controllers work out of the box
-sudo pacman -S --noconfirm --needed linux-headers
-yay -S --noconfirm xpadneo-dkms
+omarchy-pkg-add linux-headers
+omarchy-pkg-aur-add xpadneo-dkms
 
 # Prevent xpad/xpadneo driver conflict
 echo blacklist xpad | sudo tee /etc/modprobe.d/blacklist-xpad.conf >/dev/null

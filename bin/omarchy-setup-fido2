@@ -88,7 +88,7 @@ else
 
   # Install required packages
   print_info "Installing required packages..."
-  sudo pacman -S --noconfirm --needed libfido2 pam-u2f
+  omarchy-pkg-add libfido2 pam-u2f
 
   if ! check_fido2_hardware; then
     exit 1
