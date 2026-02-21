@@ -1,5 +1,5 @@
 if command -v limine &>/dev/null; then
-  omarchy-pkg-add limine-snapper-sync limine-mkinitcpio-hook
+  sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
 
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
@@ -44,7 +44,6 @@ EOF
 
   # We overwrite the whole thing knowing the limine-update will add the entries for us
   sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
-
 
   # Match Snapper configs if not installing from the ISO
   if [[ -z ${OMARCHY_CHROOT_INSTALL:-} ]]; then
@@ -102,7 +101,7 @@ if ! grep -q "^/+" /boot/limine.conf; then
 fi
 
 if [[ -n $EFI ]] && efibootmgr &>/dev/null; then
-    # Remove the archinstall-created Limine entry
+  # Remove the archinstall-created Limine entry
   while IFS= read -r bootnum; do
     sudo efibootmgr -b "$bootnum" -B >/dev/null 2>&1
   done < <(efibootmgr | grep -E "^Boot[0-9]{4}\*? Arch Linux Limine" | sed 's/^Boot\([0-9]\{4\}\).*/\1/')
