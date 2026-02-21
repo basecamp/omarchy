@@ -23,13 +23,36 @@ CONF
   sudo systemctl enable --now supergfxd
 fi
 
-gpu_mode=$(supergfxctl -g)
+check_gpu_state() {
+  gpu_mode=$(supergfxctl -g)
+
+  # Verify reported mode against actual hardware state
+  nvidia_driver_active=$(lspci -k 2>/dev/null | grep -A2 -i nvidia | grep -q "Kernel driver in use: nvidia" && echo "yes" || echo "no")
+
+  if [[ $gpu_mode == "Integrated" && $nvidia_driver_active == "yes" ]]; then
+    gpu_mode="Hybrid"
+  elif [[ $gpu_mode == "Hybrid" && $nvidia_driver_active == "no" ]]; then
+    gpu_mode="Integrated"
+  fi
+
+  echo "$gpu_mode"
+}
+
+gpu_mode=$(gum spin --spinner dot --title "Checking hardware state..." -- bash -c "$(declare -f check_gpu_state); check_gpu_state")
 
 case "$gpu_mode" in
 "Integrated")
   if gum confirm "Enable dedicated GPU and reboot?"; then
     # Switch to hybrid mode
     sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Hybrid\"/" /etc/supergfxd.conf
+
+    # Remove nvidia module blacklist so the driver can load
+    sudo rm -f /etc/modprobe.d/nvidia-blacklist.conf
+    if command -v limine-mkinitcpio &>/dev/null; then
+      sudo limine-mkinitcpio
+    else
+      sudo mkinitcpio -P
+    fi
 
     # Let hybrid mode be the default after system sleep
     sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu
@@ -45,6 +68,14 @@ case "$gpu_mode" in
     # Switch to integrated mode and ensure vfio is enabled (needed for sleep/wake trick)
     sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
     sudo sed -i 's/"vfio_enable": false/"vfio_enable": true/' /etc/supergfxd.conf
+
+    # Blacklist nvidia kernel modules so they can't load
+    sudo cp -p $OMARCHY_PATH/default/modprobe.d/nvidia-blacklist.conf /etc/modprobe.d/nvidia-blacklist.conf
+    if command -v limine-mkinitcpio &>/dev/null; then
+      sudo limine-mkinitcpio
+    else
+      sudo mkinitcpio -P
+    fi
 
     # Force igpu mode after system sleep (or dgpu could get activated)
     sudo mkdir -p /usr/lib/systemd/system-sleep
