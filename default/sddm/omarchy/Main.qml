@@ -8,6 +8,14 @@ Rectangle {
     color: "#000000"
 
     property string currentUser: userModel.lastUser
+    property int sessionIndex: {
+        for (var i = 0; i < sessionModel.rowCount(); i++) {
+            var name = (sessionModel.data(sessionModel.index(i, 0), Qt.DisplayRole) || "").toString()
+            if (name.indexOf("uwsm") !== -1)
+                return i
+        }
+        return sessionModel.lastIndex
+    }
 
     Connections {
         target: sddm
@@ -68,7 +76,7 @@ Rectangle {
 
                     Keys.onPressed: {
                         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                            sddm.login(root.currentUser, password.text, sessionModel.lastIndex)
+                            sddm.login(root.currentUser, password.text, root.sessionIndex)
                             event.accepted = true
                         }
                     }
