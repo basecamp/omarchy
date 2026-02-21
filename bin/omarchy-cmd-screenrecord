@@ -86,8 +86,20 @@ start_screenrecording() {
 
   [[ -n $audio_devices ]] && audio_args+="-a $audio_devices"
 
-  gpu-screen-recorder -w portal -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
+  gpu-screen-recorder -w portal -k h264 -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
   toggle_screenrecording_indicator
+}
+
+trim_first_frame() {
+  local latest=$(ls -t "$OUTPUT_DIR"/screenrecording-*.mp4 2>/dev/null | head -1)
+  if [[ -n $latest ]]; then
+    local trimmed="${latest%.mp4}-trimmed.mp4"
+    if ffmpeg -y -ss 0.1 -i "$latest" -c copy "$trimmed" -loglevel quiet 2>/dev/null; then
+      mv "$trimmed" "$latest"
+    else
+      rm -f "$trimmed"
+    fi
+  fi
 }
 
 stop_screenrecording() {
@@ -106,6 +118,7 @@ stop_screenrecording() {
     notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
   else
     cleanup_webcam
+    trim_first_frame
     notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
   fi
   toggle_screenrecording_indicator
