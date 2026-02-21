@@ -4,9 +4,9 @@
 # Used by the battery monitor and other battery-related checks.
 
 for bat in /sys/class/power_supply/BAT*; do
-  [[ -r "$bat/present" ]] &&
-  [[ "$(cat "$bat/present")" == "1" ]] &&
-  [[ "$(cat "$bat/type")" == "Battery" ]] &&
+  [[ -r $bat/present ]] &&
+  [[ $(cat $bat/present) == "1" ]] &&
+  [[ $(cat $bat/type) == "Battery" ]] &&
   exit 0
 done
 

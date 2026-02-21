@@ -8,10 +8,10 @@ if [[ -z $1 ]]; then
 fi
 
 install_php() {
-  sudo pacman -S php composer php-sqlite xdebug --noconfirm
+  omarchy-pkg-add php composer php-sqlite xdebug
 
   # Install Path for Composer
-  if [[ ":$PATH:" != *":$HOME/.config/composer/vendor/bin:"* ]]; then
+  if [[ :$PATH: != *:$HOME/.config/composer/vendor/bin:* ]]; then
     echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >>"$HOME/.bashrc"
     source "$HOME/.bashrc"
     echo "Added Composer global bin directory to PATH."

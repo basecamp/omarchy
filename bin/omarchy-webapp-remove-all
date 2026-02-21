@@ -17,7 +17,7 @@ while IFS= read -r -d '' file; do
   fi
 done < <(find "$APP_DIR" -maxdepth 1 -name "*.desktop" -print0 2>/dev/null)
 
-if [[ ${#webapp_desktop_files[@]} -eq 0 ]]; then
+if (( ${#webapp_desktop_files[@]} == 0 )); then
   echo "No web apps found."
   exit 0
 fi

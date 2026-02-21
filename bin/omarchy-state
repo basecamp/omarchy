@@ -10,12 +10,12 @@ mkdir -p "$STATE_DIR"
 COMMAND="$1"
 STATE_NAME="$2"
 
-if [[ -z "$COMMAND" ]]; then
+if [[ -z $COMMAND ]]; then
   echo "Usage: omarchy-state <set|clear> <state-name-or-pattern>"
   exit 1
 fi
 
-if [[ -z "$STATE_NAME" ]]; then
+if [[ -z $STATE_NAME ]]; then
   echo "Usage: omarchy-state $COMMAND <state-name>"
   exit 1
 fi

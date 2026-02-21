@@ -2,7 +2,7 @@ echo "Update hyprlock font to match current system font"
 
 font_name=$(omarchy-font-current)
 
-if [[ -n "$font_name" ]]; then
+if [[ -n $font_name ]]; then
   cp ~/.config/hypr/hyprlock.conf ~/.config/hypr/hyprlock.conf.bak.$(date +%s)
 
   echo "Found font '$font_name', updating hyprlock"

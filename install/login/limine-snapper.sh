@@ -1,5 +1,5 @@
 if command -v limine &>/dev/null; then
-  sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
+  omarchy-pkg-add limine-snapper-sync limine-mkinitcpio-hook
 
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
@@ -38,7 +38,7 @@ EOF
   fi
 
   # Remove the original config file if it's not /boot/limine.conf
-  if [[ "$limine_config" != "/boot/limine.conf" ]] && [[ -f "$limine_config" ]]; then
+  if [[ $limine_config != "/boot/limine.conf" ]] && [[ -f $limine_config ]]; then
     sudo rm "$limine_config"
   fi
 
@@ -73,11 +73,11 @@ fi
 echo "Re-enabling mkinitcpio hooks..."
 
 # Restore the specific mkinitcpio pacman hooks
-if [ -f /usr/share/libalpm/hooks/90-mkinitcpio-install.hook.disabled ]; then
+if [[ -f /usr/share/libalpm/hooks/90-mkinitcpio-install.hook.disabled ]]; then
   sudo mv /usr/share/libalpm/hooks/90-mkinitcpio-install.hook.disabled /usr/share/libalpm/hooks/90-mkinitcpio-install.hook
 fi
 
-if [ -f /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled ]; then
+if [[ -f /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled ]]; then
   sudo mv /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook
 fi
 
@@ -99,7 +99,7 @@ fi
 #
 #   uki_file=$(find /boot/EFI/Linux/ -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | head -1)
 #
-#   if [[ -n "$uki_file" ]]; then
+#   if [[ -n $uki_file ]]; then
 #     sudo efibootmgr --create \
 #       --disk "$(findmnt -n -o SOURCE /boot | sed 's/p\?[0-9]*$//')" \
 #       --part "$(findmnt -n -o SOURCE /boot | grep -o 'p\?[0-9]*$' | sed 's/^p//')" \

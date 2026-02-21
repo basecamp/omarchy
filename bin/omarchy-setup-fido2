@@ -21,7 +21,7 @@ print_info() {
 
 check_fido2_hardware() {
   tokens=$(fido2-token -L 2>/dev/null)
-  if [ -z "$tokens" ]; then
+  if [[ -z $tokens ]]; then
     print_error "\nNo FIDO2 device detected. Please plug it in (you may need to unlock it as well)."
     return 1
   fi
@@ -36,10 +36,10 @@ setup_pam_config() {
   fi
 
   # Configure polkit
-  if [ -f /etc/pam.d/polkit-1 ] && ! grep -q 'pam_u2f.so' /etc/pam.d/polkit-1; then
+  if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_u2f.so' /etc/pam.d/polkit-1; then
     print_info "Configuring polkit for FIDO2 authentication..."
     sudo sed -i '1i auth      sufficient pam_u2f.so cue authfile=/etc/fido2/fido2' /etc/pam.d/polkit-1
-  elif [ ! -f /etc/pam.d/polkit-1 ]; then
+  elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
     print_info "Creating polkit configuration with FIDO2 authentication..."
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
 auth      sufficient pam_u2f.so cue authfile=/etc/fido2/fido2
@@ -60,20 +60,20 @@ remove_pam_config() {
   fi
 
   # Remove from polkit
-  if [ -f /etc/pam.d/polkit-1 ] && grep -Fq 'pam_u2f.so' /etc/pam.d/polkit-1; then
+  if [[ -f /etc/pam.d/polkit-1 ]] && grep -Fq 'pam_u2f.so' /etc/pam.d/polkit-1; then
     print_info "Removing FIDO2 authentication from polkit..."
     sudo sed -i '/pam_u2f\.so/d' /etc/pam.d/polkit-1
   fi
 }
 
-if [[ "--remove" == "$1" ]]; then
+if [[ "--remove" == $1 ]]; then
   print_success "Removing FIDO2 device from authentication.\n"
 
   # Remove PAM configuration
   remove_pam_config
 
   # Remove FIDO2 configuration
-  if [ -d /etc/fido2 ]; then
+  if [[ -d /etc/fido2 ]]; then
     print_info "Removing FIDO2 configuration..."
     sudo rm -rf /etc/fido2
   fi
@@ -88,14 +88,14 @@ else
 
   # Install required packages
   print_info "Installing required packages..."
-  sudo pacman -S --noconfirm --needed libfido2 pam-u2f
+  omarchy-pkg-add libfido2 pam-u2f
 
   if ! check_fido2_hardware; then
     exit 1
   fi
 
   # Create the pamu2fcfg file
-  if [ ! -f /etc/fido2/fido2 ]; then
+  if [[ ! -f /etc/fido2/fido2 ]]; then
     sudo mkdir -p /etc/fido2
     print_success "\nLet's setup your device by confirming on the device now."
     print_info "Touch your FIDO2 key when it lights up...\n"

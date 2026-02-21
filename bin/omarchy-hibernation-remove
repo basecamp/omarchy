@@ -6,7 +6,7 @@
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 
 # Check if hibernation is configured
-if [ ! -f "$MKINITCPIO_CONF" ] || ! grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+if [[ ! -f $MKINITCPIO_CONF ]] || ! grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
   echo "Hibernation is not set up"
   exit 0
 fi
@@ -25,7 +25,7 @@ if swapon --show | grep -q "$SWAP_FILE"; then
 fi
 
 # Remove swapfile
-if [ -f "$SWAP_FILE" ]; then
+if [[ -f $SWAP_FILE ]]; then
   echo "Removing swapfile"
   sudo rm "$SWAP_FILE"
 fi
