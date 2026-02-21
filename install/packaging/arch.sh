@@ -44,6 +44,17 @@ if [ -n "$OMARCHY_ARM" ]; then
     echo "Skipping Asahi-specific packages (not running on Apple Silicon)"
   fi
 
+  # Install Raspberry Pi-specific packages (Pi 4, Pi 5, Pi 500, CM4, CM5)
+  # Check device tree model for Raspberry Pi hardware
+  if [[ -f /sys/firmware/devicetree/base/model ]]; then
+    pi_model=$(tr -d '\0' < /sys/firmware/devicetree/base/model 2>/dev/null)
+    if [[ "$pi_model" == *"Raspberry Pi"* ]]; then
+      echo "Detected $pi_model - installing Raspberry Pi GPU packages..."
+      # vulkan-broadcom: Hardware Vulkan driver for VideoCore VI/VII (Pi 4/5/500)
+      with_yes sudo pacman -S --noconfirm --needed vulkan-broadcom
+    fi
+  fi
+
   # Run ARM-specific installation scripts
   echo "Running ARM-specific installation scripts..."
 

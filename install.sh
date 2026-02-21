@@ -33,6 +33,12 @@ if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
   # This prevents false positives from systemd-detect-virt on real hardware
   if [[ -f /sys/firmware/devicetree/base/model ]]; then
     export OMARCHY_ARM_BARE_METAL=true
+
+    # Detect Raspberry Pi specifically (Pi 4, Pi 5, Pi 500, CM4, CM5)
+    pi_model=$(tr -d '\0' < /sys/firmware/devicetree/base/model 2>/dev/null)
+    if [[ "$pi_model" == *"Raspberry Pi"* ]]; then
+      export OMARCHY_RASPBERRY_PI=true
+    fi
   fi
 fi
 
