@@ -1,0 +1,58 @@
+#!/bin/bash
+
+set -e
+
+MPV_CONFIG_PATH="$HOME/.config/mpv/mpv.conf"
+PATCH_LINE="target-colorspace-hint=no"
+
+is_patch_applied() {
+  if [ -f "$MPV_CONFIG_PATH" ] && grep -q "^$PATCH_LINE" "$MPV_CONFIG_PATH"; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+apply_patch() {
+  mkdir -p "$(dirname "$MPV_CONFIG_PATH")"
+  if ! is_patch_applied; then
+    echo "# Temporary fullscreen support to prevent washed-out colors" >> "$MPV_CONFIG_PATH"
+    echo "$PATCH_LINE" >> "$MPV_CONFIG_PATH"
+  fi
+}
+
+remove_patch() {
+  if is_patch_applied;
+  then
+    sed -i "/^# Temporary fullscreen support to prevent washed-out colors/d" "$MPV_CONFIG_PATH"
+    sed -i "/^$PATCH_LINE/d" "$MPV_CONFIG_PATH"
+  fi
+}
+
+echo "These changes are of relative functionality, therefore optional and reversible"
+echo ""
+
+if is_patch_applied;
+then
+  STATE="On"
+  STATE_COLOR=2
+else
+  STATE="Off"
+  STATE_COLOR=1
+fi
+
+gum join --horizontal "$(gum style --foreground 73 --bold 'MPV fullscreen (tone mapping) is currently: ')" "$(gum style --foreground "$STATE_COLOR" --bold "$STATE")"
+
+gum style \
+  --foreground 249 '  Addresses washed-out colors in MPV while on fullscren.
+  It may be removed when fixed upstream.'
+
+CHOICE=$(gum choose "On" "Off")
+
+if [ "$CHOICE" == "On" ]; then
+  apply_patch
+  echo "Patch applied."
+else
+  remove_patch
+  echo "Patch removed."
+fi
