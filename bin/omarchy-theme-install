@@ -29,5 +29,10 @@ if ! git clone "$REPO_URL" "$THEME_PATH"; then
   exit 1
 fi
 
+# Ask whether to keep or delete .git
+if gum choose --header="Do you want to keep git?" "Keep" "Delete" | grep -q "Delete"; then
+  rm -rf "$THEME_PATH/.git"
+fi
+
 # Apply the new theme with omarchy-theme-set
 omarchy-theme-set $THEME_NAME
