@@ -7,3 +7,4 @@ run_logged $OMARCHY_INSTALL/packaging/tuis.sh
 run_logged $OMARCHY_INSTALL/packaging/asus-rog.sh
 run_logged $OMARCHY_INSTALL/packaging/framework16.sh
 run_logged $OMARCHY_INSTALL/packaging/framework-desktop.sh
+run_logged $OMARCHY_INSTALL/packaging/surface.sh

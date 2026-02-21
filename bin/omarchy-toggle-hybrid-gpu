@@ -6,10 +6,21 @@
 # Ensure supergfxctl has been installed
 if omarchy-cmd-missing supergfxctl; then
   omarchy-pkg-add supergfxctl
-  sudo systemctl enable --now supergfxd
 
-  # Needed to deal with restoring to sleep where going through VFIO first means we don't need to reboot.
-  sudo sed -i "s/\"vfio_enable\": \".*\"/\"vfio_enable\": true/" /etc/supergfxd.conf
+  # Create config before starting service to prevent hang on first boot
+  sudo tee /etc/supergfxd.conf >/dev/null <<'CONF'
+{
+  "mode": "Hybrid",
+  "vfio_enable": true,
+  "vfio_save": false,
+  "always_reboot": false,
+  "no_logind": false,
+  "logout_timeout_s": 180,
+  "hotplug_type": "None"
+}
+CONF
+
+  sudo systemctl enable --now supergfxd
 fi
 
 gpu_mode=$(supergfxctl -g)
@@ -26,13 +37,14 @@ case "$gpu_mode" in
     # Remove the startup delay override (not needed for Hybrid mode)
     sudo rm -rf /etc/systemd/system/supergfxd.service.d/delay-start.conf
 
-    omarchy-cmd-reboot
+    omarchy-system-reboot
   fi
   ;;
 "Hybrid")
   if gum confirm "Use only integrated GPU and reboot?"; then
-    # Switch to integrated mode
+    # Switch to integrated mode and ensure vfio is enabled (needed for sleep/wake trick)
     sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
+    sudo sed -i 's/"vfio_enable": false/"vfio_enable": true/' /etc/supergfxd.conf
 
     # Force igpu mode after system sleep (or dgpu could get activated)
     sudo mkdir -p /usr/lib/systemd/system-sleep
@@ -43,7 +55,7 @@ case "$gpu_mode" in
     sudo mkdir -p /etc/systemd/system/supergfxd.service.d
     sudo cp -p $OMARCHY_PATH/default/systemd/system/supergfxd.service.d/delay-start.conf /etc/systemd/system/supergfxd.service.d/
 
-    omarchy-cmd-reboot
+    omarchy-system-reboot
   fi
   ;;
 *)

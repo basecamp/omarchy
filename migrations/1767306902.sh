@@ -4,7 +4,7 @@ echo "Migrate to new theme setup"
 OMARCHY_DIR="$HOME/.local/share/omarchy"
 USER_BACKGROUNDS_DIR="$HOME/.config/omarchy/backgrounds"
 
-if [[ -d "$OMARCHY_DIR/themes" ]]; then
+if [[ -d $OMARCHY_DIR/themes ]]; then
   cd "$OMARCHY_DIR"
 
   # Get list of git-tracked background files (relative to omarchy dir)
@@ -15,21 +15,21 @@ if [[ -d "$OMARCHY_DIR/themes" ]]; then
     theme_name=$(basename "$theme_dir")
     backgrounds_dir="themes/$theme_name/backgrounds"
 
-    [[ -d "$backgrounds_dir" ]] || continue
+    [[ -d $backgrounds_dir ]] || continue
 
     for bg_file in "$backgrounds_dir"/*; do
-      [[ -f "$bg_file" ]] || continue
+      [[ -f $bg_file ]] || continue
 
       # Check if this file is tracked by git
       is_tracked=false
       for tracked in "${TRACKED_BACKGROUNDS[@]}"; do
-        if [[ "$tracked" == "$bg_file" ]]; then
+        if [[ $tracked == $bg_file ]]; then
           is_tracked=true
           break
         fi
       done
 
-      if [[ "$is_tracked" == "false" ]]; then
+      if [[ $is_tracked == "false" ]]; then
         # This is a user-added background, move it to user config
         user_theme_bg_dir="$USER_BACKGROUNDS_DIR/$theme_name"
         mkdir -p "$user_theme_bg_dir"
@@ -49,7 +49,7 @@ if [[ -L $CURRENT_THEME_LINK ]]; then
   CURRENT_THEME_NAME=$(basename "$(readlink "$CURRENT_THEME_LINK")")
 elif [[ -d $CURRENT_THEME_LINK ]]; then
   CURRENT_THEME_NAME=$(basename "$CURRENT_THEME_LINK")
-elif [[ -f "$HOME/.config/omarchy/current/theme.name" ]]; then
+elif [[ -f $HOME/.config/omarchy/current/theme.name ]]; then
   CURRENT_THEME_NAME=$(cat "$HOME/.config/omarchy/current/theme.name")
 fi
 
