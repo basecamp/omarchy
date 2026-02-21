@@ -17,7 +17,7 @@ omarchy-pkg-add grim slurp wayfreeze-git
 echo "Add nfs support by default to Nautilus"
 omarchy-pkg-add gvfs-nfs
 
-if [ ! -d "$HOME/.config/nvim" ]; then
+if [[ ! -d $HOME/.config/nvim ]]; then
   echo "Add missing nvim config"
   omarchy-nvim-setup
 fi

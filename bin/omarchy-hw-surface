@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Detect whether the computer is a Microsoft Surface device.
+
+[[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == "Microsoft Corporation" ]] &&
+  grep -q "Surface" /sys/class/dmi/id/product_name 2>/dev/null

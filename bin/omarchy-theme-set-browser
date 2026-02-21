@@ -2,7 +2,7 @@
 
 CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
 
-if omarchy-cmd-present chromium || omarchy-cmd-present helium-browser || omarchy-cmd-present brave; then
+if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
   if [[ -f $CHROMIUM_THEME ]]; then
     THEME_RGB_COLOR=$(<$CHROMIUM_THEME)
     THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${THEME_RGB_COLOR//,/ })

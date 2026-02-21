@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Remove preinstalled Omarchy applications (web apps, TUIs, and selected packages).
+# This removes all web apps, TUIs, plus specific desktop applications.
+
+if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI wrappers, and desktop applications?"; then
+  echo -e "Removing preinstalled Omarchy applications...\n"
+
+  omarchy-webapp-remove-all
+  omarchy-tui-remove-all
+
+  cp ~/.config/hypr/bindings.conf ~/.config/hypr/bindings.conf.bak
+  cp "$OMARCHY_PATH/default/hypr/plain-bindings.conf" ~/.config/hypr/bindings.conf
+  hyprctl reload
+
+  omarchy-pkg-drop \
+    aether \
+    typora \
+    spotify \
+    libreoffice-fresh \
+    1password-beta \
+    1password-cli \
+    xournalpp \
+    signal-desktop \
+    pinta \
+    obsidian \
+    obs-studio \
+    kdenlive \
+    lazydocker
+fi

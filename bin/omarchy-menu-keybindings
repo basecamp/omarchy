@@ -12,7 +12,7 @@ build_keymap_cache() {
   }
 
   while IFS=, read -r code sym; do
-    [[ -z "$code" || -z "$sym" ]] && continue
+    [[ -z $code || -z $sym ]] && continue
     KEYCODE_SYM_MAP["$code"]="$sym"
   done < <(
     awk '
@@ -42,13 +42,13 @@ lookup_keycode_cached() {
 
 parse_keycodes() {
   local start end elapsed
-  [[ "${DEBUG:-0}" == "1" ]] && start=$(date +%s.%N)
+  [[ ${DEBUG:-0} == "1" ]] && start=$(date +%s.%N)
   while IFS= read -r line; do
-    if [[ "$line" =~ code:([0-9]+) ]]; then
+    if [[ $line =~ code:([0-9]+) ]]; then
       code="${BASH_REMATCH[1]}"
       symbol=$(lookup_keycode_cached "$code" "$XKB_KEYMAP_CACHE")
       echo "${line/code:${code}/$symbol}"
-    elif [[ "$line" =~ mouse:([0-9]+) ]]; then
+    elif [[ $line =~ mouse:([0-9]+) ]]; then
       code="${BASH_REMATCH[1]}"
 
       case "$code" in
@@ -64,7 +64,7 @@ parse_keycodes() {
     fi
   done
 
-  if [[ "$DEBUG" == "1" ]]; then
+  if [[ $DEBUG == "1" ]]; then
     end=$(date +%s.%N)
     # fall back to awk if bc is missing
     if command -v bc >/dev/null 2>&1; then
@@ -233,7 +233,7 @@ output_keybindings() {
     prioritize_entries
 }
 
-if [[ "$1" == "--print" || "$1" == "-p" ]]; then
+if [[ $1 == "--print" || $1 == "-p" ]]; then
   output_keybindings
 else
   monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
@@ -242,4 +242,3 @@ else
   output_keybindings |
     walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
 fi
-
