@@ -13,5 +13,5 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
   omarchy-pkg-add omarchy-keyring
 
   # Refresh all repos
-  sudo pacman -Syyu --noconfirm
+  sudo pacman -Syyuu --noconfirm
 fi
