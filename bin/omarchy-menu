@@ -10,9 +10,9 @@ BACK_TO_EXIT=false
 back_to() {
   local parent_menu="$1"
 
-  if [[ "$BACK_TO_EXIT" == "true" ]]; then
+  if [[ $BACK_TO_EXIT == "true" ]]; then
     exit 0
-  elif [[ -n "$parent_menu" ]]; then
+  elif [[ -n $parent_menu ]]; then
     "$parent_menu"
   else
     show_main_menu
@@ -27,10 +27,10 @@ menu() {
 
   read -r -a args <<<"$extra"
 
-  if [[ -n "$preselect" ]]; then
+  if [[ -n $preselect ]]; then
     local index
     index=$(echo -e "$options" | grep -nxF "$preselect" | cut -d: -f1)
-    if [[ -n "$index" ]]; then
+    if [[ -n $index ]]; then
       args+=("-c" "$index")
     fi
   fi
@@ -108,11 +108,11 @@ show_capture_menu() {
 
 get_webcam_list() {
   v4l2-ctl --list-devices 2>/dev/null | while IFS= read -r line; do
-    if [[ "$line" != $'\t'* && -n "$line" ]]; then
+    if [[ $line != $'\t'* && -n $line ]]; then
       local name="$line"
       IFS= read -r device || break
       device=$(echo "$device" | tr -d '\t' | head -1)
-      [[ -n "$device" ]] && echo "$device  $name"
+      [[ -n $device ]] && echo "$device  $name"
     fi
   done
 }
@@ -121,12 +121,12 @@ show_webcam_select_menu() {
   local devices=$(get_webcam_list)
   local count=$(echo "$devices" | grep -c . 2>/dev/null || echo 0)
 
-  if [[ -z "$devices" || "$count" -eq 0 ]]; then
+  if [[ -z $devices ]] || (( count == 0 )); then
     notify-send "No webcam devices found" -u critical -t 3000
     return 1
   fi
 
-  if [[ "$count" -eq 1 ]]; then
+  if (( count == 1 )); then
     echo "$devices" | awk '{print $1}'
   else
     menu "Select Webcam" "$devices" | awk '{print $1}'
@@ -199,7 +199,7 @@ show_background_menu() {
 
 show_font_menu() {
   theme=$(menu "Font" "$(omarchy-font-list)" "--width 350" "$(omarchy-font-current)")
-  if [[ "$theme" == "CNCLD" || -z "$theme" ]]; then
+  if [[ $theme == "CNCLD" || -z $theme ]]; then
     back_to show_style_menu
   else
     omarchy-font-set "$theme"
@@ -208,8 +208,8 @@ show_font_menu() {
 
 show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
-  [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
-  [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
+  [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
+  [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
@@ -231,7 +231,7 @@ show_setup_menu() {
 show_setup_power_menu() {
   profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
-  if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
+  if [[ $profile == "CNCLD" || -z $profile ]]; then
     back_to show_setup_menu
   else
     powerprofilesctl set "$profile"
@@ -264,7 +264,7 @@ show_setup_config_menu() {
 show_setup_system_menu() {
   local options=""
 
-  if [ -f ~/.local/state/omarchy/toggles/suspend-on ]; then
+  if [[ -f ~/.local/state/omarchy/toggles/suspend-on ]]; then
     options="$options󰒲  Disable Suspend"
   else
     options="$options󰒲  Enable Suspend"
@@ -567,7 +567,7 @@ show_about() {
 
 show_system_menu() {
   local options="  Lock\n󱄄  Screensaver"
-  [ -f ~/.local/state/omarchy/toggles/suspend-on ] && options="$options\n󰒲  Suspend"
+  [[ -f ~/.local/state/omarchy/toggles/suspend-on ]] && options="$options\n󰒲  Suspend"
   omarchy-hibernation-available && options="$options\n󰤁  Hibernate"
   options="$options\n󰜉  Restart\n󰐥  Shutdown"
 
@@ -611,7 +611,7 @@ go_to_menu() {
 USER_EXTENSIONS="$HOME/.config/omarchy/extensions/menu.sh"
 [[ -f $USER_EXTENSIONS ]] && source "$USER_EXTENSIONS"
 
-if [[ -n "$1" ]]; then
+if [[ -n $1 ]]; then
   BACK_TO_EXIT=true
   go_to_menu "$1"
 else

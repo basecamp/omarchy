@@ -4,7 +4,7 @@
 CURRENT_VALUE=$(hyprctl getoption "dwindle:single_window_aspect_ratio" 2>/dev/null | head -1)
 
 # Parse vec2 output: "vec2: [1, 1]" or "vec2: [0, 0]"
-if [[ "$CURRENT_VALUE" == *"[1, 1]"* ]]; then
+if [[ $CURRENT_VALUE == *"[1, 1]"* ]]; then
   hyprctl keyword dwindle:single_window_aspect_ratio "0 0"
   notify-send "    Disable single-window square aspect ratio"
 else

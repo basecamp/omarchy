@@ -24,7 +24,7 @@ check_fingerprint_hardware() {
   devices=$(fprintd-list "$USER" 2>/dev/null)
 
   # Exit if no devices found
-  if [[ -z "$devices" ]]; then
+  if [[ -z $devices ]]; then
     print_error "\nNo fingerprint sensor detected."
     return 1
   fi
@@ -39,10 +39,10 @@ setup_pam_config() {
   fi
 
   # Configure polkit
-  if [ -f /etc/pam.d/polkit-1 ] && ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
+  if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
     print_info "Configuring polkit for fingerprint authentication..."
     sudo sed -i '1i auth      sufficient pam_fprintd.so' /etc/pam.d/polkit-1
-  elif [ ! -f /etc/pam.d/polkit-1 ]; then
+  elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
     print_info "Creating polkit configuration with fingerprint authentication..."
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
 auth      sufficient pam_fprintd.so
@@ -75,13 +75,13 @@ remove_pam_config() {
   fi
 
   # Remove from polkit
-  if [ -f /etc/pam.d/polkit-1 ] && grep -Fq 'pam_fprintd.so' /etc/pam.d/polkit-1; then
+  if [[ -f /etc/pam.d/polkit-1 ]] && grep -Fq 'pam_fprintd.so' /etc/pam.d/polkit-1; then
     print_info "Removing fingerprint authentication from polkit..."
     sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/polkit-1
   fi
 }
 
-if [[ "--remove" == "$1" ]]; then
+if [[ "--remove" == $1 ]]; then
   print_success "Removing fingerprint scanner from authentication.\n"
 
   # Remove PAM configuration

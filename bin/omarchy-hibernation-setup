@@ -12,7 +12,7 @@ fi
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 
 # Check if hibernation is already configured
-if [ -f "$MKINITCPIO_CONF" ] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
   echo "Hibernation is already set up"
   exit 0
 fi
@@ -65,7 +65,7 @@ sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/
 # Add resume= kernel parameters so the initramfs resume hook knows where to find the
 # hibernation image. Without these, resume happens late (after GPU drivers load) and fails.
 RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
-if [[ ! -f "$RESUME_DROP_IN" ]]; then
+if [[ ! -f $RESUME_DROP_IN ]]; then
   echo "Adding resume kernel parameters"
   sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null
   RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
@@ -77,7 +77,7 @@ fi
 # Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)
 if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
   LIMINE_DROP_IN="/etc/limine-entry-tool.d/rtc-alarm.conf"
-  if [[ ! -f "$LIMINE_DROP_IN" ]]; then
+  if [[ ! -f $LIMINE_DROP_IN ]]; then
     echo "Enabling ACPI RTC alarm for s2idle suspend"
     sudo mkdir -p /etc/limine-entry-tool.d
     echo 'KERNEL_CMDLINE[default]+="rtc_cmos.use_acpi_alarm=1"' | sudo tee "$LIMINE_DROP_IN" >/dev/null

@@ -9,7 +9,7 @@ sudo cp -f /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
 
 channel="${1:-stable}"
 
-if [[ "$channel" != "stable" && "$channel" != "rc" && "$channel" != "edge" ]]; then
+if [[ $channel != "stable" && $channel != "rc" && $channel != "edge" ]]; then
   echo "Error: Invalid channel '$channel'. Must be one of: stable, rc, edge"
   exit 1
 fi

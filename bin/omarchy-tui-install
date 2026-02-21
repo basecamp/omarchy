@@ -2,7 +2,7 @@
 
 set -e
 
-if [ "$#" -ne 4 ]; then
+if (( $# != 4 )); then
   echo -e "\e[32mLet's create a TUI shortcut you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My TUI")
   APP_EXEC=$(gum input --prompt "Launch Command> " --placeholder "lazydocker or bash -c 'dust; read -n 1 -s'")
@@ -15,7 +15,7 @@ else
   ICON_URL="$4"
 fi
 
-if [[ -z "$APP_NAME" || -z "$APP_EXEC" || -z "$ICON_URL" ]]; then
+if [[ -z $APP_NAME || -z $APP_EXEC || -z $ICON_URL ]]; then
   echo "You must set app name, app command, and icon URL!"
   exit 1
 fi
@@ -23,7 +23,7 @@ fi
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
 
-if [[ ! "$ICON_URL" =~ ^https?:// ]] && [ -f "$ICON_URL" ]; then
+if [[ ! $ICON_URL =~ ^https?:// ]] && [[ -f $ICON_URL ]]; then
   ICON_PATH="$ICON_URL"
 else
   ICON_PATH="$ICON_DIR/$APP_NAME.png"
@@ -54,6 +54,6 @@ EOF
 
 chmod +x "$DESKTOP_FILE"
 
-if [ "$#" -ne 4 ]; then
+if (( $# != 4 )); then
   echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
 fi

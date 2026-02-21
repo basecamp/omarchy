@@ -9,18 +9,18 @@ set_theme() {
   local settings_path="$2"
   local skip_flag="$3"
 
-  omarchy-cmd-present "$editor_cmd" && [[ ! -f "$skip_flag" ]] || return 0
+  omarchy-cmd-present "$editor_cmd" && [[ ! -f $skip_flag ]] || return 0
 
-  if [[ -f "$VS_CODE_THEME" ]]; then
+  if [[ -f $VS_CODE_THEME ]]; then
     theme_name=$(jq -r '.name' "$VS_CODE_THEME")
     extension=$(jq -r '.extension' "$VS_CODE_THEME")
 
-    if [[ -n "$extension" ]] && ! "$editor_cmd" --list-extensions | grep -Fxq "$extension"; then
+    if [[ -n $extension ]] && ! "$editor_cmd" --list-extensions | grep -Fxq "$extension"; then
       "$editor_cmd" --install-extension "$extension" >/dev/null
     fi
 
     mkdir -p "$(dirname "$settings_path")"
-    [[ -f "$settings_path" ]] || printf '{\n}\n' >"$settings_path"
+    [[ -f $settings_path ]] || printf '{\n}\n' >"$settings_path"
 
     if ! grep -q '"workbench.colorTheme"' "$settings_path"; then
       sed -i --follow-symlinks -E '0,/\{/{s/\{/{\ "workbench.colorTheme": "",/}' "$settings_path"
@@ -29,7 +29,7 @@ set_theme() {
     sed -i --follow-symlinks -E \
       "s/(\"workbench.colorTheme\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$theme_name\2/" \
       "$settings_path"
-  elif [[ -f "$settings_path" ]]; then
+  elif [[ -f $settings_path ]]; then
     sed -i --follow-symlinks -E 's/\"workbench\.colorTheme\"[[:space:]]*:[^,}]*,?//' "$settings_path"
   fi
 }

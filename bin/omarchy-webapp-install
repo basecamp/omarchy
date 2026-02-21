@@ -4,7 +4,7 @@ set -e
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 
-if [[ $# -lt 3 ]]; then
+if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
@@ -84,6 +84,6 @@ fi
 
 chmod +x "$DESKTOP_FILE"
 
-if [[ $INTERACTIVE_MODE == true ]]; then
+if [[ $INTERACTIVE_MODE == "true" ]]; then
   echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
 fi

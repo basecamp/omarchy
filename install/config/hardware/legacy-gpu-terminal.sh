@@ -4,11 +4,11 @@
 legacy_drivers=("radeon")
 
 for card in /sys/class/drm/card*; do
-  if [[ -e "$card/device/driver" ]]; then
+  if [[ -e $card/device/driver ]]; then
     driver=$(basename "$(readlink -f "$card/device/driver")")
 
     for legacy in "${legacy_drivers[@]}"; do
-      if [[ "$driver" == "$legacy" ]]; then
+      if [[ $driver == $legacy ]]; then
         omarchy-install-terminal alacritty
         exit 0
       fi
