@@ -23,12 +23,12 @@ Rectangle {
 
     Column {
         anchors.centerIn: parent
-        spacing: 30
+        spacing: root.height * 0.04
         width: parent.width
 
         Image {
             source: "logo.svg"
-            width: 500
+            width: root.width * 0.35
             height: Math.round(width * sourceSize.height / sourceSize.width)
             fillMode: Image.PreserveAspectFit
             anchors.horizontalCenter: parent.horizontalCenter
@@ -36,19 +36,19 @@ Rectangle {
 
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 10
+            spacing: root.width * 0.007
 
             Text {
                 text: "\uf023"
                 color: "#ffffff"
                 font.family: "JetBrainsMono NF"
-                font.pixelSize: 16
+                font.pixelSize: root.height * 0.025
                 anchors.verticalCenter: parent.verticalCenter
             }
 
             Rectangle {
-                width: 250
-                height: 32
+                width: root.width * 0.17
+                height: root.height * 0.04
                 color: "#000000"
                 border.color: "#ffffff"
                 border.width: 1
@@ -56,12 +56,12 @@ Rectangle {
                 TextInput {
                     id: password
                     anchors.fill: parent
-                    anchors.margins: 6
+                    anchors.margins: root.height * 0.008
                     verticalAlignment: TextInput.AlignVCenter
                     echoMode: TextInput.Password
                     font.family: "JetBrainsMono NF"
-                    font.pixelSize: 14
-                    font.letterSpacing: 3
+                    font.pixelSize: root.height * 0.02
+                    font.letterSpacing: root.height * 0.004
                     passwordCharacter: "\u2022"
                     color: "#ffffff"
                     focus: true
@@ -81,7 +81,7 @@ Rectangle {
             text: ""
             color: "#f7768e"
             font.family: "JetBrainsMono NF"
-            font.pixelSize: 12
+            font.pixelSize: root.height * 0.018
             anchors.horizontalCenter: parent.horizontalCenter
         }
     }
