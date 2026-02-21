@@ -24,7 +24,7 @@ unlock_dns_to_dhcp() {
 }
 
 if [[ -z $1 ]]; then
-  dns=$(gum choose --height 5 --header "Select DNS provider" Cloudflare DHCP Custom)
+  dns=$(gum choose --height 6 --header "Select DNS provider" Cloudflare Google DHCP Custom)
 else
   dns=$1
 fi
@@ -34,6 +34,16 @@ Cloudflare)
   sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com
+FallbackDNS=9.9.9.9 149.112.112.112
+DNSOverTLS=opportunistic
+EOF
+  lock_dns_to_resolved
+  ;;
+
+Google)
+  sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
+[Resolve]
+DNS=8.8.8.8#dns.google 8.8.4.4#dns.google
 FallbackDNS=9.9.9.9 149.112.112.112
 DNSOverTLS=opportunistic
 EOF
