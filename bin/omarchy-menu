@@ -596,7 +596,6 @@ go_to_menu() {
   *capture*) show_capture_menu ;;
   *style*) show_style_menu ;;
   *theme*) show_theme_menu ;;
-  *screenshot*) show_screenshot_menu ;;
   *screenrecord*) show_screenrecord_menu ;;
   *setup*) show_setup_menu ;;
   *power*) show_setup_power_menu ;;
