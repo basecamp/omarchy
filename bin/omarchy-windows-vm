@@ -148,6 +148,60 @@ EOF
     PASSWORD_DISPLAY="(user-defined)"
   fi
 
+  # Select Windows version (friendly names only)
+  VERSION_OPTIONS=$(cat << 'VERSIONS'
+Windows 11 Pro
+Windows 11 LTSC
+Windows 11 Enterprise
+Windows 10 Pro
+Windows 10 LTSC
+Windows 10 Enterprise
+Windows 8.1 Enterprise
+Windows 7 Ultimate
+Windows Vista Ultimate
+Windows XP Professional
+Windows 2000 Professional
+Windows Server 2025
+Windows Server 2022
+Windows Server 2019
+Windows Server 2016
+Windows Server 2012
+Windows Server 2008
+Windows Server 2003
+VERSIONS
+)
+
+  SELECTED_VERSION_NAME=$(echo "$VERSION_OPTIONS" | gum choose --selected="Windows 11 Pro" --header="Select Windows version to install")
+
+  # Check if user cancelled
+  if [ -z "$SELECTED_VERSION_NAME" ]; then
+    echo "Installation cancelled by user"
+    exit 1
+  fi
+
+  # Map friendly name to version code used by the image
+  case "$SELECTED_VERSION_NAME" in
+    "Windows 11 Pro") SELECTED_VERSION="11" ;;
+    "Windows 11 LTSC") SELECTED_VERSION="11l" ;;
+    "Windows 11 Enterprise") SELECTED_VERSION="11e" ;;
+    "Windows 10 Pro") SELECTED_VERSION="10" ;;
+    "Windows 10 LTSC") SELECTED_VERSION="10l" ;;
+    "Windows 10 Enterprise") SELECTED_VERSION="10e" ;;
+    "Windows 8.1 Enterprise") SELECTED_VERSION="8e" ;;
+    "Windows 7 Ultimate") SELECTED_VERSION="7u" ;;
+    "Windows Vista Ultimate") SELECTED_VERSION="vu" ;;
+    "Windows XP Professional") SELECTED_VERSION="xp" ;;
+    "Windows 2000 Professional") SELECTED_VERSION="2k" ;;
+    "Windows Server 2025") SELECTED_VERSION="2025" ;;
+    "Windows Server 2022") SELECTED_VERSION="2022" ;;
+    "Windows Server 2019") SELECTED_VERSION="2019" ;;
+    "Windows Server 2016") SELECTED_VERSION="2016" ;;
+    "Windows Server 2012") SELECTED_VERSION="2012" ;;
+    "Windows Server 2008") SELECTED_VERSION="2008" ;;
+    "Windows Server 2003") SELECTED_VERSION="2003" ;;
+    *) SELECTED_VERSION="11" ;;
+  esac
+
   # Display configuration summary
   gum style \
     --border normal \
@@ -157,6 +211,7 @@ EOF
     --bold \
     "Windows VM Configuration" \
     "" \
+    "Version:   $SELECTED_VERSION_NAME" \
     "RAM:       $SELECTED_RAM" \
     "CPU:       $SELECTED_CORES cores" \
     "Disk:      $SELECTED_DISK" \
@@ -179,7 +234,7 @@ services:
     image: dockurr/windows
     container_name: omarchy-windows
     environment:
-      VERSION: "11"
+      VERSION: "$SELECTED_VERSION"
       RAM_SIZE: "$SELECTED_RAM"
       CPU_CORES: "$SELECTED_CORES"
       DISK_SIZE: "$SELECTED_DISK"
@@ -203,7 +258,7 @@ EOF
 
   echo ""
   echo "Starting Windows VM installation..."
-  echo "This will download a Windows 11 image (may take 10-15 minutes)."
+  echo "This will download a Windows image (may take 10-15 minutes)."
   echo ""
   echo "Monitor installation progress at: http://127.0.0.1:8006"
   echo ""
