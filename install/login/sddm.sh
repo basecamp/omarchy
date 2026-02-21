@@ -1,6 +1,7 @@
 sudo mkdir -p /etc/sddm.conf.d
 
 # Install omarchy SDDM theme
+sudo rm -rf /usr/share/sddm/themes/omarchy
 sudo cp -r $OMARCHY_PATH/default/sddm/omarchy /usr/share/sddm/themes/omarchy
 
 if [[ ! -f /etc/sddm.conf.d/autologin.conf ]]; then
