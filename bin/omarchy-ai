@@ -1,0 +1,3 @@
+#!/bin/bash
+# Launch OpenCode with the omarchian agent in the config workspace
+cd ~/.config && exec opencode --agent omarchian "$@"
