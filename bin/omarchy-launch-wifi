@@ -4,4 +4,4 @@
 # Attempts to unblock the wifi service first in case it should be been blocked.
 
 rfkill unblock wifi
-omarchy-launch-or-focus-tui impala
+omarchy-launch-or-focus-tui gazelle

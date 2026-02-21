@@ -28,6 +28,7 @@ linux
 linux-firmware
 linux-headers
 macbook12-spi-driver-dkms
+networkmanager
 nvidia-580xx-dkms
 nvidia-dkms
 nvidia-open-dkms
