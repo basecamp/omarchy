@@ -438,7 +438,7 @@ show_remove_menu() {
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Development*) show_remove_development_menu ;;
-  *Preinstalls*) present_terminal omarchy-remove-all ;;
+  *Preinstalls*) present_terminal omarchy-remove-preinstalls ;;
   *Dictation*) present_terminal omarchy-voxtype-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
   *Windows*) present_terminal "omarchy-windows-vm remove" ;;
