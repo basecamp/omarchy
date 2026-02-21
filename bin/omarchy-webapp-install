@@ -8,6 +8,9 @@ if [[ $# -lt 3 ]]; then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
+  if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
+    APP_URL="https://$APP_URL"
+  fi
 
   # Try to fetch favicon automatically first.
   FAVICON_URL="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
@@ -24,6 +27,9 @@ if [[ $# -lt 3 ]]; then
 else
   APP_NAME="$1"
   APP_URL="$2"
+  if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
+    APP_URL="https://$APP_URL"
+  fi
   ICON_REF="$3"
   CUSTOM_EXEC="$4" # Optional custom exec command
   MIME_TYPES="$5"  # Optional mime types
