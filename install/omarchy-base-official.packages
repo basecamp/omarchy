@@ -7,6 +7,7 @@
 # - Include omarchy-base-aur.packages
 
 alacritty
+alsa-utils
 avahi
 bash-completion
 bat
@@ -61,6 +62,7 @@ inxi
 iwd
 jq
 kdenlive
+kernel-modules-hook
 kvantum-qt5
 lazydocker
 lazygit
@@ -77,6 +79,7 @@ mariadb-libs
 mise
 mpv
 nautilus
+nautilus-python
 noto-fonts
 noto-fonts-cjk
 noto-fonts-emoji
@@ -104,6 +107,7 @@ swaybg
 swayosd
 system-config-printer
 tldr
+tmux
 tree-sitter-cli
 ttf-cascadia-mono-nerd
 ttf-jetbrains-mono-nerd
