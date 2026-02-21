@@ -121,12 +121,12 @@ show_webcam_select_menu() {
   local devices=$(get_webcam_list)
   local count=$(echo "$devices" | grep -c . 2>/dev/null || echo 0)
 
-  if [[ -z $devices ]] || (( count == 0 )); then
+  if [[ -z $devices ]] || ((count == 0)); then
     notify-send "No webcam devices found" -u critical -t 3000
     return 1
   fi
 
-  if (( count == 1 )); then
+  if ((count == 1)); then
     echo "$devices" | awk '{print $1}'
   else
     menu "Select Webcam" "$devices" | awk '{print $1}'
