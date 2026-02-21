@@ -1,3 +1,11 @@
+set -e
+
+# Create vfat drop-in for ALL omarchy systems (vfat ESP needs the module in initramfs)
+sudo mkdir -p /etc/mkinitcpio.conf.d
+sudo tee /etc/mkinitcpio.conf.d/zz-omarchy-vfat.conf <<EOF >/dev/null
+MODULES+=(vfat)
+EOF
+
 if command -v limine &>/dev/null; then
   sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
 
@@ -82,27 +90,29 @@ fi
 
 echo "mkinitcpio hooks re-enabled"
 
-sudo limine-update
+if command -v limine &>/dev/null; then
+  sudo limine-update
 
-# Verify that limine-update actually added boot entries
-if ! grep -q "^/+" /boot/limine.conf; then
-  echo "Error: limine-update failed to add boot entries to /boot/limine.conf" >&2
-  echo "Debug: Installed packages:" >&2
-  pacman -Q limine limine-mkinitcpio-hook limine-snapper-sync 2>&1 >&2
-  echo "Debug: /etc/default/limine:" >&2
-  cat /etc/default/limine 2>&1 >&2
-  echo "Debug: Kernels found:" >&2
-  ls /usr/lib/modules/*/pkgbase 2>&1 >&2
-  echo "Debug: UKI files:" >&2
-  ls /boot/EFI/Linux/ 2>&1 >&2
-  echo "Debug: ESP mount:" >&2
-  findmnt /boot 2>&1 >&2
-  exit 1
-fi
+  # Verify that limine-update actually added boot entries
+  if ! grep -q "^/+" /boot/limine.conf; then
+    echo "Error: limine-update failed to add boot entries to /boot/limine.conf" >&2
+    echo "Debug: Installed packages:" >&2
+    pacman -Q limine limine-mkinitcpio-hook limine-snapper-sync 2>&1 >&2
+    echo "Debug: /etc/default/limine:" >&2
+    cat /etc/default/limine 2>&1 >&2
+    echo "Debug: Kernels found:" >&2
+    ls /usr/lib/modules/*/pkgbase 2>&1 >&2
+    echo "Debug: UKI files:" >&2
+    ls /boot/EFI/Linux/ 2>&1 >&2
+    echo "Debug: ESP mount:" >&2
+    findmnt /boot 2>&1 >&2
+    exit 1
+  fi
 
-if [[ -n $EFI ]] && efibootmgr &>/dev/null; then
-  # Remove the archinstall-created Limine entry
-  while IFS= read -r bootnum; do
-    sudo efibootmgr -b "$bootnum" -B >/dev/null 2>&1
-  done < <(efibootmgr | grep -E "^Boot[0-9]{4}\*? Arch Linux Limine" | sed 's/^Boot\([0-9]\{4\}\).*/\1/')
+  if [[ -n ${EFI:-} ]] && efibootmgr &>/dev/null; then
+    # Remove the archinstall-created Limine entry
+    while IFS= read -r bootnum; do
+      sudo efibootmgr -b "$bootnum" -B >/dev/null 2>&1
+    done < <(efibootmgr | grep -E "^Boot[0-9]{4}\*? Arch Linux Limine" | sed 's/^Boot\([0-9]\{4\}\).*/\1/')
+  fi
 fi
