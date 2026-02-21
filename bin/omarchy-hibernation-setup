@@ -62,6 +62,18 @@ echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
 # Ensure keyboard backlight doesn't prevent sleep
 sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
 
+# Add resume= kernel parameters so the initramfs resume hook knows where to find the
+# hibernation image. Without these, resume happens late (after GPU drivers load) and fails.
+RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
+if [[ ! -f "$RESUME_DROP_IN" ]]; then
+  echo "Adding resume kernel parameters"
+  sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null
+  RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
+  RESUME_OFFSET=$(btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
+  sudo mkdir -p /etc/limine-entry-tool.d
+  echo "KERNEL_CMDLINE[default]+=\"resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
+fi
+
 # Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)
 if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
   LIMINE_DROP_IN="/etc/limine-entry-tool.d/rtc-alarm.conf"
