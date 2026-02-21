@@ -4,10 +4,14 @@
 # adds a resume hook to mkinitcpio, and configures suspend-then-hibernate.
 
 if [[ ! -f /sys/power/image_size ]]; then
-  echo -e "\033[31mError: Hibernation is not supported on your system\033[0m" >&2
-  exit 1
+  echo -e "Hibernation is not supported on your system" >&2
+  exit 0
 fi
 
+if ! command -v limine-mkinitcpio &>/dev/null; then
+  echo "Skipping hibernation setup (requires Limine bootloader)"
+  exit 0
+fi
 
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 
