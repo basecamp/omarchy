@@ -8,6 +8,7 @@
   "modules-center": ["clock", "custom/update", "custom/voxtype", "custom/screenrecording-indicator", "custom/idle-indicator", "custom/notification-silencing-indicator"],
   "modules-right": [
     "group/tray-expander",
+    "custom/headset",
     "bluetooth",
     "network",
     "pulseaudio",
@@ -128,6 +129,14 @@
     },
     "modules": ["custom/expand-icon", "tray"]
   },
+"custom/headset": {
+  "exec": "omarchy-headset-battery-remaining -w",
+  "return-type": "json",
+  "interval": 10,
+  "format": "{}",
+  "tooltip": true,
+  "on-click": "omarchy-headset-battery-remaining -n"
+},
   "custom/expand-icon": {
     "format": "",
     "tooltip": false,
