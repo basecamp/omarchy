@@ -1,8 +1,8 @@
 # Detect Surface devices which require additional modules for the keyboard to work.
 # Module list derived from Chris McLeod's manual install instructions
 # https://chrismcleod.dev/blog/installing-arch-linux-with-secure-boot-on-a-microsoft-surface-laptop-studio/
-product_name="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"
-if [[ $product_name =~ Surface ]]; then
+if omarchy-hw-surface; then
+  product_name="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"
   echo "Detected Surface Device"
 
   # Modules already exist in the rootfs for the default kernel.
