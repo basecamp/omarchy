@@ -8,7 +8,7 @@
 # show_system_menu() {
 #   case $(menu "System" "  Lock\n󰐥  Shutdown") in
 #   *Lock*) omarchy-lock-screen ;;
-#   *Shutdown*) omarchy-cmd-shutdown ;;
+#   *Shutdown*) omarchy-system-shutdown ;;
 #   *) back_to show_main_menu ;;
 #   esac
 # }
