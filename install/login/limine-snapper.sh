@@ -91,19 +91,3 @@ if [[ -n $EFI ]] && efibootmgr &>/dev/null; then
     sudo efibootmgr -b "$bootnum" -B >/dev/null 2>&1
   done < <(efibootmgr | grep -E "^Boot[0-9]{4}\*? Arch Linux Limine" | sed 's/^Boot\([0-9]\{4\}\).*/\1/')
 fi
-
-# Move this to a utility to allow manual activation
-# if [[ -n $EFI ]] && efibootmgr &>/dev/null &&
-#   ! cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "American Megatrends" &&
-#   ! cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "Apple"; then
-#
-#   uki_file=$(find /boot/EFI/Linux/ -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | head -1)
-#
-#   if [[ -n $uki_file ]]; then
-#     sudo efibootmgr --create \
-#       --disk "$(findmnt -n -o SOURCE /boot | sed 's/p\?[0-9]*$//')" \
-#       --part "$(findmnt -n -o SOURCE /boot | grep -o 'p\?[0-9]*$' | sed 's/^p//')" \
-#       --label "Omarchy" \
-#       --loader "\\EFI\\Linux\\$uki_file"
-#   fi
-# fi
