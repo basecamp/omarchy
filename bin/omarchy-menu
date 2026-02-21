@@ -578,8 +578,8 @@ show_system_menu() {
   *Suspend*) systemctl suspend ;;
   *Hibernate*) systemctl hibernate ;;
   *Logout*) omarchy-system-logout ;;
-  *Restart*) omarchy-cmd-reboot ;;
-  *Shutdown*) omarchy-cmd-shutdown ;;
+  *Restart*) omarchy-system-reboot ;;
+  *Shutdown*) omarchy-system-shutdown ;;
   *) back_to show_main_menu ;;
   esac
 }

@@ -309,8 +309,8 @@ omarchy-update                  # Full system update
 omarchy-version                 # Show Omarchy version
 omarchy-debug --no-sudo --print # Debug info (ALWAYS use these flags)
 omarchy-lock-screen             # Lock screen
-omarchy-cmd-shutdown            # Shutdown
-omarchy-cmd-reboot              # Reboot
+omarchy-system-shutdown         # Shutdown
+omarchy-system-reboot           # Reboot
 ```
 
 **IMPORTANT:** Always run `omarchy-debug` with `--no-sudo --print` flags to avoid interactive sudo prompts that will hang the terminal.

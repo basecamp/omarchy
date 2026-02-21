@@ -92,5 +92,5 @@ sudo limine-update
 echo
 
 if [[ $1 != "--force" ]] && gum confirm "Reboot to enable hibernation?"; then
-  omarchy-cmd-reboot
+  omarchy-system-reboot
 fi
