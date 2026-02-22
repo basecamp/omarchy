@@ -22,7 +22,7 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
     sudo pacman -Sy
 
     # Install omarchy-keyring
-    yes 1 | sudo pacman -S --noconfirm --needed omarchy-keyring
+    omarchy-pkg-add omarchy-keyring
   fi
 
   # Add omarchy signing key
@@ -31,9 +31,6 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
 
   # Refresh all repos
   sudo pacman -Syyuu --noconfirm
-
-  # Install omarchy-keyring
-  yes 1 | sudo pacman -S --noconfirm --needed omarchy-keyring
 
   # Refresh all repos with retry logic
   echo "Syncing package databases..."
