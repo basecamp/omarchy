@@ -24,6 +24,7 @@ emit_sed_rules() {
 }
 
 # Darken a hex color by a percentage (0 = black, 100 = unchanged)
+# Example: darken_color "#ff8800" 75  →  #bf6600
 darken_color() {
   local hex="${1#\#}" pct="$2"
   local r g b
@@ -34,6 +35,7 @@ darken_color() {
 }
 
 # Lighten a hex color by blending toward white (0 = unchanged, 100 = white)
+# Example: lighten_color "#ff8800" 20  →  #ff9f33
 lighten_color() {
   local hex="${1#\#}" pct="$2"
   local r g b
