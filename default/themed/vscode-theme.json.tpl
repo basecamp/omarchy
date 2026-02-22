@@ -38,8 +38,8 @@
         "regexp": "{{ bright_cyan }}",
         "operator": "{{ bright_blue }}",
         "keyword": "{{ bright_purple }}",
-        "comment": {"foreground": "{{ green }}", "fontStyle": "italic"},
-        "comment.documentation": {"foreground": "{{ green }}", "fontStyle": "italic"}
+        "comment": {"foreground": "{{ muted }}", "fontStyle": "italic"},
+        "comment.documentation": {"foreground": "{{ muted }}", "fontStyle": "italic"}
     },
     "colors": {
         "foreground": "{{ foreground }}",
@@ -759,7 +759,7 @@
             "scope": ["comment", "punctuation.definition.comment"],
             "settings": {
                 "fontStyle": "italic",
-                "foreground": "{{ green }}"
+                "foreground": "{{ muted }}"
             }
         },
         {
