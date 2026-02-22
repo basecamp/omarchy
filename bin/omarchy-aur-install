@@ -81,6 +81,13 @@ declare -A INSTALL_ALL_SPLIT_PACKAGES=(
   ["dotnet-core-bin"]=1
 )
 
+# Packages with known filesystem conflicts that need --overwrite during install
+# Format: "package_name" -> "overwrite glob pattern"
+# When a package is in this list, makepkg builds without -i, then pacman -U --overwrite is used
+declare -A KNOWN_FILE_OVERRIDES=(
+  ["ghostty-git"]="/usr/share/terminfo/*"
+)
+
 # Packages with flaky test suites on ARM that should skip tests
 # Format: "package_name:reason"
 # Only affects ARM builds (aarch64) to avoid test failures on VMs/different timing
@@ -742,10 +749,21 @@ install_package() {
   # Add --ignorearch for ARM systems (many AUR packages don't officially support ARM)
   local makepkg_flags=(-si --noconfirm)
   local is_split_package=false
+  local needs_overwrite=false
+  local overwrite_pattern=""
 
   # Check if this is a split package (package_name != package_base)
   if [[ "$package_name" != "$package_base" ]]; then
     is_split_package=true
+  fi
+
+  # Check if this package has known filesystem conflicts requiring --overwrite
+  if [[ -n "${KNOWN_FILE_OVERRIDES[$package_name]:-}" ]]; then
+    needs_overwrite=true
+    overwrite_pattern="${KNOWN_FILE_OVERRIDES[$package_name]}"
+    debug_log "Package '$package_name' needs --overwrite '$overwrite_pattern'"
+    # Remove -i flag (install), we'll handle install manually with --overwrite
+    makepkg_flags=("${makepkg_flags[@]/-si/-s}")
   fi
 
   if [[ "$(uname -m)" == "aarch64" ]]; then
@@ -798,6 +816,25 @@ install_package() {
     print_error "Failed to build/install '$package_name'"
     return 1
   }
+
+  # For packages with known filesystem conflicts, install with --overwrite
+  if [[ "$needs_overwrite" == "true" ]]; then
+    print_info "Installing with --overwrite '$overwrite_pattern' (known filesystem conflict)..."
+
+    # Find ALL built package files
+    mapfile -t pkg_files < <(find . -maxdepth 1 \( -name "*.pkg.tar.zst" -o -name "*.pkg.tar.xz" \) -type f)
+
+    if [[ ${#pkg_files[@]} -eq 0 ]]; then
+      print_error "Could not find any built package files for '$package_name'"
+      return 1
+    fi
+
+    print_info "Found ${#pkg_files[@]} package(s) to install"
+    if ! sudo pacman -U --noconfirm --overwrite "$overwrite_pattern" "${pkg_files[@]}"; then
+      print_error "Failed to install '$package_name' with --overwrite"
+      return 1
+    fi
+  fi
 
   # For ARM split packages, decide whether to install all or only requested package
   if [[ "$(uname -m)" == "aarch64" ]] && [[ "$is_split_package" == "true" ]]; then
