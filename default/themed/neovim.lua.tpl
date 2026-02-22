@@ -42,9 +42,11 @@ return {
         selection_background = "{{ selection_background }}",
       },
     },
+    -- set up hot reload
     config = function(_, opts)
       require("aether").setup(opts)
       vim.cmd.colorscheme("aether")
+      require("aether.hotreload").setup()
     end,
   },
   {
