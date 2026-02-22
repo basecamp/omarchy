@@ -1,0 +1,154 @@
+#!/bin/bash
+# Update Asahi bootloader configuration for Omarchy
+
+set -euo pipefail
+
+echo "=== Asahi Bootloader Configuration Update ==="
+echo ""
+
+# Verify we're on Apple Silicon (Asahi)
+# Check kernel name OR device tree for Apple hardware (newer kernels may not have "asahi" in name)
+if ! uname -r | grep -qi "asahi" && ! grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
+  echo "ERROR: This script is only for Apple Silicon (Asahi Linux) systems"
+  exit 1
+fi
+
+echo "Detected Apple Silicon"
+echo ""
+
+# Check if Omarchy is installed
+if [ ! -d "$HOME/.local/share/omarchy" ]; then
+  echo "ERROR: Omarchy installation not found at ~/.local/share/omarchy"
+  echo "Please ensure Omarchy is installed first"
+  exit 1
+fi
+
+export OMARCHY_PATH="$HOME/.local/share/omarchy"
+export OMARCHY_INSTALL="$OMARCHY_PATH/install"
+
+# Re-enable mkinitcpio hooks
+echo "[1/4] Re-enabling mkinitcpio hooks..."
+if [ -f /usr/share/libalpm/hooks/90-mkinitcpio-install.hook.disabled ]; then
+  sudo mv /usr/share/libalpm/hooks/90-mkinitcpio-install.hook.disabled /usr/share/libalpm/hooks/90-mkinitcpio-install.hook
+  echo "  ✓ Enabled 90-mkinitcpio-install.hook"
+fi
+
+if [ -f /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled ]; then
+  sudo mv /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook
+  echo "  ✓ Enabled 60-mkinitcpio-remove.hook"
+fi
+
+# Configure mkinitcpio hooks (ext4, no btrfs)
+echo ""
+echo "[2/4] Configuring mkinitcpio hooks for Asahi..."
+HOOKS="base udev plymouth keyboard autodetect modconf kms keymap consolefont block encrypt filesystems fsck"
+
+sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<MKINIT >/dev/null
+HOOKS=($HOOKS)
+MKINIT
+echo "  ✓ mkinitcpio hooks configured"
+
+# Regenerate initramfs
+echo ""
+echo "[3/4] Regenerating initramfs..."
+sudo mkinitcpio -P || {
+  exit_code=$?
+  echo "  ⚠ mkinitcpio exited with code $exit_code"
+  if [ -f /boot/initramfs-linux.img ]; then
+    echo "  ✓ Initramfs created successfully despite warnings"
+  else
+    echo "  ✗ Failed to create initramfs"
+    exit $exit_code
+  fi
+}
+
+# Detect and configure bootloader
+echo ""
+echo "[4/4] Detecting and configuring bootloader..."
+
+# Check for GRUB
+if [ -d /boot/grub ] && [ -f /boot/grub/grub.cfg ]; then
+  echo "  Detected: GRUB bootloader"
+  echo ""
+
+  # Check if GRUB is installed
+  if ! command -v grub-mkconfig &>/dev/null; then
+    echo "  Installing GRUB packages..."
+    sudo pacman -S --needed --noconfirm grub efibootmgr
+  else
+    echo "  ✓ GRUB packages already installed"
+  fi
+
+  echo ""
+  echo "  Checking current GRUB config type..."
+
+  # Check if config is static (archboot-style)
+  if grep -q "^linux /Image" /boot/grub/grub.cfg 2>/dev/null; then
+    echo "  ⚠ Found static GRUB config (archboot-style)"
+    echo "  Replacing with dynamic config..."
+  elif grep -q "### BEGIN /etc/grub.d/" /boot/grub/grub.cfg 2>/dev/null; then
+    echo "  ✓ Already using dynamic GRUB config"
+    echo "  Regenerating to ensure it's current..."
+  else
+    echo "  ⚠ Unknown GRUB config format, regenerating..."
+  fi
+
+  echo ""
+  echo "  Generating dynamic GRUB configuration..."
+  sudo grub-mkconfig -o /boot/grub/grub.cfg
+
+  echo ""
+  echo "  ✓ GRUB configured successfully"
+  echo "  ✓ Kernel updates will auto-generate new boot entries"
+
+# Check for U-Boot/m1n1
+elif command -v update-m1n1 &>/dev/null; then
+  echo "  Detected: m1n1/U-Boot bootloader"
+  echo ""
+  echo "  Updating m1n1..."
+
+  if sudo update-m1n1; then
+    echo "  ✓ m1n1 updated successfully"
+    echo "  ✓ Kernel updates will trigger update-m1n1 via pacman hooks"
+  else
+    echo "  ⚠ update-m1n1 failed, but initramfs was regenerated"
+    echo "  You may need to manually run 'sudo update-m1n1' after kernel updates"
+  fi
+
+# Check for extlinux
+elif [ -f /boot/extlinux/extlinux.conf ]; then
+  echo "  Detected: extlinux configuration"
+  echo ""
+  echo "  ⚠ WARNING: extlinux.conf may need manual updates for new kernels"
+  echo "  Consider switching to GRUB for automatic kernel update handling:"
+  echo ""
+  echo "    sudo pacman -S grub efibootmgr"
+  echo "    sudo grub-install --target=arm64-efi --efi-directory=/boot --bootloader-id=GRUB"
+  echo "    sudo grub-mkconfig -o /boot/grub/grub.cfg"
+  echo ""
+
+# Unknown bootloader
+else
+  echo "  ⚠ WARNING: Could not detect bootloader configuration"
+  echo ""
+  echo "  Initramfs has been regenerated, but boot config may not update automatically."
+  echo "  Please verify your bootloader setup:"
+  echo ""
+  echo "    ls -la /boot/grub/grub.cfg       # Check for GRUB"
+  echo "    ls -la /boot/extlinux/           # Check for extlinux"
+  echo "    command -v update-m1n1           # Check for U-Boot"
+  echo ""
+fi
+
+echo ""
+echo "=== Configuration Complete ==="
+echo ""
+echo "To test:"
+echo "  1. Update kernel: sudo pacman -Syu"
+echo "  2. Check config:"
+if [ -d /boot/grub ]; then
+  echo "     grep 'menuentry' /boot/grub/grub.cfg | head -5"
+fi
+echo "  3. Reboot: sudo reboot"
+echo "  4. Verify: uname -r"
+echo ""

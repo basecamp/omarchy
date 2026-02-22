@@ -1,6 +1,15 @@
 # Ensure we have gum available
 if ! command -v gum &>/dev/null; then
-  omarchy-pkg-add gum
+  gum_output=$(mktemp)
+  if ! sudo pacman -S --needed --noconfirm gum >"$gum_output" 2>&1; then
+    echo "Error: Failed to install gum package"
+    echo "--- pacman output ---"
+    cat "$gum_output"
+    echo "---------------------"
+    rm -f "$gum_output"
+    exit 1
+  fi
+  rm -f "$gum_output"
 fi
 
 # Get terminal size from /dev/tty (works in all scenarios: direct, sourced, or piped)
@@ -21,11 +30,22 @@ else
   export TERM_HEIGHT=24
 fi
 
-export LOGO_PATH="$OMARCHY_PATH/logo.txt"
-export LOGO_WIDTH=$(awk '{ if (length > max) max = length } END { print max+0 }' "$LOGO_PATH" 2>/dev/null || echo 0)
-export LOGO_HEIGHT=$(wc -l <"$LOGO_PATH" 2>/dev/null || echo 0)
+# Detect if we're on a system that needs simple ASCII (ARM, Apple Silicon, or VM)
+# Check kernel name OR device tree for Apple hardware (newer kernels may not have "asahi" in name)
+if [[ -n "$OMARCHY_ARM" ]] || uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null || [[ -n "$OMARCHY_VIRTUALIZATION" ]]; then
+  export USE_SIMPLE_ASCII=true
+  export LOGO_PATH="$OMARCHY_PATH/logo-ascii.txt"
+else
+  export USE_SIMPLE_ASCII=false
+  export LOGO_PATH="$OMARCHY_PATH/logo.txt"
+fi
 
+export LOGO_WIDTH=$(wc -L < "$LOGO_PATH" 2>/dev/null || echo 0)
+export LOGO_HEIGHT=$(wc -l < "$LOGO_PATH" 2>/dev/null || echo 0)
 export PADDING_LEFT=$(((TERM_WIDTH - LOGO_WIDTH) / 2))
+if (( LOGO_WIDTH == 0 )); then
+  PADDING_LEFT=0
+fi
 export PADDING_LEFT_SPACES=$(printf "%*s" $PADDING_LEFT "")
 
 # Tokyo Night theme for gum confirm

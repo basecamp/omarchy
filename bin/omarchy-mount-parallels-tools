@@ -1,0 +1,103 @@
+#!/bin/bash
+set -euo pipefail
+
+# Helper script to check and mount Parallels Tools ISO
+# This can be run standalone to diagnose mounting issues
+
+echo "=== Parallels Tools ISO Mount Helper ==="
+echo
+
+# Check if running in Parallels VM
+virt_type=$(systemd-detect-virt 2>/dev/null || echo "none")
+if [[ "$virt_type" != "parallels" ]]; then
+  echo "ERROR: Not running in a Parallels VM"
+  echo "Detected virtualization: $virt_type"
+  exit 1
+fi
+
+# Check if already installed
+if [ -d /usr/lib/parallels-tools ]; then
+  echo "✓ Parallels Tools are already installed"
+  echo "Location: /usr/lib/parallels-tools"
+  exit 0
+fi
+
+# Find CD-ROM device
+CDROM_DEV=""
+if [ -e /dev/sr0 ]; then
+  CDROM_DEV="/dev/sr0"
+elif [ -e /dev/cdrom ]; then
+  CDROM_DEV="/dev/cdrom"
+else
+  echo "ERROR: No CD-ROM device found"
+  echo
+  echo "Checked:"
+  echo "  - /dev/sr0"
+  echo "  - /dev/cdrom"
+  echo
+  echo "Please ensure Parallels Desktop is configured with a CD-ROM device"
+  exit 1
+fi
+
+echo "✓ Found CD-ROM device: $CDROM_DEV"
+
+# Try to mount
+MOUNT_POINT="/tmp/parallels-tools-mount"
+sudo mkdir -p "$MOUNT_POINT"
+
+echo
+echo "Attempting to mount CD-ROM..."
+
+if sudo mount "$CDROM_DEV" "$MOUNT_POINT" 2>/tmp/mount-error.log; then
+  echo "✓ Successfully mounted at: $MOUNT_POINT"
+  echo
+  echo "Contents:"
+  ls -lah "$MOUNT_POINT"
+  echo
+
+  # Check for installer
+  if [ -f "$MOUNT_POINT/install" ]; then
+    echo "✓ Found Parallels Tools installer: install"
+    echo
+    echo "To install Parallels Tools, run:"
+    echo "  cd $MOUNT_POINT"
+    echo "  sudo ./install"
+    echo
+    echo "Or use the Omarchy installation which will do this automatically."
+  elif [ -f "$MOUNT_POINT/installer/prltoolsd.sh" ]; then
+    echo "✓ Found Parallels Tools installer: installer/prltoolsd.sh"
+    echo
+    echo "To install Parallels Tools, run:"
+    echo "  cd $MOUNT_POINT"
+    echo "  sudo ./install"
+  else
+    echo "WARNING: Mounted successfully but installer not found"
+    echo
+    echo "Expected files:"
+    echo "  - install"
+    echo "  - installer/prltoolsd.sh"
+    echo
+    echo "This may not be the Parallels Tools ISO."
+    echo "Try ejecting and re-inserting via: Actions > Install Parallels Tools"
+  fi
+
+  # Keep mounted for user to use
+  echo
+  echo "CD-ROM is now mounted at: $MOUNT_POINT"
+  echo "To unmount when done: sudo umount $MOUNT_POINT"
+else
+  echo "ERROR: Failed to mount CD-ROM"
+  echo
+  if [ -f /tmp/mount-error.log ]; then
+    echo "Mount error:"
+    cat /tmp/mount-error.log
+    rm -f /tmp/mount-error.log
+  fi
+  echo
+  echo "Troubleshooting steps:"
+  echo "  1. In Parallels Desktop: Actions > Install Parallels Tools"
+  echo "  2. Wait 10 seconds for the ISO to mount"
+  echo "  3. Run this script again"
+  echo "  4. If it still fails, try rebooting the VM"
+  exit 1
+fi
