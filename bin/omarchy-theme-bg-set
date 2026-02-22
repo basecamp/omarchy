@@ -2,7 +2,7 @@
 
 # Sets the specified image as the current background
 
-if [[ -z "$1" ]]; then
+if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-bg-set <path-to-image>" >&2
   exit 1
 fi

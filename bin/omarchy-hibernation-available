@@ -11,7 +11,7 @@ SWAPSIZE=$(( 1024 * ${SWAPSIZE_KB:-0} ))
 
 HIBERNATION_IMAGE_SIZE=$(cat /sys/power/image_size)
 
-if [[ "$SWAPSIZE" -gt "$HIBERNATION_IMAGE_SIZE" ]] && [[ -f /etc/mkinitcpio.conf.d/omarchy_resume.conf ]]; then
+if (( SWAPSIZE > HIBERNATION_IMAGE_SIZE )) && [[ -f /etc/mkinitcpio.conf.d/omarchy_resume.conf ]]; then
   exit 0
 else
   exit 1

@@ -4,7 +4,7 @@
 
 set -e
 
-if [[ $# -lt 1 ]]; then
+if (( $# < 1 )); then
   echo "Usage: omarchy-hook [name] [args...]"
   exit 1
 fi

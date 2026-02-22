@@ -46,7 +46,7 @@ install)
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   cat $ARCHINSTALL_LOG $OMARCHY_LOG >>"$TEMP_LOG" 2>/dev/null
 
-  if [ ! -s "$TEMP_LOG" ]; then
+  if [[ ! -s $TEMP_LOG ]]; then
     echo "Error: No install logs found"
     exit 1
   fi
@@ -59,7 +59,7 @@ this-boot)
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   journalctl -b 0 >>"$TEMP_LOG" 2>/dev/null
 
-  if [ ! -s "$TEMP_LOG" ]; then
+  if [[ ! -s $TEMP_LOG ]]; then
     echo "Error: No logs found for current boot"
     exit 1
   fi
@@ -72,7 +72,7 @@ last-boot)
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   journalctl -b -1 >>"$TEMP_LOG" 2>/dev/null
 
-  if [ ! -s "$TEMP_LOG" ]; then
+  if [[ ! -s $TEMP_LOG ]]; then
     echo "Error: No logs found for previous boot"
     exit 1
   fi
@@ -91,7 +91,7 @@ installed|system-info)
     pacman -Q 2>/dev/null || echo "Failed to get package list"
   } >>"$TEMP_LOG"
 
-  if [ ! -s "$TEMP_LOG" ]; then
+  if [[ ! -s $TEMP_LOG ]]; then
     echo "Error: Failed to gather system information"
     exit 1
   fi
@@ -113,7 +113,7 @@ echo ""
 
 URL=$(curl -sF "file=@$TEMP_LOG" -Fexpires=24 https://0x0.st)
 
-if [ $? -eq 0 ] && [ -n "$URL" ]; then
+if (( $? == 0 )) && [[ -n $URL ]]; then
   echo "✓ Log uploaded successfully!"
   echo "Share this URL:"
   echo ""

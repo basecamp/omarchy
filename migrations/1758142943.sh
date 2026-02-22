@@ -9,7 +9,7 @@ VS_CODE_SETTINGS="$HOME/.config/Code/User/settings.json"
 if omarchy-cmd-present code; then
   mkdir -p "$(dirname "$VS_CODE_SETTINGS")"
 
-  if [[ ! -f "$VS_CODE_SETTINGS" ]]; then
+  if [[ ! -f $VS_CODE_SETTINGS ]]; then
     # If settings.json doesn't exist, create it with just the update.mode setting
     printf '{\n  "update.mode": "none"\n}\n' > "$VS_CODE_SETTINGS"
  elif ! grep -q '"update.mode"' "$VS_CODE_SETTINGS"; then

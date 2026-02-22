@@ -1,7 +1,7 @@
 if omarchy-battery-present; then
   mapfile -t profiles < <(omarchy-powerprofiles-list)
 
-  if [[ ${#profiles[@]} -gt 1 ]]; then
+  if (( ${#profiles[@]} > 1 )); then
 
     # Default AC profile:
     # 3 profiles → performance

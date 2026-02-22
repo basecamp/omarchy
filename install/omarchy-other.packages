@@ -53,6 +53,9 @@ vulkan-intel
 vulkan-radeon
 vulkan-asahi
 
+# Surface laptop support packages
+linux-firmware-marvell
+
 # T2 MacBook support packages
 apple-bcm-firmware
 apple-t2-audio-config
