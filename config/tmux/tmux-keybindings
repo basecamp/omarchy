@@ -41,8 +41,8 @@ prefix2=$(awk '/^set[[:space:]]+-g[[:space:]]+prefix2[[:space:]]/{print $NF; exi
       sub(/[[:space:]]+$/, "", cmd)
 
       desc = cmd
-      if      (cmd ~ /^split-window -v/)   desc = "Split pane horizontally"
-      else if (cmd ~ /^split-window -h/)   desc = "Split pane vertically"
+      if      (cmd ~ /^split-window -v/)   desc = "Split pane vertically"
+      else if (cmd ~ /^split-window -h/)   desc = "Split pane horizontally"
       else if (cmd ~ /^kill-pane/)         desc = "Kill pane"
       else if (cmd ~ /^select-pane -L/)    desc = "Focus pane left"
       else if (cmd ~ /^select-pane -R/)    desc = "Focus pane right"
