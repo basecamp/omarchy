@@ -130,6 +130,8 @@ lip() {
 
 # Create a tmux layout for dev with editor, ai, and terminal
 tml() {
+  [[ -z $TMUX ]] && { echo "You must start tmux to use tml."; return 1; }
+
   local current_dir="${PWD}"
   local editor_pane ai_pane
   local ai="$1"
