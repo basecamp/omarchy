@@ -6,10 +6,12 @@ export OMARCHY_ARM=true
 # Skip this for bare metal ARM (Pi, Asahi, etc.) which have real GPUs
 envs_file="$HOME/.local/share/omarchy/default/hypr/envs.conf"
 if [[ -f "$envs_file" ]]; then
-  # Only add lavapipe software renderer for ARM VMs, not bare metal with real GPUs
+  # Only add lavapipe software renderer for ARM VMs without GPU acceleration
+  # Skip for bare metal ARM (Pi, Asahi, etc.) and VMs with virtio GPU
   if [[ -z "$OMARCHY_ARM_BARE_METAL" ]]; then
-    # Check if the Vulkan ICD line already exists
-    if ! grep -q "VK_ICD_FILENAMES" "$envs_file"; then
+    if lspci | grep -iE "(VGA|Display).*Red Hat.*Virtio" > /dev/null 2>&1; then
+      echo "Virtio GPU detected - using vulkan-virtio (skipping lavapipe)"
+    elif ! grep -q "VK_ICD_FILENAMES" "$envs_file"; then
       echo "Patching envs.conf for aarch64 VM (software rendering)..."
       # Find the last env line and add the Vulkan ICD after it
       last_env_line=$(grep -n "^env = " "$envs_file" | tail -1 | cut -d: -f1)

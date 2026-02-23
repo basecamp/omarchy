@@ -8,7 +8,7 @@ fi
 
 # Install official repo dependencies
 echo "Installing dependencies..."
-sudo pacman -S --needed --noconfirm blueprint-compiler git base-devel
+sudo pacman -S --needed --noconfirm blueprint-compiler git base-devel vulkan-swrast
 
 # Install pandoc-bin from AUR (provides pandoc-cli)
 echo "Installing pandoc-bin from AUR..."
@@ -55,10 +55,12 @@ if uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/
 fi
 if command -v systemd-detect-virt &>/dev/null && [ "\$is_apple_silicon" = "false" ]; then
   virt_type=$(systemd-detect-virt)
-  if [[ "$virt_type" != "none" ]]; then
-    # Running in a VM - enable software rendering
-    export GSK_RENDERER=cairo
-    export LIBGL_ALWAYS_SOFTWARE=1
+  if [[ "\$virt_type" != "none" ]]; then
+    # Running in a VM - use Zink (OpenGL over Vulkan via lavapipe) for OpenGL 4.3+
+    # Virgl only provides OpenGL 4.0, but Ghostty requires 4.3
+    export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.aarch64.json
+    export MESA_LOADER_DRIVER_OVERRIDE=zink
+    export __GLX_VENDOR_LIBRARY_NAME=mesa
   fi
 fi
 
