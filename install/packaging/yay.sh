@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Install yay early on ARM systems (needed before base packages can be installed)
 # TODO: Remove when omarchy repo adds ARM package support

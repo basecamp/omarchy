@@ -1,3 +1,5 @@
+set -e
+
 # Includes lazyvim and the themes
 
 # Remove existing nvim config (omarchy-nvim-setup will recreate it)

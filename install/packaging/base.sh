@@ -1,3 +1,5 @@
+set -e
+
 # Install base packages (split by source for reliability)
 
 # Source common helpers
