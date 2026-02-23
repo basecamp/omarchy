@@ -4,11 +4,11 @@ QR_CODE='
 █ ███ █ ▄▄▄▄▀▄▀▄▀ █ ███ █
 █ ▀▀▀ █ ▄█  ▄█▄▄▀ █ ▀▀▀ █
 ▀▀▀▀▀▀▀ ▀▄█ █ █ █ ▀▀▀▀▀▀▀
-▀▀█▀▀▄▀▀▀▀▄█▀▀█  ▀ █ ▀ █ 
+▀▀█▀▀▄▀▀▀▀▄█▀▀█  ▀ █ ▀ █
 █▄█ ▄▄▀▄▄ ▀ ▄ ▀█▄▄▄▄ ▀ ▀█
 ▄ ▄▀█ ▀▄▀▀▀▄ ▄█▀▄█▀▄▀▄▀█▀
 █ ▄▄█▄▀▄█ ▄▄▄  ▀ ▄▀██▀ ▀█
-▀ ▀   ▀ █ ▀▄  ▀▀█▀▀▀█▄▀  
+▀ ▀   ▀ █ ▀▄  ▀▀█▀▀▀█▄▀
 █▀▀▀▀▀█ ▀█  ▄▀▀ █ ▀ █▄▀██
 █ ███ █ █▀▄▄▀ █▀███▀█▄██▄
 █ ▀▀▀ █ ██  ▀ █▄█ ▄▄▄█▀ █
@@ -25,7 +25,7 @@ show_cursor() {
 # Display truncated log lines from the install log
 show_log_tail() {
   if [[ -f $OMARCHY_INSTALL_LOG_FILE ]]; then
-    local log_lines=$(($TERM_HEIGHT - $LOGO_HEIGHT - 35))
+    local log_lines=$((TERM_HEIGHT - LOGO_HEIGHT - 35))
     local max_line_width=$((LOGO_WIDTH - 4))
 
     tail -n $log_lines "$OMARCHY_INSTALL_LOG_FILE" | while IFS= read -r line; do
@@ -67,7 +67,7 @@ save_original_outputs() {
 # Restore stdout and stderr to original (saved in FD 3 and 4)
 # This ensures output goes to screen, not log file
 restore_outputs() {
-  if [ -e /proc/self/fd/3 ] && [ -e /proc/self/fd/4 ]; then
+  if [[ -e /proc/self/fd/3 ]] && [[ -e /proc/self/fd/4 ]]; then
     exec 1>&3 2>&4
   fi
 }
@@ -75,7 +75,7 @@ restore_outputs() {
 # Error handler
 catch_errors() {
   # Prevent recursive error handling
-  if [[ $ERROR_HANDLING == true ]]; then
+  if [[ $ERROR_HANDLING == "true" ]]; then
     return
   else
     ERROR_HANDLING=true
@@ -133,7 +133,7 @@ catch_errors() {
       fi
       ;;
     "Upload log for support")
-      omarchy-upload-install-log
+      omarchy-upload-log
       ;;
     "Exit" | "")
       exit 1
@@ -147,7 +147,7 @@ exit_handler() {
   local exit_code=$?
 
   # Only run if we're exiting with an error and haven't already handled it
-  if [[ $exit_code -ne 0 && $ERROR_HANDLING != true ]]; then
+  if (( exit_code != 0 )) && [[ $ERROR_HANDLING != "true" ]]; then
     catch_errors
   else
     stop_log_output

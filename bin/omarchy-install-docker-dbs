@@ -5,13 +5,13 @@
 
 options=("MySQL" "PostgreSQL" "Redis" "MongoDB" "MariaDB" "MSSQL")
 
-if [[ "$#" -eq 0 ]]; then
+if (( $# == 0 )); then
   choices=$(printf "%s\n" "${options[@]}" | gum choose --header "Select database (return to install, esc to cancel)") || main_menu
 else
   choices="$@"
 fi
 
-if [[ -n "$choices" ]]; then
+if [[ -n $choices ]]; then
   for db in $choices; do
     case $db in
     MySQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mysql8 -e MYSQL_ROOT_PASSWORD= -e MYSQL_ALLOW_EMPTY_PASSWORD=true mysql:8.4 ;;

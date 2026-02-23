@@ -10,7 +10,7 @@ fi
 
 drives_with_info=""
 while IFS= read -r drive; do
-  [[ -n "$drive" ]] || continue
+  [[ -n $drive ]] || continue
   drives_with_info+="$(omarchy-drive-info "$drive")"$'\n'
 done <<<"$drives"
 

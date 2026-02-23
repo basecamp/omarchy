@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Detect whether the computer is a Framework Laptop 16.
+
+[[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == "Framework" ]] &&
+  grep -q "Laptop 16" /sys/class/dmi/id/product_name 2>/dev/null
