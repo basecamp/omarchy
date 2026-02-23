@@ -116,6 +116,23 @@ static_bindings() {
     echo "SHIFT ALT,L,Copy URL from Web App,extension,copy-url"
 }
 
+# Discover keybinding groups from two locations:
+# - ~/.config/*/<name>-keybindings  (co-located with app configs, e.g. tmux/tmux-keybindings)
+# - ~/.local/share/omarchy/*-keybindings  (anywhere within omarchy's data dir)
+# Each file must be executable and output formatted keybindings when run.
+# The display label is read from a "# label: ..." comment, falling back to the filename.
+declare -A KEYBINDING_GROUPS
+
+load_groups() {
+  local label script
+  for script in "${HOME}"/.config/*/*-keybindings "${HOME}"/.local/share/omarchy/*-keybindings; do
+    [[ -x "$script" ]] || continue
+    label=$(sed -n 's/^# label:[[:space:]]*//p' "$script" | head -1)
+    [[ -z "$label" ]] && label=$(basename "$script" | sed 's/-keybindings$//')
+    KEYBINDING_GROUPS["$label  ▶"]="$script"
+  done
+}
+
 # Parse and format keybindings
 #
 # `awk` does the heavy lifting:
@@ -224,21 +241,43 @@ output_keybindings() {
   build_keymap_cache
 
   {
-    dynamic_bindings
-    static_bindings
+    {
+      dynamic_bindings
+      static_bindings
+    } |
+      sort -u |
+      parse_keycodes |
+      parse_bindings
+
+    printf '%s\n' "${!KEYBINDING_GROUPS[@]}"
   } |
-    sort -u |
-    parse_keycodes |
-    parse_bindings |
     prioritize_entries
 }
 
 if [[ $1 == "--print" || $1 == "-p" ]]; then
+  load_groups
   output_keybindings
 else
   monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
   menu_height=$((monitor_height * 40 / 100))
 
-  output_keybindings |
-    walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+  load_groups
+
+  while true; do
+    selection=$(
+      output_keybindings |
+        walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+    )
+
+    # ESC or regular binding selected — close
+    [[ -z "$selection" || -z "${KEYBINDING_GROUPS[$selection]}" ]] && break
+
+    # Group selected — open submenu; ESC in submenu loops back, selection closes
+    label="$selection"
+    submenu_selection=$(
+      "${KEYBINDING_GROUPS[$selection]}" |
+        walker --dmenu -p "Keybindings › $label" --width 800 --height "$menu_height"
+    )
+    [[ -n "$submenu_selection" ]] && break
+  done
 fi
