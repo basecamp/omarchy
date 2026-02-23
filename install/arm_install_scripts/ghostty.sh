@@ -1,7 +1,9 @@
 echo "Installing Ghostty terminal for ARM VMs..."
 
-# Check if Ghostty is already installed
-if command -v ghostty &>/dev/null; then
+# Check if the real Ghostty binary is already installed
+# Note: Don't use "command -v ghostty" here because the wrapper script in
+# ~/.local/share/omarchy/bin/ghostty will match, even if the actual binary is missing
+if [ -x /usr/bin/ghostty ]; then
   echo "Ghostty already installed, skipping"
   return 0
 fi
@@ -53,9 +55,9 @@ is_apple_silicon=false
 if uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
   is_apple_silicon=true
 fi
-if command -v systemd-detect-virt &>/dev/null && [ "\$is_apple_silicon" = "false" ]; then
+if command -v systemd-detect-virt &>/dev/null && [ "$is_apple_silicon" = "false" ]; then
   virt_type=$(systemd-detect-virt)
-  if [[ "\$virt_type" != "none" ]]; then
+  if [[ "$virt_type" != "none" ]]; then
     # Running in a VM - use Zink (OpenGL over Vulkan via lavapipe) for OpenGL 4.3+
     # Virgl only provides OpenGL 4.0, but Ghostty requires 4.3
     export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.aarch64.json

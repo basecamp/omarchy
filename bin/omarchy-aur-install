@@ -12,9 +12,9 @@ AUR_URL="https://aur.archlinux.org"
 AUR_GIT_URL="https://aur.archlinux.org"
 GITHUB_MIRROR_URL="https://github.com/archlinux/aur.git"
 AUR_CHECK_TIMEOUT=5
-AUR_FAILURE_THRESHOLD=3        # Mark AUR as down after this many consecutive failures
-AUR_COOLDOWN_MINUTES=20        # Don't retry AUR for this long after marking it down
-AUR_STATE_FILE="/tmp/omarchy-aur-state-$(id -u)"  # Per-user state file
+AUR_FAILURE_THRESHOLD=3                          # Mark AUR as down after this many consecutive failures
+AUR_COOLDOWN_MINUTES=20                          # Don't retry AUR for this long after marking it down
+AUR_STATE_FILE="/tmp/omarchy-aur-state-$(id -u)" # Per-user state file
 
 # --- Color Output ---
 # Respect NO_COLOR standard and detect TTY for clean logs
@@ -111,7 +111,7 @@ get_package_base_from_hardcoded() {
     echo "$package_name"
   fi
 
-  return 0  # Always return success to avoid set -e exit
+  return 0 # Always return success to avoid set -e exit
 }
 
 # Query AUR RPC to discover PackageBase for split packages
@@ -139,7 +139,7 @@ query_package_base_from_aur() {
 
   # Could not discover different PackageBase
   echo "$package_name"
-  return 0  # Always return success to avoid set -e exit
+  return 0 # Always return success to avoid set -e exit
 }
 
 # Strip version constraints from package name
@@ -207,18 +207,18 @@ PACKAGES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --makepkg-flags=*)
-      EXTRA_MAKEPKG_FLAGS="${1#*=}"
-      shift
-      ;;
-    --makepkg-flags)
-      EXTRA_MAKEPKG_FLAGS="$2"
-      shift 2
-      ;;
-    *)
-      PACKAGES+=("$1")
-      shift
-      ;;
+  --makepkg-flags=*)
+    EXTRA_MAKEPKG_FLAGS="${1#*=}"
+    shift
+    ;;
+  --makepkg-flags)
+    EXTRA_MAKEPKG_FLAGS="$2"
+    shift 2
+    ;;
+  *)
+    PACKAGES+=("$1")
+    shift
+    ;;
   esac
 done
 
@@ -240,7 +240,7 @@ get_aur_state() {
   if [ -f "$AUR_STATE_FILE" ]; then
     cat "$AUR_STATE_FILE"
   else
-    echo "unknown 0 0"  # status failure_count last_check_time
+    echo "unknown 0 0" # status failure_count last_check_time
   fi
 }
 
@@ -248,7 +248,7 @@ save_aur_state() {
   local status="$1"
   local failure_count="$2"
   local timestamp="$3"
-  echo "$status $failure_count $timestamp" > "$AUR_STATE_FILE"
+  echo "$status $failure_count $timestamp" >"$AUR_STATE_FILE"
 }
 
 is_aur_in_cooldown() {
@@ -263,10 +263,10 @@ is_aur_in_cooldown() {
     if [ $elapsed -lt $cooldown_seconds ]; then
       local remaining=$(((cooldown_seconds - elapsed) / 60))
       print_warning "AUR marked as down, skipping check (retry in ${remaining}m)"
-      return 0  # In cooldown
+      return 0 # In cooldown
     fi
   fi
-  return 1  # Not in cooldown
+  return 1 # Not in cooldown
 }
 
 record_aur_failure() {
@@ -338,7 +338,7 @@ extract_pkgbuild_deps() {
 
   if [[ ! -f "$pkgbuild_path" ]]; then
     print_error "PKGBUILD not found at: $pkgbuild_path"
-    return 0  # Return success to avoid set -e exit (outputs nothing)
+    return 0 # Return success to avoid set -e exit (outputs nothing)
   fi
 
   # Source PKGBUILD in a subshell to extract dependency arrays
@@ -400,10 +400,10 @@ extract_pkgbuild_deps() {
 # Returns a list of AUR packages needed (in reverse dependency order)
 resolve_aur_deps_recursive() {
   local package="$1"
-  local resolved_file="$2"  # File to track resolved packages (avoid cycles)
-  local deps_file="$3"      # File to accumulate dependencies
-  local git_source="$4"     # AUR or GitHub mirror URL
-  local use_mirror="$5"     # true/false - whether to use GitHub mirror branch mode
+  local resolved_file="$2" # File to track resolved packages (avoid cycles)
+  local deps_file="$3"     # File to accumulate dependencies
+  local git_source="$4"    # AUR or GitHub mirror URL
+  local use_mirror="$5"    # true/false - whether to use GitHub mirror branch mode
 
   # Check if already resolved
   if grep -q "^${package}$" "$resolved_file" 2>/dev/null; then
@@ -411,7 +411,7 @@ resolve_aur_deps_recursive() {
   fi
 
   # Mark as resolved to prevent cycles
-  echo "$package" >> "$resolved_file"
+  echo "$package" >>"$resolved_file"
 
   # Get PackageBase for split packages (check hardcoded first)
   local package_base=$(get_package_base_from_hardcoded "$package")
@@ -524,7 +524,7 @@ resolve_aur_deps_recursive() {
   if [[ -z "$deps" ]]; then
     # No dependencies found - this is OK, package might have no AUR deps
     debug_log "Adding '$package' to deps file (no dependencies)"
-    echo "$package" >> "$deps_file"
+    echo "$package" >>"$deps_file"
     return 0
   fi
 
@@ -559,10 +559,10 @@ resolve_aur_deps_recursive() {
     # Recursively resolve this AUR dependency
     debug_log "  Resolving AUR dependency: $dep_name"
     resolve_aur_deps_recursive "$dep_name" "$resolved_file" "$deps_file" "$git_source" "$use_mirror" || true
-  done <<< "$deps"
+  done <<<"$deps"
 
   # Add this package to the dependency list (after its dependencies)
-  echo "$package" >> "$deps_file"
+  echo "$package" >>"$deps_file"
 
   return 0
 }
@@ -651,7 +651,7 @@ install_package() {
         for attempt in 1 $max_attempts; do
           if try_clone_from_aur "$package_base" "$git_url"; then
             clone_success=true
-            record_aur_success  # Reset failure counter
+            record_aur_success # Reset failure counter
             break
           else
             if [ $attempt -lt $max_attempts ]; then
@@ -663,7 +663,7 @@ install_package() {
 
         # If AUR clone failed, try GitHub mirror as fallback
         if [ "$clone_success" = "false" ]; then
-          record_aur_failure  # Increment failure counter
+          record_aur_failure # Increment failure counter
           print_warning "AUR clone failed, trying GitHub mirror..."
           if try_clone_from_mirror "$package_base"; then
             clone_success=true
@@ -729,7 +729,7 @@ install_package() {
       fi
     fi
 
-  fi  # End of: if [[ "$reused_clone" == "false" ]]; then
+  fi # End of: if [[ "$reused_clone" == "false" ]]; then
 
   # Step 4: If still failed, give up
   if [ "$clone_success" = "false" ]; then
@@ -786,7 +786,7 @@ install_package() {
   # Add any extra flags passed by caller
   if [[ -n "$extra_flags" ]]; then
     # Parse extra flags into array (safe for space-separated tokens)
-    read -ra extra_array <<< "$extra_flags"
+    read -ra extra_array <<<"$extra_flags"
     makepkg_flags+=("${extra_array[@]}")
   fi
 
@@ -935,7 +935,7 @@ if [[ -f "$DEPS_FILE" ]]; then
     if [[ ! " ${ALL_DEPS[@]} " =~ " ${dep} " ]]; then
       ALL_DEPS+=("$dep")
     fi
-  done < "$DEPS_FILE"
+  done <"$DEPS_FILE"
 fi
 
 # Show what will be installed
@@ -955,7 +955,7 @@ declare -A PACKAGEBASE_MAP
 unknown_packages=0
 for package_name in "${ALL_DEPS[@]}"; do
   if pacman -T "$package_name" &>/dev/null; then
-    continue  # Already satisfied
+    continue # Already satisfied
   fi
   package_base=$(get_package_base_from_hardcoded "$package_name")
   if [[ "$package_base" == "$package_name" ]]; then
@@ -983,7 +983,7 @@ if [[ $unknown_packages -gt 0 ]] && [[ ${#ALL_DEPS[@]} -gt 1 ]]; then
 
     if pacman -T "$package_name" &>/dev/null; then
       debug_log "  → already satisfied, skipping"
-      continue  # Already satisfied
+      continue # Already satisfied
     fi
 
     processed_count=$((processed_count + 1))
@@ -1120,7 +1120,7 @@ for package_name in "${ALL_DEPS[@]}"; do
     BUILT_PACKAGEBASES[$package_base]=1
   fi
 
-  echo  # Blank line between packages
+  echo # Blank line between packages
 done
 
 # Summary - verify failures (some packages may have been installed by split packages)
