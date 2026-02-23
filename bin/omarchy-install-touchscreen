@@ -1,0 +1,119 @@
+#!/bin/bash
+set -e
+
+# Install touchscreen support with gestures for Hyprland
+
+# Helper function for safe sed replacement with fallback
+safe_sed_replace() {
+  local file="$1"
+  local pattern="$2"
+  local replacement="$3"
+  local description="$4"
+
+  if grep -q "$pattern" "$file" 2>/dev/null; then
+    sed -i "s/$pattern/$replacement/" "$file"
+    return 0
+  else
+    notify-send "  Manual config needed" "$description\nPattern not found in $file" -t 8000
+    return 1
+  fi
+}
+
+# Detect touchscreen hardware
+detect_touchscreen() {
+  # Check for touch devices via libinput
+  if command -v libinput &>/dev/null; then
+    libinput list-devices 2>/dev/null | grep -qi "touch" && return 0
+  fi
+  # Fallback: check /dev/input for touch devices
+  if grep -l "touch" /sys/class/input/*/name 2>/dev/null | grep -q .; then
+    return 0
+  fi
+  return 1
+}
+
+# Main installation
+echo "Checking for touchscreen hardware..."
+
+if ! detect_touchscreen; then
+  echo ""
+  echo "⚠️  No touchscreen hardware detected."
+  echo ""
+  echo "This could mean:"
+  echo "  • Your device doesn't have a touchscreen"
+  echo "  • The touchscreen driver isn't loaded"
+  echo "  • You're installing for future hardware (external touchscreen, etc.)"
+  echo ""
+  echo "You can still install touch support - it will activate when touch hardware is available."
+  echo ""
+  if ! gum confirm "Continue with touchscreen support installation?"; then
+    echo "Installation cancelled."
+    exit 0
+  fi
+else
+  echo "✓ Touchscreen hardware detected"
+  echo ""
+  if ! gum confirm "Install touchscreen support with multi-touch gestures?"; then
+    exit 0
+  fi
+fi
+
+echo ""
+echo "Installing touchscreen support..."
+
+# Ensure base-devel is installed (required for hyprgrass compilation)
+echo "Ensuring build dependencies..."
+omarchy-pkg-add base-devel
+
+# Install hyprgrass plugin for touchscreen gestures
+echo "Installing hyprgrass plugin..."
+if ! hyprpm update; then
+  echo "Error: hyprpm update failed"
+  exit 1
+fi
+
+if ! hyprpm add https://github.com/horriblename/hyprgrass; then
+  echo "Error: Failed to install hyprgrass plugin"
+  echo "This may be due to compilation errors or network issues."
+  exit 1
+fi
+
+hyprpm enable hyprgrass
+
+# Copy touch-specific configs
+echo "Configuring touch gestures..."
+mkdir -p ~/.config/hypr
+cp "$OMARCHY_PATH/default/hypr/touch.conf" ~/.config/hypr/
+
+# Append source line to hyprland.conf if not present
+if ! grep -q "touch.conf" ~/.config/hypr/hyprland.conf; then
+  echo "" >> ~/.config/hypr/hyprland.conf
+  echo "# Touchscreen support (installed via omarchy-install-touchscreen)" >> ~/.config/hypr/hyprland.conf
+  echo "source = ~/.config/hypr/touch.conf" >> ~/.config/hypr/hyprland.conf
+fi
+
+# Apply touch-friendly waybar sizing
+echo "Applying touch-friendly UI..."
+mkdir -p ~/.config/waybar
+cp "$OMARCHY_PATH/default/waybar/touch.css" ~/.config/waybar/
+
+# Add touch CSS import to user's style.css if not present
+if ! grep -q "touch.css" ~/.config/waybar/style.css 2>/dev/null; then
+  # Prepend import to style.css (after theme import)
+  sed -i '1a @import "touch.css";' ~/.config/waybar/style.css
+fi
+
+# Update waybar height in config.jsonc (with fallback)
+safe_sed_replace ~/.config/waybar/config.jsonc \
+  '"height": 26' \
+  '"height": 44' \
+  "Waybar height adjustment" || true
+
+# Reload (ignore errors if Hyprland not running)
+echo "Reloading configuration..."
+hyprctl reload 2>/dev/null || true
+omarchy-restart-waybar 2>/dev/null || true
+
+echo ""
+echo "✓ Touchscreen support installed!"
+notify-send "  Touchscreen Ready" "3-finger swipe left/right for workspaces.\nLong-press to drag windows.\n\nRun omarchy-remove-touchscreen to revert." -t 10000

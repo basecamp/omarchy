@@ -1,0 +1,46 @@
+#!/bin/bash
+set -e
+
+# Remove touchscreen support
+
+if ! gum confirm "Remove touchscreen support (gestures and UI sizing)?"; then
+  exit 0
+fi
+
+echo "Removing touchscreen support..."
+
+# Remove hyprgrass plugin
+echo "Removing hyprgrass plugin..."
+hyprpm remove hyprgrass 2>/dev/null || true
+
+# Remove touch config
+rm -f ~/.config/hypr/touch.conf
+
+# Remove source line from hyprland.conf
+if [[ -f ~/.config/hypr/hyprland.conf ]]; then
+  sed -i '/touch\.conf/d' ~/.config/hypr/hyprland.conf
+  sed -i '/Touchscreen support/d' ~/.config/hypr/hyprland.conf
+fi
+
+# Revert waybar sizing
+rm -f ~/.config/waybar/touch.css
+
+if [[ -f ~/.config/waybar/style.css ]]; then
+  sed -i '/touch\.css/d' ~/.config/waybar/style.css
+fi
+
+# Revert waybar height (if pattern found)
+if [[ -f ~/.config/waybar/config.jsonc ]]; then
+  if grep -q '"height": 44' ~/.config/waybar/config.jsonc; then
+    sed -i 's/"height": 44/"height": 26/' ~/.config/waybar/config.jsonc
+  fi
+fi
+
+# Reload (ignore errors if Hyprland not running)
+echo "Reloading configuration..."
+hyprctl reload 2>/dev/null || true
+omarchy-restart-waybar 2>/dev/null || true
+
+echo ""
+echo "✓ Touchscreen support removed"
+notify-send "Touchscreen support removed" -t 5000

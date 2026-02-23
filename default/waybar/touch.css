@@ -1,0 +1,40 @@
+/* Touch-friendly sizing overrides
+ * To revert: remove @import "touch.css" from ~/.config/waybar/style.css
+ * and set "height": 26 in config.jsonc
+ */
+
+/* Larger workspace buttons for touch */
+#workspaces button {
+  padding: 0 14px;
+  min-width: 32px;
+  margin: 0 3px;
+}
+
+/* Larger icons and spacing */
+#cpu,
+#battery,
+#pulseaudio,
+#custom-omarchy,
+#custom-update {
+  min-width: 24px;
+  margin: 0 12px;
+}
+
+/* Larger tray icons */
+#tray {
+  margin-right: 20px;
+}
+
+/* More padding on indicators */
+#custom-screenrecording-indicator,
+#custom-idle-indicator,
+#custom-notification-silencing-indicator {
+  min-width: 24px;
+  margin: 0 8px;
+  font-size: 14px;
+}
+
+/* Larger font for better readability */
+* {
+  font-size: 14px;
+}
