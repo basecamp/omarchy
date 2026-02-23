@@ -32,8 +32,13 @@ if ! git clone "$REPO_URL" "$THEME_PATH"; then
   exit 1
 fi
 
+<<<<<<< HEAD
 # Remove .git if user chose Delete
 if [ "$KEEP_GIT" = "Delete" ]; then
+=======
+# Ask whether to keep or delete .git
+if gum choose --header="Do you want to keep git?" "Keep" "Delete" | grep -q "Delete"; then
+>>>>>>> a7559219299a3c145e86b1fecff745a20a1235ce
   rm -rf "$THEME_PATH/.git"
 fi
 
