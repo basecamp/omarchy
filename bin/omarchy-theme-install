@@ -18,6 +18,9 @@ THEMES_DIR="$HOME/.config/omarchy/themes"
 THEME_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-theme$//')
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
+# Ask whether to keep or delete .git before cloning
+KEEP_GIT=$(gum choose --header="Do you want to keep git?" "Keep" "Delete")
+
 # Remove existing theme if present
 if [[ -d $THEME_PATH ]]; then
   rm -rf "$THEME_PATH"
@@ -29,8 +32,8 @@ if ! git clone "$REPO_URL" "$THEME_PATH"; then
   exit 1
 fi
 
-# Ask whether to keep or delete .git
-if gum choose --header="Do you want to keep git?" "Keep" "Delete" | grep -q "Delete"; then
+# Remove .git if user chose Delete
+if [ "$KEEP_GIT" = "Delete" ]; then
   rm -rf "$THEME_PATH/.git"
 fi
 
