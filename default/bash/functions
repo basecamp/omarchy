@@ -161,6 +161,20 @@ tml() {
   tmux select-pane -t "$editor_pane"
 }
 
+# Create a tml window per subdirectory in the current directory
+tmlm() {
+  [[ -z $TMUX ]] && { echo "You must start tmux to use tmlm."; return 1; }
+
+  local ai="$1"
+
+  for dir in */; do
+    [[ -d $dir ]] || continue
+    local dirpath="${PWD}/${dir%/}"
+    tmux new-window -c "$dirpath"
+    tmux send-keys "tml $ai" C-m
+  done
+}
+
 # Create a dev layout using tmux with editor, opencode, and terminal
 nic() {
   tml c
@@ -169,4 +183,14 @@ nic() {
 # Create a dev layout using tmux with editor, claude, and terminal
 nicx() {
   tml cx
+}
+
+# Create tml windows for each subdirectory using opencode
+nicm() {
+  tmlm c
+}
+
+# Create tml windows for each subdirectory using claude
+nicxm() {
+  tmlm cx
 }
