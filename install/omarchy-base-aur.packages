@@ -5,6 +5,7 @@
 hyprshade
 aether
 
+claude-code
 elephant
 elephant-bluetooth
 elephant-calc
@@ -18,6 +19,7 @@ elephant-symbols
 elephant-todo
 elephant-unicode
 elephant-websearch
+opencode
 python-terminaltexteffects
 ttf-ia-writer
 typora
@@ -25,4 +27,3 @@ tzupdate
 ufw-docker
 xdg-terminal-exec
 yaru-icon-theme
-opencode

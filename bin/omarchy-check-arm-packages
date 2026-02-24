@@ -40,6 +40,7 @@ fi
 
 # Direct substitutions: x86_package -> ARM_package
 declare -A DIRECT_SUBSTITUTIONS=(
+  ["chromium"]="omarchy-chromium-bin"
   ["localsend"]="localsend-bin"
   ["omarchy-chromium"]="omarchy-chromium-bin"
 )
