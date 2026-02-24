@@ -171,8 +171,12 @@ show_toggle_menu() {
 }
 
 show_hardware_menu() {
-  case $(menu "Toggle" "  Hybrid GPU") in
+  local options="  Hybrid GPU"
+  omarchy-battery-present && options="$options\n󰍹  Auto Refresh Rate"
+
+  case $(menu "Toggle" "$options") in
   *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
+  *Refresh*) omarchy-toggle-monitor-refresh-rate ;;
   *) show_trigger_menu ;;
   esac
 }

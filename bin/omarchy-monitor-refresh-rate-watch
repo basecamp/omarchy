@@ -1,0 +1,56 @@
+#!/bin/bash
+set -o pipefail
+
+# Watch for power profile changes via D-Bus and adjust laptop monitor refresh rate.
+# power-saver → lowest refresh rate, balanced/performance → highest refresh rate.
+# Only affects the built-in laptop display (eDP-*).
+
+apply_profile() {
+  local profile=$1
+  local info
+  info=$(hyprctl monitors -j | jq '.[] | select(.name | startswith("eDP"))')
+
+  [[ -z "$info" ]] && return
+
+  local monitor resolution scale current_rate rates max_rate min_rate target_rate
+  monitor=$(echo "$info" | jq -r '.name')
+  resolution=$(echo "$info" | jq -r '"\(.width)x\(.height)"')
+  scale=$(echo "$info" | jq -r '.scale')
+  current_rate=$(echo "$info" | jq -r '.refreshRate | floor')
+
+  rates=$(echo "$info" | jq -r --arg res "$resolution" '
+    .availableModes[] | select(startswith($res + "@")) |
+    capture("@(?<hz>[0-9]+)\\.") | .hz' | sort -n | uniq)
+  max_rate=$(echo "$rates" | tail -1)
+  min_rate=$(echo "$rates" | head -1)
+
+  if [[ "$profile" == "power-saver" ]]; then
+    target_rate=$min_rate
+  else
+    target_rate=$max_rate
+  fi
+
+  if [[ "$current_rate" != "$target_rate" ]]; then
+    hyprctl keyword monitor "$monitor,${resolution}@${target_rate},auto,${scale}"
+    notify-send "󰍹  Display refresh rate set to ${target_rate}Hz"
+  fi
+}
+
+# --restore: set max rate and exit (used by toggle script)
+if [[ "$1" == "--restore" ]]; then
+  apply_profile performance
+  exit 0
+fi
+
+# Apply once on startup
+apply_profile "$(powerprofilesctl get)"
+
+# Watch for changes via D-Bus
+gdbus monitor --system --dest net.hadess.PowerProfiles \
+  --object-path /net/hadess/PowerProfiles 2>/dev/null |
+  while read -r line; do
+    if [[ "$line" == *"ActiveProfile"* ]]; then
+      profile=$(echo "$line" | grep -oP "'ActiveProfile': <'\\K[^']+")
+      [[ -n "$profile" ]] && apply_profile "$profile"
+    fi
+  done
