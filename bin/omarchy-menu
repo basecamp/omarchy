@@ -580,8 +580,8 @@ show_system_menu() {
   *Hibernate*) systemctl hibernate ;;
   *Relaunch*) omarchy-cmd-relaunch ;;
   *Logout*) omarchy-system-logout ;;
-  *Restart*) omarchy-cmd-reboot ;;
-  *Shutdown*) omarchy-cmd-shutdown ;;
+  *Restart*) omarchy-system-reboot ;;
+  *Shutdown*) omarchy-system-shutdown ;;
   *) back_to show_main_menu ;;
   esac
 }
