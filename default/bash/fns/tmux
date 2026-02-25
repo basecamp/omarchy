@@ -1,4 +1,4 @@
-# Create a tmux layout for dev with editor, ai, and terminal
+# Create a tmux dev layout for dev with editor, ai, and terminal
 tml() {
   [[ -z $TMUX ]] && { echo "You must start tmux to use tml."; return 1; }
 
@@ -52,26 +52,6 @@ tmlm() {
       tmux send-keys -t "$pane_id" "tml $ai" C-m
     fi
   done
-}
-
-# Create a dev layout using tmux with editor, opencode, and terminal
-nic() {
-  tml c
-}
-
-# Create a dev layout using tmux with editor, claude, and terminal
-nicx() {
-  tml cx
-}
-
-# Create tml windows for each subdirectory using opencode
-nicm() {
-  tmlm c
-}
-
-# Create tml windows for each subdirectory using claude
-nicxm() {
-  tmlm cx
 }
 
 # Create a multi-pane layout with the same command started in each pane
