@@ -1,4 +1,5 @@
 # Create a tmux dev layout for dev with editor, ai, and terminal
+# Usage: tmlm <c|cx|codex|other_ai>
 tml() {
   [[ -z $TMUX ]] && { echo "You must start tmux to use tml."; return 1; }
 
@@ -29,6 +30,7 @@ tml() {
 }
 
 # Create a tml window per subdirectory in the current directory
+# Usage: tmlm <c|cx|codex|other_ai>
 tmlm() {
   [[ -z $TMUX ]] && { echo "You must start tmux to use tmlm."; return 1; }
 
@@ -54,9 +56,9 @@ tmlm() {
   done
 }
 
-# Create a multi-pane layout with the same command started in each pane
+# Create a multi-pane swarm layout with the same command started in each pane (great for AI)
 # Usage: tpl <pane_count> <command>
-tpl() {
+tsl() {
   [[ -z $TMUX ]] && { echo "You must start tmux to use this function."; return 1; }
 
   local count="$1"
