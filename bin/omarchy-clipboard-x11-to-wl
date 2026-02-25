@@ -1,0 +1,10 @@
+#!/bin/bash
+# X11 → Wayland with hash deduplication (prevents feedback loop)
+last=""
+while clipnotify -s clipboard; do
+    current=$(xclip -selection clipboard -o 2>/dev/null | md5sum)
+    if [ "$current" != "$last" ] && [ -n "$current" ]; then
+        xclip -selection clipboard -o 2>/dev/null | wl-copy -n 2>/dev/null
+        last="$current"
+    fi
+done

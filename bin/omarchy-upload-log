@@ -6,6 +6,30 @@ LOG_TYPE="${1:-install}"
 TEMP_LOG="/tmp/upload-log.txt"
 SYSTEM_INFO="/tmp/system-info.txt"
 
+# Set Unicode symbols based on architecture
+arch=$(uname -m)
+if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
+  CHECKMARK=""
+else
+  CHECKMARK="✓ "
+fi
+
+# Detect if we're in installation context (PADDING_LEFT is set during install)
+if [[ -n "${PADDING_LEFT:-}" ]]; then
+  USE_GUM_STYLE=true
+else
+  USE_GUM_STYLE=false
+fi
+
+# Helper function to print styled or plain text
+print_msg() {
+  if [[ "$USE_GUM_STYLE" == "true" ]]; then
+    gum style --padding "0 0 0 $PADDING_LEFT" "$@"
+  else
+    echo "$@"
+  fi
+}
+
 # Get system information if fastfetch is available
 if command -v fastfetch >/dev/null 2>&1; then
   {
@@ -26,7 +50,7 @@ else
     echo "========================================="
     echo "SYSTEM INFORMATION"
     echo "========================================="
-    echo "Hostname: $(hostname)"
+    echo "Hostname: $(cat /etc/hostname 2>/dev/null || echo 'unknown')"
     echo "Kernel: $(uname -r)"
     echo "Date: $(date)"
     echo ""
@@ -42,16 +66,22 @@ install)
   ARCHINSTALL_LOG="/var/log/archinstall/install.log"
   OMARCHY_LOG="/var/log/omarchy-install.log"
 
+  # Ensure log file exists before trying to read it
+  if [ ! -f "$OMARCHY_LOG" ]; then
+    sudo touch "$OMARCHY_LOG" 2>/dev/null || true
+  fi
+
   # Combine system info with logs
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   cat $ARCHINSTALL_LOG $OMARCHY_LOG >>"$TEMP_LOG" 2>/dev/null
 
   if [[ ! -s $TEMP_LOG ]]; then
-    echo "Error: No install logs found"
+    print_msg "Error: No install logs found"
     exit 1
   fi
 
-  echo "Uploading installation log to 0x0.st..."
+  echo
+  print_msg "Uploading installation log to 0x0.st..."
   ;;
 
 this-boot)
@@ -60,11 +90,11 @@ this-boot)
   journalctl -b 0 >>"$TEMP_LOG" 2>/dev/null
 
   if [[ ! -s $TEMP_LOG ]]; then
-    echo "Error: No logs found for current boot"
+    print_msg "Error: No logs found for current boot"
     exit 1
   fi
 
-  echo "Uploading current boot logs to 0x0.st..."
+  print_msg "Uploading current boot logs to 0x0.st..."
   ;;
 
 last-boot)
@@ -73,11 +103,11 @@ last-boot)
   journalctl -b -1 >>"$TEMP_LOG" 2>/dev/null
 
   if [[ ! -s $TEMP_LOG ]]; then
-    echo "Error: No logs found for previous boot"
+    print_msg "Error: No logs found for previous boot"
     exit 1
   fi
 
-  echo "Uploading previous boot logs to 0x0.st..."
+  print_msg "Uploading previous boot logs to 0x0.st..."
   ;;
 
 installed|system-info)
@@ -92,35 +122,74 @@ installed|system-info)
   } >>"$TEMP_LOG"
 
   if [[ ! -s $TEMP_LOG ]]; then
-    echo "Error: Failed to gather system information"
+    print_msg "Error: Failed to gather system information"
     exit 1
   fi
 
-  echo "Uploading system information to 0x0.st..."
+  echo
+  print_msg "Uploading system information to 0x0.st..."
   ;;
 
 *)
-  echo "Usage: $0 [install|this-boot|last-boot|installed|system-info]"
-  echo "  install      - Upload installation logs (default)"
-  echo "  this-boot    - Upload logs from current boot"
-  echo "  last-boot    - Upload logs from previous boot"
-  echo "  installed    - Upload system info and installed packages"
+  print_msg "Usage: $0 [install|this-boot|last-boot|installed|system-info]"
+  print_msg "  install      - Upload installation logs (default)"
+  print_msg "  this-boot    - Upload logs from current boot"
+  print_msg "  last-boot    - Upload logs from previous boot"
+  print_msg "  installed    - Upload system info and installed packages"
   exit 1
   ;;
 esac
 
-echo ""
+echo
 
-URL=$(curl -sF "file=@$TEMP_LOG" -Fexpires=24 https://0x0.st)
+# Check file size (0x0.st has 512 MiB limit)
+FILE_SIZE=$(stat -f%z "$TEMP_LOG" 2>/dev/null || stat -c%s "$TEMP_LOG" 2>/dev/null)
+MAX_SIZE=$((512 * 1024 * 1024))  # 512 MiB in bytes
 
-if (( $? == 0 )) && [[ -n $URL ]]; then
-  echo "✓ Log uploaded successfully!"
-  echo "Share this URL:"
-  echo ""
-  echo "  $URL"
-  echo ""
-  echo "This link will expire in 24 hours."
+if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
+  print_msg "Warning: Log file is $(($FILE_SIZE / 1024 / 1024)) MiB (limit: 512 MiB)"
+  print_msg "Truncating to last 100,000 lines..."
+  tail -100000 "$TEMP_LOG" > "${TEMP_LOG}.truncated"
+  mv "${TEMP_LOG}.truncated" "$TEMP_LOG"
+fi
+
+print_msg "Uploading $(du -h "$TEMP_LOG" | cut -f1) of logs..."
+
+# Upload with 60 second timeout
+# Use -# for simple hash progress bar (goes to stderr, won't interfere with URL capture)
+URL=$(curl --max-time 60 -# -F "file=@$TEMP_LOG" -Fexpires=24 https://0x0.st 2>/tmp/upload-progress.log)
+CURL_EXIT=$?
+
+if [ $CURL_EXIT -eq 28 ]; then
+  print_msg "Error: Upload timed out after 60 seconds"
+  print_msg "Log file may be too large. Try: omarchy-upload-log this-boot"
+  echo
+  read -p "Press Enter to continue..."
+  exit 0
+elif [ $CURL_EXIT -ne 0 ]; then
+  print_msg "Error: Upload failed (curl exit code: $CURL_EXIT)"
+  print_msg "Check network connection or try again later"
+  echo
+  read -p "Press Enter to continue..."
+  exit 0
+fi
+
+if [ -n "$URL" ] && [[ "$URL" =~ ^https?:// ]]; then
+  print_msg "${CHECKMARK}Log uploaded successfully!"
+  echo
+  print_msg "Share this URL:"
+  echo
+  print_msg "  -----------------------"
+  print_msg "  $URL"
+  print_msg "  -----------------------"
+  echo
+  print_msg "This link will expire in 24 hours."
+  echo
+  read -p "Press Enter to continue..."
 else
-  echo "Error: Failed to upload log file"
-  exit 1
+  print_msg "Error: Invalid response from server"
+  print_msg "Response: $URL"
+  echo
+  read -p "Press Enter to continue..."
+  exit 0
 fi

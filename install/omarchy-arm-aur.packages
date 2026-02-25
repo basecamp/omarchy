@@ -1,0 +1,9 @@
+# AUR packages for ARM
+# Installed via omarchy-aur-install (with GitHub mirror fallback)
+
+blueberry                          # Bluetooth config GUI (x86 has it in official repos)
+hyprland-preview-share-picker-git  # Screen share picker (replaces hyprland-preview-share-picker on x86)
+localsend-bin                      # Local network file sharing app
+omarchy-chromium-bin               # Omarchy's Chromium fork with Widevine DRM support
+wayfreeze-git                      # Screen freeze utility (x86 has wayfreeze in official mirror)
+# walker is handled by arm_install_scripts/walker.sh (prebuilt binary by default)

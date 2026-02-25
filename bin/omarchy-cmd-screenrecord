@@ -27,6 +27,19 @@ for arg in "$@"; do
   esac
 done
 
+get_recorder_process_name() {
+  # Use wf-recorder for ARM64 or when running in a VM (no GPU hardware encoding available)
+  if [[ "$(uname -m)" == "aarch64" ]] || systemd-detect-virt -q; then
+    echo "wf-recorder"
+  else
+    echo "gpu-screen-recorder"
+  fi
+}
+
+getaudiooutput() {
+  pactl list sources | grep 'Name' | grep 'monitor' | cut -d ' ' -f2
+}
+
 cleanup_webcam() {
   pkill -f "WebcamOverlay" 2>/dev/null
 }
@@ -73,20 +86,37 @@ start_webcam_overlay() {
 
 start_screenrecording() {
   local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
-  local audio_devices=""
   local audio_args=""
 
-  [[ $DESKTOP_AUDIO == "true" ]] && audio_devices+="default_output"
+  # Use wf-recorder for ARM64 or VMs (no GPU hardware encoding available)
+  if [[ "$(uname -m)" == "aarch64" ]] || systemd-detect-virt -q; then
+    # wf-recorder only supports a single --audio flag
+    if [[ "$DESKTOP_AUDIO" == "true" ]]; then
+      # Desktop audio requires specifying the monitor source explicitly
+      audio_args="--audio=$(getaudiooutput)"
+    elif [[ "$MICROPHONE_AUDIO" == "true" ]]; then
+      # Microphone-only uses default input
+      audio_args="--audio"
+    fi
 
-  if [[ $MICROPHONE_AUDIO == "true" ]]; then
-    # Merge audio tracks into one - separate tracks only play one at a time in most players
-    [[ -n $audio_devices ]] && audio_devices+="|"
-    audio_devices+="default_input"
+    wf-recorder $audio_args -f "$filename" -c libx264 -p crf=23 -p preset=medium -p movflags=+faststart &
+  else
+    # x86_64 bare metal with GPU: use gpu-screen-recorder for hardware encoding
+    local audio_devices=""
+
+    [[ "$DESKTOP_AUDIO" == "true" ]] && audio_devices+="default_output"
+
+    if [[ "$MICROPHONE_AUDIO" == "true" ]]; then
+      # Merge audio tracks into one - separate tracks only play one at a time in most players
+      [[ -n "$audio_devices" ]] && audio_devices+="|"
+      audio_devices+="default_input"
+    fi
+
+    [[ -n "$audio_devices" ]] && audio_args="-a $audio_devices"
+
+    gpu-screen-recorder -w portal -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
   fi
 
-  [[ -n $audio_devices ]] && audio_args+="-a $audio_devices"
-
-  gpu-screen-recorder -w portal -k h264 -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
   toggle_screenrecording_indicator
 }
 
@@ -103,17 +133,19 @@ trim_first_frame() {
 }
 
 stop_screenrecording() {
-  pkill -SIGINT -f "^gpu-screen-recorder"  # SIGINT required to save video properly
+  local process_name=$(get_recorder_process_name)
+
+  pkill -SIGINT -f "^$process_name"  # SIGINT required to save video properly
 
   # Wait a maximum of 5 seconds to finish before hard killing
   local count=0
-  while pgrep -f "^gpu-screen-recorder" >/dev/null && (( count < 50 )); do
+  while pgrep -f "^$process_name" >/dev/null && [ $count -lt 50 ]; do
     sleep 0.1
     count=$((count + 1))
   done
 
-  if pgrep -f "^gpu-screen-recorder" >/dev/null; then
-    pkill -9 -f "^gpu-screen-recorder"
+  if pgrep -f "^$process_name" >/dev/null; then
+    pkill -9 -f "^$process_name"
     cleanup_webcam
     notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
   else
@@ -129,12 +161,21 @@ toggle_screenrecording_indicator() {
 }
 
 screenrecording_active() {
-  pgrep -f "^gpu-screen-recorder" >/dev/null || pgrep -f "WebcamOverlay" >/dev/null
+  local process_name=$(get_recorder_process_name)
+  pgrep -f "^$process_name" >/dev/null || pgrep -x slurp >/dev/null || pgrep -f "WebcamOverlay" >/dev/null
 }
 
 if screenrecording_active; then
-  if pgrep -f "WebcamOverlay" >/dev/null && ! pgrep -f "^gpu-screen-recorder" >/dev/null; then
-    cleanup_webcam
+  if pgrep -x slurp >/dev/null; then
+    pkill -x slurp 2>/dev/null
+  elif pgrep -f "WebcamOverlay" >/dev/null; then
+    process_name=$(get_recorder_process_name)
+
+    if ! pgrep -f "^$process_name" >/dev/null; then
+      cleanup_webcam
+    else
+      stop_screenrecording
+    fi
   else
     stop_screenrecording
   fi

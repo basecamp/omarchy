@@ -68,11 +68,11 @@ install_terminal() {
 }
 
 aur_install() {
-  present_terminal "echo 'Installing $1 from AUR...'; omarchy-pkg-aur-add $2"
+  present_terminal "echo 'Installing $1 from AUR...'; omarchy-aur-install $2"
 }
 
 aur_install_and_launch() {
-  present_terminal "echo 'Installing $1 from AUR...'; omarchy-pkg-aur-add $2 && setsid gtk-launch $3"
+  present_terminal "echo 'Installing $1 from AUR...'; omarchy-aur-install $2 && setsid gtk-launch $3"
 }
 
 show_learn_menu() {
@@ -213,8 +213,8 @@ show_setup_menu() {
   options="$options\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
-  *Audio*) omarchy-launch-audio ;;
-  *Wifi*) omarchy-launch-wifi ;;
+  *Audio*) omarchy-launch-or-focus-tui wiremix ;;
+  *Wi-Fi*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
   *System*) show_setup_system_menu ;;
@@ -546,7 +546,8 @@ show_update_config_menu() {
 }
 
 show_update_hardware_menu() {
-  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth") in
+  local options="  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth"
+  case $(menu "Restart" "$options") in
   *Audio*) present_terminal omarchy-restart-pipewire ;;
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
@@ -570,13 +571,14 @@ show_system_menu() {
   local options="󱄄  Screensaver\n  Lock"
   [[ ! -f ~/.local/state/omarchy/toggles/suspend-off ]] && options="$options\n󰒲  Suspend"
   omarchy-hibernation-available && options="$options\n󰤁  Hibernate"
-  options="$options\n󰍃  Logout\n󰜉  Restart\n󰐥  Shutdown"
+  options="$options\n Relaunch\n󰍃  Logout\n󰜉  Restart\n󰐥  Shutdown"
 
   case $(menu "System" "$options") in
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Lock*) omarchy-lock-screen ;;
   *Suspend*) systemctl suspend ;;
   *Hibernate*) systemctl hibernate ;;
+  *Relaunch*) omarchy-cmd-relaunch ;;
   *Logout*) omarchy-system-logout ;;
   *Restart*) omarchy-system-reboot ;;
   *Shutdown*) omarchy-system-shutdown ;;

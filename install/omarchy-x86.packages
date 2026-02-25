@@ -1,0 +1,25 @@
+# Omarchy x86 specific package list
+# This file is also used by the ISO builder when determining needs
+
+blueberry
+wayfreeze
+hyprland-preview-share-picker
+nvim
+omarchy-walker
+1password-beta
+1password-cli
+asdcontrol
+chromium
+dotnet-runtime-9.0
+ghostty
+gpu-screen-recorder
+localsend
+obs-studio
+obsidian
+omarchy-chromium
+omarchy-nvim
+pinta
+signal-desktop
+spotify
+tobi-try
+yay

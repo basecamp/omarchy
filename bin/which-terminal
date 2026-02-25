@@ -1,0 +1,39 @@
+#!/bin/bash
+# Quick terminal emulator detector
+# Usage: which-terminal
+
+# Check for Ghostty-specific environment variable
+if [ -n "$GHOSTTY_RESOURCES_DIR" ]; then
+    echo "🟢 Ghostty"
+    exit 0
+fi
+
+# Check TERMINAL environment variable
+if [ "$TERMINAL" = "alacritty" ]; then
+    echo "🔵 Alacritty"
+    exit 0
+fi
+
+# Check process tree for terminal names
+if command -v pstree >/dev/null 2>&1; then
+    ptree=$(pstree -s $$ 2>/dev/null)
+
+    if echo "$ptree" | grep -q "ghostty"; then
+        echo "🟢 Ghostty"
+    elif echo "$ptree" | grep -q "alacritty"; then
+        echo "🔵 Alacritty"
+    elif echo "$ptree" | grep -q "kitty"; then
+        echo "🟡 Kitty"
+    elif echo "$ptree" | grep -q "wezterm"; then
+        echo "🟣 WezTerm"
+    elif echo "$ptree" | grep -q "konsole"; then
+        echo "🔷 Konsole"
+    elif echo "$ptree" | grep -q "gnome-terminal"; then
+        echo "🟠 GNOME Terminal"
+    else
+        echo "❓ Unknown ($TERM)"
+    fi
+else
+    # Fallback if pstree not available
+    echo "❓ Unknown ($TERM)"
+fi

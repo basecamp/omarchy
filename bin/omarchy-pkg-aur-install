@@ -19,9 +19,9 @@ fzf_args=(
 pkg_names=$(yay -Slqa | fzf "${fzf_args[@]}")
 
 if [[ -n $pkg_names ]]; then
-  # Add aur/ prefix to each package name and convert to space-separated for yay
-  sudo -v
-  echo "$pkg_names" | sed 's/^/aur\//' | tr '\n' ' ' | xargs yay -S --noconfirm
+  # Convert newline-separated selections to array for omarchy-aur-install
+  readarray -t packages < <(echo "$pkg_names")
+  omarchy-aur-install "${packages[@]}"
   sudo updatedb
   omarchy-show-done
 fi
