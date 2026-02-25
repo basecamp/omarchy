@@ -73,3 +73,33 @@ nicm() {
 nicxm() {
   tmlm cx
 }
+
+# Create a multi-pane layout with the same command started in each pane
+# Usage: tpl <pane_count> <command>
+tpl() {
+  [[ -z $TMUX ]] && { echo "You must start tmux to use this function."; return 1; }
+
+  local count="$1"
+  local cmd="$2"
+  local current_dir="${PWD}"
+  local -a panes
+
+  tmux rename-window -t "$TMUX_PANE" "$(basename "$current_dir")"
+
+  panes+=("$TMUX_PANE")
+
+  while (( ${#panes[@]} < count )); do
+    local new_pane
+    local split_target="${panes[-1]}"
+    new_pane=$(tmux split-window -h -t "$split_target" -c "$current_dir" -P -F '#{pane_id}')
+    panes+=("$new_pane")
+  done
+
+  tmux select-layout -t "${panes[0]}" tiled
+
+  for pane in "${panes[@]}"; do
+    tmux send-keys -t "$pane" "$cmd" C-m
+  done
+
+  tmux select-pane -t "${panes[0]}"
+}
