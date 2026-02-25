@@ -1,7 +1,7 @@
-# Create a tmux dev layout for dev with editor, ai, and terminal
-# Usage: tmlm <c|cx|codex|other_ai>
-tml() {
-  [[ -z $TMUX ]] && { echo "You must start tmux to use tml."; return 1; }
+# Create a Tmux Dev Layout with editor, ai, and terminal
+# Usage: tdl <c|cx|codex|other_ai>
+tdl() {
+  [[ -z $TMUX ]] && { echo "You must start tmux to use tdl."; return 1; }
 
   local current_dir="${PWD}"
   local editor_pane ai_pane
@@ -29,10 +29,10 @@ tml() {
   tmux select-pane -t "$editor_pane"
 }
 
-# Create a tml window per subdirectory in the current directory
-# Usage: tmlm <c|cx|codex|other_ai>
-tmlm() {
-  [[ -z $TMUX ]] && { echo "You must start tmux to use tmlm."; return 1; }
+# Create multiple tdl windows with one per subdirectory in the current directory
+# Usage: tdlm <c|cx|codex|other_ai>
+tdlm() {
+  [[ -z $TMUX ]] && { echo "You must start tmux to use tdlm."; return 1; }
 
   local ai="$1"
   local base_dir="$PWD"
@@ -47,11 +47,11 @@ tmlm() {
 
     if $first; then
       # Reuse the current window for the first project
-      tmux send-keys -t "$TMUX_PANE" "cd '$dirpath' && tml $ai" C-m
+      tmux send-keys -t "$TMUX_PANE" "cd '$dirpath' && tdl $ai" C-m
       first=false
     else
       local pane_id=$(tmux new-window -c "$dirpath" -P -F '#{pane_id}')
-      tmux send-keys -t "$pane_id" "tml $ai" C-m
+      tmux send-keys -t "$pane_id" "tdl $ai" C-m
     fi
   done
 }
