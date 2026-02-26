@@ -87,16 +87,6 @@ sudo limine-update
 # Verify that limine-update actually added boot entries
 if ! grep -q "^/+" /boot/limine.conf; then
   echo "Error: limine-update failed to add boot entries to /boot/limine.conf" >&2
-  echo "Debug: Installed packages:" >&2
-  pacman -Q limine limine-mkinitcpio-hook limine-snapper-sync 2>&1 >&2
-  echo "Debug: /etc/default/limine:" >&2
-  cat /etc/default/limine 2>&1 >&2
-  echo "Debug: Kernels found:" >&2
-  ls /usr/lib/modules/*/pkgbase 2>&1 >&2
-  echo "Debug: UKI files:" >&2
-  ls /boot/EFI/Linux/ 2>&1 >&2
-  echo "Debug: ESP mount:" >&2
-  findmnt /boot 2>&1 >&2
   exit 1
 fi
 
