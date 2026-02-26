@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Copies themed plymouth files into the system theme directory and rebuilds
+# the initramfs. Intended to be run via sudo from omarchy-theme-set-plymouth.
+
+PLYMOUTH_THEME_DIR="/usr/share/plymouth/themes/omarchy"
+STAGED_DIR="$1"
+
+if [[ -z $STAGED_DIR || ! -d $STAGED_DIR ]]; then
+  echo "Usage: $0 <staged-theme-directory>" >&2
+  exit 1
+fi
+
+[[ -d $PLYMOUTH_THEME_DIR ]] || exit 1
+
+cp "$STAGED_DIR"/* "$PLYMOUTH_THEME_DIR/"
+rm -rf "$STAGED_DIR"
+
+if command -v limine-mkinitcpio &>/dev/null; then
+  limine-mkinitcpio
+else
+  mkinitcpio -P
+fi

@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# Themes the plymouth boot splash and disk encryption screen to match
+# the current omarchy theme. Recolors PNG assets with ImageMagick and
+# substitutes colors in the plymouth script, then rebuilds the initramfs.
+
+THEME_DIR="$HOME/.config/omarchy/current/theme"
+COLORS_FILE="$THEME_DIR/colors.toml"
+PLYMOUTH_SOURCE="$OMARCHY_PATH/default/plymouth"
+
+[[ -f $COLORS_FILE ]] || exit 0
+command -v magick &>/dev/null || exit 0
+
+# Parse a color value from colors.toml, returns hex with # prefix
+get_color() {
+  local val
+  val=$(grep -E "^$1\s*=" "$COLORS_FILE" | head -1 | sed 's/.*=\s*"//;s/".*//')
+  echo "$val"
+}
+
+background=$(get_color background)
+foreground=$(get_color foreground)
+accent=$(get_color accent)
+color0=$(get_color color0)
+
+[[ $background && $foreground && $accent ]] || exit 0
+
+# Convert hex color to plymouth float RGB (e.g., "#1e1e2e" -> "0.117, 0.117, 0.180")
+hex_to_float_rgb() {
+  local hex="${1#\#}"
+  local r=$((16#${hex:0:2}))
+  local g=$((16#${hex:2:2}))
+  local b=$((16#${hex:4:2}))
+  printf "%.3f, %.3f, %.3f" "$(echo "scale=3; $r/255" | bc)" "$(echo "scale=3; $g/255" | bc)" "$(echo "scale=3; $b/255" | bc)"
+}
+
+# Convert hex to 0xRRGGBB format for plymouth config
+hex_to_plymouth() {
+  echo "0x${1#\#}"
+}
+
+bg_float=$(hex_to_float_rgb "$background")
+bg_plymouth=$(hex_to_plymouth "$background")
+
+# Stage themed files in a temp directory
+STAGED=$(mktemp -d)
+
+# Generate themed omarchy.script
+sed \
+  -e "s|Window.SetBackgroundTopColor(.*);|Window.SetBackgroundTopColor($bg_float);|" \
+  -e "s|Window.SetBackgroundBottomColor(.*);|Window.SetBackgroundBottomColor($bg_float);|" \
+  "$PLYMOUTH_SOURCE/omarchy.script" >"$STAGED/omarchy.script"
+
+# Generate themed omarchy.plymouth
+sed \
+  -e "s|ConsoleLogBackgroundColor=.*|ConsoleLogBackgroundColor=$bg_plymouth|" \
+  "$PLYMOUTH_SOURCE/omarchy.plymouth" >"$STAGED/omarchy.plymouth"
+
+# Recolor PNG assets
+magick "$PLYMOUTH_SOURCE/logo.png" -fill "$accent" -colorize 100% "$STAGED/logo.png"
+magick "$PLYMOUTH_SOURCE/lock.png" -fill "$foreground" -colorize 100% "$STAGED/lock.png"
+magick "$PLYMOUTH_SOURCE/entry.png" -fill "$foreground" -colorize 100% "$STAGED/entry.png"
+magick "$PLYMOUTH_SOURCE/bullet.png" -fill "$foreground" -colorize 100% "$STAGED/bullet.png"
+magick "$PLYMOUTH_SOURCE/progress_bar.png" -fill "$foreground" -colorize 100% "$STAGED/progress_bar.png"
+magick "$PLYMOUTH_SOURCE/progress_box.png" -fill "${color0:-$background}" -colorize 100% "$STAGED/progress_box.png"
+
+# Deploy and rebuild initramfs in the background
+sudo /usr/local/bin/omarchy-plymouth-update-theme "$STAGED" &

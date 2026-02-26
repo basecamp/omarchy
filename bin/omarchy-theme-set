@@ -56,6 +56,7 @@ omarchy-theme-set-vscode
 omarchy-theme-set-obsidian
 omarchy-theme-set-keyboard
 omarchy-theme-set-limine
+omarchy-theme-set-plymouth
 
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME"
