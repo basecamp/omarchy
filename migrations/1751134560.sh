@@ -11,6 +11,7 @@ EOF
 
 # Ensure we have the latest repos and are ready to pull
 omarchy-refresh-pacman
+omarchy-update-keyring
 sudo systemctl restart systemd-timesyncd
 sudo pacman -Sy # Normally not advisable, but we'll do a full -Syu before finishing
 
