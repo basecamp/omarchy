@@ -1,13 +1,33 @@
 # Configure Docker daemon:
 # - limit log size to avoid running out of disk
 # - use host's DNS resolver
+# - optimize MTU for Tailscale/WireGuard VPNs (1280 bytes)
+# - increase ulimits for better container performance
 sudo mkdir -p /etc/docker
 sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
 {
     "log-driver": "json-file",
     "log-opts": { "max-size": "10m", "max-file": "5" },
     "dns": ["172.17.0.1"],
-    "bip": "172.17.0.1/16"
+    "bip": "172.17.0.1/16",
+    "mtu": 1280,
+    "default-network-opts": {
+        "bridge": {
+            "com.docker.network.driver.mtu": "1280"
+        }
+    },
+    "default-ulimits": {
+        "nofile": {
+            "Name": "nofile",
+            "Hard": 65536,
+            "Soft": 65536
+        },
+        "nproc": {
+            "Name": "nproc",
+            "Hard": 65536,
+            "Soft": 65536
+        }
+    }
 }
 EOF
 
