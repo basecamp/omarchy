@@ -1,0 +1,19 @@
+[delta]
+    syntax-theme = base16
+    minus-style = bold "{{ color1 }}"
+    minus-emph-style = bold underline "{{ color9 }}"
+    minus-non-emph-style = "{{ color1 }}"
+    plus-style = bold "{{ color2 }}"
+    plus-emph-style = bold underline "{{ color10 }}"
+    plus-non-emph-style = "{{ color2 }}"
+    file-style = "{{ accent }}" bold
+    file-decoration-style = "{{ accent }}" underline
+    hunk-header-style = omit
+    line-numbers = true
+    line-numbers-minus-style = "{{ color1 }}"
+    line-numbers-plus-style = "{{ color2 }}"
+    line-numbers-left-style = "{{ color8 }}"
+    line-numbers-right-style = "{{ color8 }}"
+    line-numbers-zero-style = "{{ color8 }}"
+    commit-style = "{{ foreground }}" bold
+    commit-decoration-style = "{{ accent }}" box
