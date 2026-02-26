@@ -74,6 +74,11 @@ FallbackDNS=9.9.9.9 149.112.112.112
 EOF
   lock_dns_to_resolved
   ;;
+*)
+  echo "Unknown DNS provider: $dns" >&2
+  echo "Usage: omarchy-setup-dns [Cloudflare|Google|DHCP|Custom]" >&2
+  exit 1
+  ;;
 esac
 
 sudo systemctl restart systemd-networkd systemd-resolved
