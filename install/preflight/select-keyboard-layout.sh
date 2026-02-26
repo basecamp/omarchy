@@ -24,7 +24,7 @@ if ! gum confirm "Change keyboard layout?"; then
   return 0
 fi
 
-selected=$(localectl list-keymaps | gum filter --height 20 --header "Select keyboard layout")
+selected=$(localectl list-keymaps | gum filter --height 20 --header "Select keyboard layout" || true)
 
 if [[ -z "$selected" ]]; then
   echo "Keyboard layout: no selection made, keeping ${current_keymap:-us}"
@@ -37,14 +37,21 @@ echo "Setting keyboard layout to: $selected"
 
 # Try localectl first (auto-maps KEYMAP to XKBLAYOUT/XKBVARIANT)
 # Falls back to direct vconsole.conf edit in chroot where D-Bus isn't available
-if localectl set-keymap "$selected" 2>/dev/null; then
+localectl_output=""
+if localectl_output=$(sudo localectl set-keymap "$selected" 2>&1); then
   echo "Keyboard layout set via localectl"
 else
-  echo "localectl unavailable (chroot), updating vconsole.conf directly"
-  if [[ -f "$conf" ]]; then
-    sudo sed -i '/^KEYMAP=/d' "$conf"
+  if echo "$localectl_output" | grep -qiE 'Failed to (connect to bus|create bus connection)'; then
+    echo "localectl unavailable (chroot), updating vconsole.conf directly"
+    if [[ -f "$conf" ]]; then
+      sudo sed -i '/^KEYMAP=/d' "$conf"
+    fi
+    echo "KEYMAP=$selected" | sudo tee -a "$conf" >/dev/null
+  else
+    echo "Error: failed to set keyboard layout via localectl:" >&2
+    echo "$localectl_output" >&2
+    return 1
   fi
-  echo "KEYMAP=$selected" | sudo tee -a "$conf" >/dev/null
 fi
 
 # Load keymap immediately so the rest of the install uses it
