@@ -55,12 +55,6 @@
   margin-right: 18px;
 }
 
-#language {
-  min-width: 12px;
-  margin: 0 7.5px;
-  text-transform: uppercase;
-}
-
 tooltip {
   padding: 2px;
 }
