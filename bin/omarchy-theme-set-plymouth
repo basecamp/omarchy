@@ -6,37 +6,59 @@
 
 THEME_DIR="$HOME/.config/omarchy/current/theme"
 COLORS_FILE="$THEME_DIR/colors.toml"
+ALACRITTY_FILE="$THEME_DIR/alacritty.toml"
 PLYMOUTH_SOURCE="$OMARCHY_PATH/default/plymouth"
 
-[[ -f $COLORS_FILE ]] || exit 0
 command -v magick &>/dev/null || exit 0
 
-# Parse a color value from colors.toml, returns hex with # prefix
+# Strip leading # from hex color
+strip_hash() { echo "${1#\#}"; }
+
+# Parse a color value from colors.toml
 get_color() {
-  local val
-  val=$(grep -E "^$1\s*=" "$COLORS_FILE" | head -1 | sed 's/.*=\s*"//;s/".*//')
-  echo "$val"
+  grep -E "^$1\s*=" "$COLORS_FILE" | head -1 | sed 's/.*=\s*"//;s/".*//'
 }
 
-background=$(get_color background)
-foreground=$(get_color foreground)
-accent=$(get_color accent)
-color0=$(get_color color0)
+# Parse a color value from alacritty.toml (first occurrence of key)
+get_alacritty_color() {
+  grep -E "^\s*$1\s*=" "$ALACRITTY_FILE" | head -1 | sed 's/.*=\s*"//;s/".*//'
+}
 
-[[ $background && $foreground && $accent ]] || exit 0
+if [[ -f $COLORS_FILE ]]; then
+  background=$(get_color background)
+  foreground=$(get_color foreground)
+  accent=$(get_color accent)
+  color0=$(get_color color0)
+elif [[ -f $ALACRITTY_FILE ]]; then
+  background=$(get_alacritty_color background)
+  foreground=$(get_alacritty_color foreground)
+  # Use blue as accent fallback since alacritty.toml has no accent key
+  accent=$(get_alacritty_color blue)
+  color0=$(get_alacritty_color black)
+else
+  exit 0
+fi
+
+[[ $background && $foreground ]] || exit 0
+: "${accent:=$foreground}"
+: "${color0:=$background}"
 
 # Convert hex color to plymouth float RGB (e.g., "#1e1e2e" -> "0.117, 0.117, 0.180")
 hex_to_float_rgb() {
-  local hex="${1#\#}"
+  local hex
+  hex=$(strip_hash "$1")
   local r=$((16#${hex:0:2}))
   local g=$((16#${hex:2:2}))
   local b=$((16#${hex:4:2}))
-  printf "%.3f, %.3f, %.3f" "$(echo "scale=3; $r/255" | bc)" "$(echo "scale=3; $g/255" | bc)" "$(echo "scale=3; $b/255" | bc)"
+  printf "%d.%03d, %d.%03d, %d.%03d" \
+    $((r * 1000 / 255 / 1000)) $((r * 1000 / 255 % 1000)) \
+    $((g * 1000 / 255 / 1000)) $((g * 1000 / 255 % 1000)) \
+    $((b * 1000 / 255 / 1000)) $((b * 1000 / 255 % 1000))
 }
 
 # Convert hex to 0xRRGGBB format for plymouth config
 hex_to_plymouth() {
-  echo "0x${1#\#}"
+  echo "0x$(strip_hash "$1")"
 }
 
 bg_float=$(hex_to_float_rgb "$background")
@@ -62,7 +84,7 @@ magick "$PLYMOUTH_SOURCE/lock.png" -fill "$foreground" -colorize 100% "$STAGED/l
 magick "$PLYMOUTH_SOURCE/entry.png" -fill "$foreground" -colorize 100% "$STAGED/entry.png"
 magick "$PLYMOUTH_SOURCE/bullet.png" -fill "$foreground" -colorize 100% "$STAGED/bullet.png"
 magick "$PLYMOUTH_SOURCE/progress_bar.png" -fill "$foreground" -colorize 100% "$STAGED/progress_bar.png"
-magick "$PLYMOUTH_SOURCE/progress_box.png" -fill "${color0:-$background}" -colorize 100% "$STAGED/progress_box.png"
+magick "$PLYMOUTH_SOURCE/progress_box.png" -fill "$color0" -colorize 100% "$STAGED/progress_box.png"
 
 # Deploy and rebuild initramfs in the background
 sudo /usr/local/bin/omarchy-plymouth-update-theme "$STAGED" &

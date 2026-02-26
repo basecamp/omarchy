@@ -2,8 +2,55 @@
 
 LIMINE_CONF="/boot/limine.conf"
 LIMINE_THEME="$HOME/.config/omarchy/current/theme/limine.theme"
+ALACRITTY_FILE="$HOME/.config/omarchy/current/theme/alacritty.toml"
 
 [[ -f $LIMINE_CONF ]] || exit 0
-[[ -f $LIMINE_THEME ]] || exit 0
 
-sudo /usr/local/bin/omarchy-limine-update-colors <"$LIMINE_THEME"
+# If the template engine generated limine.theme, use it directly
+if [[ -f $LIMINE_THEME ]]; then
+  sudo /usr/local/bin/omarchy-limine-update-colors <"$LIMINE_THEME"
+  exit 0
+fi
+
+# Fallback: generate limine color values from alacritty.toml
+[[ -f $ALACRITTY_FILE ]] || exit 0
+
+strip_hash() { echo "${1#\#}"; }
+
+get_color() {
+  grep -E "^\s*$1\s*=" "$ALACRITTY_FILE" | head -1 | sed 's/.*=\s*"#\?//;s/".*//'
+}
+
+# Get normal colors (first occurrence)
+background=$(get_color background)
+foreground=$(get_color foreground)
+color0=$(get_color black)
+color1=$(get_color red)
+color2=$(get_color green)
+color3=$(get_color yellow)
+color4=$(get_color blue)
+color5=$(get_color magenta)
+color6=$(get_color cyan)
+color7=$(get_color white)
+
+# Get bright colors (second occurrence)
+color8=$(grep -E "^\s*black\s*=" "$ALACRITTY_FILE" | tail -1 | sed 's/.*=\s*"#\?//;s/".*//')
+color9=$(grep -E "^\s*red\s*=" "$ALACRITTY_FILE" | tail -1 | sed 's/.*=\s*"#\?//;s/".*//')
+color10=$(grep -E "^\s*green\s*=" "$ALACRITTY_FILE" | tail -1 | sed 's/.*=\s*"#\?//;s/".*//')
+color11=$(grep -E "^\s*yellow\s*=" "$ALACRITTY_FILE" | tail -1 | sed 's/.*=\s*"#\?//;s/".*//')
+color12=$(grep -E "^\s*blue\s*=" "$ALACRITTY_FILE" | tail -1 | sed 's/.*=\s*"#\?//;s/".*//')
+color13=$(grep -E "^\s*magenta\s*=" "$ALACRITTY_FILE" | tail -1 | sed 's/.*=\s*"#\?//;s/".*//')
+color14=$(grep -E "^\s*cyan\s*=" "$ALACRITTY_FILE" | tail -1 | sed 's/.*=\s*"#\?//;s/".*//')
+color15=$(grep -E "^\s*white\s*=" "$ALACRITTY_FILE" | tail -1 | sed 's/.*=\s*"#\?//;s/".*//')
+
+[[ $background && $foreground && $color0 ]] || exit 0
+
+{
+  echo "term_background=$background"
+  echo "backdrop=$background"
+  echo "term_palette=${color0};${color1};${color2};${color3};${color4};${color5};${color6};${color7}"
+  echo "term_palette_bright=${color8};${color9};${color10};${color11};${color12};${color13};${color14};${color15}"
+  echo "term_foreground=$foreground"
+  echo "term_foreground_bright=$foreground"
+  echo "term_background_bright=$color8"
+} | sudo /usr/local/bin/omarchy-limine-update-colors
