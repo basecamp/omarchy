@@ -1,1 +1,3 @@
-for f in $OMARCHY_PATH/default/bash/fns/*; do source "$f"; done
+for f in "$OMARCHY_PATH"/default/bash/fns/*; do
+  [ -f "$f" ] && source "$f"
+done
