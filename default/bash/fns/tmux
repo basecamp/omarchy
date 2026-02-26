@@ -57,7 +57,7 @@ tdlm() {
 }
 
 # Create a multi-pane swarm layout with the same command started in each pane (great for AI)
-# Usage: tpl <pane_count> <command>
+# Usage: tsl <pane_count> <command>
 tsl() {
   [[ -z $TMUX ]] && { echo "You must start tmux to use this function."; return 1; }
 
