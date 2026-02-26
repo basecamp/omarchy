@@ -8,7 +8,34 @@ hyprctl dispatch tagwindow +noidle &> /dev/null || true
 # Capture update logs
 exec > >(tee "/tmp/omarchy-update.log") 2>&1
 
+restore_disabled_mkinitcpio_hooks() {
+  local hooks_dir="/usr/share/libalpm/hooks"
+  local disabled enabled
+  local changed=false
+
+  for disabled in \
+    "$hooks_dir/90-mkinitcpio-install.hook.disabled" \
+    "$hooks_dir/60-mkinitcpio-remove.hook.disabled"; do
+    enabled="${disabled%.disabled}"
+
+    if [[ -f $disabled ]]; then
+      changed=true
+
+      if [[ -f $enabled ]]; then
+        sudo rm -f "$disabled"
+      else
+        sudo mv "$disabled" "$enabled"
+      fi
+    fi
+  done
+
+  if [[ $changed == "true" ]]; then
+    echo -e "\e[32m\nRestored mkinitcpio hooks before system upgrade\e[0m"
+  fi
+}
+
 # Perform all update steps
+restore_disabled_mkinitcpio_hooks
 omarchy-update-time
 omarchy-update-keyring
 omarchy-update-available-reset

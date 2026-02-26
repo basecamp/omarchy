@@ -9,3 +9,12 @@ if grep -q "Updating linux initcpios" "$update_log"; then
     echo
   fi
 fi
+
+# Check for disabled mkinitcpio hooks (should never happen after an update)
+hooks_dir="/usr/share/libalpm/hooks"
+if [[ -f "$hooks_dir/90-mkinitcpio-install.hook.disabled" ]] || \
+   [[ -f "$hooks_dir/60-mkinitcpio-remove.hook.disabled" ]]; then
+  echo -e '\e[31mWarning: mkinitcpio pacman hooks are disabled. Kernel upgrades will not regenerate initramfs.\e[0m'
+  echo -e '\e[31mRun: omarchy-update to restore them.\e[0m'
+  echo
+fi

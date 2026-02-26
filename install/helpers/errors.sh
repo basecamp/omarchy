@@ -72,6 +72,26 @@ restore_outputs() {
   fi
 }
 
+# If install exits early, re-enable mkinitcpio hooks so future updates remain safe.
+restore_mkinitcpio_hooks_on_install_exit() {
+  local hooks_dir="/usr/share/libalpm/hooks"
+  local disabled enabled
+
+  for disabled in \
+    "$hooks_dir/90-mkinitcpio-install.hook.disabled" \
+    "$hooks_dir/60-mkinitcpio-remove.hook.disabled"; do
+    enabled="${disabled%.disabled}"
+
+    if [[ -f $disabled ]]; then
+      if [[ -f $enabled ]]; then
+        sudo -n rm -f "$disabled" >/dev/null 2>&1 || sudo rm -f "$disabled" || true
+      else
+        sudo -n mv "$disabled" "$enabled" >/dev/null 2>&1 || sudo mv "$disabled" "$enabled" || true
+      fi
+    fi
+  done
+}
+
 # Error handler
 catch_errors() {
   # Prevent recursive error handling
@@ -84,6 +104,7 @@ catch_errors() {
   # Store exit code immediately before it gets overwritten
   local exit_code=$?
 
+  restore_mkinitcpio_hooks_on_install_exit
   stop_log_output
   restore_outputs
 
@@ -145,6 +166,7 @@ catch_errors() {
 # Exit handler - ensures cleanup happens on any exit
 exit_handler() {
   local exit_code=$?
+  restore_mkinitcpio_hooks_on_install_exit
 
   # Only run if we're exiting with an error and haven't already handled it
   if (( exit_code != 0 )) && [[ $ERROR_HANDLING != "true" ]]; then
