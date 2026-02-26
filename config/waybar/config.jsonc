@@ -8,6 +8,7 @@
   "modules-center": ["clock", "custom/update", "custom/voxtype", "custom/screenrecording-indicator", "custom/idle-indicator", "custom/notification-silencing-indicator"],
   "modules-right": [
     "group/tray-expander",
+    "hyprland/language",
     "bluetooth",
     "network",
     "pulseaudio",
@@ -135,6 +136,12 @@
     "on-scroll-down": "",
     "on-scroll-left": "",
     "on-scroll-right": ""
+  },
+  "hyprland/language": {
+    "format": "{short}",
+    "tooltip-format": "{long}",
+    "on-click": "hyprctl switchxkblayout all next",
+    "on-click-right": "omarchy-launch-floating-terminal-with-presentation omarchy-keyboard-select"
   },
   "custom/screenrecording-indicator": {
     "on-click": "omarchy-cmd-screenrecord",
