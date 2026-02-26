@@ -1,28 +1,43 @@
 #!/bin/bash
-
 set -euo pipefail
 
-if [ "$#" -lt 3 ]; then
-  echo -e "\e[32mCreate a shortcut for your web app.\n\e[0m"
+ICON_DIR="$HOME/.local/share/applications/icons"
 
+if (( $# < 3 )); then
+  echo -e "\e[32mCreate a shortcut for your web app.\n\e[0m"
+  
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
-  ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "See https://dashboardicons.com (must use PNG!)")
+  if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
+    APP_URL="https://$APP_URL"
+  fi
+
+  FAVICON_URL="https://www.google.com/s2/favicons?domain=${APP_URL}&sz=128"
+  mkdir -p "$ICON_DIR"
+  
+  if curl -fsSL -o "$ICON_DIR/$APP_NAME.png" "$FAVICON_URL" && [[ -s "$ICON_DIR/$APP_NAME.png" ]]; then
+    ICON_REF="$APP_NAME.png"
+  else
+    ICON_REF=$(gum input --prompt "Icon URL> " --placeholder "Could not fetch favicon automatically. Enter PNG icon URL")
+  fi
+
   CUSTOM_EXEC=""
   MIME_TYPES=""
   INTERACTIVE_MODE=true
 else
   APP_NAME="$1"
   APP_URL="$2"
+  if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
+    APP_URL="https://$APP_URL"
+  fi
   ICON_REF="$3"
-  CUSTOM_EXEC="$4" # Optional custom exec command
-  MIME_TYPES="$5"  # Optional mime types
+  CUSTOM_EXEC="${4:-}" 
+  MIME_TYPES="${5:-}"
   INTERACTIVE_MODE=false
 fi
 
-# Ensure valid execution
-if [[ -z "$APP_NAME" || -z "$APP_URL" || -z "$ICON_REF" ]]; then
-  echo "You must set app name, app URL, and icon URL!"
+if [[ -z $APP_NAME || -z $APP_URL ]]; then
+  echo "You must set app name and app URL!"
   exit 1
 fi
 
@@ -43,6 +58,11 @@ for name in "${!BROWSER_BINARIES[@]}"; do
   fi
 done
 
+if [ ${#BROWSERS[@]} -eq 0 ]; then
+  echo "No supported browsers found! Install Chrome, Brave, or Chromium."
+  exit 1
+fi
+
 BROWSER_CHOICE=$(gum choose --header "Which browser?" "${BROWSERS[@]}")
 BROWSER_BIN="${BROWSER_BINARIES[$BROWSER_CHOICE]}"
 
@@ -56,7 +76,7 @@ declare -A BROWSER_CONFIG_DIRS=(
   [Opera]="$HOME/.config/opera"
 )
 
- PROFILE_DIR="${BROWSER_CONFIG_DIRS[$BROWSER_CHOICE]:-$HOME/.config/$BROWSER_CHOICE}"
+PROFILE_DIR="${BROWSER_CONFIG_DIRS[$BROWSER_CHOICE]:-$HOME/.config/$BROWSER_CHOICE}"
 
 declare -A PROFILE_MAP
 PROFILES=()
@@ -81,59 +101,59 @@ elif [ -d "$PROFILE_DIR" ]; then
 fi
 
 if [ ${#PROFILES[@]} -eq 0 ]; then
-  echo "No browser profiles found in '$PROFILE_DIR'. Aborting." >&2
-  exit 1
+  PROFILES=("Default")
+  PROFILE_MAP["Default"]="Default"
 fi
 
 if [ ${#PROFILES[@]} -eq 1 ]; then
   APP_PROFILE_NAME="${PROFILES[0]}"
 else
-  APP_PROFILE_NAME=$(gum choose --header "Select browser profile" "${PROFILES[@]}")
+  APP_PROFILE_NAME=$(gum choose --header "Select browser profile for this WebApp" "${PROFILES[@]}")
 fi
 
-# Refer to local icon or fetch remotely from URL
-ICON_DIR="$HOME/.local/share/applications/icons"
+mkdir -p "$ICON_DIR"
+
 if [[ $ICON_REF =~ ^https?:// ]]; then
   ICON_PATH="$ICON_DIR/$APP_NAME.png"
-  if curl -sL -o "$ICON_PATH" "$ICON_REF"; then
-    ICON_PATH="$ICON_DIR/$APP_NAME.png"
-  else
+  if ! curl -fsSL -o "$ICON_PATH" "$ICON_REF" || [[ ! -s "$ICON_PATH" ]]; then
     echo "Error: Failed to download icon."
     exit 1
   fi
 else
-  ICON_PATH="$ICON_DIR/$ICON_REF"
+  if [[ -f "$ICON_DIR/$ICON_REF" ]]; then
+    ICON_PATH="$ICON_DIR/$ICON_REF"
+  else
+    ICON_PATH="$ICON_REF"
+  fi
 fi
 
-# Use custom exec if provided, otherwise default behavior
 if [[ -n $CUSTOM_EXEC ]]; then
   EXEC_COMMAND="$CUSTOM_EXEC"
 else
   EXEC_COMMAND="omarchy-launch-webapp \"$APP_URL\" \"${PROFILE_MAP[$APP_PROFILE_NAME]}\" \"$BROWSER_BIN\""
 fi
 
-# Create application .desktop file
 DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
 
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Version=1.0
 Name=$APP_NAME
-Comment=$APP_NAME
+Comment=Web App: $APP_NAME
 Exec=$EXEC_COMMAND
 Terminal=false
 Type=Application
 Icon=$ICON_PATH
 StartupNotify=true
+Categories=Network;WebBrowser;
 EOF
 
-# Add mime types if provided
 if [[ -n $MIME_TYPES ]]; then
   echo "MimeType=$MIME_TYPES" >>"$DESKTOP_FILE"
 fi
 
 chmod +x "$DESKTOP_FILE"
 
-if [[ $INTERACTIVE_MODE == true ]]; then
-  echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
+if [[ "$INTERACTIVE_MODE" == "true" ]]; then
+  echo -e "\n\e[32mSuccess!\e[0m You can now find \e[1m$APP_NAME\e[0m in your app launcher."
 fi
