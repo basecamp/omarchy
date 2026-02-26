@@ -49,7 +49,7 @@ Rectangle {
             Text {
                 text: "\uf023"
                 color: "#ffffff"
-                font.family: "JetBrainsMono NF"
+                font.family: "JetBrainsMono Nerd Font"
                 font.pixelSize: root.height * 0.025
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -67,7 +67,7 @@ Rectangle {
                     anchors.margins: root.height * 0.008
                     verticalAlignment: TextInput.AlignVCenter
                     echoMode: TextInput.Password
-                    font.family: "JetBrainsMono NF"
+                    font.family: "JetBrainsMono Nerd Font"
                     font.pixelSize: root.height * 0.02
                     font.letterSpacing: root.height * 0.004
                     passwordCharacter: "\u2022"
@@ -88,7 +88,7 @@ Rectangle {
             id: errorMessage
             text: ""
             color: "#f7768e"
-            font.family: "JetBrainsMono NF"
+            font.family: "JetBrainsMono Nerd Font"
             font.pixelSize: root.height * 0.018
             anchors.horizontalCenter: parent.horizontalCenter
         }
