@@ -12,7 +12,7 @@ echo "Copy hooks examples"
 cp -r $OMARCHY_PATH/config/omarchy/* $HOME/.config/omarchy/
 
 echo "Add packages for updated omarchy-cmd-screenshot"
-omarchy-pkg-add grim slurp wayfreeze-git
+omarchy-pkg-add grim slurp wayfreeze
 
 echo "Add nfs support by default to Nautilus"
 omarchy-pkg-add gvfs-nfs
