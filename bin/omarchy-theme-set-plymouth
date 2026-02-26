@@ -6,6 +6,7 @@
 
 THEME_DIR="$HOME/.config/omarchy/current/theme"
 COLORS_FILE="$THEME_DIR/colors.toml"
+GHOSTTY_FILE="$THEME_DIR/ghostty.conf"
 ALACRITTY_FILE="$THEME_DIR/alacritty.toml"
 PLYMOUTH_SOURCE="$OMARCHY_PATH/default/plymouth"
 
@@ -19,6 +20,11 @@ get_color() {
   grep -E "^$1\s*=" "$COLORS_FILE" | head -1 | sed 's/.*=\s*"//;s/".*//'
 }
 
+# Parse a color value from ghostty.conf (key = value format, no quotes)
+get_ghostty_color() {
+  grep -E "^$1\s*=" "$GHOSTTY_FILE" | head -1 | sed 's/.*=\s*//'
+}
+
 # Parse a color value from alacritty.toml (first occurrence of key)
 get_alacritty_color() {
   grep -E "^\s*$1\s*=" "$ALACRITTY_FILE" | head -1 | sed 's/.*=\s*"//;s/".*//'
@@ -29,10 +35,15 @@ if [[ -f $COLORS_FILE ]]; then
   foreground=$(get_color foreground)
   accent=$(get_color accent)
   color0=$(get_color color0)
+elif [[ -f $GHOSTTY_FILE ]]; then
+  background=$(get_ghostty_color background)
+  foreground=$(get_ghostty_color foreground)
+  # palette line format: "palette = N=#RRGGBB"
+  accent=$(grep -E "^palette\s*=\s*4=" "$GHOSTTY_FILE" | head -1 | sed 's/.*=//')
+  color0=$(grep -E "^palette\s*=\s*0=" "$GHOSTTY_FILE" | head -1 | sed 's/.*=//')
 elif [[ -f $ALACRITTY_FILE ]]; then
   background=$(get_alacritty_color background)
   foreground=$(get_alacritty_color foreground)
-  # Use blue as accent fallback since alacritty.toml has no accent key
   accent=$(get_alacritty_color blue)
   color0=$(get_alacritty_color black)
 else
