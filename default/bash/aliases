@@ -7,7 +7,7 @@ if command -v eza &> /dev/null; then
 fi
 
 alias ff="fzf --preview 'bat --style=numbers --color=always {}'"
-alias eff='$EDITOR $(ff)'
+alias eff='$EDITOR "$(ff)"'
 
 if command -v zoxide &> /dev/null; then
   alias cd="zd"
