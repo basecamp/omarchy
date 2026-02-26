@@ -78,9 +78,8 @@ tsl() {
     local split_target="${panes[-1]}"
     new_pane=$(tmux split-window -h -t "$split_target" -c "$current_dir" -P -F '#{pane_id}')
     panes+=("$new_pane")
+    tmux select-layout -t "${panes[0]}" tiled
   done
-
-  tmux select-layout -t "${panes[0]}" tiled
 
   for pane in "${panes[@]}"; do
     tmux send-keys -t "$pane" "$cmd" C-m
