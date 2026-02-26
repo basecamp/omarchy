@@ -33,26 +33,30 @@ get_alacritty_color() {
 if [[ -f $COLORS_FILE ]]; then
   background=$(get_color background)
   foreground=$(get_color foreground)
-  accent=$(get_color accent)
+  cursor=$(get_color cursor)
   color0=$(get_color color0)
+  color2=$(get_color color2)
 elif [[ -f $GHOSTTY_FILE ]]; then
   background=$(get_ghostty_color background)
   foreground=$(get_ghostty_color foreground)
+  cursor=$(get_ghostty_color cursor-color)
   # palette line format: "palette = N=#RRGGBB"
-  accent=$(grep -E "^palette\s*=\s*4=" "$GHOSTTY_FILE" | head -1 | sed 's/.*=//')
   color0=$(grep -E "^palette\s*=\s*0=" "$GHOSTTY_FILE" | head -1 | sed 's/.*=//')
+  color2=$(grep -E "^palette\s*=\s*2=" "$GHOSTTY_FILE" | head -1 | sed 's/.*=//')
 elif [[ -f $ALACRITTY_FILE ]]; then
   background=$(get_alacritty_color background)
   foreground=$(get_alacritty_color foreground)
-  accent=$(get_alacritty_color blue)
+  cursor=$(get_alacritty_color cursor)
   color0=$(get_alacritty_color black)
+  color2=$(get_alacritty_color green)
 else
   exit 0
 fi
 
 [[ $background && $foreground ]] || exit 0
-: "${accent:=$foreground}"
+: "${cursor:=$foreground}"
 : "${color0:=$background}"
+: "${color2:=$foreground}"
 
 # Convert hex color to plymouth float RGB (e.g., "#1e1e2e" -> "0.117, 0.117, 0.180")
 hex_to_float_rgb() {
@@ -90,10 +94,10 @@ sed \
   "$PLYMOUTH_SOURCE/omarchy.plymouth" >"$STAGED/omarchy.plymouth"
 
 # Recolor PNG assets
-magick "$PLYMOUTH_SOURCE/logo.png" -fill "$accent" -colorize 100% "$STAGED/logo.png"
-magick "$PLYMOUTH_SOURCE/lock.png" -fill "$foreground" -colorize 100% "$STAGED/lock.png"
-magick "$PLYMOUTH_SOURCE/entry.png" -fill "$foreground" -colorize 100% "$STAGED/entry.png"
-magick "$PLYMOUTH_SOURCE/bullet.png" -fill "$foreground" -colorize 100% "$STAGED/bullet.png"
+magick "$PLYMOUTH_SOURCE/logo.png" -fill "$color2" -colorize 100% "$STAGED/logo.png"
+magick "$PLYMOUTH_SOURCE/lock.png" -fill "$cursor" -colorize 100% "$STAGED/lock.png"
+magick "$PLYMOUTH_SOURCE/entry.png" -fill "$cursor" -colorize 100% "$STAGED/entry.png"
+magick "$PLYMOUTH_SOURCE/bullet.png" -fill "$cursor" -colorize 100% "$STAGED/bullet.png"
 magick "$PLYMOUTH_SOURCE/progress_bar.png" -fill "$foreground" -colorize 100% "$STAGED/progress_bar.png"
 magick "$PLYMOUTH_SOURCE/progress_box.png" -fill "$color0" -colorize 100% "$STAGED/progress_box.png"
 
