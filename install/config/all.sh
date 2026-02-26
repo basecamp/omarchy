@@ -40,6 +40,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/fix-apple-t2.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-surface-keyboard.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-asus-rog-audio-mixer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-asus-rog-mic.sh
+run_logged $OMARCHY_INSTALL/config/hardware/asus-rog-keybindings.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-yt6801-ethernet-adapter.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-synaptic-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework16-qmk-hid.sh
