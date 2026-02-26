@@ -4,6 +4,10 @@ Cache = false
 HideFromProviderlist = true
 SearchName = true
 
+local function ShellEscape(s)
+  return "'" .. s:gsub("'", "'\\''") .. "'"
+end
+
 function FormatName(filename)
   -- Remove leading number and dash
   local name = filename:gsub("^%d+", ""):gsub("^%-", "")
@@ -42,9 +46,8 @@ function GetEntries()
 
   for _, wallpaper_dir in ipairs(dirs) do
     local handle = io.popen(
-      "find '"
-        .. wallpaper_dir
-        .. "' -maxdepth 1 -type f \\( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.gif' -o -name '*.bmp' -o -name '*.webp' \\) 2>/dev/null"
+      "find " .. ShellEscape(wallpaper_dir)
+        .. " -maxdepth 1 -type f \\( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.gif' -o -name '*.bmp' -o -name '*.webp' \\) 2>/dev/null | sort"
     )
     if handle then
       for background in handle:lines() do
@@ -55,7 +58,7 @@ function GetEntries()
             Text = FormatName(filename),
             Value = background,
             Actions = {
-              activate = "omarchy-theme-bg-set '" .. background .. "'",
+              activate = "omarchy-theme-bg-set " .. ShellEscape(background),
             },
             Preview = background,
             PreviewType = "file",
