@@ -46,7 +46,7 @@ install)
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   cat $ARCHINSTALL_LOG $OMARCHY_LOG >>"$TEMP_LOG" 2>/dev/null
 
-  if [ ! -s "$TEMP_LOG" ]; then
+  if [[ ! -s $TEMP_LOG ]]; then
     echo "Error: No install logs found"
     exit 1
   fi
@@ -59,7 +59,7 @@ this-boot)
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   journalctl -b 0 >>"$TEMP_LOG" 2>/dev/null
 
-  if [ ! -s "$TEMP_LOG" ]; then
+  if [[ ! -s $TEMP_LOG ]]; then
     echo "Error: No logs found for current boot"
     exit 1
   fi
@@ -72,7 +72,7 @@ last-boot)
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   journalctl -b -1 >>"$TEMP_LOG" 2>/dev/null
 
-  if [ ! -s "$TEMP_LOG" ]; then
+  if [[ ! -s $TEMP_LOG ]]; then
     echo "Error: No logs found for previous boot"
     exit 1
   fi
@@ -80,7 +80,7 @@ last-boot)
   echo "Uploading previous boot logs to 0x0.st..."
   ;;
 
-installed)
+installed|system-info)
   # System info plus all installed packages
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   {
@@ -91,7 +91,7 @@ installed)
     pacman -Q 2>/dev/null || echo "Failed to get package list"
   } >>"$TEMP_LOG"
 
-  if [ ! -s "$TEMP_LOG" ]; then
+  if [[ ! -s $TEMP_LOG ]]; then
     echo "Error: Failed to gather system information"
     exit 1
   fi
@@ -100,7 +100,7 @@ installed)
   ;;
 
 *)
-  echo "Usage: $0 [install|this-boot|last-boot|system-info]"
+  echo "Usage: $0 [install|this-boot|last-boot|installed|system-info]"
   echo "  install      - Upload installation logs (default)"
   echo "  this-boot    - Upload logs from current boot"
   echo "  last-boot    - Upload logs from previous boot"
@@ -113,7 +113,7 @@ echo ""
 
 URL=$(curl -sF "file=@$TEMP_LOG" -Fexpires=24 https://0x0.st)
 
-if [ $? -eq 0 ] && [ -n "$URL" ]; then
+if (( $? == 0 )) && [[ -n $URL ]]; then
   echo "✓ Log uploaded successfully!"
   echo "Share this URL:"
   echo ""

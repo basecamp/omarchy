@@ -2,6 +2,7 @@
 # Utilized by ISO builder to ensure package availability in the ISO
 
 autoconf-archive
+asusctl
 base
 base-devel
 broadcom-wl
@@ -44,7 +45,16 @@ snapper
 webp-pixbuf-loader
 wget
 yay-debug
+yt6801-dkms
 zram-generator
+
+# Vulkan drivers (auto-detected by hardware)
+vulkan-intel
+vulkan-radeon
+vulkan-asahi
+
+# Surface laptop support packages
+linux-firmware-marvell
 
 # T2 MacBook support packages
 apple-bcm-firmware

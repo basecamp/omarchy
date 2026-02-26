@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Adjust brightness on the most likely display device.
+# Usage: omarchy-brightness-display <step>
+
+step="${1:-+5%}"
+
+# Start with the first possible output, then refine to the most likely given an order heuristic.
+device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
+for candidate in amdgpu_bl* intel_backlight acpi_video*; do
+  if [[ -e /sys/class/backlight/$candidate ]]; then
+    device="$candidate"
+    break
+  fi
+done
+
+# Set the actual brightness of the display device.
+brightnessctl -d "$device" set "$step" >/dev/null
+
+# Use SwayOSD to display the new brightness setting.
+omarchy-swayosd-brightness "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"

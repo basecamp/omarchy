@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# Toggle dedicated vs integrated GPU mode via supergfxd (for hybrid gpu laptops, like Asus G14).
+# Requires reboot to take effect.
+
+# Ensure supergfxctl has been installed
+if omarchy-cmd-missing supergfxctl; then
+  omarchy-pkg-add supergfxctl
+
+  # Create config before starting service to prevent hang on first boot
+  sudo tee /etc/supergfxd.conf >/dev/null <<'CONF'
+{
+  "mode": "Hybrid",
+  "vfio_enable": true,
+  "vfio_save": false,
+  "always_reboot": false,
+  "no_logind": false,
+  "logout_timeout_s": 180,
+  "hotplug_type": "None"
+}
+CONF
+
+  sudo systemctl enable --now supergfxd
+fi
+
+gpu_mode=$(supergfxctl -g)
+
+case "$gpu_mode" in
+"Integrated")
+  if gum confirm "Enable dedicated GPU and reboot?"; then
+    # Switch to hybrid mode
+    sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Hybrid\"/" /etc/supergfxd.conf
+
+    # Let hybrid mode be the default after system sleep
+    sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu
+
+    # Remove the startup delay override (not needed for Hybrid mode)
+    sudo rm -rf /etc/systemd/system/supergfxd.service.d/delay-start.conf
+
+    omarchy-system-reboot
+  fi
+  ;;
+"Hybrid")
+  if gum confirm "Use only integrated GPU and reboot?"; then
+    # Switch to integrated mode and ensure vfio is enabled (needed for sleep/wake trick)
+    sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
+    sudo sed -i 's/"vfio_enable": false/"vfio_enable": true/' /etc/supergfxd.conf
+
+    # Force igpu mode after system sleep (or dgpu could get activated)
+    sudo mkdir -p /usr/lib/systemd/system-sleep
+    sudo cp -p $OMARCHY_PATH/default/systemd/system-sleep/force-igpu /usr/lib/systemd/system-sleep/
+
+    # Delay supergfxd startup to avoid race condition with display manager
+    # that can cause system freeze when booting in Integrated mode
+    sudo mkdir -p /etc/systemd/system/supergfxd.service.d
+    sudo cp -p $OMARCHY_PATH/default/systemd/system/supergfxd.service.d/delay-start.conf /etc/systemd/system/supergfxd.service.d/
+
+    omarchy-system-reboot
+  fi
+  ;;
+*)
+  echo "Hybrid GPU not found or in unknown mode."
+  exit 1
+  ;;
+esac

@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# Use the Vfio to Integrated trick to turn off NVIDIA dgpu when in integrated mode
+# without needing to restart the computer. This is needed because computers like the Asus G14
+# will wake after suspend in Hybrid mode, even if the system was in Integrated mode before
+# suspending.
+
+case "$1" in
+  pre)
+    # Before hibernating, switch to Vfio so the nvidia driver is detached from the dGPU.
+    # Without this, hibernate resume fails because the nvidia driver can't freeze a
+    # powered-off dGPU (returns -EIO), which aborts the entire resume.
+    if [[ $2 == "hibernate" ]]; then
+      /usr/bin/supergfxctl -m Vfio
+      sleep 1
+    fi
+    ;;
+  post)
+    # small delay so the device is fully re-enumerated
+    sleep 4
+
+    # force-bind dGPU to vfio (fully detached from nvidia)
+    /usr/bin/supergfxctl -m Vfio
+    sleep 1
+
+    # then go back to Integrated, which powers it off again
+    /usr/bin/supergfxctl -m Integrated
+    ;;
+esac

@@ -10,13 +10,13 @@ CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
 mapfile -d '' -t BACKGROUNDS < <(find -L "$USER_BACKGROUNDS_PATH" "$THEME_BACKGROUNDS_PATH" -maxdepth 1 -type f -print0 2>/dev/null | sort -z)
 TOTAL=${#BACKGROUNDS[@]}
 
-if [[ $TOTAL -eq 0 ]]; then
+if (( TOTAL == 0 )); then
   notify-send "No background was found for theme" -t 2000
   pkill -x swaybg
   setsid uwsm-app -- swaybg --color '#000000' >/dev/null 2>&1 &
 else
   # Get current background from symlink
-  if [[ -L "$CURRENT_BACKGROUND_LINK" ]]; then
+  if [[ -L $CURRENT_BACKGROUND_LINK ]]; then
     CURRENT_BACKGROUND=$(readlink "$CURRENT_BACKGROUND_LINK")
   else
     # Default to first background if no symlink exists
@@ -26,14 +26,14 @@ else
   # Find current background index
   INDEX=-1
   for i in "${!BACKGROUNDS[@]}"; do
-    if [[ "${BACKGROUNDS[$i]}" == "$CURRENT_BACKGROUND" ]]; then
+    if [[ ${BACKGROUNDS[$i]} == $CURRENT_BACKGROUND ]]; then
       INDEX=$i
       break
     fi
   done
 
   # Get next background (wrap around)
-  if [[ $INDEX -eq -1 ]]; then
+  if (( INDEX == -1 )); then
     # Use the first background when no match was found
     NEW_BACKGROUND="${BACKGROUNDS[0]}"
   else

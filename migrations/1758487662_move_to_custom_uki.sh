@@ -15,7 +15,7 @@ if command -v limine &>/dev/null && [[ -f /etc/default/limine ]]; then
 
     uki_file=$(find /boot/EFI/Linux/ -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | head -1)
 
-    if [[ -n "$uki_file" ]]; then
+    if [[ -n $uki_file ]]; then
       while IFS= read -r bootnum; do
         sudo efibootmgr -b "$bootnum" -B >/dev/null 2>&1
       done < <(efibootmgr | grep -E "^Boot[0-9]{4}\*? Omarchy" | sed 's/^Boot\([0-9]\{4\}\).*/\1/')

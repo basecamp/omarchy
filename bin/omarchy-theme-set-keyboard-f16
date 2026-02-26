@@ -1,0 +1,22 @@
+#!/bin/bash
+
+FRAMEWORK16_THEME=~/.config/omarchy/current/theme/keyboard.rgb
+
+if omarchy-cmd-present qmk_hid && [[ -f $FRAMEWORK16_THEME ]]; then
+  hex=$(cat "$FRAMEWORK16_THEME")
+  hex="${hex#\#}"
+
+  # Convert hex to QMK HSV (0-255 scale) using Python's colorsys
+  read -r h s <<< $(python3 -c "
+import colorsys
+r, g, b = int('$hex'[:2],16)/255, int('$hex'[2:4],16)/255, int('$hex'[4:6],16)/255
+h, s, v = colorsys.rgb_to_hsv(r, g, b)
+print(int(h * 255), int(s * 255))
+")
+
+  qmk_hid via --rgb-effect 1 2>/dev/null
+  qmk_hid via --rgb-hue "$h" 2>/dev/null
+  qmk_hid via --rgb-saturation "$s" 2>/dev/null
+  qmk_hid via --rgb-brightness 100 2>/dev/null
+  qmk_hid via --save 2>/dev/null
+fi

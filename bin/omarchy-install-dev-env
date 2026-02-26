@@ -2,16 +2,16 @@
 
 # Install one of the supported development environments. Usually called via Install > Development > * in the Omarchy Menu.
 
-if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|go|laravel|symfony|php|python|elixir|phoenix|rust|java|ocaml|dotnet|clojure|scala>" >&2
+if [[ -z $1 ]]; then
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
   exit 1
 fi
 
 install_php() {
-  sudo pacman -S php composer php-sqlite xdebug --noconfirm
+  omarchy-pkg-add php composer php-sqlite xdebug
 
   # Install Path for Composer
-  if [[ ":$PATH:" != *":$HOME/.config/composer/vendor/bin:"* ]]; then
+  if [[ :$PATH: != *:$HOME/.config/composer/vendor/bin:* ]]; then
     echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >>"$HOME/.bashrc"
     source "$HOME/.bashrc"
     echo "Added Composer global bin directory to PATH."
@@ -52,7 +52,8 @@ ruby)
   omarchy-pkg-add libyaml
   mise use --global ruby@latest
   mise settings add idiomatic_version_file_enable_tools ruby
-  echo "gem: --no-document" > ~/.gemrc
+  mise settings add ruby.compile false
+  echo "gem: --no-document" >~/.gemrc
   mise x ruby -- gem install rails --no-document
   echo -e "\nYou can now run: rails new myproject"
   ;;
@@ -143,6 +144,7 @@ clojure)
   ;;
 scala)
   echo -e "Installing Scala...\n"
+  mise use --global java@latest
   mise use --global scala@latest
   mise use --global scala-cli@latest
   ;;

@@ -6,7 +6,7 @@ check_prerequisites() {
   local REQUIRED_SPACE=$((DISK_SIZE_GB + 10))  # Add 10GB for Windows ISO and overhead
 
   # Check for KVM support
-  if [ ! -e /dev/kvm ]; then
+  if [[ ! -e /dev/kvm ]]; then
     gum style \
       --border normal \
       --padding "1 2" \
@@ -21,7 +21,7 @@ check_prerequisites() {
 
   # Check disk space
   AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
-  if [ "$AVAILABLE_SPACE" -lt "$REQUIRED_SPACE" ]; then
+  if (( AVAILABLE_SPACE < REQUIRED_SPACE )); then
     echo "❌ Insufficient disk space!"
     echo "   Available: ${AVAILABLE_SPACE}GB"
     echo "   Required: ${REQUIRED_SPACE}GB (${DISK_SIZE_GB}GB disk + 10GB for Windows image)"
@@ -42,7 +42,7 @@ install_windows() {
   mkdir -p "$HOME/.local/share/applications/icons"
 
   # Install Windows VM icon and desktop file
-  if [ -f "$OMARCHY_PATH/applications/icons/windows.png" ]; then
+  if [[ -f $OMARCHY_PATH/applications/icons/windows.png ]]; then
     cp "$OMARCHY_PATH/applications/icons/windows.png" "$HOME/.local/share/applications/icons/windows.png"
   fi
 
@@ -70,7 +70,7 @@ EOF
 
   RAM_OPTIONS=""
   for size in 2 4 8 16 32 64; do
-    if [ $size -le $TOTAL_RAM_GB ]; then
+    if (( size <= TOTAL_RAM_GB )); then
       RAM_OPTIONS="$RAM_OPTIONS ${size}G"
     fi
   done
@@ -78,7 +78,7 @@ EOF
   SELECTED_RAM=$(echo $RAM_OPTIONS | tr ' ' '\n' | gum choose --selected="4G" --header="How much RAM would you like to allocate to Windows VM?")
 
   # Check if user cancelled
-  if [ -z "$SELECTED_RAM" ]; then
+  if [[ -z $SELECTED_RAM ]]; then
     echo "Installation cancelled by user"
     exit 1
   fi
@@ -86,12 +86,12 @@ EOF
   SELECTED_CORES=$(gum input --placeholder="Number of CPU cores (1-$TOTAL_CORES)" --value="2" --header="How many CPU cores would you like to allocate to Windows VM?" --char-limit=2)
 
   # Check if user cancelled (Ctrl+C in gum input returns empty string)
-  if [ -z "$SELECTED_CORES" ]; then
+  if [[ -z $SELECTED_CORES ]]; then
     echo "Installation cancelled by user"
     exit 1
   fi
 
-  if ! [[ "$SELECTED_CORES" =~ ^[0-9]+$ ]] || [ "$SELECTED_CORES" -lt 1 ] || [ "$SELECTED_CORES" -gt "$TOTAL_CORES" ]; then
+  if ! [[ $SELECTED_CORES =~ ^[0-9]+$ ]] || (( SELECTED_CORES < 1 )) || (( SELECTED_CORES > TOTAL_CORES )); then
     echo "Invalid input. Using default: 2 cores"
     SELECTED_CORES=2
   fi
@@ -100,7 +100,7 @@ EOF
   MAX_DISK_GB=$((AVAILABLE_SPACE - 10))  # Leave 10GB for Windows image
 
   # Check if we have enough space for minimum
-  if [ $MAX_DISK_GB -lt 32 ]; then
+  if (( MAX_DISK_GB < 32 )); then
     echo "❌ Insufficient disk space for Windows VM!"
     echo "   Available: ${AVAILABLE_SPACE}GB"
     echo "   Minimum required: 42GB (32GB disk + 10GB for Windows image)"
@@ -109,7 +109,7 @@ EOF
 
   DISK_OPTIONS=""
   for size in 32 64 128 256 512; do
-    if [ $size -le $MAX_DISK_GB ]; then
+    if (( size <= MAX_DISK_GB )); then
       DISK_OPTIONS="$DISK_OPTIONS ${size}G"
     fi
   done
@@ -123,7 +123,7 @@ EOF
   SELECTED_DISK=$(echo $DISK_OPTIONS | tr ' ' '\n' | gum choose --selected="$DEFAULT_DISK" --header="How much disk space would you like to give Windows VM? (64GB+ recommended)")
 
   # Check if user cancelled
-  if [ -z "$SELECTED_DISK" ]; then
+  if [[ -z $SELECTED_DISK ]]; then
     echo "Installation cancelled by user"
     exit 1
   fi
@@ -136,12 +136,12 @@ EOF
 
   # Prompt for username and password
   USERNAME=$(gum input --placeholder="Username (Press enter to use default: docker)" --header="Enter Windows username:")
-  if [ -z "$USERNAME" ]; then
+  if [[ -z $USERNAME ]]; then
     USERNAME="docker"
   fi
 
   PASSWORD=$(gum input --placeholder="Password (Press enter to use default: admin)" --password --header="Enter Windows password:")
-  if [ -z "$PASSWORD" ]; then
+  if [[ -z $PASSWORD ]]; then
     PASSWORD="admin"
     PASSWORD_DISPLAY="(default)"
   else
@@ -185,19 +185,21 @@ services:
       DISK_SIZE: "$SELECTED_DISK"
       USERNAME: "$USERNAME"
       PASSWORD: "$PASSWORD"
+      TZ: "$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)"
+      ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
     devices:
       - /dev/kvm
       - /dev/net/tun
     cap_add:
       - NET_ADMIN
     ports:
-      - 8006:8006
-      - 3389:3389/tcp
-      - 3389:3389/udp
+      - 127.0.0.1:8006:8006
+      - 127.0.0.1:3389:3389/tcp
+      - 127.0.0.1:3389:3389/udp
     volumes:
       - $HOME/.windows:/storage
       - $HOME/Windows:/shared
-    restart: always
+    restart: unless-stopped
     stop_grace_period: 2m
 EOF
 
@@ -240,6 +242,11 @@ EOF
 }
 
 remove_windows() {
+  if ! gum confirm --default=false "Remove Windows VM and delete all associated data?"; then
+    echo "Removal cancelled by user"
+    exit 1
+  fi
+
   echo "Removing Windows VM..."
 
   docker-compose -f "$COMPOSE_FILE" down 2>/dev/null || true
@@ -254,33 +261,14 @@ remove_windows() {
   echo "Windows VM removal completed!"
 }
 
-wait_for_rdp_ready() {
-  local WIN_USER="$1"
-  local WIN_PASS="$2"
-  local TIMEOUT=240
-  local SECONDS=0
-
-  echo "Waiting for Windows VM to be ready..."
-
-  while ! timeout 5s xfreerdp3 /auth-only /cert:ignore /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 &>/dev/null; do
-    sleep 2
-    if [ $SECONDS -gt $TIMEOUT ]; then
-      echo "❌ Timeout waiting for RDP!"
-      echo "   The VM might still be installing Windows."
-      echo "   Check progress at: http://127.0.0.1:8006"
-      return 1
-    fi
-  done
-}
-
 launch_windows() {
   KEEP_ALIVE=false
-  if [ "$1" = "--keep-alive" ] || [ "$1" = "-k" ]; then
+  if [[ $1 = "--keep-alive" ]] || [[ $1 = "-k" ]]; then
     KEEP_ALIVE=true
   fi
 
   # Check if config exists
-  if [ ! -f "$COMPOSE_FILE" ]; then
+  if [[ ! -f $COMPOSE_FILE ]]; then
     echo "Windows VM not configured. Please run: omarchy-windows-vm install"
     exit 1
   fi
@@ -290,13 +278,13 @@ launch_windows() {
   WIN_PASS=$(grep "PASSWORD:" "$COMPOSE_FILE" | sed 's/.*PASSWORD: "\(.*\)"/\1/')
 
   # Use defaults if not found
-  [ -z "$WIN_USER" ] && WIN_USER="docker"
-  [ -z "$WIN_PASS" ] && WIN_PASS="admin"
+  [[ -z $WIN_USER ]] && WIN_USER="docker"
+  [[ -z $WIN_PASS ]] && WIN_PASS="admin"
 
   # Check if container is already running
   CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
 
-  if [ "$CONTAINER_STATUS" != "running" ]; then
+  if [[ $CONTAINER_STATUS != "running" ]]; then
     echo "Starting Windows VM..."
 
     # Send desktop notification
@@ -309,15 +297,23 @@ launch_windows() {
       notify-send -u critical "Windows VM" "Failed to start Windows VM"
       exit 1
     fi
-  fi
 
-  if ! wait_for_rdp_ready "$WIN_USER" "$WIN_PASS"; then
-    notify-send -u critical "Windows VM" "Did not come alive in time."
-    exit 1
+    echo "Waiting for Windows VM to start..."
+    WAIT_COUNT=0
+    until docker logs omarchy-windows 2>&1 | grep -qi "windows started successfully"; do
+      sleep 2
+      WAIT_COUNT=$((WAIT_COUNT + 1))
+      if (( WAIT_COUNT > 60 )); then  # 2 minutes timeout
+        echo ""
+        echo "❌ Timeout: Windows VM failed to start within 2 minutes"
+        echo "   Check logs: docker logs omarchy-windows"
+        exit 1
+      fi
+    done
   fi
 
   # Build the connection info
-  if [ "$KEEP_ALIVE" = true ]; then
+  if [[ $KEEP_ALIVE = "true" ]]; then
     LIFECYCLE="VM will keep running after RDP closes
 To stop: omarchy-windows-vm stop"
   else
@@ -338,18 +334,18 @@ To stop: omarchy-windows-vm stop"
   SCALE_PERCENT=$(echo "$HYPR_SCALE" | awk '{print int($1 * 100)}')
 
   RDP_SCALE=""
-  if [ "$SCALE_PERCENT" -ge 170 ]; then
+  if (( SCALE_PERCENT >= 170 )); then
     RDP_SCALE="/scale:180"
-  elif [ "$SCALE_PERCENT" -ge 130 ]; then
+  elif (( SCALE_PERCENT >= 130 )); then
     RDP_SCALE="/scale:140"
   fi
   # If scale is less than 130%, don't set any scale (use default 100)
 
   # Connect with RDP in fullscreen (auto-detects resolution)
-  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /cert:ignore /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
+  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /clipboard /cert:ignore /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
 
   # After RDP closes, stop the container unless --keep-alive was specified
-  if [ "$KEEP_ALIVE" = false ]; then
+  if [[ $KEEP_ALIVE = "false" ]]; then
     echo ""
     echo "RDP session closed. Stopping Windows VM..."
     docker-compose -f "$COMPOSE_FILE" down
@@ -362,7 +358,7 @@ To stop: omarchy-windows-vm stop"
 }
 
 stop_windows() {
-  if [ ! -f "$COMPOSE_FILE" ]; then
+  if [[ ! -f $COMPOSE_FILE ]]; then
     echo "Windows VM not configured."
     exit 1
   fi
@@ -373,7 +369,7 @@ stop_windows() {
 }
 
 status_windows() {
-  if [ ! -f "$COMPOSE_FILE" ]; then
+  if [[ ! -f $COMPOSE_FILE ]]; then
     echo "Windows VM not configured."
     echo "To set up: omarchy-windows-vm install"
     exit 1
@@ -381,10 +377,10 @@ status_windows() {
 
   CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
 
-  if [ -z "$CONTAINER_STATUS" ]; then
+  if [[ -z $CONTAINER_STATUS ]]; then
     echo "Windows VM container not found."
     echo "To start: omarchy-windows-vm launch"
-  elif [ "$CONTAINER_STATUS" = "running" ]; then
+  elif [[ $CONTAINER_STATUS = "running" ]]; then
     gum style \
       --border normal \
       --padding "1 2" \

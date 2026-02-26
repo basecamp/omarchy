@@ -7,17 +7,18 @@
 sudo cp -f /etc/pacman.conf /etc/pacman.conf.bak
 sudo cp -f /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
 
-if [[ $1 == "edge" ]]; then
-  sudo cp -f ~/.local/share/omarchy/default/pacman/pacman-edge.conf /etc/pacman.conf
-  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-edge /etc/pacman.d/mirrorlist
-  echo "Setting channel to edge"
-else
-  sudo cp -f ~/.local/share/omarchy/default/pacman/pacman-stable.conf /etc/pacman.conf
-  sudo cp -f ~/.local/share/omarchy/default/pacman/mirrorlist-stable /etc/pacman.d/mirrorlist
-  echo "Setting channel to stable"
+channel="${1:-stable}"
+
+if [[ $channel != "stable" && $channel != "rc" && $channel != "edge" ]]; then
+  echo "Error: Invalid channel '$channel'. Must be one of: stable, rc, edge"
+  exit 1
 fi
 
+echo "Setting channel to $channel"
 echo
 
+sudo cp -f "$OMARCHY_PATH/default/pacman/pacman-$channel.conf" /etc/pacman.conf
+sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirrorlist
+
 # Reset all package DBs and then update
-sudo pacman -Syyu --noconfirm
+sudo pacman -Syyuu --noconfirm

@@ -6,7 +6,7 @@
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
 
-if [[ ! -d "$OUTPUT_DIR" ]]; then
+if [[ ! -d $OUTPUT_DIR ]]; then
   notify-send "Screen recording directory does not exist: $OUTPUT_DIR" -u critical -t 3000
   exit 1
 fi
@@ -35,9 +35,9 @@ start_webcam_overlay() {
   cleanup_webcam
 
   # Auto-detect first available webcam if none specified
-  if [[ -z "$WEBCAM_DEVICE" ]]; then
+  if [[ -z $WEBCAM_DEVICE ]]; then
     WEBCAM_DEVICE=$(v4l2-ctl --list-devices 2>/dev/null | grep -m1 "^\s*/dev/video" | tr -d '\t')
-    if [[ -z "$WEBCAM_DEVICE" ]]; then
+    if [[ -z $WEBCAM_DEVICE ]]; then
       notify-send "No webcam devices found" -u critical -t 3000
       return 1
     fi
@@ -76,18 +76,30 @@ start_screenrecording() {
   local audio_devices=""
   local audio_args=""
 
-  [[ "$DESKTOP_AUDIO" == "true" ]] && audio_devices+="default_output"
+  [[ $DESKTOP_AUDIO == "true" ]] && audio_devices+="default_output"
 
-  if [[ "$MICROPHONE_AUDIO" == "true" ]]; then
+  if [[ $MICROPHONE_AUDIO == "true" ]]; then
     # Merge audio tracks into one - separate tracks only play one at a time in most players
-    [[ -n "$audio_devices" ]] && audio_devices+="|"
+    [[ -n $audio_devices ]] && audio_devices+="|"
     audio_devices+="default_input"
   fi
 
-  [[ -n "$audio_devices" ]] && audio_args+="-a $audio_devices"
+  [[ -n $audio_devices ]] && audio_args+="-a $audio_devices"
 
-  gpu-screen-recorder -w portal -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
+  gpu-screen-recorder -w portal -k h264 -f 60 -fallback-cpu-encoding yes -o "$filename" $audio_args -ac aac &
   toggle_screenrecording_indicator
+}
+
+trim_first_frame() {
+  local latest=$(ls -t "$OUTPUT_DIR"/screenrecording-*.mp4 2>/dev/null | head -1)
+  if [[ -n $latest ]]; then
+    local trimmed="${latest%.mp4}-trimmed.mp4"
+    if ffmpeg -y -ss 0.1 -i "$latest" -c copy "$trimmed" -loglevel quiet 2>/dev/null; then
+      mv "$trimmed" "$latest"
+    else
+      rm -f "$trimmed"
+    fi
+  fi
 }
 
 stop_screenrecording() {
@@ -95,7 +107,7 @@ stop_screenrecording() {
 
   # Wait a maximum of 5 seconds to finish before hard killing
   local count=0
-  while pgrep -f "^gpu-screen-recorder" >/dev/null && [ $count -lt 50 ]; do
+  while pgrep -f "^gpu-screen-recorder" >/dev/null && (( count < 50 )); do
     sleep 0.1
     count=$((count + 1))
   done
@@ -106,6 +118,7 @@ stop_screenrecording() {
     notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
   else
     cleanup_webcam
+    trim_first_frame
     notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
   fi
   toggle_screenrecording_indicator
@@ -125,8 +138,8 @@ if screenrecording_active; then
   else
     stop_screenrecording
   fi
-elif [[ "$STOP_RECORDING" == "false" ]]; then
-  [[ "$WEBCAM" == "true" ]] && start_webcam_overlay
+elif [[ $STOP_RECORDING == "false" ]]; then
+  [[ $WEBCAM == "true" ]] && start_webcam_overlay
 
   start_screenrecording || cleanup_webcam
 else

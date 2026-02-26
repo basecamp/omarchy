@@ -14,6 +14,8 @@ omarchy-update-keyring
 omarchy-update-available-reset
 omarchy-update-system-pkgs
 omarchy-migrate
+omarchy-update-aur-pkgs
+omarchy-update-orphan-pkgs
 omarchy-hook post-update
 
 omarchy-update-analyze-logs

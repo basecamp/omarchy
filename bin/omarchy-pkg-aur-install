@@ -18,9 +18,10 @@ fzf_args=(
 
 pkg_names=$(yay -Slqa | fzf "${fzf_args[@]}")
 
-if [[ -n "$pkg_names" ]]; then
-  # Convert newline-separated selections to space-separated for yay
-  echo "$pkg_names" | tr '\n' ' ' | xargs yay -S --noconfirm
+if [[ -n $pkg_names ]]; then
+  # Add aur/ prefix to each package name and convert to space-separated for yay
+  sudo -v
+  echo "$pkg_names" | sed 's/^/aur\//' | tr '\n' ' ' | xargs yay -S --noconfirm
   sudo updatedb
   omarchy-show-done
 fi

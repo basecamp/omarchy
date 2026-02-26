@@ -25,7 +25,7 @@ else
       # Pick one or more files from home directory
       FILES=$(find "$HOME" -type f 2>/dev/null | fzf --multi)
     fi
-    [ -z "$FILES" ] && exit 0
+    [[ -z $FILES ]] && exit 0
   fi
 fi
 
