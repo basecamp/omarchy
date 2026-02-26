@@ -41,7 +41,7 @@ if [[ -z "$layout" ]] && grep -q '^KEYMAP=' "$conf"; then
     ro|ro-*)    layout="ro" ;;
     jp|jp-*)    layout="jp" ;;
     kr|kr-*)    layout="kr" ;;
-    *)          layout="${keymap:0:2}" ;;
+    *)          : ;;  # Unknown KEYMAP: leave layout empty to keep Hyprland defaults
   esac
 fi
 
