@@ -16,8 +16,10 @@ fi
 cp "$STAGED_DIR"/* "$PLYMOUTH_THEME_DIR/"
 rm -rf "$STAGED_DIR"
 
+# Rebuild initramfs in the background so theme switching isn't blocked.
+# This already runs as root via sudo, so no further auth is needed.
 if command -v limine-mkinitcpio &>/dev/null; then
-  limine-mkinitcpio
+  nohup limine-mkinitcpio >/dev/null 2>&1 &
 else
-  mkinitcpio -P
+  nohup mkinitcpio -P >/dev/null 2>&1 &
 fi

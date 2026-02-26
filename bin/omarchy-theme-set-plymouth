@@ -101,5 +101,5 @@ magick "$PLYMOUTH_SOURCE/bullet.png" -fill "$cursor" -colorize 100% "$STAGED/bul
 magick "$PLYMOUTH_SOURCE/progress_bar.png" -fill "$foreground" -colorize 100% "$STAGED/progress_bar.png"
 magick "$PLYMOUTH_SOURCE/progress_box.png" -fill "$color0" -colorize 100% "$STAGED/progress_box.png"
 
-# Deploy and rebuild initramfs (detached so it survives if the parent is killed)
-nohup sudo /usr/local/bin/omarchy-plymouth-update-theme "$STAGED" >/dev/null 2>&1 &
+# Deploy and rebuild initramfs
+sudo /usr/local/bin/omarchy-plymouth-update-theme "$STAGED"
