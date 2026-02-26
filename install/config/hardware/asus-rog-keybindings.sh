@@ -1,4 +1,4 @@
-# Configure ASUS ROG Aura key for media controls
+# Configure ASUS ROG key for media controls
 
 if omarchy-hw-asus-rog; then
   echo "Configuring ASUS ROG keybindings"
