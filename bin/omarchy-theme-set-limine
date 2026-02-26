@@ -1,0 +1,9 @@
+#!/bin/bash
+
+LIMINE_CONF="/boot/limine.conf"
+LIMINE_THEME="$HOME/.config/omarchy/current/theme/limine.theme"
+
+[[ -f $LIMINE_CONF ]] || exit 0
+[[ -f $LIMINE_THEME ]] || exit 0
+
+sudo /usr/local/bin/omarchy-limine-update-colors <"$LIMINE_THEME"

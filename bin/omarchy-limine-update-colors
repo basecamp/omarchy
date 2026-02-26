@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Updates limine bootloader colors in /boot/limine.conf.
+# Reads key=value pairs from stdin and updates matching lines.
+# Intended to be run via sudo from omarchy-theme-set-limine.
+
+LIMINE_CONF="/boot/limine.conf"
+
+[[ -f $LIMINE_CONF ]] || exit 1
+
+while IFS='=' read -r key value; do
+  [[ $key && $value ]] || continue
+  sed -i "s/^${key}:.*/${key}: ${value}/" "$LIMINE_CONF"
+done
