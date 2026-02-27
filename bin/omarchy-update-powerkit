@@ -1,0 +1,9 @@
+#!/bin/env bash
+set -euo pipefail
+
+POWERKIT_DIR="$HOME/.config/tmux/plugins/tmux-powerkit"
+
+if [[ -d "$POWERKIT_DIR/.git" ]]; then
+  echo "Updating tmux-powerkit..."
+  git -C "$POWERKIT_DIR" pull --ff-only
+fi

@@ -1,0 +1,19 @@
+#!/bin/bash
+set -euo pipefail
+
+THEME_FILE="$HOME/.config/omarchy/current/theme/powerkit.theme"
+TMUX_THEME_FILE="$HOME/.config/tmux/powerkit-theme.conf"
+TMUX_CONF="$HOME/.config/tmux/tmux.conf"
+
+[[ -f "$THEME_FILE" ]] || exit 0
+
+IFS='|' read -r base variant <"$THEME_FILE"
+
+cat >"$TMUX_THEME_FILE" <<EOF
+set -g @powerkit_theme "$base"
+set -g @powerkit_theme_variant "$variant"
+EOF
+
+if tmux ls >/dev/null 2>&1; then
+  tmux source-file "$TMUX_CONF"
+fi
