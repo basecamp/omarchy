@@ -47,18 +47,26 @@ install_node() {
 }
 
 install_esp_idf() {
-  # ESP-IDF installation
-  # https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/linux-macos-setup.html
-  # Set targets in your env if you do not want to build all e.g
-  # export IDF_TARGETS:="esp32,esp32c3,esp32s3"
   : "${IDF_TARGETS:=all}"
-  : "${IDF_VERSION:=v5.5.3}"
+  : "${IDF_VERSION:=release/v5.5}"
   : "${IDF_PATH:=${HOME}/esp}"
   : "${IDF_GITHUB_ASSETS:=dl.espressif.com/github_assets}"
   : "${IDF_TOOLS_PATH:=${HOME}/.espressif}"
+  echo "# ESP-IDF installation
+  # https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/linux-macos-setup.html
+  # Set targets in your env if you do not want to build all e.g
+  # export IDF_TARGETS:="esp32,esp32c3,esp32s3"
+  # defaults you can change:
+  # export IDF_TARGETS=${IDF_TARGETS}
+  # export IDF_VERSION=${IDF_VERSION}
+  # export IDF_PATH=${IDF_PATH}
+  # export IDF_GITHUB_ASSETS=${IDF_GITHUB_ASSETS}
+  # export IDF_TOOLS_PATH=${IDF_TOOLS_PATH}"
+  sleep 2
+  echo -n 'Proceed installing ESP-IDF with these values? '
+  [[ "$(read -e -p '[y/N]> '; echo $REPLY)" == [Yy]* ]] echo -e "Installing ESP-IDF...\n"|| exit 1
   export IDF_GITHUB_ASSETS="${IDF_GITHUB_ASSETS}"
   export IDF_TOOLS_PATH="${IDF_TOOLS_PATH}"
-  echo -e "Installing ESP-IDF...\n"
   sudo pacman -S --needed gcc git make flex bison gperf python cmake ninja ccache dfu-util libusb python-pip
   mkdir -p ${IDF_PATH}
   cd ${IDF_PATH}
