@@ -1,9 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-
-# Usage:
-#   omarchy-launch-or-focus <window-pattern> [launch-command]
-#   omarchy-launch-or-focus <url> [profile] [extra browser flags...]
 
 find_window_address() {
   local pattern="$1"
@@ -29,7 +25,7 @@ if [[ "$arg1" =~ ^https?:// ]]; then
   APP_URL="$1"
   PROFILE="${2-}"          
   shift || true
-  if [[ $# -gt 0 ]]; then shift; fi
+  if [[ -n "${PROFILE:-}" ]]; then shift || true; fi
   EXTRA_FLAGS=("$@")
 
   host="${APP_URL#*://}"; host="${host%%/*}"
