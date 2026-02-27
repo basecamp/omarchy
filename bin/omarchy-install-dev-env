@@ -47,33 +47,32 @@ install_node() {
 }
 
 install_esp_idf() {
-  : "${IDF_TARGETS:=all}"
-  : "${IDF_VERSION:=release/v5.5}"
-  : "${IDF_PATH:=${HOME}/esp}"
-  : "${IDF_GITHUB_ASSETS:=dl.espressif.com/github_assets}"
-  : "${IDF_TOOLS_PATH:=${HOME}/.espressif}"
-  echo "# ESP-IDF installation
-  # https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/linux-macos-setup.html
-  # Set targets in your env if you do not want to build all e.g
-  # export IDF_TARGETS:="esp32,esp32c3,esp32s3"
-  # defaults you can change:
-  # export IDF_TARGETS=${IDF_TARGETS}
-  # export IDF_VERSION=${IDF_VERSION}
-  # export IDF_PATH=${IDF_PATH}
-  # export IDF_GITHUB_ASSETS=${IDF_GITHUB_ASSETS}
-  # export IDF_TOOLS_PATH=${IDF_TOOLS_PATH}"
+  ESP_IDF_GETTING_STARTED_URL=https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/linux-macos-setup.html
+  export IDF_TARGETS="${IDF_TARGETS:=all}"
+  export IDF_VERSION="${IDF_VERSION:=release/v5.5}"
+  export IDF_PATH="${IDF_PATH:=${HOME}/esp}"
+  export IDF_GITHUB_ASSETS="${IDF_GITHUB_ASSETS:=dl.espressif.com/github_assets}"
+  export IDF_TOOLS_PATH="${IDF_TOOLS_PATH:=${HOME}/.espressif}"
+  echo -e "# ESP-IDF installation"
+  echo -e "# ${ESP_IDF_GETTING_STARTED_URL}"
+  echo -e "# Set targets in your env if you do not want to build all e.g"
+  echo -e "# export IDF_TARGETS:="esp32,esp32c3,esp32s3""
+  echo -e "# defaults you can change:"
+  echo -e "# export IDF_TARGETS=${IDF_TARGETS}"
+  echo -e "# export IDF_VERSION=${IDF_VERSION}"
+  echo -e "# export IDF_PATH=${IDF_PATH}"
+  echo -e "# export IDF_GITHUB_ASSETS=${IDF_GITHUB_ASSETS}"
+  echo -e "# export IDF_TOOLS_PATH=${IDF_TOOLS_PATH}"
   sleep 2
-  echo -n 'Proceed installing ESP-IDF with these values? '
+  echo -n -e 'Proceed installing ESP-IDF with these values? '
   [[ "$(read -e -p '[y/N]> '; echo $REPLY)" == [Yy]* ]] && echo -e "Installing ESP-IDF...\n"|| exit 1
-  export IDF_GITHUB_ASSETS="${IDF_GITHUB_ASSETS}"
-  export IDF_TOOLS_PATH="${IDF_TOOLS_PATH}"
-  sudo pacman -S --needed gcc git make flex bison gperf python cmake ninja ccache dfu-util libusb python-pip
+  sudo pacman -Sy --needed gcc git make flex bison gperf python cmake ninja ccache dfu-util libusb python-pip
   install_python
   mkdir -p ${IDF_PATH}
   cd ${IDF_PATH}
   if [[ -d ${IDF_PATH}/esp-idf ]]
   then
-    echo "WARN: ${IDF_PATH}/esp-idf already exists"
+    echo -e "WARN: ${IDF_PATH}/esp-idf already exists\n"
     cd ${IDF_PATH}/esp-idf
     git checkout "${IDF_VERSION}"
   else
@@ -81,6 +80,11 @@ install_esp_idf() {
   fi
   cd ${IDF_PATH}/esp-idf
   ./install.sh "${IDF_TARGETS}"
+  echo -e "# Installation of ESP-IDF complete."
+  echo -e "# For more information: ${ESP_IDF_GETTING_STARTED_URL}"
+  echo -e "# To use it source ${IDF_PATH}/esp-idf/export.sh"
+  echo -e "# e.g."
+  echo -e ". ${IDF_PATH}/esp-idf/export.sh"
  }
 
 install_python() {
