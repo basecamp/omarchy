@@ -3,7 +3,7 @@
 # Install one of the supported development environments. Usually called via Install > Development > * in the Omarchy Menu.
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala|esp-idf>" >&2
   exit 1
 fi
 
@@ -44,6 +44,30 @@ install_php() {
 install_node() {
   echo -e "Installing Node.js...\n"
   mise use --global node
+}
+
+install_esp_idf() {
+  #: "${IDF_TARGETS:=esp32,esp32c3,esp32s3}"
+  : "${IDF_TARGETS:=all}"
+  : "${IDF_VERSION:=v5.5.3}"
+  : "${IDF_PATH:=${HOME}/esp}"
+  : "${IDF_GITHUB_ASSETS:=dl.espressif.com/github_assets}"
+  : "${IDF_TOOLS_PATH:=${HOME}/.espressif}"
+  export IDF_GITHUB_ASSETS="${IDF_GITHUB_ASSETS}"
+  export IDF_TOOLS_PATH="${IDF_TOOLS_PATH}"
+  echo -e "Installing ESP-IDF...\n"
+  mkdir -p ${IDF_PATH}
+  cd ${IDF_PATH}
+  git clone -b "${IDF_VERSION}" --filter=blob:none --recursive https://github.com/espressif/esp-idf.git
+  cd ${IDF_PATH}/esp-idf
+  ./install.sh "${IDF_TARGETS}"
+ }
+
+install_python() {
+  echo -e "Installing Python...\n"
+  mise use --global python@latest
+  echo -e "\nInstalling uv...\n"
+  curl -fsSL https://astral.sh/uv/install.sh | sh
 }
 
 case "$1" in
@@ -90,10 +114,7 @@ symfony)
   echo -e "\nYou can now run: symfony new --webapp myproject"
   ;;
 python)
-  echo -e "Installing Python...\n"
-  mise use --global python@latest
-  echo -e "\nInstalling uv...\n"
-  curl -fsSL https://astral.sh/uv/install.sh | sh
+  install_python
   ;;
 elixir)
   echo -e "Installing Elixir...\n"
@@ -147,5 +168,10 @@ scala)
   mise use --global java@latest
   mise use --global scala@latest
   mise use --global scala-cli@latest
+  ;;
+esp-idf)
+  sudo pacman -S --needed gcc git make flex bison gperf python cmake ninja ccache dfu-util libusb python-pip
+  install_python
+  install_esp_idf
   ;;
 esac
