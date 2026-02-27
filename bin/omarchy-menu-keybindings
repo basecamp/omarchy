@@ -12,7 +12,7 @@ build_keymap_cache() {
   }
 
   while IFS=, read -r code sym; do
-    [[ -z "$code" || -z "$sym" ]] && continue
+    [[ -z $code || -z $sym ]] && continue
     KEYCODE_SYM_MAP["$code"]="$sym"
   done < <(
     awk '
@@ -42,13 +42,13 @@ lookup_keycode_cached() {
 
 parse_keycodes() {
   local start end elapsed
-  [[ "${DEBUG:-0}" == "1" ]] && start=$(date +%s.%N)
+  [[ ${DEBUG:-0} == "1" ]] && start=$(date +%s.%N)
   while IFS= read -r line; do
-    if [[ "$line" =~ code:([0-9]+) ]]; then
+    if [[ $line =~ code:([0-9]+) ]]; then
       code="${BASH_REMATCH[1]}"
       symbol=$(lookup_keycode_cached "$code" "$XKB_KEYMAP_CACHE")
       echo "${line/code:${code}/$symbol}"
-    elif [[ "$line" =~ mouse:([0-9]+) ]]; then
+    elif [[ $line =~ mouse:([0-9]+) ]]; then
       code="${BASH_REMATCH[1]}"
 
       case "$code" in
@@ -64,7 +64,7 @@ parse_keycodes() {
     fi
   done
 
-  if [[ "$DEBUG" == "1" ]]; then
+  if [[ $DEBUG == "1" ]]; then
     end=$(date +%s.%N)
     # fall back to awk if bc is missing
     if command -v bc >/dev/null 2>&1; then
@@ -168,44 +168,47 @@ prioritize_entries() {
     line = $0
     prio = 50
     if (match(line, /Terminal/)) prio = 0
-    if (match(line, /Browser/) && !match(line, /Browser[[:space:]]*\(/)) prio = 1
-    if (match(line, /File manager/))  prio = 2
-    if (match(line, /Launch apps/))  prio = 3
-    if (match(line, /Omarchy menu/))  prio = 4
-    if (match(line, /System menu/))  prio = 5
-    if (match(line, /Theme menu/))  prio = 6
-    if (match(line, /Full screen/))  prio = 7
-    if (match(line, /Full width/))  prio = 8
-    if (match(line, /Close window/))  prio = 9
-    if (match(line, /Close all windows/))  prio = 10
-    if (match(line, /Lock system/))  prio = 11
-    if (match(line, /Toggle window floating/))  prio = 12
-    if (match(line, /Toggle window split/))  prio = 13
-    if (match(line, /Pop window/))  prio = 14
-    if (match(line, /Universal/))  prio = 15
-    if (match(line, /Clipboard/))  prio = 16
-    if (match(line, /Audio controls/))  prio = 17
-    if (match(line, /Bluetooth controls/))  prio = 18
-    if (match(line, /Wifi controls/))  prio = 19
-    if (match(line, /Emoji picker/))  prio = 20
-    if (match(line, /Color picker/))  prio = 21
-    if (match(line, /Screenshot/))  prio = 22
-    if (match(line, /Screenrecording/))  prio = 23
-    if (match(line, /(Switch|Next|Former|Previous).*workspace/))  prio = 24
-    if (match(line, /Move window to workspace/))  prio = 25
-    if (match(line, /Move window silently to workspace/))  prio = 26
-    if (match(line, /Swap window/))  prio = 27
-    if (match(line, /Move window focus/))  prio = 28
-    if (match(line, /Move window$/))  prio = 29
-    if (match(line, /Resize window/))  prio = 30
-    if (match(line, /Expand window/))  prio = 31
-    if (match(line, /Shrink window/))  prio = 32
-    if (match(line, /scratchpad/))  prio = 33
-    if (match(line, /notification/))  prio = 34
-    if (match(line, /Toggle window transparency/))  prio = 35
-    if (match(line, /Toggle workspace gaps/))  prio = 36
-    if (match(line, /Toggle nightlight/))  prio = 37
-    if (match(line, /Toggle locking/))  prio = 38
+    if (match(line, /Tmux/)) prio = 1
+    if (match(line, /Browser/) && !match(line, /Browser[[:space:]]*\(/) && !match(line, /SUPER SHIFT.*\+.*B.*→.*Browser/)) prio = 2
+    if (match(line, /File manager/) && !match(line, /File manager \(cwd\)/))  prio = 3
+    if (match(line, /Launch apps/))  prio = 4
+    if (match(line, /Omarchy menu/))  prio = 5
+    if (match(line, /System menu/))  prio = 6
+    if (match(line, /Theme menu/))  prio = 7
+    if (match(line, /Full screen/))  prio = 8
+    if (match(line, /Full width/))  prio = 9
+    if (match(line, /Close window/))  prio = 10
+    if (match(line, /Close all windows/))  prio = 11
+    if (match(line, /Lock system/))  prio = 12
+    if (match(line, /Toggle window floating/))  prio = 13
+    if (match(line, /Toggle window split/))  prio = 14
+    if (match(line, /Pop window/))  prio = 15
+    if (match(line, /Universal/))  prio = 16
+    if (match(line, /Clipboard/))  prio = 17
+    if (match(line, /Audio controls/))  prio = 18
+    if (match(line, /Bluetooth controls/))  prio = 19
+    if (match(line, /Wifi controls/))  prio = 20
+    if (match(line, /Emoji picker/))  prio = 21
+    if (match(line, /Color picker/))  prio = 22
+    if (match(line, /Screenshot/))  prio = 23
+    if (match(line, /Screenrecording/))  prio = 24
+    if (match(line, /SUPER SHIFT.*\+.*B.*→.*Browser/)) prio = 25
+    if (match(line, /File manager \(cwd\)/))  prio = 26
+    if (match(line, /(Switch|Next|Former|Previous).*workspace/))  prio = 27
+    if (match(line, /Move window to workspace/))  prio = 28
+    if (match(line, /Move window silently to workspace/))  prio = 29
+    if (match(line, /Swap window/))  prio = 30
+    if (match(line, /Move window focus/))  prio = 31
+    if (match(line, /Move window$/))  prio = 32
+    if (match(line, /Resize window/))  prio = 33
+    if (match(line, /Expand window/))  prio = 34
+    if (match(line, /Shrink window/))  prio = 35
+    if (match(line, /scratchpad/))  prio = 36
+    if (match(line, /notification/))  prio = 37
+    if (match(line, /Toggle window transparency/))  prio = 38
+    if (match(line, /Toggle workspace gaps/))  prio = 39
+    if (match(line, /Toggle nightlight/))  prio = 40
+    if (match(line, /Toggle locking/))  prio = 41
     if (match(line, /group/))  prio = 94
     if (match(line, /Scroll active workspace/))  prio = 95
     if (match(line, /Cycle to/))  prio = 96
@@ -233,7 +236,7 @@ output_keybindings() {
     prioritize_entries
 }
 
-if [[ "$1" == "--print" || "$1" == "-p" ]]; then
+if [[ $1 == "--print" || $1 == "-p" ]]; then
   output_keybindings
 else
   monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
@@ -242,4 +245,3 @@ else
   output_keybindings |
     walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
 fi
-

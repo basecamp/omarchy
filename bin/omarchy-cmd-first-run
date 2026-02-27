@@ -6,7 +6,7 @@ set -e
 
 FIRST_RUN_MODE=~/.local/state/omarchy/first-run.mode
 
-if [[ -f "$FIRST_RUN_MODE" ]]; then
+if [[ -f $FIRST_RUN_MODE ]]; then
   rm -f "$FIRST_RUN_MODE"
 
   bash "$OMARCHY_PATH/install/first-run/battery-monitor.sh"

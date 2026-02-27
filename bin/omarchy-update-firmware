@@ -7,5 +7,5 @@ if omarchy-cmd-missing fwupdmgr; then
   omarchy-pkg-add fwupd
 fi
 
-fwupdmgr refresh
+fwupdmgr refresh --force
 sudo fwupdmgr update
