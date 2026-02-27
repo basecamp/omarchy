@@ -3,6 +3,8 @@
 # Toggle dedicated vs integrated GPU mode via supergfxd (for hybrid gpu laptops, like Asus G14).
 # Requires reboot to take effect.
 
+NVIDIA_SLEEP_SERVICES="nvidia-suspend.service nvidia-resume.service nvidia-hibernate.service"
+
 # Ensure supergfxctl has been installed
 if omarchy-cmd-missing supergfxctl; then
   omarchy-pkg-add supergfxctl
@@ -23,13 +25,28 @@ CONF
   sudo systemctl enable --now supergfxd
 fi
 
-gpu_mode=$(supergfxctl -g)
+# Verify reported mode against actual hardware state
+check_gpu_state() {
+  gpu_mode=$(supergfxctl -g)
+  nvidia_driver_active=$(lspci -k 2>/dev/null | grep -A2 -i nvidia | grep -q "Kernel driver in use: nvidia" && echo "yes" || echo "no")
+  if [[ $gpu_mode == "Integrated" && $nvidia_driver_active == "yes" ]]; then
+    gpu_mode="Hybrid"
+  elif [[ $gpu_mode == "Hybrid" && $nvidia_driver_active == "no" ]]; then
+    gpu_mode="Integrated"
+  fi
+  echo "$gpu_mode"
+}
+
+gpu_mode=$(gum spin --spinner dot --title "Checking hardware state..." -- bash -c "$(declare -f check_gpu_state); check_gpu_state")
 
 case "$gpu_mode" in
 "Integrated")
   if gum confirm "Enable dedicated GPU and reboot?"; then
     # Switch to hybrid mode
     sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Hybrid\"/" /etc/supergfxd.conf
+
+    # Re-enable nvidia sleep/resume services
+    sudo systemctl enable $NVIDIA_SLEEP_SERVICES 2>/dev/null
 
     # Let hybrid mode be the default after system sleep
     sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu
@@ -45,6 +62,9 @@ case "$gpu_mode" in
     # Switch to integrated mode and ensure vfio is enabled (needed for sleep/wake trick)
     sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
     sudo sed -i 's/"vfio_enable": false/"vfio_enable": true/' /etc/supergfxd.conf
+
+    # Disable nvidia sleep/resume services
+    sudo systemctl disable $NVIDIA_SLEEP_SERVICES 2>/dev/null
 
     # Force igpu mode after system sleep (or dgpu could get activated)
     sudo mkdir -p /usr/lib/systemd/system-sleep
