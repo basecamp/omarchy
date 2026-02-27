@@ -1,0 +1,21 @@
+@import url("style.css");
+
+@define-color background #1f1f28;
+@define-color foreground #dcd7ba;
+
+@define-color black #090618;
+@define-color red #c34043;
+@define-color green #76946a;
+@define-color yellow #c0a36e;
+@define-color blue #7e9cd8;
+@define-color magenta #957fb8;
+@define-color cyan #6a9589;
+@define-color white #c8c093;
+@define-color bright_black #727169;
+@define-color bright_red #e82424;
+@define-color bright_green #98bb6c;
+@define-color bright_yellow #e6c384;
+@define-color bright_blue #7fb4ca;
+@define-color bright_magenta #938aa9;
+@define-color bright_cyan #7aa89f;
+@define-color bright_white #dcd7ba;
