@@ -1,6 +1,6 @@
 #!/bin/bash
 
-gum style --border normal --border-foreground 6 --padding "1 2" \
+gum style --border normal --padding "1 2" \
   "Ready to update?" \
   "" \
   "• You cannot stop the update once you start!" \
