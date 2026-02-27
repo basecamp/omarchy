@@ -2,9 +2,14 @@
 
 # Copies themed plymouth files into the system theme directory and rebuilds
 # the initramfs. Intended to be run via sudo from omarchy-theme-set-plymouth.
+#
+# Uses flock to serialize concurrent invocations. When multiple theme
+# switches happen rapidly, each waits its turn. Only the final copy's
+# initramfs rebuild matters — earlier ones get overwritten.
 
 PLYMOUTH_THEME_DIR="/usr/share/plymouth/themes/omarchy"
 STAGED_DIR="$1"
+LOCKFILE="/tmp/omarchy-plymouth.lock"
 
 if [[ -z $STAGED_DIR || ! -d $STAGED_DIR ]]; then
   echo "Usage: $0 <staged-theme-directory>" >&2
@@ -13,13 +18,21 @@ fi
 
 [[ -d $PLYMOUTH_THEME_DIR ]] || exit 1
 
+# Serialize: only one copy + rebuild at a time
+exec 9>"$LOCKFILE"
+flock 9
+
+# Staged dir may have been replaced by a newer invocation while we waited.
+# If our dir is gone, a newer instance already handled it — nothing to do.
+if [[ ! -d $STAGED_DIR ]]; then
+  exit 0
+fi
+
 cp "$STAGED_DIR"/* "$PLYMOUTH_THEME_DIR/"
 rm -rf "$STAGED_DIR"
 
-# Rebuild initramfs in the background so theme switching isn't blocked.
-# This already runs as root via sudo, so no further auth is needed.
 if command -v limine-mkinitcpio &>/dev/null; then
-  nohup limine-mkinitcpio >/dev/null 2>&1 &
+  limine-mkinitcpio
 else
-  nohup mkinitcpio -P >/dev/null 2>&1 &
+  mkinitcpio -P
 fi
