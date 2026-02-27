@@ -4,6 +4,10 @@
 MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true)')
 ACTIVE_MONITOR=$(echo "$MONITOR_INFO" | jq -r '.name')
 CURRENT_SCALE=$(echo "$MONITOR_INFO" | jq -r '.scale')
+ACTIVE_MODE=$(echo "$MONITOR_INFO" | jq -r '"\(.width)x\(.height)@\(.refreshRate | round)"')
+ACTIVE_X=$(echo "$MONITOR_INFO" | jq -r '.x')
+ACTIVE_Y=$(echo "$MONITOR_INFO" | jq -r '.y')
+ACTIVE_WIDTH=$(echo "$MONITOR_INFO" | jq -r '.width')
 
 # Cycle through scales: 1 → 1.6 → 2 → 3 → 1
 CURRENT_INT=$(awk -v s="$CURRENT_SCALE" 'BEGIN { printf "%.0f", s * 10 }')
@@ -15,7 +19,44 @@ case "$CURRENT_INT" in
 *) NEW_SCALE=1 ;;
 esac
 
+OLD_LOGICAL_WIDTH=$(awk -v w="$ACTIVE_WIDTH" -v s="$CURRENT_SCALE" 'BEGIN { printf "%.0f", w / s }')
+NEW_LOGICAL_WIDTH=$(awk -v w="$ACTIVE_WIDTH" -v s="$NEW_SCALE" 'BEGIN { printf "%.0f", w / s }')
+DELTA=$((NEW_LOGICAL_WIDTH - OLD_LOGICAL_WIDTH))
+
+# Place adjacent monitors at exact absolute positions instead of relative delta
+# to avoid drift from Hyprland auto-adjusting positions between commands
+reposition_adjacent_monitors() {
+  local next_x=$((ACTIVE_X + NEW_LOGICAL_WIDTH))
+  while IFS= read -r other; do
+    OTHER_NAME=$(echo "$other" | jq -r '.name')
+    OTHER_MODE=$(echo "$other" | jq -r '"\(.width)x\(.height)@\(.refreshRate | round)"')
+    OTHER_SCALE=$(echo "$other" | jq -r '.scale')
+    OTHER_WIDTH=$(echo "$other" | jq -r '.width')
+    OTHER_Y=$(echo "$other" | jq -r '.y')
+    hyprctl keyword monitor "$OTHER_NAME,$OTHER_MODE,${next_x}x${OTHER_Y},$OTHER_SCALE"
+    local other_lw=$(awk -v w="$OTHER_WIDTH" -v s="$OTHER_SCALE" 'BEGIN { printf "%.0f", w / s }')
+    next_x=$((next_x + other_lw))
+  done < <(hyprctl monitors -j | jq -c --arg active "$ACTIVE_MONITOR" --argjson ax "$ACTIVE_X" \
+    '[.[] | select(.name != $active and .x > $ax)] | sort_by(.x) | .[]')
+}
+
 hyprctl keyword misc:disable_scale_notification true
-hyprctl keyword monitor "$ACTIVE_MONITOR,preferred,auto,$NEW_SCALE"
+
+if [ "$DELTA" -gt 0 ]; then
+  # Monitor is getting wider — move adjacent monitors out of the way first to prevent overlap
+  reposition_adjacent_monitors
+  hyprctl keyword monitor "$ACTIVE_MONITOR,$ACTIVE_MODE,${ACTIVE_X}x${ACTIVE_Y},$NEW_SCALE"
+elif [ "$DELTA" -lt 0 ]; then
+  # Monitor is getting narrower — scale first, then close the gap
+  hyprctl keyword monitor "$ACTIVE_MONITOR,$ACTIVE_MODE,${ACTIVE_X}x${ACTIVE_Y},$NEW_SCALE"
+  reposition_adjacent_monitors
+else
+  hyprctl keyword monitor "$ACTIVE_MONITOR,$ACTIVE_MODE,${ACTIVE_X}x${ACTIVE_Y},$NEW_SCALE"
+fi
+
+# Restore layout settings that may have been reset by monitor reconfiguration
+hyprctl keyword source ~/.local/share/omarchy/default/hypr/looknfeel.conf
+hyprctl keyword source ~/.config/hypr/looknfeel.conf
+
 hyprctl keyword misc:disable_scale_notification false
 notify-send "󰍹    Display scaling set to ${NEW_SCALE}x"
