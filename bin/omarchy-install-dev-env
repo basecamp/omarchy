@@ -64,13 +64,21 @@ install_esp_idf() {
   # export IDF_TOOLS_PATH=${IDF_TOOLS_PATH}"
   sleep 2
   echo -n 'Proceed installing ESP-IDF with these values? '
-  [[ "$(read -e -p '[y/N]> '; echo $REPLY)" == [Yy]* ]] echo -e "Installing ESP-IDF...\n"|| exit 1
+  [[ "$(read -e -p '[y/N]> '; echo $REPLY)" == [Yy]* ]] && echo -e "Installing ESP-IDF...\n"|| exit 1
   export IDF_GITHUB_ASSETS="${IDF_GITHUB_ASSETS}"
   export IDF_TOOLS_PATH="${IDF_TOOLS_PATH}"
   sudo pacman -S --needed gcc git make flex bison gperf python cmake ninja ccache dfu-util libusb python-pip
+  install_python
   mkdir -p ${IDF_PATH}
   cd ${IDF_PATH}
-  git clone -b "${IDF_VERSION}" --filter=blob:none --recursive https://github.com/espressif/esp-idf.git
+  if [[ -d ${IDF_PATH}/esp-idf ]]
+  then
+    echo "WARN: ${IDF_PATH}/esp-idf already exists"
+    cd ${IDF_PATH}/esp-idf
+    git checkout "${IDF_VERSION}"
+  else
+    git clone -b "${IDF_VERSION}" --filter=blob:none --recursive https://github.com/espressif/esp-idf.git
+  fi
   cd ${IDF_PATH}/esp-idf
   ./install.sh "${IDF_TARGETS}"
  }
@@ -182,7 +190,6 @@ scala)
   mise use --global scala-cli@latest
   ;;
 esp-idf)
-  install_python
   install_esp_idf
   ;;
 esac
