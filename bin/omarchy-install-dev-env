@@ -47,7 +47,10 @@ install_node() {
 }
 
 install_esp_idf() {
-  #: "${IDF_TARGETS:=esp32,esp32c3,esp32s3}"
+  # ESP-IDF installation
+  # https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/linux-macos-setup.html
+  # Set targets in your env if you do not want to build all e.g
+  # export IDF_TARGETS:="esp32,esp32c3,esp32s3"
   : "${IDF_TARGETS:=all}"
   : "${IDF_VERSION:=v5.5.3}"
   : "${IDF_PATH:=${HOME}/esp}"
