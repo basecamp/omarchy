@@ -1,9 +1,16 @@
 #!/bin/bash
 
+echo
+
 if [[ ! -d /usr/lib/modules/$(uname -r) ]]; then
   gum confirm "Linux kernel has been updated. Reboot?" && omarchy-system-reboot
 elif [[ -f $HOME/.local/state/omarchy/reboot-required ]]; then
   gum confirm "Updates require reboot. Ready?" && omarchy-system-reboot
+fi
+
+running_hyprland=$(readlink /proc/$(pgrep -x Hyprland)/exe 2>/dev/null)
+if [[ $running_hyprland == *"(deleted)"* ]]; then
+  gum confirm "Hyprland has been updated. Reboot?" && omarchy-system-reboot
 fi
 
 for file in "$HOME"/.local/state/omarchy/restart-*-required; do
