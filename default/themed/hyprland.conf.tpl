@@ -1,4 +1,4 @@
-# Theme colors available as variables in all sourced Hyprland config files
+# Theme color variables for Hyprland configs sourced after this file
 $accent = rgb({{ accent_strip }})
 $cursor = rgb({{ cursor_strip }})
 $foreground = rgb({{ foreground_strip }})
