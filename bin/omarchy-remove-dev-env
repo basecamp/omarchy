@@ -25,7 +25,7 @@ remove_esp_idf() {
   : "${IDF_TOOLS_PATH:=${HOME}/.espressif}"
 
   echo -n 'Remove python? '
-  [[ "$(read -e -p '[y/N]> '; echo $REPLY)" == [Yy]* ]] && echo -n '...' \
+  [[ "$(read -e -p '[y/N]> '; echo $REPLY)" == [Yy]* ]] \
     && RM_PY='yes' || RM_PY='no'
 
   echo -n 'Remove c dependencies? '
