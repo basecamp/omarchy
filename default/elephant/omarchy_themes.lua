@@ -3,6 +3,7 @@
 --
 Name = "omarchythemes"
 NamePretty = "Omarchy Themes"
+Icon = "preferences-desktop-theme"
 
 -- Check if file exists using Lua (no subprocess)
 local function file_exists(path)
