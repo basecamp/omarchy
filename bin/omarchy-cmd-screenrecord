@@ -119,7 +119,11 @@ stop_screenrecording() {
   else
     cleanup_webcam
     trim_first_frame
-    notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+    (
+      latest=$(ls -t "$OUTPUT_DIR"/screenrecording-*.mp4 2>/dev/null | head -1)
+      ACTION=$(notify-send "Screen recording saved to $OUTPUT_DIR" "Reveal with Super + Alt + , (or click this)" -t 10000 -A "default=reveal")
+      [[ $ACTION == "default" ]] && nautilus -s "$latest"
+    ) &
   fi
   toggle_screenrecording_indicator
 }
