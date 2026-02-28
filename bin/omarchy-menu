@@ -170,7 +170,7 @@ show_toggle_menu() {
   *Layout*) omarchy-hyprland-workspace-layout-toggle ;;
   *Ratio*) omarchy-hyprland-window-single-square-aspect-toggle ;;
   *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
-  *Scaling*) omarchy-hyprland-monitor-scaling-toggle ;;
+  *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
   *) back_to show_trigger_menu ;;
   esac
 }
