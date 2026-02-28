@@ -5,7 +5,7 @@
 
 config_file=$1
 
-if [[ -z "$config_file" ]]; then
+if [[ -z $config_file ]]; then
   cat <<USAGE
   Usage: $0 [config_file]
 
@@ -22,7 +22,7 @@ user_config_file="${HOME}/.config/$config_file"
 default_config_file="${HOME}/.local/share/omarchy/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
 
-if [[ -f "$user_config_file" ]]; then
+if [[ -f $user_config_file ]]; then
   # Create preliminary backup
   cp -f "$user_config_file" "$backup_config_file" 2>/dev/null
 

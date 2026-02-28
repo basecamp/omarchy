@@ -3,10 +3,10 @@
 # omarchy-theme-remove: Remove a theme from Omarchy by name
 # Usage: omarchy-theme-remove <theme-name>
 
-if [ -z "$1" ]; then
+if [[ -z $1 ]]; then
   mapfile -t extra_themes < <(find ~/.config/omarchy/themes -mindepth 1 -maxdepth 1 -type d ! -xtype l -printf '%f\n')
 
-  if [[ ${#extra_themes[@]} -gt 0 ]]; then
+  if (( ${#extra_themes[@]} > 0 )); then
     THEME_NAME=$(printf '%s\n' "${extra_themes[@]}" | sort | gum choose --header="Remove extra theme")
   else
     echo "No extra themes installed."
@@ -21,12 +21,12 @@ CURRENT_DIR="$HOME/.config/omarchy/current"
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Ensure a theme was set
-if [ -z "$THEME_NAME" ]; then
+if [[ -z $THEME_NAME ]]; then
   exit 1
 fi
 
 # Check if theme exists before attempting removal
-if [ ! -d "$THEME_PATH" ]; then
+if [[ ! -d $THEME_PATH ]]; then
   echo "Error: Theme '$THEME_NAME' not found."
   exit 1
 fi
