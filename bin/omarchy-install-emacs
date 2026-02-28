@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Install Emacs with Omarchy theme and font integration
+
+omarchy-pkg-add emacs-wayland
+
+omarchy-refresh-config emacs/init.el
+omarchy-refresh-config emacs/shell-bashrc
+omarchy-refresh-config emacs/themes/omarchy-dark-theme.el
+omarchy-refresh-config emacs/themes/omarchy-light-theme.el
+
+systemctl --user enable --now emacs.service

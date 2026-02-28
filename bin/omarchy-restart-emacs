@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Reload Emacs theme and font to match Omarchy
+
+if omarchy-cmd-present emacsclient; then
+  emacsclient --no-wait --eval "(progn (omarchy-apply-theme) (omarchy-apply-font))" 2>/dev/null
+fi

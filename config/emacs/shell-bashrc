@@ -1,0 +1,21 @@
+# Emacs shell-mode bashrc — sources Omarchy config minus readline/bind
+
+source ~/.local/share/omarchy/default/bash/shell
+source ~/.local/share/omarchy/default/bash/aliases
+source ~/.local/share/omarchy/default/bash/functions
+source ~/.local/share/omarchy/default/bash/envs
+
+# Load tools without shell integration (no bind, no escape sequences)
+if command -v mise &>/dev/null; then
+  eval "$(mise activate bash)"
+fi
+
+if command -v zoxide &>/dev/null; then
+  eval "$(zoxide init bash)"
+fi
+
+# Simple prompt for shell-mode (starship uses escape sequences shell-mode can't render)
+PS1='\w \$ '
+
+# Source user additions if present
+[[ -f ~/.bashrc.emacs ]] && source ~/.bashrc.emacs

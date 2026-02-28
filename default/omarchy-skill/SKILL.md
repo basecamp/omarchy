@@ -168,6 +168,7 @@ cat $(which omarchy-theme-set)
 | starship | `~/.config/starship.toml` |
 | git | `~/.config/git/config` |
 | walker | `~/.config/walker/config.toml` |
+| emacs | `~/.config/emacs/init.el` |
 
 ## Safe Customization Patterns
 
