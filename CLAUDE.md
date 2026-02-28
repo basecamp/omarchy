@@ -2,9 +2,10 @@
 
 Personal fork of [basecamp/omarchy](https://github.com/basecamp/omarchy) adapted for CachyOS.
 
-## Omarchy Skill
+## Key References
 
-Always use the `/omarchy` skill when editing fork files. It contains the fork convention (`# [omarchy]` comments), `omarchy-fork-*` naming rules, and CachyOS-specific patterns.
+- **`AGENTS.md`** — Code style, command naming, helper commands, config structure, refresh pattern, migrations
+- **`/omarchy` skill** — Fork convention (`# [omarchy]` comments), `omarchy-fork-*` naming rules, CachyOS-specific patterns
 
 ## After Upstream Sync
 
