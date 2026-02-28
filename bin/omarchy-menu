@@ -253,7 +253,8 @@ show_setup_security_menu() {
 
 show_setup_config_menu() {
   local shell_status="${SHELL##*/}"
-  case $(menu "Setup (${shell_status})" "  Shell\n  Defaults\n  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  case $(menu "Setup (${shell_status})" "󰡔  Tmux\n  Shell\n  Defaults\n  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  *Tmux*) show_tmux_menu ;;
   *Shell*) show_shell_menu ;;
   *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *Hyprland*) open_in_editor ~/.config/hypr/hyprland.conf ;;
@@ -281,6 +282,17 @@ show_shell_menu() {
   case $(menu "Shell (${current_shell})" "$options") in
     *Bash*) present_terminal omarchy-shell-switch bash ;;
     *Zsh*) present_terminal omarchy-shell-switch zsh ;;
+    *) show_setup_config_menu ;;
+  esac
+}
+
+show_tmux_menu() {
+  case $(menu "Tmux" "󰡔  Switch Session\n󰡔  New Session\n󰡔  Kill Session\n󰡔  Rename Session\n󰡔  List Sessions") in
+    *Switch*) terminal omarchy-tmux switch ;;
+    *New*) terminal omarchy-tmux new ;;
+    *Kill*) terminal omarchy-tmux kill ;;
+    *Rename*) terminal omarchy-tmux rename ;;
+    *List*) terminal "omarchy-tmux list; read -n 1 -s" ;;
     *) show_setup_config_menu ;;
   esac
 }

@@ -1,0 +1,57 @@
+#!/bin/bash
+
+TMUX_SESSION_PICKER_HEIGHT=15
+TMUX_SESSION_PICKER_WIDTH=60
+
+get_session_info() {
+  local session="$1"
+  local window_count=$(tmux list-windows -t "$session" 2>/dev/null | wc -l)
+  local pane_count=$(tmux list-panes -t "$session" 2>/dev/null | wc -l)
+  local sessions="$(tmux list-sessions 2>/dev/null | grep -c "^")"
+  
+  echo "$session ($window_count windows, $pane_count panes)"
+}
+
+get_session_windows() {
+  local session="$1"
+  tmux list-windows -t "$session" 2>/dev/null | while read -r line; do
+    local idx=$(echo "$line" | cut -d: -f1)
+    local name=$(echo "$line" | awk '{print $2}' | sed 's/[*@]//')
+    echo "  ├─ $idx: $name"
+  done
+}
+
+get_preview() {
+  local session="$1"
+  local window=$(tmux list-windows -t "$session" 2>/dev/null | grep -E '^0:' | head -1)
+  local pane=$(echo "$window" | grep -oP '\d+$' | head -1)
+  
+  if [[ -z "$pane" ]]; then
+    pane=0
+  fi
+  
+  tmux capture-pane -t "$session:1.$pane" -p 2>/dev/null | head -30 || echo "Empty session"
+}
+
+list_sessions() {
+  tmux list-sessions -F '#{session_name}' 2>/dev/null | while read -r session; do
+    get_session_info "$session"
+  done
+}
+
+main() {
+  local selected
+  
+  if [[ -z "$TMUX" ]]; then
+    selected=$(list_sessions | fzf --height="$TMUX_SESSION_PICKER_HEIGHT" --preview="get_preview {}" --preview-window="up:60%" --bind="enter:execute(tmux attach -t {})+abort,d:execute(tmux kill-session -t {})+reload(list_sessions),ctrl-r:execute(tmux command-prompt -I {} 'rename-session %%')+abort")
+  else
+    selected=$(list_sessions | fzf-tmux -h "$TMUX_SESSION_PICKER_HEIGHT" -w "$TMUX_SESSION_PICKER_WIDTH" --preview="get_preview {1}" --preview-window="up:60%" --bind="enter:execute(tmux attach -t {1})+abort,d:execute(tmux kill-session -t {1})+reload(list_sessions),ctrl-r:execute(tmux command-prompt -I {1} 'rename-session %%')+abort")
+  fi
+  
+  if [[ -n "$selected" ]]; then
+    local session_name=$(echo "$selected" | awk '{print $1}')
+    tmux attach -t "$session_name"
+  fi
+}
+
+main

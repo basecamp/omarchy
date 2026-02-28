@@ -1,0 +1,150 @@
+#!/bin/bash
+
+OMARCHY_PATH="$HOME/.local/share/omarchy"
+
+usage() {
+  echo "Omarchy Tmux Manager"
+  echo ""
+  echo "Usage: omarchy-tmux [command]"
+  echo ""
+  echo "Commands:"
+  echo "  (no args)    Open fuzzy session picker"
+  echo "  list, ls     List all sessions"
+  echo "  new, n       Create new session"
+  echo "  kill, k      Kill session (by name)"
+  echo "  rename, r    Rename session"
+  echo "  attach, a    Attach to session"
+  echo "  switch, s    Switch to session (fuzzy picker)"
+  echo ""
+  echo "Examples:"
+  echo "  omarchy-tmux           # Fuzzy picker"
+  echo "  omarchy-tmux new      # Create new session"
+  echo "  omarchy-tmux switch   # Switch sessions"
+  echo "  omarchy-tmux kill foo # Kill session 'foo'"
+  exit 1
+}
+
+tmux_list() {
+  echo "Active Tmux Sessions:"
+  echo ""
+  tmux list-sessions -F '#{session_name} (#{session_windows} windows, #{session_panes} panes)' 2>/dev/null || echo "No active sessions"
+}
+
+tmux_new() {
+  local name="${1:-}"
+  
+  if [[ -z "$name" ]]; then
+    read -rp "Session name: " name
+  fi
+  
+  if [[ -z "$name" ]]; then
+    echo "Error: Session name required"
+    return 1
+  fi
+  
+  tmux new-session -d -s "$name" -c "$HOME"
+  tmux attach -t "$name"
+}
+
+tmux_kill() {
+  local name="$1"
+  
+  if [[ -z "$name" ]]; then
+    echo "Available sessions:"
+    tmux list-sessions -F '#{session_name}' 2>/dev/null
+    echo ""
+    read -rp "Session name to kill: " name
+  fi
+  
+  if [[ -z "$name" ]]; then
+    echo "Error: Session name required"
+    return 1
+  fi
+  
+  tmux kill-session -t "$name"
+  echo "Killed session: $name"
+}
+
+tmux_rename() {
+  local name="$1"
+  local newname="$2"
+  
+  if [[ -z "$name" ]]; then
+    echo "Available sessions:"
+    tmux list-sessions -F '#{session_name}' 2>/dev/null
+    echo ""
+    read -rp "Session to rename: " name
+  fi
+  
+  if [[ -z "$newname" ]]; then
+    read -rp "New name: " newname
+  fi
+  
+  if [[ -z "$name" || -z "$newname" ]]; then
+    echo "Error: Both names required"
+    return 1
+  fi
+  
+  tmux rename-session -t "$name" "$newname"
+  echo "Renamed $name to $newname"
+}
+
+tmux_attach() {
+  local name="$1"
+  
+  if [[ -z "$name" ]]; then
+    echo "Available sessions:"
+    tmux list-sessions -F '#{session_name}' 2>/dev/null
+    echo ""
+    read -rp "Session name: " name
+  fi
+  
+  if [[ -z "$name" ]]; then
+    echo "Error: Session name required"
+    return 1
+  fi
+  
+  tmux attach -t "$name"
+}
+
+tmux_switch() {
+  if command -v omarchy-tmux-picker &>/dev/null; then
+    omarchy-tmux-picker
+  else
+    echo "Error: omarchy-tmux-picker not found"
+    return 1
+  fi
+}
+
+if [[ $# -eq 0 ]]; then
+  tmux_switch
+  exit 0
+fi
+
+case "$1" in
+  list|ls)
+    tmux_list
+    ;;
+  new|n)
+    tmux_new "$2"
+    ;;
+  kill|k)
+    tmux_kill "$2"
+    ;;
+  rename|r)
+    tmux_rename "$2" "$3"
+    ;;
+  attach|a)
+    tmux_attach "$2"
+    ;;
+  switch|s)
+    tmux_switch
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $1"
+    usage
+    ;;
+esac
