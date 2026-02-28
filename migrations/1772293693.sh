@@ -1,4 +1,4 @@
-echo "Rename dwindle section to layout in user looknfeel.conf"
+echo "Move single_window_aspect_ratio from dwindle to layout in user looknfeel.conf"
 
 looknfeel="$HOME/.config/hypr/looknfeel.conf"
 
