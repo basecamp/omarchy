@@ -1,3 +1,3 @@
-echo "Ensure password field doesn't overlow on SDDM login screen"
+echo "Ensure password field doesn't overflow on SDDM login screen"
 
 omarchy-refresh-sddm
