@@ -103,7 +103,7 @@ start_screenrecording() {
 
   local resolution="${RESOLUTION:-$(default_resolution)}"
 
-  gpu-screen-recorder -w portal -k auto -s "$resolution" -f 60 -fallback-cpu-encoding yes -o "$filename" "${audio_args[@]}" &
+  gpu-screen-recorder -w portal -k auto -s "$resolution" -f 60 -fm cfr -fallback-cpu-encoding yes -o "$filename" "${audio_args[@]}" &
   local pid=$!
 
   # Wait for recording to actually start (file appears after portal selection)
