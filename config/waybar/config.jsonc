@@ -9,6 +9,7 @@
   "modules-right": [
     "group/tray-expander",
     "bluetooth",
+    "custom/5g",
     "network",
     "pulseaudio",
     "cpu",
@@ -78,6 +79,13 @@
     "interval": 3,
     "spacing": 1,
     "on-click": "omarchy-launch-wifi"
+  },
+  "custom/5g": {
+    "exec": "omarchy-5g-status",
+    "return-type": "json",
+    "interval": 5,
+    "on-click": "omarchy-launch-5g",
+    "tooltip": true
   },
   "battery": {
     "format": "{capacity}% {icon}",

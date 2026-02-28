@@ -51,6 +51,17 @@
   margin-right: 13px;
 }
 
+#custom-5g {
+  min-width: 12px;
+  margin: 0 10px;
+}
+
+#custom-5g.hidden {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
 #custom-expand-icon {
   margin-right: 18px;
 }

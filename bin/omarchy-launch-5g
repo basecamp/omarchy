@@ -1,0 +1,86 @@
+#!/bin/bash
+# 5G/LTE modem menu for connect/disconnect operations
+# Requires: modemmanager, fuzzel
+
+MODEM=$(mmcli -L 2>/dev/null | grep -oP '/Modem/\K\d+' | head -1)
+
+if [ -z "$MODEM" ]; then
+    notify-send "5G Modem" "No modem found" -i network-cellular-offline
+    exit 1
+fi
+
+STATUS=$(mmcli -m "$MODEM" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+STATE=$(echo "$STATUS" | grep -P '^\s+\|\s+state:' | grep -oP 'state:\s+\K\w+')
+SIGNAL=$(echo "$STATUS" | grep -oP 'signal quality:\s+\K\d+')
+OPERATOR=$(echo "$STATUS" | grep -oP 'operator name:\s+\K.+' | head -1)
+ACCESS=$(echo "$STATUS" | grep -oP 'access tech:\s+\K\w+')
+
+# Build menu based on state
+case "$STATE" in
+    connected)
+        MENU="󰀂  Disconnect\n󰑓  Refresh Status"
+        PROMPT="5G Connected - $OPERATOR ($ACCESS) $SIGNAL%"
+        ;;
+    registered)
+        MENU="󰀂  Connect\n󰑓  Refresh Status"
+        PROMPT="5G Ready - $OPERATOR ($ACCESS) $SIGNAL%"
+        ;;
+    disabled)
+        MENU="󱐥  Enable Modem\n󰑓  Refresh Status"
+        PROMPT="5G Modem Disabled"
+        ;;
+    *)
+        MENU="󱐥  Enable Modem\n󰑓  Refresh Status"
+        PROMPT="5G: $STATE"
+        ;;
+esac
+
+# Show menu using fuzzel
+CHOICE=$(echo -e "$MENU" | fuzzel --dmenu --prompt "$PROMPT > " --width 40 --lines 3)
+
+case "$CHOICE" in
+    *"Disconnect"*)
+        notify-send "5G Modem" "Disconnecting..." -i network-cellular
+        sudo mmcli -m "$MODEM" --simple-disconnect
+        sudo ip addr flush dev wwan0 2>/dev/null
+        sudo ip route del default dev wwan0 2>/dev/null
+        notify-send "5G Modem" "Disconnected" -i network-cellular-offline
+        ;;
+    *"Connect"*)
+        notify-send "5G Modem" "Connecting to $OPERATOR..." -i network-cellular-acquiring
+
+        # Get APN from operator (default to common APNs)
+        APN="fast.t-mobile.com"  # Default for T-Mobile US
+
+        sudo mmcli -m "$MODEM" --simple-connect="apn=$APN"
+
+        sleep 2
+        BEARER=$(mmcli -m "$MODEM" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -oP 'Bearer\s+\|.*paths:.*Bearer/\K\d+' | tail -1)
+        if [ -n "$BEARER" ]; then
+            BEARER_INFO=$(mmcli -b "$BEARER" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+            IP=$(echo "$BEARER_INFO" | grep -oP 'address:\s+\K[\d.]+')
+            PREFIX=$(echo "$BEARER_INFO" | grep -oP 'prefix:\s+\K\d+')
+            GW=$(echo "$BEARER_INFO" | grep -oP 'gateway:\s+\K[\d.]+')
+            MTU=$(echo "$BEARER_INFO" | grep -oP 'mtu:\s+\K\d+')
+
+            # Configure network interface
+            sudo ip addr flush dev wwan0 2>/dev/null
+            sudo ip addr add "$IP/$PREFIX" dev wwan0
+            sudo ip link set wwan0 mtu "$MTU"
+            sudo ip route add default via "$GW" dev wwan0 metric 700
+
+            notify-send "5G Modem" "Connected: $IP" -i network-cellular-connected
+        else
+            notify-send "5G Modem" "Connection failed" -i network-cellular-offline
+        fi
+        ;;
+    *"Enable"*)
+        notify-send "5G Modem" "Enabling modem..." -i network-cellular-acquiring
+        sudo mmcli -m "$MODEM" --enable
+        notify-send "5G Modem" "Modem enabled - click again to connect" -i network-cellular
+        ;;
+    *"Refresh"*)
+        # Trigger waybar refresh
+        pkill -RTMIN+10 waybar 2>/dev/null
+        ;;
+esac
