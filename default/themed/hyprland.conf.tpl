@@ -22,7 +22,7 @@ $color13 = rgb({{ color13_strip }})
 $color14 = rgb({{ color14_strip }})
 $color15 = rgb({{ color15_strip }})
 
-$activeBorderColor = rgb({{ accent_strip }})
+$activeBorderColor = $accent
 
 general {
     col.active_border = $activeBorderColor
