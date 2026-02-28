@@ -1,0 +1,6 @@
+source ~/.local/share/omarchy/default/zsh/envs
+source ~/.local/share/omarchy/default/zsh/shell
+source ~/.local/share/omarchy/default/zsh/aliases
+source ~/.local/share/omarchy/default/zsh/functions
+source ~/.local/share/omarchy/default/zsh/init
+[[ $- == *i* ]] && bind -f ~/.local/share/omarchy/default/zsh/inputrc

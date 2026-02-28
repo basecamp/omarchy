@@ -1,0 +1,99 @@
+#!/bin/bash
+set -e
+
+OMARCHY_PATH="$HOME/.local/share/omarchy"
+
+usage() {
+  echo "Usage: omarchy-shell-switch [zsh|bash]"
+  echo ""
+  echo "Switch between zsh and bash as your default shell."
+  echo ""
+  echo "Options:"
+  echo "  zsh    Install zsh (if needed) and switch to zsh"
+  echo "  bash   Switch back to bash"
+  echo ""
+  echo "Examples:"
+  echo "  omarchy-shell-switch zsh   # Switch to zsh"
+  echo "  omarchy-shell-switch bash # Switch to bash"
+  exit 1
+}
+
+switch_to_zsh() {
+  echo "Switching to zsh..."
+  
+  if ! command -v zsh &> /dev/null; then
+    echo "Installing zsh and plugins..."
+    source "$OMARCHY_PATH/install/packaging/shell.sh"
+  fi
+  
+  if [[ ! -f ~/.zshrc ]]; then
+    echo "Copying zshrc template..."
+    cp "$OMARCHY_PATH/default/zshrc" ~/.zshrc
+  fi
+  
+  echo "Setting zsh as default shell..."
+  chsh -s /bin/zsh
+  
+  if command -v tmux &> /dev/null && [[ -f ~/.config/tmux/tmux.conf ]]; then
+    echo "Updating tmux default shell..."
+    sed -i 's/set -g default-shell.*/set -g default-shell \/bin\/zsh/' ~/.config/tmux/tmux.conf 2>/dev/null || true
+  fi
+  
+  notify-send "Shell Switched to Zsh" "Log out and back in to use zsh as your default shell."
+  
+  echo ""
+  echo "Switched to zsh!"
+  echo "Note: You need to log out and back in (or start a new terminal) to use zsh."
+  echo "You can also run 'zsh' in your current terminal to try it immediately."
+}
+
+switch_to_bash() {
+  echo "Switching to bash..."
+  
+  chsh -s /bin/bash
+  
+  if command -v tmux &> /dev/null && [[ -f ~/.config/tmux/tmux.conf ]]; then
+    echo "Updating tmux default shell..."
+    sed -i 's/set -g default-shell.*/set -g default-shell \/bin\/bash/' ~/.config/tmux/tmux.conf 2>/dev/null || true
+  fi
+  
+  notify-send "Shell Switched to Bash" "Your default shell is now bash."
+  
+  echo ""
+  echo "Switched to bash!"
+  echo "Note: You need to log out and back in (or start a new terminal) to use bash."
+}
+
+current_shell() {
+  echo "${SHELL##*/}"
+}
+
+show_status() {
+  local current=$(current_shell)
+  echo "Current shell: $current"
+  echo ""
+  echo "To switch shells, run:"
+  echo "  omarchy-shell-switch zsh   # Switch to zsh"
+  echo "  omarchy-shell-switch bash # Switch to bash"
+}
+
+if [[ $# -eq 0 ]]; then
+  show_status
+  exit 0
+fi
+
+case "$1" in
+  zsh)
+    switch_to_zsh
+    ;;
+  bash)
+    switch_to_bash
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    echo "Unknown shell: $1"
+    usage
+    ;;
+esac

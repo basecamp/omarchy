@@ -1,5 +1,2 @@
 # Source shared shell environment variables
 source ~/.local/share/omarchy/default/shell/envs
-
-# Bash-specific BAT_THEME
-export BAT_THEME=ansi

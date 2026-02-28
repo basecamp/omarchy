@@ -1,0 +1,30 @@
+# History control
+setopt histappend
+setopt share_history
+setopt HIST_IGNORE_ALL_DUPS
+setopt HIST_FIND_NO_DUPS
+setopt HIST_SAVE_NO_DUPS
+export HISTSIZE=32768
+export HISTFILESIZE="${HISTSIZE}"
+
+# Autocompletion
+autoload -Uz compinit
+compinit
+
+# Ensure command hashing is off for mise
+set +h
+
+# Keybindings
+bindkey "^[[1;5C" forward-word
+bindkey "^[[1;5D" backward-word
+
+autoload -Uz up-line-or-beginning-search
+autoload -Uz down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+bindkey "^[[A" up-line-or-beginning-search
+bindkey "^[[B" down-line-or-beginning-search
+
+autoload -Uz bracketed-paste-magic
+zle -N bracketed-paste bracketed-paste-magic
+bindkey "^[[200~" bracketed-paste

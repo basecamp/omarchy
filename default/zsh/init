@@ -1,0 +1,52 @@
+# Enable mise
+if command -v mise &> /dev/null; then
+  eval "$(mise activate zsh)"
+fi
+
+# Enable starship
+if command -v starship &> /dev/null; then
+  eval "$(starship init zsh)"
+fi
+
+# Enable zoxide
+if command -v zoxide &> /dev/null; then
+  eval "$(zoxide init zsh)"
+fi
+
+# Enable fzf
+if command -v fzf &> /dev/null; then
+  if [[ -f /usr/share/fzf/completion.zsh ]]; then
+    source /usr/share/fzf/completion.zsh
+  fi
+  if [[ -f /usr/share/fzf/key-bindings.zsh ]]; then
+    source /usr/share/fzf/key-bindings.zsh
+  fi
+fi
+
+# Zsh Autosuggestions configuration
+if command -v compdef &> /dev/null; then
+  ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+  ZSH_AUTOSUGGEST_ACCEPT_WIDGETS=()
+  ZSH_AUTOSUGGEST_KEY_BINDINGS='emacs'
+fi
+
+# Zsh Syntax Highlighting configuration
+if [[ -f /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.plugin.zsh ]]; then
+  ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern cursor)
+  ZSH_HIGHLIGHT_STYLES[comment]='fg=243'
+  ZSH_HIGHLIGHT_STYLES[default]='none'
+  ZSH_HIGHLIGHT_STYLES[unknown-token]='fg=red'
+  ZSH_HIGHLIGHT_STYLES[reserved]='fg=green'
+  ZSH_HIGHLIGHT_STYLES[alias]='fg=cyan'
+  ZSH_HIGHLIGHT_STYLES[builtin]='fg=cyan'
+  ZSH_HIGHLIGHT_STYLES[function]='fg=cyan'
+  ZSH_HIGHLIGHT_STYLES[command]='fg=green'
+  ZSH_HIGHLIGHT_STYLES[precommand]='fg=yellow'
+  ZSH_HIGHLIGHT_STYLES[path]='fg=blue'
+  ZSH_HIGHLIGHT_STYLES[globbing]='fg=yellow'
+fi
+
+# Fzf-tab (AUR - optional)
+if [[ -f /usr/share/zsh/plugins/fzf-tab/fzf-tab.plugin.zsh ]]; then
+  source /usr/share/zsh/plugins/fzf-tab/fzf-tab.plugin.zsh
+fi

@@ -252,7 +252,9 @@ show_setup_security_menu() {
 }
 
 show_setup_config_menu() {
-  case $(menu "Setup" "  Defaults\n  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  local shell_status="${SHELL##*/}"
+  case $(menu "Setup (${shell_status})" "  Shell\n  Defaults\n  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  *Shell*) show_shell_menu ;;
   *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *Hyprland*) open_in_editor ~/.config/hypr/hyprland.conf ;;
   *Hypridle*) open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
@@ -263,6 +265,23 @@ show_setup_config_menu() {
   *Waybar*) open_in_editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
   *XCompose*) open_in_editor ~/.XCompose && omarchy-restart-xcompose ;;
   *) show_setup_menu ;;
+  esac
+}
+
+show_shell_menu() {
+  local current_shell="${SHELL##*/}"
+  local options=""
+  
+  if [[ "$current_shell" == "zsh" ]]; then
+    options="󰟔  Switch to Bash"
+  else
+    options="󰟔  Switch to Zsh"
+  fi
+  
+  case $(menu "Shell (${current_shell})" "$options") in
+    *Bash*) present_terminal omarchy-shell-switch bash ;;
+    *Zsh*) present_terminal omarchy-shell-switch zsh ;;
+    *) show_setup_config_menu ;;
   esac
 }
 
