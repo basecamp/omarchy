@@ -3,6 +3,7 @@ echo "Configure and enable NetworkManager, disable systemd-networkd"
 
 # Copy Omarchy NetworkManager configuration to /etc/NetworkManager/conf.d
 conf_dir="/etc/NetworkManager/conf.d"
+sudo mkdir -p $conf_dir
 sudo cp -f ~/.local/share/omarchy/default/networkmanager/omarchy_networkmanager.conf "$conf_dir/omarchy_networkmanager.conf"
 
 # Check for other .conf files in and warn the user
