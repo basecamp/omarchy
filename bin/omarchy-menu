@@ -102,7 +102,7 @@ show_capture_menu() {
   *Screenshot*) omarchy-cmd-screenshot ;;
   *Screenrecord*) show_screenrecord_menu ;;
   *Color*) pkill hyprpicker || hyprpicker -a ;;
-  *) show_trigger_menu ;;
+  *) backt_to show_trigger_menu ;;
   esac
 }
 
