@@ -32,24 +32,6 @@ for arg in "$@"; do
   esac
 done
 
-default_resolution() {
-  local width height
-  read -r width height < <(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | "\(.width) \(.height)"')
-  if ((width > 3840 || height > 2160)); then
-    echo "3840x2160"
-  else
-    echo "0x0"
-  fi
-}
-
-toggle_screenrecording_indicator() {
-  pkill -RTMIN+8 waybar
-}
-
-cleanup_webcam() {
-  pkill -f "WebcamOverlay" 2>/dev/null
-}
-
 start_webcam_overlay() {
   cleanup_webcam
 
@@ -88,6 +70,20 @@ start_webcam_overlay() {
     -probesize 32 -analyzeduration 0 \
     -loglevel quiet &
   sleep 1
+}
+
+cleanup_webcam() {
+  pkill -f "WebcamOverlay" 2>/dev/null
+}
+
+default_resolution() {
+  local width height
+  read -r width height < <(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | "\(.width) \(.height)"')
+  if ((width > 3840 || height > 2160)); then
+    echo "3840x2160"
+  else
+    echo "0x0"
+  fi
 }
 
 start_screenrecording() {
@@ -143,6 +139,10 @@ stop_screenrecording() {
   fi
 
   rm -f "$RECORDING_FILE"
+}
+
+toggle_screenrecording_indicator() {
+  pkill -RTMIN+8 waybar
 }
 
 screenrecording_active() {
