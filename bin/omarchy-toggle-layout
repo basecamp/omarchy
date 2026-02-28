@@ -1,0 +1,32 @@
+#!/bin/bash
+
+LAYOUTS=("scrolling" "master" "monocle" "dwindle")
+
+get_layout() {
+  hyprctl getoption general:layout -j 2>/dev/null |
+    python3 -c "import sys,json; print(json.load(sys.stdin)['str'])" 2>/dev/null
+}
+
+set_layout() {
+  local layout="$1"
+  local valid=false
+  for l in "${LAYOUTS[@]}"; do
+    [[ "$l" == "$layout" ]] && valid=true && break
+  done
+
+  if [[ "$valid" == "false" ]]; then
+    notify-send "Invalid layout: $layout" \
+      "Valid options: ${LAYOUTS[*]}" -u critical -t 3000
+    exit 1
+  fi
+
+  hyprctl keyword general:layout "$layout"
+  notify-send "Layout → ${layout^}" -t 2000
+}
+
+for arg in "$@"; do
+  case "$arg" in
+  --set=*) set_layout "${arg#*=}" ;;
+  --get) get_layout ;;
+  esac
+done

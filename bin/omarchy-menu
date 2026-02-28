@@ -161,7 +161,7 @@ show_share_menu() {
 }
 
 show_toggle_menu() {
-  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n  Window Gaps\n  1-Window Ratio\n󰍹  Display Scaling") in
+  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n  Window Gaps\n  1-Window Ratio\n󰍹  Display Scaling\n   Layout") in
 
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
@@ -170,7 +170,25 @@ show_toggle_menu() {
   *Ratio*) omarchy-hyprland-window-single-square-aspect-toggle ;;
   *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
   *Scaling*) omarchy-hyprland-monitor-scaling-toggle ;;
+  *Layout*) show_layout_menu ;;
   *) back_to show_trigger_menu ;;
+  esac
+}
+
+show_layout_menu() {
+  local current
+  current=$(omarchy-toggle-layout --get)
+
+  local options="󰕰  Dwindle\n  Master\n  Monocle\n󱒇   Scrolling"
+  local preselect
+  preselect=$(echo -e "$options" | grep -i "$current")
+
+  case $(menu "Layout" "$options" "" "$preselect") in
+  *Dwindle*) omarchy-toggle-layout --set=dwindle ;;
+  *Master*) omarchy-toggle-layout --set=master ;;
+  *Monocle*) omarchy-toggle-layout --set=monocle ;;
+  *Scrolling*) omarchy-toggle-layout --set=scrolling ;;
+  *) back_to show_toggle_menu ;;
   esac
 }
 
