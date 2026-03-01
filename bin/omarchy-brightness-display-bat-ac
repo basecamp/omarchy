@@ -34,7 +34,7 @@ else
   fi
 fi
 
-device="$(omarchy-brightness-display-device)"
+device="$(omarchy-brightness-backlight-device)"
 if [[ -z $device ]]; then
   echo "Couldn't detect a display backlight device." >&2
   exit 1

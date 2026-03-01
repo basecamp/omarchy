@@ -5,7 +5,7 @@
 
 step="${1:-+5%}"
 
-device="$(omarchy-brightness-display-device)"
+device="$(omarchy-brightness-backlight-device)"
 
 # Set the actual brightness of the display device.
 brightnessctl -d "$device" set "$step" >/dev/null
