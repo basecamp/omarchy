@@ -54,6 +54,7 @@ omarchy-theme-set-gnome
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
 omarchy-theme-set-obsidian
+omarchy-theme-set-calibre
 omarchy-theme-set-keyboard
 
 # Call hook on theme set
