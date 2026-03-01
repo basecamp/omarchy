@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# Sync Omarchy theme to Calibre
+
+omarchy-cmd-present calibre || exit 0
+
+CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
+COLORS_FILE="$CURRENT_THEME_DIR/colors.toml"
+
+[[ -f $COLORS_FILE ]] || exit 0
+
+# Parse colors from TOML
+declare -A colors
+while IFS='=' read -r key value; do
+  key="${key//[\"\' ]/}"
+  [[ $key && $key != \#* ]] || continue
+  value="${value#*[\"\']}"
+  value="${value%%[\"\']*}"
+  colors[$key]="$value"
+done <"$COLORS_FILE"
+
+bg="${colors[background]}"
+fg="${colors[foreground]}"
+accent="${colors[accent]}"
+sel_bg="${colors[selection_background]}"
+sel_fg="${colors[selection_foreground]}"
+
+# Blend a hex color toward black or white by a percentage (0-100)
+blend() {
+  local hex="${1#\#}"
+  local factor="$2"
+  local target="$3"
+  local r=$((16#${hex:0:2}))
+  local g=$((16#${hex:2:2}))
+  local b=$((16#${hex:4:2}))
+
+  if [[ $target == "black" ]]; then
+    r=$((r * (100 - factor) / 100))
+    g=$((g * (100 - factor) / 100))
+    b=$((b * (100 - factor) / 100))
+  else
+    r=$((r + (255 - r) * factor / 100))
+    g=$((g + (255 - g) * factor / 100))
+    b=$((b + (255 - b) * factor / 100))
+  fi
+
+  printf '#%02x%02x%02x' "$r" "$g" "$b"
+}
+
+# Derive shades for palette roles with no direct colors.toml mapping
+if [[ -f $CURRENT_THEME_DIR/light.mode ]]; then
+  palette_type="light"
+  alt_base=$(blend "$bg" 5 black)
+  placeholder=$(blend "$fg" 40 white)
+else
+  palette_type="dark"
+  alt_base=$(blend "$bg" 15 white)
+  placeholder=$(blend "$fg" 40 black)
+fi
+
+# Kill Calibre BEFORE writing so its shutdown doesn't overwrite our changes
+calibre_was_running=false
+if pgrep -x calibre >/dev/null 2>&1; then
+  calibre_was_running=true
+  pkill -x calibre 2>/dev/null
+  while pgrep -x calibre >/dev/null 2>&1; do sleep 0.2; done
+fi
+
+# Write palette into Calibre's gprefs via calibre-debug
+calibre-debug -c "
+from calibre.gui2 import gprefs
+
+palette = {
+    'Window': '$bg',
+    'WindowText': '$fg',
+    'Base': '$bg',
+    'Text': '$fg',
+    'Button': '$bg',
+    'ButtonText': '$fg',
+    'BrightText': '${colors[color1]}',
+    'Highlight': '$sel_bg',
+    'HighlightedText': '$sel_fg',
+    'Link': '$accent',
+    'LinkVisited': '${colors[color5]}',
+    'AlternateBase': '$alt_base',
+    'ToolTipBase': '$alt_base',
+    'ToolTipText': '$fg',
+    'PlaceholderText': '$placeholder',
+}
+
+palettes = gprefs['${palette_type}_palettes']
+palettes['Omarchy'] = palette
+gprefs['${palette_type}_palettes'] = palettes
+gprefs['${palette_type}_palette_name'] = 'Omarchy'
+gprefs['color_palette'] = '${palette_type}'
+" 2>/dev/null
+
+# Relaunch Calibre if it was running
+if $calibre_was_running; then
+  setsid uwsm-app -- calibre --detach >/dev/null 2>&1 &
+fi
