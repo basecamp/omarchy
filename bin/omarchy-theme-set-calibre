@@ -60,8 +60,16 @@ fi
 
 # Kill Calibre BEFORE writing so its shutdown doesn't overwrite our changes
 calibre_was_running=false
+calibre_workspace=""
 if pgrep -x calibre >/dev/null 2>&1; then
   calibre_was_running=true
+  calibre_workspace=$(hyprctl clients -j 2>/dev/null | python3 -c "
+import json, sys
+for c in json.load(sys.stdin):
+    if c.get('class') == 'calibre-gui':
+        print(c['workspace']['id'])
+        break
+" 2>/dev/null)
   pkill -x calibre 2>/dev/null
   while pgrep -x calibre >/dev/null 2>&1; do sleep 0.2; done
 fi
@@ -95,7 +103,16 @@ gprefs['${palette_type}_palette_name'] = 'Omarchy'
 gprefs['color_palette'] = '${palette_type}'
 " 2>/dev/null
 
-# Relaunch Calibre if it was running
+# Relaunch Calibre on its original workspace if it was running
 if $calibre_was_running; then
+  if [[ -n $calibre_workspace ]]; then
+    hyprctl keyword windowrule "match:class calibre-gui, workspace $calibre_workspace silent" >/dev/null 2>&1
+  fi
+
   setsid uwsm-app -- calibre --detach >/dev/null 2>&1 &
+
+  # Clean up the temporary window rule after Calibre has opened
+  if [[ -n $calibre_workspace ]]; then
+    (sleep 10 && hyprctl keyword windowrule "match:class calibre-gui, workspace unset" >/dev/null 2>&1) &
+  fi
 fi
