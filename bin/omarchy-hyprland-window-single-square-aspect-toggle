@@ -1,13 +1,20 @@
 #!/bin/bash
 
-# Check current single_window_aspect_ratio setting
-CURRENT_VALUE=$(hyprctl getoption "layout:single_window_aspect_ratio" 2>/dev/null | head -1)
+STATE_FILE="/tmp/omarchy-single-window-ratio"
 
-# Parse vec2 output: "vec2: [1, 1]" or "vec2: [0, 0]"
-if [[ $CURRENT_VALUE == *"[1, 1]"* ]]; then
-  hyprctl keyword layout:single_window_aspect_ratio "0 0"
-  notify-send "    Disable single-window square aspect ratio"
+CURRENT_RATIO=$(hyprctl -j getoption "layout:single_window_aspect_ratio" 2>/dev/null | jq -r '[.vec2[] | tostring] | join(" ")')
+
+# Load saved ratio (if any), defaulting to 1 1 (square)
+SAVED_RATIO=$(cat "$STATE_FILE" 2>/dev/null)
+if [[ -z "$SAVED_RATIO" ]]; then
+  SAVED_RATIO="1 1"
+fi
+
+if [[ "$CURRENT_RATIO" == "0 0" ]]; then
+  hyprctl keyword layout:single_window_aspect_ratio "$SAVED_RATIO"
+  notify-send "    Enable single-window ${SAVED_RATIO// /:} aspect ratio"
 else
-  hyprctl keyword layout:single_window_aspect_ratio "1 1"
-  notify-send "    Enable single-window square aspect"
+  echo "$CURRENT_RATIO" > "$STATE_FILE"
+  hyprctl keyword layout:single_window_aspect_ratio "0 0"
+  notify-send "    Disable single-window ${CURRENT_RATIO// /:} aspect ratio"
 fi
