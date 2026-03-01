@@ -10,8 +10,6 @@ local function make_transparent(name)
 	if ok then
 		hl.bg = nil
 		vim.api.nvim_set_hl(0, name, hl)
-	else
-		vim.api.nvim_set_hl(0, name, { bg = "none" })
 	end
 end
 
