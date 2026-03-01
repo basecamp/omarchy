@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# Themes the plymouth boot splash and disk encryption screen to match
+# the current omarchy theme. Recolors PNG assets with ImageMagick and
+# substitutes colors in the plymouth script, then rebuilds the initramfs.
+#
+# Rapid theme switches are handled by staging to a fixed directory and
+# using flock in the root helper. The last theme to finish staging before
+# the rebuild starts is the one that takes effect.
+
+THEME_DIR="$HOME/.config/omarchy/current/theme"
+COLORS_FILE="$THEME_DIR/colors.toml"
+GHOSTTY_FILE="$THEME_DIR/ghostty.conf"
+ALACRITTY_FILE="$THEME_DIR/alacritty.toml"
+PLYMOUTH_SOURCE="$OMARCHY_PATH/default/plymouth"
+STAGED="/tmp/omarchy-plymouth-staged"
+
+command -v magick &>/dev/null || exit 0
+
+# Strip leading # from hex color
+strip_hash() { echo "${1#\#}"; }
+
+# Parse a color value from colors.toml
+get_color() {
+  grep -E "^$1\s*=" "$COLORS_FILE" | head -1 | sed 's/.*=\s*"//;s/".*//'
+}
+
+# Parse a color value from ghostty.conf (key = value format, no quotes)
+get_ghostty_color() {
+  grep -E "^$1\s*=" "$GHOSTTY_FILE" | head -1 | sed 's/.*=\s*//'
+}
+
+# Parse a color value from alacritty.toml (first occurrence of key)
+get_alacritty_color() {
+  grep -E "^\s*$1\s*=" "$ALACRITTY_FILE" | head -1 | sed 's/.*=\s*"//;s/".*//'
+}
+
+if [[ -f $COLORS_FILE ]]; then
+  background=$(get_color background)
+  foreground=$(get_color foreground)
+  cursor=$(get_color cursor)
+  color0=$(get_color color0)
+  color2=$(get_color color2)
+elif [[ -f $GHOSTTY_FILE ]]; then
+  background=$(get_ghostty_color background)
+  foreground=$(get_ghostty_color foreground)
+  cursor=$(get_ghostty_color cursor-color)
+  # palette line format: "palette = N=#RRGGBB"
+  color0=$(grep -E "^palette\s*=\s*0=" "$GHOSTTY_FILE" | head -1 | sed 's/.*=//')
+  color2=$(grep -E "^palette\s*=\s*2=" "$GHOSTTY_FILE" | head -1 | sed 's/.*=//')
+elif [[ -f $ALACRITTY_FILE ]]; then
+  background=$(get_alacritty_color background)
+  foreground=$(get_alacritty_color foreground)
+  cursor=$(get_alacritty_color cursor)
+  color0=$(get_alacritty_color black)
+  color2=$(get_alacritty_color green)
+else
+  exit 0
+fi
+
+[[ $background && $foreground ]] || exit 0
+: "${cursor:=$foreground}"
+: "${color0:=$background}"
+: "${color2:=$foreground}"
+
+# Convert hex color to plymouth float RGB (e.g., "#1e1e2e" -> "0.117, 0.117, 0.180")
+hex_to_float_rgb() {
+  local hex
+  hex=$(strip_hash "$1")
+  local r=$((16#${hex:0:2}))
+  local g=$((16#${hex:2:2}))
+  local b=$((16#${hex:4:2}))
+  printf "%d.%03d, %d.%03d, %d.%03d" \
+    $((r * 1000 / 255 / 1000)) $((r * 1000 / 255 % 1000)) \
+    $((g * 1000 / 255 / 1000)) $((g * 1000 / 255 % 1000)) \
+    $((b * 1000 / 255 / 1000)) $((b * 1000 / 255 % 1000))
+}
+
+# Convert hex to 0xRRGGBB format for plymouth config
+hex_to_plymouth() {
+  echo "0x$(strip_hash "$1")"
+}
+
+bg_float=$(hex_to_float_rgb "$background")
+bg_plymouth=$(hex_to_plymouth "$background")
+
+# Stage themed files in a temp dir, then atomically move into the
+# well-known staged path. This avoids racing with the root helper
+# that may be copying from STAGED while we overwrite it.
+STAGING_TMP=$(mktemp -d)
+
+# Generate themed omarchy.script
+sed \
+  -e "s|Window.SetBackgroundTopColor(.*);|Window.SetBackgroundTopColor($bg_float);|" \
+  -e "s|Window.SetBackgroundBottomColor(.*);|Window.SetBackgroundBottomColor($bg_float);|" \
+  "$PLYMOUTH_SOURCE/omarchy.script" >"$STAGING_TMP/omarchy.script"
+
+# Generate themed omarchy.plymouth
+sed \
+  -e "s|ConsoleLogBackgroundColor=.*|ConsoleLogBackgroundColor=$bg_plymouth|" \
+  "$PLYMOUTH_SOURCE/omarchy.plymouth" >"$STAGING_TMP/omarchy.plymouth"
+
+# Recolor PNG assets
+magick "$PLYMOUTH_SOURCE/logo.png" -fill "$color2" -colorize 100% "$STAGING_TMP/logo.png"
+magick "$PLYMOUTH_SOURCE/lock.png" -fill "$cursor" -colorize 100% "$STAGING_TMP/lock.png"
+magick "$PLYMOUTH_SOURCE/entry.png" -fill "$cursor" -colorize 100% "$STAGING_TMP/entry.png"
+magick "$PLYMOUTH_SOURCE/bullet.png" -fill "$cursor" -colorize 100% "$STAGING_TMP/bullet.png"
+magick "$PLYMOUTH_SOURCE/progress_bar.png" -fill "$foreground" -colorize 100% "$STAGING_TMP/progress_bar.png"
+magick "$PLYMOUTH_SOURCE/progress_box.png" -fill "$color0" -colorize 100% "$STAGING_TMP/progress_box.png"
+
+# Atomically swap into the well-known staged path
+rm -rf "$STAGED"
+mv "$STAGING_TMP" "$STAGED"
+
+# Deploy and rebuild initramfs (root helper uses flock to serialize)
+sudo /usr/local/bin/omarchy-plymouth-update-theme "$STAGED"

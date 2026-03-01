@@ -45,6 +45,14 @@ EOF
   # We overwrite the whole thing knowing the limine-update will add the entries for us
   sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
 
+  # Install limine theme color helper for passwordless theme updates
+  sudo cp "$OMARCHY_PATH/bin/omarchy-limine-update-colors" /usr/local/bin/omarchy-limine-update-colors
+  sudo chmod 755 /usr/local/bin/omarchy-limine-update-colors
+  sudo chown root:root /usr/local/bin/omarchy-limine-update-colors
+
+  echo "%wheel ALL=(root) NOPASSWD: /usr/local/bin/omarchy-limine-update-colors" | sudo tee /etc/sudoers.d/omarchy-limine >/dev/null
+  sudo chmod 440 /etc/sudoers.d/omarchy-limine
+
   # Match Snapper configs if not installing from the ISO
   if [[ -z ${OMARCHY_CHROOT_INSTALL:-} ]]; then
     if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
