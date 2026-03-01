@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Adjust brightness on the most likely display device.
+# Falls back to DDC/CI (ddcutil) for external monitors when no backlight device exists.
 # Usage: omarchy-brightness-display <step>
 
 step="${1:-+5%}"
@@ -13,6 +14,54 @@ for candidate in amdgpu_bl* intel_backlight acpi_video*; do
     break
   fi
 done
+
+# If no backlight device found, use DDC/CI for external monitors.
+if [[ -z "$device" ]] && omarchy-cmd-present ddcutil; then
+  # Parse step direction and amount (e.g., "+5%", "5%-", "+1%", "1%-")
+  if [[ "$step" == +* ]]; then
+    delta="${step#+}"
+    delta="${delta%%%}"
+    direction=1
+  elif [[ "$step" == *- ]]; then
+    delta="${step%%-}"
+    delta="${delta%%%}"
+    direction=-1
+  else
+    delta="${step%%%}"
+    direction=1
+  fi
+
+  cache="/tmp/omarchy-ddc-brightness"
+  lockfile="/tmp/omarchy-ddc-brightness.lock"
+
+  # Serialize access — if another instance is running, skip to avoid pile-up
+  exec 9>"$lockfile"
+  flock -n 9 || exit 0
+
+  # Read from cache if fresh (< 5 seconds old), otherwise read from monitor
+  if [[ -f "$cache" ]] && (( $(date +%s) - $(stat -c %Y "$cache") < 5 )); then
+    current=$(cat "$cache")
+  else
+    current=$(ddcutil getvcp 10 --brief --sleep-multiplier 0.04 2>/dev/null | awk '{print $4}')
+  fi
+
+  if [[ -n "$current" ]]; then
+    new_val=$(( current + direction * delta ))
+    (( new_val < 0 )) && new_val=0
+    (( new_val > 100 )) && new_val=100
+
+    echo "$new_val" > "$cache"
+    omarchy-swayosd-brightness "$new_val"
+
+    # Kill any previous background ddcutil writes, then send the latest value
+    pkill -f 'ddcutil setvcp 10' 2>/dev/null
+    ddcutil setvcp 10 "$new_val" --sleep-multiplier 0.04 --noverify &>/dev/null &
+    disown
+  fi
+
+  exec 9>&-
+  exit 0
+fi
 
 # Set the actual brightness of the display device.
 brightnessctl -d "$device" set "$step" >/dev/null
