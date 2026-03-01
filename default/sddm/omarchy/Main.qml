@@ -60,6 +60,7 @@ Rectangle {
                 color: "#000000"
                 border.color: "#ffffff"
                 border.width: 1
+                clip: true
 
                 TextInput {
                     id: password

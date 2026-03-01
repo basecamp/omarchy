@@ -4,4 +4,4 @@ export BAT_THEME=ansi
 
 # Duplicated from .config/uwsm/env so SSH works too
 export OMARCHY_PATH=$HOME/.local/share/omarchy
-export PATH=$OMARCHY_PATH/bin:$PATH
+export PATH=$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin

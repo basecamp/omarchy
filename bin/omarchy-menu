@@ -102,7 +102,7 @@ show_capture_menu() {
   *Screenshot*) omarchy-cmd-screenshot ;;
   *Screenrecord*) show_screenrecord_menu ;;
   *Color*) pkill hyprpicker || hyprpicker -a ;;
-  *) show_trigger_menu ;;
+  *) back_to show_trigger_menu ;;
   esac
 }
 
@@ -161,12 +161,17 @@ show_share_menu() {
 }
 
 show_toggle_menu() {
-  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
+  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Display Scaling") in
+
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
   *Bar*) omarchy-toggle-waybar ;;
-  *) show_trigger_menu ;;
+  *Layout*) omarchy-hyprland-workspace-layout-toggle ;;
+  *Ratio*) omarchy-hyprland-window-single-square-aspect-toggle ;;
+  *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
+  *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
+  *) back_to show_trigger_menu ;;
   esac
 }
 
@@ -593,6 +598,7 @@ go_to_menu() {
   *apps*) walker -p "Launch…" ;;
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
+  *toggle*) show_toggle_menu ;;
   *share*) show_share_menu ;;
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
