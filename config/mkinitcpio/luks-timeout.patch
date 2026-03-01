@@ -1,0 +1,41 @@
+--- encrypt	2026-02-28 18:02:14.718126028 +0500
++++ encrypt-upd	2026-03-01 14:00:47.917985370 +0500
+@@ -100,18 +100,38 @@
+                 fi
+             fi
+             # Ask for a passphrase
++            local IDLE_TIMEOUT=120
+             if [ "${dopassphrase}" -gt 0 ]; then
+                 if command -v plymouth >/dev/null 2>&1 && plymouth --ping 2>/dev/null; then
++                    (
++                        sleep "$IDLE_TIMEOUT"
++                        if [ ! -e "/dev/mapper/${cryptname}" ]; then
++                            plymouth display-message --text="Idle timeout: Powering off..."
++                            sleep 3
++                            poweroff -f
++                        fi
++                    ) &
++                    WATCHDOG_PID=$!
++
+                     plymouth ask-for-password \
+                         --prompt="A password is required to access the ${cryptname} volume" \
+                         --command="cryptsetup open --type luks --key-file=- ${resolved} ${cryptname} ${cryptargs} ${CSQUIET}"
++
++                    kill $WATCHDOG_PID 2>/dev/null
+                 else
+                     echo ""
+                     echo "A password is required to access the ${cryptname} volume:"
+ 
++                    timer_elapsed=0
+                     #loop until we get a real password
+                     while ! eval cryptsetup open --type luks "${resolved}" "${cryptname}" "${cryptargs}" "${CSQUIET}"; do
+                         sleep 2;
++                        timer_elapsed=$((timer_elapsed + 2))
++
++                        if [ "$timer_elapsed" -ge "IDLE_TIMEOUT" ]; then
++                            echo "Idle timeout: Powering off..."
++                            poweroff -f
++                        fi
+                     done
+                 fi
+             fi
