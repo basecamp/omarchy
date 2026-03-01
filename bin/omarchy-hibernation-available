@@ -10,8 +10,20 @@ SWAPSIZE_KB=$(awk '!/Filename|zram/ {sum += $3} END {print sum+0}' /proc/swaps)
 SWAPSIZE=$(( 1024 * ${SWAPSIZE_KB:-0} ))
 
 HIBERNATION_IMAGE_SIZE=$(cat /sys/power/image_size)
+RESUME_DEVICE=""
+RESUME_OFFSET=""
 
-if (( SWAPSIZE > HIBERNATION_IMAGE_SIZE )) && [[ -f /etc/mkinitcpio.conf.d/omarchy_resume.conf ]]; then
+for token in $(cat /proc/cmdline); do
+  if [[ $token == resume=* ]]; then
+    RESUME_DEVICE=${token#resume=}
+  fi
+
+  if [[ $token == resume_offset=* ]]; then
+    RESUME_OFFSET=${token#resume_offset=}
+  fi
+done
+
+if (( SWAPSIZE > HIBERNATION_IMAGE_SIZE )) && [[ -f /etc/mkinitcpio.conf.d/omarchy_resume.conf ]] && [[ -n $RESUME_DEVICE ]] && [[ $RESUME_OFFSET =~ ^[0-9]+$ ]]; then
   exit 0
 else
   exit 1

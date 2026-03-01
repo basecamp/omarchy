@@ -3,6 +3,84 @@
 # Creates a swap file in the btrfs subvolume, adds the swap file to /etc/fstab,
 # adds a resume hook to mkinitcpio, and configures suspend-then-hibernate.
 
+strip_resume_tokens() {
+  local cmdline="$1"
+  local filtered=""
+  local token
+
+  for token in $cmdline; do
+    case "$token" in
+    resume=* | resume_offset=* | rtc_cmos.use_acpi_alarm=1)
+      continue
+      ;;
+    esac
+
+    if [[ -n $filtered ]]; then
+      filtered="$filtered $token"
+    else
+      filtered="$token"
+    fi
+  done
+
+  echo "$filtered"
+}
+
+set_limine_resume_kernel_params() {
+  local resume_device="$1"
+  local resume_offset="$2"
+  local enable_rtc_alarm="$3"
+  local limine_default="/etc/default/limine"
+  local extra_params="resume=$resume_device resume_offset=$resume_offset"
+  local has_plus_line=0
+  local tmp_file
+  local line
+  local key
+  local cmdline
+  local filtered
+
+  if [[ $enable_rtc_alarm == "yes" ]]; then
+    extra_params="$extra_params rtc_cmos.use_acpi_alarm=1"
+  fi
+
+  if [[ ! -f $limine_default ]]; then
+    echo "Error: $limine_default not found; cannot safely configure hibernation kernel parameters" >&2
+    exit 1
+  fi
+
+  tmp_file=$(mktemp)
+
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ $line =~ ^(KERNEL_CMDLINE\[default\]\+?=\")([^\"]*)\"$ ]]; then
+      key=${BASH_REMATCH[1]}
+      cmdline=${BASH_REMATCH[2]}
+      filtered=$(strip_resume_tokens "$cmdline")
+
+      if [[ $key == "KERNEL_CMDLINE[default]+=\"" ]]; then
+        if (( ! has_plus_line )); then
+          if [[ -n $filtered ]]; then
+            filtered="$filtered $extra_params"
+          else
+            filtered="$extra_params"
+          fi
+          has_plus_line=1
+        fi
+      fi
+
+      line="${key}${filtered}\""
+    fi
+
+    printf "%s\n" "$line" >> "$tmp_file"
+  done < "$limine_default"
+
+  if (( ! has_plus_line )); then
+    printf "\nKERNEL_CMDLINE[default]+=\"%s\"\n" "$extra_params" >> "$tmp_file"
+  fi
+
+  sudo cp -a "$limine_default" "$limine_default.$(date +%Y%m%d%H%M%S).back"
+  sudo install -m 644 "$tmp_file" "$limine_default"
+  rm -f "$tmp_file"
+}
+
 if [[ ! -f /sys/power/image_size ]]; then
   echo -e "Hibernation is not supported on your system" >&2
   exit 0
@@ -14,12 +92,6 @@ if ! command -v limine-mkinitcpio &>/dev/null; then
 fi
 
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
-
-# Check if hibernation is already configured
-if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
-  echo "Hibernation is already set up"
-  exit 0
-fi
 
 if [[ $1 != "--force" ]]; then
   MEM_TOTAL_HUMAN=$(free --human | awk '/Mem/ {print $2}')
@@ -60,33 +132,42 @@ fi
 
 # Add resume hook to mkinitcpio
 sudo mkdir -p /etc/mkinitcpio.conf.d
-echo "Adding resume hook to $MKINITCPIO_CONF"
-echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
+if [[ ! -f $MKINITCPIO_CONF ]] || ! grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+  echo "Adding resume hook to $MKINITCPIO_CONF"
+  echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
+fi
 
 # Ensure keyboard backlight doesn't prevent sleep
 sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
 
 # Add resume= kernel parameters so the initramfs resume hook knows where to find the
-# hibernation image. Without these, resume happens late (after GPU drivers load) and fails.
-RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
-if [[ ! -f $RESUME_DROP_IN ]]; then
-  echo "Adding resume kernel parameters"
-  sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null
-  RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
-  RESUME_OFFSET=$(btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
-  sudo mkdir -p /etc/limine-entry-tool.d
-  echo "KERNEL_CMDLINE[default]+=\"resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
+# hibernation image. These must be in /etc/default/limine because it has highest precedence.
+echo "Adding resume kernel parameters"
+sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null || true
+RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
+RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
+
+if [[ -z $RESUME_DEVICE ]]; then
+  echo "Error: unable to determine resume device for $SWAP_FILE" >&2
+  exit 1
+fi
+
+if [[ ! $RESUME_OFFSET =~ ^[0-9]+$ ]]; then
+  echo "Error: unable to determine resume offset for $SWAP_FILE" >&2
+  exit 1
 fi
 
 # Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)
+ENABLE_RTC_ALARM="no"
 if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
-  LIMINE_DROP_IN="/etc/limine-entry-tool.d/rtc-alarm.conf"
-  if [[ ! -f $LIMINE_DROP_IN ]]; then
-    echo "Enabling ACPI RTC alarm for s2idle suspend"
-    sudo mkdir -p /etc/limine-entry-tool.d
-    echo 'KERNEL_CMDLINE[default]+="rtc_cmos.use_acpi_alarm=1"' | sudo tee "$LIMINE_DROP_IN" >/dev/null
-  fi
+  echo "Enabling ACPI RTC alarm for s2idle suspend"
+  ENABLE_RTC_ALARM="yes"
 fi
+
+set_limine_resume_kernel_params "$RESUME_DEVICE" "$RESUME_OFFSET" "$ENABLE_RTC_ALARM"
+
+# Remove legacy drop-ins. /etc/default/limine is the source of truth.
+sudo rm -f /etc/limine-entry-tool.d/resume.conf /etc/limine-entry-tool.d/rtc-alarm.conf
 
 # Regenerate initramfs and boot entry
 echo "Regenerating initramfs..."
