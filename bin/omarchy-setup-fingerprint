@@ -55,19 +55,65 @@ EOF
   fi
 }
 
-add_hyprlock_fingerprint_icon() {
-  print_info "Adding fingerprint icon to hyprlock placeholder text..."
-  sed -i 's/placeholder_text = .*/placeholder_text = <span> Enter Password 󰈷 <\/span>/' ~/.config/hypr/hyprlock.conf
-  sed -i 's/fingerprint:enabled = .*/fingerprint:enabled = true/' ~/.config/hypr/hyprlock.conf
-}
+setup_lid_detection() {
+  print_info "Setting up lid detection to disable fingerprint when lid is closed..."
 
-remove_hyprlock_fingerprint_icon() {
-  print_info "Removing fingerprint icon from hyprlock placeholder text..."
-  sed -i 's/placeholder_text = .*/placeholder_text = Enter Password/' ~/.config/hypr/hyprlock.conf
-  sed -i 's/fingerprint:enabled = .*/fingerprint:enabled = false/' ~/.config/hypr/hyprlock.conf
+  # Create the script /usr/local/bin/check-lid-open
+  sudo tee /usr/local/bin/check-lid-open >/dev/null <<'EOF'
+#!/bin/bash
+# PAM script to check if laptop lid is open
+# Returns 0 (success) if lid is open, allowing fingerprint authentication
+# Returns 1 (failure) if lid is closed, skipping fingerprint authentication
+
+LID_STATE_FILE="/proc/acpi/button/lid/LID0/state"
+FALLBACK_LID_STATE_FILE="/proc/acpi/button/lid/LID/state"
+
+# Check if lid state file exists
+if [ -f "$LID_STATE_FILE" ]; then
+    STATE_FILE="$LID_STATE_FILE"
+elif [ -f "$FALLBACK_LID_STATE_FILE" ]; then
+    STATE_FILE="$FALLBACK_LID_STATE_FILE"
+else
+    # If no lid state file exists, assume desktop/docked, allow fingerprint
+    exit 0
+fi
+
+# Read lid state
+LID_STATE=$(cat "$STATE_FILE" | grep -oP 'state:\s+\K\w+')
+
+# Allow fingerprint only if lid is open
+if [ "$LID_STATE" = "open" ]; then
+    exit 0  # PAM_SUCCESS - continue to fingerprint auth
+else
+    exit 1  # PAM_AUTH_ERR - skip fingerprint, fall through to password
+fi
+EOF
+
+  # Make the script executable
+  sudo chmod +x /usr/local/bin/check-lid-open
+
+  # Add the lid check to PAM configuration for sudo and polkit
+  if ! grep -q "check-lid-open" /etc/pam.d/sudo; then
+    print_info "Adding lid check to sudo PAM configuration..."
+    # Add the lid check before the fingerprint line (auth    [success=ok default=1] pam_exec.so quiet /usr/local/bin/check-lid-open)
+    sudo sed -i '1i auth    [success=ok default=1] pam_exec.so quiet /usr/local/bin/check-lid-open' /etc/pam.d/sudo
+  fi
+
+  if [ -f /etc/pam.d/polkit-1 ] && ! grep -q "check-lid-open" /etc/pam.d/polkit-1; then
+    print_info "Adding lid check to polkit PAM configuration..."
+    sudo sed -i '1i auth      [success=ok default=1] pam_exec.so quiet /usr/local/bin/check-lid-open' /etc/pam.d/polkit-1
+  fi
+
+  print_success "Script for lid detection created at /usr/local/bin/check-lid-open."
 }
 
 remove_pam_config() {
+  # Remove the lid script if it exists
+  if [ -f /usr/local/bin/check-lid-open ]; then
+    print_info "Removing lid detection script..."
+    sudo rm -f /usr/local/bin/check-lid-open
+  fi
+
   # Remove from sudo
   if grep -q pam_fprintd.so /etc/pam.d/sudo; then
     print_info "Removing fingerprint authentication from sudo..."
@@ -79,6 +125,18 @@ remove_pam_config() {
     print_info "Removing fingerprint authentication from polkit..."
     sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/polkit-1
   fi
+
+  # Remove lid check from sudo
+  if grep -q "pam_exec.so quiet /usr/local/bin/check-lid-open" /etc/pam.d/sudo; then
+    print_info "Removing lid check from sudo PAM configuration..."
+    sudo sed -i '/pam_exec\.so quiet \/usr\/local\/bin\/check-lid-open/d' /etc/pam.d/sudo
+  fi
+
+  # Remove lid check from polkit
+  if [ -f /etc/pam.d/polkit-1 ] && grep -q "pam_exec.so quiet /usr/local/bin/check-lid-open" /etc/pam.d/polkit-1; then
+    print_info "Removing lid check from polkit PAM configuration..."
+    sudo sed -i '/pam_exec\.so quiet \/usr\/local\/bin\/check-lid-open/d' /etc/pam.d/polkit-1
+  fi
 }
 
 if [[ "--remove" == $1 ]]; then
@@ -86,9 +144,6 @@ if [[ "--remove" == $1 ]]; then
 
   # Remove PAM configuration
   remove_pam_config
-
-  # Remove fingerprint icon from hyprlock placeholder text
-  remove_hyprlock_fingerprint_icon
 
   # Uninstall packages
   print_info "Removing fingerprint packages..."
@@ -109,8 +164,8 @@ else
   # Configure PAM
   setup_pam_config
 
-  # Add fingerprint icon to hyprlock placeholder text
-  add_hyprlock_fingerprint_icon
+  # Setup lid detection to disable fingerprint when lid is closed
+  setup_lid_detection
 
   # Enroll first fingerprint
   print_success "\nLet's setup your right index finger as the first fingerprint."
@@ -123,7 +178,7 @@ else
     print_info "\nNow let's verify that it's working correctly.\n"
     if fprintd-verify; then
       print_success "\nPerfect! Fingerprint authentication is now configured."
-      print_info "You can use your fingerprint for sudo, polkit, and lock screen (Super + Escape)."
+      print_info "You can use your fingerprint for sudo and polkit."
     else
       print_error "\nVerification failed. You may want to try enrolling again."
     fi
