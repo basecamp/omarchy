@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# Configure display brightness rules for battery and AC power events.
+# Usage: omarchy-brightness-display-bat-ac [<battery 1-100> <ac 1-100>]
+
+is_valid_brightness() {
+  local value="$1"
+  [[ $value =~ ^([1-9][0-9]?|100)$ ]]
+}
+
+if [[ $# -eq 0 ]]; then
+  interactive_mode=true
+  echo -e "\e[32mLet's set the laptop display brightness when on battery or AC.\n\e[0m"
+  bat_brightness="$(gum input --char-limit=3 --prompt "Battery brightness (%)> " --placeholder "1-100")"
+  if ! is_valid_brightness "$bat_brightness"; then
+    echo "Expected a battery brightness value between 1 and 100." >&2
+    exit 1
+  fi
+
+  ac_brightness="$(gum input --char-limit=3 --prompt "AC brightness (%)> " --placeholder "1-100")"
+  if ! is_valid_brightness "$ac_brightness"; then
+    echo "Expected an AC brightness value between 1 and 100." >&2
+    exit 1
+  fi
+else
+  interactive_mode=false
+  bat_brightness="$1"
+  ac_brightness="$2"
+
+  if [[ $# -ne 2 ]] || ! is_valid_brightness "$bat_brightness" || ! is_valid_brightness "$ac_brightness"; then
+    echo "Expected two brightness values between 1 and 100." >&2
+    echo "Usage: omarchy-brightness-display-bat-ac <battery 1-100> <ac 1-100>" >&2
+    exit 1
+  fi
+fi
+
+device="$(omarchy-brightness-display-device)"
+if [[ -z $device ]]; then
+  echo "Couldn't detect a display backlight device." >&2
+  exit 1
+fi
+
+rule_file="/etc/udev/rules.d/99-display-brightness.rules"
+
+cat <<EOF | sudo tee "$rule_file" >/dev/null
+ACTION=="change", SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}=="0", RUN+="/usr/bin/brightnessctl -d ${device} set ${bat_brightness}%"
+ACTION=="change", SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}=="1", RUN+="/usr/bin/brightnessctl -d ${device} set ${ac_brightness}%"
+EOF
+
+sudo udevadm control --reload-rules
+sudo udevadm trigger -s power_supply
+
+if [[ $interactive_mode == "true" ]]; then
+  echo -e "The display brightness will be adjusted automatically when you plug/unplug your laptop. To disable this feature, run:\n\e[32m$ sudo rm $rule_file\e[0m"
+fi

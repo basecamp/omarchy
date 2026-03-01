@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Returns the most likely display backlight device.
+# Start with the first possible output, then refine to the most likely given an order heuristic.
+device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
+for pattern in amdgpu_bl* intel_backlight acpi_video*; do
+  for candidate_path in /sys/class/backlight/$pattern; do
+    if [[ -e $candidate_path ]]; then
+      device="${candidate_path##*/}"
+      break 2
+    fi
+  done
+done
+
+echo "$device"
