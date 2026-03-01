@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""
+LG TV picture mode toggle.
+Handles SDR, HDR10/HLG, and Dolby Vision mode variants automatically.
+
+Usage:
+  omarchy-lgtv-picture-mode                - Toggle between configured modes
+  omarchy-lgtv-picture-mode get            - Get current TV mode name
+  omarchy-lgtv-picture-mode <mode>         - Set mode (auto-detects HDR)
+
+Modes: filmmaker, game, standard, cinema, vivid, sports (SDR only)
+Toggle order is read from ~/.config/lgtv/toggle-modes (one mode per line).
+"""
+import sys
+from pathlib import Path
+
+from lgtv_common import (
+    get_system_setting,
+    invalidate_brightness_cache,
+    load_config_or_notify,
+    make_retry_notifier,
+    notify,
+    set_system_setting,
+    with_retry,
+)
+
+# =============================================================================
+# Configuration
+# =============================================================================
+# Maps base mode → {dynamic range prefix → TV mode name}
+MODE_MAP = {
+    "filmmaker": {"": "filmMaker",  "hdr": "hdrFilmMaker",  "dolbyHdr": "dolbyHdrCinema"},
+    "game":      {"": "game",       "hdr": "hdrGame",       "dolbyHdr": "dolbyHdrGame"},
+    "standard":  {"": "normal",     "hdr": "hdrStandard",   "dolbyHdr": "dolbyHdrStandard"},
+    "cinema":    {"": "cinema",     "hdr": "hdrCinema",     "dolbyHdr": "dolbyHdrCinema"},
+    "vivid":     {"": "vivid",      "hdr": "hdrVivid",      "dolbyHdr": "dolbyHdrVivid"},
+    "sports":    {"": "sports"},  # SDR only
+}
+
+# Reverse: TV mode name → (base, prefix)
+REVERSE_MAP = {tv: (base, pfx) for base, variants in MODE_MAP.items() for pfx, tv in variants.items()}
+REVERSE_MAP["dolbyHdrCinema"] = ("filmmaker", "dolbyHdr")  # filmmaker wins over cinema
+
+TOGGLE_MODES_PATH = Path.home() / ".config/lgtv/toggle-modes"
+DEFAULT_TOGGLE_ORDER = ["filmmaker", "game"]
+
+
+def load_toggle_order() -> list[str]:
+    """Read toggle modes from config file, fall back to default."""
+    try:
+        lines = TOGGLE_MODES_PATH.read_text().splitlines()
+        modes = [l.strip() for l in lines if l.strip() and l.strip() in MODE_MAP]
+        if len(modes) >= 2:
+            return modes
+    except FileNotFoundError:
+        pass
+    return DEFAULT_TOGGLE_ORDER
+
+
+# UI
+NOTIFICATION_TITLE = "TV Picture Mode"
+DR_LABELS = {"": "", "hdr": " (HDR)", "dolbyHdr": " (Dolby Vision)"}
+MODE_LABELS = {
+    "filmmaker": "Filmmaker",
+    "game": "Game Optimizer",
+    "standard": "Standard",
+    "cinema": "Cinema",
+    "vivid": "Vivid",
+    "sports": "Sports",
+}
+MODE_ICONS = {
+    "filmmaker": "video-display-symbolic",
+    "game": "input-gaming-symbolic",
+    "standard": "video-display-symbolic",
+    "cinema": "video-display-symbolic",
+    "vivid": "video-display-symbolic",
+    "sports": "video-display-symbolic",
+}
+
+# Retry notification callback
+notify_retry = make_retry_notifier(NOTIFICATION_TITLE)
+
+
+# =============================================================================
+# Mode Parsing
+# =============================================================================
+def parse_mode(tv_mode: str) -> tuple[str | None, str | None]:
+    """Parse a TV mode name into (base, prefix). Returns (None, None) if unknown."""
+    result = REVERSE_MAP.get(tv_mode)
+    if result:
+        return result
+    return None, None
+
+
+# =============================================================================
+# TV Operations
+# =============================================================================
+def get_picture_mode(ip: str, key: str) -> str | None:
+    """Get picture mode from TV with retry."""
+    return with_retry(
+        ip, key,
+        lambda client: get_system_setting(client, "picture", "pictureMode"),
+        "Failed to get picture mode",
+        notification_title=NOTIFICATION_TITLE, on_retry=notify_retry,
+    )
+
+
+def set_picture_mode(ip: str, key: str, mode: str) -> bool:
+    """Set picture mode on TV with retry."""
+    return with_retry(
+        ip, key,
+        lambda client: set_system_setting(client, "picture", pictureMode=mode),
+        "Failed to set picture mode",
+        notification_title=NOTIFICATION_TITLE, on_retry=notify_retry,
+    )
+
+
+def apply_picture_mode(ip: str, key: str, tv_mode: str, base: str, prefix: str) -> int:
+    """Set picture mode, invalidate brightness cache, and notify with DR label."""
+    if set_picture_mode(ip, key, tv_mode):
+        invalidate_brightness_cache()
+        label = MODE_LABELS.get(base, base) + DR_LABELS.get(prefix, "")
+        icon = MODE_ICONS.get(base, "video-display-symbolic")
+        notify(NOTIFICATION_TITLE, f"Switched to {label}", icon=icon)
+        return 0
+    return 1
+
+
+# =============================================================================
+# Commands
+# =============================================================================
+def cmd_get(ip: str, key: str) -> int:
+    """Get and print current picture mode."""
+    mode = get_picture_mode(ip, key)
+    if mode is None:
+        return 1
+    print(mode)
+    return 0
+
+
+def cmd_toggle(ip: str, key: str) -> int:
+    """Toggle between configured modes, preserving dynamic range prefix.
+    Skips modes unavailable in the current dynamic range (e.g. sports in HDR)."""
+    current = get_picture_mode(ip, key)
+    if current is None:
+        return 1
+
+    base, prefix = parse_mode(current)
+    if base is None:
+        notify(NOTIFICATION_TITLE, f"Unknown mode: {current}", icon="dialog-warning-symbolic")
+        return 1
+
+    toggle_order = load_toggle_order()
+
+    # Filter to modes available in current dynamic range
+    available = [m for m in toggle_order if prefix in MODE_MAP[m]]
+    if len(available) < 2:
+        notify(NOTIFICATION_TITLE, "Not enough modes available in current dynamic range", icon="dialog-warning-symbolic")
+        return 1
+
+    idx = available.index(base) if base in available else 0
+    new_base = available[(idx + 1) % len(available)]
+    new_tv_mode = MODE_MAP[new_base][prefix]
+    return apply_picture_mode(ip, key, new_tv_mode, new_base, prefix)
+
+
+def cmd_set(ip: str, key: str, base_name: str) -> int:
+    """Set a base mode, auto-detecting current dynamic range prefix."""
+    current = get_picture_mode(ip, key)
+    if current is None:
+        return 1
+
+    _, prefix = parse_mode(current)
+    if prefix is None:
+        prefix = ""
+
+    if prefix not in MODE_MAP[base_name]:
+        dr_label = DR_LABELS.get(prefix, prefix)
+        mode_label = MODE_LABELS.get(base_name, base_name)
+        notify(NOTIFICATION_TITLE, f"{mode_label} not available in{dr_label}", icon="dialog-warning-symbolic")
+        return 1
+
+    tv_mode = MODE_MAP[base_name][prefix]
+    return apply_picture_mode(ip, key, tv_mode, base_name, prefix)
+
+
+# =============================================================================
+# Main
+# =============================================================================
+def main() -> int:
+    config = load_config_or_notify(NOTIFICATION_TITLE)
+    if config is None:
+        return 1
+    ip, key = config
+
+    if len(sys.argv) < 2:
+        return cmd_toggle(ip, key)
+
+    arg = sys.argv[1]
+
+    if arg == "get":
+        return cmd_get(ip, key)
+    elif arg in MODE_MAP:
+        return cmd_set(ip, key, arg)
+    else:
+        print(__doc__)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

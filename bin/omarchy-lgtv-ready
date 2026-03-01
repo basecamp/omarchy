@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Check if LG TV brightness control is installed and configured.
+# Usage: omarchy-lgtv-ready [package|config]
+#   (no args)  - check both, notify on failure
+#   package    - check package only, silent
+#   config     - check config only, silent
+
+check_package() {
+  ! omarchy-pkg-missing lgwebosremote-git
+}
+
+check_config() {
+  [[ -f ~/.config/lgtv/config.json ]]
+}
+
+case "${1:-all}" in
+  package) check_package ;;
+  config)  check_config ;;
+  all)
+    if ! check_package; then
+      omarchy-lgtv-notify-once "LG TV detected but not set up. Install via Menu → Install → Service → LG TV Brightness"
+      exit 1
+    fi
+    if ! check_config; then
+      omarchy-lgtv-notify-once "LG TV package installed but not paired. Run: omarchy-install-lgtv"
+      exit 1
+    fi
+    ;;
+esac

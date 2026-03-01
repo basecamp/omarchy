@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Show a notification at most once per 30 seconds (avoids spam from held keys).
+
+CACHE_FILE="$HOME/.cache/lgtv-setup-notified"
+
+if [[ -f "$CACHE_FILE" ]]; then
+  age=$(( $(date +%s) - $(stat -c %Y "$CACHE_FILE") ))
+  [[ $age -lt 30 ]] && exit 0
+fi
+
+touch "$CACHE_FILE"
+notify-send -u normal -t 5000 "LG TV Brightness" "$1"

@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Remove LG TV control config, cache, and packages.
+
+# Remove picture mode keybinding from Hyprland config
+sed -i '/^# LG TV picture mode toggle$/d' "$HOME/.config/hypr/bindings.conf"
+sed -i '/omarchy-lgtv-picture-mode/d' "$HOME/.config/hypr/bindings.conf"
+
+rm -rf ~/.config/lgtv
+rm -f ~/.cache/lgtv-brightness ~/.cache/lgtv-brightness.lock
+omarchy-pkg-drop lgwebosremote-git
+
+echo "Removed LG TV control. Brightness keys will use swayosd-client for all monitors."
