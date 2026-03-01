@@ -8,6 +8,12 @@ is_valid_brightness() {
   [[ $value =~ ^([1-9][0-9]?|100)$ ]]
 }
 
+device="$(omarchy-brightness-backlight-device)"
+if [[ -z $device ]]; then
+  echo "Couldn't detect a display backlight device." >&2
+  exit 1
+fi
+
 if [[ $# -eq 0 ]]; then
   interactive_mode=true
   echo -e "\e[32mLet's set the laptop display brightness when on battery or AC.\n\e[0m"
@@ -32,12 +38,6 @@ else
     echo "Usage: omarchy-brightness-display-bat-ac <battery 1-100> <ac 1-100>" >&2
     exit 1
   fi
-fi
-
-device="$(omarchy-brightness-backlight-device)"
-if [[ -z $device ]]; then
-  echo "Couldn't detect a display backlight device." >&2
-  exit 1
 fi
 
 rule_file="/etc/udev/rules.d/99-display-brightness.rules"
