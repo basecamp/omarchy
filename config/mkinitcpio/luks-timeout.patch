@@ -32,7 +32,7 @@
                          sleep 2;
 +                        timer_elapsed=$((timer_elapsed + 2))
 +
-+                        if [ "$timer_elapsed" -ge "IDLE_TIMEOUT" ]; then
++                        if [ "$timer_elapsed" -ge "$IDLE_TIMEOUT" ]; then
 +                            echo "Idle timeout: Powering off..."
 +                            poweroff -f
 +                        fi
