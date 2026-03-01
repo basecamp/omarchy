@@ -11,9 +11,43 @@ hex_to_rgb() {
   printf "%d,%d,%d" "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
 }
 
+# Emit sed substitution rules for a given key/value pair (plain, _strip, _rgb)
+emit_sed_rules() {
+  local key="$1" value="$2"
+  printf 's|{{ %s }}|%s|g\n' "$key" "$value"
+  printf 's|{{ %s_strip }}|%s|g\n' "$key" "${value#\#}"
+  if [[ $value =~ ^# ]]; then
+    local rgb
+    rgb=$(hex_to_rgb "$value")
+    echo "s|{{ ${key}_rgb }}|${rgb}|g"
+  fi
+}
+
+# Darken a hex color by a percentage (0 = black, 100 = unchanged)
+# Example: darken_color "#ff8800" 75  →  #bf6600
+darken_color() {
+  local hex="${1#\#}" pct="$2"
+  local r g b
+  r=$(printf "%d" "0x${hex:0:2}")
+  g=$(printf "%d" "0x${hex:2:2}")
+  b=$(printf "%d" "0x${hex:4:2}")
+  printf "#%02x%02x%02x" $(( r * pct / 100 )) $(( g * pct / 100 )) $(( b * pct / 100 ))
+}
+
+# Lighten a hex color by blending toward white (0 = unchanged, 100 = white)
+# Example: lighten_color "#ff8800" 20  →  #ff9f33
+lighten_color() {
+  local hex="${1#\#}" pct="$2"
+  local r g b
+  r=$(printf "%d" "0x${hex:0:2}")
+  g=$(printf "%d" "0x${hex:2:2}")
+  b=$(printf "%d" "0x${hex:4:2}")
+  printf "#%02x%02x%02x" $(( r + (255 - r) * pct / 100 )) $(( g + (255 - g) * pct / 100 )) $(( b + (255 - b) * pct / 100 ))
+}
+
 # Only generate dynamic templates for themes with a colors.toml definition
 if [[ -f $COLORS_FILE ]]; then
-  sed_script=$(mktemp)
+  declare -A colors
 
   while IFS='=' read -r key value; do
     key="${key//[\"\' ]/}"                # strip quotes and spaces from key
@@ -21,13 +55,31 @@ if [[ -f $COLORS_FILE ]]; then
     value="${value#*[\"\']}"
     value="${value%%[\"\']*}" # extract value between quotes (ignores inline comments)
 
-    printf 's|{{ %s }}|%s|g\n' "$key" "$value"            # {{ key }} -> value
-    printf 's|{{ %s_strip }}|%s|g\n' "$key" "${value#\#}" # {{ key_strip }} -> value without leading #
-    if [[ $value =~ ^# ]]; then
-      rgb=$(hex_to_rgb "$value")
-      echo "s|{{ ${key}_rgb }}|${rgb}|g"
-    fi
-  done <"$COLORS_FILE" >"$sed_script"
+    colors[$key]="$value"
+  done <"$COLORS_FILE"
+
+  # Auto-generate base24 colors from base16 shades when not defined
+  [[ ${colors[dark_bg]} ]]       || colors[dark_bg]=$(darken_color "${colors[bg]}" 75)
+  [[ ${colors[darker_bg]} ]]     || colors[darker_bg]=$(darken_color "${colors[bg]}" 50)
+  [[ ${colors[bright_red]} ]]    || colors[bright_red]=$(lighten_color "${colors[red]}" 20)
+  [[ ${colors[bright_yellow]} ]] || colors[bright_yellow]=$(lighten_color "${colors[yellow]}" 20)
+  [[ ${colors[bright_green]} ]]  || colors[bright_green]=$(lighten_color "${colors[green]}" 20)
+  [[ ${colors[bright_cyan]} ]]   || colors[bright_cyan]=$(lighten_color "${colors[cyan]}" 20)
+  [[ ${colors[bright_blue]} ]]   || colors[bright_blue]=$(lighten_color "${colors[blue]}" 20)
+  [[ ${colors[bright_purple]} ]] || colors[bright_purple]=$(lighten_color "${colors[purple]}" 20)
+
+  # Auto-detect theme type (dark/light) from background luminance
+  if [[ ! ${colors[theme_type]} ]]; then
+    bg_hex="${colors[background]#\#}"
+    lum=$(( $(printf "%d" "0x${bg_hex:0:2}") + $(printf "%d" "0x${bg_hex:2:2}") + $(printf "%d" "0x${bg_hex:4:2}") ))
+    [[ $lum -gt 382 ]] && colors[theme_type]="light" || colors[theme_type]="dark"
+  fi
+
+  sed_script=$(mktemp)
+
+  for key in "${!colors[@]}"; do
+    emit_sed_rules "$key" "${colors[$key]}"
+  done >"$sed_script"
 
   shopt -s nullglob
 
