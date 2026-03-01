@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Start and stop a screenrecording, which will be saved to ~/Videos by default.
+# Start and stop a screen recording, which will be saved to ~/Videos by default.
 # Alternative location can be set via OMARCHY_SCREENRECORD_DIR or XDG_VIDEOS_DIR ENVs.
 # Resolution is capped to 4K for monitors above 4K, native otherwise.
 # Override via --resolution= (e.g. --resolution=1920x1080, --resolution=0x0 for native).
