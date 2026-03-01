@@ -1,0 +1,17 @@
+#!/bin/bash
+
+bold="\033[1m"
+cyan="\033[36m"
+yellow="\033[33m"
+green="\033[32m"
+reset="\033[0m"
+
+echo -e "${bold}${cyan}Omarchy fork update instructions${reset}\n"
+echo -e "${yellow}1.${reset} cd ~/.local/share/omarchy"
+echo -e "${yellow}2.${reset} git fetch upstream --tags"
+echo -e "${yellow}3.${reset} git merge upstream/master"
+echo -e "${yellow}4.${reset} Resolve conflicts if any"
+echo -e "${yellow}5.${reset} git push origin master --tags"
+echo -e "${yellow}6.${reset} Run ${green}omarchy-update${reset} to finish (system packages, migrations, etc.)"
+echo ""
+read -p "Press Enter to close..."

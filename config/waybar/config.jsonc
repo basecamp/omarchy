@@ -48,7 +48,7 @@
   "custom/update": {
     "format": "",
     "exec": "omarchy-update-available",
-    "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update",
+    "on-click": "omarchy-launch-floating-terminal-with-presentation omarchy-update-fork-instructions",
     "tooltip-format": "Omarchy update available",
     "signal": 7,
     "interval": 21600
