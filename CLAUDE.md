@@ -17,4 +17,6 @@ After merging upstream changes (`git merge upstream/master`), check for new/upda
    - Comment-only additions (documentation examples)
    - Personal preference differences (font sizes, keyboard layouts, monitor configs, theming)
    - Files the user has intentionally customized
-4. **Apply fixes** the user confirms, then restart affected services (e.g. `omarchy-restart-waybar`)
+4. **Push upstream tags to fork** — `git push origin --tags` (otherwise waybar shows a false update icon because `omarchy-update-available` compares local vs remote tags)
+5. **Audit `# [omarchy]` comments** — check if upstream removed any lines we commented out. If upstream also deleted a line, remove our `# [omarchy]` comment to stay in sync: `grep -rn '\[omarchy\]' . --include='*.sh' --include='*.conf' --include='*.packages'` then compare each with `git show upstream/master:<file>`
+6. **Apply fixes** the user confirms, then restart affected services (e.g. `omarchy-restart-waybar`)

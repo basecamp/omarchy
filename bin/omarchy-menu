@@ -450,7 +450,7 @@ show_remove_menu() {
   local options="󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2"
 
   if omarchy-lgtv-ready package; then
-    options="$options\n󰔏  LG TV Brightness"
+    options="$options\n󰔏  LG TV Control"
   fi
 
   case $(menu "Remove" "$options") in
