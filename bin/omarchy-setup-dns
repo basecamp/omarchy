@@ -76,4 +76,4 @@ EOF
   ;;
 esac
 
-sudo systemctl restart systemd-networkd systemd-resolved
+sudo systemctl restart NetworkManager systemd-resolved
