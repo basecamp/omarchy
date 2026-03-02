@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Install and launch Steam after first letting the user pick the correct grahics card drivers.
-
 set -e
 
 echo "Detecting GPU"
@@ -87,7 +85,7 @@ omarchy-pkg-add steam gamemode gamescope lib32-gamemode winetricks
 # Set Proton-GE by default automatically
 sed -i -e 's/proton_experimental/Proton-GE/g' ~/.local/share/Steam/config/config.vdf
 
-setsid gtk-launch steam >/dev/null 2>&1 &
+omarchy-launch-steam
 
 echo "Make sure to add \"gamescope gamemoderun %command%\" to the games in your steam library to make proper use of these tools"
 
