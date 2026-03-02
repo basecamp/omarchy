@@ -1,4 +1,4 @@
-@import "../../../../../../../.config/omarchy/current/theme/walker.css";
+@import "../../../../../../../.config/omarchy/current/theme/colors.css";
 
 * {
   all: unset;
@@ -7,7 +7,7 @@
 * {
   font-family: monospace;
   font-size: 18px;
-  color: @text;
+  color: @foreground;
 }
 
 scrollbar {
@@ -23,9 +23,9 @@ scrollbar {
 }
 
 .box-wrapper {
-  background: alpha(@base, 0.95);
+  background: alpha(@background, 0.95);
   padding: 20px;
-  border: 2px solid @border;
+  border: 2px solid @foreground;
 }
 
 .preview-box {
@@ -35,7 +35,7 @@ scrollbar {
 }
 
 .search-container {
-  background: @base;
+  background: @background;
   padding: 10px;
 }
 
@@ -75,7 +75,7 @@ child:selected .item-box {
 }
 
 child:selected .item-box * {
-  color: @selected-text;
+  color: @accent;
 }
 
 .item-box {
@@ -114,3 +114,5 @@ child:selected .item-box * {
 
 .preview {
 }
+
+@import "../../../../../../../.config/omarchy/current/theme/walker.css";
