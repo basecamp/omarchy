@@ -7,10 +7,13 @@
 LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
 
 if [[ $LAYOUT == "scrolling" ]]; then
-  ADDR=$(hyprctl activewindow -j | jq -r '.address')
-  WINDOW_X=$(hyprctl activewindow -j | jq -r '.at[0]')
-  SAME_COL=$(hyprctl clients -j | jq --arg x "$WINDOW_X" --arg addr "$ADDR" \
-    '[.[] | select(.at[0] == ($x | tonumber) and .floating == false and .mapped == true)] | length')
+  ACTIVE=$(hyprctl activewindow -j)
+  ADDR=$(echo "$ACTIVE" | jq -r '.address')
+  WINDOW_X=$(echo "$ACTIVE" | jq -r '.at[0]')
+  WORKSPACE=$(echo "$ACTIVE" | jq -r '.workspace.id')
+
+  SAME_COL=$(hyprctl clients -j | jq --arg x "$WINDOW_X" --argjson ws "$WORKSPACE" \
+    '[.[] | select(.at[0] == ($x | tonumber) and .workspace.id == $ws and .floating == false and .mapped == true)] | length')
 
   if (( SAME_COL > 1 )); then
     hyprctl dispatch layoutmsg promote
