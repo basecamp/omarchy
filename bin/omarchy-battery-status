@@ -19,9 +19,10 @@ power_rate=$(echo "$battery_info" | awk '/energy-rate/ {
 
 state=$(echo "$battery_info" | awk '/state/ { print $2; exit }')
 time_remaining=$(omarchy-battery-remaining-time)
+capacity=$(omarchy-battery-capacity)
 
 if [[ $state == "charging" ]]; then
-    echo "󰁹    Battery at ${percentage}% with ${time_remaining} left to full gaining ${power_rate}W"
+    echo "󰁹    Battery ${percentage}%  ·  ${time_remaining} to full  ·   ${power_rate}W / ${capacity}Wh"
 else
-    echo "󰁹    Battery at ${percentage}% with ${time_remaining} left using ${power_rate}W"
+    echo "󰁹    Battery ${percentage}%  ·  ${time_remaining} left  ·   ${power_rate}W / ${capacity}Wh"
 fi
