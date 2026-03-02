@@ -3,6 +3,8 @@ if omarchy-battery-present; then
 
   # Enable battery monitoring timer for low battery notifications
   systemctl --user enable --now omarchy-battery-monitor.timer
+  
+  systemctl --user enable --now omarchy-powerprofile-low-battery.timer
 else
   powerprofilesctl set performance || true
 fi

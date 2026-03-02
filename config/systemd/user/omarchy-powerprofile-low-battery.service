@@ -1,0 +1,10 @@
+[Unit]
+Description=Omarchy Power Saver on Low Battery Check
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/omarchy/bin/omarchy-powerprofile-low-battery
+Environment=DISPLAY=:0
+LogLevelMax=warning
+
