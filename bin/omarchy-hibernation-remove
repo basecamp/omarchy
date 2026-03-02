@@ -3,10 +3,85 @@
 # Removes hibernation setup: disables swap, removes swapfile, removes fstab entry,
 # removes resume hook, and removes suspend-then-hibernate configuration.
 
+strip_resume_tokens() {
+  local cmdline="$1"
+  local filtered=""
+  local token
+
+  for token in $cmdline; do
+    case "$token" in
+    resume=* | resume_offset=* | rtc_cmos.use_acpi_alarm=1)
+      continue
+      ;;
+    esac
+
+    if [[ -n $filtered ]]; then
+      filtered="$filtered $token"
+    else
+      filtered="$token"
+    fi
+  done
+
+  echo "$filtered"
+}
+
+remove_limine_resume_kernel_params() {
+  local limine_default="/etc/default/limine"
+  local tmp_file
+  local line
+  local key
+  local cmdline
+  local filtered
+
+  if [[ ! -f $limine_default ]]; then
+    return
+  fi
+
+  if ! grep -Eq "resume=|resume_offset=|rtc_cmos.use_acpi_alarm=1" "$limine_default"; then
+    return
+  fi
+
+  tmp_file=$(mktemp)
+
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ $line =~ ^(KERNEL_CMDLINE\[default\]\+?=\")([^\"]*)\"$ ]]; then
+      key=${BASH_REMATCH[1]}
+      cmdline=${BASH_REMATCH[2]}
+      filtered=$(strip_resume_tokens "$cmdline")
+      line="${key}${filtered}\""
+    fi
+
+    printf "%s\n" "$line" >> "$tmp_file"
+  done < "$limine_default"
+
+  sudo cp -a "$limine_default" "$limine_default.$(date +%Y%m%d%H%M%S).back"
+  sudo install -m 644 "$tmp_file" "$limine_default"
+  rm -f "$tmp_file"
+}
+
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+SWAP_SUBVOLUME="/swap"
+SWAP_FILE="$SWAP_SUBVOLUME/swapfile"
+HIBERNATION_CONFIGURED=0
 
 # Check if hibernation is configured
-if [[ ! -f $MKINITCPIO_CONF ]] || ! grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+  HIBERNATION_CONFIGURED=1
+fi
+
+if [[ -f $SWAP_FILE ]]; then
+  HIBERNATION_CONFIGURED=1
+fi
+
+if [[ -f /etc/limine-entry-tool.d/resume.conf ]] || [[ -f /etc/limine-entry-tool.d/rtc-alarm.conf ]]; then
+  HIBERNATION_CONFIGURED=1
+fi
+
+if [[ -f /etc/default/limine ]] && grep -Eq "resume=|resume_offset=|rtc_cmos.use_acpi_alarm=1" /etc/default/limine; then
+  HIBERNATION_CONFIGURED=1
+fi
+
+if (( ! HIBERNATION_CONFIGURED )); then
   echo "Hibernation is not set up"
   exit 0
 fi
@@ -14,9 +89,6 @@ fi
 if ! gum confirm "Remove hibernation setup?"; then
   exit 0
 fi
-
-SWAP_SUBVOLUME="/swap"
-SWAP_FILE="$SWAP_SUBVOLUME/swapfile"
 
 # Disable swap if active
 if swapon --show | grep -q "$SWAP_FILE"; then
@@ -49,11 +121,17 @@ echo "Removing suspend-then-hibernate configuration"
 sudo rm -f /etc/systemd/logind.conf.d/lid.conf
 sudo rm -f /etc/systemd/sleep.conf.d/hibernate.conf
 
+# Remove kernel parameters in limine config
+echo "Removing resume kernel parameters"
+remove_limine_resume_kernel_params
+sudo rm -f /etc/limine-entry-tool.d/resume.conf /etc/limine-entry-tool.d/rtc-alarm.conf
+
 # Remove mkinitcpio resume hook
 echo "Removing resume hook"
-sudo rm "$MKINITCPIO_CONF"
+sudo rm -f "$MKINITCPIO_CONF"
 
-echo "Regenerating initramfs..."
+echo "Regenerating initramfs and boot entries..."
 sudo limine-mkinitcpio
+sudo limine-update
 
 echo "Hibernation removed"
