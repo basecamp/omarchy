@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Install Zed Editor and omazed to use the current Omarchy theme.
+
+echo "Installing Zed Editor..."
+omarchy-pkg-add zed
+omarchy-pkg-aur-add omazed
+
+# Apply Omarchy theme to Zed
+omazed setup
