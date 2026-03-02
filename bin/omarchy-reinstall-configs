@@ -3,7 +3,7 @@ set -e
 
 # Overwrite all user configs with the Omarchy defaults.
 
-if [ "$EUID" -eq 0 ]; then
+if (( EUID == 0 )); then
   echo "Error: This script should not be run as root"
   exit 1
 fi

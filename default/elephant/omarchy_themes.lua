@@ -3,6 +3,7 @@
 --
 Name = "omarchythemes"
 NamePretty = "Omarchy Themes"
+HideFromProviderlist = true
 
 -- Check if file exists using Lua (no subprocess)
 local function file_exists(path)
@@ -93,4 +94,3 @@ function GetEntries()
 
   return entries
 end
-
