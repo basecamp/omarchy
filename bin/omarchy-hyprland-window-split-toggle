@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Layout-aware toggle split / merge columns.
+# Dwindle: togglesplit.
+# Scrolling: promote window to its own column, or merge it into the adjacent column.
+
+LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
+
+if [[ $LAYOUT == "scrolling" ]]; then
+  ADDR=$(hyprctl activewindow -j | jq -r '.address')
+  WINDOW_X=$(hyprctl activewindow -j | jq -r '.at[0]')
+  SAME_COL=$(hyprctl clients -j | jq --arg x "$WINDOW_X" --arg addr "$ADDR" \
+    '[.[] | select(.at[0] == ($x | tonumber) and .floating == false and .mapped == true)] | length')
+
+  if (( SAME_COL > 1 )); then
+    hyprctl dispatch layoutmsg promote
+    ADDR=$(hyprctl activewindow -j | jq -r '.address')
+    hyprctl dispatch movefocus l
+    hyprctl dispatch focuswindow "address:$ADDR"
+  else
+    hyprctl dispatch movewindow l
+    ADDR=$(hyprctl activewindow -j | jq -r '.address')
+    hyprctl dispatch movefocus l
+    hyprctl dispatch focuswindow "address:$ADDR"
+  fi
+else
+  hyprctl dispatch layoutmsg togglesplit
+fi
