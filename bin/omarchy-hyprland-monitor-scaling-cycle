@@ -5,13 +5,14 @@ MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true)')
 ACTIVE_MONITOR=$(echo "$MONITOR_INFO" | jq -r '.name')
 CURRENT_SCALE=$(echo "$MONITOR_INFO" | jq -r '.scale')
 
-# Cycle through scales: 1 → 1.6 → 2 → 3 → 1
-CURRENT_INT=$(awk -v s="$CURRENT_SCALE" 'BEGIN { printf "%.0f", s * 10 }')
+# Cycle through scales: 1 → 1.25 → 1.6 → 2 → 3 → 1
+CURRENT_INT=$(awk -v s="$CURRENT_SCALE" 'BEGIN { printf "%.0f", s * 100 }')
 
 case "$CURRENT_INT" in
-10) NEW_SCALE=1.6 ;;
-16) NEW_SCALE=2 ;;
-20) NEW_SCALE=3 ;;
+100) NEW_SCALE=1.25 ;;
+125) NEW_SCALE=1.6 ;;
+160) NEW_SCALE=2 ;;
+200) NEW_SCALE=3 ;;
 *) NEW_SCALE=1 ;;
 esac
 
@@ -19,3 +20,4 @@ hyprctl keyword misc:disable_scale_notification true
 hyprctl keyword monitor "$ACTIVE_MONITOR,preferred,auto,$NEW_SCALE"
 hyprctl keyword misc:disable_scale_notification false
 notify-send "󰍹    Display scaling set to ${NEW_SCALE}x"
+
