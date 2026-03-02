@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Window picker: lists open Hyprland windows and focuses the selected one.
+# Displayed as "class [workspace]: title (address)", sorted by class, workspace, title, address.
+
+SELECTED=$(hyprctl clients -j | jq -r 'sort_by(.class, .workspace.name, .title, .address)[] | "\(.class) [\(.workspace.name)]: \(.title) (\(.address))"' | 
+  walker -d -p "󰀻 Window…")
+
+if [[ -n "$SELECTED" ]]; then
+  WINDOW_ADDRESS=$(echo "$SELECTED" | grep -o '(0x[a-f0-9]*)$' | tr -d '()')
+  hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
+fi
