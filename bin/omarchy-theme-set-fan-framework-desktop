@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Apply theme accent color to Framework Desktop ARGB fan via framework_tool.
+#
+# Color selection priority:
+# 1. User override: ~/.config/omarchy/fan-colors/<theme-name>.txt (8 hex colors, one per line)
+# 2. Theme accent color
+
+if ! omarchy-hw-framework-desktop || ! omarchy-cmd-present framework_tool; then
+  exit 0
+fi
+
+THEME_NAME=$(cat ~/.config/omarchy/current/theme.name 2>/dev/null)
+OVERRIDE_FILE=~/.config/omarchy/fan-colors/${THEME_NAME}.txt
+THEME_FILE=~/.config/omarchy/current/theme/framework-desktop-fan.rgb
+
+# Check for user override first
+if [[ -f "$OVERRIDE_FILE" ]]; then
+  # Read 8 colors from override file (one hex color per line)
+  mapfile -t colors < "$OVERRIDE_FILE"
+
+  # Pad with first color if fewer than 8 provided
+  while [[ ${#colors[@]} -lt 8 ]]; do
+    colors+=("${colors[0]}")
+  done
+
+  # Convert # to 0x prefix
+  for i in {0..7}; do
+    colors[$i]=$(echo "${colors[$i]}" | sed 's/^#/0x/')
+  done
+
+  sudo framework_tool --rgbkbd 0 \
+    "${colors[0]}" "${colors[1]}" "${colors[2]}" "${colors[3]}" \
+    "${colors[4]}" "${colors[5]}" "${colors[6]}" "${colors[7]}" \
+    2>/dev/null || true
+  exit 0
+fi
+
+# Use theme accent color directly
+if [[ -f "$THEME_FILE" ]]; then
+  color=$(sed 's/^#/0x/' "$THEME_FILE")
+  sudo framework_tool --rgbkbd 0 "$color" "$color" "$color" "$color" "$color" "$color" "$color" "$color" 2>/dev/null || true
+fi
