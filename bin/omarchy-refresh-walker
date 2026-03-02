@@ -16,6 +16,7 @@ systemctl --user daemon-reload
 omarchy-refresh-config walker/config.toml
 omarchy-refresh-config elephant/calc.toml
 omarchy-refresh-config elephant/desktopapplications.toml
+omarchy-ensure-elephant-menus
 
 # Restart service
 omarchy-restart-walker
