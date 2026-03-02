@@ -1,6 +1,3 @@
-if command -v mise &> /dev/null; then
-  eval "$(mise activate bash)"
-fi
 
 if command -v starship &> /dev/null; then
   eval "$(starship init bash)"
@@ -21,4 +18,9 @@ if command -v fzf &> /dev/null; then
   if [[ -f /usr/share/fzf/key-bindings.bash ]]; then
     source /usr/share/fzf/key-bindings.bash
   fi
+fi
+
+# Activate mise LAST so its PROMPT_COMMAND hook isn't overwritten
+if command -v mise &> /dev/null; then
+  eval "$(mise activate bash)"
 fi
