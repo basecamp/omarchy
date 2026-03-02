@@ -6,7 +6,7 @@ COMMAND="$1"
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
 if [[ -z $COMMAND ]]; then
-  echo "Usage: omarchy-snapshot <create|restore>" >&2
+  echo "Usage: omarchy-snapshot <create|restore|delete>" >&2
   exit 1
 fi
 
@@ -26,9 +26,12 @@ create)
   for config in "${CONFIGS[@]}"; do
     sudo snapper -c "$config" create -c number -d "$DESC"
   done
+
   echo
   ;;
 restore)
   sudo limine-snapper-restore
   ;;
+delete)
+  sudo snapper delete $(echo $(sudo snapper list | tail -n 1) | awk '{print substr($0,0,2)}') # gets the number of the most recent snapshot and deletes it
 esac
