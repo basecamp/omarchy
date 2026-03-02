@@ -4,6 +4,18 @@ set -e
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 
+# Parse --isolate flag from arguments (can appear anywhere)
+ISOLATE=false
+ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--isolate" ]]; then
+    ISOLATE=true
+  else
+    ARGS+=("$arg")
+  fi
+done
+set -- "${ARGS[@]}"
+
 if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
@@ -24,6 +36,10 @@ if (( $# < 3 )); then
   CUSTOM_EXEC=""
   MIME_TYPES=""
   INTERACTIVE_MODE=true
+
+  if gum confirm "Isolate this webapp? (separate process, won't crash main browser, but requires separate login)"; then
+    ISOLATE=true
+  fi
 else
   APP_NAME="$1"
   APP_URL="$2"
@@ -59,8 +75,15 @@ else
   ICON_PATH="$ICON_DIR/$ICON_REF"
 fi
 
+# Build isolation flag for exec command
+ISOLATE_FLAG=""
+if [[ $ISOLATE == true ]]; then
+  SANITIZED_NAME=$(echo "$APP_NAME" | tr ' ' '-')
+  ISOLATE_FLAG=" --isolate=$SANITIZED_NAME"
+fi
+
 # Use custom exec if provided, otherwise default behavior
-EXEC_COMMAND="${CUSTOM_EXEC:-omarchy-launch-webapp $APP_URL}"
+EXEC_COMMAND="${CUSTOM_EXEC:-omarchy-launch-webapp $APP_URL$ISOLATE_FLAG}"
 
 # Create application .desktop file
 DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
@@ -85,5 +108,9 @@ fi
 chmod +x "$DESKTOP_FILE"
 
 if [[ $INTERACTIVE_MODE == "true" ]]; then
-  echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
+  if [[ $ISOLATE == true ]]; then
+    echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\nThis webapp will run in an isolated process. You'll need to log in separately.\n"
+  else
+    echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
+  fi
 fi
