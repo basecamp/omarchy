@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Toggle automatic monitor refresh rate switching based on power profile.
+# When enabled, power-saver → lowest Hz, balanced/performance → highest Hz.
+# Only affects the built-in laptop display (eDP-*).
+
+SERVICE="omarchy-monitor-refresh-rate-watch.service"
+
+# Ensure the service file is installed
+if [[ ! -f ~/.config/systemd/user/$SERVICE ]]; then
+  omarchy-refresh-config systemd/user/$SERVICE
+  systemctl --user daemon-reload
+fi
+
+if systemctl --user is-active --quiet "$SERVICE"; then
+  systemctl --user disable --now "$SERVICE"
+  omarchy-monitor-refresh-rate-watch --restore
+  notify-send "󰍹  Refresh rate switching disabled"
+else
+  systemctl --user enable --now "$SERVICE"
+  notify-send "󰍹  Refresh rate switching enabled"
+fi
