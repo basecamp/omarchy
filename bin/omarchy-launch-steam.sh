@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if omarchy-pkg-present steam; then
+if omarchy-pkg-present steam; then # Only apply if steam is installed
 
   # Launch steam in gaming mode ( inspired by https://github.com/cephalization/omarchy-steam-gaming-mode)
 
@@ -56,5 +56,7 @@ if omarchy-pkg-present steam; then
       args+=(-F fsr)
     fi
     gamescope "${args[@]}" -- steam -tenfoot
+else
+  echo "please install steam first by running omarchy-install-steam"
 fi
 
