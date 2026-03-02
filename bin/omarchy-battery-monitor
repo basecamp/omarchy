@@ -7,17 +7,26 @@ NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"
 BATTERY_LEVEL=$(omarchy-battery-remaining)
 BATTERY_STATE=$(upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{print $2}')
 
+# Above 6% — notify every 3% drop. At 4% and below — every 1%
+notify_interval() {
+  if (( $1 > 6 )); then echo 3
+  elif (( $1 > 4 )); then echo 2
+  else echo 1
+  fi
+}
+
 send_notification() {
   notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
 }
 
 if [[ -n $BATTERY_LEVEL && $BATTERY_LEVEL =~ ^[0-9]+$ ]]; then
   if [[ $BATTERY_STATE == "discharging" ]] && (( BATTERY_LEVEL <= BATTERY_THRESHOLD )); then
-    if [[ ! -f $NOTIFICATION_FLAG ]]; then
+    LAST_NOTIFIED=$(cat "$NOTIFICATION_FLAG" 2>/dev/null)
+    if [[ -z $LAST_NOTIFIED ]] || (( BATTERY_LEVEL <= LAST_NOTIFIED - $(notify_interval $BATTERY_LEVEL) )); then
       send_notification $BATTERY_LEVEL
-      touch $NOTIFICATION_FLAG
+      echo $BATTERY_LEVEL > $NOTIFICATION_FLAG
     fi
   else
-    rm -f $NOTIFICATION_FLAG
+    omarchy-notification-dismiss "Time to recharge!"
   fi
 fi
