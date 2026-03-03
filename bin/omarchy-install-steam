@@ -51,9 +51,9 @@ install_drivers () {
   esac
 
   echo "Installing $1 drivers"
-  for pkg in ${pkgs[@]}
+  for $pkg in ${pkgs[@]}
   do
-    omarchy-pkg-add pkg
+    omarchy-pkg-add $pkg
   done
 
 }
