@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 if omarchy-pkg-present steam; then # Only apply if steam is installed
 
@@ -31,7 +31,6 @@ if omarchy-pkg-present steam; then # Only apply if steam is installed
   trap "omarchy-toggle-screensaver; omarchy-toggle-hypridle"
 
   # Disable screensaver
-
   STATE_FILE=~/.local/state/omarchy/toggles/screensaver-off
   if [[ ! -f $STATE_FILE ]]; then
     mkdir -p "$(dirname $STATE_FILE)"
