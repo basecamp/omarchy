@@ -2,13 +2,19 @@
 
 # Toggle the layout on the current active workspace between dwindle and scrolling
 
-ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
+ACTIVE_MONITOR_ID=$(hyprctl activeworkspace -j | jq -r '.monitorID')
+ACTIVE_WORKSPACE_NAME=$(hyprctl activeworkspace -j | jq -r '.name')
 CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
+SPECIAL_WS_ID=$(hyprctl monitors -j | jq -r --argjson idx "$ACTIVE_MONITOR_ID" '.[$idx].specialWorkspace.id')
 
+if [ "$SPECIAL_WS_ID" -ne "0" ]; then
+    CURRENT_LAYOUT=$(hyprctl workspaces -j | jq -r --argjson id "$SPECIAL_WS_ID" '.[] | select(.id == $id) | .tiledLayout')
+    ACTIVE_WORKSPACE_NAME=$(hyprctl workspaces -j | jq -r --argjson id "$SPECIAL_WS_ID" '.[] | select(.id == $id) | .name')
+fi
 case "$CURRENT_LAYOUT" in
   dwindle) NEW_LAYOUT=scrolling ;;
   *) NEW_LAYOUT=dwindle ;;
 esac
 
-hyprctl keyword workspace $ACTIVE_WORKSPACE, layout:$NEW_LAYOUT
+hyprctl keyword workspace $ACTIVE_WORKSPACE_NAME, layout:$NEW_LAYOUT
 notify-send "󱂬    Workspace layout set to $NEW_LAYOUT"
