@@ -11,7 +11,7 @@ POSSIBLE_GPUS=$(lspci | grep VGA)
 
 NVIDIA_PKGS=(
   # Drivers
-  nvidia
+  nvidia-open
   nvidia-utils
   lib32-nvidia-utils
   lib32-nvidia-libgl
@@ -51,7 +51,7 @@ install_drivers () {
   esac
 
   echo "Installing $1 drivers"
-  for $pkg in ${pkgs[@]}
+  for pkg in ${pkgs[@]}
   do
     omarchy-pkg-add $pkg
   done
@@ -69,21 +69,21 @@ fi
 
 # Add steam windowrules to hyprland config
 
-if ! grep -Fxq "source = ~/.local/share/omarchy/default/hypr/apps/steam.conf" "~/.config/hypr/hyprland.conf"; then
-  echo "" >> "~/.config/hypr/hyprland.conf"
-  echo "# Steam" >> "~/.config/hypr/hyprland.conf"
-  echo "source = ~/.local/share/omarchy/default/hypr/apps/steam.conf" >> "~/.config/hypr/hyprland.conf"
+if ! grep -Fxq "source = $HOME/.local/share/omarchy/default/hypr/apps/steam.conf" "$HOME/.config/hypr/hyprland.conf"; then
+  echo "" >> "$HOME/.config/hypr/hyprland.conf"
+  echo "# Steam" >> "$HOME/.config/hypr/hyprland.conf"
+  echo "source = $HOME/.local/share/omarchy/default/hypr/apps/steam.conf" >> "$HOME/.config/hypr/hyprland.conf"
 fi
 
 # Force steam to use xwayland because it doesn't run that well on wayland native
-echo "export STEAM_FORCE_DESKTOPUI_SCALING=1" >> ~/.config/uwsm/env
+echo "export STEAM_FORCE_DESKTOPUI_SCALING=1" >> "$HOME/.config/uwsm/env"
 
 # Install steam with gamemode,gamescope and proton-ge for optimizations (windetricks was a recommended dependency for proton-ge)
-omarchy-pkg-aur-add proton-ge-bin
+omarchy-pkg-aur-add proton-ge-custom-bin
 omarchy-pkg-add steam gamemode gamescope lib32-gamemode winetricks
 
 # Set Proton-GE by default automatically
-sed -i -e 's/proton_experimental/Proton-GE/g' ~/.local/share/Steam/config/config.vdf
+sed -i -e 's/proton_experimental/Proton-GE/g' "$HOME/.local/share/Steam/config/config.vdf"
 
 omarchy-launch-steam
 
