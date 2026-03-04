@@ -199,6 +199,32 @@ show_theme_menu() {
 }
 
 show_background_menu() {
+  case $(menu "Background" "  Background\n⚙  Backend") in
+  *Background*) show_background_options_menu ;;
+  *Backend*) show_background_backend_menu ;;
+  *) show_style_menu ;;
+  esac
+}
+
+show_background_backend_menu() {
+  case $(menu "Backend" "Swww\n  Swaybg") in
+  *Swww*) setup_background_service_swww ;;
+  *Swaybg*) setup_background_service_swaybg ;;
+  *) show_background_menu ;;
+  esac
+}
+
+setup_background_service_swww() {
+  ln -sf ~/.local/share/omarchy/bin/omarchy-bg-run-swww ~/.local/share/omarchy/bin/omarchy-bg-run
+  omarchy-bg-run
+}
+
+setup_background_service_swaybg() {
+  ln -sf ~/.local/share/omarchy/bin/omarchy-bg-run-swaybg ~/.local/share/omarchy/bin/omarchy-bg-run
+  omarchy-bg-run
+}
+
+show_background_options_menu() {
   omarchy-launch-walker -m menus:omarchyBackgroundSelector --width 800 --minheight 400
 }
 
