@@ -25,10 +25,6 @@ if command -v zoxide &> /dev/null; then
       printf "\U000F17A9 "
       pwd
     fi
-
-    if [[ -n $TMUX ]]; then
-      tmux rename-window "$(basename "$PWD")"
-    fi
   }
 fi
 
