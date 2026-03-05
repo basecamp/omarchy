@@ -1,0 +1,557 @@
+#!/bin/bash
+
+set -e
+
+# Toggle a systemd-networkd interface between DHCP and static IPv4.
+# Default behavior:
+# - if static override exists, remove it and return to DHCP
+# - otherwise, prompt for static IP and create an override
+#
+# Hardening included:
+# - interface selection with default-route preselection
+# - --iface / --dhcp / --static for non-interactive recovery
+# - strict guard that target .network profile exists before write
+
+STATE_DIR="$HOME/.local/state/omarchy/ip-mode"
+OVERRIDE_BASENAME="90-omarchy-ip-mode.conf"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  omarchy-toggle-ip-mode [--iface IFACE] [--dhcp | --static IP]
+  omarchy-toggle-ip-mode --help
+
+Modes:
+  (no mode flag)   Toggle selected interface between static and DHCP.
+  --dhcp           Force DHCP (remove static override).
+  --static IP      Force static mode with IP (no prompt for IP).
+
+Options:
+  --iface IFACE    Target interface (for example: enp4s0, wlan0).
+  --help           Show this help.
+
+Notes:
+  - Without --iface, the default-route interface is preselected.
+  - If no default route exists, fallback selection is used.
+EOF
+}
+
+# Return success only for syntactically valid IPv4 addresses.
+is_valid_ipv4() {
+  local ip=$1
+
+  if [[ ! $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    return 1
+  fi
+
+  local o1 o2 o3 o4
+  IFS='.' read -r o1 o2 o3 o4 <<<"$ip"
+
+  for octet in $o1 $o2 $o3 $o4; do
+    if (( octet < 0 || octet > 255 )); then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+# Convert IPv4 dotted quad to unsigned 32-bit integer for subnet math.
+ip_to_int() {
+  local ip=$1
+  local o1 o2 o3 o4
+  IFS='.' read -r o1 o2 o3 o4 <<<"$ip"
+  printf '%u\n' $(( (o1 << 24) | (o2 << 16) | (o3 << 8) | o4 ))
+}
+
+# Convert unsigned 32-bit integer back to IPv4 dotted quad.
+int_to_ip() {
+  local int=$1
+  printf '%d.%d.%d.%d\n' \
+    $(( (int >> 24) & 255 )) \
+    $(( (int >> 16) & 255 )) \
+    $(( (int >> 8) & 255 )) \
+    $(( int & 255 ))
+}
+
+# Parse CIDR and populate global subnet/range variables used throughout script.
+set_cidr_details() {
+  local cidr=$1
+  local ip_addr
+  local prefix_len
+  local ip_int
+
+  ip_addr=${cidr%/*}
+  prefix_len=${cidr#*/}
+
+  if ! [[ $prefix_len =~ ^[0-9]+$ ]] || (( prefix_len < 0 || prefix_len > 32 )); then
+    return 1
+  fi
+
+  if ! is_valid_ipv4 "$ip_addr"; then
+    return 1
+  fi
+
+  ip_int=$(ip_to_int "$ip_addr")
+
+  if (( prefix_len == 0 )); then
+    mask=0
+  else
+    mask=$(( (0xFFFFFFFF << (32 - prefix_len)) & 0xFFFFFFFF ))
+  fi
+
+  network_int=$(( ip_int & mask ))
+  broadcast_int=$(( network_int | ((~mask) & 0xFFFFFFFF) ))
+
+  if (( prefix_len <= 30 )); then
+    host_min_int=$(( network_int + 1 ))
+    host_max_int=$(( broadcast_int - 1 ))
+  else
+    host_min_int=$network_int
+    host_max_int=$broadcast_int
+  fi
+
+  current_cidr=$cidr
+  current_ip=$ip_addr
+  prefix=$prefix_len
+  current_ip_int=$ip_int
+  subnet="$(int_to_ip "$network_int")/$prefix"
+  host_min="$(int_to_ip "$host_min_int")"
+  host_max="$(int_to_ip "$host_max_int")"
+
+  return 0
+}
+
+# Resolve the .network profile backing an interface.
+# The returned profile must exist, otherwise an empty value is returned.
+resolve_network_file() {
+  local iface=$1
+  local network_file
+  local fallback_file
+  local profile
+  local names
+  local pattern
+
+  network_file=$(networkctl status "$iface" --no-pager 2>/dev/null | awk -F': ' '/^[[:space:]]*Network File:/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}')
+  if [[ -n $network_file && $network_file != "n/a" && -f $network_file ]]; then
+    printf '%s\n' "$network_file"
+    return 0
+  fi
+
+  case $iface in
+  wl*) fallback_file="/etc/systemd/network/20-wlan.network" ;;
+  ww*) fallback_file="/etc/systemd/network/20-wwan.network" ;;
+  en*|eth*) fallback_file="/etc/systemd/network/20-ethernet.network" ;;
+  *) fallback_file="" ;;
+  esac
+
+  if [[ -n $fallback_file && -f $fallback_file ]]; then
+    printf '%s\n' "$fallback_file"
+    return 0
+  fi
+
+  for profile in /etc/systemd/network/*.network /run/systemd/network/*.network /usr/lib/systemd/network/*.network; do
+    [[ -f $profile ]] || continue
+
+    while IFS= read -r names; do
+      names=${names%%#*}
+
+      for pattern in $names; do
+        if [[ $iface == $pattern ]]; then
+          printf '%s\n' "$profile"
+          return 0
+        fi
+      done
+    done < <(awk -F= '/^[[:space:]]*Name[[:space:]]*=/ {print $2}' "$profile")
+  done
+
+  printf '%s\n' ""
+}
+
+iface_arg=""
+force_mode=""
+static_ip_arg=""
+
+# Parse flags for explicit interface and non-interactive force modes.
+while (( $# > 0 )); do
+  case $1 in
+  --iface)
+    if (( $# < 2 )) || [[ -z $2 ]]; then
+      echo "Error: --iface requires an interface name."
+      exit 1
+    fi
+    iface_arg=$2
+    shift 2
+    ;;
+  --iface=*)
+    iface_arg=${1#*=}
+    if [[ -z $iface_arg ]]; then
+      echo "Error: --iface requires an interface name."
+      exit 1
+    fi
+    shift
+    ;;
+  --dhcp)
+    if [[ $force_mode == "static" ]]; then
+      echo "Error: --dhcp and --static cannot be used together."
+      exit 1
+    fi
+    force_mode="dhcp"
+    shift
+    ;;
+  --static)
+    if [[ $force_mode == "dhcp" ]]; then
+      echo "Error: --dhcp and --static cannot be used together."
+      exit 1
+    fi
+    if (( $# < 2 )) || [[ -z $2 ]]; then
+      echo "Error: --static requires an IPv4 address."
+      exit 1
+    fi
+    force_mode="static"
+    static_ip_arg=$2
+    shift 2
+    ;;
+  --static=*)
+    if [[ $force_mode == "dhcp" ]]; then
+      echo "Error: --dhcp and --static cannot be used together."
+      exit 1
+    fi
+    static_ip_arg=${1#*=}
+    if [[ -z $static_ip_arg ]]; then
+      echo "Error: --static requires an IPv4 address."
+      exit 1
+    fi
+    force_mode="static"
+    shift
+    ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "Error: Unknown option: $1"
+    usage
+    exit 1
+    ;;
+  esac
+done
+
+# We use Omarchy command helpers to keep checks aligned with project conventions.
+if ! command -v omarchy-cmd-missing >/dev/null 2>&1 || ! command -v omarchy-cmd-present >/dev/null 2>&1; then
+  echo "Error: omarchy-cmd helper commands are missing from PATH."
+  exit 1
+fi
+
+missing=()
+for cmd in ip awk networkctl systemctl sudo basename mktemp install; do
+  if omarchy-cmd-missing "$cmd"; then
+    missing+=("$cmd")
+  fi
+done
+
+if (( ${#missing[@]} > 0 )); then
+  echo "Error: Missing required commands: ${missing[*]}"
+  exit 1
+fi
+
+# Build interface list and keep only interfaces with a resolvable .network profile.
+mapfile -t all_ifaces < <(ip -o link show | awk -F': ' '{print $2}' | awk -F'@' '{print $1}' | awk '$1 != "lo" && !seen[$1]++ {print $1}')
+
+if (( ${#all_ifaces[@]} == 0 )); then
+  echo "Error: No non-loopback interfaces were found."
+  exit 1
+fi
+
+managed_ifaces=()
+iface_summaries=()
+
+for candidate in "${all_ifaces[@]}"; do
+  candidate_network_file=$(resolve_network_file "$candidate")
+  [[ -n $candidate_network_file ]] || continue
+
+  candidate_cidr=$(ip -o -4 addr show dev "$candidate" scope global | awk '{print $4; exit}')
+  if [[ -n $candidate_cidr ]] && set_cidr_details "$candidate_cidr"; then
+    candidate_summary="$candidate [$subnet | $host_min - $host_max]"
+  elif [[ -n $candidate_cidr ]]; then
+    candidate_summary="$candidate [$candidate_cidr]"
+  else
+    candidate_summary="$candidate [no active IPv4]"
+  fi
+
+  managed_ifaces+=("$candidate")
+  iface_summaries+=("$candidate_summary")
+done
+
+if (( ${#managed_ifaces[@]} == 0 )); then
+  echo "Error: No systemd-networkd managed interfaces were found."
+  exit 1
+fi
+
+default_route_iface=$(ip -4 route show default | awk '{for (i = 1; i <= NF; i++) if ($i == "dev") {print $(i + 1); exit}}')
+default_iface=$default_route_iface
+
+# Fallback selection when no default route exists.
+if [[ -z $default_iface ]]; then
+  for candidate in "${managed_ifaces[@]}"; do
+    candidate_cidr=$(ip -o -4 addr show dev "$candidate" scope global | awk '{print $4; exit}')
+    if [[ -n $candidate_cidr ]]; then
+      default_iface=$candidate
+      break
+    fi
+  done
+fi
+
+if [[ -z $default_iface ]]; then
+  default_iface=${managed_ifaces[0]}
+fi
+
+default_is_managed="false"
+for candidate in "${managed_ifaces[@]}"; do
+  if [[ $candidate == "$default_iface" ]]; then
+    default_is_managed="true"
+    break
+  fi
+done
+
+if [[ $default_is_managed == "false" ]]; then
+  default_iface=${managed_ifaces[0]}
+fi
+
+iface=$iface_arg
+
+# Interactive interface selection (unless explicit iface or non-interactive force mode).
+if [[ -z $iface ]]; then
+  if [[ -n $force_mode ]] || [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+    iface=$default_iface
+  else
+    default_summary=""
+    for idx in "${!managed_ifaces[@]}"; do
+      if [[ ${managed_ifaces[$idx]} == "$default_iface" ]]; then
+        default_summary=${iface_summaries[$idx]}
+        break
+      fi
+    done
+
+    if omarchy-cmd-present gum; then
+      selected=$(gum choose --header "Select interface (default preselected)" --selected "$default_summary" "${iface_summaries[@]}") || exit 1
+      iface=${selected%% *}
+    else
+      echo "Available interfaces:"
+      for idx in "${!managed_ifaces[@]}"; do
+        marker=" "
+        if [[ ${managed_ifaces[$idx]} == "$default_iface" ]]; then
+          marker="*"
+        fi
+        echo "  $((idx + 1)))$marker ${iface_summaries[$idx]}"
+      done
+
+      read -r -p "Interface [$default_iface]: " iface
+      iface=${iface:-$default_iface}
+
+      if [[ $iface =~ ^[0-9]+$ ]] && (( iface >= 1 && iface <= ${#managed_ifaces[@]} )); then
+        iface=${managed_ifaces[$((iface - 1))]}
+      fi
+    fi
+  fi
+fi
+
+iface_is_managed="false"
+for candidate in "${managed_ifaces[@]}"; do
+  if [[ $candidate == "$iface" ]]; then
+    iface_is_managed="true"
+    break
+  fi
+done
+
+if [[ $iface_is_managed == "false" ]]; then
+  echo "Error: '$iface' is not managed by a discoverable systemd-networkd profile."
+  echo "Available interfaces:"
+  for summary in "${iface_summaries[@]}"; do
+    echo "  - $summary"
+  done
+  exit 1
+fi
+
+network_file=$(resolve_network_file "$iface")
+
+# Hard guard: never write override unless profile file exists.
+if [[ -z $network_file || ! -f $network_file ]]; then
+  echo "Error: Could not find a valid .network profile for $iface."
+  exit 1
+fi
+
+network_name=$(basename "$network_file")
+override_dir="/etc/systemd/network/${network_name}.d"
+override_file="$override_dir/$OVERRIDE_BASENAME"
+
+mkdir -p "$STATE_DIR"
+state_file="$STATE_DIR/last-static-$iface"
+
+override_exists="false"
+if sudo test -f "$override_file"; then
+  override_exists="true"
+fi
+
+if [[ -n $force_mode ]]; then
+  mode=$force_mode
+elif [[ $override_exists == "true" ]]; then
+  mode="dhcp"
+else
+  mode="static"
+fi
+
+if [[ $mode == "dhcp" ]]; then
+  if [[ $override_exists == "true" ]]; then
+    sudo rm -f "$override_file"
+    sudo systemctl restart systemd-networkd systemd-resolved
+
+    if omarchy-cmd-present notify-send; then
+      notify-send "IP mode set to DHCP on $iface"
+    fi
+
+    echo "Switched $iface to DHCP."
+    echo "Removed override: $override_file"
+  else
+    echo "$iface is already using DHCP (no static override present)."
+  fi
+
+  exit 0
+fi
+
+# Static mode requires current CIDR so range checks and defaults remain safe.
+current_cidr=$(ip -o -4 addr show dev "$iface" scope global | awk '{print $4; exit}')
+if [[ -z $current_cidr ]]; then
+  echo "Error: No active IPv4 address found on $iface."
+  echo "Connect the interface first, then run this script again."
+  exit 1
+fi
+
+if ! set_cidr_details "$current_cidr"; then
+  echo "Error: Invalid CIDR detected from interface '$iface': $current_cidr"
+  exit 1
+fi
+
+gateway=$(ip -4 route show default dev "$iface" | awk '{for (i = 1; i <= NF; i++) if ($i == "via") {print $(i + 1); exit}}')
+dns_servers=""
+
+# Keep current DNS servers on static mode when available.
+if omarchy-cmd-present resolvectl; then
+  dns_servers=$(resolvectl dns "$iface" 2>/dev/null | awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}$/) {
+          if (out == "") {
+            out = $i
+          } else {
+            out = out " " $i
+          }
+        }
+      }
+    }
+    END { print out }
+  ')
+fi
+
+if [[ -z $dns_servers && -n $gateway ]]; then
+  dns_servers=$gateway
+fi
+
+# Reuse previously entered static IP if it still belongs to current usable range.
+default_ip=$current_ip
+if [[ -f $state_file ]]; then
+  read -r saved_ip <"$state_file" || true
+
+  if is_valid_ipv4 "$saved_ip"; then
+    saved_ip_int=$(ip_to_int "$saved_ip")
+    if (( (saved_ip_int & mask) == network_int )) && (( saved_ip_int >= host_min_int && saved_ip_int <= host_max_int )); then
+      default_ip=$saved_ip
+    fi
+  fi
+fi
+
+echo "Interface        : $iface"
+echo "Network profile  : $network_name"
+echo "Available subnet : $subnet"
+echo "Usable range     : $host_min - $host_max"
+if [[ -n $gateway ]]; then
+  echo "Gateway          : $gateway"
+fi
+echo "Current IPv4     : $current_ip"
+echo
+
+if [[ $force_mode == "static" ]]; then
+  static_ip=$static_ip_arg
+else
+  if omarchy-cmd-present gum; then
+    static_ip=$(gum input --prompt "Static IPv4> " --value "$default_ip" --placeholder "$host_min - $host_max")
+  else
+    read -r -p "Static IPv4 [$default_ip]: " static_ip
+    static_ip=${static_ip:-$default_ip}
+  fi
+fi
+
+static_ip="${static_ip//[[:space:]]/}"
+
+if [[ -z $static_ip ]]; then
+  echo "Error: No static IPv4 provided."
+  exit 1
+fi
+
+if ! is_valid_ipv4 "$static_ip"; then
+  echo "Error: '$static_ip' is not a valid IPv4 address."
+  exit 1
+fi
+
+static_ip_int=$(ip_to_int "$static_ip")
+if (( (static_ip_int & mask) != network_int )); then
+  echo "Error: $static_ip is outside subnet $subnet."
+  exit 1
+fi
+
+if (( static_ip_int < host_min_int || static_ip_int > host_max_int )); then
+  echo "Error: $static_ip is outside usable range $host_min - $host_max."
+  exit 1
+fi
+
+if [[ -n $gateway ]] && is_valid_ipv4 "$gateway"; then
+  gateway_int=$(ip_to_int "$gateway")
+  if (( static_ip_int == gateway_int )); then
+    echo "Error: $static_ip matches gateway $gateway."
+    exit 1
+  fi
+fi
+
+# Write override with atomic replacement so partial writes never apply.
+tmp_file=$(mktemp)
+trap 'rm -f "$tmp_file"' EXIT
+
+{
+  echo "[Network]"
+  echo "DHCP=no"
+  echo "Address=$static_ip/$prefix"
+  if [[ -n $gateway ]]; then
+    echo "Gateway=$gateway"
+  fi
+  if [[ -n $dns_servers ]]; then
+    echo "DNS=$dns_servers"
+  fi
+} >"$tmp_file"
+
+sudo mkdir -p "$override_dir"
+sudo install -m 0644 "$tmp_file" "$override_file"
+
+printf '%s\n' "$static_ip" >"$state_file"
+
+sudo systemctl restart systemd-networkd systemd-resolved
+
+trap - EXIT
+rm -f "$tmp_file"
+
+if omarchy-cmd-present notify-send; then
+  notify-send "IP mode set to static: $static_ip/$prefix on $iface"
+fi
+
+echo "Switched $iface to static mode."
+echo "Static address : $static_ip/$prefix"
+echo "Override file  : $override_file"
