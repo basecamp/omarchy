@@ -1,0 +1,90 @@
+#!/bin/bash
+
+OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
+
+# Get remote tag
+latest_tag=$(cd "$OMARCHY_PATH" && git ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+if [[ -z $latest_tag ]]; then
+  exit 1
+fi
+
+# Get local tag
+current_tag=$(cd "$OMARCHY_PATH" && git describe --tags $(git rev-list --tags --max-count=1))
+if [[ -z $current_tag ]]; then
+  exit 1
+fi
+
+if [[ $current_tag == $latest_tag ]]; then
+  exit 1
+fi
+
+# Get all tags between current and latest (exclusive of current, inclusive of latest)
+tags_between=$(cd "$OMARCHY_PATH" && git ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | awk -v from="$current_tag" -v to="$latest_tag" 'BEGIN{found=0} $0==from{found=1;next} found{print} $0==to{exit}')
+
+if [[ -z $tags_between ]]; then
+  tags_between="$latest_tag"
+fi
+
+# Collect release notes
+header="Current: $current_tag
+ Latest: $latest_tag
+
+<b>Left-click</b> to update
+<b>Right-click</b> for full release notes"
+full_text="$header"
+tooltip="$header"
+
+for tag in $(echo "$tags_between" | sort -rV); do
+  notes=$(gh api "repos/basecamp/omarchy/releases/tags/$tag" --jq '.body' 2>/dev/null)
+  if [[ -n $notes ]]; then
+    # Strip ISO download/install lines
+    clean=$(echo "$notes" | sed '/^## New Contributors/,$d' | grep -v -E '(^Install on new|^- Download:|^- SHA256:|iso\.omarchy\.org|^Update existing|^## What.s Changed)')
+    # Strip \r, remove empty lines after ## headers, collapse multiple empty lines
+    clean=$(echo "$clean" | tr -d '\r' | sed -e '/^##/{n;/^$/d;}' | cat -s)
+    # Strip all HTML tags from release notes
+    clean=$(echo "$clean" | sed -e 's/<[^>]*>//g')
+
+    # Full text keeps markdown as-is
+    full_text="$full_text
+
+
+━━━ $tag ━━━
+$clean"
+
+    # Tooltip gets Pango markup + truncation
+    pango=$(echo "$clean" | sed \
+      -e 's/^### \(.*\)/<b>\1<\/b>/' \
+      -e 's/^## \(.*\)/<b>\1<\/b>/' \
+      -e 's/^# \(.*\)/<b>\1<\/b>/' \
+      -e 's/\*\*\([^*]*\)\*\*/<b>\1<\/b>/g' \
+      -e 's/\*\([^*]*\)\*/<i>\1<\/i>/g' \
+      -e 's/`\([^`]*\)`/<tt>\1<\/tt>/g' \
+      -e 's/^- /• /' \
+      -e 's/^\* /• /' \
+    )
+    total=$(echo "$pango" | wc -l)
+    pango=$(echo "$pango" | head -10)
+    if (( total > 10 )); then
+      pango="$pango
+
+... and more (right-click for full notes)"
+    fi
+    tooltip="$tooltip
+
+
+━━━ $tag ━━━
+$pango"
+  fi
+done
+
+# --full: open full notes in editor
+if [[ "$1" == "--full" ]]; then
+  tmpfile=$(mktemp /tmp/omarchy-release-notes-XXXXXX.md)
+  echo "$full_text" > "$tmpfile"
+  ${EDITOR:-nvim} "$tmpfile"
+  rm -f "$tmpfile"
+  exit 0
+fi
+
+# Output as JSON for waybar (using jq for proper escaping)
+jq -c -n --arg tooltip "$tooltip" '{"text": "update", "tooltip": $tooltip}'
