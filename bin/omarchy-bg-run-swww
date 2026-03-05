@@ -1,1 +1,10 @@
-/home/kuba/.local/share/omarchy/bin/omarchy-bg-run-swww
+#!/bin/bash
+
+# Launch the background process based on swaybg
+
+pkill swww-daemon 2>/dev/null
+pkill swaybg 2>/dev/null
+
+swww-daemon &
+sleep 0.5 
+swww img ~/.config/omarchy/current/background
