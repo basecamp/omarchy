@@ -19,6 +19,13 @@ back_to() {
   fi
 }
 
+toggle_existing_menu() {
+  if pgrep -f "walker.*--dmenu" > /dev/null; then
+    walker --close > /dev/null 2>&1
+    exit 0
+  fi
+}
+
 menu() {
   local prompt="$1"
   local options="$2"
@@ -618,6 +625,8 @@ go_to_menu() {
 # Allow user extensions and overrides
 USER_EXTENSIONS="$HOME/.config/omarchy/extensions/menu.sh"
 [[ -f $USER_EXTENSIONS ]] && source "$USER_EXTENSIONS"
+
+toggle_existing_menu
 
 if [[ -n $1 ]]; then
   BACK_TO_EXIT=true
