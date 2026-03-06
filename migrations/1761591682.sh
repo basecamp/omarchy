@@ -3,7 +3,7 @@ echo "Configure and enable NetworkManager, disable systemd-networkd"
 
 # Copy Omarchy NetworkManager configuration to /etc/NetworkManager/conf.d
 conf_dir="/etc/NetworkManager/conf.d"
-sudo mkdir -p $conf_dir
+sudo mkdir -p "$conf_dir"
 sudo cp -f ~/.local/share/omarchy/default/networkmanager/omarchy_networkmanager.conf "$conf_dir/omarchy_networkmanager.conf"
 
 # Check for other .conf files in and warn the user
@@ -16,7 +16,7 @@ if [ -n "$other_files" ]; then
 fi
 
 # Mask WPA Supplicant to prevent it from being started by NetworkManager
-if ! systemctl is-enabled wpa_supplicant.service | grep -q "masked"; then
+if ! systemctl is-enabled wpa_supplicant.service --quiet | grep -q "masked"; then
     sudo systemctl mask --now wpa_supplicant.service
 fi
 
@@ -40,9 +40,14 @@ if ! systemctl is-enabled iwd.service | grep -q "enabled"; then
 fi
 
 # Enable and start NetworkManager
+sudo systemctl unmask NetworkManager.service
 if ! systemctl is-enabled NetworkManager.service | grep -q "enabled"; then
-    sudo systemctl unmask NetworkManager.service
-    sudo systemctl enable --now NetworkManager.service
+    sudo systemctl enable NetworkManager.service
+fi
+if systemctl is-active --quiet NetworkManager.service; then
+    sudo systemctl restart NetworkManager.service
+else
+    sudo systemctl start NetworkManager.service
 fi
 
 # Make sure systemd-resolved is enabled
