@@ -51,11 +51,7 @@ if ! systemctl is-enabled NetworkManager.service | grep -q "enabled"; then
     sudo systemctl enable NetworkManager.service
 fi
 if systemctl is-active --quiet NetworkManager.service; then
-sudo systemctl unmask NetworkManager.service
-if ! systemctl is-enabled NetworkManager.service | grep -q "enabled"; then
-    sudo systemctl enable NetworkManager.service
-fi
-if systemctl is-active --quiet NetworkManager.service; then
+
     sudo systemctl restart NetworkManager.service
 else
     sudo systemctl start NetworkManager.service
