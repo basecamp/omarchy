@@ -21,18 +21,21 @@ if ! systemctl is-enabled --quiet wpa_supplicant.service | grep -q "masked"; the
 fi
 
 # Mask systemd-networkd and its sockets to prevent it from being started
-if ! systemctl is-enabled systemd-networkd.socket | grep -q "masked"; then
+if ! systemctl is-enabled  --quiet systemd-networkd.socket | grep -q "masked"; then
     sudo systemctl mask --now systemd-networkd.socket
 fi
 
-if ! systemctl is-enabled systemd-networkd-varlink.socket | grep -q "masked"; then
+if ! systemctl is-enabled --quiet systemd-networkd-varlink.socket | grep -q "masked"; then
     sudo systemctl mask --now systemd-networkd-varlink.socket
 fi
 
-if ! systemctl is-enabled systemd-networkd.service | grep -q "masked"; then
+if ! systemctl is-enabled --quiet systemd-networkd.service | grep -q "masked"; then
     sudo systemctl mask --now systemd-networkd.service
 fi
 
+if ! systemctl is-enabled systemd-networkd-wait-online.service | grep -q "masked"; then
+    sudo systemctl mask --now systemd-networkd-wait-online.service
+fi
 if ! systemctl is-enabled systemd-networkd-wait-online.service | grep -q "masked"; then
     sudo systemctl mask --now systemd-networkd-wait-online.service
 fi
