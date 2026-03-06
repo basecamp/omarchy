@@ -16,7 +16,7 @@ if [ -n "$other_files" ]; then
 fi
 
 # Mask WPA Supplicant to prevent it from being started by NetworkManager
-if ! systemctl is-enabled wpa_supplicant.service --quiet | grep -q "masked"; then
+if ! systemctl is-enabled --quiet wpa_supplicant.service | grep -q "masked"; then
     sudo systemctl mask --now wpa_supplicant.service
 fi
 
@@ -33,6 +33,9 @@ if ! systemctl is-enabled systemd-networkd.service | grep -q "masked"; then
     sudo systemctl mask --now systemd-networkd.service
 fi
 
+if ! systemctl is-enabled systemd-networkd-wait-online.service | grep -q "masked"; then
+    sudo systemctl mask --now systemd-networkd-wait-online.service
+fi
 # Make sure iwd is enabled
 if ! systemctl is-enabled iwd.service | grep -q "enabled"; then
     sudo systemctl unmask iwd.service
@@ -40,6 +43,11 @@ if ! systemctl is-enabled iwd.service | grep -q "enabled"; then
 fi
 
 # Enable and start NetworkManager
+sudo systemctl unmask NetworkManager.service
+if ! systemctl is-enabled NetworkManager.service | grep -q "enabled"; then
+    sudo systemctl enable NetworkManager.service
+fi
+if systemctl is-active --quiet NetworkManager.service; then
 sudo systemctl unmask NetworkManager.service
 if ! systemctl is-enabled NetworkManager.service | grep -q "enabled"; then
     sudo systemctl enable NetworkManager.service

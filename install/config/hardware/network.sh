@@ -3,6 +3,7 @@ sudo systemctl enable iwd.service
 
 # Configure NetworkManager
 sudo mkdir -p /etc/NetworkManager/conf.d
+sudo mkdir -p /etc/NetworkManager/conf.d
 sudo cp -f ~/.local/share/omarchy/default/networkmanager/omarchy_networkmanager.conf /etc/NetworkManager/conf.d/omarchy_networkmanager.conf
 
 # Prevent systemd-networkd-wait-online timeout on boot
@@ -23,4 +24,4 @@ sudo systemctl enable --now NetworkManager.service
 # Ensure systemd-resolved is enabled and started for NetworkManager DNS
 sudo systemctl enable --now systemd-resolved.service
 # Prevent NetworkManager-wait-online timeout on boot
-sudo systemctl mask NetworkManager-wait-online.service
+sudo systemctl mask --now NetworkManager-wait-online.service
