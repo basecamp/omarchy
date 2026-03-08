@@ -1,0 +1,7 @@
+#!/bin/bash
+wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+MUTED=$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -c MUTED)
+MONITOR=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
+[[ -w /sys/class/leds/platform::micmute/brightness ]] && echo "$MUTED" > /sys/class/leds/platform::micmute/brightness
+ICON=$([ "$MUTED" = "1" ] && echo muted || echo high)
+swayosd-client --monitor "$MONITOR" --custom-icon "microphone-sensitivity-$ICON-symbolic" --custom-message "Mic $([ "$MUTED" = "1" ] && echo muted || echo active)"
