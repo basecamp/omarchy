@@ -26,7 +26,7 @@ gd() {
     root="${worktree%%--*}"
     branch="${worktree#*--}"
 
-    # Protect against accidentially nuking a non-worktree directory
+    # Protect against accidentally nuking a non-worktree directory
     if [[ "$root" != "$worktree" ]]; then
       cd "../$root"
       git worktree remove "$worktree" --force
