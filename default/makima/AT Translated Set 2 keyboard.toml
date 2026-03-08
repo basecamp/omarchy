@@ -1,3 +1,5 @@
+# Run omarchy-restart-makima after any changes
+
 [remap]
 KEY_LEFTMETA-KEY_LEFTSHIFT-KEY_F23 = ["KEY_LEFTMETA", "KEY_LEFTALT", "KEY_SPACE"]
 
