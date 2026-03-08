@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Lazy-unmount all FUSE filesystems before suspend/hibernate to prevent the
+# kernel's process freeze from timing out. FUSE daemons (like gvfsd-fuse from
+# Nautilus) can block in uninterruptible sleep during freeze, causing suspend
+# to silently fail. The FUSE daemons restart automatically on wake.
+
+if [[ $1 == "pre" ]]; then
+  while IFS=' ' read -r _ mountpoint _ fstype _; do
+    if [[ $fstype == fuse.* ]]; then
+      fusermount3 -uz "$mountpoint" 2>/dev/null || fusermount -uz "$mountpoint" 2>/dev/null || true
+    fi
+  done < /proc/mounts
+fi
