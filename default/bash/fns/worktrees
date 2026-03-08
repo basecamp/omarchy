@@ -29,7 +29,7 @@ gd() {
     # Protect against accidentally nuking a non-worktree directory
     if [[ "$root" != "$worktree" ]]; then
       cd "../$root"
-      git worktree remove "$worktree" --force
+      git worktree remove "$cwd" --force || return 1
       git branch -D "$branch"
     fi
   fi
