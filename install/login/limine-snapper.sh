@@ -32,6 +32,11 @@ EOF
   sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
   sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
 
+  # Append any drop-in kernel cmdline configs (from hardware fix scripts, etc.)
+  for dropin in /etc/limine-entry-tool.d/*.conf; do
+    [ -f "$dropin" ] && cat "$dropin" | sudo tee -a /etc/default/limine >/dev/null
+  done
+
   # UKI and EFI fallback are EFI only
   if [[ -z $EFI ]]; then
     sudo sed -i '/^ENABLE_UKI=/d; /^ENABLE_LIMINE_FALLBACK=/d' /etc/default/limine
