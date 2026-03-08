@@ -1,0 +1,43 @@
+#!/bin/bash
+
+set -e
+
+ICON_DIR="$HOME/.local/share/applications/icons"
+DESKTOP_DIR="$HOME/.local/share/applications/"
+
+if (( $# == 0 )); then
+  # Find all desktop apps installed via omarchy-desktop-app-install
+  while IFS= read -r -d '' file; do
+    if grep -q '^X-Omarchy-Source=desktop-app-install' "$file"; then
+      DESKTOP_APPS+=("$(basename "${file%.desktop}")")
+    fi
+  done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)
+
+  if ((${#DESKTOP_APPS[@]})); then
+    IFS=$'\n' SORTED_DESKTOP_APPS=($(sort <<<"${DESKTOP_APPS[*]}"))
+    unset IFS
+    APP_NAMES_STRING=$(gum choose --no-limit --header "Select desktop app to remove..." --selected-prefix="✗ " "${SORTED_DESKTOP_APPS[@]}")
+    # Convert newline-separated string to array
+    APP_NAMES=()
+    while IFS= read -r line; do
+      [[ -n $line ]] && APP_NAMES+=("$line")
+    done <<< "$APP_NAMES_STRING"
+  else
+    echo "No desktop apps to remove."
+    exit 1
+  fi
+else
+  # Use array to preserve spaces in app names
+  APP_NAMES=("$@")
+fi
+
+if (( ${#APP_NAMES[@]} == 0 )); then
+  echo "You must select at least one desktop app to remove."
+  exit 1
+fi
+
+for APP_NAME in "${APP_NAMES[@]}"; do
+  rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
+  rm -f "$ICON_DIR/$APP_NAME.png"
+  echo "Removed $APP_NAME"
+done

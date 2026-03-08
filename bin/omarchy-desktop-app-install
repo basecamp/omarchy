@@ -1,0 +1,68 @@
+#!/bin/bash
+
+set -e
+
+ICON_DIR="$HOME/.local/share/applications/icons"
+
+if (( $# < 3 )); then
+  echo -e "\e[32mLet's create a new desktop app you can start with the app launcher.\n\e[0m"
+  APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite app")
+  APP_EXEC=$(gum input --prompt "Executable> " --placeholder "/usr/bin/my-app")
+  ICON_REF=$(gum input --prompt "Icon> " --placeholder "PNG icon URL or local path (see https://dashboardicons.com)")
+  TERMINAL=$(gum choose --header "Run in terminal?" "false" "true")
+  MIME_TYPES=""
+  INTERACTIVE_MODE=true
+else
+  APP_NAME="$1"
+  APP_EXEC="$2"
+  ICON_REF="$3"
+  TERMINAL="${4:-false}" # Optional: "true" or "false"
+  MIME_TYPES="$5" # Optional mime types
+  INTERACTIVE_MODE=false
+fi
+
+# Ensure valid execution
+if [[ -z $APP_NAME || -z $APP_EXEC ]]; then
+  echo "You must set app name and executable!"
+  exit 1
+fi
+
+# Resolve icon from URL or from a local path/icon name.
+mkdir -p "$ICON_DIR"
+
+if [[ $ICON_REF =~ ^https?:// ]]; then
+  ICON_PATH="$ICON_DIR/$APP_NAME.png"
+  if ! curl -fsSL -o "$ICON_PATH" "$ICON_REF" || [[ ! -s $ICON_PATH ]]; then
+    echo "Error: Failed to download icon."
+    exit 1
+  fi
+elif [[ $ICON_REF == /* ]]; then
+  ICON_PATH="$ICON_REF"
+else
+  ICON_PATH="$ICON_DIR/$ICON_REF"
+fi
+
+# Create application .desktop file
+DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
+
+cat >"$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Version=1.0
+Name=$APP_NAME
+Comment=$APP_NAME
+Exec=$APP_EXEC
+Terminal=$TERMINAL
+Type=Application
+Icon=$ICON_PATH
+StartupNotify=true
+X-Omarchy-Source=desktop-app-install
+EOF
+
+# Add mime types if provided
+if [[ -n $MIME_TYPES ]]; then
+  echo "MimeType=$MIME_TYPES" >>"$DESKTOP_FILE"
+fi
+
+if [[ $INTERACTIVE_MODE == "true" ]]; then
+  echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
+fi

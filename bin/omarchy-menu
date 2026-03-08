@@ -290,9 +290,10 @@ show_setup_system_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Desktop App\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
+  *Desktop*) terminal omarchy-desktop-app-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
   *TUI*) present_terminal omarchy-tui-install ;;
   *Service*) show_install_service_menu ;;
@@ -439,8 +440,9 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Desktop App\n  Web App\n  TUI\n󰵮  Development\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;
+  *Desktop*) present_terminal omarchy-desktop-app-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Development*) show_remove_development_menu ;;
