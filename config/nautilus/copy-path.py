@@ -14,7 +14,7 @@ class CopyPath(GObject.GObject, Nautilus.MenuProvider):
             if path is not None:
                 path_list.append(path)
         paths = "\n".join(path_list)
-        subprocess.Popen(["wl-copy", paths])
+        subprocess.run(["wl-copy", paths], check=True)
 
     def get_file_items(self, files):
         if not files:
