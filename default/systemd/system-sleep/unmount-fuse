@@ -6,7 +6,7 @@
 # to silently fail. The FUSE daemons restart automatically on wake.
 
 if [[ $1 == "pre" ]]; then
-  while IFS=' ' read -r _ mountpoint _ fstype _; do
+  while IFS=' ' read -r _ mountpoint fstype _; do
     if [[ $fstype == fuse.* ]]; then
       fusermount3 -uz "$mountpoint" 2>/dev/null || fusermount -uz "$mountpoint" 2>/dev/null || true
     fi
