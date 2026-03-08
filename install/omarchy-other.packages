@@ -19,6 +19,7 @@ iwd
 jdk-openjdk
 libpulse
 libsass
+intel-media-driver
 libva-intel-driver
 libva-nvidia-driver
 limine
