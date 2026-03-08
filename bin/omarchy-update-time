@@ -1,4 +1,4 @@
 #!/bin/bash
 
-echo -e "\e[32mUpdate time\e[0m\n"
+echo "Updating time..."
 sudo systemctl restart systemd-timesyncd
