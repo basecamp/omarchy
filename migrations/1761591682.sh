@@ -29,7 +29,7 @@ if ! systemctl is-enabled --quiet systemd-networkd-varlink.socket | grep -q "mas
     sudo systemctl mask --now systemd-networkd-varlink.socket
 fi
 
-if ! systemctl is-enabled --quiet systemd-networkd.service | grep -q "masked"; then
+if ! systemctl is-masked --quiet systemd-networkd.service | grep -q "masked"; then
     sudo systemctl mask --now systemd-networkd.service
 fi
 
