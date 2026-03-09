@@ -1,4 +1,4 @@
-echo "Add sample battery monitor notification hook"
+echo "Add sample battery monitor hook"
 
 mkdir -p ~/.config/omarchy/hooks
 
