@@ -6,8 +6,6 @@
 BATTERY_LEVEL=$1
 BATTERY_STATE=$2
 
-if [[ $(powerprofilesctl get) != "power-saver" ]] &&
-  [[ $BATTERY_STATE == "discharging" ]] &&
-  ((BATTERY_LEVEL <= ${OMARCHY_POWER_SAVER_BATTERY_TRESHOLD:-20})); then
+if [[ $(powerprofilesctl get) != "power-saver" ]] && [[ $BATTERY_STATE == "discharging" ]] && ((BATTERY_LEVEL <= 20)); then
   powerprofilesctl set power-saver
 fi
