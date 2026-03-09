@@ -44,6 +44,8 @@ alias d='docker'
 alias r='rails'
 alias t='tmux attach || tmux new -s Work'
 n() { if [ "$#" -eq 0 ]; then command nvim . ; else command nvim "$@"; fi; }
+alias update='sudo pacman -Syu'
+
 
 # Git
 alias g='git'
