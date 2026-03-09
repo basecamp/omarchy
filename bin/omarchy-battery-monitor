@@ -9,6 +9,7 @@ BATTERY_STATE=$(upower -i $(upower -e | grep 'BAT') | grep -E "state" | awk '{pr
 
 send_notification() {
   notify-send -u critical "󱐋 Time to recharge!" "Battery is down to ${1}%" -i battery-caution -t 30000
+  omarchy-hook battery-low "$1"
 }
 
 if [[ -n $BATTERY_LEVEL && $BATTERY_LEVEL =~ ^[0-9]+$ ]]; then
