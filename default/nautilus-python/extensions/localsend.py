@@ -26,9 +26,8 @@ class SendViaLocalSendAction(GObject.GObject, Nautilus.MenuProvider):
         if localsend:
             return [localsend, "--headless", "send"]
 
-        flatpak = "/usr/bin/flatpak"
-        flatpak_app = Gio.DesktopAppInfo.new("org.localsend.localsend_app.desktop")
-        if os.path.exists(flatpak) and flatpak_app is not None:
+        flatpak = shutil.which("flatpak")
+        if flatpak and self._has_flatpak_app(flatpak, "org.localsend.localsend_app"):
             return [
                 flatpak,
                 "run",
@@ -38,6 +37,13 @@ class SendViaLocalSendAction(GObject.GObject, Nautilus.MenuProvider):
             ]
 
         return None
+
+    def _has_flatpak_app(self, flatpak, app_id):
+        process = Gio.Subprocess.new(
+            [flatpak, "info", app_id],
+            Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE,
+        )
+        return process.wait_check()
 
     def _selected_paths(self, files):
         paths = []
