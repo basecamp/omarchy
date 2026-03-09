@@ -135,7 +135,17 @@ stop_screenrecording() {
     notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
   else
     trim_first_frame
-    notify-send "Screen recording saved to $OUTPUT_DIR" -t 2000
+    local filename=$(cat "$RECORDING_FILE" 2>/dev/null)
+    local preview="${filename%.mp4}-preview.png"
+
+    # Generate a preview thumbnail from the first frame
+    ffmpeg -y -i "$filename" -ss 00:00:00.1 -vframes 1 -q:v 2 "$preview" -loglevel quiet 2>/dev/null
+
+    (
+      ACTION=$(notify-send "Screen recording saved" "Open with Super + Alt + , (or click this)" -t 10000 -i "${preview:-$filename}" -A "default=open")
+      [[ $ACTION == "default" ]] && mpv "$filename"
+      rm -f "$preview"
+    ) &
   fi
 
   rm -f "$RECORDING_FILE"
