@@ -1,4 +1,5 @@
 import os
+import shutil
 
 from gi import require_version
 
@@ -21,8 +22,9 @@ class SendViaLocalSendAction(GObject.GObject, Nautilus.MenuProvider):
         Gio.Subprocess.new(command, Gio.SubprocessFlags.NONE)
 
     def _resolve_command(self):
-        if os.path.exists("/usr/bin/localsend"):
-            return ["/usr/bin/localsend", "--headless", "send"]
+        localsend = shutil.which("localsend")
+        if localsend:
+            return [localsend, "--headless", "send"]
 
         flatpak = "/usr/bin/flatpak"
         if os.path.exists(flatpak):
