@@ -18,6 +18,7 @@ run_logged $OMARCHY_INSTALL/config/remove-fcitx5-autostart.sh
 run_logged $OMARCHY_INSTALL/config/localdb.sh
 run_logged $OMARCHY_INSTALL/config/walker-elephant.sh
 run_logged $OMARCHY_INSTALL/config/fast-shutdown.sh
+run_logged $OMARCHY_INSTALL/config/unmount-fuse.sh
 run_logged $OMARCHY_INSTALL/config/sudoless-asdcontrol.sh
 run_logged $OMARCHY_INSTALL/config/input-group.sh
 run_logged $OMARCHY_INSTALL/config/makima.sh
