@@ -27,7 +27,8 @@ class SendViaLocalSendAction(GObject.GObject, Nautilus.MenuProvider):
             return [localsend, "--headless", "send"]
 
         flatpak = "/usr/bin/flatpak"
-        if os.path.exists(flatpak):
+        flatpak_app = Gio.DesktopAppInfo.new("org.localsend.localsend_app.desktop")
+        if os.path.exists(flatpak) and flatpak_app is not None:
             return [
                 flatpak,
                 "run",
