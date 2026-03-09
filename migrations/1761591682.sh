@@ -36,9 +36,7 @@ fi
 if ! systemctl is-enabled systemd-networkd-wait-online.service | grep -q "masked"; then
     sudo systemctl mask --now systemd-networkd-wait-online.service
 fi
-if ! systemctl is-enabled systemd-networkd-wait-online.service | grep -q "masked"; then
-    sudo systemctl mask --now systemd-networkd-wait-online.service
-fi
+
 # Make sure iwd is enabled
 if ! systemctl is-enabled iwd.service | grep -q "enabled"; then
     sudo systemctl unmask iwd.service
