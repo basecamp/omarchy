@@ -8,6 +8,7 @@
 if [[ $1 == "pre" ]]; then
   while IFS=' ' read -r _ mountpoint fstype _; do
     if [[ $fstype == fuse.* ]]; then
+      mountpoint=$(printf '%b' "$mountpoint")
       fusermount3 -uz "$mountpoint" 2>/dev/null || fusermount -uz "$mountpoint" 2>/dev/null || true
     fi
   done < /proc/mounts
@@ -28,4 +29,5 @@ if [[ $1 == "post" ]]; then
       fi
     done
   ) &
+  disown
 fi
