@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Lazy-unmount all FUSE filesystems before suspend/hibernate to prevent the
+# Lazy-unmount gvfsd-fuse filesystems before suspend/hibernate to prevent the
 # kernel's process freeze from timing out. FUSE daemons (like gvfsd-fuse from
 # Nautilus) can block in uninterruptible sleep during freeze, causing suspend
 # to silently fail. After wake, restart gvfs so the FUSE mount is restored.
 
 if [[ $1 == "pre" ]]; then
   while IFS=' ' read -r _ mountpoint fstype _; do
-    if [[ $fstype == fuse.* ]]; then
+    if [[ $fstype == fuse.gvfsd-fuse ]]; then
       mountpoint=$(printf '%b' "$mountpoint")
       fusermount3 -uz "$mountpoint" 2>/dev/null || fusermount -uz "$mountpoint" 2>/dev/null || true
     fi
@@ -22,7 +22,7 @@ if [[ $1 == "post" ]]; then
     for uid_dir in /run/user/*; do
       uid=$(basename "$uid_dir")
       if [[ -S $uid_dir/bus ]]; then
-        sudo -u "#$uid" \
+        sudo -u "#$uid" env \
           DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
           XDG_RUNTIME_DIR="$uid_dir" \
           systemctl --user restart gvfs-daemon.service 2>/dev/null || true
