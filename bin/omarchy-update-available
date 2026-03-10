@@ -1,23 +1,27 @@
 #!/bin/bash
 
-# Get remote tag
-latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags origin | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
+# Detect remote: use "upstream" for forks, "origin" for standard installs # [omarchy]
+remote="origin"
+if git -C "$OMARCHY_PATH" remote | grep -q "^upstream$"; then
+  remote="upstream"
+fi
+
+# Get latest remote tag
+latest_tag=$(git -C "$OMARCHY_PATH" ls-remote --tags "$remote" | grep -v "{}" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1)
 if [[ -z $latest_tag ]]; then
-  echo "Error: Could not retrieve latest tag."
   exit 1
 fi
 
-# Get local tag
-current_tag=$(git -C "$OMARCHY_PATH" describe --tags $(git -C "$OMARCHY_PATH" rev-list --tags --max-count=1))
+# Get latest local tag reachable from HEAD # [omarchy]
+current_tag=$(git -C "$OMARCHY_PATH" describe --tags --abbrev=0 HEAD 2>/dev/null)
 if [[ -z $current_tag ]]; then
-  echo "Error: Could not retrieve current tag."
   exit 1
 fi
 
-if [[ $current_tag != $latest_tag ]]; then
+# Only show update when remote has a NEWER version # [omarchy]
+if [[ "$current_tag" != "$latest_tag" ]] && [[ $(printf '%s\n%s\n' "$current_tag" "$latest_tag" | sort -V | tail -1) == "$latest_tag" ]]; then
   echo "Omarchy update available ($latest_tag)"
   exit 0
 else
-  echo "Omarchy is up to date ($current_tag)"
   exit 1
 fi
