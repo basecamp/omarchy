@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Run a network speed test, installing speedtest-cli if needed
+omarchy-cmd-missing speedtest-cli && omarchy-pkg-add speedtest-cli
+speedtest-cli
