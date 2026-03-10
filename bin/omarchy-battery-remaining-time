@@ -5,12 +5,22 @@
 battery_info=$(upower -i $(upower -e | grep BAT))
 
 echo "$battery_info" | awk '/time to (empty|full)/ {
-    hours = int($4)
-    minutes = int(($4 - hours) * 60)
-    if (minutes > 0) {
-        printf "%dh %dm", hours, minutes
+    value = $4
+    unit = $5
+
+    if (unit ~ /hour/) {
+        hours = int(value)
+        minutes = int((value - hours) * 60)
+        if (minutes > 0) {
+            printf "%dh %dm", hours, minutes
+        } else {
+            printf "%dh", hours
+        }
+    } else if (unit ~ /minute/) {
+        minutes = int(value)
+        printf "%dm", minutes
     } else {
-        printf "%dh", hours
+        printf "%s %s", value, unit
     }
     exit
 }'
