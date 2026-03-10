@@ -1,0 +1,11 @@
+[Unit]
+Description=Dynamic Hyprland Monitor Configuration
+PartOf=hyprland-session.target
+
+[Service]
+ExecStart=/tmp/basecamp-2858/bin/hyprdynamicmonitors
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=hyprland-session.target
