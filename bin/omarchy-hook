@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Run a named hook, like post-update (available in ~/.config/omarchy/hooks/post-update).
+# To run multiple scripts for one hook, place them in ~/.config/omarchy/hooks/<name>.d/.
 
 set -e
 
@@ -11,8 +12,18 @@ fi
 
 HOOK=$1
 HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
+HOOK_DIR="$HOME/.config/omarchy/hooks/$1.d"
 shift
 
 if [[ -f $HOOK_PATH ]]; then
   bash "$HOOK_PATH" "$@"
+fi
+
+if [[ -d $HOOK_DIR ]]; then
+  for hook_file in "$HOOK_DIR"/*; do
+    # Only run extensionless hook files to avoid backups and samples.
+    if [[ -f $hook_file && ${hook_file##*/} != *.* ]]; then
+      bash "$hook_file" "$@"
+    fi
+  done
 fi
