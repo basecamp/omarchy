@@ -24,7 +24,7 @@ gd() {
 
     # split on first `--`
     root="${worktree%%--*}"
-    branch="${worktree#*--}"
+    branch="$(git rev-parse --abbrev-ref HEAD)"
 
     # Protect against accidentally nuking a non-worktree directory
     if [[ "$root" != "$worktree" ]]; then
