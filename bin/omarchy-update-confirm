@@ -10,7 +10,36 @@ gum style --border normal --border-foreground 6 --padding "1 2" \
 
 echo
 
-if ! gum confirm "Continue with update?"; then
-  echo "Update cancelled"
-  exit 1
-fi
+while true; do
+  if gum confirm --affirmative="Continue with update" --negative="View changes"; then
+    break
+  fi
+
+  current="v$(omarchy-version)"
+  tags=$(gh release list --repo basecamp/omarchy --limit 50 2>/dev/null | awk '{print $1}')
+
+  if [[ -z "$tags" ]]; then
+    xdg-open "https://github.com/basecamp/omarchy/releases"
+    continue
+  fi
+
+  behind=0
+  for tag in $tags; do
+    [[ "$tag" == "$current" ]] && break
+    behind=$((behind + 1))
+  done
+
+  if [[ $behind -eq 0 ]]; then
+    echo "You're on the latest release ($current)"
+    echo
+    gh release view "$current" --repo basecamp/omarchy
+  else
+    echo "You are $behind release(s) behind (current: $current)"
+    echo
+    for tag in $tags; do
+      [[ "$tag" == "$current" ]] && break
+      gh release view "$tag" --repo basecamp/omarchy
+      echo
+    done
+  fi
+done

@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Display the latest Omarchy release notes from GitHub
+gh release view --repo basecamp/omarchy
