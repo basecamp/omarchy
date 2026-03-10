@@ -7,7 +7,7 @@ ga() {
 
   local branch="$1"
   local base="$(basename "$PWD")"
-  local path="../${base}--${branch}"
+  local path="../${base}--${branch//\//-}"
 
   git worktree add -b "$branch" "$path"
   mise trust "$path"
