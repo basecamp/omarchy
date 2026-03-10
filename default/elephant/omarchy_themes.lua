@@ -73,6 +73,9 @@ function GetEntries()
             preview_path = default_preview_png
           elseif file_exists(default_preview_jpg) then
             preview_path = default_preview_jpg
+          else
+            -- Final fallback: first image from default theme backgrounds
+            preview_path = first_image_in_dir(default_theme_dir .. "/" .. theme_name .. "/backgrounds")
           end
         end
 
