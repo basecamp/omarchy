@@ -65,6 +65,17 @@ function GetEntries()
           preview_path = first_image_in_dir(theme_path .. "/backgrounds")
         end
 
+        if not preview_path then
+          local default_preview_png = default_theme_dir .. "/" .. theme_name .. "/preview.png"
+          local default_preview_jpg = default_theme_dir .. "/" .. theme_name .. "/preview.jpg"
+
+          if file_exists(default_preview_png) then
+            preview_path = default_preview_png
+          elseif file_exists(default_preview_jpg) then
+            preview_path = default_preview_jpg
+          end
+        end
+
         if preview_path and preview_path ~= "" then
           local display_name = theme_name:gsub("_", " "):gsub("%-", " ")
           display_name = display_name:gsub("(%a)([%w_']*)", function(first, rest)
