@@ -28,9 +28,13 @@ while true; do
     --random-effect --exclude-effects dev_worm \
     --no-eol --no-restore-cursor &
 
+  last_pos=$(hyprctl cursorpos)
   while pgrep -t "${tty#/dev/}" -x tte >/dev/null; do
-    if read -n1 -t 1 || ! screensaver_in_focus; then
+    current_pos=$(hyprctl cursorpos)
+    if [[ "$current_pos" != "$last_pos" ]] || read -n1 -t 1 || ! screensaver_in_focus; then
       exit_screensaver
     fi
+
+    last_pos=$current_pos
   done
 done
