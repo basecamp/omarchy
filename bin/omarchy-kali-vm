@@ -1,0 +1,1022 @@
+#!/bin/bash
+COMPOSE_FILE="$HOME/.config/kali/docker-compose.yml"
+KALI_STORAGE="$HOME/.kali"
+
+check_prerequisites() {
+  local DISK_SIZE_GB=${1:-64}
+  local REQUIRED_SPACE=$((DISK_SIZE_GB + 10))
+
+  # Check for KVM support
+  if [[ ! -e /dev/kvm ]]; then
+    gum style \
+      --border normal \
+      --padding "1 2" \
+      --margin "1" \
+      "KVM virtualization not available!" \
+      "" \
+      "Please enable virtualization in BIOS or run:" \
+      "  sudo modprobe kvm-intel  # for Intel CPUs" \
+      "  sudo modprobe kvm-amd    # for AMD CPUs"
+    exit 1
+  fi
+
+  # Check disk space
+  AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
+  if (( AVAILABLE_SPACE < REQUIRED_SPACE )); then
+    echo "Insufficient disk space!"
+    echo "   Available: ${AVAILABLE_SPACE}GB"
+    echo "   Required: ${REQUIRED_SPACE}GB (${DISK_SIZE_GB}GB disk + 10GB overhead)"
+    exit 1
+  fi
+}
+
+kali_qemu_arguments() {
+  echo "-spice unix=on,addr=/storage/spice.sock,disable-ticketing=on -device qemu-xhci -device usb-tablet -device virtio-serial-pci -chardev spicevmc,id=vdagent,name=vdagent -device virtserialport,chardev=vdagent,name=com.redhat.spice.0"
+}
+
+write_kali_start_hook() {
+  mkdir -p "$HOME/.config/kali"
+
+  cat << 'EOF' | tee "$HOME/.config/kali/start.sh" > /dev/null
+#!/bin/bash
+set -e
+
+if qemu-system-x86_64 -spice help >/dev/null 2>&1; then
+  exit 0
+fi
+
+echo "Installing QEMU SPICE module..."
+DEBIAN_FRONTEND=noninteractive apt-get -qq update
+DEBIAN_FRONTEND=noninteractive apt-get -qq --no-install-recommends -y install qemu-system-modules-spice > /dev/null
+EOF
+
+  chmod +x "$HOME/.config/kali/start.sh"
+}
+
+ensure_kali_runtime_config() {
+  write_kali_start_hook
+
+  if [[ -f "$COMPOSE_FILE" ]]; then
+    local QEMU_ARGUMENTS
+    QEMU_ARGUMENTS=$(kali_qemu_arguments)
+    sed -i "s|^\([[:space:]]*ARGUMENTS:\).*|\1 \"$QEMU_ARGUMENTS\"|" "$COMPOSE_FILE"
+  fi
+}
+
+
+# patch_qcow2
+#
+# Patches the downloaded QCOW2 inside a privileged one-shot container using the
+# qemux/qemu image (which already ships qemu-nbd, qemu-img, sfdisk, e2fsck).
+# Only `parted` (partprobe) and `openssl` (password hashing) need to be installed
+# temporarily. The --rm flag discards the container layer when done.
+#
+# What it does:
+# - Resizes the QCOW2 partition + filesystem (qemux only resizes the virtual disk,
+#   not the partitions inside a pre-built image).
+# - Configures user credentials.
+# - Patches XFCE to not intercept the ACPI shutdown signal, enabling reliable
+#   graceful shutdowns when the VM window is closed.
+# - Installs a SPICE auto-resize workaround script for Hyprland/XFCE.
+patch_qcow2() {
+  local NEW_USERNAME="$1"
+  local NEW_PASSWORD="$2"
+  local DISK_SIZE="$3"
+
+  if [[ ! -f "$KALI_STORAGE/data.qcow2" ]]; then
+    echo "ERROR: QCOW2 image not found"
+    return 1
+  fi
+
+  echo "Configuring Kali image..."
+
+  # The nbd kernel module must be loaded on the host — container needs the /dev/nbd* devices
+  sudo modprobe nbd max_part=8
+
+  # Run patch inside the qemux/qemu container (already has qemu-nbd, sfdisk, e2fsck)
+  docker run --rm --privileged -i \
+    --entrypoint /bin/bash \
+    -v "$KALI_STORAGE:/storage" \
+    -e "NEW_USERNAME=$NEW_USERNAME" \
+    -e "NEW_PASSWORD=$NEW_PASSWORD" \
+    -e "DISK_SIZE=$DISK_SIZE" \
+    qemux/qemu -s << 'PATCHEOF'
+set -e
+
+QCOW2="/storage/data.qcow2"
+NBD_DEV="/dev/nbd0"
+PART_NBD_DEV=""
+MNT="/tmp/kali-mount"
+NBD_CONNECTED=false
+PART_NBD_CONNECTED=false
+MNT_ACTIVE=false
+
+cleanup() {
+  if [[ $MNT_ACTIVE == "true" ]]; then
+    umount "$MNT" 2>/dev/null || true
+  fi
+  if [[ $PART_NBD_CONNECTED == "true" ]]; then
+    qemu-nbd --disconnect "$PART_NBD_DEV" 2>/dev/null || true
+  fi
+  if [[ $NBD_CONNECTED == "true" ]]; then
+    qemu-nbd --disconnect "$NBD_DEV" 2>/dev/null || true
+  fi
+  rmdir "$MNT" 2>/dev/null || true
+}
+
+wait_for_nbd_disconnect() {
+  local dev_name timeout
+  dev_name=$(basename "$1")
+  timeout=30
+
+  while (( timeout > 0 )); do
+    if [[ ! -e "/sys/block/$dev_name/pid" ]]; then
+      return 0
+    fi
+    sleep 1
+    (( timeout-- ))
+  done
+
+  echo "ERROR: Timed out waiting for $1 to disconnect."
+  return 1
+}
+trap cleanup EXIT
+
+# Install tools not included in the base image
+apt-get update -qq
+apt-get install -y --no-install-recommends parted openssl > /dev/null 2>&1
+
+# Resize virtual disk if needed
+QEMU_INFO=$(qemu-img info "$QCOW2")
+CURRENT_GB=$(awk '/virtual size/{print int($3)}' <<< "$QEMU_INFO")
+REQUESTED_GB=${DISK_SIZE%%[gG]}
+if (( REQUESTED_GB > CURRENT_GB )); then
+  echo "Resizing virtual disk from ${CURRENT_GB}G to ${REQUESTED_GB}G..."
+  qemu-img resize "$QCOW2" "$DISK_SIZE"
+fi
+
+# Find a free nbd device
+for dev in /dev/nbd{0..7}; do
+  if [[ -b "$dev" ]] && ! grep -q "$(basename "$dev")" /proc/partitions 2>/dev/null; then
+    NBD_DEV="$dev"
+    break
+  fi
+done
+
+# Connect QCOW2 to nbd
+qemu-nbd --connect="$NBD_DEV" "$QCOW2"
+NBD_CONNECTED=true
+sleep 2
+
+# Grow root partition
+ROOT_PART_PATH=$(lsblk -nrpo NAME,TYPE,FSTYPE "$NBD_DEV" | awk '$2 == "part" && ($3 == "ext4" || $3 == "ext3" || $3 == "ext2" || $3 == "xfs" || $3 == "btrfs") {print $1; exit}')
+LARGEST_PART_PATH=$(lsblk -nrbo NAME,SIZE,TYPE "$NBD_DEV" | awk '$3 == "part" {print $1, $2}' | sort -k2 -nr | awk 'NR == 1 {print $1}')
+PARTITION_LISTING=$(sfdisk -l "$NBD_DEV" 2>/dev/null || true)
+ROOT_PART_NUM=""
+
+if [[ -n "$ROOT_PART_PATH" ]]; then
+  ROOT_PART_NUM=$(grep -oP '\d+$' <<< "$ROOT_PART_PATH" || true)
+fi
+
+if [[ -z "$ROOT_PART_NUM" && -n "$LARGEST_PART_PATH" ]]; then
+  ROOT_PART_NUM=$(grep -oP '\d+$' <<< "$LARGEST_PART_PATH" || true)
+fi
+
+if [[ -z "$ROOT_PART_NUM" ]]; then
+  ROOT_PART_LINE=$(awk '$2 == "*" && ($6 == "83" || $6 == "Linux") {print; exit}' <<< "$PARTITION_LISTING")
+  if [[ -z "$ROOT_PART_LINE" ]]; then
+    ROOT_PART_LINE=$(awk '$5 == "83" || $6 == "83" || /Linux/ {print; exit}' <<< "$PARTITION_LISTING")
+  fi
+  ROOT_PART_NUM=$(grep -oP '\d+$' <<< "$ROOT_PART_LINE" || true)
+fi
+
+if [[ -n "$ROOT_PART_NUM" ]]; then
+  echo "Expanding partition ${NBD_DEV}p${ROOT_PART_NUM}..."
+
+  # Read the current partition definition so we can preserve the start sector
+  # and bootable flag while extending the partition to fill the larger virtual disk.
+  PARTITION_DUMP=$(sfdisk -d "$NBD_DEV" 2>/dev/null)
+  ROOT_PART_DEF=$(grep "${NBD_DEV}p${ROOT_PART_NUM}" <<< "$PARTITION_DUMP")
+  START_SECTOR=$(awk -F'[=, ]+' '{for(i=1;i<=NF;i++) if($i=="start") print $(i+1)}' <<< "$ROOT_PART_DEF")
+
+  BOOT_FLAG=""
+  if grep -q "bootable" <<< "$ROOT_PART_DEF"; then
+    BOOT_FLAG=",*"
+  fi
+
+  echo "${START_SECTOR},+,L${BOOT_FLAG}" | sfdisk -N "$ROOT_PART_NUM" "$NBD_DEV" --force --no-reread
+  blockdev --rereadpt "$NBD_DEV" 2>/dev/null || true
+  partx -u "$NBD_DEV" 2>/dev/null || true
+  sleep 1
+
+  # Drop the full-disk mapping after repartitioning so we can remap just the
+  # filesystem-bearing partition without a competing write lock.
+  qemu-nbd --disconnect "$NBD_DEV"
+  NBD_CONNECTED=false
+  wait_for_nbd_disconnect "$NBD_DEV"
+
+  # Attach the root partition directly via offset so we do not depend on /dev/nbdXpY nodes.
+  for dev in /dev/nbd{0..7}; do
+    if [[ -b "$dev" ]] && ! grep -q "$(basename "$dev")" /proc/partitions 2>/dev/null; then
+      PART_NBD_DEV="$dev"
+      break
+    fi
+  done
+
+  if [[ -z "$PART_NBD_DEV" ]]; then
+    echo "ERROR: No free secondary nbd device found for partition mapping."
+    lsblk || true
+    exit 1
+  fi
+
+  PART_OFFSET=$((START_SECTOR * 512))
+  qemu-nbd --offset="$PART_OFFSET" --connect="$PART_NBD_DEV" "$QCOW2"
+  PART_NBD_CONNECTED=true
+  sleep 2
+
+  if [[ ! -b "$PART_NBD_DEV" ]]; then
+    echo "ERROR: Failed to map root partition device: $PART_NBD_DEV"
+    lsblk || true
+    exit 1
+  fi
+
+  e2fsck -f -y "$PART_NBD_DEV"
+  resize2fs "$PART_NBD_DEV"
+fi
+
+# Mount root partition
+mkdir -p "$MNT"
+ROOT_FOUND=false
+PARTITION_CANDIDATES=$(lsblk -nrpo NAME,TYPE "$NBD_DEV" | awk '$2 == "part" {print $1}')
+for part in "$PART_NBD_DEV" $PARTITION_CANDIDATES "$NBD_DEV"; do
+  if [[ -b "$part" ]]; then
+    if mount "$part" "$MNT" 2>/dev/null; then
+      if [[ -d "$MNT/etc/systemd" ]]; then
+        ROOT_FOUND=true
+        MNT_ACTIVE=true
+        break
+      fi
+      umount "$MNT"
+    fi
+  fi
+done
+if [[ $ROOT_FOUND != "true" ]]; then
+  echo "ERROR: Could not find root partition"
+  exit 1
+fi
+
+# --- Credentials ---
+PASS_HASH=$(openssl passwd -6 "$NEW_PASSWORD")
+sed -i "s|^kali:[^:]*:|kali:${PASS_HASH}:|" "$MNT/etc/shadow"
+
+if [[ "$NEW_USERNAME" != "kali" ]]; then
+  sed -i "s/^kali:/${NEW_USERNAME}:/" "$MNT/etc/passwd"
+  sed -i "s|/home/kali|/home/${NEW_USERNAME}|" "$MNT/etc/passwd"
+  sed -i "s/^kali:/${NEW_USERNAME}:/" "$MNT/etc/shadow"
+  sed -i "s/^kali:/${NEW_USERNAME}:/" "$MNT/etc/group"
+  sed -i "s/^kali:/${NEW_USERNAME}:/" "$MNT/etc/gshadow"
+  sed -i "s/,kali/,${NEW_USERNAME}/g" "$MNT/etc/group"
+  sed -i "s/,kali/,${NEW_USERNAME}/g" "$MNT/etc/gshadow"
+  mv "$MNT/home/kali" "$MNT/home/${NEW_USERNAME}"
+fi
+
+HOME_DIR="$MNT/home/$NEW_USERNAME"
+
+# --- Ensure configured user keeps sudo access ---
+mkdir -p "$MNT/etc/sudoers.d"
+cat > "$MNT/etc/sudoers.d/90-omarchy-kali-user" << EOF
+$NEW_USERNAME ALL=(ALL:ALL) ALL
+EOF
+chmod 440 "$MNT/etc/sudoers.d/90-omarchy-kali-user"
+
+# --- XFCE session file ---
+echo "xfce4-session" > "$HOME_DIR/.xsession"
+
+# --- Disable screensaver and screen lock ---
+XFCE_DIR="$HOME_DIR/.config/xfce4/xfconf/xfce-perchannel-xml"
+mkdir -p "$XFCE_DIR"
+
+cat > "$XFCE_DIR/xfce4-screensaver.xml" << 'XFCEXML'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-screensaver" version="1.0">
+  <property name="saver" type="empty">
+    <property name="enabled" type="bool" value="false"/>
+  </property>
+  <property name="lock" type="empty">
+    <property name="enabled" type="bool" value="false"/>
+  </property>
+</channel>
+XFCEXML
+
+cat > "$XFCE_DIR/xfce4-power-manager.xml" << 'XFCEXML'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-power-manager" version="1.0">
+  <property name="xfce4-power-manager" type="empty">
+    <property name="dpms-enabled" type="bool" value="false"/>
+    <property name="blank-on-ac" type="int" value="0"/>
+    <property name="dpms-on-ac-sleep" type="uint" value="0"/>
+    <property name="dpms-on-ac-off" type="uint" value="0"/>
+    <property name="power-button-action" type="uint" value="4"/>
+  </property>
+</channel>
+XFCEXML
+
+# --- XFCE session: skip logout prompt on ACPI power button ---
+cat > "$XFCE_DIR/xfce4-session.xml" << 'XFCEXML'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-session" version="1.0">
+  <property name="general" type="empty">
+    <property name="SaveOnExit" type="bool" value="false"/>
+  </property>
+  <property name="shutdown" type="empty">
+    <property name="ShowHibernate" type="bool" value="false"/>
+    <property name="ShowSuspend" type="bool" value="false"/>
+  </property>
+</channel>
+XFCEXML
+
+# --- SPICE auto-resize workaround ---
+# spice-vdagent sets the preferred xrandr mode but doesn't apply it on XFCE
+# (XFCE tries Mutter D-Bus first, which doesn't exist). This script polls and applies.
+# Also restarts the user session's spice-vdagent on resize to prevent mouse misalignment.
+cat > "$MNT/usr/local/bin/spice-autoresize" << 'RESIZESH'
+#!/bin/bash
+restart_spice_vdagent() {
+  if ! command -v spice-vdagent >/dev/null 2>&1; then
+    return
+  fi
+
+  pkill -x spice-vdagent 2>/dev/null || true
+  spice-vdagent >/dev/null 2>&1 &
+}
+
+while true; do
+  OUTPUT=$(xrandr 2>/dev/null | awk '/ connected/ {print $1; exit}')
+  PREFERRED=$(xrandr 2>/dev/null | awk '/connected/ {found=1; next} found && /+/ {print $1; exit}')
+  CURRENT=$(xrandr 2>/dev/null | awk '/connected/ {found=1; next} found && /\*/ {print $1; exit}')
+  if [[ -n "$PREFERRED" && "$PREFERRED" != "$CURRENT" ]]; then
+    if [[ -n "$OUTPUT" ]]; then
+      xrandr --output "$OUTPUT" --auto 2>/dev/null
+    fi
+    restart_spice_vdagent
+  fi
+  sleep 1
+done
+RESIZESH
+chmod +x "$MNT/usr/local/bin/spice-autoresize"
+
+# Autostart entry for the resize script
+AUTOSTART_DIR="$HOME_DIR/.config/autostart"
+mkdir -p "$AUTOSTART_DIR"
+cat > "$AUTOSTART_DIR/spice-autoresize.desktop" << 'DESKTOPFILE'
+[Desktop Entry]
+Type=Application
+Name=SPICE Auto Resize
+Exec=/usr/local/bin/spice-autoresize
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+DESKTOPFILE
+
+# --- Fix ownership ---
+uid=$(grep "^${NEW_USERNAME}:" "$MNT/etc/passwd" | cut -d: -f3)
+gid=$(grep "^${NEW_USERNAME}:" "$MNT/etc/passwd" | cut -d: -f4)
+chown "${uid}:${gid}" "$HOME_DIR/.xsession"
+chown -R "${uid}:${gid}" "$HOME_DIR/.config"
+
+# --- Cleanup nbd (unmount + disconnect happen via EXIT trap) ---
+MNT_ACTIVE=false
+umount "$MNT"
+if [[ $PART_NBD_CONNECTED == "true" ]]; then
+  PART_NBD_CONNECTED=false
+  qemu-nbd --disconnect "$PART_NBD_DEV"
+  wait_for_nbd_disconnect "$PART_NBD_DEV" || true
+fi
+NBD_CONNECTED=false
+qemu-nbd --disconnect "$NBD_DEV"
+wait_for_nbd_disconnect "$NBD_DEV" || true
+rmdir "$MNT" 2>/dev/null || true
+
+# Remove temporarily installed packages
+apt-get purge -y parted openssl > /dev/null 2>&1
+apt-get autoremove -y > /dev/null 2>&1
+rm -rf /var/lib/apt/lists/*
+
+echo "Kali image configured."
+PATCHEOF
+}
+
+# The raw qcow2 archive is downloaded onto the host
+# to perform initial configuration - see patch_qcow2()
+# above.
+resolve_current_kali_qcow2_archive() {
+  curl -fsSL https://cdimage.kali.org/kali-images/current/ | grep -o 'kali-linux-[^"<>]*-qemu-amd64\.7z' | head -1
+}
+
+download_kali_qcow2() {
+  local QCOW2="$KALI_STORAGE/data.qcow2"
+  local SOURCE_LABEL="${1:-weekly}"
+
+  if [[ -f "$QCOW2" ]]; then
+    echo "Kali QCOW2 image already downloaded, skipping."
+    return 0
+  fi
+
+  local KALI_BASE_URL KALI_URL DOWNLOAD_FILENAME DOWNLOAD_FILE
+  if [[ $SOURCE_LABEL == "weekly" ]]; then
+    local KALI_YEAR KALI_WEEK
+    KALI_BASE_URL="https://cdimage.kali.org/kali-images/kali-weekly"
+    KALI_YEAR=$(date +%Y)
+    KALI_WEEK=$(date +%V)
+    KALI_URL="${KALI_BASE_URL}/kali-linux-${KALI_YEAR}-W${KALI_WEEK}-qemu-amd64.7z"
+  else
+    local CURRENT_ARCHIVE
+    KALI_BASE_URL="https://cdimage.kali.org/kali-images/current"
+    CURRENT_ARCHIVE=$(resolve_current_kali_qcow2_archive)
+    if [[ -z "$CURRENT_ARCHIVE" ]]; then
+      echo "ERROR: Could not determine the latest current Kali QEMU archive."
+      return 1
+    fi
+    KALI_URL="${KALI_BASE_URL}/${CURRENT_ARCHIVE}"
+  fi
+  DOWNLOAD_FILENAME="${KALI_URL##*/}"
+  DOWNLOAD_FILE="$KALI_STORAGE/$DOWNLOAD_FILENAME"
+
+  echo "Downloading Kali QCOW2 image ($SOURCE_LABEL)..."
+  echo "URL: $KALI_URL"
+
+  # Download the archive
+  curl -fL --retry 2 --retry-delay 5 -C - -o "$DOWNLOAD_FILE" "$KALI_URL" || {
+    echo "ERROR: Failed to download Kali QCOW2 archive."
+    rm -f "$DOWNLOAD_FILE"
+    return 1
+  }
+
+  # GPG-verify SHA256SUMS using a temporary keyring
+  echo "Verifying download integrity..."
+  local GNUPG_TMP
+  GNUPG_TMP=$(mktemp -d)
+  curl -fsSL -o "$GNUPG_TMP/kali-key.asc" https://archive.kali.org/archive-key.asc || {
+    echo "ERROR: Failed to download Kali archive signing key."
+    rm -rf "$GNUPG_TMP"
+    rm -f "$DOWNLOAD_FILE"
+    return 1
+  }
+  echo "Importing Kali archive signing key..."
+  if ! gpg --homedir "$GNUPG_TMP" --import "$GNUPG_TMP/kali-key.asc"; then
+    echo "ERROR: Failed to import Kali archive signing key."
+    rm -rf "$GNUPG_TMP"
+    rm -f "$DOWNLOAD_FILE" "$KALI_STORAGE/SHA256SUMS" "$KALI_STORAGE/SHA256SUMS.gpg"
+    return 1
+  fi
+
+  curl -fsSL -o "$KALI_STORAGE/SHA256SUMS" "${KALI_BASE_URL}/SHA256SUMS" || {
+    echo "ERROR: Failed to download Kali checksum file."
+    rm -rf "$GNUPG_TMP"
+    rm -f "$DOWNLOAD_FILE" "$KALI_STORAGE/SHA256SUMS" "$KALI_STORAGE/SHA256SUMS.gpg"
+    return 1
+  }
+  curl -fsSL -o "$KALI_STORAGE/SHA256SUMS.gpg" "${KALI_BASE_URL}/SHA256SUMS.gpg" || {
+    echo "ERROR: Failed to download Kali checksum signature."
+    rm -rf "$GNUPG_TMP"
+    rm -f "$DOWNLOAD_FILE" "$KALI_STORAGE/SHA256SUMS" "$KALI_STORAGE/SHA256SUMS.gpg"
+    return 1
+  }
+
+  echo "Verifying SHA256SUMS signature..."
+  if ! gpg --homedir "$GNUPG_TMP" --verify "$KALI_STORAGE/SHA256SUMS.gpg" "$KALI_STORAGE/SHA256SUMS"; then
+    echo "ERROR: GPG signature verification failed! The checksum file may have been tampered with."
+    rm -rf "$GNUPG_TMP"
+    rm -f "$DOWNLOAD_FILE" "$KALI_STORAGE/SHA256SUMS" "$KALI_STORAGE/SHA256SUMS.gpg"
+    return 1
+  fi
+  echo "GPG signature verified."
+  rm -rf "$GNUPG_TMP"
+
+  # Verify SHA256 checksum
+  local EXPECTED_SUM ACTUAL_SUM
+  EXPECTED_SUM=$(awk -v file="$DOWNLOAD_FILENAME" '$2 == file {print $1; exit}' "$KALI_STORAGE/SHA256SUMS")
+  if [[ -z "$EXPECTED_SUM" ]]; then
+    echo "ERROR: No checksum found for $DOWNLOAD_FILENAME in SHA256SUMS"
+    rm -f "$DOWNLOAD_FILE" "$KALI_STORAGE/SHA256SUMS" "$KALI_STORAGE/SHA256SUMS.gpg"
+    return 1
+  fi
+
+  ACTUAL_SUM=$(sha256sum "$DOWNLOAD_FILE" | awk '{print $1}')
+  echo "Expected SHA256: $EXPECTED_SUM"
+  echo "Actual SHA256:   $ACTUAL_SUM"
+  if [[ "$ACTUAL_SUM" != "$EXPECTED_SUM" ]]; then
+    echo "ERROR: SHA256 checksum mismatch!"
+    rm -f "$DOWNLOAD_FILE" "$KALI_STORAGE/SHA256SUMS" "$KALI_STORAGE/SHA256SUMS.gpg"
+    return 1
+  fi
+  echo "SHA256 checksum verified."
+  rm -f "$KALI_STORAGE/SHA256SUMS" "$KALI_STORAGE/SHA256SUMS.gpg"
+
+  # Extract the QCOW2 inside the qemux container so 7z is not required on the host.
+  # Extraction itself is the final validation step here, so we avoid a redundant
+  # full decompression pass via `7z t` first.
+  echo "Extracting QCOW2 from 7z archive..."
+  docker run --rm \
+    -v "$KALI_STORAGE:/storage" \
+    --entrypoint /bin/bash \
+    qemux/qemu -lc "7z x -y -o/storage '/storage/$DOWNLOAD_FILENAME'" || {
+    if [[ $SOURCE_LABEL == "weekly" ]]; then
+      echo "Weekly Kali archive verified but failed to extract. Falling back to the latest current release..."
+      echo "Archive: $DOWNLOAD_FILE"
+      echo "Archive size: $(stat -c%s "$DOWNLOAD_FILE" 2>/dev/null || echo unknown) bytes"
+      download_kali_qcow2 current
+      return $?
+    fi
+    echo "ERROR: Failed to extract QCOW2 archive."
+    echo "Archive: $DOWNLOAD_FILE"
+    echo "Archive size: $(stat -c%s "$DOWNLOAD_FILE" 2>/dev/null || echo unknown) bytes"
+    rm -f "$DOWNLOAD_FILE"
+    return 1
+  }
+  local EXTRACTED
+  EXTRACTED=$(find "$KALI_STORAGE" -maxdepth 1 -name "*.qcow2" ! -name "data.qcow2" | head -1)
+  if [[ -n "$EXTRACTED" ]]; then
+    mv "$EXTRACTED" "$QCOW2"
+  else
+    echo "ERROR: No QCOW2 file found after extraction"
+    rm -f "$DOWNLOAD_FILE"
+    return 1
+  fi
+
+  # Disable CoW on the new file before any writes (btrfs)
+  chattr +C "$QCOW2" 2>/dev/null || true
+
+  echo "Download complete."
+  echo "Preserved archive: $DOWNLOAD_FILE"
+}
+
+
+cleanup_stale_data_disk() {
+  if [[ -f "$KALI_STORAGE/data.qcow2" ]] && [[ -f "$KALI_STORAGE/data.img" ]]; then
+    echo "Removing stale qemux data disk from earlier failed boot attempt..."
+    rm -f "$KALI_STORAGE/data.img"
+  fi
+}
+
+install_kali() {
+  # Set up trap to handle Ctrl+C
+  trap "echo ''; echo 'Installation cancelled by user'; exit 1" INT
+
+  check_prerequisites
+
+  omarchy-pkg-add virt-viewer
+
+  mkdir -p "$KALI_STORAGE"
+  # Disable copy-on-write for QCOW2 storage (critical for btrfs performance)
+  chattr +C "$KALI_STORAGE" 2>/dev/null || true
+  mkdir -p "$HOME/.config/kali"
+  mkdir -p "$HOME/.local/share/applications/icons"
+
+  # Install Kali VM icon and desktop file
+  if [[ -f "$OMARCHY_PATH/applications/icons/kali.png" ]]; then
+    cp "$OMARCHY_PATH/applications/icons/kali.png" "$HOME/.local/share/applications/icons/kali.png"
+  fi
+
+  cat << EOF | tee "$HOME/.local/share/applications/kali.desktop" > /dev/null
+[Desktop Entry]
+Name=Kali VM
+Comment=Launch Kali Linux VM via Docker and connect with SPICE
+Exec=uwsm app -- omarchy-kali-vm launch
+Icon=$HOME/.local/share/applications/icons/kali.png
+Terminal=false
+Type=Application
+Categories=System;Security;
+EOF
+
+  # Get system resources
+  TOTAL_RAM=$(free -h | awk 'NR==2 {print $2}')
+  TOTAL_RAM_GB=$(awk 'NR==1 {printf "%d", $2/1024/1024}' /proc/meminfo)
+  TOTAL_CORES=$(nproc)
+
+  echo ""
+  echo "System Resources Detected:"
+  echo "  Total RAM: $TOTAL_RAM"
+  echo "  Total CPU Cores: $TOTAL_CORES"
+  echo ""
+
+  # RAM selection
+  RAM_OPTIONS=""
+  for size in 2 4 8 16 32 64; do
+    if (( size <= TOTAL_RAM_GB )); then
+      RAM_OPTIONS="$RAM_OPTIONS ${size}G"
+    fi
+  done
+
+  SELECTED_RAM=$(echo $RAM_OPTIONS | tr ' ' '\n' | gum choose --selected="4G" --header="How much RAM would you like to allocate to the Kali VM?")
+
+  if [[ -z $SELECTED_RAM ]]; then
+    echo "Installation cancelled by user"
+    exit 1
+  fi
+
+  # CPU cores
+  SELECTED_CORES=$(gum input --placeholder="Number of CPU cores (1-$TOTAL_CORES)" --value="2" --header="How many CPU cores would you like to allocate to the Kali VM?" --char-limit=2)
+
+  if [[ -z $SELECTED_CORES ]]; then
+    echo "Installation cancelled by user"
+    exit 1
+  fi
+
+  if ! [[ $SELECTED_CORES =~ ^[0-9]+$ ]] || (( SELECTED_CORES < 1 )) || (( SELECTED_CORES > TOTAL_CORES )); then
+    echo "Invalid input. Using default: 2 cores"
+    SELECTED_CORES=2
+  fi
+
+  # Disk size — Kali QCOW2 ships with an 80G virtual disk, so 80G is the minimum
+  MIN_DISK_GB=80
+  AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
+  MAX_DISK_GB=$((AVAILABLE_SPACE - 10))
+
+  if (( MAX_DISK_GB < MIN_DISK_GB )); then
+    echo "Insufficient disk space for Kali VM!"
+    echo "   Available: ${AVAILABLE_SPACE}GB"
+    echo "   Minimum required: $((MIN_DISK_GB + 10))GB (${MIN_DISK_GB}GB disk + 10GB overhead)"
+    exit 1
+  fi
+
+  DISK_OPTIONS=""
+  for size in 80 128 256 512; do
+    if (( size <= MAX_DISK_GB )); then
+      DISK_OPTIONS="$DISK_OPTIONS ${size}G"
+    fi
+  done
+
+  DEFAULT_DISK="128G"
+  if ! echo "$DISK_OPTIONS" | grep -q "128G"; then
+    DEFAULT_DISK="80G"
+  fi
+
+  SELECTED_DISK=$(echo $DISK_OPTIONS | tr ' ' '\n' | gum choose --selected="$DEFAULT_DISK" --header="Max disk size for the Kali VM? (starts at ~16GB, grows as needed up to this limit)")
+
+  if [[ -z $SELECTED_DISK ]]; then
+    echo "Installation cancelled by user"
+    exit 1
+  fi
+
+  DISK_SIZE_NUM=$(echo "$SELECTED_DISK" | sed 's/G//')
+
+  # Re-check prerequisites with selected disk size
+  check_prerequisites "$DISK_SIZE_NUM"
+
+  # Prompt for username and password
+  USERNAME=$(gum input --placeholder="Username (Press enter to use default: kali)" --header="Enter Kali username:")
+  if [[ -z $USERNAME ]]; then
+    USERNAME="kali"
+  fi
+
+  PASSWORD=$(gum input --placeholder="Password (Press enter to use default: kali)" --password --header="Enter Kali password:")
+  if [[ -z $PASSWORD ]]; then
+    PASSWORD="kali"
+    PASSWORD_DISPLAY="(default)"
+  else
+    PASSWORD_DISPLAY="(user-defined)"
+  fi
+
+  # Display configuration summary
+  gum style \
+    --border normal \
+    --padding "1 2" \
+    --margin "1" \
+    --align left \
+    --bold \
+    "Kali VM Configuration" \
+    "" \
+    "RAM:       $SELECTED_RAM" \
+    "CPU:       $SELECTED_CORES cores" \
+    "Disk:      $SELECTED_DISK" \
+    "Username:  $USERNAME" \
+    "Password:  $PASSWORD_DISPLAY"
+
+  # Ask for confirmation
+  echo ""
+  if ! gum confirm "Proceed with this configuration?"; then
+    echo "Installation cancelled by user"
+    exit 1
+  fi
+
+  # Requires sudo on the host to load the nbd kernel module before containerized patching
+  echo "sudo is required to load the nbd kernel module for initial image configuration."
+  echo ""
+  sudo -v || exit 1
+
+  mkdir -p "$HOME/Kali"
+
+  write_kali_start_hook
+
+  # Create docker-compose.yml in user config directory
+  cat << EOF | tee "$COMPOSE_FILE" > /dev/null
+services:
+  kali:
+    image: qemux/qemu
+    container_name: omarchy-kali
+    environment:
+      RAM_SIZE: "$SELECTED_RAM"
+      CPU_CORES: "$SELECTED_CORES"
+      DISK_SIZE: "$SELECTED_DISK"
+      BOOT_MODE: "legacy"
+      VGA: "virtio"
+      DISPLAY: "disabled"
+      WEB: "N"
+      ARGUMENTS: "$(kali_qemu_arguments)"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - $HOME/.kali:/storage
+      - $HOME/Kali:/shared
+      - $HOME/.config/kali/start.sh:/run/start.sh:ro
+    restart: "no"
+    stop_grace_period: 2m
+EOF
+
+  ensure_kali_runtime_config
+
+  echo ""
+  echo "Starting Kali VM installation..."
+  echo "This will download a pre-built Kali QCOW2 image (~3GB) and configure it."
+  echo "The setup takes 5-15 minutes depending on your internet speed."
+  echo ""
+
+  # Step 1: Download and verify the QCOW2 on the host
+  if ! download_kali_qcow2; then
+    echo "Failed to download Kali QCOW2 image!"
+    exit 1
+  fi
+
+  # Step 2: Configure the QCOW2 offline (credentials, XFCE, SPICE, etc.)
+  if [[ ! -f "$KALI_STORAGE/.configured" ]]; then
+    echo ""
+    if patch_qcow2 "$USERNAME" "$PASSWORD" "$SELECTED_DISK"; then
+      touch "$KALI_STORAGE/.configured"
+    else
+      echo "Failed to configure Kali image."
+      echo "You can retry by running: omarchy-kali-vm install"
+      exit 1
+    fi
+  else
+    echo "Kali image already configured, skipping."
+  fi
+
+  # Step 3: Start the VM
+  echo ""
+  echo "Starting Kali VM..."
+  cleanup_stale_data_disk
+  if ! docker compose -f "$COMPOSE_FILE" up -d 2>&1; then
+    echo "Failed to start Kali VM!"
+    echo "   Common issues:"
+    echo "   - Docker daemon not running: sudo systemctl start docker"
+    echo "   - KVM not available: check /dev/kvm"
+    exit 1
+  fi
+
+  # Wait for SPICE socket and launch viewer detached so the install terminal can close
+  local SPICE_SOCK="$KALI_STORAGE/spice.sock"
+  echo "Waiting for VM to be ready..."
+  local WAIT_COUNT=0
+  until [[ -S "$SPICE_SOCK" ]]; do
+    sleep 2
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    if (( WAIT_COUNT > 60 )); then
+      echo "Timeout: Kali VM SPICE not ready within 2 minutes"
+      exit 1
+    fi
+  done
+  docker exec omarchy-kali chmod 666 /storage/spice.sock
+
+  echo ""
+  echo "Kali VM installed! Launching..."
+  # Launch viewer detached so the install terminal can close immediately.
+  # Uses a wrapper subshell (not bare setsid) so that when the viewer window
+  # is closed, the container is stopped — matching launch_kali's default behavior.
+  setsid bash -c "
+    remote-viewer 'spice+unix://$SPICE_SOCK' -t 'Kali VM - Omarchy' --auto-resize=always &>/dev/null
+    # Graceful ACPI shutdown so guest can flush writes to QCOW2
+    docker exec omarchy-kali bash -c 'echo system_powerdown | nc -q1 localhost 7100' 2>/dev/null || true
+    WAIT=0
+    while docker inspect --format='{{.State.Status}}' omarchy-kali 2>/dev/null | grep -q running; do
+      sleep 2
+      WAIT=\$((WAIT + 1))
+      (( WAIT > 30 )) && break
+    done
+    docker compose -f '$COMPOSE_FILE' down 2>/dev/null || true
+    rm -f '$SPICE_SOCK'
+  " &>/dev/null &
+}
+
+remove_kali() {
+  if ! gum confirm --default=false "Remove Kali VM and delete all associated data?"; then
+    echo "Removal cancelled by user"
+    exit 1
+  fi
+
+  echo "Removing Kali VM..."
+
+  docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
+
+  docker rmi qemux/qemu 2>/dev/null || echo "Image already removed or not found"
+
+  rm -f "$HOME/.local/share/applications/kali.desktop"
+  rm -rf "$HOME/.config/kali"
+  rm -rf "$KALI_STORAGE"
+
+  echo ""
+  echo "Kali VM removal completed!"
+}
+
+launch_kali() {
+  KEEP_ALIVE=false
+  if [[ "${1:-}" = "--keep-alive" ]] || [[ "${1:-}" = "-k" ]]; then
+    KEEP_ALIVE=true
+  fi
+
+  # Check if config exists
+  if [[ ! -f $COMPOSE_FILE ]]; then
+    echo "Kali VM not configured. Please run: omarchy-kali-vm install"
+    exit 1
+  fi
+
+  ensure_kali_runtime_config
+
+  # Check if container is already running
+  CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-kali 2>/dev/null)
+
+  local SPICE_SOCK="$KALI_STORAGE/spice.sock"
+
+  if [[ $CONTAINER_STATUS != "running" ]]; then
+    echo "Starting Kali VM..."
+    notify-send "Starting Kali VM" "This can take 15-30 seconds" -t 15000
+
+    # Remove stale socket so we can detect when QEMU creates a fresh one
+    rm -f "$SPICE_SOCK"
+    cleanup_stale_data_disk
+
+    if ! docker compose -f "$COMPOSE_FILE" up -d 2>&1; then
+      echo "Failed to start Kali VM!"
+      notify-send -u critical "Kali VM" "Failed to start Kali VM"
+      exit 1
+    fi
+  fi
+
+  # Wait for SPICE Unix socket to appear
+  echo "Waiting for Kali VM to be ready..."
+  WAIT_COUNT=0
+  until [[ -S "$SPICE_SOCK" ]]; do
+    sleep 2
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    if (( WAIT_COUNT > 60 )); then
+      echo "Timeout: Kali VM SPICE not ready within 2 minutes"
+      notify-send -u critical "Kali VM" "SPICE not ready"
+      exit 1
+    fi
+  done
+  # Socket is created by root inside the container; make it connectable by the host user
+  docker exec omarchy-kali chmod 666 /storage/spice.sock
+
+  if [[ -t 1 ]]; then
+    if [[ $KEEP_ALIVE = "true" ]]; then
+      LIFECYCLE="VM will keep running after viewer closes
+To stop: omarchy-kali-vm stop"
+    else
+      LIFECYCLE="VM will auto-stop when viewer closes"
+    fi
+    gum style \
+      --border normal \
+      --padding "1 2" \
+      --margin "1" \
+      --align center \
+      "Connecting to Kali VM" \
+      "" \
+      "$LIFECYCLE"
+  fi
+
+  # Connect with SPICE via Unix socket
+  remote-viewer "spice+unix://$SPICE_SOCK" -t "Kali VM - Omarchy" --auto-resize=always
+
+  # After viewer closes, stop the container unless --keep-alive was specified
+  if [[ $KEEP_ALIVE = "false" ]]; then
+    echo ""
+    echo "SPICE session closed. Stopping Kali VM..."
+    graceful_shutdown
+    echo "Kali VM stopped."
+  else
+    echo ""
+    echo "SPICE session closed. Kali VM is still running."
+    echo "To stop it: omarchy-kali-vm stop"
+  fi
+}
+
+graceful_shutdown() {
+  # Send ACPI shutdown via QEMU monitor so the guest can shut down cleanly
+  # and flush all writes to the QCOW2 before the container is stopped.
+  if docker inspect --format='{{.State.Status}}' omarchy-kali 2>/dev/null | grep -q running; then
+    echo "Sending ACPI shutdown to guest..."
+    docker exec omarchy-kali bash -c 'echo "system_powerdown" | nc -q1 localhost 7100' 2>/dev/null || true
+    # Wait for the guest to shut down (QEMU exits, container stops)
+    while docker inspect --format='{{.State.Status}}' omarchy-kali 2>/dev/null | grep -q running; do
+      local WAIT=0
+      sleep 2
+      WAIT=$((WAIT + 1))
+      if (( WAIT > 30 )); then
+        echo "Guest did not shut down within 60s, forcing stop..."
+        break
+      fi
+    done
+  fi
+  docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
+  rm -f "$KALI_STORAGE/spice.sock"
+}
+
+stop_kali() {
+  if [[ ! -f $COMPOSE_FILE ]]; then
+    echo "Kali VM not configured."
+    exit 1
+  fi
+
+  echo "Stopping Kali VM..."
+  graceful_shutdown
+  echo "Kali VM stopped."
+}
+
+status_kali() {
+  if [[ ! -f $COMPOSE_FILE ]]; then
+    echo "Kali VM not configured."
+    echo "To set up: omarchy-kali-vm install"
+    exit 1
+  fi
+
+  CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-kali 2>/dev/null)
+
+  if [[ -z $CONTAINER_STATUS ]]; then
+    echo "Kali VM container not found."
+    echo "To start: omarchy-kali-vm launch"
+  elif [[ $CONTAINER_STATUS = "running" ]]; then
+    gum style \
+      --border normal \
+      --padding "1 2" \
+      --margin "1" \
+      --align left \
+      "Kali VM Status: RUNNING" \
+      "" \
+      "To connect: omarchy-kali-vm launch" \
+      "To stop:    omarchy-kali-vm stop"
+  else
+    echo "Kali VM is stopped (status: $CONTAINER_STATUS)"
+    echo "To start: omarchy-kali-vm launch"
+  fi
+}
+
+show_usage() {
+  echo "Usage: omarchy-kali-vm [command] [options]"
+  echo ""
+  echo "Commands:"
+  echo "  install              Install and configure Kali VM"
+  echo "  remove               Remove Kali VM and all its data"
+  echo "  launch [options]     Start Kali VM (if needed) and connect via SPICE"
+  echo "                       Options:"
+  echo "                         --keep-alive, -k   Keep VM running after viewer closes"
+  echo "  stop                 Stop the running Kali VM"
+  echo "  status               Show current VM status"
+  echo "  help                 Show this help message"
+  echo ""
+  echo "Examples:"
+  echo "  omarchy-kali-vm install           # Set up Kali VM for first time"
+  echo "  omarchy-kali-vm launch            # Connect to VM (auto-stop on exit)"
+  echo "  omarchy-kali-vm launch -k         # Connect to VM (keep running)"
+  echo "  omarchy-kali-vm stop              # Shut down the VM"
+}
+
+# Main command dispatcher
+case "${1:-}" in
+  install)
+    install_kali
+    ;;
+  remove)
+    remove_kali
+    ;;
+  launch|start)
+    launch_kali "${2:-}"
+    ;;
+  stop|down)
+    stop_kali
+    ;;
+  status)
+    status_kali
+    ;;
+  help|--help|-h|"")
+    show_usage
+    ;;
+  *)
+    echo "Unknown command: $1" >&2
+    echo "" >&2
+    show_usage >&2
+    exit 1
+    ;;
+esac
