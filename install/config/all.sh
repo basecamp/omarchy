@@ -48,4 +48,5 @@ run_logged $OMARCHY_INSTALL/config/hardware/fix-asus-rog-mic.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-yt6801-ethernet-adapter.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-dell-xps-audio.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-synaptic-touchpad.sh
+run_logged $OMARCHY_INSTALL/config/hardware/fix-tuxedo-backlight.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework16-qmk-hid.sh
