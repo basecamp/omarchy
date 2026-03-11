@@ -75,7 +75,13 @@ if [[ ! -f $RESUME_DROP_IN ]]; then
   RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
   RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
   sudo mkdir -p /etc/limine-entry-tool.d
-  echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
+  RESUME_CMDLINE="KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\""
+  echo "$RESUME_CMDLINE" | sudo tee "$RESUME_DROP_IN" >/dev/null
+
+  # Also append to /etc/default/limine if it exists, since it overrides drop-in configs
+  if [[ -f /etc/default/limine ]] && ! grep -q 'resume=' /etc/default/limine; then
+    echo "$RESUME_CMDLINE" | sudo tee -a /etc/default/limine >/dev/null
+  fi
 fi
 
 # Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)
@@ -84,7 +90,13 @@ if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
   if [[ ! -f $LIMINE_DROP_IN ]]; then
     echo "Enabling ACPI RTC alarm for s2idle suspend"
     sudo mkdir -p /etc/limine-entry-tool.d
-    echo 'KERNEL_CMDLINE[default]+=" rtc_cmos.use_acpi_alarm=1"' | sudo tee "$LIMINE_DROP_IN" >/dev/null
+    RTC_CMDLINE='KERNEL_CMDLINE[default]+=" rtc_cmos.use_acpi_alarm=1"'
+    echo "$RTC_CMDLINE" | sudo tee "$LIMINE_DROP_IN" >/dev/null
+
+    # Also append to /etc/default/limine if it exists, since it overrides drop-in configs
+    if [[ -f /etc/default/limine ]] && ! grep -q 'rtc_cmos.use_acpi_alarm' /etc/default/limine; then
+      echo "$RTC_CMDLINE" | sudo tee -a /etc/default/limine >/dev/null
+    fi
   fi
 fi
 
