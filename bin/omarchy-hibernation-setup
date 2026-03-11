@@ -73,7 +73,7 @@ if [[ ! -f $RESUME_DROP_IN ]]; then
   echo "Adding resume kernel parameters"
   sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null
   RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
-  RESUME_OFFSET=$(btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
+  RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
   sudo mkdir -p /etc/limine-entry-tool.d
   echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
 fi
