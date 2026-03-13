@@ -1,8 +1,33 @@
 #!/bin/bash
 
 for dir in ~/.config/omarchy/themes/*/; do
-  if [[ -d $dir ]] && [[ ! -L ${dir%/} ]] && [[ -d $dir/.git ]]; then
-    echo "Updating: $(basename "$dir")"
-    git -C "$dir" pull
+  [[ -d $dir ]] && [[ ! -L ${dir%/} ]] || continue
+  THEME_NAME=$(basename "$dir")
+
+  update_theme() {
+    local d="$1"
+    if ! git -C "$d" diff --quiet 2>/dev/null; then
+      git -C "$d" stash 2>/dev/null
+      git -C "$d" pull
+      git -C "$d" stash pop 2>/dev/null
+    else
+      git -C "$d" pull
+    fi
+  }
+
+  if [[ -d $dir/.git ]]; then
+    echo "Updating: $THEME_NAME"
+    update_theme "$dir"
+
+  elif [[ -d $dir/.git_disabled ]]; then
+    CHOICE=$(gum choose --header="$THEME_NAME has git disabled. Do you want to re-enable and update?" "Re-enable and update" "Keep disabled")
+
+    echo "Updating: $THEME_NAME"
+    mv "$dir/.git_disabled" "$dir/.git"
+    update_theme "$dir"
+
+    if [[ "$CHOICE" = "Keep disabled" ]]; then
+      mv "$dir/.git" "$dir/.git_disabled"
+    fi
   fi
 done
