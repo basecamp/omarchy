@@ -95,10 +95,11 @@ show_learn_menu() {
 }
 
 show_trigger_menu() {
-  case $(menu "Trigger" "  Capture\n  Share\n󰔎  Toggle") in
+  case $(menu "Trigger" "  Capture\n  Share\n󰔎  Toggle\n  Hardware") in
   *Capture*) show_capture_menu ;;
   *Share*) show_share_menu ;;
   *Toggle*) show_toggle_menu ;;
+  *Hardware*) show_hardware_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -178,6 +179,13 @@ show_toggle_menu() {
   *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
   *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
   *) back_to show_trigger_menu ;;
+  esac
+}
+
+show_hardware_menu() {
+  case $(menu "Toggle" "  Hybrid GPU") in
+  *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
+  *) show_trigger_menu ;;
   esac
 }
 
@@ -458,11 +466,7 @@ show_remove_menu() {
 }
 
 show_remove_development_menu() {
-<<<<<<< feature/add-macos-installer
-  case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure") in
-=======
   case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure\n  Scala") in
->>>>>>> dev
   *Rails*) present_terminal "omarchy-remove-dev-env ruby" ;;
   *JavaScript*) show_remove_javascript_menu ;;
   *Go*) present_terminal "omarchy-remove-dev-env go" ;;
@@ -481,7 +485,7 @@ show_remove_development_menu() {
 }
 
 show_remove_javascript_menu() {
-  case $(menu "Remove" "  Node.js\n  Bun\n  Deno") in
+  case $(menu "Remove" "  Node.js\n  Bun\n  Deno") in
   *Node*) present_terminal "omarchy-remove-dev-env node" ;;
   *Bun*) present_terminal "omarchy-remove-dev-env bun" ;;
   *Deno*) present_terminal "omarchy-remove-dev-env deno" ;;
@@ -490,7 +494,7 @@ show_remove_javascript_menu() {
 }
 
 show_remove_php_menu() {
-  case $(menu "Remove" "  PHP\n  Laravel\n  Symfony") in
+  case $(menu "Remove" "  PHP\n  Laravel\n  Symfony") in
   *PHP*) present_terminal "omarchy-remove-dev-env php" ;;
   *Laravel*) present_terminal "omarchy-remove-dev-env laravel" ;;
   *Symfony*) present_terminal "omarchy-remove-dev-env symfony" ;;
@@ -499,7 +503,7 @@ show_remove_php_menu() {
 }
 
 show_remove_elixir_menu() {
-  case $(menu "Remove" "  Elixir\n  Phoenix") in
+  case $(menu "Remove" "  Elixir\n  Phoenix") in
   *Elixir*) present_terminal "omarchy-remove-dev-env elixir" ;;
   *Phoenix*) present_terminal "omarchy-remove-dev-env phoenix" ;;
   *) show_remove_development_menu ;;
@@ -607,11 +611,8 @@ go_to_menu() {
   *trigger*) show_trigger_menu ;;
   *toggle*) show_toggle_menu ;;
   *share*) show_share_menu ;;
-<<<<<<< feature/add-macos-installer
-=======
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
->>>>>>> dev
   *style*) show_style_menu ;;
   *theme*) show_theme_menu ;;
   *screenrecord*) show_screenrecord_menu ;;
