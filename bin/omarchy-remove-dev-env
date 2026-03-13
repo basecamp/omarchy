@@ -1,7 +1,10 @@
 #!/bin/bash
 
-if [[ -z "$1" ]]; then
-  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure>" >&2
+# Remove a development environment that was previously installed via omarchy-install-dev-env.
+# Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala>
+
+if [[ -z $1 ]]; then
+  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala>" >&2
   exit 1
 fi
 
@@ -92,6 +95,13 @@ clojure)
   echo -e "Removing Clojure...\n"
   mise uninstall clojure --all
   mise rm -g clojure
+  ;;
+scala)
+  echo -e "Removing Scala...\n"
+  mise uninstall scala --all
+  mise uninstall scala-cli --all
+  mise rm -g scala
+  mise rm -g scala-cli
   ;;
 *)
   echo "Unknown environment: $1"

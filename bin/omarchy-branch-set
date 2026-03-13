@@ -3,14 +3,15 @@
 # Set the branch for Omarchy's git repository.
 
 if (($# == 0)); then
-  echo "Usage: omarchy-branch-set [master|dev]"
+  echo "Usage: omarchy-branch-set [master|rc|dev]"
   exit 1
 else
   branch="$1"
 fi
 
-case "$branch" in
-  "master") git -C $OMARCHY_PATH switch master ;;
-  "dev") git -C $OMARCHY_PATH switch dev ;;
-  *) echo "Unknown branch: $branch"; exit 1; ;;
-esac
+if [[ $branch != "master" && $branch != "rc" && $branch != "dev" ]]; then
+  echo "Error: Invalid branch '$branch'. Must be one of: master, rc, dev"
+  exit 1
+fi
+
+git -C $OMARCHY_PATH switch $branch

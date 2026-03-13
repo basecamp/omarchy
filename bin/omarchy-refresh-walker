@@ -5,9 +5,17 @@
 # Ensure walker is set to autostart
 mkdir -p ~/.config/autostart/
 cp $OMARCHY_PATH/default/walker/walker.desktop ~/.config/autostart/
+
+# And restarts if it crashes or is killed
+mkdir -p ~/.config/systemd/user/app-walker@autostart.service.d/
+cp $OMARCHY_PATH/default/walker/restart.conf ~/.config/systemd/user/app-walker@autostart.service.d/restart.conf
+
 systemctl --user daemon-reload
 
+# Refresh configs
 omarchy-refresh-config walker/config.toml
 omarchy-refresh-config elephant/calc.toml
 omarchy-refresh-config elephant/desktopapplications.toml
+
+# Restart service
 omarchy-restart-walker

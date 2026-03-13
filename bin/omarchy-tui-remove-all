@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Remove all TUIs installed via omarchy-tui-install.
+# Identifies TUIs by their Exec pattern (xdg-terminal-exec --app-id=TUI.).
+
+set -e
+
+APP_DIR="${1:-$HOME/.local/share/applications}"
+ICON_DIR="$HOME/.local/share/applications/icons"
+
+echo "Scanning for TUIs in $APP_DIR..."
+
+tui_desktop_files=()
+while IFS= read -r -d '' file; do
+  if grep -q "Exec=xdg-terminal-exec --app-id=TUI\." "$file" 2>/dev/null; then
+    tui_desktop_files+=("$file")
+  fi
+done < <(find "$APP_DIR" -maxdepth 1 -name "*.desktop" -print0 2>/dev/null)
+
+if (( ${#tui_desktop_files[@]} == 0 )); then
+  echo "No TUIs found."
+  exit 0
+fi
+
+for file in "${tui_desktop_files[@]}"; do
+  app_name=$(basename "$file" .desktop)
+  echo "Removing TUI: $app_name"
+  rm -f "$file"
+  rm -f "$ICON_DIR/$app_name.png"
+done
+
+if command -v update-desktop-database &>/dev/null; then
+  update-desktop-database "$APP_DIR" &>/dev/null || true
+fi
+
+echo "TUIs removed successfully."

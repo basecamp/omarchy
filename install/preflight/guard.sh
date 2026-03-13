@@ -11,18 +11,18 @@ fi
 
 # Must not be an Arch derivative distro
 for marker in /etc/cachyos-release /etc/eos-release /etc/garuda-release /etc/manjaro-release; do
-  if [[ -f "$marker" ]]; then
+  if [[ -f $marker ]]; then
     abort "Vanilla Arch"
   fi
 done
 
 # Must not be running as root
-if [ "$EUID" -eq 0 ]; then
+if (( EUID == 0 )); then
   abort "Running as root (not user)"
 fi
 
 # Must be x86 only to fully work
-if [ "$(uname -m)" != "x86_64" ]; then
+if [[ $(uname -m) != "x86_64" ]]; then
   abort "x86_64 CPU"
 fi
 
@@ -40,7 +40,7 @@ fi
 command -v limine &>/dev/null || abort "Limine bootloader"
 
 # Must have btrfs root filesystem
-[ "$(findmnt -n -o FSTYPE /)" = "btrfs" ] || abort "Btrfs root filesystem" 
+[[ $(findmnt -n -o FSTYPE /) = "btrfs" ]] || abort "Btrfs root filesystem" 
 
 # Cleared all guards
 echo "Guards: OK"
