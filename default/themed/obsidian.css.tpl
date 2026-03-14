@@ -12,18 +12,18 @@
   --text-selection: {{ selection_background }};
 
   /* Border color */
-  --background-modifier-border: {{ color8 }};
+  --background-modifier-border: {{ muted }};
 
   /* Semantic heading colors */
-  --text-title-h1: {{ color1 }};
-  --text-title-h2: {{ color2 }};
-  --text-title-h3: {{ color3 }};
-  --text-title-h4: {{ color4 }};
-  --text-title-h5: {{ color5 }};
-  --text-title-h6: {{ color5 }};
+  --text-title-h1: {{ red }};
+  --text-title-h2: {{ green }};
+  --text-title-h3: {{ yellow }};
+  --text-title-h4: {{ blue }};
+  --text-title-h5: {{ purple }};
+  --text-title-h6: {{ purple }};
 
   /* Links and accents */
-  --text-link: {{ color4 }};
+  --text-link: {{ blue }};
   --text-accent: {{ accent }};
   --text-accent-hover: {{ accent }};
   --interactive-accent: {{ accent }};
@@ -34,23 +34,23 @@
   --text-faint: color-mix(in srgb, {{ foreground }} 55%, transparent);
 
   /* Code */
-  --code-normal: {{ color6 }};
+  --code-normal: {{ cyan }};
 
   /* Errors and success */
-  --text-error: {{ color1 }};
-  --text-error-hover: {{ color1 }};
-  --text-success: {{ color2 }};
+  --text-error: {{ red }};
+  --text-error-hover: {{ red }};
+  --text-success: {{ green }};
 
   /* Tags */
-  --tag-color: {{ color6 }};
-  --tag-background: {{ color8 }};
+  --tag-color: {{ cyan }};
+  --tag-background: {{ muted }};
 
   /* Graph */
-  --graph-line: {{ color8 }};
+  --graph-line: {{ muted }};
   --graph-node: {{ accent }};
-  --graph-node-focused: {{ color4 }};
-  --graph-node-tag: {{ color6 }};
-  --graph-node-attachment: {{ color2 }};
+  --graph-node-focused: {{ blue }};
+  --graph-node-tag: {{ cyan }};
+  --graph-node-attachment: {{ green }};
 }
 
 /* Headers */
@@ -63,16 +63,16 @@
 
 /* Code blocks */
 .markdown-rendered code {
-  color: {{ color6 }};
+  color: {{ cyan }};
 }
 
 /* Syntax highlighting */
-.cm-s-obsidian span.cm-keyword { color: {{ color1 }}; }
-.cm-s-obsidian span.cm-string { color: {{ color2 }}; }
-.cm-s-obsidian span.cm-number { color: {{ color3 }}; }
-.cm-s-obsidian span.cm-comment { color: {{ color8 }}; }
-.cm-s-obsidian span.cm-operator { color: {{ color4 }}; }
-.cm-s-obsidian span.cm-def { color: {{ color4 }}; }
+.cm-s-obsidian span.cm-keyword { color: {{ red }}; }
+.cm-s-obsidian span.cm-string { color: {{ green }}; }
+.cm-s-obsidian span.cm-number { color: {{ yellow }}; }
+.cm-s-obsidian span.cm-comment { color: {{ muted }}; }
+.cm-s-obsidian span.cm-operator { color: {{ blue }}; }
+.cm-s-obsidian span.cm-def { color: {{ blue }}; }
 
 /* Links */
 .markdown-rendered a {
