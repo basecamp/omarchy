@@ -10,4 +10,7 @@ if omarchy-cmd-present voxtype; then
   # earlier versions of voxtype hard-coded the non-GPU backend in the systemd service file,
   # so we need to re-run setup to update it to use /usr/bin/voxtype (the symlink)
   voxtype setup systemd
+  
+  systemctl --user restart voxtype
+  omarchy-restart-waybar
 fi
