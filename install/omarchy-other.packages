@@ -19,6 +19,7 @@ iwd
 jdk-openjdk
 libpulse
 libsass
+intel-media-driver
 libva-intel-driver
 libva-nvidia-driver
 limine
@@ -45,6 +46,7 @@ snapper
 webp-pixbuf-loader
 wget
 yay-debug
+tuxedo-drivers-nocompatcheck-dkms
 yt6801-dkms
 zram-generator
 
