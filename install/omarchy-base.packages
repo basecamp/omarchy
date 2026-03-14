@@ -118,6 +118,8 @@ sushi
 swaybg
 swayosd
 system-config-printer
+tesseract
+tesseract-data-eng
 tldr
 tree-sitter-cli
 tmux
