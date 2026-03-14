@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Layout-aware fullscreen/expand toggle.
+# Scrolling: toggle between colresize 1.0 and the configured column_width default.
+# Dwindle/master: toggle fullscreen (maximize).
+
+LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
+
+if [[ $LAYOUT == "scrolling" ]]; then
+  size=$(hyprctl activewindow -j | jq -c '.size')
+  new_size=$(hyprctl --batch -j "dispatch layoutmsg colresize 1; activewindow" \
+    | tail -n +2 | jq -c '.size')
+
+  if [[ $size == "$new_size" ]]; then
+    default_width=$(hyprctl getoption scrolling:column_width -j | jq -r '.float')
+    hyprctl dispatch layoutmsg colresize "$default_width"
+  fi
+else
+  hyprctl dispatch fullscreen 1
+fi
