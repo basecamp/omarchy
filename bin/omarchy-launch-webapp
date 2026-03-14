@@ -1,6 +1,31 @@
 #!/bin/bash
 
 # Launch the passed in URL as a web app in the default browser (or chromium if the default doesn't support --app).
+# Use --isolate or --isolate=<name> to run in a separate browser process (won't share sessions with main browser).
+
+URL="$1"
+shift
+
+ISOLATE=false
+ISOLATE_NAME=""
+EXTRA_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --isolate)
+      ISOLATE=true
+      shift
+      ;;
+    --isolate=*)
+      ISOLATE=true
+      ISOLATE_NAME="${1#--isolate=}"
+      shift
+      ;;
+    *)
+      EXTRA_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
 
 browser=$(xdg-settings get default-web-browser)
 
@@ -9,4 +34,16 @@ google-chrome* | brave-browser* | microsoft-edge* | opera* | vivaldi* | helium*)
 *) browser="chromium.desktop" ;;
 esac
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+BROWSER_BIN=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1)
+
+ISOLATION_ARGS=()
+if [[ $ISOLATE == true ]]; then
+  if [[ -z $ISOLATE_NAME ]]; then
+    ISOLATE_NAME=$(echo "$URL" | sed -E 's|^https?://||; s|/.*||; s|^www\.||')
+  fi
+  DATA_DIR="$HOME/.local/share/omarchy/webapps/$ISOLATE_NAME"
+  mkdir -p "$DATA_DIR"
+  ISOLATION_ARGS=(--user-data-dir="$DATA_DIR")
+fi
+
+exec setsid uwsm-app -- "$BROWSER_BIN" --app="$URL" "${ISOLATION_ARGS[@]}" "${EXTRA_ARGS[@]}"

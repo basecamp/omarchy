@@ -4,6 +4,7 @@ set -e
 
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications/"
+WEBAPP_DATA_DIR="$HOME/.local/share/omarchy/webapps"
 
 if (( $# == 0 )); then
   # Find all web apps
@@ -37,7 +38,18 @@ if (( ${#APP_NAMES[@]} == 0 )); then
 fi
 
 for APP_NAME in "${APP_NAMES[@]}"; do
-  rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
+  DESKTOP_FILE="$DESKTOP_DIR/$APP_NAME.desktop"
+
+  # Clean up isolated webapp data directory if applicable
+  if [[ -f "$DESKTOP_FILE" ]]; then
+    ISOLATE_NAME=$(sed -n 's/.*--isolate=\([^ ]*\).*/\1/p' "$DESKTOP_FILE")
+    if [[ -n "$ISOLATE_NAME" && -d "$WEBAPP_DATA_DIR/$ISOLATE_NAME" ]]; then
+      rm -rf "$WEBAPP_DATA_DIR/$ISOLATE_NAME"
+      echo "Removed isolated data for $APP_NAME"
+    fi
+  fi
+
+  rm -f "$DESKTOP_FILE"
   rm -f "$ICON_DIR/$APP_NAME.png"
   echo "Removed $APP_NAME"
 done
