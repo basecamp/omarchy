@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Install support for using Xbox and PlayStation controllers with Steam/RetroArch/etc.
+
+set -e
+
+# Xbox: Install xpadneo for improved Xbox controller support
+omarchy-pkg-add linux-headers
+omarchy-pkg-aur-add xpadneo-dkms
+
+# Xbox: Prevent xpad/xpadneo driver conflict
+echo blacklist xpad | sudo tee /etc/modprobe.d/blacklist-xpad.conf >/dev/null
+echo hid_xpadneo | sudo tee /etc/modules-load.d/xpadneo.conf >/dev/null
+
+# PlayStation: Ensure hid-playstation module loads at boot
+echo hid_playstation | sudo tee /etc/modules-load.d/hid-playstation.conf >/dev/null
+
+# PlayStation: Enable userspace HID for Bluetooth controller support
+if [ -f /etc/bluetooth/input.conf ]; then
+  grep -q "UserspaceHID=true" /etc/bluetooth/input.conf || \
+    sudo sed -i '/^\[General\]/a UserspaceHID=true' /etc/bluetooth/input.conf
+else
+  printf '[General]\nUserspaceHID=true\n' | sudo tee /etc/bluetooth/input.conf >/dev/null
+fi
+
+# Give user access to game controllers
+sudo usermod -a -G input $USER
+
+# Modules need to be loaded
+gum confirm "Install requires reboot. Ready?" && sudo reboot now

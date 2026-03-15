@@ -1,9 +1,17 @@
 #!/bin/bash
 
-# Install and launch Steam after first letting the user pick the correct grahics card drivers.
+# Install Steam with gaming essentials (Gamescope, GameMode, MangoHud) and launch.
 
 set -e
 
+omarchy-pkg-add gamescope gamemode lib32-gamemode mangohud lib32-mangohud
+
 echo "Now pick dependencies matching your graphics card"
 sudo pacman -S steam
-setsid gtk-launch steam >/dev/null 2>&1 &
+
+# Override Steam's .desktop to launch inside Gamescope
+mkdir -p ~/.local/share/applications
+sed 's|Exec=/usr/bin/steam|Exec=gamescope -e -- steam|' \
+  /usr/share/applications/steam.desktop > ~/.local/share/applications/steam.desktop
+
+setsid gamescope -e -- steam >/dev/null 2>&1 &

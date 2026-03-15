@@ -365,12 +365,12 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n󰢹  NVIDIA GeForce NOW\n  RetroArch [AUR]\n󰍳  Minecraft\n󰖺  Xbox Controller [AUR]") in
+  case $(menu "Install" "  Steam + Gamescope\n󰢹  NVIDIA GeForce NOW\n  RetroArch [AUR]\n󰍳  Minecraft\n󰖺  Xbox + PS Controllers [AUR]") in
   *Steam*) present_terminal omarchy-install-steam ;;
   *GeForce*) present_terminal omarchy-install-geforce-now ;;
   *RetroArch*) aur_install_and_launch "RetroArch" "retroarch retroarch-assets libretro libretro-fbneo" "com.libretro.RetroArch.desktop" ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
-  *Xbox*) present_terminal omarchy-install-xbox-controllers ;;
+  *Controllers*) present_terminal omarchy-install-controllers ;;
   *) show_install_menu ;;
   esac
 }
