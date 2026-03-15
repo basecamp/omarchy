@@ -3,5 +3,11 @@
 ASUSCTL_THEME=~/.config/omarchy/current/theme/keyboard.rgb
 
 if omarchy-cmd-present asusctl; then
+  # TUF keyboards need a mode cycle to flush color changes to hardware
+  if omarchy-hw-asus-tuf; then
+    asusctl aura effect --next-mode
+    sleep 0.3
+  fi
+
   asusctl aura effect static -c $(sed 's/^#//' $ASUSCTL_THEME)
 fi
