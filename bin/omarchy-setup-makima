@@ -10,6 +10,8 @@ if [[ ! -f $CONFIG_FILE ]]; then
   mkdir -p "$HOME/.config/makima"
   cp "$OMARCHY_PATH/default/makima/AT Translated Set 2 keyboard.toml" "$CONFIG_FILE"
 
+  omarchy-hw-asus-rog && ln -sf "AT Translated Set 2 keyboard.toml" "$HOME/.config/makima/Asus Keyboard.toml"
+
   sudo mkdir -p /etc/systemd/system/makima.service.d
   sudo tee /etc/systemd/system/makima.service.d/override.conf >/dev/null <<EOF
 [Service]
