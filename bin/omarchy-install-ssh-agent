@@ -11,5 +11,5 @@ echo 'env = SSH_AUTH_SOCK,$XDG_RUNTIME_DIR/ssh-agent.socket' | tee -a ~/.config/
 systemctl enable --now --user ssh-agent.service
 
 echo 'SSH Agent has been installed and enabled'
-touch ~/.local/state/omarchy/relaunch-required
+touch ~/.local/state/omarchy/reboot-required
 omarchy-update-restart
