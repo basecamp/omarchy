@@ -14,6 +14,8 @@ fi
 package=$1
 command=${2:-$1}
 
+mkdir -p "$HOME/.local/bin"
+
 cat > "$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 exec npx --yes $package "\$@"
