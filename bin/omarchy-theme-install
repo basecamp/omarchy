@@ -3,14 +3,14 @@
 # omarchy-theme-install: Install a new theme from a git repo for Omarchy
 # Usage: omarchy-theme-install <git-repo-url>
 
-if [ -z "$1" ]; then
+if [[ -z $1 ]]; then
   echo -e "\e[32mSee https://manuals.omamix.org/2/the-omarchy-manual/90/extra-themes\n\e[0m"
   REPO_URL=$(gum input --placeholder="Git repo URL for theme" --header="")
 else
   REPO_URL="$1"
 fi
 
-if [ -z "$REPO_URL" ]; then
+if [[ -z $REPO_URL ]]; then
   exit 1
 fi
 
@@ -19,7 +19,7 @@ THEME_NAME=$(basename "$REPO_URL" .git | sed -E 's/^omarchy-//; s/-theme$//')
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
 # Remove existing theme if present
-if [ -d "$THEME_PATH" ]; then
+if [[ -d $THEME_PATH ]]; then
   rm -rf "$THEME_PATH"
 fi
 

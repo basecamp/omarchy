@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Locks the system using hyprlock, but not before ensuring 1password has also been locked, and the screensaver stopped.
+
 # Lock the screen
 pidof hyprlock || hyprlock &
 

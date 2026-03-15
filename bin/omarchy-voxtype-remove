@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+
+# Remove voxtype and its configurations.
+
+if omarchy-cmd-present voxtype; then
+  echo "Uninstall Voxtype to remove dictation."
+
+  # Remove services
+  systemctl --user stop voxtype.service 2>/dev/null || true
+  rm -f ~/.config/systemd/user/voxtype*
+  systemctl --user daemon-reload
+
+  # Remove packages and configs
+  omarchy-pkg-drop wtype voxtype-bin
+  rm -rf ~/.config/voxtype
+  rm -rf ~/.local/share/voxtype
+else
+  echo "Voxtype was not installed."
+fi

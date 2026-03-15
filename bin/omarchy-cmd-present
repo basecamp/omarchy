@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Returns true if all the commands passed in as arguments exit on the system.
+
 for cmd in "$@"; do
   command -v "$cmd" &>/dev/null || exit 1
 done

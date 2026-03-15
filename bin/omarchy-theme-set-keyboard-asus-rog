@@ -1,0 +1,7 @@
+#!/bin/bash
+
+ASUSCTL_THEME=~/.config/omarchy/current/theme/keyboard.rgb
+
+if omarchy-cmd-present asusctl; then
+  asusctl aura effect static -c $(sed 's/^#//' $ASUSCTL_THEME)
+fi

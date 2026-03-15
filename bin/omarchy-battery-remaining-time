@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Returns the battery time remaining (to empty or full) in a compact format.
+
+battery_info=$(upower -i $(upower -e | grep BAT))
+
+echo "$battery_info" | awk '/time to (empty|full)/ {
+    value = $4
+    unit = $5
+    if (unit == "minutes") {
+        hours = int(value / 60)
+        minutes = int(value % 60)
+    } else {
+        hours = int(value)
+        minutes = int((value - hours) * 60)
+    }
+    if (hours > 0 && minutes > 0) {
+        printf "%dh %dm", hours, minutes
+    } else if (hours > 0) {
+        printf "%dh", hours
+    } else {
+        printf "%dm", minutes
+    }
+    exit
+}'
