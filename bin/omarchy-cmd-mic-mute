@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# Toggle microphone mute and show OSD notification. By default mapped to XF86AudioMicMute.
+
+wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+muted=$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -c MUTED)
+monitor=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true).name')
+
+brightnessctl --device="platform::micmute" set "$muted" 2>/dev/null || true
+
+icon=$([ "$muted" = "1" ] && echo muted || echo high)
+
+swayosd-client \
+  --monitor "$monitor" \
+  --custom-icon "microphone-sensitivity-$icon-symbolic" \
+  --custom-message "Mic $([ "$muted" = "1" ] && echo muted || echo active)"
