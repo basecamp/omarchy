@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# add ssh keys to ssh-agent
+# configure SSH to add keys to ssh-agent automatically
 mkdir -p ~/.ssh
 echo 'AddKeysToAgent yes' | tee -a ~/.ssh/config >/dev/null
 
