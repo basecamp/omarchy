@@ -1,0 +1,12 @@
+[Unit]
+Description=Omarchy Monitor Refresh Rate Watcher
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/omarchy/bin/omarchy-monitor-refresh-rate-watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
