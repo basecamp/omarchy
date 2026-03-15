@@ -8,15 +8,39 @@ WIDTH=$(echo "$MONITOR_INFO" | jq -r '.width')
 HEIGHT=$(echo "$MONITOR_INFO" | jq -r '.height')
 REFRESH_RATE=$(echo "$MONITOR_INFO" | jq -r '.refreshRate')
 
-# Cycle through scales: 1 → 1.6 → 2 → 3 → 1
-CURRENT_INT=$(awk -v s="$CURRENT_SCALE" 'BEGIN { printf "%.0f", s * 10 }')
+# All candidate scales in cycle order
+ALL_SCALES=(1 1.6 2 3)
 
-case "$CURRENT_INT" in
-10) NEW_SCALE=1.6 ;;
-16) NEW_SCALE=2 ;;
-20) NEW_SCALE=3 ;;
-*) NEW_SCALE=1 ;;
-esac
+# Filter to only scales that divide cleanly into this monitor's resolution
+VALID_SCALES=()
+for s in "${ALL_SCALES[@]}"; do
+  if awk -v w="$WIDTH" -v h="$HEIGHT" -v s="$s" 'BEGIN {
+    sw = w / s; sh = h / s
+    dw = sw - int(sw); if (dw < 0) dw = -dw
+    dh = sh - int(sh); if (dh < 0) dh = -dh
+    exit !(dw < 0.001 && dh < 0.001)
+  }'; then
+    VALID_SCALES+=("$s")
+  fi
+done
+
+# Need at least 2 valid scales to cycle
+if [ "${#VALID_SCALES[@]}" -lt 2 ]; then
+  notify-send "󰍹    Only one valid scale (1x) for this display"
+  exit 0
+fi
+
+# Find current scale in the valid list, pick the next one
+CURRENT_INT=$(awk -v s="$CURRENT_SCALE" 'BEGIN { printf "%.0f", s * 10 }')
+NEW_SCALE="${VALID_SCALES[0]}"
+for i in "${!VALID_SCALES[@]}"; do
+  s_int=$(awk -v s="${VALID_SCALES[$i]}" 'BEGIN { printf "%.0f", s * 10 }')
+  if [ "$s_int" = "$CURRENT_INT" ]; then
+    next=$(( (i + 1) % ${#VALID_SCALES[@]} ))
+    NEW_SCALE="${VALID_SCALES[$next]}"
+    break
+  fi
+done
 
 hyprctl keyword misc:disable_scale_notification true
 hyprctl keyword monitor "$ACTIVE_MONITOR,${WIDTH}x${HEIGHT}@${REFRESH_RATE},auto,$NEW_SCALE"
