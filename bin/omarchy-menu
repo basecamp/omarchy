@@ -317,7 +317,7 @@ show_install_menu() {
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Tailscale󱇱  NordVPN [AUR]\n󰟵  Bitwarden\n  Chromium Account\n󰣀  SSH Agent") in
+  case $(menu "Install" "  Dropbox\n  Tailscale\n󱇱  NordVPN [AUR]\n󰟵  Bitwarden\n  Chromium Account\n󰣀  SSH Agent") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
   *NordVPN*) present_terminal omarchy-install-nordvpn ;;
