@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# Switch greetd greeter between tuigreet and regreet
+
+session_cmd="UWSM_SILENT_START=2 uwsm start -e -D Hyprland hyprland.desktop"
+template_dir="$OMARCHY_PATH/config/greetd"
+autologin=false
+greeter_type=""
+
+for arg in "$@"; do
+  case $arg in
+    --autologin|-a) autologin=true ;;
+    tuigreet|tui|regreet|gui) greeter_type=$arg ;;
+  esac
+done
+
+if [[ -z $greeter_type ]]; then
+  echo "Current greeter config:"
+  grep "^command" /etc/greetd/config.toml
+  grep -q "initial_session" /etc/greetd/config.toml && echo "  (autologin enabled)"
+  echo ""
+  echo "Usage: omarchy-greeter <tuigreet|regreet> [--autologin]"
+  echo ""
+  echo "Options:"
+  echo "  --autologin, -a  Enable auto-login (logout to switch users)"
+  exit 0
+fi
+
+# Normalize greeter type
+case $greeter_type in
+  tui) greeter_type=tuigreet ;;
+  gui) greeter_type=regreet ;;
+esac
+
+template="$template_dir/config-$greeter_type.toml"
+if [[ ! -f $template ]]; then
+  echo "Template not found: $template"
+  exit 1
+fi
+
+sudo cp "$template" /etc/greetd/config.toml
+
+# Append autologin section if requested
+if [[ $autologin == true ]]; then
+  printf '\n[initial_session]\ncommand = "%s"\nuser = "%s"\n' "$session_cmd" "$USER" | sudo tee -a /etc/greetd/config.toml >/dev/null
+fi
+
+# Copy regreet theme config if needed
+if [[ $greeter_type == "regreet" ]]; then
+  sudo cp "$template_dir/regreet.toml" /etc/greetd/regreet.toml
+fi
+
+if [[ $autologin == true ]]; then
+  echo "Switched to $greeter_type (autologin enabled)"
+else
+  echo "Switched to $greeter_type"
+fi
+echo "  Restart greetd to apply: sudo systemctl restart greetd"

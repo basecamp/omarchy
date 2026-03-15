@@ -1,0 +1,6 @@
+[terminal]
+vt = 1
+
+[default_session]
+command = "tuigreet --time --remember --remember-user-session --asterisks --cmd \"UWSM_SILENT_START=2 uwsm start -e -D Hyprland hyprland.desktop\""
+user = "greeter"

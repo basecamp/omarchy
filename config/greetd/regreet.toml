@@ -1,0 +1,17 @@
+[GTK]
+application_prefer_dark_theme = true
+cursor_theme_name = "catppuccin-mocha-mauve-cursors"
+font_name = "JetBrains Mono 12"
+icon_theme_name = "Adwaita"
+theme_name = "catppuccin-mocha-mauve-standard+default"
+
+[commands]
+reboot = ["systemctl", "reboot"]
+poweroff = ["systemctl", "poweroff"]
+
+[appearance]
+greeting_msg = "Welcome"
+
+[widget.clock]
+format = "%a %d %b  %H:%M"
+resolution = "1s"
