@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# This hook is called with the current battery percentage and state every 30 seconds.
+# It puts the system into power-saver mode when the battery level drops below a threshold.
+# To put it into use, remove .sample from the name.
+
+BATTERY_LEVEL=$1
+BATTERY_STATE=$2
+BATTERY_THRESHOLD=20
+
+# Put the system into power-saver mode when battery is low.
+if [[ $BATTERY_STATE == "discharging" ]] && ((BATTERY_LEVEL <= BATTERY_THRESHOLD)) && [[ $(powerprofilesctl get) != "power-saver" ]]; then
+  powerprofilesctl set power-saver
+fi

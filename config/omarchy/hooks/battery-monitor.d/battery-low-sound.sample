@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# This hook is called with the current battery percentage and state every 30 seconds.
+# It plays a sound when the battery level drops below a threshold.
+# To put it into use, remove .sample from the name.
+
+BATTERY_LEVEL=$1
+BATTERY_STATE=$2
+BATTERY_THRESHOLD=10
+NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_sound_notified"
+SOUND_FILE="/usr/share/sounds/freedesktop/stereo/dialog-warning.oga"
+
+if [[ $BATTERY_STATE == "discharging" ]] && ((BATTERY_LEVEL <= BATTERY_THRESHOLD)); then
+  if [[ ! -f $NOTIFICATION_FLAG ]]; then
+    if omarchy-cmd-present mpv && [[ -f $SOUND_FILE ]]; then
+      mpv --no-video "$SOUND_FILE" >/dev/null 2>&1
+    fi
+    touch $NOTIFICATION_FLAG
+  fi
+else
+  rm -f $NOTIFICATION_FLAG
+fi
