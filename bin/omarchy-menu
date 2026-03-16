@@ -219,7 +219,7 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
+  local options="  Audio\n󰤨  Network\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
   options="$options\n  Key Remapping"
   [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
@@ -227,7 +227,7 @@ show_setup_menu() {
 
   case $(menu "Setup" "$options") in
   *Audio*) omarchy-launch-audio ;;
-  *Wifi*) omarchy-launch-wifi ;;
+  *Network*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
   *System*) show_setup_system_menu ;;
