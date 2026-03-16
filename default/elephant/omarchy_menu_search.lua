@@ -12,7 +12,7 @@ function GetEntries()
   local function add(text, path, cmd)
     table.insert(entries, {
       Text = text .. "  ",
-      SubText = path,
+      Subtext = path,
       Actions = {
         activate = cmd,
       },
@@ -22,7 +22,7 @@ function GetEntries()
   local function add_terminal(text, path, cmd)
     table.insert(entries, {
       Text = text .. "  ",
-      SubText = path,
+      Subtext = path,
       Actions = {
         activate = "omarchy-launch-floating-terminal-with-presentation " .. cmd,
       },
