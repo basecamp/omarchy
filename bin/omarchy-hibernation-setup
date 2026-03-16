@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Creates a swap file in the btrfs subvolume, adds the swap file to /etc/fstab,
-# adds a resume hook to mkinitcpio, and configures suspend-then-hibernate.
+# adds a resume hook to mkinitcpio, and configures delayed hibernate after suspend.
 
 if [[ ! -f /sys/power/image_size ]]; then
   echo -e "Hibernation is not supported on your system" >&2
@@ -78,6 +78,17 @@ echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
 # Ensure keyboard backlight doesn't prevent sleep
 sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
 
+# Install delayed-hibernate hook and service
+echo "Configuring delayed hibernate after suspend"
+sudo mkdir -p /usr/lib/systemd/system-sleep
+sudo install -m 0755 -o root -g root "$OMARCHY_PATH/default/systemd/system-sleep/delayed-hibernate" /usr/lib/systemd/system-sleep/
+sudo cp "$OMARCHY_PATH/default/systemd/delayed-hibernate.service" /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable delayed-hibernate.service
+
+# Remove old suspend-then-hibernate config if present
+sudo rm -f /etc/systemd/logind.conf.d/lid.conf /etc/systemd/sleep.conf.d/hibernate.conf
+
 # Add resume= kernel parameters so the initramfs resume hook knows where to find the
 # hibernation image. Without these, resume happens late (after GPU drivers load) and fails.
 if [[ ! -f $RESUME_DROP_IN ]]; then
@@ -94,7 +105,7 @@ if [[ ! -f $RESUME_DROP_IN ]]; then
   fi
 fi
 
-# Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)
+# Use ACPI alarm for RTC wakeup on s2idle systems (needed for delayed hibernate)
 if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
   LIMINE_DROP_IN="/etc/limine-entry-tool.d/rtc-alarm.conf"
   if [[ ! -f $LIMINE_DROP_IN ]]; then
