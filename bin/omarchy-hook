@@ -21,8 +21,8 @@ fi
 
 if [[ -d $HOOK_DIR ]]; then
   for hook_file in "$HOOK_DIR"/*; do
-    # Only run extensionless hook files to avoid backups and samples.
-    if [[ -f $hook_file && ${hook_file##*/} != *.* ]]; then
+    # Only run extensionless hook files and .sh scripts to avoid backups and samples.
+    if [[ -f $hook_file && (${hook_file##*/} != *.* || ${hook_file##*/} == *.sh) ]]; then
       bash "$hook_file" "$@"
     fi
   done
