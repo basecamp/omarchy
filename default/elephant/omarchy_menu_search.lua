@@ -9,6 +9,22 @@ HideFromProviderlist = true
 function GetEntries()
   local entries = {}
 
+  -- Detect best Ollama package for this machine's GPU
+  local ollama_pkg = "ollama"
+  local h = io.popen("command -v nvidia-smi 2>/dev/null")
+  if h then
+    local out = h:read("*l"); h:close()
+    if out and out ~= "" then
+      ollama_pkg = "ollama-cuda"
+    else
+      h = io.popen("command -v rocminfo 2>/dev/null")
+      if h then
+        out = h:read("*l"); h:close()
+        if out and out ~= "" then ollama_pkg = "ollama-rocm" end
+      end
+    end
+  end
+
   local function add(text, path, cmd)
     table.insert(entries, {
       Text = text .. "  ",
@@ -80,13 +96,13 @@ function GetEntries()
 
   -- Setup → Config
   add("Config: Hyprland",      "Setup → Config",           "omarchy-launch-editor ~/.config/hypr/hyprland.conf")
-  add("Config: Walker",        "Setup → Config",           "omarchy-launch-editor ~/.config/walker/config.toml")
-  add("Config: Waybar",        "Setup → Config",           "omarchy-launch-editor ~/.config/waybar/config.jsonc")
-  add("Config: Hypridle",      "Setup → Config",           "omarchy-launch-editor ~/.config/hypr/hypridle.conf")
+  add("Config: Walker",        "Setup → Config",           "omarchy-launch-editor ~/.config/walker/config.toml && omarchy-restart-walker")
+  add("Config: Waybar",        "Setup → Config",           "omarchy-launch-editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar")
+  add("Config: Hypridle",      "Setup → Config",           "omarchy-launch-editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle")
   add("Config: Hyprlock",      "Setup → Config",           "omarchy-launch-editor ~/.config/hypr/hyprlock.conf")
-  add("Config: Hyprsunset",    "Setup → Config",           "omarchy-launch-editor ~/.config/hypr/hyprsunset.conf")
-  add("Config: Swayosd",       "Setup → Config",           "omarchy-launch-editor ~/.config/swayosd/config.toml")
-  add("Config: XCompose",      "Setup → Config",           "omarchy-launch-editor ~/.XCompose")
+  add("Config: Hyprsunset",    "Setup → Config",           "omarchy-launch-editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset")
+  add("Config: Swayosd",       "Setup → Config",           "omarchy-launch-editor ~/.config/swayosd/config.toml && omarchy-restart-swayosd")
+  add("Config: XCompose",      "Setup → Config",           "omarchy-launch-editor ~/.XCompose && omarchy-restart-xcompose")
 
   -- Install → Service
   add_terminal("Install Dropbox",          "Install → Service",    "omarchy-install-dropbox")
@@ -102,7 +118,7 @@ function GetEntries()
   add_terminal("Install Copilot CLI",  "Install → AI",     "echo 'Installing Copilot CLI...'; omarchy-pkg-add github-copilot-cli")
   add_terminal("Install Cursor CLI",   "Install → AI",     "echo 'Installing Cursor CLI...'; omarchy-pkg-add cursor-cli")
   add_terminal("Install LM Studio",    "Install → AI",     "echo 'Installing LM Studio...'; omarchy-pkg-add lmstudio-bin")
-  add_terminal("Install Ollama",       "Install → AI",     "echo 'Installing Ollama...'; omarchy-pkg-add ollama")
+  add_terminal("Install Ollama",       "Install → AI",     "echo 'Installing Ollama...'; omarchy-pkg-add " .. ollama_pkg)
   add_terminal("Install Crush",        "Install → AI",     "echo 'Installing Crush...'; omarchy-pkg-add crush-bin")
 
   -- Install → Editor
