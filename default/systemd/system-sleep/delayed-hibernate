@@ -1,14 +1,19 @@
 #!/bin/bash
 
-# Workaround for amdgpu bug where hibernate-after-suspend hangs.
-# Instead of using systemd's suspend-then-hibernate (which transitions
-# to hibernate from a suspended state), we:
-#   1. Set an RTC alarm to wake the system after a delay
-#   2. On wake, check if it was the RTC alarm
-#   3. If yes, signal a systemd service to hibernate directly
+# Delayed hibernate: s2idle first, then hibernate after a timeout.
 #
-# This gives instant s2idle wake for short periods, and zero-drain
-# hibernate for long periods — without hitting the kernel bug.
+# systemd's native suspend-then-hibernate transitions to hibernate from
+# a suspended state, which hangs on multiple GPU drivers (confirmed on
+# amdgpu, reported on others). Instead, we fully wake via RTC alarm and
+# hibernate from a clean, awake state — which works reliably everywhere.
+#
+#   1. On suspend: set an RTC alarm to wake after HIBERNATE_DELAY_SEC
+#   2. On wake: check if it was the RTC alarm or the user
+#   3. If RTC: signal delayed-hibernate.service to hibernate directly
+#
+# The service runs After=suspend.target, and this hook runs during the
+# sleep/wake cycle (before suspend.target is reached on resume), so the
+# flag file will exist when the service checks for it.
 
 HIBERNATE_DELAY_SEC=5400  # 90 minutes
 RTC_ALARM_FLAG="/tmp/rtc-hibernate-pending"
