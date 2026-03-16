@@ -1,0 +1,2 @@
+#!/bin/bash
+exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.calendar -e omarchy-tui-calendar
