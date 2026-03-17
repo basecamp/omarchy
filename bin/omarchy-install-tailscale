@@ -1,15 +1,10 @@
 #!/bin/bash
 
-# Install the Tailscale mesh VPN service, the tsui TUI management app, and a web app for the Tailscale Admin Console.
+# Install the Tailscale mesh VPN service and a web app for the Tailscale Admin Console.
 
 curl -fsSL https://tailscale.com/install.sh | sh
-curl -fsSL https://neuralink.com/tsui/install.sh | bash
 
 echo -e "\nStarting Tailscale..."
 sudo tailscale up --accept-routes
 
-echo -e "\nAdd tsui to sudoers..."
-echo "$USER ALL=(ALL) NOPASSWD: $(which tsui)" | sudo tee /etc/sudoers.d/tsui
-
-omarchy-tui-install "Tailscale" "sudo tsui" float https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png
-omarchy-webapp-install "Tailscale Admin Console" "https://login.tailscale.com/admin/machines" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png
+omarchy-webapp-install "Tailscale" "https://login.tailscale.com/admin/machines" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tailscale-light.png

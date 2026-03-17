@@ -3,17 +3,19 @@
 set -e
 
 # Ensure screensaver/sleep doesn't set in during updates
-hyprctl dispatch tagwindow +noidle &> /dev/null || true
+hyprctl dispatch tagwindow +noidle &>/dev/null || true
 
-# Capture update logs
+# Capture update logs (CLICOLOR_FORCE keeps gum styled when stdout is piped through tee)
+export CLICOLOR_FORCE=1
 exec > >(tee "/tmp/omarchy-update.log") 2>&1
 
 # Perform all update steps
-omarchy-update-time
 omarchy-update-keyring
 omarchy-update-available-reset
 omarchy-update-system-pkgs
 omarchy-migrate
+omarchy-update-aur-pkgs
+omarchy-update-orphan-pkgs
 omarchy-hook post-update
 
 omarchy-update-analyze-logs
@@ -21,4 +23,4 @@ omarchy-update-analyze-logs
 omarchy-update-restart
 
 # Re-enable screensaver/sleep after updates
-hyprctl dispatch tagwindow -- -noidle &> /dev/null || true
+hyprctl dispatch tagwindow -- -noidle &>/dev/null || true

@@ -7,23 +7,30 @@ if command -v eza &> /dev/null; then
 fi
 
 alias ff="fzf --preview 'bat --style=numbers --color=always {}'"
+alias eff='$EDITOR "$(ff)"'
 
 if command -v zoxide &> /dev/null; then
   alias cd="zd"
   zd() {
-    if [ $# -eq 0 ]; then
-      builtin cd ~ && return
-    elif [ -d "$1" ]; then
-      builtin cd "$1"
+    if (( $# == 0 )); then
+      builtin cd ~ || return
+    elif [[ -d $1 ]]; then
+      builtin cd "$1" || return
     else
-      z "$@" && printf "\U000F17A9 " && pwd || echo "Error: Directory not found"
+      if ! z "$@"; then
+        echo "Error: Directory not found"
+        return 1
+      fi
+
+      printf "\U000F17A9 "
+      pwd
     fi
   }
 fi
 
-open() {
+open() (
   xdg-open "$@" >/dev/null 2>&1 &
-}
+)
 
 # Directories
 alias ..='cd ..'
@@ -32,9 +39,11 @@ alias ....='cd ../../..'
 
 # Tools
 alias c='opencode'
+alias cx='printf "\033[2J\033[3J\033[H" && claude --allow-dangerously-skip-permissions'
 alias d='docker'
 alias r='rails'
-n() { if [ "$#" -eq 0 ]; then nvim .; else nvim "$@"; fi; }
+alias t='tmux attach || tmux new -s Work'
+n() { if [ "$#" -eq 0 ]; then command nvim . ; else command nvim "$@"; fi; }
 
 # Git
 alias g='git'

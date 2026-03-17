@@ -2,13 +2,6 @@
 
 update_log="/tmp/omarchy-update.log"
 
-# Check for errors
-if grep -qi "error" "$update_log"; then
-  echo -e "\e[31mNon-stopping errors detected during update:\e[0m"
-  grep -i "error" "$update_log"
-  echo
-fi
-
 # Check for initramfs generation failure
 if grep -q "Updating linux initcpios" "$update_log"; then
   if ! grep -q "Initcpio image generation successful" "$update_log"; then

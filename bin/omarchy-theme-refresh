@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Refresh the current theme from its templates.
+
+THEME_NAME_PATH="$HOME/.config/omarchy/current/theme.name"
+
+if [[ -f $THEME_NAME_PATH ]]; then
+  omarchy-theme-set "$(cat $THEME_NAME_PATH)"
+fi
