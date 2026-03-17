@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Sets the system sleep mode and configures the corresponding system hooks.
+#
+# Usage: omarchy-set-sleep-mode <mode>
+#   suspend                    — s2idle only, no automatic hibernation
+#   delayed-hibernate:SECONDS  — s2idle, then hibernate after SECONDS
+#   hibernate                  — direct hibernate on lid close
+
+MODE="$1"
+
+if [[ -z $MODE ]]; then
+  echo "Usage: omarchy-set-sleep-mode <suspend|delayed-hibernate:SECONDS|hibernate>" >&2
+  exit 1
+fi
+
+# Write the mode to the system config file
+sudo mkdir -p /etc/omarchy
+echo "$MODE" | sudo tee /etc/omarchy/sleep-mode >/dev/null
+
+case $MODE in
+  suspend)
+    sudo rm -f /usr/lib/systemd/system-sleep/delayed-hibernate
+    sudo rm -f /etc/systemd/logind.conf.d/omarchy-lid.conf
+    sudo systemctl kill -s HUP systemd-logind 2>/dev/null
+    notify-send "󰒲  Sleep mode: suspend only"
+    ;;
+
+  delayed-hibernate:*)
+    sudo install -m 0755 -o root -g root \
+      "$OMARCHY_PATH/default/systemd/system-sleep/delayed-hibernate" \
+      /usr/lib/systemd/system-sleep/
+    sudo rm -f /etc/systemd/logind.conf.d/omarchy-lid.conf
+    sudo systemctl kill -s HUP systemd-logind 2>/dev/null
+    delay_min=$(( ${MODE#delayed-hibernate:} / 60 ))
+    notify-send "󰤁  Sleep mode: hibernate after ${delay_min} min"
+    ;;
+
+  hibernate)
+    sudo rm -f /usr/lib/systemd/system-sleep/delayed-hibernate
+    sudo mkdir -p /etc/systemd/logind.conf.d
+    printf '[Login]\nHandleLidSwitch=hibernate\nHandleLidSwitchExternalPower=hibernate\n' \
+      | sudo tee /etc/systemd/logind.conf.d/omarchy-lid.conf >/dev/null
+    sudo systemctl kill -s HUP systemd-logind 2>/dev/null
+    notify-send "󰏧  Sleep mode: direct hibernate"
+    ;;
+esac
