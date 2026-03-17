@@ -291,16 +291,18 @@ show_sleep_mode_menu() {
   *"Suspend only"*)
     omarchy-set-sleep-mode suspend ;;
   *"Delayed hibernate"*)
+    if ! omarchy-hibernation-available; then
+      present_terminal omarchy-hibernation-setup
+    fi
     if omarchy-hibernation-available; then
       show_hibernate_delay_menu
-    else
-      present_terminal omarchy-hibernation-setup
     fi ;;
   *"Direct hibernate"*)
+    if ! omarchy-hibernation-available; then
+      present_terminal omarchy-hibernation-setup
+    fi
     if omarchy-hibernation-available; then
       omarchy-set-sleep-mode hibernate
-    else
-      present_terminal omarchy-hibernation-setup
     fi ;;
   *"Disable hibernation"*)
     present_terminal omarchy-hibernation-remove ;;
