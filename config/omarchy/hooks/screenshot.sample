@@ -4,7 +4,9 @@
 # captured and copied to clipboard. It replaces the default notify-send
 # notification. To put it into use, remove .sample from the name.
 #
-# Example: macOS-style draggable preview thumbnail (AUR: omarchy-screenshot-preview)
-#   omarchy-screenshot-preview "$1"
+# Requires: omarchy-screenshot-preview (AUR)
+#   yay -S omarchy-screenshot-preview
 
-notify-send "Screenshot copied & saved" "$1" -t 5000 -i "$1"
+if omarchy-cmd-present omarchy-screenshot-preview; then
+  omarchy-screenshot-preview "$1"
+fi
