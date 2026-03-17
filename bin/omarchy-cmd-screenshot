@@ -124,10 +124,14 @@ if [[ $PROCESSING == "slurp" ]]; then
   grim -g "$SELECTION" "$FILEPATH" || exit 1
   wl-copy <"$FILEPATH"
 
-  (
-    ACTION=$(notify-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" -t 10000 -i "$FILEPATH" -A "default=edit")
-    [[ $ACTION == "default" ]] && open_editor "$FILEPATH"
-  ) &
+  if [[ -f ~/.config/omarchy/hooks/screenshot ]]; then
+    omarchy-hook screenshot "$FILEPATH" &
+  else
+    (
+      ACTION=$(notify-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" -t 10000 -i "$FILEPATH" -A "default=edit")
+      [[ $ACTION == "default" ]] && open_editor "$FILEPATH"
+    ) &
+  fi
 else
   grim -g "$SELECTION" - | wl-copy
 fi
