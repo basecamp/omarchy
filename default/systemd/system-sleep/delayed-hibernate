@@ -19,7 +19,7 @@
 SLEEP_MODE=$(cat /etc/omarchy/sleep-mode 2>/dev/null)
 case $SLEEP_MODE in
   delayed-hibernate:*) HIBERNATE_DELAY_SEC=${SLEEP_MODE#delayed-hibernate:} ;;
-  "") HIBERNATE_DELAY_SEC=3600 ;;
+  "") exit 0 ;;
   *) exit 0 ;;
 esac
 
