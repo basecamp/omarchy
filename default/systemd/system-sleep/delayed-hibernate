@@ -9,33 +9,28 @@
 #
 #   1. On suspend: set an RTC alarm to wake after HIBERNATE_DELAY_SEC
 #   2. On wake: check if it was the RTC alarm or the user
-#   3. If RTC: signal delayed-hibernate.service to hibernate directly
+#   3. If RTC: schedule hibernate via a transient systemd timer
 #
-# The service runs After=suspend.target, and this hook runs during the
-# sleep/wake cycle (before suspend.target is reached on resume), so the
-# flag file will exist when the service checks for it.
+# We use systemd-run --on-active to schedule hibernate a few seconds
+# after the suspend operation fully completes. This avoids two problems:
+# - systemctl hibernate fails if called while suspend is "in progress"
+# - background processes from sleep hooks get killed on re-suspend
 
 HIBERNATE_DELAY_SEC=5400  # 90 minutes
-RTC_ALARM_FLAG="/tmp/rtc-hibernate-pending"
 
 if [[ $1 == "pre" && $2 != "hibernate" ]]; then
   rtcwake -m no -s "$HIBERNATE_DELAY_SEC" 2>/dev/null
-  touch "$RTC_ALARM_FLAG"
 fi
 
 if [[ $1 == "post" && $2 != "hibernate" ]]; then
-  if [[ -f $RTC_ALARM_FLAG ]]; then
-    rm -f "$RTC_ALARM_FLAG"
+  # If wakealarm is empty, the RTC alarm fired (kernel clears it)
+  alarm_time=$(cat /sys/class/rtc/rtc0/wakealarm 2>/dev/null)
 
-    # If wakealarm is empty, the RTC alarm fired (kernel clears it)
-    alarm_time=$(cat /sys/class/rtc/rtc0/wakealarm 2>/dev/null)
-
-    if [[ -z $alarm_time ]]; then
-      # RTC wake — signal the delayed-hibernate service to hibernate
-      touch /tmp/rtc-do-hibernate
-    else
-      # User woke manually — cancel the pending alarm
-      echo 0 > /sys/class/rtc/rtc0/wakealarm 2>/dev/null
-    fi
+  if [[ -z $alarm_time ]]; then
+    # RTC wake — schedule hibernate after suspend fully completes
+    systemd-run --no-block --on-active=5s systemctl hibernate
+  else
+    # User woke manually — cancel the pending alarm
+    echo 0 > /sys/class/rtc/rtc0/wakealarm 2>/dev/null
   fi
 fi
