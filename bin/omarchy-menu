@@ -232,7 +232,7 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  Sleep Mode\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
   [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Security\n  Config"
@@ -242,7 +242,7 @@ show_setup_menu() {
   *Wifi*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
-  *System*) show_setup_system_menu ;;
+  *Sleep*) show_sleep_mode_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
@@ -286,26 +286,57 @@ show_setup_config_menu() {
   esac
 }
 
-show_setup_system_menu() {
-  local options=""
+show_sleep_mode_menu() {
+  local current preselect options
+  current=$(cat /etc/omarchy/sleep-mode 2>/dev/null)
 
-  if omarchy-toggle-enabled suspend-off; then
-    options="$options󰒲  Enable Suspend"
-  else
-    options="$options󰒲  Disable Suspend"
-  fi
+  case $current in
+    suspend)              preselect="󰒲  Suspend only" ;;
+    delayed-hibernate:*)  preselect="󰤁  Delayed hibernate" ;;
+    hibernate)            preselect="󰏧  Direct hibernate" ;;
+    *)                    preselect="󰒲  Suspend only" ;;
+  esac
 
-  if omarchy-hibernation-available; then
-    options="$options\n󰤁  Disable Hibernate"
-  else
-    options="$options\n󰤁  Enable Hibernate"
-  fi
+  options="󰒲  Suspend only\n󰤁  Delayed hibernate\n󰏧  Direct hibernate"
+  omarchy-hibernation-available && options="$options\n󰩺  Disable hibernation"
 
-  case $(menu "System" "$options") in
-  *Suspend*) omarchy-toggle-suspend ;;
-  *"Enable Hibernate"*) present_terminal omarchy-hibernation-setup ;;
-  *"Disable Hibernate"*) present_terminal omarchy-hibernation-remove ;;
+  case $(menu "Sleep Mode" "$options" "" "$preselect") in
+  *"Suspend only"*)
+    omarchy-set-sleep-mode suspend ;;
+  *"Delayed hibernate"*)
+    if omarchy-hibernation-available; then
+      show_hibernate_delay_menu
+    else
+      present_terminal omarchy-hibernation-setup
+    fi ;;
+  *"Direct hibernate"*)
+    if omarchy-hibernation-available; then
+      omarchy-set-sleep-mode hibernate
+    else
+      present_terminal omarchy-hibernation-setup
+    fi ;;
+  *"Disable hibernation"*)
+    present_terminal omarchy-hibernation-remove ;;
   *) show_setup_menu ;;
+  esac
+}
+
+show_hibernate_delay_menu() {
+  local current preselect=""
+  current=$(cat /etc/omarchy/sleep-mode 2>/dev/null)
+
+  case $current in
+    delayed-hibernate:900)  preselect="  15 minutes" ;;
+    delayed-hibernate:3600) preselect="  60 minutes" ;;
+    delayed-hibernate:7200) preselect="  120 minutes" ;;
+    *)                      preselect="  60 minutes" ;;
+  esac
+
+  case $(menu "Hibernate Delay" "  15 minutes\n  60 minutes\n  120 minutes" "" "$preselect") in
+  *15*)  omarchy-set-sleep-mode delayed-hibernate:900 ;;
+  *60*)  omarchy-set-sleep-mode delayed-hibernate:3600 ;;
+  *120*) omarchy-set-sleep-mode delayed-hibernate:7200 ;;
+  *) show_sleep_mode_menu ;;
   esac
 }
 
@@ -591,7 +622,7 @@ show_about() {
 
 show_system_menu() {
   local options="󱄄  Screensaver\n  Lock"
-  ! omarchy-toggle-enabled suspend-off && options="$options\n󰒲  Suspend"
+  options="$options\n󰒲  Suspend"
   omarchy-hibernation-available && options="$options\n󰤁  Hibernate"
   options="$options\n󰍃  Logout\n󰜉  Restart\n󰐥  Shutdown"
 

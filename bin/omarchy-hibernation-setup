@@ -75,18 +75,25 @@ sudo mkdir -p /etc/mkinitcpio.conf.d
 echo "Adding resume hook to $MKINITCPIO_CONF"
 echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
 
-# Ensure keyboard backlight doesn't prevent sleep
-sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
-
-# Install delayed-hibernate hook
+# Install delayed-hibernate hook and set default sleep mode
 echo "Configuring delayed hibernate after suspend"
 sudo mkdir -p /usr/lib/systemd/system-sleep
-sudo install -m 0755 -o root -g root "$OMARCHY_PATH/default/systemd/system-sleep/delayed-hibernate" /usr/lib/systemd/system-sleep/
+sudo install -m 0755 -o root -g root \
+  "$OMARCHY_PATH/default/systemd/system-sleep/delayed-hibernate" \
+  /usr/lib/systemd/system-sleep/
+
+if [[ ! -f /etc/omarchy/sleep-mode ]]; then
+  sudo mkdir -p /etc/omarchy
+  echo "delayed-hibernate:3600" | sudo tee /etc/omarchy/sleep-mode >/dev/null
+fi
 
 # Remove old suspend-then-hibernate config if present
 sudo rm -f /etc/systemd/logind.conf.d/lid.conf /etc/systemd/sleep.conf.d/hibernate.conf
 sudo systemctl disable delayed-hibernate.service 2>/dev/null
 sudo rm -f /etc/systemd/system/delayed-hibernate.service
+
+# Ensure keyboard backlight doesn't prevent sleep
+sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
 
 # Add resume= kernel parameters so the initramfs resume hook knows where to find the
 # hibernation image. Without these, resume happens late (after GPU drivers load) and fails.
