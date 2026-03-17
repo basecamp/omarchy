@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Delayed hibernate: s2idle first, then hibernate after a timeout.
+#
+# systemd's native suspend-then-hibernate transitions to hibernate from
+# a suspended state, which hangs on multiple GPU drivers (confirmed on
+# amdgpu, reported on others). Instead, we fully wake via RTC alarm and
+# hibernate from a clean, awake state — which works reliably everywhere.
+#
+#   1. On suspend: set an RTC alarm to wake after HIBERNATE_DELAY_SEC
+#   2. On wake: check if it was the RTC alarm or the user
+#   3. If RTC: schedule hibernate via a transient systemd timer
+#
+# We use systemd-run --on-active to schedule hibernate a few seconds
+# after the suspend operation fully completes. This avoids two problems:
+# - systemctl hibernate fails if called while suspend is "in progress"
+# - background processes from sleep hooks get killed on re-suspend
+
+HIBERNATE_DELAY_SEC=5400  # 90 minutes
+
+if [[ $1 == "pre" && $2 != "hibernate" ]]; then
+  rtcwake -m no -s "$HIBERNATE_DELAY_SEC" 2>/dev/null
+fi
+
+if [[ $1 == "post" && $2 != "hibernate" ]]; then
+  # If wakealarm is empty, the RTC alarm fired (kernel clears it)
+  alarm_time=$(cat /sys/class/rtc/rtc0/wakealarm 2>/dev/null)
+
+  if [[ -z $alarm_time ]]; then
+    # RTC wake — schedule hibernate after suspend fully completes
+    systemd-run --no-block --on-active=5s systemctl hibernate
+  else
+    # User woke manually — cancel the pending alarm
+    echo 0 > /sys/class/rtc/rtc0/wakealarm 2>/dev/null
+  fi
+fi
