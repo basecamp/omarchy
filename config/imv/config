@@ -13,4 +13,4 @@
 <Ctrl+r> = exec mogrify -rotate 90 "$imv_current_file"
 
 # Copy the current image to the clipboard
-<Ctrl+c> = exec wl-copy < $imv_current_file
+<Ctrl+c> = exec wl-copy < "$imv_current_file"
