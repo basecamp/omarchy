@@ -15,8 +15,16 @@
   margin-left: 0;
 }
 
+#custom-omarchy {
+  padding-left: 8px;
+}
+
 .modules-right {
-  margin-right: 8px;
+  margin-right: 0;
+}
+
+#cpu {
+  padding-right: 8px;
 }
 
 #workspaces button {
