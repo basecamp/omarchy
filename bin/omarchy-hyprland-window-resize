@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Layout-aware window resize for both scrolling and dwindle/master layouts.
+# Usage: omarchy-hyprland-window-resize <direction> <axis>
+#   direction: grow | shrink
+#   axis: horizontal | vertical
+
+DIRECTION=$1
+AXIS=${2:-horizontal}
+LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
+
+if [[ $LAYOUT == "scrolling" ]]; then
+  if [[ $AXIS == "horizontal" ]]; then
+    if [[ $DIRECTION == "grow" ]]; then
+      hyprctl dispatch layoutmsg colresize +0.1
+    else
+      hyprctl dispatch layoutmsg colresize -0.1
+    fi
+  else
+    if [[ $DIRECTION == "grow" ]]; then
+      hyprctl dispatch resizeactive 0 100
+    else
+      hyprctl dispatch resizeactive 0 -100
+    fi
+  fi
+else
+  if [[ $AXIS == "horizontal" ]]; then
+    if [[ $DIRECTION == "grow" ]]; then
+      hyprctl dispatch resizeactive 100 0
+    else
+      hyprctl dispatch resizeactive -100 0
+    fi
+  else
+    if [[ $DIRECTION == "grow" ]]; then
+      hyprctl dispatch resizeactive 0 100
+    else
+      hyprctl dispatch resizeactive 0 -100
+    fi
+  fi
+fi
