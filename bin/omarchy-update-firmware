@@ -1,10 +1,17 @@
 #!/bin/bash
 
+# Update system firmware using fwupd. Ensures the fwupd EFI binary is installed
+# in the ESP so UEFI capsule updates work with the Limine bootloader.
+
 set -e
 echo -e "\e[32mUpdate Firmware\e[0m"
 
 if omarchy-cmd-missing fwupdmgr; then
   omarchy-pkg-add fwupd
+fi
+
+if [[ -d /sys/firmware/efi ]] && [[ -f /usr/lib/fwupd/efi/fwupdx64.efi ]]; then
+  sudo install -D /usr/lib/fwupd/efi/fwupdx64.efi /boot/EFI/arch/fwupdx64.efi
 fi
 
 fwupdmgr refresh --force
