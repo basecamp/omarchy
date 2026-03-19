@@ -1,0 +1,12 @@
+#!/bin/bash
+# Returns 0 if communication streams are active, 1 otherwise.
+
+# 1. Sink (Speaker) Evaluation: Strict Role Filtering
+# Query audio graph for active capture nodes (Microphone polling)
+pactl list sink-inputs | grep -A 30 'State: RUNNING' | grep -Eqi 'media\.role = "(communication|phone)"' && exit 0
+
+# 2. Source (Microphone) Evaluation: Broad State Polling
+# Queries native PipeWire graph for active capture streams (denoted by '<' and '[active]').
+wpctl status | grep '<' | grep -qi '\[active\]' && exit 0
+
+exit 1
