@@ -50,6 +50,19 @@ APP_DOMAIN="${APP_DOMAIN#http://}"
 APP_DOMAIN="${APP_DOMAIN%%/*}"
 APP_DOMAIN="${APP_DOMAIN%%.*}"
 
+
+BROWSER_DOMAIN=""
+browser=$(xdg-settings get default-web-browser 2>/dev/null || echo "")
+case $browser in
+  google-chrome*) BROWSER_DOMAIN="google-chrome" ;;
+  brave-browser*) BROWSER_DOMAIN="brave-browser" ;;
+  microsoft-edge*) BROWSER_DOMAIN="microsoft-edge" ;;
+  opera*) BROWSER_DOMAIN="opera" ;;
+  vivaldi*) BROWSER_DOMAIN="vivaldi" ;;
+  helium*) BROWSER_DOMAIN="helium" ;;
+  *) BROWSER_DOMAIN="chromium" ;;
+esac
+
 # Resolve icon from URL or from a local icon name.
 mkdir -p "$ICON_DIR"
 
@@ -71,7 +84,7 @@ fi
 if [[ -n $CUSTOM_EXEC ]]; then
   EXEC_COMMAND="$CUSTOM_EXEC"
 elif [[ $SINGLE_INSTANCE == "Yes" ]]; then
-  EXEC_COMMAND="omarchy-launch-or-focus-webapp $APP_DOMAIN $APP_URL"
+  EXEC_COMMAND="omarchy-launch-or-focus-webapp $BROWSER_DOMAIN-$APP_DOMAIN $APP_URL"
 else
   EXEC_COMMAND="omarchy-launch-webapp $APP_URL"
 fi
