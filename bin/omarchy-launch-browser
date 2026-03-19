@@ -4,7 +4,7 @@
 # Automatically converts --private into the correct flag for the given browser.
 
 default_browser=$(xdg-settings get default-web-browser)
-browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$default_browser 2>/dev/null | head -1)
+browser_exec=$(sed -n 's/^Exec=//p' {~/.local,~/.nix-profile,/usr}/share/applications/$default_browser 2>/dev/null | head -1 | sed 's/ *%U//g')
 
 if $browser_exec --help | grep -q MOZ_LOG; then
   private_flag="--private-window"
@@ -14,4 +14,4 @@ else
   private_flag="--incognito"
 fi
 
-exec setsid uwsm-app -- "$browser_exec" "${@/--private/$private_flag}"
+exec setsid uwsm-app -- $browser_exec "${@/--private/$private_flag}"
