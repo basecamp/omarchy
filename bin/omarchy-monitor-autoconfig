@@ -1,0 +1,128 @@
+#!/bin/bash
+
+# Watches for new monitor connections and persists Hyprland's fallback choices
+# as desc:-based entries in monitors.conf. After a monitor's first plug-in,
+# it becomes "known" and uses its saved settings on subsequent connections.
+#
+# Runs at login via exec-once. Uses socat for event-driven hotplug detection,
+# falls back to polling every 5s if socat isn't available.
+
+MONITORS_CONF="$HOME/.config/hypr/monitors.conf"
+SKIP_NAMES=("eDP-1")   # Laptop panels are manually configured
+POLL_INTERVAL=5
+
+log() {
+  echo "[monitor-autoconfig] $(date '+%H:%M:%S') $*" >&2
+}
+
+is_skipped() {
+  local name="$1"
+  for skip in "${SKIP_NAMES[@]}"; do
+    [[ "$name" == "$skip" ]] && return 0
+  done
+  return 1
+}
+
+# Build "Make Model" desc prefix (no serial, so it matches any unit of that model)
+build_desc_prefix() {
+  echo "$1 $2"
+}
+
+is_already_configured() {
+  grep -q "^monitor\s*=\s*desc:${1}" "$MONITORS_CONF" 2>/dev/null
+}
+
+# Insert a new desc: entry before the catch-all fallback rule in monitors.conf
+insert_monitor_entry() {
+  local prefix="$1" width="$2" height="$3" refresh="$4" scale="$5"
+  local scale_clean
+  scale_clean=$(printf '%g' "$scale")
+
+  local comment="# Auto-detected: ${prefix##* } (${width}x${height}, scale ${scale_clean})"
+  local rule="monitor = desc:${prefix}, ${width}x${height}@${refresh}, auto, ${scale_clean}"
+
+  # Try to insert before the fallback line (handles both "monitor=," and "monitor = ,")
+  if grep -qP '^monitor\s*=\s*,\s*preferred' "$MONITORS_CONF"; then
+    sed -i "/^monitor\s*=\s*,\s*preferred/{
+      i\\${comment}
+      i\\${rule}
+      i\\
+    }" "$MONITORS_CONF"
+  else
+    # No fallback line found — append to end of file
+    printf '\n%s\n%s\n' "$comment" "$rule" >> "$MONITORS_CONF"
+  fi
+
+  log "Added: ${rule}"
+}
+
+scan_monitors() {
+  local monitors_json
+  monitors_json=$(hyprctl monitors -j 2>/dev/null) || { log "hyprctl failed"; return 1; }
+
+  local count
+  count=$(echo "$monitors_json" | jq 'length')
+
+  for (( i = 0; i < count; i++ )); do
+    local name make model width height refresh scale disabled
+    name=$(echo "$monitors_json"    | jq -r ".[$i].name")
+    make=$(echo "$monitors_json"    | jq -r ".[$i].make")
+    model=$(echo "$monitors_json"   | jq -r ".[$i].model")
+    width=$(echo "$monitors_json"   | jq -r ".[$i].width")
+    height=$(echo "$monitors_json"  | jq -r ".[$i].height")
+    refresh=$(echo "$monitors_json" | jq -r ".[$i].refreshRate")
+    scale=$(echo "$monitors_json"   | jq -r ".[$i].scale")
+    disabled=$(echo "$monitors_json"| jq -r ".[$i].disabled")
+
+    [[ "$disabled" == "true" ]] && continue
+    is_skipped "$name" && continue
+    [[ -z "$make" || "$make" == "null" || -z "$model" || "$model" == "null" ]] && continue
+
+    local prefix
+    prefix=$(build_desc_prefix "$make" "$model")
+    is_already_configured "$prefix" && continue
+
+    local refresh_fmt
+    refresh_fmt=$(printf '%.2f' "$refresh")
+
+    log "New monitor: ${prefix} on ${name} (${width}x${height}@${refresh_fmt}, scale ${scale})"
+    insert_monitor_entry "$prefix" "$width" "$height" "$refresh_fmt" "$scale"
+    notify-send "Monitor Auto-Configured" "${prefix##* } (${width}x${height}) saved to monitors.conf" \
+      --app-name="monitor-autoconfig" 2>/dev/null || true
+  done
+}
+
+main() {
+  log "Starting (PID $$)"
+  scan_monitors
+
+  # Find Hyprland's event socket (XDG_RUNTIME_DIR for 0.40+, /tmp/hypr for older)
+  local socket_path=""
+  if [[ -S "${XDG_RUNTIME_DIR}/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.socket2.sock" ]]; then
+    socket_path="${XDG_RUNTIME_DIR}/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.socket2.sock"
+  elif [[ -S "/tmp/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.socket2.sock" ]]; then
+    socket_path="/tmp/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.socket2.sock"
+  fi
+
+  # Event-driven mode via socat (preferred)
+  if command -v socat &>/dev/null && [[ -n "$socket_path" ]]; then
+    log "Listening via socat on ${socket_path}"
+    socat -U - "UNIX-CONNECT:${socket_path}" | while IFS= read -r event; do
+      if [[ "$event" == monitoradded* ]]; then
+        log "Hotplug: ${event#monitoradded>>}"
+        sleep 2  # Let Hyprland settle on a mode/scale
+        scan_monitors
+      fi
+    done
+    log "socat exited, falling back to polling"
+  fi
+
+  # Polling fallback
+  log "Polling every ${POLL_INTERVAL}s"
+  while true; do
+    sleep "$POLL_INTERVAL"
+    scan_monitors
+  done
+}
+
+[[ "${BASH_SOURCE[0]}" == "${0}" ]] && main "$@"
