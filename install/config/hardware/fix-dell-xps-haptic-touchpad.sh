@@ -6,11 +6,24 @@
 
 if cat /sys/class/dmi/id/product_name 2>/dev/null | grep -qi "XPS" \
   && ls /sys/bus/i2c/devices/i2c-VEN_06CB:00 2>/dev/null; then
+
+  # Disable runtime PM for I2C controller so haptic state isn't lost
   sudo tee /etc/udev/rules.d/99-dell-xps-haptic-touchpad.rules << 'EOF'
-# Disable runtime PM for I2C controller to prevent haptic touchpad losing feedback after suspend
 ACTION=="add", SUBSYSTEM=="pci", KERNEL=="0000:00:19.0", ATTR{power/control}="on"
 ACTION=="add", SUBSYSTEM=="platform", KERNEL=="i2c_designware.0", ATTR{power/control}="on"
 EOF
   sudo udevadm control --reload-rules
-  sudo udevadm trigger --subsystem-match=pci --attr-match=device=0x00:19.0 2>/dev/null
+
+  # Rebind the I2C HID touchpad on resume to fully reinitialize haptic engine
+  sudo tee /usr/lib/systemd/system-sleep/dell-xps-haptic-touchpad << 'HOOK'
+#!/bin/bash
+if [[ $1 == "post" ]]; then
+  if [[ -d /sys/bus/i2c/devices/i2c-VEN_06CB:00 ]]; then
+    echo "i2c-VEN_06CB:00" > /sys/bus/i2c/drivers/i2c_hid_acpi/unbind 2>/dev/null
+    sleep 1
+    echo "i2c-VEN_06CB:00" > /sys/bus/i2c/drivers/i2c_hid_acpi/bind 2>/dev/null
+  fi
+fi
+HOOK
+  sudo chmod +x /usr/lib/systemd/system-sleep/dell-xps-haptic-touchpad
 fi
