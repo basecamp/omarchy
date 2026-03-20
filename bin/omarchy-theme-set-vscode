@@ -37,3 +37,4 @@ set_theme() {
 set_theme "code" "$HOME/.config/Code/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-vscode-theme-changes"
 set_theme "codium" "$HOME/.config/VSCodium/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-codium-theme-changes"
 set_theme "cursor" "$HOME/.config/Cursor/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-cursor-theme-changes"
+set_theme "code-oss" "$HOME/.config/Code - OSS/User/settings.json" "$HOME/.local/state/omarchy/toggles/skip-codeoss-theme-changes"
