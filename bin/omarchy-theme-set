@@ -55,6 +55,10 @@ omarchy-theme-set-browser
 omarchy-theme-set-vscode
 omarchy-theme-set-obsidian
 omarchy-theme-set-keyboard
+omarchy-theme-set-limine
 
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME"
+
+# Plymouth rebuild is slow (~30s) so run it detached after everything else
+setsid omarchy-theme-set-plymouth >/dev/null 2>&1 &
