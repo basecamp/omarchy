@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Toggle dictation recording, with warning if daemon is not running
+
+if ! systemctl --user is-active voxtype.service &>/dev/null; then
+  notify-send "󰔊    Voxtype daemon is not running" -t 3000
+  exit 1
+fi
+
+exec voxtype record toggle

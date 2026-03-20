@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# Toggle voxtype daemon on/off to free/allocate VRAM/RAM
+
+if omarchy-cmd-missing voxtype; then
+  notify-send "󰔊    Voxtype is not installed"
+  exit 1
+fi
+
+if systemctl --user is-active voxtype.service &>/dev/null; then
+  systemctl --user stop voxtype.service &&
+    notify-send "󰔊    Voxtype daemon disabled"
+else
+  systemctl --user start voxtype.service &&
+    notify-send "󰔊    Voxtype daemon enabled"
+fi
