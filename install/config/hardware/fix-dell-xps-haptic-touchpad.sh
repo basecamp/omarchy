@@ -14,16 +14,19 @@ ACTION=="add", SUBSYSTEM=="platform", KERNEL=="i2c_designware.0", ATTR{power/con
 EOF
   sudo udevadm control --reload-rules
 
-  # Rebind the I2C HID touchpad on resume to fully reinitialize haptic engine
-  sudo tee /usr/lib/systemd/system-sleep/dell-xps-haptic-touchpad << 'HOOK'
-#!/bin/bash
-if [[ $1 == "post" ]]; then
-  if [[ -d /sys/bus/i2c/devices/i2c-VEN_06CB:00 ]]; then
-    echo "i2c-VEN_06CB:00" > /sys/bus/i2c/drivers/i2c_hid_acpi/unbind 2>/dev/null
-    sleep 1
-    echo "i2c-VEN_06CB:00" > /sys/bus/i2c/drivers/i2c_hid_acpi/bind 2>/dev/null
-  fi
-fi
-HOOK
-  sudo chmod +x /usr/lib/systemd/system-sleep/dell-xps-haptic-touchpad
+  # Rebind the I2C HID touchpad on boot and resume to reinitialize haptic engine
+  sudo tee /etc/systemd/system/dell-xps-haptic-touchpad.service << 'SVC'
+[Unit]
+Description=Rebind Dell XPS haptic touchpad
+After=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'if [[ -d /sys/bus/i2c/devices/i2c-VEN_06CB:00 ]]; then echo "i2c-VEN_06CB:00" | tee /sys/bus/i2c/drivers/i2c_hid_acpi/unbind > /dev/null 2>&1; sleep 1; echo "i2c-VEN_06CB:00" | tee /sys/bus/i2c/drivers/i2c_hid_acpi/bind > /dev/null 2>&1; fi'
+
+[Install]
+WantedBy=multi-user.target suspend.target hibernate.target
+SVC
+  sudo systemctl daemon-reload
+  sudo systemctl enable dell-xps-haptic-touchpad.service
 fi
