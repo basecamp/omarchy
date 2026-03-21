@@ -104,6 +104,7 @@ python-poetry-core
 python-terminaltexteffects
 qt5-wayland
 ripgrep
+rocm-smi-lib
 ruby
 rust
 satty
