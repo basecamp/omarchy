@@ -58,6 +58,12 @@ next_sink_volume_icon="sink-volume-${icon_state}-symbolic"
 
 if [[ $next_sink_name != $current_sink_name ]]; then
   pactl set-default-sink "$next_sink_name"
+
+  # Move all existing audio streams (e.g. Spotify) to the new sink
+  next_sink_index_num=$(echo "$next_sink" | jq -r '.index')
+  pactl list short sink-inputs 2>/dev/null | while read -r stream_id _rest; do
+    pactl move-sink-input "$stream_id" "$next_sink_index_num" 2>/dev/null
+  done
 fi
 
 swayosd-client \

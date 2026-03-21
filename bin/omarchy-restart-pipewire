@@ -3,4 +3,4 @@
 # Restart the PipeWire audio service to fix audio issues or apply new configuration.
 
 echo -e "Restarting pipewire audio service...\n"
-systemctl --user restart pipewire.service
+systemctl --user restart pipewire.service pipewire-pulse.service wireplumber.service
