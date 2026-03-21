@@ -34,7 +34,7 @@ boot_source=$(findmnt -n -o SOURCE /boot)
 disk=$(echo "$boot_source" | sed 's/p\?[0-9]*$//')
 part=$(echo "$boot_source" | grep -o 'p\?[0-9]*$' | sed 's/^p//')
 
-if ! gum confirm "Setup direct boot (so snapshot booting must be done via bios)?"; then
+if gum confirm "Setup direct boot (so snapshot booting must be done via bios)?"; then
   echo "Creating EFI boot entry for $uki_file"
 
   sudo efibootmgr --create \

@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Check current single_window_aspect_ratio setting
-CURRENT_VALUE=$(hyprctl getoption "dwindle:single_window_aspect_ratio" 2>/dev/null | head -1)
+CURRENT_VALUE=$(hyprctl getoption "layout:single_window_aspect_ratio" 2>/dev/null | head -1)
 
 # Parse vec2 output: "vec2: [1, 1]" or "vec2: [0, 0]"
 if [[ $CURRENT_VALUE == *"[1, 1]"* ]]; then
-  hyprctl keyword dwindle:single_window_aspect_ratio "0 0"
+  hyprctl keyword layout:single_window_aspect_ratio "0 0"
   notify-send "    Disable single-window square aspect ratio"
 else
-  hyprctl keyword dwindle:single_window_aspect_ratio "1 1"
+  hyprctl keyword layout:single_window_aspect_ratio "1 1"
   notify-send "    Enable single-window square aspect"
 fi
