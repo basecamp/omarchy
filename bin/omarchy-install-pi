@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# Install the Pi coding agent CLI via an npx wrapper.
+
+if ! command -v npx >/dev/null 2>&1; then
+  echo "Pi requires Node.js/npm (npx)."
+  echo "Install Node.js first from Install > Development > JavaScript > Node.js."
+  exit 1
+fi
+
+echo "Installing Pi..."
+omarchy-npx-install @mariozechner/pi-coding-agent pi
+
+echo
+echo "Pi installed. Launch with: pi"
+echo "Then authenticate with /login or set an API key."
