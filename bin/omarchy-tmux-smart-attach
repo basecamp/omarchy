@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+get_next_scratch() {
+  local i=1
+  while tmux has-session -t "scratch-$i" 2>/dev/null; do
+    i=$((i + 1))
+  done
+  echo "scratch-$i"
+}
+
+if tmux ls 2>/dev/null | grep -q 'Work.*(attached)'; then
+  FREE=$(tmux ls 2>/dev/null | grep -v '(attached)' | grep -v '^Work:' | head -1 | cut -d: -f1)
+  if [ -n "$FREE" ]; then
+    tmux attach -t "$FREE"
+  else
+    tmux new-session -s "$(get_next_scratch)"
+  fi
+else
+  tmux new-session -As Work
+fi
