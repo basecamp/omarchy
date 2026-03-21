@@ -355,11 +355,12 @@ show_install_ai_menu() {
       echo ollama
   )
 
-  case $(menu "Install" "  Dictation\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush") in
+  case $(menu "Install" "  Dictation\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush\n󱚤  Pi") in
   *Dictation*) present_terminal omarchy-voxtype-install ;;
   *Studio*) install "LM Studio" "lmstudio-bin" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
+  *Pi*) present_terminal omarchy-install-pi ;;
   *) show_install_menu ;;
   esac
 }
