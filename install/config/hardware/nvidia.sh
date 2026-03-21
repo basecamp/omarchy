@@ -1,15 +1,17 @@
-NVIDIA="$(lspci | grep -i 'nvidia')"
+NVIDIA="$(lspci -n | grep -E "030[02].*10de:")"
 
 if [[ -n $NVIDIA ]]; then
   # Check which kernel is installed and set appropriate headers package
   KERNEL_HEADERS="$(pacman -Qqs '^linux(-zen|-lts|-hardened)?$' | head -1)-headers"
 
+  DEVICE_ID=0x$(echo "$NVIDIA" | cut -d ':' -f 4 | cut -d ' ' -f 1)
+
   # Turing+ (GTX 16xx, RTX 20xx-50xx, RTX Pro, Quadro RTX, datacenter A/H/T/L series) have GSP firmware
-  if echo "$NVIDIA" | grep -qE "GTX 16[0-9]{2}|RTX [2-5][0-9]{3}|RTX PRO [0-9]{4}|Quadro RTX|RTX A[0-9]{4}|A[1-9][0-9]{2}|H[1-9][0-9]{2}|T4|L[0-9]+"; then
+  if (( DEVICE_ID >= 0x1e00 )); then
     PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
     GPU_ARCH="turing_plus"
   # Maxwell (GTX 9xx), Pascal (GT/GTX 10xx, Quadro P, MX series), Volta (Titan V, Tesla V100, Quadro GV100) lack GSP
-  elif echo "$NVIDIA" | grep -qE "GTX (9[0-9]{2}|10[0-9]{2})|GT 10[0-9]{2}|Quadro [PM][0-9]{3,4}|Quadro GV100|MX *[0-9]+|Titan (X|Xp|V)|Tesla V100"; then
+  elif (( DEVICE_ID >= 0x1300 )); then
     PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
     GPU_ARCH="maxwell_pascal_volta"
   fi
