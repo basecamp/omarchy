@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Install Spicetify and set up the text theme for Omarchy integration
+
+TEXT_THEME_DIR="$HOME/.config/spicetify/Themes/text"
+OMARCHY_COLOR_INI="$OMARCHY_PATH/config/spicetify/Themes/text/color.ini"
+
+# https://spicetify.app/docs/getting-started
+if ! omarchy-cmd-present spicetify; then
+  echo "Installing Spicetify..."
+  curl -fsSL https://raw.githubusercontent.com/spicetify/cli/main/install.sh | sh
+fi
+
+# https://github.com/spicetify/spicetify-themes
+if [[ ! -f $TEXT_THEME_DIR/user.css ]]; then
+  echo "Installing Spicetify text theme..."
+  mkdir -p "$TEXT_THEME_DIR"
+  curl -fsSL "https://raw.githubusercontent.com/spicetify/spicetify-themes/master/text/user.css" \
+    -o "$TEXT_THEME_DIR/user.css"
+fi
+
+cp "$OMARCHY_COLOR_INI" "$TEXT_THEME_DIR/color.ini"
+
+spicetify config current_theme text inject_theme_js 1
+omarchy-theme-set-spicetify
+
+echo "Spicetify text theme installed."
