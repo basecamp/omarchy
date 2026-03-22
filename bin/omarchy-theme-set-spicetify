@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Sync Omarchy theme to Spicetify
+
+SKIP_FLAG="$HOME/.local/state/omarchy/toggles/skip-spicetify-theme-changes"
+SPICETIFY_CONFIG="$HOME/.config/omarchy/current/theme/spicetify.json"
+
+omarchy-cmd-present spicetify && [[ ! -f $SKIP_FLAG ]] || exit 0
+
+if [[ -f $SPICETIFY_CONFIG ]]; then
+  color_scheme=$(jq -r '.color_scheme' "$SPICETIFY_CONFIG")
+  spicetify config color_scheme "$color_scheme" >/dev/null 2>&1
+
+  pgrep -x spotify >/dev/null
+  spotify_was_running=$?
+  spicetify apply >/dev/null 2>&1
+
+  if [[ $spotify_was_running -eq 0 ]]; then
+    pkill -x spotify
+    for i in {1..50}; do pgrep -x spotify >/dev/null || break; sleep 0.1; done
+    nohup spotify >/dev/null 2>&1 &
+  fi
+fi
