@@ -79,6 +79,9 @@ windows)
   SELECTION=$(get_rectangles | slurp -r 2>/dev/null)
   kill $PID 2>/dev/null
   ;;
+activewindow)
+  SELECTION=$(hyprctl activewindow -j | jq -r '"\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')
+  ;;
 fullscreen)
   SELECTION=$(hyprctl monitors -j | jq -r "${JQ_MONITOR_GEO} .[] | select(.focused == true) | format_geo")
   ;;
