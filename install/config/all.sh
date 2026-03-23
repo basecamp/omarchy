@@ -52,3 +52,4 @@ run_logged $OMARCHY_INSTALL/config/hardware/fix-synaptic-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-tuxedo-backlight.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework16-qmk-hid.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel-ipu7-camera.sh
+run_logged $OMARCHY_INSTALL/config/hardware/fix-intel-wifi7-eht.sh
