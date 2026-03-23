@@ -7,7 +7,7 @@ hyprctl dispatch tagwindow +noidle &>/dev/null || true
 
 # Capture update logs (CLICOLOR_FORCE keeps gum styled when stdout is piped through tee)
 export CLICOLOR_FORCE=1
-exec > >(tee "/tmp/omarchy-update.log") 2>&1
+exec > >(tee "$HOME/.local/state/omarchy/update.log") 2>&1
 
 # Perform all update steps
 omarchy-update-keyring
