@@ -104,7 +104,24 @@ scala)
   mise rm -g scala-cli
   ;;
 android)
-  omarchy-remove-android-studio
+  echo -e "Removing Android Studio...\n"
+  sudo pacman -Rns --noconfirm android-studio 2>/dev/null || true
+
+  ANDROID_SDK_PATH="${ANDROID_HOME:-$HOME/Android/Sdk}"
+  if [[ -d "$ANDROID_SDK_PATH" ]]; then
+    rm -rf "$ANDROID_SDK_PATH"
+  fi
+  rm -rf ~/.android
+
+  rm -rf ~/.config/Google/AndroidStudio*
+  rm -rf ~/.local/share/Google/AndroidStudio*
+
+  sed -i '/ANDROID_HOME/d' ~/.bashrc 2>/dev/null || true
+  sed -i '/ANDROID_SDK_ROOT/d' ~/.bashrc 2>/dev/null || true
+  sed -i '/ANDROID_HOME/d' ~/.zshrc 2>/dev/null || true
+  sed -i '/ANDROID_SDK_ROOT/d' ~/.zshrc 2>/dev/null || true
+
+  echo "✓ Android Studio removed!"
   ;;
 *)
   echo "Unknown environment: $1"
