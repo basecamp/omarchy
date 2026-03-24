@@ -1,218 +1,37 @@
 #!/bin/bash
 
-# Install Android Studio with SDK and emulator acceleration.
+# Install Android Studio with KVM acceleration.
 
 set -e
 
-source "$OMARCHY_PATH/install/helpers/presentation.sh"
-
-header() {
-  gum style --foreground 6 --bold "$1"
-}
-
-section() {
-  echo
-  header "$1"
-  echo
-}
-
-check_kvm() {
-  if [[ ! -c /dev/kvm ]]; then
-    return 1
-  fi
-  if [[ $(grep -m1 "vendor_id" /proc/cpuinfo 2>/dev/null | cut -d: -f2 | tr -d ' ') == "GenuineIntel" ]]; then
-    grep -q "vmx" /proc/cpuinfo 2>/dev/null
+echo "Checking KVM support..."
+if [[ -c /dev/kvm ]]; then
+  CPU_VENDOR=$(grep -m1 "vendor_id" /proc/cpuinfo 2>/dev/null | cut -d: -f2 | tr -d ' ')
+  if [[ "$CPU_VENDOR" == "GenuineIntel" ]]; then
+    KVM_SUPPORTED=$(grep -q "vmx" /proc/cpuinfo && echo "yes" || echo "no")
   else
-    grep -q "svm" /proc/cpuinfo 2>/dev/null
-  fi
-}
-
-check_prerequisites() {
-  echo "Checking Android Studio prerequisites..."
-  echo
-
-  local ram_gb=$(free -g | awk '/^Mem:/ {print $2}')
-  if (( ram_gb < 8 )); then
-    echo "RAM: ${ram_gb}GB (minimum 8GB recommended)"
-  else
-    echo "RAM: ${ram_gb}GB ✓"
-  fi
-
-  local free_gb=$(df -BG ~ | awk 'NR==2 {print $4}' | tr -d 'G')
-  if (( free_gb < 10 )); then
-    echo "Disk: ${free_gb}GB free (minimum 10GB recommended)"
-  else
-    echo "Disk: ${free_gb}GB free ✓"
-  fi
-
-  if check_kvm; then
-    echo "KVM: Hardware acceleration available ✓"
-  else
-    echo "KVM: Not available (emulator will be slow)"
-  fi
-
-  echo
-}
-
-if ! gum confirm "Install Android Studio?"; then
-  exit 0
-fi
-
-section "Checking Prerequisites"
-
-check_prerequisites
-
-ram_gb=$(free -g | awk '/^Mem:/ {print $2}')
-free_gb=$(df -BG ~ | awk 'NR==2 {print $4}' | tr -d 'G')
-
-if (( ram_gb < 8 )) || (( free_gb < 10 )); then
-  echo
-  gum style --foreground 3 "Some prerequisites are not optimal, but installation can continue."
-  echo
-  gum confirm "Continue anyway?" || exit 0
-fi
-
-section "Installation Type"
-
-INSTALL_TYPE=$(gum choose \
-  "Standard (Android Studio + recommended SDK)" \
-  "Full (all SDK components)" \
-  "Minimal (Android Studio only)" \
-  --header "Select installation type" \
-  --height 5)
-
-section "Memory Configuration"
-
-MEMORY_PRESET=$(gum choose \
-  "Light (4GB total - for 8GB systems)" \
-  "Normal (8GB total - for 16GB systems)" \
-  "Heavy (16GB total - for 32GB systems)" \
-  "Custom" \
-  --header "Memory Configuration" \
-  --height 5)
-
-case "$MEMORY_PRESET" in
-  "Light"*)
-    IDE_HEAP=512
-    MAX_HEAP=2048
-    GRADLE_HEAP=1024
-    KOTLIN_HEAP=1024
-    ;;
-  "Normal"*)
-    IDE_HEAP=1024
-    MAX_HEAP=4096
-    GRADLE_HEAP=2048
-    KOTLIN_HEAP=2048
-    ;;
-  "Heavy"*)
-    IDE_HEAP=2048
-    MAX_HEAP=8192
-    GRADLE_HEAP=4096
-    KOTLIN_HEAP=4096
-    ;;
-  "Custom")
-    IDE_HEAP=$(gum input --placeholder "1024" --value "1024" --header "IDE Heap (MB)")
-    MAX_HEAP=$(gum input --placeholder "4096" --value "4096" --header "Max Heap (MB)")
-    GRADLE_HEAP=$(gum input --placeholder "2048" --value "2048" --header "Gradle Daemon Heap (MB)")
-    KOTLIN_HEAP=$(gum input --placeholder "2048" --value "2048" --header "Kotlin Daemon Heap (MB)")
-    ;;
-esac
-
-section "Android SDK Location"
-
-DEFAULT_SDK_PATH="$HOME/Android/Sdk"
-ANDROID_SDK_PATH=$(gum input \
-  --placeholder "$DEFAULT_SDK_PATH" \
-  --value "$DEFAULT_SDK_PATH" \
-  --header "Android SDK location")
-
-if [[ -z "$ANDROID_SDK_PATH" ]]; then
-  ANDROID_SDK_PATH="$DEFAULT_SDK_PATH"
-fi
-
-if [[ "$INSTALL_TYPE" != "Minimal"* ]]; then
-  section "SDK Components"
-
-  gum style "Select platforms to install:"
-
-  SDK_PLATFORMS=$(gum choose \
-    "Android API 34 (latest stable)" \
-    "Android API 33" \
-    "Android API 31" \
-    "Android API 30" \
-    --header "Select platforms" \
-    --height 6 \
-    --selected "Android API 34 (latest stable)")
-
-  gum style "Select system images for emulator:"
-
-  SDK_IMAGES=$(gum choose \
-    "arm64-v8a (Google Play)" \
-    "x86_64 (Google Play)" \
-    "x86_64 (Google APIs)" \
-    "arm64-v8a (Google APIs)" \
-    --header "Select system images" \
-    --height 6 \
-    --selected "arm64-v8a (Google Play)" \
-    --selected "x86_64 (Google Play)")
-fi
-
-section "Emulator Acceleration"
-
-if check_kvm; then
-  gum style --foreground 2 "✓ KVM detected - hardware acceleration available"
-
-  if ! groups | grep -q kvm; then
-    gum style --foreground 3 "Adding user to kvm group..."
-    sudo usermod -aG kvm "$USER"
-    gum style --foreground 2 "✓ Added to kvm group (may require re-login)"
-  fi
-
-  EMMULATOR_OPTION=$(gum choose \
-    "Create default Pixel emulator" \
-    "Skip emulator setup" \
-    --header "Emulator setup")
-
-  if [[ "$EMMULATOR_OPTION" == "Create default"* ]]; then
-    AVD_DEVICE=$(gum choose \
-      "Pixel 8 Pro (API 34)" \
-      "Pixel 7 (API 33)" \
-      "Pixel 6a (API 33)" \
-      "Pixel 5 (API 31)" \
-      --header "Select default emulator device")
+    KVM_SUPPORTED=$(grep -q "svm" /proc/cpuinfo && echo "yes" || echo "no")
   fi
 else
-  gum style --foreground 3 "⚠ KVM not available - emulator will run slowly"
-
-  EMMULATOR_OPTION=$(gum choose \
-    "Install with emulator (slow)" \
-    "Install without emulator" \
-    --header "Emulator acceleration unavailable")
+  KVM_SUPPORTED="no"
 fi
 
-section "Theme"
-
-THEME=$(gum choose \
-  "Dark (default)" \
-  "Light" \
-  "System default" \
-  --header "Select theme")
-
-section "Environment Variables"
-
-if gum confirm "Add ANDROID_HOME to ~/.bashrc?"; then
-  ADD_BASHRC=true
+if [[ "$KVM_SUPPORTED" == "yes" ]]; then
+  echo "✓ KVM hardware acceleration available"
+  
+  if ! groups | grep -q kvm; then
+    echo "Adding user to kvm group..."
+    sudo usermod -aG kvm "$USER" 2>/dev/null || true
+    echo "✓ Added to kvm group (re-login required for emulator)"
+  fi
+else
+  echo "⚠ KVM not available - emulator will run slower"
 fi
-
-if gum confirm "Add ANDROID_HOME to ~/.zshrc?"; then
-  ADD_ZSHRC=true
-fi
-
-section "Installing Android Studio"
 
 echo "Installing Android Studio..."
-omarchy-pkg-add android-studio
+omarchy-pkg-aur-add android-studio
 
+ANDROID_SDK_PATH="$HOME/Android/Sdk"
 mkdir -p "$ANDROID_SDK_PATH"
 mkdir -p ~/.android
 
@@ -220,161 +39,20 @@ cat > ~/.android/repositories.cfg << 'EOF'
 sdk::site: https://developer.android.com
 EOF
 
-section "Configuring Android Studio"
-
-STUDIO_DIR=$(find ~/.local/share/Google -maxdepth 1 -type d -name "AndroidStudio*" | head -1)
-
-if [[ -n "$STUDIO_DIR" ]]; then
-  STUDIO_VER=$(basename "$STUDIO_DIR")
-
-  VMOPTIONS_FILE="$HOME/.config/Google/$STUDIO_VER/studio64.vmoptions"
-  mkdir -p "$(dirname "$VMOPTIONS_FILE")"
-
-  cat > "$VMOPTIONS_FILE" << EOF
--Xms${IDE_HEAP}m
--Xmx${MAX_HEAP}m
--XX:MaxMetaspaceSize=1024m
--XX:+UseG1GC
--XX:+UseStringDeduplication
--Dfile.encoding=UTF-8
--Dsun.io.useCanonCaches=false
--ea
-EOF
-
-  IDEA_PROPS="$HOME/.config/Google/$STUDIO_VER/idea.properties"
-  mkdir -p "$(dirname "$IDEA_PROPS")"
-
-  cat > "$IDEA_PROPS" << EOF
-idea.auto.update=false
-idea.xms.size=${IDE_HEAP}m
-idea.xmx.size=${MAX_HEAP}m
-idea.plugins.path=\${idea.config.path}/plugins
-EOF
-
-  GRADLE_PROPS="$HOME/.config/Google/$STUDIO_VER/gradle.properties"
-  mkdir -p "$(dirname "$GRADLE_PROPS")"
-
-  cat > "$GRADLE_PROPS" << EOF
-org.gradle.jvmargs=-Xmx${GRADLE_HEAP}m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
-org.gradle.parallel=true
-org.gradle.caching=true
-kotlin.daemon.jvmargs=-Xmx${KOTLIN_HEAP}m
-android.useAndroidX=true
-EOF
-
-  gum style --foreground 2 "✓ Memory configuration applied"
-else
-  gum style --foreground 3 "⚠ Could not find Android Studio config directory"
+if ! grep -q "ANDROID_HOME" ~/.bashrc 2>/dev/null; then
+  echo "export ANDROID_HOME=\"$ANDROID_SDK_PATH\"" >> ~/.bashrc
+  echo "export ANDROID_SDK_ROOT=\"$ANDROID_SDK_PATH\"" >> ~/.bashrc
+  echo "export PATH=\"\$PATH:\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools\"" >> ~/.bashrc
 fi
 
-if [[ "$THEME" == "Dark"* ]]; then
-  PLATFORM_KEYS="ui.theme.name=Light with Dark"
-elif [[ "$THEME" == "Light"* ]]; then
-  PLATFORM_KEYS="ui.theme.name=Light"
-else
-  PLATFORM_KEYS="ui.theme.name=System default"
+if ! grep -q "ANDROID_HOME" ~/.zshrc 2>/dev/null; then
+  echo "export ANDROID_HOME=\"$ANDROID_SDK_PATH\"" >> ~/.zshrc
+  echo "export ANDROID_SDK_ROOT=\"$ANDROID_SDK_PATH\"" >> ~/.zshrc
+  echo "export PATH=\"\$PATH:\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools\"" >> ~/.zshrc
 fi
 
-section "Setting up SDK"
-
-if [[ "$INSTALL_TYPE" != "Minimal"* ]]; then
-  export ANDROID_HOME="$ANDROID_SDK_PATH"
-  export ANDROID_SDK_ROOT="$ANDROID_SDK_PATH"
-  export PATH="$PATH:$ANDROID_SDK_PATH/cmdline-tools/latest/bin:$ANDROID_SDK_PATH/platform-tools"
-
-  mkdir -p "$ANDROID_SDK_PATH/cmdline-tools"
-  if [[ ! -d "$ANDROID_SDK_PATH/cmdline-tools/latest" ]]; then
-    echo "Installing SDK command-line tools..."
-    CMDLINE_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-    TMP_ZIP="/tmp/cmdline-tools.zip"
-    curl -fsSL -o "$TMP_ZIP" "$CMDLINE_TOOLS_URL"
-    unzip -q -o "$TMP_ZIP" -d "$ANDROID_SDK_PATH/cmdline-tools"
-    mv "$ANDROID_SDK_PATH/cmdline-tools/cmdline-tools" "$ANDROID_SDK_PATH/cmdline-tools/latest"
-    rm -f "$TMP_ZIP"
-  fi
-
-  echo "Accepting licenses..."
-  yes | "$ANDROID_SDK_PATH/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
-
-  echo "Installing SDK platforms..."
-  for platform in $SDK_PLATFORMS; do
-    api_level=$(echo "$platform" | grep -oP 'API \K[0-9]+')
-    gum spin --title "Installing Android API $api_level..." -- \
-      "$ANDROID_SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "platforms;android-$api_level" >/dev/null 2>&1 || true
-  done
-
-  echo "Installing system images..."
-  for image in $SDK_IMAGES; do
-    case "$image" in
-      "arm64-v8a (Google Play)")
-        img_pkg="system-images;android-34;google_apis;arm64-v8a"
-        ;;
-      "x86_64 (Google Play)")
-        img_pkg="system-images;android-34;google_apis;x86_64"
-        ;;
-      "x86_64 (Google APIs)")
-        img_pkg="system-images;android-34;google;x86_64"
-        ;;
-      "arm64-v8a (Google APIs)")
-        img_pkg="system-images;android-34;google;arm64-v8a"
-        ;;
-    esac
-    gum spin --title "Installing $image..." -- \
-      "$ANDROID_SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "$img_pkg" >/dev/null 2>&1 || true
-  done
-
-  if [[ "$EMMULATOR_OPTION" == "Create default"* ]]; then
-    echo "Creating AVD..."
-    AVD_NAME="pixel_$(echo "$AVD_DEVICE" | grep -oP 'API \K[0-9]+')"
-    "$ANDROID_SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "platform-tools" >/dev/null 2>&1
-
-    if command -v avdmanager &>/dev/null; then
-      avdmanager create avd -n "$AVD_NAME" -k "system-images;android-34;google_apis;x86_64" --force 2>/dev/null || true
-    fi
-
-    gum style --foreground 2 "✓ AVD '$AVD_NAME' created"
-  fi
-fi
-
-section "Environment Variables"
-
-if [[ "$ADD_BASHRC" == "true" ]]; then
-  if ! grep -q "ANDROID_HOME" ~/.bashrc 2>/dev/null; then
-    echo "export ANDROID_HOME=\"$ANDROID_SDK_PATH\"" >> ~/.bashrc
-    echo "export ANDROID_SDK_ROOT=\"$ANDROID_SDK_PATH\"" >> ~/.bashrc
-    echo "export PATH=\"\$PATH:\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools\"" >> ~/.bashrc
-    gum style --foreground 2 "✓ Added to ~/.bashrc"
-  else
-    gum style --foreground 3 "⚠ ANDROID_HOME already in ~/.bashrc"
-  fi
-fi
-
-if [[ "$ADD_ZSHRC" == "true" ]]; then
-  if ! grep -q "ANDROID_HOME" ~/.zshrc 2>/dev/null; then
-    echo "export ANDROID_HOME=\"$ANDROID_SDK_PATH\"" >> ~/.zshrc
-    echo "export ANDROID_SDK_ROOT=\"$ANDROID_SDK_PATH\"" >> ~/.zshrc
-    echo "export PATH=\"\$PATH:\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools\"" >> ~/.zshrc
-    gum style --foreground 2 "✓ Added to ~/.zshrc"
-  else
-    gum style --foreground 3 "⚠ ANDROID_HOME already in ~/.zshrc"
-  fi
-fi
-
-section "Installation Complete"
-
-gum style --foreground 2 "✓ Android Studio installed successfully!"
-echo
-echo "You can launch Android Studio with:"
-echo "  gtk-launch android-studio"
-echo "  # or"
-echo "  $ANDROID_SDK_PATH/bin/studio.sh"
-echo
-
-if [[ "$INSTALL_TYPE" != "Minimal"* ]]; then
-  echo "SDK installed at: $ANDROID_SDK_PATH"
-fi
-
-echo "Memory settings: IDE=${IDE_HEAP}MB, Max=${MAX_HEAP}MB"
-echo
-
-gum confirm "Launch Android Studio now?" && gtk-launch android-studio
+echo "✓ Android Studio installed!"
+echo "✓ ANDROID_HOME configured"
+echo ""
+echo "Launching Android Studio..."
+gtk-launch android-studio
