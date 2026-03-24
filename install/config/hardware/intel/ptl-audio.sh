@@ -1,5 +1,6 @@
 # Install Panther Lake audio kernel for Intel Panther Lake systems
 # The linux-ptl-audio kernel includes audio driver patches not yet in mainline.
+
 if omarchy-hw-intel-ptl; then
   echo "Detected Intel Panther Lake, installing PTL audio kernel..."
 
