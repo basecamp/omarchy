@@ -22,4 +22,4 @@ case "$CURRENT_LAYOUT" in
 esac
 
 hyprctl keyword workspace "$ACTIVE_WORKSPACE_NAME", layout:"$NEW_LAYOUT"
-notify-send "󱂬    Workspace layout set to $NEW_LAYOUT"
+notify-send -u low "󱂬    Workspace layout set to $NEW_LAYOUT"
