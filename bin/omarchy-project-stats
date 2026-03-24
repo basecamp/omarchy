@@ -25,8 +25,8 @@ get_setting() {
 DAILY_SWITCH_BUDGET=$(get_setting "daily_switch_budget" "3")
 
 # Count active projects
-active_count=$(grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | grep '|active$' | wc -l)
-total_count=$(grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | wc -l)
+active_count=$(grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | grep -c '|active$')
+total_count=$(grep -cv '^#\|^$' "$CONFIG_FILE")
 
 # Count today's switches (only actual switches, not other actions)
 today=$(date '+%Y-%m-%d')
@@ -53,7 +53,7 @@ fi
 
 # Recent activity in tooltip (4-field format: timestamp|action|project|details)
 if [[ -f "$SWITCH_LOG" ]]; then
-  recent=$(grep "^${today}" "$SWITCH_LOG" 2>/dev/null | tail -8 | while IFS='|' read -r time action proj details; do
+  recent=$(grep "^${today}" "$SWITCH_LOG" 2>/dev/null | tail -8 | while IFS='|' read -r time action proj _details; do
     printf '%s %s %s\\n' "${time#* }" "$action" "$proj"
   done)
   if [[ -n "$recent" ]]; then

@@ -3,7 +3,6 @@
 # Syncs terminal context with project scratchpad system
 
 # Get current project info
-PROJECT=$(omarchy-project-scratchpad current)
 TMUX_SESSION=$(omarchy-project-scratchpad tmux-session)
 PROJECT_DIR=$(omarchy-project-scratchpad dir)
 
