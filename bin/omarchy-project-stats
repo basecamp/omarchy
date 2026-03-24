@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# Focus stats for waybar — shows active project count and daily switch count.
+# Outputs JSON for waybar's custom module format.
+#
+# Waybar integration — add to ~/.config/waybar/config.jsonc:
+#   "custom/projects": {
+#     "exec": "omarchy-project-stats",
+#     "interval": 5,
+#     "return-type": "json"
+#   }
+
+CONFIG_FILE="$HOME/.config/hypr/projects.conf"
+STATE_DIR="$HOME/.local/state/hyprland/project-scratchpads"
+SWITCH_LOG="$STATE_DIR/switch-log"
+FOCUS_FILE="$STATE_DIR/focus-mode"
+
+# Read daily_switch_budget from [settings] block in config, default 3
+get_setting() {
+  local key="$1" default="$2"
+  local value
+  value=$(sed -n '/^# \[settings\]/,/^$/{ s/^# '"$key"'=//p }' "$CONFIG_FILE" | head -1)
+  echo "${value:-$default}"
+}
+DAILY_SWITCH_BUDGET=$(get_setting "daily_switch_budget" "3")
+
+# Count active projects
+active_count=$(grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | grep '|active$' | wc -l)
+total_count=$(grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | wc -l)
+
+# Count today's switches (only actual switches, not other actions)
+today=$(date '+%Y-%m-%d')
+switch_count=$(grep -c "^${today}.*|switch|" "$SWITCH_LOG" 2>/dev/null || echo 0)
+
+# Check focus mode
+focus_mode=$(cat "$FOCUS_FILE" 2>/dev/null || echo "0")
+
+# Build display text
+if [[ "$focus_mode" == "1" ]]; then
+  text="󰈈 ${active_count}/${total_count}"
+  class="focus-on"
+else
+  text="● ${active_count}/${total_count}"
+  class="focus-off"
+fi
+
+# Build tooltip
+tooltip="Active: ${active_count}/${total_count} projects"
+tooltip+="\\nSwitches today: ${switch_count}/${DAILY_SWITCH_BUDGET}"
+if [[ "$focus_mode" == "1" ]]; then
+  tooltip+="\\n\\n󰈈 Focus mode ON"
+fi
+
+# Recent activity in tooltip (4-field format: timestamp|action|project|details)
+if [[ -f "$SWITCH_LOG" ]]; then
+  recent=$(grep "^${today}" "$SWITCH_LOG" 2>/dev/null | tail -8 | while IFS='|' read -r time action proj details; do
+    printf '%s %s %s\\n' "${time#* }" "$action" "$proj"
+  done)
+  if [[ -n "$recent" ]]; then
+    tooltip+="\\n\\nRecent:\\n${recent}"
+  fi
+fi
+
+printf '{"text": "%s", "tooltip": "%s", "class": "%s"}\n' "$text" "$tooltip" "$class"
