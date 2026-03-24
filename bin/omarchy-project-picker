@@ -1,0 +1,537 @@
+#!/bin/bash
+
+# Project Picker — CRUD interface for project scratchpads via walker
+# Config format: name|session|dir|status (status defaults to "active" if missing)
+
+CONFIG_FILE="$HOME/.config/hypr/projects.conf"
+STATE_DIR="$HOME/.local/state/hyprland/project-scratchpads"
+SWITCH_LOG="$STATE_DIR/switch-log"
+FOCUS_FILE="$STATE_DIR/focus-mode"
+SERVER_CACHE="$STATE_DIR/server-cache"
+SERVER_CACHE_TTL=600
+
+# Ensure state directory exists
+mkdir -p "$STATE_DIR"
+
+# Get 80% of screen height for walker
+SCREEN_HEIGHT=$(hyprctl monitors -j | jq '.[0].height')
+WALKER_HEIGHT=$((SCREEN_HEIGHT * 80 / 100))
+
+# Read a setting from the [settings] block in config, with default
+get_setting() {
+  local key="$1" default="$2"
+  local value
+  value=$(sed -n '/^# \[settings\]/,/^$/{ s/^# '"$key"'=//p }' "$CONFIG_FILE" | head -1)
+  echo "${value:-$default}"
+}
+
+# Daily switch tracking
+DAILY_SWITCH_BUDGET=$(get_setting "daily_switch_budget" "3")
+
+# Initialize focus mode from settings if state file doesn't exist
+if [[ ! -f "$FOCUS_FILE" ]]; then
+  default_focus=$(get_setting "focus_mode" "false")
+  [[ "$default_focus" == "true" ]] && echo "1" > "$FOCUS_FILE" || echo "0" > "$FOCUS_FILE"
+fi
+
+# Menu actions
+ACTION_NEW="➕ New project"
+ACTION_TOGGLE="🔄 Toggle status"
+ACTION_DELETE="🗑️ Delete project"
+ACTION_EDIT="✏️ Edit config"
+ACTION_SHELVED="📦 Shelved projects..."
+ACTION_FOCUS="󰈈  Focus mode"
+ACTION_REFRESH="🔃 Refresh servers"
+SEPARATOR="───────────────"
+
+# Status indicators
+STATUS_ACTIVE="●"
+STATUS_PENDING="○"
+
+# Parse config: extract project names (first field before pipe)
+get_projects() {
+  grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | cut -d'|' -f1
+}
+
+# Log action to switch-log: timestamp|action|project|details
+log_action() {
+  local action="$1" project="${2:-}" details="${3:-}"
+  printf '%s|%s|%s|%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$action" "$project" "$details" >> "$SWITCH_LOG"
+}
+
+get_today_switch_count() {
+  local today
+  today=$(date '+%Y-%m-%d')
+  grep -c "^${today}.*|switch|" "$SWITCH_LOG" 2>/dev/null || echo 0
+}
+
+# Detect tmux sessions with running dev servers (bun, pnpm, uv, node, python)
+# Returns newline-separated list of session names that have active servers
+# Results are cached to avoid redundant /proc walks
+get_sessions_with_servers() {
+  # Quick process count as cache fingerprint (~1ms)
+  local current_count
+  current_count=$(pgrep -xc "bun|node|pnpm|python|uv" 2>/dev/null || echo 0)
+
+  # Return cached results if fresh AND process count unchanged
+  if [[ -f "$SERVER_CACHE" ]]; then
+    local cache_age cached_count
+    cache_age=$(( $(date +%s) - $(stat -c %Y "$SERVER_CACHE" 2>/dev/null || echo 0) ))
+    cached_count=$(head -1 "$SERVER_CACHE" 2>/dev/null || echo "")
+    if [[ "$cache_age" -lt "$SERVER_CACHE_TTL" && "$cached_count" == "#$current_count" ]]; then
+      tail -n +2 "$SERVER_CACHE" 2>/dev/null
+      return
+    fi
+  fi
+
+  # Build PID -> session mapping from all tmux panes
+  declare -A pid_to_session
+  while IFS=' ' read -r pid sess; do
+    pid_to_session["$pid"]="$sess"
+  done < <(tmux list-panes -a -F '#{pane_pid} #{session_name}' 2>/dev/null)
+
+  # Find dev server processes
+  local server_pids
+  server_pids=$(pgrep -x "bun|node|pnpm|python|uv" 2>/dev/null || true)
+  if [[ -z "$server_pids" ]]; then
+    printf '#%s\n' "$current_count" > "$SERVER_CACHE"
+    return
+  fi
+
+  # Walk parent chain for each server PID to find its tmux session
+  declare -A found_sessions
+  for spid in $server_pids; do
+    local current="$spid"
+    while [[ "$current" -gt 1 ]]; do
+      if [[ -n "${pid_to_session[$current]:-}" ]]; then
+        found_sessions["${pid_to_session[$current]}"]=1
+        break
+      fi
+      # Walk up to parent
+      current=$(awk '{print $4}' "/proc/$current/stat" 2>/dev/null || echo 1)
+    done
+  done
+
+  # Write cache (count header + session names) and output
+  { printf '#%s\n' "$current_count"; printf '%s\n' "${!found_sessions[@]}"; } > "$SERVER_CACHE"
+  printf '%s\n' "${!found_sessions[@]}"
+}
+
+# Get projects with status and window count, in config-file order
+# Shows workspace number for easy window targeting
+get_projects_with_status() {
+  local idx=0
+
+  # Fetch all clients once for efficiency
+  local clients_json
+  clients_json=$(hyprctl clients -j 2>/dev/null || echo "[]")
+
+  # Detect which tmux sessions have running dev servers
+  local server_sessions
+  server_sessions=$(get_sessions_with_servers)
+
+  while IFS='|' read -r name session dir status; do
+    [[ -z "$name" ]] && continue
+    ((idx++))
+    # Default to "active" if status field is missing (backwards compat)
+    [[ -z "$status" ]] && status="active"
+
+    # Count windows in this project's scratchpad
+    local count
+    count=$(echo "$clients_json" | jq "[.[] | select(.workspace.name == \"special:project:$name\")] | length")
+
+    # Check if this project's tmux session has a running dev server
+    local server_indicator=""
+    if echo "$server_sessions" | grep -qx "$session"; then
+      server_indicator=" ▶"
+    fi
+
+    # Format: "idx status name [▶] (count)" or "idx status name [▶]" if no windows
+    if [[ "$count" -gt 0 ]]; then
+      echo "$idx $([[ "$status" == "active" ]] && echo "$STATUS_ACTIVE" || echo "$STATUS_PENDING") $name${server_indicator} ($count)"
+    else
+      echo "$idx $([[ "$status" == "active" ]] && echo "$STATUS_ACTIVE" || echo "$STATUS_PENDING") $name${server_indicator}"
+    fi
+  done < <(grep -v '^#' "$CONFIG_FILE" | grep -v '^$')
+}
+
+# Get only ACTIVE projects with status — for the main menu
+# idx still counts ALL projects so it maps correctly to config-file line numbers
+get_active_projects_with_status() {
+  local idx=0
+
+  local clients_json
+  clients_json=$(hyprctl clients -j 2>/dev/null || echo "[]")
+
+  local server_sessions
+  server_sessions=$(get_sessions_with_servers)
+
+  while IFS='|' read -r name session dir status; do
+    [[ -z "$name" ]] && continue
+    ((idx++))
+    [[ -z "$status" ]] && status="active"
+    [[ "$status" != "active" ]] && continue
+
+    local count
+    count=$(echo "$clients_json" | jq "[.[] | select(.workspace.name == \"special:project:$name\")] | length")
+
+    local server_indicator=""
+    if echo "$server_sessions" | grep -qx "$session"; then
+      server_indicator=" ▶"
+    fi
+
+    if [[ "$count" -gt 0 ]]; then
+      echo "$idx $STATUS_ACTIVE $name${server_indicator} ($count)"
+    else
+      echo "$idx $STATUS_ACTIVE $name${server_indicator}"
+    fi
+  done < <(grep -v '^#' "$CONFIG_FILE" | grep -v '^$')
+}
+
+# Show shelved (pending) projects in a submenu, auto-activate on selection
+shelved_projects() {
+  local idx=0
+  local pending_list=""
+
+  while IFS='|' read -r name session dir status; do
+    [[ -z "$name" ]] && continue
+    ((idx++))
+    [[ -z "$status" ]] && status="active"
+    [[ "$status" != "pending" ]] && continue
+    pending_list+="$idx $STATUS_PENDING $name"$'\n'
+  done < <(grep -v '^#' "$CONFIG_FILE" | grep -v '^$')
+
+  if [[ -z "$pending_list" ]]; then
+    notify-send "Project Picker" "No shelved projects"
+    exit 0
+  fi
+
+  local selected
+  selected=$(echo "$pending_list" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight "$WALKER_HEIGHT" -p "📦 Shelved…" 2>/dev/null)
+
+  [[ -z "$selected" ]] && exit 0
+
+  local project_name
+  project_name=$(strip_status "$selected")
+
+  # Ask why — creates accountability friction
+  local reason
+  reason=$(prompt_input "Why switch to $project_name?")
+  if [[ -z "$reason" ]]; then
+    log_action "unshelve-cancel" "$project_name" "cancelled at why prompt"
+    exit 0
+  fi
+
+  # Switch budget: extra confirmation if over daily limit
+  local switch_count
+  switch_count=$(get_today_switch_count)
+  if [[ "$switch_count" -ge "$DAILY_SWITCH_BUDGET" ]]; then
+    log_action "budget-hit" "$project_name" "count=$switch_count budget=$DAILY_SWITCH_BUDGET"
+    local budget_confirm
+    budget_confirm=$(printf "Yes, switch anyway\nNo, stay focused" | omarchy-launch-walker --dmenu --width 350 --minheight 1 --maxheight 2 -p "⚠️ $switch_count switches today. Over budget ($DAILY_SWITCH_BUDGET)!" 2>/dev/null)
+    if [[ "$budget_confirm" != "Yes, switch anyway" ]]; then
+      log_action "unshelve-cancel" "$project_name" "stopped by budget gate"
+      exit 0
+    fi
+    log_action "budget-override" "$project_name" "count=$switch_count"
+  fi
+
+  log_action "switch" "$project_name" "unshelve: $reason"
+
+  # Auto-activate: flip status from pending -> active
+  local current_line
+  current_line=$(grep "^${project_name}|" "$CONFIG_FILE")
+  local act_name act_session act_dir
+  act_name=$(echo "$current_line" | cut -d'|' -f1)
+  act_session=$(echo "$current_line" | cut -d'|' -f2)
+  act_dir=$(echo "$current_line" | cut -d'|' -f3)
+  sed -i --follow-symlinks "s#^${project_name}|.*#${act_name}|${act_session}|${act_dir}|active#" "$CONFIG_FILE"
+  log_action "activate" "$project_name" "via unshelve"
+
+  # Switch to the project
+  local sel_idx
+  sel_idx=$(get_selection_idx "$selected")
+  omarchy-project-select "$sel_idx"
+  notify-send "Project Picker" "Activated & switched to: $project_name"
+}
+
+# Extract project name from "idx status name (count)" format
+strip_status() {
+  echo "$1" | sed 's/^[0-9]* [●○] //' | sed 's/ ▶//' | sed 's/ ([0-9]*)$//'
+}
+
+# Extract index from "idx status name" format
+get_selection_idx() {
+  echo "$1" | cut -d' ' -f1
+}
+
+# Build menu with active projects + actions
+build_menu() {
+  get_active_projects_with_status
+  echo "$SEPARATOR"
+  local focus_mode
+  focus_mode=$(cat "$FOCUS_FILE" 2>/dev/null || echo "0")
+  if [[ "$focus_mode" != "1" ]]; then
+    echo "$ACTION_SHELVED"
+  fi
+  if [[ "$focus_mode" == "1" ]]; then
+    echo "$ACTION_FOCUS ON"
+  else
+    echo "$ACTION_FOCUS OFF"
+  fi
+  echo "$ACTION_NEW"
+  echo "$ACTION_TOGGLE"
+  echo "$ACTION_REFRESH"
+  echo "$ACTION_DELETE"
+  echo "$ACTION_EDIT"
+}
+
+# Prompt for text input via walker
+prompt_input() {
+  local prompt="$1"
+  echo "" | omarchy-launch-walker --dmenu --width 400 --minheight 1 --maxheight 1 -p "$prompt" 2>/dev/null
+}
+
+# Special directory options
+DIR_CUSTOM="📝 Enter custom path"
+DIR_NONE="🚀 No folder yet"
+
+# Browse for directory using walker
+browse_directory() {
+  # Find directories from common locations
+  local dirs=""
+  local search_paths=("$HOME/dev" "$HOME/projects" "$HOME/work")
+
+  for path in "${search_paths[@]}"; do
+    if [[ -d "$path" ]]; then
+      if command -v fd &>/dev/null; then
+        dirs+=$(fd --type d --max-depth 3 --exclude .git --exclude node_modules --exclude .cache --exclude __pycache__ --exclude venv --exclude .venv . "$path" 2>/dev/null)
+      else
+        dirs+=$(find "$path" -maxdepth 3 -type d \
+          ! -path '*/.git/*' ! -path '*/node_modules/*' \
+          ! -path '*/.cache/*' ! -path '*/__pycache__/*' \
+          ! -path '*/venv/*' ! -path '*/.venv/*' 2>/dev/null)
+      fi
+      dirs+=$'\n'
+    fi
+  done
+
+  # Add special options at the top, then existing directories
+  {
+    echo "$DIR_CUSTOM"
+    echo "$DIR_NONE"
+    echo "$SEPARATOR"
+    echo "$dirs" | grep -v '^$' | sort -u
+  } | omarchy-launch-walker --dmenu --width 600 --minheight 1 --maxheight "$WALKER_HEIGHT" -p "📂 Select directory:" 2>/dev/null
+}
+
+# Create new project
+create_project() {
+  # Step 1: Select directory (or special option)
+  local project_dir
+  local selection
+  selection=$(browse_directory)
+  [[ -z "$selection" || "$selection" == "$SEPARATOR" ]] && exit 0
+
+  # Handle special options
+  case "$selection" in
+    "$DIR_CUSTOM")
+      # Prompt for custom path
+      project_dir=$(prompt_input "Enter path:")
+      [[ -z "$project_dir" ]] && exit 0
+      # Expand ~ to home directory
+      project_dir="${project_dir/#\~/$HOME}"
+      ;;
+    "$DIR_NONE")
+      # Use ~/dev as placeholder
+      project_dir="$HOME/dev"
+      ;;
+    *)
+      project_dir="$selection"
+      ;;
+  esac
+
+  # Step 2: Auto-suggest name from directory basename (or prompt if ~/dev placeholder)
+  local suggested_name
+  if [[ "$selection" == "$DIR_NONE" ]]; then
+    suggested_name=""
+  else
+    suggested_name=$(basename "$project_dir" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+  fi
+
+  local name
+  name=$(echo "$suggested_name" | omarchy-launch-walker --dmenu --width 400 --minheight 1 --maxheight 1 -p "Project name:" 2>/dev/null)
+  [[ -z "$name" ]] && name="$suggested_name"
+
+  # Validate: no pipes, alphanumeric + dashes/underscores
+  if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    notify-send "Project Picker" "Invalid name. Use only letters, numbers, - and _"
+    exit 1
+  fi
+
+  # Check if already exists
+  if grep -q "^${name}|" "$CONFIG_FILE"; then
+    notify-send "Project Picker" "Project '$name' already exists"
+    exit 1
+  fi
+
+  # Auto-detect tmux session: look for existing session matching directory name
+  local tmux_session="$name"
+  local existing_sessions
+  existing_sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null || true)
+  if [[ -n "$existing_sessions" ]]; then
+    local matching
+    matching=$(echo "$existing_sessions" | grep -i "$(basename "$project_dir")" | head -1 || true)
+    [[ -n "$matching" ]] && tmux_session="$matching"
+  fi
+
+  # Create the project (default status: active)
+  echo "${name}|${tmux_session}|${project_dir}|active" >> "$CONFIG_FILE"
+  log_action "create" "$name" "dir=$project_dir session=$tmux_session"
+  notify-send "Project Picker" "Created: $name → $tmux_session"
+
+  # Switch to the new project
+  omarchy-project-select "$(get_projects | grep -n "^${name}$" | cut -d: -f1)"
+}
+
+# Delete project
+delete_project() {
+  local projects
+  projects=$(get_projects_with_status)
+
+  [[ -z "$projects" ]] && notify-send "Project Picker" "No projects to delete" && exit 0
+
+  local selected
+  selected=$(echo "$projects" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight "$WALKER_HEIGHT" -p "Delete which?" 2>/dev/null)
+
+  [[ -z "$selected" ]] && exit 0
+
+  # Strip status prefix
+  local project_name
+  project_name=$(strip_status "$selected")
+
+  # Confirm deletion
+  local confirm
+  confirm=$(printf "Yes, delete\nNo, cancel" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 2 -p "Delete '$project_name'?" 2>/dev/null)
+
+  [[ "$confirm" != "Yes, delete" ]] && exit 0
+
+  # Remove from config (matches lines starting with "project|")
+  sed -i --follow-symlinks "/^${project_name}|/d" "$CONFIG_FILE"
+  log_action "delete" "$project_name"
+  notify-send "Project Picker" "Deleted: $project_name"
+}
+
+# Toggle project status between active/pending
+toggle_status() {
+  local projects
+  projects=$(get_projects_with_status)
+
+  [[ -z "$projects" ]] && notify-send "Project Picker" "No projects" && exit 0
+
+  local selected
+  selected=$(echo "$projects" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight "$WALKER_HEIGHT" -p "Toggle which?" 2>/dev/null)
+
+  [[ -z "$selected" ]] && exit 0
+
+  # Strip status prefix to get project name
+  local project_name
+  project_name=$(strip_status "$selected")
+
+  # Get current line and determine new status
+  local current_line
+  current_line=$(grep "^${project_name}|" "$CONFIG_FILE")
+  [[ -z "$current_line" ]] && exit 1
+
+  # Parse current status (field 4, default to "active")
+  local current_status
+  current_status=$(echo "$current_line" | cut -d'|' -f4)
+  [[ -z "$current_status" ]] && current_status="active"
+
+  # Toggle status
+  local new_status
+  if [[ "$current_status" == "active" ]]; then
+    new_status="pending"
+  else
+    new_status="active"
+  fi
+
+  # Build new line with updated status
+  local name session dir
+  name=$(echo "$current_line" | cut -d'|' -f1)
+  session=$(echo "$current_line" | cut -d'|' -f2)
+  dir=$(echo "$current_line" | cut -d'|' -f3)
+  local new_line="${name}|${session}|${dir}|${new_status}"
+
+  # Replace in config (use # as delimiter to avoid escaping pipes)
+  sed -i --follow-symlinks "s#^${project_name}|.*#${new_line}#" "$CONFIG_FILE"
+  log_action "$([[ "$new_status" == "active" ]] && echo "activate" || echo "shelve")" "$project_name" "via toggle"
+  notify-send "Project Picker" "$project_name → $new_status"
+}
+
+# Edit config in editor
+edit_config() {
+  omarchy-launch-tui "${EDITOR:-nano}" "$CONFIG_FILE"
+}
+
+# Toggle focus mode on/off
+focus_toggle() {
+  local current
+  current=$(cat "$FOCUS_FILE" 2>/dev/null || echo "0")
+  if [[ "$current" == "1" ]]; then
+    echo "0" > "$FOCUS_FILE"
+    log_action "focus-off" "" ""
+    notify-send "Project Picker" "Focus mode OFF"
+  else
+    echo "1" > "$FOCUS_FILE"
+    log_action "focus-on" "" ""
+    notify-send "Project Picker" "󰈈 Focus mode ON — shelved projects hidden"
+  fi
+}
+
+# Main picker
+main() {
+  local selected
+  selected=$(build_menu | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight "$WALKER_HEIGHT" -p "Project…" 2>/dev/null)
+
+  case "$selected" in
+    "$ACTION_SHELVED")
+      shelved_projects
+      ;;
+    "$ACTION_FOCUS ON"|"$ACTION_FOCUS OFF")
+      focus_toggle
+      ;;
+    "$ACTION_NEW")
+      create_project
+      ;;
+    "$ACTION_TOGGLE")
+      toggle_status
+      ;;
+    "$ACTION_REFRESH")
+      rm -f "$SERVER_CACHE"
+      main
+      ;;
+    "$ACTION_DELETE")
+      delete_project
+      ;;
+    "$ACTION_EDIT")
+      edit_config
+      ;;
+    "$SEPARATOR"|"")
+      exit 0
+      ;;
+    *)
+      # Regular project selection — get index directly from selection
+      local idx
+      idx=$(get_selection_idx "$selected")
+      if [[ -n "$idx" && "$idx" =~ ^[0-9]+$ ]]; then
+        omarchy-project-select "$idx"
+      fi
+      ;;
+  esac
+}
+
+case "${1:-}" in
+  focus-toggle) focus_toggle ;;
+  *) main ;;
+esac
