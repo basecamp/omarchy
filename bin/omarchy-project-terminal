@@ -1,0 +1,17 @@
+#!/bin/bash
+# Project Terminal - Opens terminal attached to current project's tmux session
+# Syncs terminal context with project scratchpad system
+
+# Get current project info
+PROJECT=$(omarchy-project-scratchpad current)
+TMUX_SESSION=$(omarchy-project-scratchpad tmux-session)
+PROJECT_DIR=$(omarchy-project-scratchpad dir)
+
+# Check if tmux session exists
+if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+  # Session exists - attach to it
+  exec omarchy-launch-tui tmux attach-session -t "$TMUX_SESSION"
+else
+  # Session doesn't exist - create it in project directory
+  exec omarchy-launch-tui tmux new-session -s "$TMUX_SESSION" -c "$PROJECT_DIR"
+fi
