@@ -34,8 +34,10 @@ run_logged $OMARCHY_INSTALL/config/hardware/printer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/usb-autosuspend.sh
 run_logged $OMARCHY_INSTALL/config/hardware/ignore-power-button.sh
 run_logged $OMARCHY_INSTALL/config/hardware/nvidia.sh
-run_logged $OMARCHY_INSTALL/config/hardware/intel.sh
+run_logged $OMARCHY_INSTALL/config/hardware/intel-video-acceleration.sh
+run_logged $OMARCHY_INSTALL/config/hardware/intel-lmp.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel-thermald.sh
+run_logged $OMARCHY_INSTALL/config/hardware/intel-ipu7-camera.sh
 run_logged $OMARCHY_INSTALL/config/hardware/vulkan.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-intel-panther-lake-display.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel-panther-lake-audio.sh
@@ -51,5 +53,3 @@ run_logged $OMARCHY_INSTALL/config/hardware/fix-yt6801-ethernet-adapter.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-synaptic-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-tuxedo-backlight.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework16-qmk-hid.sh
-run_logged $OMARCHY_INSTALL/config/hardware/intel-lmp.sh
-run_logged $OMARCHY_INSTALL/config/hardware/intel-ipu7-camera.sh
