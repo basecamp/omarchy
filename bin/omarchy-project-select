@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# Switch project context including tmux session.
+# Usage: omarchy-project-select <index>
+# Reads project config from ~/.config/hypr/projects.conf (format: project|tmux_session|dirs)
+
+STATE_DIR="$HOME/.local/state/hyprland/project-scratchpads"
+CONFIG_FILE="$HOME/.config/hypr/projects.conf"
+
+mkdir -p "$STATE_DIR"
+
+idx="$1"
+
+# Get the full line: project_name|tmux_session|dirs
+line=$(grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | sed -n "${idx}p")
+
+if [[ -z "$line" ]]; then
+  notify-send "Project Scratchpad" "No project at index $idx"
+  exit 1
+fi
+
+# Parse config line: project|tmux_session|dirs
+project=$(echo "$line" | cut -d'|' -f1)
+tmux_session=$(echo "$line" | cut -d'|' -f2)
+project_dir=$(echo "$line" | cut -d'|' -f3 | cut -d',' -f1)
+
+# Fallback to ~/dev if directory doesn't exist
+if [[ ! -d "$project_dir" ]]; then
+  project_dir="$HOME/dev"
+fi
+
+# Save current project
+echo "$project" > "$STATE_DIR/current-project"
+echo "1" > "$STATE_DIR/project-indicator-visible"
+
+# Switch tmux session if tmux is running and has clients attached
+if command -v tmux &> /dev/null && tmux list-clients &> /dev/null; then
+  # Check if target session exists
+  if tmux has-session -t "$tmux_session" 2>/dev/null; then
+    # Switch all attached clients to the new session
+    tmux switch-client -t "$tmux_session" 2>/dev/null || true
+  else
+    # Session doesn't exist - create it (will be used when terminal opens)
+    tmux new-session -d -s "$tmux_session" -c "$project_dir" 2>/dev/null || true
+  fi
+fi
+
+# Log the switch for daily tracking (4-field format: timestamp|action|project|details)
+printf '%s|switch|%s|direct\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$project" >> "$STATE_DIR/switch-log"
+
+notify-send "Project Mode" "Switched to: $project"
