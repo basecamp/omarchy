@@ -38,6 +38,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel-thermald.sh
 run_logged $OMARCHY_INSTALL/config/hardware/vulkan.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-intel-panther-lake-display.sh
+run_logged $OMARCHY_INSTALL/config/hardware/intel-panther-lake-audio.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-f13-amd-audio-input.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-bcm43xx.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-apple-spi-keyboard.sh
@@ -47,7 +48,6 @@ run_logged $OMARCHY_INSTALL/config/hardware/fix-surface-keyboard.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-asus-rog-audio-mixer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-asus-rog-mic.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-yt6801-ethernet-adapter.sh
-run_logged $OMARCHY_INSTALL/config/hardware/fix-dell-xps-audio.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-synaptic-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-tuxedo-backlight.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework16-qmk-hid.sh

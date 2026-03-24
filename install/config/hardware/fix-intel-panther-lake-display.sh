@@ -1,6 +1,6 @@
 # Fix display issues on Intel Panther Lake (Xe3) GPUs by disabling power-saving
 # features that cause screen to run at 10hz (e.g. Dell XPS 2026).
-if lspci | grep -iE 'vga|3d|display' | grep -qi 'panther lake'; then
+if omarchy-hw-intel-ptl; then
   echo "Detected Intel Panther Lake GPU, applying display fixes..."
 
   PANTHER_LAKE_CMDLINE='KERNEL_CMDLINE[default]+=" xe.enable_psr=0 xe.enable_panel_replay=0 xe.enable_fbc=0 xe.enable_dc=0"'

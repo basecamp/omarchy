@@ -30,6 +30,8 @@ limine-snapper-sync
 linux
 linux-firmware
 linux-headers
+linux-ptl-audio
+linux-ptl-audio-headers
 macbook12-spi-driver-dkms
 nvidia-580xx-dkms
 nvidia-dkms
