@@ -54,5 +54,4 @@ fi
 echo "✓ Android Studio installed!"
 echo "✓ ANDROID_HOME configured"
 echo ""
-echo "Launching Android Studio..."
-gtk-launch android-studio
+echo "Run 'gtk-launch android-studio' to get started."

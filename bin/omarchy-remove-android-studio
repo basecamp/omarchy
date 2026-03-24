@@ -1,39 +1,25 @@
 #!/bin/bash
 
-# Remove Android Studio, SDK, and related configurations.
+# Remove Android Studio and related configurations.
 
 set -e
 
-source "$OMARCHY_PATH/install/helpers/presentation.sh"
-
 echo "Removing Android Studio..."
-
-echo "Removing android-studio package..."
 sudo pacman -Rns --noconfirm android-studio 2>/dev/null || true
 
-if gum confirm "Remove Android SDK and all installed components?"; then
-  ANDROID_SDK_PATH="${ANDROID_HOME:-$HOME/Android/Sdk}"
-  if [[ -d "$ANDROID_SDK_PATH" ]]; then
-    echo "Removing SDK at $ANDROID_SDK_PATH..."
-    rm -rf "$ANDROID_SDK_PATH"
-  fi
-  rm -rf ~/.android
+ANDROID_SDK_PATH="${ANDROID_HOME:-$HOME/Android/Sdk}"
+if [[ -d "$ANDROID_SDK_PATH" ]]; then
+  echo "Removing SDK at $ANDROID_SDK_PATH..."
+  rm -rf "$ANDROID_SDK_PATH"
 fi
+rm -rf ~/.android
 
-if gum confirm "Remove Android Studio configuration files?"; then
-  rm -rf ~/.config/Google/AndroidStudio*
-  rm -rf ~/.local/share/Google/AndroidStudio*
-fi
+rm -rf ~/.config/Google/AndroidStudio*
+rm -rf ~/.local/share/Google/AndroidStudio*
 
-if gum confirm "Remove ANDROID_HOME from ~/.bashrc?"; then
-  sed -i '/ANDROID_HOME/d' ~/.bashrc 2>/dev/null || true
-  sed -i '/ANDROID_SDK_ROOT/d' ~/.bashrc 2>/dev/null || true
-fi
+sed -i '/ANDROID_HOME/d' ~/.bashrc 2>/dev/null || true
+sed -i '/ANDROID_SDK_ROOT/d' ~/.bashrc 2>/dev/null || true
+sed -i '/ANDROID_HOME/d' ~/.zshrc 2>/dev/null || true
+sed -i '/ANDROID_SDK_ROOT/d' ~/.zshrc 2>/dev/null || true
 
-if gum confirm "Remove ANDROID_HOME from ~/.zshrc?"; then
-  sed -i '/ANDROID_HOME/d' ~/.zshrc 2>/dev/null || true
-  sed -i '/ANDROID_SDK_ROOT/d' ~/.zshrc 2>/dev/null || true
-fi
-
-echo
-gum style --foreground 2 "✓ Android Studio removed!"
+echo "✓ Android Studio removed!"
