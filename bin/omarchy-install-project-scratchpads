@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# Install the project scratchpad system for managing project-specific
+# special workspaces in Hyprland with tmux session sync.
+
+# Check required dependencies
+if omarchy-cmd-missing tmux; then
+  echo "tmux is required for project scratchpads."
+  echo "Install with: omarchy-pkg-add tmux"
+  exit 1
+fi
+
+if omarchy-cmd-missing jq; then
+  echo "jq is required for project scratchpads."
+  echo "Install with: omarchy-pkg-add jq"
+  exit 1
+fi
+
+if omarchy-cmd-missing fd; then
+  echo "Note: fd not found. Project directory browsing will use 'find' instead."
+  echo "For better results: omarchy-pkg-add fd"
+fi
+
+# Create projects.conf if it doesn't exist
+CONFIG_FILE="$HOME/.config/hypr/projects.conf"
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  cat > "$CONFIG_FILE" << 'CONF'
+# Project Scratchpad Configuration
+# Format: project_name|tmux_session|directory|status
+#   - project_name: identifier (alphanumeric, dashes, underscores)
+#   - tmux_session: tmux session name to attach/create
+#   - directory: project root directory
+#   - status: active (shown in picker) or pending (shelved)
+#
+# Examples:
+#   myapp|myapp|~/dev/myapp|active
+#   sideproject|sideproject|~/dev/sideproject|pending
+
+# [settings]
+# focus_mode=false
+# daily_switch_budget=3
+CONF
+  echo "Created $CONFIG_FILE"
+else
+  echo "Config already exists: $CONFIG_FILE"
+fi
+
+# Create state directory
+STATE_DIR="$HOME/.local/state/hyprland/project-scratchpads"
+mkdir -p "$STATE_DIR"
+
+# Append keybindings to bindings.conf if not already present
+BINDINGS_FILE="$HOME/.config/hypr/bindings.conf"
+MARKER="# BEGIN Project Scratchpads"
+
+if [[ -f "$BINDINGS_FILE" ]] && grep -qF "$MARKER" "$BINDINGS_FILE"; then
+  echo "Keybindings already installed in $BINDINGS_FILE"
+else
+  cat >> "$BINDINGS_FILE" << 'BINDINGS'
+
+# BEGIN Project Scratchpads
+bindd = SUPER, SEMICOLON, Toggle project scratchpad, exec, omarchy-project-scratchpad toggle
+bindd = SUPER ALT, SEMICOLON, Send to project scratchpad, exec, omarchy-project-scratchpad send
+bindd = SUPER CTRL, P, Project picker, exec, omarchy-project-picker
+
+bindd = CTRL ALT, 1, Switch to project 1, exec, omarchy-project-select 1 && omarchy-project-scratchpad toggle
+bindd = CTRL ALT, 2, Switch to project 2, exec, omarchy-project-select 2 && omarchy-project-scratchpad toggle
+bindd = CTRL ALT, 3, Switch to project 3, exec, omarchy-project-select 3 && omarchy-project-scratchpad toggle
+bindd = CTRL ALT, 4, Switch to project 4, exec, omarchy-project-select 4 && omarchy-project-scratchpad toggle
+bindd = CTRL ALT, 5, Switch to project 5, exec, omarchy-project-select 5 && omarchy-project-scratchpad toggle
+bindd = CTRL ALT, 6, Switch to project 6, exec, omarchy-project-select 6 && omarchy-project-scratchpad toggle
+bindd = CTRL ALT, 7, Switch to project 7, exec, omarchy-project-select 7 && omarchy-project-scratchpad toggle
+bindd = CTRL ALT, 8, Switch to project 8, exec, omarchy-project-select 8 && omarchy-project-scratchpad toggle
+bindd = CTRL ALT, 9, Switch to project 9, exec, omarchy-project-select 9 && omarchy-project-scratchpad toggle
+
+bindd = CTRL ALT SHIFT, 1, Send to project 1, exec, omarchy-project-scratchpad send-to 1
+bindd = CTRL ALT SHIFT, 2, Send to project 2, exec, omarchy-project-scratchpad send-to 2
+bindd = CTRL ALT SHIFT, 3, Send to project 3, exec, omarchy-project-scratchpad send-to 3
+bindd = CTRL ALT SHIFT, 4, Send to project 4, exec, omarchy-project-scratchpad send-to 4
+bindd = CTRL ALT SHIFT, 5, Send to project 5, exec, omarchy-project-scratchpad send-to 5
+bindd = CTRL ALT SHIFT, 6, Send to project 6, exec, omarchy-project-scratchpad send-to 6
+bindd = CTRL ALT SHIFT, 7, Send to project 7, exec, omarchy-project-scratchpad send-to 7
+bindd = CTRL ALT SHIFT, 8, Send to project 8, exec, omarchy-project-scratchpad send-to 8
+bindd = CTRL ALT SHIFT, 9, Send to project 9, exec, omarchy-project-scratchpad send-to 9
+# END Project Scratchpads
+BINDINGS
+  echo "Keybindings added to $BINDINGS_FILE"
+fi
+
+echo ""
+echo "Project Scratchpads installed!"
+echo ""
+echo "  Add your first project to $CONFIG_FILE:"
+echo "    myapp|myapp|~/dev/myapp|active"
+echo ""
+echo "  Then press Super+Ctrl+P to open the project picker."
+echo ""
+echo "  Keybindings (active immediately — Hyprland auto-reloads on config change):"
+echo "    Super+;              Toggle current project scratchpad"
+echo "    Super+Alt+;          Send window to project scratchpad"
+echo "    Super+Ctrl+P         Project picker (create/switch/shelve)"
+echo "    Ctrl+Alt+1-9         Quick switch to project N"
+echo "    Ctrl+Alt+Shift+1-9   Send window to project N"
