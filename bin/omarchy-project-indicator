@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Project indicator for waybar — shows current project name and window count.
+# Waybar integration — add to ~/.config/waybar/config.jsonc:
+#   "custom/project": {
+#     "exec": "omarchy-project-indicator",
+#     "return-type": "json",
+#     "interval": 1,
+#     "on-click": "omarchy-project-scratchpad toggle",
+#     "tooltip": true
+#   }
+
+STATE_DIR="$HOME/.local/state/hyprland/project-scratchpads"
+VISIBLE_FILE="$STATE_DIR/project-indicator-visible"
+CONFIG_FILE="$HOME/.config/hypr/projects.conf"
+
+# Check if indicator should be visible
+visible=$(cat "$VISIBLE_FILE" 2>/dev/null || echo "0")
+
+if [[ "$visible" != "1" ]]; then
+  echo '{"text": "", "tooltip": "", "class": "hidden"}'
+  exit 0
+fi
+
+project=$(cat "$STATE_DIR/current-project" 2>/dev/null || echo "none")
+
+# Get project position (1-based index in config)
+position=$(grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | cut -d'|' -f1 | grep -n "^${project}$" | cut -d: -f1)
+position=${position:-"?"}
+
+# Count windows in this project's scratchpad
+count=$(hyprctl clients -j 2>/dev/null | jq "[.[] | select(.workspace.name == \"special:project:$project\")] | length" 2>/dev/null || echo 0)
+
+if (( count > 0 )); then
+  printf '{"text": "%s: %s (%s)", "tooltip": "Project %s: %s - %s windows\\nCtrl+Alt+%s to switch", "class": "%s"}\n' \
+    "$position" "$project" "$count" "$position" "$project" "$count" "$position" "$project"
+else
+  printf '{"text": "%s: %s", "tooltip": "Project %s: %s\\nCtrl+Alt+%s to switch", "class": "%s"}\n' \
+    "$position" "$project" "$position" "$project" "$position" "$project"
+fi
