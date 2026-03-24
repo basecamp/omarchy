@@ -61,7 +61,7 @@ else
 # BEGIN Project Scratchpads
 bindd = SUPER, SEMICOLON, Toggle project scratchpad, exec, omarchy-project-scratchpad toggle
 bindd = SUPER ALT, SEMICOLON, Send to project scratchpad, exec, omarchy-project-scratchpad send
-bindd = SUPER CTRL, P, Project picker, exec, omarchy-project-picker
+bindd = SUPER SHIFT, P, Project picker, exec, omarchy-project-picker
 
 bindd = CTRL ALT, 1, Switch to project 1, exec, omarchy-project-select 1 && omarchy-project-scratchpad toggle
 bindd = CTRL ALT, 2, Switch to project 2, exec, omarchy-project-select 2 && omarchy-project-scratchpad toggle
@@ -93,11 +93,11 @@ echo ""
 echo "  Add your first project to $CONFIG_FILE:"
 echo "    myapp|myapp|~/dev/myapp|active"
 echo ""
-echo "  Then press Super+Ctrl+P to open the project picker."
+echo "  Then press Super+Shift+P to open the project picker."
 echo ""
 echo "  Keybindings (active immediately — Hyprland auto-reloads on config change):"
 echo "    Super+;              Toggle current project scratchpad"
 echo "    Super+Alt+;          Send window to project scratchpad"
-echo "    Super+Ctrl+P         Project picker (create/switch/shelve)"
+echo "    Super+Shift+P         Project picker (create/switch/shelve)"
 echo "    Ctrl+Alt+1-9         Quick switch to project N"
 echo "    Ctrl+Alt+Shift+1-9   Send window to project N"
