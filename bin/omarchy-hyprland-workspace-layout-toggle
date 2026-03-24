@@ -25,4 +25,4 @@ else
   hyprctl keyword workspace $WORKSPACE_ID, layout:$NEW_LAYOUT
 fi
 
-notify-send "󱂬    Workspace layout set to $NEW_LAYOUT"
+notify-send -u low "󱂬    Workspace layout set to $NEW_LAYOUT"
