@@ -61,8 +61,8 @@ EOF
     fi
   fi
 
-  # Enable quota to allow space-aware algorithms to work
-  sudo btrfs quota enable /
+  # Disable btrfs quotas (they cause performance issues)
+  sudo btrfs quota disable / 2>/dev/null || true
 
   # Tweak default Snapper configs
   sudo sed -i 's/^TIMELINE_CREATE="yes"/TIMELINE_CREATE="no"/' /etc/snapper/configs/{root,home}
