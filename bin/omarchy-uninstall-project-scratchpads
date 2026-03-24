@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Uninstall the project scratchpad system.
+# Removes keybindings and state files. Keeps projects.conf (user data).
+
+echo "This will remove project scratchpad keybindings and state files."
+echo "Your project list (~/.config/hypr/projects.conf) will be kept."
+echo ""
+read -rp "Continue? [y/N] " confirm
+
+if [[ ! "$confirm" =~ ^[yY]$ ]]; then
+  echo "Cancelled."
+  exit 0
+fi
+
+# Remove keybinding block from bindings.conf
+BINDINGS_FILE="$HOME/.config/hypr/bindings.conf"
+if [[ -f "$BINDINGS_FILE" ]] && grep -qF "# BEGIN Project Scratchpads" "$BINDINGS_FILE"; then
+  sed -i --follow-symlinks '/^# BEGIN Project Scratchpads$/,/^# END Project Scratchpads$/d' "$BINDINGS_FILE"
+  # Remove trailing blank line left by the block
+  sed -i --follow-symlinks -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$BINDINGS_FILE"
+  echo "Removed keybindings from $BINDINGS_FILE"
+else
+  echo "No keybinding block found in $BINDINGS_FILE"
+fi
+
+# Remove state directory
+STATE_DIR="$HOME/.local/state/hyprland/project-scratchpads"
+if [[ -d "$STATE_DIR" ]]; then
+  rm -rf "$STATE_DIR"
+  echo "Removed state directory: $STATE_DIR"
+fi
+
+echo ""
+echo "Uninstalled. Keybindings removed (Hyprland auto-reloads)."
+echo "Project list kept at: ~/.config/hypr/projects.conf"
