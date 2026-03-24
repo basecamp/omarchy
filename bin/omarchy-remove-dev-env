@@ -4,7 +4,7 @@
 # Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala>
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala>" >&2
+  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala|android>" >&2
   exit 1
 fi
 
@@ -102,6 +102,9 @@ scala)
   mise uninstall scala-cli --all
   mise rm -g scala
   mise rm -g scala-cli
+  ;;
+android)
+  omarchy-remove-android-studio
   ;;
 *)
   echo "Unknown environment: $1"
