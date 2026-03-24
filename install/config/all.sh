@@ -41,7 +41,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel/ipu7-camera.sh
 run_logged $OMARCHY_INSTALL/config/hardware/vulkan.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/fix-ptl-display.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/ptl-audio.sh
-run_logged $OMARCHY_INSTALL/config/hardware/fix-f13-amd-audio-input.sh
+run_logged $OMARCHY_INSTALL/config/hardware/framework/fix-f13-amd-audio-input.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-bcm43xx.sh
 run_logged $OMARCHY_INSTALL/config/hardware/apple/fix-spi-keyboard.sh
 run_logged $OMARCHY_INSTALL/config/hardware/apple/fix-suspend-nvme.sh
@@ -52,4 +52,4 @@ run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-mic.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-yt6801-ethernet-adapter.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-synaptic-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-tuxedo-backlight.sh
-run_logged $OMARCHY_INSTALL/config/hardware/framework16-qmk-hid.sh
+run_logged $OMARCHY_INSTALL/config/hardware/framework/qmk-hid.sh
