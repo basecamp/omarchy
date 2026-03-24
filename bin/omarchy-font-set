@@ -33,7 +33,7 @@ if [[ -n $font_name ]]; then
     omarchy-restart-swayosd
 
     if pgrep -x ghostty; then
-      notify-send "    You must restart Ghostty to see font change"
+      notify-send -u low "    You must restart Ghostty to see font change"
     fi
 
     omarchy-hook font-set "$font_name"

@@ -54,7 +54,7 @@ present_terminal() {
 }
 
 open_in_editor() {
-  notify-send "Editing config file" "$1"
+  notify-send -u low "Editing config file" "$1"
   omarchy-launch-editor "$1"
 }
 
