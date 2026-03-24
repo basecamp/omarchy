@@ -1,0 +1,204 @@
+#!/bin/bash
+
+# Project Scratchpad Manager
+# Manages project-specific special workspaces in Hyprland
+# Config format: name|session|dir|status (status defaults to "active" if missing)
+
+STATE_DIR="$HOME/.local/state/hyprland/project-scratchpads"
+STATE_FILE="$STATE_DIR/current-project"
+CONFIG_FILE="$HOME/.config/hypr/projects.conf"
+
+# Ensure state directory exists
+mkdir -p "$STATE_DIR"
+
+# Parse config line: project_name|tmux_session|dirs|status
+# Returns: the requested field (1=name, 2=session, 3=dirs, 4=status)
+get_config_field() {
+  local line="$1"
+  local field="$2"
+  echo "$line" | cut -d'|' -f"$field"
+}
+
+# Get project status (defaults to "active" if missing — backwards compat)
+get_project_status() {
+  local line="$1"
+  local status
+  status=$(get_config_field "$line" 4)
+  if [[ -z "$status" ]]; then
+    echo "active"
+  else
+    echo "$status"
+  fi
+}
+
+# Get project line by name
+get_project_line() {
+  local name="$1"
+  grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | grep "^${name}|" | head -1
+}
+
+# Get project line by index (1-based)
+get_project_line_by_index() {
+  local idx="$1"
+  grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | sed -n "${idx}p"
+}
+
+# Get current project (default to first project if not set)
+get_current_project() {
+  if [[ -f "$STATE_FILE" ]]; then
+    cat "$STATE_FILE"
+  else
+    # Default to first project in config
+    grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | head -1 | cut -d'|' -f1
+  fi
+}
+
+# Get tmux session name for current project
+get_tmux_session() {
+  local project="${1:-$(get_current_project)}"
+  local line
+  line=$(get_project_line "$project")
+  if [[ -n "$line" ]]; then
+    get_config_field "$line" 2
+  else
+    echo "$project"  # fallback to project name
+  fi
+}
+
+# Get first directory for current project
+get_project_dir() {
+  local project="${1:-$(get_current_project)}"
+  local line
+  line=$(get_project_line "$project")
+  if [[ -n "$line" ]]; then
+    local dir
+    dir=$(get_config_field "$line" 3 | cut -d',' -f1)
+    # Fallback to ~/dev if directory doesn't exist
+    if [[ -d "$dir" ]]; then
+      echo "$dir"
+    else
+      echo "$HOME/dev"
+    fi
+  else
+    echo "$HOME/dev"  # fallback
+  fi
+}
+
+# Get all directories for a project (comma-separated)
+get_project_dirs() {
+  local project="${1:-$(get_current_project)}"
+  local line
+  line=$(get_project_line "$project")
+  if [[ -n "$line" ]]; then
+    get_config_field "$line" 3
+  fi
+}
+
+# List all projects from config (names only, all statuses)
+list_projects() {
+  grep -v '^#' "$CONFIG_FILE" | grep -v '^$' | cut -d'|' -f1
+}
+
+# Set current project by index (1-based)
+set_project_by_index() {
+  local idx="$1"
+  local line
+  line=$(get_project_line_by_index "$idx")
+
+  if [[ -z "$line" ]]; then
+    notify-send "Project Scratchpad" "Invalid project index: $idx"
+    exit 1
+  fi
+
+  local project
+  project=$(get_config_field "$line" 1)
+  echo "$project" > "$STATE_FILE"
+  notify-send "Project Mode" "Switched to: $project"
+}
+
+# Toggle current project's scratchpad
+toggle_scratchpad() {
+  local project
+  project=$(get_current_project)
+
+  if [[ -z "$project" ]]; then
+    notify-send "Project Scratchpad" "No project configured"
+    exit 1
+  fi
+
+  hyprctl dispatch togglespecialworkspace "project:$project"
+}
+
+# Send current window to project scratchpad
+send_to_scratchpad() {
+  local project
+  project=$(get_current_project)
+
+  if [[ -z "$project" ]]; then
+    notify-send "Project Scratchpad" "No project configured"
+    exit 1
+  fi
+
+  hyprctl dispatch movetoworkspacesilent "special:project:$project"
+}
+
+# Send current window to specific project by index (without switching)
+send_to_project_by_index() {
+  local idx="$1"
+  local line
+  line=$(get_project_line_by_index "$idx")
+
+  if [[ -z "$line" ]]; then
+    notify-send "Project Scratchpad" "Invalid project index: $idx"
+    exit 1
+  fi
+
+  local project
+  project=$(get_config_field "$line" 1)
+  hyprctl dispatch movetoworkspacesilent "special:project:$project"
+}
+
+# Show current project
+show_current() {
+  local project
+  project=$(get_current_project)
+  notify-send "Current Project" "$project"
+}
+
+# Main command dispatch
+case "${1:-toggle}" in
+  toggle)
+    toggle_scratchpad
+    ;;
+  send)
+    send_to_scratchpad
+    ;;
+  send-to)
+    send_to_project_by_index "${2:-1}"
+    ;;
+  set)
+    set_project_by_index "${2:-1}"
+    ;;
+  current)
+    get_current_project
+    ;;
+  tmux-session)
+    get_tmux_session "${2:-}"
+    ;;
+  dir)
+    get_project_dir "${2:-}"
+    ;;
+  dirs)
+    get_project_dirs "${2:-}"
+    ;;
+  show)
+    show_current
+    ;;
+  list)
+    list_projects
+    ;;
+  *)
+    echo "Usage: omarchy-project-scratchpad [toggle|send|send-to <index>|set <index>|current|tmux-session [name]|dir [name]|dirs [name]|show|list]"
+    exit 1
+    ;;
+esac
