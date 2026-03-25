@@ -20,7 +20,7 @@ jdk-openjdk
 libpulse
 libsass
 intel-ipu7-camera
-intel-lmp
+intel-lpmd
 intel-media-driver
 libva-intel-driver
 libva-nvidia-driver
