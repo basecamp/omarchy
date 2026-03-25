@@ -32,6 +32,14 @@ img2jpg-medium() {
   magick "$img" "$@" -resize 2160x\> -quality 85 -strip "${img%.*}-medium.jpg"
 }
 
+# Transcode any image to a 6K JPG (max 3160px wide)
+img2jpg-large() {
+  img="$1"
+  shift
+
+  magick "$img" "$@" -resize 3160x\> -quality 85 -strip "${img%.*}-large.jpg"
+}
+
 # Transcode any image to compressed-but-lossless PNG
 img2png() {
   img="$1"
