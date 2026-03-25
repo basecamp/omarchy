@@ -16,7 +16,6 @@ brightnessctl
 btop
 chromium
 clang
-claude-code
 cups
 cups-browsed
 cups-filters
@@ -92,7 +91,6 @@ obs-studio
 obsidian
 omarchy-nvim
 omarchy-walker
-opencode
 pamixer
 pinta
 playerctl
