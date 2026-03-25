@@ -12,6 +12,7 @@ if omarchy-hw-intel-ptl; then
 BOOT_ORDER="linux-ptl*, *, *fallback, Snapshots"
 EOF
 
-  # Make the PTL audio kernel the default boot entry in limine
+  # Make the PTL kernel the default boot entry in limine with auto-boot
   sed -i 's/^default_entry: 2/default_entry: 1/' $OMARCHY_PATH/default/limine/limine.conf
+  sed -i 's/^#timeout: 3/timeout: 3/' $OMARCHY_PATH/default/limine/limine.conf
 fi
