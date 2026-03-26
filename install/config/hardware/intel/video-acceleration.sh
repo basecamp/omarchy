@@ -1,5 +1,5 @@
 # This installs hardware video acceleration for Intel GPUs
-# Check if we have an Intel GPU at all
+
 if INTEL_GPU=$(lspci | grep -iE 'vga|3d|display' | grep -i 'intel'); then
   # HD Graphics / Iris / Xe / Arc use intel-media-driver
   if [[ ${INTEL_GPU,,} =~ (hd\ graphics|uhd\ graphics|xe|iris|arc) ]]; then
