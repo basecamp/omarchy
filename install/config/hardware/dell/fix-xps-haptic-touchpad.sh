@@ -4,7 +4,7 @@
 # This udev rule keeps the I2C controller always on to prevent that.
 # Applies to any Dell XPS with the Synaptics haptic touchpad (06CB:D01A).
 
-if cat /sys/class/dmi/id/product_name 2>/dev/null | grep -qi "XPS" \
+if omarchy-hw-match "XPS" \
   && ls /sys/bus/i2c/devices/i2c-VEN_06CB:00 2>/dev/null; then
 
   # Disable runtime PM for I2C controller so haptic state isn't lost
