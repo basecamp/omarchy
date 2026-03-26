@@ -5,7 +5,7 @@ if omarchy-hw-intel-ptl; then
   echo "Detected Intel Panther Lake, installing PTL kernel..."
 
   omarchy-pkg-add linux-ptl linux-ptl-headers
-  sudo pacman -Rns --noconfirm linux linux-headers 2>/dev/null || true
+  sudo pacman -Rdd --noconfirm linux linux-headers 2>/dev/null || true
 
   sudo mkdir -p /etc/limine-entry-tool.d
   cat <<EOF | sudo tee /etc/limine-entry-tool.d/intel-panther-lake.conf >/dev/null
