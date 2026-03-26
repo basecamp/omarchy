@@ -2,7 +2,7 @@
 # Power-saving features cause the screen to run at 10hz.
 if omarchy-hw-match "XPS" \
   && omarchy-hw-intel-ptl \
-  && grep -rqi "LG" /sys/class/drm/card*-eDP-*/edid 2>/dev/null; then
+  && test "$(od -An -tx1 -j8 -N2 /sys/class/drm/card*-eDP-*/edid 2>/dev/null | tr -d ' \n')" = "30e4"; then
 
   echo "Detected Dell XPS with LG OLED panel on Panther Lake, applying display fixes..."
 
