@@ -13,6 +13,9 @@ end
 
 EOF
 
-  cat "$TRANSPARENCY_FILE" >>"$temp_file"
-  mv "$temp_file" "$TRANSPARENCY_FILE"
+  if cat "$TRANSPARENCY_FILE" >>"$temp_file"; then
+    mv "$temp_file" "$TRANSPARENCY_FILE"
+  else
+    rm -f "$temp_file"
+  fi
 fi
