@@ -1,8 +1,7 @@
-# Omarchy
+# Triumphe-Arch
 
-Omarchy is a beautiful, modern & opinionated Linux distribution by DHH.
+Triumphe-Arch is a my own arch install script based on Omarchy. I customize it to my liking and lose the fiscistic opinion from this opinionated leader (aka I lose the branding of DHH). Thats the beuty of FOSS. Take what you like and to hell with the rest. ;)
 
-Read more at [omarchy.org](https://omarchy.org).
 
 ## License
 
