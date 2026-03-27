@@ -9,7 +9,10 @@ if lspci -nn | grep -q "106b:180[12]"; then
     apple-t2-audio-config \
     apple-bcm-firmware \
     t2fanrd \
-    tiny-dfr
+    tiny-dfr \
+    facetimehd-firmware \
+    facetimehd-data \
+    facetimehd-dkms
 
   # Add user to video group (required for tiny-dfr to access /dev/dri devices)
   sudo usermod -aG video ${USER}
@@ -19,6 +22,7 @@ if lspci -nn | grep -q "106b:180[12]"; then
   sudo systemctl enable tiny-dfr.service
 
   echo "apple-bce" | sudo tee /etc/modules-load.d/t2.conf >/dev/null
+  echo "facetimehd" | sudo tee /etc/modules-load.d/facetimehd.conf >/dev/null
 
   echo "MODULES+=(apple-bce usbhid hid_apple hid_generic xhci_pci xhci_hcd)" | sudo tee /etc/mkinitcpio.conf.d/apple-t2.conf >/dev/null
 
