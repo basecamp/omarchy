@@ -1,14 +1,20 @@
 #!/bin/bash
 
+# List of modules to cycle
 MODULES="amd_isp4_capture i2c_designware_amdisp pinctrl_amdisp amd_isp4"
 
-case $1 in
-  pre)
-    modprobe -rq $MODULES 2>/dev/null || true
-    ;;
-  post)
-    for mod in $MODULES; do
-      modprobe -q $mod 2>/dev/null || true
-    done
-    ;;
-esac
+# Loop through modules for pre (unload) and post (load)
+for mod in $MODULES; do
+    case "$1" in
+        pre)
+            if modinfo $mod >/dev/null 2>&1; then
+                modprobe -rq $mod 2>/dev/null || true
+            fi
+            ;;
+        post)
+            if modinfo $mod >/dev/null 2>&1; then
+                modprobe -q $mod 2>/dev/null || true
+            fi
+            ;;
+    esac
+done
