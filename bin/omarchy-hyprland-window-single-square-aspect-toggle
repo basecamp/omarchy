@@ -6,8 +6,8 @@ CURRENT_VALUE=$(hyprctl getoption "layout:single_window_aspect_ratio" 2>/dev/nul
 # Parse vec2 output: "vec2: [1, 1]" or "vec2: [0, 0]"
 if [[ $CURRENT_VALUE == *"[1, 1]"* ]]; then
   hyprctl keyword layout:single_window_aspect_ratio "0 0"
-  notify-send "    Disable single-window square aspect ratio"
+  notify-send -u low "    Disable single-window square aspect ratio"
 else
   hyprctl keyword layout:single_window_aspect_ratio "1 1"
-  notify-send "    Enable single-window square aspect"
+  notify-send -u low "    Enable single-window square aspect"
 fi
