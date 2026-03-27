@@ -54,7 +54,7 @@ present_terminal() {
 }
 
 open_in_editor() {
-  notify-send "Editing config file" "$1"
+  notify-send -u low "Editing config file" "$1"
   omarchy-launch-editor "$1"
 }
 
@@ -355,13 +355,8 @@ show_install_ai_menu() {
       echo ollama
   )
 
-  case $(menu "Install" "  Dictation\n󱚤  Claude Code\n󱚤  Codex\n󱚤  Gemini CLI\n󱚤  Copilot CLI\n󱚤  Cursor CLI\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush") in
+  case $(menu "Install" "  Dictation\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush") in
   *Dictation*) present_terminal omarchy-voxtype-install ;;
-  *Claude*) install "Claude Code" "claude-code" ;;
-  *Codex*) install "Codex" "openai-codex" ;;
-  *Gemini*) install "Gemini CLI" "gemini-cli" ;;
-  *Copilot*) install "Copilot CLI" "github-copilot-cli" ;;
-  *Cursor*) install "Cursor CLI" "cursor-cli" ;;
   *Studio*) install "LM Studio" "lmstudio-bin" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
