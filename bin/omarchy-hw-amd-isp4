@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Detect whether the computer has an AMD ISP4 camera.
+
+grep -q "AMDI0105" /sys/bus/acpi/devices/*/hid 2>/dev/null
