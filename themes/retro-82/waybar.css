@@ -1,0 +1,3 @@
+@define-color bg #00172e;
+@define-color foreground #f6dcac;
+@define-color background alpha(@bg, 0.8);
