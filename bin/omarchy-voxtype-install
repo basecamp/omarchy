@@ -11,7 +11,7 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
   cp $OMARCHY_PATH/default/voxtype/config.toml ~/.config/voxtype/
 
   voxtype setup --download --no-post-install
-  if [[ -d /usr/share/vulkan/icd.d ]] && find /usr/share/vulkan/icd.d -maxdepth 1 -name "*.json" -print -quit | grep -q .; then
+  if omarchy-hw-vulkan; then
     voxtype setup gpu --enable || true
   fi
   voxtype setup systemd
