@@ -1,7 +1,7 @@
 echo "Enable GPU in voxtype if Vulkan is available"
 
 if omarchy-cmd-present voxtype; then
-  if compgen -G "/usr/share/vulkan/icd.d/*.json" >/dev/null; then
+  if [[ -d /usr/share/vulkan/icd.d ]] && find /usr/share/vulkan/icd.d -maxdepth 1 -name "*.json" -print -quit | grep -q .; then
     echo "Vulkan is available, enabling GPU in voxtype"
     voxtype setup gpu --enable || true
   fi
