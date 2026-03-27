@@ -18,6 +18,11 @@ if [[ -f "$T2_CONF" ]] && ! grep -q "mem_sleep_default=s2idle" "$T2_CONF"; then
   sudo sed -i 's/pcie_ports=compat"/pcie_ports=compat mem_sleep_default=s2idle"/' "$T2_CONF"
 fi
 
+# Regenerate boot config so kernel cmdline change takes effect
+if command -v limine-mkinitcpio >/dev/null 2>&1; then
+  sudo limine-mkinitcpio
+fi
+
 # Create and enable suspend service if not already present
 if [[ ! -f /etc/systemd/system/omarchy-suspend-t2.service ]]; then
   cat <<'EOF' | sudo tee /etc/systemd/system/omarchy-suspend-t2.service >/dev/null
@@ -30,7 +35,7 @@ StopWhenUnneeded=yes
 User=root
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/bash -c 'for dev in /sys/bus/pci/devices/*/; do vendor=$(cat "$dev/vendor" 2>/dev/null); device=$(cat "$dev/device" 2>/dev/null); if [[ "$vendor" == "0x106b" ]] && [[ "$device" == "0x2005" || "$device" == "0x1801" ]]; then echo 0 > "$dev/d3cold_allowed" 2>/dev/null; fi; done; rmmod brcmfmac_wcc 2>/dev/null; rmmod brcmfmac 2>/dev/null; rmmod -f apple-bce 2>/dev/null'
+ExecStart=/bin/bash -c 'for dev in /sys/bus/pci/devices/*/; do vendor=$(cat "$dev/vendor" 2>/dev/null); device=$(cat "$dev/device" 2>/dev/null); if [[ "$vendor" == "0x106b" ]] && [[ "$device" == "0x2005" || "$device" == "0x1801" || "$device" == "0x1802" ]]; then echo 0 > "$dev/d3cold_allowed" 2>/dev/null; fi; done; rmmod brcmfmac_wcc 2>/dev/null; rmmod brcmfmac 2>/dev/null; rmmod -f apple-bce 2>/dev/null'
 ExecStop=/bin/bash -c 'modprobe apple-bce; sleep 2; modprobe brcmfmac'
 
 [Install]

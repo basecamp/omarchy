@@ -54,13 +54,13 @@ StopWhenUnneeded=yes
 User=root
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/bash -c 'for dev in /sys/bus/pci/devices/*/; do vendor=$(cat "$dev/vendor" 2>/dev/null); device=$(cat "$dev/device" 2>/dev/null); if [[ "$vendor" == "0x106b" ]] && [[ "$device" == "0x2005" || "$device" == "0x1801" ]]; then echo 0 > "$dev/d3cold_allowed" 2>/dev/null; fi; done; rmmod brcmfmac_wcc 2>/dev/null; rmmod brcmfmac 2>/dev/null; rmmod -f apple-bce 2>/dev/null'
+ExecStart=/bin/bash -c 'for dev in /sys/bus/pci/devices/*/; do vendor=$(cat "$dev/vendor" 2>/dev/null); device=$(cat "$dev/device" 2>/dev/null); if [[ "$vendor" == "0x106b" ]] && [[ "$device" == "0x2005" || "$device" == "0x1801" || "$device" == "0x1802" ]]; then echo 0 > "$dev/d3cold_allowed" 2>/dev/null; fi; done; rmmod brcmfmac_wcc 2>/dev/null; rmmod brcmfmac 2>/dev/null; rmmod -f apple-bce 2>/dev/null'
 ExecStop=/bin/bash -c 'modprobe apple-bce; sleep 2; modprobe brcmfmac'
 
 [Install]
 WantedBy=sleep.target
 EOF
 
-  chrootable_systemctl_enable omarchy-suspend-t2.service
+  sudo systemctl enable omarchy-suspend-t2.service
   sudo systemctl daemon-reload
 fi
