@@ -1,0 +1,14 @@
+#!/bin/bash
+
+MODULES="amd_isp4_capture i2c_designware_amdisp pinctrl_amdisp amd_isp4"
+
+case $1 in
+  pre)
+    modprobe -rq $MODULES 2>/dev/null || true
+    ;;
+  post)
+    for mod in $MODULES; do
+      modprobe -q $mod 2>/dev/null || true
+    done
+    ;;
+esac
