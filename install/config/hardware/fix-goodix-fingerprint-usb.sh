@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 
-# Fix Goodix fingerprint reader (27c6:609c) disconnecting when USB devices are plugged in.
-# Forces USB power control to always-on for the device, preventing conflicts with
-# USB power delivery negotiation from other devices (e.g. phones).
+# Fix Goodix fingerprint reader (27c6:609c) disconnecting when USB devices are plugged in
+# and failing to resume after system suspend.
+#
+# Two fixes applied:
+# 1. udev rule: forces power/control=on so the device never autosuspends
+# 2. USB quirk RESET_RESUME (0x0080): forces a full USB reset on resume instead of
+#    a soft resume which fails with -EINVAL on this device
 goodix_609c_found=0
 for dev in /sys/bus/usb/devices/*; do
   if [[ -f "$dev/idVendor" && -f "$dev/idProduct" ]]; then
@@ -18,5 +22,9 @@ if [[ "${goodix_609c_found}" -eq 1 ]]; then
     sudo cp "$OMARCHY_PATH/default/udev/fix-goodix-fingerprint-usb.rules" /etc/udev/rules.d/99-fix-goodix-fingerprint-usb.rules
     sudo udevadm control --reload-rules
     sudo udevadm trigger --subsystem-match=usb --attr-match=idVendor=27c6 --attr-match=idProduct=609c
+  fi
+
+  if [[ ! -f /etc/modprobe.d/fix-goodix-fingerprint-usb.conf ]]; then
+    echo "options usbcore quirks=27c6:609c:0x0080" | sudo tee /etc/modprobe.d/fix-goodix-fingerprint-usb.conf > /dev/null
   fi
 fi
