@@ -1,0 +1,18 @@
+#!/bin/bash
+# Install the NetBird WireGuard mesh VPN service and TUI client.
+
+echo "Installing NetBird..."
+omarchy-pkg-aur-add netbird
+
+echo "Enabling NetBird daemon..."
+sudo systemctl enable --now netbird
+
+echo "Installing NetBird TUI..."
+omarchy-pkg-aur-add netbird-tui
+
+ICON_DIR="$HOME/.local/share/applications/icons"
+mkdir -p "$ICON_DIR"
+cp "$OMARCHY_PATH/applications/icons/NetBird.png" "$ICON_DIR/NetBird.png"
+omarchy-tui-install "NetBird" "sudo netbird-tui" float "$ICON_DIR/NetBird.png"
+
+echo -e "\nNetBird installed! Run 'sudo netbird up' to connect."
