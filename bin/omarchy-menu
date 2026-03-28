@@ -168,6 +168,12 @@ show_share_menu() {
 show_toggle_menu() {
   local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n  Direct Boot\n󰟵  Passwordless Sudo"
 
+  #Check if at least one battery with adjustable charge threshold exists
+  local bat_files=(/sys/class/power_supply/BAT*/charge_control_end_threshold)
+  if [[ -e ${bat_files[0]} ]]; then
+    options="$options\n󰂂  Battery Charging Threshold"
+  fi
+
   case $(menu "Toggle" "$options") in
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
@@ -179,6 +185,7 @@ show_toggle_menu() {
   *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
   *"Direct Boot"*) present_terminal omarchy-config-direct-boot ;;
   *"Passwordless Sudo"*) present_terminal omarchy-sudo-passwordless ;;
+  *Battery*) omarchy-toggle-battery-threshold ;;
   *) back_to show_trigger_menu ;;
   esac
 }
