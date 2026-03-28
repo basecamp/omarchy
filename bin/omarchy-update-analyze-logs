@@ -1,6 +1,6 @@
 #!/bin/bash
 
-update_log="/tmp/omarchy-update.log"
+update_log="$HOME/.local/state/omarchy/update.log"
 
 # Check for initramfs generation failure
 if grep -q "Updating linux initcpios" "$update_log"; then
