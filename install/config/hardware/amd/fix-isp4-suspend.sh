@@ -10,6 +10,7 @@ omarchy-pkg-aur-add amdisp4-dkms
 
 # The ISP4 modules need to be unloaded before suspend and reloaded in order after resume.
 sudo mkdir -p /usr/lib/systemd/system-sleep
+sudo mkdir -p /usr/lib/systemd/system-sleep
 sudo install -m 0755 -o root -g root \
   "$OMARCHY_PATH/default/systemd/system-sleep/omarchy-isp-suspend" \
   /usr/lib/systemd/system-sleep/omarchy-isp-suspend
