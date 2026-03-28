@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Detect whether the computer has an AMD GPU.
+
+lsmod | grep -q amdgpu
