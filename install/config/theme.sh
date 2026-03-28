@@ -22,3 +22,6 @@ sudo chmod a+rw /etc/chromium/policies/managed
 
 sudo mkdir -p /etc/brave/policies/managed
 sudo chmod a+rw /etc/brave/policies/managed
+
+sudo mkdir -p /etc/opt/chrome/policies/managed
+sudo chmod a+rw /etc/opt/chrome/policies/managed
