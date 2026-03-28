@@ -26,6 +26,7 @@ run_logged $OMARCHY_INSTALL/config/kernel-modules-hook.sh
 run_logged $OMARCHY_INSTALL/config/powerprofilesctl-rules.sh
 run_logged $OMARCHY_INSTALL/config/wifi-powersave-rules.sh
 run_logged $OMARCHY_INSTALL/config/plocate-ac-only.sh
+run_logged $OMARCHY_INSTALL/config/accessibility.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/network.sh
 run_logged $OMARCHY_INSTALL/config/hardware/set-wireless-regdom.sh
