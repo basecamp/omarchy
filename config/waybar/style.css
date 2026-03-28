@@ -1,100 +1,301 @@
 @import "../omarchy/current/theme/waybar.css";
 
-* {
-  background-color: @background;
-  color: @foreground;
+/* --- Global-Settings ---*/
 
-  border: none;
-  border-radius: 0;
-  min-height: 0;
+* {
   font-family: 'JetBrainsMono Nerd Font';
   font-size: 12px;
+  font-weight: bold;
+  min-height: 0px;
+  }
+
+  /* --- Waybar ---*/
+  window#waybar {
+  background-color: transparent;
+  transition-property: background-color;
+  transition-duration: .5s;
 }
 
-.modules-left {
-  margin-left: 8px;
+window#waybar.empty #window {
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  color: transparent;
+  padding: 0;
+  margin: 0;
 }
+#waybar.empty .modules-center {
+  opacity: 0;
+}
+
+/* --- Tooltip ---*/
+tooltip {
+  opacity: 1;
+
+ }
+
+ /* --- Sub-Groups ---*/
+
+#left1{
+  border-radius: 26px;
+  border: 1px solid alpha(@foreground, 0.3);
+  margin: 0px 8px 3px 8px;
+  background-color: @background;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 1);
+}
+
+#left2{
+  border-radius: 26px;
+  border: 1px solid alpha(@foreground, 0.3);
+  margin: 0px 8px 3px 8px;
+  background-color: @background;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 1);
+}
+
+#left3{
+
+}
+
+ /* --- Modules ---*/
+
+.modules-center {
+  border-radius: 26px;
+  border: 1px solid alpha(@foreground, 0.3);
+  margin: 0px 8px 3px 8px;
+  background-color: @background;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 1);
+ }
 
 .modules-right {
-  margin-right: 8px;
+  border-radius: 26px;
+  border: 1px solid alpha(@foreground, 0.3);
+  margin: 0px 8px 3px 8px;
+  background-color: @background;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 1);
+}
+
+
+/* --- Workspaces --- */
+#workspaces {
+  border-radius: 24px;
+  background-color: alpha(@background, 1);
+  opacity: 0.95;
+  margin: 0px;
+  padding: 1px 1px 1px;
 }
 
 #workspaces button {
-  all: initial;
-  padding: 0 6px;
-  margin: 0 1.5px;
-  min-width: 9px;
+  padding: 0px 10px;
+  margin: 2px 2px;
+  border-radius: 24px;
+  background-color: alpha(@foreground, 0.5);
+  color: @background; 
+  transition: all 0.2s ease-in-out;
+  opacity: 0.95;
+}
+
+#workspaces button.active {
+  color: @background;
+  min-width: 40px;
+  background-color: alpha(@foreground, 0.9);
+  opacity: 1.0;
+  transition: all 0.2s ease-in-out;
 }
 
 #workspaces button.empty {
-  opacity: 0.5;
+  background-color: alpha(@foreground, 0.4);
+  color: @foreground;
+  opacity: 0.45;
+  border-radius: 24px;
+  transition: all 0.2s ease-in-out;
 }
 
+#workspaces button.empty.active {
+  background-color: alpha(@foreground, 0.9);
+  color: @background;
+  opacity: 1;
+  transition: all 0.2s ease-in-out;
+}
+
+#workspaces button.empty:hover,
+#workspaces button:hover {
+  background: @foreground;
+  color: @background;
+   opacity: 0.65;
+}
+
+/* --- General Modules --- */
+
+#tray,
+#window,
+#group-tray-expander,
+#mpris,
 #cpu,
+#clock,
 #battery,
+#network,
+#memory,
+#backlight,
+#bluetooth,
 #pulseaudio,
 #custom-omarchy,
-#custom-update {
-  min-width: 12px;
-  margin: 0 7.5px;
+#custom-weather,
+#custom-update,
+#idle_inhibitor,
+#custom-screenrecording-indicator,
+#custom-updatespacman {
+  min-width: 14px;
+  margin: 1px 3px 1px 3px;
+  padding: 0 3px;
 }
 
-#tray {
-  margin-right: 16px;
+/* Specific Module */
+
+#group-tray-expander {
+  border-radius: 24px;
+  background-color: transparent;
+  color: @foreground;
 }
 
 #bluetooth {
-  margin-right: 17px;
+  padding-right: 0px;
 }
 
-#network {
-  margin-right: 13px;
-}
-
-#custom-expand-icon {
-  margin-right: 18px;
-}
-
-tooltip {
-  padding: 2px;
+#custom-weather {
+  padding-right: 0px;
 }
 
 #custom-update {
-  font-size: 10px;
+  padding-left: 0px;
+  padding-right: 4px;
 }
 
-#clock {
-  margin-left: 8.75px;
+#tray {
+    background-color: transparent;
+    border-radius: 24px;
+    margin: 0 10px;
+}
+
+#tray > .passive {
+    -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+    -gtk-icon-effect: highlight;
+    background-color: @transparent;
 }
 
 .hidden {
   opacity: 0;
 }
 
-#custom-screenrecording-indicator,
-#custom-idle-indicator,
-#custom-notification-silencing-indicator {
-  min-width: 12px;
-  margin-left: 5px;
-  margin-right: 0;
-  font-size: 10px;
-  padding-bottom: 1px;
+tooltip {
+ padding: 4px;
+ background: @background;
+ border: 1px solid alpha(@foreground, 0.8);
+ border-radius: 8px;
+ box-shadow: 1px 1px 3px 1px #131313;
+ font-size: 12px;
+ 
 }
-
-#custom-screenrecording-indicator.active {
-  color: #a55555;
-}
-
-#custom-idle-indicator.active,
-#custom-notification-silencing-indicator.active {
-  color: #a55555;
+tooltip label {
+    color: @foreground;
+    font-weight: normal;
 }
 
 #custom-voxtype {
   min-width: 12px;
-  margin: 0 0 0 7.5px;
+  margin: 0 0 0 2.5px;
 }
 
 #custom-voxtype.recording {
   color: #a55555;
+}
+
+
+/* Specific animation Module */
+#mpris {
+  border-radius: 26px;
+  border: 2px solid alpha(@foreground, 0.3);
+  margin: 0px 8px 3px 8px;
+  background-color: @background;
+  box-shadow: 0px 1px 3px rgba(0, 0, 0, 1);
+  transition-property: background-color;
+  transition-duration: .5s;
+  animation: repeat;
+	animation-name: blink;
+	animation-duration: 3s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+
+#custom-screenrecording-indicator {
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  color: transparent;
+}
+
+#custom-screenrecording-indicator.active {
+  color: #eb7087;
+  animation-name: blink-recording;
+  animation-duration: 0.5s;
+}
+
+@keyframes blink-recording {
+    to {
+        color: @background;
+    }
+}
+
+
+
+@keyframes blink {
+    to {
+        color: #4a4a4a;
+        
+    }
+}
+
+@keyframes blink-inhibitor {
+    to {
+        color: @background;
+    }
+}
+
+#idle_inhibitor {
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  color: @foreground;
+ }
+
+#idle_inhibitor.activated {
+  color: #178b76;
+  animation-name: blink-inhibitor;
+  animation-duration: 1s;
+}
+
+#battery.warning {
+  color: #c95d0f;
+	 background-color: transparent;
+}
+
+@keyframes blink2 {
+  to {
+    background-color: transparent;
+    color: #f53c3c;
+  }
+}
+
+#battery.critical:not(.charging) {
+  background-color: transparent;
+  color: #e6d8ba;
+  animation-name: blink2;
+  animation-duration: 0.5s;
+  animation-timing-function: steps(12);
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
 }
