@@ -27,4 +27,9 @@ if [[ "${goodix_609c_found}" -eq 1 ]]; then
   if [[ ! -f /etc/modprobe.d/fix-goodix-fingerprint-usb.conf ]]; then
     echo "options usbcore quirks=27c6:609c:0x0080" | sudo tee /etc/modprobe.d/fix-goodix-fingerprint-usb.conf > /dev/null
   fi
+
+  if [[ ! -f /usr/lib/systemd/system-sleep/fix-goodix-fingerprint-resume ]]; then
+    sudo mkdir -p /usr/lib/systemd/system-sleep
+    sudo install -m 0755 -o root -g root "$OMARCHY_PATH/default/systemd/system-sleep/fix-goodix-fingerprint-resume" /usr/lib/systemd/system-sleep/
+  fi
 fi
