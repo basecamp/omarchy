@@ -241,11 +241,24 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
-  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
+  local current_profile
+  current_profile=$(powerprofilesctl get)
+
+  local options
+  options=$(omarchy-powerprofiles-list | while IFS= read -r line; do
+    if [[ "$line" == "$current_profile" ]]; then
+      echo "$line (active)"
+    else
+      echo "$line"
+    fi
+  done)
+
+  profile=$(menu "Power Profile" "$options" "" "$current_profile (active)")
 
   if [[ $profile == "CNCLD" || -z $profile ]]; then
     back_to show_setup_menu
   else
+    profile="${profile% (active)}"
     powerprofilesctl set "$profile"
   fi
 }
