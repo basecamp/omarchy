@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Detect whether an Intel NPU (Neural Processing Unit) is available.
+
+ls /dev/accel/accel* 1>/dev/null 2>&1
