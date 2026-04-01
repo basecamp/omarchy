@@ -13,6 +13,7 @@ run_logged $OMARCHY_INSTALL/config/xcompose.sh
 run_logged $OMARCHY_INSTALL/config/mise-work.sh
 run_logged $OMARCHY_INSTALL/config/fix-powerprofilesctl-shebang.sh
 run_logged $OMARCHY_INSTALL/config/docker.sh
+run_logged $OMARCHY_INSTALL/config/once.sh
 run_logged $OMARCHY_INSTALL/config/mimetypes.sh
 run_logged $OMARCHY_INSTALL/config/remove-fcitx5-autostart.sh
 run_logged $OMARCHY_INSTALL/config/localdb.sh
