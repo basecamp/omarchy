@@ -1,5 +1,14 @@
 #!/bin/bash
-for iface in /sys/class/net/*/wireless; do
-  iface="$(basename "$(dirname "$iface")")"
-  iw dev "$iface" set power_save "$1" 2>/dev/null
-done
+
+# Toggle WiFi power save on or off.
+# Usage: omarchy-wifi-powersave <on|off>
+
+action="${1:-on}"
+
+device="$(iw dev | awk '/Interface/{print $2; exit}')"
+
+if [[ -z $device ]]; then
+  exit 0
+fi
+
+iw dev "$device" set power_save "$action"

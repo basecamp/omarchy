@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Switch power profile based on AC adapter status and play feedback sound.
+# Called by udev on power supply changes and at boot.
+
+sound_dir="/usr/share/sounds/freedesktop/stereo"
+
+# Find AC adapter dynamically (different T2 models use different names)
+for supply in /sys/class/power_supply/*/type; do
+  if [[ "$(cat "$supply")" == "Mains" ]]; then
+    adapter_dir="$(dirname "$supply")"
+    break
+  fi
+done
+
+if [[ -z $adapter_dir ]]; then
+  exit 0
+fi
+
+status="$(cat "$adapter_dir/online" 2>/dev/null)"
+
+if [[ $status == "1" ]]; then
+  powerprofilesctl set performance
+  sound="$sound_dir/power-plug.oga"
+else
+  powerprofilesctl set power-saver
+  sound="$sound_dir/power-unplug.oga"
+fi
+
+# Play feedback sound as the logged-in user
+if [[ -n $SUDO_USER ]]; then
+  uid=$(id -u "$SUDO_USER")
+else
+  uid=$(loginctl list-users --no-legend | awk 'NR==1{print $1}')
+fi
+
+if [[ -n $uid ]]; then
+  sudo -u "#$uid" \
+    XDG_RUNTIME_DIR="/run/user/$uid" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+    paplay "$sound" &
+fi
