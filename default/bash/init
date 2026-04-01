@@ -1,5 +1,10 @@
+# Lazy-load mise (saves ~34ms on shell startup)
 if command -v mise &> /dev/null; then
-  eval "$(mise activate bash)"
+  mise() {
+    unset -f mise
+    eval "$(command mise activate bash)"
+    command mise "$@"
+  }
 fi
 
 if command -v starship &> /dev/null; then
@@ -10,8 +15,13 @@ if command -v zoxide &> /dev/null; then
   eval "$(zoxide init bash)"
 fi
 
+# Lazy-load try (saves ~82ms on shell startup)
 if command -v try &> /dev/null; then
-  eval "$(SHELL=/bin/bash command try init ~/Work/tries)"
+  try() {
+    unset -f try
+    eval "$(SHELL=/bin/bash command try init ~/Work/tries)"
+    try "$@"
+  }
 fi
 
 if command -v fzf &> /dev/null; then
