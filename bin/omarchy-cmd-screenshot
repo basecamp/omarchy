@@ -8,12 +8,7 @@
 OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
 
 if [[ ! -d $OUTPUT_DIR ]]; then
-  if mkdir -p "$OUTPUT_DIR"; then
-    notify-send "Created screenshot directory: $OUTPUT_DIR" -u normal -t 2000
-  else
-    notify-send "Failed to create screenshot directory: $OUTPUT_DIR" -u critical -t 3000
-    exit 1
-  fi
+  notify-send "Created screenshot directory: $OUTPUT_DIR" -u normal -t 2000
 fi
 
 pkill slurp && exit 0
