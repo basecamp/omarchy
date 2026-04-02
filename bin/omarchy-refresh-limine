@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# Overwrite the user config for the Limine bootloader and rebuild it.
+
+if [[ -f /boot/EFI/Linux/omarchy_linux.efi ]] && [[ -f /boot/EFI/Linux/$(cat /etc/machine-id)_linux.efi ]]; then
+  echo "Cleanup extra UKI"
+  sudo rm -f /boot/EFI/Linux/$(cat /etc/machine-id)_linux.efi
+fi
+echo "Resetting limine config"
+
+sudo mv /boot/limine.conf /boot/limine.conf.bak
+
+sudo cp ~/.local/share/omarchy/default/limine/limine.conf /boot/limine.conf
+
+sudo limine-update
+sudo limine-snapper-sync

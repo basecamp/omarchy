@@ -1,79 +1,52 @@
-# ==============================================================================
-# Hyprland NVIDIA Setup Script for Arch Linux
-# ==============================================================================
-# This script automates the installation and configuration of NVIDIA drivers
-# for use with Hyprland on Arch Linux, following the official Hyprland wiki.
-#
-# Author: https://github.com/Kn0ax
-#
-# ==============================================================================
+NVIDIA="$(lspci | grep -i 'nvidia')"
 
-# --- GPU Detection ---
-if [ -n "$(lspci | grep -i 'nvidia')" ]; then
-  # --- Driver Selection ---
-  # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
-  if echo "$(lspci | grep -i 'nvidia')" | grep -q -E "RTX [2-9][0-9]|GTX 16"; then
-    NVIDIA_DRIVER_PACKAGE="nvidia-open-dkms"
-  else
-    NVIDIA_DRIVER_PACKAGE="nvidia-dkms"
-  fi
-
+if [[ -n $NVIDIA ]]; then
   # Check which kernel is installed and set appropriate headers package
-  KERNEL_HEADERS="linux-headers" # Default
-  if pacman -Q linux-zen &>/dev/null; then
-    KERNEL_HEADERS="linux-zen-headers"
-  elif pacman -Q linux-lts &>/dev/null; then
-    KERNEL_HEADERS="linux-lts-headers"
-  elif pacman -Q linux-hardened &>/dev/null; then
-    KERNEL_HEADERS="linux-hardened-headers"
+  KERNEL_HEADERS="$(pacman -Qqs '^linux(-zen|-lts|-hardened)?$' | head -1)-headers"
+
+  # Turing+ (GTX 16xx, RTX 20xx-50xx, RTX Pro, Quadro RTX, datacenter A/H/T/L series) have GSP firmware
+  if echo "$NVIDIA" | grep -qE "GTX 16[0-9]{2}|RTX [2-5][0-9]{3}|RTX PRO [0-9]{4}|Quadro RTX|RTX A[0-9]{4}|A[1-9][0-9]{2}|H[1-9][0-9]{2}|T4|L[0-9]+"; then
+    PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
+    GPU_ARCH="turing_plus"
+  # Maxwell (GTX 9xx), Pascal (GT/GTX 10xx, Quadro P, MX series), Volta (Titan V, Tesla V100, Quadro GV100) lack GSP
+  elif echo "$NVIDIA" | grep -qE "GTX (9[0-9]{2}|10[0-9]{2})|GT 10[0-9]{2}|Quadro [PM][0-9]{3,4}|Quadro GV100|MX *[0-9]+|Titan (X|Xp|V)|Tesla V100"; then
+    PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
+    GPU_ARCH="maxwell_pascal_volta"
+  fi
+  # Bail if no supported GPU
+  if [[ -z ${PACKAGES+x} ]]; then
+    echo "No compatible driver for your NVIDIA GPU. See: https://wiki.archlinux.org/title/NVIDIA"
+    exit 0
   fi
 
-  # force package database refresh
-  sudo pacman -Syu --noconfirm
-
-  # Install packages
-  PACKAGES_TO_INSTALL=(
-    "${KERNEL_HEADERS}"
-    "${NVIDIA_DRIVER_PACKAGE}"
-    "nvidia-utils"
-    "lib32-nvidia-utils"
-    "egl-wayland"
-    "libva-nvidia-driver" # For VA-API hardware acceleration
-    "qt5-wayland"
-    "qt6-wayland"
-  )
-
-  sudo pacman -S --needed --noconfirm "${PACKAGES_TO_INSTALL[@]}"
+  omarchy-pkg-add "$KERNEL_HEADERS" "${PACKAGES[@]}"
 
   # Configure modprobe for early KMS
-  echo "options nvidia_drm modeset=1" | sudo tee /etc/modprobe.d/nvidia.conf >/dev/null
+  sudo tee /etc/modprobe.d/nvidia.conf <<EOF >/dev/null
+options nvidia_drm modeset=1
+EOF
 
   # Configure mkinitcpio for early loading
-  MKINITCPIO_CONF="/etc/mkinitcpio.conf"
+  sudo tee /etc/mkinitcpio.conf.d/nvidia.conf <<EOF >/dev/null
+MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)
+EOF
 
-  # Define modules
-  NVIDIA_MODULES="nvidia nvidia_modeset nvidia_uvm nvidia_drm"
+  # Add NVIDIA environment variables based on GPU architecture
+  if [[ $GPU_ARCH = "turing_plus" ]]; then
+    # Turing+ (RTX 20xx, GTX 16xx, and newer) with GSP firmware support
+    cat >>"$HOME/.config/hypr/envs.conf" <<'EOF'
 
-  # Create backup
-  sudo cp "$MKINITCPIO_CONF" "${MKINITCPIO_CONF}.backup"
-
-  # Remove any old nvidia modules to prevent duplicates
-  sudo sed -i -E 's/ nvidia_drm//g; s/ nvidia_uvm//g; s/ nvidia_modeset//g; s/ nvidia//g;' "$MKINITCPIO_CONF"
-  # Add the new modules at the start of the MODULES array
-  sudo sed -i -E "s/^(MODULES=\\()/\\1${NVIDIA_MODULES} /" "$MKINITCPIO_CONF"
-  # Clean up potential double spaces
-  sudo sed -i -E 's/  +/ /g' "$MKINITCPIO_CONF"
-
-  sudo mkinitcpio -P
-
-  # Add NVIDIA environment variables to hyprland.conf
-  HYPRLAND_CONF="$HOME/.config/hypr/hyprland.conf"
-  if [ -f "$HYPRLAND_CONF" ]; then
-    cat >>"$HYPRLAND_CONF" <<'EOF'
-
-# NVIDIA environment variables
+# NVIDIA (Turing+ with GSP firmware)
 env = NVD_BACKEND,direct
 env = LIBVA_DRIVER_NAME,nvidia
+env = __GLX_VENDOR_LIBRARY_NAME,nvidia
+EOF
+  elif [[ $GPU_ARCH = "maxwell_pascal_volta" ]]; then
+    # Maxwell/Pascal/Volta (GTX 9xx/10xx, GT 10xx, Quadro P/M/GV, MX series, Titan X/Xp/V) lack GSP firmware
+    cat >>"$HOME/.config/hypr/envs.conf" <<'EOF'
+
+# NVIDIA (Maxwell/Pascal/Volta without GSP firmware)
+env = NVD_BACKEND,egl
 env = __GLX_VENDOR_LIBRARY_NAME,nvidia
 EOF
   fi

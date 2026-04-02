@@ -1,7 +1,12 @@
 #!/bin/bash
 
+# Locks the system using hyprlock, but not before ensuring 1password has also been locked, and the screensaver stopped.
+
 # Lock the screen
 pidof hyprlock || hyprlock &
+
+# Set keyboard layout to default (first layout)
+hyprctl switchxkblayout all 0 > /dev/null 2>&1
 
 # Ensure 1password is locked
 if pgrep -x "1password" >/dev/null; then
@@ -9,4 +14,4 @@ if pgrep -x "1password" >/dev/null; then
 fi
 
 # Avoid running screensaver when locked
-pkill -f "alacritty --class Screensaver"
+pkill -f org.omarchy.screensaver

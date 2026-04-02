@@ -1,0 +1,27 @@
+#!/bin/bash
+
+if grep -q "https://stable-mirror.omarchy.org/" /etc/pacman.d/mirrorlist; then
+  mirror="stable"
+elif grep -q "https://rc-mirror.omarchy.org/" /etc/pacman.d/mirrorlist; then
+  mirror="rc"
+elif grep -q "https://mirror.omarchy.org/" /etc/pacman.d/mirrorlist; then
+  mirror="edge"
+else
+  mirror="unknown"
+fi
+
+if grep -q "https://pkgs.omarchy.org/stable/" /etc/pacman.conf; then
+  pkgs="stable"
+elif grep -q "https://pkgs.omarchy.org/edge/" /etc/pacman.conf; then
+  pkgs="edge"
+elif grep -q "https://pkgs.omarchy.org/rc/" /etc/pacman.conf; then
+  pkgs="rc"
+else
+  pkgs="unknown"
+fi
+
+if [[ $mirror == $pkgs ]]; then
+  echo $mirror
+else
+  echo "$mirror / $pkgs"
+fi

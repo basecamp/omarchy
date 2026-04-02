@@ -2,6 +2,7 @@
 # Utilized by ISO builder to ensure package availability in the ISO
 
 autoconf-archive
+asusctl
 base
 base-devel
 broadcom-wl
@@ -18,6 +19,7 @@ iwd
 jdk-openjdk
 libpulse
 libsass
+intel-media-driver
 libva-intel-driver
 libva-nvidia-driver
 limine
@@ -27,22 +29,33 @@ linux
 linux-firmware
 linux-headers
 macbook12-spi-driver-dkms
+nvidia-580xx-dkms
 nvidia-dkms
 nvidia-open-dkms
+nvidia-580xx-utils
 nvidia-utils
+lib32-nvidia-580xx-utils
 lib32-nvidia-utils
 pipewire
 pipewire-alsa
 pipewire-jack
 pipewire-pulse
-qt5-remoteobjects
 qt6-wayland
 sassc
 snapper
 webp-pixbuf-loader
 wget
 yay-debug
+yt6801-dkms
 zram-generator
+
+# Vulkan drivers (auto-detected by hardware)
+vulkan-intel
+vulkan-radeon
+vulkan-asahi
+
+# Surface laptop support packages
+linux-firmware-marvell
 
 # T2 MacBook support packages
 apple-bcm-firmware

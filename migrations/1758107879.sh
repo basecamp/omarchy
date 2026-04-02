@@ -17,6 +17,7 @@ PACKAGES=(
   "elephant-websearch"
   "elephant-todo"
   "walker"
+  "libqalculate"
 )
 
 for pkg in "${PACKAGES[@]}"; do
@@ -27,9 +28,13 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 WALKER_MAJOR=$(walker -v 2>&1 | grep -oP '^\d+' || echo "0")
-if [[ "$WALKER_MAJOR" -lt 2 ]]; then
+if (( WALKER_MAJOR < 2 )); then
   NEEDS_MIGRATION=true
 fi
+
+# Ensure basic config is present
+mkdir -p ~/.config/walker
+cp -r ~/.local/share/omarchy/config/walker/* ~/.config/walker/
 
 if $NEEDS_MIGRATION; then
   kill -9 $(pgrep -x walker) 2>/dev/null || true
@@ -41,5 +46,10 @@ if $NEEDS_MIGRATION; then
   source $OMARCHY_PATH/install/config/walker-elephant.sh
 
   rm -rf ~/.config/walker/themes
-  omarchy-refresh-walker
+
+  omarchy-refresh-config walker/config.toml
+  omarchy-refresh-config elephant/calc.toml
+  omarchy-refresh-config elephant/desktopapplications.toml
 fi
+
+echo # Assure final success

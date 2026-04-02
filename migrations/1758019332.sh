@@ -17,5 +17,5 @@ fi
 
 # Use default terminal for keybinding
 if grep -q "terminal = uwsm app" ~/.config/hypr/bindings.conf; then
-  sed -i '/terminal = uwsm-app -- alacritty/ c\$terminal = uwsm-app -- $TERMINAL' ~/.config/hypr/bindings.conf
+  sed -Ei '/terminal = uwsm[- ]app -- alacritty/ c\$terminal = uwsm-app -- $TERMINAL' ~/.config/hypr/bindings.conf
 fi

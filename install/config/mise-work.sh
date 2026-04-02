@@ -1,6 +1,8 @@
-# Add ./bin to path for all items in ~/Work
+# Setup default work directory (and tries)
 mkdir -p "$HOME/Work"
+mkdir -p "$HOME/Work/tries"
 
+# Add ./bin to path for all items in ~/Work
 cat >"$HOME/Work/.mise.toml" <<'EOF'
 [env]
 _.path = "{{ cwd }}/bin"
@@ -8,7 +10,7 @@ EOF
 
 mise trust ~/Work/.mise.toml
 
-if [[ -n "${OMARCHY_CHROOT_INSTALL:-}" ]]; then
+if [[ -n ${OMARCHY_CHROOT_INSTALL:-} ]]; then
   NODE_TARBALL=$(find /opt/packages -name "node-v*-linux-x64.tar.gz" -type f 2>/dev/null | head -n1)
 
   NODE_VERSION=$(basename "$NODE_TARBALL" | sed 's/node-v\(.*\)-linux-x64.tar.gz/\1/')

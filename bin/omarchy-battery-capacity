@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# Returns the battery full capacity in Wh (rounded to whole number).
+# Used by omarchy-battery-status for displaying battery capacity.
+
+battery_info=$(upower -i $(upower -e | grep BAT))
+
+echo "$battery_info" | awk '/energy-full:/ {
+    printf "%d", $2
+    exit
+}'

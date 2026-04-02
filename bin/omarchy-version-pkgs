@@ -1,0 +1,3 @@
+#!/bin/bash
+
+date -d "$(grep upgraded /var/log/pacman.log | tail -1 | sed -E 's/\[([^]]+)\].*/\1/')" "+%A, %B %d %Y at %H:%M"

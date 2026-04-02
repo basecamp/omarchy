@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# Creates a swap file in the btrfs subvolume, adds the swap file to /etc/fstab,
+# adds a resume hook to mkinitcpio, and configures suspend-then-hibernate.
+
+if [[ ! -f /sys/power/image_size ]]; then
+  echo -e "Hibernation is not supported on your system" >&2
+  exit 0
+fi
+
+if ! command -v limine-mkinitcpio &>/dev/null; then
+  echo "Skipping hibernation setup (requires Limine bootloader)"
+  exit 0
+fi
+
+MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+
+# Check if hibernation is already configured
+if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+  echo "Hibernation is already set up"
+  exit 0
+fi
+
+if [[ $1 != "--force" ]]; then
+  MEM_TOTAL_HUMAN=$(free --human | awk '/Mem/ {print $2}')
+  if ! gum confirm "Use $MEM_TOTAL_HUMAN on boot drive to make hibernation available?"; then
+    exit 0
+  fi
+fi
+
+SWAP_SUBVOLUME="/swap"
+SWAP_FILE="$SWAP_SUBVOLUME/swapfile"
+
+# Create btrfs subvolume for swap
+if ! sudo btrfs subvolume show "$SWAP_SUBVOLUME" &>/dev/null; then
+  echo "Creating Btrfs subvolume"
+  sudo btrfs subvolume create "$SWAP_SUBVOLUME"
+  sudo chattr +C "$SWAP_SUBVOLUME"
+fi
+
+# Create swapfile
+if ! sudo swaplabel "$SWAP_FILE" &>/dev/null; then
+  echo "Creating swapfile in Btrfs subvolume"
+  MEM_TOTAL_KB="$(awk '/MemTotal/ {print $2}' /proc/meminfo)k"
+  sudo btrfs filesystem mkswapfile -s "$MEM_TOTAL_KB" "$SWAP_FILE"
+fi
+
+# Add swapfile to fstab
+if ! grep -Fq "$SWAP_FILE" /etc/fstab; then
+  echo "Adding swapfile to /etc/fstab"
+  sudo cp -a /etc/fstab "/etc/fstab.$(date +%Y%m%d%H%M%S).back"
+  printf "\n# Btrfs swapfile for system hibernation\n%s none swap defaults,pri=0 0 0\n" "$SWAP_FILE" | sudo tee -a /etc/fstab >/dev/null
+fi
+
+# Enable swap
+if ! swapon --show | grep -q "$SWAP_FILE"; then
+  echo "Enabling swap on $SWAP_FILE"
+  sudo swapon -p 0 "$SWAP_FILE"
+fi
+
+# Add resume hook to mkinitcpio
+sudo mkdir -p /etc/mkinitcpio.conf.d
+echo "Adding resume hook to $MKINITCPIO_CONF"
+echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
+
+# Ensure keyboard backlight doesn't prevent sleep
+sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
+
+# Add resume= kernel parameters so the initramfs resume hook knows where to find the
+# hibernation image. Without these, resume happens late (after GPU drivers load) and fails.
+RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
+if [[ ! -f $RESUME_DROP_IN ]]; then
+  echo "Adding resume kernel parameters"
+  sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null
+  RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
+  RESUME_OFFSET=$(btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
+  sudo mkdir -p /etc/limine-entry-tool.d
+  echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
+fi
+
+# Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)
+if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
+  LIMINE_DROP_IN="/etc/limine-entry-tool.d/rtc-alarm.conf"
+  if [[ ! -f $LIMINE_DROP_IN ]]; then
+    echo "Enabling ACPI RTC alarm for s2idle suspend"
+    sudo mkdir -p /etc/limine-entry-tool.d
+    echo 'KERNEL_CMDLINE[default]+=" rtc_cmos.use_acpi_alarm=1"' | sudo tee "$LIMINE_DROP_IN" >/dev/null
+  fi
+fi
+
+# Regenerate initramfs and boot entry
+echo "Regenerating initramfs..."
+sudo limine-mkinitcpio
+sudo limine-update
+
+echo
+
+if [[ $1 != "--force" ]] && gum confirm "Reboot to enable hibernation?"; then
+  omarchy-system-reboot
+fi

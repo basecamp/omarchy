@@ -1,6 +1,10 @@
 #!/bin/bash
 
-if [[ $# -lt 1 ]]; then
+# Run a named hook, like post-update (available in ~/.config/omarchy/hooks/post-update).
+
+set -e
+
+if (( $# < 1 )); then
   echo "Usage: omarchy-hook [name] [args...]"
   exit 1
 fi
