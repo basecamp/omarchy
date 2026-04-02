@@ -2,12 +2,15 @@
 
 set -e
 
+# Run the update inside a PTY so pacman/yay keep showing download progress
+# while still logging the full session for later analysis.
+if [[ -z $OMARCHY_UPDATE_LOGGED ]]; then
+  script_command=$(printf '%q ' "$0" "$@")
+  exec env OMARCHY_UPDATE_LOGGED=1 script -qefc "$script_command" "/tmp/omarchy-update.log"
+fi
+
 # Ensure screensaver/sleep doesn't set in during updates
 hyprctl dispatch tagwindow +noidle &>/dev/null || true
-
-# Capture update logs (CLICOLOR_FORCE keeps gum styled when stdout is piped through tee)
-export CLICOLOR_FORCE=1
-exec > >(tee "/tmp/omarchy-update.log") 2>&1
 
 # Perform all update steps
 omarchy-update-keyring
