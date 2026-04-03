@@ -1,21 +1,79 @@
 #!/bin/bash
 
 # Adjust brightness on the most likely display device.
+# Automatically falls back to ddcutil on desktops without a native backlight.
 # Usage: omarchy-brightness-display <step>
 
 step="${1:-+5%}"
 
-# Start with the first possible output, then refine to the most likely given an order heuristic.
-device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
-for candidate in amdgpu_bl* intel_backlight acpi_video*; do
-  if [[ -e /sys/class/backlight/$candidate ]]; then
-    device="$candidate"
+# Determine if we have internal hardware backlight devices
+has_backlight=false
+for candidate in /sys/class/backlight/*; do
+  if [[ -e "$candidate" ]]; then
+    has_backlight=true
     break
   fi
 done
 
-# Set the actual brightness of the display device.
-brightnessctl -d "$device" set "$step" >/dev/null
+if [[ "$has_backlight" == "true" ]]; then
+  # Start with the first possible output, then refine to the most likely given an order heuristic.
+  device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
+  for candidate in amdgpu_bl* intel_backlight acpi_video*; do
+    if [[ -e /sys/class/backlight/$candidate ]]; then
+      device="$candidate"
+      break
+    fi
+  done
 
-# Use SwayOSD to display the new brightness setting.
-omarchy-swayosd-brightness "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"
+  # Set the actual brightness of the display device.
+  brightnessctl -d "$device" set "$step" >/dev/null
+
+  # Use SwayOSD to display the new brightness setting.
+  omarchy-swayosd-brightness "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"
+else
+  # Desktop / External monitor logic using ddcutil
+  CACHE_FILE="/tmp/ddcutil_brightness_omarchy"
+  
+  # Parse step format (e.g. "+5%", "5%-") into an operator and value
+  if [[ "$step" == "+"* ]]; then
+    op="+"
+    val="${step//[!0-9]/}"
+  elif [[ "$step" == *"-"* ]]; then
+    op="-"
+    val="${step//[!0-9]/}"
+  else
+    exit 1
+  fi
+
+  if [[ ! -f "$CACHE_FILE" ]]; then
+    current=$(ddcutil getvcp 10 --display 1 --brief 2>/dev/null | awk '{print $4}')
+    [[ -z "$current" ]] && current=50
+    echo "$current" > "$CACHE_FILE"
+  fi
+
+  current=$(cat "$CACHE_FILE")
+
+  if [[ "$op" == "+" ]]; then
+    new_val=$((current + val))
+  else
+    new_val=$((current - val))
+  fi
+
+  if (( new_val > 100 )); then
+    new_val=100
+  elif (( new_val < 0 )); then
+    new_val=0
+  fi
+
+  echo "$new_val" > "$CACHE_FILE"
+
+  # Instantly trigger the SwayOSD
+  omarchy-swayosd-brightness "$new_val"
+
+  # Apply via ddcutil in the background for common display numbers
+  (
+    ddcutil --display 1 setvcp 10 "$new_val" 2>/dev/null
+    ddcutil --display 2 setvcp 10 "$new_val" 2>/dev/null
+    ddcutil --display 3 setvcp 10 "$new_val" 2>/dev/null
+  ) &
+fi
