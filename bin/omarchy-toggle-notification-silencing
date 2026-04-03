@@ -3,9 +3,9 @@
 makoctl mode -t do-not-disturb
 
 if makoctl mode | grep -q 'do-not-disturb'; then
-  notify-send -h string:suppress-sound:true "󰂛    Silenced notifications"
+  notify-send -u low -h string:suppress-sound:true "󰂛    Silenced notifications"
 else
-  notify-send -h string:suppress-sound:true "󰂚    Enabled notifications"
+  notify-send -u low -h string:suppress-sound:false "󰂚    Enabled notifications"
 fi
 
 pkill -RTMIN+10 waybar
