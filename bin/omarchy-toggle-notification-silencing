@@ -3,15 +3,9 @@
 makoctl mode -t do-not-disturb
 
 if makoctl mode | grep -q 'do-not-disturb'; then
-<<<<<<< fix/issue-5073-silent-toggle
   notify-send -h string:suppress-sound:true "󰂛    Silenced notifications"
 else
   notify-send -h string:suppress-sound:true "󰂚    Enabled notifications"
-=======
-  notify-send -u low "󰂛    Silenced notifications"
-else
-  notify-send -u low "󰂚    Enabled notifications"
->>>>>>> dev
 fi
 
 pkill -RTMIN+10 waybar
