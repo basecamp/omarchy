@@ -8,7 +8,7 @@ fi
 
 if [[ $TERM == "xterm-kitty" ]] || { [[ $TERM == "xterm-ghostty" ]] && omarchy-cmd-present kitty; }; then
   alias ff="fzf --preview 'case \$(file --mime-type -b {}) in image/*) kitty icat --clear --transfer-mode=memory --stdin=no --place=\${FZF_PREVIEW_COLUMNS}x\${FZF_PREVIEW_LINES}@0x0 {} ;; *) bat --style=numbers --color=always {} ;; esac'"
-elif [[ $TERM == "xterm-ghostty" || $TERM == "xterm-256color" ]]; then
+elif [[ $TERM == "xterm-ghostty" || $TERM == "xterm-256color" ]] && omarchy-cmd-present viu; then
   alias ff="fzf --preview 'case \$(file --mime-type -b {}) in image/*) viu -b {} ;; *) bat --style=numbers --color=always {} ;; esac'"
 else
   alias ff="fzf --preview 'bat --style=numbers --color=always {}'"
