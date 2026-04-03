@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Install the ONCE service, enable its background service, and launch the TUI.
+
+echo "Installing ONCE..."
+omarchy-pkg-add once-bin
+
+echo "Enabling ONCE background service..."
+sudo systemctl enable --now once-background.service
+
+echo -e "\nLaunching ONCE..."
+once

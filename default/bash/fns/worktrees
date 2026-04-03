@@ -7,11 +7,11 @@ ga() {
 
   local branch="$1"
   local base="$(basename "$PWD")"
-  local path="../${base}--${branch}"
+  local wt_path="../${base}--${branch}"
 
-  git worktree add -b "$branch" "$path"
-  mise trust "$path"
-  cd "$path"
+  git worktree add -b "$branch" "$wt_path"
+  mise trust "$wt_path"
+  cd "$wt_path"
 }
 
 # Remove worktree and branch from within active worktree directory.
