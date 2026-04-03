@@ -4,4 +4,4 @@
 # To put it into use, remove .sample from the name.
 
 # Example: Show the name of the theme that was just set.
-# notify-send "New font" "Your new font is $1"
+# notify-send -u low "New font" "Your new font is $1"
