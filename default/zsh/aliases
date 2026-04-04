@@ -12,7 +12,7 @@ else
   alias ff="fzf --preview 'bat --style=numbers --color=always {}'"
 fi
 alias eff='$EDITOR "$(ff)"'
-sff() { if [ $# -eq 0 ]; then echo "Usage: sff <destination> (e.g. sff host:/tmp/)"; return 1; fi; local file; file=$(find . -type f -printf '%T@\t%p\n' | sort -rn | cut -f2- | ff) && [ -n "$file" ] && scp "$file" "$1"; }
+sff() { if (( $# == 0 )); then echo "Usage: sff <destination> (e.g. sff host:/tmp/)"; return 1; fi; local file; file=$(find . -type f -printf '%T@\t%p\n' | sort -rn | cut -f2- | ff) && [ -n "$file" ] && scp "$file" "$1"; }
 
 if command -v zoxide &> /dev/null; then
   alias cd="zd"
@@ -48,7 +48,7 @@ alias cx='printf "\033[2J\033[3J\033[H" && claude --allow-dangerously-skip-permi
 alias d='docker'
 alias r='rails'
 alias t='tmux attach || tmux new -s Work'
-n() { if [ "$#" -eq 0 ]; then command nvim . ; else command nvim "$@"; fi; }
+n() { if (( $# == 0 )); then command nvim . ; else command nvim "$@"; fi; }
 
 # Git
 alias g='git'
