@@ -1,0 +1,149 @@
+#!/bin/bash
+
+set -e
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+print_success() {
+  echo -e "${GREEN}$1${NC}"
+}
+
+print_error() {
+  echo -e "${RED}$1${NC}"
+}
+
+print_info() {
+  echo -e "${YELLOW}$1${NC}"
+}
+
+detect_ir_camera() {
+  # Look for a greyscale video capture device (IR cameras output 8-bit greyscale)
+  for dev in /dev/video*; do
+    if v4l2-ctl --device="$dev" --list-formats-ext 2>/dev/null | grep -q "GREY\|Y8\|Y10\|Y12\|Y16"; then
+      if v4l2-ctl --device="$dev" --all 2>/dev/null | grep -q "Video Capture"; then
+        echo "$dev"
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+setup_pam_config() {
+  # Configure sudo
+  if ! grep -q pam_howdy.so /etc/pam.d/sudo; then
+    print_info "Configuring sudo for face authentication..."
+    sudo sed -i '1a auth    sufficient pam_howdy.so' /etc/pam.d/sudo
+  fi
+
+  # Configure hyprlock
+  if ! grep -q pam_howdy.so /etc/pam.d/hyprlock; then
+    print_info "Configuring hyprlock for face authentication..."
+    sudo sed -i '1a auth    sufficient pam_howdy.so' /etc/pam.d/hyprlock
+  fi
+
+  # Configure polkit
+  if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_howdy.so' /etc/pam.d/polkit-1; then
+    print_info "Configuring polkit for face authentication..."
+    sudo sed -i '1i auth      sufficient pam_howdy.so' /etc/pam.d/polkit-1
+  fi
+}
+
+remove_pam_config() {
+  # Remove from sudo
+  if grep -q pam_howdy.so /etc/pam.d/sudo; then
+    print_info "Removing face authentication from sudo..."
+    sudo sed -i '/pam_howdy\.so/d' /etc/pam.d/sudo
+  fi
+
+  # Remove from hyprlock
+  if grep -q pam_howdy.so /etc/pam.d/hyprlock; then
+    print_info "Removing face authentication from hyprlock..."
+    sudo sed -i '/pam_howdy\.so/d' /etc/pam.d/hyprlock
+  fi
+
+  # Remove from polkit
+  if [[ -f /etc/pam.d/polkit-1 ]] && grep -Fq 'pam_howdy.so' /etc/pam.d/polkit-1; then
+    print_info "Removing face authentication from polkit..."
+    sudo sed -i '/pam_howdy\.so/d' /etc/pam.d/polkit-1
+  fi
+}
+
+if [[ "--remove" == $1 ]]; then
+  print_success "Removing face unlock from authentication.\n"
+
+  # Remove PAM configuration
+  remove_pam_config
+
+  # Disable IR emitter service
+  if systemctl is-enabled linux-enable-ir-emitter.service &>/dev/null; then
+    print_info "Disabling IR emitter service..."
+    sudo systemctl disable linux-enable-ir-emitter.service
+  fi
+
+  # Uninstall packages
+  print_info "Removing face unlock packages..."
+  sudo pacman -Rns --noconfirm howdy-git linux-enable-ir-emitter 2>/dev/null || true
+
+  print_success "Face unlock has been completely removed."
+else
+  print_success "Setting up face unlock (howdy) for authentication.\n"
+
+  # Check for v4l2-ctl
+  omarchy-pkg-add v4l-utils
+
+  # Detect IR camera
+  print_info "Detecting IR camera..."
+  ir_device=$(detect_ir_camera) || true
+
+  if [[ -z $ir_device ]]; then
+    print_error "\nNo IR camera detected."
+    print_error "Face unlock requires an infrared camera (common on laptops with Windows Hello support)."
+    exit 1
+  fi
+
+  print_success "Found IR camera at $ir_device"
+
+  # Install howdy and IR emitter from AUR
+  print_info "\nInstalling face unlock packages from AUR..."
+  omarchy-pkg-aur-add howdy-git linux-enable-ir-emitter
+
+  # Configure howdy
+  print_info "Configuring howdy..."
+  sudo sed -i "s|^device_path = .*|device_path = $ir_device|" /etc/howdy/config.ini
+  sudo sed -i 's/^detection_notice = .*/detection_notice = true/' /etc/howdy/config.ini
+
+  # Configure and enable IR emitter
+  print_info "\nConfiguring IR emitter..."
+  print_info "Look at the camera — you'll be asked if the IR emitter is flashing."
+  print_info "(Use your phone camera to see the IR light if needed.)\n"
+  sudo -E WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR QT_QPA_PLATFORM=wayland \
+    linux-enable-ir-emitter configure 2>/dev/null || true
+  sudo systemctl enable linux-enable-ir-emitter.service
+
+  # Configure PAM
+  setup_pam_config
+
+  # Enroll face
+  print_success "\nLet's add your face model."
+  print_info "Look straight into the camera.\n"
+
+  if sudo howdy add; then
+    print_success "\nFace model added successfully!"
+
+    # Test with sudo
+    print_info "\nTesting face authentication with sudo..."
+    print_info "Look at the camera.\n"
+
+    if sudo -k howdy test 2>/dev/null || sudo echo "Face authentication test successful"; then
+      print_success "\nFace unlock is now configured."
+      print_info "Works with sudo, polkit, and lock screen (Super + Escape)."
+      print_info "On the lock screen, press Enter to trigger face detection."
+    fi
+  else
+    print_error "\nFace enrollment failed. Please try again with: sudo howdy add"
+  fi
+fi
