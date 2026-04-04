@@ -19,6 +19,14 @@ omarchy-update-system-pkgs
 omarchy-migrate
 omarchy-update-aur-pkgs
 omarchy-update-orphan-pkgs
+
+if command -v hyprpm >/dev/null 2>&1; then
+  if command -v hyprctl >/dev/null 2>&1; then
+    echo "Updating hyprpm headers to match Hyprland..."
+    hyprpm update || echo "hyprpm update failed, continuing..."
+  fi
+fi
+
 omarchy-hook post-update
 
 omarchy-update-analyze-logs
