@@ -11,6 +11,9 @@ Session=hyprland-uwsm
 
 [Theme]
 Current=omarchy
+
+[General]
+DisplayServer=wayland
 EOF
 fi
 
