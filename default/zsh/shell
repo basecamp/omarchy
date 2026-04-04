@@ -1,0 +1,12 @@
+# History control
+setopt APPEND_HISTORY
+HISTCONTROL=ignoreboth
+HISTSIZE=32768
+HISTFILE=~/.zsh_history
+
+# Autocompletion
+autoload -Uz compinit
+compinit
+
+# Ensure command hashing is off for mise
+set +h
