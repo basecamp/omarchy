@@ -7,7 +7,7 @@
 # notify-send -u low "Update Performed" "Your system is now up to date"
 
 
-# Optionally for multiple post-updatetasks: run every executable script in `post-update.d`, sorted by filename.
+# Optionally - for multiple post-update tasks: run every executable script in `post-update.d`, sorted by filename.
 # Drop-in hooks: create post-update.d if needed, add executable scripts, and they run
 # here in filename order (e.g. 10-my-post-update-task-1, 20-my-post-update-task-2). See post-update.d/ for examples.
 
