@@ -3,6 +3,6 @@
 # Example post-update.d hook. To use: drop the `.sample` suffix and chmod +x.
 # Runs after omarchy-update when ~/.config/omarchy/hooks/post-update is enabled.
 
-command -v notify-send >/dev/null 2>&1 || exit 0
+# command -v notify-send >/dev/null 2>&1 || exit 0
 
-notify-send -u low "First post-update task" "Example: first task completed."
+# notify-send -u low "First post-update task" "Example: first task completed."
