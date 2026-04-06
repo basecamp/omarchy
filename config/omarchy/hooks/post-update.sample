@@ -21,7 +21,7 @@
 # shopt -u nullglob
 
 # for hook in "${hooks[@]}"; do
-#   [[ -f $hook && -x $hook ]] || continue
+#   [[ -f "$hook" && -x "$hook" ]] || continue
 #   echo "[omarchy post-update] running $(basename "$hook")"
 #   if ! "$hook"; then
 #     echo "[omarchy post-update] ERROR: $(basename "$hook") failed"
