@@ -135,6 +135,7 @@ stop_screenrecording() {
     notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
   else
     trim_first_frame
+    normalize_audio
     local filename=$(cat "$RECORDING_FILE" 2>/dev/null)
     local preview="${filename%.mp4}-preview.png"
 
@@ -169,6 +170,20 @@ trim_first_frame() {
       mv "$trimmed" "$latest"
     else
       rm -f "$trimmed"
+    fi
+  fi
+}
+
+normalize_audio() {
+  local latest
+  latest=$(cat "$RECORDING_FILE" 2>/dev/null)
+
+  if [[ -n $latest && -f $latest ]]; then
+    local normalized="${latest%.mp4}-normalized.mp4"
+    if ffmpeg -y -i "$latest" -af loudnorm=I=-14:TP=-1.5:LRA=11 -c:v copy "$normalized" -loglevel quiet 2>/dev/null; then
+      mv "$normalized" "$latest"
+    else
+      rm -f "$normalized"
     fi
   fi
 }
