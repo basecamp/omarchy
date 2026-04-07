@@ -19,12 +19,26 @@ if omarchy-hw-match "XPS"; then
   fi
 
   if [[ -e /sys/class/leds/platform::micmute/brightness ]]; then
-    while IFS= read -r control; do
-      if [[ $control != *"Jack Microphone"* ]]; then
-        amixer -c 0 cset "$control" "$alsa_value" >/dev/null 2>&1 || true
-        break
-      fi
-    done < <(amixer -c 0 controls | rg -o "name='[^']*Microphone Capture Switch'")
+    default_source=$(pactl get-default-source)
+    alsa_card=$(pactl -f json list sources | jq -r --arg source "$default_source" '
+      .[] | select(.name == $source) |
+      .properties["alsa.card"] // .properties["api.alsa.card"] // .properties["api.alsa.pcm.card"] // empty
+    ' | head -1)
+
+    if [[ -n $alsa_card ]]; then
+      cards=("$alsa_card")
+    else
+      mapfile -t cards < <(compgen -G '/proc/asound/card*' | rg -o 'card[0-9]+' | sed 's/card//' | sort -u)
+    fi
+
+    for card in "${cards[@]}"; do
+      while IFS= read -r control; do
+        if [[ $control != *"Jack Microphone"* ]]; then
+          amixer -c "$card" cset "$control" "$alsa_value" >/dev/null 2>&1 || true
+          break 2
+        fi
+      done < <(amixer -c "$card" controls 2>/dev/null | rg -o "name='[^']*Microphone Capture Switch'")
+    done
   fi
 
   swayosd-client \
