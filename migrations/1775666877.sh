@@ -5,9 +5,9 @@ if [[ -f ~/.config/kitty/kitty.conf ]]; then
   sed -i '/map ctrl+insert copy_to_clipboard/d' ~/.config/kitty/kitty.conf
 fi
 
-# Remove ctrl+insert copy binding from Ghostty (let the key pass through to neovim)
+# Unbind ghostty's ctrl+insert (has a built-in default, so deleting the line isn't enough)
 if [[ -f ~/.config/ghostty/config ]]; then
-  sed -i '/control+insert=.*copy_to_clipboard/d' ~/.config/ghostty/config
+  sed -i 's/control+insert=.*copy_to_clipboard/control+insert=unbind/' ~/.config/ghostty/config
 fi
 
 # Remove ctrl+insert copy binding from Alacritty
