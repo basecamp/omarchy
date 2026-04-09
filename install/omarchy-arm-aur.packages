@@ -6,4 +6,4 @@ hyprland-preview-share-picker-git  # Screen share picker (replaces hyprland-prev
 localsend-bin                      # Local network file sharing app
 omarchy-chromium-bin               # Omarchy's Chromium fork with Widevine DRM support
 wayfreeze-git                      # Screen freeze utility (x86 has wayfreeze in official mirror)
-# walker is handled by arm_install_scripts/walker.sh (prebuilt binary by default)
+# walker is handled by arm_install_scripts/walker.sh (builds from AUR)
