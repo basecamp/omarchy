@@ -45,11 +45,32 @@ setup_pam_config() {
     sudo sed -i '1a auth    sufficient pam_howdy.so' /etc/pam.d/hyprlock
   fi
 
-  # Configure polkit
+  # Configure polkit (used by 1Password and other apps)
   if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_howdy.so' /etc/pam.d/polkit-1; then
     print_info "Configuring polkit for face authentication..."
     sudo sed -i '1i auth      sufficient pam_howdy.so' /etc/pam.d/polkit-1
+  elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
+    print_info "Creating polkit configuration with face authentication..."
+    sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
+auth      sufficient pam_howdy.so
+auth      required pam_unix.so
+
+account   required pam_unix.so
+password  required pam_unix.so
+session   required pam_unix.so
+EOF
   fi
+}
+
+enable_hyprlock_face_unlock() {
+  # Allow empty Enter to trigger PAM so face detection starts without typing
+  print_info "Configuring hyprlock to trigger face detection on Enter..."
+  sed -i 's/ignore_empty_input = true/ignore_empty_input = false/' ~/.config/hypr/hyprlock.conf
+}
+
+disable_hyprlock_face_unlock() {
+  print_info "Restoring hyprlock empty input setting..."
+  sed -i 's/ignore_empty_input = false/ignore_empty_input = true/' ~/.config/hypr/hyprlock.conf
 }
 
 remove_pam_config() {
@@ -77,6 +98,9 @@ if [[ "--remove" == $1 ]]; then
 
   # Remove PAM configuration
   remove_pam_config
+
+  # Restore hyprlock empty input setting
+  disable_hyprlock_face_unlock
 
   # Disable IR emitter service
   if systemctl is-enabled linux-enable-ir-emitter.service &>/dev/null; then
@@ -115,6 +139,7 @@ else
   print_info "Configuring howdy..."
   sudo sed -i "s|^device_path = .*|device_path = $ir_device|" /etc/howdy/config.ini
   sudo sed -i 's/^detection_notice = .*/detection_notice = true/' /etc/howdy/config.ini
+  sudo sed -i 's/^dark_threshold = .*/dark_threshold = 100/' /etc/howdy/config.ini
 
   # Configure and enable IR emitter
   print_info "\nConfiguring IR emitter..."
@@ -122,10 +147,13 @@ else
   print_info "(Use your phone camera to see the IR light if needed.)\n"
   sudo -E WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR QT_QPA_PLATFORM=wayland \
     linux-enable-ir-emitter configure 2>/dev/null || true
-  sudo systemctl enable linux-enable-ir-emitter.service
+  sudo systemctl enable --now linux-enable-ir-emitter.service
 
   # Configure PAM
   setup_pam_config
+
+  # Configure hyprlock for face unlock
+  enable_hyprlock_face_unlock
 
   # Enroll face
   print_success "\nLet's add your face model."
@@ -140,8 +168,8 @@ else
 
     if sudo -k howdy test 2>/dev/null || sudo echo "Face authentication test successful"; then
       print_success "\nFace unlock is now configured."
-      print_info "Works with sudo, polkit, and lock screen (Super + Escape)."
-      print_info "On the lock screen, press Enter to trigger face detection."
+      print_info "Works with sudo, polkit (1Password), and lock screen (Super + Escape)."
+      print_info "On the lock screen, just press Enter to trigger face detection."
     fi
   else
     print_error "\nFace enrollment failed. Please try again with: sudo howdy add"
