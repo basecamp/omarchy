@@ -41,19 +41,26 @@ fi
 # Direct substitutions: x86_package -> ARM_package
 declare -A DIRECT_SUBSTITUTIONS=(
   ["chromium"]="omarchy-chromium-bin"
+  ["hyprland-preview-share-picker"]="hyprland-preview-share-picker-git"
   ["localsend"]="localsend-bin"
   ["omarchy-chromium"]="omarchy-chromium-bin"
+  ["wayfreeze"]="wayfreeze-git"
 )
 
 # Custom installers: x86_package -> script_name (without .sh)
+# Note: nvim is covered by omarchy-nvim.sh (installs neovim as a dependency)
+# Note: dotnet-runtime-9.0 is covered by pinta.sh (installs dotnet-10.0 which provides dotnet-runtime)
 declare -A CUSTOM_INSTALLERS=(
   ["1password-beta"]="1password-app"
   ["1password-cli"]="1password-cli"
   ["asdcontrol"]="asdcontrol-prebuilt"
+  ["dotnet-runtime-9.0"]="pinta"
   ["ghostty"]="ghostty"
+  ["nvim"]="omarchy-nvim"
   ["obs-studio"]="obs-studio"
   ["obsidian"]="obsidian-appimage"
   ["omarchy-nvim"]="omarchy-nvim"
+  ["omarchy-walker"]="walker-prebuilt"
   ["pinta"]="pinta"
   ["signal-desktop"]="signal-desktop-beta"
   ["tobi-try"]="tobi-try"
