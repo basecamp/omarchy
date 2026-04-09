@@ -45,6 +45,12 @@ setup_pam_config() {
     sudo sed -i '1a auth    sufficient pam_howdy.so' /etc/pam.d/hyprlock
   fi
 
+  # Configure SDDM login screen
+  if [[ -f /etc/pam.d/sddm ]] && ! grep -q pam_howdy.so /etc/pam.d/sddm; then
+    print_info "Configuring SDDM for face authentication..."
+    sudo sed -i '/^auth.*include.*system-login/i auth    sufficient pam_howdy.so' /etc/pam.d/sddm
+  fi
+
   # Configure polkit (used by 1Password and other apps)
   if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_howdy.so' /etc/pam.d/polkit-1; then
     print_info "Configuring polkit for face authentication..."
@@ -84,6 +90,12 @@ remove_pam_config() {
   if grep -q pam_howdy.so /etc/pam.d/hyprlock; then
     print_info "Removing face authentication from hyprlock..."
     sudo sed -i '/pam_howdy\.so/d' /etc/pam.d/hyprlock
+  fi
+
+  # Remove from SDDM
+  if [[ -f /etc/pam.d/sddm ]] && grep -q pam_howdy.so /etc/pam.d/sddm; then
+    print_info "Removing face authentication from SDDM..."
+    sudo sed -i '/pam_howdy\.so/d' /etc/pam.d/sddm
   fi
 
   # Remove from polkit
@@ -168,7 +180,7 @@ else
 
     if sudo -k howdy test 2>/dev/null || sudo echo "Face authentication test successful"; then
       print_success "\nFace unlock is now configured."
-      print_info "Works with sudo, polkit (1Password), and lock screen (Super + Escape)."
+      print_info "Works with sudo, polkit (1Password), SDDM login, and lock screen (Super + Escape)."
       print_info "On the lock screen, just press Enter to trigger face detection."
     fi
   else
