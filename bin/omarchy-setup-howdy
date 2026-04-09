@@ -159,7 +159,9 @@ else
   print_info "(Use your phone camera to see the IR light if needed.)\n"
   sudo -E WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR QT_QPA_PLATFORM=wayland \
     linux-enable-ir-emitter configure 2>/dev/null || true
-  sudo systemctl enable --now linux-enable-ir-emitter.service
+  if systemctl list-unit-files linux-enable-ir-emitter.service &>/dev/null; then
+    sudo systemctl enable --now linux-enable-ir-emitter.service
+  fi
 
   # Configure PAM
   setup_pam_config
