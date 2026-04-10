@@ -30,13 +30,23 @@ git config --global --unset-all filter.lfs.required 2>/dev/null || true
 git lfs install --force
 
 # Remove nodejs if present (conflicts with nodejs-lts-jod required by signal-desktop-beta)
-# We'll let signal-desktop-beta install nodejs-lts-jod as its dependency
 if pacman -Q nodejs &>/dev/null; then
   echo "Removing nodejs (conflicts with nodejs-lts-jod required by signal-desktop-beta)..."
   sudo pacman -Rdd --noconfirm nodejs 2>/dev/null || true
 fi
 
-# Install signal-desktop-beta (will pull in nodejs-lts-jod as dependency)
+# Pre-install official repo dependencies that signal-desktop-beta needs
+# (must happen after nodejs removal so nodejs-lts-jod doesn't conflict)
+echo "Installing official dependencies for signal-desktop-beta..."
+sudo pacman -S --needed --noconfirm nodejs-lts-jod pnpm
+
+# Pre-install AUR dependencies that makepkg can't resolve via pacman:
+# - libxcrypt-compat: was removed from official repos, now AUR-only (provides libcrypt.so.1)
+# - fpm: Ruby-based packaging tool (plus its ruby deps: ruby-arr-pm, ruby-clamp, etc.)
+echo "Installing AUR dependencies for signal-desktop-beta..."
+"$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" libxcrypt-compat fpm
+
+# Install signal-desktop-beta (all deps should now be satisfied)
 "$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" signal-desktop-beta
 
 echo "signal-desktop-beta installation complete!"
