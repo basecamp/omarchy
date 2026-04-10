@@ -18,6 +18,7 @@ fi
 # Silently quit Walker on overlay
 walker -q
 
+focused=$(omarchy-hyprland-monitor-focused)
 terminal=$(xdg-terminal-exec --print-id)
 
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
@@ -50,4 +51,4 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   esac
 done
 
-hyprctl dispatch focusmonitor $(omarchy-hyprland-monitor-focused)
+hyprctl dispatch focusmonitor $focused
