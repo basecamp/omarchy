@@ -66,7 +66,7 @@ omarchy-aur-install ghostty-git
 omarchy-aur-install yay paru
 
 # Install with custom flags
-omarchy-aur-install --makepkg-flags='--needed --nocheck'some-package
+omarchy-aur-install --makepkg-flags='--needed --nocheck' some-package
 ```
 
 ## How It Works

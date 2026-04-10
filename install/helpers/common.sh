@@ -54,7 +54,10 @@ with_yes() {
   yes_count=$((yes_count > 500 ? 500 : yes_count))
 
   clear_pipe_buffer  # Start with clean buffer
-  printf '1\n%.0s' $(seq 1 $yes_count) | "$@"  # Execute passed in commands w/ calculated 1\n ("yes") responses
+  # Generate yes responses using pure bash (avoids dependency on seq during coreutils upgrades)
+  local yes_input=""
+  for ((i=0; i<yes_count; i++)); do yes_input+=$'1\n'; done
+  printf '%s' "$yes_input" | "$@"
   local exit_code=$?
   clear_pipe_buffer  # Clean up any leftovers
   return $exit_code

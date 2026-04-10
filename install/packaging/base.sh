@@ -44,6 +44,6 @@ if [ ${#aur_packages[@]} -gt 0 ]; then
     "$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" "${aur_packages[@]}"
   else
     # x86: Use pacman (AUR packages pre-built in omarchy mirror)
-    omarchy-pkg-add "${packages[@]}"
+    omarchy-pkg-add "${aur_packages[@]}"
   fi
 fi

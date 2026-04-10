@@ -103,7 +103,7 @@ EOF
 
 # Enable and start service
 echo "Enabling and starting vmtoolsd service..."
-sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
 sudo systemctl enable vmtoolsd.service
 sudo systemctl start vmtoolsd.service
 

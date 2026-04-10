@@ -2,9 +2,6 @@
 source "$OMARCHY_INSTALL/helpers/common.sh"
 
 if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
-  # Install build tools
-  omarchy-pkg-add base-devel
-
   # Configure pacman
   if [[ -n "${OMARCHY_ARM:-}" ]]; then
     sudo cp -f ~/.local/share/omarchy/default/pacman/pacman.conf.arm /etc/pacman.conf
@@ -25,14 +22,7 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
     omarchy-pkg-add omarchy-keyring
   fi
 
-  # Add omarchy signing key
-  sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
-  sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
-
-  # Refresh all repos
-  sudo pacman -Syyuu --noconfirm
-
-  # Refresh all repos with retry logic
+  # Sync package databases with retry logic
   echo "Syncing package databases..."
   max_attempts=3
   attempt=1
@@ -83,7 +73,6 @@ if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
   # Many packages can pull in jack2 as a dependency, but jack2 doesn't work
   # properly on ARM/Asahi systems. pipewire-jack provides the jack interface
   # and conflicts with jack2, preventing it from being installed.
-  # This MUST happen before any other package installation (including base-devel).
   if [ -n "$OMARCHY_ARM" ]; then
     echo "Installing pipewire-jack to prevent audio dependency conflicts..."
     if ! pacman -Q pipewire-jack &>/dev/null; then
