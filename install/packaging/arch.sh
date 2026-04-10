@@ -64,9 +64,8 @@ if [ -n "$OMARCHY_ARM" ]; then
   source $OMARCHY_INSTALL/arm_install_scripts/asdcontrol-prebuilt.sh
 
   # Skip OBS Studio if SKIP_OBS is set (for faster testing)
-  # OBS build is non-fatal - FFmpeg 8.x broke the build upstream (obsproject/obs-studio#12534)
   if [ -z "$SKIP_OBS" ]; then
-    source $OMARCHY_INSTALL/arm_install_scripts/obs-studio.sh || true
+    source $OMARCHY_INSTALL/arm_install_scripts/obs-studio.sh
   fi
 
   source $OMARCHY_INSTALL/arm_install_scripts/obsidian-appimage.sh # Required fuse2 package included in omarchy-arm-official.packages
