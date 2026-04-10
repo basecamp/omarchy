@@ -17,6 +17,8 @@ echo "Cloning obs-studio-git from AUR..."
 BUILD_DIR=$(mktemp -d)
 cd "$BUILD_DIR"
 
+obs_install_success=false
+
 if git clone https://aur.archlinux.org/obs-studio-git.git 2>/dev/null; then
   cd obs-studio-git
 
@@ -29,13 +31,24 @@ if git clone https://aur.archlinux.org/obs-studio-git.git 2>/dev/null; then
   sed -i '/^sha256sums=/,/^[^)]/{/SKIP/d; /^\s*"[a-f0-9]\{64\}"/d}' PKGBUILD
 
   echo "Building OBS Studio without browser support..."
-  makepkg -si --noconfirm --needed --ignorearch
+  if makepkg -si --noconfirm --needed --ignorearch; then
+    obs_install_success=true
+  fi
 
   cd /
   rm -rf "$BUILD_DIR"
-  echo "OBS Studio installed successfully (browser sources disabled on ARM)"
 else
   echo "Failed to clone obs-studio-git, trying GitHub fallback..."
   rm -rf "$BUILD_DIR"
-  "$OMARCHY_PATH/bin/omarchy-aur-install" obs-studio-git
+  if "$OMARCHY_PATH/bin/omarchy-aur-install" obs-studio-git; then
+    obs_install_success=true
+  fi
+fi
+
+if [ "$obs_install_success" = "true" ]; then
+  echo "OBS Studio installed successfully (browser sources disabled on ARM)"
+else
+  echo "WARNING: OBS Studio failed to build (likely FFmpeg 8.x incompatibility)"
+  echo "  OBS upstream has not yet merged FFmpeg 8 support (obsproject/obs-studio#12534)"
+  echo "  OBS can be installed later once upstream is fixed. Continuing installation..."
 fi
