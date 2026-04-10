@@ -11,7 +11,7 @@ fi
 # that we must remove, so we pre-install the ARM-compatible ones and patch the PKGBUILD
 sudo pacman -S --needed --noconfirm \
   base-devel git cmake ninja pkgconf \
-  curl ffmpeg jack2 jansson libdatachannel libpipewire librist \
+  curl ffmpeg jansson libdatachannel libpipewire librist \
   libxcomposite mbedtls pciutils qrcodegencpp-cmake qt6-svg rnnoise simde speexdsp \
   asio extra-cmake-modules libfdk-aac luajit nlohmann-json python \
   qt6-wayland sndio swig uthash vlc wayland websocketpp x264 xdg-desktop-portal
