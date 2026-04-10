@@ -1,0 +1,20 @@
+#!/bin/bash
+
+STATE_FILE=~/.local/state/omarchy/toggles/waybar-clock
+CONFIG_FILE="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/config/waybar/config.jsonc"
+
+# Read format from waybar config (strip {:L prefix if present)
+format=$(grep -A2 '"clock":' "$CONFIG_FILE" | grep '"format"' | head -1 | sed 's/.*: "\{:L\?\([^}]*\)}".*/\1/')
+format_alt=$(grep -A3 '"clock":' "$CONFIG_FILE" | grep '"format-alt"' | head -1 | sed 's/.*: "\{:L\?\([^}]*\)}".*/\1/')
+
+# Fallback if parsing fails
+[[ -z $format ]] && format="%A %H:%M"
+[[ -z $format_alt ]] && format_alt="%d %B W%V %Y"
+
+if [[ -f $STATE_FILE ]]; then
+  text=$(date +"$format_alt")
+else
+  text=$(date +"$format")
+fi
+
+echo "{\"text\": \"$text\"}"
