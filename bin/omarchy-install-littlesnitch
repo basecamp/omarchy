@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# Install Little Snitch for Linux, an application firewall and network monitor.
+
+echo "Installing Little Snitch..."
+omarchy-pkg-aur-add littlesnitch-bin
+
+echo "Enabling Little Snitch service..."
+sudo systemctl enable --now littlesnitch
+
+echo -e "\nLittle Snitch installed! Open http://localhost:3031 to access the web UI."
