@@ -38,13 +38,12 @@ fi
 # Pre-install official repo dependencies that signal-desktop-beta needs
 # (must happen after nodejs removal so nodejs-lts-jod doesn't conflict)
 echo "Installing official dependencies for signal-desktop-beta..."
-sudo pacman -S --needed --noconfirm nodejs-lts-jod pnpm
+sudo pacman -S --needed --noconfirm nodejs-lts-jod pnpm libxcrypt-compat
 
 # Pre-install AUR dependencies that makepkg can't resolve via pacman:
-# - libxcrypt-compat: was removed from official repos, now AUR-only (provides libcrypt.so.1)
 # - fpm: Ruby-based packaging tool (plus its ruby deps: ruby-arr-pm, ruby-clamp, etc.)
 echo "Installing AUR dependencies for signal-desktop-beta..."
-"$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" libxcrypt-compat fpm
+"$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" fpm
 
 # Install signal-desktop-beta (all deps should now be satisfied)
 "$OMARCHY_PATH/bin/omarchy-aur-install" --makepkg-flags="--needed" signal-desktop-beta
