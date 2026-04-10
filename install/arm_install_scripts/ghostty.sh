@@ -60,9 +60,12 @@ if command -v systemd-detect-virt &>/dev/null && [ "$is_apple_silicon" = "false"
   if [[ "$virt_type" != "none" ]]; then
     # Running in a VM - use Zink (OpenGL over Vulkan via lavapipe) for OpenGL 4.3+
     # Virgl only provides OpenGL 4.0, but Ghostty requires 4.3
-    export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.aarch64.json
-    export MESA_LOADER_DRIVER_OVERRIDE=zink
-    export __GLX_VENDOR_LIBRARY_NAME=mesa
+    # Scoped to exec so child processes (apps launched from terminal) aren't affected
+    exec env \
+      VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.aarch64.json \
+      MESA_LOADER_DRIVER_OVERRIDE=zink \
+      __GLX_VENDOR_LIBRARY_NAME=mesa \
+      /usr/bin/ghostty "$@"
   fi
 fi
 
