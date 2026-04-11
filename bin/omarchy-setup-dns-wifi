@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# Configure DNS for a specific WiFi network (SSID).
+# WiFi only — systemd-networkd SSID= matching is not available for Ethernet.
+# Creates /etc/systemd/network/10-dns-[ssid].network which takes precedence
+# over 20-wlan.network for that SSID due to alphabetical ordering.
+
+sanitize_ssid() {
+  printf '%s' "$1" | tr '[:space:]' '_' | tr -d '/\\*?[]' | sed 's/__*/_/g; s/^_//; s/_$//'
+}
+
+get_known_networks() {
+  # Strip ANSI codes, skip 4 header lines, extract name column (chars 3-34), trim trailing spaces
+  iwctl known-networks list 2>/dev/null \
+    | sed 's/\x1b\[[0-9;]*m//g' \
+    | awk 'NR>4 { name=substr($0,3,32); gsub(/[[:space:]]+$/,"",name); if (name!="") print name }'
+}
+
+detect_current_dns() {
+  local file="$1"
+  [[ ! -f $file ]] && echo "none" && return
+  if grep -q "^DNS=1\.1\.1\.1" "$file"; then echo "Cloudflare"
+  elif grep -q "^DNS=8\.8\.8\.8" "$file"; then echo "Google"
+  elif grep -q "^DNS=" "$file"; then echo "Custom"
+  else echo "DHCP"
+  fi
+}
+
+write_fixed_dns() {
+  local file="$1" ssid="$2" dns="$3"
+  sudo tee "$file" >/dev/null <<EOF
+[Match]
+Name=wl*
+SSID="$ssid"
+
+[Network]
+DHCP=yes
+MulticastDNS=yes
+DNS=$dns
+
+[DHCPv4]
+RouteMetric=600
+UseDNS=no
+
+[IPv6AcceptRA]
+RouteMetric=600
+UseDNS=no
+EOF
+}
+
+write_dhcp() {
+  local file="$1" ssid="$2"
+  sudo tee "$file" >/dev/null <<EOF
+[Match]
+Name=wl*
+SSID="$ssid"
+
+[Network]
+DHCP=yes
+MulticastDNS=yes
+
+[DHCPv4]
+RouteMetric=600
+
+[IPv6AcceptRA]
+RouteMetric=600
+EOF
+}
+
+networks=$(get_known_networks)
+
+if [[ -z $networks ]]; then
+  echo "No known WiFi networks found."
+  exit 1
+fi
+
+ssid=$(printf '%s\n' "$networks" | gum choose --height 10 --header "Select WiFi network") || exit 1
+
+sanitized=$(sanitize_ssid "$ssid")
+config_file="/etc/systemd/network/10-dns-${sanitized}.network"
+current=$(detect_current_dns "$config_file")
+
+if [[ $current != "none" ]]; then
+  header="DNS for \"$ssid\" (currently: $current)"
+else
+  header="DNS for \"$ssid\""
+fi
+
+dns=$(gum choose --height 7 --header "$header" Cloudflare Google DHCP Custom Remove) || exit 1
+
+case "$dns" in
+Cloudflare)
+  write_fixed_dns "$config_file" "$ssid" "1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com"
+  ;;
+Google)
+  write_fixed_dns "$config_file" "$ssid" "8.8.8.8#dns.google 8.8.4.4#dns.google"
+  ;;
+DHCP)
+  write_dhcp "$config_file" "$ssid"
+  ;;
+Custom)
+  dns_servers=$(gum input --prompt "DNS servers> " --placeholder "e.g. 192.168.1.1 1.1.1.1") || exit 1
+  if [[ -z $dns_servers ]]; then
+    echo "Error: No DNS servers provided."
+    exit 1
+  fi
+  write_fixed_dns "$config_file" "$ssid" "$dns_servers"
+  ;;
+Remove)
+  if [[ -f $config_file ]]; then
+    sudo rm "$config_file"
+    echo "Per-network DNS removed for \"$ssid\"."
+  else
+    echo "No per-network DNS config found for \"$ssid\"."
+    exit 0
+  fi
+  ;;
+esac
+
+sudo systemctl restart systemd-networkd systemd-resolved
