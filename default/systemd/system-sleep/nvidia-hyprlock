@@ -6,6 +6,17 @@
 # See: github.com/basecamp/omarchy/issues/5277
 
 if [[ $1 == "pre" ]] && lsmod | grep -q "^nvidia "; then
-  pkill -x hyprlock 2>/dev/null || true
+  active_user=$(
+    loginctl list-sessions --no-legend 2>/dev/null \
+      | awk '$3 != "" && $0 ~ /seat/ { print $3; exit }'
+  )
+
+  if [[ -z "$active_user" ]]; then
+    active_user=$(logname 2>/dev/null || true)
+  fi
+
+  if [[ -n "$active_user" ]]; then
+    pkill -u "$active_user" -x hyprlock 2>/dev/null || true
+  fi
   sleep 0.5
 fi
