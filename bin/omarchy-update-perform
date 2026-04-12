@@ -9,6 +9,9 @@ if [[ -z $OMARCHY_UPDATE_LOGGED ]]; then
   exec env OMARCHY_UPDATE_LOGGED=1 script -qefc "$script_command" "/tmp/omarchy-update.log"
 fi
 
+# Prime sudo credential cache for the new PTY created by script(1)
+sudo -v
+
 # Ensure screensaver/sleep doesn't set in during updates
 hyprctl dispatch tagwindow +noidle &>/dev/null || true
 
