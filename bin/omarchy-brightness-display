@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Adjust brightness on the most likely display device.
+# Falls back to DDC/CI (ddcutil) for external monitors when no backlight device exists.
 # Usage: omarchy-brightness-display <step>
 
 step="${1:-+5%}"
@@ -14,8 +15,127 @@ for candidate in amdgpu_bl* intel_backlight acpi_video*; do
   fi
 done
 
-# Set the actual brightness of the display device.
-brightnessctl -d "$device" set "$step" >/dev/null
+# Native backlight path — unchanged when a device is found.
+if [[ -n "$device" ]]; then
+  brightnessctl -d "$device" set "$step" >/dev/null
+  omarchy-swayosd-brightness "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"
+  exit 0
+fi
 
-# Use SwayOSD to display the new brightness setting.
-omarchy-swayosd-brightness "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"
+# No backlight device — fall back to DDC/CI on external monitors.
+omarchy-cmd-present ddcutil || exit 0
+
+# Parse step: "+5%", "5%-", "+1%", "1%-" — percentage of each display's max VCP value.
+if [[ "$step" == +* ]]; then
+  delta="${step#+}"
+  delta="${delta%%%}"
+  direction=1
+elif [[ "$step" == *- ]]; then
+  delta="${step%%-}"
+  delta="${delta%%%}"
+  direction=-1
+else
+  exit 1
+fi
+
+readonly CACHE_TTL=300
+runtime="${XDG_RUNTIME_DIR:-/run/user/$UID}"
+[[ -d "$runtime" ]] || mkdir -p "$runtime"
+
+lock_file="$runtime/omarchy-ddc-brightness.lock"
+bus_cache="$runtime/omarchy-ddc-buses"
+state_cache="$runtime/omarchy-ddc-state"
+target_file="$runtime/omarchy-ddc-target"
+
+cache_fresh() {
+  [[ -f "$1" ]] && (( EPOCHSECONDS - $(stat -c %Y "$1") < CACHE_TTL ))
+}
+
+# Serialize key repeats; the debounce worker does not inherit the lock (9>&- below).
+exec 9>"$lock_file"
+flock 9
+
+if cache_fresh "$bus_cache"; then
+  mapfile -t buses < "$bus_cache"
+else
+  mapfile -t buses < <(ddcutil detect 2>/dev/null | awk '/I2C bus:/{gsub(/\/dev\/i2c-/, "", $NF); print $NF}')
+  printf "%s\n" "${buses[@]}" > "$bus_cache"
+fi
+
+(( ${#buses[@]} == 0 )) && exit 0
+
+# State cache lets bursts skip the cold getvcp round-trip; TTL bounds drift
+# if brightness changes via the monitor's physical button or DPMS reset.
+declare -A cached_cur cached_max
+if cache_fresh "$state_cache"; then
+  while IFS='=' read -r key val; do
+    case "$key" in
+      cur_*) cached_cur[${key#cur_}]=$val ;;
+      max_*) cached_max[${key#max_}]=$val ;;
+    esac
+  done < "$state_cache"
+fi
+
+reported_percent=""
+declare -A new_cur
+
+for bus in "${buses[@]}"; do
+  current="${cached_cur[$bus]:-}"
+  max="${cached_max[$bus]:-}"
+
+  if [[ -z "$current" || -z "$max" ]]; then
+    read -r _ _ _ current max < <(ddcutil --bus "$bus" getvcp 10 --brief --sleep-multiplier 0.04 2>/dev/null)
+    if [[ -z "$current" || -z "$max" ]]; then
+      echo "omarchy-brightness-display: skip i2c-$bus (no VCP 0x10)" >&2
+      continue
+    fi
+  fi
+
+  new=$(( current + direction * delta * max / 100 ))
+  (( new < 0 )) && new=0
+  (( new > max )) && new=$max
+
+  new_cur[$bus]=$new
+  cached_max[$bus]=$max
+  [[ -z "$reported_percent" ]] && reported_percent=$(( new * 100 / max ))
+done
+
+(( ${#new_cur[@]} == 0 )) && exit 0
+
+{
+  for bus in "${!new_cur[@]}"; do
+    printf 'cur_%s=%s\nmax_%s=%s\n' "$bus" "${new_cur[$bus]}" "$bus" "${cached_max[$bus]}"
+  done
+} > "$state_cache"
+
+# Debounce setvcp to one write per gesture (KDE PowerDevil precedent):
+# cuts monitor NVRAM wear and keeps OSD in sync with a single clean
+# transition instead of chasing each tap over slow i2c.
+now_ms=$(( ${EPOCHREALTIME/./} / 1000 ))
+{
+  printf 'ts=%s\n' "$now_ms"
+  for bus in "${!new_cur[@]}"; do
+    printf 'target_%s=%s\n' "$bus" "${new_cur[$bus]}"
+  done
+} > "$target_file"
+
+[[ -n "$reported_percent" ]] && omarchy-swayosd-brightness "$reported_percent"
+
+(
+  sleep 0.25
+  [[ -f "$target_file" ]] || exit 0
+  current_ts=""
+  worker_targets=()
+  while IFS='=' read -r key val; do
+    case "$key" in
+      ts) current_ts=$val ;;
+      target_*) worker_targets+=("${key#target_} $val") ;;
+    esac
+  done < "$target_file"
+  [[ "$current_ts" == "$now_ms" ]] || exit 0
+  for entry in "${worker_targets[@]}"; do
+    ddcutil --bus "${entry% *}" setvcp 10 "${entry#* }" \
+      --sleep-multiplier 0.04 --noverify 2>/dev/null
+  done
+) 9>&- >/dev/null 2>&1 &
+disown
