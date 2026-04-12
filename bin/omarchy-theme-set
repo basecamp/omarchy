@@ -12,6 +12,11 @@ OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 
+if [[ -z $THEME_NAME ]]; then
+  echo "Theme name cannot be empty"
+  exit 1
+fi
+
 if [[ ! -d $OMARCHY_THEMES_PATH/$THEME_NAME ]] && [[ ! -d $USER_THEMES_PATH/$THEME_NAME ]]; then
   echo "Theme '$THEME_NAME' does not exist"
   exit 1
@@ -26,7 +31,18 @@ cp -r "$OMARCHY_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
 cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
 
 # Generate dynamic configs
-omarchy-theme-set-templates
+if ! omarchy-theme-set-templates; then
+  echo "Failed to generate theme files for '$THEME_NAME'" >&2
+  rm -rf "$NEXT_THEME_PATH"
+  exit 1
+fi
+
+mapfile -t next_theme_files < <(find "$NEXT_THEME_PATH" -mindepth 1 -type f -print -quit)
+if (( ${#next_theme_files[@]} == 0 )); then
+  echo "Theme '$THEME_NAME' did not generate any theme files" >&2
+  rm -rf "$NEXT_THEME_PATH"
+  exit 1
+fi
 
 # Swap next theme in as current
 rm -rf "$CURRENT_THEME_PATH"

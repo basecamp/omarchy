@@ -35,10 +35,19 @@ if [[ -f $COLORS_FILE ]]; then
   for tpl in "$USER_TEMPLATES_DIR"/*.tpl "$TEMPLATES_DIR"/*.tpl; do
     filename=$(basename "$tpl" .tpl)
     output_path="$NEXT_THEME_DIR/$filename"
+    temp_output=$(mktemp)
 
     # Don't overwrite configs already exists in the output directory (copied from theme specific folder)
     if [[ ! -f $output_path ]]; then
-      sed -f "$sed_script" "$tpl" >"$output_path"
+      if sed -f "$sed_script" "$tpl" >"$temp_output"; then
+        mv "$temp_output" "$output_path"
+      else
+        rm -f "$temp_output"
+        rm "$sed_script"
+        exit 1
+      fi
+    else
+      rm -f "$temp_output"
     fi
   done
 
