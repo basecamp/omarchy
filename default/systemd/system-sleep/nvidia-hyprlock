@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# On NVIDIA systems, hyprlock holds an active DRM/GBM context that causes the
+# nvidia_drm suspend callback to hang at PM: suspend entry (deep). Kill it here —
+# after hypridle's inhibit_sleep window but before the kernel DRM checkpoint.
+# See: github.com/basecamp/omarchy/issues/5277
+
+if [[ $1 == "pre" ]] && lsmod | grep -q "^nvidia "; then
+  pkill -x hyprlock 2>/dev/null || true
+  sleep 0.5
+fi
