@@ -6,17 +6,24 @@
 # See: github.com/basecamp/omarchy/issues/5277
 
 if [[ $1 == "pre" ]] && lsmod | grep -q "^nvidia "; then
-  active_user=$(
-    loginctl list-sessions --no-legend 2>/dev/null \
-      | awk '$3 != "" && $4 ~ /^seat/ { print $3; exit }'
+  active_users=$(
+    while IFS= read -r session_id; do
+      [[ -z "$session_id" ]] && continue
+      active=$(loginctl show-session "$session_id" -p Active --value 2>/dev/null)
+      state=$(loginctl show-session "$session_id" -p State --value 2>/dev/null)
+      remote=$(loginctl show-session "$session_id" -p Remote --value 2>/dev/null)
+      [[ "$active" == "yes" && "$state" == "active" && "$remote" == "no" ]] || continue
+      loginctl show-session "$session_id" -p Name --value 2>/dev/null
+    done < <(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}')
   )
 
-  if [[ -z "$active_user" ]]; then
-    active_user=$(logname 2>/dev/null || true)
+  if [[ -z "$active_users" ]]; then
+    active_users=$(logname 2>/dev/null || true)
   fi
 
-  if [[ -n "$active_user" ]]; then
+  while IFS= read -r active_user; do
+    [[ -z "$active_user" ]] && continue
     pkill -u "$active_user" -x hyprlock 2>/dev/null || true
-  fi
+  done <<< "$active_users"
   sleep 0.5
 fi

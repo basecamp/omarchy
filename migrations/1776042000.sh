@@ -3,7 +3,7 @@ echo "Fix NVIDIA suspend hard-freeze caused by hyprlock holding DRM context (oma
 
 # Install system-sleep hook on NVIDIA systems
 if lspci 2>/dev/null | grep -qi nvidia || lsmod 2>/dev/null | grep -q "^nvidia "; then
-  source "$OMARCHY_PATH/install/config/hardware/nvidia-suspend-hook.sh"
+  bash "$OMARCHY_PATH/install/config/hardware/nvidia-suspend-hook.sh"
 fi
 
 # Update after_sleep_cmd in hypridle config to relock before enabling the display
