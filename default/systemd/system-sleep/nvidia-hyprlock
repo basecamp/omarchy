@@ -8,7 +8,7 @@
 if [[ $1 == "pre" ]] && lsmod | grep -q "^nvidia "; then
   active_user=$(
     loginctl list-sessions --no-legend 2>/dev/null \
-      | awk '$3 != "" && $0 ~ /seat/ { print $3; exit }'
+      | awk '$3 != "" && $4 ~ /^seat/ { print $3; exit }'
   )
 
   if [[ -z "$active_user" ]]; then
