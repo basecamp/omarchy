@@ -12,8 +12,8 @@ if omarchy-battery-present; then
     battery_profile="${profiles[1]}"
 
     cat <<EOF | sudo tee "/etc/udev/rules.d/99-power-profile.rules"
-SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}=="0", RUN+="/usr/bin/systemd-run --no-block --collect --unit=omarchy-power-profile-battery --replace --property=After=power-profiles-daemon.service /usr/bin/powerprofilesctl set $battery_profile"
-SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}=="1", RUN+="/usr/bin/systemd-run --no-block --collect --unit=omarchy-power-profile-ac --replace --property=After=power-profiles-daemon.service /usr/bin/powerprofilesctl set $ac_profile"
+SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}=="0", RUN+="/usr/bin/systemd-run --no-block --collect --unit=omarchy-power-profile-battery --property=After=power-profiles-daemon.service /usr/bin/powerprofilesctl set $battery_profile"
+SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}=="1", RUN+="/usr/bin/systemd-run --no-block --collect --unit=omarchy-power-profile-ac --property=After=power-profiles-daemon.service /usr/bin/powerprofilesctl set $ac_profile"
 EOF
 
     sudo udevadm control --reload
