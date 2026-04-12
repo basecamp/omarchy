@@ -6,5 +6,5 @@ if omarchy-cmd-present nuphyctl && [[ -f $KEYBOARD_THEME ]]; then
   nuphyctl rgb set \
     --hex "$(sed 's/^#//' "$KEYBOARD_THEME")" \
     --vid 0x19f5 --pid 0x1028 \
-    >/dev/null
+    >/dev/null 2>&1
 fi
