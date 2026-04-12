@@ -222,7 +222,6 @@ show_font_menu() {
 show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
-  options="$options\n  Key Remapping"
   [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Security\n  Config"
 
@@ -235,7 +234,6 @@ show_setup_menu() {
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
-  *Key\ Remapping*) omarchy-setup-makima && open_in_editor "$HOME/.config/makima/AT Translated Set 2 keyboard.toml" && omarchy-restart-makima ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
@@ -557,10 +555,11 @@ show_update_config_menu() {
 }
 
 show_update_hardware_menu() {
-  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth") in
+  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth\n󰟸  Trackpad") in
   *Audio*) present_terminal omarchy-restart-pipewire ;;
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
+  *Trackpad*) present_terminal omarchy-restart-trackpad ;;
   *) show_update_menu ;;
   esac
 }
