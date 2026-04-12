@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if ! command -v orca >/dev/null 2>&1; then
+  notify-send "Screen reader unavailable" "Install orca and speech-dispatcher to use this shortcut."
+  exit 0
+fi
+
+if pgrep -x orca >/dev/null; then
+  orca --quit 2>/dev/null
+  pkill -x orca 2>/dev/null
+else
+  orca &
+fi

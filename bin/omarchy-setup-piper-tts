@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Download and configure Piper TTS as the speech-dispatcher backend for Orca.
+# Run once during setup — downloads ~60MB of voice data.
+
+set -e
+
+piper_dir="$HOME/.local/share/piper"
+voice_dir="$piper_dir/voices"
+mkdir -p "$voice_dir"
+
+# Download Piper binary if not present
+if [[ ! -x $piper_dir/piper ]]; then
+  echo "Downloading Piper TTS..."
+  curl -sL "https://github.com/rhasspy/piper/releases/latest/download/piper_linux_x86_64.tar.gz" | \
+    tar xz -C "$piper_dir" --strip-components=1
+fi
+
+# Download a natural English voice if not present
+voice_name="en_US-lessac-medium"
+if [[ ! -f $voice_dir/$voice_name.onnx ]]; then
+  echo "Downloading voice model ($voice_name)..."
+  curl -sL "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/$voice_name.onnx" \
+    -o "$voice_dir/$voice_name.onnx"
+  curl -sL "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/$voice_name.onnx.json" \
+    -o "$voice_dir/$voice_name.onnx.json"
+fi
+
+# Configure speech-dispatcher to use Piper
+sd_conf_dir="$HOME/.config/speech-dispatcher/modules"
+mkdir -p "$sd_conf_dir"
+
+cat <<EOF > "$HOME/.config/speech-dispatcher/speechd.conf"
+DefaultModule piper
+DefaultLanguage en
+DefaultRate 0
+EOF
+
+cat <<EOF > "$sd_conf_dir/piper.conf"
+GenericExecuteSynth "$piper_dir/piper --model $voice_dir/$voice_name.onnx --output-raw | paplay --raw --rate=22050 --channels=1 --format=s16le"
+EOF
+
+echo "Piper TTS configured. Toggle Orca with omarchy-toggle-orca."
