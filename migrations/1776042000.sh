@@ -28,6 +28,6 @@ fi
 
 # Update after_sleep_cmd in hypridle config to relock before enabling the display
 HYPRIDLE_CONF="$TARGET_HOME/.config/hypr/hypridle.conf"
-if [[ -f "$HYPRIDLE_CONF" ]] && grep -Eq '^[[:space:]]*after_sleep_cmd[[:space:]]*=.*hyprctl[[:space:]]+dispatch[[:space:]]+dpms[[:space:]]+on([[:space:]]|$)' "$HYPRIDLE_CONF"; then
-  sed -Ei 's|^[[:space:]]*after_sleep_cmd[[:space:]]*=.*hyprctl[[:space:]]+dispatch[[:space:]]+dpms[[:space:]]+on.*$|after_sleep_cmd = omarchy-lock-screen \&\& sleep 2 \&\& hyprctl dispatch dpms on  # relock, wait for render, then turn on display.|' "$HYPRIDLE_CONF"
+if [[ -f "$HYPRIDLE_CONF" ]] && grep -Eq '^[[:space:]]*after_sleep_cmd[[:space:]]*=[[:space:]]*sleep[[:space:]]+1[[:space:]]*&&[[:space:]]*hyprctl[[:space:]]+dispatch[[:space:]]+dpms[[:space:]]+on[[:space:]]*$' "$HYPRIDLE_CONF"; then
+  sed -Ei 's|^[[:space:]]*after_sleep_cmd[[:space:]]*=[[:space:]]*sleep[[:space:]]+1[[:space:]]*&&[[:space:]]*hyprctl[[:space:]]+dispatch[[:space:]]+dpms[[:space:]]+on[[:space:]]*$|after_sleep_cmd = omarchy-lock-screen \&\& sleep 2 \&\& hyprctl dispatch dpms on  # relock, wait for render, then turn on display.|' "$HYPRIDLE_CONF"
 fi
