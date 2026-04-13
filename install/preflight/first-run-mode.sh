@@ -10,6 +10,8 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl
 $USER ALL=(ALL) NOPASSWD: /usr/bin/ufw
 $USER ALL=(ALL) NOPASSWD: /usr/bin/ufw-docker
 $USER ALL=(ALL) NOPASSWD: /usr/bin/gtk-update-icon-cache
+$USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/udev/rules.d/*
+$USER ALL=(ALL) NOPASSWD: /usr/bin/udevadm
 $USER ALL=(ALL) NOPASSWD: SYMLINK_RESOLVED
 $USER ALL=(ALL) NOPASSWD: FIRST_RUN_CLEANUP
 EOF

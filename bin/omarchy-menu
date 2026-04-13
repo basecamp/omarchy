@@ -168,7 +168,7 @@ show_share_menu() {
 }
 
 show_toggle_menu() {
-  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Display Scaling"
+  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ration\n󰍹  Monitor Scaling\n󰛧  Laptop Display"
 
   #Check if at least one battery with adjustable charge threshold exists
   local bat_files=(/sys/class/power_supply/BAT*/charge_control_end_threshold)
@@ -186,6 +186,7 @@ show_toggle_menu() {
   *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
   *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
   *Battery*) omarchy-toggle-battery-threshold ;;
+  *Laptop*) omarchy-hyprland-monitor-internal-toggle ;;
   *) back_to show_trigger_menu ;;
   esac
 }
@@ -229,7 +230,6 @@ show_font_menu() {
 show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
-  options="$options\n  Key Remapping"
   [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Security\n  Config"
 
@@ -242,7 +242,6 @@ show_setup_menu() {
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
-  *Key\ Remapping*) omarchy-setup-makima && open_in_editor "$HOME/.config/makima/AT Translated Set 2 keyboard.toml" && omarchy-restart-makima ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
@@ -325,10 +324,11 @@ show_install_menu() {
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Tailscale\n󱇱  NordVPN [AUR]\n󰟵  Bitwarden\n  Chromium Account") in
+  case $(menu "Install" "  Dropbox\n  Tailscale\n󱇱  NordVPN [AUR]\n󰏖  ONCE\n󰟵  Bitwarden\n  Chromium Account") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
   *NordVPN*) present_terminal omarchy-install-nordvpn ;;
+  *ONCE*) present_terminal omarchy-install-once ;;
   *Bitwarden*) install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden" ;;
   *Chromium*) present_terminal omarchy-install-chromium-google-account ;;
   *) show_install_menu ;;
@@ -563,10 +563,11 @@ show_update_config_menu() {
 }
 
 show_update_hardware_menu() {
-  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth") in
+  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth\n󰟸  Trackpad") in
   *Audio*) present_terminal omarchy-restart-pipewire ;;
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
+  *Trackpad*) present_terminal omarchy-restart-trackpad ;;
   *) show_update_menu ;;
   esac
 }
