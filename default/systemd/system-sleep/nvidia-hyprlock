@@ -14,7 +14,7 @@ if [[ $1 == "pre" ]] && lsmod | grep -q "^nvidia "; then
       remote=$(loginctl show-session "$session_id" -p Remote --value 2>/dev/null)
       [[ "$active" == "yes" && "$state" == "active" && "$remote" == "no" ]] || continue
       loginctl show-session "$session_id" -p Name --value 2>/dev/null
-    done < <(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}')
+    done < <(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}') | sort -u
   )
 
   if [[ -z "$active_users" ]]; then
