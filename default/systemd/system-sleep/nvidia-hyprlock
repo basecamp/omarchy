@@ -5,7 +5,9 @@
 # after hypridle's inhibit_sleep window but before the kernel DRM checkpoint.
 # See: github.com/basecamp/omarchy/issues/5277
 
-if [[ $1 == "pre" ]] && lsmod | grep -q "^nvidia "; then
+lsmod | grep -q "^nvidia " || exit 0
+
+if [[ $1 == "pre" ]]; then
   active_users=$(
     while IFS= read -r session_id; do
       [[ -z "$session_id" ]] && continue
@@ -28,7 +30,7 @@ if [[ $1 == "pre" ]] && lsmod | grep -q "^nvidia "; then
   sleep 0.5
 fi
 
-if [[ $1 == "post" ]] && lsmod | grep -q "^nvidia "; then
+if [[ $1 == "post" ]]; then
   # Re-lock sessions after resume as a safety net in case hypridle's
   # after_sleep_cmd didn't fire (e.g. hypridle crashed). Runs in background
   # with a delay so user sessions are fully thawed before the signal is sent.
