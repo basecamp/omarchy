@@ -1,0 +1,61 @@
+#!/bin/bash
+#
+# Install a libinput quirk that tags the keyd virtual keyboard as
+# AttrKeyboardIntegration=internal.
+#
+# Why: libinput's disable-while-typing (DWT) only fires on keyboards
+# marked as "internal". When keyd is running, it grabs the physical
+# keyboard via EVIOCGRAB and re-emits events through a userspace
+# virtual device that libinput defaults to "external" — so typing
+# doesn't trigger DWT on the built-in trackpad, even though the user
+# is typing on the built-in keyboard.
+#
+# This quirk re-tags the keyd virtual keyboard as internal, restoring
+# the expected behavior of Hyprland's `disable_while_typing = true` on
+# keyd setups.
+#
+# The quirk is scoped tightly (MatchName="keyd virtual keyboard") so
+# real external USB keyboards are not affected.
+
+set -euo pipefail
+
+QUIRKS_FILE=/etc/libinput/local-overrides.quirks
+BEGIN_MARKER="# >>> omarchy: keyd virtual keyboard integration (begin) >>>"
+END_MARKER="# <<< omarchy: keyd virtual keyboard integration (end) <<<"
+
+# Only install if keyd is actually present
+if ! command -v keyd &>/dev/null; then
+  echo "keyd is not installed; skipping libinput quirk."
+  exit 0
+fi
+
+BLOCK="$BEGIN_MARKER
+# Tag the keyd virtual keyboard as internal so libinput DWT (and any
+# downstream disable_while_typing setting like Hyprland's) fires for
+# typing on it. Without this the virtual device defaults to external
+# and DWT never activates.
+[Keyd Virtual Keyboard]
+MatchName=keyd virtual keyboard
+AttrKeyboardIntegration=internal
+$END_MARKER"
+
+sudo mkdir -p "$(dirname "$QUIRKS_FILE")"
+
+if [[ -f "$QUIRKS_FILE" ]] && grep -qF "$BEGIN_MARKER" "$QUIRKS_FILE"; then
+  echo "keyd virtual keyboard quirk already installed in $QUIRKS_FILE"
+else
+  {
+    [[ -f "$QUIRKS_FILE" ]] && cat "$QUIRKS_FILE"
+    printf '\n%s\n' "$BLOCK"
+  } | sudo tee "$QUIRKS_FILE" > /dev/null
+  echo "Installed keyd virtual keyboard quirk to $QUIRKS_FILE"
+fi
+
+# Validate what we wrote; fail loud if it doesn't parse
+if ! sudo libinput quirks validate &>/dev/null; then
+  echo "WARNING: libinput quirks validation failed. Check $QUIRKS_FILE manually." >&2
+  exit 1
+fi
+
+echo "Quirk validated. It takes effect next time the keyd virtual keyboard"
+echo "is re-initialized (reboot, or logout/login on Hyprland)."
