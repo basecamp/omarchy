@@ -17,6 +17,7 @@ DESKTOP_AUDIO="false"
 MICROPHONE_AUDIO="false"
 WEBCAM="false"
 WEBCAM_DEVICE=""
+ROUNDED_WEBCAM="false"
 RESOLUTION=""
 STOP_RECORDING="false"
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
@@ -27,6 +28,7 @@ for arg in "$@"; do
   --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
   --with-webcam) WEBCAM="true" ;;
   --webcam-device=*) WEBCAM_DEVICE="${arg#*=}" ;;
+  --rounded-webcam) ROUNDED_WEBCAM="true" ;;
   --resolution=*) RESOLUTION="${arg#*=}" ;;
   --stop-recording) STOP_RECORDING="true" ;;
   esac
@@ -62,9 +64,12 @@ start_webcam_overlay() {
     fi
   done
 
+  local window_title="WebcamOverlay"
+  [[ $ROUNDED_WEBCAM == "true" ]] && window_title="WebcamOverlayRounded"
+
   ffplay -f v4l2 $video_size_arg -framerate 30 "$WEBCAM_DEVICE" \
     -vf "crop=iw/2:ih,scale=${target_width}:-1" \
-    -window_title "WebcamOverlay" \
+    -window_title "$window_title" \
     -noborder \
     -fflags nobuffer -flags low_delay \
     -probesize 32 -analyzeduration 0 \

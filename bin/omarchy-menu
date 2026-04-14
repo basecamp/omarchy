@@ -152,7 +152,16 @@ show_screenrecord_menu() {
       back_to show_capture_menu
       return
     }
-    omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device"
+    local shape_args=()
+    case $(menu "Webcam shape" "  Square\n  Rounded") in
+    *Rounded) shape_args+=(--rounded-webcam) ;;
+    *Square) ;;
+    *)
+      back_to show_capture_menu
+      return
+      ;;
+    esac
+    omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device" "${shape_args[@]}"
     ;;
   *) back_to show_capture_menu ;;
   esac
