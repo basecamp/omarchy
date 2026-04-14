@@ -62,6 +62,7 @@ if [ -n "$OMARCHY_ARM" ]; then
   source $OMARCHY_INSTALL/arm_install_scripts/1password-app.sh
   source $OMARCHY_INSTALL/arm_install_scripts/1password-cli.sh
   source $OMARCHY_INSTALL/arm_install_scripts/asdcontrol-prebuilt.sh
+  source $OMARCHY_INSTALL/arm_install_scripts/libinput-quirks.sh
 
   # Skip OBS Studio if SKIP_OBS is set (for faster testing)
   if [ -z "$SKIP_OBS" ]; then
