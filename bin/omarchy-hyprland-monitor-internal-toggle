@@ -15,6 +15,7 @@ DISABLED=$(hyprctl monitors all -j | jq -r --arg m "$INTERNAL" '.[] | select(.na
 
 if [[ $DISABLED == "true" ]]; then
   hyprctl keyword monitor "$INTERNAL,preferred,auto,auto"
+  hyprctl dispatch movecursor 0 0
   notify-send -u low "󰍹    Internal display on"
 else
   ACTIVE_COUNT=$(hyprctl monitors -j | jq 'length')
