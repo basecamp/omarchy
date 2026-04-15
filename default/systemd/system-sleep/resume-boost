@@ -5,11 +5,12 @@
 # restore the previous profile after 10 seconds.
 
 if [[ $1 == "pre" ]]; then
-  powerprofilesctl get > /tmp/power-profile-before-sleep
+  mkdir -p /run/omarchy
+  powerprofilesctl get > /run/omarchy/power-profile-before-sleep
 fi
 
 if [[ $1 == "post" ]]; then
-  previous=$(cat /tmp/power-profile-before-sleep 2>/dev/null || echo "balanced")
+  previous=$(cat /run/omarchy/power-profile-before-sleep 2>/dev/null || echo "balanced")
   powerprofilesctl set performance
   (sleep 10 && powerprofilesctl set "$previous") &
 fi
