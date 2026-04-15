@@ -1,6 +1,6 @@
 echo "Add xe.enable_psr=0 to CMDLINE for XPS Panther Lake systems missing it"
 
-if omarchy-hw-match "XPS" && omarchy-hw-intel-ptl && [ -f /etc/default/limine ]; then
+if omarchy-hw-dell-xps-oled && [ -f /etc/default/limine ]; then
   UPDATED=false
 
   if ! grep -q 'xe.enable_psr' /etc/default/limine; then
