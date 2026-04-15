@@ -6,19 +6,22 @@
 # EGLImages on the iGPU side, failing with EGL_BAD_MATCH and producing black
 # screens, flicker, and GPU process crashes.
 #
-# Fix: for Chromium only, force Mesa EGL (same GPU as the compositor) via a user
-# desktop file override. System-wide EGL is left alone so every other app keeps
-# NVIDIA EGL where it needs it.
+# Fix: for Chromium only, route launches through omarchy-launch-chromium, which
+# forces Mesa EGL (same GPU as the compositor) via __EGL_VENDOR_LIBRARY_FILENAMES
+# and picks the matching VAAPI driver. System-wide EGL is left alone so every
+# other app keeps NVIDIA EGL where it needs it.
 #
 # See: https://github.com/basecamp/omarchy/issues/4901
 
 STOCK_DESKTOP=/usr/share/applications/chromium.desktop
 USER_DESKTOP="$HOME/.local/share/applications/chromium.desktop"
 MESA_EGL=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+WRAPPER="$OMARCHY_PATH/bin/omarchy-launch-chromium"
 
 # Nothing to override, required bits missing, or user already has an override
 [[ -f $STOCK_DESKTOP ]] || exit 0
 [[ -f $MESA_EGL ]] || exit 0
+[[ -x $WRAPPER ]] || exit 0
 [[ -f $USER_DESKTOP ]] && exit 0
 
 # Only act when NVIDIA discrete + non-NVIDIA iGPU are both present
@@ -27,15 +30,26 @@ IGPU="$(lspci | grep -iE 'vga|3d|display' | grep -iv 'nvidia' | grep -iE 'intel|
 
 [[ -n $NVIDIA_GPU && -n $IGPU ]] || exit 0
 
-# Match VAAPI driver to the iGPU so libva doesn't fall back to NVIDIA's driver
-if echo "$IGPU" | grep -qi 'intel'; then
-  VAAPI_DRIVER="iHD"
-else
-  VAAPI_DRIVER="radeonsi"
-fi
-
 mkdir -p "$(dirname "$USER_DESKTOP")"
 
-# Rewrite every Exec= line so Desktop Actions (new-window, incognito) get the fix too
-sed -E "s|^Exec=(/usr/bin/chromium.*)|Exec=env __EGL_VENDOR_LIBRARY_FILENAMES=$MESA_EGL LIBVA_DRIVER_NAME=$VAAPI_DRIVER \\1|" \
-  "$STOCK_DESKTOP" >"$USER_DESKTOP"
+# Route every Exec= line through the wrapper so Desktop Actions (new-window,
+# incognito) get the fix too. The first token is kept a single command, so
+# callers that parse Exec= (like bin/omarchy-launch-browser) keep working.
+# Match both Exec=/usr/bin/chromium and bare Exec=chromium, followed by a
+# space or end-of-line so we don't accidentally match chromium-browser or
+# similar variants.
+TMP_DESKTOP=$(mktemp "${USER_DESKTOP}.tmp.XXXXXX") || exit 1
+trap 'rm -f "$TMP_DESKTOP"' EXIT
+
+sed -E "s@^Exec=(/usr/bin/chromium|chromium)( |\$)@Exec=$WRAPPER\2@" \
+  "$STOCK_DESKTOP" >"$TMP_DESKTOP"
+
+# Verify the substitution actually happened; otherwise we'd leave a dead
+# override that blocks future runs (the script exits early if $USER_DESKTOP
+# exists). If the stock .desktop format has drifted, bail out cleanly.
+if ! grep -q "^Exec=$WRAPPER" "$TMP_DESKTOP"; then
+  exit 0
+fi
+
+mv "$TMP_DESKTOP" "$USER_DESKTOP"
+trap - EXIT
