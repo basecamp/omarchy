@@ -36,6 +36,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/usb-autosuspend.sh
 run_logged $OMARCHY_INSTALL/config/hardware/ignore-power-button.sh
 run_logged $OMARCHY_INSTALL/config/hardware/nvidia.sh
 run_logged $OMARCHY_INSTALL/config/hardware/vulkan.sh
+run_logged $OMARCHY_INSTALL/config/hardware/fix-hybrid-chromium.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/intel/video-acceleration.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/lpmd.sh
