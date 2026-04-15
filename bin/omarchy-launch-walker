@@ -9,7 +9,7 @@ fi
 
 # Ensure walker service is running
 if ! pgrep -f "walker --gapplication-service" > /dev/null; then
-  setsid uwsm-app -- walker --gapplication-service &
+  setsid uwsm-app -- env GSK_RENDERER=cairo walker --gapplication-service &
 fi
 
 exec walker --width 644 --maxheight 300 --minheight 300 "$@"
