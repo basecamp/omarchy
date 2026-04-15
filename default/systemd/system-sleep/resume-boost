@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Temporarily switch to performance power profile on resume
+# to avoid sluggishness while the system catches up, then
+# drop back to balanced after 10 seconds.
+
+if [[ $1 == "post" ]]; then
+  powerprofilesctl set performance
+  (sleep 10 && powerprofilesctl set balanced) &
+fi
