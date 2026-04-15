@@ -18,7 +18,7 @@ mkdir -p "$HOME/.local/bin"
 
 cat > "$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
-exec npx --yes $package "\$@"
+exec mise exec node@latest -- npx --yes $package "\$@"
 EOF
 
 chmod +x "$HOME/.local/bin/$command"
