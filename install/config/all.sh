@@ -23,6 +23,7 @@ run_logged $OMARCHY_INSTALL/config/sudoless-asdcontrol.sh
 run_logged $OMARCHY_INSTALL/config/input-group.sh
 run_logged $OMARCHY_INSTALL/config/omarchy-ai-skill.sh
 run_logged $OMARCHY_INSTALL/config/kernel-modules-hook.sh
+run_logged $OMARCHY_INSTALL/config/powerprofilesctl-rules.sh
 run_logged $OMARCHY_INSTALL/config/wifi-powersave-rules.sh
 run_logged $OMARCHY_INSTALL/config/plocate-ac-only.sh
 
@@ -42,6 +43,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel/thermald.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/ipu7-camera.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/ptl-kernel.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/fix-wifi7-eht.sh
+run_logged $OMARCHY_INSTALL/config/hardware/intel/resume-boost.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/amd/rocm-smi.sh
 
