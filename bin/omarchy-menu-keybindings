@@ -46,8 +46,12 @@ parse_keycodes() {
   while IFS= read -r line; do
     if [[ $line =~ code:([0-9]+) ]]; then
       code="${BASH_REMATCH[1]}"
-      symbol=$(lookup_keycode_cached "$code" "$XKB_KEYMAP_CACHE")
-      echo "${line/code:${code}/$symbol}"
+      if [[ $code == "201" ]]; then
+        echo "${line/SUPER SHIFT,code:201/,COPILOT KEY}"
+      else
+        symbol=$(lookup_keycode_cached "$code" "$XKB_KEYMAP_CACHE")
+        echo "${line/code:${code}/$symbol}"
+      fi
     elif [[ $line =~ mouse:([0-9]+) ]]; then
       code="${BASH_REMATCH[1]}"
 
