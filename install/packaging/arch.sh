@@ -62,7 +62,13 @@ if [ -n "$OMARCHY_ARM" ]; then
   source $OMARCHY_INSTALL/arm_install_scripts/1password-app.sh
   source $OMARCHY_INSTALL/arm_install_scripts/1password-cli.sh
   source $OMARCHY_INSTALL/arm_install_scripts/asdcontrol-prebuilt.sh
-  source $OMARCHY_INSTALL/arm_install_scripts/libinput-quirks.sh
+
+  # libinput quirks are only useful on Asahi (keyd setups). Skip on VMs and
+  # other non-Asahi ARM hardware where `libinput quirks validate` may fail
+  # against an older/different libinput stack.
+  if [ -n "$ASAHI_ALARM" ]; then
+    source $OMARCHY_INSTALL/arm_install_scripts/libinput-quirks.sh
+  fi
 
   # Skip OBS Studio if SKIP_OBS is set (for faster testing)
   if [ -z "$SKIP_OBS" ]; then
