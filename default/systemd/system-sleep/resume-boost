@@ -12,5 +12,5 @@ fi
 if [[ $1 == "post" ]]; then
   previous=$(cat /run/omarchy/power-profile-before-sleep 2>/dev/null || echo "balanced")
   powerprofilesctl set performance
-  (sleep 10 && powerprofilesctl set "$previous") &
+  systemd-run --on-active=10 --timer-property=AccuracySec=1 powerprofilesctl set "$previous"
 fi
