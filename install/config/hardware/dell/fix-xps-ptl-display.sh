@@ -4,12 +4,12 @@
 if omarchy-hw-match "XPS" && omarchy-hw-intel-ptl; then
   echo "Detected Dell XPS on Panther Lake, applying display power-saving fixes..."
 
-  CMDLINE='KERNEL_CMDLINE[default]+=" xe.enable_psr=0"'
-  COMMENT='Disable Xe PSR on Dell XPS Panther Lake systems'
-
   if omarchy-hw-dell-xps-oled; then
     CMDLINE='KERNEL_CMDLINE[default]+=" xe.enable_psr=0 xe.enable_panel_replay=0"'
     COMMENT='Disable Xe PSR and Panel Replay on Dell XPS Panther Lake OLED systems'
+  else
+    CMDLINE='KERNEL_CMDLINE[default]+=" xe.enable_psr=0"'
+    COMMENT='Disable Xe PSR on Dell XPS Panther Lake systems'
   fi
 
   sudo mkdir -p /etc/limine-entry-tool.d
