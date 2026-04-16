@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Re-apply the system keyboard layout to Hyprland input config.
+
+bash "$OMARCHY_PATH/install/config/detect-keyboard-layout.sh"

@@ -7,3 +7,4 @@ omarchy-refresh-config hypr/bindings.conf
 omarchy-refresh-config hypr/input.conf
 omarchy-refresh-config hypr/looknfeel.conf
 omarchy-refresh-config hypr/hyprland.conf
+omarchy-detect-keyboard-layout
