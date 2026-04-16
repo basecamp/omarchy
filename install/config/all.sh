@@ -15,7 +15,6 @@ run_logged $OMARCHY_INSTALL/config/fix-powerprofilesctl-shebang.sh
 run_logged $OMARCHY_INSTALL/config/docker.sh
 run_logged $OMARCHY_INSTALL/config/mimetypes.sh
 run_logged $OMARCHY_INSTALL/config/nautilus-python.sh
-run_logged $OMARCHY_INSTALL/config/remove-fcitx5-autostart.sh
 run_logged $OMARCHY_INSTALL/config/localdb.sh
 run_logged $OMARCHY_INSTALL/config/walker-elephant.sh
 run_logged $OMARCHY_INSTALL/config/fast-shutdown.sh
@@ -44,6 +43,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel/thermald.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/ipu7-camera.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/ptl-kernel.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/fix-wifi7-eht.sh
+run_logged $OMARCHY_INSTALL/config/hardware/intel/resume-boost.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/dell/fix-xps-haptic-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/dell/fix-xps-ptl-display.sh

@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Set the power profile to the requested level, falling back to balanced
+# if the requested profile isn't available on this machine.
+#
+# Usage: omarchy-powerprofiles-set <ac|battery>
+
+mapfile -t profiles < <(powerprofilesctl list | awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }')
+
+case "$1" in
+  ac)
+    # Prefer performance, fall back to balanced
+    if [[ " ${profiles[*]} " == *" performance "* ]]; then
+      powerprofilesctl set performance
+    else
+      powerprofilesctl set balanced
+    fi
+    ;;
+  battery)
+    powerprofilesctl set balanced
+    ;;
+esac
