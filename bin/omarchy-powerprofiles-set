@@ -1,22 +1,72 @@
 #!/bin/bash
 
-# Set the power profile to the requested level, falling back to balanced
-# if the requested profile isn't available on this machine.
+# Set the requested power profile, falling back to balanced if the
+# requested profile isn't available on this machine.
 #
-# Usage: omarchy-powerprofiles-set <ac|battery>
+# Usage: omarchy-powerprofiles-set <ac|battery|performance|balanced|power-saver>
+
+OMARCHY_BIN=$(cd -- "$(dirname "$0")" && pwd)
 
 mapfile -t profiles < <(powerprofilesctl list | awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }')
 
-case "$1" in
-  ac)
-    # Prefer performance, fall back to balanced
-    if [[ " ${profiles[*]} " == *" performance "* ]]; then
-      powerprofilesctl set performance
-    else
-      powerprofilesctl set balanced
-    fi
-    ;;
-  battery)
-    powerprofilesctl set balanced
-    ;;
-esac
+profile_available() {
+  local profile
+
+  for profile in "${profiles[@]}"; do
+    [[ $profile == "$1" ]] && return 0
+  done
+
+  return 1
+}
+
+resolve_profile() {
+  case $1 in
+    ac)
+      if profile_available performance; then
+        printf '%s\n' performance
+      else
+        printf '%s\n' balanced
+      fi
+      ;;
+    battery)
+      printf '%s\n' balanced
+      ;;
+    performance|balanced|power-saver)
+      if profile_available "$1"; then
+        printf '%s\n' "$1"
+      else
+        printf '%s\n' balanced
+      fi
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+sync_intel_lpmd() {
+  local method
+
+  "$OMARCHY_BIN/omarchy-pkg-present" intel-lpmd || return 0
+  "$OMARCHY_BIN/omarchy-cmd-present" busctl || return 0
+  systemctl is-active --quiet intel_lpmd.service || return 0
+
+  # Mirror Omarchy's power profile choices into intel_lpmd when available.
+  case $1 in
+    performance) method="LPM_FORCE_OFF" ;;
+    balanced) method="LPM_AUTO" ;;
+    power-saver) method="LPM_FORCE_ON" ;;
+    *) return 0 ;;
+  esac
+
+  if (( EUID == 0 )); then
+    busctl call org.freedesktop.intel_lpmd /org/freedesktop/intel_lpmd org.freedesktop.intel_lpmd "$method" &>/dev/null || true
+  else
+    sudo -n busctl call org.freedesktop.intel_lpmd /org/freedesktop/intel_lpmd org.freedesktop.intel_lpmd "$method" &>/dev/null || true
+  fi
+}
+
+profile=$(resolve_profile "$1") || exit 1
+
+powerprofilesctl set "$profile" || exit $?
+sync_intel_lpmd "$profile"

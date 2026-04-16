@@ -4,13 +4,40 @@
 # to avoid sluggishness while the system catches up, then
 # restore the previous profile after 10 seconds.
 
+sync_intel_lpmd() {
+  local method
+
+  pacman -Q intel-lpmd &>/dev/null || return 0
+  command -v busctl &>/dev/null || return 0
+  systemctl is-active --quiet intel_lpmd.service || return 0
+
+  case $1 in
+    performance) method="LPM_FORCE_OFF" ;;
+    balanced) method="LPM_AUTO" ;;
+    power-saver) method="LPM_FORCE_ON" ;;
+    *) return 0 ;;
+  esac
+
+  busctl call org.freedesktop.intel_lpmd /org/freedesktop/intel_lpmd org.freedesktop.intel_lpmd "$method" &>/dev/null || true
+}
+
+set_profile() {
+  powerprofilesctl set "$1"
+  sync_intel_lpmd "$1"
+}
+
 if [[ $1 == "pre" ]]; then
   mkdir -p /run/omarchy
   powerprofilesctl get > /run/omarchy/power-profile-before-sleep
 fi
 
+if [[ $1 == "restore" ]]; then
+  set_profile "${2:-balanced}"
+  exit 0
+fi
+
 if [[ $1 == "post" ]]; then
   previous=$(cat /run/omarchy/power-profile-before-sleep 2>/dev/null || echo "balanced")
-  powerprofilesctl set performance
-  systemd-run --on-active=10 --timer-property=AccuracySec=1 powerprofilesctl set "$previous"
+  set_profile performance
+  systemd-run --on-active=10 --timer-property=AccuracySec=1 "$0" restore "$previous"
 fi
