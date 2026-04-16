@@ -14,7 +14,8 @@ fi
 DISABLED=$(hyprctl monitors all -j | jq -r --arg m "$INTERNAL" '.[] | select(.name == $m) | .disabled')
 
 if [[ $DISABLED == "true" ]]; then
-  hyprctl keyword monitor "$INTERNAL,preferred,auto,auto"
+  MONITOR_CONFIG=$(hyprctl monitors all -j | jq -r --arg m "$INTERNAL" '.[] | select(.name == $m) | . as $d | ($d.availableModes[0] | gsub("Hz";"")) as $mode | ($d.currentFormat | if endswith("2101010") then 10 else 8 end) as $depth | "\($d.name),\($mode),auto,\($d.scale),bitdepth,\($depth)"')
+  hyprctl keyword monitor "$MONITOR_CONFIG"
   hyprctl dispatch movecursor 0 0
   notify-send -u low "󰍹    Internal display on"
 else
