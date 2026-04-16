@@ -17,15 +17,4 @@ if omarchy-hw-match "XPS" && omarchy-hw-intel-ptl; then
 # $COMMENT
 $CMDLINE
 EOF
-
-  # Also append to /etc/default/limine if it exists, since it overrides drop-in configs
-  if [[ -f /etc/default/limine ]]; then
-    if ! grep -Fq 'xe.enable_psr' /etc/default/limine; then
-      echo 'KERNEL_CMDLINE[default]+=" xe.enable_psr=0"' | sudo tee -a /etc/default/limine >/dev/null
-    fi
-
-    if omarchy-hw-dell-xps-oled && ! grep -Fq 'xe.enable_panel_replay' /etc/default/limine; then
-      echo 'KERNEL_CMDLINE[default]+=" xe.enable_panel_replay=0"' | sudo tee -a /etc/default/limine >/dev/null
-    fi
-  fi
 fi
