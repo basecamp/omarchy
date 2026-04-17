@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Toggle permanent Hyprland flags by copying them into a directory that's sourced entirely.
+
+ENABLED_NOTIFICATION=""
+DISABLED_NOTIFICATION=""
+
+while [[ $# -gt 1 ]]; do
+  case $1 in
+    --enabled-notification) ENABLED_NOTIFICATION="$2"; shift 2 ;;
+    --disabled-notification) DISABLED_NOTIFICATION="$2"; shift 2 ;;
+    *) break ;;
+  esac
+done
+
+FLAG_NAME="$1"
+flag="$HOME/.local/state/omarchy/flags/hypr/$FLAG_NAME.conf"
+flag_source="$OMARCHY_PATH/default/hypr/flags/$FLAG_NAME.conf"
+
+if [[ -f $flag ]]; then
+  rm $flag
+  [[ -n $DISABLED_NOTIFICATION ]] && notify-send -u low "$DISABLED_NOTIFICATION"
+elif [[ -f $flag_source ]]; then
+  cp $flag_source $flag
+  [[ -n $ENABLED_NOTIFICATION ]] && notify-send -u low "$ENABLED_NOTIFICATION"
+else
+  echo "Flag not found"
+  exit 1
+fi
+
+hyprctl reload

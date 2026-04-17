@@ -1,29 +1,16 @@
 #!/bin/bash
 
-# Toggle the internal laptop display on/off.
-# Useful when connected to an external monitor and you want to close the lid
-# or just use the external display only.
+# Toggle the internal laptop display on/off using the flag system.
 
-INTERNAL=$(hyprctl monitors all -j | jq -r '.[] | select(.name | startswith("eDP")) | .name')
-
-if [[ -z $INTERNAL ]]; then
-  notify-send -u low "󰍹    No internal display found"
-  exit 1
-fi
-
-DISABLED=$(hyprctl monitors all -j | jq -r --arg m "$INTERNAL" '.[] | select(.name == $m) | .disabled')
-
-if [[ $DISABLED == "true" ]]; then
-  hyprctl keyword monitor "$INTERNAL,preferred,auto,auto"
-  hyprctl dispatch movecursor 0 0
-  notify-send -u low "󰍹    Internal display on"
-else
+if omarchy-hyprland-flag-missing internal-monitor-disable; then
   ACTIVE_COUNT=$(hyprctl monitors -j | jq 'length')
   if [[ $ACTIVE_COUNT -le 1 ]]; then
     notify-send -u low "󰍹    Can't disable the only active display"
     exit 1
   fi
-
-  hyprctl keyword monitor "$INTERNAL,disable"
-  notify-send -u low "󰍹    Internal display off"
 fi
+
+omarchy-hyprland-flag-toggle \
+  --enabled-notification "󰍹    Internal display off" \
+  --disabled-notification "󰍹    Internal display on" \
+  internal-monitor-disable

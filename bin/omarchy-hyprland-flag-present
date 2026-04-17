@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Check if a Hyprland flag is currently enabled.
+
+[[ -f "$HOME/.local/state/omarchy/flags/hypr/$1.conf" ]]
