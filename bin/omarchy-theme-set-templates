@@ -58,6 +58,30 @@ if [[ -f $COLORS_FILE ]]; then
     colors[$key]="$value"
   done <"$COLORS_FILE"
 
+  # Legacy compatibility: map ANSI color0..color15 and raw bg/fg to semantic names
+  [[ ${colors[bg]} ]]            || colors[bg]="${colors[background]}"
+  [[ ${colors[fg]} ]]            || colors[fg]="${colors[foreground]}"
+  [[ ${colors[red]} ]]           || colors[red]="${colors[color1]}"
+  [[ ${colors[green]} ]]         || colors[green]="${colors[color2]}"
+  [[ ${colors[yellow]} ]]        || colors[yellow]="${colors[color3]}"
+  [[ ${colors[blue]} ]]          || colors[blue]="${colors[color4]}"
+  [[ ${colors[purple]} ]]        || colors[purple]="${colors[color5]}"
+  [[ ${colors[cyan]} ]]          || colors[cyan]="${colors[color6]}"
+  [[ ${colors[bright_red]} ]]    || colors[bright_red]="${colors[color9]}"
+  [[ ${colors[bright_green]} ]]  || colors[bright_green]="${colors[color10]}"
+  [[ ${colors[bright_yellow]} ]] || colors[bright_yellow]="${colors[color11]}"
+  [[ ${colors[bright_blue]} ]]   || colors[bright_blue]="${colors[color12]}"
+  [[ ${colors[bright_purple]} ]] || colors[bright_purple]="${colors[color13]}"
+  [[ ${colors[bright_cyan]} ]]   || colors[bright_cyan]="${colors[color14]}"
+  [[ ${colors[light_fg]} ]]      || colors[light_fg]="${colors[color7]:-${colors[foreground]}}"
+  [[ ${colors[bright_fg]} ]]     || colors[bright_fg]="${colors[color15]:-${colors[foreground]}}"
+  [[ ${colors[lighter_bg]} ]]    || colors[lighter_bg]="${colors[color0]:-${colors[background]}}"
+  [[ ${colors[dark_fg]} ]]       || colors[dark_fg]="${colors[color8]:-${colors[color0]:-${colors[foreground]}}}"
+  [[ ${colors[muted]} ]]         || colors[muted]="${colors[color8]:-${colors[dark_fg]}}"
+  [[ ${colors[selection]} ]]     || colors[selection]="${colors[selection_background]:-${colors[color8]:-${colors[color0]}}}"
+  [[ ${colors[orange]} ]]        || colors[orange]="${colors[yellow]}"
+  [[ ${colors[brown]} ]]         || colors[brown]=$(darken_color "${colors[orange]}" 50)
+
   # Auto-generate base24 colors from base16 shades when not defined
   [[ ${colors[dark_bg]} ]]       || colors[dark_bg]=$(darken_color "${colors[bg]}" 75)
   [[ ${colors[darker_bg]} ]]     || colors[darker_bg]=$(darken_color "${colors[bg]}" 50)
