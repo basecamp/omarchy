@@ -12,11 +12,13 @@ fi
 
 # Add :allow-discards to the cryptdevice= parameter in the boot config
 # Format: cryptdevice=device:dmname -> cryptdevice=device:dmname:allow-discards
-sudo sed -i 's/\(cryptdevice=[^ ]*\)/\1:allow-discards/' /etc/default/limine
+sudo sed -i 's/\(cryptdevice=[^ "]*\)/\1:allow-discards/' /etc/default/limine
 
-# Enable allow-discards on the running LUKS device so TRIM works immediately
-if [[ -b /dev/mapper/root ]]; then
-  sudo cryptsetup --allow-discards --persistent refresh root
+# Extract the dmname from cryptdevice=device:dmname and enable allow-discards
+# on the running LUKS device so TRIM works immediately
+DMNAME=$(grep -oP 'cryptdevice=[^: "]+:\K[^: "]+' /etc/default/limine | head -1)
+if [[ -n $DMNAME ]] && [[ -b /dev/mapper/$DMNAME ]]; then
+  sudo cryptsetup --allow-discards --persistent refresh "$DMNAME"
 fi
 
 # Regenerate initramfs and boot entry
