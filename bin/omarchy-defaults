@@ -1,0 +1,808 @@
+#!/bin/bash
+
+desktop_search_paths() {
+  echo "$HOME/.local/share/applications"
+  echo "$HOME/.nix-profile/share/applications"
+  echo "/usr/share/applications"
+}
+
+desktop_path() {
+  local desktop_id="$1"
+  local base
+
+  while IFS= read -r base; do
+    if [[ -f $base/$desktop_id ]]; then
+      echo "$base/$desktop_id"
+      return 0
+    fi
+  done < <(desktop_search_paths)
+
+  return 1
+}
+
+desktop_field() {
+  local desktop_id="$1"
+  local field="$2"
+  local path
+
+  path=$(desktop_path "$desktop_id") || return 1
+  sed -n "s/^$field=//p" "$path" | head -1
+}
+
+desktop_name() {
+  local desktop_id="$1"
+  local name
+
+  name=$(desktop_field "$desktop_id" "Name" 2>/dev/null) || true
+  echo "${name:-${desktop_id%.desktop}}"
+}
+
+desktop_has_mime() {
+  local desktop_id="$1"
+  local mime="$2"
+  local mimetypes
+
+  mimetypes=$(desktop_field "$desktop_id" "MimeType" 2>/dev/null) || return 1
+  [[ $mimetypes == *"$mime"* ]]
+}
+
+desktop_is_browser() {
+  local desktop_id="$1"
+  local categories mimetypes
+
+  categories=$(desktop_field "$desktop_id" "Categories" 2>/dev/null) || categories=""
+  mimetypes=$(desktop_field "$desktop_id" "MimeType" 2>/dev/null) || mimetypes=""
+
+  [[ $categories == *WebBrowser* || $mimetypes == *"x-scheme-handler/http"* ]]
+}
+
+desktop_ids() {
+  local base file
+  declare -A seen=()
+
+  while IFS= read -r base; do
+    [[ -d $base ]] || continue
+
+    for file in "$base"/*.desktop; do
+      [[ -f $file ]] || continue
+
+      if [[ -z ${seen[$(basename "$file")]:-} ]]; then
+        seen[$(basename "$file")]=1
+        echo "$(basename "$file")"
+      fi
+    done
+  done < <(desktop_search_paths)
+}
+
+role_primary_mime() {
+  case "$1" in
+  browser) echo "x-scheme-handler/http" ;;
+  filemanager) echo "inode/directory" ;;
+  mail) echo "x-scheme-handler/mailto" ;;
+  image) echo "image/png" ;;
+  pdf) echo "application/pdf" ;;
+  video) echo "video/mp4" ;;
+  audio) echo "audio/mpeg" ;;
+  *)
+    return 1
+    ;;
+  esac
+}
+
+mime_registered_desktop_ids() {
+  local mime="$1"
+
+  command -v gio >/dev/null 2>&1 || return 1
+
+  gio mime "$mime" 2>/dev/null | awk '
+    /^Registered applications:/ { in_registered = 1; next }
+    /^Recommended applications:/ { in_registered = 0 }
+    in_registered {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
+      sub(/;$/, "", $0)
+      if ($0 != "") {
+        print $0
+      }
+    }
+  '
+}
+
+role_default_value() {
+  case "$1" in
+  terminal) echo "Alacritty.desktop" ;;
+  shell) echo "/bin/bash" ;;
+  browser) echo "chromium.desktop" ;;
+  editor) echo "nvim" ;;
+  filemanager) echo "org.gnome.Nautilus.desktop" ;;
+  mail) echo "HEY.desktop" ;;
+  image) echo "imv.desktop" ;;
+  pdf) echo "org.gnome.Evince.desktop" ;;
+  video) echo "mpv.desktop" ;;
+  audio) echo "mpv.desktop" ;;
+  *)
+    echo "Unknown role: $1" >&2
+    return 1
+    ;;
+  esac
+}
+
+role_note_text() {
+  case "$1" in
+  shell) echo "requires relogin" ;;
+  *)
+    echo ""
+    ;;
+  esac
+}
+
+editor_specs() {
+  cat <<'EOF'
+nvim|Neovim|nvim.desktop|nvim
+code|VSCode|code.desktop|code
+cursor|Cursor|cursor.desktop,Cursor.desktop|cursor
+zed|Zed|dev.zed.Zed.desktop,zed.desktop|zed
+subl|Sublime Text|sublime_text.desktop|subl,sublime_text
+emacs|Emacs|emacsclient.desktop,emacs.desktop|emacsclient,emacs
+hx|Helix|hx.desktop|hx
+vim|Vim|vim.desktop|vim
+nano|Nano|nano.desktop|nano
+micro|Micro|micro.desktop|micro
+EOF
+}
+
+editor_spec_field() {
+  local key="$1"
+  local field_index="$2"
+  local line
+
+  line=$(editor_specs | awk -F'|' -v key="$key" '$1 == key { print $0 }') || true
+  [[ -n $line ]] || return 1
+  echo "$line" | cut -d'|' -f"$field_index"
+}
+
+editor_key_from_value() {
+  local value="$1"
+  local normalized="${value##*/}"
+  local key desktop_ids commands desktop_id command
+
+  normalized="${normalized%\"}"
+  normalized="${normalized#\"}"
+  normalized="${normalized%\'}"
+  normalized="${normalized#\'}"
+
+  while IFS='|' read -r key _ desktop_ids commands; do
+    if [[ $normalized == "$key" ]]; then
+      echo "$key"
+      return 0
+    fi
+
+    IFS=',' read -r -a command_list <<<"$commands"
+    for command in "${command_list[@]}"; do
+      if [[ $normalized == "$command" ]]; then
+        echo "$key"
+        return 0
+      fi
+    done
+
+    IFS=',' read -r -a desktop_list <<<"$desktop_ids"
+    for desktop_id in "${desktop_list[@]}"; do
+      if [[ $normalized == "$desktop_id" || $normalized == "${desktop_id%.desktop}" ]]; then
+        echo "$key"
+        return 0
+      fi
+    done
+  done < <(editor_specs)
+
+  echo "$normalized"
+}
+
+editor_desktop_id() {
+  local key="$1"
+  local desktop_ids desktop_id
+
+  desktop_ids=$(editor_spec_field "$key" 3) || return 1
+  IFS=',' read -r -a desktop_list <<<"$desktop_ids"
+
+  for desktop_id in "${desktop_list[@]}"; do
+    if desktop_path "$desktop_id" >/dev/null 2>&1; then
+      echo "$desktop_id"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+editor_command() {
+  local key="$1"
+  local commands command
+
+  commands=$(editor_spec_field "$key" 4) || return 1
+  IFS=',' read -r -a command_list <<<"$commands"
+
+  for command in "${command_list[@]}"; do
+    if command -v "$command" >/dev/null 2>&1; then
+      echo "$command"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+editor_label() {
+  local key="$1"
+  local label
+
+  label=$(editor_spec_field "$key" 2) || true
+  echo "${label:-$key}"
+}
+
+editor_is_terminal() {
+  case "$1" in
+  nvim | vim | nano | micro | hx | fresh) return 0 ;;
+  *)
+    return 1
+    ;;
+  esac
+}
+
+role_mode_value() {
+  local role="$1"
+  local value="${2:-}"
+
+  case "$role" in
+  terminal | shell) echo "tui" ;;
+  editor)
+    if editor_is_terminal "$(editor_key_from_value "$value")"; then
+      echo "tui"
+    else
+      echo "gui"
+    fi
+    ;;
+  browser | filemanager | mail | image | pdf | video | audio) echo "gui" ;;
+  *)
+    echo "Unknown role: $role" >&2
+    return 1
+    ;;
+  esac
+}
+
+ensure_uwsm_default_file() {
+  mkdir -p "$HOME/.config/uwsm"
+
+  if [[ ! -f $HOME/.config/uwsm/default ]]; then
+    cat >"$HOME/.config/uwsm/default" <<'EOF'
+# Changes require a restart to take effect.
+
+export TERMINAL=xdg-terminal-exec
+export EDITOR=nvim
+EOF
+  fi
+}
+
+replace_export() {
+  local variable="$1"
+  local value="$2"
+  local file="$3"
+  local tmp
+
+  tmp=$(mktemp)
+
+  if [[ -f $file ]]; then
+    awk -v variable="$variable" -v value="$value" '
+      BEGIN { replaced = 0 }
+      $0 ~ "^export " variable "=" {
+        print "export " variable "=" value
+        replaced = 1
+        next
+      }
+      { print }
+      END {
+        if (!replaced) {
+          print "export " variable "=" value
+        }
+      }
+    ' "$file" >"$tmp"
+  else
+    printf '# Changes require a restart to take effect.\n\nexport %s=%s\n' "$variable" "$value" >"$tmp"
+  fi
+
+  mv "$tmp" "$file"
+}
+
+current_editor_value() {
+  local editor
+
+  editor=$(sed -n 's/^export EDITOR=//p' "$HOME/.config/uwsm/default" 2>/dev/null | tail -1) || true
+  [[ -n $editor ]] || editor="${EDITOR:-nvim}"
+  echo "$editor"
+}
+
+current_shell_value() {
+  getent passwd "$USER" | cut -d: -f7
+}
+
+current_terminal_value() {
+  local terminal
+
+  terminal=$(xdg-terminal-exec --print-id 2>/dev/null) || true
+
+  if [[ -z $terminal ]]; then
+    terminal=$(awk 'NF && $1 !~ /^#/' "$HOME/.config/xdg-terminals.list" 2>/dev/null | head -1) || true
+  fi
+
+  echo "$terminal"
+}
+
+role_current_value() {
+  local role="$1"
+
+  case "$role" in
+  terminal) current_terminal_value ;;
+  shell) current_shell_value ;;
+  browser) xdg-settings get default-web-browser 2>/dev/null ;;
+  editor) editor_key_from_value "$(current_editor_value)" ;;
+  editor-desktop) editor_desktop_id "$(editor_key_from_value "$(current_editor_value)")" ;;
+  filemanager) xdg-mime query default inode/directory 2>/dev/null ;;
+  mail) xdg-mime query default x-scheme-handler/mailto 2>/dev/null ;;
+  image) xdg-mime query default image/png 2>/dev/null ;;
+  pdf) xdg-mime query default application/pdf 2>/dev/null ;;
+  video) xdg-mime query default video/mp4 2>/dev/null ;;
+  audio) xdg-mime query default audio/mpeg 2>/dev/null ;;
+  *)
+    echo "Unknown role: $role" >&2
+    return 1
+    ;;
+  esac
+}
+
+role_value_label() {
+  local role="$1"
+  local value="$2"
+
+  case "$role" in
+  terminal | browser | filemanager | mail | image | pdf | video | audio) desktop_name "$value" ;;
+  shell)
+    case "${value##*/}" in
+    zsh) echo "Zsh" ;;
+    bash) echo "Bash" ;;
+    fish) echo "Fish" ;;
+    sh) echo "Sh" ;;
+    *) echo "${value##*/}" ;;
+    esac
+    ;;
+  editor) editor_label "$(editor_key_from_value "$value")" ;;
+  *)
+    echo "$value"
+    ;;
+  esac
+}
+
+list_terminal_candidates() {
+  local desktop_id
+
+  for desktop_id in Alacritty.desktop com.mitchellh.ghostty.desktop kitty.desktop; do
+    if desktop_path "$desktop_id" >/dev/null 2>&1; then
+      printf '%s|%s\n' "$desktop_id" "$(desktop_name "$desktop_id")"
+    fi
+  done
+}
+
+list_shell_candidates() {
+  local shell
+  local name
+  declare -A seen=()
+
+  while IFS= read -r shell; do
+    [[ -n $shell ]] || continue
+    [[ $shell == \#* ]] && continue
+    [[ $shell == */sh || $shell == *rbash || $shell == *git-shell || $shell == *systemd-home-fallback-shell ]] && continue
+
+    name="${shell##*/}"
+    [[ -n ${seen[$name]:-} ]] && continue
+
+    seen[$name]=1
+    printf '%s|%s\n' "$shell" "$(role_value_label shell "$shell")"
+  done </etc/shells
+}
+
+list_desktop_candidates_scan() {
+  local role="$1"
+  local desktop_id
+  local label
+  local mime
+  declare -A seen=()
+
+  mime=$(role_primary_mime "$role") || return 1
+
+  while IFS= read -r desktop_id; do
+    [[ -n $desktop_id ]] || continue
+    [[ -n ${seen[$desktop_id]:-} ]] && continue
+
+    desktop_has_mime "$desktop_id" "$mime" || continue
+
+    if [[ $role != "browser" && $role != "pdf" ]]; then
+      desktop_is_browser "$desktop_id" && continue
+    fi
+
+    seen[$desktop_id]=1
+    label=$(desktop_name "$desktop_id")
+    printf '%s|%s\n' "$desktop_id" "$label"
+  done < <(desktop_ids)
+}
+
+list_desktop_candidates() {
+  local role="$1"
+  local mime
+  local desktop_id
+  local label
+  declare -A seen=()
+
+  mime=$(role_primary_mime "$role") || {
+    echo "Unknown desktop role: $role" >&2
+    return 1
+  }
+
+  while IFS= read -r desktop_id; do
+    [[ -n $desktop_id ]] || continue
+    [[ -n ${seen[$desktop_id]:-} ]] && continue
+
+    if [[ $role != "browser" && $role != "pdf" ]]; then
+      desktop_is_browser "$desktop_id" && continue
+    fi
+
+    seen[$desktop_id]=1
+    label=$(desktop_name "$desktop_id")
+    printf '%s|%s\n' "$desktop_id" "$label"
+  done < <(mime_registered_desktop_ids "$mime")
+
+  if ((${#seen[@]} == 0)); then
+    list_desktop_candidates_scan "$role"
+  fi
+}
+
+list_editor_candidates() {
+  local key label
+
+  while IFS='|' read -r key label _ _; do
+    if editor_desktop_id "$key" >/dev/null 2>&1 && editor_command "$key" >/dev/null 2>&1; then
+      printf '%s|%s\n' "$key" "$label"
+    fi
+  done < <(editor_specs)
+}
+
+role_candidates() {
+  local role="$1"
+
+  case "$role" in
+  terminal) list_terminal_candidates ;;
+  shell) list_shell_candidates ;;
+  browser | filemanager | mail | image | pdf | video | audio) list_desktop_candidates "$role" ;;
+  editor) list_editor_candidates ;;
+  *)
+    echo "Unknown role: $role" >&2
+    return 1
+    ;;
+  esac
+}
+
+set_terminal_default() {
+  local desktop_id="$1"
+
+  mkdir -p "$HOME/.config"
+  cat >"$HOME/.config/xdg-terminals.list" <<EOF
+# Terminal emulator preference order for xdg-terminal-exec
+# The first found and valid terminal will be used
+$desktop_id
+EOF
+}
+
+set_editor_default() {
+  local key="$1"
+  local command desktop_id
+
+  command=$(editor_command "$key") || {
+    echo "Editor '$key' is not installed" >&2
+    return 1
+  }
+  desktop_id=$(editor_desktop_id "$key") || {
+    echo "Editor desktop entry for '$key' is not available" >&2
+    return 1
+  }
+
+  ensure_uwsm_default_file
+  replace_export "EDITOR" "$command" "$HOME/.config/uwsm/default"
+
+  xdg-mime default "$desktop_id" \
+    text/plain \
+    text/english \
+    text/x-makefile \
+    text/x-c++hdr \
+    text/x-c++src \
+    text/x-chdr \
+    text/x-csrc \
+    text/x-java \
+    text/x-moc \
+    text/x-pascal \
+    text/x-tcl \
+    text/x-tex \
+    application/x-shellscript \
+    text/x-c \
+    text/x-c++ \
+    application/xml \
+    text/xml
+}
+
+set_browser_default() {
+  local desktop_id="$1"
+
+  xdg-settings set default-web-browser "$desktop_id"
+  xdg-mime default "$desktop_id" text/html x-scheme-handler/http x-scheme-handler/https
+}
+
+set_filemanager_default() {
+  xdg-mime default "$1" inode/directory
+}
+
+set_mail_default() {
+  xdg-mime default "$1" x-scheme-handler/mailto
+}
+
+set_image_default() {
+  xdg-mime default "$1" image/png image/jpeg image/gif image/webp image/bmp image/tiff
+}
+
+set_pdf_default() {
+  xdg-mime default "$1" application/pdf
+}
+
+set_video_default() {
+  xdg-mime default "$1" \
+    video/mp4 \
+    video/x-msvideo \
+    video/x-matroska \
+    video/x-flv \
+    video/x-ms-wmv \
+    video/mpeg \
+    video/ogg \
+    video/webm \
+    video/quicktime \
+    video/3gpp \
+    video/3gpp2 \
+    video/x-ms-asf \
+    video/x-ogm+ogg \
+    video/x-theora+ogg \
+    application/ogg
+}
+
+set_audio_default() {
+  xdg-mime default "$1" \
+    audio/mpeg \
+    audio/mp4 \
+    audio/x-m4a \
+    audio/flac \
+    audio/ogg \
+    audio/opus \
+    audio/wav \
+    audio/x-wav \
+    audio/webm \
+    audio/aac \
+    audio/x-aac \
+    audio/x-mpegurl \
+    audio/x-scpls \
+    audio/m3u
+}
+
+apply_role_value() {
+  local role="$1"
+  local value="$2"
+
+  case "$role" in
+  terminal)
+    desktop_path "$value" >/dev/null 2>&1 || {
+      echo "Terminal desktop entry '$value' is not installed" >&2
+      return 1
+    }
+    set_terminal_default "$value"
+    ;;
+  shell)
+    grep -qxF "$value" /etc/shells || {
+      echo "Shell '$value' is not listed in /etc/shells" >&2
+      return 1
+    }
+    chsh -s "$value"
+    ;;
+  browser)
+    desktop_path "$value" >/dev/null 2>&1 || {
+      echo "Browser desktop entry '$value' is not installed" >&2
+      return 1
+    }
+    set_browser_default "$value"
+    ;;
+  editor)
+    set_editor_default "$value"
+    ;;
+  filemanager)
+    desktop_path "$value" >/dev/null 2>&1 || {
+      echo "File manager desktop entry '$value' is not installed" >&2
+      return 1
+    }
+    set_filemanager_default "$value"
+    ;;
+  mail)
+    desktop_path "$value" >/dev/null 2>&1 || {
+      echo "Mail desktop entry '$value' is not installed" >&2
+      return 1
+    }
+    set_mail_default "$value"
+    ;;
+  image)
+    desktop_path "$value" >/dev/null 2>&1 || {
+      echo "Image viewer desktop entry '$value' is not installed" >&2
+      return 1
+    }
+    set_image_default "$value"
+    ;;
+  pdf)
+    desktop_path "$value" >/dev/null 2>&1 || {
+      echo "PDF viewer desktop entry '$value' is not installed" >&2
+      return 1
+    }
+    set_pdf_default "$value"
+    ;;
+  video)
+    desktop_path "$value" >/dev/null 2>&1 || {
+      echo "Video player desktop entry '$value' is not installed" >&2
+      return 1
+    }
+    set_video_default "$value"
+    ;;
+  audio)
+    desktop_path "$value" >/dev/null 2>&1 || {
+      echo "Audio player desktop entry '$value' is not installed" >&2
+      return 1
+    }
+    set_audio_default "$value"
+    ;;
+  *)
+    echo "Unknown role: $role" >&2
+    return 1
+    ;;
+  esac
+}
+
+desktop_launch_id() {
+  echo "${1%.desktop}"
+}
+
+open_role_value() {
+  local role="$1"
+  local value="${2:-}"
+  local key command
+
+  [[ -n $value ]] || value=$(role_current_value "$role")
+
+  case "$role" in
+  terminal)
+    setsid gtk-launch "$(desktop_launch_id "$value")"
+    ;;
+  shell)
+    setsid xdg-terminal-exec -e "$value"
+    ;;
+  editor)
+    key=$(editor_key_from_value "$value")
+    command=$(editor_command "$key") || {
+      echo "Editor '$key' is not installed" >&2
+      return 1
+    }
+
+    if editor_is_terminal "$key"; then
+      omarchy-launch-tui "$command"
+    else
+      setsid uwsm-app -- "$command"
+    fi
+    ;;
+  browser | filemanager | mail | image | pdf | video | audio)
+    setsid gtk-launch "$(desktop_launch_id "$value")"
+    ;;
+  *)
+    echo "Unknown role: $role" >&2
+    return 1
+    ;;
+  esac
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  omarchy-defaults current <role>
+  omarchy-defaults list <role>
+  omarchy-defaults label <role> <value>
+  omarchy-defaults apply <role> <value>
+  omarchy-defaults open <role> [value]
+  omarchy-defaults note <role>
+  omarchy-defaults mode <role> <value>
+  omarchy-defaults summary
+  omarchy-defaults export
+  omarchy-defaults doctor
+EOF
+}
+
+summary() {
+  local role current label
+
+  for role in terminal shell browser editor filemanager mail image pdf video audio; do
+    current=$(role_current_value "$role" 2>/dev/null) || current=""
+    if [[ -n $current ]]; then
+      label=$(role_value_label "$role" "$current")
+    else
+      label="Not set"
+    fi
+
+    printf '%s|%s|%s\n' "$role" "$current" "$label"
+  done
+}
+
+export_values() {
+  local role current
+
+  for role in terminal shell browser editor filemanager mail image pdf video audio; do
+    current=$(role_current_value "$role" 2>/dev/null) || current=""
+    printf '%s=%s\n' "$role" "$current"
+  done
+}
+
+doctor() {
+  local role current label note
+
+  for role in terminal shell browser editor filemanager mail image pdf video audio; do
+    current=$(role_current_value "$role" 2>/dev/null) || current=""
+    label="Not set"
+    [[ -n $current ]] && label=$(role_value_label "$role" "$current")
+    note=$(role_note_text "$role")
+
+    if [[ -n $note ]]; then
+      printf '%s: %s (%s)\n' "$role" "$label" "$note"
+    else
+      printf '%s: %s\n' "$role" "$label"
+    fi
+  done
+}
+
+case "${1:-}" in
+current)
+  role_current_value "${2:-}" || exit 1
+  ;;
+list)
+  role_candidates "${2:-}" || exit 1
+  ;;
+label)
+  role_value_label "${2:-}" "${3:-}" || exit 1
+  ;;
+apply)
+  apply_role_value "${2:-}" "${3:-}" || exit 1
+  ;;
+open)
+  open_role_value "${2:-}" "${3:-}" || exit 1
+  ;;
+note)
+  role_note_text "${2:-}" || exit 1
+  ;;
+mode)
+  role_mode_value "${2:-}" "${3:-}" || exit 1
+  ;;
+summary)
+  summary
+  ;;
+export)
+  export_values
+  ;;
+doctor)
+  doctor
+  ;;
+*)
+  usage
+  exit 1
+  ;;
+esac

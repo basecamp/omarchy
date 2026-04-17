@@ -220,25 +220,30 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
-  [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
-  [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
-  options="$options\n󰱔  DNS\n  Security\n  Config"
+  local options
 
-  case $(menu "Setup" "$options") in
-  *Audio*) omarchy-launch-audio ;;
-  *Wifi*) omarchy-launch-wifi ;;
-  *Bluetooth*) omarchy-launch-bluetooth ;;
-  *Power*) show_setup_power_menu ;;
-  *System*) show_setup_system_menu ;;
-  *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
-  *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
-  *Input*) open_in_editor ~/.config/hypr/input.conf ;;
-  *DNS*) present_terminal omarchy-setup-dns ;;
-  *Security*) show_setup_security_menu ;;
-  *Config*) show_setup_config_menu ;;
-  *) show_main_menu ;;
-  esac
+  while true; do
+    options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
+    [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
+    [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
+    options="$options\n  Default Apps\n󰱔  DNS\n  Security\n  Config"
+
+    case $(menu "Setup" "$options") in
+    *Audio*) omarchy-launch-audio; return ;;
+    *Wifi*) omarchy-launch-wifi; return ;;
+    *Bluetooth*) omarchy-launch-bluetooth; return ;;
+    *Power*) show_setup_power_menu; return ;;
+    *System*) show_setup_system_menu; return ;;
+    *Monitors*) open_in_editor ~/.config/hypr/monitors.conf; return ;;
+    *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf; return ;;
+    *Input*) open_in_editor ~/.config/hypr/input.conf; return ;;
+    *Default*) omarchy-setup-defaults && return ;;
+    *DNS*) present_terminal omarchy-setup-dns; return ;;
+    *Security*) show_setup_security_menu; return ;;
+    *Config*) show_setup_config_menu; return ;;
+    *) show_main_menu; return ;;
+    esac
+  done
 }
 
 show_setup_power_menu() {
@@ -260,7 +265,7 @@ show_setup_security_menu() {
 }
 
 show_setup_config_menu() {
-  case $(menu "Setup" "  Defaults\n  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  case $(menu "Setup" "  UWSM Defaults\n  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
   *Defaults*) open_in_editor ~/.config/uwsm/default ;;
   *Hyprland*) open_in_editor ~/.config/hypr/hyprland.conf ;;
   *Hypridle*) open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
@@ -608,6 +613,7 @@ go_to_menu() {
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
   *style*) show_style_menu ;;
+  *defaults*) omarchy-setup-defaults ;;
   *theme*) show_theme_menu ;;
   *screenrecord*) show_screenrecord_menu ;;
   *setup*) show_setup_menu ;;

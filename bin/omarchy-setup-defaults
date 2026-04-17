@@ -1,0 +1,277 @@
+#!/bin/bash
+
+# Select Omarchy and XDG default applications using the themed Walker dmenu UI.
+
+export PATH="$HOME/.local/share/omarchy/bin:$PATH"
+
+SUMMARY_CACHE=""
+declare -A CANDIDATE_CACHE=()
+
+menu() {
+  local prompt="$1"
+  local options="$2"
+  local extra="${3:-}"
+  local preselect="${4:-}"
+  local index
+  local width
+  local longest
+
+  read -r -a args <<<"$extra"
+
+  if [[ $extra != *"--width"* ]]; then
+    longest=$(printf '%s\n%s\n' "$prompt" "$(echo -e "$options")" | awk 'length > max { max = length } END { print max + 0 }')
+    width=$((180 + longest * 8))
+    ((width < 300)) && width=300
+    ((width > 640)) && width=640
+    args+=("--width" "$width")
+  fi
+
+  if [[ -n $preselect ]]; then
+    index=$(echo -e "$options" | grep -nxF "$preselect" | cut -d: -f1)
+    if [[ -n $index ]]; then
+      args+=("-c" "$index")
+    fi
+  fi
+
+  echo -e "$options" | omarchy-launch-walker --dmenu --minheight 1 --maxheight 560 -p "$prompt…" "${args[@]}" 2>/dev/null
+}
+
+role_label() {
+  case "$1" in
+  terminal) echo "Terminal" ;;
+  shell) echo "Shell" ;;
+  browser) echo "Browser" ;;
+  editor) echo "Editor" ;;
+  filemanager) echo "File Manager" ;;
+  mail) echo "Mail App" ;;
+  image) echo "Image Viewer" ;;
+  pdf) echo "PDF Viewer" ;;
+  video) echo "Video Player" ;;
+  audio) echo "Audio Player" ;;
+  *)
+    echo "$1"
+    ;;
+  esac
+}
+
+role_icon() {
+  case "$1" in
+  terminal) echo "" ;;
+  shell) echo "" ;;
+  browser) echo "" ;;
+  editor) echo "" ;;
+  filemanager) echo "" ;;
+  mail) echo "" ;;
+  image) echo "" ;;
+  pdf) echo "" ;;
+  video) echo "" ;;
+  audio) echo "" ;;
+  *)
+    echo "•"
+    ;;
+  esac
+}
+
+normalize_role() {
+  case "${1,,}" in
+  terminal | terminals) echo "terminal" ;;
+  shell | shells) echo "shell" ;;
+  browser | browsers) echo "browser" ;;
+  editor | editors) echo "editor" ;;
+  filemanager | file-manager | filemanagers | files | folders) echo "filemanager" ;;
+  mail | mailapp | mail-app | mailto) echo "mail" ;;
+  image | images) echo "image" ;;
+  pdf | pdfs | document | documents) echo "pdf" ;;
+  video | videos) echo "video" ;;
+  audio) echo "audio" ;;
+  *)
+    return 1
+    ;;
+  esac
+}
+
+role_prompt() {
+  local role="$1"
+  local note
+
+  note=$(omarchy-defaults note "$role")
+
+  if [[ -n $note ]]; then
+    echo "$(role_label "$role") · $note"
+  else
+    echo "$(role_label "$role")"
+  fi
+}
+
+invalidate_cache() {
+  SUMMARY_CACHE=""
+
+  if [[ -n ${1:-} ]]; then
+    unset "CANDIDATE_CACHE[$1]"
+  else
+    CANDIDATE_CACHE=()
+  fi
+}
+
+summary_lines() {
+  if [[ -z $SUMMARY_CACHE ]]; then
+    SUMMARY_CACHE=$(omarchy-defaults summary)
+  fi
+
+  printf '%s\n' "$SUMMARY_CACHE"
+}
+
+candidate_lines() {
+  local role="$1"
+
+  if [[ -z ${CANDIDATE_CACHE[$role]+x} ]]; then
+    CANDIDATE_CACHE[$role]=$(omarchy-defaults list "$role")
+  fi
+
+  printf '%s\n' "${CANDIDATE_CACHE[$role]}"
+}
+
+display_candidate_label() {
+  local role="$1"
+  local value="$2"
+  local label="$3"
+
+  printf '%s' "$label"
+}
+
+role_values_match() {
+  local role="$1"
+  local left="$2"
+  local right="$3"
+
+  case "$role" in
+  shell)
+    [[ ${left##*/} == "${right##*/}" ]]
+    ;;
+  *)
+    [[ $left == "$right" ]]
+    ;;
+  esac
+}
+
+notify_update() {
+  local title="$1"
+  local body="$2"
+
+  notify-send -u low "$title" "$body"
+}
+
+run_shell_command() {
+  local command="$1"
+  local title="$2"
+  local body="$3"
+
+  omarchy-launch-floating-terminal-with-presentation "$command"
+  notify_update "$title" "$body"
+}
+
+confirm() {
+  local prompt="$1"
+
+  [[ $(menu "$prompt" "  Confirm\n↩  Cancel" "" "  Confirm") == *Confirm* ]]
+}
+
+apply_role_value() {
+  local role="$1"
+  local value="$2"
+  local label
+
+  label=$(omarchy-defaults label "$role" "$value")
+
+  if [[ $role == "shell" ]]; then
+    if ! confirm "Change login shell to $label?"; then
+      return 1
+    fi
+
+    run_shell_command "omarchy-defaults apply shell $(printf '%q' "$value")" "Default shell" "Requested $label as the login shell"
+  else
+    omarchy-defaults apply "$role" "$value" || return 1
+    notify_update "Default updated" "$label is now used for $(role_label "$role")"
+  fi
+
+  invalidate_cache "$role"
+}
+
+show_role_menu() {
+  local role="$1"
+  local options=""
+  local current_value current_label selection selected_value selected_label line marker is_current
+  declare -A values=()
+
+  options=""
+  values=()
+
+  current_value=$(omarchy-defaults current "$role" 2>/dev/null) || current_value=""
+  current_label="Not set"
+  [[ -n $current_value ]] && current_label=$(omarchy-defaults label "$role" "$current_value")
+
+  while IFS='|' read -r selected_value selected_label; do
+    [[ -n $selected_value ]] || continue
+
+    is_current="false"
+    marker="○"
+    if role_values_match "$role" "$selected_value" "$current_value"; then
+      marker="●"
+      is_current="true"
+    fi
+
+    selected_label=$(display_candidate_label "$role" "$selected_value" "$selected_label")
+    line="$marker  $selected_label"
+    values["$line"]="$selected_value"
+    options+="$line\n"
+  done < <(candidate_lines "$role")
+
+  if [[ -z $options ]]; then
+    notify_update "Default Apps" "No installed options found for $(role_label "$role")"
+    return 1
+  fi
+
+  selection=$(menu "$(role_prompt "$role")" "${options%\\n}")
+
+  if [[ -z $selection || $selection == "CNCLD" ]]; then
+    return 1
+  fi
+
+  if role_values_match "$role" "${values[$selection]}" "$current_value"; then
+    return 0
+  fi
+
+  apply_role_value "$role" "${values[$selection]}"
+}
+
+show_main_menu() {
+  local role current label options=""
+  local selection
+  declare -A roles=()
+
+  while IFS='|' read -r role current label; do
+    selection="$(role_icon "$role")  $(printf '%-12s' "$(role_label "$role")")  $label"
+    roles["$selection"]="$role"
+    options+="$selection\n"
+  done < <(summary_lines)
+
+  selection=$(menu "Default Apps" "${options%\\n}")
+
+  if [[ -z $selection || $selection == "CNCLD" ]]; then
+    return 1
+  fi
+
+  show_role_menu "${roles[$selection]}"
+}
+
+if [[ -n ${1:-} ]]; then
+  role=$(normalize_role "$1") || {
+    echo "Unknown defaults role: $1" >&2
+    exit 1
+  }
+  show_role_menu "$role"
+  exit $?
+else
+  show_main_menu
+  exit $?
+fi

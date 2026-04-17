@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# Launch the default editor as determined by $EDITOR (set via ~/.config/uwsm/default) (or nvim if missing).
+# Launch the default editor as determined by ~/.config/uwsm/default (or nvim if missing).
 # Starts suitable editors in a terminal window and otherwise as a regular application.
+
+[[ -f $HOME/.config/uwsm/default ]] && source "$HOME/.config/uwsm/default"
 
 omarchy-cmd-present "$EDITOR" || EDITOR=nvim
 
