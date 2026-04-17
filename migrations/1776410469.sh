@@ -2,8 +2,8 @@ echo "Add flags sourcing to hyprland.conf"
 
 HYPR_CONF=~/.config/hypr/hyprland.conf
 
-source $OMARCHY_PATH/install/config/omarchy-config-flags.sh
+source $OMARCHY_PATH/install/config/omarchy-toggles.sh
 
-if [[ -f $HYPR_CONF ]] && ! grep -q "flags/hypr/\*\.conf" "$HYPR_CONF"; then
-  echo -e "\n# Toggle config flags dynamically\nsource = ~/.local/state/omarchy/flags/hypr/*.conf" >> "$HYPR_CONF"
+if [[ -f $HYPR_CONF ]] && ! grep -q "toggles/hypr/\*\.conf" "$HYPR_CONF"; then
+  echo -e "\n# Toggle config flags dynamically\nsource = ~/.local/state/omarchy/toggles/hypr/*.conf" >> "$HYPR_CONF"
 fi

@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Toggle the internal laptop display on/off using the flag system.
+# Toggle the internal laptop display on/off.
 
-if omarchy-hyprland-flag-missing internal-monitor-disable; then
+if omarchy-hyprland-toggle-disabled internal-monitor-disable; then
   ACTIVE_COUNT=$(hyprctl monitors -j | jq 'length')
   if [[ $ACTIVE_COUNT -le 1 ]]; then
     notify-send -u low "󰍹    Can't disable the only active display"
@@ -10,7 +10,7 @@ if omarchy-hyprland-flag-missing internal-monitor-disable; then
   fi
 fi
 
-omarchy-hyprland-flag-toggle \
+omarchy-hyprland-toggle \
   --enabled-notification "󰍹    Internal display off" \
   --disabled-notification "󰍹    Internal display on" \
   internal-monitor-disable

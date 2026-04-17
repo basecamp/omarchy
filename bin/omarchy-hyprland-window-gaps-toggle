@@ -2,4 +2,4 @@
 
 # Toggles the window gaps globally between no gaps and the default.
 
-omarchy-hyprland-flag-toggle window-no-gaps
+omarchy-hyprland-toggle window-no-gaps
