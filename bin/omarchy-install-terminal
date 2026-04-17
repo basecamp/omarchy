@@ -8,11 +8,15 @@ if (($# == 0)); then
 fi
 
 package="$1"
+extra_packages=""
 
 # Map package name to desktop entry ID
 case "$package" in
 alacritty) desktop_id="Alacritty.desktop" ;;
-ghostty) desktop_id="com.mitchellh.ghostty.desktop" ;;
+ghostty)
+  desktop_id="com.mitchellh.ghostty.desktop"
+  extra_packages="ghostty-nautilus"
+  ;;
 kitty) desktop_id="kitty.desktop" ;;
 *)
   echo "Unknown terminal: $package"
@@ -21,7 +25,7 @@ kitty) desktop_id="kitty.desktop" ;;
 esac
 
 # Install package
-if omarchy-pkg-add $package; then
+if omarchy-pkg-add $package $extra_packages; then
   # Copy custom desktop entry for alacritty with X-TerminalArg* keys
   if [[ $package == "alacritty" ]]; then
     mkdir -p ~/.local/share/applications
