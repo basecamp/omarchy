@@ -32,6 +32,11 @@ EOF
   sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
   sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
 
+  # Append any drop-in kernel cmdline configs (from hardware fix scripts, etc.)
+  for dropin in /etc/limine-entry-tool.d/*.conf; do
+    [ -f "$dropin" ] && cat "$dropin" | sudo tee -a /etc/default/limine >/dev/null
+  done
+
   # UKI and EFI fallback are EFI only
   if [[ -z $EFI ]]; then
     sudo sed -i '/^ENABLE_UKI=/d; /^ENABLE_LIMINE_FALLBACK=/d' /etc/default/limine
@@ -87,16 +92,6 @@ sudo limine-update
 # Verify that limine-update actually added boot entries
 if ! grep -q "^/+" /boot/limine.conf; then
   echo "Error: limine-update failed to add boot entries to /boot/limine.conf" >&2
-  echo "Debug: Installed packages:" >&2
-  pacman -Q limine limine-mkinitcpio-hook limine-snapper-sync 2>&1 >&2
-  echo "Debug: /etc/default/limine:" >&2
-  cat /etc/default/limine 2>&1 >&2
-  echo "Debug: Kernels found:" >&2
-  ls /usr/lib/modules/*/pkgbase 2>&1 >&2
-  echo "Debug: UKI files:" >&2
-  ls /boot/EFI/Linux/ 2>&1 >&2
-  echo "Debug: ESP mount:" >&2
-  findmnt /boot 2>&1 >&2
   exit 1
 fi
 

@@ -50,9 +50,9 @@ case "$1" in
 ruby)
   echo -e "Installing Ruby on Rails...\n"
   omarchy-pkg-add libyaml
-  mise use --global ruby@latest
-  mise settings add idiomatic_version_file_enable_tools ruby
   mise settings add ruby.compile false
+  mise settings add idiomatic_version_file_enable_tools ruby
+  mise use --global ruby@latest
   echo "gem: --no-document" >~/.gemrc
   mise x ruby -- gem install rails --no-document
   echo -e "\nYou can now run: rails new myproject"

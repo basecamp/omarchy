@@ -19,6 +19,13 @@ back_to() {
   fi
 }
 
+toggle_existing_menu() {
+  if pgrep -f "walker.*--dmenu" >/dev/null; then
+    walker --close >/dev/null 2>&1
+    exit 0
+  fi
+}
+
 menu() {
   local prompt="$1"
   local options="$2"
@@ -47,7 +54,7 @@ present_terminal() {
 }
 
 open_in_editor() {
-  notify-send "Editing config file" "$1"
+  notify-send -u low "Editing config file" "$1"
   omarchy-launch-editor "$1"
 }
 
@@ -102,7 +109,7 @@ show_capture_menu() {
   *Screenshot*) omarchy-cmd-screenshot ;;
   *Screenrecord*) show_screenrecord_menu ;;
   *Color*) pkill hyprpicker || hyprpicker -a ;;
-  *) show_trigger_menu ;;
+  *) back_to show_trigger_menu ;;
   esac
 }
 
@@ -161,12 +168,18 @@ show_share_menu() {
 }
 
 show_toggle_menu() {
-  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar") in
+  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n󰛧  Laptop Display") in
+
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
   *Bar*) omarchy-toggle-waybar ;;
-  *) show_trigger_menu ;;
+  *Layout*) omarchy-hyprland-workspace-layout-toggle ;;
+  *Ratio*) omarchy-hyprland-window-single-square-aspect-toggle ;;
+  *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
+  *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
+  *Laptop*) omarchy-hyprland-monitor-internal-toggle ;;
+  *) back_to show_trigger_menu ;;
   esac
 }
 
@@ -264,7 +277,7 @@ show_setup_config_menu() {
 show_setup_system_menu() {
   local options=""
 
-  if [[ -f ~/.local/state/omarchy/toggles/suspend-off ]]; then
+  if omarchy-toggle-enabled suspend-off; then
     options="$options󰒲  Enable Suspend"
   else
     options="$options󰒲  Disable Suspend"
@@ -303,10 +316,11 @@ show_install_menu() {
 }
 
 show_install_service_menu() {
-  case $(menu "Install" "  Dropbox\n  Tailscale\n󱇱  NordVPN\n󰟵  Bitwarden\n  Chromium Account") in
+  case $(menu "Install" "  Dropbox\n  Tailscale\n󱇱  NordVPN [AUR]\n󰏖  ONCE\n󰟵  Bitwarden\n  Chromium Account") in
   *Dropbox*) present_terminal omarchy-install-dropbox ;;
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
   *NordVPN*) present_terminal omarchy-install-nordvpn ;;
+  *ONCE*) present_terminal omarchy-install-once ;;
   *Bitwarden*) install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden" ;;
   *Chromium*) present_terminal omarchy-install-chromium-google-account ;;
   *) show_install_menu ;;
@@ -341,14 +355,9 @@ show_install_ai_menu() {
       echo ollama
   )
 
-  case $(menu "Install" "  Dictation\n󱚤  Claude Code\n󱚤  Copilot CLI\n󱚤  Cursor CLI\n󱚤  Gemini\n󱚤  OpenAI Codex\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush") in
+  case $(menu "Install" "  Dictation\n󱚤  LM Studio\n󱚤  Ollama\n󱚤  Crush") in
   *Dictation*) present_terminal omarchy-voxtype-install ;;
-  *Claude*) install "Claude Code" "claude-code" ;;
-  *Copilot*) install "Copilot CLI" "github-copilot-cli" ;;
-  *Cursor*) install "Cursor CLI" "cursor-cli" ;;
-  *Gemini*) install "Gemini" "gemini-cli" ;;
-  *OpenAI*) install "OpenAI Codex" "openai-codex" ;;
-  *Studio*) install "LM Studio" "lmstudio" ;;
+  *Studio*) install "LM Studio" "lmstudio-bin" ;;
   *Ollama*) install "Ollama" $ollama_pkg ;;
   *Crush*) install "Crush" "crush-bin" ;;
   *) show_install_menu ;;
@@ -520,9 +529,10 @@ show_update_channel_menu() {
   esac
 }
 show_update_process_menu() {
-  case $(menu "Restart" "  Hypridle\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
+  case $(menu "Restart" "  Hypridle\n  Hyprsunset\n󰎟  Mako\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
   *Hypridle*) omarchy-restart-hypridle ;;
   *Hyprsunset*) omarchy-restart-hyprsunset ;;
+  *Mako*) omarchy-restart-mako ;;
   *Swayosd*) omarchy-restart-swayosd ;;
   *Walker*) omarchy-restart-walker ;;
   *Waybar*) omarchy-restart-waybar ;;
@@ -546,10 +556,11 @@ show_update_config_menu() {
 }
 
 show_update_hardware_menu() {
-  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth") in
+  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth\n󰟸  Trackpad") in
   *Audio*) present_terminal omarchy-restart-pipewire ;;
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
+  *Trackpad*) present_terminal omarchy-restart-trackpad ;;
   *) show_update_menu ;;
   esac
 }
@@ -568,7 +579,7 @@ show_about() {
 
 show_system_menu() {
   local options="󱄄  Screensaver\n  Lock"
-  [[ ! -f ~/.local/state/omarchy/toggles/suspend-off ]] && options="$options\n󰒲  Suspend"
+  ! omarchy-toggle-enabled suspend-off && options="$options\n󰒲  Suspend"
   omarchy-hibernation-available && options="$options\n󰤁  Hibernate"
   options="$options\n󰍃  Logout\n󰜉  Restart\n󰐥  Shutdown"
 
@@ -593,6 +604,7 @@ go_to_menu() {
   *apps*) walker -p "Launch…" ;;
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
+  *toggle*) show_toggle_menu ;;
   *share*) show_share_menu ;;
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
@@ -612,6 +624,8 @@ go_to_menu() {
 # Allow user extensions and overrides
 USER_EXTENSIONS="$HOME/.config/omarchy/extensions/menu.sh"
 [[ -f $USER_EXTENSIONS ]] && source "$USER_EXTENSIONS"
+
+toggle_existing_menu
 
 if [[ -n $1 ]]; then
   BACK_TO_EXIT=true
