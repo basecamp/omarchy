@@ -7,14 +7,14 @@ use_bitwarden_as_ssh_agent=false
 
 # ask user if they want to use Bitwarden as their SSH agent and configure SSH_AUTH_SOCK accordingly
 if gum confirm "Use Bitwarden as SSH agent?"; then
-	use_bitwarden_as_ssh_agent=true
-	echo "export SSH_AUTH_SOCK=$HOME/.bitwarden-ssh-agent.sock" | tee -a "$HOME/.config/uwsm/env" >/dev/null
+  use_bitwarden_as_ssh_agent=true
+  echo "export SSH_AUTH_SOCK=$HOME/.bitwarden-ssh-agent.sock" | tee -a "$HOME/.config/uwsm/env" >/dev/null
   echo "Make sure to enable SSH agent support in Bitwarden settings."
 fi
 
 setsid gtk-launch bitwarden
 
 if [[ $use_bitwarden_as_ssh_agent == "true" ]]; then
-	touch ~/.local/state/omarchy/reboot-required
-	omarchy-update-restart
+  touch ~/.local/state/omarchy/reboot-required
+  omarchy-update-restart
 fi
