@@ -8,7 +8,7 @@ use_bitwarden_as_ssh_agent=false
 # ask user if they want to use Bitwarden as their SSH agent and configure SSH_AUTH_SOCK accordingly
 if gum confirm "Use Bitwarden as SSH agent?"; then
 	use_bitwarden_as_ssh_agent=true
-	echo "env = SSH_AUTH_SOCK,/home/$USER/.bitwarden-ssh-agent.sock" | tee -a "$HOME/.config/uwsm/env" >/dev/null
+	echo "export SSH_AUTH_SOCK=$HOME/.bitwarden-ssh-agent.sock" | tee -a "$HOME/.config/uwsm/env" >/dev/null
   echo "Make sure to enable SSH agent support in Bitwarden settings."
 fi
 
