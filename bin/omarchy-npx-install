@@ -18,7 +18,11 @@ mkdir -p "$HOME/.local/bin"
 
 cat > "$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
-node_root="\$(mise where node@latest)"
+if ! node_root="\$(mise where node@latest 2>/dev/null)"; then
+  mise use -g node@latest >/dev/null
+  node_root="\$(mise where node@latest)"
+fi
+
 exec "\$node_root/bin/node" "\$node_root/bin/npx" --yes $package "\$@"
 EOF
 
