@@ -29,6 +29,11 @@ EOF
 
   CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
+  # Enable SSD TRIM passthrough for LUKS-encrypted drives
+  if [[ $CMDLINE == *"cryptdevice="* ]] && [[ $CMDLINE != *"allow-discards"* ]]; then
+    CMDLINE=$(echo "$CMDLINE" | sed 's/\(cryptdevice=[^ ]*\)/\1:allow-discards/')
+  fi
+
   sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
   sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
 
