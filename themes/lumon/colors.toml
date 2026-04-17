@@ -1,35 +1,32 @@
-# Accent and UI colors
 accent = "#f2fcff"
-active_border_color = "#f2fcff"
-active_tab_background = "#6fb8e3"
-
-# Cursor colors
 cursor = "#f2fcff"
-
-# Primary colors
 foreground = "#d6e2ee"
 background = "#16242d"
-
-# Selection colors
 selection_foreground = "#1b2d40"
 selection_background = "#4d9ed3"
 
-# Normal colors (ANSI 0-7)
-color0  = "#1b2d40"
-color1  = "#4d86b0"
-color2  = "#5e95bc"
-color3  = "#6fa4c9"
-color4  = "#6fb8e3"
-color5  = "#8bc9eb"
-color6  = "#b4e4f6"
-color7  = "#d6e2ee"
+bg = "#16242d"
+lighter_bg = "#1b2d40"
+selection = "#243d56"
+muted = "#304860"
+dark_fg = "#4d86b0"
+fg = "#6fa4c9"
+light_fg = "#d6e2ee"
+bright_fg = "#f2fcff"
 
-# Bright colors (ANSI 8-15)
-color8  = "#304860"
-color9  = "#73a6cb"
-color10 = "#86b7d8"
-color11 = "#9dcae5"
-color12 = "#f2fcff"
-color13 = "#b1d8ee"
-color14 = "#d1eef8"
-color15 = "#ffffff"
+red = "#4d86b0"
+yellow = "#6fa4c9"
+orange = "#8bc9eb"
+green = "#5e95bc"
+cyan = "#b4e4f6"
+blue = "#6fb8e3"
+purple = "#8bc9eb"
+brown = "#456475"
+dark_bg = "#101b21"
+darker_bg = "#0b1216"
+bright_red = "#73a6cb"
+bright_yellow = "#9dcae5"
+bright_green = "#86b7d8"
+bright_cyan = "#d1eef8"
+bright_blue = "#f2fcff"
+bright_purple = "#b1d8ee"
