@@ -9,6 +9,8 @@ hide_action_hints = true                                                    # gl
 
 [keybinds]
 quick_activate = []
+next = ["Down", "ctrl n"]
+previous = ["Up", "ctrl p"]
 
 [columns]
 symbols = 1 # providers to be queried by default
