@@ -3615,8 +3615,7 @@ local function osc_init()
         "yt-dlp",
       }
       if not state.is_image then
-        table.insert(command, "-f")
-        table.insert(command, ytdl_format)
+        table.insert(command, "-f " .. ytdl_format)
       end
       table.insert(command, "--add-metadata")
       table.insert(command, "--embed-subs")
