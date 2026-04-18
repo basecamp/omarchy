@@ -4245,7 +4245,7 @@ local function validate_user_opts()
 
   if user_opts.volume_control_type ~= "linear" and user_opts.volume_control_type ~= "logarithmic" then
     msg.warn("volumecontrol cannot be '" .. user_opts.volume_control_type .. "'. Ignoring.")
-    user_opts.volume_control_type = "linear"
+    msg.warn("volume_control_type cannot be '" .. user_opts.volume_control_type .. "'. Ignoring.")
   end
 
   if not language[user_opts.language] then
