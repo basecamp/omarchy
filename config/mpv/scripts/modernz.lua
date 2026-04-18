@@ -16,9 +16,9 @@
 -- Reference source:
 --   https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
 --
--- Modified by  timlau uon 2026-04-18
+-- Modified by  timlau on 2026-04-18
 --   * add loading colors for colors.conf
---   * fixed some proplems in the code
+--   * fixed some problems in the code
 --
 --
 local assdraw = require("mp.assdraw")
