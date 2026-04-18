@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Install a uvx wrapper for a given PyPI package.
+# Usage: omarchy-uvx-install <package> [command-name]
+#
+# If command-name is omitted, it defaults to the package name.
+# Example: omarchy-uvx-install mistral-vibe vibe
+
+if [[ -z $1 ]]; then
+  echo "Usage: omarchy-uvx-install <package> [command-name]"
+  exit 1
+fi
+
+package=$1
+command=${2:-$1}
+
+mkdir -p "$HOME/.local/bin"
+
+cat > "$HOME/.local/bin/$command" <<EOF
+#!/bin/bash
+exec mise exec uv@latest -- uvx --from $package $command "\$@"
+EOF
+
+chmod +x "$HOME/.local/bin/$command"
