@@ -992,7 +992,12 @@ local locale
 local function set_osc_locale()
   locale = language[user_opts.language] or language["en"]
   local idle_ass_tags = "{\\fs24\\1c&H0&\\1c&HFFFFFF&}"
-  locale.idle = idle_ass_tags .. locale.idle
+
+  if locale.idle_plain == nil then
+    locale.idle_plain = locale.idle or ""
+  end
+
+  locale.idle = idle_ass_tags .. locale.idle_plain
 end
 
 local function contains(list, item)
