@@ -786,6 +786,10 @@ end
 
 local function set_virt_mouse_area(x0, y0, x1, y1, name)
 	local sx, sy = get_virt_scale_factor()
+	if sx == 0 or sy == 0 then
+		mp.set_mouse_area(0, 0, 0, 0, name)
+		return
+	end
 	mp.set_mouse_area(x0 / sx, y0 / sy, x1 / sx, y1 / sy, name)
 end
 
