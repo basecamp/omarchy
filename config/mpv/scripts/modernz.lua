@@ -1737,7 +1737,7 @@ local function check_path_url()
 
   -- use current or default ytdl-format
   local mpv_ytdl = mp.get_property("file-local-options/ytdl-format") or mp.get_property("ytdl-format") or ""
-  local ytdl_format = (mpv_ytdl and mpv_ytdl ~= "") and "-f " .. mpv_ytdl or "-f " .. "bestvideo+bestaudio/best"
+  local ytdl_format = (mpv_ytdl and mpv_ytdl ~= "") and mpv_ytdl or "bestvideo+bestaudio/best"
 
   if is_url(path) then
     state.is_URL = true
@@ -1748,12 +1748,15 @@ local function check_path_url()
       msg.info("Fetching file size...")
       local command = {
         "yt-dlp",
-        state.is_image and "" or ytdl_format,
-        "--no-download",
-        "-O",
-        "%(filesize,filesize_approx)s", -- Fetch file size or approximate size
-        path,
       }
+      if not state.is_image then
+        table.insert(command, "-f")
+        table.insert(command, ytdl_format)
+      end
+      table.insert(command, "--no-download")
+      table.insert(command, "-O")
+      table.insert(command, "%(filesize,filesize_approx)s") -- Fetch file size or approximate size
+      table.insert(command, path)
       exec_filesize(command)
     end
   end
