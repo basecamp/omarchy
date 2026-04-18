@@ -1,4 +1,4 @@
--- ModernZ v0.2.9 (https://github.com/Samillion/ModernZ)
+-- This script is a modified version of ModernZ v0.2.9 (https://github.com/Samillion/ModernZ)
 --
 -- This script is a derivative of the original mpv-osc-modern by maoiscat
 -- and subsequent forks:
@@ -16,7 +16,11 @@
 -- Reference source:
 --   https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
 --
-
+-- Modified by  timlau uon 2026-04-18
+--   * add loading colors for colors.conf
+--   * fixed some proplems in the code
+--
+--
 local assdraw = require("mp.assdraw")
 local msg = require("mp.msg")
 local opt = require("mp.options")
