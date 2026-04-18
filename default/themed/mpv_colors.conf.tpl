@@ -23,7 +23,7 @@
 #
 # Colors and style for mpv
 #
-# accent color of the OSC and title bar
+# background-tinted color of the OSC
 osc_color={{ background }}
 # color of the title in borderless/fullscreen mode
 window_title_color={{ foreground }}
