@@ -4013,12 +4013,8 @@ mp.observe_property("paused-for-cache", "bool", function(_, val)
 	state.buffering = val
 end)
 -- ensure compatibility with auto looping scripts (eg: a script that sets videos under 2 seconds to loop by default)
-mp.observe_property("loop-file", "bool", function(_, val)
-	if val == nil then
-		state.looping = true
-	else
-		state.looping = false
-	end
+mp.observe_property("loop-file", "string", function(_, val)
+	state.looping = val ~= nil and val ~= "no"
 end)
 mp.observe_property("sub-pos", "native", function(_, value)
 	if value == nil then
