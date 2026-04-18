@@ -1,0 +1,21 @@
+#!/bin/bash
+
+STATE_FILE="/tmp/omarchy-touchpad-disabled"
+osdclient="swayosd-client --monitor $(omarchy-hyprland-monitor-focused)"
+
+device="$(hyprctl devices -j | jq -r '[.mice[] | .name | select(test("touchpad|trackpad"; "i"))] | first // empty')"
+
+if [[ -z $device ]]; then
+  echo "No touchpad device found" >&2
+  exit 1
+fi
+
+if [[ -f $STATE_FILE ]]; then
+  hyprctl keyword "device[$device]:enabled" true >/dev/null
+  rm "$STATE_FILE"
+  $osdclient --custom-icon input-touchpad-symbolic --custom-message "Enabled"
+else
+  hyprctl keyword "device[$device]:enabled" false >/dev/null
+  touch "$STATE_FILE"
+  $osdclient --custom-icon touchpad-disabled-symbolic --custom-message "Disabled"
+fi
