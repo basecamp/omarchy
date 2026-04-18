@@ -1701,11 +1701,11 @@ end
 local function download_done(success, result, error)
 	if success then
 		local download_path = mp.command_native({ "expand-path", user_opts.download_path })
-		mp.command("show-text 'Download saved to " .. download_path .. "'")
+		mp.commandv("show-text", "Download saved to " .. download_path)
 		state.downloaded_once = true
 		msg.info("Download completed")
 	else
-		mp.command("show-text 'Download failed - " .. (error or "Unknown error") .. "'")
+		mp.commandv("show-text", "Download failed - " .. (error or "Unknown error"))
 		msg.info("Download failed")
 	end
 	state.downloading = false
