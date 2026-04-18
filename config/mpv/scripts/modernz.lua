@@ -1723,7 +1723,7 @@ local function exec(args, callback)
     capture_stderr = true,
   }, callback)
 
-  return ret and ret.status or nil
+  return ret
 end
 
 local function check_path_url()
