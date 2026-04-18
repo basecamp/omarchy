@@ -3140,19 +3140,22 @@ local function osc_init()
 			state.downloading = true
 			-- use current or default ytdl-format
 			local mpv_ytdl = mp.get_property("file-local-options/ytdl-format") or mp.get_property("ytdl-format") or ""
-			local ytdl_format = (mpv_ytdl and mpv_ytdl ~= "") and "-f " .. mpv_ytdl
-				or "-f " .. "bestvideo+bestaudio/best"
+			local ytdl_format = (mpv_ytdl and mpv_ytdl ~= "") and mpv_ytdl
+				or "bestvideo+bestaudio/best"
 			local command = {
 				"yt-dlp",
-				state.is_image and "" or ytdl_format,
-				"--add-metadata",
-				"--embed-subs",
-				"-o",
-				"%(title)s.%(ext)s",
-				"-P",
-				localpath,
-				state.url_path,
 			}
+			if not state.is_image then
+				table.insert(command, "-f")
+				table.insert(command, ytdl_format)
+			end
+			table.insert(command, "--add-metadata")
+			table.insert(command, "--embed-subs")
+			table.insert(command, "-o")
+			table.insert(command, "%(title)s.%(ext)s")
+			table.insert(command, "-P")
+			table.insert(command, localpath)
+			table.insert(command, state.url_path)
 
 			local status = exec(command, download_done)
 		end
