@@ -1808,7 +1808,7 @@ local function add_layout(name)
         tooltip_style = "",
         tooltip_an = 2,
         alpha = { [1] = 0, [2] = 255, [3] = 88, [4] = 255 },
-        hoverstyle = osc_styles.element_hover:gsub("\\fscx%d+\\fscy%d+", ""), -- font scales messes with handle positions in werid ways
+        hoverstyle = osc_styles.element_hover:gsub("\\fscx%d+\\fscy%d+", ""), -- font scales messes with handle positions in weird ways
       }
     elseif elements[name].type == "box" then
       elements[name].layout.box = { radius = 0, hexagon = false }
