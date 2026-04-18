@@ -1265,7 +1265,6 @@ local function draw_seekbar_ranges(element, elem_ass, xp, rh, override_alpha)
   elem_ass:append("{\\1cH&" .. osc_color_convert(user_opts.seekbar_cache_color) .. "&}")
   elem_ass:merge(element.static_ass)
 
-  local slider_lo = element.layout.slider
   local radius = slider_lo.radius or 0
 
   for _, range in pairs(seekRanges) do
