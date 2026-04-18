@@ -10,36 +10,11 @@
 -- Preserve this notice and the upstream attribution when redistributing this
 -- file or derivative works.
 --
--- To ensure distributions of this derivative script include a local copy of
--- the LGPLv2.1 license text, the full license is embedded below.
+-- Distribute the full LGPLv2.1 license text as a separate file packaged
+-- alongside this script (for example, LICENSES/LGPL-2.1.txt) rather than
+-- embedding the full license text in this source file.
 -- Reference source:
 --   https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
---
--- GNU LESSER GENERAL PUBLIC LICENSE
--- Version 2.1, February 1999
---
--- Copyright (C) 1991, 1999 Free Software Foundation, Inc.
--- 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
--- Everyone is permitted to copy and distribute verbatim copies
--- of this license document, but changing it is not allowed.
---
--- [This is the first released version of the Lesser GPL.  It also counts
--- as the successor of the GNU Library Public License, version 2, hence
--- the version number 2.1.]
---
--- Preamble
---
--- The licenses for most software are designed to take away your freedom to
--- share and change it. By contrast, the GNU General Public Licenses are
--- intended to guarantee your freedom to share and change free software--to
--- make sure the software is free for all its users.
---
--- This license, the Lesser General Public License, applies to some
--- specially designated software packages--typically libraries--of the Free
--- Software Foundation and other authors who decide to use it. You can use
--- it too, but we suggest you first think carefully about whether this
--- license or the ordinary General Public License is the better strategy to
--- use in any particular case, based on the explanations below.
 --
 -- When we speak of free software, we are referring to freedom of use, not
 -- price. Our General Public Licenses are designed to make sure that you
