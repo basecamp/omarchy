@@ -2880,7 +2880,7 @@ local function osc_init()
 	end
 	ne.slider.posF = function()
 		local volume = mp.get_property_number("volume")
-		if user_opts.volume_control == "logarithmic" then
+		if user_opts.volume_control_type == "logarithmic" then
 			return math.sqrt(volume * 100)
 		else
 			return volume
