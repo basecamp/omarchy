@@ -1262,7 +1262,7 @@ local function draw_seekbar_ranges(element, elem_ass, xp, rh, override_alpha)
   elem_ass:draw_stop()
   elem_ass:merge(element.style_ass)
   ass_append_alpha(elem_ass, element.layout.alpha, override_alpha or user_opts.seekrangealpha)
-  elem_ass:append("{\\1cH&" .. osc_color_convert(user_opts.seekbar_cache_color) .. "&}")
+  elem_ass:append("{\\1c&H" .. osc_color_convert(user_opts.seekbar_cache_color) .. "&}")
   elem_ass:merge(element.static_ass)
 
   local radius = slider_lo.radius or 0
