@@ -4304,7 +4304,7 @@ opt.read_options(user_opts, "modernz", function(changed)
   set_osc_styles()
   set_time_styles(changed.timetotal, changed.timems)
   if changed.tick_delay or changed.tick_delay_follow_display_fps then
-    set_tick_delay("display_fps", mp.get_property_number("display_fps"))
+    set_tick_delay("display_fps", mp.get_property_number("display-fps"))
   end
   request_tick()
   visibility_mode(user_opts.visibility, true)
@@ -4317,7 +4317,7 @@ set_osc_locale()
 set_icon_theme()
 set_osc_styles()
 set_time_styles(true, true)
-set_tick_delay("display_fps", mp.get_property_number("display_fps"))
+set_tick_delay("display_fps", mp.get_property_number("display-fps"))
 visibility_mode(user_opts.visibility, true)
 update_duration_watch()
 
