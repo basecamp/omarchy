@@ -7,7 +7,11 @@
 --
 -- It is based on the official osc.lua from mpv, licensed under the
 -- GNU Lesser General Public License v2.1 (LGPLv2.1).
--- Full license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+-- Preserve this notice and the upstream attribution when redistributing this
+-- file or derivative works. Distributions should also include a local copy of
+-- the LGPLv2.1 license text alongside the repository/package.
+-- Reference license text:
+--   https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
 
 local assdraw = require("mp.assdraw")
 local msg = require("mp.msg")
