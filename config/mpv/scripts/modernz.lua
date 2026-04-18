@@ -3348,26 +3348,20 @@ local function osc_init()
 
     -- Always show HH:MM:SS if user_opts.time_format is "fixed"
     local force_hours = user_opts.time_format == "fixed"
-
-    -- Format string templates
-    local format_with_ms = (hours > 0 or force_hours) and "%02d:%02d:%02d.%03d" or "%02d:%02d.%03d"
-    local format_without_ms = (hours > 0 or force_hours) and "%02d:%02d:%02d" or "%02d:%02d"
+    local show_hours = hours > 0 or force_hours
 
     if state.tc_ms then
-      return string.format(
-        format_with_ms,
-        (hours > 0 or force_hours) and hours or minutes,
-        (hours > 0 or force_hours) and minutes or whole_seconds,
-        (hours > 0 or force_hours) and whole_seconds or milliseconds,
-        (hours > 0 or force_hours) and milliseconds or nil
-      )
+      if show_hours then
+        return string.format("%02d:%02d:%02d.%03d", hours, minutes, whole_seconds, milliseconds)
+      else
+        return string.format("%02d:%02d.%03d", minutes, whole_seconds, milliseconds)
+      end
     else
-      return string.format(
-        format_without_ms,
-        (hours > 0 or force_hours) and hours or minutes,
-        (hours > 0 or force_hours) and minutes or whole_seconds,
-        (hours > 0 or force_hours) and whole_seconds or nil
-      )
+      if show_hours then
+        return string.format("%02d:%02d:%02d", hours, minutes, whole_seconds)
+      else
+        return string.format("%02d:%02d", minutes, whole_seconds)
+      end
     end
   end
 
