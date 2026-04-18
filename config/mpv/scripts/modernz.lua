@@ -915,7 +915,7 @@ local function get_slider_value(element)
   return get_slider_value_at(element, get_virt_mouse_pos())
 end
 
--- multiplies two alpha values, formular can probably be improved
+-- multiplies two alpha values, formula can probably be improved
 local function mult_alpha(alphaA, alphaB)
   return 255 - (((1 - (alphaA / 255)) * (1 - (alphaB / 255))) * 255)
 end
