@@ -4,6 +4,11 @@
 # to avoid sluggishness while the system catches up, then
 # restore the previous profile after 10 seconds.
 
+log_warning() {
+  command -v logger &>/dev/null || return 0
+  logger -t resume-boost "$1"
+}
+
 sync_intel_lpmd() {
   local method
 
@@ -22,22 +27,41 @@ sync_intel_lpmd() {
 }
 
 set_profile() {
-  powerprofilesctl set "$1"
-  sync_intel_lpmd "$1"
+  local current requested actual status
+
+  requested=$1
+
+  powerprofilesctl set "$requested"
+  status=$?
+  (( status == 0 )) || return $status
+
+  # Some systems advertise power-saver but coerce it back to balanced.
+  actual=$requested
+  if current=$(powerprofilesctl get 2>/dev/null); then
+    actual=$current
+  else
+    log_warning "powerprofilesctl get failed after setting '$requested'; syncing intel_lpmd to the requested profile"
+  fi
+
+  sync_intel_lpmd "$actual"
 }
 
 if [[ $1 == "pre" ]]; then
   mkdir -p /run/omarchy
-  powerprofilesctl get > /run/omarchy/power-profile-before-sleep
+  if ! powerprofilesctl get 2>/dev/null > /run/omarchy/power-profile-before-sleep; then
+    log_warning "powerprofilesctl get failed before sleep; saving balanced as the restore profile"
+    echo "balanced" > /run/omarchy/power-profile-before-sleep
+  fi
 fi
 
 if [[ $1 == "restore" ]]; then
-  set_profile "${2:-balanced}"
-  exit 0
+  requested=${2:-balanced}
+  set_profile "$requested"
+  exit $?
 fi
 
 if [[ $1 == "post" ]]; then
   previous=$(cat /run/omarchy/power-profile-before-sleep 2>/dev/null || echo "balanced")
-  set_profile performance
-  systemd-run --on-active=10 --timer-property=AccuracySec=1 "$0" restore "$previous"
+  set_profile performance || exit $?
+  systemd-run --on-active=10 --timer-property=AccuracySec=1 "$0" restore "$previous" || exit $?
 fi
