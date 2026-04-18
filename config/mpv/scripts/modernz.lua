@@ -1650,7 +1650,6 @@ end
 --
 local function is_url(s)
   if not s then
-    user_opts.download_button = false
     return false
   end
 
@@ -1745,7 +1744,7 @@ local function check_path_url()
     state.url_path = path
     msg.info("URL detected.")
 
-    if user_opts.download_button then
+    if user_opts.download_button and state.is_URL then
       msg.info("Fetching file size...")
       local command = {
         "yt-dlp",
@@ -2422,7 +2421,7 @@ layouts["modern-image"] = function()
     lo.visible = (osc_param.playresx >= 500)
   end
 
-  if user_opts.download_button then
+  if user_opts.download_button and state.is_URL then
     lo = add_layout("download")
     lo.geometry = {
       x = osc_geo.w - 172 + (ontop_button and 0 or 45) + (info_button and 0 or 45) + (fullscreen_button and 0 or 45),
