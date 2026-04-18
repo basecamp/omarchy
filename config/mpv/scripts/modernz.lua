@@ -11,8 +11,8 @@
 -- file or derivative works.
 --
 -- Distribute the full LGPLv2.1 license text as a separate file packaged
--- alongside this script (for example, LICENSES/LGPL-2.1.txt) rather than
--- embedding the full license text in this source file.
+-- alongside this script (in this repo: config/mpv/LICENSES/LICENSE.LGPL)
+-- rather than embedding the full license text in this source file.
 -- Reference source:
 --   https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
 --
