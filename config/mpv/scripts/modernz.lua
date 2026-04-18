@@ -1369,7 +1369,7 @@ local function render_elements(master_ass)
         local s_min = element.slider.min.value
         local s_max = element.slider.max.value
 
-        local xp, rh = draw_seekbar_handle(element, elem_ass) -- handle posistion, handle radius
+        local xp, rh = draw_seekbar_handle(element, elem_ass) -- handle position, handle radius
         draw_seekbar_progress(element, elem_ass)
         draw_seekbar_ranges(element, elem_ass, xp, rh)
 
