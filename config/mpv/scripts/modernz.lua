@@ -2242,11 +2242,7 @@ local function check_path_url()
 		return nil
 	end
 
-	if string.find(path, "https://") then
-		path = string.gsub(path, "ytdl://", "") -- Remove "ytdl://" prefix
-	else
-		path = string.gsub(path, "ytdl://", "https://") -- Replace "ytdl://" with "https://"
-	end
+	path = string.gsub(path, "^ytdl://", "") -- Remove leading "ytdl://" prefix without altering the URL scheme
 
 	-- use current or default ytdl-format
 	local mpv_ytdl = mp.get_property("file-local-options/ytdl-format") or mp.get_property("ytdl-format") or ""
