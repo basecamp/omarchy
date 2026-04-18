@@ -906,7 +906,7 @@ local function get_slider_value_at(element, glob_pos)
 
     return limit_range(element.slider.min.value, element.slider.max.value, val)
   end
-  -- fall back incase of loading errors
+  -- fall back in case of loading errors
   return 0
 end
 
