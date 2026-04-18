@@ -18,7 +18,7 @@ mkdir -p "$HOME/.local/bin"
 
 cat > "$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
-exec mise exec uv@latest -- uvx --from $package $command "\$@"
+exec mise exec uv@latest -- uvx --from $package@latest $command "\$@"
 EOF
 
 chmod +x "$HOME/.local/bin/$command"

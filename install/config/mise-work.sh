@@ -24,4 +24,5 @@ if [[ -n ${OMARCHY_CHROOT_INSTALL:-} ]]; then
   mise use -g node@"$NODE_VERSION"
 else
   mise use -g node@latest
+  mise use -g uv@latest
 fi
