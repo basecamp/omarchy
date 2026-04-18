@@ -2493,7 +2493,7 @@ local function osc_visible(visible)
   if state.osc_visible ~= visible then
     state.osc_visible = visible
     update_margins()
-    adjust_subtitles(true)
+    adjust_subtitles(visible)
   end
   request_tick()
 end
