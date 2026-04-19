@@ -4284,6 +4284,7 @@ local function validate_user_opts()
     end
   end
 
+  state.visibility_modes = {}
   for str in string.gmatch(user_opts.visibility_modes, "([^_]+)") do
     if str ~= "auto" and str ~= "always" and str ~= "never" then
       msg.warn("Ignoring unknown visibility mode '" .. str .. "' in list")
