@@ -474,11 +474,6 @@ if external then
         if strings[key] == nil then
           strings[key] = value or "" -- fallback to empty string if key is missing
         end
-
-        -- debug log to verify all keys are populated
-        if strings[key] == nil then
-          mp.msg.warn("Locale key '" .. key .. "' is nil in language: " .. lang)
-        end
       end
     else
       mp.msg.warn("Locale data for language " .. lang .. " is not in the correct format.")
