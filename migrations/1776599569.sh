@@ -8,7 +8,7 @@ echo "Adding Vibe Bar to Waybar configuration..."
 
 # 1. Add module to modules-center (after custom/voxtype)
 if [[ -f "$WAYBAR_CONFIG" ]] && ! grep -q '"custom/vibe-bar"' "$WAYBAR_CONFIG"; then
-    sed -i 's/"custom\/voxtype"/"custom\/voxtype", "custom\/vibe-bar"/' "$WAYBAR_CONFIG"
+    sed -i '/"modules-center"[[:space:]]*:/,/\]/ s/"custom\/voxtype"/"custom\/voxtype", "custom\/vibe-bar"/' "$WAYBAR_CONFIG"
     echo "  -> Added custom/vibe-bar to modules-center"
 fi
 

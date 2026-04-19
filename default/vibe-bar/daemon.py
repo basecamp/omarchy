@@ -236,7 +236,7 @@ class VibeAgentsDaemon:
             self._write_state()
 
     async def _animation_ticker(self) -> None:
-        """Pulse RTMIN+11 every 250ms when sessions are active, driving smooth animation."""
+        """Pulse RTMIN+11 every ~80ms when sessions are active, driving smooth animation."""
         while True:
             await asyncio.sleep(0.08)
             active = any(

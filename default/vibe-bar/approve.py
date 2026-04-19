@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """Send approve/deny decision to the Vibe Bar daemon.
 
-Usage: approve.py <session_id> <allow|deny>
+Usage: approve.py <session_id> <allow|deny|allow_session>
 """
 import json
+import os
 import socket
 import sys
 
-SOCKET_PATH = "/tmp/vibe-agents.sock"
+SOCKET_PATH = os.environ.get("VIBE_AGENTS_SOCKET", "/tmp/vibe-agents.sock")
 
 
 def main():
     if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <session_id> <allow|deny>", file=sys.stderr)
+        print(f"Usage: {sys.argv[0]} <session_id> <allow|deny|allow_session>", file=sys.stderr)
         sys.exit(1)
 
     session_id = sys.argv[1]

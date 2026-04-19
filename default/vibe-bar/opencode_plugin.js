@@ -1,7 +1,7 @@
 import { connect } from "net";
 import { appendFileSync } from "fs";
 
-const SOCKET_PATH = "/tmp/vibe-agents.sock";
+const SOCKET_PATH = process.env.VIBE_AGENTS_SOCKET || "/tmp/vibe-agents.sock";
 const DEBUG_LOG = "/tmp/vibe-bar-opencode-debug.log";
 const DEBUG = process.env.VIBE_BAR_DEBUG === "1";
 

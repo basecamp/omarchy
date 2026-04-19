@@ -35,13 +35,13 @@ groups = defaultdict(list)
 for s in sessions:
     groups[s.get("cwd") or "?"].append(s)
 
-has_waiting = any(s["status"] == "waiting" for g in groups.values() for s in g)
-has_running = any(s["status"] == "running" for g in groups.values() for s in g)
+has_waiting = any(s.get("status") == "waiting" for g in groups.values() for s in g)
+has_running = any(s.get("status") == "running" for g in groups.values() for s in g)
 total_projects = len(groups)
 
 if has_waiting:
-    cwd, group = next((c, g) for c, g in groups.items() if any(s["status"] == "waiting" for s in g))
-    ws = next(s for s in group if s["status"] == "waiting")
+    cwd, group = next((c, g) for c, g in groups.items() if any(s.get("status") == "waiting" for s in g))
+    ws = next(s for s in group if s.get("status") == "waiting")
     project = os.path.basename(cwd) if cwd and cwd != "?" else "?"
     pending = ws.get("pending") or {}
     tool = pending.get("tool", "?")

@@ -581,13 +581,15 @@ for mpid in matching_pids:
 
 # ── Status helper ──────────────────────────────────────────────────────────────
 get_status() {
-    python3 -c "
+    python3 - "$STATE_FILE" "$1" << 'PY'
 import json, sys
-with open('$STATE_FILE') as f: s = json.load(f)
+with open(sys.argv[1]) as f:
+    s = json.load(f)
 for x in s.get('sessions', []):
-    if x['id'] == '$1':
-        print(x.get('status', 'unknown')); break
-"
+    if x['id'] == sys.argv[2]:
+        print(x.get('status', 'unknown'))
+        break
+PY
 }
 
 # ── Focus view: full-pane preview for one session, ESC returns ────────────────
