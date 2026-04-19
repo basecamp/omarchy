@@ -455,7 +455,7 @@ function get_locale_from_json(path)
 
   local json_table, parse_error = utils.parse_json(json)
   if not json_table then
-    mp.msg.error("JSON parse error in " .. expand_path .. ": " .. tostring(parse_error))
+    msg.error("JSON parse error in " .. expand_path .. ": " .. tostring(parse_error))
   end
   return json_table
 end
@@ -476,7 +476,7 @@ if external then
         end
       end
     else
-      mp.msg.warn("Locale data for language " .. lang .. " is not in the correct format.")
+      msg.warn("Locale data for language " .. lang .. " is not in the correct format.")
     end
   end
 end
