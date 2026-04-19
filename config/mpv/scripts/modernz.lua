@@ -1677,18 +1677,35 @@ local function exec_filesize(args)
     capture_stderr = true,
   }, function(success, result, err)
     local fileSizeString = nil
+    local command_ok = success
+      and result ~= nil
+      and result.status == 0
+      and result.stdout ~= nil
+      and result.stdout ~= ""
 
-    if success and result then
+    if command_ok then
       fileSizeString = result.stdout
     else
-      msg.warn("Unable to retrieve file size from subprocess: " .. tostring(err))
+      local error_detail = err
+
+      if (not error_detail or error_detail == "") and result and result.stderr and result.stderr ~= "" then
+        error_detail = result.stderr
+      end
+
+      if (not error_detail or error_detail == "") and result and result.error_string and result.error_string ~= "" then
+        error_detail = result.error_string
+      end
+
+      msg.warn("Unable to retrieve file size from subprocess: " .. tostring(error_detail))
     end
+
     state.file_size_bytes = tonumber(fileSizeString)
 
     if state.file_size_bytes then
       state.file_size_normalized = utils.format_bytes_humanized(state.file_size_bytes)
       msg.info("Download size: " .. state.file_size_normalized)
     else
+      state.file_size_bytes = nil
       local fs_prop = mp.get_property_osd("file-size")
 
       if fs_prop and fs_prop ~= "" then
