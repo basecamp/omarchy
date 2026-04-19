@@ -1,7 +1,7 @@
-echo "Configure intel-lpmd to follow power profile defaults directly"
+echo "Refresh intel-lpmd integration to use packaged profile defaults"
 
 if pacman -Q intel-lpmd &>/dev/null; then
-  source "$OMARCHY_PATH/install/config/hardware/intel/lpmd.sh"
+  sudo systemctl enable intel_lpmd.service
 
   if omarchy-hw-intel && omarchy-battery-present; then
     sudo systemctl restart intel_lpmd.service || sudo systemctl start intel_lpmd.service
