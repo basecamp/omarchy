@@ -1675,8 +1675,14 @@ local function exec_filesize(args)
     args = args,
     capture_stdout = true,
     capture_stderr = true,
-  }, function(res, val)
-    local fileSizeString = val.stdout
+  }, function(success, result, err)
+    local fileSizeString = nil
+
+    if success and result then
+      fileSizeString = result.stdout
+    else
+      msg.warn("Unable to retrieve file size from subprocess: " .. tostring(err))
+    end
     state.file_size_bytes = tonumber(fileSizeString)
 
     if state.file_size_bytes then
