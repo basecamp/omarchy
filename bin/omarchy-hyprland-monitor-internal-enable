@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Enable the internal laptop display. No-op if already enabled.
+
+if omarchy-hyprland-toggle-enabled internal-monitor-disable; then
+  omarchy-hyprland-toggle internal-monitor-disable --disabled-notification "󰍹    Internal display on"
+fi

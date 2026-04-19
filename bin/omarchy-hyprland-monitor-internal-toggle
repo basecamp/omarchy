@@ -2,15 +2,8 @@
 
 # Toggle the internal laptop display on/off.
 
-if omarchy-hyprland-toggle-disabled internal-monitor-disable; then
-  ACTIVE_COUNT=$(hyprctl monitors -j | jq 'length')
-  if [[ $ACTIVE_COUNT -le 1 ]]; then
-    notify-send -u low "󰍹    Can't disable the only active display"
-    exit 1
-  fi
+if omarchy-hyprland-toggle-enabled internal-monitor-disable; then
+  omarchy-hyprland-monitor-internal-enable
+else
+  omarchy-hyprland-monitor-internal-disable
 fi
-
-omarchy-hyprland-toggle \
-  --enabled-notification "󰍹    Internal display off" \
-  --disabled-notification "󰍹    Internal display on" \
-  internal-monitor-disable
