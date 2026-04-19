@@ -9,41 +9,14 @@ log_warning() {
   logger -t resume-boost "$1"
 }
 
-sync_intel_lpmd() {
-  local method
-
-  pacman -Q intel-lpmd &>/dev/null || return 0
-  command -v busctl &>/dev/null || return 0
-  systemctl is-active --quiet intel_lpmd.service || return 0
-
-  case $1 in
-    performance) method="LPM_FORCE_OFF" ;;
-    balanced) method="LPM_AUTO" ;;
-    power-saver) method="LPM_FORCE_ON" ;;
-    *) return 0 ;;
-  esac
-
-  busctl call org.freedesktop.intel_lpmd /org/freedesktop/intel_lpmd org.freedesktop.intel_lpmd "$method" &>/dev/null || true
-}
-
 set_profile() {
-  local current requested actual status
+  local requested status
 
   requested=$1
 
   powerprofilesctl set "$requested"
   status=$?
   (( status == 0 )) || return $status
-
-  # Some systems advertise power-saver but coerce it back to balanced.
-  actual=$requested
-  if current=$(powerprofilesctl get 2>/dev/null); then
-    actual=$current
-  else
-    log_warning "powerprofilesctl get failed after setting '$requested'; syncing intel_lpmd to the requested profile"
-  fi
-
-  sync_intel_lpmd "$actual"
 }
 
 if [[ $1 == "pre" ]]; then

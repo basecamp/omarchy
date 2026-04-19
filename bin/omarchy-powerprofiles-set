@@ -5,8 +5,6 @@
 #
 # Usage: omarchy-powerprofiles-set <ac|battery|performance|balanced|power-saver>
 
-OMARCHY_BIN=$(cd -- "$(dirname "$0")" && pwd)
-
 mapfile -t profiles < <(powerprofilesctl list | awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }')
 
 profile_available() {
@@ -44,37 +42,5 @@ resolve_profile() {
   esac
 }
 
-sync_intel_lpmd() {
-  local method
-
-  "$OMARCHY_BIN/omarchy-pkg-present" intel-lpmd || return 0
-  "$OMARCHY_BIN/omarchy-cmd-present" busctl || return 0
-  systemctl is-active --quiet intel_lpmd.service || return 0
-
-  # Mirror Omarchy's effective power profile into intel_lpmd.
-  case $1 in
-    performance) method="LPM_FORCE_OFF" ;;
-    balanced) method="LPM_AUTO" ;;
-    power-saver) method="LPM_FORCE_ON" ;;
-    *) return 0 ;;
-  esac
-
-  if (( EUID == 0 )); then
-    busctl call org.freedesktop.intel_lpmd /org/freedesktop/intel_lpmd org.freedesktop.intel_lpmd "$method" &>/dev/null || true
-  else
-    # install/config/hardware/intel/lpmd.sh grants passwordless access to these
-    # three method calls so menu-driven profile changes can sync intel_lpmd too.
-    sudo -n busctl call org.freedesktop.intel_lpmd /org/freedesktop/intel_lpmd org.freedesktop.intel_lpmd "$method" &>/dev/null || true
-  fi
-}
-
 requested_profile=$(resolve_profile "$1") || exit 1
-
 powerprofilesctl set "$requested_profile"
-status=$?
-(( status == 0 )) || exit $status
-
-# Some systems advertise power-saver but coerce it back to balanced.
-applied_profile=$requested_profile
-current_profile=$(powerprofilesctl get 2>/dev/null) && applied_profile=$current_profile
-sync_intel_lpmd "$applied_profile"
