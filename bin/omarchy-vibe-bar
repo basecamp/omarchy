@@ -1,6 +1,6 @@
 #!/bin/bash
 # Omarchy Vibe Bar — management CLI
-# Usage: omarchy-vibe-bar <start|stop|status|restart|logs|panel>
+# Usage: omarchy-vibe-bar <start [--foreground]|stop|restart|status|logs|panel>
 
 SCRIPT_DIR="$OMARCHY_PATH/default/vibe-bar"
 DAEMON="python3 $SCRIPT_DIR/daemon.py"
@@ -13,7 +13,7 @@ cmd_start() {
     echo "Daemon already running"
     return
   fi
-  
+
   if [[ "$1" == "--foreground" ]]; then
     exec $DAEMON
   else
