@@ -437,7 +437,7 @@ local language = {
 }
 
 local function get_volume_max()
-  vmax = mp.get_property_number("volume-max")
+  local vmax = mp.get_property_number("volume-max")
   if vmax ~= nil then
     if vmax > 0 then
       return vmax
