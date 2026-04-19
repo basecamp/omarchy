@@ -1,0 +1,72 @@
+#!/bin/bash
+# Omarchy Vibe Bar — management CLI
+# Usage: omarchy-vibe-bar <start|stop|status|restart|logs|panel>
+
+SCRIPT_DIR="$OMARCHY_PATH/default/vibe-bar"
+DAEMON="python3 $SCRIPT_DIR/daemon.py"
+PID_FILE="/tmp/vibe-agents.pid"
+LOG_FILE="/tmp/vibe-agents.log"
+STATE_FILE="/tmp/vibe-agents.state.json"
+
+cmd_start() {
+  if pgrep -f "$SCRIPT_DIR/daemon.py" > /dev/null; then
+    echo "Daemon already running"
+    return
+  fi
+  
+  if [[ "$1" == "--foreground" ]]; then
+    exec $DAEMON
+  else
+    nohup $DAEMON > /dev/null 2>&1 &
+    echo $! > "$PID_FILE"
+    sleep 0.3
+    echo "Daemon started (PID $(cat $PID_FILE))"
+  fi
+}
+
+cmd_stop() {
+  if [[ -f "$PID_FILE" ]]; then
+    kill "$(cat "$PID_FILE")" 2>/dev/null; rm -f "$PID_FILE"
+  else
+    pkill -f "$SCRIPT_DIR/daemon.py" 2>/dev/null
+  fi
+  rm -f "$STATE_FILE"
+  echo "Daemon stopped"
+}
+
+cmd_status() {
+  if [[ ! -f "$STATE_FILE" ]]; then
+    echo "Daemon not running (no state file)"
+    return
+  fi
+  python3 - "$STATE_FILE" << 'EOF'
+import json, sys
+with open(sys.argv[1]) as f:
+    state = json.load(f)
+s = state.get("summary", {})
+print(f"Sessions: {s.get('total',0)} total, {s.get('running',0)} running, {s.get('waiting',0)} waiting")
+for sess in state.get("sessions", []):
+    status_icon = "⚠" if sess["status"] == "waiting" else "▶"
+    print(f"  {status_icon} [{sess['agent']}] {sess['id'][:8]} — {sess['status']} — {sess['cwd']}")
+EOF
+}
+
+cmd_logs() {
+  tail -f "$LOG_FILE"
+}
+
+case "$1" in
+  start)
+    shift
+    cmd_start "$@"
+    ;;
+  stop)    cmd_stop ;;
+  restart) cmd_stop; sleep 0.2; cmd_start ;;
+  status)  cmd_status ;;
+  logs)    cmd_logs ;;
+  panel)   "$SCRIPT_DIR/walker_panel.sh" ;;
+  *)
+    echo "Usage: omarchy-vibe-bar <start [--foreground]|stop|restart|status|logs|panel>"
+    exit 1
+    ;;
+esac

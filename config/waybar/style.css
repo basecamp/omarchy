@@ -98,3 +98,28 @@ tooltip {
 #custom-voxtype.recording {
   color: #a55555;
 }
+
+#custom-vibe-bar {
+  min-width: 12px;
+  margin: 0 7.5px;
+  font-size: 12px;
+}
+
+#custom-vibe-bar.agents-idle {
+  opacity: 0.4;
+}
+
+#custom-vibe-bar.agents-active {
+  color: @foreground;
+}
+
+#custom-vibe-bar.agents-waiting {
+  color: #f9a825;
+  animation: vibe-bar-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes vibe-bar-pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
