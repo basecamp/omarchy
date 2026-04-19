@@ -26,5 +26,17 @@ disable() {
 case "${1:-toggle}" in
   on)     enable ;;
   off)    disable ;;
-  toggle) [[ -f $STATE_CONF ]] && enable || disable ;;
+  toggle)
+  if [[ -f $STATE_CONF ]]; then
+    enable || {
+      echo "enable failed" >&2
+      exit 1
+    }
+  else
+    disable || {
+      echo "disable failed" >&2
+      exit 1
+    }
+  fi
+  ;;
 esac
