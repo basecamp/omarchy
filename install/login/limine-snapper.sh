@@ -50,15 +50,13 @@ EOF
   # We overwrite the whole thing knowing the limine-update will add the entries for us
   sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
 
-  # Match Snapper configs if not installing from the ISO
-  if [[ -z ${OMARCHY_CHROOT_INSTALL:-} ]]; then
-    if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
-      sudo snapper -c root create-config /
-    fi
+  # Ensure Snapper configs exist for both root and home
+  if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
+    sudo snapper -c root create-config /
+  fi
 
-    if ! sudo snapper list-configs 2>/dev/null | grep -q "home"; then
-      sudo snapper -c home create-config /home
-    fi
+  if ! sudo snapper list-configs 2>/dev/null | grep -q "home"; then
+    sudo snapper -c home create-config /home
   fi
 
   # Enable quota to allow space-aware algorithms to work
