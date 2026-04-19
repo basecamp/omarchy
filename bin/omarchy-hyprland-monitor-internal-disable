@@ -5,7 +5,7 @@
 
 if omarchy-hyprland-monitors-many; then
   if omarchy-hyprland-toggle-disabled internal-monitor-disable; then
-    omarchy-hyprland-toggle internal-monitor-disable --enabled-notification "󰍹    Internal display off"
+    omarchy-hyprland-toggle --enabled-notification "󰍹    Internal display off" internal-monitor-disable
   fi
 else
   notify-send -u low "󰍹    Can't disable the only active display"
