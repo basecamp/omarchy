@@ -436,8 +436,18 @@ local language = {
   },
 }
 
+local function get_volume_max()
+  vmax = mp.get_property_number("volume-max")
+  if vmax ~= nil then
+    if vmax > 0 then
+      return vmax
+    end
+  end
+  return 100
+end
+
 -- locale JSON file handler
-function get_locale_from_json(path)
+local function get_locale_from_json(path)
   local expand_path = mp.command_native({ "expand-path", path })
 
   local file_info = utils.file_info(expand_path)
@@ -1047,8 +1057,9 @@ end
 -- convert slider_pos to logarithmic depending on volume_control user_opts
 local function set_volume(slider_pos)
   local volume = slider_pos
+  local volume_max = get_volume_max()
   if user_opts.volume_control_type == "logarithmic" then
-    volume = slider_pos ^ 2 / 100
+    volume = slider_pos ^ 2 / volume_max
   end
   return math.floor(volume)
 end
@@ -2844,7 +2855,7 @@ local function osc_init()
   ne.eventresponder["wheel_down_press"] = command_callback(user_opts.vol_ctrl_wheel_down_command)
 
   --volumebar
-  local volume_max = mp.get_property_number("volume-max") > 0 and mp.get_property_number("volume-max") or 100
+  local volume_max = get_volume_max()
   ne = new_element("volumebar", "slider")
   ne.visible = (osc_param.playresx >= 1150 - outeroffset) and user_opts.volume_control
   ne.enabled = audio_track_count > 0
