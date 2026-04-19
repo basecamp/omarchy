@@ -1,9 +1,6 @@
 #!/bin/bash
 
-omarchy-toggle \
-  --enabled-notification "   Bar hidden" \
-  --disabled-notification "   Bar visible" \
-  waybar-off
+omarchy-toggle waybar-off
 
 if pgrep -x waybar >/dev/null; then
   pkill -x waybar
