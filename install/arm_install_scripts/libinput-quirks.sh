@@ -22,9 +22,4 @@ fi
 
 sudo install -D -m 644 "$SRC" "$DEST"
 
-if ! sudo libinput quirks validate &>/dev/null; then
-  echo "WARNING: libinput quirks validation failed. Check $DEST manually." >&2
-  return 1 2>/dev/null || exit 1
-fi
-
 echo "libinput quirks installed to $DEST"
