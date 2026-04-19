@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Re-enable the internal display if it was toggled off and no external monitors
+# are currently active (e.g. external got disconnected live, during sleep, or
+# wasn't present on boot).
+
+if omarchy-hyprland-toggle-enabled internal-monitor-disable; then
+  ACTIVE_COUNT=$(hyprctl monitors -j 2>/dev/null | jq 'length')
+  if [[ ${ACTIVE_COUNT:-0} -eq 0 ]]; then
+    omarchy-hyprland-toggle \
+      --disabled-notification "󰍹    Internal display restored (no external connected)" \
+      internal-monitor-disable
+  fi
+fi
