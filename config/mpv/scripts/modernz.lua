@@ -2705,7 +2705,7 @@ local function osc_init()
   end
   ne.eventresponder["mbtn_right_down"] = function()
     if user_opts.loop_in_pause then
-      mp.command("show-text '" .. (state.looping and locale.loop_disable or locale.loop_enable) .. "'")
+      mp.commandv("show-text", state.looping and locale.loop_disable or locale.loop_enable)
       state.looping = not state.looping
       mp.set_property_native("loop-file", state.looping)
     end
