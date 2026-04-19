@@ -1256,7 +1256,7 @@ end
 
 -- Draws seekbar ranges according to user_opts
 local function draw_seekbar_ranges(element, elem_ass, xp, rh, override_alpha)
-  local handle = xp and rh
+  local handle = xp ~= nil and (rh or 0) > 0
   xp = xp or 0
   rh = rh or 0
   local slider_lo = element.layout.slider
