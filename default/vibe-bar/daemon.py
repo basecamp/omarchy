@@ -56,6 +56,9 @@ class VibeAgentsDaemon:
         elif hook_name == "UserPromptSubmit":
             if session_id not in self.state.sessions:
                 self.state.add_session(session_id, agent=agent, cwd=cwd)
+            s = self.state.sessions[session_id]
+            if s.status == "idle":
+                s.status = "running"
             log.info("Session %s prompt submitted", session_id)
 
         elif hook_name == "PreToolUse":

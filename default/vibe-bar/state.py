@@ -33,7 +33,7 @@ class SessionState:
         session = Session(
             id=session_id,
             agent=agent,
-            status="running",
+            status="idle",
             cwd=cwd,
             started_at=now,
             last_event=now,
