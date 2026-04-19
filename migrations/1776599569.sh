@@ -58,5 +58,8 @@ fi
 # 4. Install service, hooks, and OpenCode plugin
 bash "$OMARCHY_PATH/install/config/vibe-bar.sh"
 
+echo "Restarting omarchy-vibe-bar service..."
+systemctl --user restart omarchy-vibe-bar
+
 echo "Restarting Waybar..."
 omarchy-restart-waybar
