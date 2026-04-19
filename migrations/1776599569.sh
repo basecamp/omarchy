@@ -6,19 +6,15 @@ WAYBAR_CSS="$HOME/.config/waybar/style.css"
 
 echo "Adding Vibe Bar to Waybar configuration..."
 
-# 1. Add module to modules-center (after custom/voxtype if present, else at end)
+# 1. Add module to modules-center (after custom/voxtype)
 if [[ -f "$WAYBAR_CONFIG" ]] && ! grep -q '"custom/vibe-bar"' "$WAYBAR_CONFIG"; then
-    if grep -q '"custom/voxtype"' "$WAYBAR_CONFIG"; then
-        sed -i 's/"custom\/voxtype"/"custom\/voxtype", "custom\/vibe-bar"/' "$WAYBAR_CONFIG"
-    else
-        sed -i 's/\("modules-center": \[.*\)\]/\1, "custom\/vibe-bar"]/' "$WAYBAR_CONFIG"
-    fi
+    sed -i 's/"custom\/voxtype"/"custom\/voxtype", "custom\/vibe-bar"/' "$WAYBAR_CONFIG"
     echo "  -> Added custom/vibe-bar to modules-center"
 fi
 
-# 2. Add module definition (before the closing brace of the config)
+# 2. Add module definition (before the tray block, like other migrations)
 if [[ -f "$WAYBAR_CONFIG" ]] && ! grep -q '"custom/vibe-bar":' "$WAYBAR_CONFIG"; then
-    sed -i '$ s/^}/  "custom\/vibe-bar": {\n    "exec": "$OMARCHY_PATH\/default\/vibe-bar\/waybar_status.sh",\n    "return-type": "json",\n    "interval": 1,\n    "signal": 11,\n    "on-click": "omarchy-vibe-bar panel",\n    "tooltip": true\n  }\n}/' "$WAYBAR_CONFIG"
+    sed -i '/"tray": {/i\  "custom\/vibe-bar": {\n    "exec": "$OMARCHY_PATH\/default\/vibe-bar\/waybar_status.sh",\n    "return-type": "json",\n    "interval": 1,\n    "signal": 11,\n    "on-click": "omarchy-vibe-bar panel",\n    "tooltip": true\n  },' "$WAYBAR_CONFIG"
     echo "  -> Added module definition"
 fi
 

@@ -54,6 +54,6 @@ elif has_running:
     print(json.dumps({"text": f, "tooltip": tooltip, "class": "agents-active"}))
 else:
     # All sessions are idle → static robot icon, no animation.
-    tooltip = f"{total_projects} session{'s' if total_projects > 1 else ''} idle"
+    tooltip = f"{total_projects} project{'s' if total_projects > 1 else ''} idle"
     print(json.dumps({"text": "󱚤", "tooltip": tooltip, "class": "agents-idle"}))
 EOF

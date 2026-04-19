@@ -40,19 +40,18 @@ else:
 hook_entry = {"type": "command", "command": hook_cmd}
 hook_block = {"hooks": [hook_entry]}
 
-new_hooks = {
-    "PreToolUse":        [hook_block],
-    "PermissionRequest": [hook_block],
-    "PostToolUse":       [hook_block],
-    "Stop":              [hook_block],
-    "UserPromptSubmit":  [hook_block],
-    "SessionStart":      [hook_block],
-    "SessionEnd":        [hook_block],
-    "Notification":      [hook_block],
-}
+events = [
+    "PreToolUse", "PermissionRequest", "PostToolUse", "Stop",
+    "UserPromptSubmit", "SessionStart", "SessionEnd", "Notification",
+]
 
 existing_hooks = settings.get("hooks", {})
-for event, matchers in new_hooks.items():
+for event in events:
+    matchers = existing_hooks.get(event, [])
+    if not isinstance(matchers, list):
+        matchers = [matchers]
+    if hook_block not in matchers:
+        matchers.append(hook_block)
     existing_hooks[event] = matchers
 settings["hooks"] = existing_hooks
 

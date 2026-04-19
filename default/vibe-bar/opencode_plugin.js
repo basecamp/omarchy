@@ -3,8 +3,10 @@ import { appendFileSync } from "fs";
 
 const SOCKET_PATH = "/tmp/vibe-agents.sock";
 const DEBUG_LOG = "/tmp/vibe-bar-opencode-debug.log";
+const DEBUG = process.env.VIBE_BAR_DEBUG === "1";
 
 function debugLog(msg) {
+  if (!DEBUG) return;
   try { appendFileSync(DEBUG_LOG, `[${new Date().toISOString()}] ${msg}\n`); } catch {}
 }
 
