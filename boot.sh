@@ -13,8 +13,12 @@ if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
 
   # Detect Asahi Linux / Apple Silicon hardware
   # Check kernel name OR device tree for Apple hardware (newer kernels may not have "asahi" in name)
-  if uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
-    export ASAHI_ALARM=true
+  # Exclude VMs: Parallels on Apple Silicon passes host device tree through to guest,
+  # so "apple" appears in /sys/firmware/devicetree/base/compatible even in VMs
+  if ! systemd-detect-virt --quiet 2>/dev/null; then
+    if uname -r | grep -qi "asahi" || grep -q "apple" /sys/firmware/devicetree/base/compatible 2>/dev/null; then
+      export ASAHI_ALARM=true
+    fi
   fi
 fi
 
