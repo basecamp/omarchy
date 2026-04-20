@@ -4,9 +4,14 @@
 
 SCRIPT_DIR="$OMARCHY_PATH/default/vibe-bar"
 DAEMON="python3 $SCRIPT_DIR/daemon.py"
-PID_FILE="/tmp/vibe-agents.pid"
-LOG_FILE="/tmp/vibe-agents.log"
-STATE_FILE="/tmp/vibe-agents.state.json"
+VIBE_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vibe-agents"
+PID_FILE="$VIBE_RUNTIME_DIR/vibe-agents.pid"
+LOG_FILE="$VIBE_RUNTIME_DIR/vibe-agents.log"
+STATE_FILE="$VIBE_RUNTIME_DIR/vibe-agents.state.json"
+
+# Ensure runtime dir exists
+mkdir -p "$VIBE_RUNTIME_DIR"
+chmod 700 "$VIBE_RUNTIME_DIR"
 
 cmd_start() {
   if pgrep -f "$SCRIPT_DIR/daemon.py" > /dev/null; then
@@ -65,6 +70,7 @@ case "$1" in
   status)  cmd_status ;;
   logs)    cmd_logs ;;
   panel)   "$SCRIPT_DIR/walker_panel.sh" ;;
+  panel)   "$SCRIPT_DIR/../src/walker_panel.sh" ;;
   *)
     echo "Usage: omarchy-vibe-bar <start [--foreground]|stop|restart|status|logs|panel>"
     exit 1

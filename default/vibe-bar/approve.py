@@ -8,7 +8,11 @@ import os
 import socket
 import sys
 
-SOCKET_PATH = os.environ.get("VIBE_AGENTS_SOCKET", "/tmp/vibe-agents.sock")
+# Add src to path to import state
+sys.path.insert(0, os.path.dirname(__file__))
+from state import get_runtime_dir
+
+SOCKET_PATH = os.environ.get("VIBE_AGENTS_SOCKET", os.path.join(get_runtime_dir(), "vibe-agents.sock"))
 
 
 def main():

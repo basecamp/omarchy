@@ -1,8 +1,19 @@
 import { connect } from "net";
-import { appendFileSync } from "fs";
+import { appendFileSync, existsSync } from "fs";
 
-const SOCKET_PATH = process.env.VIBE_AGENTS_SOCKET || "/tmp/vibe-agents.sock";
-const DEBUG_LOG = "/tmp/vibe-bar-opencode-debug.log";
+const getRuntimeDir = () => {
+  let base = process.env.XDG_RUNTIME_DIR;
+  if (!base || !existsSync(base)) {
+    const uid = process.getuid ? process.getuid() : 1000;
+    const uidBase = `/run/user/${uid}`;
+    base = existsSync(uidBase) ? uidBase : "/tmp";
+  }
+  return `${base}/vibe-agents`;
+};
+
+const RUNTIME_DIR = getRuntimeDir();
+const SOCKET_PATH = process.env.VIBE_AGENTS_SOCKET || `${RUNTIME_DIR}/vibe-agents.sock`;
+const DEBUG_LOG = `${RUNTIME_DIR}/vibe-bar-opencode-debug.log`;
 const DEBUG = process.env.VIBE_BAR_DEBUG === "1";
 
 function debugLog(msg) {

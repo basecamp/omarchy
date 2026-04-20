@@ -3,10 +3,15 @@
 # Two-column live fzf panel: agent list (left) + detail preview (right).
 # Auto-refreshes when the state file changes.
 
-STATE_FILE="/tmp/vibe-agents.state.json"
+VIBE_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vibe-agents"
+STATE_FILE="$VIBE_RUNTIME_DIR/vibe-agents.state.json"
 SCRIPT_DIR="$OMARCHY_PATH/default/vibe-bar"
 APPROVE_CMD="python3 $SCRIPT_DIR/approve.py"
 export VIBE_SRC_DIR="$SCRIPT_DIR"
+
+# Ensure runtime dir exists
+mkdir -p "$VIBE_RUNTIME_DIR"
+chmod 700 "$VIBE_RUNTIME_DIR"
 
 # ── If called from Waybar, open a floating Alacritty ───────────────────────────
 if [[ "$1" != "--inner" ]]; then
@@ -16,11 +21,11 @@ if [[ "$1" != "--inner" ]]; then
 fi
 
 # ── Inside Alacritty: setup temp scripts and watcher ───────────────────────────
-PREVIEW_PY=$(mktemp /tmp/vibe-preview-XXXXXX.py)
-FOCUS_PREVIEW_PY=$(mktemp /tmp/vibe-focus-preview-XXXXXX.py)
-ITEMS_PY=$(mktemp /tmp/vibe-items-XXXXXX.py)
-TOGGLE_PY=$(mktemp /tmp/vibe-toggle-XXXXXX.py)
-GROUPS_FILE="/tmp/vibe-agents.groups.json"
+PREVIEW_PY=$(mktemp "$VIBE_RUNTIME_DIR/vibe-preview-XXXXXX.py")
+FOCUS_PREVIEW_PY=$(mktemp "$VIBE_RUNTIME_DIR/vibe-focus-preview-XXXXXX.py")
+ITEMS_PY=$(mktemp "$VIBE_RUNTIME_DIR/vibe-items-XXXXXX.py")
+TOGGLE_PY=$(mktemp "$VIBE_RUNTIME_DIR/vibe-toggle-XXXXXX.py")
+GROUPS_FILE="$VIBE_RUNTIME_DIR/vibe-agents.groups.json"
 WATCHER_PID=""
 
 cleanup() {
@@ -46,7 +51,14 @@ from preview_helpers import (
 )
 
 state_file = sys.argv[1]
-target_id  = sys.argv[2]
+target_arg = sys.argv[2]
+
+# Safe ID resolution: if arg is a file, it's fzf {f}. Otherwise literal.
+if os.path.isfile(target_arg):
+    with open(target_arg) as f:
+        target_id = f.read().splitlines()[-1].split('\t')[-1]
+else:
+    target_id = target_arg
 
 # Box geometry — adapt to the live preview pane size fzf gives us.
 COLS    = int(os.environ.get("FZF_PREVIEW_COLUMNS", "56"))
@@ -332,7 +344,14 @@ cat > "$TOGGLE_PY" << 'PYEOF'
 import json, sys, os
 
 groups_file = sys.argv[1]
-value       = sys.argv[2] if len(sys.argv) > 2 else ""
+target_arg  = sys.argv[2] if len(sys.argv) > 2 else ""
+
+# Safe ID resolution
+if os.path.isfile(target_arg):
+    with open(target_arg) as f:
+        value = f.read().splitlines()[-1].split('\t')[-1]
+else:
+    value = target_arg
 
 if not value.startswith("GROUP:"):
     sys.exit(0)
@@ -366,7 +385,14 @@ from preview_helpers import (
 )
 
 state_file = sys.argv[1]
-target_id  = sys.argv[2]
+target_arg = sys.argv[2]
+
+# Safe ID resolution
+if os.path.isfile(target_arg):
+    with open(target_arg) as f:
+        target_id = f.read().splitlines()[-1].split('\t')[-1]
+else:
+    target_id = target_arg
 
 COLS  = int(os.environ.get("FZF_PREVIEW_COLUMNS", "120"))
 LINES = int(os.environ.get("FZF_PREVIEW_LINES",   "40"))
@@ -505,12 +531,12 @@ if [[ ! -f "$STATE_FILE" ]]; then
 fi
 
 # ── Background watcher: fast animation tick + state-change reload ─────────────
-# - Every ~150 ms: refresh-preview (cheap; lets spinners animate).
+# - Every ~80 ms: refresh-preview (cheap; lets spinners animate).
 # - Every ~600 ms: reload the items list (spinners in the left column tick too).
 # - On state-file mtime change: immediate reload+refresh-preview.
 (
     LAST=$(stat -c %Y "$STATE_FILE" 2>/dev/null)
-    while sleep 0.15; do
+    while sleep 0.08; do
         CUR=$(stat -c %Y "$STATE_FILE" 2>/dev/null)
         if [[ -n "$CUR" && "$CUR" != "$LAST" ]]; then
             LAST="$CUR"
@@ -597,7 +623,7 @@ focus_view() {
     local sid="$1"
     local fport=$((PORT + 1))
     (
-        while sleep 0.15; do
+        while sleep 0.08; do
             curl -s -XPOST "http://localhost:$fport" \
                 -d "refresh-preview" >/dev/null 2>&1
         done
@@ -608,7 +634,7 @@ focus_view() {
         --ansi \
         --layout=reverse-list \
         --with-nth=1 \
-        --preview="python3 \"$FOCUS_PREVIEW_PY\" \"$STATE_FILE\" \"$sid\"" \
+        --preview="python3 \"$FOCUS_PREVIEW_PY\" \"$STATE_FILE\" {f}" \
         --preview-window='up:99%:border-none:wrap' \
         --no-sort \
         --no-info \
@@ -636,7 +662,7 @@ while true; do
         --layout=reverse-list \
         --with-nth=1 \
         --delimiter=$'\t' \
-        --preview="python3 \"$PREVIEW_PY\" \"$STATE_FILE\" {2}" \
+        --preview="python3 \"$PREVIEW_PY\" \"$STATE_FILE\" {f}" \
         --preview-window='right:54%:border-left:wrap' \
         --no-sort \
         --no-info \
@@ -648,39 +674,39 @@ while true; do
         --color='bg:-1,bg+:-1,hl:yellow,hl+:yellow,prompt:cyan,pointer:cyan,border:bright-black,preview-border:bright-black' \
         --header=$'  ↵ jump  ·  ctrl+o focus  ·  esc close' \
         --header-first \
-        --bind="a:become(printf 'ALLOW:%s' {2})" \
-        --bind="A:become(printf 'ALLOWSESSION:%s' {2})" \
-        --bind="d:become(printf 'DENY:%s' {2})" \
-        --bind="enter:become(printf 'JUMP:%s' {2})" \
-        --bind="ctrl-o:become(printf 'FOCUS:%s' {2})" \
-        --bind="l:execute(python3 \"$TOGGLE_PY\" \"$GROUPS_FILE\" {2})+reload($ITEMS_CMD)" \
+        --bind="a:become(printf 'VIBE_ALLOW\t' && cat {f})" \
+        --bind="A:become(printf 'VIBE_ALLOWSESSION\t' && cat {f})" \
+        --bind="d:become(printf 'VIBE_DENY\t' && cat {f})" \
+        --bind="enter:become(printf 'VIBE_JUMP\t' && cat {f})" \
+        --bind="ctrl-o:become(printf 'VIBE_FOCUS\t' && cat {f})" \
+        --bind="l:execute(python3 \"$TOGGLE_PY\" \"$GROUPS_FILE\" {f})+reload($ITEMS_CMD)" \
         2>/dev/null)
 
     # ESC / empty selection → exit the panel entirely
     [[ -z "$selected" ]] && exit 0
 
     case "$selected" in
-        ALLOW:*)
-            sid="${selected#ALLOW:}"
+        VIBE_ALLOW*)
+            sid=$(echo "$selected" | awk -F'\t' '{print $NF}')
             [[ "$(get_status "$sid")" == "waiting" ]] && \
                 $APPROVE_CMD "$sid" allow
             ;;
-        ALLOWSESSION:*)
-            sid="${selected#ALLOWSESSION:}"
+        VIBE_ALLOWSESSION*)
+            sid=$(echo "$selected" | awk -F'\t' '{print $NF}')
             [[ "$(get_status "$sid")" == "waiting" ]] && \
                 $APPROVE_CMD "$sid" allow_session
             ;;
-        DENY:*)
-            sid="${selected#DENY:}"
+        VIBE_DENY*)
+            sid=$(echo "$selected" | awk -F'\t' '{print $NF}')
             [[ "$(get_status "$sid")" == "waiting" ]] && \
                 $APPROVE_CMD "$sid" deny
             ;;
-        FOCUS:*)
-            sid="${selected#FOCUS:}"
+        VIBE_FOCUS*)
+            sid=$(echo "$selected" | awk -F'\t' '{print $NF}')
             focus_view "$sid"
             ;;
-        JUMP:*)
-            sid="${selected#JUMP:}"
+        VIBE_JUMP*)
+            sid=$(echo "$selected" | awk -F'\t' '{print $NF}')
             cwd=$(python3 -c "
 import json, sys
 with open(sys.argv[1]) as f:

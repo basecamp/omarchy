@@ -1,7 +1,26 @@
 """Session state model for Vibe Bar daemon."""
 import time
+import os
 from dataclasses import dataclass, field
 from typing import Optional, Any
+
+
+def get_runtime_dir() -> str:
+    """Get the centralized runtime directory for Vibe Bar files."""
+    base = os.environ.get("XDG_RUNTIME_DIR")
+    if not base or not os.path.exists(base):
+        # Fallback for systems without XDG_RUNTIME_DIR (like some WSL/Docker setups)
+        try:
+            uid_base = f"/run/user/{os.getuid()}"
+            if os.path.exists(uid_base):
+                base = uid_base
+            else:
+                base = "/tmp"
+        except AttributeError:
+            # Handle non-Unix platforms if needed (unlikely for this project)
+            base = "/tmp"
+    
+    return os.path.join(base, "vibe-agents")
 
 
 @dataclass

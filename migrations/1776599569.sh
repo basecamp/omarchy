@@ -6,9 +6,14 @@ WAYBAR_CSS="$HOME/.config/waybar/style.css"
 
 echo "Adding Vibe Bar to Waybar configuration..."
 
-# 1. Add module to modules-center (after custom/voxtype)
+# 1. Add module to modules-center
 if [[ -f "$WAYBAR_CONFIG" ]] && ! grep -q '"custom/vibe-bar"' "$WAYBAR_CONFIG"; then
-    sed -i '/"modules-center"[[:space:]]*:/,/\]/ s/"custom\/voxtype"/"custom\/voxtype", "custom\/vibe-bar"/' "$WAYBAR_CONFIG"
+    # Try to add after voxtype, fallback to start of modules-center array
+    if grep -q '"custom/voxtype"' "$WAYBAR_CONFIG"; then
+        sed -i '/"modules-center"[[:space:]]*:/,/\]/ s/"custom\/voxtype"/"custom\/voxtype", "custom\/vibe-bar"/' "$WAYBAR_CONFIG"
+    else
+        sed -i '/"modules-center"[[:space:]]*:/,/\]/ s/\[/\[\n    "custom\/vibe-bar",/' "$WAYBAR_CONFIG"
+    fi
     echo "  -> Added custom/vibe-bar to modules-center"
 fi
 

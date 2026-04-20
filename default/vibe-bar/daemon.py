@@ -5,17 +5,22 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from state import SessionState, PendingApproval
+from state import SessionState, PendingApproval, get_runtime_dir
 
-DEFAULT_SOCKET = "/tmp/vibe-agents.sock"
-DEFAULT_STATE  = "/tmp/vibe-agents.state.json"
-DEFAULT_LOG    = "/tmp/vibe-agents.log"
+RUNTIME_DIR    = get_runtime_dir()
+DEFAULT_SOCKET = os.path.join(RUNTIME_DIR, "vibe-agents.sock")
+DEFAULT_STATE  = os.path.join(RUNTIME_DIR, "vibe-agents.state.json")
+DEFAULT_LOG    = os.path.join(RUNTIME_DIR, "vibe-agents.log")
 WAYBAR_SIGNAL  = 11  # pkill -RTMIN+11 waybar
+
+FRAMES_RUNNING = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+FRAMES_WAITING = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
 
 log = logging.getLogger("vibe-agents")
 
@@ -26,18 +31,80 @@ class VibeAgentsDaemon:
         self.state_path        = state_path
         self.state             = SessionState()
         self.session_allowlist: dict[str, set[str]] = {}
+        self.waybar_pids: list[int] = []
+
+    def _get_waybar_pids(self) -> list[int]:
+        if not self.waybar_pids:
+            try:
+                output = subprocess.check_output(["pgrep", "-x", "waybar"], text=True)
+                self.waybar_pids = [int(p) for p in output.split() if p.strip()]
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                self.waybar_pids = []
+        return self.waybar_pids
 
     def _signal_waybar(self) -> None:
-        subprocess.run(
-            ["pkill", f"-RTMIN+{WAYBAR_SIGNAL}", "waybar"],
-            check=False, capture_output=True,
-        )
+        pids = self._get_waybar_pids()
+        failed = False
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGRTMIN + WAYBAR_SIGNAL)
+            except (ProcessLookupError, PermissionError):
+                failed = True
+        if failed or (not pids and not hasattr(self, "_last_pgrep") or time.time() - getattr(self, "_last_pgrep", 0) > 1.0):
+            # Refresh and retry once
+            self.waybar_pids = []
+            self._last_pgrep = time.time()
+            pids = self._get_waybar_pids()
+            for pid in pids:
+                try:
+                    os.kill(pid, signal.SIGRTMIN + WAYBAR_SIGNAL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+
+    def _update_waybar_cache(self) -> None:
+        sessions = [s for s in self.state.sessions.values() if s.status != "done"]
+
+        if not sessions:
+            waybar_json = {"text": "", "class": "agents-offline"}
+        else:
+            from collections import defaultdict
+            groups = defaultdict(list)
+            for s in sessions:
+                groups[s.cwd or "?"].append(s)
+
+            has_waiting = any(s.status == "waiting" for s in sessions)
+            has_running = any(s.status == "running" for s in sessions)
+            total_projects = len(groups)
+
+            frame = int(time.time() * 12)
+
+            if has_waiting:
+                ws = next(s for s in sessions if s.status == "waiting")
+                project = os.path.basename(ws.cwd) if ws.cwd and ws.cwd != "?" else "?"
+                tool = ws.pending.tool if ws.pending else "?"
+                tooltip = f"{ws.agent}: {tool} — {project}"
+                f = FRAMES_WAITING[frame % len(FRAMES_WAITING)]
+                waybar_json = {"text": f, "tooltip": tooltip, "class": "agents-waiting"}
+            elif has_running:
+                tooltip = f"{total_projects} project{'s' if total_projects > 1 else ''} active"
+                f = FRAMES_RUNNING[frame % len(FRAMES_RUNNING)]
+                waybar_json = {"text": f, "tooltip": tooltip, "class": "agents-active"}
+            else:
+                tooltip = f"{total_projects} project{'s' if total_projects > 1 else ''} idle"
+                waybar_json = {"text": "󱚤", "tooltip": tooltip, "class": "agents-idle"}
+
+        cache_path = os.path.join(RUNTIME_DIR, "waybar.json")
+        tmp = cache_path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(waybar_json, f)
+        os.replace(tmp, cache_path)
 
     def _write_state(self) -> None:
         tmp = self.state_path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(self.state.to_json(), f, indent=2)
         os.replace(tmp, self.state_path)
+        self._update_waybar_cache()
         self._signal_waybar()
 
     async def _handle_hook_event(
@@ -244,11 +311,8 @@ class VibeAgentsDaemon:
                 for s in self.state.sessions.values()
             )
             if active:
-                await asyncio.create_subprocess_exec(
-                    "pkill", f"-RTMIN+{WAYBAR_SIGNAL}", "waybar",
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
+                self._update_waybar_cache()
+                self._signal_waybar()
 
     async def run(self) -> None:
         if os.path.exists(self.socket_path):
@@ -269,6 +333,9 @@ def _truncate(s: str, n: int) -> str:
 
 
 def main() -> None:
+    # Ensure runtime dir exists before log config
+    os.makedirs(RUNTIME_DIR, mode=0o700, exist_ok=True)
+
     parser = argparse.ArgumentParser(description="Vibe Bar daemon")
     parser.add_argument("--socket", default=DEFAULT_SOCKET)
     parser.add_argument("--state",  default=DEFAULT_STATE)
