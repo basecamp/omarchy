@@ -1,16 +1,52 @@
 #!/bin/bash
 
-# Temporarily switch to performance power profile on resume
-# to avoid sluggishness while the system catches up, then
-# restore the previous profile after 10 seconds.
+# Temporarily hold the performance power profile on resume
+# when waking from balanced mode to avoid sluggishness while
+# the system catches up without clobbering other user choices.
 
-if [[ $1 == "pre" ]]; then
-  mkdir -p /run/omarchy
-  powerprofilesctl get > /run/omarchy/power-profile-before-sleep
-fi
+log_warning() {
+  command -v logger &>/dev/null || return 0
+  logger -t resume-boost "$1"
+}
+
+profile_available() {
+  powerprofilesctl list 2>/dev/null | grep -Eq "^[*[:space:]]*${1}:"
+}
+
+start_resume_boost() {
+  local current_profile
+
+  command -v powerprofilesctl &>/dev/null || return 0
+  command -v systemd-run &>/dev/null || return 0
+
+  current_profile=$(powerprofilesctl get 2>/dev/null) || return 0
+
+  # power-profiles-daemon restores a released performance hold back to
+  # balanced, so only boost from the default balanced profile.
+  [[ $current_profile == "balanced" ]] || return 0
+
+  if ! powerprofilesctl launch --help &>/dev/null; then
+    log_warning "powerprofilesctl launch unavailable; skipping resume boost"
+    return 0
+  fi
+
+  if ! profile_available performance; then
+    log_warning "performance profile unavailable; skipping resume boost"
+    return 0
+  fi
+
+  systemd-run --quiet --collect --service-type=exec \
+    --description="Omarchy resume boost" \
+    powerprofilesctl launch \
+      --profile performance \
+      --reason "Temporary performance hold after resume" \
+      --appid "omarchy-resume-boost" \
+      /usr/bin/sleep 10
+}
 
 if [[ $1 == "post" ]]; then
-  previous=$(cat /run/omarchy/power-profile-before-sleep 2>/dev/null || echo "balanced")
-  powerprofilesctl set performance
-  systemd-run --on-active=10 --timer-property=AccuracySec=1 powerprofilesctl set "$previous"
+  start_resume_boost || {
+    log_warning "failed to start resume boost"
+    exit 1
+  }
 fi
