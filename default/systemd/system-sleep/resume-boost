@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # Temporarily hold the performance power profile on resume
-# when waking from balanced mode to avoid sluggishness while
-# the system catches up without clobbering other user choices.
+# to avoid sluggishness while the system catches up.
 
 log_warning() {
   command -v logger &>/dev/null || return 0
@@ -21,9 +20,8 @@ start_resume_boost() {
 
   current_profile=$(powerprofilesctl get 2>/dev/null) || return 0
 
-  # power-profiles-daemon restores a released performance hold back to
-  # balanced, so only boost from the default balanced profile.
-  [[ $current_profile == "balanced" ]] || return 0
+  # No boost is needed when the system is already in performance mode.
+  [[ $current_profile == "performance" ]] && return 0
 
   if ! powerprofilesctl launch --help &>/dev/null; then
     log_warning "powerprofilesctl launch unavailable; skipping resume boost"
