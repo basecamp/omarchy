@@ -3,20 +3,38 @@
 # Returns the current working directory of the active terminal window,
 # so a new terminal window can be started in the same directory.
 
-# Go from current active terminal to its child shell process and run cwd there
-terminal_pid=$(hyprctl activewindow | awk '/pid:/ {print $2}')
-shell_pid=$(pgrep -P "$terminal_pid" | tail -n1)
+# Recursively list child processes of a given PID.
+get_child_processes() {
+  pgrep -P "$1" 2>/dev/null | while read -r child_pid; do
+    echo "$child_pid"
+    get_child_processes "$child_pid"
+  done
+}
 
-if [[ -n $shell_pid ]]; then
-  cwd=$(readlink -f "/proc/$shell_pid/cwd" 2>/dev/null)
+# Go from current active terminal to its child shell or tmux process and run cwd there
+terminal_pid=$(hyprctl activewindow | awk '/pid:/ {print $2}')
+
+for shell_pid in $(get_child_processes "$terminal_pid"); do
   shell=$(readlink -f "/proc/$shell_pid/exe" 2>/dev/null)
 
-  # Check if $shell is a valid shell and $cwd is a directory.
-  if grep -qs "$shell" /etc/shells && [[ -d $cwd ]]; then
-    echo "$cwd"
+  # If the process is tmux, ask tmux for the current pane path.
+  if [[ $(basename "$shell") == "tmux" ]]; then
+    cwd=$(tmux list-clients -F "#{client_pid} #{pane_current_path}" 2>/dev/null |
+      awk -v pid="$shell_pid" '$1 == pid { $1=""; sub(/^ /, ""); print; exit }')
+
+  # Otherwise, check if $shell is a valid shell and read cwd from it.
+  elif grep -qs "^$shell$" /etc/shells; then
+    cwd=$(readlink -f "/proc/$shell_pid/cwd" 2>/dev/null)
+
   else
-    echo "$HOME"
+    continue
   fi
-else
-  echo "$HOME"
-fi
+
+  # Check if $cwd is a directory.
+  if [[ -d "$cwd" ]]; then
+    echo "$cwd"
+    exit
+  fi
+done
+
+echo "$HOME"
