@@ -26,9 +26,9 @@ docker-buildx
 docker-compose
 dust
 evince
+exfatprogs
 expac
 eza
-exfatprogs
 fastfetch
 fcitx5
 fcitx5-gtk
@@ -96,11 +96,12 @@ python-gobject
 python-poetry-core
 qt5-wayland
 ripgrep
-rust
 ruby
+rust
 satty
 sddm
 slurp
+socat
 starship
 sushi
 swaybg
