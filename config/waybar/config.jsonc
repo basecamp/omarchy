@@ -80,6 +80,7 @@
     "on-click": "omarchy-launch-wifi"
   },
   "battery": {
+    "bat": "BAT0",
     "format": "{capacity}% {icon}",
     "format-discharging": "{icon}",
     "format-charging": "{icon}",
