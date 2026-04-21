@@ -298,7 +298,7 @@ show_setup_system_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming\n  DevOps") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -311,6 +311,7 @@ show_install_menu() {
   *AI*) show_install_ai_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm install" ;;
   *Gaming*) show_install_gaming_menu ;;
+  *DevOps*) show_install_devops_menu ;;
   *) show_main_menu ;;
   esac
 }
@@ -439,6 +440,22 @@ show_install_elixir_menu() {
   *Elixir*) present_terminal "omarchy-install-dev-env elixir" ;;
   *Phoenix*) present_terminal "omarchy-install-dev-env phoenix" ;;
   *) show_install_development_menu ;;
+  esac
+}
+
+show_install_devops_menu() {
+  case $(menu "DevOps" "󱃾  kubectl\n  Terraform\n󰠳  Ansible\n  k9s\n󰃮  Helm\n  minikube\n󰓂  fluxcd\n󰡛  aws-cli\n  Azure CLI\n  Google Cloud SDK") in
+  *kubectl*)      install "kubectl" "kubectl" ;;
+  *Terraform*)    install "Terraform" "terraform" ;;
+  *Ansible*)      install "Ansible" "ansible" ;;
+  *k9s*)          install "k9s" "k9s" ;;
+  *Helm*)         install "Helm" "helm" ;;
+  *minikube*)     install "minikube" "minikube" ;;
+  *fluxcd*)       install "FluxCD" "fluxcd" ;;
+  *aws-cli*)      install "AWS CLI" "aws-cli-v2" ;;
+  *Azure*)        install "Azure CLI" "azure-cli" ;;
+  *Google*)       install "Google Cloud SDK" "google-cloud-cli" ;;
+  *)              show_install_menu ;;
   esac
 }
 
@@ -613,6 +630,7 @@ go_to_menu() {
   *setup*) show_setup_menu ;;
   *power*) show_setup_power_menu ;;
   *install*) show_install_menu ;;
+  *devops*) show_install_devops_menu ;;
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
   *about*) show_about ;;
