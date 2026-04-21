@@ -444,18 +444,18 @@ show_install_elixir_menu() {
 }
 
 show_install_devops_menu() {
-  case $(menu "DevOps" "󱃾  kubectl\n  Terraform\n󰠳  Ansible\n  k9s\n󰃮  Helm\n  minikube\n󰓂  fluxcd\n󰡛  aws-cli\n  Azure CLI\n  Google Cloud SDK") in
-  *kubectl*)      install "kubectl" "kubectl" ;;
-  *Terraform*)    install "Terraform" "terraform" ;;
-  *Ansible*)      install "Ansible" "ansible" ;;
-  *k9s*)          install "k9s" "k9s" ;;
-  *Helm*)         install "Helm" "helm" ;;
-  *minikube*)     install "minikube" "minikube" ;;
-  *fluxcd*)       install "FluxCD" "fluxcd" ;;
-  *aws-cli*)      install "AWS CLI" "aws-cli-v2" ;;
-  *Azure*)        install "Azure CLI" "azure-cli" ;;
-  *Google*)       install "Google Cloud SDK" "google-cloud-cli" ;;
-  *)              show_install_menu ;;
+  case $(menu "Install" "󱃾  kubectl\n  Terraform\n󰠳  Ansible\n  k9s\n󰃮  Helm\n  minikube\n󰓂  FluxCD\n󰡛  aws-cli\n  Azure CLI\n  Google Cloud SDK") in
+  *kubectl*) install "kubectl" "kubectl" ;;
+  *Terraform*) install "Terraform" "terraform" ;;
+  *Ansible*) install "Ansible" "ansible" ;;
+  *k9s*) install "k9s" "k9s" ;;
+  *Helm*) install "Helm" "helm" ;;
+  *minikube*) install "minikube" "minikube" ;;
+  *fluxcd*) install "FluxCD" "flux-bin" ;;
+  *aws-cli*) install "AWS CLI" "aws-cli-v2" ;;
+  *Azure*) install "Azure CLI" "azure-cli" ;;
+  *Google*) install "Google Cloud SDK" "google-cloud-cli" ;;
+  *) show_install_menu ;;
   esac
 }
 
