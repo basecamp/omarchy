@@ -451,7 +451,7 @@ show_install_devops_menu() {
   *k9s*) install "k9s" "k9s" ;;
   *Helm*) install "Helm" "helm" ;;
   *minikube*) install "minikube" "minikube" ;;
-  *fluxcd*) install "FluxCD" "flux-bin" ;;
+  *FluxCD*) install "FluxCD" "flux-bin" ;;
   *aws-cli*) install "AWS CLI" "aws-cli-v2" ;;
   *Azure*) install "Azure CLI" "azure-cli" ;;
   *Google*) install "Google Cloud SDK" "google-cloud-cli" ;;
