@@ -47,7 +47,6 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel/fix-wifi7-eht.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/resume-boost.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/dell/fix-xps-haptic-touchpad.sh
-run_logged $OMARCHY_INSTALL/config/hardware/dell/fix-xps-ptl-display.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-audio-mixer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-mic.sh
