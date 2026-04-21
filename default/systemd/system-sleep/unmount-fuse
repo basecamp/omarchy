@@ -29,5 +29,4 @@ if [[ $1 == "post" ]]; then
       fi
     done
   ) &
-  disown
 fi

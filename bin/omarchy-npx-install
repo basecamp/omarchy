@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Install an npx wrapper for a given npm package.
+# Usage: omarchy-npx-install <package> [command-name]
+#
+# If command-name is omitted, it defaults to the package name.
+# Example: omarchy-npx-install opencode-ai opencode
+
+if [[ -z $1 ]]; then
+  echo "Usage: omarchy-npx-install <package> [command-name]"
+  exit 1
+fi
+
+package=$1
+command=${2:-$1}
+
+mkdir -p "$HOME/.local/bin"
+
+cat > "$HOME/.local/bin/$command" <<EOF
+#!/bin/bash
+exec mise exec node@latest -- npx --yes $package "\$@"
+EOF
+
+chmod +x "$HOME/.local/bin/$command"

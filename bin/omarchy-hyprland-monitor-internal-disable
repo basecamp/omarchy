@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Disable the internal laptop display. No-op if already disabled or if it
+# would leave no active display.
+
+if omarchy-hyprland-monitors-many; then
+  if omarchy-hyprland-toggle-disabled internal-monitor-disable; then
+    omarchy-hyprland-toggle --enabled-notification "󰍹    Laptop display disabled" internal-monitor-disable
+  fi
+else
+  notify-send -u low "󰍹    Can't disable the only active display"
+  exit 1
+fi

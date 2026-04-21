@@ -92,7 +92,6 @@ obs-studio
 obsidian
 omarchy-nvim
 omarchy-walker
-opencode
 pamixer
 pinta
 playerctl
@@ -113,6 +112,7 @@ sddm
 signal-desktop
 slurp
 spotify
+socat
 starship
 sushi
 swaybg

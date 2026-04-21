@@ -1,6 +1,6 @@
 return {
   {
-    "xero/miasma.nvim",
+    "OldJobobo/miasma.nvim",
     priority = 1000,
   },
   {

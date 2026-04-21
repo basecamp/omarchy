@@ -13,12 +13,12 @@ if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
   fi
 
   if omarchy-cmd-present chromium; then
-    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
-    chromium --refresh-platform-policy --no-startup-window >/dev/null
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
+    chromium --refresh-platform-policy --no-startup-window &>/dev/null
   fi
 
   if omarchy-cmd-present brave; then
-    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
-    brave --refresh-platform-policy --no-startup-window >/dev/null
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
+    brave --refresh-platform-policy --no-startup-window &>/dev/null
   fi
 fi
