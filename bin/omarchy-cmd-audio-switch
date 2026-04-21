@@ -58,6 +58,9 @@ next_sink_volume_icon="sink-volume-${icon_state}-symbolic"
 
 if [[ $next_sink_name != $current_sink_name ]]; then
   pactl set-default-sink "$next_sink_name"
+  pactl list sink-inputs short | awk '{print $1}' | while read -r input_id; do
+    pactl move-sink-input "$input_id" "$next_sink_name"
+  done
 fi
 
 swayosd-client \
