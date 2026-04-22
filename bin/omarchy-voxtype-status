@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Clean up the voxtype --follow child when Waybar reloads
 trap 'kill 0' EXIT
 
 if omarchy-cmd-present voxtype; then
