@@ -178,6 +178,9 @@ EOF
   WS_PER_PROFILE=$max_ws
   # Migrate whatever's on bare-numeric workspaces into the default profile.
   migrate_numeric_windows default
+  # Register the profile's named slots as Waybar persistent-workspaces so
+  # the bar reloads with them on the following SIGUSR2.
+  sync_waybar_workspace_module
   notify "Initialized: 1 profile, $max_ws slots"
 }
 
@@ -901,12 +904,14 @@ path, csv, n_str = sys.argv[1:4]
 n = int(n_str)
 profiles = [p.strip() for p in csv.split(",") if p.strip()]
 profiles_sorted = sorted(profiles)
-digits = ["1","2","3","4","5","6","7","8","9","0"][:n]
+# Slot 10 maps to "0" to match Omarchy's stock digit mapping; beyond
+# that, wrap (slot 11 → "1", etc.) so we never index out of range.
+digits = [str(i % 10) for i in range(1, 11)]
 with open(path) as f:
     d = json.load(f)
 ws = d.setdefault("hyprland/workspaces", {})
 ws["persistent-workspaces"] = {f"{p}-{i:02d}": [] for p in profiles_sorted for i in range(1, n+1)}
-ws["format-icons"] = {f"{p}-{i:02d}": digits[i-1] for p in profiles_sorted for i in range(1, n+1)}
+ws["format-icons"] = {f"{p}-{i:02d}": digits[(i - 1) % 10] for p in profiles_sorted for i in range(1, n+1)}
 # Match Omarchy stock: Nerd Font filled circle for active, Nerd Font
 # small open circle for default (any unmapped workspace).
 # Codepoints derived from the JSON escapes in Omarchy's stock config:
