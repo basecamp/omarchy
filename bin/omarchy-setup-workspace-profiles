@@ -15,9 +15,7 @@
 #                      seeds a single `default` profile, migrates numeric windows
 #
 # Disable path: `omarchy-workspace-profile off` — keeps sidecar files in
-# place but sets the disabled flag; all actions silently no-op. To fully
-# uninstall the opt-in artifacts, see the "uninstall" section in the PR
-# description (out of scope for this script).
+# place but sets the disabled flag; all actions silently no-op.
 
 set -euo pipefail
 

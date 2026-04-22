@@ -1,4 +1,1 @@
-// Sidecar included from ~/.config/waybar/config.jsonc. Populated by
-// omarchy-setup-workspace-profiles when the user opts into the
-// Workspace Profiles feature. Empty object is a no-op merge for Waybar.
 {}

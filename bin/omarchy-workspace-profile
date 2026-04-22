@@ -450,8 +450,6 @@ set_silent() {
   remember_current_slot
   echo "$p" > "$STATE_FILE"
   rewrite_style_collapse "$p"
-  # rewrite_style_collapse already signals SIGRTMIN+9 for a redraw, so
-  # no extra full-reload SIGUSR2 is needed here.
   notify "Profile: $(pretty_name "$p")" "$p"
   omarchy-hook workspace-profile-set "$p" 2>/dev/null || true
 }
@@ -504,18 +502,9 @@ goto_slot() {
 }
 
 hold_action() {
-  # Tap-vs-hold via our own timer (avoids touching Hyprland's global
-  # input:repeat_delay, which would affect every autorepeating key).
-  #
-  # Bindings:
-  #   bind  SUPER+N, exec, ... hold N press    → fires on keydown
-  #   bindr SUPER+N, exec, ... hold N release  → fires on keyup
-  #
-  # Press: writes 'pending' to state, spawns a background `sleep N ms` that,
-  # on wake, upgrades state to 'upgraded' and fires set-index.
-  # Release: kills the background sleep, reads state:
-  #   'pending'  → user tapped briefly; fire goto
-  #   'upgraded' → hold already switched profile; just clear state.
+  # Tap-vs-hold state machine. Bound to SUPER+N via `bind` (press) and
+  # `bindr` (release). A tap fires `goto`; a hold past hold_threshold_ms
+  # fires `set-index` mid-hold and the release is a no-op.
   local n="${1:-}" sub="${2:-}"
   [[ "$n" =~ ^[0-9]+$ ]] || { echo "hold expects a number" >&2; exit 1; }
   require_enabled
@@ -1327,13 +1316,9 @@ PY
 }
 
 menu() {
-  # DEV-ONLY scaffold. The shipped pattern for Omarchy is to patch
-  # `omarchy-menu` with a top-level "Workspace profiles" submenu that
-  # drives the controller's CRUD subcommands via their positional args.
-  # This local `menu` subcommand lets us test the full flow without
-  # patching upstream omarchy-menu.
-  # Top-level picker for the whole feature. Each option routes to the
-  # corresponding subcommand (which runs its own walker pickers for args).
+  # CLI-only picker for the feature. The graphical UX ships via the
+  # omarchy-menu extension; this is the TTY/script-friendly fallback
+  # that covers the same actions with direct walker prompts.
   local items choice
   items=$'Switch profile…\nCreate new profile…\nRename profile…\nDelete profile…\nSet default profile…\nSet profile color…\nDisable workspace profiles…'
   choice=$(walker_pick "Workspace profiles:" "$items") || true
