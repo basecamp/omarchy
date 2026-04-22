@@ -2,7 +2,8 @@
 
 # Install the Tailscale mesh VPN service and a web app for the Tailscale Admin Console.
 
-curl -fsSL https://tailscale.com/install.sh | sh
+echo -e "\nInstalling Tailscale..."
+omarchy-pkg-add tailscale
 
 echo -e "\nStarting Tailscale..."
 sudo tailscale up --accept-routes
