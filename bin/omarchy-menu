@@ -168,14 +168,9 @@ show_share_menu() {
 }
 
 show_toggle_menu() {
-  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n󰛧  Laptop Display"
-
-  if [[ -n "$(omarchy-hw-touchpad)" ]]; then
-    options="$options\n󰟸  Touchpad"
-  fi
+  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n"
 
   case $(menu "Toggle" "$options") in
-
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
@@ -184,16 +179,22 @@ show_toggle_menu() {
   *Ratio*) omarchy-hyprland-window-single-square-aspect-toggle ;;
   *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
   *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
-  *Laptop*) omarchy-hyprland-monitor-internal toggle ;;
-  *Touchpad*) omarchy-toggle-touchpad ;;
   *) back_to show_trigger_menu ;;
   esac
 }
 
 show_hardware_menu() {
-  case $(menu "Toggle" "  Hybrid GPU") in
+  local options="󰛧  Laptop Display\n  Hybrid GPU"
+
+  if [[ -n "$(omarchy-hw-touchpad)" ]]; then
+    options="$options\n󰟸  Touchpad"
+  fi
+
+  case $(menu "Toggle" "$options") in
+  *Laptop*) omarchy-hyprland-monitor-internal toggle ;;
+  *Touchpad*) omarchy-toggle-touchpad ;;
   *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
-  *) show_trigger_menu ;;
+  *) back_to show_trigger_menu ;;
   esac
 }
 
@@ -612,6 +613,7 @@ go_to_menu() {
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
   *toggle*) show_toggle_menu ;;
+  *hardware*) show_hardware_menu ;;
   *share*) show_share_menu ;;
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
