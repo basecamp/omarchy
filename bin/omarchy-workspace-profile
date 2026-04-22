@@ -502,40 +502,29 @@ goto_slot() {
 }
 
 hold_action() {
-  # Tap-vs-hold state machine. Bound to SUPER+N via `bind` (press) and
-  # `bindr` (release). A tap fires `goto`; a hold past hold_threshold_ms
-  # fires `set-index` mid-hold and the release is a no-op.
   local n="${1:-}" sub="${2:-}"
   [[ "$n" =~ ^[0-9]+$ ]] || { echo "hold expects a number" >&2; exit 1; }
   require_enabled
-  local hold_threshold_ms=200
-  local sleep_s
-  printf -v sleep_s '%d.%03d' "$((hold_threshold_ms / 1000))" "$((hold_threshold_ms % 1000))"
-  local state_file="$STATE_DIR/workspace-profile-hold-$n"
-  local pid_file="${state_file}.pid"
+  local threshold_ms=200
+  local ts_file="$STATE_DIR/workspace-profile-hold-$n"
   case "$sub" in
     press)
-      echo pending > "$state_file"
-      (
-        sleep "$sleep_s"
-        if [[ -f "$state_file" && "$(cat "$state_file" 2>/dev/null || true)" == "pending" ]]; then
-          echo upgraded > "$state_file"
-          "$0" set-index "$n"
-        fi
-      ) &
-      echo $! > "$pid_file"
+      date +%s%N > "$ts_file"
       ;;
     release)
-      if [[ -f "$pid_file" ]]; then
-        kill "$(cat "$pid_file" 2>/dev/null)" 2>/dev/null || true
-        rm -f "$pid_file"
-      fi
-      if [[ -f "$state_file" && "$(cat "$state_file" 2>/dev/null || true)" == "pending" ]]; then
+      [[ -f "$ts_file" ]] || return 0
+      local press_ns release_ns elapsed_ms
+      press_ns=$(cat "$ts_file" 2>/dev/null || echo 0)
+      release_ns=$(date +%s%N)
+      rm -f "$ts_file"
+      elapsed_ms=$(( (release_ns - press_ns) / 1000000 ))
+      if (( elapsed_ms < threshold_ms )); then
         goto_slot "$n"
+      else
+        set_index "$n"
       fi
-      rm -f "$state_file"
       ;;
-    *) echo "hold expects press/release sub, got '$sub'" >&2; exit 1 ;;
+    *) echo "hold expects a press or release sub, got '$sub'" >&2; exit 1 ;;
   esac
 }
 

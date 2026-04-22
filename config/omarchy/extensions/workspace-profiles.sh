@@ -58,11 +58,9 @@ show_workspace_profiles_menu() {
     [[ -n "$hex" ]] && omarchy-workspace-profile profile color "$p" "$hex"
     ;;
   *"Reorder"*)
-    # Tap-to-promote: clicking a profile bumps it up one slot. Loop
-    # until the user picks Done (or cancels the walker).
     while true; do
       local list; list=$(omarchy-workspace-profile list)
-      local choice; choice=$(menu "Tap a profile to move it up" "$list
+      local choice; choice=$(menu "Click a profile to move it up" "$list
   Done")
       [[ -z "$choice" || "$choice" == *"Done"* ]] && break
       omarchy-workspace-profile profile move-up "$choice" >/dev/null 2>&1 || true
