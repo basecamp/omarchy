@@ -28,6 +28,15 @@ local function first_image_in_dir(dir)
   return nil
 end
 
+-- Find preview.png, preview.jpg, or first backgrounds/ image in a theme dir
+local function find_preview_path(dir)
+  local png = dir .. "/preview.png"
+  local jpg = dir .. "/preview.jpg"
+  if file_exists(png) then return png end
+  if file_exists(jpg) then return jpg end
+  return first_image_in_dir(dir .. "/backgrounds")
+end
+
 -- The main function elephant will call
 function GetEntries()
   local entries = {}
@@ -51,33 +60,10 @@ function GetEntries()
       if theme_name and not seen_themes[theme_name] then
         seen_themes[theme_name] = true
 
-        -- Check for preview images directly (no subprocess)
-        local preview_path = nil
-        local preview_png = theme_path .. "/preview.png"
-        local preview_jpg = theme_path .. "/preview.jpg"
-
-        if file_exists(preview_png) then
-          preview_path = preview_png
-        elseif file_exists(preview_jpg) then
-          preview_path = preview_jpg
-        else
-          -- Fallback: get first image from backgrounds (one ls call)
-          preview_path = first_image_in_dir(theme_path .. "/backgrounds")
-        end
-
-        if not preview_path then
-          local default_preview_png = default_theme_dir .. "/" .. theme_name .. "/preview.png"
-          local default_preview_jpg = default_theme_dir .. "/" .. theme_name .. "/preview.jpg"
-
-          if file_exists(default_preview_png) then
-            preview_path = default_preview_png
-          elseif file_exists(default_preview_jpg) then
-            preview_path = default_preview_jpg
-          else
-            -- Final fallback: first image from default theme backgrounds
-            preview_path = first_image_in_dir(default_theme_dir .. "/" .. theme_name .. "/backgrounds")
-          end
-        end
+        -- Check the theme dir, then fall back to the default theme dir
+        -- (for partial user customizations that don't ship a preview)
+        local preview_path = find_preview_path(theme_path)
+          or find_preview_path(default_theme_dir .. "/" .. theme_name)
 
         if preview_path and preview_path ~= "" then
           local display_name = theme_name:gsub("_", " "):gsub("%-", " ")
