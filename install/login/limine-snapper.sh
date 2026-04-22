@@ -61,15 +61,15 @@ EOF
     fi
   fi
 
-  # Enable quota to allow space-aware algorithms to work
-  sudo btrfs quota enable /
+  # Disable btrfs quotas (they cause performance issues)
+  sudo btrfs quota disable / 2>/dev/null || true
 
-  # Tweak default Snapper configs
+  # Tweak default Snapper configs (number-based pruning only, space-aware limits need quotas)
   sudo sed -i 's/^TIMELINE_CREATE="yes"/TIMELINE_CREATE="no"/' /etc/snapper/configs/{root,home}
   sudo sed -i 's/^NUMBER_LIMIT="50"/NUMBER_LIMIT="5"/' /etc/snapper/configs/{root,home}
   sudo sed -i 's/^NUMBER_LIMIT_IMPORTANT="10"/NUMBER_LIMIT_IMPORTANT="5"/' /etc/snapper/configs/{root,home}
-  sudo sed -i 's/^SPACE_LIMIT="0.5"/SPACE_LIMIT="0.3"/' /etc/snapper/configs/{root,home}
-  sudo sed -i 's/^FREE_LIMIT="0.2"/FREE_LIMIT="0.3"/' /etc/snapper/configs/{root,home}
+  sudo sed -i 's/^SPACE_LIMIT="0.5"/SPACE_LIMIT="0"/' /etc/snapper/configs/{root,home}
+  sudo sed -i 's/^FREE_LIMIT="0.2"/FREE_LIMIT="0"/' /etc/snapper/configs/{root,home}
 
   chrootable_systemctl_enable limine-snapper-sync.service
 fi
