@@ -184,9 +184,13 @@ show_toggle_menu() {
 }
 
 show_hardware_menu() {
-  local options="󰛧  Laptop Display\n  Hybrid GPU"
+  local options="󰛧  Laptop Display"
 
-  if [[ -n "$(omarchy-hw-touchpad)" ]]; then
+  if omarchy-hw-hybrid-gpu; then
+    options="$options\n  Hybrid GPU"
+  fi
+
+  if omarchy-hw-touchpad; then
     options="$options\n󰟸  Touchpad"
   fi
 
