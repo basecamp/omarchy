@@ -1,6 +1,0 @@
-#!/bin/bash
-
-# Detect the MSI X370 GAMING PLUS motherboard.
-
-[[ $(cat /sys/class/dmi/id/board_vendor 2>/dev/null) == "MSI" ]] &&
-  [[ $(cat /sys/class/dmi/id/board_name 2>/dev/null) == "X370 GAMING PLUS (MS-7A33)" ]]

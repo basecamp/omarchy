@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Detect MSI X370 GAMING PLUS with the ALC892 codec that needs the jack-hotplug fix.
+
+[[ $(cat /sys/class/dmi/id/board_vendor 2>/dev/null) == "MSI" ]] || exit 1
+[[ $(cat /sys/class/dmi/id/board_name 2>/dev/null) == "X370 GAMING PLUS (MS-7A33)" ]] || exit 1
+
+for codec_file in /proc/asound/card*/codec*; do
+  [[ -f $codec_file ]] || continue
+  grep -q "Codec: Realtek ALC892" "$codec_file" 2>/dev/null &&
+    grep -q "Subsystem Id: 0x1462fa33" "$codec_file" 2>/dev/null && exit 0
+done
+
+exit 1
