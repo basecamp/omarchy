@@ -24,7 +24,7 @@ elif [[ -f $FLAG_SOURCE ]]; then
   cp $FLAG_SOURCE $FLAG
   [[ -n $ENABLED_NOTIFICATION ]] && notify-send -u low "$ENABLED_NOTIFICATION"
 else
-  echo "Flag not found"
+  echo "Flag not found: $FLAG_NAME"
   exit 1
 fi
 
