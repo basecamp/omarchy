@@ -1,0 +1,52 @@
+#!/bin/bash
+
+year=$(date +%Y)
+month=$(date +%-m)
+
+show_calendar() {
+  printf '\033[2J\033[H'
+  local cols
+  cols=$(tput cols)
+  local pad=$(( (cols - 20) / 2 ))
+  local indent
+  indent=$(printf "%${pad}s" "")
+  while IFS= read -r line; do
+    [[ -z "${line// }" ]] && continue
+    printf "%s%s\n" "$indent" "$line"
+  done < <(cal "$month" "$year")
+  printf "\n%sh← prev →l next q quit\n" "$indent"
+}
+
+sleep 0.1
+show_calendar
+
+while IFS= read -rsn1 key; do
+  case "$key" in
+    q|Q) break ;;
+    h)
+      (( month-- ))
+      (( month < 1 )) && { month=12; (( year-- )); }
+      show_calendar
+      ;;
+    l)
+      (( month++ ))
+      (( month > 12 )) && { month=1; (( year++ )); }
+      show_calendar
+      ;;
+    $'\x1b')
+      read -rsn2 -t 0.1 suffix
+      case "$suffix" in
+        '[D')
+          (( month-- ))
+          (( month < 1 )) && { month=12; (( year-- )); }
+          show_calendar
+          ;;
+        '[C')
+          (( month++ ))
+          (( month > 12 )) && { month=1; (( year++ )); }
+          show_calendar
+          ;;
+      esac
+      ;;
+  esac
+done
