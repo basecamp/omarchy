@@ -3,7 +3,7 @@
 STATE_CONF="$HOME/.local/state/omarchy/toggles/hypr/touchpad-disabled.conf"
 osdclient="swayosd-client --monitor $(omarchy-hyprland-monitor-focused)"
 
-device="$(hyprctl devices -j | jq -r '[.mice[] | .name | select(test("touchpad|trackpad"; "i"))] | first // empty')"
+device="$(omarchy-hw-touchpad)"
 
 if [[ -z $device ]]; then
   echo "No touchpad device found" >&2
@@ -24,19 +24,7 @@ disable() {
 }
 
 case "${1:-toggle}" in
-  on)     enable ;;
-  off)    disable ;;
-  toggle)
-  if [[ -f $STATE_CONF ]]; then
-    enable || {
-      echo "enable failed" >&2
-      exit 1
-    }
-  else
-    disable || {
-      echo "disable failed" >&2
-      exit 1
-    }
-  fi
-  ;;
+  on) enable ;;
+  off) disable ;;
+  toggle) if [[ -f $STATE_CONF ]]; then enable; else disable; fi ;;
 esac
