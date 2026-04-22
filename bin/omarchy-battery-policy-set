@@ -1,0 +1,9 @@
+#!/bin/bash
+
+if [[ -z $1 ]]; then
+  echo "Usage: omarchy-battery-policy-set <policy>" >&2
+  exit 1
+fi
+
+provider=$(omarchy-battery-policy-provider) || exit 1
+omarchy-battery-policy-provider-$provider set "$1"
