@@ -9,9 +9,9 @@ SAVE_END=80
 # Identify only the batteries that support the end threshold
 supported_batteries=()
 for bat in /sys/class/power_supply/BAT*; do
-    if [[ -f "$bat/charge_control_end_threshold" ]]; then
-        supported_batteries+=("$bat")
-    fi
+  if [[ -f "$bat/charge_control_end_threshold" ]]; then
+    supported_batteries+=("$bat")
+  fi
 done
 
 # Read current state from the first supported battery
@@ -22,31 +22,30 @@ user_notifications=""
 
 # Build the command batches
 for bat in "${supported_batteries[@]}"; do
+  bat_name=$(basename "$bat")
 
-    bat_name=$(basename "$bat")
+  has_start=false
+  if [[ -f "$bat/charge_control_start_threshold" ]]; then
+    has_start=true
+  fi
 
-    has_start=false
-    if [[ -f "$bat/charge_control_start_threshold" ]]; then
-        has_start=true
+  if [[ "$current_end" -eq 100 ]]; then
+    if $has_start; then
+      root_commands+="echo $SAVE_START > $bat/charge_control_start_threshold; "
+    fi
+    root_commands+="echo $SAVE_END > $bat/charge_control_end_threshold; "
+
+    user_notifications+="notify-send '󰂂  Charging $bat_name to 80%'; "
+  else
+    root_commands+="echo $FULL_END > $bat/charge_control_end_threshold; "
+    if $has_start; then
+      root_commands+="echo $FULL_START > $bat/charge_control_start_threshold; "
     fi
 
-    if [[ "$current_end" -eq 100 ]]; then
-        if $has_start; then
-            root_commands+="echo $SAVE_START > $bat/charge_control_start_threshold; "
-        fi
-        root_commands+="echo $SAVE_END > $bat/charge_control_end_threshold; "
-
-        user_notifications+="notify-send '󰂂  Charging $bat_name to 80%'; "
-    else
-        root_commands+="echo $FULL_END > $bat/charge_control_end_threshold; "
-        if $has_start; then
-            root_commands+="echo $FULL_START > $bat/charge_control_start_threshold; "
-        fi
-
-        user_notifications+="notify-send '󰁹  Charging $bat_name to 100%'; "
-    fi
+    user_notifications+="notify-send '󰁹  Charging $bat_name to 100%'; "
+  fi
 done
 
 if pkexec bash -c "$root_commands"; then
-    eval "$user_notifications"
+  eval "$user_notifications"
 fi
