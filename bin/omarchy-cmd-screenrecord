@@ -162,7 +162,7 @@ screenrecording_active() {
 finalize_recording() {
   local latest
   latest=$(cat "$RECORDING_FILE" 2>/dev/null)
-  [[ -n $latest && -f $latest ]] || return
+  [[ -f $latest ]] || return
 
   # Trim the first frame, and normalize audio to -14 LUFS if present, in a single pass
   local args=(-y -ss 0.1 -i "$latest")
