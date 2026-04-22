@@ -92,6 +92,7 @@ go_to_menu() {
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
   *toggle*) show_toggle_menu ;;
+  *hardware*) show_hardware_menu ;;
   *share*) show_share_menu ;;
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;

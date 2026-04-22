@@ -47,10 +47,12 @@ list_profiles() {
 
 get_metadata() {
   # Print value of a metadata key (e.g. `default: work` → `work`).
-  local key="$1"
+  local key="$1" key_re
   [[ -f "$PROFILES_FILE" ]] || return 1
-  grep -E "^\s*${key}\s*:" "$PROFILES_FILE" | head -n1 \
-    | sed -E "s/^\s*${key}\s*:\s*(.*)\s*$/\1/"
+  # Escape regex metacharacters — keys like `color.work` contain dots.
+  key_re=$(printf '%s' "$key" | sed 's/[][\.*^$/]/\\&/g')
+  grep -E "^\s*${key_re}\s*:" "$PROFILES_FILE" | head -n1 \
+    | sed -E "s/^\s*${key_re}\s*:\s*(.*)\s*$/\1/"
 }
 
 slot_count() {
@@ -182,35 +184,21 @@ EOF
 # ────── CSS managed block ──────
 
 rewrite_style_collapse() {
-  # Rewrite the managed block in style.css with:
-  #   a) Omarchy-icon color = current profile's accent,
-  #   b) per-profile color rules driven by profile_color(),
-  #   c) :nth-child collapse rules for inactive workspace slots.
-  # Waybar hot-reloads CSS (no SIGUSR2, no flicker).
+  # Rewrite the managed block in style.css: Omarchy-icon color = current
+  # profile's accent, and :nth-child collapse rules for inactive workspace
+  # slots. Waybar hot-reloads CSS (no SIGUSR2, no flicker).
   local current="$1"
   [[ -f "$WAYBAR_STYLE" ]] || return 0
-  local profiles_csv accents_csv current_accent p
+  local profiles_csv current_accent
   profiles_csv=$(list_profiles | paste -sd, -)
-  # Build a parallel CSV of "name=hex" pairs so Python doesn't need to
-  # re-implement the color resolver.
-  local parts=()
-  while IFS= read -r p; do
-    parts+=("${p}=$(profile_color "$p")")
-  done < <(list_profiles)
-  accents_csv=$(IFS='|'; echo "${parts[*]}")
   current_accent=$(profile_color "$current")
 
-  python3 - "$WAYBAR_STYLE" "$current" "$WS_PER_PROFILE" "$STYLE_BEGIN" "$STYLE_END" "$profiles_csv" "$accents_csv" "$current_accent" <<'PY'
+  python3 - "$WAYBAR_STYLE" "$current" "$WS_PER_PROFILE" "$STYLE_BEGIN" "$STYLE_END" "$profiles_csv" "$current_accent" <<'PY'
 import sys, re
-path, cur, n_str, begin, end, profiles_csv, accents_csv, current_accent = sys.argv[1:9]
+path, cur, n_str, begin, end, profiles_csv, current_accent = sys.argv[1:8]
 n = int(n_str)
 profiles = [p.strip() for p in profiles_csv.split(',') if p.strip()]
 profiles_sorted = sorted(profiles)
-accents = {}
-for pair in accents_csv.split('|'):
-    if '=' in pair:
-        name, hx = pair.split('=', 1)
-        accents[name.strip()] = hx.strip()
 try:
     idx = profiles_sorted.index(cur)
 except ValueError:
@@ -1074,6 +1062,9 @@ for ln in lines:
     m = re.match(r'^\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*:\s*(.*?)\s*$', ln)
     if m and m.group(2) == old:
         out.append(f"{m.group(1)}: {new}")
+    elif m and m.group(1).endswith(f'.{old}'):
+        new_key = m.group(1)[:-len(old)] + new
+        out.append(f"{new_key}: {m.group(2)}")
     elif stripped == old:
         out.append(new)
     else:
@@ -1278,28 +1269,18 @@ import sys, re
 path, name = sys.argv[1:3]
 with open(path) as f:
     raw = f.read().splitlines()
-# Split into metadata (k: v), blanks/comments, and profile names.
-# Upsert default: ... at the top of the metadata section.
-meta, profiles = [], []
+out = []
 default_seen = False
 for ln in raw:
-    stripped = ln.strip()
-    if not stripped or stripped.startswith("#"):
-        continue
-    m = re.match(r'^\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*:\s*(.*?)\s*$', ln)
-    if m:
-        if m.group(1) == "default":
-            meta.append(f"default: {name}")
-            default_seen = True
-        else:
-            meta.append(ln)
-        continue
-    profiles.append(stripped)
+    if re.match(r'^\s*default\s*:', ln):
+        out.append(f"default: {name}")
+        default_seen = True
+    else:
+        out.append(ln)
 if not default_seen:
-    meta.insert(0, f"default: {name}")
-lines = meta + [""] + profiles
+    out.insert(0, f"default: {name}")
 with open(path, "w") as f:
-    f.write("\n".join(lines) + "\n")
+    f.write("\n".join(out) + "\n")
 PY
   notify "Default: $name"
 }
