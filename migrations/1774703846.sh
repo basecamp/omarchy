@@ -1,8 +1,7 @@
-if lspci -nn | grep -q "106b:180[12]" && [[ ! -f /etc/systemd/system-sleep/wifi-resume ]]; then
+if lspci -nn | grep -q "106b:180[12]" && [[ ! -f /usr/lib/systemd/system-sleep/wifi-resume ]]; then
   echo "Installing WiFi resume hook for T2 MacBook"
 
-  sudo mkdir -p /etc/systemd/system-sleep
-  cat <<'HOOK' | sudo tee /etc/systemd/system-sleep/wifi-resume >/dev/null
+  cat <<'HOOK' | sudo tee /usr/lib/systemd/system-sleep/wifi-resume >/dev/null
 #!/bin/bash
 if [[ $1 == "post" ]]; then
   logger -t wifi-resume "Reloading brcmfmac after resume"
@@ -10,5 +9,5 @@ if [[ $1 == "post" ]]; then
   modprobe brcmfmac || logger -t wifi-resume "Failed to reload brcmfmac"
 fi
 HOOK
-  sudo chmod +x /etc/systemd/system-sleep/wifi-resume
+  sudo chmod +x /usr/lib/systemd/system-sleep/wifi-resume
 fi
