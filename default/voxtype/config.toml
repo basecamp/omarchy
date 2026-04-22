@@ -25,6 +25,9 @@ sample_rate = 16000
 # Maximum recording duration in seconds (safety limit)
 max_duration_secs = 60
 
+# Pause MPRIS media players during recording
+pause_media = true
+
 # [audio.feedback]
 # Enable audio feedback sounds (beeps when recording starts/stops)
 # enabled = true

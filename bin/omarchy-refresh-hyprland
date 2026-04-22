@@ -7,3 +7,4 @@ omarchy-refresh-config hypr/bindings.conf
 omarchy-refresh-config hypr/input.conf
 omarchy-refresh-config hypr/looknfeel.conf
 omarchy-refresh-config hypr/hyprland.conf
+bash "$OMARCHY_PATH/install/config/detect-keyboard-layout.sh"
