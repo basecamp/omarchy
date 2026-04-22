@@ -1,7 +1,6 @@
 #!/bin/bash
 
 STATE_CONF="$HOME/.local/state/omarchy/toggles/hypr/touchpad-disabled.conf"
-osdclient="swayosd-client --monitor $(omarchy-hyprland-monitor-focused)"
 
 device="$(omarchy-hw-touchpad)"
 
