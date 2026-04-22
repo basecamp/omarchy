@@ -168,7 +168,13 @@ show_share_menu() {
 }
 
 show_toggle_menu() {
-  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n󰛧  Laptop Display") in
+  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n󰛧  Laptop Display"
+
+  if hyprctl devices -j 2>/dev/null | jq -e '[.mice[] | select(.name | test("touchpad|trackpad"; "i"))] | length > 0' >/dev/null; then
+    options="$options\n󰟸  Touchpad"
+  fi
+
+  case $(menu "Toggle" "$options") in
 
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
@@ -179,6 +185,7 @@ show_toggle_menu() {
   *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
   *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
   *Laptop*) omarchy-hyprland-monitor-internal-toggle ;;
+  *Touchpad*) omarchy-toggle-touchpad ;;
   *) back_to show_trigger_menu ;;
   esac
 }
