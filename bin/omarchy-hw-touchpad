@@ -1,0 +1,3 @@
+#!/bin/bash
+
+hyprctl devices -j | jq -r '[.mice[] | .name | select(test("touchpad|trackpad"; "i"))] | first // empty'
