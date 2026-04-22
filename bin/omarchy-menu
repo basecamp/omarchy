@@ -168,10 +168,6 @@ show_share_menu() {
 show_toggle_menu() {
   local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n  Direct Boot\n󰟵  Passwordless Sudo"
 
-  if omarchy-battery-threshold-available; then
-    options="$options\n󰂂  Battery Threshold"
-  fi
-
   case $(menu "Toggle" "$options") in
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
@@ -183,7 +179,6 @@ show_toggle_menu() {
   *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
   *"Direct Boot"*) present_terminal omarchy-config-direct-boot ;;
   *"Passwordless Sudo"*) present_terminal omarchy-sudo-passwordless ;;
-  *Battery*) omarchy-battery-threshold-toggle ;;
   *) back_to show_trigger_menu ;;
   esac
 }
@@ -244,7 +239,7 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
   [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Security\n  Config"
@@ -266,10 +261,24 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
+  local options="󱐋  Power Profile"
+
+  if omarchy-battery-policy-available; then
+    options="$options\n󰂄  Battery Charging"
+  fi
+
+  case $(menu "Power" "$options") in
+  *Profile*) show_setup_power_profile_menu ;;
+  *Battery*) present_terminal omarchy-setup-battery-policy ;;
+  *) back_to show_setup_menu ;;
+  esac
+}
+
+show_setup_power_profile_menu() {
   profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
   if [[ $profile == "CNCLD" || -z $profile ]]; then
-    back_to show_setup_menu
+    back_to show_setup_power_menu
   else
     powerprofilesctl set "$profile"
   fi

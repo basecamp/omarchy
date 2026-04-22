@@ -1,0 +1,380 @@
+#!/bin/bash
+
+battery_dirs() {
+  local bat
+  local found=false
+
+  for bat in /sys/class/power_supply/BAT*; do
+    [[ -d $bat ]] || continue
+    [[ -r $bat/type ]] || continue
+    [[ $(<"$bat/type") == "Battery" ]] || continue
+
+    if [[ -r $bat/charge_types || -r $bat/charge_control_end_threshold ]]; then
+      found=true
+      printf '%s\n' "$bat"
+    fi
+  done
+
+  [[ $found == true ]]
+}
+
+battery_dir() {
+  local batteries
+
+  mapfile -t batteries < <(battery_dirs)
+  (( ${#batteries[@]} > 0 )) || return 1
+
+  printf '%s\n' "${batteries[0]}"
+}
+
+policy_id_from_raw() {
+  case "$1" in
+  Adaptive) printf '%s\n' adaptive ;;
+  Standard) printf '%s\n' standard ;;
+  Fast | Express) printf '%s\n' fast ;;
+  Custom) printf '%s\n' custom ;;
+  Long_Life) printf '%s\n' long-life ;;
+  Trickle | PrimAcUse) printf '%s\n' primarily-ac ;;
+  *) return 1 ;;
+  esac
+}
+
+policy_label_from_id() {
+  case "$1" in
+  adaptive) printf '%s\n' Adaptive ;;
+  standard) printf '%s\n' Standard ;;
+  fast) printf '%s\n' Fast ;;
+  custom) printf '%s\n' Custom ;;
+  long-life) printf '%s\n' 'Long Life' ;;
+  primarily-ac) printf '%s\n' 'Primarily AC Use' ;;
+  *) return 1 ;;
+  esac
+}
+
+raw_from_policy_id() {
+  case "$1" in
+  adaptive) printf '%s\n' Adaptive ;;
+  standard) printf '%s\n' Standard ;;
+  fast) printf '%s\n' Fast ;;
+  custom) printf '%s\n' Custom ;;
+  long-life) printf '%s\n' Long_Life ;;
+  primarily-ac) printf '%s\n' PrimAcUse ;;
+  *) return 1 ;;
+  esac
+}
+
+raw_policy_for_battery() {
+  local bat="$1"
+  local policy_id="$2"
+
+  case "$policy_id" in
+  primarily-ac)
+    if supports_raw_policy "$bat" Trickle; then
+      printf '%s\n' Trickle
+    else
+      printf '%s\n' PrimAcUse
+    fi
+    ;;
+  *) raw_from_policy_id "$policy_id" ;;
+  esac
+}
+
+available_charge_types() {
+  local bat="$1"
+  local charge_type
+  local raw_types
+
+  [[ -r $bat/charge_types ]] || return 1
+
+  raw_types=$(<"$bat/charge_types")
+  raw_types=${raw_types//[/}
+  raw_types=${raw_types//]/}
+
+  for charge_type in $raw_types; do
+    printf '%s\n' "$charge_type"
+  done
+}
+
+active_charge_type() {
+  local bat="$1"
+  local raw_types
+
+  [[ -r $bat/charge_types ]] || return 1
+
+  raw_types=$(<"$bat/charge_types")
+  if [[ $raw_types =~ \[([^][]+)\] ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+
+  return 1
+}
+
+supports_raw_policy() {
+  local bat="$1"
+  local target="$2"
+  local charge_type
+
+  while IFS= read -r charge_type; do
+    [[ $charge_type == "$target" ]] && return 0
+  done < <(available_charge_types "$bat")
+
+  return 1
+}
+
+supports_policy_id() {
+  local bat="$1"
+  local policy_id="$2"
+  local raw_policy
+
+  case "$policy_id" in
+  custom)
+    [[ -r $bat/charge_control_end_threshold ]] || return 1
+
+    if [[ -r $bat/charge_types ]]; then
+      supports_raw_policy "$bat" Custom
+    else
+      return 0
+    fi
+    ;;
+  primarily-ac)
+    [[ -r $bat/charge_types ]] && (supports_raw_policy "$bat" Trickle || supports_raw_policy "$bat" PrimAcUse)
+    ;;
+  *)
+    [[ -r $bat/charge_types ]] || return 1
+    raw_policy=$(raw_policy_for_battery "$bat" "$policy_id") || return 1
+    supports_raw_policy "$bat" "$raw_policy"
+    ;;
+  esac
+}
+
+is_integer() {
+  [[ $1 =~ ^[0-9]+$ ]]
+}
+
+probe() {
+  battery_dirs >/dev/null
+}
+
+status() {
+  local bat
+  local batteries
+  local candidate_policy
+  local charge_type_count=0
+  local reusable_custom=true
+  local active_policy=""
+  local active_raw=""
+  local custom_active=false
+  local custom_supported=false
+  local custom_start=""
+  local custom_end=""
+  local custom_start_supported=false
+  local custom_end_supported=true
+  local custom_start_min=""
+  local custom_start_max=""
+  local custom_end_min=""
+  local custom_end_max=""
+
+  mapfile -t batteries < <(battery_dirs)
+  (( ${#batteries[@]} > 0 )) || exit 1
+  bat=${batteries[0]}
+
+  for bat in "${batteries[@]}"; do
+    if active_raw=$(active_charge_type "$bat" 2>/dev/null); then
+      candidate_policy=$(policy_id_from_raw "$active_raw" 2>/dev/null || true)
+      (( charge_type_count += 1 ))
+
+      if [[ -z $active_policy ]]; then
+        active_policy=$candidate_policy
+      elif [[ -n $candidate_policy && $active_policy != "$candidate_policy" ]]; then
+        active_policy=""
+        active_raw=Mixed
+        break
+      fi
+    fi
+
+    if [[ -r $bat/charge_control_start_threshold ]]; then
+      custom_supported=true
+      custom_start_supported=true
+      [[ -n $custom_start ]] || custom_start=$(<"$bat/charge_control_start_threshold")
+    fi
+
+    if [[ -r $bat/charge_control_end_threshold ]]; then
+      [[ -n $custom_end ]] || custom_end=$(<"$bat/charge_control_end_threshold")
+    else
+      custom_end_supported=false
+    fi
+
+    if ! supports_policy_id "$bat" custom; then
+      reusable_custom=false
+    fi
+  done
+
+  if [[ $active_raw != Mixed && -n $active_policy ]]; then
+    active_raw=$(raw_policy_for_battery "${batteries[0]}" "$active_policy" 2>/dev/null || true)
+  fi
+
+  if [[ $custom_start_supported == true ]]; then
+    custom_start_min=0
+    custom_start_max=99
+  fi
+
+  custom_supported=$reusable_custom
+
+  if [[ $custom_supported == true && $custom_end_supported == true && -n $custom_end ]]; then
+    custom_end_min=1
+    custom_end_max=100
+  else
+    custom_supported=false
+    custom_end_supported=false
+    custom_start_supported=false
+  fi
+
+  if [[ -z $active_policy && $custom_supported == true && $charge_type_count == 0 ]]; then
+    active_policy=custom
+    active_raw=Custom
+  fi
+
+  [[ $active_policy == custom ]] && custom_active=true
+
+  printf '%s\n' "provider=power-supply"
+  printf '%s\n' "battery=$(basename "$bat")"
+  printf '%s\n' "active_policy=$active_policy"
+  printf '%s\n' "active_raw=$active_raw"
+  printf '%s\n' "custom_supported=$custom_supported"
+  printf '%s\n' "custom_active=$custom_active"
+  printf '%s\n' "custom_start_supported=$custom_start_supported"
+  printf '%s\n' "custom_end_supported=$custom_end_supported"
+  printf '%s\n' "custom_start=$custom_start"
+  printf '%s\n' "custom_end=$custom_end"
+  printf '%s\n' "custom_start_min=$custom_start_min"
+  printf '%s\n' "custom_start_max=$custom_start_max"
+  printf '%s\n' "custom_end_min=$custom_end_min"
+  printf '%s\n' "custom_end_max=$custom_end_max"
+  printf '%s\n' 'pending_reboot=0'
+}
+
+list() {
+  local bat
+  local batteries
+  local policy_id
+  local supported
+
+  mapfile -t batteries < <(battery_dirs)
+  (( ${#batteries[@]} > 0 )) || exit 1
+
+  for policy_id in primarily-ac fast standard adaptive custom long-life; do
+    supported=true
+
+    for bat in "${batteries[@]}"; do
+      if ! supports_policy_id "$bat" "$policy_id"; then
+        supported=false
+        break
+      fi
+    done
+
+    [[ $supported == true ]] || continue
+    printf '%s|%s\n' "$policy_id" "$(policy_label_from_id "$policy_id")"
+  done
+}
+
+set_policy() {
+  local bat
+  local batteries
+  local raw_policy
+
+  mapfile -t batteries < <(battery_dirs)
+  (( ${#batteries[@]} > 0 )) || exit 1
+
+  for bat in "${batteries[@]}"; do
+    raw_policy=$(raw_policy_for_battery "$bat" "$1") || {
+      echo "Unsupported battery policy: $1" >&2
+      exit 1
+    }
+
+    if [[ ! -r $bat/charge_types ]]; then
+      if [[ $1 == custom && -r $bat/charge_control_end_threshold ]]; then
+        continue
+      fi
+
+      echo "This machine only exposes custom battery thresholds." >&2
+      exit 1
+    fi
+
+    if ! supports_raw_policy "$bat" "$raw_policy"; then
+      echo "Battery policy '$1' is not available on this machine." >&2
+      exit 1
+    fi
+  done
+
+  for bat in "${batteries[@]}"; do
+    raw_policy=$(raw_policy_for_battery "$bat" "$1") || exit 1
+    [[ -r $bat/charge_types ]] || continue
+    printf '%s\n' "$raw_policy" | sudo tee "$bat/charge_types" >/dev/null || exit 1
+  done
+}
+
+set_custom_policy() {
+  local bat
+  local batteries
+  local start="$1"
+  local end="$2"
+
+  mapfile -t batteries < <(battery_dirs)
+  (( ${#batteries[@]} > 0 )) || exit 1
+
+  is_integer "$end" || {
+    echo "Stop threshold must be an integer." >&2
+    exit 1
+  }
+
+  if (( end < 1 || end > 100 )); then
+    echo "Stop threshold must be between 1 and 100." >&2
+    exit 1
+  fi
+
+  for bat in "${batteries[@]}"; do
+    [[ -r $bat/charge_control_end_threshold ]] || {
+      echo "This machine does not support custom battery thresholds." >&2
+      exit 1
+    }
+
+    if [[ -r $bat/charge_control_start_threshold ]]; then
+      is_integer "$start" || {
+        echo "Start threshold must be an integer." >&2
+        exit 1
+      }
+
+      if (( start < 0 || start > 99 )); then
+        echo "Start threshold must be between 0 and 99." >&2
+        exit 1
+      fi
+
+      if (( end <= start )); then
+        echo "Stop threshold must be greater than the start threshold." >&2
+        exit 1
+      fi
+    fi
+  done
+
+  for bat in "${batteries[@]}"; do
+    if [[ -r $bat/charge_control_start_threshold ]]; then
+      printf '%s\n' "$start" | sudo tee "$bat/charge_control_start_threshold" >/dev/null || exit 1
+    fi
+
+    printf '%s\n' "$end" | sudo tee "$bat/charge_control_end_threshold" >/dev/null || exit 1
+
+    if [[ -r $bat/charge_types ]] && supports_raw_policy "$bat" Custom; then
+      printf '%s\n' 'Custom' | sudo tee "$bat/charge_types" >/dev/null || exit 1
+    fi
+  done
+}
+
+case "$1" in
+probe) probe ;;
+status) status ;;
+list) list ;;
+set) set_policy "$2" ;;
+set-custom) set_custom_policy "$2" "$3" ;;
+*) exit 1 ;;
+esac

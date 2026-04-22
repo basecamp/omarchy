@@ -1,0 +1,366 @@
+#!/bin/bash
+
+provider_label() {
+  case "$1" in
+  dell-sysman) printf '%s\n' 'Dell BIOS' ;;
+  power-supply) printf '%s\n' 'Linux battery interface' ;;
+  *) printf '%s\n' "$1" ;;
+  esac
+}
+
+theme_choose() {
+  gum choose \
+    --header.foreground="" \
+    --cursor.foreground="" \
+    --selected.foreground="" \
+    --item.foreground="" \
+    "$@"
+}
+
+theme_input() {
+  gum input \
+    --header.foreground="" \
+    --prompt.foreground="" \
+    --cursor.foreground="" \
+    --placeholder.foreground="" \
+    "$@"
+}
+
+theme_confirm() {
+  local status
+
+  gum confirm "$@"
+  status=$?
+
+  if (( status <= 1 )); then
+    return $status
+  fi
+
+  echo "Confirmation prompt failed." >&2
+  exit $status
+}
+
+policy_label() {
+  case "$provider:$1" in
+  dell-sysman:fast) printf '%s\n' Express ;;
+  *:adaptive) printf '%s\n' Adaptive ;;
+  *:standard) printf '%s\n' Standard ;;
+  *:fast) printf '%s\n' Fast ;;
+  *:custom) printf '%s\n' Custom ;;
+  *:long-life) printf '%s\n' 'Long Life' ;;
+  *:primarily-ac) printf '%s\n' 'Primarily AC Use' ;;
+  *) printf '%s\n' "$1" ;;
+  esac
+}
+
+policy_summary() {
+  case "$provider:$1" in
+  dell-sysman:adaptive) printf '%s\n' 'Auto-tunes charging to your usage' ;;
+  dell-sysman:standard) printf '%s\n' 'Full charge at a moderate rate' ;;
+  dell-sysman:fast) printf '%s\n' 'Fastest charging; more battery wear' ;;
+  dell-sysman:primarily-ac) printf '%s\n' 'Lowers charge ceiling for plugged-in use' ;;
+  *:adaptive) printf '%s\n' 'Balances charging for typical usage' ;;
+  *:standard) printf '%s\n' 'Charges normally to full capacity' ;;
+  *:fast) printf '%s\n' 'Prioritizes faster charging' ;;
+  *:primarily-ac) printf '%s\n' 'Optimized for mostly plugged-in use' ;;
+  *:custom)
+    if [[ $custom_start_supported == true ]]; then
+      printf '%s\n' 'Uses your chosen start and stop thresholds'
+    else
+      printf '%s\n' 'Uses your chosen stop threshold'
+    fi
+    ;;
+  *:long-life) printf '%s\n' 'Reduces max charge to extend lifespan' ;;
+  *) printf '%s\n' '' ;;
+  esac
+}
+
+policy_option_line() {
+  local policy_id="$1"
+  local policy_name="$2"
+  local label="$policy_name"
+  local summary
+
+  if [[ $policy_id == "$active_policy" ]]; then
+    label="$label (Current)"
+  fi
+
+  summary=$(policy_summary "$policy_id")
+
+  if [[ -n $summary ]]; then
+    printf '%-28s %s\n' "$label" "$summary"
+  else
+    printf '%s\n' "$label"
+  fi
+}
+
+read_status() {
+  local status_output
+
+  provider=""
+  battery=""
+  active_policy=""
+  active_raw=""
+  custom_supported=false
+  custom_active=false
+  custom_start_supported=false
+  custom_end_supported=false
+  custom_start=""
+  custom_end=""
+  custom_start_min=0
+  custom_start_max=99
+  custom_end_min=1
+  custom_end_max=100
+  pending_reboot=0
+
+  status_output=$(omarchy-battery-policy-status) || {
+    echo "Failed to read battery charging status." >&2
+    exit 1
+  }
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+    provider) provider="$value" ;;
+    battery) battery="$value" ;;
+    active_policy) active_policy="$value" ;;
+    active_raw) active_raw="$value" ;;
+    custom_supported) custom_supported="$value" ;;
+    custom_active) custom_active="$value" ;;
+    custom_start_supported) custom_start_supported="$value" ;;
+    custom_end_supported) custom_end_supported="$value" ;;
+    custom_start) custom_start="$value" ;;
+    custom_end) custom_end="$value" ;;
+    custom_start_min) custom_start_min="$value" ;;
+    custom_start_max) custom_start_max="$value" ;;
+    custom_end_min) custom_end_min="$value" ;;
+    custom_end_max) custom_end_max="$value" ;;
+    pending_reboot) pending_reboot="$value" ;;
+    esac
+  done <<< "$status_output"
+}
+
+show_status() {
+  local active_policy_line="Unknown"
+  local stored_window_line="Unavailable"
+  local pending_reboot_line=""
+  local managed_by_line="Managed by system charging controls"
+  local provider_line
+  local battery_line
+  local active_line
+  local custom_line
+  local reboot_line
+  local summary_lines=()
+
+  if [[ $provider == "dell-sysman" ]]; then
+    managed_by_line="Managed by laptop firmware"
+  fi
+
+  if [[ -n $active_policy ]]; then
+    active_policy_line=$(policy_label "$active_policy")
+  elif [[ -n $active_raw ]]; then
+    active_policy_line=$active_raw
+  fi
+
+  if [[ $custom_supported == true ]]; then
+    if [[ $custom_start_supported == true && -n $custom_start && -n $custom_end ]]; then
+      stored_window_line="${custom_start}% -> ${custom_end}%"
+    elif [[ $custom_start_supported == true ]]; then
+      stored_window_line="Stored custom profile"
+    elif [[ -n $custom_end ]]; then
+      stored_window_line="Stop at ${custom_end}%"
+    fi
+  fi
+
+  if [[ $pending_reboot == "1" ]]; then
+    pending_reboot_line="Required to fully apply changes"
+  fi
+
+  printf -v provider_line '%-11s %s' Provider "$(provider_label "$provider")"
+  printf -v battery_line '%-11s %s' Battery "$battery"
+  printf -v active_line '%-11s %s' Active "$active_policy_line"
+  printf -v custom_line '%-11s %s' Custom "$stored_window_line"
+
+  summary_lines+=("Battery Charging")
+  summary_lines+=("$managed_by_line")
+  summary_lines+=("")
+  summary_lines+=("$provider_line")
+  summary_lines+=("$battery_line")
+  summary_lines+=("$active_line")
+  summary_lines+=("$custom_line")
+
+  if [[ -n $pending_reboot_line ]]; then
+    printf -v reboot_line '%-11s %s' Reboot "$pending_reboot_line"
+    summary_lines+=("$reboot_line")
+  fi
+
+  printf '%s\n' "${summary_lines[@]}" | gum style \
+    --border normal \
+    --padding "1 2"
+
+  echo
+}
+
+status_snapshot() {
+  printf '%s\n' \
+    "provider=$provider" \
+    "battery=$battery" \
+    "active_policy=$active_policy" \
+    "active_raw=$active_raw" \
+    "custom_supported=$custom_supported" \
+    "custom_active=$custom_active" \
+    "custom_start_supported=$custom_start_supported" \
+    "custom_end_supported=$custom_end_supported" \
+    "custom_start=$custom_start" \
+    "custom_end=$custom_end" \
+    "pending_reboot=$pending_reboot"
+}
+
+prompt_for_reboot_if_needed() {
+  if [[ $pending_reboot == "1" ]]; then
+    if theme_confirm "Reboot now to fully apply the battery charging change?"; then
+      omarchy-system-reboot
+      exit 0
+    fi
+  fi
+}
+
+select_policy() {
+  local choice
+  local display
+  local entry
+  local list_output
+  local policy_id
+  local policy_name
+
+  selected_policy_id=""
+  selected_policy_label=""
+  policy_ids=()
+  policy_labels=()
+  display_options=()
+
+  list_output=$(omarchy-battery-policy-list) || {
+    echo "Failed to list battery charging policies." >&2
+    exit 1
+  }
+
+  while IFS= read -r entry; do
+    [[ -n $entry ]] || continue
+    policy_id=${entry%%|*}
+    policy_name=${entry#*|}
+    display=$(policy_option_line "$policy_id" "$policy_name")
+
+    policy_ids+=("$policy_id")
+    policy_labels+=("$policy_name")
+    display_options+=("$display")
+  done <<< "$list_output"
+
+  choice=$(printf '%s\n' "${display_options[@]}" | theme_choose --header "Choose a charging policy") || exit 0
+
+  for index in "${!display_options[@]}"; do
+    if [[ ${display_options[$index]} == "$choice" ]]; then
+      selected_policy_id=${policy_ids[$index]}
+      selected_policy_label=${policy_labels[$index]}
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+prompt_custom_thresholds() {
+  local start_default=""
+  local end_default=""
+  local start_value=0
+  local end_value
+
+  if [[ $custom_start_supported == true ]]; then
+    start_default=$custom_start
+    if [[ -z $start_default && -n $custom_end ]]; then
+      start_default=$((custom_end - 5))
+    fi
+    [[ -n $start_default ]] || start_default=75
+
+    start_value=$(theme_input \
+      --value="$start_default" \
+      --char-limit=3 \
+      --header="Start charging again below ${custom_start_min}-${custom_start_max}%") || exit 0
+  fi
+
+  end_default=$custom_end
+  [[ -n $end_default ]] || end_default=80
+
+  end_value=$(theme_input \
+    --value="$end_default" \
+    --char-limit=3 \
+    --header="Stop charging at ${custom_end_min}-${custom_end_max}%") || exit 0
+
+  omarchy-battery-policy-set-custom "$start_value" "$end_value"
+}
+
+activate_custom_policy() {
+  if [[ $custom_supported != true ]]; then
+    echo "Custom battery thresholds are not available on this machine." >&2
+    exit 1
+  fi
+
+  if [[ -n $custom_end ]]; then
+    if [[ $custom_start_supported == true && -n $custom_start ]]; then
+      if theme_confirm "Use the stored custom window (${custom_start}% to ${custom_end}%)?"; then
+        omarchy-battery-policy-set custom
+        return
+      fi
+    elif [[ $custom_start_supported == true ]]; then
+      if theme_confirm "Use the stored custom profile?"; then
+        omarchy-battery-policy-set custom
+        return
+      fi
+    elif theme_confirm "Use the stored stop threshold (${custom_end}%)?"; then
+      omarchy-battery-policy-set custom
+      return
+    fi
+  fi
+
+  prompt_custom_thresholds
+}
+
+if ! omarchy-battery-policy-available; then
+  echo "Battery charging controls are not available on this machine." >&2
+  exit 1
+fi
+
+while true; do
+  change_applied=false
+  change_succeeded=false
+
+  clear
+  read_status
+  show_status
+  status_before=$(status_snapshot)
+  select_policy || exit 1
+
+  if [[ $selected_policy_id == custom ]]; then
+    if activate_custom_policy; then
+      change_succeeded=true
+    fi
+  else
+    if omarchy-battery-policy-set "$selected_policy_id"; then
+      change_succeeded=true
+    fi
+  fi
+
+  echo
+  read_status
+  show_status
+
+  if [[ $change_succeeded == true && $status_before != "$(status_snapshot)" ]]; then
+    change_applied=true
+  fi
+
+  if [[ $change_applied == true ]]; then
+    prompt_for_reboot_if_needed
+  fi
+
+  if ! theme_confirm "Change another battery charging setting?"; then
+    exit 0
+  fi
+done

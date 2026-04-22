@@ -1,0 +1,10 @@
+#!/bin/bash
+
+for provider in dell-sysman power-supply; do
+  if omarchy-battery-policy-provider-$provider probe >/dev/null 2>&1; then
+    printf '%s\n' "$provider"
+    exit 0
+  fi
+done
+
+exit 1
