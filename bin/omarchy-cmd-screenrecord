@@ -134,8 +134,7 @@ stop_screenrecording() {
     pkill -9 -f "^gpu-screen-recorder"
     notify-send "Screen recording error" "Recording process had to be force-killed. Video may be corrupted." -u critical -t 5000
   else
-    trim_first_frame
-    normalize_audio
+    finalize_recording
     local filename=$(cat "$RECORDING_FILE" 2>/dev/null)
     local preview="${filename%.mp4}-preview.png"
 
@@ -160,31 +159,24 @@ screenrecording_active() {
   pgrep -f "^gpu-screen-recorder" >/dev/null
 }
 
-trim_first_frame() {
+finalize_recording() {
   local latest
   latest=$(cat "$RECORDING_FILE" 2>/dev/null)
+  [[ -n $latest && -f $latest ]] || return
 
-  if [[ -n $latest && -f $latest ]]; then
-    local trimmed="${latest%.mp4}-trimmed.mp4"
-    if ffmpeg -y -ss 0.1 -i "$latest" -c copy "$trimmed" -loglevel quiet 2>/dev/null; then
-      mv "$trimmed" "$latest"
-    else
-      rm -f "$trimmed"
-    fi
+  # Trim the first frame, and normalize audio to -14 LUFS if present, in a single pass
+  local args=(-y -ss 0.1 -i "$latest")
+  if ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "$latest" 2>/dev/null | grep -q audio; then
+    args+=(-af loudnorm=I=-14:TP=-1.5:LRA=11 -c:v copy)
+  else
+    args+=(-c copy)
   fi
-}
 
-normalize_audio() {
-  local latest
-  latest=$(cat "$RECORDING_FILE" 2>/dev/null)
-
-  if [[ -n $latest && -f $latest ]]; then
-    local normalized="${latest%.mp4}-normalized.mp4"
-    if ffmpeg -y -i "$latest" -af loudnorm=I=-14:TP=-1.5:LRA=11 -c:v copy "$normalized" -loglevel quiet 2>/dev/null; then
-      mv "$normalized" "$latest"
-    else
-      rm -f "$normalized"
-    fi
+  local processed="${latest%.mp4}-processed.mp4"
+  if ffmpeg "${args[@]}" "$processed" -loglevel quiet 2>/dev/null; then
+    mv "$processed" "$latest"
+  else
+    rm -f "$processed"
   fi
 }
 
