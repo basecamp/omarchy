@@ -1,9 +1,0 @@
-#!/bin/bash
-
-# Toggle the internal laptop display on/off.
-
-if omarchy-hyprland-toggle-enabled internal-monitor-disable; then
-  omarchy-hyprland-monitor-internal-enable
-else
-  omarchy-hyprland-monitor-internal-disable
-fi

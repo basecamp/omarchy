@@ -1,9 +1,0 @@
-#!/bin/bash
-
-# Re-enable the internal display if it was toggled off and no external monitors
-# are currently active (e.g. external got disconnected live, during sleep, or
-# wasn't present on boot).
-
-if omarchy-hyprland-monitors-none && omarchy-hyprland-toggle-enabled internal-monitor-disable; then
-  omarchy-hyprland-monitor-internal-enable
-fi
