@@ -1,9 +1,11 @@
 #!/bin/bash
 
-# Toggle microphone mute. Dell XPS systems get special handling for the hardware LED.
+# Toggle microphone mute. Dell XPS and ThinkPad systems get special handling for the hardware LED.
 
 if omarchy-hw-match "XPS"; then
   omarchy-cmd-mic-mute-xps
+elif omarchy-hw-match "ThinkPad"; then
+  omarchy-cmd-mic-mute-thinkpad
 else
   omarchy-swayosd-client --input-volume mute-toggle
 fi
