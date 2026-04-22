@@ -13,14 +13,14 @@ fi
 enable() {
   hyprctl keyword "device[$device]:enabled" true >/dev/null
   rm -f "$STATE_CONF"
-  $osdclient --custom-icon input-touchpad-symbolic --custom-message "Enabled"
+  omarchy-swayosd-client --custom-icon input-touchpad-symbolic --custom-message "Enabled Touchpad"
 }
 
 disable() {
   hyprctl keyword "device[$device]:enabled" false >/dev/null
   mkdir -p "$(dirname "$STATE_CONF")"
   printf 'device {\n    name = %s\n    enabled = false\n}\n' "$device" > "$STATE_CONF"
-  $osdclient --custom-icon touchpad-disabled-symbolic --custom-message "Disabled"
+  omarchy-swayosd-client --custom-icon touchpad-disabled-symbolic --custom-message "Disabled Touchpad"
 }
 
 case "${1:-toggle}" in
