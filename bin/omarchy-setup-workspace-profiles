@@ -1,0 +1,110 @@
+#!/bin/bash
+# Opt-in setup for the Workspace Profiles feature. Invoked from the
+# omarchy-menu Setup submenu. Idempotent: re-runs are safe and refresh
+# every moving part.
+#
+# What this installs:
+#   - Menu extension   ~/.config/omarchy/extensions/workspace-profiles.sh
+#   - Browser .desktop ~/.local/share/applications/workspace-profile-browser.desktop
+#   - xdg default      sets workspace-profile-browser.desktop as the default handler
+#                      for http/https/html so link clicks route through the shim
+#   - Mako include     ensures ~/.config/mako/config is a real file that includes
+#                      the active theme's mako.ini and our workspace-profiles block
+#   - Profile state    invokes `omarchy-workspace-profile on` → first_time_setup
+#                      reads the user's live workspace layout + browser data dir,
+#                      seeds a single `default` profile, migrates numeric windows
+#
+# Disable path: `omarchy-workspace-profile off` — keeps sidecar files in
+# place but sets the disabled flag; all actions silently no-op. To fully
+# uninstall the opt-in artifacts, see the "uninstall" section in the PR
+# description (out of scope for this script).
+
+set -euo pipefail
+
+OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
+
+# ────────── install menu extension ──────────
+mkdir -p "$HOME/.config/omarchy/extensions"
+cp -f "$OMARCHY_PATH/config/omarchy/extensions/workspace-profiles.sh" \
+      "$HOME/.config/omarchy/extensions/workspace-profiles.sh"
+
+# ────────── ensure sidecar include files exist ──────────
+# The stock Omarchy configs source/include these sidecars. First-time
+# opt-in, they may not have been copied into ~/.config yet — do it now
+# so our `on` below has a target to populate.
+for rel in hypr/workspace-profiles.conf \
+           hypr/workspace-profiles-autostart.conf \
+           waybar/workspace-profiles.jsonc \
+           waybar/workspace-profiles.css; do
+  src="$OMARCHY_PATH/config/$rel"
+  dst="$HOME/.config/$rel"
+  if [[ ! -f "$dst" ]]; then
+    mkdir -p "$(dirname "$dst")"
+    cp -f "$src" "$dst"
+  fi
+done
+
+# ────────── install browser shim .desktop ──────────
+mkdir -p "$HOME/.local/share/applications"
+cat > "$HOME/.local/share/applications/workspace-profile-browser.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Workspace Profile Browser
+GenericName=Web Browser
+Comment=Routes URLs through the active workspace profile's browser
+Exec=workspace-profile-browser %U
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/about;x-scheme-handler/unknown;text/html;application/xhtml+xml;
+StartupNotify=true
+EOF
+update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
+
+# ────────── register as default handler ──────────
+# Routes every xdg-open link click through the shim, which resolves
+# the active profile's Chromium user-data-dir.
+xdg-mime default workspace-profile-browser.desktop \
+  x-scheme-handler/http x-scheme-handler/https \
+  text/html application/xhtml+xml 2>/dev/null || true
+xdg-settings set default-web-browser workspace-profile-browser.desktop 2>/dev/null || true
+
+# ────────── mako: ensure real file with theme include + our include ──────────
+MAKO="$HOME/.config/mako/config"
+OUR_MAKO="$HOME/.config/mako/workspace-profiles"
+mkdir -p "$HOME/.config/mako"
+# If mako/config is a symlink (stock Omarchy state, pointing at the theme
+# mako.ini), convert to a real file that includes both the theme and our
+# sidecar. This preserves theme-switch behavior because the theme symlink
+# itself is maintained elsewhere in Omarchy and we keep referring to it.
+if [[ -L "$MAKO" ]]; then
+  theme_ini=$(readlink -f "$MAKO")
+  rm "$MAKO"
+  cat > "$MAKO" <<EOF
+include=$theme_ini
+include=$OUR_MAKO
+EOF
+elif [[ -f "$MAKO" ]]; then
+  # Real file already. Add our include line if not already present.
+  if ! grep -qF "include=$OUR_MAKO" "$MAKO"; then
+    printf '\ninclude=%s\n' "$OUR_MAKO" >> "$MAKO"
+  fi
+else
+  cat > "$MAKO" <<EOF
+include=$OUR_MAKO
+EOF
+fi
+# Ensure the sidecar itself exists (empty is fine; controller fills it).
+[[ -f "$OUR_MAKO" ]] || : > "$OUR_MAKO"
+
+# ────────── enable the feature and seed default profile ──────────
+# `on` clears the disabled flag and, if no workspace-profiles.conf
+# exists, runs first_time_setup: scans the user's current Hyprland
+# workspaces, detects an existing Chromium data dir, writes the config
+# with a single `default` profile, migrates stray numeric windows.
+omarchy-workspace-profile on
+
+# ────────── kick the bar ──────────
+# Waybar's persistent-workspaces and format-icons are only re-read on
+# SIGUSR2 (full config reload).
+pkill -SIGUSR2 -x waybar 2>/dev/null || true

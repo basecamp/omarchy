@@ -1,0 +1,5 @@
+#!/bin/bash
+# Shim so omarchy-launch-browser can treat us as a browser binary.
+# It extracts only the first word of Exec= from our .desktop, so the full
+# `omarchy-workspace-profile app browser` invocation has to live here.
+exec omarchy-workspace-profile app browser "$@"

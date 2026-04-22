@@ -1,5 +1,9 @@
 @import "../omarchy/current/theme/waybar.css";
 
+/* Workspace Profiles sidecar — empty in stock Omarchy; populated by
+ * `Settings → Setup → Workspace Profiles`. Missing file is skipped. */
+@import "./workspace-profiles.css";
+
 * {
   background-color: @background;
   color: @foreground;

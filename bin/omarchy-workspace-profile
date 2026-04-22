@@ -1,0 +1,1434 @@
+#!/usr/bin/env bash
+# omarchy-workspace-profile — workspace profile switcher
+# Named profiles (e.g. work/personal) each expose WS_PER_PROFILE slots
+# under names like "<profile>-<nn>". Static Hyprland binds route
+# SUPER+1..n here; the controller resolves the slot using the active
+# profile recorded in the state file. Configurable via
+# ~/.config/omarchy/workspace-profiles.conf (see `profile` subcommand).
+set -euo pipefail
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
+STATE_FILE="$STATE_DIR/workspace-profile"
+LAST_SLOTS_FILE="$STATE_DIR/workspace-profile-last-slots"
+DISABLED_FLAG="$STATE_DIR/workspace-profile-disabled"
+# Our managed edits live in sidecar files included from the stock
+# Omarchy config; `omarchy-refresh-*` overwrites the stock files but
+# leaves these sidecars alone.
+WAYBAR_STYLE="$HOME/.config/waybar/workspace-profiles.css"
+WAYBAR_CONFIG="$HOME/.config/waybar/workspace-profiles.jsonc"
+MAKO_CONFIG="$HOME/.config/mako/workspace-profiles"
+PROFILES_FILE="$HOME/.config/omarchy/workspace-profiles.conf"
+WS_PER_PROFILE_DEFAULT=5
+# No ceiling on slot count or profile count — the natural limit is
+# whatever the user's keybindings cover. Default Omarchy binds go up to
+# digit 9/0 (SUPER+1..0); beyond that, users reach slots/profiles via
+# the `goto`/`set` subcommands or custom bindings.
+STYLE_BEGIN='/* === BEGIN workspace-profile visibility (managed by omarchy-workspace-profile) === */'
+STYLE_END='/* === END workspace-profile visibility === */'
+MAKO_BEGIN='# === BEGIN workspace-profile styles (managed by omarchy-workspace-profile) ==='
+MAKO_END='# === END workspace-profile styles ==='
+
+mkdir -p "$STATE_DIR"
+
+# ────── config parsing ──────
+
+# Emit profile names only (one per line), filtering metadata/blanks/comments.
+list_profiles() {
+  if [[ -f "$PROFILES_FILE" ]]; then
+    # Drop blanks, comments, and metadata lines (key: value; keys may
+    # contain dots, e.g. `color.work: ...`).
+    grep -Ev '^\s*(#|$)' "$PROFILES_FILE" | grep -Ev '^\s*[a-zA-Z_][a-zA-Z0-9_.-]*\s*:'
+  else
+    # Pre-install / pre-enable fallback: reflect what first_time_setup
+    # would create.
+    printf '%s\n' default
+  fi
+}
+
+get_metadata() {
+  # Print value of a metadata key (e.g. `default: work` → `work`).
+  local key="$1"
+  [[ -f "$PROFILES_FILE" ]] || return 1
+  grep -E "^\s*${key}\s*:" "$PROFILES_FILE" | head -n1 \
+    | sed -E "s/^\s*${key}\s*:\s*(.*)\s*$/\1/"
+}
+
+slot_count() {
+  # Slots per profile, read from the `slots:` metadata line. Falls back
+  # to WS_PER_PROFILE_DEFAULT; must be >= 1.
+  local n
+  n=$(get_metadata slots 2>/dev/null || echo "$WS_PER_PROFILE_DEFAULT")
+  if ! [[ "$n" =~ ^[0-9]+$ ]] || (( n < 1 )); then
+    n=$WS_PER_PROFILE_DEFAULT
+  fi
+  echo "$n"
+}
+
+# Resolve once at startup so every function sees a stable value.
+WS_PER_PROFILE=$(slot_count)
+
+default_profile() {
+  local d
+  d=$(get_metadata default 2>/dev/null || true)
+  if [[ -n "$d" ]] && list_profiles | grep -Fxq "$d"; then
+    echo "$d"
+  else
+    list_profiles | head -n1
+  fi
+}
+
+current_profile() {
+  if [[ -f "$STATE_FILE" && -s "$STATE_FILE" ]]; then
+    cat "$STATE_FILE"
+  else
+    default_profile
+  fi
+}
+
+pretty_name() {
+  # Title-case for UI display.
+  local s="$1"
+  echo "${s^}"
+}
+
+validate_profile() {
+  local p="$1"
+  if ! list_profiles | grep -Fxq "$p"; then
+    echo "unknown profile: $p" >&2
+    echo "valid profiles: $(list_profiles | paste -sd, -)" >&2
+    exit 1
+  fi
+}
+
+validate_profile_name() {
+  local name="$1"
+  if [[ ! "$name" =~ ^[a-z][a-z0-9-]{0,19}$ ]]; then
+    echo "invalid profile name: '$name'" >&2
+    echo "(lowercase letters/digits/hyphens only, start with letter, max 20 chars)" >&2
+    return 1
+  fi
+}
+
+is_disabled() {
+  [[ -f "$DISABLED_FLAG" ]]
+}
+
+# Guard for action subcommands (set/goto/move/cycle/boot). Silently no-op
+# when the feature is disabled so keybindings don't fire unwanted behavior.
+require_enabled() {
+  if is_disabled; then
+    notify-send -a workspace-profile -t 1500 -i preferences-desktop-workspaces \
+      "Workspace profiles: disabled" "Run 'omarchy-workspace-profile on' to re-enable." 2>/dev/null || true
+    exit 0
+  fi
+}
+
+ensure_profiles_file() {
+  # No-op if the config already exists. On fresh systems the file is
+  # created by `first_time_setup` (on the first `on`), not here.
+  [[ -f "$PROFILES_FILE" ]] && return 0
+  mkdir -p "$(dirname "$PROFILES_FILE")"
+  cat > "$PROFILES_FILE" <<EOF
+# Workspace profiles — one per line.
+# Metadata lines (key: value) are supported:
+#   default: <name>      profile active on first run
+#   slots: <n>           slots per profile (>= 1)
+#   color.<name>: <#hex> per-profile accent color
+
+default: default
+slots: $WS_PER_PROFILE_DEFAULT
+
+default
+EOF
+}
+
+first_time_setup() {
+  # Invoked from `enable_feature` when no profiles config exists yet.
+  # Detects the user's current Hyprland workspace layout, picks a slot
+  # count that covers them, and seeds a single `default` profile with
+  # those windows migrated into its slots.
+  local max_ws
+  max_ws=$(hyprctl workspaces -j | python3 -c '
+import json, sys
+ws = json.load(sys.stdin)
+nums = [int(w["name"]) for w in ws if w["name"].isdigit() and w.get("windows", 0) > 0]
+print(max(nums) if nums else 0)
+') || max_ws=0
+  # Clamp to [default, max].
+  if (( max_ws < WS_PER_PROFILE_DEFAULT )); then
+    max_ws=$WS_PER_PROFILE_DEFAULT
+  fi
+
+  mkdir -p "$(dirname "$PROFILES_FILE")"
+  cat > "$PROFILES_FILE" <<EOF
+# Workspace profiles — one per line.
+# Metadata lines (key: value) are supported:
+#   default: <name>      profile active on first run
+#   slots: <n>           slots per profile (>= 1)
+#   color.<name>: <#hex> per-profile accent color
+
+default: default
+slots: $max_ws
+
+default
+EOF
+  # Refresh cached slot count.
+  WS_PER_PROFILE=$max_ws
+  # Migrate whatever's on bare-numeric workspaces into the default profile.
+  migrate_numeric_windows default
+  notify "Initialized: 1 profile, $max_ws slots"
+}
+
+# ────── CSS managed block ──────
+
+rewrite_style_collapse() {
+  # Rewrite the managed block in style.css with:
+  #   a) Omarchy-icon color = current profile's accent,
+  #   b) per-profile color rules driven by profile_color(),
+  #   c) :nth-child collapse rules for inactive workspace slots.
+  # Waybar hot-reloads CSS (no SIGUSR2, no flicker).
+  local current="$1"
+  [[ -f "$WAYBAR_STYLE" ]] || return 0
+  local profiles_csv accents_csv current_accent p
+  profiles_csv=$(list_profiles | paste -sd, -)
+  # Build a parallel CSV of "name=hex" pairs so Python doesn't need to
+  # re-implement the color resolver.
+  local parts=()
+  while IFS= read -r p; do
+    parts+=("${p}=$(profile_color "$p")")
+  done < <(list_profiles)
+  accents_csv=$(IFS='|'; echo "${parts[*]}")
+  current_accent=$(profile_color "$current")
+
+  python3 - "$WAYBAR_STYLE" "$current" "$WS_PER_PROFILE" "$STYLE_BEGIN" "$STYLE_END" "$profiles_csv" "$accents_csv" "$current_accent" <<'PY'
+import sys, re
+path, cur, n_str, begin, end, profiles_csv, accents_csv, current_accent = sys.argv[1:9]
+n = int(n_str)
+profiles = [p.strip() for p in profiles_csv.split(',') if p.strip()]
+profiles_sorted = sorted(profiles)
+accents = {}
+for pair in accents_csv.split('|'):
+    if '=' in pair:
+        name, hx = pair.split('=', 1)
+        accents[name.strip()] = hx.strip()
+try:
+    idx = profiles_sorted.index(cur)
+except ValueError:
+    sys.exit(0)
+first = idx * n + 1
+last  = first + n - 1
+
+ranges = []
+if first > 1:
+    ranges.append(f":nth-child(-n+{first-1})")
+total = len(profiles_sorted) * n
+if last < total:
+    ranges.append(f":nth-child(n+{last+1})")
+
+logo_rule = (
+    "#custom-omarchy {\n"
+    f"  color: {current_accent};\n"
+    "}\n"
+)
+
+if ranges:
+    btn_sel = ",\n".join(f"#workspaces button{r}" for r in ranges)
+    lbl_sel = ",\n".join(f"#workspaces button{r} label" for r in ranges)
+    collapse = (
+        f"{btn_sel} {{\n"
+        "  min-width: 0; min-height: 0;\n"
+        "  padding: 0; margin: 0;\n"
+        "  border: none; opacity: 0;\n"
+        "}\n"
+        f"{lbl_sel} {{\n"
+        "  min-width: 0; padding: 0; margin: 0;\n"
+        "  font-size: 0;\n"
+        "}\n"
+    )
+else:
+    collapse = "/* single profile configured; nothing to collapse */\n"
+
+block = logo_rule + collapse
+
+with open(path) as f:
+    css = f.read()
+pattern = re.compile(re.escape(begin) + r".*?" + re.escape(end), re.DOTALL)
+managed = f"{begin}\n{block}{end}"
+if pattern.search(css):
+    css = pattern.sub(managed, css, count=1)
+else:
+    css = css.rstrip() + "\n\n" + managed + "\n"
+with open(path, "w") as f:
+    f.write(css)
+PY
+}
+
+clear_style_managed() {
+  # Wipe the managed block (for `off`). Waybar hot-reloads CSS and returns
+  # to the stock styling: no logo tint, no collapsed workspace buttons.
+  [[ -f "$WAYBAR_STYLE" ]] || return 0
+  python3 - "$WAYBAR_STYLE" "$STYLE_BEGIN" "$STYLE_END" <<'PY'
+import sys, re
+path, begin, end = sys.argv[1:4]
+with open(path) as f:
+    css = f.read()
+pattern = re.compile(re.escape(begin) + r".*?" + re.escape(end), re.DOTALL)
+managed = f"{begin}\n{end}"
+if pattern.search(css):
+    css = pattern.sub(managed, css, count=1)
+with open(path, "w") as f:
+    f.write(css)
+PY
+}
+
+# ────── profile colors ──────
+
+# Resolve a profile's accent color. Priority:
+#   1. `color.<name>: <#hex>` metadata line in the profiles config
+#   2. A neutral gray fallback for any profile without a color set
+profile_color() {
+  local name="$1" hex=""
+  hex=$(get_metadata "color.$name" 2>/dev/null || true)
+  if [[ -n "$hex" ]]; then
+    echo "$hex"; return
+  fi
+  echo "#a0a0a0"
+}
+
+sync_mako_styles() {
+  # Rewrite the managed block in ~/.config/mako/config with one section per
+  # profile (matched by `category=<profile>`) setting a colored border.
+  # Safe to call every time profiles change; `makoctl reload` applies it.
+  [[ -f "$MAKO_CONFIG" ]] || return 0
+  local block="" p hex
+  while IFS= read -r p; do
+    hex=$(profile_color "$p")
+    block+="[app-name=workspace-profile category=$p]"$'\n'
+    block+="border-color=$hex"$'\n'
+    block+="border-size=2"$'\n'
+    block+=$'\n'
+  done < <(list_profiles)
+
+  python3 - "$MAKO_CONFIG" "$MAKO_BEGIN" "$MAKO_END" "$block" <<'PY'
+import sys, re
+path, begin, end, block = sys.argv[1:5]
+with open(path) as f:
+    cfg = f.read()
+pattern = re.compile(re.escape(begin) + r".*?" + re.escape(end), re.DOTALL)
+managed = f"{begin}\n{block}{end}"
+if pattern.search(cfg):
+    cfg = pattern.sub(managed, cfg, count=1)
+else:
+    cfg = cfg.rstrip() + "\n\n" + managed + "\n"
+with open(path, "w") as f:
+    f.write(cfg)
+PY
+  makoctl reload >/dev/null 2>&1 || true
+}
+
+clear_mako_managed() {
+  # Wipe the managed mako block (for `off`). Notifications revert to the
+  # theme's default styling.
+  [[ -f "$MAKO_CONFIG" ]] || return 0
+  python3 - "$MAKO_CONFIG" "$MAKO_BEGIN" "$MAKO_END" <<'PY'
+import sys, re
+path, begin, end = sys.argv[1:4]
+with open(path) as f:
+    cfg = f.read()
+pattern = re.compile(re.escape(begin) + r".*?" + re.escape(end), re.DOTALL)
+managed = f"{begin}\n{end}"
+if pattern.search(cfg):
+    cfg = pattern.sub(managed, cfg, count=1)
+with open(path, "w") as f:
+    f.write(cfg)
+PY
+  makoctl reload >/dev/null 2>&1 || true
+}
+
+notify() {
+  # $1 = summary text. Optional $2 = profile name (used as notification
+  # category so mako's per-profile rule can tint the toast accent).
+  local text="$1" category="${2:-}"
+  local args=(-a workspace-profile -t 1500 -i preferences-desktop-workspaces)
+  [[ -n "$category" ]] && args+=(-c "$category")
+  notify-send "${args[@]}" "$text" 2>/dev/null || true
+}
+
+slot_name() {
+  # Zero-pad to two digits so alphabetical == numerical ordering in Waybar.
+  printf 'name:%s-%02d' "$1" "$2"
+}
+
+# ────── per-profile last-slot memory ──────
+# Remembers the slot the user was on in each profile so switching profiles
+# returns to where you left off. File format: `profile=slot` per line.
+
+save_slot() {
+  local profile="$1" slot="$2"
+  mkdir -p "$(dirname "$LAST_SLOTS_FILE")"
+  local tmp; tmp=$(mktemp "${LAST_SLOTS_FILE}.XXXXXX")
+  [[ -f "$LAST_SLOTS_FILE" ]] && grep -v "^${profile}=" "$LAST_SLOTS_FILE" >> "$tmp" || true
+  echo "${profile}=${slot}" >> "$tmp"
+  mv "$tmp" "$LAST_SLOTS_FILE"
+}
+
+last_slot_for() {
+  local profile="$1" slot=1 line
+  if [[ -f "$LAST_SLOTS_FILE" ]]; then
+    line=$(grep -m1 "^${profile}=" "$LAST_SLOTS_FILE" 2>/dev/null || true)
+    [[ -n "$line" ]] && slot="${line#${profile}=}"
+  fi
+  # Clamp to the valid range.
+  if ! [[ "$slot" =~ ^[0-9]+$ ]] || (( slot < 1 || slot > WS_PER_PROFILE )); then
+    slot=1
+  fi
+  echo "$slot"
+}
+
+remember_current_slot() {
+  # If the currently-active Hyprland workspace is one of our profile slots
+  # (matches `<profile>-<NN>` where <profile> is a known profile name),
+  # record that slot as the last-active for that profile.
+  local name profile slot
+  name=$(hyprctl activeworkspace -j 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("name",""))' 2>/dev/null) || return 0
+  if [[ "$name" =~ ^([a-z][a-z0-9-]*)-0*([0-9]+)$ ]]; then
+    profile="${BASH_REMATCH[1]}"
+    slot="${BASH_REMATCH[2]}"
+    if list_profiles | grep -Fxq "$profile"; then
+      save_slot "$profile" "$slot"
+    fi
+  fi
+}
+
+# ────── primary actions ──────
+
+set_profile() {
+  local p="${1:-}"
+  if [[ -z "$p" ]]; then
+    p=$(walker_pick "Switch to profile:" "$(list_profiles)") || true
+    [[ -z "$p" ]] && { echo "set: cancelled" >&2; exit 1; }
+  fi
+  require_enabled
+  validate_profile "$p"
+  # Remember where we were in the OUTGOING profile, so coming back lands
+  # there. Then look up where to land in the INCOMING one.
+  remember_current_slot
+  local target_slot; target_slot=$(last_slot_for "$p")
+  echo "$p" > "$STATE_FILE"
+  rewrite_style_collapse "$p"
+  hyprctl dispatch workspace "$(slot_name "$p" "$target_slot")" >/dev/null || true
+  notify "Profile: $(pretty_name "$p")" "$p"
+  omarchy-hook workspace-profile-set "$p" 2>/dev/null || true
+}
+
+set_index() {
+  # Select the Nth profile (1-indexed) from the list. For positional
+  # keybinds so adding/removing profiles doesn't require rebinding.
+  local n="${1:-}"
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "set-index expects a number" >&2; exit 1; }
+  require_enabled
+  local p
+  p=$(list_profiles | sed -n "${n}p")
+  [[ -n "$p" ]] || { echo "no profile at index $n" >&2; exit 1; }
+  set_profile "$p"
+}
+
+set_silent() {
+  # Same as set_profile but skip the Hyprland workspace dispatch.
+  # Called by the sync daemon when focus has *already* moved to a
+  # workspace whose profile differs from current state — we just
+  # catch the state up (CSS tint, mako border, hook). Saves a redundant
+  # workspace dispatch and avoids fighting the user's intent.
+  local p="${1:-}"
+  [[ -z "$p" ]] && { echo "set-silent expects a profile name" >&2; exit 1; }
+  require_enabled
+  validate_profile "$p"
+  local cur; cur=$(current_profile 2>/dev/null || true)
+  # Idempotent: if we're already on it, do nothing.
+  [[ "$cur" == "$p" ]] && return 0
+  remember_current_slot
+  echo "$p" > "$STATE_FILE"
+  rewrite_style_collapse "$p"
+  # rewrite_style_collapse already signals SIGRTMIN+9 for a redraw, so
+  # no extra full-reload SIGUSR2 is needed here.
+  notify "Profile: $(pretty_name "$p")" "$p"
+  omarchy-hook workspace-profile-set "$p" 2>/dev/null || true
+}
+
+next_slot() {
+  # Focus the next slot in the current profile, wrapping past the last.
+  # Bound to SUPER+TAB (overrides Hyprland's workspace,e+1 which cycles
+  # across every workspace regardless of profile).
+  require_enabled
+  local cur_slot next_n p
+  cur_slot=$(current_slot)
+  next_n=$(( cur_slot % WS_PER_PROFILE + 1 ))
+  p=$(current_profile)
+  hyprctl dispatch workspace "$(slot_name "$p" "$next_n")" >/dev/null
+  save_slot "$p" "$next_n"
+}
+
+prev_slot() {
+  # Mirror of next_slot, bound to SUPER+SHIFT+TAB.
+  require_enabled
+  local cur_slot prev_n p
+  cur_slot=$(current_slot)
+  prev_n=$(( (cur_slot - 2 + WS_PER_PROFILE) % WS_PER_PROFILE + 1 ))
+  p=$(current_profile)
+  hyprctl dispatch workspace "$(slot_name "$p" "$prev_n")" >/dev/null
+  save_slot "$p" "$prev_n"
+}
+
+cycle_profile() {
+  require_enabled
+  local cur; cur=$(current_profile)
+  mapfile -t profiles < <(list_profiles)
+  local next="${profiles[0]}" i
+  for i in "${!profiles[@]}"; do
+    if [[ "${profiles[$i]}" == "$cur" ]]; then
+      next="${profiles[$(( (i + 1) % ${#profiles[@]} ))]}"
+      break
+    fi
+  done
+  set_profile "$next"
+}
+
+goto_slot() {
+  local n="${1:-}"
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "goto expects a number" >&2; exit 1; }
+  require_enabled
+  local p; p=$(current_profile)
+  hyprctl dispatch workspace "$(slot_name "$p" "$n")" >/dev/null
+  save_slot "$p" "$n"
+}
+
+hold_action() {
+  # Tap-vs-hold via our own timer (avoids touching Hyprland's global
+  # input:repeat_delay, which would affect every autorepeating key).
+  #
+  # Bindings:
+  #   bind  SUPER+N, exec, ... hold N press    → fires on keydown
+  #   bindr SUPER+N, exec, ... hold N release  → fires on keyup
+  #
+  # Press: writes 'pending' to state, spawns a background `sleep N ms` that,
+  # on wake, upgrades state to 'upgraded' and fires set-index.
+  # Release: kills the background sleep, reads state:
+  #   'pending'  → user tapped briefly; fire goto
+  #   'upgraded' → hold already switched profile; just clear state.
+  local n="${1:-}" sub="${2:-}"
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "hold expects a number" >&2; exit 1; }
+  require_enabled
+  local hold_threshold_ms=200
+  local sleep_s
+  printf -v sleep_s '%d.%03d' "$((hold_threshold_ms / 1000))" "$((hold_threshold_ms % 1000))"
+  local state_file="$STATE_DIR/workspace-profile-hold-$n"
+  local pid_file="${state_file}.pid"
+  case "$sub" in
+    press)
+      echo pending > "$state_file"
+      (
+        sleep "$sleep_s"
+        if [[ -f "$state_file" && "$(cat "$state_file" 2>/dev/null || true)" == "pending" ]]; then
+          echo upgraded > "$state_file"
+          "$0" set-index "$n"
+        fi
+      ) &
+      echo $! > "$pid_file"
+      ;;
+    release)
+      if [[ -f "$pid_file" ]]; then
+        kill "$(cat "$pid_file" 2>/dev/null)" 2>/dev/null || true
+        rm -f "$pid_file"
+      fi
+      if [[ -f "$state_file" && "$(cat "$state_file" 2>/dev/null || true)" == "pending" ]]; then
+        goto_slot "$n"
+      fi
+      rm -f "$state_file"
+      ;;
+    *) echo "hold expects press/release sub, got '$sub'" >&2; exit 1 ;;
+  esac
+}
+
+move_slot() {
+  local n="${1:-}"
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "move expects a number" >&2; exit 1; }
+  require_enabled
+  hyprctl dispatch movetoworkspace "$(slot_name "$(current_profile)" "$n")" >/dev/null
+}
+
+movesilent_slot() {
+  local n="${1:-}"
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "movesilent expects a number" >&2; exit 1; }
+  require_enabled
+  hyprctl dispatch movetoworkspacesilent "$(slot_name "$(current_profile)" "$n")" >/dev/null
+}
+
+current_slot() {
+  # Parse the slot number from the active workspace name. Matches
+  # "<profile>-<NN>" (any known profile, zero-padded or not) and bare
+  # numeric workspaces (1..N). Falls back to 1 if nothing matches.
+  local name slot=1
+  name=$(hyprctl activeworkspace -j 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("name",""))' 2>/dev/null) || name=""
+  if [[ "$name" =~ -0*([0-9]+)$ ]]; then
+    slot="${BASH_REMATCH[1]}"
+  elif [[ "$name" =~ ^0*([0-9]+)$ ]]; then
+    slot="${BASH_REMATCH[1]}"
+  fi
+  if ! [[ "$slot" =~ ^[0-9]+$ ]] || (( slot < 1 || slot > WS_PER_PROFILE )); then
+    slot=1
+  fi
+  echo "$slot"
+}
+
+send_to() {
+  # Move the focused window to <profile>-<current-slot>, stay put.
+  # "Stash this over there at the same slot number."
+  local p="${1:-}"
+  [[ -z "$p" ]] && { echo "send-to expects a profile name" >&2; exit 1; }
+  require_enabled
+  validate_profile "$p"
+  local slot; slot=$(current_slot)
+  hyprctl dispatch movetoworkspacesilent "$(slot_name "$p" "$slot")" >/dev/null
+  notify "Sent to $(pretty_name "$p") slot $slot" "$p"
+}
+
+send_to_index() {
+  # Positional variant — Nth profile from the list. Stable under profile CRUD.
+  local n="${1:-}"
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "send-to-index expects a number" >&2; exit 1; }
+  require_enabled
+  local p; p=$(list_profiles | sed -n "${n}p")
+  [[ -n "$p" ]] || { echo "no profile at index $n" >&2; exit 1; }
+  send_to "$p"
+}
+
+# ────── per-profile app launcher ──────
+
+app_launch() {
+  # Launch a configured app with per-profile flags. Config lines:
+  #   app.<name>.bin:        <executable>
+  #   app.<name>.always:     <flags applied every launch>     (optional)
+  #   app.<name>.<profile>:  <per-profile flags>              (optional)
+  # Command assembly: bin + always-flags + profile-flags + passthrough args.
+  # Launched via `setsid uwsm-app --` to match omarchy-launch-browser's
+  # pattern (Hyprland cleans up the systemd scope on window close).
+  local app="${1:-}"
+  [[ -z "$app" ]] && { echo "app expects a name" >&2; exit 1; }
+  shift
+  local bin always profile_flags
+  bin=$(get_metadata "app.${app}.bin" 2>/dev/null || true)
+  if [[ -z "$bin" ]]; then
+    echo "no binary configured for app '$app' (set app.${app}.bin in $PROFILES_FILE)" >&2
+    exit 1
+  fi
+  always=$(get_metadata "app.${app}.always" 2>/dev/null || true)
+  local p; p=$(current_profile)
+  profile_flags=$(get_metadata "app.${app}.${p}" 2>/dev/null || true)
+  local -a cmd=("$bin") tmp=()
+  if [[ -n "$always" ]];        then read -r -a tmp <<< "$always";        cmd+=("${tmp[@]}"); fi
+  if [[ -n "$profile_flags" ]]; then read -r -a tmp <<< "$profile_flags"; cmd+=("${tmp[@]}"); fi
+  cmd+=("$@")
+  exec setsid uwsm-app -- "${cmd[@]}"
+}
+
+migrate_numeric_windows() {
+  # Move any windows on bare-numeric workspaces (1, 2, …) into the matching
+  # slot of the given profile (e.g. "2" → "<profile>-02"). Skips windows
+  # whose numeric workspace is outside [1..WS_PER_PROFILE].
+  local target_profile="$1"
+  python3 - "$target_profile" "$WS_PER_PROFILE" <(hyprctl clients -j) <<'PY'
+import json, subprocess, sys
+target, n_str, clients_path = sys.argv[1:4]
+n_max = int(n_str)
+with open(clients_path) as f:
+    clients = json.load(f)
+for c in clients:
+    ws = c.get("workspace", {}) or {}
+    name = ws.get("name", "")
+    if not name.isdigit():
+        continue
+    slot = int(name)
+    if slot < 1 or slot > n_max:
+        continue
+    target_ws = f"{target}-{slot:02d}"
+    subprocess.run(
+        ["hyprctl", "dispatch", "movetoworkspacesilent",
+         f"name:{target_ws},address:{c['address']}"],
+        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+PY
+}
+
+boot() {
+  # On Hyprland startup: restore the last profile (or fall back to the
+  # default), migrate any stray windows on bare-numeric workspaces, sync
+  # mako styles, apply the bar/CSS state, and focus slot 1.
+  require_enabled
+  local p; p=$(current_profile)
+  if ! list_profiles | grep -Fxq "$p"; then
+    p=$(default_profile)
+  fi
+  sync_mako_styles
+  migrate_numeric_windows "$p"
+  set_profile "$p"
+}
+
+# ────── kill switch ──────
+
+enable_feature() {
+  rm -f "$DISABLED_FLAG"
+  # First-time bootstrap when no config exists yet: detect the user's
+  # current workspace layout and seed a single `default` profile.
+  if [[ ! -f "$PROFILES_FILE" ]]; then
+    local max_ws
+    max_ws=$(hyprctl workspaces -j | python3 -c '
+import json, sys
+ws = json.load(sys.stdin)
+nums = [int(w["name"]) for w in ws if w["name"].isdigit() and w.get("windows", 0) > 0]
+print(max(nums) if nums else 0)
+') || max_ws=0
+    (( max_ws < WS_PER_PROFILE_DEFAULT )) && max_ws=$WS_PER_PROFILE_DEFAULT
+    if ! walker_confirm "Set up workspace profiles (1 profile, $max_ws slots)?"; then
+      echo "on: cancelled" >&2; exit 1
+    fi
+    first_time_setup
+  fi
+  local p; p=$(current_profile)
+  if ! list_profiles | grep -Fxq "$p"; then
+    p=$(default_profile)
+  fi
+  sync_mako_styles
+  set_profile "$p"
+  notify "Workspace profiles: enabled"
+}
+
+disable_feature() {
+  # Disable the feature, deciding what happens to windows on named profile
+  # workspaces. Policies:
+  #   --keep-all       move every window to its matching numeric workspace
+  #   --keep-default   keep only the default profile's windows (moved to
+  #                    numeric); close windows from every other profile
+  #   --no-windows     leave windows in place (hidden; for scripts)
+  # No flag: walker dmenu → TTY prompt → fail.
+  local mode=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --keep-all)      mode=keep-all; shift ;;
+      --keep-default)  mode=keep-default; shift ;;
+      --no-windows)    mode=no-windows; shift ;;
+      *) echo "off: unknown flag '$1'" >&2; exit 1 ;;
+    esac
+  done
+  if [[ -z "$mode" ]]; then
+    mode=$(pick_disable_mode) || { echo "off: cancelled or no mode available" >&2; exit 1; }
+  fi
+  case "$mode" in
+    keep-all)      disable_keep_all_windows ;;
+    keep-default)  disable_keep_default_windows ;;
+    no-windows)    : ;;
+    *) echo "off: invalid mode '$mode'" >&2; exit 1 ;;
+  esac
+  touch "$DISABLED_FLAG"
+  clear_style_managed
+  clear_mako_managed
+  notify "Workspace profiles: disabled"
+}
+
+window_summary_by_profile() {
+  # Returns "3 on work, 2 on personal" (only non-zero
+  # profiles). Empty string if no profile workspaces have any windows.
+  local profiles_csv; profiles_csv=$(list_profiles | paste -sd, -)
+  python3 - "$profiles_csv" <(hyprctl clients -j) <<'PY'
+import json, re, sys
+profiles_csv, clients_path = sys.argv[1:3]
+profiles = [p.strip() for p in profiles_csv.split(",") if p.strip()]
+if not profiles:
+    print(""); raise SystemExit
+pattern = re.compile(r"^(" + "|".join(re.escape(p) for p in profiles) + r")-0*[0-9]+$")
+with open(clients_path) as f:
+    clients = json.load(f)
+counts = {p: 0 for p in profiles}
+for c in clients:
+    name = (c.get("workspace") or {}).get("name", "")
+    m = pattern.match(name)
+    if m:
+        counts[m.group(1)] += 1
+parts = [f"{n} on {p}" for p, n in counts.items() if n > 0]
+print(", ".join(parts))
+PY
+}
+
+# ────── walker helpers ──────
+# walker_pick   — choose from a fixed list (newline-separated)
+# walker_input  — free-text prompt
+# walker_confirm — yes/no
+# All fall back to TTY read when walker isn't available.
+
+walker_pick() {
+  local prompt="$1" options="$2" choice=""
+  if command -v walker >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+    choice=$(printf '%s' "$options" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 630 -p "$prompt" 2>/dev/null || true)
+  fi
+  if [[ -z "$choice" ]] && [[ -t 0 ]]; then
+    local -a items=()
+    mapfile -t items <<< "$options"
+    {
+      echo "$prompt"
+      local i=0
+      for item in "${items[@]}"; do
+        i=$((i+1))
+        echo "  $i) $item"
+      done
+    } >&2
+    local ans
+    read -r -p "Choose [1-${#items[@]}]: " ans
+    if [[ "$ans" =~ ^[0-9]+$ ]] && (( ans >= 1 && ans <= ${#items[@]} )); then
+      choice="${items[$((ans-1))]}"
+    fi
+  fi
+  [[ -n "$choice" ]] && printf '%s\n' "$choice"
+}
+
+walker_input() {
+  local prompt="$1" text=""
+  if command -v walker >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+    text=$(: | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 630 -p "$prompt" 2>/dev/null || true)
+  fi
+  if [[ -z "$text" ]] && [[ -t 0 ]]; then
+    read -r -p "$prompt " text
+  fi
+  [[ -n "$text" ]] && printf '%s\n' "$text"
+}
+
+walker_confirm() {
+  local prompt="$1" choice
+  choice=$(walker_pick "$prompt" "Yes"$'\n'"No") || return 1
+  [[ "$choice" == "Yes" ]]
+}
+
+pick_disable_mode() {
+  # Walker dmenu when a Wayland session is available; TTY prompt otherwise.
+  # The prompt includes a quick summary of how many windows live on each
+  # profile so the user can see what's at stake before choosing.
+  local def; def=$(default_profile)
+  local summary; summary=$(window_summary_by_profile)
+  local keep_all_label keep_default_label
+  keep_all_label="Keep everything"
+  keep_default_label="Keep only $(pretty_name "$def") (default)"
+  local prompt_header="Turn off workspace profiles:"
+  [[ -n "$summary" ]] && prompt_header+=" $summary"
+
+  local choice=""
+  if command -v walker >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+    choice=$(printf '%s\n' \
+      "$keep_all_label" \
+      "$keep_default_label" \
+      "Cancel" \
+      | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 630 -p "$prompt_header" 2>/dev/null || true)
+  fi
+  if [[ -z "$choice" ]]; then
+    if [[ -t 0 ]]; then
+      {
+        echo "$prompt_header"
+        echo "  [a] $keep_all_label"
+        echo "  [d] $keep_default_label"
+        echo "  [x] Cancel"
+      } >&2
+      local ans
+      read -r -p "Choice [a/d/x]: " ans
+      case "${ans,,}" in
+        a) echo keep-all; return 0 ;;
+        d) echo keep-default; return 0 ;;
+        *) return 1 ;;
+      esac
+    fi
+    return 1
+  fi
+  case "$choice" in
+    "Keep everything"*)  echo keep-all ;;
+    "Keep only"*)        echo keep-default ;;
+    *)                   return 1 ;;
+  esac
+}
+
+disable_keep_all_windows() {
+  # Move every window on a <known-profile>-<NN> workspace to numeric
+  # workspace N (slot stripped, zero-padding removed). Windows from
+  # different profiles that shared a slot end up stacked on the same
+  # numeric workspace — Hyprland handles stacking fine.
+  local profiles_csv; profiles_csv=$(list_profiles | paste -sd, -)
+  python3 - "$profiles_csv" "" <(hyprctl clients -j) <<'PY'
+import json, re, subprocess, sys
+profiles_csv, spare, clients_path = sys.argv[1:4]
+profiles = [p.strip() for p in profiles_csv.split(",") if p.strip()]
+pattern = re.compile(
+    r"^(" + "|".join(re.escape(p) for p in profiles) + r")-0*([0-9]+)$"
+)
+with open(clients_path) as f:
+    clients = json.load(f)
+for c in clients:
+    name = (c.get("workspace") or {}).get("name", "")
+    m = pattern.match(name)
+    if not m:
+        continue
+    slot = int(m.group(2))
+    subprocess.run(
+        ["hyprctl", "dispatch", "movetoworkspacesilent",
+         f"{slot},address:{c['address']}"],
+        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+PY
+}
+
+disable_keep_default_windows() {
+  # Keep only the default profile's windows (move them to numeric
+  # workspaces); close windows on every other profile's workspaces.
+  local profiles_csv spare
+  profiles_csv=$(list_profiles | paste -sd, -)
+  spare=$(default_profile)
+  python3 - "$profiles_csv" "$spare" <(hyprctl clients -j) <<'PY'
+import json, re, subprocess, sys
+profiles_csv, spare, clients_path = sys.argv[1:4]
+profiles = [p.strip() for p in profiles_csv.split(",") if p.strip()]
+pattern = re.compile(
+    r"^(" + "|".join(re.escape(p) for p in profiles) + r")-0*([0-9]+)$"
+)
+with open(clients_path) as f:
+    clients = json.load(f)
+for c in clients:
+    name = (c.get("workspace") or {}).get("name", "")
+    m = pattern.match(name)
+    if not m:
+        continue
+    profile = m.group(1)
+    slot = int(m.group(2))
+    addr = c["address"]
+    if profile == spare:
+        subprocess.run(
+            ["hyprctl", "dispatch", "movetoworkspacesilent",
+             f"{slot},address:{addr}"],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    else:
+        subprocess.run(
+            ["hyprctl", "dispatch", "closewindow", f"address:{addr}"],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+PY
+}
+
+# ────── profile CRUD ──────
+
+sync_waybar_workspace_module() {
+  # Rewrite hyprland/workspaces.{persistent-workspaces, format-icons} to
+  # match the current profile list × WS_PER_PROFILE slots. Called after
+  # profile CRUD. Requires a SIGUSR2 reload (persistent-workspaces is only
+  # read at config load).
+  [[ -f "$WAYBAR_CONFIG" ]] || return 0
+  local profiles_csv
+  profiles_csv=$(list_profiles | paste -sd, -)
+  python3 - "$WAYBAR_CONFIG" "$profiles_csv" "$WS_PER_PROFILE" <<'PY'
+import json, sys
+path, csv, n_str = sys.argv[1:4]
+n = int(n_str)
+profiles = [p.strip() for p in csv.split(",") if p.strip()]
+profiles_sorted = sorted(profiles)
+digits = ["1","2","3","4","5","6","7","8","9","0"][:n]
+with open(path) as f:
+    d = json.load(f)
+ws = d.setdefault("hyprland/workspaces", {})
+ws["persistent-workspaces"] = {f"{p}-{i:02d}": [] for p in profiles_sorted for i in range(1, n+1)}
+ws["format-icons"] = {f"{p}-{i:02d}": digits[i-1] for p in profiles_sorted for i in range(1, n+1)}
+# Match Omarchy stock: Nerd Font filled circle for active, Nerd Font
+# small open circle for default (any unmapped workspace).
+# Codepoints derived from the JSON escapes in Omarchy's stock config:
+# "\udb85\udcfb" is the UTF-16 surrogate pair for U+F14FB.
+ws["format-icons"]["active"]  = "\U000F14FB"
+ws["format-icons"]["default"] = "\uea71"
+ws["persistent-only"] = True
+ws["sort-by"] = "name"
+ws.pop("ignore-workspaces", None)
+with open(path, "w") as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PY
+  pkill -SIGUSR2 -x waybar 2>/dev/null || true
+}
+
+profile_list() {
+  local cur def
+  cur=$(current_profile)
+  def=$(default_profile)
+  while IFS= read -r p; do
+    local marks=""
+    [[ "$p" == "$cur" ]] && marks+=">"
+    [[ "$p" == "$def" ]] && marks+="*"
+    printf "  %-2s %s\n" "$marks" "$p"
+  done < <(list_profiles)
+  printf "\nLegend: > current   * default\n"
+}
+
+profile_create() {
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    name=$(walker_input "New profile name:") || true
+    [[ -z "$name" ]] && { echo "profile create: cancelled" >&2; exit 1; }
+  fi
+  validate_profile_name "$name" || exit 1
+  if list_profiles | grep -Fxq "$name"; then
+    echo "profile already exists: $name" >&2; exit 1
+  fi
+  ensure_profiles_file
+  echo "$name" >> "$PROFILES_FILE"
+  # Auto-seed a fresh per-profile browser user-data-dir so the new profile
+  # gets isolated Chromium state from day one. If app.browser.<name> is
+  # already defined for some reason, leave it alone.
+  local udd="$HOME/.config/google-chrome-${name}"
+  if [[ -z "$(get_metadata "app.browser.${name}" 2>/dev/null || true)" ]]; then
+    insert_app_browser_line "$name" "$udd"
+  fi
+  # Pre-name the Chromium profile so the avatar shows "<Pretty>" instead
+  # of "Your Chromium" on first launch.
+  chromium_set_name "$udd" "$(pretty_name "$name")"
+  sync_waybar_workspace_module
+  rewrite_style_collapse "$(current_profile)"
+  sync_mako_styles
+  notify "Profile created: $name" "$name"
+}
+
+chromium_set_name() {
+  # Merge `profile.name: <pretty>` into Chromium's state files inside a
+  # user-data-dir so the avatar/profile picker stops showing "Your Chromium".
+  # Writes two files:
+  #   <udd>/Local State                 — profile.info_cache.Default.name
+  #   <udd>/Default/Preferences         — profile.name
+  # Safe if the files already exist: merges into existing JSON.
+  # Warning: if Chromium is currently running against this user-data-dir,
+  # it will overwrite these on exit. Close Chromium first to make it stick.
+  local udd="$1" pretty="$2"
+  python3 - "$udd" "$pretty" <<'PY'
+import json, os, sys
+udd, pretty = sys.argv[1:3]
+os.makedirs(udd, exist_ok=True)
+os.makedirs(os.path.join(udd, "Default"), exist_ok=True)
+
+def merge(path, mutator):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {}
+    mutator(data)
+    with open(path, "w") as f:
+        json.dump(data, f)
+
+def patch_local_state(d):
+    profile = d.setdefault("profile", {})
+    cache = profile.setdefault("info_cache", {})
+    entry = cache.setdefault("Default", {})
+    entry["name"] = pretty
+    entry["is_using_default_name"] = False
+
+def patch_prefs(d):
+    d.setdefault("profile", {})["name"] = pretty
+
+merge(os.path.join(udd, "Local State"), patch_local_state)
+merge(os.path.join(udd, "Default", "Preferences"), patch_prefs)
+PY
+}
+
+insert_app_browser_line() {
+  # Append an `app.browser.<name>: --user-data-dir=<path>` line to the
+  # profiles config, placing it after the existing app.browser.* lines
+  # when possible (keeps the section tidy).
+  local name="$1" path="$2"
+  python3 - "$PROFILES_FILE" "$name" "$path" <<'PY'
+import re, sys
+path, name, data_dir = sys.argv[1:4]
+key = f"app.browser.{name}"
+value = f"--user-data-dir={data_dir}"
+with open(path) as f:
+    lines = f.read().splitlines()
+insert_at = None
+# Preferred: right after the last `app.browser.*` line.
+for i, ln in enumerate(lines):
+    if re.match(r'^\s*app\.browser\.', ln):
+        insert_at = i + 1
+if insert_at is None:
+    # Fallback: after the last metadata line (any `key: value`).
+    for i, ln in enumerate(lines):
+        if re.match(r'^\s*[a-zA-Z_][a-zA-Z0-9_.-]*\s*:', ln):
+            insert_at = i + 1
+if insert_at is None:
+    insert_at = len(lines)
+lines.insert(insert_at, f"{key}: {value}")
+with open(path, "w") as f:
+    f.write("\n".join(lines) + "\n")
+PY
+}
+
+profile_rename() {
+  local old="${1:-}" new="${2:-}"
+  if [[ -z "$old" ]]; then
+    old=$(walker_pick "Rename which profile?" "$(list_profiles)") || true
+    [[ -z "$old" ]] && { echo "profile rename: cancelled" >&2; exit 1; }
+  fi
+  if [[ -z "$new" ]]; then
+    new=$(walker_input "New name for '$old':") || true
+    [[ -z "$new" ]] && { echo "profile rename: cancelled" >&2; exit 1; }
+  fi
+  validate_profile "$old"
+  validate_profile_name "$new" || exit 1
+  if list_profiles | grep -Fxq "$new"; then
+    echo "profile already exists: $new" >&2; exit 1
+  fi
+  ensure_profiles_file
+  python3 - "$PROFILES_FILE" "$old" "$new" <<'PY'
+import sys, re
+path, old, new = sys.argv[1:4]
+with open(path) as f:
+    lines = f.read().splitlines()
+out = []
+for ln in lines:
+    stripped = ln.strip()
+    m = re.match(r'^\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*:\s*(.*?)\s*$', ln)
+    if m and m.group(2) == old:
+        out.append(f"{m.group(1)}: {new}")
+    elif stripped == old:
+        out.append(new)
+    else:
+        out.append(ln)
+with open(path, "w") as f:
+    f.write("\n".join(out) + "\n")
+PY
+  # Rename Hyprland's named workspaces so their windows stay intact.
+  local i
+  for i in $(seq 1 "$WS_PER_PROFILE"); do
+    local slot; slot=$(printf '%02d' "$i")
+    hyprctl dispatch renameworkspace \
+      "name:${old}-${slot}" "${new}-${slot}" >/dev/null 2>&1 || true
+  done
+  # Update state if we renamed the active profile.
+  if [[ -f "$STATE_FILE" && "$(cat "$STATE_FILE")" == "$old" ]]; then
+    echo "$new" > "$STATE_FILE"
+  fi
+  sync_waybar_workspace_module
+  rewrite_style_collapse "$(current_profile)"
+  sync_mako_styles
+  notify "Renamed: $old → $new" "$new"
+}
+
+profile_delete() {
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    name=$(walker_pick "Delete which profile?" "$(list_profiles)") || true
+    [[ -z "$name" ]] && { echo "profile delete: cancelled" >&2; exit 1; }
+  fi
+  validate_profile "$name"
+  local count; count=$(list_profiles | wc -l)
+  if (( count <= 1 )); then
+    echo "cannot delete last profile" >&2; exit 1
+  fi
+  # Interactive confirm — only when we popped the picker (no arg passed).
+  if [[ "$1" = "" ]]; then
+    walker_confirm "Really delete '$name'? (windows on its slots will be orphaned)" \
+      || { echo "profile delete: cancelled" >&2; exit 1; }
+  fi
+  ensure_profiles_file
+  python3 - "$PROFILES_FILE" "$name" <<'PY'
+import sys, re
+path, name = sys.argv[1:3]
+with open(path) as f:
+    lines = f.read().splitlines()
+out = []
+for ln in lines:
+    stripped = ln.strip()
+    if stripped == name:
+        continue
+    m = re.match(r'^\s*default\s*:\s*(.*?)\s*$', ln)
+    if m and m.group(1) == name:
+        continue
+    out.append(ln)
+with open(path, "w") as f:
+    f.write("\n".join(out) + "\n")
+PY
+  # Ditch any leftover Hyprland workspaces for the deleted profile.
+  local i
+  for i in $(seq 1 "$WS_PER_PROFILE"); do
+    local slot; slot=$(printf '%02d' "$i")
+    hyprctl dispatch renameworkspace \
+      "name:${name}-${slot}" "deleted-${name}-${slot}" >/dev/null 2>&1 || true
+  done
+  # If we deleted the active profile, switch to the default.
+  if [[ -f "$STATE_FILE" && "$(cat "$STATE_FILE")" == "$name" ]]; then
+    rm -f "$STATE_FILE"
+    set_profile "$(default_profile)"
+  else
+    sync_waybar_workspace_module
+    rewrite_style_collapse "$(current_profile)"
+  fi
+  sync_mako_styles
+  notify "Deleted: $name"
+}
+
+profile_move() {
+  # profile_move up|down [<name>] — shift profile earlier/later in the
+  # config, affecting positional keybinds (SUPER+CTRL+N → Nth profile).
+  local direction="${1:-}" name="${2:-}"
+  [[ "$direction" == "up" || "$direction" == "down" ]] \
+    || { echo "profile move: expected 'up' or 'down'" >&2; exit 1; }
+  if [[ -z "$name" ]]; then
+    name=$(walker_pick "Move which profile $direction?" "$(list_profiles)") || true
+    [[ -z "$name" ]] && { echo "profile move: cancelled" >&2; exit 1; }
+  fi
+  validate_profile "$name"
+  ensure_profiles_file
+  python3 - "$PROFILES_FILE" "$name" "$direction" <<'PY'
+import sys
+path, name, direction = sys.argv[1:4]
+with open(path) as f:
+    lines = f.read().splitlines()
+# A "profile line" is non-blank, non-comment, and has no colon (not metadata).
+profile_indices = [
+    i for i, ln in enumerate(lines)
+    if ln.strip() and not ln.strip().startswith("#") and ":" not in ln
+]
+try:
+    idx = next(i for i, li in enumerate(profile_indices)
+               if lines[li].strip() == name)
+except StopIteration:
+    raise SystemExit(f"profile {name} not found")
+if direction == "up":
+    if idx == 0:
+        print(f"{name} is already first", file=sys.stderr); raise SystemExit(0)
+    swap_with = idx - 1
+else:
+    if idx == len(profile_indices) - 1:
+        print(f"{name} is already last", file=sys.stderr); raise SystemExit(0)
+    swap_with = idx + 1
+a, b = profile_indices[idx], profile_indices[swap_with]
+lines[a], lines[b] = lines[b], lines[a]
+with open(path, "w") as f:
+    f.write("\n".join(lines) + "\n")
+PY
+  # No Waybar config reload: sort-by:name makes the bar order independent
+  # of the persistent-workspaces JSON key order, so reordering is purely a
+  # config-file change + a CSS repaint. No SIGUSR2 flash.
+  rewrite_style_collapse "$(current_profile)"
+  notify "Moved $direction: $name" "$name"
+}
+
+profile_color_cmd() {
+  # `profile color [<name> [<hex>]]` — upsert color.<name>: <hex> metadata.
+  # When args are missing, walker picks the profile and then the color
+  # from a preset palette (with a "Custom hex..." fallback).
+  local name="${1:-}" hex="${2:-}"
+  if [[ -z "$name" ]]; then
+    name=$(walker_pick "Set color for which profile?" "$(list_profiles)") || true
+    [[ -z "$name" ]] && { echo "profile color: cancelled" >&2; exit 1; }
+  fi
+  if [[ -z "$hex" ]]; then
+    # Everforest palette + a custom fallback.
+    local palette choice
+    palette=$'Blue      #7fbbb3\nGreen     #a7c080\nPurple    #d699b6\nAqua      #83c092\nRed       #e67e80\nOrange    #e69875\nYellow    #dbbc7f\nGrey      #a0a0a0\nCustom hex...'
+    choice=$(walker_pick "Color for '$name':" "$palette") || true
+    [[ -z "$choice" ]] && { echo "profile color: cancelled" >&2; exit 1; }
+    if [[ "$choice" == "Custom hex..." ]]; then
+      hex=$(walker_input "Enter hex color for '$name' (e.g. #7fbbb3):") || true
+      [[ -z "$hex" ]] && { echo "profile color: cancelled" >&2; exit 1; }
+    else
+      # Extract the last whitespace-separated token (the hex).
+      hex="${choice##* }"
+    fi
+  fi
+  validate_profile "$name"
+  if [[ ! "$hex" =~ ^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$ ]]; then
+    echo "invalid hex: '$hex' (expected #RGB, #RRGGBB, or #RRGGBBAA)" >&2
+    exit 1
+  fi
+  ensure_profiles_file
+  python3 - "$PROFILES_FILE" "$name" "$hex" <<'PY'
+import sys, re
+path, name, hx = sys.argv[1:4]
+key = f"color.{name}"
+with open(path) as f:
+    raw = f.read().splitlines()
+out = []
+replaced = False
+for ln in raw:
+    m = re.match(r'^\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*:\s*(.*?)\s*$', ln)
+    if m and m.group(1) == key:
+        out.append(f"{key}: {hx}")
+        replaced = True
+    else:
+        out.append(ln)
+if not replaced:
+    # Insert after any existing metadata (top of file before first blank line).
+    # Find index of first blank line / first profile-name line.
+    insert_at = 0
+    for i, ln in enumerate(out):
+        s = ln.strip()
+        if not s or s.startswith('#'):
+            insert_at = i + 1
+            continue
+        if ':' in s:
+            insert_at = i + 1
+            continue
+        break
+    out.insert(insert_at, f"{key}: {hx}")
+with open(path, "w") as f:
+    f.write("\n".join(out) + "\n")
+PY
+  # Re-apply affected views.
+  rewrite_style_collapse "$(current_profile)"
+  sync_mako_styles
+  notify "Color: $name → $hex" "$name"
+}
+
+profile_default() {
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    name=$(walker_pick "Set default profile:" "$(list_profiles)") || true
+    [[ -z "$name" ]] && { echo "profile default: cancelled" >&2; exit 1; }
+  fi
+  validate_profile "$name"
+  ensure_profiles_file
+  python3 - "$PROFILES_FILE" "$name" <<'PY'
+import sys, re
+path, name = sys.argv[1:3]
+with open(path) as f:
+    raw = f.read().splitlines()
+# Split into metadata (k: v), blanks/comments, and profile names.
+# Upsert default: ... at the top of the metadata section.
+meta, profiles = [], []
+default_seen = False
+for ln in raw:
+    stripped = ln.strip()
+    if not stripped or stripped.startswith("#"):
+        continue
+    m = re.match(r'^\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*:\s*(.*?)\s*$', ln)
+    if m:
+        if m.group(1) == "default":
+            meta.append(f"default: {name}")
+            default_seen = True
+        else:
+            meta.append(ln)
+        continue
+    profiles.append(stripped)
+if not default_seen:
+    meta.insert(0, f"default: {name}")
+lines = meta + [""] + profiles
+with open(path, "w") as f:
+    f.write("\n".join(lines) + "\n")
+PY
+  notify "Default: $name"
+}
+
+menu() {
+  # DEV-ONLY scaffold. The shipped pattern for Omarchy is to patch
+  # `omarchy-menu` with a top-level "Workspace profiles" submenu that
+  # drives the controller's CRUD subcommands via their positional args.
+  # This local `menu` subcommand lets us test the full flow without
+  # patching upstream omarchy-menu.
+  # Top-level picker for the whole feature. Each option routes to the
+  # corresponding subcommand (which runs its own walker pickers for args).
+  local items choice
+  items=$'Switch profile…\nCreate new profile…\nRename profile…\nDelete profile…\nSet default profile…\nSet profile color…\nDisable workspace profiles…'
+  choice=$(walker_pick "Workspace profiles:" "$items") || true
+  [[ -z "$choice" ]] && return 0
+  case "$choice" in
+    "Switch profile"*)              set_profile ;;
+    "Create new profile"*)          profile_create ;;
+    "Rename profile"*)              profile_rename ;;
+    "Delete profile"*)              profile_delete ;;
+    "Set default profile"*)         profile_default ;;
+    "Set profile color"*)           profile_color_cmd ;;
+    "Disable workspace profiles"*)  disable_feature ;;
+  esac
+}
+
+profile_cmd() {
+  local sub="${1:-list}"; shift 2>/dev/null || true
+  case "$sub" in
+    list)      profile_list ;;
+    create)    profile_create "${1:-}" ;;
+    rename)    profile_rename "${1:-}" "${2:-}" ;;
+    delete)    profile_delete "${1:-}" ;;
+    default)   profile_default "${1:-}" ;;
+    color)     profile_color_cmd "${1:-}" "${2:-}" ;;
+    move-up)   profile_move up "${1:-}" ;;
+    move-down) profile_move down "${1:-}" ;;
+    *) echo "unknown profile subcommand: $sub" >&2; exit 2 ;;
+  esac
+}
+
+# ────── dispatcher ──────
+
+case "${1:-current}" in
+  current)     current_profile ;;
+  list)        list_profiles ;;
+  set)         shift; set_profile "${1:-}" ;;
+  set-index)   shift; set_index "${1:-}" ;;
+  set-silent)  shift; set_silent "${1:-}" ;;
+  cycle)       cycle_profile ;;
+  goto)        shift; goto_slot "${1:-}" ;;
+  hold)        shift; hold_action "${1:-}" "${2:-}" ;;
+  next-slot)   next_slot ;;
+  prev-slot)   prev_slot ;;
+  move)        shift; move_slot "${1:-}" ;;
+  movesilent)  shift; movesilent_slot "${1:-}" ;;
+  send-to)       shift; send_to "${1:-}" ;;
+  send-to-index) shift; send_to_index "${1:-}" ;;
+  app)         shift 2>/dev/null || true; app_launch "$@" ;;
+  boot)        boot ;;
+  menu)        menu ;;
+  on)          enable_feature ;;
+  off)         shift 2>/dev/null || true; disable_feature "$@" ;;
+  profile)     shift 2>/dev/null || true; profile_cmd "$@" ;;
+  -h|--help|help)
+    cat <<EOF
+omarchy-workspace-profile — workspace profile switcher
+
+Usage:
+  omarchy-workspace-profile current            Print the active profile
+  omarchy-workspace-profile list               List all profile names
+  omarchy-workspace-profile set <name>         Switch to <name>
+  omarchy-workspace-profile set-index <n>      Switch to the Nth profile (for keybinds)
+  omarchy-workspace-profile set-silent <name>  Update state only (no workspace dispatch) — used by sync daemon
+  omarchy-workspace-profile cycle              Switch to next profile (wraps)
+  omarchy-workspace-profile goto <n>           Focus <current>-<n>  (1..$WS_PER_PROFILE)
+  omarchy-workspace-profile next-slot          Focus next slot in current profile (wraps)
+  omarchy-workspace-profile prev-slot          Focus previous slot in current profile (wraps)
+  omarchy-workspace-profile move <n>           Move focused window to <current>-<n>
+  omarchy-workspace-profile movesilent <n>     Move without following
+  omarchy-workspace-profile send-to <name>     Send focused window to <name>-<current-slot> (stay put)
+  omarchy-workspace-profile send-to-index <n>  Send focused window to Nth profile's same slot (for keybinds)
+  omarchy-workspace-profile app <name> [args]  Launch app with per-profile flags (e.g. app browser URL)
+  omarchy-workspace-profile boot               Startup: migrate stray numeric windows, restore profile
+  omarchy-workspace-profile menu               Walker menu: everything (switch / CRUD / disable)
+  omarchy-workspace-profile on                 Enable the feature (bootstraps on first run)
+  omarchy-workspace-profile off [--keep-all|--keep-default]
+                                               Disable; picker (walker / TTY) offers:
+                                                 keep-all:     all profile windows → numeric
+                                                 keep-default: default profile → numeric, others closed
+
+Profile management (args are optional; a walker/TTY picker fills them in):
+  omarchy-workspace-profile profile list
+  omarchy-workspace-profile profile create [<name>]
+  omarchy-workspace-profile profile rename [<old> [<new>]]
+  omarchy-workspace-profile profile delete [<name>]
+  omarchy-workspace-profile profile default [<name>]
+  omarchy-workspace-profile profile color  [<name> [<#hex>]]   preset palette or custom
+
+Files:
+  State:         $STATE_FILE
+  Last slots:    $LAST_SLOTS_FILE
+  Disabled flag: $DISABLED_FLAG
+  Profiles:      $PROFILES_FILE
+  Hook:          ~/.config/omarchy/hooks/workspace-profile-set  (receives name as \$1)
+EOF
+    ;;
+  *) echo "unknown: $1 (try --help)" >&2; exit 2 ;;
+esac

@@ -1,4 +1,8 @@
 {
+  // Workspace Profiles sidecar — empty in stock Omarchy; populated by
+  // `Settings → Setup → Workspace Profiles`. A missing/empty sidecar
+  // merges as a no-op.
+  "include": ["~/.config/waybar/workspace-profiles.jsonc"],
   "reload_style_on_change": true,
   "layer": "top",
   "position": "top",
