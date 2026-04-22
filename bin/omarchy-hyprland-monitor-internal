@@ -1,0 +1,37 @@
+#!/bin/bash
+
+TOGGLE="internal-monitor-disable"
+
+enable() {
+  if omarchy-hyprland-toggle-enabled "$TOGGLE"; then
+    omarchy-hyprland-toggle --disabled-notification "󰍹    Laptop display enabled" "$TOGGLE"
+  fi
+}
+
+disable() {
+  if omarchy-hyprland-monitors-many; then
+    if omarchy-hyprland-toggle-disabled "$TOGGLE"; then
+      omarchy-hyprland-toggle --enabled-notification "󰍹    Laptop display disabled" "$TOGGLE"
+    fi
+  else
+    notify-send -u low "󰍹    Can't disable the only active display"
+    exit 1
+  fi
+}
+
+recover() {
+  if omarchy-hyprland-monitors-none && omarchy-hyprland-toggle-enabled "$TOGGLE"; then
+    enable
+  fi
+}
+
+case "$1" in
+  on) enable ;;
+  off) disable ;;
+  toggle) if omarchy-hyprland-toggle-enabled "$TOGGLE"; then enable; else disable; fi ;;
+  recover) recover ;;
+  *)
+    echo "Usage: $(basename "$0") {on|off|toggle|recover}" >&2
+    exit 1
+    ;;
+esac

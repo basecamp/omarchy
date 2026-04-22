@@ -1,5 +1,5 @@
 # Fix Dell XPS haptic touchpad.
-# The Synaptics haptic touchpad (06CB:D01A) uses the HID Manual Trigger
+# The Synaptics haptic touchpad (vendor 06CB) uses the HID Manual Trigger
 # protocol, but the kernel's HID haptic subsystem only supports Auto Trigger.
 # This sets up a lightweight daemon that monitors touchpad button events and
 # sends haptic pulses via HID feature reports on the hidraw device.

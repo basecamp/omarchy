@@ -15,7 +15,6 @@ run_logged $OMARCHY_INSTALL/config/fix-powerprofilesctl-shebang.sh
 run_logged $OMARCHY_INSTALL/config/docker.sh
 run_logged $OMARCHY_INSTALL/config/mimetypes.sh
 run_logged $OMARCHY_INSTALL/config/nautilus-python.sh
-run_logged $OMARCHY_INSTALL/config/remove-fcitx5-autostart.sh
 run_logged $OMARCHY_INSTALL/config/localdb.sh
 run_logged $OMARCHY_INSTALL/config/walker-elephant.sh
 run_logged $OMARCHY_INSTALL/config/fast-shutdown.sh
@@ -23,6 +22,7 @@ run_logged $OMARCHY_INSTALL/config/unmount-fuse.sh
 run_logged $OMARCHY_INSTALL/config/sudoless-asdcontrol.sh
 run_logged $OMARCHY_INSTALL/config/input-group.sh
 run_logged $OMARCHY_INSTALL/config/omarchy-ai-skill.sh
+run_logged $OMARCHY_INSTALL/config/omarchy-toggles.sh
 run_logged $OMARCHY_INSTALL/config/kernel-modules-hook.sh
 run_logged $OMARCHY_INSTALL/config/powerprofilesctl-rules.sh
 run_logged $OMARCHY_INSTALL/config/wifi-powersave-rules.sh
@@ -46,7 +46,6 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel/ptl-kernel.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/fix-wifi7-eht.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/dell/fix-xps-haptic-touchpad.sh
-run_logged $OMARCHY_INSTALL/config/hardware/dell/fix-xps-ptl-display.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-audio-mixer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-mic.sh

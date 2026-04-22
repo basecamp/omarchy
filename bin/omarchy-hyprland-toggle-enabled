@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Check if a Hyprland toggle is currently enabled.
+
+[[ -f "$HOME/.local/state/omarchy/toggles/hypr/$1.conf" ]]

@@ -168,8 +168,9 @@ show_share_menu() {
 }
 
 show_toggle_menu() {
-  case $(menu "Toggle" "󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Display Scaling") in
+  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n"
 
+  case $(menu "Toggle" "$options") in
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
@@ -183,9 +184,21 @@ show_toggle_menu() {
 }
 
 show_hardware_menu() {
-  case $(menu "Toggle" "  Hybrid GPU") in
+  local options="󰛧  Laptop Display"
+
+  if omarchy-hw-hybrid-gpu; then
+    options="$options\n  Hybrid GPU"
+  fi
+
+  if omarchy-hw-touchpad; then
+    options="$options\n󰟸  Touchpad"
+  fi
+
+  case $(menu "Toggle" "$options") in
+  *Laptop*) omarchy-hyprland-monitor-internal toggle ;;
+  *Touchpad*) omarchy-toggle-touchpad ;;
   *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
-  *) show_trigger_menu ;;
+  *) back_to show_trigger_menu ;;
   esac
 }
 
@@ -221,7 +234,6 @@ show_font_menu() {
 show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
-  options="$options\n  Key Remapping"
   [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Security\n  Config"
 
@@ -234,7 +246,6 @@ show_setup_menu() {
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
-  *Key\ Remapping*) omarchy-setup-makima && open_in_editor "$HOME/.config/makima/AT Translated Set 2 keyboard.toml" && omarchy-restart-makima ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
@@ -278,7 +289,7 @@ show_setup_config_menu() {
 show_setup_system_menu() {
   local options=""
 
-  if [[ -f ~/.local/state/omarchy/toggles/suspend-off ]]; then
+  if omarchy-toggle-enabled suspend-off; then
     options="$options󰒲  Enable Suspend"
   else
     options="$options󰒲  Disable Suspend"
@@ -530,9 +541,10 @@ show_update_channel_menu() {
   esac
 }
 show_update_process_menu() {
-  case $(menu "Restart" "  Hypridle\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
+  case $(menu "Restart" "  Hypridle\n  Hyprsunset\n󰎟  Mako\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
   *Hypridle*) omarchy-restart-hypridle ;;
   *Hyprsunset*) omarchy-restart-hyprsunset ;;
+  *Mako*) omarchy-restart-mako ;;
   *Swayosd*) omarchy-restart-swayosd ;;
   *Walker*) omarchy-restart-walker ;;
   *Waybar*) omarchy-restart-waybar ;;
@@ -556,10 +568,11 @@ show_update_config_menu() {
 }
 
 show_update_hardware_menu() {
-  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth") in
+  case $(menu "Restart" "  Audio\n󱚾  Wi-Fi\n󰂯  Bluetooth\n󰟸  Trackpad") in
   *Audio*) present_terminal omarchy-restart-pipewire ;;
   *Wi-Fi*) present_terminal omarchy-restart-wifi ;;
   *Bluetooth*) present_terminal omarchy-restart-bluetooth ;;
+  *Trackpad*) present_terminal omarchy-restart-trackpad ;;
   *) show_update_menu ;;
   esac
 }
@@ -578,7 +591,7 @@ show_about() {
 
 show_system_menu() {
   local options="󱄄  Screensaver\n  Lock"
-  [[ ! -f ~/.local/state/omarchy/toggles/suspend-off ]] && options="$options\n󰒲  Suspend"
+  ! omarchy-toggle-enabled suspend-off && options="$options\n󰒲  Suspend"
   omarchy-hibernation-available && options="$options\n󰤁  Hibernate"
   options="$options\n󰍃  Logout\n󰜉  Restart\n󰐥  Shutdown"
 
@@ -604,6 +617,7 @@ go_to_menu() {
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
   *toggle*) show_toggle_menu ;;
+  *hardware*) show_hardware_menu ;;
   *share*) show_share_menu ;;
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
