@@ -21,7 +21,7 @@ disable() {
 
 recover() {
   if omarchy-hyprland-monitors-none && omarchy-hyprland-toggle-enabled "$TOGGLE"; then
-    enable
+    omarchy-hyprland-toggle "$TOGGLE"
   fi
 }
 
