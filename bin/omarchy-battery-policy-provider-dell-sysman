@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Provider contract:
+# - probe: exit 0 when this backend is supported on the current machine
+# - list: print supported policies as "id:Label" lines
+# - status: print the active policy id
+# - set <policy-id>: apply one built-in policy
+# - set-custom <start> <end>: apply a custom charge range
+#
+# Use this file as the structure reference for new
+# omarchy-battery-policy-provider-<name> implementations.
+
 ATTRIBUTES_DIR=/sys/class/firmware-attributes/dell-wmi-sysman/attributes
 
 battery_dir() {
@@ -137,10 +147,12 @@ ensure_no_conflicts() {
   ensure_disabled PeakShiftCfg 'Peak Shift'
 }
 
+# Detect whether the Dell Sysman firmware interface is available.
 probe() {
   [[ -r $ATTRIBUTES_DIR/PrimaryBattChargeCfg/possible_values ]]
 }
 
+# Report the active policy plus custom threshold support and values.
 status() {
   local bat
   local active_policy=""
@@ -202,6 +214,7 @@ status() {
   printf '%s\n' "pending_reboot=$pending_reboot"
 }
 
+# List the built-in policy ids and labels exposed by the firmware.
 list() {
   local raw_policy
   local policy_id
@@ -214,6 +227,7 @@ list() {
   done < <(possible_values)
 }
 
+# Apply one named built-in policy through the firmware attributes.
 set_policy() {
   local raw_policy
 
@@ -231,6 +245,7 @@ set_policy() {
   write_current_value PrimaryBattChargeCfg "$raw_policy" || exit 1
 }
 
+# Validate and apply custom charge start and stop thresholds.
 set_custom_policy() {
   local start="$1"
   local end="$2"
@@ -275,6 +290,7 @@ set_custom_policy() {
   write_current_value CustomChargeStop "$end" || exit 1
 }
 
+# Dispatch the provider contract subcommands used by the battery policy wrappers.
 case "$1" in
 probe) probe ;;
 status) status ;;
