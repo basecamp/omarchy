@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Returns true when an external monitor is physically connected.
+# Uses kernel DRM state so the result is independent of Hyprland's startup timing.
+
+for status in /sys/class/drm/card*-*/status; do
+  [[ "$status" == *-eDP-*/status ]] && continue
+  [[ "$(<"$status")" == "connected" ]] && exit 0
+done
+exit 1

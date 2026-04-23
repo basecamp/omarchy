@@ -55,6 +55,10 @@ tuxedo-drivers-nocompatcheck-dkms
 yt6801-dkms
 zram-generator
 
+# Intel encoding processing
+libvpl
+vpl-gpu-rt
+
 # Vulkan drivers (auto-detected by hardware)
 vulkan-intel
 vulkan-radeon
