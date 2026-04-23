@@ -492,33 +492,6 @@ goto_slot() {
   save_slot "$p" "$n"
 }
 
-hold_action() {
-  local n="${1:-}" sub="${2:-}"
-  [[ "$n" =~ ^[0-9]+$ ]] || { echo "hold expects a number" >&2; exit 1; }
-  require_enabled
-  local threshold_ms=200
-  local ts_file="$STATE_DIR/workspace-profile-hold-$n"
-  case "$sub" in
-    press)
-      date +%s%N > "$ts_file"
-      ;;
-    release)
-      [[ -f "$ts_file" ]] || return 0
-      local press_ns release_ns elapsed_ms
-      press_ns=$(cat "$ts_file" 2>/dev/null || echo 0)
-      release_ns=$(date +%s%N)
-      rm -f "$ts_file"
-      elapsed_ms=$(( (release_ns - press_ns) / 1000000 ))
-      if (( elapsed_ms < threshold_ms )); then
-        goto_slot "$n"
-      else
-        set_index "$n"
-      fi
-      ;;
-    *) echo "hold expects a press or release sub, got '$sub'" >&2; exit 1 ;;
-  esac
-}
-
 move_slot() {
   local n="${1:-}"
   [[ "$n" =~ ^[0-9]+$ ]] || { echo "move expects a number" >&2; exit 1; }
@@ -1334,7 +1307,6 @@ case "${1:-current}" in
   set-silent)  shift; set_silent "${1:-}" ;;
   cycle)       cycle_profile ;;
   goto)        shift; goto_slot "${1:-}" ;;
-  hold)        shift; hold_action "${1:-}" "${2:-}" ;;
   next-slot)   next_slot ;;
   prev-slot)   prev_slot ;;
   move)        shift; move_slot "${1:-}" ;;

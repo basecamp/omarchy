@@ -26,13 +26,10 @@ mkdir -p "$HOME/.config/omarchy/extensions"
 cp -f "$OMARCHY_PATH/config/omarchy/extensions/workspace-profiles.sh" \
       "$HOME/.config/omarchy/extensions/workspace-profiles.sh"
 
-# ────────── ensure sidecar include files exist ──────────
-# The stock Omarchy configs source/include these sidecars. First-time
-# opt-in, they may not have been copied into ~/.config yet — do it now
-# so our `on` below has a target to populate.
-for rel in hypr/workspace-profiles.conf \
-           hypr/workspace-profiles-autostart.conf \
-           waybar/workspace-profiles.jsonc \
+# ────────── ensure Waybar sidecars exist ──────────
+# Waybar sidecars are empty stubs at rest; the controller fills them on
+# profile state changes. Hypr sidecars are written explicitly below.
+for rel in waybar/workspace-profiles.jsonc \
            waybar/workspace-profiles.css; do
   src="$OMARCHY_PATH/config/$rel"
   dst="$HOME/.config/$rel"
@@ -41,6 +38,96 @@ for rel in hypr/workspace-profiles.conf \
     cp -f "$src" "$dst"
   fi
 done
+
+# ────────── populate Hyprland bindings sidecar ──────────
+mkdir -p "$HOME/.config/hypr"
+cat > "$HOME/.config/hypr/workspace-profiles.conf" <<'EOF'
+# Workspace Profiles keybindings. Managed by
+# omarchy-setup-workspace-profiles. Sourced from bindings.conf when the
+# feature is enabled; left empty in stock Omarchy so there's no effect.
+
+# Override stock SUPER+1..5 (numeric workspaces) to route through the
+# active profile's named slot.
+unbind = SUPER, 1
+unbind = SUPER, 2
+unbind = SUPER, 3
+unbind = SUPER, 4
+unbind = SUPER, 5
+bindd = SUPER, 1, Profile slot 1, exec, omarchy-workspace-profile goto 1
+bindd = SUPER, 2, Profile slot 2, exec, omarchy-workspace-profile goto 2
+bindd = SUPER, 3, Profile slot 3, exec, omarchy-workspace-profile goto 3
+bindd = SUPER, 4, Profile slot 4, exec, omarchy-workspace-profile goto 4
+bindd = SUPER, 5, Profile slot 5, exec, omarchy-workspace-profile goto 5
+
+# Move focused window to slot N of active profile (follow).
+unbind = SUPER SHIFT, 1
+unbind = SUPER SHIFT, 2
+unbind = SUPER SHIFT, 3
+unbind = SUPER SHIFT, 4
+unbind = SUPER SHIFT, 5
+bindd = SUPER SHIFT, 1, Move to profile slot 1, exec, omarchy-workspace-profile move 1
+bindd = SUPER SHIFT, 2, Move to profile slot 2, exec, omarchy-workspace-profile move 2
+bindd = SUPER SHIFT, 3, Move to profile slot 3, exec, omarchy-workspace-profile move 3
+bindd = SUPER SHIFT, 4, Move to profile slot 4, exec, omarchy-workspace-profile move 4
+bindd = SUPER SHIFT, 5, Move to profile slot 5, exec, omarchy-workspace-profile move 5
+
+# Move focused window to slot N without following.
+unbind = SUPER SHIFT ALT, 1
+unbind = SUPER SHIFT ALT, 2
+unbind = SUPER SHIFT ALT, 3
+unbind = SUPER SHIFT ALT, 4
+unbind = SUPER SHIFT ALT, 5
+bindd = SUPER SHIFT ALT, 1, Silently move to profile slot 1, exec, omarchy-workspace-profile movesilent 1
+bindd = SUPER SHIFT ALT, 2, Silently move to profile slot 2, exec, omarchy-workspace-profile movesilent 2
+bindd = SUPER SHIFT ALT, 3, Silently move to profile slot 3, exec, omarchy-workspace-profile movesilent 3
+bindd = SUPER SHIFT ALT, 4, Silently move to profile slot 4, exec, omarchy-workspace-profile movesilent 4
+bindd = SUPER SHIFT ALT, 5, Silently move to profile slot 5, exec, omarchy-workspace-profile movesilent 5
+
+# Send focused window to the Nth profile's matching slot (stay put).
+bindd = SUPER CTRL SHIFT, 1, Send window to profile 1, exec, omarchy-workspace-profile send-to-index 1
+bindd = SUPER CTRL SHIFT, 2, Send window to profile 2, exec, omarchy-workspace-profile send-to-index 2
+bindd = SUPER CTRL SHIFT, 3, Send window to profile 3, exec, omarchy-workspace-profile send-to-index 3
+bindd = SUPER CTRL SHIFT, 4, Send window to profile 4, exec, omarchy-workspace-profile send-to-index 4
+bindd = SUPER CTRL SHIFT, 5, Send window to profile 5, exec, omarchy-workspace-profile send-to-index 5
+bindd = SUPER CTRL SHIFT, 6, Send window to profile 6, exec, omarchy-workspace-profile send-to-index 6
+bindd = SUPER CTRL SHIFT, 7, Send window to profile 7, exec, omarchy-workspace-profile send-to-index 7
+bindd = SUPER CTRL SHIFT, 8, Send window to profile 8, exec, omarchy-workspace-profile send-to-index 8
+bindd = SUPER CTRL SHIFT, 9, Send window to profile 9, exec, omarchy-workspace-profile send-to-index 9
+
+# Switch to Nth profile.
+bindd = SUPER CTRL, 1, Profile 1, exec, omarchy-workspace-profile set-index 1
+bindd = SUPER CTRL, 2, Profile 2, exec, omarchy-workspace-profile set-index 2
+bindd = SUPER CTRL, 3, Profile 3, exec, omarchy-workspace-profile set-index 3
+bindd = SUPER CTRL, 4, Profile 4, exec, omarchy-workspace-profile set-index 4
+bindd = SUPER CTRL, 5, Profile 5, exec, omarchy-workspace-profile set-index 5
+bindd = SUPER CTRL, 6, Profile 6, exec, omarchy-workspace-profile set-index 6
+bindd = SUPER CTRL, 7, Profile 7, exec, omarchy-workspace-profile set-index 7
+bindd = SUPER CTRL, 8, Profile 8, exec, omarchy-workspace-profile set-index 8
+bindd = SUPER CTRL, 9, Profile 9, exec, omarchy-workspace-profile set-index 9
+bindd = SUPER CTRL, TAB, Cycle profile, exec, omarchy-workspace-profile cycle
+
+# Cycle slots within the active profile (overrides Hyprland's default
+# SUPER+TAB which cycles across all workspaces regardless of profile).
+unbind = SUPER, TAB
+unbind = SUPER SHIFT, TAB
+bindd = SUPER, TAB, Next profile slot, exec, omarchy-workspace-profile next-slot
+bindd = SUPER SHIFT, TAB, Previous profile slot, exec, omarchy-workspace-profile prev-slot
+EOF
+
+# ────────── populate Hyprland autostart sidecar ──────────
+cat > "$HOME/.config/hypr/workspace-profiles-autostart.conf" <<'EOF'
+# Workspace Profiles autostart. Managed by
+# omarchy-setup-workspace-profiles.
+
+# On startup: reclaim any windows on bare-numeric workspaces into the
+# active profile's matching slot, sync Waybar/mako, and focus slot 1.
+# Safe to run every boot; idempotent.
+exec-once = omarchy-workspace-profile boot
+
+# Keep active profile in sync with the focused workspace even when the
+# change bypasses the controller (mako click, Slack jump-to-tab, etc.).
+exec-once = omarchy-workspace-profile-sync
+EOF
 
 # ────────── install browser shim .desktop ──────────
 mkdir -p "$HOME/.local/share/applications"
