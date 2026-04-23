@@ -5,10 +5,14 @@
 
 percent="$1"
 
-progress="$(awk -v p="$percent" 'BEGIN{printf "%.2f", p/100}')"
-[[ $progress == "0.00" ]] && progress="0.01"
+case "$percent" in
+  0)   label="OFF"    ;;
+  1)   label="LOW"    ;;
+  25)  label="MEDIUM" ;;
+  100) label="HIGH"   ;;
+  *)   label="${percent}%" ;;
+esac
 
 omarchy-swayosd-client \
   --custom-icon keyboard-brightness-symbolic \
-  --custom-progress "$progress" \
-  --custom-progress-text "${percent}%"
+  --custom-message "$label"
