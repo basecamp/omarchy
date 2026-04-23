@@ -3,7 +3,7 @@
 # Install one of the supported development environments. Usually called via Install > Development > * in the Omarchy Menu.
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala|android>" >&2
   exit 1
 fi
 
@@ -147,5 +147,57 @@ scala)
   mise use --global java@latest
   mise use --global scala@latest
   mise use --global scala-cli@latest
+  ;;
+android)
+  echo -e "Installing Android Studio...\n"
+  echo "Checking KVM support..."
+  if [[ -c /dev/kvm ]]; then
+    CPU_VENDOR=$(grep -m1 "vendor_id" /proc/cpuinfo 2>/dev/null | cut -d: -f2 | tr -d ' ')
+    if [[ "$CPU_VENDOR" == "GenuineIntel" ]]; then
+      KVM_SUPPORTED=$(grep -q "vmx" /proc/cpuinfo && echo "yes" || echo "no")
+    else
+      KVM_SUPPORTED=$(grep -q "svm" /proc/cpuinfo && echo "yes" || echo "no")
+    fi
+  else
+    KVM_SUPPORTED="no"
+  fi
+
+  if [[ "$KVM_SUPPORTED" == "yes" ]]; then
+    echo "✓ KVM hardware acceleration available"
+    if ! groups | grep -q kvm; then
+      echo "Adding user to kvm group..."
+      sudo usermod -aG kvm "$USER" 2>/dev/null || true
+      echo "✓ Added to kvm group (re-login required for emulator)"
+    fi
+  else
+    echo "⚠ KVM not available - emulator will run slower"
+  fi
+
+  omarchy-pkg-aur-add android-studio
+
+  ANDROID_SDK_PATH="$HOME/Android/Sdk"
+  mkdir -p "$ANDROID_SDK_PATH"
+  mkdir -p ~/.android
+
+  cat > ~/.android/repositories.cfg << 'EOF'
+sdk::site: https://developer.android.com
+EOF
+
+  if ! grep -q "ANDROID_HOME" ~/.bashrc 2>/dev/null; then
+    echo "export ANDROID_HOME=\"$ANDROID_SDK_PATH\"" >> ~/.bashrc
+    echo "export ANDROID_SDK_ROOT=\"$ANDROID_SDK_PATH\"" >> ~/.bashrc
+    echo "export PATH=\"\$PATH:\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools\"" >> ~/.bashrc
+  fi
+
+  if ! grep -q "ANDROID_HOME" ~/.zshrc 2>/dev/null; then
+    echo "export ANDROID_HOME=\"$ANDROID_SDK_PATH\"" >> ~/.zshrc
+    echo "export ANDROID_SDK_ROOT=\"$ANDROID_SDK_PATH\"" >> ~/.zshrc
+    echo "export PATH=\"\$PATH:\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools\"" >> ~/.zshrc
+  fi
+
+  echo "✓ Android Studio installed!"
+  echo "✓ ANDROID_HOME configured"
+  echo ""
+  echo "Run 'gtk-launch android-studio' to get started."
   ;;
 esac

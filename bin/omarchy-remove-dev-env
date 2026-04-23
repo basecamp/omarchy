@@ -4,7 +4,7 @@
 # Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala>
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala>" >&2
+  echo "Usage: omarchy-remove-dev-env <ruby|node|bun|deno|go|php|laravel|symfony|python|elixir|phoenix|zig|rust|java|dotnet|ocaml|clojure|scala|android>" >&2
   exit 1
 fi
 
@@ -102,6 +102,26 @@ scala)
   mise uninstall scala-cli --all
   mise rm -g scala
   mise rm -g scala-cli
+  ;;
+android)
+  echo -e "Removing Android Studio...\n"
+  sudo pacman -Rns --noconfirm android-studio 2>/dev/null || true
+
+  ANDROID_SDK_PATH="${ANDROID_HOME:-$HOME/Android/Sdk}"
+  if [[ -d "$ANDROID_SDK_PATH" ]]; then
+    rm -rf "$ANDROID_SDK_PATH"
+  fi
+  rm -rf ~/.android
+
+  rm -rf ~/.config/Google/AndroidStudio*
+  rm -rf ~/.local/share/Google/AndroidStudio*
+
+  sed -i '/ANDROID_HOME/d' ~/.bashrc 2>/dev/null || true
+  sed -i '/ANDROID_SDK_ROOT/d' ~/.bashrc 2>/dev/null || true
+  sed -i '/ANDROID_HOME/d' ~/.zshrc 2>/dev/null || true
+  sed -i '/ANDROID_SDK_ROOT/d' ~/.zshrc 2>/dev/null || true
+
+  echo "✓ Android Studio removed!"
   ;;
 *)
   echo "Unknown environment: $1"
