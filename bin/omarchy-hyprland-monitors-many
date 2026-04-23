@@ -1,5 +1,0 @@
-#!/bin/bash
-
-# Returns true when there are multiple monitors connected (so we can disable the internal one)
-
-(( $(hyprctl monitors -j 2>/dev/null | jq length) > 1 ))

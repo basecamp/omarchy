@@ -9,7 +9,7 @@ enable() {
 }
 
 disable() {
-  if omarchy-hyprland-monitors-many; then
+  if omarchy-hw-external-monitors; then
     if omarchy-hyprland-toggle-disabled "$TOGGLE"; then
       omarchy-hyprland-toggle --enabled-notification "󰍹    Laptop display disabled" "$TOGGLE"
     fi
@@ -20,8 +20,8 @@ disable() {
 }
 
 recover() {
-  if omarchy-hyprland-monitors-none && omarchy-hyprland-toggle-enabled "$TOGGLE"; then
-    enable
+  if ! omarchy-hw-external-monitors && omarchy-hyprland-toggle-enabled "$TOGGLE"; then
+    omarchy-hyprland-toggle "$TOGGLE"
   fi
 }
 

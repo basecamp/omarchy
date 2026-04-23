@@ -1,18 +1,21 @@
 accent = "#8d8d8d"
 cursor = "#ffffff"
 foreground = "#ffffff"
-background = "#0d0d0d"
-selection_foreground = "#0d0d0d"
+background = "#000000"
+
+# Selection colors
+selection_foreground = "#000000"
 selection_background = "#ffffff"
 
-bg = "#0d0d0d"
-lighter_bg = "#1a1a1a"
-selection = "#2e2e2e"
-muted = "#4a4a4a"
-dark_fg = "#6b6b6b"
-fg = "#8d8d8d"
-light_fg = "#b6b6b6"
-bright_fg = "#ffffff"
+# Normal colors (ANSI 0-7)
+color0 = "#000000"
+color1 = "#a4a4a4"
+color2 = "#b6b6b6"
+color3 = "#cecece"
+color4 = "#8d8d8d"
+color5 = "#9b9b9b"
+color6 = "#b0b0b0"
+color7 = "#ececec"
 
 red = "#a4a4a4"
 yellow = "#cecece"
