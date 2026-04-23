@@ -116,5 +116,5 @@ child:selected .item-box * {
 }
 
 child:selected {
-  background: alpha(@text, .3);
+  background: alpha(@text, 0.3);
 }
