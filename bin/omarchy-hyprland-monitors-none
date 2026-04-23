@@ -1,5 +1,0 @@
-#!/bin/bash
-
-# Returns true when no monitors are connected
-
-(( $(hyprctl monitors -j 2>/dev/null | jq length) == 0 ))
