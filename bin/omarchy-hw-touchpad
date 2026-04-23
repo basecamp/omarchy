@@ -1,0 +1,4 @@
+#!/bin/bash
+
+device=$(hyprctl devices -j | jq -r '[.mice[] | .name | select(test("touchpad|trackpad"; "i"))] | first // empty')
+[[ -n $device ]] && echo "$device"

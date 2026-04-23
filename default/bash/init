@@ -11,7 +11,11 @@ if command -v zoxide &> /dev/null; then
 fi
 
 if command -v try &> /dev/null; then
-  eval "$(SHELL=/bin/bash command try init ~/Work/tries)"
+  try() {
+    unset -f try
+    eval "$(SHELL=/bin/bash command try init ~/Work/tries)"
+    try "$@"
+  }
 fi
 
 if command -v fzf &> /dev/null; then
