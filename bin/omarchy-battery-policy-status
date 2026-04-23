@@ -1,4 +1,0 @@
-#!/bin/bash
-
-provider=$(omarchy-battery-policy-provider) || exit 1
-omarchy-battery-policy-provider-$provider status

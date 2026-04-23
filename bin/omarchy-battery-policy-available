@@ -1,3 +1,0 @@
-#!/bin/bash
-
-omarchy-battery-policy-provider >/dev/null 2>&1
