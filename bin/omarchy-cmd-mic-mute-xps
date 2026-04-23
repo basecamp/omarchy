@@ -38,7 +38,6 @@ if [[ -e /sys/class/leds/platform::micmute/brightness ]]; then
   done
 fi
 
-swayosd-client \
-  --monitor "$(omarchy-hyprland-monitor-focused)" \
+omarchy-swayosd-client \
   --custom-message "$osd_message" \
   --custom-icon "$osd_icon"
