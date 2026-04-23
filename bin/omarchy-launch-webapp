@@ -1,12 +1,33 @@
 #!/bin/bash
 
-# Launch the passed in URL as a web app in the default browser (or chromium if the default doesn't support --app).
+url="$1"
+shift
 
 browser=$(xdg-settings get default-web-browser)
+app_id="${browser%.desktop}"
 
-case $browser in
-google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
-*) browser="chromium.desktop" ;;
+# Detect if browser supports --app (Chromium-based)
+case "$browser" in
+  *chrome*|*chromium*|*brave*|*edge*|*opera*|*vivaldi*) supports_app=true ;;
+  *) supports_app=false ;;
 esac
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+# Flatpak path
+if command -v flatpak &>/dev/null && flatpak info "$app_id" &>/dev/null; then
+  if $supports_app; then
+    exec flatpak run "$app_id" --ozone-platform=wayland --app="$url" "$@"
+  else
+    exec flatpak run "$app_id" "$url" "$@"
+  fi
+fi
+
+# Resolve Exec from .desktop
+browser_bin=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' \
+  {~/.local,~/.nix-profile,/usr}/share/applications/"$browser" 2>/dev/null | head -1)
+
+# Native path
+if $supports_app; then
+  exec "$browser_bin" --app="$url" "$@"
+else
+  exec "$browser_bin" "$url" "$@"
+fi
