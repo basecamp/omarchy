@@ -3,7 +3,7 @@
 # Install other terminals via Install > Terminal
 export TERMINAL=xdg-terminal-exec
 
-# Use code for VSCode
+# Default editor is Neovim, use <code> for VSCode
 export EDITOR=nvim
 
 # Use a custom directory for screenshots (remember to make the directory!)
