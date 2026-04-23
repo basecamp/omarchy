@@ -9,6 +9,8 @@ WIDTH=$(echo "$MONITOR_INFO" | jq -r '.width')
 HEIGHT=$(echo "$MONITOR_INFO" | jq -r '.height')
 REFRESH_RATE=$(echo "$MONITOR_INFO" | jq -r '.refreshRate')
 
+[[ -n $ACTIVE_MONITOR && $ACTIVE_MONITOR != "null" ]] || exit 0
+
 # Cycle through scales: 1 → 1.25 → 1.6 → 2 → 3 → 1 (or reverse with --reverse)
 SCALES=(1 1.25 1.6 2 3)
 
