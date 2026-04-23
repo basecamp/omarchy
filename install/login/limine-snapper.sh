@@ -50,26 +50,14 @@ EOF
   # We overwrite the whole thing knowing the limine-update will add the entries for us
   sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
 
-  # Match Snapper configs if not installing from the ISO
-  if [[ -z ${OMARCHY_CHROOT_INSTALL:-} ]]; then
-    if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
-      sudo snapper -c root create-config /
-    fi
-
-    if ! sudo snapper list-configs 2>/dev/null | grep -q "home"; then
-      sudo snapper -c home create-config /home
-    fi
+  # Only snapshot root — /home is user data; rolling it back loses user work
+  if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
+    sudo snapper -c root create-config /
   fi
+  sudo cp $OMARCHY_PATH/default/snapper/root /etc/snapper/configs/root
 
-  # Enable quota to allow space-aware algorithms to work
-  sudo btrfs quota enable /
-
-  # Tweak default Snapper configs
-  sudo sed -i 's/^TIMELINE_CREATE="yes"/TIMELINE_CREATE="no"/' /etc/snapper/configs/{root,home}
-  sudo sed -i 's/^NUMBER_LIMIT="50"/NUMBER_LIMIT="5"/' /etc/snapper/configs/{root,home}
-  sudo sed -i 's/^NUMBER_LIMIT_IMPORTANT="10"/NUMBER_LIMIT_IMPORTANT="5"/' /etc/snapper/configs/{root,home}
-  sudo sed -i 's/^SPACE_LIMIT="0.5"/SPACE_LIMIT="0.3"/' /etc/snapper/configs/{root,home}
-  sudo sed -i 's/^FREE_LIMIT="0.2"/FREE_LIMIT="0.3"/' /etc/snapper/configs/{root,home}
+  # Disable btrfs quotas — full qgroup accounting is a major performance drag
+  sudo btrfs quota disable / 2>/dev/null || true
 
   chrootable_systemctl_enable limine-snapper-sync.service
 fi
