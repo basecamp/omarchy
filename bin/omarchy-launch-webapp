@@ -1,12 +1,35 @@
 #!/bin/bash
 
-# Launch the passed in URL as a web app in the default browser (or chromium if the default doesn't support --app).
+url="$1"
+shift
 
 browser=$(xdg-settings get default-web-browser)
 
-case $browser in
-google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
-*) browser="chromium.desktop" ;;
+case "$browser" in
+  google-chrome*|brave*|microsoft-edge*|opera*|vivaldi*|helium*) ;;
+  *) browser="chromium.desktop" ;;
 esac
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+browser_bin=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' \
+  {~/.local,~/.nix-profile,/usr}/share/applications/"$browser" 2>/dev/null | head -1)
+
+app_id="${browser%.desktop}"
+
+# Detect if Flatpak version exists
+if command -v flatpak &>/dev/null && flatpak info "$app_id" &>/dev/null; then
+  browser_cmd="flatpak run $app_id"
+else
+  browser_cmd="$browser_bin"
+fi
+
+# Detect --app support
+case "$browser" in
+  *chrome*|*chromium*|*brave*|*edge*|*opera*|*vivaldi*) supports_app=true ;;
+  *) supports_app=false ;;
+esac
+
+if $supports_app; then
+  exec setsid uwsm-app -- $browser_cmd --app="$url" "$@"
+else
+  exec setsid uwsm-app -- $browser_cmd "$url" "$@"
+fi
