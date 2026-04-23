@@ -1,6 +1,13 @@
 #!/bin/bash
 
-for provider in dell-sysman power-supply; do
+BATTERY_POLICY_PROVIDERS=(
+  dell-sysman
+  power-supply
+)
+
+# Add a new provider by creating bin/omarchy-battery-policy-provider-<name>
+# with a probe subcommand, then append <name> here in priority order.
+for provider in "${BATTERY_POLICY_PROVIDERS[@]}"; do
   if omarchy-battery-policy-provider-$provider probe >/dev/null 2>&1; then
     printf '%s\n' "$provider"
     exit 0

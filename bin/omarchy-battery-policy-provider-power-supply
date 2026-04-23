@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Provider contract:
+# - probe: exit 0 when this backend is supported on the current machine
+# - list: print supported policies as "id:Label" lines
+# - status: print the active policy id
+# - set <policy-id>: apply one built-in policy
+# - set-custom <start> <end>: apply a custom charge range
+#
+# Use this file as the structure reference for new
+# omarchy-battery-policy-provider-<name> implementations.
+
 battery_dirs() {
   local bat
   local found=false
@@ -152,10 +162,12 @@ is_integer() {
   [[ $1 =~ ^[0-9]+$ ]]
 }
 
+# Detect whether Linux power_supply battery controls are available.
 probe() {
   battery_dirs >/dev/null
 }
 
+# Report the shared policy state and custom threshold support across batteries.
 status() {
   local bat
   local batteries
@@ -254,6 +266,7 @@ status() {
   printf '%s\n' 'pending_reboot=0'
 }
 
+# List the policy ids supported by every managed battery.
 list() {
   local bat
   local batteries
@@ -278,6 +291,7 @@ list() {
   done
 }
 
+# Apply one named built-in policy to every managed battery.
 set_policy() {
   local bat
   local batteries
@@ -314,6 +328,7 @@ set_policy() {
   done
 }
 
+# Validate and apply custom charge thresholds to every managed battery.
 set_custom_policy() {
   local bat
   local batteries
@@ -370,6 +385,7 @@ set_custom_policy() {
   done
 }
 
+# Dispatch the provider contract subcommands used by the battery policy wrappers.
 case "$1" in
 probe) probe ;;
 status) status ;;
