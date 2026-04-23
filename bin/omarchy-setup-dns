@@ -9,6 +9,10 @@ lock_dns_to_resolved() {
       sudo sed -i '/^\[DHCPv4\]/a UseDNS=no' "$file"
     fi
 
+    if ! sed -n '/^\[DHCPv6\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
+      sudo sed -i '/^\[DHCPv6\]/a UseDNS=no' "$file"
+    fi
+
     if grep -q "^\[IPv6AcceptRA\]" "$file" && ! sed -n '/^\[IPv6AcceptRA\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
       sudo sed -i '/^\[IPv6AcceptRA\]/a UseDNS=no' "$file"
     fi
@@ -19,6 +23,7 @@ unlock_dns_to_dhcp() {
   for file in /etc/systemd/network/*.network; do
     [[ -f $file ]] || continue
     sudo sed -i '/^\[DHCPv4\]/{n;/^UseDNS=no$/d}' "$file"
+    sudo sed -i '/^\[DHCPv6\]/{n;/^UseDNS=no$/d}' "$file"
     sudo sed -i '/^\[IPv6AcceptRA\]/{n;/^UseDNS=no$/d}' "$file"
   done
 }
