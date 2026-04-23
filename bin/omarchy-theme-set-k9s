@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Sync Omarchy theme to k9s when the user already has a k9s config directory
+
+K9S_CONFIG_DIR="${K9S_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/k9s}"
+K9S_SKINS_DIR="$K9S_CONFIG_DIR/skins"
+OMARCHY_K9S_THEME="$HOME/.config/omarchy/current/theme/k9s.yaml"
+
+[[ -d $K9S_CONFIG_DIR ]] || exit 0
+[[ -f $OMARCHY_K9S_THEME ]] || exit 0
+
+mkdir -p "$K9S_SKINS_DIR"
+cp "$OMARCHY_K9S_THEME" "$K9S_SKINS_DIR/omarchy.yaml"
