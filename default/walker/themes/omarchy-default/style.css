@@ -114,3 +114,7 @@ child:selected .item-box * {
 
 .preview {
 }
+
+child:selected {
+  background: alpha(@text, .3);
+}
