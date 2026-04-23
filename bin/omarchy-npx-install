@@ -23,7 +23,8 @@ if ! node_root="\$(mise where node@latest 2>/dev/null)"; then
   node_root="\$(mise where node@latest)"
 fi
 
-exec "\$node_root/bin/node" "\$node_root/bin/npx" --yes $package "\$@"
+export PATH="\$node_root/bin:\$PATH"
+exec "\$node_root/bin/npx" --yes $package "\$@"
 EOF
 
 chmod +x "$HOME/.local/bin/$command"
