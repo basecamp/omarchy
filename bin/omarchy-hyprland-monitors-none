@@ -1,5 +1,5 @@
 #!/bin/bash
 
-# Returns true when no monitors are connected
+# Returns true when no real monitors are connected (ignoring Hyprland's HEADLESS fallback)
 
-(( $(hyprctl monitors -j 2>/dev/null | jq length) == 0 ))
+(( $(hyprctl monitors -j 2>/dev/null | jq '[.[] | select(.name | startswith("HEADLESS") | not)] | length') == 0 ))
