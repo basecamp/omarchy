@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Toggle microphone mute on Dell XPS systems. Uses wpctl for reliable toggling
+# and syncs the ALSA capture switch so the hardware mic mute LED follows state.
+
+wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle >/dev/null
+
+if pactl get-source-mute @DEFAULT_SOURCE@ | rg -q 'yes'; then
+  alsa_value='off,off'
+  osd_message='Microphone muted'
+  osd_icon='microphone-sensitivity-muted-symbolic'
+else
+  alsa_value='on,on'
+  osd_message='Microphone on'
+  osd_icon='audio-input-microphone-symbolic'
+fi
+
+if [[ -e /sys/class/leds/platform::micmute/brightness ]]; then
+  default_source=$(pactl get-default-source)
+  alsa_card=$(pactl -f json list sources | jq -r --arg source "$default_source" '
+    .[] | select(.name == $source) |
+    .properties["alsa.card"] // .properties["api.alsa.card"] // .properties["api.alsa.pcm.card"] // empty
+  ' | head -1)
+
+  if [[ -n $alsa_card ]]; then
+    cards=("$alsa_card")
+  else
+    mapfile -t cards < <(compgen -G '/proc/asound/card*' | rg -o 'card[0-9]+' | sed 's/card//' | sort -u)
+  fi
+
+  for card in "${cards[@]}"; do
+    while IFS= read -r control; do
+      if [[ $control != *"Jack Microphone"* ]]; then
+        amixer -c "$card" cset "$control" "$alsa_value" >/dev/null 2>&1 || true
+        break 2
+      fi
+    done < <(amixer -c "$card" controls 2>/dev/null | rg -o "name='[^']*Microphone Capture Switch'")
+  done
+fi
+
+omarchy-swayosd-client \
+  --custom-message "$osd_message" \
+  --custom-icon "$osd_icon"

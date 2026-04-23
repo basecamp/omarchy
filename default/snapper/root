@@ -1,0 +1,8 @@
+# Omarchy snapshots root only for pre-update recovery — kept to 5, no timeline
+SUBVOLUME="/"
+FSTYPE="btrfs"
+
+NUMBER_LIMIT="5"
+NUMBER_LIMIT_IMPORTANT="5"
+
+TIMELINE_CREATE="no"

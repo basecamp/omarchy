@@ -16,6 +16,7 @@ brightnessctl
 btop
 chromium
 clang
+claude-code
 cups
 cups-browsed
 cups-filters
@@ -111,6 +112,7 @@ sddm
 signal-desktop
 slurp
 spotify
+socat
 starship
 sushi
 swaybg
