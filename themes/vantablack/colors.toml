@@ -4,14 +4,14 @@ cursor = "#ffffff"
 
 # Primary colors
 foreground = "#ffffff"
-background = "#0d0d0d"
+background = "#000000"
 
 # Selection colors
-selection_foreground = "#0d0d0d"
+selection_foreground = "#000000"
 selection_background = "#ffffff"
 
 # Normal colors (ANSI 0-7)
-color0 = "#0d0d0d"
+color0 = "#000000"
 color1 = "#a4a4a4"
 color2 = "#b6b6b6"
 color3 = "#cecece"

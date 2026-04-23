@@ -11,7 +11,7 @@ fi
 pgrep -f org.omarchy.screensaver && exit 0
 
 # Allow screensaver to be turned off but also force started
-if [[ -f ~/.local/state/omarchy/toggles/screensaver-off ]] && [[ $1 != "force" ]]; then
+if omarchy-toggle-enabled screensaver-off && [[ $1 != "force" ]]; then
   exit 1
 fi
 

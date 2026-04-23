@@ -202,7 +202,7 @@ prioritize_entries() {
     if (match(line, /Move window to workspace/))  prio = 28
     if (match(line, /Move window silently to workspace/))  prio = 29
     if (match(line, /Swap window/))  prio = 30
-    if (match(line, /Move window focus/))  prio = 31
+    if (match(line, /Focus/))  prio = 31
     if (match(line, /Move window$/))  prio = 32
     if (match(line, /Resize window/))  prio = 33
     if (match(line, /Expand window/))  prio = 34
