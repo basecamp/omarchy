@@ -2,6 +2,7 @@
 
 # Toggle the layout on the current active workspace between dwindle and scrolling
 
+LAYOUTS_CONF="$HOME/.local/state/omarchy/toggles/hypr/workspace-layouts.conf"
 ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
 CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
 
@@ -10,5 +11,11 @@ case "$CURRENT_LAYOUT" in
   *) NEW_LAYOUT=dwindle ;;
 esac
 
-hyprctl keyword workspace $ACTIVE_WORKSPACE, layout:$NEW_LAYOUT
+if [[ -f $LAYOUTS_CONF ]] && grep -q "^workspace = $ACTIVE_WORKSPACE," "$LAYOUTS_CONF"; then
+  sed -i "s/^workspace = $ACTIVE_WORKSPACE,.*/workspace = $ACTIVE_WORKSPACE, layout:$NEW_LAYOUT/" "$LAYOUTS_CONF"
+else
+  echo "workspace = $ACTIVE_WORKSPACE, layout:$NEW_LAYOUT" >> "$LAYOUTS_CONF"
+fi
+
+hyprctl reload
 notify-send -u low "󱂬    Workspace layout set to $NEW_LAYOUT"
