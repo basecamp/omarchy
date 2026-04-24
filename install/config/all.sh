@@ -50,6 +50,8 @@ run_logged $OMARCHY_INSTALL/config/hardware/dell/fix-xps-haptic-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-audio-mixer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-mic.sh
 
+run_logged $OMARCHY_INSTALL/config/hardware/acer/enable-turbo-key.sh
+
 run_logged $OMARCHY_INSTALL/config/hardware/framework/fix-f13-amd-audio-input.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework/qmk-hid.sh
 
