@@ -11,7 +11,7 @@ if [[ -z $COMMAND ]]; then
 fi
 
 if ! command -v snapper &>/dev/null; then
-  exit 127 # omarchy-update can use this to just ignore if snapper is not available
+  exit 127
 fi
 
 case "$COMMAND" in
@@ -29,6 +29,13 @@ create)
   echo
   ;;
 restore)
+  echo "⚠️  Snapshot restore will restore the ROOT filesystem only."
+  echo "⚠️  Your /home directory will NOT be affected."
+  echo ""
+  echo "If you need to restore /home:"
+  echo "1. Boot into the snapshot from limine menu"
+  echo "2. /home is NOT included in the snapshot restore"
+  echo ""
   sudo limine-snapper-restore
   ;;
 esac
