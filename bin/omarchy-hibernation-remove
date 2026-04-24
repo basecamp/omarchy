@@ -49,6 +49,13 @@ echo "Removing suspend-then-hibernate configuration"
 sudo rm -f /etc/systemd/logind.conf.d/lid.conf
 sudo rm -f /etc/systemd/sleep.conf.d/hibernate.conf
 
+# Remove sleep mode configuration
+sudo rm -f /usr/lib/systemd/system-sleep/delayed-hibernate
+sudo rm -f /etc/systemd/logind.conf.d/omarchy-lid.conf
+sudo rm -f /etc/omarchy/sleep-mode
+sudo rmdir /etc/omarchy 2>/dev/null
+sudo systemctl kill -s HUP systemd-logind 2>/dev/null
+
 # Remove mkinitcpio resume hook
 echo "Removing resume hook"
 sudo rm "$MKINITCPIO_CONF"
