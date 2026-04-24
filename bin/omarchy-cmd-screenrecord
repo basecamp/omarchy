@@ -164,9 +164,15 @@ finalize_recording() {
   latest=$(cat "$RECORDING_FILE" 2>/dev/null)
   [[ -f $latest ]] || return
 
-  # Re-encode to drop scrambled encoder-warmup frames (stream copy can't — it rewinds to the keyframe)
-  # and normalize audio to -14 LUFS if present, in a single pass
-  local args=(-y -ss 0.1 -i "$latest" -c:v libx264 -preset veryfast -crf 20)
+  # Re-encode only when the first GOP contains discardable warmup packets — stream copy can't
+  # trim those (it rewinds to the keyframe). Clean recordings stay on the fast stream-copy path.
+  local video_codec=(-c:v copy)
+  if ffprobe -v error -select_streams v:0 -read_intervals %+0.2 -show_entries packet=flags -of csv=p=0 "$latest" 2>/dev/null | grep -q D; then
+    video_codec=(-c:v libx264 -preset veryfast -crf 20)
+  fi
+
+  # Trim the first frame, and normalize audio to -14 LUFS if present, in a single pass
+  local args=(-y -ss 0.1 -i "$latest" "${video_codec[@]}")
   if ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "$latest" 2>/dev/null | grep -q audio; then
     args+=(-af loudnorm=I=-14:TP=-1.5:LRA=11)
   fi
