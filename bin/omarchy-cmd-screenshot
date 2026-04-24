@@ -63,6 +63,34 @@ get_rectangles() {
   hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
 }
 
+# Check if we're on an HDR display (NVIDIA GPUs often have issues with HDR screenshots)
+is_hdr_nvidia() {
+  if command -v nvidia-smi &>/dev/null; then
+    # Check if any monitor is in HDR mode
+    hyprctl monitors -j 2>/dev/null | jq -e '.[] | select(.dynamic == true or .activeMonitor != null)' >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+# Take screenshot with proper color handling for HDR displays
+take_screenshot() {
+  local selection="$1"
+  local filepath="$2"
+  local use_wayfreeze="${3:-false}"
+  
+  if [[ $use_wayfreeze == "true" && -x $(command -v wayfreeze) ]]; then
+    # Use wayfreeze for HDR displays where hyprpicker causes color issues
+    wayfreeze -w &
+    FREEZE_PID=$!
+    sleep 0.2
+    grim -g "$selection" "$filepath" || { kill $FREEZE_PID 2>/dev/null; return 1; }
+    kill $FREEZE_PID 2>/dev/null
+  else
+    grim -g "$selection" "$filepath" || return 1
+  fi
+}
+
 # Select based on mode
 case "$MODE" in
 region)
@@ -121,7 +149,13 @@ FILENAME="screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png"
 FILEPATH="$OUTPUT_DIR/$FILENAME"
 
 if [[ $PROCESSING == "slurp" ]]; then
-  grim -g "$SELECTION" "$FILEPATH" || exit 1
+  # Use wayfreeze if available and we have HDR issues, otherwise use hyprpicker
+  USE_WAYFREEZE="false"
+  if [[ -x $(command -v wayfreeze) ]]; then
+    USE_WAYFREEZE="true"
+  fi
+  
+  take_screenshot "$SELECTION" "$FILEPATH" "$USE_WAYFREEZE" || exit 1
   wl-copy <"$FILEPATH"
 
   (

@@ -9,7 +9,23 @@ fi
 
 # Ensure walker service is running
 if ! pgrep -f "walker --gapplication-service" > /dev/null; then
-  setsid uwsm-app -- env GSK_RENDERER=cairo walker --gapplication-service &
+  setsid uwsm-app -- walker --gapplication-service &
 fi
 
-exec walker --width 644 --maxheight 300 --minheight 300 "$@"
+# Use default settings unless overridden by arguments
+WALKER_WIDTH="${WALKER_WIDTH:-644}"
+WALKER_MAXHEIGHT="${WALKER_MAXHEIGHT:-300}"
+WALKER_MINHEIGHT="${WALKER_MINHEIGHT:-300}"
+
+# Check if --width, --maxheight, --minheight are passed in arguments
+if [[ "$*" != *"--width"* ]]; then
+  WALKER_ARGS+=("--width" "$WALKER_WIDTH")
+fi
+if [[ "$*" != *"--maxheight"* ]]; then
+  WALKER_ARGS+=("--maxheight" "$WALKER_MAXHEIGHT")
+fi
+if [[ "$*" != *"--minheight"* ]]; then
+  WALKER_ARGS+=("--minheight" "$WALKER_MINHEIGHT")
+fi
+
+exec walker "${WALKER_ARGS[@]}" "$@"
