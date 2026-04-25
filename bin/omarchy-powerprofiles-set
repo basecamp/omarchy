@@ -1,13 +1,36 @@
 #!/bin/bash
 
-# Set the power profile to the requested level, falling back to balanced
-# if the requested profile isn't available on this machine.
+# Set the power profile based on AC/battery state, falling back to balanced
+# if the desired profile isn't available on this machine.
 #
-# Usage: omarchy-powerprofiles-set <ac|battery>
+# Usage:
+#   omarchy-powerprofiles-set            # auto-detect from power-supply state
+#   omarchy-powerprofiles-set ac
+#   omarchy-powerprofiles-set battery
+
+action="${1-}"
+
+# Auto-detect when called with no argument: treat any Mains or USB
+# power-supply device reporting online=1 as "on AC". This handles
+# USB-C only laptops where the legacy AC device may not fire udev
+# events, and also avoids false negatives from per-port USB-C devices
+# that are present-but-empty (online=0) while another port supplies power.
+if [[ -z $action ]]; then
+  action=battery
+  for ps in /sys/class/power_supply/*; do
+    [[ -r $ps/online && -r $ps/type ]] || continue
+    type=$(cat "$ps/type")
+    [[ $type == "Mains" || $type == "USB" ]] || continue
+    if [[ $(cat "$ps/online") == "1" ]]; then
+      action=ac
+      break
+    fi
+  done
+fi
 
 mapfile -t profiles < <(powerprofilesctl list | awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }')
 
-case "$1" in
+case "$action" in
   ac)
     # Prefer performance, fall back to balanced
     if [[ " ${profiles[*]} " == *" performance "* ]]; then
