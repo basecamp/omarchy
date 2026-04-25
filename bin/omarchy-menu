@@ -3,6 +3,8 @@
 # Launch the Omarchy Menu or takes a parameter to jump straight to a submenu.
 
 export PATH="$HOME/.local/share/omarchy/bin:$PATH"
+MENU_JSON="$HOME/.local/share/omarchy/bin/omarchy-menu-options.json"
+AUTOMATE_QUEUE="/tmp/automate-omarchy-menu"
 
 # Set to true when going directly to a submenu, so we can exit directly
 BACK_TO_EXIT=false
@@ -27,6 +29,13 @@ toggle_existing_menu() {
 }
 
 menu() {
+  if [[ -s "$AUTOMATE_QUEUE" ]]; then
+    local queue=$(head -n 1 "$AUTOMATE_QUEUE")
+    sed -i '1d' "$AUTOMATE_QUEUE"
+    echo "$queue"
+    return
+  fi
+
   local prompt="$1"
   local options="$2"
   local extra="$3"
@@ -608,12 +617,43 @@ show_system_menu() {
   esac
 }
 
+show_global_search() {
+  if [[ ! -f "$MENU_JSON" ]]; then
+    notify-send "Omarchy Menu" "Cannot find $MENU_JSON"
+    return
+  fi
+
+  local options=$(jq -r 'paths(scalars) as $p | "\($p[-1]) [\($p | join(" -> "))]"' "$MENU_JSON") 
+  local selection=$(echo -e "$options" | omarchy-launch-walker --dmenu --width 720 --minheight 1 --maxheight 630 -p "Search…" 2>/dev/null)
+  
+  [[ -z "$selection" ]] && return
+  local path_string="${selection#*[}"
+  path_string="${path_string%]}"
+  local rest="$path_string"
+  local delimiter=" -> "
+  declare -a path_array=()
+  while [[ "$rest" == *"$delimiter"* ]]; do
+    path_array+=("${rest%%$delimiter*}")
+    rest="${rest#*$delimiter}"
+  done
+  path_array+=("$rest")
+
+  local root_menu="${path_array[0]}"
+
+  > "$AUTOMATE_QUEUE"
+  for item in "${path_array[@]:1}"; do
+    echo "$item" >> "$AUTOMATE_QUEUE"
+  done
+  go_to_menu "$root_menu"
+}
+
 show_main_menu() {
-  go_to_menu "$(menu "Go" "󰀻  Apps\n󰧑  Learn\n󱓞  Trigger\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
+  go_to_menu "$(menu "Go" "  Global Search\n󰀻  Apps\n󰧑  Learn\n󱓞  Trigger\n  Style\n  Setup\n󰉉  Install\n󰭌  Remove\n  Update\n  About\n  System")"
 }
 
 go_to_menu() {
   case "${1,,}" in
+  *search*) show_global_search ;;
   *apps*) walker -p "Launch…" ;;
   *learn*) show_learn_menu ;;
   *trigger*) show_trigger_menu ;;
