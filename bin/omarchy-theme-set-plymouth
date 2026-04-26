@@ -49,7 +49,7 @@ for asset in bullet.png entry.png lock.png progress_bar.png; do
   magick "$staging_dir/$asset" -channel RGB +level-colors "#$accent_hex","#$accent_hex" "$staging_dir/$asset"
 done
 
-if gum confirm "Preview changes?"; then
+if gum confirm "Preview new login screen?"; then
   canvas_w=1920
   canvas_h=1080
 
@@ -84,7 +84,7 @@ if gum confirm "Preview changes?"; then
   imv -f "$preview_png"
 fi
 
-if gum confirm "Apply changes?"; then
+if gum confirm "Apply new login screen?"; then
   sudo cp -a "$staging_dir/." "$theme_dir/"
   sudo plymouth-set-default-theme omarchy
 
