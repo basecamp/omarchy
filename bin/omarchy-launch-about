@@ -2,4 +2,12 @@
 
 # Launch the fastfetch TUI that gives information about the current system.
 
+if omarchy-cmd-present hyprctl && omarchy-cmd-present jq; then
+  read -r monitor_width monitor_height < <(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | "\(.width) \(.height)"')
+
+  if [[ $monitor_width =~ ^[0-9]+$ && $monitor_height =~ ^[0-9]+$ ]] && ((monitor_width <= 1366 || monitor_height <= 768)); then
+    exec omarchy-launch-or-focus-tui "bash -c 'fastfetch --logo none; read -n 1 -s'"
+  fi
+fi
+
 exec omarchy-launch-or-focus-tui "bash -c 'fastfetch; read -n 1 -s'"
