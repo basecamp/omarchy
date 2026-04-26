@@ -3,6 +3,8 @@
 # Check the local Omarchy installation for common problems.
 
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+OMARCHY_BIN_ON_PATH=false
+[[ :$PATH: == *":$OMARCHY_PATH/bin:"* ]] && OMARCHY_BIN_ON_PATH=true
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
 MIGRATION_SRC="$HOME/.local/share/omarchy/migrations"
@@ -100,7 +102,7 @@ else
 fi
 
 announce_check "Checking PATH integration"
-if [[ :$PATH: == *":$OMARCHY_PATH/bin:"* ]]; then
+if [[ $OMARCHY_BIN_ON_PATH == "true" ]]; then
   pass "Omarchy bin is on PATH"
 else
   warn "Omarchy bin is not on PATH ($OMARCHY_PATH/bin)"
@@ -110,7 +112,7 @@ fi
 
 section "Commands"
 
-for cmd in walker elephant hyprland uwsm waybar mako gum; do
+for cmd in walker elephant Hyprland uwsm waybar mako gum; do
   announce_check "Checking $cmd"
   if command -v "$cmd" >/dev/null 2>&1; then
     pass "$cmd available"
