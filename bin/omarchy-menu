@@ -152,7 +152,25 @@ show_screenrecord_menu() {
       back_to show_capture_menu
       return
     }
-    omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device"
+    local shape_file="$HOME/.config/omarchy/screenrecord/webcam-shape"
+    local shape
+    if [[ -f $shape_file ]]; then
+      shape=$(<"$shape_file")
+    else
+      case $(menu "Webcam shape" "  Square\n  Rounded") in
+      *Rounded) shape="rounded" ;;
+      *Square) shape="square" ;;
+      *)
+        back_to show_capture_menu
+        return
+        ;;
+      esac
+      mkdir -p "$(dirname "$shape_file")"
+      echo "$shape" >"$shape_file"
+    fi
+    local shape_args=()
+    [[ $shape == "rounded" ]] && shape_args+=(--rounded-webcam)
+    omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device" "${shape_args[@]}"
     ;;
   *) back_to show_capture_menu ;;
   esac
