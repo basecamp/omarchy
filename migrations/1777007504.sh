@@ -5,26 +5,26 @@
 
 echo "Fixing NVIDIA GPU detection..."
 
-# Check if supergfxd is causing issues
-if systemctl is-active --quiet supergfxd 2>/dev/null; then
-  echo "supergfxd is active - checking for blacklist issues..."
+SUPERGFXD_CONF="/etc/modprobe.d/supergfxd.conf"
+
+# Check for persisted NVIDIA blacklists from supergfxd regardless of service state
+if grep -Eq '^[[:space:]]*blacklist[[:space:]]+nvidia([_-][[:alnum:]_]+)?([[:space:]]|$)' "$SUPERGFXD_CONF" 2>/dev/null; then
+  echo "Found nvidia blacklist from supergfxd!"
+  echo "Disabling supergfxd to enable NVIDIA..."
+
+  sudo systemctl disable --now supergfxd 2>/dev/null || true
+  sudo rm -f "$SUPERGFXD_CONF" 2>/dev/null || true
+
+  # Regenerate initramfs
+  sudo mkinitcpio -P 2>/dev/null || true
+
+  echo "✓ supergfxd disabled"
+  echo "⚠️  Please reboot for NVIDIA modules to load"
   
-  # Check if nvidia modules are blacklisted
-  if grep -q "blacklist nvidia" /etc/modprobe.d/supergfxd.conf 2>/dev/null; then
-    echo "Found nvidia blacklist from supergfxd!"
-    echo "Disabling supergfxd to enable NVIDIA..."
-    
-    sudo systemctl disable --now supergfxd 2>/dev/null || true
-    sudo rm -f /etc/modprobe.d/supergfxd.conf 2>/dev/null || true
-    
-    # Regenerate initramfs
-    sudo mkinitcpio -P 2>/dev/null || true
-    
-    echo "✓ supergfxd disabled"
-    echo "⚠️  Please reboot for NVIDIA modules to load"
-    
-    notify-send "NVIDIA fix applied" "Please reboot to enable NVIDIA GPU" 2>/dev/null || true
+  # Guard notify-send for non-GUI environments
+  if command -v notify-send >/dev/null 2>&1 && [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+    notify-send "NVIDIA fix applied" "Please reboot to enable NVIDIA GPU" || true
   fi
 else
-  echo "supergfxd is not active, no action needed"
+  echo "No supergfxd nvidia blacklist found, no action needed"
 fi

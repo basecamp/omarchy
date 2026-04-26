@@ -31,7 +31,15 @@ TimeoutStopSec=5
 WantedBy=suspend.target hibernate.target hybrid-suspend.target
 SYSTEMD
 
-  sudo systemctl enable hyprlock-suspend.service 2>/dev/null || echo "Warning: Could not enable hyprlock-suspend service"
+  # Reload systemd daemon to recognize the new unit
+  sudo systemctl daemon-reload 2>/dev/null || echo "Warning: Could not reload systemd daemon"
+
+  # Enable the service using chrootable helper if available
+  if command -v chrootable_systemctl_enable >/dev/null 2>&1; then
+    chrootable_systemctl_enable hyprlock-suspend.service 2>/dev/null || echo "Warning: Could not enable hyprlock-suspend service"
+  else
+    sudo systemctl enable hyprlock-suspend.service 2>/dev/null || echo "Warning: Could not enable hyprlock-suspend service"
+  fi
   
   echo "✓ Created hyprlock-suspend service"
 else

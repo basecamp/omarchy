@@ -15,8 +15,8 @@ if [[ -f /boot/loader/random-seed ]]; then
 fi
 
 # Ensure /boot is mounted with proper permissions
-# Add to fstab if not already present with correct options
-if ! grep -q "^/boot" /etc/fstab 2>/dev/null; then
+# Parse fstab properly (check second field for /boot mountpoint)
+if ! awk '!/^[[:space:]]*#/ && NF >= 2 && $2 == "/boot" { found=1; exit } END { exit !found }' /etc/fstab 2>/dev/null; then
   echo "Warning: /boot is not in fstab, permissions may not persist"
 fi
 

@@ -22,4 +22,9 @@ if [[ -f /boot/loader/random-seed ]] && [[ $(stat -c %a /boot/loader/random-seed
   echo "✓ random-seed permissions fixed to 600"
 fi
 
-notify-send "Boot permissions fixed" "Security improvement applied to /boot"
+# Guard notify-send for environments without GUI/DBUS
+if command -v notify-send >/dev/null 2>&1 && [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+  notify-send "Boot permissions fixed" "Security improvement applied to /boot" || true
+fi
+
+exit 0

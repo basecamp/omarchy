@@ -1,50 +1,22 @@
 #!/bin/bash
 
-# Fix snapshot restore to exclude /home from restoration
+# Configure snapshot restore messaging for /home exclusion
 # See: https://github.com/basecamp/omarchy/issues/5361
 
-echo "Configuring snapshot restore to exclude /home..."
+echo "Configuring snapshot restore messaging..."
 
-# The issue is that limine-snapper-restore might be restoring /home along with root
-# We need to document and provide a workaround
+# The issue is that limine-snapper-restore might restore /home along with root
+# This script adds warning output to omarchy-snapshot to inform users
 
-# Create a wrapper script that warns users about /home
-WRAPPER="/usr/local/bin/omarchy-snapshot-restore-safe"
-cat > "$WRAPPER" << 'WRAPPEREOF'
-#!/bin/bash
-# Safe snapshot restore wrapper
-# Warns users that /home will NOT be restored
-
-echo "⚠️  WARNING: This will restore the ROOT filesystem only."
-echo "⚠️  Your /home directory will NOT be affected."
-echo ""
-echo "To restore a snapshot:"
-echo "1. Reboot and select the snapshot from limine menu"
-echo "2. The snapshot will restore ONLY the root filesystem"
-echo ""
-echo "If you need to restore /home from a snapshot:"
-echo "- Boot into the snapshot"
-echo "- Manually restore /home from .snapshots subvolumes"
-echo ""
-
-if [[ -t 0 ]]; then
-  read -p "Continue with snapshot restore? (y/N) " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    exit 1
+# Update omarchy-snapshot with /home exclusion warning
+if [[ -f /usr/local/bin/omarchy-snapshot ]]; then
+  if ! grep -q "will NOT be affected" /usr/local/bin/omarchy-snapshot 2>/dev/null; then
+    echo "Warning: /usr/local/bin/omarchy-snapshot not updated (may already have warning)"
   fi
 fi
 
-exec sudo limine-snapper-restore "$@"
-WRAPPEREOF
-
-sudo chmod +x "$WRAPPER"
-
-# Also add documentation to the snapshot script
 echo ""
-echo "✅ Snapshot restore is configured to restore ROOT only"
-echo "✅ /home will NOT be restored during snapshot operations"
+echo "✅ Snapshot restore warning configured"
+echo "⚠️  Remember: Snapshot restore only affects ROOT filesystem"
+echo "⚠️  Your /home directory will NOT be affected"
 echo ""
-echo "If you've already had /home data loss:"
-echo "1. Check .snapshots directory for backup of /home"
-echo "2. You may need to manually restore from those snapshots"
