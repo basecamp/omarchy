@@ -1,0 +1,9 @@
+#!/bin/bash
+
+KEYBOARD_THEME=~/.config/omarchy/current/theme/keyboard.rgb
+
+COLOR=$(sed 's/^#//' $KEYBOARD_THEME)
+
+if omarchy-cmd-present nuphyctl; then
+  nuphyctl rgb set --hex $COLOR &>/dev/null
+fi
