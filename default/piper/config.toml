@@ -1,0 +1,36 @@
+# Piper Text to Speech Configuration
+#
+# Location: ~/.config/piper/config.toml
+
+[voice]
+# Browse and download other voices: https://rhasspy.github.io/piper-samples
+# Download a .onnx voice and matching .onnx.json file, then update this path.
+model = "~/.local/share/piper/voices/en_US-lessac-medium.onnx"
+
+[input]
+# Text source: "selection", "clipboard", or "selection_or_clipboard"
+source = "selection"
+
+[output]
+# Audio player command. pw-play reads raw 16-bit mono PCM from stdin.
+player = "pw-play"
+
+# Reading speed multiplier. 1.0 is normal, 1.25 is faster, 0.8 is slower.
+reading_speed = 1.0
+
+# Extra Piper CLI arguments, e.g. "--sentence-silence 0.2".
+# See: https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/CLI.md
+extra_args = ""
+
+[output.notification]
+# Show notification when speech generation starts
+on_generating = false
+
+# Show notification when reading starts
+on_start = false
+
+# Show notification when reading ends
+on_end = false
+
+# Show notifications for missing text or missing voice
+on_error = true

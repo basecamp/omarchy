@@ -1,0 +1,33 @@
+#!/bin/bash
+set -e
+
+# Install Piper and configure it for local text to speech.
+
+if gum confirm "Install Piper + default voice (~70MB) to enable local text to speech?"; then
+  omarchy-pkg-add uv
+  uv tool install piper-tts
+  hash -r
+
+  mkdir -p ~/.config/piper
+  if [[ ! -f ~/.config/piper/config.toml ]]; then
+    cp "$OMARCHY_PATH/default/piper/config.toml" ~/.config/piper/
+  fi
+
+  mkdir -p ~/.local/share/piper/voices
+  curl -L --fail --progress-bar -o ~/.local/share/piper/voices/en_US-lessac-medium.onnx \
+    https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+  curl -L --fail --progress-bar -o ~/.local/share/piper/voices/en_US-lessac-medium.onnx.json \
+    https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+
+  omarchy-restart-waybar
+
+  echo
+  echo "Piper TTS installed."
+  echo
+  echo "Shortcut: Super + Ctrl + R"
+  echo "Config:   ~/.config/piper/config.toml"
+  echo "Voices:   ~/.local/share/piper/voices"
+  echo "Samples:  https://rhasspy.github.io/piper-samples"
+
+  notify-send "󰔊    Piper TTS Ready" "Press Super + Ctrl + R to read selected text.\nEdit ~/.config/piper/config.toml for options." -t 10000
+fi

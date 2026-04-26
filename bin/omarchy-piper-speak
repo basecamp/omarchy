@@ -1,0 +1,180 @@
+#!/bin/bash
+set -e
+
+config=~/.config/piper/config.toml
+state_dir=${XDG_RUNTIME_DIR:-/tmp}/omarchy-piper
+pid_file=$state_dir/pid
+
+read_config() {
+  local path=$1
+  local fallback=$2
+
+  python - "$config" "$path" "$fallback" <<'PY'
+import sys, tomllib
+
+config_path, key_path, fallback = sys.argv[1:]
+try:
+    with open(config_path, "rb") as f:
+        data = tomllib.load(f)
+    value = data
+    for key in key_path.split("."):
+        value = value[key]
+except Exception:
+    value = fallback
+
+if isinstance(value, bool):
+    print("true" if value else "false")
+else:
+    print(value)
+PY
+}
+
+notify() {
+  local kind=$1
+  local title=$2
+  local body=$3
+  local timeout=$4
+
+  case $kind in
+  generating)
+    [[ $(read_config output.notification.on_generating false) == "true" ]] || return 0
+    ;;
+  start)
+    [[ $(read_config output.notification.on_start false) == "true" ]] || return 0
+    ;;
+  end)
+    [[ $(read_config output.notification.on_end false) == "true" ]] || return 0
+    ;;
+  error)
+    [[ $(read_config output.notification.on_error true) == "true" ]] || return 0
+    ;;
+  esac
+
+  notify-send "$title" "$body" -t "$timeout"
+}
+
+expand_path() {
+  local path=$1
+  echo "${path/#\~/$HOME}"
+}
+
+signal_waybar() {
+  pkill -RTMIN+11 waybar 2>/dev/null || true
+}
+
+read_text() {
+  local source=$1
+  local text=""
+
+  case $source in
+  selection)
+    text=$(wl-paste --primary --no-newline 2>/dev/null || true)
+    ;;
+  clipboard)
+    text=$(wl-paste --no-newline 2>/dev/null || true)
+    ;;
+  *)
+    text=$(wl-paste --primary --no-newline 2>/dev/null || true)
+    [[ -n $text ]] || text=$(wl-paste --no-newline 2>/dev/null || true)
+    ;;
+  esac
+
+  echo "$text"
+}
+
+reader_running() {
+  if [[ -s $pid_file ]]; then
+    local pid
+    pid=$(cat "$pid_file" 2>/dev/null || true)
+    [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null && return 0
+  fi
+
+  pgrep -f "$HOME/.local/share/omarchy/bin/omarchy-piper-speak --run" >/dev/null 2>&1 && return 0
+  pgrep -f "piper --model .* --output-raw" >/dev/null 2>&1 && return 0
+  pgrep -f "pw-play --raw" >/dev/null 2>&1 && return 0
+  return 1
+}
+
+stop_reading() {
+  if [[ -s $pid_file ]]; then
+    local pid
+    pid=$(cat "$pid_file" 2>/dev/null || true)
+    if [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null; then
+      kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+    fi
+  fi
+
+  pkill -TERM -f "$HOME/.local/share/omarchy/bin/omarchy-piper-speak --run" 2>/dev/null || true
+  pkill -TERM -f "piper --model .* --output-raw" 2>/dev/null || true
+  pkill -TERM -f "pw-play --raw" 2>/dev/null || true
+  rm -f "$pid_file"
+  signal_waybar
+  notify end "󰔊    Reading Interrupted" "Piper stopped reading." 2000
+}
+
+run_reader() {
+  trap 'rm -f "$pid_file"; signal_waybar' EXIT INT TERM
+  echo $$ >"$pid_file"
+  signal_waybar
+
+  if omarchy-cmd-missing piper; then
+    exit 1
+  fi
+
+  local voice source player reading_speed length_scale extra_args text sample_rate
+  voice=$(expand_path "$(read_config voice.model "~/.local/share/piper/voices/en_US-lessac-medium.onnx")")
+  source=$(read_config input.source "selection")
+  player=$(read_config output.player "pw-play")
+  reading_speed=$(read_config output.reading_speed "1.0")
+  length_scale=$(python - "$reading_speed" <<'PY'
+import sys
+reading_speed = float(sys.argv[1])
+if reading_speed <= 0:
+    reading_speed = 1.0
+print(1 / reading_speed)
+PY
+)
+  extra_args=$(read_config output.extra_args "")
+  text=$(read_text "$source")
+
+  if [[ -z $text ]]; then
+    notify error "󰔊    Nothing to Speak" "Select text first." 5000
+    exit 1
+  fi
+
+  if [[ ! -f $voice || ! -f $voice.json ]]; then
+    notify error "󰔊    Piper Voice Missing" "Download a voice from https://rhasspy.github.io/piper-samples and update ~/.config/piper/config.toml." 7000
+    exit 1
+  fi
+
+  sample_rate=$(jq -r '.audio.sample_rate // 22050' "$voice.json")
+  notify generating "󰔊    Generating Speech" "Piper is preparing selected text." 2000
+  notify start "󰔊    Reading" "Piper is reading selected text." 2000
+
+  # shellcheck disable=SC2086
+  piper --model "$voice" --output-raw --length-scale "$length_scale" $extra_args <<<"$text" | $player --raw --rate "$sample_rate" --channels 1 --format s16 -
+
+  notify end "󰔊    Reading Complete" "Piper finished reading." 2000
+}
+
+mkdir -p "$state_dir"
+
+case ${1:-toggle} in
+--run)
+  run_reader
+  ;;
+stop)
+  stop_reading
+  ;;
+toggle|*)
+  if reader_running; then
+    stop_reading
+    exit 0
+  fi
+
+  rm -f "$pid_file"
+  setsid "$0" --run >/tmp/omarchy-piper.log 2>&1 &
+  echo "$!" >"$pid_file"
+  signal_waybar
+  ;;
+esac

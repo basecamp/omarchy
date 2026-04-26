@@ -5,7 +5,7 @@
   "spacing": 0,
   "height": 26,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-  "modules-center": ["clock", "custom/update", "custom/voxtype", "custom/screenrecording-indicator", "custom/idle-indicator", "custom/notification-silencing-indicator"],
+  "modules-center": ["clock", "custom/update", "custom/voxtype", "custom/piper", "custom/screenrecording-indicator", "custom/idle-indicator", "custom/notification-silencing-indicator"],
   "modules-right": [
     "group/tray-expander",
     "bluetooth",
@@ -167,6 +167,13 @@
     "tooltip": true,
     "on-click-right": "omarchy-voxtype-config",
     "on-click": "omarchy-voxtype-model"
+  },
+  "custom/piper": {
+    "exec": "omarchy-piper-status",
+    "return-type": "json",
+    "format": "{}",
+    "tooltip": true,
+    "signal": 11
   },
   "tray": {
     "icon-size": 12,
