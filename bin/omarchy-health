@@ -249,6 +249,84 @@ else
   fi
 fi
 
+# ── Dependencies ─────────────────────────────────────────────────────────────
+
+section "Dependencies"
+
+required_deps=(
+  "sudo:Sudo"
+  "systemctl:Systemctl"
+  "pacman:Pacman"
+  "git:Git"
+  "gum:Gum"
+  "hyprctl:Hyprctl"
+  "waybar:Waybar"
+  "walker:Walker"
+  "uwsm:UWSM"
+  "snapper:Snapper"
+  "limine-update:Limine"
+)
+
+missing_count=0
+for dep in "${required_deps[@]}"; do
+  IFS=':' read -r cmd label <<< "$dep"
+  announce_check "Checking $label"
+  if command -v "$cmd" >/dev/null 2>&1; then
+    pass "$label available"
+  else
+    warn "$label not found ($cmd)"
+    ((missing_count++)) || true
+  fi
+done
+
+(( missing_count == 0 )) && pass "All required dependencies are installed"
+
+# ── Scripts ──────────────────────────────────────────────────────────────────
+
+section "Scripts"
+
+script_count=0
+syntax_errors=0
+permission_errors=0
+announce_check "Scanning Omarchy scripts"
+
+while IFS= read -r script; do
+  [[ -n $script ]] || continue
+  ((script_count++)) || true
+
+  first_line=$(head -1 "$script")
+  if [[ $first_line =~ ^#!/(bin/bash|usr/bin/env\ bash) ]]; then
+    if ! bash -n "$script" 2>/dev/null; then
+      fail "$(basename "$script"): syntax error"
+      ((syntax_errors++))
+    fi
+  fi
+
+  if [[ ! -x $script ]]; then
+    warn "$(basename "$script"): not executable"
+    ((permission_errors++))
+  fi
+done < <(find "$OMARCHY_PATH/bin" -maxdepth 1 -type f -name 'omarchy-*' 2>/dev/null | sort)
+
+if (( script_count == 0 )); then
+  warn "No omarchy scripts found in $OMARCHY_PATH/bin"
+else
+  (( syntax_errors == 0 )) && pass "All $script_count scripts have valid syntax"
+  (( permission_errors == 0 )) && pass "All scripts have correct permissions"
+fi
+
+suspicious_count=0
+announce_check "Scanning scripts for unsafe variable usage"
+while IFS= read -r script; do
+  [[ -n $script ]] || continue
+  while IFS= read -r line; do
+    warn "$(basename "$script"): potential unquoted variable: ${line:0:60}..."
+    ((suspicious_count++)) || true
+  done < <(grep -nE '^\s*(cat|cp|mv|rm|grep|ls|mkdir|chmod|chown|curl|wget|sudo)\s+[^"]*\$[A-Za-z_]' "$script" 2>/dev/null || true)
+done < <(find "$OMARCHY_PATH/bin" -maxdepth 1 -type f -name 'omarchy-*' 2>/dev/null | sort)
+
+(( script_count > 0 && suspicious_count == 0 )) && pass "All $script_count scripts have no unquoted variable issues"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 section "Summary"
