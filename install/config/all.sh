@@ -47,6 +47,8 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel/fix-wifi7-eht.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/dell/fix-xps-haptic-touchpad.sh
 
+run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-asus-ptl-b9406-display.sh
+run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-asus-ptl-b9406-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-audio-mixer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-mic.sh
 
