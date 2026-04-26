@@ -6,6 +6,6 @@
 if omarchy-hw-acer-predator && modinfo -p acer_wmi 2>/dev/null | grep -q '^predator_v4:'; then
   MODPROBE_CONF=/etc/modprobe.d/omarchy-acer-wmi.conf
   if ! grep -qs "predator_v4=1" "$MODPROBE_CONF" 2>/dev/null; then
-    echo "options acer_wmi predator_v4=1" | sudo tee "$MODPROBE_CONF" >/dev/null
+    echo "options acer_wmi predator_v4=1" | sudo tee -a "$MODPROBE_CONF" >/dev/null
   fi
 fi
