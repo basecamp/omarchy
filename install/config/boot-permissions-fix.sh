@@ -23,19 +23,28 @@ if [[ "$boot_fs_type" =~ ^(vfat|fat|msdos)$ ]]; then
     echo "/boot already has restrictive mount options"
   else
     sudo mount -o remount,dmask=0077,fmask=0177 /boot 2>/dev/null || echo "Warning: Could not remount /boot with restrictive permissions"
+    echo "Note: Add dmask=0077,fmask=0177 to /etc/fstab for persistence across reboots"
   fi
 else
-  # Fix /boot directory permissions (should be 700)
-  sudo chmod 700 /boot 2>/dev/null || echo "Warning: Could not change /boot permissions"
+  # /boot is on a normal filesystem (ext4/btrfs etc)
+  
+  # Check if /boot is a separate mount point
+  if findmnt -n --target /boot >/dev/null 2>&1; then
+    # Fix /boot directory permissions (should be 700)
+    sudo chmod 700 /boot 2>/dev/null || echo "Warning: Could not change /boot permissions"
 
-  # Fix random-seed file permissions if it exists
-  if [[ -f /boot/loader/random-seed ]]; then
-    sudo chmod 600 /boot/loader/random-seed 2>/dev/null || echo "Warning: Could not change random-seed permissions"
-  fi
+    # Fix random-seed file permissions if it exists
+    if [[ -f /boot/loader/random-seed ]]; then
+      sudo chmod 600 /boot/loader/random-seed 2>/dev/null || echo "Warning: Could not change random-seed permissions"
+    fi
 
-  # Check if /boot is in fstab with correct mountpoint (second column)
-  if ! awk '!/^[[:space:]]*#/ && NF >= 2 && $2 == "/boot" { found=1; exit } END { exit !found }' /etc/fstab 2>/dev/null; then
-    echo "Warning: /boot is not in fstab, permissions may not persist"
+    # Verify the fix
+    boot_perms=$(stat -c %a /boot 2>/dev/null)
+    if [[ "$boot_perms" == "700" ]]; then
+      echo "✓ /boot permissions fixed to 700"
+    fi
+  else
+    echo "/boot is not a separate mount (permissions handled by root filesystem)"
   fi
 fi
 

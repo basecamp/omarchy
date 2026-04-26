@@ -5,18 +5,28 @@
 
 echo "Updating omarchy-snapshot with /home exclusion warning..."
 
+SOURCE_SNAPSHOT="$OMARCHY_PATH/bin/omarchy-snapshot"
 TARGET_SNAPSHOT="/usr/local/bin/omarchy-snapshot"
 
-# Update the installed omarchy-snapshot from the repo
-if [[ -f "$TARGET_SNAPSHOT" ]] && [[ -f "$OMARCHY_PATH/bin/omarchy-snapshot" ]]; then
-  if sudo install -m 0755 "$OMARCHY_PATH/bin/omarchy-snapshot" "$TARGET_SNAPSHOT" 2>/dev/null; then
-    echo "Updated omarchy-snapshot with /home warning"
-  else
-    echo "Warning: Could not update omarchy-snapshot"
-  fi
-else
-  echo "Warning: omarchy-snapshot not found at $TARGET_SNAPSHOT"
+if [[ ! -f "$SOURCE_SNAPSHOT" ]]; then
+  echo "Error: updated snapshot script not found at $SOURCE_SNAPSHOT"
+  exit 1
+fi
+
+if [[ ! -d "$(dirname "$TARGET_SNAPSHOT")" ]]; then
+  echo "Error: target directory $(dirname "$TARGET_SNAPSHOT") does not exist"
+  exit 1
+fi
+
+if ! sudo install -m 0755 "$SOURCE_SNAPSHOT" "$TARGET_SNAPSHOT" 2>/dev/null; then
+  echo "Error: failed to update $TARGET_SNAPSHOT"
+  exit 1
+fi
+
+if ! grep -q "will NOT be affected" "$TARGET_SNAPSHOT" 2>/dev/null; then
+  echo "Error: $TARGET_SNAPSHOT was updated, but the /home exclusion warning is still missing"
+  exit 1
 fi
 
 echo ""
-echo "Done: Snapshot restore will show /home exclusion warning"
+echo "✓ Updated omarchy-snapshot with /home warning"
