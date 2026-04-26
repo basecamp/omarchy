@@ -10,18 +10,18 @@ if command -v nvidia-smi &>/dev/null; then
   echo "NVIDIA GPU detected, applying suspend fix..."
   
   # Create a systemd service to stop hyprlock before suspend
+  # The - prefix makes pkill non-fatal when hyprlock isn't running
   cat << 'SYSTEMD' | sudo tee /etc/systemd/system/hyprlock-suspend.service > /dev/null
 [Unit]
 Description=Stop hyprlock before suspend/hibernate
 Before=suspend.target hibernate.target hybrid-suspend.target
 DefaultDependencies=no
-After=hypridle.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/pkill -STOP hyprlock
+ExecStart=-/usr/bin/pkill -STOP hyprlock
 RemainAfterExit=yes
-ExecStop=/usr/bin/pkill -CONT hyprlock
+ExecStop=-/usr/bin/pkill -CONT hyprlock
 TimeoutStopSec=5
 
 [Install]
