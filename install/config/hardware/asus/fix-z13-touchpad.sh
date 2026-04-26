@@ -9,11 +9,12 @@
 # (AttrKeyboardIntegration=internal), but touchpad integration is controlled
 # via udev, not libinput quirks. This udev rule marks the touchpad as internal
 # so dwt can properly pair it with the keyboard.
-#
-# This should be upstreamed to the libinput project:
-# https://gitlab.freedesktop.org/libinput/libinput
 
-if omarchy-hw-asus-rog && lsusb | grep -q "0b05:1a30"; then
+z13_present() {
+  [[ $(cat /sys/class/dmi/id/product_name 2>/dev/null) == *GZ302* ]]
+}
+
+if omarchy-hw-asus-rog && z13_present; then
   sudo tee /etc/udev/rules.d/99-omarchy-asus-z13-touchpad.rules > /dev/null <<'EOF'
 ACTION=="add|change", KERNEL=="event*", ATTRS{idVendor}=="0b05", ATTRS{idProduct}=="1a30", ENV{ID_INPUT_TOUCHPAD}=="1", ENV{ID_INPUT_TOUCHPAD_INTEGRATION}="internal"
 EOF
