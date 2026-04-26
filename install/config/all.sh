@@ -45,6 +45,8 @@ run_logged $OMARCHY_INSTALL/config/hardware/intel/ipu7-camera.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/ptl-kernel.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/fix-wifi7-eht.sh
 
+run_logged $OMARCHY_INSTALL/config/hardware/amd/rocm-smi.sh
+
 run_logged $OMARCHY_INSTALL/config/hardware/dell/fix-xps-haptic-touchpad.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-audio-mixer.sh
