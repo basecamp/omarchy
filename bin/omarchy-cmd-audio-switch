@@ -5,6 +5,39 @@
 sinks=$(pactl -f json list sinks | jq '[.[] | select((.ports | length == 0) or ([.ports[]? | .availability != "not available"] | any))]')
 sinks_count=$(echo "$sinks" | jq '. | length')
 
+if (( sinks_count <= 1 )); then
+  first_card=$(pactl -f json list cards | jq -r '[.[] | select(.name | startswith("alsa_card"))][0].name')
+  
+  if [[ -n $first_card ]] && [[ $first_card != "null" ]]; then
+    active_profile=$(pactl -f json list cards | jq -r ".[] | select(.name == \"$first_card\") | .active_profile")
+    
+    was_playing=false
+    if command -v playerctl >/dev/null 2>&1 && [[ $(playerctl status 2>/dev/null) == "Playing" ]]; then
+      was_playing=true
+    fi
+
+    if [[ $active_profile == *"analog-stereo"* ]]; then
+      if pactl set-card-profile "$first_card" "output:hdmi-stereo" 2>/dev/null; then
+        swayosd-client \
+          --monitor "$focused_monitor" \
+          --custom-message "Digital Output (HDMI)" \
+          --custom-icon "video-display"
+        [[ $was_playing == true ]] && sleep 0.5 && playerctl play >/dev/null 2>&1
+        exit 0
+      fi
+    elif [[ $active_profile == *"hdmi-stereo"* ]]; then
+      if pactl set-card-profile "$first_card" "output:analog-stereo" 2>/dev/null; then
+        swayosd-client \
+          --monitor "$focused_monitor" \
+          --custom-message "Analog Output (Headphones)" \
+          --custom-icon "audio-headphones"
+        [[ $was_playing == true ]] && sleep 0.5 && playerctl play >/dev/null 2>&1
+        exit 0
+      fi
+    fi
+  fi
+fi
+
 if (( sinks_count == 0 )); then
   omarchy-swayosd-client --custom-message "No audio devices found"
   exit 1
