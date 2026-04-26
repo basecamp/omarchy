@@ -334,7 +334,7 @@ show_install_service_menu() {
   *Tailscale*) present_terminal omarchy-install-tailscale ;;
   *NordVPN*) present_terminal omarchy-install-nordvpn ;;
   *ONCE*) present_terminal omarchy-install-once ;;
-  *Bitwarden*) install_and_launch "Bitwarden" "bitwarden bitwarden-cli" "bitwarden" ;;
+  *Bitwarden*) present_terminal omarchy-install-bitwarden ;;
   *Chromium*) present_terminal omarchy-install-chromium-google-account ;;
   *) show_install_menu ;;
   esac
