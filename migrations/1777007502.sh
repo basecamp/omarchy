@@ -1,22 +1,22 @@
 #!/bin/bash
 
-# Configure snapshot restore messaging for /home exclusion
+# Update omarchy-snapshot to include /home exclusion warning
 # See: https://github.com/basecamp/omarchy/issues/5361
 
-echo "Configuring snapshot restore messaging..."
+echo "Updating omarchy-snapshot with /home exclusion warning..."
 
-# The issue is that limine-snapper-restore might restore /home along with root
-# This script adds warning output to omarchy-snapshot to inform users
+TARGET_SNAPSHOT="/usr/local/bin/omarchy-snapshot"
 
-# Update omarchy-snapshot with /home exclusion warning
-if [[ -f /usr/local/bin/omarchy-snapshot ]]; then
-  if ! grep -q "will NOT be affected" /usr/local/bin/omarchy-snapshot 2>/dev/null; then
-    echo "Warning: /usr/local/bin/omarchy-snapshot not updated (may already have warning)"
+# Update the installed omarchy-snapshot from the repo
+if [[ -f "$TARGET_SNAPSHOT" ]] && [[ -f "$OMARCHY_PATH/bin/omarchy-snapshot" ]]; then
+  if sudo install -m 0755 "$OMARCHY_PATH/bin/omarchy-snapshot" "$TARGET_SNAPSHOT" 2>/dev/null; then
+    echo "Updated omarchy-snapshot with /home warning"
+  else
+    echo "Warning: Could not update omarchy-snapshot"
   fi
+else
+  echo "Warning: omarchy-snapshot not found at $TARGET_SNAPSHOT"
 fi
 
 echo ""
-echo "✅ Snapshot restore warning configured"
-echo "⚠️  Remember: Snapshot restore only affects ROOT filesystem"
-echo "⚠️  Your /home directory will NOT be affected"
-echo ""
+echo "Done: Snapshot restore will show /home exclusion warning"
