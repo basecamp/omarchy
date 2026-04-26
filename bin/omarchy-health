@@ -1,0 +1,279 @@
+#!/bin/bash
+
+# Check the local Omarchy installation for common problems.
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+export PATH="$OMARCHY_PATH/bin:$PATH"
+
+MIGRATION_SRC="$HOME/.local/share/omarchy/migrations"
+MIGRATION_STATE="$HOME/.local/state/omarchy/migrations"
+
+PASS_COUNT=0
+WARN_COUNT=0
+FAIL_COUNT=0
+FIXES=()
+
+LIVE_OUTPUT=false
+SPINNER_ACTIVE=false
+SPINNER_INDEX=0
+SPINNER_FRAMES=('⠋ ' '⠙ ' '⠹ ' '⠼ ' '⠶ ' '⠧ ' '⠏ ')
+
+[[ -t 1 ]] && LIVE_OUTPUT=true
+
+repeat_char() {
+  local char="$1" count="$2" out=""
+  while (( count > 0 )); do out+="$char"; ((count--)); done
+  printf '%s' "$out"
+}
+
+ui_width() {
+  local width=72
+  command -v tput >/dev/null 2>&1 && width=$(tput cols 2>/dev/null || echo 72)
+  [[ $width =~ ^[0-9]+$ ]] || width=72
+  (( width < 48 )) && width=48
+  (( width > 96 )) && width=96
+  echo "$width"
+}
+
+print_section_header() {
+  local width line
+  width=$(ui_width)
+  line=$(repeat_char "─" "$width")
+  echo
+  echo -e "\e[2;37m$line\e[0m"
+  echo -e "\e[1;36m  $1\e[0m"
+}
+
+print_result_line() {
+  printf '\e[%sm%-2s %-5s\e[0m %s\n' "$2" "$1" "$3" "$4"
+}
+
+print_summary_line() {
+  echo -e "  \e[${2}m${1}\e[0m  ${3} ${4}"
+}
+
+clear_live_line() {
+  [[ "$LIVE_OUTPUT" == "true" && "$SPINNER_ACTIVE" == "true" ]] || return 0
+  printf '\r\033[2K'
+  SPINNER_ACTIVE=false
+}
+
+render_spinner_frame() {
+  [[ "$LIVE_OUTPUT" == "true" ]] || return 0
+  printf '\r\033[2K\e[36m%s\e[0m %s' "${SPINNER_FRAMES[SPINNER_INDEX]}" "$1"
+  SPINNER_ACTIVE=true
+}
+
+announce_check() {
+  [[ "$LIVE_OUTPUT" == "true" ]] || return 0
+  render_spinner_frame "$1"
+  SPINNER_INDEX=$(( (SPINNER_INDEX + 1) % ${#SPINNER_FRAMES[@]} ))
+}
+
+pass() { clear_live_line; print_result_line "✓" "32" "PASS" "$1"; ((PASS_COUNT++)); }
+warn() { clear_live_line; print_result_line "!" "33" "WARN" "$1"; ((WARN_COUNT++)); }
+fail() { clear_live_line; print_result_line "✗" "31" "FAIL" "$1"; ((FAIL_COUNT++)); }
+note_fix() { FIXES+=("$1"); }
+
+section() {
+  clear_live_line
+  print_section_header "$1"
+}
+
+# ── Install ──────────────────────────────────────────────────────────────────
+
+section "Install"
+
+announce_check "Checking Omarchy root"
+if [[ -d $OMARCHY_PATH ]]; then
+  pass "Omarchy root present ($OMARCHY_PATH)"
+else
+  fail "Omarchy root missing ($OMARCHY_PATH)"
+fi
+
+announce_check "Checking version"
+if [[ -f $OMARCHY_PATH/version ]]; then
+  version=$(<"$OMARCHY_PATH/version")
+  [[ -n $version ]] && pass "Version $version" || fail "Version file is empty"
+else
+  fail "Version file missing"
+fi
+
+announce_check "Checking PATH integration"
+if [[ :$PATH: == *":$OMARCHY_PATH/bin:"* ]]; then
+  pass "Omarchy bin is on PATH"
+else
+  warn "Omarchy bin is not on PATH ($OMARCHY_PATH/bin)"
+fi
+
+# ── Commands ─────────────────────────────────────────────────────────────────
+
+section "Commands"
+
+for cmd in walker elephant hyprland uwsm waybar mako gum; do
+  announce_check "Checking $cmd"
+  if command -v "$cmd" >/dev/null 2>&1; then
+    pass "$cmd available"
+  else
+    fail "$cmd not found"
+  fi
+done
+
+announce_check "Checking terminal"
+if command -v ghostty >/dev/null 2>&1; then
+  pass "Terminal available (ghostty)"
+elif command -v alacritty >/dev/null 2>&1; then
+  pass "Terminal available (alacritty)"
+elif command -v kitty >/dev/null 2>&1; then
+  pass "Terminal available (kitty)"
+else
+  fail "No terminal found (ghostty, alacritty or kitty required)"
+fi
+
+# ── Services ─────────────────────────────────────────────────────────────────
+
+section "Services"
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  warn "systemctl not available — skipping service checks"
+else
+  announce_check "Checking failed user services"
+  failed_units=$(systemctl --user --failed --no-legend --plain 2>/dev/null | sed '/^[[:space:]]*$/d')
+  if [[ -n $failed_units ]]; then
+    warn "Failed user services detected"
+    echo "$failed_units"
+  else
+    pass "No failed user services"
+  fi
+
+  for unit in app-walker@autostart.service elephant.service; do
+    announce_check "Checking $unit"
+    if systemctl --user is-active "$unit" >/dev/null 2>&1; then
+      pass "$unit is active"
+    else
+      warn "$unit is not active — run: omarchy-restart-walker"
+      note_fix "omarchy-restart-walker"
+    fi
+  done
+fi
+
+# ── Migrations ───────────────────────────────────────────────────────────────
+
+section "Migrations"
+
+announce_check "Checking pending migrations"
+pending=0
+if [[ -d $MIGRATION_SRC ]]; then
+  for file in "$MIGRATION_SRC"/*.sh; do
+    [[ -f $file ]] || continue
+    filename=$(basename "$file")
+    if [[ ! -f $MIGRATION_STATE/$filename && ! -f $MIGRATION_STATE/skipped/$filename ]]; then
+      (( pending++ )) || true
+    fi
+  done
+fi
+
+if (( pending == 0 )); then
+  pass "No pending migrations"
+else
+  fail "$pending migration(s) pending — run: omarchy-update"
+  note_fix "omarchy-update"
+fi
+
+# ── Git ──────────────────────────────────────────────────────────────────────
+
+section "Git"
+
+announce_check "Checking repo state"
+if command -v git >/dev/null 2>&1 && git -C "$OMARCHY_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  branch=$(git -C "$OMARCHY_PATH" branch --show-current 2>/dev/null || true)
+  [[ -n $branch ]] && pass "Branch: $branch"
+
+  if [[ -n $(git -C "$OMARCHY_PATH" status --short 2>/dev/null) ]]; then
+    warn "Omarchy git tree has uncommitted changes"
+  else
+    pass "Omarchy git tree is clean"
+  fi
+
+  ahead=$(git -C "$OMARCHY_PATH" rev-list --count "@{u}..HEAD" 2>/dev/null || echo 0)
+  if (( ahead > 0 )); then
+    warn "$ahead local commit(s) ahead of origin"
+  fi
+else
+  warn "OMARCHY_PATH is not a git repository"
+fi
+
+# ── System ───────────────────────────────────────────────────────────────────
+
+section "System"
+
+announce_check "Checking disk space"
+if command -v df >/dev/null 2>&1; then
+  avail_kb=$(df -k / | awk 'NR==2 {print $4}')
+  avail_mb=$(( avail_kb / 1024 ))
+  if (( avail_mb < 2048 )); then
+    fail "Root filesystem has only ${avail_mb}MB free (critical)"
+  elif (( avail_mb < 5120 )); then
+    warn "Root filesystem has only ${avail_mb}MB free"
+  else
+    pass "Root filesystem has ${avail_mb}MB free"
+  fi
+else
+  warn "df not available — skipping disk check"
+fi
+
+# ── Desktop (Hyprland session only) ──────────────────────────────────────────
+
+if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+  section "Desktop"
+  clear_live_line
+  print_result_line "-" "37" "SKIP" "Not in a Hyprland session"
+else
+  section "Desktop"
+
+  announce_check "Checking Hyprland control"
+  if command -v hyprctl >/dev/null 2>&1 && hyprctl version >/dev/null 2>&1; then
+    pass "hyprctl responding"
+  else
+    fail "hyprctl not responding"
+  fi
+
+  announce_check "Checking active theme"
+  if readlink -e ~/.config/omarchy/current/theme >/dev/null 2>&1; then
+    pass "Active theme symlink is valid"
+  else
+    fail "Active theme symlink is broken or missing — run: omarchy-theme-set <theme>"
+    note_fix "omarchy-theme-set <theme>"
+  fi
+fi
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+section "Summary"
+clear_live_line
+print_summary_line "✓" "32" "Passed  " "$PASS_COUNT"
+print_summary_line "!" "33" "Warnings" "$WARN_COUNT"
+print_summary_line "✗" "31" "Failed  " "$FAIL_COUNT"
+echo
+
+if (( FAIL_COUNT == 0 )) && (( WARN_COUNT == 0 )); then
+  echo -e "\e[32m✓ All checks passed!\e[0m"
+elif (( FAIL_COUNT == 0 )); then
+  echo -e "\e[33m⚠ Some warnings detected (non-blocking)\e[0m"
+else
+  echo -e "\e[31m✗ Issues found. Suggested fixes:\e[0m"
+  seen=()
+  for fix in "${FIXES[@]}"; do
+    already=false
+    for s in "${seen[@]}"; do [[ $s == "$fix" ]] && already=true && break; done
+    $already && continue
+    seen+=("$fix")
+    echo -e "    \e[2m→\e[0m $fix"
+  done
+fi
+
+echo
+
+if (( FAIL_COUNT > 0 )); then
+  exit 1
+fi
