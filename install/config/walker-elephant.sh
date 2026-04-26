@@ -24,7 +24,5 @@ When = PostTransaction
 Exec = $OMARCHY_PATH/bin/omarchy-restart-walker
 EOF
 
-# Link the visual theme menu config
-mkdir -p ~/.config/elephant/menus
-ln -snf $OMARCHY_PATH/default/elephant/omarchy_themes.lua ~/.config/elephant/menus/omarchy_themes.lua
-ln -snf $OMARCHY_PATH/default/elephant/omarchy_background_selector.lua ~/.config/elephant/menus/omarchy_background_selector.lua
+# Link the visual menu providers used by Omarchy menus
+omarchy-ensure-elephant-menus
