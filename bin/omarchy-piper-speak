@@ -141,7 +141,7 @@ run_reader() {
     exit 1
   fi
 
-  local voice source player reading_speed length_scale extra_args text sample_rate
+  local voice source player reading_speed length_scale sentence_silence extra_args text sample_rate
   voice=$(expand_path "$(read_config voice.model "~/.local/share/piper/voices/en_US-lessac-medium.onnx")")
   source=$(read_config input.source "selection")
   player=$(read_config output.player "pw-play")
@@ -152,6 +152,13 @@ reading_speed = float(sys.argv[1])
 if reading_speed <= 0:
     reading_speed = 1.0
 print(1 / reading_speed)
+PY
+)
+  sentence_silence=$(python - "$length_scale" <<'PY'
+import sys
+v = 0.38 * float(sys.argv[1])
+v = min(0.55, max(0.25, v))
+print(f"{v:.2f}")
 PY
 )
   extra_args=$(read_config output.extra_args "")
@@ -172,7 +179,7 @@ PY
   notify start "󰔊    Reading" "Piper is reading selected text." 2000
 
   # shellcheck disable=SC2086
-  piper --model "$voice" --output-raw --length-scale "$length_scale" $extra_args <<<"$text" | $player --raw --rate "$sample_rate" --channels 1 --format s16 -
+  piper --model "$voice" --output-raw --length-scale "$length_scale" --sentence-silence "$sentence_silence" $extra_args <<<"$text" | $player --raw --rate "$sample_rate" --channels 1 --format s16 -
 
   notify end "󰔊    Reading Complete" "Piper finished reading." 2000
 }
