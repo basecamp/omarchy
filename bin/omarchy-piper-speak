@@ -68,18 +68,38 @@ read_text() {
 
   case $source in
   selection)
-    text=$(wl-paste --primary --no-newline 2>/dev/null || true)
+    text=$(wl-paste --primary 2>/dev/null || true)
     ;;
   clipboard)
-    text=$(wl-paste --no-newline 2>/dev/null || true)
+    text=$(wl-paste 2>/dev/null || true)
     ;;
   *)
-    text=$(wl-paste --primary --no-newline 2>/dev/null || true)
-    [[ -n $text ]] || text=$(wl-paste --no-newline 2>/dev/null || true)
+    text=$(wl-paste --primary 2>/dev/null || true)
+    [[ -n $text ]] || text=$(wl-paste 2>/dev/null || true)
     ;;
   esac
 
   echo "$text"
+}
+
+normalize_text() {
+  python - <<'PY'
+import re, sys
+
+text = sys.stdin.read()
+text = re.sub(r"[ \t]+", " ", text).strip()
+
+lines = []
+for line in text.splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    if not re.search(r"[.!?:;]$", line):
+        line += "."
+    lines.append(line)
+
+print(" ".join(lines))
+PY
 }
 
 reader_running() {
@@ -135,7 +155,7 @@ print(1 / reading_speed)
 PY
 )
   extra_args=$(read_config output.extra_args "")
-  text=$(read_text "$source")
+  text=$(read_text "$source" | normalize_text)
 
   if [[ -z $text ]]; then
     notify error "󰔊    Nothing to Speak" "Select text first." 5000
