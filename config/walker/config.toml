@@ -9,6 +9,8 @@ hide_action_hints = true                                                    # gl
 
 [keybinds]
 quick_activate = []
+next = ["Down", "ctrl j"]
+previous = ["Up", "ctrl k"]
 
 [columns]
 symbols = 1 # providers to be queried by default
@@ -43,6 +45,10 @@ provider = "websearch"
 [[providers.prefixes]]
 prefix = "$"
 provider = "clipboard"
+
+[[providers.prefixes]]
+prefix = "<"
+provider = "menus:omarchymenusearch"
 
 [[emergencies]]
 text = "Restart Walker"
