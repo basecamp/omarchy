@@ -81,6 +81,7 @@ mariadb-libs
 mise
 mpv
 nautilus
+nautilus-open-any-terminal
 nautilus-python
 gnome-disk-utility
 noto-fonts
