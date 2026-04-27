@@ -26,24 +26,6 @@ else
   exit 1
 fi
 
-# Define source_safe ourselves if libmakepkg's wasn't loaded.
-# Mirrors libmakepkg's behavior (toggle extglob around source) but uses
-# `return` instead of `exit` so callers can decide how to handle failure —
-# important for our per-rule subshell model.
-if ! declare -F source_safe >/dev/null; then
-  source_safe() {
-    shopt -u extglob
-    local rc=0
-    # shellcheck source=/dev/null
-    if ! source "$@"; then
-      error "Failed to source %s" "$1"
-      rc=1
-    fi
-    shopt -s extglob
-    return $rc
-  }
-fi
-
 # --- detect ------------------------------------------------------------------
 # Hardware detection. Populates global arrays/variables describing the
 # system's hardware so rule matchers can check against them without
