@@ -11,52 +11,19 @@ shopt -s extglob
 
 # --- libmakepkg --------------------------------------------------------------
 # We use libmakepkg's message helpers (msg, msg2, warning, error, plain) and
-# parseopts for argument parsing. Optional fallback if libmakepkg is missing.
+# parseopts for argument parsing.
 
 LIBRARY=${LIBRARY:-/usr/share/makepkg}
 
 if [[ -d $LIBRARY ]]; then
-    # shellcheck source=/dev/null
     source "$LIBRARY/util/message.sh"
-    # shellcheck source=/dev/null
     source "$LIBRARY/util/parseopts.sh"
-    # source_safe lives in util/source.sh on modern pacman, but the path
-    # has shifted historically. Source it if present, otherwise we'll
-    # define our own below.
-    if [[ -f $LIBRARY/util/source.sh ]]; then
-        # shellcheck source=/dev/null
-        source "$LIBRARY/util/source.sh"
-    fi
+    source "$LIBRARY/util/source.sh"
+        
     colorize 2>/dev/null || true
 else
-    # Minimal fallbacks so the tool still runs without pacman installed
-    msg()     { printf '==> %s\n' "$(printf "$@")"; }
-    msg2()    { printf '  -> %s\n' "$(printf "$@")"; }
-    warning() { printf 'WARNING: %s\n' "$(printf "$@")" >&2; }
-    error()   { printf 'ERROR: %s\n' "$(printf "$@")" >&2; }
-    plain()   { printf '    %s\n' "$(printf "$@")"; }
-    # Minimal parseopts fallback. Real libmakepkg parseopts is much richer
-    # (see /usr/share/makepkg/util/parseopts.sh on an Arch system). This
-    # only handles the subset hwtool itself uses.
-    parseopts() {
-        local short=$1; shift
-        local longs=()
-        while [[ "$1" != "--" ]]; do longs+=("$1"); shift; done
-        shift
-        OPTRET=()
-        while (( $# )); do
-            case "$1" in
-                --) OPTRET+=("--" "${@:2}"); return 0 ;;
-                --*=*) OPTRET+=("${1%%=*}" "${1#*=}") ;;
-                --*) OPTRET+=("$1") ;;
-                -[!-]*) OPTRET+=("$1") ;;
-                *) OPTRET+=("$1") ;;
-            esac
-            shift
-        done
-        OPTRET+=("--")
-        return 0
-    }
+    echo "libmakepkg is missing"
+    exit 1
 fi
 
 # Define source_safe ourselves if libmakepkg's wasn't loaded.
