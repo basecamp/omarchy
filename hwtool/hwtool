@@ -618,22 +618,14 @@ _run() {
 
 execute_install_packages() {
   (( ${#ACTION_DEPENDS[@]} )) || return 0
-  if (( ! DRY_RUN )) && ! command -v omarchy-pkg-add >/dev/null 2>&1; then
-    error "omarchy-pkg-add not found; cannot install %d package(s)" \
-      "${#ACTION_DEPENDS[@]}"
-    return 1
-  fi
+
   msg "Installing official packages via omarchy-pkg-add"
   _run omarchy-pkg-add "${ACTION_DEPENDS[@]}"
 }
 
 execute_install_aur() {
   (( ${#ACTION_AUR_DEPENDS[@]} )) || return 0
-  if (( ! DRY_RUN )) && ! command -v omarchy-pkg-aur-add >/dev/null 2>&1; then
-    warning "omarchy-pkg-aur-add not found; skipping %d AUR package(s): %s" \
-      "${#ACTION_AUR_DEPENDS[@]}" "${ACTION_AUR_DEPENDS[*]}"
-    return 0
-  fi
+
   msg "Installing AUR packages via omarchy-pkg-aur-add"
   _run omarchy-pkg-aur-add "${ACTION_AUR_DEPENDS[@]}"
 }
@@ -745,10 +737,7 @@ execute_post_install() {
 # progress.
 execute_mark_reboot_required() {
   (( ${#ACTION_REBOOT_REASONS[@]} )) || return 0
-  if (( ! DRY_RUN )) && ! command -v omarchy-state >/dev/null 2>&1; then
-    warning "omarchy-state not found; cannot mark reboot-required state"
-    return 0
-  fi
+
   msg "Marking reboot-required state"
   _run omarchy-state set reboot-required
 }
