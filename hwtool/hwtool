@@ -13,12 +13,12 @@ shopt -s extglob
 # We use libmakepkg's message helpers (msg, msg2, warning, error, plain) and
 # parseopts for argument parsing.
 
-LIBRARY=${LIBRARY:-/usr/share/makepkg}
+LIBMAKEPKG=${LIBMAKEPKG:-/usr/share/makepkg}
 
-if [[ -d $LIBRARY ]]; then
-    source "$LIBRARY/util/message.sh"
-    source "$LIBRARY/util/parseopts.sh"
-    source "$LIBRARY/util/source.sh"
+if [[ -d $LIBMAKEPKG ]]; then
+    source "$LIBMAKEPKG/util/message.sh"
+    source "$LIBMAKEPKG/util/parseopts.sh"
+    source "$LIBMAKEPKG/util/source.sh"
         
     colorize 2>/dev/null || true
 else
@@ -818,7 +818,7 @@ Options:
 
 Environment:
   RULES_DIR    Path to rules directory
-  LIBRARY      Path to libmakepkg (default: /usr/share/makepkg)
+  LIBMAKEPKG   Path to libmakepkg (default: /usr/share/makepkg)
 EOF
 }
 
