@@ -78,7 +78,7 @@ echo "mkinitcpio hooks re-enabled"
 sudo limine-update
 
 # Verify that limine-update actually added boot entries
-if ! grep -q "^/+" /boot/limine.conf; then
+if ! grep -q "^/" /boot/limine.conf; then
   echo "Error: limine-update failed to add boot entries to /boot/limine.conf" >&2
   exit 1
 fi
