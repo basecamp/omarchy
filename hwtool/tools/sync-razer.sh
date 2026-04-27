@@ -58,7 +58,7 @@ main() {
   while IFS= read -r pid; do
     if (( idx % 7 == 0 )); then
       [[ -n "$line" ]] && printf '%s\n' "$line"
-      line="    $pid"
+      line="  $pid"
     else
       line+=" $pid"
     fi
