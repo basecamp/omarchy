@@ -54,17 +54,17 @@ main() {
     # Seven PIDs per line, indented 4, single-space separated. Width:
     # 4 (indent) + 7*9 (PIDs) + 6 (separators) = 73 chars, fits in 80
     # columns even with a one-char diff prefix.
-    printf '%s\n' "$pids" \
-        | awk 'BEGIN { ORS="" }
-               {
-                   if ((NR-1) % 7 == 0) {
-                       if (NR > 1) print "\n"
-                       printf("    %s", $0)
-                   } else {
-                       printf(" %s", $0)
-                   }
-               }
-               END { print "\n" }'
+    local idx=0 line=""
+    while IFS= read -r pid; do
+        if (( idx % 7 == 0 )); then
+            [[ -n "$line" ]] && printf '%s\n' "$line"
+            line="    $pid"
+        else
+            line+=" $pid"
+        fi
+        idx=$((idx + 1))
+    done <<<"$pids"
+    [[ -n "$line" ]] && printf '%s\n' "$line"
     echo ")"
 }
 
