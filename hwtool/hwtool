@@ -16,9 +16,7 @@ shopt -s extglob
 LIBMAKEPKG=${LIBMAKEPKG:-/usr/share/makepkg}
 
 if [[ -d $LIBMAKEPKG ]]; then
-  source "$LIBMAKEPKG/util/message.sh"
-  source "$LIBMAKEPKG/util/parseopts.sh"
-  source "$LIBMAKEPKG/util/source.sh"
+  source "$LIBMAKEPKG/util.sh"
     
   colorize 2>/dev/null || true
 else
@@ -314,7 +312,7 @@ _evaluate_rule() {
     kernel=""
 
     # shellcheck disable=SC1090
-    if ! source_safe "$rule_file" 2>/dev/null; then
+    if ! source_safe "$rule_file" ; then
       error "Failed to source rule: %s" "$rule_file"
       exit 2
     fi
