@@ -1,3 +1,9 @@
 #!/bin/bash
 
-(($(lspci | grep -cE 'VGA|3D|Display') >= 2))
+# supergfxctl is authoritative: in Integrated mode the dGPU is unbound and
+# hidden from lspci, so the controller count would undercount on those systems.
+if command -v supergfxctl &>/dev/null; then
+  supergfxctl -s 2>/dev/null | grep -qw Hybrid
+else
+  (($(lspci | grep -cE 'VGA|3D|Display') >= 2))
+fi
