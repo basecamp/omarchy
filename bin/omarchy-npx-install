@@ -18,13 +18,26 @@ mkdir -p "$HOME/.local/bin"
 
 cat > "$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
+package="$package"
+command="$command"
+
 if ! node_root="\$(mise where node@latest 2>/dev/null)"; then
   mise use -g node@latest >/dev/null
   node_root="\$(mise where node@latest)"
 fi
 
-export PATH="\$node_root/bin:\$PATH"
-exec "\$node_root/bin/npx" --yes $package "\$@"
+node_bin="\$node_root/bin/node"
+npx_bin="\$node_root/bin/npx"
+
+# Resolve the package bin inside npx, then run it with node@latest without leaking node@latest into PATH.
+# Some wrappers are aliases, e.g. playwright-cli wraps the playwright bin.
+package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$package" 2>/dev/null)
+
+if [[ -z \$package_bin_path ]]; then
+  package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$command" 2>/dev/null)
+fi
+
+exec "\$node_bin" "\$package_bin_path" "\$@"
 EOF
 
 chmod +x "$HOME/.local/bin/$command"
