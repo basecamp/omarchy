@@ -33,11 +33,19 @@ npx_bin="\$node_root/bin/npx"
 # Some wrappers are aliases, e.g. playwright-cli wraps the playwright bin.
 package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$package" 2>/dev/null)
 
-if [[ -z \$package_bin_path ]]; then
-  package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$command" 2>/dev/null)
+if [[ -n \$package_bin_path ]]; then
+  exec "\$node_bin" "\$package_bin_path" "\$@"
 fi
 
-exec "\$node_bin" "\$package_bin_path" "\$@"
+# Scoped packages like @openai/codex expose an unscoped bin like codex.
+package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$command" 2>/dev/null)
+
+if [[ -n \$package_bin_path ]]; then
+  exec "\$node_bin" "\$package_bin_path" "\$@"
+fi
+
+echo "Could not resolve npm bin for \$package / \$command" >&2
+exit 127
 EOF
 
 chmod +x "$HOME/.local/bin/$command"
