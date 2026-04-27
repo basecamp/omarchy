@@ -1,0 +1,14 @@
+# Maintainer: your name <you@example.com>
+# Rule: Lenovo ThinkPad laptops
+
+rulename='laptop.thinkpad'
+ruledesc='ThinkPad-specific power management and firmware'
+
+match_type='dmi_product_regex'
+match_value='^ThinkPad'
+
+depends=(tlp tlp-rdw fwupd)
+aur_depends=(throttled)
+services=(tlp fwupd)
+groups=()
+kernel_params=()

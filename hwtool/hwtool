@@ -1,0 +1,207 @@
+#!/bin/bash
+#
+# hwtool - hardware-driven package and config provisioning for Arch
+#
+# Detects hardware, matches against rules in $RULES_DIR, and installs
+# the resulting packages / enables services / adds the user to groups.
+#
+
+set -e
+shopt -s extglob
+
+# --- libmakepkg --------------------------------------------------------------
+# We use libmakepkg's message helpers (msg, msg2, warning, error, plain) and
+# parseopts for argument parsing. Optional fallback if libmakepkg is missing.
+
+LIBRARY=${LIBRARY:-/usr/share/makepkg}
+
+if [[ -d $LIBRARY ]]; then
+    # shellcheck source=/dev/null
+    source "$LIBRARY/util/message.sh"
+    # shellcheck source=/dev/null
+    source "$LIBRARY/util/parseopts.sh"
+    # source_safe lives in util/source.sh on modern pacman, but the path
+    # has shifted historically. Source it if present, otherwise we'll
+    # define our own below.
+    if [[ -f $LIBRARY/util/source.sh ]]; then
+        # shellcheck source=/dev/null
+        source "$LIBRARY/util/source.sh"
+    fi
+    colorize 2>/dev/null || true
+else
+    # Minimal fallbacks so the tool still runs without pacman installed
+    msg()     { printf '==> %s\n' "$(printf "$@")"; }
+    msg2()    { printf '  -> %s\n' "$(printf "$@")"; }
+    warning() { printf 'WARNING: %s\n' "$(printf "$@")" >&2; }
+    error()   { printf 'ERROR: %s\n' "$(printf "$@")" >&2; }
+    plain()   { printf '    %s\n' "$(printf "$@")"; }
+    # Minimal parseopts fallback. Real libmakepkg parseopts is much richer
+    # (see /usr/share/makepkg/util/parseopts.sh on an Arch system). This
+    # only handles the subset hwtool itself uses.
+    parseopts() {
+        local short=$1; shift
+        local longs=()
+        while [[ "$1" != "--" ]]; do longs+=("$1"); shift; done
+        shift
+        OPTRET=()
+        while (( $# )); do
+            case "$1" in
+                --) OPTRET+=("--" "${@:2}"); return 0 ;;
+                --*=*) OPTRET+=("${1%%=*}" "${1#*=}") ;;
+                --*) OPTRET+=("$1") ;;
+                -[!-]*) OPTRET+=("$1") ;;
+                *) OPTRET+=("$1") ;;
+            esac
+            shift
+        done
+        OPTRET+=("--")
+        return 0
+    }
+fi
+
+# Define source_safe ourselves if libmakepkg's wasn't loaded.
+# Mirrors libmakepkg's behavior (toggle extglob around source) but uses
+# `return` instead of `exit` so callers can decide how to handle failure —
+# important for our per-rule subshell model.
+if ! declare -F source_safe >/dev/null; then
+    source_safe() {
+        shopt -u extglob
+        local rc=0
+        # shellcheck source=/dev/null
+        if ! source "$@"; then
+            error "Failed to source %s" "$1"
+            rc=1
+        fi
+        shopt -s extglob
+        return $rc
+    }
+fi
+
+# --- our modules -------------------------------------------------------------
+
+# Resolve our own lib directory: install path, or sibling of this script
+HWTOOL_LIB=${HWTOOL_LIB:-}
+if [[ -z $HWTOOL_LIB ]]; then
+    script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+    if [[ -d $script_dir/lib ]]; then
+        HWTOOL_LIB=$script_dir/lib
+    elif [[ -d /usr/share/hwtool/lib ]]; then
+        HWTOOL_LIB=/usr/share/hwtool/lib
+    else
+        error "Cannot find hwtool lib directory"
+        exit 1
+    fi
+fi
+
+# shellcheck source=lib/detect.sh
+source "$HWTOOL_LIB/detect.sh"
+# shellcheck source=lib/match.sh
+source "$HWTOOL_LIB/match.sh"
+# shellcheck source=lib/execute.sh
+source "$HWTOOL_LIB/execute.sh"
+
+# --- defaults & options ------------------------------------------------------
+
+DRY_RUN=0
+SHOW_HARDWARE=0
+SHOW_PLAN_ONLY=0
+
+# Resolve rules directory: env var, sibling of script, or system path
+RULES_DIR=${RULES_DIR:-}
+if [[ -z $RULES_DIR ]]; then
+    if [[ -d $script_dir/rules ]]; then
+        RULES_DIR=$script_dir/rules
+    elif [[ -d /usr/share/hwtool/rules ]]; then
+        RULES_DIR=/usr/share/hwtool/rules
+    fi
+fi
+
+usage() {
+    cat <<EOF
+Usage: hwtool [options]
+
+Detects hardware and applies matching rules from a rules directory.
+
+Options:
+  -n, --dry-run            Show what would be done; do not execute
+  -p, --plan               Show plan and exit (implies --dry-run)
+  -H, --show-hardware      Print detected hardware and exit
+  -r, --rules-dir <path>   Override rules directory
+                           (default: \$RULES_DIR or auto-detected)
+  -h, --help               This message
+
+Environment:
+  RULES_DIR    Path to rules directory
+  HWTOOL_LIB   Path to hwtool's lib directory
+  LIBRARY      Path to libmakepkg (default: /usr/share/makepkg)
+EOF
+}
+
+OPT_SHORT='nphHr:'
+OPT_LONG=('dry-run' 'plan' 'help' 'show-hardware' 'rules-dir:')
+
+if ! parseopts "$OPT_SHORT" "${OPT_LONG[@]}" -- "$@"; then
+    usage
+    exit 1
+fi
+set -- "${OPTRET[@]}"
+
+while true; do
+    case "$1" in
+        -n|--dry-run)       DRY_RUN=1 ;;
+        -p|--plan)          DRY_RUN=1; SHOW_PLAN_ONLY=1 ;;
+        -H|--show-hardware) SHOW_HARDWARE=1 ;;
+        -r|--rules-dir)     RULES_DIR=$2; shift ;;
+        -h|--help)          usage; exit 0 ;;
+        --)                 shift; break ;;
+    esac
+    shift
+done
+
+# --- main --------------------------------------------------------------------
+
+if [[ -z $RULES_DIR || ! -d $RULES_DIR ]]; then
+    error "Rules directory not found: %s" "${RULES_DIR:-(unset)}"
+    error "Set RULES_DIR or pass --rules-dir"
+    exit 1
+fi
+
+msg "hwtool starting (rules: %s)" "$RULES_DIR"
+
+hw_detect_all
+
+if (( SHOW_HARDWARE )); then
+    hw_show
+    exit 0
+fi
+
+if ! collect_actions "$RULES_DIR"; then
+    exit 1
+fi
+
+match_show_plan
+
+if (( SHOW_PLAN_ONLY )); then
+    exit 0
+fi
+
+if (( ${#ACTION_MATCHED_RULES[@]} == 0 )); then
+    msg "Nothing to do."
+    exit 0
+fi
+
+if (( DRY_RUN )); then
+    msg "Dry run — no changes will be made"
+fi
+
+execute_all
+
+msg "Done."
+if (( ${#ACTION_REBOOT_REASONS[@]} )); then
+    msg2 "Reboot required:"
+    for entry in "${ACTION_REBOOT_REASONS[@]}"; do
+        rid=${entry%%$'\t'*}
+        reason=${entry#*$'\t'}
+        plain "  %s: %s" "$rid" "$reason"
+    done
+fi

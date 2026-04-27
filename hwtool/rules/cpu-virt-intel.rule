@@ -1,0 +1,14 @@
+# Maintainer: your name <you@example.com>
+# Rule: Intel VT-x virtualization (VMX)
+
+rulename='cpu.virt_intel'
+ruledesc='KVM/QEMU stack for Intel CPUs with VT-x'
+
+match_type='cpu_flag'
+match_value='vmx'
+
+depends=(qemu-desktop libvirt virt-manager edk2-ovmf)
+aur_depends=()
+services=(libvirtd)
+groups=(libvirt kvm)
+kernel_params=()

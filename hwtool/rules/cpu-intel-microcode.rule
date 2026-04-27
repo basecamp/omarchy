@@ -1,0 +1,15 @@
+# Maintainer: your name <you@example.com>
+# Rule: Intel CPU microcode updates
+
+rulename='cpu.intel_microcode'
+ruledesc='Intel CPU microcode'
+
+match_type='cpu_vendor'
+match_value='GenuineIntel'
+
+depends=(intel-ucode)
+aur_depends=()
+services=()
+groups=()
+kernel_params=()
+requires_reboot='Microcode update applies on next boot'

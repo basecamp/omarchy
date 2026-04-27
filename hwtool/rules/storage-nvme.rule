@@ -1,0 +1,14 @@
+# Maintainer: your name <you@example.com>
+# Rule: NVMe SSD - enable periodic TRIM
+
+rulename='storage.nvme'
+ruledesc='Periodic TRIM for NVMe SSDs'
+
+match_type='block_device'
+match_value='nvme'
+
+depends=()
+aur_depends=()
+services=(fstrim.timer)
+groups=()
+kernel_params=()

@@ -1,0 +1,14 @@
+# Maintainer: your name <you@example.com>
+# Rule: Fingerprint readers (Synaptics, Goodix, Validity, Elan, LighTuning)
+
+rulename='peripheral.fingerprint'
+ruledesc='libfprint-based fingerprint authentication'
+
+match_type='usb_vendor_any'
+match_value=(06cb 27c6 138a 04f3 1c7a)
+
+depends=(fprintd)
+aur_depends=()
+services=()
+groups=()
+kernel_params=()

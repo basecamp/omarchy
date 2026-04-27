@@ -1,0 +1,14 @@
+# Maintainer: your name <you@example.com>
+# Rule: Generic laptop (chassis-detected)
+
+rulename='laptop.generic'
+ruledesc='Power management for laptops'
+
+match_type='chassis_type'
+match_value='laptop'
+
+depends=(tlp acpi powertop)
+aur_depends=()
+services=(tlp)
+groups=()
+kernel_params=()

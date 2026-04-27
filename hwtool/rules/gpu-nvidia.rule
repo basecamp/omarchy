@@ -1,0 +1,24 @@
+# Maintainer: your name <you@example.com>
+# Rule: NVIDIA discrete GPU
+
+rulename='gpu.nvidia'
+ruledesc='NVIDIA proprietary driver stack'
+
+match_type='pci_vendor_class'
+match_value='10de:0300'
+
+depends=(nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings)
+
+aur_depends=()
+
+services=()
+
+groups=()
+
+kernel_params=(nvidia-drm.modeset=1)
+
+requires_reboot='Kernel module load and modeset parameter take effect at boot'
+
+post_install() {
+    mkinitcpio -P
+}
