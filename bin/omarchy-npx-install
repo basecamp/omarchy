@@ -18,7 +18,34 @@ mkdir -p "$HOME/.local/bin"
 
 cat > "$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
-exec mise exec node@latest -- npx --yes $package "\$@"
+package="$package"
+command="$command"
+
+if ! node_root="\$(mise where node@latest 2>/dev/null)"; then
+  mise use -g node@latest >/dev/null
+  node_root="\$(mise where node@latest)"
+fi
+
+node_bin="\$node_root/bin/node"
+npx_bin="\$node_root/bin/npx"
+
+# Resolve the package bin inside npx, then run it with node@latest without leaking node@latest into PATH.
+# Some wrappers are aliases, e.g. playwright-cli wraps the playwright bin.
+package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$package" 2>/dev/null)
+
+if [[ -n \$package_bin_path ]]; then
+  exec "\$node_bin" "\$package_bin_path" "\$@"
+fi
+
+# Scoped packages like @openai/codex expose an unscoped bin like codex.
+package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$command" 2>/dev/null)
+
+if [[ -n \$package_bin_path ]]; then
+  exec "\$node_bin" "\$package_bin_path" "\$@"
+fi
+
+echo "Could not resolve npm bin for \$package / \$command" >&2
+exit 127
 EOF
 
 chmod +x "$HOME/.local/bin/$command"
