@@ -2,10 +2,20 @@
 
 set -e
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Respect NO_COLOR standard and detect TTY for clean logs
+if [[ -n "${NO_COLOR:-}" ]] || ! [ -t 1 ]; then
+  # stdout is redirected or NO_COLOR is set - disable colors
+  GREEN=''
+  RED=''
+  YELLOW=''
+  NC=''
+else
+  # stdout is a terminal - enable colors
+  GREEN='\033[0;32m'
+  RED='\033[0;31m'
+  YELLOW='\033[1;33m'
+  NC='\033[0m' # No Color
+fi
 
 print_success() {
   echo -e "${GREEN}$1${NC}"

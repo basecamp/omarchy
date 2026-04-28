@@ -1,0 +1,28 @@
+#!/bin/bash
+#
+# Manually (re)install omarchy-arm's libinput quirks file to
+# /etc/libinput/local-overrides.quirks.
+#
+# The same install happens automatically during arm bootstrap via
+# install/arm_install_scripts/libinput-quirks.sh. This command is a
+# user-facing wrapper so you can re-apply the quirk on an existing
+# install without re-running the full arm setup — useful after
+# updating the quirks source or if /etc was reset.
+#
+# Name kept as "-keyd-quirk" for backward compatibility; the shipped
+# file is keyd-related today but the script is the general entry
+# point for the omarchy-arm libinput quirks bundle.
+
+set -euo pipefail
+
+export OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
+SCRIPT="$OMARCHY_PATH/install/arm_install_scripts/libinput-quirks.sh"
+
+if [ ! -f "$SCRIPT" ]; then
+  echo "Install script missing: $SCRIPT" >&2
+  echo "Is omarchy-arm checked out at $OMARCHY_PATH?" >&2
+  exit 1
+fi
+
+# shellcheck source=/dev/null
+source "$SCRIPT"

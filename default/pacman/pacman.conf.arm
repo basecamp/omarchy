@@ -1,0 +1,41 @@
+# See the pacman.conf(5) manpage for option and repository directives
+
+[options]
+Color
+ILoveCandy
+VerbosePkgLists
+HoldPkg = pacman glibc
+Architecture = auto
+CheckSpace
+ParallelDownloads = 5
+DownloadUser = alpm
+
+# By default, pacman accepts packages signed by keys that its local keyring
+# trusts (see pacman-key and its man page), as well as unsigned packages.
+SigLevel = Required DatabaseOptional
+LocalFileSigLevel = Optional
+
+# pacman searches repositories in the order defined here
+[core]
+Include = /etc/pacman.d/mirrorlist
+
+[extra]
+Include = /etc/pacman.d/mirrorlist
+
+[alarm]
+Include = /etc/pacman.d/mirrorlist
+
+[aur]
+Include = /etc/pacman.d/mirrorlist
+
+[asahi-alarm]
+SigLevel = Never
+Include = /etc/pacman.d/mirrorlist.asahi-alarm
+
+# [multilib]
+# Include = /etc/pacman.d/mirrorlist
+
+# Omarchy repository not yet available for ARM/aarch64
+# [omarchy]
+# SigLevel = Optional TrustAll
+# Server = https://pkgs.omarchy.org/aarch64

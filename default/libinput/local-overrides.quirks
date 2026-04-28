@@ -1,0 +1,28 @@
+# Local libinput overrides shipped by omarchy-arm.
+# Installed by install/arm_install_scripts/libinput-quirks.sh to
+# /etc/libinput/local-overrides.quirks during arm setup.
+#
+# This file is scoped to tweaks that are useful on Asahi Linux /
+# Apple Silicon. It persists across libinput package upgrades
+# (upgrades only touch /usr/share/libinput/*, not /etc/libinput/*).
+#
+# ----------------------------------------------------------------------------
+# keyd virtual keyboard — tag as "internal" so DWT works
+# ----------------------------------------------------------------------------
+# libinput's disable-while-typing fires only for keyboards tagged
+# AttrKeyboardIntegration=internal. When keyd is running, it grabs
+# the physical keyboard via EVIOCGRAB and re-emits events through a
+# userspace virtual device that libinput otherwise defaults to
+# external — so Hyprland's `disable_while_typing = true` (and any
+# other DWT-based palm handling) becomes a silent no-op on keyd setups.
+#
+# This quirk re-tags just the keyd virtual keyboard as internal.
+# Scoped via MatchName so real external USB keyboards are unaffected.
+#
+# The rule is inert on systems without keyd: it matches by device
+# name, and if no device with that name exists, libinput simply
+# doesn't apply it. Safe to ship unconditionally.
+
+[Keyd Virtual Keyboard]
+MatchName=keyd virtual keyboard
+AttrKeyboardIntegration=internal
