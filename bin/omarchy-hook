@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Run a named hook, like post-update (available in ~/.config/omarchy/hooks/post-update).
+# omarchy:summary=Run a named hook, like post-update (available in ~/.config/omarchy/hooks/post-update).
+# omarchy:args=[name] [args...]
 
 set -e
 

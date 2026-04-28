@@ -1,4 +1,9 @@
 #!/bin/bash
+
+# omarchy:summary=Install, launch, stop, inspect, or remove the Windows VM
+# omarchy:args=<install|remove|launch|stop|status> [options]
+# omarchy:requires-sudo=true
+
 COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
 
 check_prerequisites() {

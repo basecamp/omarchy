@@ -1,11 +1,8 @@
 #!/bin/bash
 
-# Reset the trackpad by unbinding and rebinding its driver.
-# Covers both driver paths:
-#   - i2c_hid_acpi (DesignWare I2C, e.g. XPS 14/16 Synaptics trackpad)
-#   - intel_quicki2c (THC Touch Host Controller)
+# omarchy:summary=Reset the trackpad by unbinding and rebinding its driver.
+# omarchy:requires-sudo=true
 
-# Try i2c_hid_acpi path (DesignWare I2C trackpads)
 for dev in /sys/bus/i2c/drivers/i2c_hid_acpi/i2c-*; do
   [ -e "$dev" ] || continue
   I2C_DEVICE=$(basename "$dev")

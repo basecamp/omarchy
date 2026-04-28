@@ -1,6 +1,9 @@
 #!/bin/bash
 
-# Return exhaustive debugging information about the system to help diagnose problems.
+# omarchy:summary=Print debugging information
+# omarchy:args=[--no-sudo] [--print]
+# omarchy:examples=omarchy debug --print --no-sudo
+# omarchy:requires-sudo=true
 
 NO_SUDO=false
 PRINT_ONLY=false

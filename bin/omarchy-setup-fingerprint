@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# omarchy:summary=Set up or remove fingerprint authentication for sudo, polkit, and lock screen
+# omarchy:args=[--remove]
+# omarchy:requires-sudo=true
+
 set -e
 
 GREEN='\033[0;32m'

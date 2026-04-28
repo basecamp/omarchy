@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Listen on Hyprland's event socket and recover the internal display whenever
-# a monitor is removed.
+# omarchy:summary=Watch Hyprland monitor events and recover the internal display when needed
 
 SOCKET="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
 

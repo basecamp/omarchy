@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Returns true if AC power is connected.
+# omarchy:summary=Returns true if AC power is connected.
 
 for ac in /sys/class/power_supply/AC* /sys/class/power_supply/ADP*; do
   [[ -r $ac/online && $(cat "$ac/online") == "1" ]] && exit 0

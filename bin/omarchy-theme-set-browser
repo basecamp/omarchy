@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Apply the current theme color to Chromium and Brave
+
 CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
 
 if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
