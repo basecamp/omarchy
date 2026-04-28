@@ -1,0 +1,15 @@
+# Maintainer: your name <you@example.com>
+# Rule: Intel integrated GPU
+
+rulename='gpu.intel'
+ruledesc='Intel graphics stack (Mesa + ANV)'
+
+match_type='pci_vendor_class'
+match_value='8086:0300'
+
+depends=(mesa lib32-mesa vulkan-intel intel-media-driver)
+
+aur_depends=()
+services=()
+groups=()
+kernel_params=()

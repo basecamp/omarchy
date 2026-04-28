@@ -1,0 +1,884 @@
+#!/bin/bash
+#
+# hwtool - hardware-driven package and config provisioning for Arch
+#
+# Detects hardware, matches against rules in $RULES_DIR, and installs
+# the resulting packages / enables services / adds the user to groups.
+#
+
+set -e
+shopt -s extglob
+
+# --- libmakepkg --------------------------------------------------------------
+# We use libmakepkg's message helpers (msg, msg2, warning, error, plain) and
+# parseopts for argument parsing.
+
+LIBMAKEPKG=${LIBMAKEPKG:-/usr/share/makepkg}
+
+if [[ -d $LIBMAKEPKG ]]; then
+  source "$LIBMAKEPKG/util.sh"
+    
+  colorize 2>/dev/null || true
+else
+  echo "libmakepkg is missing"
+  exit 1
+fi
+
+# --- detect ------------------------------------------------------------------
+# Hardware detection. Populates global arrays/variables describing the
+# system's hardware so rule matchers can check against them without
+# re-running detection commands.
+#
+# Variables populated:
+#   HW_CPU_VENDOR           string  (e.g. "GenuineIntel", "AuthenticAMD")
+#   HW_CPU_FLAGS            array   (e.g. "vmx" "aes" "avx2" ...)
+#   HW_PCI_VENDOR_CLASS     array   ("vendor:class" pairs, e.g. "10de:0300")
+#   HW_USB_VENDORS          array   (4-char hex vendor IDs from lsusb)
+#   HW_DMI_VENDOR           string  (system-manufacturer)
+#   HW_DMI_PRODUCT          string  (system-product-name)
+#   HW_CHASSIS_TYPE         string  (lowercased chassis type)
+#   HW_BLOCK_DEVICES        array   (block device names from lsblk)
+
+hw_detect_cpu() {
+  HW_CPU_VENDOR=$(awk -F': ' '/^vendor_id/ {print $2; exit}' /proc/cpuinfo)
+  local flags_line
+  flags_line=$(awk -F': ' '/^flags/ {print $2; exit}' /proc/cpuinfo)
+  # shellcheck disable=SC2206
+  HW_CPU_FLAGS=( $flags_line )
+}
+
+# Parse `lspci -nn` output. Each line ends with [vendor:device] and class
+# is in [class_hex] earlier in the line.
+#
+# Example line:
+#   01:00.0 VGA compatible controller [0300]: NVIDIA Corp. [10de:2191] (rev a1)
+hw_detect_pci() {
+  HW_PCI_VENDOR_CLASS=()
+  if ! command -v lspci >/dev/null; then
+    warning "lspci not found; PCI detection skipped (install pciutils)"
+    return
+  fi
+
+  local line class vendor
+  while IFS= read -r line; do
+    # extract first [XXXX] which is the class
+    class=$(grep -oP '\[\K[0-9a-f]{4}(?=\])' <<<"$line" | head -n1)
+    # extract [vendor:device] which is the last [XXXX:XXXX] on the line
+    vendor=$(grep -oP '\[\K[0-9a-f]{4}(?=:[0-9a-f]{4}\])' <<<"$line" | tail -n1)
+    [[ -n "$class" && -n "$vendor" ]] && HW_PCI_VENDOR_CLASS+=("${vendor}:${class}")
+  done < <(lspci -nn)
+}
+
+# `lsusb` output looks like:
+#   Bus 001 Device 003: ID 1050:0407 Yubico.com Yubikey 4 OTP+U2F+CCID
+hw_detect_usb() {
+  HW_USB_VENDORS=()
+  HW_USB_VIDPID=()
+  if ! command -v lsusb >/dev/null; then
+    warning "lsusb not found; USB detection skipped (install usbutils)"
+    return
+  fi
+
+  local line vidpid
+  while IFS= read -r line; do
+    vidpid=$(grep -oP 'ID \K[0-9a-f]{4}:[0-9a-f]{4}' <<<"$line")
+    if [[ -n "$vidpid" ]]; then
+      HW_USB_VIDPID+=("$vidpid")
+      HW_USB_VENDORS+=("${vidpid%:*}")
+    fi
+  done < <(lsusb)
+}
+
+# DMI / chassis. Prefer reading sysfs (no root needed) over dmidecode.
+hw_detect_dmi() {
+  HW_DMI_VENDOR=""
+  HW_DMI_PRODUCT=""
+  HW_CHASSIS_TYPE=""
+
+  [[ -r /sys/class/dmi/id/sys_vendor ]] \
+    && HW_DMI_VENDOR=$(cat /sys/class/dmi/id/sys_vendor)
+  [[ -r /sys/class/dmi/id/product_name ]] \
+    && HW_DMI_PRODUCT=$(cat /sys/class/dmi/id/product_name)
+
+  # chassis_type is a small integer; map the relevant ones
+  # see SMBIOS spec section 7.4.1
+  local raw=""
+  [[ -r /sys/class/dmi/id/chassis_type ]] \
+    && raw=$(cat /sys/class/dmi/id/chassis_type)
+  case "$raw" in
+    8|9|10|11|14)  HW_CHASSIS_TYPE="laptop" ;;
+    3|4|5|6|7|15)  HW_CHASSIS_TYPE="desktop" ;;
+    17|23|25)      HW_CHASSIS_TYPE="server" ;;
+    *)             HW_CHASSIS_TYPE="unknown" ;;
+  esac
+}
+
+hw_detect_block() {
+  HW_BLOCK_DEVICES=()
+  local name
+  while IFS= read -r name; do
+    HW_BLOCK_DEVICES+=("$name")
+  done < <(lsblk -d -n -o NAME 2>/dev/null)
+}
+
+hw_detect_all() {
+  hw_detect_cpu
+  hw_detect_pci
+  hw_detect_usb
+  hw_detect_dmi
+  hw_detect_block
+}
+
+# Pretty-print what we detected (for --show-hardware)
+hw_show() {
+  msg "Detected hardware"
+  msg2 "CPU vendor: %s" "${HW_CPU_VENDOR:-unknown}"
+  msg2 "CPU flags: %d (%s ...)" "${#HW_CPU_FLAGS[@]}" "${HW_CPU_FLAGS[*]:0:8}"
+  msg2 "PCI devices: %d" "${#HW_PCI_VENDOR_CLASS[@]}"
+  msg2 "USB devices: %d" "${#HW_USB_VENDORS[@]}"
+  msg2 "DMI vendor: %s" "${HW_DMI_VENDOR:-unknown}"
+  msg2 "DMI product: %s" "${HW_DMI_PRODUCT:-unknown}"
+  msg2 "Chassis: %s" "$HW_CHASSIS_TYPE"
+  msg2 "Block devices: %s" "${HW_BLOCK_DEVICES[*]}"
+}
+
+# --- match -------------------------------------------------------------------
+# Rule matching. Each rule file is sourced in a subshell and the
+# match_type/match_value are checked against the global HW_* variables
+# populated above. Matching rules contribute their depends/services/
+# groups/kernel_params to the action queue.
+#
+# Action queue (populated by collect_actions):
+#   ACTION_DEPENDS          array (deduplicated)
+#   ACTION_AUR_DEPENDS      array (deduplicated)
+#   ACTION_SERVICES         array (deduplicated)
+#   ACTION_GROUPS           array (deduplicated)
+#   ACTION_KERNEL_PARAMS    array (deduplicated)
+#   ACTION_SERVICES_USER    array (deduplicated)
+#   ACTION_POST_INSTALL     array (rule_id<TAB>function-body) — preserves order
+#   ACTION_REBOOT_REASONS   array (rule_id<TAB>reason) — preserves order
+#   ACTION_REQUIRED_KERNELS array (rule_id<TAB>kernel-pkg) — preserves order
+#   ACTION_MATCHED_RULES    array (rule IDs that matched)
+#   NEEDS_KERNEL_HEADERS    flag (1 if any rule needs auto-detected headers)
+
+# Reset action queues to empty.
+match_reset_actions() {
+  ACTION_DEPENDS=()
+  ACTION_AUR_DEPENDS=()
+  ACTION_SERVICES=()
+  ACTION_SERVICES_USER=()
+  ACTION_GROUPS=()
+  ACTION_KERNEL_PARAMS=()
+  ACTION_POST_INSTALL=()
+  ACTION_REBOOT_REASONS=()
+  ACTION_REQUIRED_KERNELS=()
+  ACTION_MATCHED_RULES=()
+  NEEDS_KERNEL_HEADERS=0
+}
+
+# Append items from $2... to array named by $1, skipping duplicates.
+_append_unique() {
+  local arr_name=$1
+  shift
+  local -n arr=$arr_name
+  local item existing found
+  for item in "$@"; do
+    [[ -z "$item" ]] && continue
+    found=0
+    for existing in "${arr[@]}"; do
+      [[ "$existing" == "$item" ]] && { found=1; break; }
+    done
+    (( found )) || arr+=("$item")
+  done
+}
+
+# Test whether the currently-sourced rule (rulename, match_type, match_value, ...)
+# applies to the detected hardware. Returns 0 (match) or 1 (no match).
+#
+# Must be called inside the subshell that sourced the rule, so it sees
+# $match_type and $match_value as locals.
+rule_matches() {
+  local mt=$match_type
+  local mv
+
+  case "$mt" in
+    pci_vendor)
+      # Match if any HW_PCI_VENDOR_CLASS starts with this vendor
+      for mv in "${HW_PCI_VENDOR_CLASS[@]}"; do
+        [[ "$mv" == "${match_value}:"* ]] && return 0
+      done
+      return 1
+      ;;
+
+    pci_vendor_class)
+      for mv in "${HW_PCI_VENDOR_CLASS[@]}"; do
+        [[ "$mv" == "$match_value" ]] && return 0
+      done
+      return 1
+      ;;
+
+    cpu_vendor)
+      [[ "$HW_CPU_VENDOR" == "$match_value" ]]
+      ;;
+
+    cpu_flag)
+      for mv in "${HW_CPU_FLAGS[@]}"; do
+        [[ "$mv" == "$match_value" ]] && return 0
+      done
+      return 1
+      ;;
+
+    dmi_vendor)
+      [[ "$HW_DMI_VENDOR" == "$match_value" ]]
+      ;;
+
+    dmi_product_regex)
+      [[ "$HW_DMI_PRODUCT" =~ $match_value ]]
+      ;;
+
+    chassis_type)
+      [[ "$HW_CHASSIS_TYPE" == "$match_value" ]]
+      ;;
+
+    block_device)
+      for mv in "${HW_BLOCK_DEVICES[@]}"; do
+        [[ "$mv" == "${match_value}"* ]] && return 0
+      done
+      return 1
+      ;;
+
+    usb_vendor)
+      for mv in "${HW_USB_VENDORS[@]}"; do
+        [[ "$mv" == "$match_value" ]] && return 0
+      done
+      return 1
+      ;;
+
+    usb_vendor_any)
+      # match_value here is an array
+      local want
+      for want in "${match_value[@]}"; do
+        for mv in "${HW_USB_VENDORS[@]}"; do
+          [[ "$mv" == "$want" ]] && return 0
+        done
+      done
+      return 1
+      ;;
+
+    usb_vidpid_any)
+      # match_value is an array of "vvvv:pppp" strings; match if any
+      # appears in HW_USB_VIDPID
+      local want
+      for want in "${match_value[@]}"; do
+        for mv in "${HW_USB_VIDPID[@]}"; do
+          [[ "$mv" == "$want" ]] && return 0
+        done
+      done
+      return 1
+      ;;
+
+    *)
+      warning "Unknown match_type '%s' in rule %s" "$mt" "${rulename:-?}"
+      return 1
+      ;;
+  esac
+}
+
+# Source one rule file in a subshell, check if it matches, and emit a
+# tab-separated record on stdout if it does:
+#
+#   rulename|depends|aur|services|services_user|groups|kparams|post_install
+#
+# Subshell isolation is crucial: rules can define functions and variables
+# Without polluting the parent shell, and one bad rule cannot break the run.
+_evaluate_rule() {
+  local rule_file=$1
+
+  (
+    set +e
+    # Defaults so unset arrays don't error under strict mode
+    rulename=""
+    ruledesc=""
+    match_type=""
+    match_value=""
+    depends=()
+    aur_depends=()
+    services=()
+    services_user=()
+    groups=()
+    kernel_params=()
+    requires_reboot=""
+    needs_kernel_headers=false
+    kernel=""
+
+    # shellcheck disable=SC1090
+    if ! source_safe "$rule_file" ; then
+      error "Failed to source rule: %s" "$rule_file"
+      exit 2
+    fi
+
+    if [[ -z "$rulename" || -z "$match_type" ]]; then
+      warning "Rule %s missing 'rulename' or 'match_type'; skipping" "$rule_file"
+      exit 3
+    fi
+
+    if rule_matches; then
+      # Capture post_install body if defined; base64 to survive
+      # the line-based delimited format (function bodies are multiline)
+      local post_body=""
+      if declare -F post_install >/dev/null; then
+        post_body=$(declare -f post_install | base64 -w0)
+      fi
+
+      # Base64 the reboot reason too — it's free-form text and could
+      # contain pipes, quotes, or dashes that would break the format.
+      local reboot_b64=""
+      if [[ -n "$requires_reboot" ]]; then
+        reboot_b64=$(printf '%s' "$requires_reboot" | base64 -w0)
+      fi
+
+      # Normalize the boolean: anything but "true" is false
+      local needs_headers="false"
+      if [[ "$needs_kernel_headers" == "true" ]]; then
+        needs_headers="true"
+      fi
+
+      local IFS=,
+      printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+        "$rulename" \
+        "${depends[*]}" \
+        "${aur_depends[*]}" \
+        "${services[*]}" \
+        "${services_user[*]}" \
+        "${groups[*]}" \
+        "${kernel_params[*]}" \
+        "$post_body" \
+        "$reboot_b64" \
+        "$needs_headers" \
+        "$kernel"
+      exit 0
+    fi
+    exit 1
+  )
+}
+
+# Iterate all rule files in a directory, collect actions from matching ones.
+collect_actions() {
+  local rules_dir=$1
+  match_reset_actions
+
+  local rule_file output rc
+  local name_field deps_field aur_field svc_field svc_user_field
+  local grp_field kp_field post_field reboot_field headers_field kernel_field
+  while IFS= read -r -d '' rule_file; do
+    # Capture stdout and rc; tolerate non-zero (non-match is rc=1)
+    output=$(_evaluate_rule "$rule_file") && rc=0 || rc=$?
+    case $rc in
+      0)
+        IFS='|' read -r name_field deps_field aur_field svc_field \
+                                 svc_user_field grp_field kp_field \
+                                 post_field reboot_field headers_field \
+                                 kernel_field <<<"$output"
+        ACTION_MATCHED_RULES+=("$name_field")
+
+        local IFS=,
+        # shellcheck disable=SC2206
+        local d=( $deps_field ) a=( $aur_field ) s=( $svc_field )
+        # shellcheck disable=SC2206
+        local su=( $svc_user_field ) g=( $grp_field ) k=( $kp_field )
+        unset IFS
+
+        _append_unique ACTION_DEPENDS "${d[@]}"
+        _append_unique ACTION_AUR_DEPENDS "${a[@]}"
+        _append_unique ACTION_SERVICES "${s[@]}"
+        _append_unique ACTION_SERVICES_USER "${su[@]}"
+        _append_unique ACTION_GROUPS "${g[@]}"
+        _append_unique ACTION_KERNEL_PARAMS "${k[@]}"
+
+        if [[ -n "$post_field" ]]; then
+          ACTION_POST_INSTALL+=("${name_field}"$'\t'"$post_field")
+        fi
+        if [[ -n "$reboot_field" ]]; then
+          local reason
+          reason=$(printf '%s' "$reboot_field" | base64 -d 2>/dev/null)
+          ACTION_REBOOT_REASONS+=("${name_field}"$'\t'"$reason")
+        fi
+        if [[ "$headers_field" == "true" ]]; then
+          NEEDS_KERNEL_HEADERS=1
+        fi
+        if [[ -n "$kernel_field" ]]; then
+          # Track as rulename<TAB>kernel — we need both for the
+          # conflict check's error message
+          ACTION_REQUIRED_KERNELS+=("${name_field}"$'\t'"$kernel_field")
+        fi
+        ;;
+      1) ;;  # no match, normal
+      *) ;;  # error, already reported by subshell
+    esac
+  done < <(find "$rules_dir" -maxdepth 1 -type f -name '*.rule' -print0 | sort -z)
+
+  # Resolve `kernel=` requirements before generic header detection,
+  # because a required kernel implies adding both the kernel package
+  # itself and its headers — the generic detector might miss the kernel
+  # if it's not yet installed.
+  if (( ${#ACTION_REQUIRED_KERNELS[@]} )); then
+    if ! _check_kernel_conflict; then
+      return 1
+    fi
+    # Single distinct kernel: extract it and add to depends
+    local required_kernel
+    required_kernel=$(_unique_required_kernel)
+    _append_unique ACTION_DEPENDS "$required_kernel"
+    _append_unique ACTION_DEPENDS "${required_kernel}-headers"
+  fi
+
+  # If any matched rule needs kernel headers, expand to the right
+  # *-headers package(s) for whatever kernel(s) the user has installed.
+  if (( NEEDS_KERNEL_HEADERS )); then
+    local pkg
+    for pkg in $(_resolve_kernel_headers); do
+      _append_unique ACTION_DEPENDS "$pkg"
+    done
+  fi
+}
+
+# Check that all rules requesting a specific kernel agree on which one.
+# Returns 0 if there's no conflict (zero, one, or many rules but all
+# requesting the same kernel). Returns 1 and prints an error if 2+
+# distinct kernels are requested.
+_check_kernel_conflict() {
+  declare -A kernel_to_rules=()
+  local entry rule kernel
+  for entry in "${ACTION_REQUIRED_KERNELS[@]}"; do
+    rule=${entry%%$'\t'*}
+    kernel=${entry#*$'\t'}
+    kernel_to_rules[$kernel]+="${rule} "
+  done
+
+  if (( ${#kernel_to_rules[@]} <= 1 )); then
+    return 0
+  fi
+
+  # 2+ distinct kernels requested. Report each one and which rules want it.
+  error "Conflicting kernel requirements from matched rules:"
+  for kernel in "${!kernel_to_rules[@]}"; do
+    plain "  %s required by: %s" "$kernel" "${kernel_to_rules[$kernel]% }"
+  done
+  plain "Resolve by editing rules so they agree, or by skipping conflicting hardware."
+  return 1
+}
+
+# Return the single distinct kernel value from ACTION_REQUIRED_KERNELS.
+# Caller must have already called _check_kernel_conflict and verified
+# success — this function does no validation.
+_unique_required_kernel() {
+  local entry
+  for entry in "${ACTION_REQUIRED_KERNELS[@]}"; do
+    echo "${entry#*$'\t'}"
+    return
+  done
+}
+
+# List the *-headers packages corresponding to the kernels that are
+# actually installed on the system.
+#
+# Detection strategy: every kernel package owns `/usr/lib/modules/<ver>/vmlinuz`.
+# We enumerate those vmlinuz files, ask pacman who owns each one, and
+# strip duplicates. This works for upstream Arch kernels (linux, linux-lts,
+# linux-zen, linux-hardened, linux-rt, linux-rt-lts), Omarchy's custom
+# kernels (e.g. linux-ptl-audio for Panther Lake), and any third-party
+# kernel that follows the standard /usr/lib/modules layout — which is
+# essentially all of them, because mkinitcpio and dracut both depend on it.
+#
+# For each detected kernel P, the headers package is conventionally named
+# P-headers. We verify it actually exists in the sync DB before adding it,
+# so a kernel without packaged headers (rare, but possible) doesn't cause
+# a failed pacman install down the line.
+#
+# Fallbacks:
+#  - No pacman: emit "linux-headers" as the safe default
+#  - pacman present but no kernels found: emit "linux-headers" (something
+#    is wrong with the system, but adding the standard headers is harmless)
+_resolve_kernel_headers() {
+  if ! command -v pacman >/dev/null 2>&1; then
+    echo "linux-headers"
+    return
+  fi
+
+  local vmlinuz kernels=()
+  # Enumerate vmlinuz files. shopt -s nullglob so an empty match
+  # produces an empty array rather than the literal glob string.
+  shopt -s nullglob
+  local vmlinuzes=(/usr/lib/modules/*/vmlinuz)
+  shopt -u nullglob
+
+  for vmlinuz in "${vmlinuzes[@]}"; do
+    local owner
+    # pacman -Qoq prints just the package name owning the path
+    owner=$(pacman -Qoq "$vmlinuz" 2>/dev/null) || continue
+    kernels+=("$owner")
+  done
+
+  # Dedupe (a kernel package owns just one vmlinuz, but be safe)
+  local kernel
+  declare -A seen=()
+  local unique=()
+  for kernel in "${kernels[@]}"; do
+    [[ -z "${seen[$kernel]:-}" ]] || continue
+    seen[$kernel]=1
+    unique+=("$kernel")
+  done
+
+  if (( ${#unique[@]} == 0 )); then
+    echo "linux-headers"
+    return
+  fi
+
+  # For each kernel, check that <name>-headers is a real package.
+  # `pacman -Si` queries the sync DB without needing it installed.
+  for kernel in "${unique[@]}"; do
+    local headers="${kernel}-headers"
+    if pacman -Si "$headers" >/dev/null 2>&1; then
+      echo "$headers"
+    fi
+  done
+}
+
+# Print a human-readable summary of the action queue
+match_show_plan() {
+  msg "Plan summary"
+  msg2 "Matched rules (%d): %s" \
+    "${#ACTION_MATCHED_RULES[@]}" "${ACTION_MATCHED_RULES[*]:-none}"
+
+  if (( ${#ACTION_DEPENDS[@]} )); then
+    msg2 "Packages to install (%d):" "${#ACTION_DEPENDS[@]}"
+    plain "  %s" "${ACTION_DEPENDS[*]}"
+  fi
+  if (( ${#ACTION_AUR_DEPENDS[@]} )); then
+    msg2 "AUR packages to install (%d):" "${#ACTION_AUR_DEPENDS[@]}"
+    plain "  %s" "${ACTION_AUR_DEPENDS[*]}"
+  fi
+  if (( ${#ACTION_SERVICES[@]} )); then
+    msg2 "System services to enable (%d):" "${#ACTION_SERVICES[@]}"
+    plain "  %s" "${ACTION_SERVICES[*]}"
+  fi
+  if (( ${#ACTION_SERVICES_USER[@]} )); then
+    msg2 "User services to enable (%d):" "${#ACTION_SERVICES_USER[@]}"
+    plain "  %s" "${ACTION_SERVICES_USER[*]}"
+  fi
+  if (( ${#ACTION_GROUPS[@]} )); then
+    msg2 "Groups to add user to (%d):" "${#ACTION_GROUPS[@]}"
+    plain "  %s" "${ACTION_GROUPS[*]}"
+  fi
+  if (( ${#ACTION_KERNEL_PARAMS[@]} )); then
+    msg2 "Kernel params to add (%d):" "${#ACTION_KERNEL_PARAMS[@]}"
+    plain "  %s" "${ACTION_KERNEL_PARAMS[*]}"
+  fi
+  if (( ${#ACTION_POST_INSTALL[@]} )); then
+    msg2 "Post-install hooks (%d):" "${#ACTION_POST_INSTALL[@]}"
+    local entry rid
+    for entry in "${ACTION_POST_INSTALL[@]}"; do
+      rid=${entry%%$'\t'*}
+      plain "  from %s" "$rid"
+    done
+  fi
+  if (( ${#ACTION_REBOOT_REASONS[@]} )); then
+    msg2 "Reboot required (%d reason(s)):" "${#ACTION_REBOOT_REASONS[@]}"
+    local entry rid reason
+    for entry in "${ACTION_REBOOT_REASONS[@]}"; do
+      rid=${entry%%$'\t'*}
+      reason=${entry#*$'\t'}
+      plain "  %s: %s" "$rid" "$reason"
+    done
+  fi
+}
+
+# --- execute -----------------------------------------------------------------
+# Wrappers around omarchy-pkg-add, omarchy-pkg-aur-add, systemctl, gpasswd.
+# All respect DRY_RUN — when set, commands are printed but not executed.
+
+# Print or run a command depending on DRY_RUN
+_run() {
+  if (( DRY_RUN )); then
+    plain "  \$ %s" "$*"
+  else
+    "$@"
+  fi
+}
+
+# omarchy-pkg-add and omarchy-pkg-aur-add are Omarchy's official package
+# install commands. They wrap pacman / yay respectively, handle sudo,
+# and play nicely with Omarchy's package channels (OPR + AUR).
+#
+# We require these commands rather than falling back to pacman, because
+# hwtool is intended to ship as part of Omarchy. If they're missing,
+# either Omarchy isn't installed or these tools have been renamed
+# upstream — both worth surfacing as an error rather than silently
+# bypassing.
+
+execute_install_packages() {
+  (( ${#ACTION_DEPENDS[@]} )) || return 0
+
+  msg "Installing official packages via omarchy-pkg-add"
+  _run omarchy-pkg-add "${ACTION_DEPENDS[@]}"
+}
+
+execute_install_aur() {
+  (( ${#ACTION_AUR_DEPENDS[@]} )) || return 0
+
+  msg "Installing AUR packages via omarchy-pkg-aur-add"
+  _run omarchy-pkg-aur-add "${ACTION_AUR_DEPENDS[@]}"
+}
+
+execute_enable_services() {
+  (( ${#ACTION_SERVICES[@]} )) || return 0
+  msg "Enabling systemd services (system)"
+  local svc
+  for svc in "${ACTION_SERVICES[@]}"; do
+    _run sudo systemctl enable --now "$svc"
+  done
+}
+
+# Enable systemd --user units for the real (non-root) user.
+#
+# When hwtool runs under sudo, $USER is root but $SUDO_USER is the real
+# user. systemctl --user needs to talk to that user's session bus, so we
+# drop privileges with sudo -u and set XDG_RUNTIME_DIR explicitly (it's
+# normally per-session and not inherited across sudo).
+#
+# Caveat: this requires the target user to have an active session, or
+# linger enabled (loginctl enable-linger). If neither is true, the
+# --now will fail to start the unit but enable will still succeed,
+# and the unit will start on next login.
+execute_enable_user_services() {
+  (( ${#ACTION_SERVICES_USER[@]} )) || return 0
+
+  local target_user=${SUDO_USER:-${USER:-$(id -un)}}
+  if [[ "$target_user" == "root" ]]; then
+    warning "Cannot enable user services as root; skipping %d unit(s): %s" \
+      "${#ACTION_SERVICES_USER[@]}" "${ACTION_SERVICES_USER[*]}"
+    return 0
+  fi
+
+  msg "Enabling systemd services (user: %s)" "$target_user"
+  local target_uid
+  target_uid=$(id -u "$target_user" 2>/dev/null) || {
+    warning "Could not resolve uid for %s; skipping user services" "$target_user"
+    return 0
+  }
+
+  local svc
+  for svc in "${ACTION_SERVICES_USER[@]}"; do
+    if [[ -n "$SUDO_USER" ]]; then
+      # We're root via sudo: drop down to the real user
+      _run sudo -u "$target_user" \
+        XDG_RUNTIME_DIR="/run/user/$target_uid" \
+        systemctl --user enable --now "$svc"
+    else
+      # We're already running as the user
+      _run systemctl --user enable --now "$svc"
+    fi
+  done
+}
+
+execute_add_groups() {
+  (( ${#ACTION_GROUPS[@]} )) || return 0
+  local target_user=${SUDO_USER:-${USER:-$(id -un)}}
+  msg "Adding %s to groups" "$target_user"
+  local g
+  for g in "${ACTION_GROUPS[@]}"; do
+    if (( ! DRY_RUN )); then
+      if ! getent group "$g" >/dev/null; then
+        warning "Group '%s' does not exist; skipping" "$g"
+        continue
+      fi
+      if id -nG "$target_user" | tr ' ' '\n' | grep -qx "$g"; then
+        msg2 "%s already in %s" "$target_user" "$g"
+        continue
+      fi
+    fi
+    _run sudo gpasswd -a "$target_user" "$g"
+  done
+}
+
+# Write kernel params to a dedicated drop-in under /etc/limine-entry-tool.d.
+# The file is rewritten on every run (not appended), so params from rules
+# that no longer match drop out automatically. After writing, regenerate
+# the limine boot entries via `limine-update`.
+execute_kernel_params() {
+  (( ${#ACTION_KERNEL_PARAMS[@]} )) || return 0
+
+  local conf=/etc/limine-entry-tool.d/hwtool.conf
+  msg "Writing kernel params to %s" "$conf"
+
+  local content="# Generated by hwtool — do not edit; rewritten on every hwtool run."$'\n'
+  local p
+  for p in "${ACTION_KERNEL_PARAMS[@]}"; do
+    content+="KERNEL_CMDLINE[default]+=\" $p\""$'\n'
+  done
+
+  if (( DRY_RUN )); then
+    plain "  Would write to %s:" "$conf"
+    printf '%s' "$content" | sed 's/^/    /'
+  else
+    printf '%s' "$content" | sudo tee "$conf" >/dev/null
+    if command -v limine-update >/dev/null 2>&1; then
+      msg2 "Regenerating limine entries"
+      sudo limine-update
+    else
+      warning "limine-update not found; run it manually to apply boot params"
+    fi
+  fi
+}
+
+execute_post_install() {
+  (( ${#ACTION_POST_INSTALL[@]} )) || return 0
+  msg "Running post-install hooks"
+  local entry rid body decoded
+  for entry in "${ACTION_POST_INSTALL[@]}"; do
+    rid=${entry%%$'\t'*}
+    body=${entry#*$'\t'}
+    decoded=$(printf '%s' "$body" | base64 -d 2>/dev/null) || {
+      warning "Failed to decode post_install for %s" "$rid"
+      continue
+    }
+    msg2 "Hook from %s" "$rid"
+    if (( DRY_RUN )); then
+      plain "  (dry-run) would execute post_install() from %s" "$rid"
+    else
+      eval "$decoded"
+      post_install || warning "post_install for %s exited non-zero" "$rid"
+      unset -f post_install
+    fi
+  done
+}
+
+# Mark the system as needing a reboot via Omarchy's state mechanism.
+# This sets a flag that Omarchy's UI/notifications can pick up to nudge
+# the user to reboot at a convenient time. We don't trigger a reboot
+# ourselves — that's intrusive and the user may have other work in
+# progress.
+execute_mark_reboot_required() {
+  (( ${#ACTION_REBOOT_REASONS[@]} )) || return 0
+
+  msg "Marking reboot-required state"
+  _run omarchy-state set reboot-required
+}
+
+execute_all() {
+  execute_install_packages
+  execute_install_aur
+  execute_enable_services
+  execute_enable_user_services
+  execute_add_groups
+  execute_kernel_params
+  execute_post_install
+  execute_mark_reboot_required
+}
+
+# --- defaults & options ------------------------------------------------------
+
+DRY_RUN=0
+SHOW_HARDWARE=0
+SHOW_PLAN_ONLY=0
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+# Resolve rules directory: env var, sibling of script, or system path
+RULES_DIR=${RULES_DIR:-}
+if [[ -z $RULES_DIR ]]; then
+  if [[ -d $script_dir/rules ]]; then
+    RULES_DIR=$script_dir/rules
+  elif [[ -d /usr/share/hwtool/rules ]]; then
+    RULES_DIR=/usr/share/hwtool/rules
+  fi
+fi
+
+usage() {
+  cat <<EOF
+Usage: hwtool [options]
+
+Detects hardware and applies matching rules from a rules directory.
+
+Options:
+  -n, --dry-run            Show what would be done; do not execute
+  -p, --plan               Show plan and exit (implies --dry-run)
+  -H, --show-hardware      Print detected hardware and exit
+  -r, --rules-dir <path>   Override rules directory
+                           (default: \$RULES_DIR or auto-detected)
+  -h, --help               This message
+
+Environment:
+  RULES_DIR    Path to rules directory
+  LIBMAKEPKG   Path to libmakepkg (default: /usr/share/makepkg)
+EOF
+}
+
+OPT_SHORT='nphHr:'
+OPT_LONG=('dry-run' 'plan' 'help' 'show-hardware' 'rules-dir:')
+
+if ! parseopts "$OPT_SHORT" "${OPT_LONG[@]}" -- "$@"; then
+  usage
+  exit 1
+fi
+set -- "${OPTRET[@]}"
+
+while true; do
+  case "$1" in
+    -n|--dry-run)       DRY_RUN=1 ;;
+    -p|--plan)          DRY_RUN=1; SHOW_PLAN_ONLY=1 ;;
+    -H|--show-hardware) SHOW_HARDWARE=1 ;;
+    -r|--rules-dir)     RULES_DIR=$2; shift ;;
+    -h|--help)          usage; exit 0 ;;
+    --)                 shift; break ;;
+  esac
+  shift
+done
+
+# --- main --------------------------------------------------------------------
+
+if [[ -z $RULES_DIR || ! -d $RULES_DIR ]]; then
+  error "Rules directory not found: %s" "${RULES_DIR:-(unset)}"
+  error "Set RULES_DIR or pass --rules-dir"
+  exit 1
+fi
+
+msg "hwtool starting (rules: %s)" "$RULES_DIR"
+
+hw_detect_all
+
+if (( SHOW_HARDWARE )); then
+  hw_show
+  exit 0
+fi
+
+if ! collect_actions "$RULES_DIR"; then
+  exit 1
+fi
+
+match_show_plan
+
+if (( SHOW_PLAN_ONLY )); then
+  exit 0
+fi
+
+if (( ${#ACTION_MATCHED_RULES[@]} == 0 )); then
+  msg "Nothing to do."
+  exit 0
+fi
+
+if (( DRY_RUN )); then
+  msg "Dry run — no changes will be made"
+fi
+
+execute_all
+
+msg "Done."
+if (( ${#ACTION_REBOOT_REASONS[@]} )); then
+  msg2 "Reboot required:"
+  for entry in "${ACTION_REBOOT_REASONS[@]}"; do
+    rid=${entry%%$'\t'*}
+    reason=${entry#*$'\t'}
+    plain "  %s: %s" "$rid" "$reason"
+  done
+fi

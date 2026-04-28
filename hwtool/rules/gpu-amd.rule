@@ -1,0 +1,21 @@
+# Maintainer: your name <you@example.com>
+# Rule: AMD GPU (Radeon, integrated and discrete)
+
+rulename='gpu.amd'
+ruledesc='AMD open-source graphics stack (Mesa + RADV)'
+
+match_type='pci_vendor_class'
+match_value='1002:0300'
+
+depends=(
+    mesa
+    lib32-mesa
+    vulkan-radeon
+    lib32-vulkan-radeon
+    libva-mesa-driver
+)
+
+aur_depends=()
+services=()
+groups=()
+kernel_params=()

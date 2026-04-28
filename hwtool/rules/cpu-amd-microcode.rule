@@ -1,0 +1,15 @@
+# Maintainer: your name <you@example.com>
+# Rule: AMD CPU microcode updates
+
+rulename='cpu.amd_microcode'
+ruledesc='AMD CPU microcode'
+
+match_type='cpu_vendor'
+match_value='AuthenticAMD'
+
+depends=(amd-ucode)
+aur_depends=()
+services=()
+groups=()
+kernel_params=()
+requires_reboot='Microcode update applies on next boot'

@@ -1,0 +1,14 @@
+# Maintainer: your name <you@example.com>
+# Rule: AMD-V virtualization (SVM)
+
+rulename='cpu.virt_amd'
+ruledesc='KVM/QEMU stack for AMD CPUs with SVM'
+
+match_type='cpu_flag'
+match_value='svm'
+
+depends=(qemu-desktop libvirt virt-manager edk2-ovmf)
+aur_depends=()
+services=(libvirtd)
+groups=(libvirt kvm)
+kernel_params=()

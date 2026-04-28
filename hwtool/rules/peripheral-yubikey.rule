@@ -1,0 +1,14 @@
+# Maintainer: your name <you@example.com>
+# Rule: Yubico YubiKey hardware security keys
+
+rulename='peripheral.yubikey'
+ruledesc='YubiKey support (PC/SC + management tools)'
+
+match_type='usb_vendor'
+match_value='1050'
+
+depends=(yubikey-manager yubikey-personalization pcsc-tools ccid)
+aur_depends=()
+services=(pcscd)
+groups=()
+kernel_params=()
