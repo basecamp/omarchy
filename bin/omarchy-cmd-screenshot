@@ -65,7 +65,7 @@ get_rectangles() {
 
 # Checks if hyperpicker has frozen the layer
 # by cehcking for the layer and if its frozen
-wait_for_picker() {
+wait_for_hyprpicker() {
   local timeout=20
   local count=0
 
