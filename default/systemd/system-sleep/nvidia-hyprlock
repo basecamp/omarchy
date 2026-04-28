@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# On NVIDIA systems, hyprlock holds an active DRM/GBM context that causes the
+# nvidia_drm suspend callback to hang at PM: suspend entry (deep). Kill it here —
+# after hypridle's inhibit_sleep window but before the kernel DRM checkpoint.
+# See: github.com/basecamp/omarchy/issues/5277
+
+lsmod | grep -q "^nvidia " || exit 0
+
+if [[ $1 == "pre" ]]; then
+  active_users=$(
+    while IFS= read -r session_id; do
+      [[ -z "$session_id" ]] && continue
+      active=$(loginctl show-session "$session_id" -p Active --value 2>/dev/null)
+      state=$(loginctl show-session "$session_id" -p State --value 2>/dev/null)
+      remote=$(loginctl show-session "$session_id" -p Remote --value 2>/dev/null)
+      [[ "$active" == "yes" && "$state" == "active" && "$remote" == "no" ]] || continue
+      loginctl show-session "$session_id" -p Name --value 2>/dev/null
+    done < <(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}') | sort -u
+  )
+
+  if [[ -z "$active_users" ]]; then
+    active_users=$(logname 2>/dev/null || true)
+  fi
+
+  while IFS= read -r active_user; do
+    [[ -z "$active_user" ]] && continue
+    pkill -u "$active_user" -x hyprlock 2>/dev/null || true
+  done <<< "$active_users"
+  sleep 0.5  # Allow the DRM context to fully release before the kernel checkpoint
+fi
+
+if [[ $1 == "post" ]]; then
+  # Re-lock sessions after resume as a safety net in case hypridle's
+  # after_sleep_cmd didn't fire (e.g. hypridle crashed). Runs in background
+  # with a delay so user sessions are fully thawed before the signal is sent.
+  RELOCK_DELAY=5  # Seconds to wait for user sessions to thaw before relocking
+  (sleep $RELOCK_DELAY && loginctl lock-sessions 2>/dev/null || true) &
+fi

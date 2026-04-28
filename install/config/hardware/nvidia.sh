@@ -50,4 +50,6 @@ env = NVD_BACKEND,egl
 env = __GLX_VENDOR_LIBRARY_NAME,nvidia
 EOF
   fi
+
+  bash "$OMARCHY_PATH/install/config/hardware/nvidia-suspend-hook.sh"
 fi
