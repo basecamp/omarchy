@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Install Window Restore — save and restore closed windows with keybindings.
+# SUPER+W closes a window and saves it to history. SUPER+R restores the last closed window.
+# Supports both a relaunch mode (default) and a hide mode (preserves full window state).
+# Usually called via Install from the Omarchy Menu.
+
+echo "Installing Window Restore..."
+omarchy-pkg-aur-add omarchy-window-restore-git
+
+echo ""
+echo "Activating Window Restore..."
+/usr/bin/omarchy-install-window-restore
