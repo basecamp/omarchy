@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Adjust keyboard backlight brightness using available steps.
+# Adjust keyboard backlight brightness through fixed levels: 0, 1, 25, 100%.
 # Usage: omarchy-brightness-keyboard <up|down|cycle>
 
 direction="${1:-up}"
@@ -19,29 +19,43 @@ if [[ -z $device ]]; then
   exit 1
 fi
 
-# Get current and max brightness to determine step size.
+# Get current and max brightness.
 max_brightness="$(brightnessctl -d "$device" max)"
 current_brightness="$(brightnessctl -d "$device" get)"
 
-# Calculate step as 10% of max brightness. Keyboards with many levels (e.g. 512)
-# need larger steps; keyboards with few levels (e.g. 3) fall back to step=1.
-step=$(( max_brightness / 10 ))
-(( step < 1 )) && step=1
+# Fixed brightness levels as percentages: 0, 1, 25, 100.
+level_percents=(0 1 25 100)
+levels=()
+for p in "${level_percents[@]}"; do
+  levels+=( $(( max_brightness * p / 100 )) )
+done
 
-if [[ $direction == "cycle" ]]; then
-  new_brightness=$(( current_brightness + step ))
-  (( new_brightness > max_brightness )) && new_brightness=0
-elif [[ $direction == "up" ]]; then
-  new_brightness=$(( current_brightness + step ))
-  (( new_brightness > max_brightness )) && new_brightness=$max_brightness
+# Find the index of the nearest level to current brightness.
+nearest_idx=0
+nearest_dist=$(( current_brightness < 0 ? -current_brightness : current_brightness ))
+for i in "${!levels[@]}"; do
+  dist=$(( current_brightness - levels[i] ))
+  (( dist < 0 )) && dist=$(( -dist ))
+  if (( dist < nearest_dist )); then
+    nearest_dist=$dist
+    nearest_idx=$i
+  fi
+done
+
+if [[ $direction == "cycle" ]] || [[ $direction == "up" ]]; then
+  next_idx=$(( nearest_idx + 1 ))
+  if (( next_idx >= ${#levels[@]} )); then
+    [[ $direction == "cycle" ]] && next_idx=0 || next_idx=$(( ${#levels[@]} - 1 ))
+  fi
 else
-  new_brightness=$(( current_brightness - step ))
-  (( new_brightness < 0 )) && new_brightness=0
+  next_idx=$(( nearest_idx - 1 ))
+  (( next_idx < 0 )) && next_idx=0
 fi
+
+new_brightness="${levels[$next_idx]}"
 
 # Set the new brightness.
 brightnessctl -d "$device" set "$new_brightness" >/dev/null
 
 # Use SwayOSD to display the new brightness setting.
-percent=$((new_brightness * 100 / max_brightness))
-omarchy-swayosd-kbd-brightness "$percent"
+omarchy-swayosd-kbd-brightness "${level_percents[$next_idx]}"
