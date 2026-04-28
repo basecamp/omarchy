@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Resolve a theme by name and apply its unlock.png + colors.toml as the
+# Plymouth boot screen via omarchy-plymouth-set.
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: omarchy-plymouth-set-by-theme <theme-name>" >&2
+  exit 1
+fi
+
+theme=$1
+
+if [[ -d ~/.config/omarchy/themes/$theme ]]; then
+  theme_dir=~/.config/omarchy/themes/$theme
+else
+  theme_dir="$OMARCHY_PATH/themes/$theme"
+fi
+
+bg=$(awk -F'"' '/^background/{print $2}' "$theme_dir/colors.toml")
+text=$(awk -F'"' '/^foreground/{print $2}' "$theme_dir/colors.toml")
+
+exec omarchy-plymouth-set "$bg" "$text" "$theme_dir/unlock.png"
