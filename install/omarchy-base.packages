@@ -24,6 +24,7 @@ cups-pdf
 docker
 docker-buildx
 docker-compose
+dosfstools
 dotnet-runtime-9.0
 dust
 evince
