@@ -1,10 +1,7 @@
 #!/bin/bash
 
-# Install an npx wrapper for a given npm package.
-# Usage: omarchy-npx-install <package> [command-name]
-#
-# If command-name is omitted, it defaults to the package name.
-# Example: omarchy-npx-install opencode-ai opencode
+# omarchy:summary=Install an npx wrapper for a given npm package.
+# omarchy:args=<package> [command-name]
 
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-npx-install <package> [command-name]"

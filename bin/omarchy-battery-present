@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Returns true if a battery is present on the system.
-# Used by the battery monitor and other battery-related checks.
+# omarchy:summary=Returns true if a battery is present on the system.
 
 for bat in /sys/class/power_supply/BAT*; do
   [[ -r $bat/present ]] &&

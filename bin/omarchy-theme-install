@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# omarchy-theme-install: Install a new theme from a git repo for Omarchy
-# Usage: omarchy-theme-install <git-repo-url>
+# omarchy:summary=Install a theme from a git repository
+# omarchy:args=[git-repo-url]
+# omarchy:examples=omarchy theme install https://github.com/example/omarchy-example-theme.git
 
 if [[ -z $1 ]]; then
   echo -e "\e[32mSee https://manuals.omamix.org/2/the-omarchy-manual/90/extra-themes\n\e[0m"

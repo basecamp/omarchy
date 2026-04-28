@@ -1,6 +1,10 @@
 #!/bin/bash
 
-# Share clipboard, file, or folder using LocalSend. Bound to Super + Ctrl + S by default.
+# omarchy:summary=Share clipboard, files, or folders with LocalSend
+# omarchy:group=share
+# omarchy:name=
+# omarchy:args=<clipboard|file|folder> [path...]
+# omarchy:examples=omarchy share clipboard | omarchy share file ~/Downloads/example.txt
 
 if (($# == 0)); then
   echo "Usage: omarchy-cmd-share [clipboard|file|folder]"

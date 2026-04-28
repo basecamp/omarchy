@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Toggle Waybar visibility
+# omarchy:examples=omarchy toggle waybar
+
 omarchy-toggle waybar-off
 
 if pgrep -x waybar >/dev/null; then
