@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# Configure the Plymouth boot theme with a custom background color, accent color, and logo.
+# Stages the change in a temp dir, previews it as a composited image, then optionally
+# commits the staged files to /usr/share and rebuilds the initramfs.
+
+if [[ $# -ne 3 ]]; then
+  echo "Usage: omarchy-theme-set-plymouth <background-hex> <accent-hex> <path-to-logo.png>" >&2
+  exit 1
+fi
+
+bg_hex="${1#\#}"
+accent_hex="${2#\#}"
+logo_path="$3"
+
+if ! [[ $bg_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
+  echo "Invalid background color: $1 (expected #RRGGBB)" >&2
+  exit 1
+fi
+
+if ! [[ $accent_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
+  echo "Invalid accent color: $2 (expected #RRGGBB)" >&2
+  exit 1
+fi
+
+if [[ ! -f $logo_path ]]; then
+  echo "Logo file not found: $logo_path" >&2
+  exit 1
+fi
+
+bg_r=$(awk -v n=$((16#${bg_hex:0:2})) 'BEGIN{printf "%.3f", n/255}')
+bg_g=$(awk -v n=$((16#${bg_hex:2:2})) 'BEGIN{printf "%.3f", n/255}')
+bg_b=$(awk -v n=$((16#${bg_hex:4:2})) 'BEGIN{printf "%.3f", n/255}')
+
+theme_dir="/usr/share/plymouth/themes/omarchy"
+staging_dir=$(mktemp -d)
+preview_png=$(mktemp --suffix=.png)
+trap 'rm -rf "$staging_dir" "$preview_png"' EXIT
+
+cp ~/.local/share/omarchy/default/plymouth/* "$staging_dir/"
+cp "$logo_path" "$staging_dir/logo.png"
+
+sed -i \
+  -e "s/^Window.SetBackgroundTopColor.*/Window.SetBackgroundTopColor($bg_r, $bg_g, $bg_b);/" \
+  -e "s/^Window.SetBackgroundBottomColor.*/Window.SetBackgroundBottomColor($bg_r, $bg_g, $bg_b);/" \
+  "$staging_dir/omarchy.script"
+
+for asset in bullet.png entry.png lock.png progress_bar.png; do
+  magick "$staging_dir/$asset" -channel RGB +level-colors "#$accent_hex","#$accent_hex" "$staging_dir/$asset"
+done
+
+if gum confirm "Preview new login screen?"; then
+  canvas_w=1920
+  canvas_h=1080
+
+  logo_w=$(magick identify -format '%w' "$staging_dir/logo.png")
+  logo_h=$(magick identify -format '%h' "$staging_dir/logo.png")
+  entry_w=$(magick identify -format '%w' "$staging_dir/entry.png")
+  entry_h=$(magick identify -format '%h' "$staging_dir/entry.png")
+  lock_h=$(awk "BEGIN{print int($entry_h * 0.8)}")
+  lock_w=$(awk "BEGIN{print int(84 * $lock_h / 96)}")
+
+  logo_x=$(( (canvas_w - logo_w) / 2 ))
+  logo_y=$(( (canvas_h - logo_h) / 2 ))
+  entry_x=$(( (canvas_w - entry_w) / 2 ))
+  entry_y=$(( logo_y + logo_h + 40 ))
+  lock_x=$(( entry_x - lock_w - 15 ))
+  lock_y=$(( entry_y + entry_h/2 - lock_h/2 ))
+  bullet_y=$(( entry_y + entry_h/2 - 4 ))
+
+  bullet_args=()
+  for i in 0 1 2 3; do
+    bx=$(( entry_x + 20 + i * 12 ))
+    bullet_args+=( '(' "$staging_dir/bullet.png" -resize 7x7 ')' -geometry +${bx}+${bullet_y} -composite )
+  done
+
+  magick -size ${canvas_w}x${canvas_h} "xc:#$bg_hex" \
+    "$staging_dir/logo.png" -geometry +${logo_x}+${logo_y} -composite \
+    "$staging_dir/entry.png" -geometry +${entry_x}+${entry_y} -composite \
+    \( "$staging_dir/lock.png" -resize ${lock_w}x${lock_h} \) -geometry +${lock_x}+${lock_y} -composite \
+    "${bullet_args[@]}" \
+    "$preview_png"
+
+  imv -f "$preview_png"
+fi
+
+if gum confirm "Apply new login screen?"; then
+  sudo cp -a "$staging_dir/." "$theme_dir/"
+  sudo plymouth-set-default-theme omarchy
+
+  if omarchy-cmd-present limine-mkinitcpio; then
+    sudo limine-mkinitcpio
+  else
+    sudo mkinitcpio -P
+  fi
+fi
