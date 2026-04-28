@@ -13,8 +13,7 @@
 # `alias_ids` (variant product IDs that share the same driver).
 #
 # To regenerate the match_value array below, run tools/sync-razer.sh and
-# replace the array contents with its output. That script uses curl + jq
-# only — no Python or yq required.
+# replace the array contents with its output.
 #
 # Notes:
 #  - All Razer devices use VID 1532. PIDs are uppercase in the JSON
@@ -32,9 +31,9 @@ ruledesc='OpenRazer driver and daemon for Razer peripherals'
 match_type='usb_vidpid_any'
 
 # Generated from https://openrazer.github.io/api/devices.json
-# Regenerate with: tools/sync-razer.sh > /tmp/razer-pids.txt
+# Regenerate with: tools/sync-razer.sh
 # then paste the match_value=(...) block into rules/peripheral-razer.rule
-# Last sync: 2026-04-27  (UTC)
+# Last sync: 2026-04-28  (UTC)
 # 267 PIDs (primary + alias_ids), sorted, deduplicated
 match_value=(
   1532:0013 1532:0015 1532:0016 1532:001f 1532:0020 1532:0024 1532:0025

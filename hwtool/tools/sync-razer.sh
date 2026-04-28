@@ -46,14 +46,12 @@ main() {
   today=$(date -u +%Y-%m-%d)
 
   echo "# Generated from $DEVICES_URL"
-  echo "# Regenerate with: tools/sync-razer.sh > /tmp/razer-pids.txt"
+  echo "# Regenerate with: tools/sync-razer.sh"
   echo "# then paste the match_value=(...) block into rules/peripheral-razer.rule"
   echo "# Last sync: $today  (UTC)"
   echo "# $count PIDs (primary + alias_ids), sorted, deduplicated"
   echo "match_value=("
-  # Seven PIDs per line, indented 4, single-space separated. Width:
-  # 4 (indent) + 7*9 (PIDs) + 6 (separators) = 73 chars, fits in 80
-  # columns even with a one-char diff prefix.
+  # Seven PIDs per line, indented with 2 spaces, single-space separated.
   local idx=0 line=""
   while IFS= read -r pid; do
     if (( idx % 7 == 0 )); then
