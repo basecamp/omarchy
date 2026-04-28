@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Restore the Plymouth boot theme to the omarchy default — copies the shipped
-# assets into /usr/share without recoloring, then rebuilds the initramfs.
+# Restore the Plymouth boot theme and the SDDM login screen to the omarchy
+# defaults — copies the shipped assets into /usr/share, rebuilds the initramfs,
+# and refreshes the SDDM theme.
 
 theme_dir="/usr/share/plymouth/themes/omarchy"
 
@@ -13,3 +14,5 @@ if omarchy-cmd-present limine-mkinitcpio; then
 else
   sudo mkinitcpio -P
 fi
+
+omarchy-refresh-sddm

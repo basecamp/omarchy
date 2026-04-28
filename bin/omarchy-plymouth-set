@@ -2,7 +2,8 @@
 
 # Configure the Plymouth boot theme with a custom background color, text color, and logo.
 # Stages the change in a temp dir, then commits the staged files to /usr/share and
-# rebuilds the initramfs.
+# rebuilds the initramfs. Also syncs the SDDM login screen (the post-logout
+# screen) with the same colors and logo so boot/login stay visually unified.
 
 if [[ $# -ne 3 ]]; then
   echo "Usage: omarchy-plymouth-set <background-hex> <text-hex> <path-to-logo.png>" >&2
@@ -56,3 +57,16 @@ if omarchy-cmd-present limine-mkinitcpio; then
 else
   sudo mkinitcpio -P
 fi
+
+# Sync the SDDM login screen with the same colors and logo.
+sddm_dir="/usr/share/sddm/themes/omarchy"
+sddm_template="$HOME/.local/share/omarchy/default/sddm/omarchy/Main.qml"
+
+sed \
+  -e "s/#000000/#$bg_hex/g" \
+  -e "s/#ffffff/#$text_hex/g" \
+  -e 's|source: "logo.svg"|source: "logo.png"|' \
+  "$sddm_template" | sudo tee "$sddm_dir/Main.qml" >/dev/null
+
+sudo cp "$logo_path" "$sddm_dir/logo.png"
+sudo rm -f "$sddm_dir/logo.svg"
