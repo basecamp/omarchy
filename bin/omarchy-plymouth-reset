@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Restore the Plymouth boot theme to the omarchy default — copies the shipped
+# assets into /usr/share without recoloring, then rebuilds the initramfs.
+
+theme_dir="/usr/share/plymouth/themes/omarchy"
+
+sudo find ~/.local/share/omarchy/default/plymouth -maxdepth 1 -type f -exec cp -t "$theme_dir/" {} +
+sudo plymouth-set-default-theme omarchy
+
+if omarchy-cmd-present limine-mkinitcpio; then
+  sudo limine-mkinitcpio
+else
+  sudo mkinitcpio -P
+fi
