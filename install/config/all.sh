@@ -61,6 +61,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/apple/fix-spi-keyboard.sh
 run_logged $OMARCHY_INSTALL/config/hardware/apple/fix-suspend-nvme.sh
 run_logged $OMARCHY_INSTALL/config/hardware/apple/fix-t2.sh
 
+run_logged $OMARCHY_INSTALL/config/hardware/lenovo/fix-thinkbook-led-permissions.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-bcm43xx.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-surface-keyboard.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-yt6801-ethernet-adapter.sh

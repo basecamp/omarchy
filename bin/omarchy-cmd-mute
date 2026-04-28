@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Toggle speaker mute with OSD. On ThinkBook systems, also syncs the
+# platform::mute hardware LED to match WirePlumber state.
+
+omarchy-swayosd-client --output-volume mute-toggle
+
+if omarchy-hw-match "ThinkBook"; then
+  if pactl get-sink-mute @DEFAULT_SINK@ | grep -q 'yes'; then
+    led_value=1
+  else
+    led_value=0
+  fi
+  brightnessctl --device="platform::mute" set "$led_value" >/dev/null 2>&1 || true
+fi

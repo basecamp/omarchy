@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Detect Lenovo ThinkBook hardware via DMI product_family.
+# Usage: omarchy-hw-thinkbook (returns exit 0 if ThinkBook, non-zero otherwise)
+
+omarchy-hw-match "ThinkBook"
