@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+
+# Remove Piper and its Omarchy configuration.
+
+if omarchy-cmd-present piper; then
+  echo "Uninstall Piper to remove text to speech."
+
+  uv tool uninstall piper-tts 2>/dev/null || true
+  rm -rf ~/.config/piper
+  rm -rf ~/.local/share/piper
+  omarchy-restart-waybar
+else
+  echo "Piper was not installed."
+fi

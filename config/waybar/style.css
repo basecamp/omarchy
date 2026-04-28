@@ -98,3 +98,17 @@ tooltip {
 #custom-voxtype.recording {
   color: #a55555;
 }
+
+#custom-piper.reading {
+  min-width: 12px;
+  margin: 0 0 0 7.5px;
+  color: #a55555;
+  opacity: 0.6;
+  animation: blink 1s steps(2) infinite;
+}
+
+@keyframes blink {
+  to {
+    opacity: 1;
+  }
+}

@@ -1,0 +1,14 @@
+#!/bin/bash
+
+state_dir=${XDG_RUNTIME_DIR:-/tmp}/omarchy-piper
+pid_file=$state_dir/pid
+
+if [[ -s $pid_file ]]; then
+  pid=$(cat "$pid_file" 2>/dev/null || true)
+  if [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null; then
+    echo '{"text": "󰗊", "tooltip": "Piper Text to Speech\n󰍉  Reading selected text", "class": "reading"}'
+    exit 0
+  fi
+fi
+
+echo '{"text": "", "tooltip": ""}'
