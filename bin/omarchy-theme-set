@@ -10,12 +10,28 @@ NEXT_THEME_PATH="$HOME/.config/omarchy/current/next-theme"
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
 OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 
+capture_workspace_layouts() {
+  hyprctl workspaces -j 2>/dev/null | jq -r '.[] | select(.tiledLayout != null and .tiledLayout != "") | [.id, .tiledLayout] | @tsv' 2>/dev/null
+}
+
+restore_workspace_layouts() {
+  local workspace_layouts="$1"
+  local workspace_id workspace_layout
+
+  while IFS=$'\t' read -r workspace_id workspace_layout; do
+    [[ -n $workspace_id && -n $workspace_layout ]] || continue
+    hyprctl keyword workspace "$workspace_id, layout:$workspace_layout" >/dev/null 2>&1
+  done <<<"$workspace_layouts"
+}
+
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 
 if [[ ! -d $OMARCHY_THEMES_PATH/$THEME_NAME ]] && [[ ! -d $USER_THEMES_PATH/$THEME_NAME ]]; then
   echo "Theme '$THEME_NAME' does not exist"
   exit 1
 fi
+
+workspace_layouts=$(capture_workspace_layouts)
 
 # Setup clean next theme directory (for atomic theme config swapping)
 rm -rf "$NEXT_THEME_PATH"
@@ -45,6 +61,7 @@ fi
 omarchy-restart-swayosd
 omarchy-restart-terminal
 omarchy-restart-hyprctl
+restore_workspace_layouts "$workspace_layouts"
 omarchy-restart-btop
 omarchy-restart-opencode
 omarchy-restart-mako
