@@ -10,6 +10,9 @@ enable() {
 
 disable() {
   if omarchy-hw-external-monitors; then
+    if hyprctl monitors all -j | jq -e '.[] | select(.mirrorOf | tostring == "0")' > /dev/null; then
+      exit 1
+    fi
     if omarchy-hyprland-toggle-disabled "$TOGGLE"; then
       omarchy-hyprland-toggle --enabled-notification "󰍹    Laptop display disabled" "$TOGGLE"
     fi
