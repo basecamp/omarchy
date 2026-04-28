@@ -96,14 +96,14 @@ case "$MODE" in
 region)
   hyprpicker -r -z >/dev/null 2>&1 &
   PID=$!
-  wait_for_picker || exit 1
+  wait_for_hyprpicker || exit 1
   SELECTION=$(slurp 2>/dev/null)
   ;;
 windows)
   RECTS=$(get_rectangles)
   hyprpicker -r -z >/dev/null 2>&1 &
   PID=$!
-  wait_for_picker || exit 1
+  wait_for_hyprpicker || exit 1
   SELECTION=$(echo "$RECTS" | slurp -r 2>/dev/null)
   ;;
 fullscreen)
@@ -113,7 +113,7 @@ smart | *)
   RECTS=$(get_rectangles)
   hyprpicker -r -z >/dev/null 2>&1 &
   PID=$!
-  wait_for_picker || exit 1
+  wait_for_hyprpicker || exit 1
   SELECTION=$(echo "$RECTS" | slurp 2>/dev/null)
 
   # If the selection area is L * W < 20, we'll assume you were trying to select whichever
