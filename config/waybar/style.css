@@ -1,4 +1,4 @@
-@import "../omarchy/current/theme/waybar.css";
+@import "../omarchy/current/theme/colors.css";
 
 * {
   background-color: @background;
@@ -7,7 +7,7 @@
   border: none;
   border-radius: 0;
   min-height: 0;
-  font-family: 'JetBrainsMono Nerd Font';
+  font-family: "JetBrainsMono Nerd Font";
   font-size: 12px;
 }
 
@@ -98,3 +98,5 @@ tooltip {
 #custom-voxtype.recording {
   color: #a55555;
 }
+
+@import "../omarchy/current/theme/waybar.css";

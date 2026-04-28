@@ -1,22 +1,22 @@
-@import "../omarchy/current/theme/swayosd.css";
+@import "../omarchy/current/theme/colors.css";
 
 window {
   border-radius: 0;
   opacity: 0.97;
-  border: 2px solid @border-color;
+  border: 2px solid @foreground;
 
-  background-color: @background-color;
+  background-color: @background;
 }
 
 label {
   font-family: 'JetBrainsMono Nerd Font';
   font-size: 11pt;
 
-  color: @label;
+  color: @foreground;
 }
 
 image {
-  color: @image;
+  color: @foreground;
 }
 
 progressbar {
@@ -24,5 +24,7 @@ progressbar {
 }
 
 progress {
-  background-color: @progress;
+  background-color: @accent;
 }
+
+@import "../omarchy/current/theme/swayosd.css";
