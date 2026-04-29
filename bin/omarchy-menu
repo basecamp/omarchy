@@ -160,9 +160,9 @@ show_screenrecord_menu() {
 
 show_share_menu() {
   case $(menu "Share" "  Clipboard\n  File \n  Folder") in
-  *Clipboard*) omarchy-cmd-share clipboard ;;
-  *File*) terminal bash -c "omarchy-cmd-share file" ;;
-  *Folder*) terminal bash -c "omarchy-cmd-share folder" ;;
+  *Clipboard*) omarchy-menu-share clipboard ;;
+  *File*) terminal bash -c "omarchy-menu-share file" ;;
+  *Folder*) terminal bash -c "omarchy-menu-share folder" ;;
   *) back_to show_trigger_menu ;;
   esac
 }

@@ -3,7 +3,7 @@
 # Share clipboard, file, or folder using LocalSend. Bound to Super + Ctrl + S by default.
 
 if (($# == 0)); then
-  echo "Usage: omarchy-cmd-share [clipboard|file|folder]"
+  echo "Usage: omarchy-menu-share [clipboard|file|folder]"
   exit 1
 fi
 
