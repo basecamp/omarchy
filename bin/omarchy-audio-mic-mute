@@ -3,9 +3,9 @@
 # Toggle microphone mute. Dell XPS and ThinkPad systems get special handling for the hardware LED.
 
 if omarchy-hw-match "XPS"; then
-  omarchy-cmd-mic-mute-xps
+  omarchy-audio-mic-mute-xps
 elif omarchy-hw-match "ThinkPad"; then
-  omarchy-cmd-mic-mute-thinkpad
+  omarchy-audio-mic-mute-thinkpad
 else
   omarchy-swayosd-client --input-volume mute-toggle
 fi
