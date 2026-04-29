@@ -185,7 +185,7 @@ show_toggle_menu() {
 }
 
 show_hardware_menu() {
-  local options="󰛧  Laptop Display"
+  local options="󰛧  Laptop Display\n 󰍹  Mirror Display"
 
   if omarchy-hw-hybrid-gpu; then
     options="$options\n  Hybrid GPU"
@@ -197,6 +197,7 @@ show_hardware_menu() {
 
   case $(menu "Toggle" "$options") in
   *Laptop*) omarchy-hyprland-monitor-internal toggle ;;
+  *Mirror*) omarchy-hyprland-monitor-internal-mirror toggle;;
   *Touchpad*) omarchy-toggle-touchpad ;;
   *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
   *) back_to show_trigger_menu ;;

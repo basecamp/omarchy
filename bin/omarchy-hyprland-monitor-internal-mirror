@@ -1,0 +1,47 @@
+#!/bin/bash
+
+TOGGLE="internal-monitor-mirror"
+FLAG_SOURCE="$OMARCHY_PATH/default/hypr/toggles/$TOGGLE.conf"
+
+# Get names dynamically
+INTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | contains("eDP")).name' | head -n 1)
+# Get the first available external monitor
+EXTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | contains("eDP") | not).name' | head -n 1)
+
+enable() {
+  if [[ -z "$EXTERNAL" ]]; then
+    notify-send -u low "󰍹    No external monitors found"
+    exit 1
+  fi
+
+  # Write the dynamic rule to the source file before the toggle script copies it
+  echo "monitor=$EXTERNAL, preferred, auto, 1, mirror, $INTERNAL" > "$FLAG_SOURCE"
+  
+  if omarchy-hyprland-toggle-disabled "$TOGGLE"; then
+    omarchy-hyprland-toggle --enabled-notification "󰍹    Mirroring enabled ($EXTERNAL)" "$TOGGLE"
+  fi
+}
+
+disable() {
+  if omarchy-hyprland-toggle-enabled "$TOGGLE"; then
+    omarchy-hyprland-toggle --disabled-notification "󰍹    Extended mode restored" "$TOGGLE"
+  fi
+}
+
+recover() {
+  if [[ -z "$EXTERNAL" ]] && omarchy-hyprland-toggle-enabled "$TOGGLE"; then
+    # If monitor unplugged but flag still exists, remove flag
+    omarchy-hyprland-toggle "$TOGGLE"
+  fi
+}
+
+case "$1" in
+  on) enable ;;
+  off) disable ;;
+  toggle) if omarchy-hyprland-toggle-enabled "$TOGGLE"; then disable; else enable; fi ;;
+  recover) recover ;;
+  *)
+    echo "Usage: $(basename "$0") {on|off|toggle|recover}" >&2
+    exit 1
+    ;;
+esac
