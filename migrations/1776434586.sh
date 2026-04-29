@@ -13,6 +13,13 @@ if [[ ! -f $OBSIDIAN_FLAGS_FILE ]]; then
 # If Obsidian crashes because of GPU acceleration, uncomment:
 # --disable-gpu
 EOF
+elif ! grep -qxF -- "--ozone-platform=wayland" "$OBSIDIAN_FLAGS_FILE" || ! grep -qxF -- "--enable-wayland-ime" "$OBSIDIAN_FLAGS_FILE"; then
+  {
+    echo
+    echo "# Added by Omarchy migration 1776434586: Obsidian launch flags moved from Hyprland binding."
+    grep -qxF -- "--ozone-platform=wayland" "$OBSIDIAN_FLAGS_FILE" || echo "--ozone-platform=wayland"
+    grep -qxF -- "--enable-wayland-ime" "$OBSIDIAN_FLAGS_FILE" || echo "--enable-wayland-ime"
+  } >>"$OBSIDIAN_FLAGS_FILE"
 fi
 
 if [[ -f ~/.config/hypr/bindings.conf ]]; then
