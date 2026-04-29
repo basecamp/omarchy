@@ -1,0 +1,250 @@
+{
+  "Apps": {
+    "Launch Apps": true
+  },
+  "About": {
+    "About Omarchy": true
+  },
+  "Learn": {
+    "Keybindings": true,
+    "Omarchy": true,
+    "Hyprland": true,
+    "Arch": true,
+    "Neovim": true,
+    "Bash": true
+  },
+  "Trigger": {
+    "Capture": {
+      "Screenshot": true,
+      "Screenrecord": {
+        "With no audio": true,
+        "With desktop audio": true,
+        "With desktop + microphone audio": true,
+        "With desktop + microphone audio + webcam": true
+      },
+      "Color": true
+    },
+    "Share": {
+      "Clipboard": true,
+      "File": true,
+      "Folder": true
+    },
+    "Toggle": {
+      "Screensaver": true,
+      "Nightlight": true,
+      "Idle Lock": true,
+      "Top Bar": true,
+      "Workspace Layout": true,
+      "Window Gaps": true,
+      "1-Window Ratio": true,
+      "Display Scaling": true
+    },
+    "Hardware": {
+      "Hybrid GPU": true
+    }
+  },
+  "Style": {
+    "Theme Selector": true,
+    "Font Selector": true,
+    "Background Selector": true,
+    "Hyprland config": true,
+    "Screensaver config": true,
+    "About config": true
+  },
+  "Setup": {
+    "Audio": true,
+    "Wifi": true,
+    "Bluetooth": true,
+    "Power Profile Selector": true,
+    "Monitors": true,
+    "Keybindings config": true,
+    "Key Remapping": true,
+    "Input config": true,
+    "DNS": true,
+    "Security": {
+      "Fingerprint": true,
+      "Fido2": true
+    },
+    "Config": {
+      "Defaults": true,
+      "Hyprland": true,
+      "Hypridle": true,
+      "Hyprlock": true,
+      "Hyprsunset": true,
+      "Swayosd": true,
+      "Walker": true,
+      "Waybar": true,
+      "XCompose": true
+    },
+    "System Sleep": {
+      "Suspend": true,
+      "Hibernate": true
+    }
+  },
+  "Install": {
+    "Package": true,
+    "AUR": true,
+    "Web App": true,
+    "TUI": true,
+    "Windows VM": true,
+    "Service": {
+      "Dropbox": true,
+      "Tailscale": true,
+      "NordVPN": true,
+      "ONCE": true,
+      "Bitwarden": true,
+      "Chromium Account": true
+    },
+    "Style": {
+      "Theme": true,
+      "Background": true,
+      "Font": {
+        "Cascadia Mono": true,
+        "Meslo LG Mono": true,
+        "Fira Code": true,
+        "Victor Code": true,
+        "Bistream Vera Mono": true,
+        "Iosevka": true
+      }
+    },
+    "Editor": {
+      "VSCode": true,
+      "Cursor": true,
+      "Zed": true,
+      "Sublime Text": true,
+      "Helix": true,
+      "Emacs": true
+    },
+    "Terminal": {
+      "Alacritty": true,
+      "Ghostty": true,
+      "Kitty": true
+    },
+    "AI": {
+      "Dictation": true,
+      "LM Studio": true,
+      "Ollama": true,
+      "Crush": true
+    },
+    "Gaming": {
+      "Steam": true,
+      "NVIDIA GeForce NOW": true,
+      "RetroArch": true,
+      "Minecraft": true,
+      "Xbox Controller": true
+    },
+    "Development": {
+      "Ruby on Rails": true,
+      "Docker DB": true,
+      "Go": true,
+      "Python": true,
+      "Zig": true,
+      "Rust": true,
+      "Java": true,
+      ".NET": true,
+      "OCaml": true,
+      "Clojure": true,
+      "Scala": true,
+      "JavaScript": {
+        "Node.js": true,
+        "Bun": true,
+        "Deno": true
+      },
+      "PHP": {
+        "PHP": true,
+        "Laravel": true,
+        "Symfony": true
+      },
+      "Elixir": {
+        "Elixir": true,
+        "Phoenix": true
+      }
+    }
+  },
+  "Remove": {
+    "Package": true,
+    "Web App": true,
+    "TUI": true,
+    "Preinstalls": true,
+    "Dictation": true,
+    "Theme": true,
+    "Windows VM": true,
+    "Fingerprint": true,
+    "Fido2": true,
+    "Development": {
+      "Ruby on Rails": true,
+      "Go": true,
+      "Python": true,
+      "Zig": true,
+      "Rust": true,
+      "Java": true,
+      ".NET": true,
+      "OCaml": true,
+      "Clojure": true,
+      "Scala": true,
+      "JavaScript": {
+        "Node.js": true,
+        "Bun": true,
+        "Deno": true
+      },
+      "PHP": {
+        "PHP": true,
+        "Laravel": true,
+        "Symfony": true
+      },
+      "Elixir": {
+        "Elixir": true,
+        "Phoenix": true
+      }
+    }
+  },
+  "Update": {
+    "Omarchy": true,
+    "Extra Themes": true,
+    "Firmware": true,
+    "Timezone": true,
+    "Time": true,
+    "Channel": {
+      "Stable": true,
+      "RC": true,
+      "Edge": true,
+      "Dev": true
+    },
+    "Process": {
+      "Hypridle": true,
+      "Hyprsunset": true,
+      "Swayosd": true,
+      "Walker": true,
+      "Waybar": true
+    },
+    "Config": {
+      "Hyprland": true,
+      "Hypridle": true,
+      "Hyprlock": true,
+      "Hyprsunset": true,
+      "Plymouth": true,
+      "Swayosd": true,
+      "Tmux": true,
+      "Walker": true,
+      "Waybar": true
+    },
+    "Hardware": {
+      "Audio": true,
+      "Wi-Fi": true,
+      "Bluetooth": true
+    },
+    "Password": {
+      "Drive Encryption": true,
+      "User": true
+    }
+  },
+  "System": {
+    "Screensaver": true,
+    "Lock": true,
+    "Suspend": true,
+    "Hibernate": true,
+    "Logout": true,
+    "Restart": true,
+    "Shutdown": true
+  }
+}
