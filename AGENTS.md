@@ -12,6 +12,7 @@
 All commands start with `omarchy-`. Prefixes indicate purpose:
 
 - `cmd-` - check if commands exist, misc utility commands
+- `capture-` - screenshots, screen recordings, and other capture tools
 - `pkg-` - package management helpers
 - `hw-` - hardware detection (return exit codes for use in conditionals)
 - `refresh-` - copy default config to user's `~/.config/`
