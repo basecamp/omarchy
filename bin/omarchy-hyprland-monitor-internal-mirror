@@ -10,13 +10,18 @@ EXTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | contains("eDP") | n
 
 enable() {
   if [[ -z "$EXTERNAL" ]]; then
-    notify-send -u low "󰍹    No external monitors found"
+    notify-send -u low "󰍹    No external monitors found for mirror"
+    exit 1
+  fi
+
+  if [[ -z "$INTERNAL" ]]; then
+    notify-send -u low "󰍹    No laptop monitor found to mirror"
     exit 1
   fi
 
   # Write the dynamic rule to the source file before the toggle script copies it
   echo "monitor=$EXTERNAL, preferred, auto, 1, mirror, $INTERNAL" > "$FLAG_SOURCE"
-  
+
   if omarchy-hyprland-toggle-disabled "$TOGGLE"; then
     omarchy-hyprland-toggle --enabled-notification "󰍹    Mirroring enabled ($EXTERNAL)" "$TOGGLE"
   fi
