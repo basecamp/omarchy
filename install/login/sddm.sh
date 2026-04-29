@@ -2,16 +2,21 @@
 omarchy-refresh-sddm
 
 # Setup SDDM login service
+sudo mkdir -p /usr/local/share/wayland-sessions
+sudo cp "$OMARCHY_PATH/default/wayland-sessions/omarchy.desktop" /usr/local/share/wayland-sessions/omarchy.desktop
+
 sudo mkdir -p /etc/sddm.conf.d
 if [[ ! -f /etc/sddm.conf.d/autologin.conf ]]; then
   cat <<EOF | sudo tee /etc/sddm.conf.d/autologin.conf
 [Autologin]
 User=$USER
-Session=hyprland-uwsm
+Session=omarchy
 
 [Theme]
 Current=omarchy
 EOF
+else
+  sudo sed -i 's/^Session=hyprland-uwsm$/Session=omarchy/' /etc/sddm.conf.d/autologin.conf
 fi
 
 # Prevent password-based SDDM logins from creating an encrypted login keyring
