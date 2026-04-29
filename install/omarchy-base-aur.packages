@@ -1,0 +1,29 @@
+# AUR packages
+# Installed via omarchy-aur-install (with GitHub mirror fallback)
+
+# Hyprland ecosystem tools (work with both hyprland and hyprland-git)
+hyprshade
+aether
+
+claude-code
+elephant
+elephant-bluetooth
+elephant-calc
+elephant-clipboard
+elephant-desktopapplications
+elephant-files
+elephant-menus
+elephant-providerlist
+elephant-runner
+elephant-symbols
+elephant-todo
+elephant-unicode
+elephant-websearch
+opencode
+python-terminaltexteffects
+ttf-ia-writer
+typora
+tzupdate
+ufw-docker
+xdg-terminal-exec
+yaru-icon-theme
