@@ -63,8 +63,7 @@ get_rectangles() {
   hyprctl clients -j | jq -r --arg ws "$active_workspace" '.[] | select(.workspace.id == ($ws | tonumber)) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
 }
 
-# Checks if hyperpicker has frozen the layer
-# by cehcking for the layer and if its frozen
+# Checks if hyperpicker has frozen the layer, ie the layer exists
 wait_for_hyprpicker() {
   local timeout=20
   local count=0
@@ -78,9 +77,6 @@ wait_for_hyprpicker() {
     fi
   done
 
-  if timeout 0.2s hyprpicker -r -z >/dev/null 2>&1; then
-    return 1
-  fi
   return 0
 }
 
