@@ -168,7 +168,7 @@ show_share_menu() {
 }
 
 show_toggle_menu() {
-  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n  Direct Boot"
+  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n  Direct Boot\n󰟵  Passwordless Sudo"
 
   case $(menu "Toggle" "$options") in
   *Screensaver*) omarchy-toggle-screensaver ;;
@@ -180,6 +180,7 @@ show_toggle_menu() {
   *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
   *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
   *"Direct Boot"*) present_terminal omarchy-config-direct-boot ;;
+  *"Passwordless Sudo"*) present_terminal omarchy-sudo-passwordless ;;
   *) back_to show_trigger_menu ;;
   esac
 }
