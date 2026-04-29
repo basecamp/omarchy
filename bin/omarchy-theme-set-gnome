@@ -1,12 +1,29 @@
 #!/bin/bash
 
-# Change gnome modes
+# Sync GTK3 with GTK4 theme colors
+gtk4_css="$HOME/.config/gtk-4.0/gtk.css"
+gtk3_dir="$HOME/.config/gtk-3.0"
+
+if [[ -f $gtk4_css ]]; then
+  mkdir -p "$gtk3_dir"
+  cp -f "$gtk4_css" "$gtk3_dir/gtk.css"
+fi
+
+# Change gnome modes, preferring adw-gtk3 for GTK3/GTK4 consistency
 if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
   gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
-  gsettings set org.gnome.desktop.interface gtk-theme "Adwaita"
+  if omarchy-pkg-present adw-gtk3; then
+    gsettings set org.gnome.desktop.interface gtk-theme "adw-gtk3"
+  else
+    gsettings set org.gnome.desktop.interface gtk-theme "Adwaita"
+  fi
 else
   gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"
-  gsettings set org.gnome.desktop.interface gtk-theme "Adwaita-dark"
+  if omarchy-pkg-present adw-gtk3; then
+    gsettings set org.gnome.desktop.interface gtk-theme "adw-gtk3-dark"
+  else
+    gsettings set org.gnome.desktop.interface gtk-theme "Adwaita-dark"
+  fi
 fi
 
 # Change gnome icon theme color
