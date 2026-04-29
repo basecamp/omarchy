@@ -1,0 +1,10 @@
+#!/bin/bash
+
+if systemctl --user is-enabled --quiet omarchy-bg-cycle.timer; then
+  systemctl --user disable --now omarchy-bg-cycle.timer
+  notify-send -u low "󰑓  Background cycling disabled"
+else
+  systemctl --user daemon-reload
+  systemctl --user enable --now omarchy-bg-cycle.timer
+  notify-send -u low "󰑓  Background cycling enabled (hourly)"
+fi
