@@ -308,7 +308,7 @@ omarchy-font-set <name>         # Change font
 omarchy-update                  # Full system update
 omarchy-version                 # Show Omarchy version
 omarchy-debug --no-sudo --print # Debug info (ALWAYS use these flags)
-omarchy-lock-screen             # Lock screen
+omarchy-system-lock             # Lock screen
 omarchy-system-shutdown         # Shutdown
 omarchy-system-reboot           # Reboot
 ```
