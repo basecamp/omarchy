@@ -38,8 +38,7 @@ disable() {
 }
 
 recover() {
-  if [[ -z "$EXTERNAL" ]] && omarchy-hyprland-toggle-enabled "$TOGGLE"; then
-    # If monitor unplugged but flag still exists, remove flag
+  if ! omarchy-hw-external-monitors && omarchy-hyprland-toggle-enabled "$TOGGLE"; then
     omarchy-hyprland-toggle "$TOGGLE"
   fi
 }
