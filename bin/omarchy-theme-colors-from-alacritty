@@ -7,7 +7,7 @@ COLORS_OUTPUT="$THEME_SOURCE/colors.toml"
 ALACRITTY_FILE="$THEME_SOURCE/alacritty.toml"
 
 if [[ -z $THEME_SOURCE ]]; then
-  echo "Usage: omarchy-theme-regenerate-colors-from-alacritty <theme-dir>" >&2
+  echo "Usage: omarchy-theme-colors-from-alacritty <theme-dir>" >&2
   exit 1
 fi
 

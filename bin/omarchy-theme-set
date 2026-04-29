@@ -27,7 +27,7 @@ cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
 
 # Generate colors.toml from alacritty.toml if theme is missing colors.toml
 if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]; then
-  omarchy-theme-regenerate-colors-from-alacritty "$NEXT_THEME_PATH"
+  omarchy-theme-colors-from-alacritty "$NEXT_THEME_PATH"
 fi
 
 # Generate dynamic configs
