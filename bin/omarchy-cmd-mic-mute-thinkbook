@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Toggle microphone mute on ThinkPad systems. Uses wpctl for reliable toggling
+# Toggle microphone mute on ThinkBook systems. Uses wpctl for reliable toggling
 # (swayosd-server on some systems does not propagate input-volume mute-toggle
 # to WirePlumber). Syncs the platform::micmute LED, then fires swayosd's native
 # input-volume OSD via +0 so the mic-level progress bar is preserved.
