@@ -108,7 +108,7 @@ cat $(which omarchy-theme-set)
 | `omarchy-theme-*` | Theme management | `omarchy-theme-set <name>` |
 | `omarchy-install-*` | Install optional software | `omarchy-install-docker-dbs` |
 | `omarchy-launch-*` | Launch apps | `omarchy-launch-browser` |
-| `omarchy-cmd-*` | System commands | `omarchy-cmd-screenshot` |
+| `omarchy-capture-*` | Screenshots and recordings | `omarchy-capture-screenshot` |
 | `omarchy-pkg-*` | Package management | `omarchy-pkg-install <pkg>` |
 | `omarchy-setup-*` | Initial setup tasks | `omarchy-setup-fingerprint` |
 | `omarchy-update-*` | System updates | `omarchy-update` |
@@ -308,7 +308,7 @@ omarchy-font-set <name>         # Change font
 omarchy-update                  # Full system update
 omarchy-version                 # Show Omarchy version
 omarchy-debug --no-sudo --print # Debug info (ALWAYS use these flags)
-omarchy-lock-screen             # Lock screen
+omarchy-system-lock             # Lock screen
 omarchy-system-shutdown         # Shutdown
 omarchy-system-reboot           # Reboot
 ```
