@@ -1,6 +1,7 @@
 #!/bin/bash
 
 TOGGLE="internal-monitor-disable"
+MIRROR_TOGGLE="internal-monitor-mirror"
 
 enable() {
   if omarchy-hyprland-toggle-enabled "$TOGGLE"; then
@@ -10,7 +11,7 @@ enable() {
 
 disable() {
   if omarchy-hw-external-monitors; then
-    if omarchy-hyprland-toggle-disabled "$TOGGLE"; then
+    if omarchy-hyprland-toggle-disabled "$TOGGLE" && omarchy-hyprland-toggle-disabled "$MIRROR_TOGGLE"; then
       omarchy-hyprland-toggle --enabled-notification "󰍹    Laptop display disabled" "$TOGGLE"
     fi
   else
