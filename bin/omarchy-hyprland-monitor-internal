@@ -3,6 +3,8 @@
 TOGGLE="internal-monitor-disable"
 TOUCHPAD_DISABLED="$HOME/.local/state/omarchy/toggles/hypr/touchpad-disabled.conf"
 
+# Some laptops leave the touchpad disabled after lid-close monitor toggling.
+# Restore it on lid-open/recovery unless Omarchy explicitly disabled it.
 restore_touchpad() {
   local device
 
