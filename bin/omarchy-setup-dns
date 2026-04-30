@@ -1,14 +1,11 @@
 #!/bin/bash
-
 lock_dns_to_resolved() {
   for file in /etc/systemd/network/*.network; do
     [[ -f $file ]] || continue
     if ! grep -q "^\[DHCPv4\]" "$file"; then continue; fi
-
     if ! sed -n '/^\[DHCPv4\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
       sudo sed -i '/^\[DHCPv4\]/a UseDNS=no' "$file"
     fi
-
     if grep -q "^\[IPv6AcceptRA\]" "$file" && ! sed -n '/^\[IPv6AcceptRA\]/,/^\[/p' "$file" | grep -q "^UseDNS="; then
       sudo sed -i '/^\[IPv6AcceptRA\]/a UseDNS=no' "$file"
     fi
@@ -23,8 +20,52 @@ unlock_dns_to_dhcp() {
   done
 }
 
+show_current_dns() {
+  local configured
+configured=$(resolvectl dns 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+
+  local dot_status
+  dot_status=$(grep -i "^DNSOverTLS=" /etc/systemd/resolved.conf 2>/dev/null \
+    | cut -d= -f2 | tr '[:upper:]' '[:lower:]')
+
+  # Only relevant in DHCP mode — when Global is empty, interface DNS is active
+  local override
+  if [[ -z "$configured" ]]; then
+    override=$(resolvectl dns 2>/dev/null \
+      | grep '^Link' \
+      | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' \
+      | head -1)
+  fi
+
+  local label
+  case "$configured" in
+    1.1.1.1|1.0.0.1) label="Cloudflare ($configured)" ;;
+    8.8.8.8|8.8.4.4) label="Google ($configured)" ;;
+    "")              label="DHCP" ;;
+    *)               label="Custom ($configured)" ;;
+  esac
+
+  local dot_label=""
+  [[ "$dot_status" == "opportunistic" ]] && dot_label=" · DoT: opportunistic"
+  [[ "$dot_status" == "yes" ]]           && dot_label=" · DoT: strict"
+  [[ "$dot_status" == "no" ]]            && dot_label=" · DoT: off"
+
+  local vpn_label=""
+  if [[ -n "$override" ]]; then
+    vpn_label=" $(gum style --foreground 214 "(via interface: $override)")"
+  fi
+
+  gum style \
+    --border rounded --border-foreground 240 \
+    --padding "0 1" --margin "0 0 1 0" \
+    "Current DNS: $(gum style --foreground 212 "$label")${dot_label}${vpn_label}"
+}
+
 if [[ -z $1 ]]; then
-  dns=$(gum choose --height 6 --header "Select DNS provider" Cloudflare Google DHCP Custom)
+  show_current_dns
+  dns=$(gum choose --height 7 --header "Select DNS provider (Esc to quit)" \
+    Cloudflare Google DHCP Custom Quit)
+  [[ -z "$dns" || "$dns" == "Quit" ]] && exit 0
 else
   dns=$1
 fi
@@ -39,7 +80,6 @@ DNSOverTLS=opportunistic
 EOF
   lock_dns_to_resolved
   ;;
-
 Google)
   sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
@@ -49,7 +89,6 @@ DNSOverTLS=opportunistic
 EOF
   lock_dns_to_resolved
   ;;
-
 DHCP)
   sudo tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
@@ -57,16 +96,13 @@ DNSOverTLS=no
 EOF
   unlock_dns_to_dhcp
   ;;
-
 Custom)
   echo "Enter your DNS servers (space-separated, e.g. '192.168.1.1 1.1.1.1'):"
   read -r dns_servers
-
   if [[ -z $dns_servers ]]; then
     echo "Error: No DNS servers provided."
     exit 1
   fi
-
   sudo tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
 DNS=$dns_servers
@@ -77,3 +113,5 @@ EOF
 esac
 
 sudo systemctl restart systemd-networkd systemd-resolved
+echo
+show_current_dns
