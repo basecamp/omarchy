@@ -100,6 +100,29 @@ else
 
   # Install required packages
   print_info "Installing required packages..."
+
+  # ASUS ExpertBook B9406CAA ships a FocalTech FT9349 ESS reader (USB
+  # 2808:a97a). Mainline libfprint at 1.94.x lacks the focaltech_moc
+  # driver (and its 0xa97a id_table entry); OPR ships libfprint-git
+  # which carries both. Once upstream catches up, this branch is a
+  # no-op and `libfprint-git` provides=libfprint anyway. Detect via
+  # /sys to avoid depending on usbutils being installed first.
+  for v in /sys/bus/usb/devices/*/idVendor; do
+    [[ "$(cat "$v" 2>/dev/null)" == "2808" ]] || continue
+    [[ "$(cat "${v%idVendor}idProduct" 2>/dev/null)" == "a97a" ]] || continue
+    print_info "FocalTech FT9349 detected (B9406CAA) — using libfprint-git from OPR..."
+    # libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
+    # defaults the conflict prompt to N and aborts. Pre-remove libfprint
+    # with -Rdd so the install goes silent. -Rdd (not omarchy-pkg-drop's
+    # -Rns) is required because fprintd requires libfprint; the dep is
+    # re-satisfied immediately by libfprint-git's provides=libfprint.
+    if omarchy-pkg-present libfprint; then
+      sudo pacman -Rdd --noconfirm libfprint
+    fi
+    omarchy-pkg-add libfprint-git
+    break
+  done
+
   omarchy-pkg-add fprintd usbutils
 
   if ! check_fingerprint_hardware; then
