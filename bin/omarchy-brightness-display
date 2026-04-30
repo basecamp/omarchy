@@ -17,5 +17,8 @@ done
 # Set the actual brightness of the display device.
 brightnessctl -d "$device" set "$step" >/dev/null
 
+# Prevent brightness from dropping to 0 - on OLED displays this turns the screen completely off
+[[ $(brightnessctl -d "$device" get) -eq 0 ]] && brightnessctl -d "$device" set 1 >/dev/null
+
 # Use SwayOSD to display the new brightness setting.
 omarchy-swayosd-brightness "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"
