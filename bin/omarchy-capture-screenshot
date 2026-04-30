@@ -14,7 +14,7 @@ fi
 
 killed=0
 pkill -x slurp && killed=1
-pkill -x hyprpicker && killed=1
+pkill -f '(^|/)hyprpicker -r -z$' && killed=1
 (( killed )) && exit 0
 
 SCREENSHOT_EDITOR="${OMARCHY_SCREENSHOT_EDITOR:-satty}"
