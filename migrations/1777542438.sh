@@ -10,5 +10,5 @@ if (( ${#elephant_packages[@]} > 0 )); then
   sudo pacman -Rns --noconfirm "${elephant_packages[@]}"
 fi
 
-omarchy-pkg-add walker elephant elephant-all
+omarchy-pkg-add elephant-all
 omarchy-restart-walker
