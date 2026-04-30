@@ -191,7 +191,7 @@ prioritize_entries() {
     if (match(line, /Clipboard/))  prio = 17
     if (match(line, /Audio controls/))  prio = 18
     if (match(line, /Bluetooth controls/))  prio = 19
-    if (match(line, /Wifi controls/))  prio = 20
+    if (match(line, /Network controls/))  prio = 20
     if (match(line, /Emoji picker/))  prio = 21
     if (match(line, /Color picker/))  prio = 22
     if (match(line, /Screenshot/))  prio = 23

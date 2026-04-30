@@ -1,7 +1,14 @@
 #!/bin/bash
 
-# Launch the Omarchy wifi controls (provided by the Impala TUI).
-# Attempts to unblock the wifi service first in case it should be been blocked.
+# Launch the Omarchy network controls through nettui.
+#
+# Omarchy exposes a single network entry point for both Wi-Fi and Ethernet.
+# Unblock Wi-Fi first in case the radio was soft-blocked.
+
+if ! command -v nettui >/dev/null 2>&1; then
+  notify-send "󰤮    nettui Not Installed" "Install the nettui package to open Omarchy network controls." -u critical -t 5000
+  exit 1
+fi
 
 rfkill unblock wifi
-omarchy-launch-or-focus-tui impala
+exec omarchy-launch-or-focus-tui nettui
