@@ -27,6 +27,7 @@ docker-compose
 dosfstools
 dotnet-runtime-9.0
 dust
+elephant-all
 evince
 exfatprogs
 expac
@@ -92,7 +93,6 @@ nvim
 obs-studio
 obsidian
 omarchy-nvim
-omarchy-walker
 pamixer
 pinta
 playerctl
@@ -132,6 +132,7 @@ ufw-docker
 unzip
 usage
 uwsm
+walker
 waybar
 whois
 wireless-regdb
