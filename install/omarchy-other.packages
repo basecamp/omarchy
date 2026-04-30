@@ -16,7 +16,6 @@ htop
 intltool
 jdk-openjdk
 libpulse
-libsass
 intel-ipu7-camera
 intel-lpmd
 intel-media-driver
@@ -43,7 +42,6 @@ pipewire-alsa
 pipewire-jack
 pipewire-pulse
 qt6-wayland
-sassc
 snapper
 thermald
 webp-pixbuf-loader
