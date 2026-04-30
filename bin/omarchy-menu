@@ -2,8 +2,6 @@
 
 # Launch the Omarchy Menu or takes a parameter to jump straight to a submenu.
 
-export PATH="$HOME/.local/share/omarchy/bin:$PATH"
-
 # Set to true when going directly to a submenu, so we can exit directly
 BACK_TO_EXIT=false
 
@@ -106,7 +104,7 @@ show_trigger_menu() {
 
 show_capture_menu() {
   case $(menu "Capture" "  Screenshot\n  Screenrecord\n󰃉  Color") in
-  *Screenshot*) omarchy-cmd-screenshot ;;
+  *Screenshot*) omarchy-capture-screenshot ;;
   *Screenrecord*) show_screenrecord_menu ;;
   *Color*) pkill hyprpicker || hyprpicker -a ;;
   *) back_to show_trigger_menu ;;
@@ -141,18 +139,18 @@ show_webcam_select_menu() {
 }
 
 show_screenrecord_menu() {
-  omarchy-cmd-screenrecord --stop-recording && exit 0
+  omarchy-capture-screencording --stop-recording && exit 0
 
   case $(menu "Screenrecord" "  With no audio\n  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam") in
-  *"With no audio") omarchy-cmd-screenrecord ;;
-  *"With desktop audio") omarchy-cmd-screenrecord --with-desktop-audio ;;
-  *"With desktop + microphone audio") omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio ;;
+  *"With no audio") omarchy-capture-screencording ;;
+  *"With desktop audio") omarchy-capture-screencording --with-desktop-audio ;;
+  *"With desktop + microphone audio") omarchy-capture-screencording --with-desktop-audio --with-microphone-audio ;;
   *"With desktop + microphone audio + webcam")
     local device=$(show_webcam_select_menu) || {
       back_to show_capture_menu
       return
     }
-    omarchy-cmd-screenrecord --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device"
+    omarchy-capture-screencording --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device"
     ;;
   *) back_to show_capture_menu ;;
   esac
@@ -160,15 +158,15 @@ show_screenrecord_menu() {
 
 show_share_menu() {
   case $(menu "Share" "  Clipboard\n  File \n  Folder") in
-  *Clipboard*) omarchy-cmd-share clipboard ;;
-  *File*) terminal bash -c "omarchy-cmd-share file" ;;
-  *Folder*) terminal bash -c "omarchy-cmd-share folder" ;;
+  *Clipboard*) omarchy-menu-share clipboard ;;
+  *File*) terminal bash -c "omarchy-menu-share file" ;;
+  *Folder*) terminal bash -c "omarchy-menu-share folder" ;;
   *) back_to show_trigger_menu ;;
   esac
 }
 
 show_toggle_menu() {
-  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n"
+  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n  Direct Boot\n󰟵  Passwordless Sudo"
 
   case $(menu "Toggle" "$options") in
   *Screensaver*) omarchy-toggle-screensaver ;;
@@ -179,12 +177,14 @@ show_toggle_menu() {
   *Ratio*) omarchy-hyprland-window-single-square-aspect-toggle ;;
   *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
   *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
+  *"Direct Boot"*) present_terminal omarchy-config-direct-boot ;;
+  *"Passwordless Sudo"*) present_terminal omarchy-sudo-passwordless ;;
   *) back_to show_trigger_menu ;;
   esac
 }
 
 show_hardware_menu() {
-  local options="󰛧  Laptop Display"
+  local options="󰛧  Laptop Display\n 󰍹  Mirror Display"
 
   if omarchy-hw-hybrid-gpu; then
     options="$options\n  Hybrid GPU"
@@ -196,6 +196,7 @@ show_hardware_menu() {
 
   case $(menu "Toggle" "$options") in
   *Laptop*) omarchy-hyprland-monitor-internal toggle ;;
+  *Mirror*) omarchy-hyprland-monitor-internal-mirror toggle;;
   *Touchpad*) omarchy-toggle-touchpad ;;
   *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
   *) back_to show_trigger_menu ;;
@@ -203,8 +204,9 @@ show_hardware_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
+  *Unlock*) omarchy-launch-walker -m menus:omarchyunlocks --width 800 --minheight 400 ;;
   *Font*) show_font_menu ;;
   *Background*) show_background_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
@@ -362,8 +364,8 @@ show_install_terminal_menu() {
 
 show_install_ai_menu() {
   ollama_pkg=$(
-    (command -v nvidia-smi &>/dev/null && echo ollama-cuda) ||
-      (command -v rocminfo &>/dev/null && echo ollama-rocm) ||
+    (omarchy-cmd-present nvidia-smi && echo ollama-cuda) ||
+      (omarchy-cmd-present rocminfo && echo ollama-rocm) ||
       echo ollama
   )
 
@@ -597,7 +599,7 @@ show_system_menu() {
 
   case $(menu "System" "$options") in
   *Screensaver*) omarchy-launch-screensaver force ;;
-  *Lock*) omarchy-lock-screen ;;
+  *Lock*) omarchy-system-lock ;;
   *Suspend*) systemctl suspend ;;
   *Hibernate*) systemctl hibernate ;;
   *Logout*) omarchy-system-logout ;;
