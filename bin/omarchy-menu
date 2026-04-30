@@ -2,8 +2,6 @@
 
 # Launch the Omarchy Menu or takes a parameter to jump straight to a submenu.
 
-export PATH="$HOME/.local/share/omarchy/bin:$PATH"
-
 # Set to true when going directly to a submenu, so we can exit directly
 BACK_TO_EXIT=false
 
