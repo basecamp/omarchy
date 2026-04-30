@@ -1,9 +1,9 @@
-# Enable Flexible Return and Event Delivery on Intel Panther Lake.
+# Enable Flexible Return and Event Delivery on Dell XPS Panther Lake systems.
 
 DROP_IN="/etc/limine-entry-tool.d/intel-panther-lake-fred.conf"
 DEFAULT_LIMINE="/etc/default/limine"
 
-if omarchy-hw-intel-ptl; then
+if omarchy-hw-match "XPS" && omarchy-hw-intel-ptl; then
   if [[ ! -f $DROP_IN ]] || ! grep -q 'fred=on' "$DROP_IN"; then
     sudo mkdir -p /etc/limine-entry-tool.d
     cat <<EOF | sudo tee "$DROP_IN" >/dev/null
