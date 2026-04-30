@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Install Helix and configure it to use the current Omarchy theme.
+
+CONFIG_FILE="$HOME/.config/helix/config.toml"
+CONFIG_TEXT='theme = "base16_transparent" # Set by Omarchy install. Base16 theme makes Helix use terminal colors.'
+
+echo "Installing Helix..."
+omarchy-pkg-add helix
+
+mkdir -p $HOME/.config/helix
+
+if [[ -f $CONFIG_FILE ]]; then
+  sed -i -E "/^[[:space:]]*theme[[:space:]]*=[[:space:]]*\"/c\\
+  $CONFIG_TEXT" "$CONFIG_FILE"
+else
+  printf $CONFIG_TEXT > $CONFIG_FILE
+fi
+
+# Force reload config if any Helix instance is running
+pkill -USR1 helix
