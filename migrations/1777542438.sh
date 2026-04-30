@@ -3,5 +3,5 @@ echo "Replace coterie of individual Elephant packages with the single elephant-a
 if omarchy-pkg-present omarchy-walker; then
   omarchy-pkg-drop omarchy-walker
   omarchy-pkg-add walker elephant-all
-  omarchy-restart-walker
+  omarchy-refresh-walker
 fi
