@@ -12,8 +12,6 @@ egl-wayland
 git
 gst-plugin-pipewire
 gtk4-layer-shell
-htop
-intltool
 jdk-openjdk
 libpulse
 intel-ipu7-camera
@@ -45,7 +43,6 @@ qt6-wayland
 snapper
 thermald
 webp-pixbuf-loader
-wget
 yay-debug
 tuxedo-drivers-nocompatcheck-dkms
 yt6801-dkms
