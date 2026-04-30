@@ -1,6 +1,4 @@
 if command -v limine &>/dev/null; then
-  sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
-
   sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
 HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt filesystems fsck btrfs-overlayfs)
 EOF
@@ -29,6 +27,10 @@ EOF
 
   CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
+  # Write /etc/default/limine *before* installing limine-mkinitcpio-hook, whose
+  # post-transaction deploy hook runs limine-install and reads this file. Without
+  # it, ESP_PATH falls back to bootctl, which in a chroot prints a warning that
+  # gets captured as the path and trips a spurious "invalid ESP" error.
   sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
   sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
 
@@ -42,13 +44,16 @@ EOF
     sudo sed -i '/^ENABLE_UKI=/d; /^ENABLE_LIMINE_FALLBACK=/d' /etc/default/limine
   fi
 
-  # Remove the original config file if it's not /boot/limine.conf
+  # Remove the original config file if it's not /boot/limine.conf, so the deploy
+  # hook doesn't see conflicting configs on the same ESP.
   if [[ $limine_config != "/boot/limine.conf" ]] && [[ -f $limine_config ]]; then
     sudo rm "$limine_config"
   fi
 
   # We overwrite the whole thing knowing the limine-update will add the entries for us
   sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
+
+  sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
 
   # Only snapshot root — /home is user data; rolling it back loses user work
   if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
