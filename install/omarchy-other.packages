@@ -7,7 +7,6 @@ base
 base-devel
 broadcom-wl
 btrfs-progs
-dart
 dkms
 egl-wayland
 git
