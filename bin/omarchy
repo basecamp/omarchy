@@ -486,7 +486,7 @@ Common commands:
   omarchy theme list          List available themes
   omarchy theme set <name>    Apply a theme
   omarchy font list           List available fonts
-  omarchy screenshot          Take a screenshot
+  omarchy capture screenshot  Take a screenshot
   omarchy debug               Print debugging information
 
 Groups:
