@@ -55,6 +55,8 @@ run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-audio-mixer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-mic.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-z13-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-zenbook-camera.sh
+run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-zenbook-fan-profile.sh
+
 
 run_logged $OMARCHY_INSTALL/config/hardware/framework/fix-f13-amd-audio-input.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework/qmk-hid.sh

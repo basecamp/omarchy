@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Quite a Number of Asus Zenbook machines have hotkey for toggling fan profiles (XF86Fn_F)
+# Cycle fan profile : quiet → balanced → performance → quiet
+# Writes directly to /sys/firmware/acpi/platform_profile via sudo
+# Shows swayosd notification with current profile status
+
+current=$(cat /sys/firmware/acpi/platform_profile)
+
+case "$current" in
+  quiet)       next="balanced";    label="Balanced";     icon="power-profile-balanced-symbolic" ;;
+  balanced)    next="performance"; label="Performance";  icon="power-profile-performance-symbolic" ;;
+  performance) next="quiet";       label="Quiet";        icon="power-profile-power-saver-symbolic" ;;
+  *)           next="balanced";    label="Balanced";     icon="power-profile-balanced-symbolic" ;;
+esac
+
+echo "$next" | sudo tee /sys/firmware/acpi/platform_profile >/dev/null
+
+omarchy-swayosd-client \
+  --custom-message "Fan: $label" \
+  --custom-icon "$icon"
