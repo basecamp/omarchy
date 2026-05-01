@@ -41,3 +41,5 @@ for APP_NAME in "${APP_NAMES[@]}"; do
   rm -f "$ICON_DIR/$APP_NAME.png"
   echo "Removed $APP_NAME"
 done
+
+omarchy-restart-walker

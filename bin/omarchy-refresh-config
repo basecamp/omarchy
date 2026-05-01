@@ -22,6 +22,8 @@ user_config_file="${HOME}/.config/$config_file"
 default_config_file="${HOME}/.local/share/omarchy/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
 
+mkdir -p "$(dirname "$user_config_file")"
+
 if [[ -f $user_config_file ]]; then
   # Create preliminary backup
   cp -f "$user_config_file" "$backup_config_file" 2>/dev/null
