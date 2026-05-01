@@ -2,7 +2,7 @@
 
 CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
 
-if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
+if omarchy-cmd-present chromium || omarchy-cmd-present brave || omarchy-cmd-present brave-origin-beta; then
   if [[ -f $CHROMIUM_THEME ]]; then
     THEME_RGB_COLOR=$(<$CHROMIUM_THEME)
     THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${THEME_RGB_COLOR//,/ })
@@ -17,8 +17,12 @@ if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
     pgrep -x chromium >/dev/null && chromium --refresh-platform-policy --no-startup-window &>/dev/null
   fi
 
-  if omarchy-cmd-present brave; then
+  # Brave and Brave Origin Beta share /etc/brave/policies, so a single write covers both
+  if omarchy-cmd-present brave || omarchy-cmd-present brave-origin-beta; then
     echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
-    pgrep -x brave >/dev/null && brave --refresh-platform-policy --no-startup-window &>/dev/null
+    if pgrep -x brave >/dev/null; then
+      omarchy-cmd-present brave && brave --refresh-platform-policy --no-startup-window &>/dev/null
+      omarchy-cmd-present brave-origin-beta && brave-origin-beta --refresh-platform-policy --no-startup-window &>/dev/null
+    fi
   fi
 fi
