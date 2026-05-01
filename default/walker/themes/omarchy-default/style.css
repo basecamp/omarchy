@@ -119,3 +119,27 @@ child:selected {
 .preview {
 }
 
+.todo .item-subtext {
+  color: alpha(@text, 0.5);
+  font-size: 12px;
+}
+
+.todo.active .item-text,
+.todo.active .item-subtext {
+  font-style: italic;
+}
+
+.todo.critical .item-text,
+.todo.urgent .item-text {
+  text-decoration: underline;
+}
+
+.todo.done .item-text,
+.todo.done .item-subtext {
+  color: alpha(@text, 0.5);
+  text-decoration: line-through;
+}
+
+child:selected .todo * {
+  color: @selected-text;
+}
