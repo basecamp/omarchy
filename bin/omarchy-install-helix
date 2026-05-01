@@ -22,4 +22,7 @@ if [[ ! -e ~/.config/omarchy/current/theme/helix.toml ]]; then
   omarchy-theme-refresh
 fi
 
-echo -e "\nArch-based distros ship Helix as 'helix' rather than the upstream 'hx'. Alias 'hx' to 'helix' in your shell configuration if you prefer the shorter command."
+# Arch-based distros ship Helix as 'helix' rather than the upstream 'hx'.
+if ! grep -q '^alias hx="helix"' ~/.bashrc 2>/dev/null; then
+  echo 'alias hx="helix"' >>~/.bashrc
+fi
