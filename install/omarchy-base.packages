@@ -1,22 +1,22 @@
 # Omarchy core package list installed via install/packaging/base.sh
 # This file is also used by the ISO builder when determining needs
 
-1password-beta
-1password-cli
 aether
 alacritty
 alsa-utils
 asdcontrol
 avahi
+audacity
 bash-completion
 bat
+bitwarden
+bitwarden-cli
 bluetui
 bolt
 brightnessctl
 btop
 chromium
 clang
-claude-code
 cups
 cups-browsed
 cups-filters
@@ -24,7 +24,6 @@ cups-pdf
 docker
 docker-buildx
 docker-compose
-dotnet-runtime-9.0
 dust
 evince
 exfatprogs
@@ -42,6 +41,8 @@ github-cli
 gnome-calculator
 gnome-keyring
 gnome-themes-extra
+gnome-disk-utility
+go
 grim
 gpu-screen-recorder
 gum
@@ -82,7 +83,6 @@ mise
 mpv
 nautilus
 nautilus-python
-gnome-disk-utility
 noto-fonts
 noto-fonts-cjk
 noto-fonts-emoji
@@ -100,6 +100,7 @@ plymouth
 polkit-gnome
 postgresql-libs
 power-profiles-daemon
+python
 python-gobject
 python-poetry-core
 python-terminaltexteffects
@@ -109,7 +110,6 @@ ruby
 rust
 satty
 sddm
-signal-desktop
 slurp
 spotify
 socat
@@ -118,22 +118,24 @@ sushi
 swaybg
 swayosd
 system-config-printer
+tailscale
 tldr
 tree-sitter-cli
 tmux
 tobi-try
 ttf-ia-writer
 ttf-jetbrains-mono-nerd
-typora
 tzupdate
 ufw
 ufw-docker
 unzip
 usage
 uwsm
+visual-studio-code-bin
 waybar
 whois
 wireless-regdb
+wireshark-qt
 wiremix
 wireplumber
 wl-clipboard

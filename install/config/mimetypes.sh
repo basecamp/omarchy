@@ -37,9 +37,6 @@ xdg-mime default mpv.desktop video/x-ogm+ogg
 xdg-mime default mpv.desktop video/x-theora+ogg
 xdg-mime default mpv.desktop application/ogg
 
-# Use Hey for mailto: links
-xdg-mime default HEY.desktop x-scheme-handler/mailto
-
 # Open text files with nvim
 xdg-mime default nvim.desktop text/plain
 xdg-mime default nvim.desktop text/english

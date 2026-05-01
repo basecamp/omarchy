@@ -13,6 +13,9 @@ run_logged $OMARCHY_INSTALL/config/xcompose.sh
 run_logged $OMARCHY_INSTALL/config/mise-work.sh
 run_logged $OMARCHY_INSTALL/config/fix-powerprofilesctl-shebang.sh
 run_logged $OMARCHY_INSTALL/config/docker.sh
+run_logged $OMARCHY_INSTALL/config/tailscale.sh
+run_logged $OMARCHY_INSTALL/config/vscode.sh
+run_logged $OMARCHY_INSTALL/config/wireshark.sh
 run_logged $OMARCHY_INSTALL/config/mimetypes.sh
 run_logged $OMARCHY_INSTALL/config/nautilus-python.sh
 run_logged $OMARCHY_INSTALL/config/localdb.sh
