@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# omarchy:summary=Configure the Dell XPS haptic touchpad intensity.
+# omarchy:args=[0-100]
+# omarchy:requires-sudo=true
+
+CONFIG_PATH="$HOME/.config/omarchy/dell-haptic.conf"
+DEFAULT_INTENSITY=90
+
+read_current_intensity() {
+  local line=""
+  local value=""
+
+  [[ -f $CONFIG_PATH ]] || {
+    printf '%s\n' "$DEFAULT_INTENSITY"
+    return 0
+  }
+
+  while IFS= read -r line; do
+    line=${line#${line%%[![:space:]]*}}
+    line=${line%${line##*[![:space:]]}}
+    [[ -z $line || ${line:0:1} == "#" || $line != *=* ]] && continue
+
+    if [[ ${line%%=*} == "INTENSITY" ]]; then
+      value=${line#*=}
+      value=${value#${value%%[![:space:]]*}}
+      value=${value%${value##*[![:space:]]}}
+
+      if [[ $value =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$value"
+        return 0
+      fi
+    fi
+  done < "$CONFIG_PATH"
+
+  printf '%s\n' "$DEFAULT_INTENSITY"
+}
+
+validate_intensity() {
+  local value=$1
+
+  if ! [[ $value =~ ^[0-9]+$ ]] || (( value < 0 || value > 100 )); then
+    echo "Haptic intensity must be an integer from 0 to 100." >&2
+    exit 1
+  fi
+}
+
+if ! omarchy-hw-dell-xps-haptic-touchpad; then
+  echo "Dell XPS haptic touchpad hardware not detected." >&2
+  exit 1
+fi
+
+if [[ -n ${1:-} ]]; then
+  intensity=$1
+else
+  intensity=$(gum input --value="$(read_current_intensity)" --char-limit=3 --header="Set Dell touchpad haptic intensity (0-100)")
+  [[ -n $intensity ]] || exit 1
+fi
+
+validate_intensity "$intensity"
+omarchy-update-dell-haptic "$intensity"

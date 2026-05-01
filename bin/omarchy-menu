@@ -241,7 +241,9 @@ show_font_menu() {
 show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
-  [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
+  if [[ -f ~/.config/hypr/input.conf ]] || omarchy-hw-dell-xps-haptic-touchpad; then
+    options="$options\n  Input"
+  fi
   options="$options\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
@@ -252,7 +254,7 @@ show_setup_menu() {
   *System*) show_setup_system_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
-  *Input*) open_in_editor ~/.config/hypr/input.conf ;;
+  *Input*) show_setup_input_menu ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
@@ -268,6 +270,23 @@ show_setup_power_menu() {
   else
     powerprofilesctl set "$profile"
   fi
+}
+
+show_setup_input_menu() {
+  local options=""
+
+  [[ -f ~/.config/hypr/input.conf ]] && options="  Touchpad/Input Settings"
+
+  if omarchy-hw-dell-xps-haptic-touchpad; then
+    [[ -n $options ]] && options="$options\n"
+    options="${options}󰌌  Touchpad Haptics"
+  fi
+
+  case $(menu "Input" "$options") in
+  *Settings*) open_in_editor ~/.config/hypr/input.conf ;;
+  *Haptics*) present_terminal omarchy-setup-dell-haptic-touchpad ;;
+  *) back_to show_setup_menu ;;
+  esac
 }
 
 show_setup_security_menu() {
