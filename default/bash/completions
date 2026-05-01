@@ -40,10 +40,6 @@ _omarchy_complete() {
     candidates+=("--all" "--json" "--markdown" "--check")
   fi
 
-  if [[ -x $bin_dir/$prefix || ${#candidates[@]} -gt 0 ]]; then
-    candidates+=("--help")
-  fi
-
   if (( ${#candidates[@]} > 0 )); then
     local IFS=$'\n'
     COMPREPLY=($(compgen -W "${candidates[*]}" -- "$cur"))
