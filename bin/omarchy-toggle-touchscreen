@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Enable, disable, or toggle the touch functionality of the screen
+# omarchy:args=[on|off|toggle]
+
 STATE_CONF="$HOME/.local/state/omarchy/toggles/hypr/touchscreen-disabled.conf"
 
 device="$(omarchy-hw-touchscreen)"
