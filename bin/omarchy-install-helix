@@ -3,7 +3,7 @@
 # Install Helix and configure it to use the current Omarchy theme.
 
 CONFIG_FILE="$HOME/.config/helix/config.toml"
-CONFIG_TEXT='theme = "base16_transparent" # Set by Omarchy install. Base16 theme makes Helix use terminal colors.'
+CONFIG_TEXT='theme = "term16_dark" # Set by Omarchy install. Base16 theme makes Helix use terminal colors.'
 
 echo "Installing Helix..."
 omarchy-pkg-add helix
