@@ -23,16 +23,23 @@ function FormatName(filename)
 end
 
 local function ResolvePathOrSymlink(path)
-  -- Convert path into absolute path and resolve symbolic link(if any)
-  local handle = io.popen('realpath "' .. path .. '" 2>/dev/null')
-  -- If path exists then return the resolved path
-  if handle then
-    local result = handle:read("*l")
-    handle:close()
-    return result
+  if not path or path == "" then
+    return nil
   end
-  -- Return nil, if path does not exist
-  return nil
+  -- Safely escape the path for shell usage
+  local escaped_path = ShellEscape(path)
+  -- Use `--` to prevent option injection
+  local cmd = "realpath -- " .. escaped_path .. " 2>/dev/null"
+
+  local handle = io.popen(cmd)
+  if not handle then
+    return nil
+  end
+
+  local result = handle:read("*l")
+  handle:close()
+
+  return result
 end
 
 function GetEntries()
