@@ -100,15 +100,14 @@ output=$("$CLI" hw --help)
 assert_output_contains "hardware group help renders" "$output" "omarchy hw asus rog"
 assert_output_contains "hardware group includes touchpad" "$output" "omarchy hw touchpad"
 
-output=$("$CLI" cmd --help)
-assert_output_contains "cmd group includes screenshot fallback route" "$output" "omarchy cmd screenshot"
-assert_output_contains "cmd group includes share fallback route" "$output" "omarchy cmd share"
+output=$("$CLI" menu --help)
+assert_output_contains "menu group includes share fallback route" "$output" "omarchy menu share"
 
 output=$("$CLI" share)
 assert_output_contains "bare required-arg alias renders CLI help" "$output" "Usage:"
 assert_output_contains "bare share help uses canonical route" "$output" "omarchy share <clipboard|file|folder> [path...]"
 
-output=$("$CLI" cmd share)
+output=$("$CLI" menu share)
 assert_output_contains "bare required-arg filename route renders CLI help" "$output" "omarchy share <clipboard|file|folder> [path...]"
 
 output=$("$CLI" branch set)
@@ -157,9 +156,9 @@ assert_output_contains "mutating command help does not execute target" "$output"
 assert_output_contains "root command help shows related child commands" "$output" "omarchy update perform"
 
 output=$("$CLI" screenshot --help)
-assert_output_contains "root alias resolves to command help" "$output" "omarchy-cmd-screenshot"
+assert_output_contains "root alias resolves to command help" "$output" "omarchy-capture-screenshot"
 
-"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-cmd-screenshot") | .aliases | index("omarchy screenshot")' >/dev/null
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-capture-screenshot") | .aliases | index("omarchy screenshot")' >/dev/null
 pass "aliases are included in JSON metadata"
 
 output=$("$CLI" pkg add --help)
@@ -187,7 +186,7 @@ pass "safe dispatch works for font current"
 for binary in \
   omarchy-update \
   omarchy-theme-set \
-  omarchy-cmd-screenshot \
+  omarchy-capture-screenshot \
   omarchy-system-reboot \
   omarchy-pkg-add; do
   [[ -x $ROOT/bin/$binary ]] || fail "binary is executable: $binary"
