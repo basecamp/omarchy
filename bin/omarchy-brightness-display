@@ -35,7 +35,7 @@ elif [[ $step == "5%-" ]]; then
     (( target = current - 5 ))
   fi
 
-  (( target < 0 )) && target=0
+  (( target < 1 )) && target=1
   step="$target%"
 fi
 
