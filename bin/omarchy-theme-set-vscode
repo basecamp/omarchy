@@ -14,8 +14,8 @@ set_theme() {
     theme_name=$(jq -r '.name' "$VS_CODE_THEME")
     extension=$(jq -r '.extension' "$VS_CODE_THEME")
 
-    if [[ -n $extension ]] && ! "$editor_cmd" --list-extensions | grep -Fxq "$extension"; then
-      "$editor_cmd" --install-extension "$extension" >/dev/null
+    if [[ -n $extension ]] && ! "$editor_cmd" --list-extensions 2>/dev/null | grep -Fxq "$extension"; then
+      "$editor_cmd" --install-extension "$extension" >/dev/null 2>&1
     fi
 
     mkdir -p "$(dirname "$settings_path")"
