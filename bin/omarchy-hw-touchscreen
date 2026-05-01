@@ -1,0 +1,4 @@
+#!/bin/bash
+
+device=$(hyprctl devices -j | jq -r '[.touch[]?.name, .tablets[]?.name] | first // empty')
+[[ -n $device ]] && echo "$device"
