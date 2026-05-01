@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Finish the installation of Omarchy with items that can only be done after logging in.
+# omarchy:summary=Finish the installation of Omarchy with items that can only be done after logging in.
+# omarchy:requires-sudo=true
 
 set -e
 

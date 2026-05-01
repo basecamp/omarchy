@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Install support for using Xbox controllers with Steam/RetroArch/etc.
+# omarchy:summary=Install support for using Xbox controllers with Steam/RetroArch/etc.
+# omarchy:requires-sudo=true
 
 set -e
 

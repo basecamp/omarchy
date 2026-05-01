@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Create a desktop launcher for a terminal UI app
+# omarchy:args=[name command window-style icon-url]
+
 set -e
 
 if (( $# != 4 )); then

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Sync Omarchy theme to all Obsidian vaults
+# omarchy:summary=Sync Omarchy theme to all Obsidian vaults
 
 CURRENT_THEME_DIR="$HOME/.config/omarchy/current/theme"
 

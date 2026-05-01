@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Set the system-wide monospace font that should be used by the terminal, hyprlock, waybar, swayosd, etc.
-# The font name must be one of the ones returned by omarchy-font-list.
+# omarchy:summary=Set the system monospace font
+# omarchy:args=<font-name>
+# omarchy:examples=omarchy font list | omarchy font set "CaskaydiaMono Nerd Font"
 
 font_name="$1"
 

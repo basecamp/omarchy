@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Update AUR packages if any are installed
+# omarchy:summary=Update AUR packages if any are installed
+
 if pacman -Qem >/dev/null; then
   if omarchy-pkg-aur-accessible; then
     echo -e "\e[32m\nUpdate AUR packages\e[0m"

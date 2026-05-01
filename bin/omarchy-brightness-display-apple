@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Adjust the brightness on Apple Studio Displays and Apple XDR Displays using asdcontrol.
+# omarchy:summary=Adjust the brightness on Apple Studio Displays and Apple XDR Displays using asdcontrol.
+# omarchy:requires-sudo=true
 
 if (( $# == 0 )); then
   echo "Adjust Apple Display Brightness by passing +5000 or -5000 (or any range from 0-60000)"

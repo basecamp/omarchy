@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Adjust keyboard backlight brightness using available steps.
-# Usage: omarchy-brightness-keyboard <up|down|cycle>
+# omarchy:summary=Adjust keyboard backlight brightness using available steps.
+# omarchy:args=<up|down|cycle>
 
 direction="${1:-up}"
 

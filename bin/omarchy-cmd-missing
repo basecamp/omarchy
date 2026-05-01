@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Returns true if any of the commands passed in as arguments are missing on the system.
+# omarchy:summary=Check whether any required commands are missing
 
 for cmd in "$@"; do
   if ! command -v "$cmd" &>/dev/null; then

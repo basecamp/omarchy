@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# Clear the internal-monitor-disable toggle if no external display is connected.
-# Runs before the graphical session so Hyprland doesn't block on having no output
-# to render to when the user rebooted with the external unplugged.
+# omarchy:summary=Clear the internal-monitor-disable toggle if no external display is connected.
 
 TOGGLE="$HOME/.local/state/omarchy/toggles/hypr/internal-monitor-disable.conf"
 

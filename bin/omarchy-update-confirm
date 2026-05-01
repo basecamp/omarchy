@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Prompt for confirmation before starting an update
+
 gum style --border normal --border-foreground 6 --padding "1 2" \
   "Ready to update?" \
   "" \

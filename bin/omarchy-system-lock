@@ -1,8 +1,10 @@
 #!/bin/bash
 
-# Locks the system using hyprlock, but not before ensuring 1password has also been locked, and the screensaver stopped.
+# omarchy:summary=Lock the screen
+# omarchy:group=system
+# omarchy:name=lock
+# omarchy:examples=omarchy system lock
 
-# Lock the screen
 pidof hyprlock || hyprlock &
 
 # Set keyboard layout to default (first layout)

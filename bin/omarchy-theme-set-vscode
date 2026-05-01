@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Sync Omarchy theme to VS Code, VSCodium, and Cursor
+# omarchy:summary=Sync Omarchy theme to VS Code, VSCodium, and Cursor
 
 VS_CODE_THEME="$HOME/.config/omarchy/current/theme/vscode.json"
 

@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Remove all web apps installed via omarchy-webapp-install.
-# Identifies web apps by their Exec pattern (omarchy-launch-webapp or omarchy-webapp-handler).
+# omarchy:summary=Remove all web apps installed via omarchy-webapp-install.
 
 set -e
 

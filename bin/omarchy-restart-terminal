@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Reload supported terminal emulators after config changes
+
 if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
   touch ~/.config/alacritty/alacritty.toml
 fi

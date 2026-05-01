@@ -1,0 +1,1032 @@
+#!/bin/bash
+
+set -o pipefail
+
+OMARCHY_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+METADATA_SCAN_LIMIT=80
+
+COMMAND_KEYS=()
+ROUTE_COLLISIONS=()
+declare -A COMMAND_ROUTE
+declare -A COMMAND_FALLBACK_ROUTE
+declare -A COMMAND_BINARY
+declare -A COMMAND_GROUP
+declare -A COMMAND_NAME
+declare -A COMMAND_SUMMARY
+declare -A COMMAND_USAGE
+declare -A COMMAND_ARGS
+declare -A COMMAND_EXAMPLES
+declare -A COMMAND_REQUIRES_SUDO
+declare -A COMMAND_ALIASES
+declare -A COMMAND_HAS_SUMMARY
+declare -A COMMAND_METADATA_ERRORS
+declare -A ROUTE_TO_KEY
+declare -A ROUTE_IS_ALIAS
+declare -A BINARY_TO_KEY
+declare -A GROUP_DESCRIPTIONS
+
+GROUP_DESCRIPTIONS[ac]="AC power detection"
+GROUP_DESCRIPTIONS[battery]="Battery status helpers"
+GROUP_DESCRIPTIONS[branch]="Omarchy git branch management"
+GROUP_DESCRIPTIONS[brightness]="Display and keyboard brightness"
+GROUP_DESCRIPTIONS[capture]="Screenshots and screen recording"
+GROUP_DESCRIPTIONS[channel]="Omarchy release channel management"
+GROUP_DESCRIPTIONS[cmd]="Command and shortcut helpers"
+GROUP_DESCRIPTIONS[config]="System configuration helpers"
+GROUP_DESCRIPTIONS[debug]="Diagnostics and support logs"
+GROUP_DESCRIPTIONS[dev]="Omarchy development tools"
+GROUP_DESCRIPTIONS[drive]="Drive selection and encryption"
+GROUP_DESCRIPTIONS[font]="Font management"
+GROUP_DESCRIPTIONS[hibernation]="Hibernation setup and removal"
+GROUP_DESCRIPTIONS[hook]="User hook runner"
+GROUP_DESCRIPTIONS[hw]="Hardware detection and controls"
+GROUP_DESCRIPTIONS[hyprland]="Hyprland window, monitor, and toggle controls"
+GROUP_DESCRIPTIONS[install]="Optional software installers"
+GROUP_DESCRIPTIONS[launch]="Application launchers"
+GROUP_DESCRIPTIONS[menu]="Omarchy menu commands"
+GROUP_DESCRIPTIONS[migrate]="Migration runner"
+GROUP_DESCRIPTIONS[notification]="Notification helpers"
+GROUP_DESCRIPTIONS[npx]="NPX package wrappers"
+GROUP_DESCRIPTIONS[pkg]="Package management helpers"
+GROUP_DESCRIPTIONS[plymouth]="Plymouth boot theme management"
+GROUP_DESCRIPTIONS[powerprofiles]="Power profile management"
+GROUP_DESCRIPTIONS[refresh]="Reset config to defaults"
+GROUP_DESCRIPTIONS[reinstall]="Reinstall and reset workflows"
+GROUP_DESCRIPTIONS[remove]="Removal workflows"
+GROUP_DESCRIPTIONS[restart]="Restart Omarchy components"
+GROUP_DESCRIPTIONS[setup]="Interactive setup wizards"
+GROUP_DESCRIPTIONS[share]="Share clipboard, files, and folders"
+GROUP_DESCRIPTIONS[snapshot]="System snapshots"
+GROUP_DESCRIPTIONS[state]="Persistent Omarchy state"
+GROUP_DESCRIPTIONS[sudo]="Sudo configuration helpers"
+GROUP_DESCRIPTIONS[swayosd]="SwayOSD status display helpers"
+GROUP_DESCRIPTIONS[system]="Reboot, shutdown, logout, and lock"
+GROUP_DESCRIPTIONS[theme]="Theme management"
+GROUP_DESCRIPTIONS[toggle]="Toggle Omarchy features"
+GROUP_DESCRIPTIONS[tui]="Terminal UI launchers"
+GROUP_DESCRIPTIONS[tz]="Timezone selection"
+GROUP_DESCRIPTIONS[update]="Omarchy and system updates"
+GROUP_DESCRIPTIONS[upload]="Upload helpers"
+GROUP_DESCRIPTIONS[version]="Version and channel information"
+GROUP_DESCRIPTIONS[voxtype]="Voxtype dictation"
+GROUP_DESCRIPTIONS[webapp]="Web app launchers"
+GROUP_DESCRIPTIONS[wifi]="Wi-Fi helpers"
+GROUP_DESCRIPTIONS[windows]="Windows VM management"
+
+join_words() {
+  local separator="$1"
+  shift
+  local joined=""
+
+  for word in "$@"; do
+    if [[ -z $joined ]]; then
+      joined="$word"
+    else
+      joined+="$separator$word"
+    fi
+  done
+
+  printf '%s' "$joined"
+}
+
+append_pipe_value() {
+  local current="$1"
+  local addition="$2"
+
+  if [[ -z $current ]]; then
+    printf '%s' "$addition"
+  else
+    printf '%s|%s' "$current" "$addition"
+  fi
+}
+
+register_route() {
+  local route="$1"
+  local key="$2"
+  local is_alias="${3:-false}"
+
+  [[ -z $route || -z $key ]] && return
+
+  if [[ -n ${ROUTE_TO_KEY[$route]} && ${ROUTE_TO_KEY[$route]} != "$key" ]]; then
+    ROUTE_COLLISIONS+=("$route -> ${ROUTE_TO_KEY[$route]} conflicts with $key")
+    return
+  fi
+
+  ROUTE_TO_KEY["$route"]="$key"
+  if [[ $is_alias == "true" ]]; then
+    ROUTE_IS_ALIAS["$route"]="true"
+  fi
+}
+
+register_command() {
+  local file="$1"
+  local file_binary="${file##*/}"
+  local group=""
+  local name=""
+  local summary=""
+  local usage=""
+  local binary=""
+  local args=""
+  local examples=""
+  local aliases=""
+  local requires_sudo=""
+  local line=""
+  local metadata_key=""
+  local metadata_value=""
+  local line_count=0
+  local name_seen="false"
+  local fallback_summary=""
+  local has_summary="false"
+  local metadata_errors=""
+
+  while IFS= read -r line && (( line_count < METADATA_SCAN_LIMIT )); do
+    line_count=$((line_count + 1))
+
+    if (( line_count == 1 )) && [[ $line == "#!"* ]]; then
+      continue
+    fi
+
+    if [[ $line =~ ^[[:space:]]*$ ]]; then
+      continue
+    fi
+
+    if [[ ! $line =~ ^[[:space:]]*# ]]; then
+      break
+    fi
+
+    if [[ $line =~ ^[[:space:]]*#[[:space:]]*omarchy:([[:alnum:]_-]+)=(.*)$ ]]; then
+      metadata_key="${BASH_REMATCH[1]}"
+      metadata_value="${BASH_REMATCH[2]}"
+      metadata_value="${metadata_value%$'\r'}"
+      metadata_value="${metadata_value//$'\t'/ }"
+
+      case "$metadata_key" in
+      group)
+        group="$metadata_value"
+        ;;
+      name)
+        name="$metadata_value"
+        name_seen="true"
+        ;;
+      summary)
+        summary="$metadata_value"
+        [[ -n $metadata_value ]] && has_summary="true"
+        ;;
+      args)
+        args="$metadata_value"
+        ;;
+      examples)
+        examples="$metadata_value"
+        ;;
+      alias | aliases)
+        aliases="$metadata_value"
+        ;;
+      requires-sudo)
+        requires_sudo="$metadata_value"
+        [[ $metadata_value == "true" ]] || metadata_errors=$(append_pipe_value "$metadata_errors" "requires-sudo must be omitted or true")
+        ;;
+      *)
+        ;;
+      esac
+    elif [[ -z $fallback_summary && $line =~ ^[[:space:]]*#[[:space:]]*(.+)$ ]]; then
+      fallback_summary="${BASH_REMATCH[1]}"
+      fallback_summary="${fallback_summary%$'\r'}"
+      fallback_summary="${fallback_summary//$'\t'/ }"
+
+      if [[ -z $fallback_summary || $fallback_summary == omarchy:* ]]; then
+        fallback_summary=""
+      fi
+    fi
+  done <"$file"
+
+  local stem="${file_binary#omarchy-}"
+  local fallback_group="$stem"
+  local fallback_name=""
+  local fallback_route="omarchy ${stem//-/ }"
+
+  if [[ $stem == *-* ]]; then
+    fallback_group="${stem%%-*}"
+    fallback_name="${stem#*-}"
+    fallback_name="${fallback_name//-/ }"
+  fi
+
+  [[ -z $binary ]] && binary="$file_binary"
+  [[ -z $group ]] && group="$fallback_group"
+  [[ $name_seen != "true" ]] && name="$fallback_name"
+  [[ -z $summary && -n $fallback_summary ]] && summary="$fallback_summary"
+  [[ -z $summary ]] && summary="Run the ${stem//-/ } command"
+  local route="omarchy $group"
+  if [[ -n $name ]]; then
+    route+=" $name"
+  fi
+
+  if [[ -z $usage ]]; then
+    usage="$route"
+    if [[ -n $args ]]; then
+      usage+=" $args"
+    fi
+  fi
+
+  [[ $requires_sudo == "true" ]] || requires_sudo="false"
+
+  local key="$file_binary"
+  COMMAND_KEYS+=("$key")
+  COMMAND_ROUTE["$key"]="$route"
+  COMMAND_FALLBACK_ROUTE["$key"]="$fallback_route"
+  COMMAND_BINARY["$key"]="$binary"
+  COMMAND_GROUP["$key"]="$group"
+  COMMAND_NAME["$key"]="$name"
+  COMMAND_SUMMARY["$key"]="$summary"
+  COMMAND_USAGE["$key"]="$usage"
+  COMMAND_ARGS["$key"]="$args"
+  COMMAND_EXAMPLES["$key"]="$examples"
+  COMMAND_REQUIRES_SUDO["$key"]="$requires_sudo"
+  COMMAND_HAS_SUMMARY["$key"]="$has_summary"
+  COMMAND_METADATA_ERRORS["$key"]="$metadata_errors"
+
+  BINARY_TO_KEY["$binary"]="$key"
+  register_route "$route" "$key"
+  register_route "$fallback_route" "$key"
+
+  local old_ifs="$IFS"
+  local alias_route=""
+  IFS='|'
+  for alias_route in $aliases; do
+    alias_route="${alias_route# }"
+    alias_route="${alias_route% }"
+    [[ -z $alias_route || $alias_route == "$route" ]] && continue
+    register_route "$alias_route" "$key" true
+    COMMAND_ALIASES["$key"]=$(append_pipe_value "${COMMAND_ALIASES[$key]}" "$alias_route")
+  done
+  IFS="$old_ifs"
+}
+
+load_commands() {
+  local file=""
+
+  for file in "$OMARCHY_BIN_DIR"/omarchy-*; do
+    [[ -f $file && -x $file ]] || continue
+    register_command "$file"
+  done
+
+}
+
+load_command_by_binary() {
+  local binary="$1"
+  local file="$OMARCHY_BIN_DIR/$binary"
+
+  [[ -f $file && -x $file ]] || return 1
+  register_command "$file"
+}
+
+load_child_commands_by_binary() {
+  local binary="$1"
+  local file=""
+
+  for file in "$OMARCHY_BIN_DIR/$binary"-*; do
+    [[ -f $file && -x $file ]] || continue
+    register_command "$file"
+  done
+}
+
+group_has_child_commands() {
+  local group="$1"
+  local file=""
+
+  for file in "$OMARCHY_BIN_DIR/omarchy-$group"-*; do
+    [[ -f $file && -x $file ]] && return 0
+  done
+
+  return 1
+}
+
+group_has_binary_commands() {
+  local group="$1"
+
+  [[ -x $OMARCHY_BIN_DIR/omarchy-$group ]] && return 0
+  group_has_child_commands "$group"
+}
+
+command_requires_args() {
+  local key="$1"
+  local args="${COMMAND_ARGS[$key]}"
+  local required="$args"
+
+  while [[ $required =~ ^(.*)\[[^][]*\](.*)$ ]]; do
+    required="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+  done
+
+  required="${required// /}"
+  [[ -n $required ]]
+}
+
+load_group_extra_commands() {
+  local group="$1"
+
+  case "$group" in
+  install)
+    load_command_by_binary omarchy-pkg-add
+    ;;
+  system)
+    load_command_by_binary omarchy-lock-screen
+    ;;
+  esac
+}
+
+load_group_commands() {
+  local group="$1"
+  local file=""
+
+  if [[ -f $OMARCHY_BIN_DIR/omarchy-$group && -x $OMARCHY_BIN_DIR/omarchy-$group ]]; then
+    register_command "$OMARCHY_BIN_DIR/omarchy-$group"
+  fi
+
+  for file in "$OMARCHY_BIN_DIR/omarchy-$group"-*; do
+    [[ -f $file && -x $file ]] || continue
+    register_command "$file"
+  done
+
+  load_group_extra_commands "$group"
+}
+
+resolve_direct_route() {
+  local argc="$1"
+  shift
+  local args=("$@")
+  local prefix_count=0
+  local route=""
+  local binary=""
+  local candidate=""
+
+  for (( prefix_count = argc; prefix_count >= 1; prefix_count-- )); do
+    route="omarchy $(join_words " " "${args[@]:0:prefix_count}")"
+
+    binary="omarchy-$(join_words "-" "${args[@]:0:prefix_count}")"
+    candidate="$OMARCHY_BIN_DIR/$binary"
+    if [[ -f $candidate && -x $candidate ]]; then
+      DIRECT_RESOLVED_BINARY="$binary"
+      DIRECT_RESOLVED_COUNT="$prefix_count"
+      DIRECT_RESOLVED_ROUTE="$route"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+sorted_keys() {
+  local include_all="$1"
+  local key=""
+
+  for key in "${COMMAND_KEYS[@]}"; do
+    printf '%s\t%s\n' "${COMMAND_ROUTE[$key]}" "$key"
+  done | sort -u | cut -f2-
+}
+
+fallback_group_for_key() {
+  local key="$1"
+  local fallback="${COMMAND_FALLBACK_ROUTE[$key]#omarchy }"
+
+  printf '%s' "${fallback%% *}"
+}
+
+command_route_for_group() {
+  local key="$1"
+  local group="$2"
+
+  if [[ $(fallback_group_for_key "$key") == "$group" && ${COMMAND_GROUP[$key]} != "$group" ]]; then
+    printf '%s' "${COMMAND_FALLBACK_ROUTE[$key]}"
+  else
+    printf '%s' "${COMMAND_ROUTE[$key]}"
+  fi
+}
+
+command_usage_for_group() {
+  local key="$1"
+  local group="$2"
+  local route=""
+
+  route=$(command_route_for_group "$key" "$group")
+  if [[ -n ${COMMAND_ARGS[$key]} ]]; then
+    route+=" ${COMMAND_ARGS[$key]}"
+  fi
+
+  printf '%s' "$route"
+}
+
+sorted_group_keys() {
+  local group="$1"
+  local include_all="$2"
+  local key=""
+  local fallback_group=""
+  local route=""
+
+  for key in "${COMMAND_KEYS[@]}"; do
+    fallback_group=$(fallback_group_for_key "$key")
+    if [[ ${COMMAND_GROUP[$key]} != "$group" && $fallback_group != "$group" ]]; then
+      continue
+    fi
+
+    route=$(command_route_for_group "$key" "$group")
+    printf '%s\t%s\n' "$route" "$key"
+  done | sort -u | cut -f2-
+}
+
+examples_as_lines() {
+  local examples="$1"
+  local old_ifs="$IFS"
+  local example=""
+  IFS='|'
+
+  for example in $examples; do
+    example="${example# }"
+    example="${example% }"
+    [[ -n $example ]] && printf '%s\n' "$example"
+  done
+
+  IFS="$old_ifs"
+}
+
+pipe_values_as_lines() {
+  local values="$1"
+  local old_ifs="$IFS"
+  local value=""
+  IFS='|'
+
+  for value in $values; do
+    value="${value# }"
+    value="${value% }"
+    [[ -n $value ]] && printf '%s\n' "$value"
+  done
+
+  IFS="$old_ifs"
+}
+
+show_group_list() {
+  local sorted_group=""
+
+  printf '%s\n' "${!GROUP_DESCRIPTIONS[@]}" | sort | while IFS= read -r sorted_group; do
+    [[ -n $sorted_group ]] || continue
+    printf '  %-14s %s\n' "$sorted_group" "${GROUP_DESCRIPTIONS[$sorted_group]}"
+  done
+}
+
+show_main_help() {
+  cat <<'EOF'
+Omarchy command center
+
+Usage:
+  omarchy <command> [args...]
+  omarchy commands [--all] [--json] [--check]
+  omarchy <group> --help
+  omarchy <group> <command> --help
+
+Common commands:
+  omarchy update              Update Omarchy and system packages
+  omarchy theme list          List available themes
+  omarchy theme set <name>    Apply a theme
+  omarchy font list           List available fonts
+  omarchy capture screenshot  Take a screenshot
+  omarchy debug               Print debugging information
+
+Groups:
+EOF
+  show_group_list
+  cat <<'EOF'
+
+Discovery:
+  omarchy commands            List all commands
+  omarchy commands --all      Include commands explicitly marked hidden
+  omarchy commands --json     Machine-readable command list
+  omarchy commands --check    Validate command metadata and routes
+  omarchy dev benchmark       Measure CLI response times
+  omarchy dev bin metadata    Show bin metadata fields and defaults
+EOF
+}
+
+show_commands_help() {
+  cat <<'EOF'
+Usage:
+  omarchy commands [--all] [--json] [--markdown] [--check]
+
+List commands known to the Omarchy command center.
+
+Options:
+  --all       Accepted for compatibility
+  --json      Emit machine-readable JSON
+  --markdown  Emit a Markdown command table
+  --check     Validate command metadata and route collisions
+EOF
+}
+
+print_command_table() {
+  local rows="$1"
+  local max_width=0
+  local width=0
+  local command=""
+  local rest=""
+  local summary=""
+
+  while IFS=$'\t' read -r command rest; do
+    [[ -n $command ]] || continue
+    width=${#command}
+    (( width > max_width )) && max_width=$width
+  done <<<"$rows"
+
+  while IFS=$'\t' read -r command rest; do
+    [[ -n $command ]] || continue
+
+    printf '  %-*s  %s\n' "$max_width" "$command" "$rest"
+  done <<<"$rows"
+}
+
+show_commands() {
+  local include_all="$1"
+  local key=""
+  local route=""
+  local usage=""
+  local rows=""
+  local alias_rows=""
+
+  if [[ $include_all == "true" ]]; then
+    echo "Omarchy commands (all):"
+  else
+    echo "Omarchy commands:"
+  fi
+
+  while IFS= read -r key; do
+    [[ -n $key ]] || continue
+    usage="${COMMAND_USAGE[$key]}"
+    rows+="$usage"$'\t'"${COMMAND_SUMMARY[$key]}"$'\n'
+  done < <(sorted_keys "$include_all")
+
+  print_command_table "$rows"
+
+  for route in "${!ROUTE_IS_ALIAS[@]}"; do
+    key="${ROUTE_TO_KEY[$route]}"
+    alias_rows+="$route"$'\t'"${COMMAND_ROUTE[$key]}"$'\n'
+  done
+
+  if [[ -n $alias_rows ]]; then
+    echo ""
+    echo "Aliases:"
+    print_command_table "$(printf '%s' "$alias_rows" | sort)"
+  fi
+}
+
+markdown_escape() {
+  local value="$1"
+  value="${value//|/\\|}"
+  printf '%s' "$value"
+}
+
+show_commands_markdown() {
+  local include_all="$1"
+  local key=""
+
+  echo "| Command | Binary | Summary |"
+  echo "| --- | --- | --- |"
+
+  while IFS= read -r key; do
+    [[ -n $key ]] || continue
+    printf '| `%s` | `%s` | %s |\n' \
+      "$(markdown_escape "${COMMAND_USAGE[$key]}")" \
+      "$(markdown_escape "${COMMAND_BINARY[$key]}")" \
+      "$(markdown_escape "${COMMAND_SUMMARY[$key]}")"
+  done < <(sorted_keys "$include_all")
+}
+
+emit_command_records() {
+  local include_all="$1"
+  local key=""
+
+  while IFS= read -r key; do
+    [[ -n $key ]] || continue
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "${COMMAND_ROUTE[$key]}" \
+      "${COMMAND_BINARY[$key]}" \
+      "${COMMAND_GROUP[$key]}" \
+      "${COMMAND_NAME[$key]}" \
+      "${COMMAND_SUMMARY[$key]}" \
+      "${COMMAND_REQUIRES_SUDO[$key]}" \
+      "${COMMAND_ARGS[$key]}" \
+      "${COMMAND_EXAMPLES[$key]}" \
+      "${COMMAND_ALIASES[$key]}" \
+      "${COMMAND_FALLBACK_ROUTE[$key]}" \
+      "${COMMAND_USAGE[$key]}"
+  done < <(sorted_keys "$include_all")
+}
+
+commands_json_filter() {
+  cat <<'EOF'
+[inputs | split("\t") | {
+  route: .[0],
+  binary: .[1],
+  group: .[2],
+  name: .[3],
+  summary: .[4],
+  requires_sudo: (.[5] == "true"),
+  args: .[6],
+  examples: (.[7] | split("|") | map(gsub("^ +| +$"; "")) | map(select(length > 0))),
+  aliases: (.[8] | split("|") | map(gsub("^ +| +$"; "")) | map(select(length > 0))),
+  filename_route: .[9],
+  routes: ([.[0], .[9]] + (.[8] | split("|") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) | unique)
+}] | {ok: true, commands: .}
+EOF
+}
+
+show_commands_json() {
+  local include_all="$1"
+
+  emit_command_records "$include_all" | jq -Rn "$(commands_json_filter)"
+}
+
+show_commands_check() {
+  local failures=0
+  local collision=""
+  local key=""
+  local error=""
+
+  for collision in "${ROUTE_COLLISIONS[@]}"; do
+    echo "Route collision: $collision" >&2
+    failures=$((failures + 1))
+  done
+
+  for key in "${COMMAND_KEYS[@]}"; do
+    if [[ ${COMMAND_HAS_SUMMARY[$key]} != "true" ]]; then
+      echo "Missing metadata summary: ${COMMAND_BINARY[$key]}" >&2
+      failures=$((failures + 1))
+    fi
+
+    if [[ -n ${COMMAND_METADATA_ERRORS[$key]} ]]; then
+      while IFS= read -r error; do
+        [[ -n $error ]] || continue
+        echo "Invalid metadata in ${COMMAND_BINARY[$key]}: $error" >&2
+        failures=$((failures + 1))
+      done < <(pipe_values_as_lines "${COMMAND_METADATA_ERRORS[$key]}")
+    fi
+
+    if [[ ! -x $OMARCHY_BIN_DIR/${COMMAND_BINARY[$key]} ]]; then
+      echo "Missing binary: ${COMMAND_BINARY[$key]}" >&2
+      failures=$((failures + 1))
+    fi
+  done
+
+  if (( failures > 0 )); then
+    echo "Command metadata check failed ($failures issues)" >&2
+    return 1
+  fi
+
+  echo "Command metadata check passed (${#COMMAND_KEYS[@]} commands)"
+}
+
+show_command_json() {
+  local key="$1"
+
+  printf '%s\n' "$key" | while IFS= read -r key; do
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "${COMMAND_ROUTE[$key]}" \
+      "${COMMAND_BINARY[$key]}" \
+      "${COMMAND_GROUP[$key]}" \
+      "${COMMAND_NAME[$key]}" \
+      "${COMMAND_SUMMARY[$key]}" \
+      "${COMMAND_REQUIRES_SUDO[$key]}" \
+      "${COMMAND_ARGS[$key]}" \
+      "${COMMAND_EXAMPLES[$key]}" \
+      "${COMMAND_ALIASES[$key]}" \
+      "${COMMAND_FALLBACK_ROUTE[$key]}" \
+      "${COMMAND_USAGE[$key]}"
+  done | jq -Rn "$(commands_json_filter) | {ok: true, command: .commands[0]}"
+}
+
+parse_commands_args() {
+  local include_all="false"
+  local json="false"
+  local markdown="false"
+  local check="false"
+
+  shift
+
+  while (( $# > 0 )); do
+    case "$1" in
+    --all)
+      include_all="true"
+      ;;
+    --json)
+      json="true"
+      ;;
+    --markdown)
+      markdown="true"
+      ;;
+    --check)
+      check="true"
+      ;;
+    --help | -h)
+      show_commands_help
+      return 0
+      ;;
+    *)
+      echo "Unknown option for omarchy commands: $1" >&2
+      show_commands_help >&2
+      return 2
+      ;;
+    esac
+    shift
+  done
+
+  if [[ $check == "true" ]]; then
+    show_commands_check
+  elif [[ $json == "true" ]]; then
+    show_commands_json "$include_all"
+  elif [[ $markdown == "true" ]]; then
+    show_commands_markdown "$include_all"
+  else
+    show_commands "$include_all"
+  fi
+}
+
+group_exists() {
+  local group="$1"
+  local key=""
+
+  for key in "${COMMAND_KEYS[@]}"; do
+    if [[ ${COMMAND_GROUP[$key]} == "$group" && -n ${COMMAND_NAME[$key]} ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+show_group_help() {
+  local group="$1"
+  local include_all="${2:-false}"
+  local key=""
+  local rows=""
+  local title="${GROUP_DESCRIPTIONS[$group]}"
+
+  if [[ -n $title ]]; then
+    echo "${group^} commands — $title:"
+  else
+    echo "${group^} commands:"
+  fi
+
+  while IFS= read -r key; do
+    [[ -n $key ]] || continue
+    rows+="$(command_usage_for_group "$key" "$group")"$'\t'$'\t'"${COMMAND_SUMMARY[$key]}"$'\n'
+  done < <(sorted_group_keys "$group" "$include_all")
+
+  if [[ -n $rows ]]; then
+    print_command_table "$rows"
+  else
+    echo "  No documented commands found. Try: omarchy commands --all"
+  fi
+}
+
+show_related_commands() {
+  local key="$1"
+  local group="${COMMAND_GROUP[$key]}"
+  local child_key=""
+  local rows=""
+
+  [[ -z ${COMMAND_NAME[$key]} ]] || return
+
+  while IFS= read -r child_key; do
+    [[ -n $child_key && $child_key != "$key" ]] || continue
+    rows+="$(command_usage_for_group "$child_key" "$group")"$'\t'$'\t'"${COMMAND_SUMMARY[$child_key]}"$'\n'
+  done < <(sorted_group_keys "$group" false)
+
+  if [[ -n $rows ]]; then
+    echo ""
+    echo "Related commands:"
+    print_command_table "$rows"
+  fi
+}
+
+show_command_help() {
+  local key="$1"
+  local aliases="${COMMAND_ALIASES[$key]}"
+  local examples="${COMMAND_EXAMPLES[$key]}"
+  local args="${COMMAND_ARGS[$key]}"
+  local example=""
+  local alias=""
+
+  echo "Usage:"
+  echo "  ${COMMAND_USAGE[$key]}"
+  echo ""
+  echo "${COMMAND_SUMMARY[$key]}"
+
+  if [[ -n $args ]]; then
+    echo ""
+    echo "Arguments:"
+    echo "  $args"
+  fi
+
+  if [[ -n $examples ]]; then
+    echo ""
+    echo "Examples:"
+    while IFS= read -r example; do
+      printf '  %s\n' "$example"
+    done < <(examples_as_lines "$examples")
+  fi
+
+  if [[ -n $aliases ]]; then
+    echo ""
+    echo "Aliases:"
+    while IFS= read -r alias; do
+      printf '  %s\n' "$alias"
+    done < <(pipe_values_as_lines "$aliases")
+  fi
+
+  echo ""
+  echo "Binary:"
+  echo "  ${COMMAND_BINARY[$key]}"
+
+  if [[ ${COMMAND_FALLBACK_ROUTE[$key]} != "${COMMAND_ROUTE[$key]}" ]]; then
+    echo ""
+    echo "Filename route:"
+    echo "  ${COMMAND_FALLBACK_ROUTE[$key]}"
+  fi
+
+  show_related_commands "$key"
+}
+
+resolve_route() {
+  local argc="$1"
+  shift
+  local args=("$@")
+  local prefix_count=0
+  local route=""
+  local key=""
+
+  for (( prefix_count = argc; prefix_count >= 1; prefix_count-- )); do
+    route="omarchy $(join_words " " "${args[@]:0:prefix_count}")"
+    key="${ROUTE_TO_KEY[$route]}"
+
+    if [[ -n $key ]]; then
+      RESOLVED_KEY="$key"
+      RESOLVED_COUNT="$prefix_count"
+      RESOLVED_ROUTE="$route"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+suggest_command() {
+  local first="$1"
+  local candidate=""
+
+  for candidate in "${!ROUTE_TO_KEY[@]}"; do
+    candidate="${candidate#omarchy }"
+    if [[ $candidate == "$first"* ]]; then
+      printf '%s' "${candidate%% *}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+dispatch_fast_or_help() {
+  local args=("$@")
+  local remaining=()
+  local key=""
+  local binary_path=""
+
+  if resolve_direct_route "$#" "${args[@]}"; then
+    remaining=("${args[@]:DIRECT_RESOLVED_COUNT}")
+    binary_path="$OMARCHY_BIN_DIR/$DIRECT_RESOLVED_BINARY"
+
+    if (( ${#remaining[@]} > 0 )) && [[ ${remaining[0]} == "--help" || ${remaining[0]} == "-h" ]]; then
+      if ! load_command_by_binary "$DIRECT_RESOLVED_BINARY"; then
+        echo "Binary is missing or not executable: $DIRECT_RESOLVED_BINARY" >&2
+        return 127
+      fi
+
+      if (( DIRECT_RESOLVED_COUNT == 1 )); then
+        load_child_commands_by_binary "$DIRECT_RESOLVED_BINARY"
+      fi
+
+      key="${BINARY_TO_KEY[$DIRECT_RESOLVED_BINARY]}"
+      if [[ " ${remaining[*]} " == *" --json "* ]]; then
+        show_command_json "$key"
+      else
+        show_command_help "$key"
+      fi
+      return 0
+    fi
+
+    if (( ${#remaining[@]} == 0 )); then
+      load_command_by_binary "$DIRECT_RESOLVED_BINARY"
+      key="${BINARY_TO_KEY[$DIRECT_RESOLVED_BINARY]}"
+
+      if [[ -n $key ]] && command_requires_args "$key"; then
+        if (( DIRECT_RESOLVED_COUNT == 1 )) && group_has_child_commands "$1"; then
+          load_group_commands "$1"
+          show_group_help "$1"
+        else
+          show_command_help "$key"
+        fi
+        return 0
+      fi
+    fi
+
+    exec "$binary_path" "${remaining[@]}"
+  fi
+
+  if (( $# == 1 )) && group_has_binary_commands "$1"; then
+    load_group_commands "$1"
+    show_group_help "$1"
+    return 0
+  fi
+
+  if (( $# >= 2 )) && [[ $2 == "--help" || $2 == "-h" ]] && group_has_binary_commands "$1"; then
+    load_group_commands "$1"
+    show_group_help "$1"
+    return 0
+  fi
+
+  load_commands
+  dispatch_or_help "$@"
+}
+
+dispatch_or_help() {
+  local args=("$@")
+  local remaining=()
+  local key=""
+  local binary_path=""
+  local suggestion=""
+
+  if resolve_route "$#" "${args[@]}"; then
+    key="$RESOLVED_KEY"
+    remaining=("${args[@]:RESOLVED_COUNT}")
+
+    if (( ${#remaining[@]} > 0 )) && [[ ${remaining[0]} == "--help" || ${remaining[0]} == "-h" ]]; then
+      if [[ " ${remaining[*]} " == *" --json "* ]]; then
+        show_command_json "$key"
+      else
+        show_command_help "$key"
+      fi
+      return 0
+    fi
+
+    binary_path="$OMARCHY_BIN_DIR/${COMMAND_BINARY[$key]}"
+    if [[ ! -x $binary_path ]]; then
+      echo "Binary is missing or not executable: ${COMMAND_BINARY[$key]}" >&2
+      return 127
+    fi
+
+    if (( ${#remaining[@]} == 0 )) && command_requires_args "$key"; then
+      if (( RESOLVED_COUNT == 1 )) && group_exists "$1"; then
+        show_group_help "$1"
+      else
+        show_command_help "$key"
+      fi
+      return 0
+    fi
+
+    exec "$binary_path" "${remaining[@]}"
+  fi
+
+  if (( $# == 1 )) && group_exists "$1"; then
+    show_group_help "$1"
+    return 0
+  fi
+
+  if (( $# >= 2 )) && [[ $2 == "--help" || $2 == "-h" ]] && group_exists "$1"; then
+    show_group_help "$1"
+    return 0
+  fi
+
+  echo "Unknown Omarchy command: omarchy ${args[*]}" >&2
+  suggestion=$(suggest_command "${args[0]}")
+  if [[ -n $suggestion ]]; then
+    echo "Did you mean: omarchy $suggestion ?" >&2
+  fi
+  echo "Run 'omarchy commands --all' to discover available commands." >&2
+  return 127
+}
+
+main() {
+  if (( $# == 0 )); then
+    show_main_help
+    return 0
+  fi
+
+  case "$1" in
+  --help | -h)
+    show_main_help
+    ;;
+  commands)
+    load_commands
+    parse_commands_args "$@"
+    ;;
+  *)
+    dispatch_fast_or_help "$@"
+    ;;
+  esac
+}
+
+main "$@"

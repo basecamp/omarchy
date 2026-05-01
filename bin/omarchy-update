@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# omarchy:summary=Update Omarchy and system packages
+# omarchy:args=[-y]
+# omarchy:examples=omarchy update | omarchy update -y
+# omarchy:requires-sudo=true
+
 set -e
 
 # Run the update inside a PTY so pacman/yay keep showing download progress
