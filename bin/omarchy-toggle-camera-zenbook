@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Toggles camera on some Asus Zenbook systems.
+# a lot of Asus Zenbook devices comes with a camera toggle hotkey (XF86WebCam).
+# Toggles internal webcam on/off via USB unbind/bind.
+# Syncs hardware LED (asus::camera) via brightnessctl.
+# Shows swayosd notification with camera status.
+
+CAM_DEVICE="3-8"
+CAM_PATH="/sys/bus/usb/drivers/usb/$CAM_DEVICE"
+
+if [[ -e $CAM_PATH ]]; then
+  echo "$CAM_DEVICE" | sudo tee /sys/bus/usb/drivers/usb/unbind >/dev/null
+  brightnessctl --device="asus::camera" set 0 >/dev/null
+  omarchy-swayosd-client \
+    --custom-message "Camera on" \
+    --custom-icon camera-photo-symbolic
+else
+  echo "$CAM_DEVICE" | sudo tee /sys/bus/usb/drivers/usb/bind >/dev/null
+  brightnessctl --device="asus::camera" set 1 >/dev/null
+  omarchy-swayosd-client \
+    --custom-message "Camera off" \
+    --custom-icon camera-disabled-symbolic
+fi
