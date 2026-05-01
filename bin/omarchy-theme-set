@@ -53,6 +53,7 @@ omarchy-restart-hyprctl
 omarchy-restart-btop
 omarchy-restart-opencode
 omarchy-restart-mako
+omarchy-restart-helix
 
 # Change app-specific themes
 omarchy-theme-set-gnome
