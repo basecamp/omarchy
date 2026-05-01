@@ -1,4 +1,4 @@
-echo "Reinstalling Helix to set Omarchy theme"
+echo "Updating Helix configuration"
 
 if omarchy-pkg-present helix; then
   omarchy-install-helix
