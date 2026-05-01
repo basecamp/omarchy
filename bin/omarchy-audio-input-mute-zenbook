@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Toggle microphone mute on Asus Zenbook systems. Uses wpctl for reliable toggling.
+# Syncs hardware LED state by default
+# Shows swayosd notification with mic status.
+
+wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle >/dev/null
+
+if pactl get-source-mute @DEFAULT_SOURCE@ | grep -q 'yes'; then
+  osd_message='Microphone muted'
+  osd_icon='microphone-sensitivity-muted-symbolic'
+else
+  osd_message='Microphone on'
+  osd_icon='audio-input-microphone-symbolic'
+fi
+
+omarchy-swayosd-client \
+  --custom-message "$osd_message" \
+  --custom-icon "$osd_icon"

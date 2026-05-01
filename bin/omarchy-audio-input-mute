@@ -6,6 +6,8 @@ if omarchy-hw-match "XPS"; then
   omarchy-audio-input-mute-xps
 elif omarchy-hw-match "ThinkPad"; then
   omarchy-audio-input-mute-thinkpad
+elif omarchy-hw-match "Zenbook"; then
+  omarchy-audio-input-mute-zenbook
 else
   omarchy-swayosd-client --input-volume mute-toggle
 fi
