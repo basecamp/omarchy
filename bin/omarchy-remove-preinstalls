@@ -18,6 +18,7 @@ if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI w
 
   omarchy-pkg-drop \
     aether \
+    cliamp \
     typora \
     spotify \
     libreoffice-fresh \

@@ -7,7 +7,7 @@
 # omarchy:examples=omarchy share clipboard | omarchy share file ~/Downloads/example.txt
 
 if (($# == 0)); then
-  echo "Usage: omarchy-cmd-share [clipboard|file|folder]"
+  echo "Usage: omarchy-menu-share [clipboard|file|folder]"
   exit 1
 fi
 
