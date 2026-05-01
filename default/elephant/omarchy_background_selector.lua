@@ -22,6 +22,19 @@ function FormatName(filename)
   return name
 end
 
+local function ResolvePathOrSymlink(path)
+  -- Convert path into absolute path and resolve symbolic link(if any)
+  local handle = io.popen('realpath "' .. path .. '" 2>/dev/null')
+  -- If path exists then return the resolved path
+  if handle then
+    local result = handle:read("*l")
+    handle:close()
+    return result
+  end
+  -- Return nil, if path does not exist
+  return nil
+end
+
 function GetEntries()
   local entries = {}
   local home = os.getenv("HOME")
@@ -38,7 +51,9 @@ function GetEntries()
     home .. "/.config/omarchy/current/theme/backgrounds",
   }
   if theme_name then
-    table.insert(dirs, home .. "/.config/omarchy/backgrounds/" .. theme_name)
+    local theme_dir = home .. "/.config/omarchy/backgrounds/" .. theme_name
+    local resolved_dir = ResolvePathOrSymlink(theme_dir)
+    table.insert(dirs, resolved_dir or theme_dir)
   end
 
   -- Track added files to avoid duplicates
