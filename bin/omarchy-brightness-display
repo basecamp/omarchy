@@ -14,6 +14,16 @@ for candidate in amdgpu_bl* intel_backlight acpi_video*; do
   fi
 done
 
+# Current brightness percentage
+current=$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')
+
+# Apply non-uniform step size: 1% steps if at or below 5%
+if [[ "$step" == "+5%" && "$current" -lt 5 ]]; then
+  step="+1%"
+elif [[ "$step" == "5%-" && "$current" -le 5 ]]; then
+  step="1%-"
+fi
+
 # Set the actual brightness of the display device.
 brightnessctl -d "$device" set "$step" >/dev/null
 
