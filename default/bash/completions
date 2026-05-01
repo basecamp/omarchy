@@ -51,3 +51,7 @@ _omarchy_complete() {
 }
 
 complete -F _omarchy_complete omarchy
+
+# Hide individual omarchy-* binaries from initial-word command completion;
+# the unified `omarchy` dispatcher is the user-facing entry point.
+complete -I -A command -X 'omarchy-*'
