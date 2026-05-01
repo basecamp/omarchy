@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Toggle permanent Hyprland flags by copying them into a directory that's sourced entirely.
+# omarchy:summary=Toggle permanent Hyprland flags by copying them into a directory that's sourced entirely.
+# omarchy:args=[--enabled-notification <text>] [--disabled-notification <text>] <flag-name>
 
 ENABLED_NOTIFICATION=""
 DISABLED_NOTIFICATION=""

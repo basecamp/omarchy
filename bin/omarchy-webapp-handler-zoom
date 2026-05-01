@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Open Zoom web meetings from browser protocol links
+# omarchy:args=[url]
+
 url="$1"
 web_url="https://app.zoom.us/wc/home"
 

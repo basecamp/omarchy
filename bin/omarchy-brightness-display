@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Adjust brightness on the most likely display device.
-# Usage: omarchy-brightness-display <step>
+# omarchy:summary=Adjust brightness on the most likely display device.
+# omarchy:args=<step>
 
 step="${1:-+5%}"
 
@@ -13,6 +13,31 @@ for candidate in amdgpu_bl* intel_backlight acpi_video*; do
     break
   fi
 done
+
+# Current brightness percentage
+current=$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')
+
+# Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
+# absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
+if [[ $step == "+5%" ]]; then
+  if (( current < 5 )); then
+    (( target = current + 1 ))
+  else
+    (( target = current + 5 ))
+  fi
+
+  (( target > 100 )) && target=100
+  step="$target%"
+elif [[ $step == "5%-" ]]; then
+  if (( current <= 5 )); then
+    (( target = current - 1 ))
+  else
+    (( target = current - 5 ))
+  fi
+
+  (( target < 1 )) && target=1
+  step="$target%"
+fi
 
 # Set the actual brightness of the display device.
 brightnessctl -d "$device" set "$step" >/dev/null

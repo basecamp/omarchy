@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Remove orphaned system packages after updates
+# omarchy:requires-sudo=true
+
 orphans=$(pacman -Qtdq || true)
 if [[ -n $orphans ]]; then
   echo -e "\e[32m\nRemove orphan system packages\e[0m"

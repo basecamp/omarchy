@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Toggle microphone mute on Dell XPS systems. Uses wpctl for reliable toggling
-# and syncs the ALSA capture switch so the hardware mic mute LED follows state.
+# omarchy:summary=Toggle microphone mute on Dell XPS systems. Uses wpctl for reliable toggling
 
 wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle >/dev/null
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Get the active monitor (the one with the cursor)
+# omarchy:summary=Cycle scaling for the focused Hyprland monitor
+
 MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true)')
 ACTIVE_MONITOR=$(echo "$MONITOR_INFO" | jq -r '.name')
 CURRENT_SCALE=$(echo "$MONITOR_INFO" | jq -r '.scale')

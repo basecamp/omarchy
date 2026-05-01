@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# omarchy:summary=Measure Omarchy CLI response times
+# omarchy:args=[--repeat=<count>]
+# omarchy:examples=omarchy dev benchmark | omarchy dev benchmark --repeat=10
+
+set -euo pipefail
+
+OMARCHY_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+CLI="$OMARCHY_BIN_DIR/omarchy"
+REPEAT=5
+
+show_help() {
+  cat <<'EOF'
+Usage:
+  omarchy dev benchmark [--repeat=<count>]
+
+Measure response times for common Omarchy CLI surfaces.
+
+Options:
+  --repeat=<count>  Number of times to run each case (default: 5)
+EOF
+}
+
+now_us() {
+  local now="${EPOCHREALTIME/./}"
+  printf '%s' "$now"
+}
+
+format_ms() {
+  local us="$1"
+  printf '%d.%03d' "$(( us / 1000 ))" "$(( us % 1000 ))"
+}
+
+run_case() {
+  local label="$1"
+  shift
+  local total_us=0
+  local min_us=0
+  local max_us=0
+  local elapsed_us=0
+  local start_us=0
+  local end_us=0
+  local status=0
+
+  for (( i = 1; i <= REPEAT; i++ )); do
+    start_us=$(now_us)
+    if "$@" >/dev/null; then
+      status=0
+    else
+      status=$?
+    fi
+    end_us=$(now_us)
+
+    if (( status != 0 )); then
+      printf '%-34s failed (exit %d)\n' "$label" "$status"
+      return "$status"
+    fi
+
+    elapsed_us=$(( end_us - start_us ))
+    total_us=$(( total_us + elapsed_us ))
+
+    if (( i == 1 || elapsed_us < min_us )); then
+      min_us=$elapsed_us
+    fi
+
+    if (( elapsed_us > max_us )); then
+      max_us=$elapsed_us
+    fi
+  done
+
+  printf '%-34s avg %8s ms  min %8s ms  max %8s ms\n' \
+    "$label" \
+    "$(format_ms "$(( total_us / REPEAT ))")" \
+    "$(format_ms "$min_us")" \
+    "$(format_ms "$max_us")"
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+  --repeat=*)
+    REPEAT="${1#*=}"
+    ;;
+  --help | -h)
+    show_help
+    exit 0
+    ;;
+  *)
+    echo "Unknown option: $1" >&2
+    show_help >&2
+    exit 2
+    ;;
+  esac
+  shift
+done
+
+if [[ ! $REPEAT =~ ^[0-9]+$ ]] || (( REPEAT < 1 )); then
+  echo "--repeat must be a positive integer" >&2
+  exit 2
+fi
+
+printf 'Omarchy CLI benchmark (%d runs each)\n\n' "$REPEAT"
+run_case "omarchy" "$CLI"
+run_case "omarchy --help" "$CLI" --help
+run_case "omarchy commands" "$CLI" commands
+run_case "omarchy commands --json" "$CLI" commands --json
+run_case "omarchy commands --all --json" "$CLI" commands --all --json
+run_case "omarchy theme set --help" "$CLI" theme set --help
+run_case "omarchy screenshot --help" "$CLI" screenshot --help
+run_case "omarchy restart --help" "$CLI" restart --help
+run_case "omarchy theme current" "$CLI" theme current

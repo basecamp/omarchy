@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Install one of the supported databases in a Docker container with the suitable development options.
-# Usually called via Install > Development > Docker DB from the Omarchy Menu.
+# omarchy:summary=Install one of the supported databases in a Docker container with the suitable development options.
+# omarchy:requires-sudo=true
 
 options=("MySQL" "PostgreSQL" "Redis" "MongoDB" "MariaDB" "MSSQL")
 

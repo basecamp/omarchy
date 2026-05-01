@@ -1,19 +1,7 @@
 #!/bin/bash
 
-# Toggle to pop-out a tile to stay fixed on a display basis.
-
-# Usage:
-# omarchy-hyprland-window-pop [width height [x y]]
-#
-# Arguments:
-#   width   Optional. Width of the floating window. Default: 1300
-#   height  Optional. Height of the floating window. Default: 900
-#   x       Optional. X position of the window. Must provide both X and Y to take effect.
-#   y       Optional. Y position of the window. Must provide both X and Y to take effect.
-#
-# Behavior:
-#   - If the window is already pinned, it will be unpinned and removed from the pop layer.
-#   - If the window is not pinned, it will be floated, resized, moved/centered, pinned, brought to top, and popped.
+# omarchy:summary=Toggle to pop-out a tile to stay fixed on a display basis.
+# omarchy:args=[width height x y]
 
 width=${1:-1300}
 height=${2:-900}

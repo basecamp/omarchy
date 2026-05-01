@@ -1,4 +1,6 @@
 #!/bin/bash
 
-# Check if a toggle is enabled (flag file exists)
+# omarchy:summary=Check if a toggle is enabled (flag file exists)
+# omarchy:args=<flag-name>
+
 [[ -f "$HOME/.local/state/omarchy/toggles/$1" ]]

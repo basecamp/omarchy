@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Designed to be run by systemd timer every 30 seconds and alerts if battery is low
+# omarchy:summary=Designed to be run by systemd timer every 30 seconds and alerts if battery is low
 
 BATTERY_THRESHOLD=10
 NOTIFICATION_FLAG="/run/user/$UID/omarchy_battery_notified"

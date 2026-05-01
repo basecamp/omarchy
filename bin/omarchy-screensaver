@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Run the Omarchy screensaver using random effects from TTE.
+# omarchy:summary=Run the Omarchy screensaver using random effects from TTE.
 
 screensaver_in_focus() {
   hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
