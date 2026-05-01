@@ -195,7 +195,7 @@ show_hardware_menu() {
   fi
 
   if omarchy-hw-touchscreen; then
-    options="$options\n  Touchscreen"
+    options="$options\n󰆽  Touchscreen"
   fi
 
   case $(menu "Toggle" "$options") in
