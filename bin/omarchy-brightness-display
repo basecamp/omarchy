@@ -17,11 +17,26 @@ done
 # Current brightness percentage
 current=$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')
 
-# Apply non-uniform step size: 1% steps if at or below 5%
-if [[ "$step" == "+5%" && "$current" -lt 5 ]]; then
-  step="+1%"
-elif [[ "$step" == "5%-" && "$current" -le 5 ]]; then
-  step="1%-"
+# Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
+# absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
+if [[ $step == "+5%" ]]; then
+  if (( current < 5 )); then
+    (( target = current + 1 ))
+  else
+    (( target = current + 5 ))
+  fi
+
+  (( target > 100 )) && target=100
+  step="$target%"
+elif [[ $step == "5%-" ]]; then
+  if (( current <= 5 )); then
+    (( target = current - 1 ))
+  else
+    (( target = current - 5 ))
+  fi
+
+  (( target < 0 )) && target=0
+  step="$target%"
 fi
 
 # Set the actual brightness of the display device.
