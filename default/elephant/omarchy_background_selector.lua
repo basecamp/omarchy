@@ -22,26 +22,6 @@ function FormatName(filename)
   return name
 end
 
-local function ResolvePathOrSymlink(path)
-  if not path or path == "" then
-    return nil
-  end
-  -- Safely escape the path for shell usage
-  local escaped_path = ShellEscape(path)
-  -- Use `--` to prevent option injection
-  local cmd = "realpath -- " .. escaped_path .. " 2>/dev/null"
-
-  local handle = io.popen(cmd)
-  if not handle then
-    return nil
-  end
-
-  local result = handle:read("*l")
-  handle:close()
-
-  return result
-end
-
 function GetEntries()
   local entries = {}
   local home = os.getenv("HOME")
@@ -58,9 +38,7 @@ function GetEntries()
     home .. "/.config/omarchy/current/theme/backgrounds",
   }
   if theme_name then
-    local theme_dir = home .. "/.config/omarchy/backgrounds/" .. theme_name
-    local resolved_dir = ResolvePathOrSymlink(theme_dir)
-    table.insert(dirs, resolved_dir or theme_dir)
+    table.insert(dirs, home .. "/.config/omarchy/backgrounds/" .. theme_name)
   end
 
   -- Track added files to avoid duplicates
@@ -68,7 +46,7 @@ function GetEntries()
 
   for _, wallpaper_dir in ipairs(dirs) do
     local handle = io.popen(
-      "find " .. ShellEscape(wallpaper_dir)
+      "find -L " .. ShellEscape(wallpaper_dir)
         .. " -maxdepth 1 -type f \\( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.gif' -o -name '*.bmp' -o -name '*.webp' \\) 2>/dev/null | sort"
     )
     if handle then
