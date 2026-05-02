@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Remove all web apps installed via omarchy-webapp-install.
-# Identifies web apps by their Exec pattern (omarchy-launch-webapp or omarchy-webapp-handler).
+# omarchy:summary=Remove all web apps installed via omarchy-webapp-install.
 
 set -e
 
@@ -32,5 +31,7 @@ done
 if command -v update-desktop-database &>/dev/null; then
   update-desktop-database "$APP_DIR" &>/dev/null || true
 fi
+
+omarchy-restart-walker
 
 echo "Web apps removed successfully."

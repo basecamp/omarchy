@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Enable, disable, toggle, or recover mirroring the internal display to an external monitor
+# omarchy:args=<on|off|toggle|recover>
+
 TOGGLE="internal-monitor-mirror"
 TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.conf"
 DISABLE_TOGGLE="internal-monitor-disable"

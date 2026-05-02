@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Install and launch Geforce Now.
+# omarchy:summary=Install and launch Geforce Now.
 
 set -e
 

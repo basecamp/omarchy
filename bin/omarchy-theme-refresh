@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Refresh the current theme from its templates.
+# omarchy:summary=Refresh the current theme from its templates.
 
 THEME_NAME_PATH="$HOME/.config/omarchy/current/theme.name"
 
