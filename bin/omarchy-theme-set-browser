@@ -2,7 +2,7 @@
 
 CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
 
-if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
+if omarchy-cmd-present chromium || omarchy-cmd-present brave || omarchy-cmd-present helium; then
   if [[ -f $CHROMIUM_THEME ]]; then
     THEME_RGB_COLOR=$(<$CHROMIUM_THEME)
     THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${THEME_RGB_COLOR//,/ })
@@ -20,5 +20,10 @@ if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
   if omarchy-cmd-present brave; then
     echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
     pgrep -x brave >/dev/null && brave --refresh-platform-policy --no-startup-window &>/dev/null
+  fi
+
+  if omarchy-cmd-present helium; then
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "/etc/helium/policies/managed/color.json" >/dev/null
+    pgrep -x helium >/dev/null && helium --refresh-platform-policy --no-startup-window &>/dev/null
   fi
 fi
