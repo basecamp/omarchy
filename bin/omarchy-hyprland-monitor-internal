@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# omarchy:summary=Enable, disable, toggle, or recover the internal laptop display
-# omarchy:args=<on|off|toggle|recover>
+# omarchy:summary=Enable, disable, toggle, conditionally disable, or recover the internal laptop display
+# omarchy:args=<on|off|off-if-external|toggle|recover>
 
 TOGGLE="internal-monitor-disable"
 TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.conf"
@@ -16,16 +16,27 @@ enable() {
   fi
 }
 
-disable() {
-  if ! omarchy-hw-external-monitors; then
-    notify-send -u low "󰍹    Can't disable the only active display"
-    exit 1
-  fi
+disable_laptop_display() {
   if omarchy-hyprland-toggle-disabled "$TOGGLE" && omarchy-hyprland-toggle-disabled "$MIRROR_TOGGLE"; then
     echo "monitor=$INTERNAL,disable" >"$TOGGLE_FLAG"
     notify-send -u low "󰍹    Laptop display disabled"
     hyprctl reload
   fi
+}
+
+disable() {
+  if ! omarchy-hw-external-monitors; then
+    notify-send -u low "󰍹    Can't disable the only active display"
+    exit 1
+  fi
+
+  disable_laptop_display
+}
+
+disable_if_external() {
+  omarchy-hw-external-monitors || exit 0
+
+  disable_laptop_display
 }
 
 recover() {
@@ -37,10 +48,11 @@ recover() {
 case "$1" in
   on) enable ;;
   off) disable ;;
+  off-if-external) disable_if_external ;;
   toggle) if omarchy-hyprland-toggle-enabled "$TOGGLE"; then enable; else disable; fi ;;
   recover) recover ;;
   *)
-    echo "Usage: $(basename "$0") {on|off|toggle|recover}" >&2
+    echo "Usage: $(basename "$0") {on|off|off-if-external|toggle|recover}" >&2
     exit 1
     ;;
 esac
