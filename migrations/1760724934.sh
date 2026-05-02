@@ -11,7 +11,7 @@ fi
 echo "Copy hooks examples"
 cp -r $OMARCHY_PATH/config/omarchy/* $HOME/.config/omarchy/
 
-echo "Add packages for updated omarchy-cmd-screenshot"
+echo "Add packages for updated omarchy-capture-screenshot"
 omarchy-pkg-add grim slurp
 
 echo "Add nfs support by default to Nautilus"

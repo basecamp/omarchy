@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Manage persistent state files for Omarchy toggles and settings.
-# Usage: omarchy-state <set|clear> <state-name-or-pattern>
-# Used to track whether features like suspend, idle lock, etc are enabled or disabled.
+# omarchy:summary=Manage persistent state files for Omarchy toggles and settings.
+# omarchy:args=<set|clear> <state-name-or-pattern>
 
 STATE_DIR="$HOME/.local/state/omarchy"
 mkdir -p "$STATE_DIR"

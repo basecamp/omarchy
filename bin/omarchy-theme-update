@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Update user-installed git themes
+
 for dir in ~/.config/omarchy/themes/*/; do
   if [[ -d $dir ]] && [[ ! -L ${dir%/} ]] && [[ -d $dir/.git ]]; then
     echo "Updating: $(basename "$dir")"
