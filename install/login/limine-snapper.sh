@@ -80,11 +80,17 @@ fi
 
 echo "mkinitcpio hooks re-enabled"
 
-sudo limine-update
-
-# Verify that limine-update actually added boot entries
+# Installing limine-mkinitcpio-hook above already triggered a full UKI rebuild
+# (via 80-limine-efi-deploy.hook + 90-mkinitcpio-install.hook), which writes the
+# boot entries into /boot/limine.conf. Only fall back to limine-update if those
+# hooks didn't run for some reason — running it unconditionally rebuilds every
+# UKI a second time.
 if ! grep -q "^/+" /boot/limine.conf; then
-  echo "Error: limine-update failed to add boot entries to /boot/limine.conf" >&2
+  sudo limine-update
+fi
+
+if ! grep -q "^/+" /boot/limine.conf; then
+  echo "Error: failed to add boot entries to /boot/limine.conf" >&2
   exit 1
 fi
 
