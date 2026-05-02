@@ -1,14 +1,10 @@
-echo "Update interface_ colours for limine 12 (palette index -> RRGGBB)"
+echo "Update interface_ colors for limine 12 (palette index -> RRGGBB)"
 
 if [[ -f /boot/limine.conf ]]; then
-  sudo sed -i 's/^interface_branding_color: 2$/interface_branding_colour: 9ece6a/' /boot/limine.conf
-  sudo sed -i 's/^interface_branding_color: /interface_branding_colour: /' /boot/limine.conf
+  sudo sed -i -E 's/^interface_branding_colou?r: 2$/interface_branding_color: 9ece6a/' /boot/limine.conf
+  sudo sed -i 's/^interface_branding_colour: /interface_branding_color: /' /boot/limine.conf
 
-  if ! grep -q '^interface_help_colour:' /boot/limine.conf; then
-    echo 'interface_help_colour: 9ece6a' | sudo tee -a /boot/limine.conf >/dev/null
-  fi
-
-  if ! grep -q '^interface_help_colour_bright:' /boot/limine.conf; then
-    echo 'interface_help_colour_bright: 9ece6a' | sudo tee -a /boot/limine.conf >/dev/null
-  fi
+  sudo sed -i -E '/^interface_help_colou?r(_bright)?:/d' /boot/limine.conf
+  sudo sed -i '/^interface_branding_color:/a interface_help_color_bright: 9ece6a' /boot/limine.conf
+  sudo sed -i '/^interface_branding_color:/a interface_help_color: 9ece6a' /boot/limine.conf
 fi
