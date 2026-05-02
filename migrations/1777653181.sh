@@ -1,4 +1,4 @@
-echo "Create managed policy directories for Chromium and Brave for theme switching"
+echo "Restrict browser managed policy directories to administrators"
 
 for policy_dir in /etc/chromium/policies/managed /etc/brave/policies/managed; do
   sudo install -d -m 755 -o root -g root "$policy_dir"

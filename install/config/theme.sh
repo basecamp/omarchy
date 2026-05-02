@@ -2,16 +2,23 @@
 sudo ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-previous-symbolic.svg /usr/share/icons/Yaru/scalable/actions/go-previous-symbolic.svg
 sudo ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-next-symbolic.svg /usr/share/icons/Yaru/scalable/actions/go-next-symbolic.svg
 
+setup_browser_policy_file() {
+  local policy_dir="$1"
+  local policy_file="$policy_dir/color.json"
+
+  sudo install -d -m 755 -o root -g root "$policy_dir"
+  sudo rm -f "$policy_file"
+  sudo install -m 664 -o root -g wheel /dev/null "$policy_file"
+}
+
 # Setup user theme folder
 mkdir -p ~/.config/omarchy/themes
 
 # Add managed policy directories for Chromium and Brave for theme changes.
 # Must exist before the first omarchy-theme-set, which writes color.json into them.
-sudo mkdir -p /etc/chromium/policies/managed
-sudo chmod a+rw /etc/chromium/policies/managed
+setup_browser_policy_file /etc/chromium/policies/managed
 
-sudo mkdir -p /etc/brave/policies/managed
-sudo chmod a+rw /etc/brave/policies/managed
+setup_browser_policy_file /etc/brave/policies/managed
 
 # Set initial theme
 omarchy-theme-set "Tokyo Night"
