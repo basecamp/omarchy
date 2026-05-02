@@ -337,45 +337,45 @@ export PATH="$PKG_STUB_DIR:$ROOT/bin:$ORIGINAL_PATH"
 
 rm -f "$PKG_TEST_DIR"/*.log
 if SUDO_VALIDATE_STATUS=1 "$ROOT/bin/omarchy-pkg-install"; then
-  fail "pkg install exits when sudo validation fails"
+  fail "pkg install should exit non-zero when sudo validation fails"
 fi
-[[ ! -f $PKG_TEST_DIR/pacman-install.log ]] || fail "pkg install skips pacman after sudo validation failure"
-[[ ! -f $PKG_TEST_DIR/show-done.log ]] || fail "pkg install skips done after sudo validation failure"
+[[ ! -f $PKG_TEST_DIR/pacman-install.log ]] || fail "pkg install should not run pacman after sudo validation failure"
+[[ ! -f $PKG_TEST_DIR/show-done.log ]] || fail "pkg install should not show done after sudo validation failure"
 pass "pkg install aborts cleanly when sudo validation fails"
 
 rm -f "$PKG_TEST_DIR"/*.log
 if PACMAN_INSTALL_STATUS=42 "$ROOT/bin/omarchy-pkg-install"; then
-  fail "pkg install exits when pacman fails"
+  fail "pkg install should exit non-zero when pacman fails"
 fi
-[[ -f $PKG_TEST_DIR/pacman-install.log ]] || fail "pkg install attempted pacman"
-[[ ! -f $PKG_TEST_DIR/show-done.log ]] || fail "pkg install skips done after pacman failure"
+[[ -f $PKG_TEST_DIR/pacman-install.log ]] || fail "pkg install should attempt pacman before handling failure"
+[[ ! -f $PKG_TEST_DIR/show-done.log ]] || fail "pkg install should not show done after pacman failure"
 pass "pkg install skips done when pacman fails"
 
 rm -f "$PKG_TEST_DIR"/*.log
 if SUDO_VALIDATE_STATUS=1 "$ROOT/bin/omarchy-pkg-aur-install"; then
-  fail "aur install exits when sudo validation fails"
+  fail "aur install should exit non-zero when sudo validation fails"
 fi
-[[ ! -f $PKG_TEST_DIR/yay-install.log ]] || fail "aur install skips yay after sudo validation failure"
-[[ ! -f $PKG_TEST_DIR/updatedb.log ]] || fail "aur install skips updatedb after sudo validation failure"
-[[ ! -f $PKG_TEST_DIR/show-done.log ]] || fail "aur install skips done after sudo validation failure"
+[[ ! -f $PKG_TEST_DIR/yay-install.log ]] || fail "aur install should not run yay after sudo validation failure"
+[[ ! -f $PKG_TEST_DIR/updatedb.log ]] || fail "aur install should not run updatedb after sudo validation failure"
+[[ ! -f $PKG_TEST_DIR/show-done.log ]] || fail "aur install should not show done after sudo validation failure"
 pass "aur install aborts cleanly when sudo validation fails"
 
 rm -f "$PKG_TEST_DIR"/*.log
 if YAY_INSTALL_STATUS=42 "$ROOT/bin/omarchy-pkg-aur-install"; then
-  fail "aur install exits when yay fails"
+  fail "aur install should exit non-zero when yay fails"
 fi
-[[ -f $PKG_TEST_DIR/yay-install.log ]] || fail "aur install attempted yay"
-[[ ! -f $PKG_TEST_DIR/updatedb.log ]] || fail "aur install skips updatedb after yay failure"
-[[ ! -f $PKG_TEST_DIR/show-done.log ]] || fail "aur install skips done after yay failure"
+[[ -f $PKG_TEST_DIR/yay-install.log ]] || fail "aur install should attempt yay before handling failure"
+[[ ! -f $PKG_TEST_DIR/updatedb.log ]] || fail "aur install should not run updatedb after yay failure"
+[[ ! -f $PKG_TEST_DIR/show-done.log ]] || fail "aur install should not show done after yay failure"
 pass "aur install skips follow-up steps when yay fails"
 
 rm -f "$PKG_TEST_DIR"/*.log
 if UPDATEDB_STATUS=42 "$ROOT/bin/omarchy-pkg-aur-install"; then
-  fail "aur install exits when updatedb fails"
+  fail "aur install should exit non-zero when updatedb fails"
 fi
-[[ -f $PKG_TEST_DIR/yay-install.log ]] || fail "aur install attempted yay before updatedb"
-[[ -f $PKG_TEST_DIR/updatedb.log ]] || fail "aur install attempted updatedb"
-[[ ! -f $PKG_TEST_DIR/show-done.log ]] || fail "aur install skips done after updatedb failure"
+[[ -f $PKG_TEST_DIR/yay-install.log ]] || fail "aur install should attempt yay before updatedb"
+[[ -f $PKG_TEST_DIR/updatedb.log ]] || fail "aur install should attempt updatedb before handling failure"
+[[ ! -f $PKG_TEST_DIR/show-done.log ]] || fail "aur install should not show done after updatedb failure"
 pass "aur install skips done when updatedb fails"
 
 export PATH="$ORIGINAL_PATH"
