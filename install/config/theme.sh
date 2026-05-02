@@ -7,7 +7,7 @@ setup_browser_policy_file() {
   local policy_file="$policy_dir/color.json"
 
   sudo install -d -m 755 -o root -g root "$policy_dir"
-  sudo rm -f "$policy_file"
+  sudo rm -rf -- "$policy_file"
   sudo install -m 664 -o root -g wheel /dev/null "$policy_file"
 }
 
