@@ -1,0 +1,17 @@
+OMARCHY_PREINSTALLED_WEBAPPS=(
+  "HEY|https://app.hey.com|HEY.png|omarchy-webapp-handler-hey %u|x-scheme-handler/mailto"
+  "Basecamp|https://launchpad.37signals.com|Basecamp.png"
+  "WhatsApp|https://web.whatsapp.com/|WhatsApp.png"
+  "Google Photos|https://photos.google.com/|Google Photos.png"
+  "Google Contacts|https://contacts.google.com/|Google Contacts.png"
+  "Google Messages|https://messages.google.com/web/conversations|Google Messages.png"
+  "Google Maps|https://maps.google.com|Google Maps.png"
+  "ChatGPT|https://chatgpt.com/|ChatGPT.png"
+  "YouTube|https://youtube.com/|YouTube.png"
+  "GitHub|https://github.com/|GitHub.png"
+  "X|https://x.com/|X.png"
+  "Figma|https://figma.com/|Figma.png"
+  "Discord|https://discord.com/channels/@me|Discord.png"
+  "Zoom|https://app.zoom.us/wc/home|Zoom.png|omarchy-webapp-handler-zoom %u|x-scheme-handler/zoommtg;x-scheme-handler/zoomus"
+  "Fizzy|https://app.fizzy.do/|Fizzy.png"
+)
