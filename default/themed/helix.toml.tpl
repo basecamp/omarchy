@@ -76,7 +76,7 @@
 "ui.bufferline.active" = { fg = "foreground", bg = "background", underline = { color = "color5", style = "line" } }
 
 "ui.text" = "foreground"
-"ui.text.focus" = { fg = "foreground", modifiers = ["bold"] }
+"ui.text.focus" = { fg = "foreground", bg = "color0", modifiers = ["bold"] }
 "ui.text.inactive" = { fg = "color8" }
 "ui.text.directory" = { fg = "color4" }
 
@@ -87,8 +87,7 @@
 "ui.virtual.jump-label" = { fg = "color1", modifiers = ["bold"] }
 "ui.virtual.whitespace" = "color8"
 
-"ui.selection" = { fg = "selection_foreground", bg = "selection_background" }
-"ui.selection.primary" = { fg = "selection_foreground", bg = "selection_background" }
+"ui.selection" = { bg = "color0" }
 
 "ui.cursor" = { fg = "background", bg = "cursor" }
 "ui.cursor.primary" = { fg = "background", bg = "cursor" }
@@ -99,7 +98,7 @@
 
 "ui.cursorline.primary" = { bg = "color0" }
 
-"ui.highlight" = { fg = "selection_foreground", bg = "selection_background", modifiers = ["bold"] }
+"ui.highlight" = { bg = "color0", modifiers = ["bold"] }
 
 "ui.menu" = { fg = "foreground", bg = "background" }
 "ui.menu.selected" = { fg = "background", bg = "foreground", modifiers = ["bold"] }
