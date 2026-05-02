@@ -1,11 +1,21 @@
 #!/bin/bash
 
-# omarchy:summary=Toggle microphone mute. Dell XPS and ThinkPad systems get special handling for the hardware LED.
+# omarchy:summary=Toggle microphone mute. Drives the hardware mic-mute LED on laptops that expose one.
 
-if omarchy-hw-match "XPS"; then
-  omarchy-audio-input-mute-xps
-elif omarchy-hw-match "ThinkPad"; then
-  omarchy-audio-input-mute-thinkpad
+wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle >/dev/null
+
+if pactl get-source-mute @DEFAULT_SOURCE@ | rg -q 'yes'; then
+  led=on
+  osd_message='Microphone muted'
+  osd_icon='microphone-sensitivity-muted-symbolic'
 else
-  omarchy-swayosd-client --input-volume mute-toggle
+  led=off
+  osd_message='Microphone on'
+  osd_icon='audio-input-microphone-symbolic'
 fi
+
+omarchy-brightness-keyboard-mute "$led"
+
+omarchy-swayosd-client \
+  --custom-message "$osd_message" \
+  --custom-icon "$osd_icon"
