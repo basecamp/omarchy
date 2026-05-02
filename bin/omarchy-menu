@@ -269,7 +269,7 @@ show_setup_power_menu() {
 
   case $(menu "Power" "$options") in
   *Profile*) show_setup_power_profile_menu ;;
-  *Battery*) present_terminal omarchy-setup-battery-policy ;;
+  *Battery*) omarchy-menu-battery-policy || back_to show_setup_power_menu ;;
   *) back_to show_setup_menu ;;
   esac
 }
