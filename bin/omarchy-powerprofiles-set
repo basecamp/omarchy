@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set the power profile to the requested level, falling back to balanced
-# omarchy:args=<autodetect|ac|battery>
+# omarchy:args=[autodetect|ac|battery]
 
 action="${1-}"
 
@@ -10,7 +10,7 @@ action="${1-}"
 # USB-C only laptops where the legacy AC device may not fire udev
 # events, and also avoids false negatives from per-port USB-C devices
 # that are present-but-empty (online=0) while another port supplies power.
-if [[ -z $action || "autodetect" == $action ]]; then
+if [[ -z $action || $action == "autodetect" ]]; then
   action=battery
   for ps in /sys/class/power_supply/*; do
     [[ -r $ps/online && -r $ps/type ]] || continue
