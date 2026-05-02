@@ -7,5 +7,17 @@ if omarchy-hw-match "XPS"; then
 elif omarchy-hw-match "ThinkPad"; then
   omarchy-audio-input-mute-thinkpad
 else
-  omarchy-swayosd-client --input-volume mute-toggle
+  wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle >/dev/null
+
+  if pactl get-source-mute @DEFAULT_SOURCE@ | rg -q 'yes'; then
+    osd_message='Microphone muted'
+    osd_icon='microphone-sensitivity-muted-symbolic'
+  else
+    osd_message='Microphone on'
+    osd_icon='audio-input-microphone-symbolic'
+  fi
+
+  omarchy-swayosd-client \
+    --custom-message "$osd_message" \
+    --custom-icon "$osd_icon"
 fi
