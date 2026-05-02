@@ -33,4 +33,15 @@ fi
 NEW_SCALE=${SCALES[$NEW_IDX]}
 
 hyprctl keyword monitor "$ACTIVE_MONITOR,${WIDTH}x${HEIGHT}@${REFRESH_RATE},auto,$NEW_SCALE"
+
+# Persist to monitors.conf if the user has a single generic catch-all line
+# (ignoring disabled monitors), so the scale survives reboots.
+MONITOR_CONF="$HOME/.config/hypr/monitors.conf"
+if [[ -f "$MONITOR_CONF" ]]; then
+  mapfile -t ACTIVE_LINES < <(grep -E '^[[:space:]]*monitor=' "$MONITOR_CONF" | grep -vE 'disable[[:space:]]*$')
+  if [[ ${#ACTIVE_LINES[@]} -eq 1 ]] && [[ "${ACTIVE_LINES[0]}" =~ ^monitor=,preferred,auto, ]]; then
+    sed -i -E "s|^(monitor=,preferred,auto,).*|\\1${NEW_SCALE}|" "$MONITOR_CONF"
+  fi
+fi
+
 notify-send -u low "󰍹    Display scaling set to ${NEW_SCALE}x"
