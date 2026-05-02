@@ -1,4 +1,13 @@
-source "$OMARCHY_PATH/install/packaging/webapps-data.sh"
+set -euo pipefail
+
+webapps_data_file="$OMARCHY_PATH/install/packaging/webapps-data.sh"
+
+if [[ ! -f "$webapps_data_file" ]]; then
+  echo "Missing webapps data file: $webapps_data_file" >&2
+  exit 1
+fi
+
+source "$webapps_data_file"
 
 for webapp in "${OMARCHY_PREINSTALLED_WEBAPPS[@]}"; do
   IFS="|" read -r app_name app_url icon_ref custom_exec mime_types <<< "$webapp"
