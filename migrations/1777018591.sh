@@ -6,4 +6,4 @@ fi
 
 echo "Create /etc/helium/policies/managed for theme policy injection"
 sudo mkdir -p /etc/helium/policies/managed
-sudo chmod 777 /etc/helium/policies/managed
+sudo chmod a+rw /etc/helium/policies/managed
