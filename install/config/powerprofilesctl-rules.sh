@@ -6,7 +6,7 @@ EOF
 
   # Ensure the daemon is running and starts on boot. The arch package preset
   # leaves it disabled, which would silently break profile switching.
-  sudo systemctl enable --now power-profiles-daemon
+  sudo systemctl enable power-profiles-daemon
 
   sudo udevadm control --reload 2>/dev/null
   sudo udevadm trigger --subsystem-match=power_supply 2>/dev/null
