@@ -26,12 +26,6 @@ if [[ -n $NVIDIA ]]; then
 options nvidia_drm modeset=1
 EOF
 
-  # Ensure NVreg_UseKernelSuspendNotifiers is used for hibernation
-  sudo tee -a /etc/modprobe.d/nvidia.conf <<EOF >/dev/null
-options nvidia NVreg_PreserveVideoMemoryAllocations=0
-options nvidia NVreg_UseKernelSuspendNotifiers=1
-EOF
-
   # Configure mkinitcpio for early loading
   sudo tee /etc/mkinitcpio.conf.d/nvidia.conf <<EOF >/dev/null
 MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)
