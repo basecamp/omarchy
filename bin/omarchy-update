@@ -1,6 +1,18 @@
 #!/bin/bash
 
+# omarchy:summary=Update Omarchy and system packages
+# omarchy:args=[-y]
+# omarchy:examples=omarchy update | omarchy update -y
+# omarchy:requires-sudo=true
+
 set -e
+
+# Run the update inside a PTY so pacman/yay keep showing download progress
+# while still logging the full session for later analysis.
+if [[ -z $OMARCHY_UPDATE_LOGGED ]]; then
+  script_command=$(printf '%q ' "$0" "$@")
+  exec env OMARCHY_UPDATE_LOGGED=1 script -qefc "$script_command" "/tmp/omarchy-update.log"
+fi
 
 trap 'echo ""; echo -e "\033[0;31mSomething went wrong during the update!\n\nPlease review the output above carefully, correct the error, and retry the update.\n\nIf you need assistance, get help from the community at https://omarchy.org/discord\033[0m"' ERR
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# omarchy:summary=Run the Synaptics touchpad haptic feedback daemon
+
 """Haptic feedback daemon for Synaptics touchpads with Manual Trigger.
 
 Monitors touchpad button press events and sends haptic pulses via HID
@@ -11,7 +13,6 @@ Trigger protocol used by these Synaptics touchpads.
 import fcntl, glob, os, struct, sys
 
 VENDOR = "06CB"
-PRODUCT = "D01A"
 REPORT_ID = 0x37
 INTENSITY = 40  # 0-100
 
@@ -34,7 +35,7 @@ def find_hidraw():
         try:
             with open(uevent) as f:
                 content = f.read().upper()
-            if f"0000{VENDOR}" in content and f"0000{PRODUCT}" in content:
+            if f"0000{VENDOR}" in content:
                 return os.path.join("/dev", os.path.basename(path))
         except OSError:
             continue
@@ -46,7 +47,7 @@ def find_touchpad_event():
         try:
             with open(path) as f:
                 name = f.read().strip().upper()
-            if VENDOR in name and PRODUCT in name and "TOUCHPAD" in name:
+            if VENDOR in name and "TOUCHPAD" in name:
                 event = path.split("/")[-3]
                 return os.path.join("/dev/input", event)
         except OSError:

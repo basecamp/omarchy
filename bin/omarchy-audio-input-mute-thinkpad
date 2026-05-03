@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle microphone mute on ThinkPad systems. Uses wpctl for reliable toggling
+
+wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle >/dev/null
+
+if pactl get-source-mute @DEFAULT_SOURCE@ | grep -q 'yes'; then
+  osd_message='Microphone muted'
+  osd_icon='microphone-sensitivity-muted-symbolic'
+  led_value=1
+else
+  osd_message='Microphone on'
+  osd_icon='audio-input-microphone-symbolic'
+  led_value=0
+fi
+
+brightnessctl --device="platform::micmute" set "$led_value" >/dev/null 2>&1 || true
+
+omarchy-swayosd-client \
+  --custom-message "$osd_message" \
+  --custom-icon "$osd_icon"

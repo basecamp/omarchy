@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Get the active monitor (the one with the cursor)
+# omarchy:summary=Cycle scaling for the focused Hyprland monitor
+
 MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true)')
 ACTIVE_MONITOR=$(echo "$MONITOR_INFO" | jq -r '.name')
 CURRENT_SCALE=$(echo "$MONITOR_INFO" | jq -r '.scale')
@@ -8,17 +9,28 @@ WIDTH=$(echo "$MONITOR_INFO" | jq -r '.width')
 HEIGHT=$(echo "$MONITOR_INFO" | jq -r '.height')
 REFRESH_RATE=$(echo "$MONITOR_INFO" | jq -r '.refreshRate')
 
-# Cycle through scales: 1 → 1.6 → 2 → 3 → 1
-CURRENT_INT=$(awk -v s="$CURRENT_SCALE" 'BEGIN { printf "%.0f", s * 10 }')
+# Cycle through scales: 1 → 1.25 → 1.6 → 2 → 3 → 1 (or reverse with --reverse)
+SCALES=(1 1.25 1.6 2 3)
 
-case "$CURRENT_INT" in
-10) NEW_SCALE=1.6 ;;
-16) NEW_SCALE=2 ;;
-20) NEW_SCALE=3 ;;
-*) NEW_SCALE=1 ;;
-esac
+# Find the index of the scale closest to the current one (Hyprland may
+# snap fractional scales to nearby values, so we can't match exactly)
+CURRENT_IDX=$(awk -v s="$CURRENT_SCALE" -v list="${SCALES[*]}" 'BEGIN {
+  n = split(list, arr, " ")
+  best = 0; best_diff = 1e9
+  for (i = 1; i <= n; i++) {
+    d = s - arr[i]; if (d < 0) d = -d
+    if (d < best_diff) { best_diff = d; best = i - 1 }
+  }
+  print best
+}')
 
-hyprctl keyword misc:disable_scale_notification true
+if [[ "$1" == "--reverse" ]]; then
+  NEW_IDX=$(( (CURRENT_IDX - 1 + ${#SCALES[@]}) % ${#SCALES[@]} ))
+else
+  NEW_IDX=$(( (CURRENT_IDX + 1) % ${#SCALES[@]} ))
+fi
+
+NEW_SCALE=${SCALES[$NEW_IDX]}
+
 hyprctl keyword monitor "$ACTIVE_MONITOR,${WIDTH}x${HEIGHT}@${REFRESH_RATE},auto,$NEW_SCALE"
-hyprctl keyword misc:disable_scale_notification false
 notify-send -u low "󰍹    Display scaling set to ${NEW_SCALE}x"
