@@ -10,12 +10,15 @@ hide_action_hints = true                                                    # gl
 [keybinds]
 quick_activate = []
 
+[columns]
+symbols = 1 # providers to be queried by default
+
 [providers]
 max_results = 256 # 256 should be enough for everyone
 default = [
   "desktopapplications",
   "websearch",
-] # providers to be queried by default
+]
 
 [[providers.prefixes]]
 prefix = "/"
@@ -40,3 +43,7 @@ provider = "websearch"
 [[providers.prefixes]]
 prefix = "$"
 provider = "clipboard"
+
+[[emergencies]]
+text = "Restart Walker"
+command = "omarchy-restart-walker"

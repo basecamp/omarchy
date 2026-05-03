@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Check whether all required commands are available
+
 for cmd in "$@"; do
   command -v "$cmd" &>/dev/null || exit 1
 done

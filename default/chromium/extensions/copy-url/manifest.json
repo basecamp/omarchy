@@ -1,5 +1,5 @@
 {
-  "manifest_version": 4,
+  "manifest_version": 3,
   "name": "Copy URL",
   "version": "1.0",
   "description": "Copy current URL to clipboard, this extension is installed by Omarchy",

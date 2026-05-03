@@ -1,4 +1,6 @@
 #!/bin/bash
 
+# omarchy:summary=Display a "Done!" message with a spinner and wait for user to press any key.
+
 echo
 gum spin --spinner "globe" --title "Done! Press any key to close..." -- bash -c 'read -n 1 -s'

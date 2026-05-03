@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Log out after closing application windows
+# omarchy:examples=omarchy logout | omarchy system logout
+# omarchy:aliases=omarchy logout
+
+nohup bash -c "sleep 2 && uwsm stop" >/dev/null 2>&1 &
+
+# Now close all windows
+omarchy-hyprland-window-close-all
+sleep 1 # Allow apps like Chrome to shutdown correctly
