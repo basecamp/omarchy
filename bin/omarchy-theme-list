@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=List available themes
+# omarchy:examples=omarchy theme list | omarchy theme set "Tokyo Night"
+
 {
   find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -printf '%f\n'
   find "$OMARCHY_PATH/themes/" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'

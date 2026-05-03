@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Update system firmware using fwupd. Ensures the fwupd EFI binary is installed
-# in the ESP so UEFI capsule updates work with the Limine bootloader.
+# omarchy:summary=Update system firmware using fwupd. Ensures the fwupd EFI binary is installed
+# omarchy:requires-sudo=true
 
 set -e
 echo -e "\e[32mUpdate Firmware\e[0m"

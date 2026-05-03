@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Launch or focus on a given command identified by the passed in window-pattern.
-# Use by some default bindings, like the one for Spotify, to ensure there is only one instance of the application open.
+# omarchy:summary=Launch an app or focus an existing window matching a pattern
+# omarchy:args=<window-pattern> <launch-command>
 
 if (($# == 0)); then
   echo "Usage: omarchy-launch-or-focus [window-pattern] [launch-command]"

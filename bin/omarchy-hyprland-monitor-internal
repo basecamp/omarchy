@@ -1,6 +1,14 @@
 #!/bin/bash
 
+# omarchy:summary=Enable, disable, toggle, or recover the internal laptop display
+# omarchy:args=<on|off|toggle|recover>
+
 TOGGLE="internal-monitor-disable"
+TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.conf"
+MIRROR_TOGGLE="internal-monitor-mirror"
+
+# Get internal monitor name dynamically
+INTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | contains("eDP")).name' | head -n 1)
 
 enable() {
   if omarchy-hyprland-toggle-enabled "$TOGGLE"; then
@@ -9,13 +17,14 @@ enable() {
 }
 
 disable() {
-  if omarchy-hw-external-monitors; then
-    if omarchy-hyprland-toggle-disabled "$TOGGLE"; then
-      omarchy-hyprland-toggle --enabled-notification "󰍹    Laptop display disabled" "$TOGGLE"
-    fi
-  else
+  if ! omarchy-hw-external-monitors; then
     notify-send -u low "󰍹    Can't disable the only active display"
     exit 1
+  fi
+  if omarchy-hyprland-toggle-disabled "$TOGGLE" && omarchy-hyprland-toggle-disabled "$MIRROR_TOGGLE"; then
+    echo "monitor=$INTERNAL,disable" >"$TOGGLE_FLAG"
+    notify-send -u low "󰍹    Laptop display disabled"
+    hyprctl reload
   fi
 }
 
