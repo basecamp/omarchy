@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Match Dell XPS systems with LG OLED panel on Intel Panther Lake (Xe3) GPU.
+# omarchy:summary=Match Dell XPS systems with LG OLED panel on Intel Panther Lake (Xe3) GPU.
 
 omarchy-hw-match "XPS" \
   && omarchy-hw-intel-ptl \

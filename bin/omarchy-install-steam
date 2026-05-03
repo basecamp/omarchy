@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Install and launch Steam after first letting the user pick the correct grahics card drivers.
+# omarchy:summary=Install Steam and graphics drivers selected for this system
+# omarchy:requires-sudo=true
 
 set -e
 

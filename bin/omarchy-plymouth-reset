@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Restore the Plymouth boot theme and the SDDM login screen to the omarchy
-# defaults — copies the shipped assets into /usr/share, rebuilds the initramfs,
-# and refreshes the SDDM theme.
+# omarchy:summary=Restore the default Omarchy Plymouth boot theme and SDDM login screen
+# omarchy:requires-sudo=true
 
 theme_dir="/usr/share/plymouth/themes/omarchy"
 
