@@ -1,0 +1,86 @@
+#!/bin/bash
+
+# omarchy:summary=Show Omarchy bin metadata fields and defaults
+# omarchy:args=[--json]
+
+set -euo pipefail
+
+show_json() {
+  jq -n '{
+    ok: true,
+    defaults: {
+      group: "first filename segment after omarchy-",
+      name: "remaining filename segments with dashes converted to spaces",
+      route: "omarchy <group> <name>",
+      binary: "filename",
+      requires_sudo: false
+    },
+    fields: [
+      {name: "summary", required: true, type: "string", note: "One-line human and agent-facing description."},
+      {name: "group", required: false, type: "string", note: "Only set when the route group should differ from the filename-derived group."},
+      {name: "name", required: false, type: "string", note: "Only set when the route name should differ from the filename-derived name. May be empty for root commands."},
+      {name: "args", required: false, type: "string", note: "Only set when the command accepts arguments."},
+      {name: "examples", required: false, type: "string", note: "Pipe-separated examples."},
+      {name: "aliases", required: false, type: "string", note: "Pipe-separated alternate routes, e.g. omarchy screenshot."},
+      {name: "requires-sudo", required: false, type: "true", default: false, note: "Only include when true."}
+    ]
+  }'
+}
+
+show_help() {
+  cat <<'EOF'
+Omarchy bin metadata
+
+Metadata lives in the top comment block of each executable bin/omarchy-* file.
+Keep it slim: define only fields that are required or override defaults.
+
+Required:
+  # omarchy:summary=<one-line description>
+
+Inferred defaults:
+  group         first filename segment after omarchy-
+  name          remaining filename segments, with dashes converted to spaces
+  route         omarchy <group> <name>
+  binary        filename
+  requires-sudo false
+
+Optional fields:
+  # omarchy:group=<group>                  route override only
+  # omarchy:name=<name>                    route override only; may be empty
+  # omarchy:args=<args>                    only if the command accepts args
+  # omarchy:examples=<cmd> | <cmd>         pipe-separated examples
+  # omarchy:aliases=<route> | <route>      pipe-separated alternate routes
+  # omarchy:requires-sudo=true             only when true
+
+Do not define:
+  binary      inferred from filename
+  usage       derived from route + args
+  false flags or empty args
+
+Examples:
+  # omarchy:summary=Restart Walker and related user services
+
+  # omarchy:summary=Take a screenshot
+  # omarchy:group=capture
+  # omarchy:args=[smart|region|windows|fullscreen] [slurp|copy] [--editor=<name>]
+  # omarchy:examples=omarchy screenshot | omarchy capture screenshot region
+  # omarchy:aliases=omarchy screenshot
+EOF
+}
+
+case "${1:-}" in
+--json)
+  show_json
+  ;;
+--help | -h)
+  show_help
+  ;;
+"")
+  show_help
+  ;;
+*)
+  echo "Unknown option: $1" >&2
+  show_help >&2
+  exit 2
+  ;;
+esac

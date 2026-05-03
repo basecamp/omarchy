@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# Set the correct power profile on boot based on current AC/battery state.
-# The udev rules only fire on state *changes*, so without this, booting
-# on AC leaves you in the default balanced mode.
+# omarchy:summary=Set the correct power profile on boot based on current AC/battery state.
 
 if omarchy-battery-present && ! omarchy-ac-present; then
   omarchy-powerprofiles-set battery

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Preview a Plymouth boot screen with custom colors and logo
+# omarchy:args=<background-hex> <text-hex> <path-to-logo.png> <output-path>
+
 # Render a Plymouth login-screen preview PNG by compositing the staged omarchy
 # theme assets (recolored with the given text color) onto the background.
 

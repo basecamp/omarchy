@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Install one of the approved terminals and set it as the default for Omarchy (Super + Return etc).
+# omarchy:summary=Install one of the approved terminals and set it as the default for Omarchy (Super + Return etc).
+# omarchy:args=<alacritty|ghostty|kitty>
+# omarchy:requires-sudo=true
 
 if (($# == 0)); then
   echo "Usage: omarchy-install-terminal [alacritty|ghostty|kitty]"

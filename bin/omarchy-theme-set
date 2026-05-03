@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# omarchy:summary=Apply an Omarchy theme
+# omarchy:args=<theme-name>
+# omarchy:examples=omarchy theme list | omarchy theme set "Tokyo Night"
+
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-set <theme-name>"
   exit 1
@@ -53,6 +57,7 @@ omarchy-restart-hyprctl
 omarchy-restart-btop
 omarchy-restart-opencode
 omarchy-restart-mako
+omarchy-restart-helix
 
 # Change app-specific themes
 omarchy-theme-set-gnome

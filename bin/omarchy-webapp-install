@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Create a desktop launcher for a web app
+# omarchy:args=[name url icon [custom-exec] [mime-types]]
+
 set -e
 
 ICON_DIR="$HOME/.local/share/applications/icons"

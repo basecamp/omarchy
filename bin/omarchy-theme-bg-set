@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Sets the specified image as the current background
+# omarchy:summary=Set the current background image
+# omarchy:args=<path-to-image>
+# omarchy:examples=omarchy theme bg set ~/Pictures/wallpaper.png
 
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-bg-set <path-to-image>" >&2
