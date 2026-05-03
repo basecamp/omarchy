@@ -48,4 +48,7 @@ set_cfg overlay_directory "/usr/share/libretro/overlays"
 set_cfg osk_overlay_directory "/usr/share/libretro/overlays/keyboards"
 set_cfg video_shader_dir "/usr/share/libretro/shaders/shaders_slang"
 
+# Vulkan is required for slang shaders and unlocks hardware renderers in beetle-psx-hw, parallel-n64, dolphin
+set_cfg video_driver "vulkan"
+
 setsid gtk-launch com.libretro.RetroArch.desktop >/dev/null 2>&1 &
