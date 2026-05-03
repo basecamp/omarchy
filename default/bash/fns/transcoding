@@ -8,6 +8,11 @@ transcode-video-4K() {
   ffmpeg -i "$1" -c:v libx265 -preset slow -crf 24 -c:a aac -b:a 192k "${1%.*}-optimized.mp4"
 }
 
+# Transcode a video to an animated GIF using a palette for accurate colors
+transcode-video-gif() {
+  ffmpeg -i "$1" -vf "fps=10,scale=800:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" "${1%.*}.gif"
+}
+
 # Transcode any image to JPG image that's great for shrinking wallpapers
 img2jpg() {
   img="$1"
