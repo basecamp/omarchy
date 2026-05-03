@@ -166,12 +166,13 @@ show_share_menu() {
 }
 
 show_toggle_menu() {
-  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n  Direct Boot\n󰟵  Passwordless Sudo"
+  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰂛  Notifications\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n  Direct Boot\n󰟵  Passwordless Sudo"
 
   case $(menu "Toggle" "$options") in
   *Screensaver*) omarchy-toggle-screensaver ;;
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
+  *Notifications*) omarchy-toggle-notification-silencing ;;
   *Bar*) omarchy-toggle-waybar ;;
   *Layout*) omarchy-hyprland-workspace-layout-toggle ;;
   *Ratio*) omarchy-hyprland-window-single-square-aspect-toggle ;;
