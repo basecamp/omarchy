@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Switch between audio outputs while preserving the mute status. By default mapped to Super + Mute.
+# omarchy:summary=Switch between audio outputs while preserving the mute status. By default mapped to Super + Mute.
 
 sinks=$(pactl -f json list sinks | jq '[.[] | select((.ports | length == 0) or ([.ports[]? | .availability != "not available"] | any))]')
 sinks_count=$(echo "$sinks" | jq '. | length')
