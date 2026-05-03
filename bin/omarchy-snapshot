@@ -20,12 +20,14 @@ create)
 
   echo -e "\e[32mCreate system snapshot\e[0m"
 
-  # Get existing snapper config names from CSV output
-  mapfile -t CONFIGS < <(sudo snapper --csvout list-configs | awk -F, 'NR>1 {print $1}')
-
-  for config in "${CONFIGS[@]}"; do
-    sudo snapper -c "$config" create -c number -d "$DESC"
-  done
+  # Read snapper configs and their subvolume paths
+  while IFS=, read -r name path _; do
+    [[ $name == "Config" ]] && continue # Skip header
+    # Check if the path exists and is btrfs
+    if [[ -d $path ]] && [[ "$(findmnt -n -o FSTYPE --target "$path")" == "btrfs" ]]; then
+      sudo snapper -c "$name" create -c number -d "$DESC"
+    fi
+  done < <(sudo snapper --csvout list-configs)
   echo
   ;;
 restore)
