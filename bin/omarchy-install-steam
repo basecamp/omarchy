@@ -5,6 +5,28 @@
 
 set -e
 
-echo "Now pick dependencies matching your graphics card"
-sudo pacman -S steam
+PACKAGES=(steam)
+
+# Pick the lib32 vulkan provider matching detected GPU(s) so pacman doesn't prompt.
+if omarchy-hw-nvidia-gsp; then
+  PACKAGES+=(lib32-nvidia-utils)
+elif omarchy-hw-nvidia-without-gsp; then
+  PACKAGES+=(lib32-nvidia-580xx-utils)
+fi
+
+declare -A VULKAN_DRIVERS=(
+  [Intel]=lib32-vulkan-intel
+  [AMD]=lib32-vulkan-radeon
+)
+for vendor in "${!VULKAN_DRIVERS[@]}"; do
+  if lspci | grep -iE "(VGA|Display).*$vendor" >/dev/null; then
+    PACKAGES+=("${VULKAN_DRIVERS[$vendor]}")
+  fi
+done
+
+omarchy-pkg-add "${PACKAGES[@]}"
+
+echo ""
+echo "Steam will start automatically now. This might take a while..."
+
 setsid gtk-launch steam >/dev/null 2>&1 &
