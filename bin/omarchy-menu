@@ -103,9 +103,10 @@ show_trigger_menu() {
 }
 
 show_capture_menu() {
-  case $(menu "Capture" "  Screenshot\n  Screenrecord\n󰃉  Color") in
+  case $(menu "Capture" "  Screenshot\n  Screenrecord\n󰴑  Text Extraction\n󰃉  Color") in
   *Screenshot*) omarchy-capture-screenshot ;;
   *Screenrecord*) show_screenrecord_menu ;;
+  *Text*) omarchy-capture-text-extraction ;;
   *Color*) pkill hyprpicker || hyprpicker -a ;;
   *) back_to show_trigger_menu ;;
   esac
