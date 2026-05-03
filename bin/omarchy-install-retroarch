@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# omarchy:summary=Install RetroArch with the full libretro core set plus FBNeo and a ~/Games ROM directory.
+
+set -e
+
+omarchy-pkg-aur-add retroarch retroarch-assets libretro libretro-fbneo
+
+# Set up ~/Games as the default ROM directory
+mkdir -p "$HOME/Games"
+
+CFG="$HOME/.config/retroarch/retroarch.cfg"
+mkdir -p "$(dirname "$CFG")"
+touch "$CFG"
+
+set_cfg() {
+  local key=$1 value=$2
+  if grep -q "^$key = " "$CFG"; then
+    sed -i "s|^$key = .*|$key = \"$value\"|" "$CFG"
+  else
+    echo "$key = \"$value\"" >>"$CFG"
+  fi
+}
+
+set_cfg rgui_browser_directory "$HOME/Games"
+
+setsid gtk-launch com.libretro.RetroArch.desktop >/dev/null 2>&1 &
