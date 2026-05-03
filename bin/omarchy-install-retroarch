@@ -51,4 +51,20 @@ set_cfg video_shader_dir "/usr/share/libretro/shaders/shaders_slang"
 # Vulkan is required for slang shaders and unlocks hardware renderers in beetle-psx-hw, parallel-n64, dolphin
 set_cfg video_driver "vulkan"
 
+# XMB is the classic PS3-style menu (vs. ozone/rgui/glui)
+set_cfg menu_driver "xmb"
+
+# Default to crt-royale shader for that classic CRT look. The global preset is
+# auto-loaded by RetroArch when auto_shaders_enable is true and no per-core/per-game
+# preset takes precedence — setting video_shader alone in retroarch.cfg is not enough.
+set_cfg video_shader_enable "true"
+set_cfg auto_shaders_enable "true"
+mkdir -p ~/.config/retroarch/config
+echo '#reference "/usr/share/libretro/shaders/shaders_slang/crt/crt-royale.slangp"' \
+  > ~/.config/retroarch/config/global.slangp
+
+# Hide Images and Video tabs in the main menu sidebar
+set_cfg content_show_images "false"
+set_cfg content_show_video "false"
+
 setsid gtk-launch com.libretro.RetroArch.desktop >/dev/null 2>&1 &
