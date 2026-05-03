@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Go from current active terminal to its child shell process and run cwd there
+# omarchy:summary=Print the current working directory of the active terminal window
+
 terminal_pid=$(hyprctl activewindow | awk '/pid:/ {print $2}')
 shell_pid=$(pgrep -P "$terminal_pid" | tail -n1)
 

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Dismiss a mako notification on the basis of its summary. Used by the first-run notifications to dismiss them after clicking for action.
+# omarchy:args=<summary>
+
 if (($# == 0)); then
   echo "Usage: omarchy-notification-dismiss <summary>"
   exit 1

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Select a drive from a list with info that includes space and brand
+# omarchy:summary=Select a drive from a list with info that includes space and brand. Used by omarchy-drive-set-password.
 
 if (($# == 0)); then
   drives=$(lsblk -dpno NAME | grep -E '/dev/(sd|hd|vd|nvme|mmcblk|xv)')
@@ -10,7 +10,7 @@ fi
 
 drives_with_info=""
 while IFS= read -r drive; do
-  [[ -n "$drive" ]] || continue
+  [[ -n $drive ]] || continue
   drives_with_info+="$(omarchy-drive-info "$drive")"$'\n'
 done <<<"$drives"
 

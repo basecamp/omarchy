@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Allow Chromium to sign in to Google accounts by adding the required OAuth credentials
+
 if [[ -f ~/.config/chromium-flags.conf ]]; then
   CONF=~/.config/chromium-flags.conf
 

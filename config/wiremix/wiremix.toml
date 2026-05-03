@@ -1,0 +1,5 @@
+# overwrites default wiremix configuration
+# defaults: https://github.com/tsowell/wiremix/blob/main/wiremix.toml
+
+[char_sets.default]
+default_device = "⮞"

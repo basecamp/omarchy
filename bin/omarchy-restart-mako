@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Reload mako configuration (used by the Omarchy theme switching).
+
+makoctl reload

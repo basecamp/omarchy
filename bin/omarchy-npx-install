@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# omarchy:summary=Install an npx wrapper for a given npm package.
+# omarchy:args=<package> [command-name]
+
+if [[ -z $1 ]]; then
+  echo "Usage: omarchy-npx-install <package> [command-name]"
+  exit 1
+fi
+
+package=$1
+command=${2:-$1}
+
+mkdir -p "$HOME/.local/bin"
+
+cat > "$HOME/.local/bin/$command" <<EOF
+#!/bin/bash
+package="$package"
+command="$command"
+
+if ! node_root="\$(mise where node@latest 2>/dev/null)"; then
+  mise use -g node@latest >/dev/null
+  node_root="\$(mise where node@latest)"
+fi
+
+node_bin="\$node_root/bin/node"
+npx_bin="\$node_root/bin/npx"
+
+ensure_bin_runtime() {
+  local bin_path=\$1
+  local shebang
+
+  IFS= read -r shebang < "\$bin_path"
+
+  if [[ \$shebang == "#!"*"/bun"* || \$shebang == "#!"*"/env bun"* ]]; then
+    if omarchy-cmd-missing bun; then
+      echo "Installing bun runtime for \$package..."
+      omarchy-pkg-add bun
+      hash -r
+    fi
+  fi
+}
+
+exec_package_bin() {
+  local package_bin_path=\$1
+  shift
+
+  if [[ -n \$package_bin_path ]]; then
+    ensure_bin_runtime "\$package_bin_path"
+    PATH="\$node_root/bin:\$PATH" exec "\$package_bin_path" "\$@"
+  fi
+}
+
+# Resolve the package bin inside npx, then run it with node@latest available for node shebangs.
+# Some wrappers are aliases, e.g. playwright-cli wraps the playwright bin.
+"\$node_bin" "\$npx_bin" --yes --prefer-online --package "\$package" -- true
+
+package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$package" 2>/dev/null)
+exec_package_bin "\$package_bin_path" "\$@"
+
+# Scoped packages like @openai/codex expose an unscoped bin like codex.
+package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$command" 2>/dev/null)
+exec_package_bin "\$package_bin_path" "\$@"
+
+echo "Could not resolve npm bin for \$package / \$command" >&2
+exit 127
+EOF
+
+chmod +x "$HOME/.local/bin/$command"

@@ -4,7 +4,7 @@ echo "Reset DNS configuration to DHCP (remove forced Cloudflare DNS)"
 # This preserves local development environments (.local domains, etc.)
 # Users can still opt-in to Cloudflare DNS using: omarchy-setup-dns cloudflare
 
-if [ -f /etc/systemd/resolved.conf ]; then
+if [[ -f /etc/systemd/resolved.conf ]]; then
   # Backup current config with timestamp
   backup_timestamp=$(date +"%Y%m%d%H%M%S")
   sudo cp /etc/systemd/resolved.conf "/etc/systemd/resolved.conf.bak.${backup_timestamp}"
@@ -18,7 +18,7 @@ if [ -f /etc/systemd/resolved.conf ]; then
   echo "FallbackDNS=" | sudo tee -a /etc/systemd/resolved.conf >/dev/null
 
   # Remove any forced DNS config from systemd-networkd
-  if [ -f /etc/systemd/network/99-omarchy-dns.network ]; then
+  if [[ -f /etc/systemd/network/99-omarchy-dns.network ]]; then
     sudo rm -f /etc/systemd/network/99-omarchy-dns.network
     sudo systemctl restart systemd-networkd
   fi
