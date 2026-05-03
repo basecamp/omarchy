@@ -3,14 +3,14 @@
 echo "Installing Bitwarden..."
 omarchy-pkg-add bitwarden bitwarden-cli
 
-bashrc=$HOME/.bashrc
+env_file=$HOME/.config/uwsm/env
 use_bitwarden_as_ssh_agent=false
 
-if ! grep -Fq "SSH_AUTH_SOCK" "$bashrc"; then
+if ! grep -Fq "SSH_AUTH_SOCK" "$env_file"; then
   # ask user if they want to use Bitwarden as their SSH agent and configure SSH_AUTH_SOCK accordingly
   if gum confirm "Use Bitwarden as SSH agent?"; then
     use_bitwarden_as_ssh_agent=true
-    echo "export SSH_AUTH_SOCK=$HOME/.bitwarden-ssh-agent.sock" >>"$bashrc"
+    echo "export SSH_AUTH_SOCK=$HOME/.bitwarden-ssh-agent.sock" | tee -a "$env_file" >/dev/null
     echo "Make sure to enable SSH agent support in Bitwarden settings."
   fi
 fi
@@ -18,5 +18,6 @@ fi
 setsid gtk-launch bitwarden &>/dev/null
 
 if [[ $use_bitwarden_as_ssh_agent == "true" ]]; then
-  source "$bashrc"
+  touch ~/.local/state/omarchy/reboot-required
+  omarchy-update-restart
 fi
