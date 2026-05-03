@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Install the lib32 NVIDIA driver matching the detected GPU generation (no-op if no NVIDIA).
+# omarchy:requires-sudo=true
+
+set -e
+
+if omarchy-hw-nvidia-gsp; then
+  omarchy-pkg-add lib32-nvidia-utils
+elif omarchy-hw-nvidia-without-gsp; then
+  omarchy-pkg-add lib32-nvidia-580xx-utils
+fi
