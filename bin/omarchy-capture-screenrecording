@@ -175,7 +175,10 @@ finalize_recording() {
   # Trim the first frame, and normalize audio to -14 LUFS if present, in a single pass
   local args=(-y -ss 0.1 -i "$latest" "${video_codec[@]}")
   if ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "$latest" 2>/dev/null | grep -q audio; then
-    args+=(-af loudnorm=I=-14:TP=-1.5:LRA=11)
+    # Hard-mute the first 400ms to drop the PipeWire capture-open pop (a near-clipping
+    # transient around 130-200ms that a gentle fade-in can't attenuate enough), then a
+    # 50ms fade avoids a click at the boundary before loudnorm normalizes the rest.
+    args+=(-af "volume=enable='lt(t,0.4)':volume=0,afade=t=in:st=0.4:d=0.05,loudnorm=I=-14:TP=-1.5:LRA=11")
   fi
 
   local processed="${latest%.mp4}-processed.mp4"
