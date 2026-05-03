@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Where we store an empty file for each migration that has already been performed.
+# omarchy:summary=Run all pending migrations to bring the system in line with the installed version.
+
 STATE_DIR="$HOME/.local/state/omarchy/migrations"
 mkdir -p "$STATE_DIR"
 
@@ -8,10 +9,10 @@ mkdir -p "$STATE_DIR"
 mkdir -p "$STATE_DIR/skipped"
 
 # Run any pending migrations
-for file in ~/.local/share/omarchy/migrations/*.sh; do
+for file in $OMARCHY_PATH/migrations/*.sh; do
   filename=$(basename "$file")
 
-  if [[ ! -f "$STATE_DIR/$filename" && ! -f "$STATE_DIR/skipped/$filename" ]]; then
+  if [[ ! -f $STATE_DIR/$filename && ! -f $STATE_DIR/skipped/$filename ]]; then
     echo -e "\e[32m\nRunning migration (${filename%.sh})\e[0m"
 
     if bash $file; then

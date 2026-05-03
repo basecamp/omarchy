@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# omarchy:summary=Apply an Omarchy theme
+# omarchy:args=<theme-name>
+# omarchy:examples=omarchy theme list | omarchy theme set "Tokyo Night"
+
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-set <theme-name>"
   exit 1
@@ -12,11 +16,7 @@ OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 
-if [[ -d "$USER_THEMES_PATH/$THEME_NAME" ]]; then
-  THEME_PATH="$USER_THEMES_PATH/$THEME_NAME"
-elif [[ -d "$OMARCHY_THEMES_PATH/$THEME_NAME" ]]; then
-  THEME_PATH="$OMARCHY_THEMES_PATH/$THEME_NAME"
-else
+if [[ ! -d $OMARCHY_THEMES_PATH/$THEME_NAME ]] && [[ ! -d $USER_THEMES_PATH/$THEME_NAME ]]; then
   echo "Theme '$THEME_NAME' does not exist"
   exit 1
 fi
@@ -25,8 +25,14 @@ fi
 rm -rf "$NEXT_THEME_PATH"
 mkdir -p "$NEXT_THEME_PATH"
 
-# Copy static configs
-cp -r "$THEME_PATH/"* "$NEXT_THEME_PATH/" 2>/dev/null
+# Copy official theme first, then overlay user customizations on top
+cp -r "$OMARCHY_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
+cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
+
+# Generate colors.toml from alacritty.toml if theme is missing colors.toml
+if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]; then
+  omarchy-theme-colors-from-alacritty "$NEXT_THEME_PATH"
+fi
 
 # Generate dynamic configs
 omarchy-theme-set-templates
@@ -36,7 +42,7 @@ rm -rf "$CURRENT_THEME_PATH"
 mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
 
 # Store theme name for reference
-echo "$THEME_NAME" > "$HOME/.config/omarchy/current/theme.name"
+echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"
 
 # Change background with theme
 omarchy-theme-bg-next
@@ -47,18 +53,18 @@ if pgrep -x waybar >/dev/null; then
 fi
 omarchy-restart-swayosd
 omarchy-restart-terminal
-hyprctl reload
-pkill -SIGUSR2 btop
-# pkill -SIGUSR2 opencode
-makoctl reload
+omarchy-restart-hyprctl
+omarchy-restart-btop
+omarchy-restart-opencode
+omarchy-restart-mako
+omarchy-restart-helix
 
 # Change app-specific themes
 omarchy-theme-set-gnome
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
-omarchy-theme-set-vscodium
-omarchy-theme-set-cursor
 omarchy-theme-set-obsidian
+omarchy-theme-set-keyboard
 
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME"

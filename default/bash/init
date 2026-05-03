@@ -2,7 +2,7 @@ if command -v mise &> /dev/null; then
   eval "$(mise activate bash)"
 fi
 
-if command -v starship &> /dev/null; then
+if [[ $- == *i* ]] && [[ ${TERM:-} != "dumb" ]] && command -v starship &> /dev/null; then
   eval "$(starship init bash)"
 fi
 
@@ -11,7 +11,11 @@ if command -v zoxide &> /dev/null; then
 fi
 
 if command -v try &> /dev/null; then
-  eval "$(try init ~/Work/tries)"
+  try() {
+    unset -f try
+    eval "$(SHELL=/bin/bash command try init ~/Work/tries)"
+    try "$@"
+  }
 fi
 
 if command -v fzf &> /dev/null; then
@@ -22,3 +26,5 @@ if command -v fzf &> /dev/null; then
     source /usr/share/fzf/key-bindings.bash
   fi
 fi
+
+source "$OMARCHY_PATH/default/bash/completions"

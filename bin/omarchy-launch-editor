@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Launch the default editor as determined by $EDITOR (set via ~/.config/uwsm/default) (or nvim if missing).
+# omarchy:args=<path>
+
 omarchy-cmd-present "$EDITOR" || EDITOR=nvim
 
 case "$EDITOR" in

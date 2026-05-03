@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Ensure we have the omarchy-keyring and it's populated
+# omarchy:summary=Ensure the Omarchy keyring package is installed and populated
+# omarchy:requires-sudo=true
+
 if omarchy-pkg-missing omarchy-keyring || ! sudo pacman-key --list-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 &>/dev/null; then
   sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
   sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
@@ -12,3 +14,7 @@ if omarchy-pkg-missing omarchy-keyring || ! sudo pacman-key --list-keys 40DFB630
 
   sudo pacman-key --list-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571
 fi
+
+# Ensure we have the latest archlinux-keyring, maintainer keys might have changed
+echo -e "\e[32m\nUpdate Arch signing keys\e[0m"
+sudo pacman -Sy --noconfirm archlinux-keyring >/dev/null

@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Clean up the voxtype --follow child when Waybar reloads
+
+trap 'kill 0' EXIT
+
+if omarchy-cmd-present voxtype; then
+  voxtype status --follow --extended --format json | while read -r line; do
+    echo "$line" | jq -c '. + {alt: .class}'
+  done
+else
+  echo '{"alt": "", "tooltip": ""}'
+fi

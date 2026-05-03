@@ -1,16 +1,18 @@
 #!/bin/bash
 
-# This script deploys ~/.local/share/omarchy/config/X/Y/Z -> ~/.config/X/Y/Z
+# omarchy:summary=Copies the named config from ~/.local/share/omarchy/config/X/Y/Z -> ~/.config/X/Y/Z.
+# omarchy:args=<config-path>
+
 config_file=$1
 
-if [[ -z "$config_file" ]]; then
+if [[ -z $config_file ]]; then
   cat <<USAGE
   Usage: $0 [config_file]
 
   Must provide a file path from the .config directory to be refreshed.
   To copy ~/.local/share/omarchy/config/hypr/hyprlock.conf to ~/.config/hypr/hyprlock.conf
-    
-    $0 hypr/hyprlock.conf     
+
+    $0 hypr/hyprlock.conf
 USAGE
   exit 1
 fi
@@ -20,7 +22,9 @@ user_config_file="${HOME}/.config/$config_file"
 default_config_file="${HOME}/.local/share/omarchy/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
 
-if [[ -f "$user_config_file" ]]; then
+mkdir -p "$(dirname "$user_config_file")"
+
+if [[ -f $user_config_file ]]; then
   # Create preliminary backup
   cp -f "$user_config_file" "$backup_config_file" 2>/dev/null
 

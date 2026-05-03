@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Restart Walker and related user services
+
 restart_services() {
   if systemctl --user is-enabled elephant.service &>/dev/null; then
     systemctl --user restart elephant.service
@@ -12,7 +14,7 @@ restart_services() {
   fi
 }
 
-if [[ $EUID -eq 0 ]]; then
+if (( EUID == 0 )); then
   SCRIPT_OWNER=$(stat -c '%U' "$0")
   USER_UID=$(id -u "$SCRIPT_OWNER")
   systemd-run --uid="$SCRIPT_OWNER" --setenv=XDG_RUNTIME_DIR="/run/user/$USER_UID" \
