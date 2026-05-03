@@ -43,6 +43,7 @@ ensure_bin_runtime() {
 
 exec_package_bin() {
   local package_bin_path=\$1
+  shift
 
   if [[ -n \$package_bin_path ]]; then
     ensure_bin_runtime "\$package_bin_path"
