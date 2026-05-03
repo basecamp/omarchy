@@ -1,8 +1,20 @@
 #!/bin/bash
 
-# Reload the intel_quicki2c driver to fix a dead trackpad.
-# The THC (Touch Host Controller) can fail to initialize interrupts
-# during boot or after suspend, leaving the trackpad registered but
-# not delivering events.
+# omarchy:summary=Reset the trackpad by unbinding and rebinding its driver.
+# omarchy:requires-sudo=true
 
-sudo modprobe -r intel_quicki2c && sudo modprobe intel_quicki2c
+for dev in /sys/bus/i2c/drivers/i2c_hid_acpi/i2c-*; do
+  [ -e "$dev" ] || continue
+  I2C_DEVICE=$(basename "$dev")
+  echo "Resetting $I2C_DEVICE via i2c_hid_acpi unbind/rebind..."
+  echo "$I2C_DEVICE" | sudo tee /sys/bus/i2c/drivers/i2c_hid_acpi/unbind > /dev/null
+  sleep 1
+  echo "$I2C_DEVICE" | sudo tee /sys/bus/i2c/drivers/i2c_hid_acpi/bind > /dev/null
+  echo "Done"
+done
+
+# Also try THC path
+if lsmod | grep -q intel_quicki2c; then
+  echo "Reloading intel_quicki2c..."
+  sudo modprobe -r intel_quicki2c && sudo modprobe intel_quicki2c
+fi

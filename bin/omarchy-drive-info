@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Returns drive information about a given volumne, like /dev/nvme0, which is used by omarchy-drive-select.
+# omarchy:summary=Print drive information such as size, model, and mount details
+# omarchy:args=<drive>
 
 if (($# == 0)); then
   echo "Usage: omarchy-drive-info [/dev/drive]"
