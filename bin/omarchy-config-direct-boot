@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Add an EFI boot entry for the Omarchy UKI, allowing the system to boot directly
-# without a bootloader like Limine. Requires UEFI firmware and a built UKI.
+# omarchy:summary=Add or remove an EFI boot entry for the Omarchy UKI, allowing the system to boot directly
+# omarchy:requires-sudo=true
 
 if [[ ! -d /sys/firmware/efi ]]; then
   echo "Error: System is not booted in UEFI mode" >&2
@@ -23,23 +23,36 @@ if cat /sys/class/dmi/id/bios_vendor 2>/dev/null | grep -qi "Apple"; then
   exit 1
 fi
 
-uki_file=$(find /boot/EFI/Linux/ -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | head -1)
+existing_entry=$(efibootmgr | grep -E "^Boot[0-9A-Fa-f]+\*? Omarchy([[:space:]]|$)" | head -1)
 
-if [[ -z $uki_file ]]; then
-  echo "Error: No Omarchy UKI found in /boot/EFI/Linux/" >&2
-  exit 1
-fi
+if [[ -n $existing_entry ]]; then
+  boot_num=$(echo "$existing_entry" | sed -n 's/^Boot\([0-9A-Fa-f]\+\).*/\1/p')
 
-boot_source=$(findmnt -n -o SOURCE /boot)
-disk=$(echo "$boot_source" | sed 's/p\?[0-9]*$//')
-part=$(echo "$boot_source" | grep -o 'p\?[0-9]*$' | sed 's/^p//')
+  if gum confirm "Disable direct boot (remove Omarchy EFI entry)?"; then
+    echo "Removing EFI boot entry $boot_num"
+    sudo efibootmgr --bootnum "$boot_num" --delete-bootnum >/dev/null
+  fi
 
-if ! gum confirm "Setup direct boot (so snapshot booting must be done via bios)?"; then
-  echo "Creating EFI boot entry for $uki_file"
+  exit 0
+else
+  uki_file=$(find /boot/EFI/Linux/ -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | head -1)
 
-  sudo efibootmgr --create \
-    --disk "$disk" \
-    --part "$part" \
-    --label "Omarchy" \
-    --loader "\\EFI\\Linux\\$uki_file"
+  if [[ -z $uki_file ]]; then
+    echo "Error: No Omarchy UKI found in /boot/EFI/Linux/" >&2
+    exit 1
+  fi
+
+  boot_source=$(findmnt -n -o SOURCE /boot)
+  disk=$(echo "$boot_source" | sed 's/p\?[0-9]*$//')
+  part=$(echo "$boot_source" | grep -o 'p\?[0-9]*$' | sed 's/^p//')
+
+  if gum confirm "Setup direct boot (so snapshot booting must be done via bios)?"; then
+    echo "Creating EFI boot entry for $uki_file"
+
+    sudo efibootmgr --create \
+      --disk "$disk" \
+      --part "$part" \
+      --label "Omarchy" \
+      --loader "\\EFI\\Linux\\$uki_file"
+  fi
 fi

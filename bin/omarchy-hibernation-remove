@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Removes hibernation setup: disables swap, removes swapfile, removes fstab entry,
-# removes resume hook, and removes suspend-then-hibernate configuration.
+# omarchy:summary=Remove hibernation setup including swap and boot resume settings
+# omarchy:requires-sudo=true
 
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 

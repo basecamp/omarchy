@@ -16,6 +16,8 @@ brightnessctl
 btop
 chromium
 clang
+claude-code
+cliamp
 cups
 cups-browsed
 cups-filters
@@ -23,6 +25,7 @@ cups-pdf
 docker
 docker-buildx
 docker-compose
+dosfstools
 dotnet-runtime-9.0
 dust
 evince
@@ -91,7 +94,6 @@ obs-studio
 obsidian
 omarchy-nvim
 omarchy-walker
-opencode
 pamixer
 pinta
 playerctl
@@ -112,11 +114,14 @@ sddm
 signal-desktop
 slurp
 spotify
+socat
 starship
 sushi
 swaybg
 swayosd
 system-config-printer
+tesseract
+tesseract-data-eng
 tldr
 tree-sitter-cli
 tmux

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Reset the sudo lockout/faillock for the current user.
+
+su -c "faillock --reset --user $USER"
