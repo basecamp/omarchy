@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# omarchy:summary=Power off all monitors via DPMS; any input wakes them.
+
+# Detach with a short delay so trailing input from the launcher (key release,
+# focus change) doesn't immediately wake the displays.
+(sleep 1 && hyprctl dispatch dpms off) &
+disown

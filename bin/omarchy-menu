@@ -619,7 +619,7 @@ show_about() {
 }
 
 show_system_menu() {
-  local options="󱄄  Screensaver\n  Lock"
+  local options="󱄄  Screensaver\n  Lock\n󰍹  Sleep Displays"
   ! omarchy-toggle-enabled suspend-off && options="$options\n󰒲  Suspend"
   omarchy-hibernation-available && options="$options\n󰤁  Hibernate"
   options="$options\n󰍃  Logout\n󰜉  Restart\n󰐥  Shutdown"
@@ -627,6 +627,7 @@ show_system_menu() {
   case $(menu "System" "$options") in
   *Screensaver*) omarchy-launch-screensaver force ;;
   *Lock*) omarchy-system-lock ;;
+  *"Sleep Displays"*) omarchy-cmd-sleep-displays ;;
   *Suspend*) systemctl suspend ;;
   *Hibernate*) systemctl hibernate ;;
   *Logout*) omarchy-system-logout ;;
