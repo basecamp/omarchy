@@ -4,6 +4,7 @@
 
 set -e
 
+echo "Installing GeForce NOW..."
 omarchy-pkg-add flatpak
 cd /tmp
 

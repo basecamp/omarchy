@@ -5,6 +5,8 @@
 
 set -e
 
+echo "Installing Xbox controller Bluetooth support..."
+
 # Install xpadneo to ensure controllers work out of the box
 omarchy-pkg-add linux-headers xpadneo-dkms
 
