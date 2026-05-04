@@ -217,10 +217,34 @@ show_style_menu() {
   *Font*) show_font_menu ;;
   *Background*) show_background_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
-  *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
+  *Screensaver*) show_screensaver_menu ;;
   *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
   esac
+}
+
+show_screensaver_menu() {
+  case $(menu "Screensaver" "  Set From Image\n  Restore Default\n  Edit Text\n󱄄  Preview") in
+  *Image*) set_screensaver_from_image ;;
+  *Default*) terminal bash -lc 'omarchy-screensaver-set-logo default; echo; read -n 1 -s -r -p "Press any key to close..."' ;;
+  *Text*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
+  *Preview*) omarchy-launch-screensaver force ;;
+  *) show_style_menu ;;
+  esac
+}
+
+set_screensaver_from_image() {
+  terminal bash -lc '
+    image=$(fd --type file --ignore-case --extension svg --extension png . "$HOME" 2>/dev/null | fzf --prompt "Logo image> ")
+    if [[ -n $image ]]; then
+      if omarchy-screensaver-set-logo "$image"; then
+        echo
+        echo "Preview with: omarchy-launch-screensaver force"
+      fi
+      echo
+      read -n 1 -s -r -p "Press any key to close..."
+    fi
+  '
 }
 
 show_theme_menu() {
