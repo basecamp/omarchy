@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Remove terminal UI desktop launchers
+# omarchy:args=[name...]
+
 set -e
 
 ICON_DIR="$HOME/.local/share/applications/icons"

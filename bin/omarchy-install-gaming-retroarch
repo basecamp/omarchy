@@ -1,0 +1,80 @@
+#!/bin/bash
+
+# omarchy:summary=Install RetroArch with the full libretro core set plus FBNeo and a ~/Games ROM directory.
+
+set -e
+
+echo "Installing RetroArch..."
+omarchy-pkg-add \
+  retroarch \
+  retroarch-assets-glui retroarch-assets-ozone retroarch-assets-xmb \
+  libretro-beetle-pce libretro-beetle-pce-fast libretro-beetle-psx libretro-beetle-psx-hw libretro-beetle-supergrafx \
+  libretro-blastem \
+  libretro-bsnes libretro-bsnes-hd libretro-bsnes2014 \
+  libretro-core-info \
+  libretro-desmume libretro-dolphin libretro-flycast \
+  libretro-gambatte libretro-genesis-plus-gx \
+  libretro-kronos \
+  libretro-mame libretro-mame2016 libretro-melonds libretro-mesen libretro-mesen-s libretro-mgba libretro-mupen64plus-next \
+  libretro-nestopia \
+  libretro-overlays \
+  libretro-parallel-n64 libretro-picodrive libretro-play libretro-ppsspp \
+  libretro-sameboy libretro-scummvm libretro-shaders-slang libretro-snes9x \
+  libretro-yabause \
+  libretro-fbneo-git \
+  libretro-database-git
+
+# Set up ~/Games for BIOS files and ROMs
+mkdir -p "$HOME/Games/bios" "$HOME/Games/roms"
+
+CFG="$HOME/.config/retroarch/retroarch.cfg"
+mkdir -p "$(dirname "$CFG")"
+touch "$CFG"
+
+set_cfg() {
+  local key=$1 value=$2
+  if grep -q "^$key = " "$CFG"; then
+    sed -i "s|^$key = .*|$key = \"$value\"|" "$CFG"
+  else
+    echo "$key = \"$value\"" >>"$CFG"
+  fi
+}
+
+set_cfg rgui_browser_directory "$HOME/Games/roms"
+set_cfg system_directory "$HOME/Games/bios"
+
+# Point at the cores and assets installed by pacman
+set_cfg libretro_directory "/usr/lib/libretro"
+set_cfg libretro_info_path "/usr/share/libretro/info"
+set_cfg overlay_directory "/usr/share/libretro/overlays"
+set_cfg osk_overlay_directory "/usr/share/libretro/overlays/keyboards"
+set_cfg video_shader_dir "/usr/share/libretro/shaders/shaders_slang"
+
+# Point at the database, cheats, and cursors from libretro-database-git
+set_cfg content_database_path "/usr/share/libretro/database/rdb"
+set_cfg cheat_database_path "/usr/share/libretro/database/cht"
+set_cfg cursor_directory "/usr/share/libretro/database/cursors"
+
+# Vulkan is required for slang shaders and unlocks hardware renderers in beetle-psx-hw, parallel-n64, dolphin
+set_cfg video_driver "vulkan"
+
+# XMB is the classic PS3-style menu (vs. ozone/rgui/glui)
+set_cfg menu_driver "xmb"
+
+# Default to crt-royale shader for that classic CRT look. The global preset is
+# auto-loaded by RetroArch when auto_shaders_enable is true and no per-core/per-game
+# preset takes precedence — setting video_shader alone in retroarch.cfg is not enough.
+set_cfg video_shader_enable "true"
+set_cfg auto_shaders_enable "true"
+mkdir -p ~/.config/retroarch/config
+echo '#reference "/usr/share/libretro/shaders/shaders_slang/crt/crt-royale.slangp"' \
+  > ~/.config/retroarch/config/global.slangp
+
+# Hide Images and Video tabs in the main menu sidebar
+set_cfg content_show_images "false"
+set_cfg content_show_video "false"
+
+echo ""
+echo "Put your roms and bios files in ~/Games. Then start RetroArch from the app launcher (Super + Space)."
+
+setsid nautilus "$HOME/Games" >/dev/null 2>&1 &

@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Default temperature values
+# omarchy:summary=Toggle nightlight screen temperature
+# omarchy:examples=omarchy toggle nightlight
+
 ON_TEMP=4000
 OFF_TEMP=6000
 

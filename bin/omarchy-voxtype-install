@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# omarchy:summary=Install and configure Voxtype dictation
+# omarchy:requires-sudo=true
+
 set -e
 
 # Install voxtype and configure it for use.

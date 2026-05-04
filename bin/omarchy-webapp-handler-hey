@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# omarchy:summary=Open HEY webmail and translate mailto links
+# omarchy:args=[url]
+
 url="$1"
 web_url="https://app.hey.com"
 

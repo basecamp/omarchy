@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Remove web app desktop launchers
+# omarchy:args=[name...]
+
 set -e
 
 ICON_DIR="$HOME/.local/share/applications/icons"
@@ -41,3 +44,5 @@ for APP_NAME in "${APP_NAMES[@]}"; do
   rm -f "$ICON_DIR/$APP_NAME.png"
   echo "Removed $APP_NAME"
 done
+
+omarchy-restart-walker

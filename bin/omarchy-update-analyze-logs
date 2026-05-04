@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Check the update log for known failure conditions
+
 update_log="/tmp/omarchy-update.log"
 
 # Check for initramfs generation failure

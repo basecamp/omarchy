@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# omarchy:summary=Apply an Omarchy theme
+# omarchy:args=<theme-name>
+# omarchy:examples=omarchy theme list | omarchy theme set "Tokyo Night"
+
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-set <theme-name>"
   exit 1
@@ -25,6 +29,11 @@ mkdir -p "$NEXT_THEME_PATH"
 cp -r "$OMARCHY_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
 cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
 
+# Generate colors.toml from alacritty.toml if theme is missing colors.toml
+if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]; then
+  omarchy-theme-colors-from-alacritty "$NEXT_THEME_PATH"
+fi
+
 # Generate dynamic configs
 omarchy-theme-set-templates
 
@@ -48,6 +57,7 @@ omarchy-restart-hyprctl
 omarchy-restart-btop
 omarchy-restart-opencode
 omarchy-restart-mako
+omarchy-restart-helix
 
 # Change app-specific themes
 omarchy-theme-set-gnome
