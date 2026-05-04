@@ -1,6 +1,6 @@
 # Write iso file to sd card
 iso2sd() {
-  if [[ $# -lt 1 ]]; then
+  if (( $# < 1 )); then
     echo "Usage: iso2sd <input_file> [output_device]"
     echo "Example: iso2sd ~/Downloads/ubuntu-25.04-desktop-amd64.iso /dev/sda"
     return 1
@@ -31,7 +31,7 @@ iso2sd() {
 
 # Format an entire drive for a single partition using exFAT
 format-drive() {
-  if [ $# -ne 2 ]; then
+  if (( $# != 2 )); then
     echo "Usage: format-drive <device> <name>"
     echo "Example: format-drive /dev/sda 'My Stuff'"
     echo -e "\nAvailable drives:"
@@ -40,7 +40,7 @@ format-drive() {
     echo "WARNING: This will completely erase all data on $1 and label it '$2'."
     read -rp "Are you sure you want to continue? (y/N): " confirm
 
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    if [[ $confirm =~ ^[Yy]$ ]]; then
       sudo wipefs -a "$1"
       sudo dd if=/dev/zero of="$1" bs=1M count=100 status=progress
       sudo parted -s "$1" mklabel gpt

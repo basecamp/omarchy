@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Launch the Omarchy wifi controls (provided by the Gazelle TUI).
-# Attempts to unblock the wifi service first in case it should be been blocked.
+# omarchy:summary=Launch the Omarchy wifi controls (provided by the Gazelle TUI).
 
 rfkill unblock wifi
 omarchy-launch-or-focus-tui gazelle

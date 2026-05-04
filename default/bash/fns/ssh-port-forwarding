@@ -1,6 +1,6 @@
 # SSH Port Forwarding Functions
 fip() {
-  [[ $# -lt 2 ]] && echo "Usage: fip <host> <port1> [port2] ..." && return 1
+  (( $# < 2 )) && echo "Usage: fip <host> <port1> [port2] ..." && return 1
   local host="$1"
   shift
   for port in "$@"; do
@@ -9,7 +9,7 @@ fip() {
 }
 
 dip() {
-  [[ $# -eq 0 ]] && echo "Usage: dip <port1> [port2] ..." && return 1
+  (( $# == 0 )) && echo "Usage: dip <port1> [port2] ..." && return 1
   for port in "$@"; do
     pkill -f "ssh.*-L $port:localhost:$port" && echo "Stopped forwarding port $port" || echo "No forwarding on port $port"
   done

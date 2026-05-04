@@ -1,5 +1,5 @@
 #!/bin/bash
 
-# Restart the XCompose input method service (fcitx5) to apply new compose key settings.
+# omarchy:summary=Restart the XCompose input method service (fcitx5) to apply new compose key settings.
 
-omarchy-restart-app fcitx5
+omarchy-restart-app fcitx5 --disable notificationitem

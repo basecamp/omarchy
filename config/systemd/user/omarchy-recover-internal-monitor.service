@@ -1,0 +1,11 @@
+[Unit]
+Description=Recover the internal monitor toggle when no external display is connected
+Before=graphical-session-pre.target
+ConditionPathExists=%h/.local/state/omarchy/toggles/hypr/internal-monitor-disable.conf
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/omarchy/bin/omarchy-hw-recover-internal-monitor
+
+[Install]
+WantedBy=graphical-session-pre.target

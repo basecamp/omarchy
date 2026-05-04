@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Install one of the supported databases in a Docker container with the suitable development options.
-# Usually called via Install > Development > Docker DB from the Omarchy Menu.
+# omarchy:summary=Install one of the supported databases in a Docker container with the suitable development options.
+# omarchy:requires-sudo=true
 
 options=("MySQL" "PostgreSQL" "Redis" "MongoDB" "MariaDB" "MSSQL")
 
@@ -13,6 +13,7 @@ fi
 
 if [[ -n $choices ]]; then
   for db in $choices; do
+    echo "Installing $db..."
     case $db in
     MySQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mysql8 -e MYSQL_ROOT_PASSWORD= -e MYSQL_ALLOW_EMPTY_PASSWORD=true mysql:8.4 ;;
     PostgreSQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:5432:5432" --name=postgres18 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:18 ;;

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Update system packages with pacman
+# omarchy:requires-sudo=true
+
 set -e
 
 echo -e "\e[32m\nUpdate system packages\e[0m"

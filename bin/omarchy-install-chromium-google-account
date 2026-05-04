@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Allow Chromium to sign in to Google accounts by adding the correct
-# oauth client id and secret to ~/.config/chromium-flags.conf.
+# omarchy:summary=Allow Chromium to sign in to Google accounts by adding the required OAuth credentials
 
 if [[ -f ~/.config/chromium-flags.conf ]]; then
+  echo "Installing Chromium Google account support..."
   CONF=~/.config/chromium-flags.conf
 
   grep -qxF -- "--oauth2-client-id=77185425430.apps.googleusercontent.com" "$CONF" ||

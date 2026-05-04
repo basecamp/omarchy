@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Remove Moonlight and its configs and caches.
+# omarchy:requires-sudo=true
+
+set -e
+
+omarchy-pkg-drop moonlight-qt
+
+rm -rf \
+  "$HOME/.config/Moonlight Game Streaming Project" \
+  "$HOME/.cache/Moonlight Game Streaming Project"
+
+echo ""
+echo "Moonlight and its data have been removed."

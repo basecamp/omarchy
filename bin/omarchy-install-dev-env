@@ -1,6 +1,10 @@
 #!/bin/bash
 
-# Install one of the supported development environments. Usually called via Install > Development > * in the Omarchy Menu.
+# omarchy:summary=Install a supported development environment
+# omarchy:name=dev-env
+# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>
+# omarchy:examples=omarchy install dev-env ruby | omarchy install dev-env node
+# omarchy:requires-sudo=true
 
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
@@ -50,9 +54,9 @@ case "$1" in
 ruby)
   echo -e "Installing Ruby on Rails...\n"
   omarchy-pkg-add libyaml
-  mise use --global ruby@latest
-  mise settings add idiomatic_version_file_enable_tools ruby
   mise settings add ruby.compile false
+  mise settings add idiomatic_version_file_enable_tools ruby
+  mise use --global ruby@latest
   echo "gem: --no-document" >~/.gemrc
   mise x ruby -- gem install rails --no-document
   echo -e "\nYou can now run: rails new myproject"
