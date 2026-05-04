@@ -1,4 +1,4 @@
-echo "Move Dell XPS touchpad haptics into the packaged service"
+echo "Ensure Dell XPS touchpad haptics comes from the packaged service"
 
 if omarchy-hw-dell-xps-haptic-touchpad; then
   sudo systemctl disable --now dell-xps-haptic-touchpad.service 2>/dev/null || true

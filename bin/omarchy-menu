@@ -166,7 +166,7 @@ show_share_menu() {
 }
 
 show_toggle_menu() {
-  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n  Direct Boot\n󰟵  Passwordless Sudo"
+  local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n󰇅  Hardware\n  Direct Boot\n󰟵  Passwordless Sudo"
 
   case $(menu "Toggle" "$options") in
   *Screensaver*) omarchy-toggle-screensaver ;;
@@ -177,6 +177,7 @@ show_toggle_menu() {
   *Ratio*) omarchy-hyprland-window-single-square-aspect-toggle ;;
   *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
   *Scaling*) omarchy-hyprland-monitor-scaling-cycle ;;
+  *Hardware*) show_hardware_menu ;;
   *"Direct Boot"*) present_terminal omarchy-config-direct-boot ;;
   *"Passwordless Sudo"*) present_terminal omarchy-sudo-passwordless ;;
   *) back_to show_trigger_menu ;;
@@ -194,13 +195,18 @@ show_hardware_menu() {
     options="$options\n󰟸  Touchpad"
   fi
 
+  if omarchy-hw-dell-xps-haptic-touchpad; then
+    options="$options\n󰌌  Touchpad Haptics"
+  fi
+
   if omarchy-hw-touchscreen; then
     options="$options\n󰆽  Touchscreen"
   fi
 
-  case $(menu "Toggle" "$options") in
+  case $(menu "Hardware" "$options") in
   *Laptop*) omarchy-hyprland-monitor-internal toggle ;;
-  *Mirror*) omarchy-hyprland-monitor-internal-mirror toggle;;
+  *Mirror*) omarchy-hyprland-monitor-internal-mirror toggle ;;
+  *Haptics*) omarchy-toggle-touchpad-haptics ;;
   *Touchpad*) omarchy-toggle-touchpad ;;
   *Touchscreen*) omarchy-toggle-touchscreen ;;
   *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
@@ -241,7 +247,7 @@ show_font_menu() {
 show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
-  if [[ -f ~/.config/hypr/input.conf ]] || omarchy-hw-dell-xps-haptic-touchpad; then
+  if [[ -f ~/.config/hypr/input.conf ]]; then
     options="$options\n  Input"
   fi
   options="$options\n󰱔  DNS\n  Security\n  Config"
@@ -277,14 +283,8 @@ show_setup_input_menu() {
 
   [[ -f ~/.config/hypr/input.conf ]] && options="  Touchpad/Input Settings"
 
-  if omarchy-hw-dell-xps-haptic-touchpad; then
-    [[ -n $options ]] && options="$options\n"
-    options="${options}󰌌  Touchpad Haptics"
-  fi
-
   case $(menu "Input" "$options") in
   *Settings*) open_in_editor ~/.config/hypr/input.conf ;;
-  *Haptics*) present_terminal omarchy-setup-dell-haptic-touchpad ;;
   *) back_to show_setup_menu ;;
   esac
 }
