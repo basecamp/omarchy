@@ -465,11 +465,12 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n  Gaming\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Development*) show_remove_development_menu ;;
+  *Gaming*) show_remove_gaming_menu ;;
   *Preinstalls*) present_terminal omarchy-remove-preinstalls ;;
   *Dictation*) present_terminal omarchy-voxtype-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
@@ -477,6 +478,18 @@ show_remove_menu() {
   *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
   *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_remove_gaming_menu() {
+  case $(menu "Remove" "  Steam\n  RetroArch\n󰍳  Minecraft\n  Battle.net\n󰢹  NVIDIA GeForce NOW\n󰖺  Xbox Controller") in
+  *Steam*) present_terminal omarchy-remove-gaming-steam ;;
+  *RetroArch*) present_terminal omarchy-remove-gaming-retroarch ;;
+  *Minecraft*) present_terminal omarchy-remove-gaming-minecraft ;;
+  *Battle.net*) present_terminal omarchy-remove-gaming-battlenet ;;
+  *GeForce*) present_terminal omarchy-remove-gaming-geforce-now ;;
+  *Xbox*) present_terminal omarchy-remove-gaming-xbox-controllers ;;
+  *) show_remove_menu ;;
   esac
 }
 
