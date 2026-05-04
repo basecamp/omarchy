@@ -73,4 +73,7 @@ echo '#reference "/usr/share/libretro/shaders/shaders_slang/crt/crt-royale.slang
 set_cfg content_show_images "false"
 set_cfg content_show_video "false"
 
-setsid gtk-launch com.libretro.RetroArch.desktop >/dev/null 2>&1 &
+echo ""
+echo "Put your roms and bios files in ~/Games. Then start RetroArch from the app launcher (Super + Space)."
+
+setsid nautilus "$HOME/Games" >/dev/null 2>&1 &
