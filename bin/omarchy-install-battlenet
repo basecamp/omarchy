@@ -13,7 +13,12 @@ omarchy-install-nvidia-lib32
 # fails to import the lutris module. Pin the shebang to the system Python.
 sudo sed -i '/env python3/ c\#!/bin/python3' /usr/bin/lutris
 
-echo ""
-echo "Lutris will open the Battle.net installer. Click Install and follow the prompts."
+cat <<'EOF'
 
-setsid lutris lutris:install/battlenet >/dev/null 2>&1 &
+Lutris will open and auto-fetch its DXVK and VKD3D runtimes in the background
+(watch the bottom status bar). Once that finishes, click the +, search for "Battle.net" in
+the games list and click Install.
+
+EOF
+
+setsid lutris >/dev/null 2>&1 &
