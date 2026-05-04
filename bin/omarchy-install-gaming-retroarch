@@ -50,6 +50,7 @@ set_cfg libretro_info_path "/usr/share/libretro/info"
 set_cfg overlay_directory "/usr/share/libretro/overlays"
 set_cfg osk_overlay_directory "/usr/share/libretro/overlays/keyboards"
 set_cfg video_shader_dir "/usr/share/libretro/shaders/shaders_slang"
+set_cfg joypad_autoconfig_dir "/usr/share/libretro/autoconfig"
 
 # Point at the database, cheats, and cursors from libretro-database-git
 set_cfg content_database_path "/usr/share/libretro/database/rdb"
