@@ -22,6 +22,8 @@ kitty) desktop_id="kitty.desktop" ;;
   ;;
 esac
 
+echo "Installing $package..."
+
 # Install package
 if omarchy-pkg-add $package; then
   # Copy custom desktop entry for alacritty with X-TerminalArg* keys

@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Install support for using Xbox controllers with Steam/RetroArch/etc.
+# omarchy:requires-sudo=true
+
+set -e
+
+echo "Installing Xbox controller Bluetooth support..."
+
+# Install xpadneo to ensure controllers work out of the box
+omarchy-pkg-add linux-headers xpadneo-dkms
+
+# Prevent xpad/xpadneo driver conflict
+echo blacklist xpad | sudo tee /etc/modprobe.d/blacklist-xpad.conf >/dev/null
+echo hid_xpadneo | sudo tee /etc/modules-load.d/xpadneo.conf >/dev/null
+
+# Ensure user is in the input group (controllers need it)
+needs_reboot=false
+if ! id -nG "$USER" | grep -qw input; then
+  sudo usermod -aG input "$USER"
+  needs_reboot=true
+fi
+
+# Swap drivers in the running kernel so a reboot isn't needed otherwise
+if lsmod | grep -q '^xpad '; then
+  sudo modprobe -r xpad 2>/dev/null || needs_reboot=true
+fi
+
+if $needs_reboot; then
+  gum confirm "Reboot needed to finish setup. Reboot now?" && sudo reboot now
+  exit 0
+fi
+
+sudo modprobe hid_xpadneo
+
+echo ""
+echo "Now you can pair your Xbox controller with Bluetooth using Super + Ctrl + B."
