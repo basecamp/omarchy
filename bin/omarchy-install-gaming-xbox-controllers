@@ -32,4 +32,4 @@ fi
 sudo modprobe hid_xpadneo
 
 echo ""
-echo "Xbox controller Bluetooth support is active. Pair it with Bluetooth using Super + Ctrl + B."
+echo "Now you can pair your Xbox controller with Bluetooth using Super + Ctrl + B."
