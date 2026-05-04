@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Install Battle.net via Lutris (Wine + DXVK handled by the Lutris install recipe)
+# omarchy:summary=Install Lutris with Wine + DXVK for running Windows games (Battle.net, EA, Ubisoft Connect, etc.)
 # omarchy:requires-sudo=true
 
 set -e
@@ -15,8 +15,7 @@ sudo sed -i '/env python3/ c\#!/bin/python3' /usr/bin/lutris
 cat <<'EOF'
 
 Lutris will open and auto-fetch its DXVK and VKD3D runtimes in the background
-(watch the bottom status bar). Once that finishes, click the +, search for "Battle.net" in
-the games list and click Install.
+(watch the bottom status bar). Once that finishes, click the + to add or install games.
 
 EOF
 

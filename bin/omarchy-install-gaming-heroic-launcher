@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Install Heroic Games Launcher (Epic, GOG, Amazon Prime Gaming) with graphics drivers.
+# omarchy:requires-sudo=true
+
+set -e
+
+omarchy-pkg-add heroic-games-launcher-bin
+omarchy-install-gaming-gpu-lib32
+
+setsid gtk-launch heroic >/dev/null 2>&1 &

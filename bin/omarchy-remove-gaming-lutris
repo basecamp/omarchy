@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Remove Battle.net along with Lutris, Wine, umu-launcher, and all their configs and caches.
+# omarchy:summary=Remove Lutris, Wine, umu-launcher, and all their configs and caches.
 # omarchy:requires-sudo=true
 
 set -e
@@ -8,8 +8,6 @@ set -e
 omarchy-pkg-drop lutris wine-staging wine-mono wine-gecko winetricks python-protobuf umu-launcher
 
 rm -rf \
-  "$HOME/Games/battlenet" \
-  "$HOME/Games/battle-net" \
   "$HOME/.config/lutris" \
   "$HOME/.local/share/lutris" \
   "$HOME/.cache/lutris" \
@@ -20,4 +18,4 @@ rm -rf \
   "$HOME/.cache/winetricks"
 
 echo ""
-echo "Battle.net, Lutris, Wine, umu-launcher, and their configs have been removed."
+echo "Lutris, Wine, umu-launcher, and their configs have been removed."

@@ -386,11 +386,11 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch\n󰍳  Minecraft\n  Battle.net\n󰢹  NVIDIA GeForce NOW\n  Xbox Cloud Gaming\n󰖺  Xbox Controller (󰂯)") in
+  case $(menu "Install" "  Steam\n  RetroArch\n󰍳  Minecraft\n  Lutris (Battle.net, etc.)\n󰢹  NVIDIA GeForce NOW\n  Xbox Cloud Gaming\n󰖺  Xbox Controller (󰂯)") in
   *Steam*) present_terminal omarchy-install-gaming-steam ;;
   *RetroArch*) present_terminal omarchy-install-gaming-retroarch ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
-  *Battle.net*) present_terminal omarchy-install-gaming-battlenet ;;
+  *Lutris*) present_terminal omarchy-install-gaming-lutris ;;
   *GeForce*) present_terminal omarchy-install-gaming-geforce-now ;;
   *"Xbox Cloud"*) present_terminal omarchy-install-gaming-xbox-cloud ;;
   *Xbox*) present_terminal omarchy-install-gaming-xbox-controllers ;;
@@ -483,11 +483,11 @@ show_remove_menu() {
 }
 
 show_remove_gaming_menu() {
-  case $(menu "Remove" "  Steam\n  RetroArch\n󰍳  Minecraft\n  Battle.net\n󰢹  NVIDIA GeForce NOW\n  Xbox Cloud Gaming\n󰖺  Xbox Controller") in
+  case $(menu "Remove" "  Steam\n  RetroArch\n󰍳  Minecraft\n  Lutris\n󰢹  NVIDIA GeForce NOW\n  Xbox Cloud Gaming\n󰖺  Xbox Controller") in
   *Steam*) present_terminal omarchy-remove-gaming-steam ;;
   *RetroArch*) present_terminal omarchy-remove-gaming-retroarch ;;
   *Minecraft*) present_terminal omarchy-remove-gaming-minecraft ;;
-  *Battle.net*) present_terminal omarchy-remove-gaming-battlenet ;;
+  *Lutris*) present_terminal omarchy-remove-gaming-lutris ;;
   *GeForce*) present_terminal omarchy-remove-gaming-geforce-now ;;
   *"Xbox Cloud"*) present_terminal omarchy-remove-gaming-xbox-cloud ;;
   *Xbox*) present_terminal omarchy-remove-gaming-xbox-controllers ;;
