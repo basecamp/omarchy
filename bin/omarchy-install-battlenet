@@ -5,7 +5,7 @@
 
 set -e
 
-omarchy-pkg-add lutris wine-staging wine-mono wine-gecko winetricks python-protobuf
+omarchy-pkg-add lutris umu-launcher wine-staging wine-mono wine-gecko winetricks python-protobuf
 omarchy-install-vulkan-lib32
 omarchy-install-nvidia-lib32
 
