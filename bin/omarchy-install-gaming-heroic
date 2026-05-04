@@ -5,6 +5,7 @@
 
 set -e
 
+echo "Installing Heroic Games Launcher..."
 omarchy-pkg-add heroic-games-launcher-bin
 omarchy-install-gaming-gpu-lib32
 

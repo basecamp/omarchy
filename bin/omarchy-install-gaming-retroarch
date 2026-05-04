@@ -4,6 +4,7 @@
 
 set -e
 
+echo "Installing RetroArch..."
 omarchy-pkg-add \
   retroarch \
   retroarch-assets-glui retroarch-assets-ozone retroarch-assets-xmb \
