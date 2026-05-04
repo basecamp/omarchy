@@ -5,6 +5,11 @@
 
 set -e
 
-echo "Now pick dependencies matching your graphics card"
-sudo pacman -S steam
+omarchy-pkg-add steam
+omarchy-install-vulkan-lib32
+omarchy-install-nvidia-lib32
+
+echo ""
+echo "Steam will start automatically now. This might take a while..."
+
 setsid gtk-launch steam >/dev/null 2>&1 &

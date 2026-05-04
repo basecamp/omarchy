@@ -28,7 +28,6 @@ docker-compose
 dosfstools
 dotnet-runtime-9.0
 dust
-elephant-all
 evince
 exfatprogs
 expac
@@ -94,6 +93,7 @@ nvim
 obs-studio
 obsidian
 omarchy-nvim
+omarchy-walker
 pamixer
 pinta
 playerctl
@@ -120,6 +120,8 @@ sushi
 swaybg
 swayosd
 system-config-printer
+tesseract
+tesseract-data-eng
 tldr
 tree-sitter-cli
 tmux
@@ -133,7 +135,6 @@ ufw-docker
 unzip
 usage
 uwsm
-walker
 waybar
 whois
 wireless-regdb
