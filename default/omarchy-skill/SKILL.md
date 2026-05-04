@@ -143,6 +143,8 @@ Run `omarchy --help` for the full list. The most common groups:
 **Key behaviors:**
 - Hyprland auto-reloads on config save (no restart needed for most changes)
 - Use `hyprctl reload` to force reload
+- After ANY Hyprland config change, validate with `hyprctl reload` followed by `hyprctl configerrors`
+- If `hyprctl configerrors` reports errors, address them and rerun validation until clean or until a real blocker is identified
 - Use `omarchy refresh hyprland` to reset to defaults
 
 ### Waybar (Status Bar)
@@ -194,7 +196,7 @@ cp ~/.config/hypr/bindings.conf ~/.config/hypr/bindings.conf.bak.$(date +%s)
 # 3. Make changes with Edit tool
 
 # 4. Apply changes
-# - Hyprland: auto-reloads on save (no restart needed)
+# - Hyprland: auto-reloads on save, but MUST validate with `hyprctl reload` and `hyprctl configerrors`
 # - Waybar: MUST restart with `omarchy restart waybar`
 # - Walker: MUST restart with `omarchy restart walker`
 # - Terminals: MUST restart with `omarchy restart terminal`
