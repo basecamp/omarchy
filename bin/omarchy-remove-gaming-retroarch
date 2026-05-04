@@ -21,7 +21,8 @@ omarchy-pkg-drop \
   libretro-parallel-n64 libretro-picodrive libretro-play libretro-ppsspp \
   libretro-sameboy libretro-scummvm libretro-shaders-slang libretro-snes9x \
   libretro-yabause \
-  libretro-fbneo-git
+  libretro-fbneo-git \
+  retroarch-joypad-autoconfig-git
 
 rm -rf \
   "$HOME/.config/retroarch" \

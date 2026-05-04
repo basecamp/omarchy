@@ -22,7 +22,8 @@ omarchy-pkg-add \
   libretro-sameboy libretro-scummvm libretro-shaders-slang libretro-snes9x \
   libretro-yabause \
   libretro-fbneo-git \
-  libretro-database-git
+  libretro-database-git \
+  retroarch-joypad-autoconfig-git
 
 # Set up ~/Games for BIOS files and ROMs
 mkdir -p "$HOME/Games/bios" "$HOME/Games/roms"
