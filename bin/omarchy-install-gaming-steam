@@ -6,7 +6,7 @@
 set -e
 
 omarchy-pkg-add steam
-omarchy-install-gpu-lib32
+omarchy-install-gaming-gpu-lib32
 
 echo ""
 echo "Steam will start automatically now. This might take a while..."
