@@ -1,8 +1,10 @@
-# overwrites default wiremix configuration
-# defaults: https://github.com/tsowell/wiremix/blob/main/wiremix.toml
+echo "Add wiremix name overrides for poorly-tagged GStreamer streams (e.g., Spotify)"
 
-[char_sets.default]
-default_device = "⮞"
+config=~/.config/wiremix/wiremix.toml
+[[ -f $config ]] || exit 0
+
+if ! grep -q '\[\[names.overrides\]\]' "$config"; then
+  cat <<'EOF' >>"$config"
 
 # Spotify on Linux uses GStreamer for playback and doesn't override the
 # pulsesink stream-properties, so its PipeWire node inherits the default
@@ -21,3 +23,5 @@ templates = [ "Spotify" ]
 types = [ "stream" ]
 matches = [ { "node:media.name" = "audio-src" } ]
 templates = [ "{client:application.name}" ]
+EOF
+fi
