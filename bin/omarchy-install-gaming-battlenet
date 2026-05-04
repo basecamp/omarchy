@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Install Battle.net via Lutris (Wine + DXVK handled by the Lutris install recipe)
+# omarchy:requires-sudo=true
+
+set -e
+
+omarchy-pkg-add lutris umu-launcher wine-staging wine-mono wine-gecko winetricks python-protobuf
+omarchy-install-gaming-gpu-lib32
+
+# Lutris ships with `#!/usr/bin/env python3`, which resolves to mise's Python and
+# fails to import the lutris module. Pin the shebang to the system Python.
+sudo sed -i '/env python3/ c\#!/bin/python3' /usr/bin/lutris
+
+cat <<'EOF'
+
+Lutris will open and auto-fetch its DXVK and VKD3D runtimes in the background
+(watch the bottom status bar). Once that finishes, click the +, search for "Battle.net" in
+the games list and click Install.
+
+EOF
+
+setsid lutris >/dev/null 2>&1 &

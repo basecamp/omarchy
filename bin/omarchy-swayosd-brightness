@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Display brightness level using SwayOSD on the current monitor.
-# Usage: omarchy-swayosd-brightness <percent>
+# omarchy:summary=Display brightness level using SwayOSD on the current monitor.
+# omarchy:args=<percent>
 
 percent="$1"
 

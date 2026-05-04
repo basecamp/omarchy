@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Overwrite the user configs for the Walker application launcher (which also powers the Omarchy Menu) and restart the services.
+# omarchy:summary=Overwrite the user configs for the Walker application launcher (which also powers the Omarchy Menu) and restart the services.
 
-# Ensure walker is set to autostart
 mkdir -p ~/.config/autostart/
 cp $OMARCHY_PATH/default/walker/walker.desktop ~/.config/autostart/
 
@@ -16,6 +15,12 @@ systemctl --user daemon-reload
 omarchy-refresh-config walker/config.toml
 omarchy-refresh-config elephant/calc.toml
 omarchy-refresh-config elephant/desktopapplications.toml
+
+# Link all elephant menus
+mkdir -p ~/.config/elephant/menus
+for menu in $OMARCHY_PATH/default/elephant/*.lua; do
+  ln -snf "$menu" ~/.config/elephant/menus/"$(basename "$menu")"
+done
 
 # Restart service
 omarchy-restart-walker

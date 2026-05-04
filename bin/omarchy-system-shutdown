@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Shutdown command that first closes all application windows (thus giving them a chance to save state).
-# This is particularly helpful for applications like Chromium that otherwise won't shutdown cleanly.
+# omarchy:summary=Shut down after closing application windows
+# omarchy:examples=omarchy shutdown | omarchy system shutdown
+# omarchy:aliases=omarchy shutdown
 
 omarchy-state clear re*-required
 
