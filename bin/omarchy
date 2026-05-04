@@ -327,9 +327,6 @@ load_group_extra_commands() {
   install)
     load_command_by_binary omarchy-pkg-add
     ;;
-  system)
-    load_command_by_binary omarchy-lock-screen
-    ;;
   esac
 }
 
