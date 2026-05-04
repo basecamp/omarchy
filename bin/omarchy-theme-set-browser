@@ -4,20 +4,21 @@ CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
 
 if omarchy-cmd-present chromium || omarchy-cmd-present brave; then
   if [[ -f $CHROMIUM_THEME ]]; then
-    rgb=$(<$CHROMIUM_THEME)
-    THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${rgb//,/ })
+    THEME_RGB_COLOR=$(<$CHROMIUM_THEME)
+    THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${THEME_RGB_COLOR//,/ })
   else
     # Use a default, neutral grey if theme doesn't have a color
+    THEME_RGB_COLOR="28,32,39"
     THEME_HEX_COLOR="#1c2027"
   fi
 
   if omarchy-cmd-present chromium; then
-    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
-    chromium --refresh-platform-policy --no-startup-window
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
+    pgrep -x chromium >/dev/null && chromium --refresh-platform-policy --no-startup-window &>/dev/null
   fi
 
   if omarchy-cmd-present brave; then
-    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
-    brave --refresh-platform-policy --no-startup-window
+    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
+    pgrep -x brave >/dev/null && brave --refresh-platform-policy --no-startup-window &>/dev/null
   fi
 fi

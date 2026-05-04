@@ -1,12 +1,14 @@
 #!/bin/bash
 
+set -e
+
 ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications/"
 
-if [ "$#" -eq 0 ]; then
+if (( $# == 0 )); then
   # Find all web apps
   while IFS= read -r -d '' file; do
-    if grep -q '^Exec=.*omarchy-launch-webapp.*' "$file"; then
+    if grep -q '^Exec=.*\(omarchy-launch-webapp\|omarchy-webapp-handler\).*' "$file"; then
       WEB_APPS+=("$(basename "${file%.desktop}")")
     fi
   done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)
@@ -18,7 +20,7 @@ if [ "$#" -eq 0 ]; then
     # Convert newline-separated string to array
     APP_NAMES=()
     while IFS= read -r line; do
-      [[ -n "$line" ]] && APP_NAMES+=("$line")
+      [[ -n $line ]] && APP_NAMES+=("$line")
     done <<< "$APP_NAMES_STRING"
   else
     echo "No web apps to remove."
@@ -29,8 +31,8 @@ else
   APP_NAMES=("$@")
 fi
 
-if [[ ${#APP_NAMES[@]} -eq 0 ]]; then
-  echo "You must provide web app names."
+if (( ${#APP_NAMES[@]} == 0 )); then
+  echo "You must select at least one web app to remove."
   exit 1
 fi
 

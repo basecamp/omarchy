@@ -1,17 +1,20 @@
 #!/bin/bash
 
-if [ "$(uname -r | sed 's/-arch/\.arch/')" != "$(pacman -Q linux | awk '{print $2}')" ]; then
-  gum confirm "Linux kernel has been updated. Reboot?" && omarchy-state clear re*-required && sudo reboot now
+echo
 
-elif [ -f "$HOME/.local/state/omarchy/reboot-required" ]; then
-  gum confirm "Updates require reboot. Ready?" && omarchy-state clear re*-required && sudo reboot now
+if find /usr/lib/modules -maxdepth 2 -name vmlinuz -newermt "$(uptime -s)" 2>/dev/null | grep -q .; then
+  gum confirm "Linux kernel has been updated. Reboot?" && omarchy-system-reboot
+elif [[ -f $HOME/.local/state/omarchy/reboot-required ]]; then
+  gum confirm "Updates require reboot. Ready?" && omarchy-system-reboot
+fi
 
-elif [ -f "$HOME/.local/state/omarchy/relaunch-required" ]; then
-  gum confirm "Updates require Hyprland relaunch. Ready?" && omarchy-state clear re*-required && uwsm stop
+running_hyprland=$(readlink /proc/$(pgrep -x Hyprland)/exe 2>/dev/null)
+if [[ $running_hyprland == *"(deleted)"* ]]; then
+  gum confirm "Hyprland has been updated. Reboot?" && omarchy-system-reboot
 fi
 
 for file in "$HOME"/.local/state/omarchy/restart-*-required; do
-  if [ -f "$file" ]; then
+  if [[ -f $file ]]; then
     filename=$(basename "$file")
     service=$(echo "$filename" | sed 's/restart-\(.*\)-required/\1/')
     echo "Restarting $service"

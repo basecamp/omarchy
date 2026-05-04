@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Reset the sudo lockout/faillock for the current user.
+# This clears any failed authentication attempts that may have locked the user out.
+
+# Resetting sudo lockout for user
+su -c "faillock --reset --user $USER"
