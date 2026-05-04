@@ -20,7 +20,8 @@ omarchy-pkg-add \
   libretro-parallel-n64 libretro-picodrive libretro-play libretro-ppsspp \
   libretro-sameboy libretro-scummvm libretro-shaders-slang libretro-snes9x \
   libretro-yabause \
-  libretro-fbneo-git
+  libretro-fbneo-git \
+  libretro-database-git
 
 # Set up ~/Games for BIOS files and ROMs
 mkdir -p "$HOME/Games/bios" "$HOME/Games/roms"
@@ -47,6 +48,11 @@ set_cfg libretro_info_path "/usr/share/libretro/info"
 set_cfg overlay_directory "/usr/share/libretro/overlays"
 set_cfg osk_overlay_directory "/usr/share/libretro/overlays/keyboards"
 set_cfg video_shader_dir "/usr/share/libretro/shaders/shaders_slang"
+
+# Point at the database, cheats, and cursors from libretro-database-git
+set_cfg content_database_path "/usr/share/libretro/database/rdb"
+set_cfg cheat_database_path "/usr/share/libretro/database/cht"
+set_cfg cursor_directory "/usr/share/libretro/database/cursors"
 
 # Vulkan is required for slang shaders and unlocks hardware renderers in beetle-psx-hw, parallel-n64, dolphin
 set_cfg video_driver "vulkan"
