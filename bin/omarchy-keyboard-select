@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# Select and apply a keyboard layout (post-install utility)
+
+conf="/etc/vconsole.conf"
+hyprconf="$HOME/.config/hypr/input.conf"
+
+current_keymap=""
+if [[ -f "$conf" ]] && grep -q '^KEYMAP=' "$conf"; then
+  current_keymap=$(grep '^KEYMAP=' "$conf" | cut -d= -f2 | tr -d '"')
+fi
+
+echo "Current console keymap: ${current_keymap:-us (default)}"
+
+selected=$(localectl list-keymaps | gum filter --height 20 --header "Select keyboard layout") || exit 1
+
+if [[ -z "$selected" ]]; then
+  echo "No selection made."
+  exit 1
+fi
+
+echo "Setting keyboard layout to: $selected"
+
+# Set keymap via localectl (updates vconsole.conf with KEYMAP + XKBLAYOUT/XKBVARIANT)
+sudo localectl set-keymap "$selected"
+
+# Read the XKB layout/variant that localectl derived
+layout=""
+variant=""
+if grep -q '^XKBLAYOUT=' "$conf"; then
+  layout=$(grep '^XKBLAYOUT=' "$conf" | cut -d= -f2 | tr -d '"')
+fi
+if grep -q '^XKBVARIANT=' "$conf"; then
+  variant=$(grep '^XKBVARIANT=' "$conf" | cut -d= -f2 | tr -d '"')
+fi
+
+# Apply to the live Hyprland session
+if command -v hyprctl &>/dev/null; then
+  [[ -n "$layout" ]] && hyprctl keyword input:kb_layout "$layout"
+  [[ -n "$variant" ]] && hyprctl keyword input:kb_variant "$variant"
+fi
+
+# Update input.conf for persistence
+if [[ -f "$hyprconf" ]]; then
+  # Remove existing kb_layout/kb_variant lines
+  sed -i '/^[[:space:]]*kb_layout *=/d' "$hyprconf"
+  sed -i '/^[[:space:]]*kb_variant *=/d' "$hyprconf"
+
+  # Insert before kb_options line
+  if [[ -n "$layout" ]]; then
+    sed -i "/^[[:space:]]*kb_options *=/i\\  kb_layout = $layout" "$hyprconf"
+  fi
+  if [[ -n "$variant" ]]; then
+    sed -i "/^[[:space:]]*kb_options *=/i\\  kb_variant = $variant" "$hyprconf"
+  fi
+fi
+
+echo "Keyboard layout is now set to $selected"
