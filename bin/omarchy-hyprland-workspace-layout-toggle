@@ -1,14 +1,47 @@
 #!/bin/bash
 
-# omarchy:summary=Toggle the layout on the current active workspace between dwindle and scrolling
+# omarchy:summary=Toggle the layout on the current active workspace between dwindle, scrolling, and scrolling-full
+
+set -euo pipefail
 
 ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
 CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
 
-case "$CURRENT_LAYOUT" in
-  dwindle) NEW_LAYOUT=scrolling ;;
-  *) NEW_LAYOUT=dwindle ;;
-esac
+get_column_width() {
+  hyprctl getoption scrolling:column_width | awk '/float:/ {print $2; exit}'
+}
 
-hyprctl keyword workspace $ACTIVE_WORKSPACE, layout:$NEW_LAYOUT
-notify-send -u low "󱂬    Workspace layout set to $NEW_LAYOUT"
+set_scrolling_normal() {
+  hyprctl keyword workspace "$ACTIVE_WORKSPACE, layout:scrolling"
+  hyprctl keyword scrolling:column_width "0.5"
+  hyprctl dispatch layoutmsg "colresize all 0.5" >/dev/null 2>&1 || true
+  hyprctl dispatch layoutmsg "fit active" >/dev/null 2>&1 || true
+}
+
+set_scrolling_full() {
+  hyprctl keyword workspace "$ACTIVE_WORKSPACE, layout:scrolling"
+  hyprctl keyword scrolling:column_width "1.0"
+  hyprctl dispatch layoutmsg "colresize all 1.0" >/dev/null 2>&1 || true
+  hyprctl dispatch layoutmsg "fit active" >/dev/null 2>&1 || true
+}
+
+case "$CURRENT_LAYOUT" in
+  dwindle)
+    set_scrolling_normal
+    notify-send -u low "󱂬    Workspace layout set to scrolling"
+    ;;
+  scrolling)
+    width=$(get_column_width)
+    if awk "BEGIN { exit !($width >= 0.95) }"; then
+      hyprctl keyword workspace "$ACTIVE_WORKSPACE, layout:dwindle"
+      notify-send -u low "󱂬    Workspace layout set to dwindle"
+    else
+      set_scrolling_full
+      notify-send -u low "󱂬    Workspace layout set to scrolling-full"
+    fi
+    ;;
+  *)
+    hyprctl keyword workspace "$ACTIVE_WORKSPACE, layout:dwindle"
+    notify-send -u low "󱂬    Workspace layout set to dwindle"
+    ;;
+esac
