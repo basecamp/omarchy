@@ -198,7 +198,7 @@ start_screenrecording() {
     audio_devices+="default_input"
   fi
 
-  [[ -n $audio_devices ]] && audio_args+=(-a "$audio_devices" -ac aac)
+  [[ -n $audio_devices ]] && audio_args+=(-a "$audio_devices" -ac opus)
 
   echo "===== $(date '+%F %T') args: $* target: $target =====" >>"$LOG_FILE"
   gpu-screen-recorder "${capture_args[@]}" -k auto -f 60 -fm cfr -fallback-cpu-encoding yes -o "$filename" "${audio_args[@]}" 2>>"$LOG_FILE" &
