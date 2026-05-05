@@ -40,6 +40,7 @@ function GetEntries()
   if theme_name then
     table.insert(dirs, home .. "/.config/omarchy/backgrounds/" .. theme_name)
   end
+  table.insert(dirs, home .. "/Wallpapers")
 
   -- Track added files to avoid duplicates
   local seen = {}
