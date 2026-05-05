@@ -455,7 +455,7 @@ show_install_font_menu() {
 }
 
 show_install_development_menu() {
-  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure\n  Scala") in
+  case $(menu "Install" "󰫏  Ruby on Rails\n  Docker DB\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure\n  Scala\n󰾰  Android Studio") in
   *Rails*) present_terminal "omarchy-install-dev-env ruby" ;;
   *Docker*) present_terminal omarchy-install-docker-dbs ;;
   *JavaScript*) show_install_javascript_menu ;;
@@ -470,6 +470,7 @@ show_install_development_menu() {
   *OCaml*) present_terminal "omarchy-install-dev-env ocaml" ;;
   *Clojure*) present_terminal "omarchy-install-dev-env clojure" ;;
   *Scala*) present_terminal "omarchy-install-dev-env scala" ;;
+  *Android*) present_terminal "omarchy-install-dev-env android" ;;
   *) show_install_menu ;;
   esac
 }
@@ -533,7 +534,7 @@ show_remove_gaming_menu() {
 }
 
 show_remove_development_menu() {
-  case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure\n  Scala") in
+  case $(menu "Remove" "󰫏  Ruby on Rails\n  JavaScript\n  Go\n  PHP\n  Python\n  Elixir\n  Zig\n  Rust\n  Java\n  .NET\n  OCaml\n  Clojure\n  Scala\n󰾰  Android Studio") in
   *Rails*) present_terminal "omarchy-remove-dev-env ruby" ;;
   *JavaScript*) show_remove_javascript_menu ;;
   *Go*) present_terminal "omarchy-remove-dev-env go" ;;
@@ -547,6 +548,7 @@ show_remove_development_menu() {
   *OCaml*) present_terminal "omarchy-remove-dev-env ocaml" ;;
   *Clojure*) present_terminal "omarchy-remove-dev-env clojure" ;;
   *Scala*) present_terminal "omarchy-remove-dev-env scala" ;;
+  *Android*) present_terminal "omarchy-remove-dev-env android" ;;
   *) show_remove_menu ;;
   esac
 }
