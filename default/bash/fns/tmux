@@ -21,9 +21,14 @@ tdl() {
   # Split editor pane horizontally - AI on right 30% (capture new pane ID directly)
   ai_pane=$(tmux split-window -h -p 30 -t "$editor_pane" -c "$current_dir" -P -F '#{pane_id}')
 
+  # Block DCS passthrough on AI panes during init to prevent terminal capability
+  # responses from being misrouted to the editor pane during the focus transition
+  tmux set-option -p -t "$ai_pane" allow-passthrough off
+
   # If second AI provided, split the AI pane vertically
   if [[ -n $ai2 ]]; then
     ai2_pane=$(tmux split-window -v -t "$ai_pane" -c "$current_dir" -P -F '#{pane_id}')
+    tmux set-option -p -t "$ai2_pane" allow-passthrough off
     tmux send-keys -t "$ai2_pane" "$ai2" C-m
   fi
 
@@ -35,6 +40,13 @@ tdl() {
 
   # Select the nvim pane for focus
   tmux select-pane -t "$editor_pane"
+
+  # Restore passthrough after AI TUI init completes (DCS queries finish)
+  { sleep 1
+    tmux set-option -p -t "$ai_pane" allow-passthrough on 2>/dev/null
+    [[ -n $ai2_pane ]] && tmux set-option -p -t "$ai2_pane" allow-passthrough on 2>/dev/null
+  } &
+  disown
 }
 
 # Create multiple tdl windows with one per subdirectory in the current directory
