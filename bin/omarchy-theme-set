@@ -62,6 +62,7 @@ omarchy-restart-mako
 omarchy-restart-helix
 
 # Change app-specific themes
+omarchy-theme-set-foot
 omarchy-theme-set-gnome
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
