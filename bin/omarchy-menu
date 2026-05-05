@@ -93,8 +93,9 @@ show_learn_menu() {
 }
 
 show_trigger_menu() {
-  case $(menu "Trigger" "  Capture\n  Share\n󰔎  Toggle\n  Hardware") in
+  case $(menu "Trigger" "  Capture\n󰧸  Transcode\n  Share\n󰔎  Toggle\n  Hardware") in
   *Capture*) show_capture_menu ;;
+  *Transcode*) show_transcode_menu ;;
   *Share*) show_share_menu ;;
   *Toggle*) show_toggle_menu ;;
   *Hardware*) show_hardware_menu ;;
@@ -162,6 +163,14 @@ show_share_menu() {
   *Clipboard*) omarchy-menu-share clipboard ;;
   *File*) terminal bash -c "omarchy-menu-share file" ;;
   *Folder*) terminal bash -c "omarchy-menu-share folder" ;;
+  *) back_to show_trigger_menu ;;
+  esac
+}
+
+show_transcode_menu() {
+  case $(menu "Transcode" "  Picture\n  Video") in
+  *Picture*) present_terminal "omarchy-transcode --path '$HOME/Pictures'" ;;
+  *Video*) present_terminal "omarchy-transcode --path '$HOME/Videos'" ;;
   *) back_to show_trigger_menu ;;
   esac
 }
@@ -672,6 +681,7 @@ go_to_menu() {
   *toggle*) show_toggle_menu ;;
   *hardware*) show_hardware_menu ;;
   *share*) show_share_menu ;;
+  *transcode*) show_transcode_menu ;;
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
   *style*) show_style_menu ;;
