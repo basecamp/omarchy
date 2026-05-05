@@ -43,7 +43,7 @@ pick_file() {
   find "${paths[@]}" -type f \
     \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.heic' -o -iname '*.avif' \
     -o -iname '*.mp4' -o -iname '*.mov' -o -iname '*.m4v' -o -iname '*.mkv' -o -iname '*.webm' -o -iname '*.avi' \) \
-    2>/dev/null | fzf --prompt="Transcode file> "
+    -printf '%T@\t%p\n' 2>/dev/null | sort -rn | cut -f2- | fzf --layout=reverse-list --prompt="Transcode file> "
 }
 
 pick_option() {
