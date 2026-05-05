@@ -9,6 +9,14 @@ case "$EDITOR" in
 nvim | vim | nano | micro | hx | helix | fresh)
   exec omarchy-launch-tui "$EDITOR" "$@"
   ;;
+emacs)
+  # If emacs.service is active open a new frame instead of a whole new emacs.
+  if systemctl --user is-active emacs.service >/dev/null 2>&1; then
+    exec setsid uwsm-app -- emacsclient -n -r "$@"
+  else
+    exec setsid uwsm-app -- emacs "$@"
+  fi
+  ;;
 *)
   exec setsid uwsm-app -- "$EDITOR" "$@"
   ;;
