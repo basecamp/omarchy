@@ -1,0 +1,202 @@
+@import "../omarchy/current/theme/waybar.css";
+
+* {
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+  font-family: 'JetBrainsMono Nerd Font';
+  font-size: 14px;
+  padding: 1px;
+}
+
+.modules-left {
+  margin-left: 5px;
+}
+
+.modules-right {
+  margin-right: 5px;
+}
+
+window#waybar {
+  background: @background;
+  margin-top: 10px;
+}
+
+window#waybar.empty #window {
+  background: transparent;
+  color: transparent;
+  padding: 0;
+  margin-left: 5px;
+  transition: .5s;
+}
+
+mpris.empty {
+  background: transparent;
+}
+
+#workspaces button {
+  all: initial;
+  padding: 3px 10px 3px 5px;
+  margin: 0 5px;
+  min-width: 9px;
+}
+
+#workspaces button.active {
+  background: @foreground;
+  color: @background;
+  border-radius: 30px;
+  padding: 3px 10px 3px 5px;
+}
+
+#workspaces button:hover {
+  background: alpha(@foreground, .3);
+  border-radius: 30px;
+  padding: 3px 10px 3px 5px;
+  transition: .7s;
+}
+
+#workspaces button.active:hover {
+  background: @foreground;
+  color: @background;
+  border-radius: 30px;
+  padding: 3px 10px 3px 5px;
+}
+
+#workspaces button.empty {
+  opacity: 0.3;
+}
+
+#custom-weather,
+#memory,
+#mpris,
+#window,
+#tray-expander,
+#workspaces,
+#clock,
+#cpu,
+#battery,
+#network,
+#bluetooth,
+#pulseaudio,
+#custom-screenrecording-indicator,
+#custom-idle-indicator,
+#custom-notification-silencing-indicator,
+#custom-update {
+  background-color: alpha(@foreground, .1);
+  padding: 5px 10px;
+  margin: 5px 0;
+}
+
+#mpris:hover,
+#window:hover,
+#clock:hover,
+#backlight:hover,
+#cpu:hover,
+#network:hover,
+#bluetooth:hover,
+#pulseaudio:hover,
+#custom-screenrecording-indicator:hover,
+#custom-idle-indicator:hover,
+#custom-notification-silencing-indicator:hover,
+#custom-update:hover {
+  background-color: alpha(@foreground, .2);
+  transition: .7s;
+}
+
+#custom-expand-icon {
+  margin-right: 7px;
+}
+
+#tray,
+#memory,
+#custom-weather {
+  background-color: transparent;
+  margin: 5px;
+  padding: 0 2px;
+}
+
+#custom-update,
+#custom-screenrecording-indicator,
+#custom-idle-indicator,
+#custom-notification-silencing-indicator {
+  font-size: 10px;
+}
+
+#clock {
+  border-radius: 10px;
+  padding: 0 10px;
+  margin: 5px;
+}
+
+.hidden {
+  opacity: 0;
+}
+
+#custom-screenrecording-indicator,
+#custom-idle-indicator,
+#custom-notification-silencing-indicator {
+  border-radius: 10px;
+  min-width: 12px;
+  padding: 0 11px 0 10px;
+}
+
+#custom-screenrecording-indicator.active,
+#custom-idle-indicator.active,
+#custom-notification-silencing-indicator.active {
+  color: #a55555;
+}
+
+#custom-omarchy,
+#battery {
+  background-color: @foreground;
+  color: @background;
+  min-width: 10px;
+  border-radius: 10px;
+  padding: 0 10px;
+  margin: 5px 0 5px 5px;
+}
+
+#workspaces,
+#mpris {
+  margin: 5px;
+  border-radius: 10px;
+}
+
+#window,
+#mpris {
+  border-radius: 10px;
+  padding: 5px 10px;
+}
+
+#tray-expander {
+  padding: 0 0 0 10px;
+  margin-left: 1px;
+  border-radius: 10px;
+}
+
+#backlight {
+  background-color: alpha(@foreground, .1);
+  border-radius: 10px;
+  padding: 5px 10px;
+  margin: 5px;
+}
+
+#network {
+  border-radius: 10px 0 0 10px;
+}
+
+#cpu {
+  padding: 0 15px 0 10px;
+  border-radius: 0 10px 10px 0;
+  margin-right: 1px;
+}
+
+#pulseaudio {
+  padding: 0 15px 0 10px;
+}
+
+tooltip {
+  border-radius: 10px;
+  background: @background;
+  border: 3px solid alpha(@foreground, .5);
+}

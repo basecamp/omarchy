@@ -1,0 +1,86 @@
+@import "../omarchy/current/theme/waybar.css";
+
+* {
+  background-color: @background;
+  color: @foreground;
+
+  border: none;
+  border-radius: 10px;
+  padding: 2px 2px;
+  min-height: 0;
+  font-family: 'JetBrainsMono Nerd Font';
+  font-size: 14px;
+}
+
+.modules-left {
+  margin-left: 8px;
+}
+
+.modules-right {
+  margin-right: 8px;
+}
+
+#workspaces button {
+  all: initial;
+  padding: 0 6px;
+  margin: 0 1.5px;
+  min-width: 9px;
+}
+
+#workspaces button.empty {
+  opacity: 0.5;
+}
+
+#backlight,
+#custom-weather,
+#memory,
+#mpris,
+#window,
+#tray,
+#cpu,
+#battery,
+#network,
+#bluetooth,
+#pulseaudio,
+#custom-omarchy,
+#custom-screenrecording-indicator,
+#custom-idle-indicator,
+#custom-notification-silencing-indicator,
+#custom-update {
+  min-width: 12px;
+  margin: 0 7.5px;
+}
+
+#custom-expand-icon {
+  margin-right: 7px;
+}
+
+tooltip {
+  padding: 2px;
+  border-radius: 10px;
+}
+
+#custom-update,
+#custom-screenrecording-indicator,
+#custom-idle-indicator,
+#custom-notification-silencing-indicator {
+  font-size: 10px;
+}
+
+.hidden {
+  opacity: 0;
+}
+
+#custom-screenrecording-indicator.active,
+#custom-idle-indicator.active,
+#custom-notification-silencing-indicator.active {
+  color: #a55555;
+}
+
+#bluetooth {
+  margin: 0 5px;
+}
+
+#mpris {
+  margin-right: 10px;
+}

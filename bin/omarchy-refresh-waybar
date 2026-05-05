@@ -5,4 +5,5 @@
 
 omarchy-refresh-config waybar/config.jsonc
 omarchy-refresh-config waybar/style.css
+echo "top" >"$HOME/.config/waybar/.style"
 omarchy-restart-waybar

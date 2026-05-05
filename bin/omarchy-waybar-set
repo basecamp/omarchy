@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# omarchy:summary=Set Waybar style
+# omarchy:args=<top|pill|float|toggle|list>
+# omarchy:examples=omarchy waybar set pill | omarchy waybar set float | omarchy waybar set toggle
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+STYLE_DIR="$OMARCHY_PATH/config/waybar/styles"
+CONFIG_DIR="$OMARCHY_PATH/config/waybar/configs"
+CURRENT_STYLE_FILE="$HOME/.config/waybar/.style"
+STYLE=${1:-toggle}
+
+list_styles() {
+  for style in "$STYLE_DIR"/*.css; do
+    [[ -e $style ]] || continue
+    basename "$style" .css
+  done
+}
+
+current_style() {
+  if [[ -f $CURRENT_STYLE_FILE ]]; then
+    read -r current <"$CURRENT_STYLE_FILE"
+    [[ -n $current ]] && printf '%s\n' "$current" && return
+  fi
+
+  echo "top"
+}
+
+if [[ $STYLE == "list" ]]; then
+  list_styles
+  exit
+fi
+
+if [[ $STYLE == "default" ]]; then
+  STYLE="top"
+fi
+
+if [[ $STYLE == "toggle" ]]; then
+  if [[ $(current_style) == "pill" ]]; then
+    STYLE="top"
+  else
+    STYLE="pill"
+  fi
+fi
+
+if [[ ! -f $STYLE_DIR/$STYLE.css || ! -f $CONFIG_DIR/$STYLE.jsonc ]]; then
+  echo "Unknown Waybar style '$STYLE'"
+  echo "Available styles:"
+  list_styles
+  exit 1
+fi
+
+mkdir -p "$HOME/.config/waybar"
+cp "$CONFIG_DIR/$STYLE.jsonc" "$HOME/.config/waybar/config.jsonc"
+cp "$STYLE_DIR/$STYLE.css" "$HOME/.config/waybar/style.css"
+echo "$STYLE" >"$CURRENT_STYLE_FILE"
+
+omarchy-restart-waybar
