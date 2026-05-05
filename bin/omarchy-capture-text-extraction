@@ -4,6 +4,14 @@
 # omarchy:group=capture
 # omarchy:examples=omarchy capture ocr
 
+if omarchy-cmd-missing tesseract || ! tesseract --list-langs 2>/dev/null | grep -qx "eng"; then
+  notify-send -u critical -t 20000 \
+    "Text extraction unavailable" \
+    "OCR support is missing. Install it with:\nomarchy-pkg-add tesseract tesseract-data-eng"
+  echo "Error: OCR requires tesseract and tesseract-data-eng" >&2
+  exit 1
+fi
+
 # Keep hyprpicker alive until after grim captures so the screenshot sees the
 # frozen overlay rather than live content shifting during teardown.
 cleanup_freeze() {
