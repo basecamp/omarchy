@@ -5,3 +5,25 @@
 
 # Example: Show notification after the system has been updated.
 # notify-send -u low "Update Performed" "Your system is now up to date"
+
+
+# Optionally, for multiple post-update tasks: run every executable script in `post-update.d`.
+# Paths are sorted explicitly (LC_ALL=C) so numeric prefixes like 10- and 20- run in order; plain
+# globs are not guaranteed sorted. Create post-update.d if needed. See post-update.d/ for examples.
+
+# set -uo pipefail
+
+# HOOK_DIR="${HOME}/.config/omarchy/hooks/post-update.d"
+# [[ -d $HOOK_DIR ]] || exit 0
+
+# shopt -s nullglob
+# mapfile -t hooks < <(printf '%s\n' "$HOOK_DIR"/* | LC_ALL=C sort)
+# shopt -u nullglob
+
+# for hook in "${hooks[@]}"; do
+#   [[ -f "$hook" && -x "$hook" ]] || continue
+#   echo "[omarchy post-update] running $(basename "$hook")"
+#   if ! "$hook"; then
+#     echo "[omarchy post-update] ERROR: $(basename "$hook") failed"
+#   fi
+# done
