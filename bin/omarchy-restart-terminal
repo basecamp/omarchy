@@ -13,3 +13,7 @@ fi
 if pgrep -x ghostty >/dev/null; then
   killall -SIGUSR2 ghostty
 fi
+
+if [[ -f ~/.config/wezterm/wezterm.lua ]]; then
+  touch ~/.config/wezterm/wezterm.lua
+fi
