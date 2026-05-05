@@ -40,6 +40,7 @@ fd
 ffmpegthumbnailer
 fontconfig
 fzf
+gazelle-tui
 github-cli
 gnome-calculator
 gnome-keyring
@@ -58,7 +59,6 @@ hyprlock
 hyprpicker
 hyprsunset
 imagemagick
-impala
 imv
 inetutils
 inxi
@@ -83,6 +83,7 @@ mariadb-libs
 mise
 mpv
 nautilus
+networkmanager
 nautilus-python
 gnome-disk-utility
 noto-fonts
