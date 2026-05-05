@@ -1,0 +1,76 @@
+#!/bin/bash
+# label: Tmux
+
+config="${HOME}/.config/tmux/tmux.conf"
+[[ ! -f "$config" ]] && exit
+
+prefix=$(awk '/^set[[:space:]]+-g[[:space:]]+prefix[[:space:]]/{print $NF; exit}' "$config")
+prefix="${prefix:-C-Space}"
+prefix2=$(awk '/^set[[:space:]]+-g[[:space:]]+prefix2[[:space:]]/{print $NF; exit}' "$config")
+
+{
+  prefix_info="Prefix: $prefix"
+  [[ -n "$prefix2" ]] && prefix_info+=" / $prefix2"
+  printf "%s  ·  C=Ctrl  M=Alt  S=Shift\n" "$prefix_info"
+
+  awk '
+    /^[[:space:]]*#/ { next }
+    /^bind/ {
+      no_prefix = 0
+      table = "prefix"
+      key = ""
+      cmd = ""
+
+      i = 2
+      while (i <= NF) {
+        if ($i == "-n") { no_prefix = 1; i++; continue }
+        if ($i == "-T") { i++; table = $i; i++; continue }
+        if (substr($i, 1, 1) == "-") { i++; continue }
+        key = $i; i++; break
+      }
+
+      if (!no_prefix && table != "prefix") next
+
+      while (i <= NF) { cmd = cmd (cmd ? " " : "") $i; i++ }
+
+      if (cmd ~ /send-prefix/) next
+
+      gsub(/-c "[^"]*"/, "", cmd)
+      gsub(/[[:space:]]+/, " ", cmd)
+      sub(/^[[:space:]]+/, "", cmd)
+      sub(/[[:space:]]+$/, "", cmd)
+
+      desc = cmd
+      if      (cmd ~ /^split-window -v/)   desc = "Split pane vertically"
+      else if (cmd ~ /^split-window -h/)   desc = "Split pane horizontally"
+      else if (cmd ~ /^kill-pane/)         desc = "Kill pane"
+      else if (cmd ~ /^select-pane -L/)    desc = "Focus pane left"
+      else if (cmd ~ /^select-pane -R/)    desc = "Focus pane right"
+      else if (cmd ~ /^select-pane -U/)    desc = "Focus pane up"
+      else if (cmd ~ /^select-pane -D/)    desc = "Focus pane down"
+      else if (cmd ~ /^resize-pane -L/)    desc = "Resize pane left"
+      else if (cmd ~ /^resize-pane -R/)    desc = "Resize pane right"
+      else if (cmd ~ /^resize-pane -U/)    desc = "Resize pane up"
+      else if (cmd ~ /^resize-pane -D/)    desc = "Resize pane down"
+      else if (cmd ~ /^new-window/)        desc = "New window"
+      else if (cmd ~ /^kill-window/)       desc = "Kill window"
+      else if (cmd ~ /command-prompt.*#W/) desc = "Rename window"
+      else if (cmd ~ /command-prompt.*#S/) desc = "Rename session"
+      else if (cmd ~ /^select-window -t/) {
+        n = cmd; sub(/.*-t /, "", n); desc = "Switch to window " n
+      }
+      else if (cmd ~ /^new-session/)       desc = "New session"
+      else if (cmd ~ /^kill-session/)      desc = "Kill session"
+      else if (cmd ~ /^switch-client -p/)  desc = "Previous session"
+      else if (cmd ~ /^switch-client -n/)  desc = "Next session"
+      else if (cmd ~ /^source-file/)       desc = "Reload config"
+
+      key_combo = no_prefix ? key : "PREFIX + " key
+      printf "%-35s → %s\n", key_combo, desc
+    }
+  ' "$config"
+
+  printf "%-35s → %s\n" "tml <ai>"  "Editor + ai + terminal"
+  printf "%-35s → %s\n" "nic"       "Editor + opencode + terminal"
+  printf "%-35s → %s\n" "nicx"      "Editor + claude + terminal"
+}
