@@ -37,3 +37,4 @@ set_theme() {
 ! omarchy-toggle-enabled skip-vscode-insiders-theme-changes && set_theme "code-insiders" "$HOME/.config/Code - Insiders/User/settings.json"
 ! omarchy-toggle-enabled skip-codium-theme-changes && set_theme "codium" "$HOME/.config/VSCodium/User/settings.json"
 ! omarchy-toggle-enabled skip-cursor-theme-changes && set_theme "cursor" "$HOME/.config/Cursor/User/settings.json"
+! omarchy-toggle-enabled skip-codeoss-theme-changes && set_theme "code-oss" "$HOME/.config/Code - OSS/User/settings.json"
