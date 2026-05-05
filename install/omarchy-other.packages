@@ -33,6 +33,7 @@ nvidia-dkms
 nvidia-open-dkms
 nvidia-580xx-utils
 nvidia-utils
+nuphyctl-bin
 lib32-nvidia-580xx-utils
 lib32-nvidia-utils
 pipewire
