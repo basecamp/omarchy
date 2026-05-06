@@ -8,10 +8,15 @@
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
+if [[ -n $OMARCHY_SCREENSHOT_SUBDIR_FORMAT ]]; then
+  OUTPUT_DIR="$OUTPUT_DIR/$(date +"$OMARCHY_SCREENSHOT_SUBDIR_FORMAT")"
+fi
 
 if [[ ! -d $OUTPUT_DIR ]]; then
   mkdir -p "$OUTPUT_DIR"
-  notify-send "Created screenshot directory: $OUTPUT_DIR" -u normal -t 2000
+  if [[ -z $OMARCHY_SCREENSHOT_SUBDIR_FORMAT ]]; then
+    notify-send "Created screenshot directory: $OUTPUT_DIR" -u normal -t 2000
+  fi
 fi
 
 pkill slurp && exit 0

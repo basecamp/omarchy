@@ -9,5 +9,13 @@ export EDITOR=nvim
 # Use a custom directory for screenshots (remember to make the directory!)
 # export OMARCHY_SCREENSHOT_DIR="$HOME/Pictures/Screenshots"
 
+# Sort screenshots into date-based subfolders. Format is passed to date.
+# Example: "%Y-%m" creates Screenshots/2026-05/screenshot-...png
+# export OMARCHY_SCREENSHOT_SUBDIR_FORMAT="%Y-%m"
+
 # Use a custom directory for screenrecordings (remember to make the directory!)
 # export OMARCHY_SCREENRECORD_DIR="$HOME/Videos/Screencasts"
+
+# Sort screenrecordings into date-based subfolders. Format is passed to date.
+# Example: "%Y-%m" creates Screencasts/2026-05/screenrecording-...mp4
+# export OMARCHY_SCREENRECORD_SUBDIR_FORMAT="%Y-%m"

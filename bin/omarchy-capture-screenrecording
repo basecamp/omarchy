@@ -186,6 +186,11 @@ start_screenrecording() {
 
   [[ $WEBCAM == "true" ]] && start_webcam_overlay
 
+  if [[ -n $OMARCHY_SCREENRECORD_SUBDIR_FORMAT ]]; then
+    OUTPUT_DIR="$OUTPUT_DIR/$(date +"$OMARCHY_SCREENRECORD_SUBDIR_FORMAT")"
+    mkdir -p "$OUTPUT_DIR" || return 1
+  fi
+
   local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
   local audio_devices=""
   local audio_args=()
