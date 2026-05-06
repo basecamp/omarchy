@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # omarchy:summary=Install one of the approved terminals and set it as the default for Omarchy (Super + Return etc).
-# omarchy:args=<alacritty|ghostty|kitty>
+# omarchy:args=<alacritty|foot|ghostty|kitty>
 # omarchy:requires-sudo=true
 
 if (($# == 0)); then
-  echo "Usage: omarchy-install-terminal [alacritty|ghostty|kitty]"
+  echo "Usage: omarchy-install-terminal [alacritty|foot|ghostty|kitty]"
   exit 1
 fi
 
@@ -14,6 +14,7 @@ package="$1"
 # Map package name to desktop entry ID
 case "$package" in
 alacritty) desktop_id="Alacritty.desktop" ;;
+foot) desktop_id="foot.desktop" ;;
 ghostty) desktop_id="com.mitchellh.ghostty.desktop" ;;
 kitty) desktop_id="kitty.desktop" ;;
 *)
@@ -26,10 +27,15 @@ echo "Installing $package..."
 
 # Install package
 if omarchy-pkg-add $package; then
-  # Copy custom desktop entry for alacritty with X-TerminalArg* keys
-  if [[ $package == "alacritty" ]]; then
+  # Copy custom desktop entries with X-TerminalArg* keys
+  if [[ $package == "alacritty" || $package == "foot" ]]; then
     mkdir -p ~/.local/share/applications
-    cp $OMARCHY_PATH/applications/Alacritty.desktop ~/.local/share/applications/
+    cp "$OMARCHY_PATH/applications/$desktop_id" ~/.local/share/applications/
+  fi
+
+  # Copy default config for optional terminals when missing
+  if [[ ! -e ~/.config/$package ]]; then
+    cp -Rpf "$OMARCHY_PATH/config/$package" ~/.config/
   fi
 
   # Update xdg-terminals.list to prioritize the proper terminal

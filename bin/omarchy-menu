@@ -93,8 +93,9 @@ show_learn_menu() {
 }
 
 show_trigger_menu() {
-  case $(menu "Trigger" "  Capture\n  Share\n󰔎  Toggle\n  Hardware") in
+  case $(menu "Trigger" "  Capture\n󰧸  Transcode\n  Share\n󰔎  Toggle\n  Hardware") in
   *Capture*) show_capture_menu ;;
+  *Transcode*) show_transcode_menu ;;
   *Share*) show_share_menu ;;
   *Toggle*) show_toggle_menu ;;
   *Hardware*) show_hardware_menu ;;
@@ -166,6 +167,14 @@ show_share_menu() {
   esac
 }
 
+show_transcode_menu() {
+  case $(menu "Transcode" "  Picture\n  Video") in
+  *Picture*) present_terminal "omarchy-transcode --path '$HOME/Pictures'" ;;
+  *Video*) present_terminal "omarchy-transcode --path '$HOME/Videos'" ;;
+  *) back_to show_trigger_menu ;;
+  esac
+}
+
 show_toggle_menu() {
   local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰂛  Notifications\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n  Direct Boot\n󰟵  Passwordless Sudo"
 
@@ -217,10 +226,34 @@ show_style_menu() {
   *Font*) show_font_menu ;;
   *Background*) show_background_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
-  *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
+  *Screensaver*) show_screensaver_menu ;;
   *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
   esac
+}
+
+show_screensaver_menu() {
+  case $(menu "Screensaver" "  Edit Text\n  Set From Image\n󱄄  Preview\n  Restore Default") in
+  *Text*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
+  *Image*) set_screensaver_from_image ;;
+  *Preview*) omarchy-launch-screensaver force ;;
+  *Default*) terminal bash -lc 'omarchy-screensaver-logo default; echo; read -n 1 -s -r -p "Press any key to close..."' ;;
+  *) show_style_menu ;;
+  esac
+}
+
+set_screensaver_from_image() {
+  terminal bash -lc '
+    image=$(fd --type file --ignore-case --extension svg --extension png . "$HOME" 2>/dev/null | fzf --prompt "Logo image> ")
+    if [[ -n $image ]]; then
+      if omarchy-screensaver-logo "$image"; then
+        echo
+        echo "Preview with: omarchy-launch-screensaver force"
+      fi
+      echo
+      read -n 1 -s -r -p "Press any key to close..."
+    fi
+  '
 }
 
 show_theme_menu() {
@@ -319,7 +352,7 @@ show_setup_system_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n  Browser\n󱚤  AI\n  Gaming\n󰍲  Windows") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -329,10 +362,23 @@ show_install_menu() {
   *Development*) show_install_development_menu ;;
   *Editor*) show_install_editor_menu ;;
   *Terminal*) show_install_terminal_menu ;;
+  *Browser*) show_install_browser_menu ;;
+  *Gaming*) show_install_gaming_menu ;;
   *AI*) show_install_ai_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm install" ;;
-  *Gaming*) show_install_gaming_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_install_browser_menu() {
+  case $(menu "Install" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n  Zen") in
+  *Chrome*) present_terminal "omarchy-install-browser chrome" ;;
+  *Edge*) present_terminal "omarchy-install-browser edge" ;;
+  *"Brave Origin"*) present_terminal "omarchy-install-browser brave-origin" ;;
+  *Brave*) present_terminal "omarchy-install-browser brave" ;;
+  *Firefox*) present_terminal "omarchy-install-browser firefox" ;;
+  *Zen*) present_terminal "omarchy-install-browser zen" ;;
+  *) show_install_menu ;;
   esac
 }
 
@@ -352,7 +398,7 @@ show_install_editor_menu() {
   case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Emacs") in
   *VSCode*) present_terminal omarchy-install-vscode ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
-  *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+  *Zed*) present_terminal omarchy-install-zed ;;
   *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) present_terminal omarchy-install-helix ;;
   *Emacs*) install "Emacs" "emacs-wayland" && systemctl --user enable --now emacs.service ;;
@@ -361,8 +407,9 @@ show_install_editor_menu() {
 }
 
 show_install_terminal_menu() {
-  case $(menu "Install" "  Alacritty\n  Ghostty\n  Kitty") in
+  case $(menu "Install" "  Alacritty\n  Foot\n  Ghostty\n  Kitty") in
   *Alacritty*) install_terminal "alacritty" ;;
+  *Foot*) install_terminal "foot" ;;
   *Ghostty*) install_terminal "ghostty" ;;
   *Kitty*) install_terminal "kitty" ;;
   *) show_install_menu ;;
@@ -468,8 +515,9 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n  Gaming\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Browser\n  Web App\n  TUI\n󰵮  Development\n  Gaming\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
   *Package*) terminal omarchy-pkg-remove ;;
+  *Browser*) show_remove_browser_menu ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Development*) show_remove_development_menu ;;
@@ -481,6 +529,18 @@ show_remove_menu() {
   *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
   *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_remove_browser_menu() {
+  case $(menu "Remove" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n  Zen") in
+  *Chrome*) present_terminal "omarchy-remove-browser chrome" ;;
+  *Edge*) present_terminal "omarchy-remove-browser edge" ;;
+  *"Brave Origin"*) present_terminal "omarchy-remove-browser brave-origin" ;;
+  *Brave*) present_terminal "omarchy-remove-browser brave" ;;
+  *Firefox*) present_terminal "omarchy-remove-browser firefox" ;;
+  *Zen*) present_terminal "omarchy-remove-browser zen" ;;
+  *) show_remove_menu ;;
   esac
 }
 
@@ -608,7 +668,7 @@ show_update_hardware_menu() {
 
 show_update_password_menu() {
   case $(menu "Update Password" "  Drive Encryption\n  User") in
-  *Drive*) present_terminal omarchy-drive-set-password ;;
+  *Drive*) present_terminal omarchy-drive-password ;;
   *User*) present_terminal passwd ;;
   *) show_update_menu ;;
   esac
@@ -648,6 +708,7 @@ go_to_menu() {
   *toggle*) show_toggle_menu ;;
   *hardware*) show_hardware_menu ;;
   *share*) show_share_menu ;;
+  *transcode*) show_transcode_menu ;;
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
   *style*) show_style_menu ;;

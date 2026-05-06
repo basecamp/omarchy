@@ -2,6 +2,7 @@
 
 # omarchy:summary=Manage persistent state files for Omarchy toggles and settings.
 # omarchy:args=<set|clear> <state-name-or-pattern>
+# omarchy:hidden=true
 
 STATE_DIR="$HOME/.local/state/omarchy"
 mkdir -p "$STATE_DIR"

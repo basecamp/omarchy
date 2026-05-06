@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Cycle scaling for the focused Hyprland monitor
+# omarchy:summary=Cycle focused Hyprland monitor scaling through 1x, 1.25x, 1.6x, 2x, and 3x
 
 MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true)')
 ACTIVE_MONITOR=$(echo "$MONITOR_INFO" | jq -r '.name')
