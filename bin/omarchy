@@ -501,8 +501,6 @@ Discovery:
   omarchy commands --all      Include commands explicitly marked hidden
   omarchy commands --json     Machine-readable command list
   omarchy commands --check    Validate command metadata and routes
-  omarchy dev benchmark       Measure CLI response times
-  omarchy dev bin metadata    Show bin metadata fields and defaults
 EOF
 }
 
