@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Apply the current theme color to Chromium and Brave
+# omarchy:hidden=true
 
 CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
 

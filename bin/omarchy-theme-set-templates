@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Generate themed config files from Omarchy templates
+# omarchy:hidden=true
 
 TEMPLATES_DIR="$OMARCHY_PATH/default/themed"
 USER_TEMPLATES_DIR="$HOME/.config/omarchy/themed"
