@@ -58,6 +58,7 @@ omarchy-restart-terminal
 omarchy-restart-hyprctl
 omarchy-restart-btop
 omarchy-restart-opencode
+omarchy-restart-ghui
 omarchy-restart-mako
 omarchy-restart-helix
 
