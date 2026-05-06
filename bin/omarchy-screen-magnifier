@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle / zoom in / zoom out for Hyprland (uses cursor:zoom_factor)
+
+STEP=0.3
+MIN=1.0
+MAX=10.0
+
+case "$1" in
+  toggle)
+    NEW=$(hyprctl getoption cursor:zoom_factor -j | jq "if .float == 1.0 then 1.7 else 1.0 end")
+    ;;
+  in)
+    NEW=$(hyprctl getoption cursor:zoom_factor -j | jq "[.float + $STEP, $MAX] | min")
+    ;;
+  out)
+    NEW=$(hyprctl getoption cursor:zoom_factor -j | jq "[.float - $STEP, $MIN] | max")
+    ;;
+  *)
+    echo "Usage: $0 {toggle|in|out}"
+    exit 1
+    ;;
+esac
+
+hyprctl keyword cursor:zoom_factor "$NEW"
