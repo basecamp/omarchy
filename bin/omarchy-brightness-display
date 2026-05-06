@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Adjust brightness on the most likely display device.
-# omarchy:args=<step|off|on>
+# omarchy:args=<+N%|N%-|N%|off|on>
+# omarchy:examples=omarchy brightness display +5% | omarchy brightness display 5%- | omarchy brightness display 50% | omarchy brightness display off | omarchy brightness display on
 
 step="${1:-+5%}"
 
