@@ -59,6 +59,8 @@ run_logged $OMARCHY_INSTALL/config/hardware/asus/fix-z13-touchpad.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework/fix-f13-amd-audio-input.sh
 run_logged $OMARCHY_INSTALL/config/hardware/framework/qmk-hid.sh
 
+run_logged $OMARCHY_INSTALL/config/hardware/nuphy/nuphyio.sh
+
 run_logged $OMARCHY_INSTALL/config/hardware/apple/fix-spi-keyboard.sh
 run_logged $OMARCHY_INSTALL/config/hardware/apple/fix-suspend-nvme.sh
 run_logged $OMARCHY_INSTALL/config/hardware/apple/fix-t2.sh
