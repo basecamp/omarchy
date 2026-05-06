@@ -143,7 +143,7 @@ show_webcam_select_menu() {
 show_screenrecord_menu() {
   omarchy-capture-screenrecording --stop-recording && exit 0
 
-  case $(menu "Screenrecord" "  With no audio\n  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam") in
+  case $(menu "Screenrecord" "  With no audio\n  With desktop audio\n  With desktop + microphone audio\n  With desktop + microphone audio + webcam\n  Save as GIF (silent)") in
   *"With no audio") omarchy-capture-screenrecording ;;
   *"With desktop audio") omarchy-capture-screenrecording --with-desktop-audio ;;
   *"With desktop + microphone audio") omarchy-capture-screenrecording --with-desktop-audio --with-microphone-audio ;;
@@ -154,6 +154,7 @@ show_screenrecord_menu() {
     }
     omarchy-capture-screenrecording --with-desktop-audio --with-microphone-audio --with-webcam --webcam-device="$device"
     ;;
+  *"Save as GIF (silent)") omarchy-capture-screenrecording --as-gif ;;
   *) back_to show_capture_menu ;;
   esac
 }

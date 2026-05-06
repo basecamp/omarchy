@@ -32,6 +32,9 @@ WEBCAM="false"
 WEBCAM_DEVICE=""
 RESOLUTION=""
 STOP_RECORDING="false"
+AS_GIF="false"
+# --as-gif intent has to survive across processes, so marker file used. Mirrors $RECORDING_FILE
+AS_GIF_FILE="/tmp/omarchy-screenrecord-as-gif"
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
 
@@ -43,6 +46,7 @@ for arg in "$@"; do
   --webcam-device=*) WEBCAM_DEVICE="${arg#*=}" ;;
   --resolution=*) RESOLUTION="${arg#*=}" ;;
   --stop-recording) STOP_RECORDING="true" ;;
+  --as-gif) AS_GIF="true" ;;
   esac
 done
 
@@ -163,6 +167,8 @@ start_screenrecording() {
   local capture_args=()
   local target
 
+  rm -f "$AS_GIF_FILE" # clear any stale marker from crashed previous runs
+
   # Opt-in path for HDR, external-GPU monitors, and window capture (all things
   # the portal backend supports and the kms backend doesn't). Default flow uses
   # slurp + the kms backend, which avoids the EGL DMA-BUF modifier import
@@ -210,6 +216,7 @@ start_screenrecording() {
 
   if kill -0 $pid 2>/dev/null; then
     echo "$filename" >"$RECORDING_FILE"
+    [[ $AS_GIF == "true" ]] && touch "$AS_GIF_FILE"
     toggle_screenrecording_indicator
   fi
 }
@@ -233,7 +240,22 @@ stop_screenrecording() {
   else
     finalize_recording
     local filename=$(cat "$RECORDING_FILE" 2>/dev/null)
-    local preview="${filename%.mp4}-preview.png"
+
+    if [[ -f $AS_GIF_FILE ]]; then
+      rm -f "$AS_GIF_FILE"
+      notify-send "Converting recording to GIF..." -t 2000
+      if omarchy-transcode "$filename" gif "${RESOLUTION:-1080p}" >>"$LOG_FILE" 2>&1; then
+        # omarchy-transcode writes to ${stem}-${resolution}.${format}
+        # if that convention changes, this path lookup will fail silently
+        local gif="${filename%.mp4}-${RESOLUTION:-1080p}.gif"
+        rm -f "$filename"
+        filename="$gif"
+      else
+        notify-send "GIF conversion failed" "Keeping the MP4 instead." -u critical -t 5000
+      fi
+    fi
+
+    local preview="${filename%.*}-preview.png"
 
     # Generate a preview thumbnail from the first frame
     ffmpeg -y -i "$filename" -ss 00:00:00.1 -vframes 1 -q:v 2 "$preview" -loglevel quiet 2>/dev/null
