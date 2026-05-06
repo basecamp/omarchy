@@ -16,5 +16,11 @@ omarchy-refresh-config walker/config.toml
 omarchy-refresh-config elephant/calc.toml
 omarchy-refresh-config elephant/desktopapplications.toml
 
+# Link all elephant menus
+mkdir -p ~/.config/elephant/menus
+for menu in $OMARCHY_PATH/default/elephant/*.lua; do
+  ln -snf "$menu" ~/.config/elephant/menus/"$(basename "$menu")"
+done
+
 # Restart service
 omarchy-restart-walker

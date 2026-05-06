@@ -2,6 +2,7 @@
 
 # omarchy:summary=Preview a Plymouth boot screen with custom colors and logo
 # omarchy:args=<background-hex> <text-hex> <path-to-logo.png> <output-path>
+# omarchy:examples=omarchy plymouth preview '#1d2021' '#ebdbb2' ~/.config/omarchy/current/theme/plymouth/logo.png /tmp/plymouth-preview.png
 
 # Render a Plymouth login-screen preview PNG by compositing the staged omarchy
 # theme assets (recolored with the given text color) onto the background.

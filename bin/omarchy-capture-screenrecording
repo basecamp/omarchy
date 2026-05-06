@@ -5,6 +5,18 @@
 # omarchy:args=[--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--resolution=<size>] [--stop-recording]
 # omarchy:examples=omarchy screenrecord | omarchy capture screenrecord --with-desktop-audio
 # omarchy:aliases=omarchy screenrecord
+#
+# Env: OMARCHY_SCREENRECORD_USE_PORTAL=true skips the built-in slurp picker and
+# uses gpu-screen-recorder's xdg-desktop-portal capture backend instead. The
+# portal backend was originally added (PR #3401) for HDR-aware capture, support
+# for monitors driven by external GPUs, and window capture — enable it if any
+# of those matter to you. Off by default because the portal path can fail EGL
+# DMA-BUF modifier import on some configurations, leaving recording unable to
+# start.
+#
+# Env: OMARCHY_SCREENRECORD_DEBUG=true appends gpu-screen-recorder's stderr (and
+# the picker target it was launched with) to /tmp/omarchy-screenrecord.log so
+# users can attach a log when reporting capture failures.
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
@@ -21,6 +33,7 @@ WEBCAM_DEVICE=""
 RESOLUTION=""
 STOP_RECORDING="false"
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
+LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
 
 for arg in "$@"; do
   case "$arg" in
@@ -87,7 +100,92 @@ default_resolution() {
   fi
 }
 
+# Monitor + window rectangles on the focused workspace, in slurp's "X,Y WxH" format.
+# Mirrors omarchy-capture-screenshot so the picker UX is identical.
+get_rectangles() {
+  local active_workspace=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
+  hyprctl monitors -j | jq -r --arg ws "$active_workspace" '
+    .[] | select(.activeWorkspace.id == ($ws | tonumber)) |
+    "\(.x),\(.y) \(.width / .scale | floor)x\(.height / .scale | floor)"'
+  hyprctl clients -j | jq -r --arg ws "$active_workspace" '
+    .[] | select(.workspace.id == ($ws | tonumber)) |
+    "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+}
+
+# Echoes "monitor:NAME" when the selection matches an entire monitor, otherwise
+# "region:WxH+X+Y" with physical-pixel coordinates ready for gpu-screen-recorder.
+# Returns non-zero if the user cancelled the picker.
+select_capture_target() {
+  local rects=$(get_rectangles)
+  hyprpicker -r -z >/dev/null 2>&1 &
+  local picker_pid=$!
+  sleep .1
+  local selection=$(echo "$rects" | slurp 2>/dev/null)
+  kill $picker_pid 2>/dev/null
+
+  # X and Y can be negative (Hyprland monitor positions in multi-display layouts);
+  # widths and heights are always positive.
+  [[ $selection =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || return 1
+  local sx=${BASH_REMATCH[1]} sy=${BASH_REMATCH[2]}
+  local sw=${BASH_REMATCH[3]} sh=${BASH_REMATCH[4]}
+
+  # A bare click (area < 20px²) snaps to whichever rectangle the click landed
+  # inside, so users don't end up with accidental 2px recordings.
+  if ((sw * sh < 20)); then
+    while IFS= read -r rect; do
+      [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
+      local rx=${BASH_REMATCH[1]} ry=${BASH_REMATCH[2]}
+      local rw=${BASH_REMATCH[3]} rh=${BASH_REMATCH[4]}
+      if ((sx >= rx && sx < rx + rw && sy >= ry && sy < ry + rh)); then
+        sx=$rx sy=$ry sw=$rw sh=$rh
+        break
+      fi
+    done <<<"$rects"
+  fi
+
+  # When the selection exactly matches a monitor, prefer -w <monitor> over a
+  # region capture — same kms backend, but no scaling math and full native res.
+  local monitor=$(hyprctl monitors -j | jq -r --argjson x "$sx" --argjson y "$sy" --argjson w "$sw" --argjson h "$sh" '
+    .[] | select(.x == $x and .y == $y and (.width / .scale | floor) == $w and (.height / .scale | floor) == $h) | .name' | head -1)
+
+  if [[ -n $monitor ]]; then
+    echo "monitor:$monitor"
+    return
+  fi
+
+  # gpu-screen-recorder wants region geometry in the compositor's logical
+  # coordinate space — same space slurp returns — so pass the values through
+  # untouched. (gsr scales to physical pixels itself based on the monitor.)
+  echo "region:${sw}x${sh}+${sx}+${sy}"
+}
+
 start_screenrecording() {
+  local capture_args=()
+  local target
+
+  # Opt-in path for HDR, external-GPU monitors, and window capture (all things
+  # the portal backend supports and the kms backend doesn't). Default flow uses
+  # slurp + the kms backend, which avoids the EGL DMA-BUF modifier import
+  # failures the portal path can hit on some configurations.
+  if [[ ${OMARCHY_SCREENRECORD_USE_PORTAL:-false} == "true" ]]; then
+    target="portal"
+    capture_args=(-w portal -s "${RESOLUTION:-$(default_resolution)}")
+  else
+    target=$(select_capture_target) || return 1
+
+    case $target in
+    monitor:*)
+      capture_args=(-w "${target#monitor:}" -s "${RESOLUTION:-$(default_resolution)}")
+      ;;
+    region:*)
+      capture_args=(-w "${target#region:}")
+      [[ -n $RESOLUTION ]] && capture_args+=(-s "$RESOLUTION")
+      ;;
+    esac
+  fi
+
+  [[ $WEBCAM == "true" ]] && start_webcam_overlay
+
   local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
   local audio_devices=""
   local audio_args=()
@@ -102,12 +200,10 @@ start_screenrecording() {
 
   [[ -n $audio_devices ]] && audio_args+=(-a "$audio_devices" -ac aac)
 
-  local resolution="${RESOLUTION:-$(default_resolution)}"
-
-  gpu-screen-recorder -w portal -k auto -s "$resolution" -f 60 -fm cfr -fallback-cpu-encoding yes -o "$filename" "${audio_args[@]}" &
+  echo "===== $(date '+%F %T') args: $* target: $target =====" >>"$LOG_FILE"
+  gpu-screen-recorder "${capture_args[@]}" -k auto -f 60 -fm cfr -fallback-cpu-encoding yes -o "$filename" "${audio_args[@]}" 2>>"$LOG_FILE" &
   local pid=$!
 
-  # Wait for recording to actually start (file appears after portal selection)
   while kill -0 $pid 2>/dev/null && [[ ! -f $filename ]]; do
     sleep 0.2
   done
@@ -194,7 +290,5 @@ if screenrecording_active; then
 elif [[ $STOP_RECORDING == "true" ]]; then
   exit 1
 else
-  [[ $WEBCAM == "true" ]] && start_webcam_overlay
-
   start_screenrecording || cleanup_webcam
 fi

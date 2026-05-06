@@ -21,7 +21,7 @@ color6 = "#b0b0b0"
 color7 = "#ececec"
 
 # Bright colors (ANSI 8-15)
-color8 = "#fdfdfd"
+color8 = "#5c5c5c"
 color9 = "#a4a4a4"
 color10 = "#b6b6b6"
 color11 = "#cecece"
