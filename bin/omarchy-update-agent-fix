@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# omarchy:summary=Ask opencode to fix skipped update migrations and upgrade errors.
+# omarchy:aliases=omarchy update agent-fix
+
+set -e
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+skipped_dir="$HOME/.local/state/omarchy/migrations/skipped"
+update_log="/tmp/omarchy-update.log"
+pacman_log="/var/log/pacman.log"
+skill="$OMARCHY_PATH/default/omarchy-skill-agent-fix/SKILL.md"
+
+"$OMARCHY_PATH/bin/omarchy-cmd-present" opencode 2>/dev/null || {
+  echo "opencode is not installed." >&2
+  exit 1
+}
+
+[[ -f $skill ]] || {
+  echo "Missing skill: $skill" >&2
+  exit 1
+}
+
+mapfile -t skipped_migrations < <(
+  find "$skipped_dir" -maxdepth 1 -type f -name "*.sh" -printf "$OMARCHY_PATH/migrations/%f\n" 2>/dev/null | sort
+)
+
+if (( ${#skipped_migrations[@]} )); then
+  skipped_list=$(printf -- "- %s\n" "${skipped_migrations[@]}")
+else
+  skipped_list="- none"
+fi
+
+opencode_prompt=$(cat <<EOF
+Use /omarchy-update-agent-fix.
+
+Update log: $update_log
+Pacman log: $pacman_log
+Skipped migration scripts:
+$skipped_list
+
+Fix the skipped Omarchy migration.
+EOF
+)
+
+echo "Opening opencode for skipped migrations..."
+exec opencode "$OMARCHY_PATH" --agent plan --prompt "$opencode_prompt"
