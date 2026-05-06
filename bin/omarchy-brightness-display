@@ -1,14 +1,10 @@
 #!/bin/bash
 
 # omarchy:summary=Adjust brightness on the most likely display device.
-# omarchy:args=<step>
+# omarchy:args=<+N%|N%-|N%|off|on>
+# omarchy:examples=omarchy brightness display +5% | omarchy brightness display 5%- | omarchy brightness display 50% | omarchy brightness display off | omarchy brightness display on
 
 step="${1:-+5%}"
-
-if omarchy-hyprland-monitor-focused-apple; then
-  omarchy-brightness-display-apple "$step"
-  exit
-fi
 
 # Start with the first possible output, then refine to the most likely given an order heuristic.
 device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
@@ -18,6 +14,19 @@ for candidate in amdgpu_bl* intel_backlight acpi_video*; do
     break
   fi
 done
+
+if [[ $step == "off" ]]; then
+  hyprctl dispatch dpms off >/dev/null 2>&1
+  exit 0
+elif [[ $step == "on" ]]; then
+  hyprctl dispatch dpms on >/dev/null 2>&1
+  exit 0
+fi
+
+if omarchy-hyprland-monitor-focused-apple; then
+  omarchy-brightness-display-apple "$step"
+  exit
+fi
 
 # Current brightness percentage
 current=$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')
