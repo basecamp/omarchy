@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Adjust keyboard backlight brightness using available steps.
-# omarchy:args=<up|down|cycle>
+# omarchy:args=<up|down|cycle|off|restore>
 
 direction="${1:-up}"
 
@@ -17,6 +17,14 @@ done
 if [[ -z $device ]]; then
   echo "No keyboard backlight device found" >&2
   exit 1
+fi
+
+if [[ $direction == "off" ]]; then
+  brightnessctl -sd "$device" set 0 >/dev/null
+  exit 0
+elif [[ $direction == "restore" ]]; then
+  brightnessctl -rd "$device" >/dev/null
+  exit 0
 fi
 
 # Get current and max brightness to determine step size.
