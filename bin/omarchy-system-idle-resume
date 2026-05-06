@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Resume displays and brightness after idle
+# omarchy:group=system
+# omarchy:name=idle resume
+# omarchy:examples=omarchy system idle resume
+
+hyprctl dispatch dpms on >/dev/null 2>&1
+brightnessctl -r >/dev/null 2>&1
+brightnessctl -rd '*::kbd_backlight' >/dev/null 2>&1
