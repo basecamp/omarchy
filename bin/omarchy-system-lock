@@ -23,9 +23,11 @@ fi
 # Avoid running screensaver when locked
 pkill -f org.omarchy.screensaver
 
-(
-  sleep 3
-  pidof hyprlock >/dev/null || exit 0
-  omarchy-brightness-keyboard off
-  omarchy-brightness-display off
-) &
+if [[ ${OMARCHY_LOCK_ONLY:-false} != "true" ]]; then
+  (
+    sleep 3
+    pidof hyprlock >/dev/null || exit 0
+    omarchy-brightness-keyboard off
+    omarchy-brightness-display off
+  ) &
+fi
