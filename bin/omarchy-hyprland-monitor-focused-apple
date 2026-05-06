@@ -2,4 +2,4 @@
 
 # omarchy:summary=Return success if the focused Hyprland monitor is an Apple display.
 
-hyprctl monitors -j | jq -e '.[] | select(.focused == true) | select(.make == "Apple Computer Inc" and (.model | test("StudioDisplay|ProDisplayXDR")))' >/dev/null
+hyprctl monitors -j | jq -e '.[] | select(.focused == true) | select(.make == "Apple Computer Inc" and (.model | test("StudioDisplay|ProDisplayXDR|Studio XDR")))' >/dev/null
