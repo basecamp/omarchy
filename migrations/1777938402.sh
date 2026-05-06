@@ -9,5 +9,7 @@ if omarchy-hw-asus-expertbook-b9406 || omarchy-hw-asus-zenbook-ux5406aa; then
 
   source "$OMARCHY_PATH/install/config/hardware/asus/fix-asus-ptl-display-backlight.sh"
 
-  sudo limine-update
+  if omarchy-cmd-present limine-update; then
+    sudo limine-update
+  fi
 fi
