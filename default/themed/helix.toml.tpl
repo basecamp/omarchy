@@ -87,7 +87,7 @@
 "ui.virtual.jump-label" = { fg = "color1", modifiers = ["bold"] }
 "ui.virtual.whitespace" = "color8"
 
-"ui.selection" = { bg = "color0" }
+"ui.selection" = { bg = "selection_background", fg = "selection_foreground" }
 
 "ui.cursor" = { fg = "background", bg = "cursor" }
 "ui.cursor.primary" = { fg = "background", bg = "cursor" }
