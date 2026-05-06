@@ -1,5 +1,5 @@
-# Setup passwordless sudo for camera device access control.
-# First check if KEY_CAMERA is available for the device.
+echo "Setup passwordless sudo for camera device access control"
+
 found=false
 for f in /sys/class/input/input*/capabilities/key; do
   read -ra b < "$f"
