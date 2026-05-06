@@ -18,9 +18,9 @@ fzf_args=(
 pkg_names=$(pacman -Slq | fzf "${fzf_args[@]}")
 
 if [[ -n $pkg_names ]]; then
-  source omarchy-sudo-keepalive
+  source omarchy-sudo-keepalive || exit 1
 
   # Convert newline-separated selections to space-separated for pacman
-  echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -S --noconfirm
+  echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -S --noconfirm || exit 1
   omarchy-show-done
 fi
