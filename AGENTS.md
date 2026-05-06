@@ -45,6 +45,7 @@ Supported metadata keys:
 - `# omarchy:args=...` - usage arguments
 - `# omarchy:examples=...` - examples separated with ` | `
 - `# omarchy:alias=...` / `# omarchy:aliases=...` - alternate routes
+- `# omarchy:hidden=true` - hide from default command listings
 - `# omarchy:requires-sudo=true` - mark commands that require sudo
 
 Prefer explicit metadata for user-facing commands. Keep routes consistent with the filename unless there is a deliberate alias or compatibility route.
