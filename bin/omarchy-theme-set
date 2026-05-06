@@ -70,4 +70,4 @@ omarchy-theme-set-obsidian
 omarchy-theme-set-keyboard
 
 # Call hook on theme set
-omarchy-hook theme-set "$THEME_NAME"
+omarchy-hook theme-set "$THEME_NAME" >/dev/null
