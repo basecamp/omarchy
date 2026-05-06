@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle camera privacy via hardware LED on supported devices,
+# or by killing camera processes and tracking state as fallback.
+
+STATE="$HOME/.local/state/omarchy/toggles/camera"
+
+for d in /sys/class/leds/*camera* /sys/class/leds/*webcam* /sys/class/leds/*privacy*; do
+  [[ -e $d ]] && { LED=$(basename "$d"); break; }
+done
+
+if [[ -n $LED ]]; then
+  val=$(brightnessctl -d "$LED" get)
+  max=$(brightnessctl -d "$LED" max)
+  if (( val == 0 )); then
+    brightnessctl -d "$LED" set "$max" >/dev/null
+    blocked=1
+  else
+    brightnessctl -d "$LED" set 0 >/dev/null
+  fi
+else
+  CAM=$(readlink -f /dev/v4l/by-id/*video-index0 2>/dev/null | head -n1)
+  [[ -n $CAM ]] || exit 1
+  if [[ -f $STATE ]]; then
+    omarchy-state clear camera
+  else
+    fuser -s "$CAM" 2>/dev/null && sudo fuser -k "$CAM" >/dev/null 2>&1
+    omarchy-state set camera
+    blocked=1
+  fi
+fi
+
+if [[ -n $blocked ]]; then
+  omarchy-swayosd-client \
+    --custom-message "Camera blocked" \
+    --custom-icon camera-disabled-symbolic
+else
+  omarchy-swayosd-client \
+    --custom-message "Camera unblocked" \
+    --custom-icon camera-photo-symbolic
+fi
