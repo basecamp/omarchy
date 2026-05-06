@@ -329,16 +329,6 @@ command_requires_args() {
   [[ -n $required ]]
 }
 
-load_group_extra_commands() {
-  local group="$1"
-
-  case "$group" in
-  install)
-    load_command_by_binary omarchy-pkg-add
-    ;;
-  esac
-}
-
 load_group_commands() {
   local group="$1"
   local file=""
@@ -352,7 +342,6 @@ load_group_commands() {
     register_command "$file"
   done
 
-  load_group_extra_commands "$group"
 }
 
 resolve_direct_route() {
