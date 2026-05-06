@@ -17,3 +17,10 @@ fi
 
 # Avoid running screensaver when locked
 pkill -f org.omarchy.screensaver
+
+(
+  sleep 10
+  pidof hyprlock >/dev/null || exit 0
+  brightnessctl -sd '*::kbd_backlight' set 0 >/dev/null 2>&1
+  hyprctl dispatch dpms off >/dev/null 2>&1
+) &
