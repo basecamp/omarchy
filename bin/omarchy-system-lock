@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Lock the screen
+# omarchy:summary=Lock the computer and turn off the display
 # omarchy:group=system
 # omarchy:name=lock
 # omarchy:examples=omarchy system lock
