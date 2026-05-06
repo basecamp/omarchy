@@ -4,6 +4,27 @@
 
 echo
 
+update_log="/tmp/omarchy-update.log"
+
+prompt_update_reboot() {
+  local prompt="$1"
+  local choice
+
+  choice=$(gum choose --header "$prompt" "Yes" "No" "Open logs in Neovim") || return
+
+  case "$choice" in
+  "Yes")
+    omarchy-system-reboot
+    ;;
+  "Open logs in Neovim")
+    omarchy-launch-tui nvim -R + "$update_log"
+    ;;
+  "No" | "")
+    return
+    ;;
+  esac
+}
+
 running_kernel=$(uname -r)
 kernel_updated=true
 
@@ -19,14 +40,14 @@ for kernel in /usr/lib/modules/*/vmlinuz; do
 done
 
 if [[ $kernel_updated == "true" ]]; then
-  gum confirm "Linux kernel has been updated. Reboot?" && omarchy-system-reboot
+  prompt_update_reboot "Linux kernel has been updated. Reboot?"
 elif [[ -f $HOME/.local/state/omarchy/reboot-required ]]; then
-  gum confirm "Updates require reboot. Ready?" && omarchy-system-reboot
+  prompt_update_reboot "Updates require reboot. Ready?"
 fi
 
 running_hyprland=$(readlink /proc/$(pgrep -x Hyprland)/exe 2>/dev/null)
 if [[ $running_hyprland == *"(deleted)"* ]]; then
-  gum confirm "Hyprland has been updated. Reboot?" && omarchy-system-reboot
+  prompt_update_reboot "Hyprland has been updated. Reboot?"
 fi
 
 for file in "$HOME"/.local/state/omarchy/restart-*-required; do
