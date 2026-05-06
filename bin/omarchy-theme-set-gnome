@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Apply the current theme to GNOME color mode and icon settings
+# omarchy:hidden=true
 
 if [[ -f ~/.config/omarchy/current/theme/light.mode ]]; then
   gsettings set org.gnome.desktop.interface color-scheme "prefer-light"
