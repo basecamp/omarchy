@@ -1,0 +1,201 @@
+@import "../omarchy/current/theme/waybar.css";
+
+* {
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  font-family: 'JetBrainsMono Nerd Font';
+  font-size: 14px;
+  min-height: 0px;
+}
+
+
+
+.modules-left {
+  margin-left: 5px;
+}
+
+.modules-right {
+  margin-right: 5px;
+}
+
+#waybar {
+  background: transparent;
+}
+
+window#waybar.empty #window {
+  background: transparent;
+  color: transparent;
+  padding: 0;
+  margin: 0;
+  transition: .5s;
+  border: none;
+}
+
+mpris.empty {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+#workspaces {
+    background: @background;
+    border: .5px solid alpha(@foreground, .4);
+    padding: 0px;
+    margin: 5px 6px;
+    border-radius: 4px;
+}
+
+
+#workspaces button {
+    all: initial;
+    padding: 0px 12px;
+    margin: 0px 0px;
+    color: @foreground;
+    border: .1px solid alpha(@foreground, .4);
+    background: transparent;
+    opacity: 1;
+}
+
+#workspaces button.active {
+    padding: 0px 12px;
+    margin: 0px 0px;
+    background: @foreground;
+    color: @background;
+    opacity: 1; 
+}
+
+#workspaces button.empty {
+  background: @background;  
+   color: alpha(@foreground, .3);
+}
+
+#workspaces button.empty.active {
+opacity: 0.75; 
+background: @foreground;
+color: @background;
+}
+#workspaces button:first-child {
+    border-radius: 4px 0px 0px 4px;
+}
+
+#workspaces button:last-child {
+    border-radius: 0px 4px 4px 0px;
+}
+
+#workspaces button:first-child:last-child {
+    border-radius: 4px;
+}
+
+#workspaces button.active:hover,
+#workspaces button:hover {
+    background: @foreground;
+    color: @background;
+    opacity: 1; 
+    transition: .7s;
+}
+
+#tray,
+#custom-weather,
+#memory,
+#backlight,
+#clock,
+#cpu,
+#battery,
+#network,
+#bluetooth,
+#pulseaudio,
+#custom-screenrecording-indicator,
+#custom-idle-indicator,
+#custom-notification-silencing-indicator,
+#custom-update{
+  background-color: @background;
+  color: @foreground;
+  border: .5px solid alpha(@foreground, .4);
+  padding: 5px 12px;
+  margin: 5px 2px;
+  border-radius: 4px;
+}
+
+#memory:hover,
+#clock:hover,
+#backlight:hover,
+#cpu:hover,
+#network:hover,
+#bluetooth:hover,
+#pulseaudio:hover,
+#custom-screenrecording-indicator:hover,
+#custom-idle-indicator:hover,
+#custom-notification-silencing-indicator:hover,
+#custom-update:hover {
+  background-color: alpha(@foreground, .9);
+  color: @background;
+  transition: .7s;
+}
+
+#custom-update,
+#custom-screenrecording-indicator,
+#custom-idle-indicator,
+#custom-notification-silencing-indicator {
+  font-size: 14px;
+  border-radius: 4px;
+  padding: 0 11px 0 10px;
+  margin-left: 2px;
+  margin-right: 0px;
+}
+
+#clock {
+  border-radius: 4px;
+  padding: 0 15px;
+  margin: 5px 0px;
+}
+
+.hidden {
+  opacity: 0;
+}
+
+#custom-screenrecording-indicator.active,
+#custom-idle-indicator.active,
+#custom-notification-silencing-indicator.active {
+  color: #a55555;
+}
+
+#custom-omarchy,
+#battery {
+  background-color: @foreground;
+  color: @background;
+  border: 1px solid @background;
+  min-width: 10px;
+  border-radius: 4px;
+  padding: 0 8px;
+  margin: 5px 0 5px 0px;
+}
+
+#battery {
+  margin-left: 2px;
+}
+
+#mpris,
+#window {
+  background-color: @background;
+  color: @foreground;
+  border: .5px solid alpha(@foreground, .4);
+  padding: 5px 12px;
+  margin: 5px 1px;
+  border-radius: 4px;
+}
+
+#network {
+  padding: 0 15px 0 10px;
+}
+
+#pulseaudio {
+  padding: 0 15px 0 10px;
+}
+
+tooltip {
+  border-radius: 5px;
+  background: @background;
+  border: 2px solid alpha(@foreground, .5);
+}
