@@ -15,7 +15,7 @@ if [[ -z $icon ]]; then
   exit 1
 fi
 
-astronomy=$(curl -fsS --max-time 3 "$url?format=j1" 2>/dev/null | python -c 'import json, sys; data = json.load(sys.stdin); astro = data["weather"][0]["astronomy"][0]; print(astro["sunrise"] + "|" + astro["sunset"])' 2>/dev/null)
+astronomy=$(curl -fsS --max-time 3 "$url?format=j1" 2>/dev/null | jq -r '.weather[0].astronomy[0] | .sunrise + "|" + .sunset' 2>/dev/null)
 if [[ -n $astronomy ]]; then
   IFS='|' read -r sunrise sunset <<< "$astronomy"
   now_epoch=$(date +%s)
