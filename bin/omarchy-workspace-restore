@@ -1,0 +1,395 @@
+#!/bin/bash
+
+# omarchy:summary=Restore the saved layout for the current Hyprland workspace
+# omarchy:args=
+# omarchy:examples=omarchy workspace restore
+
+set -euo pipefail
+
+monitor=$(omarchy-hyprland-monitor-focused)
+workspace=$(hyprctl monitors -j | jq -r --arg monitor "$monitor" '.[] | select(.name == $monitor) | .activeWorkspace.id')
+file="$HOME/.config/hypr/workspaces/$monitor-$workspace.tsv"
+
+if [[ ! -f $file ]]; then
+  notify-send -u low "󱂬    No saved workspace $workspace for $monitor" "$file" -t 3000
+  exit 1
+fi
+
+restore_data=$(grep -v '^#' "$file" || true)
+
+if [[ -z $restore_data ]]; then
+  notify-send -u low "󱂬    No windows saved for workspace $workspace" "$file" -t 3000
+  exit 1
+fi
+
+restore_map=$(mktemp)
+assigned_addresses=$(mktemp)
+trap 'rm -f "$restore_map" "$assigned_addresses"' EXIT
+
+declare -a classes commands xs ys ws hs focuseds addresses launched
+count=0
+
+while IFS=$'\t' read -r _ saved_workspace mode class command x y w h focused; do
+  [[ -n $class ]] || continue
+
+  workspace=$saved_workspace
+  classes[count]=$class
+  commands[count]=$command
+  xs[count]=$x
+  ys[count]=$y
+  ws[count]=$w
+  hs[count]=$h
+  focuseds[count]=${focused:-false}
+  addresses[count]=""
+  launched[count]=false
+  (( count += 1 ))
+done <<< "$restore_data"
+
+hyprctl dispatch workspace "$workspace" >/dev/null
+
+for (( i = 0; i < count; i++ )); do
+  class=${classes[i]}
+  hyprctl keyword windowrulev2 "workspace $workspace silent,class:^($class)$" >/dev/null
+
+  if [[ ${mode:-tiled} == "floating" ]]; then
+    hyprctl keyword windowrulev2 "float,class:^($class)$" >/dev/null
+  else
+    hyprctl keyword windowrulev2 "tile,class:^($class)$" >/dev/null
+  fi
+done
+
+existing_unassigned_json() {
+  local class=$1
+
+  {
+    hyprctl clients -j | jq -r --arg class "$class" '.[] | select(.class == $class or .initialClass == $class) | .address' |
+      grep -Fvx -f "$assigned_addresses" || true
+  } | jq -R -s -c 'split("\n")[:-1]'
+}
+
+wait_for_address() {
+  local class=$1
+  local existing=${2:-[]}
+  local tries=0
+  local address=""
+
+  while [[ -z $address ]]; do
+    address=$(hyprctl clients -j | jq -r --arg class "$class" --argjson existing "$existing" \
+      '.[] | select((.class == $class or .initialClass == $class) and (.address as $address | $existing | index($address) | not)) | .address' | head -n1)
+
+    if [[ -n $address ]]; then
+      printf '%s\n' "$address"
+      return 0
+    fi
+
+    sleep 0.2
+    (( tries += 1 ))
+
+    # Single-instance apps may focus/reuse an existing window instead of creating a new one.
+    if (( tries >= 25 )) && [[ $existing != "[]" ]]; then
+      jq -r '.[0]' <<< "$existing"
+      return 0
+    fi
+
+    if (( tries >= 75 )); then
+      echo "Timed out waiting for $class" >&2
+      return 1
+    fi
+  done
+}
+
+ensure_window() {
+  local id=$1
+  local class=${classes[id]}
+  local command=${commands[id]}
+  local existing address
+
+  if [[ ${launched[id]} == "true" ]]; then
+    last_address=${addresses[id]}
+    return 0
+  fi
+
+  existing=$(existing_unassigned_json "$class")
+
+  if [[ $existing != "[]" && ( $class == chrome-* || $class == chromium* ) ]]; then
+    address=$(jq -r '.[0]' <<< "$existing")
+  else
+    hyprctl dispatch exec "[workspace $workspace silent] $command" >/dev/null
+    address=$(wait_for_address "$class" "$existing") || return 1
+  fi
+
+  hyprctl dispatch movetoworkspacesilent "$workspace,address:$address" >/dev/null || true
+
+  if [[ ${mode:-tiled} == "floating" ]]; then
+    hyprctl dispatch setfloating "address:$address" >/dev/null || true
+    hyprctl dispatch resizewindowpixel exact "${ws[id]}" "${hs[id]}",address:"$address" >/dev/null || true
+    hyprctl dispatch movewindowpixel exact "${xs[id]}" "${ys[id]}",address:"$address" >/dev/null || true
+  else
+    hyprctl dispatch settiled "address:$address" >/dev/null || true
+    hyprctl dispatch focuswindow "address:$address" >/dev/null || true
+  fi
+
+  addresses[id]=$address
+  launched[id]=true
+  printf '%s\n' "$address" >>"$assigned_addresses"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$address" "$id" "${xs[id]}" "${ys[id]}" "${ws[id]}" "${hs[id]}" >>"$restore_map"
+
+  if [[ ${focuseds[id]} == "true" ]]; then
+    focused_address=$address
+  fi
+
+  sleep 0.4
+  last_address=$address
+}
+
+choose_rep() {
+  local best=""
+  local best_area=-1
+  local id area
+
+  for id in "$@"; do
+    area=$(( ws[id] * hs[id] ))
+    if (( area > best_area )); then
+      best=$id
+      best_area=$area
+    fi
+  done
+
+  printf '%s\n' "$best"
+}
+
+find_launched_address() {
+  local id
+
+  for id in "$@"; do
+    if [[ ${launched[id]} == "true" ]]; then
+      printf '%s\n' "${addresses[id]}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+opposite_direction() {
+  case $1 in
+  l) echo r ;;
+  r) echo l ;;
+  u) echo d ;;
+  d) echo u ;;
+  esac
+}
+
+abs() {
+  local value=$1
+  if (( value < 0 )); then
+    echo $(( -value ))
+  else
+    echo "$value"
+  fi
+}
+
+find_partition() {
+  local ids=("$@")
+  local best_score=9223372036854775807
+  local best_a=""
+  local best_b=""
+  local best_dir=""
+  local orientation i j id edge start cut gap right bottom area_a area_b score valid a b
+
+  for orientation in v h; do
+    for i in "${ids[@]}"; do
+      for j in "${ids[@]}"; do
+        if [[ $orientation == "v" ]]; then
+          edge=$(( xs[i] + ws[i] ))
+          start=${xs[j]}
+          [[ $edge -lt $start ]] || continue
+        else
+          edge=$(( ys[i] + hs[i] ))
+          start=${ys[j]}
+          [[ $edge -lt $start ]] || continue
+        fi
+
+        cut=$(( (edge + start) / 2 ))
+        gap=$(( start - edge ))
+        valid=true
+        a=""
+        b=""
+        area_a=0
+        area_b=0
+
+        for id in "${ids[@]}"; do
+          if [[ $orientation == "v" ]]; then
+            right=$(( xs[id] + ws[id] ))
+            if (( right <= cut )); then
+              a="$a $id"
+              area_a=$(( area_a + ws[id] * hs[id] ))
+            elif (( xs[id] >= cut )); then
+              b="$b $id"
+              area_b=$(( area_b + ws[id] * hs[id] ))
+            else
+              valid=false
+              break
+            fi
+          else
+            bottom=$(( ys[id] + hs[id] ))
+            if (( bottom <= cut )); then
+              a="$a $id"
+              area_a=$(( area_a + ws[id] * hs[id] ))
+            elif (( ys[id] >= cut )); then
+              b="$b $id"
+              area_b=$(( area_b + ws[id] * hs[id] ))
+            else
+              valid=false
+              break
+            fi
+          fi
+        done
+
+        [[ $valid == "true" && -n $a && -n $b ]] || continue
+
+        score=$(abs $(( area_a - area_b )))
+        score=$(( score * 1000 - gap ))
+
+        if (( score < best_score )); then
+          best_score=$score
+          best_a=${a# }
+          best_b=${b# }
+          if [[ $orientation == "v" ]]; then
+            best_dir=r
+          else
+            best_dir=d
+          fi
+        fi
+      done
+    done
+  done
+
+  if [[ -z $best_a || -z $best_b ]]; then
+    fallback_partition "${ids[@]}"
+    return
+  fi
+
+  read -r -a part_a <<< "$best_a"
+  read -r -a part_b <<< "$best_b"
+  part_dir=$best_dir
+}
+
+fallback_partition() {
+  local ids=("$@")
+  local sorted=()
+  local line id bbox_min_x=999999 bbox_min_y=999999 bbox_max_x=0 bbox_max_y=0 bbox_w bbox_h key index
+
+  for id in "${ids[@]}"; do
+    (( xs[id] < bbox_min_x )) && bbox_min_x=${xs[id]}
+    (( ys[id] < bbox_min_y )) && bbox_min_y=${ys[id]}
+    (( xs[id] + ws[id] > bbox_max_x )) && bbox_max_x=$(( xs[id] + ws[id] ))
+    (( ys[id] + hs[id] > bbox_max_y )) && bbox_max_y=$(( ys[id] + hs[id] ))
+  done
+
+  bbox_w=$(( bbox_max_x - bbox_min_x ))
+  bbox_h=$(( bbox_max_y - bbox_min_y ))
+
+  while read -r line; do
+    sorted+=("${line#* }")
+  done < <(
+    for id in "${ids[@]}"; do
+      if (( bbox_w >= bbox_h )); then
+        key=${xs[id]}
+      else
+        key=${ys[id]}
+      fi
+      printf '%s %s\n' "$key" "$id"
+    done | sort -n
+  )
+
+  part_a=()
+  part_b=()
+  for index in "${!sorted[@]}"; do
+    if (( index < ${#sorted[@]} / 2 )); then
+      part_a+=("${sorted[index]}")
+    else
+      part_b+=("${sorted[index]}")
+    fi
+  done
+
+  if (( bbox_w >= bbox_h )); then
+    part_dir=r
+  else
+    part_dir=d
+  fi
+}
+
+materialize_group() {
+  local ids=("$@")
+  local rep_a rep_b addr_a addr_b dir opposite
+
+  if (( ${#ids[@]} == 0 )); then
+    return 0
+  fi
+
+  if (( ${#ids[@]} == 1 )); then
+    ensure_window "${ids[0]}" >/dev/null || true
+    return 0
+  fi
+
+  find_partition "${ids[@]}"
+  dir=$part_dir
+  opposite=$(opposite_direction "$dir")
+
+  addr_a=$(find_launched_address "${part_a[@]}" || true)
+  addr_b=$(find_launched_address "${part_b[@]}" || true)
+
+  if [[ -z $addr_a && -z $addr_b ]]; then
+    rep_a=$(choose_rep "${part_a[@]}")
+    ensure_window "$rep_a" || return 0
+    addr_a=$last_address
+    hyprctl dispatch focuswindow "address:$addr_a" >/dev/null || true
+    hyprctl dispatch layoutmsg preselect "$dir" >/dev/null || true
+    rep_b=$(choose_rep "${part_b[@]}")
+    ensure_window "$rep_b" || true
+    addr_b=${last_address:-}
+  elif [[ -n $addr_a && -z $addr_b ]]; then
+    hyprctl dispatch focuswindow "address:$addr_a" >/dev/null || true
+    hyprctl dispatch layoutmsg preselect "$dir" >/dev/null || true
+    rep_b=$(choose_rep "${part_b[@]}")
+    ensure_window "$rep_b" || true
+    addr_b=${last_address:-}
+  elif [[ -z $addr_a && -n $addr_b ]]; then
+    hyprctl dispatch focuswindow "address:$addr_b" >/dev/null || true
+    hyprctl dispatch layoutmsg preselect "$opposite" >/dev/null || true
+    rep_a=$(choose_rep "${part_a[@]}")
+    ensure_window "$rep_a" || true
+    addr_a=${last_address:-}
+  fi
+
+  materialize_group "${part_a[@]}"
+  materialize_group "${part_b[@]}"
+}
+
+ids=()
+for (( i = 0; i < count; i++ )); do
+  ids+=("$i")
+done
+
+if [[ ${mode:-tiled} == "floating" ]]; then
+  for id in "${ids[@]}"; do
+    ensure_window "$id" >/dev/null || true
+  done
+else
+  materialize_group "${ids[@]}"
+
+  for _ in 1 2 3 4; do
+    while IFS=$'\t' read -r address _ _ _ w h; do
+      hyprctl dispatch resizewindowpixel exact "$w" "$h",address:"$address" >/dev/null || true
+    done < <(sort -t $'\t' -k3,3n -k4,4n "$restore_map")
+    sleep 0.1
+  done
+fi
+
+if [[ -n ${focused_address:-} ]]; then
+  hyprctl dispatch focuswindow "address:$focused_address" >/dev/null || true
+fi
+
+notify-send -u low "󱂬    Restored workspace $workspace for $monitor" -t 3000
+hyprctl dispatch workspace "$workspace" >/dev/null

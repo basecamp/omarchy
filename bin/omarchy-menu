@@ -93,11 +93,12 @@ show_learn_menu() {
 }
 
 show_trigger_menu() {
-  case $(menu "Trigger" "  Capture\n󰧸  Transcode\n  Share\n󰔎  Toggle\n  Hardware") in
+  case $(menu "Trigger" "  Capture\n󰧸  Transcode\n  Share\n󰔎  Toggle\n󰧨  Workspace\n  Hardware") in
   *Capture*) show_capture_menu ;;
   *Transcode*) show_transcode_menu ;;
   *Share*) show_share_menu ;;
   *Toggle*) show_toggle_menu ;;
+  *Workspace*) show_workspace_menu ;;
   *Hardware*) show_hardware_menu ;;
   *) show_main_menu ;;
   esac
@@ -171,6 +172,14 @@ show_transcode_menu() {
   case $(menu "Transcode" "  Picture\n  Video") in
   *Picture*) present_terminal "omarchy-transcode --path '$HOME/Pictures'" ;;
   *Video*) present_terminal "omarchy-transcode --path '$HOME/Videos'" ;;
+  *) back_to show_trigger_menu ;;
+  esac
+}
+
+show_workspace_menu() {
+  case $(menu "Workspace" "󰑓  Restore\n󰆓  Save") in
+  *Restore*) omarchy-workspace-restore ;;
+  *Save*) omarchy-workspace-save ;;
   *) back_to show_trigger_menu ;;
   esac
 }
@@ -680,6 +689,7 @@ go_to_menu() {
   *trigger*) show_trigger_menu ;;
   *toggle*) show_toggle_menu ;;
   *hardware*) show_hardware_menu ;;
+  *workspace*) show_workspace_menu ;;
   *share*) show_share_menu ;;
   *transcode*) show_transcode_menu ;;
   *background*) show_background_menu ;;

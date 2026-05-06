@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# omarchy:summary=Save the current Hyprland workspace app layout to ~/.config/hypr/workspaces/<monitor-name>-<workspace-id>.tsv
+# omarchy:args=
+# omarchy:examples=omarchy workspace save
+
+set -euo pipefail
+
+monitor=$(omarchy-hyprland-monitor-focused)
+workspace=$(hyprctl monitors -j | jq -r --arg monitor "$monitor" '.[] | select(.name == $monitor) | .activeWorkspace.id')
+
+mkdir -p ~/.config/hypr/workspaces
+file="$HOME/.config/hypr/workspaces/$monitor-$workspace.tsv"
+clients=$(hyprctl clients -j)
+active_address=$(hyprctl activewindow -j | jq -r '.address // ""')
+
+webapp_command() {
+  local class=$1
+  local initial_title=$2
+  local encoded host path
+
+  [[ $class == chrome-* ]] || return 1
+
+  if [[ $initial_title == http://* || $initial_title == https://* ]]; then
+    printf 'omarchy-launch-webapp %s\n' "${initial_title//_/\/}"
+    return 0
+  fi
+
+  encoded=${class#chrome-}
+  encoded=${encoded%-Default}
+
+  if [[ $encoded == *__* ]]; then
+    host=${encoded%%__*}
+    path=${encoded#*__}
+    printf 'omarchy-launch-webapp https://%s/%s\n' "$host" "${path//_/\/}"
+  else
+    printf 'omarchy-launch-webapp https://%s\n' "${encoded//_/\/}"
+  fi
+}
+
+launch_command() {
+  local class=$1
+  local initial_title=$2
+  local pid=$3
+
+  if webapp_command "$class" "$initial_title"; then
+    return 0
+  elif [[ -r /proc/$pid/cmdline ]]; then
+    tr '\0' ' ' <"/proc/$pid/cmdline" | sed 's/[[:space:]]*$//'
+  else
+    echo "$class"
+  fi
+}
+
+{
+  printf '# monitor\tworkspace\tmode\tclass\tcommand\tx\ty\tw\th\tfocused\n'
+
+  jq -r --argjson workspace "$workspace" '
+    [.[] | select(.workspace.id == $workspace)]
+    | sort_by(.at[0], .at[1])
+    | .[]
+    | [(.initialClass // .class), .initialTitle, .pid, .at[0], .at[1], .size[0], .size[1], .address]
+    | @tsv
+  ' <<< "$clients" | while IFS=$'\t' read -r class initial_title pid x y w h address; do
+    command=$(launch_command "$class" "$initial_title" "$pid")
+    focused=false
+    if [[ $address == "$active_address" ]]; then
+      focused=true
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$monitor" "$workspace" "tiled" "$class" "$command" "$x" "$y" "$w" "$h" "$focused"
+  done
+} >"$file"
+
+notify-send -u low "󱂬    Saved workspace $workspace for $monitor" -t 3000
