@@ -31,9 +31,9 @@ fi
 if omarchy-cmd-present foot; then
   mkdir -p ~/.local/share/applications
   rm -f ~/.local/share/applications/org.codeberg.dnkl.foot.desktop
-  cp -Rpf "$OMARCHY_PATH/applications/foot.desktop" ~/.local/share/applications/
-  cp -Rpf "$OMARCHY_PATH/applications/footclient.desktop" ~/.local/share/applications/
-  cp -Rpf "$OMARCHY_PATH/applications/foot-server.desktop" ~/.local/share/applications/
+  cp -Rpf "$OMARCHY_PATH/default/foot/foot.desktop" ~/.local/share/applications/
+  cp -Rpf "$OMARCHY_PATH/applications/hidden/footclient.desktop" ~/.local/share/applications/
+  cp -Rpf "$OMARCHY_PATH/applications/hidden/foot-server.desktop" ~/.local/share/applications/
 fi
 
 if [[ -f ~/.config/hypr/input.conf ]]; then

@@ -11,6 +11,10 @@ mkdir -p ~/.local/share/applications
 cp ~/.local/share/omarchy/applications/*.desktop ~/.local/share/applications/
 cp ~/.local/share/omarchy/applications/hidden/*.desktop ~/.local/share/applications/
 
+if omarchy-cmd-present foot; then
+  cp ~/.local/share/omarchy/default/foot/foot.desktop ~/.local/share/applications/
+fi
+
 # Refresh the webapps, TUIs, and npx wrappers
 bash $OMARCHY_PATH/install/packaging/icons.sh
 bash $OMARCHY_PATH/install/packaging/webapps.sh
