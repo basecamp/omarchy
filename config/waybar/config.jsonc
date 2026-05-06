@@ -70,7 +70,8 @@
     "exec": "$OMARCHY_PATH/default/waybar/weather.sh",
     "return-type": "json",
     "interval": 600,
-    "tooltip": true
+    "tooltip": true,
+    "on-click": "omarchy-launch-or-focus-webapp Weather https://wttr.in/"
   },
   "network": {
     "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
