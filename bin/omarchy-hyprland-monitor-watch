@@ -9,6 +9,7 @@ socat -U - "UNIX-CONNECT:$SOCKET" | while read -r event; do
     monitorremoved\>\>*|monitorremovedv2\>\>*)
       omarchy-hyprland-monitor-internal recover
       omarchy-hyprland-monitor-internal-mirror recover
+      omarchy-hw-recover-touchpad
       ;;
   esac
 done
