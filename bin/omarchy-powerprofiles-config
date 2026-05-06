@@ -1,0 +1,123 @@
+#!/bin/bash
+
+# omarchy:summary=Get or set persistent AC/battery power profile defaults.
+# omarchy:args=<get|set> <ac|battery> [profile]
+
+set -e
+
+CONFIG_DIR="$HOME/.config/omarchy"
+CONFIG_PATH="$CONFIG_DIR/powerprofiles.conf"
+
+available_profiles() {
+  powerprofilesctl list |
+    awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }'
+}
+
+profile_available() {
+  local profile="$1"
+
+  while read -r available_profile; do
+    [[ $available_profile == $profile ]] && return 0
+  done < <(available_profiles)
+
+  return 1
+}
+
+fallback_profile() {
+  local source="$1"
+  local first_profile=""
+  local balanced_present=false
+  local performance_present=false
+
+  while read -r profile; do
+    [[ -z $first_profile ]] && first_profile="$profile"
+    [[ $profile == "balanced" ]] && balanced_present=true
+    [[ $profile == "performance" ]] && performance_present=true
+  done < <(available_profiles)
+
+  if [[ $source == "ac" && $performance_present == "true" ]]; then
+    echo "performance"
+  elif [[ $balanced_present == "true" ]]; then
+    echo "balanced"
+  else
+    echo "$first_profile"
+  fi
+}
+
+configured_profile() {
+  local source="$1"
+
+  if [[ -f $CONFIG_PATH ]]; then
+    awk -F= -v source="$source" '$1 == source { print $2; exit }' "$CONFIG_PATH"
+  fi
+}
+
+get_profile() {
+  local source="$1"
+  local profile
+
+  profile="$(configured_profile "$source")"
+
+  if [[ -n $profile ]] && profile_available "$profile"; then
+    echo "$profile"
+  else
+    fallback_profile "$source"
+  fi
+}
+
+set_profile() {
+  local source="$1"
+  local profile="$2"
+  local ac_profile
+  local battery_profile
+
+  if ! profile_available "$profile"; then
+    echo "Power profile '$profile' is not available on this system" >&2
+    exit 1
+  fi
+
+  ac_profile="$(get_profile ac)"
+  battery_profile="$(get_profile battery)"
+
+  case "$source" in
+  ac) ac_profile="$profile" ;;
+  battery) battery_profile="$profile" ;;
+  *)
+    echo "Usage: omarchy-powerprofiles-config <get|set> <ac|battery> [profile]" >&2
+    exit 1
+    ;;
+  esac
+
+  mkdir -p "$CONFIG_DIR"
+  {
+    echo "ac=$ac_profile"
+    echo "battery=$battery_profile"
+  } >"$CONFIG_PATH"
+}
+
+command="$1"
+source="$2"
+profile="$3"
+
+case "$command" in
+get)
+  [[ $source == "ac" || $source == "battery" ]] || {
+    echo "Usage: omarchy-powerprofiles-config get <ac|battery>" >&2
+    exit 1
+  }
+
+  get_profile "$source"
+  ;;
+set)
+  [[ $source == "ac" || $source == "battery" ]] && [[ -n $profile ]] || {
+    echo "Usage: omarchy-powerprofiles-config set <ac|battery> <profile>" >&2
+    exit 1
+  }
+
+  set_profile "$source" "$profile"
+  ;;
+*)
+  echo "Usage: omarchy-powerprofiles-config <get|set> <ac|battery> [profile]" >&2
+  exit 1
+  ;;
+esac

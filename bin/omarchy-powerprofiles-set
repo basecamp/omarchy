@@ -4,6 +4,7 @@
 # omarchy:args=[autodetect|ac|battery]
 
 action="${1-}"
+omarchy_bin="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Auto-detect when called with no argument: treat any Mains or USB
 # power-supply device reporting online=1 as "on AC". This handles
@@ -23,18 +24,11 @@ if [[ -z $action || $action == "autodetect" ]]; then
   done
 fi
 
-mapfile -t profiles < <(powerprofilesctl list | awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }')
-
 case "$action" in
   ac)
-    # Prefer performance, fall back to balanced
-    if [[ " ${profiles[*]} " == *" performance "* ]]; then
-      powerprofilesctl set performance
-    else
-      powerprofilesctl set balanced
-    fi
+    powerprofilesctl set "$("$omarchy_bin/omarchy-powerprofiles-config" get ac)"
     ;;
   battery)
-    powerprofilesctl set balanced
+    powerprofilesctl set "$("$omarchy_bin/omarchy-powerprofiles-config" get battery)"
     ;;
 esac

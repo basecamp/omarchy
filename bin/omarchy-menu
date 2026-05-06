@@ -296,12 +296,49 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
+  local ac_profile
+  local battery_profile
+  local options
+
+  ac_profile=$(omarchy-powerprofiles-config get ac)
+  battery_profile=$(omarchy-powerprofiles-config get battery)
+  options="󱐋  Temporary Profile\n󰚥  On AC: $ac_profile\n󰁹  On Battery: $battery_profile"
+
+  case $(menu "Power Profile" "$options") in
+  *Temporary*) show_power_profile_menu show_setup_power_menu ;;
+  *"On AC"*) show_power_profile_default_menu ac "On AC" ;;
+  *"On Battery"*) show_power_profile_default_menu battery "On Battery" ;;
+  *) back_to show_setup_menu ;;
+  esac
+}
+
+show_power_profile_menu() {
+  local parent_menu="${1:-show_main_menu}"
+  local profile
+
   profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
   if [[ $profile == "CNCLD" || -z $profile ]]; then
-    back_to show_setup_menu
+    back_to "$parent_menu"
   else
     powerprofilesctl set "$profile"
+    back_to "$parent_menu"
+  fi
+}
+
+show_power_profile_default_menu() {
+  local source="$1"
+  local label="$2"
+  local profile
+
+  profile=$(menu "$label Power Profile" "$(omarchy-powerprofiles-list)" "" "$(omarchy-powerprofiles-config get "$source")")
+
+  if [[ $profile == "CNCLD" || -z $profile ]]; then
+    back_to show_setup_power_menu
+  else
+    omarchy-powerprofiles-config set "$source" "$profile"
+    omarchy-powerprofiles-set
+    back_to show_setup_power_menu
   fi
 }
 
@@ -689,7 +726,7 @@ go_to_menu() {
   *theme*) show_theme_menu ;;
   *screenrecord*) show_screenrecord_menu ;;
   *setup*) show_setup_menu ;;
-  *power*) show_setup_power_menu ;;
+  *power*) show_power_profile_menu ;;
   *install*) show_install_menu ;;
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
