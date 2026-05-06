@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Cycle Dell XPS touchpad haptic intensity presets
+
+if ! omarchy-hw-dell-xps-haptic-touchpad; then
+  echo "Dell XPS haptic touchpad hardware not detected." >&2
+  exit 1
+fi
+
+if omarchy-cmd-missing dell-xps-touchpad-haptics; then
+  notify-send -u low "󰌌  Touchpad haptics package is not installed"
+  exit 1
+fi
+
+current=$(dell-xps-touchpad-haptics get 2>/dev/null || printf 'high\n')
+
+case $current in
+  low)
+    next=mid
+    label="Mid"
+    ;;
+  mid)
+    next=high
+    label="High"
+    ;;
+  *)
+    next=low
+    label="Low"
+    ;;
+esac
+
+if ! dell-xps-touchpad-haptics set "$next" >/dev/null; then
+  notify-send -u low "󰌌  Failed to update touchpad haptics"
+  exit 1
+fi
+
+notify-send -u low "󰌌  Touchpad haptics set to $label"
