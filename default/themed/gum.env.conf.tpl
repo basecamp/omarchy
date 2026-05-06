@@ -23,7 +23,7 @@ env = GUM_INPUT_HEADER_FOREGROUND,#{{ foreground }}
 env = GUM_INPUT_HEADER_BACKGROUND,#{{ background }}
 
 # Gum Choose Style Variables
-env = GUM_CHOOSE_CURSOR_FOREGROUND,#{{ cursor }}
+env = GUM_CHOOSE_CURSOR_FOREGROUND,#{{ accent }}
 env = GUM_CHOOSE_CURSOR_BACKGROUND,#{{ background }}
 env = GUM_CHOOSE_HEADER_FOREGROUND,#{{ foreground }}
 env = GUM_CHOOSE_HEADER_BACKGROUND,#{{ background }}
