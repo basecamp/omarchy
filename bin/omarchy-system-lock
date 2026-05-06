@@ -24,7 +24,7 @@ fi
 pkill -f org.omarchy.screensaver
 
 (
-  sleep 10
+  sleep 3
   pidof hyprlock >/dev/null || exit 0
   omarchy-brightness-keyboard off
   omarchy-brightness-display off
