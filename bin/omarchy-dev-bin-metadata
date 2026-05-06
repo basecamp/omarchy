@@ -22,7 +22,8 @@ show_json() {
       {name: "args", required: false, type: "string", note: "Only set when the command accepts arguments."},
       {name: "examples", required: false, type: "string", note: "Pipe-separated examples."},
       {name: "aliases", required: false, type: "string", note: "Pipe-separated alternate routes, e.g. omarchy screenshot."},
-      {name: "requires-sudo", required: false, type: "true", default: false, note: "Only include when true."}
+      {name: "requires-sudo", required: false, type: "true", default: false, note: "Only include when true."},
+      {name: "hidden", required: false, type: "true", default: false, note: "Hide from default command listings; visible with --all."}
     ]
   }'
 }
@@ -43,6 +44,7 @@ Inferred defaults:
   route         omarchy <group> <name>
   binary        filename
   requires-sudo false
+  hidden        false
 
 Optional fields:
   # omarchy:group=<group>                  route override only
@@ -51,6 +53,7 @@ Optional fields:
   # omarchy:examples=<cmd> | <cmd>         pipe-separated examples
   # omarchy:aliases=<route> | <route>      pipe-separated alternate routes
   # omarchy:requires-sudo=true             only when true
+  # omarchy:hidden=true                    hide from default command listings
 
 Do not define:
   binary      inferred from filename

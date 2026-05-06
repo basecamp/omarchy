@@ -17,6 +17,7 @@ declare -A COMMAND_USAGE
 declare -A COMMAND_ARGS
 declare -A COMMAND_EXAMPLES
 declare -A COMMAND_REQUIRES_SUDO
+declare -A COMMAND_HIDDEN
 declare -A COMMAND_ALIASES
 declare -A COMMAND_HAS_SUMMARY
 declare -A COMMAND_METADATA_ERRORS
@@ -131,6 +132,7 @@ register_command() {
   local examples=""
   local aliases=""
   local requires_sudo=""
+  local hidden=""
   local line=""
   local metadata_key=""
   local metadata_value=""
@@ -186,6 +188,10 @@ register_command() {
         requires_sudo="$metadata_value"
         [[ $metadata_value == "true" ]] || metadata_errors=$(append_pipe_value "$metadata_errors" "requires-sudo must be omitted or true")
         ;;
+      hidden)
+        hidden="$metadata_value"
+        [[ $metadata_value == "true" ]] || metadata_errors=$(append_pipe_value "$metadata_errors" "hidden must be omitted or true")
+        ;;
       *)
         ;;
       esac
@@ -229,6 +235,7 @@ register_command() {
   fi
 
   [[ $requires_sudo == "true" ]] || requires_sudo="false"
+  [[ $hidden == "true" ]] || hidden="false"
 
   local key="$file_binary"
   COMMAND_KEYS+=("$key")
@@ -242,6 +249,7 @@ register_command() {
   COMMAND_ARGS["$key"]="$args"
   COMMAND_EXAMPLES["$key"]="$examples"
   COMMAND_REQUIRES_SUDO["$key"]="$requires_sudo"
+  COMMAND_HIDDEN["$key"]="$hidden"
   COMMAND_HAS_SUMMARY["$key"]="$has_summary"
   COMMAND_METADATA_ERRORS["$key"]="$metadata_errors"
 
@@ -377,6 +385,9 @@ sorted_keys() {
   local key=""
 
   for key in "${COMMAND_KEYS[@]}"; do
+    if [[ $include_all != "true" && ${COMMAND_HIDDEN[$key]} == "true" ]]; then
+      continue
+    fi
     printf '%s\t%s\n' "${COMMAND_ROUTE[$key]}" "$key"
   done | sort -u | cut -f2-
 }
@@ -420,6 +431,10 @@ sorted_group_keys() {
   local route=""
 
   for key in "${COMMAND_KEYS[@]}"; do
+    if [[ $include_all != "true" && ${COMMAND_HIDDEN[$key]} == "true" ]]; then
+      continue
+    fi
+
     fallback_group=$(fallback_group_for_key "$key")
     if [[ ${COMMAND_GROUP[$key]} != "$group" && $fallback_group != "$group" ]]; then
       continue
@@ -510,7 +525,7 @@ Usage:
 List commands known to the Omarchy command center.
 
 Options:
-  --all       Accepted for compatibility
+  --all       Include commands explicitly marked hidden
   --json      Emit machine-readable JSON
   --markdown  Emit a Markdown command table
   --check     Validate command metadata and route collisions
@@ -562,6 +577,9 @@ show_commands() {
 
   for route in "${!ROUTE_IS_ALIAS[@]}"; do
     key="${ROUTE_TO_KEY[$route]}"
+    if [[ $include_all != "true" && ${COMMAND_HIDDEN[$key]} == "true" ]]; then
+      continue
+    fi
     alias_rows+="$route"$'\t'"${COMMAND_ROUTE[$key]}"$'\n'
   done
 
@@ -600,13 +618,14 @@ emit_command_records() {
 
   while IFS= read -r key; do
     [[ -n $key ]] || continue
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "${COMMAND_ROUTE[$key]}" \
       "${COMMAND_BINARY[$key]}" \
       "${COMMAND_GROUP[$key]}" \
       "${COMMAND_NAME[$key]}" \
       "${COMMAND_SUMMARY[$key]}" \
       "${COMMAND_REQUIRES_SUDO[$key]}" \
+      "${COMMAND_HIDDEN[$key]}" \
       "${COMMAND_ARGS[$key]}" \
       "${COMMAND_EXAMPLES[$key]}" \
       "${COMMAND_ALIASES[$key]}" \
@@ -624,11 +643,12 @@ commands_json_filter() {
   name: .[3],
   summary: .[4],
   requires_sudo: (.[5] == "true"),
-  args: .[6],
-  examples: (.[7] | split("|") | map(gsub("^ +| +$"; "")) | map(select(length > 0))),
-  aliases: (.[8] | split("|") | map(gsub("^ +| +$"; "")) | map(select(length > 0))),
-  filename_route: .[9],
-  routes: ([.[0], .[9]] + (.[8] | split("|") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) | unique)
+  hidden: (.[6] == "true"),
+  args: .[7],
+  examples: (.[8] | split("|") | map(gsub("^ +| +$"; "")) | map(select(length > 0))),
+  aliases: (.[9] | split("|") | map(gsub("^ +| +$"; "")) | map(select(length > 0))),
+  filename_route: .[10],
+  routes: ([.[0], .[10]] + (.[9] | split("|") | map(gsub("^ +| +$"; "")) | map(select(length > 0))) | unique)
 }] | {ok: true, commands: .}
 EOF
 }
@@ -682,13 +702,14 @@ show_command_json() {
   local key="$1"
 
   printf '%s\n' "$key" | while IFS= read -r key; do
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "${COMMAND_ROUTE[$key]}" \
       "${COMMAND_BINARY[$key]}" \
       "${COMMAND_GROUP[$key]}" \
       "${COMMAND_NAME[$key]}" \
       "${COMMAND_SUMMARY[$key]}" \
       "${COMMAND_REQUIRES_SUDO[$key]}" \
+      "${COMMAND_HIDDEN[$key]}" \
       "${COMMAND_ARGS[$key]}" \
       "${COMMAND_EXAMPLES[$key]}" \
       "${COMMAND_ALIASES[$key]}" \
