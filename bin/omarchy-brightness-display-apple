@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Adjust the brightness on Apple Studio Displays and Apple XDR Displays using asdcontrol.
+# omarchy:args=<+N%|N%-|N%>
+# omarchy:examples=omarchy brightness display apple +5% | omarchy brightness display apple 5%- | omarchy brightness display apple 50%
 
 if (( $# == 0 )); then
   echo "Adjust Apple Display brightness by passing +5%, 5%-, or 100%"
