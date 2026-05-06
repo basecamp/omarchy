@@ -1,30 +1,44 @@
 #!/bin/bash
 
-# omarchy:summary=Apply the current theme color to Chromium and Brave
+# omarchy:summary=Apply the current theme color to Chromium, Chrome, Edge, and Brave
+# omarchy:hidden=true
 
 CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
 
-if omarchy-cmd-present chromium || omarchy-cmd-present brave || omarchy-cmd-present brave-origin-beta; then
-  if [[ -f $CHROMIUM_THEME ]]; then
-    THEME_RGB_COLOR=$(<$CHROMIUM_THEME)
-    THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${THEME_RGB_COLOR//,/ })
-  else
-    # Use a default, neutral grey if theme doesn't have a color
-    THEME_RGB_COLOR="28,32,39"
-    THEME_HEX_COLOR="#1c2027"
-  fi
-
-  if omarchy-cmd-present chromium; then
-    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "/etc/chromium/policies/managed/color.json" >/dev/null
-    pgrep -x chromium >/dev/null && chromium --refresh-platform-policy --no-startup-window &>/dev/null
-  fi
-
-  # Brave and Brave Origin Beta share /etc/brave/policies, so a single write covers both
-  if omarchy-cmd-present brave || omarchy-cmd-present brave-origin-beta; then
-    echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "/etc/brave/policies/managed/color.json" >/dev/null
-    if pgrep -x brave >/dev/null; then
-      omarchy-cmd-present brave && brave --refresh-platform-policy --no-startup-window &>/dev/null
-      omarchy-cmd-present brave-origin-beta && brave-origin-beta --refresh-platform-policy --no-startup-window &>/dev/null
-    fi
-  fi
+if [[ -f $CHROMIUM_THEME ]]; then
+  THEME_RGB_COLOR=$(<$CHROMIUM_THEME)
+  THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${THEME_RGB_COLOR//,/ })
+else
+  # Use a default, neutral grey if theme doesn't have a color
+  THEME_HEX_COLOR="#1c2027"
 fi
+
+set_browser_policy() {
+  local policy_dir="$1"
+
+  [[ -d $policy_dir ]] || return
+  echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "$policy_dir/color.json" >/dev/null
+}
+
+refresh_running_browser() {
+  local process="$1"
+  local command="$2"
+  local pgrep_args="${3:--x}"
+
+  if omarchy-cmd-present "$command" && pgrep $pgrep_args "$process" >/dev/null; then
+    "$command" --refresh-platform-policy --no-startup-window &>/dev/null
+  fi
+}
+
+set_browser_policy /etc/chromium/policies/managed
+refresh_running_browser chromium chromium
+
+set_browser_policy /etc/opt/chrome/policies/managed
+refresh_running_browser chrome google-chrome-stable || refresh_running_browser chrome google-chrome
+
+set_browser_policy /etc/opt/edge/policies/managed
+refresh_running_browser msedge microsoft-edge-stable
+
+set_browser_policy /etc/brave/policies/managed
+refresh_running_browser brave brave
+refresh_running_browser brave-origin-beta brave-origin-beta -f

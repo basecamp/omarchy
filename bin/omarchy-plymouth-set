@@ -2,6 +2,7 @@
 
 # omarchy:summary=Set the Plymouth boot theme colors and logo
 # omarchy:args=<background-hex> <text-hex> <path-to-logo.png>
+# omarchy:examples=omarchy plymouth set '#1d2021' '#ebdbb2' ~/.config/omarchy/current/theme/plymouth/logo.png
 # omarchy:requires-sudo=true
 
 # Configure the Plymouth boot theme with a custom background color, text color, and logo.
