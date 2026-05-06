@@ -274,7 +274,7 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
   [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
   options="$options\n󰱔  DNS\n  Security\n  Config"
@@ -296,10 +296,24 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
+  local options="󱐋  Power Profile"
+
+  if omarchy-battery-policy-available; then
+    options="$options\n󰂄  Battery Charging"
+  fi
+
+  case $(menu "Power" "$options") in
+  *Profile*) show_setup_power_profile_menu ;;
+  *Battery*) omarchy-menu-battery-policy || back_to show_setup_power_menu ;;
+  *) back_to show_setup_menu ;;
+  esac
+}
+
+show_setup_power_profile_menu() {
   profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
 
   if [[ $profile == "CNCLD" || -z $profile ]]; then
-    back_to show_setup_menu
+    back_to show_setup_power_menu
   else
     powerprofilesctl set "$profile"
   fi

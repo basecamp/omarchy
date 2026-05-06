@@ -1,0 +1,202 @@
+#!/bin/bash
+
+# Battery charging policy selector used by Setup > Power.
+
+BATTERY_PROFILE_CONFIG="$HOME/.config/omarchy/system/battery-profile.conf"
+DEFAULT_BATTERY_PROFILE_CONFIG="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/config/omarchy/system/battery-profile.conf"
+
+menu() {
+  local prompt="$1"
+  local options="$2"
+  local extra="${3:-}"
+  local preselect="${4:-}"
+  local args=()
+  local index=1
+  local option
+
+  if [[ -n $extra ]]; then
+    read -r -a args <<<"$extra"
+  fi
+
+  if [[ -n $preselect ]]; then
+    while IFS= read -r option; do
+      if [[ $option == $preselect ]]; then
+        args+=("-c" "$index")
+        break
+      fi
+
+      (( index += 1 ))
+    done < <(printf '%b\n' "$options")
+  fi
+
+  printf '%b\n' "$options" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 630 -p "$prompt…" "${args[@]}" 2>/dev/null
+}
+
+open_in_editor() {
+  notify-send -u low "Editing config file" "$1"
+  omarchy-launch-editor "$1"
+}
+
+ensure_battery_profile_config() {
+  if [[ ! -f $BATTERY_PROFILE_CONFIG ]]; then
+    mkdir -p "${BATTERY_PROFILE_CONFIG%/*}"
+
+    if [[ -f $DEFAULT_BATTERY_PROFILE_CONFIG ]]; then
+      cp "$DEFAULT_BATTERY_PROFILE_CONFIG" "$BATTERY_PROFILE_CONFIG"
+    else
+      {
+        printf '%s\n' '# Custom battery charging profile.'
+        printf '%s\n' '# start: resume charging when the battery falls below this percentage.'
+        printf '%s\n' '# stop: stop charging when the battery reaches this percentage.'
+        printf '%s\n' 'start=75'
+        printf '%s\n' 'stop=80'
+      } >"$BATTERY_PROFILE_CONFIG"
+    fi
+  fi
+}
+
+read_battery_profile_config() {
+  local key
+  local value
+
+  battery_profile_start=""
+  battery_profile_stop=""
+
+  ensure_battery_profile_config
+
+  while IFS='=' read -r key value; do
+    key=${key//\"/}
+    key=${key//\'/}
+    key=${key//[[:space:]]/}
+    [[ $key && $key != \#* ]] || continue
+
+    value="${value%%#*}"
+    value=${value//\"/}
+    value=${value//\'/}
+    value=${value//[[:space:]]/}
+
+    case "$key" in
+    start) battery_profile_start="$value" ;;
+    stop) battery_profile_stop="$value" ;;
+    esac
+  done <"$BATTERY_PROFILE_CONFIG"
+}
+
+active_battery_policy() {
+  local key
+  local status_output
+  local value
+
+  status_output=$(omarchy-battery-policy-status 2>/dev/null) || return 1
+
+  while IFS='=' read -r key value; do
+    if [[ $key == "active_policy" ]]; then
+      printf '%s\n' "$value"
+      return 0
+    fi
+  done <<<"$status_output"
+}
+
+apply_custom_battery_profile() {
+  local error
+
+  read_battery_profile_config
+
+  if [[ ! $battery_profile_start =~ ^[0-9]+$ || ! $battery_profile_stop =~ ^[0-9]+$ ]]; then
+    notify-send -u critical "Invalid battery profile" "Set start= and stop= in $BATTERY_PROFILE_CONFIG"
+    open_in_editor "$BATTERY_PROFILE_CONFIG"
+    return 0
+  fi
+
+  if error=$(omarchy-battery-policy-set-custom "$battery_profile_start" "$battery_profile_stop" 2>&1); then
+    notify-send -u low "Battery charging" "Custom profile applied: ${battery_profile_start}% to ${battery_profile_stop}%"
+  else
+    notify-send -u critical "Battery charging" "${error:-Failed to apply custom profile}"
+  fi
+}
+
+apply_battery_policy() {
+  local error
+  local policy_id="$1"
+  local policy_name="$2"
+
+  if [[ $policy_id == "custom" ]]; then
+    apply_custom_battery_profile
+  elif error=$(omarchy-battery-policy-set "$policy_id" 2>&1); then
+    notify-send -u low "Battery charging" "$policy_name profile applied"
+  else
+    notify-send -u critical "Battery charging" "${error:-Failed to apply $policy_name}"
+  fi
+}
+
+show_battery_policy_menu() {
+  local active_policy
+  local choice
+  local current_label=""
+  local custom_available=false
+  local index
+  local list_output
+  local options=""
+  local policy_id
+  local policy_name
+  local policy_ids=()
+  local policy_labels=()
+
+  if ! active_policy=$(active_battery_policy); then
+    notify-send -u critical "Battery charging" "Failed to read charging status"
+    return 1
+  fi
+
+  list_output=$(omarchy-battery-policy-list 2>/dev/null) || {
+    notify-send -u critical "Battery charging" "Failed to list charging policies"
+    return 1
+  }
+
+  while IFS='|' read -r policy_id policy_name; do
+    [[ -n $policy_id && -n $policy_name ]] || continue
+
+    policy_ids+=("$policy_id")
+    policy_labels+=("$policy_name")
+    options="${options:+$options\n}$policy_name"
+
+    [[ $policy_id == "custom" ]] && custom_available=true
+    [[ $policy_id == $active_policy ]] && current_label="$policy_name"
+  done <<<"$list_output"
+
+  if [[ -z $options ]]; then
+    notify-send -u critical "Battery charging" "No charging policies are available"
+    return 1
+  fi
+
+  if [[ $custom_available == "true" ]]; then
+    options="$options\n  Edit Custom"
+  fi
+
+  choice=$(menu "Battery Charging" "$options" "" "$current_label")
+
+  if [[ $choice == "CNCLD" || -z $choice ]]; then
+    return 1
+  fi
+
+  if [[ $choice == *"Edit Custom"* ]]; then
+    ensure_battery_profile_config
+    open_in_editor "$BATTERY_PROFILE_CONFIG"
+    return 0
+  fi
+
+  for index in "${!policy_labels[@]}"; do
+    if [[ ${policy_labels[$index]} == $choice ]]; then
+      apply_battery_policy "${policy_ids[$index]}" "${policy_labels[$index]}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+if ! omarchy-battery-policy-available; then
+  notify-send -u critical "Battery charging" "Charging controls are not available on this machine"
+  exit 1
+fi
+
+show_battery_policy_menu
