@@ -5,7 +5,24 @@
 set -e
 
 # Reinstall the Omarchy configuration directory from the git source.
+#
+# URL and branch are derived from the existing $OMARCHY_PATH checkout so
+# any fork (arm ports, personal customizations, etc.) reinstalls from
+# the same remote it was running on. Falls back to upstream only if the
+# existing install has no usable git metadata.
 
-git clone --depth=1 "https://github.com/basecamp/omarchy.git" ~/.local/share/omarchy-new >/dev/null
+DEFAULT_URL="https://github.com/basecamp/omarchy.git"
+DEFAULT_BRANCH="master"
+
+REMOTE_URL=$(git -C "$OMARCHY_PATH" remote get-url origin 2>/dev/null || echo "$DEFAULT_URL")
+BRANCH=$(git -C "$OMARCHY_PATH" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$DEFAULT_BRANCH")
+
+# Prefer HTTPS for cloning: avoids needing SSH keys configured, which
+# matters if reinstall is being run as a recovery action.
+case "$REMOTE_URL" in
+  git@github.com:*) REMOTE_URL="https://github.com/${REMOTE_URL#git@github.com:}" ;;
+esac
+
+git clone --depth=1 --branch "$BRANCH" "$REMOTE_URL" ~/.local/share/omarchy-new >/dev/null
 mv $OMARCHY_PATH ~/.local/share/omarchy-old
 mv ~/.local/share/omarchy-new $OMARCHY_PATH
