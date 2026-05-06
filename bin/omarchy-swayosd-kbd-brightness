@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Display keyboard brightness level using SwayOSD on the current monitor.
-# omarchy:args=<percent>
+# omarchy:args=<0-100>
+# omarchy:examples=omarchy swayosd kbd brightness 0 | omarchy swayosd kbd brightness 50 | omarchy swayosd kbd brightness 100
 
 percent="$1"
 

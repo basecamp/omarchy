@@ -21,8 +21,9 @@ omarchy-pkg-add \
   libretro-parallel-n64 libretro-picodrive libretro-play libretro-ppsspp \
   libretro-sameboy libretro-scummvm libretro-shaders-slang libretro-snes9x \
   libretro-yabause \
-  libretro-fbneo-git \
-  libretro-database-git
+  libretro-cap32-git libretro-fbneo-git libretro-uae-git libretro-vice-git \
+  libretro-database-git \
+  retroarch-joypad-autoconfig-git
 
 # Set up ~/Games for BIOS files and ROMs
 mkdir -p "$HOME/Games/bios" "$HOME/Games/roms"
@@ -49,6 +50,7 @@ set_cfg libretro_info_path "/usr/share/libretro/info"
 set_cfg overlay_directory "/usr/share/libretro/overlays"
 set_cfg osk_overlay_directory "/usr/share/libretro/overlays/keyboards"
 set_cfg video_shader_dir "/usr/share/libretro/shaders/shaders_slang"
+set_cfg joypad_autoconfig_dir "/usr/share/libretro/autoconfig"
 
 # Point at the database, cheats, and cursors from libretro-database-git
 set_cfg content_database_path "/usr/share/libretro/database/rdb"

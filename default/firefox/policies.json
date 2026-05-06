@@ -1,0 +1,26 @@
+{
+  "policies": {
+    "Preferences": {
+      "apz.overscroll.enabled": {
+        "Value": true,
+        "Status": "default"
+      },
+      "media.ffmpeg.vaapi.enabled": {
+        "Value": true,
+        "Status": "default"
+      },
+      "media.hardware-video-decoding.force-enabled": {
+        "Value": true,
+        "Status": "default"
+      },
+      "widget.disable-swipe-tracker": {
+        "Value": false,
+        "Status": "default"
+      },
+      "widget.wayland.fractional-scale.enabled": {
+        "Value": true,
+        "Status": "default"
+      }
+    }
+  }
+}

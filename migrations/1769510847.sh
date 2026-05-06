@@ -1,4 +1,4 @@
-echo "Switch back to mainline chromium now that it supports full live themeing"
+echo "Switch back to mainline chromium now that it supports full live theming"
 
 if omarchy-pkg-present omarchy-chromium; then
   if gum confirm "Ready to switch to mainstream chromium? (Will close Chromium + reset settings)"; then

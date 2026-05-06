@@ -1,0 +1,384 @@
+#!/bin/bash
+
+# omarchy:summary=Set the screensaver logo text from an SVG/PNG or the default
+# omarchy:args=<default|path-to-logo.svg|png> [--width <columns>] [--height <rows>] [--mode <braille|block>] [--threshold <percent>] [--invert] [--stdout]
+# omarchy:examples=omarchy screensaver logo ~/logo.svg | omarchy screensaver logo default | omarchy screensaver logo ~/logo.png --width 80 --mode block --stdout
+
+set -o pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: omarchy-screensaver-logo <default|path-to-logo.svg|png> [options]
+
+Sets the screensaver logo text from an image.
+Pass "default" instead of an image path to restore the Omarchy default.
+By default, writes to ~/.config/omarchy/branding/screensaver.txt.
+
+Options:
+  -w, --width <columns>       Maximum output width in terminal columns (default: 80)
+  -H, --height <rows>         Maximum output height in terminal rows (default: 26)
+  -m, --mode <braille|block>  Output style (default: braille)
+  -t, --threshold <percent>   Pixel threshold from 0-100 (default: 50)
+      --invert                Treat light pixels as the logo instead of dark pixels
+      --no-trim               Preserve surrounding whitespace/background
+      --stdout                Print converted text instead of writing the screensaver file
+      --help                  Show this help
+EOF
+}
+
+width=80
+height=26
+mode=braille
+threshold=50
+invert=false
+trim=true
+output_path="$HOME/.config/omarchy/branding/screensaver.txt"
+image_path=""
+reset_default=false
+
+while (($# > 0)); do
+  case "$1" in
+  --help)
+    usage
+    exit 0
+    ;;
+  -w | --width)
+    shift
+    if [[ -z $1 ]]; then
+      echo "Missing value for --width" >&2
+      exit 1
+    fi
+    width="$1"
+    ;;
+  --width=*)
+    width="${1#*=}"
+    ;;
+  -H | --height)
+    shift
+    if [[ -z $1 ]]; then
+      echo "Missing value for --height" >&2
+      exit 1
+    fi
+    height="$1"
+    ;;
+  --height=*)
+    height="${1#*=}"
+    ;;
+  -m | --mode)
+    shift
+    if [[ -z $1 ]]; then
+      echo "Missing value for --mode" >&2
+      exit 1
+    fi
+    mode="$1"
+    ;;
+  --mode=*)
+    mode="${1#*=}"
+    ;;
+  --block | --blocks)
+    mode=block
+    ;;
+  --braille)
+    mode=braille
+    ;;
+  -t | --threshold)
+    shift
+    if [[ -z $1 ]]; then
+      echo "Missing value for --threshold" >&2
+      exit 1
+    fi
+    threshold="$1"
+    ;;
+  --threshold=*)
+    threshold="${1#*=}"
+    ;;
+  --invert)
+    invert=true
+    ;;
+  --no-trim)
+    trim=false
+    ;;
+  --stdout)
+    output_path="-"
+    ;;
+  --)
+    shift
+    break
+    ;;
+  -*)
+    echo "Unknown option: $1" >&2
+    usage >&2
+    exit 1
+    ;;
+  *)
+    if [[ $1 == "default" && -z $image_path ]]; then
+      reset_default=true
+    elif [[ -z $image_path ]]; then
+      image_path="$1"
+    else
+      echo "Unexpected argument: $1" >&2
+      usage >&2
+      exit 1
+    fi
+    ;;
+  esac
+  shift
+done
+
+if (($# > 0)); then
+  while (($# > 0)); do
+    if [[ $1 == "default" && -z $image_path ]]; then
+      reset_default=true
+    elif [[ -z $image_path ]]; then
+      image_path="$1"
+    else
+      echo "Unexpected argument: $1" >&2
+      usage >&2
+      exit 1
+    fi
+    shift
+  done
+fi
+
+if [[ $reset_default == "true" ]]; then
+  if [[ -n $image_path ]]; then
+    echo "default does not accept an image path" >&2
+    exit 1
+  fi
+
+  default_path="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/logo.txt"
+  if [[ ! -f $default_path ]]; then
+    echo "Default screensaver logo text not found: $default_path" >&2
+    exit 1
+  fi
+
+  if [[ $output_path == "-" ]]; then
+    cat "$default_path"
+  else
+    mkdir -p "$(dirname "$output_path")"
+    cp "$default_path" "$output_path"
+    echo "Restored default screensaver logo text to $output_path"
+  fi
+  exit 0
+fi
+
+if [[ -z $image_path ]]; then
+  usage >&2
+  exit 1
+fi
+
+if ! [[ $width =~ ^[0-9]+$ ]] || (( width < 1 )); then
+  echo "Invalid width: $width" >&2
+  exit 1
+fi
+
+if ! [[ $height =~ ^[0-9]+$ ]] || (( height < 1 )); then
+  echo "Invalid height: $height" >&2
+  exit 1
+fi
+
+if [[ $mode != "braille" && $mode != "block" ]]; then
+  echo "Invalid mode: $mode (expected braille or block)" >&2
+  exit 1
+fi
+
+if ! [[ $threshold =~ ^[0-9]+$ ]] || (( threshold < 0 || threshold > 100 )); then
+  echo "Invalid threshold: $threshold (expected 0-100)" >&2
+  exit 1
+fi
+
+if [[ ! -f $image_path ]]; then
+  echo "Logo file not found: $image_path" >&2
+  exit 1
+fi
+
+if omarchy-cmd-missing magick; then
+  echo "ImageMagick is required to convert logo images" >&2
+  exit 1
+fi
+
+case "$mode" in
+braille)
+  pixel_width=$((width * 2))
+  pixel_height=$((height * 4))
+  ;;
+block)
+  pixel_width=$width
+  pixel_height=$((height * 2))
+  ;;
+esac
+
+alpha_min=$(magick -background none "$image_path" -alpha extract -format '%[fx:minima]' info: 2>/dev/null) || {
+  echo "Unable to read logo image: $image_path" >&2
+  exit 1
+}
+alpha_max=$(magick -background none "$image_path" -alpha extract -format '%[fx:maxima]' info: 2>/dev/null) || {
+  echo "Unable to read logo image: $image_path" >&2
+  exit 1
+}
+
+use_alpha=false
+if awk -v min="$alpha_min" -v max="$alpha_max" 'BEGIN { exit !(min < 0.999 && max > min) }'; then
+  use_alpha=true
+fi
+
+magick_args=(-background none "$image_path" -auto-orient)
+
+if [[ $use_alpha == "true" ]]; then
+  magick_args+=(-alpha extract -alpha off)
+  if [[ $invert == "true" ]]; then
+    magick_args+=(-negate)
+  fi
+else
+  magick_args+=(-alpha remove -alpha off -colorspace Gray)
+  if [[ $invert == "false" ]]; then
+    magick_args+=(-negate)
+  fi
+fi
+
+if [[ $trim == "true" ]]; then
+  magick_args+=(-bordercolor black -border 1 -trim +repage)
+fi
+
+magick_args+=(-resize "${pixel_width}x${pixel_height}" -threshold "${threshold}%" -negate -compress none pbm:-)
+
+tmp_output=$(mktemp)
+trap 'rm -f "$tmp_output"' EXIT
+
+if [[ $mode == "braille" ]]; then
+  if ! magick "${magick_args[@]}" | awk '
+    BEGIN {
+      braille_base = 10240
+      dot[0,0] = 1
+      dot[0,1] = 2
+      dot[0,2] = 4
+      dot[1,0] = 8
+      dot[1,1] = 16
+      dot[1,2] = 32
+      dot[0,3] = 64
+      dot[1,3] = 128
+    }
+    {
+      sub(/#.*/, "")
+      for (i = 1; i <= NF; i++) {
+        token[++token_count] = $i
+      }
+    }
+    END {
+      if (token[1] != "P1") {
+        exit 1
+      }
+
+      width = token[2]
+      height = token[3]
+      pixel_offset = 4
+
+      for (y = 0; y < height; y += 4) {
+        line = ""
+        for (x = 0; x < width; x += 2) {
+          code = 0
+          for (dy = 0; dy < 4; dy++) {
+            for (dx = 0; dx < 2; dx++) {
+              if (y + dy < height && x + dx < width) {
+                pixel = token[pixel_offset + ((y + dy) * width) + x + dx]
+                if (pixel == 1) {
+                  code += dot[dx,dy]
+                }
+              }
+            }
+          }
+
+          if (code == 0) {
+            line = line " "
+          } else {
+            line = line sprintf("%c", braille_base + code)
+          }
+        }
+        sub(/[ ]+$/, "", line)
+        lines[++line_count] = line
+      }
+
+      first = 1
+      while (first <= line_count && lines[first] ~ /^[ ]*$/) {
+        first++
+      }
+
+      last = line_count
+      while (last >= first && lines[last] ~ /^[ ]*$/) {
+        last--
+      }
+
+      for (i = first; i <= last; i++) {
+        print lines[i]
+      }
+    }
+  ' >"$tmp_output"; then
+    echo "Unable to convert logo image: $image_path" >&2
+    exit 1
+  fi
+else
+  if ! magick "${magick_args[@]}" | awk '
+    BEGIN {
+      block["11"] = "█"
+      block["10"] = "▀"
+      block["01"] = "▄"
+      block["00"] = " "
+    }
+    {
+      sub(/#.*/, "")
+      for (i = 1; i <= NF; i++) {
+        token[++token_count] = $i
+      }
+    }
+    END {
+      if (token[1] != "P1") {
+        exit 1
+      }
+
+      width = token[2]
+      height = token[3]
+      pixel_offset = 4
+
+      for (y = 0; y < height; y += 2) {
+        line = ""
+        for (x = 0; x < width; x++) {
+          top = token[pixel_offset + (y * width) + x]
+          bottom = (y + 1 < height) ? token[pixel_offset + ((y + 1) * width) + x] : 0
+          line = line block[top bottom]
+        }
+        sub(/[ ]+$/, "", line)
+        lines[++line_count] = line
+      }
+
+      first = 1
+      while (first <= line_count && lines[first] ~ /^[ ]*$/) {
+        first++
+      }
+
+      last = line_count
+      while (last >= first && lines[last] ~ /^[ ]*$/) {
+        last--
+      }
+
+      for (i = first; i <= last; i++) {
+        print lines[i]
+      }
+    }
+  ' >"$tmp_output"; then
+    echo "Unable to convert logo image: $image_path" >&2
+    exit 1
+  fi
+fi
+
+if [[ ! -s $tmp_output ]]; then
+  echo "No logo pixels found in: $image_path" >&2
+  exit 1
+fi
+
+if [[ $output_path == "-" ]]; then
+  cat "$tmp_output"
+else
+  mkdir -p "$(dirname "$output_path")"
+  cp "$tmp_output" "$output_path"
+  echo "Wrote screensaver logo text to $output_path"
+fi
