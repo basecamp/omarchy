@@ -2,13 +2,13 @@
 
 # omarchy:summary=Set the screensaver logo text from an SVG/PNG or the default
 # omarchy:args=<default|path-to-logo.svg|png> [--width <columns>] [--height <rows>] [--mode <braille|block>] [--threshold <percent>] [--invert] [--stdout]
-# omarchy:examples=omarchy screensaver set logo ~/logo.svg | omarchy screensaver set logo default | omarchy screensaver set logo ~/logo.png --width 80 --mode block --stdout
+# omarchy:examples=omarchy screensaver logo ~/logo.svg | omarchy screensaver logo default | omarchy screensaver logo ~/logo.png --width 80 --mode block --stdout
 
 set -o pipefail
 
 usage() {
   cat <<'EOF'
-Usage: omarchy-screensaver-set-logo <default|path-to-logo.svg|png> [options]
+Usage: omarchy-screensaver-logo <default|path-to-logo.svg|png> [options]
 
 Sets the screensaver logo text from an image.
 Pass "default" instead of an image path to restore the Omarchy default.
