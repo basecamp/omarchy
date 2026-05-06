@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Detect Lenovo Yoga Pro 7 14IAH10 with bass speaker fix needed.
+
+omarchy-hw-match "Yoga Pro 7 14IAH10"
