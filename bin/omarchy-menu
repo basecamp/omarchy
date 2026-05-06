@@ -233,11 +233,11 @@ show_style_menu() {
 }
 
 show_screensaver_menu() {
-  case $(menu "Screensaver" "  Set From Image\n  Restore Default\n  Edit Text\n󱄄  Preview") in
-  *Image*) set_screensaver_from_image ;;
-  *Default*) terminal bash -lc 'omarchy-screensaver-logo default; echo; read -n 1 -s -r -p "Press any key to close..."' ;;
+  case $(menu "Screensaver" "  Edit Text\n  Set From Image\n󱄄  Preview\n  Restore Default") in
   *Text*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
+  *Image*) set_screensaver_from_image ;;
   *Preview*) omarchy-launch-screensaver force ;;
+  *Default*) terminal bash -lc 'omarchy-screensaver-logo default; echo; read -n 1 -s -r -p "Press any key to close..."' ;;
   *) show_style_menu ;;
   esac
 }
