@@ -60,6 +60,7 @@ omarchy-restart-btop
 omarchy-restart-opencode
 omarchy-restart-mako
 omarchy-restart-helix
+omarchy-restart-tmux
 
 # Change app-specific themes
 omarchy-theme-set-foot
