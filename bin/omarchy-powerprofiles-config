@@ -5,7 +5,18 @@
 
 set -e
 
-CONFIG_DIR="$HOME/.config/omarchy"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+config_home="${OMARCHY_CONFIG_HOME:-}"
+
+if [[ -z $config_home ]]; then
+  if [[ $script_dir == */.local/share/omarchy/bin ]]; then
+    config_home="${script_dir%/.local/share/omarchy/bin}"
+  else
+    config_home="$HOME"
+  fi
+fi
+
+CONFIG_DIR="$config_home/.config/omarchy"
 CONFIG_PATH="$CONFIG_DIR/powerprofiles.conf"
 
 available_profiles() {
