@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy:summary=Returns a weather condition icon, adjusted for live sunrise and sunset.
+
+location=${WAYBAR_WEATHER_LOCATION:-}
+if [[ -n $location ]]; then
+  url="https://wttr.in/${location// /%20}"
+else
+  url="https://wttr.in"
+fi
+
+icon=$(curl -fsS --max-time 3 "$url?format=%c" 2>/dev/null | tr -d '\n' | sed 's/[[:space:]]*$//')
+
+if [[ -z $icon ]]; then
+  exit 1
+fi
+
+astronomy=$(curl -fsS --max-time 3 "$url?format=j1" 2>/dev/null | python -c 'import json, sys; data = json.load(sys.stdin); astro = data["weather"][0]["astronomy"][0]; print(astro["sunrise"] + "|" + astro["sunset"])' 2>/dev/null)
+if [[ -n $astronomy ]]; then
+  IFS='|' read -r sunrise sunset <<< "$astronomy"
+  now_epoch=$(date +%s)
+  sunrise_epoch=$(date -d "today $sunrise" +%s 2>/dev/null || echo 0)
+  sunset_epoch=$(date -d "today $sunset" +%s 2>/dev/null || echo 0)
+
+  if (( sunrise_epoch > 0 && sunset_epoch > 0 && (now_epoch < sunrise_epoch || now_epoch >= sunset_epoch) )); then
+    case $icon in
+      "☀️"|"☀") icon="🌙" ;;
+      "🌤️"|"🌤"|"⛅"|"🌥️"|"🌥") icon="☁️" ;;
+    esac
+  fi
+fi
+
+printf '%s\n' "$icon"
