@@ -1,0 +1,231 @@
+#!/bin/bash
+
+# omarchy:group=transcode
+# omarchy:name=
+# omarchy:summary=Transcode pictures and videos for sharing
+# omarchy:args=[--path path] [input] [format] [resolution]
+# omarchy:examples=omarchy transcode|omarchy transcode --path ~/Downloads|omarchy transcode ~/Videos/demo.mov mp4 1080p|omarchy transcode ~/Pictures/wallpaper.heic jpg medium
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  omarchy transcode [--path path] [input] [format] [resolution]
+
+With no input, fuzzy-pick a picture or video from ~/Pictures and ~/Videos,
+or only from --path when provided. Then pick the output format and resolution.
+
+Options:
+  --path path  Limit interactive fuzzy file selection to this path
+
+Formats:
+  Pictures: jpg, png
+  Videos: mp4, gif
+
+Resolutions:
+  Pictures: high, medium, low
+  Videos: 4k, 1080p, 720p
+EOF
+}
+
+pick_file() {
+  local search_path="$1"
+  local paths=()
+
+  if [[ -n $search_path ]]; then
+    [[ -e $search_path ]] || { echo "Path not found: $search_path" >&2; return 1; }
+    paths=("$search_path")
+  else
+    paths=("$HOME/Pictures" "$HOME/Videos")
+  fi
+
+  find "${paths[@]}" -type f \
+    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.heic' -o -iname '*.avif' \
+    -o -iname '*.mp4' -o -iname '*.mov' -o -iname '*.m4v' -o -iname '*.mkv' -o -iname '*.webm' -o -iname '*.avi' \) \
+    -printf '%T@\t%p\n' 2>/dev/null | sort -rn | cut -f2- | fzf --layout=reverse-list --prompt="Transcode file> "
+}
+
+pick_option() {
+  local prompt="$1"
+  shift
+
+  gum choose --header "$prompt" "$@"
+}
+
+media_type() {
+  local mime
+  mime=$(file -b --mime-type "$1")
+
+  case "$mime" in
+  image/*) echo picture ;;
+  video/*) echo video ;;
+  *)
+    echo "Unsupported file type: $mime" >&2
+    return 1
+    ;;
+  esac
+}
+
+output_path() {
+  local input="$1"
+  local format="$2"
+  local resolution="$3"
+  local dir base stem
+
+  dir=$(dirname -- "$input")
+  base=$(basename -- "$input")
+  stem="${base%.*}"
+
+  printf '%s/%s-%s.%s' "$dir" "$stem" "$resolution" "$format"
+}
+
+transcode_picture() {
+  local input="$1" format="$2" resolution="$3" output="$4"
+  local resize
+
+  case "$resolution" in
+  high) resize='3160x>' ;;
+  medium) resize='2160x>' ;;
+  low) resize='1080x>' ;;
+  *)
+    echo "Invalid picture resolution: $resolution" >&2
+    return 1
+    ;;
+  esac
+
+  case "$format" in
+  jpg)
+    magick "$input" -resize "$resize" -quality 85 -strip "$output"
+    ;;
+  png)
+    magick "$input" -resize "$resize" -strip -define png:compression-filter=5 \
+      -define png:compression-level=9 \
+      -define png:compression-strategy=1 \
+      -define png:exclude-chunk=all \
+      "$output"
+    ;;
+  *)
+    echo "Invalid picture format: $format" >&2
+    return 1
+    ;;
+  esac
+}
+
+transcode_video() {
+  local input="$1" format="$2" resolution="$3" output="$4"
+  local scale
+
+  case "$resolution" in
+  4k) scale='scale=-2:2160' ;;
+  1080p) scale='scale=-2:1080' ;;
+  720p) scale='scale=-2:720' ;;
+  *)
+    echo "Invalid video resolution: $resolution" >&2
+    return 1
+    ;;
+  esac
+
+  case "$format" in
+  mp4)
+    if [[ $resolution == "4k" ]]; then
+      ffmpeg -i "$input" -vf "$scale" -c:v libx265 -preset slow -crf 24 -c:a aac -b:a 192k "$output"
+    else
+      ffmpeg -i "$input" -vf "$scale" -c:v libx264 -preset fast -crf 23 -c:a copy "$output"
+    fi
+    ;;
+  gif)
+    ffmpeg -i "$input" -vf "fps=10,$scale:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" "$output"
+    ;;
+  *)
+    echo "Invalid video format: $format" >&2
+    return 1
+    ;;
+  esac
+}
+
+copy_to_clipboard() {
+  local output="$1"
+  local uri
+
+  uri="file://$(realpath -- "$output")"
+  printf '%s\n' "$uri" | wl-copy --type text/uri-list
+}
+
+main() {
+  local input="" format="" resolution="" search_path=""
+  local type output positional=()
+
+  while (( $# > 0 )); do
+    case "$1" in
+    --path)
+      shift
+      [[ $# -gt 0 ]] || { echo "Missing value for --path" >&2; return 2; }
+      search_path="$1"
+      ;;
+    --help | -h)
+      usage
+      return 0
+      ;;
+    --)
+      shift
+      positional+=("$@")
+      break
+      ;;
+    --*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      return 2
+      ;;
+    *)
+      positional+=("$1")
+      ;;
+    esac
+    shift
+  done
+
+  input="${positional[0]:-}"
+  format="${positional[1]:-}"
+  resolution="${positional[2]:-}"
+
+  if [[ -z $input ]]; then
+    input=$(pick_file "$search_path")
+  fi
+
+  [[ -n $input ]] || return 1
+  [[ -f $input ]] || { echo "File not found: $input" >&2; return 1; }
+
+  type=$(media_type "$input")
+
+  if [[ -z $format ]]; then
+    if [[ $type == "picture" ]]; then
+      format=$(pick_option "Select format..." jpg png)
+    else
+      format=$(pick_option "Select format..." mp4 gif)
+    fi
+  fi
+
+  if [[ -z $resolution ]]; then
+    if [[ $type == "picture" ]]; then
+      resolution=$(pick_option "Select resolution..." high medium low)
+    else
+      resolution=$(pick_option "Select resolution..." 4k 1080p 720p)
+    fi
+  fi
+
+  output=$(output_path "$input" "$format" "$resolution")
+
+  if [[ $type == "picture" ]]; then
+    transcode_picture "$input" "$format" "$resolution" "$output"
+  else
+    transcode_video "$input" "$format" "$resolution" "$output"
+    echo ""
+  fi
+
+  copy_to_clipboard "$output"
+  echo "Your $type has been transcoded into $format as $resolution. It's on your clipboard."
+  echo ""
+  echo "It's also in $output"
+}
+
+main "$@"

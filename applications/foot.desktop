@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Application
+TryExec=foot
+Exec=foot
+Icon=foot
+Terminal=false
+Categories=System;TerminalEmulator;
+Name=Foot
+GenericName=Terminal
+Comment=A fast, lightweight and minimalistic Wayland terminal emulator
+StartupNotify=true
+StartupWMClass=foot
+Actions=New;
+X-TerminalArgExec=-e
+X-TerminalArgAppId=--app-id=
+X-TerminalArgTitle=--title=
+X-TerminalArgDir=--working-directory=
+
+[Desktop Action New]
+Name=New Terminal
+Exec=foot

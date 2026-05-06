@@ -93,8 +93,9 @@ show_learn_menu() {
 }
 
 show_trigger_menu() {
-  case $(menu "Trigger" "  Capture\n  Share\n󰔎  Toggle\n  Hardware") in
+  case $(menu "Trigger" "  Capture\n󰧸  Transcode\n  Share\n󰔎  Toggle\n  Hardware") in
   *Capture*) show_capture_menu ;;
+  *Transcode*) show_transcode_menu ;;
   *Share*) show_share_menu ;;
   *Toggle*) show_toggle_menu ;;
   *Hardware*) show_hardware_menu ;;
@@ -166,6 +167,14 @@ show_share_menu() {
   esac
 }
 
+show_transcode_menu() {
+  case $(menu "Transcode" "  Picture\n  Video") in
+  *Picture*) present_terminal "omarchy-transcode --path '$HOME/Pictures'" ;;
+  *Video*) present_terminal "omarchy-transcode --path '$HOME/Videos'" ;;
+  *) back_to show_trigger_menu ;;
+  esac
+}
+
 show_toggle_menu() {
   local options="󱄄  Screensaver\n󰔎  Nightlight\n󱫖  Idle Lock\n󰂛  Notifications\n󰍜  Top Bar\n󱂬  Workspace Layout\n  Window Gaps\n  1-Window Ratio\n󰍹  Monitor Scaling\n  Direct Boot\n󰟵  Passwordless Sudo"
 
@@ -217,10 +226,34 @@ show_style_menu() {
   *Font*) show_font_menu ;;
   *Background*) show_background_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
-  *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
+  *Screensaver*) show_screensaver_menu ;;
   *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
   *) show_main_menu ;;
   esac
+}
+
+show_screensaver_menu() {
+  case $(menu "Screensaver" "  Set From Image\n  Restore Default\n  Edit Text\n󱄄  Preview") in
+  *Image*) set_screensaver_from_image ;;
+  *Default*) terminal bash -lc 'omarchy-screensaver-set-logo default; echo; read -n 1 -s -r -p "Press any key to close..."' ;;
+  *Text*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
+  *Preview*) omarchy-launch-screensaver force ;;
+  *) show_style_menu ;;
+  esac
+}
+
+set_screensaver_from_image() {
+  terminal bash -lc '
+    image=$(fd --type file --ignore-case --extension svg --extension png . "$HOME" 2>/dev/null | fzf --prompt "Logo image> ")
+    if [[ -n $image ]]; then
+      if omarchy-screensaver-set-logo "$image"; then
+        echo
+        echo "Preview with: omarchy-launch-screensaver force"
+      fi
+      echo
+      read -n 1 -s -r -p "Press any key to close..."
+    fi
+  '
 }
 
 show_theme_menu() {
@@ -352,7 +385,7 @@ show_install_editor_menu() {
   case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Emacs") in
   *VSCode*) present_terminal omarchy-install-vscode ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
-  *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+  *Zed*) present_terminal omarchy-install-zed ;;
   *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) present_terminal omarchy-install-helix ;;
   *Emacs*) install "Emacs" "emacs-wayland" && systemctl --user enable --now emacs.service ;;
@@ -361,8 +394,9 @@ show_install_editor_menu() {
 }
 
 show_install_terminal_menu() {
-  case $(menu "Install" "  Alacritty\n  Ghostty\n  Kitty") in
+  case $(menu "Install" "  Alacritty\n  Foot\n  Ghostty\n  Kitty") in
   *Alacritty*) install_terminal "alacritty" ;;
+  *Foot*) install_terminal "foot" ;;
   *Ghostty*) install_terminal "ghostty" ;;
   *Kitty*) install_terminal "kitty" ;;
   *) show_install_menu ;;
@@ -410,12 +444,12 @@ show_install_style_menu() {
 }
 
 show_install_font_menu() {
-  case $(menu "Install" "  Cascadia Mono\n  Meslo LG Mono\n  Fira Code\n  Victor Code\n  Bistream Vera Mono\n  Iosevka" "--width 350") in
+  case $(menu "Install" "  Cascadia Mono\n  Meslo LG Mono\n  Fira Code\n  Victor Code\n  Bitstream Vera Mono\n  Iosevka" "--width 350") in
   *Cascadia*) install_font "Cascadia Mono" "ttf-cascadia-mono-nerd" "CaskaydiaMono Nerd Font" ;;
   *Meslo*) install_font "Meslo LG Mono" "ttf-meslo-nerd" "MesloLGL Nerd Font" ;;
   *Fira*) install_font "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font" ;;
   *Victor*) install_font "Victor Code" "ttf-victor-mono-nerd" "VictorMono Nerd Font" ;;
-  *Bistream*) install_font "Bistream Vera Code" "ttf-bitstream-vera-mono-nerd" "BitstromWera Nerd Font" ;;
+  *Bitstream*) install_font "Bitstream Vera Code" "ttf-bitstream-vera-mono-nerd" "BitstromWera Nerd Font" ;;
   *Iosevka*) install_font "Iosevka" "ttf-iosevka-nerd" "Iosevka Nerd Font Mono" ;;
   *) show_install_menu ;;
   esac
@@ -648,6 +682,7 @@ go_to_menu() {
   *toggle*) show_toggle_menu ;;
   *hardware*) show_hardware_menu ;;
   *share*) show_share_menu ;;
+  *transcode*) show_transcode_menu ;;
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
   *style*) show_style_menu ;;
