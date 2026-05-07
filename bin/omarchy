@@ -788,6 +788,25 @@ show_group_help() {
   fi
 }
 
+show_prefix_help() {
+  local prefix="$1"
+  local prefix_with_space="$prefix "
+  local key=""
+  local rows=""
+
+  while IFS= read -r key; do
+    [[ -n $key ]] || continue
+    if [[ ${COMMAND_USAGE[$key]} == $prefix_with_space* ]]; then
+      rows+="${COMMAND_USAGE[$key]}"$'\t'$'\t'"${COMMAND_SUMMARY[$key]}"$'\n'
+    fi
+  done < <(sorted_keys false)
+
+  [[ -n $rows ]] || return 1
+
+  echo "${prefix#omarchy } commands:"
+  print_command_table "$rows"
+}
+
 show_related_commands() {
   local key="$1"
   local group="${COMMAND_GROUP[$key]}"
@@ -1002,6 +1021,10 @@ dispatch_or_help() {
 
   if (( $# >= 2 )) && [[ $2 == "--help" || $2 == "-h" ]] && group_exists "$1"; then
     show_group_help "$1"
+    return 0
+  fi
+
+  if show_prefix_help "omarchy ${args[*]}"; then
     return 0
   fi
 
