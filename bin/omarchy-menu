@@ -501,8 +501,9 @@ show_install_service_menu() {
 }
 
 show_install_editor_menu() {
-  case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Vim\n  Emacs") in
+  case $(menu "Install" "  VSCode\n  JetBrains\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Vim\n  Emacs") in
   *VSCode*) present_terminal omarchy-install-vscode ;;
+  *JetBrains*) show_install_jetbrains_menu ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
   *Zed*) present_terminal omarchy-install-zed ;;
   *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
@@ -510,6 +511,24 @@ show_install_editor_menu() {
   *Vim*) install "Vim" "vim" ;;
   *Emacs*) install "Emacs" "emacs-wayland" && systemctl --user enable --now emacs.service ;;
   *) show_install_menu ;;
+  esac
+}
+
+show_install_jetbrains_menu() {
+  case $(menu "Install" "  IntelliJ IDEA\n  PyCharm\n  WebStorm\n  PhpStorm\n  GoLand\n  RubyMine\n  CLion\n  Rider\n  RustRover\n  DataGrip\n  DataSpell\n  MPS" "--width 360") in
+  *"IntelliJ IDEA"*) present_terminal "omarchy-install-jetbrains IIU /opt/jetbrains-idea" ;;
+  *PyCharm*) present_terminal "omarchy-install-jetbrains PCP /opt/jetbrains-pycharm" ;;
+  *WebStorm*) present_terminal "omarchy-install-jetbrains WS /opt/jetbrains-webstorm" ;;
+  *PhpStorm*) present_terminal "omarchy-install-jetbrains PS /opt/jetbrains-phpstorm" ;;
+  *GoLand*) present_terminal "omarchy-install-jetbrains GO /opt/jetbrains-goland" ;;
+  *RubyMine*) present_terminal "omarchy-install-jetbrains RM /opt/jetbrains-rubymine" ;;
+  *CLion*) present_terminal "omarchy-install-jetbrains CL /opt/jetbrains-clion" ;;
+  *Rider*) present_terminal "omarchy-install-jetbrains RD /opt/jetbrains-rider" ;;
+  *RustRover*) present_terminal "omarchy-install-jetbrains RR /opt/jetbrains-rustrover" ;;
+  *DataGrip*) present_terminal "omarchy-install-jetbrains DG /opt/jetbrains-datagrip" ;;
+  *DataSpell*) present_terminal "omarchy-install-jetbrains DS /opt/jetbrains-dataspell" ;;
+  *MPS*) present_terminal "omarchy-install-jetbrains MPS /opt/jetbrains-mps" ;;
+  *) show_install_editor_menu ;;
   esac
 }
 
