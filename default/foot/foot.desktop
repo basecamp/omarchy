@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-TryExec=foot
-Exec=foot
+TryExec=footclient
+Exec=footclient
 Icon=foot
 Terminal=false
 Categories=System;TerminalEmulator;
@@ -18,4 +18,4 @@ X-TerminalArgDir=--working-directory=
 
 [Desktop Action New]
 Name=New Terminal
-Exec=foot
+Exec=footclient
