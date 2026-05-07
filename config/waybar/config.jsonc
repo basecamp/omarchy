@@ -70,7 +70,8 @@
     "exec": "$OMARCHY_PATH/default/waybar/weather.sh",
     "return-type": "json",
     "interval": 600,
-    "tooltip": true
+    "tooltip": false,
+    "on-click": "notify-send -u low \"$(omarchy-weather-status)\""
   },
   "network": {
     "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
