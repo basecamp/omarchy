@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Print battery icon and percentage for the hyprlock screen, or nothing if no battery is present.
+
+bat_path=$(upower -e 2>/dev/null | grep BAT | head -1)
+[[ -z $bat_path ]] && exit 0
+
+bat_info=$(upower -i "$bat_path" 2>/dev/null)
+percentage=$(echo "$bat_info" | awk '/percentage/ { print int($2); exit }')
+state=$(echo "$bat_info" | awk '/state/ { print $2; exit }')
+
+[[ -z $percentage ]] && exit 0
+
+if [[ $state == "charging" || $state == "fully-charged" ]]; then
+  icon="󰂄"
+elif (( percentage > 80 )); then icon="󰁹"
+elif (( percentage > 60 )); then icon="󰂀"
+elif (( percentage > 40 )); then icon="󰁾"
+elif (( percentage > 20 )); then icon="󰁻"
+else icon="󰁺"
+fi
+
+echo "$icon  $percentage%"
