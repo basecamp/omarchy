@@ -1,0 +1,13 @@
+[Unit]
+Description=SwayOSD server
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/swayosd-server
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
