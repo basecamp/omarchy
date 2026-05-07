@@ -16,13 +16,13 @@ HOOK_DIR="$HOOK_PATH.d"
 shift
 
 if [[ -f $HOOK_PATH ]]; then
-  bash "$HOOK_PATH" "$@"
+  bash "$HOOK_PATH" "$@" || echo "Hook failed: $HOOK_PATH"
 fi
 
 if [[ -d $HOOK_DIR ]]; then
   for hook in "$HOOK_DIR"/*; do
     [[ -f $hook ]] || continue
     [[ $hook == *.sample ]] && continue
-    bash "$hook" "$@"
+    bash "$hook" "$@" || echo "Hook failed: $hook"
   done
 fi
