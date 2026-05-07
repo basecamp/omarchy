@@ -2,10 +2,6 @@ echo "Run SwayOSD as a supervised session service"
 
 SERVICE=swayosd-server.service
 
-if omarchy-cmd-missing swayosd-server; then
-  omarchy-pkg-add swayosd
-fi
-
 mkdir -p ~/.config/systemd/user
 cp "$OMARCHY_PATH/config/systemd/user/$SERVICE" ~/.config/systemd/user/$SERVICE
 
