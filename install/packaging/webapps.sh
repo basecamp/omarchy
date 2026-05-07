@@ -7,7 +7,6 @@ omarchy-webapp-install "Google Messages" https://messages.google.com/web/convers
 omarchy-webapp-install "Google Maps" https://maps.google.com "Google Maps.png"
 omarchy-webapp-install "ChatGPT" https://chatgpt.com/ ChatGPT.png
 omarchy-webapp-install "YouTube" https://youtube.com/ YouTube.png
-omarchy-webapp-install "Weather" https://wttr.in/ "https://www.google.com/s2/favicons?domain=https://wttr.in&sz=128"
 omarchy-webapp-install "GitHub" https://github.com/ GitHub.png
 omarchy-webapp-install "X" https://x.com/ X.png
 omarchy-webapp-install "Figma" https://figma.com/ Figma.png

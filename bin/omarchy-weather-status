@@ -1,9 +1,8 @@
 #!/bin/bash
 
-# omarchy:summary=Returns a formatted weather status string with temperature and feels-like temperature.
+# omarchy:summary=Returns a formatted weather status string with temperature and wind speed.
 
-url="https://wttr.in"
-weather=$(curl -fsS --max-time 4 "$url?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
+weather=$(curl -fsS --max-time 4 "https://wttr.in?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
 
 if [[ -z $weather ]]; then
   echo "Weather unavailable"
