@@ -24,4 +24,4 @@ format_temperature() {
 temperature=$(format_temperature "$temperature")
 wind=${wind//km\// km/}
 
-echo "$(omarchy-weather-icon)    $place  ·  $temperature  ·  Wind $wind"
+echo "$(omarchy-weather-icon)    $place  ·  Temperature $temperature  ·  Wind $wind"
