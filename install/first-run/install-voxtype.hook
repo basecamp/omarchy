@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -e
+
+# Remove this hook after use
+rm -f "$0"
+
+notify-send "    Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -u critical
