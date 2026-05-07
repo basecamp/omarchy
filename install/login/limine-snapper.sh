@@ -3,7 +3,7 @@ root_fstype=$(findmnt -n -o FSTYPE /)
 if command -v limine &>/dev/null; then
   if [[ $root_fstype == "zfs" ]]; then
     sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
-HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block zfs filesystems)
+HOOKS=(base udev plymouth keyboard autodetect microcode modconf kms keymap consolefont block encrypt zfs filesystems)
 EOF
   else
     sudo tee /etc/mkinitcpio.conf.d/omarchy_hooks.conf <<EOF >/dev/null
