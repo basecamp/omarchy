@@ -6,10 +6,12 @@ if omarchy-cmd-missing swayosd-server; then
   omarchy-pkg-add swayosd
 fi
 
-sudo systemctl enable --now swayosd-libinput-backend.service
-
 mkdir -p ~/.config/systemd/user
-cp "$OMARCHY_PATH/config/systemd/user/$SERVICE" "$HOME/.config/systemd/user/$SERVICE"
+cp "$OMARCHY_PATH/config/systemd/user/$SERVICE" ~/.config/systemd/user/$SERVICE
+
+if [[ -f ~/.config/hypr/autostart.conf ]]; then
+  sed -i '/^exec-once = uwsm-app -- swayosd-server$/d' ~/.config/hypr/autostart.conf
+fi
 
 pkill -x swayosd-server || true
 
