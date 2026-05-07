@@ -38,3 +38,5 @@ case "$action" in
     powerprofilesctl set balanced
     ;;
 esac
+
+omarchy-hook power-source-change "$action"
