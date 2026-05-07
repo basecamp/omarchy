@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# omarchy:summary=Strip unsupported VAAPI flags from Chromium-family browser configs on NVIDIA
+# omarchy:hidden=true
+
+has_nvidia() {
+  lspci | grep -qi 'nvidia'
+}
+
+sanitize_chromium_flags() {
+  local file="$1"
+  local tmp_file
+
+  [[ -f $file ]] || return
+
+  tmp_file=$(mktemp)
+
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ $line == --enable-features=* ]]; then
+      local features=${line#--enable-features=}
+      local keep_features=()
+      local feature
+
+      IFS=, read -ra feature_list <<< "$features"
+      for feature in "${feature_list[@]}"; do
+        case $feature in
+          VaapiVideoDecodeLinuxGL|VaapiVideoEncoder)
+            ;;
+          *)
+            keep_features+=("$feature")
+            ;;
+        esac
+      done
+
+      if ((${#keep_features[@]})); then
+        printf '%s\n' "--enable-features=$(IFS=,; echo "${keep_features[*]}")" >> "$tmp_file"
+      fi
+    else
+      printf '%s\n' "$line" >> "$tmp_file"
+    fi
+  done < "$file"
+
+  mv "$tmp_file" "$file"
+}
+
+if (($# == 0)); then
+  echo "Usage: omarchy-config-chromium-flags <path> [path...]"
+  exit 1
+fi
+
+has_nvidia || exit 0
+
+for file in "$@"; do
+  sanitize_chromium_flags "$file"
+done

@@ -24,6 +24,7 @@ announce_default_browser() {
 copy_chromium_flags() {
   mkdir -p ~/.config
   cp -f "${OMARCHY_PATH:-$HOME/.local/share/omarchy}/config/chromium-flags.conf" "$1"
+  "${OMARCHY_PATH:-$HOME/.local/share/omarchy}/bin/omarchy-config-chromium-flags" "$1"
 }
 
 setup_firefox_preferences() {
