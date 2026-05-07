@@ -8,6 +8,7 @@ Rectangle {
   color: "#1a1b26"
 
   property string currentUser: userModel.lastUser
+  property bool loginFailed: false
   property int sessionIndex: {
     for (var i = 0; i < sessionModel.rowCount(); i++) {
       var name = (sessionModel.data(sessionModel.index(i, 0), Qt.DisplayRole) || "").toString()
@@ -20,12 +21,12 @@ Rectangle {
   Connections {
     target: sddm
     function onLoginFailed() {
-      errorMessage.text = "Login failed"
+      root.loginFailed = true
       password.text = ""
       password.focus = true
     }
     function onLoginSucceeded() {
-      errorMessage.text = ""
+      root.loginFailed = false
     }
   }
 
@@ -60,7 +61,7 @@ Rectangle {
 
         Image {
           id: entry
-          source: "entry.png"
+          source: root.loginFailed ? "entry-failed.png" : "entry.png"
           anchors.centerIn: parent
         }
 
@@ -97,6 +98,8 @@ Rectangle {
           selectedTextColor: "transparent"
           focus: true
 
+          onTextChanged: root.loginFailed = false
+
           Keys.onPressed: {
             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
               sddm.login(root.currentUser, password.text, root.sessionIndex)
@@ -107,14 +110,6 @@ Rectangle {
       }
     }
 
-    Text {
-      id: errorMessage
-      text: ""
-      color: "#f7768e"
-      font.family: "JetBrainsMono Nerd Font"
-      font.pixelSize: 18
-      anchors.horizontalCenter: parent.horizontalCenter
-    }
   }
 
   Component.onCompleted: password.forceActiveFocus()
