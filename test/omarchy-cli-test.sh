@@ -100,6 +100,10 @@ output=$("$CLI" hw --help)
 assert_output_contains "hardware group help renders" "$output" "omarchy hw asus rog"
 assert_output_contains "hardware group includes touchpad" "$output" "omarchy hw touchpad"
 
+output=$("$CLI" hw asus)
+assert_output_contains "partial hardware prefix renders matching commands" "$output" "omarchy hw asus rog"
+assert_output_contains "partial hardware prefix includes nested match" "$output" "omarchy hw asus zenbook ux5406aa"
+
 output=$("$CLI" menu --help)
 assert_output_contains "menu group includes share fallback route" "$output" "omarchy menu share"
 
