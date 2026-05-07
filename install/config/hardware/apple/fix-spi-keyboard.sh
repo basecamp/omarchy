@@ -11,26 +11,14 @@ if [[ $product_name =~ MacBook[89],1|MacBook1[02],1|MacBookPro13,[123]|MacBookPr
     # macbook12-spi-driver-dkms also fails to build on kernel 6.x due to
     # removed APIs (input-polldev etc.).
     #
-    # Fix: install a patched spi_pxa2xx_pci that forces PIO mode for this PCI
-    # ID only (enable_dma=0), plus irqpoll so the SPI IRQ handler is polled
+    # Fix: install the macbook8-spi-pxa2xx-nodma-dkms package which provides a
+    # patched spi_pxa2xx_pci that forces PIO mode for this PCI ID only
+    # (enable_dma=0), plus irqpoll so the SPI IRQ handler is polled
     # unconditionally. This restores the in-tree applespi keyboard and trackpad.
     #
     # See: https://github.com/basecamp/omarchy/issues/1954
 
-    omarchy-pkg-add dkms linux-headers
-
-    local dkms_src="/usr/src/spi-pxa2xx-pci-nodma-1.0"
-    sudo mkdir -p "$dkms_src"
-    sudo cp "$(omarchy-config-dir)/hardware/apple/macbook8-spi-pxa2xx-nodma/"* "$dkms_src/"
-
-    sudo dkms add spi-pxa2xx-pci-nodma/1.0
-    sudo dkms build spi-pxa2xx-pci-nodma/1.0
-    sudo dkms install spi-pxa2xx-pci-nodma/1.0
-
-    # Blacklist the in-tree module; our patched version registers the same
-    # PCI driver name so the GSPI binds to it automatically on next boot.
-    echo "blacklist spi_pxa2xx_pci" | sudo tee /etc/modprobe.d/macbook8-spi-nodma.conf >/dev/null
-    echo "install spi_pxa2xx_pci /bin/true" | sudo tee -a /etc/modprobe.d/macbook8-spi-nodma.conf >/dev/null
+    omarchy-pkg-add macbook8-spi-pxa2xx-nodma-dkms
 
     # irqpoll: poll all IRQ handlers unconditionally so the SPI PIO IRQ
     # (IRQ 21, IO-APIC) is serviced even when the hardware doesn't assert it.
