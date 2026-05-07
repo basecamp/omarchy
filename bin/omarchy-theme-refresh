@@ -5,5 +5,5 @@
 THEME_NAME_PATH="$HOME/.config/omarchy/current/theme.name"
 
 if [[ -f $THEME_NAME_PATH ]]; then
-  omarchy-theme-set "$(cat $THEME_NAME_PATH)"
+  OMARCHY_THEME_SKIP_BACKGROUND=1 omarchy-theme-set "$(cat $THEME_NAME_PATH)"
 fi
