@@ -11,4 +11,4 @@ if [[ ! -f "$destination" ]]; then
     "$destination"
 fi
 
-omarchy-restart-pipewire
+omarchy-state set reboot-required
