@@ -12,7 +12,7 @@ cat <<EOF | sudo tee /etc/sddm.conf.d/10-wayland.conf >/dev/null
 DisplayServer=wayland
 
 [Wayland]
-CompositorCommand=Hyprland --config /usr/share/sddm/hyprland.conf
+CompositorCommand=start-hyprland -- --config /usr/share/sddm/hyprland.conf
 EOF
 
 if [[ ! -f /etc/sddm.conf.d/autologin.conf ]]; then
