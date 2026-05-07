@@ -76,6 +76,8 @@ sudo cp "$logo_path" "$sddm_dir/logo.png"
 for asset in bullet.png entry.png lock.png; do
   sudo cp "$staging_dir/$asset" "$sddm_dir/$asset"
 done
-magick "$staging_dir/entry.png" -channel RGB +level-colors "#f7768e","#f7768e" "$staging_dir/entry-failed.png"
-sudo cp "$staging_dir/entry-failed.png" "$sddm_dir/entry-failed.png"
+for asset in entry lock; do
+  magick "$staging_dir/$asset.png" -channel RGB +level-colors "#f7768e","#f7768e" "$staging_dir/$asset-failed.png"
+  sudo cp "$staging_dir/$asset-failed.png" "$sddm_dir/$asset-failed.png"
+done
 sudo rm -f "$sddm_dir/logo.svg"

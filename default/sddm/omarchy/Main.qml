@@ -48,7 +48,7 @@ Rectangle {
       spacing: 15
 
       Image {
-        source: "lock.png"
+        source: root.loginFailed ? "lock-failed.png" : "lock.png"
         width: 34
         height: 38
         fillMode: Image.PreserveAspectFit
