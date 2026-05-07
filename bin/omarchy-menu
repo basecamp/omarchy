@@ -389,7 +389,7 @@ show_setup_default_editor_menu() {
   omarchy-cmd-present nvim && options="$options  Neovim"
   omarchy-cmd-present code && options="${options:+$options\n}  VSCode"
   omarchy-cmd-present cursor && options="${options:+$options\n}  Cursor"
-  omarchy-cmd-present zed && options="${options:+$options\n}  Zed"
+  omarchy-cmd-present zeditor && options="${options:+$options\n}  Zed"
   omarchy-cmd-present sublime_text && options="${options:+$options\n}  Sublime Text"
   omarchy-cmd-present helix && options="${options:+$options\n}  Helix"
   omarchy-cmd-present vim && options="${options:+$options\n}  Vim"
@@ -400,7 +400,7 @@ show_setup_default_editor_menu() {
   nvim) current="  Neovim" ;;
   code) current="  VSCode" ;;
   cursor) current="  Cursor" ;;
-  zed) current="  Zed" ;;
+  zed | zeditor) current="  Zed" ;;
   sublime_text) current="  Sublime Text" ;;
   helix) current="  Helix" ;;
   vim) current="  Vim" ;;
