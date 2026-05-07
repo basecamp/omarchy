@@ -22,15 +22,13 @@ class TranscodeAction(GObject.GObject, Nautilus.MenuProvider):
         if not wrapper or not binary:
             return
 
-        binary_q = shlex.quote(binary)
-        quoted = " ".join(shlex.quote(p) for p in paths)
         if len(paths) == 1:
-            cmd = f"{binary_q} {quoted}"
+            cmd = shlex.join([binary, paths[0]])
         else:
-            cmd = (
-                "for f in " + quoted + "; do "
-                f'echo "Transcoding $f"; {binary_q} "$f" || true; '
-                "done"
+            cmd = "; ".join(
+                f"echo {shlex.quote(f'Transcoding {path}')} && "
+                f"{shlex.join([binary, path])} || true"
+                for path in paths
             )
 
         Gio.Subprocess.new([wrapper, cmd], Gio.SubprocessFlags.NONE)
@@ -49,6 +47,8 @@ class TranscodeAction(GObject.GObject, Nautilus.MenuProvider):
 
     def _selected_paths(self, files):
         paths = []
+        seen = set()
+
         for file in files:
             if file.is_directory():
                 continue
@@ -58,7 +58,8 @@ class TranscodeAction(GObject.GObject, Nautilus.MenuProvider):
             if not location:
                 continue
             path = location.get_path()
-            if path and path not in paths:
+            if path and path not in seen:
+                seen.add(path)
                 paths.append(path)
         return paths
 
