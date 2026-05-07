@@ -2,7 +2,7 @@
 
 # omarchy:summary=Returns a formatted weather status string with temperature and wind speed.
 
-weather=$(curl -fsS --max-time 4 "https://wttr.in?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
+weather=$(curl -fsS --max-time 4 "https://wttr.in?m&format=%l|%t|%w" 2>/dev/null | tr -d '\n')
 
 if [[ -z $weather ]]; then
   echo "Weather unavailable"
