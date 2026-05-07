@@ -107,6 +107,7 @@ This copies `~/.local/share/omarchy/config/hypr/hyprlock.conf` to `~/.config/hyp
 To create a new migration, run `omarchy-dev-add-migration --no-edit`. This creates a migration file named after the unix timestamp of the last commit.
 
 New migration format:
+- File permissions must be `0644` (`-rw-r--r--`); migrations are sourced, not executed directly
 - No shebang line
 - Start with an `echo` describing what the migration does
 - Use `$OMARCHY_PATH` to reference the omarchy directory
