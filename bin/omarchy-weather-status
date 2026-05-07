@@ -2,13 +2,7 @@
 
 # omarchy:summary=Returns a formatted weather status string with temperature and feels-like temperature.
 
-location=${WAYBAR_WEATHER_LOCATION:-}
-if [[ -n $location ]]; then
-  url="https://wttr.in/${location// /%20}"
-else
-  url="https://wttr.in"
-fi
-
+url="https://wttr.in"
 weather=$(curl -fsS --max-time 4 "$url?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
 
 if [[ -z $weather ]]; then
@@ -19,16 +13,15 @@ fi
 IFS='|' read -r place temperature wind <<< "$weather"
 place=${place%%,*}
 place=${place^}
-temperature=${temperature#+}
-temperature=${temperature//°/}
 format_temperature() {
-  local celsius=${1%C}
-  local fahrenheit=$((celsius * 9 / 5 + 32))
+  local celsius=${1#+}
+  celsius=${celsius//°/}
+  celsius=${celsius%C}
 
-  echo "${celsius}°c / ${fahrenheit}°f"
+  echo "${celsius}°c / $((celsius * 9 / 5 + 32))°f"
 }
 
 temperature=$(format_temperature "$temperature")
 wind=${wind//km\// km/}
 
-echo "$(omarchy-weather-icon)  $place  ·  $temperature  ·  Wind $wind"
+echo "$(omarchy-weather-icon)    $place  ·  $temperature  ·  Wind $wind"

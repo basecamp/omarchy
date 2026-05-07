@@ -1,12 +1,5 @@
 #!/bin/bash
 
-location=${WAYBAR_WEATHER_LOCATION:-}
-if [[ -n $location ]]; then
-  url="https://wttr.in/${location// /%20}"
-else
-  url="https://wttr.in"
-fi
-
 icon=$(omarchy-weather-icon 2>/dev/null)
 
 if [[ -z $icon ]]; then
