@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Cycles through the background images available
+# omarchy:summary=Cycle to the next background for the current theme
+# omarchy:examples=omarchy theme bg next
 
 THEME_NAME=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
 THEME_BACKGROUNDS_PATH="$HOME/.config/omarchy/current/theme/backgrounds/"

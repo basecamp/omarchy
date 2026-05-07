@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Install the NordVPN service with optional GUI.
+# omarchy:summary=Install the NordVPN service with optional GUI.
+# omarchy:requires-sudo=true
 
 echo "Installing NordVPN..."
 omarchy-pkg-aur-add nordvpn-bin

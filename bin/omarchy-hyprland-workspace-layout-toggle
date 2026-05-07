@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Toggle the layout on the current active workspace between dwindle and scrolling
+# omarchy:summary=Toggle the layout on the current active workspace between dwindle and scrolling
 
 ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
 CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Switch Omarchy branches and update from the selected branch
+# omarchy:args=<branch>
+
 set -e
 
 if (($# == 0)); then

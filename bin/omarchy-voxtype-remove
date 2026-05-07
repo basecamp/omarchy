@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# omarchy:summary=Remove Voxtype dictation and its configuration
+# omarchy:requires-sudo=true
+
 set -e
 
 # Remove voxtype and its configurations.

@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Install the ONCE service, enable its background service, and launch the TUI.
+# omarchy:summary=Install the ONCE service, enable its background service, and launch the TUI.
+# omarchy:requires-sudo=true
 
 echo "Installing ONCE..."
 omarchy-pkg-add once-bin

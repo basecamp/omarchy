@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Apply the current theme keyboard color to ASUS ROG keyboards
+# omarchy:hidden=true
+
 ASUSCTL_THEME=~/.config/omarchy/current/theme/keyboard.rgb
 
 if omarchy-cmd-present asusctl; then

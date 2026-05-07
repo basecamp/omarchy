@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Launch the passed in URL as a web app in the default browser (or chromium if the default doesn't support --app).
+# omarchy:summary=Launch a URL as a web app in the default supported browser
+# omarchy:args=<url>
 
 browser=$(xdg-settings get default-web-browser)
 

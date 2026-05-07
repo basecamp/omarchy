@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# omarchy:summary=Run the full Omarchy update pipeline
+# omarchy:requires-sudo=true
+
 set -e
 
 # Ensure screensaver/sleep doesn't set in during updates

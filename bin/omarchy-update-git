@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Pull the latest Omarchy git changes
+
 set -e
 
 echo -e "\e[32mUpdate Omarchy\e[0m"

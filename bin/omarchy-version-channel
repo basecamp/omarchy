@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Print the active Omarchy mirror and package channel
+
 if grep -q "https://stable-mirror.omarchy.org/" /etc/pacman.d/mirrorlist; then
   mirror="stable"
 elif grep -q "https://rc-mirror.omarchy.org/" /etc/pacman.d/mirrorlist; then

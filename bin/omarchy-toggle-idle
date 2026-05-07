@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# omarchy:summary=Toggle hypridle idle locking
+
 if pgrep -x hypridle >/dev/null; then
   pkill -x hypridle
   notify-send -u low "󱫖    Stop locking computer when idle"

@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Ensure we have the omarchy-keyring and it's populated
+# omarchy:summary=Ensure the Omarchy keyring package is installed and populated
+# omarchy:requires-sudo=true
+
 if omarchy-pkg-missing omarchy-keyring || ! sudo pacman-key --list-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 &>/dev/null; then
   sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
   sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
