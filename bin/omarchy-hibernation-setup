@@ -26,6 +26,11 @@ if ! $NO_REBUILD && ! command -v limine-mkinitcpio &>/dev/null; then
   exit 0
 fi
 
+if [[ $(findmnt -n -o FSTYPE /) != "btrfs" ]]; then
+  echo "Skipping hibernation setup (requires Btrfs root filesystem)"
+  exit 0
+fi
+
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 SWAP_FILE="/swap/swapfile"
 RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
