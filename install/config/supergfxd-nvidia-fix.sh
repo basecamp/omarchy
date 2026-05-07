@@ -5,9 +5,6 @@
 
 echo "Fixing NVIDIA GPU detection..."
 
-# Get absolute path for scripts
-OMARCHY_SCRIPT="$(realpath "$HOME/.local/share/omarchy/bin/omarchy-powerprofiles-set" 2>/dev/null || echo "$HOME/.local/share/omarchy/bin/omarchy-powerprofiles-set")"
-
 # Check if supergfxd is causing issues
 if systemctl is-active --quiet supergfxd 2>/dev/null; then
   echo "supergfxd is active - checking for blacklist issues..."
@@ -15,34 +12,23 @@ if systemctl is-active --quiet supergfxd 2>/dev/null; then
   # Check if nvidia modules are blacklisted
   if grep -q "blacklist nvidia" /etc/modprobe.d/supergfxd.conf 2>/dev/null; then
     echo "Found nvidia blacklist from supergfxd!"
+    echo "Removing supergfxd nvidia blacklist and restoring Hybrid mode..."
     
-    if [[ -t 0 ]]; then
-      read -p "Disable supergfxd to enable NVIDIA? (y/N) " -n 1 -r
-      echo
-      if [[ $REPLY =~ ^[Yy]$ ]]; then
-        sudo systemctl disable --now supergfxd
-        sudo rm -f /etc/modprobe.d/supergfxd.conf
-        sudo mkinitcpio -P
-        echo "✓ supergfxd disabled, NVIDIA modules will load"
-        echo "Please reboot for changes to take effect"
-      else
-        echo "Skipping supergfxd disable"
-      fi
-    else
-      # Non-interactive: just disable
-      sudo systemctl disable --now supergfxd 2>/dev/null || true
-      sudo rm -f /etc/modprobe.d/supergfxd.conf 2>/dev/null || true
-      echo "Auto-disabled supergfxd for NVIDIA compatibility"
-    fi
+    sudo rm -f /etc/modprobe.d/supergfxd.conf 2>/dev/null || true
+    
+    # Regenerate initramfs
+    sudo mkinitcpio -P 2>/dev/null || true
+
+    # Keep supergfxd available for hybrid-GPU switching flows
+    sudo systemctl enable --now supergfxd 2>/dev/null || true
+    sudo supergfxctl --mode Hybrid 2>/dev/null || true
+    
+    echo "✓ supergfxd blacklist removed"
+    echo "✓ supergfxd left enabled for GPU mode switching"
+    echo "⚠️  Please reboot for NVIDIA modules to load"
   fi
 else
   echo "supergfxd is not active, no action needed"
-fi
-
-# Also ensure NVIDIA modules are not blocked elsewhere
-if ls /etc/modprobe.d/*nvidia*.conf 2>/dev/null | grep -v supergfxd | grep -q .; then
-  echo "Warning: Other nvidia blacklist files found:"
-  ls /etc/modprobe.d/*nvidia*.conf 2>/dev/null | grep -v supergfxd
 fi
 
 echo "NVIDIA GPU detection fix complete!"
