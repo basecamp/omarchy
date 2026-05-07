@@ -22,6 +22,7 @@ fi
 if [[ -d $HOOK_DIR ]]; then
   for hook in "$HOOK_DIR"/*; do
     [[ -f $hook ]] || continue
+    [[ $hook == *.sample ]] && continue
     bash "$hook" "$@"
   done
 fi
