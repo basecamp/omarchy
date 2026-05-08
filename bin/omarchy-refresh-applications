@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Ensure all default .desktop, web apps, and TUIs are installed.
+# omarchy:summary=Ensure all default .desktop, web apps, TUIs, and npx wrappers are installed.
 
 mkdir -p ~/.local/share/icons/hicolor/48x48/apps/
 cp ~/.local/share/omarchy/applications/icons/*.png ~/.local/share/icons/hicolor/48x48/apps/
@@ -11,9 +11,14 @@ mkdir -p ~/.local/share/applications
 cp ~/.local/share/omarchy/applications/*.desktop ~/.local/share/applications/
 cp ~/.local/share/omarchy/applications/hidden/*.desktop ~/.local/share/applications/
 
-# Refresh the webapps and TUIs
+if omarchy-cmd-present foot; then
+  cp ~/.local/share/omarchy/default/foot/foot.desktop ~/.local/share/applications/
+fi
+
+# Refresh the webapps, TUIs, and npx wrappers
 bash $OMARCHY_PATH/install/packaging/icons.sh
 bash $OMARCHY_PATH/install/packaging/webapps.sh
 bash $OMARCHY_PATH/install/packaging/tuis.sh
+bash $OMARCHY_PATH/install/packaging/npx.sh
 
 update-desktop-database ~/.local/share/applications
