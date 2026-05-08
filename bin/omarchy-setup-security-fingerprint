@@ -1,26 +1,12 @@
 #!/bin/bash
 
 # omarchy:summary=Set up fingerprint authentication for sudo, polkit, and lock screen
+# omarchy:group=setup
+# omarchy:name=security-fingerprint
 # omarchy:requires-sudo=true
 
 set -e
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-print_success() {
-  echo -e "${GREEN}$1${NC}"
-}
-
-print_error() {
-  echo -e "${RED}$1${NC}"
-}
-
-print_info() {
-  echo -e "${YELLOW}$1${NC}"
-}
 
 check_fingerprint_hardware() {
   # Get fingerprint devices for the user
@@ -28,7 +14,7 @@ check_fingerprint_hardware() {
 
   # Exit if no devices found
   if [[ -z $devices ]]; then
-    print_error "\nNo fingerprint sensor detected."
+    omarchy-echo-failure "\nNo fingerprint sensor detected."
     return 1
   fi
   return 0
@@ -37,16 +23,16 @@ check_fingerprint_hardware() {
 setup_pam_config() {
   # Configure sudo
   if ! grep -q pam_fprintd.so /etc/pam.d/sudo; then
-    print_info "Configuring sudo for fingerprint authentication..."
+    omarchy-echo-info "Configuring sudo for fingerprint authentication..."
     sudo sed -i '1i auth    sufficient pam_fprintd.so' /etc/pam.d/sudo
   fi
 
   # Configure polkit
   if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
-    print_info "Configuring polkit for fingerprint authentication..."
+    omarchy-echo-info "Configuring polkit for fingerprint authentication..."
     sudo sed -i '1i auth      sufficient pam_fprintd.so' /etc/pam.d/polkit-1
   elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
-    print_info "Creating polkit configuration with fingerprint authentication..."
+    omarchy-echo-info "Creating polkit configuration with fingerprint authentication..."
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
 auth      sufficient pam_fprintd.so
 auth      required pam_unix.so
@@ -59,15 +45,15 @@ EOF
 }
 
 add_hyprlock_fingerprint_icon() {
-  print_info "Adding fingerprint icon to hyprlock placeholder text..."
+  omarchy-echo-info "Adding fingerprint icon to hyprlock placeholder text..."
   sed -i 's/placeholder_text = .*/placeholder_text = <span> Enter Password 󰈷 <\/span>/' ~/.config/hypr/hyprlock.conf
   sed -i 's/fingerprint:enabled = .*/fingerprint:enabled = true/' ~/.config/hypr/hyprlock.conf
 }
 
-print_success "Setting up fingerprint scanner for authentication.\n"
+omarchy-echo-success "Setting up fingerprint scanner for authentication.\n"
 
 # Install required packages
-print_info "Installing required packages..."
+omarchy-echo-info "Installing required packages..."
 
 # libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
 # defaults the conflict prompt to N and aborts. Pre-remove libfprint
@@ -91,21 +77,21 @@ setup_pam_config
 add_hyprlock_fingerprint_icon
 
 # Enroll first fingerprint
-print_success "\nLet's setup your right index finger as the first fingerprint."
-print_info "Keep moving the finger around on sensor until the process completes.\n"
+omarchy-echo-success "\nLet's setup your right index finger as the first fingerprint."
+omarchy-echo-info "Keep moving the finger around on sensor until the process completes.\n"
 
 if sudo fprintd-enroll "$USER"; then
-  print_success "\nFingerprint enrolled successfully!"
+  omarchy-echo-success "\nFingerprint enrolled successfully!"
 
   # Verify
-  print_info "\nNow let's verify that it's working correctly.\n"
+  omarchy-echo-info "\nNow let's verify that it's working correctly.\n"
   if fprintd-verify; then
-    print_success "\nPerfect! Fingerprint authentication is now configured."
-    print_info "You can use your fingerprint for sudo, polkit, and lock screen (Super + Escape)."
+    omarchy-echo-success "\nPerfect! Fingerprint authentication is now configured."
+    omarchy-echo-info "You can use your fingerprint for sudo, polkit, and lock screen (Super + Escape)."
   else
-    print_error "\nVerification failed. You may want to try enrolling again."
+    omarchy-echo-failure "\nVerification failed. You may want to try enrolling again."
   fi
 else
-  print_error "\nEnrollment failed. Please try again."
+  omarchy-echo-failure "\nEnrollment failed. Please try again."
   exit 1
 fi

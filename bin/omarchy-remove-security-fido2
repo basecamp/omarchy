@@ -7,42 +7,31 @@
 
 set -e
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-print_success() {
-  echo -e "${GREEN}$1${NC}"
-}
-
-print_info() {
-  echo -e "${YELLOW}$1${NC}"
-}
 
 remove_pam_config() {
   # Remove from sudo
   if grep -q pam_u2f.so /etc/pam.d/sudo; then
-    print_info "Removing FIDO2 authentication from sudo..."
+    omarchy-echo-info "Removing FIDO2 authentication from sudo..."
     sudo sed -i '/pam_u2f\.so/d' /etc/pam.d/sudo
   fi
 
   # Remove from polkit
   if [[ -f /etc/pam.d/polkit-1 ]] && grep -Fq 'pam_u2f.so' /etc/pam.d/polkit-1; then
-    print_info "Removing FIDO2 authentication from polkit..."
+    omarchy-echo-info "Removing FIDO2 authentication from polkit..."
     sudo sed -i '/pam_u2f\.so/d' /etc/pam.d/polkit-1
   fi
 }
 
-print_success "Removing FIDO2 device from authentication.\n"
+omarchy-echo-success "Removing FIDO2 device from authentication.\n"
 
 remove_pam_config
 
 if [[ -d /etc/fido2 ]]; then
-  print_info "Removing FIDO2 configuration..."
+  omarchy-echo-info "Removing FIDO2 configuration..."
   sudo rm -rf /etc/fido2
 fi
 
-print_info "Removing FIDO2 packages..."
-sudo pacman -Rns --noconfirm libfido2 pam-u2f
+omarchy-echo-info "Removing FIDO2 packages..."
+omarchy-pkg-drop libfido2 pam-u2f
 
-print_success "FIDO2 authentication has been completely removed."
+omarchy-echo-success "FIDO2 authentication has been completely removed."

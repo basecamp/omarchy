@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Print a success message in green
+# omarchy:group=echo
+# omarchy:name=echo-success
+# omarchy:args=<message>
+# omarchy:hidden=true
+
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+echo -e "${GREEN}$*${NC}"

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Print an informational message in yellow
+# omarchy:group=echo
+# omarchy:name=echo-info
+# omarchy:args=<message>
+# omarchy:hidden=true
+
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo -e "${YELLOW}$*${NC}"

@@ -330,8 +330,8 @@ show_setup_power_menu() {
 
 show_setup_security_menu() {
   case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
-  *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
-  *Fido2*) present_terminal omarchy-setup-fido2 ;;
+  *Fingerprint*) present_terminal omarchy-setup-security-fingerprint ;;
+  *Fido2*) present_terminal omarchy-setup-security-fido2 ;;
   *) show_setup_menu ;;
   esac
 }
