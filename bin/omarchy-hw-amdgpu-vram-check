@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# omarchy:summary=Warn when affected AMDGPU systems have low assigned VRAM
+# omarchy:group=hw
+# omarchy:hidden=true
+
+MIN_VRAM_GIB=4
+MIN_VRAM_BYTES=$(( MIN_VRAM_GIB * 1024 * 1024 * 1024 ))
+STATE_DIR="/run/user/$UID/omarchy"
+STATE_FILE="$STATE_DIR/amdgpu-vram-warning"
+
+read_dmi() {
+  cat "/sys/class/dmi/id/$1" 2>/dev/null
+}
+
+is_affected_system() {
+  local vendor product board
+
+  vendor=$(read_dmi sys_vendor)
+  product=$(read_dmi product_name)
+  board=$(read_dmi board_name)
+
+  [[ $vendor == "Framework" ]] && { [[ $product == *"Desktop"* ]] || [[ $board == "FRANMFCP04" ]]; }
+}
+
+amdgpu_vram_bytes() {
+  local card device vendor driver vram_file vram largest=0
+
+  for card in /sys/class/drm/card[0-9]*; do
+    [[ -d $card/device ]] || continue
+
+    device=$(readlink -f "$card/device")
+    [[ -r $device/vendor ]] || continue
+    vendor=$(<"$device/vendor")
+    [[ $vendor == "0x1002" ]] || continue
+
+    driver=$(basename "$(readlink -f "$device/driver" 2>/dev/null)")
+    [[ $driver == "amdgpu" ]] || continue
+
+    vram_file="$device/mem_info_vram_total"
+    [[ -r $vram_file ]] || continue
+    vram=$(<"$vram_file")
+    [[ $vram =~ ^[0-9]+$ ]] || continue
+
+    if (( vram > largest )); then
+      largest=$vram
+    fi
+  done
+
+  (( largest > 0 )) && echo $largest
+}
+
+format_gib() {
+  awk -v bytes="$1" 'BEGIN { printf "%.1f GiB", bytes / 1024 / 1024 / 1024 }'
+}
+
+is_affected_system || exit 0
+
+vram_bytes=$(amdgpu_vram_bytes)
+[[ -n $vram_bytes ]] || exit 0
+(( vram_bytes < MIN_VRAM_BYTES )) || exit 0
+
+mkdir -p "$STATE_DIR"
+warning_key="$vram_bytes:$MIN_VRAM_BYTES"
+[[ -f $STATE_FILE && $(<"$STATE_FILE") == "$warning_key" ]] && exit 0
+
+echo "$warning_key" >"$STATE_FILE"
+
+notify-send -u critical -t 30000 \
+  "󰍛    AMD GPU VRAM may be too low" \
+  "Assigned VRAM is $(format_gib $vram_bytes). Framework Desktop AMD systems have reported hard freezes with low UMA/VRAM. Consider increasing UMA/VRAM in BIOS to at least ${MIN_VRAM_GIB} GiB, preferably 8–16 GiB for high-resolution or multi-monitor setups."
