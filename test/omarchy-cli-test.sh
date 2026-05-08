@@ -69,8 +69,8 @@ pass "fallback commands are inferred and documented"
 "$CLI" commands --all --json | jq -e '.commands[] | select(.route == "omarchy dev benchmark")' >/dev/null
 pass "benchmark command is discoverable in all commands"
 
-"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-pkg-add" and .route == "omarchy install package" and .filename_route == "omarchy pkg add" and (.routes | index("omarchy pkg add")))' >/dev/null
-pass "JSON exposes canonical and filename-derived routes"
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-pkg-add" and .route == "omarchy pkg add" and .filename_route == "omarchy pkg add" and (.routes | index("omarchy pkg add")))' >/dev/null
+pass "JSON exposes direct pkg add route"
 
 "$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-refresh-pacman" and .requires_sudo == true)' >/dev/null
 pass "sudo metadata marks sudo commands"
@@ -79,11 +79,12 @@ output=$("$CLI" theme --help)
 assert_output_contains "group help renders" "$output" "Theme commands"
 
 output=$("$CLI" install --help)
-assert_output_contains "install group help renders" "$output" "omarchy install package <packages...>"
+assert_output_contains "install group help renders" "$output" "Install commands"
+assert_output_contains "install group includes browser route" "$output" "omarchy install browser"
 
 output=$("$CLI" install)
 assert_output_contains "bare group renders help instead of picker" "$output" "Install commands"
-assert_output_contains "bare group includes package route" "$output" "omarchy install package <packages...>"
+assert_output_contains "bare group includes browser route" "$output" "omarchy install browser"
 
 output=$("$CLI" toggle)
 assert_output_contains "bare root command with children renders help" "$output" "Toggle commands"
@@ -99,6 +100,10 @@ assert_output_contains "restart group includes all restart commands" "$output" "
 output=$("$CLI" hw --help)
 assert_output_contains "hardware group help renders" "$output" "omarchy hw asus rog"
 assert_output_contains "hardware group includes touchpad" "$output" "omarchy hw touchpad"
+
+output=$("$CLI" hw asus)
+assert_output_contains "partial hardware prefix renders matching commands" "$output" "omarchy hw asus rog"
+assert_output_contains "partial hardware prefix includes nested match" "$output" "omarchy hw asus zenbook ux5406aa"
 
 output=$("$CLI" menu --help)
 assert_output_contains "menu group includes share fallback route" "$output" "omarchy menu share"
@@ -162,8 +167,8 @@ assert_output_contains "root alias resolves to command help" "$output" "omarchy-
 pass "aliases are included in JSON metadata"
 
 output=$("$CLI" pkg add --help)
-assert_output_contains "fallback route resolves to curated metadata" "$output" "omarchy-pkg-add"
-assert_output_contains "fallback route shows canonical route" "$output" "omarchy install package <packages...>"
+assert_output_contains "pkg add help resolves" "$output" "omarchy-pkg-add"
+assert_output_contains "pkg add help shows direct route" "$output" "omarchy pkg add <packages...>"
 
 output=$("$CLI" system reboot --help)
 assert_output_contains "system command help is safe" "$output" "omarchy-system-reboot"
