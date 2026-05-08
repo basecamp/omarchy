@@ -330,8 +330,8 @@ show_setup_power_menu() {
 
 show_setup_security_menu() {
   case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
-  *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
-  *Fido2*) present_terminal omarchy-setup-fido2 ;;
+  *Fingerprint*) present_terminal omarchy-setup-security-fingerprint ;;
+  *Fido2*) present_terminal omarchy-setup-security-fido2 ;;
   *) show_setup_menu ;;
   esac
 }
@@ -644,7 +644,7 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Browser\n  Web App\n  TUI\n󰵮  Development\n  Gaming\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Browser\n  Web App\n  TUI\n󰵮  Development\n  Gaming\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n  Security") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Browser*) show_remove_browser_menu ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
@@ -655,9 +655,16 @@ show_remove_menu() {
   *Dictation*) present_terminal omarchy-voxtype-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
   *Windows*) present_terminal "omarchy-windows-vm remove" ;;
-  *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
-  *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
+  *Security*) show_remove_security_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_remove_security_menu() {
+  case $(menu "Remove" "󰈷  Fingerprint\n  Fido2") in
+  *Fingerprint*) present_terminal omarchy-remove-security-fingerprint ;;
+  *Fido2*) present_terminal omarchy-remove-security-fido2 ;;
+  *) show_remove_menu ;;
   esac
 }
 
