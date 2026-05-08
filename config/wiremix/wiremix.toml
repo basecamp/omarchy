@@ -15,6 +15,29 @@ types = [ "stream" ]
 matches = [ { "client:application.name" = "spotify" } ]
 templates = [ "Spotify" ]
 
+# Cliamp is an ALSA app routed through pipewire-alsa, which sets
+# application.name to "PipeWire ALSA [cliamp]". Match on the binary name
+# instead so the stream shows as "C L I A M P" (matching its own branding).
+[[names.overrides]]
+types = [ "stream" ]
+matches = [ { "client:application.process.binary" = "cliamp" } ]
+templates = [ "C L I A M P" ]
+
+# Chromium and Brave use node.name=<browser> and media.name="Playback", so
+# the default template renders the redundant "<browser>: Playback". Drop the
+# suffix since it carries no information (Chromium-based browsers don't
+# expose tab title or URL via PipeWire — that's MPRIS-only). Firefox is
+# fine as-is: it puts the page title in media.name.
+[[names.overrides]]
+types = [ "stream" ]
+matches = [ { "client:application.name" = "Chromium" } ]
+templates = [ "Chromium" ]
+
+[[names.overrides]]
+types = [ "stream" ]
+matches = [ { "client:application.name" = "Brave" } ]
+templates = [ "Brave" ]
+
 # Catch-all for any other GStreamer pipeline that ships with the same
 # untagged "audio-src" media name.
 [[names.overrides]]

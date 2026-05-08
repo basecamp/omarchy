@@ -1,4 +1,4 @@
-echo "Add wiremix name overrides for poorly-tagged GStreamer streams (e.g., Spotify)"
+echo "Add wiremix name overrides for poorly-tagged streams (Spotify, cliamp, Chromium, Brave)"
 
 config=~/.config/wiremix/wiremix.toml
 [[ -f $config ]] || exit 0
@@ -19,6 +19,44 @@ if ! grep -qF '"client:application.name" = "spotify"' "$config"; then
 types = [ "stream" ]
 matches = [ { "client:application.name" = "spotify" } ]
 templates = [ "Spotify" ]
+EOF
+fi
+
+if ! grep -qF '"client:application.process.binary" = "cliamp"' "$config"; then
+  cat <<'EOF' >>"$config"
+
+# Cliamp is an ALSA app routed through pipewire-alsa, which sets
+# application.name to "PipeWire ALSA [cliamp]". Match on the binary name
+# instead so the stream shows as "C L I A M P" (matching its own branding).
+[[names.overrides]]
+types = [ "stream" ]
+matches = [ { "client:application.process.binary" = "cliamp" } ]
+templates = [ "C L I A M P" ]
+EOF
+fi
+
+if ! grep -qF '"client:application.name" = "Chromium"' "$config"; then
+  cat <<'EOF' >>"$config"
+
+# Chromium and Brave use node.name=<browser> and media.name="Playback", so
+# the default template renders the redundant "<browser>: Playback". Drop the
+# suffix since it carries no information (Chromium-based browsers don't
+# expose tab title or URL via PipeWire — that's MPRIS-only). Firefox is
+# fine as-is: it puts the page title in media.name.
+[[names.overrides]]
+types = [ "stream" ]
+matches = [ { "client:application.name" = "Chromium" } ]
+templates = [ "Chromium" ]
+EOF
+fi
+
+if ! grep -qF '"client:application.name" = "Brave"' "$config"; then
+  cat <<'EOF' >>"$config"
+
+[[names.overrides]]
+types = [ "stream" ]
+matches = [ { "client:application.name" = "Brave" } ]
+templates = [ "Brave" ]
 EOF
 fi
 
