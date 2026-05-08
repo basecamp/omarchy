@@ -264,13 +264,17 @@ show_screensaver_menu() {
   case $(menu "Screensaver" "  Edit Text\n  Set From Image\n  Restore Default") in
   *Text*) edit_screensaver_text ;;
   *Image*) set_screensaver_from_image ;;
-  *Default*) terminal bash -lc 'omarchy-screensaver-logo default; echo; read -n 1 -s -r -p "Press any key to close..."' ;;
+  *Default*) restore_default_screensaver ;;
   *) show_style_menu ;;
   esac
 }
 
 edit_screensaver_text() {
   omarchy-launch-editor ~/.config/omarchy/branding/screensaver.txt && omarchy-launch-screensaver force
+}
+
+restore_default_screensaver() {
+  omarchy-screensaver-logo default && omarchy-launch-screensaver force
 }
 
 set_screensaver_from_image() {
