@@ -644,17 +644,17 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Browser\n  Web App\n  TUI\n󰵮  Development\n  Gaming\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n  Security") in
+  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n󰸌  Theme\n  Browser\n  Dictation\n  Gaming\n󰍲  Windows\n󰏓  Preinstalls\n  Security") in
   *Package*) terminal omarchy-pkg-remove ;;
-  *Browser*) show_remove_browser_menu ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Development*) show_remove_development_menu ;;
-  *Gaming*) show_remove_gaming_menu ;;
-  *Preinstalls*) present_terminal omarchy-remove-preinstalls ;;
-  *Dictation*) present_terminal omarchy-voxtype-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
+  *Browser*) show_remove_browser_menu ;;
+  *Dictation*) present_terminal omarchy-voxtype-remove ;;
+  *Gaming*) show_remove_gaming_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm remove" ;;
+  *Preinstalls*) present_terminal omarchy-remove-preinstalls ;;
   *Security*) show_remove_security_menu ;;
   *) show_main_menu ;;
   esac
