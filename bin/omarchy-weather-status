@@ -13,7 +13,5 @@ IFS='|' read -r place temperature wind <<< "$weather"
 place=${place%%,*}
 place=${place^}
 temperature=${temperature#+}
-# wttr.in returns locale-appropriate units already (e.g. °F/mph in the US),
-# so display the values as-is instead of forcing metric-to-imperial conversion.
 
 echo "$(omarchy-weather-icon)    $place  ·  Temp $temperature  ·  Wind $wind"
