@@ -261,27 +261,23 @@ show_style_menu() {
 }
 
 show_screensaver_menu() {
-  case $(menu "Screensaver" "  Edit Text\n  Set From Image\n󱄄  Preview\n  Restore Default") in
-  *Text*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
+  case $(menu "Screensaver" "  Edit Text\n  Set From Image\n  Restore Default") in
+  *Text*) edit_screensaver_text ;;
   *Image*) set_screensaver_from_image ;;
-  *Preview*) omarchy-launch-screensaver force ;;
   *Default*) terminal bash -lc 'omarchy-screensaver-logo default; echo; read -n 1 -s -r -p "Press any key to close..."' ;;
   *) show_style_menu ;;
   esac
 }
 
+edit_screensaver_text() {
+  omarchy-launch-editor ~/.config/omarchy/branding/screensaver.txt && omarchy-launch-screensaver force
+}
+
 set_screensaver_from_image() {
-  terminal bash -lc '
-    image=$(fd --type file --ignore-case --extension svg --extension png . "$HOME" 2>/dev/null | fzf --prompt "Logo image> ")
-    if [[ -n $image ]]; then
-      if omarchy-screensaver-logo "$image"; then
-        echo
-        echo "Preview with: omarchy-launch-screensaver force"
-      fi
-      echo
-      read -n 1 -s -r -p "Press any key to close..."
-    fi
-  '
+  local image=$(omarchy-menu-file "Logo image" "$HOME" "svg png")
+  if [[ -n $image ]] && omarchy-screensaver-logo "$image"; then
+    omarchy-launch-screensaver force
+  fi
 }
 
 show_theme_menu() {
