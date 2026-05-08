@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Delay startup to allow network initialization after boot
-sleep 5
-
 icon=$(omarchy-weather-icon 2>/dev/null)
 
 if [[ -n $icon ]]; then
