@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# omarchy:summary=Send a desktop notification with Omarchy glyph and body spacing
+# omarchy:args=<glyph> <headline> [description] [notify-send options]
+# omarchy:examples=omarchy notification send "󰔛" "Reminder" "5 minutes are up" -u critical
+
+set -euo pipefail
+
+if (($# < 2)); then
+  echo "Usage: omarchy-notification-send <glyph> <headline> [description] [notify-send options]"
+  exit 1
+fi
+
+glyph=$1
+headline=$2
+description=${3:-}
+shift 2
+
+if (($# > 0)) && [[ $1 != -* ]]; then
+  shift
+else
+  description=""
+fi
+
+summary="$glyph    $headline"
+
+if [[ -n $description ]]; then
+  description=$(sed 's/^/      /' <<<"$description")
+  notify-send "$@" "$summary" "$description"
+else
+  notify-send "$@" "$summary"
+fi
