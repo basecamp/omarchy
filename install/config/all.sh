@@ -44,6 +44,7 @@ run_logged $OMARCHY_INSTALL/config/hardware/vulkan.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/video-acceleration.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/lpmd.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/thermald.sh
+run_logged $OMARCHY_INSTALL/config/hardware/intel/ipu6-camera.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/ipu7-camera.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/ptl-kernel.sh
 run_logged $OMARCHY_INSTALL/config/hardware/intel/fred.sh
