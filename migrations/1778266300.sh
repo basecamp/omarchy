@@ -3,10 +3,8 @@ echo "Add Intel IPU6 MIPI camera support for Tiger/Alder/Raptor Lake"
 if lspci | grep -qi "Intel Corporation.*IPU" && \
    ! grep -q "OVTI08F4" /sys/bus/acpi/devices/*/hid 2>/dev/null; then
 
-  if omarchy-pkg-missing libcamera-ipu6; then
-    omarchy-pkg-aur-add intel-ipu6-camera-hal-git libcamera-ipu6 libcamera-ipu6-ipa gst-plugin-libcamera-ipu6
-    omarchy-pkg-add pipewire-libcamera
-  fi
+  omarchy-pkg-aur-add intel-ipu6-camera-hal-git libcamera-ipu6 libcamera-ipu6-ipa gst-plugin-libcamera-ipu6
+  omarchy-pkg-add pipewire-libcamera
 
   sudo usermod -aG video "${USER}"
 
