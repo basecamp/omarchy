@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# omarchy:summary=Set the default browser for Omarchy and XDG handlers
+# omarchy:args=[chromium|chrome|brave|brave-origin|edge|firefox|zen]
+# omarchy:examples=omarchy default browser firefox | omarchy default browser brave
+
+if (($# == 0)); then
+  case "$(xdg-settings get default-web-browser)" in
+  chromium.desktop) echo "chromium" ;;
+  google-chrome.desktop) echo "chrome" ;;
+  brave-browser.desktop) echo "brave" ;;
+  brave-origin-beta.desktop) echo "brave-origin" ;;
+  microsoft-edge.desktop) echo "edge" ;;
+  firefox.desktop) echo "firefox" ;;
+  zen.desktop) echo "zen" ;;
+  *) xdg-settings get default-web-browser ;;
+  esac
+  exit 0
+fi
+
+case "$1" in
+chromium) desktop_id="chromium.desktop"; name="Chromium"; glyph="" ;;
+chrome) desktop_id="google-chrome.desktop"; name="Chrome"; glyph="󰊯" ;;
+brave) desktop_id="brave-browser.desktop"; name="Brave"; glyph="󰖟" ;;
+brave-origin) desktop_id="brave-origin-beta.desktop"; name="Brave Origin"; glyph="󰖟" ;;
+edge) desktop_id="microsoft-edge.desktop"; name="Edge"; glyph="󰇩" ;;
+firefox) desktop_id="firefox.desktop"; name="Firefox"; glyph="󰈹" ;;
+zen) desktop_id="zen.desktop"; name="Zen"; glyph="󰰷" ;;
+*)
+  echo "Usage: omarchy-default-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
+  exit 1
+  ;;
+esac
+
+xdg-settings set default-web-browser "$desktop_id"
+xdg-mime default "$desktop_id" x-scheme-handler/http
+xdg-mime default "$desktop_id" x-scheme-handler/https
+xdg-mime default "$desktop_id" text/html
+
+notify-send -u low "$glyph    $name is now the default browser"
