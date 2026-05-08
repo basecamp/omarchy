@@ -120,7 +120,7 @@ show_reminder_menu() {
 
 show_custom_reminder_input() {
   local minutes
-  minutes=$(input "Reminder minutes")
+  minutes=$(input "Remind in minutes")
 
   if [[ $minutes =~ ^[0-9]+$ ]] && ((minutes > 0)); then
     show_reminder_message_input "$minutes"
