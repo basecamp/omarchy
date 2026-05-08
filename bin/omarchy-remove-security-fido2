@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# omarchy:summary=Remove FIDO2 authentication from sudo and polkit
+# omarchy:requires-sudo=true
+
+set -e
+
+
+remove_pam_config() {
+  # Remove from sudo
+  if grep -q pam_u2f.so /etc/pam.d/sudo; then
+    echo "Removing FIDO2 authentication from sudo..."
+    sudo sed -i '/pam_u2f\.so/d' /etc/pam.d/sudo
+  fi
+
+  # Remove from polkit
+  if [[ -f /etc/pam.d/polkit-1 ]] && grep -Fq 'pam_u2f.so' /etc/pam.d/polkit-1; then
+    echo "Removing FIDO2 authentication from polkit..."
+    sudo sed -i '/pam_u2f\.so/d' /etc/pam.d/polkit-1
+  fi
+}
+
+echo -e "\e[32mRemoving FIDO2 device from authentication.\n\e[0m"
+
+remove_pam_config
+
+if [[ -d /etc/fido2 ]]; then
+  echo "Removing FIDO2 configuration..."
+  sudo rm -rf /etc/fido2
+fi
+
+echo "Removing FIDO2 packages..."
+omarchy-pkg-drop libfido2 pam-u2f
+
+echo -e "\e[32mFIDO2 authentication has been completely removed.\e[0m"
