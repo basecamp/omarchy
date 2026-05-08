@@ -47,5 +47,14 @@ EOF
 
 fi
 
-# Enable PipeWire camera portal for Chromium (benefits all PipeWire users, not IPU6-specific)
+# Enable PipeWire camera portal in all installed Omarchy-managed browsers (not IPU6-specific)
 omarchy-refresh-chromium
+
+chromium_flags="$OMARCHY_PATH/config/chromium-flags.conf"
+firefox_policy="$OMARCHY_PATH/default/firefox/policies.json"
+
+[ -f ~/.config/chrome-flags.conf ]                 && cp -f "$chromium_flags" ~/.config/chrome-flags.conf
+[ -f ~/.config/microsoft-edge-stable-flags.conf ]  && cp -f "$chromium_flags" ~/.config/microsoft-edge-stable-flags.conf
+[ -f ~/.config/brave-flags.conf ]                  && cp -f "$chromium_flags" ~/.config/brave-flags.conf
+[ -f /usr/lib/firefox/distribution/policies.json ] && sudo cp -f "$firefox_policy" /usr/lib/firefox/distribution/policies.json
+[ -f /opt/zen-browser/distribution/policies.json ] && sudo cp -f "$firefox_policy" /opt/zen-browser/distribution/policies.json
