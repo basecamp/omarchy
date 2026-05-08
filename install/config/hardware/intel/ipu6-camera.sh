@@ -40,7 +40,8 @@ EOF
   systemctl --user daemon-reload
 
   sudo mkdir -p /usr/share/libcamera/ipa/simple
-  sudo tee /usr/share/libcamera/ipa/simple/ov02c10.yaml > /dev/null << 'EOF'
+  if [ ! -f /usr/share/libcamera/ipa/simple/ov02c10.yaml ]; then
+    sudo tee /usr/share/libcamera/ipa/simple/ov02c10.yaml > /dev/null << 'EOF'
 # SPDX-License-Identifier: CC0-1.0
 # Minimal tuning for OmniVision OV02C10 (2MP, 1928x1092, SGRBG10).
 # No upstream calibration data exists yet — based on ov01a10 (same family).
@@ -56,5 +57,6 @@ algorithms:
   - Agc:
 ...
 EOF
+  fi
 
 fi
