@@ -1,8 +1,6 @@
 #!/bin/bash
 
 # omarchy:summary=Set up FIDO2 authentication for sudo and polkit
-# omarchy:group=setup
-# omarchy:name=security-fido2
 # omarchy:requires-sudo=true
 
 set -e

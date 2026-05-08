@@ -1,8 +1,6 @@
 #!/bin/bash
 
 # omarchy:summary=Print a success message in green
-# omarchy:group=echo
-# omarchy:name=echo-success
 # omarchy:args=<message>
 
 GREEN='\033[0;32m'

@@ -1,8 +1,6 @@
 #!/bin/bash
 
 # omarchy:summary=Set up fingerprint authentication for sudo, polkit, and lock screen
-# omarchy:group=setup
-# omarchy:name=security-fingerprint
 # omarchy:requires-sudo=true
 
 set -e

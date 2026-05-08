@@ -1,8 +1,6 @@
 #!/bin/bash
 
 # omarchy:summary=Print a failure message in red
-# omarchy:group=echo
-# omarchy:name=echo-failure
 # omarchy:args=<message>
 
 RED='\033[0;31m'

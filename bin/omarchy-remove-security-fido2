@@ -1,8 +1,6 @@
 #!/bin/bash
 
 # omarchy:summary=Remove FIDO2 authentication from sudo and polkit
-# omarchy:group=remove
-# omarchy:name=security-fido2
 # omarchy:requires-sudo=true
 
 set -e
