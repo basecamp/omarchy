@@ -2,7 +2,7 @@
 
 # omarchy:summary=Returns a formatted weather status string with temperature and wind speed.
 
-weather=$(curl -fsS --max-time 4 "https://wttr.in?m&format=%l|%t|%w" 2>/dev/null | tr -d '\n')
+weather=$(curl -fsS --max-time 4 "https://wttr.in?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
 
 if [[ -z $weather ]]; then
   echo "Weather unavailable"
@@ -12,15 +12,6 @@ fi
 IFS='|' read -r place temperature wind <<< "$weather"
 place=${place%%,*}
 place=${place^}
-format_temperature() {
-  local celsius=${1#+}
-  celsius=${celsius//°/}
-  celsius=${celsius%C}
-
-  echo "${celsius}°c / $((celsius * 9 / 5 + 32))°f"
-}
-
-temperature=$(format_temperature "$temperature")
-wind=${wind//km\// km/}
+temperature=${temperature#+}
 
 echo "$(omarchy-weather-icon)    $place  ·  Temp $temperature  ·  Wind $wind"
