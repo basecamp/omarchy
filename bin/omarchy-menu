@@ -102,7 +102,7 @@ show_trigger_menu() {
   case $(menu "Trigger" "󰔛  Reminder\n  Capture\n󰧸  Transcode\n  Share\n󰔎  Toggle\n  Hardware") in
   *Reminder*) show_reminder_menu ;;
   *Capture*) show_capture_menu ;;
-  *Transcode*) show_transcode_menu ;;
+  *Transcode*) omarchy-transcode ;;
   *Share*) show_share_menu ;;
   *Toggle*) show_toggle_menu ;;
   *Hardware*) show_hardware_menu ;;
@@ -205,14 +205,6 @@ show_share_menu() {
   *Clipboard*) omarchy-menu-share clipboard ;;
   *File*) terminal bash -c "omarchy-menu-share file" ;;
   *Folder*) terminal bash -c "omarchy-menu-share folder" ;;
-  *) back_to show_trigger_menu ;;
-  esac
-}
-
-show_transcode_menu() {
-  case $(menu "Transcode" "  Picture\n  Video") in
-  *Picture*) present_terminal "omarchy-transcode --path '$HOME/Pictures'" ;;
-  *Video*) present_terminal "omarchy-transcode --path '$HOME/Videos'" ;;
   *) back_to show_trigger_menu ;;
   esac
 }
@@ -857,7 +849,6 @@ go_to_menu() {
   *toggle*) show_toggle_menu ;;
   *hardware*) show_hardware_menu ;;
   *share*) show_share_menu ;;
-  *transcode*) show_transcode_menu ;;
   *reminder-set*) show_custom_reminder_input ;;
   *reminder*) show_reminder_menu ;;
   *background*) show_background_menu ;;

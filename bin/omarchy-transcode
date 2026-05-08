@@ -13,7 +13,7 @@ usage() {
 Usage:
   omarchy transcode [--path path] [input] [format] [resolution]
 
-With no input, fuzzy-pick a picture or video from ~/Pictures and ~/Videos,
+With no input, pick a picture or video with Walker from ~/Pictures and ~/Videos,
 or only from --path when provided. Then pick the output format and resolution.
 
 Options:
@@ -27,30 +27,6 @@ Resolutions:
   Pictures: high, medium, low
   Videos: 4k, 1080p, 720p
 EOF
-}
-
-pick_file() {
-  local search_path="$1"
-  local paths=()
-
-  if [[ -n $search_path ]]; then
-    [[ -e $search_path ]] || { echo "Path not found: $search_path" >&2; return 1; }
-    paths=("$search_path")
-  else
-    paths=("$HOME/Pictures" "$HOME/Videos")
-  fi
-
-  find "${paths[@]}" -type f \
-    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.heic' -o -iname '*.avif' \
-    -o -iname '*.mp4' -o -iname '*.mov' -o -iname '*.m4v' -o -iname '*.mkv' -o -iname '*.webm' -o -iname '*.avi' \) \
-    -printf '%T@\t%p\n' 2>/dev/null | sort -rn | cut -f2- | fzf --layout=reverse-list --prompt="Transcode file> "
-}
-
-pick_option() {
-  local prompt="$1"
-  shift
-
-  gum choose --header "$prompt" "$@"
 }
 
 media_type() {
@@ -187,9 +163,10 @@ main() {
   input="${positional[0]:-}"
   format="${positional[1]:-}"
   resolution="${positional[2]:-}"
+  search_path="${search_path:-$HOME/Pictures:$HOME/Videos}"
 
   if [[ -z $input ]]; then
-    input=$(pick_file "$search_path")
+    input=$(omarchy-menu-file "Transcode picture or video" "$search_path" "jpg jpeg png webp gif heic avif mp4 mov m4v mkv webm avi")
   fi
 
   [[ -n $input ]] || return 1
@@ -199,33 +176,32 @@ main() {
 
   if [[ -z $format ]]; then
     if [[ $type == "picture" ]]; then
-      format=$(pick_option "Select format..." jpg png)
+      format=$(omarchy-menu-select "Select format" jpg png)
     else
-      format=$(pick_option "Select format..." mp4 gif)
+      format=$(omarchy-menu-select "Select format" mp4 gif)
     fi
   fi
 
   if [[ -z $resolution ]]; then
     if [[ $type == "picture" ]]; then
-      resolution=$(pick_option "Select resolution..." high medium low)
+      resolution=$(omarchy-menu-select "Select resolution" high medium low)
     else
-      resolution=$(pick_option "Select resolution..." 4k 1080p 720p)
+      resolution=$(omarchy-menu-select "Select resolution" 4k 1080p 720p)
     fi
   fi
 
   output=$(output_path "$input" "$format" "$resolution")
 
-  if [[ $type == "picture" ]]; then
-    transcode_picture "$input" "$format" "$resolution" "$output"
-  else
+  if [[ $type == "video" ]]; then
+    omarchy-notification-send "" "Transcoding video…" "$(basename -- "$input") to $format ($resolution)"
     transcode_video "$input" "$format" "$resolution" "$output"
-    echo ""
+    copy_to_clipboard "$output"
+    omarchy-notification-send "" "Transcoded to $resolution $format" "Saved and copied to clipboard."
+  else
+    transcode_picture "$input" "$format" "$resolution" "$output"
+    copy_to_clipboard "$output"
+    omarchy-notification-send "" "Transcoded to $resolution $format" "Saved and copied to clipboard."
   fi
-
-  copy_to_clipboard "$output"
-  echo "Your $type has been transcoded into $format as $resolution. It's on your clipboard."
-  echo ""
-  echo "It's also in $output"
 }
 
 main "$@"
