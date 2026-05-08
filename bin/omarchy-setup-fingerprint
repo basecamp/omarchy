@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Set up or remove fingerprint authentication for sudo, polkit, and lock screen
-# omarchy:args=[--remove]
+# omarchy:summary=Set up fingerprint authentication for sudo, polkit, and lock screen
 # omarchy:requires-sudo=true
 
 set -e
@@ -65,97 +64,48 @@ add_hyprlock_fingerprint_icon() {
   sed -i 's/fingerprint:enabled = .*/fingerprint:enabled = true/' ~/.config/hypr/hyprlock.conf
 }
 
-remove_hyprlock_fingerprint_icon() {
-  print_info "Removing fingerprint icon from hyprlock placeholder text..."
-  sed -i 's/placeholder_text = .*/placeholder_text = Enter Password/' ~/.config/hypr/hyprlock.conf
-  sed -i 's/fingerprint:enabled = .*/fingerprint:enabled = false/' ~/.config/hypr/hyprlock.conf
-}
+print_success "Setting up fingerprint scanner for authentication.\n"
 
-remove_pam_config() {
-  # Remove from sudo
-  if grep -q pam_fprintd.so /etc/pam.d/sudo; then
-    print_info "Removing fingerprint authentication from sudo..."
-    sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/sudo
-  fi
+# Install required packages
+print_info "Installing required packages..."
 
-  # Remove from polkit
-  if [[ -f /etc/pam.d/polkit-1 ]] && grep -Fq 'pam_fprintd.so' /etc/pam.d/polkit-1; then
-    print_info "Removing fingerprint authentication from polkit..."
-    sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/polkit-1
-  fi
-}
+# libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
+# defaults the conflict prompt to N and aborts. Pre-remove libfprint
+# with -Rdd so the install goes silent. -Rdd (not omarchy-pkg-drop's
+# -Rns) is required because fprintd requires libfprint; the dep is
+# re-satisfied immediately by libfprint-git's provides=libfprint.
+if omarchy-pkg-present libfprint; then
+  sudo pacman -Rdd --noconfirm libfprint
+fi
 
-if [[ "--remove" == $1 ]]; then
-  print_success "Removing fingerprint scanner from authentication.\n"
+omarchy-pkg-add libfprint-git fprintd usbutils
 
-  # Remove PAM configuration
-  remove_pam_config
+if ! check_fingerprint_hardware; then
+  exit 1
+fi
 
-  # Remove fingerprint icon from hyprlock placeholder text
-  remove_hyprlock_fingerprint_icon
+# Configure PAM
+setup_pam_config
 
-  # Uninstall packages
-  print_info "Removing fingerprint packages..."
-  sudo pacman -Rns --noconfirm fprintd
+# Add fingerprint icon to hyprlock placeholder text
+add_hyprlock_fingerprint_icon
 
-  print_success "Fingerprint authentication has been completely removed."
-else
-  print_success "Setting up fingerprint scanner for authentication.\n"
+# Enroll first fingerprint
+print_success "\nLet's setup your right index finger as the first fingerprint."
+print_info "Keep moving the finger around on sensor until the process completes.\n"
 
-  # Install required packages
-  print_info "Installing required packages..."
+if sudo fprintd-enroll "$USER"; then
+  print_success "\nFingerprint enrolled successfully!"
 
-  # ASUS ExpertBook B9406CAA ships a FocalTech FT9349 ESS reader (USB
-  # 2808:a97a). Mainline libfprint at 1.94.x lacks the focaltech_moc
-  # driver (and its 0xa97a id_table entry); OPR ships libfprint-git
-  # which carries both. Once upstream catches up, this branch is a
-  # no-op and `libfprint-git` provides=libfprint anyway. Detect via
-  # /sys to avoid depending on usbutils being installed first.
-  for v in /sys/bus/usb/devices/*/idVendor; do
-    [[ "$(cat "$v" 2>/dev/null)" == "2808" ]] || continue
-    [[ "$(cat "${v%idVendor}idProduct" 2>/dev/null)" == "a97a" ]] || continue
-    print_info "FocalTech FT9349 detected (B9406CAA) — using libfprint-git from OPR..."
-    # libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
-    # defaults the conflict prompt to N and aborts. Pre-remove libfprint
-    # with -Rdd so the install goes silent. -Rdd (not omarchy-pkg-drop's
-    # -Rns) is required because fprintd requires libfprint; the dep is
-    # re-satisfied immediately by libfprint-git's provides=libfprint.
-    if omarchy-pkg-present libfprint; then
-      sudo pacman -Rdd --noconfirm libfprint
-    fi
-    omarchy-pkg-add libfprint-git
-    break
-  done
-
-  omarchy-pkg-add fprintd usbutils
-
-  if ! check_fingerprint_hardware; then
-    exit 1
-  fi
-
-  # Configure PAM
-  setup_pam_config
-
-  # Add fingerprint icon to hyprlock placeholder text
-  add_hyprlock_fingerprint_icon
-
-  # Enroll first fingerprint
-  print_success "\nLet's setup your right index finger as the first fingerprint."
-  print_info "Keep moving the finger around on sensor until the process completes.\n"
-
-  if sudo fprintd-enroll "$USER"; then
-    print_success "\nFingerprint enrolled successfully!"
-
-    # Verify
-    print_info "\nNow let's verify that it's working correctly.\n"
-    if fprintd-verify; then
-      print_success "\nPerfect! Fingerprint authentication is now configured."
-      print_info "You can use your fingerprint for sudo, polkit, and lock screen (Super + Escape)."
-    else
-      print_error "\nVerification failed. You may want to try enrolling again."
-    fi
+  # Verify
+  print_info "\nNow let's verify that it's working correctly.\n"
+  if fprintd-verify; then
+    print_success "\nPerfect! Fingerprint authentication is now configured."
+    print_info "You can use your fingerprint for sudo, polkit, and lock screen (Super + Escape)."
   else
-    print_error "\nEnrollment failed. Please try again."
-    exit 1
+    print_error "\nVerification failed. You may want to try enrolling again."
   fi
+else
+  print_error "\nEnrollment failed. Please try again."
+  exit 1
 fi
