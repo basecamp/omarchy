@@ -241,7 +241,7 @@ show_hardware_menu() {
     options="$options\n󰆽  Touchscreen"
   fi
 
-  case $(menu "Hardware" "$options") in
+  case $(menu "Toggle" "$options") in
   *Laptop*) omarchy-hyprland-monitor-internal toggle ;;
   *Mirror*) omarchy-hyprland-monitor-internal-mirror toggle ;;
   *Haptics*) omarchy-toggle-touchpad-haptics ;;
