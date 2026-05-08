@@ -16,7 +16,7 @@ zed | zeditor) editor="zeditor"; name="Zed"; glyph="" ;;
 sublime_text) editor="sublime_text"; name="Sublime Text"; glyph="" ;;
 helix) editor="helix"; name="Helix"; glyph="" ;;
 vim) editor="vim"; name="Vim"; glyph="" ;;
-emacs) editor="emacs"; name="Emacs"; glyph="" ;;
+emacs) editor="emacsclient"; name="Emacs"; glyph="" ;;
 nvim) editor="nvim"; name="Neovim"; glyph="" ;;
 *)
   echo "Usage: omarchy-default-editor <code|cursor|zed|sublime_text|helix|vim|emacs|nvim>"

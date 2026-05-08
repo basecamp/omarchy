@@ -404,7 +404,7 @@ show_setup_default_editor_menu() {
   sublime_text) current="  Sublime Text" ;;
   helix) current="  Helix" ;;
   vim) current="  Vim" ;;
-  emacs) current="  Emacs" ;;
+  emacs | emacsclient) current="  Emacs" ;;
   esac
 
   case $(menu "Default Editor" "$options" "" "$current") in
