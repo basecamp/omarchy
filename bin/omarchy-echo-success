@@ -1,9 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=Print a success message in green
-# omarchy:args=<message>
-
-GREEN='\033[0;32m'
-NC='\033[0m'
-
-echo -e "${GREEN}$*${NC}"
