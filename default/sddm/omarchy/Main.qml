@@ -96,6 +96,7 @@ Rectangle {
           color: "transparent"
           selectionColor: "transparent"
           selectedTextColor: "transparent"
+          cursorDelegate: Item {}
           focus: true
 
           onTextChanged: root.loginFailed = false
