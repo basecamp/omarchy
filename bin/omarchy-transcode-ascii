@@ -1,18 +1,18 @@
 #!/bin/bash
 
-# omarchy:summary=Set the screensaver logo text from an SVG/PNG or the default
-# omarchy:args=<default|path-to-logo.svg|png> [--width <columns>] [--height <rows>] [--mode <braille|block>] [--threshold <percent>] [--invert] [--stdout]
-# omarchy:examples=omarchy screensaver logo ~/logo.svg | omarchy screensaver logo default | omarchy screensaver logo ~/logo.png --width 80 --mode block --stdout
+# omarchy:summary=Transcode an image into ASCII/Unicode art text
+# omarchy:group=transcode
+# omarchy:name=ascii
+# omarchy:args=<input-image.svg|png> <output-path> [--width <columns>] [--height <rows>] [--mode <braille|block>] [--threshold <percent>] [--invert]
+# omarchy:examples=omarchy transcode ascii ~/logo.svg /tmp/logo.txt | omarchy transcode ascii ~/logo.png ~/.config/omarchy/branding/screensaver.txt --width 80
 
 set -o pipefail
 
 usage() {
   cat <<'EOF'
-Usage: omarchy-screensaver-logo <default|path-to-logo.svg|png> [options]
+Usage: omarchy-transcode-ascii <input-image.svg|png> <output-path> [options]
 
-Sets the screensaver logo text from an image.
-Pass "default" instead of an image path to restore the Omarchy default.
-By default, writes to ~/.config/omarchy/branding/screensaver.txt.
+Transcodes an image into ASCII/Unicode art text.
 
 Options:
   -w, --width <columns>       Maximum output width in terminal columns (default: 80)
@@ -21,7 +21,6 @@ Options:
   -t, --threshold <percent>   Pixel threshold from 0-100 (default: 50)
       --invert                Treat light pixels as the logo instead of dark pixels
       --no-trim               Preserve surrounding whitespace/background
-      --stdout                Print converted text instead of writing the screensaver file
       --help                  Show this help
 EOF
 }
@@ -32,9 +31,8 @@ mode=braille
 threshold=50
 invert=false
 trim=true
-output_path="$HOME/.config/omarchy/branding/screensaver.txt"
 image_path=""
-reset_default=false
+output_path=""
 
 while (($# > 0)); do
   case "$1" in
@@ -98,9 +96,6 @@ while (($# > 0)); do
   --no-trim)
     trim=false
     ;;
-  --stdout)
-    output_path="-"
-    ;;
   --)
     shift
     break
@@ -111,10 +106,10 @@ while (($# > 0)); do
     exit 1
     ;;
   *)
-    if [[ $1 == "default" && -z $image_path ]]; then
-      reset_default=true
-    elif [[ -z $image_path ]]; then
+    if [[ -z $image_path ]]; then
       image_path="$1"
+    elif [[ -z $output_path ]]; then
+      output_path="$1"
     else
       echo "Unexpected argument: $1" >&2
       usage >&2
@@ -127,10 +122,10 @@ done
 
 if (($# > 0)); then
   while (($# > 0)); do
-    if [[ $1 == "default" && -z $image_path ]]; then
-      reset_default=true
-    elif [[ -z $image_path ]]; then
+    if [[ -z $image_path ]]; then
       image_path="$1"
+    elif [[ -z $output_path ]]; then
+      output_path="$1"
     else
       echo "Unexpected argument: $1" >&2
       usage >&2
@@ -140,29 +135,7 @@ if (($# > 0)); then
   done
 fi
 
-if [[ $reset_default == "true" ]]; then
-  if [[ -n $image_path ]]; then
-    echo "default does not accept an image path" >&2
-    exit 1
-  fi
-
-  default_path="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/logo.txt"
-  if [[ ! -f $default_path ]]; then
-    echo "Default screensaver logo text not found: $default_path" >&2
-    exit 1
-  fi
-
-  if [[ $output_path == "-" ]]; then
-    cat "$default_path"
-  else
-    mkdir -p "$(dirname "$output_path")"
-    cp "$default_path" "$output_path"
-    echo "Restored default screensaver logo text to $output_path"
-  fi
-  exit 0
-fi
-
-if [[ -z $image_path ]]; then
+if [[ -z $image_path || -z $output_path ]]; then
   usage >&2
   exit 1
 fi
@@ -375,10 +348,6 @@ if [[ ! -s $tmp_output ]]; then
   exit 1
 fi
 
-if [[ $output_path == "-" ]]; then
-  cat "$tmp_output"
-else
-  mkdir -p "$(dirname "$output_path")"
-  cp "$tmp_output" "$output_path"
-  echo "Wrote screensaver logo text to $output_path"
-fi
+mkdir -p "$(dirname "$output_path")"
+cp "$tmp_output" "$output_path"
+echo "Wrote ASCII art to $output_path"

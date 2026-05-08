@@ -29,6 +29,7 @@ declare -A GROUP_DESCRIPTIONS
 GROUP_DESCRIPTIONS[ac]="AC power detection"
 GROUP_DESCRIPTIONS[battery]="Battery status helpers"
 GROUP_DESCRIPTIONS[branch]="Omarchy git branch management"
+GROUP_DESCRIPTIONS[branding]="About and screensaver branding"
 GROUP_DESCRIPTIONS[brightness]="Display and keyboard brightness"
 GROUP_DESCRIPTIONS[capture]="Screenshots and screen recording"
 GROUP_DESCRIPTIONS[channel]="Omarchy release channel management"

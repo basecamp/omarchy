@@ -255,33 +255,27 @@ show_style_menu() {
   *Background*) show_background_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
   *Screensaver*) show_screensaver_menu ;;
-  *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
+  *About*) show_about_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_about_menu() {
+  case $(menu "About" "  Edit Text\n  Set From Image\n  Restore Default") in
+  *Text*) omarchy-branding-about text ;;
+  *Image*) omarchy-branding-about image ;;
+  *Default*) omarchy-branding-about reset ;;
+  *) show_style_menu ;;
   esac
 }
 
 show_screensaver_menu() {
   case $(menu "Screensaver" "  Edit Text\n  Set From Image\n  Restore Default") in
-  *Text*) edit_screensaver_text ;;
-  *Image*) set_screensaver_from_image ;;
-  *Default*) restore_default_screensaver ;;
+  *Text*) omarchy-branding-screensaver text ;;
+  *Image*) omarchy-branding-screensaver image ;;
+  *Default*) omarchy-branding-screensaver reset ;;
   *) show_style_menu ;;
   esac
-}
-
-edit_screensaver_text() {
-  omarchy-launch-editor ~/.config/omarchy/branding/screensaver.txt && omarchy-launch-screensaver force
-}
-
-restore_default_screensaver() {
-  omarchy-screensaver-logo default && omarchy-launch-screensaver force
-}
-
-set_screensaver_from_image() {
-  local image=$(omarchy-menu-file "Logo image" "$HOME" "svg png")
-  if [[ -n $image ]] && omarchy-screensaver-logo "$image"; then
-    omarchy-launch-screensaver force
-  fi
 }
 
 show_theme_menu() {
