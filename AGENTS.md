@@ -45,6 +45,7 @@ Supported metadata keys:
 - `# omarchy:args=...` - usage arguments
 - `# omarchy:examples=...` - examples separated with ` | `
 - `# omarchy:alias=...` / `# omarchy:aliases=...` - alternate routes
+- `# omarchy:hidden=true` - hide from default command listings
 - `# omarchy:requires-sudo=true` - mark commands that require sudo
 
 Prefer explicit metadata for user-facing commands. Keep routes consistent with the filename unless there is a deliberate alias or compatibility route.
@@ -106,6 +107,7 @@ This copies `~/.local/share/omarchy/config/hypr/hyprlock.conf` to `~/.config/hyp
 To create a new migration, run `omarchy-dev-add-migration --no-edit`. This creates a migration file named after the unix timestamp of the last commit.
 
 New migration format:
+- File permissions must be `0644` (`-rw-r--r--`); migrations are sourced, not executed directly
 - No shebang line
 - Start with an `echo` describing what the migration does
 - Use `$OMARCHY_PATH` to reference the omarchy directory
