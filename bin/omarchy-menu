@@ -260,33 +260,27 @@ show_style_menu() {
   *Background*) show_background_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
   *Screensaver*) show_screensaver_menu ;;
-  *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
+  *About*) show_about_menu ;;
   *) show_main_menu ;;
   esac
 }
 
-show_screensaver_menu() {
-  case $(menu "Screensaver" "  Edit Text\n  Set From Image\n󱄄  Preview\n  Restore Default") in
-  *Text*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
-  *Image*) set_screensaver_from_image ;;
-  *Preview*) omarchy-launch-screensaver force ;;
-  *Default*) terminal bash -lc 'omarchy-screensaver-logo default; echo; read -n 1 -s -r -p "Press any key to close..."' ;;
+show_about_menu() {
+  case $(menu "About" "  Edit Text\n  Set From Image\n  Restore Default") in
+  *Text*) omarchy-branding-about text ;;
+  *Image*) omarchy-branding-about image ;;
+  *Default*) omarchy-branding-about reset ;;
   *) show_style_menu ;;
   esac
 }
 
-set_screensaver_from_image() {
-  terminal bash -lc '
-    image=$(fd --type file --ignore-case --extension svg --extension png . "$HOME" 2>/dev/null | fzf --prompt "Logo image> ")
-    if [[ -n $image ]]; then
-      if omarchy-screensaver-logo "$image"; then
-        echo
-        echo "Preview with: omarchy-launch-screensaver force"
-      fi
-      echo
-      read -n 1 -s -r -p "Press any key to close..."
-    fi
-  '
+show_screensaver_menu() {
+  case $(menu "Screensaver" "  Edit Text\n  Set From Image\n  Restore Default") in
+  *Text*) omarchy-branding-screensaver text ;;
+  *Image*) omarchy-branding-screensaver image ;;
+  *Default*) omarchy-branding-screensaver reset ;;
+  *) show_style_menu ;;
+  esac
 }
 
 show_theme_menu() {
@@ -341,8 +335,8 @@ show_setup_power_menu() {
 
 show_setup_security_menu() {
   case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
-  *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
-  *Fido2*) present_terminal omarchy-setup-fido2 ;;
+  *Fingerprint*) present_terminal omarchy-setup-security-fingerprint ;;
+  *Fido2*) present_terminal omarchy-setup-security-fido2 ;;
   *) show_setup_menu ;;
   esac
 }
@@ -573,7 +567,7 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch\n󰍳  Minecraft\n󰢹  NVIDIA GeForce NOW\n  Xbox Cloud Gaming\n󰖺  Xbox Controller (󰂯)\n󰍹  Moonlight (GameStream)\n  Lutris (Battle.net)\n󱓟  Heroic (Epic Games)") in
+  case $(menu "Install" "  Steam\n  RetroArch\n󰍳  Minecraft\n󰢹  NVIDIA GeForce NOW\n  Xbox Cloud Gaming\n󰂯  Xbox Controller\n󰍹  Moonlight (GameStream)\n  Lutris (Battle.net)\n󱓟  Heroic (Epic Games)") in
   *Steam*) present_terminal omarchy-install-gaming-steam ;;
   *RetroArch*) present_terminal omarchy-install-gaming-retroarch ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
@@ -655,20 +649,27 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Browser\n  Web App\n  TUI\n󰵮  Development\n  Gaming\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n󰸌  Theme\n  Browser\n  Dictation\n  Gaming\n󰍲  Windows\n󰏓  Preinstalls\n  Security") in
   *Package*) terminal omarchy-pkg-remove ;;
-  *Browser*) show_remove_browser_menu ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Development*) show_remove_development_menu ;;
-  *Gaming*) show_remove_gaming_menu ;;
-  *Preinstalls*) present_terminal omarchy-remove-preinstalls ;;
-  *Dictation*) present_terminal omarchy-voxtype-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
+  *Browser*) show_remove_browser_menu ;;
+  *Dictation*) present_terminal omarchy-voxtype-remove ;;
+  *Gaming*) show_remove_gaming_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm remove" ;;
-  *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
-  *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
+  *Preinstalls*) present_terminal omarchy-remove-preinstalls ;;
+  *Security*) show_remove_security_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_remove_security_menu() {
+  case $(menu "Remove" "󰈷  Fingerprint\n  Fido2") in
+  *Fingerprint*) present_terminal omarchy-remove-security-fingerprint ;;
+  *Fido2*) present_terminal omarchy-remove-security-fido2 ;;
+  *) show_remove_menu ;;
   esac
 }
 
