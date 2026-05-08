@@ -4,7 +4,6 @@
 # omarchy:group=echo
 # omarchy:name=echo-info
 # omarchy:args=<message>
-# omarchy:hidden=true
 
 YELLOW='\033[1;33m'
 NC='\033[0m'
