@@ -1,0 +1,95 @@
+#!/bin/bash
+
+# omarchy:summary=Set up fingerprint authentication for sudo, polkit, and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+
+check_fingerprint_hardware() {
+  # Get fingerprint devices for the user
+  devices=$(fprintd-list "$USER" 2>/dev/null)
+
+  # Exit if no devices found
+  if [[ -z $devices ]]; then
+    omarchy-echo-failure "\nNo fingerprint sensor detected."
+    return 1
+  fi
+  return 0
+}
+
+setup_pam_config() {
+  # Configure sudo
+  if ! grep -q pam_fprintd.so /etc/pam.d/sudo; then
+    omarchy-echo-info "Configuring sudo for fingerprint authentication..."
+    sudo sed -i '1i auth    sufficient pam_fprintd.so' /etc/pam.d/sudo
+  fi
+
+  # Configure polkit
+  if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
+    omarchy-echo-info "Configuring polkit for fingerprint authentication..."
+    sudo sed -i '1i auth      sufficient pam_fprintd.so' /etc/pam.d/polkit-1
+  elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
+    omarchy-echo-info "Creating polkit configuration with fingerprint authentication..."
+    sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
+auth      sufficient pam_fprintd.so
+auth      required pam_unix.so
+
+account   required pam_unix.so
+password  required pam_unix.so
+session   required pam_unix.so
+EOF
+  fi
+}
+
+add_hyprlock_fingerprint_icon() {
+  omarchy-echo-info "Adding fingerprint icon to hyprlock placeholder text..."
+  sed -i 's/placeholder_text = .*/placeholder_text = <span> Enter Password 󰈷 <\/span>/' ~/.config/hypr/hyprlock.conf
+  sed -i 's/fingerprint:enabled = .*/fingerprint:enabled = true/' ~/.config/hypr/hyprlock.conf
+}
+
+omarchy-echo-success "Setting up fingerprint scanner for authentication.\n"
+
+# Install required packages
+omarchy-echo-info "Installing required packages..."
+
+# libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
+# defaults the conflict prompt to N and aborts. Pre-remove libfprint
+# with -Rdd so the install goes silent. -Rdd (not omarchy-pkg-drop's
+# -Rns) is required because fprintd requires libfprint; the dep is
+# re-satisfied immediately by libfprint-git's provides=libfprint.
+if omarchy-pkg-present libfprint; then
+  sudo pacman -Rdd --noconfirm libfprint
+fi
+
+omarchy-pkg-add libfprint-git fprintd usbutils
+
+if ! check_fingerprint_hardware; then
+  exit 1
+fi
+
+# Configure PAM
+setup_pam_config
+
+# Add fingerprint icon to hyprlock placeholder text
+add_hyprlock_fingerprint_icon
+
+# Enroll first fingerprint
+omarchy-echo-success "\nLet's setup your right index finger as the first fingerprint."
+omarchy-echo-info "Keep moving the finger around on sensor until the process completes.\n"
+
+if sudo fprintd-enroll "$USER"; then
+  omarchy-echo-success "\nFingerprint enrolled successfully!"
+
+  # Verify
+  omarchy-echo-info "\nNow let's verify that it's working correctly.\n"
+  if fprintd-verify; then
+    omarchy-echo-success "\nPerfect! Fingerprint authentication is now configured."
+    omarchy-echo-info "You can use your fingerprint for sudo, polkit, and lock screen (Super + Escape)."
+  else
+    omarchy-echo-failure "\nVerification failed. You may want to try enrolling again."
+  fi
+else
+  omarchy-echo-failure "\nEnrollment failed. Please try again."
+  exit 1
+fi
