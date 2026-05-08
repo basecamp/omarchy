@@ -30,16 +30,19 @@ for path in "${paths[@]}"; do
   [[ -e $path ]] || { echo "Path not found: $path" >&2; exit 1; }
 done
 
-find_args=("${paths[@]}" -type f "(")
+find_args=("${paths[@]}" "(" -type d -name ".*" ! -name "." -prune ")" -o -type f "(")
+first_format=true
 for format in "${formats[@]}"; do
-  if (( ${#find_args[@]} > ${#paths[@]} + 3 )); then
+  if [[ $first_format == "true" ]]; then
+    first_format=false
+  else
     find_args+=(-o)
   fi
 
   format="${format#.}"
   find_args+=(-iname "*.$format")
 done
-find_args+=(")")
+find_args+=(")" -printf '%T@\t%p\n')
 
-find "${find_args[@]}" -printf '%T@\t%p\n' 2>/dev/null | sort -rn | cut -f2- |
+find "${find_args[@]}" 2>/dev/null | sort -rn | cut -f2- |
   omarchy-launch-walker --dmenu --width 800 --minheight 1 --maxheight 500 -p "$label…" "$@" 2>/dev/null
