@@ -3,4 +3,5 @@
 # omarchy:summary=Restart Waybar
 # omarchy:examples=omarchy restart waybar
 
-omarchy-restart-app waybar
+pkill -9 -x waybar
+setsid uwsm-app -- waybar >/dev/null 2>&1 &
