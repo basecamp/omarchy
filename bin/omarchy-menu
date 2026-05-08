@@ -233,7 +233,7 @@ show_hardware_menu() {
     options="$options\n󰟸  Touchpad"
   fi
 
-  if omarchy-hw-dell-xps-haptic-touchpad; then
+  if omarchy-hw-dell-xps-haptic-touchpad && omarchy-cmd-present dell-xps-touchpad-haptics; then
     options="$options\n󰌌  Touchpad Haptics"
   fi
 
@@ -244,12 +244,23 @@ show_hardware_menu() {
   case $(menu "Toggle" "$options") in
   *Laptop*) omarchy-hyprland-monitor-internal toggle ;;
   *Mirror*) omarchy-hyprland-monitor-internal-mirror toggle ;;
-  *Haptics*) omarchy-toggle-touchpad-haptics ;;
+  *Haptics*) show_hardware_touchpad_haptics_menu ;;
   *Touchpad*) omarchy-toggle-touchpad ;;
   *Touchscreen*) omarchy-toggle-touchscreen ;;
   *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
   *) back_to show_trigger_menu ;;
   esac
+}
+
+show_hardware_touchpad_haptics_menu() {
+  local current=$(dell-xps-touchpad-haptics get)
+  local selected=$(menu "Touchpad Haptics" "low\nmid\nhigh" "" "$current")
+
+  if [[ -n $selected ]]; then
+    dell-xps-touchpad-haptics set "$selected"
+  else
+    back_to show_hardware_menu
+  fi
 }
 
 show_style_menu() {
