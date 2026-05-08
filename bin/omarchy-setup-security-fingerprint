@@ -12,7 +12,7 @@ check_fingerprint_hardware() {
 
   # Exit if no devices found
   if [[ -z $devices ]]; then
-    omarchy-echo-failure "\nNo fingerprint sensor detected."
+    echo -e "\e[31m\nNo fingerprint sensor detected.\e[0m"
     return 1
   fi
   return 0
@@ -21,16 +21,16 @@ check_fingerprint_hardware() {
 setup_pam_config() {
   # Configure sudo
   if ! grep -q pam_fprintd.so /etc/pam.d/sudo; then
-    omarchy-echo-info "Configuring sudo for fingerprint authentication..."
+    echo "Configuring sudo for fingerprint authentication..."
     sudo sed -i '1i auth    sufficient pam_fprintd.so' /etc/pam.d/sudo
   fi
 
   # Configure polkit
   if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
-    omarchy-echo-info "Configuring polkit for fingerprint authentication..."
+    echo "Configuring polkit for fingerprint authentication..."
     sudo sed -i '1i auth      sufficient pam_fprintd.so' /etc/pam.d/polkit-1
   elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
-    omarchy-echo-info "Creating polkit configuration with fingerprint authentication..."
+    echo "Creating polkit configuration with fingerprint authentication..."
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
 auth      sufficient pam_fprintd.so
 auth      required pam_unix.so
@@ -43,15 +43,15 @@ EOF
 }
 
 add_hyprlock_fingerprint_icon() {
-  omarchy-echo-info "Adding fingerprint icon to hyprlock placeholder text..."
+  echo "Adding fingerprint icon to hyprlock placeholder text..."
   sed -i 's/placeholder_text = .*/placeholder_text = <span> Enter Password 󰈷 <\/span>/' ~/.config/hypr/hyprlock.conf
   sed -i 's/fingerprint:enabled = .*/fingerprint:enabled = true/' ~/.config/hypr/hyprlock.conf
 }
 
-omarchy-echo-success "Setting up fingerprint scanner for authentication.\n"
+echo -e "\e[32mSetting up fingerprint scanner for authentication.\n\e[0m"
 
 # Install required packages
-omarchy-echo-info "Installing required packages..."
+echo "Installing required packages..."
 
 # libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
 # defaults the conflict prompt to N and aborts. Pre-remove libfprint
@@ -75,21 +75,21 @@ setup_pam_config
 add_hyprlock_fingerprint_icon
 
 # Enroll first fingerprint
-omarchy-echo-success "\nLet's setup your right index finger as the first fingerprint."
-omarchy-echo-info "Keep moving the finger around on sensor until the process completes.\n"
+echo -e "\e[32m\nLet's setup your right index finger as the first fingerprint.\e[0m"
+echo -e "Keep moving the finger around on sensor until the process completes.\n"
 
 if sudo fprintd-enroll "$USER"; then
-  omarchy-echo-success "\nFingerprint enrolled successfully!"
+  echo -e "\e[32m\nFingerprint enrolled successfully!\e[0m"
 
   # Verify
-  omarchy-echo-info "\nNow let's verify that it's working correctly.\n"
+  echo -e "\nNow let's verify that it's working correctly.\n"
   if fprintd-verify; then
-    omarchy-echo-success "\nPerfect! Fingerprint authentication is now configured."
-    omarchy-echo-info "You can use your fingerprint for sudo, polkit, and lock screen (Super + Escape)."
+    echo -e "\e[32m\nPerfect! Fingerprint authentication is now configured.\e[0m"
+    echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Escape)."
   else
-    omarchy-echo-failure "\nVerification failed. You may want to try enrolling again."
+    echo -e "\e[31m\nVerification failed. You may want to try enrolling again.\e[0m"
   fi
 else
-  omarchy-echo-failure "\nEnrollment failed. Please try again."
+  echo -e "\e[31m\nEnrollment failed. Please try again.\e[0m"
   exit 1
 fi

@@ -1,9 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=Print an informational message in yellow
-# omarchy:args=<message>
-
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-echo -e "${YELLOW}$*${NC}"
