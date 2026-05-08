@@ -43,12 +43,6 @@ menu() {
   echo -e "$options" | omarchy-launch-walker --dmenu --width 295 --minheight 1 --maxheight 630 -p "$prompt…" "${args[@]}" 2>/dev/null
 }
 
-input() {
-  local prompt="$1"
-
-  omarchy-launch-walker --dmenu --inputonly --width 295 --minheight 1 --maxheight 1 -p "$prompt…" 2>/dev/null
-}
-
 terminal() {
   xdg-terminal-exec --app-id=org.omarchy.terminal "$@"
 }
@@ -121,7 +115,7 @@ show_reminder_menu() {
 
 show_custom_reminder_input() {
   local minutes
-  minutes=$(input "Remind in minutes")
+  minutes=$(omarchy-menu-input "Remind in minutes")
 
   if [[ $minutes =~ ^[0-9]+$ ]] && ((minutes > 0)); then
     show_reminder_message_input "$minutes"
@@ -136,7 +130,7 @@ show_custom_reminder_input() {
 show_reminder_message_input() {
   local minutes="$1"
   local message
-  message=$(input "Reminder message")
+  message=$(omarchy-menu-input "Reminder message")
 
   if [[ -n $message ]]; then
     omarchy-reminder "$minutes" "$message"
