@@ -111,9 +111,10 @@ show_trigger_menu() {
 }
 
 show_reminder_menu() {
-  case $(menu "Reminder" "󰔛  Set one\n󰔛  Show all") in
+  case $(menu "Reminder" "󰔛  Set one\n󰔛  Show all\n󰔛  Clear all") in
   *Set*) show_custom_reminder_input ;;
   *"Show all"*) omarchy-reminder show ;;
+  *"Clear all"*) omarchy-reminder clear ;;
   *) back_to show_trigger_menu ;;
   esac
 }
@@ -857,6 +858,7 @@ go_to_menu() {
   *hardware*) show_hardware_menu ;;
   *share*) show_share_menu ;;
   *transcode*) show_transcode_menu ;;
+  *reminder-set*) show_custom_reminder_input ;;
   *reminder*) show_reminder_menu ;;
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;

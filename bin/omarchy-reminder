@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Set and show lightweight desktop notification reminders
-# omarchy:args=<minutes> [message] | show
-# omarchy:examples=omarchy reminder 5 | omarchy reminder 30 "Check the oven" | omarchy reminder show
+# omarchy:args=<minutes> [message] | show | clear
+# omarchy:examples=omarchy reminder 5 | omarchy reminder 30 "Check the oven" | omarchy reminder show | omarchy reminder clear
 
 set -euo pipefail
 
@@ -77,9 +77,27 @@ show_reminders() {
   fi
 }
 
+clear_reminders() {
+  local units
+  local reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
+
+  units=$(systemctl --user list-timers --all --no-legend --no-pager "omarchy-reminder-*.timer" 2>/dev/null | awk '{ print $(NF - 1), $NF }')
+
+  if [[ -n $units ]]; then
+    xargs -r systemctl --user stop <<<"$units" || true
+  fi
+
+  rm -f "$reminder_dir"/omarchy-reminder-*.message 2>/dev/null || true
+  omarchy-notification-send "󰔛" "All reminders have been cleared" -u low
+}
+
 case ${1:-} in
 show | list)
   show_reminders
+  exit 0
+  ;;
+clear)
+  clear_reminders
   exit 0
   ;;
 esac
@@ -92,6 +110,7 @@ custom_message="$message"
 if [[ -z $minutes ]] || [[ ! $minutes =~ ^[0-9]+$ ]] || ((minutes == 0)); then
   echo "Usage: omarchy-reminder <minutes> [message]"
   echo "       omarchy-reminder show"
+  echo "       omarchy-reminder clear"
   exit 1
 fi
 
