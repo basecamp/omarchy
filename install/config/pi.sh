@@ -1,2 +1,2 @@
-mkdir -p ~/.pi/agent/extensions
-cp "$OMARCHY_PATH/default/pi/agent/extensions/omarchy-system-theme.ts" ~/.pi/agent/extensions/
+mkdir -p ~/.pi/agent/themes
+"$OMARCHY_PATH/bin/omarchy-theme-set-pi" --activate
