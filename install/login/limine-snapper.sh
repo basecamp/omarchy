@@ -61,6 +61,19 @@ EOF
   fi
   sudo cp $OMARCHY_PATH/default/snapper/root /etc/snapper/configs/root
 
+  # Ensure SNAPPER_CONFIGS lists "root" and the /.snapshots subvolume exists
+  # before first boot. In chroot, `snapper create-config` doesn't always update
+  # /etc/conf.d/snapper or create the subvolume, leaving limine-snapper-sync's
+  # first-boot self-init path to do it — which trips an upstream race in
+  # ConfigReader.readSnapperConfig (DBus list call against a stale snapperd
+  # cache) and surfaces as a critical "Command failed: snapper ... list ..."
+  # toast on slower / offline-installed machines.
+  if ! grep -qE '^SNAPPER_CONFIGS=.*\broot\b' /etc/conf.d/snapper 2>/dev/null; then
+    sudo sed -i 's|^SNAPPER_CONFIGS=.*|SNAPPER_CONFIGS="root"|' /etc/conf.d/snapper
+  fi
+  sudo btrfs subvolume show /.snapshots >/dev/null 2>&1 || sudo btrfs subvolume create /.snapshots
+  sudo chmod 750 /.snapshots
+
   # Disable btrfs quotas — full qgroup accounting is a major performance drag
   sudo btrfs quota disable / 2>/dev/null || true
 
