@@ -92,6 +92,10 @@ Exceptions are allowed for bootstrap, preflight, migration, and package-helper s
 - `default/themed/*.tpl` - templates with `{{ variable }}` placeholders for theme colors
 - `themes/*/colors.toml` - theme color definitions (accent, background, foreground, color0-15)
 
+# Visual Changes
+
+When making visual changes, such as Waybar styles or desktop appearance, always take and analyze a screenshot after applying the change to verify the result. Use `omarchy capture screenshot fullscreen save` for fullscreen screenshots.
+
 # Refresh Pattern
 
 To copy a default config to user config with automatic backup:
