@@ -1,0 +1,179 @@
+#!/bin/bash
+
+# omarchy:summary=Generate Pi theme from the current Omarchy theme
+# omarchy:args=[--activate]
+# omarchy:hidden=true
+
+set -euo pipefail
+
+SCRIPT_DIR=$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+CURRENT_THEME_PATH="$HOME/.config/omarchy/current/theme"
+COLORS_PATH="$CURRENT_THEME_PATH/colors.toml"
+PI_AGENT_DIR="$HOME/.pi/agent"
+PI_THEME_DIR="$PI_AGENT_DIR/themes"
+PI_THEME_PATH="$PI_THEME_DIR/omarchy-system.json"
+PI_SETTINGS_PATH="$PI_AGENT_DIR/settings.json"
+PI_TEMPLATE_PATH="$SCRIPT_DIR/../default/pi/omarchy-system.json.tpl"
+PI_ACTIVATE=0
+
+if [[ ${1:-} == "--activate" ]]; then
+  PI_ACTIVATE=1
+fi
+
+if [[ ! -f $COLORS_PATH ]]; then
+  exit 0
+fi
+
+if (( PI_ACTIVATE == 0 )) && [[ ! -d $PI_AGENT_DIR ]]; then
+  exit 0
+fi
+
+read_color() {
+  local key=$1
+
+  awk -v key="$key" -F'"' '
+    $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      print $2
+      exit
+    }
+  ' "$COLORS_PATH"
+}
+
+mix_color() {
+  local start=${1#\#}
+  local end=${2#\#}
+  local amount=$3
+
+  awk -v start="$start" -v end="$end" -v amount="$amount" '
+    function hex_pair_to_int(hex, idx) {
+      return strtonum("0x" substr(hex, idx, 2))
+    }
+
+    BEGIN {
+      start_r = hex_pair_to_int(start, 1)
+      start_g = hex_pair_to_int(start, 3)
+      start_b = hex_pair_to_int(start, 5)
+      end_r = hex_pair_to_int(end, 1)
+      end_g = hex_pair_to_int(end, 3)
+      end_b = hex_pair_to_int(end, 5)
+
+      red = int(start_r * (1 - amount) + end_r * amount + 0.5)
+      green = int(start_g * (1 - amount) + end_g * amount + 0.5)
+      blue = int(start_b * (1 - amount) + end_b * amount + 0.5)
+
+      printf "#%02x%02x%02x\n", red, green, blue
+    }
+  '
+}
+
+is_dark_theme() {
+  local color=${1#\#}
+
+  awk -v color="$color" '
+    function hex_pair_to_int(hex, idx) {
+      return strtonum("0x" substr(hex, idx, 2))
+    }
+
+    function channel_luminance(value, srgb) {
+      srgb = value / 255
+      return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ^ 2.4
+    }
+
+    BEGIN {
+      red = hex_pair_to_int(color, 1)
+      green = hex_pair_to_int(color, 3)
+      blue = hex_pair_to_int(color, 5)
+      luminance = 0.2126 * channel_luminance(red) + 0.7152 * channel_luminance(green) + 0.0722 * channel_luminance(blue)
+      exit !(luminance < 0.5)
+    }
+  '
+}
+
+write_setting_theme() {
+  mkdir -p "$PI_AGENT_DIR"
+
+  if [[ -f $PI_SETTINGS_PATH ]]; then
+    tmp=$(mktemp)
+    jq '.theme = "omarchy-system"' "$PI_SETTINGS_PATH" >"$tmp"
+    mv "$tmp" "$PI_SETTINGS_PATH"
+  else
+    cat >"$PI_SETTINGS_PATH" <<EOF
+{
+  "theme": "omarchy-system"
+}
+EOF
+  fi
+}
+
+bg=$(read_color background)
+fg=$(read_color foreground)
+accent=$(read_color accent)
+selectionBg=$(read_color selection_background)
+selectionFg=$(read_color selection_foreground)
+black=$(read_color color0)
+red=$(read_color color1)
+green=$(read_color color2)
+yellow=$(read_color color3)
+blue=$(read_color color4)
+magenta=$(read_color color5)
+cyan=$(read_color color6)
+white=$(read_color color7)
+brightBlack=$(read_color color8)
+brightRed=$(read_color color9)
+brightGreen=$(read_color color10)
+brightYellow=$(read_color color11)
+brightBlue=$(read_color color12)
+brightMagenta=$(read_color color13)
+brightCyan=$(read_color color14)
+brightWhite=$(read_color color15)
+
+if is_dark_theme "$bg"; then
+  panel_mix=0.22
+  element_mix=0.34
+  border_mix=0.26
+  border_muted_mix=0.18
+  muted_mix=0.32
+  dim_mix=0.50
+  pending_mix=0.14
+  success_mix=0.14
+  error_mix=0.14
+else
+  panel_mix=0.12
+  element_mix=0.20
+  border_mix=0.34
+  border_muted_mix=0.24
+  muted_mix=0.38
+  dim_mix=0.56
+  pending_mix=0.10
+  success_mix=0.10
+  error_mix=0.10
+fi
+
+panel=$(mix_color "$bg" "$black" "$panel_mix")
+panelAlt=$(mix_color "$bg" "$brightBlack" "$element_mix")
+panelPending=$(mix_color "$bg" "$accent" "$pending_mix")
+panelSuccess=$(mix_color "$bg" "$green" "$success_mix")
+panelError=$(mix_color "$bg" "$red" "$error_mix")
+border=$(mix_color "$bg" "$fg" "$border_mix")
+borderMuted=$(mix_color "$bg" "$fg" "$border_muted_mix")
+mutedText=$(mix_color "$fg" "$bg" "$muted_mix")
+dimText=$(mix_color "$fg" "$bg" "$dim_mix")
+
+mkdir -p "$PI_THEME_DIR"
+sed_script=$(mktemp)
+
+for key in \
+  bg fg accent selectionBg selectionFg \
+  black red green yellow blue magenta cyan white \
+  brightBlack brightRed brightGreen brightYellow brightBlue brightMagenta brightCyan brightWhite \
+  panel panelAlt panelPending panelSuccess panelError border borderMuted mutedText dimText; do
+  value=${!key}
+  printf 's|{{ %s }}|%s|g\n' "$key" "$value" >>"$sed_script"
+done
+
+sed -f "$sed_script" "$PI_TEMPLATE_PATH" >"$PI_THEME_PATH"
+rm -f "$sed_script"
+
+if (( PI_ACTIVATE == 1 )); then
+  write_setting_theme
+fi
