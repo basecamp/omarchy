@@ -192,6 +192,7 @@ window#waybar.right .modules-left {
 window#waybar.left .modules-center,
 window#waybar.right .modules-center {
   margin: 0;
+  min-height: 130px;
 }
 
 window#waybar.left .modules-right,
@@ -207,7 +208,7 @@ window#waybar.left #clock {
 }
 
 window#waybar.right #clock {
-  margin: 5px 11px 5px 0;
+  margin: 5px 13px 5px 0;
   padding: 0;
   min-width: 20px;
   font-size: 12px;
@@ -219,7 +220,7 @@ window#waybar.left #custom-notification-silencing-indicator {
   margin: 5px 0 5px 11px;
   padding: 0;
   min-width: 20px;
-  min-height: 12px;
+  min-height: 16px;
 }
 
 window#waybar.right #custom-screenrecording-indicator,
@@ -228,7 +229,7 @@ window#waybar.right #custom-notification-silencing-indicator {
   margin: 5px 13px 5px 0;
   padding: 0;
   min-width: 20px;
-  min-height: 12px;
+  min-height: 16px;
 }
 
 window#waybar.left #custom-weather {
