@@ -64,11 +64,11 @@ omarchy-restart-helix
 # Change app-specific themes
 omarchy-theme-set-foot
 omarchy-theme-set-gnome
+omarchy-theme-set-pi
 omarchy-theme-set-browser
 omarchy-theme-set-vscode
 omarchy-theme-set-obsidian
 omarchy-theme-set-keyboard
-omarchy-theme-set-pi
 
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME" >/dev/null
