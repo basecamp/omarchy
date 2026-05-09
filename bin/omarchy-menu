@@ -297,12 +297,12 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
-  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
+  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$("$(omarchy-power-cmd)" get)")
 
   if [[ $profile == "CNCLD" || -z $profile ]]; then
     back_to show_setup_menu
   else
-    powerprofilesctl set "$profile"
+    "$(omarchy-power-cmd)" set "$profile"
   fi
 }
 
