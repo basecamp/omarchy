@@ -128,6 +128,7 @@ FILEPATH="$OUTPUT_DIR/$FILENAME"
 
 if [[ $PROCESSING == "slurp" ]]; then
   grim -g "$SELECTION" "$FILEPATH" || exit 1
+  echo "$FILEPATH"
   wl-copy <"$FILEPATH"
 
   (
