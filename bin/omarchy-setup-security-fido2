@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# omarchy:summary=Set up FIDO2 authentication for sudo and polkit
+# omarchy:requires-sudo=true
+
+set -e
+
+
+check_fido2_hardware() {
+  tokens=$(fido2-token -L 2>/dev/null)
+  if [[ -z $tokens ]]; then
+    echo -e "\e[31m\nNo FIDO2 device detected. Please plug it in (you may need to unlock it as well).\e[0m"
+    return 1
+  fi
+  return 0
+}
+
+setup_pam_config() {
+  # Configure sudo
+  if ! grep -q pam_u2f.so /etc/pam.d/sudo; then
+    echo "Configuring sudo for FIDO2 authentication..."
+    sudo sed -i '1i auth    sufficient pam_u2f.so cue authfile=/etc/fido2/fido2' /etc/pam.d/sudo
+  fi
+
+  # Configure polkit
+  if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_u2f.so' /etc/pam.d/polkit-1; then
+    echo "Configuring polkit for FIDO2 authentication..."
+    sudo sed -i '1i auth      sufficient pam_u2f.so cue authfile=/etc/fido2/fido2' /etc/pam.d/polkit-1
+  elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
+    echo "Creating polkit configuration with FIDO2 authentication..."
+    sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
+auth      sufficient pam_u2f.so cue authfile=/etc/fido2/fido2
+auth      required pam_unix.so
+
+account   required pam_unix.so
+password  required pam_unix.so
+session   required pam_unix.so
+EOF
+  fi
+}
+
+echo -e "\e[32mSetting up FIDO2 device for authentication.\n\e[0m"
+
+# Install required packages
+echo "Installing required packages..."
+omarchy-pkg-add libfido2 pam-u2f
+
+if ! check_fido2_hardware; then
+  exit 1
+fi
+
+# Create the pamu2fcfg file
+if [[ ! -f /etc/fido2/fido2 ]]; then
+  sudo mkdir -p /etc/fido2
+  echo -e "\e[32m\nLet's setup your device by confirming on the device now.\e[0m"
+  echo -e "Touch your FIDO2 key when it lights up...\n"
+
+  if pamu2fcfg >/tmp/fido2; then
+    sudo mv /tmp/fido2 /etc/fido2/fido2
+    echo -e "\e[32mFIDO2 device registered successfully!\e[0m"
+  else
+    echo -e "\e[31m\nFIDO2 registration failed. Please try again.\e[0m"
+    exit 1
+  fi
+else
+  echo "FIDO2 device already registered."
+fi
+
+# Configure PAM
+setup_pam_config
+
+# Test with sudo
+echo -e "\nTesting FIDO2 authentication with sudo..."
+echo -e "Touch your FIDO2 key when prompted.\n"
+
+if sudo echo "FIDO2 authentication test successful"; then
+  echo -e "\e[32m\nPerfect! FIDO2 authentication is now configured.\e[0m"
+  echo "You can use your FIDO2 key for sudo and polkit authentication."
+else
+  echo -e "\e[31m\nVerification failed. You may want to check your configuration.\e[0m"
+fi

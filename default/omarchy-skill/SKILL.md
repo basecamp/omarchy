@@ -3,11 +3,11 @@ name: omarchy
 description: >
   REQUIRED for end-user customization of Linux desktop, window manager, or system config.
   Use when editing ~/.config/hypr/, ~/.config/waybar/, ~/.config/walker/,
-  ~/.config/alacritty/, ~/.config/kitty/, ~/.config/ghostty/, ~/.config/mako/,
+  ~/.config/alacritty/, ~/.config/foot/, ~/.config/kitty/, ~/.config/ghostty/, ~/.config/mako/,
   or ~/.config/omarchy/. Triggers: Hyprland, window rules, animations, keybindings,
   monitors, gaps, borders, blur, opacity, waybar, walker, terminal config, themes,
-  wallpaper, night light, idle, lock screen, screenshots, layer rules, workspace
-  settings, display config, and user-facing omarchy commands. Excludes Omarchy
+  wallpaper, night light, idle, lock screen, screenshots, reminders, layer rules,
+  workspace settings, display config, and user-facing omarchy commands. Excludes Omarchy
   source development in ~/.local/share/omarchy/ and `omarchy dev` workflows.
 ---
 
@@ -24,13 +24,13 @@ It is not for contributing to Omarchy source code.
 
 - Editing ANY file in `~/.config/hypr/` (window rules, animations, keybindings, monitors, etc.)
 - Editing ANY file in `~/.config/waybar/`, `~/.config/walker/`, `~/.config/mako/`
-- Editing terminal configs (alacritty, kitty, ghostty)
+- Editing terminal configs (alacritty, foot, kitty, ghostty)
 - Editing ANY file in `~/.config/omarchy/`
 - Window behavior, animations, opacity, blur, gaps, borders
 - Layer rules, workspace settings, display/monitor configuration
 - Themes, wallpapers, fonts, appearance changes
 - User-facing `omarchy` commands (`omarchy theme ...`, `omarchy refresh ...`, `omarchy restart ...`, etc.)
-- Screenshots, screen recording, night light, idle behavior, lock screen
+- Screenshots, screen recording, reminders, night light, idle behavior, lock screen
 
 **If you're about to edit a config file in ~/.config/ on this system, STOP and use this skill first.**
 
@@ -78,7 +78,7 @@ Omarchy is built on:
 | **Hyprland** | Wayland compositor/WM | `~/.config/hypr/` |
 | **Waybar** | Status bar | `~/.config/waybar/` |
 | **Walker** | App launcher | `~/.config/walker/` |
-| **Alacritty/Kitty/Ghostty** | Terminals | `~/.config/<terminal>/` |
+| **Alacritty/Foot/Kitty/Ghostty** | Terminals | `~/.config/<terminal>/` |
 | **Mako** | Notifications | `~/.config/mako/` |
 | **SwayOSD** | On-screen display | `~/.config/swayosd/` |
 
@@ -118,6 +118,7 @@ Run `omarchy --help` for the full list. The most common groups:
 | `omarchy install` | Install optional software / packages | `omarchy install docker dbs` |
 | `omarchy launch` | Launch apps | `omarchy launch browser` |
 | `omarchy capture` | Screenshots and recordings | `omarchy capture screenshot` |
+| `omarchy reminder` | Desktop notification reminders | `omarchy reminder 15 "Pickup Jack"` |
 | `omarchy pkg` | Package management | `omarchy pkg install <pkg>` |
 | `omarchy setup` | Initial setup tasks | `omarchy setup fingerprint` |
 | `omarchy update` | System updates | `omarchy update` |
@@ -163,6 +164,7 @@ Run `omarchy --help` for the full list. The most common groups:
 
 ```
 ~/.config/alacritty/alacritty.toml
+~/.config/foot/foot.ini
 ~/.config/kitty/kitty.conf
 ~/.config/ghostty/config
 ```
@@ -354,8 +356,19 @@ When user requests system changes:
 2. **Is it a config edit?** Edit in `~/.config/`, never `~/.local/share/omarchy/`
 3. **Is it a theme customization?** Create a NEW custom theme directory
 4. **Is it automation?** Use hooks in `~/.config/omarchy/hooks/`
-5. **Is it a package install?** Use `omarchy install package <pkgs...>` (or `omarchy pkg aur add <pkgs...>` for AUR-only packages)
+5. **Is it a package install?** Use `omarchy pkg add <pkgs...>` (or `omarchy pkg aur add <pkgs...>` for AUR-only packages)
 6. **Unsure if command exists?** Run `omarchy commands` (or `omarchy <group> --help` for one group)
+
+### Reminder Requests
+
+When the user asks to set a reminder, use `omarchy reminder <minutes> [message]` directly. Convert natural language durations to minutes and title-case short reminder labels when appropriate.
+
+```bash
+omarchy reminder 15 "Pickup Jack"
+omarchy reminder 60 "Check laundry"
+omarchy reminder show
+omarchy reminder clear
+```
 
 ## Out of Scope
 
@@ -371,6 +384,9 @@ This skill intentionally does not cover Omarchy source development. Do not use t
 - "Configure my external monitor" -> Edit `~/.config/hypr/monitors.conf`
 - "Make the window gaps smaller" -> Edit `~/.config/hypr/looknfeel.conf`
 - "Set up night light to turn on at sunset" -> `omarchy toggle nightlight` or edit `~/.config/hypr/hyprsunset.conf`
+- "Set a reminder to pickup jack in 15 minutes" -> `omarchy reminder 15 "Pickup Jack"`
+- "Show my reminders" -> `omarchy reminder show`
+- "Clear all reminders" -> `omarchy reminder clear`
 - "Customize the catppuccin theme colors" -> Create `~/.config/omarchy/themes/catppuccin-custom/` by copying from stock, then edit
 - "Run a script every time I change themes" -> Create `~/.config/omarchy/hooks/theme-set`
 - "Reset waybar to defaults" -> `omarchy refresh waybar`

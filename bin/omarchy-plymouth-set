@@ -2,6 +2,7 @@
 
 # omarchy:summary=Set the Plymouth boot theme colors and logo
 # omarchy:args=<background-hex> <text-hex> <path-to-logo.png>
+# omarchy:examples=omarchy plymouth set '#1d2021' '#ebdbb2' ~/.config/omarchy/current/theme/plymouth/logo.png
 # omarchy:requires-sudo=true
 
 # Configure the Plymouth boot theme with a custom background color, text color, and logo.
@@ -67,10 +68,16 @@ sddm_dir="/usr/share/sddm/themes/omarchy"
 sddm_template="$HOME/.local/share/omarchy/default/sddm/omarchy/Main.qml"
 
 sed \
-  -e "s/#000000/#$bg_hex/g" \
+  -e "s/#1a1b26/#$bg_hex/g" \
   -e "s/#ffffff/#$text_hex/g" \
-  -e 's|source: "logo.svg"|source: "logo.png"|' \
   "$sddm_template" | sudo tee "$sddm_dir/Main.qml" >/dev/null
 
 sudo cp "$logo_path" "$sddm_dir/logo.png"
+for asset in bullet.png entry.png lock.png; do
+  sudo cp "$staging_dir/$asset" "$sddm_dir/$asset"
+done
+for asset in entry lock; do
+  magick "$staging_dir/$asset.png" -channel RGB +level-colors "#f7768e","#f7768e" "$staging_dir/$asset-failed.png"
+  sudo cp "$staging_dir/$asset-failed.png" "$sddm_dir/$asset-failed.png"
+done
 sudo rm -f "$sddm_dir/logo.svg"

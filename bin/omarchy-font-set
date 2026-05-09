@@ -22,6 +22,10 @@ if [[ -n $font_name ]]; then
       pkill -SIGUSR2 ghostty
     fi
 
+    if [[ -f ~/.config/foot/foot.ini ]]; then
+      sed -i "s/^font=.*/font=$font_name:size=9/g" ~/.config/foot/foot.ini
+    fi
+
     sed -i "s/font_family = .*/font_family = $font_name/g" ~/.config/hypr/hyprlock.conf
     sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/waybar/style.css
     sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/swayosd/style.css
@@ -35,6 +39,10 @@ if [[ -n $font_name ]]; then
 
     if pgrep -x ghostty; then
       notify-send -u low "    You must restart Ghostty to see font change"
+    fi
+
+    if pgrep -x foot; then
+      notify-send -u low "    You must restart Foot to see font change"
     fi
 
     omarchy-hook font-set "$font_name"

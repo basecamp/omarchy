@@ -40,13 +40,24 @@ _omarchy_complete() {
     candidates+=("--all" "--json" "--markdown" "--check")
   fi
 
+  if (( ${#candidates[@]} == 0 )) && [[ -x $bin_dir/$prefix ]]; then
+    local args enum
+    args=$(grep -m 1 '^# omarchy:args=<' "$bin_dir/$prefix" 2>/dev/null)
+    enum="${args#*<}"
+    enum="${enum%%>*}"
+
+    if [[ $enum == *"|"* && $enum != *" "* ]]; then
+      read -r -a candidates <<<"${enum//|/ }"
+    fi
+  fi
+
   if (( ${#candidates[@]} > 0 )); then
     local IFS=$'\n'
     COMPREPLY=($(compgen -W "${candidates[*]}" -- "$cur"))
   fi
 }
 
-complete -F _omarchy_complete omarchy
+complete -o default -F _omarchy_complete omarchy
 
 # Hide individual omarchy-* binaries from initial-word command completion;
 # the unified `omarchy` dispatcher is the user-facing entry point.

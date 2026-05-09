@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Run a named hook, like post-update (available in ~/.config/omarchy/hooks/post-update).
+# omarchy:summary=Run a named hook from ~/.config/omarchy/hooks/<name> and ~/.config/omarchy/hooks/<name>.d/.
 # omarchy:args=[name] [args...]
 
 set -e
@@ -12,8 +12,17 @@ fi
 
 HOOK=$1
 HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
+HOOK_DIR="$HOOK_PATH.d"
 shift
 
 if [[ -f $HOOK_PATH ]]; then
-  bash "$HOOK_PATH" "$@"
+  bash "$HOOK_PATH" "$@" || echo "Hook failed: $HOOK_PATH"
+fi
+
+if [[ -d $HOOK_DIR ]]; then
+  for hook in "$HOOK_DIR"/*; do
+    [[ -f $hook ]] || continue
+    [[ $hook == *.sample ]] && continue
+    bash "$hook" "$@" || echo "Hook failed: $hook"
+  done
 fi

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Cycle scaling for the focused Hyprland monitor
+# omarchy:summary=Cycle focused Hyprland monitor scaling through 1x, 1.25x, 1.6x, 2x, 3x, and 4x
 
 MONITOR_INFO=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true)')
 ACTIVE_MONITOR=$(echo "$MONITOR_INFO" | jq -r '.name')
@@ -9,8 +9,8 @@ WIDTH=$(echo "$MONITOR_INFO" | jq -r '.width')
 HEIGHT=$(echo "$MONITOR_INFO" | jq -r '.height')
 REFRESH_RATE=$(echo "$MONITOR_INFO" | jq -r '.refreshRate')
 
-# Cycle through scales: 1 → 1.25 → 1.6 → 2 → 3 → 1 (or reverse with --reverse)
-SCALES=(1 1.25 1.6 2 3)
+# Cycle through scales: 1 → 1.25 → 1.6 → 2 → 3 → 4 → 1 (or reverse with --reverse)
+SCALES=(1 1.25 1.6 2 3 4)
 
 # Find the index of the scale closest to the current one (Hyprland may
 # snap fractional scales to nearby values, so we can't match exactly)

@@ -2,7 +2,7 @@
 
 # omarchy:summary=Take a screenshot
 # omarchy:group=capture
-# omarchy:args=[smart|region|windows|fullscreen] [slurp|copy] [--editor=<name>]
+# omarchy:args=[smart|region|windows|fullscreen] [slurp|copy|save] [--editor=<name>]
 # omarchy:examples=omarchy screenshot | omarchy capture screenshot region
 # omarchy:aliases=omarchy screenshot
 
@@ -126,14 +126,22 @@ esac
 FILENAME="screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png"
 FILEPATH="$OUTPUT_DIR/$FILENAME"
 
-if [[ $PROCESSING == "slurp" ]]; then
-  grim -g "$SELECTION" "$FILEPATH" || exit 1
-  wl-copy <"$FILEPATH"
+case "$PROCESSING" in
+  slurp)
+    grim -g "$SELECTION" "$FILEPATH" || exit 1
+    echo "$FILEPATH"
+    wl-copy <"$FILEPATH"
 
-  (
-    ACTION=$(notify-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" -t 10000 -i "$FILEPATH" -A "default=edit")
-    [[ $ACTION == "default" ]] && open_editor "$FILEPATH"
-  ) &
-else
-  grim -g "$SELECTION" - | wl-copy
-fi
+    (
+      ACTION=$(notify-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" -t 10000 -i "$FILEPATH" -A "default=edit")
+      [[ $ACTION == "default" ]] && open_editor "$FILEPATH"
+    ) >/dev/null 2>&1 &
+    ;;
+  copy)
+    grim -g "$SELECTION" - | wl-copy
+    ;;
+  save)
+    grim -g "$SELECTION" "$FILEPATH" || exit 1
+    echo "$FILEPATH"
+    ;;
+esac

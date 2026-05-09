@@ -1,0 +1,139 @@
+#!/bin/bash
+
+# omarchy:summary=Set and show lightweight desktop notification reminders
+# omarchy:args=<minutes> [message] | show | clear
+# omarchy:examples=omarchy reminder 5 | omarchy reminder 30 "Check the oven" | omarchy reminder show | omarchy reminder clear
+
+set -euo pipefail
+
+format_remaining() {
+  local seconds=$1
+  local minutes=$((seconds / 60))
+  local remainder=$((seconds % 60))
+
+  if ((minutes > 0 && remainder > 0)); then
+    echo "${minutes}m ${remainder}s"
+  elif ((minutes > 0)); then
+    echo "${minutes}m"
+  else
+    echo "${remainder}s"
+  fi
+}
+
+parse_systemd_timespan() {
+  local timespan="$1"
+  local total=0
+  local value unit whole
+
+  while read -r value unit; do
+    whole=${value%.*}
+
+    case $unit in
+    d) total=$((total + whole * 86400)) ;;
+    h) total=$((total + whole * 3600)) ;;
+    min) total=$((total + whole * 60)) ;;
+    s) total=$((total + whole)) ;;
+    ms | us) ;;
+    esac
+  done < <(grep -oE '[0-9]+([.][0-9]+)?(d|h|min|s|ms|us)' <<<"$timespan" | sed -E 's/^([0-9.]+)([a-z]+)$/\1 \2/')
+
+  echo "$total"
+}
+
+show_reminders() {
+  local timers timer next next_seconds uptime remaining body=""
+  local reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
+  local reminder_message=""
+
+  timers=$(systemctl --user list-timers --all --no-legend --no-pager "omarchy-reminder-*.timer" 2>/dev/null | awk '{ print $(NF - 1) }')
+  uptime=${SECONDS_SINCE_BOOT:-$(awk '{ print int($1) }' /proc/uptime)}
+
+  for timer in $timers; do
+    next=$(systemctl --user show -P NextElapseUSecMonotonic "$timer" 2>/dev/null || true)
+    [[ -z $next ]] && continue
+
+    next_seconds=$(parse_systemd_timespan "$next")
+    ((next_seconds <= uptime)) && continue
+
+    remaining=$((next_seconds - uptime))
+    reminder=${timer%.timer}
+    reminder=${reminder#omarchy-reminder-}
+    set_at=${reminder##*-}
+    reminder_minutes=${reminder%%m-*}
+    reminder_message=""
+    [[ -f $reminder_dir/${timer%.timer}.message ]] && reminder_message=$(<"$reminder_dir/${timer%.timer}.message")
+
+    if [[ -n $reminder_message ]]; then
+      body+="$reminder_message in $(format_remaining $remaining) ($(date -d "@$((set_at + reminder_minutes * 60))" +%-H:%M))"$'\n'
+    else
+      body+="${reminder_minutes}-min reminder in $(format_remaining $remaining) ($(date -d "@$((set_at + reminder_minutes * 60))" +%-H:%M))"$'\n'
+    fi
+  done
+
+  if [[ -z $body ]]; then
+    omarchy-notification-send "󰔛" "Upcoming reminders" "No outstanding reminders" -u low
+  else
+    omarchy-notification-send "󰔛" "Upcoming reminders" "${body%$'\n'}" -u low
+  fi
+}
+
+clear_reminders() {
+  local units
+  local reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
+
+  units=$(systemctl --user list-timers --all --no-legend --no-pager "omarchy-reminder-*.timer" 2>/dev/null | awk '{ print $(NF - 1), $NF }')
+
+  if [[ -n $units ]]; then
+    xargs -r systemctl --user stop <<<"$units" || true
+  fi
+
+  rm -f "$reminder_dir"/omarchy-reminder-*.message 2>/dev/null || true
+  omarchy-notification-send "󰔛" "All reminders have been cleared" -u low
+}
+
+case ${1:-} in
+show | list)
+  show_reminders
+  exit 0
+  ;;
+clear)
+  clear_reminders
+  exit 0
+  ;;
+esac
+
+minutes=${1:-}
+shift || true
+message="$*"
+custom_message="$message"
+
+if [[ -z $minutes ]] || [[ ! $minutes =~ ^[0-9]+$ ]] || ((minutes == 0)); then
+  echo "Usage: omarchy-reminder <minutes> [message]"
+  echo "       omarchy-reminder show"
+  echo "       omarchy-reminder clear"
+  exit 1
+fi
+
+if [[ -z $message ]]; then
+  message="Your ${minutes} minutes are up"
+fi
+
+set_at=$(date +%s)
+remind_at=$(date -d "+${minutes} minutes" +%H:%M)
+unit="omarchy-reminder-${minutes}m-$set_at"
+reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
+message_file="$reminder_dir/$unit.message"
+confirmation="You'll be reminded at $remind_at"
+confirmation_title="Reminder set for ${minutes} minutes"
+
+mkdir -p "$reminder_dir"
+
+if [[ -n $custom_message ]]; then
+  printf "%s" "$custom_message" >"$message_file"
+  confirmation_title="$custom_message in ${minutes} minutes"
+fi
+
+systemd-run --user --quiet --collect --on-active="${minutes}m" --unit="$unit" \
+  bash -c 'omarchy-notification-send "󰔛" "Reminder" "$1" -u critical; rm -f "$2"' bash "$message" "$message_file"
+
+omarchy-notification-send "󰔛" "$confirmation_title" "$confirmation" -u low
