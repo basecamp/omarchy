@@ -9,6 +9,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 CURRENT_THEME_PATH="$HOME/.config/omarchy/current/theme"
 COLORS_PATH="$CURRENT_THEME_PATH/colors.toml"
+LIGHT_MODE_PATH="$CURRENT_THEME_PATH/light.mode"
 PI_AGENT_DIR="$HOME/.pi/agent"
 PI_THEME_DIR="$PI_AGENT_DIR/themes"
 PI_THEME_PATH="$PI_THEME_DIR/omarchy-system.json"
@@ -66,29 +67,6 @@ mix_color() {
   '
 }
 
-is_dark_theme() {
-  local color=${1#\#}
-
-  awk -v color="$color" '
-    function hex_pair_to_int(hex, idx) {
-      return strtonum("0x" substr(hex, idx, 2))
-    }
-
-    function channel_luminance(value, srgb) {
-      srgb = value / 255
-      return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ^ 2.4
-    }
-
-    BEGIN {
-      red = hex_pair_to_int(color, 1)
-      green = hex_pair_to_int(color, 3)
-      blue = hex_pair_to_int(color, 5)
-      luminance = 0.2126 * channel_luminance(red) + 0.7152 * channel_luminance(green) + 0.0722 * channel_luminance(blue)
-      exit !(luminance < 0.5)
-    }
-  '
-}
-
 write_setting_theme() {
   mkdir -p "$PI_AGENT_DIR"
 
@@ -127,17 +105,7 @@ brightMagenta=$(read_color color13)
 brightCyan=$(read_color color14)
 brightWhite=$(read_color color15)
 
-if is_dark_theme "$bg"; then
-  panel_mix=0.22
-  element_mix=0.34
-  border_mix=0.26
-  border_muted_mix=0.18
-  muted_mix=0.32
-  dim_mix=0.50
-  pending_mix=0.14
-  success_mix=0.14
-  error_mix=0.14
-else
+if [[ -f $LIGHT_MODE_PATH ]]; then
   panel_mix=0.12
   element_mix=0.20
   border_mix=0.34
@@ -147,6 +115,16 @@ else
   pending_mix=0.10
   success_mix=0.10
   error_mix=0.10
+else
+  panel_mix=0.22
+  element_mix=0.34
+  border_mix=0.26
+  border_muted_mix=0.18
+  muted_mix=0.32
+  dim_mix=0.50
+  pending_mix=0.14
+  success_mix=0.14
+  error_mix=0.14
 fi
 
 panel=$(mix_color "$bg" "$black" "$panel_mix")
