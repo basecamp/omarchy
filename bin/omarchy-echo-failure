@@ -1,9 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=Print a failure message in red
-# omarchy:args=<message>
-
-RED='\033[0;31m'
-NC='\033[0m'
-
-echo -e "${RED}$*${NC}"
