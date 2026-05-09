@@ -1,10 +1,12 @@
 #!/bin/bash
 
-icon=$(omarchy-weather-icon 2>/dev/null)
+weather=$(omarchy-weather-status 2>/dev/null)
 
-if [[ -n $icon ]]; then
+if [[ -n $weather ]]; then
+  read -r icon tooltip <<< "$weather"
   icon=$(printf '%s' "$icon" | sed 's/["\\]/\\&/g')
-  printf '{"text":"%s"}\n' "$icon"
+  tooltip=$(printf '%s' "$tooltip" | sed 's/["\\]/\\&/g')
+  printf '{"text":"%s", "tooltip":"%s"}\n' "$icon" "$tooltip"
 else
   printf '{"text":"","class":"unavailable"}\n'
 fi
