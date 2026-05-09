@@ -199,9 +199,15 @@ window#waybar.right .modules-right {
   margin-bottom: 6px;
 }
 
-window#waybar.left #clock,
-window#waybar.right #clock {
+window#waybar.left #clock {
   margin: 5px 0 5px 13px;
+  padding: 0;
+  min-width: 20px;
+  font-size: 12px;
+}
+
+window#waybar.right #clock {
+  margin: 5px 11px 5px 0;
   padding: 0;
   min-width: 20px;
   font-size: 12px;
@@ -209,19 +215,32 @@ window#waybar.right #clock {
 
 window#waybar.left #custom-screenrecording-indicator,
 window#waybar.left #custom-idle-indicator,
-window#waybar.left #custom-notification-silencing-indicator,
+window#waybar.left #custom-notification-silencing-indicator {
+  margin: 5px 0 5px 11px;
+  padding: 0;
+  min-width: 20px;
+  min-height: 12px;
+}
+
 window#waybar.right #custom-screenrecording-indicator,
 window#waybar.right #custom-idle-indicator,
 window#waybar.right #custom-notification-silencing-indicator {
+  margin: 5px 13px 5px 0;
+  padding: 0;
+  min-width: 20px;
+  min-height: 12px;
+}
+
+window#waybar.left #custom-weather {
+  font-size: 12px;
   margin: 5px 0 5px 11px;
   padding: 0;
   min-width: 20px;
 }
 
-window#waybar.left #custom-weather,
 window#waybar.right #custom-weather {
   font-size: 12px;
-  margin: 5px 0 5px 11px;
+  margin: 5px 13px 5px 0;
   padding: 0;
   min-width: 20px;
 }
