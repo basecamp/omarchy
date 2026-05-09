@@ -61,6 +61,9 @@ vulkan-asahi
 # Surface laptop support packages
 linux-firmware-marvell
 
+# Dell laptop support packages
+dell-xps-touchpad-haptics
+
 # T2 MacBook support packages
 apple-bcm-firmware
 apple-t2-audio-config
