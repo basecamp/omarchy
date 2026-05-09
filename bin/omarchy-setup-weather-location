@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# omarchy:summary=Set or clear the weather location override
+# omarchy:args=[location]
+# omarchy:examples=omarchy setup weather location|omarchy-setup-weather-location "Nairobi"|omarchy-setup-weather-location auto
+
+WEATHER_DIR="$HOME/.config/omarchy/weather"
+WEATHER_LOCATION_PATH="$WEATHER_DIR/location"
+
+location="${1:-}"
+
+if [[ -z $location ]]; then
+  location=$(omarchy-menu-input "Weather location (blank = auto)" --width 420) || exit 0
+fi
+
+location=${location%$'\n'}
+
+if [[ -n $location ]]; then
+  location="${location#"${location%%[![:space:]]*}"}"
+  location="${location%"${location##*[![:space:]]}"}"
+fi
+
+if [[ -z $location || ${location,,} == "auto" ]]; then
+  rm -f "$WEATHER_LOCATION_PATH"
+  notify-send -u low "Weather location" "Using auto-detected location"
+  exit 0
+fi
+
+mkdir -p "$WEATHER_DIR"
+printf '%s\n' "$location" > "$WEATHER_LOCATION_PATH"
+notify-send -u low "Weather location" "Set to $location"

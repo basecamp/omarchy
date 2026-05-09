@@ -2,16 +2,40 @@
 
 # omarchy:summary=Returns a formatted weather status string with temperature and wind speed.
 
-weather=$(curl -fsS --max-time 4 "https://wttr.in?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
+WEATHER_LOCATION_PATH="$HOME/.config/omarchy/weather/location"
+LEGACY_WEATHER_LOCATION_PATH="$HOME/.config/omarchy/weather-location"
+
+if [[ -f $WEATHER_LOCATION_PATH ]]; then
+  location=$(tr -d '\n' < "$WEATHER_LOCATION_PATH")
+elif [[ -f $LEGACY_WEATHER_LOCATION_PATH ]]; then
+  location=$(tr -d '\n' < "$LEGACY_WEATHER_LOCATION_PATH")
+fi
+
+if [[ -n $location ]]; then
+  location="${location#"${location%%[![:space:]]*}"}"
+  location="${location%"${location##*[![:space:]]}"}"
+fi
+
+if [[ -n $location ]]; then
+  weather=$(curl -fsS --max-time 4 "https://wttr.in/${location}?format=%t|%w" 2>/dev/null | tr -d '\n')
+else
+  weather=$(curl -fsS --max-time 4 "https://wttr.in?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
+fi
 
 if [[ -z $weather ]]; then
   echo "Weather unavailable"
   exit 1
 fi
 
-IFS='|' read -r place temperature wind <<< "$weather"
-place=${place%%,*}
-place=${place^}
+if [[ -n $location ]]; then
+  IFS='|' read -r temperature wind <<< "$weather"
+  place="$location"
+else
+  IFS='|' read -r place temperature wind <<< "$weather"
+  place=${place%%,*}
+  place=${place^}
+fi
+
 temperature=${temperature#+}
 
 echo "$(omarchy-weather-icon)    $place  ·  Temp $temperature  ·  Wind $wind"
