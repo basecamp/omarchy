@@ -1,8 +1,6 @@
 #!/bin/bash
 
-weather=$(omarchy-weather-status 2>/dev/null)
-
-if [[ -n $weather ]]; then
+if weather=$(omarchy-weather-status 2>/dev/null); then
   read -r icon tooltip <<< "$weather"
   icon=$(printf '%s' "$icon" | sed 's/["\\]/\\&/g')
   tooltip=$(printf '%s' "$tooltip" | sed 's/["\\]/\\&/g')
