@@ -79,7 +79,9 @@ luarocks
 mako
 man-db
 mariadb-libs
+meld
 mise
+moreutils
 mpv
 nautilus
 nautilus-python
