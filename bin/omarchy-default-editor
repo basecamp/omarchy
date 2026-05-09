@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# omarchy:summary=Set the default editor for $EDITOR
+# omarchy:args=[code|cursor|zed|sublime_text|helix|vim|emacs|nvim]
+# omarchy:examples=omarchy default editor | omarchy default editor code | omarchy default editor helix
+
+if (($# == 0)); then
+  sed -n 's/^export EDITOR=//p' ~/.config/uwsm/default | head -n 1
+  exit 0
+fi
+
+case "$1" in
+code) editor="code"; name="VSCode"; glyph="" ;;
+cursor) editor="cursor"; name="Cursor"; glyph="" ;;
+zed | zeditor) editor="zeditor"; name="Zed"; glyph="" ;;
+sublime_text) editor="sublime_text"; name="Sublime Text"; glyph="" ;;
+helix) editor="helix"; name="Helix"; glyph="" ;;
+vim) editor="vim"; name="Vim"; glyph="" ;;
+emacs) editor="emacs"; name="Emacs"; glyph="" ;;
+nvim) editor="nvim"; name="Neovim"; glyph="" ;;
+*)
+  echo "Usage: omarchy-default-editor <code|cursor|zed|sublime_text|helix|vim|emacs|nvim>"
+  exit 1
+  ;;
+esac
+
+sed -i "s/^export EDITOR=.*/export EDITOR=$editor/" ~/.config/uwsm/default
+
+export EDITOR="$editor"
+notify-send -u low "$glyph    $name is now the default editor" "      Effective after logging out"

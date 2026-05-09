@@ -1,11 +1,12 @@
 #!/bin/bash
+# omarchy:summary=Toggle the layout on the current active workspace between dwindle and scrolling
 
-# Toggle the layout on the current active workspace between dwindle and scrolling
 {
   read -r ACTIVE_MONITOR_ID
   read -r ACTIVE_WORKSPACE_NAME
   read -r CURRENT_LAYOUT
 } <<< "$(hyprctl activeworkspace -j | jq -r '.monitorID, .name, .tiledLayout')"
+
 
 SPECIAL_WS_ID=$(hyprctl monitors -j | jq -r --argjson idx "$ACTIVE_MONITOR_ID" '.[$idx].specialWorkspace.id')
 

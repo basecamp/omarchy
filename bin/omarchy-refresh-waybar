@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Overwrite the user configs for the Waybar menu bar with the Omarchy defaults and restart the service.
+# omarchy:summary=Reset Waybar config to Omarchy defaults
+# omarchy:examples=omarchy refresh waybar
 
 omarchy-refresh-config waybar/config.jsonc
 omarchy-refresh-config waybar/style.css

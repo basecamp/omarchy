@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Remove fingerprint authentication from sudo, polkit, and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+
+remove_pam_config() {
+  # Remove from sudo
+  if grep -q pam_fprintd.so /etc/pam.d/sudo; then
+    echo "Removing fingerprint authentication from sudo..."
+    sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/sudo
+  fi
+
+  # Remove from polkit
+  if [[ -f /etc/pam.d/polkit-1 ]] && grep -Fq 'pam_fprintd.so' /etc/pam.d/polkit-1; then
+    echo "Removing fingerprint authentication from polkit..."
+    sudo sed -i '/pam_fprintd\.so/d' /etc/pam.d/polkit-1
+  fi
+}
+
+remove_hyprlock_fingerprint_icon() {
+  echo "Removing fingerprint icon from hyprlock placeholder text..."
+  sed -i 's/placeholder_text = .*/placeholder_text = Enter Password/' ~/.config/hypr/hyprlock.conf
+  sed -i 's/fingerprint:enabled = .*/fingerprint:enabled = false/' ~/.config/hypr/hyprlock.conf
+}
+
+echo -e "\e[32mRemoving fingerprint scanner from authentication.\n\e[0m"
+
+remove_pam_config
+remove_hyprlock_fingerprint_icon
+
+echo "Removing fingerprint packages..."
+omarchy-pkg-drop fprintd libfprint-git
+
+echo -e "\e[32mFingerprint authentication has been completely removed.\e[0m"
