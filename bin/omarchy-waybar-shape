@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# omarchy:summary=Switch Waybar shape
+# omarchy:group=waybar
+# omarchy:name=shape
+# omarchy:args=<bar|tiles|float>
+# omarchy:examples=omarchy-waybar-shape bar | omarchy waybar shape tiles | omarchy waybar shape float
+
+set -e
+
+shape=$1
+
+case "$shape" in
+  bar|tiles|float) ;;
+  *)
+    echo "Usage: omarchy-waybar-shape bar|tiles|float" >&2
+    exit 1
+    ;;
+esac
+
+omarchy_path=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+user_waybar_dir="$HOME/.config/waybar"
+user_config="$user_waybar_dir/config.jsonc"
+style_file="$omarchy_path/default/waybar/styles/$shape.css"
+
+mkdir -p "$user_waybar_dir"
+
+if [[ ! -f $user_config ]]; then
+  cp "$omarchy_path/config/waybar/config.jsonc" "$user_config"
+fi
+
+cat "$omarchy_path/default/waybar/styles/default.css" "$style_file" >"$user_waybar_dir/style.css"
+
+sed -i -E '/"margin"[[:space:]]*:/d' "$user_config"
+if [[ $shape == "float" ]]; then
+  sed -i -E 's/("position"[[:space:]]*:[[:space:]]*")(top|bottom|left|right)(")/\1top\3/' "$user_config"
+  sed -i -E 's/("height"[[:space:]]*:[[:space:]]*)[0-9]+/\126/' "$user_config"
+  sed -i -E '/"width"[[:space:]]*:/d' "$user_config"
+  sed -i -E '/"height"[[:space:]]*:/a\  "margin": "0 2600 0 2600",' "$user_config"
+fi
+
+omarchy-restart-waybar

@@ -264,15 +264,43 @@ show_hardware_touchpad_haptics_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n  Hyprland\n󰍜  Waybar\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Unlock*) omarchy-launch-walker -m menus:omarchyunlocks --width 800 --minheight 400 ;;
   *Font*) show_font_menu ;;
   *Background*) show_background_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
+  *Waybar*) show_waybar_menu ;;
   *Screensaver*) show_screensaver_menu ;;
   *About*) show_about_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_waybar_menu() {
+  case $(menu "Waybar" "󰹹  Position\n󰆧  Shape") in
+  *Position*) show_waybar_position_menu ;;
+  *Shape*) show_waybar_shape_menu ;;
+  *) show_style_menu ;;
+  esac
+}
+
+show_waybar_position_menu() {
+  case $(menu "Waybar Position" "󰁝  Top\n󰁅  Bottom\n󰁍  Left\n󰁔  Right") in
+  *Top*) omarchy-waybar-position top ;;
+  *Bottom*) omarchy-waybar-position bottom ;;
+  *Left*) omarchy-waybar-position left ;;
+  *Right*) omarchy-waybar-position right ;;
+  *) show_waybar_menu ;;
+  esac
+}
+
+show_waybar_shape_menu() {
+  case $(menu "Waybar Shape" "󰓡  Bar\n󰏢  Tiles\n󰖲  Float") in
+  *Bar*) omarchy-waybar-shape bar ;;
+  *Tiles*) omarchy-waybar-shape tiles ;;
+  *Float*) omarchy-waybar-shape float ;;
+  *) show_waybar_menu ;;
   esac
 }
 

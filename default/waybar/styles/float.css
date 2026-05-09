@@ -1,0 +1,35 @@
+window#waybar {
+  background: @background;
+  border: 1px solid alpha(@foreground, .18);
+  border-radius: 999px;
+}
+
+window#waybar > box {
+  border-radius: 999px;
+  padding: 0 8px;
+}
+
+.modules-left {
+  margin-left: 10px;
+}
+
+.modules-right {
+  margin-right: 10px;
+}
+
+#workspaces button:first-child {
+  border-radius: 999px 0 0 999px;
+}
+
+#workspaces button:last-child {
+  border-radius: 0 999px 999px 0;
+}
+
+#workspaces button:first-child:last-child {
+  border-radius: 999px;
+}
+
+tooltip {
+  border: 1px solid alpha(@foreground, .25);
+  border-radius: 8px;
+}

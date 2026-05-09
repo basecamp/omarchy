@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# omarchy:summary=Set Waybar position
+# omarchy:group=waybar
+# omarchy:name=position
+# omarchy:args=<top|bottom|left|right>
+# omarchy:examples=omarchy-waybar-position top | omarchy waybar position bottom
+
+set -e
+
+position=$1
+
+case "$position" in
+  top|bottom|left|right) ;;
+  *)
+    echo "Usage: omarchy-waybar-position top|bottom|left|right" >&2
+    exit 1
+    ;;
+esac
+
+user_waybar_dir="$HOME/.config/waybar"
+user_config="$user_waybar_dir/config.jsonc"
+height=26
+
+if [[ $position == "left" || $position == "right" ]]; then
+  height=0
+fi
+
+mkdir -p "$user_waybar_dir"
+
+if [[ ! -f $user_config ]]; then
+  cp "$OMARCHY_PATH/config/waybar/config.jsonc" "$user_config"
+fi
+
+if ! grep -q '"position"' "$user_config"; then
+  echo "Unable to find position in $user_config" >&2
+  exit 1
+fi
+
+sed -i -E "s/(\"position\"[[:space:]]*:[[:space:]]*\")(top|bottom|left|right)(\")/\\1${position}\\3/" "$user_config"
+sed -i -E "s/(\"height\"[[:space:]]*:[[:space:]]*)[0-9]+/\\1${height}/" "$user_config"
+sed -i -E '/"width"[[:space:]]*:/d' "$user_config"
+
+if [[ $position == "left" || $position == "right" ]]; then
+  sed -i -E '/"height"[[:space:]]*:/a\  "width": 28,' "$user_config"
+  sed -i -E '/"clock"[[:space:]]*:[[:space:]]*\{/,/\}/ s/"format"[[:space:]]*:[[:space:]]*"[^"]*"/"format": "{:%H\\n  —\\n%M}"/' "$user_config"
+else
+  sed -i -E '/"clock"[[:space:]]*:[[:space:]]*\{/,/\}/ s/"format"[[:space:]]*:[[:space:]]*"[^"]*"/"format": "{:L%A %H:%M}"/' "$user_config"
+fi
+
+omarchy-restart-waybar
