@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# omarchy:summary=Set Hyprland, Mako, and Walker corners to sharp or round
+# omarchy:args=<sharp|round>
+# omarchy:examples=omarchy style corners round | omarchy style corners sharp
+
+if [[ $1 != "sharp" && $1 != "round" ]]; then
+  echo "Usage: omarchy-style-corners <sharp|round>"
+  exit 1
+fi
+
+omarchy-style-corners-hyprland "$1"
+omarchy-style-corners-mako "$1"
+omarchy-style-corners-walker "$1"

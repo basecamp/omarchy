@@ -40,7 +40,10 @@ MONITOR_CONF="$HOME/.config/hypr/monitors.conf"
 if [[ -f $MONITOR_CONF ]]; then
   mapfile -t ACTIVE_LINES < <(grep -E '^[[:space:]]*monitor=' "$MONITOR_CONF" | grep -vE 'disable[[:space:]]*$')
   if [[ ${#ACTIVE_LINES[@]} -eq 1 ]] && [[ "${ACTIVE_LINES[0]}" =~ ^monitor=,preferred,auto, ]]; then
-    sed -i -E "s|^(monitor=,preferred,auto,).*|\\1${NEW_SCALE}|" "$MONITOR_CONF"
+    sed -i -E \
+      -e "s|^(monitor=,preferred,auto,).*|\\1${NEW_SCALE}|" \
+      -e "s|^([[:space:]]*env[[:space:]]*=[[:space:]]*GDK_SCALE,).*|\\1${NEW_SCALE}|" \
+      "$MONITOR_CONF"
   fi
 fi
 

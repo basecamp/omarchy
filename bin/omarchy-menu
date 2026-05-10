@@ -120,7 +120,7 @@ show_custom_reminder_input() {
   if [[ $minutes =~ ^[0-9]+$ ]] && ((minutes > 0)); then
     show_reminder_message_input "$minutes"
   elif [[ -n $minutes ]]; then
-    omarchy-notification-send "󰔛" "Invalid reminder" "Enter the number of minutes" -u critical
+    omarchy-notification-send -g 󰔛 "Invalid reminder" "Enter the number of minutes" -u critical
     show_custom_reminder_input
   else
     back_to show_reminder_menu
@@ -264,11 +264,12 @@ show_hardware_touchpad_haptics_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n  Hyprland\n󰍜  Waybar\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n󰍜  Waybar\n󰏖  Corners\n  Hyprland\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Unlock*) omarchy-launch-walker -m menus:omarchyunlocks --width 800 --minheight 400 ;;
   *Font*) show_font_menu ;;
   *Background*) show_background_menu ;;
+  *Corners*) show_style_corners_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
   *Waybar*) show_waybar_menu ;;
   *Screensaver*) show_screensaver_menu ;;
@@ -281,6 +282,14 @@ show_waybar_menu() {
   case $(menu "Waybar" "󰹹  Position\n󰆧  Shape") in
   *Position*) show_waybar_position_menu ;;
   *Shape*) show_waybar_shape_menu ;;
+  *) show_style_menu ;;
+  esac
+}
+
+show_style_corners_menu() {
+  case $(omarchy-menu-select "Corners" "󰝣  Straight" "󰘇  Rounded") in
+  *Straight*) omarchy-style-corners sharp ;;
+  *Rounded*) omarchy-style-corners round ;;
   *) show_style_menu ;;
   esac
 }
