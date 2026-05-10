@@ -114,13 +114,13 @@ show_reminder_menu() {
 }
 
 show_custom_reminder_input() {
-  local minutes
-  minutes=$(omarchy-menu-input "Remind in minutes")
+  local time
+  time=$(omarchy-menu-input "Remind in time")
 
-  if [[ $minutes =~ ^[0-9]+$ ]] && ((minutes > 0)); then
-    show_reminder_message_input "$minutes"
-  elif [[ -n $minutes ]]; then
-    omarchy-notification-send "󰔛" "Invalid reminder" "Enter the number of minutes" -u critical
+  if [[ $time =~ ^([0-9]+[hms])( +[0-9]+[hms])*$ ]]; then
+    show_reminder_message_input "$time"
+  elif [[ -n $time ]]; then
+    omarchy-notification-send "󰔛" "Invalid reminder" "Examples: 10m, 1h, 1h 30m, 30s" -u critical
     show_custom_reminder_input
   else
     back_to show_reminder_menu
@@ -128,8 +128,22 @@ show_custom_reminder_input() {
 }
 
 show_reminder_message_input() {
-  local minutes="$1"
+  local time="$1"
   local message
+  local total_seconds=0
+
+  for part in $time; do
+    if [[ $part =~ ^([0-9]+)h$ ]]; then
+      total_seconds=$((total_seconds + ${BASH_REMATCH[1]} * 3600))
+    elif [[ $part =~ ^([0-9]+)m$ ]]; then
+      total_seconds=$((total_seconds + ${BASH_REMATCH[1]} * 60))
+    elif [[ $part =~ ^([0-9]+)s$ ]]; then
+      total_seconds=$((total_seconds + ${BASH_REMATCH[1]}))
+    fi
+  done
+
+  local minutes=$(( (total_seconds + 59) / 60 ))
+
   message=$(omarchy-menu-input "Reminder message")
 
   if [[ -n $message ]]; then
