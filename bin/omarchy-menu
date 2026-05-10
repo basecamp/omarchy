@@ -265,13 +265,15 @@ show_hardware_touchpad_haptics_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n󰘇  Corners\n  Hyprland\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n󰍜  Waybar\n󰘇  Corners\n  Hyprland\n󱄄  Screensaver\n  About") in
+
   *Theme*) show_theme_menu ;;
   *Unlock*) omarchy-launch-walker -m menus:omarchyunlocks --width 800 --minheight 400 ;;
   *Font*) show_font_menu ;;
   *Background*) show_background_menu ;;
   *Corners*) show_style_corners_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
+  *Waybar*) show_waybar_position_menu ;;
   *Screensaver*) show_screensaver_menu ;;
   *About*) show_about_menu ;;
   *) show_main_menu ;;
@@ -282,6 +284,16 @@ show_style_corners_menu() {
   case $(omarchy-menu-select "Corners" "󰝣  Sharp" "󰘇  Round") in
   *Sharp*) omarchy-style-corners sharp ;;
   *Round*) omarchy-style-corners round ;;
+  *) show_style_menu ;;
+  esac
+}
+
+show_waybar_position_menu() {
+  case $(menu "Waybar Position" "󰁝  Top\n󰁅  Bottom\n󰁍  Left\n󰁔  Right") in
+  *Top*) omarchy-style-waybar-position top ;;
+  *Bottom*) omarchy-style-waybar-position bottom ;;
+  *Left*) omarchy-style-waybar-position left ;;
+  *Right*) omarchy-style-waybar-position right ;;
   *) show_style_menu ;;
   esac
 }
