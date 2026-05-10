@@ -14,7 +14,7 @@ image)
   if [[ -z $image ]]; then
     image=$(omarchy-menu-input "Paste image path")
   fi
-  if [[ -n $image && -f $image ]] && omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/screensaver.txt; then
+  if [[ -n $image && -f $image && $image =~ \.(svg|png)$ ]] && omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/screensaver.txt; then
     omarchy-launch-screensaver force >/dev/null 2>&1
   fi
   ;;

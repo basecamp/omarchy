@@ -14,7 +14,7 @@ image)
   if [[ -z $image ]]; then
     image=$(omarchy-menu-input "Paste image path")
   fi
-  if [[ -n $image && -f $image ]] && omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/about.txt --width 54 --height 26 --mode block; then
+  if [[ -n $image && -f $image && $image =~ \.(svg|png)$ ]] && omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/about.txt --width 54 --height 26 --mode block; then
     omarchy-launch-about >/dev/null 2>&1
   fi
   ;;
