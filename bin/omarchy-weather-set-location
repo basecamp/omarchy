@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Set the weather location used by waybar weather widgets
+# omarchy:args=<location>
+# omarchy:examples=omarchy weather set-location "New York, NY" | omarchy weather set-location London | omarchy weather set-location 10001
+
+set -eo pipefail
+
+location="$1"
+
+if [[ -z $location ]]; then
+  echo "Usage: omarchy weather set-location <location>" >&2
+  exit 1
+fi
+
+mkdir -p "$HOME/.config/omarchy/current"
+printf '%s\n' "$location" >"$HOME/.config/omarchy/current/weather.location"
+
+echo "Weather location set to $location"
+echo "Restarting Waybar..."
+omarchy-restart-waybar

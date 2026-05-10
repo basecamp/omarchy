@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Show currently configured weather location
+# omarchy:examples=omarchy weather location
+
+path="$HOME/.config/omarchy/current/weather.location"
+
+if [[ -f $path ]]; then
+  cat "$path"
+else
+  echo "Not configured"
+fi

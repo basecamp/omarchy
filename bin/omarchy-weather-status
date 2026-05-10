@@ -2,7 +2,10 @@
 
 # omarchy:summary=Returns a formatted weather status string with temperature and wind speed.
 
-weather=$(curl -fsS --max-time 4 "https://wttr.in?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
+loc=$(cat "$HOME/.config/omarchy/current/weather.location" 2>/dev/null || true)
+loc_path="${loc:+/${loc// /+}}"
+
+weather=$(curl -fsS --max-time 4 "https://wttr.in${loc_path}?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
 
 if [[ -z $weather ]]; then
   echo "Weather unavailable"

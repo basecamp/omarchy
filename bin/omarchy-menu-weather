@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Pick a weather location via walker prompt and persist it
+# omarchy:group=menu
+# omarchy:examples=omarchy menu weather
+
+set -eo pipefail
+
+input=$(omarchy-menu-input "Weather location (city or zip)" || true)
+
+[[ -z $input ]] && exit 0
+
+omarchy weather set-location "$input"

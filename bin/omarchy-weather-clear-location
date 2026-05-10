@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Clear the configured weather location and return to auto-detect
+# omarchy:examples=omarchy weather clear-location
+
+set -eo pipefail
+
+path="$HOME/.config/omarchy/current/weather.location"
+
+if [[ -f $path ]]; then
+  rm -f "$path"
+  echo "Weather location cleared (using auto-detect)"
+  echo "Restarting Waybar..."
+  omarchy-restart-waybar
+else
+  echo "No weather location was configured"
+fi
