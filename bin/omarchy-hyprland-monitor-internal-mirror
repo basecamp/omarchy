@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Enable, disable, toggle, or recover mirroring the internal display to an external monitor
-# omarchy:args=<on|off|toggle|recover>
+# omarchy:args=<on|off|toggle|recover|reapply>
 
 TOGGLE="internal-monitor-mirror"
 TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.conf"
@@ -45,8 +45,23 @@ toggle() {
 }
 
 recover() {
-  if ! omarchy-hw-external-monitors; then
-    omarchy-hyprland-toggle $TOGGLE off
+  if ! omarchy-hyprland-toggle-enabled "$TOGGLE"; then
+    return
+  fi
+
+  for i in {1..6}; do
+    if omarchy-hw-external-monitors; then
+      return
+    fi
+    sleep 0.5
+  done
+
+  omarchy-hyprland-toggle "$TOGGLE"
+}
+
+reapply() {
+  if omarchy-hyprland-toggle-enabled "$TOGGLE"; then
+    hyprctl reload
   fi
 }
 
@@ -55,8 +70,9 @@ case "$1" in
   off) off ;;
   toggle) toggle ;;
   recover) recover ;;
+  reapply) reapply ;;
   *)
-    echo "Usage: $(basename "$0") {on|off|toggle|recover}" >&2
+    echo "Usage: $(basename "$0") {on|off|toggle|recover|reapply}" >&2
     exit 1
     ;;
 esac
