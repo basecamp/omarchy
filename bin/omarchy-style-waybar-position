@@ -17,6 +17,10 @@ if [[ ! $position =~ ^(top|bottom|left|right)$ ]]; then
   exit 1
 fi
 
+# Reset config and styles before making adjustments
+omarchy-refresh-config waybar/config.jsonc
+omarchy-refresh-config waybar/style.css
+
 if [[ $position == "left" || $position == "right" ]]; then
   height=0
   horizontal=false
