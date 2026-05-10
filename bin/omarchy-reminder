@@ -41,21 +41,18 @@ parse_systemd_timespan() {
 }
 
 show_reminders() {
-  local timers timer next next_seconds uptime remaining body=""
+  local timer next remaining body=""
   local reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
   local reminder_message=""
+  local now=$(date +%s)
 
-  timers=$(systemctl --user list-timers --all --no-legend --no-pager "omarchy-reminder-*.timer" 2>/dev/null | awk '{ print $(NF - 1) }')
-  uptime=${SECONDS_SINCE_BOOT:-$(awk '{ print int($1) }' /proc/uptime)}
+  while IFS=$'\t' read -r timer next; do
+    [[ -z $timer || -z $next ]] && continue
 
-  for timer in $timers; do
-    next=$(systemctl --user show -P NextElapseUSecMonotonic "$timer" 2>/dev/null || true)
-    [[ -z $next ]] && continue
+    next=$((next / 1000000))
+    ((next <= now)) && continue
 
-    next_seconds=$(parse_systemd_timespan "$next")
-    ((next_seconds <= uptime)) && continue
-
-    remaining=$((next_seconds - uptime))
+    remaining=$((next - now))
     reminder=${timer%.timer}
     reminder=${reminder#omarchy-reminder-}
     set_at=${reminder##*-}
@@ -64,11 +61,11 @@ show_reminders() {
     [[ -f $reminder_dir/${timer%.timer}.message ]] && reminder_message=$(<"$reminder_dir/${timer%.timer}.message")
 
     if [[ -n $reminder_message ]]; then
-      body+="$reminder_message in $(format_remaining $remaining) ($(date -d "@$((set_at + reminder_minutes * 60))" +%-H:%M))"$'\n'
+      body+="$reminder_message in $(format_remaining $remaining) ($(date -d "@$next" +%-H:%M))"$'\n'
     else
-      body+="${reminder_minutes}-min reminder in $(format_remaining $remaining) ($(date -d "@$((set_at + reminder_minutes * 60))" +%-H:%M))"$'\n'
+      body+="${reminder_minutes}-min reminder in $(format_remaining $remaining) ($(date -d "@$next" +%-H:%M))"$'\n'
     fi
-  done
+  done < <(systemctl --user list-timers --all --output=json "omarchy-reminder-*.timer" 2>/dev/null | jq -r '.[] | [.unit, .next] | @tsv')
 
   if [[ -z $body ]]; then
     omarchy-notification-send "󰔛" "Upcoming reminders" "No outstanding reminders" -u low
