@@ -3,4 +3,9 @@
 # omarchy:summary=Launch the Omarchy bluetooth controls TUI (provided by bluetui).
 
 rfkill unblock bluetooth
-exec omarchy-launch-or-focus-tui bluetui
+
+# bluetui/crossterm does not reliably handle navigation keys when Ghostty
+# advertises TERM=xterm-ghostty. Use a widely-supported terminfo entry for
+# this TUI while preserving the usual Omarchy app id for focus/floating rules.
+exec omarchy-launch-or-focus "org.omarchy.bluetui" \
+  "uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.bluetui -e env TERM=xterm-256color bluetui"
