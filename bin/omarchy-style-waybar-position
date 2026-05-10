@@ -1,8 +1,6 @@
 #!/bin/bash
 
 # omarchy:summary=Set Waybar position
-# omarchy:group=style
-# omarchy:name=waybar-position
 # omarchy:args=<top|bottom|left|right>
 # omarchy:examples=omarchy-style-waybar-position top | omarchy style waybar-position bottom
 
