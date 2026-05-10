@@ -9,8 +9,9 @@ WIDTH=$(echo "$MONITOR_INFO" | jq -r '.width')
 HEIGHT=$(echo "$MONITOR_INFO" | jq -r '.height')
 REFRESH_RATE=$(echo "$MONITOR_INFO" | jq -r '.refreshRate')
 
-# Cycle through scales: 1 → 1.25 → 1.6 → 2 → 3 → 4 → 1 (or reverse with --reverse)
+# Cycle through monitor/GDK scale pairs: 1 → 1.25 → 1.6 → 2 → 3 → 4 → 1 (or reverse with --reverse)
 SCALES=(1 1.25 1.6 2 3 4)
+GDK_SCALES=(1 1.25 1.75 2 3 4)
 
 # Find the index of the scale closest to the current one (Hyprland may
 # snap fractional scales to nearby values, so we can't match exactly)
@@ -31,16 +32,22 @@ else
 fi
 
 NEW_SCALE=${SCALES[$NEW_IDX]}
+NEW_GDK_SCALE=${GDK_SCALES[$NEW_IDX]}
 
 hyprctl eval "hl.monitor({ output = \"$ACTIVE_MONITOR\", mode = \"${WIDTH}x${HEIGHT}@${REFRESH_RATE}\", position = \"auto\", scale = $NEW_SCALE })" >/dev/null
 
-# Persist to monitors.lua if the user has a single generic catch-all line,
-# so the scale survives reboots.
+# Persist to monitors.lua if the user still has Omarchy's generic catch-all
+# defaults, so the scale survives reboots.
 MONITOR_LUA="$HOME/.config/hypr/monitors.lua"
-if [[ -f $MONITOR_LUA ]] && grep -q '^hl\.monitor({ output = "", mode = "preferred", position = "auto", scale = ' "$MONITOR_LUA"; then
+if [[ -f $MONITOR_LUA ]] && grep -q '^local omarchy_monitor_scale = ' "$MONITOR_LUA"; then
+  sed -i -E \
+    -e "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${NEW_SCALE}|" \
+    -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${NEW_GDK_SCALE}|" \
+    "$MONITOR_LUA"
+elif [[ -f $MONITOR_LUA ]] && grep -Eq '^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ("auto"|[0-9.]+) \}\)' "$MONITOR_LUA"; then
   sed -i -E \
     -e "s|^(hl\.monitor\(\{ output = \"\", mode = \"preferred\", position = \"auto\", scale = )([^ ]+)( \}\))|\\1${NEW_SCALE}\\3|" \
-    -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$NEW_SCALE"'")|' \
+    -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$NEW_GDK_SCALE"'")|' \
     "$MONITOR_LUA"
 fi
 
