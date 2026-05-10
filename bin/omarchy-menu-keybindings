@@ -21,6 +21,11 @@ declare -A FALLBACK_KEYCODE_SYM_MAP=(
   [61]="SLASH"
 )
 
+# Hyprland's Lua config provider currently reports code:... binds from hl.bind()
+# as key="" and keycode=0 in `hyprctl -j binds`. Keep a lightweight
+# source-derived key cache so the menu can still show those bindings.
+declare -A LUA_BIND_KEY_MAP
+
 build_keymap_cache() {
   local keymap
   keymap="$(xkbcli compile-keymap)" || {
@@ -108,36 +113,146 @@ parse_keycodes() {
   fi
 }
 
-# Fetch dynamic keybindings from Hyprland
+# Supplement `hyprctl -j binds` for Lua-only binds that Hyprland currently
+# reports without their original key, such as hl.bind("SUPER + code:10", ...).
+build_lua_bind_key_cache() {
+  local modmask description key
+
+  omarchy-cmd-present lua || return 0
+
+  while IFS=$'\t' read -r modmask description key; do
+    [[ -z $modmask || -z $description || -z $key ]] && continue
+    LUA_BIND_KEY_MAP["$modmask,$description"]="$key"
+  done < <(
+    lua <<'LUA'
+local modifiers = { SHIFT = 1, CTRL = 4, CONTROL = 4, ALT = 8, SUPER = 64 }
+
+local function split_keys(keys)
+  local modmask = 0
+  local key = ""
+
+  for part in string.gmatch(keys, "[^+]+") do
+    local value = part:gsub("^%s+", ""):gsub("%s+$", "")
+    local modifier = modifiers[string.upper(value)]
+
+    if modifier then
+      modmask = modmask + modifier
+    else
+      key = value
+    end
+  end
+
+  return modmask, key
+end
+
+local function proxy()
+  local p = {}
+
+  return setmetatable(p, {
+    __index = function()
+      return p
+    end,
+    __call = function()
+      return p
+    end,
+  })
+end
+
+local p = proxy()
+
+hl = setmetatable({
+  dsp = p,
+  bind = function(keys, _, opts)
+    opts = opts or {}
+    if opts.description and opts.description ~= "" then
+      local modmask, key = split_keys(keys)
+      print(modmask .. "\t" .. opts.description .. "\t" .. key)
+    end
+    return p
+  end,
+  unbind = function() end,
+  config = function() end,
+  env = function() end,
+  monitor = function() end,
+  window_rule = function() end,
+  gesture = function() end,
+  animation = function() end,
+  curve = function() end,
+  exec_cmd = function() end,
+}, {
+  __index = function()
+    return function()
+      return p
+    end
+  end,
+})
+
+local config = (os.getenv("HOME") or "") .. "/.config/hypr/hyprland.lua"
+local file = io.open(config, "r")
+
+if file then
+  file:close()
+  local ok, err = pcall(dofile, config)
+  if not ok and os.getenv("DEBUG") == "1" then
+    io.stderr:write("[DEBUG] lua bind scan failed: " .. tostring(err) .. "\n")
+  end
+end
+LUA
+  )
+}
+
+modmask_to_text() {
+  case "$1" in
+    0)  printf '' ;;
+    1)  printf 'SHIFT' ;;
+    4)  printf 'CTRL' ;;
+    5)  printf 'SHIFT CTRL' ;;
+    8)  printf 'ALT' ;;
+    9)  printf 'SHIFT ALT' ;;
+    12) printf 'CTRL ALT' ;;
+    13) printf 'SHIFT CTRL ALT' ;;
+    64) printf 'SUPER' ;;
+    65) printf 'SUPER SHIFT' ;;
+    68) printf 'SUPER CTRL' ;;
+    69) printf 'SUPER SHIFT CTRL' ;;
+    72) printf 'SUPER ALT' ;;
+    73) printf 'SUPER SHIFT ALT' ;;
+    76) printf 'SUPER CTRL ALT' ;;
+    77) printf 'SUPER SHIFT CTRL ALT' ;;
+    *)  printf '%s' "$1" ;;
+  esac
+}
+
+# Fetch dynamic keybindings from Hyprland.
 #
 # Also do some pre-processing:
+# - Fill missing Lua code:... keys from the Lua source cache
 # - Remove standard Omarchy bin path prefix
 # - Map numeric modifier key mask to a textual rendition
 # - Output comma-separated values that the parser can understand
 dynamic_bindings() {
+  local modmask key keycode description dispatcher arg modifiers
+
   hyprctl -j binds |
-    jq -r '.[] | {modmask, key, keycode, description, dispatcher, arg} | "\(.modmask),\(.key)@\(.keycode),\(.description),\(.dispatcher),\(.arg)"' |
-    sed -r \
-      -e 's/null//' \
-      -e 's,~/.local/share/omarchy/bin/,,' \
-      -e 's/@0//' \
-      -e 's/,@/,code:/' \
-      -e 's/^0,/,/' \
-      -e 's/^1,/SHIFT,/' \
-      -e 's/^4,/CTRL,/' \
-      -e 's/^5,/SHIFT CTRL,/' \
-      -e 's/^8,/ALT,/' \
-      -e 's/^9,/SHIFT ALT,/' \
-      -e 's/^12,/CTRL ALT,/' \
-      -e 's/^13,/SHIFT CTRL ALT,/' \
-      -e 's/^64,/SUPER,/' \
-      -e 's/^65,/SUPER SHIFT,/' \
-      -e 's/^68,/SUPER CTRL,/' \
-      -e 's/^69,/SUPER SHIFT CTRL,/' \
-      -e 's/^72,/SUPER ALT,/' \
-      -e 's/^73,/SUPER SHIFT ALT,/' \
-      -e 's/^76,/SUPER CTRL ALT,/' \
-      -e 's/^77,/SUPER SHIFT CTRL ALT,/'
+    jq -r '.[] | [.modmask, (.key // ""), (.keycode // 0), (.description // ""), (.dispatcher // ""), (.arg // "") | tostring] | join("\u001f")' |
+    while IFS=$'\x1f' read -r modmask key keycode description dispatcher arg; do
+      if [[ -z $key && $keycode != "0" ]]; then
+        key="code:$keycode"
+      fi
+
+      if [[ -z $key && -n $description ]]; then
+        key="${LUA_BIND_KEY_MAP["$modmask,$description"]}"
+      fi
+
+      [[ -z $description && $dispatcher == "__lua" ]] && continue
+
+      modifiers=$(modmask_to_text "$modmask")
+      arg="${arg//~\/.local\/share\/omarchy\/bin\//}"
+      arg="${arg//uwsm app -- /}"
+      arg="${arg//uwsm-app -- /}"
+
+      printf '%s,%s,%s,%s,%s\n' "$modifiers" "$key" "$description" "$dispatcher" "$arg"
+    done
 }
 
 # Hardcoded bindings, like the copy-url extension and such
@@ -262,6 +377,7 @@ prioritize_entries() {
 
 output_binding_records() {
   build_keymap_cache
+  build_lua_bind_key_cache
 
   {
     dynamic_bindings
