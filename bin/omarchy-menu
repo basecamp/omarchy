@@ -120,7 +120,7 @@ show_custom_reminder_input() {
   if [[ $minutes =~ ^[0-9]+$ ]] && ((minutes > 0)); then
     show_reminder_message_input "$minutes"
   elif [[ -n $minutes ]]; then
-    omarchy-notification-send "󰔛" "Invalid reminder" "Enter the number of minutes" -u critical
+    omarchy-notification-send -g 󰔛 "Invalid reminder" "Enter the number of minutes" -u critical
     show_custom_reminder_input
   else
     back_to show_reminder_menu
