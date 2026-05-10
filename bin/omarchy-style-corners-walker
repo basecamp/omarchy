@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# omarchy:summary=Set or toggle rounded Walker corners
+# omarchy:args=[toggle|sharp|round]
+# omarchy:examples=omarchy style corners walker toggle | omarchy style corners walker round | omarchy style corners walker sharp
+
+TOGGLES_CSS="$HOME/.local/state/omarchy/toggles/walker.css"
+
+set_radius() {
+  local radius="$1"
+
+  mkdir -p "$(dirname "$TOGGLES_CSS")"
+  touch "$TOGGLES_CSS"
+
+  if grep -q '^  border-radius:' "$TOGGLES_CSS"; then
+    sed -i "s/^  border-radius:.*/  border-radius: ${radius}px;/" "$TOGGLES_CSS"
+  elif grep -q '^border-radius:' "$TOGGLES_CSS"; then
+    sed -i "s/^border-radius:.*/border-radius: ${radius}px;/" "$TOGGLES_CSS"
+  else
+    echo ".box-wrapper { border-radius: ${radius}px; }" >>"$TOGGLES_CSS"
+  fi
+}
+
+case "${1:-toggle}" in
+  round) set_radius 6 ;;
+  sharp) set_radius 0 ;;
+  toggle)
+    if [[ -f $TOGGLES_CSS ]] && grep -q 'border-radius: 6px;' "$TOGGLES_CSS"; then
+      set_radius 0
+    else
+      set_radius 6
+    fi
+    ;;
+  *)
+    echo "Usage: omarchy-style-corners-walker [toggle|sharp|round]"
+    exit 1
+    ;;
+esac
+
+omarchy-restart-walker

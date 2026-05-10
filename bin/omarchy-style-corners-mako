@@ -2,7 +2,7 @@
 
 # omarchy:summary=Set or toggle rounded Mako notification corners
 # omarchy:args=[toggle|sharp|round]
-# omarchy:examples=omarchy mako corners toggle | omarchy mako corners round | omarchy mako corners sharp
+# omarchy:examples=omarchy style corners mako toggle | omarchy style corners mako round | omarchy style corners mako sharp
 
 TOGGLES_CONFIG="$HOME/.local/state/omarchy/toggles/mako.ini"
 
@@ -30,7 +30,7 @@ case "${1:-toggle}" in
     fi
     ;;
   *)
-    echo "Usage: omarchy-mako-corners [toggle|sharp|round]"
+    echo "Usage: omarchy-style-corners-mako [toggle|sharp|round]"
     exit 1
     ;;
 esac

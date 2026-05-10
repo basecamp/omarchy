@@ -264,15 +264,24 @@ show_hardware_touchpad_haptics_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n󰏖  Corners\n  Hyprland\n󱄄  Screensaver\n  About") in
   *Theme*) show_theme_menu ;;
   *Unlock*) omarchy-launch-walker -m menus:omarchyunlocks --width 800 --minheight 400 ;;
   *Font*) show_font_menu ;;
   *Background*) show_background_menu ;;
+  *Corners*) show_style_corners_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
   *Screensaver*) show_screensaver_menu ;;
   *About*) show_about_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_style_corners_menu() {
+  case $(omarchy-menu-select "Corners" "󰝣  Straight" "󰘇  Rounded") in
+  *Straight*) omarchy-style-corners sharp ;;
+  *Rounded*) omarchy-style-corners round ;;
+  *) show_style_menu ;;
   esac
 }
 
