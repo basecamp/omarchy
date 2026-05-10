@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # omarchy:summary=Set Waybar position
-# omarchy:group=waybar
-# omarchy:name=position
+# omarchy:group=style
+# omarchy:name=waybar-position
 # omarchy:args=<top|bottom|left|right>
-# omarchy:examples=omarchy-waybar-position top | omarchy waybar position bottom
+# omarchy:examples=omarchy-style-waybar-position top | omarchy style waybar-position bottom
 
 set -e
 
@@ -15,7 +15,7 @@ position=$1
 case "$position" in
   top|bottom|left|right) ;;
   *)
-    echo "Usage: omarchy-waybar-position top|bottom|left|right" >&2
+    echo "Usage: omarchy-style-waybar-position top|bottom|left|right" >&2
     exit 1
     ;;
 esac

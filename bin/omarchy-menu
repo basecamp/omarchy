@@ -271,18 +271,10 @@ show_style_menu() {
   *Background*) show_background_menu ;;
   *Corners*) show_style_corners_menu ;;
   *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
-  *Waybar*) show_waybar_menu ;;
+  *Waybar*) show_waybar_position_menu ;;
   *Screensaver*) show_screensaver_menu ;;
   *About*) show_about_menu ;;
   *) show_main_menu ;;
-  esac
-}
-
-show_waybar_menu() {
-  case $(menu "Waybar" "󰹹  Position\n󰆧  Shape") in
-  *Position*) show_waybar_position_menu ;;
-  *Shape*) show_waybar_shape_menu ;;
-  *) show_style_menu ;;
   esac
 }
 
@@ -296,20 +288,11 @@ show_style_corners_menu() {
 
 show_waybar_position_menu() {
   case $(menu "Waybar Position" "󰁝  Top\n󰁅  Bottom\n󰁍  Left\n󰁔  Right") in
-  *Top*) omarchy-waybar-position top ;;
-  *Bottom*) omarchy-waybar-position bottom ;;
-  *Left*) omarchy-waybar-position left ;;
-  *Right*) omarchy-waybar-position right ;;
-  *) show_waybar_menu ;;
-  esac
-}
-
-show_waybar_shape_menu() {
-  case $(menu "Waybar Shape" "󰓡  Bar\n󰏢  Tiles\n󰖲  Float") in
-  *Bar*) omarchy-waybar-shape bar ;;
-  *Tiles*) omarchy-waybar-shape tiles ;;
-  *Float*) omarchy-waybar-shape float ;;
-  *) show_waybar_menu ;;
+  *Top*) omarchy-style-waybar-position top ;;
+  *Bottom*) omarchy-style-waybar-position bottom ;;
+  *Left*) omarchy-style-waybar-position left ;;
+  *Right*) omarchy-style-waybar-position right ;;
+  *) show_style_menu ;;
   esac
 }
 
