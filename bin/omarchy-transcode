@@ -193,14 +193,14 @@ main() {
   output=$(output_path "$input" "$format" "$resolution")
 
   if [[ $type == "video" ]]; then
-    omarchy-notification-send "" "Transcoding video…" "$(basename -- "$input") to $format ($resolution)"
+    omarchy-notification-send -g  "Transcoding video…" "$(basename -- "$input") to $format ($resolution)"
     transcode_video "$input" "$format" "$resolution" "$output"
     copy_to_clipboard "$output"
-    omarchy-notification-send "" "Transcoded to $resolution $format" "Saved and copied to clipboard."
+    omarchy-notification-send -g  "Transcoded to $resolution $format" "Saved and copied to clipboard."
   else
     transcode_picture "$input" "$format" "$resolution" "$output"
     copy_to_clipboard "$output"
-    omarchy-notification-send "" "Transcoded to $resolution $format" "Saved and copied to clipboard."
+    omarchy-notification-send -g  "Transcoded to $resolution $format" "Saved and copied to clipboard."
   fi
 }
 

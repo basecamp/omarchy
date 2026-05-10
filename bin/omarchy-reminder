@@ -68,9 +68,9 @@ show_reminders() {
   done < <(systemctl --user list-timers --all --output=json "omarchy-reminder-*.timer" 2>/dev/null | jq -r '.[] | [.unit, .next] | @tsv')
 
   if [[ -z $body ]]; then
-    omarchy-notification-send "󰔛" "Upcoming reminders" "No outstanding reminders" -u low
+    omarchy-notification-send -g 󰔛 "Upcoming reminders" "No outstanding reminders"
   else
-    omarchy-notification-send "󰔛" "Upcoming reminders" "${body%$'\n'}" -u low
+    omarchy-notification-send -g 󰔛 "Upcoming reminders" "${body%$'\n'}"
   fi
 }
 
@@ -85,7 +85,7 @@ clear_reminders() {
   fi
 
   rm -f "$reminder_dir"/omarchy-reminder-*.message 2>/dev/null || true
-  omarchy-notification-send "󰔛" "All reminders have been cleared" -u low
+  omarchy-notification-send -g 󰔛 "All reminders have been cleared"
 }
 
 case ${1:-} in
@@ -131,6 +131,6 @@ if [[ -n $custom_message ]]; then
 fi
 
 systemd-run --user --quiet --collect --on-active="${minutes}m" --unit="$unit" \
-  bash -c 'omarchy-notification-send "󰔛" "Reminder" "$1" -u critical; rm -f "$2"' bash "$message" "$message_file"
+  bash -c 'omarchy-notification-send -g 󰔛 "Reminder" "$1" -u critical; rm -f "$2"' bash "$message" "$message_file"
 
-omarchy-notification-send "󰔛" "$confirmation_title" "$confirmation" -u low
+omarchy-notification-send -g 󰔛 "$confirmation_title" "$confirmation"
