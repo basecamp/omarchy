@@ -21,7 +21,10 @@ omarchy-pkg-drop \
   libretro-parallel-n64 libretro-picodrive libretro-play libretro-ppsspp \
   libretro-sameboy libretro-scummvm libretro-shaders-slang libretro-snes9x \
   libretro-yabause \
-  libretro-cap32-git libretro-fbneo-git libretro-uae-git libretro-vice-git \
+  libretro-cap32-git libretro-fbneo-git libretro-uae-git \
+  libretro-vice-x128-git libretro-vice-x64-git libretro-vice-x64dtv-git libretro-vice-x64sc-git \
+  libretro-vice-xcbm2-git libretro-vice-xcbm5x0-git libretro-vice-xpet-git \
+  libretro-vice-xplus4-git libretro-vice-xscpu64-git libretro-vice-xvic-git \
   retroarch-joypad-autoconfig-git
 
 rm -rf \
