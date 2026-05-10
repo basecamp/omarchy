@@ -25,7 +25,7 @@ brave) desktop_id="brave-browser.desktop"; name="Brave"; glyph="󰖟" ;;
 brave-origin) desktop_id="brave-origin-beta.desktop"; name="Brave Origin"; glyph="󰖟" ;;
 edge) desktop_id="microsoft-edge.desktop"; name="Edge"; glyph="󰇩" ;;
 firefox) desktop_id="firefox.desktop"; name="Firefox"; glyph="󰈹" ;;
-zen) desktop_id="zen.desktop"; name="Zen"; glyph="󰰷" ;;
+zen) desktop_id="zen.desktop"; name="Zen"; glyph="󰖟" ;;
 *)
   echo "Usage: omarchy-default-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
   exit 1
