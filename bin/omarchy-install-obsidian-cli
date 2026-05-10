@@ -16,9 +16,7 @@ DOWNLOAD_URL="https://github.com/obsidianmd/obsidian-releases/releases/download/
 TEMP_DIR=$(mktemp -d)
 
 echo "Downloading Obsidian CLI v${VERSION}..."
-curl -L "$DOWNLOAD_URL" -o "$TEMP_DIR/obsidian.tar.gz" --progress-bar
-
-if [[ ! -f "$TEMP_DIR/obsidian.tar.gz" ]]; then
+if ! curl -fL "$DOWNLOAD_URL" -o "$TEMP_DIR/obsidian.tar.gz" --progress-bar; then
   echo "Error: Download failed."
   rm -rf "$TEMP_DIR"
   exit 1
@@ -33,12 +31,12 @@ if [[ ! -f "$TEMP_DIR/obsidian-${VERSION}/obsidian-cli" ]]; then
   exit 1
 fi
 
-echo "Installing to ~/.local/bin/obsidian..."
+echo "Installing to ~/.local/bin/obsidian-cli..."
 mkdir -p ~/.local/bin
-cp "$TEMP_DIR/obsidian-${VERSION}/obsidian-cli" ~/.local/bin/obsidian
-chmod 755 ~/.local/bin/obsidian
+cp "$TEMP_DIR/obsidian-${VERSION}/obsidian-cli" ~/.local/bin/obsidian-cli
+chmod 755 ~/.local/bin/obsidian-cli
 
 rm -rf "$TEMP_DIR"
 
 echo "✅ Obsidian CLI installed successfully!"
-echo "You can now use 'obsidian <command>' in your terminal."
+echo "You can now use 'obsidian-cli <command>' in your terminal."
