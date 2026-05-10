@@ -1,3 +1,5 @@
+set -e
+
 echo "Install speech-dispatcher and espeak-ng for text-to-speech support"
 
 omarchy-pkg-add speech-dispatcher espeak-ng
