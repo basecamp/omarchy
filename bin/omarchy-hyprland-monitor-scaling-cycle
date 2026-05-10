@@ -24,7 +24,7 @@ CURRENT_IDX=$(awk -v s="$CURRENT_SCALE" -v list="${SCALES[*]}" 'BEGIN {
   print best
 }')
 
-if [[ "$1" == "--reverse" ]]; then
+if [[ $1 == "--reverse" ]]; then
   NEW_IDX=$(( (CURRENT_IDX - 1 + ${#SCALES[@]}) % ${#SCALES[@]} ))
 else
   NEW_IDX=$(( (CURRENT_IDX + 1) % ${#SCALES[@]} ))
@@ -32,19 +32,16 @@ fi
 
 NEW_SCALE=${SCALES[$NEW_IDX]}
 
-hyprctl keyword monitor "$ACTIVE_MONITOR,${WIDTH}x${HEIGHT}@${REFRESH_RATE},auto,$NEW_SCALE"
+hyprctl eval "hl.monitor({ output = \"$ACTIVE_MONITOR\", mode = \"${WIDTH}x${HEIGHT}@${REFRESH_RATE}\", position = \"auto\", scale = $NEW_SCALE })" >/dev/null
 
-# Persist to monitors.conf if the user has a single generic catch-all line
-# (ignoring disabled monitors), so the scale survives reboots.
-MONITOR_CONF="$HOME/.config/hypr/monitors.conf"
-if [[ -f $MONITOR_CONF ]]; then
-  mapfile -t ACTIVE_LINES < <(grep -E '^[[:space:]]*monitor=' "$MONITOR_CONF" | grep -vE 'disable[[:space:]]*$')
-  if [[ ${#ACTIVE_LINES[@]} -eq 1 ]] && [[ "${ACTIVE_LINES[0]}" =~ ^monitor=,preferred,auto, ]]; then
-    sed -i -E \
-      -e "s|^(monitor=,preferred,auto,).*|\\1${NEW_SCALE}|" \
-      -e "s|^([[:space:]]*env[[:space:]]*=[[:space:]]*GDK_SCALE,).*|\\1${NEW_SCALE}|" \
-      "$MONITOR_CONF"
-  fi
+# Persist to monitors.lua if the user has a single generic catch-all line,
+# so the scale survives reboots.
+MONITOR_LUA="$HOME/.config/hypr/monitors.lua"
+if [[ -f $MONITOR_LUA ]] && grep -q '^hl\.monitor({ output = "", mode = "preferred", position = "auto", scale = ' "$MONITOR_LUA"; then
+  sed -i -E \
+    -e "s|^(hl\.monitor\(\{ output = \"\", mode = \"preferred\", position = \"auto\", scale = )([^ ]+)( \}\))|\\1${NEW_SCALE}\\3|" \
+    -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$NEW_SCALE"'")|' \
+    "$MONITOR_LUA"
 fi
 
 notify-send -u low "󰍹    Display scaling set to ${NEW_SCALE}x"

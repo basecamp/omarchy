@@ -4,7 +4,7 @@
 # omarchy:args=<on|off|toggle|recover>
 
 TOGGLE="internal-monitor-mirror"
-TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.conf"
+TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.lua"
 DISABLE_TOGGLE="internal-monitor-disable"
 
 # Get names dynamically
@@ -24,9 +24,12 @@ on() {
   fi
 
   omarchy-hyprland-toggle $DISABLE_TOGGLE off
-  echo "monitor=$EXTERNAL, preferred, auto, 1, mirror, $INTERNAL" >"$TOGGLE_FLAG"
-  omarchy-notification-send -g 󰍹 "Mirroring enabled ($EXTERNAL)"
-  hyprctl reload
+
+  if omarchy-hyprland-toggle-disabled $TOGGLE; then
+    printf 'hl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = 1, mirror = "%s" })\n' "$EXTERNAL" "$INTERNAL" >"$TOGGLE_FLAG"
+    omarchy-notification-send -g 󰍹 "Mirroring enabled ($EXTERNAL)"
+    hyprctl reload
+  fi
 }
 
 off() {
@@ -45,7 +48,7 @@ toggle() {
 }
 
 recover() {
-  if ! omarchy-hw-external-monitors; then
+  if ! omarchy-hw-external-monitors && omarchy-hyprland-toggle-enabled $TOGGLE; then
     omarchy-hyprland-toggle $TOGGLE off
   fi
 }

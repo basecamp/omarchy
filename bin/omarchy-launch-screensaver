@@ -20,35 +20,31 @@ walker -q
 focused=$(omarchy-hyprland-monitor-focused)
 terminal=$(xdg-terminal-exec --print-id)
 
+hypr_focus_monitor() {
+  hyprctl dispatch "hl.dsp.focus({ monitor = \"$1\" })" >/dev/null 2>&1 || hyprctl dispatch focusmonitor "$1" >/dev/null
+}
+
+hypr_exec() {
+  local command="$1"
+
+  hyprctl dispatch "hl.dsp.exec_cmd([[$command]])" >/dev/null 2>&1 || hyprctl dispatch exec -- bash -lc "$command" >/dev/null
+}
+
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
-  hyprctl dispatch focusmonitor $m
+  hypr_focus_monitor "$m"
 
   case $terminal in
   *Alacritty*)
-    hyprctl dispatch exec -- \
-      alacritty --class=org.omarchy.screensaver \
-      --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml \
-      -e omarchy-screensaver
+    hypr_exec "alacritty --class=org.omarchy.screensaver --config-file ~/.local/share/omarchy/default/alacritty/screensaver.toml -e omarchy-screensaver"
     ;;
   *ghostty*)
-    hyprctl dispatch exec -- \
-      ghostty --class=org.omarchy.screensaver \
-      --config-file=~/.local/share/omarchy/default/ghostty/screensaver \
-      --font-size=18 \
-      -e omarchy-screensaver
+    hypr_exec "ghostty --class=org.omarchy.screensaver --config-file=~/.local/share/omarchy/default/ghostty/screensaver --font-size=18 -e omarchy-screensaver"
     ;;
   *foot*)
-    hyprctl dispatch exec -- \
-      foot --app-id=org.omarchy.screensaver \
-      --config="$OMARCHY_PATH/default/foot/screensaver.ini" \
-      -e omarchy-screensaver
+    hypr_exec "foot --app-id=org.omarchy.screensaver --config=\"$OMARCHY_PATH/default/foot/screensaver.ini\" -e omarchy-screensaver"
     ;;
   *kitty*)
-    hyprctl dispatch exec -- \
-      kitty --class=org.omarchy.screensaver \
-      --override font_size=18 \
-      --override window_padding_width=0 \
-      -e omarchy-screensaver
+    hypr_exec "kitty --class=org.omarchy.screensaver --override font_size=18 --override window_padding_width=0 -e omarchy-screensaver"
     ;;
   *)
     notify-send -u low "✋  Screensaver only runs in Alacritty, Foot, Ghostty, or Kitty"
@@ -56,4 +52,4 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   esac
 done
 
-hyprctl dispatch focusmonitor $focused
+hypr_focus_monitor "$focused"
