@@ -60,7 +60,7 @@ else
     done
     
     if (( EUID == 0 )); then
-        abort "Running as root (not user)"
+        warn "Running as root (not user) - may cause issues"
     fi
     
     if [[ $(uname -m) != "x86_64" ]]; then
