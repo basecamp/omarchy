@@ -12,7 +12,6 @@ on() {
   if [[ -f $FLAG_SOURCE ]]; then
     mkdir -p "$(dirname "$FLAG")"
     cp "$FLAG_SOURCE" "$FLAG"
-    echo "on"
   else
     echo "Flag not found: $FLAG_NAME"
     exit 1
@@ -21,14 +20,15 @@ on() {
 
 off() {
   rm -f "$FLAG"
-  echo "off"
 }
 
 toggle() {
   if [[ -f $FLAG ]]; then
     off
+    echo "off"
   else
     on
+    echo "on"
   fi
 }
 
