@@ -1,4 +1,4 @@
-# Main background, empty for terminal default, need to be empty if you want transparent background
+# Main background
 theme[main_bg]="#0c0b0c"
 
 # Main text color
@@ -8,63 +8,86 @@ theme[main_fg]="#e2dddc"
 theme[title]="#b59790"
 
 # Highlight color for keyboard shortcuts
-theme[hi_fg]="#87a9b0"
+theme[hi_fg]="#c4d8e2"
 
 # Background color of selected item in processes box
 theme[selected_bg]="#e2dddc"
 
 # Foreground color of selected item in processes box
-theme[selected_fg]="#33241f"
+theme[selected_fg]="#0c0b0c"
 
 # Color of inactive/disabled text
-theme[inactive_fg]="#1e1d1e"
+theme[inactive_fg]="#584e51"
 
-# Misc colors for processes box including mini cpu graphs, details memory graph and details status text
-theme[proc_misc]="#934e39"
+# Color of text appearing on top of graphs
+theme[graph_text]="#e2dddc"
 
-# Box outline and divider line color
-theme[cpu_box]="#e2dddc"
-theme[mem_box]="#e2dddc"
-theme[net_box]="#e2dddc"
-theme[proc_box]="#e2dddc"
-theme[div_line]="#a5a0b6"
+# Background color of the percentage meters
+theme[meter_bg]="#1e1d1e"
 
-# Gradient for all meters and graphs
-theme[temp_start]="#e2dddc"
-theme[temp_mid]="#b59790"
-theme[temp_end]="#934e39"
+# Misc colors for processes box
+theme[proc_misc]="#e2dddc"
 
+# CPU, Memory, Network, Proc box outline colors
+theme[cpu_box]="#584e51"
+theme[mem_box]="#584e51"
+theme[net_box]="#584e51"
+theme[proc_box]="#584e51"
 
-theme[cpu_start]="#e2dddc"
-theme[cpu_mid]="#b59790"
-theme[cpu_end]="#a5a0b6"
+# Box divider line and small boxes line color
+theme[div_line]="#6B5E73"
 
+# Temperature graph color (Green -> Yellow -> Red)
+theme[temp_start]="#87a9b0"
+theme[temp_mid]="#6B5E73"
+theme[temp_end]="#c38b7b"
 
-theme[free_start]="#e2dddc"
+# CPU graph colors (Blue -> Cyan -> Magenta)
+theme[cpu_start]="#b59790"
+theme[cpu_mid]="#a5a0b6"
+theme[cpu_end]="#c4d8e2"
+
+# Mem/Disk free meter (Reversed "Available" colors: Cyan -> Blue -> Purple)
+theme[free_start]="#c4d8e2"
 theme[free_mid]="#b59790"
-theme[free_end]="#a5a0b6"
+theme[free_end]="#6B5E73"
 
+# Mem/Disk cached meter
+theme[cached_start]="#b59790"
+theme[cached_mid]="#c4d8e2"
+theme[cached_end]="#e2dddc"
 
-theme[cached_start]="#e2dddc"
-theme[cached_mid]="#b59790"
-theme[cached_end]="#a5a0b6"
-
-
-theme[available_start]="#e2dddc"
+# Mem/Disk available meter (Purple -> Blue -> Cyan)
+theme[available_start]="#6B5E73"
 theme[available_mid]="#b59790"
 theme[available_end]="#a5a0b6"
 
+# Mem/Disk used meter
+theme[used_start]="#c38b7b"
+theme[used_mid]="#6B5E73"
+theme[used_end]="#584e51"
 
-theme[used_start]="#e2dddc"
-theme[used_mid]="#b59790"
-theme[used_end]="#a5a0b6"
+# Download graph colors
+theme[download_start]="#87a9b0"
+theme[download_mid]="#a5a0b6"
+theme[download_end]="#cfd3cd"
 
+# Upload graph colors
+theme[upload_start]="#b59790"
+theme[upload_mid]="#c4d8e2"
+theme[upload_end]="#e2dddc"
 
-theme[download_start]="#e2dddc"
-theme[download_mid]="#b59790"
-theme[download_end]="#a5a0b6"
+# Process box color gradient
+theme[process_start]="#c4d8e2"
+theme[process_mid]="#a5a0b6"
+theme[process_end]="#c38b7b"
 
-
-theme[upload_start]="#e2dddc"
-theme[upload_mid]="#b59790"
-theme[upload_end]="#a5a0b6"
+# Graph gradient colors
+theme[gradient_color_0]="#0c0b0c"
+theme[gradient_color_1]="#584e51"
+theme[gradient_color_2]="#6B5E73"
+theme[gradient_color_3]="#c38b7b"
+theme[gradient_color_4]="#87a9b0"
+theme[gradient_color_5]="#b59790"
+theme[gradient_color_6]="#a5a0b6"
+theme[gradient_color_7]="#FAFCFB"
