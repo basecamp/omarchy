@@ -10,7 +10,7 @@ set -euo pipefail
 
 case "${1:-}" in
 image)
-  image=$(omarchy-menu-file "Logo image" "$HOME" "svg png")
+  image=$(omarchy-menu-file "Logo image" "${XDG_PICTURES_DIR:-$HOME/Pictures}" "svg png")
   if [[ -n $image ]] && omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/screensaver.txt; then
     omarchy-launch-screensaver force >/dev/null 2>&1
   fi
