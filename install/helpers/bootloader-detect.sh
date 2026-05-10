@@ -89,3 +89,4 @@ add_limine_entry() {
 # Export for use in other scripts
 export -f handle_bootloader
 export -f detect_and_configure_bootloader
+export -f add_limine_entry
