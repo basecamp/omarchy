@@ -2,32 +2,62 @@
 
 # omarchy:summary=Install Omarchy in different modes
 # omarchy:group=install
-# omarchy:args=[--fresh|--overlay|--dualboot|--detect] [--partition=<device>] [--dry-run] [--no-bootloader] [--force]
+# omarchy:args=[--fresh|--overlay|--dualboot|--detect] [--partition=<device>] [--dry-run] [--no-bootloader] [--force] [--help]
 # omarchy:examples=omarchy install --overlay | omarchy install --dualboot --partition=/dev/sda3
 
 set -eEo pipefail
 
-# Parse arguments
+show_help() {
+    cat << EOF
+Usage: omarchy install [OPTIONS]
+
+Install Omarchy in different modes.
+
+Options:
+  --fresh               Fresh installation (default)
+  --overlay            Overlay installation on existing system
+  --dualboot           Dual boot configuration
+  --detect             Auto-detect best install mode
+  --partition=<device> Specify partition for dualboot
+  --dry-run            Show what would be done without executing
+  --no-bootloader      Skip bootloader installation
+  --force              Skip interactive confirmation
+  --help               Show this help message
+
+Examples:
+  omarchy install --overlay
+  omarchy install --dualboot --partition=/dev/sda3
+  omarchy install --detect --force
+EOF
+}
+
 OMARCHY_INSTALL_MODE="fresh"
 PARTITION=""
 DRY_RUN=false
 SKIP_BOOTLOADER=false
 FORCE=false
+HELP=false
 
 while (( $# > 0 )); do
     case "$1" in
-        --fresh)     OMARCHY_INSTALL_MODE="fresh" ;;
-        --overlay)   OMARCHY_INSTALL_MODE="overlay" ;;
-        --dualboot)  OMARCHY_INSTALL_MODE="dualboot" ;;
-        --detect)    OMARCHY_INSTALL_MODE="detect" ;;
+        --fresh)       OMARCHY_INSTALL_MODE="fresh" ;;
+        --overlay)     OMARCHY_INSTALL_MODE="overlay" ;;
+        --dualboot)    OMARCHY_INSTALL_MODE="dualboot" ;;
+        --detect)      OMARCHY_INSTALL_MODE="detect" ;;
         --partition=*) PARTITION="${1#*=}" ;;
-        --dry-run)   DRY_RUN=true ;;
+        --dry-run)     DRY_RUN=true ;;
         --no-bootloader) SKIP_BOOTLOADER=true ;;
-        --force)     FORCE=true ;;
+        --force)       FORCE=true ;;
+        --help|-h)     HELP=true ;;
         *) echo "Unknown option: $1" && exit 1 ;;
     esac
     shift
 done
+
+if [[ "$HELP" == true ]] || (( $# == 0 )); then
+    show_help
+    exit 0
+fi
 
 # Export for sub-scripts
 export OMARCHY_INSTALL_MODE
@@ -41,8 +71,8 @@ if [[ "$OMARCHY_INSTALL_MODE" == "detect" ]]; then
     if [[ -d "$HOME/.local/share/omarchy" ]]; then
         OMARCHY_INSTALL_MODE="overlay"
     elif [[ -f /etc/arch-release ]]; then
-        # Check for free partitions (simplified check)
-        if lsblk -ndo NAME,TYPE /dev/sda 2>/dev/null | grep -q "part"; then
+        # Check for any available block devices with partitions
+        if lsblk -ndo NAME,TYPE 2>/dev/null | grep -q "part"; then
             OMARCHY_INSTALL_MODE="dualboot"
         else
             OMARCHY_INSTALL_MODE="overlay"
@@ -54,19 +84,47 @@ if [[ "$OMARCHY_INSTALL_MODE" == "detect" ]]; then
     echo "Detected mode: $OMARCHY_INSTALL_MODE"
 fi
 
+# Interactive confirmation
+if [[ "$FORCE" != true ]]; then
+    echo ""
+    echo "Install mode: $OMARCHY_INSTALL_MODE"
+    [[ -n "$PARTITION" ]] && echo "Partition: $PARTITION"
+    [[ "$DRY_RUN" == true ]] && echo "Dry run: YES"
+    [[ "$SKIP_BOOTLOADER" == true ]] && echo "Skip bootloader: YES"
+    echo ""
+    read -p "Proceed with installation? [y/N] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Installation cancelled."
+        exit 0
+    fi
+fi
+
 # Run the install
 echo "Installing Omarchy in $OMARCHY_INSTALL_MODE mode..."
 
-# Source and run install stages
+# Set up paths
 export OMARCHY_PATH="$HOME/.local/share/omarchy"
 export OMARCHY_INSTALL="$OMARCHY_PATH/install"
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
-source "$OMARCHY_INSTALL/helpers/all.sh"
-source "$OMARCHY_INSTALL/preflight/all.sh"
-source "$OMARCHY_INSTALL/packaging/all.sh"
-source "$OMARCHY_INSTALL/config/all.sh"
-source "$OMARCHY_INSTALL/login/all.sh"
-source "$OMARCHY_INSTALL/post-install/all.sh"
+# Validate paths before sourcing
+if [[ ! -d "$OMARCHY_PATH" ]]; then
+    echo "Error: Omarchy not found at $OMARCHY_PATH"
+    exit 1
+fi
+
+if [[ ! -d "$OMARCHY_INSTALL" ]]; then
+    echo "Error: Install directory not found at $OMARCHY_INSTALL"
+    exit 1
+fi
+
+# Source and run install stages
+source "$OMARCHY_INSTALL/helpers/all.sh" || { echo "Error: Failed to source helpers"; exit 1; }
+source "$OMARCHY_INSTALL/preflight/all.sh" || { echo "Error: Failed to source preflight"; exit 1; }
+source "$OMARCHY_INSTALL/packaging/all.sh" || { echo "Error: Failed to source packaging"; exit 1; }
+source "$OMARCHY_INSTALL/config/all.sh" || { echo "Error: Failed to source config"; exit 1; }
+source "$OMARCHY_INSTALL/login/all.sh" || { echo "Error: Failed to source login"; exit 1; }
+source "$OMARCHY_INSTALL/post-install/all.sh" || { echo "Error: Failed to source post-install"; exit 1; }
 
 echo "Install complete!"
