@@ -12,13 +12,10 @@ WAYBAR_CONFIG="$HOME/.config/waybar/config.jsonc"
 
 position=$1
 
-case "$position" in
-  top|bottom|left|right) ;;
-  *)
-    echo "Usage: omarchy-style-waybar-position top|bottom|left|right" >&2
-    exit 1
-    ;;
-esac
+if [[ ! $position =~ ^(top|bottom|left|right)$ ]]; then
+  echo "Usage: omarchy-style-waybar-position top|bottom|left|right" >&2
+  exit 1
+fi
 
 if [[ $position == "left" || $position == "right" ]]; then
   height=0
