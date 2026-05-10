@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=Set Waybar position
+# omarchy:args=<top|bottom|left|right>
+# omarchy:examples=omarchy-style-waybar-position top | omarchy style waybar-position bottom
+
+set -e
+
+WAYBAR_CONFIG="$HOME/.config/waybar/config.jsonc"
+
+position=$1
+
+if [[ ! $position =~ ^(top|bottom|left|right)$ ]]; then
+  echo "Usage: omarchy-style-waybar-position top|bottom|left|right" >&2
+  exit 1
+fi
+
+# Reset config and styles before making adjustments
+omarchy-refresh-config waybar/config.jsonc
+omarchy-refresh-config waybar/style.css
+
+if [[ $position == "left" || $position == "right" ]]; then
+  height=0
+  width=26
+  horizontal=false
+else
+  height=26
+  width=0
+  horizontal=true
+fi
+
+# Change position
+sed -i -E "s/(\"position\"[[:space:]]*:[[:space:]]*\")[a-z]+(\")/\\1${position}\\2/" "$WAYBAR_CONFIG"
+
+# Change height/width
+sed -i -E "s/(\"height\"[[:space:]]*:[[:space:]]*)[0-9]+/\\1${height}/; s/(\"width\"[[:space:]]*:[[:space:]]*)[0-9]+/\\1${width}/" "$WAYBAR_CONFIG"
+
+# Change the clock format
+if [[ $horizontal == true ]]; then
+  sed -i -E '/"clock"[[:space:]]*:[[:space:]]*\{/,/\}/ s/"format"[[:space:]]*:[[:space:]]*"[^"]*"/"format": "{:L%A %H:%M}"/' "$WAYBAR_CONFIG"
+else
+  sed -i -E '/"clock"[[:space:]]*:[[:space:]]*\{/,/\}/ s/"format"[[:space:]]*:[[:space:]]*"[^"]*"/"format": "{:%H\\n  —\\n%M}"/' "$WAYBAR_CONFIG"
+fi
+
+omarchy-restart-waybar
