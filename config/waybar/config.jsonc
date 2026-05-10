@@ -72,7 +72,8 @@
     "return-type": "json",
     "interval": 60,
     "tooltip": false,
-    "on-click": "notify-send -u low \"$(omarchy-weather-status)\""
+    "on-click": "notify-send -u low \"$(omarchy-weather-status)\"",
+    "on-click-right": "omarchy-launch-floating-terminal-with-presentation omarchy-weather-city-select"
   },
   "network": {
     "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# omarchy:summary=Input and set weather city
+# omarchy:requires-sudo=true
+
+city=$(gum input --header "Input a city for the weather") || exit 1
+echo ${city} >$HOME/.config/omarchy/current/weather_city.name
+echo "The city for the weather is ${city} now."

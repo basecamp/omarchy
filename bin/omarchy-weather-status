@@ -2,14 +2,15 @@
 
 # omarchy:summary=Returns a formatted weather status string with temperature and wind speed.
 
-weather=$(curl -fsS --max-time 4 "https://wttr.in?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
+city=$(<$HOME/.config/omarchy/current/weather_city.name)
+weather=$(curl -fsS --max-time 4 "https://wttr.in/${city}/?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
 
 if [[ -z $weather ]]; then
   echo "Weather unavailable"
   exit 1
 fi
 
-IFS='|' read -r place temperature wind <<< "$weather"
+IFS='|' read -r place temperature wind <<<"$weather"
 place=${place%%,*}
 place=${place^}
 temperature=${temperature#+}
