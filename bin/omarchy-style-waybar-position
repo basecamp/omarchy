@@ -21,7 +21,7 @@ omarchy-refresh-config waybar/style.css
 
 if [[ $position == "left" || $position == "right" ]]; then
   height=0
-  width=26
+  width=28
   horizontal=false
 else
   height=26
