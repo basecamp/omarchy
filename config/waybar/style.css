@@ -109,11 +109,6 @@ tooltip {
 #custom-voxtype.recording {
   color: #a55555;
 }
-window#waybar.left .modules-left, window#waybar.right .modules-left { margin-left: 0; margin-top: 8px; }
-window#waybar.left .modules-right, window#waybar.right .modules-right { margin-right: 0; margin-bottom: 8px; }
-window#waybar.left #tray, window#waybar.right #tray { margin-right: 0; margin-bottom: 16px; }
-
-/* Vertical orientation fixes */
 window#waybar.left .modules-left, window#waybar.right .modules-left { margin-top: 8px; margin-left: 0; }
 window#waybar.left .modules-right, window#waybar.right .modules-right { margin-bottom: 8px; margin-right: 0; }
 
@@ -128,6 +123,8 @@ window#waybar.left #pulseaudio, window#waybar.right #pulseaudio,
 window#waybar.left #custom-omarchy, window#waybar.right #custom-omarchy,
 window#waybar.left #custom-update, window#waybar.right #custom-update {
   margin: 7.5px 0;
+  min-width: 0;
+  min-height: 12px;
 }
 
 window#waybar.left #tray, window#waybar.right #tray {
@@ -144,6 +141,8 @@ window#waybar.left #custom-screenrecording-indicator, window#waybar.right #custo
 window#waybar.left #custom-idle-indicator, window#waybar.right #custom-idle-indicator,
 window#waybar.left #custom-notification-silencing-indicator, window#waybar.right #custom-notification-silencing-indicator {
   margin-left: 0; margin-top: 5px;
+  min-width: 0;
+  min-height: 12px;
 }
 
-window#waybar.left #custom-voxtype, window#waybar.right #custom-voxtype { margin: 7.5px 0 0 0; }
+window#waybar.left #custom-voxtype, window#waybar.right #custom-voxtype { margin: 7.5px 0 0 0; min-width: 0; min-height: 12px; }
