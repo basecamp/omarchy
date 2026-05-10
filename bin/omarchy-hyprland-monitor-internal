@@ -10,34 +10,44 @@ MIRROR_TOGGLE="internal-monitor-mirror"
 # Get internal monitor name dynamically
 INTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | contains("eDP")).name' | head -n 1)
 
-enable() {
-  if omarchy-hyprland-toggle-enabled "$TOGGLE"; then
-    omarchy-hyprland-toggle --disabled-notification "󰍹    Laptop display enabled" "$TOGGLE"
+on() {
+  if omarchy-hyprland-toggle-enabled $TOGGLE; then
+    omarchy-hyprland-toggle $TOGGLE off
+    omarchy-notification-send -g 󰍹 "Laptop display enabled"
   fi
 }
 
-disable() {
+off() {
   if ! omarchy-hw-external-monitors; then
-    notify-send -u low "󰍹    Can't disable the only active display"
+    omarchy-notification-send -g 󰍹 "Can't disable the only active display"
     exit 1
   fi
-  if omarchy-hyprland-toggle-disabled "$TOGGLE" && omarchy-hyprland-toggle-disabled "$MIRROR_TOGGLE"; then
+
+  if omarchy-hyprland-toggle-disabled $TOGGLE && omarchy-hyprland-toggle-disabled $MIRROR_TOGGLE; then
     echo "monitor=$INTERNAL,disable" >"$TOGGLE_FLAG"
-    notify-send -u low "󰍹    Laptop display disabled"
+    omarchy-notification-send -g 󰍹 "Laptop display disabled"
     hyprctl reload
   fi
 }
 
 recover() {
-  if ! omarchy-hw-external-monitors && omarchy-hyprland-toggle-enabled "$TOGGLE"; then
-    omarchy-hyprland-toggle "$TOGGLE"
+  if ! omarchy-hw-external-monitors; then
+    omarchy-hyprland-toggle $TOGGLE off
+  fi
+}
+
+toggle() {
+  if omarchy-hyprland-toggle-enabled $TOGGLE; then
+    on
+  else
+    off
   fi
 }
 
 case "$1" in
-  on) enable ;;
-  off) disable ;;
-  toggle) if omarchy-hyprland-toggle-enabled "$TOGGLE"; then enable; else disable; fi ;;
+  on) on ;;
+  off) off ;;
+  toggle) toggle ;;
   recover) recover ;;
   *)
     echo "Usage: $(basename "$0") {on|off|toggle|recover}" >&2
