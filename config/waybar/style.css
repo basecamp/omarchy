@@ -109,3 +109,41 @@ tooltip {
 #custom-voxtype.recording {
   color: #a55555;
 }
+window#waybar.left .modules-left, window#waybar.right .modules-left { margin-left: 0; margin-top: 8px; }
+window#waybar.left .modules-right, window#waybar.right .modules-right { margin-right: 0; margin-bottom: 8px; }
+window#waybar.left #tray, window#waybar.right #tray { margin-right: 0; margin-bottom: 16px; }
+
+/* Vertical orientation fixes */
+window#waybar.left .modules-left, window#waybar.right .modules-left { margin-top: 8px; margin-left: 0; }
+window#waybar.left .modules-right, window#waybar.right .modules-right { margin-bottom: 8px; margin-right: 0; }
+
+window#waybar.left #workspaces button, window#waybar.right #workspaces button {
+  padding: 6px 0;
+  margin: 1.5px 0;
+}
+
+window#waybar.left #cpu, window#waybar.right #cpu,
+window#waybar.left #battery, window#waybar.right #battery,
+window#waybar.left #pulseaudio, window#waybar.right #pulseaudio,
+window#waybar.left #custom-omarchy, window#waybar.right #custom-omarchy,
+window#waybar.left #custom-update, window#waybar.right #custom-update {
+  margin: 7.5px 0;
+}
+
+window#waybar.left #tray, window#waybar.right #tray {
+  margin-right: 0;
+  margin-bottom: 16px;
+}
+window#waybar.left #bluetooth, window#waybar.right #bluetooth { margin-right: 0; margin-bottom: 17px; }
+window#waybar.left #network, window#waybar.right #network { margin-right: 0; margin-bottom: 13px; }
+window#waybar.left #custom-expand-icon, window#waybar.right #custom-expand-icon { margin-right: 0; margin-bottom: 18px; }
+window#waybar.left #clock, window#waybar.right #clock { margin-left: 0; margin-top: 8.75px; }
+window#waybar.left #custom-weather, window#waybar.right #custom-weather { margin: 7.5px 0; }
+
+window#waybar.left #custom-screenrecording-indicator, window#waybar.right #custom-screenrecording-indicator,
+window#waybar.left #custom-idle-indicator, window#waybar.right #custom-idle-indicator,
+window#waybar.left #custom-notification-silencing-indicator, window#waybar.right #custom-notification-silencing-indicator {
+  margin-left: 0; margin-top: 5px;
+}
+
+window#waybar.left #custom-voxtype, window#waybar.right #custom-voxtype { margin: 7.5px 0 0 0; }
