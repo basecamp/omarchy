@@ -20,9 +20,6 @@ case "$position" in
     ;;
 esac
 
-# Reset config before making adjustments
-cp "$OMARCHY_PATH/config/waybar/config.jsonc" "$WAYBAR_CONFIG"
-
 if [[ $position == "left" || $position == "right" ]]; then
   height=0
   horizontal=false
