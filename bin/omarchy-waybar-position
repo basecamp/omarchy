@@ -39,7 +39,7 @@ if [[ $horizontal == true ]]; then
   # Change clock format to horizontal
   sed -i -E '/"clock"[[:space:]]*:[[:space:]]*\{/,/\}/ s/"format"[[:space:]]*:[[:space:]]*"[^"]*"/"format": "{:L%A %H:%M}"/' "$WAYBAR_CONFIG"
 else
-  sed -i -E '/"height"[[:space:]]*:/a\  "width": 28,' "$WAYBAR_CONFIG"
+  sed -i -E '/"height"[[:space:]]*:/a\  "width": 26,' "$WAYBAR_CONFIG"
 
   # Change clock format to vertical
   sed -i -E '/"clock"[[:space:]]*:[[:space:]]*\{/,/\}/ s/"format"[[:space:]]*:[[:space:]]*"[^"]*"/"format": "{:%H\\n  —\\n%M}"/' "$WAYBAR_CONFIG"

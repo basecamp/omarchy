@@ -70,6 +70,7 @@ tooltip {
 #custom-weather {
   margin-left: 7.5px;
   margin-right: 7.5px;
+  min-width: 14px;
 }
 
 #custom-weather.unavailable {
@@ -109,40 +110,38 @@ tooltip {
 #custom-voxtype.recording {
   color: #a55555;
 }
-window#waybar.left .modules-left, window#waybar.right .modules-left { margin-top: 8px; margin-left: 0; }
-window#waybar.left .modules-right, window#waybar.right .modules-right { margin-bottom: 8px; margin-right: 0; }
+.left .modules-left, .right .modules-left { margin: 8px 0 0 0; }
+.left .modules-right, .right .modules-right { margin: 0 0 8px 0; }
 
-window#waybar.left #workspaces button, window#waybar.right #workspaces button {
+.left #workspaces button, .right #workspaces button {
   padding: 6px 0;
   margin: 1.5px 0;
 }
 
-window#waybar.left #cpu, window#waybar.right #cpu,
-window#waybar.left #battery, window#waybar.right #battery,
-window#waybar.left #pulseaudio, window#waybar.right #pulseaudio,
-window#waybar.left #custom-omarchy, window#waybar.right #custom-omarchy,
-window#waybar.left #custom-update, window#waybar.right #custom-update {
-  margin: 7.5px 0;
+.left #cpu, .right #cpu,
+.left #battery, .right #battery,
+.left #pulseaudio, .right #pulseaudio,
+.left #custom-omarchy, .right #custom-omarchy,
+.left #custom-update, .right #custom-update {
+  margin: 1.5px 0;
+  padding: 6px 0;
   min-width: 0;
   min-height: 12px;
 }
 
-window#waybar.left #tray, window#waybar.right #tray {
-  margin-right: 0;
-  margin-bottom: 16px;
-}
-window#waybar.left #bluetooth, window#waybar.right #bluetooth { margin-right: 0; margin-bottom: 17px; }
-window#waybar.left #network, window#waybar.right #network { margin-right: 0; margin-bottom: 13px; }
-window#waybar.left #custom-expand-icon, window#waybar.right #custom-expand-icon { margin-right: 0; margin-bottom: 18px; }
-window#waybar.left #clock, window#waybar.right #clock { margin-left: 0; margin-top: 8.75px; }
-window#waybar.left #custom-weather, window#waybar.right #custom-weather { margin: 7.5px 0; }
+.left #tray, .right #tray { margin: 0 0 16px 0; }
+.left #bluetooth, .right #bluetooth { margin: 1.5px 0; padding: 6px 0; min-height: 12px; }
+.left #network, .right #network { margin: 1.5px 0; padding: 6px 0; min-height: 12px; }
+.left #custom-expand-icon, .right #custom-expand-icon { margin: 1.5px 0; padding: 6px 0; min-height: 12px; }
+.left #clock, .right #clock { margin: 8.75px 0 0 0; }
+.left #custom-weather, .right #custom-weather { margin: 1.5px 0; padding: 6px 0; min-height: 12px; min-width: 14px; margin-right: 4px; }
 
-window#waybar.left #custom-screenrecording-indicator, window#waybar.right #custom-screenrecording-indicator,
-window#waybar.left #custom-idle-indicator, window#waybar.right #custom-idle-indicator,
-window#waybar.left #custom-notification-silencing-indicator, window#waybar.right #custom-notification-silencing-indicator {
-  margin-left: 0; margin-top: 5px;
+.left #custom-screenrecording-indicator, .right #custom-screenrecording-indicator,
+.left #custom-idle-indicator, .right #custom-idle-indicator,
+.left #custom-notification-silencing-indicator, .right #custom-notification-silencing-indicator {
+  margin: 5px 0 0 0;
   min-width: 0;
   min-height: 12px;
 }
 
-window#waybar.left #custom-voxtype, window#waybar.right #custom-voxtype { margin: 7.5px 0 0 0; min-width: 0; min-height: 12px; }
+.left #custom-voxtype, .right #custom-voxtype { margin: 7.5px 0 0 0; min-width: 0; min-height: 12px; }
