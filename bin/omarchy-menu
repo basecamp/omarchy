@@ -120,7 +120,7 @@ show_custom_reminder_input() {
   if [[ $time =~ ^([0-9]+[hms])( +[0-9]+[hms])*$ ]]; then
     show_reminder_message_input "$time"
   elif [[ -n $time ]]; then
-    omarchy-notification-send "󰔛" "Invalid reminder" "Examples: 10m, 1h, 1h 30m, 30s" -u critical
+    omarchy-notification-send "󰔛" "Invalid reminder" "Examples: 10m, 1h, 1h 30m ..." -u critical
     show_custom_reminder_input
   else
     back_to show_reminder_menu
