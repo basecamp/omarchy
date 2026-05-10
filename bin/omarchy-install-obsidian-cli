@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# omarchy:summary=Install the official Obsidian CLI binary
+# omarchy:hidden=false
+
+echo "Fetching latest Obsidian release version..."
+LATEST_RELEASE=$(curl -sL "https://api.github.com/repos/obsidianmd/obsidian-releases/releases/latest" | jq -r '.tag_name')
+
+if [[ "$LATEST_RELEASE" == "null" || -z "$LATEST_RELEASE" ]]; then
+  echo "Error: Could not fetch latest release version from GitHub."
+  exit 1
+fi
+
+VERSION="${LATEST_RELEASE#v}"
+DOWNLOAD_URL="https://github.com/obsidianmd/obsidian-releases/releases/download/${LATEST_RELEASE}/obsidian-${VERSION}.tar.gz"
+TEMP_DIR=$(mktemp -d)
+
+echo "Downloading Obsidian CLI v${VERSION}..."
+curl -L "$DOWNLOAD_URL" -o "$TEMP_DIR/obsidian.tar.gz" --progress-bar
+
+if [[ ! -f "$TEMP_DIR/obsidian.tar.gz" ]]; then
+  echo "Error: Download failed."
+  rm -rf "$TEMP_DIR"
+  exit 1
+fi
+
+echo "Extracting binary..."
+tar -xzf "$TEMP_DIR/obsidian.tar.gz" -C "$TEMP_DIR"
+
+if [[ ! -f "$TEMP_DIR/obsidian-${VERSION}/obsidian-cli" ]]; then
+  echo "Error: obsidian-cli binary not found in the downloaded archive."
+  rm -rf "$TEMP_DIR"
+  exit 1
+fi
+
+echo "Installing to ~/.local/bin/obsidian..."
+mkdir -p ~/.local/bin
+cp "$TEMP_DIR/obsidian-${VERSION}/obsidian-cli" ~/.local/bin/obsidian
+chmod 755 ~/.local/bin/obsidian
+
+rm -rf "$TEMP_DIR"
+
+echo "✅ Obsidian CLI installed successfully!"
+echo "You can now use 'obsidian <command>' in your terminal."
