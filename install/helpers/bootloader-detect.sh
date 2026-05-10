@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eEo pipefail
 
 # Bootloader detection and configuration for dualboot mode
 
@@ -15,7 +16,13 @@ handle_bootloader() {
     # Full limine install (existing behavior)
     echo "Installing Limine bootloader (fresh mode)"
     # Call existing limine-snapper.sh
-    source "$OMARCHY_INSTALL/login/limine-snapper.sh"
+    local limine_snapper="$OMARCHY_INSTALL/login/limine-snapper.sh"
+    if [[ -f "$limine_snapper" ]]; then
+      source "$limine_snapper"
+    else
+      echo "ERROR: limine-snapper.sh not found at $limine_snapper"
+      return 1
+    fi
     return 0
   fi
   
@@ -63,26 +70,62 @@ detect_and_configure_bootloader() {
 }
 
 add_limine_entry() {
-  # Add Omarchy entry to existing limine config
-  local limine_cfg="/boot/limine.conf"
-  
-  if [[ -f "$limine_cfg" ]]; then
-    # Backup
-    cp "$limine_cfg" "$limine_cfg.backup"
-    
-    # Add entry (simplified - real implementation would be more robust)
-    if ! grep -q "Omarchy" "$limine_cfg"; then
-      echo "" >> "$limine_cfg"
-      echo ":Omarchy" >> "$limine_cfg"
-      echo "    /boot/vmlinuz-linux" >> "$limine_cfg"
-      echo "    initrd=/boot/initramfs-linux.img" >> "$limine_cfg"
-      echo "    append=root=LABEL=ROOT rw" >> "$limine_cfg"
-      echo "Added Omarchy entry to limine.conf"
-    else
-      echo "Omarchy entry already exists in limine.conf"
-    fi
+  local limine_cfg=""
+  local kernel=""
+  local initramfs=""
+  local root_part=""
+
+  if [[ -f /boot/limine.conf ]]; then
+    limine_cfg="/boot/limine.conf"
   else
-    echo "Limine config not found at $limine_cfg"
+    limine_cfg=$(find /boot -maxdepth 1 -name "limine.conf" 2>/dev/null | head -n1)
+  fi
+
+  if [[ -z "$limine_cfg" ]] || [[ ! -f "$limine_cfg" ]]; then
+    echo "ERROR: Limine config not found in /boot"
+    return 1
+  fi
+
+  root_part=$(findmnt -n -o SOURCE / 2>/dev/null)
+  if [[ -z "$root_part" ]]; then
+    echo "ERROR: Could not detect root partition"
+    return 1
+  fi
+
+  local candidates
+  candidates=$(find /boot -maxdepth 1 \( -name "vmlinuz-*" -o -name "vmlinuz" \) 2>/dev/null | sort -V | tail -n1)
+  if [[ -n "$candidates" ]]; then
+    kernel="$candidates"
+  fi
+
+  if [[ -z "$kernel" ]]; then
+    kernel="/boot/vmlinuz-linux"
+  fi
+
+  local initramfs_candidates
+  initramfs_candidates=$(find /boot -maxdepth 1 -name "initramfs-*.img" 2>/dev/null | sort -V | tail -n1)
+  if [[ -z "$initramfs_candidates" ]]; then
+    initramfs_candidates=$(find /boot -maxdepth 1 -name "initramfs*.img" 2>/dev/null | sort -V | tail -n1)
+  fi
+  if [[ -n "$initramfs_candidates" ]]; then
+    initramfs="$initramfs_candidates"
+  fi
+
+  if [[ -z "$initramfs" ]]; then
+    initramfs="/boot/initramfs-linux.img"
+  fi
+
+  cp "$limine_cfg" "$limine_cfg.backup"
+
+  if ! grep -q "Omarchy" "$limine_cfg"; then
+    echo "" >> "$limine_cfg"
+    echo ":Omarchy" >> "$limine_cfg"
+    echo "    $kernel" >> "$limine_cfg"
+    echo "    initrd=$initramfs" >> "$limine_cfg"
+    echo "    append=root=$root_part rw" >> "$limine_cfg"
+    echo "Added Omarchy entry to limine.conf"
+  else
+    echo "Omarchy entry already exists in limine.conf"
   fi
 }
 
