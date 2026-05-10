@@ -1,23 +1,28 @@
 #!/bin/bash
 
-# omarchy:summary=Set and show lightweight desktop notification reminders
-# omarchy:args=<minutes> [message] | show | clear
-# omarchy:examples=omarchy reminder 5 | omarchy reminder 30 "Check the oven" | omarchy reminder show | omarchy reminder clear
+# omarchy:summary=Set and show lightweight desktop notification reminders with flexible time formats (e.g. 1h30m) and improved notification display
+# omarchy:args=<time> [message] | show | clear
+# omarchy:examples=omarchy reminder 5 | omarchy reminder 1h30m "Meeting starts" | omarchy reminder show | omarchy reminder clear
 
 set -euo pipefail
 
 format_remaining() {
-  local seconds=$1
-  local minutes=$((seconds / 60))
-  local remainder=$((seconds % 60))
+  local total=$1
+  local h=$(( total / 3600 ))
+  local m=$(( (total % 3600) / 60 ))
+  local s=$(( total % 60 ))
 
-  if ((minutes > 0 && remainder > 0)); then
-    echo "${minutes}m ${remainder}s"
-  elif ((minutes > 0)); then
-    echo "${minutes}m"
+  local out=()
+
+  if (( total < 60 )); then
+    out+=("${s}s")
   else
-    echo "${remainder}s"
+    ((h > 0)) && out+=("${h}h")
+    ((m > 0)) && out+=("${m}m")
   fi
+
+  [[ ${#out[@]} -eq 0 ]] && echo "<1m" || echo "${out[*]}"
+
 }
 
 parse_systemd_timespan() {
@@ -41,7 +46,7 @@ parse_systemd_timespan() {
 }
 
 show_reminders() {
-  local timers timer next next_seconds uptime remaining body=""
+  local timer next remaining body=""
   local reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
   local reminder_message=""
 
@@ -64,9 +69,9 @@ show_reminders() {
     [[ -f $reminder_dir/${timer%.timer}.message ]] && reminder_message=$(<"$reminder_dir/${timer%.timer}.message")
 
     if [[ -n $reminder_message ]]; then
-      body+="$reminder_message in $(format_remaining $remaining) ($(date -d "@$((set_at + reminder_minutes * 60))" +%-H:%M))"$'\n'
+      body+="$reminder_message • $(format_remaining $remaining) • $(date -d "@$((set_at + reminder_minutes * 60))" +%-H:%M)"$'\n'
     else
-      body+="${reminder_minutes}-min reminder in $(format_remaining $remaining) ($(date -d "@$((set_at + reminder_minutes * 60))" +%-H:%M))"$'\n'
+      body+="${reminder_minutes}m reminder • $(format_remaining $remaining) • $(date -d "@$((set_at + reminder_minutes * 60))" +%-H:%M)"$'\n'
     fi
   done
 
@@ -102,13 +107,47 @@ clear)
   ;;
 esac
 
-minutes=${1:-}
+input=${1:-}
+
+# presets (quick workflow shortcuts)
+case "$input" in
+  # 2h
+  ([0-9]*h)
+    hours=${input%h}
+    minutes=$((hours * 60))
+    ;;
+
+  # 30m
+  ([0-9]*m)
+    minutes=${input%m}
+    ;;
+
+  # 1h30m
+  ([0-9]*h[0-9]*m)
+    hours=${input%%h*}
+    mins=${input#*h}
+    mins=${mins%m}
+    minutes=$((hours * 60 + mins))
+    ;;
+
+  # plain number -> minutes
+  ([0-9]*)
+    minutes=$input
+    ;;
+
+  *)
+    echo "Invalid time format: $input"
+    exit 1
+    ;;
+esac
+
+
 shift || true
 message="$*"
 custom_message="$message"
 
 if [[ -z $minutes ]] || [[ ! $minutes =~ ^[0-9]+$ ]] || ((minutes == 0)); then
-  echo "Usage: omarchy-reminder <minutes> [message]"
+  echo "Usage: omarchy-reminder <time> [message]"
   echo "       omarchy-reminder show"
   echo "       omarchy-reminder clear"
   exit 1
@@ -123,14 +162,27 @@ remind_at=$(date -d "+${minutes} minutes" +%H:%M)
 unit="omarchy-reminder-${minutes}m-$set_at"
 reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
 message_file="$reminder_dir/$unit.message"
+
+if ((minutes >= 60)); then
+  hours=$((minutes / 60))
+  mins=$((minutes % 60))
+  if ((mins > 0)); then
+    pretty="${hours}h ${mins}m"
+  else
+    pretty="${hours}h"
+  fi
+else
+  pretty="${minutes}m"
+fi
+
 confirmation="You'll be reminded at $remind_at"
-confirmation_title="Reminder set for ${minutes} minutes"
+confirmation_title="Reminder set for $pretty"
 
 mkdir -p "$reminder_dir"
 
 if [[ -n $custom_message ]]; then
   printf "%s" "$custom_message" >"$message_file"
-  confirmation_title="$custom_message in ${minutes} minutes"
+  confirmation_title="$custom_message in $pretty"
 fi
 
 systemd-run --user --quiet --collect --on-active="${minutes}m" --unit="$unit" \
