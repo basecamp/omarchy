@@ -195,7 +195,8 @@ show_screenrecord_menu() {
 }
 
 show_share_menu() {
-  case $(menu "Share" "  Clipboard\n  File \n  Folder") in
+  case $(menu "Share" "  Clipboard\n  File \n  Folder\n󰥦  Receive") in
+  *Receive*) uwsm-app -- localsend ;;
   *Clipboard*) omarchy-menu-share clipboard ;;
   *File*) terminal bash -c "omarchy-menu-share file" ;;
   *Folder*) terminal bash -c "omarchy-menu-share folder" ;;
@@ -265,6 +266,7 @@ show_hardware_touchpad_haptics_menu() {
 
 show_style_menu() {
   case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n󰍜  Waybar\n󰘇  Corners\n  Hyprland\n󱄄  Screensaver\n  About") in
+
   *Theme*) show_theme_menu ;;
   *Unlock*) omarchy-launch-walker -m menus:omarchyunlocks --width 800 --minheight 400 ;;
   *Font*) show_font_menu ;;
@@ -279,9 +281,9 @@ show_style_menu() {
 }
 
 show_style_corners_menu() {
-  case $(omarchy-menu-select "Corners" "󰝣  Straight" "󰘇  Rounded") in
-  *Straight*) omarchy-style-corners sharp ;;
-  *Rounded*) omarchy-style-corners round ;;
+  case $(omarchy-menu-select "Corners" "󰝣  Sharp" "󰘇  Round") in
+  *Sharp*) omarchy-style-corners sharp ;;
+  *Round*) omarchy-style-corners round ;;
   *) show_style_menu ;;
   esac
 }
