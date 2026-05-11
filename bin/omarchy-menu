@@ -326,7 +326,8 @@ show_theme_menu() {
 }
 
 show_background_menu() {
-  skwd wall toggle
+  background=$(omarchy-theme-bg-switcher)
+  [[ -n $background ]] && omarchy-theme-bg-set "$background"
 }
 
 show_font_menu() {

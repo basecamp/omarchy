@@ -20,5 +20,6 @@ fi
 # Create symlink to the new background
 ln -nsf "$BACKGROUND" "$CURRENT_BACKGROUND_LINK"
 
-# Apply the new background through Skwd-wall
-skwd wall apply "{\"type\":\"static\",\"path\":\"$CURRENT_BACKGROUND_LINK\"}" >/dev/null
+# Kill existing swaybg and start new one
+pkill -x swaybg
+setsid uwsm-app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &

@@ -40,9 +40,5 @@ else
     NEW_BACKGROUND="${BACKGROUNDS[$NEXT_INDEX]}"
   fi
 
-  # Set new background symlink
-  ln -nsf "$NEW_BACKGROUND" "$CURRENT_BACKGROUND_LINK"
-
-  # Apply the new background through Skwd-wall
-  skwd wall apply "{\"type\":\"static\",\"path\":\"$CURRENT_BACKGROUND_LINK\"}" >/dev/null
+  omarchy-theme-bg-set "$NEW_BACKGROUND"
 fi

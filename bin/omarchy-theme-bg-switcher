@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Open the Omarchy wallpaper switcher
+# omarchy:group=theme
+# omarchy:name=bg-switcher
+# omarchy:aliases=omarchy wallpaper
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+selection_file=$(mktemp)
+trap 'rm -f "$selection_file"' EXIT
+theme_name=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
+
+OMARCHY_WALLPAPER_SELECTION_FILE=$selection_file \
+  OMARCHY_STOCK_BACKGROUNDS_DIR="$HOME/.config/omarchy/current/theme/backgrounds" \
+  OMARCHY_USER_BACKGROUNDS_DIR="$HOME/.config/omarchy/backgrounds/$theme_name" \
+  quickshell -p "$OMARCHY_PATH/default/quickshell/wallpaper-switcher.qml" >/dev/null
+
+if [[ -s $selection_file ]]; then
+  cat "$selection_file"
+fi
