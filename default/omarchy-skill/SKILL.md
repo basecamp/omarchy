@@ -6,7 +6,7 @@ description: >
   ~/.config/alacritty/, ~/.config/foot/, ~/.config/kitty/, ~/.config/ghostty/, ~/.config/mako/,
   or ~/.config/omarchy/. Triggers: Hyprland, window rules, animations, keybindings,
   monitors, gaps, borders, blur, opacity, waybar, walker, terminal config, themes,
-  wallpaper, night light, idle, lock screen, screenshots, reminders, layer rules,
+  background, night light, idle, lock screen, screenshots, reminders, layer rules,
   workspace settings, display config, and user-facing omarchy commands. Excludes Omarchy
   source development in ~/.local/share/omarchy/ and `omarchy dev` workflows.
 ---
@@ -28,7 +28,7 @@ It is not for contributing to Omarchy source code.
 - Editing ANY file in `~/.config/omarchy/`
 - Window behavior, animations, opacity, blur, gaps, borders
 - Layer rules, workspace settings, display/monitor configuration
-- Themes, wallpapers, fonts, appearance changes
+- Themes, backgrounds, fonts, appearance changes
 - User-facing `omarchy` commands (`omarchy theme ...`, `omarchy refresh ...`, `omarchy restart ...`, etc.)
 - Screenshots, screen recording, reminders, night light, idle behavior, lock screen
 
@@ -254,7 +254,7 @@ omarchy refresh hyprland
 omarchy theme list              # Show available themes
 omarchy theme current           # Show current theme
 omarchy theme set <name>        # Apply theme (use "Tokyo Night" not "tokyo-night")
-omarchy theme bg next           # Cycle wallpaper
+omarchy theme bg next           # Cycle background
 omarchy theme install <url>     # Install from git repo
 ```
 

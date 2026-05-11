@@ -71,3 +71,6 @@ omarchy-theme-set-keyboard
 
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME" >/dev/null
+
+# Warm the background selector cache after the theme is applied, off the critical path.
+omarchy-theme-bg-cache >/dev/null 2>&1 &

@@ -1,0 +1,285 @@
+#!/bin/bash
+
+# omarchy:summary=Open a generic image selector menu
+# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] <image-dir>...
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+
+selected_image=""
+colors_file=""
+print_name=false
+show_labels=false
+filterable=false
+lazy_thumbnails=false
+prepare_only=false
+cache_only=false
+image_dirs=()
+
+usage() {
+  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] <image-dir>..."
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --selected)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
+      selected_image="$2"
+      shift 2
+      ;;
+    --colors-file)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
+      colors_file="$2"
+      shift 2
+      ;;
+    --print-name)
+      print_name=true
+      shift
+      ;;
+    --show-labels)
+      show_labels=true
+      shift
+      ;;
+    --filterable)
+      filterable=true
+      shift
+      ;;
+    --lazy-thumbnails)
+      lazy_thumbnails=true
+      shift
+      ;;
+    --prepare-only)
+      prepare_only=true
+      shift
+      ;;
+    --cache-only)
+      cache_only=true
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      image_dirs+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if (( ${#image_dirs[@]} == 0 )); then
+  usage >&2
+  exit 1
+fi
+
+selection_file=$(mktemp)
+done_file=$(mktemp)
+rm -f "$done_file"
+trap 'rm -f "$selection_file" "$done_file"' EXIT
+socket_path="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-image-selector.sock"
+selector_qml="$OMARCHY_PATH/default/quickshell/background-switcher.qml"
+
+image_dirs_env=""
+for dir in "${image_dirs[@]}"; do
+  if [[ -z $image_dirs_env ]]; then
+    image_dirs_env="$dir"
+  else
+    image_dirs_env+=$'\n'"$dir"
+  fi
+done
+
+current_image=$(readlink -f "$selected_image" 2>/dev/null)
+selected_list_image=""
+
+if [[ -n $current_image ]]; then
+  for dir in "${image_dirs[@]}"; do
+    if [[ -d $dir && -f $selected_image && ${selected_image%/*} == "$dir" ]]; then
+      selected_list_image="$selected_image"
+      break
+    elif [[ -d $dir ]]; then
+      selected_list_image=$(find -L "$dir" -maxdepth 1 -type f -samefile "$current_image" -print -quit 2>/dev/null)
+      [[ -n $selected_list_image ]] && break
+    fi
+  done
+fi
+
+cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/image-selector
+index_file="$cache_dir/index.tsv"
+rows=""
+mkdir -p "$cache_dir"
+
+cache_key=$(printf '%s' "$image_dirs_env" | md5sum | cut -d ' ' -f 1)
+rows_cache_file="$cache_dir/$cache_key.rows"
+rows_signature_file="$cache_dir/$cache_key.signature"
+rows_signature="v2"$'\n'
+rows_cacheable=true
+image_files=()
+
+for dir in "${image_dirs[@]}"; do
+  if [[ -d $dir ]]; then
+    rows_signature+="$dir:$(stat -Lc '%Y' "$dir")"$'\n'
+
+    while IFS= read -r -d '' image; do
+      image_files+=("$image")
+      image_signature=$(stat -Lc '%s:%Y' "$image") || continue
+      rows_signature+="$image:$image_signature"$'\n'
+    done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print0 2>/dev/null | sort -z)
+  fi
+done
+
+generate_thumbnail() {
+  local image="$1"
+  local thumbnail="$2"
+  local lock="$thumbnail.lock"
+  local tmp="$thumbnail.$$.jpg"
+
+  if mkdir "$lock" 2>/dev/null; then
+    if magick "${image}[0]" -auto-orient -resize '1536x864^' -gravity center -extent '1536x864' -strip -quality 82 "$tmp"; then
+      mv -f "$tmp" "$thumbnail"
+    else
+      rm -f "$tmp" "$thumbnail"
+    fi
+
+    rmdir "$lock" 2>/dev/null || true
+  else
+    for ((i = 0; i < 3000; i++)); do
+      [[ -f $thumbnail ]] && return
+      [[ -d $lock ]] || break
+      sleep 0.01
+    done
+  fi
+}
+
+thumbnail_for() {
+  local image="$1"
+  local signature hash thumbnail
+
+  signature=$(stat -Lc '%s:%Y' "$image") || return
+  hash=$(awk -F '\t' -v path="$image" -v sig="$signature" '$1 == path && $2 == sig { print $3; exit }' "$index_file" 2>/dev/null)
+
+  if [[ -z $hash ]]; then
+    hash=$(printf '%s\t%s' "$image" "$signature" | md5sum | cut -d ' ' -f 1)
+    printf '%s\t%s\t%s\n' "$image" "$signature" "$hash" >>"$index_file"
+  fi
+
+  thumbnail="$cache_dir/$hash.jpg"
+
+  if [[ ! -f $thumbnail ]]; then
+    if [[ $lazy_thumbnails == true && $cache_only != true ]]; then
+      rows_cacheable=false
+
+      if [[ $prepare_only != true ]]; then
+        generate_thumbnail "$image" "$thumbnail" >/dev/null 2>&1 &
+      fi
+
+      printf '%s' "$image"
+      return
+    fi
+
+    generate_thumbnail "$image" "$thumbnail"
+  fi
+
+  [[ -f $thumbnail ]] && printf '%s' "$thumbnail"
+}
+
+if [[ -f $rows_cache_file && -f $rows_signature_file ]] && cmp -s "$rows_signature_file" <(printf '%s' "$rows_signature"); then
+  rows=$(<"$rows_cache_file")
+else
+  for image in "${image_files[@]}"; do
+    thumbnail=$(thumbnail_for "$image")
+    [[ -n $thumbnail ]] || continue
+    if [[ $lazy_thumbnails == true && $cache_only != true && $thumbnail == "$image" ]]; then
+      rows_cacheable=false
+    fi
+
+    if [[ -z $rows ]]; then
+      rows="$image"$'\t'"$thumbnail"
+    else
+      rows+=$'\n'"$image"$'\t'"$thumbnail"
+    fi
+  done
+
+  if [[ $rows_cacheable == true ]]; then
+    printf '%s' "$rows" >"$rows_cache_file"
+    printf '%s' "$rows_signature" >"$rows_signature_file"
+  else
+    rm -f "$rows_cache_file" "$rows_signature_file"
+  fi
+fi
+
+rows_payload=${rows//$'\t'/$'\f'}
+rows_payload=${rows_payload//$'\n'/$'\v'}
+colors_file=${colors_file:-$HOME/.config/omarchy/current/theme/background-switcher-colors.json}
+colors_payload=""
+
+if [[ -f $colors_file ]]; then
+  colors_payload=$(<"$colors_file")
+  colors_payload=${colors_payload//$'\t'/$'\f'}
+  colors_payload=${colors_payload//$'\n'/$'\v'}
+fi
+
+if [[ $cache_only == true || $prepare_only == true ]]; then
+  exit 0
+fi
+
+ensure_selector() {
+  if [[ -S $socket_path && $selector_qml -nt $socket_path ]]; then
+    quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
+    rm -f "$socket_path"
+  fi
+
+  if [[ ! -S $socket_path ]]; then
+    quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
+    quickshell -d -p "$selector_qml" >/dev/null
+
+    for ((i = 0; i < 100; i++)); do
+      if [[ -S $socket_path ]]; then
+        break
+      fi
+
+      sleep 0.01
+    done
+  fi
+
+  [[ -S $socket_path ]]
+}
+
+send_request() {
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$rows_payload" "$selected_list_image" "$selection_file" "$done_file" "$colors_payload" "$show_labels" "$filterable" |
+    socat -u - "UNIX-CONNECT:$socket_path"
+}
+
+if ! ensure_selector; then
+  echo "Image selector failed to start" >&2
+  exit 1
+fi
+
+if ! send_request; then
+  rm -f "$socket_path"
+
+  if ! ensure_selector || ! send_request; then
+    echo "Image selector failed to accept request" >&2
+    exit 1
+  fi
+fi
+
+while [[ ! -e $done_file ]]; do
+  sleep 0.01
+done
+
+if [[ -s $selection_file ]]; then
+  if [[ $print_name == true ]]; then
+    selection=$(<"$selection_file")
+    selection=${selection##*/}
+    printf '%s\n' "${selection%.*}"
+  else
+    cat "$selection_file"
+  fi
+fi

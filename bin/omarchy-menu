@@ -322,11 +322,13 @@ show_screensaver_menu() {
 }
 
 show_theme_menu() {
-  omarchy-launch-walker -m menus:omarchythemes --width 800 --minheight 400
+  theme=$(omarchy-theme-switcher)
+  [[ -n $theme ]] && omarchy-theme-set "$theme"
 }
 
 show_background_menu() {
-  omarchy-launch-walker -m menus:omarchyBackgroundSelector --width 800 --minheight 400
+  background=$(omarchy-theme-bg-switcher)
+  [[ -n $background ]] && omarchy-theme-bg-set "$background"
 }
 
 show_font_menu() {

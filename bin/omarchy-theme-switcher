@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# omarchy:summary=Open the Omarchy theme switcher
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+USER_THEMES_PATH="$HOME/.config/omarchy/themes"
+OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
+CACHE_PATH="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/theme-selector"
+preview_dir="$CACHE_PATH/previews"
+signature_file="$CACHE_PATH/signature"
+
+mkdir -p "$preview_dir"
+
+find_preview() {
+  local theme_path="$1"
+  local preview preview_name
+
+  for preview_name in preview.png preview.jpg preview.jpeg preview.webp preview.gif preview.bmp; do
+    preview=$(find -L "$theme_path" -maxdepth 1 -type f -iname "$preview_name" -print -quit 2>/dev/null)
+
+    if [[ -n $preview ]]; then
+      printf '%s\n' "$preview"
+      return
+    fi
+  done
+
+  if [[ -d $theme_path/backgrounds ]]; then
+    find -L "$theme_path/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print 2>/dev/null | sort | head -n 1
+  fi
+}
+
+add_theme_preview() {
+  local theme_name="$1"
+  local preview="$2"
+  local extension="${preview##*.}"
+  extension="${extension,,}"
+
+  [[ -n $preview ]] || return
+  [[ -e $preview_dir/$theme_name.$extension ]] && return
+
+  ln -s "$preview" "$preview_dir/$theme_name.$extension"
+}
+
+theme_signature=""
+for theme_dir in "$USER_THEMES_PATH" "$OMARCHY_THEMES_PATH"; do
+  if [[ -d $theme_dir ]]; then
+    theme_signature+="$theme_dir:$(stat -Lc '%Y' "$theme_dir")"$'\n'
+
+    while IFS= read -r -d '' theme_path; do
+      preview=$(find_preview "$theme_path")
+      theme_signature+="$theme_path:$(stat -Lc '%Y' "$theme_path")"$'\n'
+
+      if [[ -n $preview ]]; then
+        theme_signature+="$preview:$(stat -Lc '%s:%Y' "$preview")"$'\n'
+      fi
+    done < <(find -L "$theme_dir" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -print0 2>/dev/null | sort -z)
+  fi
+done
+
+if [[ ! -f $signature_file ]] || ! cmp -s "$signature_file" <(printf '%s' "$theme_signature"); then
+  rm -rf "$preview_dir"
+  mkdir -p "$preview_dir"
+
+  while IFS= read -r theme_path; do
+    theme_name=${theme_path##*/}
+    preview=$(find_preview "$theme_path")
+
+    if [[ -z $preview ]]; then
+      preview=$(find_preview "$OMARCHY_THEMES_PATH/$theme_name")
+    fi
+
+    add_theme_preview "$theme_name" "$preview"
+  done < <(find -L "$USER_THEMES_PATH" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -print 2>/dev/null | sort)
+
+  while IFS= read -r theme_path; do
+    theme_name=${theme_path##*/}
+    preview=$(find_preview "$theme_path")
+    add_theme_preview "$theme_name" "$preview"
+  done < <(find -L "$OMARCHY_THEMES_PATH" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | sort)
+
+  printf '%s' "$theme_signature" >"$signature_file"
+fi
+
+current_theme=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
+selected_preview=""
+for extension in png jpg jpeg webp gif bmp; do
+  if [[ -e $preview_dir/$current_theme.$extension ]]; then
+    selected_preview="$preview_dir/$current_theme.$extension"
+    break
+  fi
+done
+exec omarchy-menu-images \
+  --print-name \
+  --show-labels \
+  --filterable \
+  --lazy-thumbnails \
+  --selected "$selected_preview" \
+  "$preview_dir"
