@@ -3,6 +3,23 @@
 # omarchy:summary=Display Hyprland keybindings defined in your configuration using walker for an interactive search menu.
 
 declare -A KEYCODE_SYM_MAP
+# Hyprland reports XKB keycodes for code: bindings. Keep a small fallback for
+# common keys so the menu remains readable if xkbcli cannot resolve a symbol.
+declare -A FALLBACK_KEYCODE_SYM_MAP=(
+  [10]="1"
+  [11]="2"
+  [12]="3"
+  [13]="4"
+  [14]="5"
+  [15]="6"
+  [16]="7"
+  [17]="8"
+  [18]="9"
+  [19]="0"
+  [20]="MINUS"
+  [21]="EQUAL"
+  [61]="SLASH"
+)
 
 build_keymap_cache() {
   local keymap
@@ -37,7 +54,18 @@ build_keymap_cache() {
 }
 
 lookup_keycode_cached() {
-  printf '%s\n' "${KEYCODE_SYM_MAP[$1]}"
+  local symbol
+  symbol="${KEYCODE_SYM_MAP[$1]}"
+
+  if [[ -z $symbol ]]; then
+    symbol="${FALLBACK_KEYCODE_SYM_MAP[$1]}"
+  fi
+
+  if [[ -z $symbol ]]; then
+    symbol="code:$1"
+  fi
+
+  printf '%s\n' "${symbol^^}"
 }
 
 parse_keycodes() {

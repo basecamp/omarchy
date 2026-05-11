@@ -12,44 +12,48 @@ INTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | contains("eDP")).na
 # Get the first available external monitor
 EXTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | contains("eDP") | not).name' | head -n 1)
 
-enable() {
-  if [[ -z "$EXTERNAL" ]]; then
-    notify-send -u low "󰍹    No external monitors found for mirror"
+on() {
+  if [[ -z $EXTERNAL ]]; then
+    omarchy-notification-send -g 󰍹 "No external monitors found for mirror"
     exit 1
   fi
 
-  if [[ -z "$INTERNAL" ]]; then
-    notify-send -u low "󰍹    No laptop monitor found to mirror"
+  if [[ -z $INTERNAL ]]; then
+    omarchy-notification-send -g 󰍹 "No laptop monitor found to mirror"
     exit 1
   fi
 
-  if omarchy-hyprland-toggle-enabled "$DISABLE_TOGGLE"; then
-    omarchy-hyprland-toggle "$DISABLE_TOGGLE"
-  fi
+  omarchy-hyprland-toggle $DISABLE_TOGGLE off
+  echo "monitor=$EXTERNAL, preferred, auto, 1, mirror, $INTERNAL" >"$TOGGLE_FLAG"
+  omarchy-notification-send -g 󰍹 "Mirroring enabled ($EXTERNAL)"
+  hyprctl reload
+}
 
-  if omarchy-hyprland-toggle-disabled "$TOGGLE"; then
-    echo "monitor=$EXTERNAL, preferred, auto, 1, mirror, $INTERNAL" > "$TOGGLE_FLAG"
-    notify-send -u low "󰍹    Mirroring enabled ($EXTERNAL)"
-    hyprctl reload
+off() {
+  if omarchy-hyprland-toggle-enabled $TOGGLE; then
+    omarchy-hyprland-toggle $TOGGLE off
+    omarchy-notification-send -g 󰍹 "Extended mode restored"
   fi
 }
 
-disable() {
-  if omarchy-hyprland-toggle-enabled "$TOGGLE"; then
-    omarchy-hyprland-toggle --disabled-notification "󰍹    Extended mode restored" "$TOGGLE"
+toggle() {
+  if omarchy-hyprland-toggle-enabled $TOGGLE; then
+    off
+  else
+    on
   fi
 }
 
 recover() {
-  if ! omarchy-hw-external-monitors && omarchy-hyprland-toggle-enabled "$TOGGLE"; then
-    omarchy-hyprland-toggle "$TOGGLE"
+  if ! omarchy-hw-external-monitors; then
+    omarchy-hyprland-toggle $TOGGLE off
   fi
 }
 
 case "$1" in
-  on) enable ;;
-  off) disable ;;
-  toggle) if omarchy-hyprland-toggle-enabled "$TOGGLE"; then disable; else enable; fi ;;
+  on) on ;;
+  off) off ;;
+  toggle) toggle ;;
   recover) recover ;;
   *)
     echo "Usage: $(basename "$0") {on|off|toggle|recover}" >&2
