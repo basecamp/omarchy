@@ -56,8 +56,9 @@ ShellRoot {
 
   function select(index, immediate) {
     if (imageModel.count === 0) return
-    if (index < 0) index = imageModel.count - 1
-    else if (index >= imageModel.count) index = 0
+    if (index < 0) index = 0
+    else if (index >= imageModel.count) index = imageModel.count - 1
+    if (index === selectedIndex && immediate !== true) return
 
     animateSelection = immediate !== true
     selectedIndex = index
