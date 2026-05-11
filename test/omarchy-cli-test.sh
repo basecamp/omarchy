@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 CLI="$ROOT/bin/omarchy"
 TMPDIR=""
+PI_TMPDIR=""
 
 export PATH="$ROOT/bin:$PATH"
 
@@ -33,6 +34,7 @@ assert_output_contains() {
 
 cleanup() {
   [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
+  [[ -n $PI_TMPDIR && -d $PI_TMPDIR ]] && rm -rf "$PI_TMPDIR"
 }
 trap cleanup EXIT
 
@@ -187,6 +189,29 @@ pass "safe dispatch works for font list"
 
 "$CLI" font current >/dev/null
 pass "safe dispatch works for font current"
+
+PI_TMPDIR=$(mktemp -d)
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi"
+[[ ! -d $PI_TMPDIR/.pi ]] || fail "pi theme sync skips missing Pi agent when not activating"
+pass "pi theme sync skips missing Pi agent when not activating"
+
+mkdir -p "$PI_TMPDIR/.config/omarchy/current"
+ln -s "$ROOT/themes/tokyo-night" "$PI_TMPDIR/.config/omarchy/current/theme"
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
+[[ -f $PI_TMPDIR/.pi/agent/themes/omarchy-system.json ]] || fail "pi theme file is generated"
+pass "pi theme file is generated"
+[[ -f $PI_TMPDIR/.pi/agent/settings.json ]] || fail "pi settings file is generated"
+pass "pi settings file is generated"
+jq -e '.name == "omarchy-system" and .vars.bg and .colors.accent == "accent"' "$PI_TMPDIR/.pi/agent/themes/omarchy-system.json" >/dev/null
+pass "pi theme JSON is valid"
+jq -e '.theme == "omarchy-system"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
+pass "pi generated theme is activated"
+
+jq '.model = "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >"$PI_TMPDIR/settings.json.tmp"
+mv "$PI_TMPDIR/settings.json.tmp" "$PI_TMPDIR/.pi/agent/settings.json"
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
+jq -e '.theme == "omarchy-system" and .model == "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
+pass "pi theme activation preserves existing settings"
 
 for binary in \
   omarchy-update \
