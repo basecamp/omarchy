@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch /etc/localtime for timezone changes and reapply theme schedule
+
+[Path]
+PathChanged=/etc/localtime
+Unit=omarchy-theme-schedule.service
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:hidden=true
+
+# Hook fired by omarchy-theme-set after a successful theme change.
+# When schedule is enabled and we weren't called from the apply oneshot,
+# rewrite the active phase's slot so the schedule learns from manual changes.
+
+if [[ "${OMARCHY_THEME_SCHEDULE_TICK:-}" == "1" ]]; then
+  exit 0
+fi
+
+if ! command -v omarchy-theme-schedule-record-slot >/dev/null 2>&1; then
+  exit 0
+fi
+
+omarchy-theme-schedule-record-slot "$1"

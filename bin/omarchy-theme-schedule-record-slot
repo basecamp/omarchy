@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# omarchy:summary=Record current theme to the active phase's slot
+# omarchy:args=<theme-name>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if [[ "${OMARCHY_THEME_SCHEDULE_TICK:-}" == "1" ]]; then
+  exit 0
+fi
+
+if ! systemctl --user is-enabled --quiet omarchy-theme-schedule.timer 2>/dev/null; then
+  exit 0
+fi
+
+theme_name="${1:?theme name required}"
+
+loc=$(omarchy-theme-schedule-location)
+lat="${loc%,*}"
+lon="${loc#*,}"
+today=$(date +%Y-%m-%d)
+mapfile -t suntimes < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$today")
+sunrise="${suntimes[0]}"
+sunset="${suntimes[1]}"
+
+if [[ "$sunrise" == "PERPETUAL_DAY" ]]; then
+  phase="day"
+elif [[ "$sunrise" == "PERPETUAL_NIGHT" ]]; then
+  phase="night"
+else
+  now_epoch=$(date +%s)
+  sr_epoch=$(date -d "$sunrise" +%s)
+  ss_epoch=$(date -d "$sunset" +%s)
+  if (( now_epoch >= sr_epoch && now_epoch < ss_epoch )); then
+    phase="day"
+  else
+    phase="night"
+  fi
+fi
+
+OMARCHY_CURRENT="$HOME/.config/omarchy/current"
+mkdir -p "$OMARCHY_CURRENT"
+echo "$theme_name" >"$OMARCHY_CURRENT/theme.$phase"

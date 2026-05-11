@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# omarchy:summary=Show automatic day/night theme schedule status
+# omarchy:examples=omarchy theme schedule status
+
+set -euo pipefail
+
+OMARCHY_CURRENT="$HOME/.config/omarchy/current"
+
+if systemctl --user is-enabled --quiet omarchy-theme-schedule.timer 2>/dev/null; then
+  status="enabled"
+else
+  status="disabled"
+fi
+
+read_or_unset() {
+  if [[ -s "$1" ]]; then cat "$1"; else echo "(unset)"; fi
+}
+day=$(read_or_unset "$OMARCHY_CURRENT/theme.day")
+night=$(read_or_unset "$OMARCHY_CURRENT/theme.night")
+current=$(read_or_unset "$OMARCHY_CURRENT/theme.name")
+
+override="$HOME/.config/omarchy/theme-schedule.location"
+if [[ -f "$override" ]]; then
+  loc_label="$(<"$override") (override)"
+else
+  tz=$(readlink /etc/localtime 2>/dev/null | sed 's|.*zoneinfo/||')
+  loc=$(omarchy-theme-schedule-location 2>/dev/null || echo "(unknown)")
+  loc_label="$loc (from timezone $tz)"
+fi
+
+printf "Status:    %s\n" "$status"
+printf "Day:       %s\n" "$day"
+printf "Night:     %s\n" "$night"
+printf "Current:   %s\n" "$current"
+printf "Location:  %s\n" "$loc_label"
+
+loc=$(omarchy-theme-schedule-location 2>/dev/null) || exit 0
+lat="${loc%,*}"
+lon="${loc#*,}"
+today=$(date +%Y-%m-%d)
+mapfile -t suntimes < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$today")
+printf "Sunrise:   %s\n" "${suntimes[0]}"
+printf "Sunset:    %s\n" "${suntimes[1]}"
+
+if [[ "${suntimes[0]}" == "PERPETUAL_"* ]]; then
+  phase="${suntimes[0]#PERPETUAL_}"
+  phase=$(echo "$phase" | tr '[:upper:]' '[:lower:]')
+else
+  now_epoch=$(date +%s)
+  sr_epoch=$(date -d "${suntimes[0]}" +%s)
+  ss_epoch=$(date -d "${suntimes[1]}" +%s)
+  if (( now_epoch >= sr_epoch && now_epoch < ss_epoch )); then
+    phase="day"
+  else
+    phase="night"
+  fi
+fi
+printf "Phase:     %s\n" "$phase"
+
+if [[ "$status" == "enabled" ]]; then
+  next=$(systemctl --user list-timers omarchy-theme-schedule.timer --no-pager 2>/dev/null | awk 'NR==2 {print $1, $2, $3}')
+  [[ -n "$next" ]] && printf "Next fire: %s\n" "$next"
+fi

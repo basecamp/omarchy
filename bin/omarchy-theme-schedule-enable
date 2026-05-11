@@ -1,0 +1,127 @@
+#!/bin/bash
+
+# omarchy:summary=Enable automatic day/night theme switching
+# omarchy:args=[other-theme]
+# omarchy:examples=omarchy theme schedule enable | omarchy theme schedule enable "Tokyo Night"
+
+set -euo pipefail
+
+OMARCHY_CURRENT="$HOME/.config/omarchy/current"
+mkdir -p "$OMARCHY_CURRENT"
+
+normalize_theme() {
+  echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-'
+}
+
+theme_exists() {
+  local slug="$1"
+  [[ -d "$OMARCHY_PATH/themes/$slug" ]] || [[ -d "$HOME/.config/omarchy/themes/$slug" ]]
+}
+
+current_theme=""
+if [[ -f "$OMARCHY_CURRENT/theme.name" ]]; then
+  current_theme=$(<"$OMARCHY_CURRENT/theme.name")
+fi
+if [[ -z "$current_theme" ]]; then
+  echo "Could not determine current theme. Set one with 'omarchy-theme-set <name>' first." >&2
+  exit 1
+fi
+
+loc=$(omarchy-theme-schedule-location)
+lat="${loc%,*}"
+lon="${loc#*,}"
+today=$(date +%Y-%m-%d)
+mapfile -t suntimes < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$today")
+sunrise="${suntimes[0]}"
+sunset="${suntimes[1]}"
+
+if [[ "$sunrise" == "PERPETUAL_DAY" ]]; then
+  current_phase="day"
+elif [[ "$sunrise" == "PERPETUAL_NIGHT" ]]; then
+  current_phase="night"
+else
+  now_epoch=$(date +%s)
+  sr_epoch=$(date -d "$sunrise" +%s)
+  ss_epoch=$(date -d "$sunset" +%s)
+  if (( now_epoch >= sr_epoch && now_epoch < ss_epoch )); then
+    current_phase="day"
+  else
+    current_phase="night"
+  fi
+fi
+
+other_phase="night"
+[[ "$current_phase" == "night" ]] && other_phase="day"
+
+day_theme=""
+night_theme=""
+positional=()
+while (($#)); do
+  case "$1" in
+    --day) day_theme=$(normalize_theme "$2"); shift 2 ;;
+    --night) night_theme=$(normalize_theme "$2"); shift 2 ;;
+    -h|--help)
+      echo "Usage: omarchy-theme-schedule-enable [other-theme]"
+      echo "       omarchy-theme-schedule-enable --day <theme> --night <theme>"
+      exit 0
+      ;;
+    *) positional+=("$1"); shift ;;
+  esac
+done
+
+if [[ -n "$day_theme" || -n "$night_theme" ]]; then
+  if [[ -z "$day_theme" || -z "$night_theme" ]]; then
+    echo "--day and --night must both be provided" >&2
+    exit 1
+  fi
+elif (( ${#positional[@]} >= 1 )); then
+  if [[ "$current_phase" == "day" ]]; then
+    day_theme="$current_theme"
+    night_theme=$(normalize_theme "${positional[0]}")
+  else
+    night_theme="$current_theme"
+    day_theme=$(normalize_theme "${positional[0]}")
+  fi
+else
+  echo "Current theme: $current_theme (will be used as your $current_phase theme)"
+  echo
+  echo "Available themes:"
+  mapfile -t themes < <(omarchy-theme-list)
+  for i in "${!themes[@]}"; do
+    printf "  %2d) %s\n" "$((i + 1))" "${themes[$i]}"
+  done
+  echo
+  read -rp "Pick a $other_phase theme (number or name): " choice
+  if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#themes[@]} )); then
+    other_theme=$(normalize_theme "${themes[$((choice - 1))]}")
+  else
+    other_theme=$(normalize_theme "$choice")
+  fi
+  if [[ "$current_phase" == "day" ]]; then
+    day_theme="$current_theme"
+    night_theme="$other_theme"
+  else
+    night_theme="$current_theme"
+    day_theme="$other_theme"
+  fi
+fi
+
+for t in "$day_theme" "$night_theme"; do
+  if ! theme_exists "$t"; then
+    echo "Theme '$t' not found in themes/ or ~/.config/omarchy/themes/" >&2
+    exit 1
+  fi
+done
+
+echo "$day_theme" >"$OMARCHY_CURRENT/theme.day"
+echo "$night_theme" >"$OMARCHY_CURRENT/theme.night"
+
+systemctl --user enable --now omarchy-theme-schedule.timer
+systemctl --user enable --now omarchy-theme-schedule-tzwatch.path
+
+omarchy-theme-schedule-apply
+
+echo
+echo "Schedule enabled."
+echo "  Day:   $day_theme"
+echo "  Night: $night_theme"

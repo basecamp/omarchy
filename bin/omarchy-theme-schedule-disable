@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Disable automatic day/night theme switching
+# omarchy:examples=omarchy theme schedule disable
+
+set -euo pipefail
+
+systemctl --user disable --now omarchy-theme-schedule.timer 2>/dev/null || true
+systemctl --user disable --now omarchy-theme-schedule-tzwatch.path 2>/dev/null || true
+echo "Schedule disabled. Day/night theme files preserved for re-enable."
