@@ -7,8 +7,11 @@ Requires=omarchy-theme-schedule.service
 # after each firing. The hourly fallback ensures the apply script runs at
 # least once per hour to recover after suspend, clock changes, or a missing
 # drop-in — apply is idempotent so harmless when the theme is already correct.
+#
+# Persistent=true is deliberately NOT set: catching up missed events on resume
+# raced with session stabilization and crashed Hyprland. Eventual correctness
+# via the hourly fallback is preferred over immediate-but-fragile catchup.
 OnCalendar=hourly
-Persistent=true
 AccuracySec=30sec
 
 [Install]
