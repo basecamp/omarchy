@@ -1,12 +1,13 @@
 #!/bin/bash
 
 # omarchy:summary=Open a generic image selector menu
-# omarchy:args=[--selected <image>] [--colors-file <path>] <image-dir>...
+# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] <image-dir>...
 
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
 selected_image=""
 colors_file=""
+print_name=false
 image_dirs=()
 
 while [[ $# -gt 0 ]]; do
@@ -19,8 +20,12 @@ while [[ $# -gt 0 ]]; do
       colors_file="$2"
       shift 2
       ;;
+    --print-name)
+      print_name=true
+      shift
+      ;;
     --help|-h)
-      echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] <image-dir>..."
+      echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] <image-dir>..."
       exit 0
       ;;
     *)
@@ -31,7 +36,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if (( ${#image_dirs[@]} == 0 )); then
-  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] <image-dir>..." >&2
+  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] <image-dir>..." >&2
   exit 1
 fi
 
@@ -56,7 +61,10 @@ selected_list_image=""
 
 if [[ -n $current_image ]]; then
   for dir in "${image_dirs[@]}"; do
-    if [[ -d $dir ]]; then
+    if [[ -d $dir && -f $selected_image && ${selected_image%/*} == "$dir" ]]; then
+      selected_list_image="$selected_image"
+      break
+    elif [[ -d $dir ]]; then
       selected_list_image=$(find -L "$dir" -maxdepth 1 -type f -samefile "$current_image" -print -quit 2>/dev/null)
       [[ -n $selected_list_image ]] && break
     fi
@@ -125,16 +133,9 @@ fi
 rows_payload=${rows//$'\t'/$'\f'}
 rows_payload=${rows_payload//$'\n'/$'\v'}
 
-selector_pid=$(quickshell list -p "$selector_qml" --json 2>/dev/null | jq -r '.[0].pid // empty')
-if [[ -n $selector_pid ]]; then
-  selector_age=$(ps -o etimes= -p "$selector_pid" 2>/dev/null | tr -d ' ')
-  qml_mtime=$(stat -c %Y "$selector_qml")
-  now=$(date +%s)
-
-  if [[ -n $selector_age ]] && (( now - selector_age < qml_mtime )); then
-    quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
-    rm -f "$socket_path"
-  fi
+if [[ -S $socket_path && $selector_qml -nt $socket_path ]]; then
+  quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
+  rm -f "$socket_path"
 fi
 
 if [[ ! -S $socket_path ]]; then
@@ -163,5 +164,11 @@ while [[ ! -e $done_file ]]; do
 done
 
 if [[ -s $selection_file ]]; then
-  cat "$selection_file"
+  if [[ $print_name == true ]]; then
+    selection=$(<"$selection_file")
+    selection=${selection##*/}
+    printf '%s\n' "${selection%.*}"
+  else
+    cat "$selection_file"
+  fi
 fi
