@@ -28,6 +28,8 @@ if [[ ${OMARCHY_LOCK_ONLY:-false} != "true" ]]; then
     sleep 3
     pidof hyprlock >/dev/null || exit 0
     omarchy-brightness-keyboard off
-    omarchy-brightness-display off
+    if [[ $(powerprofilesctl get) != "performance" ]]; then
+      omarchy-brightness-display off
+    fi
   ) &
 fi
