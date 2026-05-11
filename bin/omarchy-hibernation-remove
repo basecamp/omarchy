@@ -48,6 +48,8 @@ fi
 echo "Removing suspend-then-hibernate configuration"
 sudo rm -f /etc/systemd/logind.conf.d/lid.conf
 sudo rm -f /etc/systemd/sleep.conf.d/hibernate.conf
+sudo rm -f /etc/systemd/system/systemd-logind.service.d/hibernate.conf
+sudo rm -f /etc/systemd/system/systemd-hibernate.service.d/bypass.conf
 
 # Remove mkinitcpio resume hook
 echo "Removing resume hook"
