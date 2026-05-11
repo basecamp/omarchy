@@ -47,6 +47,10 @@ ShellRoot {
     return String(value || "").replace(/\v/g, "\n").replace(/\f/g, "\t")
   }
 
+  function withAlpha(color, alpha) {
+    return Qt.rgba(color.r, color.g, color.b, alpha)
+  }
+
   function currentPath() {
     if (imageModel.count === 0 || !itemMatches(selectedIndex)) return ""
     return imageModel.get(selectedIndex).filePath
@@ -365,7 +369,7 @@ ShellRoot {
 
     Rectangle {
       anchors.fill: parent
-      color: Qt.rgba(0, 0, 0, 0.55)
+      color: root.withAlpha(root.background, 0.72)
     }
 
     MouseArea {
@@ -483,7 +487,7 @@ ShellRoot {
               antialiasing: true
               preferredRendererType: Shape.CurveRenderer
               ShapePath {
-                fillColor: "#000000"
+                fillColor: root.background
                 strokeColor: "transparent"
                 startX: item.topLeft; startY: 0
                 PathLine { x: item.topRight; y: 0 }
@@ -516,7 +520,7 @@ ShellRoot {
 
               Rectangle {
                 anchors.fill: parent
-                color: Qt.rgba(0, 0, 0, item.selected ? 0 : 0.42)
+                color: root.withAlpha(root.background, item.selected ? 0 : 0.42)
                 Behavior on color { ColorAnimation { duration: 120 } }
               }
             }
@@ -527,7 +531,7 @@ ShellRoot {
               preferredRendererType: Shape.CurveRenderer
               ShapePath {
                 fillColor: "transparent"
-                strokeColor: item.selected ? root.accent : Qt.rgba(0, 0, 0, 0.65)
+                strokeColor: item.selected ? root.accent : root.withAlpha(root.foreground, 0.28)
                 strokeWidth: item.selected ? 3 : 1
                 startX: item.topLeft; startY: 0
                 PathLine { x: item.topRight; y: 0 }
@@ -554,9 +558,9 @@ ShellRoot {
         anchors.horizontalCenter: carousel.horizontalCenter
         width: root.expandedWidth
         text: root.currentLabel()
-        color: "#ffffff"
+        color: root.foreground
         style: Text.Outline
-        styleColor: Qt.rgba(0, 0, 0, 0.7)
+        styleColor: root.withAlpha(root.background, 0.7)
         font.pixelSize: 24
         font.weight: Font.DemiBold
         horizontalAlignment: Text.AlignHCenter
@@ -570,10 +574,10 @@ ShellRoot {
         anchors.horizontalCenter: carousel.horizontalCenter
         width: root.expandedWidth
         text: root.filterText ? ("Filter: " + root.filterText + " (" + root.matchingCount() + ")") : "Type to filter"
-        color: "#ffffff"
+        color: root.foreground
         opacity: root.filterText ? 0.85 : 0.55
         style: Text.Outline
-        styleColor: Qt.rgba(0, 0, 0, 0.7)
+        styleColor: root.withAlpha(root.background, 0.7)
         font.pixelSize: 14
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
