@@ -45,22 +45,20 @@ toggle() {
 }
 
 recover() {
-  if ! omarchy-hyprland-toggle-enabled "$TOGGLE"; then
-    return
+  if omarchy-hyprland-toggle-enabled $TOGGLE; then
+    for i in {1..6}; do
+      if omarchy-hw-external-monitors; then
+        return
+      fi
+      sleep 0.5
+    done
+
+    omarchy-hyprland-toggle $TOGGLE off
   fi
-
-  for i in {1..6}; do
-    if omarchy-hw-external-monitors; then
-      return
-    fi
-    sleep 0.5
-  done
-
-  omarchy-hyprland-toggle "$TOGGLE"
 }
 
 reapply() {
-  if omarchy-hyprland-toggle-enabled "$TOGGLE"; then
+  if omarchy-hyprland-toggle-enabled $TOGGLE; then
     hyprctl reload
   fi
 }
