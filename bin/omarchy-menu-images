@@ -137,6 +137,14 @@ fi
 
 rows_payload=${rows//$'\t'/$'\f'}
 rows_payload=${rows_payload//$'\n'/$'\v'}
+colors_file=${colors_file:-$HOME/.config/omarchy/current/theme/background-switcher-colors.json}
+colors_payload=""
+
+if [[ -f $colors_file ]]; then
+  colors_payload=$(<"$colors_file")
+  colors_payload=${colors_payload//$'\t'/$'\f'}
+  colors_payload=${colors_payload//$'\n'/$'\v'}
+fi
 
 if [[ $cache_only == true ]]; then
   exit 0
@@ -165,7 +173,7 @@ if [[ ! -S $socket_path ]]; then
   exit 1
 fi
 
-printf '%s\t%s\t%s\t%s\t%s\n' "$rows_payload" "$selected_list_image" "$selection_file" "$done_file" "$colors_file" |
+printf '%s\t%s\t%s\t%s\t%s\n' "$rows_payload" "$selected_list_image" "$selection_file" "$done_file" "$colors_payload" |
   socat -u - "UNIX-CONNECT:$socket_path"
 
 while [[ ! -e $done_file ]]; do

@@ -83,13 +83,15 @@ ShellRoot {
     list.forceActiveFocus()
   }
 
-  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile) {
+  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw) {
     imageDirs = nextImageDirs
     imageRows = nextImageRows
     selectedImage = nextSelectedImage
     selectionFile = nextSelectionFile
     doneFile = nextDoneFile
     colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/background-switcher-colors.json")
+    if (nextColorsRaw)
+      loadColors(nextColorsRaw)
     imageModel.clear()
     selectedIndex = 0
     list.currentIndex = 0
@@ -148,14 +150,14 @@ ShellRoot {
 
   Component.onCompleted: {
     if (selectionFile)
-      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile)
+      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile, "")
   }
 
   IpcHandler {
     target: "image-selector"
 
     function open(imageDirs: string, imageRows: string, selectedImage: string, selectionFile: string, doneFile: string, colorsFile: string): void {
-      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile)
+      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile, "")
     }
   }
 
@@ -168,7 +170,7 @@ ShellRoot {
       parser: SplitParser {
         onRead: function(message) {
           var fields = message.split("\t")
-          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", fields[4] || "")
+          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", "", root.decodeField(fields[4]))
           clientSocket.connected = false
         }
       }
