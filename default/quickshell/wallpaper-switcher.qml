@@ -32,11 +32,14 @@ ShellRoot {
 
   function currentPath() {
     if (wallpaperModel.count === 0) return ""
-    return wallpaperModel.get(selectedIndex, "filePath")
+    return wallpaperModel.get(selectedIndex).filePath
   }
 
   function select(index) {
-    if (index < 0 || index >= wallpaperModel.count) return
+    if (wallpaperModel.count === 0) return
+    if (index < 0) index = wallpaperModel.count - 1
+    else if (index >= wallpaperModel.count) index = 0
+
     selectedIndex = index
     list.currentIndex = index
     list.positionViewAtIndex(index, ListView.Center)
@@ -51,6 +54,10 @@ ShellRoot {
 
   ListModel {
     id: wallpaperModel
+    onCountChanged: {
+      if (count > 0 && list.currentIndex < 0)
+            root.select(0)
+    }
   }
 
   function addBackground(path) {
@@ -67,14 +74,19 @@ ShellRoot {
 
   Process {
     id: loadBackgroundsProc
+    property string output: ""
     command: ["bash", "-lc", "for dir in " + shellQuote(root.stockBackgroundsDir) + " " + shellQuote(root.userBackgroundsDir) + "; do [[ -d $dir ]] && find -L \"$dir\" -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \\) -print | sort; done"]
     stdout: SplitParser {
       onRead: function(data) {
-        var paths = data.split("\n")
-        for (var i = 0; i < paths.length; i++)
-          root.addBackground(paths[i].trim())
+        loadBackgroundsProc.output += data + "\n"
       }
     }
+    onExited: {
+      var paths = output.split("\n")
+      for (var i = 0; i < paths.length; i++)
+        root.addBackground(paths[i].trim())
+      root.select(0)
+      }
   }
 
   Component.onCompleted: loadBackgroundsProc.running = true
@@ -140,7 +152,7 @@ ShellRoot {
         spacing: root.sliceSpacing
         clip: false
         focus: true
-        currentIndex: root.selectedIndex
+        currentIndex: 0
         preferredHighlightBegin: (width - root.expandedWidth) / 2
         preferredHighlightEnd: (width + root.expandedWidth) / 2
         highlightRangeMode: ListView.StrictlyEnforceRange
@@ -149,10 +161,22 @@ ShellRoot {
         header: Item { width: (list.width - root.expandedWidth) / 2; height: 1 }
         footer: Item { width: (list.width - root.expandedWidth) / 2; height: 1 }
 
-        Keys.onEscapePressed: Qt.quit()
-        Keys.onReturnPressed: root.applySelected()
-        Keys.onLeftPressed: root.select(Math.max(0, root.selectedIndex - 1))
-        Keys.onRightPressed: root.select(Math.min(wallpaperModel.count - 1, root.selectedIndex + 1))
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: function(event) {
+          if (event.key === Qt.Key_Escape) {
+            Qt.quit()
+            event.accepted = true
+          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            root.applySelected()
+            event.accepted = true
+          } else if (event.key === Qt.Key_Left) {
+            root.select(root.selectedIndex - 1)
+            event.accepted = true
+          } else if (event.key === Qt.Key_Right) {
+            root.select(root.selectedIndex + 1)
+            event.accepted = true
+          }
+        }
 
         Component.onCompleted: forceActiveFocus()
 
@@ -162,9 +186,11 @@ ShellRoot {
           required property string filePath
           required property string fileName
 
-          width: index === root.selectedIndex ? root.expandedWidth : root.sliceWidth
+          readonly property bool selected: index === root.selectedIndex
+
+          width: selected ? root.expandedWidth : root.sliceWidth
           height: list.height
-          z: index === root.selectedIndex ? 100 : 50 - Math.min(Math.abs(index - root.selectedIndex), 40)
+          z: selected ? 100 : 50 - Math.min(Math.abs(index - root.selectedIndex), 40)
 
           readonly property real skAbs: Math.abs(root.skewOffset)
           readonly property real topLeft: root.skewOffset >= 0 ? skAbs : 0
@@ -197,11 +223,11 @@ ShellRoot {
           }
 
           Shape {
-            x: index === root.selectedIndex ? 4 : 2
-            y: index === root.selectedIndex ? 10 : 5
+            x: item.selected ? 4 : 2
+            y: item.selected ? 10 : 5
             width: item.width
             height: item.height
-            opacity: index === root.selectedIndex ? 0.5 : 0.32
+            opacity: item.selected ? 0.5 : 0.32
             antialiasing: true
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
@@ -240,7 +266,7 @@ ShellRoot {
 
             Rectangle {
               anchors.fill: parent
-              color: Qt.rgba(0, 0, 0, index === root.selectedIndex ? 0 : 0.42)
+              color: Qt.rgba(0, 0, 0, item.selected ? 0 : 0.42)
               Behavior on color { ColorAnimation { duration: 120 } }
             }
           }
@@ -251,8 +277,8 @@ ShellRoot {
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
               fillColor: "transparent"
-              strokeColor: index === root.selectedIndex ? root.accent : Qt.rgba(0, 0, 0, 0.65)
-              strokeWidth: index === root.selectedIndex ? 3 : 1
+              strokeColor: item.selected ? root.accent : Qt.rgba(0, 0, 0, 0.65)
+              strokeWidth: item.selected ? 3 : 1
               startX: item.topLeft; startY: 0
               PathLine { x: item.topRight; y: 0 }
               PathLine { x: item.bottomRight; y: item.height }
@@ -263,10 +289,8 @@ ShellRoot {
 
           MouseArea {
             anchors.fill: parent
-            hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onEntered: root.select(index)
-            onClicked: index === root.selectedIndex ? root.applySelected() : root.select(index)
+            onClicked: item.selected ? root.applySelected() : root.select(index)
           }
         }
       }
