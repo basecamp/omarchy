@@ -315,7 +315,7 @@ show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
   [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
-  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
+  options="$options\n  Defaults\n󰱔  DNS\n󰖐  Weather\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
   *Audio*) omarchy-launch-audio ;;
@@ -328,6 +328,7 @@ show_setup_menu() {
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
   *Defaults*) show_setup_default_menu ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
+  *Weather*) present_terminal omarchy-weather-set-location ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
   *) show_main_menu ;;

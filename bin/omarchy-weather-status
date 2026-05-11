@@ -2,16 +2,33 @@
 
 # omarchy:summary=Returns a formatted weather status string with temperature and wind speed.
 
-weather=$(curl -fsS --max-time 4 "https://wttr.in?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
+location_file="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/weather-location"
+location=""
+if [[ -s $location_file ]]; then
+  candidate=$(head -n1 "$location_file" 2>/dev/null | tr -d '\r')
+  [[ $candidate =~ ^[A-Za-z0-9~,+._-]{1,128}$ ]] && location=$candidate
+fi
+
+if [[ -n $location ]]; then
+  # Override is a resolved place name (with + for spaces) — display it directly,
+  # only ask wttr.in for the numbers.
+  weather=$(curl -fsS --max-time 4 "https://wttr.in/${location}?format=%t|%w" 2>/dev/null | tr -d '\n')
+  place=${location//+/ }
+else
+  # No override: fall back to wttr.in's own (often wrong, often lowercase) %l.
+  weather=$(curl -fsS --max-time 4 "https://wttr.in/?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
+  IFS='|' read -r place temperature_wind_rest <<< "$weather"
+  place=${place%%,*}
+  place=${place^}
+  weather=${temperature_wind_rest}
+fi
 
 if [[ -z $weather ]]; then
   echo "Weather unavailable"
   exit 1
 fi
 
-IFS='|' read -r place temperature wind <<< "$weather"
-place=${place%%,*}
-place=${place^}
+IFS='|' read -r temperature wind <<< "$weather"
 temperature=${temperature#+}
 
 echo "$(omarchy-weather-icon)    $place  ·  Temp $temperature  ·  Wind $wind"

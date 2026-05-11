@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# omarchy:summary=Set your city for the live weather widget.
+
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy"
+override_file="$config_dir/weather-location"
+mkdir -p "$config_dir"
+
+allowlist_re='^[A-Za-z0-9~,+._-]{1,128}$'
+nominatim_ua="omarchy-weather (https://github.com/basecamp/omarchy)"
+
+current=""
+[[ -s $override_file ]] && current=$(head -n1 "$override_file" 2>/dev/null | tr -d '\r')
+
+if [[ -n $current ]]; then
+  prompt="Update weather location (currently: ${current//+/ })> "
+else
+  prompt="Set weather location> "
+fi
+
+input=$(gum input --prompt "$prompt" --placeholder "San Francisco / Berlin / sfo / ~52.5,13.4")
+input=${input//$'\r'/}
+input=$(printf '%s' "$input" | tr -s '[:space:]' ' ')
+input="${input# }"
+input="${input% }"
+input=${input// /+}
+
+restart_widget() {
+  command -v omarchy-restart-waybar >/dev/null 2>&1 && omarchy-restart-waybar >/dev/null 2>&1 || true
+}
+
+if [[ -z $input ]]; then
+  if [[ -n $current ]] && gum confirm "Clear current location (${current//+/ })?"; then
+    rm -f "$override_file"
+    restart_widget
+    gum style --foreground 42 "Cleared. Weather will use IP-based fallback."
+  else
+    echo "Unchanged."
+  fi
+  exit 0
+fi
+
+if [[ ! $input =~ $allowlist_re ]]; then
+  gum style --foreground 196 "Invalid: only letters, digits, and ~,+._- allowed (max 128 chars)."
+  exit 1
+fi
+
+# Resolve the input to a real city name: wttr.in for coords, Nominatim for the city.
+# Falls back to the raw input (with first letter capitalized) if either lookup fails.
+resolved=""
+coords=$(curl -fsS --max-time 4 "https://wttr.in/${input}?format=j1" 2>/dev/null \
+  | jq -er '.nearest_area[0] | "\(.latitude),\(.longitude)"' 2>/dev/null)
+if [[ -n $coords ]]; then
+  city=$(curl -fsS --max-time 4 -A "$nominatim_ua" \
+    "https://nominatim.openstreetmap.org/reverse?lat=${coords%,*}&lon=${coords#*,}&format=jsonv2&addressdetails=1&zoom=10&accept-language=en" 2>/dev/null \
+    | jq -er '.address | (.city // .town // .village // .municipality // .county // .state)' 2>/dev/null)
+  if [[ -n $city ]]; then
+    candidate=${city// /+}
+    [[ $candidate =~ $allowlist_re ]] && resolved=$candidate
+  fi
+fi
+
+final=${resolved:-${input^}}
+
+printf '%s\n' "$final" > "$override_file"
+restart_widget
+
+if [[ -n $resolved && $resolved != "$input" ]]; then
+  gum style --foreground 42 "Resolved '$input' → '${final//+/ }'."
+else
+  gum style --foreground 42 "Set: ${final//+/ }"
+fi
