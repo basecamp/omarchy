@@ -21,3 +21,6 @@ hl.window_rule({ match = { tag = "pop" }, rounding = 8 })
 
 -- Prevent idle while open.
 hl.window_rule({ match = { tag = "noidle" }, idle_inhibit = "always" })
+
+-- Image selector.
+hl.layer_rule({ match = { namespace = "omarchy-image-selector" }, no_anim = true })

@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# omarchy:summary=Open a generic image selector menu
+# omarchy:group=menu
+# omarchy:name=images
+# omarchy:args=[--selected <image>] [--namespace <namespace>] [--colors-file <path>] <image-dir>...
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+
+selected_image=""
+namespace="omarchy-image-selector"
+colors_file=""
+image_dirs=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --selected)
+      selected_image="$2"
+      shift 2
+      ;;
+    --namespace)
+      namespace="$2"
+      shift 2
+      ;;
+    --colors-file)
+      colors_file="$2"
+      shift 2
+      ;;
+    --help|-h)
+      echo "Usage: omarchy-menu-images [--selected <image>] [--namespace <namespace>] [--colors-file <path>] <image-dir>..."
+      exit 0
+      ;;
+    *)
+      image_dirs+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if (( ${#image_dirs[@]} == 0 )); then
+  echo "Usage: omarchy-menu-images [--selected <image>] [--namespace <namespace>] [--colors-file <path>] <image-dir>..." >&2
+  exit 1
+fi
+
+selection_file=$(mktemp)
+trap 'rm -f "$selection_file"' EXIT
+
+image_dirs_env=""
+for dir in "${image_dirs[@]}"; do
+  if [[ -z $image_dirs_env ]]; then
+    image_dirs_env="$dir"
+  else
+    image_dirs_env+=$'\n'"$dir"
+  fi
+done
+
+current_image=$(readlink -f "$selected_image" 2>/dev/null)
+selected_list_image=""
+
+if [[ -n $current_image ]]; then
+  for dir in "${image_dirs[@]}"; do
+    if [[ -d $dir ]]; then
+      selected_list_image=$(find -L "$dir" -maxdepth 1 -type f -samefile "$current_image" -print -quit 2>/dev/null)
+      [[ -n $selected_list_image ]] && break
+    fi
+  done
+fi
+
+cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/image-selector
+mkdir -p "$cache_dir"
+
+for dir in "${image_dirs[@]}"; do
+  if [[ -d $dir ]]; then
+    while IFS= read -r -d '' image; do
+      hash=$(md5sum "$image" | cut -d ' ' -f 1)
+      thumbnail="$cache_dir/$hash.jpg"
+
+      if [[ ! -f $thumbnail ]]; then
+        magick "$image" -auto-orient -resize '1536x864^' -gravity center -extent '1536x864' -strip -quality 82 "$thumbnail"
+      fi
+    done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -print0 2>/dev/null)
+  fi
+done
+
+OMARCHY_IMAGE_SELECTOR_SELECTION_FILE=$selection_file \
+  OMARCHY_IMAGE_SELECTOR_DIRS="$image_dirs_env" \
+  OMARCHY_IMAGE_SELECTOR_SELECTED="$selected_list_image" \
+  OMARCHY_IMAGE_SELECTOR_NAMESPACE="$namespace" \
+  OMARCHY_IMAGE_SELECTOR_COLORS_FILE="$colors_file" \
+  quickshell -p "$OMARCHY_PATH/default/quickshell/wallpaper-switcher.qml" >/dev/null
+
+if [[ -s $selection_file ]]; then
+  cat "$selection_file"
+fi

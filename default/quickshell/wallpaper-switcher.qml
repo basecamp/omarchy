@@ -8,11 +8,13 @@ import QtQuick.Shapes
 ShellRoot {
   id: root
 
-  property string stockBackgroundsDir: Quickshell.env("OMARCHY_STOCK_BACKGROUNDS_DIR") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/backgrounds")
-  property string userBackgroundsDir: Quickshell.env("OMARCHY_USER_BACKGROUNDS_DIR")
-  property string currentBackground: Quickshell.env("HOME") + "/.config/omarchy/current/background"
-  property string selectionFile: Quickshell.env("OMARCHY_WALLPAPER_SELECTION_FILE")
+  property string imageDirs: Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIRS") || Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIR") || Quickshell.env("OMARCHY_STOCK_BACKGROUNDS_DIR") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/backgrounds")
+  property string selectionFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTION_FILE") || Quickshell.env("OMARCHY_WALLPAPER_SELECTION_FILE")
+  property string selectedImage: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTED")
+  property string colorsFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_COLORS_FILE") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/wallpaper-switcher-colors.json")
+  property string layerNamespace: Quickshell.env("OMARCHY_IMAGE_SELECTOR_NAMESPACE") || "omarchy-image-selector"
   property int selectedIndex: 0
+  property bool imagesLoaded: false
   property color accent: "#798186"
   property color background: "#101315"
   property color foreground: "#cacccc"
@@ -31,18 +33,18 @@ ShellRoot {
   }
 
   function currentPath() {
-    if (wallpaperModel.count === 0) return ""
-    return wallpaperModel.get(selectedIndex).filePath
+    if (imageModel.count === 0) return ""
+    return imageModel.get(selectedIndex).filePath
   }
 
   function select(index) {
-    if (wallpaperModel.count === 0) return
-    if (index < 0) index = wallpaperModel.count - 1
-    else if (index >= wallpaperModel.count) index = 0
+    if (imageModel.count === 0) return
+    if (index < 0) index = imageModel.count - 1
+    else if (index >= imageModel.count) index = 0
 
     selectedIndex = index
     list.currentIndex = index
-    list.positionViewAtIndex(index, ListView.Center)
+    list.centerSelected()
   }
 
   function applySelected() {
@@ -53,46 +55,61 @@ ShellRoot {
   }
 
   ListModel {
-    id: wallpaperModel
+    id: imageModel
     onCountChanged: {
       if (count > 0 && list.currentIndex < 0)
-            root.select(0)
+        root.select(0)
     }
   }
 
-  function addBackground(path) {
+  function addImage(path, thumbnailPath) {
     if (!path) return
     var fileName = path.split("/").pop()
 
-    for (var i = wallpaperModel.count - 1; i >= 0; i--) {
-      if (wallpaperModel.get(i).fileName === fileName)
-        wallpaperModel.remove(i)
+    for (var i = imageModel.count - 1; i >= 0; i--) {
+      if (imageModel.get(i).fileName === fileName)
+        imageModel.remove(i)
     }
 
-    wallpaperModel.append({ filePath: path, fileName: fileName })
+    imageModel.append({ filePath: path, fileName: fileName, thumbnailPath: thumbnailPath || path })
+  }
+
+  function selectedImageIndex() {
+    for (var i = 0; i < imageModel.count; i++) {
+      if (imageModel.get(i).filePath === selectedImage)
+        return i
+    }
+
+    return 0
   }
 
   Process {
-    id: loadBackgroundsProc
+    id: loadImagesProc
     property string output: ""
-    command: ["bash", "-lc", "for dir in " + shellQuote(root.stockBackgroundsDir) + " " + shellQuote(root.userBackgroundsDir) + "; do [[ -d $dir ]] && find -L \"$dir\" -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \\) -print | sort; done"]
+    command: ["bash", "-lc", "cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/image-selector; while IFS= read -r dir; do [[ -d $dir ]] && find -L \"$dir\" -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \\) -print0; done <<< " + shellQuote(root.imageDirs) + " | sort -z | while IFS= read -r -d '' image; do hash=$(md5sum \"$image\" | cut -d ' ' -f 1); thumb=\"$cache_dir/$hash.jpg\"; [[ -f $thumb ]] || thumb=$image; printf '%s\\t%s\\n' \"$image\" \"$thumb\"; done"]
     stdout: SplitParser {
       onRead: function(data) {
-        loadBackgroundsProc.output += data + "\n"
+        loadImagesProc.output += data + "\n"
       }
     }
     onExited: {
       var paths = output.split("\n")
-      for (var i = 0; i < paths.length; i++)
-        root.addBackground(paths[i].trim())
-      root.select(0)
+      for (var i = 0; i < paths.length; i++) {
+        var row = paths[i].trim()
+        if (!row) continue
+
+        var columns = row.split("\t")
+        root.addImage(columns[0], columns[1])
       }
+      root.select(root.selectedImageIndex())
+      root.imagesLoaded = true
+    }
   }
 
-  Component.onCompleted: loadBackgroundsProc.running = true
+  Component.onCompleted: loadImagesProc.running = true
 
   FileView {
-    path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/wallpaper-switcher-colors.json"
+    path: root.colorsFile
     watchChanges: true
     onLoaded: root.loadColors(text())
     onFileChanged: { reload(); root.loadColors(text()) }
@@ -114,9 +131,10 @@ ShellRoot {
 
   PanelWindow {
     id: panel
+    visible: root.imagesLoaded
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "omarchy-wallpaper-switcher"
+    WlrLayershell.namespace: root.layerNamespace
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
@@ -148,18 +166,26 @@ ShellRoot {
         anchors.horizontalCenter: parent.horizontalCenter
         width: root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing)
         orientation: ListView.Horizontal
-        model: wallpaperModel
+        model: imageModel
         spacing: root.sliceSpacing
         clip: false
         focus: true
         currentIndex: 0
         preferredHighlightBegin: (width - root.expandedWidth) / 2
         preferredHighlightEnd: (width + root.expandedWidth) / 2
-        highlightRangeMode: ListView.StrictlyEnforceRange
+        highlightRangeMode: ListView.NoHighlightRange
         highlightMoveDuration: 120
         highlight: Item {}
         header: Item { width: (list.width - root.expandedWidth) / 2; height: 1 }
         footer: Item { width: (list.width - root.expandedWidth) / 2; height: 1 }
+
+        function centerSelected() {
+          Qt.callLater(function() {
+            var selectedItem = list.itemAtIndex(root.selectedIndex)
+            if (selectedItem)
+              list.contentX = selectedItem.x + selectedItem.width / 2 - list.width / 2
+          })
+        }
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
@@ -185,12 +211,15 @@ ShellRoot {
           required property int index
           required property string filePath
           required property string fileName
+          required property string thumbnailPath
 
           readonly property bool selected: index === root.selectedIndex
 
           width: selected ? root.expandedWidth : root.sliceWidth
           height: list.height
           z: selected ? 100 : 50 - Math.min(Math.abs(index - root.selectedIndex), 40)
+
+          onWidthChanged: if (selected) list.centerSelected()
 
           readonly property real skAbs: Math.abs(root.skewOffset)
           readonly property real topLeft: root.skewOffset >= 0 ? skAbs : 0
@@ -255,13 +284,11 @@ ShellRoot {
             Image {
               id: image
               anchors.fill: parent
-              source: root.fileUrl(item.filePath)
+              source: root.fileUrl(item.thumbnailPath)
               fillMode: Image.PreserveAspectCrop
-              asynchronous: true
+              asynchronous: false
               cache: true
               smooth: true
-              opacity: status === Image.Ready ? 1 : 0
-              Behavior on opacity { NumberAnimation { duration: 120 } }
             }
 
             Rectangle {
