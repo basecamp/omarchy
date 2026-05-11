@@ -85,34 +85,37 @@ function GetEntries()
 
   for line in handle:lines() do
     local fields = split_tsv(line)
-    local theme_name = fields[1]
-    local name = fields[2]
-    local repo_url = fields[3]
-    local preview_path = fields[5]
 
-    if theme_name ~= "" and name ~= "" and repo_url ~= "" and preview_path ~= "" then
-      local installed = installed_themes[theme_name] == true
-      local text = installed and (name .. "  [installed]") or (name .. "  ")
-      local action = installed
-          and ("omarchy-theme-set " .. shell_escape(theme_name))
-          or ("omarchy-theme-marketplace-install " .. shell_escape(repo_url) .. " " .. shell_escape(name))
+    if #fields == 5 then
+      local theme_name = fields[1]
+      local name = fields[2]
+      local repo_url = fields[3]
+      local preview_path = fields[5]
 
-      local entry = {
-        Text = text,
-        Actions = {
-          activate = action,
-        },
-      }
+      if theme_name ~= "" and name ~= "" and repo_url ~= "" and preview_path ~= "" then
+        local installed = installed_themes[theme_name] == true
+        local text = installed and (name .. "  [installed]") or (name .. "  ")
+        local action = installed
+            and ("omarchy-theme-set " .. shell_escape(theme_name))
+            or ("omarchy-theme-marketplace-install " .. shell_escape(repo_url) .. " " .. shell_escape(name))
 
-      if file_exists(preview_path) then
-        entry.Preview = preview_path
-        entry.PreviewType = "file"
-      elseif file_exists(placeholder_preview) then
-        entry.Preview = placeholder_preview
-        entry.PreviewType = "file"
+        local entry = {
+          Text = text,
+          Actions = {
+            activate = action,
+          },
+        }
+
+        if file_exists(preview_path) then
+          entry.Preview = preview_path
+          entry.PreviewType = "file"
+        elseif file_exists(placeholder_preview) then
+          entry.Preview = placeholder_preview
+          entry.PreviewType = "file"
+        end
+
+        table.insert(entries, entry)
       end
-
-      table.insert(entries, entry)
     end
   end
 
