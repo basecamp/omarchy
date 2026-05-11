@@ -8,6 +8,7 @@ hl.bind("SUPER + SHIFT + code:201", hl.dsp.exec_cmd("omarchy-menu"), { descripti
 hl.bind("SUPER + ESCAPE", hl.dsp.exec_cmd("omarchy-menu system"), { description = "System menu" })
 hl.bind("XF86PowerOff", hl.dsp.exec_cmd("omarchy-menu system"), { locked = true, description = "Power menu" })
 hl.bind("SUPER + K", hl.dsp.exec_cmd("omarchy-menu-keybindings"), { description = "Show key bindings" })
+hl.bind("SUPER + ALT + K", hl.dsp.exec_cmd("omarchy-menu-tmux-keybindings"), { description = "Show Tmux key bindings" })
 hl.bind("XF86Calculator", hl.dsp.exec_cmd("gnome-calculator"), { description = "Calculator" })
 
 hl.bind("SUPER + SHIFT + SPACE", hl.dsp.exec_cmd("omarchy-toggle-waybar"), { description = "Toggle top bar" })
