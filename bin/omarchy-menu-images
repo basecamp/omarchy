@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # omarchy:summary=Open a generic image selector menu
-# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] <image-dir>...
+# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] [--cache-only] <image-dir>...
 
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
 selected_image=""
 colors_file=""
 print_name=false
+cache_only=false
 image_dirs=()
 
 while [[ $# -gt 0 ]]; do
@@ -24,8 +25,12 @@ while [[ $# -gt 0 ]]; do
       print_name=true
       shift
       ;;
+    --cache-only)
+      cache_only=true
+      shift
+      ;;
     --help|-h)
-      echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] <image-dir>..."
+      echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--cache-only] <image-dir>..."
       exit 0
       ;;
     *)
@@ -36,7 +41,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if (( ${#image_dirs[@]} == 0 )); then
-  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] <image-dir>..." >&2
+  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--cache-only] <image-dir>..." >&2
   exit 1
 fi
 
@@ -132,6 +137,10 @@ fi
 
 rows_payload=${rows//$'\t'/$'\f'}
 rows_payload=${rows_payload//$'\n'/$'\v'}
+
+if [[ $cache_only == true ]]; then
+  exit 0
+fi
 
 if [[ -S $socket_path && $selector_qml -nt $socket_path ]]; then
   quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
