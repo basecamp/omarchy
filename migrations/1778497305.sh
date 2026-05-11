@@ -32,3 +32,5 @@ if [[ -f $RESUME_DROP_IN ]] && [[ -f $SWAP_FILE ]]; then
     sudo limine-mkinitcpio
   fi
 fi
+
+omarchy-state set reboot-required
