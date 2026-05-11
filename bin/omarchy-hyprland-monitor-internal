@@ -32,6 +32,7 @@ off() {
 
 recover() {
   if omarchy-hyprland-toggle-enabled $TOGGLE; then
+    # External monitors can take a few seconds to become available after sleep, so wait up to 3s
     for i in {1..6}; do
       if omarchy-hw-external-monitors; then
         return
