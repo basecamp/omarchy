@@ -17,7 +17,6 @@ ShellRoot {
   property bool imagesLoaded: false
   property bool opened: false
   property bool showLabels: false
-  property bool animateSelection: true
   property string doneFile: ""
   property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + Quickshell.env("UID"))) + "/omarchy-image-selector.sock"
   property color accent: "#798186"
@@ -60,7 +59,6 @@ ShellRoot {
     else if (index >= imageModel.count) index = imageModel.count - 1
     if (index === selectedIndex && immediate !== true) return
 
-    animateSelection = immediate !== true
     selectedIndex = index
     list.currentIndex = index
     list.centerSelected(immediate === true)
@@ -271,15 +269,9 @@ ShellRoot {
             list.contentX = Math.max(0, root.selectedIndex * (root.sliceWidth + root.sliceSpacing))
           }
 
-          if (immediate) {
-            center()
-            Qt.callLater(function() {
-              center()
-              root.animateSelection = true
-            })
-          } else {
+          center()
+          if (immediate)
             Qt.callLater(center)
-          }
         }
 
         Keys.priority: Keys.BeforeItem
@@ -314,18 +306,11 @@ ShellRoot {
           height: list.height
           z: selected ? 100 : 50 - Math.min(Math.abs(index - root.selectedIndex), 40)
 
-          onWidthChanged: if (selected) list.centerSelected()
-
           readonly property real skAbs: Math.abs(root.skewOffset)
           readonly property real topLeft: root.skewOffset >= 0 ? skAbs : 0
           readonly property real topRight: root.skewOffset >= 0 ? width : width - skAbs
           readonly property real bottomRight: root.skewOffset >= 0 ? width - skAbs : width
           readonly property real bottomLeft: root.skewOffset >= 0 ? 0 : skAbs
-
-          Behavior on width {
-            enabled: root.animateSelection
-            NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
-          }
 
           Item {
             id: maskShape
