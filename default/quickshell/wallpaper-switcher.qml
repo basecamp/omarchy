@@ -9,11 +9,15 @@ ShellRoot {
   id: root
 
   property string imageDirs: Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIRS") || Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIR") || Quickshell.env("OMARCHY_STOCK_BACKGROUNDS_DIR") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/backgrounds")
+  property string imageRows: ""
   property string selectionFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTION_FILE") || Quickshell.env("OMARCHY_WALLPAPER_SELECTION_FILE")
   property string selectedImage: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTED")
   property string colorsFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_COLORS_FILE") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/wallpaper-switcher-colors.json")
   property int selectedIndex: 0
   property bool imagesLoaded: false
+  property bool opened: false
+  property string doneFile: ""
+  property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + Quickshell.env("UID"))) + "/omarchy-image-selector.sock"
   property color accent: "#798186"
   property color background: "#101315"
   property color foreground: "#cacccc"
@@ -29,6 +33,10 @@ ShellRoot {
 
   function shellQuote(value) {
     return "'" + String(value).replace(/'/g, "'\\''") + "'"
+  }
+
+  function decodeField(value) {
+    return String(value || "").replace(/\v/g, "\n").replace(/\f/g, "\t")
   }
 
   function currentPath() {
@@ -49,8 +57,49 @@ ShellRoot {
   function applySelected() {
     var path = currentPath()
     if (!path) return
-    applyProc.command = ["bash", "-lc", "printf '%s\\n' " + shellQuote(path) + " > " + shellQuote(selectionFile)]
+    applyProc.command = ["bash", "-lc", "printf '%s\\n' " + shellQuote(path) + " > " + shellQuote(selectionFile) + "; : > " + shellQuote(doneFile)]
     applyProc.running = true
+  }
+
+  function cancel() {
+    cancelProc.command = ["bash", "-lc", ": > " + shellQuote(doneFile)]
+    cancelProc.running = true
+  }
+
+  function loadRows(rows) {
+    var paths = rows.split("\n")
+    for (var i = 0; i < paths.length; i++) {
+      var row = paths[i].trim()
+      if (!row) continue
+
+      var columns = row.split("\t")
+      root.addImage(columns[0], columns[1])
+    }
+
+    root.select(root.selectedImageIndex())
+    root.imagesLoaded = true
+    root.opened = true
+    list.forceActiveFocus()
+  }
+
+  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile) {
+    imageDirs = nextImageDirs
+    imageRows = nextImageRows
+    selectedImage = nextSelectedImage
+    selectionFile = nextSelectionFile
+    doneFile = nextDoneFile
+    colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/wallpaper-switcher-colors.json")
+    imageModel.clear()
+    selectedIndex = 0
+    list.currentIndex = 0
+    imagesLoaded = false
+    opened = false
+    if (imageRows) {
+      loadRows(imageRows)
+    } else {
+      loadImagesProc.output = ""
+      loadImagesProc.running = true
+    }
   }
 
   ListModel {
@@ -92,20 +141,38 @@ ShellRoot {
       }
     }
     onExited: {
-      var paths = output.split("\n")
-      for (var i = 0; i < paths.length; i++) {
-        var row = paths[i].trim()
-        if (!row) continue
-
-        var columns = row.split("\t")
-        root.addImage(columns[0], columns[1])
-      }
-      root.select(root.selectedImageIndex())
-      root.imagesLoaded = true
+      root.loadRows(output)
     }
   }
 
-  Component.onCompleted: loadImagesProc.running = true
+  Component.onCompleted: {
+    if (selectionFile)
+      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile)
+  }
+
+  IpcHandler {
+    target: "image-selector"
+
+    function open(imageDirs: string, imageRows: string, selectedImage: string, selectionFile: string, doneFile: string, colorsFile: string): void {
+      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile)
+    }
+  }
+
+  SocketServer {
+    active: true
+    path: root.socketPath
+
+    handler: Socket {
+      id: clientSocket
+      parser: SplitParser {
+        onRead: function(message) {
+          var fields = message.split("\t")
+          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", fields[4] || "")
+          clientSocket.connected = false
+        }
+      }
+    }
+  }
 
   FileView {
     path: root.colorsFile
@@ -125,12 +192,17 @@ ShellRoot {
 
   Process {
     id: applyProc
-    onExited: Qt.quit()
+    onExited: root.opened = false
+  }
+
+  Process {
+    id: cancelProc
+    onExited: root.opened = false
   }
 
   PanelWindow {
     id: panel
-    visible: root.imagesLoaded
+    visible: root.opened && root.imagesLoaded
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "omarchy-image-selector"
@@ -145,7 +217,7 @@ ShellRoot {
 
     MouseArea {
       anchors.fill: parent
-      onClicked: Qt.quit()
+      onClicked: root.cancel()
     }
 
     Item {
@@ -189,7 +261,7 @@ ShellRoot {
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) {
-            Qt.quit()
+            root.cancel()
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.applySelected()
