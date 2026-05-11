@@ -326,7 +326,7 @@ show_theme_menu() {
 }
 
 show_background_menu() {
-  omarchy-launch-walker -m menus:omarchyBackgroundSelector --width 800 --minheight 400
+  skwd wall toggle
 }
 
 show_font_menu() {
