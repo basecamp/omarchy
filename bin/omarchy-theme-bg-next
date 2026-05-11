@@ -43,6 +43,6 @@ else
   # Set new background symlink
   ln -nsf "$NEW_BACKGROUND" "$CURRENT_BACKGROUND_LINK"
 
-# Apply the new background through Skwd-wall
-skwd wall apply "{\"type\":\"static\",\"path\":\"$CURRENT_BACKGROUND_LINK\"}" >/dev/null
+  # Apply the new background through Skwd-wall
+  skwd wall apply "{\"type\":\"static\",\"path\":\"$CURRENT_BACKGROUND_LINK\"}" >/dev/null
 fi
