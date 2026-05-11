@@ -75,5 +75,6 @@ for extension in png jpg jpeg webp; do
 done
 exec omarchy-menu-images \
   --print-name \
+  --show-labels \
   --selected "$selected_preview" \
   "$preview_dir"

@@ -16,6 +16,7 @@ ShellRoot {
   property int selectedIndex: 0
   property bool imagesLoaded: false
   property bool opened: false
+  property bool showLabels: false
   property string doneFile: ""
   property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + Quickshell.env("UID"))) + "/omarchy-image-selector.sock"
   property color accent: "#798186"
@@ -42,6 +43,14 @@ ShellRoot {
   function currentPath() {
     if (imageModel.count === 0) return ""
     return imageModel.get(selectedIndex).filePath
+  }
+
+  function currentLabel() {
+    var path = currentPath()
+    if (!path) return ""
+
+    var name = path.split("/").pop().replace(/\.[^/.]+$/, "")
+    return name.replace(/[-_]+/g, " ").replace(/\b\w/g, function(match) { return match.toUpperCase() })
   }
 
   function select(index) {
@@ -83,12 +92,13 @@ ShellRoot {
     list.forceActiveFocus()
   }
 
-  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw) {
+  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw, nextShowLabels) {
     imageDirs = nextImageDirs
     imageRows = nextImageRows
     selectedImage = nextSelectedImage
     selectionFile = nextSelectionFile
     doneFile = nextDoneFile
+    showLabels = nextShowLabels === true || nextShowLabels === "true"
     colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/background-switcher-colors.json")
     if (nextColorsRaw)
       loadColors(nextColorsRaw)
@@ -150,14 +160,14 @@ ShellRoot {
 
   Component.onCompleted: {
     if (selectionFile)
-      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile, "")
+      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile, "", false)
   }
 
   IpcHandler {
     target: "image-selector"
 
     function open(imageDirs: string, imageRows: string, selectedImage: string, selectionFile: string, doneFile: string, colorsFile: string): void {
-      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile, "")
+      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile, "", false)
     }
   }
 
@@ -170,7 +180,7 @@ ShellRoot {
       parser: SplitParser {
         onRead: function(message) {
           var fields = message.split("\t")
-          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", "", root.decodeField(fields[4]))
+          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", "", root.decodeField(fields[4]), fields[5] || "false")
           clientSocket.connected = false
         }
       }
@@ -226,7 +236,7 @@ ShellRoot {
     Item {
       id: card
       width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
-      height: root.sliceHeight + 60
+      height: root.sliceHeight + (root.showLabels ? 104 : 60)
       anchors.centerIn: parent
 
       MouseArea { anchors.fill: parent; onClicked: {} }
@@ -236,7 +246,7 @@ ShellRoot {
         anchors.top: parent.top
         anchors.topMargin: 30
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 30
+        anchors.bottomMargin: root.showLabels ? 74 : 30
         anchors.horizontalCenter: parent.horizontalCenter
         width: root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing)
         orientation: ListView.Horizontal
@@ -394,6 +404,20 @@ ShellRoot {
             onClicked: item.selected ? root.applySelected() : root.select(index)
           }
         }
+      }
+
+      Text {
+        visible: root.showLabels
+        anchors.top: list.bottom
+        anchors.topMargin: 16
+        anchors.horizontalCenter: list.horizontalCenter
+        width: root.expandedWidth
+        text: root.currentLabel()
+        color: root.foreground
+        font.pixelSize: 24
+        font.weight: Font.DemiBold
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
       }
     }
   }
