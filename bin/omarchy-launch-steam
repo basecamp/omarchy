@@ -17,13 +17,14 @@ if omarchy-pkg-present steam; then # Only apply if steam is installed
   GAMESCOPE_ARGS=(
     -f
     -b
-    --mangoapp
-    --steam
-    --expose-wayland
     -W "$WIDTH"
     -H "$HEIGHT"
     -r "$REFRESH_RATE"
-    )
+    --mangoapp
+    --steam
+    --expose-wayland
+    --tenfoot
+  )
 
 
   # Restore state on exit
@@ -47,14 +48,14 @@ if omarchy-pkg-present steam; then # Only apply if steam is installed
 
   # Kill existing steam instances
   killall steam
-
-  # Launch gamescope with steam
-    if echo $POSSIBLE_GPUS | grep NVIDIA; then
+# Check if the NVIDIA or AMD drivers are installed
+    if pacman -Qe | grep lib32-nvidia-utils; then
       args+=(-F nis)
-    elif echo $POSSIBLE_GPUS | grep AMD; then
+    elif pacaman -Qe | grep lib32-vulkan-radeon; then
       args+=(-F fsr)
     fi
-    gamescope "${args[@]}" -- steam -tenfoot
+    gamescope "${args[@]}"
+# Launch gamescope with steam
 else
   echo "please install steam first by running omarchy-install-steam"
 fi

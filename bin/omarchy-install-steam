@@ -2,7 +2,7 @@
 
 set -e
 
-echo "Detecting GPU"
+echo "Installing GPU dependencies"
 
 # Use omarchy's GPU detection
 
