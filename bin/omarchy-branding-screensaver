@@ -8,9 +8,11 @@
 
 set -euo pipefail
 
+SOURCE_DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}"
+
 case "${1:-}" in
 image)
-  image=$(omarchy-menu-file "Logo image" "$HOME" "svg png")
+  image=$(omarchy-menu-file "Pick png/svg from $SOURCE_DIR" "${SOURCE_DIR}" "svg png")
   if [[ -n $image ]] && omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/screensaver.txt; then
     omarchy-launch-screensaver force >/dev/null 2>&1
   fi
