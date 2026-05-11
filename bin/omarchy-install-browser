@@ -82,6 +82,10 @@ vivaldi)
   echo "Installing Vivaldi..."
   omarchy-pkg-add vivaldi || exit 1
 
+  sudo mkdir -p /etc/1password
+  grep -qx vivaldi-bin /etc/1password/custom_allowed_browsers 2>/dev/null || \
+    echo vivaldi-bin | sudo tee -a /etc/1password/custom_allowed_browsers >/dev/null
+
   copy_chromium_flags ~/.config/vivaldi-stable.conf
   announce_browser_installed "Vivaldi"
   ;;
