@@ -60,8 +60,6 @@ ShellRoot {
     if (index === selectedIndex && immediate !== true) return
 
     selectedIndex = index
-    list.currentIndex = index
-    list.centerSelected(immediate === true)
   }
 
   function applySelected() {
@@ -90,7 +88,7 @@ ShellRoot {
     root.select(root.selectedImageIndex(), true)
     root.imagesLoaded = true
     root.opened = true
-    list.forceActiveFocus()
+    carousel.forceActiveFocus()
   }
 
   function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw, nextShowLabels) {
@@ -105,7 +103,6 @@ ShellRoot {
       loadColors(nextColorsRaw)
     imageModel.clear()
     selectedIndex = 0
-    list.currentIndex = 0
     imagesLoaded = false
     opened = false
     if (imageRows) {
@@ -116,13 +113,7 @@ ShellRoot {
     }
   }
 
-  ListModel {
-    id: imageModel
-    onCountChanged: {
-      if (count > 0 && list.currentIndex < 0)
-        root.select(0)
-    }
-  }
+  ListModel { id: imageModel }
 
   function addImage(path, thumbnailPath) {
     if (!path) return
@@ -242,37 +233,19 @@ ShellRoot {
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
-      ListView {
-        id: list
+      Item {
+        id: carousel
         anchors.top: parent.top
         anchors.topMargin: 30
         anchors.bottom: parent.bottom
         anchors.bottomMargin: root.showLabels ? 74 : 30
         anchors.horizontalCenter: parent.horizontalCenter
         width: root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing)
-        orientation: ListView.Horizontal
-        model: imageModel
-        spacing: root.sliceSpacing
         clip: false
         focus: true
-        currentIndex: 0
-        preferredHighlightBegin: (width - root.expandedWidth) / 2
-        preferredHighlightEnd: (width + root.expandedWidth) / 2
-        highlightRangeMode: ListView.NoHighlightRange
-        highlightMoveDuration: 120
-        highlight: Item {}
-        header: Item { width: (list.width - root.expandedWidth) / 2; height: 1 }
-        footer: Item { width: (list.width - root.expandedWidth) / 2; height: 1 }
 
-        function centerSelected(immediate) {
-          var center = function() {
-            list.contentX = Math.max(0, root.selectedIndex * (root.sliceWidth + root.sliceSpacing))
-          }
-
-          center()
-          if (immediate)
-            Qt.callLater(center)
-        }
+        readonly property real itemStep: root.sliceWidth + root.sliceSpacing
+        readonly property real previewX: (width - root.expandedWidth) / 2
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
@@ -293,37 +266,64 @@ ShellRoot {
 
         Component.onCompleted: forceActiveFocus()
 
-        delegate: Item {
-          id: item
-          required property int index
-          required property string filePath
-          required property string fileName
-          required property string thumbnailPath
+        Repeater {
+          model: imageModel
 
-          readonly property bool selected: index === root.selectedIndex
+          delegate: Item {
+            id: item
+            required property int index
+            required property string filePath
+            required property string fileName
+            required property string thumbnailPath
 
-          width: selected ? root.expandedWidth : root.sliceWidth
-          height: list.height
-          z: selected ? 100 : 50 - Math.min(Math.abs(index - root.selectedIndex), 40)
+            readonly property int relativeIndex: index - root.selectedIndex
+            readonly property bool selected: relativeIndex === 0
+            readonly property bool nearby: Math.abs(relativeIndex) <= 16
 
-          readonly property real skAbs: Math.abs(root.skewOffset)
-          readonly property real topLeft: root.skewOffset >= 0 ? skAbs : 0
-          readonly property real topRight: root.skewOffset >= 0 ? width : width - skAbs
-          readonly property real bottomRight: root.skewOffset >= 0 ? width - skAbs : width
-          readonly property real bottomLeft: root.skewOffset >= 0 ? 0 : skAbs
+            visible: nearby
+            x: selected ? carousel.previewX : (relativeIndex < 0 ? carousel.previewX + relativeIndex * carousel.itemStep : carousel.previewX + root.expandedWidth + root.sliceSpacing + (relativeIndex - 1) * carousel.itemStep)
+            width: selected ? root.expandedWidth : root.sliceWidth
+            height: carousel.height
+            z: selected ? 100 : 50 - Math.min(Math.abs(relativeIndex), 40)
 
-          Item {
-            id: maskShape
-            anchors.fill: parent
-            visible: false
-            layer.enabled: true
+            readonly property real skAbs: Math.abs(root.skewOffset)
+            readonly property real topLeft: root.skewOffset >= 0 ? skAbs : 0
+            readonly property real topRight: root.skewOffset >= 0 ? width : width - skAbs
+            readonly property real bottomRight: root.skewOffset >= 0 ? width - skAbs : width
+            readonly property real bottomLeft: root.skewOffset >= 0 ? 0 : skAbs
+
+            Item {
+              id: maskShape
+              anchors.fill: parent
+              visible: false
+              layer.enabled: true
+
+              Shape {
+                anchors.fill: parent
+                antialiasing: true
+                preferredRendererType: Shape.CurveRenderer
+                ShapePath {
+                  fillColor: "white"
+                  strokeColor: "transparent"
+                  startX: item.topLeft; startY: 0
+                  PathLine { x: item.topRight; y: 0 }
+                  PathLine { x: item.bottomRight; y: item.height }
+                  PathLine { x: item.bottomLeft; y: item.height }
+                  PathLine { x: item.topLeft; y: 0 }
+                }
+              }
+            }
 
             Shape {
-              anchors.fill: parent
+              x: item.selected ? 4 : 2
+              y: item.selected ? 10 : 5
+              width: item.width
+              height: item.height
+              opacity: item.selected ? 0.5 : 0.32
               antialiasing: true
               preferredRendererType: Shape.CurveRenderer
               ShapePath {
-                fillColor: "white"
+                fillColor: "#000000"
                 strokeColor: "transparent"
                 startX: item.topLeft; startY: 0
                 PathLine { x: item.topRight; y: 0 }
@@ -332,84 +332,65 @@ ShellRoot {
                 PathLine { x: item.topLeft; y: 0 }
               }
             }
-          }
 
-          Shape {
-            x: item.selected ? 4 : 2
-            y: item.selected ? 10 : 5
-            width: item.width
-            height: item.height
-            opacity: item.selected ? 0.5 : 0.32
-            antialiasing: true
-            preferredRendererType: Shape.CurveRenderer
-            ShapePath {
-              fillColor: "#000000"
-              strokeColor: "transparent"
-              startX: item.topLeft; startY: 0
-              PathLine { x: item.topRight; y: 0 }
-              PathLine { x: item.bottomRight; y: item.height }
-              PathLine { x: item.bottomLeft; y: item.height }
-              PathLine { x: item.topLeft; y: 0 }
-            }
-          }
-
-          Item {
-            anchors.fill: parent
-            layer.enabled: true
-            layer.smooth: true
-            layer.effect: MultiEffect {
-              maskEnabled: true
-              maskSource: maskShape
-              maskThresholdMin: 0.3
-              maskSpreadAtMin: 0.3
-            }
-
-            Image {
-              id: image
+            Item {
               anchors.fill: parent
-              source: root.fileUrl(item.thumbnailPath)
-              fillMode: Image.PreserveAspectCrop
-              asynchronous: false
-              cache: true
-              smooth: true
+              layer.enabled: true
+              layer.smooth: true
+              layer.effect: MultiEffect {
+                maskEnabled: true
+                maskSource: maskShape
+                maskThresholdMin: 0.3
+                maskSpreadAtMin: 0.3
+              }
+
+              Image {
+                id: image
+                anchors.fill: parent
+                source: item.nearby ? root.fileUrl(item.thumbnailPath) : ""
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: false
+                cache: true
+                smooth: true
+              }
+
+              Rectangle {
+                anchors.fill: parent
+                color: Qt.rgba(0, 0, 0, item.selected ? 0 : 0.42)
+                Behavior on color { ColorAnimation { duration: 120 } }
+              }
             }
 
-            Rectangle {
+            Shape {
               anchors.fill: parent
-              color: Qt.rgba(0, 0, 0, item.selected ? 0 : 0.42)
-              Behavior on color { ColorAnimation { duration: 120 } }
+              antialiasing: true
+              preferredRendererType: Shape.CurveRenderer
+              ShapePath {
+                fillColor: "transparent"
+                strokeColor: item.selected ? root.accent : Qt.rgba(0, 0, 0, 0.65)
+                strokeWidth: item.selected ? 3 : 1
+                startX: item.topLeft; startY: 0
+                PathLine { x: item.topRight; y: 0 }
+                PathLine { x: item.bottomRight; y: item.height }
+                PathLine { x: item.bottomLeft; y: item.height }
+                PathLine { x: item.topLeft; y: 0 }
+              }
             }
-          }
 
-          Shape {
-            anchors.fill: parent
-            antialiasing: true
-            preferredRendererType: Shape.CurveRenderer
-            ShapePath {
-              fillColor: "transparent"
-              strokeColor: item.selected ? root.accent : Qt.rgba(0, 0, 0, 0.65)
-              strokeWidth: item.selected ? 3 : 1
-              startX: item.topLeft; startY: 0
-              PathLine { x: item.topRight; y: 0 }
-              PathLine { x: item.bottomRight; y: item.height }
-              PathLine { x: item.bottomLeft; y: item.height }
-              PathLine { x: item.topLeft; y: 0 }
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: item.selected ? root.applySelected() : root.select(index)
             }
-          }
-
-          MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: item.selected ? root.applySelected() : root.select(index)
           }
         }
       }
 
       Text {
         visible: root.showLabels
-        anchors.top: list.bottom
+        anchors.top: carousel.bottom
         anchors.topMargin: 16
-        anchors.horizontalCenter: list.horizontalCenter
+        anchors.horizontalCenter: carousel.horizontalCenter
         width: root.expandedWidth
         text: root.currentLabel()
         color: root.foreground
