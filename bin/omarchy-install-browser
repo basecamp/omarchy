@@ -83,7 +83,6 @@ vivaldi)
   omarchy-pkg-add vivaldi || exit 1
 
   copy_chromium_flags ~/.config/vivaldi-stable.conf
-  omarchy-theme-set-browser
   announce_browser_installed "Vivaldi"
   ;;
 zen)

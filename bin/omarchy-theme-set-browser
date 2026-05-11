@@ -32,7 +32,6 @@ refresh_running_browser() {
 
 set_browser_policy /etc/chromium/policies/managed
 refresh_running_browser chromium chromium
-refresh_running_browser vivaldi-stable vivaldi-stable
 
 set_browser_policy /etc/opt/chrome/policies/managed
 refresh_running_browser chrome google-chrome-stable || refresh_running_browser chrome google-chrome
