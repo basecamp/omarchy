@@ -393,7 +393,9 @@ ShellRoot {
         anchors.horizontalCenter: carousel.horizontalCenter
         width: root.expandedWidth
         text: root.currentLabel()
-        color: root.foreground
+        color: "#ffffff"
+        style: Text.Outline
+        styleColor: Qt.rgba(0, 0, 0, 0.7)
         font.pixelSize: 24
         font.weight: Font.DemiBold
         horizontalAlignment: Text.AlignHCenter
