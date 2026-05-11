@@ -112,7 +112,6 @@ parse_keycodes() {
 #
 # Also do some pre-processing:
 # - Remove standard Omarchy bin path prefix
-# - Remove uwsm prefix
 # - Map numeric modifier key mask to a textual rendition
 # - Output comma-separated values that the parser can understand
 dynamic_bindings() {
@@ -121,8 +120,6 @@ dynamic_bindings() {
     sed -r \
       -e 's/null//' \
       -e 's,~/.local/share/omarchy/bin/,,' \
-      -e 's,uwsm app -- ,,' \
-      -e 's,uwsm-app -- ,,' \
       -e 's/@0//' \
       -e 's/,@/,code:/' \
       -e 's/^0,/,/' \
@@ -184,6 +181,7 @@ parse_binding_records() {
         # Clean up trailing commas, remove leading "exec, ", and trim
         sub(/,$/, "", action);
         gsub(/(^|,)[[:space:]]*exec[[:space:]]*,?/, "", action);
+        gsub(/(^|[[:space:]])uwsm(-app| app)[[:space:]]+--[[:space:]]+/, "", action);
         gsub(/^[ \t]+|[ \t]+$/, "", action);
         gsub(/[ \t]+/, " ", key_combo);  # Collapse multiple spaces to one
 
