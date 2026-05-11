@@ -19,7 +19,8 @@ Usage:
 
 Measure the non-interactive parts of the theme switcher:
 - theme preview index build (omarchy-theme-switcher before UI handoff)
-- image selector row/thumbnail cache prep (omarchy-menu-images --cache-only)
+- lazy selector row prep used by the interactive theme switcher
+- full thumbnail cache warmup cost (omarchy-menu-images --cache-only)
 
 Options:
   --repeat=<count>  Number of warm runs to measure for each case (default: 5)
@@ -100,6 +101,7 @@ if [[ ! $REPEAT =~ ^[0-9]+$ ]] || (( REPEAT < 1 )); then
 fi
 
 benchmark_cache=$(mktemp -d)
+thumbnail_cache=$(mktemp -d)
 stub_bin=$(mktemp -d)
 
 cleanup() {
@@ -107,8 +109,9 @@ cleanup() {
 
   if [[ $KEEP_CACHE == "true" ]]; then
     printf 'Benchmark cache: %s\n' "$benchmark_cache"
+    printf 'Thumbnail cache: %s\n' "$thumbnail_cache"
   else
-    rm -rf "$benchmark_cache"
+    rm -rf "$benchmark_cache" "$thumbnail_cache"
   fi
 }
 trap cleanup EXIT
@@ -126,20 +129,35 @@ benchmark_env=(
   "PATH=$stub_bin:$OMARCHY_BIN_DIR:$PATH"
 )
 
+thumbnail_env=(
+  env
+  "OMARCHY_PATH=$OMARCHY_PATH"
+  "XDG_CACHE_HOME=$thumbnail_cache"
+  "PATH=$stub_bin:$OMARCHY_BIN_DIR:$PATH"
+)
+
 preview_dir="$benchmark_cache/omarchy/theme-selector/previews"
+thumbnail_preview_dir="$thumbnail_cache/omarchy/theme-selector/previews"
 
 build_theme_index() {
   "${benchmark_env[@]}" "$OMARCHY_BIN_DIR/omarchy-theme-switcher"
 }
 
+prepare_selector_lazy() {
+  "${benchmark_env[@]}" "$OMARCHY_BIN_DIR/omarchy-menu-images" --prepare-only --lazy-thumbnails --show-labels --filterable "$preview_dir"
+}
+
 prepare_image_cache() {
-  "${benchmark_env[@]}" "$OMARCHY_BIN_DIR/omarchy-menu-images" --cache-only "$preview_dir"
+  "${thumbnail_env[@]}" "$OMARCHY_BIN_DIR/omarchy-menu-images" --cache-only "$thumbnail_preview_dir"
 }
 
 printf 'Theme switcher benchmark (%d warm runs each)\n\n' "$REPEAT"
 printf '%-34s %s ms\n' "theme index cold" "$(format_ms "$(measure_once build_theme_index)")"
 run_case "theme index warm" build_theme_index
-printf '%-34s %s ms\n' "selector cache cold" "$(format_ms "$(measure_once prepare_image_cache)")"
-run_case "selector cache warm" prepare_image_cache
+printf '%-34s %s ms\n' "selector prep cold (lazy)" "$(format_ms "$(measure_once prepare_selector_lazy)")"
+run_case "selector prep warm (lazy)" prepare_selector_lazy
+"${thumbnail_env[@]}" "$OMARCHY_BIN_DIR/omarchy-theme-switcher" >/dev/null
+printf '%-34s %s ms\n' "thumbnail cache cold" "$(format_ms "$(measure_once prepare_image_cache)")"
+run_case "thumbnail cache warm" prepare_image_cache
 
 printf '\nTheme previews: %d\n' "$(find -L "$preview_dir" -maxdepth 1 -type f 2>/dev/null | wc -l)"

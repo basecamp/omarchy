@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Open a generic image selector menu
-# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--cache-only] <image-dir>...
+# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] <image-dir>...
 
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
@@ -10,11 +10,13 @@ colors_file=""
 print_name=false
 show_labels=false
 filterable=false
+lazy_thumbnails=false
+prepare_only=false
 cache_only=false
 image_dirs=()
 
 usage() {
-  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--cache-only] <image-dir>..."
+  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] <image-dir>..."
 }
 
 while [[ $# -gt 0 ]]; do
@@ -47,6 +49,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --filterable)
       filterable=true
+      shift
+      ;;
+    --lazy-thumbnails)
+      lazy_thumbnails=true
+      shift
+      ;;
+    --prepare-only)
+      prepare_only=true
       shift
       ;;
     --cache-only)
@@ -108,7 +118,8 @@ mkdir -p "$cache_dir"
 cache_key=$(printf '%s' "$image_dirs_env" | md5sum | cut -d ' ' -f 1)
 rows_cache_file="$cache_dir/$cache_key.rows"
 rows_signature_file="$cache_dir/$cache_key.signature"
-rows_signature=""
+rows_signature="v2"$'\n'
+rows_cacheable=true
 image_files=()
 
 for dir in "${image_dirs[@]}"; do
@@ -123,6 +134,29 @@ for dir in "${image_dirs[@]}"; do
   fi
 done
 
+generate_thumbnail() {
+  local image="$1"
+  local thumbnail="$2"
+  local lock="$thumbnail.lock"
+  local tmp="$thumbnail.$$.jpg"
+
+  if mkdir "$lock" 2>/dev/null; then
+    if magick "${image}[0]" -auto-orient -resize '1536x864^' -gravity center -extent '1536x864' -strip -quality 82 "$tmp"; then
+      mv -f "$tmp" "$thumbnail"
+    else
+      rm -f "$tmp" "$thumbnail"
+    fi
+
+    rmdir "$lock" 2>/dev/null || true
+  else
+    for ((i = 0; i < 3000; i++)); do
+      [[ -f $thumbnail ]] && return
+      [[ -d $lock ]] || break
+      sleep 0.01
+    done
+  fi
+}
+
 thumbnail_for() {
   local image="$1"
   local signature hash thumbnail
@@ -131,14 +165,25 @@ thumbnail_for() {
   hash=$(awk -F '\t' -v path="$image" -v sig="$signature" '$1 == path && $2 == sig { print $3; exit }' "$index_file" 2>/dev/null)
 
   if [[ -z $hash ]]; then
-    hash=$(md5sum "$image" | cut -d ' ' -f 1)
+    hash=$(printf '%s\t%s' "$image" "$signature" | md5sum | cut -d ' ' -f 1)
     printf '%s\t%s\t%s\n' "$image" "$signature" "$hash" >>"$index_file"
   fi
 
   thumbnail="$cache_dir/$hash.jpg"
 
   if [[ ! -f $thumbnail ]]; then
-    magick "${image}[0]" -auto-orient -resize '1536x864^' -gravity center -extent '1536x864' -strip -quality 82 "$thumbnail"
+    if [[ $lazy_thumbnails == true && $cache_only != true ]]; then
+      rows_cacheable=false
+
+      if [[ $prepare_only != true ]]; then
+        generate_thumbnail "$image" "$thumbnail" >/dev/null 2>&1 &
+      fi
+
+      printf '%s' "$image"
+      return
+    fi
+
+    generate_thumbnail "$image" "$thumbnail"
   fi
 
   [[ -f $thumbnail ]] && printf '%s' "$thumbnail"
@@ -150,6 +195,9 @@ else
   for image in "${image_files[@]}"; do
     thumbnail=$(thumbnail_for "$image")
     [[ -n $thumbnail ]] || continue
+    if [[ $lazy_thumbnails == true && $cache_only != true && $thumbnail == "$image" ]]; then
+      rows_cacheable=false
+    fi
 
     if [[ -z $rows ]]; then
       rows="$image"$'\t'"$thumbnail"
@@ -158,8 +206,12 @@ else
     fi
   done
 
-  printf '%s' "$rows" >"$rows_cache_file"
-  printf '%s' "$rows_signature" >"$rows_signature_file"
+  if [[ $rows_cacheable == true ]]; then
+    printf '%s' "$rows" >"$rows_cache_file"
+    printf '%s' "$rows_signature" >"$rows_signature_file"
+  else
+    rm -f "$rows_cache_file" "$rows_signature_file"
+  fi
 fi
 
 rows_payload=${rows//$'\t'/$'\f'}
@@ -173,7 +225,7 @@ if [[ -f $colors_file ]]; then
   colors_payload=${colors_payload//$'\n'/$'\v'}
 fi
 
-if [[ $cache_only == true ]]; then
+if [[ $cache_only == true || $prepare_only == true ]]; then
   exit 0
 fi
 
