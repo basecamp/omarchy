@@ -17,6 +17,7 @@ ShellRoot {
   property bool imagesLoaded: false
   property bool opened: false
   property bool showLabels: false
+  property bool animateSelection: true
   property string doneFile: ""
   property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + Quickshell.env("UID"))) + "/omarchy-image-selector.sock"
   property color accent: "#798186"
@@ -53,14 +54,15 @@ ShellRoot {
     return name.replace(/[-_]+/g, " ").replace(/\b\w/g, function(match) { return match.toUpperCase() })
   }
 
-  function select(index) {
+  function select(index, immediate) {
     if (imageModel.count === 0) return
     if (index < 0) index = imageModel.count - 1
     else if (index >= imageModel.count) index = 0
 
+    animateSelection = immediate !== true
     selectedIndex = index
     list.currentIndex = index
-    list.centerSelected()
+    list.centerSelected(immediate === true)
   }
 
   function applySelected() {
@@ -86,7 +88,7 @@ ShellRoot {
       root.addImage(columns[0], columns[1])
     }
 
-    root.select(root.selectedImageIndex())
+    root.select(root.selectedImageIndex(), true)
     root.imagesLoaded = true
     root.opened = true
     list.forceActiveFocus()
@@ -263,12 +265,20 @@ ShellRoot {
         header: Item { width: (list.width - root.expandedWidth) / 2; height: 1 }
         footer: Item { width: (list.width - root.expandedWidth) / 2; height: 1 }
 
-        function centerSelected() {
-          Qt.callLater(function() {
-            var selectedItem = list.itemAtIndex(root.selectedIndex)
-            if (selectedItem)
-              list.contentX = selectedItem.x + selectedItem.width / 2 - list.width / 2
-          })
+        function centerSelected(immediate) {
+          var center = function() {
+            list.contentX = Math.max(0, root.selectedIndex * (root.sliceWidth + root.sliceSpacing))
+          }
+
+          if (immediate) {
+            center()
+            Qt.callLater(function() {
+              center()
+              root.animateSelection = true
+            })
+          } else {
+            Qt.callLater(center)
+          }
         }
 
         Keys.priority: Keys.BeforeItem
@@ -311,7 +321,10 @@ ShellRoot {
           readonly property real bottomRight: root.skewOffset >= 0 ? width - skAbs : width
           readonly property real bottomLeft: root.skewOffset >= 0 ? 0 : skAbs
 
-          Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+          Behavior on width {
+            enabled: root.animateSelection
+            NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+          }
 
           Item {
             id: maskShape
