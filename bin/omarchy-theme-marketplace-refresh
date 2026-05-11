@@ -1,0 +1,180 @@
+#!/bin/bash
+
+# omarchy:summary=Refresh cached Omarchy theme marketplace data
+# omarchy:group=theme
+# omarchy:name=marketplace refresh
+# omarchy:examples=omarchy theme marketplace refresh
+
+set -euo pipefail
+
+if omarchy-cmd-missing curl; then
+  echo "curl is required to refresh the theme marketplace" >&2
+  exit 1
+fi
+
+if omarchy-cmd-missing magick; then
+  echo "ImageMagick is required to prepare marketplace previews" >&2
+  exit 1
+fi
+
+SOURCE_URL="https://learn.omacom.io/2/the-omarchy-manual/90/extra-themes.md"
+CACHE_DIR="$HOME/.cache/omarchy/theme-marketplace"
+PREVIEW_DIR="$CACHE_DIR/previews"
+CACHE_FILE="$CACHE_DIR/themes.tsv"
+SOURCE_FILE="$CACHE_DIR/source.md"
+SOURCE_HASH_FILE="$CACHE_DIR/source.sha256"
+PLACEHOLDER_PREVIEW="$CACHE_DIR/fetching-preview.jpg"
+PREVIEW_MAX_SIZE="1000x1000>"
+PREVIEW_QUALITY="82"
+FIRST_PREVIEW_COUNT="10"
+FIRST_PREVIEW_JOBS="4"
+PREVIEW_JOBS="8"
+
+notify_marketplace_error() {
+  local message="$1"
+
+  if omarchy-cmd-present notify-send; then
+    notify-send -u critical "Theme marketplace" "$message"
+  fi
+
+  echo "Theme marketplace: $message" >&2
+}
+
+if [[ ${1:-} == "--preview-worker" ]]; then
+  image_url="${2:-}"
+  preview_path="${3:-}"
+
+  if [[ -z $image_url || -z $preview_path || -f $preview_path ]]; then
+    exit 0
+  fi
+
+  tmp_image=$(mktemp)
+  cleanup_preview_worker() {
+    rm -f "$tmp_image"
+  }
+  trap cleanup_preview_worker EXIT
+
+  curl --fail --silent --show-error --location --output "$tmp_image" "$image_url" || exit 0
+  magick "$tmp_image" -auto-orient -resize "$PREVIEW_MAX_SIZE" -strip -quality "$PREVIEW_QUALITY" "$preview_path"
+  exit 0
+fi
+
+mkdir -p "$PREVIEW_DIR"
+
+if [[ ! -f $PLACEHOLDER_PREVIEW ]]; then
+  magick -size 1000x563 xc:'#111318' \
+    -fill '#39dce8' -gravity center -pointsize 44 \
+    -annotate 0 'Fetching themes...' \
+    "$PLACEHOLDER_PREVIEW"
+fi
+
+tmp_md=$(mktemp)
+tmp_cache=$(mktemp)
+tmp_first_jobs=$(mktemp)
+tmp_rest_jobs=$(mktemp)
+
+cleanup() {
+  rm -rf "$tmp_md" "$tmp_cache" "$tmp_first_jobs" "$tmp_rest_jobs"
+}
+trap cleanup EXIT
+
+run_preview_jobs() {
+  local job_file="$1"
+  local jobs="$2"
+
+  if [[ ! -s $job_file ]]; then
+    return
+  fi
+
+  xargs -r -0 -n 2 -P "$jobs" bash "$0" --preview-worker <"$job_file"
+}
+
+queue_preview_jobs() {
+  local cache_file="$1"
+  local first_jobs_file="$2"
+  local rest_jobs_file="$3"
+  local index=0
+  local theme_name name repo_url image_url preview_path
+
+  while IFS=$'\t' read -r theme_name name repo_url image_url preview_path; do
+    index=$((index + 1))
+
+    if [[ -z $image_url || -z $preview_path || -f $preview_path ]]; then
+      continue
+    fi
+
+    if ((index <= FIRST_PREVIEW_COUNT)); then
+      printf '%s\0%s\0' "$image_url" "$preview_path" >>"$first_jobs_file"
+    else
+      printf '%s\0%s\0' "$image_url" "$preview_path" >>"$rest_jobs_file"
+    fi
+  done <"$cache_file"
+}
+
+if ! curl -fsSL "$SOURCE_URL" -o "$tmp_md"; then
+  notify_marketplace_error "Could not fetch the marketplace source."
+  exit 1
+fi
+
+new_hash=$(sha256sum "$tmp_md" | cut -d' ' -f1)
+old_hash=$(cat "$SOURCE_HASH_FILE" 2>/dev/null || true)
+
+if [[ $new_hash == "$old_hash" && -f $CACHE_FILE ]]; then
+  queue_preview_jobs "$CACHE_FILE" "$tmp_first_jobs" "$tmp_rest_jobs"
+  run_preview_jobs "$tmp_first_jobs" "$FIRST_PREVIEW_JOBS"
+  run_preview_jobs "$tmp_rest_jobs" "$PREVIEW_JOBS"
+  exit 0
+fi
+
+image_url=""
+image_re='!\[[^]]*\]\(([^)]+)\)'
+repo_re='^[[:space:]]*\[([^]]+)\]\((https://github.com/[^)]+)\)'
+
+while IFS= read -r line; do
+  if [[ $line =~ $image_re ]]; then
+    image_url="${BASH_REMATCH[1]}"
+
+    if [[ $image_url == /* ]]; then
+      image_url="https://learn.omacom.io$image_url"
+    fi
+  elif [[ -n $image_url && $line =~ $repo_re ]]; then
+    name="${BASH_REMATCH[1]}"
+    repo_url="${BASH_REMATCH[2]}"
+
+    if [[ -z $name || -z $repo_url ]]; then
+      image_url=""
+      continue
+    fi
+
+    repo_path="${repo_url%/}"
+    theme_name=$(basename "$repo_path" .git | sed -E 's/^omarchy-//; s/-theme$//' | tr '[:upper:]' '[:lower:]')
+
+    if [[ -z $theme_name ]]; then
+      image_url=""
+      continue
+    fi
+
+    preview_path="$PREVIEW_DIR/$theme_name.jpg"
+
+    printf '%s\t%s\t%s\t%s\t%s\n' "$theme_name" "$name" "$repo_url" "$image_url" "$preview_path" >>"$tmp_cache"
+
+    image_url=""
+  fi
+done <"$tmp_md"
+
+parsed_count=$(wc -l <"$tmp_cache")
+
+if ((parsed_count < 10)); then
+  notify_marketplace_error "Could not parse the marketplace source."
+  exit 1
+fi
+
+cp "$tmp_md" "$SOURCE_FILE"
+printf '%s\n' "$new_hash" >"$SOURCE_HASH_FILE"
+mv "$tmp_cache" "$CACHE_FILE"
+
+find "$PREVIEW_DIR" -maxdepth 1 -type f ! -name '*.jpg' -delete
+
+queue_preview_jobs "$CACHE_FILE" "$tmp_first_jobs" "$tmp_rest_jobs"
+run_preview_jobs "$tmp_first_jobs" "$FIRST_PREVIEW_JOBS"
+run_preview_jobs "$tmp_rest_jobs" "$PREVIEW_JOBS"

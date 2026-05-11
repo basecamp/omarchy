@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# omarchy:summary=Browse installable Omarchy themes from the marketplace
+# omarchy:group=theme
+# omarchy:name=marketplace
+# omarchy:examples=omarchy theme marketplace
+
+set -euo pipefail
+
+CACHE_FILE="$HOME/.cache/omarchy/theme-marketplace/themes.tsv"
+PREVIEW_DIR="$HOME/.cache/omarchy/theme-marketplace/previews"
+READY_TIMEOUT_TENTHS="300"
+
+notify_marketplace() {
+  local urgency="$1"
+  local title="$2"
+  local message="$3"
+
+  if omarchy-cmd-present notify-send; then
+    notify-send -u "$urgency" "$title" "$message"
+  fi
+}
+
+omarchy-theme-marketplace-refresh >/dev/null 2>&1 &
+refresh_pid=$!
+
+preview_count=0
+theme_count=0
+[[ -f $CACHE_FILE ]] && theme_count=$(wc -l <"$CACHE_FILE")
+[[ -d $PREVIEW_DIR ]] && preview_count=$(find "$PREVIEW_DIR" -maxdepth 1 -type f -name '*.jpg' -printf '.' 2>/dev/null | wc -c)
+
+if ((theme_count == 0 || preview_count < theme_count)); then
+  notify_marketplace low "Fetching themes" "Preparing marketplace previews..."
+fi
+
+for _ in $(seq 1 "$READY_TIMEOUT_TENTHS"); do
+  if [[ -f $CACHE_FILE ]]; then
+    theme_count=$(wc -l <"$CACHE_FILE")
+    preview_count=$(find "$PREVIEW_DIR" -maxdepth 1 -type f -name '*.jpg' -printf '.' 2>/dev/null | wc -c)
+    if ((theme_count > 0 && preview_count >= theme_count)); then
+      break
+    fi
+  fi
+
+  if ! kill -0 "$refresh_pid" 2>/dev/null && ((theme_count == 0)); then
+    notify_marketplace critical "Theme marketplace" "Could not fetch marketplace themes."
+    exit 1
+  fi
+
+  sleep 0.1
+done
+
+if ((theme_count > 0 && preview_count < theme_count)); then
+  notify_marketplace normal "Theme marketplace" "Opening with $preview_count of $theme_count previews ready."
+fi
+
+exec omarchy-launch-walker -m menus:omarchyThemeMarketplace --width 800 --minheight 400 --maxheight 400

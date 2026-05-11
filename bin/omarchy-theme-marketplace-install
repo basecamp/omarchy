@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# omarchy:summary=Install a marketplace theme through the existing theme installer
+# omarchy:group=theme
+# omarchy:name=marketplace install
+# omarchy:args=<git-repo-url> [theme-name]
+# omarchy:examples=omarchy theme marketplace install https://github.com/example/omarchy-example-theme
+
+set -euo pipefail
+
+if [[ -z ${1:-} ]]; then
+  echo "Usage: omarchy-theme-marketplace-install <git-repo-url> [theme-name]"
+  exit 1
+fi
+
+repo_url="$1"
+display_name="${2:-}"
+
+if [[ $repo_url != https://github.com/* ]]; then
+  echo "Usage: omarchy-theme-marketplace-install <git-repo-url> [theme-name]" >&2
+  exit 1
+fi
+
+if [[ -z $display_name ]]; then
+  repo_path="${repo_url%/}"
+  display_name=$(basename "$repo_path" .git | sed -E 's/^omarchy-//; s/-theme$//; s/-/ /g')
+fi
+
+shell_escape() {
+  printf "'%s'" "${1//\'/\'\\\'\'}"
+}
+
+if omarchy-cmd-present notify-send; then
+  notify-send -u low "Installing theme" "$display_name" || true
+fi
+
+cmd="omarchy-theme-install $(shell_escape "$repo_url")"
+exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title=Omarchy -e bash -c \
+  "omarchy-show-logo; $cmd; if (( \$? != 130 )); then omarchy-show-done; fi"
