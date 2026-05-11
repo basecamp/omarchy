@@ -600,8 +600,9 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch\n󰍳  Minecraft\n󰢹  NVIDIA GeForce NOW\n  Xbox Cloud Gaming\n󰂯  Xbox Controller\n󰍹  Moonlight (GameStream)\n  Lutris (Battle.net)\n󱓟  Heroic (Epic Games)") in
+  case $(menu "Install" "  Steam\n󰯉  RetroArch\n󰍳  Minecraft\n󰢹  NVIDIA GeForce NOW\n  Xbox Cloud Gaming\n󰂯  Xbox Controller\n󰍹  Moonlight (GameStream)\n  Lutris (Battle.net)\n󱓟  Heroic (Epic Games)\n󰯉  RetroArch Game Launcher") in
   *Steam*) present_terminal omarchy-install-gaming-steam ;;
+  *"RetroArch Game Launcher"*) omarchy-games-retro-install ;;
   *RetroArch*) present_terminal omarchy-install-gaming-retroarch ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
   *GeForce*) present_terminal omarchy-install-gaming-geforce-now ;;
