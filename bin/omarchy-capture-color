@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# omarchy:summary=Use hyprpicker to get a color
+# omarchy:group=capture
+
+COLOR=$(pkill hyprpicker || hyprpicker -a)
+
+omarchy-notification-send "󰃉" "Hex code copied to clipboard" "$COLOR"

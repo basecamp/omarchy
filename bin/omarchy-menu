@@ -144,7 +144,7 @@ show_capture_menu() {
   *Screenshot*) omarchy-capture-screenshot ;;
   *Screenrecord*) show_screenrecord_menu ;;
   *Text*) omarchy-capture-text-extraction ;;
-  *Color*) pkill hyprpicker || hyprpicker -a ;;
+  *Color*) omarchy-capture-color;;
   *) back_to show_trigger_menu ;;
   esac
 }
