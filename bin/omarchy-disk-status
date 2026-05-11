@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Shows total, used, and free disk space.
+
+read size used free percent <<<$(df -h / --output=size,used,avail,pcent | tail -1)
+
+echo "󰋊    Disk ${size} Total · ${used} Used · ${free} Free (${percent})"
