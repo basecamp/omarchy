@@ -26,18 +26,21 @@ SCRIPTS=(
   omarchy-theme-schedule-enable
   omarchy-theme-schedule-disable
   omarchy-theme-schedule-status
+  omarchy-theme-schedule-sleepwatch
 )
 
 UNITS=(
   omarchy-theme-schedule.service
   omarchy-theme-schedule.timer
   omarchy-theme-schedule-tzwatch.path
+  omarchy-theme-schedule-sleepwatch.service
 )
 
 uninstall() {
   echo ":: Removing theme-schedule scripts and units"
   systemctl --user disable --now omarchy-theme-schedule.timer 2>/dev/null || true
   systemctl --user disable --now omarchy-theme-schedule-tzwatch.path 2>/dev/null || true
+  systemctl --user disable --now omarchy-theme-schedule-sleepwatch.service 2>/dev/null || true
 
   for s in "${SCRIPTS[@]}"; do
     if [[ -L "$LIVE_BIN/$s" ]]; then

@@ -4,14 +4,14 @@ Requires=omarchy-theme-schedule.service
 
 [Timer]
 # OnCalendar entries are written as a drop-in by omarchy-theme-schedule-apply
-# after each firing. The hourly fallback ensures the apply script runs at
-# least once per hour to recover after suspend, clock changes, or a missing
-# drop-in — apply is idempotent so harmless when the theme is already correct.
+# at each firing. The drop-in lists today's and tomorrow's sunrise/sunset.
 #
-# Persistent=true is deliberately NOT set: catching up missed events on resume
-# raced with session stabilization and crashed Hyprland. Eventual correctness
-# via the hourly fallback is preferred over immediate-but-fragile catchup.
-OnCalendar=hourly
+# Resume from suspend is handled by omarchy-theme-schedule-sleepwatch
+# (a D-Bus listener on logind's PrepareForSleep signal), not by Persistent=true
+# here — catching up missed events on resume raced with session stabilization
+# and crashed Hyprland.
+#
+# Timezone changes are handled by omarchy-theme-schedule-tzwatch.path.
 AccuracySec=30sec
 
 [Install]

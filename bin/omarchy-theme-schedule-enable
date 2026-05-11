@@ -118,6 +118,7 @@ echo "$night_theme" >"$OMARCHY_CURRENT/theme.night"
 
 systemctl --user enable --now omarchy-theme-schedule.timer
 systemctl --user enable --now omarchy-theme-schedule-tzwatch.path
+systemctl --user enable --now omarchy-theme-schedule-sleepwatch.service
 
 omarchy-theme-schedule-apply
 

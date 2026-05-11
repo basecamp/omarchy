@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# omarchy:summary=Watch systemd-logind for resume and reapply theme schedule
+# omarchy:hidden=true
+
+# Subscribes to logind's PrepareForSleep D-Bus signal. The signal fires
+# twice per suspend cycle: PrepareForSleep(true) before sleep and
+# PrepareForSleep(false) after wake. On wake, we wait for Hyprland to
+# become responsive (so omarchy-theme-set's component restarts don't
+# race with session recovery) then run apply.
+
+set -u
+
+react_to_resume() {
+  # Wait up to 10 s for Hyprland to answer, polling every 0.5 s.
+  local i
+  for i in $(seq 1 20); do
+    hyprctl version >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+  # Small buffer for waybar/swaybg/etc. to re-subscribe to the compositor.
+  sleep 1
+  omarchy-theme-schedule-apply || true
+}
+
+# Use gdbus rather than busctl monitor: gdbus subscribes via the normal
+# AddMatch path (allowed for unprivileged users), busctl uses BecomeMonitor
+# which requires root.
+gdbus monitor --system --dest org.freedesktop.login1 --object-path /org/freedesktop/login1 |
+  while IFS= read -r line; do
+    if [[ "$line" == *PrepareForSleep*'(false,)'* ]]; then
+      react_to_resume
+    fi
+  done
