@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set the default browser for Omarchy and XDG handlers
-# omarchy:args=[chromium|chrome|brave|brave-origin|edge|firefox|zen]
+# omarchy:args=[chromium|chrome|brave|brave-origin|edge|firefox|vivaldi|zen]
 # omarchy:examples=omarchy default browser firefox | omarchy default browser brave
 
 if (($# == 0)); then
@@ -12,6 +12,7 @@ if (($# == 0)); then
   brave-origin-beta.desktop) echo "brave-origin" ;;
   microsoft-edge.desktop) echo "edge" ;;
   firefox.desktop) echo "firefox" ;;
+  vivaldi-stable.desktop) echo "vivaldi" ;;
   zen.desktop) echo "zen" ;;
   *) xdg-settings get default-web-browser ;;
   esac
@@ -25,9 +26,10 @@ brave) desktop_id="brave-browser.desktop"; name="Brave"; glyph="󰖟" ;;
 brave-origin) desktop_id="brave-origin-beta.desktop"; name="Brave Origin"; glyph="󰖟" ;;
 edge) desktop_id="microsoft-edge.desktop"; name="Edge"; glyph="󰇩" ;;
 firefox) desktop_id="firefox.desktop"; name="Firefox"; glyph="󰈹" ;;
+vivaldi) desktop_id="vivaldi-stable.desktop"; name="Vivaldi"; glyph="󰰫" ;;
 zen) desktop_id="zen.desktop"; name="Zen"; glyph="󰖟" ;;
 *)
-  echo "Usage: omarchy-default-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
+  echo "Usage: omarchy-default-browser <chromium|chrome|brave|brave-origin|edge|firefox|vivaldi|zen>"
   exit 1
   ;;
 esac
