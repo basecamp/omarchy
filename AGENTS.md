@@ -82,6 +82,7 @@ Use these instead of raw shell commands:
 - `omarchy-cmd-missing` / `omarchy-cmd-present` - check for commands
 - `omarchy-pkg-missing` / `omarchy-pkg-present` - check for packages
 - `omarchy-pkg-add` - install packages (handles both pacman and AUR)
+- `omarchy-notification-send` - send desktop notifications; do not call `notify-send` directly
 - `omarchy-hw-asus-rog` - detect ASUS ROG hardware (and similar `hw-*` commands)
 
 Exceptions are allowed for bootstrap, preflight, migration, and package-helper scripts where the helper may not be available yet, where the helper itself is being implemented, or where direct package-manager behavior is required.
