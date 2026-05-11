@@ -190,6 +190,22 @@ ShellRoot {
     root.opened = false
   }
 
+  function closeSelector(nextDoneFile) {
+    requestSerial += 1
+
+    if (requestActive)
+      finishDoneFile(doneFile)
+
+    if (nextDoneFile && nextDoneFile !== doneFile)
+      finishDoneFile(nextDoneFile)
+
+    requestActive = false
+    selectionFile = ""
+    doneFile = ""
+    filterText = ""
+    root.opened = false
+  }
+
   function loadRows(rows) {
     var paths = rows.split("\n")
     for (var i = 0; i < paths.length; i++) {
@@ -295,6 +311,12 @@ ShellRoot {
       parser: SplitParser {
         onRead: function(message) {
           var fields = message.split("\t")
+          if (root.opened) {
+            root.closeSelector(fields[3] || "")
+            clientSocket.connected = false
+            return
+          }
+
           root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", "", root.decodeField(fields[4]), fields[5] || "false", fields[6] || "false")
           clientSocket.connected = false
         }
