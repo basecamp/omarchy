@@ -112,7 +112,6 @@ parse_keycodes() {
 #
 # Also do some pre-processing:
 # - Remove standard Omarchy bin path prefix
-# - Remove uwsm prefix
 # - Map numeric modifier key mask to a textual rendition
 # - Output comma-separated values that the parser can understand
 dynamic_bindings() {
@@ -121,8 +120,6 @@ dynamic_bindings() {
     sed -r \
       -e 's/null//' \
       -e 's,~/.local/share/omarchy/bin/,,' \
-      -e 's,uwsm app -- ,,' \
-      -e 's,uwsm-app -- ,,' \
       -e 's/@0//' \
       -e 's/,@/,code:/' \
       -e 's/^0,/,/' \
@@ -145,7 +142,7 @@ dynamic_bindings() {
 
 # Hardcoded bindings, like the copy-url extension and such
 static_bindings() {
-    echo "SHIFT ALT,L,Copy URL from Web App,extension,copy-url"
+  echo "SHIFT ALT,L,Copy URL from Web App,sendshortcut,SHIFT ALT,L,"
 }
 
 # Parse and format keybindings
@@ -154,8 +151,8 @@ static_bindings() {
 # - Set the field separator to a comma ','.
 # - Joins the key combination (e.g., "SUPER + Q").
 # - Joins the command that the key executes.
-# - Prints everything in a nicely aligned format.
-parse_bindings() {
+# - Prints display text and dispatch metadata as tab-separated fields.
+parse_binding_records() {
   awk -F, '
 {
     # Combine the modifier and key (first two fields)
@@ -167,6 +164,13 @@ parse_bindings() {
 
     # Use description, if set
     action = $3;
+    dispatcher = $4;
+
+    # Reconstruct the dispatcher arg from the remaining fields
+    arg = "";
+    for (i = 5; i <= NF; i++) {
+        arg = arg $i (i < NF ? "," : "");
+    }
 
     if (action == "") {
         # Reconstruct the command from the remaining fields
@@ -177,6 +181,7 @@ parse_bindings() {
         # Clean up trailing commas, remove leading "exec, ", and trim
         sub(/,$/, "", action);
         gsub(/(^|,)[[:space:]]*exec[[:space:]]*,?/, "", action);
+        gsub(/(^|[[:space:]])uwsm(-app| app)[[:space:]]+--[[:space:]]+/, "", action);
         gsub(/^[ \t]+|[ \t]+$/, "", action);
         gsub(/[ \t]+/, " ", key_combo);  # Collapse multiple spaces to one
 
@@ -189,15 +194,15 @@ parse_bindings() {
     }
 
     if (action != "") {
-        printf "%-35s → %s\n", key_combo, action;
+        printf "%-35s → %s\t%s\t%s\n", key_combo, action, dispatcher, arg;
     }
 }'
 }
 
 prioritize_entries() {
-  awk '
+  awk -F '\t' '
   {
-    line = $0
+    line = $1
     prio = 50
     if (match(line, /Terminal/)) prio = 0
     if (match(line, /Tmux/)) prio = 1
@@ -248,14 +253,14 @@ prioritize_entries() {
     if (match(line, /Apple Display/))  prio = 98
     if (match(line, /XF86/))  prio = 99
 
-    # print "priority<TAB>line"
-    printf "%d\t%s\n", prio, line
+    # print "priority<TAB>record"
+    printf "%d\t%s\n", prio, $0
   }' |
   sort -k1,1n -k2,2 |
   cut -f2-
 }
 
-output_keybindings() {
+output_binding_records() {
   build_keymap_cache
 
   {
@@ -264,16 +269,47 @@ output_keybindings() {
   } |
     sort -u |
     parse_keycodes |
-    parse_bindings |
+    parse_binding_records |
     prioritize_entries
+}
+
+output_keybindings() {
+  output_binding_records | cut -f1
+}
+
+dispatch_binding() {
+  local dispatcher="$1"
+  local arg="$2"
+
+  case "$dispatcher" in
+    exec)
+      [[ -n $arg ]] && hyprctl dispatch exec "$arg"
+      ;;
+    "") return 1 ;;
+    *)
+      if [[ -n $arg ]]; then
+        hyprctl dispatch "$dispatcher" "$arg"
+      else
+        hyprctl dispatch "$dispatcher"
+      fi
+      ;;
+  esac
 }
 
 if [[ $1 == "--print" || $1 == "-p" ]]; then
   output_keybindings
 else
+  records=$(output_binding_records)
   monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
   menu_height=$((monitor_height * 40 / 100))
+  selection=$(cut -f1 <<<"$records" |
+    walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height")
 
-  output_keybindings |
-    walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height"
+  if [[ -n $selection ]]; then
+    record=$(awk -F '\t' -v selection="$selection" '$1 == selection { print; exit }' <<<"$records")
+    dispatcher=$(cut -f2 <<<"$record")
+    arg=$(cut -f3- <<<"$record")
+
+    dispatch_binding "$dispatcher" "$arg"
+  fi
 fi
