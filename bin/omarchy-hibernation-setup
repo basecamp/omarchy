@@ -26,12 +26,12 @@ if ! $NO_REBUILD && ! command -v limine-mkinitcpio &>/dev/null; then
   exit 0
 fi
 
-MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+HOOKS_CONF="/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
 SWAP_FILE="/swap/swapfile"
 RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
 
 # Check if hibernation is already configured
-if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+if [[ -f $HOOKS_CONF ]] && grep -q "resume" "$HOOKS_CONF"; then
   # Fix empty resume_offset if btrfs map-swapfile failed during initial setup
   if [[ -f $RESUME_DROP_IN ]] && grep -q 'resume_offset="$' "$RESUME_DROP_IN" && [[ -f $SWAP_FILE ]]; then
     RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE" 2>/dev/null)
@@ -82,10 +82,14 @@ if ! swapon --show | grep -q "$SWAP_FILE"; then
   sudo swapon -p 0 "$SWAP_FILE"
 fi
 
-# Add resume hook to mkinitcpio
-sudo mkdir -p /etc/mkinitcpio.conf.d
-echo "Adding resume hook to $MKINITCPIO_CONF"
-echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
+# Add resume hook to mkinitcpio — must come before filesystems so the kernel
+# can restore the hibernation image before root is mounted read-write.
+if [[ -f $HOOKS_CONF ]] && ! grep -q "resume" "$HOOKS_CONF"; then
+  echo "Inserting resume hook before filesystems in $HOOKS_CONF"
+  sudo sed -i 's/\bfilesystems\b/resume filesystems/' "$HOOKS_CONF"
+fi
+# Remove legacy append-style config that put resume in the wrong position
+sudo rm -f /etc/mkinitcpio.conf.d/omarchy_resume.conf
 
 # Ensure keyboard backlight doesn't prevent sleep
 sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/

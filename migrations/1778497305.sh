@@ -1,13 +1,21 @@
 echo "Fix hibernation on btrfs swapfiles with dm-crypt (systemd 256+)"
 
-MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+HOOKS_CONF="/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+LEGACY_RESUME_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 SWAP_FILE="/swap/swapfile"
 RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
 
 # Only apply if hibernation is configured
-if [[ ! -f $MKINITCPIO_CONF ]] || ! grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+if ! grep -q "resume" "$HOOKS_CONF" 2>/dev/null && [[ ! -f $LEGACY_RESUME_CONF ]]; then
   exit 0
 fi
+
+# Move resume hook from appended position (after fsck) to before filesystems,
+# so the kernel can restore the hibernation image before root is mounted rw.
+if [[ -f $HOOKS_CONF ]] && ! grep -q "resume" "$HOOKS_CONF"; then
+  sudo sed -i 's/\bfilesystems\b/resume filesystems/' "$HOOKS_CONF"
+fi
+sudo rm -f "$LEGACY_RESUME_CONF"
 
 # Add systemd bypass drop-ins for btrfs swapfile on dm-crypt
 # (see https://github.com/systemd/systemd/issues/30083)
