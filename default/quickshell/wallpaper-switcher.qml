@@ -12,7 +12,6 @@ ShellRoot {
   property string selectionFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTION_FILE") || Quickshell.env("OMARCHY_WALLPAPER_SELECTION_FILE")
   property string selectedImage: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTED")
   property string colorsFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_COLORS_FILE") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/wallpaper-switcher-colors.json")
-  property string layerNamespace: Quickshell.env("OMARCHY_IMAGE_SELECTOR_NAMESPACE") || "omarchy-image-selector"
   property int selectedIndex: 0
   property bool imagesLoaded: false
   property color accent: "#798186"
@@ -134,7 +133,7 @@ ShellRoot {
     visible: root.imagesLoaded
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: root.layerNamespace
+    WlrLayershell.namespace: "omarchy-image-selector"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore

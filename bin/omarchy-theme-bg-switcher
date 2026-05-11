@@ -11,6 +11,5 @@ current_background=$(readlink -f "$HOME/.config/omarchy/current/background" 2>/d
 
 omarchy-menu-images \
   --selected "$current_background" \
-  --namespace "omarchy-wallpaper-switcher" \
   "$HOME/.config/omarchy/current/theme/backgrounds" \
   "$HOME/.config/omarchy/backgrounds/$theme_name"

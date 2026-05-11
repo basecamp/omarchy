@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# omarchy:summary=Open the Omarchy theme switcher
+
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+USER_THEMES_PATH="$HOME/.config/omarchy/themes"
+OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
+
+preview_dir=$(mktemp -d)
+trap 'rm -rf "$preview_dir"' EXIT
+
+find_preview() {
+  local theme_path="$1"
+
+  if [[ -f $theme_path/preview.png ]]; then
+    printf '%s\n' "$theme_path/preview.png"
+  elif [[ -f $theme_path/preview.jpg ]]; then
+    printf '%s\n' "$theme_path/preview.jpg"
+  elif [[ -d $theme_path/backgrounds ]]; then
+    find -L "$theme_path/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -print -quit 2>/dev/null
+  fi
+}
+
+add_theme_preview() {
+  local theme_name="$1"
+  local preview="$2"
+  local extension="${preview##*.}"
+
+  [[ -n $preview ]] || return
+  [[ -e $preview_dir/$theme_name.$extension ]] && return
+
+  ln -s "$preview" "$preview_dir/$theme_name.$extension"
+}
+
+while IFS= read -r theme_path; do
+  theme_name=${theme_path##*/}
+  preview=$(find_preview "$theme_path")
+
+  if [[ -z $preview ]]; then
+    preview=$(find_preview "$OMARCHY_THEMES_PATH/$theme_name")
+  fi
+
+  add_theme_preview "$theme_name" "$preview"
+done < <(find -L "$USER_THEMES_PATH" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -print 2>/dev/null | sort)
+
+while IFS= read -r theme_path; do
+  theme_name=${theme_path##*/}
+  preview=$(find_preview "$theme_path")
+  add_theme_preview "$theme_name" "$preview"
+done < <(find -L "$OMARCHY_THEMES_PATH" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | sort)
+
+current_theme=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
+selected_preview=$(find -L "$preview_dir" -maxdepth 1 -type f -name "$current_theme.*" -print -quit 2>/dev/null)
+selected_preview=$(omarchy-menu-images \
+  --selected "$selected_preview" \
+  "$preview_dir")
+
+if [[ -n $selected_preview ]]; then
+  selected_theme=${selected_preview##*/}
+  selected_theme=${selected_theme%.*}
+  printf '%s\n' "$selected_theme"
+fi
