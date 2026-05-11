@@ -6,6 +6,21 @@
 
 step="${1:-+5%}"
 
+if [[ $step == "off" ]]; then
+  hyprctl dispatch dpms off >/dev/null 2>&1
+  exit 0
+elif [[ $step == "on" ]]; then
+  hyprctl dispatch dpms on >/dev/null 2>&1
+  exit 0
+fi
+
+runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
+
+# Drop overlapping brightness key events so concurrent invocations do not race.
+# Hardware key repeat present on some devices can otherwise glitch SwayOSD rendering.
+exec 9>"$runtime_dir/omarchy-brightness-display.lock"
+flock -n 9 || exit 0
+
 # Start with the first possible output, then refine to the most likely given an order heuristic.
 device="$(ls -1 /sys/class/backlight 2>/dev/null | head -n1)"
 for candidate in amdgpu_bl* intel_backlight acpi_video*; do
@@ -14,14 +29,6 @@ for candidate in amdgpu_bl* intel_backlight acpi_video*; do
     break
   fi
 done
-
-if [[ $step == "off" ]]; then
-  hyprctl dispatch dpms off >/dev/null 2>&1
-  exit 0
-elif [[ $step == "on" ]]; then
-  hyprctl dispatch dpms on >/dev/null 2>&1
-  exit 0
-fi
 
 if omarchy-hyprland-monitor-focused-apple; then
   omarchy-brightness-display-apple "$step"
