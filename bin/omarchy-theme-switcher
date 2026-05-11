@@ -92,5 +92,6 @@ done
 exec omarchy-menu-images \
   --print-name \
   --show-labels \
+  --filterable \
   --selected "$selected_preview" \
   "$preview_dir"

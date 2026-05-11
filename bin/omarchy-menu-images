@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Open a generic image selector menu
-# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--cache-only] <image-dir>...
+# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--cache-only] <image-dir>...
 
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
@@ -9,11 +9,12 @@ selected_image=""
 colors_file=""
 print_name=false
 show_labels=false
+filterable=false
 cache_only=false
 image_dirs=()
 
 usage() {
-  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--cache-only] <image-dir>..."
+  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--cache-only] <image-dir>..."
 }
 
 while [[ $# -gt 0 ]]; do
@@ -42,6 +43,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --show-labels)
       show_labels=true
+      shift
+      ;;
+    --filterable)
+      filterable=true
       shift
       ;;
     --cache-only)
@@ -195,7 +200,7 @@ ensure_selector() {
 }
 
 send_request() {
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$rows_payload" "$selected_list_image" "$selection_file" "$done_file" "$colors_payload" "$show_labels" |
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$rows_payload" "$selected_list_image" "$selection_file" "$done_file" "$colors_payload" "$show_labels" "$filterable" |
     socat -u - "UNIX-CONNECT:$socket_path"
 }
 

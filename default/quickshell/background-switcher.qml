@@ -17,10 +17,12 @@ ShellRoot {
   property bool imagesLoaded: false
   property bool opened: false
   property bool showLabels: false
+  property bool filterable: false
   property bool requestActive: false
   property int requestSerial: 0
   property int applySerial: 0
   property string doneFile: ""
+  property string filterText: ""
   property var doneFilesToRelease: []
   property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + Quickshell.env("UID"))) + "/omarchy-image-selector.sock"
   property color accent: "#798186"
@@ -31,6 +33,7 @@ ShellRoot {
   property int sliceHeight: 432
   property int sliceSpacing: -30
   property int skewOffset: 28
+  property int bottomChromeHeight: showLabels ? (filterable ? 104 : 74) : 30
 
   function fileUrl(path) {
     return "file://" + path.split("/").map(encodeURIComponent).join("/")
@@ -45,25 +48,104 @@ ShellRoot {
   }
 
   function currentPath() {
-    if (imageModel.count === 0) return ""
+    if (imageModel.count === 0 || !itemMatches(selectedIndex)) return ""
     return imageModel.get(selectedIndex).filePath
+  }
+
+  function nameForPath(path) {
+    return path.split("/").pop().replace(/\.[^/.]+$/, "")
+  }
+
+  function labelForPath(path) {
+    return nameForPath(path).replace(/[-_]+/g, " ").replace(/\b\w/g, function(match) { return match.toUpperCase() })
   }
 
   function currentLabel() {
     var path = currentPath()
-    if (!path) return ""
+    if (!path) return filterText ? "No matches" : ""
 
-    var name = path.split("/").pop().replace(/\.[^/.]+$/, "")
-    return name.replace(/[-_]+/g, " ").replace(/\b\w/g, function(match) { return match.toUpperCase() })
+    return labelForPath(path)
+  }
+
+  function itemMatches(index) {
+    if (index < 0 || index >= imageModel.count) return false
+    if (!filterText) return true
+
+    var path = imageModel.get(index).filePath
+    var needle = filterText.toLowerCase()
+    return nameForPath(path).toLowerCase().indexOf(needle) !== -1 || labelForPath(path).toLowerCase().indexOf(needle) !== -1
+  }
+
+  function matchingCount() {
+    if (!filterText) return imageModel.count
+
+    var count = 0
+    for (var i = 0; i < imageModel.count; i++) {
+      if (itemMatches(i)) count++
+    }
+
+    return count
+  }
+
+  function firstMatchingIndex() {
+    for (var i = 0; i < imageModel.count; i++) {
+      if (itemMatches(i)) return i
+    }
+
+    return -1
+  }
+
+  function filteredPosition(index) {
+    if (!filterText) return index
+
+    var position = 0
+    for (var i = 0; i < index; i++) {
+      if (itemMatches(i)) position++
+    }
+
+    return position
+  }
+
+  function selectedFilteredPosition() {
+    if (!filterText) return selectedIndex
+
+    return itemMatches(selectedIndex) ? filteredPosition(selectedIndex) : 0
   }
 
   function select(index, immediate) {
     if (imageModel.count === 0) return
     if (index < 0) index = 0
     else if (index >= imageModel.count) index = imageModel.count - 1
+    if (!itemMatches(index)) return
     if (index === selectedIndex && immediate !== true) return
 
     selectedIndex = index
+  }
+
+  function selectAdjacent(direction) {
+    if (!filterText) {
+      select(selectedIndex + direction)
+      return
+    }
+
+    var index = selectedIndex + direction
+    while (index >= 0 && index < imageModel.count) {
+      if (itemMatches(index)) {
+        select(index)
+        return
+      }
+
+      index += direction
+    }
+  }
+
+  function updateFilter(nextFilterText) {
+    filterText = nextFilterText
+
+    if (!itemMatches(selectedIndex)) {
+      var first = firstMatchingIndex()
+      if (first >= 0) selectedIndex = first
+    }
   }
 
   function releaseNextDoneFile() {
@@ -124,7 +206,7 @@ ShellRoot {
     carousel.forceActiveFocus()
   }
 
-  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw, nextShowLabels) {
+  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw, nextShowLabels, nextFilterable) {
     if (requestActive && doneFile && doneFile !== nextDoneFile)
       finishDoneFile(doneFile)
 
@@ -137,6 +219,8 @@ ShellRoot {
     doneFile = nextDoneFile
     requestActive = !!doneFile
     showLabels = nextShowLabels === true || nextShowLabels === "true"
+    filterable = nextFilterable === true || nextFilterable === "true"
+    filterText = ""
     colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/background-switcher-colors.json")
     if (nextColorsRaw)
       loadColors(nextColorsRaw)
@@ -191,14 +275,14 @@ ShellRoot {
 
   Component.onCompleted: {
     if (selectionFile)
-      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile, "", false)
+      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile, "", false, false)
   }
 
   IpcHandler {
     target: "image-selector"
 
     function open(imageDirs: string, imageRows: string, selectedImage: string, selectionFile: string, doneFile: string, colorsFile: string): void {
-      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile, "", false)
+      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile, "", false, false)
     }
   }
 
@@ -211,7 +295,7 @@ ShellRoot {
       parser: SplitParser {
         onRead: function(message) {
           var fields = message.split("\t")
-          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", "", root.decodeField(fields[4]), fields[5] || "false")
+          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", "", root.decodeField(fields[4]), fields[5] || "false", fields[6] || "false")
           clientSocket.connected = false
         }
       }
@@ -270,7 +354,7 @@ ShellRoot {
     Item {
       id: card
       width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
-      height: root.sliceHeight + (root.showLabels ? 104 : 60)
+      height: root.sliceHeight + 30 + root.bottomChromeHeight
       anchors.centerIn: parent
 
       MouseArea { anchors.fill: parent; onClicked: {} }
@@ -280,7 +364,7 @@ ShellRoot {
         anchors.top: parent.top
         anchors.topMargin: 30
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: root.showLabels ? 74 : 30
+        anchors.bottomMargin: root.bottomChromeHeight
         anchors.horizontalCenter: parent.horizontalCenter
         width: root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing)
         clip: false
@@ -292,16 +376,27 @@ ShellRoot {
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) {
-            root.cancel()
+            if (root.filterText) {
+              root.updateFilter("")
+            } else {
+              root.cancel()
+            }
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.applySelected()
             event.accepted = true
+          } else if (event.key === Qt.Key_Backspace && root.filterable) {
+            if (root.filterText.length > 0)
+              root.updateFilter(root.filterText.slice(0, -1))
+            event.accepted = true
           } else if (event.key === Qt.Key_Left) {
-            root.select(root.selectedIndex - 1)
+            root.selectAdjacent(-1)
             event.accepted = true
           } else if (event.key === Qt.Key_Right) {
-            root.select(root.selectedIndex + 1)
+            root.selectAdjacent(1)
+            event.accepted = true
+          } else if (root.filterable && event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
+            root.updateFilter(root.filterText + event.text)
             event.accepted = true
           }
         }
@@ -318,9 +413,10 @@ ShellRoot {
             required property string fileName
             required property string thumbnailPath
 
-            readonly property int relativeIndex: index - root.selectedIndex
-            readonly property bool selected: relativeIndex === 0
-            readonly property bool nearby: Math.abs(relativeIndex) <= 16
+            readonly property bool matched: root.itemMatches(index)
+            readonly property int relativeIndex: root.filteredPosition(index) - root.selectedFilteredPosition()
+            readonly property bool selected: matched && index === root.selectedIndex
+            readonly property bool nearby: matched && Math.abs(relativeIndex) <= 16
 
             visible: nearby
             x: selected ? carousel.previewX : (relativeIndex < 0 ? carousel.previewX + relativeIndex * carousel.itemStep : carousel.previewX + root.expandedWidth + root.sliceSpacing + (relativeIndex - 1) * carousel.itemStep)
@@ -429,6 +525,7 @@ ShellRoot {
       }
 
       Text {
+        id: selectedLabel
         visible: root.showLabels
         anchors.top: carousel.bottom
         anchors.topMargin: 16
@@ -440,6 +537,22 @@ ShellRoot {
         styleColor: Qt.rgba(0, 0, 0, 0.7)
         font.pixelSize: 24
         font.weight: Font.DemiBold
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
+      }
+
+      Text {
+        visible: root.filterable
+        anchors.top: selectedLabel.bottom
+        anchors.topMargin: 8
+        anchors.horizontalCenter: carousel.horizontalCenter
+        width: root.expandedWidth
+        text: root.filterText ? ("Filter: " + root.filterText + " (" + root.matchingCount() + ")") : "Type to filter"
+        color: "#ffffff"
+        opacity: root.filterText ? 0.85 : 0.55
+        style: Text.Outline
+        styleColor: Qt.rgba(0, 0, 0, 0.7)
+        font.pixelSize: 14
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
       }
