@@ -49,9 +49,9 @@ if omarchy-pkg-present steam; then # Only apply if steam is installed
   # Kill existing steam instances
   killall steam
 # Check if the NVIDIA or AMD drivers are installed
-    if pacman -Qe | grep lib32-nvidia-utils; then
+    if omarchy-pkg-present lib32-nvidia-utils; then
       args+=(-F nis)
-    elif pacaman -Qe | grep lib32-vulkan-radeon; then
+    elif omarchy-pkg-present lib32-vulkan-radeon; then
       args+=(-F fsr)
     fi
     gamescope "${args[@]}"
