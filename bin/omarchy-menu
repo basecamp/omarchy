@@ -56,6 +56,11 @@ open_in_editor() {
   omarchy-launch-editor "$1"
 }
 
+hypr_config_file() {
+  local name="$1"
+  printf '%s/.config/hypr/%s.lua' "$HOME" "$name"
+}
+
 install() {
   present_terminal "echo 'Installing $1...'; omarchy-pkg-add $2"
 }
@@ -272,7 +277,7 @@ show_style_menu() {
   *Font*) show_font_menu ;;
   *Background*) show_background_menu ;;
   *Corners*) show_style_corners_menu ;;
-  *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
+  *Hyprland*) open_in_editor "$(hypr_config_file looknfeel)" ;;
   *Waybar*) show_waybar_position_menu ;;
   *Screensaver*) show_screensaver_menu ;;
   *About*) show_about_menu ;;
@@ -335,8 +340,8 @@ show_font_menu() {
 
 show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
-  [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
-  [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
+  [[ -f ~/.config/hypr/bindings.lua ]] && options="$options\n  Keybindings"
+  [[ -f ~/.config/hypr/input.lua ]] && options="$options\n  Input"
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
@@ -345,9 +350,9 @@ show_setup_menu() {
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
   *System*) show_setup_system_menu ;;
-  *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
-  *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
-  *Input*) open_in_editor ~/.config/hypr/input.conf ;;
+  *Monitors*) open_in_editor "$(hypr_config_file monitors)" ;;
+  *Keybindings*) open_in_editor "$(hypr_config_file bindings)" ;;
+  *Input*) open_in_editor "$(hypr_config_file input)" ;;
   *Defaults*) show_setup_default_menu ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
@@ -482,7 +487,7 @@ show_setup_default_editor_menu() {
 
 show_setup_config_menu() {
   case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
-  *Hyprland*) open_in_editor ~/.config/hypr/hyprland.conf ;;
+  *Hyprland*) open_in_editor "$(hypr_config_file hyprland)" ;;
   *Hypridle*) open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
   *Hyprlock*) open_in_editor ~/.config/hypr/hyprlock.conf ;;
   *Hyprsunset*) open_in_editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;

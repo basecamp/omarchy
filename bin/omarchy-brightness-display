@@ -7,10 +7,10 @@
 step="${1:-+5%}"
 
 if [[ $step == "off" ]]; then
-  hyprctl dispatch dpms off >/dev/null 2>&1
+  hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })' >/dev/null 2>&1 || hyprctl dispatch dpms off >/dev/null 2>&1
   exit 0
 elif [[ $step == "on" ]]; then
-  hyprctl dispatch dpms on >/dev/null 2>&1
+  hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1 || hyprctl dispatch dpms on >/dev/null 2>&1
   exit 0
 fi
 
@@ -29,6 +29,7 @@ for candidate in amdgpu_bl* intel_backlight acpi_video*; do
     break
   fi
 done
+
 
 if omarchy-hyprland-monitor-focused-apple; then
   omarchy-brightness-display-apple "$step"

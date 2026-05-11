@@ -4,7 +4,9 @@
 
 hyprctl clients -j | \
   jq -r ".[].address" | \
-  xargs -I{} hyprctl dispatch closewindow address:{}
+  while read -r addr; do
+    hyprctl dispatch "hl.dsp.window.close(\"address:$addr\")" >/dev/null 2>&1 || hyprctl dispatch closewindow "address:$addr"
+  done
 
 # Move to first workspace
-hyprctl dispatch workspace 1
+hyprctl dispatch 'hl.dsp.focus({ workspace = "1" })' >/dev/null 2>&1 || hyprctl dispatch workspace 1

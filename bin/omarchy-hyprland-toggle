@@ -1,29 +1,61 @@
 #!/bin/bash
 
 # omarchy:summary=Toggle permanent Hyprland flags by copying them into a directory that's sourced entirely.
-# omarchy:args=<flag-name> [on|off]
+# omarchy:args=[--enabled-notification <text>] [--disabled-notification <text>] <flag-name> [on|off|toggle]
+
+ENABLED_NOTIFICATION=""
+DISABLED_NOTIFICATION=""
+
+while (($# > 0)); do
+  case $1 in
+    --enabled-notification)
+      if (($# < 2)); then
+        echo "Missing value for $1" >&2
+        exit 1
+      fi
+      ENABLED_NOTIFICATION="$2"
+      shift 2
+      ;;
+    --disabled-notification)
+      if (($# < 2)); then
+        echo "Missing value for $1" >&2
+        exit 1
+      fi
+      DISABLED_NOTIFICATION="$2"
+      shift 2
+      ;;
+    *) break ;;
+  esac
+done
+
+if (($# < 1)); then
+  echo "Usage: omarchy-hyprland-toggle [--enabled-notification <text>] [--disabled-notification <text>] <flag-name> [on|off|toggle]" >&2
+  exit 1
+fi
 
 FLAG_NAME="$1"
 ACTION="${2:-toggle}"
-FLAG="$HOME/.local/state/omarchy/toggles/hypr/$FLAG_NAME.conf"
-FLAG_SOURCE="$OMARCHY_PATH/default/hypr/toggles/$FLAG_NAME.conf"
+FLAG_FILE="$HOME/.local/state/omarchy/toggles/hypr/$FLAG_NAME.lua"
+FLAG_SOURCE="$OMARCHY_PATH/default/hypr/toggles/$FLAG_NAME.lua"
 
 on() {
   if [[ -f $FLAG_SOURCE ]]; then
-    mkdir -p "$(dirname "$FLAG")"
-    cp "$FLAG_SOURCE" "$FLAG"
+    mkdir -p "$(dirname "$FLAG_FILE")"
+    cp "$FLAG_SOURCE" "$FLAG_FILE"
+    [[ -n $ENABLED_NOTIFICATION ]] && notify-send -u low "$ENABLED_NOTIFICATION"
   else
-    echo "Flag not found: $FLAG_NAME"
+    echo "Flag not found: $FLAG_NAME" >&2
     exit 1
   fi
 }
 
 off() {
-  rm -f "$FLAG"
+  rm -f "$FLAG_FILE"
+  [[ -n $DISABLED_NOTIFICATION ]] && notify-send -u low "$DISABLED_NOTIFICATION"
 }
 
 toggle() {
-  if [[ -f $FLAG ]]; then
+  if [[ -f $FLAG_FILE ]]; then
     off
     echo "off"
   else
@@ -37,7 +69,7 @@ case $ACTION in
   off) off ;;
   toggle) toggle ;;
   *)
-    echo "Usage: omarchy-hyprland-toggle <flag-name> [on|off]"
+    echo "Usage: omarchy-hyprland-toggle [--enabled-notification <text>] [--disabled-notification <text>] <flag-name> [on|off|toggle]" >&2
     exit 1
     ;;
 esac
