@@ -12,13 +12,27 @@ show_labels=false
 cache_only=false
 image_dirs=()
 
+usage() {
+  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--cache-only] <image-dir>..."
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --selected)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
       selected_image="$2"
       shift 2
       ;;
     --colors-file)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
       colors_file="$2"
       shift 2
       ;;
@@ -35,7 +49,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --help|-h)
-      echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--cache-only] <image-dir>..."
+      usage
       exit 0
       ;;
     *)
@@ -46,7 +60,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if (( ${#image_dirs[@]} == 0 )); then
-  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--cache-only] <image-dir>..." >&2
+  usage >&2
   exit 1
 fi
 
@@ -90,10 +104,17 @@ cache_key=$(printf '%s' "$image_dirs_env" | md5sum | cut -d ' ' -f 1)
 rows_cache_file="$cache_dir/$cache_key.rows"
 rows_signature_file="$cache_dir/$cache_key.signature"
 rows_signature=""
+image_files=()
 
 for dir in "${image_dirs[@]}"; do
   if [[ -d $dir ]]; then
     rows_signature+="$dir:$(stat -Lc '%Y' "$dir")"$'\n'
+
+    while IFS= read -r -d '' image; do
+      image_files+=("$image")
+      image_signature=$(stat -Lc '%s:%Y' "$image") || continue
+      rows_signature+="$image:$image_signature"$'\n'
+    done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print0 2>/dev/null | sort -z)
   fi
 done
 
@@ -112,27 +133,23 @@ thumbnail_for() {
   thumbnail="$cache_dir/$hash.jpg"
 
   if [[ ! -f $thumbnail ]]; then
-    magick "$image" -auto-orient -resize '1536x864^' -gravity center -extent '1536x864' -strip -quality 82 "$thumbnail"
+    magick "${image}[0]" -auto-orient -resize '1536x864^' -gravity center -extent '1536x864' -strip -quality 82 "$thumbnail"
   fi
 
-  printf '%s' "$thumbnail"
+  [[ -f $thumbnail ]] && printf '%s' "$thumbnail"
 }
 
 if [[ -f $rows_cache_file && -f $rows_signature_file ]] && cmp -s "$rows_signature_file" <(printf '%s' "$rows_signature"); then
   rows=$(<"$rows_cache_file")
 else
-  for dir in "${image_dirs[@]}"; do
-    if [[ -d $dir ]]; then
-      while IFS= read -r -d '' image; do
-        thumbnail=$(thumbnail_for "$image")
-        [[ -n $thumbnail ]] || continue
+  for image in "${image_files[@]}"; do
+    thumbnail=$(thumbnail_for "$image")
+    [[ -n $thumbnail ]] || continue
 
-        if [[ -z $rows ]]; then
-          rows="$image"$'\t'"$thumbnail"
-        else
-          rows+=$'\n'"$image"$'\t'"$thumbnail"
-        fi
-      done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -print0 2>/dev/null)
+    if [[ -z $rows ]]; then
+      rows="$image"$'\t'"$thumbnail"
+    else
+      rows+=$'\n'"$image"$'\t'"$thumbnail"
     fi
   done
 
@@ -155,31 +172,46 @@ if [[ $cache_only == true ]]; then
   exit 0
 fi
 
-if [[ -S $socket_path && $selector_qml -nt $socket_path ]]; then
-  quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
-  rm -f "$socket_path"
-fi
+ensure_selector() {
+  if [[ -S $socket_path && $selector_qml -nt $socket_path ]]; then
+    quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
+    rm -f "$socket_path"
+  fi
 
-if [[ ! -S $socket_path ]]; then
-  quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
-  quickshell -d -p "$selector_qml" >/dev/null
+  if [[ ! -S $socket_path ]]; then
+    quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
+    quickshell -d -p "$selector_qml" >/dev/null
 
-  for ((i = 0; i < 100; i++)); do
-    if [[ -S $socket_path ]]; then
-      break
-    fi
+    for ((i = 0; i < 100; i++)); do
+      if [[ -S $socket_path ]]; then
+        break
+      fi
 
-    sleep 0.01
-  done
-fi
+      sleep 0.01
+    done
+  fi
 
-if [[ ! -S $socket_path ]]; then
+  [[ -S $socket_path ]]
+}
+
+send_request() {
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$rows_payload" "$selected_list_image" "$selection_file" "$done_file" "$colors_payload" "$show_labels" |
+    socat -u - "UNIX-CONNECT:$socket_path"
+}
+
+if ! ensure_selector; then
   echo "Image selector failed to start" >&2
   exit 1
 fi
 
-printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$rows_payload" "$selected_list_image" "$selection_file" "$done_file" "$colors_payload" "$show_labels" |
-  socat -u - "UNIX-CONNECT:$socket_path"
+if ! send_request; then
+  rm -f "$socket_path"
+
+  if ! ensure_selector || ! send_request; then
+    echo "Image selector failed to accept request" >&2
+    exit 1
+  fi
+fi
 
 while [[ ! -e $done_file ]]; do
   sleep 0.01

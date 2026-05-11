@@ -17,7 +17,11 @@ ShellRoot {
   property bool imagesLoaded: false
   property bool opened: false
   property bool showLabels: false
+  property bool requestActive: false
+  property int requestSerial: 0
+  property int applySerial: 0
   property string doneFile: ""
+  property var doneFilesToRelease: []
   property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + Quickshell.env("UID"))) + "/omarchy-image-selector.sock"
   property color accent: "#798186"
   property color background: "#101315"
@@ -62,23 +66,52 @@ ShellRoot {
     selectedIndex = index
   }
 
+  function releaseNextDoneFile() {
+    if (releaseProc.running || doneFilesToRelease.length === 0) return
+
+    var path = doneFilesToRelease.shift()
+    releaseProc.command = ["bash", "-lc", ": > " + shellQuote(path)]
+    releaseProc.running = true
+  }
+
+  function finishDoneFile(path) {
+    if (!path) return
+    doneFilesToRelease.push(path)
+    releaseNextDoneFile()
+  }
+
   function applySelected() {
     var path = currentPath()
-    if (!path) return
-    if (!selectionFile) return
-    applyProc.command = ["bash", "-lc", "printf '%s\\n' " + shellQuote(path) + " > " + shellQuote(selectionFile) + "; : > " + shellQuote(doneFile)]
+    if (!path || !selectionFile) {
+      cancel()
+      return
+    }
+
+    var activeSelectionFile = selectionFile
+    var activeDoneFile = doneFile
+    applySerial = requestSerial
+    requestActive = false
+    selectionFile = ""
+    doneFile = ""
+
+    applyProc.command = ["bash", "-lc", "printf '%s\\n' " + shellQuote(path) + " > " + shellQuote(activeSelectionFile) + "; : > " + shellQuote(activeDoneFile)]
     applyProc.running = true
   }
 
   function cancel() {
-    cancelProc.command = ["bash", "-lc", ": > " + shellQuote(doneFile)]
-    cancelProc.running = true
+    if (requestActive)
+      finishDoneFile(doneFile)
+
+    requestActive = false
+    selectionFile = ""
+    doneFile = ""
+    root.opened = false
   }
 
   function loadRows(rows) {
     var paths = rows.split("\n")
     for (var i = 0; i < paths.length; i++) {
-      var row = paths[i].trim()
+      var row = paths[i]
       if (!row) continue
 
       var columns = row.split("\t")
@@ -92,11 +125,17 @@ ShellRoot {
   }
 
   function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw, nextShowLabels) {
+    if (requestActive && doneFile && doneFile !== nextDoneFile)
+      finishDoneFile(doneFile)
+
+    requestSerial += 1
+
     imageDirs = nextImageDirs
     imageRows = nextImageRows
     selectedImage = nextSelectedImage
     selectionFile = nextSelectionFile
     doneFile = nextDoneFile
+    requestActive = !!doneFile
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/background-switcher-colors.json")
     if (nextColorsRaw)
@@ -139,7 +178,7 @@ ShellRoot {
   Process {
     id: loadImagesProc
     property string output: ""
-    command: ["bash", "-lc", "cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/image-selector; while IFS= read -r dir; do [[ -n $dir && -d $dir ]] && find -L \"$dir\" -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \\) -print0; done <<< " + shellQuote(root.imageDirs) + " | sort -z | while IFS= read -r -d '' image; do hash=$(md5sum \"$image\" | cut -d ' ' -f 1); thumb=\"$cache_dir/$hash.jpg\"; [[ -f $thumb ]] || thumb=$image; printf '%s\\t%s\\n' \"$image\" \"$thumb\"; done"]
+    command: ["bash", "-lc", "cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/image-selector; while IFS= read -r dir; do [[ -n $dir && -d $dir ]] && find -L \"$dir\" -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \\) -print0; done <<< " + shellQuote(root.imageDirs) + " | sort -z | while IFS= read -r -d '' image; do hash=$(md5sum \"$image\" | cut -d ' ' -f 1); thumb=\"$cache_dir/$hash.jpg\"; [[ -f $thumb ]] || thumb=$image; printf '%s\\t%s\\n' \"$image\" \"$thumb\"; done"]
     stdout: SplitParser {
       onRead: function(data) {
         loadImagesProc.output += data + "\n"
@@ -197,12 +236,15 @@ ShellRoot {
 
   Process {
     id: applyProc
-    onExited: root.opened = false
+    onExited: {
+      if (root.applySerial === root.requestSerial)
+        root.opened = false
+    }
   }
 
   Process {
-    id: cancelProc
-    onExited: root.opened = false
+    id: releaseProc
+    onExited: root.releaseNextDoneFile()
   }
 
   PanelWindow {

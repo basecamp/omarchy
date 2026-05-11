@@ -13,13 +13,19 @@ mkdir -p "$preview_dir"
 
 find_preview() {
   local theme_path="$1"
+  local preview preview_name
 
-  if [[ -f $theme_path/preview.png ]]; then
-    printf '%s\n' "$theme_path/preview.png"
-  elif [[ -f $theme_path/preview.jpg ]]; then
-    printf '%s\n' "$theme_path/preview.jpg"
-  elif [[ -d $theme_path/backgrounds ]]; then
-    find -L "$theme_path/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -print -quit 2>/dev/null
+  for preview_name in preview.png preview.jpg preview.jpeg preview.webp preview.gif preview.bmp; do
+    preview=$(find -L "$theme_path" -maxdepth 1 -type f -iname "$preview_name" -print -quit 2>/dev/null)
+
+    if [[ -n $preview ]]; then
+      printf '%s\n' "$preview"
+      return
+    fi
+  done
+
+  if [[ -d $theme_path/backgrounds ]]; then
+    find -L "$theme_path/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print 2>/dev/null | sort | head -n 1
   fi
 }
 
@@ -27,6 +33,7 @@ add_theme_preview() {
   local theme_name="$1"
   local preview="$2"
   local extension="${preview##*.}"
+  extension="${extension,,}"
 
   [[ -n $preview ]] || return
   [[ -e $preview_dir/$theme_name.$extension ]] && return
@@ -38,6 +45,15 @@ theme_signature=""
 for theme_dir in "$USER_THEMES_PATH" "$OMARCHY_THEMES_PATH"; do
   if [[ -d $theme_dir ]]; then
     theme_signature+="$theme_dir:$(stat -Lc '%Y' "$theme_dir")"$'\n'
+
+    while IFS= read -r -d '' theme_path; do
+      preview=$(find_preview "$theme_path")
+      theme_signature+="$theme_path:$(stat -Lc '%Y' "$theme_path")"$'\n'
+
+      if [[ -n $preview ]]; then
+        theme_signature+="$preview:$(stat -Lc '%s:%Y' "$preview")"$'\n'
+      fi
+    done < <(find -L "$theme_dir" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -print0 2>/dev/null | sort -z)
   fi
 done
 
@@ -67,7 +83,7 @@ fi
 
 current_theme=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
 selected_preview=""
-for extension in png jpg jpeg webp; do
+for extension in png jpg jpeg webp gif bmp; do
   if [[ -e $preview_dir/$current_theme.$extension ]]; then
     selected_preview="$preview_dir/$current_theme.$extension"
     break
