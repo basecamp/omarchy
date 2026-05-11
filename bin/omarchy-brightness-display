@@ -16,7 +16,8 @@ fi
 
 runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
 
-# Drop overlapping brightness key events before they race SwayOSD updates.
+# Drop overlapping brightness key events so concurrent invocations do not race.
+# Hardware key repeat present on some devices can otherwise glitch SwayOSD rendering.
 exec 9>"$runtime_dir/omarchy-brightness-display.lock"
 flock -n 9 || exit 0
 
