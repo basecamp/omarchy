@@ -18,6 +18,7 @@ if [[ -f $FIRST_RUN_MODE ]]; then
   bash "$OMARCHY_PATH/install/first-run/gnome-theme.sh"
   bash "$OMARCHY_PATH/install/first-run/gdk-scale.sh"
   bash "$OMARCHY_PATH/install/first-run/swayosd.sh"
+  bash "$OMARCHY_PATH/install/first-run/skwd-wall.sh"
   bash "$OMARCHY_PATH/install/first-run/gtk-primary-paste.sh"
   bash "$OMARCHY_PATH/install/first-run/elephant.sh"
   omarchy-hook-install post-update "$OMARCHY_PATH/install/first-run/install-voxtype.hook"

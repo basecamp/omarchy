@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# omarchy:summary=Refresh Skwd-wall after an Omarchy theme change
+# omarchy:hidden=true
+
+THEME_COLORS="$HOME/.config/omarchy/current/theme/skwd-wall-colors.json"
+SKWD_COLORS="$HOME/.cache/skwd-wall/colors.json"
+
+if [[ -f $THEME_COLORS ]]; then
+  mkdir -p "$(dirname "$SKWD_COLORS")"
+  cp "$THEME_COLORS" "$SKWD_COLORS"
+fi
+
+skwd wall cache_rebuild >/dev/null

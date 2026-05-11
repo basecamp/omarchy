@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Restart Skwd-wall wallpaper daemon
+
+systemctl --user restart skwd-daemon.service 2>/dev/null || true

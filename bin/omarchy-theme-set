@@ -68,6 +68,7 @@ omarchy-theme-set-browser
 omarchy-theme-set-vscode
 omarchy-theme-set-obsidian
 omarchy-theme-set-keyboard
+omarchy-theme-set-skwd-wall
 
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME" >/dev/null

@@ -12,9 +12,7 @@ mapfile -d '' -t BACKGROUNDS < <(find -L "$USER_BACKGROUNDS_PATH" "$THEME_BACKGR
 TOTAL=${#BACKGROUNDS[@]}
 
 if (( TOTAL == 0 )); then
-  notify-send "No background was found for theme" -t 2000
-  pkill -x swaybg
-  setsid uwsm-app -- swaybg --color '#000000' >/dev/null 2>&1 &
+  omarchy-notification-send "No background was found for theme" -t 2000
 else
   # Get current background from symlink
   if [[ -L $CURRENT_BACKGROUND_LINK ]]; then
@@ -45,7 +43,6 @@ else
   # Set new background symlink
   ln -nsf "$NEW_BACKGROUND" "$CURRENT_BACKGROUND_LINK"
 
-  # Relaunch swaybg
-  pkill -x swaybg
-  setsid uwsm-app -- swaybg -i "$CURRENT_BACKGROUND_LINK" -m fill >/dev/null 2>&1 &
+# Apply the new background through Skwd-wall
+skwd wall apply "{\"type\":\"static\",\"path\":\"$CURRENT_BACKGROUND_LINK\"}" >/dev/null
 fi
