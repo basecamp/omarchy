@@ -45,7 +45,7 @@ done_file=$(mktemp)
 rm -f "$done_file"
 trap 'rm -f "$selection_file" "$done_file"' EXIT
 socket_path="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-image-selector.sock"
-selector_qml="$OMARCHY_PATH/default/quickshell/wallpaper-switcher.qml"
+selector_qml="$OMARCHY_PATH/default/quickshell/background-switcher.qml"
 
 image_dirs_env=""
 for dir in "${image_dirs[@]}"; do

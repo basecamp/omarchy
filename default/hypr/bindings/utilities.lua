@@ -15,7 +15,7 @@ hl.bind("SUPER + SHIFT + CTRL + UP", hl.dsp.exec_cmd("omarchy-style-waybar-posit
 hl.bind("SUPER + SHIFT + CTRL + DOWN", hl.dsp.exec_cmd("omarchy-style-waybar-position bottom"), { description = "Move Waybar to bottom" })
 hl.bind("SUPER + SHIFT + CTRL + LEFT", hl.dsp.exec_cmd("omarchy-style-waybar-position left"), { description = "Move Waybar to left" })
 hl.bind("SUPER + SHIFT + CTRL + RIGHT", hl.dsp.exec_cmd("omarchy-style-waybar-position right"), { description = "Move Waybar to right" })
-hl.bind("SUPER + CTRL + SPACE", hl.dsp.exec_cmd("bash -lc 'background=$(omarchy-theme-bg-switcher) && [[ -n $background ]] && omarchy-theme-bg-set \"$background\"'"), { description = "Wallpaper switcher" })
+hl.bind("SUPER + CTRL + SPACE", hl.dsp.exec_cmd("omarchy-menu background"), { description = "Background switcher" })
 hl.bind("SUPER + SHIFT + CTRL + SPACE", hl.dsp.exec_cmd("omarchy-menu theme"), { description = "Theme menu" })
 hl.bind("SUPER + BACKSPACE", hl.dsp.exec_cmd("omarchy-hyprland-window-transparency-toggle"), { description = "Toggle window transparency" })
 hl.bind("SUPER + SHIFT + BACKSPACE", hl.dsp.exec_cmd("omarchy-hyprland-window-gaps-toggle"), { description = "Toggle window gaps" })
