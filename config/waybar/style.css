@@ -110,6 +110,7 @@ tooltip {
 #custom-voxtype.recording {
   color: #a55555;
 }
+
 .left .modules-left, .right .modules-left { margin: 8px 0 0 0; }
 .left .modules-right, .right .modules-right { margin: 0 0 8px 0; }
 
@@ -145,3 +146,44 @@ tooltip {
 }
 
 .left #custom-voxtype, .right #custom-voxtype { margin: 7.5px 0 0 0; min-width: 0; min-height: 12px; }
+
+#custom-expand-icon.vertical,
+.left #custom-expand-icon.horizontal,
+.right #custom-expand-icon.horizontal {
+  opacity: 0;
+  font-size: 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.left #custom-expand-icon.vertical,
+.right #custom-expand-icon.vertical {
+  opacity: 1;
+  font-size: inherit;
+  min-width: 0;
+  min-height: 12px;
+  margin: 1.5px 0;
+  padding: 6px 0;
+}
+
+#clock.vertical,
+.left #clock.horizontal,
+.right #clock.horizontal {
+  opacity: 0;
+  font-size: 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.left #clock.vertical,
+.right #clock.vertical {
+  opacity: 1;
+  font-size: inherit;
+  min-width: 0;
+  min-height: 12px;
+  margin: 8.75px 0 0 0;
+}
