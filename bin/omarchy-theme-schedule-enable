@@ -91,7 +91,11 @@ else
     printf "  %2d) %s\n" "$((i + 1))" "${themes[$i]}"
   done
   echo
-  read -rp "Pick a $other_phase theme (number or name): " choice
+  if ! read -rp "Pick a $other_phase theme (number or name): " choice; then
+    echo "No input. Provide the $other_phase theme as an argument:" >&2
+    echo "  omarchy theme schedule enable \"<theme>\"" >&2
+    exit 1
+  fi
   if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#themes[@]} )); then
     other_theme=$(normalize_theme "${themes[$((choice - 1))]}")
   else
