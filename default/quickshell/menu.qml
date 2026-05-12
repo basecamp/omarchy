@@ -7,8 +7,8 @@ ShellRoot {
   id: root
 
   property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + Quickshell.env("UID"))) + "/omarchy-menu.sock"
-  property string startupMenuJson: Quickshell.env("OMARCHY_MENU_JSON") || ""
   property string startupMenuJsonFile: Quickshell.env("OMARCHY_MENU_JSON_FILE") || ""
+  property string menuBin: Quickshell.env("OMARCHY_MENU_BIN") || "omarchy-menu"
   property string startupInitialMenu: Quickshell.env("OMARCHY_MENU_INITIAL_MENU") || "root"
   property string startupSelectionFile: Quickshell.env("OMARCHY_MENU_SELECTION_FILE") || ""
   property string startupDoneFile: Quickshell.env("OMARCHY_MENU_DONE_FILE") || ""
@@ -29,6 +29,8 @@ ShellRoot {
   property var items: ({})
   property var itemOrder: []
   property var navStack: []
+  property var providersLoaded: ({})
+  property var providerQueue: []
   property var doneFilesToRelease: []
   property color accent: "#89b4fa"
   property color background: "#101315"
@@ -97,6 +99,9 @@ ShellRoot {
       var id = entry.id || ""
       if (!id) continue
 
+      var order = nextItems[id] ? nextItems[id].order : nextOrder.length
+      if (!nextItems[id]) nextOrder.push(id)
+
       nextItems[id] = {
         id: id,
         parent: entry.parent || "",
@@ -106,9 +111,10 @@ ShellRoot {
         target: entry.target || "",
         keywords: entry.keywords || "",
         description: entry.description || "",
-        order: nextOrder.length
+        action: entry.action || "",
+        provider: entry.provider || "",
+        order: order
       }
-      nextOrder.push(id)
     }
 
     if (!nextItems.root) {
@@ -118,6 +124,90 @@ ShellRoot {
     root.items = nextItems
     root.itemOrder = nextOrder
     root.rowsLoaded = true
+  }
+
+  function mergeProviderJson(raw, menuId) {
+    var payload = ({})
+    try {
+      payload = JSON.parse(raw || "{}")
+    } catch (e) {
+      return
+    }
+
+    var rows = payload.items || []
+    var changed = false
+
+    for (var i = 0; i < rows.length; i++) {
+      var entry = rows[i]
+      var id = entry.id || ""
+      if (!id) continue
+
+      if (!root.items[id]) root.itemOrder.push(id)
+      root.items[id] = {
+        id: id,
+        parent: entry.parent || menuId,
+        kind: entry.kind || "action",
+        icon: entry.icon || "",
+        label: entry.label || id,
+        target: entry.target || "",
+        keywords: entry.keywords || "",
+        description: entry.description || "",
+        action: entry.action || "",
+        provider: entry.provider || "",
+        order: root.itemOrder.indexOf(id)
+      }
+      changed = true
+    }
+
+    if (changed) root.rebuildDisplay()
+  }
+
+  function startProviderForMenu(id) {
+    var entry = root.item(id)
+    if (!entry || !entry.provider || root.providersLoaded[id]) return
+
+    root.providersLoaded[id] = true
+    providerProc.menuId = id
+    providerProc.output = ""
+    providerProc.command = [root.menuBin, "--provider", entry.provider, id]
+    providerProc.running = true
+  }
+
+  function startNextProvider() {
+    if (providerProc.running) return
+
+    while (root.providerQueue.length > 0) {
+      var id = root.providerQueue.shift()
+      var entry = root.item(id)
+      if (!entry || !entry.provider || root.providersLoaded[id]) continue
+
+      root.startProviderForMenu(id)
+      return
+    }
+  }
+
+  function loadProviderForMenu(id) {
+    var entry = root.item(id)
+    if (!entry || !entry.provider || root.providersLoaded[id]) return
+
+    if (providerProc.running) {
+      if (root.providerQueue.indexOf(id) < 0) root.providerQueue = root.providerQueue.concat([id])
+      return
+    }
+
+    root.startProviderForMenu(id)
+  }
+
+  function loadProvidersForSearch() {
+    var active = root.item(root.activeMenu) ? root.activeMenu : "root"
+
+    for (var i = 0; i < root.itemOrder.length; i++) {
+      var entry = root.item(root.itemOrder[i])
+      if (!entry || !entry.provider || root.providersLoaded[entry.id]) continue
+      if (active !== "root" && entry.id !== active && !root.isDescendantOf(entry.id, active)) continue
+
+      root.loadProviderForMenu(entry.id)
+    }
   }
 
   function depthFor(id) {
@@ -230,6 +320,8 @@ ShellRoot {
       detail: detail || "",
       path: root.pathFor(entry.id),
       childCount: (entry.kind === "menu" || entry.kind === "link") ? root.childCount(target) : 0,
+      action: entry.action || "",
+      provider: entry.provider || "",
       score: score || 0,
       section: section || ""
     }
@@ -278,7 +370,7 @@ ShellRoot {
       if (active !== "root") {
         var parentTarget = root.item(active).parent || "root"
         var backTarget = root.navStack.length > 0 ? root.navStack[root.navStack.length - 1] : parentTarget
-        rows.push({ itemId: "__back", kind: "back", icon: "", label: "Back", target: backTarget, detail: root.breadcrumbFor(backTarget), path: "", childCount: 0, score: -1, section: "" })
+        rows.push({ itemId: "__back", kind: "back", icon: "", label: "Back", target: backTarget, detail: root.breadcrumbFor(backTarget), path: "", childCount: 0, action: "", score: -1, section: "" })
       }
 
       for (var j = 0; j < root.itemOrder.length; j++) {
@@ -312,6 +404,7 @@ ShellRoot {
   function setFilter(nextFilter) {
     root.filterText = nextFilter
     root.selectedIndex = 0
+    if (root.filterText.trim()) root.loadProvidersForSearch()
     root.rebuildDisplay()
   }
 
@@ -322,6 +415,7 @@ ShellRoot {
     root.filterText = ""
     root.selectedIndex = 0
     root.rebuildDisplay()
+    root.loadProviderForMenu(id)
   }
 
   function goBack() {
@@ -348,7 +442,7 @@ ShellRoot {
     } else if (row.kind === "menu" || row.kind === "link") {
       root.setActiveMenu(row.target || row.itemId, true)
     } else {
-      root.applySelected(row.itemId)
+      root.applySelected(row.itemId, row.action)
     }
   }
 
@@ -372,7 +466,7 @@ ShellRoot {
     doneFile = ""
   }
 
-  function applySelected(id) {
+  function applySelected(id, action) {
     if (!id || !selectionFile || !doneFile) {
       cancel()
       return
@@ -384,7 +478,7 @@ ShellRoot {
     resetRequest()
     opened = false
 
-    applyProc.command = ["bash", "-lc", "printf '%s\\n' " + shellQuote(id) + " > " + shellQuote(activeSelectionFile) + "; : > " + shellQuote(activeDoneFile)]
+    applyProc.command = ["bash", "-lc", "printf '%s\\t%s\\n' " + shellQuote(id) + " " + shellQuote(action || "") + " > " + shellQuote(activeSelectionFile) + "; : > " + shellQuote(activeDoneFile)]
     applyProc.running = true
   }
 
@@ -419,10 +513,13 @@ ShellRoot {
     requestActive = !!doneFile
     activeMenu = root.item(initialMenu) ? initialMenu : "root"
     navStack = []
+    providersLoaded = ({})
+    providerQueue = []
     filterText = ""
     selectedIndex = 0
     opened = true
     rebuildDisplay()
+    loadProviderForMenu(activeMenu)
 
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -446,6 +543,22 @@ ShellRoot {
 
   ListModel { id: displayModel }
 
+  Process {
+    id: providerProc
+    property string menuId: ""
+    property string output: ""
+    stdout: SplitParser {
+      onRead: function(data) {
+        providerProc.output += data + "\n"
+      }
+    }
+    onExited: {
+      root.mergeProviderJson(output, menuId)
+      if (root.filterText.trim()) root.loadProvidersForSearch()
+      root.startNextProvider()
+    }
+  }
+
   SocketServer {
     active: true
     path: root.socketPath
@@ -455,22 +568,11 @@ ShellRoot {
       parser: SplitParser {
         onRead: function(message) {
           var fields = message.split("\t")
-          if (root.opened) {
-            root.closeMenu(fields[3] || "")
-            clientSocket.connected = false
-            return
-          }
-
-          root.openMenu(root.decodeField(fields[0]), fields[1] || "root", fields[2] || "", fields[3] || "", root.decodeField(fields[4]))
+          root.closeMenu(fields[3] || "")
           clientSocket.connected = false
         }
       }
     }
-  }
-
-  Component.onCompleted: {
-    if (startupMenuJson)
-      openMenu(decodeField(startupMenuJson), startupInitialMenu, startupSelectionFile, startupDoneFile, decodeField(startupColorsRaw))
   }
 
   FileView {
@@ -639,6 +741,7 @@ ShellRoot {
               required property string target
               required property string detail
               required property string path
+              required property string action
               required property int childCount
 
               width: ListView.view.width

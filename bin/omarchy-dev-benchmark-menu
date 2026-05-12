@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Measure Quickshell Omarchy menu response times
-# omarchy:args=[--repeat=<count>] [--no-ui] [--keep-cache]
+# omarchy:args=[--repeat=<count>] [--no-ui]
 # omarchy:examples=omarchy dev benchmark menu | omarchy dev benchmark menu --repeat=10
 
 set -euo pipefail
@@ -10,24 +10,20 @@ OMARCHY_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 OMARCHY_PATH=${OMARCHY_PATH:-$(cd -- "$OMARCHY_BIN_DIR/.." && pwd)}
 REPEAT=5
 NO_UI=false
-KEEP_CACHE=false
-CACHE_HOME=""
 
 show_help() {
   cat <<'EOF'
 Usage:
-  omarchy dev benchmark menu [--repeat=<count>] [--no-ui] [--keep-cache]
+  omarchy dev benchmark menu [--repeat=<count>] [--no-ui]
 
 Measure the Omarchy menu startup path:
-- full menu JSON generation
-- cached non-UI preparation
+- static JSONC menu parsing
 - Quickshell socket startup
 - full open/close roundtrip (unless --no-ui)
 
 Options:
-  --repeat=<count>  Number of warm runs to measure (default: 5)
+  --repeat=<count>  Number of UI open/close runs to measure (default: 5)
   --no-ui           Skip cases that briefly open the menu
-  --keep-cache      Keep and print the temporary benchmark cache path
 EOF
 }
 
@@ -90,18 +86,9 @@ kill_menu_shell() {
   rm -f "$(socket_path)"
 }
 
-clear_menu_cache() {
-  rm -rf "$CACHE_HOME/omarchy/menu"
-}
-
-prepare_menu() {
-  env OMARCHY_PATH="$OMARCHY_PATH" XDG_CACHE_HOME="$CACHE_HOME" PATH="$OMARCHY_BIN_DIR:$PATH" \
-    "$OMARCHY_BIN_DIR/omarchy-menu" --prepare-only
-}
-
-build_menu_json_uncached() {
-  env OMARCHY_PATH="$OMARCHY_PATH" XDG_CACHE_HOME="$CACHE_HOME" PATH="$OMARCHY_BIN_DIR:$PATH" \
-    "$OMARCHY_BIN_DIR/omarchy-menu" --dump
+build_menu_json() {
+  env OMARCHY_PATH="$OMARCHY_PATH" PATH="$OMARCHY_BIN_DIR:$PATH" \
+    "$OMARCHY_BIN_DIR/omarchy-menu" --json
 }
 
 start_quickshell_socket() {
@@ -125,7 +112,7 @@ open_close_menu() {
   local pid
 
   kill_menu_shell
-  env OMARCHY_PATH="$OMARCHY_PATH" XDG_CACHE_HOME="$CACHE_HOME" PATH="$OMARCHY_BIN_DIR:$PATH" \
+  env OMARCHY_PATH="$OMARCHY_PATH" PATH="$OMARCHY_BIN_DIR:$PATH" \
     "$OMARCHY_BIN_DIR/omarchy-menu" >/dev/null &
   pid=$!
 
@@ -165,7 +152,6 @@ while (( $# > 0 )); do
   case "$1" in
   --repeat=*) REPEAT="${1#*=}" ;;
   --no-ui) NO_UI=true ;;
-  --keep-cache) KEEP_CACHE=true ;;
   --help | -h)
     show_help
     exit 0
@@ -184,32 +170,21 @@ if [[ ! $REPEAT =~ ^[0-9]+$ ]] || (( REPEAT < 1 )); then
   exit 2
 fi
 
-CACHE_HOME=$(mktemp -d)
 cleanup() {
   kill_menu_shell
-
-  if [[ $KEEP_CACHE == true ]]; then
-    printf 'Benchmark cache: %s\n' "$CACHE_HOME"
-  else
-    rm -rf "$CACHE_HOME"
-  fi
 }
 trap cleanup EXIT
 
-printf 'Omarchy menu benchmark (%d warm runs each)\n\n' "$REPEAT"
+run_label="runs"
+(( REPEAT == 1 )) && run_label="run"
+printf 'Omarchy menu benchmark (%d %s each)\n\n' "$REPEAT" "$run_label"
 
-clear_menu_cache
-printf '%-34s %s ms\n' "menu prep cold" "$(format_ms "$(measure_once prepare_menu)")"
-run_case "menu prep warm" prepare_menu
-printf '%-34s %s ms\n' "menu JSON build uncached" "$(format_ms "$(measure_once build_menu_json_uncached)")"
+run_case "menu JSON build" build_menu_json
 
 if [[ $NO_UI != true ]]; then
   if omarchy-cmd-present quickshell socat hyprctl jq && [[ -n ${WAYLAND_DISPLAY:-} ]]; then
-    printf '%-34s %s ms\n' "quickshell socket cold" "$(format_ms "$(measure_once start_quickshell_socket)")"
-    clear_menu_cache
-    printf '%-34s %s ms\n' "open/close cold" "$(format_ms "$(measure_once open_close_menu)")"
-    prepare_menu >/dev/null
-    run_case "open/close warm" open_close_menu
+    printf '%-34s %s ms\n' "quickshell socket startup" "$(format_ms "$(measure_once start_quickshell_socket)")"
+    run_case "open/close" open_close_menu
   else
     printf 'Skipping UI cases: quickshell/socat/hyprctl/jq/Wayland unavailable\n'
   fi
