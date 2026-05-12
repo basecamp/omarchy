@@ -26,6 +26,10 @@ lon="${loc#*,}"
 
 today=$(date -d "@$now_epoch" +%Y-%m-%d)
 mapfile -t suntimes < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$today")
+if (( ${#suntimes[@]} < 2 )); then
+  echo "omarchy-theme-schedule-apply: suncalc returned no output for $today at $lat,$lon" >&2
+  exit 1
+fi
 sunrise="${suntimes[0]}"
 sunset="${suntimes[1]}"
 
@@ -80,9 +84,8 @@ tmp=$(mktemp)
   # skips a calendar day across a spring-forward DST boundary.
   for offset in 0 1; do
     d=$(date -d "$today +$offset days" +%Y-%m-%d)
-    if ! mapfile -t st < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$d"); then
-      continue
-    fi
+    mapfile -t st < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$d")
+    (( ${#st[@]} >= 2 )) || continue
     [[ "${st[0]}" == "PERPETUAL_"* ]] && continue
     sr_fmt=$(date -d "${st[0]}" "+%Y-%m-%d %H:%M:%S")
     ss_fmt=$(date -d "${st[1]}" "+%Y-%m-%d %H:%M:%S")

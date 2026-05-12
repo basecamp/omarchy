@@ -4,7 +4,10 @@
 # omarchy:args=<theme-name>
 # omarchy:hidden=true
 
-set -euo pipefail
+# No `set -e`: slot learning is best-effort. We'd rather skip the update
+# (with a breadcrumb to stderr) than fail and trigger 'Hook failed' in
+# the calling omarchy-hook on every theme change.
+set -uo pipefail
 
 if [[ "${OMARCHY_THEME_SCHEDULE_TICK:-}" == "1" ]]; then
   exit 0
@@ -16,11 +19,18 @@ fi
 
 theme_name="${1:?theme name required}"
 
-loc=$(omarchy-theme-schedule-location)
+if ! loc=$(omarchy-theme-schedule-location 2>/dev/null); then
+  echo "omarchy-theme-schedule-record-slot: location helper failed — skipping slot update" >&2
+  exit 0
+fi
 lat="${loc%,*}"
 lon="${loc#*,}"
 today=$(date +%Y-%m-%d)
-mapfile -t suntimes < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$today")
+mapfile -t suntimes < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$today" 2>/dev/null)
+if (( ${#suntimes[@]} < 2 )); then
+  echo "omarchy-theme-schedule-record-slot: suncalc returned no output for $today at $lat,$lon — skipping slot update" >&2
+  exit 0
+fi
 sunrise="${suntimes[0]}"
 sunset="${suntimes[1]}"
 
