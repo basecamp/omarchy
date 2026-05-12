@@ -44,9 +44,9 @@ function GetEntries()
   -- Track added files to avoid duplicates
   local seen = {}
 
-  for _, wallpaper_dir in ipairs(dirs) do
+  for _, background_dir in ipairs(dirs) do
     local handle = io.popen(
-      "find -L " .. ShellEscape(wallpaper_dir)
+      "find -L " .. ShellEscape(background_dir)
         .. " -maxdepth 1 -type f \\( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.gif' -o -name '*.bmp' -o -name '*.webp' \\) 2>/dev/null | sort"
     )
     if handle then
