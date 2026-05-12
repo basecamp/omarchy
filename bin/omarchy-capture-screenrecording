@@ -233,6 +233,7 @@ stop_screenrecording() {
   else
     finalize_recording
     local filename=$(cat "$RECORDING_FILE" 2>/dev/null)
+    echo "$filename"
     local preview="${filename%.mp4}-preview.png"
 
     # Generate a preview thumbnail from the first frame

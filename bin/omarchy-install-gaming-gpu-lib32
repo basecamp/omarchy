@@ -5,6 +5,8 @@
 
 set -e
 
+echo "Installing lib32 graphics drivers..."
+
 PACKAGES=()
 
 declare -A VULKAN_DRIVERS=(

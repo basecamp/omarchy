@@ -4,7 +4,7 @@
 # omarchy:requires-sudo=true
 
 for dev in /sys/bus/i2c/drivers/i2c_hid_acpi/i2c-*; do
-  [ -e "$dev" ] || continue
+  [[ -e $dev ]] || continue
   I2C_DEVICE=$(basename "$dev")
   echo "Resetting $I2C_DEVICE via i2c_hid_acpi unbind/rebind..."
   echo "$I2C_DEVICE" | sudo tee /sys/bus/i2c/drivers/i2c_hid_acpi/unbind > /dev/null

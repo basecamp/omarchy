@@ -5,6 +5,7 @@
 
 set -e
 
+echo "Installing Lutris..."
 omarchy-pkg-add lutris umu-launcher wine-staging wine-mono wine-gecko winetricks python-protobuf
 omarchy-install-gaming-gpu-lib32
 

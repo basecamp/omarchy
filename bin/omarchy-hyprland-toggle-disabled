@@ -3,4 +3,4 @@
 # omarchy:summary=Check if a Hyprland toggle is currently disabled (missing).
 # omarchy:args=<flag-name>
 
-[[ ! -f "$HOME/.local/state/omarchy/toggles/hypr/$1.conf" ]]
+[[ ! -f "$HOME/.local/state/omarchy/toggles/hypr/$1.lua" ]]

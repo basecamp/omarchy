@@ -5,6 +5,7 @@
 
 set -e
 
+echo "Installing Steam..."
 omarchy-pkg-add steam
 omarchy-install-gaming-gpu-lib32
 

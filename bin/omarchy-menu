@@ -56,6 +56,11 @@ open_in_editor() {
   omarchy-launch-editor "$1"
 }
 
+hypr_config_file() {
+  local name="$1"
+  printf '%s/.config/hypr/%s.lua' "$HOME" "$name"
+}
+
 install() {
   present_terminal "echo 'Installing $1...'; omarchy-pkg-add $2"
 }
@@ -93,13 +98,50 @@ show_learn_menu() {
 }
 
 show_trigger_menu() {
-  case $(menu "Trigger" "  Capture\n  Share\n󰔎  Toggle\n  Hardware") in
+  case $(menu "Trigger" "󰔛  Reminder\n  Capture\n󰧸  Transcode\n  Share\n󰔎  Toggle\n  Hardware") in
+  *Reminder*) show_reminder_menu ;;
   *Capture*) show_capture_menu ;;
+  *Transcode*) omarchy-transcode || back_to show_trigger_menu ;;
   *Share*) show_share_menu ;;
   *Toggle*) show_toggle_menu ;;
   *Hardware*) show_hardware_menu ;;
   *) show_main_menu ;;
   esac
+}
+
+show_reminder_menu() {
+  case $(menu "Reminder" "󰔛  Set one\n󰔛  Show all\n󰔛  Clear all") in
+  *Set*) show_custom_reminder_input ;;
+  *"Show all"*) omarchy-reminder show ;;
+  *"Clear all"*) omarchy-reminder clear ;;
+  *) back_to show_trigger_menu ;;
+  esac
+}
+
+show_custom_reminder_input() {
+  local minutes
+  minutes=$(omarchy-menu-input "Remind in minutes")
+
+  if [[ $minutes =~ ^[0-9]+$ ]] && ((minutes > 0)); then
+    show_reminder_message_input "$minutes"
+  elif [[ -n $minutes ]]; then
+    omarchy-notification-send -g 󰔛 "Invalid reminder" "Enter the number of minutes" -u critical
+    show_custom_reminder_input
+  else
+    back_to show_reminder_menu
+  fi
+}
+
+show_reminder_message_input() {
+  local minutes="$1"
+  local message
+  message=$(omarchy-menu-input "Reminder message")
+
+  if [[ -n $message ]]; then
+    omarchy-reminder "$minutes" "$message"
+  else
+    omarchy-reminder "$minutes"
+  fi
 }
 
 show_capture_menu() {
@@ -158,7 +200,8 @@ show_screenrecord_menu() {
 }
 
 show_share_menu() {
-  case $(menu "Share" "  Clipboard\n  File \n  Folder") in
+  case $(menu "Share" "  Clipboard\n  File \n  Folder\n󰥦  Receive") in
+  *Receive*) uwsm-app -- localsend ;;
   *Clipboard*) omarchy-menu-share clipboard ;;
   *File*) terminal bash -c "omarchy-menu-share file" ;;
   *Folder*) terminal bash -c "omarchy-menu-share folder" ;;
@@ -196,13 +239,18 @@ show_hardware_menu() {
     options="$options\n󰟸  Touchpad"
   fi
 
+  if omarchy-hw-dell-xps-haptic-touchpad && omarchy-cmd-present dell-xps-touchpad-haptics; then
+    options="$options\n󰌌  Touchpad Haptics"
+  fi
+
   if omarchy-hw-touchscreen; then
     options="$options\n󰆽  Touchscreen"
   fi
 
   case $(menu "Toggle" "$options") in
   *Laptop*) omarchy-hyprland-monitor-internal toggle ;;
-  *Mirror*) omarchy-hyprland-monitor-internal-mirror toggle;;
+  *Mirror*) omarchy-hyprland-monitor-internal-mirror toggle ;;
+  *Haptics*) show_hardware_touchpad_haptics_menu ;;
   *Touchpad*) omarchy-toggle-touchpad ;;
   *Touchscreen*) omarchy-toggle-touchscreen ;;
   *"Hybrid GPU"*) present_terminal omarchy-toggle-hybrid-gpu ;;
@@ -210,25 +258,77 @@ show_hardware_menu() {
   esac
 }
 
+show_hardware_touchpad_haptics_menu() {
+  local current=$(dell-xps-touchpad-haptics get)
+  local selected=$(menu "Touchpad Haptics" "low\nmid\nhigh" "" "$current")
+
+  if [[ -n $selected ]]; then
+    dell-xps-touchpad-haptics set "$selected"
+  else
+    back_to show_hardware_menu
+  fi
+}
+
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n  Hyprland\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n󰍜  Waybar\n󰘇  Corners\n  Hyprland\n󱄄  Screensaver\n  About") in
+
   *Theme*) show_theme_menu ;;
   *Unlock*) omarchy-launch-walker -m menus:omarchyunlocks --width 800 --minheight 400 ;;
   *Font*) show_font_menu ;;
   *Background*) show_background_menu ;;
-  *Hyprland*) open_in_editor ~/.config/hypr/looknfeel.conf ;;
-  *Screensaver*) open_in_editor ~/.config/omarchy/branding/screensaver.txt ;;
-  *About*) open_in_editor ~/.config/omarchy/branding/about.txt ;;
+  *Corners*) show_style_corners_menu ;;
+  *Hyprland*) open_in_editor "$(hypr_config_file looknfeel)" ;;
+  *Waybar*) show_waybar_position_menu ;;
+  *Screensaver*) show_screensaver_menu ;;
+  *About*) show_about_menu ;;
   *) show_main_menu ;;
   esac
 }
 
+show_style_corners_menu() {
+  case $(omarchy-menu-select "Corners" "󰝣  Sharp" "󰘇  Round") in
+  *Sharp*) omarchy-style-corners sharp ;;
+  *Round*) omarchy-style-corners round ;;
+  *) show_style_menu ;;
+  esac
+}
+
+show_waybar_position_menu() {
+  case $(menu "Waybar Position" "󰁝  Top\n󰁅  Bottom\n󰁍  Left\n󰁔  Right") in
+  *Top*) omarchy-style-waybar-position top ;;
+  *Bottom*) omarchy-style-waybar-position bottom ;;
+  *Left*) omarchy-style-waybar-position left ;;
+  *Right*) omarchy-style-waybar-position right ;;
+  *) show_style_menu ;;
+  esac
+}
+
+show_about_menu() {
+  case $(menu "About" "  Edit Text\n  Set From Image\n  Restore Default") in
+  *Text*) omarchy-branding-about text ;;
+  *Image*) omarchy-branding-about image ;;
+  *Default*) omarchy-branding-about reset ;;
+  *) show_style_menu ;;
+  esac
+}
+
+show_screensaver_menu() {
+  case $(menu "Screensaver" "  Edit Text\n  Set From Image\n  Restore Default") in
+  *Text*) omarchy-branding-screensaver text ;;
+  *Image*) omarchy-branding-screensaver image ;;
+  *Default*) omarchy-branding-screensaver reset ;;
+  *) show_style_menu ;;
+  esac
+}
+
 show_theme_menu() {
-  omarchy-launch-walker -m menus:omarchythemes --width 800 --minheight 400
+  theme=$(omarchy-theme-switcher)
+  [[ -n $theme ]] && omarchy-theme-set "$theme"
 }
 
 show_background_menu() {
-  omarchy-launch-walker -m menus:omarchyBackgroundSelector --width 800 --minheight 400
+  background=$(omarchy-theme-bg-switcher)
+  [[ -n $background ]] && omarchy-theme-bg-set "$background"
 }
 
 show_font_menu() {
@@ -242,9 +342,9 @@ show_font_menu() {
 
 show_setup_menu() {
   local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
-  [[ -f ~/.config/hypr/bindings.conf ]] && options="$options\n  Keybindings"
-  [[ -f ~/.config/hypr/input.conf ]] && options="$options\n  Input"
-  options="$options\n󰱔  DNS\n  Security\n  Config"
+  [[ -f ~/.config/hypr/bindings.lua ]] && options="$options\n  Keybindings"
+  [[ -f ~/.config/hypr/input.lua ]] && options="$options\n  Input"
+  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
   *Audio*) omarchy-launch-audio ;;
@@ -252,9 +352,10 @@ show_setup_menu() {
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
   *System*) show_setup_system_menu ;;
-  *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
-  *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
-  *Input*) open_in_editor ~/.config/hypr/input.conf ;;
+  *Monitors*) open_in_editor "$(hypr_config_file monitors)" ;;
+  *Keybindings*) open_in_editor "$(hypr_config_file bindings)" ;;
+  *Input*) open_in_editor "$(hypr_config_file input)" ;;
+  *Defaults*) show_setup_default_menu ;;
   *DNS*) present_terminal omarchy-setup-dns ;;
   *Security*) show_setup_security_menu ;;
   *Config*) show_setup_config_menu ;;
@@ -274,16 +375,121 @@ show_setup_power_menu() {
 
 show_setup_security_menu() {
   case $(menu "Setup" "󰈷  Fingerprint\n  Fido2") in
-  *Fingerprint*) present_terminal omarchy-setup-fingerprint ;;
-  *Fido2*) present_terminal omarchy-setup-fido2 ;;
+  *Fingerprint*) present_terminal omarchy-setup-security-fingerprint ;;
+  *Fido2*) present_terminal omarchy-setup-security-fido2 ;;
   *) show_setup_menu ;;
   esac
 }
 
+show_setup_default_menu() {
+  case $(menu "Default" "  Browser\n  Terminal\n  Editor") in
+  *Browser*) show_setup_default_browser_menu ;;
+  *Terminal*) show_setup_default_terminal_menu ;;
+  *Editor*) show_setup_default_editor_menu ;;
+  *) show_setup_menu ;;
+  esac
+}
+
+browser_desktop_exists() {
+  [[ -f ~/.local/share/applications/$1 || -f ~/.nix-profile/share/applications/$1 || -f /usr/share/applications/$1 ]]
+}
+
+show_setup_default_browser_menu() {
+  local options=""
+  browser_desktop_exists chromium.desktop && options="$options  Chromium"
+  browser_desktop_exists google-chrome.desktop && options="${options:+$options\n}󰊯  Chrome"
+  browser_desktop_exists brave-browser.desktop && options="${options:+$options\n}󰖟  Brave"
+  browser_desktop_exists brave-origin-beta.desktop && options="${options:+$options\n}󰖟  Brave Origin"
+  browser_desktop_exists microsoft-edge.desktop && options="${options:+$options\n}󰇩  Edge"
+  browser_desktop_exists firefox.desktop && options="${options:+$options\n}󰈹  Firefox"
+  browser_desktop_exists zen.desktop && options="${options:+$options\n}󰖟  Zen"
+
+  local current=""
+  case "$(omarchy-default-browser)" in
+  chromium) current="  Chromium" ;;
+  chrome) current="󰊯  Chrome" ;;
+  brave) current="󰖟  Brave" ;;
+  brave-origin) current="󰖟  Brave Origin" ;;
+  edge) current="󰇩  Edge" ;;
+  firefox) current="󰈹  Firefox" ;;
+  zen) current="󰖟  Zen" ;;
+  esac
+
+  case $(menu "Default Browser" "$options" "" "$current") in
+  *Chromium*) omarchy-default-browser chromium ;;
+  *Chrome*) omarchy-default-browser chrome ;;
+  *"Brave Origin"*) omarchy-default-browser brave-origin ;;
+  *Brave*) omarchy-default-browser brave ;;
+  *Edge*) omarchy-default-browser edge ;;
+  *Firefox*) omarchy-default-browser firefox ;;
+  *Zen*) omarchy-default-browser zen ;;
+  *) show_setup_default_menu ;;
+  esac
+}
+
+show_setup_default_terminal_menu() {
+  local options=""
+  omarchy-cmd-present alacritty && options="$options  Alacritty"
+  omarchy-cmd-present foot && options="${options:+$options\n}  Foot"
+  omarchy-cmd-present ghostty && options="${options:+$options\n}  Ghostty"
+  omarchy-cmd-present kitty && options="${options:+$options\n}  Kitty"
+
+  local current=""
+  case "$(omarchy-default-terminal)" in
+  alacritty) current="  Alacritty" ;;
+  foot) current="  Foot" ;;
+  ghostty) current="  Ghostty" ;;
+  kitty) current="  Kitty" ;;
+  esac
+
+  case $(menu "Default Terminal" "$options" "" "$current") in
+  *Alacritty*) omarchy-default-terminal alacritty ;;
+  *Foot*) omarchy-default-terminal foot ;;
+  *Ghostty*) omarchy-default-terminal ghostty ;;
+  *Kitty*) omarchy-default-terminal kitty ;;
+  *) show_setup_default_menu ;;
+  esac
+}
+
+show_setup_default_editor_menu() {
+  local options=""
+  omarchy-cmd-present nvim && options="$options  Neovim"
+  omarchy-cmd-present code && options="${options:+$options\n}  VSCode"
+  omarchy-cmd-present cursor && options="${options:+$options\n}  Cursor"
+  omarchy-cmd-present zeditor && options="${options:+$options\n}  Zed"
+  omarchy-cmd-present sublime_text && options="${options:+$options\n}  Sublime Text"
+  omarchy-cmd-present helix && options="${options:+$options\n}  Helix"
+  omarchy-cmd-present vim && options="${options:+$options\n}  Vim"
+  omarchy-cmd-present emacs && options="${options:+$options\n}  Emacs"
+
+  local current=""
+  case "$(omarchy-default-editor)" in
+  nvim) current="  Neovim" ;;
+  code) current="  VSCode" ;;
+  cursor) current="  Cursor" ;;
+  zed | zeditor) current="  Zed" ;;
+  sublime_text) current="  Sublime Text" ;;
+  helix) current="  Helix" ;;
+  vim) current="  Vim" ;;
+  emacs) current="  Emacs" ;;
+  esac
+
+  case $(menu "Default Editor" "$options" "" "$current") in
+  *Neovim*) omarchy-default-editor nvim ;;
+  *VSCode*) omarchy-default-editor code ;;
+  *Cursor*) omarchy-default-editor cursor ;;
+  *Zed*) omarchy-default-editor zed ;;
+  *Sublime*) omarchy-default-editor sublime_text ;;
+  *Helix*) omarchy-default-editor helix ;;
+  *Vim*) omarchy-default-editor vim ;;
+  *Emacs*) omarchy-default-editor emacs ;;
+  *) show_setup_default_menu ;;
+  esac
+}
+
 show_setup_config_menu() {
-  case $(menu "Setup" "  Defaults\n  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
-  *Defaults*) open_in_editor ~/.config/uwsm/default ;;
-  *Hyprland*) open_in_editor ~/.config/hypr/hyprland.conf ;;
+  case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  *Hyprland*) open_in_editor "$(hypr_config_file hyprland)" ;;
   *Hypridle*) open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
   *Hyprlock*) open_in_editor ~/.config/hypr/hyprlock.conf ;;
   *Hyprsunset*) open_in_editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
@@ -319,7 +525,7 @@ show_setup_system_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n󱚤  AI\n󰍲  Windows\n  Gaming") in
+  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n  Browser\n󱚤  AI\n  Gaming\n󰍲  Windows") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -329,10 +535,23 @@ show_install_menu() {
   *Development*) show_install_development_menu ;;
   *Editor*) show_install_editor_menu ;;
   *Terminal*) show_install_terminal_menu ;;
+  *Browser*) show_install_browser_menu ;;
+  *Gaming*) show_install_gaming_menu ;;
   *AI*) show_install_ai_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm install" ;;
-  *Gaming*) show_install_gaming_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_install_browser_menu() {
+  case $(menu "Install" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n󰖟  Zen") in
+  *Chrome*) present_terminal "omarchy-install-browser chrome" ;;
+  *Edge*) present_terminal "omarchy-install-browser edge" ;;
+  *"Brave Origin"*) present_terminal "omarchy-install-browser brave-origin" ;;
+  *Brave*) present_terminal "omarchy-install-browser brave" ;;
+  *Firefox*) present_terminal "omarchy-install-browser firefox" ;;
+  *Zen*) present_terminal "omarchy-install-browser zen" ;;
+  *) show_install_menu ;;
   esac
 }
 
@@ -349,20 +568,22 @@ show_install_service_menu() {
 }
 
 show_install_editor_menu() {
-  case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Emacs") in
+  case $(menu "Install" "  VSCode\n  Cursor\n  Zed\n  Sublime Text\n  Helix\n  Vim\n  Emacs") in
   *VSCode*) present_terminal omarchy-install-vscode ;;
   *Cursor*) install_and_launch "Cursor" "cursor-bin" "cursor" ;;
-  *Zed*) install_and_launch "Zed" "zed" "dev.zed.Zed" ;;
+  *Zed*) present_terminal omarchy-install-zed ;;
   *Sublime*) install_and_launch "Sublime Text" "sublime-text-4" "sublime_text" ;;
   *Helix*) present_terminal omarchy-install-helix ;;
+  *Vim*) install "Vim" "vim" ;;
   *Emacs*) install "Emacs" "emacs-wayland" && systemctl --user enable --now emacs.service ;;
   *) show_install_menu ;;
   esac
 }
 
 show_install_terminal_menu() {
-  case $(menu "Install" "  Alacritty\n  Ghostty\n  Kitty") in
+  case $(menu "Install" "  Alacritty\n  Foot\n  Ghostty\n  Kitty") in
   *Alacritty*) install_terminal "alacritty" ;;
+  *Foot*) install_terminal "foot" ;;
   *Ghostty*) install_terminal "ghostty" ;;
   *Kitty*) install_terminal "kitty" ;;
   *) show_install_menu ;;
@@ -386,8 +607,9 @@ show_install_ai_menu() {
 }
 
 show_install_gaming_menu() {
-  case $(menu "Install" "  Steam\n  RetroArch\n󰍳  Minecraft\n󰢹  NVIDIA GeForce NOW\n  Xbox Cloud Gaming\n󰖺  Xbox Controller (󰂯)\n󰍹  Moonlight (GameStream)\n  Lutris (Battle.net)\n󱓟  Heroic (Epic Games)") in
+  case $(menu "Install" "  Steam\n󰯉  RetroArch\n󰍳  Minecraft\n󰢹  NVIDIA GeForce NOW\n  Xbox Cloud Gaming\n󰂯  Xbox Controller\n󰍹  Moonlight (GameStream)\n  Lutris (Battle.net)\n󱓟  Heroic (Epic Games)\n󰯉  RetroArch Game Launcher") in
   *Steam*) present_terminal omarchy-install-gaming-steam ;;
+  *"RetroArch Game Launcher"*) omarchy-games-retro-install ;;
   *RetroArch*) present_terminal omarchy-install-gaming-retroarch ;;
   *Minecraft*) install_and_launch "Minecraft" "minecraft-launcher" "minecraft-launcher" ;;
   *GeForce*) present_terminal omarchy-install-gaming-geforce-now ;;
@@ -410,12 +632,12 @@ show_install_style_menu() {
 }
 
 show_install_font_menu() {
-  case $(menu "Install" "  Cascadia Mono\n  Meslo LG Mono\n  Fira Code\n  Victor Code\n  Bistream Vera Mono\n  Iosevka" "--width 350") in
+  case $(menu "Install" "  Cascadia Mono\n  Meslo LG Mono\n  Fira Code\n  Victor Code\n  Bitstream Vera Mono\n  Iosevka" "--width 350") in
   *Cascadia*) install_font "Cascadia Mono" "ttf-cascadia-mono-nerd" "CaskaydiaMono Nerd Font" ;;
   *Meslo*) install_font "Meslo LG Mono" "ttf-meslo-nerd" "MesloLGL Nerd Font" ;;
   *Fira*) install_font "Fira Code" "ttf-firacode-nerd" "FiraCode Nerd Font" ;;
   *Victor*) install_font "Victor Code" "ttf-victor-mono-nerd" "VictorMono Nerd Font" ;;
-  *Bistream*) install_font "Bistream Vera Code" "ttf-bitstream-vera-mono-nerd" "BitstromWera Nerd Font" ;;
+  *Bitstream*) install_font "Bitstream Vera Code" "ttf-bitstream-vera-mono-nerd" "BitstromWera Nerd Font" ;;
   *Iosevka*) install_font "Iosevka" "ttf-iosevka-nerd" "Iosevka Nerd Font Mono" ;;
   *) show_install_menu ;;
   esac
@@ -468,19 +690,39 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n  Gaming\n󰏓  Preinstalls\n  Dictation\n󰸌  Theme\n󰍲  Windows\n󰈷  Fingerprint\n  Fido2") in
+  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n󰸌  Theme\n  Browser\n  Dictation\n  Gaming\n󰍲  Windows\n󰏓  Preinstalls\n  Security") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
   *Development*) show_remove_development_menu ;;
-  *Gaming*) show_remove_gaming_menu ;;
-  *Preinstalls*) present_terminal omarchy-remove-preinstalls ;;
-  *Dictation*) present_terminal omarchy-voxtype-remove ;;
   *Theme*) present_terminal omarchy-theme-remove ;;
+  *Browser*) show_remove_browser_menu ;;
+  *Dictation*) present_terminal omarchy-voxtype-remove ;;
+  *Gaming*) show_remove_gaming_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm remove" ;;
-  *Fingerprint*) present_terminal "omarchy-setup-fingerprint --remove" ;;
-  *Fido2*) present_terminal "omarchy-setup-fido2 --remove" ;;
+  *Preinstalls*) present_terminal omarchy-remove-preinstalls ;;
+  *Security*) show_remove_security_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_remove_security_menu() {
+  case $(menu "Remove" "󰈷  Fingerprint\n  Fido2") in
+  *Fingerprint*) present_terminal omarchy-remove-security-fingerprint ;;
+  *Fido2*) present_terminal omarchy-remove-security-fido2 ;;
+  *) show_remove_menu ;;
+  esac
+}
+
+show_remove_browser_menu() {
+  case $(menu "Remove" "  Chrome\n  Edge\n  Brave\n  Brave Origin\n  Firefox\n  Zen") in
+  *Chrome*) present_terminal "omarchy-remove-browser chrome" ;;
+  *Edge*) present_terminal "omarchy-remove-browser edge" ;;
+  *"Brave Origin"*) present_terminal "omarchy-remove-browser brave-origin" ;;
+  *Brave*) present_terminal "omarchy-remove-browser brave" ;;
+  *Firefox*) present_terminal "omarchy-remove-browser firefox" ;;
+  *Zen*) present_terminal "omarchy-remove-browser zen" ;;
+  *) show_remove_menu ;;
   esac
 }
 
@@ -608,7 +850,7 @@ show_update_hardware_menu() {
 
 show_update_password_menu() {
   case $(menu "Update Password" "  Drive Encryption\n  User") in
-  *Drive*) present_terminal omarchy-drive-set-password ;;
+  *Drive*) present_terminal omarchy-drive-password ;;
   *User*) present_terminal passwd ;;
   *) show_update_menu ;;
   esac
@@ -648,6 +890,8 @@ go_to_menu() {
   *toggle*) show_toggle_menu ;;
   *hardware*) show_hardware_menu ;;
   *share*) show_share_menu ;;
+  *reminder-set*) show_custom_reminder_input ;;
+  *reminder*) show_reminder_menu ;;
   *background*) show_background_menu ;;
   *capture*) show_capture_menu ;;
   *style*) show_style_menu ;;

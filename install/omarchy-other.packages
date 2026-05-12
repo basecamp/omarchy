@@ -41,6 +41,7 @@ pipewire-jack
 pipewire-pulse
 qt6-wayland
 snapper
+sof-firmware
 thermald
 webp-pixbuf-loader
 yay-debug
@@ -59,6 +60,9 @@ vulkan-asahi
 
 # Surface laptop support packages
 linux-firmware-marvell
+
+# Dell laptop support packages
+dell-xps-touchpad-haptics
 
 # T2 MacBook support packages
 apple-bcm-firmware
