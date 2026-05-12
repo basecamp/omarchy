@@ -76,6 +76,12 @@ tmp=$(mktemp)
 if ! cmp -s "$tmp" "$dropin" 2>/dev/null; then
   mv "$tmp" "$dropin"
   systemctl --user daemon-reload 2>/dev/null || true
+  # Re-arm the timer: if all previous OnCalendar entries were in the
+  # past (e.g. session started after a multi-day shutdown), systemd
+  # parks the timer in 'elapsed' state and daemon-reload alone won't
+  # recompute next-fire. try-restart is a no-op when the timer isn't
+  # running (e.g. schedule disabled).
+  systemctl --user try-restart omarchy-theme-schedule.timer 2>/dev/null || true
 else
   rm -f "$tmp"
 fi
