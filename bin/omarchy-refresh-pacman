@@ -19,5 +19,8 @@ echo
 sudo cp -f "$OMARCHY_PATH/default/pacman/pacman-$channel.conf" /etc/pacman.conf
 sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirrorlist
 
+# Allow user customization of /etc/pacman.conf before the upgrade runs
+omarchy-hook pre-refresh-pacman
+
 # Reset all package DBs and then update
 sudo pacman -Syyuu --noconfirm
