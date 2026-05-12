@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# omarchy:summary=Set Quickshell Omarchy menu corners
+# omarchy:args=<sharp|round>
+# omarchy:examples=omarchy style corners quickshell round | omarchy style corners quickshell sharp
+
+set_radius() {
+  local radius="$1"
+  local toggles_dir="$HOME/.local/state/omarchy/toggles"
+
+  mkdir -p "$toggles_dir"
+  printf '{ "radius": %s }\n' "$radius" >"$toggles_dir/quickshell-menu.json"
+}
+
+case "${1:-}" in
+sharp) set_radius 0 ;;
+round) set_radius 6 ;;
+*)
+  echo "Usage: omarchy-style-corners-quickshell <sharp|round>"
+  exit 1
+  ;;
+esac
