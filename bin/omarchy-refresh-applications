@@ -19,6 +19,6 @@ fi
 bash $OMARCHY_PATH/install/packaging/icons.sh
 bash $OMARCHY_PATH/install/packaging/webapps.sh
 bash $OMARCHY_PATH/install/packaging/tuis.sh
-bash $OMARCHY_PATH/install/packaging/npx.sh
+bash $OMARCHY_PATH/install/packaging/npm.sh
 
 update-desktop-database ~/.local/share/applications

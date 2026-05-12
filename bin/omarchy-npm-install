@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# omarchy:summary=Install an npx wrapper for a given npm package.
+# omarchy:summary=Install a pnpm dlx wrapper for a given npm package.
 # omarchy:args=<package> [command-name]
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-npx-install <package> [command-name]"
+  echo "Usage: omarchy-npm-install <package> [command-name]"
   exit 1
 fi
 
@@ -23,8 +23,13 @@ if ! node_root="\$(mise where node@latest 2>/dev/null)"; then
   node_root="\$(mise where node@latest)"
 fi
 
-node_bin="\$node_root/bin/node"
-npx_bin="\$node_root/bin/npx"
+if omarchy-cmd-missing pnpm; then
+  echo "Installing pnpm for \$package..."
+  omarchy-pkg-add pnpm
+  hash -r
+fi
+
+export PNPM_CONFIG_MINIMUM_RELEASE_AGE=7200
 
 ensure_bin_runtime() {
   local bin_path=\$1
@@ -51,15 +56,15 @@ exec_package_bin() {
   fi
 }
 
-# Resolve the package bin inside npx, then run it with node@latest available for node shebangs.
+# Resolve the package bin inside pnpm dlx, then run it with node@latest available for node shebangs.
 # Some wrappers are aliases, e.g. playwright-cli wraps the playwright bin.
-"\$node_bin" "\$npx_bin" --yes --prefer-online --package "\$package" -- true
+PATH="\$node_root/bin:\$PATH" pnpm dlx --package "\$package" true
 
-package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$package" 2>/dev/null)
+package_bin_path=\$(PATH="\$node_root/bin:\$PATH" pnpm dlx --package "\$package" which "\$package" 2>/dev/null)
 exec_package_bin "\$package_bin_path" "\$@"
 
 # Scoped packages like @openai/codex expose an unscoped bin like codex.
-package_bin_path=\$("\$node_bin" "\$npx_bin" --yes --package "\$package" -- which "\$command" 2>/dev/null)
+package_bin_path=\$(PATH="\$node_root/bin:\$PATH" pnpm dlx --package "\$package" which "\$command" 2>/dev/null)
 exec_package_bin "\$package_bin_path" "\$@"
 
 echo "Could not resolve npm bin for \$package / \$command" >&2
