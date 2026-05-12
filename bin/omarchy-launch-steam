@@ -45,6 +45,11 @@ if omarchy-pkg-present steam; then # Only apply if steam is installed
     notify-send "󱫖    Stop locking computer when idle"
   fi
 
+  # Shutdown Hyprland
+  if pgrep -x hyprland >/dev/null; then
+    echo "Exiting Hyprland"
+    hyprland dispatch exit
+  fi
 
   # Kill existing steam instances
   killall steam
