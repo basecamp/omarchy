@@ -8,10 +8,12 @@
 
 set -euo pipefail
 
+SOURCE_DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}"
+
 case "${1:-}" in
 image)
-  image=$(omarchy-menu-file "Logo image" "$HOME" "svg png")
-  if [[ -n $image ]] && omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/about.txt --width 54 --height 26 --mode block; then
+  image=$(omarchy-menu-file "Pick png/svg from $SOURCE_DIR" "${SOURCE_DIR}" "svg png")
+  if [[ -n $image ]] && omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/about.txt --width 54 --height 26; then
     omarchy-launch-about >/dev/null 2>&1
   fi
   ;;

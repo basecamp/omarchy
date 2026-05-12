@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# omarchy:summary=Create a desktop launcher for a RetroArch game
+# omarchy:args=[core path-to-game]
+# omarchy:examples=omarchy games retro install snes9x ~/Games/roms/snes/game.sfc | omarchy-games-retro-install /usr/lib/libretro/mgba_libretro.so ~/Games/roms/gba/game.gba
+
+set -e
+
+if (( $# == 0 )); then
+  mapfile -t cores < <(omarchy-games-retro-cores)
+
+  if (( ${#cores[@]} == 0 )); then
+    omarchy-notification-send -g "󰯉" "No RetroArch cores found" "/usr/lib/libretro"
+    exit 1
+  fi
+
+  core=$(omarchy-menu-select "RetroArch core" "${cores[@]}") || exit 0
+  [[ -n $core ]] || exit 0
+  core="${core##*(}"
+  core="${core%)}"
+
+  game_path=$(omarchy-menu-file "Retro game" "$HOME/Games/roms" "7z bin ccd chd cue dmg elf fds gb gba gbc iso lha m3u md n64 nds nes pbp sfc smc swc zip z64") || exit 0
+  [[ -n $game_path ]] || exit 0
+elif (( $# == 2 )); then
+  core="$1"
+  game_path="$2"
+else
+  echo "Usage: omarchy-games-retro-install [core path-to-game]"
+  echo "Example: omarchy-games-retro-install snes9x ~/Games/roms/snes/game.sfc"
+  exit 1
+fi
+
+if [[ ! -f $game_path ]]; then
+  echo "Game not found: $game_path"
+  exit 1
+fi
+
+if [[ $core == */* ]]; then
+  core_path="$core"
+else
+  core_path="/usr/lib/libretro/${core}_libretro.so"
+fi
+
+if [[ ! -f $core_path ]]; then
+  echo "Core not found: $core_path"
+  exit 1
+fi
+
+game_name=$(printf '%s' "${game_path##*/}" | sed 's/\.[^.]*$//; s/[[:space:]]*([^)]*)//g; s/[[:space:]]\+/ /g; s/^ //; s/ $//' | perl -Mopen=locale -pe 's/(^|[[:space:]])([^[:space:]])/$1\U$2/g')
+desktop_name="$game_name"
+desktop_id=$(printf '%s' "$desktop_name" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-//; s/-$//')
+desktop_dir="$HOME/.local/share/applications"
+desktop_file="$desktop_dir/$desktop_id.desktop"
+icon_dir="$desktop_dir/icons"
+icon_path="$icon_dir/Retro Gaming.png"
+
+mkdir -p "$desktop_dir" "$icon_dir"
+[[ -f $icon_path ]] || cp "$HOME/.local/share/omarchy/applications/icons/Retro Gaming.png" "$icon_path"
+
+cat >"$desktop_file" <<EOF
+[Desktop Entry]
+Version=1.0
+Name=$desktop_name
+Comment=Play $game_name with RetroArch
+Exec=retroarch -L "$core_path" "$game_path"
+Terminal=false
+Type=Application
+Icon=$icon_path
+StartupNotify=true
+Categories=Game;Emulator;
+EOF
+
+chmod +x "$desktop_file"
+update-desktop-database "$desktop_dir" &>/dev/null || true
+
+omarchy-notification-send -g "󰯉" "$game_name installed" "Start it with Super + Space"
