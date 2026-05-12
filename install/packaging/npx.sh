@@ -5,3 +5,4 @@ omarchy-npx-install opencode-ai opencode
 omarchy-npx-install playwright playwright-cli
 omarchy-npx-install @earendil-works/pi-coding-agent pi
 omarchy-npx-install @kitlangton/ghui ghui
+omarchy-npx-install hunkdiff hunk
