@@ -8,4 +8,7 @@ set -euo pipefail
 systemctl --user disable --now omarchy-theme-schedule.timer 2>/dev/null || true
 systemctl --user disable --now omarchy-theme-schedule-tzwatch.path 2>/dev/null || true
 systemctl --user disable --now omarchy-theme-schedule-sleepwatch.service 2>/dev/null || true
+
+rm -f "$HOME/.config/omarchy/hooks/theme-set.d/record-schedule-slot"
+
 echo "Schedule disabled. Day/night theme files preserved for re-enable."

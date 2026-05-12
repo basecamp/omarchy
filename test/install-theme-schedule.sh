@@ -53,7 +53,9 @@ uninstall() {
   done
 
   rm -rfv "$USER_SYSTEMD/omarchy-theme-schedule.timer.d"
+  # Hook is now installed/removed by enable/disable, not the installer.
   rm -fv "$USER_HOOK_DIR/record-schedule-slot"
+  rm -fv "$HOME/.local/share/omarchy/config/omarchy/hooks/theme-set.d/record-schedule-slot"
 
   # Restore original omarchy-hook if we replaced it
   if [[ -L "$LIVE_BIN/omarchy-hook" && -f "$LIVE_BIN/omarchy-hook.orig" ]]; then
@@ -113,11 +115,17 @@ install() {
   done
   systemctl --user daemon-reload
 
-  echo ":: Installing theme-set hook to $USER_HOOK_DIR"
-  src="$REPO_DIR/default/omarchy/hooks/theme-set.d/record-schedule-slot"
-  dst="$USER_HOOK_DIR/record-schedule-slot"
-  ln -sf "$src" "$dst"
-  echo "  $dst -> $src"
+  # The theme-set hook itself is installed by `omarchy theme schedule
+  # enable` (and removed by disable). Its source lives at
+  # $OMARCHY_PATH/config/omarchy/hooks/theme-set.d/record-schedule-slot.
+  # In a real omarchy update, that file is shipped under config/omarchy/
+  # already. For local development against an older $OMARCHY_PATH, we
+  # symlink the repo file into place so enable's cp can find it.
+  echo ":: Symlinking hook source into \$OMARCHY_PATH for local enable to find"
+  installed_hook_src_dir="$HOME/.local/share/omarchy/config/omarchy/hooks/theme-set.d"
+  mkdir -p "$installed_hook_src_dir"
+  ln -sfn "$REPO_DIR/config/omarchy/hooks/theme-set.d/record-schedule-slot" \
+    "$installed_hook_src_dir/record-schedule-slot"
 
   echo
   echo ":: Installed. Next steps:"
