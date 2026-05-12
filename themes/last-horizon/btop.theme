@@ -1,0 +1,93 @@
+# Main background
+theme[main_bg]="#0c0b0c"
+
+# Main text color
+theme[main_fg]="#e2dddc"
+
+# Title color for boxes
+theme[title]="#b59790"
+
+# Highlight color for keyboard shortcuts
+theme[hi_fg]="#c4d8e2"
+
+# Background color of selected item in processes box
+theme[selected_bg]="#e2dddc"
+
+# Foreground color of selected item in processes box
+theme[selected_fg]="#0c0b0c"
+
+# Color of inactive/disabled text
+theme[inactive_fg]="#584e51"
+
+# Color of text appearing on top of graphs
+theme[graph_text]="#e2dddc"
+
+# Background color of the percentage meters
+theme[meter_bg]="#1e1d1e"
+
+# Misc colors for processes box
+theme[proc_misc]="#e2dddc"
+
+# CPU, Memory, Network, Proc box outline colors
+theme[cpu_box]="#584e51"
+theme[mem_box]="#584e51"
+theme[net_box]="#584e51"
+theme[proc_box]="#584e51"
+
+# Box divider line and small boxes line color
+theme[div_line]="#6B5E73"
+
+# Temperature graph color (Green -> Yellow -> Red)
+theme[temp_start]="#87a9b0"
+theme[temp_mid]="#6B5E73"
+theme[temp_end]="#c38b7b"
+
+# CPU graph colors (Blue -> Cyan -> Magenta)
+theme[cpu_start]="#b59790"
+theme[cpu_mid]="#a5a0b6"
+theme[cpu_end]="#c4d8e2"
+
+# Mem/Disk free meter (Reversed "Available" colors: Cyan -> Blue -> Purple)
+theme[free_start]="#c4d8e2"
+theme[free_mid]="#b59790"
+theme[free_end]="#6B5E73"
+
+# Mem/Disk cached meter
+theme[cached_start]="#b59790"
+theme[cached_mid]="#c4d8e2"
+theme[cached_end]="#e2dddc"
+
+# Mem/Disk available meter (Purple -> Blue -> Cyan)
+theme[available_start]="#6B5E73"
+theme[available_mid]="#b59790"
+theme[available_end]="#a5a0b6"
+
+# Mem/Disk used meter
+theme[used_start]="#c38b7b"
+theme[used_mid]="#6B5E73"
+theme[used_end]="#584e51"
+
+# Download graph colors
+theme[download_start]="#87a9b0"
+theme[download_mid]="#a5a0b6"
+theme[download_end]="#cfd3cd"
+
+# Upload graph colors
+theme[upload_start]="#b59790"
+theme[upload_mid]="#c4d8e2"
+theme[upload_end]="#e2dddc"
+
+# Process box color gradient
+theme[process_start]="#c4d8e2"
+theme[process_mid]="#a5a0b6"
+theme[process_end]="#c38b7b"
+
+# Graph gradient colors
+theme[gradient_color_0]="#0c0b0c"
+theme[gradient_color_1]="#584e51"
+theme[gradient_color_2]="#6B5E73"
+theme[gradient_color_3]="#c38b7b"
+theme[gradient_color_4]="#87a9b0"
+theme[gradient_color_5]="#b59790"
+theme[gradient_color_6]="#a5a0b6"
+theme[gradient_color_7]="#FAFCFB"
