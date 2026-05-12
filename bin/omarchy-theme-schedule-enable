@@ -127,11 +127,15 @@ mkdir -p "$(dirname "$hook_dst")"
 cp "$hook_src" "$hook_dst"
 chmod 755 "$hook_dst"
 
+# Apply BEFORE enabling the timer: the base timer unit has no OnCalendar
+# (the drop-in does), so systemd refuses to start it until apply writes
+# the drop-in. apply's own try-restart of the timer no-ops while it's
+# still inactive — harmless.
+omarchy-theme-schedule-apply
+
 systemctl --user enable --now omarchy-theme-schedule.timer
 systemctl --user enable --now omarchy-theme-schedule-tzwatch.path
 systemctl --user enable --now omarchy-theme-schedule-sleepwatch.service
-
-omarchy-theme-schedule-apply
 
 echo
 echo "Schedule enabled."
