@@ -13,6 +13,7 @@ if omarchy-cmd-present voxtype; then
   # Remove services
   systemctl --user stop voxtype.service 2>/dev/null || true
   rm -f ~/.config/systemd/user/voxtype*
+  rm -f ~/.config/systemd/user/*/voxtype.service
   systemctl --user daemon-reload
 
   # Remove packages and configs
