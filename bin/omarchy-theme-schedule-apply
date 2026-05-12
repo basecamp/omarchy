@@ -48,7 +48,16 @@ current_theme=""
 [[ -s "$OMARCHY_CURRENT/theme.name" ]] && current_theme=$(<"$OMARCHY_CURRENT/theme.name")
 
 if [[ -n "$target_theme" && "$target_theme" != "$current_theme" ]]; then
-  OMARCHY_THEME_SCHEDULE_TICK=1 omarchy-theme-set "$target_theme"
+  # If the configured theme has been uninstalled (or renamed), don't let
+  # the failure stop us from regenerating the drop-in below — otherwise
+  # the schedule silently dies. Notify if we can.
+  if ! OMARCHY_THEME_SCHEDULE_TICK=1 omarchy-theme-set "$target_theme"; then
+    echo "omarchy-theme-schedule: $phase theme '$target_theme' could not be applied" >&2
+    command -v notify-send >/dev/null 2>&1 &&
+      notify-send -u critical "Theme schedule" \
+        "$phase theme '$target_theme' is missing — fix with 'omarchy theme schedule enable'" 2>/dev/null ||
+      true
+  fi
 fi
 
 # Refresh timer drop-in for next 48h sun events
@@ -60,8 +69,10 @@ tmp=$(mktemp)
 {
   echo "[Timer]"
   echo "OnCalendar="
+  # Use calendar-day arithmetic, not epoch+86400 — adding 24 h of seconds
+  # skips a calendar day across a spring-forward DST boundary.
   for offset in 0 1; do
-    d=$(date -d "@$((now_epoch + offset * 86400))" +%Y-%m-%d)
+    d=$(date -d "$today +$offset days" +%Y-%m-%d)
     if ! mapfile -t st < <(omarchy-theme-schedule-suncalc "$lat" "$lon" "$d"); then
       continue
     fi
