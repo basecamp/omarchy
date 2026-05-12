@@ -47,17 +47,24 @@ target_theme=$(<"$OMARCHY_CURRENT/theme.$phase")
 current_theme=""
 [[ -s "$OMARCHY_CURRENT/theme.name" ]] && current_theme=$(<"$OMARCHY_CURRENT/theme.name")
 
+notif_flag="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-theme-schedule-missing-notified"
+
 if [[ -n "$target_theme" && "$target_theme" != "$current_theme" ]]; then
   # If the configured theme has been uninstalled (or renamed), don't let
   # the failure stop us from regenerating the drop-in below — otherwise
-  # the schedule silently dies. Notify if we can.
+  # the schedule silently dies. Notify at most once per broken state.
   if ! OMARCHY_THEME_SCHEDULE_TICK=1 omarchy-theme-set "$target_theme"; then
     echo "omarchy-theme-schedule: $phase theme '$target_theme' could not be applied" >&2
-    command -v notify-send >/dev/null 2>&1 &&
+    if [[ ! -f "$notif_flag" ]] && command -v notify-send >/dev/null 2>&1; then
       notify-send -u critical "Theme schedule" \
-        "$phase theme '$target_theme' is missing — fix with 'omarchy theme schedule enable'" 2>/dev/null ||
-      true
+        "$phase theme '$target_theme' is missing — fix with 'omarchy theme schedule enable'" 2>/dev/null || true
+      touch "$notif_flag"
+    fi
+  else
+    rm -f "$notif_flag"
   fi
+else
+  rm -f "$notif_flag"
 fi
 
 # Refresh timer drop-in for next 48h sun events
