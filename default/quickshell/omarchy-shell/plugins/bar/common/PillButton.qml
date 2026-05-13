@@ -11,6 +11,8 @@ Rectangle {
   property color background: "transparent"
   property color hoverBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
   property color pressedBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.22)
+  property color tooltipBackground: "#101315"
+  property color tooltipForeground: foreground
   property string fontFamily: "JetBrainsMono Nerd Font"
   property real fontSize: 12
   property real iconSize: 14
@@ -19,9 +21,31 @@ Rectangle {
   property bool active: false
   property color activeBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18)
 
-  ToolTip.visible: tooltipText !== "" && mouseArea.containsMouse
-  ToolTip.text: tooltipText
-  ToolTip.delay: 400
+  ToolTip {
+    visible: root.tooltipText !== "" && mouseArea.containsMouse
+    text: root.tooltipText
+    delay: 400
+    padding: 0
+
+    background: Rectangle {
+      color: root.tooltipBackground
+      border.color: root.tooltipForeground
+      border.width: 1
+      radius: 0
+      opacity: 0.97
+    }
+
+    contentItem: Text {
+      text: root.tooltipText
+      color: root.tooltipForeground
+      font.family: root.fontFamily
+      font.pixelSize: 11
+      leftPadding: 10
+      rightPadding: 10
+      topPadding: 6
+      bottomPadding: 6
+    }
+  }
 
   signal clicked()
   signal rightClicked()

@@ -102,6 +102,8 @@ Item {
             iconText: "󰂳"
             tooltipText: !root.adapter ? "" : !root.adapter.enabled ? "Bluetooth is off"
               : root.adapter.discovering ? "Stop scanning" : "Scan for devices"
+            tooltipBackground: root.bar.background
+            tooltipForeground: root.bar.foreground
             foreground: root.bar.foreground
             horizontalPadding: 6
             verticalPadding: 4
@@ -115,6 +117,8 @@ Item {
           Common.PillButton {
             iconText: "󱁤"
             tooltipText: "Open Impala (TUI)"
+            tooltipBackground: root.bar.background
+            tooltipForeground: root.bar.foreground
             foreground: root.bar.foreground
             horizontalPadding: 6
             verticalPadding: 4
@@ -126,6 +130,8 @@ Item {
             iconText: root.adapter && root.adapter.enabled ? "󰂯" : "󰂲"
             text: root.adapter && root.adapter.enabled ? "On" : "Off"
             tooltipText: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
+            tooltipBackground: root.bar.background
+            tooltipForeground: root.bar.foreground
             foreground: root.bar.foreground
             horizontalPadding: 10
             verticalPadding: 4
@@ -259,13 +265,36 @@ Item {
 
     Behavior on color { ColorAnimation { duration: 120 } }
 
-    ToolTip.visible: rowMouse.containsMouse && tooltipBody !== ""
-    ToolTip.text: tooltipBody
-    ToolTip.delay: 400
     readonly property string tooltipBody:
       isDiscovered ? "Click to pair and connect"
       : isConnected ? "Click to disconnect · right-click to forget"
       : "Click to connect · right-click to forget"
+
+    ToolTip {
+      visible: rowMouse.containsMouse && row.tooltipBody !== ""
+      text: row.tooltipBody
+      delay: 400
+      padding: 0
+
+      background: Rectangle {
+        color: root.bar.background
+        border.color: root.bar.foreground
+        border.width: 1
+        radius: 0
+        opacity: 0.97
+      }
+
+      contentItem: Text {
+        text: row.tooltipBody
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: 11
+        leftPadding: 10
+        rightPadding: 10
+        topPadding: 6
+        bottomPadding: 6
+      }
+    }
 
     Row {
       id: rowContent
