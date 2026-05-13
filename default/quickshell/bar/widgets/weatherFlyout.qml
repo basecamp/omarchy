@@ -13,7 +13,6 @@ Item {
   property bool popupOpen: false
 
   function closePopout() { popupOpen = false }
-  property var forecast: ({})
   property string fullReport: ""
 
   readonly property string label: bar ? bar.weatherText : ""
@@ -27,21 +26,6 @@ Item {
     if (!forecastProc.running) forecastProc.running = true
   }
 
-  function parseForecast(text) {
-    var lines = String(text || "").split("\n")
-    var data = { location: "", current: "", hourly: [], daily: [] }
-    var section = ""
-
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i]
-      if (i === 0 && line.indexOf("Weather report:") === 0) {
-        data.location = line.replace("Weather report:", "").trim()
-      } else if (line.match(/^[├└]\s/)) {
-        section = "daily"
-      }
-    }
-    return data
-  }
 
   Process {
     id: forecastProc

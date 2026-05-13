@@ -23,31 +23,42 @@ Item {
     return "󰂚"
   }
 
-  NotificationServer {
-    id: server
-    keepOnReload: false
-    bodySupported: true
-    actionsSupported: true
-    imageSupported: true
+  property bool replaceMako: settings && settings.replaceMako === true
 
-    onNotification: function(notification) {
-      if (root.dnd) {
-        notification.expire()
-        return
+  Loader {
+    active: root.replaceMako
+    sourceComponent: serverComponent
+  }
+
+  Component {
+    id: serverComponent
+
+    NotificationServer {
+      id: server
+      keepOnReload: false
+      bodySupported: true
+      actionsSupported: true
+      imageSupported: true
+
+      onNotification: function(notification) {
+        if (root.dnd) {
+          notification.expire()
+          return
+        }
+        notification.tracked = true
+        var snapshot = {
+          id: notification.id,
+          app: notification.appName,
+          summary: notification.summary,
+          body: notification.body,
+          time: new Date(),
+          ref: notification
+        }
+        var next = root.stored.slice()
+        next.unshift(snapshot)
+        if (next.length > 30) next.pop()
+        root.stored = next
       }
-      notification.tracked = true
-      var snapshot = {
-        id: notification.id,
-        app: notification.appName,
-        summary: notification.summary,
-        body: notification.body,
-        time: new Date(),
-        ref: notification
-      }
-      var next = root.stored.slice()
-      next.unshift(snapshot)
-      if (next.length > 30) next.pop()
-      root.stored = next
     }
   }
 

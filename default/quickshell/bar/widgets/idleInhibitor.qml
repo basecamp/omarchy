@@ -11,7 +11,6 @@ Item {
   property var settings: ({})
 
   property bool active: false
-  property int holdSeconds: 0
 
   readonly property string icon: active ? "󰛊" : "󰾪"
 
