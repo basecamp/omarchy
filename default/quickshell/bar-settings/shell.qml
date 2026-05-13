@@ -99,44 +99,29 @@ ShellRoot {
     draftRevision++
   }
 
-  function deepEqual(a, b) {
-    return JSON.stringify(a) === JSON.stringify(b)
-  }
-
-  function diffAgainstDefaults() {
-    var defaults = mergeConfig(
-      { position: "top", centerAnchor: "", fontFamily: "JetBrainsMono Nerd Font", layout: { left: [], center: [], right: [] } },
-      defaultConfig
-    )
-    var override = {}
-    if (!deepEqual(draft.position, defaults.position)) override.position = draft.position
-    if (!deepEqual(draft.centerAnchor, defaults.centerAnchor)) override.centerAnchor = draft.centerAnchor
-    if (!deepEqual(draft.fontFamily, defaults.fontFamily)) override.fontFamily = draft.fontFamily
-
-    var defaultLayout = normalizeLayout(defaults.layout || {})
-    var layoutDiff = {}
-    var hasLayoutDiff = false
-    var sections = ["left", "center", "right"]
-    for (var i = 0; i < sections.length; i++) {
-      var s = sections[i]
-      if (!deepEqual(draft.layout[s], defaultLayout[s])) {
-        layoutDiff[s] = draft.layout[s]
-        hasLayoutDiff = true
-      }
-    }
-    if (hasLayoutDiff) override.layout = layoutDiff
-    return override
-  }
-
   function saveConfig() {
-    var override = diffAgainstDefaults()
-    userFile.setText(JSON.stringify(override, null, 2) + "\n")
+    // Persist the full picture rather than a diff so what the user sees in the
+    // GUI is what lives in bar.json. This means Omarchy defaults changes won't
+    // propagate after a user has saved at least once, which is the right
+    // tradeoff for a customizer: predictable layouts > silent migrations.
+    userFile.setText(JSON.stringify(draft, null, 2) + "\n")
     dirty = false
   }
 
   function resetToDefaults() {
-    userFile.setText("{}\n")
-    loadConfig()
+    // Write the merged defaults explicitly so the GUI and bar.json agree on
+    // the full widget list. Adding/removing afterwards operates on that
+    // explicit list rather than on an implicit fallback that the diff would
+    // unintentionally collapse on the next save.
+    var fallback = { position: "top", centerAnchor: "", fontFamily: "JetBrainsMono Nerd Font", layout: { left: [], center: [], right: [] } }
+    var defaults = mergeConfig(fallback, defaultConfig)
+    var payload = {
+      position: String(defaults.position || "top"),
+      centerAnchor: String(defaults.centerAnchor || ""),
+      fontFamily: String(defaults.fontFamily || "JetBrainsMono Nerd Font"),
+      layout: normalizeLayout(defaults.layout || {})
+    }
+    userFile.setText(JSON.stringify(payload, null, 2) + "\n")
   }
 
   function markDirty() {
