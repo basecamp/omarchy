@@ -19,7 +19,8 @@ Usage:
 Measure the Omarchy menu startup path:
 - static JSONC menu parsing
 - Quickshell socket startup
-- full open/close roundtrip (unless --no-ui)
+- cold open/close roundtrip (unless --no-ui)
+- warm open/close roundtrip against the resident Quickshell process
 
 Options:
   --repeat=<count>  Number of UI open/close runs to measure (default: 5)
@@ -83,7 +84,15 @@ menu_qml() {
 
 kill_menu_shell() {
   quickshell kill -p "$(menu_qml)" >/dev/null 2>&1 || true
-  rm -f "$(socket_path)"
+
+  for (( i = 0; i < 200; i++ )); do
+    if ! pgrep -f "[q]uickshell .*$(menu_qml)" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.01
+  done
+
+  rm -f "$(socket_path)" "${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-menu.state" "${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-menu.lock"
 }
 
 build_menu_json() {
@@ -92,8 +101,24 @@ build_menu_json() {
 }
 
 start_quickshell_socket() {
+  local menu_file
+  local selection_file
+  local done_file
+
   kill_menu_shell
-  quickshell -d -p "$(menu_qml)" >/dev/null
+  menu_file=$(mktemp)
+  selection_file=$(mktemp)
+  done_file=$(mktemp)
+  printf '{"items":[]}' >"$menu_file"
+  rm -f "$done_file"
+
+  env \
+    OMARCHY_PATH="$OMARCHY_PATH" \
+    OMARCHY_MENU_JSON_FILE="$menu_file" \
+    OMARCHY_MENU_INITIAL_MENU="root" \
+    OMARCHY_MENU_SELECTION_FILE="$selection_file" \
+    OMARCHY_MENU_DONE_FILE="$done_file" \
+    quickshell -n -d -p "$(menu_qml)" >/dev/null
 
   for (( i = 0; i < 200; i++ )); do
     [[ -S $(socket_path) ]] && break
@@ -102,6 +127,7 @@ start_quickshell_socket() {
 
   [[ -S $(socket_path) ]]
   kill_menu_shell
+  rm -f "$menu_file" "$selection_file" "$done_file"
 }
 
 menu_layer_visible() {
@@ -111,7 +137,6 @@ menu_layer_visible() {
 open_close_menu() {
   local pid
 
-  kill_menu_shell
   env OMARCHY_PATH="$OMARCHY_PATH" PATH="$OMARCHY_BIN_DIR:$PATH" \
     "$OMARCHY_BIN_DIR/omarchy-menu" >/dev/null &
   pid=$!
@@ -129,7 +154,7 @@ open_close_menu() {
     return 1
   fi
 
-  printf '\t\t\t\t\n' | socat -u - "UNIX-CONNECT:$(socket_path)" >/dev/null 2>&1 || true
+  printf 'close\n' | socat -u - "UNIX-CONNECT:$(socket_path)" >/dev/null 2>&1 || true
 
   for (( i = 0; i < 500; i++ )); do
     if ! kill -0 "$pid" 2>/dev/null; then
@@ -145,7 +170,16 @@ open_close_menu() {
   fi
 
   wait "$pid" || true
+}
+
+cold_open_close_menu() {
   kill_menu_shell
+  open_close_menu
+  kill_menu_shell
+}
+
+warm_open_close_menu() {
+  open_close_menu
 }
 
 while (( $# > 0 )); do
@@ -184,7 +218,10 @@ run_case "menu JSON build" build_menu_json
 if [[ $NO_UI != true ]]; then
   if omarchy-cmd-present quickshell socat hyprctl jq && [[ -n ${WAYLAND_DISPLAY:-} ]]; then
     printf '%-34s %s ms\n' "quickshell socket startup" "$(format_ms "$(measure_once start_quickshell_socket)")"
-    run_case "open/close" open_close_menu
+    run_case "cold open/close" cold_open_close_menu
+    kill_menu_shell
+    open_close_menu >/dev/null
+    run_case "warm open/close" warm_open_close_menu
   else
     printf 'Skipping UI cases: quickshell/socat/hyprctl/jq/Wayland unavailable\n'
   fi

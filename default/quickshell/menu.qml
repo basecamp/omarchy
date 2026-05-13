@@ -500,21 +500,16 @@ ShellRoot {
     filterText = ""
   }
 
-  function openMenu(menuJson, initialMenu, nextSelectionFile, nextDoneFile, colorsRaw) {
+  function openExistingMenu(initialMenu, nextSelectionFile, nextDoneFile) {
     requestSerial += 1
 
     if (requestActive && doneFile && doneFile !== nextDoneFile) finishDoneFile(doneFile)
-
-    loadMenuJson(menuJson)
-    if (colorsRaw) loadColors(colorsRaw)
 
     selectionFile = nextSelectionFile
     doneFile = nextDoneFile
     requestActive = !!doneFile
     activeMenu = root.item(initialMenu) ? initialMenu : "root"
     navStack = []
-    providersLoaded = ({})
-    providerQueue = []
     filterText = ""
     selectedIndex = 0
     opened = true
@@ -522,6 +517,14 @@ ShellRoot {
     loadProviderForMenu(activeMenu)
 
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function openMenu(menuJson, initialMenu, nextSelectionFile, nextDoneFile, colorsRaw) {
+    loadMenuJson(menuJson)
+    if (colorsRaw) loadColors(colorsRaw)
+    providersLoaded = ({})
+    providerQueue = []
+    openExistingMenu(initialMenu, nextSelectionFile, nextDoneFile)
   }
 
   function loadColors(raw) {
@@ -568,7 +571,11 @@ ShellRoot {
       parser: SplitParser {
         onRead: function(message) {
           var fields = message.split("\t")
-          root.closeMenu(fields[3] || "")
+          if (fields[0] === "open") {
+            root.openExistingMenu(fields[1] || "root", fields[2] || "", fields[3] || "")
+          } else {
+            root.closeMenu(fields[3] || "")
+          }
           clientSocket.connected = false
         }
       }

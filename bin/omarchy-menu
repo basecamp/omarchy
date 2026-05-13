@@ -773,12 +773,30 @@ menu_qml_path() {
   printf '%s/default/quickshell/menu.qml' "$OMARCHY_PATH"
 }
 
+menu_definition_newer_than_socket() {
+  local socket_path
+  socket_path=$(menu_socket_path)
+
+  [[ -f $DEFAULT_MENU && $DEFAULT_MENU -nt $socket_path ]] || [[ -f $USER_MENU && $USER_MENU -nt $socket_path ]]
+}
+
 request_close_quickshell_menu() {
   local socket_path
   socket_path=$(menu_socket_path)
 
   [[ -S $socket_path ]] || return 1
-  printf '\t\t\t\t\n' | socat -u - "UNIX-CONNECT:$socket_path" >/dev/null 2>&1
+  printf 'close\n' | socat -u - "UNIX-CONNECT:$socket_path" >/dev/null 2>&1
+}
+
+request_open_quickshell_menu() {
+  local initial_menu="$1"
+  local selection_file="$2"
+  local done_file="$3"
+  local socket_path
+  socket_path=$(menu_socket_path)
+
+  [[ -S $socket_path ]] || return 1
+  printf 'open\t%s\t%s\t%s\n' "$initial_menu" "$selection_file" "$done_file" | socat -u - "UNIX-CONNECT:$socket_path" >/dev/null 2>&1
 }
 
 close_visible_quickshell_menu() {
@@ -834,7 +852,7 @@ open_quickshell_menu() {
   local colors_file="$HOME/.config/omarchy/current/theme/menu.json"
   local colors_payload=""
   local font_family
-  local menu_file
+  local menu_file=""
   local selection_file
   local done_file
   local socket_path
@@ -863,7 +881,26 @@ open_quickshell_menu() {
   ensure_menu_style_file
 
   socket_path=$(menu_socket_path)
+  selection_file=$(mktemp)
+  done_file=$(mktemp)
+  rm -f "$done_file"
+  printf '%s\t%s\n' "$$" "$done_file" >"$state_path"
+  trap "rm -f $(shell_quote "$selection_file") $(shell_quote "$done_file") $(shell_quote "$state_path")" EXIT
+
   if [[ -S $socket_path ]] && ! menu_layer_visible; then
+    if ! menu_definition_newer_than_socket && request_open_quickshell_menu "$initial_menu" "$selection_file" "$done_file"; then
+      while [[ ! -e $done_file ]]; do
+        [[ -S $socket_path ]] || break
+        sleep 0.01
+      done
+
+      if [[ -s $selection_file ]]; then
+        IFS=$'\t' read -r selected_id selected_action <"$selection_file"
+        run_action "$selected_id" "$selected_action"
+      fi
+      return
+    fi
+
     quickshell kill -p "$(menu_qml_path)" >/dev/null 2>&1 || true
     rm -f "$socket_path"
   fi
@@ -887,11 +924,7 @@ open_quickshell_menu() {
   font_family=${font_family:-monospace}
 
   menu_file=$(mktemp)
-  selection_file=$(mktemp)
-  done_file=$(mktemp)
   printf '%s' "$menu_payload" >"$menu_file"
-  rm -f "$done_file"
-  printf '%s\t%s\n' "$$" "$done_file" >"$state_path"
   trap "rm -f $(shell_quote "$menu_file") $(shell_quote "$selection_file") $(shell_quote "$done_file") $(shell_quote "$state_path")" EXIT
 
   env \
@@ -903,7 +936,7 @@ open_quickshell_menu() {
     OMARCHY_MENU_DONE_FILE="$done_file" \
     OMARCHY_MENU_COLORS_RAW="$colors_payload" \
     OMARCHY_MENU_FONT="$font_family" \
-    quickshell -n -d -p "$(menu_qml_path)" >/dev/null
+    quickshell -n -d -p "$(menu_qml_path)" >/dev/null {lock_fd}>&-
 
   for (( i = 0; i < 500; i++ )); do
     if [[ -e $done_file ]] || { [[ -S $socket_path ]] && menu_layer_visible; }; then
@@ -921,14 +954,9 @@ open_quickshell_menu() {
   fi
 
   while [[ ! -e $done_file ]]; do
-    if [[ ! -S $socket_path ]] || ! menu_layer_visible; then
-      break
-    fi
+    [[ -S $socket_path ]] || break
     sleep 0.01
   done
-
-  quickshell kill -p "$(menu_qml_path)" >/dev/null 2>&1 || true
-  rm -f "$socket_path"
 
   if [[ -s $selection_file ]]; then
     IFS=$'\t' read -r selected_id selected_action <"$selection_file"
