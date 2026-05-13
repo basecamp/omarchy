@@ -265,58 +265,97 @@ Item {
 
     Behavior on color { ColorAnimation { duration: 120 } }
 
-    readonly property string tooltipBody:
-      isDiscovered ? "Click to pair and connect"
-      : isConnected ? "Click to disconnect · right-click to forget"
-      : "Click to connect · right-click to forget"
-
-    ToolTip {
-      visible: rowMouse.containsMouse && row.tooltipBody !== ""
-      text: row.tooltipBody
-      delay: 400
-      padding: 0
-
-      background: Rectangle {
-        color: root.bar.background
-        border.color: root.bar.foreground
-        border.width: 1
-        radius: 0
-        opacity: 0.97
-      }
-
-      contentItem: Text {
-        text: row.tooltipBody
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: 11
-        leftPadding: 10
-        rightPadding: 10
-        topPadding: 6
-        bottomPadding: 6
-      }
-    }
-
-    Row {
+    Item {
       id: rowContent
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
       anchors.leftMargin: 10
       anchors.rightMargin: 10
-      spacing: 10
+      implicitHeight: Math.max(icon.implicitHeight, info.implicitHeight, disconnectBtn.implicitHeight)
 
       Text {
+        id: icon
         text: row.isConnected ? "󰂱" : "󰂯"
         color: row.statusColor
         font.family: root.bar.fontFamily
         font.pixelSize: 16
+        anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      Column {
-        spacing: 1
+      // Explicit disconnect/close button on connected rows. Stops the row's
+      // own click handler from firing.
+      Rectangle {
+        id: disconnectBtn
+        anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        width: parent.width - parent.children[0].width - parent.spacing
+        width: 22
+        height: 22
+        radius: 4
+        visible: row.isConnected
+        color: disconnectMouse.containsMouse
+          ? Qt.rgba(root.bar.urgent.r, root.bar.urgent.g, root.bar.urgent.b, 0.20)
+          : "transparent"
+
+        Behavior on color { ColorAnimation { duration: 120 } }
+
+        Text {
+          anchors.centerIn: parent
+          text: "󰅙"
+          color: disconnectMouse.containsMouse ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.3)
+          font.family: root.bar.fontFamily
+          font.pixelSize: 14
+        }
+
+        MouseArea {
+          id: disconnectMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          acceptedButtons: Qt.LeftButton
+
+          onClicked: {
+            if (!row.dev) return
+            row.pendingAction = 2
+            failureTimer.stop()
+            row.dev.disconnect()
+          }
+        }
+
+        ToolTip {
+          visible: disconnectMouse.containsMouse
+          text: "Disconnect"
+          delay: 400
+          padding: 0
+          background: Rectangle {
+            color: root.bar.background
+            border.color: root.bar.foreground
+            border.width: 1
+            radius: 0
+            opacity: 0.97
+          }
+          contentItem: Text {
+            text: "Disconnect"
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: 11
+            leftPadding: 10
+            rightPadding: 10
+            topPadding: 6
+            bottomPadding: 6
+          }
+        }
+      }
+
+      Column {
+        id: info
+        spacing: 1
+        anchors.left: icon.right
+        anchors.leftMargin: 10
+        anchors.right: row.isConnected ? disconnectBtn.left : parent.right
+        anchors.rightMargin: row.isConnected ? 8 : 0
+        anchors.verticalCenter: parent.verticalCenter
 
         Text {
           text: row.dev ? (row.dev.deviceName || row.dev.name || row.dev.address || "Device") : ""
@@ -358,16 +397,11 @@ Item {
           row.dev.pair()
           return
         }
-        if (row.isConnected) {
-          row.pendingAction = 2
-          failureTimer.stop()
-          row.dev.disconnect()
-        } else {
-          row.pendingAction = 1
-          row.failureReason = ""
-          failureTimer.restart()
-          row.dev.connect()
-        }
+        if (row.isConnected) return  // use the X button to disconnect
+        row.pendingAction = 1
+        row.failureReason = ""
+        failureTimer.restart()
+        row.dev.connect()
       }
     }
   }
