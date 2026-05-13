@@ -11,13 +11,13 @@ PopupWindow {
   property int padding: 14
   property int contentWidth: 280
   property int contentHeight: 200
-  property bool dismissOnOutsideClick: true
   property bool open: false
 
-  onOpenChanged: {
-    if (!bar) return
-    if (open) bar.requestPopout(owner || root)
-    else if (bar.activePopout === (owner || root)) bar.releasePopout(owner || root)
+  readonly property var coordinatorKey: owner || root
+
+  function closePopout() {
+    if (owner && "closePopout" in owner) owner.closePopout()
+    else root.open = false
   }
 
   default property alias contentItem: contentHolder.children
@@ -26,6 +26,12 @@ PopupWindow {
   color: "transparent"
   implicitWidth: contentWidth
   implicitHeight: contentHeight
+
+  onOpenChanged: {
+    if (!bar) return
+    if (open) bar.requestPopout(coordinatorKey)
+    else if (bar.activePopout === coordinatorKey) bar.releasePopout(coordinatorKey)
+  }
 
   anchor {
     id: popupAnchor
@@ -71,7 +77,7 @@ PopupWindow {
     border.color: root.bar ? root.bar.foreground : "#cacccc"
     border.width: 1
     radius: 0
-    opacity: root.open ? 0.97 : 0
+    opacity: root.open ? 0.98 : 0
 
     Behavior on opacity {
       NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
@@ -81,13 +87,6 @@ PopupWindow {
       id: contentHolder
       anchors.fill: parent
       anchors.margins: root.padding
-    }
-
-    MouseArea {
-      anchors.fill: parent
-      acceptedButtons: Qt.NoButton
-      hoverEnabled: false
-      propagateComposedEvents: true
     }
   }
 }

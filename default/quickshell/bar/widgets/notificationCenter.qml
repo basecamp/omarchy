@@ -20,7 +20,7 @@ Item {
   readonly property string icon: {
     if (dnd) return "󰂛"
     if (count > 0) return "󱅫"
-    return ""
+    return "󰂚"
   }
 
   NotificationServer {
@@ -131,7 +131,7 @@ Item {
         }
 
         Common.PillButton {
-          iconText: ""
+          iconText: "󰎟"
           foreground: root.bar.foreground
           horizontalPadding: 8
           verticalPadding: 4
@@ -196,7 +196,7 @@ Item {
 
                   Common.PillButton {
                     id: dismissBtn
-                    iconText: ""
+                    iconText: "󰅖"
                     foreground: root.bar.foreground
                     horizontalPadding: 4
                     verticalPadding: 0

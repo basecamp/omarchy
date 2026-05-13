@@ -1104,11 +1104,20 @@ ShellRoot {
       active: slot.qmlCustom || slot.firstParty
       source: slot.qmlCustom ? root.customModuleSource(slot.moduleName) : (slot.firstParty ? slot.firstPartySource : "")
       anchors.fill: parent
-      onLoaded: {
-        if (item && "bar" in item) item.bar = root
-        if (item && "moduleName" in item) item.moduleName = slot.moduleName
-        if (item && "settings" in item) item.settings = root.moduleSettings(slot.moduleName)
-      }
+      onLoaded: slot.injectProps()
+    }
+
+    function injectProps() {
+      var target = qmlLoader.item
+      if (!target) return
+      if ("bar" in target) target.bar = root
+      if ("moduleName" in target) target.moduleName = moduleName
+      if ("settings" in target) target.settings = root.moduleSettings(moduleName)
+    }
+
+    Connections {
+      target: root
+      function onBarConfigSerialChanged() { slot.injectProps() }
     }
 
     Component {

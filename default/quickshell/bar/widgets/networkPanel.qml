@@ -149,7 +149,7 @@ Item {
         }
 
         Common.PillButton {
-          iconText: ""
+          iconText: "󰑐"
           foreground: root.bar.foreground
           horizontalPadding: 8
           verticalPadding: 4
@@ -205,7 +205,7 @@ Item {
 
       Common.PillButton {
         width: parent.width
-        iconText: ""
+        iconText: "󰖩"
         text: "Open Wi-Fi manager"
         foreground: root.bar.foreground
         horizontalPadding: 10

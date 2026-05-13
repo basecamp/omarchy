@@ -35,11 +35,29 @@ Item {
     if (!readProc.running) readProc.running = true
   }
 
+  property int pendingPercent: -1
+
   function setBrightness(percent) {
     var clamped = Math.max(1, Math.min(100, Math.round(percent)))
     currentPercent = clamped
-    writeProc.command = ["bash", "-lc", "brightnessctl set " + clamped + "% >/dev/null"]
-    writeProc.running = true
+    pendingPercent = clamped
+    writeTimer.restart()
+  }
+
+  Timer {
+    id: writeTimer
+    interval: 60
+    repeat: false
+    onTriggered: {
+      if (writeProc.running) {
+        writeTimer.restart()
+        return
+      }
+      if (pendingPercent < 0) return
+      writeProc.command = ["bash", "-lc", "brightnessctl set " + pendingPercent + "% >/dev/null"]
+      pendingPercent = -1
+      writeProc.running = true
+    }
   }
 
   Component.onCompleted: refresh()

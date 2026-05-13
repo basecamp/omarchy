@@ -25,7 +25,7 @@ Item {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "⏻"
+    text: "󰐥"
     fontSize: 14
     tooltipText: "Power menu"
     onPressed: function() { root.popupOpen = !root.popupOpen }
@@ -54,7 +54,7 @@ Item {
 
       Common.PillButton {
         width: parent.width
-        iconText: ""
+        iconText: "󰌾"
         text: "Lock"
         foreground: root.bar.foreground
         horizontalPadding: 10
@@ -74,7 +74,7 @@ Item {
 
       Common.PillButton {
         width: parent.width
-        iconText: ""
+        iconText: "󰍃"
         text: "Log out"
         foreground: root.bar.foreground
         horizontalPadding: 10
@@ -84,7 +84,7 @@ Item {
 
       Common.PillButton {
         width: parent.width
-        iconText: ""
+        iconText: "󰜉"
         text: "Reboot"
         foreground: root.bar.foreground
         horizontalPadding: 10
@@ -94,7 +94,7 @@ Item {
 
       Common.PillButton {
         width: parent.width
-        iconText: ""
+        iconText: "󰐥"
         text: "Shut down"
         foreground: root.bar.urgent
         horizontalPadding: 10

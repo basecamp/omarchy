@@ -4,8 +4,8 @@
   "centerAnchor": "calendar",
   "layout": {
     "left": ["omarchy", "workspacesPro"],
-    "center": ["media", "calendar", "weatherFlyout", "update", "voxtype", "screenRecording", "idle"],
-    "right": ["tray", "systemStats", "notificationCenter", "microphone", "bluetoothPanel", "networkPanel", "audioPanel", "brightness", "powerProfile", "battery", "powerMenu"]
+    "center": ["media", "calendar", "weatherFlyout", "update", "voxtype", "screenRecording", "idle", "notifications"],
+    "right": ["tray", "systemStats", "microphone", "bluetoothPanel", "networkPanel", "audioPanel", "brightness", "powerProfile", "battery", "powerMenu"]
   },
   "modules": {
     "calendar": {

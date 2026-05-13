@@ -120,7 +120,7 @@ Item {
 
       Common.PillButton {
         width: parent.width
-        iconText: ""
+        iconText: "󰑐"
         text: "Refresh"
         foreground: root.bar.foreground
         horizontalPadding: 10
@@ -130,7 +130,7 @@ Item {
 
       Common.PillButton {
         width: parent.width
-        iconText: ""
+        iconText: "󰏌"
         text: "Open wttr.in"
         foreground: root.bar.foreground
         horizontalPadding: 10

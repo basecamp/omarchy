@@ -68,6 +68,7 @@ Item {
     id: popup
     anchorItem: button
     bar: root.bar
+    owner: root
     open: root.popupOpen
     contentWidth: 300
     contentHeight: header.implicitHeight + grid.implicitHeight + 36
@@ -85,7 +86,7 @@ Item {
           id: prevButton
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
-          iconText: ""
+          iconText: "󰅁"
           foreground: root.bar.foreground
           horizontalPadding: 8
           verticalPadding: 4
@@ -105,7 +106,7 @@ Item {
           id: nextButton
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          iconText: ""
+          iconText: "󰅂"
           foreground: root.bar.foreground
           horizontalPadding: 8
           verticalPadding: 4

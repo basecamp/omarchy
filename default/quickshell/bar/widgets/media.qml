@@ -28,7 +28,7 @@ Item {
   }
 
   readonly property bool hasMedia: activePlayer !== null && (activePlayer.trackTitle || activePlayer.trackArtist)
-  readonly property string playIcon: activePlayer && activePlayer.isPlaying ? "" : ""
+  readonly property string playIcon: activePlayer && activePlayer.isPlaying ? "󰏤" : "󰐊"
   readonly property string title: activePlayer ? (activePlayer.trackTitle || "") : ""
   readonly property string artist: activePlayer ? (activePlayer.trackArtist || "") : ""
 
@@ -118,6 +118,7 @@ Item {
     id: popup
     anchorItem: root
     bar: root.bar
+    owner: root
     open: root.popupOpen
     contentWidth: 320
     contentHeight: column.implicitHeight + 28
@@ -151,7 +152,7 @@ Item {
           Text {
             anchors.centerIn: parent
             visible: !root.activePlayer || !root.activePlayer.trackArtUrl
-            text: ""
+            text: "󰝚"
             color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: 28
@@ -199,7 +200,7 @@ Item {
         spacing: 6
 
         Common.PillButton {
-          iconText: ""
+          iconText: "󰒮"
           foreground: root.bar.foreground
           horizontalPadding: 10
           verticalPadding: 6
@@ -209,7 +210,7 @@ Item {
         }
 
         Common.PillButton {
-          iconText: root.activePlayer && root.activePlayer.isPlaying ? "" : ""
+          iconText: root.activePlayer && root.activePlayer.isPlaying ? "󰏤" : "󰐊"
           foreground: root.bar.foreground
           horizontalPadding: 14
           verticalPadding: 6
@@ -220,7 +221,7 @@ Item {
         }
 
         Common.PillButton {
-          iconText: ""
+          iconText: "󰒭"
           foreground: root.bar.foreground
           horizontalPadding: 10
           verticalPadding: 6
