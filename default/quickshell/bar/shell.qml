@@ -274,7 +274,12 @@ ShellRoot {
     "powerMenu": true,
     "idleInhibitor": true,
     "microphone": true,
-    "notificationCenter": true
+    "notificationCenter": true,
+    "activeWindow": true,
+    "nightLight": true,
+    "keyboardLayout": true,
+    "lockKeys": true,
+    "spacer": true
   })
 
   function firstPartyWidgetSource(name) {
