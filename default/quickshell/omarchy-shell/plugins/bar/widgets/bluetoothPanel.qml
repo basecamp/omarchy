@@ -74,42 +74,63 @@ Item {
     Column {
       id: column
       anchors.fill: parent
-      spacing: 8
+      spacing: 10
 
-      Row {
+      // Header: title left, on/off toggle right.
+      Item {
         width: parent.width
-        spacing: 8
+        height: titleText.implicitHeight
 
         Text {
+          id: titleText
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
           text: "Bluetooth"
           color: root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: 13
           font.bold: true
-          anchors.verticalCenter: parent.verticalCenter
         }
 
-        Item { width: parent.width - 200; height: 1 }
-
         Common.PillButton {
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
           iconText: root.adapter && root.adapter.enabled ? "󰂯" : "󰂲"
           text: root.adapter && root.adapter.enabled ? "On" : "Off"
           foreground: root.bar.foreground
-          horizontalPadding: 8
+          horizontalPadding: 10
           verticalPadding: 4
           active: root.adapter && root.adapter.enabled
           onClicked: if (root.adapter) root.adapter.enabled = !root.adapter.enabled
         }
+      }
+
+      // Action row: scan toggle and TUI launcher.
+      Row {
+        width: parent.width
+        spacing: 8
 
         Common.PillButton {
+          width: (parent.width - parent.spacing) / 2
           iconText: "󰂳"
+          text: root.adapter && root.adapter.discovering ? "Scanning…" : "Scan"
           foreground: root.bar.foreground
-          horizontalPadding: 8
-          verticalPadding: 4
+          horizontalPadding: 10
+          verticalPadding: 6
           enabled: root.adapter !== null && root.adapter.enabled
           opacity: enabled ? 1 : 0.4
           active: root.adapter && root.adapter.discovering
           onClicked: if (root.adapter) root.adapter.discovering = !root.adapter.discovering
+        }
+
+        Common.PillButton {
+          width: (parent.width - parent.spacing) / 2
+          iconText: "󱁤"
+          text: "Manage…"
+          foreground: root.bar.foreground
+          horizontalPadding: 10
+          verticalPadding: 6
+          onClicked: { root.bar.run("omarchy-launch-bluetooth"); root.popupOpen = false }
         }
       }
 
@@ -142,10 +163,15 @@ Item {
 
       Text {
         visible: root.knownDevices.length === 0
-        text: root.adapter && root.adapter.enabled ? "Scanning for devices…" : "Turn Bluetooth on to scan"
+        text: !root.adapter ? "No Bluetooth adapter"
+            : !root.adapter.enabled ? "Turn Bluetooth on to scan"
+            : root.adapter.discovering ? "Scanning for devices…"
+            : "No paired devices. Hit Scan to find new ones."
         color: Qt.darker(root.bar.foreground, 1.5)
         font.family: root.bar.fontFamily
         font.pixelSize: 11
+        wrapMode: Text.WordWrap
+        width: parent.width
       }
     }
   }
