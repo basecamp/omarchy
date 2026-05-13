@@ -21,22 +21,21 @@ ShellRoot {
     fontFamily: "JetBrainsMono Nerd Font",
     centerAnchor: "clock",
     layout: {
-      left: ["omarchy", "workspaces"],
-      center: ["clock", "weather", "update", "voxtype", "screenRecording", "idle", "notifications"],
-      right: ["tray", "bluetooth", "network", "audio", "cpu", "battery"]
-    },
-    modules: {
-      clock: {
-        format: "dddd HH:mm",
-        formatAlt: "dd MMMM 'W'ww yyyy",
-        verticalFormat: "HH\n—\nmm"
-      }
+      left: [{ id: "omarchy" }, { id: "workspaces" }],
+      center: [
+        { id: "clock", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n—\nmm" },
+        { id: "weather" }, { id: "update" }, { id: "voxtype" },
+        { id: "screenRecording" }, { id: "idle" }, { id: "notifications" }
+      ],
+      right: [
+        { id: "tray" }, { id: "bluetooth" }, { id: "network" },
+        { id: "audio" }, { id: "cpu" }, { id: "battery" }
+      ]
     }
   })
   property var defaultBarConfig: builtinBarConfig
   property var userBarConfig: ({})
   property var layoutConfig: builtinBarConfig.layout
-  property var moduleConfig: builtinBarConfig.modules
   property string centerAnchor: "clock"
   property int barConfigSerial: 0
   property string position: "top"
@@ -145,14 +144,38 @@ ShellRoot {
     }
   }
 
+  function normalizeLayoutEntry(entry) {
+    if (typeof entry === "string") return { id: entry }
+    if (isPlainObject(entry) && entry.id) return entry
+    return null
+  }
+
+  function normalizeLayoutSection(list) {
+    if (!Array.isArray(list)) return []
+    var result = []
+    for (var i = 0; i < list.length; i++) {
+      var normalized = normalizeLayoutEntry(list[i])
+      if (normalized) result.push(normalized)
+    }
+    return result
+  }
+
+  function normalizeLayout(layout) {
+    if (!isPlainObject(layout)) layout = builtinBarConfig.layout
+    return {
+      left: normalizeLayoutSection(layout.left),
+      center: normalizeLayoutSection(layout.center),
+      right: normalizeLayoutSection(layout.right)
+    }
+  }
+
   function applyBarConfig() {
     var config = mergeConfig(defaultBarConfig, userBarConfig)
 
     position = normalizePosition(config.position)
     fontFamily = String(config.fontFamily || "JetBrainsMono Nerd Font")
     centerAnchor = String(config.centerAnchor || "clock")
-    layoutConfig = isPlainObject(config.layout) ? config.layout : builtinBarConfig.layout
-    moduleConfig = isPlainObject(config.modules) ? config.modules : {}
+    layoutConfig = normalizeLayout(config.layout)
     barConfigSerial++
   }
 
@@ -166,42 +189,53 @@ ShellRoot {
     applyBarConfig()
   }
 
-  function layoutModules(region) {
+  function layoutEntries(region) {
     var serial = barConfigSerial
-    var modules = layoutConfig ? layoutConfig[region] : null
-    return Array.isArray(modules) ? modules : []
+    var entries = layoutConfig ? layoutConfig[region] : null
+    return Array.isArray(entries) ? entries : []
   }
 
-  function moduleSettings(name) {
-    var serial = barConfigSerial
-    var settings = moduleConfig ? moduleConfig[String(name)] : null
-    return isPlainObject(settings) ? settings : {}
+  function entrySettings(entry) {
+    if (!isPlainObject(entry)) return {}
+    var copy = {}
+    for (var key in entry) {
+      if (key === "id") continue
+      copy[key] = entry[key]
+    }
+    return copy
   }
 
-  function moduleString(name, key, fallback) {
-    var value = moduleSettings(name)[key]
+  function entryId(entry) {
+    if (typeof entry === "string") return entry
+    if (isPlainObject(entry) && entry.id) return String(entry.id)
+    return ""
+  }
+
+  function moduleString(entry, key, fallback) {
+    var settings = entrySettings(entry)
+    var value = settings[key]
     return value === undefined || value === null ? fallback : String(value)
   }
 
-  function moduleIndex(modules, name) {
-    if (!Array.isArray(modules)) return -1
+  function entryIndex(entries, name) {
+    if (!Array.isArray(entries)) return -1
 
-    for (var i = 0; i < modules.length; i++) {
-      if (String(modules[i]) === name)
+    for (var i = 0; i < entries.length; i++) {
+      if (entryId(entries[i]) === name)
         return i
     }
 
     return -1
   }
 
-  function modulesBefore(modules, name) {
-    var index = moduleIndex(modules, name)
-    return index <= 0 ? [] : modules.slice(0, index)
+  function entriesBefore(entries, name) {
+    var index = entryIndex(entries, name)
+    return index <= 0 ? [] : entries.slice(0, index)
   }
 
-  function modulesAfter(modules, name) {
-    var index = moduleIndex(modules, name)
-    return index === -1 ? [] : modules.slice(index + 1)
+  function entriesAfter(entries, name) {
+    var index = entryIndex(entries, name)
+    return index === -1 ? [] : entries.slice(index + 1)
   }
 
   function builtinModuleComponent(name) {
@@ -241,8 +275,8 @@ ShellRoot {
     return value !== "" && value.indexOf("..") === -1 && value[0] !== "/"
   }
 
-  function customModuleType(name) {
-    var settings = moduleSettings(name)
+  function customModuleType(entry) {
+    var settings = entrySettings(entry)
     var type = String(settings.type || "")
     if (type) return type
     if (settings.exec) return "command"
@@ -250,8 +284,9 @@ ShellRoot {
     return ""
   }
 
-  function customModuleSource(name) {
-    var settings = moduleSettings(name)
+  function customModuleSource(entry) {
+    var settings = entrySettings(entry)
+    var name = entryId(entry)
     var source = settings.source ? expandPath(settings.source) : ""
     if (!source && customModuleSafeName(name))
       source = omarchyConfigDir + "/bar/modules/" + String(name) + ".qml"
@@ -601,14 +636,26 @@ ShellRoot {
     root.run("hyprctl dispatch " + shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
   }
 
+  function clockEntry() {
+    var serial = barConfigSerial
+    var sections = ["left", "center", "right"]
+    for (var i = 0; i < sections.length; i++) {
+      var entries = layoutEntries(sections[i])
+      var idx = entryIndex(entries, "clock")
+      if (idx !== -1) return entries[idx]
+    }
+    return null
+  }
+
   function clockText() {
+    var entry = clockEntry()
     if (clockAlt)
-      return Qt.formatDateTime(systemClock.date, moduleString("clock", "formatAlt", "dd MMMM 'W'ww yyyy"))
+      return Qt.formatDateTime(systemClock.date, moduleString(entry, "formatAlt", "dd MMMM 'W'ww yyyy"))
 
     if (vertical)
-      return Qt.formatDateTime(systemClock.date, moduleString("clock", "verticalFormat", "HH\n—\nmm"))
+      return Qt.formatDateTime(systemClock.date, moduleString(entry, "verticalFormat", "HH\n—\nmm"))
 
-    return Qt.formatDateTime(systemClock.date, moduleString("clock", "format", "dddd HH:mm"))
+    return Qt.formatDateTime(systemClock.date, moduleString(entry, "format", "dddd HH:mm"))
   }
 
   SystemClock {
@@ -947,19 +994,26 @@ ShellRoot {
   Component { id: cpuModuleComponent; CpuModule {} }
   Component { id: batteryModuleComponent; BatteryModule {} }
 
+  function findCenterAnchorEntry() {
+    var entries = root.layoutEntries("center")
+    var idx = root.entryIndex(entries, root.centerAnchor)
+    return idx === -1 ? null : entries[idx]
+  }
+
   component LeftModules: ModuleList {
-    modules: root.layoutModules("left")
+    entries: root.layoutEntries("left")
   }
 
   component RightModules: ModuleList {
-    modules: root.layoutModules("right")
+    entries: root.layoutEntries("right")
   }
 
   component CenterModules: Item {
     id: centerRoot
 
-    property var modules: root.layoutModules("center")
-    readonly property bool hasAnchor: root.moduleIndex(modules, root.centerAnchor) !== -1
+    property var entries: root.layoutEntries("center")
+    readonly property bool hasAnchor: root.entryIndex(entries, root.centerAnchor) !== -1
+    readonly property var anchorEntry: root.findCenterAnchorEntry()
 
     Loader {
       anchors.fill: parent
@@ -974,13 +1028,13 @@ ShellRoot {
 
         ModuleList {
           visible: !centerRoot.hasAnchor
-          modules: centerRoot.modules
+          entries: centerRoot.entries
           anchors.centerIn: parent
         }
 
         ModuleList {
           visible: centerRoot.hasAnchor
-          modules: root.modulesBefore(centerRoot.modules, root.centerAnchor)
+          entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
           anchors.right: centerAnchorModule.left
           anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
@@ -988,13 +1042,13 @@ ShellRoot {
         ModuleSlot {
           id: centerAnchorModule
           visible: centerRoot.hasAnchor
-          moduleName: root.centerAnchor
+          entry: centerRoot.anchorEntry
           anchors.centerIn: parent
         }
 
         ModuleList {
           visible: centerRoot.hasAnchor
-          modules: root.modulesAfter(centerRoot.modules, root.centerAnchor)
+          entries: root.entriesAfter(centerRoot.entries, root.centerAnchor)
           anchors.left: centerAnchorModule.right
           anchors.verticalCenter: centerAnchorModule.verticalCenter
         }
@@ -1009,13 +1063,13 @@ ShellRoot {
 
         ModuleList {
           visible: !centerRoot.hasAnchor
-          modules: centerRoot.modules
+          entries: centerRoot.entries
           anchors.centerIn: parent
         }
 
         ModuleList {
           visible: centerRoot.hasAnchor
-          modules: root.modulesBefore(centerRoot.modules, root.centerAnchor)
+          entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
           anchors.bottom: centerAnchorModule.top
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
@@ -1023,13 +1077,13 @@ ShellRoot {
         ModuleSlot {
           id: centerAnchorModule
           visible: centerRoot.hasAnchor
-          moduleName: root.centerAnchor
+          entry: centerRoot.anchorEntry
           anchors.centerIn: parent
         }
 
         ModuleList {
           visible: centerRoot.hasAnchor
-          modules: root.modulesAfter(centerRoot.modules, root.centerAnchor)
+          entries: root.entriesAfter(centerRoot.entries, root.centerAnchor)
           anchors.top: centerAnchorModule.bottom
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
@@ -1040,9 +1094,9 @@ ShellRoot {
   component ModuleList: Loader {
     id: moduleListRoot
 
-    property var modules: []
+    property var entries: []
 
-    visible: modules.length > 0
+    visible: entries.length > 0
     sourceComponent: root.vertical ? verticalModuleList : horizontalModuleList
     width: item ? item.implicitWidth : 0
     height: item ? item.implicitHeight : 0
@@ -1054,11 +1108,11 @@ ShellRoot {
         spacing: 0
 
         Repeater {
-          model: moduleListRoot.modules
+          model: moduleListRoot.entries
 
           ModuleSlot {
             required property var modelData
-            moduleName: String(modelData)
+            entry: modelData
           }
         }
       }
@@ -1071,11 +1125,11 @@ ShellRoot {
         spacing: 0
 
         Repeater {
-          model: moduleListRoot.modules
+          model: moduleListRoot.entries
 
           ModuleSlot {
             required property var modelData
-            moduleName: String(modelData)
+            entry: modelData
           }
         }
       }
@@ -1085,8 +1139,10 @@ ShellRoot {
   component ModuleSlot: Item {
     id: slot
 
-    required property string moduleName
-    readonly property string customType: root.customModuleType(moduleName)
+    required property var entry
+    readonly property string moduleName: root.entryId(entry)
+    readonly property var moduleSettings: root.entrySettings(entry)
+    readonly property string customType: root.customModuleType(entry)
     readonly property var builtinComponent: customType ? null : root.builtinModuleComponent(moduleName)
     readonly property string firstPartySource: customType || builtinComponent ? "" : root.firstPartyWidgetSource(moduleName)
     readonly property bool qmlCustom: customType === "qml"
@@ -1109,35 +1165,33 @@ ShellRoot {
     Loader {
       id: qmlLoader
       active: slot.qmlCustom || slot.firstParty
-      source: slot.qmlCustom ? root.customModuleSource(slot.moduleName) : (slot.firstParty ? slot.firstPartySource : "")
+      source: slot.qmlCustom ? root.customModuleSource(slot.entry) : (slot.firstParty ? slot.firstPartySource : "")
       anchors.fill: parent
       onLoaded: slot.injectProps()
     }
+
+    onModuleSettingsChanged: injectProps()
 
     function injectProps() {
       var target = qmlLoader.item
       if (!target) return
       if ("bar" in target) target.bar = root
       if ("moduleName" in target) target.moduleName = moduleName
-      if ("settings" in target) target.settings = root.moduleSettings(moduleName)
-    }
-
-    Connections {
-      target: root
-      function onBarConfigSerialChanged() { slot.injectProps() }
+      if ("settings" in target) target.settings = moduleSettings
     }
 
     Component {
       id: customCommandModuleComponent
-      CustomCommandModule { moduleName: slot.moduleName }
+      CustomCommandModule { entry: slot.entry }
     }
   }
 
   component CustomCommandModule: ModuleButton {
     id: customRoot
 
-    required property string moduleName
-    property var settings: root.moduleSettings(moduleName)
+    required property var entry
+    readonly property string moduleName: root.entryId(entry)
+    readonly property var settings: root.entrySettings(entry)
     property string outputText: ""
     property string outputTooltip: ""
     property bool outputActive: false

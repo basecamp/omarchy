@@ -9,21 +9,40 @@ This is the Quickshell implementation of the Omarchy status bar.
 - User overrides live in `~/.config/omarchy/bar.json` and are merged over defaults at runtime.
 - `omarchy-style-bar-position` updates only the user override file.
 
-Example user override:
+## Customizing
+
+The bar reads `~/.local/share/omarchy/default/quickshell/bar/bar-defaults.json`, then deep-merges `~/.config/omarchy/bar.json` on top of it. Each `layout.{left,center,right}` entry is an object: at minimum `{ "id": "<widget>" }`, plus any inline settings the widget reads.
+
+Launch the visual editor with `omarchy launch bar-settings` (or run `omarchy-launch-bar-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand.
+
+Example `bar.json`:
 
 ```json
 {
   "position": "top",
+  "centerAnchor": "calendar",
   "layout": {
-    "left": ["omarchy", "workspacesPro"],
-    "center": ["media", "calendar", "weatherFlyout"],
-    "right": ["systemStats", "notificationCenter", "bluetoothPanel", "networkPanel", "audioPanel", "brightness", "powerProfile", "battery", "powerMenu"]
-  },
-  "centerAnchor": "calendar"
+    "left": [
+      { "id": "omarchy" },
+      { "id": "spacer", "size": 12 },
+      { "id": "workspacesPro" }
+    ],
+    "center": [
+      { "id": "media" },
+      { "id": "calendar", "format": "HH:mm" }
+    ],
+    "right": [
+      { "id": "systemStats" },
+      { "id": "audioPanel" },
+      { "id": "battery" },
+      { "id": "controlCenter" },
+      { "id": "powerMenu" }
+    ]
+  }
 }
 ```
 
-`centerAnchor` pins one center module to the exact horizontal/vertical center and flanks others around it.
+`centerAnchor` pins one center module to the exact horizontal/vertical center and flanks others around it. Set to an empty string to disable anchoring (the center list is centered as a group).
 
 ## Module catalogue
 
@@ -58,23 +77,18 @@ All widgets work in `top`, `bottom`, `left`, and `right` positions. Popups ancho
 
 ## Custom user modules
 
-Add a module name to a layout list, then define it under `modules` in `~/.config/omarchy/bar.json`.
+The schema accepts arbitrary module ids that you provide. Set `type` to `command` for shell-driven output or `qml` for a custom QML widget.
 
-For simple text/JSON output, use a command module:
+Command module:
 
 ```json
 {
   "layout": {
-    "right": ["tray", "vpn", "audioPanel", "cpu"]
-  },
-  "modules": {
-    "vpn": {
-      "type": "command",
-      "exec": "~/.config/omarchy/bar/scripts/vpn-status",
-      "interval": 5,
-      "tooltip": "VPN",
-      "onClick": "nm-connection-editor"
-    }
+    "right": [
+      { "id": "tray" },
+      { "id": "vpn", "type": "command", "exec": "~/.config/omarchy/bar/scripts/vpn-status", "interval": 5, "tooltip": "VPN", "onClick": "nm-connection-editor" },
+      { "id": "audioPanel" }
+    ]
   }
 }
 ```
@@ -85,17 +99,15 @@ The command may print plain text or Waybar-style JSON, for example:
 {"text":"󰌆","tooltip":"Work VPN","class":"active"}
 ```
 
-For advanced custom UI, use QML:
+QML module:
 
 ```json
 {
   "layout": {
-    "right": ["gpu", "audioPanel", "cpu"]
-  },
-  "modules": {
-    "gpu": {
-      "type": "qml"
-    }
+    "right": [
+      { "id": "gpu", "type": "qml" },
+      { "id": "audioPanel" }
+    ]
   }
 }
 ```
