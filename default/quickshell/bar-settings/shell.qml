@@ -91,9 +91,38 @@ ShellRoot {
     draftRevision++
   }
 
+  function deepEqual(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b)
+  }
+
+  function diffAgainstDefaults() {
+    var defaults = mergeConfig(
+      { position: "top", centerAnchor: "", fontFamily: "JetBrainsMono Nerd Font", layout: { left: [], center: [], right: [] } },
+      defaultConfig
+    )
+    var override = {}
+    if (!deepEqual(draft.position, defaults.position)) override.position = draft.position
+    if (!deepEqual(draft.centerAnchor, defaults.centerAnchor)) override.centerAnchor = draft.centerAnchor
+    if (!deepEqual(draft.fontFamily, defaults.fontFamily)) override.fontFamily = draft.fontFamily
+
+    var defaultLayout = normalizeLayout(defaults.layout || {})
+    var layoutDiff = {}
+    var hasLayoutDiff = false
+    var sections = ["left", "center", "right"]
+    for (var i = 0; i < sections.length; i++) {
+      var s = sections[i]
+      if (!deepEqual(draft.layout[s], defaultLayout[s])) {
+        layoutDiff[s] = draft.layout[s]
+        hasLayoutDiff = true
+      }
+    }
+    if (hasLayoutDiff) override.layout = layoutDiff
+    return override
+  }
+
   function saveConfig() {
-    var payload = cloneJson(draft)
-    userFile.setText(JSON.stringify(payload, null, 2) + "\n")
+    var override = diffAgainstDefaults()
+    userFile.setText(JSON.stringify(override, null, 2) + "\n")
     dirty = false
   }
 
@@ -107,35 +136,44 @@ ShellRoot {
     draftRevision++
   }
 
-  function moveEntry(section, fromIndex, toIndex) {
-    var arr = draft.layout[section].slice()
-    if (toIndex < 0 || toIndex >= arr.length) return
-    var item = arr[fromIndex]
-    arr.splice(fromIndex, 1)
-    arr.splice(toIndex, 0, item)
-    draft.layout[section] = arr
+  // Replace the whole `layout` object so any binding that reads `draft.layout`
+  // is invalidated. Mutating `draft.layout[section]` alone does not notify QML.
+  function mutateLayout(section, mutator) {
+    var nextLayout = {
+      left: draft.layout.left.slice(),
+      center: draft.layout.center.slice(),
+      right: draft.layout.right.slice()
+    }
+    mutator(nextLayout[section])
+    var nextDraft = {
+      position: draft.position,
+      centerAnchor: draft.centerAnchor,
+      fontFamily: draft.fontFamily,
+      layout: nextLayout
+    }
+    draft = nextDraft
     markDirty()
+  }
+
+  function moveEntry(section, fromIndex, toIndex) {
+    if (toIndex < 0 || toIndex >= draft.layout[section].length) return
+    mutateLayout(section, function(arr) {
+      var item = arr[fromIndex]
+      arr.splice(fromIndex, 1)
+      arr.splice(toIndex, 0, item)
+    })
   }
 
   function removeEntry(section, index) {
-    var arr = draft.layout[section].slice()
-    arr.splice(index, 1)
-    draft.layout[section] = arr
-    markDirty()
+    mutateLayout(section, function(arr) { arr.splice(index, 1) })
   }
 
   function addEntry(section, id) {
-    var arr = draft.layout[section].slice()
-    arr.push({ id: id })
-    draft.layout[section] = arr
-    markDirty()
+    mutateLayout(section, function(arr) { arr.push({ id: id }) })
   }
 
   function updateEntry(section, index, newEntry) {
-    var arr = draft.layout[section].slice()
-    arr[index] = cloneJson(newEntry)
-    draft.layout[section] = arr
-    markDirty()
+    mutateLayout(section, function(arr) { arr[index] = cloneJson(newEntry) })
   }
 
   function loadTheme(raw) {
@@ -235,7 +273,7 @@ ShellRoot {
     watchChanges: true
     printErrors: false
     onLoaded: root.loadConfig()
-    onFileChanged: { reload(); root.loadConfig() }
+    onFileChanged: reload()
   }
 
   FileView {
@@ -244,8 +282,11 @@ ShellRoot {
     watchChanges: true
     atomicWrites: true
     printErrors: false
-    onLoaded: root.loadConfig()
-    onFileChanged: { reload(); root.loadConfig() }
+    onLoaded: {
+      if (root.dirty) return
+      root.loadConfig()
+    }
+    onFileChanged: reload()
   }
 
   FileView {
@@ -253,7 +294,7 @@ ShellRoot {
     watchChanges: true
     printErrors: false
     onLoaded: root.loadTheme(text())
-    onFileChanged: { reload(); root.loadTheme(text()) }
+    onFileChanged: reload()
   }
 
   FloatingWindow {
@@ -794,7 +835,7 @@ ShellRoot {
         from: 0
         to: 256
         value: spacerForm.entry.size !== undefined ? spacerForm.entry.size : 12
-        onValueChanged: spacerForm.fieldChanged("size", value)
+        onValueModified: spacerForm.fieldChanged("size", value)
       }
     }
   }
@@ -875,7 +916,7 @@ ShellRoot {
         from: 1
         to: 25
         value: brightForm.entry.step !== undefined ? brightForm.entry.step : 5
-        onValueChanged: brightForm.fieldChanged("step", value)
+        onValueModified: brightForm.fieldChanged("step", value)
       }
     }
   }
