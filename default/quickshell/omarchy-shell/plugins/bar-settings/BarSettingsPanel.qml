@@ -56,7 +56,7 @@ Item {
       fontFamily: "JetBrainsMono Nerd Font",
       centerAnchor: "calendar",
       layout: {
-        left: [{ id: "omarchy" }, { id: "workspacesPro" }, { id: "activeWindow" }],
+        left: [{ id: "omarchy" }, { id: "workspaces" }, { id: "activeWindow" }],
         center: [
           { id: "media" },
           { id: "calendar", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n—\nmm" },
@@ -273,7 +273,7 @@ Item {
   // whenever the registry revision changes.
   readonly property var legacyWidgetMeta: ({
     "omarchy":          { name: "Omarchy menu",      description: "Launches the Omarchy menu",                category: "Compositor" },
-    "workspaces":       { name: "Workspaces (legacy)", description: "Workspace numbers, no animation",         category: "Compositor" },
+    "workspaces":       { name: "Workspaces",          description: "Workspace number indicators",              category: "Compositor" },
     "clock":            { name: "Clock",             description: "Date / time text",                          category: "Time" },
     "weather":          { name: "Weather (legacy)", description: "Tiny weather pill",                          category: "Info" },
     "update":           { name: "Updates",           description: "Indicates available system updates",        category: "System" },

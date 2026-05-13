@@ -291,7 +291,6 @@ Item {
     "powerProfile":       { displayName: "Power profile",      description: "power-profiles-daemon selector",              category: "System",   allowMultiple: false },
     "systemStats":        { displayName: "System stats",       description: "Inline CPU + memory sparklines",              category: "System",   allowMultiple: false },
     "weatherFlyout":      { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false },
-    "workspacesPro":      { displayName: "Workspaces",         description: "Animated workspace switcher",                 category: "Compositor", allowMultiple: false },
     "powerMenu":          { displayName: "Power menu",         description: "Lock / suspend / reboot / shutdown",          category: "System",   allowMultiple: false },
     "idleInhibitor":      { displayName: "Keep awake",         description: "Toggle idle inhibitor",                       category: "System",   allowMultiple: false },
     "microphone":         { displayName: "Microphone",         description: "Mic input state and mute toggle",             category: "Audio",    allowMultiple: false },

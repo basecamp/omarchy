@@ -48,7 +48,7 @@ ShellRoot {
       fontFamily: "JetBrainsMono Nerd Font",
       centerAnchor: "calendar",
       layout: {
-        left: [{ id: "omarchy" }, { id: "workspacesPro" }],
+        left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [{ id: "calendar", format: "dddd HH:mm" }],
         right: [{ id: "audioPanel" }, { id: "controlCenter" }, { id: "powerMenu" }]
       }
