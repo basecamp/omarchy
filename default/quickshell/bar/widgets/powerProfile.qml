@@ -16,7 +16,7 @@ Item {
 
   readonly property var profileGlyphs: ({
     [PowerProfile.PowerSaver]: "󰌪",
-    [PowerProfile.Balanced]: "󰂄",
+    [PowerProfile.Balanced]: "󰗑",
     [PowerProfile.Performance]: "󰓅"
   })
 
@@ -26,7 +26,7 @@ Item {
     [PowerProfile.Performance]: "Performance"
   })
 
-  readonly property bool available: PowerProfiles.profile !== undefined
+  readonly property bool available: PowerProfiles.hasPerformanceProfile || PowerProfiles.profile === PowerProfile.PowerSaver || PowerProfiles.profile === PowerProfile.Balanced
   readonly property int current: PowerProfiles.profile
 
   visible: available
@@ -70,7 +70,7 @@ Item {
       Repeater {
         model: [
           { profile: PowerProfile.PowerSaver, label: "Power Saver", glyph: "󰌪" },
-          { profile: PowerProfile.Balanced, label: "Balanced", glyph: "󰂄" },
+          { profile: PowerProfile.Balanced, label: "Balanced", glyph: "󰗑" },
           { profile: PowerProfile.Performance, label: "Performance", glyph: "󰓅" }
         ]
 

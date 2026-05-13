@@ -14,6 +14,9 @@ Item {
   property color knobColor: bar ? bar.foreground : "#cacccc"
   property bool dragging: false
   property real trackHeight: 4
+  property real liveValue: value
+
+  onValueChanged: if (!dragging) liveValue = value
 
   signal moved(real value)
   signal released(real value)
@@ -22,7 +25,7 @@ Item {
   implicitHeight: 22
 
   readonly property real range: Math.max(0.0001, maximum - minimum)
-  readonly property real progress: Math.max(0, Math.min(1, (value - minimum) / range))
+  readonly property real progress: Math.max(0, Math.min(1, (liveValue - minimum) / range))
 
   Rectangle {
     id: track
@@ -87,24 +90,25 @@ Item {
     onPressed: function(mouse) {
       root.dragging = true
       var next = valueFromX(mouse.x)
-      root.value = next
+      root.liveValue = next
       root.moved(next)
     }
     onPositionChanged: function(mouse) {
       if (!root.dragging) return
       var next = valueFromX(mouse.x)
-      root.value = next
+      root.liveValue = next
       root.moved(next)
     }
     onReleased: function(mouse) {
       root.dragging = false
-      root.released(root.value)
+      root.released(root.liveValue)
+      root.liveValue = root.value
     }
     onWheel: function(wheel) {
       var delta = wheel.angleDelta.y > 0 ? root.step : -root.step
-      var next = Math.max(root.minimum, Math.min(root.maximum, root.value + delta))
+      var next = Math.max(root.minimum, Math.min(root.maximum, root.liveValue + delta))
       if (root.integer) next = Math.round(next)
-      root.value = next
+      root.liveValue = next
       root.moved(next)
       root.released(next)
     }

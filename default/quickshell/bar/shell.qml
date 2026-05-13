@@ -273,7 +273,8 @@ ShellRoot {
     "workspacesPro": true,
     "powerMenu": true,
     "idleInhibitor": true,
-    "microphone": true
+    "microphone": true,
+    "notificationCenter": true
   })
 
   function firstPartyWidgetSource(name) {

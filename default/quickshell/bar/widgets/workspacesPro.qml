@@ -36,7 +36,7 @@ Item {
     width: vertical ? root.slotSize - 8 : root.slotSize - 6
     height: vertical ? root.slotSize - 6 : root.slotSize - 8
     radius: 4
-    color: root.bar.foreground
+    color: root.bar ? root.bar.foreground : "#cacccc"
     opacity: root.focusedIndex >= 0 ? 0.25 : 0
     x: vertical ? (root.width - width) / 2 : 3 + root.focusedIndex * (root.slotSize + root.spacing) + (root.slotSize - width) / 2
     y: vertical ? 3 + root.focusedIndex * (root.slotSize + root.spacing) + (root.slotSize - height) / 2 : (root.height - height) / 2

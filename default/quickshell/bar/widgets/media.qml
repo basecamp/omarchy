@@ -74,12 +74,10 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
 
         property bool needsScroll: implicitWidth > scrollClip.width
-        x: needsScroll ? scrollAnim.position : 0
 
         NumberAnimation on x {
           id: scrollAnim
-          property real position: 0
-          running: labelText.needsScroll && !root.popupOpen
+          running: labelText.needsScroll && !root.popupOpen && !root.bar.vertical
           loops: Animation.Infinite
           duration: Math.max(6000, labelText.implicitWidth * 25)
           from: scrollClip.width

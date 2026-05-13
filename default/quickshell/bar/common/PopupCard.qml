@@ -77,7 +77,7 @@ PopupWindow {
     border.color: root.bar ? root.bar.foreground : "#cacccc"
     border.width: 1
     radius: 0
-    opacity: root.open ? 0.98 : 0
+    opacity: root.open ? 1.0 : 0
 
     Behavior on opacity {
       NumberAnimation { duration: 140; easing.type: Easing.OutCubic }

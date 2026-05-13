@@ -81,7 +81,6 @@ Item {
 
   PwObjectTracker { objects: root.candidateSinks }
   PwObjectTracker { objects: root.candidateStreams }
-  PwObjectTracker { objects: root.sink ? [root.sink] : [] }
 
   Common.WidgetButton {
     id: button

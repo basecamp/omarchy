@@ -18,15 +18,15 @@ Item {
 
   readonly property string kind: bar ? bar.networkKind : "disconnected"
   readonly property string label: bar ? bar.networkLabel : ""
-  readonly property int signal: bar ? bar.networkSignal : -1
+  readonly property int signalStrength: bar ? bar.networkSignal : -1
 
   readonly property string icon: {
     if (kind === "wifi") {
       var icons = ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"]
-      var index = Math.max(0, Math.min(4, Math.ceil(signal / 20) - 1))
+      var index = Math.max(0, Math.min(4, Math.ceil(signalStrength / 20) - 1))
       return icons[index]
     }
-    if (kind === "ethernet") return "󰀂"
+    if (kind === "ethernet") return "󰈀"
     return "󰤮"
   }
 
@@ -48,21 +48,21 @@ Item {
       list.push({
         inUse: parts[0] === "*",
         ssid: parts[1],
-        signal: parseInt(parts[2], 10) || 0,
+        signalStrength: parseInt(parts[2], 10) || 0,
         security: parts[3] || ""
       })
     }
     list.sort(function(a, b) {
       if (a.inUse !== b.inUse) return a.inUse ? -1 : 1
-      return b.signal - a.signal
+      return b.signalStrength - a.signalStrength
     })
     networks = list
     scanning = false
   }
 
-  function wifiIconFor(signal) {
+  function wifiIconFor(signalStrength) {
     var icons = ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"]
-    var index = Math.max(0, Math.min(4, Math.ceil(signal / 20) - 1))
+    var index = Math.max(0, Math.min(4, Math.ceil(signalStrength / 20) - 1))
     return icons[index]
   }
 
@@ -141,7 +141,7 @@ Item {
 
           Text {
             visible: root.kind !== "disconnected"
-            text: root.kind === "wifi" ? "Wi-Fi · " + root.signal + "%" : "Ethernet"
+            text: root.kind === "wifi" ? "Wi-Fi · " + root.signalStrength + "%" : "Ethernet"
             color: Qt.darker(root.bar.foreground, 1.4)
             font.family: root.bar.fontFamily
             font.pixelSize: 10
@@ -155,6 +155,7 @@ Item {
           verticalPadding: 4
           active: root.scanning
           onClicked: {
+            if (scanProc.running) return
             scanProc.command = ["bash", "-lc", "command -v nmcli >/dev/null && nmcli device wifi rescan 2>/dev/null; nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device wifi list --rescan no 2>/dev/null"]
             root.refresh()
           }
@@ -178,7 +179,7 @@ Item {
             required property var modelData
 
             width: parent.width
-            iconText: root.wifiIconFor(modelData.signal)
+            iconText: root.wifiIconFor(modelData.signalStrength)
             text: (modelData.ssid || "Hidden") + (modelData.security ? "  ·  " : "") + (modelData.security || "")
             foreground: root.bar.foreground
             horizontalPadding: 10
@@ -187,6 +188,7 @@ Item {
 
             onClicked: {
               if (modelData.inUse) return
+              if (actionProc.running) return
               actionProc.command = ["bash", "-lc", "command -v nmcli >/dev/null && nmcli device wifi connect " + root.bar.shellQuote(modelData.ssid)]
               actionProc.running = true
               root.popupOpen = false

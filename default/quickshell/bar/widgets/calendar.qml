@@ -184,9 +184,4 @@ Item {
     }
   }
 
-  MouseArea {
-    anchors.fill: parent
-    visible: false
-    enabled: false
-  }
 }
