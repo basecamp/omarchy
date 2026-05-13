@@ -18,15 +18,14 @@ Item {
   readonly property string label: bar ? bar.weatherText : ""
   readonly property string klass: bar ? bar.weatherClass : ""
 
-  readonly property string reportLocation: {
-    var parts = String(fullReport || "").split(":")
-    return parts.length > 1 ? parts[0].trim() : ""
-  }
-  readonly property string reportCondition: {
-    var parts = String(fullReport || "").split(":")
-    if (parts.length > 1) return parts.slice(1).join(":").trim()
-    return String(fullReport || "").trim()
-  }
+  // Pipe-delimited fields from wttr.in: location|condition|temp|feels|wind|humidity
+  readonly property var reportFields: String(fullReport || "").split("|")
+  readonly property string reportLocation:  reportFields.length > 0 ? String(reportFields[0] || "").trim() : ""
+  readonly property string reportCondition: reportFields.length > 1 ? String(reportFields[1] || "").trim() : ""
+  readonly property string reportTemp:      reportFields.length > 2 ? String(reportFields[2] || "").trim() : ""
+  readonly property string reportFeels:     reportFields.length > 3 ? String(reportFields[3] || "").trim() : ""
+  readonly property string reportWind:      reportFields.length > 4 ? String(reportFields[4] || "").trim() : ""
+  readonly property string reportHumidity:  reportFields.length > 5 ? String(reportFields[5] || "").trim() : ""
 
   visible: label !== ""
   implicitWidth: button.implicitWidth
@@ -63,7 +62,7 @@ Item {
 
   Process {
     id: forecastProc
-    command: ["bash", "-lc", "curl -fsS --max-time 5 'wttr.in/?T0&format=%l:+%C+%t+%f+wind+%w+%h+humidity' 2>/dev/null"]
+    command: ["bash", "-lc", "curl -fsS --max-time 5 'wttr.in/?T0&format=%l|%C|%t|%f|%w|%h' 2>/dev/null"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.fullReport = String(text || "").trim()
@@ -134,12 +133,71 @@ Item {
       }
 
       Text {
-        text: root.reportCondition || "Fetching forecast…"
+        visible: text !== ""
+        text: root.reportCondition
         color: Qt.darker(root.bar.foreground, 1.2)
         font.family: root.bar.fontFamily
         font.pixelSize: 11
+        font.italic: true
         wrapMode: Text.WordWrap
         width: parent.width
+      }
+
+      Text {
+        visible: root.fullReport === ""
+        text: "Fetching forecast…"
+        color: Qt.darker(root.bar.foreground, 1.5)
+        font.family: root.bar.fontFamily
+        font.pixelSize: 11
+        font.italic: true
+      }
+
+      // Key/value pairs — each metric on its own line for scanability.
+      Grid {
+        visible: root.reportTemp !== ""
+        width: parent.width
+        columns: 2
+        columnSpacing: 12
+        rowSpacing: 4
+
+        Text {
+          text: "Temperature"
+          color: Qt.darker(root.bar.foreground, 1.4)
+          font.family: root.bar.fontFamily
+          font.pixelSize: 11
+        }
+        Text {
+          text: root.reportTemp + (root.reportFeels && root.reportFeels !== root.reportTemp ? "  (feels " + root.reportFeels + ")" : "")
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: 11
+        }
+
+        Text {
+          text: "Wind"
+          color: Qt.darker(root.bar.foreground, 1.4)
+          font.family: root.bar.fontFamily
+          font.pixelSize: 11
+        }
+        Text {
+          text: root.reportWind
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: 11
+        }
+
+        Text {
+          text: "Humidity"
+          color: Qt.darker(root.bar.foreground, 1.4)
+          font.family: root.bar.fontFamily
+          font.pixelSize: 11
+        }
+        Text {
+          text: root.reportHumidity
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: 11
+        }
       }
 
       Row {
