@@ -676,10 +676,7 @@ ShellRoot {
     watchChanges: true
     printErrors: false
     onLoaded: root.loadDefaultBarConfig(text())
-    onFileChanged: {
-      reload()
-      root.loadDefaultBarConfig(text())
-    }
+    onFileChanged: reload()
   }
 
   FileView {
@@ -687,10 +684,7 @@ ShellRoot {
     watchChanges: true
     printErrors: false
     onLoaded: root.loadUserBarConfig(text())
-    onFileChanged: {
-      reload()
-      root.loadUserBarConfig(text())
-    }
+    onFileChanged: reload()
   }
 
   FileView {
@@ -698,10 +692,7 @@ ShellRoot {
     watchChanges: true
     printErrors: false
     onLoaded: root.loadTheme(text())
-    onFileChanged: {
-      reload()
-      root.loadTheme(text())
-    }
+    onFileChanged: reload()
   }
 
   Process {
