@@ -1,7 +1,11 @@
 # Omarchy bar
 
-This is the Quickshell implementation of the Omarchy status bar.
+This is the Quickshell implementation of the Omarchy status bar. It is
+shipped as a first-party plugin of [`omarchy-shell`](../../README.md), the
+long-running shell host. The bar is mounted at startup and lives inside
+the shell for its whole session.
 
+- `manifest.json` declares the plugin (`id: omarchy.bar`, `kind: bar`, `activation: persistent`) and points at `Bar.qml` as the entry point.
 - `Bar.qml` is Omarchy-owned bar engine code, loaded by the omarchy-shell host. Users should not edit it directly.
 - `bar-defaults.json` is the Omarchy-owned default layout and module settings.
 - `widgets/` holds first-party widgets — modular, interactive components shipped with Omarchy.
@@ -156,4 +160,13 @@ Widgets receive `bar` (the shell root), `moduleName` (string), and `settings` (o
 - `bar.showTooltip(target, text)` / `bar.hideTooltip(target)` — shared tooltip popup
 - `bar.requestPopout(owner)` / `bar.releasePopout(owner)` — one-popup-at-a-time coordinator
 
-Drop new widgets into `widgets/<name>.qml`, add the name to the `firstPartyWidgets` registry in `shell.qml`, and reference it by name in any layout list.
+First-party widgets live in `widgets/<name>.qml` and are picked up by the
+shell's `BarWidgetRegistry` at startup; reference one by `id` in any
+layout list.
+
+Third-party widgets ship as separate plugins under
+`~/.config/omarchy/plugins/<plugin-id>/` with their own `manifest.json`
+declaring `kinds: ["bar-widget"]` and a `barWidget` entry point. See
+[../../README.md](../../README.md) for the manifest schema and the
+Plugin Manager tab in `omarchy launch bar-settings` for enable/disable
+controls.

@@ -5,8 +5,18 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
 
-ShellRoot {
+Item {
   id: root
+
+  // Injected by omarchy-shell. Optional here — the picker doesn't need
+  // omarchyPath itself, but every plugin gets it so user-installed scripts
+  // referenced by other plugins can stay path-portable.
+  property string omarchyPath: ""
+  // Set by omarchy-shell when summoning the overlay; not currently consumed but
+  // declared so the host's onLoaded injection doesn't trip a missing-property
+  // warning.
+  property var shell: null
+  property var manifest: null
 
   property string imageDirs: Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIRS") || Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIR") || Quickshell.env("OMARCHY_STOCK_BACKGROUNDS_DIR") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/backgrounds")
   property string imageRows: ""
@@ -293,9 +303,35 @@ ShellRoot {
     }
   }
 
-  Component.onCompleted: {
-    if (selectionFile)
-      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile, "", false, false)
+  // The plugin is keep-loaded inside omarchy-shell, so the env-driven
+  // auto-open path that the standalone background-switcher.qml used would
+  // now fire once at shell startup with stale env. The legacy callers
+  // (omarchy-menu-images) deliver their request over the unix socket
+  // declared below; modern callers go through `shell summon` -> open(payload).
+
+  // Lifecycle hooks invoked by omarchy-shell summon/hide. The legacy entry
+  // point remains the unix socket below — callers that already have a
+  // selection_file/done_file flow keep using it. summon() with no payload
+  // simply opens the picker against the user's current theme backgrounds.
+  function open(payload) {
+    var args = {}
+    if (payload) {
+      try { args = JSON.parse(payload) || {} } catch (e) { args = {} }
+    }
+    var dirs = String(args.imageDirs || imageDirs)
+    var rows = String(args.imageRows || "")
+    var sel = String(args.selectedImage || selectedImage)
+    var selFile = String(args.selectionFile || "")
+    var doneF = String(args.doneFile || "")
+    var colors = String(args.colorsFile || colorsFile)
+    var colorsRaw = String(args.colorsRaw || "")
+    var labels = args.showLabels === true || args.showLabels === "true"
+    var filter = args.filterable === true || args.filterable === "true"
+    openSelector(dirs, rows, sel, selFile, doneF, colors, colorsRaw, labels, filter)
+  }
+
+  function close() {
+    cancel()
   }
 
   IpcHandler {

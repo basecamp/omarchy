@@ -9,6 +9,12 @@ import "../../ui/settings" as SettingsUi
 Item {
   id: root
 
+  // Plugin lifecycle hooks. omarchy-shell calls open(payloadJson) on summon
+  // and close() on hide. We don't consume payloads yet, and visibility is
+  // driven by the host Loader's `active`, so both are no-ops for now.
+  function open(payloadJson) { /* no payload schema yet; reserved for future use */ }
+  function close() { /* visibility handled by parent Loader; nothing to clean up */ }
+
   // Injected by the host shell when the panel is summoned. Shared instances
   // so the panel sees the same registry state the bar wrote into.
   property var barWidgetRegistry: null
@@ -342,12 +348,16 @@ Item {
     return result
   }
 
-  Component.onCompleted: {
+  // Only log once the registry has actually been injected by the host. The
+  // raw Component.onCompleted fires before the Loader's onLoaded property
+  // injection so it would always print `(null)` widgets, which is noise.
+  onBarWidgetRegistryChanged: {
+    if (!root.barWidgetRegistry) return
     console.log("bar-settings open. omarchyPath=" + root.omarchyPath,
       "defaultsPath=" + root.defaultsPath,
       "userConfigPath=" + root.userConfigPath,
       "registry has",
-      root.barWidgetRegistry ? root.barWidgetRegistry.availableIds().length : "(null)",
+      root.barWidgetRegistry.availableIds().length,
       "widgets")
   }
 
@@ -1251,12 +1261,33 @@ Item {
 
         Item { width: 8; height: 1 }
 
-        Switch {
-          checked: row.pluginEnabled
-          enabled: !row.firstParty
-          opacity: row.firstParty ? 0.5 : 1
+        Item {
+          implicitWidth: enabledSwitch.implicitWidth
+          implicitHeight: enabledSwitch.implicitHeight
           anchors.verticalCenter: parent.verticalCenter
-          onToggled: root.pluginRegistry.setEnabled(row.pluginId, checked)
+
+          Switch {
+            id: enabledSwitch
+            checked: row.pluginEnabled
+            enabled: !row.firstParty
+            opacity: row.firstParty ? 0.45 : 1
+            ToolTip.visible: row.firstParty && hoverArea.containsMouse
+            ToolTip.delay: 300
+            ToolTip.text: "First-party plugin — always enabled"
+            onToggled: root.pluginRegistry.setEnabled(row.pluginId, checked)
+          }
+
+          // Switch.enabled=false also disables mouse tracking, so the tooltip
+          // never sees a hover event. Layer a transparent hover-only MouseArea
+          // on top to surface the explanation.
+          MouseArea {
+            id: hoverArea
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+            visible: row.firstParty
+            cursorShape: Qt.ForbiddenCursor
+          }
         }
       }
 

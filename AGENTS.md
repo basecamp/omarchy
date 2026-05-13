@@ -101,6 +101,45 @@ For interactive UI work, use `wtype` to simulate keyboard input when available. 
 
 When testing layer-shell UI, capture the reference and candidate states as separate screenshots, then compare them visually before further edits. If a launched UI would otherwise remain open, keep track of its PID and stop it after the screenshot; avoid broad process kills unless checking with `ps` first.
 
+# Omarchy shell
+
+The Quickshell desktop runs as a single long-running process out of
+`default/quickshell/omarchy-shell/`. Hyprland's autostart launches it; do
+not start additional standalone `quickshell -p` instances for individual
+components.
+
+Plugin contract:
+
+- Each plugin lives in its own directory under
+  `default/quickshell/omarchy-shell/plugins/<id>/` (first-party) or
+  `~/.config/omarchy/plugins/<id>/` (third-party).
+- Every plugin ships a `manifest.json` declaring `id`, `kinds`,
+  `activation`, and `entryPoints`. The full schema is in
+  `default/quickshell/omarchy-shell/README.md`.
+- Entry-point QML files are `Item`s (not `ShellRoot`), and accept the
+  shell-injected properties `omarchyPath`, `shell`, `manifest`, and
+  `pluginRegistry` / `barWidgetRegistry` as appropriate.
+- Panel / overlay / menu plugins must expose `open(payloadJson)` and
+  `close()` lifecycle methods for `shell summon` and `shell hide`.
+
+IPC:
+
+- `bin/omarchy-shell-ipc` is the canonical IPC entry point. It starts
+  the shell on first call, then forwards to `quickshell ipc call`.
+  Prefer it over re-implementing the wait-for-instance dance in every
+  CLI.
+- The `shell` IPC target exposes `ping`, `summon`, `hide`, `toggle`,
+  `rescanPlugins`, `setPluginEnabled`, and `listPlugins`. Individual
+  plugins can register additional IPC targets (the bar registers `bar`,
+  the background switcher registers `image-selector`).
+
+Widget files in `plugins/bar/widgets/` contain Nerd Font glyphs as raw
+unicode characters. The `Write` and `Edit` tools strip multi-byte
+codepoints in some positions — do **not** rewrite widget files wholesale
+through those tools. For glyph fixes, use the targeted `Edit` tool with
+the surrounding context, or a Python script that inserts codepoints via
+`chr(0xXXXXX)`.
+
 # Refresh Pattern
 
 To copy a default config to user config with automatic backup:
