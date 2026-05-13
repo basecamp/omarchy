@@ -1,7 +1,6 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
-import "../common" as Common
 
 Item {
   id: root
@@ -60,7 +59,7 @@ Item {
       if (mouse.button === Qt.MiddleButton) {
         root.toplevel.close()
       } else if (mouse.button === Qt.RightButton) {
-        if (root.bar) root.bar.run("hyprctl dispatch killactive")
+        root.toplevel.close()
       } else {
         root.toplevel.activate()
       }
