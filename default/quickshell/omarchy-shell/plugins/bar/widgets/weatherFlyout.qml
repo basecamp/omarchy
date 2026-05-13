@@ -18,8 +18,6 @@ Item {
   readonly property string label: bar ? bar.weatherText : ""
   readonly property string klass: bar ? bar.weatherClass : ""
 
-  // Parse the wttr.in single-line report into location + condition halves so
-  // we can render them with different emphasis.
   readonly property string reportLocation: {
     var parts = String(fullReport || "").split(":")
     return parts.length > 1 ? parts[0].trim() : ""
@@ -38,6 +36,31 @@ Item {
     if (!forecastProc.running) forecastProc.running = true
   }
 
+  // Hover state across the trigger button and the popup.
+  property bool buttonHovered: false
+  property bool popupHovered: popup.containsMouse
+
+  function showPopup() {
+    hideTimer.stop()
+    if (!popupOpen) refresh()
+    popupOpen = true
+  }
+
+  function scheduleHide() {
+    hideTimer.restart()
+  }
+
+  Timer {
+    id: hideTimer
+    interval: 220
+    onTriggered: {
+      if (!root.buttonHovered && !root.popupHovered) root.popupOpen = false
+    }
+  }
+
+  onButtonHoveredChanged: buttonHovered ? showPopup() : scheduleHide()
+  onPopupHoveredChanged: popupHovered ? hideTimer.stop() : scheduleHide()
+
   Process {
     id: forecastProc
     command: ["bash", "-lc", "curl -fsS --max-time 5 'wttr.in/?T0&format=%l:+%C+%t+%f+wind+%w+%h+humidity' 2>/dev/null"]
@@ -54,22 +77,28 @@ Item {
     text: root.label
     active: root.klass === "active"
     horizontalMargin: 7.5
-    tooltipText: root.fullReport || "Weather"
+    // Tooltip suppressed — the popup itself is the detail view.
+    tooltipText: ""
 
     onPressed: function(b) {
       if (b === Qt.RightButton) root.bar.run("omarchy-notification-send \"$(omarchy-weather-status)\"")
-      else {
-        root.popupOpen = !root.popupOpen
-        if (root.popupOpen) root.refresh()
-      }
+      else if (b === Qt.MiddleButton) root.refresh()
     }
   }
 
+  HoverHandler {
+    id: hoverHandler
+    target: button
+    onHoveredChanged: root.buttonHovered = hovered
+  }
+
   Common.PopupCard {
+    id: popup
     anchorItem: button
     owner: root
     bar: root.bar
     open: root.popupOpen
+    triggerMode: "hover"
     contentWidth: 320
     contentHeight: card.implicitHeight + 28
 
