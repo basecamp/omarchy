@@ -159,7 +159,7 @@ rewrites `shell.json` from the current `shell-defaults.json`.
     "centerAnchor": "calendar",
     "fontFamily": "JetBrainsMono Nerd Font",
     "layout": {
-      "left":   [ { "id": "omarchy" }, { "id": "workspacesPro" } ],
+      "left":   [ { "id": "omarchy" }, { "id": "workspaces" } ],
       "center": [ { "id": "calendar", "format": "HH:mm" } ],
       "right": [
         { "id": "audioPanel" },

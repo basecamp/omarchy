@@ -30,7 +30,7 @@ Example `shell.json` (bar subtree only shown):
       "left": [
         { "id": "omarchy" },
         { "id": "spacer", "size": 12 },
-        { "id": "workspacesPro" }
+        { "id": "workspaces" }
       ],
       "center": [
         { "id": "media" },
@@ -66,7 +66,6 @@ Example `shell.json` (bar subtree only shown):
 | `powerProfile` | Current power profile + popup picker | left = popup |
 | `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
 | `weatherFlyout` | Weather icon + popup with forecast | left = popup · right = full notification |
-| `workspacesPro` | Animated focus indicator that slides between workspaces | left = focus · right = move window · scroll = cycle |
 | `powerMenu` | Power icon → popup with lock/suspend/log out/reboot/shutdown | left = popup |
 | `idleInhibitor` | Coffee-cup that toggles `omarchy-toggle-idle` | left = toggle |
 | `microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio TUI · scroll = source volume |

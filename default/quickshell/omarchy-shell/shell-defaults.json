@@ -7,7 +7,7 @@
     "layout": {
       "left": [
         { "id": "omarchy" },
-        { "id": "workspacesPro" },
+        { "id": "workspaces" },
         { "id": "activeWindow" }
       ],
       "center": [
