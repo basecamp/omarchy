@@ -64,6 +64,17 @@ ShellRoot {
   property var tooltipTarget: null
   property string tooltipText: ""
   property bool tooltipShown: false
+  property var activePopout: null
+
+  function requestPopout(owner) {
+    if (activePopout === owner) return
+    if (activePopout && "closePopout" in activePopout) activePopout.closePopout()
+    activePopout = owner
+  }
+
+  function releasePopout(owner) {
+    if (activePopout === owner) activePopout = null
+  }
 
   readonly property bool vertical: position === "left" || position === "right"
   readonly property int barSize: vertical ? 28 : 26
@@ -246,6 +257,28 @@ ShellRoot {
       source = omarchyConfigDir + "/bar/modules/" + String(name) + ".qml"
 
     return source ? fileUrl(source) : ""
+  }
+
+  readonly property var firstPartyWidgets: ({
+    "media": true,
+    "audioPanel": true,
+    "networkPanel": true,
+    "bluetoothPanel": true,
+    "calendar": true,
+    "notificationCenter": true,
+    "brightness": true,
+    "powerProfile": true,
+    "systemStats": true,
+    "weatherFlyout": true,
+    "workspacesPro": true,
+    "powerMenu": true,
+    "idleInhibitor": true,
+    "microphone": true
+  })
+
+  function firstPartyWidgetSource(name) {
+    if (!firstPartyWidgets[String(name)]) return ""
+    return fileUrl(omarchyPath + "/default/quickshell/bar/widgets/" + String(name) + ".qml")
   }
 
   function networkCommand() {
@@ -1048,9 +1081,11 @@ ShellRoot {
     required property string moduleName
     readonly property string customType: root.customModuleType(moduleName)
     readonly property var builtinComponent: customType ? null : root.builtinModuleComponent(moduleName)
+    readonly property string firstPartySource: customType || builtinComponent ? "" : root.firstPartyWidgetSource(moduleName)
     readonly property bool qmlCustom: customType === "qml"
     readonly property bool commandCustom: customType === "command"
-    readonly property var activeItem: qmlCustom ? qmlLoader.item : componentLoader.item
+    readonly property bool firstParty: firstPartySource !== ""
+    readonly property var activeItem: qmlCustom || firstParty ? qmlLoader.item : componentLoader.item
 
     implicitWidth: activeItem && activeItem.visible ? activeItem.implicitWidth : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
@@ -1059,15 +1094,15 @@ ShellRoot {
 
     Loader {
       id: componentLoader
-      active: !slot.qmlCustom
+      active: !slot.qmlCustom && !slot.firstParty
       sourceComponent: slot.builtinComponent || (slot.commandCustom ? customCommandModuleComponent : emptyModuleComponent)
       anchors.fill: parent
     }
 
     Loader {
       id: qmlLoader
-      active: slot.qmlCustom
-      source: slot.qmlCustom ? root.customModuleSource(slot.moduleName) : ""
+      active: slot.qmlCustom || slot.firstParty
+      source: slot.qmlCustom ? root.customModuleSource(slot.moduleName) : (slot.firstParty ? slot.firstPartySource : "")
       anchors.fill: parent
       onLoaded: {
         if (item && "bar" in item) item.bar = root

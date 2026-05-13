@@ -1,13 +1,18 @@
 {
   "position": "top",
   "fontFamily": "JetBrainsMono Nerd Font",
-  "centerAnchor": "clock",
+  "centerAnchor": "calendar",
   "layout": {
-    "left": ["omarchy", "workspaces"],
-    "center": ["clock", "weather", "update", "voxtype", "screenRecording", "idle", "notifications"],
-    "right": ["tray", "bluetooth", "network", "audio", "cpu", "battery"]
+    "left": ["omarchy", "workspacesPro"],
+    "center": ["media", "calendar", "weatherFlyout", "update", "voxtype", "screenRecording", "idle"],
+    "right": ["tray", "systemStats", "notificationCenter", "microphone", "bluetoothPanel", "networkPanel", "audioPanel", "brightness", "powerProfile", "battery", "powerMenu"]
   },
   "modules": {
+    "calendar": {
+      "format": "dddd HH:mm",
+      "formatAlt": "dd MMMM 'W'ww yyyy",
+      "verticalFormat": "HH\n—\nmm"
+    },
     "clock": {
       "format": "dddd HH:mm",
       "formatAlt": "dd MMMM 'W'ww yyyy",
