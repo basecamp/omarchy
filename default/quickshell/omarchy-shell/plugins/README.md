@@ -16,22 +16,25 @@ User-installed plugins live alongside these conceptually but on disk under
 
 ## Bar
 
-The status bar. Mounted at startup, lives forever. Layout is configured
-through `~/.config/omarchy/bar.json` (deep-merged over
-[`bar/bar-defaults.json`](bar/bar-defaults.json)). Owns the `bar` IPC
-target for refresh hooks fired by indicator scripts. See
-[`bar/README.md`](bar/README.md) for the widget catalogue and customization
-schema.
+The status bar. Mounted at startup, lives forever. Layout lives in the
+top-level `bar:` subtree of `~/.config/omarchy/shell.json` (with the shell
+providing [`shell-defaults.json`](../shell-defaults.json) when the user has
+no file). Owns the `bar` IPC target for refresh hooks fired by indicator
+scripts. See [`bar/README.md`](bar/README.md) for the widget catalogue
+and customization schema.
 
 ## Bar settings
 
-Visual editor for the bar layout. Summoned by
+Visual editor for the entire shell config. Summoned by
 `omarchy-shell-ipc shell summon omarchy.bar-settings "{}"` (which is what
 `omarchy launch bar-settings` ultimately calls). Provides:
 
-- per-section add/move/remove/edit of widget entries
-- a Plugin Manager tab for enabling/disabling third-party plugins
-- a dynamic settings form driven by each widget's manifest schema
+- per-section add/move/remove/edit of bar widget entries
+- a separate "Other plugins" section for panels, overlays, services,
+  and menus (entries that live in `plugins[]` rather than the bar layout)
+- a Plugin Manager tab listing every discovered plugin with its manifest
+- a dynamic settings form driven by each widget's manifest schema, that
+  writes inline back to the corresponding shell.json entry
 
 ## Image picker
 

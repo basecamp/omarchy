@@ -19,8 +19,9 @@ The runtime layout in this branch:
 ```
 default/quickshell/omarchy-shell/
   shell.qml              entry point (ShellRoot)
+  shell-defaults.json    canonical out-of-the-box config
   services/
-    PluginRegistry.qml   discovers, validates, persists plugin state
+    PluginRegistry.qml   discovers, validates plugins, looks up enabled state in shell.json
     BarWidgetRegistry.qml unified registry for bar widgets (1p + 3p)
   ui/
     settings/
@@ -133,12 +134,63 @@ type-stable across QML's `string`-only IPC arguments.
 
 ## Persisted state
 
-| Path                                      | Owner          | Purpose                              |
-|-------------------------------------------|----------------|--------------------------------------|
-| `~/.config/omarchy/bar.json`              | bar plugin     | section layout + per-entry settings  |
-| `~/.config/omarchy/plugins.json`          | PluginRegistry | enabled/disabled state               |
-| `~/.config/omarchy/plugins/<id>/`         | user           | manifest + entry points + assets     |
-| `~/.config/omarchy/plugins/<id>/settings.json` | user      | optional per-plugin overrides        |
+There is one user config file. Everything that distinguishes your
+customization from the shipped defaults lives in it.
+
+| Path                              | Owner          | Purpose                                                |
+|-----------------------------------|----------------|--------------------------------------------------------|
+| `~/.config/omarchy/shell.json`    | the shell      | full layout + per-entry settings + enabled plugin list |
+| `~/.config/omarchy/plugins/<id>/` | user           | drop-in third-party plugin source files                |
+
+The `shell-defaults.json` bundled with the shell describes the
+fresh-install state. When the user has no `shell.json`, the shell uses
+the defaults verbatim. Once the user customizes anything, `shell.json`
+becomes the authoritative file — we do **not** deep-merge defaults back
+in. Pressing **Reset to defaults** in `omarchy launch bar-settings`
+rewrites `shell.json` from the current `shell-defaults.json`.
+
+### shell.json shape
+
+```json
+{
+  "version": 1,
+  "bar": {
+    "position": "top",
+    "centerAnchor": "calendar",
+    "fontFamily": "JetBrainsMono Nerd Font",
+    "layout": {
+      "left":   [ { "id": "omarchy" }, { "id": "workspacesPro" } ],
+      "center": [ { "id": "calendar", "format": "HH:mm" } ],
+      "right": [
+        { "id": "audioPanel" },
+        { "id": "controlCenter" },
+        { "id": "powerMenu" }
+      ]
+    }
+  },
+  "plugins": [
+    { "id": "omarchy.bar-settings" },
+    { "id": "omarchy.image-picker" }
+  ]
+}
+```
+
+### Storage rules
+
+1. **Every plugin instance is one entry.** Either in `bar.layout.<section>`
+   for bar widgets, or in `plugins[]` for panels, overlays, services,
+   menus, and anything else non-bar.
+2. **Settings are inline on the entry.** No `config:` sub-object, no
+   separate per-plugin settings file, no merge layers. The fields on each
+   entry are the values the plugin sees.
+3. **Enabled ⇔ present.** A plugin is enabled iff its id appears somewhere
+   in shell.json. To disable, remove it. (The bar settings UI does both.)
+4. **Multiple instances** are allowed when a manifest sets
+   `allowMultiple: true`. Each instance is independent — e.g. two clocks
+   in different timezones are just two `{"id":"calendar", "timezone": ...}`
+   entries with their own values.
+5. **`version: 1` is required** at the top level. The shell will fall back
+   to defaults rather than load an unknown version.
 
 ## Implementation history
 
@@ -151,6 +203,7 @@ Built up in phases on this branch:
 - Phase 5 — `omarchy-shell phase 5: docs, cleanup, and migration crumbs`
 - Phase 6 — `omarchy-shell phase 6: reviewer cleanup (path traversal, collision, races)`
 - Phase 7 — `omarchy-shell phase 7: replace socket with IpcHandler, rename to image-picker`
+- Phase 8a — `omarchy-shell phase 8a: unified shell.json with inline plugin settings`
 
 Shared services and Pipewire/UPower/Hyprland consolidation are explicitly
 out of scope here and deferred to a follow-up after a review pass.

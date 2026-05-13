@@ -29,7 +29,7 @@ if [[ -n $font_name ]]; then
     sed -i "s/font_family = .*/font_family = $font_name/g" ~/.config/hypr/hyprlock.conf
     sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/waybar/style.css
     mkdir -p "$HOME/.config/omarchy"
-    python3 - "$HOME/.config/omarchy/bar.json" "$font_name" <<'PY'
+    python3 - "$HOME/.config/omarchy/shell.json" "$font_name" <<'PY'
 import json
 import sys
 
@@ -42,7 +42,12 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
   data = {}
 
-data["fontFamily"] = font_name
+data.setdefault("version", 1)
+bar = data.get("bar")
+if not isinstance(bar, dict):
+  bar = {}
+  data["bar"] = bar
+bar["fontFamily"] = font_name
 
 with open(path, "w") as file:
   json.dump(data, file, indent=2)

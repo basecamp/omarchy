@@ -19,29 +19,26 @@ Item {
   // Injected by the host shell. Shared with the bar-settings panel so both
   // see the same widget catalogue.
   required property var barWidgetRegistry
+  // Injected by the host shell every time shell.json is reloaded. Holds the
+  // `bar:` subtree: position, centerAnchor, fontFamily, layout. The host owns
+  // file IO; the bar just renders whatever it's handed.
+  required property var barConfig
+  // Injected by the host shell so the bar can detect Noctalia-compat plugins
+  // and look up manifests when wiring per-widget Noctalia pluginApi.
+  property var pluginRegistry: null
+  // Injected by the host shell. Used so Noctalia plugins that reach for
+  // shell-wide APIs (openPanel, currentScreen) can do so via pluginApi.
+  property var shell: null
   property string home: Quickshell.env("HOME")
   property string omarchyConfigDir: home + "/.config/omarchy"
-  property var builtinBarConfig: ({
+  property var fallbackBarConfig: ({
     position: "top",
     fontFamily: "JetBrainsMono Nerd Font",
-    centerAnchor: "clock",
-    layout: {
-      left: [{ id: "omarchy" }, { id: "workspaces" }],
-      center: [
-        { id: "clock", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n—\nmm" },
-        { id: "weather" }, { id: "update" }, { id: "voxtype" },
-        { id: "screenRecording" }, { id: "idle" }, { id: "notifications" }
-      ],
-      right: [
-        { id: "tray" }, { id: "bluetooth" }, { id: "network" },
-        { id: "audio" }, { id: "cpu" }, { id: "battery" }
-      ]
-    }
+    centerAnchor: "calendar",
+    layout: { left: [], center: [], right: [] }
   })
-  property var defaultBarConfig: builtinBarConfig
-  property var userBarConfig: ({})
-  property var layoutConfig: builtinBarConfig.layout
-  property string centerAnchor: "clock"
+  property var layoutConfig: fallbackBarConfig.layout
+  property string centerAnchor: ""
   property int barConfigSerial: 0
   property string position: "top"
   property string fontFamily: "JetBrainsMono Nerd Font"
@@ -80,6 +77,40 @@ Item {
     if (activePopout === owner) activePopout = null
   }
 
+  // -------------------------------------------------- Noctalia compat helpers
+  //
+  // The shell owns pluginApi creation and Main.qml service instantiation now;
+  // bar widgets just look up their api by moduleName. Keeping section/index
+  // helpers here because they're needed for Noctalia bar-widget injection
+  // (widgetId, section, sectionWidgetIndex, sectionWidgetsCount).
+
+  function sectionOfEntry(entry) {
+    var sections = ["left", "center", "right"]
+    for (var s = 0; s < sections.length; s++) {
+      var list = layoutConfig[sections[s]] || []
+      for (var i = 0; i < list.length; i++) {
+        if (list[i] === entry) return sections[s]
+      }
+    }
+    return ""
+  }
+
+  function indexOfEntry(entry) {
+    var section = sectionOfEntry(entry)
+    var list = section ? (layoutConfig[section] || []) : []
+    for (var i = 0; i < list.length; i++) if (list[i] === entry) return i
+    return -1
+  }
+
+  function entriesOfSection(section) {
+    return Array.isArray(layoutConfig[section]) ? layoutConfig[section] : []
+  }
+
+  function noctaliaPluginApiFor(moduleName) {
+    if (!shell || typeof shell.noctaliaPluginApiFor !== "function") return null
+    return shell.noctaliaPluginApiFor(moduleName)
+  }
+
   readonly property bool vertical: position === "left" || position === "right"
   readonly property int barSize: vertical ? 28 : 26
 
@@ -104,51 +135,6 @@ Item {
     return value !== null && typeof value === "object" && !Array.isArray(value)
   }
 
-  function cloneConfig(value) {
-    if (Array.isArray(value)) {
-      var arrayCopy = []
-      for (var i = 0; i < value.length; i++)
-        arrayCopy.push(cloneConfig(value[i]))
-      return arrayCopy
-    }
-
-    if (isPlainObject(value)) {
-      var objectCopy = {}
-      for (var key in value)
-        objectCopy[key] = cloneConfig(value[key])
-      return objectCopy
-    }
-
-    return value
-  }
-
-  function mergeConfig(base, override) {
-    var result = cloneConfig(base || {})
-    if (!isPlainObject(override)) return result
-
-    for (var key in override) {
-      if (isPlainObject(result[key]) && isPlainObject(override[key]))
-        result[key] = mergeConfig(result[key], override[key])
-      else
-        result[key] = cloneConfig(override[key])
-    }
-
-    return result
-  }
-
-  function parseConfig(raw, label) {
-    var text = String(raw || "").trim()
-    if (!text) return {}
-
-    try {
-      var parsed = JSON.parse(text)
-      return isPlainObject(parsed) ? parsed : {}
-    } catch (error) {
-      console.warn("Failed to parse " + label + ": " + error)
-      return {}
-    }
-  }
-
   function normalizeLayoutEntry(entry) {
     if (typeof entry === "string") return { id: entry }
     if (isPlainObject(entry) && entry.id) return entry
@@ -166,7 +152,7 @@ Item {
   }
 
   function normalizeLayout(layout) {
-    if (!isPlainObject(layout)) layout = builtinBarConfig.layout
+    if (!isPlainObject(layout)) layout = fallbackBarConfig.layout
     return {
       left: normalizeLayoutSection(layout.left),
       center: normalizeLayoutSection(layout.center),
@@ -175,24 +161,16 @@ Item {
   }
 
   function applyBarConfig() {
-    var config = mergeConfig(defaultBarConfig, userBarConfig)
+    var config = isPlainObject(barConfig) ? barConfig : fallbackBarConfig
 
     position = normalizePosition(config.position)
     fontFamily = String(config.fontFamily || "JetBrainsMono Nerd Font")
-    centerAnchor = String(config.centerAnchor || "clock")
+    centerAnchor = String(config.centerAnchor || "")
     layoutConfig = normalizeLayout(config.layout)
     barConfigSerial++
   }
 
-  function loadDefaultBarConfig(raw) {
-    defaultBarConfig = mergeConfig(builtinBarConfig, parseConfig(raw, "bar defaults"))
-    applyBarConfig()
-  }
-
-  function loadUserBarConfig(raw) {
-    userBarConfig = parseConfig(raw, "bar config")
-    applyBarConfig()
-  }
+  onBarConfigChanged: applyBarConfig()
 
   function layoutEntries(region) {
     var serial = barConfigSerial
@@ -327,7 +305,10 @@ Item {
 
   property var registeredFirstPartyComponents: ({})
 
-  Component.onCompleted: registerFirstPartyWidgets()
+  Component.onCompleted: {
+    registerFirstPartyWidgets()
+    applyBarConfig()
+  }
 
   function registerFirstPartyWidgets() {
     var ids = Object.keys(firstPartyWidgetMetadata)
@@ -713,22 +694,8 @@ Item {
     onTriggered: root.tooltipShown = true
   }
 
-  FileView {
-    path: root.omarchyPath + "/default/quickshell/omarchy-shell/plugins/bar/bar-defaults.json"
-    watchChanges: true
-    printErrors: false
-    onLoaded: root.loadDefaultBarConfig(text())
-    onFileChanged: reload()
-  }
-
-  FileView {
-    path: root.omarchyConfigDir + "/bar.json"
-    watchChanges: true
-    printErrors: false
-    onLoaded: root.loadUserBarConfig(text())
-    onFileChanged: reload()
-  }
-
+  // The host owns shell.json loading and injects `barConfig`. Bar still keeps
+  // its own theme FileView since theme colors are independent of shell.json.
   FileView {
     path: root.home + "/.config/omarchy/current/theme/colors.toml"
     watchChanges: true
@@ -1230,6 +1197,20 @@ Item {
       if ("bar" in target) target.bar = root
       if ("moduleName" in target) target.moduleName = moduleName
       if ("settings" in target) target.settings = moduleSettings
+
+      // Noctalia compat injection. Only kicks in for plugins whose manifest
+      // was translated from Noctalia shape; for our first-party widgets these
+      // properties don't exist on the target item so nothing happens.
+      var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[moduleName] : null
+      if (manifest && manifest.__noctaliaCompat) {
+        if ("pluginApi" in target)            target.pluginApi          = root.noctaliaPluginApiFor(moduleName)
+        if ("widgetId" in target)             target.widgetId           = moduleName
+        if ("section" in target)              target.section            = root.sectionOfEntry(entry)
+        if ("sectionWidgetIndex" in target)   target.sectionWidgetIndex = root.indexOfEntry(entry)
+        if ("sectionWidgetsCount" in target)  target.sectionWidgetsCount = root.entriesOfSection(root.sectionOfEntry(entry)).length
+        if ("screen" in target && root.QsWindow && root.QsWindow.window)
+          target.screen = root.QsWindow.window.screen
+      }
     }
 
     Component {
