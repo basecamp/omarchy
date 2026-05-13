@@ -11,12 +11,24 @@ Item {
   property var settings: ({})
 
   property bool popupOpen: false
-
   function closePopout() { popupOpen = false }
+
   property string fullReport: ""
 
   readonly property string label: bar ? bar.weatherText : ""
   readonly property string klass: bar ? bar.weatherClass : ""
+
+  // Parse the wttr.in single-line report into location + condition halves so
+  // we can render them with different emphasis.
+  readonly property string reportLocation: {
+    var parts = String(fullReport || "").split(":")
+    return parts.length > 1 ? parts[0].trim() : ""
+  }
+  readonly property string reportCondition: {
+    var parts = String(fullReport || "").split(":")
+    if (parts.length > 1) return parts.slice(1).join(":").trim()
+    return String(fullReport || "").trim()
+  }
 
   visible: label !== ""
   implicitWidth: button.implicitWidth
@@ -25,7 +37,6 @@ Item {
   function refresh() {
     if (!forecastProc.running) forecastProc.running = true
   }
-
 
   Process {
     id: forecastProc
@@ -60,66 +71,69 @@ Item {
     bar: root.bar
     open: root.popupOpen
     contentWidth: 320
-    contentHeight: column.implicitHeight + 28
+    contentHeight: card.implicitHeight + 28
 
     Column {
-      id: column
+      id: card
       anchors.fill: parent
-      spacing: 10
+      spacing: 12
 
       Row {
-        spacing: 12
         width: parent.width
+        spacing: 10
 
         Text {
+          id: glyph
           text: root.label || "—"
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 28
-          anchors.verticalCenter: parent.verticalCenter
+          font.pixelSize: 24
+          anchors.verticalCenter: location.verticalCenter
         }
 
-        Column {
+        Text {
+          id: location
+          text: root.reportLocation || "Weather"
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: 13
+          font.bold: true
           anchors.verticalCenter: parent.verticalCenter
-          spacing: 2
-
-          Text {
-            text: "Weather"
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: 12
-            font.bold: true
-          }
-
-          Text {
-            text: root.fullReport || "Fetching forecast…"
-            color: Qt.darker(root.bar.foreground, 1.2)
-            font.family: root.bar.fontFamily
-            font.pixelSize: 10
-            wrapMode: Text.WordWrap
-            width: 220
-          }
+          width: parent.width - glyph.width - parent.spacing
+          elide: Text.ElideRight
         }
       }
 
-      Common.PillButton {
+      Text {
+        text: root.reportCondition || "Fetching forecast…"
+        color: Qt.darker(root.bar.foreground, 1.2)
+        font.family: root.bar.fontFamily
+        font.pixelSize: 11
+        wrapMode: Text.WordWrap
         width: parent.width
-        iconText: "󰑐"
-        text: "Refresh"
-        foreground: root.bar.foreground
-        horizontalPadding: 10
-        verticalPadding: 6
-        onClicked: root.refresh()
       }
 
-      Common.PillButton {
+      Row {
         width: parent.width
-        iconText: "󰏌"
-        text: "Open wttr.in"
-        foreground: root.bar.foreground
-        horizontalPadding: 10
-        verticalPadding: 6
-        onClicked: { root.bar.run("xdg-open https://wttr.in"); root.popupOpen = false }
+        spacing: 8
+
+        Common.PillButton {
+          iconText: "󰑐"
+          text: "Refresh"
+          foreground: root.bar.foreground
+          horizontalPadding: 12
+          verticalPadding: 6
+          onClicked: root.refresh()
+        }
+
+        Common.PillButton {
+          iconText: "󰏌"
+          text: "wttr.in"
+          foreground: root.bar.foreground
+          horizontalPadding: 12
+          verticalPadding: 6
+          onClicked: { root.bar.run("xdg-open https://wttr.in"); root.popupOpen = false }
+        }
       }
     }
   }
