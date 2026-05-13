@@ -218,7 +218,7 @@ show_toggle_menu() {
   *Nightlight*) omarchy-toggle-nightlight ;;
   *Idle*) omarchy-toggle-idle ;;
   *Notifications*) omarchy-toggle-notification-silencing ;;
-  *Bar*) omarchy-toggle-waybar ;;
+  *Bar*) omarchy-toggle-bar ;;
   *Layout*) omarchy-hyprland-workspace-layout-toggle ;;
   *Ratio*) omarchy-hyprland-window-single-square-aspect-toggle ;;
   *Gaps*) omarchy-hyprland-window-gaps-toggle ;;
@@ -271,7 +271,7 @@ show_hardware_touchpad_haptics_menu() {
 }
 
 show_style_menu() {
-  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n󰍜  Waybar\n󰘇  Corners\n  Hyprland\n󱄄  Screensaver\n  About") in
+  case $(menu "Style" "󰸌  Theme\n󰟵  Unlock\n  Font\n  Background\n󰍜  Bar\n󰘇  Corners\n  Hyprland\n󱄄  Screensaver\n  About") in
 
   *Theme*) show_theme_menu ;;
   *Unlock*) omarchy-launch-walker -m menus:omarchyunlocks --width 800 --minheight 400 ;;
@@ -279,7 +279,7 @@ show_style_menu() {
   *Background*) show_background_menu ;;
   *Corners*) show_style_corners_menu ;;
   *Hyprland*) open_in_editor "$(hypr_config_file looknfeel)" ;;
-  *Waybar*) show_waybar_position_menu ;;
+  *Bar*) show_bar_position_menu ;;
   *Screensaver*) show_screensaver_menu ;;
   *About*) show_about_menu ;;
   *) show_main_menu ;;
@@ -294,12 +294,12 @@ show_style_corners_menu() {
   esac
 }
 
-show_waybar_position_menu() {
-  case $(menu "Waybar Position" "󰁝  Top\n󰁅  Bottom\n󰁍  Left\n󰁔  Right") in
-  *Top*) omarchy-style-waybar-position top ;;
-  *Bottom*) omarchy-style-waybar-position bottom ;;
-  *Left*) omarchy-style-waybar-position left ;;
-  *Right*) omarchy-style-waybar-position right ;;
+show_bar_position_menu() {
+  case $(menu "Bar Position" "󰁝  Top\n󰁅  Bottom\n󰁍  Left\n󰁔  Right") in
+  *Top*) omarchy-style-bar-position top ;;
+  *Bottom*) omarchy-style-bar-position bottom ;;
+  *Left*) omarchy-style-bar-position left ;;
+  *Right*) omarchy-style-bar-position right ;;
   *) show_style_menu ;;
   esac
 }
@@ -489,14 +489,14 @@ show_setup_default_editor_menu() {
 }
 
 show_setup_config_menu() {
-  case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Waybar\n󰞅  XCompose") in
+  case $(menu "Setup" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n  Swayosd\n󰌧  Walker\n󰍜  Bar\n󰞅  XCompose") in
   *Hyprland*) open_in_editor "$(hypr_config_file hyprland)" ;;
   *Hypridle*) open_in_editor ~/.config/hypr/hypridle.conf && omarchy-restart-hypridle ;;
   *Hyprlock*) open_in_editor ~/.config/hypr/hyprlock.conf ;;
   *Hyprsunset*) open_in_editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset ;;
   *Swayosd*) open_in_editor ~/.config/swayosd/config.toml && omarchy-restart-swayosd ;;
   *Walker*) open_in_editor ~/.config/walker/config.toml && omarchy-restart-walker ;;
-  *Waybar*) open_in_editor ~/.config/waybar/config.jsonc && omarchy-restart-waybar ;;
+  *Bar*) open_in_editor ~/.config/omarchy/bar.json && omarchy-restart-bar ;;
   *XCompose*) open_in_editor ~/.XCompose && omarchy-restart-xcompose ;;
   *) show_setup_menu ;;
   esac
@@ -813,19 +813,19 @@ show_update_channel_menu() {
   esac
 }
 show_update_process_menu() {
-  case $(menu "Restart" "  Hypridle\n  Hyprsunset\n󰎟  Mako\n  Swayosd\n󰌧  Walker\n󰍜  Waybar") in
+  case $(menu "Restart" "  Hypridle\n  Hyprsunset\n󰎟  Mako\n  Swayosd\n󰌧  Walker\n󰍜  Bar") in
   *Hypridle*) omarchy-restart-hypridle ;;
   *Hyprsunset*) omarchy-restart-hyprsunset ;;
   *Mako*) omarchy-restart-mako ;;
   *Swayosd*) omarchy-restart-swayosd ;;
   *Walker*) omarchy-restart-walker ;;
-  *Waybar*) omarchy-restart-waybar ;;
+  *Bar*) omarchy-restart-bar ;;
   *) show_update_menu ;;
   esac
 }
 
 show_update_config_menu() {
-  case $(menu "Use default config" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n󱣴  Plymouth\n  Swayosd\n  Tmux\n󰌧  Walker\n󰍜  Waybar") in
+  case $(menu "Use default config" "  Hyprland\n  Hypridle\n  Hyprlock\n  Hyprsunset\n󱣴  Plymouth\n  Swayosd\n  Tmux\n󰌧  Walker\n󰍜  Bar") in
   *Hyprland*) present_terminal omarchy-refresh-hyprland ;;
   *Hypridle*) present_terminal omarchy-refresh-hypridle ;;
   *Hyprlock*) present_terminal omarchy-refresh-hyprlock ;;
@@ -834,7 +834,7 @@ show_update_config_menu() {
   *Swayosd*) present_terminal omarchy-refresh-swayosd ;;
   *Tmux*) present_terminal omarchy-refresh-tmux ;;
   *Walker*) present_terminal omarchy-refresh-walker ;;
-  *Waybar*) present_terminal omarchy-refresh-waybar ;;
+  *Bar*) present_terminal omarchy-refresh-bar ;;
   *) show_update_menu ;;
   esac
 }

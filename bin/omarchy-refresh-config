@@ -18,8 +18,9 @@ USAGE
 fi
 
 # Backup the destination file (with timestamp) to avoid clobbering (Ex: hyprlock.conf.bak.1753817951)
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 user_config_file="${HOME}/.config/$config_file"
-default_config_file="${HOME}/.local/share/omarchy/config/$config_file"
+default_config_file="$OMARCHY_PATH/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
 
 mkdir -p "$(dirname "$user_config_file")"
