@@ -119,30 +119,63 @@ Item {
     }
   }
 
-  implicitWidth: row.implicitWidth + 6
-  implicitHeight: bar ? bar.barSize : 26
+  readonly property bool vertical: bar ? bar.vertical : false
 
-  Row {
-    id: row
+  implicitWidth: vertical ? (bar ? bar.barSize : 28) : (statLayout.item ? statLayout.item.implicitWidth + 6 : 0)
+  implicitHeight: vertical ? (statLayout.item ? statLayout.item.implicitHeight + 6 : 0) : (bar ? bar.barSize : 26)
+
+  readonly property color statColor: bar ? bar.foreground : "#cacccc"
+  readonly property string statFont: bar ? bar.fontFamily : "JetBrainsMono Nerd Font"
+
+  Loader {
+    id: statLayout
     anchors.centerIn: parent
-    spacing: 8
+    sourceComponent: root.vertical ? statColumn : statRow
+  }
 
-    StatPill {
-      glyph: "󰍛"
-      percent: root.cpuPercent
-      history: root.cpuHistory
-      vertical: root.bar.vertical
-      barFg: root.bar.foreground
-      fontFamily: root.bar.fontFamily
+  Component {
+    id: statRow
+    Row {
+      spacing: 8
+      StatPill {
+        glyph: "󰻠"
+        percent: root.cpuPercent
+        history: root.cpuHistory
+        vertical: false
+        barFg: root.statColor
+        fontFamily: root.statFont
+      }
+      StatPill {
+        glyph: "󰍛"
+        percent: root.memPercent
+        history: root.memHistory
+        vertical: false
+        barFg: root.statColor
+        fontFamily: root.statFont
+      }
     }
+  }
 
-    StatPill {
-      glyph: ""
-      percent: root.memPercent
-      history: root.memHistory
-      vertical: root.bar.vertical
-      barFg: root.bar.foreground
-      fontFamily: root.bar.fontFamily
+  Component {
+    id: statColumn
+    Column {
+      spacing: 4
+      StatPill {
+        glyph: "󰻠"
+        percent: root.cpuPercent
+        history: root.cpuHistory
+        vertical: true
+        barFg: root.statColor
+        fontFamily: root.statFont
+      }
+      StatPill {
+        glyph: "󰍛"
+        percent: root.memPercent
+        history: root.memHistory
+        vertical: true
+        barFg: root.statColor
+        fontFamily: root.statFont
+      }
     }
   }
 
@@ -184,7 +217,7 @@ Item {
         title: "CPU"
         value: Math.round(root.cpuPercent) + "%"
         history: root.cpuHistory
-        barFg: root.bar.foreground
+        barFg: root.statColor
         fontFamily: root.bar.fontFamily
         width: parent.width
       }
@@ -193,7 +226,7 @@ Item {
         title: "Memory"
         value: Math.round(root.memPercent) + "%"
         history: root.memHistory
-        barFg: root.bar.foreground
+        barFg: root.statColor
         fontFamily: root.bar.fontFamily
         width: parent.width
       }
@@ -217,7 +250,7 @@ Item {
 
       Common.PillButton {
         width: parent.width
-        iconText: "󰍛"
+        iconText: "󰆍"
         text: "Open btop"
         foreground: root.bar.foreground
         horizontalPadding: 10

@@ -41,7 +41,7 @@ Item {
     if (!adapter) return ""
     if (!adapter.enabled) return "󰂲"
     if (connectedDevices.length > 0) return "󰂱"
-    return ""
+    return "󰂯"
   }
 
   visible: adapter !== null
@@ -92,7 +92,7 @@ Item {
         Item { width: parent.width - 200; height: 1 }
 
         Common.PillButton {
-          iconText: root.adapter && root.adapter.enabled ? "" : ""
+          iconText: root.adapter && root.adapter.enabled ? "󰂯" : "󰂲"
           text: root.adapter && root.adapter.enabled ? "On" : "Off"
           foreground: root.bar.foreground
           horizontalPadding: 8
@@ -102,7 +102,7 @@ Item {
         }
 
         Common.PillButton {
-          iconText: ""
+          iconText: "󰂳"
           foreground: root.bar.foreground
           horizontalPadding: 8
           verticalPadding: 4
@@ -120,7 +120,7 @@ Item {
           required property var modelData
 
           width: parent.width
-          iconText: modelData && modelData.connected ? "󰂱" : ""
+          iconText: modelData && modelData.connected ? "󰂱" : "󰂯"
           text: {
             var label = modelData ? (modelData.deviceName || modelData.name || modelData.address || "Device") : ""
             if (modelData && modelData.batteryAvailable) label += "  " + Math.round(modelData.battery * 100) + "%"

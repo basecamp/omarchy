@@ -18,21 +18,35 @@ Item {
   readonly property var source: Pipewire.defaultAudioSource
   readonly property var nodes: Pipewire.nodes ? Pipewire.nodes.values : []
 
-  readonly property var audioSinks: {
+  readonly property var candidateSinks: {
     var list = []
     for (var i = 0; i < nodes.length; i++) {
       var node = nodes[i]
-      if (node && node.isSink && !node.isStream && node.audio) list.push(node)
+      if (node && node.isSink && !node.isStream) list.push(node)
     }
+    return list
+  }
+
+  readonly property var candidateStreams: {
+    var list = []
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i]
+      if (node && node.isStream && !node.isSink) list.push(node)
+    }
+    return list
+  }
+
+  readonly property var audioSinks: {
+    var list = []
+    for (var i = 0; i < candidateSinks.length; i++)
+      if (candidateSinks[i].audio) list.push(candidateSinks[i])
     return list
   }
 
   readonly property var audioStreams: {
     var list = []
-    for (var i = 0; i < nodes.length; i++) {
-      var node = nodes[i]
-      if (node && node.isStream && !node.isSink && node.audio) list.push(node)
-    }
+    for (var i = 0; i < candidateStreams.length; i++)
+      if (candidateStreams[i].audio) list.push(candidateStreams[i])
     return list
   }
 
@@ -65,8 +79,9 @@ Item {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  PwObjectTracker { objects: root.audioSinks }
-  PwObjectTracker { objects: root.audioStreams }
+  PwObjectTracker { objects: root.candidateSinks }
+  PwObjectTracker { objects: root.candidateStreams }
+  PwObjectTracker { objects: root.sink ? [root.sink] : [] }
 
   Common.WidgetButton {
     id: button
@@ -224,7 +239,7 @@ Item {
       node.properties ? node.properties["device.icon-name"] : "",
       node.properties ? node.properties["device.product.name"] : ""
     ].join(" ")).toLowerCase()
-    if (blob.indexOf("headphone") !== -1 || blob.indexOf("headset") !== -1) return ""
+    if (blob.indexOf("headphone") !== -1 || blob.indexOf("headset") !== -1) return "󰋋"
     if (blob.indexOf("bluetooth") !== -1) return "󰂯"
     if (blob.indexOf("hdmi") !== -1 || blob.indexOf("display") !== -1) return "󰍹"
     return "󰓃"
