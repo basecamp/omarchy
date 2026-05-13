@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Bluetooth
 import "../common" as Common
@@ -137,30 +138,11 @@ Item {
       // Paired / known devices.
       Repeater {
         model: root.knownDevices
-
-        Common.PillButton {
+        DeviceRow {
           required property var modelData
-
           width: parent.width
-          iconText: modelData && modelData.connected ? "󰂱" : "󰂯"
-          text: {
-            var label = modelData ? (modelData.deviceName || modelData.name || modelData.address || "Device") : ""
-            if (modelData && modelData.batteryAvailable) label += "  " + Math.round(modelData.battery * 100) + "%"
-            return label
-          }
-          tooltipText: modelData && modelData.connected ? "Click to disconnect · right-click to forget"
-                                                       : "Click to connect · right-click to forget"
-          foreground: root.bar.foreground
-          horizontalPadding: 10
-          verticalPadding: 6
-          active: modelData && modelData.connected
-
-          onClicked: {
-            if (!modelData) return
-            if (modelData.connected) modelData.disconnect()
-            else modelData.connect()
-          }
-          onRightClicked: if (modelData) modelData.forget()
+          dev: modelData
+          isDiscovered: false
         }
       }
 
@@ -176,22 +158,11 @@ Item {
 
       Repeater {
         model: root.adapter && root.adapter.discovering ? root.discoveredDevices : []
-
-        Common.PillButton {
+        DeviceRow {
           required property var modelData
-
           width: parent.width
-          iconText: "󰂯"
-          text: modelData ? (modelData.deviceName || modelData.name || modelData.address || "Unknown") : ""
-          tooltipText: "Click to pair and connect"
-          foreground: Qt.darker(root.bar.foreground, 1.2)
-          horizontalPadding: 10
-          verticalPadding: 6
-
-          onClicked: {
-            if (!modelData) return
-            modelData.pair()
-          }
+          dev: modelData
+          isDiscovered: true
         }
       }
 
@@ -207,6 +178,167 @@ Item {
         font.pixelSize: 11
         wrapMode: Text.WordWrap
         width: parent.width
+      }
+    }
+  }
+
+  // Two-line device row showing name + live status (Connected, Connecting…,
+  // Pairing…, Failed). Tracks pending click attempts with a Timer so a
+  // connect that drops back to Disconnected within 10s surfaces as "Failed".
+  component DeviceRow: Rectangle {
+    id: row
+    required property var dev
+    required property bool isDiscovered
+
+    readonly property bool isConnected: dev && dev.connected
+    readonly property int devState: dev && dev.state !== undefined ? dev.state : -1
+
+    // 0 idle, 1 connecting, 2 disconnecting, 3 pairing, 4 failed.
+    property int pendingAction: 0
+    property string failureReason: ""
+
+    // Heuristic: while pendingAction is set, the connect/pair attempt is
+    // expected to land within ~10s. If state stays Disconnected past that, we
+    // declare failure. Cleared as soon as state reaches Connected.
+    Timer {
+      id: failureTimer
+      interval: 10000
+      repeat: false
+      onTriggered: {
+        if (row.pendingAction === 1 && !row.isConnected) {
+          row.pendingAction = 4
+          row.failureReason = "Could not connect"
+        } else if (row.pendingAction === 3 && row.dev && !row.dev.paired) {
+          row.pendingAction = 4
+          row.failureReason = "Pairing failed"
+        } else {
+          row.pendingAction = 0
+          row.failureReason = ""
+        }
+      }
+    }
+
+    Connections {
+      target: row.dev || null
+      function onConnectedChanged() {
+        if (row.isConnected) { row.pendingAction = 0; row.failureReason = "" }
+      }
+      function onPairedChanged() {
+        if (row.dev && row.dev.paired && row.pendingAction === 3) {
+          row.pendingAction = 0
+        }
+      }
+    }
+
+    readonly property string statusText: {
+      if (!dev) return ""
+      if (pendingAction === 4) return failureReason || "Failed"
+      if (pendingAction === 1 || devState === 3) return "Connecting\u2026"
+      if (pendingAction === 2 || devState === 2) return "Disconnecting\u2026"
+      if (pendingAction === 3 || (dev.pairing === true)) return "Pairing\u2026"
+      if (isConnected) {
+        if (dev.batteryAvailable) return "Connected · " + Math.round(dev.battery * 100) + "%"
+        return "Connected"
+      }
+      if (isDiscovered) return "Available · click to pair"
+      return "Paired"
+    }
+
+    readonly property color statusColor: {
+      if (pendingAction === 4) return root.bar.urgent
+      if (isConnected) return root.bar.foreground
+      if (pendingAction === 1 || devState === 3 || pendingAction === 3) return root.bar.foreground
+      return Qt.darker(root.bar.foreground, 1.5)
+    }
+
+    implicitHeight: rowContent.implicitHeight + 12
+    radius: 4
+    color: rowMouse.containsMouse
+      ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
+      : (isConnected ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.05) : "transparent")
+
+    Behavior on color { ColorAnimation { duration: 120 } }
+
+    ToolTip.visible: rowMouse.containsMouse && tooltipBody !== ""
+    ToolTip.text: tooltipBody
+    ToolTip.delay: 400
+    readonly property string tooltipBody:
+      isDiscovered ? "Click to pair and connect"
+      : isConnected ? "Click to disconnect · right-click to forget"
+      : "Click to connect · right-click to forget"
+
+    Row {
+      id: rowContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: 10
+      anchors.rightMargin: 10
+      spacing: 10
+
+      Text {
+        text: row.isConnected ? "󰂱" : "󰂯"
+        color: row.statusColor
+        font.family: root.bar.fontFamily
+        font.pixelSize: 16
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Column {
+        spacing: 1
+        anchors.verticalCenter: parent.verticalCenter
+        width: parent.width - parent.children[0].width - parent.spacing
+
+        Text {
+          text: row.dev ? (row.dev.deviceName || row.dev.name || row.dev.address || "Device") : ""
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: 12
+          elide: Text.ElideRight
+          width: parent.width
+        }
+        Text {
+          visible: row.statusText !== ""
+          text: row.statusText
+          color: row.statusColor
+          font.family: root.bar.fontFamily
+          font.pixelSize: 10
+          elide: Text.ElideRight
+          width: parent.width
+        }
+      }
+    }
+
+    MouseArea {
+      id: rowMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.LeftButton | Qt.RightButton
+      cursorShape: row.dev ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+      onClicked: function(mouse) {
+        if (!row.dev) return
+        if (mouse.button === Qt.RightButton) {
+          if (row.dev.forget) row.dev.forget()
+          return
+        }
+        if (row.isDiscovered) {
+          row.pendingAction = 3
+          row.failureReason = ""
+          failureTimer.restart()
+          row.dev.pair()
+          return
+        }
+        if (row.isConnected) {
+          row.pendingAction = 2
+          failureTimer.stop()
+          row.dev.disconnect()
+        } else {
+          row.pendingAction = 1
+          row.failureReason = ""
+          failureTimer.restart()
+          row.dev.connect()
+        }
       }
     }
   }
