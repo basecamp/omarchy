@@ -10,22 +10,15 @@ import Quickshell.Widgets
 import QtQuick
 import QtQuick.Layouts
 
-ShellRoot {
+import "../../services" as Services
+
+Item {
   id: root
 
+  // The omarchy-shell host injects omarchyPath when it instantiates this Bar.
+  // Default fallback keeps the file loadable in isolation (e.g. for QML tooling).
+  required property string omarchyPath
   property string home: Quickshell.env("HOME")
-  // Derive omarchyPath from the loaded shell.qml's directory so the bar finds
-  // its own widgets/defaults regardless of where it was launched. shellDir is
-  // `<omarchyPath>/default/quickshell/bar` so strip three trailing segments.
-  function deriveOmarchyPath() {
-    var env = Quickshell.env("OMARCHY_PATH")
-    if (env) return env
-    var dir = String(Quickshell.shellDir || "")
-    if (dir.indexOf("/default/quickshell/bar") !== -1)
-      return dir.substring(0, dir.indexOf("/default/quickshell/bar"))
-    return home + "/.local/share/omarchy"
-  }
-  property string omarchyPath: deriveOmarchyPath()
   property string omarchyConfigDir: home + "/.config/omarchy"
   property var builtinBarConfig: ({
     position: "top",
@@ -305,33 +298,69 @@ ShellRoot {
     return source ? fileUrl(source) : ""
   }
 
-  readonly property var firstPartyWidgets: ({
-    "media": true,
-    "audioPanel": true,
-    "networkPanel": true,
-    "bluetoothPanel": true,
-    "calendar": true,
-    "notificationCenter": true,
-    "brightness": true,
-    "powerProfile": true,
-    "systemStats": true,
-    "weatherFlyout": true,
-    "workspacesPro": true,
-    "powerMenu": true,
-    "idleInhibitor": true,
-    "microphone": true,
-    "notificationCenter": true,
-    "activeWindow": true,
-    "nightLight": true,
-    "keyboardLayout": true,
-    "lockKeys": true,
-    "spacer": true,
-    "controlCenter": true
+  // First-party widgets are registered with the BarWidgetRegistry at startup.
+  // Each entry maps a widget id to its display metadata; the QML source lives
+  // at widgets/<id>.qml and is loaded asynchronously via Qt.createComponent.
+  readonly property var firstPartyWidgetMetadata: ({
+    "media":              { displayName: "Media",              description: "MPRIS now-playing with playback controls",   category: "Media",    allowMultiple: false },
+    "audioPanel":         { displayName: "Audio",              description: "Volume slider, output picker, per-app mixer", category: "Audio",    allowMultiple: false },
+    "networkPanel":       { displayName: "Network",            description: "Wi-Fi list and connection state",            category: "Network",  allowMultiple: false },
+    "bluetoothPanel":     { displayName: "Bluetooth",          description: "Bluetooth device list with connect/disconnect", category: "Network", allowMultiple: false },
+    "calendar":           { displayName: "Calendar",           description: "Clock with month-grid popup",                  category: "Time",     allowMultiple: false },
+    "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND (replaces mako)",  category: "Status",   allowMultiple: false },
+    "brightness":         { displayName: "Brightness",         description: "Screen brightness slider",                    category: "System",   allowMultiple: false },
+    "powerProfile":       { displayName: "Power profile",      description: "power-profiles-daemon selector",              category: "System",   allowMultiple: false },
+    "systemStats":        { displayName: "System stats",       description: "Inline CPU + memory sparklines",              category: "System",   allowMultiple: false },
+    "weatherFlyout":      { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false },
+    "workspacesPro":      { displayName: "Workspaces",         description: "Animated workspace switcher",                 category: "Compositor", allowMultiple: false },
+    "powerMenu":          { displayName: "Power menu",         description: "Lock / suspend / reboot / shutdown",          category: "System",   allowMultiple: false },
+    "idleInhibitor":      { displayName: "Keep awake",         description: "Toggle idle inhibitor",                       category: "System",   allowMultiple: false },
+    "microphone":         { displayName: "Microphone",         description: "Mic input state and mute toggle",             category: "Audio",    allowMultiple: false },
+    "activeWindow":       { displayName: "Active window",      description: "Title of the focused window",                 category: "Compositor", allowMultiple: false },
+    "nightLight":         { displayName: "Night light",        description: "hyprsunset toggle",                           category: "System",   allowMultiple: false },
+    "keyboardLayout":     { displayName: "Keyboard layout",    description: "Current xkb layout, click cycles",            category: "Compositor", allowMultiple: false },
+    "lockKeys":           { displayName: "Lock keys",          description: "Caps / Num / Scroll lock indicators",          category: "System",   allowMultiple: false },
+    "spacer":             { displayName: "Spacer",             description: "Configurable blank space",                    category: "Layout",   allowMultiple: true  },
+    "controlCenter":      { displayName: "Quick settings",     description: "Volume / brightness / DND in one popup",      category: "System",   allowMultiple: false }
   })
 
-  function firstPartyWidgetSource(name) {
-    if (!firstPartyWidgets[String(name)]) return ""
-    return Qt.resolvedUrl("widgets/" + String(name) + ".qml")
+  property var registeredFirstPartyComponents: ({})
+
+  Component.onCompleted: registerFirstPartyWidgets()
+
+  function registerFirstPartyWidgets() {
+    var ids = Object.keys(firstPartyWidgetMetadata)
+    for (var i = 0; i < ids.length; i++) {
+      var id = ids[i]
+      if (Services.BarWidgetRegistry.has(id)) continue
+      registerOneFirstPartyWidget(id)
+    }
+  }
+
+  function registerOneFirstPartyWidget(id) {
+    var url = Qt.resolvedUrl("widgets/" + id + ".qml")
+    var meta = firstPartyWidgetMetadata[id] || {}
+    var enrichedMeta = {
+      displayName: meta.displayName || id,
+      description: meta.description || "",
+      category: meta.category || "Misc",
+      allowMultiple: meta.allowMultiple === true,
+      source: "first-party"
+    }
+    var comp = Qt.createComponent(url, Component.Asynchronous)
+    function finalize() {
+      if (comp.status === Component.Ready) {
+        Services.BarWidgetRegistry.register(id, comp, enrichedMeta)
+        var next = ({})
+        for (var k in registeredFirstPartyComponents) next[k] = registeredFirstPartyComponents[k]
+        next[id] = comp
+        registeredFirstPartyComponents = next
+      } else if (comp.status === Component.Error) {
+        console.warn("first-party widget " + id + " failed to load: " + comp.errorString())
+      }
+    }
+    if (comp.status === Component.Loading) comp.statusChanged.connect(finalize)
+    else finalize()
   }
 
   function networkCommand() {
@@ -1146,11 +1175,22 @@ ShellRoot {
     readonly property var moduleSettings: root.entrySettings(entry)
     readonly property string customType: root.customModuleType(entry)
     readonly property var builtinComponent: customType ? null : root.builtinModuleComponent(moduleName)
-    readonly property string firstPartySource: customType || builtinComponent ? "" : root.firstPartyWidgetSource(moduleName)
+    // Re-evaluate when the registry mutates (Component reference changes,
+    // plugin enabled/disabled, etc.). Reading the `widgets` property creates
+    // the binding dependency — the wrapped function call alone wouldn't.
+    readonly property var registryComponent: {
+      var w = Services.BarWidgetRegistry.widgets
+      if (customType || builtinComponent) return null
+      return w[moduleName] ? w[moduleName].component : null
+    }
     readonly property bool qmlCustom: customType === "qml"
     readonly property bool commandCustom: customType === "command"
-    readonly property bool firstParty: firstPartySource !== ""
-    readonly property var activeItem: qmlCustom || firstParty ? qmlLoader.item : componentLoader.item
+    readonly property bool registered: registryComponent !== null
+    readonly property var activeItem: {
+      if (registered) return registryLoader.item
+      if (qmlCustom) return qmlLoader.item
+      return componentLoader.item
+    }
 
     implicitWidth: activeItem && activeItem.visible ? activeItem.implicitWidth : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
@@ -1159,15 +1199,23 @@ ShellRoot {
 
     Loader {
       id: componentLoader
-      active: !slot.qmlCustom && !slot.firstParty
+      active: !slot.qmlCustom && !slot.registered
       sourceComponent: slot.builtinComponent || (slot.commandCustom ? customCommandModuleComponent : emptyModuleComponent)
       anchors.fill: parent
     }
 
     Loader {
+      id: registryLoader
+      active: slot.registered
+      sourceComponent: slot.registered ? slot.registryComponent : null
+      anchors.fill: parent
+      onLoaded: slot.injectProps()
+    }
+
+    Loader {
       id: qmlLoader
-      active: slot.qmlCustom || slot.firstParty
-      source: slot.qmlCustom ? root.customModuleSource(slot.entry) : (slot.firstParty ? slot.firstPartySource : "")
+      active: slot.qmlCustom
+      source: slot.qmlCustom ? root.customModuleSource(slot.entry) : ""
       anchors.fill: parent
       onLoaded: slot.injectProps()
     }
@@ -1175,7 +1223,7 @@ ShellRoot {
     onModuleSettingsChanged: injectProps()
 
     function injectProps() {
-      var target = qmlLoader.item
+      var target = registryLoader.item || qmlLoader.item
       if (!target) return
       if ("bar" in target) target.bar = root
       if ("moduleName" in target) target.moduleName = moduleName

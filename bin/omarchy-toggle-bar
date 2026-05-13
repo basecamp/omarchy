@@ -4,7 +4,7 @@
 # omarchy:examples=omarchy toggle bar
 
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-CONFIG_DIR="$OMARCHY_PATH/default/quickshell/bar"
+CONFIG_DIR="$OMARCHY_PATH/default/quickshell/omarchy-shell"
 
 omarchy-toggle bar-off
 

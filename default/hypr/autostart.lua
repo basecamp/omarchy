@@ -1,7 +1,7 @@
 hl.on("hyprland.start", function()
   hl.exec_cmd("uwsm-app -- hypridle")
   hl.exec_cmd("uwsm-app -- mako")
-  hl.exec_cmd("! omarchy-toggle-enabled bar-off && uwsm-app -- env OMARCHY_PATH=$HOME/.local/share/omarchy quickshell -p $HOME/.local/share/omarchy/default/quickshell/bar")
+  hl.exec_cmd("! omarchy-toggle-enabled bar-off && uwsm-app -- env OMARCHY_PATH=$HOME/.local/share/omarchy quickshell -p $HOME/.local/share/omarchy/default/quickshell/omarchy-shell")
   hl.exec_cmd("uwsm-app -- fcitx5 --disable notificationitem")
   hl.exec_cmd("uwsm-app -- swaybg -i ~/.config/omarchy/current/background -m fill")
   hl.exec_cmd("/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1")

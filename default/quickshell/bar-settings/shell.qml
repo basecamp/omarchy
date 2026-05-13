@@ -18,7 +18,7 @@ ShellRoot {
   }
   property string omarchyPath: deriveOmarchyPath()
   readonly property string userConfigPath: home + "/.config/omarchy/bar.json"
-  readonly property string defaultsPath: omarchyPath + "/default/quickshell/bar/bar-defaults.json"
+  readonly property string defaultsPath: omarchyPath + "/default/quickshell/omarchy-shell/plugins/bar/bar-defaults.json"
 
   property color foreground: "#cacccc"
   property color background: "#101315"
@@ -29,7 +29,7 @@ ShellRoot {
 
   // Bundled fallback so 'Reset to defaults' never produces an empty bar even
   // if bar-defaults.json fails to load. Keep in rough sync with the layout
-  // shipped in default/quickshell/bar/bar-defaults.json.
+  // shipped in default/quickshell/omarchy-shell/plugins/bar/bar-defaults.json.
   readonly property var builtinBarConfig: ({
     position: "top",
     fontFamily: "JetBrainsMono Nerd Font",

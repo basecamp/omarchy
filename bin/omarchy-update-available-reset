@@ -4,5 +4,5 @@
 
 pkill -RTMIN+7 waybar
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-quickshell ipc -p "$OMARCHY_PATH/default/quickshell/bar" call bar refreshUpdate >/dev/null 2>&1 || true
+quickshell ipc -p "$OMARCHY_PATH/default/quickshell/omarchy-shell" call bar refreshUpdate >/dev/null 2>&1 || true
 exit 0
