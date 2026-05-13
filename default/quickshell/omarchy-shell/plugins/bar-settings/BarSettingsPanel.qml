@@ -4,19 +4,28 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 
-ShellRoot {
+import "../../ui/settings" as SettingsUi
+
+Item {
   id: root
 
-  property string home: Quickshell.env("HOME")
-  function deriveOmarchyPath() {
+  // Injected by the host shell when the panel is summoned. Shared instances
+  // so the panel sees the same registry state the bar wrote into.
+  property var barWidgetRegistry: null
+  property var pluginRegistry: null
+
+  // Not `required` so the Loader-based instantiation can satisfy it via
+  // onLoaded; we still gracefully fall back to deriving from shellDir for
+  // standalone QML tooling.
+  property string omarchyPath: {
     var env = Quickshell.env("OMARCHY_PATH")
     if (env) return env
     var dir = String(Quickshell.shellDir || "")
-    if (dir.indexOf("/default/quickshell/bar-settings") !== -1)
-      return dir.substring(0, dir.indexOf("/default/quickshell/bar-settings"))
-    return home + "/.local/share/omarchy"
+    if (dir.indexOf("/default/quickshell/omarchy-shell") !== -1)
+      return dir.substring(0, dir.indexOf("/default/quickshell/omarchy-shell"))
+    return Quickshell.env("HOME") + "/.local/share/omarchy"
   }
-  property string omarchyPath: deriveOmarchyPath()
+  readonly property string home: Quickshell.env("HOME")
   readonly property string userConfigPath: home + "/.config/omarchy/bar.json"
   readonly property string defaultsPath: omarchyPath + "/default/quickshell/omarchy-shell/plugins/bar/bar-defaults.json"
 
@@ -26,6 +35,7 @@ ShellRoot {
   property color urgent: "#a55555"
 
   property string fontFamily: "JetBrainsMono Nerd Font"
+  property string activeTab: "layout"
 
   // Bundled fallback so 'Reset to defaults' never produces an empty bar even
   // if bar-defaults.json fails to load. Keep in rough sync with the layout
@@ -216,59 +226,98 @@ ShellRoot {
     }
   }
 
-  // Catalog of available widgets — id → display metadata + settings schema path.
-  // settingsForm is an inline-defined Component name that opens when editing.
-  readonly property var catalog: ({
-    "omarchy":          { name: "Omarchy menu", description: "Launches the Omarchy menu" },
-    "workspaces":       { name: "Workspaces (legacy)", description: "Workspace numbers, no animation" },
-    "workspacesPro":    { name: "Workspaces", description: "Animated workspace switcher" },
-    "activeWindow":     { name: "Active window", description: "Title of the focused window" },
-    "clock":            { name: "Clock", description: "Date / time text" },
-    "calendar":         { name: "Calendar", description: "Clock with month-grid popup", settingsForm: "calendarSettings" },
-    "media":            { name: "Media", description: "MPRIS now-playing with controls" },
-    "weather":          { name: "Weather (legacy)", description: "Tiny weather pill" },
-    "weatherFlyout":    { name: "Weather", description: "Weather pill with detail popup" },
-    "update":           { name: "Updates", description: "Indicates available system updates" },
-    "voxtype":          { name: "Voxtype", description: "Voxtype dictation state" },
-    "screenRecording":  { name: "Screen recording", description: "Active recording indicator" },
-    "idle":             { name: "Idle (legacy)", description: "Inhibitor indicator" },
-    "idleInhibitor":    { name: "Keep awake", description: "Idle inhibitor toggle" },
-    "notifications":    { name: "DND (mako)", description: "Notification silencing indicator" },
-    "notificationCenter": { name: "Notification center", description: "Recent notifications + DND (replaces mako)" },
-    "tray":             { name: "System tray", description: "Status notifier items" },
-    "bluetooth":        { name: "Bluetooth (legacy)", description: "Bluetooth status icon" },
-    "bluetoothPanel":   { name: "Bluetooth", description: "Bluetooth devices popup" },
-    "network":          { name: "Network (legacy)", description: "Wi-Fi/ethernet status" },
-    "networkPanel":     { name: "Network", description: "Wi-Fi list and connect" },
-    "audio":            { name: "Volume (legacy)", description: "Speaker icon, scroll for volume" },
-    "audioPanel":       { name: "Volume", description: "Volume slider, output picker, mixer" },
-    "microphone":       { name: "Microphone", description: "Mic input state" },
-    "nightLight":       { name: "Night light", description: "hyprsunset toggle" },
-    "brightness":       { name: "Brightness", description: "Screen brightness slider", settingsForm: "brightnessSettings" },
-    "powerProfile":     { name: "Power profile", description: "power-profiles-daemon selector" },
-    "battery":          { name: "Battery", description: "Battery percent and ETA" },
-    "cpu":              { name: "CPU (legacy)", description: "btop launcher" },
-    "systemStats":      { name: "System stats", description: "Inline CPU + RAM graphs" },
-    "controlCenter":    { name: "Quick settings", description: "Volume/brightness/DND/etc in one popup" },
-    "powerMenu":        { name: "Power menu", description: "Lock/suspend/reboot/shutdown" },
-    "keyboardLayout":   { name: "Keyboard layout", description: "Current xkb layout, click cycles" },
-    "lockKeys":         { name: "Lock keys", description: "Caps/Num/Scroll lock indicators" },
-    "spacer":           { name: "Spacer", description: "Configurable blank space", settingsForm: "spacerSettings" }
+  // Catalog is derived live from BarWidgetRegistry (first-party + third-party
+  // plugin widgets registered at runtime) plus a small legacy descriptor map
+  // for builtins that Bar.qml renders inline via builtinModuleComponent and
+  // hasn't migrated into the registry yet. The merged catalog is rebuilt
+  // whenever the registry revision changes.
+  readonly property var legacyWidgetMeta: ({
+    "omarchy":          { name: "Omarchy menu",      description: "Launches the Omarchy menu",                category: "Compositor" },
+    "workspaces":       { name: "Workspaces (legacy)", description: "Workspace numbers, no animation",         category: "Compositor" },
+    "clock":            { name: "Clock",             description: "Date / time text",                          category: "Time" },
+    "weather":          { name: "Weather (legacy)", description: "Tiny weather pill",                          category: "Info" },
+    "update":           { name: "Updates",           description: "Indicates available system updates",        category: "System" },
+    "voxtype":          { name: "Voxtype",           description: "Voxtype dictation state",                   category: "Status" },
+    "screenRecording":  { name: "Screen recording",  description: "Active recording indicator",                category: "Status" },
+    "idle":             { name: "Idle (legacy)",    description: "Inhibitor indicator",                        category: "Status" },
+    "notifications":    { name: "DND (mako)",        description: "Notification silencing indicator",          category: "Status" },
+    "tray":             { name: "System tray",       description: "Status notifier items",                     category: "Status" },
+    "bluetooth":        { name: "Bluetooth (legacy)", description: "Bluetooth status icon",                    category: "Network" },
+    "network":          { name: "Network (legacy)", description: "Wi-Fi / ethernet status",                    category: "Network" },
+    "audio":            { name: "Volume (legacy)", description: "Speaker icon, scroll for volume",            category: "Audio" },
+    "cpu":              { name: "CPU (legacy)",     description: "btop launcher",                              category: "System" },
+    "battery":          { name: "Battery",           description: "Battery percent and ETA",                   category: "System" }
   })
 
+  property int catalogRevision: 0
+  // Bump on every registry assignment (including the initial null → instance
+  // injection from Loader.onLoaded) so bindings that derive from
+  // widgetMetadata pick up the new state.
+  onBarWidgetRegistryChanged: catalogRevision++
+  Connections {
+    target: root.barWidgetRegistry
+    function onChanged() {
+      root.catalogRevision++
+    }
+  }
+
+
+  function widgetMetadata(id) {
+    var key = String(id || "")
+    if (root.barWidgetRegistry && root.barWidgetRegistry.has(key))
+      return root.barWidgetRegistry.metadataFor(key) || {}
+    if (legacyWidgetMeta[key]) return legacyWidgetMeta[key]
+    return {}
+  }
+
   function widgetName(id) {
-    return catalog[id] ? catalog[id].name : id
+    var rev = catalogRevision
+    var meta = widgetMetadata(id)
+    return meta.displayName || meta.name || id
   }
 
   function widgetDescription(id) {
-    return catalog[id] ? (catalog[id].description || "") : ""
+    var rev = catalogRevision
+    var meta = widgetMetadata(id)
+    return meta.description || ""
+  }
+
+  function widgetSchema(id) {
+    var meta = widgetMetadata(id)
+    return Array.isArray(meta.schema) ? meta.schema : []
   }
 
   function widgetHasSettings(id) {
-    return !!(catalog[id] && catalog[id].settingsForm)
+    var rev = catalogRevision
+    var meta = widgetMetadata(id)
+    if (meta.settingsForm) return true
+    return widgetSchema(id).length > 0
+  }
+
+  function widgetIsPlugin(id) {
+    var meta = widgetMetadata(id)
+    return meta.source === "plugin" || String(id).indexOf("plugin:") === 0
+  }
+
+  function widgetAllowsMultiple(id) {
+    var meta = widgetMetadata(id)
+    if (meta.allowMultiple === true) return true
+    return String(id) === "spacer"
+  }
+
+  function catalogIds() {
+    var rev = catalogRevision
+    var ids = {}
+    if (root.barWidgetRegistry) {
+      var registered = root.barWidgetRegistry.availableIds()
+      for (var i = 0; i < registered.length; i++) ids[registered[i]] = true
+    }
+    for (var key in legacyWidgetMeta) ids[key] = true
+    return Object.keys(ids)
   }
 
   function availableToAdd(section) {
+    var rev = catalogRevision
     var existingByOther = {}
     var sections = ["left", "center", "right"]
     for (var s = 0; s < sections.length; s++) {
@@ -280,26 +329,26 @@ ShellRoot {
     var here = draft.layout[section] || []
     for (var j = 0; j < here.length; j++) existingHere[here[j].id] = true
 
-    var ids = Object.keys(catalog).sort(function(a, b) {
+    var ids = catalogIds().sort(function(a, b) {
       return widgetName(a).localeCompare(widgetName(b))
     })
 
     var result = []
     for (var k = 0; k < ids.length; k++) {
       var id = ids[k]
-      // Allow multiple instances of `spacer` only.
-      var allowMultiple = id === "spacer"
-      if (!allowMultiple && existingHere[id]) continue
+      if (!widgetAllowsMultiple(id) && existingHere[id]) continue
       result.push({ id: id, name: widgetName(id), description: widgetDescription(id), elsewhere: !!existingByOther[id] })
     }
     return result
   }
 
   Component.onCompleted: {
-    console.log("bar-settings paths",
-      "omarchyPath=" + root.omarchyPath,
+    console.log("bar-settings open. omarchyPath=" + root.omarchyPath,
       "defaultsPath=" + root.defaultsPath,
-      "userConfigPath=" + root.userConfigPath)
+      "userConfigPath=" + root.userConfigPath,
+      "registry has",
+      root.barWidgetRegistry ? root.barWidgetRegistry.availableIds().length : "(null)",
+      "widgets")
   }
 
   FileView {
@@ -424,24 +473,57 @@ ShellRoot {
           color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
         }
 
+        Row {
+          Layout.fillWidth: true
+          spacing: 0
+
+          TabButton {
+            label: "Layout"
+            selected: root.activeTab === "layout"
+            onClicked: root.activeTab = "layout"
+          }
+          TabButton {
+            label: "Plugins"
+            selected: root.activeTab === "plugins"
+            onClicked: root.activeTab = "plugins"
+          }
+        }
+
+        Rectangle {
+          Layout.fillWidth: true
+          height: 1
+          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+        }
+
         Flickable {
           id: bodyScroll
           Layout.fillWidth: true
           Layout.fillHeight: true
           clip: true
           contentWidth: width
-          contentHeight: bodyColumn.implicitHeight
+          contentHeight: activeTabContent.implicitHeight
           boundsBehavior: Flickable.StopAtBounds
           flickableDirection: Flickable.VerticalFlick
 
           ColumnLayout {
-            id: bodyColumn
+            id: activeTabContent
             width: bodyScroll.width
             spacing: 14
 
-            SectionEditor { sectionKey: "left";   sectionLabel: "Left" }
-            SectionEditor { sectionKey: "center"; sectionLabel: "Center" }
-            SectionEditor { sectionKey: "right";  sectionLabel: "Right" }
+            ColumnLayout {
+              visible: root.activeTab === "layout"
+              Layout.fillWidth: true
+              spacing: 14
+
+              SectionEditor { sectionKey: "left";   sectionLabel: "Left" }
+              SectionEditor { sectionKey: "center"; sectionLabel: "Center" }
+              SectionEditor { sectionKey: "right";  sectionLabel: "Right" }
+            }
+
+            PluginManager {
+              visible: root.activeTab === "plugins"
+              Layout.fillWidth: true
+            }
           }
         }
       }
@@ -843,13 +925,24 @@ ShellRoot {
   }
 
   function formComponent(id) {
-    var cat = catalog[id]
-    if (!cat || !cat.settingsForm) return null
-    switch (cat.settingsForm) {
-    case "spacerSettings": return spacerSettingsComponent
-    case "calendarSettings": return calendarSettingsComponent
-    case "brightnessSettings": return brightnessSettingsComponent
-    default: return null
+    var meta = widgetMetadata(id)
+    if (meta && meta.settingsForm) {
+      switch (meta.settingsForm) {
+      case "spacerSettings": return spacerSettingsComponent
+      case "calendarSettings": return calendarSettingsComponent
+      case "brightnessSettings": return brightnessSettingsComponent
+      }
+    }
+    if (widgetSchema(id).length > 0) return dynamicSettingsComponent
+    return null
+  }
+
+  Component {
+    id: dynamicSettingsComponent
+    SettingsUi.DynamicSettingsForm {
+      schema: root.widgetSchema(entry.id || "")
+      foregroundColor: root.foreground
+      fontFamilyName: root.fontFamily
     }
   }
 
@@ -958,6 +1051,251 @@ ShellRoot {
         value: brightForm.entry.step !== undefined ? brightForm.entry.step : 5
         onValueModified: brightForm.fieldChanged("step", value)
       }
+    }
+  }
+
+  component TabButton: Rectangle {
+    id: tab
+    property string label: ""
+    property bool selected: false
+    signal clicked()
+
+    implicitWidth: tabLabel.implicitWidth + 28
+    implicitHeight: 32
+    color: tabArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08) : "transparent"
+
+    Behavior on color { ColorAnimation { duration: 120 } }
+
+    Text {
+      id: tabLabel
+      anchors.centerIn: parent
+      text: tab.label
+      color: tab.selected ? root.foreground : Qt.darker(root.foreground, 1.6)
+      font.family: root.fontFamily
+      font.pixelSize: 12
+      font.bold: tab.selected
+    }
+
+    Rectangle {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: 2
+      color: tab.selected ? root.foreground : "transparent"
+    }
+
+    MouseArea {
+      id: tabArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: tab.clicked()
+    }
+  }
+
+  component PluginManager: Column {
+    id: pm
+
+    property int registryRevision: root.pluginRegistry ? root.pluginRegistry.registryRevision : 0
+    Connections {
+      target: root.pluginRegistry
+      function onPluginsChanged() { pm.registryRevision = root.pluginRegistry.registryRevision }
+    }
+
+    function pluginList() {
+      var rev = pm.registryRevision
+      if (!root.pluginRegistry) return []
+      var plugins = root.pluginRegistry.installedPlugins
+      var ids = Object.keys(plugins).sort(function(a, b) {
+        var fa = !!plugins[a].__isFirstParty, fb = !!plugins[b].__isFirstParty
+        if (fa !== fb) return fa ? -1 : 1
+        return String(plugins[a].name || a).localeCompare(String(plugins[b].name || b))
+      })
+      var rows = []
+      for (var i = 0; i < ids.length; i++) {
+        var id = ids[i]
+        var m = plugins[id]
+        rows.push({
+          id: id,
+          manifest: m,
+          enabled: root.pluginRegistry.isEnabled(id),
+          firstParty: !!m.__isFirstParty
+        })
+      }
+      return rows
+    }
+
+    spacing: 10
+    width: parent ? parent.width : 0
+
+    Row {
+      spacing: 8
+      width: parent.width
+
+      Text {
+        text: "Plugins"
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: 14
+        font.bold: true
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        text: "·  " + (root.pluginRegistry ? Object.keys(root.pluginRegistry.installedPlugins).length : 0) + " installed"
+        color: Qt.darker(root.foreground, 1.5)
+        font.family: root.fontFamily
+        font.pixelSize: 11
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Item { width: parent.width - 280; height: 1 }
+
+      ActionPill {
+        text: "Rescan"
+        onClicked: root.pluginRegistry.rescan()
+      }
+    }
+
+    Text {
+      text: "Drop plugins at ~/.config/omarchy/plugins/<plugin-id>/"
+      color: Qt.darker(root.foreground, 1.6)
+      font.family: root.fontFamily
+      font.pixelSize: 10
+    }
+
+    Repeater {
+      model: pm.pluginList()
+      delegate: PluginRow {
+        required property var modelData
+        width: pm.width
+        manifest: modelData.manifest
+        pluginId: modelData.id
+        pluginEnabled: modelData.enabled
+        firstParty: modelData.firstParty
+      }
+    }
+
+    Text {
+      visible: pm.pluginList().length === 0
+      text: "No plugins discovered yet."
+      color: Qt.darker(root.foreground, 1.5)
+      font.family: root.fontFamily
+      font.pixelSize: 11
+    }
+  }
+
+  component PluginRow: Rectangle {
+    id: row
+    property var manifest: ({})
+    property string pluginId: ""
+    property bool pluginEnabled: false
+    property bool firstParty: false
+    property bool expanded: false
+
+    radius: 4
+    color: rowArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03)
+    border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+    border.width: 1
+    implicitHeight: rowContent.implicitHeight + 16
+
+    Behavior on color { ColorAnimation { duration: 100 } }
+
+    Column {
+      id: rowContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      anchors.margins: 8
+      spacing: 4
+
+      Row {
+        spacing: 8
+        width: parent.width
+
+        Column {
+          spacing: 2
+          width: parent.width - 110
+
+          Text {
+            text: row.manifest && row.manifest.name ? row.manifest.name : row.pluginId
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: 12
+            font.bold: true
+            elide: Text.ElideRight
+            width: parent.width
+          }
+          Text {
+            text: {
+              var bits = []
+              if (row.manifest && row.manifest.version) bits.push("v" + row.manifest.version)
+              if (row.manifest && row.manifest.author) bits.push(row.manifest.author)
+              bits.push(row.firstParty ? "first-party" : "third-party")
+              return bits.join("  ·  ")
+            }
+            color: Qt.darker(root.foreground, 1.5)
+            font.family: root.fontFamily
+            font.pixelSize: 10
+          }
+          Text {
+            visible: !!(row.manifest && row.manifest.description)
+            text: row.manifest ? (row.manifest.description || "") : ""
+            color: Qt.darker(root.foreground, 1.3)
+            font.family: root.fontFamily
+            font.pixelSize: 10
+            wrapMode: Text.WordWrap
+            width: parent.width
+          }
+        }
+
+        Item { width: 8; height: 1 }
+
+        Switch {
+          checked: row.pluginEnabled
+          enabled: !row.firstParty
+          opacity: row.firstParty ? 0.5 : 1
+          anchors.verticalCenter: parent.verticalCenter
+          onToggled: root.pluginRegistry.setEnabled(row.pluginId, checked)
+        }
+      }
+
+      Row {
+        visible: !!(row.manifest && row.manifest.barWidget && Array.isArray(row.manifest.barWidget.schema) && row.manifest.barWidget.schema.length > 0)
+        spacing: 6
+
+        Text {
+          text: row.expanded ? "▾ Options" : "▸ Options"
+          color: Qt.darker(root.foreground, 1.4)
+          font.family: root.fontFamily
+          font.pixelSize: 10
+
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: row.expanded = !row.expanded
+          }
+        }
+      }
+
+      Repeater {
+        model: row.expanded && row.manifest && row.manifest.barWidget && Array.isArray(row.manifest.barWidget.schema) ? row.manifest.barWidget.schema : []
+        delegate: Text {
+          required property var modelData
+          text: "• " + (modelData.label || modelData.key) + " (" + (modelData.type || "string") + ")"
+          color: Qt.darker(root.foreground, 1.3)
+          font.family: root.fontFamily
+          font.pixelSize: 10
+          leftPadding: 12
+        }
+      }
+    }
+
+    MouseArea {
+      id: rowArea
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
     }
   }
 }

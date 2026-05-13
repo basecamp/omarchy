@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Send an IPC call to omarchy-shell, starting it if not running
+# omarchy:hidden=true
+
+OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
+SHELL_DIR="$OMARCHY_PATH/default/quickshell/omarchy-shell"
+
+if ! quickshell list -p "$SHELL_DIR" 2>/dev/null | grep -q '^Instance '; then
+  setsid uwsm-app -- env OMARCHY_PATH="$OMARCHY_PATH" quickshell -p "$SHELL_DIR" >/dev/null 2>&1 &
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 0.2
+    quickshell list -p "$SHELL_DIR" 2>/dev/null | grep -q '^Instance ' && break
+  done
+fi
+
+exec quickshell ipc -p "$SHELL_DIR" call "$@"

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.background-switcher",
+  "name": "Background switcher",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Wallpaper / image picker overlay",
+  "kinds": ["overlay"],
+  "activation": "on-demand",
+  "keepLoaded": true,
+  "entryPoints": { "overlay": "BackgroundSwitcher.qml" },
+  "ipc": {
+    "summon": "background-switcher",
+    "legacySocket": "omarchy-image-selector.sock"
+  }
+}

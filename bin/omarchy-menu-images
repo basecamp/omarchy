@@ -84,7 +84,7 @@ done_file=$(mktemp)
 rm -f "$done_file"
 trap 'rm -f "$selection_file" "$done_file"' EXIT
 socket_path="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-image-selector.sock"
-selector_qml="$OMARCHY_PATH/default/quickshell/background-switcher.qml"
+shell_dir="$OMARCHY_PATH/default/quickshell/omarchy-shell"
 
 image_dirs_env=""
 for dir in "${image_dirs[@]}"; do
@@ -230,14 +230,11 @@ if [[ $cache_only == true || $prepare_only == true ]]; then
 fi
 
 ensure_selector() {
-  if [[ -S $socket_path && $selector_qml -nt $socket_path ]]; then
-    quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
-    rm -f "$socket_path"
-  fi
-
+  # The image-selector socket is owned by omarchy-shell. Make sure the shell is
+  # alive; once it is, the BackgroundSwitcher plugin keeps the socket bound for
+  # the lifetime of the shell.
   if [[ ! -S $socket_path ]]; then
-    quickshell kill -p "$selector_qml" >/dev/null 2>&1 || true
-    quickshell -d -p "$selector_qml" >/dev/null
+    omarchy-shell-ipc shell ping >/dev/null 2>&1 || true
 
     for ((i = 0; i < 100; i++)); do
       if [[ -S $socket_path ]]; then
