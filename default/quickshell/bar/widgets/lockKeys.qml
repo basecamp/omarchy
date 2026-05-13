@@ -1,7 +1,6 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "../common" as Common
 
 Item {
   id: root
@@ -29,29 +28,35 @@ Item {
     if (!stateProc.running) stateProc.running = true
   }
 
+  property bool ledsAvailable: true
+
   Process {
     id: stateProc
-    command: ["bash", "-lc", "cat /sys/class/leds/input*::capslock/brightness 2>/dev/null | head -1; cat /sys/class/leds/input*::numlock/brightness 2>/dev/null | head -1; cat /sys/class/leds/input*::scrolllock/brightness 2>/dev/null | head -1"]
+    command: ["bash", "-lc", "read_led() { for path in /sys/class/leds/input*::$1; do if [[ -r $path/brightness ]]; then cat $path/brightness; return; fi; done; echo missing; }; read_led capslock; read_led numlock; read_led scrolllock"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         var lines = String(text || "").split("\n")
-        root.capsOn = parseInt(lines[0], 10) > 0
-        root.numOn = parseInt(lines[1], 10) > 0
-        root.scrollOn = parseInt(lines[2], 10) > 0
+        var caps = String(lines[0] || "").trim()
+        var num = String(lines[1] || "").trim()
+        var scroll = String(lines[2] || "").trim()
+        root.capsOn = caps !== "missing" && parseInt(caps, 10) > 0
+        root.numOn = num !== "missing" && parseInt(num, 10) > 0
+        root.scrollOn = scroll !== "missing" && parseInt(scroll, 10) > 0
+        root.ledsAvailable = caps !== "missing" || num !== "missing" || scroll !== "missing"
       }
     }
   }
 
   Timer {
-    interval: 1000
-    running: true
+    interval: 2000
+    running: root.ledsAvailable
     repeat: true
     onTriggered: root.refresh()
   }
 
   readonly property bool anyOn: capsOn || numOn || scrollOn
-  visible: hideWhenOff ? anyOn : true
+  visible: ledsAvailable && (hideWhenOff ? anyOn : true)
 
   readonly property bool vertical: bar ? bar.vertical : false
 

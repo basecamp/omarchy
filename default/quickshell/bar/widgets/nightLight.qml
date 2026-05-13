@@ -12,6 +12,10 @@ Item {
 
   property bool active: false
   property bool toolAvailable: false
+  property bool toggling: false
+
+  readonly property int onTemp: 4000
+  readonly property int offTemp: 6000
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -23,6 +27,8 @@ Item {
   }
 
   function toggle() {
+    if (toggling) return
+    toggling = true
     if (root.bar) root.bar.run("omarchy-toggle-nightlight")
     refreshTimer.restart()
   }
@@ -31,20 +37,27 @@ Item {
 
   Process {
     id: statusProc
-    command: ["bash", "-lc", "if command -v hyprsunset >/dev/null && pgrep -x hyprsunset >/dev/null 2>&1; then echo on; elif command -v hyprsunset >/dev/null; then echo off; else echo missing; fi"]
+    command: ["bash", "-lc", "command -v hyprsunset >/dev/null || { echo missing; exit; }; if pgrep -x hyprsunset >/dev/null 2>&1; then hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+' | head -1; else echo idle; fi"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         var state = String(text || "").trim()
-        root.toolAvailable = state !== "missing"
-        root.active = state === "on"
+        root.toggling = false
+        if (state === "missing") {
+          root.toolAvailable = false
+          root.active = false
+          return
+        }
+        root.toolAvailable = true
+        var temp = parseInt(state, 10)
+        root.active = !isNaN(temp) && temp < root.offTemp
       }
     }
   }
 
   Timer {
     id: refreshTimer
-    interval: 1200
+    interval: 1500
     onTriggered: root.refresh()
   }
 
