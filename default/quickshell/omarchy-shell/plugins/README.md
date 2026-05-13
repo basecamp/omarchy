@@ -8,11 +8,11 @@ so they cannot be disabled.
 User-installed plugins live alongside these conceptually but on disk under
 `~/.config/omarchy/plugins/<plugin-id>/` rather than in this directory.
 
-| Plugin                | id                            | kinds        | activation  | entry point                |
-|-----------------------|-------------------------------|--------------|-------------|----------------------------|
-| Bar                   | `omarchy.bar`                 | `bar`        | persistent  | `bar/Bar.qml`              |
-| Bar settings          | `omarchy.bar-settings`        | `panel`      | on-demand   | `bar-settings/BarSettingsPanel.qml` |
-| Background switcher   | `omarchy.background-switcher` | `overlay`    | on-demand   | `background-switcher/BackgroundSwitcher.qml` |
+| Plugin           | id                       | kinds        | activation  | entry point                                  |
+|------------------|--------------------------|--------------|-------------|----------------------------------------------|
+| Bar              | `omarchy.bar`            | `bar`        | persistent  | `bar/Bar.qml`                                |
+| Bar settings     | `omarchy.bar-settings`   | `panel`      | on-demand   | `bar-settings/BarSettingsPanel.qml`          |
+| Image picker     | `omarchy.image-picker`   | `overlay`    | on-demand   | `image-picker/ImagePicker.qml`               |
 
 ## Bar
 
@@ -33,13 +33,31 @@ Visual editor for the bar layout. Summoned by
 - a Plugin Manager tab for enabling/disabling third-party plugins
 - a dynamic settings form driven by each widget's manifest schema
 
-## Background switcher
+## Image picker
 
-Fullscreen wallpaper / image picker overlay. Summoned for ad-hoc wallpaper
-selection. Keeps its legacy unix socket protocol at
-`/run/user/<uid>/omarchy-image-selector.sock` so existing callers like
-`omarchy-menu-images` keep working without any wire-format change. The
-plugin has `keepLoaded: true` so the socket survives between summons.
+Fullscreen image-grid selector overlay. Used by `omarchy-menu-images`
+(wallpaper picker) and `omarchy-theme-switcher` (theme picker) and any
+other caller that wants to present a directory of images with previews.
+
+Two ways to drive it:
+
+- Shell-level summon: `omarchy-shell-ipc shell summon omarchy.image-picker '<jsonPayload>'`.
+  The payload can carry `imageDirs`, `imageRows`, `selectedImage`,
+  `selectionFile`, `doneFile`, `colorsFile`, `colorsRaw`, `showLabels`,
+  `filterable`. Best for in-shell callers that already speak JSON.
+- Direct IPC target: `omarchy-shell-ipc image-selector open <imageDirs> <imageRowsB64> <selectedImage> <selectionFile> <doneFile> <colorsFile> <colorsRawB64> <showLabels> <filterable>`.
+  Positional args; `imageRowsB64` and `colorsRawB64` are base64-encoded so
+  embedded newlines / tabs survive the bash argv handoff. This is what
+  `omarchy-menu-images` uses.
+
+The selection round-trip remains file-based: callers create a
+`selection_file` and `done_file` (both `mktemp`), pass the paths, and
+poll `done_file` for existence. The plugin writes the chosen path into
+`selection_file` and touches `done_file` when it's done. `cancel` IPC
+clears it without writing a selection.
+
+The plugin has `keepLoaded: true` so the layer-shell window survives
+between summons within a single shell session.
 
 ## Coming soon
 

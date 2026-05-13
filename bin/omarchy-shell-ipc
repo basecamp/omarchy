@@ -12,9 +12,11 @@ Starts omarchy-shell if not running, then forwards a quickshell ipc call.
 Examples:
   omarchy-shell-ipc shell ping
   omarchy-shell-ipc shell summon omarchy.bar-settings "{}"
-  omarchy-shell-ipc shell hide omarchy.background-switcher
+  omarchy-shell-ipc shell hide omarchy.image-picker
   omarchy-shell-ipc shell listPlugins
   omarchy-shell-ipc shell rescanPlugins
+  omarchy-shell-ipc image-selector ping
+  omarchy-shell-ipc image-selector cancel ""
 USAGE
   exit 0
 fi
@@ -28,7 +30,10 @@ lockfile="${XDG_RUNTIME_DIR:-/tmp}/omarchy-shell-ipc.lock"
 {
   flock 9
   if ! quickshell list -p "$SHELL_DIR" 2>/dev/null | grep -q '^Instance '; then
-    setsid uwsm-app -- env OMARCHY_PATH="$OMARCHY_PATH" quickshell -p "$SHELL_DIR" >/dev/null 2>&1 &
+    # 9<&- so the spawned shell does not inherit (and keep) the lock fd; the
+    # spawned process is long-lived and would otherwise hold the lock for the
+    # remainder of the session, deadlocking every subsequent helper invocation.
+    setsid uwsm-app -- env OMARCHY_PATH="$OMARCHY_PATH" quickshell -p "$SHELL_DIR" >/dev/null 2>&1 9<&- &
     for _ in 1 2 3 4 5 6 7 8 9 10; do
       sleep 0.2
       quickshell list -p "$SHELL_DIR" 2>/dev/null | grep -q '^Instance ' && break

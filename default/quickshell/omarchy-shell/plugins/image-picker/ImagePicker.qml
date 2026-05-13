@@ -22,7 +22,7 @@ Item {
   property string imageRows: ""
   property string selectionFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTION_FILE") || Quickshell.env("OMARCHY_BACKGROUND_SELECTION_FILE")
   property string selectedImage: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTED")
-  property string colorsFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_COLORS_FILE") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/background-switcher-colors.json")
+  property string colorsFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_COLORS_FILE") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/image-picker-colors.json")
   property int selectedIndex: 0
   property bool imagesLoaded: false
   property bool opened: false
@@ -34,7 +34,6 @@ Item {
   property string doneFile: ""
   property string filterText: ""
   property var doneFilesToRelease: []
-  property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + Quickshell.env("UID"))) + "/omarchy-image-selector.sock"
   property color accent: "#798186"
   property color background: "#101315"
   property color foreground: "#cacccc"
@@ -53,8 +52,13 @@ Item {
     return "'" + String(value).replace(/'/g, "'\\''") + "'"
   }
 
-  function decodeField(value) {
-    return String(value || "").replace(/\v/g, "\n").replace(/\f/g, "\t")
+  // Decode a base64-encoded UTF-8 string sent via IPC. Used for fields that
+  // would otherwise carry embedded newlines or tabs (image rows, raw colors
+  // JSON) which bash IPC arguments can't reliably round-trip.
+  function decodeBase64(value) {
+    var s = String(value || "")
+    if (!s) return ""
+    try { return Qt.atob(s) } catch (e) { return s }
   }
 
   function withAlpha(color, alpha) {
@@ -251,7 +255,7 @@ Item {
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     filterable = nextFilterable === true || nextFilterable === "true"
     filterText = ""
-    colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/background-switcher-colors.json")
+    colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/image-picker-colors.json")
     if (nextColorsRaw)
       loadColors(nextColorsRaw)
     imageModel.clear()
@@ -303,16 +307,11 @@ Item {
     }
   }
 
-  // The plugin is keep-loaded inside omarchy-shell, so the env-driven
-  // auto-open path that the standalone background-switcher.qml used would
-  // now fire once at shell startup with stale env. The legacy callers
-  // (omarchy-menu-images) deliver their request over the unix socket
-  // declared below; modern callers go through `shell summon` -> open(payload).
-
-  // Lifecycle hooks invoked by omarchy-shell summon/hide. The legacy entry
-  // point remains the unix socket below — callers that already have a
-  // selection_file/done_file flow keep using it. summon() with no payload
-  // simply opens the picker against the user's current theme backgrounds.
+  // Lifecycle hooks invoked by omarchy-shell summon/hide. shell.summon(id,
+  // payloadJson) hands the JSON to open() here; shell.hide(id) calls close().
+  // External CLI callers can either go through `shell summon omarchy.image-
+  // picker` (JSON payload), or hit the dedicated `image-selector` IpcHandler
+  // below for the lower-level positional call that omarchy-menu-images uses.
   function open(payload) {
     var args = {}
     if (payload) {
@@ -334,39 +333,44 @@ Item {
     cancel()
   }
 
+  // IPC surface. All arguments are strings (Quickshell IPC marshalling).
+  // imageRows and colorsRaw can contain newlines/tabs, so the CLI caller
+  // base64-encodes them; everything else passes through verbatim. The two
+  // boolean-like fields use the literal strings "true" or "false".
   IpcHandler {
     target: "image-selector"
 
-    function open(imageDirs: string, imageRows: string, selectedImage: string, selectionFile: string, doneFile: string, colorsFile: string): void {
-      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile, "", false, false)
+    function open(imageDirs: string,
+                  imageRowsB64: string,
+                  selectedImage: string,
+                  selectionFile: string,
+                  doneFile: string,
+                  colorsFile: string,
+                  colorsRawB64: string,
+                  showLabels: string,
+                  filterable: string): string {
+      var rows = root.decodeBase64(imageRowsB64)
+      var colorsRaw = root.decodeBase64(colorsRawB64)
+      root.openSelector(imageDirs, rows, selectedImage, selectionFile, doneFile,
+                        colorsFile, colorsRaw, showLabels, filterable)
+      return "ok"
+    }
+
+    function cancel(doneFile: string): void {
+      root.closeSelector(doneFile || "")
+    }
+
+    function ping(): string {
+      return "ok"
     }
   }
 
-  SocketServer {
-    active: true
-    path: root.socketPath
-
-    handler: Socket {
-      id: clientSocket
-      parser: SplitParser {
-        onRead: function(message) {
-          var fields = message.split("\t")
-          if (root.opened) {
-            root.closeSelector(fields[3] || "")
-            clientSocket.connected = false
-            return
-          }
-
-          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", "", root.decodeField(fields[4]), fields[5] || "false", fields[6] || "false")
-          clientSocket.connected = false
-        }
-      }
-    }
-  }
-
+  // Tolerate the file being absent (e.g. theme templates not yet re-rendered
+  // after the rename) without a startup warning.
   FileView {
     path: root.colorsFile
     watchChanges: true
+    printErrors: false
     onLoaded: root.loadColors(text())
     onFileChanged: { reload(); root.loadColors(text()) }
   }

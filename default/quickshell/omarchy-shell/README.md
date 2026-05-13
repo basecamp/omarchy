@@ -28,7 +28,7 @@ default/quickshell/omarchy-shell/
   plugins/
     bar/                 first-party plugins (see plugins/README.md)
     bar-settings/
-    background-switcher/
+    image-picker/
 ```
 
 The plugin discovery path is documented in [plugins/README.md](plugins/README.md).
@@ -73,8 +73,9 @@ Supported `kinds`:
 
 `activation` is either `persistent` (loaded on startup, never unloaded) or
 `on-demand` (loaded by `shell summon <id>` and unloaded by `shell hide`).
-Plugins that need their IPC socket to outlive a single summon can set
-`keepLoaded: true` (e.g. background-switcher's legacy unix socket).
+Plugins that need to outlive a single summon can set `keepLoaded: true`
+(e.g. the image picker keeps its overlay window mounted between
+summons).
 
 The full schema lives in `services/PluginRegistry.qml`.
 
@@ -147,7 +148,9 @@ Built up in phases on this branch:
 - Phase 2 — `omarchy-shell phase 2: plugin registry and bar widget registry`
 - Phase 3 — `omarchy-shell phase 3: fold bar-settings into the shell as a panel plugin`
 - Phase 4 — `omarchy-shell phase 4: absorb background-switcher as a plugin`
-- Phase 5 — `omarchy-shell phase 5: docs, cleanup, and migration crumbs` (this commit)
+- Phase 5 — `omarchy-shell phase 5: docs, cleanup, and migration crumbs`
+- Phase 6 — `omarchy-shell phase 6: reviewer cleanup (path traversal, collision, races)`
+- Phase 7 — `omarchy-shell phase 7: replace socket with IpcHandler, rename to image-picker`
 
 Shared services and Pipewire/UPower/Hyprland consolidation are explicitly
 out of scope here and deferred to a follow-up after a review pass.

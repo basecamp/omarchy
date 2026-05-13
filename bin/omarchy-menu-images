@@ -83,8 +83,6 @@ selection_file=$(mktemp)
 done_file=$(mktemp)
 rm -f "$done_file"
 trap 'rm -f "$selection_file" "$done_file"' EXIT
-socket_path="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-image-selector.sock"
-shell_dir="$OMARCHY_PATH/default/quickshell/omarchy-shell"
 
 image_dirs_env=""
 for dir in "${image_dirs[@]}"; do
@@ -214,57 +212,35 @@ else
   fi
 fi
 
-rows_payload=${rows//$'\t'/$'\f'}
-rows_payload=${rows_payload//$'\n'/$'\v'}
-colors_file=${colors_file:-$HOME/.config/omarchy/current/theme/background-switcher-colors.json}
+colors_file=${colors_file:-$HOME/.config/omarchy/current/theme/image-picker-colors.json}
 colors_payload=""
 
 if [[ -f $colors_file ]]; then
   colors_payload=$(<"$colors_file")
-  colors_payload=${colors_payload//$'\t'/$'\f'}
-  colors_payload=${colors_payload//$'\n'/$'\v'}
 fi
 
 if [[ $cache_only == true || $prepare_only == true ]]; then
   exit 0
 fi
 
-ensure_selector() {
-  # The image-selector socket is owned by omarchy-shell. Make sure the shell is
-  # alive; once it is, the BackgroundSwitcher plugin keeps the socket bound for
-  # the lifetime of the shell.
-  if [[ ! -S $socket_path ]]; then
-    omarchy-shell-ipc shell ping >/dev/null 2>&1 || true
+# Image rows and the raw colors blob can contain newlines and tabs, which
+# don't survive a positional bash argv into `quickshell ipc call`. Base64
+# them; the ImagePicker plugin Qt.atob()s on the other side.
+rows_b64=$(printf '%s' "$rows" | base64 -w 0)
+colors_b64=$(printf '%s' "$colors_payload" | base64 -w 0)
 
-    for ((i = 0; i < 100; i++)); do
-      if [[ -S $socket_path ]]; then
-        break
-      fi
-
-      sleep 0.01
-    done
-  fi
-
-  [[ -S $socket_path ]]
-}
-
-send_request() {
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$rows_payload" "$selected_list_image" "$selection_file" "$done_file" "$colors_payload" "$show_labels" "$filterable" |
-    socat -u - "UNIX-CONNECT:$socket_path"
-}
-
-if ! ensure_selector; then
-  echo "Image selector failed to start" >&2
+if ! omarchy-shell-ipc image-selector open \
+     "" \
+     "$rows_b64" \
+     "$selected_list_image" \
+     "$selection_file" \
+     "$done_file" \
+     "" \
+     "$colors_b64" \
+     "$show_labels" \
+     "$filterable" >/dev/null; then
+  echo "Image selector failed to accept request" >&2
   exit 1
-fi
-
-if ! send_request; then
-  rm -f "$socket_path"
-
-  if ! ensure_selector || ! send_request; then
-    echo "Image selector failed to accept request" >&2
-    exit 1
-  fi
 fi
 
 while [[ ! -e $done_file ]]; do
