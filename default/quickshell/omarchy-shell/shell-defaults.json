@@ -36,8 +36,5 @@
       ]
     }
   },
-  "plugins": [
-    { "id": "omarchy.bar-settings" },
-    { "id": "omarchy.image-picker" }
-  ]
+  "plugins": []
 }
