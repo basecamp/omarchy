@@ -862,13 +862,26 @@ open_quickshell_menu() {
   local lock_path
   local state_path
   local lock_fd
+  local had_active_menu=false
 
   lock_path=$(menu_lock_path)
   state_path=$(menu_state_path)
   exec {lock_fd}>"$lock_path" || return 1
   if ! flock -n "$lock_fd"; then
-    close_running_quickshell_menu
-    return
+    if [[ -s $state_path ]] || menu_layer_visible; then
+      had_active_menu=true
+    fi
+
+    close_running_quickshell_menu || true
+
+    if [[ $had_active_menu == "true" ]]; then
+      return 0
+    fi
+
+    rm -f "$lock_path"
+    exec {lock_fd}>&-
+    exec {lock_fd}>"$lock_path" || return 1
+    flock -n "$lock_fd" || return 1
   fi
 
   printf '%s\t\n' "$$" >"$state_path"
@@ -896,6 +909,8 @@ open_quickshell_menu() {
 
       if [[ -s $selection_file ]]; then
         IFS=$'\t' read -r selected_id selected_action <"$selection_file"
+        rm -f "$state_path"
+        exec {lock_fd}>&-
         run_action "$selected_id" "$selected_action"
       fi
       return
@@ -960,6 +975,8 @@ open_quickshell_menu() {
 
   if [[ -s $selection_file ]]; then
     IFS=$'\t' read -r selected_id selected_action <"$selection_file"
+    rm -f "$state_path"
+    exec {lock_fd}>&-
     run_action "$selected_id" "$selected_action"
   fi
 }
