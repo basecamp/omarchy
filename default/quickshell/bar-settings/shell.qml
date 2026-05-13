@@ -109,17 +109,22 @@ ShellRoot {
   }
 
   function resetToDefaults() {
-    // Write the merged defaults explicitly so the GUI and bar.json agree on
-    // the full widget list. Adding/removing afterwards operates on that
-    // explicit list rather than on an implicit fallback that the diff would
-    // unintentionally collapse on the next save.
-    var fallback = { position: "top", centerAnchor: "", fontFamily: "JetBrainsMono Nerd Font", layout: { left: [], center: [], right: [] } }
-    var defaults = mergeConfig(fallback, defaultConfig)
+    // Always fall back to the bundled builtin if defaultConfig wound up empty
+    // (path resolution failed or defaultsFile hasn't finished loading), so
+    // Reset never zeroes the bar out.
+    var source = defaultConfig
+    if (!isPlainObject(source) || !isPlainObject(source.layout)) {
+      source = builtinBarConfig
+    } else {
+      var l = source.layout
+      var anyEntries = (l.left && l.left.length) || (l.center && l.center.length) || (l.right && l.right.length)
+      if (!anyEntries) source = builtinBarConfig
+    }
     var payload = {
-      position: String(defaults.position || "top"),
-      centerAnchor: String(defaults.centerAnchor || ""),
-      fontFamily: String(defaults.fontFamily || "JetBrainsMono Nerd Font"),
-      layout: normalizeLayout(defaults.layout || {})
+      position: String(source.position || "top"),
+      centerAnchor: String(source.centerAnchor || ""),
+      fontFamily: String(source.fontFamily || "JetBrainsMono Nerd Font"),
+      layout: normalizeLayout(source.layout || {})
     }
     userFile.setText(JSON.stringify(payload, null, 2) + "\n")
   }
@@ -260,12 +265,20 @@ ShellRoot {
     return result
   }
 
+  Component.onCompleted: {
+    console.log("bar-settings paths",
+      "omarchyPath=" + root.omarchyPath,
+      "defaultsPath=" + root.defaultsPath,
+      "userConfigPath=" + root.userConfigPath)
+  }
+
   FileView {
     id: defaultsFile
     path: root.defaultsPath
     watchChanges: true
-    printErrors: false
+    printErrors: true
     onLoaded: root.loadConfig()
+    onLoadFailed: function(error) { console.warn("defaults load failed:", error, "path=" + root.defaultsPath) }
     onFileChanged: reload()
   }
 
