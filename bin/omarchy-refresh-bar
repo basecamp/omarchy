@@ -1,17 +1,20 @@
 #!/bin/bash
 
-# omarchy:summary=Reset bar user overrides to Omarchy defaults
+# omarchy:summary=Reset shell.json to Omarchy defaults
 # omarchy:examples=omarchy refresh bar
 
 set -e
 
-OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
-DEFAULT_CONFIG="$OMARCHY_PATH/config/omarchy/bar.json"
+USER_CONFIG="$HOME/.config/omarchy/shell.json"
 
-if [[ ! -f $DEFAULT_CONFIG ]]; then
-  echo "Missing default bar config at $DEFAULT_CONFIG" >&2
-  exit 1
+# Removing the user file lets the shell fall back to shell-defaults.json on
+# its next reload. omarchy-restart-bar (which is now an alias for restarting
+# omarchy-shell) reloads the shell so the change takes effect immediately.
+if [[ -f $USER_CONFIG ]]; then
+  backup="$USER_CONFIG.bak.$(date +%s)"
+  cp "$USER_CONFIG" "$backup"
+  echo "Backed up user shell config to $backup"
+  rm -f "$USER_CONFIG"
 fi
 
-omarchy-refresh-config omarchy/bar.json
 omarchy-restart-bar

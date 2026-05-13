@@ -7,41 +7,43 @@ the shell for its whole session.
 
 - `manifest.json` declares the plugin (`id: omarchy.bar`, `kind: bar`, `activation: persistent`) and points at `Bar.qml` as the entry point.
 - `Bar.qml` is Omarchy-owned bar engine code, loaded by the omarchy-shell host. Users should not edit it directly.
-- `bar-defaults.json` is the Omarchy-owned default layout and module settings.
 - `widgets/` holds first-party widgets — modular, interactive components shipped with Omarchy.
 - `common/` holds shared QML helpers (buttons, sliders, popup cards).
-- User overrides live in `~/.config/omarchy/bar.json` and are merged over defaults at runtime.
-- `omarchy-style-bar-position` updates only the user override file.
+- The bar receives its config from the host shell as a `barConfig` property; the host loads it from `~/.config/omarchy/shell.json` (or `shell-defaults.json` when the user has no file).
+- `omarchy-style-bar-position` updates only the user shell.json file.
 
 ## Customizing
 
-The bar reads `~/.local/share/omarchy/default/quickshell/omarchy-shell/plugins/bar/bar-defaults.json`, then deep-merges `~/.config/omarchy/bar.json` on top of it. Each `layout.{left,center,right}` entry is an object: at minimum `{ "id": "<widget>" }`, plus any inline settings the widget reads.
+The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`shell-defaults.json`](../../shell-defaults.json). Once you customize anything via `omarchy launch bar-settings` or by editing shell.json directly, your file is canonical — there is no deep-merge.
 
 Launch the visual editor with `omarchy launch bar-settings` (or run `omarchy-launch-bar-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand.
 
-Example `bar.json`:
+Example `shell.json` (bar subtree only shown):
 
 ```json
 {
-  "position": "top",
-  "centerAnchor": "calendar",
-  "layout": {
-    "left": [
-      { "id": "omarchy" },
-      { "id": "spacer", "size": 12 },
-      { "id": "workspacesPro" }
-    ],
-    "center": [
-      { "id": "media" },
-      { "id": "calendar", "format": "HH:mm" }
-    ],
-    "right": [
-      { "id": "systemStats" },
-      { "id": "audioPanel" },
-      { "id": "battery" },
-      { "id": "controlCenter" },
-      { "id": "powerMenu" }
-    ]
+  "version": 1,
+  "bar": {
+    "position": "top",
+    "centerAnchor": "calendar",
+    "layout": {
+      "left": [
+        { "id": "omarchy" },
+        { "id": "spacer", "size": 12 },
+        { "id": "workspacesPro" }
+      ],
+      "center": [
+        { "id": "media" },
+        { "id": "calendar", "format": "HH:mm" }
+      ],
+      "right": [
+        { "id": "systemStats" },
+        { "id": "audioPanel" },
+        { "id": "battery" },
+        { "id": "controlCenter" },
+        { "id": "powerMenu" }
+      ]
+    }
   }
 }
 ```
@@ -81,18 +83,21 @@ All widgets work in `top`, `bottom`, `left`, and `right` positions. Popups ancho
 
 ## Custom user modules
 
-The schema accepts arbitrary module ids that you provide. Set `type` to `command` for shell-driven output or `qml` for a custom QML widget.
+The schema accepts arbitrary module ids that you provide. Set `type` to `command` for shell-driven output or `qml` for a custom QML widget. Both still go under `bar.layout.<section>` in `shell.json`.
 
 Command module:
 
 ```json
 {
-  "layout": {
-    "right": [
-      { "id": "tray" },
-      { "id": "vpn", "type": "command", "exec": "~/.config/omarchy/bar/scripts/vpn-status", "interval": 5, "tooltip": "VPN", "onClick": "nm-connection-editor" },
-      { "id": "audioPanel" }
-    ]
+  "version": 1,
+  "bar": {
+    "layout": {
+      "right": [
+        { "id": "tray" },
+        { "id": "vpn", "type": "command", "exec": "~/.config/omarchy/bar/scripts/vpn-status", "interval": 5, "tooltip": "VPN", "onClick": "nm-connection-editor" },
+        { "id": "audioPanel" }
+      ]
+    }
   }
 }
 ```
@@ -107,11 +112,14 @@ QML module:
 
 ```json
 {
-  "layout": {
-    "right": [
-      { "id": "gpu", "type": "qml" },
-      { "id": "audioPanel" }
-    ]
+  "version": 1,
+  "bar": {
+    "layout": {
+      "right": [
+        { "id": "gpu", "type": "qml" },
+        { "id": "audioPanel" }
+      ]
+    }
   }
 }
 ```

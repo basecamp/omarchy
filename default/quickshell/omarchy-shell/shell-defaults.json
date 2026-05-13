@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "bar": {
+    "position": "top",
+    "fontFamily": "JetBrainsMono Nerd Font",
+    "centerAnchor": "calendar",
+    "layout": {
+      "left": [
+        { "id": "omarchy" },
+        { "id": "workspacesPro" },
+        { "id": "activeWindow" }
+      ],
+      "center": [
+        { "id": "media" },
+        { "id": "calendar", "format": "dddd HH:mm", "formatAlt": "dd MMMM 'W'ww yyyy", "verticalFormat": "HH\n—\nmm" },
+        { "id": "weatherFlyout" },
+        { "id": "update" },
+        { "id": "voxtype" },
+        { "id": "screenRecording" },
+        { "id": "idle" },
+        { "id": "notifications" }
+      ],
+      "right": [
+        { "id": "tray" },
+        { "id": "systemStats" },
+        { "id": "microphone" },
+        { "id": "bluetoothPanel" },
+        { "id": "networkPanel" },
+        { "id": "audioPanel" },
+        { "id": "nightLight" },
+        { "id": "brightness" },
+        { "id": "powerProfile" },
+        { "id": "battery" },
+        { "id": "controlCenter" },
+        { "id": "powerMenu" }
+      ]
+    }
+  },
+  "plugins": [
+    { "id": "omarchy.bar-settings" },
+    { "id": "omarchy.image-picker" }
+  ]
+}

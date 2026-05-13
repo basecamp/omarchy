@@ -1,0 +1,2 @@
+module qs.Services.Power
+singleton PowerProfileService 1.0 PowerProfileService.qml

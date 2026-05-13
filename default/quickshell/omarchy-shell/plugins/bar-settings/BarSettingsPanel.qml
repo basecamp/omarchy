@@ -19,6 +19,9 @@ Item {
   // so the panel sees the same registry state the bar wrote into.
   property var barWidgetRegistry: null
   property var pluginRegistry: null
+  // The host shell. Used to look up pluginApi for Noctalia plugins so their
+  // Settings.qml can read/write via pluginApi.saveSettings().
+  property var shell: null
 
   // Not `required` so the Loader-based instantiation can satisfy it via
   // onLoaded; we still gracefully fall back to deriving from shellDir for
@@ -32,8 +35,8 @@ Item {
     return Quickshell.env("HOME") + "/.local/share/omarchy"
   }
   readonly property string home: Quickshell.env("HOME")
-  readonly property string userConfigPath: home + "/.config/omarchy/bar.json"
-  readonly property string defaultsPath: omarchyPath + "/default/quickshell/omarchy-shell/plugins/bar/bar-defaults.json"
+  readonly property string userConfigPath: home + "/.config/omarchy/shell.json"
+  readonly property string defaultsPath: omarchyPath + "/default/quickshell/omarchy-shell/shell-defaults.json"
 
   property color foreground: "#cacccc"
   property color background: "#101315"
@@ -43,32 +46,41 @@ Item {
   property string fontFamily: "JetBrainsMono Nerd Font"
   property string activeTab: "layout"
 
-  // Bundled fallback so 'Reset to defaults' never produces an empty bar even
-  // if bar-defaults.json fails to load. Keep in rough sync with the layout
-  // shipped in default/quickshell/omarchy-shell/plugins/bar/bar-defaults.json.
-  readonly property var builtinBarConfig: ({
-    position: "top",
-    fontFamily: "JetBrainsMono Nerd Font",
-    centerAnchor: "calendar",
-    layout: {
-      left: [{ id: "omarchy" }, { id: "workspacesPro" }, { id: "activeWindow" }],
-      center: [
-        { id: "media" },
-        { id: "calendar", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n—\nmm" },
-        { id: "weatherFlyout" }, { id: "update" }, { id: "voxtype" },
-        { id: "screenRecording" }, { id: "idle" }, { id: "notifications" }
-      ],
-      right: [
-        { id: "tray" }, { id: "systemStats" }, { id: "microphone" },
-        { id: "bluetoothPanel" }, { id: "networkPanel" }, { id: "audioPanel" },
-        { id: "nightLight" }, { id: "brightness" }, { id: "powerProfile" },
-        { id: "battery" }, { id: "controlCenter" }, { id: "powerMenu" }
-      ]
-    }
+  // Bundled fallback so 'Reset to defaults' never produces an empty config
+  // even if shell-defaults.json fails to load. Keep in rough sync with the
+  // file shipped at default/quickshell/omarchy-shell/shell-defaults.json.
+  readonly property var builtinShellConfig: ({
+    version: 1,
+    bar: {
+      position: "top",
+      fontFamily: "JetBrainsMono Nerd Font",
+      centerAnchor: "calendar",
+      layout: {
+        left: [{ id: "omarchy" }, { id: "workspacesPro" }, { id: "activeWindow" }],
+        center: [
+          { id: "media" },
+          { id: "calendar", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n—\nmm" },
+          { id: "weatherFlyout" }, { id: "update" }, { id: "voxtype" },
+          { id: "screenRecording" }, { id: "idle" }, { id: "notifications" }
+        ],
+        right: [
+          { id: "tray" }, { id: "systemStats" }, { id: "microphone" },
+          { id: "bluetoothPanel" }, { id: "networkPanel" }, { id: "audioPanel" },
+          { id: "nightLight" }, { id: "brightness" }, { id: "powerProfile" },
+          { id: "battery" }, { id: "controlCenter" }, { id: "powerMenu" }
+        ]
+      }
+    },
+    plugins: [
+      { id: "omarchy.bar-settings" },
+      { id: "omarchy.image-picker" }
+    ]
   })
 
-  property var defaultConfig: builtinBarConfig
-  property var draft: ({ position: "top", centerAnchor: "calendar", layout: { left: [], center: [], right: [] }, fontFamily: "JetBrainsMono Nerd Font" })
+  property var defaultConfig: builtinShellConfig
+  // The draft mirrors the full shell.json on-disk shape. Editors operate on
+  // draft.bar.layout.* and draft.plugins; the file we persist is `draft`.
+  property var draft: ({ version: 1, bar: { position: "top", centerAnchor: "calendar", fontFamily: "JetBrainsMono Nerd Font", layout: { left: [], center: [], right: [] } }, plugins: [] })
   property var registry: ({})
   property int draftRevision: 0
   property bool suppressReload: false
@@ -116,30 +128,51 @@ Item {
   }
 
   function loadConfig() {
-    var defaults = builtinBarConfig
+    var defaults = builtinShellConfig
     var diskText = defaultsFile.text()
     if (diskText) {
       try {
-        defaults = JSON.parse(diskText)
+        var parsed = JSON.parse(diskText)
+        if (isPlainObject(parsed) && parsed.version === 1) defaults = parsed
       } catch (e) {
-        console.warn("Bad defaults JSON, falling back to builtin:", e)
-        defaults = builtinBarConfig
+        console.warn("Bad shell-defaults JSON, falling back to builtin:", e)
+        defaults = builtinShellConfig
       }
     }
     defaultConfig = defaults
 
-    var userText = userFile.text() || "{}"
-    var user = {}
-    try { user = JSON.parse(userText) } catch (e) { user = {} }
-
-    var merged = mergeConfig(defaultConfig, user)
-    draft = {
-      position: String(merged.position || "top"),
-      centerAnchor: String(merged.centerAnchor || ""),
-      fontFamily: String(merged.fontFamily || "JetBrainsMono Nerd Font"),
-      layout: normalizeLayout(merged.layout || {})
+    // shell.json is canonical when present and valid; otherwise we fall back
+    // to defaults. We do NOT deep-merge — once the user has a shell.json, the
+    // file's contents are authoritative.
+    var userText = userFile.text() || ""
+    var source = defaults
+    if (userText.trim()) {
+      try {
+        var u = JSON.parse(userText)
+        if (isPlainObject(u) && u.version === 1) source = u
+      } catch (e) {
+        console.warn("shell.json parse failed in panel:", e)
+      }
     }
+    draft = normalizeDraft(source)
     draftRevision++
+  }
+
+  function normalizeDraft(source) {
+    var bar = isPlainObject(source.bar) ? source.bar : {}
+    var plugins = Array.isArray(source.plugins) ? source.plugins.slice() : []
+    return {
+      version: 1,
+      bar: {
+        position: String(bar.position || "top"),
+        centerAnchor: String(bar.centerAnchor || ""),
+        fontFamily: String(bar.fontFamily || "JetBrainsMono Nerd Font"),
+        layout: normalizeLayout(bar.layout || {})
+      },
+      plugins: plugins
+        .map(normalizeLayoutEntry)
+        .filter(function(e) { return !!e })
+    }
   }
 
   function persistDraft() {
@@ -154,19 +187,14 @@ Item {
     // (path resolution failed or defaultsFile hasn't finished loading), so
     // Reset never zeroes the bar out.
     var source = defaultConfig
-    if (!isPlainObject(source) || !isPlainObject(source.layout)) {
-      source = builtinBarConfig
+    if (!isPlainObject(source) || !isPlainObject(source.bar) || !isPlainObject(source.bar.layout)) {
+      source = builtinShellConfig
     } else {
-      var l = source.layout
+      var l = source.bar.layout
       var anyEntries = (l.left && l.left.length) || (l.center && l.center.length) || (l.right && l.right.length)
-      if (!anyEntries) source = builtinBarConfig
+      if (!anyEntries) source = builtinShellConfig
     }
-    var payload = {
-      position: String(source.position || "top"),
-      centerAnchor: String(source.centerAnchor || ""),
-      fontFamily: String(source.fontFamily || "JetBrainsMono Nerd Font"),
-      layout: normalizeLayout(source.layout || {})
-    }
+    var payload = normalizeDraft(source)
     // Update the GUI synchronously — the suppressed file-watch callback won't
     // fire loadConfig, so the draft would otherwise stay stale.
     draft = payload
@@ -180,44 +208,45 @@ Item {
     persistDraft()
   }
 
-  // Replace the whole `layout` object so any binding that reads `draft.layout`
-  // is invalidated. Mutating `draft.layout[section]` alone does not notify QML.
-  function mutateLayout(section, mutator) {
-    var nextLayout = {
-      left: draft.layout.left.slice(),
-      center: draft.layout.center.slice(),
-      right: draft.layout.right.slice()
-    }
-    mutator(nextLayout[section])
-    var nextDraft = {
-      position: draft.position,
-      centerAnchor: draft.centerAnchor,
-      fontFamily: draft.fontFamily,
-      layout: nextLayout
-    }
+  // Section list helpers operate on a virtual section name. "left" / "center"
+  // / "right" address draft.bar.layout.<section>; "plugins" addresses
+  // draft.plugins. The mutators replace the whole `draft` so any binding that
+  // reads it re-evaluates.
+  function sectionArray(section) {
+    if (section === "plugins") return draft.plugins || []
+    return (draft.bar && draft.bar.layout && draft.bar.layout[section]) || []
+  }
+
+  function mutateSection(section, mutator) {
+    var arr = sectionArray(section).slice()
+    mutator(arr)
+    var nextDraft = cloneJson(draft)
+    if (section === "plugins") nextDraft.plugins = arr
+    else nextDraft.bar.layout[section] = arr
     draft = nextDraft
     markDirty()
   }
 
   function moveEntry(section, fromIndex, toIndex) {
-    if (toIndex < 0 || toIndex >= draft.layout[section].length) return
-    mutateLayout(section, function(arr) {
-      var item = arr[fromIndex]
-      arr.splice(fromIndex, 1)
-      arr.splice(toIndex, 0, item)
+    var arr = sectionArray(section)
+    if (toIndex < 0 || toIndex >= arr.length) return
+    mutateSection(section, function(a) {
+      var item = a[fromIndex]
+      a.splice(fromIndex, 1)
+      a.splice(toIndex, 0, item)
     })
   }
 
   function removeEntry(section, index) {
-    mutateLayout(section, function(arr) { arr.splice(index, 1) })
+    mutateSection(section, function(a) { a.splice(index, 1) })
   }
 
   function addEntry(section, id) {
-    mutateLayout(section, function(arr) { arr.push({ id: id }) })
+    mutateSection(section, function(a) { a.push({ id: id }) })
   }
 
   function updateEntry(section, index, newEntry) {
-    mutateLayout(section, function(arr) { arr[index] = cloneJson(newEntry) })
+    mutateSection(section, function(a) { a[index] = cloneJson(newEntry) })
   }
 
   function loadTheme(raw) {
@@ -297,12 +326,23 @@ Item {
     var rev = catalogRevision
     var meta = widgetMetadata(id)
     if (meta.settingsForm) return true
-    return widgetSchema(id).length > 0
+    if (widgetSchema(id).length > 0) return true
+    // Noctalia plugins ship their own Settings.qml — surface the gear icon
+    // even though we don't render a built-in form for them.
+    var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
+    if (manifest && manifest.__noctaliaCompat && manifest.entryPoints && manifest.entryPoints.settings)
+      return true
+    return false
   }
 
   function widgetIsPlugin(id) {
     var meta = widgetMetadata(id)
-    return meta.source === "plugin" || String(id).indexOf("plugin:") === 0
+    return meta.source === "plugin"
+  }
+
+  function widgetIsNoctaliaPlugin(id) {
+    var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
+    return !!(manifest && manifest.__noctaliaCompat)
   }
 
   function widgetAllowsMultiple(id) {
@@ -322,18 +362,24 @@ Item {
     return Object.keys(ids)
   }
 
+  // section is one of "left" / "center" / "right" for bar widgets, or
+  // "plugins" for the non-bar plugin list. The catalogue we offer differs:
+  // bar sections accept anything with kind `bar-widget` (or anything in the
+  // legacy widget metadata); the plugins section accepts panel/overlay/menu/
+  // service kinds.
   function availableToAdd(section) {
     var rev = catalogRevision
-    var existingByOther = {}
-    var sections = ["left", "center", "right"]
-    for (var s = 0; s < sections.length; s++) {
-      if (sections[s] === section) continue
-      var list = draft.layout[sections[s]] || []
-      for (var i = 0; i < list.length; i++) existingByOther[list[i].id] = true
+    var isBarSection = section === "left" || section === "center" || section === "right"
+    var barSections = ["left", "center", "right"]
+
+    var existingInBar = {}
+    for (var s = 0; s < barSections.length; s++) {
+      var list = sectionArray(barSections[s])
+      for (var i = 0; i < list.length; i++) existingInBar[list[i].id] = true
     }
-    var existingHere = {}
-    var here = draft.layout[section] || []
-    for (var j = 0; j < here.length; j++) existingHere[here[j].id] = true
+    var existingInPlugins = {}
+    var pluginList = sectionArray("plugins")
+    for (var p = 0; p < pluginList.length; p++) existingInPlugins[pluginList[p].id] = true
 
     var ids = catalogIds().sort(function(a, b) {
       return widgetName(a).localeCompare(widgetName(b))
@@ -342,8 +388,35 @@ Item {
     var result = []
     for (var k = 0; k < ids.length; k++) {
       var id = ids[k]
-      if (!widgetAllowsMultiple(id) && existingHere[id]) continue
-      result.push({ id: id, name: widgetName(id), description: widgetDescription(id), elsewhere: !!existingByOther[id] })
+      var meta = widgetMetadata(id)
+      var isBarWidget = !!(meta && meta.source !== "plugin")
+        || (meta && meta.kinds && meta.kinds.indexOf && meta.kinds.indexOf("bar-widget") !== -1)
+      if (isBarSection) {
+        if (!isBarWidget && !legacyWidgetMeta[id]) continue
+        var inSection = sectionArray(section)
+        var existsHere = false
+        for (var x = 0; x < inSection.length; x++) if (inSection[x].id === id) { existsHere = true; break }
+        var allowsMultiple = widgetAllowsMultiple(id)
+        // Hard block: if it's already placed in any bar section and the
+        // widget doesn't permit multiple instances, drop it from the menu
+        // entirely rather than offer an "(elsewhere)" entry that would
+        // silently move/duplicate state.
+        if (!allowsMultiple && existingInBar[id]) continue
+        // For widgets that do allow multiple (spacer), the `elsewhere`
+        // hint is informational only.
+        result.push({ id: id, name: widgetName(id), description: widgetDescription(id),
+          elsewhere: allowsMultiple && !!existingInBar[id] && !existsHere,
+          isNoctalia: widgetIsNoctaliaPlugin(id) })
+      } else {
+        // Plugins section: accept anything that has a manifest in the
+        // registry (plugins[] holds non-bar plugins — panel/overlay/menu/
+        // service — keyed by manifest id).
+        var hasManifest = !!(root.pluginRegistry && root.pluginRegistry.installedPlugins[id])
+        if (!hasManifest) continue
+        if (existingInPlugins[id]) continue
+        result.push({ id: id, name: widgetName(id), description: widgetDescription(id), elsewhere: false,
+          isNoctalia: widgetIsNoctaliaPlugin(id) })
+      }
     }
     return result
   }
@@ -432,7 +505,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
 
             Text {
-              text: "Auto-saving to ~/.config/omarchy/bar.json"
+              text: "Auto-saving to ~/.config/omarchy/shell.json"
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: 11
@@ -453,25 +526,29 @@ Item {
 
           OptionDropdown {
             label: "Position"
-            value: root.draft.position
+            value: root.draft.bar.position
             options: ["top", "right", "bottom", "left"]
             onChanged: function(v) {
-              root.draft.position = v
+              var next = root.cloneJson(root.draft)
+              next.bar.position = v
+              root.draft = next
               root.markDirty()
             }
           }
 
           OptionDropdown {
             label: "Center anchor"
-            value: root.draft.centerAnchor
+            value: root.draft.bar.centerAnchor
             options: {
               var list = ["(none)"]
-              var entries = root.draft.layout.center || []
+              var entries = root.draft.bar.layout.center || []
               for (var i = 0; i < entries.length; i++) list.push(entries[i].id)
               return list
             }
             onChanged: function(v) {
-              root.draft.centerAnchor = v === "(none)" ? "" : v
+              var next = root.cloneJson(root.draft)
+              next.bar.centerAnchor = v === "(none)" ? "" : v
+              root.draft = next
               root.markDirty()
             }
           }
@@ -525,9 +602,17 @@ Item {
               Layout.fillWidth: true
               spacing: 14
 
-              SectionEditor { sectionKey: "left";   sectionLabel: "Left" }
-              SectionEditor { sectionKey: "center"; sectionLabel: "Center" }
-              SectionEditor { sectionKey: "right";  sectionLabel: "Right" }
+              SectionEditor { sectionKey: "left";   sectionLabel: "Bar · Left" }
+              SectionEditor { sectionKey: "center"; sectionLabel: "Bar · Center" }
+              SectionEditor { sectionKey: "right";  sectionLabel: "Bar · Right" }
+
+              Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+              }
+
+              SectionEditor { sectionKey: "plugins"; sectionLabel: "Other plugins" }
             }
 
             PluginManager {
@@ -638,13 +723,13 @@ Item {
 
     property string sectionKey: ""
     property string sectionLabel: ""
-    property var entries: (root.draft.layout && root.draft.layout[section.sectionKey]) || []
+    property var entries: root.sectionArray(section.sectionKey)
     Layout.fillWidth: true
     spacing: 8
 
     Connections {
       target: root
-      function onDraftRevisionChanged() { section.entries = (root.draft.layout && root.draft.layout[section.sectionKey]) || [] }
+      function onDraftRevisionChanged() { section.entries = root.sectionArray(section.sectionKey) }
     }
 
     Row {
@@ -681,7 +766,11 @@ Item {
           model: root.availableToAdd(section.sectionKey)
           delegate: MenuItem {
             required property var modelData
-            text: modelData.name + (modelData.elsewhere ? "  (elsewhere)" : "")
+            // Suffix order matches what users skim left-to-right:
+            // name first, origin badge, then "elsewhere" if shared across sections.
+            text: modelData.name
+              + (modelData.isNoctalia ? "  (Noctalia)" : "")
+              + (modelData.elsewhere ? "  (elsewhere)" : "")
             onTriggered: root.addEntry(section.sectionKey, modelData.id)
           }
         }
@@ -934,6 +1023,11 @@ Item {
     }
   }
 
+  // Resolution order:
+  //   1) First-party inline forms (id-keyed switch).
+  //   2) Noctalia plugin's own Settings.qml — we load it inside a Loader
+  //      so the plugin renders its native UI and writes via pluginApi.
+  //   3) Generic DynamicSettingsForm built from manifest schema entries.
   function formComponent(id) {
     var meta = widgetMetadata(id)
     if (meta && meta.settingsForm) {
@@ -943,6 +1037,9 @@ Item {
       case "brightnessSettings": return brightnessSettingsComponent
       }
     }
+    var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
+    if (manifest && manifest.__noctaliaCompat && manifest.entryPoints && manifest.entryPoints.settings)
+      return noctaliaSettingsComponent
     if (widgetSchema(id).length > 0) return dynamicSettingsComponent
     return null
   }
@@ -953,6 +1050,51 @@ Item {
       schema: root.widgetSchema(entry.id || "")
       foregroundColor: root.foreground
       fontFamilyName: root.fontFamily
+    }
+  }
+
+  // Loader stub for Noctalia plugins that bundle a Settings.qml. We load the
+  // plugin's form and inject pluginApi so the plugin's own "save" button
+  // routes through pluginApi.saveSettings() — which lands in shell.json via
+  // shell.updateEntryInline. The plugin form doesn't emit `fieldChanged`,
+  // so the dialog's Apply/Cancel buttons are mostly decorative for these
+  // (writes already happened by the time you click Apply).
+  Component {
+    id: noctaliaSettingsComponent
+
+    Item {
+      id: noctaliaForm
+      property var entry: ({})
+      property string pluginId: entry && entry.id ? String(entry.id) : ""
+      property var manifest: pluginId && root.pluginRegistry
+        ? root.pluginRegistry.installedPlugins[pluginId] : null
+
+      implicitHeight: settingsLoader.item ? settingsLoader.item.implicitHeight : 0
+      implicitWidth: settingsLoader.item ? settingsLoader.item.implicitWidth : 0
+
+      Loader {
+        id: settingsLoader
+        anchors.fill: parent
+        source: {
+          if (!noctaliaForm.manifest) return ""
+          return root.pluginRegistry.entryPointUrl(noctaliaForm.manifest, "settings")
+        }
+        asynchronous: false
+        onLoaded: {
+          if (!item) return
+          var api = (root.shell && typeof root.shell.noctaliaPluginApiFor === "function")
+            ? root.shell.noctaliaPluginApiFor(noctaliaForm.pluginId) : null
+          if (api && "pluginApi" in item) item.pluginApi = api
+          if ("screen" in item && root.QsWindow && root.QsWindow.window)
+            item.screen = root.QsWindow.window.screen
+        }
+        onStatusChanged: {
+          if (status === Loader.Error) {
+            console.warn("noctalia Settings.qml failed for " + noctaliaForm.pluginId + ":",
+              sourceComponent ? sourceComponent.errorString() : "")
+          }
+        }
+      }
     }
   }
 

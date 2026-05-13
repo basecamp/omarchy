@@ -14,6 +14,7 @@ Examples:
   omarchy-shell-ipc shell summon omarchy.bar-settings "{}"
   omarchy-shell-ipc shell hide omarchy.image-picker
   omarchy-shell-ipc shell listPlugins
+  omarchy-shell-ipc shell listShellConfig
   omarchy-shell-ipc shell rescanPlugins
   omarchy-shell-ipc image-selector ping
   omarchy-shell-ipc image-selector cancel ""

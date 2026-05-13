@@ -8,15 +8,19 @@ QtObject {
 
   property string home: Quickshell.env("HOME")
   property string pluginsDir: home + "/.config/omarchy/plugins"
-  property string stateFile: home + "/.config/omarchy/plugins.json"
 
   // Set by shell.qml at startup so we can also scan bundled first-party plugins.
   property string firstPartyDir: ""
 
+  // Wired by shell.qml so the registry can read the canonical shell.json
+  // without owning file IO itself. shellConfigProvider returns the current
+  // effective shell config; shellConfigMutator takes a function that receives
+  // a deep-cloned config it can mutate in place and persists the result.
+  property var shellConfigProvider: null
+  property var shellConfigMutator: null
+
   // { pluginId: manifest } — manifests have __sourceDir and __isFirstParty stamped in.
   property var installedPlugins: ({})
-  // { pluginId: { enabled: bool } } — persisted to stateFile.
-  property var pluginStates: ({})
   property int registryRevision: 0
   property bool scanning: false
 
@@ -40,10 +44,98 @@ QtObject {
     return true
   }
 
+  // Detect a Noctalia-shape manifest (https://github.com/noctalia-dev/noctalia-plugins).
+  // Noctalia manifests don't carry our schemaVersion; we recognise them by the
+  // presence of `minNoctaliaVersion` or `metadata.defaultSettings`, or an
+  // `entryPoints` map that names roles Noctalia owns (main/barWidget/panel).
+  function isNoctaliaShape(manifest) {
+    if (!isPlainObject(manifest)) return false
+    if (manifest.schemaVersion !== undefined) return false
+    if (manifest.minNoctaliaVersion !== undefined) return true
+    if (isPlainObject(manifest.metadata) && isPlainObject(manifest.metadata.defaultSettings)) return true
+    if (isPlainObject(manifest.entryPoints)) {
+      var ep = manifest.entryPoints
+      if (ep.barWidget || ep.main || ep.panel || ep.desktopWidget
+          || ep.launcherProvider || ep.controlCenterWidget) return true
+    }
+    return false
+  }
+
+  // Translate a Noctalia manifest into the shape we validate normally. We do
+  // not modify the on-disk file; the in-memory copy gets a __noctaliaCompat
+  // marker so downstream code can branch where the semantics diverge.
+  function translateNoctaliaManifest(src) {
+    var ep = isPlainObject(src.entryPoints) ? src.entryPoints : {}
+    var kinds = []
+    var unsupported = []
+    if (ep.main) kinds.push("service")
+    if (ep.barWidget) kinds.push("bar-widget")
+    if (ep.panel) kinds.push("panel")
+    // Out of scope for v1 — warn loudly so we don't silently strand the plugin.
+    if (ep.desktopWidget)         unsupported.push("desktopWidget")
+    if (ep.launcherProvider)      unsupported.push("launcherProvider")
+    if (ep.controlCenterWidget)   unsupported.push("controlCenterWidget")
+
+    if (kinds.length === 0) {
+      console.warn("PluginRegistry: noctalia plugin '" + src.id + "' has no supported entryPoints"
+        + (unsupported.length ? " (unsupported in v1: " + unsupported.join(", ") + ")" : ""))
+      return null
+    }
+    if (unsupported.length) {
+      console.warn("PluginRegistry: noctalia plugin '" + src.id
+        + "' uses entryPoints not supported in v1, ignoring: " + unsupported.join(", "))
+    }
+
+    var translated = {
+      schemaVersion: 1,
+      id: "noctalia." + String(src.id),
+      name: src.name || src.id,
+      version: src.version || "0.0.0",
+      author: src.author || "",
+      description: src.description || "",
+      kinds: kinds,
+      activation: kinds.indexOf("service") !== -1 ? "persistent" : "on-demand",
+      entryPoints: {},
+      __noctaliaCompat: true,
+      __noctaliaOriginal: src
+    }
+
+    if (ep.barWidget) translated.entryPoints.barWidget = ep.barWidget
+    if (ep.main)      translated.entryPoints.service   = ep.main
+    if (ep.panel)     translated.entryPoints.panel     = ep.panel
+    if (ep.settings)  translated.entryPoints.settings  = ep.settings
+
+    var defaults = (isPlainObject(src.metadata) && isPlainObject(src.metadata.defaultSettings))
+      ? src.metadata.defaultSettings : {}
+    if (translated.entryPoints.barWidget) {
+      translated.barWidget = {
+        displayName: translated.name,
+        description: translated.description,
+        category: "Noctalia",
+        allowMultiple: false,
+        defaults: defaults,
+        schema: []
+      }
+    }
+    if (defaults && Object.keys(defaults).length > 0) translated.defaults = defaults
+
+    return translated
+  }
+
   function validateManifest(manifest, sourcePath) {
     if (!isPlainObject(manifest)) {
       console.warn("PluginRegistry: manifest is not an object at " + sourcePath)
       return null
+    }
+    // Noctalia shape — translate before validation. The translated manifest
+    // goes through the standard schemaVersion=1 path below.
+    if (isNoctaliaShape(manifest)) {
+      var preservedSourceDir = manifest.__sourceDir
+      var preservedFirstParty = manifest.__isFirstParty
+      manifest = translateNoctaliaManifest(manifest)
+      if (!manifest) return null
+      manifest.__sourceDir = preservedSourceDir
+      manifest.__isFirstParty = preservedFirstParty
     }
     if (manifest.schemaVersion !== 1) {
       console.warn("PluginRegistry: unsupported schemaVersion at " + sourcePath)
@@ -99,18 +191,74 @@ QtObject {
     return fileUrl(resolved)
   }
 
+  // Enabled = the plugin id is referenced somewhere in shell.json. That can
+  // be either a layout entry inside `bar.layout.*` (bar widgets) or a top-level
+  // entry in `plugins[]` (panels, overlays, services).
+  //
+  // Special case: plugins with `kinds` containing "bar" are directly mounted
+  // by the shell host rather than loaded through plugins[], so they're
+  // implicitly always enabled.
   function isEnabled(id) {
-    var state = pluginStates[String(id)]
-    return !!(state && state.enabled)
+    var key = String(id)
+    var manifest = installedPlugins[key]
+    if (manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar") !== -1) return true
+    var config = shellConfigProvider ? shellConfigProvider() : null
+    return findEntryLocation(config, key).found
   }
 
+  function findEntryLocation(config, id) {
+    if (!isPlainObject(config)) return { found: false }
+    if (isPlainObject(config.bar) && isPlainObject(config.bar.layout)) {
+      var sections = ["left", "center", "right"]
+      for (var s = 0; s < sections.length; s++) {
+        var arr = config.bar.layout[sections[s]]
+        if (!Array.isArray(arr)) continue
+        for (var i = 0; i < arr.length; i++) {
+          if (arr[i] && arr[i].id === id) return { found: true, kind: "bar", section: sections[s], index: i }
+        }
+      }
+    }
+    if (Array.isArray(config.plugins)) {
+      for (var j = 0; j < config.plugins.length; j++) {
+        if (config.plugins[j] && config.plugins[j].id === id) return { found: true, kind: "plugin", index: j }
+      }
+    }
+    return { found: false }
+  }
+
+  // Adding a plugin places it in the right section based on its declared
+  // kinds. Bar widgets default to the right section; panels/overlays/menus/
+  // services go into the plugins[] array.
   function setEnabled(id, value) {
     var key = String(id)
-    var next = {}
-    for (var k in pluginStates) next[k] = pluginStates[k]
-    next[key] = { enabled: !!value }
-    pluginStates = next
-    persistStates()
+    if (!shellConfigMutator) {
+      console.warn("PluginRegistry.setEnabled called before shellConfigMutator wired")
+      return
+    }
+    var manifest = installedPlugins[key]
+    var isBarWidget = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar-widget") !== -1
+    shellConfigMutator(function(config) {
+      // Ensure shape exists.
+      if (!isPlainObject(config.bar)) config.bar = { layout: { left: [], center: [], right: [] } }
+      if (!isPlainObject(config.bar.layout)) config.bar.layout = { left: [], center: [], right: [] }
+      if (!Array.isArray(config.plugins)) config.plugins = []
+      var location = findEntryLocation(config, key)
+      if (value && !location.found) {
+        var entry = { id: key }
+        if (isBarWidget) {
+          if (!Array.isArray(config.bar.layout.right)) config.bar.layout.right = []
+          config.bar.layout.right.push(entry)
+        } else {
+          config.plugins.push(entry)
+        }
+      } else if (!value && location.found) {
+        if (location.kind === "bar") {
+          config.bar.layout[location.section].splice(location.index, 1)
+        } else {
+          config.plugins.splice(location.index, 1)
+        }
+      }
+    })
     registryRevision++
     pluginsChanged()
   }
@@ -122,36 +270,6 @@ QtObject {
       if (m && Array.isArray(m.kinds) && m.kinds.indexOf(kind) !== -1) result.push(m)
     }
     return result
-  }
-
-  // ---------------------------------------------------------------- persistence
-
-  property bool suppressStateReload: false
-
-  function persistStates() {
-    suppressStateReload = true
-    stateFileView.setText(JSON.stringify({ version: 1, states: pluginStates }, null, 2) + "\n")
-  }
-
-  property FileView stateFileView: FileView {
-    path: registry.stateFile
-    watchChanges: true
-    atomicWrites: true
-    printErrors: false
-    onLoaded: {
-      if (registry.suppressStateReload) {
-        registry.suppressStateReload = false
-        return
-      }
-      try {
-        var data = JSON.parse(text() || "{}")
-        registry.pluginStates = (data && data.states) || {}
-      } catch (e) {
-        console.warn("PluginRegistry: bad plugins.json:", e)
-        registry.pluginStates = {}
-      }
-    }
-    onFileChanged: reload()
   }
 
   // ---------------------------------------------------------------- scanning
@@ -207,16 +325,6 @@ QtObject {
     }
     flush()
 
-    // Merge defaults into pluginStates: first-party defaults to enabled, third-party to disabled.
-    var nextStates = {}
-    for (var k in pluginStates) nextStates[k] = pluginStates[k]
-    for (var fpid in firstParty) {
-      if (!nextStates[fpid]) nextStates[fpid] = { enabled: true }
-    }
-    for (var tpid in thirdParty) {
-      if (!nextStates[tpid]) nextStates[tpid] = { enabled: false }
-    }
-
     var merged = {}
     for (var fk in firstParty) merged[fk] = firstParty[fk]
     // Third-party plugins never shadow a first-party one with the same id.
@@ -229,7 +337,6 @@ QtObject {
       merged[tk] = thirdParty[tk]
     }
 
-    pluginStates = nextStates
     installedPlugins = merged
     registryRevision++
     scanning = false

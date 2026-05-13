@@ -3,10 +3,10 @@
 # omarchy:summary=Show current monospace font
 # omarchy:examples=omarchy font current
 
-bar_config="$HOME/.config/omarchy/bar.json"
+shell_config="$HOME/.config/omarchy/shell.json"
 
-if [[ -f $bar_config ]]; then
-  font_family=$(python3 - "$bar_config" <<'PY'
+if [[ -f $shell_config ]]; then
+  font_family=$(python3 - "$shell_config" <<'PY'
 import json
 import sys
 
@@ -16,7 +16,8 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
   data = {}
 
-font = data.get("fontFamily") if isinstance(data, dict) else None
+bar = data.get("bar") if isinstance(data, dict) else None
+font = bar.get("fontFamily") if isinstance(bar, dict) else None
 if font:
   print(font)
 PY

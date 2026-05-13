@@ -1,0 +1,2 @@
+module qs.Services.System
+singleton HostService 1.0 HostService.qml

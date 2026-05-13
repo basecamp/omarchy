@@ -6,7 +6,7 @@
 
 set -e
 
-CONFIG_FILE="$HOME/.config/omarchy/bar.json"
+CONFIG_FILE="$HOME/.config/omarchy/shell.json"
 position=$1
 
 if [[ ! $position =~ ^(top|bottom|left|right)$ ]]; then
@@ -17,7 +17,6 @@ fi
 mkdir -p "$(dirname "$CONFIG_FILE")"
 python3 - "$CONFIG_FILE" "$position" <<'PY'
 import json
-import os
 import sys
 
 path, position = sys.argv[1], sys.argv[2]
@@ -29,7 +28,12 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
   data = {}
 
-data["position"] = position
+data.setdefault("version", 1)
+bar = data.get("bar")
+if not isinstance(bar, dict):
+  bar = {}
+  data["bar"] = bar
+bar["position"] = position
 
 with open(path, "w") as file:
   json.dump(data, file, indent=2)
