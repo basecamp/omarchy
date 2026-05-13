@@ -14,7 +14,18 @@ ShellRoot {
   id: root
 
   property string home: Quickshell.env("HOME")
-  property string omarchyPath: Quickshell.env("OMARCHY_PATH") || (home + "/.local/share/omarchy")
+  // Derive omarchyPath from the loaded shell.qml's directory so the bar finds
+  // its own widgets/defaults regardless of where it was launched. shellDir is
+  // `<omarchyPath>/default/quickshell/bar` so strip three trailing segments.
+  function deriveOmarchyPath() {
+    var env = Quickshell.env("OMARCHY_PATH")
+    if (env) return env
+    var dir = String(Quickshell.shellDir || "")
+    if (dir.indexOf("/default/quickshell/bar") !== -1)
+      return dir.substring(0, dir.indexOf("/default/quickshell/bar"))
+    return home + "/.local/share/omarchy"
+  }
+  property string omarchyPath: deriveOmarchyPath()
   property string omarchyConfigDir: home + "/.config/omarchy"
   property var builtinBarConfig: ({
     position: "top",
@@ -320,7 +331,7 @@ ShellRoot {
 
   function firstPartyWidgetSource(name) {
     if (!firstPartyWidgets[String(name)]) return ""
-    return fileUrl(omarchyPath + "/default/quickshell/bar/widgets/" + String(name) + ".qml")
+    return Qt.resolvedUrl("widgets/" + String(name) + ".qml")
   }
 
   function networkCommand() {
