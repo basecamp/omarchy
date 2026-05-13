@@ -6,7 +6,7 @@
   "height": 26,
   "width": 0,
   "modules-left": ["custom/omarchy", "hyprland/workspaces"],
-  "modules-center": ["clock#horizontal", "clock#vertical", "custom/weather", "custom/update", "custom/voxtype", "custom/screenrecording-indicator", "custom/idle-indicator", "custom/notification-silencing-indicator"],
+  "modules-center": ["clock#horizontal", "clock#vertical", "custom/weather", "custom/update", "custom/voxtype", "custom/screenrecording-indicator", "custom/reminder-indicator", "custom/idle-indicator", "custom/notification-silencing-indicator"],
   "modules-right": [
     "group/tray-expander",
     "bluetooth",
@@ -168,6 +168,14 @@
     "on-click": "omarchy-capture-screenrecording",
     "exec": "$OMARCHY_PATH/default/waybar/indicators/screen-recording.sh",
     "signal": 8,
+    "return-type": "json"
+  },
+  "custom/reminder-indicator": {
+    "on-click": "omarchy-reminder show",
+    "on-click-right": "omarchy-reminder clear",
+    "exec": "$OMARCHY_PATH/default/waybar/indicators/reminders.sh",
+    "signal": 11,
+    "interval": 30,
     "return-type": "json"
   },
   "custom/idle-indicator": {

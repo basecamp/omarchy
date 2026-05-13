@@ -84,6 +84,7 @@ tooltip {
 }
 
 #custom-screenrecording-indicator,
+#custom-reminder-indicator,
 #custom-idle-indicator,
 #custom-notification-silencing-indicator {
   min-width: 12px;
@@ -138,6 +139,7 @@ tooltip {
 .left #custom-weather, .right #custom-weather { margin: 1.5px 0; padding: 6px 0; min-height: 12px; min-width: 14px; margin-right: 4px; }
 
 .left #custom-screenrecording-indicator, .right #custom-screenrecording-indicator,
+.left #custom-reminder-indicator, .right #custom-reminder-indicator,
 .left #custom-idle-indicator, .right #custom-idle-indicator,
 .left #custom-notification-silencing-indicator, .right #custom-notification-silencing-indicator {
   margin: 5px 0 0 0;

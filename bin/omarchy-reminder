@@ -86,6 +86,7 @@ clear_reminders() {
 
   rm -f "$reminder_dir"/omarchy-reminder-*.message 2>/dev/null || true
   omarchy-notification-send -g 󰔛 "All reminders have been cleared"
+  pkill -RTMIN+11 waybar 2>/dev/null || true
 }
 
 case ${1:-} in
@@ -131,6 +132,7 @@ if [[ -n $custom_message ]]; then
 fi
 
 systemd-run --user --quiet --collect --on-active="${minutes}m" --unit="$unit" \
-  bash -c 'omarchy-notification-send -g 󰔛 "Reminder" "$1" -u critical; rm -f "$2"' bash "$message" "$message_file"
+  bash -c 'omarchy-notification-send -g 󰔛 "Reminder" "$1" -u critical; rm -f "$2"; pkill -RTMIN+11 waybar 2>/dev/null' bash "$message" "$message_file"
 
 omarchy-notification-send -g 󰔛 "$confirmation_title" "$confirmation"
+pkill -RTMIN+11 waybar 2>/dev/null || true
