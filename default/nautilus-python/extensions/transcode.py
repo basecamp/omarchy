@@ -8,14 +8,49 @@ require_version("Nautilus", "4.1")
 from gi.repository import GObject, Gio, Nautilus
 
 
-SUPPORTED_MIME_PREFIXES = ("image/", "video/")
-SUPPORTED_EXTENSIONS = {
-    ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".avif",
-    ".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi",
-}
+PICTURE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".avif")
+VIDEO_EXTENSIONS = (".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi")
 
 
 class TranscodeAction(GObject.GObject, Nautilus.MenuProvider):
+    def _media_type(self, file):
+        mime = file.get_mime_type() or ""
+        if mime.startswith("image/"):
+            return "picture"
+        if mime.startswith("video/"):
+            return "video"
+
+        location = file.get_location()
+        if not location:
+            return None
+        path = (location.get_path() or "").lower()
+        if path.endswith(PICTURE_EXTENSIONS):
+            return "picture"
+        if path.endswith(VIDEO_EXTENSIONS):
+            return "video"
+        return None
+
+    def _batch_command(self, binary, media_type, paths):
+        if media_type == "picture":
+            format_options = "jpg png"
+            resolution_options = "high medium low"
+        else:
+            format_options = "mp4 gif"
+            resolution_options = "4k 1080p 720p"
+
+        commands = [
+            f"format=$(omarchy-menu-select 'Select {media_type} format' {format_options}) || exit 1",
+            f"resolution=$(omarchy-menu-select 'Select {media_type} resolution' {resolution_options}) || exit 1",
+        ]
+
+        for path in paths:
+            commands.append(
+                f"echo {shlex.quote(f'Transcoding {path}')} && "
+                f"{shlex.join([binary, path])} \"$format\" \"$resolution\" || true"
+            )
+
+        return "; ".join(commands)
+
     def _launch_transcode(self, paths):
         wrapper = shutil.which("omarchy-launch-floating-terminal-with-presentation")
         binary = shutil.which("omarchy-transcode")
@@ -23,27 +58,18 @@ class TranscodeAction(GObject.GObject, Nautilus.MenuProvider):
             return
 
         if len(paths) == 1:
-            cmd = shlex.join([binary, paths[0]])
+            cmd = shlex.join([binary, paths[0][1]])
         else:
-            cmd = "; ".join(
-                f"echo {shlex.quote(f'Transcoding {path}')} && "
-                f"{shlex.join([binary, path])} || true"
-                for path in paths
-            )
+            picture_paths = [path for media_type, path in paths if media_type == "picture"]
+            video_paths = [path for media_type, path in paths if media_type == "video"]
+            commands = []
+            if picture_paths:
+                commands.append(self._batch_command(binary, "picture", picture_paths))
+            if video_paths:
+                commands.append(self._batch_command(binary, "video", video_paths))
+            cmd = "; ".join(commands)
 
         Gio.Subprocess.new([wrapper, cmd], Gio.SubprocessFlags.NONE)
-
-    def _is_supported(self, file):
-        mime = file.get_mime_type() or ""
-        if mime.startswith(SUPPORTED_MIME_PREFIXES):
-            return True
-
-        location = file.get_location()
-        if not location:
-            return False
-        path = location.get_path() or ""
-        lower = path.lower()
-        return any(lower.endswith(ext) for ext in SUPPORTED_EXTENSIONS)
 
     def _selected_paths(self, files):
         paths = []
@@ -52,7 +78,8 @@ class TranscodeAction(GObject.GObject, Nautilus.MenuProvider):
         for file in files:
             if file.is_directory():
                 continue
-            if not self._is_supported(file):
+            media_type = self._media_type(file)
+            if not media_type:
                 continue
             location = file.get_location()
             if not location:
@@ -60,7 +87,7 @@ class TranscodeAction(GObject.GObject, Nautilus.MenuProvider):
             path = location.get_path()
             if path and path not in seen:
                 seen.add(path)
-                paths.append(path)
+                paths.append((media_type, path))
         return paths
 
     def _make_item(self, paths):

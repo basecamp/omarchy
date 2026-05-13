@@ -15,6 +15,7 @@ Usage:
 
 With no input, pick a picture or video with Walker from ~/Pictures and ~/Videos,
 or only from --path when provided. Then pick the output format and resolution.
+When input is a directory, transcode matching direct child files only.
 
 Options:
   --path path  Limit interactive fuzzy file selection to this path
@@ -38,6 +39,17 @@ media_type() {
   video/*) echo video ;;
   *)
     echo "Unsupported file type: $mime" >&2
+    return 1
+    ;;
+  esac
+}
+
+media_type_for_format() {
+  case "$1" in
+  jpg | png) echo picture ;;
+  mp4 | gif) echo video ;;
+  *)
+    echo "Invalid format: $1" >&2
     return 1
     ;;
   esac
@@ -120,6 +132,67 @@ transcode_video() {
   esac
 }
 
+transcode_file() {
+  local input="$1" format="$2" resolution="$3"
+  local type output
+
+  type=$(media_type "$input")
+  output=$(output_path "$input" "$format" "$resolution")
+
+  if [[ $type == "video" ]]; then
+    transcode_video "$input" "$format" "$resolution" "$output"
+  else
+    transcode_picture "$input" "$format" "$resolution" "$output"
+  fi
+
+  printf '%s\n' "$output"
+}
+
+transcode_directory() {
+  local input="$1" format="$2" resolution="$3"
+  local target_type path type output count=0 skipped=0
+
+  target_type=$(media_type_for_format "$format")
+
+  shopt -s nullglob
+  for path in "$input"/*; do
+    [[ -f $path ]] || continue
+
+    if ! type=$(media_type "$path" 2>/dev/null); then
+      (( skipped += 1 ))
+      continue
+    fi
+
+    if [[ $type != "$target_type" ]]; then
+      (( skipped += 1 ))
+      continue
+    fi
+
+    output=$(output_path "$path" "$format" "$resolution")
+    if [[ $type == "video" ]]; then
+      omarchy-notification-send -g  "Transcoding video…" "$(basename -- "$path") to $format ($resolution)"
+      transcode_video "$path" "$format" "$resolution" "$output"
+    else
+      transcode_picture "$path" "$format" "$resolution" "$output"
+    fi
+
+    (( count += 1 ))
+    printf 'Transcoded %s -> %s\n' "$path" "$output"
+  done
+  shopt -u nullglob
+
+  if (( count == 0 )); then
+    echo "No supported $target_type files found in: $input" >&2
+    return 1
+  fi
+
+  omarchy-notification-send "Transcoded $count item(s) to $resolution $format" "Saved in $(basename -- "$input")"
+
+  if (( skipped > 0 )); then
+    printf 'Skipped %d unsupported or mismatched item(s).\n' "$skipped"
+  fi
+}
+
 copy_to_clipboard() {
   local output="$1"
   local uri
@@ -170,7 +243,26 @@ main() {
   fi
 
   [[ -n $input ]] || return 1
-  [[ -f $input ]] || { echo "File not found: $input" >&2; return 1; }
+  [[ -f $input || -d $input ]] || { echo "File or directory not found: $input" >&2; return 1; }
+
+  if [[ -d $input ]]; then
+    if [[ -z $format ]]; then
+      format=$(omarchy-menu-select "Select format" jpg png mp4 gif)
+    fi
+
+    type=$(media_type_for_format "$format")
+
+    if [[ -z $resolution ]]; then
+      if [[ $type == "picture" ]]; then
+        resolution=$(omarchy-menu-select "Select resolution" high medium low)
+      else
+        resolution=$(omarchy-menu-select "Select resolution" 4k 1080p 720p)
+      fi
+    fi
+
+    transcode_directory "$input" "$format" "$resolution"
+    return
+  fi
 
   type=$(media_type "$input")
 
@@ -190,15 +282,13 @@ main() {
     fi
   fi
 
-  output=$(output_path "$input" "$format" "$resolution")
-
   if [[ $type == "video" ]]; then
     omarchy-notification-send -g  "Transcoding video…" "$(basename -- "$input") to $format ($resolution)"
-    transcode_video "$input" "$format" "$resolution" "$output"
+    output=$(transcode_file "$input" "$format" "$resolution")
     copy_to_clipboard "$output"
     omarchy-notification-send -g  "Transcoded to $resolution $format" "Saved and copied to clipboard."
   else
-    transcode_picture "$input" "$format" "$resolution" "$output"
+    output=$(transcode_file "$input" "$format" "$resolution")
     copy_to_clipboard "$output"
     omarchy-notification-send -g  "Transcoded to $resolution $format" "Saved and copied to clipboard."
   fi
