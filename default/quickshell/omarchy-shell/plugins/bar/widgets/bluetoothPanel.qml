@@ -284,8 +284,8 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      // Explicit disconnect/close button on connected rows. Stops the row's
-      // own click handler from firing.
+      // Explicit close button on any known device. Action depends on state:
+      // connected -> disconnect, otherwise -> forget the pairing entirely.
       Rectangle {
         id: disconnectBtn
         anchors.right: parent.right
@@ -293,7 +293,8 @@ Item {
         width: 22
         height: 22
         radius: 4
-        visible: row.isConnected
+        visible: !row.isDiscovered
+        readonly property string action: row.isConnected ? "Disconnect" : "Forget"
         color: disconnectMouse.containsMouse
           ? Qt.rgba(root.bar.urgent.r, root.bar.urgent.g, root.bar.urgent.b, 0.20)
           : "transparent"
@@ -317,15 +318,19 @@ Item {
 
           onClicked: {
             if (!row.dev) return
-            row.pendingAction = 2
-            failureTimer.stop()
-            row.dev.disconnect()
+            if (row.isConnected) {
+              row.pendingAction = 2
+              failureTimer.stop()
+              row.dev.disconnect()
+            } else if (row.dev.forget) {
+              row.dev.forget()
+            }
           }
         }
 
         ToolTip {
           visible: disconnectMouse.containsMouse
-          text: "Disconnect"
+          text: disconnectBtn.action
           delay: 400
           padding: 0
           background: Rectangle {
@@ -336,7 +341,7 @@ Item {
             opacity: 0.97
           }
           contentItem: Text {
-            text: "Disconnect"
+            text: disconnectBtn.action
             color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: 11
@@ -353,8 +358,8 @@ Item {
         spacing: 1
         anchors.left: icon.right
         anchors.leftMargin: 10
-        anchors.right: row.isConnected ? disconnectBtn.left : parent.right
-        anchors.rightMargin: row.isConnected ? 8 : 0
+        anchors.right: disconnectBtn.visible ? disconnectBtn.left : parent.right
+        anchors.rightMargin: disconnectBtn.visible ? 8 : 0
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
