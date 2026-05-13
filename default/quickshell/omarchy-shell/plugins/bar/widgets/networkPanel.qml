@@ -423,6 +423,7 @@ fi
       }
 
       Common.PillButton {
+        visible: root.wifiStationAvailable
         width: parent.width
         iconText: "󰖩"
         text: "Open Wi-Fi manager (Impala)"
