@@ -279,7 +279,8 @@ ShellRoot {
     "nightLight": true,
     "keyboardLayout": true,
     "lockKeys": true,
-    "spacer": true
+    "spacer": true,
+    "controlCenter": true
   })
 
   function firstPartyWidgetSource(name) {

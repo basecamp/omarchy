@@ -5,7 +5,7 @@
   "layout": {
     "left": ["omarchy", "workspacesPro", "activeWindow"],
     "center": ["media", "calendar", "weatherFlyout", "update", "voxtype", "screenRecording", "idle", "notifications"],
-    "right": ["tray", "systemStats", "microphone", "bluetoothPanel", "networkPanel", "audioPanel", "nightLight", "brightness", "powerProfile", "battery", "powerMenu"]
+    "right": ["tray", "systemStats", "microphone", "bluetoothPanel", "networkPanel", "audioPanel", "nightLight", "brightness", "powerProfile", "battery", "controlCenter", "powerMenu"]
   },
   "modules": {
     "calendar": {
