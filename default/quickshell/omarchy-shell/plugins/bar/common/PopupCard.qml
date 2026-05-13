@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 
 PopupWindow {
   id: root
@@ -14,6 +15,7 @@ PopupWindow {
   property bool open: false
 
   readonly property var coordinatorKey: owner || root
+  readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
 
   function closePopout() {
     if (owner && "closePopout" in owner) owner.closePopout()
@@ -31,6 +33,15 @@ PopupWindow {
     if (!bar) return
     if (open) bar.requestPopout(coordinatorKey)
     else if (bar.activePopout === coordinatorKey) bar.releasePopout(coordinatorKey)
+  }
+
+  // Outside-click dismissal via Hyprland's focus grab. While `active`, input
+  // is routed only to the listed windows; clicking anywhere else clears the
+  // grab and we close the popup.
+  HyprlandFocusGrab {
+    active: root.open
+    windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
+    onCleared: root.closePopout()
   }
 
   anchor {
