@@ -27,11 +27,35 @@ ShellRoot {
 
   property string fontFamily: "JetBrainsMono Nerd Font"
 
-  property var defaultConfig: ({})
+  // Bundled fallback so 'Reset to defaults' never produces an empty bar even
+  // if bar-defaults.json fails to load. Keep in rough sync with the layout
+  // shipped in default/quickshell/bar/bar-defaults.json.
+  readonly property var builtinBarConfig: ({
+    position: "top",
+    fontFamily: "JetBrainsMono Nerd Font",
+    centerAnchor: "calendar",
+    layout: {
+      left: [{ id: "omarchy" }, { id: "workspacesPro" }, { id: "activeWindow" }],
+      center: [
+        { id: "media" },
+        { id: "calendar", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n—\nmm" },
+        { id: "weatherFlyout" }, { id: "update" }, { id: "voxtype" },
+        { id: "screenRecording" }, { id: "idle" }, { id: "notifications" }
+      ],
+      right: [
+        { id: "tray" }, { id: "systemStats" }, { id: "microphone" },
+        { id: "bluetoothPanel" }, { id: "networkPanel" }, { id: "audioPanel" },
+        { id: "nightLight" }, { id: "brightness" }, { id: "powerProfile" },
+        { id: "battery" }, { id: "controlCenter" }, { id: "powerMenu" }
+      ]
+    }
+  })
+
+  property var defaultConfig: builtinBarConfig
   property var draft: ({ position: "top", centerAnchor: "calendar", layout: { left: [], center: [], right: [] }, fontFamily: "JetBrainsMono Nerd Font" })
   property var registry: ({})
-  property bool dirty: false
   property int draftRevision: 0
+  property bool suppressReload: false
 
   function cloneJson(value) {
     return JSON.parse(JSON.stringify(value || null))
@@ -76,13 +100,17 @@ ShellRoot {
   }
 
   function loadConfig() {
-    try {
-      var defaults = defaultsFile.text() ? JSON.parse(defaultsFile.text()) : {}
-      defaultConfig = defaults
-    } catch (e) {
-      console.warn("Bad defaults JSON:", e)
-      defaultConfig = {}
+    var defaults = builtinBarConfig
+    var diskText = defaultsFile.text()
+    if (diskText) {
+      try {
+        defaults = JSON.parse(diskText)
+      } catch (e) {
+        console.warn("Bad defaults JSON, falling back to builtin:", e)
+        defaults = builtinBarConfig
+      }
     }
+    defaultConfig = defaults
 
     var userText = userFile.text() || "{}"
     var user = {}
@@ -95,17 +123,14 @@ ShellRoot {
       fontFamily: String(merged.fontFamily || "JetBrainsMono Nerd Font"),
       layout: normalizeLayout(merged.layout || {})
     }
-    dirty = false
     draftRevision++
   }
 
-  function saveConfig() {
-    // Persist the full picture rather than a diff so what the user sees in the
-    // GUI is what lives in bar.json. This means Omarchy defaults changes won't
-    // propagate after a user has saved at least once, which is the right
-    // tradeoff for a customizer: predictable layouts > silent migrations.
+  function persistDraft() {
+    // Suppress the inotify callback that this write triggers so the FileView
+    // reload doesn't race with rapid edits and clobber them.
+    suppressReload = true
     userFile.setText(JSON.stringify(draft, null, 2) + "\n")
-    dirty = false
   }
 
   function resetToDefaults() {
@@ -126,12 +151,13 @@ ShellRoot {
       fontFamily: String(source.fontFamily || "JetBrainsMono Nerd Font"),
       layout: normalizeLayout(source.layout || {})
     }
+    suppressReload = true
     userFile.setText(JSON.stringify(payload, null, 2) + "\n")
   }
 
   function markDirty() {
-    dirty = true
     draftRevision++
+    persistDraft()
   }
 
   // Replace the whole `layout` object so any binding that reads `draft.layout`
@@ -289,7 +315,10 @@ ShellRoot {
     atomicWrites: true
     printErrors: false
     onLoaded: {
-      if (root.dirty) return
+      if (root.suppressReload) {
+        root.suppressReload = false
+        return
+      }
       root.loadConfig()
     }
     onFileChanged: reload()
@@ -339,17 +368,18 @@ ShellRoot {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
 
+            Text {
+              text: "Auto-saving to ~/.config/omarchy/bar.json"
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: 11
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
             ActionPill {
               text: "Reset to defaults"
               foreground: root.urgent
               onClicked: root.resetToDefaults()
-            }
-
-            ActionPill {
-              text: root.dirty ? "Save" : "Saved"
-              foreground: root.dirty ? root.accent : Qt.darker(root.foreground, 1.5)
-              bordered: root.dirty
-              onClicked: if (root.dirty) root.saveConfig()
             }
           }
         }
