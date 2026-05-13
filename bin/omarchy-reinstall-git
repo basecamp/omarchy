@@ -1,11 +1,28 @@
 #!/bin/bash
 
-# omarchy:summary=Reinstall the stable Omarchy source directory from git
+# omarchy:summary=Reinstall the current Omarchy source branch from git
 
 set -e
 
 # Reinstall the Omarchy configuration directory from the git source.
 
-git clone "https://github.com/basecamp/omarchy.git" ~/.local/share/omarchy-new >/dev/null
-mv $OMARCHY_PATH ~/.local/share/omarchy-old
-mv ~/.local/share/omarchy-new $OMARCHY_PATH
+new_path="$HOME/.local/share/omarchy-new"
+old_path="$HOME/.local/share/omarchy-old"
+branch=$(git -C "$OMARCHY_PATH" branch --show-current 2>/dev/null || true)
+
+if [[ $branch != "master" && $branch != "rc" && $branch != "dev" ]]; then
+  branch="master"
+fi
+
+if [[ -e $new_path ]]; then
+  if gum confirm "$new_path already exists. Delete it before reinstalling?"; then
+    rm -rf "$new_path"
+  else
+    echo "Reinstall cancelled."
+    exit 1
+  fi
+fi
+
+git clone --branch "$branch" "https://github.com/basecamp/omarchy.git" "$new_path" >/dev/null
+mv "$OMARCHY_PATH" "$old_path"
+mv "$new_path" "$OMARCHY_PATH"
