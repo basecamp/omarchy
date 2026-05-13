@@ -1,0 +1,15 @@
+[Unit]
+Description=Omarchy Power Profile OSD
+After=graphical-session.target swayosd-server.service
+Wants=swayosd-server.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/omarchy/bin/omarchy-powerprofiles-osd-watch
+Restart=on-failure
+RestartSec=3
+LogLevelMax=warning
+
+[Install]
+WantedBy=graphical-session.target
