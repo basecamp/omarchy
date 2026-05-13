@@ -287,8 +287,18 @@ Item {
   property int catalogRevision: 0
   // Bump on every registry assignment (including the initial null → instance
   // injection from Loader.onLoaded) so bindings that derive from
-  // widgetMetadata pick up the new state.
-  onBarWidgetRegistryChanged: catalogRevision++
+  // widgetMetadata pick up the new state. The host injects the registry
+  // asynchronously via the Loader, so we also log once it lands.
+  onBarWidgetRegistryChanged: {
+    catalogRevision++
+    if (!root.barWidgetRegistry) return
+    console.log("bar-settings open. omarchyPath=" + root.omarchyPath,
+      "defaultsPath=" + root.defaultsPath,
+      "userConfigPath=" + root.userConfigPath,
+      "registry has",
+      root.barWidgetRegistry.availableIds().length,
+      "widgets")
+  }
   Connections {
     target: root.barWidgetRegistry
     function onChanged() {
@@ -419,19 +429,6 @@ Item {
       }
     }
     return result
-  }
-
-  // Only log once the registry has actually been injected by the host. The
-  // raw Component.onCompleted fires before the Loader's onLoaded property
-  // injection so it would always print `(null)` widgets, which is noise.
-  onBarWidgetRegistryChanged: {
-    if (!root.barWidgetRegistry) return
-    console.log("bar-settings open. omarchyPath=" + root.omarchyPath,
-      "defaultsPath=" + root.defaultsPath,
-      "userConfigPath=" + root.userConfigPath,
-      "registry has",
-      root.barWidgetRegistry.availableIds().length,
-      "widgets")
   }
 
   FileView {
