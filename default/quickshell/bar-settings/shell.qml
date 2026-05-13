@@ -8,7 +8,15 @@ ShellRoot {
   id: root
 
   property string home: Quickshell.env("HOME")
-  property string omarchyPath: Quickshell.env("OMARCHY_PATH") || (home + "/.local/share/omarchy")
+  function deriveOmarchyPath() {
+    var env = Quickshell.env("OMARCHY_PATH")
+    if (env) return env
+    var dir = String(Quickshell.shellDir || "")
+    if (dir.indexOf("/default/quickshell/bar-settings") !== -1)
+      return dir.substring(0, dir.indexOf("/default/quickshell/bar-settings"))
+    return home + "/.local/share/omarchy"
+  }
+  property string omarchyPath: deriveOmarchyPath()
   readonly property string userConfigPath: home + "/.config/omarchy/bar.json"
   readonly property string defaultsPath: omarchyPath + "/default/quickshell/bar/bar-defaults.json"
 
