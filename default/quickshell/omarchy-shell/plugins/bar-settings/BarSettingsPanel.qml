@@ -71,10 +71,7 @@ Item {
         ]
       }
     },
-    plugins: [
-      { id: "omarchy.bar-settings" },
-      { id: "omarchy.image-picker" }
-    ]
+    plugins: []
   })
 
   property var defaultConfig: builtinShellConfig
@@ -171,7 +168,15 @@ Item {
       },
       plugins: plugins
         .map(normalizeLayoutEntry)
-        .filter(function(e) { return !!e })
+        .filter(function(e) {
+          if (!e) return false
+          // Drop first-party panel/overlay/menu plugins from the user's
+          // plugins[] — they're shell infrastructure, summon-on-demand,
+          // and don't belong in user-editable lists.
+          var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[e.id] : null
+          if (manifest && manifest.__isFirstParty) return false
+          return true
+        })
     }
   }
 
@@ -418,11 +423,12 @@ Item {
           elsewhere: allowsMultiple && !!existingInBar[id] && !existsHere,
           isNoctalia: widgetIsNoctaliaPlugin(id) })
       } else {
-        // Plugins section: accept anything that has a manifest in the
-        // registry (plugins[] holds non-bar plugins — panel/overlay/menu/
-        // service — keyed by manifest id).
-        var hasManifest = !!(root.pluginRegistry && root.pluginRegistry.installedPlugins[id])
-        if (!hasManifest) continue
+        // Plugins section: accept third-party plugins with any non-bar kind.
+        // First-party panels/overlays (bar-settings, image-picker) are
+        // shell infrastructure and don't belong in user-editable lists.
+        var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
+        if (!manifest) continue
+        if (manifest.__isFirstParty) continue
         if (existingInPlugins[id]) continue
         result.push({ id: id, name: widgetName(id), description: widgetDescription(id), elsewhere: false,
           isNoctalia: widgetIsNoctaliaPlugin(id) })
