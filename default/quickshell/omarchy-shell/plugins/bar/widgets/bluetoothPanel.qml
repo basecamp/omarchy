@@ -92,48 +92,49 @@ Item {
           font.bold: true
         }
 
-        Common.PillButton {
+        Row {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          iconText: root.adapter && root.adapter.enabled ? "󰂯" : "󰂲"
-          text: root.adapter && root.adapter.enabled ? "On" : "Off"
-          foreground: root.bar.foreground
-          horizontalPadding: 10
-          verticalPadding: 4
-          active: root.adapter && root.adapter.enabled
-          onClicked: if (root.adapter) root.adapter.enabled = !root.adapter.enabled
+          spacing: 4
+
+          Common.PillButton {
+            iconText: "󰂳"
+            tooltipText: !root.adapter ? "" : !root.adapter.enabled ? "Bluetooth is off"
+              : root.adapter.discovering ? "Stop scanning" : "Scan for devices"
+            foreground: root.bar.foreground
+            horizontalPadding: 6
+            verticalPadding: 4
+            iconSize: 14
+            enabled: root.adapter !== null && root.adapter.enabled
+            opacity: enabled ? 1 : 0.4
+            active: root.adapter && root.adapter.discovering
+            onClicked: if (root.adapter) root.adapter.discovering = !root.adapter.discovering
+          }
+
+          Common.PillButton {
+            iconText: "󱁤"
+            tooltipText: "Open Impala (TUI)"
+            foreground: root.bar.foreground
+            horizontalPadding: 6
+            verticalPadding: 4
+            iconSize: 14
+            onClicked: { root.bar.run("omarchy-launch-bluetooth"); root.popupOpen = false }
+          }
+
+          Common.PillButton {
+            iconText: root.adapter && root.adapter.enabled ? "󰂯" : "󰂲"
+            text: root.adapter && root.adapter.enabled ? "On" : "Off"
+            tooltipText: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
+            foreground: root.bar.foreground
+            horizontalPadding: 10
+            verticalPadding: 4
+            active: root.adapter && root.adapter.enabled
+            onClicked: if (root.adapter) root.adapter.enabled = !root.adapter.enabled
+          }
         }
       }
 
-      // Action row: scan toggle and TUI launcher.
-      Row {
-        width: parent.width
-        spacing: 8
-
-        Common.PillButton {
-          width: (parent.width - parent.spacing) / 2
-          iconText: "󰂳"
-          text: root.adapter && root.adapter.discovering ? "Scanning…" : "Scan"
-          foreground: root.bar.foreground
-          horizontalPadding: 10
-          verticalPadding: 6
-          enabled: root.adapter !== null && root.adapter.enabled
-          opacity: enabled ? 1 : 0.4
-          active: root.adapter && root.adapter.discovering
-          onClicked: if (root.adapter) root.adapter.discovering = !root.adapter.discovering
-        }
-
-        Common.PillButton {
-          width: (parent.width - parent.spacing) / 2
-          iconText: "󱁤"
-          text: "Manage…"
-          foreground: root.bar.foreground
-          horizontalPadding: 10
-          verticalPadding: 6
-          onClicked: { root.bar.run("omarchy-launch-bluetooth"); root.popupOpen = false }
-        }
-      }
-
+      // Paired / known devices.
       Repeater {
         model: root.knownDevices
 
@@ -147,6 +148,8 @@ Item {
             if (modelData && modelData.batteryAvailable) label += "  " + Math.round(modelData.battery * 100) + "%"
             return label
           }
+          tooltipText: modelData && modelData.connected ? "Click to disconnect · right-click to forget"
+                                                       : "Click to connect · right-click to forget"
           foreground: root.bar.foreground
           horizontalPadding: 10
           verticalPadding: 6
@@ -161,12 +164,44 @@ Item {
         }
       }
 
+      // Discovered (unpaired) devices, only shown while scanning.
+      Text {
+        visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
+        text: "Discovered"
+        color: Qt.darker(root.bar.foreground, 1.4)
+        font.family: root.bar.fontFamily
+        font.pixelSize: 10
+        font.bold: true
+      }
+
+      Repeater {
+        model: root.adapter && root.adapter.discovering ? root.discoveredDevices : []
+
+        Common.PillButton {
+          required property var modelData
+
+          width: parent.width
+          iconText: "󰂯"
+          text: modelData ? (modelData.deviceName || modelData.name || modelData.address || "Unknown") : ""
+          tooltipText: "Click to pair and connect"
+          foreground: Qt.darker(root.bar.foreground, 1.2)
+          horizontalPadding: 10
+          verticalPadding: 6
+
+          onClicked: {
+            if (!modelData) return
+            modelData.pair()
+          }
+        }
+      }
+
       Text {
         visible: root.knownDevices.length === 0
+                 && (!root.adapter || !root.adapter.discovering || root.discoveredDevices.length === 0)
         text: !root.adapter ? "No Bluetooth adapter"
             : !root.adapter.enabled ? "Turn Bluetooth on to scan"
             : root.adapter.discovering ? "Scanning for devices…"
-            : "No paired devices. Hit Scan to find new ones."
+            : "No paired devices. Tap the scan icon to find new ones."
         color: Qt.darker(root.bar.foreground, 1.5)
         font.family: root.bar.fontFamily
         font.pixelSize: 11
