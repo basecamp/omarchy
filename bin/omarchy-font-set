@@ -28,6 +28,26 @@ if [[ -n $font_name ]]; then
 
     sed -i "s/font_family = .*/font_family = $font_name/g" ~/.config/hypr/hyprlock.conf
     sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/waybar/style.css
+    mkdir -p "$HOME/.config/omarchy"
+    python3 - "$HOME/.config/omarchy/bar.json" "$font_name" <<'PY'
+import json
+import sys
+
+path, font_name = sys.argv[1], sys.argv[2]
+try:
+  with open(path) as file:
+    data = json.load(file)
+    if not isinstance(data, dict):
+      data = {}
+except (FileNotFoundError, json.JSONDecodeError):
+  data = {}
+
+data["fontFamily"] = font_name
+
+with open(path, "w") as file:
+  json.dump(data, file, indent=2)
+  file.write("\n")
+PY
     sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/swayosd/style.css
     xmlstarlet ed -L \
       -u '//match[@target="pattern"][test/string="monospace"]/edit[@name="family"]/string' \
@@ -35,6 +55,10 @@ if [[ -n $font_name ]]; then
       ~/.config/fontconfig/fonts.conf
 
     omarchy-restart-waybar
+    OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+    if quickshell list -p "$OMARCHY_PATH/default/quickshell/bar" 2>/dev/null | grep -q '^Instance '; then
+      omarchy-restart-bar
+    fi
     omarchy-restart-swayosd
 
     if pgrep -x ghostty; then

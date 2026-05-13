@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Reset bar user overrides to Omarchy defaults
+# omarchy:examples=omarchy refresh bar
+
+set -e
+
+OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
+DEFAULT_CONFIG="$OMARCHY_PATH/config/omarchy/bar.json"
+
+if [[ ! -f $DEFAULT_CONFIG ]]; then
+  echo "Missing default bar config at $DEFAULT_CONFIG" >&2
+  exit 1
+fi
+
+omarchy-refresh-config omarchy/bar.json
+omarchy-restart-bar

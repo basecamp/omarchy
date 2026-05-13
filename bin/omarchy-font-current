@@ -3,4 +3,28 @@
 # omarchy:summary=Show current monospace font
 # omarchy:examples=omarchy font current
 
-grep -oP 'font-family:\s*["'\'']?\K[^;"'\'']+' ~/.config/waybar/style.css | head -n1
+bar_config="$HOME/.config/omarchy/bar.json"
+
+if [[ -f $bar_config ]]; then
+  font_family=$(python3 - "$bar_config" <<'PY'
+import json
+import sys
+
+try:
+  with open(sys.argv[1]) as file:
+    data = json.load(file)
+except (FileNotFoundError, json.JSONDecodeError):
+  data = {}
+
+font = data.get("fontFamily") if isinstance(data, dict) else None
+if font:
+  print(font)
+PY
+)
+fi
+
+if [[ -n $font_family ]]; then
+  printf '%s\n' "$font_family"
+else
+  grep -oP 'font-family:\s*["'\'']?\K[^;"'\'']+' ~/.config/waybar/style.css | head -n1
+fi

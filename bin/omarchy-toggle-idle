@@ -11,3 +11,5 @@ else
 fi
 
 pkill -RTMIN+9 waybar
+OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+quickshell ipc -p "$OMARCHY_PATH/default/quickshell/bar" call bar refreshIndicators >/dev/null 2>&1 || true

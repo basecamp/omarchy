@@ -1,0 +1,17 @@
+{
+  "position": "top",
+  "fontFamily": "JetBrainsMono Nerd Font",
+  "centerAnchor": "clock",
+  "layout": {
+    "left": ["omarchy", "workspaces"],
+    "center": ["clock", "weather", "update", "voxtype", "screenRecording", "idle", "notifications"],
+    "right": ["tray", "bluetooth", "network", "audio", "cpu", "battery"]
+  },
+  "modules": {
+    "clock": {
+      "format": "dddd HH:mm",
+      "formatAlt": "dd MMMM 'W'ww yyyy",
+      "verticalFormat": "HH\n—\nmm"
+    }
+  }
+}
