@@ -58,12 +58,13 @@ ShellRoot {
   // object without it) hides it. Reassigning the whole object is required for
   // QML to notice the change.
   property var openPanelIds: ({})
-  property var panelCache: ({})
 
   function isPanelOpen(id) { return openPanelIds[id] === true }
 
   // Pending payloads to deliver to a plugin's open() once its loader resolves.
-  // Keyed by plugin id; consumed by the Loader.onLoaded handler below.
+  // Keyed by plugin id; the value is an array so two summon() calls before
+  // the Loader resolves both reach the plugin in arrival order rather than
+  // the second clobbering the first.
   property var pendingPayloads: ({})
 
   function summon(pluginId, payloadJson) {
@@ -81,8 +82,10 @@ ShellRoot {
 
     // Stash payload so the Loader.onLoaded handler can hand it to open().
     var pending = ({})
-    for (var p in pendingPayloads) pending[p] = pendingPayloads[p]
-    pending[id] = payloadJson || ""
+    for (var p in pendingPayloads) pending[p] = pendingPayloads[p].slice()
+    var queue = pending[id] || []
+    queue.push(payloadJson || "")
+    pending[id] = queue
     pendingPayloads = pending
 
     // If the plugin is keepLoaded and already mounted, deliver immediately.
@@ -127,15 +130,17 @@ ShellRoot {
   function deliverIfLoaded(pluginId) {
     var loader = panelLoaders[pluginId]
     if (!loader || !loader.item) return
-    var payload = pendingPayloads[pluginId]
-    if (payload === undefined) return
+    var queue = pendingPayloads[pluginId]
+    if (!Array.isArray(queue) || queue.length === 0) return
     if (typeof loader.item.open === "function") {
-      try { loader.item.open(payload) } catch (e) {
-        console.warn("plugin " + pluginId + " open() threw:", e)
+      for (var i = 0; i < queue.length; i++) {
+        try { loader.item.open(queue[i]) } catch (e) {
+          console.warn("plugin " + pluginId + " open() threw:", e)
+        }
       }
     }
     var next = ({})
-    for (var k in pendingPayloads) if (k !== pluginId) next[k] = pendingPayloads[k]
+    for (var k in pendingPayloads) if (k !== pluginId) next[k] = pendingPayloads[k].slice()
     pendingPayloads = next
   }
 

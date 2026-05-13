@@ -714,7 +714,7 @@ Item {
   }
 
   FileView {
-    path: root.omarchyPath + "/default/quickshell/bar/bar-defaults.json"
+    path: root.omarchyPath + "/default/quickshell/omarchy-shell/plugins/bar/bar-defaults.json"
     watchChanges: true
     printErrors: false
     onLoaded: root.loadDefaultBarConfig(text())

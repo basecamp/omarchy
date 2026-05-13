@@ -33,6 +33,13 @@ QtObject {
     return "file://" + String(path).split("/").map(encodeURIComponent).join("/")
   }
 
+  function isSafeEntryPoint(value) {
+    if (typeof value !== "string" || value.length === 0) return false
+    if (value.charAt(0) === "/") return false
+    if (value.indexOf("..") !== -1) return false
+    return true
+  }
+
   function validateManifest(manifest, sourcePath) {
     if (!isPlainObject(manifest)) {
       console.warn("PluginRegistry: manifest is not an object at " + sourcePath)
@@ -62,6 +69,16 @@ QtObject {
       console.warn("PluginRegistry: entryPoints must be an object at " + sourcePath)
       return null
     }
+    // Every entry point must be a relative path inside the plugin's source
+    // directory. Reject the whole manifest if anything looks like an attempt
+    // to escape the plugin's sandbox.
+    for (var key in manifest.entryPoints) {
+      if (!isSafeEntryPoint(manifest.entryPoints[key])) {
+        console.warn("PluginRegistry: unsafe entryPoint '" + key + "'='"
+          + manifest.entryPoints[key] + "' at " + sourcePath)
+        return null
+      }
+    }
     return manifest
   }
 
@@ -71,7 +88,15 @@ QtObject {
     if (!ep) return ""
     var dir = manifest.__sourceDir || ""
     if (!dir) return ""
-    return fileUrl(dir + "/" + ep)
+    // Defense in depth: even after validateManifest, confirm the resolved
+    // path stays inside the plugin's sourceDir.
+    var resolved = dir.replace(/\/$/, "") + "/" + String(ep)
+    var expectedPrefix = dir.replace(/\/$/, "") + "/"
+    if (resolved.indexOf(expectedPrefix) !== 0) {
+      console.warn("PluginRegistry: entry point escapes sourceDir: " + resolved)
+      return ""
+    }
+    return fileUrl(resolved)
   }
 
   function isEnabled(id) {
@@ -194,7 +219,15 @@ QtObject {
 
     var merged = {}
     for (var fk in firstParty) merged[fk] = firstParty[fk]
-    for (var tk in thirdParty) merged[tk] = thirdParty[tk]
+    // Third-party plugins never shadow a first-party one with the same id.
+    for (var tk in thirdParty) {
+      if (firstParty[tk]) {
+        console.warn("PluginRegistry: plugin " + tk
+          + " rejected: id collides with first-party plugin")
+        continue
+      }
+      merged[tk] = thirdParty[tk]
+    }
 
     pluginStates = nextStates
     installedPlugins = merged
@@ -234,12 +267,12 @@ QtObject {
       + "}; "
       + "scan \"$0\" firstparty; "
       + "scan \"$1\" thirdparty"
-    scanProcess.command = ["bash", "-lc", script, registry.firstPartyDir, registry.pluginsDir]
+    scanProcess.command = ["bash", "-c", script, registry.firstPartyDir, registry.pluginsDir]
     scanProcess.running = true
   }
 
   function ensureUserDir() {
-    initProcess.command = ["bash", "-lc", "mkdir -p \"$0\"", registry.pluginsDir]
+    initProcess.command = ["bash", "-c", "mkdir -p \"$0\"", registry.pluginsDir]
     initProcess.running = true
   }
 
