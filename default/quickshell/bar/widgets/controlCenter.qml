@@ -322,6 +322,16 @@ Item {
         color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
       }
 
+      Common.PillButton {
+        width: parent.width
+        iconText: "󰙪"
+        text: "Customize bar…"
+        foreground: root.bar.foreground
+        horizontalPadding: 10
+        verticalPadding: 8
+        onClicked: { root.run("omarchy-launch-bar-settings"); root.popupOpen = false }
+      }
+
       Row {
         width: parent.width
         spacing: 6
