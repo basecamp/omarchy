@@ -13,9 +13,13 @@ PopupWindow {
   property int contentWidth: 280
   property int contentHeight: 200
   property bool open: false
+  // "click" — uses HyprlandFocusGrab so clicking outside dismisses the popup.
+  // "hover" — passive overlay; the owning widget controls open via hover.
+  property string triggerMode: "click"
 
   readonly property var coordinatorKey: owner || root
   readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
+  readonly property bool containsMouse: cardHover.hovered
 
   function closePopout() {
     if (owner && "closePopout" in owner) owner.closePopout()
@@ -37,9 +41,10 @@ PopupWindow {
 
   // Outside-click dismissal via Hyprland's focus grab. While `active`, input
   // is routed only to the listed windows; clicking anywhere else clears the
-  // grab and we close the popup.
+  // grab and we close the popup. Skipped for hover-mode popups so the cursor
+  // can move freely between the trigger and the popup.
   HyprlandFocusGrab {
-    active: root.open
+    active: root.open && root.triggerMode === "click"
     windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
     onCleared: root.closePopout()
   }
@@ -98,6 +103,10 @@ PopupWindow {
       id: contentHolder
       anchors.fill: parent
       anchors.margins: root.padding
+    }
+
+    HoverHandler {
+      id: cardHover
     }
   }
 }
