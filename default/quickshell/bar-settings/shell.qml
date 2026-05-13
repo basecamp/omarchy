@@ -151,6 +151,10 @@ ShellRoot {
       fontFamily: String(source.fontFamily || "JetBrainsMono Nerd Font"),
       layout: normalizeLayout(source.layout || {})
     }
+    // Update the GUI synchronously — the suppressed file-watch callback won't
+    // fire loadConfig, so the draft would otherwise stay stale.
+    draft = payload
+    draftRevision++
     suppressReload = true
     userFile.setText(JSON.stringify(payload, null, 2) + "\n")
   }
