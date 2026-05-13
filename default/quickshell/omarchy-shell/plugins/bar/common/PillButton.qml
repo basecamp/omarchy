@@ -1,10 +1,12 @@
 import QtQuick
+import QtQuick.Controls
 
 Rectangle {
   id: root
 
   property string text: ""
   property string iconText: ""
+  property string tooltipText: ""
   property color foreground: "#cacccc"
   property color background: "transparent"
   property color hoverBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
@@ -16,6 +18,10 @@ Rectangle {
   property real verticalPadding: 6
   property bool active: false
   property color activeBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18)
+
+  ToolTip.visible: tooltipText !== "" && mouseArea.containsMouse
+  ToolTip.text: tooltipText
+  ToolTip.delay: 400
 
   signal clicked()
   signal rightClicked()
