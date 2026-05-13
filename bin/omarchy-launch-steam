@@ -48,7 +48,7 @@ if omarchy-pkg-present steam; then # Only apply if steam is installed
   # Shutdown Hyprland
   if pgrep -x hyprland >/dev/null; then
     echo "Exiting Hyprland"
-    hyprland dispatch exit
+    omarchy system logout
   fi
 
   # Kill existing steam instances
