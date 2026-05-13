@@ -1,1 +1,1 @@
-command = 'wl-copy && (hyprctl dispatch "hl.dsp.send_shortcut({ mods = \"SHIFT\", key = \"Insert\" })" || hyprctl dispatch sendshortcut "SHIFT, Insert,")'
+command = 'wl-copy && ((hyprctl dispatch "hl.dsp.send_key_state({ mods = \"SHIFT\", key = \"Insert\", state = \"down\", window = \"activewindow\" })" && sleep 0.05 && hyprctl dispatch "hl.dsp.send_key_state({ mods = \"SHIFT\", key = \"Insert\", state = \"up\", window = \"activewindow\" })") || hyprctl dispatch sendshortcut "SHIFT, Insert, activewindow")'
