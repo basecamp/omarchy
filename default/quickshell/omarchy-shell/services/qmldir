@@ -1,0 +1,3 @@
+module omarchy.services
+singleton PluginRegistry 1.0 PluginRegistry.qml
+singleton BarWidgetRegistry 1.0 BarWidgetRegistry.qml

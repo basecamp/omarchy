@@ -54,7 +54,7 @@ if pgrep -x waybar >/dev/null; then
   omarchy-restart-waybar
 fi
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-if quickshell list -p "$OMARCHY_PATH/default/quickshell/bar" 2>/dev/null | grep -q '^Instance '; then
+if quickshell list -p "$OMARCHY_PATH/default/quickshell/omarchy-shell" 2>/dev/null | grep -q '^Instance '; then
   omarchy-restart-bar
 fi
 omarchy-restart-swayosd

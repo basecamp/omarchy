@@ -252,7 +252,7 @@ stop_screenrecording() {
 toggle_screenrecording_indicator() {
   pkill -RTMIN+8 waybar
   OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-  quickshell ipc -p "$OMARCHY_PATH/default/quickshell/bar" call bar refreshScreenRecording >/dev/null 2>&1 || true
+  quickshell ipc -p "$OMARCHY_PATH/default/quickshell/omarchy-shell" call bar refreshScreenRecording >/dev/null 2>&1 || true
 }
 
 screenrecording_active() {

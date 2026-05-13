@@ -2,7 +2,7 @@
 
 This is the Quickshell implementation of the Omarchy status bar.
 
-- `shell.qml` is Omarchy-owned bar engine code. Users should not edit it directly.
+- `Bar.qml` is Omarchy-owned bar engine code, loaded by the omarchy-shell host. Users should not edit it directly.
 - `bar-defaults.json` is the Omarchy-owned default layout and module settings.
 - `widgets/` holds first-party widgets — modular, interactive components shipped with Omarchy.
 - `common/` holds shared QML helpers (buttons, sliders, popup cards).
@@ -11,7 +11,7 @@ This is the Quickshell implementation of the Omarchy status bar.
 
 ## Customizing
 
-The bar reads `~/.local/share/omarchy/default/quickshell/bar/bar-defaults.json`, then deep-merges `~/.config/omarchy/bar.json` on top of it. Each `layout.{left,center,right}` entry is an object: at minimum `{ "id": "<widget>" }`, plus any inline settings the widget reads.
+The bar reads `~/.local/share/omarchy/default/quickshell/omarchy-shell/plugins/bar/bar-defaults.json`, then deep-merges `~/.config/omarchy/bar.json` on top of it. Each `layout.{left,center,right}` entry is an object: at minimum `{ "id": "<widget>" }`, plus any inline settings the widget reads.
 
 Launch the visual editor with `omarchy launch bar-settings` (or run `omarchy-launch-bar-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand.
 
