@@ -1,9 +1,8 @@
-pragma Singleton
-
 import QtQuick
 import Quickshell
 import Quickshell.Io
 
+// Instance, not a singleton — see BarWidgetRegistry for rationale.
 QtObject {
   id: registry
 

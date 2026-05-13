@@ -10,14 +10,15 @@ import Quickshell.Widgets
 import QtQuick
 import QtQuick.Layouts
 
-import "../../services" as Services
-
 Item {
   id: root
 
   // The omarchy-shell host injects omarchyPath when it instantiates this Bar.
   // Default fallback keeps the file loadable in isolation (e.g. for QML tooling).
   required property string omarchyPath
+  // Injected by the host shell. Shared with the bar-settings panel so both
+  // see the same widget catalogue.
+  required property var barWidgetRegistry
   property string home: Quickshell.env("HOME")
   property string omarchyConfigDir: home + "/.config/omarchy"
   property var builtinBarConfig: ({
@@ -306,9 +307,9 @@ Item {
     "audioPanel":         { displayName: "Audio",              description: "Volume slider, output picker, per-app mixer", category: "Audio",    allowMultiple: false },
     "networkPanel":       { displayName: "Network",            description: "Wi-Fi list and connection state",            category: "Network",  allowMultiple: false },
     "bluetoothPanel":     { displayName: "Bluetooth",          description: "Bluetooth device list with connect/disconnect", category: "Network", allowMultiple: false },
-    "calendar":           { displayName: "Calendar",           description: "Clock with month-grid popup",                  category: "Time",     allowMultiple: false },
+    "calendar":           { displayName: "Calendar",           description: "Clock with month-grid popup",                  category: "Time",     allowMultiple: false, settingsForm: "calendarSettings" },
     "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND (replaces mako)",  category: "Status",   allowMultiple: false },
-    "brightness":         { displayName: "Brightness",         description: "Screen brightness slider",                    category: "System",   allowMultiple: false },
+    "brightness":         { displayName: "Brightness",         description: "Screen brightness slider",                    category: "System",   allowMultiple: false, settingsForm: "brightnessSettings" },
     "powerProfile":       { displayName: "Power profile",      description: "power-profiles-daemon selector",              category: "System",   allowMultiple: false },
     "systemStats":        { displayName: "System stats",       description: "Inline CPU + memory sparklines",              category: "System",   allowMultiple: false },
     "weatherFlyout":      { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false },
@@ -320,7 +321,7 @@ Item {
     "nightLight":         { displayName: "Night light",        description: "hyprsunset toggle",                           category: "System",   allowMultiple: false },
     "keyboardLayout":     { displayName: "Keyboard layout",    description: "Current xkb layout, click cycles",            category: "Compositor", allowMultiple: false },
     "lockKeys":           { displayName: "Lock keys",          description: "Caps / Num / Scroll lock indicators",          category: "System",   allowMultiple: false },
-    "spacer":             { displayName: "Spacer",             description: "Configurable blank space",                    category: "Layout",   allowMultiple: true  },
+    "spacer":             { displayName: "Spacer",             description: "Configurable blank space",                    category: "Layout",   allowMultiple: true,  settingsForm: "spacerSettings" },
     "controlCenter":      { displayName: "Quick settings",     description: "Volume / brightness / DND in one popup",      category: "System",   allowMultiple: false }
   })
 
@@ -332,7 +333,7 @@ Item {
     var ids = Object.keys(firstPartyWidgetMetadata)
     for (var i = 0; i < ids.length; i++) {
       var id = ids[i]
-      if (Services.BarWidgetRegistry.has(id)) continue
+      if (barWidgetRegistry.has(id)) continue
       registerOneFirstPartyWidget(id)
     }
   }
@@ -345,12 +346,13 @@ Item {
       description: meta.description || "",
       category: meta.category || "Misc",
       allowMultiple: meta.allowMultiple === true,
+      settingsForm: meta.settingsForm || "",
       source: "first-party"
     }
     var comp = Qt.createComponent(url, Component.Asynchronous)
     function finalize() {
       if (comp.status === Component.Ready) {
-        Services.BarWidgetRegistry.register(id, comp, enrichedMeta)
+        barWidgetRegistry.register(id, comp, enrichedMeta)
         var next = ({})
         for (var k in registeredFirstPartyComponents) next[k] = registeredFirstPartyComponents[k]
         next[id] = comp
@@ -1179,7 +1181,7 @@ Item {
     // plugin enabled/disabled, etc.). Reading the `widgets` property creates
     // the binding dependency — the wrapped function call alone wouldn't.
     readonly property var registryComponent: {
-      var w = Services.BarWidgetRegistry.widgets
+      var w = root.barWidgetRegistry.widgets
       if (customType || builtinComponent) return null
       return w[moduleName] ? w[moduleName].component : null
     }

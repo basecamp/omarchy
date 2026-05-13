@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.bar-settings",
+  "name": "Bar settings",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Visual customizer for the Omarchy bar",
+  "kinds": ["panel"],
+  "activation": "on-demand",
+  "entryPoints": { "panel": "BarSettingsPanel.qml" }
+}
