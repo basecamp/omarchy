@@ -29,6 +29,7 @@ ShellRoot {
   property color background: "#101315"
   property color foreground: "#cacccc"
   property int expandedWidth: 768
+  property int expandedHeight: 475
   property int sliceWidth: 108
   property int sliceHeight: 432
   property int sliceSpacing: -30
@@ -377,7 +378,7 @@ ShellRoot {
     Item {
       id: card
       width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
-      height: root.sliceHeight + 30 + root.bottomChromeHeight
+      height: root.expandedHeight + 30 + root.bottomChromeHeight
       anchors.centerIn: parent
 
       MouseArea { anchors.fill: parent; onClicked: {} }
@@ -444,7 +445,8 @@ ShellRoot {
             visible: nearby
             x: selected ? carousel.previewX : (relativeIndex < 0 ? carousel.previewX + relativeIndex * carousel.itemStep : carousel.previewX + root.expandedWidth + root.sliceSpacing + (relativeIndex - 1) * carousel.itemStep)
             width: selected ? root.expandedWidth : root.sliceWidth
-            height: carousel.height
+            height: selected ? root.expandedHeight : root.sliceHeight
+            y: selected ? 0 : (root.expandedHeight - root.sliceHeight) / 2
             z: selected ? 100 : 50 - Math.min(Math.abs(relativeIndex), 40)
 
             readonly property real skAbs: Math.abs(root.skewOffset)
