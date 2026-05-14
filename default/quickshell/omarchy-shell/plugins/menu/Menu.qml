@@ -690,6 +690,17 @@ Item {
       return "ok"
     }
 
+    // Hitting the same menu keybind while the menu is already visible should
+    // close it — even if the requested target differs from the active one.
+    // Matches the old bash bin's `close_visible_quickshell_menu` short-circuit.
+    function toggle(initialMenu: string): string {
+      if (root.opened) {
+        root.cancel()
+        return "closed"
+      }
+      return summon(initialMenu)
+    }
+
     function refresh(): string {
       defaultMenuFile.reload()
       userMenuFile.reload()
@@ -697,7 +708,7 @@ Item {
     }
 
     function close(): string {
-      root.close()
+      root.cancel()
       return "ok"
     }
 

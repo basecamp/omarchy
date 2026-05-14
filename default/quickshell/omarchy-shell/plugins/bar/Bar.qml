@@ -1388,7 +1388,7 @@ Item {
     tooltipText: "Omarchy Menu\n\nSuper + Alt + Space"
     onPressed: function(button) {
       if (button === Qt.RightButton) root.run("xdg-terminal-exec")
-      else root.run("omarchy-shell-ipc menu summon root")
+      else root.run("omarchy-shell-ipc menu toggle root")
     }
   }
 
@@ -1944,7 +1944,7 @@ Item {
     tooltipText: root.batteryTooltip()
     onPressed: function(button) {
       if (button === Qt.RightButton) root.run("omarchy-notification-send \"$(omarchy-battery-status)\"")
-      else root.run("omarchy-shell-ipc menu summon power")
+      else root.run("omarchy-shell-ipc menu toggle power")
     }
   }
 }
