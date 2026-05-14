@@ -899,6 +899,7 @@ go_to_menu() {
   *theme*) show_theme_menu ;;
   *screenrecord*) show_screenrecord_menu ;;
   *setup*) show_setup_menu ;;
+  *weather*) show_setup_weather_menu ;;
   *power*) show_setup_power_menu ;;
   *install*) show_install_menu ;;
   *remove*) show_remove_menu ;;
