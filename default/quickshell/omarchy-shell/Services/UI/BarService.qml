@@ -66,14 +66,14 @@ QtObject {
   // from a right-click handler.
   function openWidgetSettings(screen, section, sectionWidgetIndex, widgetId, widgetSettings) {
     if (bar && bar.shell && typeof bar.shell.summon === "function") {
-      bar.shell.summon("omarchy.bar-settings",
+      bar.shell.summon("omarchy.settings",
         JSON.stringify({ focusWidgetId: widgetId, section: section, index: sectionWidgetIndex }))
     }
   }
 
   function openPluginSettings(screen, manifest) {
     if (bar && bar.shell && typeof bar.shell.summon === "function") {
-      bar.shell.summon("omarchy.bar-settings",
+      bar.shell.summon("omarchy.settings",
         JSON.stringify({ focusPluginId: manifest ? manifest.id : "" }))
     }
   }

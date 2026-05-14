@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.settings",
+  "name": "Omarchy Settings",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Customize the bar, plugins, defaults, and look-and-feel of Omarchy",
+  "kinds": ["panel"],
+  "activation": "on-demand",
+  "entryPoints": { "panel": "SettingsPanel.qml" }
+}

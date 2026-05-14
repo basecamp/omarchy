@@ -22,7 +22,7 @@ Add it via the bar customizer or by editing `~/.config/omarchy/shell.json` direc
 |---|---|
 | `entryPoints.barWidget` | yes — registered through `BarWidgetRegistry` |
 | `entryPoints.panel` | yes — opened via `pluginApi.openPanel()` |
-| `entryPoints.settings` | yes — embedded in the bar-settings dialog |
+| `entryPoints.settings` | yes — embedded in the settings dialog |
 | `entryPoints.main` | yes — instantiated as a hidden service, exposed via `pluginApi.mainInstance` |
 | `entryPoints.desktopWidget` | **no** — skipped with a console warning |
 | `entryPoints.launcherProvider` | **no** — skipped with a console warning |

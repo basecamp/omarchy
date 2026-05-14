@@ -11,7 +11,7 @@ Starts omarchy-shell if not running, then forwards a quickshell ipc call.
 
 Examples:
   omarchy-shell-ipc shell ping
-  omarchy-shell-ipc shell summon omarchy.bar-settings "{}"
+  omarchy-shell-ipc shell summon omarchy.settings "{}"
   omarchy-shell-ipc shell hide omarchy.image-picker
   omarchy-shell-ipc shell listPlugins
   omarchy-shell-ipc shell listShellConfig

@@ -1,8 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=Launch the Omarchy bar customizer
-# omarchy:group=launch
-# omarchy:name=bar-settings
-# omarchy:examples=omarchy launch bar-settings
-
-exec omarchy-shell-ipc shell summon omarchy.bar-settings "{}"

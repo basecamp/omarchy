@@ -10,15 +10,7 @@ set_radius() {
   local radius="$1"
 
   mkdir -p "$(dirname "$TOGGLES_CSS")"
-  touch "$TOGGLES_CSS"
-
-  if grep -q '^  border-radius:' "$TOGGLES_CSS"; then
-    sed -i "s/^  border-radius:.*/  border-radius: ${radius}px;/" "$TOGGLES_CSS"
-  elif grep -q '^border-radius:' "$TOGGLES_CSS"; then
-    sed -i "s/^border-radius:.*/border-radius: ${radius}px;/" "$TOGGLES_CSS"
-  else
-    echo ".box-wrapper { border-radius: ${radius}px; }" >>"$TOGGLES_CSS"
-  fi
+  printf '.box-wrapper { border-radius: %spx; }\n' "$radius" >"$TOGGLES_CSS"
 }
 
 case "${1:-toggle}" in

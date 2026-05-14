@@ -1,15 +1,48 @@
 #!/bin/bash
 
-# omarchy:summary=Toggle bar visibility
-# omarchy:examples=omarchy toggle bar
+# omarchy:summary=Toggle bar visibility without killing the Omarchy shell
+# omarchy:args=[toggle|show|hide]
+# omarchy:examples=omarchy toggle bar | omarchy toggle bar hide | omarchy toggle bar show
 
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-CONFIG_DIR="$OMARCHY_PATH/default/quickshell/omarchy-shell"
+FLAG="$HOME/.local/state/omarchy/toggles/bar-off"
 
-omarchy-toggle bar-off
+apply_state() {
+  case "$1" in
+    hidden)
+      mkdir -p "$(dirname "$FLAG")"
+      touch "$FLAG"
+      ;;
+    visible)
+      rm -f "$FLAG"
+      ;;
+  esac
+}
 
-if quickshell list -p "$CONFIG_DIR" 2>/dev/null | grep -q '^Instance '; then
-  quickshell kill -p "$CONFIG_DIR" >/dev/null 2>&1 || true
-else
-  uwsm-app -- env OMARCHY_PATH="$OMARCHY_PATH" quickshell -p "$CONFIG_DIR" >/dev/null 2>&1 &
-fi
+case "${1:-toggle}" in
+  hide|off)
+    apply_state hidden
+    state=hidden
+    ;;
+  show|on)
+    apply_state visible
+    state=visible
+    ;;
+  toggle|"")
+    if [[ -f $FLAG ]]; then
+      apply_state visible
+      state=visible
+    else
+      apply_state hidden
+      state=hidden
+    fi
+    ;;
+  *)
+    echo "Usage: omarchy-toggle-bar [toggle|show|hide]" >&2
+    exit 1
+    ;;
+esac
+
+case "$state" in
+  visible) omarchy-notification-send "Bar shown"  -g 󰍜 ;;
+  hidden)  omarchy-notification-send "Bar hidden" -g 󰍜 ;;
+esac

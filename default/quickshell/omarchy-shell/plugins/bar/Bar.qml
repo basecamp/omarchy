@@ -16,7 +16,7 @@ Item {
   // The omarchy-shell host injects omarchyPath when it instantiates this Bar.
   // Default fallback keeps the file loadable in isolation (e.g. for QML tooling).
   required property string omarchyPath
-  // Injected by the host shell. Shared with the bar-settings panel so both
+  // Injected by the host shell. Shared with the settings panel so both
   // see the same widget catalogue.
   required property var barWidgetRegistry
   // Injected by the host shell every time shell.json is reloaded. Holds the
@@ -29,6 +29,10 @@ Item {
   // Injected by the host shell. Used so Noctalia plugins that reach for
   // shell-wide APIs (openPanel, currentScreen) can do so via pluginApi.
   property var shell: null
+  // Mirrors the on-disk `bar-off` flag so the user can hide the bar without
+  // killing the entire shell. Wired to BarPanel.visible below; updated by the
+  // FileView watcher further down.
+  property bool barHidden: false
   property string home: Quickshell.env("HOME")
   property string omarchyConfigDir: home + "/.config/omarchy"
   property var fallbackBarConfig: ({
@@ -691,12 +695,38 @@ Item {
 
   // The host owns shell.json loading and injects `barConfig`. Bar still keeps
   // its own theme FileView since theme colors are independent of shell.json.
+  // `omarchy-theme-set` recreates the entire theme/ directory via rm+mv, which
+  // invalidates the inotify watch on colors.toml. Use theme.name (overwritten
+  // in place) to force a fresh reload after each swap.
   FileView {
+    id: themeColorsFile
     path: root.home + "/.config/omarchy/current/theme/colors.toml"
     watchChanges: true
     printErrors: false
     onLoaded: root.loadTheme(text())
     onFileChanged: reload()
+  }
+  FileView {
+    path: root.home + "/.config/omarchy/current/theme.name"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: themeColorsFile.reload()
+  }
+
+  // Presence of the `bar-off` flag = bar hidden. Watching the parent toggles
+  // directory because FileView can't observe a file that doesn't exist yet,
+  // and the flag is created/removed by `omarchy-toggle-bar`.
+  Process {
+    id: barHiddenProbe
+    running: true
+    command: ["bash", "-lc", "[[ -f $HOME/.local/state/omarchy/toggles/bar-off ]] && echo yes || echo no"]
+    stdout: SplitParser { onRead: function(line) { root.barHidden = String(line).trim() === "yes" } }
+  }
+  FileView {
+    path: root.home + "/.local/state/omarchy/toggles"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: barHiddenProbe.running = true
   }
 
   Process {
@@ -843,6 +873,8 @@ Item {
 
   component BarPanel: PanelWindow {
     id: barWindow
+
+    visible: !root.barHidden
 
     anchors {
       top: root.position === "top" || root.vertical

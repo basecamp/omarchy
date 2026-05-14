@@ -28,7 +28,7 @@ default/quickshell/omarchy-shell/
       DynamicSettingsForm.qml  renders plugin-declared schemas
   plugins/
     bar/                 first-party plugins (see plugins/README.md)
-    bar-settings/
+    settings/
     image-picker/
     menu/
 ```
@@ -87,7 +87,7 @@ The full schema lives in `services/PluginRegistry.qml`.
    The directory must contain a `manifest.json` plus the QML files
    referenced from its `entryPoints`.
 2. `omarchy-shell-ipc shell rescanPlugins` — or open the Plugin Manager
-   tab in `omarchy launch bar-settings` and click **Rescan**.
+   tab in `omarchy launch settings` and click **Rescan**.
 3. Enable the plugin (Plugin Manager **Enable** toggle, or
    `omarchy-shell-ipc shell setPluginEnabled <id> true`).
 4. If it's a `bar-widget`, add it to a layout section from the bar editor.
@@ -128,7 +128,7 @@ is the canonical way for other Omarchy CLIs to talk to the shell.
 
 ```
 omarchy-shell-ipc shell ping
-omarchy-shell-ipc shell summon omarchy.bar-settings "{}"
+omarchy-shell-ipc shell summon omarchy.settings "{}"
 omarchy-shell-ipc shell listPlugins
 omarchy-shell-ipc shell rescanPlugins
 ```
@@ -152,7 +152,7 @@ The `shell-defaults.json` bundled with the shell describes the
 fresh-install state. When the user has no `shell.json`, the shell uses
 the defaults verbatim. Once the user customizes anything, `shell.json`
 becomes the authoritative file — we do **not** deep-merge defaults back
-in. Pressing **Reset to defaults** in `omarchy launch bar-settings`
+in. Pressing **Reset to defaults** in `omarchy launch settings`
 rewrites `shell.json` from the current `shell-defaults.json`.
 
 ### shell.json shape
@@ -174,7 +174,7 @@ rewrites `shell.json` from the current `shell-defaults.json`.
     }
   },
   "plugins": [
-    { "id": "omarchy.bar-settings" },
+    { "id": "omarchy.settings" },
     { "id": "omarchy.image-picker" }
   ]
 }

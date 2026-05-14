@@ -54,7 +54,7 @@ ShellRoot {
       }
     },
     plugins: [
-      { id: "omarchy.bar-settings" },
+      { id: "omarchy.settings" },
       { id: "omarchy.image-picker" }
     ]
   })
