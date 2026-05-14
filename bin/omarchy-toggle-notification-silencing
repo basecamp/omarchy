@@ -2,14 +2,12 @@
 
 # omarchy:summary=Toggle notification do-not-disturb mode
 
-makoctl mode -t do-not-disturb
+state=$(omarchy-shell-ipc notifications toggleDnd 2>/dev/null || echo "")
 
-if makoctl mode | grep -q 'do-not-disturb'; then
-  notify-send -u low "󰂛    Silenced notifications"
-else
-  notify-send -u low "󰂚    Enabled notifications"
-fi
+case $state in
+on)  omarchy-notification-send "Silenced notifications" -g 󰂛 -e ;;
+off) omarchy-notification-send "Enabled notifications" -g 󰂚 -e ;;
+esac
 
-pkill -RTMIN+10 waybar
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-quickshell ipc -p "$OMARCHY_PATH/default/quickshell/omarchy-shell" call bar refreshIndicators >/dev/null 2>&1 || true
+pkill -RTMIN+10 waybar 2>/dev/null || true
+omarchy-shell-ipc bar refreshIndicators >/dev/null 2>&1 || true

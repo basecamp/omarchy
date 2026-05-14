@@ -17,6 +17,11 @@ QtObject {
   property color background: "#101315"
   property color accent: "#cacccc"
   property color urgent: "#a55555"
+  // The theme's Hyprland active border color (`$activeBorderColor` in the
+  // theme's hyprland.conf). Most themes set this to the accent; some themes
+  // (e.g. aether, oodle) override it to a neutral. Streamed from the theme
+  // file alongside colors.toml so notification surfaces stay in sync.
+  property color border: accent
 
   // Noctalia palette tokens. We map them onto our theme colors.
   readonly property color mPrimary: accent
@@ -91,14 +96,32 @@ QtObject {
 
   function loadTheme(raw) {
     var lines = String(raw || "").split("\n")
+    var foundAccent = false
+    var color4Value = ""
     for (var i = 0; i < lines.length; i++) {
       var match = lines[i].match(/^\s*([A-Za-z0-9_-]+)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
       if (!match) continue
       if (match[1] === "foreground") foreground = match[2]
       else if (match[1] === "background") background = match[2]
-      else if (match[1] === "color4" || match[1] === "accent") accent = match[2]
-      else if (match[1] === "red") urgent = match[2]
+      // Prefer the explicit `accent` key; only fall back to color4 when the
+      // theme doesn't define a separate accent. Aether/oodle/etc define both,
+      // and color4 appears later in the file so the old single-property
+      // approach was clobbering accent with color4 (#8274fd purple).
+      else if (match[1] === "accent") { accent = match[2]; foundAccent = true }
+      else if (match[1] === "color4") color4Value = match[2]
+      else if (match[1] === "red" || match[1] === "color1") urgent = match[2]
     }
+    if (!foundAccent && color4Value.length > 0) accent = color4Value
+  }
+
+  // Parse `$activeBorderColor = rgb(XXXXXX)` from the theme's hyprland.conf.
+  function loadHyprlandTheme(raw) {
+    var match = String(raw || "").match(/\$activeBorderColor\s*=\s*rgba?\(([0-9A-Fa-f]{6,8})\)/)
+    if (!match) { border = accent; return }
+    var hex = match[1]
+    // rgba() in hyprland is AARRGGBB; strip the AA prefix and use the RGB.
+    if (hex.length === 8) hex = hex.substring(2)
+    border = "#" + hex
   }
 
   // `omarchy-theme-set` recreates the theme/ directory via rm+mv, which kills
@@ -116,6 +139,14 @@ QtObject {
     path: Quickshell.env("HOME") + "/.config/omarchy/current/theme.name"
     watchChanges: true
     printErrors: false
-    onFileChanged: themeColorsFile.reload()
+    onFileChanged: { themeColorsFile.reload(); themeHyprlandFile.reload() }
+  }
+  property FileView themeHyprlandFile: FileView {
+    id: themeHyprlandFile
+    path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/hyprland.conf"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.loadHyprlandTheme(text())
+    onFileChanged: reload()
   }
 }

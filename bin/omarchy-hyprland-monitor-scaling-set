@@ -42,4 +42,4 @@ elif [[ -f $MONITOR_LUA ]] && grep -Eq '^hl\.monitor\(\{ output = "", mode = "pr
     "$MONITOR_LUA"
 fi
 
-notify-send -u low "󰍹    Display scaling set to ${NEW_SCALE}x"
+notify-send -a omarchy-action -u low "󰍹    Display scaling set to ${NEW_SCALE}x"

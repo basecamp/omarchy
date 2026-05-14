@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Set Hyprland, Hyprlock, Mako, Walker, and Quickshell corners to sharp or round
+# omarchy:summary=Set Hyprland, Hyprlock, Walker, and Quickshell (bar, menu, notifications) corners to sharp or round
 # omarchy:args=<sharp|round>
 # omarchy:examples=omarchy style corners round | omarchy style corners sharp
 
@@ -11,7 +11,6 @@ fi
 
 omarchy-style-corners-hyprland "$1"
 omarchy-style-corners-hyprlock "$1"
-omarchy-style-corners-mako "$1"
 omarchy-style-corners-walker "$1"
 omarchy-style-corners-quickshell "$1"
 

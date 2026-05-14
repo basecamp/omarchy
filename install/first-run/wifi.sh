@@ -1,6 +1,20 @@
+notify_update() {
+  (
+    action=$(notify-send "    Update System" "$1" -u critical -A "default=Update")
+    [[ $action == "default" ]] && omarchy-launch-floating-terminal-with-presentation omarchy-update
+  ) >/dev/null 2>&1 &
+}
+
+notify_wifi() {
+  (
+    action=$(notify-send "󰖩    Click to Setup Wi-Fi" "Tab to navigate, Space to select, ? for help." -u critical -A "default=Setup")
+    [[ $action == "default" ]] && omarchy-launch-wifi
+  ) >/dev/null 2>&1 &
+}
+
 if ! ping -c3 -W1 1.1.1.1 >/dev/null 2>&1; then
-  notify-send "    Update System" "When you have internet, click to update the system." -u critical
-  notify-send "󰖩    Click to Setup Wi-Fi" "Tab to navigate, Space to select, ? for help." -u critical
+  notify_update "When you have internet, click to update the system."
+  notify_wifi
 else
-  notify-send "    Update System" "Click to update the system." -u critical
+  notify_update "Click to update the system."
 fi

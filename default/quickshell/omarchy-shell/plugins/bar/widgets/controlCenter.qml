@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Bluetooth
 import Quickshell.Io
 import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
@@ -25,15 +26,22 @@ Item {
     return value === undefined || value === null ? fallback : value
   }
 
-  readonly property var sink: Pipewire.defaultAudioSink
-  readonly property real currentVolume: sink && sink.audio && isFinite(sink.audio.volume) ? sink.audio.volume : 0
-  readonly property bool sinkMuted: sink && sink.audio ? sink.audio.muted : false
-  PwObjectTracker { objects: root.sink ? [root.sink] : [] }
+  // Volume controls live in the audioPanel bar widget, so the quick-settings
+  // popup just hosts brightness + toggles. Bluetooth adapter status is
+  // exposed via Quickshell.Bluetooth.
+  readonly property var btAdapter: Bluetooth.defaultAdapter
+  readonly property bool btEnabled: btAdapter ? btAdapter.enabled : false
 
   property int currentBrightness: -1
   property int pendingBrightness: -1
 
-  property bool dndActive: false
+  // DND state is bound straight to the notifications service so toggling
+  // from the quick-settings tile or the bar widget reflects instantly.
+  readonly property var hostShell: bar && bar.shell ? bar.shell : null
+  readonly property var notificationService: hostShell && typeof hostShell.firstPartyServiceFor === "function"
+    ? hostShell.firstPartyServiceFor("omarchy.notifications")
+    : null
+  readonly property bool dndActive: notificationService ? notificationService.doNotDisturb : false
   property bool idleInhibited: false
   property bool nightLightActive: false
   property bool nightLightAvailable: false
@@ -41,16 +49,6 @@ Item {
 
   readonly property bool powerProfileAvailable: PowerProfiles.hasPerformanceProfile || PowerProfiles.profile === PowerProfile.PowerSaver || PowerProfiles.profile === PowerProfile.Balanced
   readonly property int currentProfile: PowerProfiles.profile
-
-  function setVolume(value) {
-    if (!sink || !sink.audio) return
-    sink.audio.volume = Math.max(0, Math.min(1, value))
-  }
-
-  function toggleMute() {
-    if (!sink || !sink.audio) return
-    sink.audio.muted = !sink.audio.muted
-  }
 
   function setBrightness(percent) {
     var clamped = Math.max(1, Math.min(100, Math.round(percent)))
@@ -61,7 +59,6 @@ Item {
 
   function refresh() {
     if (!brightnessProc.running) brightnessProc.running = true
-    if (!dndProc.running) dndProc.running = true
     if (!idleProc.running) idleProc.running = true
     if (!nightLightProc.running) nightLightProc.running = true
     if (!themeProc.running) themeProc.running = true
@@ -95,15 +92,6 @@ Item {
       brightnessWriteProc.command = ["bash", "-lc", "brightnessctl set " + root.pendingBrightness + "% >/dev/null"]
       root.pendingBrightness = -1
       brightnessWriteProc.running = true
-    }
-  }
-
-  Process {
-    id: dndProc
-    command: ["bash", "-lc", "if command -v makoctl >/dev/null && makoctl mode 2>/dev/null | grep -q '^do-not-disturb$'; then echo on; else echo off; fi"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.dndActive = String(text || "").trim() === "on"
     }
   }
 
@@ -190,48 +178,11 @@ Item {
       Column {
         width: parent.width
         spacing: 10
-        visible: root.sink !== null
+        visible: root.currentBrightness >= 0
 
         Row {
           width: parent.width
           spacing: 8
-
-          Common.PillButton {
-            iconText: root.sinkMuted ? "󰝟" : "󰕾"
-            foreground: root.bar.foreground
-            horizontalPadding: 8
-            verticalPadding: 6
-            iconSize: 16
-            onClicked: root.toggleMute()
-          }
-
-          Common.Slider {
-            bar: root.bar
-            width: parent.width - 90
-            value: root.currentVolume
-            minimum: 0
-            maximum: 1
-            step: 0.05
-            anchors.verticalCenter: parent.verticalCenter
-            onMoved: function(v) { root.setVolume(v) }
-            onReleased: function(v) { root.setVolume(v) }
-          }
-
-          Text {
-            text: Math.round(root.currentVolume * 100) + "%"
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: 11
-            anchors.verticalCenter: parent.verticalCenter
-            width: 32
-            horizontalAlignment: Text.AlignRight
-          }
-        }
-
-        Row {
-          width: parent.width
-          spacing: 8
-          visible: root.currentBrightness >= 0
 
           Common.PillButton {
             iconText: "󰃠"
@@ -284,7 +235,10 @@ Item {
           title: "Do Not Disturb"
           subtitle: root.dndActive ? "On" : "Off"
           active: root.dndActive
-          onClicked: { root.run("omarchy-toggle-notification-silencing"); dndProc.running = true }
+          onClicked: {
+            if (!root.notificationService) return
+            root.notificationService.setDoNotDisturb(!root.notificationService.doNotDisturb)
+          }
         }
 
         Tile {
@@ -308,10 +262,15 @@ Item {
 
         Tile {
           width: (tileGrid.width - tileGrid.columnSpacing) / 2
-          glyph: "󰔎"
-          title: "Theme"
-          subtitle: root.themeName || "—"
-          onClicked: { root.run("omarchy-menu themes"); root.popupOpen = false }
+          glyph: root.btEnabled ? "󰂯" : "󰂲"
+          title: "Bluetooth"
+          subtitle: !root.btAdapter ? "—" : (root.btEnabled ? "On" : "Off")
+          active: root.btEnabled
+          tileEnabled: root.btAdapter !== null
+          onClicked: {
+            if (!root.btAdapter) return
+            root.btAdapter.enabled = !root.btAdapter.enabled
+          }
         }
       }
 

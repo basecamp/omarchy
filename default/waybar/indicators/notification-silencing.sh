@@ -1,6 +1,7 @@
 #!/bin/bash
 
-if makoctl mode | grep -q 'do-not-disturb'; then
+state=$(omarchy-shell-ipc notifications isDnd 2>/dev/null || echo off)
+if [[ $state == "on" ]]; then
   echo '{"text": "󰂛", "tooltip": "Notifications silenced", "class": "active"}'
 else
   echo '{"text": ""}'

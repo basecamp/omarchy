@@ -12,4 +12,4 @@ esac
 
 hyprctl eval "hl.workspace_rule({ workspace = \"$ACTIVE_WORKSPACE\", layout = \"$NEW_LAYOUT\" })" >/dev/null 2>&1 || \
   hyprctl keyword workspace $ACTIVE_WORKSPACE, layout:$NEW_LAYOUT
-notify-send -u low "󱂬    Workspace layout set to $NEW_LAYOUT"
+notify-send -a omarchy-action -u low "󱂬    Workspace layout set to $NEW_LAYOUT"
