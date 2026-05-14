@@ -32,7 +32,7 @@ hl.bind("SUPER + SHIFT + ALT + X", hl.dsp.exec_cmd([[omarchy-launch-webapp "http
 
 -- Overwrite existing bindings with hl.unbind() first if needed.
 -- hl.unbind("SUPER + SPACE")
--- hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("omarchy-menu"), { description = "Omarchy menu" })
+-- hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("omarchy-shell-ipc menu toggle root"), { description = "Omarchy menu" })
 
 -- Logitech MX Keys examples:
 -- hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("omarchy-capture-screenshot"))
