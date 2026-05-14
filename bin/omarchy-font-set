@@ -29,40 +29,28 @@ if [[ -n $font_name ]]; then
     sed -i "s/font_family = .*/font_family = $font_name/g" ~/.config/hypr/hyprlock.conf
     sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/waybar/style.css
     mkdir -p "$HOME/.config/omarchy"
-    python3 - "$HOME/.config/omarchy/shell.json" "$font_name" <<'PY'
-import json
-import sys
+    shell_config="$HOME/.config/omarchy/shell.json"
+    tmp=$(mktemp)
 
-path, font_name = sys.argv[1], sys.argv[2]
-try:
-  with open(path) as file:
-    data = json.load(file)
-    if not isinstance(data, dict):
-      data = {}
-except (FileNotFoundError, json.JSONDecodeError):
-  data = {}
+    if [[ -s $shell_config ]] && jq -e 'type == "object"' "$shell_config" >/dev/null 2>&1; then
+      jq --arg font_name "$font_name" '
+        .version = 1 |
+        .bar = ((.bar // {}) | if type == "object" then . else {} end) |
+        .bar.fontFamily = $font_name
+      ' "$shell_config" >"$tmp"
+    else
+      jq -n --arg font_name "$font_name" '{ version: 1, bar: { fontFamily: $font_name } }' >"$tmp"
+    fi
 
-data.setdefault("version", 1)
-bar = data.get("bar")
-if not isinstance(bar, dict):
-  bar = {}
-  data["bar"] = bar
-bar["fontFamily"] = font_name
-
-with open(path, "w") as file:
-  json.dump(data, file, indent=2)
-  file.write("\n")
-PY
+    mv "$tmp" "$shell_config"
     sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/swayosd/style.css
     xmlstarlet ed -L \
       -u '//match[@target="pattern"][test/string="monospace"]/edit[@name="family"]/string' \
       -v "$font_name" \
       ~/.config/fontconfig/fonts.conf
 
-    omarchy-restart-waybar
-    OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-    if quickshell list -p "$OMARCHY_PATH/default/quickshell/omarchy-shell" 2>/dev/null | grep -q '^Instance '; then
-      omarchy-restart-bar
+    if pgrep -x waybar >/dev/null; then
+      omarchy-restart-waybar
     fi
     omarchy-restart-swayosd
 

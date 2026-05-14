@@ -15,29 +15,16 @@ if [[ ! $position =~ ^(top|bottom|left|right)$ ]]; then
 fi
 
 mkdir -p "$(dirname "$CONFIG_FILE")"
-python3 - "$CONFIG_FILE" "$position" <<'PY'
-import json
-import sys
+tmp=$(mktemp)
 
-path, position = sys.argv[1], sys.argv[2]
-try:
-  with open(path) as file:
-    data = json.load(file)
-    if not isinstance(data, dict):
-      data = {}
-except (FileNotFoundError, json.JSONDecodeError):
-  data = {}
+if [[ -s $CONFIG_FILE ]] && jq -e 'type == "object"' "$CONFIG_FILE" >/dev/null 2>&1; then
+  jq --arg position "$position" '
+    .version = 1 |
+    .bar = ((.bar // {}) | if type == "object" then . else {} end) |
+    .bar.position = $position
+  ' "$CONFIG_FILE" >"$tmp"
+else
+  jq -n --arg position "$position" '{ version: 1, bar: { position: $position } }' >"$tmp"
+fi
 
-data.setdefault("version", 1)
-bar = data.get("bar")
-if not isinstance(bar, dict):
-  bar = {}
-  data["bar"] = bar
-bar["position"] = position
-
-with open(path, "w") as file:
-  json.dump(data, file, indent=2)
-  file.write("\n")
-PY
-
-omarchy-restart-bar
+mv "$tmp" "$CONFIG_FILE"

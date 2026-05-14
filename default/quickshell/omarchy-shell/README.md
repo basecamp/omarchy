@@ -30,6 +30,7 @@ default/quickshell/omarchy-shell/
     bar/                 first-party plugins (see plugins/README.md)
     bar-settings/
     image-picker/
+    menu/
 ```
 
 The plugin discovery path is documented in [plugins/README.md](plugins/README.md).
@@ -98,7 +99,9 @@ are discovered the same way and cannot be disabled.
 
 The shell exposes a single `shell` IPC target plus whatever extra targets
 individual plugins register (e.g. the bar's `bar` target for refresh
-hooks, the background switcher's `image-selector` target).
+hooks, the image picker's `image-selector` target). `omarchy-menu` uses the
+shell target to summon the first-party `omarchy.menu` plugin instead of
+running a separate Quickshell instance.
 
 | Method                                   | Returns | Effect                                                |
 |------------------------------------------|---------|-------------------------------------------------------|
@@ -115,6 +118,9 @@ Direct invocation:
 ```
 quickshell ipc -p $OMARCHY_PATH/default/quickshell/omarchy-shell call shell ping
 ```
+
+Hyprland starts the shell through `omarchy-restart-quickshell` on boot.
+Use `omarchy restart quickshell` to reload the long-running shell process.
 
 A convenience wrapper, [`omarchy-shell-ipc`](../../../bin/omarchy-shell-ipc),
 starts the shell if it is not already running, then forwards a `call`. It
