@@ -13,6 +13,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Bar              | `omarchy.bar`            | `bar`        | persistent  | `bar/Bar.qml`                                |
 | Bar settings     | `omarchy.bar-settings`   | `panel`      | on-demand   | `bar-settings/BarSettingsPanel.qml`          |
 | Image picker     | `omarchy.image-picker`   | `overlay`    | on-demand   | `image-picker/ImagePicker.qml`               |
+| Omarchy menu     | `omarchy.menu`           | `menu`       | on-demand   | `menu/Menu.qml`                              |
 
 ## Bar
 
@@ -62,8 +63,23 @@ clears it without writing a selection.
 The plugin has `keepLoaded: true` so the layer-shell window survives
 between summons within a single shell session.
 
+## Omarchy menu
+
+Quickshell-powered replacement for the legacy Walker-driven `omarchy-menu`.
+The menu UI lives in `menu/Menu.qml` as a first-party `menu` plugin and is
+summoned through the shell (`omarchy-shell-ipc shell summon omarchy.menu ...`),
+so it shares the long-running `omarchy-shell` process instead of starting a
+second Quickshell instance.
+
+The menu definition lives outside the shell host code:
+
+- defaults: `default/omarchy/omarchy-menu.jsonc`
+- user extensions: `~/.config/omarchy/extensions/omarchy-menu.jsonc`
+
+`bin/omarchy-menu` still owns the Bash action helpers and dynamic providers;
+it builds the menu JSON, summons `omarchy.menu`, waits for the selection, and
+runs the selected action.
+
 ## Coming soon
 
-- `omarchy.menu` — folds the existing `omarchy-menu` (currently on another
-  branch) into the shell as a `menu` plugin. Not present on this branch.
 - `omarchy.theme-switcher` — folds theme switching into the shell.

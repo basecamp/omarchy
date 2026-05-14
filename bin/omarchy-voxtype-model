@@ -5,8 +5,7 @@
 set -e
 
 omarchy-launch-floating-terminal-with-presentation "voxtype setup model"
-omarchy-restart-waybar
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-if quickshell list -p "$OMARCHY_PATH/default/quickshell/omarchy-shell" 2>/dev/null | grep -q '^Instance '; then
-  omarchy-restart-bar
+if pgrep -x waybar >/dev/null; then
+  omarchy-restart-waybar
 fi
+omarchy-restart-quickshell

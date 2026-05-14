@@ -7,14 +7,11 @@ set -e
 
 USER_CONFIG="$HOME/.config/omarchy/shell.json"
 
-# Removing the user file lets the shell fall back to shell-defaults.json on
-# its next reload. omarchy-restart-bar (which is now an alias for restarting
-# omarchy-shell) reloads the shell so the change takes effect immediately.
+# Removing the user file lets the running shell fall back to shell-defaults.json
+# via its FileView watcher. The next shell start will also use the defaults.
 if [[ -f $USER_CONFIG ]]; then
   backup="$USER_CONFIG.bak.$(date +%s)"
   cp "$USER_CONFIG" "$backup"
   echo "Backed up user shell config to $backup"
   rm -f "$USER_CONFIG"
 fi
-
-omarchy-restart-bar

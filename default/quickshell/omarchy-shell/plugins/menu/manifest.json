@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.menu",
+  "name": "Omarchy menu",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Quickshell-powered Omarchy command menu",
+  "kinds": ["menu"],
+  "activation": "on-demand",
+  "keepLoaded": true,
+  "entryPoints": { "menu": "Menu.qml" },
+  "ipc": {
+    "summon": "menu"
+  }
+}
