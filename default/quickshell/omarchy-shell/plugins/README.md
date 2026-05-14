@@ -76,9 +76,12 @@ The menu definition lives outside the shell host code:
 - defaults: `default/omarchy/omarchy-menu.jsonc`
 - user extensions: `~/.config/omarchy/extensions/omarchy-menu.jsonc`
 
-`bin/omarchy-menu` still owns the Bash action helpers and dynamic providers;
-it builds the menu JSON, summons `omarchy.menu`, waits for the selection, and
-runs the selected action.
+The shell parses both JSONC files at startup (with `watchChanges: true`
+so edits take effect without a restart), evaluates `when:` / `checked:`
+bash expressions in a single batched subprocess, and executes the
+selected `action:` string directly via `Quickshell.execDetached`. The
+long-running shell process keeps the parsed menu in memory, so the
+keybind → IPC → visible path costs ~30ms cold.
 
 ## Coming soon
 

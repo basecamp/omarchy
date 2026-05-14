@@ -11,7 +11,7 @@
   //   action      Shell command to run. If omitted, the row is a submenu.
   //   target      Existing submenu id to open. Use for links/aliases.
   //   provider    Runtime provider function/command returning JSON rows.
-  //   aliases     Alternate `omarchy-menu <name>` routes; also searchable.
+  //   aliases     alternate `omarchy-shell-ipc menu summon <name>` routes; also searchable.
   //   keywords    Extra search terms beyond id/label/aliases.
   //   description Optional subtitle and extra search text.
   //   when        Shell condition; hide row when it fails.

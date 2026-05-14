@@ -14,10 +14,7 @@ Item {
 
   // Plugin lifecycle hooks. The host calls open(payloadJson) after
   // `omarchy-shell-ipc shell summon omarchy.menu ...` and close() when hidden.
-  property string menuJsonFile: ""
   property string pendingInitialMenu: "root"
-  property string pendingSelectionFile: ""
-  property string pendingDoneFile: ""
   property string pendingColorsRaw: ""
 
   function decodeBase64(value) {
@@ -31,30 +28,17 @@ Item {
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
 
     root.pendingInitialMenu = payload.initialMenu || payload.menu || "root"
-    root.pendingSelectionFile = payload.selectionFile || ""
-    root.pendingDoneFile = payload.doneFile || ""
     root.pendingColorsRaw = payload.colorsRawBase64 ? root.decodeBase64(payload.colorsRawBase64) : (payload.colorsRaw || "")
     if (payload.fontFamily) root.fontFamily = payload.fontFamily
+    if (root.pendingColorsRaw) root.loadColors(root.pendingColorsRaw)
 
-    var menuJson = payload.menuJsonBase64 ? root.decodeBase64(payload.menuJsonBase64) : (payload.menuJson || "")
-    if (menuJson) {
-      root.openMenu(menuJson, root.pendingInitialMenu, root.pendingSelectionFile, root.pendingDoneFile, root.pendingColorsRaw)
-      return
-    }
-
-    root.menuJsonFile = payload.menuJsonFile || ""
-    if (root.menuJsonFile) { menuJsonFileView.reload(); return }
-
-    // Hot path: no file, no payload — use the cached items the shell loaded
-    // from JSONC at startup. This is what direct IPC summons land on.
-    root.openExistingMenu(root.pendingInitialMenu, root.pendingSelectionFile, root.pendingDoneFile)
+    root.openExistingMenu(root.pendingInitialMenu)
   }
 
   function close() {
-    root.closeMenu("")
+    root.cancel()
   }
 
-  property string menuBin: omarchyPath + "/bin/omarchy-menu"
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
   property string colorsFile: Quickshell.env("OMARCHY_MENU_COLORS_FILE") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/colors.toml")
   property string styleFile: Quickshell.env("OMARCHY_MENU_STYLE_FILE") || (Quickshell.env("HOME") + "/.local/state/omarchy/toggles/quickshell-menu.json")
@@ -65,9 +49,6 @@ Item {
   property string userMenuPath: Quickshell.env("HOME") + "/.config/omarchy/extensions/omarchy-menu.jsonc"
   property var defaultMenuItems: []
   property var userMenuItems: []
-  property string selectionFile: ""
-  property string doneFile: ""
-  property bool requestActive: false
   property bool opened: false
   property bool rowsLoaded: false
   property string activeMenu: "root"
@@ -80,7 +61,6 @@ Item {
   property var navStack: []
   property var providersLoaded: ({})
   property var providerQueue: []
-  property var doneFilesToRelease: []
   property color accent: "#89b4fa"
   property color background: "#101315"
   property color foreground: "#cacccc"
@@ -250,83 +230,6 @@ Item {
     root.rowsLoaded = true
     root.evaluateGuards()
     if (root.opened) root.rebuildDisplay()
-  }
-
-  // Legacy: invoked by the bash bin via the menuJsonFile payload. The new
-  // in-shell path uses rebuildItemsFromSources instead; this branch stays
-  // for the transitional period while the bin still exists.
-  function loadMenuJson(raw) {
-    var nextItems = ({})
-    var nextOrder = []
-    var payload = JSON.parse(raw || "{}")
-    var rows = payload.items || []
-
-    for (var i = 0; i < rows.length; i++) {
-      var entry = rows[i]
-      var id = entry.id || ""
-      if (!id) continue
-
-      var order = nextItems[id] ? nextItems[id].order : nextOrder.length
-      if (!nextItems[id]) nextOrder.push(id)
-
-      nextItems[id] = {
-        id: id,
-        parent: entry.parent || "",
-        kind: entry.kind || "action",
-        icon: entry.icon || "",
-        label: entry.label || id,
-        target: entry.target || "",
-        keywords: entry.keywords || "",
-        description: entry.description || "",
-        action: entry.action || "",
-        provider: entry.provider || "",
-        order: order
-      }
-    }
-
-    if (!nextItems.root) {
-      nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", label: "Go", target: "", keywords: "", description: "", order: -1 }
-    }
-
-    root.items = nextItems
-    root.itemOrder = nextOrder
-    root.rowsLoaded = true
-  }
-
-  function mergeProviderJson(raw, menuId) {
-    var payload = ({})
-    try {
-      payload = JSON.parse(raw || "{}")
-    } catch (e) {
-      return
-    }
-
-    var rows = payload.items || []
-    var changed = false
-
-    for (var i = 0; i < rows.length; i++) {
-      var entry = rows[i]
-      var id = entry.id || ""
-      if (!id) continue
-
-      if (!root.items[id]) root.itemOrder.push(id)
-      root.items[id] = {
-        id: id,
-        parent: entry.parent || menuId,
-        kind: entry.kind || "action",
-        icon: entry.icon || "",
-        label: entry.label || id,
-        target: entry.target || "",
-        keywords: entry.keywords || "",
-        description: entry.description || "",
-        action: entry.action || "",
-        provider: entry.provider || "",
-        order: root.itemOrder.indexOf(id)
-      }
-      changed = true
-    }
-
-    if (changed) root.rebuildDisplay()
   }
 
   // Each known provider is a tiny bash one-liner that enumerates a list and
@@ -695,79 +598,21 @@ Item {
     }
   }
 
-  function releaseNextDoneFile() {
-    if (releaseProc.running || doneFilesToRelease.length === 0) return
-
-    var path = doneFilesToRelease.shift()
-    releaseProc.command = ["bash", "-lc", ": > " + shellQuote(path)]
-    releaseProc.running = true
-  }
-
-  function finishDoneFile(path) {
-    if (!path) return
-    doneFilesToRelease.push(path)
-    releaseNextDoneFile()
-  }
-
-  function resetRequest() {
-    requestActive = false
-    selectionFile = ""
-    doneFile = ""
-  }
-
   function applySelected(id, action) {
     if (!id) { cancel(); return }
-
-    // Direct-IPC path: no bash bin was involved, so no tempfiles to write.
-    // Execute the action ourselves and close the menu.
-    if (!selectionFile || !doneFile) {
-      applySerial = requestSerial
-      resetRequest()
-      opened = false
-      filterText = ""
-      if (action) Quickshell.execDetached(["bash", "-lc", action])
-      return
-    }
-
-    // Legacy bash-bin path: write selection + done file, the bash watcher
-    // picks it up and runs the action. Stays for the transitional period
-    // while the old bin can still summon the menu via menuJsonFile.
-    var activeSelectionFile = selectionFile
-    var activeDoneFile = doneFile
     applySerial = requestSerial
-    resetRequest()
     opened = false
-
-    applyProc.command = ["bash", "-lc", "printf '%s\\t%s\\n' " + shellQuote(id) + " " + shellQuote(action || "") + " > " + shellQuote(activeSelectionFile) + "; : > " + shellQuote(activeDoneFile)]
-    applyProc.running = true
+    filterText = ""
+    if (action) Quickshell.execDetached(["bash", "-lc", action])
   }
 
   function cancel() {
-    if (requestActive) finishDoneFile(doneFile)
-    resetRequest()
     opened = false
     filterText = ""
   }
 
-  function closeMenu(nextDoneFile) {
+  function openExistingMenu(initialMenu) {
     requestSerial += 1
-
-    if (requestActive) finishDoneFile(doneFile)
-    if (nextDoneFile && nextDoneFile !== doneFile) finishDoneFile(nextDoneFile)
-
-    resetRequest()
-    opened = false
-    filterText = ""
-  }
-
-  function openExistingMenu(initialMenu, nextSelectionFile, nextDoneFile) {
-    requestSerial += 1
-
-    if (requestActive && doneFile && doneFile !== nextDoneFile) finishDoneFile(doneFile)
-
-    selectionFile = nextSelectionFile
-    doneFile = nextDoneFile
-    requestActive = !!doneFile
     activeMenu = root.item(initialMenu) ? initialMenu : "root"
     navStack = []
     filterText = ""
@@ -777,14 +622,6 @@ Item {
     loadProviderForMenu(activeMenu)
 
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
-  }
-
-  function openMenu(menuJson, initialMenu, nextSelectionFile, nextDoneFile, colorsRaw) {
-    loadMenuJson(menuJson)
-    if (colorsRaw) loadColors(colorsRaw)
-    providersLoaded = ({})
-    providerQueue = []
-    openExistingMenu(initialMenu, nextSelectionFile, nextDoneFile)
   }
 
   function loadColors(raw) {
@@ -882,13 +719,6 @@ Item {
     }
   }
 
-  FileView {
-    id: menuJsonFileView
-    path: root.menuJsonFile
-    printErrors: false
-    onLoaded: root.openMenu(text(), root.pendingInitialMenu, root.pendingSelectionFile, root.pendingDoneFile, root.pendingColorsRaw)
-  }
-
   // The JSONC sources are watched so live edits to the default file (or the
   // user extension at ~/.config/omarchy/extensions/omarchy-menu.jsonc) take
   // effect without restarting the shell.
@@ -982,18 +812,6 @@ Item {
     watchChanges: true
     onLoaded: root.loadStyle(text())
     onFileChanged: { reload(); root.loadStyle(text()) }
-  }
-
-  Process {
-    id: applyProc
-    onExited: {
-      if (root.applySerial === root.requestSerial) root.opened = false
-    }
-  }
-
-  Process {
-    id: releaseProc
-    onExited: root.releaseNextDoneFile()
   }
 
   PanelWindow {
