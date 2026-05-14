@@ -10,6 +10,18 @@ if [[ $step == "off" ]]; then
   hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })' >/dev/null 2>&1 || hyprctl dispatch dpms off >/dev/null 2>&1
   exit 0
 elif [[ $step == "on" ]]; then
+  if grep -q "closed" /proc/acpi/button/lid/LID*/state 2>/dev/null; then
+    INTERNAL_MONITOR=$(hyprctl monitors -j | jq -r '.[] | select(.name | startswith("eDP-")).name' | head -n1)
+    MON_COUNT=$(hyprctl monitors -j | jq '. | length')
+
+    if [[ "$MON_COUNT" -gt 1 ]] && [[ -n "$INTERNAL_MONITOR" ]]; then
+      hyprctl keyword monitor "$INTERNAL_MONITOR, disable" >/dev/null 2>&1
+    fi
+  else
+    INTERNAL_MONITOR=$(hyprctl monitors -j | jq -r '.[] | select(.name | startswith("eDP-")).name' | head -n1)
+    [[ -n "$INTERNAL_MONITOR" ]] && hyprctl keyword monitor "$INTERNAL_MONITOR, preferred, auto, 1" >/dev/null 2>&1
+  fi
+
   hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1 || hyprctl dispatch dpms on >/dev/null 2>&1
   exit 0
 fi
