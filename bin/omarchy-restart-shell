@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# omarchy:summary=Restart Omarchy Quickshell
-# omarchy:examples=omarchy restart quickshell | omarchy-restart-quickshell
+# omarchy:summary=Restart the Omarchy shell
+# omarchy:examples=omarchy restart shell
 
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 CONFIG_DIR="$OMARCHY_PATH/default/quickshell/omarchy-shell"

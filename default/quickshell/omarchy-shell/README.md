@@ -119,7 +119,7 @@ Direct invocation:
 quickshell ipc -p $OMARCHY_PATH/default/quickshell/omarchy-shell call shell ping
 ```
 
-Hyprland starts the shell through `omarchy-restart-quickshell` on boot.
+Hyprland starts the shell through `omarchy-restart-shell` on boot.
 Use `omarchy restart quickshell` to reload the long-running shell process.
 
 A convenience wrapper, [`omarchy-shell-ipc`](../../../bin/omarchy-shell-ipc),
