@@ -24,6 +24,12 @@ function o.launch(command)
   return "uwsm-app -- " .. command
 end
 
+function o.launch_on_start(command)
+  hl.on("hyprland.start", function()
+    hl.exec_cmd(command)
+  end)
+end
+
 function o.launch_webapp(url)
   return "omarchy-launch-webapp " .. shell_quote(url)
 end
