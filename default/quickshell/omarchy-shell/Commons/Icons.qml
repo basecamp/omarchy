@@ -50,6 +50,8 @@ QtObject {
     "lock":            "\udb80\udd3e",        // mdi-lock
     "unlock":          "\udb80\udd3f",
     "refresh":         "\udb81\udc50",        // mdi-refresh
+    "ai":              "󰚩",        // mdi-robot
+    "robot":           "󰚩",
     "x":               "\udb80\udd56",        // mdi-close
     "check":           "\udb80\udc12",        // mdi-check
     "chevron-down":    "\udb80\udd40",

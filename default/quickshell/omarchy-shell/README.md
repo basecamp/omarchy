@@ -163,8 +163,7 @@ rewrites `shell.json` from the current `shell-defaults.json`.
       "center": [ { "id": "calendar", "format": "HH:mm" } ],
       "right": [
         { "id": "audioPanel" },
-        { "id": "controlCenter" },
-        { "id": "powerMenu" }
+        { "id": "controlCenter" }
       ]
     }
   },

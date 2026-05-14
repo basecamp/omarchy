@@ -40,8 +40,7 @@ Example `shell.json` (bar subtree only shown):
         { "id": "systemStats" },
         { "id": "audioPanel" },
         { "id": "battery" },
-        { "id": "controlCenter" },
-        { "id": "powerMenu" }
+        { "id": "controlCenter" }
       ]
     }
   }
@@ -62,11 +61,8 @@ Example `shell.json` (bar subtree only shown):
 | `bluetoothPanel` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
 | `calendar` | Clock + popup with month-grid calendar | left = popup · right = tz selector |
 | `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
-| `brightness` | Brightness slider + scroll | scroll = adjust · left = popup · middle = reset to 80% |
-| `powerProfile` | Current power profile + popup picker | left = popup |
 | `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
 | `weatherFlyout` | Weather icon + popup with forecast | left = popup · right = full notification |
-| `powerMenu` | Power icon → popup with lock/suspend/log out/reboot/shutdown | left = popup |
 | `idleInhibitor` | Coffee-cup that toggles `omarchy-toggle-idle` | left = toggle |
 | `microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio TUI · scroll = source volume |
 

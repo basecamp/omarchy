@@ -27,12 +27,8 @@
         { "id": "bluetoothPanel" },
         { "id": "networkPanel" },
         { "id": "audioPanel" },
-        { "id": "nightLight" },
-        { "id": "brightness" },
-        { "id": "powerProfile" },
         { "id": "battery" },
-        { "id": "controlCenter" },
-        { "id": "powerMenu" }
+        { "id": "controlCenter" }
       ]
     }
   },

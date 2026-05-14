@@ -63,7 +63,10 @@ Item {
     hoverEnabled: true
     onEntered: if (root.bar) root.bar.showTooltip(root, root.tooltipText)
     onExited: if (root.bar) root.bar.hideTooltip(root)
-    onClicked: function(mouse) { root.pressed(mouse.button) }
+    onClicked: function(mouse) {
+      if (root.bar) root.bar.hideTooltip(root)
+      root.pressed(mouse.button)
+    }
     onWheel: function(wheel) { root.wheelMoved(wheel.angleDelta.y) }
   }
 }

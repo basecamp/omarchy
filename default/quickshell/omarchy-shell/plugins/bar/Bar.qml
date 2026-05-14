@@ -287,15 +287,11 @@ Item {
     "bluetoothPanel":     { displayName: "Bluetooth",          description: "Bluetooth device list with connect/disconnect", category: "Network", allowMultiple: false },
     "calendar":           { displayName: "Calendar",           description: "Clock with month-grid popup",                  category: "Time",     allowMultiple: false, settingsForm: "calendarSettings" },
     "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND (replaces mako)",  category: "Status",   allowMultiple: false },
-    "brightness":         { displayName: "Brightness",         description: "Screen brightness slider",                    category: "System",   allowMultiple: false, settingsForm: "brightnessSettings" },
-    "powerProfile":       { displayName: "Power profile",      description: "power-profiles-daemon selector",              category: "System",   allowMultiple: false },
     "systemStats":        { displayName: "System stats",       description: "Inline CPU + memory sparklines",              category: "System",   allowMultiple: false },
     "weatherFlyout":      { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false },
-    "powerMenu":          { displayName: "Power menu",         description: "Lock / suspend / reboot / shutdown",          category: "System",   allowMultiple: false },
     "idleInhibitor":      { displayName: "Keep awake",         description: "Toggle idle inhibitor",                       category: "System",   allowMultiple: false },
     "microphone":         { displayName: "Microphone",         description: "Mic input state and mute toggle",             category: "Audio",    allowMultiple: false },
     "activeWindow":       { displayName: "Active window",      description: "Title of the focused window",                 category: "Compositor", allowMultiple: false },
-    "nightLight":         { displayName: "Night light",        description: "hyprsunset toggle",                           category: "System",   allowMultiple: false },
     "keyboardLayout":     { displayName: "Keyboard layout",    description: "Current xkb layout, click cycles",            category: "Compositor", allowMultiple: false },
     "lockKeys":           { displayName: "Lock keys",          description: "Caps / Num / Scroll lock indicators",          category: "System",   allowMultiple: false },
     "spacer":             { displayName: "Spacer",             description: "Configurable blank space",                    category: "Layout",   allowMultiple: true,  settingsForm: "spacerSettings" },
@@ -445,7 +441,7 @@ Item {
 
   function updateVoxtype(raw) {
     var data = parseModuleJson(raw)
-    var state = data.alt || data.class || "idle"
+    var state = String(data.alt || data.class || "idle")
 
     voxtypeClass = state
     if (state === "recording") voxtypeIcon = "󰍬"
@@ -739,7 +735,7 @@ Item {
 
   Process {
     id: voxtypeProc
-    command: ["bash", "-lc", "omarchy-voxtype-status"]
+    command: ["bash", "-lc", root.commandWithOmarchyPath("omarchy-voxtype-status")]
     running: true
     stdout: SplitParser {
       onRead: function(data) {
