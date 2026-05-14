@@ -63,7 +63,7 @@ Item {
   property color background: "#101315"
   property color accent: "#cacccc"
   property color urgent: "#a55555"
-  property string fontFamily: "JetBrainsMono Nerd Font"
+  property string fontFamily: "monospace"
 
   // Source-of-truth for the shell-wide corner radius. Mirrors what the menu
   // reads from quickshell-menu.json so `omarchy style corners <sharp|round>`
@@ -189,7 +189,7 @@ Item {
     version: 1,
     bar: {
       position: "top",
-      fontFamily: "JetBrainsMono Nerd Font",
+      fontFamily: "monospace",
       centerAnchor: "calendar",
       layout: {
         left: [{ id: "omarchy" }, { id: "workspaces" }, { id: "activeWindow" }],
@@ -210,7 +210,7 @@ Item {
   })
 
   property var defaultConfig: builtinShellConfig
-  property var draft: ({ version: 1, bar: { position: "top", centerAnchor: "calendar", fontFamily: "JetBrainsMono Nerd Font", layout: { left: [], center: [], right: [] } }, plugins: [] })
+  property var draft: ({ version: 1, bar: { position: "top", centerAnchor: "calendar", layout: { left: [], center: [], right: [] } }, plugins: [] })
   property int draftRevision: 0
   property bool suppressReload: false
 
@@ -248,7 +248,7 @@ Item {
       bar: {
         position: String(bar.position || "top"),
         centerAnchor: String(bar.centerAnchor || ""),
-        fontFamily: String(bar.fontFamily || "JetBrainsMono Nerd Font"),
+        fontFamily: "monospace",
         layout: normalizeLayout(bar.layout || {})
       },
       plugins: plugins

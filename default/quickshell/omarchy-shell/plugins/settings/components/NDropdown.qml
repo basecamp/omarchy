@@ -13,7 +13,7 @@ Item {
   property color foreground: "#cacccc"
   property color background: "#101315"
   property color accent: "#cacccc"
-  property string fontFamily: "JetBrainsMono Nerd Font"
+  property string fontFamily: "monospace"
   property int cornerRadius: 0
   property int rowHeight: 28
   property int popupRowHeight: 28
