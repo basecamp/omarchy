@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Create or restore system snapshots with snapper
+# omarchy:summary=Create or restore system snapshots
 # omarchy:args=<create|restore>
 # omarchy:requires-sudo=true
 
@@ -14,26 +14,44 @@ if [[ -z $COMMAND ]]; then
   exit 1
 fi
 
-if ! command -v snapper &>/dev/null; then
-  exit 127 # omarchy-update can use this to just ignore if snapper is not available
-fi
-
 case "$COMMAND" in
 create)
-  DESC="$(omarchy-version)"
+  root_fstype=$(findmnt -n -o FSTYPE /)
 
   echo -e "\e[32mCreate system snapshot\e[0m"
 
-  # Get existing snapper config names from CSV output
-  mapfile -t CONFIGS < <(sudo snapper --csvout list-configs | awk -F, 'NR>1 {print $1}')
+  if [[ $root_fstype == "zfs" ]]; then
+    command -v zfs &>/dev/null || exit 127 # omarchy-update ignores this when snapshots are unavailable
 
-  for config in "${CONFIGS[@]}"; do
-    sudo snapper -c "$config" create -c number -d "$DESC"
-    sudo snapper -c "$config" cleanup number
-  done
+    root_dataset=$(findmnt -n -o SOURCE /)
+    version=$(omarchy-version)
+    version=${version//[^A-Za-z0-9_.:-]/-}
+    snapshot="omarchy-$version-$(date +%Y%m%d%H%M%S)"
+
+    sudo zfs snapshot "$root_dataset@$snapshot"
+
+    mapfile -t snapshots < <(sudo zfs list -H -t snapshot -o name -s creation -d 1 "$root_dataset" 2>/dev/null | grep -F "$root_dataset@omarchy-" || true)
+    while ((${#snapshots[@]} > 5)); do
+      sudo zfs destroy "${snapshots[0]}"
+      snapshots=("${snapshots[@]:1}")
+    done
+  else
+    command -v snapper &>/dev/null || exit 127 # omarchy-update ignores this when snapshots are unavailable
+
+    DESC="$(omarchy-version)"
+
+    # Get existing snapper config names from CSV output
+    mapfile -t CONFIGS < <(sudo snapper --csvout list-configs | awk -F, 'NR>1 {print $1}')
+
+    for config in "${CONFIGS[@]}"; do
+      sudo snapper -c "$config" create -c number -d "$DESC"
+      sudo snapper -c "$config" cleanup number
+    done
+  fi
   echo
   ;;
 restore)
+  command -v snapper &>/dev/null || exit 127
   sudo limine-snapper-restore
   ;;
 esac
