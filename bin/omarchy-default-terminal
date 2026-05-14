@@ -33,4 +33,4 @@ cat >~/.config/xdg-terminals.list <<EOF
 $desktop_id
 EOF
 
-notify-send -u low "$glyph    $name is now the default terminal"
+notify-send -a omarchy-action -u low "$glyph    $name is now the default terminal"

@@ -65,12 +65,18 @@ while (($# > 0)); do
   fi
 done
 
-summary="$glyph    $headline"
-args+=("-u" "$urgency")
+# Tag as a user-action toast so it pops through DND. See dnd-fix-plan.md.
+args+=("-a" "omarchy-action" "-u" "$urgency")
+
+# Glyph is now a custom hint the quickshell daemon renders into the icon
+# slot, not prepended to the summary. Old mako-era formatting was glyph + 4
+# spaces + headline, which leaves ugly whitespace in the new card design.
+if [[ -n $glyph ]]; then
+  args+=("--hint=string:omarchy-glyph:$glyph")
+fi
 
 if [[ -n $description ]]; then
-  description=$(printf '%b' "$description" | sed 's/^/      /')
-  notify-send "${args[@]}" "$summary" "$description"
+  notify-send "${args[@]}" "$headline" "$description"
 else
-  notify-send "${args[@]}" "$summary"
+  notify-send "${args[@]}" "$headline"
 fi

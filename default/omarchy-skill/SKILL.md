@@ -3,7 +3,7 @@ name: omarchy
 description: >
   REQUIRED for end-user customization of Linux desktop, window manager, or system config.
   Use when editing ~/.config/hypr/, ~/.config/waybar/, ~/.config/walker/,
-  ~/.config/alacritty/, ~/.config/foot/, ~/.config/kitty/, ~/.config/ghostty/, ~/.config/mako/,
+  ~/.config/alacritty/, ~/.config/foot/, ~/.config/kitty/, ~/.config/ghostty/,
   or ~/.config/omarchy/. Triggers: Hyprland, window rules, animations, keybindings,
   monitors, gaps, borders, blur, opacity, waybar, walker, terminal config, themes,
   background, night light, idle, lock screen, screenshots, reminders, layer rules,
@@ -23,7 +23,7 @@ It is not for contributing to Omarchy source code.
 **ALWAYS invoke this skill for end-user requests involving ANY of these:**
 
 - Editing ANY file in `~/.config/hypr/` (window rules, animations, keybindings, monitors, etc.)
-- Editing ANY file in `~/.config/waybar/`, `~/.config/walker/`, `~/.config/mako/`
+- Editing ANY file in `~/.config/waybar/`, `~/.config/walker/`
 - Editing terminal configs (alacritty, foot, kitty, ghostty)
 - Editing ANY file in `~/.config/omarchy/`
 - Window behavior, animations, opacity, blur, gaps, borders
@@ -79,7 +79,6 @@ Omarchy is built on:
 | **Waybar** | Status bar | `~/.config/waybar/` |
 | **Walker** | App launcher | `~/.config/walker/` |
 | **Alacritty/Foot/Kitty/Ghostty** | Terminals | `~/.config/<terminal>/` |
-| **Mako** | Notifications | `~/.config/mako/` |
 | **SwayOSD** | On-screen display | `~/.config/swayosd/` |
 
 ## Command Discovery

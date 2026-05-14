@@ -1,0 +1,902 @@
+// Notification service. Adapted from noctalia-shell (MIT) and
+// DankMaterialShell (MIT). Original implementations:
+//   https://github.com/noctalia-dev/noctalia-shell
+//   https://github.com/AvengeMedia/DankMaterialShell
+
+import QtQuick
+import QtQuick.Layouts
+import Quickshell
+import Quickshell.Io
+import Quickshell.Wayland
+import Quickshell.Services.Notifications
+import qs.Commons
+
+import "components"
+
+Item {
+  id: service
+
+  // Injected by omarchy-shell (the first-party service loader).
+  property string omarchyPath: ""
+  property var shell: null
+  property var manifest: null
+
+  readonly property string home: Quickshell.env("HOME")
+  readonly property string cacheDir: home + "/.cache/omarchy/"
+  readonly property string historyPath: cacheDir + "notifications.json"
+  readonly property string imageCacheDir: cacheDir + "notification-images/"
+  readonly property string styleStatePath: home + "/.local/state/omarchy/toggles/quickshell-menu.json"
+  // Optional per-theme override file. Themes that want notification colors
+  // to diverge from the rest of the palette can ship this file. Schema:
+  //   {
+  //     "borderColor":     "#hex",
+  //     "backgroundColor": "#hex",
+  //     "textColor":       "#hex",
+  //     "countdownColor":  "#hex"   // progress bar at bottom of popup
+  //   }
+  // All keys optional; unset keys fall back to the live Color.* tokens.
+  readonly property string themeOverridePath: home + "/.config/omarchy/current/theme/notifications.json"
+
+  // Corner radius is shared with omarchy-shell menu and settings panel —
+  // `omarchy style corners <sharp|round>` writes this file once and every
+  // surface reads it. Default 10 keeps the popup looking like it did pre-toggle.
+  property int cornerRadius: 10
+
+  // Surfaces anchor relative to the omarchy bar so popups and history land
+  // alongside the other shell panels rather than on top of the bar itself.
+  // Falls back to the bar's default size (26 horizontal / 28 vertical) when
+  // shell.bar isn't reachable so the popup never lands on top of the bar.
+  readonly property string barPosition: shell && shell.barConfig ? String(shell.barConfig.position || "top") : "top"
+  readonly property bool barVertical: barPosition === "left" || barPosition === "right"
+  readonly property int defaultBarSize: barVertical ? 28 : 26
+  readonly property int liveBarSize: shell && shell.bar && !shell.bar.barHidden ? Math.max(0, shell.bar.barSize) : defaultBarSize
+  readonly property int barClearance: liveBarSize + 12
+
+  function loadStyleState(raw) {
+    try {
+      var parsed = JSON.parse(raw || "{}")
+      var n = Number(parsed.radius)
+      cornerRadius = isFinite(n) && n >= 0 ? n : 10
+    } catch (e) {
+      cornerRadius = 10
+    }
+  }
+
+  FileView {
+    path: service.styleStatePath
+    watchChanges: true
+    printErrors: false
+    onLoaded: service.loadStyleState(text())
+    onFileChanged: reload()
+  }
+
+  // ----------------------------------------------- per-theme color overrides
+
+  property string overrideBorder: ""
+  property string overrideBackground: ""
+  property string overrideText: ""
+  property string overrideCountdown: ""
+
+  readonly property color effectiveBorder: overrideBorder.length > 0 ? overrideBorder : Color.border
+  readonly property color effectiveBackground: overrideBackground.length > 0 ? overrideBackground : Color.background
+  readonly property color effectiveText: overrideText.length > 0 ? overrideText : Color.foreground
+  readonly property color effectiveCountdown: overrideCountdown.length > 0 ? overrideCountdown : Color.accent
+
+  function loadThemeOverride(raw) {
+    try {
+      var parsed = JSON.parse(raw || "{}")
+      overrideBorder = typeof parsed.borderColor === "string" ? parsed.borderColor : ""
+      overrideBackground = typeof parsed.backgroundColor === "string" ? parsed.backgroundColor : ""
+      overrideText = typeof parsed.textColor === "string" ? parsed.textColor : ""
+      overrideCountdown = typeof parsed.countdownColor === "string" ? parsed.countdownColor : ""
+    } catch (e) {
+      overrideBorder = ""
+      overrideBackground = ""
+      overrideText = ""
+      overrideCountdown = ""
+    }
+  }
+
+  FileView {
+    path: service.themeOverridePath
+    watchChanges: true
+    printErrors: false
+    onLoaded: service.loadThemeOverride(text())
+    onLoadFailed: service.loadThemeOverride("")
+    onFileChanged: reload()
+  }
+
+  // Fired by IPC (`omarchy-shell-ipc notifications showHistory`) so the
+  // bar widget can drop its PopupCard from the same anchor a click would.
+  signal historyOpenRequested()
+
+  // PersistentProperties handles in-process QML reloads. The on-disk
+  // notifications.json file is the cross-restart backstop — its `dnd` key
+  // is hydrated into persisted.doNotDisturb on startup and written back via
+  // the same debounced save timer used for history entries.
+  PersistentProperties {
+    id: persisted
+    reloadableId: "omarchy-notifications"
+    property bool doNotDisturb: false
+    onDoNotDisturbChanged: {
+      // Suppress the write that load-time hydration would otherwise trigger.
+      if (service._hydrating) return
+      service.scheduleHistorySave()
+    }
+  }
+
+  // Guards onDoNotDisturbChanged while we're hydrating from disk so the
+  // hydration assignment doesn't immediately schedule a write-back.
+  property bool _hydrating: false
+
+  readonly property alias doNotDisturb: persisted.doNotDisturb
+
+  function setDoNotDisturb(value) {
+    persisted.doNotDisturb = !!value
+  }
+
+  // popupModel feeds the on-screen toast stack.
+  // pendingModel  = notifications received but not yet "seen" by the user.
+  //                 Anything DND-suppressed lands here and stays there until
+  //                 the user reviews it; anything that pops up also lives
+  //                 here until the popup dismisses, then moves to pastModel.
+  // pastModel     = notifications the user has already seen on-screen.
+  //                 Surfaced under the Past tab in the history panel.
+  //
+  // Aliased as properties so the bar widget and HistoryPanel (outside this
+  // Item's id scope) can bind to them. QML ids aren't visible to external
+  // consumers without the alias.
+  property alias popupModel: popupModel
+  property alias pendingModel: pendingModel
+  property alias pastModel: pastModel
+  ListModel { id: popupModel }
+  ListModel { id: pendingModel }
+  ListModel { id: pastModel }
+
+  readonly property int historyCap: 100
+
+  function durationFor(urgency) {
+    if (urgency === NotificationUrgency.Critical) return 0
+    if (urgency === NotificationUrgency.Low) return 3000
+    return 6000
+  }
+
+  // DND bypass: only let through notifications we trust to be intentional
+  // and rare.
+  //   - omarchy-action: a user-action confirmation toast ("Theme changed",
+  //     "Screenshot saved"). The user JUST did something — their feedback
+  //     should show.
+  //   - urgency=critical AND app_name=notify-send: bare-CLI emergency alerts
+  //     (omarchy-battery-monitor uses this for low-battery; install-time
+  //     scripts for wifi setup, etc.). Trusted because it's almost always
+  //     omarchy or system shell scripts — chat apps set app_name to
+  //     their brand (Discord/Slack/Vesktop) which falls outside this rule.
+  function shouldBypassDnd(notification) {
+    var appName = String(notification.appName || "")
+    if (appName === "omarchy-action") return true
+    if (appName === "notify-send" && notification.urgency === NotificationUrgency.Critical) return true
+    return false
+  }
+
+  function snapshotOf(notification) {
+    var glyph = ""
+    try {
+      if (notification.hints && typeof notification.hints["omarchy-glyph"] === "string") {
+        glyph = notification.hints["omarchy-glyph"]
+      }
+    } catch (e) { glyph = "" }
+    return {
+      id: notification.id,
+      originalId: notification.id,
+      app: notification.appName || "",
+      appIcon: notification.appIcon || "",
+      summary: notification.summary || "",
+      body: notification.body || "",
+      image: notification.image || "",
+      glyph: glyph,
+      urgency: notification.urgency,
+      timestamp: Date.now(),
+      ref: notification
+    }
+  }
+
+  function handleNotification(notification) {
+    // Without `tracked = true` the Notification object is destroyed as soon
+    // as this signal handler returns, which would null out the `ref` we just
+    // captured for the popup card.
+    notification.tracked = true
+    var snapshot = snapshotOf(notification)
+    // History is for notifications from real apps (Slack, Discord, mailer,
+    // etc.) — things the user might want to look back at. Skip the pending
+    // / past bookkeeping when:
+    //   - the freedesktop `transient` hint is set ("popup only, don't store")
+    //   - app_name is "notify-send" (the CLI default — means the sender
+    //     didn't bother declaring an identity, so it's almost certainly
+    //     ephemeral test/feedback noise)
+    //   - app_name is "omarchy-action" (omarchy's own user-action
+    //     confirmation toasts — the user just triggered them, they don't
+    //     need to be archived)
+    var transient = false
+    try {
+      transient = !!(notification.hints && notification.hints["transient"])
+    } catch (e) { transient = false }
+    var appName = String(notification.appName || "")
+    var ephemeralApp = appName === "notify-send" || appName === "omarchy-action"
+    if (transient || ephemeralApp) {
+      if (service.doNotDisturb && !shouldBypassDnd(notification)) {
+        notification.tracked = false
+        return
+      }
+      Qt.callLater(function() { popupModel.insert(0, snapshot) })
+      return
+    }
+
+    // Pending first, unconditionally. DND only suppresses the toast — the
+    // record still has to land somewhere the user can review later.
+    addToPending(snapshot)
+
+    // Kick off a copy of any /tmp screenshot into the persistent image cache.
+    // The cp races the popup; the popup keeps the original path so it always
+    // renders, and the history row gets rewritten to the cached path once
+    // cp.exits.
+    maybeCacheImage(snapshot)
+
+    // DND bypass rules — see ~/Work/omarchy/dnd-fix-plan.md. The pending
+    // entry already captured this notification above; we just decide here
+    // whether to also pop a toast. Chat apps abuse urgency=critical to
+    // force visibility, so critical alone isn't enough — we also require
+    // the sender to be CLI-style. See shouldBypassDnd().
+    if (service.doNotDisturb && !shouldBypassDnd(notification)) {
+      notification.tracked = false
+      return
+    }
+
+    // Qt.callLater avoids "QV4::Object::insertMember" crashes when a
+    // Repeater is mid-incubation while we mutate its model — see noctalia
+    // NotificationService.qml ~L307.
+    Qt.callLater(function() {
+      popupModel.insert(0, snapshot)
+    })
+  }
+
+  function addToPending(snapshot) {
+    Qt.callLater(function() {
+      pendingModel.insert(0, snapshot)
+      while (pendingModel.count > service.historyCap) {
+        pendingModel.remove(pendingModel.count - 1)
+      }
+      scheduleHistorySave()
+    })
+  }
+
+  // Find a pending entry by its libnotify id and move it to pastModel. Called
+  // when a popup naturally dismisses (timer expired or user clicked X / the
+  // default action) — the user is assumed to have seen it.
+  function markSeenByOriginalId(originalId) {
+    Qt.callLater(function() {
+      for (var i = 0; i < pendingModel.count; i++) {
+        var entry = pendingModel.get(i)
+        if (!entry || entry.originalId !== originalId) continue
+        var snapshot = service.snapshotFromRow(entry)
+        pendingModel.remove(i)
+        pastModel.insert(0, snapshot)
+        while (pastModel.count > service.historyCap) {
+          pastModel.remove(pastModel.count - 1)
+        }
+        scheduleHistorySave()
+        return
+      }
+    })
+  }
+
+  // Copy a ListModel row into a plain JS object so we can re-insert it into
+  // a different model without sharing references.
+  function snapshotFromRow(row) {
+    return {
+      id: row.id,
+      originalId: row.originalId,
+      app: row.app,
+      appIcon: row.appIcon,
+      summary: row.summary,
+      body: row.body,
+      image: row.image,
+      glyph: row.glyph || "",
+      urgency: row.urgency,
+      timestamp: row.timestamp
+    }
+  }
+
+  function markAllSeen() {
+    Qt.callLater(function() {
+      while (pendingModel.count > 0) {
+        var entry = pendingModel.get(0)
+        var snapshot = service.snapshotFromRow(entry)
+        pendingModel.remove(0)
+        pastModel.insert(0, snapshot)
+      }
+      while (pastModel.count > service.historyCap) {
+        pastModel.remove(pastModel.count - 1)
+      }
+      scheduleHistorySave()
+    })
+  }
+
+  function dismissPopup(index) {
+    if (index < 0 || index >= popupModel.count) return
+    var entry = popupModel.get(index)
+    var ref = entry ? entry.ref : null
+    var originalId = entry ? entry.originalId : -1
+    popupModel.remove(index)
+    if (ref) {
+      try {
+        if (ref.tracked) ref.dismiss()
+      } catch (e) {
+        // Object already torn down by the server — nothing to dismiss.
+      }
+    }
+    // User (or the lifetime timer) saw the popup — archive it.
+    if (originalId >= 0) markSeenByOriginalId(originalId)
+  }
+
+  function clearPopups() {
+    while (popupModel.count > 0) dismissPopup(0)
+  }
+
+  function dismissPending(index) {
+    if (index < 0 || index >= pendingModel.count) return
+    var entry = pendingModel.get(index)
+    if (entry) maybeDeleteCachedImage(entry.image)
+    pendingModel.remove(index)
+    scheduleHistorySave()
+  }
+
+  function dismissPast(index) {
+    if (index < 0 || index >= pastModel.count) return
+    var entry = pastModel.get(index)
+    if (entry) maybeDeleteCachedImage(entry.image)
+    pastModel.remove(index)
+    scheduleHistorySave()
+  }
+
+  function clearPending() {
+    for (var i = 0; i < pendingModel.count; i++) {
+      var entry = pendingModel.get(i)
+      if (entry) maybeDeleteCachedImage(entry.image)
+    }
+    pendingModel.clear()
+    scheduleHistorySave()
+  }
+
+  function clearPast() {
+    for (var i = 0; i < pastModel.count; i++) {
+      var entry = pastModel.get(i)
+      if (entry) maybeDeleteCachedImage(entry.image)
+    }
+    pastModel.clear()
+    scheduleHistorySave()
+  }
+
+  // Invoke the libnotify "default" action on the popup's underlying
+  // notification, if it has one, then dismiss. Clients register the default
+  // action with the canonical identifier "default"; e.g. screenshot toasts
+  // use `notify-send -A default=Edit` so click-the-card opens the editor.
+  function invokePopupDefault(index) {
+    if (index < 0 || index >= popupModel.count) return
+    var entry = popupModel.get(index)
+    var ref = entry ? entry.ref : null
+    var invoked = false
+    if (ref && ref.actions) {
+      for (var i = 0; i < ref.actions.length; i++) {
+        var action = ref.actions[i]
+        if (action && action.identifier === "default") {
+          try { action.invoke(); invoked = true } catch (e) { console.warn("invoke default failed:", e) }
+          break
+        }
+      }
+    }
+    // Chat apps (Slack, Discord, Vesktop, etc.) rarely register a "default"
+    // libnotify action — they just expect clicking the notification to
+    // focus their window. Fall back to focusing the sending app by class so
+    // that click-to-jump actually works.
+    if (!invoked) focusApp(entry)
+    dismissPopup(index)
+  }
+
+  // Try to focus an existing Hyprland window matching the notification's
+  // sender. We shell out to a small bash one-liner because Hyprland's class
+  // matcher is regex-based but its case-sensitivity is implementation-
+  // defined (std::regex doesn't reliably honor `(?i)`). Easier to query the
+  // client list ourselves and pick the first match.
+  function focusApp(entry) {
+    if (!entry || !entry.app) return
+    var lower = String(entry.app).toLowerCase()
+    focusAppProc.command = ["bash", "-lc",
+      "hyprctl clients -j 2>/dev/null | " +
+      "jq -r --arg name \"" + lower + "\" " +
+      "'[.[] | select((.class // \"\") | ascii_downcase | startswith($name))] | first.address // empty' | " +
+      "xargs -r -I{} hyprctl dispatch focuswindow address:{}"]
+    focusAppProc.running = true
+  }
+
+  Process { id: focusAppProc; running: false }
+
+  // Open the popup's large image in the user's default image viewer.
+  // image:// URIs come from the upstream raw-bytes provider and have no
+  // on-disk path to hand to xdg-open, so we just dismiss in that case.
+  function openPopupImage(index) {
+    if (index < 0 || index >= popupModel.count) return
+    var entry = popupModel.get(index)
+    if (!entry) return
+    var image = String(entry.image || "")
+    if (image.indexOf("file://") === 0) {
+      var lower = image.toLowerCase()
+      if (lower.endsWith(".png") || lower.endsWith(".jpg") ||
+          lower.endsWith(".jpeg") || lower.endsWith(".webp")) {
+        var path = decodeURIComponent(image.substring(7))
+        Quickshell.execDetached(["xdg-open", path])
+      }
+    }
+    dismissPopup(index)
+  }
+
+  // ---------------------------------------------------- image cache
+  //
+  // Notifications coming from screenshot helpers ship an `image-path` hint
+  // pointing at /tmp/<file>. We want the history thumbnail to outlive that
+  // file, so we copy it into a long-lived cache dir on ingress and rewrite
+  // the history row's `image` to point at the cache once cp finishes.
+  // image:// (raw-bytes) URIs aren't trivially copyable from QML; document
+  // and skip them for v1.
+
+  function imageExtension(srcPath) {
+    var lower = srcPath.toLowerCase()
+    var dot = lower.lastIndexOf(".")
+    if (dot < 0) return "png"
+    var ext = lower.substring(dot + 1)
+    if (ext.length === 0 || ext.length > 5) return "png"
+    return ext
+  }
+
+  function maybeCacheImage(snapshot) {
+    var image = String(snapshot.image || "")
+    if (!image) return
+    // image:// URIs are decoded from raw bytes by Quickshell's image provider.
+    // We can't copy them out from QML, so let history reference them by URI
+    // and accept that they disappear with the source notification.
+    if (image.indexOf("image://") === 0) return
+    if (image.indexOf("file:///tmp/") !== 0) return
+
+    var srcPath = decodeURIComponent(image.substring(7))
+    var ext = imageExtension(srcPath)
+    var destPath = imageCacheDir + snapshot.timestamp + "-" + snapshot.originalId + "." + ext
+    var destUri = "file://" + destPath
+
+    imageCacheProc.targetUri = destUri
+    imageCacheProc.matchOriginalId = snapshot.originalId
+    imageCacheProc.matchTimestamp = snapshot.timestamp
+    imageCacheProc.command = ["cp", "-f", srcPath, destPath]
+    imageCacheProc.running = true
+  }
+
+  function maybeDeleteCachedImage(image) {
+    var path = String(image || "")
+    if (!path) return
+    if (path.indexOf("file://") !== 0) return
+    var local = decodeURIComponent(path.substring(7))
+    if (local.indexOf(imageCacheDir) !== 0) return
+    deleteImageProc.command = ["rm", "-f", local]
+    deleteImageProc.running = true
+  }
+
+  Process {
+    id: ensureDirsProc
+    command: ["mkdir", "-p", service.cacheDir, service.imageCacheDir]
+    running: false
+  }
+
+  Process {
+    id: imageCacheProc
+    property string targetUri: ""
+    property int matchOriginalId: -1
+    property double matchTimestamp: 0
+    onExited: function(exitCode) {
+      if (exitCode !== 0 || !targetUri) return
+      // Search both models since a notification may have moved to past
+      // between when we kicked off the copy and when it finished.
+      function rewrite(model) {
+        for (var i = 0; i < model.count; i++) {
+          var row = model.get(i)
+          if (row && row.originalId === matchOriginalId && row.timestamp === matchTimestamp) {
+            model.setProperty(i, "image", targetUri)
+            return true
+          }
+        }
+        return false
+      }
+      if (rewrite(pendingModel) || rewrite(pastModel)) scheduleHistorySave()
+    }
+  }
+
+  Process { id: deleteImageProc; running: false }
+
+  // ---------------------------------------------------- history persistence
+
+  FileView {
+    id: historyFile
+    path: service.historyPath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: service.loadHistory(text())
+    // First-run: the file doesn't exist yet. Without this branch,
+    // `historyLoaded` stays false forever and `scheduleHistorySave` becomes
+    // a no-op — so the file is never created and history vanishes on
+    // shell restart.
+    onLoadFailed: service.loadHistory("")
+  }
+
+  Timer {
+    id: historySaveTimer
+    interval: 200
+    repeat: false
+    onTriggered: service.flushHistory()
+  }
+
+  // Past is a rolling "recently" window. Sweep every minute and drop
+  // anything older than 15 minutes so the tab doesn't accumulate forever.
+  readonly property int pastTtlMs: 15 * 60 * 1000
+
+  Timer {
+    id: pastPruneTimer
+    interval: 60 * 1000
+    repeat: true
+    running: true
+    triggeredOnStart: true
+    onTriggered: service.prunePast()
+  }
+
+  function prunePast() {
+    if (pastModel.count === 0) return
+    var cutoff = Date.now() - service.pastTtlMs
+    var removed = false
+    for (var i = pastModel.count - 1; i >= 0; i--) {
+      var entry = pastModel.get(i)
+      if (entry && entry.timestamp && entry.timestamp < cutoff) {
+        if (entry.image) maybeDeleteCachedImage(entry.image)
+        pastModel.remove(i)
+        removed = true
+      }
+    }
+    if (removed) scheduleHistorySave()
+  }
+
+  function scheduleHistorySave() {
+    if (!service.historyLoaded) return
+    historySaveTimer.restart()
+  }
+
+  property bool historyLoaded: false
+
+  function loadHistory(raw) {
+    var text = String(raw || "").trim()
+    if (!text) { service.historyLoaded = true; return }
+    try {
+      var parsed = JSON.parse(text)
+      if (parsed && typeof parsed.dnd === "boolean") {
+        service._hydrating = true
+        persisted.doNotDisturb = parsed.dnd
+        service._hydrating = false
+      }
+      var pending = (parsed && Array.isArray(parsed.pending)) ? parsed.pending : []
+      var past = (parsed && Array.isArray(parsed.past)) ? parsed.past : []
+      // v1 backwards compat: the old schema had a single `entries` array.
+      // Treat all of those as past since the user already presumably saw
+      // them (and DND-suppressed notifications from before the split are
+      // a rare edge case).
+      if (parsed && Array.isArray(parsed.entries)) past = past.concat(parsed.entries)
+
+      function entryFor(e) {
+        return {
+          id: e.id || 0,
+          originalId: e.originalId || e.id || 0,
+          app: e.app || "",
+          appIcon: e.appIcon || "",
+          summary: e.summary || "",
+          body: e.body || "",
+          image: e.image || "",
+          glyph: e.glyph || "",
+          urgency: typeof e.urgency === "number" ? e.urgency : NotificationUrgency.Normal,
+          timestamp: e.timestamp || 0,
+          ref: null
+        }
+      }
+      // Newest-first on disk; insert in order so models match.
+      Qt.callLater(function() {
+        for (var i = 0; i < pending.length; i++) {
+          if (!pending[i]) continue
+          pendingModel.append(entryFor(pending[i]))
+          if (pendingModel.count > service.historyCap) pendingModel.remove(pendingModel.count - 1)
+        }
+        for (var j = 0; j < past.length; j++) {
+          if (!past[j]) continue
+          pastModel.append(entryFor(past[j]))
+          if (pastModel.count > service.historyCap) pastModel.remove(pastModel.count - 1)
+        }
+        service.historyLoaded = true
+      })
+    } catch (e) {
+      console.warn("notifications: history parse failed:", e)
+      service.historyLoaded = true
+    }
+  }
+
+  function flushHistory() {
+    function dump(model) {
+      var out = []
+      for (var i = 0; i < model.count; i++) {
+        var r = model.get(i)
+        if (!r) continue
+        out.push({
+          id: r.id,
+          originalId: r.originalId,
+          app: r.app,
+          appIcon: r.appIcon,
+          summary: r.summary,
+          body: r.body,
+          image: r.image,
+          glyph: r.glyph || "",
+          urgency: r.urgency,
+          timestamp: r.timestamp
+        })
+      }
+      return out
+    }
+    var payload = {
+      version: 2,
+      dnd: persisted.doNotDisturb,
+      pending: dump(pendingModel),
+      past: dump(pastModel)
+    }
+    historyFile.setText(JSON.stringify(payload, null, 2) + "\n")
+  }
+
+  Component.onCompleted: {
+    ensureDirsProc.running = true
+    // Once mkdir has had a tick, load the existing history file. FileView
+    // surfaces an empty string when the file doesn't exist; loadHistory
+    // handles that path.
+    Qt.callLater(function() { historyFile.reload() })
+  }
+
+  // ---------------------------------------------------- IPC
+
+  IpcHandler {
+    target: "notifications"
+
+    function dndState(): string {
+      return service.doNotDisturb ? "on" : "off"
+    }
+
+    function toggleDnd(): string {
+      service.setDoNotDisturb(!service.doNotDisturb)
+      return dndState()
+    }
+
+    function setDnd(value: string): string {
+      var v = String(value || "").toLowerCase()
+      var on = v === "true" || v === "1" || v === "on" || v === "yes"
+      service.setDoNotDisturb(on)
+      return dndState()
+    }
+
+    function isDnd(): string {
+      return dndState()
+    }
+
+    function showHistory(): string {
+      service.historyOpenRequested()
+      return "ok"
+    }
+
+    // `clear` empties the past tab (the "I already saw these" bucket).
+    function clear(): string {
+      service.clearPast()
+      return "ok"
+    }
+
+    function clearPending(): string {
+      service.clearPending()
+      return "ok"
+    }
+
+    function markAllSeen(): string {
+      service.markAllSeen()
+      return "ok"
+    }
+
+    function dismissAll(): string {
+      service.clearPopups()
+      service.clearPending()
+      service.clearPast()
+      return "ok"
+    }
+
+    // dismiss the most recent popup; fall back to the most recent pending
+    // entry, then past, if no popup is currently showing.
+    function dismissOne(): string {
+      if (popupModel.count > 0) {
+        service.dismissPopup(0)
+        return "ok"
+      }
+      if (pendingModel.count > 0) {
+        service.dismissPending(0)
+        return "ok"
+      }
+      if (pastModel.count > 0) {
+        service.dismissPast(0)
+        return "ok"
+      }
+      return "none"
+    }
+
+    // Fire the default action on the most recent popup, then dismiss it.
+    function invokeLast(): string {
+      if (popupModel.count === 0) return "none"
+      service.invokePopupDefault(0)
+      return "ok"
+    }
+
+    function dismiss(summary: string): string {
+      var needle = String(summary || "")
+      if (!needle) return "none"
+      var hit = false
+      function sweep(model, dismissFn) {
+        for (var i = model.count - 1; i >= 0; i--) {
+          var row = model.get(i)
+          if (row && String(row.summary || "").indexOf(needle) !== -1) {
+            dismissFn(i)
+            hit = true
+          }
+        }
+      }
+      sweep(pendingModel, service.dismissPending)
+      sweep(pastModel, service.dismissPast)
+      sweep(popupModel, service.dismissPopup)
+      return hit ? "ok" : "none"
+    }
+
+    function ping(): string { return "ok" }
+  }
+
+  // ---------------------------------------------------- server
+
+  NotificationServer {
+    id: server
+    keepOnReload: false
+    imageSupported: true
+    actionsSupported: true
+    bodyMarkupSupported: true
+    bodyHyperlinksSupported: true
+    persistenceSupported: true
+
+    onNotification: function(notification) {
+      service.handleNotification(notification)
+    }
+  }
+
+  // -------------------------------------------------------------- popup UI
+  //
+  // One PanelWindow per output (Variants on Quickshell.screens) holding the
+  // stacked toast cards. Layer is Overlay, exclusionMode Ignore, no
+  // keyboard focus — popups are passive surfaces and must never steal input
+  // from the focused application.
+
+  Variants {
+    model: Quickshell.screens
+
+    PanelWindow {
+      id: popupWindow
+      required property var modelData
+      screen: modelData
+      visible: popupModel.count > 0
+
+      WlrLayershell.namespace: "omarchy-notifications"
+      WlrLayershell.layer: WlrLayer.Overlay
+      WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+      exclusionMode: ExclusionMode.Ignore
+      color: "transparent"
+
+      anchors {
+        top: service.barPosition !== "bottom"
+        bottom: service.barPosition === "bottom"
+        left: service.barPosition === "left"
+        right: service.barPosition !== "left"
+      }
+      margins {
+        top:    service.barPosition === "top"    ? service.barClearance + 12 : 20
+        bottom: service.barPosition === "bottom" ? service.barClearance + 12 : 20
+        left:   service.barPosition === "left"   ? service.barClearance + 12 : 20
+        right:  service.barPosition === "right"  ? service.barClearance + 12 : 20
+      }
+
+      implicitWidth: popupColumn.implicitWidth
+      implicitHeight: popupColumn.implicitHeight
+
+      ColumnLayout {
+        id: popupColumn
+        anchors.right: parent.right
+        anchors.top: parent.top
+        spacing: 8
+
+        Repeater {
+          model: popupModel
+
+          // The delegate is a slot Item that owns lifetime state (timer,
+          // progress, paused). The actual visuals live in NotificationCard,
+          // which the history panel also reuses.
+          delegate: Item {
+            id: cardSlot
+            required property int index
+            required property string app
+            required property string appIcon
+            required property string summary
+            required property string body
+            required property string image
+            required property string glyph
+            required property int urgency
+            required property double timestamp
+
+            // Each card sizes itself based on mode (text vs media); the slot
+            // tracks the card so the column auto-fits to whichever is widest.
+            Layout.preferredWidth: card.implicitWidth
+            Layout.alignment: Qt.AlignRight
+            implicitHeight: card.implicitHeight
+
+            readonly property real lifetime: service.durationFor(cardSlot.urgency)
+            property real progress: 1.0
+            readonly property bool ticking: cardSlot.lifetime > 0 && !card.hovered
+
+            Timer {
+              interval: 50
+              repeat: true
+              running: cardSlot.ticking
+              onTriggered: {
+                if (cardSlot.lifetime <= 0) return
+                cardSlot.progress -= 50.0 / cardSlot.lifetime
+                if (cardSlot.progress <= 0) {
+                  cardSlot.progress = 0
+                  service.dismissPopup(cardSlot.index)
+                }
+              }
+            }
+
+            NotificationCard {
+              id: card
+              anchors.right: parent.right
+              app: cardSlot.app
+              appIcon: cardSlot.appIcon
+              summary: cardSlot.summary
+              body: cardSlot.body
+              image: cardSlot.image
+              urgency: cardSlot.urgency
+              timestamp: cardSlot.timestamp
+              cornerRadius: service.cornerRadius
+              borderColorOverride: service.effectiveBorder
+              backgroundColorOverride: service.effectiveBackground
+              textColorOverride: service.effectiveText
+              countdownColorOverride: service.effectiveCountdown
+              fontFamily: service.shell && service.shell.bar ? service.shell.bar.fontFamily : ""
+              glyph: cardSlot.glyph
+              progress: cardSlot.progress
+              showProgress: cardSlot.lifetime > 0
+
+              onCloseRequested: service.dismissPopup(cardSlot.index)
+              onCardClicked: service.invokePopupDefault(cardSlot.index)
+              onImageClicked: service.openPopupImage(cardSlot.index)
+            }
+          }
+        }
+      }
+    }
+  }
+}

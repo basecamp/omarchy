@@ -385,7 +385,7 @@ Item {
     "voxtype":          { name: "Voxtype",            description: "Voxtype dictation state",                   category: "Status" },
     "screenRecording":  { name: "Screen recording",   description: "Active recording indicator",                category: "Status" },
     "idle":             { name: "Idle (legacy)",      description: "Inhibitor indicator",                        category: "Status" },
-    "notifications":    { name: "DND (mako)",         description: "Notification silencing indicator",          category: "Status" },
+    "notifications":    { name: "DND",                 description: "Do-not-disturb indicator",                 category: "Status" },
     "tray":             { name: "System tray",        description: "Status notifier items",                     category: "Status" },
     "bluetooth":        { name: "Bluetooth (legacy)", description: "Bluetooth status icon",                    category: "Network" },
     "network":          { name: "Network (legacy)",   description: "Wi-Fi / ethernet status",                    category: "Network" },
@@ -1594,8 +1594,8 @@ Item {
     }
     Process {
       id: readDndProc
-      command: ["bash", "-lc", "makoctl mode 2>/dev/null | grep -q do-not-disturb && echo yes || echo no"]
-      stdout: SplitParser { onRead: function(line) { dndOn = String(line).trim() === "yes" } }
+      command: ["bash", "-lc", "omarchy-shell-ipc notifications isDnd 2>/dev/null || echo off"]
+      stdout: SplitParser { onRead: function(line) { dndOn = String(line).trim() === "on" } }
     }
     Process {
       id: readIdleProc
@@ -1694,7 +1694,7 @@ Item {
 
     StyleToggleRow {
       label: "Notifications"
-      description: dndOn ? "Do-not-disturb is on — Mako is silencing." : "Notifications post normally via Mako."
+      description: dndOn ? "Do-not-disturb is on — notifications are silenced." : "Notifications post normally."
       isOn: !dndOn
       onToggle: runSystem("omarchy-toggle-notification-silencing")
     }

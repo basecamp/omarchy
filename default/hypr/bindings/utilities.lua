@@ -22,11 +22,11 @@ hl.bind("SUPER + BACKSPACE", hl.dsp.exec_cmd("omarchy-hyprland-window-transparen
 hl.bind("SUPER + SHIFT + BACKSPACE", hl.dsp.exec_cmd("omarchy-hyprland-window-gaps-toggle"), { description = "Toggle window gaps" })
 hl.bind("SUPER + CTRL + BACKSPACE", hl.dsp.exec_cmd("omarchy-hyprland-window-single-square-aspect-toggle"), { description = "Toggle single-window square aspect" })
 
-hl.bind("SUPER + COMMA", hl.dsp.exec_cmd("makoctl dismiss"), { description = "Dismiss last notification" })
-hl.bind("SUPER + SHIFT + COMMA", hl.dsp.exec_cmd("makoctl dismiss --all"), { description = "Dismiss all notifications" })
+hl.bind("SUPER + COMMA", hl.dsp.exec_cmd("omarchy-shell-ipc notifications dismissOne"), { description = "Dismiss last notification" })
+hl.bind("SUPER + SHIFT + COMMA", hl.dsp.exec_cmd("omarchy-shell-ipc notifications dismissAll"), { description = "Dismiss all notifications" })
 hl.bind("SUPER + CTRL + COMMA", hl.dsp.exec_cmd("omarchy-toggle-notification-silencing"), { description = "Toggle silencing notifications" })
-hl.bind("SUPER + ALT + COMMA", hl.dsp.exec_cmd("makoctl invoke"), { description = "Invoke last notification" })
-hl.bind("SUPER + SHIFT + ALT + COMMA", hl.dsp.exec_cmd("makoctl restore"), { description = "Restore last notification" })
+hl.bind("SUPER + ALT + COMMA", hl.dsp.exec_cmd("omarchy-shell-ipc notifications invokeLast"), { description = "Invoke last notification" })
+hl.bind("SUPER + SHIFT + ALT + COMMA", hl.dsp.exec_cmd("omarchy-shell-ipc notifications showHistory"), { description = "Open notification history" })
 
 hl.bind("SUPER + CTRL + I", hl.dsp.exec_cmd("omarchy-toggle-idle"), { description = "Toggle locking on idle" })
 hl.bind("SUPER + CTRL + N", hl.dsp.exec_cmd("omarchy-toggle-nightlight"), { description = "Toggle nightlight" })
@@ -48,9 +48,9 @@ hl.bind("SUPER + CTRL + R", hl.dsp.exec_cmd("omarchy-menu reminder-set"), { desc
 hl.bind("SUPER + CTRL + ALT + R", hl.dsp.exec_cmd("omarchy-reminder show"), { description = "Show reminders" })
 hl.bind("SUPER + SHIFT + CTRL + R", hl.dsp.exec_cmd("omarchy-reminder clear"), { description = "Clear reminders" })
 
-hl.bind("SUPER + CTRL + ALT + T", hl.dsp.exec_cmd([[notify-send -u low "    $(date +"%A %H:%M  ·  %d %B %Y  ·  Week %V")"]]), { description = "Show time" })
-hl.bind("SUPER + CTRL + ALT + B", hl.dsp.exec_cmd([[notify-send -u low "$(omarchy-battery-status)"]]), { description = "Show battery remaining" })
-hl.bind("SUPER + CTRL + ALT + W", hl.dsp.exec_cmd([[notify-send -u low "$(omarchy-weather-status)"]]), { description = "Show weather" })
+hl.bind("SUPER + CTRL + ALT + T", hl.dsp.exec_cmd([[notify-send -a omarchy-action -u low "    $(date +"%A %H:%M  ·  %d %B %Y  ·  Week %V")"]]), { description = "Show time" })
+hl.bind("SUPER + CTRL + ALT + B", hl.dsp.exec_cmd([[notify-send -a omarchy-action -u low "$(omarchy-battery-status)"]]), { description = "Show battery remaining" })
+hl.bind("SUPER + CTRL + ALT + W", hl.dsp.exec_cmd([[notify-send -a omarchy-action -u low "$(omarchy-weather-status)"]]), { description = "Show weather" })
 
 hl.bind("SUPER + CTRL + A", hl.dsp.exec_cmd("omarchy-launch-audio"), { description = "Audio controls" })
 hl.bind("SUPER + CTRL + B", hl.dsp.exec_cmd("omarchy-launch-bluetooth"), { description = "Bluetooth controls" })
