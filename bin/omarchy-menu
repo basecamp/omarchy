@@ -699,7 +699,7 @@ show_install_elixir_menu() {
 }
 
 show_remove_menu() {
-  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n󰸌  Theme\n  Browser\n  Dictation\n  Gaming\n󰍲  Windows\n󰏓  Preinstalls\n  Security") in
+  case $(menu "Remove" "󰣇  Package\n  Web App\n  TUI\n󰵮  Development\n󰸌  Theme\n  Browser\n  Dictation\n󰏘  Creative\n  Gaming\n󰍲  Windows\n󰏓  Preinstalls\n  Security") in
   *Package*) terminal omarchy-pkg-remove ;;
   *Web*) present_terminal omarchy-webapp-remove ;;
   *TUI*) present_terminal omarchy-tui-remove ;;
@@ -707,11 +707,19 @@ show_remove_menu() {
   *Theme*) present_terminal omarchy-theme-remove ;;
   *Browser*) show_remove_browser_menu ;;
   *Dictation*) present_terminal omarchy-voxtype-remove ;;
+  *Creative*) show_remove_creative_menu ;;
   *Gaming*) show_remove_gaming_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm remove" ;;
   *Preinstalls*) present_terminal omarchy-remove-preinstalls ;;
   *Security*) show_remove_security_menu ;;
   *) show_main_menu ;;
+  esac
+}
+
+show_remove_creative_menu() {
+  case $(menu "Remove" "󰏘  Affinity") in
+  *Affinity*) present_terminal omarchy-remove-creative-affinity ;;
+  *) show_remove_menu ;;
   esac
 }
 
