@@ -27,7 +27,10 @@ Item {
       root.activeCategory = payload.focusPluginId ? "plugins" : "bar"
     }
 
+    root.syncSidebarIndexFromCategory()
+    root.focusZone = "sidebar"
     window.visible = true
+    Qt.callLater(function() { if (navRoot) navRoot.forceActiveFocus() })
   }
 
   function close() {
@@ -70,6 +73,97 @@ Item {
   // ---------------- navigation ---------------------------------------------
   readonly property var categoryIds: ["defaults", "style", "bar", "system", "plugins"]
   property string activeCategory: "bar"
+
+  // Keyboard nav state. Two zones: "sidebar" (j/k cycles category) and
+  // "body" (j/k walks through visible focusable controls). Tab/Enter/l/Right
+  // dive from sidebar into body; h/Left/Esc backs out.
+  property string focusZone: "sidebar"
+  property int sidebarIndex: 2
+
+  function syncSidebarIndexFromCategory() {
+    var idx = categoryIds.indexOf(activeCategory)
+    if (idx >= 0) sidebarIndex = idx
+  }
+
+  function setSidebarIndex(i) {
+    if (categoryIds.length === 0) return
+    if (i < 0) i = categoryIds.length - 1
+    if (i >= categoryIds.length) i = 0
+    sidebarIndex = i
+    activeCategory = categoryIds[i]
+  }
+
+  function enterBodyZone() {
+    focusZone = "body"
+    Qt.callLater(focusFirstBodyItem)
+  }
+
+  function exitBodyZone() {
+    focusZone = "sidebar"
+    if (navRoot) navRoot.forceActiveFocus()
+  }
+
+  // Walk the visible body subtree and collect any item with
+  // `activeFocusOnTab: true`. Filters out invisible categories so j/k stays
+  // within the active tab.
+  function gatherBodyFocusables() {
+    var arr = []
+    function walk(item) {
+      if (!item || !item.visible || item.enabled === false) return
+      if (item.activeFocusOnTab === true) arr.push(item)
+      var children = item.children
+      if (!children) return
+      for (var i = 0; i < children.length; i++) walk(children[i])
+    }
+    if (typeof bodyScroll !== "undefined" && bodyScroll && bodyScroll.contentItem)
+      walk(bodyScroll.contentItem)
+    return arr
+  }
+
+  function focusFirstBodyItem() {
+    var items = gatherBodyFocusables()
+    if (items.length > 0) {
+      items[0].forceActiveFocus()
+      ensureBodyItemVisible(items[0])
+    } else if (navRoot) {
+      navRoot.forceActiveFocus()
+    }
+  }
+
+  function focusBodyDelta(delta) {
+    var items = gatherBodyFocusables()
+    if (items.length === 0) { exitBodyZone(); return }
+    var current = -1
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].activeFocus) { current = i; break }
+    }
+    var next = current < 0 ? 0 : current + delta
+    if (next < 0) next = items.length - 1
+    if (next >= items.length) next = 0
+    items[next].forceActiveFocus()
+    ensureBodyItemVisible(items[next])
+  }
+
+  // Scroll the bodyScroll Flickable so `item` is fully on-screen, with a
+  // little padding above/below.
+  function ensureBodyItemVisible(item) {
+    if (!item || typeof bodyScroll === "undefined" || !bodyScroll || !bodyScroll.contentItem) return
+    var pos = item.mapToItem(bodyScroll.contentItem, 0, 0)
+    var pad = 24
+    var top = pos.y - pad
+    var bottom = pos.y + item.height + pad
+    if (top < bodyScroll.contentY) {
+      bodyScroll.contentY = Math.max(0, top)
+    } else if (bottom > bodyScroll.contentY + bodyScroll.height) {
+      var maxY = Math.max(0, bodyScroll.contentHeight - bodyScroll.height)
+      bodyScroll.contentY = Math.min(maxY, bottom - bodyScroll.height)
+    }
+  }
+
+  onActiveCategoryChanged: {
+    syncSidebarIndexFromCategory()
+    if (focusZone === "body") Qt.callLater(focusFirstBodyItem)
+  }
 
   // ---------------- bundled defaults ---------------------------------------
   readonly property var builtinShellConfig: ({
@@ -486,7 +580,57 @@ Item {
     onVisibleChanged: {
       if (!visible && !root.closingFromHost && root.shell && typeof root.shell.hide === "function")
         root.shell.hide("omarchy.settings")
+      if (visible) Qt.callLater(function() { if (navRoot) navRoot.forceActiveFocus() })
     }
+
+    FocusScope {
+      id: navRoot
+      anchors.fill: parent
+      focus: true
+
+      Component.onCompleted: forceActiveFocus()
+
+      Keys.priority: Keys.BeforeItem
+      Keys.onPressed: function(event) {
+        var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+
+        if (root.focusZone === "sidebar") {
+          switch (event.key) {
+          case Qt.Key_J:
+          case Qt.Key_Down:
+            root.setSidebarIndex(root.sidebarIndex + 1); event.accepted = true; return
+          case Qt.Key_K:
+          case Qt.Key_Up:
+            root.setSidebarIndex(root.sidebarIndex - 1); event.accepted = true; return
+          case Qt.Key_L:
+          case Qt.Key_Right:
+          case Qt.Key_Tab:
+          case Qt.Key_Return:
+          case Qt.Key_Enter:
+            root.enterBodyZone(); event.accepted = true; return
+          case Qt.Key_Escape:
+            root.close(); event.accepted = true; return
+          }
+          if (ctrl && event.key === Qt.Key_L) { root.enterBodyZone(); event.accepted = true; return }
+        } else {
+          // body
+          switch (event.key) {
+          case Qt.Key_Escape:
+          case Qt.Key_H:
+          case Qt.Key_Left:
+          case Qt.Key_Backtab:
+            root.exitBodyZone(); event.accepted = true; return
+          case Qt.Key_J:
+          case Qt.Key_Down:
+          case Qt.Key_Tab:
+            root.focusBodyDelta(+1); event.accepted = true; return
+          case Qt.Key_K:
+          case Qt.Key_Up:
+            root.focusBodyDelta(-1); event.accepted = true; return
+          }
+          if (ctrl && event.key === Qt.Key_H) { root.exitBodyZone(); event.accepted = true; return }
+        }
+      }
 
     Rectangle {
       anchors.fill: parent
@@ -598,6 +742,7 @@ Item {
         }
       }
     }
+    }
   }
 
   // ===================== sidebar row =======================================
@@ -607,15 +752,20 @@ Item {
     property string label: ""
     property string glyph: ""
     readonly property bool active: root.activeCategory === categoryId
+    readonly property bool sidebarFocused: root.focusZone === "sidebar"
 
     Layout.fillWidth: true
     Layout.preferredHeight: 30
     radius: root.cornerRadius
     color: sb.active
-      ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
+      ? (sb.sidebarFocused
+          ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.20)
+          : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14))
       : (sbArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.07) : "transparent")
-    border.color: sb.active ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.25) : "transparent"
-    border.width: 1
+    border.color: sb.active
+      ? (sb.sidebarFocused ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.25))
+      : "transparent"
+    border.width: sb.active && sb.sidebarFocused ? 2 : 1
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -647,7 +797,11 @@ Item {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onClicked: root.activeCategory = sb.categoryId
+      onClicked: {
+        root.activeCategory = sb.categoryId
+        root.focusZone = "sidebar"
+        if (navRoot) navRoot.forceActiveFocus()
+      }
     }
   }
 
@@ -912,15 +1066,22 @@ Item {
     property bool available: false
     signal clicked()
 
+    activeFocusOnTab: dr.available
+    Keys.onReturnPressed: if (dr.available && !dr.selected) dr.clicked()
+    Keys.onEnterPressed: if (dr.available && !dr.selected) dr.clicked()
+    Keys.onSpacePressed: if (dr.available && !dr.selected) dr.clicked()
+
     implicitHeight: 38
     radius: root.cornerRadius
-    color: drArea.containsMouse
-      ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
-      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03)
-    border.color: dr.selected
+    color: dr.activeFocus
+      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
+      : (drArea.containsMouse
+          ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
+          : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
+    border.color: dr.activeFocus
       ? root.accent
-      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-    border.width: 1
+      : (dr.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12))
+    border.width: dr.activeFocus ? 2 : 1
     opacity: dr.available ? 1 : 0.45
 
     Behavior on color { ColorAnimation { duration: 100 } }
@@ -1538,14 +1699,21 @@ Item {
     property bool selected: false
     signal clicked()
 
+    activeFocusOnTab: true
+    Keys.onReturnPressed: tile.clicked()
+    Keys.onEnterPressed: tile.clicked()
+    Keys.onSpacePressed: tile.clicked()
+
     implicitWidth: 140
     implicitHeight: 52
     radius: root.cornerRadius
-    color: tileArea.containsMouse
-      ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03)
-    border.color: tile.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-    border.width: tile.selected ? 2 : 1
+    color: tile.activeFocus
+      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.12)
+      : (tileArea.containsMouse
+          ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+          : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
+    border.color: tile.activeFocus || tile.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+    border.width: tile.activeFocus || tile.selected ? 2 : 1
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -1589,14 +1757,21 @@ Item {
     property bool selected: false
     signal clicked()
 
+    activeFocusOnTab: true
+    Keys.onReturnPressed: chip.clicked()
+    Keys.onEnterPressed: chip.clicked()
+    Keys.onSpacePressed: chip.clicked()
+
     implicitWidth: chipText.implicitWidth + 22
     implicitHeight: 30
     radius: root.cornerRadius
-    color: chipArea.containsMouse
-      ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03)
-    border.color: chip.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-    border.width: chip.selected ? 2 : 1
+    color: chip.activeFocus
+      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.12)
+      : (chipArea.containsMouse
+          ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+          : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
+    border.color: chip.activeFocus || chip.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+    border.width: chip.activeFocus || chip.selected ? 2 : 1
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -1716,13 +1891,20 @@ Item {
     property bool selected: false
     signal picked()
 
+    activeFocusOnTab: true
+    Keys.onReturnPressed: if (!fr.selected) fr.picked()
+    Keys.onEnterPressed: if (!fr.selected) fr.picked()
+    Keys.onSpacePressed: if (!fr.selected) fr.picked()
+
     implicitHeight: 44
     radius: root.cornerRadius
-    color: frArea.containsMouse
-      ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
-      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03)
-    border.color: fr.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-    border.width: fr.selected ? 2 : 1
+    color: fr.activeFocus
+      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
+      : (frArea.containsMouse
+          ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
+          : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
+    border.color: fr.activeFocus || fr.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+    border.width: fr.activeFocus || fr.selected ? 2 : 1
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -1770,14 +1952,21 @@ Item {
     property bool isOn: false
     signal toggle()
 
+    activeFocusOnTab: true
+    Keys.onReturnPressed: tr.toggle()
+    Keys.onEnterPressed: tr.toggle()
+    Keys.onSpacePressed: tr.toggle()
+
     Layout.fillWidth: true
     implicitHeight: 46
     radius: root.cornerRadius
-    color: trArea.containsMouse
-      ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
-      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03)
-    border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-    border.width: 1
+    color: tr.activeFocus
+      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
+      : (trArea.containsMouse
+          ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
+          : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
+    border.color: tr.activeFocus ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+    border.width: tr.activeFocus ? 2 : 1
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -1849,12 +2038,19 @@ Item {
     property bool bordered: true
     signal clicked()
 
+    activeFocusOnTab: true
+    Keys.onReturnPressed: pill.clicked()
+    Keys.onEnterPressed: pill.clicked()
+    Keys.onSpacePressed: pill.clicked()
+
     implicitWidth: pillLabel.implicitWidth + 22
     implicitHeight: 26
     radius: root.cornerRadius
-    color: pillArea.containsMouse ? Qt.rgba(pill.foreground.r, pill.foreground.g, pill.foreground.b, 0.15) : "transparent"
-    border.color: pill.bordered ? pill.foreground : "transparent"
-    border.width: 1
+    color: pill.activeFocus
+      ? Qt.rgba(pill.foreground.r, pill.foreground.g, pill.foreground.b, 0.20)
+      : (pillArea.containsMouse ? Qt.rgba(pill.foreground.r, pill.foreground.g, pill.foreground.b, 0.15) : "transparent")
+    border.color: pill.activeFocus ? root.accent : (pill.bordered ? pill.foreground : "transparent")
+    border.width: pill.activeFocus ? 2 : 1
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -1883,10 +2079,19 @@ Item {
     property color foreground: root.foreground
     signal clicked()
 
+    activeFocusOnTab: true
+    Keys.onReturnPressed: iconButton.clicked()
+    Keys.onEnterPressed: iconButton.clicked()
+    Keys.onSpacePressed: iconButton.clicked()
+
     implicitWidth: 26
     implicitHeight: 26
     radius: root.cornerRadius
-    color: iconArea.containsMouse ? Qt.rgba(iconButton.foreground.r, iconButton.foreground.g, iconButton.foreground.b, 0.18) : "transparent"
+    color: iconButton.activeFocus
+      ? Qt.rgba(iconButton.foreground.r, iconButton.foreground.g, iconButton.foreground.b, 0.25)
+      : (iconArea.containsMouse ? Qt.rgba(iconButton.foreground.r, iconButton.foreground.g, iconButton.foreground.b, 0.18) : "transparent")
+    border.color: iconButton.activeFocus ? root.accent : "transparent"
+    border.width: iconButton.activeFocus ? 2 : 0
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -2507,10 +2712,17 @@ Item {
     property bool firstParty: false
     property bool expanded: false
 
+    activeFocusOnTab: !row.firstParty
+    Keys.onReturnPressed: if (!row.firstParty) root.pluginRegistry.setEnabled(row.pluginId, !row.pluginEnabled)
+    Keys.onEnterPressed: if (!row.firstParty) root.pluginRegistry.setEnabled(row.pluginId, !row.pluginEnabled)
+    Keys.onSpacePressed: if (!row.firstParty) root.pluginRegistry.setEnabled(row.pluginId, !row.pluginEnabled)
+
     radius: root.cornerRadius
-    color: rowArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03)
-    border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-    border.width: 1
+    color: row.activeFocus
+      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
+      : (rowArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
+    border.color: row.activeFocus ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+    border.width: row.activeFocus ? 2 : 1
     implicitHeight: rowContent.implicitHeight + 16
 
     Behavior on color { ColorAnimation { duration: 100 } }
