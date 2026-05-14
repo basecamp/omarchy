@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Show the current weather notification
+
+omarchy-notification-send -u low "$(omarchy-weather-status)"
