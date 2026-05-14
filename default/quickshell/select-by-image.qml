@@ -477,25 +477,6 @@ ShellRoot {
               }
             }
 
-            Shape {
-              x: item.selected ? 4 : 2
-              y: item.selected ? 10 : 5
-              width: item.width
-              height: item.height
-              opacity: item.selected ? 0.5 : 0.32
-              antialiasing: true
-              preferredRendererType: Shape.CurveRenderer
-              ShapePath {
-                fillColor: root.background
-                strokeColor: "transparent"
-                startX: item.topLeft; startY: 0
-                PathLine { x: item.topRight; y: 0 }
-                PathLine { x: item.bottomRight; y: item.height }
-                PathLine { x: item.bottomLeft; y: item.height }
-                PathLine { x: item.topLeft; y: 0 }
-              }
-            }
-
             Item {
               anchors.fill: parent
               layer.enabled: true
