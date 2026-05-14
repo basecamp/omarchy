@@ -10,6 +10,4 @@ else
   notify-send -a omarchy-action -u low "󱫖    Now locking computer when idle"
 fi
 
-pkill -RTMIN+9 waybar
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-quickshell ipc -p "$OMARCHY_PATH/default/quickshell/omarchy-shell" call bar refreshIndicators >/dev/null 2>&1 || true
+omarchy-shell-ipc --if-running bar refreshIndicators >/dev/null 2>&1 || true

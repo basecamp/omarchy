@@ -5,9 +5,11 @@
 
 if [[ $# -eq 0 || $1 == "-h" || $1 == "--help" ]]; then
   cat <<USAGE
-Usage: omarchy-shell-ipc <target> <method> [args...]
+Usage: omarchy-shell-ipc [--if-running] <target> <method> [args...]
 
-Starts omarchy-shell if not running, then forwards a quickshell ipc call.
+Forwards a quickshell ipc call to omarchy-shell. Starts the shell if it
+isn't already running, unless --if-running is passed (in which case the
+call is silently skipped when no shell instance exists).
 
 Examples:
   omarchy-shell-ipc shell ping
@@ -16,30 +18,45 @@ Examples:
   omarchy-shell-ipc shell listPlugins
   omarchy-shell-ipc shell listShellConfig
   omarchy-shell-ipc shell rescanPlugins
+  omarchy-shell-ipc --if-running bar refreshIndicators
   omarchy-shell-ipc image-selector ping
   omarchy-shell-ipc image-selector cancel ""
 USAGE
   exit 0
 fi
 
+if_running=0
+if [[ $1 == "--if-running" ]]; then
+  if_running=1
+  shift
+fi
+
 OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
 SHELL_DIR="$OMARCHY_PATH/default/quickshell/omarchy-shell"
 
-# Serialize concurrent invocations so two CLI callers don't both spawn the shell
-# when no instance is running yet.
-lockfile="${XDG_RUNTIME_DIR:-/tmp}/omarchy-shell-ipc.lock"
-{
-  flock 9
-  if ! quickshell list -p "$SHELL_DIR" 2>/dev/null | grep -q '^Instance '; then
-    # 9<&- so the spawned shell does not inherit (and keep) the lock fd; the
-    # spawned process is long-lived and would otherwise hold the lock for the
-    # remainder of the session, deadlocking every subsequent helper invocation.
-    setsid uwsm-app -- env OMARCHY_PATH="$OMARCHY_PATH" quickshell -p "$SHELL_DIR" >/dev/null 2>&1 9<&- &
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-      sleep 0.2
-      quickshell list -p "$SHELL_DIR" 2>/dev/null | grep -q '^Instance ' && break
-    done
-  fi
-} 9>"$lockfile"
+shell_running() {
+  quickshell list -p "$SHELL_DIR" 2>/dev/null | grep -q '^Instance '
+}
+
+if (( if_running )); then
+  shell_running || exit 0
+else
+  # Serialize concurrent invocations so two CLI callers don't both spawn the shell
+  # when no instance is running yet.
+  lockfile="${XDG_RUNTIME_DIR:-/tmp}/omarchy-shell-ipc.lock"
+  {
+    flock 9
+    if ! shell_running; then
+      # 9<&- so the spawned shell does not inherit (and keep) the lock fd; the
+      # spawned process is long-lived and would otherwise hold the lock for the
+      # remainder of the session, deadlocking every subsequent helper invocation.
+      setsid uwsm-app -- env OMARCHY_PATH="$OMARCHY_PATH" quickshell -p "$SHELL_DIR" >/dev/null 2>&1 9<&- &
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        sleep 0.2
+        shell_running && break
+      done
+    fi
+  } 9>"$lockfile"
+fi
 
 exec quickshell ipc -p "$SHELL_DIR" call "$@"

@@ -750,7 +750,7 @@ Item {
 
   Process {
     id: weatherProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/waybar/weather.sh"))]
+    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/quickshell/omarchy-shell/scripts/weather.sh"))]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateWeather(text)
@@ -795,7 +795,7 @@ Item {
 
   Process {
     id: screenRecordingProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/waybar/indicators/screen-recording.sh"))]
+    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/quickshell/omarchy-shell/scripts/indicators/screen-recording.sh"))]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateIndicator("screenRecording", text)
@@ -804,7 +804,7 @@ Item {
 
   Process {
     id: idleProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/waybar/indicators/idle.sh"))]
+    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/quickshell/omarchy-shell/scripts/indicators/idle.sh"))]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateIndicator("idle", text)
@@ -813,7 +813,7 @@ Item {
 
   Process {
     id: notificationSilencingProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/waybar/indicators/notification-silencing.sh"))]
+    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/quickshell/omarchy-shell/scripts/indicators/notification-silencing.sh"))]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateIndicator("notifications", text)
