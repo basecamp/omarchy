@@ -358,8 +358,9 @@ show_setup_menu() {
 }
 
 show_setup_weather_menu() {
-  case $(menu "Weather" "󰖙  Location") in
+  case $(menu "Weather" "󰖙  Location\n  Units") in
   *Location*) omarchy-menu-weather ;;
+  *Units*) omarchy-menu-weather-units ;;
   *) show_setup_menu ;;
   esac
 }
