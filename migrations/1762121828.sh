@@ -40,15 +40,6 @@ sed -i 's/--working-directory=/--dir=/g' ~/.config/hypr/bindings.conf
 # Update TERMINAL variable in uwsm config
 sed -i 's/export TERMINAL=.*/export TERMINAL=xdg-terminal-exec/' ~/.config/uwsm/default
 
-# Update waybar config to use xdg-terminal-exec
-waybar_config=~/.config/waybar/config.jsonc
-if [[ -f $waybar_config ]]; then
-  sed -i 's|"on-click-right": "omarchy-launch-terminal"|"on-click-right": "xdg-terminal-exec"|' "$waybar_config"
-  sed -i 's|"on-click": "\$TERMINAL -e btop"|"on-click": "xdg-terminal-exec btop"|' "$waybar_config"
-  sed -i 's|"on-click": "\$TERMINAL --class=Wiremix -e wiremix"|"on-click": "xdg-terminal-exec --app-id=com.omarchy.Wiremix -e wiremix"|' "$waybar_config"
-  omarchy-state set restart-waybar-required
-fi
-
 # Update hyprland window rules to use DNS-format class names
 system_conf=~/.config/hypr/apps/system.conf
 if [[ -f $system_conf ]]; then
