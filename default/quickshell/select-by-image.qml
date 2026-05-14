@@ -127,19 +127,16 @@ ShellRoot {
   }
 
   function selectAdjacent(direction) {
-    if (!filterText) {
-      select(selectedIndex + direction)
-      return
-    }
+    var count = imageModel.count
+    if (count === 0) return
 
-    var index = selectedIndex + direction
-    while (index >= 0 && index < imageModel.count) {
+    var index = selectedIndex
+    for (var i = 0; i < count; i++) {
+      index = (index + direction + count) % count
       if (itemMatches(index)) {
         select(index)
         return
       }
-
-      index += direction
     }
   }
 
@@ -521,7 +518,6 @@ ShellRoot {
               Rectangle {
                 anchors.fill: parent
                 color: root.withAlpha(root.background, item.selected ? 0 : 0.42)
-                Behavior on color { ColorAnimation { duration: 120 } }
               }
             }
 
