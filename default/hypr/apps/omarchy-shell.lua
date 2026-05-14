@@ -13,3 +13,8 @@ hl.layer_rule({ match = { namespace = "omarchy-image-selector" }, no_anim = true
 hl.window_rule({ match = { class = "^org.quickshell$", title = "^Omarchy Settings$" }, float = true })
 hl.window_rule({ match = { class = "^org.quickshell$", title = "^Omarchy Settings$" }, center = true })
 hl.window_rule({ match = { class = "^org.quickshell$", title = "^Omarchy Settings$" }, size = { 960, 700 } })
+
+-- Per-widget settings dialog opens as a smaller FloatingWindow off the
+-- settings panel; keep it floating with its own default size.
+hl.window_rule({ match = { class = "^org.quickshell$", title = "^Widget settings " }, float = true })
+hl.window_rule({ match = { class = "^org.quickshell$", title = "^Widget settings " }, size = { 380, 320 } })
