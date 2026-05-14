@@ -2,4 +2,4 @@
 
 # omarchy:summary=Show the current battery status notification
 
-omarchy-notification-send -u low "$(omarchy-battery-status)"
+omarchy-notification-send -g 󰁹 -u low "$(omarchy-battery-status)"

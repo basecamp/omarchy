@@ -2,4 +2,4 @@
 
 # omarchy:summary=Show the current weather notification
 
-omarchy-notification-send -u low "$(omarchy-weather-status)"
+omarchy-notification-send -g $(omarchy-weather-icon) -u low "$(omarchy-weather-status)"
