@@ -84,7 +84,7 @@ done_file=$(mktemp)
 rm -f "$done_file"
 trap 'rm -f "$selection_file" "$done_file"' EXIT
 socket_path="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-image-selector.sock"
-selector_qml="$OMARCHY_PATH/default/quickshell/background-switcher.qml"
+selector_qml="$OMARCHY_PATH/default/quickshell/select-by-image.qml"
 
 image_dirs_env=""
 for dir in "${image_dirs[@]}"; do
@@ -216,7 +216,7 @@ fi
 
 rows_payload=${rows//$'\t'/$'\f'}
 rows_payload=${rows_payload//$'\n'/$'\v'}
-colors_file=${colors_file:-$HOME/.config/omarchy/current/theme/background-switcher-colors.json}
+colors_file=${colors_file:-$HOME/.config/omarchy/current/theme/quickshell.json}
 colors_payload=""
 
 if [[ -f $colors_file ]]; then
