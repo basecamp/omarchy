@@ -80,6 +80,14 @@ Item {
   property string focusZone: "sidebar"
   property int sidebarIndex: 2
 
+  // Focus visuals — deliberately *different* from selected styling so the
+  // keyboard cursor never gets confused with the current value/choice. A
+  // selected control gets a 2px accent border; a focused control gets a 3px
+  // accent border plus a noticeably tinted accent background.
+  readonly property color focusBorderColor: accent
+  readonly property color focusFillColor: Qt.rgba(accent.r, accent.g, accent.b, 0.22)
+  readonly property int focusBorderWidth: 3
+
   function syncSidebarIndexFromCategory() {
     var idx = categoryIds.indexOf(activeCategory)
     if (idx >= 0) sidebarIndex = idx
@@ -100,7 +108,17 @@ Item {
 
   function exitBodyZone() {
     focusZone = "sidebar"
+    clearBodyFocus()
     if (navRoot) navRoot.forceActiveFocus()
+  }
+
+  // Drop activeFocus from any body item so its focus ring goes away when
+  // the user backs out to the sidebar. Without this, FocusScope remembers
+  // the last focused descendant and the highlight lingers.
+  function clearBodyFocus() {
+    if (!navRoot) return
+    var afi = navRoot.activeFocusItem
+    if (afi && afi !== navRoot) afi.focus = false
   }
 
   // Walk the visible body subtree and collect any item with
@@ -163,6 +181,7 @@ Item {
   onActiveCategoryChanged: {
     syncSidebarIndexFromCategory()
     if (focusZone === "body") Qt.callLater(focusFirstBodyItem)
+    else clearBodyFocus()
   }
 
   // ---------------- bundled defaults ---------------------------------------
@@ -1074,14 +1093,14 @@ Item {
     implicitHeight: 38
     radius: root.cornerRadius
     color: dr.activeFocus
-      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
+      ? root.focusFillColor
       : (drArea.containsMouse
           ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
           : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
     border.color: dr.activeFocus
-      ? root.accent
+      ? root.focusBorderColor
       : (dr.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12))
-    border.width: dr.activeFocus ? 2 : 1
+    border.width: dr.activeFocus ? root.focusBorderWidth : 1
     opacity: dr.available ? 1 : 0.45
 
     Behavior on color { ColorAnimation { duration: 100 } }
@@ -1708,12 +1727,14 @@ Item {
     implicitHeight: 52
     radius: root.cornerRadius
     color: tile.activeFocus
-      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.12)
+      ? root.focusFillColor
       : (tileArea.containsMouse
           ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
           : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
-    border.color: tile.activeFocus || tile.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-    border.width: tile.activeFocus || tile.selected ? 2 : 1
+    border.color: tile.activeFocus
+      ? root.focusBorderColor
+      : (tile.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18))
+    border.width: tile.activeFocus ? root.focusBorderWidth : (tile.selected ? 2 : 1)
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -1766,12 +1787,14 @@ Item {
     implicitHeight: 30
     radius: root.cornerRadius
     color: chip.activeFocus
-      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.12)
+      ? root.focusFillColor
       : (chipArea.containsMouse
           ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
           : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
-    border.color: chip.activeFocus || chip.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-    border.width: chip.activeFocus || chip.selected ? 2 : 1
+    border.color: chip.activeFocus
+      ? root.focusBorderColor
+      : (chip.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18))
+    border.width: chip.activeFocus ? root.focusBorderWidth : (chip.selected ? 2 : 1)
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -1899,12 +1922,14 @@ Item {
     implicitHeight: 44
     radius: root.cornerRadius
     color: fr.activeFocus
-      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
+      ? root.focusFillColor
       : (frArea.containsMouse
           ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
           : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
-    border.color: fr.activeFocus || fr.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-    border.width: fr.activeFocus || fr.selected ? 2 : 1
+    border.color: fr.activeFocus
+      ? root.focusBorderColor
+      : (fr.selected ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12))
+    border.width: fr.activeFocus ? root.focusBorderWidth : (fr.selected ? 2 : 1)
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -1961,12 +1986,12 @@ Item {
     implicitHeight: 46
     radius: root.cornerRadius
     color: tr.activeFocus
-      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
+      ? root.focusFillColor
       : (trArea.containsMouse
           ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
           : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
-    border.color: tr.activeFocus ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-    border.width: tr.activeFocus ? 2 : 1
+    border.color: tr.activeFocus ? root.focusBorderColor : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+    border.width: tr.activeFocus ? root.focusBorderWidth : 1
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -2047,10 +2072,10 @@ Item {
     implicitHeight: 26
     radius: root.cornerRadius
     color: pill.activeFocus
-      ? Qt.rgba(pill.foreground.r, pill.foreground.g, pill.foreground.b, 0.20)
+      ? root.focusFillColor
       : (pillArea.containsMouse ? Qt.rgba(pill.foreground.r, pill.foreground.g, pill.foreground.b, 0.15) : "transparent")
-    border.color: pill.activeFocus ? root.accent : (pill.bordered ? pill.foreground : "transparent")
-    border.width: pill.activeFocus ? 2 : 1
+    border.color: pill.activeFocus ? root.focusBorderColor : (pill.bordered ? pill.foreground : "transparent")
+    border.width: pill.activeFocus ? root.focusBorderWidth : 1
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -2088,10 +2113,10 @@ Item {
     implicitHeight: 26
     radius: root.cornerRadius
     color: iconButton.activeFocus
-      ? Qt.rgba(iconButton.foreground.r, iconButton.foreground.g, iconButton.foreground.b, 0.25)
+      ? root.focusFillColor
       : (iconArea.containsMouse ? Qt.rgba(iconButton.foreground.r, iconButton.foreground.g, iconButton.foreground.b, 0.18) : "transparent")
-    border.color: iconButton.activeFocus ? root.accent : "transparent"
-    border.width: iconButton.activeFocus ? 2 : 0
+    border.color: iconButton.activeFocus ? root.focusBorderColor : "transparent"
+    border.width: iconButton.activeFocus ? root.focusBorderWidth : 0
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -2719,10 +2744,10 @@ Item {
 
     radius: root.cornerRadius
     color: row.activeFocus
-      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
+      ? root.focusFillColor
       : (rowArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
-    border.color: row.activeFocus ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-    border.width: row.activeFocus ? 2 : 1
+    border.color: row.activeFocus ? root.focusBorderColor : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+    border.width: row.activeFocus ? root.focusBorderWidth : 1
     implicitHeight: rowContent.implicitHeight + 16
 
     Behavior on color { ColorAnimation { duration: 100 } }
