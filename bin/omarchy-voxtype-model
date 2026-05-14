@@ -5,4 +5,4 @@
 set -e
 
 omarchy-launch-floating-terminal-with-presentation "voxtype setup model"
-omarchy-restart-quickshell
+omarchy-restart-shell
