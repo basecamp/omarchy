@@ -30,7 +30,7 @@ Item {
     root.syncSidebarIndexFromCategory()
     root.focusZone = "sidebar"
     window.visible = true
-    Qt.callLater(function() { if (navRoot) navRoot.forceActiveFocus() })
+    Qt.callLater(parkFocusOnSink)
   }
 
   function close() {
@@ -108,17 +108,17 @@ Item {
 
   function exitBodyZone() {
     focusZone = "sidebar"
-    clearBodyFocus()
-    if (navRoot) navRoot.forceActiveFocus()
+    parkFocusOnSink()
   }
 
-  // Drop activeFocus from any body item so its focus ring goes away when
-  // the user backs out to the sidebar. Without this, FocusScope remembers
-  // the last focused descendant and the highlight lingers.
-  function clearBodyFocus() {
-    if (!navRoot) return
-    var afi = navRoot.activeFocusItem
-    if (afi && afi !== navRoot) afi.focus = false
+  // Move activeFocus to a dedicated sink Item that lives outside the body
+  // tree. Just clearing focus on the previously focused descendant isn't
+  // enough — controls like ComboBox keep an internal focused child that
+  // FocusScope happily restores. Forcing focus onto a known sink reliably
+  // clears every body focus ring.
+  function parkFocusOnSink() {
+    if (typeof navFocusSink !== "undefined" && navFocusSink) navFocusSink.forceActiveFocus()
+    else if (navRoot) navRoot.forceActiveFocus()
   }
 
   // Walk the visible body subtree and collect any item with
@@ -181,7 +181,7 @@ Item {
   onActiveCategoryChanged: {
     syncSidebarIndexFromCategory()
     if (focusZone === "body") Qt.callLater(focusFirstBodyItem)
-    else clearBodyFocus()
+    else parkFocusOnSink()
   }
 
   // ---------------- bundled defaults ---------------------------------------
@@ -599,7 +599,7 @@ Item {
     onVisibleChanged: {
       if (!visible && !root.closingFromHost && root.shell && typeof root.shell.hide === "function")
         root.shell.hide("omarchy.settings")
-      if (visible) Qt.callLater(function() { if (navRoot) navRoot.forceActiveFocus() })
+      if (visible) Qt.callLater(root.parkFocusOnSink)
     }
 
     FocusScope {
@@ -607,7 +607,17 @@ Item {
       anchors.fill: parent
       focus: true
 
-      Component.onCompleted: forceActiveFocus()
+      Component.onCompleted: navFocusSink.forceActiveFocus()
+
+      // Invisible focus sink. When focus belongs to the sidebar (no
+      // specific body item focused), activeFocus lives on this 1px Item so
+      // body controls render their unfocused state cleanly.
+      Item {
+        id: navFocusSink
+        width: 1
+        height: 1
+        objectName: "navFocusSink"
+      }
 
       Keys.priority: Keys.BeforeItem
       Keys.onPressed: function(event) {
