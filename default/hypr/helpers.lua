@@ -50,6 +50,14 @@ function o.bind_webapp(keys, description, url, options)
   o.bind(keys, description, o.launch_webapp(url), options)
 end
 
+function o.launch_sole(match, command)
+  return "omarchy-launch-or-focus " .. shell_quote(match) .. " " .. shell_quote(o.launch(command))
+end
+
+function o.bind_sole(keys, description, match, command, options)
+  o.bind(keys, description, o.launch_sole(match, command), options)
+end
+
 function o.bind_webapp_sole(keys, description, url, options)
   o.bind(keys, description, o.launch_webapp_sole(description, url), options)
 end
