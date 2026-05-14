@@ -362,11 +362,11 @@ Item {
       Common.PillButton {
         width: parent.width
         iconText: "󰙪"
-        text: "Customize bar…"
+        text: "Settings…"
         foreground: root.bar.foreground
         horizontalPadding: 10
         verticalPadding: 8
-        onClicked: { root.run("omarchy-launch-bar-settings"); root.popupOpen = false }
+        onClicked: { root.run("omarchy-launch-settings"); root.popupOpen = false }
       }
     }
   }

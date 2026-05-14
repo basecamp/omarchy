@@ -197,7 +197,7 @@ QtObject {
   //
   // Special cases (implicitly always enabled, no shell.json entry needed):
   //   - plugins whose `kinds` contains "bar" are mounted directly by the host.
-  //   - first-party plugins are shell infrastructure (bar-settings,
+  //   - first-party plugins are shell infrastructure (settings,
   //     image-picker, ...). Requiring users to add them to plugins[] just to
   //     summon them was a footgun: a stock shell.json with `plugins: []` would
   //     silently make `omarchy launch bar-settings` a no-op.

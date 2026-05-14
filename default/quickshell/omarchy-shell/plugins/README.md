@@ -11,7 +11,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Plugin           | id                       | kinds        | activation  | entry point                                  |
 |------------------|--------------------------|--------------|-------------|----------------------------------------------|
 | Bar              | `omarchy.bar`            | `bar`        | persistent  | `bar/Bar.qml`                                |
-| Bar settings     | `omarchy.bar-settings`   | `panel`      | on-demand   | `bar-settings/BarSettingsPanel.qml`          |
+|  Settings         | `omarchy.settings`   | `panel`      | on-demand   | `settings/SettingsPanel.qml`          |
 | Image picker     | `omarchy.image-picker`   | `overlay`    | on-demand   | `image-picker/ImagePicker.qml`               |
 | Omarchy menu     | `omarchy.menu`           | `menu`       | on-demand   | `menu/Menu.qml`                              |
 
@@ -27,8 +27,8 @@ and customization schema.
 ## Bar settings
 
 Visual editor for the entire shell config. Summoned by
-`omarchy-shell-ipc shell summon omarchy.bar-settings "{}"` (which is what
-`omarchy launch bar-settings` ultimately calls). Provides:
+`omarchy-shell-ipc shell summon omarchy.settings "{}"` (which is what
+`omarchy launch settings` ultimately calls). Provides:
 
 - per-section add/move/remove/edit of bar widget entries
 - a separate "Other plugins" section for panels, overlays, services,
