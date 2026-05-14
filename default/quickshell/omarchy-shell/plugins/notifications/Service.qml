@@ -22,8 +22,15 @@ Item {
   property var manifest: null
 
   readonly property string home: Quickshell.env("HOME")
+  // History + DND live under XDG_STATE_HOME: they're persistent user state
+  // (history of received notifications, last-set DND preference), not
+  // regeneratable cache that a `rm -rf ~/.cache` should wipe.
+  readonly property string stateDir: home + "/.local/state/omarchy/"
+  readonly property string historyPath: stateDir + "notifications.json"
+  // Thumbnails copied from /tmp screenshots are genuinely disposable — if
+  // they vanish the row just renders without an image — so they stay in
+  // ~/.cache where regeneratable artifacts belong.
   readonly property string cacheDir: home + "/.cache/omarchy/"
-  readonly property string historyPath: cacheDir + "notifications.json"
   readonly property string imageCacheDir: cacheDir + "notification-images/"
   readonly property string styleStatePath: home + "/.local/state/omarchy/toggles/quickshell-menu.json"
   // Optional per-theme override file. Themes that want notification colors
@@ -227,7 +234,10 @@ Item {
         notification.tracked = false
         return
       }
-      Qt.callLater(function() { popupModel.insert(0, snapshot) })
+      Qt.callLater(function() {
+        removeByOriginalId(popupModel, snapshot.originalId)
+        popupModel.insert(0, snapshot)
+      })
       return
     }
 
@@ -255,12 +265,25 @@ Item {
     // Repeater is mid-incubation while we mutate its model — see noctalia
     // NotificationService.qml ~L307.
     Qt.callLater(function() {
+      removeByOriginalId(popupModel, snapshot.originalId)
       popupModel.insert(0, snapshot)
     })
   }
 
+  // Remove every row in `model` whose originalId matches. Chat apps reuse
+  // `replaces_id` per the freedesktop spec to update a single notification
+  // in place — without this, every Discord/Slack ping leaves a fresh row
+  // behind and pending fills with hundreds of duplicates.
+  function removeByOriginalId(model, originalId) {
+    for (var i = model.count - 1; i >= 0; i--) {
+      var row = model.get(i)
+      if (row && row.originalId === originalId) model.remove(i)
+    }
+  }
+
   function addToPending(snapshot) {
     Qt.callLater(function() {
+      removeByOriginalId(pendingModel, snapshot.originalId)
       pendingModel.insert(0, snapshot)
       while (pendingModel.count > service.historyCap) {
         pendingModel.remove(pendingModel.count - 1)
@@ -490,7 +513,7 @@ Item {
 
   Process {
     id: ensureDirsProc
-    command: ["mkdir", "-p", service.cacheDir, service.imageCacheDir]
+    command: ["mkdir", "-p", service.stateDir, service.imageCacheDir]
     running: false
   }
 
@@ -578,6 +601,12 @@ Item {
   property bool historyLoaded: false
 
   function loadHistory(raw) {
+    // FileView can fire onLoaded more than once during startup — the implicit
+    // preload when `path` resolves, plus the explicit `historyFile.reload()`
+    // in Component.onCompleted can both end up calling here. Without this
+    // guard, the second fire appends a second copy of every persisted row
+    // to the in-memory model.
+    if (service.historyLoaded) return
     var text = String(raw || "").trim()
     if (!text) { service.historyLoaded = true; return }
     try {
@@ -610,19 +639,41 @@ Item {
           ref: null
         }
       }
+      // Older builds didn't dedupe chat-app replacements, so hydrated files
+      // can hold hundreds of identical rows (same originalId). Collapse on
+      // load — keep the newest occurrence (highest timestamp) and drop the
+      // rest. Save is rescheduled below so the disk file rewrites cleanly.
+      function dedupeByOriginalId(rows) {
+        var keep = {}
+        for (var k = 0; k < rows.length; k++) {
+          var r = rows[k]
+          if (!r) continue
+          var key = r.originalId
+          if (key === undefined || key === null) { keep["_" + k] = r; continue }
+          var prior = keep[key]
+          if (!prior || (r.timestamp || 0) >= (prior.timestamp || 0)) keep[key] = r
+        }
+        var out = []
+        for (var id in keep) out.push(keep[id])
+        out.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0) })
+        return out
+      }
+      var pendingDeduped = dedupeByOriginalId(pending)
+      var pastDeduped = dedupeByOriginalId(past)
+      var hadDuplicates = pendingDeduped.length !== pending.length
+                       || pastDeduped.length !== past.length
       // Newest-first on disk; insert in order so models match.
       Qt.callLater(function() {
-        for (var i = 0; i < pending.length; i++) {
-          if (!pending[i]) continue
-          pendingModel.append(entryFor(pending[i]))
+        for (var i = 0; i < pendingDeduped.length; i++) {
+          pendingModel.append(entryFor(pendingDeduped[i]))
           if (pendingModel.count > service.historyCap) pendingModel.remove(pendingModel.count - 1)
         }
-        for (var j = 0; j < past.length; j++) {
-          if (!past[j]) continue
-          pastModel.append(entryFor(past[j]))
+        for (var j = 0; j < pastDeduped.length; j++) {
+          pastModel.append(entryFor(pastDeduped[j]))
           if (pastModel.count > service.historyCap) pastModel.remove(pastModel.count - 1)
         }
         service.historyLoaded = true
+        if (hadDuplicates) service.scheduleHistorySave()
       })
     } catch (e) {
       console.warn("notifications: history parse failed:", e)
