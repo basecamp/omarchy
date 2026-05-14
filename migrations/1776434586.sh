@@ -19,11 +19,4 @@ else
   fi
 fi
 
-if [[ -f ~/.config/hypr/bindings.conf ]]; then
-  sed -i '/Obsidian, exec/ {
-    s/ -disable-gpu//g
-    s/ --disable-gpu//g
-    s/ --enable-wayland-ime//g
-    s/"uwsm app -- obsidian/"uwsm-app -- obsidian/g
-  }' ~/.config/hypr/bindings.conf
-fi
+

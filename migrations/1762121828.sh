@@ -32,18 +32,5 @@ if command -v alacritty > /dev/null 2>&1; then
   cp "$OMARCHY_PATH/applications/Alacritty.desktop" ~/.local/share/applications/
 fi
 
-# Update hyprland bindings to use xdg-terminal-exec
-sed -i 's/\$terminal = uwsm-app -- \$TERMINAL/$terminal = uwsm-app -- xdg-terminal-exec/' ~/.config/hypr/bindings.conf
-# Update --working-directory to --dir for xdg-terminal-exec
-sed -i 's/--working-directory=/--dir=/g' ~/.config/hypr/bindings.conf
-
 # Update TERMINAL variable in uwsm config
 sed -i 's/export TERMINAL=.*/export TERMINAL=xdg-terminal-exec/' ~/.config/uwsm/default
-
-# Update hyprland window rules to use DNS-format class names
-system_conf=~/.config/hypr/apps/system.conf
-if [[ -f $system_conf ]]; then
-  if grep -q 'class:(.*|Impala|' "$system_conf" || grep -q 'class:(.*|Wiremix|' "$system_conf" || grep -q '|Omarchy|' "$system_conf"; then
-    sed -i 's/\bImpala\b/com.omarchy.Impala/g; s/\bWiremix\b/com.omarchy.Wiremix/g; s/|Omarchy|/|com.omarchy.Omarchy|/g' "$system_conf"
-  fi
-fi
