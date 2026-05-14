@@ -12,5 +12,4 @@ if omarchy-cmd-present voxtype; then
   voxtype setup systemd
 
   systemctl --user restart voxtype
-  omarchy-restart-waybar
 fi
