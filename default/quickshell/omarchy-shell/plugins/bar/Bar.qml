@@ -9,6 +9,7 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import QtQuick
 import QtQuick.Layouts
+import "common" as BarCommon
 
 Item {
   id: root
@@ -158,10 +159,28 @@ Item {
   function normalizeLayout(layout) {
     if (!isPlainObject(layout)) layout = fallbackBarConfig.layout
     return {
-      left: normalizeLayoutSection(layout.left),
-      center: normalizeLayoutSection(layout.center),
-      right: normalizeLayoutSection(layout.right)
+      left: pinTrayToInner(normalizeLayoutSection(layout.left), "left"),
+      center: pinTrayToInner(normalizeLayoutSection(layout.center), "center"),
+      right: pinTrayToInner(normalizeLayoutSection(layout.right), "right")
     }
+  }
+
+  // The tray drawer reveals inward (away from the bar edge). Place it at the
+  // section's inner edge: start of the right section, end of the left/center
+  // sections. The drawer's reserved space then sits next to the bar center,
+  // not stranded mid-section.
+  function pinTrayToInner(entries, section) {
+    var trayEntry = null
+    var result = []
+    for (var i = 0; i < entries.length; i++) {
+      if (entryId(entries[i]) === "tray") trayEntry = entries[i]
+      else result.push(entries[i])
+    }
+    if (trayEntry) {
+      if (section === "right") result.unshift(trayEntry)
+      else result.push(trayEntry)
+    }
+    return result
   }
 
   function applyBarConfig() {
@@ -291,7 +310,7 @@ Item {
     "bluetoothPanel":     { displayName: "Bluetooth",          description: "Bluetooth device list with connect/disconnect", category: "Network", allowMultiple: false },
     "calendar":           { displayName: "Calendar",           description: "Clock with month-grid popup",                  category: "Time",     allowMultiple: false, settingsForm: "calendarSettings" },
     "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND (replaces mako)",  category: "Status",   allowMultiple: false },
-    "systemStats":        { displayName: "System stats",       description: "Inline CPU + memory sparklines",              category: "System",   allowMultiple: false },
+    "systemStats":        { displayName: "System stats",       description: "CPU icon — hover for graphs, click to open btop", category: "System",   allowMultiple: false },
     "weatherFlyout":      { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false },
     "idleInhibitor":      { displayName: "Keep awake",         description: "Toggle idle inhibitor",                       category: "System",   allowMultiple: false },
     "microphone":         { displayName: "Microphone",         description: "Mic input state and mute toggle",             category: "Audio",    allowMultiple: false },
@@ -1458,8 +1477,48 @@ Item {
     id: trayRoot
 
     property bool expanded: false
-    readonly property int activeItems: root.activeTrayItemCount()
-    readonly property int drawerExtent: activeItems > 0 ? activeItems * 16 + (activeItems - 1) * 17 : 0
+    property bool managePopupOpen: false
+    function closePopout() { managePopupOpen = false }
+
+    // Re-resolve the tray's own entry settings whenever the bar layout reloads.
+    readonly property var trayEntry: {
+      var serial = root.barConfigSerial
+      var sections = ["left", "center", "right"]
+      for (var s = 0; s < sections.length; s++) {
+        var arr = root.layoutEntries(sections[s])
+        for (var i = 0; i < arr.length; i++) {
+          if (root.entryId(arr[i]) === "tray") return arr[i]
+        }
+      }
+      return ({})
+    }
+    readonly property var pinnedIds: Array.isArray(trayEntry.pinned) ? trayEntry.pinned : []
+    readonly property var hiddenIds: Array.isArray(trayEntry.hidden) ? trayEntry.hidden : []
+
+    function classifyItem(item) {
+      var iid = String(item.id || "")
+      if (hiddenIds.indexOf(iid) !== -1) return "hidden"
+      if (pinnedIds.indexOf(iid) !== -1) return "pinned"
+      return "drawer"
+    }
+
+    function bucket(category) {
+      var values = SystemTray.items.values
+      var result = []
+      for (var i = 0; i < values.length; i++) {
+        var item = values[i]
+        if (item.status === Status.Passive) continue
+        if (category === "all") { result.push(item); continue }
+        if (classifyItem(item) === category) result.push(item)
+      }
+      return result
+    }
+
+    readonly property var pinnedItems: bucket("pinned")
+    readonly property var drawerItems: bucket("drawer")
+    readonly property var allItems: bucket("all")
+    readonly property int drawerCount: drawerItems.length
+    readonly property int drawerExtent: drawerCount > 0 ? drawerCount * 16 + (drawerCount - 1) * 17 : 0
     // Match Waybar's group/tray-expander drawer transition-duration.
     readonly property int animationDuration: 600
     property real revealProgress: expanded ? 1 : 0
@@ -1469,16 +1528,34 @@ Item {
       NumberAnimation { duration: trayRoot.animationDuration; easing.type: Easing.OutCubic }
     }
 
-    containmentMask: QtObject {
-      function contains(point: point): bool {
-        if (root.vertical)
-          return point.x >= 0 && point.x <= trayRoot.width && point.y >= trayRoot.drawerExtent - trayRoot.revealExtent && point.y <= trayRoot.height
-
-        return point.x >= trayRoot.drawerExtent - trayRoot.revealExtent && point.x <= trayRoot.width && point.y >= 0 && point.y <= trayRoot.height
-      }
+    function persistTrayState(pinned, hidden) {
+      if (!root.shell || typeof root.shell.updateEntryInline !== "function") return
+      root.shell.updateEntryInline("tray", { id: "tray", pinned: pinned, hidden: hidden })
     }
 
-    visible: activeItems > 0
+    function togglePin(iid) {
+      var p = pinnedIds.slice(), h = hiddenIds.slice()
+      var idx = p.indexOf(iid)
+      if (idx !== -1) p.splice(idx, 1)
+      else {
+        p.push(iid)
+        var hi = h.indexOf(iid); if (hi !== -1) h.splice(hi, 1)
+      }
+      persistTrayState(p, h)
+    }
+
+    function toggleHide(iid) {
+      var p = pinnedIds.slice(), h = hiddenIds.slice()
+      var idx = h.indexOf(iid)
+      if (idx !== -1) h.splice(idx, 1)
+      else {
+        h.push(iid)
+        var pi = p.indexOf(iid); if (pi !== -1) p.splice(pi, 1)
+      }
+      persistTrayState(p, h)
+    }
+
+    visible: pinnedItems.length > 0 || drawerCount > 0
     clip: false
     implicitWidth: root.vertical ? root.barSize : trayContent.implicitWidth
     implicitHeight: root.vertical ? trayContent.implicitHeight : root.barSize
@@ -1489,52 +1566,91 @@ Item {
       sourceComponent: root.vertical ? verticalTray : horizontalTray
     }
 
-    HoverHandler {
-      onHoveredChanged: trayRoot.expanded = hovered
-    }
-
     Component {
       id: horizontalTray
 
       Item {
         id: horizontalTrayRoot
 
-        implicitWidth: expandIcon.implicitWidth + trayRoot.drawerExtent
+        readonly property int pinnedWidth: pinnedRow.implicitWidth
+        readonly property int drawerBlockWidth: trayRoot.allItems.length > 0 ? expandIcon.implicitWidth + trayRoot.drawerExtent : 0
+
+        implicitWidth: pinnedWidth + drawerBlockWidth
         implicitHeight: root.barSize
 
-        ModuleButton {
-          id: expandIcon
-          width: implicitWidth
-          height: implicitHeight
-          x: trayRoot.drawerExtent - trayRoot.revealExtent
-          text: ""
-          horizontalMargin: 9
-          verticalPadding: 6
-
+        // Mask out the empty area the collapsed drawer reserves for its slide-in,
+        // so hovering it doesn't trigger expand and clicks pass through.
+        containmentMask: QtObject {
+          function contains(point: point): bool {
+            if (point.y < 0 || point.y > horizontalTrayRoot.height) return false
+            // Drawer reveals leftward; chevron sits at the right end when collapsed
+            // and slides left as it opens. The visible region starts at the chevron.
+            var chevronX = trayRoot.drawerExtent - trayRoot.revealExtent
+            if (point.x >= chevronX && point.x <= horizontalTrayRoot.drawerBlockWidth) return true
+            // Pinned items, placed to the right of the drawer block.
+            var pinnedStart = horizontalTrayRoot.drawerBlockWidth
+            return point.x >= pinnedStart && point.x <= horizontalTrayRoot.implicitWidth
+          }
         }
 
         Item {
-          id: trayClip
-          x: expandIcon.width
-          anchors.verticalCenter: parent.verticalCenter
-          width: trayRoot.drawerExtent
+          id: drawerArea
+          x: 0
+          width: horizontalTrayRoot.drawerBlockWidth
           height: root.barSize
-          clip: true
+          visible: trayRoot.allItems.length > 0
 
-          Row {
-            id: trayIcons
+          HoverHandler {
+            onHoveredChanged: trayRoot.expanded = hovered
+          }
+
+          ModuleButton {
+            id: expandIcon
+            width: implicitWidth
+            height: implicitHeight
             x: trayRoot.drawerExtent - trayRoot.revealExtent
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 17
-            layer.enabled: true
+            text: ""
+            horizontalMargin: 9
+            verticalPadding: 6
+            onPressed: function(button) {
+              if (button === Qt.RightButton) trayRoot.managePopupOpen = !trayRoot.managePopupOpen
+            }
+          }
 
-            Repeater {
-              model: SystemTray.items
-              TrayItem {}
+          Item {
+            id: trayClip
+            x: expandIcon.width
+            anchors.verticalCenter: parent.verticalCenter
+            width: trayRoot.drawerExtent
+            height: root.barSize
+            clip: true
+
+            Row {
+              id: trayIcons
+              x: trayRoot.drawerExtent - trayRoot.revealExtent
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: 17
+              layer.enabled: true
+
+              Repeater {
+                model: trayRoot.drawerItems
+                TrayItem {}
+              }
             }
           }
         }
 
+        Row {
+          id: pinnedRow
+          x: drawerArea.x + horizontalTrayRoot.drawerBlockWidth
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: 17
+          leftPadding: trayRoot.pinnedItems.length > 0 && trayRoot.allItems.length > 0 ? 6 : 0
+          Repeater {
+            model: trayRoot.pinnedItems
+            TrayItem {}
+          }
+        }
       }
     }
 
@@ -1544,43 +1660,199 @@ Item {
       Item {
         id: verticalTrayRoot
 
+        readonly property int pinnedHeight: pinnedCol.implicitHeight
+        readonly property int drawerBlockHeight: trayRoot.allItems.length > 0 ? expandIcon.implicitHeight + trayRoot.drawerExtent : 0
+
         implicitWidth: root.barSize
-        implicitHeight: expandIcon.implicitHeight + trayRoot.drawerExtent
+        implicitHeight: pinnedHeight + drawerBlockHeight
 
-        ModuleButton {
-          id: expandIcon
-          width: implicitWidth
-          height: implicitHeight
-          y: trayRoot.drawerExtent - trayRoot.revealExtent
-          text: ""
-          textRotation: 90
-          horizontalMargin: 9
-          verticalPadding: 6
-
+        containmentMask: QtObject {
+          function contains(point: point): bool {
+            if (point.x < 0 || point.x > verticalTrayRoot.width) return false
+            var chevronY = trayRoot.drawerExtent - trayRoot.revealExtent
+            if (point.y >= chevronY && point.y <= verticalTrayRoot.drawerBlockHeight) return true
+            var pinnedStart = verticalTrayRoot.drawerBlockHeight
+            return point.y >= pinnedStart && point.y <= verticalTrayRoot.implicitHeight
+          }
         }
 
         Item {
-          id: trayClip
-          y: expandIcon.height
-          anchors.horizontalCenter: parent.horizontalCenter
+          id: drawerArea
+          y: 0
           width: root.barSize
-          height: trayRoot.drawerExtent
-          clip: true
+          height: verticalTrayRoot.drawerBlockHeight
+          visible: trayRoot.allItems.length > 0
 
-          Column {
-            id: trayIcons
+          HoverHandler {
+            onHoveredChanged: trayRoot.expanded = hovered
+          }
+
+          ModuleButton {
+            id: expandIcon
+            width: implicitWidth
+            height: implicitHeight
             y: trayRoot.drawerExtent - trayRoot.revealExtent
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 17
-            layer.enabled: true
+            text: ""
+            textRotation: 90
+            horizontalMargin: 9
+            verticalPadding: 6
+            onPressed: function(button) {
+              if (button === Qt.RightButton) trayRoot.managePopupOpen = !trayRoot.managePopupOpen
+            }
+          }
 
-            Repeater {
-              model: SystemTray.items
-              TrayItem {}
+          Item {
+            id: trayClip
+            y: expandIcon.height
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: root.barSize
+            height: trayRoot.drawerExtent
+            clip: true
+
+            Column {
+              id: trayIcons
+              y: trayRoot.drawerExtent - trayRoot.revealExtent
+              anchors.horizontalCenter: parent.horizontalCenter
+              spacing: 17
+              layer.enabled: true
+
+              Repeater {
+                model: trayRoot.drawerItems
+                TrayItem {}
+              }
             }
           }
         }
 
+        Column {
+          id: pinnedCol
+          y: drawerArea.y + verticalTrayRoot.drawerBlockHeight
+          anchors.horizontalCenter: parent.horizontalCenter
+          spacing: 17
+          topPadding: trayRoot.pinnedItems.length > 0 && trayRoot.allItems.length > 0 ? 6 : 0
+          Repeater {
+            model: trayRoot.pinnedItems
+            TrayItem {}
+          }
+        }
+      }
+    }
+
+    BarCommon.PopupCard {
+      id: managePopup
+      anchorItem: trayRoot
+      owner: trayRoot
+      bar: root
+      open: trayRoot.managePopupOpen
+      contentWidth: 300
+      contentHeight: manageColumn.implicitHeight + 28
+
+      Column {
+        id: manageColumn
+        anchors.fill: parent
+        spacing: 8
+
+        Text {
+          text: "Tray icons"
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: 12
+          font.bold: true
+        }
+
+        Text {
+          text: "Pinned icons stay visible. Hidden icons never show."
+          color: Qt.darker(root.foreground, 1.4)
+          font.family: root.fontFamily
+          font.pixelSize: 10
+          wrapMode: Text.WordWrap
+          width: parent.width
+        }
+
+        Text {
+          visible: trayRoot.allItems.length === 0
+          text: "No tray items reporting."
+          color: Qt.darker(root.foreground, 1.5)
+          font.family: root.fontFamily
+          font.pixelSize: 11
+          font.italic: true
+        }
+
+        Repeater {
+          model: trayRoot.allItems
+          delegate: Item {
+            id: rowRoot
+            required property var modelData
+            required property int index
+            width: manageColumn.width
+            implicitHeight: 28
+
+            readonly property string itemId: String(modelData.id || "")
+            readonly property string displayName: {
+              var t = String(modelData.title || "").trim()
+              if (t) return t
+              var tt = String(modelData.tooltipTitle || "").trim()
+              if (tt) return tt
+              var id = String(modelData.id || "")
+              var slash = id.lastIndexOf("/")
+              return slash !== -1 ? id.substring(slash + 1) : (id || "Unknown")
+            }
+            readonly property bool isPinned: trayRoot.pinnedIds.indexOf(itemId) !== -1
+            readonly property bool isHidden: trayRoot.hiddenIds.indexOf(itemId) !== -1
+
+            IconImage {
+              id: rowIcon
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.left: parent.left
+              implicitSize: 16
+              width: 16
+              height: 16
+              source: root.trayIconSource(rowRoot.modelData.icon)
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.left: rowIcon.right
+              anchors.leftMargin: 10
+              anchors.right: rowHideBtn.left
+              anchors.rightMargin: 8
+              text: rowRoot.displayName
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 11
+              elide: Text.ElideRight
+            }
+
+            BarCommon.PillButton {
+              id: rowPinBtn
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.right: parent.right
+              iconText: ""
+              text: rowRoot.isPinned ? "Unpin" : "Pin"
+              foreground: root.foreground
+              horizontalPadding: 8
+              verticalPadding: 3
+              iconSize: 11
+              fontSize: 11
+              onClicked: trayRoot.togglePin(rowRoot.itemId)
+            }
+
+            BarCommon.PillButton {
+              id: rowHideBtn
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.right: rowPinBtn.left
+              anchors.rightMargin: 6
+              iconText: ""
+              text: rowRoot.isHidden ? "Show" : "Hide"
+              foreground: root.foreground
+              horizontalPadding: 8
+              verticalPadding: 3
+              iconSize: 11
+              fontSize: 11
+              onClicked: trayRoot.toggleHide(rowRoot.itemId)
+            }
+          }
+        }
       }
     }
   }
