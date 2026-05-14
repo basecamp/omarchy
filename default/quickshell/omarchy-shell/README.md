@@ -72,6 +72,7 @@ Supported `kinds`:
 | `overlay`    | A fullscreen overlay (e.g. background switcher)              |
 | `menu`       | A summoned menu surface                                      |
 | `service`    | A headless singleton, no UI                                  |
+| `bar`        | Reserved for the first-party bar host (`omarchy.bar`). Third-party plugins should ship `bar-widget`s; they do not replace the host bar. |
 
 `activation` is either `persistent` (loaded on startup, never unloaded) or
 `on-demand` (loaded by `shell summon <id>` and unloaded by `shell hide`).
