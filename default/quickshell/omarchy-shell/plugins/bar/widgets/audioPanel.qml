@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Services.Pipewire
 import "../common" as Common
@@ -21,8 +22,21 @@ Item {
   readonly property var candidateSinks: {
     var list = []
     for (var i = 0; i < nodes.length; i++) {
-      var node = nodes[i]
-      if (node && node.isSink && !node.isStream) list.push(node)
+      var n = nodes[i]
+      if (n && n.isSink && !n.isStream) list.push(n)
+    }
+    return list
+  }
+
+  readonly property var candidateSources: {
+    var list = []
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i]
+      if (n && !n.isSink && !n.isStream && n.audio) {
+        var name = n.name || ""
+        if (name === "quickshell") continue
+        list.push(n)
+      }
     }
     return list
   }
@@ -30,10 +44,21 @@ Item {
   readonly property var candidateStreams: {
     var list = []
     for (var i = 0; i < nodes.length; i++) {
-      var node = nodes[i]
-      if (node && node.isStream && !node.isSink) list.push(node)
+      var n = nodes[i]
+      if (n && n.isStream && isPlaybackStream(n)) list.push(n)
     }
     return list
+  }
+
+  // Identify true playback streams without reading node.properties here:
+  // PwNode.properties is invalid until the node is bound, and reading it while
+  // capture streams are appearing (for example, when Voxtype starts recording)
+  // can destabilize Quickshell's Pipewire service. `type` mirrors media.class
+  // and is safe enough for pre-bind filtering.
+  function isPlaybackStream(node) {
+    if (!node) return false
+    var mediaClass = String(node.type || "")
+    return mediaClass.indexOf("Output") !== -1
   }
 
   readonly property var audioSinks: {
@@ -43,6 +68,8 @@ Item {
     return list
   }
 
+  readonly property var audioSources: candidateSources
+
   readonly property var audioStreams: {
     var list = []
     for (var i = 0; i < candidateStreams.length; i++)
@@ -50,54 +77,115 @@ Item {
     return list
   }
 
-  readonly property real currentVolume: sink && sink.audio ? sink.audio.volume : 0
-  readonly property bool muted: sink && sink.audio ? sink.audio.muted : false
+  readonly property real outputVolume: sink && sink.audio ? sink.audio.volume : 0
+  readonly property bool outputMuted: sink && sink.audio ? sink.audio.muted : false
+  readonly property real inputVolume: source && source.audio ? source.audio.volume : 0
+  readonly property bool inputMuted: source && source.audio ? source.audio.muted : false
 
-  readonly property string volumeIcon: {
-    if (!sink || !sink.audio) return ""
-    if (muted) return "󰸈"
-    var v = currentVolume
-    if (v >= 0.67) return "󰕾"
-    if (v >= 0.34) return "󰖀"
-    if (v > 0) return "󰕿"
-    return "󰸈"
+  function outputIcon() {
+    // Match the old Waybar pulseaudio glyph set. The Material Design speaker
+    // icons render visually smaller in JetBrainsMono Nerd Font.
+    if (!sink || !sink.audio) return ""
+    if (outputMuted) return ""
+    var v = outputVolume
+    if (v >= 0.67) return ""
+    if (v >= 0.34) return ""
+    if (v > 0) return ""
+    return ""
   }
 
-  function setVolume(v) {
+  function inputIcon() {
+    if (!source || !source.audio) return "󰍭"
+    return inputMuted ? "󰍭" : "󰍬"
+  }
+
+  function setOutputVolume(v) {
     if (!sink || !sink.audio) return
     sink.audio.volume = Math.max(0, Math.min(1, v))
   }
 
-  function toggleMute() {
+  function setInputVolume(v) {
+    if (!source || !source.audio) return
+    source.audio.volume = Math.max(0, Math.min(1, v))
+  }
+
+  function toggleOutputMute() {
     if (sink && sink.audio) sink.audio.muted = !sink.audio.muted
   }
 
-  function setDefaultSink(node) {
-    Pipewire.preferredDefaultAudioSink = node
+  function toggleInputMute() {
+    if (source && source.audio) source.audio.muted = !source.audio.muted
+  }
+
+  function setDefaultSink(node) { Pipewire.preferredDefaultAudioSink = node }
+  function setDefaultSource(node) { Pipewire.preferredDefaultAudioSource = node }
+
+  function nodeLabel(node) {
+    if (!node) return "Unknown"
+    return node.description || node.nickname || node.name || "Unknown"
+  }
+
+  function nodeProps(node) {
+    return node && node.ready && node.properties ? node.properties : {}
+  }
+
+  function sinkGlyph(node) {
+    if (!node) return "󰓃"
+    var p = nodeProps(node)
+    var blob = String([
+      node.name, node.description, node.nickname,
+      p["device.icon-name"] || "",
+      p["device.product.name"] || ""
+    ].join(" ")).toLowerCase()
+    if (blob.indexOf("headphone") !== -1 || blob.indexOf("headset") !== -1) return "󰋋"
+    if (blob.indexOf("bluetooth") !== -1) return "󰂯"
+    if (blob.indexOf("hdmi") !== -1 || blob.indexOf("display") !== -1) return "󰍹"
+    return "󰓃"
+  }
+
+  function sourceGlyph(node) {
+    if (!node) return "󰍬"
+    var p = nodeProps(node)
+    var blob = String([
+      node.name, node.description, node.nickname,
+      p["device.icon-name"] || ""
+    ].join(" ")).toLowerCase()
+    if (blob.indexOf("headset") !== -1) return "󰋋"
+    if (blob.indexOf("bluetooth") !== -1) return "󰂯"
+    if (blob.indexOf("webcam") !== -1 || blob.indexOf("camera") !== -1) return "󰄀"
+    return "󰍬"
+  }
+
+  function streamLabel(node) {
+    if (!node) return "Stream"
+    var p = nodeProps(node)
+    return p["application.name"] || node.description || p["media.name"] || p["node.name"] || node.name || "Stream"
   }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
   PwObjectTracker { objects: root.candidateSinks }
-  PwObjectTracker { objects: root.candidateStreams }
+  PwObjectTracker { objects: root.candidateSources }
+  PwObjectTracker { objects: root.audioStreams }
 
   Common.WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.volumeIcon
-    tooltipText: root.sink ? (root.sink.description || root.sink.nickname || "Audio") + " · " + Math.round(root.currentVolume * 100) + "%" : "No audio"
+    text: root.outputIcon()
+    fontSize: 14
+    tooltipText: root.sink ? root.nodeLabel(root.sink) + " · " + Math.round(root.outputVolume * 100) + "%" : "No audio"
 
     onPressed: function(b) {
-      if (b === Qt.RightButton) root.toggleMute()
+      if (b === Qt.RightButton) root.toggleOutputMute()
       else if (b === Qt.MiddleButton) root.bar.run("omarchy-launch-audio")
       else root.popupOpen = !root.popupOpen
     }
 
     onWheelMoved: function(delta) {
       var step = 0.05
-      root.setVolume(root.currentVolume + (delta > 0 ? step : -step))
+      root.setOutputVolume(root.outputVolume + (delta > 0 ? step : -step))
     }
   }
 
@@ -106,141 +194,416 @@ Item {
     owner: root
     bar: root.bar
     open: root.popupOpen
-    contentWidth: 340
-    contentHeight: panelColumn.implicitHeight + 28
+    contentWidth: 380
+    contentHeight: Math.min(560, panelColumn.implicitHeight + 28)
 
-    Column {
-      id: panelColumn
+    ScrollView {
+      id: scrollArea
       anchors.fill: parent
-      spacing: 12
+      clip: true
+      ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+      ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
-      // Master volume
-      Row {
-        width: parent.width
-        spacing: 10
-
-        Text {
-          text: root.volumeIcon
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 18
-          anchors.verticalCenter: parent.verticalCenter
-
-          MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.toggleMute()
-          }
-        }
-
-        Common.Slider {
-          bar: root.bar
-          width: parent.width - 50
-          anchors.verticalCenter: parent.verticalCenter
-          minimum: 0
-          maximum: 1
-          step: 0.05
-          value: root.currentVolume
-          opacity: root.muted ? 0.5 : 1.0
-
-          onMoved: function(v) { root.setVolume(v) }
-        }
-      }
-
-      // Output device picker
       Column {
-        spacing: 4
-        width: parent.width
-        visible: root.audioSinks.length > 0
+        id: panelColumn
+        width: scrollArea.availableWidth
+        spacing: 14
 
-        Text {
-          text: "Output"
-          color: Qt.darker(root.bar.foreground, 1.5)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-          font.bold: true
-        }
-
-        Repeater {
-          model: root.audioSinks
-
-          Common.PillButton {
-            required property var modelData
-
-            width: parent.width
-            text: modelData ? (modelData.description || modelData.nickname || modelData.name || "Unknown") : ""
-            iconText: root.sinkGlyph(modelData)
-            foreground: root.bar.foreground
-            horizontalPadding: 10
-            verticalPadding: 6
-            active: root.sink && modelData && root.sink.id === modelData.id
-            onClicked: { root.setDefaultSink(modelData); }
-          }
-        }
-      }
-
-      // Per-app streams
-      Column {
-        spacing: 4
-        width: parent.width
-        visible: root.audioStreams.length > 0
-
-        Text {
-          text: "Playing"
-          color: Qt.darker(root.bar.foreground, 1.5)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-          font.bold: true
-        }
-
-        Repeater {
-          model: root.audioStreams
+        // ---- Output ----
+        Column {
+          width: parent.width
+          spacing: 6
 
           Row {
-            required property var modelData
-
             width: parent.width
             spacing: 8
 
             Text {
-              text: modelData && modelData.properties ? (modelData.properties["application.name"] || modelData.properties["node.name"] || "Stream") : "Stream"
-              color: root.bar.foreground
+              text: "Output"
+              color: Qt.darker(root.bar.foreground, 1.5)
               font.family: root.bar.fontFamily
               font.pixelSize: 11
-              elide: Text.ElideRight
-              width: 110
+              font.bold: true
               anchors.verticalCenter: parent.verticalCenter
             }
 
+            Text {
+              text: root.sink ? "· " + root.nodeLabel(root.sink) : ""
+              color: Qt.darker(root.bar.foreground, 1.8)
+              font.family: root.bar.fontFamily
+              font.pixelSize: 11
+              elide: Text.ElideRight
+              width: parent.width - 70
+              anchors.verticalCenter: parent.verticalCenter
+            }
+          }
+
+          Row {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              id: outputIconText
+              text: root.outputIcon()
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: 16
+              width: 22
+              horizontalAlignment: Text.AlignHCenter
+              anchors.verticalCenter: parent.verticalCenter
+              opacity: root.outputMuted ? 0.5 : 1.0
+
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.toggleOutputMute()
+              }
+            }
+
             Common.Slider {
+              id: outputSlider
               bar: root.bar
-              width: parent.width - 124
+              width: parent.width - outputIconText.width - outputPercent.width - 16
               anchors.verticalCenter: parent.verticalCenter
               minimum: 0
-              maximum: 1.5
+              maximum: 1
               step: 0.05
-              value: modelData && modelData.audio ? modelData.audio.volume : 0
+              value: root.outputVolume
+              opacity: root.outputMuted ? 0.5 : 1.0
+              enabled: !!root.sink
 
-              onMoved: function(v) {
-                if (modelData && modelData.audio) modelData.audio.volume = v
+              onMoved: function(v) { root.setOutputVolume(v) }
+            }
+
+            Text {
+              id: outputPercent
+              text: Math.round((outputSlider.dragging ? outputSlider.liveValue : root.outputVolume) * 100) + "%"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: 11
+              width: 36
+              horizontalAlignment: Text.AlignRight
+              anchors.verticalCenter: parent.verticalCenter
+              opacity: root.outputMuted ? 0.5 : 1.0
+            }
+          }
+
+          Repeater {
+            model: root.audioSinks
+
+            Rectangle {
+              required property var modelData
+
+              readonly property bool active: root.sink && modelData && root.sink.id === modelData.id
+
+              width: panelColumn.width
+              height: deviceRow.implicitHeight + 10
+              radius: 4
+              color: deviceArea.pressed
+                ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.22)
+                : deviceArea.containsMouse
+                  ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+                  : (active ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.18) : "transparent")
+
+              Behavior on color { ColorAnimation { duration: 120 } }
+
+              Row {
+                id: deviceRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 8
+
+                Text {
+                  text: root.sinkGlyph(modelData)
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 14
+                  width: 18
+                  horizontalAlignment: Text.AlignHCenter
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                  text: root.nodeLabel(modelData)
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 12
+                  elide: Text.ElideRight
+                  width: parent.width - 18 - 14 - 16
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                  text: active ? "󰄬" : ""
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 13
+                  width: 14
+                  horizontalAlignment: Text.AlignRight
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+
+              MouseArea {
+                id: deviceArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.setDefaultSink(modelData)
+              }
+            }
+          }
+        }
+
+        // ---- Input ----
+        Column {
+          width: parent.width
+          spacing: 6
+          visible: root.audioSources.length > 0 || !!root.source
+
+          Row {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              text: "Input"
+              color: Qt.darker(root.bar.foreground, 1.5)
+              font.family: root.bar.fontFamily
+              font.pixelSize: 11
+              font.bold: true
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+              text: root.source ? "· " + root.nodeLabel(root.source) : ""
+              color: Qt.darker(root.bar.foreground, 1.8)
+              font.family: root.bar.fontFamily
+              font.pixelSize: 11
+              elide: Text.ElideRight
+              width: parent.width - 56
+              anchors.verticalCenter: parent.verticalCenter
+            }
+          }
+
+          Row {
+            width: parent.width
+            spacing: 8
+            visible: !!root.source
+
+            Text {
+              id: inputIconText
+              text: root.inputIcon()
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: 16
+              width: 22
+              horizontalAlignment: Text.AlignHCenter
+              anchors.verticalCenter: parent.verticalCenter
+              opacity: root.inputMuted ? 0.5 : 1.0
+
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.toggleInputMute()
+              }
+            }
+
+            Common.Slider {
+              id: inputSlider
+              bar: root.bar
+              width: parent.width - inputIconText.width - inputPercent.width - 16
+              anchors.verticalCenter: parent.verticalCenter
+              minimum: 0
+              maximum: 1
+              step: 0.05
+              value: root.inputVolume
+              opacity: root.inputMuted ? 0.5 : 1.0
+              enabled: !!root.source
+
+              onMoved: function(v) { root.setInputVolume(v) }
+            }
+
+            Text {
+              id: inputPercent
+              text: Math.round((inputSlider.dragging ? inputSlider.liveValue : root.inputVolume) * 100) + "%"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: 11
+              width: 36
+              horizontalAlignment: Text.AlignRight
+              anchors.verticalCenter: parent.verticalCenter
+              opacity: root.inputMuted ? 0.5 : 1.0
+            }
+          }
+
+          Repeater {
+            model: root.audioSources
+
+            Rectangle {
+              required property var modelData
+
+              readonly property bool active: root.source && modelData && root.source.id === modelData.id
+
+              width: panelColumn.width
+              height: sourceRow.implicitHeight + 10
+              radius: 4
+              color: sourceArea.pressed
+                ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.22)
+                : sourceArea.containsMouse
+                  ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+                  : (active ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.18) : "transparent")
+
+              Behavior on color { ColorAnimation { duration: 120 } }
+
+              Row {
+                id: sourceRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 8
+
+                Text {
+                  text: root.sourceGlyph(modelData)
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 14
+                  width: 18
+                  horizontalAlignment: Text.AlignHCenter
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                  text: root.nodeLabel(modelData)
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 12
+                  elide: Text.ElideRight
+                  width: parent.width - 18 - 14 - 16
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                  text: active ? "󰄬" : ""
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 13
+                  width: 14
+                  horizontalAlignment: Text.AlignRight
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+
+              MouseArea {
+                id: sourceArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.setDefaultSource(modelData)
+              }
+            }
+          }
+        }
+
+        // ---- Per-app streams ----
+        Column {
+          width: parent.width
+          spacing: 6
+          visible: root.audioStreams.length > 0
+
+          Text {
+            text: "Playing"
+            color: Qt.darker(root.bar.foreground, 1.5)
+            font.family: root.bar.fontFamily
+            font.pixelSize: 11
+            font.bold: true
+          }
+
+          Repeater {
+            model: root.audioStreams
+
+            Item {
+              required property var modelData
+
+              readonly property real streamVolume: modelData && modelData.audio ? modelData.audio.volume : 0
+              readonly property bool streamMuted: modelData && modelData.audio ? modelData.audio.muted : false
+
+              width: panelColumn.width
+              height: streamColumn.implicitHeight + 4
+
+              Column {
+                id: streamColumn
+                width: parent.width
+                spacing: 2
+
+                Row {
+                  width: parent.width
+                  spacing: 6
+
+                  Text {
+                    id: streamMuteIcon
+                    text: streamMuted ? "󰝟" : "󰕾"
+                    color: root.bar.foreground
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: 12
+                    width: 14
+                    horizontalAlignment: Text.AlignHCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    opacity: streamMuted ? 0.5 : 1.0
+
+                    MouseArea {
+                      anchors.fill: parent
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        if (modelData && modelData.audio) modelData.audio.muted = !modelData.audio.muted
+                      }
+                    }
+                  }
+
+                  Text {
+                    text: root.streamLabel(modelData)
+                    color: root.bar.foreground
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                    width: parent.width - streamMuteIcon.width - streamPct.width - 12
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+
+                  Text {
+                    id: streamPct
+                    text: Math.round(streamVolume * 100) + "%"
+                    color: Qt.darker(root.bar.foreground, 1.5)
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: 11
+                    width: 36
+                    horizontalAlignment: Text.AlignRight
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                }
+
+                Common.Slider {
+                  bar: root.bar
+                  width: parent.width
+                  minimum: 0
+                  maximum: 1.5
+                  step: 0.05
+                  value: streamVolume
+                  opacity: streamMuted ? 0.5 : 1.0
+
+                  onMoved: function(v) {
+                    if (modelData && modelData.audio) modelData.audio.volume = v
+                  }
+                }
               }
             }
           }
         }
       }
     }
-  }
-
-  function sinkGlyph(node) {
-    if (!node) return ""
-    var blob = String([
-      node.name, node.description, node.nickname,
-      node.properties ? node.properties["device.icon-name"] : "",
-      node.properties ? node.properties["device.product.name"] : ""
-    ].join(" ")).toLowerCase()
-    if (blob.indexOf("headphone") !== -1 || blob.indexOf("headset") !== -1) return "󰋋"
-    if (blob.indexOf("bluetooth") !== -1) return "󰂯"
-    if (blob.indexOf("hdmi") !== -1 || blob.indexOf("display") !== -1) return "󰍹"
-    return "󰓃"
   }
 }

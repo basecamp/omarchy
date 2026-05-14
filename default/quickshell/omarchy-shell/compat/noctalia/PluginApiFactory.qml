@@ -46,10 +46,14 @@ Item {
       property var _hostBridge: ({})
       property var mainInstance: null
 
-      // Resolved every read so the plugin sees current shell.json state.
-      readonly property var pluginSettings: _settingsProvider ? _settingsProvider() : ({})
+      // Writable because Noctalia Settings.qml components commonly stage edits
+      // with `pluginApi.pluginSettings = ...; pluginApi.saveSettings()`.
+      // The initial binding resolves shell.json + defaults; assignment during
+      // save intentionally replaces it with the staged value to persist.
+      property var pluginSettings: _settingsProvider ? _settingsProvider() : ({})
 
       property var panelOpenScreen: null
+      property var panelAnchorItem: null
       property var ipcHandlers: ({})
 
       // Noctalia i18n surface — v1 returns the key as-is.
@@ -62,19 +66,28 @@ Item {
       function trp(key, count, interp) { return String(key === undefined ? "" : key) }
       function hasTranslation(key) { return false }
 
-      function saveSettings() {
+      function saveSettings(settings) {
+        if (settings !== undefined) pluginSettings = settings
         if (_hostBridge && typeof _hostBridge.persistSettings === "function")
           _hostBridge.persistSettings(pluginId, pluginSettings)
+        // Re-read after persisting so mainInstance/bar widgets see the
+        // canonical merged settings (defaults + saved overrides) immediately.
+        if (_settingsProvider) pluginSettings = _settingsProvider()
+        if (mainInstance && typeof mainInstance.refresh === "function") mainInstance.refresh()
       }
 
       function openPanel(screen, buttonItem) {
-        panelOpenScreen = screen
+        panelOpenScreen = screen || true
+        panelAnchorItem = buttonItem || null
+        if (_hostBridge && _hostBridge.tooltipService && typeof _hostBridge.tooltipService.hide === "function")
+          _hostBridge.tooltipService.hide(buttonItem)
         if (_hostBridge && typeof _hostBridge.openPanel === "function")
           _hostBridge.openPanel(pluginId, screen, buttonItem)
       }
 
       function closePanel(screen) {
         panelOpenScreen = null
+        panelAnchorItem = null
         if (_hostBridge && typeof _hostBridge.closePanel === "function")
           _hostBridge.closePanel(pluginId, screen)
       }

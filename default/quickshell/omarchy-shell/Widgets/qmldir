@@ -13,3 +13,5 @@ NTextInput 1.0 NTextInput.qml
 NComboBox 1.0 NComboBox.qml
 NCheckbox 1.0 NCheckbox.qml
 NDivider 1.0 NDivider.qml
+NTabBar 1.0 NTabBar.qml
+NTabButton 1.0 NTabButton.qml

@@ -195,13 +195,19 @@ QtObject {
   // be either a layout entry inside `bar.layout.*` (bar widgets) or a top-level
   // entry in `plugins[]` (panels, overlays, services).
   //
-  // Special case: plugins with `kinds` containing "bar" are directly mounted
-  // by the shell host rather than loaded through plugins[], so they're
-  // implicitly always enabled.
+  // Special cases (implicitly always enabled, no shell.json entry needed):
+  //   - plugins whose `kinds` contains "bar" are mounted directly by the host.
+  //   - first-party plugins are shell infrastructure (bar-settings,
+  //     image-picker, ...). Requiring users to add them to plugins[] just to
+  //     summon them was a footgun: a stock shell.json with `plugins: []` would
+  //     silently make `omarchy launch bar-settings` a no-op.
   function isEnabled(id) {
     var key = String(id)
     var manifest = installedPlugins[key]
-    if (manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar") !== -1) return true
+    if (manifest) {
+      if (Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar") !== -1) return true
+      if (manifest.__isFirstParty) return true
+    }
     var config = shellConfigProvider ? shellConfigProvider() : null
     return findEntryLocation(config, key).found
   }

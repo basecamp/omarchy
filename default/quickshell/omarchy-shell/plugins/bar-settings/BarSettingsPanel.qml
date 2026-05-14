@@ -10,10 +10,20 @@ Item {
   id: root
 
   // Plugin lifecycle hooks. omarchy-shell calls open(payloadJson) on summon
-  // and close() on hide. We don't consume payloads yet, and visibility is
-  // driven by the host Loader's `active`, so both are no-ops for now.
-  function open(payloadJson) { /* no payload schema yet; reserved for future use */ }
-  function close() { /* visibility handled by parent Loader; nothing to clean up */ }
+  // and close() on hide. The Loader stays mounted while shell thinks the panel
+  // is open, so reopening after a WM close must explicitly re-show the window.
+  property bool closingFromHost: false
+
+  function open(payloadJson) {
+    closingFromHost = false
+    window.visible = true
+  }
+
+  function close() {
+    closingFromHost = true
+    window.visible = false
+    closingFromHost = false
+  }
 
   // Injected by the host shell when the panel is summoned. Shared instances
   // so the panel sees the same registry state the bar wrote into.
@@ -66,8 +76,7 @@ Item {
         right: [
           { id: "tray" }, { id: "systemStats" }, { id: "microphone" },
           { id: "bluetoothPanel" }, { id: "networkPanel" }, { id: "audioPanel" },
-          { id: "nightLight" }, { id: "brightness" }, { id: "powerProfile" },
-          { id: "battery" }, { id: "controlCenter" }, { id: "powerMenu" }
+          { id: "battery" }, { id: "controlCenter" }
         ]
       }
     },
@@ -317,6 +326,25 @@ Item {
     if (root.barWidgetRegistry && root.barWidgetRegistry.has(key))
       return root.barWidgetRegistry.metadataFor(key) || {}
     if (legacyWidgetMeta[key]) return legacyWidgetMeta[key]
+
+    // If a plugin widget failed to instantiate, it may not be in
+    // BarWidgetRegistry yet. Still use the manifest metadata so cards/dialogs
+    // show "Model Usage" instead of the raw id "noctalia.model-usage" and the
+    // settings gear can still expose the plugin's Settings.qml.
+    var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[key] : null
+    if (manifest) {
+      var meta = manifest.barWidget || {}
+      return {
+        displayName: meta.displayName || manifest.name || key,
+        name: meta.displayName || manifest.name || key,
+        description: meta.description || manifest.description || "",
+        category: meta.category || (manifest.__noctaliaCompat ? "Noctalia" : "Plugin"),
+        allowMultiple: meta.allowMultiple === true,
+        settingsForm: meta.settingsForm || "",
+        schema: Array.isArray(meta.schema) ? meta.schema : [],
+        source: "plugin"
+      }
+    }
     return {}
   }
 
@@ -373,6 +401,14 @@ Item {
       var registered = root.barWidgetRegistry.availableIds()
       for (var i = 0; i < registered.length; i++) ids[registered[i]] = true
     }
+    if (root.pluginRegistry && root.pluginRegistry.installedPlugins) {
+      var plugins = root.pluginRegistry.installedPlugins
+      for (var pid in plugins) {
+        var manifest = plugins[pid]
+        if (manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar-widget") !== -1)
+          ids[pid] = true
+      }
+    }
     for (var key in legacyWidgetMeta) ids[key] = true
     return Object.keys(ids)
   }
@@ -404,8 +440,9 @@ Item {
     for (var k = 0; k < ids.length; k++) {
       var id = ids[k]
       var meta = widgetMetadata(id)
-      var isBarWidget = !!(meta && meta.source !== "plugin")
-        || (meta && meta.kinds && meta.kinds.indexOf && meta.kinds.indexOf("bar-widget") !== -1)
+      var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
+      var manifestIsBarWidget = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar-widget") !== -1
+      var isBarWidget = !!(meta && meta.source !== "plugin") || manifestIsBarWidget
       if (isBarSection) {
         if (!isBarWidget && !legacyWidgetMeta[id]) continue
         var inSection = sectionArray(section)
@@ -426,7 +463,6 @@ Item {
         // Plugins section: accept third-party plugins with any non-bar kind.
         // First-party panels/overlays (bar-settings, image-picker) are
         // shell infrastructure and don't belong in user-editable lists.
-        var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
         if (!manifest) continue
         if (manifest.__isFirstParty) continue
         if (existingInPlugins[id]) continue
@@ -478,6 +514,11 @@ Item {
     implicitWidth: 720
     implicitHeight: 720
     minimumSize: Qt.size(560, 500)
+
+    onVisibleChanged: {
+      if (!visible && !root.closingFromHost && root.shell && typeof root.shell.hide === "function")
+        root.shell.hide("omarchy.bar-settings")
+    }
 
     Rectangle {
       anchors.fill: parent
@@ -953,7 +994,15 @@ Item {
     }
 
     function commit() {
-      root.updateEntry(sectionKey, entryIndex, workingEntry)
+      // Native forms update workingEntry through fieldChanged(). Noctalia
+      // Settings.qml components keep their own editSettings state and expose a
+      // saveSettings() method that writes via pluginApi.saveSettings(). Avoid
+      // overwriting that freshly-saved entry with the stale workingEntry shell.
+      if (formLoader.item && typeof formLoader.item.saveSettings === "function") {
+        formLoader.item.saveSettings()
+      } else {
+        root.updateEntry(sectionKey, entryIndex, workingEntry)
+      }
       win.visible = false
     }
 
@@ -1037,7 +1086,6 @@ Item {
       switch (meta.settingsForm) {
       case "spacerSettings": return spacerSettingsComponent
       case "calendarSettings": return calendarSettingsComponent
-      case "brightnessSettings": return brightnessSettingsComponent
       }
     }
     var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
@@ -1057,11 +1105,9 @@ Item {
   }
 
   // Loader stub for Noctalia plugins that bundle a Settings.qml. We load the
-  // plugin's form and inject pluginApi so the plugin's own "save" button
-  // routes through pluginApi.saveSettings() — which lands in shell.json via
-  // shell.updateEntryInline. The plugin form doesn't emit `fieldChanged`,
-  // so the dialog's Apply/Cancel buttons are mostly decorative for these
-  // (writes already happened by the time you click Apply).
+  // plugin's form and inject pluginApi. The outer Omarchy dialog owns the
+  // Apply button, so this wrapper must forward saveSettings() to the loaded
+  // Noctalia form.
   Component {
     id: noctaliaSettingsComponent
 
@@ -1071,6 +1117,14 @@ Item {
       property string pluginId: entry && entry.id ? String(entry.id) : ""
       property var manifest: pluginId && root.pluginRegistry
         ? root.pluginRegistry.installedPlugins[pluginId] : null
+
+      function saveSettings() {
+        if (settingsLoader.item && typeof settingsLoader.item.saveSettings === "function") {
+          settingsLoader.item.saveSettings()
+        } else {
+          console.warn("Noctalia settings form has no saveSettings():", pluginId)
+        }
+      }
 
       implicitHeight: settingsLoader.item ? settingsLoader.item.implicitHeight : 0
       implicitWidth: settingsLoader.item ? settingsLoader.item.implicitWidth : 0
@@ -1179,32 +1233,6 @@ Item {
         font.pixelSize: 12
         width: parent.width
         onEditingFinished: calForm.fieldChanged("verticalFormat", text)
-      }
-    }
-  }
-
-  Component {
-    id: brightnessSettingsComponent
-
-    Column {
-      id: brightForm
-      signal fieldChanged(string key, var value)
-      property var entry: ({})
-
-      spacing: 8
-      width: parent ? parent.width : 0
-
-      Text {
-        text: "Scroll step (% per notch)"
-        color: Qt.darker(root.foreground, 1.4)
-        font.family: root.fontFamily
-        font.pixelSize: 11
-      }
-      SpinBox {
-        from: 1
-        to: 25
-        value: brightForm.entry.step !== undefined ? brightForm.entry.step : 5
-        onValueModified: brightForm.fieldChanged("step", value)
       }
     }
   }

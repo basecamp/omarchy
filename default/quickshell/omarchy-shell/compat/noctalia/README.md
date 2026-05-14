@@ -38,7 +38,7 @@ We ship just enough of Noctalia's QML namespace to render typical bar widgets.
 | Module | Symbols |
 |---|---|
 | `qs.Commons` | `Color`, `Style`, `Logger`, `Settings` (read-only), `I18n` (stub), `Time`, `Icons` (~50 entries), `ThemeIcons` (stub), `ShellState` (stub) |
-| `qs.Widgets` | `NText`, `NIcon`, `NIconButton`, `NBox`, `NButton`, `NPopupContextMenu`, `NScrollText`, `NToggle`, `NSpinBox`, `NSlider`, `NTextInput`, `NComboBox`, `NCheckbox`, `NDivider` |
+| `qs.Widgets` | `NText`, `NIcon`, `NIconButton`, `NBox`, `NButton`, `NPopupContextMenu`, `NScrollText`, `NToggle`, `NSpinBox`, `NSlider`, `NTextInput`, `NComboBox`, `NCheckbox`, `NDivider`, `NTabBar`, `NTabButton` |
 | `qs.Services.UI` | `BarService`, `TooltipService`, `PanelService` |
 | `qs.Services.System` | `HostService` (reads `/etc/os-release`) |
 | `qs.Services.Power` | `PowerProfileService` (returns `noctaliaPerformanceMode: false`) |

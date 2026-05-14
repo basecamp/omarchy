@@ -10,6 +10,7 @@ QtObject {
   id: root
 
   // Radii.
+  readonly property real radiusXXS: 1
   readonly property real radiusXS: 2
   readonly property real radiusS:  3
   readonly property real radiusM:  4
@@ -22,6 +23,7 @@ QtObject {
 
   // Margins / paddings. Noctalia uses two parallel scales for margins (one
   // tighter, one looser); we map them to the same values.
+  readonly property real marginXXS: 1
   readonly property real marginXS:  2
   readonly property real marginS:   4
   readonly property real marginM:   6

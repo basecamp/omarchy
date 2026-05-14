@@ -50,7 +50,7 @@ ShellRoot {
       layout: {
         left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [{ id: "calendar", format: "dddd HH:mm" }],
-        right: [{ id: "audioPanel" }, { id: "controlCenter" }, { id: "powerMenu" }]
+        right: [{ id: "audioPanel" }, { id: "controlCenter" }]
       }
     },
     plugins: [
@@ -196,6 +196,11 @@ ShellRoot {
   // captured in the closure.
   Compat.PluginApiFactory { id: noctaliaApiFactory }
 
+  Item {
+    id: noctaliaServiceHost
+    visible: false
+  }
+
   property var _noctaliaApis: ({})
   property var _noctaliaServices: ({})
 
@@ -254,6 +259,7 @@ ShellRoot {
           shell.summon(key, JSON.stringify({ source: "noctalia" }))
         },
         closePanel: function(_pluginId, _screen) { shell.hide(key) },
+        tooltipService: NoctaliaUI.TooltipService,
         currentScreen: function() {
           var screens = Quickshell.screens
           return screens && screens.length > 0 ? screens[0] : null
@@ -293,7 +299,7 @@ ShellRoot {
         console.warn("noctalia service load failed for " + key + ": " + comp.errorString())
         return
       }
-      var inst = comp.createObject(shell, { pluginApi: api })
+      var inst = comp.createObject(noctaliaServiceHost, { pluginApi: api })
       if (!inst) {
         console.warn("noctalia service createObject returned null for", key)
         return
@@ -418,6 +424,13 @@ ShellRoot {
       console.warn("summon: unknown plugin", id)
       return false
     }
+    // A disabled plugin has no Loader, so setting openPanelIds would only
+    // produce an invisible "open" state that toggle() then has to unwind.
+    // Tell the caller plainly instead of silently no-op'ing.
+    if (!shell.pluginRegistry.isEnabled(id)) {
+      console.warn("summon: plugin not enabled, not summoning:", id)
+      return false
+    }
     var next = ({})
     for (var k in openPanelIds) next[k] = openPanelIds[k]
     next[id] = true
@@ -539,7 +552,9 @@ ShellRoot {
       readonly property string sourceUrl: shell.pluginRegistry.entryPointUrl(manifest, entryKind)
 
       property Loader panelLoader: Loader {
-        source: panelEntry.sourceUrl
+        readonly property bool wrapNoctaliaPanel: !!(panelEntry.manifest && panelEntry.manifest.__noctaliaCompat && panelEntry.entryKind === "panel")
+        source: wrapNoctaliaPanel ? "" : panelEntry.sourceUrl
+        sourceComponent: wrapNoctaliaPanel ? noctaliaPanelWrapperComponent : null
         active: panelEntry.sourceUrl !== "" && (panelEntry.keepLoaded || shell.openPanelIds[panelEntry.pluginId] === true)
         asynchronous: true
         onLoaded: {
@@ -558,12 +573,22 @@ ShellRoot {
         }
         onStatusChanged: {
           if (status === Loader.Error) {
-            console.warn("panel plugin " + panelEntry.pluginId + " failed:",
-              sourceComponent ? sourceComponent.errorString() : "")
+            // Loader.errorString() reflects the source-load failure even when
+            // sourceComponent is null. Surface both so the user sees something
+            // actionable instead of a panel that silently refuses to open.
+            var detail = errorString && errorString() ? errorString() : ""
+            if (!detail && sourceComponent) detail = sourceComponent.errorString()
+            console.warn("panel plugin " + panelEntry.pluginId + " failed to load:", detail)
             shell.hide(panelEntry.pluginId)
           }
         }
         Component.onDestruction: shell.unregisterPanelLoader(panelEntry.pluginId)
+      }
+
+      property Component noctaliaPanelWrapperComponent: Component {
+        Compat.PanelWrapper {
+          panelSource: panelEntry.sourceUrl
+        }
       }
     }
   }

@@ -18,8 +18,13 @@ QtObject {
 
   function hide(item) {
     if (!bar) return
-    if (typeof bar.hideTooltip === "function") {
-      bar.hideTooltip(item || null)
+    if (item && typeof bar.hideTooltip === "function") {
+      bar.hideTooltip(item)
+    } else if (bar.tooltipTarget) {
+      // Noctalia plugins often call TooltipService.hide() without the source
+      // item on click. Native bar.hideTooltip(target) ignores null targets, so
+      // clear the currently visible tooltip explicitly.
+      bar.hideTooltip(bar.tooltipTarget)
     }
   }
 }
