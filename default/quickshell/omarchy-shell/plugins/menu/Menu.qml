@@ -30,7 +30,7 @@ Item {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
 
-    root.pendingInitialMenu = payload.initialMenu || "root"
+    root.pendingInitialMenu = payload.initialMenu || payload.menu || "root"
     root.pendingSelectionFile = payload.selectionFile || ""
     root.pendingDoneFile = payload.doneFile || ""
     root.pendingColorsRaw = payload.colorsRawBase64 ? root.decodeBase64(payload.colorsRawBase64) : (payload.colorsRaw || "")
@@ -43,7 +43,11 @@ Item {
     }
 
     root.menuJsonFile = payload.menuJsonFile || ""
-    if (root.menuJsonFile) menuJsonFileView.reload()
+    if (root.menuJsonFile) { menuJsonFileView.reload(); return }
+
+    // Hot path: no file, no payload — use the cached items the shell loaded
+    // from JSONC at startup. This is what direct IPC summons land on.
+    root.openExistingMenu(root.pendingInitialMenu, root.pendingSelectionFile, root.pendingDoneFile)
   }
 
   function close() {
@@ -54,6 +58,13 @@ Item {
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
   property string colorsFile: Quickshell.env("OMARCHY_MENU_COLORS_FILE") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/colors.toml")
   property string styleFile: Quickshell.env("OMARCHY_MENU_STYLE_FILE") || (Quickshell.env("HOME") + "/.local/state/omarchy/toggles/quickshell-menu.json")
+  // JSONC menu definitions. The shell parses both at startup and merges
+  // the user file on top of the defaults, so the keybind → IPC → visible
+  // path doesn't have to shell out to bash + jq on every open.
+  property string defaultMenuPath: omarchyPath + "/default/omarchy/omarchy-menu.jsonc"
+  property string userMenuPath: Quickshell.env("HOME") + "/.config/omarchy/extensions/omarchy-menu.jsonc"
+  property var defaultMenuItems: []
+  property var userMenuItems: []
   property string selectionFile: ""
   property string doneFile: ""
   property bool requestActive: false
@@ -126,6 +137,124 @@ Item {
     return root.items[id] || null
   }
 
+  // ------------------------------------------------------------------
+  // JSONC → normalized item array. Mirrors the bash bin's jq pipeline so
+  // the on-disk authoring format stays untouched.
+  // ------------------------------------------------------------------
+
+  function stripJsonc(raw) {
+    // Match what the bash bin's jq pipeline accepts: full-line `//` comments
+    // plus trailing commas before } or ]. Anything fancier should land in
+    // valid JSON anyway.
+    return String(raw || "")
+      .replace(/^\s*\/\/[^\n]*(\n|$)/gm, "")
+      .replace(/,(\s*[}\]])/g, "$1")
+  }
+
+  function normalizeAliases(value) {
+    if (Array.isArray(value)) return value.filter(function(v) { return v })
+    if (typeof value === "string" && value) return [value]
+    return []
+  }
+
+  function normalizeKeywords(id, aliases, raw) {
+    function space(s) { return String(s || "").replace(/[._-]+/g, " ") }
+    var parts = [space(id), aliases.map(space).join(" "), raw || ""].join(" ").split(/\s+/)
+    var seen = {}
+    var out = []
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i]
+      if (!p || seen[p]) continue
+      seen[p] = true
+      out.push(p)
+    }
+    return out.join(" ")
+  }
+
+  function normalizeItem(id, raw) {
+    var aliases = normalizeAliases(raw.aliases)
+    var parent = raw.parent
+    if (parent === undefined) {
+      parent = id.indexOf(".") >= 0 ? id.split(".").slice(0, -1).join(".") : "root"
+    }
+    if (id === "root") parent = ""
+
+    var kind = raw.action ? "action" : (raw.target ? "link" : "menu")
+
+    return {
+      id: id,
+      parent: parent,
+      kind: kind,
+      icon: raw.icon || "",
+      label: raw.label || id,
+      target: raw.target || "",
+      keywords: normalizeKeywords(id, aliases, raw.keywords),
+      description: raw.description || "",
+      action: raw.action || "",
+      provider: raw.provider || "",
+      aliases: aliases,
+      when: raw.when || "",
+      checked: raw.checked || ""
+    }
+  }
+
+  function parseMenuJsonc(raw) {
+    var stripped = stripJsonc(raw)
+    if (!stripped.trim()) return []
+    var parsed
+    try { parsed = JSON.parse(stripped) } catch (e) {
+      console.warn("omarchy-menu: JSONC parse failed:", e)
+      return []
+    }
+    if (typeof parsed !== "object" || parsed === null) return []
+    var source = (parsed.items && typeof parsed.items === "object" && !Array.isArray(parsed.items))
+      ? parsed.items
+      : parsed
+    var out = []
+    for (var id in source) {
+      var entry = source[id]
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue
+      out.push(normalizeItem(id, entry))
+    }
+    return out
+  }
+
+  // Merge defaults + user extension. Later entries override earlier ones
+  // on a per-key basis (so the user can tweak label/icon/action without
+  // re-declaring the whole row).
+  function rebuildItemsFromSources() {
+    var nextItems = ({})
+    var nextOrder = []
+    var sources = [root.defaultMenuItems || [], root.userMenuItems || []]
+    for (var s = 0; s < sources.length; s++) {
+      var src = sources[s]
+      for (var i = 0; i < src.length; i++) {
+        var entry = src[i]
+        if (!entry || !entry.id) continue
+        if (!nextItems[entry.id]) nextOrder.push(entry.id)
+        var prior = nextItems[entry.id] || {}
+        var merged = {}
+        for (var k in prior) merged[k] = prior[k]
+        for (var k2 in entry) merged[k2] = entry[k2]
+        merged.id = entry.id
+        nextItems[entry.id] = merged
+      }
+    }
+    if (!nextItems.root) {
+      nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", label: "Go", target: "", keywords: "", description: "", aliases: [], when: "", checked: "", action: "", provider: "" }
+      nextOrder.unshift("root")
+    }
+    for (var k3 = 0; k3 < nextOrder.length; k3++) nextItems[nextOrder[k3]].order = k3
+    root.items = nextItems
+    root.itemOrder = nextOrder
+    root.rowsLoaded = true
+    root.evaluateGuards()
+    if (root.opened) root.rebuildDisplay()
+  }
+
+  // Legacy: invoked by the bash bin via the menuJsonFile payload. The new
+  // in-shell path uses rebuildItemsFromSources instead; this branch stays
+  // for the transitional period while the bin still exists.
   function loadMenuJson(raw) {
     var nextItems = ({})
     var nextOrder = []
@@ -200,15 +329,79 @@ Item {
     if (changed) root.rebuildDisplay()
   }
 
+  // Each known provider is a tiny bash one-liner that enumerates a list and
+  // emits one tab-delimited row per item: `label\tvalue\tcurrent`. The shell
+  // turns those into menu items children of `menuId`.
+  readonly property var providers: ({
+    "fonts": {
+      script: "current=$(omarchy-font-current 2>/dev/null); omarchy-font-list 2>/dev/null | while read -r f; do [[ -z $f ]] && continue; printf '%s\\t%s\\t%s\\n' \"$f\" \"$f\" \"$current\"; done",
+      icon: "",
+      actionFor: function(value) { return "omarchy-font-set '" + value.replace(/'/g, "'\\''") + "'" },
+      keywordsFor: function(value) { return value + " typeface" }
+    },
+    "power-profiles": {
+      script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
+      icon: "\udb81\udc0b",
+      actionFor: function(value) { return "powerprofilesctl set '" + value.replace(/'/g, "'\\''") + "'" },
+      keywordsFor: function(value) { return value + " power profile" }
+    }
+  })
+
+  function slugify(value) {
+    return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item"
+  }
+
   function startProviderForMenu(id) {
     var entry = root.item(id)
     if (!entry || !entry.provider || root.providersLoaded[id]) return
+    var spec = root.providers[entry.provider]
+    if (!spec) return
 
     root.providersLoaded[id] = true
     providerProc.menuId = id
-    providerProc.output = ""
-    providerProc.command = [root.menuBin, "--provider", entry.provider, id]
+    providerProc.providerKey = entry.provider
+    providerProc.collected = ""
+    providerProc.command = ["bash", "-lc", spec.script]
     providerProc.running = true
+  }
+
+  function mergeProviderRows(rows, menuId, providerKey) {
+    var spec = root.providers[providerKey]
+    if (!spec) return
+    var changed = false
+    var lines = String(rows || "").split("\n")
+    var nextOrder = root.itemOrder.slice()
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim()
+      if (!line) continue
+      var parts = line.split("\t")
+      var label = parts[0] || ""
+      var value = parts[1] || parts[0] || ""
+      var current = parts[2] || ""
+      if (!label) continue
+      var id = menuId + "." + root.slugify(value)
+      var displayLabel = (value === current) ? (label + " ✓") : label
+      if (!root.items[id]) nextOrder.push(id)
+      root.items[id] = {
+        id: id,
+        parent: menuId,
+        kind: "action",
+        icon: spec.icon || "",
+        label: displayLabel,
+        target: "",
+        keywords: spec.keywordsFor(value),
+        description: "",
+        action: spec.actionFor(value),
+        provider: "",
+        aliases: [],
+        when: "",
+        checked: "",
+        order: nextOrder.indexOf(id)
+      }
+      changed = true
+    }
+    root.itemOrder = nextOrder
+    if (changed && root.opened) root.rebuildDisplay()
   }
 
   function startNextProvider() {
@@ -312,8 +505,25 @@ Item {
     return count
   }
 
+  // Items whose `when:` evaluated to false are hidden everywhere — nav,
+  // drilldown, and search. Items with no `when:` are always visible.
+  function isVisible(entry) {
+    if (!entry) return false
+    if (!entry.when) return true
+    var result = root.whenResults[entry.id]
+    return result === undefined ? true : result
+  }
+
+  // Label with the ✓ marker baked in when `checked:` evaluated truthy.
+  function labelFor(entry) {
+    if (!entry) return ""
+    if (entry.checked && root.checkedResults[entry.id]) return entry.label + " ✓"
+    return entry.label
+  }
+
   function matchesQuery(entry, query) {
     if (!entry || entry.id === "root") return false
+    if (!root.isVisible(entry)) return false
 
     var haystack = (entry.label + " " + root.pathFor(entry.id) + " " + entry.keywords + " " + entry.description).toLowerCase()
     var terms = query.toLowerCase().trim().split(/\s+/)
@@ -353,7 +563,7 @@ Item {
       itemId: entry.id,
       kind: entry.kind,
       icon: entry.icon,
-      label: entry.label,
+      label: root.labelFor(entry),
       target: target,
       detail: detail || "",
       path: root.pathFor(entry.id),
@@ -414,6 +624,7 @@ Item {
       for (var j = 0; j < root.itemOrder.length; j++) {
         var child = root.item(root.itemOrder[j])
         if (!child || child.parent !== active) continue
+        if (!root.isVisible(child)) continue
         rows.push(root.displayRow(child, child.description, child.order))
       }
     }
@@ -505,11 +716,22 @@ Item {
   }
 
   function applySelected(id, action) {
-    if (!id || !selectionFile || !doneFile) {
-      cancel()
+    if (!id) { cancel(); return }
+
+    // Direct-IPC path: no bash bin was involved, so no tempfiles to write.
+    // Execute the action ourselves and close the menu.
+    if (!selectionFile || !doneFile) {
+      applySerial = requestSerial
+      resetRequest()
+      opened = false
+      filterText = ""
+      if (action) Quickshell.execDetached(["bash", "-lc", action])
       return
     }
 
+    // Legacy bash-bin path: write selection + done file, the bash watcher
+    // picks it up and runs the action. Stays for the transitional period
+    // while the old bin can still summon the menu via menuJsonFile.
     var activeSelectionFile = selectionFile
     var activeDoneFile = doneFile
     applySerial = requestSerial
@@ -586,17 +808,75 @@ Item {
 
   ListModel { id: displayModel }
 
+  // ----------------------------------------------------------- IPC surface
+  //
+  // `omarchy-shell-ipc menu summon <id>` is the keybind hot path — the
+  // Hyprland bindings call straight into here, no bash hops. `refresh` is
+  // a manual nudge for when watchChanges isn't enough (e.g. someone wired
+  // a CI step that re-emits the JSONC).
+
+  // Mirrors `route_target` in the old bash bin: caller may pass a real id
+  // (`system`, `setup.power`) or an alias declared in JSONC (`power`,
+  // `reminder-set`). Unknown strings fall through to the id-as-route
+  // behavior so misspellings still attempt to open the literal id.
+  function resolveRoute(input) {
+    var raw = String(input || "").toLowerCase().replace(/_/g, "-")
+    if (!raw || raw === "go" || raw === "menu") return "root"
+    for (var i = 0; i < root.itemOrder.length; i++) {
+      var entry = root.items[root.itemOrder[i]]
+      if (!entry || !entry.aliases) continue
+      for (var j = 0; j < entry.aliases.length; j++) {
+        var alias = String(entry.aliases[j] || "").toLowerCase().replace(/_/g, "-")
+        if (alias === raw) return entry.id
+      }
+    }
+    return raw
+  }
+
+  IpcHandler {
+    target: "menu"
+
+    function summon(initialMenu: string): string {
+      var id = root.resolveRoute(initialMenu)
+      var entry = root.items[id]
+      // If the resolved id is an action (i.e. the user invoked an alias for
+      // a leaf, e.g. `omarchy-shell-ipc menu summon screenrecord-stop`),
+      // run it directly instead of opening an action with no children.
+      if (entry && entry.kind === "action" && entry.action) {
+        Quickshell.execDetached(["bash", "-lc", entry.action])
+        return "ok"
+      }
+      // If it's a link (a redirect to another menu), follow the link.
+      if (entry && entry.kind === "link" && entry.target) id = entry.target
+      var payload = JSON.stringify({ menu: id })
+      root.open(payload)
+      return "ok"
+    }
+
+    function refresh(): string {
+      defaultMenuFile.reload()
+      userMenuFile.reload()
+      return "ok"
+    }
+
+    function close(): string {
+      root.close()
+      return "ok"
+    }
+
+    function ping(): string { return "ok" }
+  }
+
   Process {
     id: providerProc
     property string menuId: ""
-    property string output: ""
+    property string providerKey: ""
+    property string collected: ""
     stdout: SplitParser {
-      onRead: function(data) {
-        providerProc.output += data + "\n"
-      }
+      onRead: function(data) { providerProc.collected += data + "\n" }
     }
     onExited: {
-      root.mergeProviderJson(output, menuId)
+      root.mergeProviderRows(providerProc.collected, providerProc.menuId, providerProc.providerKey)
       if (root.filterText.trim()) root.loadProvidersForSearch()
       root.startNextProvider()
     }
@@ -607,6 +887,87 @@ Item {
     path: root.menuJsonFile
     printErrors: false
     onLoaded: root.openMenu(text(), root.pendingInitialMenu, root.pendingSelectionFile, root.pendingDoneFile, root.pendingColorsRaw)
+  }
+
+  // The JSONC sources are watched so live edits to the default file (or the
+  // user extension at ~/.config/omarchy/extensions/omarchy-menu.jsonc) take
+  // effect without restarting the shell.
+  FileView {
+    id: defaultMenuFile
+    path: root.defaultMenuPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: { root.defaultMenuItems = root.parseMenuJsonc(text()); root.rebuildItemsFromSources() }
+    onFileChanged: reload()
+  }
+
+  FileView {
+    id: userMenuFile
+    path: root.userMenuPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: { root.userMenuItems = root.parseMenuJsonc(text()); root.rebuildItemsFromSources() }
+    onLoadFailed: { root.userMenuItems = []; root.rebuildItemsFromSources() }
+    onFileChanged: reload()
+  }
+
+  // ---------------------------------------------------------------- guards
+  //
+  // `when:` (visibility) and `checked:` (✓ marker) are bash expressions the
+  // shell wasn't allowed to evaluate before the perf rewrite. Now the shell
+  // batches them into one bash subprocess per (re)load so the open path
+  // never has to wait on them.
+
+  property var whenResults: ({})       // id → true|false (allow visibility)
+  property var checkedResults: ({})    // id → true|false (show ✓)
+
+  function evaluateGuards() {
+    var script = ""
+    var ids = Object.keys(root.items)
+    for (var i = 0; i < ids.length; i++) {
+      var entry = root.items[ids[i]]
+      if (!entry) continue
+      if (entry.when) script += "if " + entry.when + " >/dev/null 2>&1; then echo " + ids[i] + ":w:1; else echo " + ids[i] + ":w:0; fi\n"
+      if (entry.checked) script += "if " + entry.checked + " >/dev/null 2>&1; then echo " + ids[i] + ":c:1; else echo " + ids[i] + ":c:0; fi\n"
+    }
+    if (!script) {
+      root.whenResults = ({})
+      root.checkedResults = ({})
+      return
+    }
+    guardProc.collected = ""
+    guardProc.command = ["bash", "-lc", script]
+    guardProc.running = true
+  }
+
+  Process {
+    id: guardProc
+    property string collected: ""
+    stdout: SplitParser {
+      onRead: function(data) { guardProc.collected += data + "\n" }
+    }
+    onExited: {
+      var nextWhen = ({})
+      var nextChecked = ({})
+      var lines = guardProc.collected.split("\n")
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim()
+        if (!line) continue
+        var colon = line.lastIndexOf(":")
+        if (colon < 0) continue
+        var value = line.substring(colon + 1) === "1"
+        var rest = line.substring(0, colon)
+        var tagAt = rest.lastIndexOf(":")
+        if (tagAt < 0) continue
+        var id = rest.substring(0, tagAt)
+        var tag = rest.substring(tagAt + 1)
+        if (tag === "w") nextWhen[id] = value
+        else if (tag === "c") nextChecked[id] = value
+      }
+      root.whenResults = nextWhen
+      root.checkedResults = nextChecked
+      if (root.opened) root.rebuildDisplay()
+    }
   }
 
   FileView {
