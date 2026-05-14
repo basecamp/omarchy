@@ -526,7 +526,7 @@ show_setup_system_menu() {
 }
 
 show_install_menu() {
-  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n  Browser\n󱚤  AI\n  Gaming\n󰍲  Windows") in
+  case $(menu "Install" "󰣇  Package\n󰣇  AUR\n  Web App\n  TUI\n  Service\n  Style\n󰵮  Development\n  Editor\n  Terminal\n  Browser\n󱚤  AI\n󰏘  Creative\n  Gaming\n󰍲  Windows") in
   *Package*) terminal omarchy-pkg-install ;;
   *AUR*) terminal omarchy-pkg-aur-install ;;
   *Web*) present_terminal omarchy-webapp-install ;;
@@ -537,6 +537,7 @@ show_install_menu() {
   *Editor*) show_install_editor_menu ;;
   *Terminal*) show_install_terminal_menu ;;
   *Browser*) show_install_browser_menu ;;
+  *Creative*) show_install_creative_menu ;;
   *Gaming*) show_install_gaming_menu ;;
   *AI*) show_install_ai_menu ;;
   *Windows*) present_terminal "omarchy-windows-vm install" ;;
@@ -552,6 +553,13 @@ show_install_browser_menu() {
   *Brave*) present_terminal "omarchy-install-browser brave" ;;
   *Firefox*) present_terminal "omarchy-install-browser firefox" ;;
   *Zen*) present_terminal "omarchy-install-browser zen" ;;
+  *) show_install_menu ;;
+  esac
+}
+
+show_install_creative_menu() {
+  case $(menu "Install" "  Affinity") in
+  *Affinity*) present_terminal omarchy-install-creative-affinity ;;
   *) show_install_menu ;;
   esac
 }

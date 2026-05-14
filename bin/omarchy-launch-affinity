@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# omarchy:summary=Launch Affinity with DPI scaled to the focused monitor
+
+WINEPREFIX="$HOME/.AffinityLinux-Appimage"
+
+if [[ -d $WINEPREFIX ]]; then
+  # Wait for any previous Wine/Affinity processes to fully exit
+  while pgrep -f "Affinity.exe" >/dev/null 2>&1; do
+    sleep 0.5
+  done
+  while pgrep -f "mount_affini.*wineserver" >/dev/null 2>&1; do
+    sleep 0.5
+  done
+
+  SCALE=$(hyprctl monitors -j | jq -r '[.[] | select(.focused == true)][0].scale // 1')
+  DPI=$(jq -n "$SCALE * 96 | round")
+  HEX=$(printf '%08x' "$DPI")
+
+  for reg in "$WINEPREFIX/user.reg" "$WINEPREFIX/system.reg"; do
+    if [[ -f $reg ]]; then
+      sed -i "s/\"LogPixels\"=dword:[0-9a-f]\{8\}/\"LogPixels\"=dword:${HEX}/g" "$reg"
+    fi
+  done
+fi
+
+exec /usr/bin/affinity "$@"
