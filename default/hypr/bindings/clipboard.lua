@@ -10,7 +10,7 @@ local function send_shortcut_once(mods, key)
   end
 end
 
-hl.bind("SUPER + C", send_shortcut_once("CTRL", "Insert"), { description = "Universal copy" })
-hl.bind("SUPER + V", send_shortcut_once("SHIFT", "Insert"), { description = "Universal paste" })
-hl.bind("SUPER + X", send_shortcut_once("CTRL", "X"), { description = "Universal cut" })
-hl.bind("SUPER + CTRL + V", hl.dsp.exec_cmd("omarchy-launch-walker -m clipboard"), { description = "Clipboard manager" })
+o.bind("SUPER + C", "Universal copy", send_shortcut_once("CTRL", "Insert"))
+o.bind("SUPER + V", "Universal paste", send_shortcut_once("SHIFT", "Insert"))
+o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", "X"))
+o.bind("SUPER + CTRL + V", "Clipboard manager", "omarchy-launch-walker -m clipboard")

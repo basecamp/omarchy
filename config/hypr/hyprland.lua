@@ -7,6 +7,7 @@ local home = os.getenv("HOME") or ""
 package.path = home .. "/.config/?.lua;" .. (os.getenv("OMARCHY_PATH") or (home .. "/.local/share/omarchy")) .. "/?.lua;" .. package.path
 
 local paths = require("default.hypr.paths")
+require("default.hypr.helpers")
 
 -- Use Omarchy defaults, but don't edit these directly.
 require("default.hypr.autostart")
