@@ -558,7 +558,7 @@ show_install_browser_menu() {
 }
 
 show_install_creative_menu() {
-  case $(menu "Install" "  Affinity") in
+  case $(menu "Install" "󰏘  Affinity") in
   *Affinity*) present_terminal omarchy-install-creative-affinity ;;
   *) show_install_menu ;;
   esac
