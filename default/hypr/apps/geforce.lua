@@ -1,5 +1,1 @@
-hl.window_rule({
-  name = "geforce",
-  match = { class = "GeForceNOW" },
-  idle_inhibit = "fullscreen",
-})
+o.window("GeForceNOW", { idle_inhibit = "fullscreen" })

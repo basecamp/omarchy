@@ -21,4 +21,4 @@ require("hypr.autostart")
 require("default.hypr.toggles")
 
 -- Add any other personal Hyprland configuration below.
--- hl.window_rule({ match = { class = "qemu" }, workspace = "5" })
+-- o.window("qemu", { workspace = "5" })
