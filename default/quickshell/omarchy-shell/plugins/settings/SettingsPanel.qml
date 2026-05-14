@@ -72,13 +72,13 @@ Item {
 
   // ---------------- navigation ---------------------------------------------
   readonly property var categoryIds: ["defaults", "style", "bar", "system", "plugins"]
-  property string activeCategory: "bar"
+  property string activeCategory: "defaults"
 
   // Keyboard nav state. Two zones: "sidebar" (j/k cycles category) and
   // "body" (j/k walks through visible focusable controls). Tab/Enter/l/Right
   // dive from sidebar into body; h/Left/Esc backs out.
   property string focusZone: "sidebar"
-  property int sidebarIndex: 2
+  property int sidebarIndex: 0
 
   // Focus visuals — deliberately *different* from selected styling so the
   // keyboard cursor never gets confused with the current value/choice. A
