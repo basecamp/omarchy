@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# omarchy:summary=Control the Omarchy menu (toggle / summon / close / refresh)
+# omarchy:args=[toggle|summon|close|refresh|ping] [route]
+# omarchy:examples=omarchy menu | omarchy menu toggle system | omarchy menu summon style.theme | omarchy menu refresh
+
+# Thin wrapper around `omarchy-shell-ipc menu`. Keybinds and the bar icon
+# call omarchy-shell-ipc directly to skip the omarchy-CLI dispatch hop;
+# this exists so humans get `omarchy menu toggle X` etc.
+
+verb="${1-toggle}"
+route="${2-root}"
+
+case "$verb" in
+  toggle | summon)
+    exec omarchy-shell-ipc menu "$verb" "$route"
+    ;;
+  close | refresh | ping)
+    exec omarchy-shell-ipc menu "$verb"
+    ;;
+  -h | --help | help)
+    cat <<USAGE
+Usage: omarchy menu [verb] [route]
+
+Verbs:
+  toggle [route]   Open the menu at <route>, or close it if already open. Default verb.
+  summon [route]   Always open the menu (no close-if-visible toggle).
+  close            Close the menu if it is visible.
+  refresh          Re-parse the menu JSONC files.
+  ping             Health check.
+
+Route is an item id (e.g. setup.power) or alias (e.g. power). Defaults to
+"root", which opens the top-level menu.
+USAGE
+    exit 0
+    ;;
+  *)
+    echo "omarchy-menu: unknown verb '$verb'. Try 'omarchy menu --help'." >&2
+    exit 2
+    ;;
+esac
