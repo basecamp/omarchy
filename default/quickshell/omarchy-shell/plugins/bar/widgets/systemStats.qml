@@ -27,6 +27,7 @@ Item {
   function refresh() {
     if (!cpuProc.running) cpuProc.running = true
     if (!memProc.running) memProc.running = true
+    if (!loadProc.running) loadProc.running = true
   }
 
   function pushHistory(arr, value) {
@@ -113,90 +114,68 @@ Item {
     interval: 2000
     running: true
     repeat: true
-    onTriggered: {
-      root.refresh()
-      if (!loadProc.running) loadProc.running = true
-    }
+    onTriggered: root.refresh()
   }
 
   readonly property bool vertical: bar ? bar.vertical : false
-
-  implicitWidth: vertical ? (bar ? bar.barSize : 28) : (statLayout.item ? statLayout.item.implicitWidth + 6 : 0)
-  implicitHeight: vertical ? (statLayout.item ? statLayout.item.implicitHeight + 6 : 0) : (bar ? bar.barSize : 26)
-
   readonly property color statColor: bar ? bar.foreground : "#cacccc"
-  readonly property string statFont: bar ? bar.fontFamily : "JetBrainsMono Nerd Font"
 
-  Loader {
-    id: statLayout
-    anchors.centerIn: parent
-    sourceComponent: root.vertical ? statColumn : statRow
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
+
+  // Hover state across the trigger button and the popup.
+  property bool buttonHovered: false
+  property bool popupHovered: popup.containsMouse
+
+  function showPopup() {
+    hideTimer.stop()
+    popupOpen = true
   }
 
-  Component {
-    id: statRow
-    Row {
-      spacing: 8
-      StatPill {
-        glyph: "󰻠"
-        percent: root.cpuPercent
-        history: root.cpuHistory
-        vertical: false
-        barFg: root.statColor
-        fontFamily: root.statFont
-      }
-      StatPill {
-        glyph: "󰍛"
-        percent: root.memPercent
-        history: root.memHistory
-        vertical: false
-        barFg: root.statColor
-        fontFamily: root.statFont
-      }
+  function scheduleHide() {
+    hideTimer.restart()
+  }
+
+  Timer {
+    id: hideTimer
+    interval: 220
+    onTriggered: {
+      if (!root.buttonHovered && !root.popupHovered) root.popupOpen = false
     }
   }
 
-  Component {
-    id: statColumn
-    Column {
-      spacing: 4
-      StatPill {
-        glyph: "󰻠"
-        percent: root.cpuPercent
-        history: root.cpuHistory
-        vertical: true
-        barFg: root.statColor
-        fontFamily: root.statFont
-      }
-      StatPill {
-        glyph: "󰍛"
-        percent: root.memPercent
-        history: root.memHistory
-        vertical: true
-        barFg: root.statColor
-        fontFamily: root.statFont
-      }
-    }
-  }
+  onButtonHoveredChanged: buttonHovered ? showPopup() : scheduleHide()
+  onPopupHoveredChanged: popupHovered ? hideTimer.stop() : scheduleHide()
 
-  MouseArea {
+  Common.WidgetButton {
+    id: button
     anchors.fill: parent
-    hoverEnabled: true
-    acceptedButtons: Qt.LeftButton | Qt.RightButton
+    bar: root.bar
+    text: "󰍛"
+    horizontalMargin: 7.5
+    tooltipText: ""
 
-    onClicked: function(mouse) {
-      if (mouse.button === Qt.RightButton) root.bar.run("alacritty")
-      else root.popupOpen = !root.popupOpen
+    onPressed: function(b) {
+      if (b === Qt.LeftButton) {
+        root.popupOpen = false
+        root.bar.run("omarchy-launch-or-focus-tui btop")
+      }
     }
-    onEntered: if (root.bar) root.bar.showTooltip(root, "CPU " + Math.round(root.cpuPercent) + "%  ·  Mem " + Math.round(root.memPercent) + "%  ·  Load " + root.loadAvg.toFixed(2))
-    onExited: if (root.bar) root.bar.hideTooltip(root)
+  }
+
+  HoverHandler {
+    id: hoverHandler
+    target: button
+    onHoveredChanged: root.buttonHovered = hovered
   }
 
   Common.PopupCard {
-    anchorItem: root
+    id: popup
+    anchorItem: button
     owner: root
     bar: root.bar
     open: root.popupOpen
+    triggerMode: "hover"
     contentWidth: 320
     contentHeight: detailColumn.implicitHeight + 28
 
@@ -246,98 +225,6 @@ Item {
           font.family: root.bar.fontFamily
           font.pixelSize: 11
         }
-      }
-
-      Common.PillButton {
-        width: parent.width
-        iconText: "󰆍"
-        text: "Open btop"
-        foreground: root.bar.foreground
-        horizontalPadding: 10
-        verticalPadding: 8
-        onClicked: { root.bar.run("omarchy-launch-or-focus-tui btop"); root.popupOpen = false }
-      }
-    }
-  }
-
-  component StatPill: Item {
-    id: pill
-    property string glyph: ""
-    property real percent: 0
-    property var history: []
-    property bool vertical: false
-    property color barFg: "#cacccc"
-    property string fontFamily: "JetBrainsMono Nerd Font"
-
-    implicitWidth: vertical ? 22 : 56
-    implicitHeight: vertical ? 32 : 22
-
-    Row {
-      visible: !pill.vertical
-      anchors.fill: parent
-      spacing: 4
-
-      Text {
-        text: pill.glyph
-        color: pill.barFg
-        font.family: pill.fontFamily
-        font.pixelSize: 12
-        anchors.verticalCenter: parent.verticalCenter
-      }
-
-      Canvas {
-        id: spark
-        width: 36
-        height: 14
-        anchors.verticalCenter: parent.verticalCenter
-        property var history: pill.history
-        onHistoryChanged: requestPaint()
-
-        onPaint: {
-          var ctx = getContext("2d")
-          ctx.clearRect(0, 0, width, height)
-          if (!pill.history || pill.history.length === 0) return
-
-          ctx.strokeStyle = pill.barFg
-          ctx.fillStyle = Qt.rgba(pill.barFg.r, pill.barFg.g, pill.barFg.b, 0.2)
-          ctx.lineWidth = 1
-
-          ctx.beginPath()
-          var step = width / Math.max(1, pill.history.length - 1)
-          for (var i = 0; i < pill.history.length; i++) {
-            var x = i * step
-            var y = height - (pill.history[i] / 100) * height
-            if (i === 0) ctx.moveTo(x, y)
-            else ctx.lineTo(x, y)
-          }
-          ctx.stroke()
-          ctx.lineTo(width, height)
-          ctx.lineTo(0, height)
-          ctx.closePath()
-          ctx.fill()
-        }
-      }
-    }
-
-    Column {
-      visible: pill.vertical
-      anchors.fill: parent
-      spacing: 2
-
-      Text {
-        text: pill.glyph
-        color: pill.barFg
-        font.family: pill.fontFamily
-        font.pixelSize: 10
-        anchors.horizontalCenter: parent.horizontalCenter
-      }
-
-      Text {
-        text: Math.round(pill.percent) + ""
-        color: pill.barFg
-        font.family: pill.fontFamily
-        font.pixelSize: 9
-        anchors.horizontalCenter: parent.horizontalCenter
       }
     }
   }
