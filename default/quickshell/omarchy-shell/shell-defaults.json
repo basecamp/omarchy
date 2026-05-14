@@ -2,7 +2,6 @@
   "version": 1,
   "bar": {
     "position": "top",
-    "fontFamily": "JetBrainsMono Nerd Font",
     "centerAnchor": "calendar",
     "layout": {
       "left": [

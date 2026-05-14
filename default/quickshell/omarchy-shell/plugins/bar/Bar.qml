@@ -21,8 +21,9 @@ Item {
   // see the same widget catalogue.
   required property var barWidgetRegistry
   // Injected by the host shell every time shell.json is reloaded. Holds the
-  // `bar:` subtree: position, centerAnchor, fontFamily, layout. The host owns
-  // file IO; the bar just renders whatever it's handed.
+  // `bar:` subtree: position, centerAnchor, layout. The host owns file IO;
+  // the bar just renders whatever it's handed. The bar font follows the
+  // OS-level fontconfig monospace binding — it is not stored in shell.json.
   required property var barConfig
   // Injected by the host shell so the bar can detect Noctalia-compat plugins
   // and look up manifests when wiring per-widget Noctalia pluginApi.
@@ -38,7 +39,6 @@ Item {
   property string omarchyConfigDir: home + "/.config/omarchy"
   property var fallbackBarConfig: ({
     position: "top",
-    fontFamily: "JetBrainsMono Nerd Font",
     centerAnchor: "calendar",
     layout: { left: [], center: [], right: [] }
   })
@@ -46,7 +46,9 @@ Item {
   property string centerAnchor: ""
   property int barConfigSerial: 0
   property string position: "top"
-  property string fontFamily: "JetBrainsMono Nerd Font"
+  // "monospace" resolves through fontconfig at paint time, so changing the
+  // system font (via `omarchy-font-set`) updates the bar without a reload.
+  property string fontFamily: "monospace"
   property color foreground: "#cacccc"
   property color background: "#101315"
   property color urgent: "#a55555"
@@ -187,7 +189,6 @@ Item {
     var config = isPlainObject(barConfig) ? barConfig : fallbackBarConfig
 
     position = normalizePosition(config.position)
-    fontFamily = String(config.fontFamily || "JetBrainsMono Nerd Font")
     centerAnchor = String(config.centerAnchor || "")
     layoutConfig = normalizeLayout(config.layout)
     barConfigSerial++

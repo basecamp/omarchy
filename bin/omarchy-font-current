@@ -3,29 +3,7 @@
 # omarchy:summary=Show current monospace font
 # omarchy:examples=omarchy font current
 
-shell_config="$HOME/.config/omarchy/shell.json"
-
-if [[ -f $shell_config ]]; then
-  font_family=$(python3 - "$shell_config" <<'PY'
-import json
-import sys
-
-try:
-  with open(sys.argv[1]) as file:
-    data = json.load(file)
-except (FileNotFoundError, json.JSONDecodeError):
-  data = {}
-
-bar = data.get("bar") if isinstance(data, dict) else None
-font = bar.get("fontFamily") if isinstance(bar, dict) else None
-if font:
-  print(font)
-PY
-)
-fi
-
-if [[ -n $font_family ]]; then
-  printf '%s\n' "$font_family"
-else
-  grep -oP 'font-family:\s*["'\'']?\K[^;"'\'']+' ~/.config/waybar/style.css | head -n1
-fi
+# fontconfig is the source of truth. fc-match returns a comma-separated
+# alias list (e.g. "JetBrainsMono Nerd Font,JetBrainsMono NF") so take
+# the first entry.
+fc-match monospace -f '%{family}\n' | head -n1 | cut -d, -f1

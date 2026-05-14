@@ -27,31 +27,15 @@ if [[ -n $font_name ]]; then
     fi
 
     sed -i "s/font_family = .*/font_family = $font_name/g" ~/.config/hypr/hyprlock.conf
-    sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/waybar/style.css
-    mkdir -p "$HOME/.config/omarchy"
-    shell_config="$HOME/.config/omarchy/shell.json"
-    tmp=$(mktemp)
-
-    if [[ -s $shell_config ]] && jq -e 'type == "object"' "$shell_config" >/dev/null 2>&1; then
-      jq --arg font_name "$font_name" '
-        .version = 1 |
-        .bar = ((.bar // {}) | if type == "object" then . else {} end) |
-        .bar.fontFamily = $font_name
-      ' "$shell_config" >"$tmp"
-    else
-      jq -n --arg font_name "$font_name" '{ version: 1, bar: { fontFamily: $font_name } }' >"$tmp"
-    fi
-
-    mv "$tmp" "$shell_config"
     sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/swayosd/style.css
+
+    # fontconfig is the canonical source of truth — the omarchy shell, Qt
+    # apps, and anything else that resolves "monospace" all read from here.
     xmlstarlet ed -L \
       -u '//match[@target="pattern"][test/string="monospace"]/edit[@name="family"]/string' \
       -v "$font_name" \
       ~/.config/fontconfig/fonts.conf
 
-    if pgrep -x waybar >/dev/null; then
-      omarchy-restart-waybar
-    fi
     omarchy-restart-swayosd
 
     if pgrep -x ghostty; then
