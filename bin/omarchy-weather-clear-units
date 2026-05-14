@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Clear the configured weather units and return to auto-detect
+# omarchy:examples=omarchy weather clear-units
+
+set -eo pipefail
+
+path="$HOME/.config/omarchy/current/weather.units"
+
+if [[ -f $path ]]; then
+  rm -f "$path"
+  echo "Weather units cleared (using auto-detect)"
+  echo "Restarting Waybar..."
+  omarchy-restart-waybar
+else
+  echo "No weather units were configured"
+fi

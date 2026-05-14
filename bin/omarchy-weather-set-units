@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Set the weather units used by waybar weather widgets
+# omarchy:args=<metric|imperial>
+# omarchy:examples=omarchy weather set-units metric | omarchy weather set-units imperial
+
+set -eo pipefail
+
+units="$1"
+
+if [[ -z $units ]]; then
+  echo "Usage: omarchy weather set-units <metric|imperial>" >&2
+  exit 1
+fi
+
+if [[ $units != "metric" && $units != "imperial" ]]; then
+  echo "Invalid units: $units (must be metric or imperial)" >&2
+  exit 1
+fi
+
+mkdir -p "$HOME/.config/omarchy/current"
+printf '%s\n' "$units" >"$HOME/.config/omarchy/current/weather.units"
+
+echo "Weather units set to $units"
+echo "Restarting Waybar..."
+omarchy-restart-waybar

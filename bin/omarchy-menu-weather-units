@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Pick weather units via walker prompt and persist them
+# omarchy:group=menu
+# omarchy:examples=omarchy menu weather-units
+
+set -eo pipefail
+
+choice=$(omarchy-menu-select "Weather units" "Metric" "Imperial" "Auto-detect" || true)
+
+[[ -z $choice ]] && exit 0
+
+case $choice in
+  Metric) omarchy weather set-units metric ;;
+  Imperial) omarchy weather set-units imperial ;;
+  Auto-detect) omarchy weather clear-units ;;
+esac

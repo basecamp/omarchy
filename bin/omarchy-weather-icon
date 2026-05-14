@@ -5,7 +5,14 @@
 loc=$(cat "$HOME/.config/omarchy/current/weather.location" 2>/dev/null || true)
 loc_path="${loc:+/${loc// /+}}"
 
-weather_data=$(curl -fsS --max-time 3 "https://wttr.in${loc_path}?format=j1" 2>/dev/null | jq -er '[.current_condition[0].weatherCode, .weather[0].astronomy[0].sunrise, .weather[0].astronomy[0].sunset] | select(all(. != null and . != "")) | @tsv' 2>/dev/null) || exit 1
+units=$(cat "$HOME/.config/omarchy/current/weather.units" 2>/dev/null || true)
+case $units in
+  metric) units_param="&m" ;;
+  imperial) units_param="&u" ;;
+  *) units_param="" ;;
+esac
+
+weather_data=$(curl -fsS --max-time 3 "https://wttr.in${loc_path}?format=j1${units_param}" 2>/dev/null | jq -er '[.current_condition[0].weatherCode, .weather[0].astronomy[0].sunrise, .weather[0].astronomy[0].sunset] | select(all(. != null and . != "")) | @tsv' 2>/dev/null) || exit 1
 
 IFS=$'\t' read -r weather_code sunrise sunset <<< "$weather_data"
 if [[ ! $weather_code =~ ^[0-9]+$ || ! $sunrise =~ ^[0-9]{1,2}:[0-9]{2}\ [AP]M$ || ! $sunset =~ ^[0-9]{1,2}:[0-9]{2}\ [AP]M$ ]]; then

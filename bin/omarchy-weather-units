@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Show currently configured weather units
+# omarchy:examples=omarchy weather units
+
+path="$HOME/.config/omarchy/current/weather.units"
+
+if [[ -f $path ]]; then
+  cat "$path"
+else
+  echo "Auto-detect"
+fi

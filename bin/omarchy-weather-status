@@ -5,7 +5,14 @@
 loc=$(cat "$HOME/.config/omarchy/current/weather.location" 2>/dev/null || true)
 loc_path="${loc:+/${loc// /+}}"
 
-weather=$(curl -fsS --max-time 4 "https://wttr.in${loc_path}?format=%l|%t|%w" 2>/dev/null | tr -d '\n')
+units=$(cat "$HOME/.config/omarchy/current/weather.units" 2>/dev/null || true)
+case $units in
+  metric) units_param="&m" ;;
+  imperial) units_param="&u" ;;
+  *) units_param="" ;;
+esac
+
+weather=$(curl -fsS --max-time 4 "https://wttr.in${loc_path}?format=%l|%t|%w${units_param}" 2>/dev/null | tr -d '\n')
 
 if [[ -z $weather ]]; then
   echo "Weather unavailable"
