@@ -1,2 +1,2 @@
 -- Extra autostart processes.
--- o.launch_on_start(o.launch("my-service"))
+-- o.launch_on_start("my-service")
