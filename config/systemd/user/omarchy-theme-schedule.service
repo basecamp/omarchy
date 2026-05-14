@@ -1,0 +1,10 @@
+[Unit]
+Description=Omarchy Theme Scheduler
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE
+ExecStart=%h/.local/share/omarchy/bin/omarchy-theme-schedule --check
+StandardOutput=append:%h/.config/omarchy/theme-schedule.log
+StandardError=append:%h/.config/omarchy/theme-schedule.log

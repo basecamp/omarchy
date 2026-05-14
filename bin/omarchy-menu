@@ -342,7 +342,7 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n  System Sleep\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰸌  Theme Schedule\n  System Sleep\n󰍹  Monitors"
   [[ -f ~/.config/hypr/bindings.lua ]] && options="$options\n  Keybindings"
   [[ -f ~/.config/hypr/input.lua ]] && options="$options\n  Input"
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
@@ -352,6 +352,7 @@ show_setup_menu() {
   *Wifi*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
+  *"Theme Schedule"*) show_setup_theme_schedule_menu ;;
   *System*) show_setup_system_menu ;;
   *Monitors*) open_in_editor "$(hypr_config_file monitors)" ;;
   *Keybindings*) open_in_editor "$(hypr_config_file bindings)" ;;
@@ -364,13 +365,53 @@ show_setup_menu() {
   esac
 }
 
-show_setup_power_menu() {
-  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
+show_setup_theme_schedule_menu() {
+  local config_file="$HOME/.config/omarchy/theme-schedule.conf"
+  
+  # Default values
+  local MODE="time" LIGHT_THEME="" DARK_THEME="" LIGHT_TIME="07:00" DARK_TIME="19:00"
 
-  if [[ $profile == "CNCLD" || -z $profile ]]; then
-    back_to show_setup_menu
-  else
+  if [[ -f "$config_file" ]]; then
+    source <(grep -E '^(MODE|LIGHT_TIME|DARK_TIME|LIGHT_THEME|DARK_THEME)=' "$config_file")
+  fi
+
+  local options="󰔎  Mode: ${MODE^}\n󰸌  Set Day Theme\n󰸌  Set Night Theme"
+  [[ "$MODE" == "time" ]] && options="$options\n󰔚  Set Day Start ($LIGHT_TIME)\n󰔚  Set Night Start ($DARK_TIME)"
+  options="$options\n  Check & Apply Now"
+
+  case $(menu "Theme Schedule" "$options") in
+  *Mode*)
+    local new_mode="time"; [[ "$MODE" == "time" ]] && new_mode="auto"
+    omarchy-theme-schedule --mode "$new_mode" && show_setup_theme_schedule_menu ;;
+  *"Day Theme"*)
+    local theme; theme=$(menu "Select Day Theme" "$(omarchy-theme-list)" "" "$LIGHT_THEME")
+    [[ -n $theme && $theme != "CNCLD" ]] && omarchy-theme-schedule --light "$theme"
+    show_setup_theme_schedule_menu ;;
+  *"Night Theme"*)
+    local theme; theme=$(menu "Select Night Theme" "$(omarchy-theme-list)" "" "$DARK_THEME")
+    [[ -n $theme && $theme != "CNCLD" ]] && omarchy-theme-schedule --dark "$theme"
+    show_setup_theme_schedule_menu ;;
+  *"Day Start"*)
+    local time; time=$(omarchy-menu-input "Day Start (HH:MM)" "$LIGHT_TIME")
+    [[ $time =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] && omarchy-theme-schedule --light-time "$time"
+    show_setup_theme_schedule_menu ;;
+  *"Night Start"*)
+    local time; time=$(omarchy-menu-input "Night Start (HH:MM)" "$DARK_TIME")
+    [[ $time =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] && omarchy-theme-schedule --dark-time "$time"
+    show_setup_theme_schedule_menu ;;
+  *"Apply Now"*)
+    omarchy-theme-schedule --check && show_setup_theme_schedule_menu ;;
+  *) show_setup_menu ;;
+  esac
+}
+
+show_setup_power_menu() {
+  local current; current=$(powerprofilesctl get)
+  local profile; profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$current")
+
+  if [[ $profile != "CNCLD" && -n $profile && "$profile" != "$current" ]]; then
     powerprofilesctl set "$profile"
+    omarchy-notification-send -g 󱐋 "Power Profile" "Switched to $profile"
   fi
 }
 
