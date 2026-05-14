@@ -33,7 +33,7 @@ ShellRoot {
   property int sliceHeight: 432
   property int sliceSpacing: -30
   property int skewOffset: 28
-  property int bottomChromeHeight: showLabels ? (filterable ? 104 : 74) : 30
+  property int bottomChromeHeight: showLabels ? (filterable ? 104 : 74) : (filterable ? 60 : 30)
 
   function fileUrl(path) {
     return "file://" + path.split("/").map(encodeURIComponent).join("/")
@@ -568,14 +568,14 @@ ShellRoot {
       }
 
       Text {
-        visible: root.filterable
+        visible: root.filterable && root.filterText
         anchors.top: selectedLabel.bottom
         anchors.topMargin: 8
         anchors.horizontalCenter: carousel.horizontalCenter
         width: root.expandedWidth
-        text: root.filterText ? ("Filter: " + root.filterText + " (" + root.matchingCount() + ")") : "Type to filter"
+        text: root.filterText
         color: root.foreground
-        opacity: root.filterText ? 0.85 : 0.55
+        opacity: 0.85
         style: Text.Outline
         styleColor: root.withAlpha(root.background, 0.7)
         font.pixelSize: 14
