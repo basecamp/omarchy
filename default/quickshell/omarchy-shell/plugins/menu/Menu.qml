@@ -657,8 +657,8 @@ Item {
       radius: root.cornerRadius
       anchors.centerIn: parent
       color: root.background
-      border.color: root.withAlpha(root.border, 0.36)
-      border.width: 1
+      border.color: root.border
+      border.width: 2
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
