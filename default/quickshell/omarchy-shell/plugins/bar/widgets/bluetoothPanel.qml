@@ -13,6 +13,12 @@ Item {
 
   property bool popupOpen: false
 
+  // Address -> true while we are waiting for a click-initiated pair to land
+  // so we can chain trust + connect at root scope. Doing this in the row's
+  // Connections is racy: the discovered Repeater destroys the delegate the
+  // moment `paired` flips, before the row's handler reliably fires.
+  property var pendingPairAddresses: ({})
+
   function closePopout() { popupOpen = false }
 
   readonly property var adapter: Bluetooth.defaultAdapter
@@ -38,6 +44,20 @@ Item {
     return list
   }
 
+  readonly property var discoveredDevices: {
+    var list = []
+    for (var i = 0; i < devices.length; i++) {
+      var d = devices[i]
+      if (!d) continue
+      if (d.paired || d.connected || d.bonded || d.trusted) continue
+      list.push(d)
+    }
+    list.sort(function(a, b) {
+      return (a.name || a.deviceName || a.address || "").localeCompare(b.name || b.deviceName || b.address || "")
+    })
+    return list
+  }
+
   readonly property string icon: {
     if (!adapter) return ""
     if (!adapter.enabled) return "󰂲"
@@ -48,6 +68,31 @@ Item {
   visible: adapter !== null
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
+
+  // Non-visual lifecycle watchers, one per device. Survives popup open/close
+  // and the discovered↔known transition that destroys row delegates.
+  Repeater {
+    model: root.devices
+    Item {
+      required property var modelData
+      visible: false
+      Connections {
+        target: modelData || null
+        function onPairedChanged() {
+          var d = modelData
+          if (!d || !d.paired) return
+          if (!root.pendingPairAddresses[d.address]) return
+          delete root.pendingPairAddresses[d.address]
+          // BlueZ pair() does not auto-trust or auto-connect. Without
+          // trusted, the daemon may drop the entry shortly after pairing,
+          // which makes a freshly-paired device flash "Connected" and then
+          // vanish from the model.
+          d.trusted = true
+          if (!d.connected) d.connect()
+        }
+      }
+    }
+  }
 
   Common.WidgetButton {
     id: button
@@ -141,49 +186,68 @@ Item {
         }
       }
 
-      // Paired / known devices.
-      Repeater {
-        model: root.knownDevices
-        DeviceRow {
-          required property var modelData
-          width: parent.width
-          dev: modelData
-          isDiscovered: false
-        }
-      }
-
-      // Discovered (unpaired) devices, only shown while scanning.
-      Text {
-        visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
-        text: "Discovered"
-        color: Qt.darker(root.bar.foreground, 1.4)
-        font.family: root.bar.fontFamily
-        font.pixelSize: 10
-        font.bold: true
-      }
-
-      Repeater {
-        model: root.adapter && root.adapter.discovering ? root.discoveredDevices : []
-        DeviceRow {
-          required property var modelData
-          width: parent.width
-          dev: modelData
-          isDiscovered: true
-        }
-      }
-
-      Text {
-        visible: root.knownDevices.length === 0
-                 && (!root.adapter || !root.adapter.discovering || root.discoveredDevices.length === 0)
-        text: !root.adapter ? "No Bluetooth adapter"
-            : !root.adapter.enabled ? "Turn Bluetooth on to scan"
-            : root.adapter.discovering ? "Scanning for devices…"
-            : "No paired devices. Tap the scan icon to find new ones."
-        color: Qt.darker(root.bar.foreground, 1.5)
-        font.family: root.bar.fontFamily
-        font.pixelSize: 11
-        wrapMode: Text.WordWrap
+      // Scrollable device list — capped so a noisy neighborhood doesn't
+      // grow the popup past the screen.
+      Flickable {
         width: parent.width
+        height: Math.min(deviceList.implicitHeight, 400)
+        contentWidth: width
+        contentHeight: deviceList.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+        Column {
+          id: deviceList
+          width: parent.width
+          spacing: 10
+
+          // Paired / known devices.
+          Repeater {
+            model: root.knownDevices
+            DeviceRow {
+              required property var modelData
+              width: deviceList.width
+              dev: modelData
+              isDiscovered: false
+            }
+          }
+
+          // Discovered (unpaired) devices, only shown while scanning.
+          Text {
+            visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
+            text: "Discovered"
+            color: Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: 10
+            font.bold: true
+          }
+
+          Repeater {
+            model: root.adapter && root.adapter.discovering ? root.discoveredDevices : []
+            DeviceRow {
+              required property var modelData
+              width: deviceList.width
+              dev: modelData
+              isDiscovered: true
+            }
+          }
+
+          Text {
+            visible: root.knownDevices.length === 0
+                     && (!root.adapter || !root.adapter.discovering || root.discoveredDevices.length === 0)
+            text: !root.adapter ? "No Bluetooth adapter"
+                : !root.adapter.enabled ? "Turn Bluetooth on to scan"
+                : root.adapter.discovering ? "Scanning for devices…"
+                : "No paired devices. Tap the scan icon to find new ones."
+            color: Qt.darker(root.bar.foreground, 1.5)
+            font.family: root.bar.fontFamily
+            font.pixelSize: 11
+            wrapMode: Text.WordWrap
+            width: deviceList.width
+          }
+        }
       }
     }
   }
@@ -264,6 +328,36 @@ Item {
       : (isConnected ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.05) : "transparent")
 
     Behavior on color { ColorAnimation { duration: 120 } }
+
+    MouseArea {
+      id: rowMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.LeftButton | Qt.RightButton
+      cursorShape: row.dev ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+      onClicked: function(mouse) {
+        if (!row.dev) return
+        if (mouse.button === Qt.RightButton) {
+          if (row.dev.forget) row.dev.forget()
+          return
+        }
+        if (row.isDiscovered) {
+          row.pendingAction = 3
+          row.failureReason = ""
+          failureTimer.restart()
+          root.pendingPairAddresses[row.dev.address] = true
+          row.dev.pair()
+          return
+        }
+        if (!row.dev.trusted) row.dev.trusted = true
+        if (row.isConnected) return  // use the X button to disconnect
+        row.pendingAction = 1
+        row.failureReason = ""
+        failureTimer.restart()
+        row.dev.connect()
+      }
+    }
 
     Item {
       id: rowContent
@@ -382,32 +476,5 @@ Item {
       }
     }
 
-    MouseArea {
-      id: rowMouse
-      anchors.fill: parent
-      hoverEnabled: true
-      acceptedButtons: Qt.LeftButton | Qt.RightButton
-      cursorShape: row.dev ? Qt.PointingHandCursor : Qt.ArrowCursor
-
-      onClicked: function(mouse) {
-        if (!row.dev) return
-        if (mouse.button === Qt.RightButton) {
-          if (row.dev.forget) row.dev.forget()
-          return
-        }
-        if (row.isDiscovered) {
-          row.pendingAction = 3
-          row.failureReason = ""
-          failureTimer.restart()
-          row.dev.pair()
-          return
-        }
-        if (row.isConnected) return  // use the X button to disconnect
-        row.pendingAction = 1
-        row.failureReason = ""
-        failureTimer.restart()
-        row.dev.connect()
-      }
-    }
   }
 }
