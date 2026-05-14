@@ -26,12 +26,12 @@ if ! $NO_REBUILD && ! command -v limine-mkinitcpio &>/dev/null; then
   exit 0
 fi
 
-MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+HOOKS_CONF="/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
 SWAP_FILE="/swap/swapfile"
 RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
 
 # Check if hibernation is already configured
-if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+if [[ -f $HOOKS_CONF ]] && grep -q "resume" "$HOOKS_CONF"; then
   # Fix empty resume_offset if btrfs map-swapfile failed during initial setup
   if [[ -f $RESUME_DROP_IN ]] && grep -q 'resume_offset="$' "$RESUME_DROP_IN" && [[ -f $SWAP_FILE ]]; then
     RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE" 2>/dev/null)
@@ -82,21 +82,27 @@ if ! swapon --show | grep -q "$SWAP_FILE"; then
   sudo swapon -p 0 "$SWAP_FILE"
 fi
 
-# Add resume hook to mkinitcpio
-sudo mkdir -p /etc/mkinitcpio.conf.d
-echo "Adding resume hook to $MKINITCPIO_CONF"
-echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
+# Add resume hook to mkinitcpio — must come before filesystems so the kernel
+# can restore the hibernation image before root is mounted read-write.
+if [[ -f $HOOKS_CONF ]] && ! grep -q "resume" "$HOOKS_CONF"; then
+  echo "Inserting resume hook before filesystems in $HOOKS_CONF"
+  sudo sed -i 's/\bfilesystems\b/resume filesystems/' "$HOOKS_CONF"
+fi
+# Remove legacy append-style config that put resume in the wrong position
+sudo rm -f /etc/mkinitcpio.conf.d/omarchy_resume.conf
 
 # Ensure keyboard backlight doesn't prevent sleep
 sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
+
+# Resolve resume device and offset
+sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null
+RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
+RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
 
 # Add resume= kernel parameters so the initramfs resume hook knows where to find the
 # hibernation image. Without these, resume happens late (after GPU drivers load) and fails.
 if [[ ! -f $RESUME_DROP_IN ]]; then
   echo "Adding resume kernel parameters"
-  sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null
-  RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
-  RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
   if [[ -n $RESUME_OFFSET ]]; then
     sudo mkdir -p /etc/limine-entry-tool.d
     echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
@@ -104,6 +110,26 @@ if [[ ! -f $RESUME_DROP_IN ]]; then
   else
     echo "Warning: Could not determine resume offset for $SWAP_FILE" >&2
   fi
+elif [[ -n $RESUME_OFFSET ]] && ! grep -q "resume_offset=$RESUME_OFFSET" "$RESUME_DROP_IN"; then
+  echo "Updating stale resume_offset in $RESUME_DROP_IN"
+  sudo sed -i "s/resume_offset=[0-9]*/resume_offset=$RESUME_OFFSET/" "$RESUME_DROP_IN"
+  sudo sed -i "s/resume_offset=[0-9]*/resume_offset=$RESUME_OFFSET/" /etc/default/limine
+fi
+
+# Work around systemd not being able to resolve btrfs swapfiles on dm-crypt
+# as valid hibernation devices (see https://github.com/systemd/systemd/issues/30083)
+LOGIND_DROP_IN="/etc/systemd/system/systemd-logind.service.d/hibernate.conf"
+if [[ ! -f $LOGIND_DROP_IN ]]; then
+  echo "Adding systemd-logind hibernation bypass"
+  sudo mkdir -p /etc/systemd/system/systemd-logind.service.d
+  printf '[Service]\nEnvironment="SYSTEMD_BYPASS_HIBERNATION_MEMORY_CHECK=1"\n' | sudo tee "$LOGIND_DROP_IN" >/dev/null
+fi
+
+HIBERNATE_DROP_IN="/etc/systemd/system/systemd-hibernate.service.d/bypass.conf"
+if [[ ! -f $HIBERNATE_DROP_IN ]]; then
+  echo "Adding systemd-hibernate bypass"
+  sudo mkdir -p /etc/systemd/system/systemd-hibernate.service.d
+  printf '[Service]\nEnvironment="SYSTEMD_BYPASS_HIBERNATION_MEMORY_CHECK=1"\n' | sudo tee "$HIBERNATE_DROP_IN" >/dev/null
 fi
 
 # Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)

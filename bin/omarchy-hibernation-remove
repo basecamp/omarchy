@@ -3,10 +3,10 @@
 # omarchy:summary=Remove hibernation setup including swap and boot resume settings
 # omarchy:requires-sudo=true
 
-MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+HOOKS_CONF="/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
 
 # Check if hibernation is configured
-if [[ ! -f $MKINITCPIO_CONF ]] || ! grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+if [[ ! -f $HOOKS_CONF ]] || ! grep -q "resume" "$HOOKS_CONF"; then
   echo "Hibernation is not set up"
   exit 0
 fi
@@ -48,10 +48,13 @@ fi
 echo "Removing suspend-then-hibernate configuration"
 sudo rm -f /etc/systemd/logind.conf.d/lid.conf
 sudo rm -f /etc/systemd/sleep.conf.d/hibernate.conf
+sudo rm -f /etc/systemd/system/systemd-logind.service.d/hibernate.conf
+sudo rm -f /etc/systemd/system/systemd-hibernate.service.d/bypass.conf
 
 # Remove mkinitcpio resume hook
-echo "Removing resume hook"
-sudo rm "$MKINITCPIO_CONF"
+echo "Removing resume hook from $HOOKS_CONF"
+sudo sed -i 's/resume //' "$HOOKS_CONF"
+sudo rm -f /etc/mkinitcpio.conf.d/omarchy_resume.conf
 
 echo "Regenerating initramfs..."
 sudo limine-mkinitcpio
