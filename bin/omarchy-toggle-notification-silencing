@@ -9,5 +9,4 @@ on)  omarchy-notification-send "Silenced notifications" -g 󰂛 -e ;;
 off) omarchy-notification-send "Enabled notifications" -g 󰂚 -e ;;
 esac
 
-pkill -RTMIN+10 waybar 2>/dev/null || true
-omarchy-shell-ipc bar refreshIndicators >/dev/null 2>&1 || true
+omarchy-shell-ipc --if-running bar refreshIndicators >/dev/null 2>&1 || true

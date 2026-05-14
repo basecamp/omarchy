@@ -50,9 +50,6 @@ if [[ $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
 fi
 
 # Restart components to apply new theme
-if pgrep -x waybar >/dev/null; then
-  omarchy-restart-waybar
-fi
 omarchy-restart-swayosd
 omarchy-restart-terminal
 omarchy-restart-hyprctl

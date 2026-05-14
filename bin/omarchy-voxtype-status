@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Clean up the voxtype --follow child when Waybar reloads
+# omarchy:summary=Stream voxtype --follow status as bar-friendly JSON
 
 if omarchy-cmd-present voxtype; then
   coproc VOXTYPE_STATUS { voxtype status --follow --extended --format json; }

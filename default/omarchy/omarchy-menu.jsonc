@@ -157,7 +157,7 @@
   "setup.default.editor.emacs": {"icon":"","label":"Emacs","when":"omarchy-cmd-present emacs","checked":"default_editor_is emacs","action":"omarchy-default-editor emacs"},
   "setup.dns": {"icon":"󰱔","label":"DNS","keywords":"network","action":"present_terminal omarchy-setup-dns"},
   "setup.security": {"icon":"","label":"Security","keywords":"fingerprint fido2"},
-  "setup.config": {"icon":"","label":"Config","keywords":"files hyprland bar quickshell walker waybar"},
+  "setup.config": {"icon":"","label":"Config","keywords":"files hyprland bar quickshell walker"},
   "setup.security.fingerprint": {"icon":"󰈷","label":"Fingerprint","action":"present_terminal omarchy-setup-security-fingerprint"},
   "setup.security.fido2": {"icon":"","label":"Fido2","keywords":"key","action":"present_terminal omarchy-setup-security-fido2"},
   "setup.config.hyprland": {"icon":"","label":"Hyprland","action":"open_in_editor \"$(hypr_config_file hyprland)\""},

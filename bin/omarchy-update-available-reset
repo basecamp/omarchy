@@ -2,7 +2,5 @@
 
 # omarchy:summary=Ensure the status bar icon offering the available update is removed
 
-pkill -RTMIN+7 waybar
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-quickshell ipc -p "$OMARCHY_PATH/default/quickshell/omarchy-shell" call bar refreshUpdate >/dev/null 2>&1 || true
+omarchy-shell-ipc --if-running bar refreshUpdate >/dev/null 2>&1 || true
 exit 0

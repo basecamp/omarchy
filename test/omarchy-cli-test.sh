@@ -88,7 +88,7 @@ assert_output_contains "bare group includes browser route" "$output" "omarchy in
 
 output=$("$CLI" toggle)
 assert_output_contains "bare root command with children renders help" "$output" "Toggle commands"
-assert_output_contains "bare toggle help includes child route" "$output" "omarchy toggle waybar"
+assert_output_contains "bare toggle help includes child route" "$output" "omarchy toggle nightlight"
 
 output=$("$CLI" pkg --help)
 assert_output_contains "package group includes pkg add fallback route" "$output" "omarchy pkg add <packages...>"
