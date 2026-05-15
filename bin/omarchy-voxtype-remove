@@ -11,8 +11,7 @@ if omarchy-cmd-present voxtype; then
   echo "Uninstall Voxtype to remove dictation."
 
   # Remove services
-  systemctl --user stop voxtype.service 2>/dev/null || true
-  rm -f ~/.config/systemd/user/voxtype*
+  systemctl --user disable --now voxtype.service 2>/dev/null || true
   systemctl --user daemon-reload
 
   # Remove packages and configs
