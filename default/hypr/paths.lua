@@ -2,7 +2,7 @@
 -- Lua files loaded with require() have separate local scopes, so modules that
 -- need these paths import this table instead of repeating os.getenv() lookups.
 
-local home = os.getenv("HOME") or ""
+local home = os.getenv("HOME")
 
 return {
   home = home,
