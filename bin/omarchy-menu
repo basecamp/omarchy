@@ -1001,9 +1001,11 @@ screenrecord | screenrecording | screen-record)
   ;;
 esac
 
+
 if [[ -z ${1:-} ]]; then
   open_quickshell_menu root
   exit $?
+
 fi
 
 target=$(route_target "${1:-}") || exit $?
