@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# omarchy:summary=Print PATH entries one per numbered line
+# omarchy:examples=omarchy path
+
+set -euo pipefail
+
+index=1
+
+path_entries="${PATH:-}"
+while [[ $path_entries == *:* ]]; do
+  entry="${path_entries%%:*}"
+  printf '%d. %s\n' "$index" "$entry"
+  ((index++))
+  path_entries="${path_entries#*:}"
+done
+
+printf '%d. %s\n' "$index" "$path_entries"
