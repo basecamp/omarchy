@@ -10,7 +10,7 @@ Item {
   property color foreground: bar ? bar.foreground : "#cacccc"
   property color activeColor: bar ? bar.urgent : "#a55555"
   property bool active: false
-  property real horizontalMargin: 7.5
+  property real horizontalMargin: 8.5
   property real verticalPadding: 6
   property real fixedWidth: -1
   property real fixedHeight: -1

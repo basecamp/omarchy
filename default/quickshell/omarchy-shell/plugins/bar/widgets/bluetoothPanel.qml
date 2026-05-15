@@ -99,7 +99,6 @@ Item {
     anchors.fill: parent
     bar: root.bar
     text: root.icon
-    horizontalMargin: 8.5
     tooltipText: root.adapter ? (root.adapter.enabled ? "Bluetooth: " + root.connectedDevices.length + " connected" : "Bluetooth off") : ""
 
     onPressed: function(b) {
