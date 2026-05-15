@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Apply the current theme color to Chromium, Chrome, Edge, and Brave
+# omarchy:summary=Apply the current theme color to Chromium, Chrome, Edge, Brave, and Helium
 # omarchy:hidden=true
 
 CHROMIUM_THEME=~/.config/omarchy/current/theme/chromium.theme
@@ -42,3 +42,6 @@ refresh_running_browser msedge microsoft-edge-stable
 set_browser_policy /etc/brave/policies/managed
 refresh_running_browser brave brave
 refresh_running_browser brave-origin-beta brave-origin-beta -f
+
+set_browser_policy /etc/helium/policies/managed
+refresh_running_browser helium helium
