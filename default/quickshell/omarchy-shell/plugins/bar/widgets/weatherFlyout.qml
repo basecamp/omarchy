@@ -31,12 +31,24 @@ Item {
     return /^en_US/.test(name) || /^en_LR/.test(name) || /^my/.test(name)
   }
 
-  readonly property string reportLocation: areaInfo && areaInfo.areaName && areaInfo.areaName[0] ? areaInfo.areaName[0].value : ""
+  // Auto-refresh interval in minutes; clamped to a sane minimum.
+  readonly property int refreshMinutes: Math.max(1, parseInt(setting("refreshMinutes", 15), 10) || 15)
+
+  readonly property string reportLocation:  areaInfo && areaInfo.areaName && areaInfo.areaName[0] ? areaInfo.areaName[0].value : ""
   readonly property string reportCondition: current && current.weatherDesc && current.weatherDesc[0] ? current.weatherDesc[0].value : ""
   readonly property string reportTemp:      current ? formatTemp(useImperial ? current.temp_F : current.temp_C) : ""
+  readonly property string reportTempNum:   current ? String(useImperial ? current.temp_F : current.temp_C) : ""
+  readonly property string tempUnit:        "°" + (useImperial ? "F" : "C")
   readonly property string reportFeels:     current ? formatTemp(useImperial ? current.FeelsLikeF : current.FeelsLikeC) : ""
   readonly property string reportWind:      current ? (useImperial ? (current.windspeedMiles + " mph") : (current.windspeedKmph + " km/h")) : ""
   readonly property string reportHumidity:  current ? (current.humidity + "%") : ""
+  readonly property string conditionLine: {
+    var parts = []
+    if (reportCondition) parts.push(reportCondition)
+    var wd = windDescriptor()
+    if (wd) parts.push(wd)
+    return parts.join(" · ")
+  }
 
   visible: label !== ""
   implicitWidth: button.implicitWidth + 8
@@ -71,6 +83,32 @@ Item {
   function minTempForDay(day) {
     if (!day) return ""
     return formatTemp(useImperial ? day.mintempF : day.mintempC)
+  }
+
+  // Beaufort-ish descriptor based on current windspeed in mph.
+  function windDescriptor() {
+    if (!current) return ""
+    var mph = parseInt(String(current.windspeedMiles || "0"), 10)
+    if (isNaN(mph)) return ""
+    if (mph < 1)  return "Calm"
+    if (mph < 4)  return "Light air"
+    if (mph < 8)  return "Light breeze"
+    if (mph < 13) return "Gentle breeze"
+    if (mph < 19) return "Moderate breeze"
+    if (mph < 25) return "Fresh breeze"
+    if (mph < 32) return "Strong breeze"
+    if (mph < 39) return "Near gale"
+    return "Gale"
+  }
+
+  // Bare degree value (no unit letter), used in the forecast row.
+  function bareTempForDay(day, kind) {
+    if (!day) return ""
+    var v = useImperial
+      ? (kind === "max" ? day.maxtempF : day.mintempF)
+      : (kind === "max" ? day.maxtempC : day.mintempC)
+    if (v === undefined || v === null || v === "") return ""
+    return v + "°"
   }
 
   // Representative icon for a forecast day: the hourly entry nearest noon.
@@ -122,6 +160,15 @@ Item {
     }
   }
 
+  Timer {
+    id: refreshTimer
+    interval: root.refreshMinutes * 60 * 1000
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.refresh()
+  }
+
   Common.WidgetButton {
     id: button
     anchors.left: parent.left
@@ -155,61 +202,143 @@ Item {
     bar: root.bar
     open: root.popupOpen
     triggerMode: "click"
-    contentWidth: 340
+    contentWidth: 460
     contentHeight: card.implicitHeight + 28
 
     Column {
       id: card
       anchors.fill: parent
-      spacing: 14
+      spacing: 20
 
-      Row {
+      // ---- Hero row: location/temp/condition on the left, big icon on the right.
+      Item {
         width: parent.width
-        spacing: 12
-
-        Text {
-          id: glyph
-          text: root.label || "—"
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 30
-          anchors.verticalCenter: headerCol.verticalCenter
-        }
+        height: heroLeft.height
 
         Column {
-          id: headerCol
-          width: parent.width - glyph.width - parent.spacing
-          spacing: 2
+          id: heroLeft
+          anchors.left: parent.left
+          anchors.top: parent.top
+          spacing: 6
 
-          Text {
-            text: root.reportTemp || "—"
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: 22
-            font.bold: true
+          Row {
+            visible: root.reportLocation !== ""
+            spacing: 6
+
+            Text {
+              text: ""  // nf-fa-map_marker
+              color: Qt.darker(root.bar.foreground, 1.4)
+              font.family: root.bar.fontFamily
+              font.pixelSize: 11
+              anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+              text: (root.reportLocation || "").toUpperCase()
+              color: Qt.darker(root.bar.foreground, 1.4)
+              font.family: root.bar.fontFamily
+              font.pixelSize: 11
+              font.letterSpacing: 1
+              anchors.verticalCenter: parent.verticalCenter
+            }
+          }
+
+          Row {
+            spacing: 2
+
+            Text {
+              id: tempBig
+              text: root.reportTempNum || "—"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: 56
+              font.bold: true
+            }
+            Text {
+              text: root.current ? root.tempUnit : ""
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: 22
+              anchors.top: tempBig.top
+              anchors.topMargin: 10
+            }
           }
 
           Text {
             visible: text !== ""
-            text: root.reportLocation
-            color: Qt.darker(root.bar.foreground, 1.4)
+            text: root.conditionLine
+            color: Qt.darker(root.bar.foreground, 1.2)
             font.family: root.bar.fontFamily
-            font.pixelSize: 11
-            elide: Text.ElideRight
-            width: parent.width
+            font.pixelSize: 12
           }
+        }
+
+        Text {
+          id: heroIcon
+          anchors.right: parent.right
+          anchors.verticalCenter: heroLeft.verticalCenter
+          text: root.label || "—"
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: 56
         }
       }
 
-      Text {
-        visible: text !== ""
-        text: root.reportCondition
-        color: Qt.darker(root.bar.foreground, 1.2)
-        font.family: root.bar.fontFamily
-        font.pixelSize: 11
-        font.italic: true
-        wrapMode: Text.WordWrap
+      // ---- Stats row: three caps-labeled columns.
+      Row {
+        visible: !!root.current
         width: parent.width
+        spacing: 36
+
+        Column {
+          spacing: 4
+          Text {
+            text: "FEELS"
+            color: Qt.darker(root.bar.foreground, 1.5)
+            font.family: root.bar.fontFamily
+            font.pixelSize: 10
+            font.letterSpacing: 1
+          }
+          Text {
+            text: root.reportFeels
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: 13
+          }
+        }
+
+        Column {
+          spacing: 4
+          Text {
+            text: "WIND"
+            color: Qt.darker(root.bar.foreground, 1.5)
+            font.family: root.bar.fontFamily
+            font.pixelSize: 10
+            font.letterSpacing: 1
+          }
+          Text {
+            text: root.reportWind
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: 13
+          }
+        }
+
+        Column {
+          spacing: 4
+          Text {
+            text: "HUMIDITY"
+            color: Qt.darker(root.bar.foreground, 1.5)
+            font.family: root.bar.fontFamily
+            font.pixelSize: 10
+            font.letterSpacing: 1
+          }
+          Text {
+            text: root.reportHumidity
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: 13
+          }
+        }
       }
 
       Text {
@@ -221,116 +350,68 @@ Item {
         font.italic: true
       }
 
-      Grid {
-        visible: !!root.current
+      // ---- Divider between current conditions and forecast.
+      Rectangle {
+        visible: root.forecastDays.length > 0
         width: parent.width
-        columns: 2
-        columnSpacing: 12
-        rowSpacing: 4
-
-        Text {
-          text: "Feels like"
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-        }
-        Text {
-          text: root.reportFeels
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-        }
-
-        Text {
-          text: "Wind"
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-        }
-        Text {
-          text: root.reportWind
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-        }
-
-        Text {
-          text: "Humidity"
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-        }
-        Text {
-          text: root.reportHumidity
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-        }
+        height: 1
+        color: root.bar.foreground
+        opacity: 0.12
       }
 
+      // ---- Forecast row: each cell has the day icon left of a day-name + hi/lo column.
       Row {
         id: forecastRow
         visible: root.forecastDays.length > 0
         width: parent.width
-        spacing: 6
 
         Repeater {
           model: root.forecastDays
 
-          Column {
+          Row {
             required property var modelData
             required property int index
-            width: (forecastRow.width - forecastRow.spacing * Math.max(0, root.forecastDays.length - 1)) / Math.max(1, root.forecastDays.length)
-            spacing: 4
+            width: forecastRow.width / Math.max(1, root.forecastDays.length)
+            spacing: 10
 
             Text {
-              anchors.horizontalCenter: parent.horizontalCenter
-              text: root.dayName(modelData.date)
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: 11
-              font.bold: true
-            }
-
-            Text {
-              anchors.horizontalCenter: parent.horizontalCenter
+              anchors.verticalCenter: parent.verticalCenter
               text: root.dayIcon(modelData)
               color: root.bar.foreground
               font.family: root.bar.fontFamily
-              font.pixelSize: 22
+              font.pixelSize: 24
             }
 
-            Text {
-              anchors.horizontalCenter: parent.horizontalCenter
-              text: root.maxTempForDay(modelData) + " / " + root.minTempForDay(modelData)
-              color: Qt.darker(root.bar.foreground, 1.4)
-              font.family: root.bar.fontFamily
-              font.pixelSize: 10
+            Column {
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: 2
+
+              Text {
+                text: root.dayName(modelData.date).toUpperCase()
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: 10
+                font.letterSpacing: 1
+              }
+
+              Row {
+                spacing: 6
+
+                Text {
+                  text: root.bareTempForDay(modelData, "max")
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 12
+                }
+                Text {
+                  text: root.bareTempForDay(modelData, "min")
+                  color: Qt.darker(root.bar.foreground, 1.5)
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 12
+                }
+              }
             }
           }
-        }
-      }
-
-      Row {
-        width: parent.width
-        spacing: 8
-
-        Common.PillButton {
-          iconText: "󰑐"
-          text: "Refresh"
-          foreground: root.bar.foreground
-          horizontalPadding: 12
-          verticalPadding: 6
-          onClicked: root.refresh()
-        }
-
-        Common.PillButton {
-          iconText: "󰏌"
-          text: "wttr.in"
-          foreground: root.bar.foreground
-          horizontalPadding: 12
-          verticalPadding: 6
-          onClicked: { root.bar.run("xdg-open https://wttr.in"); root.popupOpen = false }
         }
       }
     }
