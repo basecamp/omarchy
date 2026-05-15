@@ -35,4 +35,4 @@ EOF
 # stdbuf -oL line-buffers each stage so cava frames don't get trapped in libc
 # buffering. od -w<BARS> emits one frame per line as space-separated decimals,
 # which SplitParser on the QML side reads directly.
-exec stdbuf -oL cava -p "$CFG" | stdbuf -oL od -An -tu1 -v -w"$BARS"
+stdbuf -oL cava -p "$CFG" | stdbuf -oL od -An -tu1 -v -w"$BARS"
