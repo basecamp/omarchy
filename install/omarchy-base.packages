@@ -4,7 +4,6 @@
 1password-beta
 1password-cli
 aether
-alacritty
 alsa-utils
 asdcontrol
 avahi
@@ -39,6 +38,7 @@ fcitx5-qt
 fd
 ffmpegthumbnailer
 fontconfig
+foot
 fzf
 github-cli
 gnome-calculator

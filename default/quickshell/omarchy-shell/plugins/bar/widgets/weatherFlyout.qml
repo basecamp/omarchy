@@ -28,7 +28,7 @@ Item {
   readonly property string reportHumidity:  reportFields.length > 5 ? String(reportFields[5] || "").trim() : ""
 
   visible: label !== ""
-  implicitWidth: button.implicitWidth
+  implicitWidth: button.implicitWidth + 8
   implicitHeight: button.implicitHeight
 
   function refresh() {
@@ -71,11 +71,14 @@ Item {
 
   Common.WidgetButton {
     id: button
-    anchors.fill: parent
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    width: implicitWidth
+    height: implicitHeight
     bar: root.bar
     text: root.label
     active: root.klass === "active"
-    horizontalMargin: 7.5
+    horizontalMargin: 1
     // Tooltip suppressed — the popup itself is the detail view.
     tooltipText: ""
 

@@ -38,11 +38,12 @@ Item {
   property color background: "#101315"
   property color foreground: "#cacccc"
   property int expandedWidth: 768
+  property int expandedHeight: 475
   property int sliceWidth: 108
   property int sliceHeight: 432
   property int sliceSpacing: -30
   property int skewOffset: 28
-  property int bottomChromeHeight: showLabels ? (filterable ? 104 : 74) : 30
+  property int bottomChromeHeight: showLabels ? (filterable ? 104 : 74) : (filterable ? 60 : 30)
 
   function fileUrl(path) {
     return "file://" + path.split("/").map(encodeURIComponent).join("/")
@@ -66,8 +67,8 @@ Item {
   }
 
   function currentPath() {
-    if (imageModel.count === 0 || !itemMatches(selectedIndex)) return ""
-    return imageModel.get(selectedIndex).filePath
+    if (imageArray.length === 0 || !itemMatches(selectedIndex)) return ""
+    return imageArray[selectedIndex].filePath
   }
 
   function nameForPath(path) {
@@ -86,19 +87,19 @@ Item {
   }
 
   function itemMatches(index) {
-    if (index < 0 || index >= imageModel.count) return false
+    if (index < 0 || index >= imageArray.length) return false
     if (!filterText) return true
 
-    var path = imageModel.get(index).filePath
+    var path = imageArray[index].filePath
     var needle = filterText.toLowerCase()
     return nameForPath(path).toLowerCase().indexOf(needle) !== -1 || labelForPath(path).toLowerCase().indexOf(needle) !== -1
   }
 
   function matchingCount() {
-    if (!filterText) return imageModel.count
+    if (!filterText) return imageArray.length
 
     var count = 0
-    for (var i = 0; i < imageModel.count; i++) {
+    for (var i = 0; i < imageArray.length; i++) {
       if (itemMatches(i)) count++
     }
 
@@ -106,7 +107,7 @@ Item {
   }
 
   function firstMatchingIndex() {
-    for (var i = 0; i < imageModel.count; i++) {
+    for (var i = 0; i < imageArray.length; i++) {
       if (itemMatches(i)) return i
     }
 
@@ -131,9 +132,9 @@ Item {
   }
 
   function select(index, immediate) {
-    if (imageModel.count === 0) return
+    if (imageArray.length === 0) return
     if (index < 0) index = 0
-    else if (index >= imageModel.count) index = imageModel.count - 1
+    else if (index >= imageArray.length) index = imageArray.length - 1
     if (!itemMatches(index)) return
     if (index === selectedIndex && immediate !== true) return
 
@@ -141,19 +142,16 @@ Item {
   }
 
   function selectAdjacent(direction) {
-    if (!filterText) {
-      select(selectedIndex + direction)
-      return
-    }
+    var count = imageArray.length
+    if (count === 0) return
 
-    var index = selectedIndex + direction
-    while (index >= 0 && index < imageModel.count) {
+    var index = selectedIndex
+    for (var i = 0; i < count; i++) {
+      index = (index + direction + count) % count
       if (itemMatches(index)) {
         select(index)
         return
       }
-
-      index += direction
     }
   }
 
@@ -225,15 +223,27 @@ Item {
   }
 
   function loadRows(rows) {
+    var newImages = []
+    var seen = {}
     var paths = rows.split("\n")
     for (var i = 0; i < paths.length; i++) {
       var row = paths[i]
       if (!row) continue
 
       var columns = row.split("\t")
-      root.addImage(columns[0], columns[1])
+      var path = columns[0]
+      if (!path) continue
+      var fileName = path.split("/").pop()
+      if (seen[fileName]) continue
+      seen[fileName] = true
+      newImages.push({
+        filePath: path,
+        fileName: fileName,
+        thumbnailPath: columns[1] || path
+      })
     }
 
+    root.imageArray = newImages
     root.select(root.selectedImageIndex(), true)
     root.imagesLoaded = true
     root.opened = true
@@ -258,7 +268,7 @@ Item {
     colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/image-picker-colors.json")
     if (nextColorsRaw)
       loadColors(nextColorsRaw)
-    imageModel.clear()
+    imageArray = []
     selectedIndex = 0
     imagesLoaded = false
     opened = false
@@ -270,23 +280,11 @@ Item {
     }
   }
 
-  ListModel { id: imageModel }
-
-  function addImage(path, thumbnailPath) {
-    if (!path) return
-    var fileName = path.split("/").pop()
-
-    for (var i = imageModel.count - 1; i >= 0; i--) {
-      if (imageModel.get(i).fileName === fileName)
-        imageModel.remove(i)
-    }
-
-    imageModel.append({ filePath: path, fileName: fileName, thumbnailPath: thumbnailPath || path })
-  }
+  property var imageArray: []
 
   function selectedImageIndex() {
-    for (var i = 0; i < imageModel.count; i++) {
-      if (imageModel.get(i).filePath === selectedImage)
+    for (var i = 0; i < imageArray.length; i++) {
+      if (imageArray[i].filePath === selectedImage)
         return i
     }
 
@@ -372,7 +370,7 @@ Item {
     watchChanges: true
     printErrors: false
     onLoaded: root.loadColors(text())
-    onFileChanged: { reload(); root.loadColors(text()) }
+    onFileChanged: reload()
   }
 
   function loadColors(raw) {
@@ -420,7 +418,7 @@ Item {
     Item {
       id: card
       width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
-      height: root.sliceHeight + 30 + root.bottomChromeHeight
+      height: root.expandedHeight + 30 + root.bottomChromeHeight
       anchors.centerIn: parent
 
       MouseArea { anchors.fill: parent; onClicked: {} }
@@ -470,14 +468,16 @@ Item {
         Component.onCompleted: forceActiveFocus()
 
         Repeater {
-          model: imageModel
+          model: root.imageArray.length
 
           delegate: Item {
             id: item
             required property int index
-            required property string filePath
-            required property string fileName
-            required property string thumbnailPath
+
+            readonly property var imageData: root.imageArray[index]
+            readonly property string filePath: imageData ? imageData.filePath : ""
+            readonly property string fileName: imageData ? imageData.fileName : ""
+            readonly property string thumbnailPath: imageData ? imageData.thumbnailPath : ""
 
             readonly property bool matched: root.itemMatches(index)
             readonly property int relativeIndex: root.filteredPosition(index) - root.selectedFilteredPosition()
@@ -487,7 +487,8 @@ Item {
             visible: nearby
             x: selected ? carousel.previewX : (relativeIndex < 0 ? carousel.previewX + relativeIndex * carousel.itemStep : carousel.previewX + root.expandedWidth + root.sliceSpacing + (relativeIndex - 1) * carousel.itemStep)
             width: selected ? root.expandedWidth : root.sliceWidth
-            height: carousel.height
+            height: selected ? root.expandedHeight : root.sliceHeight
+            y: selected ? 0 : (root.expandedHeight - root.sliceHeight) / 2
             z: selected ? 100 : 50 - Math.min(Math.abs(relativeIndex), 40)
 
             readonly property real skAbs: Math.abs(root.skewOffset)
@@ -518,25 +519,6 @@ Item {
               }
             }
 
-            Shape {
-              x: item.selected ? 4 : 2
-              y: item.selected ? 10 : 5
-              width: item.width
-              height: item.height
-              opacity: item.selected ? 0.5 : 0.32
-              antialiasing: true
-              preferredRendererType: Shape.CurveRenderer
-              ShapePath {
-                fillColor: root.background
-                strokeColor: "transparent"
-                startX: item.topLeft; startY: 0
-                PathLine { x: item.topRight; y: 0 }
-                PathLine { x: item.bottomRight; y: item.height }
-                PathLine { x: item.bottomLeft; y: item.height }
-                PathLine { x: item.topLeft; y: 0 }
-              }
-            }
-
             Item {
               anchors.fill: parent
               layer.enabled: true
@@ -551,7 +533,12 @@ Item {
               Image {
                 id: image
                 anchors.fill: parent
-                source: item.nearby ? root.fileUrl(item.thumbnailPath) : ""
+                // Keep a stable source while delegates move in and out of the
+                // nearby window. Clearing/reassigning the source on every
+                // selection change makes Qt tear down and reload textures,
+                // which shows up as flicker in both the theme and background
+                // selectors.
+                source: item.thumbnailPath ? root.fileUrl(item.thumbnailPath) : ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: false
                 cache: true
@@ -561,7 +548,6 @@ Item {
               Rectangle {
                 anchors.fill: parent
                 color: root.withAlpha(root.background, item.selected ? 0 : 0.42)
-                Behavior on color { ColorAnimation { duration: 120 } }
               }
             }
 
@@ -608,14 +594,14 @@ Item {
       }
 
       Text {
-        visible: root.filterable
+        visible: root.filterable && root.filterText
         anchors.top: selectedLabel.bottom
         anchors.topMargin: 8
         anchors.horizontalCenter: carousel.horizontalCenter
         width: root.expandedWidth
-        text: root.filterText ? ("Filter: " + root.filterText + " (" + root.matchingCount() + ")") : "Type to filter"
+        text: root.filterText
         color: root.foreground
-        opacity: root.filterText ? 0.85 : 0.55
+        opacity: 0.85
         style: Text.Outline
         styleColor: root.withAlpha(root.background, 0.7)
         font.pixelSize: 14

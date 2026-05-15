@@ -10,7 +10,7 @@ Item {
   property color foreground: bar ? bar.foreground : "#cacccc"
   property color activeColor: bar ? bar.urgent : "#a55555"
   property bool active: false
-  property real horizontalMargin: 7.5
+  property real horizontalMargin: 8.5
   property real verticalPadding: 6
   property real fixedWidth: -1
   property real fixedHeight: -1
@@ -41,7 +41,8 @@ Item {
     text: root.text
     color: root.active ? root.activeColor : root.foreground
     font.family: root.fontFamily
-    font.pixelSize: root.fontSize
+    font.pointSize: root.fontSize * 0.75
+    renderType: Text.NativeRendering
     rotation: root.textRotation
     horizontalAlignment: Text.AlignHCenter
     verticalAlignment: Text.AlignVCenter

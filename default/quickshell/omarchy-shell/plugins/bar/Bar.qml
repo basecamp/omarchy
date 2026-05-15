@@ -1367,7 +1367,8 @@ Item {
       text: buttonRoot.text
       color: buttonRoot.active ? root.urgent : root.foreground
       font.family: buttonRoot.fontFamily
-      font.pixelSize: buttonRoot.fontSize
+      font.pointSize: buttonRoot.fontSize * 0.75
+      renderType: Text.NativeRendering
       rotation: buttonRoot.textRotation
       horizontalAlignment: Text.AlignHCenter
       verticalAlignment: Text.AlignVCenter
@@ -1404,8 +1405,8 @@ Item {
 
   component WorkspacesModule: GridLayout {
     columns: root.vertical ? 1 : root.workspaceIds().length
-    columnSpacing: root.vertical ? 0 : 3
-    rowSpacing: root.vertical ? 3 : 0
+    columnSpacing: root.vertical ? 0 : 2
+    rowSpacing: root.vertical ? 2 : 0
 
     Repeater {
       model: root.workspaceIds()
@@ -1421,7 +1422,7 @@ Item {
         opacity: occupied || modelData <= 5 || focused ? 1 : 0.5
         horizontalMargin: 6
         verticalPadding: 6
-        fixedWidth: root.vertical ? root.barSize : 24
+        fixedWidth: root.vertical ? root.barSize : 22
         fixedHeight: root.barSize
         onPressed: function() { root.focusWorkspace(modelData) }
       }
@@ -1949,6 +1950,7 @@ Item {
     property var device: UPower.displayDevice
 
     text: root.batteryIcon()
+    horizontalMargin: 8.5
     visible: device !== null && device.isPresent && device.percentage > 0
     active: device !== null && device.percentage <= 20 && UPower.onBattery
     tooltipText: root.batteryTooltip()
