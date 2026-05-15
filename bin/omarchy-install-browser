@@ -87,6 +87,9 @@ vivaldi)
     echo vivaldi-bin | sudo tee -a /etc/1password/custom_allowed_browsers >/dev/null
 
   copy_chromium_flags ~/.config/vivaldi-stable.conf
+
+  hook="$OMARCHY_PATH/default/vivaldi/vivaldi-post-update"
+  omarchy-hook-install post-update "$hook" && "$hook"
   announce_browser_installed "Vivaldi"
   ;;
 zen)
