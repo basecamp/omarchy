@@ -5,7 +5,8 @@ cd /opt/vivaldi/resources/vivaldi || exit 0
 JS="style/omarchy.js"
 
 sudo cp "$OMARCHY_PATH/default/vivaldi/omarchy-theme-loader.js" "$JS"
-sudo sed -i "\|$JS|d; s|</head>|  <style id=\"omarchy-theme\"></style>\n  <script src=\"$JS\"></script>\n&|" window.html
+sudo sed -i -e "/omarchy-theme/d; s|</head>| <style id=\"omarchy-theme\"></style>\n&|" window.html
+sudo sed -i -e "/$JS/d; s|</head>|  <script src=\"$JS\"></script>\n&|" window.html
 
 sudo touch style/omarchy.csv
 sudo chown "$USER" style/omarchy.csv

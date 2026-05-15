@@ -2,7 +2,7 @@
   let last = '';
   const refresh = async () => {
     try {
-      const colors = await (await fetch('style/omarchy.csv')).text();
+      const colors = await (await fetch('style/omarchy.csv', { cache: 'no-store' })).text();
 
       if (colors === last || !/^#[a-f\d]{6}(,#[a-f\d]{6}){2}$/i.test(colors)) return;
       const [bg, fg, accent] = colors.split(',');

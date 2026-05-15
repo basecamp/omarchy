@@ -7,4 +7,4 @@ bg=$(awk -F'"' '/^background/{print $2}' "$COLORS")
 fg=$(awk -F'"' '/^foreground/{print $2}' "$COLORS")
 accent=$(awk -F'"' '/^accent/{print $2}' "$COLORS")
 
-printf "$bg,$fg,$accent" > /opt/vivaldi/resources/vivaldi/style/omarchy.csv
+echo -n "$bg,$fg,$accent" > /opt/vivaldi/resources/vivaldi/style/omarchy.csv
