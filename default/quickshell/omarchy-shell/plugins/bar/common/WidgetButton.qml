@@ -17,8 +17,6 @@ Item {
   property real textRotation: 0
   property bool keepSpace: false
   property string tooltipText: ""
-  property real hoverScale: 1.0
-  property real pressScale: 0.92
 
   signal pressed(int button)
   signal wheelMoved(int delta)
@@ -46,14 +44,9 @@ Item {
     rotation: root.textRotation
     horizontalAlignment: Text.AlignHCenter
     verticalAlignment: Text.AlignVCenter
-    scale: mouseArea.pressed ? root.pressScale : (mouseArea.containsMouse ? root.hoverScale : 1.0)
 
     Behavior on color {
       ColorAnimation { duration: 160 }
-    }
-
-    Behavior on scale {
-      NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
     }
   }
 
