@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# omarchy:summary=Install Sunshine and open Moonlight streaming ports for LAN and Tailscale.
+# omarchy:requires-sudo=true
+
+set -e
+
+TCP_PORTS=(47984 47989 48010)
+UDP_PORTS=(5353 47998 47999 48000 48002 48010)
+PRIVATE_CIDRS=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
+UFW_COMMENT="omarchy-sunshine"
+
+open_ufw_port_for_private_lans() {
+  local proto="$1"
+  local port="$2"
+  local cidr
+
+  for cidr in "${PRIVATE_CIDRS[@]}"; do
+    sudo ufw allow in proto "$proto" from "$cidr" to any port "$port" comment "$UFW_COMMENT"
+  done
+}
+
+open_ufw_port_for_tailscale() {
+  local proto="$1"
+  local port="$2"
+
+  if ip link show tailscale0 >/dev/null 2>&1; then
+    sudo ufw allow in on tailscale0 to any port "$port" proto "$proto" comment "$UFW_COMMENT"
+  fi
+}
+
+open_ufw_ports() {
+  local port
+
+  if omarchy-cmd-missing ufw; then
+    echo "UFW is not installed; skipping Sunshine firewall rules."
+    return
+  fi
+
+  for port in "${TCP_PORTS[@]}"; do
+    open_ufw_port_for_private_lans tcp "$port"
+    open_ufw_port_for_tailscale tcp "$port"
+  done
+
+  for port in "${UDP_PORTS[@]}"; do
+    open_ufw_port_for_private_lans udp "$port"
+    open_ufw_port_for_tailscale udp "$port"
+  done
+
+  sudo ufw reload
+}
+
+echo "Installing Sunshine..."
+omarchy-pkg-add sunshine
+systemctl --user enable --now sunshine
+
+echo "Opening Sunshine firewall ports..."
+open_ufw_ports
+
+echo ""
+echo "Sunshine has been installed and its Moonlight streaming ports are open for private LANs and Tailscale."
