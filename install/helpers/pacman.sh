@@ -12,7 +12,7 @@ use_omarchy_pacman_config() {
   sudo cp -f "$OMARCHY_PATH/default/pacman/pacman-$mirror.conf" /etc/pacman.conf
   sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$mirror" /etc/pacman.d/mirrorlist
 
-  if [[ -n $archzfs_repo ]]; then
+  if [[ -n $archzfs_repo ]] && ! grep -q '^\[archzfs\]$' /etc/pacman.conf; then
     printf "\n" | sudo tee -a /etc/pacman.conf >/dev/null
     printf "%s\n" "$archzfs_repo" | sudo tee -a /etc/pacman.conf >/dev/null
   fi
