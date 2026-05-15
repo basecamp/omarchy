@@ -15,7 +15,7 @@ if omarchy-cmd-present voxtype; then
   systemctl --user daemon-reload
 
   # Remove packages and configs
-  omarchy-pkg-drop wtype voxtype-bin
+  omarchy-pkg-drop voxtype-bin
   rm -rf ~/.config/voxtype
   rm -rf ~/.local/share/voxtype
 else
