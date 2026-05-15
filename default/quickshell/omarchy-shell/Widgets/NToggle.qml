@@ -18,21 +18,25 @@ Rectangle {
 
   Rectangle {
     id: indicator
-    width: 32
-    height: 18
+    width: 48
+    height: 22
     anchors.verticalCenter: parent.verticalCenter
-    radius: height / 2
-    color: root.checked ? Color.mPrimary : Color.mSurfaceVariant
-    border.color: Color.mOutline
+    radius: 0
+    color: root.checked
+      ? Color.mPrimary
+      : Qt.rgba(Color.mOnSurface.r, Color.mOnSurface.g, Color.mOnSurface.b, 0.10)
+    border.color: root.checked
+      ? Color.mPrimary
+      : Qt.rgba(Color.mOnSurface.r, Color.mOnSurface.g, Color.mOnSurface.b, 0.4)
     border.width: Style.borderS
 
     Rectangle {
-      x: root.checked ? parent.width - width - 2 : 2
-      y: 2
-      width: parent.height - 4
-      height: parent.height - 4
-      radius: height / 2
-      color: Color.mOnSurface
+      width: 16
+      height: 16
+      radius: 0
+      anchors.verticalCenter: parent.verticalCenter
+      x: root.checked ? parent.width - width - 3 : 3
+      color: root.checked ? Color.mSurface : Color.mOnSurface
       Behavior on x { NumberAnimation { duration: Style.animationFast } }
     }
   }

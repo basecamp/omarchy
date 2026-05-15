@@ -9,17 +9,18 @@ import "." as Commons
 QtObject {
   id: root
 
-  // Radii.
-  readonly property real radiusXXS: 1
-  readonly property real radiusXS: 2
-  readonly property real radiusS:  3
-  readonly property real radiusM:  4
-  readonly property real radiusL:  6
-  readonly property real radiusXL: 8
-  readonly property real iRadiusXS: 2
-  readonly property real iRadiusS:  3
-  readonly property real iRadiusM:  4
-  readonly property real iRadiusL:  6
+  // Radii. Omarchy uses sharp corners; all radius tokens collapse to 0 so
+  // Noctalia plugins inherit the same look as native widgets.
+  readonly property real radiusXXS: 0
+  readonly property real radiusXS: 0
+  readonly property real radiusS:  0
+  readonly property real radiusM:  0
+  readonly property real radiusL:  0
+  readonly property real radiusXL: 0
+  readonly property real iRadiusXS: 0
+  readonly property real iRadiusS:  0
+  readonly property real iRadiusM:  0
+  readonly property real iRadiusL:  0
 
   // Margins / paddings. Noctalia uses two parallel scales for margins (one
   // tighter, one looser); we map them to the same values.
