@@ -4,6 +4,7 @@ Description=Omarchy Background Cycle Timer
 [Timer]
 OnCalendar=hourly
 AccuracySec=1min
+Persistent=true
 Unit=omarchy-bg-cycle.service
 
 [Install]
