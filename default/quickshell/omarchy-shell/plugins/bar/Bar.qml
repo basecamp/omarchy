@@ -929,8 +929,8 @@ Item {
 
       visible: root.tooltipShown && root.tooltipTarget !== null && root.tooltipText !== ""
       color: "transparent"
-      implicitWidth: tooltipBubble.implicitWidth
-      implicitHeight: tooltipBubble.implicitHeight
+      implicitWidth: Math.ceil(tooltipBubble.implicitWidth)
+      implicitHeight: Math.ceil(tooltipBubble.implicitHeight)
 
       anchor {
         id: tooltipAnchor
