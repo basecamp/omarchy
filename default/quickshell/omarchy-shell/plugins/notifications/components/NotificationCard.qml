@@ -90,7 +90,7 @@ Rectangle {
   // Add 2 * border.width so mainColumn (inset by border.width on top/left/right)
   // doesn't push content under the bottom edge. The bottom edge is also inset
   // for symmetry except when the progress bar replaces it.
-  implicitHeight: mainColumn.implicitHeight + border.width * 2 + (showProgress ? 3 : 0)
+  implicitHeight: mainColumn.implicitHeight + border.width * 2
   radius: cornerRadius
   color: backgroundColorOverride
   border.color: urgency === 2 ? Color.urgent : borderColorOverride
@@ -174,7 +174,7 @@ Rectangle {
         // Hide the slot when the icon failed to resolve (themed-icon name
         // not in the user's icon theme) AND we don't have a glyph fallback
         // — prevents rendering Qt's pink broken-image placeholder.
-        visible: root.hasSmallIcon && (root.hasGlyph || smallIconImage.status !== Image.Error)
+        visible: false
 
         Image {
           id: smallIconImage
@@ -244,7 +244,7 @@ Rectangle {
     anchors.bottom: parent.bottom
     height: 3
     color: root.borderColorOverride
-    visible: root.showProgress
+    visible: false
 
     Rectangle {
       anchors.left: parent.left
