@@ -1,10 +1,10 @@
 [Unit]
 Description=Omarchy Background Cycle Timer
-Requires=omarchy-bg-cycle.service
 
 [Timer]
 OnCalendar=hourly
 AccuracySec=1min
+Unit=omarchy-bg-cycle.service
 
 [Install]
 WantedBy=timers.target
