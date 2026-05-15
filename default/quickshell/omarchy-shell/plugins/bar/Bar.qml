@@ -1950,6 +1950,7 @@ Item {
     property var device: UPower.displayDevice
 
     text: root.batteryIcon()
+    horizontalMargin: 8.5
     visible: device !== null && device.isPresent && device.percentage > 0
     active: device !== null && device.percentage <= 20 && UPower.onBattery
     tooltipText: root.batteryTooltip()
