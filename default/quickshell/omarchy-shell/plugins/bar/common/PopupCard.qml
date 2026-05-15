@@ -33,7 +33,10 @@ PopupWindow {
   // with the card still at full opacity — Hyprland holds onto that frame
   // and leaves a stale outline at the popup's last position. By waiting for
   // the inner opacity to actually reach 0, the last committed buffer is
-  // transparent and the surface tears down cleanly.
+  // transparent and the surface tears down cleanly. `hideTimer.interval`
+  // derives from `fadeDurationMs` so the timer can't drift out of sync with
+  // the opacity Behavior below.
+  readonly property int fadeDurationMs: 140
   property bool _surfaceVisible: open
   visible: _surfaceVisible
   color: "transparent"
@@ -41,8 +44,12 @@ PopupWindow {
   implicitHeight: contentHeight
 
   onOpenChanged: {
-    if (open) _surfaceVisible = true
-    else hideTimer.restart()
+    if (open) {
+      hideTimer.stop()
+      _surfaceVisible = true
+    } else {
+      hideTimer.restart()
+    }
 
     if (!bar) return
     if (open) bar.requestPopout(coordinatorKey)
@@ -51,7 +58,7 @@ PopupWindow {
 
   Timer {
     id: hideTimer
-    interval: 160 // matches the card opacity Behavior duration with a small buffer
+    interval: root.fadeDurationMs + 20 // small buffer past the card opacity fade
     onTriggered: if (!root.open) root._surfaceVisible = false
   }
 
@@ -112,7 +119,7 @@ PopupWindow {
     opacity: root.open ? 1.0 : 0
 
     Behavior on opacity {
-      NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+      NumberAnimation { duration: root.fadeDurationMs; easing.type: Easing.OutCubic }
     }
 
     Item {

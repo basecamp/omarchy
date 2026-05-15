@@ -72,6 +72,13 @@ Item {
   property var tooltipTarget: null
   property string tooltipText: ""
   property bool tooltipShown: false
+  // tooltipMapped tracks whether the popup surface is currently mapped to
+  // the compositor. Driven by tooltipWindow.onVisibleChanged with a deferred
+  // off-transition so a same-tick re-show still routes through the safe path.
+  property bool tooltipMapped: false
+  property var pendingTooltipTarget: null
+  property string pendingTooltipText: ""
+  property bool tooltipPending: false
   property var activePopout: null
 
   function requestPopout(owner) {
@@ -409,24 +416,34 @@ Item {
   }
 
   // Changing tooltipText resizes the bubble (and thus the popup window). If
-  // we do that while the popup is still mapped (or in the same QML tick as
-  // the visible→false flip), Hyprland gets a resize commit before the unmap
-  // and retains the post-resize frame at the new size — that's where the
-  // partial "ot running" stale-tooltip artifact comes from. The fix is to
-  // make sure visible flips false (popup unmaps) before tooltipText ever
-  // changes to a different value, by deferring the text/target update with
-  // Qt.callLater and leaving the old text in place across the gap.
+  // we do that while the popup is still mapped, Hyprland gets a resize
+  // commit before the unmap and retains the post-resize frame at the new
+  // size — that's where the partial "ot running" stale-tooltip artifact
+  // comes from. When the surface is currently mapped, stage the new
+  // target/text in the pending fields and apply them after the unmap on the
+  // next tick; rapid retargeting overwrites the pending pair and collapses
+  // to a single queued callback. When the surface is already unmapped (the
+  // common case — any first hover after an idle gap), apply directly so
+  // tooltips don't pay an unnecessary frame of latency.
   function showTooltip(target, text) {
     if (!text) return
 
-    if (tooltipShown || tooltipTarget !== null) {
+    if (tooltipMapped) {
+      pendingTooltipTarget = target
+      pendingTooltipText = text
       tooltipShown = false
       tooltipTimer.stop()
-      Qt.callLater(function() {
-        tooltipTarget = target
-        tooltipText = text
-        tooltipTimer.restart()
-      })
+      if (!tooltipPending) {
+        tooltipPending = true
+        Qt.callLater(function() {
+          tooltipPending = false
+          tooltipTarget = pendingTooltipTarget
+          tooltipText = pendingTooltipText
+          pendingTooltipTarget = null
+          pendingTooltipText = ""
+          tooltipTimer.restart()
+        })
+      }
       return
     }
 
@@ -441,9 +458,9 @@ Item {
 
     tooltipTimer.stop()
     tooltipShown = false
-    // Leave tooltipText/tooltipTarget intact. The popup is now unmapped and
-    // its size no longer matters; the next showTooltip will overwrite both
-    // after the surface has fully torn down.
+    // tooltipText/tooltipTarget stay set; tooltipMapped (driven by the
+    // popup's own visibleChanged) is what tells showTooltip whether a
+    // resize is still dangerous.
   }
 
   function parseModuleJson(raw) {
@@ -948,6 +965,19 @@ Item {
       id: tooltipWindow
 
       visible: root.tooltipShown && root.tooltipTarget !== null && root.tooltipText !== ""
+      // Off-transition is deferred a tick so a same-tick re-show is still
+      // treated as "popup currently mapped" and routed through showTooltip's
+      // safe (deferred) path. Once the unmap has settled, the next hover
+      // takes the fast direct path.
+      onVisibleChanged: {
+        if (visible) {
+          root.tooltipMapped = true
+        } else {
+          Qt.callLater(function() {
+            if (!tooltipWindow.visible) root.tooltipMapped = false
+          })
+        }
+      }
       color: "transparent"
       implicitWidth: tooltipBubble.implicitWidth
       implicitHeight: tooltipBubble.implicitHeight
