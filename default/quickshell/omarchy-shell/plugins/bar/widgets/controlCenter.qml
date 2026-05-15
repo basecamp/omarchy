@@ -3,7 +3,6 @@ import Quickshell
 import Quickshell.Bluetooth
 import Quickshell.Io
 import Quickshell.Services.Pipewire
-import Quickshell.Services.UPower
 import "../common" as Common
 
 Item {
@@ -46,9 +45,6 @@ Item {
   property bool nightLightActive: false
   property bool nightLightAvailable: false
   property string themeName: ""
-
-  readonly property bool powerProfileAvailable: PowerProfiles.hasPerformanceProfile || PowerProfiles.profile === PowerProfile.PowerSaver || PowerProfiles.profile === PowerProfile.Balanced
-  readonly property int currentProfile: PowerProfiles.profile
 
   function setBrightness(percent) {
     var clamped = Math.max(1, Math.min(100, Math.round(percent)))
@@ -167,14 +163,6 @@ Item {
       anchors.fill: parent
       spacing: 14
 
-      Text {
-        text: "Quick settings"
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: 12
-        font.bold: true
-      }
-
       Column {
         width: parent.width
         spacing: 10
@@ -275,44 +263,6 @@ Item {
       }
 
       Rectangle {
-        visible: root.powerProfileAvailable
-        width: parent.width
-        height: 1
-        color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
-      }
-
-      Column {
-        width: parent.width
-        spacing: 6
-        visible: root.powerProfileAvailable
-
-        Text {
-          text: "Power profile"
-          color: Qt.darker(root.bar.foreground, 1.5)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-          font.bold: true
-        }
-
-        Repeater {
-          model: [
-            { profile: PowerProfile.PowerSaver, label: "Power Saver", glyph: "󰌪" },
-            { profile: PowerProfile.Balanced, label: "Balanced", glyph: "󰗑" },
-            { profile: PowerProfile.Performance, label: "Performance", glyph: "󰓅" }
-          ]
-
-          ProfileButton {
-            required property var modelData
-            width: parent.width
-            profile: modelData.profile
-            label: modelData.label
-            glyph: modelData.glyph
-            profileEnabled: modelData.profile !== PowerProfile.Performance || PowerProfiles.hasPerformanceProfile
-          }
-        }
-      }
-
-      Rectangle {
         width: parent.width
         height: 1
         color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
@@ -327,77 +277,6 @@ Item {
         verticalPadding: 8
         onClicked: { root.run("omarchy-launch-settings"); root.popupOpen = false }
       }
-    }
-  }
-
-  component ProfileButton: Rectangle {
-    id: profileButton
-
-    property int profile: PowerProfile.Balanced
-    property string label: ""
-    property string glyph: ""
-    property bool profileEnabled: true
-    readonly property bool active: root.currentProfile === profile
-
-    height: 34
-    radius: 4
-    color: profileArea.pressed
-      ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.22)
-      : profileArea.containsMouse
-        ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
-        : (active ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.18) : "transparent")
-    border.color: active ? root.bar.foreground : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
-    border.width: active ? 1 : 0
-    opacity: profileEnabled ? 1 : 0.4
-
-    Behavior on color { ColorAnimation { duration: 120 } }
-
-    Row {
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: 10
-      anchors.rightMargin: 10
-      spacing: 8
-
-      Text {
-        text: profileButton.glyph
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: 14
-        width: 18
-        horizontalAlignment: Text.AlignHCenter
-        anchors.verticalCenter: parent.verticalCenter
-      }
-
-      Text {
-        text: profileButton.label
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: 12
-        elide: Text.ElideRight
-        width: parent.width - 18 - 14 - 16
-        anchors.verticalCenter: parent.verticalCenter
-      }
-
-      Text {
-        text: profileButton.active ? "󰄬" : ""
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: 13
-        width: 14
-        horizontalAlignment: Text.AlignRight
-        anchors.verticalCenter: parent.verticalCenter
-      }
-    }
-
-    MouseArea {
-      id: profileArea
-      anchors.fill: parent
-      hoverEnabled: true
-      enabled: profileButton.profileEnabled
-      cursorShape: profileButton.profileEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onClicked: PowerProfiles.profile = profileButton.profile
     }
   }
 
