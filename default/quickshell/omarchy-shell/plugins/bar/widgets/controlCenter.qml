@@ -144,7 +144,7 @@ Item {
     anchors.fill: parent
     bar: root.bar
     text: "󰙪"
-    fontSize: 14
+    fontSize: 12
     tooltipText: "Quick Settings"
     onPressed: function() { root.popupOpen = !root.popupOpen }
   }

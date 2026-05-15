@@ -174,7 +174,7 @@ Item {
     anchors.fill: parent
     bar: root.bar
     text: root.outputIcon()
-    fontSize: 14
+    fontSize: 12
     tooltipText: root.sink ? root.nodeLabel(root.sink) + " · " + Math.round(root.outputVolume * 100) + "%" : "No audio"
 
     onPressed: function(b) {
