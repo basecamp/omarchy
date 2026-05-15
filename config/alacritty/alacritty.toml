@@ -1,7 +1,7 @@
 general.import = [ "~/.config/omarchy/current/theme/alacritty.toml" ]
 
 [env]
-TERM = "xterm-256color"
+TERM = "alacritty"
 
 [terminal]
 osc52 = "CopyPaste"
