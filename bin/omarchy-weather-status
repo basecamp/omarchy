@@ -14,4 +14,4 @@ place=${place%%,*}
 place=${place^}
 temperature=${temperature#+}
 
-echo "$(omarchy-weather-icon)    $place  ·  Temp $temperature  ·  Wind $wind"
+echo "$place  ·  Temp $temperature  ·  Wind $wind"
