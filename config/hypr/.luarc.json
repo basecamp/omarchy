@@ -6,6 +6,6 @@
     "checkThirdParty": false
   },
   "diagnostics": {
-    "globals": ["hl"]
+    "globals": ["hl", "o"]
   }
 }
