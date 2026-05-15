@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import "../common" as Common
@@ -143,36 +144,33 @@ fi
     }
   }
 
-  // Wi-Fi scan via nmcli OR iwctl, whichever is available. Emits TSV plus
-  // a STATION_AVAILABLE marker so the panel knows whether to render the list.
+  // Wi-Fi scan via iwctl. Emits a STATION_AVAILABLE marker followed by TSV
+  // rows (connected, ssid, signal_pct, security). Strip ANSI escapes early —
+  // iwctl's table layout starts each row with one, which breaks naive parsing.
   Process {
     id: wifiProc
     command: ["bash", "-c", `
-if command -v nmcli >/dev/null; then
-  echo STATION_AVAILABLE
-  nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device wifi list --rescan no 2>/dev/null \
-    | awk -F: '{ printf "%s\\t%s\\t%s\\t%s\\n", ($1=="*" ? "1" : "0"), $2, $3, $4 }'
-elif command -v iwctl >/dev/null; then
-  station=$(iwctl station list 2>/dev/null | sed -n 's/^[[:space:]]*\\(wl[a-z0-9]*\\)[[:space:]].*/\\1/p' | head -1)
-  [[ -n $station ]] && {
-    echo STATION_AVAILABLE
-    iwctl station "$station" get-networks 2>/dev/null \
-      | sed -e 's/\\x1b\\[[0-9;]*m//g' \
-      | awk 'NR > 4 && NF >= 2 {
-          connected = ($0 ~ /^>/) ? 1 : 0
-          line = $0
-          sub(/^[ >]+/, "", line)
-          # Last two columns are security and signal indicator (asterisks)
-          n = split(line, fields, /[ \\t]{2,}/)
-          ssid = fields[1]
-          security = (n >= 2) ? fields[2] : ""
-          signal_marks = (n >= 3) ? fields[3] : ""
-          gsub(/[^*]/, "", signal_marks)
-          signal_pct = length(signal_marks) * 25
-          printf "%d\\t%s\\t%d\\t%s\\n", connected, ssid, signal_pct, security
-        }'
-  }
-fi
+station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
+[[ -z $station ]] && exit 0
+echo STATION_AVAILABLE
+iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
+  | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
+  | awk '
+      NR <= 4 { next }
+      /^[[:space:]]*$/ { next }
+      {
+        connected = (substr($0, 1, 4) ~ />/) ? 1 : 0
+        line = $0
+        sub(/^[[:space:]]*>?[[:space:]]+/, "", line)
+        sub(/[[:space:]]+$/, "", line)
+        n = split(line, parts, /[[:space:]]{2,}/)
+        if (n < 3) next
+        ssid = parts[1]
+        security = parts[n-1]
+        dbm = parts[n] / 100
+        signal = (dbm >= -50) ? 100 : (dbm <= -100) ? 0 : int(2 * (dbm + 100))
+        printf "%d\\t%s\\t%d\\t%s\\n", connected, ssid, signal, security
+      }'
 `]
     stdout: StdioCollector {
       waitForEnd: true
@@ -390,34 +388,69 @@ fi
         font.bold: true
       }
 
-      Repeater {
-        model: root.wifiStationAvailable ? root.wifiNetworks.slice(0, 6) : []
+      // Scrollable network list — cap the height so a busy neighbourhood
+      // doesn't push the popup off-screen. Bluetooth panel uses the same
+      // pattern.
+      Flickable {
+        visible: root.wifiStationAvailable
+        width: parent.width
+        height: Math.min(networkList.implicitHeight, 240)
+        contentWidth: width
+        contentHeight: networkList.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
 
-        Common.PillButton {
-          required property var modelData
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
+        Column {
+          id: networkList
           width: parent.width
-          iconText: root.wifiIconFor(modelData.signal)
-          text: (modelData.ssid || "Hidden") + (modelData.security ? "  ·  " + modelData.security : "")
-          foreground: root.bar.foreground
-          horizontalPadding: 10
-          verticalPadding: 6
-          active: modelData.connected
+          spacing: 6
 
-          onClicked: {
-            if (modelData.connected) return
-            if (actionProc.running) return
-            if (Qt.platform.os) { /* keep linter happy */ }
-            // Prefer nmcli; fall back to iwctl. Both work as one-shot connects
-            // for open or already-known networks; secured networks pop the TUI.
-            actionProc.command = ["bash", "-c",
-              "if command -v nmcli >/dev/null; then" +
-              "  nmcli device wifi connect " + root.bar.shellQuote(modelData.ssid) +
-              "; else" +
-              "  " + root.bar.omarchyPath + "/bin/omarchy-launch-wifi" +
-              "; fi"]
-            actionProc.running = true
-            root.popupOpen = false
+          Repeater {
+            model: root.wifiStationAvailable ? root.wifiNetworks : []
+
+            Common.PillButton {
+              required property var modelData
+
+              width: networkList.width
+              leftAlign: true
+              iconText: root.wifiIconFor(modelData.signal)
+              text: (modelData.ssid || "Hidden") + (modelData.security ? "  ·  " + modelData.security : "")
+              foreground: root.bar.foreground
+              horizontalPadding: 10
+              verticalPadding: 6
+              active: modelData.connected
+
+              onClicked: {
+                if (modelData.connected) return
+                if (actionProc.running) return
+                // Known networks (and open networks) can connect non-interactively
+                // via iwctl. Anything else needs Impala for passphrase entry.
+                var ssid = root.bar.shellQuote(modelData.ssid)
+                var security = root.bar.shellQuote(modelData.security || "")
+                var omarchyPath = root.bar.omarchyPath
+                actionProc.command = ["bash", "-c", `
+ssid=${ssid}
+security=${security}
+station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
+known=$(iwctl known-networks list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk -v s="$ssid" 'NR > 3 {
+  line = $0
+  sub(/^[[:space:]]+/, "", line)
+  sub(/[[:space:]]+$/, "", line)
+  n = split(line, p, /[[:space:]]{2,}/)
+  if (n >= 1 && p[1] == s) { print "yes"; exit }
+}')
+if [[ -n $station && ( -n $known || $security == "open" ) ]]; then
+  iwctl --dont-ask station "$station" connect "$ssid"
+else
+  ${omarchyPath}/bin/omarchy-launch-wifi
+fi
+`]
+                actionProc.running = true
+                root.popupOpen = false
+              }
+            }
           }
         }
       }

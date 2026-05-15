@@ -367,22 +367,32 @@ Item {
 
   function networkCommand() {
     return [
-      "route_device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == \"dev\") { print $(i + 1); exit } }')",
-      "connection_name() { command -v nmcli >/dev/null 2>&1 && nmcli -t -f GENERAL.CONNECTION device show \"$1\" 2>/dev/null | awk -F: '$1 == \"GENERAL.CONNECTION\" { print $2; exit }'; }",
-      "wifi_details() { command -v nmcli >/dev/null 2>&1 && nmcli -t -f IN-USE,SIGNAL,FREQ device wifi list --rescan no 2>/dev/null | awk -F: '$1 == \"*\" { print $2 \"\\t\" $3; exit }'; }",
-      "if [[ -n $route_device && ! -d /sys/class/net/$route_device/wireless ]]; then",
-      "  label=$(connection_name \"$route_device\"); label=${label:-$route_device}",
-      "  printf 'ethernet\\t%s\\t\\t\\n' \"$label\"",
-      "elif [[ -n $route_device ]]; then",
-      "  label=$(connection_name \"$route_device\"); label=${label:-$route_device}",
-      "  details=$(wifi_details)",
-      "  signal=${details%%$'\\t'*}",
-      "  frequency=${details#*$'\\t'}",
-      "  [[ $frequency == \"$details\" ]] && frequency=\"\"",
-      "  printf 'wifi\\t%s\\t%s\\t%s\\n' \"$label\" \"$signal\" \"$frequency\"",
-      "else",
+      "device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == \"dev\") { print $(i + 1); exit } }')",
+      "if [[ -z $device ]]; then",
       "  printf 'disconnected\\t\\t\\t\\n'",
-      "fi"
+      "  exit 0",
+      "fi",
+      "if [[ ! -d /sys/class/net/$device/wireless ]]; then",
+      "  printf 'ethernet\\t%s\\t\\t\\n' \"$device\"",
+      "  exit 0",
+      "fi",
+      "show=$(iwctl station \"$device\" show 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g')",
+      "state=$(awk '/^[[:space:]]*State[[:space:]]/ { sub(/.*State[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
+      "ssid=$(awk '/^[[:space:]]*Connected network[[:space:]]/ { sub(/.*Connected network[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
+      "freq=$(awk '/^[[:space:]]*Frequency[[:space:]]/ { sub(/.*Frequency[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
+      "rssi=$(awk '/^[[:space:]]*RSSI[[:space:]]/ { sub(/.*RSSI[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
+      "dbm=${rssi%% *}",
+      "signal=\"\"",
+      "if [[ -n $dbm ]]; then",
+      "  if (( dbm >= -50 )); then signal=100",
+      "  elif (( dbm <= -100 )); then signal=0",
+      "  else signal=$(( 2 * (dbm + 100) )); fi",
+      "fi",
+      "if [[ -n $state && $state != connected ]]; then",
+      "  printf 'disconnected\\t\\t\\t\\n'",
+      "  exit 0",
+      "fi",
+      "printf 'wifi\\t%s\\t%s\\t%s\\n' \"${ssid:-$device}\" \"$signal\" \"$freq\""
     ].join("\n")
   }
 
