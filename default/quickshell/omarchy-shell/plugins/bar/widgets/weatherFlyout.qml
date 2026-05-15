@@ -42,13 +42,6 @@ Item {
   readonly property string reportFeels:     current ? formatTemp(useImperial ? current.FeelsLikeF : current.FeelsLikeC) : ""
   readonly property string reportWind:      current ? (useImperial ? (current.windspeedMiles + " mph") : (current.windspeedKmph + " km/h")) : ""
   readonly property string reportHumidity:  current ? (current.humidity + "%") : ""
-  readonly property string conditionLine: {
-    var parts = []
-    if (reportCondition) parts.push(reportCondition)
-    var wd = windDescriptor()
-    if (wd) parts.push(wd)
-    return parts.join(" · ")
-  }
 
   visible: label !== ""
   implicitWidth: button.implicitWidth + 8
@@ -83,22 +76,6 @@ Item {
   function minTempForDay(day) {
     if (!day) return ""
     return formatTemp(useImperial ? day.mintempF : day.mintempC)
-  }
-
-  // Beaufort-ish descriptor based on current windspeed in mph.
-  function windDescriptor() {
-    if (!current) return ""
-    var mph = parseInt(String(current.windspeedMiles || "0"), 10)
-    if (isNaN(mph)) return ""
-    if (mph < 1)  return "Calm"
-    if (mph < 4)  return "Light air"
-    if (mph < 8)  return "Light breeze"
-    if (mph < 13) return "Gentle breeze"
-    if (mph < 19) return "Moderate breeze"
-    if (mph < 25) return "Fresh breeze"
-    if (mph < 32) return "Strong breeze"
-    if (mph < 39) return "Near gale"
-    return "Gale"
   }
 
   // Bare degree value (no unit letter), used in the forecast row.
@@ -202,7 +179,7 @@ Item {
     bar: root.bar
     open: root.popupOpen
     triggerMode: "click"
-    contentWidth: 460
+    contentWidth: 520
     contentHeight: card.implicitHeight + 28
 
     Column {
@@ -210,16 +187,54 @@ Item {
       anchors.fill: parent
       spacing: 14
 
-      // ---- Hero row: location/temp/condition on the left, big icon on the right.
+      // ---- Hero row: big icon + temp on the left; location and stats stacked on the right.
       Item {
         width: parent.width
-        height: heroLeft.height
+        height: Math.max(heroLeft.height, heroRight.height)
 
-        Column {
+        Row {
           id: heroLeft
           anchors.left: parent.left
-          anchors.top: parent.top
-          spacing: 6
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: 12
+
+          Text {
+            id: heroIcon
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.label || "—"
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: 64
+          }
+
+          Row {
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+
+            Text {
+              id: tempBig
+              text: root.reportTempNum || "—"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: 56
+              font.bold: true
+            }
+            Text {
+              text: root.current ? root.tempUnit : ""
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: 22
+              anchors.top: tempBig.top
+              anchors.topMargin: 10
+            }
+          }
+        }
+
+        Column {
+          id: heroRight
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: 8
 
           Row {
             visible: root.reportLocation !== ""
@@ -243,100 +258,59 @@ Item {
           }
 
           Row {
-            spacing: 2
+            visible: !!root.current
+            spacing: 22
 
-            Text {
-              id: tempBig
-              text: root.reportTempNum || "—"
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: 56
-              font.bold: true
+            Column {
+              spacing: 4
+              Text {
+                text: "FEELS"
+                color: Qt.darker(root.bar.foreground, 1.5)
+                font.family: root.bar.fontFamily
+                font.pixelSize: 10
+                font.letterSpacing: 1
+              }
+              Text {
+                text: root.reportFeels
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: 13
+              }
             }
-            Text {
-              text: root.current ? root.tempUnit : ""
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: 22
-              anchors.top: tempBig.top
-              anchors.topMargin: 10
+
+            Column {
+              spacing: 4
+              Text {
+                text: "WIND"
+                color: Qt.darker(root.bar.foreground, 1.5)
+                font.family: root.bar.fontFamily
+                font.pixelSize: 10
+                font.letterSpacing: 1
+              }
+              Text {
+                text: root.reportWind
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: 13
+              }
             }
-          }
 
-          Text {
-            visible: text !== ""
-            text: root.conditionLine
-            color: Qt.darker(root.bar.foreground, 1.2)
-            font.family: root.bar.fontFamily
-            font.pixelSize: 12
-          }
-        }
-
-        Text {
-          id: heroIcon
-          anchors.right: parent.right
-          anchors.verticalCenter: heroLeft.verticalCenter
-          text: root.label || "—"
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 80
-        }
-      }
-
-      // ---- Stats row: three caps-labeled columns.
-      Row {
-        visible: !!root.current
-        width: parent.width
-        spacing: 36
-
-        Column {
-          spacing: 4
-          Text {
-            text: "FEELS"
-            color: Qt.darker(root.bar.foreground, 1.5)
-            font.family: root.bar.fontFamily
-            font.pixelSize: 10
-            font.letterSpacing: 1
-          }
-          Text {
-            text: root.reportFeels
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: 13
-          }
-        }
-
-        Column {
-          spacing: 4
-          Text {
-            text: "WIND"
-            color: Qt.darker(root.bar.foreground, 1.5)
-            font.family: root.bar.fontFamily
-            font.pixelSize: 10
-            font.letterSpacing: 1
-          }
-          Text {
-            text: root.reportWind
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: 13
-          }
-        }
-
-        Column {
-          spacing: 4
-          Text {
-            text: "HUMIDITY"
-            color: Qt.darker(root.bar.foreground, 1.5)
-            font.family: root.bar.fontFamily
-            font.pixelSize: 10
-            font.letterSpacing: 1
-          }
-          Text {
-            text: root.reportHumidity
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: 13
+            Column {
+              spacing: 4
+              Text {
+                text: "HUMIDITY"
+                color: Qt.darker(root.bar.foreground, 1.5)
+                font.family: root.bar.fontFamily
+                font.pixelSize: 10
+                font.letterSpacing: 1
+              }
+              Text {
+                text: root.reportHumidity
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: 13
+              }
+            }
           }
         }
       }
