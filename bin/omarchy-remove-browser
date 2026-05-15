@@ -66,6 +66,7 @@ vivaldi)
   set_fallback_default_browser vivaldi-stable.desktop
   omarchy-pkg-drop vivaldi
   rm -f ~/.config/vivaldi-stable.conf
+  rm -f ~/.config/omarchy/hooks/post-update.d/vivaldi-post-update
 
   sudo sed -i '/^vivaldi-bin$/d' /etc/1password/custom_allowed_browsers || true
   if [[ -z "$(<"/etc/1password/custom_allowed_browsers")" ]]; then
