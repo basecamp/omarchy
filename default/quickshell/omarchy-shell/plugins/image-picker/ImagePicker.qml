@@ -370,7 +370,7 @@ Item {
     watchChanges: true
     printErrors: false
     onLoaded: root.loadColors(text())
-    onFileChanged: { reload(); root.loadColors(text()) }
+    onFileChanged: reload()
   }
 
   function loadColors(raw) {
@@ -533,9 +533,14 @@ Item {
               Image {
                 id: image
                 anchors.fill: parent
-                source: item.nearby ? root.fileUrl(item.thumbnailPath) : ""
+                // Keep a stable source while delegates move in and out of the
+                // nearby window. Clearing/reassigning the source on every
+                // selection change makes Qt tear down and reload textures,
+                // which shows up as flicker in both the theme and background
+                // selectors.
+                source: item.thumbnailPath ? root.fileUrl(item.thumbnailPath) : ""
                 fillMode: Image.PreserveAspectCrop
-                asynchronous: true
+                asynchronous: false
                 cache: true
                 smooth: true
               }
