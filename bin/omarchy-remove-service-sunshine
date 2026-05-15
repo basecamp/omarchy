@@ -13,7 +13,7 @@ HYPR_AUTOSTART_FILE="$HOME/.config/hypr/autostart.lua"
 HYPR_AUTOSTART_ENTRY='o.launch_on_start("sunshine")'
 
 delete_ufw_rule() {
-  sudo ufw --force delete "$@" 2>/dev/null || true
+  sudo ufw --force delete "$@" >/dev/null 2>&1 || true
 }
 
 close_ufw_port_for_private_lans() {
