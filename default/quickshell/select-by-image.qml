@@ -53,8 +53,8 @@ ShellRoot {
   }
 
   function currentPath() {
-    if (imageModel.count === 0 || !itemMatches(selectedIndex)) return ""
-    return imageModel.get(selectedIndex).filePath
+    if (imageArray.length === 0 || !itemMatches(selectedIndex)) return ""
+    return imageArray[selectedIndex].filePath
   }
 
   function nameForPath(path) {
@@ -73,19 +73,19 @@ ShellRoot {
   }
 
   function itemMatches(index) {
-    if (index < 0 || index >= imageModel.count) return false
+    if (index < 0 || index >= imageArray.length) return false
     if (!filterText) return true
 
-    var path = imageModel.get(index).filePath
+    var path = imageArray[index].filePath
     var needle = filterText.toLowerCase()
     return nameForPath(path).toLowerCase().indexOf(needle) !== -1 || labelForPath(path).toLowerCase().indexOf(needle) !== -1
   }
 
   function matchingCount() {
-    if (!filterText) return imageModel.count
+    if (!filterText) return imageArray.length
 
     var count = 0
-    for (var i = 0; i < imageModel.count; i++) {
+    for (var i = 0; i < imageArray.length; i++) {
       if (itemMatches(i)) count++
     }
 
@@ -93,7 +93,7 @@ ShellRoot {
   }
 
   function firstMatchingIndex() {
-    for (var i = 0; i < imageModel.count; i++) {
+    for (var i = 0; i < imageArray.length; i++) {
       if (itemMatches(i)) return i
     }
 
@@ -118,9 +118,9 @@ ShellRoot {
   }
 
   function select(index, immediate) {
-    if (imageModel.count === 0) return
+    if (imageArray.length === 0) return
     if (index < 0) index = 0
-    else if (index >= imageModel.count) index = imageModel.count - 1
+    else if (index >= imageArray.length) index = imageArray.length - 1
     if (!itemMatches(index)) return
     if (index === selectedIndex && immediate !== true) return
 
@@ -128,7 +128,7 @@ ShellRoot {
   }
 
   function selectAdjacent(direction) {
-    var count = imageModel.count
+    var count = imageArray.length
     if (count === 0) return
 
     var index = selectedIndex
@@ -209,15 +209,27 @@ ShellRoot {
   }
 
   function loadRows(rows) {
+    var newImages = []
+    var seen = {}
     var paths = rows.split("\n")
     for (var i = 0; i < paths.length; i++) {
       var row = paths[i]
       if (!row) continue
 
       var columns = row.split("\t")
-      root.addImage(columns[0], columns[1])
+      var path = columns[0]
+      if (!path) continue
+      var fileName = path.split("/").pop()
+      if (seen[fileName]) continue
+      seen[fileName] = true
+      newImages.push({
+        filePath: path,
+        fileName: fileName,
+        thumbnailPath: columns[1] || path
+      })
     }
 
+    root.imageArray = newImages
     root.select(root.selectedImageIndex(), true)
     root.imagesLoaded = true
     root.opened = true
@@ -242,7 +254,7 @@ ShellRoot {
     colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/quickshell.json")
     if (nextColorsRaw)
       loadColors(nextColorsRaw)
-    imageModel.clear()
+    imageArray = []
     selectedIndex = 0
     imagesLoaded = false
     opened = false
@@ -254,23 +266,11 @@ ShellRoot {
     }
   }
 
-  ListModel { id: imageModel }
-
-  function addImage(path, thumbnailPath) {
-    if (!path) return
-    var fileName = path.split("/").pop()
-
-    for (var i = imageModel.count - 1; i >= 0; i--) {
-      if (imageModel.get(i).fileName === fileName)
-        imageModel.remove(i)
-    }
-
-    imageModel.append({ filePath: path, fileName: fileName, thumbnailPath: thumbnailPath || path })
-  }
+  property var imageArray: []
 
   function selectedImageIndex() {
-    for (var i = 0; i < imageModel.count; i++) {
-      if (imageModel.get(i).filePath === selectedImage)
+    for (var i = 0; i < imageArray.length; i++) {
+      if (imageArray[i].filePath === selectedImage)
         return i
     }
 
@@ -428,14 +428,16 @@ ShellRoot {
         Component.onCompleted: forceActiveFocus()
 
         Repeater {
-          model: imageModel
+          model: root.imageArray.length
 
           delegate: Item {
             id: item
             required property int index
-            required property string filePath
-            required property string fileName
-            required property string thumbnailPath
+
+            readonly property var imageData: root.imageArray[index]
+            readonly property string filePath: imageData ? imageData.filePath : ""
+            readonly property string fileName: imageData ? imageData.fileName : ""
+            readonly property string thumbnailPath: imageData ? imageData.thumbnailPath : ""
 
             readonly property bool matched: root.itemMatches(index)
             readonly property int relativeIndex: root.filteredPosition(index) - root.selectedFilteredPosition()
@@ -493,7 +495,7 @@ ShellRoot {
                 anchors.fill: parent
                 source: item.nearby ? root.fileUrl(item.thumbnailPath) : ""
                 fillMode: Image.PreserveAspectCrop
-                asynchronous: false
+                asynchronous: true
                 cache: true
                 smooth: true
               }
