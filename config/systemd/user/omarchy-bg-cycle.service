@@ -5,4 +5,3 @@ After=graphical-session.target
 [Service]
 Type=oneshot
 ExecStart=%h/.local/share/omarchy/bin/omarchy-theme-bg-next
-KillMode=none
