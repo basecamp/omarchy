@@ -208,7 +208,7 @@ Item {
     Column {
       id: card
       anchors.fill: parent
-      spacing: 20
+      spacing: 14
 
       // ---- Hero row: location/temp/condition on the left, big icon on the right.
       Item {
@@ -279,7 +279,7 @@ Item {
           text: root.label || "—"
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 56
+          font.pixelSize: 80
         }
       }
 
