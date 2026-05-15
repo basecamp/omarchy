@@ -19,6 +19,7 @@ Rectangle {
   property real horizontalPadding: 10
   property real verticalPadding: 6
   property bool active: false
+  property bool leftAlign: false
   property color activeBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18)
 
   ToolTip {
@@ -61,7 +62,10 @@ Rectangle {
 
   Row {
     id: row
-    anchors.centerIn: parent
+    anchors.verticalCenter: parent.verticalCenter
+    anchors.left: root.leftAlign ? parent.left : undefined
+    anchors.leftMargin: root.leftAlign ? root.horizontalPadding : 0
+    anchors.horizontalCenter: root.leftAlign ? undefined : parent.horizontalCenter
     spacing: 8
 
     Text {
