@@ -13,6 +13,25 @@ command=${2:-$1}
 
 mkdir -p "$HOME/.local/bin"
 
+# Refreshes happen while Omarchy is installing/updating wrappers, not every time
+# a generated wrapper launches. Normal launches prefer pnpm's local store below.
+if ! node_root="$(mise where node@latest 2>/dev/null)"; then
+  mise use -g node@latest >/dev/null
+  node_root="$(mise where node@latest)"
+fi
+
+if omarchy-cmd-missing pnpm; then
+  echo "Installing pnpm for $package..."
+  omarchy-pkg-add pnpm
+  hash -r
+fi
+
+export PNPM_CONFIG_MINIMUM_RELEASE_AGE=7200
+
+if [[ ${OMARCHY_NPM_REFRESH:-0} == 1 ]]; then
+  PATH="$node_root/bin:$PATH" pnpm dlx --package "$package" true
+fi
+
 cat > "$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 package="$package"
@@ -57,14 +76,14 @@ exec_package_bin() {
 }
 
 # Resolve the package bin inside pnpm dlx, then run it with node@latest available for node shebangs.
+# Prefer the local store during normal launches so transient registry or DNS
+# failures do not prevent cached npm wrappers from starting.
 # Some wrappers are aliases, e.g. playwright-cli wraps the playwright bin.
-PATH="\$node_root/bin:\$PATH" pnpm dlx --package "\$package" true
-
-package_bin_path=\$(PATH="\$node_root/bin:\$PATH" pnpm dlx --package "\$package" which "\$package" 2>/dev/null)
+package_bin_path=\$(PATH="\$node_root/bin:\$PATH" pnpm dlx --prefer-offline --package "\$package" which "\$package" 2>/dev/null)
 exec_package_bin "\$package_bin_path" "\$@"
 
 # Scoped packages like @openai/codex expose an unscoped bin like codex.
-package_bin_path=\$(PATH="\$node_root/bin:\$PATH" pnpm dlx --package "\$package" which "\$command" 2>/dev/null)
+package_bin_path=\$(PATH="\$node_root/bin:\$PATH" pnpm dlx --prefer-offline --package "\$package" which "\$command" 2>/dev/null)
 exec_package_bin "\$package_bin_path" "\$@"
 
 echo "Could not resolve npm bin for \$package / \$command" >&2
