@@ -36,6 +36,18 @@ Item {
     viewMonth = date
   }
 
+  function isoWeek(date) {
+    var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+    var day = d.getUTCDay() || 7
+    d.setUTCDate(d.getUTCDate() + 4 - day)
+    var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7)
+  }
+
+  function tooltipLabel() {
+    return Qt.formatDateTime(root.now, "dd MMMM yyyy") + " Week " + root.isoWeek(root.now)
+  }
+
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -52,7 +64,7 @@ Item {
     text: root.formatLabel()
     horizontalMargin: 8.75
     verticalPadding: 8.75
-    tooltipText: Qt.formatDateTime(root.now, "dddd, MMMM d, yyyy")
+    tooltipText: root.tooltipLabel()
 
     onPressed: function(b) {
       if (b === Qt.RightButton) {
