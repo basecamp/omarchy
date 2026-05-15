@@ -55,7 +55,7 @@ Example `shell.json` (bar subtree only shown):
 
 | Name | What it does | Interactions |
 |---|---|---|
-| `media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
+| `media` | MPRIS now-playing — scrolling track + artist, FFT visualizer, cover-art popup | left = popup · middle = next · right = play/pause · scroll = prev/next |
 | `audioPanel` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = audio TUI · scroll = volume |
 | `networkPanel` | Wi-Fi/Ethernet icon + popup with Wi-Fi scan, signal, connect | left = popup · right = nmtui |
 | `bluetoothPanel` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |

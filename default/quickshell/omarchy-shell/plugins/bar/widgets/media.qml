@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Mpris
 import "../common" as Common
 
@@ -37,6 +38,36 @@ Item {
   function closePopout() { popupOpen = false }
   property real maxLabelWidth: 180
 
+  // Live FFT from the default sink, fed by `cava` running in raw mode.
+  // Gated on playback so it doesn't burn CPU when nothing is playing.
+  // If cava isn't installed the script exits 1 and spectrumValues stays
+  // empty, which hides the visualizer everywhere it's used.
+  readonly property int spectrumBars: 28
+  readonly property bool spectrumWanted: (activePlayer && activePlayer.isPlaying) || popupOpen
+  property var spectrumValues: []
+
+  Process {
+    id: cavaProc
+    running: root.spectrumWanted && root.bar !== null
+    command: ["bash", "-lc",
+      (root.bar ? root.bar.shellQuote(root.bar.omarchyPath + "/default/quickshell/omarchy-shell/scripts/cava-bars.sh") : "")
+        + " " + root.spectrumBars]
+    stdout: SplitParser {
+      onRead: function(line) {
+        var trimmed = String(line).trim()
+        if (!trimmed) return
+        var parts = trimmed.split(/\s+/)
+        var out = new Array(parts.length)
+        for (var i = 0; i < parts.length; i++) {
+          var v = parseInt(parts[i], 10)
+          out[i] = isNaN(v) ? 0 : Math.min(1, v / 255)
+        }
+        root.spectrumValues = out
+      }
+    }
+    onRunningChanged: if (!running) root.spectrumValues = []
+  }
+
   visible: hasMedia
   implicitWidth: hasMedia ? row.implicitWidth + 14 : 0
   implicitHeight: bar ? bar.barSize : 26
@@ -65,6 +96,42 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       visible: !root.bar.vertical && root.title !== ""
 
+      // cliamp-style FFT bars layered behind the scrolling title at low
+      // opacity. Hidden on vertical bars where the label itself is hidden,
+      // and stays hidden when cava isn't installed (spectrumValues is empty).
+      Row {
+        id: barViz
+        anchors.fill: parent
+        spacing: 1
+        z: -1
+        visible: root.spectrumValues.length > 0 && !root.bar.vertical
+        opacity: (root.activePlayer && root.activePlayer.isPlaying) ? 0.35 : 0.0
+
+        Behavior on opacity { NumberAnimation { duration: 250 } }
+
+        Repeater {
+          model: root.spectrumValues
+          delegate: Item {
+            width: Math.max(1, (barViz.width - (root.spectrumValues.length - 1)) / root.spectrumValues.length)
+            height: barViz.height
+
+            Rectangle {
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.bottom: parent.bottom
+              anchors.rightMargin: 0
+              height: Math.max(1, Math.min(1, modelData) * (barViz.height - 2))
+              color: root.bar.foreground
+              radius: 1
+
+              Behavior on height {
+                NumberAnimation { duration: 60; easing.type: Easing.OutQuad }
+              }
+            }
+          }
+        }
+      }
+
       Text {
         id: labelText
         text: root.title + (root.artist ? "  ·  " + root.artist : "")
@@ -90,7 +157,6 @@ Item {
 
   MouseArea {
     anchors.fill: parent
-    hoverEnabled: true
     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
 
     onClicked: function(mouse) {
@@ -98,9 +164,9 @@ Item {
       if (mouse.button === Qt.MiddleButton) {
         if (root.activePlayer.canGoNext) root.activePlayer.next()
       } else if (mouse.button === Qt.RightButton) {
-        root.popupOpen = !root.popupOpen
-      } else {
         if (root.activePlayer.canTogglePlaying) root.activePlayer.togglePlaying()
+      } else {
+        root.popupOpen = !root.popupOpen
       }
     }
     onWheel: function(wheel) {
@@ -108,8 +174,6 @@ Item {
       if (wheel.angleDelta.y > 0 && root.activePlayer.canGoPrevious) root.activePlayer.previous()
       else if (wheel.angleDelta.y < 0 && root.activePlayer.canGoNext) root.activePlayer.next()
     }
-    onEntered: if (root.bar) root.bar.showTooltip(root, root.hasMedia ? (root.title + (root.artist ? " — " + root.artist : "")) : "")
-    onExited: if (root.bar) root.bar.hideTooltip(root)
   }
 
   Common.PopupCard {
@@ -189,6 +253,42 @@ Item {
             elide: Text.ElideRight
             width: parent.width
             visible: text !== ""
+          }
+        }
+      }
+
+      Item {
+        id: popupViz
+        width: parent.width
+        height: 36
+        visible: root.spectrumValues.length > 0
+
+        Row {
+          anchors.fill: parent
+          spacing: 2
+
+          Repeater {
+            model: root.spectrumValues
+
+            delegate: Item {
+              width: Math.max(1, (popupViz.width - (root.spectrumValues.length - 1) * 2) / root.spectrumValues.length)
+              height: popupViz.height
+
+              Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: Math.max(2, Math.min(1, modelData) * (popupViz.height - 2))
+                color: root.bar.foreground
+                opacity: root.activePlayer && root.activePlayer.isPlaying ? 0.85 : 0.25
+                radius: 1
+
+                Behavior on height {
+                  NumberAnimation { duration: 60; easing.type: Easing.OutQuad }
+                }
+                Behavior on opacity { NumberAnimation { duration: 250 } }
+              }
+            }
           }
         }
       }
