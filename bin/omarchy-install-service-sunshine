@@ -11,6 +11,7 @@ PRIVATE_CIDRS=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
 UFW_COMMENT="omarchy-sunshine"
 SUNSHINE_ADMIN_APP="Sunshine Admin"
 SUNSHINE_ADMIN_URL="https://localhost:47990"
+SUNSHINE_ADMIN_EXEC="omarchy-launch-webapp $SUNSHINE_ADMIN_URL --ignore-certificate-errors"
 SUNSHINE_ICON_SOURCE="/usr/share/sunshine/web/images/logo-sunshine-45.png"
 SUNSHINE_ICON_NAME="Sunshine Admin.png"
 WEBAPP_ICON_DIR="$HOME/.local/share/applications/icons"
@@ -60,7 +61,7 @@ open_ufw_ports() {
 install_admin_webapp() {
   mkdir -p "$WEBAPP_ICON_DIR"
   cp "$SUNSHINE_ICON_SOURCE" "$WEBAPP_ICON_DIR/$SUNSHINE_ICON_NAME"
-  omarchy-webapp-install "$SUNSHINE_ADMIN_APP" "$SUNSHINE_ADMIN_URL" "$SUNSHINE_ICON_NAME"
+  omarchy-webapp-install "$SUNSHINE_ADMIN_APP" "$SUNSHINE_ADMIN_URL" "$SUNSHINE_ICON_NAME" "$SUNSHINE_ADMIN_EXEC"
   omarchy-restart-walker
 }
 
@@ -82,7 +83,7 @@ open_ufw_ports
 
 echo "Installing Sunshine admin web app..."
 install_admin_webapp
-omarchy-launch-webapp "$SUNSHINE_ADMIN_URL" >/dev/null 2>&1 &
+$SUNSHINE_ADMIN_EXEC >/dev/null 2>&1 &
 
 echo "Enabling Sunshine autostart..."
 enable_hyprland_autostart
