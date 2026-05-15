@@ -14,6 +14,8 @@ SUNSHINE_ADMIN_URL="https://localhost:47990"
 SUNSHINE_ICON_SOURCE="/usr/share/sunshine/web/images/logo-sunshine-45.png"
 SUNSHINE_ICON_NAME="Sunshine Admin.png"
 WEBAPP_ICON_DIR="$HOME/.local/share/applications/icons"
+HYPR_AUTOSTART_FILE="$HOME/.config/hypr/autostart.lua"
+HYPR_AUTOSTART_ENTRY='o.launch_on_start("sunshine")'
 
 open_ufw_port_for_private_lans() {
   local proto="$1"
@@ -62,6 +64,15 @@ install_admin_webapp() {
   omarchy-restart-walker
 }
 
+enable_hyprland_autostart() {
+  mkdir -p "$(dirname "$HYPR_AUTOSTART_FILE")"
+  touch "$HYPR_AUTOSTART_FILE"
+
+  if ! grep -Fxq "$HYPR_AUTOSTART_ENTRY" "$HYPR_AUTOSTART_FILE"; then
+    printf '\n%s\n' "$HYPR_AUTOSTART_ENTRY" >>"$HYPR_AUTOSTART_FILE"
+  fi
+}
+
 echo "Installing Sunshine..."
 omarchy-pkg-add sunshine
 systemctl --user enable --now sunshine
@@ -72,6 +83,9 @@ open_ufw_ports
 echo "Installing Sunshine admin web app..."
 install_admin_webapp
 omarchy-launch-webapp "$SUNSHINE_ADMIN_URL" >/dev/null 2>&1 &
+
+echo "Enabling Sunshine autostart..."
+enable_hyprland_autostart
 
 echo ""
 echo "Sunshine has been installed and its Moonlight streaming ports are open for private LANs and Tailscale."

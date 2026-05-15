@@ -9,6 +9,8 @@ TCP_PORTS=(47984 47989 48010)
 UDP_PORTS=(5353 47998 47999 48000 48002 48010)
 PRIVATE_CIDRS=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
 SUNSHINE_ADMIN_APP="Sunshine Admin"
+HYPR_AUTOSTART_FILE="$HOME/.config/hypr/autostart.lua"
+HYPR_AUTOSTART_ENTRY='o.launch_on_start("sunshine")'
 
 delete_ufw_rule() {
   sudo ufw --force delete "$@" 2>/dev/null || true
@@ -51,9 +53,16 @@ close_ufw_ports() {
   sudo ufw reload
 }
 
+disable_hyprland_autostart() {
+  if [[ -f $HYPR_AUTOSTART_FILE ]]; then
+    sed -i "\|^$HYPR_AUTOSTART_ENTRY$|d" "$HYPR_AUTOSTART_FILE"
+  fi
+}
+
 systemctl --user disable --now sunshine 2>/dev/null || true
 omarchy-pkg-drop sunshine
 omarchy-webapp-remove "$SUNSHINE_ADMIN_APP" 2>/dev/null || true
+disable_hyprland_autostart
 close_ufw_ports
 
 echo ""
