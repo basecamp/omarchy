@@ -44,11 +44,6 @@ if grep -Fq "$SWAP_FILE" /etc/fstab; then
   sudo sed -i '/^# Btrfs swapfile for system hibernation$/d' /etc/fstab
 fi
 
-# Remove suspend-then-hibernate configuration
-echo "Removing suspend-then-hibernate configuration"
-sudo rm -f /etc/systemd/logind.conf.d/lid.conf
-sudo rm -f /etc/systemd/sleep.conf.d/hibernate.conf
-
 # Remove mkinitcpio resume hook
 echo "Removing resume hook"
 sudo rm "$MKINITCPIO_CONF"
