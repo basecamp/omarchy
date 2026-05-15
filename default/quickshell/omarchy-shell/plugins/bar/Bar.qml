@@ -408,8 +408,27 @@ Item {
       process.running = true
   }
 
+  // Changing tooltipText resizes the bubble (and thus the popup window). If
+  // we do that while the popup is still mapped (or in the same QML tick as
+  // the visible→false flip), Hyprland gets a resize commit before the unmap
+  // and retains the post-resize frame at the new size — that's where the
+  // partial "ot running" stale-tooltip artifact comes from. The fix is to
+  // make sure visible flips false (popup unmaps) before tooltipText ever
+  // changes to a different value, by deferring the text/target update with
+  // Qt.callLater and leaving the old text in place across the gap.
   function showTooltip(target, text) {
     if (!text) return
+
+    if (tooltipShown || tooltipTarget !== null) {
+      tooltipShown = false
+      tooltipTimer.stop()
+      Qt.callLater(function() {
+        tooltipTarget = target
+        tooltipText = text
+        tooltipTimer.restart()
+      })
+      return
+    }
 
     tooltipTarget = target
     tooltipText = text
@@ -421,9 +440,10 @@ Item {
     if (tooltipTarget !== target) return
 
     tooltipTimer.stop()
-    tooltipTarget = null
-    tooltipText = ""
     tooltipShown = false
+    // Leave tooltipText/tooltipTarget intact. The popup is now unmapped and
+    // its size no longer matters; the next showTooltip will overwrite both
+    // after the surface has fully torn down.
   }
 
   function parseModuleJson(raw) {

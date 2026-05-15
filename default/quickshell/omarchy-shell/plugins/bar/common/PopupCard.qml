@@ -28,15 +28,31 @@ PopupWindow {
 
   default property alias contentItem: contentHolder.children
 
-  visible: open
+  // Keep the surface mapped through the card's fade-out animation. If we
+  // unmap the moment `open` flips false, the popup commits its final frame
+  // with the card still at full opacity — Hyprland holds onto that frame
+  // and leaves a stale outline at the popup's last position. By waiting for
+  // the inner opacity to actually reach 0, the last committed buffer is
+  // transparent and the surface tears down cleanly.
+  property bool _surfaceVisible: open
+  visible: _surfaceVisible
   color: "transparent"
   implicitWidth: contentWidth
   implicitHeight: contentHeight
 
   onOpenChanged: {
+    if (open) _surfaceVisible = true
+    else hideTimer.restart()
+
     if (!bar) return
     if (open) bar.requestPopout(coordinatorKey)
     else if (bar.activePopout === coordinatorKey) bar.releasePopout(coordinatorKey)
+  }
+
+  Timer {
+    id: hideTimer
+    interval: 160 // matches the card opacity Behavior duration with a small buffer
+    onTriggered: if (!root.open) root._surfaceVisible = false
   }
 
   // Outside-click dismissal via Hyprland's focus grab. While `active`, input
