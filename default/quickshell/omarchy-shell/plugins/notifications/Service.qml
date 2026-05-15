@@ -43,6 +43,7 @@ Item {
   //   }
   // All keys optional; unset keys fall back to the live Color.* tokens.
   readonly property string themeOverridePath: home + "/.config/omarchy/current/theme/notifications.json"
+  readonly property string themeNamePath: home + "/.config/omarchy/current/theme.name"
 
   // Corner radius is shared with omarchy-shell menu and settings panel —
   // `omarchy style corners <sharp|round>` writes this file once and every
@@ -84,7 +85,9 @@ Item {
   property string overrideText: ""
   property string overrideCountdown: ""
 
-  readonly property color effectiveBorder: overrideBorder.length > 0 ? overrideBorder : Color.border
+  // Match the compact mako-style layout, but keep colors live-bound to the
+  // current Omarchy theme unless a theme explicitly ships notifications.json.
+  readonly property color effectiveBorder: overrideBorder.length > 0 ? overrideBorder : Color.accent
   readonly property color effectiveBackground: overrideBackground.length > 0 ? overrideBackground : Color.background
   readonly property color effectiveText: overrideText.length > 0 ? overrideText : Color.foreground
   readonly property color effectiveCountdown: overrideCountdown.length > 0 ? overrideCountdown : Color.accent
@@ -105,12 +108,25 @@ Item {
   }
 
   FileView {
+    id: themeOverrideFile
     path: service.themeOverridePath
     watchChanges: true
     printErrors: false
     onLoaded: service.loadThemeOverride(text())
     onLoadFailed: service.loadThemeOverride("")
     onFileChanged: reload()
+  }
+
+  // Theme switching recreates ~/.config/omarchy/current/theme, which can leave
+  // the notifications.json watcher attached to the old symlink target. Watch
+  // theme.name (overwritten in place) as the stable tripwire and force a fresh
+  // override reload; if the new theme has no override, onLoadFailed clears the
+  // old colors instead of leaving stale theme-specific notification styling.
+  FileView {
+    path: service.themeNamePath
+    watchChanges: true
+    printErrors: false
+    onFileChanged: themeOverrideFile.reload()
   }
 
   // Fired by IPC (`omarchy-shell-ipc notifications showHistory`) so the

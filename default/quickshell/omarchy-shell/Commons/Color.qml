@@ -119,8 +119,8 @@ QtObject {
     var match = String(raw || "").match(/\$activeBorderColor\s*=\s*rgba?\(([0-9A-Fa-f]{6,8})\)/)
     if (!match) { border = accent; return }
     var hex = match[1]
-    // rgba() in hyprland is AARRGGBB; strip the AA prefix and use the RGB.
-    if (hex.length === 8) hex = hex.substring(2)
+    // Hyprland rgba() is RRGGBBAA; strip the AA suffix and use RGB.
+    if (hex.length === 8) hex = hex.substring(0, 6)
     border = "#" + hex
   }
 
