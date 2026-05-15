@@ -1,0 +1,57 @@
+#!/bin/bash
+# omarchy:summary=Create a new playlist with local files for cliamp
+# omarchy:args=[dir]
+# omarchy:examples=omarchy playlist new /home/user/Music
+
+
+dir="${1:-$PWD}"
+name="$(basename "$dir")"
+output="$HOME/.config/cliamp/playlists/$name.toml"
+
+if [[ -f "$output" ]]; then
+  echo "Error: playlist '$name' already exists at $output" >&2
+  read -rp "Overwrite? [y/N] " answer
+  if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
+    echo "Aborted." >&2
+    exit 1
+  fi
+fi
+
+if [[ ! -d "$dir" ]]; then
+  echo "Error: directory '$dir' does not exist" >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$output")"
+
+extensions=("mp3" "flac" "ogg" "wav" "m4a" "opus")
+
+find_args=()
+for ext in "${extensions[@]}"; do
+  find_args+=(-o -name "*.$ext")
+done
+unset 'find_args[0]'
+
+while IFS= read -r -d '' filepath; do
+  title=$(ffprobe -v quiet \
+    -show_entries format_tags=title \
+    -of default=noprint_wrappers=1:nokey=1 \
+    "$filepath" 2>/dev/null)
+  artist=$(ffprobe -v quiet \
+    -show_entries format_tags=artist \
+    -of default=noprint_wrappers=1:nokey=1 \
+    "$filepath" 2>/dev/null)
+
+  # If ffprobe didn't find both tags, artist will be null so the only thing shown on cliamp will be the filename
+  # via the title variable, which hopefully contains both the title and the artist
+  if [[ -z "$title" || -z "$artist" ]]; then
+  title="$(basename "${filepath%.*}")"
+  artist=""
+  fi
+
+  printf '[[track]]\npath="%s"\ntitle="%s"\nartist="%s"\n\n' \
+    "$filepath" "$title" "$artist" >> "$output"
+
+done < <(find "$dir" \( "${find_args[@]}" \) -print0)
+
+echo "Playlist written to $output"
