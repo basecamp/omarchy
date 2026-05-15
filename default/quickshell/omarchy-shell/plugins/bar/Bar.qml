@@ -1419,7 +1419,7 @@ Item {
         property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
 
         text: focused ? "󱓻" : (modelData === 10 ? "0" : String(modelData))
-        opacity: occupied || modelData <= 5 || focused ? 1 : 0.5
+        opacity: occupied || focused ? 1 : 0.5
         horizontalMargin: 6
         verticalPadding: 6
         fixedWidth: root.vertical ? root.barSize : 22
