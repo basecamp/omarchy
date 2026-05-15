@@ -1,18 +1,17 @@
 #!/bin/bash
 
 # omarchy:summary=Print PATH entries one per numbered line
+# omarchy:group=path
 # omarchy:examples=omarchy path
 
-set -euo pipefail
+if [[ -z ${PATH:-} ]]; then
+  exit 0
+fi
 
-index=1
+# Append a sentinel so trailing empty entries (e.g. "/a:/b:") survive splitting.
+IFS=: read -ra entries <<<"${PATH}:_"
+unset 'entries[-1]'
 
-path_entries="${PATH:-}"
-while [[ $path_entries == *:* ]]; do
-  entry="${path_entries%%:*}"
-  printf '%d. %s\n' "$index" "$entry"
-  ((index++))
-  path_entries="${path_entries#*:}"
+for i in "${!entries[@]}"; do
+  printf '%d. %s\n' "$((i + 1))" "${entries[i]:-.}"
 done
-
-printf '%d. %s\n' "$index" "$path_entries"
