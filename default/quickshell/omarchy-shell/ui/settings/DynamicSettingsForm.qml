@@ -83,13 +83,30 @@ Column {
       Component {
         id: stringField
         TextField {
+          id: stringControl
           property string fieldKey: ""
           property var field: ({})
           width: parent.width
           font.family: root.fontFamilyName
           font.pixelSize: 12
+          color: root.foregroundColor
+          selectionColor: Qt.rgba(root.foregroundColor.r, root.foregroundColor.g, root.foregroundColor.b, 0.35)
+          selectedTextColor: root.foregroundColor
+          placeholderTextColor: Qt.darker(root.foregroundColor, 1.6)
+          leftPadding: 10
+          rightPadding: 10
+          topPadding: 7
+          bottomPadding: 7
           text: root.currentValue(field) === undefined ? "" : String(root.currentValue(field))
           onEditingFinished: if (fieldKey) root.fieldChanged(fieldKey, text)
+          background: Rectangle {
+            color: Qt.rgba(root.foregroundColor.r, root.foregroundColor.g, root.foregroundColor.b,
+                           stringControl.activeFocus ? 0.08 : 0.04)
+            border.color: stringControl.activeFocus
+              ? Qt.rgba(root.foregroundColor.r, root.foregroundColor.g, root.foregroundColor.b, 0.4)
+              : Qt.rgba(root.foregroundColor.r, root.foregroundColor.g, root.foregroundColor.b, 0.18)
+            border.width: 1
+          }
         }
       }
 
