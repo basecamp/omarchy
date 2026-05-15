@@ -1367,7 +1367,8 @@ Item {
       text: buttonRoot.text
       color: buttonRoot.active ? root.urgent : root.foreground
       font.family: buttonRoot.fontFamily
-      font.pixelSize: buttonRoot.fontSize
+      font.pointSize: buttonRoot.fontSize * 0.75
+      renderType: Text.NativeRendering
       rotation: buttonRoot.textRotation
       horizontalAlignment: Text.AlignHCenter
       verticalAlignment: Text.AlignVCenter

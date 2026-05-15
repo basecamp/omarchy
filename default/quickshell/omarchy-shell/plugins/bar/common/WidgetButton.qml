@@ -41,7 +41,8 @@ Item {
     text: root.text
     color: root.active ? root.activeColor : root.foreground
     font.family: root.fontFamily
-    font.pixelSize: root.fontSize
+    font.pointSize: root.fontSize * 0.75
+    renderType: Text.NativeRendering
     rotation: root.textRotation
     horizontalAlignment: Text.AlignHCenter
     verticalAlignment: Text.AlignVCenter
