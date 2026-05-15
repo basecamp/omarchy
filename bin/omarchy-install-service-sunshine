@@ -9,6 +9,11 @@ TCP_PORTS=(47984 47989 48010)
 UDP_PORTS=(5353 47998 47999 48000 48002 48010)
 PRIVATE_CIDRS=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
 UFW_COMMENT="omarchy-sunshine"
+SUNSHINE_ADMIN_APP="Sunshine Admin"
+SUNSHINE_ADMIN_URL="https://localhost:47990"
+SUNSHINE_ICON_SOURCE="/usr/share/sunshine/web/images/logo-sunshine-45.png"
+SUNSHINE_ICON_NAME="Sunshine Admin.png"
+WEBAPP_ICON_DIR="$HOME/.local/share/applications/icons"
 
 open_ufw_port_for_private_lans() {
   local proto="$1"
@@ -50,12 +55,23 @@ open_ufw_ports() {
   sudo ufw reload
 }
 
+install_admin_webapp() {
+  mkdir -p "$WEBAPP_ICON_DIR"
+  cp "$SUNSHINE_ICON_SOURCE" "$WEBAPP_ICON_DIR/$SUNSHINE_ICON_NAME"
+  omarchy-webapp-install "$SUNSHINE_ADMIN_APP" "$SUNSHINE_ADMIN_URL" "$SUNSHINE_ICON_NAME"
+  omarchy-restart-walker
+}
+
 echo "Installing Sunshine..."
 omarchy-pkg-add sunshine
 systemctl --user enable --now sunshine
 
 echo "Opening Sunshine firewall ports..."
 open_ufw_ports
+
+echo "Installing Sunshine admin web app..."
+install_admin_webapp
+omarchy-launch-webapp "$SUNSHINE_ADMIN_URL" >/dev/null 2>&1 &
 
 echo ""
 echo "Sunshine has been installed and its Moonlight streaming ports are open for private LANs and Tailscale."

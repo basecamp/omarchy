@@ -8,6 +8,7 @@ set -e
 TCP_PORTS=(47984 47989 48010)
 UDP_PORTS=(5353 47998 47999 48000 48002 48010)
 PRIVATE_CIDRS=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
+SUNSHINE_ADMIN_APP="Sunshine Admin"
 
 delete_ufw_rule() {
   sudo ufw --force delete "$@" 2>/dev/null || true
@@ -52,6 +53,7 @@ close_ufw_ports() {
 
 systemctl --user disable --now sunshine 2>/dev/null || true
 omarchy-pkg-drop sunshine
+omarchy-webapp-remove "$SUNSHINE_ADMIN_APP" 2>/dev/null || true
 close_ufw_ports
 
 echo ""
