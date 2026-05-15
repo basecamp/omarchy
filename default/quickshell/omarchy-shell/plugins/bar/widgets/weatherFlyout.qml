@@ -234,7 +234,7 @@ Item {
           id: heroRight
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          spacing: 8
+          spacing: 12
 
           Row {
             visible: root.reportLocation !== ""
@@ -244,14 +244,14 @@ Item {
               text: ""  // nf-fa-map_marker
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
-              font.pixelSize: 11
+              font.pixelSize: 12
               anchors.verticalCenter: parent.verticalCenter
             }
             Text {
               text: (root.reportLocation || "").toUpperCase()
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
-              font.pixelSize: 11
+              font.pixelSize: 12
               font.letterSpacing: 1
               anchors.verticalCenter: parent.verticalCenter
             }
@@ -259,56 +259,56 @@ Item {
 
           Row {
             visible: !!root.current
-            spacing: 22
+            spacing: 36
 
             Column {
-              spacing: 4
+              spacing: 5
               Text {
                 text: "FEELS"
                 color: Qt.darker(root.bar.foreground, 1.5)
                 font.family: root.bar.fontFamily
-                font.pixelSize: 10
+                font.pixelSize: 11
                 font.letterSpacing: 1
               }
               Text {
                 text: root.reportFeels
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
-                font.pixelSize: 13
+                font.pixelSize: 15
               }
             }
 
             Column {
-              spacing: 4
+              spacing: 5
               Text {
                 text: "WIND"
                 color: Qt.darker(root.bar.foreground, 1.5)
                 font.family: root.bar.fontFamily
-                font.pixelSize: 10
+                font.pixelSize: 11
                 font.letterSpacing: 1
               }
               Text {
                 text: root.reportWind
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
-                font.pixelSize: 13
+                font.pixelSize: 15
               }
             }
 
             Column {
-              spacing: 4
+              spacing: 5
               Text {
                 text: "HUMIDITY"
                 color: Qt.darker(root.bar.foreground, 1.5)
                 font.family: root.bar.fontFamily
-                font.pixelSize: 10
+                font.pixelSize: 11
                 font.letterSpacing: 1
               }
               Text {
                 text: root.reportHumidity
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
-                font.pixelSize: 13
+                font.pixelSize: 15
               }
             }
           }
