@@ -32,6 +32,7 @@ refresh_running_browser() {
 
 set_browser_policy /etc/chromium/policies/managed
 refresh_running_browser chromium chromium
+refresh_running_browser helium helium-browser
 
 set_browser_policy /etc/opt/chrome/policies/managed
 refresh_running_browser chrome google-chrome-stable || refresh_running_browser chrome google-chrome
@@ -42,6 +43,3 @@ refresh_running_browser msedge microsoft-edge-stable
 set_browser_policy /etc/brave/policies/managed
 refresh_running_browser brave brave
 refresh_running_browser brave-origin-beta brave-origin-beta -f
-
-set_browser_policy /etc/helium/policies/managed
-refresh_running_browser helium helium
