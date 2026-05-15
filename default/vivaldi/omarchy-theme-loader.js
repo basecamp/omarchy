@@ -11,7 +11,7 @@
       #browser {
         --colorBg: ${bg} !important;
         --colorFg: ${fg} !important;
-        --colorAccentBg: ${accent} !important;
+        --colorAccentBg: ${bg} !important;
         --colorHighlightBg: ${accent} !important;
       }`;
       last = colors;
