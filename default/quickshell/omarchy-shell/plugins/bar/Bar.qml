@@ -1405,8 +1405,8 @@ Item {
 
   component WorkspacesModule: GridLayout {
     columns: root.vertical ? 1 : root.workspaceIds().length
-    columnSpacing: root.vertical ? 0 : 3
-    rowSpacing: root.vertical ? 3 : 0
+    columnSpacing: root.vertical ? 0 : 2
+    rowSpacing: root.vertical ? 2 : 0
 
     Repeater {
       model: root.workspaceIds()
@@ -1422,7 +1422,7 @@ Item {
         opacity: occupied || modelData <= 5 || focused ? 1 : 0.5
         horizontalMargin: 6
         verticalPadding: 6
-        fixedWidth: root.vertical ? root.barSize : 24
+        fixedWidth: root.vertical ? root.barSize : 22
         fixedHeight: root.barSize
         onPressed: function() { root.focusWorkspace(modelData) }
       }
