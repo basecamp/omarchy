@@ -75,7 +75,7 @@ Item {
     bar: root.bar
     text: root.label
     active: root.klass === "active"
-    horizontalMargin: 7.5
+    horizontalMargin: 1
     // Tooltip suppressed — the popup itself is the detail view.
     tooltipText: ""
 
