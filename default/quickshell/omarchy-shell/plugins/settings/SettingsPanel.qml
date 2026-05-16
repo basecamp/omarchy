@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import qs.Commons
 
 import "../../ui/settings" as SettingsUi
 import "./components" as Cmp
@@ -59,10 +60,12 @@ Item {
   readonly property string styleStatePath: home + "/.local/state/omarchy/toggles/quickshell-menu.json"
 
   // ---------------- theme --------------------------------------------------
-  property color foreground: "#cacccc"
-  property color background: "#101315"
-  property color accent: "#cacccc"
-  property color urgent: "#a55555"
+  // Settings panel deliberately isn't a themable surface in shell.toml —
+  // it tracks the foundational palette so every theme renders consistently.
+  property color foreground: Color.foreground
+  property color background: Color.background
+  property color accent: Color.accent
+  property color urgent: Color.urgent
   property string fontFamily: "monospace"
 
   // Source-of-truth for the shell-wide corner radius. Mirrors what the menu
@@ -353,18 +356,6 @@ Item {
     mutateSection(section, function(a) { a[index] = cloneJson(newEntry) })
   }
 
-  function loadTheme(raw) {
-    var lines = String(raw || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-      var match = lines[i].match(/^\s*([A-Za-z0-9_-]+)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
-      if (!match) continue
-      if (match[1] === "foreground") foreground = match[2]
-      else if (match[1] === "background") background = match[2]
-      else if (match[1] === "color4" || match[1] === "accent") accent = match[2]
-      else if (match[1] === "red") urgent = match[2]
-    }
-  }
-
   function loadStyleState(raw) {
     try {
       var s = JSON.parse(raw || "{}")
@@ -557,26 +548,6 @@ Item {
       root.loadConfig()
     }
     onFileChanged: reload()
-  }
-
-  // `omarchy-theme-set` does `rm -rf current/theme && mv next-theme current/theme`.
-  // The atomic swap invalidates the inotify watch on colors.toml (the file's
-  // inode is gone), so onFileChanged never fires for theme switches. Use
-  // theme.name — a stable file overwritten in place — as the tripwire and
-  // force-reload colors.toml from its new path each time it changes.
-  FileView {
-    id: themeColorsFile
-    path: root.home + "/.config/omarchy/current/theme/colors.toml"
-    watchChanges: true
-    printErrors: false
-    onLoaded: root.loadTheme(text())
-    onFileChanged: reload()
-  }
-  FileView {
-    path: root.home + "/.config/omarchy/current/theme.name"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: themeColorsFile.reload()
   }
 
   FileView {

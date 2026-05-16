@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
+import qs.Commons
 
 Item {
   id: root
@@ -22,7 +23,6 @@ Item {
   property string imageRows: ""
   property string selectionFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTION_FILE") || Quickshell.env("OMARCHY_BACKGROUND_SELECTION_FILE")
   property string selectedImage: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTED")
-  property string colorsFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_COLORS_FILE") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/image-picker-colors.json")
   property int selectedIndex: 0
   property bool imagesLoaded: false
   property bool opened: false
@@ -34,9 +34,11 @@ Item {
   property string doneFile: ""
   property string filterText: ""
   property var doneFilesToRelease: []
-  property color accent: "#798186"
-  property color background: "#101315"
-  property color foreground: "#cacccc"
+  // Bound to the central [image-picker] section in shell.toml via Color.qml.
+  property color background: Color.imagePicker.background
+  property color foreground: Color.imagePicker.text
+  property color selectedBorder: Color.imagePicker.selectedBorder
+  property color unselectedBorder: Color.imagePicker.unselectedBorder
   property int expandedWidth: 768
   property int expandedHeight: 475
   property int sliceWidth: 108
@@ -250,7 +252,7 @@ Item {
     carousel.forceActiveFocus()
   }
 
-  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw, nextShowLabels, nextFilterable) {
+  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextShowLabels, nextFilterable) {
     if (requestActive && doneFile && doneFile !== nextDoneFile)
       finishDoneFile(doneFile)
 
@@ -265,9 +267,6 @@ Item {
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     filterable = nextFilterable === true || nextFilterable === "true"
     filterText = ""
-    colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/image-picker-colors.json")
-    if (nextColorsRaw)
-      loadColors(nextColorsRaw)
     imageArray = []
     selectedIndex = 0
     imagesLoaded = false
@@ -320,11 +319,9 @@ Item {
     var sel = String(args.selectedImage || selectedImage)
     var selFile = String(args.selectionFile || "")
     var doneF = String(args.doneFile || "")
-    var colors = String(args.colorsFile || colorsFile)
-    var colorsRaw = String(args.colorsRaw || "")
     var labels = args.showLabels === true || args.showLabels === "true"
     var filter = args.filterable === true || args.filterable === "true"
-    openSelector(dirs, rows, sel, selFile, doneF, colors, colorsRaw, labels, filter)
+    openSelector(dirs, rows, sel, selFile, doneF, labels, filter)
   }
 
   function close() {
@@ -332,9 +329,9 @@ Item {
   }
 
   // IPC surface. All arguments are strings (Quickshell IPC marshalling).
-  // imageRows and colorsRaw can contain newlines/tabs, so the CLI caller
-  // base64-encodes them; everything else passes through verbatim. The two
-  // boolean-like fields use the literal strings "true" or "false".
+  // imageRows can contain newlines/tabs, so the CLI caller base64-encodes
+  // it; everything else passes through verbatim. The two boolean-like
+  // fields use the literal strings "true" or "false".
   IpcHandler {
     target: "image-selector"
 
@@ -343,14 +340,11 @@ Item {
                   selectedImage: string,
                   selectionFile: string,
                   doneFile: string,
-                  colorsFile: string,
-                  colorsRawB64: string,
                   showLabels: string,
                   filterable: string): string {
       var rows = root.decodeBase64(imageRowsB64)
-      var colorsRaw = root.decodeBase64(colorsRawB64)
       root.openSelector(imageDirs, rows, selectedImage, selectionFile, doneFile,
-                        colorsFile, colorsRaw, showLabels, filterable)
+                        showLabels, filterable)
       return "ok"
     }
 
@@ -361,25 +355,6 @@ Item {
     function ping(): string {
       return "ok"
     }
-  }
-
-  // Tolerate the file being absent (e.g. theme templates not yet re-rendered
-  // after the rename) without a startup warning.
-  FileView {
-    path: root.colorsFile
-    watchChanges: true
-    printErrors: false
-    onLoaded: root.loadColors(text())
-    onFileChanged: reload()
-  }
-
-  function loadColors(raw) {
-    try {
-      var colors = JSON.parse(raw || "{}")
-      root.accent = colors.primary || root.accent
-      root.background = colors.background || root.background
-      root.foreground = colors.backgroundText || root.foreground
-    } catch (e) {}
   }
 
   Process {
@@ -557,7 +532,7 @@ Item {
               preferredRendererType: Shape.CurveRenderer
               ShapePath {
                 fillColor: "transparent"
-                strokeColor: item.selected ? root.accent : root.withAlpha(root.foreground, 0.28)
+                strokeColor: item.selected ? root.selectedBorder : root.withAlpha(root.unselectedBorder, 0.28)
                 strokeWidth: item.selected ? 3 : 1
                 startX: item.topLeft; startY: 0
                 PathLine { x: item.topRight; y: 0 }

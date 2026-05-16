@@ -9,6 +9,7 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import QtQuick
 import QtQuick.Layouts
+import qs.Commons
 import "common" as BarCommon
 
 Item {
@@ -49,9 +50,11 @@ Item {
   // "monospace" resolves through fontconfig at paint time, so changing the
   // system font (via `omarchy-font-set`) updates the bar without a reload.
   property string fontFamily: "monospace"
-  property color foreground: "#cacccc"
-  property color background: "#101315"
-  property color urgent: "#a55555"
+  // Bound to the central Color singleton so the bar tracks shell.toml's
+  // [bar] section. Property names kept for the rest of this file's bindings.
+  property color foreground: Color.bar.text
+  property color background: Color.bar.background
+  property color urgent: Color.bar.active
   property string weatherText: ""
   property string weatherClass: ""
   property bool updateAvailable: false
@@ -438,18 +441,6 @@ Item {
     }
   }
 
-  function loadTheme(raw) {
-    var lines = String(raw || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-      var match = lines[i].match(/^\s*([A-Za-z0-9_-]+)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
-      if (!match) continue
-
-      if (match[1] === "foreground") foreground = match[2]
-      else if (match[1] === "background") background = match[2]
-      else if (match[1] === "red") urgent = match[2]
-    }
-  }
-
   function updateWeather(raw) {
     var data = parseModuleJson(raw)
     weatherText = data.text || ""
@@ -721,26 +712,6 @@ Item {
     id: tooltipTimer
     interval: 400
     onTriggered: root.tooltipShown = true
-  }
-
-  // The host owns shell.json loading and injects `barConfig`. Bar still keeps
-  // its own theme FileView since theme colors are independent of shell.json.
-  // `omarchy-theme-set` recreates the entire theme/ directory via rm+mv, which
-  // invalidates the inotify watch on colors.toml. Use theme.name (overwritten
-  // in place) to force a fresh reload after each swap.
-  FileView {
-    id: themeColorsFile
-    path: root.home + "/.config/omarchy/current/theme/colors.toml"
-    watchChanges: true
-    printErrors: false
-    onLoaded: root.loadTheme(text())
-    onFileChanged: reload()
-  }
-  FileView {
-    path: root.home + "/.config/omarchy/current/theme.name"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: themeColorsFile.reload()
   }
 
   // Presence of the `bar-off` flag = bar hidden. Watching the parent toggles

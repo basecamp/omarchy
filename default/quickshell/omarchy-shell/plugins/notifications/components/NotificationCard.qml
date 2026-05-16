@@ -27,13 +27,6 @@ Rectangle {
   property real progress: 1.0
   property bool showProgress: false
 
-  // Container can override the theme defaults per-card. Defaults bind to
-  // the live Color.* tokens, so when the container leaves them alone the
-  // card still tracks the theme.
-  property color borderColorOverride: Color.border
-  property color backgroundColorOverride: Color.background
-  property color textColorOverride: Color.foreground
-  property color countdownColorOverride: Color.accent
   // System font from shell.json bar.fontFamily, injected by the container.
   property string fontFamily: ""
 
@@ -77,10 +70,10 @@ Rectangle {
   readonly property bool hasGlyph: glyph.length > 0
   readonly property bool hasSmallIcon: !mediaMode && (smallIconSource.length > 0 || hasGlyph)
 
-  readonly property color dimColor: Qt.darker(textColorOverride, 1.4)
-  readonly property color bodyColor: Qt.darker(textColorOverride, 1.15)
-  readonly property color hoverColor: Qt.rgba(textColorOverride.r, textColorOverride.g, textColorOverride.b, 0.14)
-  readonly property color accentColor: urgency === 2 ? Color.urgent : (urgency === 0 ? dimColor : countdownColorOverride)
+  readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
+  readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
+  readonly property color hoverColor: Qt.rgba(Color.notifications.text.r, Color.notifications.text.g, Color.notifications.text.b, 0.14)
+  readonly property color accentColor: urgency === 2 ? Color.urgent : (urgency === 0 ? dimColor : Color.notifications.countdown)
 
   function sanitizeBody(s) {
     return String(s).replace(/<img[^>]*>/gi, "")
@@ -92,8 +85,8 @@ Rectangle {
   // for symmetry except when the progress bar replaces it.
   implicitHeight: mainColumn.implicitHeight + border.width * 2
   radius: cornerRadius
-  color: backgroundColorOverride
-  border.color: urgency === 2 ? Color.urgent : borderColorOverride
+  color: Color.notifications.background
+  border.color: urgency === 2 ? Color.urgent : Color.notifications.border
   border.width: 2
   clip: true
 
@@ -145,7 +138,7 @@ Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: root.border.width
-        color: root.urgency === 2 ? Color.urgent : root.borderColorOverride
+        color: root.urgency === 2 ? Color.urgent : Color.notifications.border
       }
 
       MouseArea {
@@ -194,7 +187,7 @@ Rectangle {
           anchors.centerIn: parent
           visible: root.hasGlyph && smallIconImage.status !== Image.Ready
           text: root.glyph
-          color: root.textColorOverride
+          color: Color.notifications.text
           font.family: root.fontFamily
           font.pixelSize: 18
         }
@@ -210,7 +203,7 @@ Rectangle {
           visible: root.summary.length > 0
           text: root.summary
           font.family: root.fontFamily
-          color: root.textColorOverride
+          color: Color.notifications.text
           font.pixelSize: 13
           font.bold: true
           wrapMode: Text.WordWrap
@@ -243,7 +236,7 @@ Rectangle {
     anchors.right: parent.right
     anchors.bottom: parent.bottom
     height: 3
-    color: root.borderColorOverride
+    color: Color.notifications.border
     visible: false
 
     Rectangle {

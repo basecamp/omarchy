@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import qs.Commons
 
 PopupWindow {
   id: root
@@ -89,8 +90,8 @@ PopupWindow {
   Rectangle {
     id: card
     anchors.fill: parent
-    color: root.bar ? root.bar.background : "#101315"
-    border.color: root.bar ? root.bar.foreground : "#cacccc"
+    color: Color.popups.background
+    border.color: Color.popups.border
     border.width: 1
     radius: 0
     opacity: root.open ? 1.0 : 0
