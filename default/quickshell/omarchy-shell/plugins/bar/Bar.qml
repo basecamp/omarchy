@@ -312,7 +312,7 @@ Item {
     "calendar":           { displayName: "Calendar",           description: "Clock with month-grid popup",                  category: "Time",     allowMultiple: false, settingsForm: "calendarSettings" },
     "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND",  category: "Status",   allowMultiple: false },
     "systemStats":        { displayName: "System stats",       description: "CPU icon — hover for graphs, click to open btop", category: "System",   allowMultiple: false },
-    "weatherFlyout":      { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false },
+    "weatherFlyout":      { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false, settingsForm: "weatherSettings" },
     "idleInhibitor":      { displayName: "Keep awake",         description: "Toggle idle inhibitor",                       category: "System",   allowMultiple: false },
     "microphone":         { displayName: "Microphone",         description: "Mic input state and mute toggle",             category: "Audio",    allowMultiple: false },
     "activeWindow":       { displayName: "Active window",      description: "Title of the focused window",                 category: "Compositor", allowMultiple: false },
