@@ -408,6 +408,14 @@ Item {
     launcher.startDetached()
   }
 
+  function openBarSettings() {
+    if (root.shell && typeof root.shell.summon === "function") {
+      root.shell.summon("omarchy.settings", "{}")
+    } else {
+      root.run("omarchy-launch-bar-settings")
+    }
+  }
+
   function runProcess(process) {
     if (!process.running)
       process.running = true
@@ -1055,6 +1063,15 @@ Item {
 
       Item {
         anchors.fill: parent
+
+        MouseArea {
+          anchors.fill: parent
+          acceptedButtons: Qt.LeftButton
+          onDoubleClicked: function(mouse) {
+            root.openBarSettings()
+            mouse.accepted = true
+          }
+        }
 
         ModuleList {
           visible: !centerRoot.hasAnchor
