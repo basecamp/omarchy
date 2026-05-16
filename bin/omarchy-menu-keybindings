@@ -18,13 +18,18 @@ declare -A FALLBACK_KEYCODE_SYM_MAP=(
   [19]="0"
   [20]="MINUS"
   [21]="EQUAL"
+  [59]="COMMA"
+  [60]="PERIOD"
   [61]="SLASH"
 )
 
-# Hyprland's Lua config provider currently reports code:... binds from hl.bind()
-# as key="" and keycode=0 in `hyprctl -j binds`. Keep a lightweight
-# source-derived key cache so the menu can still show those bindings.
+# Hyprland's Lua config provider currently reports Lua binds as dispatcher
+# __lua and code:... binds from hl.bind() as key="" and keycode=0 in
+# `hyprctl -j binds`. Keep a lightweight source-derived cache so the menu can
+# still show and dispatch those bindings.
 declare -A LUA_BIND_KEY_MAP
+declare -A LUA_BIND_DISPATCHER_MAP
+declare -A LUA_BIND_ARG_MAP
 
 build_keymap_cache() {
   local keymap
@@ -114,15 +119,19 @@ parse_keycodes() {
 }
 
 # Supplement `hyprctl -j binds` for Lua-only binds that Hyprland currently
-# reports without their original key, such as hl.bind("SUPER + code:10", ...).
-build_lua_bind_key_cache() {
-  local modmask description key
+# reports as dispatcher __lua and without their original key for code: binds.
+build_lua_bind_cache() {
+  local modmask description key dispatcher arg cache_key
 
   omarchy-cmd-present lua || return 0
 
-  while IFS=$'\t' read -r modmask description key; do
+  while IFS=$'\t' read -r modmask description key dispatcher arg; do
     [[ -z $modmask || -z $description || -z $key ]] && continue
+
     LUA_BIND_KEY_MAP["$modmask,$description"]="$key"
+    cache_key="$modmask,$description,$key"
+    LUA_BIND_DISPATCHER_MAP["$cache_key"]="$dispatcher"
+    LUA_BIND_ARG_MAP["$cache_key"]="$arg"
   done < <(
     lua <<'LUA'
 local modifiers = { SHIFT = 1, CTRL = 4, CONTROL = 4, ALT = 8, SUPER = 64 }
@@ -131,7 +140,7 @@ local function split_keys(keys)
   local modmask = 0
   local key = ""
 
-  for part in string.gmatch(keys, "[^+]+") do
+  for part in string.gmatch(tostring(keys or ""), "[^+]+") do
     local value = part:gsub("^%s+", ""):gsub("%s+$", "")
     local modifier = modifiers[string.upper(value)]
 
@@ -145,45 +154,145 @@ local function split_keys(keys)
   return modmask, key
 end
 
-local function proxy()
-  local p = {}
+local function lua_literal(value)
+  local value_type = type(value)
 
-  return setmetatable(p, {
-    __index = function()
-      return p
+  if value_type == "string" then
+    return string.format("%q", value)
+  elseif value_type == "number" or value_type == "boolean" then
+    return tostring(value)
+  elseif value_type == "table" then
+    local parts = {}
+    local keys = {}
+    local array_length = #value
+
+    for index = 1, array_length do
+      parts[#parts + 1] = lua_literal(value[index])
+    end
+
+    for key in pairs(value) do
+      if not (type(key) == "number" and key >= 1 and key <= array_length and math.floor(key) == key) then
+        keys[#keys + 1] = key
+      end
+    end
+
+    table.sort(keys, function(left, right)
+      return tostring(left) < tostring(right)
+    end)
+
+    for _, key in ipairs(keys) do
+      local key_prefix
+      if type(key) == "string" and key:match("^[%a_][%w_]*$") then
+        key_prefix = key .. " = "
+      else
+        key_prefix = "[" .. lua_literal(key) .. "] = "
+      end
+
+      parts[#parts + 1] = key_prefix .. lua_literal(value[key])
+    end
+
+    return "{ " .. table.concat(parts, ", ") .. " }"
+  elseif value_type == "nil" then
+    return "nil"
+  else
+    return "nil"
+  end
+end
+
+local function call_expression(path, ...)
+  local args = {}
+
+  for index = 1, select("#", ...) do
+    args[index] = lua_literal(select(index, ...))
+  end
+
+  return path .. "(" .. table.concat(args, ", ") .. ")"
+end
+
+local function dispatcher(kind, arg, expr)
+  return {
+    __omarchy_dispatcher = true,
+    kind = kind or "",
+    arg = arg or "",
+    expr = expr or "",
+  }
+end
+
+local function dsp_proxy(path)
+  return setmetatable({ path = path }, {
+    __index = function(self, key)
+      return dsp_proxy(self.path .. "." .. tostring(key))
     end,
-    __call = function()
-      return p
+    __call = function(self, ...)
+      local first_arg = ...
+      local expr = call_expression(self.path, ...)
+
+      if self.path == "hl.dsp.exec_cmd" and type(first_arg) == "string" then
+        return dispatcher("exec", first_arg, expr)
+      end
+
+      return dispatcher("lua", expr, expr)
     end,
   })
 end
 
-local p = proxy()
+local noop
+noop = setmetatable({}, {
+  __index = function()
+    return noop
+  end,
+  __call = function()
+    return noop
+  end,
+})
+
+local function noop_fn()
+  return noop
+end
 
 hl = setmetatable({
-  dsp = p,
-  bind = function(keys, _, opts)
+  dsp = dsp_proxy("hl.dsp"),
+  bind = function(keys, bind_dispatcher, opts)
     opts = opts or {}
+
     if opts.description and opts.description ~= "" then
       local modmask, key = split_keys(keys)
-      print(modmask .. "\t" .. opts.description .. "\t" .. key)
+      local kind = ""
+      local arg = ""
+
+      if type(bind_dispatcher) == "table" and bind_dispatcher.__omarchy_dispatcher then
+        kind = bind_dispatcher.kind or ""
+        arg = bind_dispatcher.arg or bind_dispatcher.expr or ""
+      elseif type(bind_dispatcher) == "string" and bind_dispatcher ~= "" then
+        kind = "exec"
+        arg = bind_dispatcher
+      end
+
+      print(table.concat({ tostring(modmask), opts.description, key, kind, arg }, "\t"))
     end
-    return p
+
+    return noop
   end,
-  unbind = function() end,
-  config = function() end,
-  env = function() end,
-  monitor = function() end,
-  window_rule = function() end,
-  gesture = function() end,
-  animation = function() end,
-  curve = function() end,
-  exec_cmd = function() end,
+  unbind = noop_fn,
+  config = noop_fn,
+  env = noop_fn,
+  monitor = noop_fn,
+  window_rule = noop_fn,
+  workspace_rule = noop_fn,
+  layer_rule = noop_fn,
+  gesture = noop_fn,
+  animation = noop_fn,
+  curve = noop_fn,
+  exec_cmd = noop_fn,
+  dispatch = noop_fn,
+  on = noop_fn,
+  timer = noop_fn,
+  get_config = function()
+    return nil
+  end,
 }, {
   __index = function()
-    return function()
-      return p
-    end
+    return noop
   end,
 })
 
@@ -226,12 +335,12 @@ modmask_to_text() {
 # Fetch dynamic keybindings from Hyprland.
 #
 # Also do some pre-processing:
-# - Fill missing Lua code:... keys from the Lua source cache
+# - Fill missing Lua code:... keys and __lua dispatch metadata from the Lua source cache
 # - Remove standard Omarchy bin path prefix
 # - Map numeric modifier key mask to a textual rendition
 # - Output comma-separated values that the parser can understand
 dynamic_bindings() {
-  local modmask key keycode description dispatcher arg modifiers
+  local modmask key keycode description dispatcher arg modifiers cache_key
 
   hyprctl -j binds |
     jq -r '.[] | [.modmask, (.key // ""), (.keycode // 0), (.description // ""), (.dispatcher // ""), (.arg // "") | tostring] | join("\u001f")' |
@@ -244,12 +353,24 @@ dynamic_bindings() {
         key="${LUA_BIND_KEY_MAP["$modmask,$description"]}"
       fi
 
+      if [[ $dispatcher == "__lua" && -n $description && -n $key ]]; then
+        cache_key="$modmask,$description,$key"
+        dispatcher="${LUA_BIND_DISPATCHER_MAP["$cache_key"]}"
+        arg="${LUA_BIND_ARG_MAP["$cache_key"]}"
+      fi
+
       [[ -z $description && $dispatcher == "__lua" ]] && continue
+
+      case "$key" in
+        comma) key="COMMA" ;;
+        period) key="PERIOD" ;;
+        minus) key="MINUS" ;;
+        equal) key="EQUAL" ;;
+        slash) key="SLASH" ;;
+      esac
 
       modifiers=$(modmask_to_text "$modmask")
       arg="${arg//~\/.local\/share\/omarchy\/bin\//}"
-      arg="${arg//uwsm app -- /}"
-      arg="${arg//uwsm-app -- /}"
 
       printf '%s,%s,%s,%s,%s\n' "$modifiers" "$key" "$description" "$dispatcher" "$arg"
     done
@@ -377,7 +498,7 @@ prioritize_entries() {
 
 output_binding_records() {
   build_keymap_cache
-  build_lua_bind_key_cache
+  build_lua_bind_cache
 
   {
     dynamic_bindings
@@ -393,13 +514,73 @@ output_keybindings() {
   output_binding_records | cut -f1
 }
 
+trim() {
+  local value="$1"
+
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+
+  printf '%s\n' "$value"
+}
+
+lua_string() {
+  jq -Rnr --arg value "$1" '$value | @json'
+}
+
+dispatch_lua_expression() {
+  local expression="$1"
+  local output status
+
+  output=$(hyprctl dispatch "$expression" 2>&1)
+  status=$?
+
+  if (( status == 0 )) && [[ -z $output || $output == "ok" ]]; then
+    [[ -n $output ]] && printf '%s\n' "$output"
+    return 0
+  fi
+
+  return 1
+}
+
+dispatch_exec_binding() {
+  local command="$1"
+
+  dispatch_lua_expression "hl.dsp.exec_cmd($(lua_string "$command"))" || hyprctl dispatch exec "$command"
+}
+
+dispatch_sendshortcut_binding() {
+  local arg="$1"
+  local mods key window rest
+
+  IFS=, read -r mods key window rest <<<"$arg"
+  mods=$(trim "$mods")
+  key=$(trim "$key")
+  window=$(trim "$window")
+
+  [[ -z $window ]] && window="activewindow"
+
+  if [[ -n $key ]] && dispatch_lua_expression "hl.dsp.send_key_state({ mods = $(lua_string "$mods"), key = $(lua_string "$key"), state = \"down\", window = $(lua_string "$window") })"; then
+    sleep 0.05
+    dispatch_lua_expression "hl.dsp.send_key_state({ mods = $(lua_string "$mods"), key = $(lua_string "$key"), state = \"up\", window = $(lua_string "$window") })"
+    return
+  fi
+
+  hyprctl dispatch sendshortcut "$arg"
+}
+
 dispatch_binding() {
   local dispatcher="$1"
   local arg="$2"
 
   case "$dispatcher" in
     exec)
-      [[ -n $arg ]] && hyprctl dispatch exec "$arg"
+      [[ -n $arg ]] && dispatch_exec_binding "$arg"
+      ;;
+    sendshortcut)
+      [[ -n $arg ]] && dispatch_sendshortcut_binding "$arg"
+      ;;
+    lua)
+      [[ -n $arg ]] && hyprctl dispatch "$arg"
       ;;
     "") return 1 ;;
     *)

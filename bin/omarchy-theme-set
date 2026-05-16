@@ -14,6 +14,20 @@ NEXT_THEME_PATH="$HOME/.config/omarchy/current/next-theme"
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
 OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 
+run_parallel() {
+  local pid
+  local pids=()
+
+  for command in "$@"; do
+    bash -lc "$command" &
+    pids+=("$!")
+  done
+
+  for pid in "${pids[@]}"; do
+    wait "$pid"
+  done
+}
+
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 
 if [[ ! -d $OMARCHY_THEMES_PATH/$THEME_NAME ]] && [[ ! -d $USER_THEMES_PATH/$THEME_NAME ]]; then
@@ -44,26 +58,27 @@ mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
 # Store theme name for reference
 echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"
 
-# Change background with theme
+post_theme_commands=(
+  omarchy-restart-swayosd
+  omarchy-restart-terminal
+  omarchy-restart-hyprctl
+  omarchy-restart-btop
+  omarchy-restart-opencode
+  omarchy-restart-helix
+  omarchy-theme-set-foot
+  omarchy-theme-set-gnome
+  omarchy-theme-set-browser
+  omarchy-theme-set-vscode
+  omarchy-theme-set-obsidian
+  omarchy-theme-set-keyboard
+)
+
+# Change background with theme while restarting/retheming independent components.
 if [[ $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
-  omarchy-theme-bg-next
+  post_theme_commands+=(omarchy-theme-bg-next)
 fi
 
-# Restart components to apply new theme
-omarchy-restart-swayosd
-omarchy-restart-terminal
-omarchy-restart-hyprctl
-omarchy-restart-btop
-omarchy-restart-opencode
-omarchy-restart-helix
-
-# Change app-specific themes
-omarchy-theme-set-foot
-omarchy-theme-set-gnome
-omarchy-theme-set-browser
-omarchy-theme-set-vscode
-omarchy-theme-set-obsidian
-omarchy-theme-set-keyboard
+run_parallel "${post_theme_commands[@]}"
 
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME" >/dev/null

@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Bluetooth
 import Quickshell.Io
 import Quickshell.Services.Pipewire
 import "../common" as Common
@@ -26,11 +25,7 @@ Item {
   }
 
   // Volume controls live in the audioPanel bar widget, so the quick-settings
-  // popup just hosts brightness + toggles. Bluetooth adapter status is
-  // exposed via Quickshell.Bluetooth.
-  readonly property var btAdapter: Bluetooth.defaultAdapter
-  readonly property bool btEnabled: btAdapter ? btAdapter.enabled : false
-
+  // popup just hosts brightness + toggles.
   property int currentBrightness: -1
   property int pendingBrightness: -1
 
@@ -44,7 +39,9 @@ Item {
   property bool idleInhibited: false
   property bool nightLightActive: false
   property bool nightLightAvailable: false
+  property bool nightLightPending: false
   property string themeName: ""
+  property string backgroundName: ""
 
   function setBrightness(percent) {
     var clamped = Math.max(1, Math.min(100, Math.round(percent)))
@@ -56,8 +53,9 @@ Item {
   function refresh() {
     if (!brightnessProc.running) brightnessProc.running = true
     if (!idleProc.running) idleProc.running = true
-    if (!nightLightProc.running) nightLightProc.running = true
+    if (!nightLightPending && !nightLightProc.running) nightLightProc.running = true
     if (!themeProc.running) themeProc.running = true
+    if (!backgroundProc.running) backgroundProc.running = true
   }
 
   Component.onCompleted: refresh()
@@ -113,6 +111,7 @@ Item {
           return
         }
         root.nightLightAvailable = true
+        if (root.nightLightPending) return
         var temp = parseInt(state, 10)
         root.nightLightActive = !isNaN(temp) && temp < 6000
       }
@@ -120,12 +119,42 @@ Item {
   }
 
   Process {
+    id: nightLightToggleProc
+    command: ["omarchy-toggle-nightlight"]
+    onExited: {
+      root.nightLightPending = false
+      if (!nightLightProc.running) nightLightProc.running = true
+    }
+  }
+
+  Process {
     id: themeProc
-    command: ["bash", "-lc", "readlink ~/.config/omarchy/current/theme 2>/dev/null | xargs -r basename"]
+    command: ["omarchy-theme-current"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.themeName = String(text || "").trim()
     }
+  }
+
+  Process {
+    id: themeSetProc
+    command: ["bash", "-lc", "theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""]
+    onExited: root.refresh()
+  }
+
+  Process {
+    id: backgroundProc
+    command: ["omarchy-theme-bg-current"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.backgroundName = String(text || "").trim()
+    }
+  }
+
+  Process {
+    id: backgroundSetProc
+    command: ["bash", "-lc", "background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""]
+    onExited: root.refresh()
   }
 
   Timer {
@@ -145,7 +174,6 @@ Item {
     bar: root.bar
     text: "󰙪"
     fontSize: 12
-    tooltipText: "Quick Settings"
     onPressed: function() { root.popupOpen = !root.popupOpen }
   }
 
@@ -155,6 +183,7 @@ Item {
     bar: root.bar
     owner: root
     open: root.popupOpen
+    margin: 6
     contentWidth: 320
     contentHeight: layout.implicitHeight + 28
 
@@ -173,11 +202,21 @@ Item {
           spacing: 8
 
           Common.PillButton {
-            iconText: "󰃠"
+            iconText: root.nightLightActive ? "󰖔" : "󰖙"
+            tooltipText: root.nightLightActive ? "Turn off Night Light" : "Turn on Night Light"
             foreground: root.bar.foreground
             horizontalPadding: 8
             verticalPadding: 6
             iconSize: 16
+            active: root.nightLightActive
+            opacity: root.nightLightAvailable ? 1 : 0.4
+            enabled: root.nightLightAvailable
+            onClicked: {
+              if (nightLightToggleProc.running) return
+              root.nightLightActive = !root.nightLightActive
+              root.nightLightPending = true
+              nightLightToggleProc.running = true
+            }
           }
 
           Common.Slider {
@@ -231,33 +270,43 @@ Item {
 
         Tile {
           width: (tileGrid.width - tileGrid.columnSpacing) / 2
-          glyph: root.nightLightActive ? "󰖔" : "󰖙"
-          title: "Night Light"
-          subtitle: !root.nightLightAvailable ? "—" : (root.nightLightActive ? "On" : "Off")
-          active: root.nightLightActive
-          tileEnabled: root.nightLightAvailable
-          onClicked: { root.run("omarchy-toggle-nightlight"); nightLightProc.running = true }
-        }
-
-        Tile {
-          width: (tileGrid.width - tileGrid.columnSpacing) / 2
           glyph: root.idleInhibited ? "󰅶" : "󰾪"
           title: "Keep Awake"
           subtitle: root.idleInhibited ? "On" : "Off"
           active: root.idleInhibited
           onClicked: { root.run("omarchy-toggle-idle"); idleProc.running = true }
         }
+      }
 
-        Tile {
-          width: (tileGrid.width - tileGrid.columnSpacing) / 2
-          glyph: root.btEnabled ? "󰂯" : "󰂲"
-          title: "Bluetooth"
-          subtitle: !root.btAdapter ? "—" : (root.btEnabled ? "On" : "Off")
-          active: root.btEnabled
-          tileEnabled: root.btAdapter !== null
+      Rectangle {
+        width: parent.width
+        height: 1
+        color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      }
+
+      Row {
+        width: parent.width
+        spacing: 8
+
+        AppearancePill {
+          width: (parent.width - parent.spacing) / 2
+          icon: "󰌁"
+          label: "Theme"
+          currentValue: root.themeName || "—"
           onClicked: {
-            if (!root.btAdapter) return
-            root.btAdapter.enabled = !root.btAdapter.enabled
+            root.popupOpen = false
+            if (!themeSetProc.running) themeSetProc.running = true
+          }
+        }
+
+        AppearancePill {
+          width: (parent.width - parent.spacing) / 2
+          icon: "󰋩"
+          label: "Background"
+          currentValue: root.backgroundName || "—"
+          onClicked: {
+            root.popupOpen = false
+            if (!backgroundSetProc.running) backgroundSetProc.running = true
           }
         }
       }
@@ -280,6 +329,62 @@ Item {
     }
   }
 
+  component AppearancePill: Rectangle {
+    id: appearancePill
+
+    property string icon: ""
+    property string label: ""
+    property string currentValue: "—"
+
+    signal clicked()
+
+    implicitHeight: 56
+    height: 56
+    radius: 6
+    color: appearanceArea.containsMouse
+      ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.04)
+    border.color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+    border.width: 1
+
+    Behavior on color { ColorAnimation { duration: 120 } }
+
+    Column {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.margins: 10
+      spacing: 2
+
+      Text {
+        text: appearancePill.icon.length > 0 ? appearancePill.icon + " " + appearancePill.label : appearancePill.label
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: 11
+        font.bold: true
+        elide: Text.ElideRight
+        width: parent.width
+      }
+
+      Text {
+        text: appearancePill.currentValue
+        color: Qt.darker(root.bar.foreground, 1.35)
+        font.family: root.bar.fontFamily
+        font.pixelSize: 10
+        elide: Text.ElideRight
+        width: parent.width
+      }
+    }
+
+    MouseArea {
+      id: appearanceArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: appearancePill.clicked()
+    }
+  }
+
   component Tile: Rectangle {
     id: tile
 
@@ -294,50 +399,38 @@ Item {
     implicitHeight: 56
     radius: 6
     color: tileArea.containsMouse
-      ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.16)
-      : (active ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
-                : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.04))
-    border.color: active ? root.bar.foreground : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, active ? 0.10 : 0.04)
+    border.color: active ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.35) : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
     border.width: 1
     opacity: tileEnabled ? 1 : 0.4
 
     Behavior on color { ColorAnimation { duration: 120 } }
 
-    Row {
-      anchors.fill: parent
+    Column {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
       anchors.margins: 10
-      spacing: 8
+      spacing: 2
 
       Text {
-        text: tile.glyph
+        text: tile.glyph.length > 0 ? tile.glyph + " " + tile.title : tile.title
         color: root.bar.foreground
         font.family: root.bar.fontFamily
-        font.pixelSize: 18
-        anchors.verticalCenter: parent.verticalCenter
+        font.pixelSize: 11
+        font.bold: true
+        elide: Text.ElideRight
+        width: parent.width
       }
 
-      Column {
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: 2
-        width: parent.width - parent.children[0].implicitWidth - 8
-
-        Text {
-          text: tile.title
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-          font.bold: true
-          elide: Text.ElideRight
-          width: parent.width
-        }
-        Text {
-          text: tile.subtitle
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 10
-          elide: Text.ElideRight
-          width: parent.width
-        }
+      Text {
+        text: tile.subtitle
+        color: Qt.darker(root.bar.foreground, 1.35)
+        font.family: root.bar.fontFamily
+        font.pixelSize: 10
+        elide: Text.ElideRight
+        width: parent.width
       }
     }
 

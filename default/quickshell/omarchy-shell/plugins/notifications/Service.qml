@@ -33,21 +33,11 @@ Item {
   readonly property string cacheDir: home + "/.cache/omarchy/"
   readonly property string imageCacheDir: cacheDir + "notification-images/"
   readonly property string styleStatePath: home + "/.local/state/omarchy/toggles/quickshell-menu.json"
-  // Optional per-theme override file. Themes that want notification colors
-  // to diverge from the rest of the palette can ship this file. Schema:
-  //   {
-  //     "borderColor":     "#hex",
-  //     "backgroundColor": "#hex",
-  //     "textColor":       "#hex",
-  //     "countdownColor":  "#hex"   // progress bar at bottom of popup
-  //   }
-  // All keys optional; unset keys fall back to the live Color.* tokens.
-  readonly property string themeOverridePath: home + "/.config/omarchy/current/theme/notifications.json"
 
   // Corner radius is shared with omarchy-shell menu and settings panel —
   // `omarchy style corners <sharp|round>` writes this file once and every
-  // surface reads it. Default 10 keeps the popup looking like it did pre-toggle.
-  property int cornerRadius: 10
+  // surface reads it. Default 0 for sharp corners.
+  property int cornerRadius: 0
 
   // Surfaces anchor relative to the omarchy bar so popups and history land
   // alongside the other shell panels rather than on top of the bar itself.
@@ -63,9 +53,9 @@ Item {
     try {
       var parsed = JSON.parse(raw || "{}")
       var n = Number(parsed.radius)
-      cornerRadius = isFinite(n) && n >= 0 ? n : 10
+      cornerRadius = isFinite(n) && n >= 0 ? n : 0
     } catch (e) {
-      cornerRadius = 10
+      cornerRadius = 0
     }
   }
 
@@ -77,41 +67,6 @@ Item {
     onFileChanged: reload()
   }
 
-  // ----------------------------------------------- per-theme color overrides
-
-  property string overrideBorder: ""
-  property string overrideBackground: ""
-  property string overrideText: ""
-  property string overrideCountdown: ""
-
-  readonly property color effectiveBorder: overrideBorder.length > 0 ? overrideBorder : Color.border
-  readonly property color effectiveBackground: overrideBackground.length > 0 ? overrideBackground : Color.background
-  readonly property color effectiveText: overrideText.length > 0 ? overrideText : Color.foreground
-  readonly property color effectiveCountdown: overrideCountdown.length > 0 ? overrideCountdown : Color.accent
-
-  function loadThemeOverride(raw) {
-    try {
-      var parsed = JSON.parse(raw || "{}")
-      overrideBorder = typeof parsed.borderColor === "string" ? parsed.borderColor : ""
-      overrideBackground = typeof parsed.backgroundColor === "string" ? parsed.backgroundColor : ""
-      overrideText = typeof parsed.textColor === "string" ? parsed.textColor : ""
-      overrideCountdown = typeof parsed.countdownColor === "string" ? parsed.countdownColor : ""
-    } catch (e) {
-      overrideBorder = ""
-      overrideBackground = ""
-      overrideText = ""
-      overrideCountdown = ""
-    }
-  }
-
-  FileView {
-    path: service.themeOverridePath
-    watchChanges: true
-    printErrors: false
-    onLoaded: service.loadThemeOverride(text())
-    onLoadFailed: service.loadThemeOverride("")
-    onFileChanged: reload()
-  }
 
   // Fired by IPC (`omarchy-shell-ipc notifications showHistory`) so the
   // bar widget can drop its PopupCard from the same anchor a click would.
@@ -188,16 +143,20 @@ Item {
   function snapshotOf(notification) {
     var glyph = ""
     try {
-      if (notification.hints && typeof notification.hints["omarchy-glyph"] === "string") {
-        glyph = notification.hints["omarchy-glyph"]
+      if (notification.hints) {
+        var hintGlyph = notification.hints["omarchy-glyph"]
+        if (hintGlyph !== undefined && hintGlyph !== null)
+          glyph = String(hintGlyph)
       }
     } catch (e) { glyph = "" }
+    var summary = String(notification.summary || "")
+
     return {
       id: notification.id,
       originalId: notification.id,
       app: notification.appName || "",
       appIcon: notification.appIcon || "",
-      summary: notification.summary || "",
+      summary: summary,
       body: notification.body || "",
       image: notification.image || "",
       glyph: glyph,
@@ -932,10 +891,6 @@ Item {
               urgency: cardSlot.urgency
               timestamp: cardSlot.timestamp
               cornerRadius: service.cornerRadius
-              borderColorOverride: service.effectiveBorder
-              backgroundColorOverride: service.effectiveBackground
-              textColorOverride: service.effectiveText
-              countdownColorOverride: service.effectiveCountdown
               fontFamily: service.shell && service.shell.bar ? service.shell.bar.fontFamily : ""
               glyph: cardSlot.glyph
               progress: cardSlot.progress

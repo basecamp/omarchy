@@ -22,18 +22,11 @@ Rectangle {
   // NotificationUrgency: Low=0, Normal=1, Critical=2 (upstream).
   property int urgency: 1
   property double timestamp: 0
-  property int cornerRadius: 10
+  property int cornerRadius: 0
 
   property real progress: 1.0
   property bool showProgress: false
 
-  // Container can override the theme defaults per-card. Defaults bind to
-  // the live Color.* tokens, so when the container leaves them alone the
-  // card still tracks the theme.
-  property color borderColorOverride: Color.border
-  property color backgroundColorOverride: Color.background
-  property color textColorOverride: Color.foreground
-  property color countdownColorOverride: Color.accent
   // System font from shell.json bar.fontFamily, injected by the container.
   property string fontFamily: ""
 
@@ -61,12 +54,8 @@ Rectangle {
            lower.endsWith(".jpeg") || lower.endsWith(".webp") ||
            lower.endsWith(".gif")
   }
-  readonly property string mediaImageSource: {
-    if (_isMediaFile(_imageFilePath(image))) return image
-    if (_isMediaFile(_imageFilePath(appIcon))) return appIcon
-    return ""
-  }
-  readonly property bool mediaMode: mediaImageSource.length > 0
+  readonly property string mediaImageSource: ""
+  readonly property bool mediaMode: false
   // Use only what the notification explicitly carries — no themed-icon
   // theme-lookup fallback because Quickshell's icon image provider returns
   // a placeholder for missing names (rather than erroring), which means
@@ -75,12 +64,13 @@ Rectangle {
   // `appIcon` (-i flag) still get one.
   readonly property string smallIconSource: image.length > 0 ? image : appIcon
   readonly property bool hasGlyph: glyph.length > 0
-  readonly property bool hasSmallIcon: !mediaMode && (smallIconSource.length > 0 || hasGlyph)
+  readonly property bool inlineGlyph: summary.match(/^\S\s{2,}/) !== null
+  readonly property bool hasSmallIcon: !mediaMode && !inlineGlyph && (smallIconSource.length > 0 || hasGlyph)
 
-  readonly property color dimColor: Qt.darker(textColorOverride, 1.4)
-  readonly property color bodyColor: Qt.darker(textColorOverride, 1.15)
-  readonly property color hoverColor: Qt.rgba(textColorOverride.r, textColorOverride.g, textColorOverride.b, 0.14)
-  readonly property color accentColor: urgency === 2 ? Color.urgent : (urgency === 0 ? dimColor : countdownColorOverride)
+  readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
+  readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
+  readonly property color hoverColor: Qt.rgba(Color.notifications.text.r, Color.notifications.text.g, Color.notifications.text.b, 0.14)
+  readonly property color accentColor: urgency === 2 ? Color.urgent : (urgency === 0 ? dimColor : Color.notifications.countdown)
 
   function sanitizeBody(s) {
     return String(s).replace(/<img[^>]*>/gi, "")
@@ -90,10 +80,10 @@ Rectangle {
   // Add 2 * border.width so mainColumn (inset by border.width on top/left/right)
   // doesn't push content under the bottom edge. The bottom edge is also inset
   // for symmetry except when the progress bar replaces it.
-  implicitHeight: mainColumn.implicitHeight + border.width * 2 + (showProgress ? 3 : 0)
+  implicitHeight: mainColumn.implicitHeight + border.width * 2
   radius: cornerRadius
-  color: backgroundColorOverride
-  border.color: urgency === 2 ? Color.urgent : borderColorOverride
+  color: Color.notifications.background
+  border.color: urgency === 2 ? Color.urgent : Color.notifications.border
   border.width: 2
   clip: true
 
@@ -145,7 +135,7 @@ Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: root.border.width
-        color: root.urgency === 2 ? Color.urgent : root.borderColorOverride
+        color: root.urgency === 2 ? Color.urgent : Color.notifications.border
       }
 
       MouseArea {
@@ -164,24 +154,24 @@ Rectangle {
       Layout.rightMargin: 12
       Layout.topMargin: 10
       Layout.bottomMargin: 10
-      spacing: 10
+      spacing: 12
 
       Item {
         id: smallIconSlot
-        Layout.preferredWidth: 32
-        Layout.preferredHeight: 32
+        Layout.preferredWidth: 40
+        Layout.preferredHeight: 40
         Layout.alignment: Qt.AlignVCenter
         // Hide the slot when the icon failed to resolve (themed-icon name
         // not in the user's icon theme) AND we don't have a glyph fallback
         // — prevents rendering Qt's pink broken-image placeholder.
-        visible: root.hasSmallIcon && (root.hasGlyph || smallIconImage.status !== Image.Error)
+        visible: root.hasGlyph || (!root.mediaMode && smallIconSource.length > 0 && smallIconImage.status !== Image.Error)
 
         Image {
           id: smallIconImage
           anchors.fill: parent
           source: root.smallIconSource
-          sourceSize.width: 32 * Screen.devicePixelRatio
-          sourceSize.height: 32 * Screen.devicePixelRatio
+          sourceSize.width: 40 * Screen.devicePixelRatio
+          sourceSize.height: 40 * Screen.devicePixelRatio
           fillMode: Image.PreserveAspectFit
           asynchronous: true
           smooth: true
@@ -194,7 +184,7 @@ Rectangle {
           anchors.centerIn: parent
           visible: root.hasGlyph && smallIconImage.status !== Image.Ready
           text: root.glyph
-          color: root.textColorOverride
+          color: Color.notifications.text
           font.family: root.fontFamily
           font.pixelSize: 18
         }
@@ -210,7 +200,7 @@ Rectangle {
           visible: root.summary.length > 0
           text: root.summary
           font.family: root.fontFamily
-          color: root.textColorOverride
+          color: Color.notifications.text
           font.pixelSize: 13
           font.bold: true
           wrapMode: Text.WordWrap
@@ -226,7 +216,7 @@ Rectangle {
           textFormat: Text.StyledText
           font.family: root.fontFamily
           color: root.bodyColor
-          font.pixelSize: 12
+          font.pixelSize: 13
           wrapMode: Text.WordWrap
           elide: Text.ElideRight
           maximumLineCount: 3
@@ -243,8 +233,8 @@ Rectangle {
     anchors.right: parent.right
     anchors.bottom: parent.bottom
     height: 3
-    color: root.borderColorOverride
-    visible: root.showProgress
+    color: Color.notifications.border
+    visible: false
 
     Rectangle {
       anchors.left: parent.left

@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import qs.Commons
 
 Item {
   id: root
@@ -15,22 +16,13 @@ Item {
   // Plugin lifecycle hooks. The host calls open(payloadJson) after
   // `omarchy-shell-ipc shell summon omarchy.menu ...` and close() when hidden.
   property string pendingInitialMenu: "root"
-  property string pendingColorsRaw: ""
-
-  function decodeBase64(value) {
-    var s = String(value || "")
-    if (!s) return ""
-    try { return Qt.atob(s) } catch (e) { return s }
-  }
 
   function open(payloadJson) {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
 
     root.pendingInitialMenu = payload.initialMenu || payload.menu || "root"
-    root.pendingColorsRaw = payload.colorsRawBase64 ? root.decodeBase64(payload.colorsRawBase64) : (payload.colorsRaw || "")
     if (payload.fontFamily) root.fontFamily = payload.fontFamily
-    if (root.pendingColorsRaw) root.loadColors(root.pendingColorsRaw)
 
     root.openExistingMenu(root.pendingInitialMenu)
   }
@@ -40,7 +32,6 @@ Item {
   }
 
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
-  property string colorsFile: Quickshell.env("OMARCHY_MENU_COLORS_FILE") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/colors.toml")
   property string styleFile: Quickshell.env("OMARCHY_MENU_STYLE_FILE") || (Quickshell.env("HOME") + "/.local/state/omarchy/toggles/quickshell-menu.json")
   // JSONC menu definitions. The shell parses both at startup and merges
   // the user file on top of the defaults, so the keybind → IPC → visible
@@ -61,9 +52,10 @@ Item {
   property var navStack: []
   property var providersLoaded: ({})
   property var providerQueue: []
-  property color accent: "#89b4fa"
-  property color background: "#101315"
-  property color foreground: "#cacccc"
+  // Bound to the central [menu] section in shell.toml via Color.qml.
+  property color accent: Color.menu.selected
+  property color background: Color.menu.background
+  property color foreground: Color.menu.text
   property color border: foreground
   property int cornerRadius: 0
   property int contentMargin: 18
@@ -75,7 +67,7 @@ Item {
   property int dividerHeight: 17
   property bool searchDivider: false
   property int layoutSerial: 0
-  property int cardWidth: Math.min(300, panel.width - 48)
+  property int cardWidth: Math.min((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? 520 : 300, panel.width - 48)
   property int visibleRowsHeight: rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
   property int cardHeight: Math.min(Math.max(220, contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight), panel.height - 48)
 
@@ -238,7 +230,7 @@ Item {
   readonly property var providers: ({
     "fonts": {
       script: "current=$(omarchy-font-current 2>/dev/null); omarchy-font-list 2>/dev/null | while read -r f; do [[ -z $f ]] && continue; printf '%s\\t%s\\t%s\\n' \"$f\" \"$f\" \"$current\"; done",
-      icon: "",
+      icon: "",
       actionFor: function(value) { return "omarchy-font-set '" + value.replace(/'/g, "'\\''") + "'" },
       keywordsFor: function(value) { return value + " typeface" }
     },
@@ -283,14 +275,13 @@ Item {
       var current = parts[2] || ""
       if (!label) continue
       var id = menuId + "." + root.slugify(value)
-      var displayLabel = (value === current) ? (label + " ✓") : label
       if (!root.items[id]) nextOrder.push(id)
       root.items[id] = {
         id: id,
         parent: menuId,
         kind: "action",
-        icon: spec.icon || "",
-        label: displayLabel,
+        icon: (value === current) ? "✓" : (spec.icon || ""),
+        label: label,
         target: "",
         keywords: spec.keywordsFor(value),
         description: "",
@@ -547,9 +538,7 @@ Item {
   function select(delta) {
     if (displayModel.count === 0) return
 
-    selectedIndex += delta
-    if (selectedIndex < 0) selectedIndex = 0
-    if (selectedIndex >= displayModel.count) selectedIndex = displayModel.count - 1
+    selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
     resultList.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
 
@@ -622,18 +611,6 @@ Item {
     loadProviderForMenu(activeMenu)
 
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
-  }
-
-  function loadColors(raw) {
-    var lines = String(raw || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-      var match = lines[i].match(/^\s*([A-Za-z0-9_-]+)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
-      if (!match) continue
-      if (match[1] === "foreground") foreground = match[2]
-      else if (match[1] === "background") background = match[2]
-      else if (match[1] === "color4" || match[1] === "accent") accent = match[2]
-    }
-    border = foreground
   }
 
   function loadStyle(raw) {
@@ -812,13 +789,6 @@ Item {
   }
 
   FileView {
-    path: root.colorsFile
-    watchChanges: true
-    onLoaded: root.loadColors(text())
-    onFileChanged: { reload(); root.loadColors(text()) }
-  }
-
-  FileView {
     path: root.styleFile
     watchChanges: true
     onLoaded: root.loadStyle(text())
@@ -834,6 +804,11 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
+
+    Rectangle {
+      anchors.fill: parent
+      color: root.withAlpha(root.background, 0.5)
+    }
 
     MouseArea {
       anchors.fill: parent
@@ -1047,9 +1022,9 @@ Item {
                 }
 
                 Text {
-                  text: row.kind === "menu" || row.kind === "link" ? "›" : (row.kind === "back" ? "" : "↵")
+                  text: row.kind === "menu" || row.kind === "link" ? "›" : ""
                   color: index === root.selectedIndex ? root.accent : root.foreground
-                  opacity: row.kind === "back" ? 0 : 0.36
+                  opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
                   font.family: root.fontFamily
                   font.pixelSize: 16
                   font.weight: Font.Normal

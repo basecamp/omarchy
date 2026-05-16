@@ -24,7 +24,7 @@ open_ufw_port_for_private_lans() {
   local cidr
 
   for cidr in "${PRIVATE_CIDRS[@]}"; do
-    sudo ufw allow in proto "$proto" from "$cidr" to any port "$port" comment "$UFW_COMMENT"
+    sudo ufw allow in proto "$proto" from "$cidr" to any port "$port" comment "$UFW_COMMENT" >/dev/null
   done
 }
 
@@ -33,7 +33,7 @@ open_ufw_port_for_tailscale() {
   local port="$2"
 
   if ip link show tailscale0 >/dev/null 2>&1; then
-    sudo ufw allow in on tailscale0 to any port "$port" proto "$proto" comment "$UFW_COMMENT"
+    sudo ufw allow in on tailscale0 to any port "$port" proto "$proto" comment "$UFW_COMMENT" >/dev/null
   fi
 }
 

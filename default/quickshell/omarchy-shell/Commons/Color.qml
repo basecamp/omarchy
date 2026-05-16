@@ -3,27 +3,63 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Noctalia compat shim. Plugins import `qs.Commons` and reach for these
-// palette tokens / helpers. Values stream from the Omarchy theme file; the
-// shell wires this singleton up at startup via setHostBar()/setHostShell().
-//
-// We don't try to replicate Noctalia's full Material You resolver — for the
-// fields plugins actually read, a flat token table is enough.
+// Single source of truth for shell color surfaces. Top-level tokens
+// (foreground/background/accent/urgent) come from the theme's colors.toml.
+// Per-surface roles (Color.bar.*, Color.popups.*, Color.notifications.*,
+// Color.menu.*, Color.imagePicker.*) come from shell.toml, which is generated
+// per theme from default/themed/shell.toml.tpl (or shipped directly by a
+// theme to override). Surfaces that don't appear in shell.toml fall back to
+// the foundational palette, so themes can ship partial overrides.
 QtObject {
   id: root
 
-  // Live updated from theme/colors.toml via the FileView below.
+  // Foundational palette. Live updated from theme/colors.toml.
   property color foreground: "#cacccc"
   property color background: "#101315"
   property color accent: "#cacccc"
   property color urgent: "#a55555"
-  // The theme's Hyprland active border color (`$activeBorderColor` in the
-  // theme's hyprland.conf). Most themes set this to the accent; some themes
-  // (e.g. aether, oodle) override it to a neutral. Streamed from the theme
-  // file alongside colors.toml so notification surfaces stay in sync.
-  property color border: accent
 
-  // Noctalia palette tokens. We map them onto our theme colors.
+  // Flat dictionary of "section.key" -> "#rrggbb" parsed from shell.toml.
+  // Reassigning this whole property is what makes surface bindings below
+  // re-evaluate when the theme swaps; mutating it in place would not.
+  property var shellValues: ({})
+
+  function pick(key, fallback) {
+    var v = shellValues[key]
+    return (typeof v === "string" && v.length > 0) ? v : fallback
+  }
+
+  // Surface roles. Each property reads its shell.toml override if set,
+  // otherwise falls back to a foundational palette token.
+  readonly property QtObject bar: QtObject {
+    property color background: root.pick("bar.background", root.background)
+    property color text: root.pick("bar.text", root.foreground)
+    property color active: root.pick("bar.active", root.urgent)
+  }
+  readonly property QtObject popups: QtObject {
+    property color background: root.pick("popups.background", root.background)
+    property color border: root.pick("popups.border", root.foreground)
+  }
+  readonly property QtObject notifications: QtObject {
+    property color background: root.pick("notifications.background", root.background)
+    property color text: root.pick("notifications.text", root.foreground)
+    property color border: root.pick("notifications.border", root.accent)
+    property color countdown: root.pick("notifications.countdown", root.accent)
+  }
+  readonly property QtObject menu: QtObject {
+    property color background: root.pick("menu.background", root.background)
+    property color text: root.pick("menu.text", root.foreground)
+    property color selected: root.pick("menu.selected", root.accent)
+  }
+  readonly property QtObject imagePicker: QtObject {
+    property color background: root.pick("image-picker.background", root.background)
+    property color text: root.pick("image-picker.text", root.foreground)
+    property color selectedBorder: root.pick("image-picker.selected-border", root.accent)
+    property color unselectedBorder: root.pick("image-picker.unselected-border", root.foreground)
+  }
+
+  // Noctalia palette tokens used by the compat widgets. Mapped onto the
+  // foundational palette; not exposed in shell.toml.
   readonly property color mPrimary: accent
   readonly property color mSecondary: Qt.darker(accent, 1.2)
   readonly property color mTertiary: Qt.lighter(accent, 1.3)
@@ -89,12 +125,10 @@ QtObject {
       case "urgent":
       case "red": return urgent
     }
-    // Anything else, treat as a literal CSS color string (the QML color type
-    // does this conversion implicitly when assigned).
     return Qt.color(k)
   }
 
-  function loadTheme(raw) {
+  function loadColors(raw) {
     var lines = String(raw || "").split("\n")
     var foundAccent = false
     var color4Value = ""
@@ -114,39 +148,52 @@ QtObject {
     if (!foundAccent && color4Value.length > 0) accent = color4Value
   }
 
-  // Parse `$activeBorderColor = rgb(XXXXXX)` from the theme's hyprland.conf.
-  function loadHyprlandTheme(raw) {
-    var match = String(raw || "").match(/\$activeBorderColor\s*=\s*rgba?\(([0-9A-Fa-f]{6,8})\)/)
-    if (!match) { border = accent; return }
-    var hex = match[1]
-    // rgba() in hyprland is AARRGGBB; strip the AA prefix and use the RGB.
-    if (hex.length === 8) hex = hex.substring(2)
-    border = "#" + hex
+  // Walk shell.toml line-by-line. We only need string values for color keys,
+  // and the file is small, so no proper TOML parser. Accepts double- or
+  // single-quoted values and tolerates trailing inline comments.
+  function loadShell(raw) {
+    var parsed = {}
+    var text = String(raw || "")
+    if (text) {
+      var lines = text.split("\n")
+      var section = ""
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].replace(/^\s+|\s+$/g, "")
+        if (!line || line.charAt(0) === "#") continue
+        var sectionMatch = line.match(/^\[([A-Za-z0-9_-]+)\]\s*(#.*)?$/)
+        if (sectionMatch) { section = sectionMatch[1]; continue }
+        var kv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*["']([^"']+)["']\s*(#.*)?$/)
+        if (!kv || !section) continue
+        parsed[section + "." + kv[1]] = kv[2]
+      }
+    }
+    shellValues = parsed
   }
 
   // `omarchy-theme-set` recreates the theme/ directory via rm+mv, which kills
   // the inotify watch on colors.toml. Use theme.name (overwritten in place) as
   // a tripwire that forces a fresh reload after each swap.
-  property FileView themeFile: FileView {
-    id: themeColorsFile
+  property FileView colorsFile: FileView {
+    id: colorsFile
     path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/colors.toml"
     watchChanges: true
     printErrors: false
-    onLoaded: root.loadTheme(text())
+    onLoaded: root.loadColors(text())
+    onFileChanged: reload()
+  }
+  property FileView shellFile: FileView {
+    id: shellFile
+    path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/shell.toml"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.loadShell(text())
+    onLoadFailed: root.loadShell("")
     onFileChanged: reload()
   }
   property FileView themeNameFile: FileView {
     path: Quickshell.env("HOME") + "/.config/omarchy/current/theme.name"
     watchChanges: true
     printErrors: false
-    onFileChanged: { themeColorsFile.reload(); themeHyprlandFile.reload() }
-  }
-  property FileView themeHyprlandFile: FileView {
-    id: themeHyprlandFile
-    path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/hyprland.conf"
-    watchChanges: true
-    printErrors: false
-    onLoaded: root.loadHyprlandTheme(text())
-    onFileChanged: reload()
+    onFileChanged: { colorsFile.reload(); shellFile.reload() }
   }
 }

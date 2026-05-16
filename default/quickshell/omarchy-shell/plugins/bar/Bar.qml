@@ -9,6 +9,7 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import QtQuick
 import QtQuick.Layouts
+import qs.Commons
 import "common" as BarCommon
 
 Item {
@@ -49,9 +50,11 @@ Item {
   // "monospace" resolves through fontconfig at paint time, so changing the
   // system font (via `omarchy-font-set`) updates the bar without a reload.
   property string fontFamily: "monospace"
-  property color foreground: "#cacccc"
-  property color background: "#101315"
-  property color urgent: "#a55555"
+  // Bound to the central Color singleton so the bar tracks shell.toml's
+  // [bar] section. Property names kept for the rest of this file's bindings.
+  property color foreground: Color.bar.text
+  property color background: Color.bar.background
+  property color urgent: Color.bar.active
   property string weatherText: ""
   property string weatherClass: ""
   property bool updateAvailable: false
@@ -312,7 +315,7 @@ Item {
     "calendar":           { displayName: "Calendar",           description: "Clock with month-grid popup",                  category: "Time",     allowMultiple: false, settingsForm: "calendarSettings" },
     "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND",  category: "Status",   allowMultiple: false },
     "systemStats":        { displayName: "System stats",       description: "CPU icon — hover for graphs, click to open btop", category: "System",   allowMultiple: false },
-    "weatherFlyout":      { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false },
+    "weatherFlyout":      { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false, settingsForm: "weatherSettings" },
     "idleInhibitor":      { displayName: "Keep awake",         description: "Toggle idle inhibitor",                       category: "System",   allowMultiple: false },
     "microphone":         { displayName: "Microphone",         description: "Mic input state and mute toggle",             category: "Audio",    allowMultiple: false },
     "activeWindow":       { displayName: "Active window",      description: "Title of the focused window",                 category: "Compositor", allowMultiple: false },
@@ -438,18 +441,6 @@ Item {
     }
   }
 
-  function loadTheme(raw) {
-    var lines = String(raw || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-      var match = lines[i].match(/^\s*([A-Za-z0-9_-]+)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
-      if (!match) continue
-
-      if (match[1] === "foreground") foreground = match[2]
-      else if (match[1] === "background") background = match[2]
-      else if (match[1] === "red") urgent = match[2]
-    }
-  }
-
   function updateWeather(raw) {
     var data = parseModuleJson(raw)
     weatherText = data.text || ""
@@ -564,7 +555,7 @@ Item {
 
     var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
     var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
-    var index = Math.max(0, Math.min(9, Math.floor(device.percentage / 10)))
+    var index = Math.max(0, Math.min(9, Math.floor(device.percentage * 10)))
 
     if (device.state === UPowerDeviceState.FullyCharged) return "󰂅"
     if (!UPower.onBattery && device.state !== UPowerDeviceState.Charging) return ""
@@ -666,7 +657,7 @@ Item {
     if (!device || !device.isPresent) return ""
 
     var direction = UPower.onBattery ? "↓" : "↑"
-    return Math.round(device.changeRate) + "W" + direction + " " + Math.round(device.percentage) + "%"
+    return Math.round(device.changeRate) + "W" + direction + " " + Math.round(device.percentage * 100) + "%"
   }
 
   function trayIconSource(icon) {
@@ -721,26 +712,6 @@ Item {
     id: tooltipTimer
     interval: 400
     onTriggered: root.tooltipShown = true
-  }
-
-  // The host owns shell.json loading and injects `barConfig`. Bar still keeps
-  // its own theme FileView since theme colors are independent of shell.json.
-  // `omarchy-theme-set` recreates the entire theme/ directory via rm+mv, which
-  // invalidates the inotify watch on colors.toml. Use theme.name (overwritten
-  // in place) to force a fresh reload after each swap.
-  FileView {
-    id: themeColorsFile
-    path: root.home + "/.config/omarchy/current/theme/colors.toml"
-    watchChanges: true
-    printErrors: false
-    onLoaded: root.loadTheme(text())
-    onFileChanged: reload()
-  }
-  FileView {
-    path: root.home + "/.config/omarchy/current/theme.name"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: themeColorsFile.reload()
   }
 
   // Presence of the `bar-off` flag = bar hidden. Watching the parent toggles
@@ -1379,6 +1350,7 @@ Item {
       anchors.fill: parent
       acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
       hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
       onEntered: root.showTooltip(buttonRoot, buttonRoot.tooltipText)
       onExited: root.hideTooltip(buttonRoot)
       onClicked: function(mouse) { buttonRoot.pressed(mouse.button) }
@@ -1396,7 +1368,6 @@ Item {
     text: "\ue900"
     fontFamily: "omarchy"
     horizontalMargin: 7.5
-    tooltipText: "Omarchy Menu\n\nSuper + Alt + Space"
     onPressed: function(button) {
       if (button === Qt.RightButton) root.run("xdg-terminal-exec")
       else root.run("omarchy-shell-ipc menu toggle root")
@@ -1419,7 +1390,7 @@ Item {
         property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
 
         text: focused ? "󱓻" : (modelData === 10 ? "0" : String(modelData))
-        opacity: occupied || modelData <= 5 || focused ? 1 : 0.5
+        opacity: occupied || focused ? 1 : 0.5
         horizontalMargin: 6
         verticalPadding: 6
         fixedWidth: root.vertical ? root.barSize : 22
@@ -1891,6 +1862,7 @@ Item {
       anchors.fill: parent
       acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
       hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
       onEntered: root.showTooltip(trayItemRoot, root.trayTooltip(modelData))
       onExited: root.hideTooltip(trayItemRoot)
       onClicked: function(mouse) {
@@ -1952,7 +1924,7 @@ Item {
     text: root.batteryIcon()
     horizontalMargin: 8.5
     visible: device !== null && device.isPresent && device.percentage > 0
-    active: device !== null && device.percentage <= 20 && UPower.onBattery
+    active: device !== null && device.percentage <= 0.2 && UPower.onBattery
     tooltipText: root.batteryTooltip()
     onPressed: function(button) {
       if (button === Qt.RightButton) root.run("omarchy-notification-send \"$(omarchy-battery-status)\"")

@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import qs.Commons
 
 PopupWindow {
   id: root
@@ -80,6 +81,12 @@ PopupWindow {
       var window = target.QsWindow.window
       if (!window) return
 
+      if (root.bar.position === "top" || root.bar.position === "bottom") {
+        localX = Math.max(root.margin, Math.min(localX, window.width - popupWidth - root.margin))
+      } else {
+        localY = Math.max(root.margin, Math.min(localY, window.height - popupHeight - root.margin))
+      }
+
       var point = window.contentItem.mapFromItem(target, localX, localY)
       popupAnchor.rect.x = Math.round(point.x)
       popupAnchor.rect.y = Math.round(point.y)
@@ -89,8 +96,8 @@ PopupWindow {
   Rectangle {
     id: card
     anchors.fill: parent
-    color: root.bar ? root.bar.background : "#101315"
-    border.color: root.bar ? root.bar.foreground : "#cacccc"
+    color: Color.popups.background
+    border.color: Color.popups.border
     border.width: 1
     radius: 0
     opacity: root.open ? 1.0 : 0

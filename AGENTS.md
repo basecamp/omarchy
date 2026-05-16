@@ -82,6 +82,7 @@ Use these instead of raw shell commands:
 - `omarchy-cmd-missing` / `omarchy-cmd-present` - check for commands
 - `omarchy-pkg-missing` / `omarchy-pkg-present` - check for packages
 - `omarchy-pkg-add` - install packages (handles both pacman and AUR)
+- `omarchy-pkg-drop` - remove packages; use this instead of raw `pacman -R*`
 - `omarchy-notification-send` - send desktop notifications; do not call `notify-send` directly
 - `omarchy-hw-asus-rog` - detect ASUS ROG hardware (and similar `hw-*` commands)
 
@@ -107,6 +108,8 @@ The Quickshell desktop runs as a single long-running process out of
 `default/quickshell/omarchy-shell/`. Hyprland's autostart launches it; do
 not start additional standalone `quickshell -p` instances for individual
 components.
+
+Run `omarchy restart shell` after making changes to QML files.
 
 Plugin contract:
 
