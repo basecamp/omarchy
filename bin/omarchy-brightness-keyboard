@@ -49,7 +49,4 @@ fi
 
 # Set the new brightness.
 brightnessctl -d "$device" set "$new_brightness" >/dev/null
-
-# Use SwayOSD to display the new brightness setting.
-percent=$((new_brightness * 100 / max_brightness))
-omarchy-swayosd-kbd-brightness "$percent"
+omarchy-osd -i keyboard -p "$(( new_brightness * 100 / max_brightness ))"

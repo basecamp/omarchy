@@ -1,4 +1,4 @@
-echo "Flip from waybar + mako to omarchy-shell (quickshell-backed bar and notifications)"
+echo "Flip from waybar + mako + swaybg to omarchy-shell (quickshell-backed bar and notifications)"
 
 omarchy-pkg-add quickshell
 
@@ -16,5 +16,9 @@ if [[ -d ~/.config/waybar ]]; then
   mv ~/.config/waybar "$HOME/.config/waybar.omarchy-shell.bak.$(date +%s)"
 fi
 rm -f ~/.local/state/omarchy/toggles/waybar-off
+
+# swaybg is replaced with integrated background in shell
+pkill -x swaybg 2>/dev/null || true
+omarchy-pkg-drop swaybg
 
 omarchy-restart-shell
