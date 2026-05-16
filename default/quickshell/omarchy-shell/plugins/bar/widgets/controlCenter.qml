@@ -39,6 +39,7 @@ Item {
   property bool idleInhibited: false
   property bool nightLightActive: false
   property bool nightLightAvailable: false
+  property bool nightLightPending: false
   property string themeName: ""
   property string backgroundName: ""
 
@@ -52,7 +53,7 @@ Item {
   function refresh() {
     if (!brightnessProc.running) brightnessProc.running = true
     if (!idleProc.running) idleProc.running = true
-    if (!nightLightProc.running) nightLightProc.running = true
+    if (!nightLightPending && !nightLightProc.running) nightLightProc.running = true
     if (!themeProc.running) themeProc.running = true
     if (!backgroundProc.running) backgroundProc.running = true
   }
@@ -110,9 +111,19 @@ Item {
           return
         }
         root.nightLightAvailable = true
+        if (root.nightLightPending) return
         var temp = parseInt(state, 10)
         root.nightLightActive = !isNaN(temp) && temp < 6000
       }
+    }
+  }
+
+  Process {
+    id: nightLightToggleProc
+    command: ["omarchy-toggle-nightlight"]
+    onExited: {
+      root.nightLightPending = false
+      if (!nightLightProc.running) nightLightProc.running = true
     }
   }
 
@@ -201,9 +212,10 @@ Item {
             opacity: root.nightLightAvailable ? 1 : 0.4
             enabled: root.nightLightAvailable
             onClicked: {
+              if (nightLightToggleProc.running) return
               root.nightLightActive = !root.nightLightActive
-              root.run("omarchy-toggle-nightlight")
-              nightLightProc.running = true
+              root.nightLightPending = true
+              nightLightToggleProc.running = true
             }
           }
 
