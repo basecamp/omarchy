@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Set or toggle corner radius for the omarchy-shell menu and settings panel
+# omarchy:summary=Set or toggle corner radius for the omarchy-shell menu and bar settings panel
 # omarchy:args=[toggle|sharp|round]
 # omarchy:examples=omarchy style corners quickshell toggle | omarchy style corners quickshell round | omarchy style corners quickshell sharp
 

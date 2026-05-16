@@ -169,6 +169,6 @@ layout list.
 Third-party widgets ship as separate plugins under
 `~/.config/omarchy/plugins/<plugin-id>/` with their own `manifest.json`
 declaring `kinds: ["bar-widget"]` and a `barWidget` entry point. See
-[../../README.md](../../README.md) for the manifest schema and the
-Plugin Manager tab in `omarchy launch settings` for enable/disable
-controls.
+[../../README.md](../../README.md) for the manifest schema. Enable or
+rescan third-party plugins with `omarchy-shell-ipc shell setPluginEnabled`
+and `omarchy-shell-ipc shell rescanPlugins`.

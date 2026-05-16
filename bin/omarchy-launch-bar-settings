@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the Omarchy bar settings panel
+# omarchy:group=launch
+# omarchy:name=settings
+# omarchy:args=[bar]
+# omarchy:examples=omarchy launch settings | omarchy launch settings bar
+
+case "${1:-}" in
+  ""|bar)
+    ;;
+  *)
+    echo "Usage: omarchy-launch-settings [bar]" >&2
+    exit 1
+    ;;
+esac
+
+exec omarchy-shell-ipc shell summon omarchy.settings "{}"
