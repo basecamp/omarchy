@@ -4,11 +4,12 @@
 # omarchy:examples=omarchy shutdown | omarchy system shutdown
 # omarchy:aliases=omarchy shutdown
 
+window_count=$(hyprctl clients -j | jq length)
+
 omarchy-state clear re*-required
 
-# Schedule the shutdown to happen after closing windows (detached from terminal)
-nohup bash -c "sleep 2 && systemctl poweroff --no-wall" >/dev/null 2>&1 &
+if ((window_count > 0)); then
+  timeout 2s omarchy-hyprland-window-close-all && sleep 1 || true
+fi
 
-# Now close all windows
-omarchy-hyprland-window-close-all
-sleep 1 # Allow apps like Chrome to shutdown correctly
+exec systemctl poweroff --no-wall
