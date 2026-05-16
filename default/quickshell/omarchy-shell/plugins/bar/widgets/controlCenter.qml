@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Bluetooth
 import Quickshell.Io
 import Quickshell.Services.Pipewire
 import "../common" as Common
@@ -26,11 +25,7 @@ Item {
   }
 
   // Volume controls live in the audioPanel bar widget, so the quick-settings
-  // popup just hosts brightness + toggles. Bluetooth adapter status is
-  // exposed via Quickshell.Bluetooth.
-  readonly property var btAdapter: Bluetooth.defaultAdapter
-  readonly property bool btEnabled: btAdapter ? btAdapter.enabled : false
-
+  // popup just hosts brightness + toggles.
   property int currentBrightness: -1
   property int pendingBrightness: -1
 
@@ -196,11 +191,20 @@ Item {
           spacing: 8
 
           Common.PillButton {
-            iconText: "󰃠"
+            iconText: root.nightLightActive ? "󰖔" : "󰖙"
+            tooltipText: root.nightLightActive ? "Turn off Night Light" : "Turn on Night Light"
             foreground: root.bar.foreground
             horizontalPadding: 8
             verticalPadding: 6
             iconSize: 16
+            active: root.nightLightActive
+            opacity: root.nightLightAvailable ? 1 : 0.4
+            enabled: root.nightLightAvailable
+            onClicked: {
+              root.nightLightActive = !root.nightLightActive
+              root.run("omarchy-toggle-nightlight")
+              nightLightProc.running = true
+            }
           }
 
           Common.Slider {
@@ -254,34 +258,11 @@ Item {
 
         Tile {
           width: (tileGrid.width - tileGrid.columnSpacing) / 2
-          glyph: root.nightLightActive ? "󰖔" : "󰖙"
-          title: "Night Light"
-          subtitle: !root.nightLightAvailable ? "—" : (root.nightLightActive ? "On" : "Off")
-          active: root.nightLightActive
-          tileEnabled: root.nightLightAvailable
-          onClicked: { root.run("omarchy-toggle-nightlight"); nightLightProc.running = true }
-        }
-
-        Tile {
-          width: (tileGrid.width - tileGrid.columnSpacing) / 2
           glyph: root.idleInhibited ? "󰅶" : "󰾪"
           title: "Keep Awake"
           subtitle: root.idleInhibited ? "On" : "Off"
           active: root.idleInhibited
           onClicked: { root.run("omarchy-toggle-idle"); idleProc.running = true }
-        }
-
-        Tile {
-          width: (tileGrid.width - tileGrid.columnSpacing) / 2
-          glyph: root.btEnabled ? "󰂯" : "󰂲"
-          title: "Bluetooth"
-          subtitle: !root.btAdapter ? "—" : (root.btEnabled ? "On" : "Off")
-          active: root.btEnabled
-          tileEnabled: root.btAdapter !== null
-          onClicked: {
-            if (!root.btAdapter) return
-            root.btAdapter.enabled = !root.btAdapter.enabled
-          }
         }
       }
 
