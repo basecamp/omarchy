@@ -53,9 +53,19 @@ Item {
     if (!bgSwitchProc.running) bgSwitchProc.running = true
   }
 
+  function openThemeSwitcher() {
+    if (!themeSwitchProc.running) themeSwitchProc.running = true
+  }
+
   Process {
     id: bgSwitchProc
     command: ["bash", "-lc", "background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""]
+    onExited: root.refreshBackground()
+  }
+
+  Process {
+    id: themeSwitchProc
+    command: ["bash", "-lc", "theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""]
     onExited: root.refreshBackground()
   }
 
@@ -251,8 +261,12 @@ Item {
 
       MouseArea {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton
-        onDoubleClicked: root.openSelector()
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onDoubleClicked: function(mouse) {
+          if (mouse.button === Qt.RightButton) root.openThemeSwitcher()
+          else root.openSelector()
+          mouse.accepted = true
+        }
       }
     }
   }
