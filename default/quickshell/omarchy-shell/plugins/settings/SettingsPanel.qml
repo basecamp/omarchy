@@ -205,7 +205,7 @@ Item {
         right: [
           { id: "tray" }, { id: "systemStats" }, { id: "microphone" },
           { id: "bluetoothPanel" }, { id: "networkPanel" }, { id: "audioPanel" },
-          { id: "battery" }, { id: "controlCenter" }
+          { id: "battery" }
         ]
       }
     },

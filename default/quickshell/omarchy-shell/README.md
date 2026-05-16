@@ -169,8 +169,7 @@ rewrites `shell.json` from the current `shell-defaults.json`.
       "left":   [ { "id": "omarchy" }, { "id": "workspaces" } ],
       "center": [ { "id": "calendar", "format": "HH:mm" } ],
       "right": [
-        { "id": "audioPanel" },
-        { "id": "controlCenter" }
+        { "id": "audioPanel" }
       ]
     }
   },

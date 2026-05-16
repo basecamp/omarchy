@@ -50,7 +50,7 @@ ShellRoot {
       layout: {
         left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [{ id: "calendar", format: "dddd HH:mm" }],
-        right: [{ id: "audioPanel" }, { id: "controlCenter" }]
+        right: [{ id: "audioPanel" }]
       }
     },
     plugins: [
