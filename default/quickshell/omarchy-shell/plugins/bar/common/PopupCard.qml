@@ -14,6 +14,7 @@ PopupWindow {
   property int contentWidth: 280
   property int contentHeight: 200
   property bool open: false
+  property bool centerOnBar: false
   // "click" — uses HyprlandFocusGrab so clicking outside dismisses the popup.
   // "hover" — passive overlay; the owning widget controls open via hover.
   property string triggerMode: "click"
@@ -80,6 +81,22 @@ PopupWindow {
 
       var window = target.QsWindow.window
       if (!window) return
+
+      if (root.centerOnBar) {
+        if (root.bar.position === "top" || root.bar.position === "bottom") {
+          localX = window.width / 2 - popupWidth / 2
+          localY = root.bar.position === "bottom" ? -popupHeight - root.margin : window.height + root.margin
+          localX = Math.max(root.margin, Math.min(localX, window.width - popupWidth - root.margin))
+        } else {
+          localX = root.bar.position === "left" ? window.width + root.margin : -popupWidth - root.margin
+          localY = window.height / 2 - popupHeight / 2
+          localY = Math.max(root.margin, Math.min(localY, window.height - popupHeight - root.margin))
+        }
+
+        popupAnchor.rect.x = Math.round(localX)
+        popupAnchor.rect.y = Math.round(localY)
+        return
+      }
 
       if (root.bar.position === "top" || root.bar.position === "bottom") {
         localX = Math.max(root.margin, Math.min(localX, window.width - popupWidth - root.margin))
