@@ -175,8 +175,6 @@ Item {
     bar: root.bar
     text: root.outputIcon()
     fontSize: 12
-    tooltipText: root.sink ? root.nodeLabel(root.sink) + " · " + Math.round(root.outputVolume * 100) + "%" : "No audio"
-
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggleOutputMute()
       else if (b === Qt.MiddleButton) root.bar.run("omarchy-launch-audio")
