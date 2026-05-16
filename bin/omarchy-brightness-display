@@ -17,7 +17,7 @@ fi
 runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
 
 # Drop overlapping brightness key events so concurrent invocations do not race.
-# Hardware key repeat present on some devices can otherwise glitch SwayOSD rendering.
+# Hardware key repeat present on some devices can otherwise glitch OSD rendering.
 exec 9>"$runtime_dir/omarchy-brightness-display.lock"
 flock -n 9 || exit 0
 
@@ -64,5 +64,5 @@ fi
 # Set the actual brightness of the display device.
 brightnessctl -d "$device" set "$step" >/dev/null
 
-# Use SwayOSD to display the new brightness setting.
-omarchy-swayosd-brightness "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"
+# Use the OSD to display the new brightness setting.
+omarchy-osd -i brightness -p "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"

@@ -55,7 +55,8 @@ ShellRoot {
     },
     plugins: [
       { id: "omarchy.settings" },
-      { id: "omarchy.image-picker" }
+      { id: "omarchy.image-picker" },
+      { id: "omarchy.osd" }
     ]
   })
 

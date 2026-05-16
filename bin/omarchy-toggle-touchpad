@@ -15,14 +15,14 @@ fi
 enable() {
   hyprctl eval "hl.device({ name = \"$device\", enabled = true })" >/dev/null
   rm -f "$STATE_FILE"
-  omarchy-swayosd-client --custom-icon input-touchpad-symbolic --custom-message "Touchpad enabled"
+  omarchy-osd -i touchpad -m "Touchpad enabled"
 }
 
 disable() {
   hyprctl eval "hl.device({ name = \"$device\", enabled = false })" >/dev/null
   mkdir -p "$(dirname "$STATE_FILE")"
   printf 'hl.device({ name = "%s", enabled = false })\n' "$device" >"$STATE_FILE"
-  omarchy-swayosd-client --custom-icon touchpad-disabled-symbolic --custom-message "Touchpad disabled"
+  omarchy-osd -i touchpad -m "Touchpad disabled"
 }
 
 case "${1:-toggle}" in

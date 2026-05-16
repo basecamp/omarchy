@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Show the Omarchy Quickshell on-screen display
+# omarchy:args=[-i|--icon <icon>] [-m|--message <text>] [-p|--progress <0-100>]
+# omarchy:examples=omarchy osd -i brightness -p 50 | omarchy osd -m "Hello"
+
+set -euo pipefail
+
+icon=""
+message=""
+progress=""
+progress_text=""
+max="100"
+
+while (($#)); do
+  case $1 in
+    -i|--icon) icon="${2:-}"; shift 2 ;;
+    -m|--message) message="${2:-}"; shift 2 ;;
+    -p|--progress) progress="${2:-}"; shift 2 ;;
+    -h|--help) omarchy osd --help; exit 0 ;;
+    *) echo "Unknown OSD option: $1" >&2; exit 1 ;;
+  esac
+done
+
+if [[ -n $progress ]]; then
+  progress_text="${progress}%"
+fi
+
+payload=$(jq -cn \
+  --arg icon "$icon" \
+  --arg message "$message" \
+  --arg value "$progress" \
+  --arg progressText "$progress_text" \
+  --arg max "$max" \
+  '{icon:$icon,message:$message,value:$value,progressText:$progressText,max:$max}')
+
+omarchy-shell-ipc osd show "$payload" >/dev/null 2>&1 || true

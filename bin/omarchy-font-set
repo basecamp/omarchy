@@ -27,7 +27,6 @@ if [[ -n $font_name ]]; then
     fi
 
     sed -i "s/font_family = .*/font_family = $font_name/g" ~/.config/hypr/hyprlock.conf
-    sed -i "s/font-family: .*/font-family: '$font_name';/g" ~/.config/swayosd/style.css
 
     # fontconfig is the canonical source of truth — the omarchy shell, Qt
     # apps, and anything else that resolves "monospace" all read from here.
@@ -36,7 +35,7 @@ if [[ -n $font_name ]]; then
       -v "$font_name" \
       ~/.config/fontconfig/fonts.conf
 
-    omarchy-restart-swayosd
+    omarchy-restart-shell
 
     if pgrep -x ghostty; then
       notify-send -a omarchy-action -u low "    You must restart Ghostty to see font change"

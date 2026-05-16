@@ -59,7 +59,7 @@ mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
 echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"
 
 post_theme_commands=(
-  omarchy-restart-swayosd
+  omarchy-restart-shell
   omarchy-restart-terminal
   omarchy-restart-hyprctl
   omarchy-restart-btop

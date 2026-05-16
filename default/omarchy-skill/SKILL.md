@@ -79,7 +79,7 @@ Omarchy is built on:
 | **Omarchy shell** | Status bar + notifications (Quickshell) | `~/.config/omarchy/shell.json` |
 | **Walker** | App launcher | `~/.config/walker/` |
 | **Alacritty/Foot/Kitty/Ghostty** | Terminals | `~/.config/<terminal>/` |
-| **SwayOSD** | On-screen display | `~/.config/swayosd/` |
+| **Omarchy OSD** | On-screen display | Quickshell plugin |
 
 ## Command Discovery
 
@@ -111,7 +111,7 @@ Run `omarchy --help` for the full list. The most common groups:
 | Group | Purpose | Example |
 |-------|---------|---------|
 | `omarchy refresh` | Reset config to defaults (backs up first) | `omarchy refresh shell` |
-| `omarchy restart` | Restart a service/app | `omarchy restart shell` |
+| `omarchy restart` | Restart a service/app | `omarchy-restart-shell` |
 | `omarchy toggle` | Toggle feature on/off | `omarchy toggle nightlight` |
 | `omarchy theme` | Theme management | `omarchy theme set <name>` |
 | `omarchy install` | Install optional software / packages | `omarchy install docker dbs` |
@@ -160,7 +160,7 @@ inside a single long-running Quickshell process (`omarchy-shell`).
 The shell hot-reloads `shell.json` on save — no restart needed for layout
 changes. For more invasive changes (new plugin, packaged update):
 
-**Commands:** `omarchy restart shell`, `omarchy refresh shell`, `omarchy launch settings`
+**Commands:** `omarchy-restart-shell`, `omarchy refresh shell`, `omarchy launch settings`
 
 ### Terminals
 
@@ -201,7 +201,7 @@ cp ~/.config/hypr/bindings.conf ~/.config/hypr/bindings.conf.bak.$(date +%s)
 
 # 4. Apply changes
 # - Hyprland: auto-reloads on save, but MUST validate with `hyprctl reload` and `hyprctl configerrors`
-# - Omarchy shell: shell.json hot-reloads; use `omarchy restart shell` for plugin/widget code changes
+# - Omarchy shell: shell.json hot-reloads; use `omarchy-restart-shell` for plugin/widget code changes
 # - Walker: MUST restart with `omarchy restart walker`
 # - Terminals: MUST restart with `omarchy restart terminal`
 ```

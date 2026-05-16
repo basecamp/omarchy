@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.osd",
+  "name": "On-screen display",
+  "version": "1.0.0",
+  "description": "Quickshell volume, brightness, and status overlays.",
+  "kinds": ["panel"],
+  "activation": "persistent",
+  "keepLoaded": true,
+  "entryPoints": { "panel": "Osd.qml" }
+}

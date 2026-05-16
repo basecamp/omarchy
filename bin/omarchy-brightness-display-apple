@@ -30,5 +30,5 @@ else
 
   sudo asdcontrol "$device" -- "$step" >/dev/null
   value="$(sudo asdcontrol "$device" | awk -F= '/BRIGHTNESS=/{print $2+0}')"
-  omarchy-swayosd-brightness "$(( value * 100 / 60000 ))"
+  omarchy-osd -i brightness -p "$(( value * 100 / 60000 ))"
 fi
