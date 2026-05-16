@@ -382,7 +382,7 @@ Item {
 
     Rectangle {
       anchors.fill: parent
-      color: root.withAlpha(root.background, 0.72)
+      color: root.withAlpha(root.background, 0.5)
     }
 
     MouseArea {

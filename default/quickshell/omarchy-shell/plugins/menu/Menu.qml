@@ -67,7 +67,7 @@ Item {
   property int dividerHeight: 17
   property bool searchDivider: false
   property int layoutSerial: 0
-  property int cardWidth: Math.min(300, panel.width - 48)
+  property int cardWidth: Math.min(root.activeMenu === "trigger.capture.screenrecord" ? 520 : 300, panel.width - 48)
   property int visibleRowsHeight: rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
   property int cardHeight: Math.min(Math.max(220, contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight), panel.height - 48)
 
@@ -805,6 +805,11 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
+
+    Rectangle {
+      anchors.fill: parent
+      color: root.withAlpha(root.background, 0.5)
+    }
 
     MouseArea {
       anchors.fill: parent
