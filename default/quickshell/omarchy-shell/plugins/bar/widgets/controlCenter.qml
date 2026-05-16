@@ -296,6 +296,7 @@ Item {
 
         AppearancePill {
           width: (parent.width - parent.spacing) / 2
+          icon: "󰌁"
           label: "Theme"
           currentValue: root.themeName || "—"
           onClicked: {
@@ -306,6 +307,7 @@ Item {
 
         AppearancePill {
           width: (parent.width - parent.spacing) / 2
+          icon: "󰋩"
           label: "Background"
           currentValue: root.backgroundName || "—"
           onClicked: {
@@ -336,6 +338,7 @@ Item {
   component AppearancePill: Rectangle {
     id: appearancePill
 
+    property string icon: ""
     property string label: ""
     property string currentValue: "—"
 
@@ -360,7 +363,7 @@ Item {
       spacing: 2
 
       Text {
-        text: appearancePill.label
+        text: appearancePill.icon.length > 0 ? appearancePill.icon + " " + appearancePill.label : appearancePill.label
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: 11
@@ -402,50 +405,38 @@ Item {
     implicitHeight: 56
     radius: 6
     color: tileArea.containsMouse
-      ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.16)
-      : (active ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
-                : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.04))
-    border.color: active ? root.bar.foreground : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, active ? 0.10 : 0.04)
+    border.color: active ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.35) : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
     border.width: 1
     opacity: tileEnabled ? 1 : 0.4
 
     Behavior on color { ColorAnimation { duration: 120 } }
 
-    Row {
-      anchors.fill: parent
+    Column {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
       anchors.margins: 10
-      spacing: 8
+      spacing: 2
 
       Text {
-        text: tile.glyph
+        text: tile.glyph.length > 0 ? tile.glyph + " " + tile.title : tile.title
         color: root.bar.foreground
         font.family: root.bar.fontFamily
-        font.pixelSize: 18
-        anchors.verticalCenter: parent.verticalCenter
+        font.pixelSize: 11
+        font.bold: true
+        elide: Text.ElideRight
+        width: parent.width
       }
 
-      Column {
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: 2
-        width: parent.width - parent.children[0].implicitWidth - 8
-
-        Text {
-          text: tile.title
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-          font.bold: true
-          elide: Text.ElideRight
-          width: parent.width
-        }
-        Text {
-          text: tile.subtitle
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 10
-          elide: Text.ElideRight
-          width: parent.width
-        }
+      Text {
+        text: tile.subtitle
+        color: Qt.darker(root.bar.foreground, 1.35)
+        font.family: root.bar.fontFamily
+        font.pixelSize: 10
+        elide: Text.ElideRight
+        width: parent.width
       }
     }
 
