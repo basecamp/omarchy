@@ -27,8 +27,13 @@ declare -A FALLBACK_KEYCODE_SYM_MAP=(
 declare -A LUA_BIND_KEY_MAP
 
 build_keymap_cache() {
-  local keymap
-  keymap="$(xkbcli compile-keymap)" || {
+  local keymap layout variant
+  layout="$(hyprctl getoption -j input:kb_layout | jq -r '.str // empty')"
+  variant="$(hyprctl getoption -j input:kb_variant | jq -r '.str // empty')"
+  local xkbcli_args=()
+  [[ -n $layout ]] && xkbcli_args+=(--layout "$layout")
+  [[ -n $variant ]] && xkbcli_args+=(--variant "$variant")
+  keymap="$(xkbcli compile-keymap "${xkbcli_args[@]}")" || {
     echo "Failed to compile keymap" >&2
     return 1
   }
