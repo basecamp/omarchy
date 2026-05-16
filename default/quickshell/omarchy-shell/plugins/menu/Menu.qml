@@ -67,7 +67,7 @@ Item {
   property int dividerHeight: 17
   property bool searchDivider: false
   property int layoutSerial: 0
-  property int cardWidth: Math.min(root.activeMenu === "trigger.capture.screenrecord" ? 520 : 300, panel.width - 48)
+  property int cardWidth: Math.min((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? 520 : 300, panel.width - 48)
   property int visibleRowsHeight: rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
   property int cardHeight: Math.min(Math.max(220, contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight), panel.height - 48)
 
@@ -230,7 +230,7 @@ Item {
   readonly property var providers: ({
     "fonts": {
       script: "current=$(omarchy-font-current 2>/dev/null); omarchy-font-list 2>/dev/null | while read -r f; do [[ -z $f ]] && continue; printf '%s\\t%s\\t%s\\n' \"$f\" \"$f\" \"$current\"; done",
-      icon: "",
+      icon: "",
       actionFor: function(value) { return "omarchy-font-set '" + value.replace(/'/g, "'\\''") + "'" },
       keywordsFor: function(value) { return value + " typeface" }
     },
@@ -275,14 +275,13 @@ Item {
       var current = parts[2] || ""
       if (!label) continue
       var id = menuId + "." + root.slugify(value)
-      var displayLabel = (value === current) ? (label + " ✓") : label
       if (!root.items[id]) nextOrder.push(id)
       root.items[id] = {
         id: id,
         parent: menuId,
         kind: "action",
-        icon: spec.icon || "",
-        label: displayLabel,
+        icon: (value === current) ? "✓" : (spec.icon || ""),
+        label: label,
         target: "",
         keywords: spec.keywordsFor(value),
         description: "",
