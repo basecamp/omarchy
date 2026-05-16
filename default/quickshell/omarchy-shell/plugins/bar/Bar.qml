@@ -564,7 +564,7 @@ Item {
 
     var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
     var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
-    var index = Math.max(0, Math.min(9, Math.floor(device.percentage / 10)))
+    var index = Math.max(0, Math.min(9, Math.floor(device.percentage * 10)))
 
     if (device.state === UPowerDeviceState.FullyCharged) return "󰂅"
     if (!UPower.onBattery && device.state !== UPowerDeviceState.Charging) return ""
@@ -666,7 +666,7 @@ Item {
     if (!device || !device.isPresent) return ""
 
     var direction = UPower.onBattery ? "↓" : "↑"
-    return Math.round(device.changeRate) + "W" + direction + " " + Math.round(device.percentage) + "%"
+    return Math.round(device.changeRate) + "W" + direction + " " + Math.round(device.percentage * 100) + "%"
   }
 
   function trayIconSource(icon) {
@@ -1952,7 +1952,7 @@ Item {
     text: root.batteryIcon()
     horizontalMargin: 8.5
     visible: device !== null && device.isPresent && device.percentage > 0
-    active: device !== null && device.percentage <= 20 && UPower.onBattery
+    active: device !== null && device.percentage <= 0.2 && UPower.onBattery
     tooltipText: root.batteryTooltip()
     onPressed: function(button) {
       if (button === Qt.RightButton) root.run("omarchy-notification-send \"$(omarchy-battery-status)\"")
