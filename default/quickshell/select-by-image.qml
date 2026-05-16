@@ -297,30 +297,36 @@ ShellRoot {
     maybeAutoFetch()
   }
 
-  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw, nextShowLabels, nextFilterable, nextActionKey, nextActionLabel, nextActionCommand, nextNearbyWindow) {
+  // Open the carousel with the given options. opts is a plain JS object so
+  // call sites name what they pass instead of aligning a long positional
+  // list; everything is optional and falls back to sensible defaults.
+  function openSelector(opts) {
+    var o = opts || {}
+    var nextDoneFile = o.doneFile || ""
+
     if (requestActive && doneFile && doneFile !== nextDoneFile)
       finishDoneFile(doneFile)
 
     requestSerial += 1
 
-    imageDirs = nextImageDirs
-    imageRows = nextImageRows
-    selectedImage = nextSelectedImage
-    selectionFile = nextSelectionFile
+    imageDirs = o.imageDirs || ""
+    imageRows = o.imageRows || ""
+    selectedImage = o.selectedImage || ""
+    selectionFile = o.selectionFile || ""
     doneFile = nextDoneFile
     requestActive = !!doneFile
-    showLabels = nextShowLabels === true || nextShowLabels === "true"
-    filterable = nextFilterable === true || nextFilterable === "true"
+    showLabels = o.showLabels === true || o.showLabels === "true"
+    filterable = o.filterable === true || o.filterable === "true"
     filterText = ""
-    actionKey = nextActionKey || ""
-    actionLabel = nextActionLabel || ""
-    actionCommand = nextActionCommand || ""
+    actionKey = o.actionKey || ""
+    actionLabel = o.actionLabel || ""
+    actionCommand = o.actionCommand || ""
     autoLoadActive = false
-    var parsedNearby = parseInt(nextNearbyWindow)
+    var parsedNearby = parseInt(o.nearbyWindow)
     nearbyWindow = (parsedNearby > 0) ? parsedNearby : defaultNearbyWindow
-    colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/quickshell.json")
-    if (nextColorsRaw)
-      loadColors(nextColorsRaw)
+    colorsFile = o.colorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/quickshell.json")
+    if (o.colorsRaw)
+      loadColors(o.colorsRaw)
     imageArray = []
     selectedIndex = 0
     imagesLoaded = false
@@ -337,11 +343,18 @@ ShellRoot {
   // command is expected to send an op=append socket message that splices new
   // rows into the running carousel. Debounced via actionProc.running so
   // navigating near the end doesn't spam concurrent fetches.
+  //
+  // actionCommand is split on whitespace and exec'd directly (no shell), so
+  // the IPC payload can't smuggle shell metacharacters through the bash -c
+  // surface that a previous version used.
   function triggerAction() {
     if (!hasAction || actionProc.running) return
 
+    var argv = actionCommand.split(/\s+/).filter(function(s) { return s.length > 0 })
+    if (argv.length === 0) return
+
     autoLoadActive = true
-    actionProc.command = ["bash", "-lc", actionCommand]
+    actionProc.command = argv
     actionProc.running = true
   }
 
@@ -380,14 +393,27 @@ ShellRoot {
 
   Component.onCompleted: {
     if (selectionFile)
-      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile, "", false, false, "", "", "", "")
+      openSelector({
+        imageDirs: imageDirs,
+        selectedImage: selectedImage,
+        selectionFile: selectionFile,
+        doneFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"),
+        colorsFile: colorsFile
+      })
   }
 
   IpcHandler {
     target: "image-selector"
 
     function open(imageDirs: string, imageRows: string, selectedImage: string, selectionFile: string, doneFile: string, colorsFile: string): void {
-      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile, "", false, false, "", "", "", "")
+      root.openSelector({
+        imageDirs: imageDirs,
+        imageRows: imageRows,
+        selectedImage: selectedImage,
+        selectionFile: selectionFile,
+        doneFile: doneFile,
+        colorsFile: colorsFile
+      })
     }
   }
 
@@ -414,7 +440,19 @@ ShellRoot {
             return
           }
 
-          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", "", root.decodeField(fields[4]), fields[5] || "false", fields[6] || "false", fields[7] || "", fields[8] || "", root.decodeField(fields[9]), fields[10] || "")
+          root.openSelector({
+            imageRows: root.decodeField(fields[0]),
+            selectedImage: fields[1] || "",
+            selectionFile: fields[2] || "",
+            doneFile: fields[3] || "",
+            colorsRaw: root.decodeField(fields[4]),
+            showLabels: fields[5] || "false",
+            filterable: fields[6] || "false",
+            actionKey: fields[7] || "",
+            actionLabel: fields[8] || "",
+            actionCommand: root.decodeField(fields[9]),
+            nearbyWindow: fields[10] || ""
+          })
           clientSocket.connected = false
         }
       }
@@ -526,8 +564,7 @@ ShellRoot {
             event.accepted = true
           } else if (root.hasActionKey && event.text && event.text.toLowerCase() === root.actionKey.toLowerCase() && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
             // Action key takes precedence over filter typing so the bound key
-            // can't be "captured" by an active filter session. Pressing it
-            // closes the selector and runs actionCommand in the background.
+            // can't be "captured" by an active filter session.
             root.triggerAction()
             event.accepted = true
           } else if (root.filterable && event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
@@ -615,10 +652,8 @@ ShellRoot {
               }
 
               // High-quality overlay. Loads for the 3 cards on either side of
-              // the active one so the full wallpaper is already decoded by
-              // the time the user lands on it. Visibility is gated to the
-              // active card only - the preloaded neighbours sit in Qt's
-              // pixmap cache invisible until they're scrolled to.
+              // the active one and stays painted on all of them so scrolling
+              // never visibly swaps thumb -> full as cards become active.
               //
               // For local-file callers filePath == thumbnailPath so source
               // stays empty and this overlay never activates.
@@ -635,9 +670,6 @@ ShellRoot {
                 // Cap decoded size so a 5120x1440 wallpaper doesn't pin
                 // 30MB of pixmap memory per visited card.
                 sourceSize.width: 1600
-                // Show the full overlay on every preloaded neighbour, not
-                // just the active card, so scrolling does not visibly swap
-                // thumb -> full when each new card becomes active.
                 opacity: status === Image.Ready ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 220 } }
               }
