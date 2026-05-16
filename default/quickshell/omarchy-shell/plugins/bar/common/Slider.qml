@@ -78,6 +78,7 @@ Item {
     id: mouseArea
     anchors.fill: parent
     hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
     acceptedButtons: Qt.LeftButton
 
     function valueFromX(x) {

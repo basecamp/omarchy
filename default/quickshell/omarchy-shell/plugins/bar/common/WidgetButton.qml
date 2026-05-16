@@ -55,6 +55,7 @@ Item {
     anchors.fill: parent
     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
     hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
     onEntered: if (root.bar) root.bar.showTooltip(root, root.tooltipText)
     onExited: if (root.bar) root.bar.hideTooltip(root)
     onClicked: function(mouse) {

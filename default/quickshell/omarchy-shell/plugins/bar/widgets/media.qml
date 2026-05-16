@@ -91,6 +91,7 @@ Item {
   MouseArea {
     anchors.fill: parent
     hoverEnabled: true
+    cursorShape: root.activePlayer ? Qt.PointingHandCursor : Qt.ArrowCursor
     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
 
     onClicked: function(mouse) {
