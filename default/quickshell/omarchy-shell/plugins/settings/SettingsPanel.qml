@@ -2497,6 +2497,7 @@ Item {
       switch (meta.settingsForm) {
       case "spacerSettings": return spacerSettingsComponent
       case "calendarSettings": return calendarSettingsComponent
+      case "weatherSettings": return weatherSettingsComponent
       }
     }
     var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
@@ -2640,6 +2641,33 @@ Item {
         font.pixelSize: 12
         width: parent.width
         onEditingFinished: calForm.fieldChanged("verticalFormat", text)
+      }
+    }
+  }
+
+  Component {
+    id: weatherSettingsComponent
+
+    Column {
+      id: weatherForm
+      signal fieldChanged(string key, var value)
+      property var entry: ({})
+
+      spacing: 8
+      width: parent ? parent.width : 0
+
+      Text {
+        text: "Auto-refresh interval (minutes)"
+        color: Qt.darker(root.foreground, 1.4)
+        font.family: root.fontFamily
+        font.pixelSize: 11
+      }
+
+      SpinBox {
+        from: 1
+        to: 1440
+        value: weatherForm.entry.refreshMinutes !== undefined ? weatherForm.entry.refreshMinutes : 15
+        onValueModified: weatherForm.fieldChanged("refreshMinutes", value)
       }
     }
   }
