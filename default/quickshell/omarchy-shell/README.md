@@ -31,6 +31,9 @@ default/quickshell/omarchy-shell/
     settings/
     image-picker/
     menu/
+    notifications/
+    osd/
+    polkit/
 ```
 
 The plugin discovery path is documented in [plugins/README.md](plugins/README.md).
@@ -87,10 +90,8 @@ The full schema lives in `services/PluginRegistry.qml`.
 1. Drop the plugin into `~/.config/omarchy/plugins/<plugin-id>/`.
    The directory must contain a `manifest.json` plus the QML files
    referenced from its `entryPoints`.
-2. `omarchy-shell-ipc shell rescanPlugins` — or open the Plugin Manager
-   tab in `omarchy launch settings` and click **Rescan**.
-3. Enable the plugin (Plugin Manager **Enable** toggle, or
-   `omarchy-shell-ipc shell setPluginEnabled <id> true`).
+2. `omarchy-shell-ipc shell rescanPlugins`.
+3. Enable the plugin with `omarchy-shell-ipc shell setPluginEnabled <id> true`.
 4. If it's a `bar-widget`, add it to a layout section from the bar editor.
 
 First-party plugins under `default/quickshell/omarchy-shell/plugins/`
@@ -153,8 +154,8 @@ The `shell-defaults.json` bundled with the shell describes the
 fresh-install state. When the user has no `shell.json`, the shell uses
 the defaults verbatim. Once the user customizes anything, `shell.json`
 becomes the authoritative file — we do **not** deep-merge defaults back
-in. Pressing **Reset to defaults** in `omarchy launch settings`
-rewrites `shell.json` from the current `shell-defaults.json`.
+in. Pressing **Reset bar to defaults** in `omarchy launch bar settings`
+rewrites the `bar` subtree from the current `shell-defaults.json`.
 
 ### shell.json shape
 
@@ -189,7 +190,8 @@ rewrites `shell.json` from the current `shell-defaults.json`.
    separate per-plugin settings file, no merge layers. The fields on each
    entry are the values the plugin sees.
 3. **Enabled ⇔ present.** A plugin is enabled iff its id appears somewhere
-   in shell.json. To disable, remove it. (The bar settings UI does both.)
+   in shell.json. For bar widgets, the bar settings UI adds/removes layout
+   entries; other plugin kinds are enabled with the shell IPC.
 4. **Multiple instances** are allowed when a manifest sets
    `allowMultiple: true`. Each instance is independent — e.g. two clocks
    in different timezones are just two `{"id":"calendar", "timezone": ...}`

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.polkit",
+  "name": "Polkit Agent",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Theme-aware authentication dialog for privileged actions.",
+  "kinds": ["service"],
+  "activation": "persistent",
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "PolkitAgent.qml"
+  }
+}

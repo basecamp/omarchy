@@ -160,7 +160,7 @@ inside a single long-running Quickshell process (`omarchy-shell`).
 The shell hot-reloads `shell.json` on save — no restart needed for layout
 changes. For more invasive changes (new plugin, packaged update):
 
-**Commands:** `omarchy-restart-shell`, `omarchy refresh shell`, `omarchy launch settings`
+**Commands:** `omarchy-restart-shell`, `omarchy refresh shell`, `omarchy launch bar settings`
 
 ### Terminals
 

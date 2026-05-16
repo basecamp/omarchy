@@ -14,9 +14,9 @@ the shell for its whole session.
 
 ## Customizing
 
-The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`shell-defaults.json`](../../shell-defaults.json). Once you customize anything via `omarchy launch settings` or by editing shell.json directly, your file is canonical — there is no deep-merge.
+The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`shell-defaults.json`](../../shell-defaults.json). Once you customize anything via `omarchy launch bar settings` or by editing shell.json directly, your file is canonical — there is no deep-merge.
 
-Launch the visual editor with `omarchy launch settings` (or run `omarchy-launch-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand.
+Launch the visual editor with `omarchy launch bar settings` (or run `omarchy-launch-bar-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand.
 
 Example `shell.json` (bar subtree only shown):
 
