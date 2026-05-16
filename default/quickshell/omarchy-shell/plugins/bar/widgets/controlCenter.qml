@@ -45,6 +45,7 @@ Item {
   property bool nightLightActive: false
   property bool nightLightAvailable: false
   property string themeName: ""
+  property string backgroundName: ""
 
   function setBrightness(percent) {
     var clamped = Math.max(1, Math.min(100, Math.round(percent)))
@@ -58,6 +59,7 @@ Item {
     if (!idleProc.running) idleProc.running = true
     if (!nightLightProc.running) nightLightProc.running = true
     if (!themeProc.running) themeProc.running = true
+    if (!backgroundProc.running) backgroundProc.running = true
   }
 
   Component.onCompleted: refresh()
@@ -121,11 +123,32 @@ Item {
 
   Process {
     id: themeProc
-    command: ["bash", "-lc", "readlink ~/.config/omarchy/current/theme 2>/dev/null | xargs -r basename"]
+    command: ["omarchy-theme-current"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.themeName = String(text || "").trim()
     }
+  }
+
+  Process {
+    id: themeSetProc
+    command: ["bash", "-lc", "theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""]
+    onExited: root.refresh()
+  }
+
+  Process {
+    id: backgroundProc
+    command: ["omarchy-theme-bg-current"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.backgroundName = String(text || "").trim()
+    }
+  }
+
+  Process {
+    id: backgroundSetProc
+    command: ["bash", "-lc", "background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""]
+    onExited: root.refresh()
   }
 
   Timer {
@@ -267,6 +290,37 @@ Item {
         color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
       }
 
+      Row {
+        width: parent.width
+        spacing: 8
+
+        AppearancePill {
+          width: (parent.width - parent.spacing) / 2
+          label: "Theme"
+          currentValue: root.themeName || "—"
+          onClicked: {
+            root.popupOpen = false
+            if (!themeSetProc.running) themeSetProc.running = true
+          }
+        }
+
+        AppearancePill {
+          width: (parent.width - parent.spacing) / 2
+          label: "Background"
+          currentValue: root.backgroundName || "—"
+          onClicked: {
+            root.popupOpen = false
+            if (!backgroundSetProc.running) backgroundSetProc.running = true
+          }
+        }
+      }
+
+      Rectangle {
+        width: parent.width
+        height: 1
+        color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      }
+
       Common.PillButton {
         width: parent.width
         iconText: "󰙪"
@@ -276,6 +330,61 @@ Item {
         verticalPadding: 8
         onClicked: { root.run("omarchy-launch-settings"); root.popupOpen = false }
       }
+    }
+  }
+
+  component AppearancePill: Rectangle {
+    id: appearancePill
+
+    property string label: ""
+    property string currentValue: "—"
+
+    signal clicked()
+
+    implicitHeight: 56
+    height: 56
+    radius: 6
+    color: appearanceArea.containsMouse
+      ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.04)
+    border.color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+    border.width: 1
+
+    Behavior on color { ColorAnimation { duration: 120 } }
+
+    Column {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.margins: 10
+      spacing: 2
+
+      Text {
+        text: appearancePill.label
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: 11
+        font.bold: true
+        elide: Text.ElideRight
+        width: parent.width
+      }
+
+      Text {
+        text: appearancePill.currentValue
+        color: Qt.darker(root.bar.foreground, 1.35)
+        font.family: root.bar.fontFamily
+        font.pixelSize: 10
+        elide: Text.ElideRight
+        width: parent.width
+      }
+    }
+
+    MouseArea {
+      id: appearanceArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: appearancePill.clicked()
     }
   }
 
