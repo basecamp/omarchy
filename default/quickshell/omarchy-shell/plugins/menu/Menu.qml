@@ -1020,9 +1020,9 @@ Item {
                 }
 
                 Text {
-                  text: row.kind === "menu" || row.kind === "link" ? "›" : (row.kind === "back" ? "" : "↵")
+                  text: row.kind === "menu" || row.kind === "link" ? "›" : ""
                   color: index === root.selectedIndex ? root.accent : root.foreground
-                  opacity: row.kind === "back" ? 0 : 0.36
+                  opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
                   font.family: root.fontFamily
                   font.pixelSize: 16
                   font.weight: Font.Normal
