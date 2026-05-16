@@ -1318,6 +1318,7 @@ Item {
     property string fontFamily: root.fontFamily
     property real fontSize: 12
     property real horizontalMargin: 7.5
+    property real rightExtraMargin: 0
     property real verticalPadding: 6
     property real textRotation: 0
     property real fixedWidth: -1
@@ -1329,12 +1330,13 @@ Item {
 
     visible: text !== "" || keepSpace
     opacity: text === "" ? 0 : 1
-    implicitWidth: fixedWidth > 0 ? fixedWidth : (root.vertical ? root.barSize : Math.max(12, label.implicitWidth + horizontalMargin * 2))
+    implicitWidth: fixedWidth > 0 ? fixedWidth : (root.vertical ? root.barSize : Math.max(12, label.implicitWidth + horizontalMargin * 2 + rightExtraMargin))
     implicitHeight: fixedHeight > 0 ? fixedHeight : (root.vertical ? Math.max(12, label.implicitHeight + verticalPadding * 2) : root.barSize)
 
     Text {
       id: label
       anchors.centerIn: parent
+      anchors.horizontalCenterOffset: root.vertical ? 0 : -buttonRoot.rightExtraMargin / 2
       text: buttonRoot.text
       color: buttonRoot.active ? root.urgent : root.foreground
       font.family: buttonRoot.fontFamily
@@ -1885,20 +1887,19 @@ Item {
     text: root.bluetoothIcon()
     horizontalMargin: 8.5
     visible: Bluetooth.defaultAdapter !== null
-    tooltipText: root.bluetoothTooltip()
     onPressed: function() { root.run("omarchy-launch-bluetooth") }
   }
 
   component NetworkModule: ModuleButton {
     text: root.networkIcon()
     horizontalMargin: 6.5
+    rightExtraMargin: 2
     tooltipText: root.networkTooltip()
     onPressed: function() { root.run("OMARCHY_PATH=" + root.shellQuote(root.omarchyPath) + " PATH=" + root.shellQuote(root.omarchyPath + "/bin:" + (Quickshell.env("PATH") || "")) + " " + root.shellQuote(root.omarchyPath + "/bin/omarchy-launch-wifi")) }
   }
 
   component AudioModule: ModuleButton {
     text: root.audioIcon()
-    tooltipText: root.audioTooltip()
     onPressed: function(button) {
       if (button === Qt.RightButton) root.run("pamixer -t")
       else root.run("omarchy-launch-audio")

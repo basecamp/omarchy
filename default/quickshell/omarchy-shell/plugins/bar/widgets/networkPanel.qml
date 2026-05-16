@@ -186,6 +186,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     bar: root.bar
     text: root.icon
     horizontalMargin: 8.5
+    rightExtraMargin: 2
     tooltipText: bar ? bar.networkTooltip() : ""
 
     onPressed: function(b) {

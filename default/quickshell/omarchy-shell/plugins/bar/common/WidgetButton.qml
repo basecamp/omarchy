@@ -11,6 +11,7 @@ Item {
   property color activeColor: bar ? bar.urgent : "#a55555"
   property bool active: false
   property real horizontalMargin: 8.5
+  property real rightExtraMargin: 0
   property real verticalPadding: 6
   property real fixedWidth: -1
   property real fixedHeight: -1
@@ -26,7 +27,7 @@ Item {
 
   visible: text !== "" || keepSpace
   opacity: text === "" ? 0 : 1
-  implicitWidth: fixedWidth > 0 ? fixedWidth : (vertical ? barSize : Math.max(12, label.implicitWidth + horizontalMargin * 2))
+  implicitWidth: fixedWidth > 0 ? fixedWidth : (vertical ? barSize : Math.max(12, label.implicitWidth + horizontalMargin * 2 + rightExtraMargin))
   implicitHeight: fixedHeight > 0 ? fixedHeight : (vertical ? Math.max(12, label.implicitHeight + verticalPadding * 2) : barSize)
 
   Behavior on opacity {
@@ -36,6 +37,7 @@ Item {
   Text {
     id: label
     anchors.centerIn: parent
+    anchors.horizontalCenterOffset: root.vertical ? 0 : -root.rightExtraMargin / 2
     text: root.text
     color: root.active ? root.activeColor : root.foreground
     font.family: root.fontFamily
