@@ -2,23 +2,12 @@
 
 # omarchy:summary=Stream voxtype --follow status as bar-friendly JSON
 
-if omarchy-cmd-present voxtype; then
-  coproc VOXTYPE_STATUS { voxtype status --follow --extended --format json; }
-  voxtype_pid=$VOXTYPE_STATUS_PID
-
-  cleanup() {
-    kill "$voxtype_pid" 2>/dev/null || true
-  }
-
-  trap cleanup EXIT INT TERM
-
-  while IFS= read -r line <&"${VOXTYPE_STATUS[0]}"; do
-    if omarchy-cmd-present jq; then
-      jq -c '. + {alt: (.class // "")}' <<<"$line" || printf '%s\n' "$line"
-    else
-      printf '%s\n' "$line"
-    fi
-  done
-else
+if omarchy-cmd-missing voxtype; then
   echo '{"alt": "", "class": "idle", "tooltip": ""}'
+  exit 0
 fi
+
+# Keep the status follower as the direct child of the bar. Quickshell
+# clean up their direct child when they restart; a shell pipeline/coproc would
+# leave `voxtype status --follow` orphaned under the user systemd instance.
+exec setpriv --pdeathsig TERM voxtype status --follow --extended --format json
