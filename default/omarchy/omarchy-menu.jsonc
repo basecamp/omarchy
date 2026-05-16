@@ -48,7 +48,7 @@
   "trigger.capture.screenshot": {"icon":"","label":"Screenshot","keywords":"picture","action":"omarchy-capture-screenshot"},
   "trigger.capture.screenrecord.stop": {"icon":"","label":"Stop Screenrecording","keywords":"recording video","when":"pgrep -f '^gpu-screen-recorder' >/dev/null","action":"omarchy-capture-screenrecording --stop-recording"},
   "trigger.capture.screenrecord": {"icon":"","label":"Screenrecord","keywords":"record screen video"},
-  "trigger.capture.text": {"icon":"󰴑","label":"Text Extraction","keywords":"ocr","action":"omarchy-capture-text-extraction"},
+  "trigger.capture.text": {"icon":"󰴑","label":"Text","keywords":"ocr text extraction","action":"omarchy-capture-text-extraction"},
   "trigger.capture.color": {"icon":"󰃉","label":"Color","keywords":"picker hyprpicker","action":"pkill hyprpicker || hyprpicker -a"},
   "trigger.capture.screenrecord.no-audio": {"icon":"","label":"With no audio","action":"omarchy-capture-screenrecording"},
   "trigger.capture.screenrecord.desktop-audio": {"icon":"","label":"With desktop audio","action":"omarchy-capture-screenrecording --with-desktop-audio"},
