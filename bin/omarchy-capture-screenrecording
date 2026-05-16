@@ -2,7 +2,7 @@
 
 # omarchy:summary=Start or stop screen recording
 # omarchy:group=capture
-# omarchy:args=[--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--resolution=<size>] [--stop-recording]
+# omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--resolution=<size>] [--stop-recording]
 # omarchy:examples=omarchy screenrecord | omarchy capture screenrecord --with-desktop-audio
 # omarchy:aliases=omarchy screenrecord
 #
@@ -31,6 +31,7 @@ MICROPHONE_AUDIO="false"
 WEBCAM="false"
 WEBCAM_DEVICE=""
 RESOLUTION=""
+FULLSCREEN="false"
 STOP_RECORDING="false"
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
@@ -42,6 +43,7 @@ for arg in "$@"; do
   --with-webcam) WEBCAM="true" ;;
   --webcam-device=*) WEBCAM_DEVICE="${arg#*=}" ;;
   --resolution=*) RESOLUTION="${arg#*=}" ;;
+  --fullscreen) FULLSCREEN="true" ;;
   --stop-recording) STOP_RECORDING="true" ;;
   esac
 done
@@ -167,7 +169,10 @@ start_screenrecording() {
   # the portal backend supports and the kms backend doesn't). Default flow uses
   # slurp + the kms backend, which avoids the EGL DMA-BUF modifier import
   # failures the portal path can hit on some configurations.
-  if [[ ${OMARCHY_SCREENRECORD_USE_PORTAL:-false} == "true" ]]; then
+  if [[ $FULLSCREEN == "true" ]]; then
+    target="monitor:$(omarchy-hyprland-monitor-focused)"
+    capture_args=(-w "${target#monitor:}" -s "${RESOLUTION:-$(default_resolution)}")
+  elif [[ ${OMARCHY_SCREENRECORD_USE_PORTAL:-false} == "true" ]]; then
     target="portal"
     capture_args=(-w portal -s "${RESOLUTION:-$(default_resolution)}")
   else
