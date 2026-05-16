@@ -142,6 +142,7 @@ Item {
     version: 1,
     bar: {
       position: "top",
+      transparent: false,
       fontFamily: "monospace",
       centerAnchor: "calendar",
       layout: {
@@ -163,7 +164,7 @@ Item {
   })
 
   property var defaultConfig: builtinShellConfig
-  property var draft: ({ version: 1, bar: { position: "top", centerAnchor: "calendar", layout: { left: [], center: [], right: [] } }, plugins: [] })
+  property var draft: ({ version: 1, bar: { position: "top", transparent: false, centerAnchor: "calendar", layout: { left: [], center: [], right: [] } }, plugins: [] })
   property int draftRevision: 0
   property bool suppressReload: false
 
@@ -200,6 +201,7 @@ Item {
       version: 1,
       bar: {
         position: String(bar.position || "top"),
+        transparent: bar.transparent === true,
         centerAnchor: String(bar.centerAnchor || ""),
         fontFamily: "monospace",
         layout: normalizeLayout(bar.layout || {})
@@ -681,6 +683,19 @@ Item {
       }
     }
 
+    BarToggleRow {
+      Layout.fillWidth: true
+      label: "Transparent bar"
+      description: "Hide the bar background so the wallpaper shows through."
+      checked: root.draft.bar.transparent === true
+      onClicked: {
+        var next = root.cloneJson(root.draft)
+        next.bar.transparent = !(next.bar.transparent === true)
+        root.draft = next
+        root.markDirty()
+      }
+    }
+
     SectionEditor { sectionKey: "left";    sectionLabel: "Bar · Left" }
     SectionEditor { sectionKey: "center";  sectionLabel: "Bar · Center" }
     SectionEditor { sectionKey: "right";   sectionLabel: "Bar · Right" }
@@ -702,6 +717,101 @@ Item {
   }
 
   // ===================== shared chrome =====================================
+  component BarToggleRow: Rectangle {
+    id: toggleRow
+
+    property string label: ""
+    property string description: ""
+    property bool checked: false
+
+    signal clicked()
+
+    activeFocusOnTab: true
+    Keys.onReturnPressed: toggleRow.clicked()
+    Keys.onEnterPressed: toggleRow.clicked()
+    Keys.onSpacePressed: toggleRow.clicked()
+
+    Layout.fillWidth: true
+    implicitHeight: Math.max(54, toggleContent.implicitHeight + 18)
+    radius: root.cornerRadius
+    color: toggleRow.activeFocus
+      ? root.focusFillColor
+      : (toggleArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
+    border.color: toggleRow.activeFocus ? root.focusBorderColor : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+    border.width: toggleRow.activeFocus ? root.focusBorderWidth : 1
+
+    Behavior on color { ColorAnimation { duration: 100 } }
+
+    Row {
+      id: toggleContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.margins: 12
+      spacing: 12
+
+      Column {
+        width: parent.width - switchTrack.width - parent.spacing
+        spacing: 3
+        anchors.verticalCenter: parent.verticalCenter
+
+        Text {
+          text: toggleRow.label
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: 13
+          font.bold: true
+          elide: Text.ElideRight
+          width: parent.width
+        }
+
+        Text {
+          text: toggleRow.description
+          color: Qt.darker(root.foreground, 1.5)
+          font.family: root.fontFamily
+          font.pixelSize: 10
+          wrapMode: Text.WordWrap
+          width: parent.width
+        }
+      }
+
+      Rectangle {
+        id: switchTrack
+        width: 42
+        height: 22
+        radius: height / 2
+        color: toggleRow.checked
+          ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.35)
+          : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+        border.color: toggleRow.checked ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.28)
+        border.width: 1
+        anchors.verticalCenter: parent.verticalCenter
+
+        Behavior on color { ColorAnimation { duration: 120 } }
+
+        Rectangle {
+          width: 16
+          height: 16
+          radius: 8
+          x: toggleRow.checked ? switchTrack.width - width - 3 : 3
+          y: 3
+          color: toggleRow.checked ? root.accent : Qt.darker(root.foreground, 1.25)
+
+          Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+          Behavior on color { ColorAnimation { duration: 120 } }
+        }
+      }
+    }
+
+    MouseArea {
+      id: toggleArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: toggleRow.clicked()
+    }
+  }
+
   component ActionPill: Rectangle {
     id: pill
     property string text: ""

@@ -25,6 +25,7 @@ Example `shell.json` (bar subtree only shown):
   "version": 1,
   "bar": {
     "position": "top",
+    "transparent": false,
     "centerAnchor": "calendar",
     "layout": {
       "left": [

@@ -40,11 +40,13 @@ Item {
   property string omarchyConfigDir: home + "/.config/omarchy"
   property var fallbackBarConfig: ({
     position: "top",
+    transparent: false,
     centerAnchor: "calendar",
     layout: { left: [], center: [], right: [] }
   })
   property var layoutConfig: fallbackBarConfig.layout
   property string centerAnchor: ""
+  property bool transparent: false
   property int barConfigSerial: 0
   property string position: "top"
   // "monospace" resolves through fontconfig at paint time, so changing the
@@ -192,6 +194,7 @@ Item {
     var config = isPlainObject(barConfig) ? barConfig : fallbackBarConfig
 
     position = normalizePosition(config.position)
+    transparent = config.transparent === true
     centerAnchor = String(config.centerAnchor || "")
     layoutConfig = normalizeLayout(config.layout)
     barConfigSerial++
@@ -885,7 +888,7 @@ Item {
 
     implicitWidth: root.vertical ? root.barSize : 0
     implicitHeight: root.vertical ? 0 : root.barSize
-    color: root.background
+    color: root.transparent ? "transparent" : root.background
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
 
