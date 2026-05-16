@@ -1367,7 +1367,6 @@ Item {
     text: "\ue900"
     fontFamily: "omarchy"
     horizontalMargin: 7.5
-    tooltipText: "Omarchy Menu\n\nSuper + Alt + Space"
     onPressed: function(button) {
       if (button === Qt.RightButton) root.run("xdg-terminal-exec")
       else root.run("omarchy-shell-ipc menu toggle root")
