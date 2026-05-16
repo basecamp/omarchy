@@ -2,17 +2,12 @@
 
 # omarchy:summary=Launch the Omarchy bar settings panel
 # omarchy:group=launch
-# omarchy:name=settings
-# omarchy:args=[bar]
-# omarchy:examples=omarchy launch settings | omarchy launch settings bar
+# omarchy:name=bar settings
+# omarchy:examples=omarchy launch bar settings | omarchy-launch-bar-settings
 
-case "${1:-}" in
-  ""|bar)
-    ;;
-  *)
-    echo "Usage: omarchy-launch-settings [bar]" >&2
-    exit 1
-    ;;
-esac
+if (($# > 0)); then
+  echo "Usage: omarchy-launch-bar-settings" >&2
+  exit 1
+fi
 
 exec omarchy-shell-ipc shell summon omarchy.settings "{}"
