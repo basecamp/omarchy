@@ -37,7 +37,7 @@ for conf_toggle in "$toggle_state_dir"/*.conf; do
 
   if [[ ! -f $lua_toggle ]]; then
     case "$toggle_name" in
-      flags | single-window-aspect-ratio | window-no-gaps)
+      flags | rounded-corners | single-window-aspect-ratio | window-no-gaps)
         if [[ -f $toggle_defaults_dir/$toggle_name.lua ]]; then
           cp -f "$toggle_defaults_dir/$toggle_name.lua" "$lua_toggle"
         fi
