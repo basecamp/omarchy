@@ -8,6 +8,5 @@ QtObject {
   readonly property bool isLoaded: true
   property var activeScreen: null
   property bool launcherOpen: false
-  property bool controlCenterOpen: false
   property bool settingsOpen: false
 }

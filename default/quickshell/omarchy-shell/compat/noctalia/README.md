@@ -26,7 +26,6 @@ Add it via the bar customizer or by editing `~/.config/omarchy/shell.json` direc
 | `entryPoints.main` | yes — instantiated as a hidden service, exposed via `pluginApi.mainInstance` |
 | `entryPoints.desktopWidget` | **no** — skipped with a console warning |
 | `entryPoints.launcherProvider` | **no** — skipped with a console warning |
-| `entryPoints.controlCenterWidget` | **no** — skipped with a console warning |
 | Plugin i18n (`i18n/<lang>.json`) | **no** — `tr()` returns the raw key |
 | Plugin install from git URL | **no** — manual drop into `~/.config/omarchy/plugins/` |
 | Hot reload on plugin change | **no** — call `omarchy-shell-ipc shell rescanPlugins` |

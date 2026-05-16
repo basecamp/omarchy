@@ -56,7 +56,7 @@ QtObject {
     if (isPlainObject(manifest.entryPoints)) {
       var ep = manifest.entryPoints
       if (ep.barWidget || ep.main || ep.panel || ep.desktopWidget
-          || ep.launcherProvider || ep.controlCenterWidget) return true
+          || ep.launcherProvider) return true
     }
     return false
   }
@@ -74,7 +74,6 @@ QtObject {
     // Out of scope for v1 — warn loudly so we don't silently strand the plugin.
     if (ep.desktopWidget)         unsupported.push("desktopWidget")
     if (ep.launcherProvider)      unsupported.push("launcherProvider")
-    if (ep.controlCenterWidget)   unsupported.push("controlCenterWidget")
 
     if (kinds.length === 0) {
       console.warn("PluginRegistry: noctalia plugin '" + src.id + "' has no supported entryPoints"

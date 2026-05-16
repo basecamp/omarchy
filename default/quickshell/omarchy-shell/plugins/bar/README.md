@@ -39,8 +39,7 @@ Example `shell.json` (bar subtree only shown):
       "right": [
         { "id": "systemStats" },
         { "id": "audioPanel" },
-        { "id": "battery" },
-        { "id": "controlCenter" }
+        { "id": "battery" }
       ]
     }
   }
