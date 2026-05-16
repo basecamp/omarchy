@@ -177,6 +177,7 @@ Item {
     bar: root.bar
     owner: root
     open: root.popupOpen
+    margin: 6
     contentWidth: 320
     contentHeight: layout.implicitHeight + 28
 

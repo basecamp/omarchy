@@ -55,6 +55,16 @@ Item {
     return "'" + String(value).replace(/'/g, "'\\''") + "'"
   }
 
+  function scriptPath(name) {
+    var base = omarchyPath || Quickshell.env("OMARCHY_PATH") || (Quickshell.env("HOME") + "/.local/share/omarchy")
+    return base + "/default/quickshell/omarchy-shell/scripts/" + name
+  }
+
+  function focusPicker() {
+    if (pickerWindowLoader.item && typeof pickerWindowLoader.item.focusCarousel === "function")
+      pickerWindowLoader.item.focusCarousel()
+  }
+
   // Decode a base64-encoded UTF-8 string sent via IPC. Used for fields that
   // would otherwise carry embedded newlines or tabs (image rows, raw colors
   // JSON) which bash IPC arguments can't reliably round-trip.
@@ -249,7 +259,7 @@ Item {
     root.select(root.selectedImageIndex(), true)
     root.imagesLoaded = true
     root.opened = true
-    carousel.forceActiveFocus()
+    root.focusPicker()
   }
 
   function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextShowLabels, nextFilterable) {
@@ -274,7 +284,7 @@ Item {
     if (imageRows) {
       loadRows(imageRows)
     } else {
-      loadImagesProc.output = ""
+      loadImagesProc.requestSerial = requestSerial
       loadImagesProc.running = true
     }
   }
@@ -292,15 +302,14 @@ Item {
 
   Process {
     id: loadImagesProc
-    property string output: ""
-    command: ["bash", "-lc", "cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/image-selector; while IFS= read -r dir; do [[ -n $dir && -d $dir ]] && find -L \"$dir\" -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \\) -print0; done <<< " + shellQuote(root.imageDirs) + " | sort -z | while IFS= read -r -d '' image; do hash=$(md5sum \"$image\" | cut -d ' ' -f 1); thumb=\"$cache_dir/$hash.jpg\"; [[ -f $thumb ]] || thumb=$image; printf '%s\\t%s\\n' \"$image\" \"$thumb\"; done"]
-    stdout: SplitParser {
-      onRead: function(data) {
-        loadImagesProc.output += data + "\n"
+    property int requestSerial: 0
+    command: [root.scriptPath("image-picker-list.sh"), root.imageDirs]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (loadImagesProc.requestSerial === root.requestSerial)
+          root.loadRows(String(text || ""))
       }
-    }
-    onExited: {
-      root.loadRows(output)
     }
   }
 
@@ -370,121 +379,180 @@ Item {
     onExited: root.releaseNextDoneFile()
   }
 
-  PanelWindow {
-    id: panel
-    visible: root.opened && root.imagesLoaded
-    anchors { top: true; bottom: true; left: true; right: true }
-    color: "transparent"
-    WlrLayershell.namespace: "omarchy-image-selector"
-    WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
-    exclusionMode: ExclusionMode.Ignore
+  LazyLoader {
+    id: pickerWindowLoader
+    active: root.opened && root.imagesLoaded
+    onItemChanged: root.focusPicker()
 
-    Rectangle {
-      anchors.fill: parent
-      color: root.withAlpha(root.background, 0.5)
-    }
+    PanelWindow {
+      id: panel
 
-    MouseArea {
-      anchors.fill: parent
-      onClicked: root.cancel()
-    }
+      function focusCarousel() {
+        carousel.forceActiveFocus()
+      }
 
-    Item {
-      id: card
-      width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
-      height: root.expandedHeight + 30 + root.bottomChromeHeight
-      anchors.centerIn: parent
+      visible: true
+      anchors { top: true; bottom: true; left: true; right: true }
+      color: "transparent"
+      WlrLayershell.namespace: "omarchy-image-selector"
+      WlrLayershell.layer: WlrLayer.Overlay
+      WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+      exclusionMode: ExclusionMode.Ignore
 
-      MouseArea { anchors.fill: parent; onClicked: {} }
+      Rectangle {
+        anchors.fill: parent
+        color: root.withAlpha(root.background, 0.5)
+      }
+
+      MouseArea {
+        anchors.fill: parent
+        onClicked: root.cancel()
+      }
 
       Item {
-        id: carousel
-        anchors.top: parent.top
-        anchors.topMargin: 30
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: root.bottomChromeHeight
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing)
-        clip: false
-        focus: true
+        id: card
+        width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
+        height: root.expandedHeight + 30 + root.bottomChromeHeight
+        anchors.centerIn: parent
 
-        readonly property real itemStep: root.sliceWidth + root.sliceSpacing
-        readonly property real previewX: (width - root.expandedWidth) / 2
+        MouseArea { anchors.fill: parent; onClicked: {} }
 
-        Keys.priority: Keys.BeforeItem
-        Keys.onPressed: function(event) {
-          if (event.key === Qt.Key_Escape) {
-            if (root.filterText) {
-              root.updateFilter("")
-            } else {
-              root.cancel()
+        Item {
+          id: carousel
+          anchors.top: parent.top
+          anchors.topMargin: 30
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: root.bottomChromeHeight
+          anchors.horizontalCenter: parent.horizontalCenter
+          width: root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing)
+          clip: false
+          focus: true
+
+          readonly property real itemStep: root.sliceWidth + root.sliceSpacing
+          readonly property real previewX: (width - root.expandedWidth) / 2
+
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Escape) {
+              if (root.filterText) {
+                root.updateFilter("")
+              } else {
+                root.cancel()
+              }
+              event.accepted = true
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+              root.applySelected()
+              event.accepted = true
+            } else if (event.key === Qt.Key_Backspace && root.filterable) {
+              if (root.filterText.length > 0)
+                root.updateFilter(root.filterText.slice(0, -1))
+              event.accepted = true
+            } else if (event.key === Qt.Key_Left || (event.key === Qt.Key_Tab && event.modifiers & Qt.ShiftModifier) || event.key === Qt.Key_Backtab) {
+              root.selectAdjacent(-1)
+              event.accepted = true
+            } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Tab) {
+              root.selectAdjacent(1)
+              event.accepted = true
+            } else if (root.filterable && event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
+              root.updateFilter(root.filterText + event.text)
+              event.accepted = true
             }
-            event.accepted = true
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            root.applySelected()
-            event.accepted = true
-          } else if (event.key === Qt.Key_Backspace && root.filterable) {
-            if (root.filterText.length > 0)
-              root.updateFilter(root.filterText.slice(0, -1))
-            event.accepted = true
-          } else if (event.key === Qt.Key_Left || (event.key === Qt.Key_Tab && event.modifiers & Qt.ShiftModifier) || event.key === Qt.Key_Backtab) {
-            root.selectAdjacent(-1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Tab) {
-            root.selectAdjacent(1)
-            event.accepted = true
-          } else if (root.filterable && event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
-            root.updateFilter(root.filterText + event.text)
-            event.accepted = true
           }
-        }
 
-        Component.onCompleted: forceActiveFocus()
+          Component.onCompleted: forceActiveFocus()
 
-        Repeater {
-          model: root.imageArray.length
+          Repeater {
+            model: root.imageArray.length
 
-          delegate: Item {
-            id: item
-            required property int index
+            delegate: Item {
+              id: item
+              required property int index
 
-            readonly property var imageData: root.imageArray[index]
-            readonly property string filePath: imageData ? imageData.filePath : ""
-            readonly property string fileName: imageData ? imageData.fileName : ""
-            readonly property string thumbnailPath: imageData ? imageData.thumbnailPath : ""
+              readonly property var imageData: root.imageArray[index]
+              readonly property string filePath: imageData ? imageData.filePath : ""
+              readonly property string fileName: imageData ? imageData.fileName : ""
+              readonly property string thumbnailPath: imageData ? imageData.thumbnailPath : ""
 
-            readonly property bool matched: root.itemMatches(index)
-            readonly property int relativeIndex: root.filteredPosition(index) - root.selectedFilteredPosition()
-            readonly property bool selected: matched && index === root.selectedIndex
-            readonly property bool nearby: matched && Math.abs(relativeIndex) <= 16
+              readonly property bool matched: root.itemMatches(index)
+              readonly property int relativeIndex: root.filteredPosition(index) - root.selectedFilteredPosition()
+              readonly property bool selected: matched && index === root.selectedIndex
+              readonly property bool nearby: matched && Math.abs(relativeIndex) <= 16
 
-            visible: nearby
-            x: selected ? carousel.previewX : (relativeIndex < 0 ? carousel.previewX + relativeIndex * carousel.itemStep : carousel.previewX + root.expandedWidth + root.sliceSpacing + (relativeIndex - 1) * carousel.itemStep)
-            width: selected ? root.expandedWidth : root.sliceWidth
-            height: selected ? root.expandedHeight : root.sliceHeight
-            y: selected ? 0 : (root.expandedHeight - root.sliceHeight) / 2
-            z: selected ? 100 : 50 - Math.min(Math.abs(relativeIndex), 40)
+              visible: nearby
+              x: selected ? carousel.previewX : (relativeIndex < 0 ? carousel.previewX + relativeIndex * carousel.itemStep : carousel.previewX + root.expandedWidth + root.sliceSpacing + (relativeIndex - 1) * carousel.itemStep)
+              width: selected ? root.expandedWidth : root.sliceWidth
+              height: selected ? root.expandedHeight : root.sliceHeight
+              y: selected ? 0 : (root.expandedHeight - root.sliceHeight) / 2
+              z: selected ? 100 : 50 - Math.min(Math.abs(relativeIndex), 40)
 
-            readonly property real skAbs: Math.abs(root.skewOffset)
-            readonly property real topLeft: root.skewOffset >= 0 ? skAbs : 0
-            readonly property real topRight: root.skewOffset >= 0 ? width : width - skAbs
-            readonly property real bottomRight: root.skewOffset >= 0 ? width - skAbs : width
-            readonly property real bottomLeft: root.skewOffset >= 0 ? 0 : skAbs
+              readonly property real skAbs: Math.abs(root.skewOffset)
+              readonly property real topLeft: root.skewOffset >= 0 ? skAbs : 0
+              readonly property real topRight: root.skewOffset >= 0 ? width : width - skAbs
+              readonly property real bottomRight: root.skewOffset >= 0 ? width - skAbs : width
+              readonly property real bottomLeft: root.skewOffset >= 0 ? 0 : skAbs
 
-            Item {
-              id: maskShape
-              anchors.fill: parent
-              visible: false
-              layer.enabled: true
+              Item {
+                id: maskShape
+                anchors.fill: parent
+                visible: false
+                layer.enabled: true
+
+                Shape {
+                  anchors.fill: parent
+                  antialiasing: true
+                  preferredRendererType: Shape.CurveRenderer
+                  ShapePath {
+                    fillColor: "white"
+                    strokeColor: "transparent"
+                    startX: item.topLeft; startY: 0
+                    PathLine { x: item.topRight; y: 0 }
+                    PathLine { x: item.bottomRight; y: item.height }
+                    PathLine { x: item.bottomLeft; y: item.height }
+                    PathLine { x: item.topLeft; y: 0 }
+                  }
+                }
+              }
+
+              Item {
+                anchors.fill: parent
+                layer.enabled: true
+                layer.smooth: true
+                layer.effect: MultiEffect {
+                  maskEnabled: true
+                  maskSource: maskShape
+                  maskThresholdMin: 0.3
+                  maskSpreadAtMin: 0.3
+                }
+
+                Image {
+                  id: image
+                  anchors.fill: parent
+                  // Keep a stable source while delegates move in and out of the
+                  // nearby window. Clearing/reassigning the source on every
+                  // selection change makes Qt tear down and reload textures,
+                  // which shows up as flicker in both the theme and background
+                  // selectors.
+                  source: item.thumbnailPath ? root.fileUrl(item.thumbnailPath) : ""
+                  fillMode: Image.PreserveAspectCrop
+                  asynchronous: false
+                  cache: true
+                  smooth: true
+                }
+
+                Rectangle {
+                  anchors.fill: parent
+                  color: root.withAlpha(root.background, item.selected ? 0 : 0.42)
+                }
+              }
 
               Shape {
                 anchors.fill: parent
                 antialiasing: true
                 preferredRendererType: Shape.CurveRenderer
                 ShapePath {
-                  fillColor: "white"
-                  strokeColor: "transparent"
+                  fillColor: "transparent"
+                  strokeColor: item.selected ? root.selectedBorder : root.withAlpha(root.unselectedBorder, 0.28)
+                  strokeWidth: item.selected ? 3 : 1
                   startX: item.topLeft; startY: 0
                   PathLine { x: item.topRight; y: 0 }
                   PathLine { x: item.bottomRight; y: item.height }
@@ -492,96 +560,48 @@ Item {
                   PathLine { x: item.topLeft; y: 0 }
                 }
               }
-            }
 
-            Item {
-              anchors.fill: parent
-              layer.enabled: true
-              layer.smooth: true
-              layer.effect: MultiEffect {
-                maskEnabled: true
-                maskSource: maskShape
-                maskThresholdMin: 0.3
-                maskSpreadAtMin: 0.3
-              }
-
-              Image {
-                id: image
+              MouseArea {
                 anchors.fill: parent
-                // Keep a stable source while delegates move in and out of the
-                // nearby window. Clearing/reassigning the source on every
-                // selection change makes Qt tear down and reload textures,
-                // which shows up as flicker in both the theme and background
-                // selectors.
-                source: item.thumbnailPath ? root.fileUrl(item.thumbnailPath) : ""
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: false
-                cache: true
-                smooth: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: item.selected ? root.applySelected() : root.select(index)
               }
-
-              Rectangle {
-                anchors.fill: parent
-                color: root.withAlpha(root.background, item.selected ? 0 : 0.42)
-              }
-            }
-
-            Shape {
-              anchors.fill: parent
-              antialiasing: true
-              preferredRendererType: Shape.CurveRenderer
-              ShapePath {
-                fillColor: "transparent"
-                strokeColor: item.selected ? root.selectedBorder : root.withAlpha(root.unselectedBorder, 0.28)
-                strokeWidth: item.selected ? 3 : 1
-                startX: item.topLeft; startY: 0
-                PathLine { x: item.topRight; y: 0 }
-                PathLine { x: item.bottomRight; y: item.height }
-                PathLine { x: item.bottomLeft; y: item.height }
-                PathLine { x: item.topLeft; y: 0 }
-              }
-            }
-
-            MouseArea {
-              anchors.fill: parent
-              cursorShape: Qt.PointingHandCursor
-              onClicked: item.selected ? root.applySelected() : root.select(index)
             }
           }
         }
-      }
 
-      Text {
-        id: selectedLabel
-        visible: root.showLabels
-        anchors.top: carousel.bottom
-        anchors.topMargin: 16
-        anchors.horizontalCenter: carousel.horizontalCenter
-        width: root.expandedWidth
-        text: root.currentLabel()
-        color: root.foreground
-        style: Text.Outline
-        styleColor: root.withAlpha(root.background, 0.7)
-        font.pixelSize: 24
-        font.weight: Font.DemiBold
-        horizontalAlignment: Text.AlignHCenter
-        elide: Text.ElideRight
-      }
+        Text {
+          id: selectedLabel
+          visible: root.showLabels
+          anchors.top: carousel.bottom
+          anchors.topMargin: 16
+          anchors.horizontalCenter: carousel.horizontalCenter
+          width: root.expandedWidth
+          text: root.currentLabel()
+          color: root.foreground
+          style: Text.Outline
+          styleColor: root.withAlpha(root.background, 0.7)
+          font.pixelSize: 24
+          font.weight: Font.DemiBold
+          horizontalAlignment: Text.AlignHCenter
+          elide: Text.ElideRight
+        }
 
-      Text {
-        visible: root.filterable && root.filterText
-        anchors.top: selectedLabel.bottom
-        anchors.topMargin: 8
-        anchors.horizontalCenter: carousel.horizontalCenter
-        width: root.expandedWidth
-        text: root.filterText
-        color: root.foreground
-        opacity: 0.85
-        style: Text.Outline
-        styleColor: root.withAlpha(root.background, 0.7)
-        font.pixelSize: 14
-        horizontalAlignment: Text.AlignHCenter
-        elide: Text.ElideRight
+        Text {
+          visible: root.filterable && root.filterText
+          anchors.top: selectedLabel.bottom
+          anchors.topMargin: 8
+          anchors.horizontalCenter: carousel.horizontalCenter
+          width: root.expandedWidth
+          text: root.filterText
+          color: root.foreground
+          opacity: 0.85
+          style: Text.Outline
+          styleColor: root.withAlpha(root.background, 0.7)
+          font.pixelSize: 14
+          horizontalAlignment: Text.AlignHCenter
+          elide: Text.ElideRight
+        }
       }
     }
   }
