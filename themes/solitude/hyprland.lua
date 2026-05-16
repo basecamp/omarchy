@@ -14,4 +14,8 @@ hl.config({
       border_inactive = inactive_border_color,
     },
   },
+  decoration = {
+    rounding = 6,
+    rounding_power = 3,
+  },
 })
