@@ -164,6 +164,7 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
   "version": 1,
   "bar": {
     "position": "top",
+    "transparent": false,
     "centerAnchor": "calendar",
     "fontFamily": "JetBrainsMono Nerd Font",
     "layout": {

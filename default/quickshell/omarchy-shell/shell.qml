@@ -45,6 +45,7 @@ ShellRoot {
     version: 1,
     bar: {
       position: "top",
+      transparent: false,
       fontFamily: "JetBrainsMono Nerd Font",
       centerAnchor: "calendar",
       layout: {
