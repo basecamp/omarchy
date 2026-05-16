@@ -416,6 +416,18 @@ Item {
     }
   }
 
+  function toggleTransparency() {
+    var nextTransparent = !(root.transparent === true)
+    if (root.shell && typeof root.shell.mutateShellConfig === "function") {
+      root.shell.mutateShellConfig(function(config) {
+        if (!root.isPlainObject(config.bar)) config.bar = {}
+        config.bar.transparent = nextTransparent
+      })
+    } else {
+      root.transparent = nextTransparent
+    }
+  }
+
   function runProcess(process) {
     if (!process.running)
       process.running = true
@@ -1066,9 +1078,10 @@ Item {
 
         MouseArea {
           anchors.fill: parent
-          acceptedButtons: Qt.LeftButton
+          acceptedButtons: Qt.LeftButton | Qt.RightButton
           onDoubleClicked: function(mouse) {
-            root.openBarSettings()
+            if (mouse.button === Qt.RightButton) root.openBarSettings()
+            else root.toggleTransparency()
             mouse.accepted = true
           }
         }
