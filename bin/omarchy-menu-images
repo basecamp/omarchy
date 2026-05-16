@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Open a generic image selector menu
-# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] <image-dir>...
+# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] [--action-key <key>] [--action-label <label>] [--action-command <shell>] <image-dir>...
 
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
@@ -13,10 +13,13 @@ filterable=false
 lazy_thumbnails=false
 prepare_only=false
 cache_only=false
+action_key=""
+action_label=""
+action_command=""
 image_dirs=()
 
 usage() {
-  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] <image-dir>..."
+  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] [--action-key <key>] [--action-label <label>] [--action-command <shell>] <image-dir>..."
 }
 
 while [[ $# -gt 0 ]]; do
@@ -62,6 +65,33 @@ while [[ $# -gt 0 ]]; do
     --cache-only)
       cache_only=true
       shift
+      ;;
+    --action-key)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
+      action_key="$2"
+      shift 2
+      ;;
+    --action-label)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
+      action_label="$2"
+      shift 2
+      ;;
+    --action-command)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
+      action_command="$2"
+      shift 2
       ;;
     --help|-h)
       usage
@@ -251,8 +281,11 @@ ensure_selector() {
   [[ -S $socket_path ]]
 }
 
+action_command_payload=${action_command//$'\t'/$'\f'}
+action_command_payload=${action_command_payload//$'\n'/$'\v'}
+
 send_request() {
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$rows_payload" "$selected_list_image" "$selection_file" "$done_file" "$colors_payload" "$show_labels" "$filterable" |
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$rows_payload" "$selected_list_image" "$selection_file" "$done_file" "$colors_payload" "$show_labels" "$filterable" "$action_key" "$action_label" "$action_command_payload" |
     socat -u - "UNIX-CONNECT:$socket_path"
 }
 

@@ -89,10 +89,47 @@ for extension in png jpg jpeg webp gif bmp; do
     break
   fi
 done
-exec omarchy-menu-images \
-  --print-name \
+# Reset the wallhaven pagination cursor so each switcher session starts at
+# page 1 of the toplist instead of resuming from a stale high-water mark.
+rm -f "${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-wallhaven-page"
+
+# Capture the carousel result (full file path or URL). Without --print-name
+# we get the raw value, which is what lets us tell wallhaven URLs apart from
+# local theme previews and dispatch each to the right handler.
+selection=$(omarchy-menu-images \
   --show-labels \
   --filterable \
   --lazy-thumbnails \
   --selected "$selected_preview" \
-  "$preview_dir"
+  --action-label "wallhaven" \
+  --action-command "omarchy-theme-from-wallhaven" \
+  "$preview_dir")
+
+if [[ -z $selection ]]; then
+  exit 0
+fi
+
+if [[ $selection == http://* || $selection == https://* ]]; then
+  # Wallhaven (or any other URL) flow: download into aether's wallpaper dir
+  # so it shows up in --list-wallpapers, then let aether build the palette
+  # and apply the theme. Caller (omarchy-menu) gets nothing on stdout.
+  download_dir="$HOME/.local/share/aether/wallpapers"
+  mkdir -p "$download_dir"
+  filename=$(basename "$selection")
+  local_path="$download_dir/$filename"
+
+  if [[ ! -f $local_path ]]; then
+    if ! curl -fsSL --max-time 60 -o "$local_path" "$selection"; then
+      rm -f "$local_path"
+      exit 1
+    fi
+  fi
+
+  aether --generate "$local_path"
+  exit $?
+fi
+
+# Local theme preview: strip dir + extension and print the bare theme name so
+# omarchy-menu can pipe it to omarchy-theme-set.
+name=${selection##*/}
+printf '%s\n' "${name%.*}"

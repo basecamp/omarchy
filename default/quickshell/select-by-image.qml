@@ -23,6 +23,11 @@ ShellRoot {
   property int applySerial: 0
   property string doneFile: ""
   property string filterText: ""
+  property string actionKey: ""
+  property string actionLabel: ""
+  property string actionCommand: ""
+  readonly property int defaultNearbyWindow: 16
+  property int nearbyWindow: defaultNearbyWindow
   property var doneFilesToRelease: []
   property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + Quickshell.env("UID"))) + "/omarchy-image-selector.sock"
   property color accent: "#798186"
@@ -34,9 +39,31 @@ ShellRoot {
   property int sliceHeight: 432
   property int sliceSpacing: -30
   property int skewOffset: 28
-  property int bottomChromeHeight: showLabels ? (filterable ? 104 : 74) : (filterable ? 60 : 30)
+  // hasAction renders the "+" tile and accepts clicks. hasActionKey is the
+  // stricter form that also fires on keypress, so callers can opt in to
+  // click-only or click+key. The action tile is a synthetic slot at
+  // index === imageArray.length when hasAction is true.
+  property bool hasAction: actionCommand !== ""
+  property bool hasActionKey: hasAction && actionKey !== ""
+  // When the selected card is within autoLoadThreshold of imageArray.length
+  // the action command auto-fires to fetch the next batch. ~24 = one page
+  // of wallhaven results so the fetch starts about a page before the user
+  // would actually run out, hiding the network roundtrip. Only kicks in
+  // after the first manual action click (the "+" tile), so the bare theme
+  // list never auto-grows.
+  property int autoLoadThreshold: 24
+  property bool autoLoadActive: false
+  readonly property int totalCount: imageArray.length + (hasAction ? 1 : 0)
+  property int bottomChromeHeight: (showLabels ? (filterable ? 104 : 74) : (filterable ? 60 : 30)) + (hasActionKey ? 22 : 0)
 
   function fileUrl(path) {
+    if (!path) return ""
+    // Pass remote URLs through unchanged so Qt can stream them via QNetwork.
+    // This lets the wallhaven flow drop the local-cache step entirely and
+    // load thumbs straight from wallhaven's CDN as cards enter the nearby
+    // window.
+    if (path.indexOf("http://") === 0 || path.indexOf("https://") === 0)
+      return path
     return "file://" + path.split("/").map(encodeURIComponent).join("/")
   }
 
@@ -52,8 +79,13 @@ ShellRoot {
     return Qt.rgba(color.r, color.g, color.b, alpha)
   }
 
+  function isActionIndex(index) {
+    return hasAction && index === imageArray.length
+  }
+
   function currentPath() {
-    if (imageArray.length === 0 || !itemMatches(selectedIndex)) return ""
+    if (totalCount === 0 || !itemMatches(selectedIndex)) return ""
+    if (isActionIndex(selectedIndex)) return ""
     return imageArray[selectedIndex].filePath
   }
 
@@ -73,7 +105,8 @@ ShellRoot {
   }
 
   function itemMatches(index) {
-    if (index < 0 || index >= imageArray.length) return false
+    if (index < 0 || index >= totalCount) return false
+    if (isActionIndex(index)) return true
     if (!filterText) return true
 
     var path = imageArray[index].filePath
@@ -82,10 +115,10 @@ ShellRoot {
   }
 
   function matchingCount() {
-    if (!filterText) return imageArray.length
+    if (!filterText) return totalCount
 
     var count = 0
-    for (var i = 0; i < imageArray.length; i++) {
+    for (var i = 0; i < totalCount; i++) {
       if (itemMatches(i)) count++
     }
 
@@ -93,7 +126,7 @@ ShellRoot {
   }
 
   function firstMatchingIndex() {
-    for (var i = 0; i < imageArray.length; i++) {
+    for (var i = 0; i < totalCount; i++) {
       if (itemMatches(i)) return i
     }
 
@@ -118,17 +151,18 @@ ShellRoot {
   }
 
   function select(index, immediate) {
-    if (imageArray.length === 0) return
+    if (totalCount === 0) return
     if (index < 0) index = 0
-    else if (index >= imageArray.length) index = imageArray.length - 1
+    else if (index >= totalCount) index = totalCount - 1
     if (!itemMatches(index)) return
     if (index === selectedIndex && immediate !== true) return
 
     selectedIndex = index
+    maybeAutoFetch()
   }
 
   function selectAdjacent(direction) {
-    var count = imageArray.length
+    var count = totalCount
     if (count === 0) return
 
     var index = selectedIndex
@@ -165,6 +199,11 @@ ShellRoot {
   }
 
   function applySelected() {
+    if (isActionIndex(selectedIndex)) {
+      triggerAction()
+      return
+    }
+
     var path = currentPath()
     if (!path || !selectionFile) {
       cancel()
@@ -208,9 +247,8 @@ ShellRoot {
     root.opened = false
   }
 
-  function loadRows(rows) {
+  function parseRows(rows, seen) {
     var newImages = []
-    var seen = {}
     var paths = rows.split("\n")
     for (var i = 0; i < paths.length; i++) {
       var row = paths[i]
@@ -219,24 +257,47 @@ ShellRoot {
       var columns = row.split("\t")
       var path = columns[0]
       if (!path) continue
+      if (seen[path]) continue
+      seen[path] = true
       var fileName = path.split("/").pop()
-      if (seen[fileName]) continue
-      seen[fileName] = true
+      var palette = columns[2] ? columns[2].split(",").filter(function(c) { return c }) : []
       newImages.push({
         filePath: path,
         fileName: fileName,
-        thumbnailPath: columns[1] || path
+        thumbnailPath: columns[1] || path,
+        palette: palette
       })
     }
+    return newImages
+  }
 
-    root.imageArray = newImages
+  function loadRows(rows) {
+    var seen = {}
+    root.imageArray = parseRows(rows, seen)
     root.select(root.selectedImageIndex(), true)
     root.imagesLoaded = true
     root.opened = true
     carousel.forceActiveFocus()
   }
 
-  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw, nextShowLabels, nextFilterable) {
+  // Append rows to the running carousel. Dedups by filePath so re-firing the
+  // action does not pile up duplicate entries. Used by the wallhaven flow to
+  // splice its results in after the theme thumbnails without closing.
+  function appendRows(rows) {
+    var seen = {}
+    for (var i = 0; i < imageArray.length; i++) {
+      seen[imageArray[i].filePath] = true
+    }
+    var added = parseRows(rows, seen)
+    if (added.length === 0) return
+    root.imageArray = imageArray.concat(added)
+    carousel.forceActiveFocus()
+    // The user may have scrolled past the threshold while the fetch was in
+    // flight; re-evaluate so the next batch starts immediately if needed.
+    maybeAutoFetch()
+  }
+
+  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextColorsFile, nextColorsRaw, nextShowLabels, nextFilterable, nextActionKey, nextActionLabel, nextActionCommand, nextNearbyWindow) {
     if (requestActive && doneFile && doneFile !== nextDoneFile)
       finishDoneFile(doneFile)
 
@@ -251,6 +312,12 @@ ShellRoot {
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     filterable = nextFilterable === true || nextFilterable === "true"
     filterText = ""
+    actionKey = nextActionKey || ""
+    actionLabel = nextActionLabel || ""
+    actionCommand = nextActionCommand || ""
+    autoLoadActive = false
+    var parsedNearby = parseInt(nextNearbyWindow)
+    nearbyWindow = (parsedNearby > 0) ? parsedNearby : defaultNearbyWindow
     colorsFile = nextColorsFile || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/quickshell.json")
     if (nextColorsRaw)
       loadColors(nextColorsRaw)
@@ -263,6 +330,26 @@ ShellRoot {
     } else {
       loadImagesProc.output = ""
       loadImagesProc.running = true
+    }
+  }
+
+  // Fires the configured action command and keeps the carousel open. The
+  // command is expected to send an op=append socket message that splices new
+  // rows into the running carousel. Debounced via actionProc.running so
+  // navigating near the end doesn't spam concurrent fetches.
+  function triggerAction() {
+    if (!hasAction || actionProc.running) return
+
+    autoLoadActive = true
+    actionProc.command = ["bash", "-lc", actionCommand]
+    actionProc.running = true
+  }
+
+  function maybeAutoFetch() {
+    if (!autoLoadActive || actionProc.running) return
+    if (imageArray.length === 0) return
+    if (selectedIndex >= imageArray.length - autoLoadThreshold) {
+      triggerAction()
     }
   }
 
@@ -293,14 +380,14 @@ ShellRoot {
 
   Component.onCompleted: {
     if (selectionFile)
-      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile, "", false, false)
+      openSelector(imageDirs, "", selectedImage, selectionFile, Quickshell.env("OMARCHY_IMAGE_SELECTOR_DONE_FILE"), colorsFile, "", false, false, "", "", "", "")
   }
 
   IpcHandler {
     target: "image-selector"
 
     function open(imageDirs: string, imageRows: string, selectedImage: string, selectionFile: string, doneFile: string, colorsFile: string): void {
-      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile, "", false, false)
+      root.openSelector(imageDirs, imageRows, selectedImage, selectionFile, doneFile, colorsFile, "", false, false, "", "", "", "")
     }
   }
 
@@ -313,13 +400,21 @@ ShellRoot {
       parser: SplitParser {
         onRead: function(message) {
           var fields = message.split("\t")
+          var op = fields[11] || "open"
+
+          if (op === "append" && root.opened) {
+            root.appendRows(root.decodeField(fields[0]))
+            clientSocket.connected = false
+            return
+          }
+
           if (root.opened) {
             root.closeSelector(fields[3] || "")
             clientSocket.connected = false
             return
           }
 
-          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", "", root.decodeField(fields[4]), fields[5] || "false", fields[6] || "false")
+          root.openSelector("", root.decodeField(fields[0]), fields[1] || "", fields[2] || "", fields[3] || "", "", root.decodeField(fields[4]), fields[5] || "false", fields[6] || "false", fields[7] || "", fields[8] || "", root.decodeField(fields[9]), fields[10] || "")
           clientSocket.connected = false
         }
       }
@@ -353,6 +448,16 @@ ShellRoot {
   Process {
     id: releaseProc
     onExited: root.releaseNextDoneFile()
+  }
+
+  Process {
+    id: actionProc
+    // Disarm auto-fetch on a failed action so we don't spin re-firing
+    // a broken command every arrow press. The user can still re-arm by
+    // clicking the "+" tile manually.
+    onExited: (code) => {
+      if (code !== 0) root.autoLoadActive = false
+    }
   }
 
   PanelWindow {
@@ -419,6 +524,12 @@ ShellRoot {
           } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Tab) {
             root.selectAdjacent(1)
             event.accepted = true
+          } else if (root.hasActionKey && event.text && event.text.toLowerCase() === root.actionKey.toLowerCase() && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
+            // Action key takes precedence over filter typing so the bound key
+            // can't be "captured" by an active filter session. Pressing it
+            // closes the selector and runs actionCommand in the background.
+            root.triggerAction()
+            event.accepted = true
           } else if (root.filterable && event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
             root.updateFilter(root.filterText + event.text)
             event.accepted = true
@@ -428,21 +539,24 @@ ShellRoot {
         Component.onCompleted: forceActiveFocus()
 
         Repeater {
-          model: root.imageArray.length
+          model: root.totalCount
 
           delegate: Item {
             id: item
             required property int index
 
-            readonly property var imageData: root.imageArray[index]
+            readonly property bool isAction: root.isActionIndex(index)
+            readonly property var imageData: isAction ? null : root.imageArray[index]
             readonly property string filePath: imageData ? imageData.filePath : ""
             readonly property string fileName: imageData ? imageData.fileName : ""
             readonly property string thumbnailPath: imageData ? imageData.thumbnailPath : ""
+            readonly property var palette: imageData && imageData.palette ? imageData.palette : []
+            readonly property real swatchAreaWidth: selected ? width - 24 : width
 
             readonly property bool matched: root.itemMatches(index)
             readonly property int relativeIndex: root.filteredPosition(index) - root.selectedFilteredPosition()
             readonly property bool selected: matched && index === root.selectedIndex
-            readonly property bool nearby: matched && Math.abs(relativeIndex) <= 16
+            readonly property bool nearby: matched && Math.abs(relativeIndex) <= root.nearbyWindow
 
             visible: nearby
             x: selected ? carousel.previewX : (relativeIndex < 0 ? carousel.previewX + relativeIndex * carousel.itemStep : carousel.previewX + root.expandedWidth + root.sliceSpacing + (relativeIndex - 1) * carousel.itemStep)
@@ -500,9 +614,89 @@ ShellRoot {
                 smooth: true
               }
 
+              // High-quality overlay. Loads for the 3 cards on either side of
+              // the active one so the full wallpaper is already decoded by
+              // the time the user lands on it. Visibility is gated to the
+              // active card only - the preloaded neighbours sit in Qt's
+              // pixmap cache invisible until they're scrolled to.
+              //
+              // For local-file callers filePath == thumbnailPath so source
+              // stays empty and this overlay never activates.
+              Image {
+                id: imageFull
+                anchors.fill: parent
+                source: (item.nearby && Math.abs(item.relativeIndex) <= 3
+                         && item.filePath && item.filePath !== item.thumbnailPath)
+                  ? root.fileUrl(item.filePath) : ""
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: true
+                smooth: true
+                // Cap decoded size so a 5120x1440 wallpaper doesn't pin
+                // 30MB of pixmap memory per visited card.
+                sourceSize.width: 1600
+                // Show the full overlay on every preloaded neighbour, not
+                // just the active card, so scrolling does not visibly swap
+                // thumb -> full when each new card becomes active.
+                opacity: status === Image.Ready ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 220 } }
+              }
+
               Rectangle {
                 anchors.fill: parent
                 color: root.withAlpha(root.background, item.selected ? 0 : 0.42)
+              }
+
+              // Wallhaven palette strip. Taller on the active card, slim on
+              // neighbours. Model is empty for off-nearby cards so the
+              // Repeater doesn't instantiate Rectangles for cards the user
+              // can't see.
+              Row {
+                visible: item.palette.length > 0 && !item.isAction
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottomMargin: item.selected ? 8 : 0
+                anchors.leftMargin: item.selected ? 12 : 0
+                anchors.rightMargin: item.selected ? 12 : 0
+                height: item.selected ? 22 : 6
+                spacing: 0
+
+                Repeater {
+                  model: item.nearby ? item.palette : []
+                  delegate: Rectangle {
+                    required property string modelData
+                    width: item.swatchAreaWidth / item.palette.length
+                    height: parent.height
+                    color: modelData
+                  }
+                }
+              }
+
+              Rectangle {
+                anchors.fill: parent
+                visible: item.isAction
+                color: root.withAlpha(root.background, item.selected ? 0.55 : 0.78)
+
+                Text {
+                  anchors.centerIn: parent
+                  text: "+"
+                  color: item.selected ? root.accent : root.foreground
+                  font.pixelSize: item.selected ? 200 : 80
+                  font.weight: Font.Light
+                  Behavior on font.pixelSize { NumberAnimation { duration: 160 } }
+                }
+
+                Text {
+                  visible: item.selected && root.actionLabel
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  anchors.bottom: parent.bottom
+                  anchors.bottomMargin: 32
+                  text: root.actionLabel
+                  color: root.withAlpha(root.foreground, 0.75)
+                  font.pixelSize: 16
+                  font.family: "monospace"
+                }
               }
             }
 
@@ -549,6 +743,7 @@ ShellRoot {
       }
 
       Text {
+        id: filterDisplay
         visible: root.filterable && root.filterText
         anchors.top: selectedLabel.bottom
         anchors.topMargin: 8
@@ -560,6 +755,22 @@ ShellRoot {
         style: Text.Outline
         styleColor: root.withAlpha(root.background, 0.7)
         font.pixelSize: 14
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
+      }
+
+      Text {
+        visible: root.hasActionKey
+        anchors.top: filterDisplay.visible ? filterDisplay.bottom : (selectedLabel.visible ? selectedLabel.bottom : carousel.bottom)
+        anchors.topMargin: 8
+        anchors.horizontalCenter: carousel.horizontalCenter
+        width: root.expandedWidth
+        text: "press " + root.actionKey + " " + (root.actionLabel || "for action")
+        color: root.foreground
+        opacity: 0.6
+        style: Text.Outline
+        styleColor: root.withAlpha(root.background, 0.7)
+        font.pixelSize: 12
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
       }

@@ -1,0 +1,129 @@
+#!/bin/bash
+
+# omarchy:summary=Append wallhaven results to the running image carousel
+# omarchy:examples=omarchy theme from wallhaven|omarchy-theme-from-wallhaven
+#
+# This script is normally invoked as the action_command of an already-open
+# image-selector carousel (e.g. omarchy-theme-switcher with the wallhaven +
+# tile). It fetches popular wallhaven thumbs and sends an op=append socket
+# message so the new entries splice in after the existing rows. The selector
+# itself stays open; the caller (omarchy-theme-switcher) handles the URL the
+# user eventually picks.
+
+set -u
+
+for bin in curl jq socat quickshell; do
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    echo "omarchy-theme-from-wallhaven: $bin is required" >&2
+    exit 1
+  fi
+done
+
+pages_to_fetch="${OMARCHY_WALLHAVEN_PAGES:-6}"
+sorting="${OMARCHY_WALLHAVEN_SORTING:-toplist}"
+# Time window for toplist sorting: 1d, 3d, 1w, 1M, 3M, 6M, 1y.
+top_range="${OMARCHY_WALLHAVEN_TOPRANGE:-1M}"
+purity="${OMARCHY_WALLHAVEN_PURITY:-100}"
+# Wallhaven category bitmask: <General><Anime><People>. 100 = General only,
+# 111 = all three. Drop anime/people by default since those rarely make great
+# desktop wallpapers for theme extraction.
+categories="${OMARCHY_WALLHAVEN_CATEGORIES:-100}"
+
+socket_path="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-image-selector.sock"
+# Persists the next wallhaven page number across script invocations within
+# one carousel session. omarchy-theme-switcher deletes this at session start
+# so each new switcher run begins at page 1.
+page_state="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-wallhaven-page"
+
+state_dir=$(mktemp -d -t omarchy-wallhaven.XXXXXX)
+trap 'rm -rf "$state_dir"' EXIT
+
+fetch_pages_json() {
+  local start_page="$1"
+  local pages_dir="$state_dir/pages"
+  mkdir -p "$pages_dir"
+
+  local pids=() p end=$((start_page + pages_to_fetch - 1))
+  for ((p = start_page; p <= end; p++)); do
+    curl -sS --max-time 15 \
+      "https://wallhaven.cc/api/v1/search?sorting=$sorting&topRange=$top_range&purity=$purity&categories=$categories&page=$p" \
+      >"$pages_dir/$p.json" 2>/dev/null &
+    pids+=("$!")
+  done
+
+  local ok=0 pid
+  for pid in "${pids[@]}"; do
+    wait "$pid" && ((ok++))
+  done
+
+  (( ok > 0 ))
+}
+
+# Build TSV rows: <wallpaper-url>\t<thumb-url>\t<color1,color2,...>
+# The full image URL is filePath so picking a row writes the URL into the
+# selection file directly. The 3rd column is wallhaven's pre-computed 5-color
+# palette which the carousel renders as swatches under each card.
+build_rows() {
+  local pages_dir="$state_dir/pages"
+  shopt -s nullglob
+  local files=("$pages_dir"/*.json)
+  shopt -u nullglob
+  (( ${#files[@]} == 0 )) && return
+
+  jq -r '
+    .data[]?
+    | select(.thumbs.large != null and .path != null)
+    | .path + "\t" + .thumbs.large + "\t" + ((.colors // []) | join(","))
+  ' "${files[@]}" 2>/dev/null
+}
+
+# Encode rows for the socket protocol: tabs -> \f, newlines -> \v.
+encode_payload() {
+  local s="$1"
+  s=${s//$'\t'/$'\f'}
+  printf '%s' "${s//$'\n'/$'\v'}"
+}
+
+send_append() {
+  local rows="$1"
+  local rows_payload
+  rows_payload=$(encode_payload "$rows")
+
+  # Socket fields, with field 11 = op = "append" so the QML splices rather
+  # than reopens. The other fields are unused for append but must be present
+  # so the tab-split alignment stays sane.
+  printf '%s\t\t\t\t\t\t\t\t\t\t\tappend\n' "$rows_payload" |
+    socat -u - "UNIX-CONNECT:$socket_path"
+}
+
+if [[ ! -S $socket_path ]]; then
+  # The caller is supposed to have opened the carousel first. If the socket
+  # is missing there is no carousel to append to - bail rather than starting
+  # a new one (the user expects this to append, not replace).
+  exit 1
+fi
+
+# Reserve the next page range atomically. Two racing invocations from a
+# single QML carousel are already prevented by the actionProc.running guard,
+# but holding flock means a second omarchy-theme-switcher session can't
+# clobber the cursor either.
+{
+  flock -x 9
+  start_page=1
+  if [[ -f $page_state ]]; then
+    read -r p <"$page_state" 2>/dev/null || true
+    [[ $p =~ ^[0-9]+$ ]] && start_page=$p
+  fi
+  printf '%d\n' "$((start_page + pages_to_fetch))" >"$page_state"
+} 9>"$page_state.lock"
+
+if ! fetch_pages_json "$start_page"; then
+  exit 1
+fi
+
+rows=$(build_rows)
+if [[ -z $rows ]]; then
+  exit 1
+fi
+
+send_append "$rows"
