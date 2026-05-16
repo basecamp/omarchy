@@ -67,6 +67,7 @@ Item {
     onFileChanged: reload()
   }
 
+
   // Fired by IPC (`omarchy-shell-ipc notifications showHistory`) so the
   // bar widget can drop its PopupCard from the same anchor a click would.
   signal historyOpenRequested()
@@ -142,16 +143,20 @@ Item {
   function snapshotOf(notification) {
     var glyph = ""
     try {
-      if (notification.hints && typeof notification.hints["omarchy-glyph"] === "string") {
-        glyph = notification.hints["omarchy-glyph"]
+      if (notification.hints) {
+        var hintGlyph = notification.hints["omarchy-glyph"]
+        if (hintGlyph !== undefined && hintGlyph !== null)
+          glyph = String(hintGlyph)
       }
     } catch (e) { glyph = "" }
+    var summary = String(notification.summary || "")
+
     return {
       id: notification.id,
       originalId: notification.id,
       app: notification.appName || "",
       appIcon: notification.appIcon || "",
-      summary: notification.summary || "",
+      summary: summary,
       body: notification.body || "",
       image: notification.image || "",
       glyph: glyph,

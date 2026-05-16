@@ -54,12 +54,8 @@ Rectangle {
            lower.endsWith(".jpeg") || lower.endsWith(".webp") ||
            lower.endsWith(".gif")
   }
-  readonly property string mediaImageSource: {
-    if (_isMediaFile(_imageFilePath(image))) return image
-    if (_isMediaFile(_imageFilePath(appIcon))) return appIcon
-    return ""
-  }
-  readonly property bool mediaMode: mediaImageSource.length > 0
+  readonly property string mediaImageSource: ""
+  readonly property bool mediaMode: false
   // Use only what the notification explicitly carries — no themed-icon
   // theme-lookup fallback because Quickshell's icon image provider returns
   // a placeholder for missing names (rather than erroring), which means
@@ -68,7 +64,8 @@ Rectangle {
   // `appIcon` (-i flag) still get one.
   readonly property string smallIconSource: image.length > 0 ? image : appIcon
   readonly property bool hasGlyph: glyph.length > 0
-  readonly property bool hasSmallIcon: !mediaMode && (smallIconSource.length > 0 || hasGlyph)
+  readonly property bool inlineGlyph: summary.match(/^\S\s{2,}/) !== null
+  readonly property bool hasSmallIcon: !mediaMode && !inlineGlyph && (smallIconSource.length > 0 || hasGlyph)
 
   readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
   readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
@@ -157,24 +154,24 @@ Rectangle {
       Layout.rightMargin: 12
       Layout.topMargin: 10
       Layout.bottomMargin: 10
-      spacing: 10
+      spacing: 12
 
       Item {
         id: smallIconSlot
-        Layout.preferredWidth: 32
-        Layout.preferredHeight: 32
+        Layout.preferredWidth: 40
+        Layout.preferredHeight: 40
         Layout.alignment: Qt.AlignVCenter
         // Hide the slot when the icon failed to resolve (themed-icon name
         // not in the user's icon theme) AND we don't have a glyph fallback
         // — prevents rendering Qt's pink broken-image placeholder.
-        visible: false
+        visible: root.hasGlyph || (!root.mediaMode && smallIconSource.length > 0 && smallIconImage.status !== Image.Error)
 
         Image {
           id: smallIconImage
           anchors.fill: parent
           source: root.smallIconSource
-          sourceSize.width: 32 * Screen.devicePixelRatio
-          sourceSize.height: 32 * Screen.devicePixelRatio
+          sourceSize.width: 40 * Screen.devicePixelRatio
+          sourceSize.height: 40 * Screen.devicePixelRatio
           fillMode: Image.PreserveAspectFit
           asynchronous: true
           smooth: true
@@ -219,7 +216,7 @@ Rectangle {
           textFormat: Text.StyledText
           font.family: root.fontFamily
           color: root.bodyColor
-          font.pixelSize: 12
+          font.pixelSize: 13
           wrapMode: Text.WordWrap
           elide: Text.ElideRight
           maximumLineCount: 3
