@@ -1168,12 +1168,7 @@ Item {
     property bool oneWinSquare: false
     property string monitorName: ""
     property string monitorScale: ""
-    property string themeName: ""
-    property string themeSlug: ""
-    property string themePreview: ""
     property string fontName: ""
-    property string backgroundPath: ""
-    property string backgroundName: ""
     property var fontsList: []
     property int refreshTick: 0
 
@@ -1183,44 +1178,12 @@ Item {
       readGapsProc.running = true
       readOneWinSqProc.running = true
       readMonitorProc.running = true
-      readThemeProc.running = true
       readFontProc.running = true
       readFontsListProc.running = true
-      readBackgroundProc.running = true
     }
 
     Process { id: applyStyleProc; onExited: refresh() }
 
-    // Emits 3 lines: display name, slug, preview path — for the *current*
-    // theme only. Cheap enough that we don't bother caching the full list.
-    Process {
-      id: readThemeProc
-      command: ["bash", "-lc",
-        "name=$(omarchy-theme-current 2>/dev/null); " +
-        "slug=$(cat $HOME/.config/omarchy/current/theme.name 2>/dev/null); " +
-        "preview=''; " +
-        "for base in \"$HOME/.config/omarchy/themes\" \"$OMARCHY_PATH/themes\"; do " +
-        "  [[ -d $base/$slug ]] || continue; " +
-        "  for ext in png jpg jpeg webp; do " +
-        "    if [[ -f $base/$slug/preview.$ext ]]; then preview=\"$base/$slug/preview.$ext\"; break 2; fi; " +
-        "  done; " +
-        "  if [[ -z $preview && -d $base/$slug/backgrounds ]]; then " +
-        "    preview=$(find -L \"$base/$slug/backgrounds\" -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.png' -o -iname '*.webp' \\) 2>/dev/null | sort | head -n1); " +
-        "    [[ -n $preview ]] && break; " +
-        "  fi; " +
-        "done; " +
-        "printf '%s\\n%s\\n%s\\n' \"$name\" \"$slug\" \"$preview\""
-      ]
-      stdout: StdioCollector {
-        waitForEnd: true
-        onStreamFinished: {
-          var lines = String(text || "").split("\n")
-          themeName = (lines[0] || "").trim()
-          themeSlug = (lines[1] || "").trim()
-          themePreview = (lines[2] || "").trim()
-        }
-      }
-    }
     Process {
       id: readFontProc
       command: ["omarchy-font-current"]
@@ -1233,15 +1196,6 @@ Item {
         waitForEnd: true
         onStreamFinished: fontsList = String(text || "").trim().split("\n").filter(function(x) { return x.length > 0 })
       }
-    }
-    Process {
-      id: readBackgroundProc
-      command: ["bash", "-lc", "readlink -f $HOME/.config/omarchy/current/background 2>/dev/null"]
-      stdout: SplitParser { onRead: function(line) {
-        backgroundPath = String(line).trim()
-        var i = backgroundPath.lastIndexOf("/")
-        backgroundName = i >= 0 ? backgroundPath.substring(i + 1) : backgroundPath
-      } }
     }
 
     // Pick up theme/background changes that happen via the menu / CLI without
@@ -1342,30 +1296,6 @@ Item {
       Layout.fillWidth: true
     }
 
-    // Theme + Background side by side. Both defer to the existing Walker
-    // pickers; the rows here just surface the current selection.
-    RowLayout {
-      Layout.fillWidth: true
-      spacing: 14
-
-      ThumbLaunchRow {
-        Layout.fillWidth: true
-        label: "Theme"
-        currentValue: themeName || "—"
-        thumbnailPath: themePreview
-        buttonText: "Choose theme…"
-        onLaunch: runStyle("bash -lc 'theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\"'")
-      }
-
-      ThumbLaunchRow {
-        Layout.fillWidth: true
-        label: "Background"
-        currentValue: backgroundName || "—"
-        thumbnailPath: backgroundPath
-        buttonText: "Choose background…"
-        onLaunch: runStyle("bash -lc 'background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\"'")
-      }
-    }
 
     StyleToggleRow {
       label: "Window gaps"
@@ -1795,95 +1725,6 @@ Item {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: chip.clicked()
-    }
-  }
-
-  // Row showing a thumbnail of the current value on the left, label + current
-  // value in the middle, and a launch button on the right. Used for theme and
-  // background where the actual picker is an external Walker UI.
-  component ThumbLaunchRow: Rectangle {
-    id: tlr
-    property string label: ""
-    property string currentValue: "—"
-    property string thumbnailPath: ""
-    property string buttonText: "Choose…"
-    signal launch()
-
-    Layout.fillWidth: true
-    implicitHeight: 64
-    radius: root.cornerRadius
-    color: tlrArea.containsMouse
-      ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
-      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03)
-    border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-    border.width: 1
-
-    Behavior on color { ColorAnimation { duration: 100 } }
-
-    Rectangle {
-      id: tlrThumb
-      anchors.left: parent.left
-      anchors.top: parent.top
-      anchors.bottom: parent.bottom
-      anchors.margins: 8
-      width: height * 1.6
-      radius: root.cornerRadius
-      color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
-      border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.2)
-      border.width: 1
-      clip: true
-
-      Image {
-        anchors.fill: parent
-        anchors.margins: 1
-        source: tlr.thumbnailPath ? ("file://" + tlr.thumbnailPath) : ""
-        visible: tlr.thumbnailPath !== ""
-        fillMode: Image.PreserveAspectCrop
-        sourceSize.width: 240
-        asynchronous: true
-        cache: true
-      }
-    }
-
-    Column {
-      anchors.left: tlrThumb.right
-      anchors.leftMargin: 14
-      anchors.right: tlrButton.left
-      anchors.rightMargin: 14
-      anchors.verticalCenter: parent.verticalCenter
-      spacing: 2
-
-      Text {
-        text: tlr.label
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: 12
-        font.bold: true
-      }
-      Text {
-        text: tlr.currentValue
-        color: Qt.darker(root.foreground, 1.3)
-        font.family: root.fontFamily
-        font.pixelSize: 11
-        elide: Text.ElideRight
-        width: parent.width
-      }
-    }
-
-    ActionPill {
-      id: tlrButton
-      anchors.right: parent.right
-      anchors.rightMargin: 14
-      anchors.verticalCenter: parent.verticalCenter
-      text: tlr.buttonText
-      onClicked: tlr.launch()
-    }
-
-    MouseArea {
-      id: tlrArea
-      anchors.fill: parent
-      hoverEnabled: true
-      acceptedButtons: Qt.NoButton
     }
   }
 
