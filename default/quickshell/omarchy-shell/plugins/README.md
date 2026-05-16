@@ -31,7 +31,7 @@ and customization schema.
 
 Visual editor for the bar layout. Summoned by
 `omarchy-shell-ipc shell summon omarchy.settings "{}"` (which is what
-`omarchy launch settings` ultimately calls). Provides:
+`omarchy launch bar settings` ultimately calls). Provides:
 
 - bar position and center-anchor controls
 - per-section add/move/remove/edit of bar widget entries
