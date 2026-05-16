@@ -109,6 +109,8 @@ The Quickshell desktop runs as a single long-running process out of
 not start additional standalone `quickshell -p` instances for individual
 components.
 
+Run `omarchy restart shell` after making changes to QML files.
+
 Plugin contract:
 
 - Each plugin lives in its own directory under
