@@ -8,12 +8,15 @@ so they cannot be disabled.
 User-installed plugins live alongside these conceptually but on disk under
 `~/.config/omarchy/plugins/<plugin-id>/` rather than in this directory.
 
-| Plugin           | id                       | kinds        | activation  | entry point                                  |
-|------------------|--------------------------|--------------|-------------|----------------------------------------------|
-| Bar              | `omarchy.bar`            | `bar`        | persistent  | `bar/Bar.qml`                                |
-|  Settings         | `omarchy.settings`   | `panel`      | on-demand   | `settings/SettingsPanel.qml`          |
-| Image picker     | `omarchy.image-picker`   | `overlay`    | on-demand   | `image-picker/ImagePicker.qml`               |
-| Omarchy menu     | `omarchy.menu`           | `menu`       | on-demand   | `menu/Menu.qml`                              |
+| Plugin        | id                      | kinds     | activation | entry point                         |
+|---------------|-------------------------|-----------|------------|-------------------------------------|
+| Bar           | `omarchy.bar`           | `bar`     | persistent | `bar/Bar.qml`                       |
+| Bar settings  | `omarchy.settings`      | `panel`   | on-demand  | `settings/SettingsPanel.qml`        |
+| Image picker  | `omarchy.image-picker`  | `overlay` | on-demand  | `image-picker/ImagePicker.qml`      |
+| Omarchy menu  | `omarchy.menu`          | `menu`    | on-demand  | `menu/Menu.qml`                     |
+| Notifications | `omarchy.notifications` | `service` | persistent | `notifications/Service.qml`         |
+| OSD           | `omarchy.osd`           | `panel`   | persistent | `osd/Osd.qml`                       |
+| Polkit agent  | `omarchy.polkit`        | `service` | persistent | `polkit/PolkitAgent.qml`            |
 
 ## Bar
 
@@ -26,16 +29,14 @@ and customization schema.
 
 ## Bar settings
 
-Visual editor for the entire shell config. Summoned by
+Visual editor for the bar layout. Summoned by
 `omarchy-shell-ipc shell summon omarchy.settings "{}"` (which is what
 `omarchy launch settings` ultimately calls). Provides:
 
+- bar position and center-anchor controls
 - per-section add/move/remove/edit of bar widget entries
-- a separate "Other plugins" section for panels, overlays, services,
-  and menus (entries that live in `plugins[]` rather than the bar layout)
-- a Plugin Manager tab listing every discovered plugin with its manifest
-- a dynamic settings form driven by each widget's manifest schema, that
-  writes inline back to the corresponding shell.json entry
+- dynamic per-widget settings forms that write inline back to the
+  corresponding shell.json entry
 
 ## Image picker
 
@@ -63,6 +64,13 @@ clears it without writing a selection.
 
 The plugin has `keepLoaded: true` so the layer-shell window survives
 between summons within a single shell session.
+
+## Polkit agent
+
+Theme-aware authentication dialog for privileged actions. It uses
+Quickshell's native `Quickshell.Services.Polkit.PolkitAgent` backend and
+runs inside the long-lived `omarchy-shell` process, replacing the old
+`polkit-gnome-authentication-agent-1` autostart.
 
 ## Omarchy menu
 

@@ -34,7 +34,7 @@ Item {
   readonly property string imageCacheDir: cacheDir + "notification-images/"
   readonly property string styleStatePath: home + "/.local/state/omarchy/toggles/quickshell-menu.json"
 
-  // Corner radius is shared with omarchy-shell menu and settings panel —
+  // Corner radius is shared with omarchy-shell menu and bar settings panel —
   // `omarchy style corners <sharp|round>` writes this file once and every
   // surface reads it. Default 0 for sharp corners.
   property int cornerRadius: 0

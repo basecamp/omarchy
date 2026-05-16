@@ -18,7 +18,7 @@ Item {
   // The omarchy-shell host injects omarchyPath when it instantiates this Bar.
   // Default fallback keeps the file loadable in isolation (e.g. for QML tooling).
   required property string omarchyPath
-  // Injected by the host shell. Shared with the settings panel so both
+  // Injected by the host shell. Shared with the bar settings panel so both
   // see the same widget catalogue.
   required property var barWidgetRegistry
   // Injected by the host shell every time shell.json is reloaded. Holds the
