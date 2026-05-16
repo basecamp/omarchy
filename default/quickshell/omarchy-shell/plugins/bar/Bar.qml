@@ -1350,6 +1350,7 @@ Item {
       anchors.fill: parent
       acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
       hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
       onEntered: root.showTooltip(buttonRoot, buttonRoot.tooltipText)
       onExited: root.hideTooltip(buttonRoot)
       onClicked: function(mouse) { buttonRoot.pressed(mouse.button) }
@@ -1861,6 +1862,7 @@ Item {
       anchors.fill: parent
       acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
       hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
       onEntered: root.showTooltip(trayItemRoot, root.trayTooltip(modelData))
       onExited: root.hideTooltip(trayItemRoot)
       onClicked: function(mouse) {
