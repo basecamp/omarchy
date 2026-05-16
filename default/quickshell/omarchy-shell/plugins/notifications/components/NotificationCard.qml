@@ -22,7 +22,7 @@ Rectangle {
   // NotificationUrgency: Low=0, Normal=1, Critical=2 (upstream).
   property int urgency: 1
   property double timestamp: 0
-  property int cornerRadius: 10
+  property int cornerRadius: 0
 
   property real progress: 1.0
   property bool showProgress: false

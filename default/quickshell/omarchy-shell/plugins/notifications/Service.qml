@@ -36,8 +36,8 @@ Item {
 
   // Corner radius is shared with omarchy-shell menu and settings panel —
   // `omarchy style corners <sharp|round>` writes this file once and every
-  // surface reads it. Default 10 keeps the popup looking like it did pre-toggle.
-  property int cornerRadius: 10
+  // surface reads it. Default 0 for sharp corners.
+  property int cornerRadius: 0
 
   // Surfaces anchor relative to the omarchy bar so popups and history land
   // alongside the other shell panels rather than on top of the bar itself.
@@ -53,9 +53,9 @@ Item {
     try {
       var parsed = JSON.parse(raw || "{}")
       var n = Number(parsed.radius)
-      cornerRadius = isFinite(n) && n >= 0 ? n : 10
+      cornerRadius = isFinite(n) && n >= 0 ? n : 0
     } catch (e) {
-      cornerRadius = 10
+      cornerRadius = 0
     }
   }
 

@@ -51,7 +51,7 @@ Item {
   readonly property color colBorder: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.18)
   readonly property color colSurface: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.06)
   readonly property color colAccent: Color.accent
-  readonly property int cardRadius: notificationService ? notificationService.cornerRadius : 10
+  readonly property int cardRadius: notificationService ? notificationService.cornerRadius : 0
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
