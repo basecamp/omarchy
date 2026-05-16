@@ -179,7 +179,7 @@ Item {
     bar: root.bar
     open: root.popupOpen
     triggerMode: "click"
-    contentWidth: 520
+    contentWidth: 440
     contentHeight: card.implicitHeight + 28
 
     Column {
@@ -334,54 +334,60 @@ Item {
       }
 
       // ---- Forecast row: each cell has the day icon left of a day-name + hi/lo column.
-      Row {
-        id: forecastRow
+      //      Wrapped in an Item so the block of cells can be centered within the popup.
+      Item {
         visible: root.forecastDays.length > 0
         width: parent.width
+        height: forecastRow.height
 
-        Repeater {
-          model: root.forecastDays
+        Row {
+          id: forecastRow
+          anchors.horizontalCenter: parent.horizontalCenter
+          spacing: 44
 
-          Row {
-            required property var modelData
-            required property int index
-            width: forecastRow.width / Math.max(1, root.forecastDays.length)
-            spacing: 10
+          Repeater {
+            model: root.forecastDays
 
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.dayIcon(modelData)
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: 24
-            }
-
-            Column {
-              anchors.verticalCenter: parent.verticalCenter
-              spacing: 2
+            Row {
+              required property var modelData
+              required property int index
+              spacing: 10
 
               Text {
-                text: root.dayName(modelData.date).toUpperCase()
-                color: Qt.darker(root.bar.foreground, 1.4)
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.dayIcon(modelData)
+                color: root.bar.foreground
                 font.family: root.bar.fontFamily
-                font.pixelSize: 10
-                font.letterSpacing: 1
+                font.pixelSize: 24
               }
 
-              Row {
-                spacing: 6
+              Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
 
                 Text {
-                  text: root.bareTempForDay(modelData, "max")
-                  color: root.bar.foreground
+                  text: root.dayName(modelData.date).toUpperCase()
+                  color: Qt.darker(root.bar.foreground, 1.4)
                   font.family: root.bar.fontFamily
-                  font.pixelSize: 12
+                  font.pixelSize: 10
+                  font.letterSpacing: 1
                 }
-                Text {
-                  text: root.bareTempForDay(modelData, "min")
-                  color: Qt.darker(root.bar.foreground, 1.5)
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: 12
+
+                Row {
+                  spacing: 6
+
+                  Text {
+                    text: root.bareTempForDay(modelData, "max")
+                    color: root.bar.foreground
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: 12
+                  }
+                  Text {
+                    text: root.bareTempForDay(modelData, "min")
+                    color: Qt.darker(root.bar.foreground, 1.5)
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: 12
+                  }
                 }
               }
             }
