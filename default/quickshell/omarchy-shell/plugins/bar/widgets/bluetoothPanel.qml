@@ -99,8 +99,6 @@ Item {
     anchors.fill: parent
     bar: root.bar
     text: root.icon
-    tooltipText: root.adapter ? (root.adapter.enabled ? "Bluetooth: " + root.connectedDevices.length + " connected" : "Bluetooth off") : ""
-
     onPressed: function(b) {
       if (b === Qt.RightButton && root.adapter) root.adapter.enabled = !root.adapter.enabled
       else if (b === Qt.MiddleButton) root.bar.run("omarchy-launch-bluetooth")
