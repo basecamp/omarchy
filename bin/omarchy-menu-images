@@ -1,12 +1,11 @@
 #!/bin/bash
 
 # omarchy:summary=Open a generic image selector menu
-# omarchy:args=[--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] <image-dir>...
+# omarchy:args=[--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] <image-dir>...
 
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 
 selected_image=""
-colors_file=""
 print_name=false
 show_labels=false
 filterable=false
@@ -16,7 +15,7 @@ cache_only=false
 image_dirs=()
 
 usage() {
-  echo "Usage: omarchy-menu-images [--selected <image>] [--colors-file <path>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] <image-dir>..."
+  echo "Usage: omarchy-menu-images [--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--cache-only] <image-dir>..."
 }
 
 while [[ $# -gt 0 ]]; do
@@ -28,15 +27,6 @@ while [[ $# -gt 0 ]]; do
       fi
 
       selected_image="$2"
-      shift 2
-      ;;
-    --colors-file)
-      if (( $# < 2 )); then
-        usage >&2
-        exit 1
-      fi
-
-      colors_file="$2"
       shift 2
       ;;
     --print-name)
@@ -212,22 +202,14 @@ else
   fi
 fi
 
-colors_file=${colors_file:-$HOME/.config/omarchy/current/theme/image-picker-colors.json}
-colors_payload=""
-
-if [[ -f $colors_file ]]; then
-  colors_payload=$(<"$colors_file")
-fi
-
 if [[ $cache_only == true || $prepare_only == true ]]; then
   exit 0
 fi
 
-# Image rows and the raw colors blob can contain newlines and tabs, which
-# don't survive a positional bash argv into `quickshell ipc call`. Base64
-# them; the ImagePicker plugin Qt.atob()s on the other side.
+# Image rows can contain newlines and tabs, which don't survive a positional
+# bash argv into `quickshell ipc call`. Base64-encode for transit; the
+# ImagePicker plugin Qt.atob()s on the other side.
 rows_b64=$(printf '%s' "$rows" | base64 -w 0)
-colors_b64=$(printf '%s' "$colors_payload" | base64 -w 0)
 
 if ! omarchy-shell-ipc image-selector open \
      "" \
@@ -235,8 +217,6 @@ if ! omarchy-shell-ipc image-selector open \
      "$selected_list_image" \
      "$selection_file" \
      "$done_file" \
-     "" \
-     "$colors_b64" \
      "$show_labels" \
      "$filterable" >/dev/null; then
   echo "Image selector failed to accept request" >&2
