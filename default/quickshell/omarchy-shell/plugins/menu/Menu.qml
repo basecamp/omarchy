@@ -539,9 +539,7 @@ Item {
   function select(delta) {
     if (displayModel.count === 0) return
 
-    selectedIndex += delta
-    if (selectedIndex < 0) selectedIndex = 0
-    if (selectedIndex >= displayModel.count) selectedIndex = displayModel.count - 1
+    selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
     resultList.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
 
