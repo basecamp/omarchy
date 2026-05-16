@@ -178,6 +178,7 @@ Item {
     owner: root
     bar: root.bar
     open: root.popupOpen
+    centerOnBar: true
     triggerMode: "click"
     contentWidth: 440
     contentHeight: card.implicitHeight + 28
