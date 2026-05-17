@@ -19,6 +19,8 @@ Item {
   property var wifiNetworks: []
   property bool scanning: false
   property bool wifiStationAvailable: false
+  property string dnsProvider: ""
+  property string pendingDnsProvider: ""
 
   readonly property string kind: bar ? bar.networkKind : "disconnected"
   readonly property string label: bar ? bar.networkLabel : ""
@@ -36,6 +38,7 @@ Item {
 
   function refresh() {
     if (!detailsProc.running) detailsProc.running = true
+    if (!dnsProc.running) dnsProc.running = true
     if (!wifiProc.running) {
       scanning = true
       wifiProc.running = true
@@ -99,6 +102,31 @@ Item {
     var icons = ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"]
     var index = Math.max(0, Math.min(4, Math.ceil(strength / 20) - 1))
     return icons[index]
+  }
+
+  function updateDns(raw) {
+    var value = String(raw || "").trim()
+    dnsProvider = value || "DHCP"
+  }
+
+  function dnsCommand(provider) {
+    return "pkexec " + root.bar.shellQuote(root.bar.omarchyPath + "/bin/omarchy-setup-dns") + " " + root.bar.shellQuote(provider)
+  }
+
+  function setDns(provider) {
+    if (!root.bar || !provider || actionProc.running) return
+
+    if (provider === "Custom") {
+      var launcher = root.bar.shellQuote(root.bar.omarchyPath + "/bin/omarchy-launch-floating-terminal-with-presentation")
+      root.bar.run(launcher + " " + root.bar.shellQuote(root.dnsCommand(provider)))
+      root.popupOpen = false
+      return
+    }
+
+    root.pendingDnsProvider = provider
+    actionProc.command = ["bash", "-lc", root.dnsCommand(provider)]
+    actionProc.running = true
+    root.popupOpen = false
   }
 
   implicitWidth: button.implicitWidth
@@ -178,7 +206,36 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     }
   }
 
-  Process { id: actionProc }
+  Process {
+    id: dnsProc
+    command: ["bash", "-c", `
+dns=$(awk -F= '/^[[:space:]]*DNS[[:space:]]*=/ { value=$0; sub(/^[^=]*=/, "", value); print value; exit }' /etc/systemd/resolved.conf 2>/dev/null)
+compact=$(printf '%s' "$dns" | tr -d '[:space:]')
+if [[ -z $compact ]]; then
+  echo DHCP
+elif [[ $dns == *cloudflare-dns.com* || $dns == *"1.1.1.1"* || $dns == *"2606:4700:4700::1111"* ]]; then
+  echo Cloudflare
+elif [[ $dns == *dns.google* || $dns == *"8.8.8.8"* || $dns == *"2001:4860:4860::8888"* ]]; then
+  echo Google
+else
+  echo Custom
+fi
+`]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateDns(text)
+    }
+  }
+
+  Process {
+    id: actionProc
+    onExited: function(exitCode) {
+      if (root.pendingDnsProvider !== "") {
+        if (exitCode === 0) root.dnsProvider = root.pendingDnsProvider
+        root.pendingDnsProvider = ""
+      }
+    }
+  }
 
   Common.WidgetButton {
     id: button
@@ -369,6 +426,79 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           color: root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: 11
+        }
+      }
+
+      // DNS provider selection.
+      Rectangle {
+        width: parent.width
+        height: 1
+        color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      }
+
+      Column {
+        width: parent.width
+        spacing: 8
+
+        Text {
+          text: "DNS provider"
+          color: Qt.darker(root.bar.foreground, 1.4)
+          font.family: root.bar.fontFamily
+          font.pixelSize: 10
+          font.bold: true
+        }
+
+        Row {
+          width: parent.width
+          spacing: 6
+
+          Common.PillButton {
+            text: "DHCP"
+            tooltipText: "Use DNS from DHCP"
+            tooltipBackground: root.bar.background
+            tooltipForeground: root.bar.foreground
+            foreground: root.bar.foreground
+            horizontalPadding: 10
+            verticalPadding: 6
+            active: root.dnsProvider === "DHCP"
+            onClicked: root.setDns("DHCP")
+          }
+
+          Common.PillButton {
+            text: "Cloudflare"
+            tooltipText: "Set DNS to Cloudflare"
+            tooltipBackground: root.bar.background
+            tooltipForeground: root.bar.foreground
+            foreground: root.bar.foreground
+            horizontalPadding: 10
+            verticalPadding: 6
+            active: root.dnsProvider === "Cloudflare"
+            onClicked: root.setDns("Cloudflare")
+          }
+
+          Common.PillButton {
+            text: "Google"
+            tooltipText: "Set DNS to Google"
+            tooltipBackground: root.bar.background
+            tooltipForeground: root.bar.foreground
+            foreground: root.bar.foreground
+            horizontalPadding: 10
+            verticalPadding: 6
+            active: root.dnsProvider === "Google"
+            onClicked: root.setDns("Google")
+          }
+
+          Common.PillButton {
+            text: "Custom"
+            tooltipText: "Set custom DNS servers"
+            tooltipBackground: root.bar.background
+            tooltipForeground: root.bar.foreground
+            foreground: root.bar.foreground
+            horizontalPadding: 10
+            verticalPadding: 6
+            active: root.dnsProvider === "Custom"
+            onClicked: root.setDns("Custom")
+          }
         }
       }
 
