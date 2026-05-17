@@ -15,6 +15,7 @@
         --colorAccentFg: ${fg} !important;
         --colorHighlightBg: color-mix(in srgb, ${accent}, ${bg} 25%) !important;
         --colorHighlightFg: ${fg} !important;
+        --colorFgFadedMore: color-mix(in srgb, ${fg}, gray 50%) !important; /* hints */
         --colorFgFadedMost: color-mix(in srgb, ${fg}, gray 75%) !important; /* address bar */
         --colorBgIntense: color-mix(in srgb, ${bg}, white 7%) !important; /* address bar */
         --colorFgIntense: ${fg} !important; /* address bar */
