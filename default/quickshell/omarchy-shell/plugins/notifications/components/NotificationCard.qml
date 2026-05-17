@@ -216,7 +216,7 @@ Rectangle {
           text: root.summary
           font.family: "Liberation Sans"
           color: Color.notifications.text
-          font.pixelSize: 13
+          font.pixelSize: 14
           font.bold: true
           wrapMode: Text.WordWrap
           elide: Text.ElideRight
@@ -231,7 +231,7 @@ Rectangle {
           textFormat: Text.StyledText
           font.family: "Liberation Sans"
           color: root.bodyColor
-          font.pixelSize: 13
+          font.pixelSize: 14
           wrapMode: Text.WordWrap
           elide: Text.ElideRight
           maximumLineCount: 3
