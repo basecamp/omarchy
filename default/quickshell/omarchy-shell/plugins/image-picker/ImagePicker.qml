@@ -404,7 +404,7 @@ Item {
   PanelWindow {
     id: panel
 
-    visible: true
+    visible: root.opened
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "omarchy-image-selector"
