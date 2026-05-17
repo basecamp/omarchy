@@ -55,7 +55,7 @@ hl.bind("SUPER + CTRL + ALT + W", hl.dsp.exec_cmd("omarchy-notification-weather"
 
 hl.bind("SUPER + CTRL + A", hl.dsp.exec_cmd("omarchy-launch-audio"), { description = "Audio controls" })
 hl.bind("SUPER + CTRL + B", hl.dsp.exec_cmd("omarchy-launch-bluetooth"), { description = "Bluetooth controls" })
-hl.bind("SUPER + CTRL + W", hl.dsp.exec_cmd("omarchy-launch-wifi"), { description = "Wifi controls" })
+hl.bind("SUPER + CTRL + W", hl.dsp.exec_cmd("omarchy-shell-ipc networkPanel toggle"), { description = "Wifi panel" })
 hl.bind("SUPER + CTRL + T", hl.dsp.exec_cmd("omarchy-launch-tui btop"), { description = "Activity" })
 
 hl.bind("SUPER + CTRL + X", hl.dsp.exec_cmd("voxtype record toggle"), { description = "Toggle dictation" })
