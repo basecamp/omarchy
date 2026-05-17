@@ -53,8 +53,6 @@ elif [[ $step == "5%-" ]]; then
   step="$target%"
 fi
 
-# Set the actual brightness of the display device.
+# Set brightness of the display device.
 brightnessctl -d "$device" set "$step" >/dev/null
-
-# Use the OSD to display the new brightness setting.
 omarchy-osd -i brightness -p "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"
