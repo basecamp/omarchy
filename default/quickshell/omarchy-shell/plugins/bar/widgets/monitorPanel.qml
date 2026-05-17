@@ -129,7 +129,7 @@ Item {
 
   Process {
     id: stateProc
-    command: ["bash", "-lc", "omarchy-brightness-display-get 2>/dev/null || true; monitors_json=$(hyprctl monitors all -j); printf '%s\\n' \"$monitors_json\" | jq -r 'def internal: test(\"^(eDP|LVDS|DSI)-\"); ([.[] | select(.name | internal)][0].name // \"\"), ([.[] | select((.name | internal) | not)][0].name // \"\"), ([.[] | select((.name | internal) and .disabled != true)][0].name // \"\"), ([.[] | select((.name | internal) and .mirrorOf != \"none\")][0].mirrorOf // \"\")'; omarchy-hyprland-monitor-focused 2>/dev/null || echo; omarchy-hyprland-monitor-scaling-get 2>/dev/null || echo; printf '%s\\n' \"$monitors_json\" | jq -c '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true)}]'"]
+    command: ["bash", "-lc", "omarchy-brightness-display 2>/dev/null || true; monitors_json=$(hyprctl monitors all -j); printf '%s\\n' \"$monitors_json\" | jq -r 'def internal: test(\"^(eDP|LVDS|DSI)-\"); ([.[] | select(.name | internal)][0].name // \"\"), ([.[] | select((.name | internal) | not)][0].name // \"\"), ([.[] | select((.name | internal) and .disabled != true)][0].name // \"\"), ([.[] | select((.name | internal) and .mirrorOf != \"none\")][0].mirrorOf // \"\")'; omarchy-hyprland-monitor-focused 2>/dev/null || echo; omarchy-hyprland-monitor-scaling-get 2>/dev/null || echo; printf '%s\\n' \"$monitors_json\" | jq -c '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true)}]'"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
