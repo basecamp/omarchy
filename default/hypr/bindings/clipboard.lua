@@ -13,4 +13,4 @@ end
 o.bind("SUPER + C", "Universal copy", send_shortcut_once("CTRL", "Insert"))
 o.bind("SUPER + V", "Universal paste", send_shortcut_once("SHIFT", "Insert"))
 o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", "X"))
-o.bind("SUPER + CTRL + V", "Clipboard manager", { omarchy = "omarchy-shell-ipc shell toggle omarchy.clipboard-picker \"{}\"" })
+o.bind("SUPER + CTRL + V", "Clipboard manager", "omarchy-shell-ipc shell toggle omarchy.clipboard-picker \"{}\"")
