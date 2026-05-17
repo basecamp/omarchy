@@ -68,11 +68,10 @@ done
 # Tag as a user-action toast so it pops through DND. See dnd-fix-plan.md.
 args+=("-a" "omarchy-action" "-u" "$urgency")
 
-# Send the glyph both as a custom hint and in a summary prefix.
-# Quickshell strips the prefix back into the icon slot; other notification
-# daemons still get the familiar glyph + spacing presentation.
+# Send the glyph in a summary prefix inline. This keeps the notification
+# thin and compact, replicating the old Mako style, because Quickshell won't
+# render the 40x40 icon slot if the custom hint isn't present.
 if [[ -n $glyph ]]; then
-  args+=("--hint=string:omarchy-glyph:$glyph")
   headline="$glyph    $headline"
 fi
 

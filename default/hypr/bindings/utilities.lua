@@ -49,8 +49,8 @@ hl.bind("SUPER + CTRL + R", hl.dsp.exec_cmd("omarchy-shell-ipc menu toggle remin
 hl.bind("SUPER + CTRL + ALT + R", hl.dsp.exec_cmd("omarchy-reminder show"), { description = "Show reminders" })
 hl.bind("SUPER + SHIFT + CTRL + R", hl.dsp.exec_cmd("omarchy-reminder clear"), { description = "Clear reminders" })
 
-hl.bind("SUPER + CTRL + ALT + T", hl.dsp.exec_cmd([[notify-send -a omarchy-action -u low "    $(date +"%A %H:%M  ·  %d %B %Y  ·  Week %V")"]]), { description = "Show time" })
-hl.bind("SUPER + CTRL + ALT + B", hl.dsp.exec_cmd([[notify-send -a omarchy-action -u low "$(omarchy-battery-status)"]]), { description = "Show battery remaining" })
+hl.bind("SUPER + CTRL + ALT + T", hl.dsp.exec_cmd("omarchy-notification-time"), { description = "Show time" })
+hl.bind("SUPER + CTRL + ALT + B", hl.dsp.exec_cmd("omarchy-notification-battery"), { description = "Show battery remaining" })
 hl.bind("SUPER + CTRL + ALT + W", hl.dsp.exec_cmd("omarchy-notification-weather"), { description = "Show weather" })
 
 hl.bind("SUPER + CTRL + A", hl.dsp.exec_cmd("omarchy-launch-audio"), { description = "Audio controls" })
