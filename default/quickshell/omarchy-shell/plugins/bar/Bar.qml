@@ -26,11 +26,8 @@ Item {
   // the bar just renders whatever it's handed. The bar font follows the
   // OS-level fontconfig monospace binding — it is not stored in shell.json.
   required property var barConfig
-  // Injected by the host shell so the bar can detect Noctalia-compat plugins
-  // and look up manifests when wiring per-widget Noctalia pluginApi.
-  property var pluginRegistry: null
-  // Injected by the host shell. Used so Noctalia plugins that reach for
-  // shell-wide APIs (openPanel, currentScreen) can do so via pluginApi.
+  // Injected by the host shell. Used for shell-wide actions such as opening
+  // settings and persisting inline widget state.
   property var shell: null
   // Mirrors the on-disk `bar-off` flag so the user can hide the bar without
   // killing the entire shell. Wired to BarPanel.visible below; updated by the
@@ -91,40 +88,6 @@ Item {
 
   function releasePopout(owner) {
     if (activePopout === owner) activePopout = null
-  }
-
-  // -------------------------------------------------- Noctalia compat helpers
-  //
-  // The shell owns pluginApi creation and Main.qml service instantiation now;
-  // bar widgets just look up their api by moduleName. Keeping section/index
-  // helpers here because they're needed for Noctalia bar-widget injection
-  // (widgetId, section, sectionWidgetIndex, sectionWidgetsCount).
-
-  function sectionOfEntry(entry) {
-    var sections = ["left", "center", "right"]
-    for (var s = 0; s < sections.length; s++) {
-      var list = layoutConfig[sections[s]] || []
-      for (var i = 0; i < list.length; i++) {
-        if (list[i] === entry) return sections[s]
-      }
-    }
-    return ""
-  }
-
-  function indexOfEntry(entry) {
-    var section = sectionOfEntry(entry)
-    var list = section ? (layoutConfig[section] || []) : []
-    for (var i = 0; i < list.length; i++) if (list[i] === entry) return i
-    return -1
-  }
-
-  function entriesOfSection(section) {
-    return Array.isArray(layoutConfig[section]) ? layoutConfig[section] : []
-  }
-
-  function noctaliaPluginApiFor(moduleName) {
-    if (!shell || typeof shell.noctaliaPluginApiFor !== "function") return null
-    return shell.noctaliaPluginApiFor(moduleName)
   }
 
   readonly property bool vertical: position === "left" || position === "right"
@@ -1269,20 +1232,6 @@ Item {
       if ("bar" in target) target.bar = root
       if ("moduleName" in target) target.moduleName = moduleName
       if ("settings" in target) target.settings = moduleSettings
-
-      // Noctalia compat injection. Only kicks in for plugins whose manifest
-      // was translated from Noctalia shape; for our first-party widgets these
-      // properties don't exist on the target item so nothing happens.
-      var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[moduleName] : null
-      if (manifest && manifest.__noctaliaCompat) {
-        if ("pluginApi" in target)            target.pluginApi          = root.noctaliaPluginApiFor(moduleName)
-        if ("widgetId" in target)             target.widgetId           = moduleName
-        if ("section" in target)              target.section            = root.sectionOfEntry(entry)
-        if ("sectionWidgetIndex" in target)   target.sectionWidgetIndex = root.indexOfEntry(entry)
-        if ("sectionWidgetsCount" in target)  target.sectionWidgetsCount = root.entriesOfSection(root.sectionOfEntry(entry)).length
-        if ("screen" in target && root.QsWindow && root.QsWindow.window)
-          target.screen = root.QsWindow.window.screen
-      }
     }
 
     Component {

@@ -1,10 +1,2 @@
 module qs.Commons
 singleton Color 1.0 Color.qml
-singleton Style 1.0 Style.qml
-singleton Logger 1.0 Logger.qml
-singleton Settings 1.0 Settings.qml
-singleton I18n 1.0 I18n.qml
-singleton Time 1.0 Time.qml
-singleton Icons 1.0 Icons.qml
-singleton ThemeIcons 1.0 ThemeIcons.qml
-singleton ShellState 1.0 ShellState.qml

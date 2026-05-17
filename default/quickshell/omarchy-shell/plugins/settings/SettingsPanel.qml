@@ -370,7 +370,7 @@ Item {
         displayName: meta.displayName || manifest.name || key,
         name: meta.displayName || manifest.name || key,
         description: meta.description || manifest.description || "",
-        category: meta.category || (manifest.__noctaliaCompat ? "Noctalia" : "Plugin"),
+        category: meta.category || "Plugin",
         allowMultiple: meta.allowMultiple === true,
         settingsForm: meta.settingsForm || "",
         schema: Array.isArray(meta.schema) ? meta.schema : [],
@@ -402,15 +402,7 @@ Item {
     var meta = widgetMetadata(id)
     if (meta.settingsForm) return true
     if (widgetSchema(id).length > 0) return true
-    var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
-    if (manifest && manifest.__noctaliaCompat && manifest.entryPoints && manifest.entryPoints.settings)
-      return true
     return false
-  }
-
-  function widgetIsNoctaliaPlugin(id) {
-    var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
-    return !!(manifest && manifest.__noctaliaCompat)
   }
 
   function widgetAllowsMultiple(id) {
@@ -465,8 +457,7 @@ Item {
       var allowsMultiple = widgetAllowsMultiple(id)
       if (!allowsMultiple && existingInBar[id]) continue
       result.push({ id: id, name: widgetName(id), description: widgetDescription(id),
-        elsewhere: allowsMultiple && !!existingInBar[id] && !existsHere,
-        isNoctalia: widgetIsNoctaliaPlugin(id) })
+        elsewhere: allowsMultiple && !!existingInBar[id] && !existsHere })
     }
     return result
   }
@@ -986,7 +977,6 @@ Item {
 
             Text {
               text: modelData.name
-                + (modelData.isNoctalia ? "  (Noctalia)" : "")
                 + (modelData.elsewhere ? "  (elsewhere)" : "")
               color: root.foreground
               font.family: root.fontFamily
@@ -1246,9 +1236,6 @@ Item {
       case "weatherSettings": return weatherSettingsComponent
       }
     }
-    var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
-    if (manifest && manifest.__noctaliaCompat && manifest.entryPoints && manifest.entryPoints.settings)
-      return noctaliaSettingsComponent
     if (widgetSchema(id).length > 0) return dynamicSettingsComponent
     return null
   }
@@ -1259,53 +1246,6 @@ Item {
       schema: root.widgetSchema(entry.id || "")
       foregroundColor: root.foreground
       fontFamilyName: root.fontFamily
-    }
-  }
-
-  Component {
-    id: noctaliaSettingsComponent
-
-    Item {
-      id: noctaliaForm
-      property var entry: ({})
-      property string pluginId: entry && entry.id ? String(entry.id) : ""
-      property var manifest: pluginId && root.pluginRegistry
-        ? root.pluginRegistry.installedPlugins[pluginId] : null
-
-      function saveSettings() {
-        if (settingsLoader.item && typeof settingsLoader.item.saveSettings === "function") {
-          settingsLoader.item.saveSettings()
-        } else {
-          console.warn("Noctalia settings form has no saveSettings():", pluginId)
-        }
-      }
-
-      implicitHeight: settingsLoader.item ? settingsLoader.item.implicitHeight : 0
-      implicitWidth: settingsLoader.item ? settingsLoader.item.implicitWidth : 0
-
-      Loader {
-        id: settingsLoader
-        anchors.fill: parent
-        source: {
-          if (!noctaliaForm.manifest) return ""
-          return root.pluginRegistry.entryPointUrl(noctaliaForm.manifest, "settings")
-        }
-        asynchronous: false
-        onLoaded: {
-          if (!item) return
-          var api = (root.shell && typeof root.shell.noctaliaPluginApiFor === "function")
-            ? root.shell.noctaliaPluginApiFor(noctaliaForm.pluginId) : null
-          if (api && "pluginApi" in item) item.pluginApi = api
-          if ("screen" in item && root.QsWindow && root.QsWindow.window)
-            item.screen = root.QsWindow.window.screen
-        }
-        onStatusChanged: {
-          if (status === Loader.Error) {
-            console.warn("noctalia Settings.qml failed for " + noctaliaForm.pluginId + ":",
-              sourceComponent ? sourceComponent.errorString() : "")
-          }
-        }
-      }
     }
   }
 
