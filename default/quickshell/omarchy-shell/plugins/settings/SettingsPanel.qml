@@ -17,7 +17,7 @@ Item {
   function open(payloadJson) {
     closingFromHost = false
     window.visible = true
-    Qt.callLater(focusFirstBodyItem)
+    Qt.callLater(parkFocusOnSink)
   }
 
   function close() {
@@ -506,7 +506,7 @@ Item {
     onVisibleChanged: {
       if (!visible && !root.closingFromHost && root.shell && typeof root.shell.hide === "function")
         root.shell.hide("omarchy.settings")
-      if (visible) Qt.callLater(root.focusFirstBodyItem)
+      if (visible) Qt.callLater(root.parkFocusOnSink)
     }
 
     FocusScope {
@@ -634,16 +634,10 @@ Item {
       Layout.fillWidth: true
       spacing: 14
 
-      Cmp.NDropdown {
-        label: "Position"
+      PositionButtonGroup {
         value: root.draft.bar.position
-        options: ["top", "right", "bottom", "left"]
-        foreground: root.foreground
-        background: root.background
-        accent: root.accent
-        fontFamily: root.fontFamily
-        cornerRadius: root.cornerRadius
         onChanged: function(v) {
+          if (root.draft.bar.position === v) return
           var next = root.cloneJson(root.draft)
           next.bar.position = v
           root.draft = next
@@ -708,6 +702,95 @@ Item {
   }
 
   // ===================== shared chrome =====================================
+  component PositionButtonGroup: Item {
+    id: positionGroup
+
+    property string value: "top"
+    readonly property var positions: ["top", "right", "bottom", "left"]
+
+    signal changed(string value)
+
+    implicitWidth: positionColumn.implicitWidth
+    implicitHeight: positionColumn.implicitHeight
+
+    Column {
+      id: positionColumn
+      spacing: 4
+
+      Text {
+        text: "Position"
+        color: Qt.darker(root.foreground, 1.4)
+        font.family: root.fontFamily
+        font.pixelSize: 10
+        font.bold: true
+      }
+
+      Row {
+        spacing: 6
+
+        Repeater {
+          model: positionGroup.positions
+
+          delegate: PositionButton {
+            required property string modelData
+
+            text: modelData
+            selected: positionGroup.value === modelData
+            onClicked: positionGroup.changed(modelData)
+          }
+        }
+      }
+    }
+  }
+
+  component PositionButton: Rectangle {
+    id: positionButton
+
+    property string text: ""
+    property bool selected: false
+
+    signal clicked()
+
+    activeFocusOnTab: true
+    Keys.onReturnPressed: positionButton.clicked()
+    Keys.onEnterPressed: positionButton.clicked()
+    Keys.onSpacePressed: positionButton.clicked()
+
+    implicitWidth: Math.max(56, positionLabel.implicitWidth + 22)
+    implicitHeight: 28
+    radius: root.cornerRadius
+    color: positionButton.selected
+      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.18)
+      : (positionArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08) : root.background)
+    border.color: positionButton.selected
+      ? root.accent
+      : (positionButton.activeFocus ? root.foreground : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.4))
+    border.width: positionButton.selected ? 2 : (positionButton.activeFocus ? 2 : 1)
+
+    Behavior on color { ColorAnimation { duration: 100 } }
+
+    Text {
+      id: positionLabel
+      anchors.centerIn: parent
+      text: positionButton.text
+      color: positionButton.selected ? root.accent : root.foreground
+      font.family: root.fontFamily
+      font.pixelSize: 12
+      font.bold: positionButton.selected
+    }
+
+    MouseArea {
+      id: positionArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: {
+        positionButton.forceActiveFocus()
+        positionButton.clicked()
+      }
+    }
+  }
+
   component BarToggleRow: Rectangle {
     id: toggleRow
 
