@@ -54,9 +54,6 @@
         },
         {
           "id": "battery"
-        },
-        {
-          "id": "systemStats"
         }
       ]
     }

@@ -38,7 +38,6 @@ Example `shell.json` (bar subtree only shown):
         { "id": "calendar", "format": "HH:mm" }
       ],
       "right": [
-        { "id": "systemStats" },
         { "id": "audioPanel" },
         { "id": "battery" }
       ]
