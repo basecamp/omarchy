@@ -170,7 +170,18 @@ QtObject {
     shellValues = parsed
   }
 
+  property bool themeReloadSuspended: false
+
+  function suspendThemeReloads() {
+    themeReloadSuspended = true
+  }
+
+  function resumeThemeReloads() {
+    themeReloadSuspended = false
+  }
+
   function reloadTheme() {
+    if (themeReloadSuspended) return
     colorsFile.reload()
     shellFile.reload()
   }
@@ -184,7 +195,7 @@ QtObject {
     watchChanges: true
     printErrors: false
     onLoaded: root.loadColors(text())
-    onFileChanged: reload()
+    onFileChanged: root.reloadTheme()
   }
   property FileView shellFile: FileView {
     id: shellFile
@@ -193,7 +204,7 @@ QtObject {
     printErrors: false
     onLoaded: root.loadShell(text())
     onLoadFailed: root.loadShell("")
-    onFileChanged: reload()
+    onFileChanged: root.reloadTheme()
   }
   property FileView themeNameFile: FileView {
     path: Quickshell.env("HOME") + "/.config/omarchy/current/theme.name"

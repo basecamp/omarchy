@@ -792,8 +792,14 @@ ShellRoot {
       var shellRaw = ""
       try { colorsRaw = Qt.atob(String(colorsB64 || "")) } catch (e) { colorsRaw = "" }
       try { shellRaw = Qt.atob(String(shellB64 || "")) } catch (e2) { shellRaw = "" }
+      NoctaliaCommons.Color.resumeThemeReloads()
       NoctaliaCommons.Color.loadColors(colorsRaw)
       NoctaliaCommons.Color.loadShell(shellRaw)
+      return "ok"
+    }
+
+    function suspendThemeReloads(): string {
+      NoctaliaCommons.Color.suspendThemeReloads()
       return "ok"
     }
 
