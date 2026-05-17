@@ -1,6 +1,0 @@
-#!/bin/bash
-
-# omarchy:summary=Get focused Hyprland monitor scaling
-# omarchy:examples=omarchy-hyprland-monitor-scaling-get
-
-hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .scale'

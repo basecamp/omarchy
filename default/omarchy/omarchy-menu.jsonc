@@ -82,7 +82,6 @@
   "trigger.toggle.workspace-layout": {"icon":"󱂬","label":"Workspace Layout","action":"omarchy-hyprland-workspace-layout-toggle"},
   "trigger.toggle.window-gaps": {"icon":"","label":"Window Gaps","action":"omarchy-hyprland-window-gaps-toggle"},
   "trigger.toggle.one-window-ratio": {"icon":"","label":"1-Window Ratio","keywords":"square","action":"omarchy-hyprland-window-single-square-aspect-toggle"},
-  "trigger.toggle.monitor-scaling": {"icon":"󰍹","label":"Monitor Scaling","keywords":"display","action":"omarchy-hyprland-monitor-scaling-cycle"},
   "trigger.toggle.direct-boot": {"icon":"","label":"Direct Boot","action":"omarchy-launch-floating-terminal-with-presentation omarchy-config-direct-boot"},
   "trigger.toggle.passwordless-sudo": {"icon":"󰟵","label":"Passwordless Sudo","action":"omarchy-launch-floating-terminal-with-presentation omarchy-sudo-passwordless"},
 
