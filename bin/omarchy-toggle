@@ -1,27 +1,19 @@
 #!/bin/bash
 
 # omarchy:summary=Toggle Omarchy features between enabled and disabled
-# omarchy:args=[--enabled-notification <text>] [--disabled-notification <text>] <flag-name>
+# omarchy:args=<flag-name>
 
-ENABLED_NOTIFICATION=""
-DISABLED_NOTIFICATION=""
-
-while [[ $# -gt 1 ]]; do
-  case $1 in
-    --enabled-notification) ENABLED_NOTIFICATION="$2"; shift 2 ;;
-    --disabled-notification) DISABLED_NOTIFICATION="$2"; shift 2 ;;
-    *) break ;;
-  esac
-done
+if (($# < 1)); then
+  echo "Usage: omarchy-toggle <flag-name>" >&2
+  exit 1
+fi
 
 FLAG_NAME="$1"
 FLAG="$HOME/.local/state/omarchy/toggles/$FLAG_NAME"
 
 if [[ -f $FLAG ]]; then
-  rm $FLAG
-  [[ -n $DISABLED_NOTIFICATION ]] && notify-send -a omarchy-action -u low "$DISABLED_NOTIFICATION"
+  rm -f "$FLAG"
 else
-  mkdir -p "$(dirname $FLAG)"
-  touch $FLAG
-  [[ -n $ENABLED_NOTIFICATION ]] && notify-send -a omarchy-action -u low "$ENABLED_NOTIFICATION"
+  mkdir -p "$(dirname "$FLAG")"
+  touch "$FLAG"
 fi

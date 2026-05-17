@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# omarchy:summary=Send a desktop notification with Omarchy glyph and body spacing
-# omarchy:args=<headline> [description] [-g <glyph>] [-u <low|normal|critical>] [notify-send options]
+# omarchy:summary=Send an Omarchy desktop notification
+# omarchy:args=[-g <glyph>] [-u <low|normal|critical>] <headline> [description] [notify-send options]
 # omarchy:examples=omarchy notification send "Reminder" "5 minutes are up" -g 󰔛 -u critical
 
 set -euo pipefail
 
 headline=""
 description=""
-glyph=""
+glyph=
 urgency="low"
 args=()
 
@@ -19,7 +19,7 @@ parse_omarchy_option() {
       echo "Missing value for $1" >&2
       exit 1
     fi
-    glyph="$2"
+    glyph=$2
     return 0
     ;;
   -u | --urgency)
@@ -65,15 +65,12 @@ while (($# > 0)); do
   fi
 done
 
+if [[ -n $glyph ]]; then
+  args+=(--hint=string:omarchy-glyph:$glyph)
+fi
+
 # Tag as a user-action toast so it pops through DND. See dnd-fix-plan.md.
 args+=("-a" "omarchy-action" "-u" "$urgency")
-
-# Send the glyph in a summary prefix inline. This keeps the notification
-# thin and compact, replicating the old Mako style, because Quickshell won't
-# render the 40x40 icon slot if the custom hint isn't present.
-if [[ -n $glyph ]]; then
-  headline="$glyph    $headline"
-fi
 
 if [[ -n $description ]]; then
   notify-send "${args[@]}" "$headline" "$description"

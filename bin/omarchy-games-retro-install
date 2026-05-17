@@ -10,7 +10,7 @@ if (( $# == 0 )); then
   mapfile -t cores < <(omarchy-games-retro-cores)
 
   if (( ${#cores[@]} == 0 )); then
-    omarchy-notification-send -g "󰯉" "No RetroArch cores found" "/usr/lib/libretro"
+    omarchy-notification-send -g 󰯉 "No RetroArch cores found" "/usr/lib/libretro"
     exit 1
   fi
 
@@ -73,4 +73,4 @@ EOF
 chmod +x "$desktop_file"
 update-desktop-database "$desktop_dir" &>/dev/null || true
 
-omarchy-notification-send -g "󰯉" "$game_name installed" "Start it with Super + Space"
+omarchy-notification-send -g 󰯉 "$game_name installed" "Start it with Super + Space"

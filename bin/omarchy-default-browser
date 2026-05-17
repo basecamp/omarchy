@@ -37,4 +37,4 @@ xdg-mime default "$desktop_id" x-scheme-handler/http
 xdg-mime default "$desktop_id" x-scheme-handler/https
 xdg-mime default "$desktop_id" text/html
 
-notify-send -a omarchy-action -u low "$glyph    $name is now the default browser"
+omarchy-notification-send -g $glyph "$name is now the default browser"
