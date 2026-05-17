@@ -1079,10 +1079,17 @@ Item {
         MouseArea {
           anchors.fill: parent
           acceptedButtons: Qt.LeftButton | Qt.RightButton
+          onClicked: function(mouse) {
+            if (mouse.button === Qt.RightButton) {
+              root.openBarSettings()
+              mouse.accepted = true
+            }
+          }
           onDoubleClicked: function(mouse) {
-            if (mouse.button === Qt.RightButton) root.openBarSettings()
-            else root.toggleTransparency()
-            mouse.accepted = true
+            if (mouse.button !== Qt.RightButton) {
+              root.toggleTransparency()
+              mouse.accepted = true
+            }
           }
         }
 
