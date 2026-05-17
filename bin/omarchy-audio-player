@@ -6,21 +6,18 @@
 
 action="${1:-play-pause}"
 
+case "$action" in
+  next) fallback_message="Next track" ;;
+  previous) fallback_message="Previous track" ;;
+  play) fallback_message="Playing" ;;
+  pause) fallback_message="Paused" ;;
+  *) fallback_message="Play/pause" ;;
+esac
+
 playerctl "$action" >/dev/null 2>&1 || true
 sleep 0.05
 
 message=$(playerctl metadata --format '{{title}}' 2>/dev/null || true)
-if [[ -z $message ]]; then
-  message=$(playerctl metadata --format '{{playerName}}' 2>/dev/null || true)
-fi
-if [[ -z $message ]]; then
-  case "$action" in
-    next) message="Next track" ;;
-    previous) message="Previous track" ;;
-    play) message="Playing" ;;
-    pause) message="Paused" ;;
-    *) message="Play/pause" ;;
-  esac
-fi
+[[ -n $message ]] || message=$(playerctl metadata --format '{{playerName}}' 2>/dev/null || true)
 
-omarchy-osd -i media -m "$message"
+omarchy-osd -i media -m "${message:-$fallback_message}"
