@@ -30,8 +30,7 @@ Item {
   property int contentSpacing: 6
   property int cardWidth: 800
   property int cardHeight: 600
-  property int rowHeight: 60
-  property int cellWidth: (cardWidth - contentMargin * 2 - contentSpacing) / 2
+  property int rowHeight: 50
 
   function open(payloadJson) {
     root.opened = true
@@ -211,15 +210,9 @@ Item {
             if (root.filterText.length > 0) root.setFilter(root.filterText.slice(0, -1))
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
-            root.select(-2)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Down) {
-            root.select(2)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Left) {
             root.select(-1)
             event.accepted = true
-          } else if (event.key === Qt.Key_Right) {
+          } else if (event.key === Qt.Key_Down) {
             root.select(1)
             event.accepted = true
           } else if (event.key === Qt.Key_PageUp) {
@@ -267,96 +260,106 @@ Item {
           width: parent.width
           height: parent.height - root.headerHeight - root.contentSpacing
 
-          GridView {
-            id: resultList
+          Row {
             anchors.fill: parent
-            model: displayModel
-            clip: true
-            cellWidth: root.cellWidth
-            cellHeight: root.rowHeight
-            boundsBehavior: Flickable.StopAtBounds
+            spacing: root.contentSpacing
 
-            delegate: Rectangle {
-              required property int index
-              required property string identifier
-              required property string previewText
-              required property string previewImage
-              required property string previewType
+            ListView {
+              id: resultList
+              width: parent.width / 2 - root.contentSpacing / 2
+              height: parent.height
+              model: displayModel
+              clip: true
+              spacing: 4
+              boundsBehavior: Flickable.StopAtBounds
 
-              width: root.cellWidth - 4
-              height: root.rowHeight - 4
-              radius: root.cornerRadius
-              color: index === root.selectedIndex ? root.withAlpha(root.foreground, 0.08) : root.withAlpha(root.foreground, mouseArea.containsMouse ? 0.045 : 0)
+              delegate: Rectangle {
+                required property int index
+                required property string identifier
+                required property string previewText
+                required property string previewType
 
-              Rectangle {
-                visible: false
-                width: 4
-                height: parent.height - 18
-                radius: Math.min(root.cornerRadius, 4)
-                color: root.accent
-                anchors.left: parent.left
-                anchors.leftMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-              }
+                width: ListView.view.width
+                height: root.rowHeight
+                radius: root.cornerRadius
+                color: index === root.selectedIndex ? root.withAlpha(root.foreground, 0.08) : root.withAlpha(root.foreground, mouseArea.containsMouse ? 0.045 : 0)
 
-              Item {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                anchors.topMargin: 8
-                anchors.bottomMargin: 8
-
-                Text {
-                  visible: parent.parent.previewType === "text"
-                  width: parent.width
-                  height: parent.height
-                  text: parent.parent.previewText
-                  color: index === root.selectedIndex ? root.accent : root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: 14
-                  elide: Text.ElideRight
-                  wrapMode: Text.NoWrap
-                  verticalAlignment: Text.AlignVCenter
+                Rectangle {
+                  visible: false
+                  width: 4
+                  height: parent.height - 18
+                  radius: Math.min(root.cornerRadius, 4)
+                  color: root.accent
+                  anchors.left: parent.left
+                  anchors.leftMargin: 8
+                  anchors.verticalCenter: parent.verticalCenter
                 }
 
                 Item {
-                  visible: parent.parent.previewType === "file"
-                  width: parent.width
-                  height: parent.height
-                  
-                  Image {
-                    source: parent.parent.parent.previewImage
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: height * 1.5
-                    fillMode: Image.PreserveAspectFit
-                  }
+                  anchors.fill: parent
+                  anchors.leftMargin: 12
+                  anchors.rightMargin: 12
+                  anchors.topMargin: 8
+                  anchors.bottomMargin: 8
 
                   Text {
-                    anchors.left: parent.children[0].right
-                    anchors.leftMargin: 12
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Image"
-                    color: root.foreground
-                    opacity: 0.6
+                    width: parent.width
+                    height: parent.height
+                    text: parent.parent.previewType === "text" ? parent.parent.previewText : "Image"
+                    color: index === root.selectedIndex ? root.accent : root.foreground
                     font.family: root.fontFamily
                     font.pixelSize: 14
-                    font.italic: true
+                    font.italic: parent.parent.previewType === "file"
+                    opacity: parent.parent.previewType === "file" ? 0.6 : 1.0
+                    elide: Text.ElideRight
+                    wrapMode: Text.NoWrap
+                    verticalAlignment: Text.AlignVCenter
+                  }
+                }
+
+                MouseArea {
+                  id: mouseArea
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    root.selectedIndex = index
+                    root.activateIndex(index)
                   }
                 }
               }
+            }
 
-              MouseArea {
-                id: mouseArea
+            Rectangle {
+              width: parent.width / 2 - root.contentSpacing / 2
+              height: parent.height
+              radius: root.cornerRadius
+              color: root.withAlpha(root.background, 0.5)
+              border.color: root.withAlpha(root.border, 0.1)
+              border.width: 1
+              clip: true
+
+              property var activeRow: displayModel.count > 0 && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count ? displayModel.get(root.selectedIndex) : null
+
+              Text {
+                visible: parent.activeRow && parent.activeRow.previewType === "text"
                 anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  root.selectedIndex = index
-                  root.activateIndex(index)
-                }
+                anchors.margins: 16
+                text: parent.activeRow ? parent.activeRow.previewText : ""
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 14
+                wrapMode: Text.WrapAnywhere
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignTop
+              }
+
+              Image {
+                visible: parent.activeRow && parent.activeRow.previewType === "file"
+                anchors.fill: parent
+                anchors.margins: 16
+                source: parent.activeRow ? parent.activeRow.previewImage : ""
+                fillMode: Image.PreserveAspectFit
               }
             }
           }
