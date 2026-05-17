@@ -199,28 +199,12 @@ Item {
       anchors.fill: parent
       spacing: 14
 
-      Row {
-        width: parent.width
-        spacing: 8
-
-        Text {
-          text: "Display"
-          color: Qt.darker(root.bar.foreground, 1.5)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-          font.bold: true
-          anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Text {
-          text: root.focusedMonitor ? "· " + root.focusedMonitor : ""
-          color: Qt.darker(root.bar.foreground, 1.8)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-          elide: Text.ElideRight
-          width: parent.width - 70
-          anchors.verticalCenter: parent.verticalCenter
-        }
+      Text {
+        text: "Brightness"
+        color: Qt.darker(root.bar.foreground, 1.5)
+        font.family: root.bar.fontFamily
+        font.pixelSize: 11
+        font.bold: true
       }
 
       Row {
@@ -280,7 +264,7 @@ Item {
         spacing: 8
 
         Text {
-          text: "Scale" + (root.monitorScale ? " · " + root.monitorScale + "x" : "")
+          text: "Scale"
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily
           font.pixelSize: 11
