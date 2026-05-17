@@ -8,7 +8,6 @@
 set -euo pipefail
 
 OMARCHY_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-OMARCHY_PATH=${OMARCHY_PATH:-$(cd -- "$OMARCHY_BIN_DIR/.." && pwd)}
 REPEAT=5
 KEEP_CACHE=false
 
@@ -124,14 +123,12 @@ chmod +x "$stub_bin/omarchy-menu-images"
 
 benchmark_env=(
   env
-  "OMARCHY_PATH=$OMARCHY_PATH"
   "XDG_CACHE_HOME=$benchmark_cache"
   "PATH=$stub_bin:$OMARCHY_BIN_DIR:$PATH"
 )
 
 thumbnail_env=(
   env
-  "OMARCHY_PATH=$OMARCHY_PATH"
   "XDG_CACHE_HOME=$thumbnail_cache"
   "PATH=$stub_bin:$OMARCHY_BIN_DIR:$PATH"
 )

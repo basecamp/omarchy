@@ -3,7 +3,6 @@
 # omarchy:summary=Send a fire-and-forget IPC call to a running omarchy-shell
 # omarchy:hidden=true
 
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 SHELL_QML="$OMARCHY_PATH/default/quickshell/omarchy-shell/shell.qml"
 
 if (( $# < 2 )); then

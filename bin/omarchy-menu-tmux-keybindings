@@ -24,7 +24,7 @@ while (($#)); do
 done
 
 if [[ ! -f $config_file ]]; then
-  default_config="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/config/tmux/tmux.conf"
+  default_config="$OMARCHY_PATH/config/tmux/tmux.conf"
 
   if [[ -f $default_config ]]; then
     config_file="$default_config"

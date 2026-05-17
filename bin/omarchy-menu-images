@@ -3,8 +3,6 @@
 # omarchy:summary=Open a generic image selector menu
 # omarchy:args=[--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>...
 
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-
 selected_image=""
 print_name=false
 show_labels=false

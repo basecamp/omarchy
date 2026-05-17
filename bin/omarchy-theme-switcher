@@ -2,7 +2,6 @@
 
 # omarchy:summary=Open the Omarchy theme switcher
 
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 preload=false
 
 if [[ $1 == "--preload" ]]; then

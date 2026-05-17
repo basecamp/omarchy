@@ -58,6 +58,10 @@ Example:
 # omarchy:aliases=omarchy screenshot
 ```
 
+# Runtime Environment
+
+- Commands in `bin/` should rely on `$OMARCHY_PATH` from the uwsm environment; do not set or default `OMARCHY_PATH` manually there.
+
 # Install Scripts
 
 Install entry points (`install.sh`, `boot.sh`) use `#!/bin/bash`. Many scripts under `install/` are sourced via `run_logged` and intentionally do not have shebangs.
