@@ -41,5 +41,3 @@ elif [[ -f $MONITOR_LUA ]] && grep -Eq '^hl\.monitor\(\{ output = "", mode = "pr
     -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$NEW_GDK_SCALE"'")|' \
     "$MONITOR_LUA"
 fi
-
-notify-send -a omarchy-action -u low "󰍹    Display scaling set to ${NEW_SCALE}x"
