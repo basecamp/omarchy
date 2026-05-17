@@ -51,7 +51,7 @@ hl.bind("SUPER + SHIFT + CTRL + R", hl.dsp.exec_cmd("omarchy-reminder clear"), {
 
 hl.bind("SUPER + CTRL + ALT + T", hl.dsp.exec_cmd([[notify-send -a omarchy-action -u low "    $(date +"%A %H:%M  ·  %d %B %Y  ·  Week %V")"]]), { description = "Show time" })
 hl.bind("SUPER + CTRL + ALT + B", hl.dsp.exec_cmd([[notify-send -a omarchy-action -u low "$(omarchy-battery-status)"]]), { description = "Show battery remaining" })
-hl.bind("SUPER + CTRL + ALT + W", hl.dsp.exec_cmd([[notify-send -a omarchy-action -u low "$(omarchy-weather-status)"]]), { description = "Show weather" })
+hl.bind("SUPER + CTRL + ALT + W", hl.dsp.exec_cmd("omarchy-notification-weather"), { description = "Show weather" })
 
 hl.bind("SUPER + CTRL + A", hl.dsp.exec_cmd("omarchy-launch-audio"), { description = "Audio controls" })
 hl.bind("SUPER + CTRL + B", hl.dsp.exec_cmd("omarchy-launch-bluetooth"), { description = "Bluetooth controls" })
