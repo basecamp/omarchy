@@ -66,7 +66,14 @@ Item {
     
     for (var i = 0; i < root.items.length; i++) {
       var entry = root.items[i]
-      var textMatch = (entry.preview && entry.preview.toLowerCase().indexOf(query) >= 0)
+      var isPassword = (entry.meta === "password")
+      
+      var textMatch = false
+      if (isPassword) {
+        textMatch = false // Passwords shouldn't match plain text search queries
+      } else {
+        textMatch = (entry.preview && entry.preview.toLowerCase().indexOf(query) >= 0)
+      }
       
       if (!query || textMatch) {
         displayModel.append({
@@ -74,6 +81,7 @@ Item {
           previewText: entry.preview_type === "text" ? entry.preview.replace(/\n/g, " ") : "",
           previewImage: entry.preview_type === "file" ? ("file://" + entry.preview) : "",
           previewType: entry.preview_type || "text",
+          isPassword: isPassword,
           index: outCount
         })
         outCount++
@@ -278,6 +286,7 @@ Item {
                 required property string identifier
                 required property string previewText
                 required property string previewType
+                required property bool isPassword
 
                 width: ListView.view.width
                 height: root.rowHeight
@@ -305,12 +314,12 @@ Item {
                   Text {
                     width: parent.width
                     height: parent.height
-                    text: parent.parent.previewType === "text" ? parent.parent.previewText : "Image"
+                    text: parent.parent.isPassword ? "••••••••" : (parent.parent.previewType === "text" ? parent.parent.previewText : "Image")
                     color: index === root.selectedIndex ? root.accent : root.foreground
                     font.family: root.fontFamily
                     font.pixelSize: 14
-                    font.italic: parent.parent.previewType === "file"
-                    opacity: parent.parent.previewType === "file" ? 0.6 : 1.0
+                    font.italic: parent.parent.previewType === "file" || parent.parent.isPassword
+                    opacity: (parent.parent.previewType === "file" || parent.parent.isPassword) ? 0.6 : 1.0
                     elide: Text.ElideRight
                     wrapMode: Text.NoWrap
                     verticalAlignment: Text.AlignVCenter
@@ -345,7 +354,7 @@ Item {
                 visible: parent.activeRow && parent.activeRow.previewType === "text"
                 anchors.fill: parent
                 anchors.margins: 16
-                text: parent.activeRow ? parent.activeRow.previewText : ""
+                text: parent.activeRow ? (parent.activeRow.isPassword ? "••••••••" : parent.activeRow.previewText) : ""
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: 14
