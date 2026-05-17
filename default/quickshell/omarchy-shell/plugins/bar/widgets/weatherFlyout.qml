@@ -202,6 +202,7 @@ Item {
           Text {
             id: heroIcon
             anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: 10
             text: root.label || "—"
             color: root.bar.foreground
             font.family: root.bar.fontFamily
@@ -234,6 +235,7 @@ Item {
         Column {
           id: heroRight
           anchors.right: parent.right
+          anchors.rightMargin: 20
           anchors.verticalCenter: parent.verticalCenter
           spacing: 12
 
@@ -299,7 +301,7 @@ Item {
             Column {
               spacing: 5
               Text {
-                text: "HUMIDITY"
+                text: "HUMID"
                 color: Qt.darker(root.bar.foreground, 1.5)
                 font.family: root.bar.fontFamily
                 font.pixelSize: 11
