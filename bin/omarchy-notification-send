@@ -6,16 +6,49 @@
 
 set -euo pipefail
 
-if (($# < 1)); then
-  echo "Usage: omarchy-notification-send <headline> [description] [-g <glyph>] [-u <low|normal|critical>] [notify-send options]"
-  exit 1
-fi
-
-headline=$1
+headline=""
 description=""
 glyph=""
 urgency="low"
 args=()
+
+parse_omarchy_option() {
+  case $1 in
+  -g | --glyph)
+    if (($# < 2)); then
+      echo "Missing value for $1" >&2
+      exit 1
+    fi
+    glyph="$2"
+    return 0
+    ;;
+  -u | --urgency)
+    if (($# < 2)); then
+      echo "Missing value for $1" >&2
+      exit 1
+    fi
+    urgency="$2"
+    return 0
+    ;;
+  esac
+
+  return 1
+}
+
+while (($# > 0)); do
+  if parse_omarchy_option "$@"; then
+    shift 2
+  else
+    break
+  fi
+done
+
+if (($# < 1)); then
+  echo "Usage: omarchy-notification-send [-g <glyph>] [-u <low|normal|critical>] <headline> [description] [notify-send options]"
+  exit 1
+fi
+
+headline=$1
 shift
 
 if (($# > 0)) && [[ $1 != -* ]]; then
@@ -24,20 +57,12 @@ if (($# > 0)) && [[ $1 != -* ]]; then
 fi
 
 while (($# > 0)); do
-  case $1 in
-    -g|--glyph)
-      glyph="$2"
-      shift 2
-      ;;
-    -u|--urgency)
-      urgency="$2"
-      shift 2
-      ;;
-    *)
-      args+=("$1")
-      shift
-      ;;
-  esac
+  if parse_omarchy_option "$@"; then
+    shift 2
+  else
+    args+=("$1")
+    shift
+  fi
 done
 
 summary="$glyph    $headline"
