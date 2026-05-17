@@ -16,20 +16,18 @@ Item {
   IpcHandler {
     target: "weatherFlyout"
     function show(): void {
-      root.popupOpen = true
-      root.refresh()
-      autoCloseTimer.start()
+      root.popupOpen = !root.popupOpen
+      if (root.popupOpen) root.refresh()
     }
-  }
 
-  Timer {
-    id: autoCloseTimer
-    interval: 5000
-    onTriggered: root.popupOpen = false
+    function toggle(): void {
+      show()
+    }
   }
 
   // Parsed wttr.in j1 response. Kept on failure so stale data stays visible.
   property var report: null
+  property string wttrLocation: ""
 
   readonly property string label: bar ? bar.weatherText : ""
   readonly property string klass: bar ? bar.weatherClass : ""
@@ -49,7 +47,7 @@ Item {
   // Auto-refresh interval in minutes; clamped to a sane minimum.
   readonly property int refreshMinutes: Math.max(1, parseInt(setting("refreshMinutes", 15), 10) || 15)
 
-  readonly property string reportLocation:  areaInfo && areaInfo.areaName && areaInfo.areaName[0] ? areaInfo.areaName[0].value : ""
+  readonly property string reportLocation:  wttrLocation || (areaInfo && areaInfo.areaName && areaInfo.areaName[0] ? areaInfo.areaName[0].value : "")
   readonly property string reportCondition: current && current.weatherDesc && current.weatherDesc[0] ? current.weatherDesc[0].value : ""
   readonly property string reportTemp:      current ? formatTemp(useImperial ? current.temp_F : current.temp_C) : ""
   readonly property string reportTempNum:   current ? String(useImperial ? current.temp_F : current.temp_C) : ""
@@ -69,6 +67,7 @@ Item {
 
   function refresh() {
     if (!forecastProc.running) forecastProc.running = true
+    if (!locationProc.running) locationProc.running = true
   }
 
   function formatTemp(value) {
@@ -152,6 +151,19 @@ Item {
     }
   }
 
+  Process {
+    id: locationProc
+    command: ["bash", "-lc", "curl -fsS --max-time 4 'https://wttr.in?format=%l' 2>/dev/null"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var raw = String(text || "").trim()
+        if (!raw) return
+        root.wttrLocation = raw.split(",")[0]
+      }
+    }
+  }
+
   Timer {
     id: refreshTimer
     interval: root.refreshMinutes * 60 * 1000
@@ -218,7 +230,7 @@ Item {
           Text {
             id: heroIcon
             anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: 10
+            anchors.verticalCenterOffset: 5
             text: root.label || "—"
             color: root.bar.foreground
             font.family: root.bar.fontFamily
