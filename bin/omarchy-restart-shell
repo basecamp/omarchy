@@ -3,7 +3,6 @@
 # omarchy:summary=Restart the Omarchy shell
 # omarchy:examples=omarchy restart shell
 
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 CONFIG_DIR="$OMARCHY_PATH/default/quickshell/omarchy-shell"
 
 quickshell kill -p "$CONFIG_DIR" >/dev/null 2>&1 || true
