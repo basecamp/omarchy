@@ -2,7 +2,8 @@
 -- shell-wide bar / menu / popouts are layer-shell; the bar settings panel
 -- is a regular Hyprland window via Quickshell's FloatingWindow.
 
--- Keep the menu instant: no layer-shell fade/slide animation.
+-- Keep the bar and menu instant: no layer-shell fade/slide animation.
+hl.layer_rule({ match = { namespace = "omarchy-bar" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "omarchy-menu" }, no_anim = true, animation = "none" })
 
 -- Image selector and emoji picker overlays should also pop without animation.
