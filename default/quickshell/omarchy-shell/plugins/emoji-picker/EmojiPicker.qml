@@ -48,8 +48,14 @@ Item {
     root.opened = false
   }
 
+  function dismiss() {
+    root.opened = false
+    if (root.shell && typeof root.shell.hide === "function")
+      root.shell.hide((root.manifest && root.manifest.id) || "omarchy.emoji-picker")
+  }
+
   function toggle() {
-    if (root.opened) root.close()
+    if (root.opened) root.dismiss()
     else root.open("{}")
   }
 
@@ -133,7 +139,7 @@ Item {
 
   function applySelected(emoji) {
     if (!emoji) return
-    root.opened = false
+    root.dismiss()
     var escEmoji = emoji.replace(/'/g, "'\\''")
     Quickshell.execDetached(["bash", "-lc", "wl-copy '" + escEmoji + "'; sleep 0.15; wtype '" + escEmoji + "' 2>/dev/null || true"])
   }
@@ -184,7 +190,7 @@ Item {
 
     MouseArea {
       anchors.fill: parent
-      onClicked: root.close()
+      onClicked: root.dismiss()
     }
 
     Rectangle {
@@ -208,7 +214,7 @@ Item {
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) {
             if (root.filterText) root.setFilter("")
-            else root.close()
+            else root.dismiss()
             event.accepted = true
           } else if (event.key === Qt.Key_Backspace) {
             if (root.filterText.length > 0) root.setFilter(root.filterText.slice(0, -1))
