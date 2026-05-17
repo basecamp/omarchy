@@ -38,7 +38,10 @@ Item {
 
   function refresh() {
     if (!detailsProc.running) detailsProc.running = true
-    if (!dnsProc.running) dnsProc.running = true
+    if (!dnsProc.running) {
+      dnsProc.command = ["bash", "-lc", root.dnsCommand("")]
+      dnsProc.running = true
+    }
     if (!wifiProc.running) {
       scanning = true
       wifiProc.running = true
@@ -110,7 +113,9 @@ Item {
   }
 
   function dnsCommand(provider) {
-    return "pkexec " + root.bar.shellQuote(root.bar.omarchyPath + "/bin/omarchy-setup-dns") + " " + root.bar.shellQuote(provider)
+    var command = root.bar ? root.bar.shellQuote(root.bar.omarchyPath + "/bin/omarchy-dns") : "omarchy-dns"
+    if (provider) command += " " + root.bar.shellQuote(provider)
+    return command
   }
 
   function setDns(provider) {
@@ -208,19 +213,6 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
 
   Process {
     id: dnsProc
-    command: ["bash", "-c", `
-dns=$(awk -F= '/^[[:space:]]*DNS[[:space:]]*=/ { value=$0; sub(/^[^=]*=/, "", value); print value; exit }' /etc/systemd/resolved.conf 2>/dev/null)
-compact=$(printf '%s' "$dns" | tr -d '[:space:]')
-if [[ -z $compact ]]; then
-  echo DHCP
-elif [[ $dns == *cloudflare-dns.com* || $dns == *"1.1.1.1"* || $dns == *"2606:4700:4700::1111"* ]]; then
-  echo Cloudflare
-elif [[ $dns == *dns.google* || $dns == *"8.8.8.8"* || $dns == *"2001:4860:4860::8888"* ]]; then
-  echo Google
-else
-  echo Custom
-fi
-`]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateDns(text)
