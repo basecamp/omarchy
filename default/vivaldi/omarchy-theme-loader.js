@@ -15,7 +15,8 @@
         --colorAccentFg: ${fg} !important;
         --colorHighlightBg: color-mix(in srgb, ${accent}, ${bg} 25%) !important;
         --colorHighlightFg: ${fg} !important;
-        --colorFgIntense: ${fg} !important; /* address bar font */
+        --colorBgIntense: color-mix(in srgb, ${bg}, white 7%) !important; /* address bar */
+        --colorFgIntense: ${fg} !important; /* address bar */
         --colorBgLightIntense: color-mix(in srgb, ${bg}, ${fg} 10%) !important;
       }`;
       last = colors;
