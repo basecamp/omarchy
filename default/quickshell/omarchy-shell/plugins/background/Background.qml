@@ -262,7 +262,7 @@ Item {
       MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onDoubleClicked: function(mouse) {
+        onClicked: function(mouse) {
           if (mouse.button === Qt.RightButton) root.openThemeSwitcher()
           else root.openSelector()
           mouse.accepted = true
