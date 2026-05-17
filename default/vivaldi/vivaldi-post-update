@@ -1,5 +1,6 @@
 #!/bin/bash
 
+set -eu
 cd /opt/vivaldi/resources/vivaldi
 
 JS="style/omarchy.js"
