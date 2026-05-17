@@ -4,10 +4,8 @@
 
 if pgrep -x hypridle >/dev/null; then
   pkill -x hypridle
-  omarchy-notification-send -g 󱫖 "Stop locking computer when idle"
 else
   uwsm-app -- hypridle >/dev/null 2>&1 &
-  omarchy-notification-send -g 󱫖 "Now locking computer when idle"
 fi
 
 omarchy-shell-ipc --if-running bar refreshIndicators >/dev/null 2>&1 || true
