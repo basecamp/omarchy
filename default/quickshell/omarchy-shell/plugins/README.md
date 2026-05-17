@@ -13,6 +13,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Bar           | `omarchy.bar`           | `bar`     | persistent | `bar/Bar.qml`                       |
 | Bar settings  | `omarchy.settings`      | `panel`   | on-demand  | `settings/SettingsPanel.qml`        |
 | Image picker  | `omarchy.image-picker`  | `overlay` | on-demand  | `image-picker/ImagePicker.qml`      |
+| Emoji picker  | `omarchy.emoji-picker`  | `overlay` | on-demand  | `emoji-picker/EmojiPicker.qml`      |
 | Omarchy menu  | `omarchy.menu`          | `menu`    | on-demand  | `menu/Menu.qml`                     |
 | Notifications | `omarchy.notifications` | `service` | persistent | `notifications/Service.qml`         |
 | OSD           | `omarchy.osd`           | `panel`   | persistent | `osd/Osd.qml`                       |

@@ -37,4 +37,4 @@ hl.bind("SUPER + SHIFT + ALT + X", hl.dsp.exec_cmd([[omarchy-launch-webapp "http
 -- Logitech MX Keys examples:
 -- hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("omarchy-capture-screenshot"))
 -- hl.bind("SUPER + H", hl.dsp.exec_cmd("voxtype record toggle"))
--- hl.bind("SUPER + PERIOD", hl.dsp.exec_cmd("omarchy-launch-walker -m symbols"))
+-- hl.bind("SUPER + PERIOD", hl.dsp.exec_cmd("omarchy-shell-ipc shell toggle omarchy.emoji-picker \"{}\""))
