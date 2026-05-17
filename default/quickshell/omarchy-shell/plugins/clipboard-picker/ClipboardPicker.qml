@@ -276,7 +276,7 @@ Item {
               required property string previewType
 
               width: ListView.view.width
-              height: root.rowHeight
+              height: previewType === "text" ? root.rowHeight : 240
               radius: root.cornerRadius
               color: index === root.selectedIndex ? root.withAlpha(root.foreground, 0.08) : root.withAlpha(root.foreground, mouseArea.containsMouse ? 0.045 : 0)
 
@@ -318,24 +318,8 @@ Item {
                   
                   Image {
                     source: parent.parent.parent.previewImage
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: height * 1.5
+                    anchors.fill: parent
                     fillMode: Image.PreserveAspectFit
-                  }
-
-                  Text {
-                    anchors.left: parent.children[0].right
-                    anchors.leftMargin: 12
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Image"
-                    color: root.foreground
-                    opacity: 0.6
-                    font.family: root.fontFamily
-                    font.pixelSize: 14
-                    font.italic: true
                   }
                 }
               }
