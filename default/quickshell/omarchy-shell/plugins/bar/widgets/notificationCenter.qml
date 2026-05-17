@@ -30,6 +30,22 @@ Item {
     ? hostShell.firstPartyServiceFor("omarchy.notifications")
     : null
 
+  function isChromiumDerived(app, appIcon) {
+    var source = (String(app || "") + "\n" + String(appIcon || "")).toLowerCase()
+    return source.indexOf("chrom") >= 0 || source.indexOf("brave") >= 0 ||
+           source.indexOf("vivaldi") >= 0 || source.indexOf("microsoft-edge") >= 0 ||
+           source.indexOf("opera") >= 0
+  }
+
+  function sanitizeBody(s, app, appIcon) {
+    var text = String(s || "").replace(/<img[^>]*>/gi, "")
+    if (!isChromiumDerived(app, appIcon)) return text
+
+    return text
+      .replace(/^\s*<a\b[^>]*>\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/[^<\s]*)?\s*<\/a>\s*/i, "")
+      .replace(/^\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?\s+/i, "")
+  }
+
   readonly property int pendingCount: notificationService ? notificationService.pendingModel.count : 0
   readonly property int pastCount: notificationService ? notificationService.pastModel.count : 0
   readonly property bool dnd: notificationService ? notificationService.doNotDisturb : false
@@ -272,6 +288,7 @@ Item {
             image.indexOf("image://icon//") === 0 || image.indexOf("file://") === 0)
           readonly property string smallIconSource: image.length > 0 ? image : appIcon
           readonly property bool hasIcon: !hasMedia && smallIconSource.length > 0
+          readonly property string sanitizedBody: root.sanitizeBody(body, app, appIcon)
 
           width: listView.width
           implicitHeight: rowContent.implicitHeight + 20
@@ -334,10 +351,10 @@ Item {
 
               Text {
                 Layout.fillWidth: true
-                visible: rowCard.body.length > 0
-                text: String(rowCard.body).replace(/<img[^>]*>/gi, "")
-                                font.family: root.bar ? root.bar.fontFamily : ""
-textFormat: Text.PlainText
+                visible: rowCard.sanitizedBody.length > 0
+                text: rowCard.sanitizedBody
+                font.family: root.bar ? root.bar.fontFamily : ""
+                textFormat: Text.PlainText
                 color: root.colDim
                 font.pixelSize: 11
                 wrapMode: Text.WordWrap

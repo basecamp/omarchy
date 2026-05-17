@@ -66,6 +66,13 @@ Rectangle {
   readonly property bool hasGlyph: glyph.length > 0
   readonly property bool inlineGlyph: summary.match(/^[^\s]+\s{2,}/) !== null
   readonly property bool hasSmallIcon: !mediaMode && !inlineGlyph && (smallIconSource.length > 0 || hasGlyph)
+  readonly property bool chromiumDerived: {
+    var source = (app + "\n" + appIcon).toLowerCase()
+    return source.indexOf("chrom") >= 0 || source.indexOf("brave") >= 0 ||
+           source.indexOf("vivaldi") >= 0 || source.indexOf("microsoft-edge") >= 0 ||
+           source.indexOf("opera") >= 0
+  }
+  readonly property string sanitizedBody: sanitizeBody(body)
 
   readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
   readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
@@ -73,12 +80,15 @@ Rectangle {
   readonly property color accentColor: urgency === 2 ? Color.urgent : (urgency === 0 ? dimColor : Color.notifications.countdown)
 
   function sanitizeBody(s) {
-    return String(s)
-      .replace(/<img[^>]*>/gi, "")
-      // Chromium prepends the site origin to some web-push bodies
-      // (e.g. "web.whatsapp.com Message text"). The app/icon already
-      // identifies the sender, so hide that noisy URL/domain prefix.
-      .replace(/^(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?\/?\s+/i, "")
+    var text = String(s).replace(/<img[^>]*>/gi, "")
+    if (!chromiumDerived) return text
+
+    // Chromium web notifications often prefix the body with the sending
+    // origin, sometimes as a hyperlink. The browser icon already identifies
+    // the source, so drop only that leading URL/domain.
+    return text
+      .replace(/^\s*<a\b[^>]*>\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/[^<\s]*)?\s*<\/a>\s*/i, "")
+      .replace(/^\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?\s+/i, "")
   }
 
   implicitWidth: 380
@@ -216,8 +226,8 @@ Rectangle {
         Text {
           Layout.fillWidth: true
           Layout.topMargin: 2
-          visible: root.body.length > 0
-          text: root.sanitizeBody(root.body)
+          visible: root.sanitizedBody.length > 0
+          text: root.sanitizedBody
           textFormat: Text.StyledText
           font.family: "Liberation Sans"
           color: root.bodyColor
