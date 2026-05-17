@@ -192,7 +192,9 @@ Item {
     owner: root
     bar: root.bar
     open: root.popupOpen
-    contentWidth: 380
+    // Match the width/inset of the window below so the popup outline
+    // overlays cleanly instead of bleeding past the underlying frame.
+    contentWidth: 370
     contentHeight: Math.min(560, panelColumn.implicitHeight + 28)
 
     ScrollView {
@@ -296,7 +298,7 @@ Item {
 
               width: panelColumn.width
               height: deviceRow.implicitHeight + 10
-              radius: 4
+              radius: 0
               color: deviceArea.pressed
                 ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.22)
                 : deviceArea.containsMouse
@@ -447,7 +449,7 @@ Item {
 
               width: panelColumn.width
               height: sourceRow.implicitHeight + 10
-              radius: 4
+              radius: 0
               color: sourceArea.pressed
                 ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.22)
                 : sourceArea.containsMouse
