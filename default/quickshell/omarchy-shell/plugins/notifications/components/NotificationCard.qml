@@ -64,7 +64,7 @@ Rectangle {
   // `appIcon` (-i flag) still get one.
   readonly property string smallIconSource: image.length > 0 ? image : appIcon
   readonly property bool hasGlyph: glyph.length > 0
-  readonly property bool inlineGlyph: summary.match(/^\S\s{2,}/) !== null
+  readonly property bool inlineGlyph: summary.match(/^[^\s]+\s{2,}/) !== null
   readonly property bool hasSmallIcon: !mediaMode && !inlineGlyph && (smallIconSource.length > 0 || hasGlyph)
 
   readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
@@ -73,7 +73,12 @@ Rectangle {
   readonly property color accentColor: urgency === 2 ? Color.urgent : (urgency === 0 ? dimColor : Color.notifications.countdown)
 
   function sanitizeBody(s) {
-    return String(s).replace(/<img[^>]*>/gi, "")
+    return String(s)
+      .replace(/<img[^>]*>/gi, "")
+      // Chromium prepends the site origin to some web-push bodies
+      // (e.g. "web.whatsapp.com Message text"). The app/icon already
+      // identifies the sender, so hide that noisy URL/domain prefix.
+      .replace(/^(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?\/?\s+/i, "")
   }
 
   implicitWidth: 380
@@ -164,7 +169,7 @@ Rectangle {
         // Hide the slot when the icon failed to resolve (themed-icon name
         // not in the user's icon theme) AND we don't have a glyph fallback
         // — prevents rendering Qt's pink broken-image placeholder.
-        visible: root.hasGlyph || (!root.mediaMode && smallIconSource.length > 0 && smallIconImage.status !== Image.Error)
+        visible: root.hasSmallIcon && (root.hasGlyph || smallIconImage.status !== Image.Error)
 
         Image {
           id: smallIconImage
