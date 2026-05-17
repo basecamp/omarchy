@@ -5,8 +5,9 @@
 -- Keep the menu instant: no layer-shell fade/slide animation.
 hl.layer_rule({ match = { namespace = "omarchy-menu" }, no_anim = true, animation = "none" })
 
--- Image selector overlay should also pop without animation.
+-- Image selector and emoji picker overlays should also pop without animation.
 hl.layer_rule({ match = { namespace = "omarchy-image-selector" }, no_anim = true, animation = "none" })
+hl.layer_rule({ match = { namespace = "omarchy-emoji-picker" }, no_anim = true, animation = "none" })
 
 -- Bar settings floats centered with a sensible default size instead of
 -- tiling — it's a transient dialog, not a workspace surface.
