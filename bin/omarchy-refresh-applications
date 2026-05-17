@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Ensure all default .desktop, web apps, TUIs, and npx wrappers are installed.
+# omarchy:summary=Ensure all default .desktop, web apps, TUIs, and npm wrappers are installed.
 
 mkdir -p ~/.local/share/icons/hicolor/48x48/apps/
 cp ~/.local/share/omarchy/applications/icons/*.png ~/.local/share/icons/hicolor/48x48/apps/
@@ -15,7 +15,7 @@ if omarchy-cmd-present alacritty; then
   cp ~/.local/share/omarchy/default/alacritty/alacritty.desktop ~/.local/share/applications/
 fi
 
-# Refresh the webapps, TUIs, and npx wrappers
+# Refresh the webapps, TUIs, and npm wrappers
 bash $OMARCHY_PATH/install/packaging/icons.sh
 bash $OMARCHY_PATH/install/packaging/webapps.sh
 bash $OMARCHY_PATH/install/packaging/tuis.sh
