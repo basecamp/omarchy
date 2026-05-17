@@ -6,26 +6,6 @@
 
 set -euo pipefail
 
-provider_from_arg() {
-  case "${1:-}" in
-  Cloudflare | cloudflare)
-    echo "Cloudflare"
-    ;;
-  Google | google)
-    echo "Google"
-    ;;
-  DHCP | dhcp)
-    echo "DHCP"
-    ;;
-  Custom | custom)
-    echo "Custom"
-    ;;
-  *)
-    return 1
-    ;;
-  esac
-}
-
 current_dns_provider() {
   local dns=""
   local compact=""
@@ -53,27 +33,10 @@ current_dns_provider() {
   fi
 }
 
-self_path() {
-  local self="${BASH_SOURCE[0]}"
-
-  if [[ $self != /* ]]; then
-    self=$(command -v -- "$self")
-  fi
-
-  readlink -f "$self"
-}
-
 require_root() {
-  if (( EUID == 0 )); then
-    return
+  if (( EUID != 0 )); then
+    exec pkexec omarchy-dns "$@"
   fi
-
-  if ! command -v pkexec >/dev/null; then
-    echo "Error: pkexec is required to change DNS settings." >&2
-    exit 1
-  fi
-
-  exec pkexec "$(self_path)" "$@"
 }
 
 lock_dns_to_resolved() {
@@ -104,7 +67,6 @@ unlock_dns_to_dhcp() {
 }
 
 usage() {
-  echo "Usage: omarchy-dns [Cloudflare|Google|DHCP|Custom]" >&2
 }
 
 if (( $# == 0 )); then
@@ -112,20 +74,11 @@ if (( $# == 0 )); then
   exit 0
 fi
 
-if (( $# > 1 )); then
-  usage
-  exit 1
-fi
-
-if ! provider=$(provider_from_arg "$1"); then
-  usage
-  exit 1
-fi
-
-require_root "$provider"
+provider="$1"
 
 case "$provider" in
 Cloudflare)
+  require_root "$provider"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com 2606:4700:4700::1111#cloudflare-dns.com 2606:4700:4700::1001#cloudflare-dns.com
@@ -136,6 +89,7 @@ EOF
   ;;
 
 Google)
+  require_root "$provider"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=8.8.8.8#dns.google 8.8.4.4#dns.google 2001:4860:4860::8888#dns.google 2001:4860:4860::8844#dns.google
@@ -146,6 +100,7 @@ EOF
   ;;
 
 DHCP)
+  require_root "$provider"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNSOverTLS=no
@@ -154,6 +109,7 @@ EOF
   ;;
 
 Custom)
+  require_root "$provider"
   echo "Enter your DNS servers (space-separated, e.g. '192.168.1.1 1.1.1.1'):"
   if ! read -r dns_servers; then
     dns_servers=""
@@ -170,6 +126,10 @@ DNS=$dns_servers
 FallbackDNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
 EOF
   lock_dns_to_resolved
+  ;;
+*)
+  echo "Usage: omarchy-dns [Cloudflare|Google|DHCP|Custom]" >&2
+  exit 1
   ;;
 esac
 
