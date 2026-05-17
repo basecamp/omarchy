@@ -118,9 +118,14 @@ Item {
   readonly property int historyCap: 100
 
   function durationFor(urgency) {
-    if (urgency === NotificationUrgency.Critical) return 0
-    if (urgency === NotificationUrgency.Low) return 3000
-    return 6000
+    switch (urgency) {
+    case NotificationUrgency.Critical:
+      return 0
+    case NotificationUrgency.Low:
+      return 3000
+    default:
+      return 5000
+    }
   }
 
   // DND bypass: only let through notifications we trust to be intentional
