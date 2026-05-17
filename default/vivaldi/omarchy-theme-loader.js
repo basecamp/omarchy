@@ -19,7 +19,7 @@
         --colorFgFadedMost: color-mix(in srgb, ${fg}, gray 75%) !important; /* address bar */
         --colorBgIntense: color-mix(in srgb, ${bg}, white 7%) !important; /* address bar */
         --colorFgIntense: ${fg} !important; /* address bar */
-        --colorBgLightIntense: color-mix(in srgb, ${bg}, ${fg} 10%) !important;
+        --colorBgLightIntense: color-mix(in srgb, ${bg}, white 10%) !important;
       }`;
       last = colors;
     } catch (e) {
