@@ -13,6 +13,21 @@ Item {
   property bool popupOpen: false
   function closePopout() { popupOpen = false }
 
+  IpcHandler {
+    target: "weatherFlyout"
+    function show(): void {
+      root.popupOpen = true
+      root.refresh()
+      autoCloseTimer.start()
+    }
+  }
+
+  Timer {
+    id: autoCloseTimer
+    interval: 5000
+    onTriggered: root.popupOpen = false
+  }
+
   // Parsed wttr.in j1 response. Kept on failure so stale data stays visible.
   property var report: null
 
