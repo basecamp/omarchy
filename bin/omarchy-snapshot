@@ -24,16 +24,27 @@ create)
     command -v zfs &>/dev/null || exit 127 # omarchy-update ignores this when snapshots are unavailable
 
     root_dataset=$(findmnt -n -o SOURCE /)
+    home_dataset=""
+    if [[ $(findmnt -n -o FSTYPE "$HOME" 2>/dev/null || true) == "zfs" ]]; then
+      home_dataset=$(findmnt -n -o SOURCE "$HOME")
+    fi
     version=$(omarchy-version)
     version=${version//[^A-Za-z0-9_.:-]/-}
     snapshot="omarchy-$version-$(date +%Y%m%d%H%M%S)"
 
-    sudo zfs snapshot "$root_dataset@$snapshot"
+    datasets=("$root_dataset")
+    if [[ -n $home_dataset && $home_dataset != $root_dataset ]]; then
+      datasets+=("$home_dataset")
+    fi
 
-    mapfile -t snapshots < <(sudo zfs list -H -t snapshot -o name -s creation -d 1 "$root_dataset" 2>/dev/null | grep -F "$root_dataset@omarchy-" || true)
-    while ((${#snapshots[@]} > 5)); do
-      sudo zfs destroy "${snapshots[0]}"
-      snapshots=("${snapshots[@]:1}")
+    for dataset in "${datasets[@]}"; do
+      sudo zfs snapshot "$dataset@$snapshot"
+
+      mapfile -t snapshots < <(sudo zfs list -H -t snapshot -o name -s creation -d 1 "$dataset" 2>/dev/null | grep -F "$dataset@omarchy-" || true)
+      while ((${#snapshots[@]} > 5)); do
+        sudo zfs destroy "${snapshots[0]}"
+        snapshots=("${snapshots[@]:1}")
+      done
     done
   else
     command -v snapper &>/dev/null || exit 127 # omarchy-update ignores this when snapshots are unavailable
