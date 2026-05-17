@@ -75,7 +75,7 @@ Item {
       var item = root.emojis[i]
       if (!query || item.k.indexOf(query) >= 0) {
         out.push(item)
-        if (out.length >= 200) break // limit to keep it fast
+        if (out.length >= 1000) break // limit to keep it fast
       }
     }
     root.filteredEmojis = out
@@ -103,6 +103,16 @@ Item {
   function selectRow(delta) {
     if (displayModel.count === 0) return
     var newIndex = selectedIndex + delta * columns
+    if (newIndex < 0) newIndex = 0
+    if (newIndex >= displayModel.count) newIndex = displayModel.count - 1
+    selectedIndex = newIndex
+    resultGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
+  }
+
+  function selectPage(delta) {
+    if (displayModel.count === 0) return
+    var visibleRows = Math.max(1, Math.floor(resultGrid.height / cellHeight))
+    var newIndex = selectedIndex + delta * columns * visibleRows
     if (newIndex < 0) newIndex = 0
     if (newIndex >= displayModel.count) newIndex = displayModel.count - 1
     selectedIndex = newIndex
@@ -214,6 +224,12 @@ Item {
             event.accepted = true
           } else if (event.key === Qt.Key_Down) {
             root.selectRow(1)
+            event.accepted = true
+          } else if (event.key === Qt.Key_PageUp) {
+            root.selectPage(-1)
+            event.accepted = true
+          } else if (event.key === Qt.Key_PageDown) {
+            root.selectPage(1)
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.activateIndex(root.selectedIndex)
