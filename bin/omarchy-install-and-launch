@@ -2,7 +2,7 @@
 
 # omarchy:summary=Install a packaged app and gtk-launch it once it finishes
 # omarchy:args=<display-name> <packages> <desktop-id>
-# omarchy:examples=omarchy install and-launch Cursor cursor-bin cursor
+# omarchy:examples=omarchy install and launch Cursor cursor-bin cursor
 
 name="${1-}"
 packages="${2-}"
