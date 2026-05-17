@@ -66,9 +66,6 @@ unlock_dns_to_dhcp() {
   done
 }
 
-usage() {
-}
-
 if (( $# == 0 )); then
   current_dns_provider
   exit 0
