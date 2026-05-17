@@ -133,6 +133,9 @@ Item {
           font.bold: true
           font.pixelSize: 14
           color: Color.foreground
+          elide: Text.ElideRight
+          maximumLineCount: 1
+          clip: true
         }
       }
     }
