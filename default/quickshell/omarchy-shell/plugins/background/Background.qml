@@ -2,6 +2,8 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Effects
+import QtQuick.Shapes
 import qs.Commons as NoctaliaCommons
 
 Item {
@@ -36,14 +38,15 @@ Item {
   }
 
   function setBackground(path, instant) {
-    transitionBackground("", path, instant)
+    transitionBackground("", path, path, instant, false)
   }
 
-  function transitionBackground(fromPath, path, instant) {
+  function transitionBackground(fromPath, path, finalPath, instant, force) {
     path = String(path || "").trim()
+    finalPath = String(finalPath || path).trim()
     fromPath = String(fromPath || "").trim()
-    if (!path || path === currentBackground) return
-    currentBackground = path
+    if (!path || (!force && finalPath === currentBackground)) return
+    currentBackground = finalPath
     backgroundVersion += 1
     revealStartedVersion = -1
 
@@ -83,8 +86,8 @@ Item {
     pendingShellRaw = ""
   }
 
-  function transitionBackgroundWithTheme(fromPath, path, colorsB64, shellB64) {
-    transitionBackground(fromPath, path, false)
+  function transitionBackgroundWithTheme(fromPath, path, finalPath, colorsB64, shellB64) {
+    transitionBackground(fromPath, path, finalPath, false, true)
     setPendingTheme(colorsB64, shellB64)
     if (!incomingBackground || revealProgress >= 1) applyPendingTheme()
   }
@@ -142,11 +145,11 @@ Item {
     }
 
     function transition(fromPath: string, path: string): void {
-      root.transitionBackground(fromPath, path, false)
+      root.transitionBackground(fromPath, path, path, false, false)
     }
 
-    function themeTransition(fromPath: string, path: string, colorsB64: string, shellB64: string): void {
-      root.transitionBackgroundWithTheme(fromPath, path, colorsB64, shellB64)
+    function themeTransition(fromPath: string, path: string, finalPath: string, colorsB64: string, shellB64: string): void {
+      root.transitionBackgroundWithTheme(fromPath, path, finalPath, colorsB64, shellB64)
     }
   }
 
@@ -167,7 +170,7 @@ Item {
     easing.type: Easing.InOutCubic
     onFinished: {
       if (root.incomingBackground) {
-        root.displayedBackground = root.incomingBackground
+        root.displayedBackground = root.currentBackground || root.incomingBackground
         root.finishingTransition = true
       }
       root.revealProgress = 1
@@ -188,6 +191,19 @@ Item {
       anchors { top: true; bottom: true; left: true; right: true }
       color: "transparent"
       property bool maskReady: false
+
+      function maybeStartReveal() {
+        if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
+        if (incomingFrame.status !== Image.Ready) return
+        if (root.oldBackground && oldFrame.status !== Image.Ready) return
+        Qt.callLater(function() {
+          if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
+          if (incomingFrame.status !== Image.Ready) return
+          if (root.oldBackground && oldFrame.status !== Image.Ready) return
+          root.startReveal(panel)
+        })
+      }
+
       WlrLayershell.namespace: "omarchy-background"
       WlrLayershell.layer: WlrLayer.Background
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
@@ -199,7 +215,7 @@ Item {
         source: root.imageUrl(root.displayedBackground)
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        cache: false
+        cache: true
         onStatusChanged: {
           if (status === Image.Ready && root.finishingTransition) {
             root.incomingBackground = ""
@@ -210,112 +226,77 @@ Item {
       }
 
       Image {
-        id: incomingFrame
-        anchors.fill: parent
-        source: root.imageUrl(root.incomingBackground)
-        fillMode: Image.PreserveAspectCrop
-        asynchronous: true
-        cache: false
-        visible: root.incomingBackground !== "" && status === Image.Ready
-        opacity: root.revealProgress >= 1 ? 1 : 0.001
-        onStatusChanged: if (status === Image.Ready && root.incomingBackground) revealCanvas.prepareImage()
-      }
-
-      Image {
         id: oldFrame
         anchors.fill: parent
         source: root.imageUrl(root.oldBackground)
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: false
+        smooth: true
+        mipmap: true
         visible: root.oldBackground !== "" && root.revealProgress < 1
-        onStatusChanged: if (status === Image.Ready && root.incomingBackground) revealCanvas.requestPaint()
+        onStatusChanged: panel.maybeStartReveal()
       }
 
-      Canvas {
-        id: revealCanvas
+      Item {
+        id: incomingLayer
         anchors.fill: parent
-        visible: root.incomingBackground !== "" && root.revealProgress < 1 && incomingFrame.status === Image.Ready && oldFrame.status === Image.Ready
-        opacity: panel.maskReady ? 1 : 0
-        renderTarget: Canvas.FramebufferObject
-        renderStrategy: Canvas.Immediate
+        visible: root.incomingBackground !== "" && incomingFrame.status === Image.Ready && (root.revealProgress >= 1 || panel.maskReady)
+        layer.enabled: root.incomingBackground !== "" && root.revealProgress < 1
+        layer.smooth: true
+        layer.effect: MultiEffect {
+          maskEnabled: true
+          maskSource: revealMask
+          maskThresholdMin: 0.5
+          maskSpreadAtMin: 0.02
+        }
+
+        Image {
+          id: incomingFrame
+          anchors.fill: parent
+          source: root.imageUrl(root.incomingBackground)
+          fillMode: Image.PreserveAspectCrop
+          asynchronous: true
+          cache: false
+          smooth: true
+          mipmap: true
+          onStatusChanged: panel.maybeStartReveal()
+        }
+      }
+
+      Item {
+        id: revealMask
+        anchors.fill: parent
+        visible: false
+        layer.enabled: true
 
         readonly property real slant: -0.18
+        readonly property real centerTop: width / 2 - slant * height / 2
+        readonly property real centerBottom: width / 2 + slant * height / 2
+        readonly property real reach: width / 2 + Math.abs(slant) * height / 2 + 4
+        readonly property real spread: reach * root.revealProgress
 
-        function prepareImage() {
-          var src = root.imageUrl(root.incomingBackground)
-          if (!src) return
-          if (isImageLoaded(src)) {
-            requestPaint()
-          } else if (!isImageLoading(src)) {
-            loadImage(src)
+        Shape {
+          anchors.fill: parent
+          antialiasing: true
+          preferredRendererType: Shape.CurveRenderer
+          ShapePath {
+            fillColor: "white"
+            strokeColor: "transparent"
+            startX: revealMask.centerTop - revealMask.spread; startY: 0
+            PathLine { x: revealMask.centerTop + revealMask.spread; y: 0 }
+            PathLine { x: revealMask.centerBottom + revealMask.spread; y: revealMask.height }
+            PathLine { x: revealMask.centerBottom - revealMask.spread; y: revealMask.height }
+            PathLine { x: revealMask.centerTop - revealMask.spread; y: 0 }
           }
         }
+      }
 
-        onImageLoaded: function(url) {
-          if (url === root.imageUrl(root.incomingBackground)) requestPaint()
-        }
-
-        onPaint: {
-          var ctx = getContext("2d")
-          ctx.reset()
-          ctx.clearRect(0, 0, width, height)
-
-          var src = root.imageUrl(root.incomingBackground)
-          if (!src || incomingFrame.status !== Image.Ready || root.revealProgress >= 1) return
-          if (!isImageLoaded(src)) {
-            prepareImage()
-            return
-          }
-
-          var iw = incomingFrame.sourceSize.width
-          var ih = incomingFrame.sourceSize.height
-          if (iw <= 0 || ih <= 0 || width <= 0 || height <= 0) return
-
-          var sx = 0
-          var sy = 0
-          var sw = iw
-          var sh = ih
-          if (iw / ih > width / height) {
-            sw = ih * width / height
-            sx = (iw - sw) / 2
-          } else {
-            sh = iw * height / width
-            sy = (ih - sh) / 2
-          }
-
-          var centerTop = width / 2 - slant * height / 2
-          var centerBottom = width / 2 + slant * height / 2
-          var reach = width / 2 + Math.abs(slant) * height / 2 + 4
-          var spread = reach * root.revealProgress
-          var leftTop = centerTop - spread
-          var leftBottom = centerBottom - spread
-          var rightTop = centerTop + spread
-          var rightBottom = centerBottom + spread
-
-          ctx.save()
-          ctx.beginPath()
-          ctx.moveTo(leftTop, 0)
-          ctx.lineTo(rightTop, 0)
-          ctx.lineTo(rightBottom, height)
-          ctx.lineTo(leftBottom, height)
-          ctx.closePath()
-          ctx.clip()
-          ctx.drawImage(src, sx, sy, sw, sh, 0, 0, width, height)
-          ctx.restore()
-
-          if (!panel.maskReady && root.incomingBackground && root.revealProgress === 0) {
-            Qt.callLater(function() { root.startReveal(panel) })
-          }
-        }
-
-        Connections {
-          target: root
-          function onRevealProgressChanged() { revealCanvas.requestPaint() }
-          function onIncomingBackgroundChanged() {
-            panel.maskReady = false
-            revealCanvas.prepareImage()
-          }
+      Connections {
+        target: root
+        function onIncomingBackgroundChanged() {
+          panel.maskReady = false
+          panel.maybeStartReveal()
         }
       }
 
