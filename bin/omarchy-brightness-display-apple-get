@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Get Apple Studio Display or XDR Display brightness using asdcontrol.
+# omarchy:examples=omarchy brightness display apple get | omarchy-brightness-display-apple-get
+
+device="$(sudo asdcontrol --detect /dev/usb/hiddev* /dev/hiddev* 2>/dev/null | awk -F: '/^\/dev\/(usb\/)?hiddev/{ print $1; exit }')"
+
+if [[ -z $device ]]; then
+  echo "No Apple Display HID device found" >&2
+  exit 1
+fi
+
+sudo asdcontrol "$device" 2>/dev/null | awk -F= '
+  /BRIGHTNESS=/ {
+    print int($2 * 100 / 60000)
+    found = 1
+  }
+
+  END { exit !found }
+'

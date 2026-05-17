@@ -53,6 +53,9 @@
           "id": "audioPanel"
         },
         {
+          "id": "monitorPanel"
+        },
+        {
           "id": "battery"
         }
       ]
