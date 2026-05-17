@@ -2,11 +2,5 @@
 
 # omarchy:summary=Toggle notification do-not-disturb mode
 
-state=$(omarchy-shell-ipc notifications toggleDnd 2>/dev/null || echo "")
-
-case $state in
-on)  omarchy-notification-send "Silenced notifications" -g 󰂛 -e ;;
-off) omarchy-notification-send "Enabled notifications" -g 󰂚 -e ;;
-esac
-
-omarchy-shell-ipc --if-running bar refreshIndicators >/dev/null 2>&1 || true
+state=$(omarchy-shell notifications toggleDnd 2>/dev/null || echo "")
+omarchy-shell --if-running bar refreshIndicators >/dev/null 2>&1 || true
