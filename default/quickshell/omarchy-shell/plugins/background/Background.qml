@@ -195,11 +195,9 @@ Item {
       function maybeStartReveal() {
         if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
         if (incomingFrame.status !== Image.Ready) return
-        if (root.oldBackground && oldFrame.status !== Image.Ready) return
         Qt.callLater(function() {
           if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
           if (incomingFrame.status !== Image.Ready) return
-          if (root.oldBackground && oldFrame.status !== Image.Ready) return
           root.startReveal(panel)
         })
       }
