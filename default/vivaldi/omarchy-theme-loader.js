@@ -12,6 +12,7 @@
         --colorBg: ${bg} !important;
         --colorFg: ${fg} !important;
         --colorAccentBg: ${bg} !important;
+        --colorAccentFg: ${fg} !important;
         --colorHighlightBg: ${accent} !important;
       }`;
       last = colors;
