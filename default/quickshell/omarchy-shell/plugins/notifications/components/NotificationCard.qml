@@ -199,7 +199,7 @@ Rectangle {
           Layout.fillWidth: true
           visible: root.summary.length > 0
           text: root.summary
-          font.family: root.fontFamily
+          font.family: "Liberation Sans"
           color: Color.notifications.text
           font.pixelSize: 13
           font.bold: true
@@ -214,7 +214,7 @@ Rectangle {
           visible: root.body.length > 0
           text: root.sanitizeBody(root.body)
           textFormat: Text.StyledText
-          font.family: root.fontFamily
+          font.family: "Liberation Sans"
           color: root.bodyColor
           font.pixelSize: 13
           wrapMode: Text.WordWrap
