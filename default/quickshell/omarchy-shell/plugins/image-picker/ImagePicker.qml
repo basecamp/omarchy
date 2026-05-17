@@ -21,6 +21,7 @@ Item {
 
   property string imageDirs: Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIRS") || Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIR") || Quickshell.env("OMARCHY_STOCK_BACKGROUNDS_DIR") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/backgrounds")
   property string imageRows: ""
+  property string loadedImageRows: ""
   property string selectionFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTION_FILE") || Quickshell.env("OMARCHY_BACKGROUND_SELECTION_FILE")
   property string selectedImage: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTED")
   property int selectedIndex: 0
@@ -47,6 +48,8 @@ Item {
   property int skewOffset: 28
   property int bottomChromeHeight: showLabels ? (filterable ? 104 : 74) : (filterable ? 60 : 30)
 
+  onOpenedChanged: if (opened && imagesLoaded) focusPicker()
+
   function fileUrl(path) {
     return "file://" + path.split("/").map(encodeURIComponent).join("/")
   }
@@ -61,8 +64,8 @@ Item {
   }
 
   function focusPicker() {
-    if (pickerWindowLoader.item && typeof pickerWindowLoader.item.focusCarousel === "function")
-      pickerWindowLoader.item.focusCarousel()
+    if (root.opened && root.imagesLoaded)
+      carousel.forceActiveFocus()
   }
 
   // Decode a base64-encoded UTF-8 string sent via IPC. Used for fields that
@@ -255,6 +258,7 @@ Item {
       })
     }
 
+    root.loadedImageRows = rows
     root.imageArray = newImages
     root.select(root.selectedImageIndex(), true)
     root.imagesLoaded = true
@@ -277,16 +281,34 @@ Item {
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     filterable = nextFilterable === true || nextFilterable === "true"
     filterText = ""
+
+    if (imageRows && imageRows === loadedImageRows && imageArray.length > 0) {
+      root.select(root.selectedImageIndex(), true)
+      imagesLoaded = true
+      opened = true
+      root.focusPicker()
+      return
+    }
+
+    if (imageRows) {
+      var rowsToLoad = imageRows
+      var rowsSerial = requestSerial
+      imagesLoaded = true
+      opened = true
+      root.focusPicker()
+      Qt.callLater(function() {
+        if (rowsSerial === root.requestSerial)
+          root.loadRows(rowsToLoad)
+      })
+      return
+    }
+
     imageArray = []
     selectedIndex = 0
     imagesLoaded = false
     opened = false
-    if (imageRows) {
-      loadRows(imageRows)
-    } else {
-      loadImagesProc.requestSerial = requestSerial
-      loadImagesProc.running = true
-    }
+    loadImagesProc.requestSerial = requestSerial
+    loadImagesProc.running = true
   }
 
   property var imageArray: []
@@ -379,38 +401,32 @@ Item {
     onExited: root.releaseNextDoneFile()
   }
 
-  LazyLoader {
-    id: pickerWindowLoader
-    active: root.opened && root.imagesLoaded
-    onItemChanged: root.focusPicker()
+  PanelWindow {
+    id: panel
 
-    PanelWindow {
-      id: panel
+    visible: true
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    WlrLayershell.namespace: "omarchy-image-selector"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: root.opened && root.imagesLoaded ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    exclusionMode: ExclusionMode.Ignore
 
-      function focusCarousel() {
-        carousel.forceActiveFocus()
-      }
+    Rectangle {
+      anchors.fill: parent
+      visible: root.opened && root.imagesLoaded
+      color: root.withAlpha(root.background, 0.5)
+    }
 
-      visible: true
-      anchors { top: true; bottom: true; left: true; right: true }
-      color: "transparent"
-      WlrLayershell.namespace: "omarchy-image-selector"
-      WlrLayershell.layer: WlrLayer.Overlay
-      WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
-      exclusionMode: ExclusionMode.Ignore
+    MouseArea {
+      anchors.fill: parent
+      enabled: root.opened && root.imagesLoaded
+      onClicked: root.cancel()
+    }
 
-      Rectangle {
-        anchors.fill: parent
-        color: root.withAlpha(root.background, 0.5)
-      }
-
-      MouseArea {
-        anchors.fill: parent
-        onClicked: root.cancel()
-      }
-
-      Item {
-        id: card
+    Item {
+      id: card
+      visible: root.opened && root.imagesLoaded
         width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
         height: root.expandedHeight + 30 + root.bottomChromeHeight
         anchors.centerIn: parent
@@ -477,6 +493,8 @@ Item {
               readonly property int relativeIndex: root.filteredPosition(index) - root.selectedFilteredPosition()
               readonly property bool selected: matched && index === root.selectedIndex
               readonly property bool nearby: matched && Math.abs(relativeIndex) <= 16
+              property bool sourceActivated: nearby
+              onNearbyChanged: if (nearby) sourceActivated = true
 
               visible: nearby
               x: selected ? carousel.previewX : (relativeIndex < 0 ? carousel.previewX + relativeIndex * carousel.itemStep : carousel.previewX + root.expandedWidth + root.sliceSpacing + (relativeIndex - 1) * carousel.itemStep)
@@ -527,14 +545,12 @@ Item {
                 Image {
                   id: image
                   anchors.fill: parent
-                  // Keep a stable source while delegates move in and out of the
-                  // nearby window. Clearing/reassigning the source on every
-                  // selection change makes Qt tear down and reload textures,
-                  // which shows up as flicker in both the theme and background
-                  // selectors.
-                  source: item.thumbnailPath ? root.fileUrl(item.thumbnailPath) : ""
+                  // Load only the initial/visited nearby images, but keep the
+                  // source once activated so Qt does not tear textures down as
+                  // selection moves through the carousel.
+                  source: item.sourceActivated && item.thumbnailPath ? root.fileUrl(item.thumbnailPath) : ""
                   fillMode: Image.PreserveAspectCrop
-                  asynchronous: false
+                  asynchronous: true
                   cache: true
                   smooth: true
                 }
@@ -602,7 +618,6 @@ Item {
           horizontalAlignment: Text.AlignHCenter
           elide: Text.ElideRight
         }
-      }
     }
   }
 }
