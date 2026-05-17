@@ -44,97 +44,10 @@ QtObject {
     return true
   }
 
-  // Detect a Noctalia-shape manifest (https://github.com/noctalia-dev/noctalia-plugins).
-  // Noctalia manifests don't carry our schemaVersion; we recognise them by the
-  // presence of `minNoctaliaVersion` or `metadata.defaultSettings`, or an
-  // `entryPoints` map that names roles Noctalia owns (main/barWidget/panel).
-  function isNoctaliaShape(manifest) {
-    if (!isPlainObject(manifest)) return false
-    if (manifest.schemaVersion !== undefined) return false
-    if (manifest.minNoctaliaVersion !== undefined) return true
-    if (isPlainObject(manifest.metadata) && isPlainObject(manifest.metadata.defaultSettings)) return true
-    if (isPlainObject(manifest.entryPoints)) {
-      var ep = manifest.entryPoints
-      if (ep.barWidget || ep.main || ep.panel || ep.desktopWidget
-          || ep.launcherProvider) return true
-    }
-    return false
-  }
-
-  // Translate a Noctalia manifest into the shape we validate normally. We do
-  // not modify the on-disk file; the in-memory copy gets a __noctaliaCompat
-  // marker so downstream code can branch where the semantics diverge.
-  function translateNoctaliaManifest(src) {
-    var ep = isPlainObject(src.entryPoints) ? src.entryPoints : {}
-    var kinds = []
-    var unsupported = []
-    if (ep.main) kinds.push("service")
-    if (ep.barWidget) kinds.push("bar-widget")
-    if (ep.panel) kinds.push("panel")
-    // Out of scope for v1 — warn loudly so we don't silently strand the plugin.
-    if (ep.desktopWidget)         unsupported.push("desktopWidget")
-    if (ep.launcherProvider)      unsupported.push("launcherProvider")
-
-    if (kinds.length === 0) {
-      console.warn("PluginRegistry: noctalia plugin '" + src.id + "' has no supported entryPoints"
-        + (unsupported.length ? " (unsupported in v1: " + unsupported.join(", ") + ")" : ""))
-      return null
-    }
-    if (unsupported.length) {
-      console.warn("PluginRegistry: noctalia plugin '" + src.id
-        + "' uses entryPoints not supported in v1, ignoring: " + unsupported.join(", "))
-    }
-
-    var translated = {
-      schemaVersion: 1,
-      id: "noctalia." + String(src.id),
-      name: src.name || src.id,
-      version: src.version || "0.0.0",
-      author: src.author || "",
-      description: src.description || "",
-      kinds: kinds,
-      activation: kinds.indexOf("service") !== -1 ? "persistent" : "on-demand",
-      entryPoints: {},
-      __noctaliaCompat: true,
-      __noctaliaOriginal: src
-    }
-
-    if (ep.barWidget) translated.entryPoints.barWidget = ep.barWidget
-    if (ep.main)      translated.entryPoints.service   = ep.main
-    if (ep.panel)     translated.entryPoints.panel     = ep.panel
-    if (ep.settings)  translated.entryPoints.settings  = ep.settings
-
-    var defaults = (isPlainObject(src.metadata) && isPlainObject(src.metadata.defaultSettings))
-      ? src.metadata.defaultSettings : {}
-    if (translated.entryPoints.barWidget) {
-      translated.barWidget = {
-        displayName: translated.name,
-        description: translated.description,
-        category: "Noctalia",
-        allowMultiple: false,
-        defaults: defaults,
-        schema: []
-      }
-    }
-    if (defaults && Object.keys(defaults).length > 0) translated.defaults = defaults
-
-    return translated
-  }
-
   function validateManifest(manifest, sourcePath) {
     if (!isPlainObject(manifest)) {
       console.warn("PluginRegistry: manifest is not an object at " + sourcePath)
       return null
-    }
-    // Noctalia shape — translate before validation. The translated manifest
-    // goes through the standard schemaVersion=1 path below.
-    if (isNoctaliaShape(manifest)) {
-      var preservedSourceDir = manifest.__sourceDir
-      var preservedFirstParty = manifest.__isFirstParty
-      manifest = translateNoctaliaManifest(manifest)
-      if (!manifest) return null
-      manifest.__sourceDir = preservedSourceDir
-      manifest.__isFirstParty = preservedFirstParty
     }
     if (manifest.schemaVersion !== 1) {
       console.warn("PluginRegistry: unsupported schemaVersion at " + sourcePath)

@@ -1,4 +1,0 @@
-module qs.Services.UI
-singleton BarService 1.0 BarService.qml
-singleton TooltipService 1.0 TooltipService.qml
-singleton PanelService 1.0 PanelService.qml
