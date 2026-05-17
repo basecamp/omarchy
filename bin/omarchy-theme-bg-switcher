@@ -5,7 +5,6 @@
 # omarchy:name=bg-switcher
 # omarchy:aliases=omarchy background
 
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
 theme_name=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null)
 current_background=$(readlink -f "$HOME/.config/omarchy/current/background" 2>/dev/null)
 

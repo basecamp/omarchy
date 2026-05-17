@@ -31,7 +31,6 @@ if [[ $1 == "--if-running" ]]; then
   shift
 fi
 
-OMARCHY_PATH="${OMARCHY_PATH:-$HOME/.local/share/omarchy}"
 SHELL_DIR="$OMARCHY_PATH/default/quickshell/omarchy-shell"
 
 shell_running() {
@@ -50,7 +49,7 @@ else
       # 9<&- so the spawned shell does not inherit (and keep) the lock fd; the
       # spawned process is long-lived and would otherwise hold the lock for the
       # remainder of the session, deadlocking every subsequent helper invocation.
-      setsid uwsm-app -- env OMARCHY_PATH="$OMARCHY_PATH" quickshell -p "$SHELL_DIR" >/dev/null 2>&1 9<&- &
+      setsid uwsm-app -- quickshell -p "$SHELL_DIR" >/dev/null 2>&1 9<&- &
       for _ in 1 2 3 4 5 6 7 8 9 10; do
         sleep 0.2
         shell_running && break

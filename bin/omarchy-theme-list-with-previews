@@ -3,8 +3,6 @@
 # omarchy:summary=List themes with preview image paths (tab-separated: name\tslug\tpreview)
 # omarchy:hidden=true
 
-OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
-
 omarchy-theme-list 2>/dev/null | while IFS= read -r name; do
   [[ -n $name ]] || continue
   slug=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
