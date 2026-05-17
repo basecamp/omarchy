@@ -27,4 +27,4 @@ esac
 sed -i "s/^export EDITOR=.*/export EDITOR=$editor/" ~/.config/uwsm/default
 
 export EDITOR="$editor"
-notify-send -a omarchy-action -u low "$glyph    $name is now the default editor" "      Effective after logging out"
+omarchy-notification-send -g $glyph "$name is now the default editor" "Effective after logging out"

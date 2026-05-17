@@ -6,6 +6,6 @@ set -e
 rm -f "$0"
 
 (
-  action=$(notify-send "    Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -u critical -A "default=Install")
+  action=$(notify-send -a omarchy-action -u critical --hint=string:omarchy-glyph: "Install Dictation with Voxtype" "Click to install voice dictation for Omarchy." -A "default=Install")
   [[ $action == "default" ]] && omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
 ) >/dev/null 2>&1 &

@@ -64,8 +64,7 @@ Rectangle {
   // `appIcon` (-i flag) still get one.
   readonly property string smallIconSource: image.length > 0 ? image : appIcon
   readonly property bool hasGlyph: glyph.length > 0
-  readonly property bool inlineGlyph: summary.match(/^[^\s]+\s{2,}/) !== null
-  readonly property bool hasSmallIcon: !mediaMode && !inlineGlyph && (smallIconSource.length > 0 || hasGlyph)
+  readonly property bool hasSmallIcon: !mediaMode && (smallIconSource.length > 0 || hasGlyph)
   readonly property bool chromiumDerived: {
     var source = (app + "\n" + appIcon).toLowerCase()
     return source.indexOf("chrom") >= 0 || source.indexOf("brave") >= 0 ||

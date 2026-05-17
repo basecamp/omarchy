@@ -606,6 +606,7 @@ Item {
     navStack = []
     filterText = ""
     selectedIndex = 0
+    root.evaluateGuards()
     opened = true
     rebuildDisplay()
     loadProviderForMenu(activeMenu)

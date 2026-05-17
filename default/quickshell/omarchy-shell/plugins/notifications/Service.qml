@@ -134,8 +134,8 @@ Item {
   //     "Screenshot saved"). The user JUST did something — their feedback
   //     should show.
   //   - urgency=critical AND app_name=notify-send: bare-CLI emergency alerts
-  //     (omarchy-battery-monitor uses this for low-battery; install-time
-  //     scripts for wifi setup, etc.). Trusted because it's almost always
+  //     (omarchy-battery-monitor uses this for low-battery; a few scripts
+  //     use it for emergency failures). Trusted because it's almost always
   //     omarchy or system shell scripts — chat apps set app_name to
   //     their brand (Discord/Slack/Vesktop) which falls outside this rule.
   function shouldBypassDnd(notification) {
@@ -366,7 +366,7 @@ Item {
   // Invoke the libnotify "default" action on the popup's underlying
   // notification, if it has one, then dismiss. Clients register the default
   // action with the canonical identifier "default"; e.g. screenshot toasts
-  // use `notify-send -A default=Edit` so click-the-card opens the editor.
+  // use `notify-send -A default=Edit ...` so click-the-card opens the editor.
   function invokePopupDefault(index) {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
