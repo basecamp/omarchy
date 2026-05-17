@@ -17,10 +17,10 @@ if (($# == 0)); then
 fi
 
 case "$1" in
-alacritty) desktop_id="Alacritty.desktop"; name="Alacritty"; glyph="" ;;
-foot) desktop_id="foot.desktop"; name="Foot"; glyph="" ;;
-ghostty) desktop_id="com.mitchellh.ghostty.desktop"; name="Ghostty"; glyph="" ;;
-kitty) desktop_id="kitty.desktop"; name="Kitty"; glyph="" ;;
+alacritty) desktop_id="Alacritty.desktop"; name="Alacritty"; glyph= ;;
+foot) desktop_id="foot.desktop"; name="Foot"; glyph= ;;
+ghostty) desktop_id="com.mitchellh.ghostty.desktop"; name="Ghostty"; glyph= ;;
+kitty) desktop_id="kitty.desktop"; name="Kitty"; glyph= ;;
 *)
   echo "Usage: omarchy-default-terminal <alacritty|foot|ghostty|kitty>"
   exit 1
