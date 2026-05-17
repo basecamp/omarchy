@@ -1,13 +1,5 @@
 #!/bin/bash
 
 # omarchy:summary=Launch the Omarchy bar settings panel
-# omarchy:group=launch
-# omarchy:name=bar settings
-# omarchy:examples=omarchy launch bar settings | omarchy-launch-bar-settings
-
-if (($# > 0)); then
-  echo "Usage: omarchy-launch-bar-settings" >&2
-  exit 1
-fi
 
 exec omarchy-shell-ipc shell summon omarchy.settings "{}"
