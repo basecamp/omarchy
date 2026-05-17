@@ -4,8 +4,6 @@
 # omarchy:args=<next|previous|play-pause|play|pause>
 # omarchy:examples=omarchy audio player next | omarchy audio player play-pause
 
-set -euo pipefail
-
 action="${1:-play-pause}"
 
 playerctl "$action" >/dev/null 2>&1 || true
