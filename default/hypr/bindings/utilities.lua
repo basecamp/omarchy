@@ -1,5 +1,5 @@
 hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("omarchy-launch-walker"), { description = "Launch apps" })
-hl.bind("SUPER + CTRL + E", hl.dsp.exec_cmd("omarchy-launch-walker -m symbols"), { description = "Emoji picker" })
+hl.bind("SUPER + CTRL + E", hl.dsp.exec_cmd("omarchy-shell-ipc shell toggle omarchy.emoji-picker \"{}\""), { description = "Emoji picker" })
 hl.bind("SUPER + CTRL + C", hl.dsp.exec_cmd("omarchy-shell-ipc menu toggle capture"), { description = "Capture menu" })
 hl.bind("SUPER + CTRL + O", hl.dsp.exec_cmd("omarchy-shell-ipc menu toggle toggle"), { description = "Toggle menu" })
 hl.bind("SUPER + CTRL + H", hl.dsp.exec_cmd("omarchy-shell-ipc menu toggle hardware"), { description = "Hardware menu" })
