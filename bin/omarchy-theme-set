@@ -164,6 +164,11 @@ else
   set_theme_background
 fi
 
+# The shared staging/current symlinks are updated and the shell has accepted
+# the transition. Let another theme selection queue only behind that critical
+# section, not behind slower app-retint hooks and selector cache warmups.
+flock -u 9
+
 post_theme_commands=(
   omarchy-restart-terminal
   omarchy-restart-hyprctl
