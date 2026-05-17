@@ -30,7 +30,7 @@ PopupWindow {
 
   default property alias contentItem: contentHolder.children
 
-  visible: open
+  visible: open || card.opacity > 0
   color: "transparent"
   implicitWidth: contentWidth
   implicitHeight: contentHeight
