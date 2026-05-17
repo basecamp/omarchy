@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import qs.Commons as NoctaliaCommons
 
 Item {
   id: root
@@ -19,6 +20,10 @@ Item {
   property string oldBackground: ""
   property bool finishingTransition: false
   property int backgroundVersion: 0
+  property int revealStartedVersion: -1
+  property int pendingThemeVersion: -1
+  property string pendingColorsRaw: ""
+  property string pendingShellRaw: ""
   property real revealProgress: 1
 
   function imageUrl(path) {
@@ -31,10 +36,16 @@ Item {
   }
 
   function setBackground(path, instant) {
+    transitionBackground("", path, instant)
+  }
+
+  function transitionBackground(fromPath, path, instant) {
     path = String(path || "").trim()
+    fromPath = String(fromPath || "").trim()
     if (!path || path === currentBackground) return
     currentBackground = path
     backgroundVersion += 1
+    revealStartedVersion = -1
 
     revealAnimation.stop()
     finishingTransition = false
@@ -47,9 +58,44 @@ Item {
       return
     }
 
-    oldBackground = displayedBackground
+    oldBackground = fromPath || displayedBackground
     incomingBackground = path
     revealProgress = 0
+  }
+
+  function decodePayload(payload) {
+    try { return Qt.atob(String(payload || "")) } catch (e) { return "" }
+  }
+
+  function setPendingTheme(colorsB64, shellB64) {
+    pendingColorsRaw = decodePayload(colorsB64)
+    pendingShellRaw = decodePayload(shellB64)
+    pendingThemeVersion = backgroundVersion
+  }
+
+  function applyPendingTheme() {
+    if (pendingThemeVersion !== backgroundVersion) return
+    NoctaliaCommons.Color.resumeThemeReloads()
+    NoctaliaCommons.Color.loadColors(pendingColorsRaw)
+    NoctaliaCommons.Color.loadShell(pendingShellRaw)
+    pendingThemeVersion = -1
+    pendingColorsRaw = ""
+    pendingShellRaw = ""
+  }
+
+  function transitionBackgroundWithTheme(fromPath, path, colorsB64, shellB64) {
+    transitionBackground(fromPath, path, false)
+    setPendingTheme(colorsB64, shellB64)
+    if (!incomingBackground || revealProgress >= 1) applyPendingTheme()
+  }
+
+  function startReveal(panel) {
+    if (!incomingBackground) return
+    panel.maskReady = true
+    if (revealStartedVersion === backgroundVersion) return
+    revealStartedVersion = backgroundVersion
+    applyPendingTheme()
+    revealAnimation.restart()
   }
 
   function openSelector() {
@@ -93,6 +139,14 @@ Item {
 
     function setInstant(path: string): void {
       root.setBackground(path, true)
+    }
+
+    function transition(fromPath: string, path: string): void {
+      root.transitionBackground(fromPath, path, false)
+    }
+
+    function themeTransition(fromPath: string, path: string, colorsB64: string, shellB64: string): void {
+      root.transitionBackgroundWithTheme(fromPath, path, colorsB64, shellB64)
     }
   }
 
@@ -230,41 +284,28 @@ Item {
             sy = (ih - sh) / 2
           }
 
-          var center = width / 2
-          var reach = width / 2 + Math.abs(slant) * height + 4
+          var centerTop = width / 2 - slant * height / 2
+          var centerBottom = width / 2 + slant * height / 2
+          var reach = width / 2 + Math.abs(slant) * height / 2 + 4
           var spread = reach * root.revealProgress
-          var leftTop = center - spread
-          var leftBottom = center - spread + slant * height
-          var rightTop = center + spread
-          var rightBottom = center + spread + slant * height
+          var leftTop = centerTop - spread
+          var leftBottom = centerBottom - spread
+          var rightTop = centerTop + spread
+          var rightBottom = centerBottom + spread
 
           ctx.save()
           ctx.beginPath()
-          ctx.moveTo(center, 0)
-          ctx.lineTo(leftTop, 0)
-          ctx.lineTo(leftBottom, height)
-          ctx.lineTo(center, height)
-          ctx.closePath()
-          ctx.clip()
-          ctx.drawImage(src, sx, sy, sw, sh, 0, 0, width, height)
-          ctx.restore()
-
-          ctx.save()
-          ctx.beginPath()
-          ctx.moveTo(center, 0)
+          ctx.moveTo(leftTop, 0)
           ctx.lineTo(rightTop, 0)
           ctx.lineTo(rightBottom, height)
-          ctx.lineTo(center, height)
+          ctx.lineTo(leftBottom, height)
           ctx.closePath()
           ctx.clip()
           ctx.drawImage(src, sx, sy, sw, sh, 0, 0, width, height)
           ctx.restore()
 
           if (!panel.maskReady && root.incomingBackground && root.revealProgress === 0) {
-            Qt.callLater(function() {
-              panel.maskReady = true
-              revealAnimation.restart()
-            })
+            Qt.callLater(function() { root.startReveal(panel) })
           }
         }
 
