@@ -79,7 +79,7 @@ Item {
     if (!dateString) return ""
     var d = new Date(dateString + "T12:00:00")
     if (isNaN(d.getTime())) return ""
-    return Qt.formatDate(d, "ddd")
+    return Qt.formatDate(d, "dddd")
   }
 
   function maxTempForDay(day) {
