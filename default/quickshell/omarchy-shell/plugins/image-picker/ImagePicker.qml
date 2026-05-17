@@ -29,6 +29,7 @@ Item {
   property bool opened: false
   property bool showLabels: false
   property bool filterable: false
+  property bool layoutSettled: false
   property bool requestActive: false
   property int requestSerial: 0
   property int applySerial: 0
@@ -48,7 +49,7 @@ Item {
   property int skewOffset: 28
   property int bottomChromeHeight: showLabels ? (filterable ? 104 : 74) : (filterable ? 60 : 30)
 
-  onOpenedChanged: if (opened && imagesLoaded) focusPicker()
+  onOpenedChanged: if (!opened) layoutSettled = false
 
   function fileUrl(path) {
     return "file://" + path.split("/").map(encodeURIComponent).join("/")
@@ -64,8 +65,17 @@ Item {
   }
 
   function focusPicker() {
-    if (root.opened && root.imagesLoaded)
+    if (root.opened && root.imagesLoaded && root.layoutSettled)
       carousel.forceActiveFocus()
+  }
+
+  function revealWhenSettled(serial) {
+    Qt.callLater(function() {
+      if (serial === root.requestSerial && root.opened && root.imagesLoaded && root.imageArray.length > 0) {
+        root.layoutSettled = true
+        root.focusPicker()
+      }
+    })
   }
 
   // Decode a base64-encoded UTF-8 string sent via IPC. Used for fields that
@@ -237,7 +247,7 @@ Item {
     root.opened = false
   }
 
-  function loadRows(rows) {
+  function loadRows(rows, reveal) {
     var newImages = []
     var seen = {}
     var paths = rows.split("\n")
@@ -259,11 +269,14 @@ Item {
     }
 
     root.loadedImageRows = rows
+    root.selectedIndex = root.indexForSelectedImage(newImages)
     root.imageArray = newImages
-    root.select(root.selectedImageIndex(), true)
     root.imagesLoaded = true
-    root.opened = true
-    root.focusPicker()
+
+    if (reveal !== false) {
+      root.opened = true
+      root.revealWhenSettled(root.requestSerial)
+    }
   }
 
   function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextShowLabels, nextFilterable) {
@@ -281,24 +294,26 @@ Item {
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     filterable = nextFilterable === true || nextFilterable === "true"
     filterText = ""
+    layoutSettled = false
 
     if (imageRows && imageRows === loadedImageRows && imageArray.length > 0) {
       root.select(root.selectedImageIndex(), true)
       imagesLoaded = true
       opened = true
-      root.focusPicker()
+      root.revealWhenSettled(requestSerial)
       return
     }
 
     if (imageRows) {
       var rowsToLoad = imageRows
       var rowsSerial = requestSerial
+      imageArray = []
+      selectedIndex = 0
       imagesLoaded = true
       opened = true
-      root.focusPicker()
       Qt.callLater(function() {
         if (rowsSerial === root.requestSerial)
-          root.loadRows(rowsToLoad)
+          root.loadRows(rowsToLoad, true)
       })
       return
     }
@@ -313,13 +328,17 @@ Item {
 
   property var imageArray: []
 
-  function selectedImageIndex() {
-    for (var i = 0; i < imageArray.length; i++) {
-      if (imageArray[i].filePath === selectedImage)
+  function indexForSelectedImage(images) {
+    for (var i = 0; i < images.length; i++) {
+      if (images[i].filePath === selectedImage)
         return i
     }
 
     return 0
+  }
+
+  function selectedImageIndex() {
+    return indexForSelectedImage(imageArray)
   }
 
   Process {
@@ -330,7 +349,7 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         if (loadImagesProc.requestSerial === root.requestSerial)
-          root.loadRows(String(text || ""))
+          root.loadRows(String(text || ""), true)
       }
     }
   }
@@ -359,6 +378,23 @@ Item {
     cancel()
   }
 
+  function preloadRows(nextImageRows, nextSelectedImage, nextShowLabels, nextFilterable) {
+    requestSerial += 1
+    imageRows = nextImageRows
+    selectedImage = nextSelectedImage
+    showLabels = nextShowLabels === true || nextShowLabels === "true"
+    filterable = nextFilterable === true || nextFilterable === "true"
+    filterText = ""
+    layoutSettled = false
+
+    if (imageRows && imageRows === loadedImageRows && imageArray.length > 0) {
+      selectedIndex = selectedImageIndex()
+      imagesLoaded = true
+    } else if (imageRows) {
+      loadRows(imageRows, false)
+    }
+  }
+
   // IPC surface. All arguments are strings (Quickshell IPC marshalling).
   // imageRows can contain newlines/tabs, so the CLI caller base64-encodes
   // it; everything else passes through verbatim. The two boolean-like
@@ -376,6 +412,15 @@ Item {
       var rows = root.decodeBase64(imageRowsB64)
       root.openSelector(imageDirs, rows, selectedImage, selectionFile, doneFile,
                         showLabels, filterable)
+      return "ok"
+    }
+
+    function preload(imageRowsB64: string,
+                     selectedImage: string,
+                     showLabels: string,
+                     filterable: string): string {
+      var rows = root.decodeBase64(imageRowsB64)
+      root.preloadRows(rows, selectedImage, showLabels, filterable)
       return "ok"
     }
 
@@ -426,7 +471,7 @@ Item {
 
     Item {
       id: card
-      visible: root.opened && root.imagesLoaded
+      visible: root.opened && root.imagesLoaded && root.layoutSettled && root.imageArray.length > 0
         width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
         height: root.expandedHeight + 30 + root.bottomChromeHeight
         anchors.centerIn: parent

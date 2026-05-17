@@ -170,6 +170,11 @@ QtObject {
     shellValues = parsed
   }
 
+  function reloadTheme() {
+    colorsFile.reload()
+    shellFile.reload()
+  }
+
   // `omarchy-theme-set` recreates the theme/ directory via rm+mv, which kills
   // the inotify watch on colors.toml. Use theme.name (overwritten in place) as
   // a tripwire that forces a fresh reload after each swap.
@@ -194,6 +199,6 @@ QtObject {
     path: Quickshell.env("HOME") + "/.config/omarchy/current/theme.name"
     watchChanges: true
     printErrors: false
-    onFileChanged: { colorsFile.reload(); shellFile.reload() }
+    onFileChanged: root.reloadTheme()
   }
 }

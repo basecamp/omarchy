@@ -3,6 +3,13 @@
 # omarchy:summary=Open the Omarchy theme switcher
 
 OMARCHY_PATH=${OMARCHY_PATH:-$HOME/.local/share/omarchy}
+preload=false
+
+if [[ $1 == "--preload" ]]; then
+  preload=true
+  shift
+fi
+
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
 OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 CACHE_PATH="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/theme-selector"
@@ -104,10 +111,16 @@ for extension in png jpg jpeg webp gif bmp; do
     break
   fi
 done
-exec omarchy-menu-images \
-  --print-name \
-  --show-labels \
-  --filterable \
-  --lazy-thumbnails \
-  --selected "$selected_preview" \
-  "$preview_dir"
+menu_args=(
+  --print-name
+  --show-labels
+  --filterable
+  --lazy-thumbnails
+  --selected "$selected_preview"
+)
+
+if [[ $preload == true ]]; then
+  menu_args+=(--preload)
+fi
+
+exec omarchy-menu-images "${menu_args[@]}" "$preview_dir"
