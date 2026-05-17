@@ -180,7 +180,7 @@ Item {
     open: root.popupOpen
     centerOnBar: true
     triggerMode: "click"
-    contentWidth: 440
+    contentWidth: 480
     contentHeight: card.implicitHeight + 28
 
     Column {
@@ -196,8 +196,9 @@ Item {
         Row {
           id: heroLeft
           anchors.left: parent.left
+          anchors.leftMargin: 16
           anchors.verticalCenter: parent.verticalCenter
-          spacing: 12
+          spacing: 16
 
           Text {
             id: heroIcon
