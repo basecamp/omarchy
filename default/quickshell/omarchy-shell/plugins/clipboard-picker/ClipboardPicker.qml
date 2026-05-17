@@ -66,7 +66,7 @@ Item {
     
     for (var i = 0; i < root.items.length; i++) {
       var entry = root.items[i]
-      var isPassword = (entry.meta === "password")
+      var isPassword = (entry.meta === "password" || entry.preview_type === "password")
       
       var textMatch = false
       if (isPassword) {
