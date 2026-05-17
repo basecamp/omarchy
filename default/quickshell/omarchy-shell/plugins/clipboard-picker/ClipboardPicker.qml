@@ -28,9 +28,10 @@ Item {
   property int contentMargin: 18
   property int headerHeight: 34
   property int contentSpacing: 6
-  property int cardWidth: 500
+  property int cardWidth: 800
   property int cardHeight: 600
   property int rowHeight: 60
+  property int cellWidth: (cardWidth - contentMargin * 2 - contentSpacing) / 2
 
   function open(payloadJson) {
     root.opened = true
@@ -210,9 +211,15 @@ Item {
             if (root.filterText.length > 0) root.setFilter(root.filterText.slice(0, -1))
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
-            root.select(-1)
+            root.select(-2)
             event.accepted = true
           } else if (event.key === Qt.Key_Down) {
+            root.select(2)
+            event.accepted = true
+          } else if (event.key === Qt.Key_Left) {
+            root.select(-1)
+            event.accepted = true
+          } else if (event.key === Qt.Key_Right) {
             root.select(1)
             event.accepted = true
           } else if (event.key === Qt.Key_PageUp) {
@@ -260,12 +267,13 @@ Item {
           width: parent.width
           height: parent.height - root.headerHeight - root.contentSpacing
 
-          ListView {
+          GridView {
             id: resultList
             anchors.fill: parent
             model: displayModel
             clip: true
-            spacing: 4
+            cellWidth: root.cellWidth
+            cellHeight: root.rowHeight
             boundsBehavior: Flickable.StopAtBounds
 
             delegate: Rectangle {
@@ -275,8 +283,8 @@ Item {
               required property string previewImage
               required property string previewType
 
-              width: ListView.view.width
-              height: previewType === "text" ? root.rowHeight : 240
+              width: root.cellWidth - 4
+              height: root.rowHeight - 4
               radius: root.cornerRadius
               color: index === root.selectedIndex ? root.withAlpha(root.foreground, 0.08) : root.withAlpha(root.foreground, mouseArea.containsMouse ? 0.045 : 0)
 
@@ -318,8 +326,24 @@ Item {
                   
                   Image {
                     source: parent.parent.parent.previewImage
-                    anchors.fill: parent
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: height * 1.5
                     fillMode: Image.PreserveAspectFit
+                  }
+
+                  Text {
+                    anchors.left: parent.children[0].right
+                    anchors.leftMargin: 12
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Image"
+                    color: root.foreground
+                    opacity: 0.6
+                    font.family: root.fontFamily
+                    font.pixelSize: 14
+                    font.italic: true
                   }
                 }
               }
