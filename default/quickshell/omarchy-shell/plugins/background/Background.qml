@@ -30,20 +30,23 @@ Item {
     if (!readlinkProc.running) readlinkProc.running = true
   }
 
-  function setBackground(path) {
+  function setBackground(path, instant) {
     path = String(path || "").trim()
     if (!path || path === currentBackground) return
     currentBackground = path
     backgroundVersion += 1
 
-    if (!displayedBackground) {
+    revealAnimation.stop()
+    finishingTransition = false
+
+    if (instant || !displayedBackground) {
+      oldBackground = ""
+      incomingBackground = ""
       displayedBackground = path
       revealProgress = 1
       return
     }
 
-    revealAnimation.stop()
-    finishingTransition = false
     oldBackground = displayedBackground
     incomingBackground = path
     revealProgress = 0
@@ -73,7 +76,23 @@ Item {
     id: readlinkProc
     command: ["readlink", "-f", root.currentBackgroundLink]
     stdout: StdioCollector {
-      onStreamFinished: root.setBackground(String(text || "").trim())
+      onStreamFinished: root.setBackground(String(text || "").trim(), false)
+    }
+  }
+
+  IpcHandler {
+    target: "background"
+
+    function refresh(): void {
+      root.refreshBackground()
+    }
+
+    function set(path: string): void {
+      root.setBackground(path, false)
+    }
+
+    function setInstant(path: string): void {
+      root.setBackground(path, true)
     }
   }
 

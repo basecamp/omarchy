@@ -787,6 +787,21 @@ ShellRoot {
       return "ok"
     }
 
+    function applyTheme(colorsB64: string, shellB64: string): string {
+      var colorsRaw = ""
+      var shellRaw = ""
+      try { colorsRaw = Qt.atob(String(colorsB64 || "")) } catch (e) { colorsRaw = "" }
+      try { shellRaw = Qt.atob(String(shellB64 || "")) } catch (e2) { shellRaw = "" }
+      NoctaliaCommons.Color.loadColors(colorsRaw)
+      NoctaliaCommons.Color.loadShell(shellRaw)
+      return "ok"
+    }
+
+    function reloadTheme(): string {
+      NoctaliaCommons.Color.reloadTheme()
+      return "ok"
+    }
+
     function rescanPlugins(): void {
       shell.pluginRegistry.rescan()
     }

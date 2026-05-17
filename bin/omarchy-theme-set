@@ -11,6 +11,7 @@ fi
 
 CURRENT_THEME_PATH="$HOME/.config/omarchy/current/theme"
 NEXT_THEME_PATH="$HOME/.config/omarchy/current/next-theme"
+CURRENT_BACKGROUND_LINK="$HOME/.config/omarchy/current/background"
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
 OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 
@@ -26,6 +27,41 @@ run_parallel() {
   for pid in "${pids[@]}"; do
     wait "$pid"
   done
+}
+
+set_theme_background() {
+  local backgrounds=()
+  local current_background index new_background next_index
+
+  mapfile -d '' -t backgrounds < <(
+    find -L "$HOME/.config/omarchy/backgrounds/$THEME_NAME/" "$CURRENT_THEME_PATH/backgrounds/" -maxdepth 1 -type f \
+      \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
+      -print0 2>/dev/null | sort -z
+  )
+
+  if (( ${#backgrounds[@]} == 0 )); then
+    omarchy-notification-send "No background was found for theme" -t 2000
+    return
+  fi
+
+  current_background=$(readlink "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
+  index=-1
+  for i in "${!backgrounds[@]}"; do
+    if [[ ${backgrounds[$i]} == $current_background ]]; then
+      index=$i
+      break
+    fi
+  done
+
+  if (( index == -1 )); then
+    new_background="${backgrounds[0]}"
+  else
+    next_index=$(((index + 1) % ${#backgrounds[@]}))
+    new_background="${backgrounds[$next_index]}"
+  fi
+
+  ln -nsf "$new_background" "$CURRENT_BACKGROUND_LINK"
+  omarchy-shell-ipc-fast background setInstant "$new_background" >/dev/null 2>&1 || true
 }
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
@@ -58,8 +94,17 @@ mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
 # Store theme name for reference
 echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"
 
+# Make the running shell pick up the new palette immediately instead of waiting
+# for file-watch debounce while the rest of the theme hooks run.
+colors_payload=$([[ -f $CURRENT_THEME_PATH/colors.toml ]] && base64 -w 0 "$CURRENT_THEME_PATH/colors.toml")
+shell_payload=$([[ -f $CURRENT_THEME_PATH/shell.toml ]] && base64 -w 0 "$CURRENT_THEME_PATH/shell.toml")
+omarchy-shell-ipc-fast shell applyTheme "$colors_payload" "$shell_payload" >/dev/null 2>&1 || true
+
+if [[ $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
+  set_theme_background
+fi
+
 post_theme_commands=(
-  omarchy-restart-shell
   omarchy-restart-terminal
   omarchy-restart-hyprctl
   omarchy-restart-btop
@@ -73,15 +118,13 @@ post_theme_commands=(
   omarchy-theme-set-keyboard
 )
 
-# Change background with theme while restarting/retheming independent components.
-if [[ $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
-  post_theme_commands+=(omarchy-theme-bg-next)
-fi
-
 run_parallel "${post_theme_commands[@]}"
 
 # Call hook on theme set
 omarchy-hook theme-set "$THEME_NAME" >/dev/null
 
-# Warm the background selector cache after the theme is applied, off the critical path.
+# Warm selector caches after the theme is applied. The shell hot-reloads theme
+# colors/backgrounds, so keep the running instance alive and preload the picker
+# rows/selection to avoid first-open carousel settling after a theme change.
+omarchy-theme-switcher --preload >/dev/null 2>&1
 omarchy-theme-bg-cache >/dev/null 2>&1 &
