@@ -57,6 +57,10 @@ Item {
   property color foreground: Color.bar.text
   property color background: Color.bar.background
   property color urgent: Color.bar.active
+
+  Behavior on foreground { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   property string weatherText: ""
   property string weatherClass: ""
   property bool updateAvailable: false
