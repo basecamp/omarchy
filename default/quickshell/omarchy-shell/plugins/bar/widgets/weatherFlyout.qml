@@ -27,6 +27,7 @@ Item {
 
   // Parsed wttr.in j1 response. Kept on failure so stale data stays visible.
   property var report: null
+  property var dailyForecastReport: null
   property string wttrLocation: ""
 
   readonly property string label: bar ? bar.weatherText : ""
@@ -34,7 +35,7 @@ Item {
 
   readonly property var current: report && report.current_condition && report.current_condition[0] ? report.current_condition[0] : null
   readonly property var areaInfo: report && report.nearest_area && report.nearest_area[0] ? report.nearest_area[0] : null
-  readonly property var forecastDays: report && report.weather ? report.weather : []
+  readonly property var forecastDays: buildForecastDays()
 
   readonly property bool useImperial: {
     var override = setting("unit", "")
@@ -68,6 +69,78 @@ Item {
   function refresh() {
     if (!forecastProc.running) forecastProc.running = true
     if (!locationProc.running) locationProc.running = true
+  }
+
+  function refreshDailyForecast(sourceReport) {
+    var area = sourceReport && sourceReport.nearest_area && sourceReport.nearest_area[0] ? sourceReport.nearest_area[0] : root.areaInfo
+    if (!area || dailyForecastProc.running) return
+
+    var lat = parseFloat(String(area.latitude || ""))
+    var lon = parseFloat(String(area.longitude || ""))
+    if (isNaN(lat) || isNaN(lon)) return
+
+    var url = "https://api.open-meteo.com/v1/forecast"
+      + "?latitude=" + encodeURIComponent(String(lat))
+      + "&longitude=" + encodeURIComponent(String(lon))
+      + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+      + "&forecast_days=4"
+      + "&timezone=auto"
+    dailyForecastProc.command = ["curl", "-fsS", "--max-time", "5", url]
+    dailyForecastProc.running = true
+  }
+
+  function buildForecastDays() {
+    var days = openMeteoForecastDays()
+    return days.length > 0 ? days : wttrNextForecastDays()
+  }
+
+  function openMeteoForecastDays() {
+    var daily = dailyForecastReport && dailyForecastReport.daily ? dailyForecastReport.daily : null
+    if (!daily || !daily.time) return []
+
+    var result = []
+    for (var i = 0; i < daily.time.length && result.length < 3; ++i) {
+      var date = daily.time[i]
+      if (!isFutureForecastDate(date)) continue
+
+      var maxC = daily.temperature_2m_max ? daily.temperature_2m_max[i] : ""
+      var minC = daily.temperature_2m_min ? daily.temperature_2m_min[i] : ""
+      result.push({
+        date: date,
+        maxtempC: roundedTemp(maxC),
+        mintempC: roundedTemp(minC),
+        maxtempF: roundedTemp(celsiusToFahrenheit(maxC)),
+        mintempF: roundedTemp(celsiusToFahrenheit(minC)),
+        openMeteoWeatherCode: daily.weather_code ? daily.weather_code[i] : null
+      })
+    }
+    return result
+  }
+
+  function wttrNextForecastDays() {
+    var days = report && report.weather ? report.weather : []
+    var result = []
+    for (var i = 0; i < days.length && result.length < 3; ++i) {
+      if (isFutureForecastDate(days[i].date)) result.push(days[i])
+    }
+    return result
+  }
+
+  function isFutureForecastDate(dateString) {
+    if (!dateString) return false
+    return String(dateString).slice(0, 10) > Qt.formatDate(new Date(), "yyyy-MM-dd")
+  }
+
+  function roundedTemp(value) {
+    if (value === undefined || value === null || value === "") return ""
+    var n = parseFloat(String(value))
+    return isNaN(n) ? "" : String(Math.round(n))
+  }
+
+  function celsiusToFahrenheit(value) {
+    if (value === undefined || value === null || value === "") return ""
+    var n = parseFloat(String(value))
+    return isNaN(n) ? "" : (n * 9 / 5) + 32
   }
 
   function formatTemp(value) {
@@ -104,7 +177,9 @@ Item {
 
   // Representative icon for a forecast day: the hourly entry nearest noon.
   function dayIcon(day) {
-    if (!day || !day.hourly || day.hourly.length === 0) return ""
+    if (!day) return ""
+    if (day.openMeteoWeatherCode !== undefined && day.openMeteoWeatherCode !== null) return iconForOpenMeteoCode(day.openMeteoWeatherCode)
+    if (!day.hourly || day.hourly.length === 0) return ""
     var best = day.hourly[0]
     var bestDist = 9999
     for (var i = 0; i < day.hourly.length; ++i) {
@@ -113,6 +188,19 @@ Item {
       if (dist < bestDist) { bestDist = dist; best = day.hourly[i] }
     }
     return iconForCode(best.weatherCode, false)
+  }
+
+  function iconForOpenMeteoCode(code) {
+    var c = parseInt(String(code || "0"), 10)
+    if (c === 0) return iconForCode(113, false)
+    if (c === 1 || c === 2) return iconForCode(116, false)
+    if (c === 3) return iconForCode(119, false)
+    if (c === 45 || c === 48) return iconForCode(143, false)
+    if (c === 51 || c === 53 || c === 55 || c === 56 || c === 57 || c === 61) return iconForCode(266, false)
+    if (c === 63 || c === 65 || c === 66 || c === 67 || c === 80 || c === 81 || c === 82) return iconForCode(308, false)
+    if (c === 71 || c === 73 || c === 75 || c === 77 || c === 85 || c === 86) return iconForCode(338, false)
+    if (c === 95 || c === 96 || c === 99) return iconForCode(389, false)
+    return iconForCode(119, false)
   }
 
   // Mirrors omarchy-weather-icon's wttr.in code → nerd-font glyph mapping.
@@ -143,9 +231,27 @@ Item {
         var raw = String(text || "").trim()
         if (!raw) return
         try {
-          root.report = JSON.parse(raw)
+          var parsed = JSON.parse(raw)
+          root.report = parsed
+          root.refreshDailyForecast(parsed)
         } catch (e) {
           // Keep last-good report on parse failure so the popup isn't blanked.
+        }
+      }
+    }
+  }
+
+  Process {
+    id: dailyForecastProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var raw = String(text || "").trim()
+        if (!raw) return
+        try {
+          root.dailyForecastReport = JSON.parse(raw)
+        } catch (e) {
+          // Keep last-good daily forecast on parse failure.
         }
       }
     }
