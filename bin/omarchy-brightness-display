@@ -1,10 +1,27 @@
 #!/bin/bash
 
-# omarchy:summary=Adjust brightness on the most likely display device.
-# omarchy:args=<+N%|N%-|N%|off|on>
-# omarchy:examples=omarchy brightness display +5% | omarchy brightness display 5%- | omarchy brightness display 50% | omarchy brightness display off | omarchy brightness display on
+# omarchy:summary=Show or adjust brightness on the most likely display device.
+# omarchy:args=[+N%|N%-|N%|off|on]
+# omarchy:examples=omarchy brightness display | omarchy brightness display +5% | omarchy brightness display 5%- | omarchy brightness display 50% | omarchy brightness display off | omarchy brightness display on
 
-step="${1:-+5%}"
+display_brightness() {
+  local device="$1"
+
+  brightnessctl -d "$device" -m 2>/dev/null | awk -F, '{ gsub("%", "", $4); print $4; found=1 } END{ exit !found }'
+}
+
+if (( $# == 0 )) || [[ ${1:-} == "get" ]]; then
+  if omarchy-hyprland-monitor-focused-apple; then
+    omarchy-brightness-display-apple
+    exit
+  fi
+
+  device="$(omarchy-hw-display)" || exit 1
+  display_brightness "$device"
+  exit
+fi
+
+step="$1"
 
 if [[ $step == "off" ]]; then
   hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })' >/dev/null 2>&1
@@ -14,12 +31,10 @@ elif [[ $step == "on" ]]; then
   exit 0
 fi
 
-runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
-
 # Drop overlapping brightness key events so concurrent invocations do not race.
 # Hardware key repeat present on some devices can otherwise glitch OSD rendering.
-exec 9>"$runtime_dir/omarchy-brightness-display.lock"
-flock -n 9 || exit 0
+exec {lock_fd}>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display.lock"
+flock -n "$lock_fd" || exit 0
 
 if omarchy-hyprland-monitor-focused-apple; then
   omarchy-brightness-display-apple "$step"
@@ -29,7 +44,7 @@ fi
 device="$(omarchy-hw-display)" || exit 1
 
 # Current brightness percentage
-current=$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')
+current=$(display_brightness "$device") || exit 1
 
 # Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
 # absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
@@ -55,4 +70,4 @@ fi
 
 # Set brightness of the display device.
 brightnessctl -d "$device" set "$step" >/dev/null
-omarchy-osd -i brightness -p "$(brightnessctl -d "$device" -m | cut -d',' -f4 | tr -d '%')"
+omarchy-osd -i brightness -p "$(display_brightness "$device")"
