@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.clipboard-picker",
+  "name": "Clipboard picker",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "A clipboard manager to view and paste history",
+  "kinds": ["overlay"],
+  "activation": "on-demand",
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "ClipboardPicker.qml"
+  }
+}
