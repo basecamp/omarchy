@@ -9,7 +9,7 @@ PopupWindow {
   required property Item anchorItem
   required property QtObject bar
   property var owner: null
-  property int margin: 8
+  property int margin: 10
   property int padding: 14
   property int contentWidth: 280
   property int contentHeight: 200
@@ -83,28 +83,31 @@ PopupWindow {
       if (!window) return
 
       if (root.centerOnBar) {
+        var cx = 0;
+        var cy = 0;
         if (root.bar.position === "top" || root.bar.position === "bottom") {
-          localX = window.width / 2 - popupWidth / 2
-          localY = root.bar.position === "bottom" ? -popupHeight - root.margin : window.height + root.margin
-          localX = Math.max(root.margin, Math.min(localX, window.width - popupWidth - root.margin))
+          cx = window.width / 2 - popupWidth / 2
+          cy = root.bar.position === "bottom" ? -popupHeight - root.margin : window.height + root.margin
+          cx = Math.max(root.margin, Math.min(cx, window.width - popupWidth - root.margin))
         } else {
-          localX = root.bar.position === "left" ? window.width + root.margin : -popupWidth - root.margin
-          localY = window.height / 2 - popupHeight / 2
-          localY = Math.max(root.margin, Math.min(localY, window.height - popupHeight - root.margin))
+          cx = root.bar.position === "left" ? window.width + root.margin : -popupWidth - root.margin
+          cy = window.height / 2 - popupHeight / 2
+          cy = Math.max(root.margin, Math.min(cy, window.height - popupHeight - root.margin))
         }
 
-        popupAnchor.rect.x = Math.round(localX)
-        popupAnchor.rect.y = Math.round(localY)
+        popupAnchor.rect.x = Math.round(cx)
+        popupAnchor.rect.y = Math.round(cy)
         return
       }
 
+      var point = window.contentItem.mapFromItem(target, localX, localY)
+
       if (root.bar.position === "top" || root.bar.position === "bottom") {
-        localX = Math.max(root.margin, Math.min(localX, window.width - popupWidth - root.margin))
+        point.x = Math.max(root.margin, Math.min(point.x, window.width - popupWidth - root.margin))
       } else {
-        localY = Math.max(root.margin, Math.min(localY, window.height - popupHeight - root.margin))
+        point.y = Math.max(root.margin, Math.min(point.y, window.height - popupHeight - root.margin))
       }
 
-      var point = window.contentItem.mapFromItem(target, localX, localY)
       popupAnchor.rect.x = Math.round(point.x)
       popupAnchor.rect.y = Math.round(point.y)
     }
@@ -115,7 +118,7 @@ PopupWindow {
     anchors.fill: parent
     color: Color.popups.background
     border.color: Color.popups.border
-    border.width: 1
+    border.width: 2
     radius: 0
     opacity: root.open ? 1.0 : 0
 
