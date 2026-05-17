@@ -2,7 +2,7 @@ echo "Reset DNS configuration to DHCP (remove forced Cloudflare DNS)"
 
 # Reset DNS to use DHCP by default instead of forcing Cloudflare
 # This preserves local development environments (.local domains, etc.)
-# Users can still opt-in to Cloudflare DNS using: omarchy-setup-dns cloudflare
+# Users can still opt-in to Cloudflare DNS using: omarchy-dns Cloudflare
 
 if [[ -f /etc/systemd/resolved.conf ]]; then
   # Backup current config with timestamp
@@ -27,5 +27,5 @@ if [[ -f /etc/systemd/resolved.conf ]]; then
   sudo systemctl restart systemd-resolved
 
   echo "DNS configuration reset to use DHCP (router DNS)"
-  echo "To use Cloudflare DNS, run: omarchy-setup-dns Cloudflare"
+  echo "To use Cloudflare DNS, run: omarchy-dns Cloudflare"
 fi
