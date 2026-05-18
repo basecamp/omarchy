@@ -25,6 +25,148 @@ Item {
   property var displays: []
   property int enabledDisplayCount: 0
 
+  // Cursor model shared by keyboard and mouse. Sections:
+  //   "brightness" - single slider row, selectedIndex = -1 sentinel
+  //                  (mirrors audioPanel's slider rows). Only present if a
+  //                  controllable backlight was detected.
+  //   "scale"      - 6 ChoiceButton scale presets; treated as a single
+  //                  horizontal row from j/k's perspective. h/l moves
+  //                  between presets, identical to bluetooth's header.
+  //   "monitors"   - vertical Toggle list for enabling/disabling displays;
+  //                  j/k walks each row.
+  // Mouse hover on a target updates root state via the components' `hovered`
+  // signal so keyboard cursor and pointer share one highlight.
+  readonly property var scaleValues: ["1", "1.25", "1.6", "2", "3", "4"]
+  property string focusSection: "scale"
+  property int selectedIndex: 0
+
+  readonly property var visibleSections: {
+    var list = []
+    if (brightnessAvailable) list.push("brightness")
+    list.push("scale")
+    if (displays.length > 0) list.push("monitors")
+    return list
+  }
+
+  function sectionCount(section) {
+    if (section === "brightness") return 0  // only the slider sentinel at -1
+    if (section === "scale") return scaleValues.length
+    if (section === "monitors") return displays.length
+    return 0
+  }
+
+  function sectionIsSingleRow(section) {
+    // brightness has only the slider; scale presets sit horizontally.
+    return section === "brightness" || section === "scale"
+  }
+
+  function sectionFirstIndex(section) {
+    if (section === "brightness") return -1
+    return 0
+  }
+
+  function moveCursor(delta) {
+    var sections = visibleSections
+    if (!sections || sections.length === 0) return
+    var sIdx = sections.indexOf(focusSection)
+    if (sIdx < 0) {
+      focusSection = sections[0]
+      selectedIndex = sectionFirstIndex(focusSection)
+      return
+    }
+    var inSingleRow = sectionIsSingleRow(focusSection)
+    var max = inSingleRow ? 0 : sectionCount(focusSection) - 1
+
+    if (delta > 0) {
+      if (!inSingleRow && selectedIndex < max) { selectedIndex = selectedIndex + 1; return }
+      if (sIdx < sections.length - 1) {
+        focusSection = sections[sIdx + 1]
+        selectedIndex = sectionFirstIndex(focusSection)
+      }
+    } else {
+      if (!inSingleRow && selectedIndex > 0) { selectedIndex = selectedIndex - 1; return }
+      if (sIdx > 0) {
+        var prev = sections[sIdx - 1]
+        focusSection = prev
+        // Coming up from below — land on the last navigable row of the prev
+        // section, or its sentinel for single-row sections.
+        selectedIndex = sectionIsSingleRow(prev) ? sectionFirstIndex(prev) : sectionCount(prev) - 1
+      }
+    }
+  }
+
+  // h/l: in scale section, walks the preset row; everywhere else, no-op
+  // because adjustBrightness handles horizontal motion on the brightness
+  // slider.
+  function moveCursorH(delta) {
+    if (focusSection !== "scale") return
+    var next = selectedIndex + delta
+    if (next < 0) next = 0
+    if (next > scaleValues.length - 1) next = scaleValues.length - 1
+    selectedIndex = next
+  }
+
+  function adjustBrightness(delta) {
+    if (focusSection !== "brightness") return
+    if (!brightnessAvailable) return
+    setBrightness(brightnessPercent + delta)
+  }
+
+  function activateCursor() {
+    if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
+      setScale(scaleValues[selectedIndex])
+      return
+    }
+    if (focusSection === "monitors" && selectedIndex >= 0 && selectedIndex < displays.length) {
+      var d = displays[selectedIndex]
+      if (d) toggleDisplay(d.name, d.enabled)
+    }
+    // brightness: no semantic activation; the slider value is the action.
+  }
+
+  function clampCursor() {
+    var sections = visibleSections
+    if (!sections || !sections.length) return
+    if (sections.indexOf(focusSection) < 0) {
+      focusSection = sections[0]
+      selectedIndex = sectionFirstIndex(focusSection)
+      return
+    }
+    var count = sectionCount(focusSection)
+    if (sectionIsSingleRow(focusSection)) {
+      // brightness uses -1 sentinel; scale clamps into the preset range.
+      if (focusSection === "brightness") selectedIndex = -1
+      else if (selectedIndex < 0 || selectedIndex >= count) selectedIndex = 0
+      return
+    }
+    if (count === 0) {
+      var sIdx = sections.indexOf(focusSection)
+      focusSection = sIdx > 0 ? sections[sIdx - 1] : sections[0]
+      selectedIndex = sectionFirstIndex(focusSection)
+      return
+    }
+    if (selectedIndex > count - 1) selectedIndex = count - 1
+    if (selectedIndex < 0) selectedIndex = 0
+  }
+
+  // Keep the keyboard-focused row inside the viewport when the panel grows
+  // taller than its allotted height (lots of displays). Mirrors audio's
+  // ensureCursorVisible helper.
+  function ensureCursorVisible(item) {
+    if (!item || !scrollArea) return
+    var flick = scrollArea.contentItem
+    if (!flick || flick.contentY === undefined) return
+    var pt = item.mapToItem(flick.contentItem || flick, 0, 0)
+    var top = pt.y
+    var bottom = top + (item.height || 0)
+    var viewTop = flick.contentY
+    var viewBottom = viewTop + flick.height
+    var margin = 6
+    if (top < viewTop + margin) flick.contentY = Math.max(0, top - margin)
+    else if (bottom > viewBottom - margin)
+      flick.contentY = bottom + margin - flick.height
+  }
+
   function closePopout() { popupOpen = false }
 
   IpcHandler {
@@ -45,6 +187,13 @@ Item {
         displays: root.displays
       })
     }
+
+    function toggle(): void {
+      if (root.popupOpen) root.closePopout()
+      else root.popupOpen = true
+    }
+    function show(): void { if (!root.popupOpen) root.popupOpen = true }
+    function hide(): void { root.closePopout() }
   }
 
   function refresh() {
@@ -120,6 +269,26 @@ Item {
 
   Component.onCompleted: refresh()
 
+  // KeyboardPanel takes Exclusive focus at map-time, so SUPER-bound IPC
+  // summons land with j/k ready to navigate. Seed the cursor on each open.
+  onPopupOpenChanged: {
+    if (popupOpen) {
+      refresh()
+      if (brightnessAvailable) {
+        focusSection = "brightness"
+        selectedIndex = -1
+      } else {
+        focusSection = "scale"
+        selectedIndex = 0
+      }
+      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+    }
+  }
+
+  onBrightnessAvailableChanged: clampCursor()
+  onDisplaysChanged: clampCursor()
+  onVisibleSectionsChanged: clampCursor()
+
   Timer {
     interval: 5000
     running: true
@@ -186,207 +355,210 @@ Item {
     }
   }
 
-  PopupCard {
+  KeyboardPanel {
+    id: panel
     anchorItem: button
     owner: root
     bar: root.bar
     open: root.popupOpen
     contentWidth: 320
-    contentHeight: panelColumn.implicitHeight + 28
+    contentHeight: Math.min(560, panelColumn.implicitHeight + 28)
 
-    Column {
-      id: panelColumn
+    PanelKeyCatcher {
+      id: keyCatcher
       anchors.fill: parent
-      spacing: 14
-
-      Text {
-        text: "Brightness"
-        color: Qt.darker(root.bar.foreground, 1.5)
-        font.family: root.bar.fontFamily
-        font.pixelSize: 11
-        font.bold: true
-      }
-
-      Row {
-        width: parent.width
-        spacing: 8
-        visible: root.brightnessAvailable
-
-        Text {
-          text: "󰃠"
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 16
-          width: 22
-          horizontalAlignment: Text.AlignHCenter
-          anchors.verticalCenter: parent.verticalCenter
+      onMoveRequested: function(dx, dy) {
+        if (dy !== 0) root.moveCursor(dy)
+        else if (dx !== 0) {
+          if (root.focusSection === "brightness") root.adjustBrightness(dx * 5)
+          else if (root.focusSection === "scale") root.moveCursorH(dx)
         }
+      }
+      onActivateRequested: root.activateCursor()
+      onCloseRequested: root.closePopout()
 
-        PanelSlider {
-          id: brightnessSlider
-          bar: root.bar
-          width: parent.width - 22 - brightnessPercent.width - 16
-          anchors.verticalCenter: parent.verticalCenter
-          minimum: 1
-          maximum: 100
-          step: 1
-          value: root.brightnessPercent
-          integer: true
-          onMoved: function(v) { root.previewBrightness(v) }
-          onReleased: function(v) {
-            brightnessDebounce.stop()
-            root.setBrightness(v)
+      ScrollView {
+        id: scrollArea
+        anchors.fill: parent
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+        Column {
+          id: panelColumn
+          width: scrollArea.availableWidth
+          spacing: 14
+
+          // ---- Brightness ----
+          Column {
+            width: parent.width
+            spacing: 6
+
+            PanelSectionHeader {
+              text: "Brightness"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              fontSize: 11
+            }
+
+            CursorSurface {
+              id: brightnessRow
+              visible: root.brightnessAvailable
+              width: parent.width
+              height: brightnessInner.implicitHeight + 8
+              hasCursor: root.focusSection === "brightness" && root.selectedIndex === -1
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
+              foreground: root.bar.foreground
+              fill: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.18)
+
+              Row {
+                id: brightnessInner
+                anchors.fill: parent
+                anchors.leftMargin: 6
+                anchors.rightMargin: 6
+                spacing: 8
+
+                Text {
+                  text: "󰃠"
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 16
+                  width: 22
+                  horizontalAlignment: Text.AlignHCenter
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                PanelSlider {
+                  id: brightnessSlider
+                  bar: root.bar
+                  width: parent.width - 22 - brightnessPercent.width - 16
+                  anchors.verticalCenter: parent.verticalCenter
+                  minimum: 1
+                  maximum: 100
+                  step: 1
+                  value: root.brightnessPercent
+                  integer: true
+                  onMoved: function(v) { root.previewBrightness(v) }
+                  onReleased: function(v) {
+                    brightnessDebounce.stop()
+                    root.setBrightness(v)
+                  }
+                }
+
+                Text {
+                  id: brightnessPercent
+                  text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 11
+                  width: 36
+                  horizontalAlignment: Text.AlignRight
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+
+              HoverHandler {
+                onHoveredChanged: if (hovered) {
+                  root.focusSection = "brightness"
+                  root.selectedIndex = -1
+                }
+              }
+            }
+
+            Text {
+              visible: !root.brightnessAvailable
+              text: "No controllable backlight found"
+              color: Qt.darker(root.bar.foreground, 1.5)
+              font.family: root.bar.fontFamily
+              font.pixelSize: 11
+            }
+          }
+
+          // ---- Scale ----
+          Column {
+            width: parent.width
+            spacing: 6
+
+            PanelSectionHeader {
+              text: "Scale"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              fontSize: 11
+            }
+
+            Row {
+              width: parent.width
+              spacing: 6
+
+              Repeater {
+                model: root.scaleValues
+
+                ChoiceButton {
+                  required property string modelData
+                  required property int index
+
+                  width: (panelColumn.width - 30) / 6
+                  text: modelData + "x"
+                  foreground: root.bar.foreground
+                  background: root.bar.background
+                  accent: root.bar.foreground
+                  fontFamily: root.bar.fontFamily
+                  fontSize: 11
+                  selected: root.normalizeScale(root.monitorScale) === root.normalizeScale(modelData)
+                  hasCursor: root.focusSection === "scale" && root.selectedIndex === index
+                  onClicked: root.setScale(modelData)
+                  onHovered: function(h) {
+                    if (h) {
+                      root.focusSection = "scale"
+                      root.selectedIndex = index
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // ---- Monitors ----
+          Column {
+            width: parent.width
+            spacing: 6
+            visible: root.displays.length > 0
+
+            PanelSectionHeader {
+              text: "Monitors"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              fontSize: 11
+            }
+
+            Repeater {
+              model: root.displays
+
+              Toggle {
+                required property var modelData
+                required property int index
+
+                width: panelColumn.width
+                label: modelData.name + (modelData.focused ? " · focused" : "")
+                checked: modelData.enabled
+                enabled: !modelData.enabled || root.enabledDisplayCount > 1
+                opacity: enabled ? 1.0 : 0.45
+                foreground: root.bar.foreground
+                accent: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                hasCursor: root.focusSection === "monitors" && root.selectedIndex === index
+                onClicked: root.toggleDisplay(modelData.name, modelData.enabled)
+                onHovered: function(h) {
+                  if (h) {
+                    root.focusSection = "monitors"
+                    root.selectedIndex = index
+                  }
+                }
+              }
+            }
           }
         }
-
-        Text {
-          id: brightnessPercent
-          text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-          width: 36
-          horizontalAlignment: Text.AlignRight
-          anchors.verticalCenter: parent.verticalCenter
-        }
       }
-
-      Text {
-        visible: !root.brightnessAvailable
-        text: "No controllable backlight found"
-        color: Qt.darker(root.bar.foreground, 1.5)
-        font.family: root.bar.fontFamily
-        font.pixelSize: 11
-      }
-
-      Column {
-        width: parent.width
-        spacing: 8
-
-        Text {
-          text: "Scale"
-          color: Qt.darker(root.bar.foreground, 1.5)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-          font.bold: true
-        }
-
-        Row {
-          width: parent.width
-          spacing: 6
-
-          ScaleButton { scaleValue: "1" }
-          ScaleButton { scaleValue: "1.25" }
-          ScaleButton { scaleValue: "1.6" }
-          ScaleButton { scaleValue: "2" }
-          ScaleButton { scaleValue: "3" }
-          ScaleButton { scaleValue: "4" }
-        }
-      }
-
-      Column {
-        width: parent.width
-        spacing: 8
-        visible: root.displays.length > 0
-
-        Text {
-          text: "Monitors"
-          color: Qt.darker(root.bar.foreground, 1.5)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 11
-          font.bold: true
-        }
-
-        Repeater {
-          model: root.displays
-
-          ToggleRow {
-            required property var modelData
-
-            label: modelData.name + (modelData.focused ? " · focused" : "")
-            checked: modelData.enabled
-            enabled: !modelData.enabled || root.enabledDisplayCount > 1
-            opacity: enabled ? 1.0 : 0.45
-            onClicked: root.toggleDisplay(modelData.name, modelData.enabled)
-          }
-        }
-      }
-    }
-  }
-
-  component ScaleButton: Rectangle {
-    property string scaleValue: ""
-    readonly property bool active: root.normalizeScale(root.monitorScale) === root.normalizeScale(scaleValue)
-
-    width: (panelColumn.width - 30) / 6
-    height: 28
-    radius: 0
-    color: scaleArea.pressed ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.24)
-      : scaleArea.containsMouse ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.14)
-      : active ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.20)
-      : "transparent"
-
-    Text {
-      anchors.centerIn: parent
-      text: scaleValue + "x"
-      color: root.bar.foreground
-      font.family: root.bar.fontFamily
-      font.pixelSize: 11
-      font.bold: active
-    }
-
-    MouseArea {
-      id: scaleArea
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: root.setScale(scaleValue)
-    }
-  }
-
-  component ToggleRow: Rectangle {
-    property string label: ""
-    property bool checked: false
-    signal clicked()
-
-    width: panelColumn.width
-    height: 30
-    color: area.pressed ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.22)
-      : area.containsMouse ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
-      : "transparent"
-
-    Row {
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      spacing: 8
-
-      Text {
-        text: checked ? "󰄬" : "󰄱"
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: 14
-        width: 18
-        horizontalAlignment: Text.AlignHCenter
-      }
-
-      Text {
-        text: label
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: 12
-        elide: Text.ElideRight
-        width: parent.width - 26
-      }
-    }
-
-    MouseArea {
-      id: area
-      anchors.fill: parent
-      enabled: parent.enabled
-      hoverEnabled: true
-      cursorShape: parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onClicked: parent.clicked()
     }
   }
 }
