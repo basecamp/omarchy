@@ -601,8 +601,8 @@ Item {
         if (dev.batteryAvailable) return "Connected · " + Math.round(dev.battery * 100) + "%"
         return "Connected"
       }
-      if (isDiscovered) return "Available · click to pair"
-      return "Paired"
+      if (isDiscovered) return ""
+      return ""
     }
 
     readonly property color statusColor: {

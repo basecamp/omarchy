@@ -46,6 +46,11 @@ Item {
     }
   }
 
+  readonly property bool fullyCharged: {
+    var device = UPower.displayDevice
+    return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged
+  }
+
   function refresh() {
     if (!batteryProc.running) batteryProc.running = true
     if (!profilesProc.running) profilesProc.running = true
@@ -193,7 +198,7 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
       }
 
       Row {
-        visible: root.batteryInfo.percentage !== undefined
+        visible: root.batteryInfo.percentage !== undefined && !root.fullyCharged
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 24
 
@@ -212,12 +217,20 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
         }
       }
 
-      PanelSeparator { foreground: root.bar.foreground }
+      PanelSeparator {
+        visible: !root.fullyCharged
+        foreground: root.bar.foreground
+      }
 
       Column {
         width: parent.width
         spacing: 12
-        PanelSectionHeader { text: "POWER PROFILE"; foreground: root.bar.foreground; fontFamily: root.bar.fontFamily }
+        PanelSectionHeader {
+          visible: !root.fullyCharged
+          text: "POWER PROFILE"
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+        }
         Row {
           width: parent.width
           spacing: 6
