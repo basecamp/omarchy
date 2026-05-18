@@ -32,7 +32,6 @@ Item {
   }
 
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
-  property string styleFile: Quickshell.env("OMARCHY_MENU_STYLE_FILE") || (Quickshell.env("HOME") + "/.local/state/omarchy/toggles/quickshell-menu.json")
   // JSONC menu definitions. The shell parses both at startup and merges
   // the user file on top of the defaults, so the keybind → IPC → visible
   // path doesn't have to shell out to bash + jq on every open.
@@ -57,7 +56,7 @@ Item {
   property color background: Color.menu.background
   property color foreground: Color.menu.text
   property color border: foreground
-  property int cornerRadius: 0
+  readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: 18
   property int headerHeight: 34
   property int contentSpacing: 6
@@ -613,14 +612,6 @@ Item {
 
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
-
-  function loadStyle(raw) {
-    try {
-      var style = JSON.parse(raw || "{}")
-      root.cornerRadius = Number(style.radius || 0)
-    } catch (e) {}
-  }
-
   ListModel { id: displayModel }
 
   // ----------------------------------------------------------- IPC surface
@@ -788,14 +779,6 @@ Item {
       if (root.opened) root.rebuildDisplay()
     }
   }
-
-  FileView {
-    path: root.styleFile
-    watchChanges: true
-    onLoaded: root.loadStyle(text())
-    onFileChanged: { reload(); root.loadStyle(text()) }
-  }
-
   PanelWindow {
     id: panel
     visible: root.opened && root.rowsLoaded

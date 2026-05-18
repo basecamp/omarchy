@@ -32,13 +32,10 @@ Item {
   // ~/.cache where regeneratable artifacts belong.
   readonly property string cacheDir: home + "/.cache/omarchy/"
   readonly property string imageCacheDir: cacheDir + "notification-images/"
-  readonly property string styleStatePath: home + "/.local/state/omarchy/toggles/quickshell-menu.json"
-
   // Corner radius is shared with omarchy-shell menu and bar settings panel —
   // `omarchy style corners <sharp|round>` writes this file once and every
   // surface reads it. Default 0 for sharp corners.
-  property int cornerRadius: 0
-
+  readonly property int cornerRadius: Style.cornerRadius
   // Surfaces anchor relative to the omarchy bar so popups and history land
   // alongside the other shell panels rather than on top of the bar itself.
   // Falls back to the bar's default size (26 horizontal / 28 vertical) when
@@ -48,25 +45,6 @@ Item {
   readonly property int defaultBarSize: barVertical ? 28 : 26
   readonly property int liveBarSize: shell && shell.bar && !shell.bar.barHidden ? Math.max(0, shell.bar.barSize) : defaultBarSize
   readonly property int barClearance: liveBarSize + 12
-
-  function loadStyleState(raw) {
-    try {
-      var parsed = JSON.parse(raw || "{}")
-      var n = Number(parsed.radius)
-      cornerRadius = isFinite(n) && n >= 0 ? n : 0
-    } catch (e) {
-      cornerRadius = 0
-    }
-  }
-
-  FileView {
-    path: service.styleStatePath
-    watchChanges: true
-    printErrors: false
-    onLoaded: service.loadStyleState(text())
-    onFileChanged: reload()
-  }
-
 
   // Fired by IPC (`omarchy-shell-ipc notifications showHistory`) so the
   // bar widget can drop its PopupCard from the same anchor a click would.
