@@ -25,6 +25,12 @@ Item {
 
   Component.onCompleted: refresh()
 
+  Connections {
+    target: root.bar
+    ignoreUnknownSignals: true
+    function onIndicatorsRefreshRequested() { root.refresh() }
+  }
+
   Process {
     id: statusProc
     command: ["bash", "-lc", "pgrep -x hypridle >/dev/null 2>&1 && echo running || echo stopped"]

@@ -82,6 +82,8 @@ Item {
   readonly property bool vertical: position === "left" || position === "right"
   readonly property int barSize: vertical ? 28 : 26
 
+  signal indicatorsRefreshRequested()
+
   function normalizePosition(value) {
     var next = String(value || "").trim()
     return /^(top|bottom|left|right)$/.test(next) ? next : "top"
@@ -417,6 +419,7 @@ Item {
   function refreshIndicators() {
     refreshScreenRecording()
     runProcess(notificationSilencingProc)
+    indicatorsRefreshRequested()
   }
 
   function workspaceById(id) {
