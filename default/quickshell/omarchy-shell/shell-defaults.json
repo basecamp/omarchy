@@ -33,7 +33,7 @@
           "id": "screenRecording"
         },
         {
-          "id": "idle"
+          "id": "idleInhibitor"
         },
         {
           "id": "notifications"

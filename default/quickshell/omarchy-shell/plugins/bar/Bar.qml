@@ -1,8 +1,6 @@
 import Quickshell
-import Quickshell.Bluetooth
 import Quickshell.Hyprland
 import Quickshell.Io
-import Quickshell.Services.Pipewire
 import Quickshell.Services.SystemTray
 import Quickshell.Services.UPower
 import Quickshell.Wayland
@@ -58,22 +56,13 @@ Item {
   Behavior on foreground { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
-  property string weatherText: ""
-  property string weatherClass: ""
   property bool updateAvailable: false
   property string voxtypeIcon: ""
   property string voxtypeClass: ""
   property string screenRecordingText: ""
   property string screenRecordingTooltip: ""
-  property string idleText: ""
-  property string idleTooltip: ""
   property string notificationSilencingText: ""
   property string notificationSilencingTooltip: ""
-  property int audioVolumePercent: -1
-  property string networkKind: "disconnected"
-  property string networkLabel: ""
-  property int networkSignal: -1
-  property string networkFrequency: ""
   property bool clockAlt: false
   property var tooltipTarget: null
   property string tooltipText: ""
@@ -223,20 +212,13 @@ Item {
     case "omarchy": return omarchyModuleComponent
     case "workspaces": return workspacesModuleComponent
     case "clock": return clockModuleComponent
-    case "weather": return weatherModuleComponent
     case "update": return updateModuleComponent
     case "voxtype": return voxtypeModuleComponent
     case "screenRecording":
     case "screenrecording": return screenRecordingModuleComponent
-    case "idle": return idleModuleComponent
     case "notifications":
     case "notificationSilencing": return notificationsModuleComponent
     case "tray": return trayModuleComponent
-    case "bluetooth": return bluetoothModuleComponent
-    case "network": return networkModuleComponent
-    case "audio":
-    case "pulseaudio": return audioModuleComponent
-    case "cpu": return cpuModuleComponent
     case "battery": return batteryModuleComponent
     default: return null
     }
@@ -338,37 +320,6 @@ Item {
     else finalize()
   }
 
-  function networkCommand() {
-    return [
-      "device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == \"dev\") { print $(i + 1); exit } }')",
-      "if [[ -z $device ]]; then",
-      "  printf 'disconnected\\t\\t\\t\\n'",
-      "  exit 0",
-      "fi",
-      "if [[ ! -d /sys/class/net/$device/wireless ]]; then",
-      "  printf 'ethernet\\t%s\\t\\t\\n' \"$device\"",
-      "  exit 0",
-      "fi",
-      "show=$(iwctl station \"$device\" show 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g')",
-      "state=$(awk '/^[[:space:]]*State[[:space:]]/ { sub(/.*State[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
-      "ssid=$(awk '/^[[:space:]]*Connected network[[:space:]]/ { sub(/.*Connected network[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
-      "freq=$(awk '/^[[:space:]]*Frequency[[:space:]]/ { sub(/.*Frequency[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
-      "rssi=$(awk '/^[[:space:]]*RSSI[[:space:]]/ { sub(/.*RSSI[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
-      "dbm=${rssi%% *}",
-      "signal=\"\"",
-      "if [[ -n $dbm ]]; then",
-      "  if (( dbm >= -50 )); then signal=100",
-      "  elif (( dbm <= -100 )); then signal=0",
-      "  else signal=$(( 2 * (dbm + 100) )); fi",
-      "fi",
-      "if [[ -n $state && $state != connected ]]; then",
-      "  printf 'disconnected\\t\\t\\t\\n'",
-      "  exit 0",
-      "fi",
-      "printf 'wifi\\t%s\\t%s\\t%s\\n' \"${ssid:-$device}\" \"$signal\" \"$freq\""
-    ].join("\n")
-  }
-
   function run(command) {
     if (!command) return
 
@@ -431,12 +382,6 @@ Item {
     }
   }
 
-  function updateWeather(raw) {
-    var data = parseModuleJson(raw)
-    weatherText = data.text || ""
-    weatherClass = data.class || ""
-  }
-
   function updateIndicator(name, raw) {
     var data = parseModuleJson(raw)
     var text = data.text || ""
@@ -445,9 +390,6 @@ Item {
     if (name === "screenRecording") {
       screenRecordingText = text
       screenRecordingTooltip = tooltip
-    } else if (name === "idle") {
-      idleText = text
-      idleTooltip = tooltip
     } else if (name === "notifications") {
       notificationSilencingText = text
       notificationSilencingTooltip = tooltip
@@ -464,18 +406,6 @@ Item {
     else voxtypeIcon = ""
   }
 
-  function updateNetwork(raw) {
-    var parts = String(raw || "disconnected\t\t\t").replace(/\r?\n+$/, "").split("\t")
-    networkKind = parts[0] || "disconnected"
-    networkLabel = parts[1] || ""
-    networkSignal = parts[2] ? parseInt(parts[2], 10) : -1
-    networkFrequency = parts[3] || ""
-  }
-
-  function refreshWeather() {
-    runProcess(weatherProc)
-  }
-
   function refreshUpdate() {
     runProcess(updateProc)
   }
@@ -486,21 +416,7 @@ Item {
 
   function refreshIndicators() {
     refreshScreenRecording()
-    runProcess(idleProc)
     runProcess(notificationSilencingProc)
-  }
-
-  function refreshNetwork() {
-    runProcess(networkProc)
-  }
-
-  function updateAudioVolume(raw) {
-    var volume = parseInt(String(raw || "").trim(), 10)
-    audioVolumePercent = isNaN(volume) ? -1 : Math.max(0, volume)
-  }
-
-  function refreshAudio() {
-    runProcess(audioProc)
   }
 
   function workspaceById(id) {
@@ -551,95 +467,6 @@ Item {
     if (!UPower.onBattery && device.state !== UPowerDeviceState.Charging) return ""
     if (device.state === UPowerDeviceState.Charging) return chargingIcons[index]
     return defaultIcons[index]
-  }
-
-  function audioIcon() {
-    var sink = Pipewire.defaultAudioSink
-    if (!sink || !sink.audio) return ""
-    if (sink.audio.muted) return ""
-
-    var props = sink.properties || {}
-    var sinkText = String([
-      sink.name,
-      sink.description,
-      sink.nickname,
-      props["device.icon-name"],
-      props["device.product.name"],
-      props["node.name"]
-    ].join(" ")).toLowerCase()
-
-    if (sinkText.indexOf("headphone") !== -1 || sinkText.indexOf("headset") !== -1)
-      return ""
-
-    var volume = sink.audio.volume
-    if (!isFinite(volume) && audioVolumePercent >= 0)
-      volume = audioVolumePercent / 100
-    if (!isFinite(volume)) return ""
-    if (volume < 0.34) return ""
-    if (volume < 0.67) return ""
-    return ""
-  }
-
-  function bluetoothIcon() {
-    var adapter = Bluetooth.defaultAdapter
-    if (!adapter) return ""
-    if (!adapter.enabled) return "󰂲"
-
-    var devices = Bluetooth.devices.values
-    for (var i = 0; i < devices.length; i++) {
-      if (devices[i].connected)
-        return "󰂱"
-    }
-
-    return ""
-  }
-
-  function networkIcon() {
-    if (networkKind === "wifi") {
-      var icons = ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"]
-      var index = Math.max(0, Math.min(4, Math.ceil(networkSignal / 20) - 1))
-      return icons[index]
-    }
-
-    if (networkKind === "ethernet") return "󰀂"
-    return "󰤮"
-  }
-
-  function networkTooltip() {
-    if (networkKind === "wifi") {
-      var frequency = parseFloat(networkFrequency)
-      var frequencyText = frequency > 0 ? " (" + (frequency / 1000).toFixed(1) + " GHz)" : ""
-      return (networkLabel || "Wi-Fi") + frequencyText
-    }
-
-    if (networkKind === "ethernet") return "Connected"
-    return "Disconnected"
-  }
-
-  function audioTooltip() {
-    var sink = Pipewire.defaultAudioSink
-    if (sink && sink.audio) {
-      var volume = sink.audio.volume
-      if (isFinite(volume))
-        return "Playing at " + Math.round(volume * 100) + "%"
-    }
-
-    if (audioVolumePercent >= 0)
-      return "Playing at " + audioVolumePercent + "%"
-
-    return "Audio"
-  }
-
-  function bluetoothTooltip() {
-    var count = 0
-    var devices = Bluetooth.devices.values
-
-    for (var i = 0; i < devices.length; i++) {
-      if (devices[i].connected)
-        count++
-    }
-
-    return "Devices connected: " + count
   }
 
   function batteryTooltip() {
@@ -721,23 +548,6 @@ Item {
   }
 
   Process {
-    id: weatherProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/quickshell/omarchy-shell/scripts/weather.sh"))]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.updateWeather(text)
-    }
-  }
-
-  Timer {
-    interval: 60000
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: root.refreshWeather()
-  }
-
-  Process {
     id: updateProc
     command: ["bash", "-lc", root.commandWithOmarchyPath("omarchy-update-available")]
     stdout: StdioCollector { waitForEnd: true }
@@ -775,15 +585,6 @@ Item {
   }
 
   Process {
-    id: idleProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/quickshell/omarchy-shell/scripts/indicators/idle.sh"))]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.updateIndicator("idle", text)
-    }
-  }
-
-  Process {
     id: notificationSilencingProc
     command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/quickshell/omarchy-shell/scripts/indicators/notification-silencing.sh"))]
     stdout: StdioCollector {
@@ -798,40 +599,6 @@ Item {
     repeat: true
     triggeredOnStart: true
     onTriggered: root.refreshIndicators()
-  }
-
-  Process {
-    id: networkProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.networkCommand())]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.updateNetwork(text)
-    }
-  }
-
-  Timer {
-    interval: 3000
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: root.refreshNetwork()
-  }
-
-  Process {
-    id: audioProc
-    command: ["bash", "-lc", "if command -v pamixer >/dev/null; then pamixer --get-volume; elif command -v wpctl >/dev/null; then wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{ print int($2 * 100) }'; fi"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.updateAudioVolume(text)
-    }
-  }
-
-  Timer {
-    interval: 2000
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: root.refreshAudio()
   }
 
   IpcHandler {
@@ -999,17 +766,11 @@ Item {
   Component { id: omarchyModuleComponent; OmarchyModule {} }
   Component { id: workspacesModuleComponent; WorkspacesModule {} }
   Component { id: clockModuleComponent; ClockModule {} }
-  Component { id: weatherModuleComponent; WeatherModule {} }
   Component { id: updateModuleComponent; UpdateModule {} }
   Component { id: voxtypeModuleComponent; VoxtypeModule {} }
   Component { id: screenRecordingModuleComponent; ScreenRecordingModule {} }
-  Component { id: idleModuleComponent; IdleModule {} }
   Component { id: notificationsModuleComponent; NotificationsModule {} }
   Component { id: trayModuleComponent; TrayModule {} }
-  Component { id: bluetoothModuleComponent; BluetoothModule {} }
-  Component { id: networkModuleComponent; NetworkModule {} }
-  Component { id: audioModuleComponent; AudioModule {} }
-  Component { id: cpuModuleComponent; CpuModule {} }
   Component { id: batteryModuleComponent; BatteryModule {} }
 
   function findCenterAnchorEntry() {
@@ -1405,14 +1166,6 @@ Item {
     }
   }
 
-  component WeatherModule: ModuleButton {
-    text: root.weatherText
-    active: root.weatherClass === "active"
-    keepSpace: false
-    horizontalMargin: 7.5
-    onPressed: function() { root.run("omarchy-notification-send \"$(omarchy-weather-status)\"") }
-  }
-
   component UpdateModule: ModuleButton {
     text: root.updateAvailable ? "" : ""
     fontSize: 10
@@ -1435,13 +1188,6 @@ Item {
     active: root.screenRecordingText !== ""
     tooltipText: root.screenRecordingTooltip
     onPressed: function() { root.run("omarchy-capture-screenrecording") }
-  }
-
-  component IdleModule: IndicatorModule {
-    text: root.idleText
-    active: root.idleText !== ""
-    tooltipText: root.idleTooltip
-    onPressed: function() { root.run("omarchy-toggle-idle") }
   }
 
   component NotificationsModule: IndicatorModule {
@@ -1873,42 +1619,6 @@ Item {
       onWheel: function(wheel) {
         trayItemRoot.modelData.scroll(wheel.angleDelta.y, false)
       }
-    }
-  }
-
-  component BluetoothModule: ModuleButton {
-    text: root.bluetoothIcon()
-    horizontalMargin: 8.5
-    visible: Bluetooth.defaultAdapter !== null
-    onPressed: function() { root.run("omarchy-launch-bluetooth") }
-  }
-
-  component NetworkModule: ModuleButton {
-    text: root.networkIcon()
-    horizontalMargin: 6.5
-    rightExtraMargin: 2
-    tooltipText: root.networkTooltip()
-    onPressed: function() { root.run("OMARCHY_PATH=" + root.shellQuote(root.omarchyPath) + " PATH=" + root.shellQuote(root.omarchyPath + "/bin:" + (Quickshell.env("PATH") || "")) + " " + root.shellQuote(root.omarchyPath + "/bin/omarchy-launch-wifi")) }
-  }
-
-  component AudioModule: ModuleButton {
-    text: root.audioIcon()
-    onPressed: function(button) {
-      if (button === Qt.RightButton) root.run("pamixer -t")
-      else root.run("omarchy-launch-audio")
-    }
-    onWheelMoved: function(delta) {
-      if (delta > 0) root.run("pamixer -i 5")
-      else if (delta < 0) root.run("pamixer -d 5")
-      root.refreshAudio()
-    }
-  }
-
-  component CpuModule: ModuleButton {
-    text: "󰍛"
-    onPressed: function(button) {
-      if (button === Qt.RightButton) root.run("alacritty")
-      else root.run("omarchy-launch-or-focus-tui btop")
     }
   }
 

@@ -148,9 +148,61 @@ iwctl known-networks list 2>/dev/null \\
     if (net && net.connected) forget(net.ssid)
   }
 
-  readonly property string kind: bar ? bar.networkKind : "disconnected"
-  readonly property string label: bar ? bar.networkLabel : ""
-  readonly property int signalStrength: bar ? bar.networkSignal : -1
+  // Bar pill state. Polled locally so this panel is self-contained;
+  // populated by networkProc + networkTimer below.
+  property string kind: "disconnected"
+  property string label: ""
+  property int signalStrength: -1
+  property string frequency: ""
+
+  function updateNetwork(raw) {
+    var parts = String(raw || "disconnected\t\t\t").replace(/\r?\n+$/, "").split("\t")
+    kind = parts[0] || "disconnected"
+    label = parts[1] || ""
+    signalStrength = parts[2] ? parseInt(parts[2], 10) : -1
+    frequency = parts[3] || ""
+  }
+
+  function networkTooltip() {
+    if (kind === "wifi") {
+      var f = parseFloat(frequency)
+      var ftext = f > 0 ? " (" + (f / 1000).toFixed(1) + " GHz)" : ""
+      return (label || "Wi-Fi") + ftext
+    }
+    if (kind === "ethernet") return "Connected"
+    return "Disconnected"
+  }
+
+  function networkCommand() {
+    return [
+      "device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == \"dev\") { print $(i + 1); exit } }')",
+      "if [[ -z $device ]]; then",
+      "  printf 'disconnected\\t\\t\\t\\n'",
+      "  exit 0",
+      "fi",
+      "if [[ ! -d /sys/class/net/$device/wireless ]]; then",
+      "  printf 'ethernet\\t%s\\t\\t\\n' \"$device\"",
+      "  exit 0",
+      "fi",
+      "show=$(iwctl station \"$device\" show 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g')",
+      "state=$(awk '/^[[:space:]]*State[[:space:]]/ { sub(/.*State[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
+      "ssid=$(awk '/^[[:space:]]*Connected network[[:space:]]/ { sub(/.*Connected network[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
+      "freq=$(awk '/^[[:space:]]*Frequency[[:space:]]/ { sub(/.*Frequency[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
+      "rssi=$(awk '/^[[:space:]]*RSSI[[:space:]]/ { sub(/.*RSSI[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
+      "dbm=${rssi%% *}",
+      "signal=\"\"",
+      "if [[ -n $dbm ]]; then",
+      "  if (( dbm >= -50 )); then signal=100",
+      "  elif (( dbm <= -100 )); then signal=0",
+      "  else signal=$(( 2 * (dbm + 100) )); fi",
+      "fi",
+      "if [[ -n $state && $state != connected ]]; then",
+      "  printf 'disconnected\\t\\t\\t\\n'",
+      "  exit 0",
+      "fi",
+      "printf 'wifi\\t%s\\t%s\\t%s\\n' \"${ssid:-$device}\" \"$signal\" \"$freq\""
+    ].join("\n")
+  }
 
   readonly property string icon: {
     if (kind === "wifi") {
@@ -525,7 +577,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     text: root.icon
     horizontalMargin: 8.5
     rightExtraMargin: 2
-    tooltipText: bar ? bar.networkTooltip() : ""
+    tooltipText: root.networkTooltip()
 
     onPressed: function(b) {
       if (b === Qt.RightButton) root.launchImpala()
@@ -1145,5 +1197,24 @@ iwctl known-networks list 2>/dev/null \\
         else root.passwordSsid = ssid
       }
     }
+  }
+
+  // Poll the wifi/ethernet pill state every 3s. Local to this panel so
+  // Bar.qml does not need to mirror network state.
+  Process {
+    id: networkProc
+    command: ["bash", "-lc", root.bar ? root.bar.commandWithOmarchyPath(root.networkCommand()) : ""]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateNetwork(text)
+    }
+  }
+
+  Timer {
+    interval: 3000
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: if (!networkProc.running) networkProc.running = true
   }
 }
