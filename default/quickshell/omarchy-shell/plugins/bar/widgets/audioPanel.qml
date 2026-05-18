@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Pipewire
 import "../common" as Common
 
@@ -81,6 +82,171 @@ Item {
   readonly property bool outputMuted: sink && sink.audio ? sink.audio.muted : false
   readonly property real inputVolume: source && source.audio ? source.audio.volume : 0
   readonly property bool inputMuted: source && source.audio ? source.audio.muted : false
+
+  // Single cursor model shared by keyboard and mouse. Sections:
+  //   "output"  — output slider + sink device list
+  //   "input"   — input slider + source device list
+  //   "streams" — per-app playback streams
+  // selectedIndex semantics within a section:
+  //   -1            → on the slider row (h/l adjusts volume, m/Enter mute)
+  //   0..N-1        → on the Nth device/stream row
+  // Visuals derive from hasCursor/current via Common.CursorSurface, never
+  // from containsMouse — that's what keeps the highlight unique across
+  // keyboard + mouse like wifi does.
+  property string focusSection: "output"
+  property int selectedIndex: -1
+
+  readonly property color activeFill: bar
+    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18)
+    : "transparent"
+
+  function sectionCount(section) {
+    if (section === "output") return audioSinks.length
+    if (section === "input") return audioSources.length
+    if (section === "streams") return audioStreams.length
+    return 0
+  }
+
+  function sectionVisible(section) {
+    if (section === "output") return true
+    if (section === "input") return audioSources.length > 0 || !!source
+    if (section === "streams") return audioStreams.length > 0
+    return false
+  }
+
+  function sectionHasSlider(section) {
+    if (section === "output") return true
+    if (section === "input") return !!source
+    return false  // stream rows carry their own sliders inline; not a section-level slider
+  }
+
+  // Order of visible sections, recomputed reactively so dropping a section
+  // (e.g. no input devices) doesn't leave the cursor pointing at it.
+  readonly property var visibleSections: {
+    var list = []
+    if (sectionVisible("output")) list.push("output")
+    if (sectionVisible("input")) list.push("input")
+    if (sectionVisible("streams")) list.push("streams")
+    return list
+  }
+
+  function moveCursor(delta) {
+    var sections = visibleSections
+    if (sections.length === 0) return
+    var sIdx = sections.indexOf(focusSection)
+    if (sIdx < 0) { focusSection = sections[0]; selectedIndex = sectionHasSlider(focusSection) ? -1 : 0; return }
+
+    var idx = selectedIndex
+    var max = sectionCount(focusSection) - 1  // last device index
+    var hasSlider = sectionHasSlider(focusSection)
+    var floor = hasSlider ? -1 : 0  // -1 = slider row
+
+    if (delta > 0) {
+      if (idx < max) { selectedIndex = idx + 1; return }
+      // Fall through to next section.
+      if (sIdx < sections.length - 1) {
+        focusSection = sections[sIdx + 1]
+        selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
+      }
+    } else {
+      if (idx > floor) { selectedIndex = idx - 1; return }
+      // Escape upward.
+      if (sIdx > 0) {
+        focusSection = sections[sIdx - 1]
+        var prevMax = sectionCount(focusSection) - 1
+        selectedIndex = prevMax >= 0 ? prevMax : (sectionHasSlider(focusSection) ? -1 : 0)
+      }
+    }
+  }
+
+  // Adjust the slider associated with the focused section. Output and
+  // input sliders are real volume controls; on stream rows h/l adjusts
+  // that stream's volume (so keyboard parity with the inline slider).
+  // For device rows (selectedIndex >= 0 in output/input) h/l is a no-op
+  // — the cursor is on a discrete row, not on the slider, and silently
+  // moving the global slider would surprise the user.
+  function adjustVolume(delta) {
+    if (focusSection === "output" && selectedIndex === -1) {
+      setOutputVolume(outputVolume + delta)
+      return
+    }
+    if (focusSection === "input" && selectedIndex === -1) {
+      setInputVolume(inputVolume + delta)
+      return
+    }
+    if (focusSection === "streams" && selectedIndex >= 0 && selectedIndex < audioStreams.length) {
+      var s = audioStreams[selectedIndex]
+      if (s && s.audio) s.audio.volume = Math.max(0, Math.min(1.5, s.audio.volume + delta))
+    }
+  }
+
+  // Enter/Space: activate whatever the cursor is on.
+  function activateCursor() {
+    if (focusSection === "output") {
+      if (selectedIndex === -1) { toggleOutputMute(); return }
+      var sink = audioSinks[selectedIndex]
+      if (sink) setDefaultSink(sink)
+      return
+    }
+    if (focusSection === "input") {
+      if (selectedIndex === -1) { toggleInputMute(); return }
+      var src = audioSources[selectedIndex]
+      if (src) setDefaultSource(src)
+      return
+    }
+    if (focusSection === "streams" && selectedIndex >= 0) {
+      var st = audioStreams[selectedIndex]
+      if (st && st.audio) st.audio.muted = !st.audio.muted
+    }
+  }
+
+  onPopupOpenChanged: {
+    if (popupOpen) {
+      focusSection = "output"
+      selectedIndex = -1  // start on the output slider
+      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+    }
+  }
+
+  // Clamp / repair the cursor whenever any list refreshes underneath us.
+  onAudioSinksChanged: clampCursor()
+  onAudioSourcesChanged: clampCursor()
+  onAudioStreamsChanged: clampCursor()
+
+  // Keep the keyboard-focused row inside the visible viewport of the
+  // ScrollView. Each cursor target (slider rows, SinkRow, SourceRow,
+  // StreamRow) calls this when it gains hasCursor. Without it, j/k can
+  // walk the selection off-screen — wifi uses ListView.positionViewAtIndex
+  // for this; we don't have that affordance with a multi-section Column.
+  function ensureCursorVisible(item) {
+    if (!item || !scrollArea) return
+    var flick = scrollArea.contentItem
+    if (!flick || flick.contentY === undefined) return
+    var pt = item.mapToItem(flick.contentItem || flick, 0, 0)
+    var top = pt.y
+    var bottom = top + (item.height || 0)
+    var viewTop = flick.contentY
+    var viewBottom = viewTop + flick.height
+    var margin = 6
+    if (top < viewTop + margin) flick.contentY = Math.max(0, top - margin)
+    else if (bottom > viewBottom - margin)
+      flick.contentY = bottom + margin - flick.height
+  }
+
+  function clampCursor() {
+    var sections = visibleSections
+    if (!sections || !sections.length) return
+    if (sections.indexOf(focusSection) < 0) {
+      focusSection = visibleSections[0]
+      selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
+      return
+    }
+    var count = sectionCount(focusSection)
+    var hasSlider = sectionHasSlider(focusSection)
+    var floor = hasSlider ? -1 : 0
+    if (selectedIndex > count - 1) selectedIndex = Math.max(floor, count - 1)
+    if (selectedIndex < floor) selectedIndex = floor
+  }
 
   function outputIcon() {
     // Match the old Waybar pulseaudio glyph set. The Material Design speaker
@@ -169,6 +335,19 @@ Item {
   PwObjectTracker { objects: root.candidateSources }
   PwObjectTracker { objects: root.audioStreams }
 
+  // Lets a Hyprland keybind summon the panel without a click. Mirrors the
+  // networkPanel IpcHandler pattern; KeyboardPanel grants Exclusive focus
+  // at map-time so j/k/h/l work the moment the panel appears.
+  IpcHandler {
+    target: "audioPanel"
+    function toggle(): void {
+      if (root.popupOpen) root.closePopout()
+      else root.popupOpen = true
+    }
+    function show(): void { if (!root.popupOpen) root.popupOpen = true }
+    function hide(): void { root.closePopout() }
+  }
+
   Common.WidgetButton {
     id: button
     anchors.fill: parent
@@ -187,422 +366,569 @@ Item {
     }
   }
 
-  Common.PopupCard {
+  Common.KeyboardPanel {
+    id: panel
     anchorItem: button
     owner: root
     bar: root.bar
     open: root.popupOpen
-    // Match the width/inset of the window below so the popup outline
-    // overlays cleanly instead of bleeding past the underlying frame.
     contentWidth: 370
     contentHeight: Math.min(560, panelColumn.implicitHeight + 28)
 
-    ScrollView {
-      id: scrollArea
+    Item {
+      id: keyCatcher
       anchors.fill: parent
-      clip: true
-      ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-      ScrollBar.vertical.policy: ScrollBar.AsNeeded
-
-      Column {
-        id: panelColumn
-        width: scrollArea.availableWidth
-        spacing: 14
-
-        // ---- Output ----
-        Column {
-          width: parent.width
-          spacing: 6
-
-          Row {
-            width: parent.width
-            spacing: 8
-
-            Text {
-              text: "Output"
-              color: Qt.darker(root.bar.foreground, 1.5)
-              font.family: root.bar.fontFamily
-              font.pixelSize: 11
-              font.bold: true
-              anchors.verticalCenter: parent.verticalCenter
-            }
-
-            Text {
-              text: root.sink ? "· " + root.nodeLabel(root.sink) : ""
-              color: Qt.darker(root.bar.foreground, 1.8)
-              font.family: root.bar.fontFamily
-              font.pixelSize: 11
-              elide: Text.ElideRight
-              width: parent.width - 70
-              anchors.verticalCenter: parent.verticalCenter
-            }
+      focus: true
+      Keys.priority: Keys.AfterItem
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Escape) {
+          root.closePopout()
+          event.accepted = true
+          return
+        }
+        if (event.key === Qt.Key_Down || event.text === "j") {
+          root.moveCursor(1); event.accepted = true; return
+        }
+        if (event.key === Qt.Key_Up || event.text === "k") {
+          root.moveCursor(-1); event.accepted = true; return
+        }
+        if (event.key === Qt.Key_Right || event.text === "l") {
+          root.adjustVolume(0.05); event.accepted = true; return
+        }
+        if (event.key === Qt.Key_Left || event.text === "h") {
+          root.adjustVolume(-0.05); event.accepted = true; return
+        }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+          root.activateCursor(); event.accepted = true; return
+        }
+        // 'm' mutes whatever the cursor is on: focused section's slider for
+        // output/input, the focused stream for streams. Without the stream
+        // branch, m would mute the global output while the cursor sat on a
+        // per-app row — surprising and inconsistent with Enter behaviour.
+        if (event.text === "m" || event.text === "M") {
+          if (root.focusSection === "streams" && root.selectedIndex >= 0
+              && root.selectedIndex < root.audioStreams.length) {
+            var s = root.audioStreams[root.selectedIndex]
+            if (s && s.audio) s.audio.muted = !s.audio.muted
+          } else if (root.focusSection === "input") {
+            root.toggleInputMute()
+          } else {
+            root.toggleOutputMute()
           }
+          event.accepted = true
+        }
+      }
 
-          Row {
+      ScrollView {
+        id: scrollArea
+        anchors.fill: parent
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+        Column {
+          id: panelColumn
+          width: scrollArea.availableWidth
+          spacing: 14
+
+          // ---- Output ----
+          Column {
             width: parent.width
-            spacing: 8
+            spacing: 6
 
-            Text {
-              id: outputIconText
-              text: root.outputIcon()
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: 16
-              width: 22
-              horizontalAlignment: Text.AlignHCenter
-              anchors.verticalCenter: parent.verticalCenter
-              opacity: root.outputMuted ? 0.5 : 1.0
+            Row {
+              width: parent.width
+              spacing: 8
 
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.toggleOutputMute()
+              Common.PanelSectionHeader {
+                text: "Output"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                fontSize: 11
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                text: root.sink ? "· " + root.nodeLabel(root.sink) : ""
+                color: Qt.darker(root.bar.foreground, 1.8)
+                font.family: root.bar.fontFamily
+                font.pixelSize: 11
+                elide: Text.ElideRight
+                width: parent.width - 70
+                anchors.verticalCenter: parent.verticalCenter
               }
             }
 
-            Common.Slider {
-              id: outputSlider
-              bar: root.bar
-              width: parent.width - outputIconText.width - outputPercent.width - 16
-              anchors.verticalCenter: parent.verticalCenter
-              minimum: 0
-              maximum: 1
-              step: 0.05
-              value: root.outputVolume
-              opacity: root.outputMuted ? 0.5 : 1.0
-              enabled: !!root.sink
-
-              onMoved: function(v) { root.setOutputVolume(v) }
-            }
-
-            Text {
-              id: outputPercent
-              text: Math.round((outputSlider.dragging ? outputSlider.liveValue : root.outputVolume) * 100) + "%"
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: 11
-              width: 36
-              horizontalAlignment: Text.AlignRight
-              anchors.verticalCenter: parent.verticalCenter
-              opacity: root.outputMuted ? 0.5 : 1.0
-            }
-          }
-
-          Repeater {
-            model: root.audioSinks
-
-            Rectangle {
-              required property var modelData
-
-              readonly property bool active: root.sink && modelData && root.sink.id === modelData.id
-
-              width: panelColumn.width
-              height: deviceRow.implicitHeight + 10
-              radius: 0
-              color: deviceArea.pressed
-                ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.22)
-                : deviceArea.containsMouse
-                  ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
-                  : (active ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.18) : "transparent")
-
-              Behavior on color { ColorAnimation { duration: 120 } }
+            // Output slider row — itself a cursor target (selectedIndex === -1
+            // when focusSection === "output"). h/l adjust the value via
+            // root.adjustVolume; m / Enter toggle mute.
+            Common.CursorSurface {
+              id: outputSliderRow
+              width: parent.width
+              height: outputSliderInner.implicitHeight + 8
+              hasCursor: root.focusSection === "output" && root.selectedIndex === -1
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(outputSliderRow)
+              foreground: root.bar.foreground
+              fill: root.activeFill
 
               Row {
-                id: deviceRow
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
+                id: outputSliderInner
+                anchors.fill: parent
+                anchors.leftMargin: 6
+                anchors.rightMargin: 6
                 spacing: 8
 
                 Text {
-                  text: root.sinkGlyph(modelData)
+                  id: outputIconText
+                  text: root.outputIcon()
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
-                  font.pixelSize: 14
-                  width: 18
+                  font.pixelSize: 16
+                  width: 22
                   horizontalAlignment: Text.AlignHCenter
                   anchors.verticalCenter: parent.verticalCenter
-                }
+                  opacity: root.outputMuted ? 0.5 : 1.0
 
-                Text {
-                  text: root.nodeLabel(modelData)
-                  color: root.bar.foreground
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: 12
-                  elide: Text.ElideRight
-                  width: parent.width - 18 - 14 - 16
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Text {
-                  text: active ? "󰄬" : ""
-                  color: root.bar.foreground
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: 13
-                  width: 14
-                  horizontalAlignment: Text.AlignRight
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-              }
-
-              MouseArea {
-                id: deviceArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.setDefaultSink(modelData)
-              }
-            }
-          }
-        }
-
-        // ---- Input ----
-        Column {
-          width: parent.width
-          spacing: 6
-          visible: root.audioSources.length > 0 || !!root.source
-
-          Row {
-            width: parent.width
-            spacing: 8
-
-            Text {
-              text: "Input"
-              color: Qt.darker(root.bar.foreground, 1.5)
-              font.family: root.bar.fontFamily
-              font.pixelSize: 11
-              font.bold: true
-              anchors.verticalCenter: parent.verticalCenter
-            }
-
-            Text {
-              text: root.source ? "· " + root.nodeLabel(root.source) : ""
-              color: Qt.darker(root.bar.foreground, 1.8)
-              font.family: root.bar.fontFamily
-              font.pixelSize: 11
-              elide: Text.ElideRight
-              width: parent.width - 56
-              anchors.verticalCenter: parent.verticalCenter
-            }
-          }
-
-          Row {
-            width: parent.width
-            spacing: 8
-            visible: !!root.source
-
-            Text {
-              id: inputIconText
-              text: root.inputIcon()
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: 16
-              width: 22
-              horizontalAlignment: Text.AlignHCenter
-              anchors.verticalCenter: parent.verticalCenter
-              opacity: root.inputMuted ? 0.5 : 1.0
-
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.toggleInputMute()
-              }
-            }
-
-            Common.Slider {
-              id: inputSlider
-              bar: root.bar
-              width: parent.width - inputIconText.width - inputPercent.width - 16
-              anchors.verticalCenter: parent.verticalCenter
-              minimum: 0
-              maximum: 1
-              step: 0.05
-              value: root.inputVolume
-              opacity: root.inputMuted ? 0.5 : 1.0
-              enabled: !!root.source
-
-              onMoved: function(v) { root.setInputVolume(v) }
-            }
-
-            Text {
-              id: inputPercent
-              text: Math.round((inputSlider.dragging ? inputSlider.liveValue : root.inputVolume) * 100) + "%"
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: 11
-              width: 36
-              horizontalAlignment: Text.AlignRight
-              anchors.verticalCenter: parent.verticalCenter
-              opacity: root.inputMuted ? 0.5 : 1.0
-            }
-          }
-
-          Repeater {
-            model: root.audioSources
-
-            Rectangle {
-              required property var modelData
-
-              readonly property bool active: root.source && modelData && root.source.id === modelData.id
-
-              width: panelColumn.width
-              height: sourceRow.implicitHeight + 10
-              radius: 0
-              color: sourceArea.pressed
-                ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.22)
-                : sourceArea.containsMouse
-                  ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
-                  : (active ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.18) : "transparent")
-
-              Behavior on color { ColorAnimation { duration: 120 } }
-
-              Row {
-                id: sourceRow
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 8
-
-                Text {
-                  text: root.sourceGlyph(modelData)
-                  color: root.bar.foreground
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: 14
-                  width: 18
-                  horizontalAlignment: Text.AlignHCenter
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Text {
-                  text: root.nodeLabel(modelData)
-                  color: root.bar.foreground
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: 12
-                  elide: Text.ElideRight
-                  width: parent.width - 18 - 14 - 16
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Text {
-                  text: active ? "󰄬" : ""
-                  color: root.bar.foreground
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: 13
-                  width: 14
-                  horizontalAlignment: Text.AlignRight
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-              }
-
-              MouseArea {
-                id: sourceArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.setDefaultSource(modelData)
-              }
-            }
-          }
-        }
-
-        // ---- Per-app streams ----
-        Column {
-          width: parent.width
-          spacing: 6
-          visible: root.audioStreams.length > 0
-
-          Text {
-            text: "Playing"
-            color: Qt.darker(root.bar.foreground, 1.5)
-            font.family: root.bar.fontFamily
-            font.pixelSize: 11
-            font.bold: true
-          }
-
-          Repeater {
-            model: root.audioStreams
-
-            Item {
-              required property var modelData
-
-              readonly property real streamVolume: modelData && modelData.audio ? modelData.audio.volume : 0
-              readonly property bool streamMuted: modelData && modelData.audio ? modelData.audio.muted : false
-
-              width: panelColumn.width
-              height: streamColumn.implicitHeight + 4
-
-              Column {
-                id: streamColumn
-                width: parent.width
-                spacing: 2
-
-                Row {
-                  width: parent.width
-                  spacing: 6
-
-                  Text {
-                    id: streamMuteIcon
-                    text: streamMuted ? "󰝟" : "󰕾"
-                    color: root.bar.foreground
-                    font.family: root.bar.fontFamily
-                    font.pixelSize: 12
-                    width: 14
-                    horizontalAlignment: Text.AlignHCenter
-                    anchors.verticalCenter: parent.verticalCenter
-                    opacity: streamMuted ? 0.5 : 1.0
-
-                    MouseArea {
-                      anchors.fill: parent
-                      cursorShape: Qt.PointingHandCursor
-                      onClicked: {
-                        if (modelData && modelData.audio) modelData.audio.muted = !modelData.audio.muted
-                      }
-                    }
-                  }
-
-                  Text {
-                    text: root.streamLabel(modelData)
-                    color: root.bar.foreground
-                    font.family: root.bar.fontFamily
-                    font.pixelSize: 11
-                    elide: Text.ElideRight
-                    width: parent.width - streamMuteIcon.width - streamPct.width - 12
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-
-                  Text {
-                    id: streamPct
-                    text: Math.round(streamVolume * 100) + "%"
-                    color: Qt.darker(root.bar.foreground, 1.5)
-                    font.family: root.bar.fontFamily
-                    font.pixelSize: 11
-                    width: 36
-                    horizontalAlignment: Text.AlignRight
-                    anchors.verticalCenter: parent.verticalCenter
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.toggleOutputMute()
                   }
                 }
 
                 Common.Slider {
+                  id: outputSlider
                   bar: root.bar
-                  width: parent.width
+                  width: parent.width - outputIconText.width - outputPercent.width - 16
+                  anchors.verticalCenter: parent.verticalCenter
                   minimum: 0
-                  maximum: 1.5
+                  maximum: 1
                   step: 0.05
-                  value: streamVolume
-                  opacity: streamMuted ? 0.5 : 1.0
+                  value: root.outputVolume
+                  opacity: root.outputMuted ? 0.5 : 1.0
+                  enabled: !!root.sink
 
-                  onMoved: function(v) {
-                    if (modelData && modelData.audio) modelData.audio.volume = v
+                  onMoved: function(v) { root.setOutputVolume(v) }
+                }
+
+                Text {
+                  id: outputPercent
+                  text: Math.round((outputSlider.dragging ? outputSlider.liveValue : root.outputVolume) * 100) + "%"
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 11
+                  width: 36
+                  horizontalAlignment: Text.AlignRight
+                  anchors.verticalCenter: parent.verticalCenter
+                  opacity: root.outputMuted ? 0.5 : 1.0
+                }
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.NoButton
+                propagateComposedEvents: true
+                onContainsMouseChanged: if (containsMouse) {
+                  root.focusSection = "output"
+                  root.selectedIndex = -1
+                }
+              }
+            }
+
+            Repeater {
+              model: root.audioSinks
+
+              SinkRow {
+                required property var modelData
+                required property int index
+                width: panelColumn.width
+                node: modelData
+                rowIndex: index
+              }
+            }
+          }
+
+          // ---- Input ----
+          Column {
+            width: parent.width
+            spacing: 6
+            visible: root.audioSources.length > 0 || !!root.source
+
+            Row {
+              width: parent.width
+              spacing: 8
+
+              Common.PanelSectionHeader {
+                text: "Input"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                fontSize: 11
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                text: root.source ? "· " + root.nodeLabel(root.source) : ""
+                color: Qt.darker(root.bar.foreground, 1.8)
+                font.family: root.bar.fontFamily
+                font.pixelSize: 11
+                elide: Text.ElideRight
+                width: parent.width - 56
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Common.CursorSurface {
+              id: inputSliderRow
+              visible: !!root.source
+              width: parent.width
+              height: inputSliderInner.implicitHeight + 8
+              hasCursor: root.focusSection === "input" && root.selectedIndex === -1
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(inputSliderRow)
+              foreground: root.bar.foreground
+              fill: root.activeFill
+
+              Row {
+                id: inputSliderInner
+                anchors.fill: parent
+                anchors.leftMargin: 6
+                anchors.rightMargin: 6
+                spacing: 8
+
+                Text {
+                  id: inputIconText
+                  text: root.inputIcon()
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 16
+                  width: 22
+                  horizontalAlignment: Text.AlignHCenter
+                  anchors.verticalCenter: parent.verticalCenter
+                  opacity: root.inputMuted ? 0.5 : 1.0
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.toggleInputMute()
                   }
                 }
+
+                Common.Slider {
+                  id: inputSlider
+                  bar: root.bar
+                  width: parent.width - inputIconText.width - inputPercent.width - 16
+                  anchors.verticalCenter: parent.verticalCenter
+                  minimum: 0
+                  maximum: 1
+                  step: 0.05
+                  value: root.inputVolume
+                  opacity: root.inputMuted ? 0.5 : 1.0
+                  enabled: !!root.source
+
+                  onMoved: function(v) { root.setInputVolume(v) }
+                }
+
+                Text {
+                  id: inputPercent
+                  text: Math.round((inputSlider.dragging ? inputSlider.liveValue : root.inputVolume) * 100) + "%"
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: 11
+                  width: 36
+                  horizontalAlignment: Text.AlignRight
+                  anchors.verticalCenter: parent.verticalCenter
+                  opacity: root.inputMuted ? 0.5 : 1.0
+                }
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.NoButton
+                propagateComposedEvents: true
+                onContainsMouseChanged: if (containsMouse) {
+                  root.focusSection = "input"
+                  root.selectedIndex = -1
+                }
+              }
+            }
+
+            Repeater {
+              model: root.audioSources
+
+              SourceRow {
+                required property var modelData
+                required property int index
+                width: panelColumn.width
+                node: modelData
+                rowIndex: index
+              }
+            }
+          }
+
+          // ---- Per-app streams ----
+          Column {
+            width: parent.width
+            spacing: 6
+            visible: root.audioStreams.length > 0
+
+            Common.PanelSectionHeader {
+              text: "Playing"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              fontSize: 11
+            }
+
+            Repeater {
+              model: root.audioStreams
+
+              StreamRow {
+                required property var modelData
+                required property int index
+                width: panelColumn.width
+                node: modelData
+                rowIndex: index
               }
             }
           }
         }
+      }
+    }
+  }
+
+  // ---- Reusable inline components ----
+
+  // Output device row — cursor target inside the "output" section. Mouse
+  // hover updates the panel cursor at the root; visuals come entirely
+  // from hasCursor/current via CursorSurface, never from containsMouse.
+  component SinkRow: Common.CursorSurface {
+    id: sinkRow
+    required property var node
+    required property int rowIndex
+
+    readonly property bool isActive: root.sink && node && root.sink.id === node.id
+    hasCursor: root.focusSection === "output" && root.selectedIndex === rowIndex
+    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(sinkRow)
+    current: isActive
+    foreground: root.bar.foreground
+    fill: root.activeFill
+    implicitHeight: sinkInner.implicitHeight + 10
+
+    Row {
+      id: sinkInner
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: 10
+      anchors.rightMargin: 10
+      spacing: 8
+
+      Text {
+        text: root.sinkGlyph(sinkRow.node)
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: 14
+        width: 18
+        horizontalAlignment: Text.AlignHCenter
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        text: root.nodeLabel(sinkRow.node)
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: 12
+        elide: Text.ElideRight
+        width: parent.width - 18 - 14 - 16
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        text: sinkRow.isActive ? "󰄬" : ""
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: 13
+        width: 14
+        horizontalAlignment: Text.AlignRight
+        anchors.verticalCenter: parent.verticalCenter
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onContainsMouseChanged: if (containsMouse) {
+        root.focusSection = "output"
+        root.selectedIndex = sinkRow.rowIndex
+      }
+      onClicked: root.setDefaultSink(sinkRow.node)
+    }
+  }
+
+  // Input device row — sibling of SinkRow for the "input" section.
+  component SourceRow: Common.CursorSurface {
+    id: sourceRow
+    required property var node
+    required property int rowIndex
+
+    readonly property bool isActive: root.source && node && root.source.id === node.id
+    hasCursor: root.focusSection === "input" && root.selectedIndex === rowIndex
+    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(sourceRow)
+    current: isActive
+    foreground: root.bar.foreground
+    fill: root.activeFill
+    implicitHeight: sourceInner.implicitHeight + 10
+
+    Row {
+      id: sourceInner
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: 10
+      anchors.rightMargin: 10
+      spacing: 8
+
+      Text {
+        text: root.sourceGlyph(sourceRow.node)
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: 14
+        width: 18
+        horizontalAlignment: Text.AlignHCenter
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        text: root.nodeLabel(sourceRow.node)
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: 12
+        elide: Text.ElideRight
+        width: parent.width - 18 - 14 - 16
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        text: sourceRow.isActive ? "󰄬" : ""
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: 13
+        width: 14
+        horizontalAlignment: Text.AlignRight
+        anchors.verticalCenter: parent.verticalCenter
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onContainsMouseChanged: if (containsMouse) {
+        root.focusSection = "input"
+        root.selectedIndex = sourceRow.rowIndex
+      }
+      onClicked: root.setDefaultSource(sourceRow.node)
+    }
+  }
+
+  // Per-app stream row — cursor target inside the "streams" section.
+  // The stream has its own slider inline, so h/l from the keyboard
+  // adjusts THIS stream's volume (not the global output) when the cursor
+  // sits on this row. Enter/Space mutes the stream.
+  component StreamRow: Common.CursorSurface {
+    id: streamRow
+    required property var node
+    required property int rowIndex
+
+    readonly property real streamVolume: node && node.audio ? node.audio.volume : 0
+    readonly property bool streamMuted: node && node.audio ? node.audio.muted : false
+
+    hasCursor: root.focusSection === "streams" && root.selectedIndex === rowIndex
+    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(streamRow)
+    foreground: root.bar.foreground
+    fill: root.activeFill
+    implicitHeight: streamColumn.implicitHeight + 8
+
+    Column {
+      id: streamColumn
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: 6
+      anchors.rightMargin: 6
+      spacing: 2
+
+      Row {
+        width: parent.width
+        spacing: 6
+
+        Text {
+          id: streamMuteIcon
+          text: streamRow.streamMuted ? "󰝟" : "󰕾"
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: 12
+          width: 14
+          horizontalAlignment: Text.AlignHCenter
+          anchors.verticalCenter: parent.verticalCenter
+          opacity: streamRow.streamMuted ? 0.5 : 1.0
+
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+              if (streamRow.node && streamRow.node.audio)
+                streamRow.node.audio.muted = !streamRow.node.audio.muted
+            }
+          }
+        }
+
+        Text {
+          text: root.streamLabel(streamRow.node)
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: 11
+          elide: Text.ElideRight
+          width: parent.width - streamMuteIcon.width - streamPct.width - 12
+          anchors.verticalCenter: parent.verticalCenter
+        }
+
+        Text {
+          id: streamPct
+          text: Math.round(streamRow.streamVolume * 100) + "%"
+          color: Qt.darker(root.bar.foreground, 1.5)
+          font.family: root.bar.fontFamily
+          font.pixelSize: 11
+          width: 36
+          horizontalAlignment: Text.AlignRight
+          anchors.verticalCenter: parent.verticalCenter
+        }
+      }
+
+      Common.Slider {
+        bar: root.bar
+        width: parent.width
+        minimum: 0
+        maximum: 1.5
+        step: 0.05
+        value: streamRow.streamVolume
+        opacity: streamRow.streamMuted ? 0.5 : 1.0
+
+        onMoved: function(v) {
+          if (streamRow.node && streamRow.node.audio) streamRow.node.audio.volume = v
+        }
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
+      propagateComposedEvents: true
+      onContainsMouseChanged: if (containsMouse) {
+        root.focusSection = "streams"
+        root.selectedIndex = streamRow.rowIndex
       }
     }
   }

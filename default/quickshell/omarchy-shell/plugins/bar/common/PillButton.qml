@@ -22,6 +22,11 @@ Rectangle {
   property bool leftAlign: false
   property color activeBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18)
 
+  // Keyboard cursor flag. When true, the pill renders the same fill + border
+  // as a mouse hover — so j/k navigation and pointer hover are visually
+  // indistinguishable. Default false; bind from a panel's cursor state.
+  property bool hasCursor: false
+
   ToolTip {
     visible: root.tooltipText !== "" && mouseArea.containsMouse
     text: root.tooltipText
@@ -54,7 +59,17 @@ Rectangle {
   implicitWidth: row.implicitWidth + horizontalPadding * 2
   implicitHeight: row.implicitHeight + verticalPadding * 2
   radius: 4
-  color: mouseArea.pressed ? pressedBackground : (mouseArea.containsMouse ? hoverBackground : (active ? activeBackground : background))
+
+  // Hot = mouse hover OR keyboard cursor. Pressed wins over both; otherwise
+  // hot beats `active` (so a cursor on an already-active pill still reads
+  // as hovered, matching CursorSurface's behaviour for navigable rows).
+  readonly property bool hot: mouseArea.containsMouse || hasCursor
+
+  color: mouseArea.pressed ? pressedBackground
+    : hot ? hoverBackground
+    : (active ? activeBackground : background)
+  border.width: hot ? 1 : 0
+  border.color: foreground
 
   Behavior on color {
     ColorAnimation { duration: 120 }

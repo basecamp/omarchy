@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.dev-gallery",
+  "name": "Dev gallery",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Visual reference for omarchy-shell common UI components. Summon with: omarchy-shell-ipc shell summon omarchy.dev-gallery '{}'",
+  "kinds": ["panel"],
+  "activation": "on-demand",
+  "entryPoints": { "panel": "GalleryPanel.qml" }
+}
