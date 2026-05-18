@@ -40,6 +40,7 @@ Rectangle {
   // hits them. The hot/cursor state paints its own 1px border, so changing
   // this doesn't affect panel-pill visuals.
   property bool bordered: false
+  property bool cursorBordered: true
 
   activeFocusOnTab: focusable
   Keys.onReturnPressed: if (focusable) root.clicked()
@@ -93,7 +94,7 @@ Rectangle {
     : hot ? hoverBackground
     : (active ? activeBackground : background)
   border.width: _showFocusRing ? Style.focusBorderWidth
-    : hot ? 1
+    : hot ? (cursorBordered ? 1 : 0)
     : (bordered ? 1 : 0)
   border.color: _showFocusRing ? Style.focusBorderColor : foreground
 

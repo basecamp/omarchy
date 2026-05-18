@@ -21,6 +21,7 @@ Rectangle {
   // separately from real activeFocus. Visuals match the activeFocus look
   // (foreground 2px border) so cursor and Tab focus read the same.
   property bool hasCursor: false
+  property bool borderlessHighlight: false
 
   property color foreground: Color.foreground
   property color background: Color.background
@@ -42,11 +43,12 @@ Rectangle {
 
   color: selected
     ? Qt.rgba(accent.r, accent.g, accent.b, 0.18)
-    : (mouse.containsMouse ? Style.hotFill : background)
+    : ((mouse.containsMouse || hasCursor) ? Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12) : background)
   border.color: selected
     ? accent
-    : (activeFocus || hasCursor ? foreground : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.4))
-  border.width: selected ? 2 : (activeFocus || hasCursor ? 2 : 1)
+    : (activeFocus ? foreground : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.4))
+  border.width: borderlessHighlight ? (activeFocus ? 2 : 0)
+    : (selected ? 2 : (activeFocus || hasCursor ? 2 : 1))
 
   Behavior on color { ColorAnimation { duration: 100 } }
 

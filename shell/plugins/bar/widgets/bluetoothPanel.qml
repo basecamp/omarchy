@@ -85,7 +85,7 @@ Item {
   property string focusedKnownAddress: ""
 
   readonly property color activeFill: bar
-    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18)
+    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.12)
     : "transparent"
 
   function sectionCount(section) {
@@ -374,7 +374,6 @@ Item {
               tooltipText: !root.adapter ? "" : !root.adapter.enabled ? "Bluetooth is off"
                 : root.adapter.discovering ? "Stop scanning" : "Scan for devices"
               pillEnabled: root.adapter !== null && root.adapter.enabled
-              active: root.adapter && root.adapter.discovering
               onActivated: if (root.adapter) root.adapter.discovering = !root.adapter.discovering
             }
 
@@ -389,7 +388,6 @@ Item {
               pillIndex: 2
               iconText: root.adapter && root.adapter.enabled ? "󰂯" : "󰂲"
               tooltipText: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
-              active: root.adapter && root.adapter.enabled
               onActivated: if (root.adapter) root.adapter.enabled = !root.adapter.enabled
             }
           }
@@ -514,7 +512,7 @@ Item {
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(row)
     current: isConnected
     foreground: root.bar.foreground
-    fill: root.activeFill
+    fill: isConnected ? root.activeFill : "transparent"
 
     // 0 idle, 1 connecting, 2 disconnecting, 3 pairing, 4 failed.
     property int pendingAction: 0

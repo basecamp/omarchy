@@ -13,11 +13,12 @@ Rectangle {
   property bool current: false
 
   property color foreground: "#cacccc"
-  property color fill: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18)
+  property color fill: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
+  property color currentFill: fill
 
   radius: Style.cornerRadius
-  color: (hasCursor || current) ? fill : "transparent"
-  border.width: hasCursor ? 1 : 0
+  color: hasCursor ? fill : (current ? currentFill : "transparent")
+  border.width: 0
   border.color: foreground
 
   Behavior on color {
