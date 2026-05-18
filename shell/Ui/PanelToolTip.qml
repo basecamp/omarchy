@@ -3,7 +3,7 @@ import QtQuick.Controls
 
 // Styled wrapper around Qt Quick Controls ToolTip. Drop-in: declare inside
 // the hovered item and bind `visible` to the hover state, e.g.
-//   Common.PanelToolTip {
+//   PanelToolTip {
 //     visible: mouse.containsMouse
 //     text: "Forget network"
 //     panelForeground: bar.foreground

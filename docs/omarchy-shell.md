@@ -80,7 +80,7 @@ individual plugins (`bar`, `image-selector`, …).
     }
   },
   "plugins": [
-    { "id": "omarchy.settings" }
+    { "id": "community.weather-extra" }
   ]
 }
 ```

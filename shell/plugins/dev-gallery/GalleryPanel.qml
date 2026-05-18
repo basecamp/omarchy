@@ -393,7 +393,7 @@ Item {
                   color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
                   font.pixelSize: 11
-                  text: "Single cursor. Every interactive primitive exposes hasCursor: bool and emits hovered(bool). The panel root owns focusSection + selectedIndex; each element binds hasCursor: root.focusSection === 'X' && root.selectedIndex === N, and onHovered updates the same state. One highlight on screen, keyboard and mouse always agree. See plugins/bar/widgets/audioPanel.qml for the canonical recipe."
+                  text: "Single cursor. Most reusable panel primitives expose hasCursor: bool and emit hovered(bool); a few (like PanelSlider) defer to their own focus handling. The panel root owns focusSection + selectedIndex; each element binds hasCursor: root.focusSection === 'X' && root.selectedIndex === N, and onHovered updates the same state. One highlight on screen, keyboard and mouse always agree. See plugins/bar/widgets/audioPanel.qml for the canonical recipe."
                 }
                 Text {
                   width: parent.width
