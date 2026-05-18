@@ -96,7 +96,7 @@ Item {
       color: Color.alpha(Color.background, 0.97)
       border.color: Color.foreground
       border.width: 2
-      radius: 0
+      radius: Style.cornerRadius
       opacity: root.opened ? 1 : 0
 
       Row {
