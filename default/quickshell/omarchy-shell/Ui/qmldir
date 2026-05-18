@@ -4,6 +4,7 @@ ChoiceButton 1.0 ChoiceButton.qml
 CursorSurface 1.0 CursorSurface.qml
 KeyboardPanel 1.0 KeyboardPanel.qml
 PanelActionButton 1.0 PanelActionButton.qml
+PanelKeyCatcher 1.0 PanelKeyCatcher.qml
 PanelSectionHeader 1.0 PanelSectionHeader.qml
 PanelSeparator 1.0 PanelSeparator.qml
 PanelSlider 1.0 PanelSlider.qml

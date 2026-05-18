@@ -552,62 +552,42 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     // Catches all unhandled keys for keyboard navigation. AfterItem priority
     // lets the passphrase TextField (a child via focus chain) get its keys
     // first; only events the focused subtree ignores bubble back here.
-    Item {
+    PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      focus: true
-      Keys.priority: Keys.AfterItem
-        Keys.onPressed: function(event) {
-          if (root.passwordSsid !== "") return
-          if (event.key === Qt.Key_Escape) {
-            root.closePopout()
-            event.accepted = true
-            return
-          }
-          if (event.text === "r" || event.text === "R") {
-            root.refresh()
-            event.accepted = true
-            return
-          }
+      // Freeze the cursor model while the inline password prompt is open;
+      // the TextField inside owns input until Esc/Enter/Cancel.
+      blocked: root.passwordSsid !== ""
+
+      onMoveRequested: function(dx, dy) {
+        if (dy !== 0) {
           if (root.focusSection === "dns") {
-            if (event.key === Qt.Key_Left || event.text === "h") {
-              root.selectDnsByDelta(-1)
-              event.accepted = true
-            } else if (event.key === Qt.Key_Right || event.text === "l") {
-              root.selectDnsByDelta(1)
-              event.accepted = true
-            } else if (event.key === Qt.Key_Down || event.text === "j") {
-              // Drop into the wifi list if there's anything to land on;
-              // otherwise hold position so j isn't a no-op surprise.
-              if (root.wifiNetworks.length > 0) {
-                root.focusSection = "wifi"
-                if (root.selectedIndex < 0) root.selectedIndex = 0
-              }
-              event.accepted = true
-            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
-              root.activateDns()
-              event.accepted = true
+            // j from DNS drops into the wifi list if there's anywhere to
+            // land; otherwise hold position so j isn't a no-op surprise.
+            if (dy > 0 && root.wifiNetworks.length > 0) {
+              root.focusSection = "wifi"
+              if (root.selectedIndex < 0) root.selectedIndex = 0
             }
-            return
-          }
-          // focusSection === "wifi"
-          if (event.key === Qt.Key_Down || event.text === "j") {
-            root.selectByDelta(1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Up || event.text === "k") {
+          } else {  // wifi
             // k from the top row escapes back up into the DNS row rather
             // than wrapping around to the bottom of the list.
-            if (root.selectedIndex <= 0) root.focusSection = "dns"
-            else root.selectByDelta(-1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
-            root.activateSelected()
-            event.accepted = true
-          } else if (event.text === "x" || event.text === "X") {
-            root.forgetSelected()
-            event.accepted = true
+            if (dy < 0 && root.selectedIndex <= 0) root.focusSection = "dns"
+            else root.selectByDelta(dy)
           }
         }
+        if (dx !== 0 && root.focusSection === "dns") root.selectDnsByDelta(dx)
+      }
+      onActivateRequested: {
+        if (root.focusSection === "dns") root.activateDns()
+        else root.activateSelected()
+      }
+      onCloseRequested: root.closePopout()
+      onDeleteRequested: {
+        if (root.focusSection === "wifi") root.forgetSelected()
+      }
+      onTextKey: function(t) {
+        if (t === "r" || t === "R") root.refresh()
+      }
 
     Column {
       id: column

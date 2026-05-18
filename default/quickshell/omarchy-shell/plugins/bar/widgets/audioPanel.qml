@@ -375,37 +375,19 @@ Item {
     contentWidth: 370
     contentHeight: Math.min(560, panelColumn.implicitHeight + 28)
 
-    Item {
+    PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      focus: true
-      Keys.priority: Keys.AfterItem
-      Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-          root.closePopout()
-          event.accepted = true
-          return
-        }
-        if (event.key === Qt.Key_Down || event.text === "j") {
-          root.moveCursor(1); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Up || event.text === "k") {
-          root.moveCursor(-1); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Right || event.text === "l") {
-          root.adjustVolume(0.05); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Left || event.text === "h") {
-          root.adjustVolume(-0.05); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
-          root.activateCursor(); event.accepted = true; return
-        }
-        // 'm' mutes whatever the cursor is on: focused section's slider for
-        // output/input, the focused stream for streams. Without the stream
-        // branch, m would mute the global output while the cursor sat on a
-        // per-app row — surprising and inconsistent with Enter behaviour.
-        if (event.text === "m" || event.text === "M") {
+      onMoveRequested: function(dx, dy) {
+        if (dy !== 0) root.moveCursor(dy)
+        else if (dx !== 0) root.adjustVolume(dx * 0.05)
+      }
+      onActivateRequested: root.activateCursor()
+      onCloseRequested: root.closePopout()
+      onTextKey: function(t) {
+        // 'm' mutes whatever the cursor is on: focused section's slider
+        // for output/input, the focused stream for streams.
+        if (t === "m" || t === "M") {
           if (root.focusSection === "streams" && root.selectedIndex >= 0
               && root.selectedIndex < root.audioStreams.length) {
             var s = root.audioStreams[root.selectedIndex]
@@ -415,7 +397,6 @@ Item {
           } else {
             root.toggleOutputMute()
           }
-          event.accepted = true
         }
       }
 
