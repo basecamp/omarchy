@@ -19,7 +19,7 @@ o.bind("SUPER + SHIFT + CTRL + RIGHT", "Move Waybar to right", "omarchy-style-wa
 o.bind_menu("SUPER + CTRL + SPACE", "Background switcher", "background")
 o.bind_menu("SUPER + SHIFT + CTRL + SPACE", "Theme menu", "theme")
 o.bind("SUPER + BACKSPACE", "Toggle window transparency", "omarchy-hyprland-window-transparency-toggle")
-o.bind("SUPER + ALT + Q", "Peek behind window", hl.dsp.window.tag({ tag = "peek" }))
+o.bind("SUPER + GRAVE", "Peek behind floating window", hl.dsp.window.tag({ tag = "peek" }))
 o.bind("SUPER + SHIFT + BACKSPACE", "Toggle window gaps", "omarchy-hyprland-window-gaps-toggle")
 o.bind("SUPER + CTRL + BACKSPACE", "Toggle single-window square aspect", "omarchy-hyprland-window-single-square-aspect-toggle")
 
