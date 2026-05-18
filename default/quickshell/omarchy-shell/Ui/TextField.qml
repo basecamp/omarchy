@@ -29,11 +29,10 @@ TextField {
   // Panel-cursor flag. When true (and the field isn't already focused),
   // the background paints the same accent ring as activeFocus so the
   // panel's keyboard cursor lands here identically to a mouse hover.
-  // Emits `hovered(bool)` on pointer enter/leave so the panel can update
-  // its cursor state to match.
+  // For mouse-enter/leave the consumer reads QQC TextField's inherited
+  // `hovered` property (via onHoveredChanged) — we don't add a sibling
+  // signal because the inherited property would shadow it.
   property bool hasCursor: false
-
-  signal hovered(bool isHovered)
 
   readonly property bool _focused: activeFocus || hasCursor
 
@@ -56,9 +55,5 @@ TextField {
       : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
     border.width: root._focused ? Style.focusBorderWidth : 1
     radius: Style.cornerRadius
-  }
-
-  HoverHandler {
-    onHoveredChanged: root.hovered(hovered)
   }
 }
