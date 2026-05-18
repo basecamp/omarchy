@@ -8,10 +8,10 @@ import qs.Commons
 // `options` is either a plain string[] (label == value) or an array of
 // { value, label, icon?, tooltip? } objects. Mixing is fine.
 //
-// For panel-cursor-driven selection (where j/k walks a row), use bare
-// `Button { hasCursor: ... }` instances in a Row — ButtonGroup is the
-// convenience for non-cursor form contexts where you just need
-// "selected: value === optionValue" wiring.
+// Panels with their own keyboard cursor model bind `cursorIndex` to the
+// currently-focused option (-1 = no cursor) and listen on `hovered` to
+// keep that state synced with the mouse. Forms that don't care about
+// the panel cursor model can leave both alone.
 Row {
   id: root
 
@@ -24,7 +24,12 @@ Row {
   property real fontSize: Style.font.body
   property bool focusable: false
 
+  // -1 disables the cursor highlight (the form case). Set from a panel
+  // to drive Button.hasCursor on the matching index.
+  property int cursorIndex: -1
+
   signal changed(string value)
+  signal hovered(int index, bool isHovered)
 
   spacing: 6
 
@@ -46,10 +51,16 @@ Row {
 
     delegate: Button {
       required property var modelData
+      required property int index
       text: root.optionLabel(modelData)
       iconText: root.optionIcon(modelData)
       tooltipText: root.optionTooltip(modelData)
       selected: root.optionValue(modelData) === root.value
+      hasCursor: root.cursorIndex === index
+      // Every chip carries an idle border so the group reads as a row of
+      // distinct options. selected paints accent; the cursor recolors the
+      // chip's border to accent via Button's bordered+hot path.
+      bordered: true
       foreground: root.foreground
       background: root.background
       accent: root.accent
@@ -57,6 +68,7 @@ Row {
       fontSize: root.fontSize
       focusable: root.focusable
       onClicked: root.changed(root.optionValue(modelData))
+      onHovered: function(h) { root.hovered(index, h) }
     }
   }
 }

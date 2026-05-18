@@ -833,62 +833,121 @@ Item {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: 14
-                spacing: 6
+                spacing: 16
 
-                Button {
-                  text: "DHCP"
-                  tooltipText: "Use DNS from DHCP"
-                  hasCursor: root.focusSection === "button" && root.selectedIndex === 0
-                  onHovered: function(h) {
-                    if (h) { root.focusSection = "button"; root.selectedIndex = 0 }
+                // Each demo Button is paired with a caption labeling the
+                // state(s) it exercises so the section reads as one Button
+                // showing its flag combinations side by side.
+
+                Column {
+                  spacing: 6
+                  Button {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "DHCP"
+                    tooltipText: "Use DNS from DHCP"
+                    hasCursor: root.focusSection === "button" && root.selectedIndex === 0
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "button"; root.selectedIndex = 0 }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                   }
-                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "idle"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
                 }
 
-                Button {
-                  text: "Cloudflare"
-                  tooltipText: "Set DNS to Cloudflare"
-                  active: true
-                  hasCursor: root.focusSection === "button" && root.selectedIndex === 1
-                  onHovered: function(h) {
-                    if (h) { root.focusSection = "button"; root.selectedIndex = 1 }
+                Column {
+                  spacing: 6
+                  Button {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Cloudflare"
+                    tooltipText: "Set DNS to Cloudflare"
+                    active: true
+                    hasCursor: root.focusSection === "button" && root.selectedIndex === 1
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "button"; root.selectedIndex = 1 }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                   }
-                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "active"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
                 }
 
-                Button {
-                  iconText: "󰑐"
-                  tooltipText: "Refresh"
-                  horizontalPadding: 8
-                  verticalPadding: 4
-                  hasCursor: root.focusSection === "button" && root.selectedIndex === 2
-                  onHovered: function(h) {
-                    if (h) { root.focusSection = "button"; root.selectedIndex = 2 }
+                Column {
+                  spacing: 6
+                  Button {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    iconText: "󰑐"
+                    tooltipText: "Refresh"
+                    horizontalPadding: 8
+                    verticalPadding: 4
+                    hasCursor: root.focusSection === "button" && root.selectedIndex === 2
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "button"; root.selectedIndex = 2 }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                   }
-                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "icon only"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
                 }
 
-                Button {
-                  iconText: "󰂯"
-                  text: "On"
-                  tooltipText: "Turn Bluetooth off"
-                  active: true
-                  hasCursor: root.focusSection === "button" && root.selectedIndex === 3
-                  onHovered: function(h) {
-                    if (h) { root.focusSection = "button"; root.selectedIndex = 3 }
+                Column {
+                  spacing: 6
+                  Button {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    iconText: "󰂯"
+                    text: "On"
+                    tooltipText: "Turn Bluetooth off"
+                    active: true
+                    hasCursor: root.focusSection === "button" && root.selectedIndex === 3
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "button"; root.selectedIndex = 3 }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                   }
-                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "icon + active"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
                 }
 
-                Button {
-                  text: "Apply"
-                  focusable: true
-                  bordered: true
-                  hasCursor: root.focusSection === "button" && root.selectedIndex === 4
-                  onHovered: function(h) {
-                    if (h) { root.focusSection = "button"; root.selectedIndex = 4 }
+                Column {
+                  spacing: 6
+                  Button {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Apply"
+                    focusable: true
+                    bordered: true
+                    hasCursor: root.focusSection === "button" && root.selectedIndex === 4
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "button"; root.selectedIndex = 4 }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                   }
-                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "bordered + focusable"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
                 }
               }
             }
@@ -896,8 +955,11 @@ Item {
 
           // ---- ButtonGroup -------------------------------------------------
           Column {
+            id: buttonGroupSection
             width: parent.width
             spacing: 8
+            readonly property bool focused: root.focusSection === "button-group"
+            onFocusedChanged: if (focused) root.ensureCursorVisible(this)
 
             Text {
               text: "ButtonGroup"
@@ -930,9 +992,16 @@ Item {
                 anchors.leftMargin: 14
                 options: ["top", "right", "bottom", "left"]
                 value: root.choiceDemoValue
+                cursorIndex: root.focusSection === "button-group" ? root.selectedIndex : -1
                 onChanged: function(v) {
                   root.focusSection = "button-group"
                   root.choiceDemoValue = v
+                }
+                onHovered: function(index, isHovered) {
+                  if (isHovered) {
+                    root.focusSection = "button-group"
+                    root.selectedIndex = index
+                  }
                 }
               }
             }
