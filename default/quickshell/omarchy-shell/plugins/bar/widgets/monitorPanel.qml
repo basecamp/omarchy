@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -174,7 +174,7 @@ Item {
     onRunningChanged: if (!running) root.refresh()
   }
 
-  Common.WidgetButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
@@ -186,7 +186,7 @@ Item {
     }
   }
 
-  Common.PopupCard {
+  PopupCard {
     anchorItem: button
     owner: root
     bar: root.bar
@@ -222,7 +222,7 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
         }
 
-        Common.Slider {
+        PanelSlider {
           id: brightnessSlider
           bar: root.bar
           width: parent.width - 22 - brightnessPercent.width - 16

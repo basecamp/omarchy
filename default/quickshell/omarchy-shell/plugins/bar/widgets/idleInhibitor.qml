@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -53,7 +53,7 @@ Item {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  Common.WidgetButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar

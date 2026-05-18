@@ -1,0 +1,12 @@
+module qs.Ui
+
+CursorSurface 1.0 CursorSurface.qml
+KeyboardPanel 1.0 KeyboardPanel.qml
+PanelActionButton 1.0 PanelActionButton.qml
+PanelSectionHeader 1.0 PanelSectionHeader.qml
+PanelSeparator 1.0 PanelSeparator.qml
+PanelSlider 1.0 PanelSlider.qml
+PanelToolTip 1.0 PanelToolTip.qml
+PillButton 1.0 PillButton.qml
+PopupCard 1.0 PopupCard.qml
+WidgetButton 1.0 WidgetButton.qml

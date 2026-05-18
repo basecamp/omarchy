@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Services.Pipewire
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -36,7 +36,7 @@ Item {
 
   PwObjectTracker { objects: root.source ? [root.source] : [] }
 
-  Common.WidgetButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar

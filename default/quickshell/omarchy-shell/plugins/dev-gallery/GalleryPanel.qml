@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
-import "../bar/common" as Common
+import qs.Ui
 import qs.Commons
 
 // Visual reference + live playground for omarchy-shell's common UI
@@ -124,7 +124,7 @@ Item {
               font.bold: true
             }
             Text {
-              text: "Live previews of every component in plugins/bar/common/. Use this as the visual reference when porting panels or extracting new primitives. Press h/l to walk the cursor demo, Esc to close."
+              text: "Live previews of every type exported from qs.Ui. Use this as the visual reference when porting panels or building plugins. Press h/l to walk the cursor demo, Esc to close."
               color: Qt.darker(root.foreground, 1.4)
               font.family: root.fontFamily
               font.pixelSize: 11
@@ -133,7 +133,7 @@ Item {
             }
           }
 
-          Common.PanelSeparator { foreground: root.foreground }
+          PanelSeparator { foreground: root.foreground }
 
           // ---- PanelSectionHeader ------------------------------------------
           Column {
@@ -171,17 +171,17 @@ Item {
                 anchors.rightMargin: 14
                 spacing: 6
 
-                Common.PanelSectionHeader {
+                PanelSectionHeader {
                   text: "DNS provider"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                 }
-                Common.PanelSectionHeader {
+                PanelSectionHeader {
                   text: "Wi-Fi networks"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                 }
-                Common.PanelSectionHeader {
+                PanelSectionHeader {
                   text: "Playing"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
@@ -227,9 +227,9 @@ Item {
                 anchors.rightMargin: 14
                 spacing: 12
 
-                Common.PanelSeparator { foreground: root.foreground }
-                Common.PanelSeparator { foreground: root.foreground; strength: 0.25 }
-                Common.PanelSeparator { foreground: root.foreground; strength: 0.45 }
+                PanelSeparator { foreground: root.foreground }
+                PanelSeparator { foreground: root.foreground; strength: 0.25 }
+                PanelSeparator { foreground: root.foreground; strength: 0.45 }
               }
             }
           }
@@ -279,7 +279,7 @@ Item {
                     { "label": "Forget / scan / disabled-ish row" }
                   ]
 
-                  Common.CursorSurface {
+                  CursorSurface {
                     required property var modelData
                     required property int index
                     width: parent.width
@@ -351,7 +351,7 @@ Item {
                 anchors.leftMargin: 14
                 spacing: 6
 
-                Common.PillButton {
+                PillButton {
                   text: "DHCP"
                   tooltipText: "Use DNS from DHCP"
                   tooltipBackground: root.background
@@ -360,7 +360,7 @@ Item {
                   fontFamily: root.fontFamily
                 }
 
-                Common.PillButton {
+                PillButton {
                   text: "Cloudflare"
                   tooltipText: "Set DNS to Cloudflare"
                   tooltipBackground: root.background
@@ -370,7 +370,7 @@ Item {
                   active: true
                 }
 
-                Common.PillButton {
+                PillButton {
                   iconText: "󰑐"
                   tooltipText: "Refresh"
                   tooltipBackground: root.background
@@ -381,7 +381,7 @@ Item {
                   verticalPadding: 4
                 }
 
-                Common.PillButton {
+                PillButton {
                   iconText: "󰂯"
                   text: "On"
                   tooltipText: "Turn Bluetooth off"
@@ -431,7 +431,7 @@ Item {
                 anchors.leftMargin: 14
                 spacing: 18
 
-                Common.PanelActionButton {
+                PanelActionButton {
                   iconText: "󰄬"
                   tooltipText: "Confirm (default flavor)"
                   foreground: root.foreground
@@ -439,7 +439,7 @@ Item {
                   fontFamily: root.fontFamily
                 }
 
-                Common.PanelActionButton {
+                PanelActionButton {
                   iconText: "󰅙"
                   tooltipText: "Forget network (urgent flavor)"
                   foreground: root.foreground
@@ -448,7 +448,7 @@ Item {
                   fontFamily: root.fontFamily
                 }
 
-                Common.PanelActionButton {
+                PanelActionButton {
                   iconText: "󰄬"
                   tooltipText: "Disabled — type a passphrase first"
                   foreground: root.foreground
@@ -504,7 +504,7 @@ Item {
                 cursorShape: Qt.PointingHandCursor
               }
 
-              Common.PanelToolTip {
+              PanelToolTip {
                 visible: tipMouse.containsMouse
                 text: "Styled tooltip — drop into any panel"
                 panelForeground: root.foreground
@@ -563,7 +563,7 @@ Item {
                   anchors.verticalCenter: parent.verticalCenter
                 }
 
-                Common.Slider {
+                PanelSlider {
                   id: demoSlider
                   bar: root.fakeBar
                   width: parent.width - 70
@@ -623,13 +623,13 @@ Item {
                 anchors.rightMargin: 14
                 spacing: 6
 
-                Common.PanelSectionHeader {
+                PanelSectionHeader {
                   text: "Wi-Fi networks"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                 }
 
-                Common.CursorSurface {
+                CursorSurface {
                   width: parent.width
                   implicitHeight: composedRow.implicitHeight + 12
                   current: true
@@ -655,7 +655,7 @@ Item {
                       font.pixelSize: 14
                     }
 
-                    Common.PanelActionButton {
+                    PanelActionButton {
                       id: composedForget
                       anchors.right: parent.right
                       anchors.verticalCenter: parent.verticalCenter
@@ -695,9 +695,9 @@ Item {
                   }
                 }
 
-                Common.PanelSeparator { foreground: root.foreground }
+                PanelSeparator { foreground: root.foreground }
 
-                Common.CursorSurface {
+                CursorSurface {
                   width: parent.width
                   implicitHeight: idleRow.implicitHeight + 12
                   foreground: root.foreground

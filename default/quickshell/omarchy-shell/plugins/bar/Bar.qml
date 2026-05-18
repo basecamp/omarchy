@@ -10,7 +10,7 @@ import Quickshell.Widgets
 import QtQuick
 import QtQuick.Layouts
 import qs.Commons
-import "common" as BarCommon
+import qs.Ui
 
 Item {
   id: root
@@ -1716,7 +1716,7 @@ Item {
       }
     }
 
-    BarCommon.PopupCard {
+    PopupCard {
       id: managePopup
       anchorItem: trayRoot
       owner: trayRoot
@@ -1801,7 +1801,7 @@ Item {
               elide: Text.ElideRight
             }
 
-            BarCommon.PillButton {
+            PillButton {
               id: rowPinBtn
               anchors.verticalCenter: parent.verticalCenter
               anchors.right: parent.right
@@ -1815,7 +1815,7 @@ Item {
               onClicked: trayRoot.togglePin(rowRoot.itemId)
             }
 
-            BarCommon.PillButton {
+            PillButton {
               id: rowHideBtn
               anchors.verticalCenter: parent.verticalCenter
               anchors.right: rowPinBtn.left
