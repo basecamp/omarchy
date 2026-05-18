@@ -680,14 +680,14 @@ Item {
           Row {
             Layout.alignment: Qt.AlignRight
             spacing: 8
-            PillButton {
+            Button {
               text: "Cancel"
               foreground: root.foreground
               fontFamily: root.fontFamily
               focusable: true
               onClicked: root.discardWidgetSettings()
             }
-            PillButton {
+            Button {
               text: "Apply"
               foreground: root.foreground
               fontFamily: root.fontFamily
@@ -788,7 +788,7 @@ Item {
 
     Row {
       Layout.alignment: Qt.AlignRight
-      PillButton {
+      Button {
         text: "Reset bar to defaults"
         foreground: root.urgent
         fontFamily: root.fontFamily
@@ -829,7 +829,7 @@ Item {
         Repeater {
           model: positionGroup.positions
 
-          delegate: ChoiceButton {
+          delegate: Button {
             required property string modelData
 
             text: modelData

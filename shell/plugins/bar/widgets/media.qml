@@ -198,7 +198,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 6
 
-        PillButton {
+        Button {
           iconText: "󰒮"
           foreground: root.bar.foreground
           horizontalPadding: 10
@@ -208,7 +208,7 @@ Item {
           onClicked: if (root.activePlayer) root.activePlayer.previous()
         }
 
-        PillButton {
+        Button {
           iconText: root.activePlayer && root.activePlayer.isPlaying ? "󰏤" : "󰐊"
           foreground: root.bar.foreground
           horizontalPadding: 14
@@ -219,7 +219,7 @@ Item {
           onClicked: if (root.activePlayer) root.activePlayer.togglePlaying()
         }
 
-        PillButton {
+        Button {
           iconText: "󰒭"
           foreground: root.bar.foreground
           horizontalPadding: 10

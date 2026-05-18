@@ -512,11 +512,11 @@ Item {
     }
   }
 
-  // Header pill: a CursorPill bound into the panel's "header" cursor
-  // section. CursorPill collapses what used to be a PillButton subclass +
+  // Header pill: a Button bound into the panel's "header" cursor
+  // section. Button collapses what used to be a Button subclass +
   // overlay MouseArea into one component; we keep the pillIndex / activated
   // shim here so the three header pill instantiations stay readable.
-  component HeaderPill: CursorPill {
+  component HeaderPill: Button {
     id: pill
     required property int pillIndex
     property bool pillEnabled: true

@@ -10,7 +10,7 @@ import qs.Commons
 // Defaults bind to qs.Commons.Color so a caller with no theme overrides
 // just works; foreground / accent / selectionTint can be overridden per
 // instance. Focus styling uses Style.focusBorderColor (the same accent
-// ring Toggle and ChoiceButton paint) so keyboard cursor and form-focus
+// ring Toggle and Button paint) so keyboard cursor and form focus
 // chrome stay consistent across the shell.
 //
 // Sizing is driven by font.pixelSize + verticalPadding. The default 30px

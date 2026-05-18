@@ -25,18 +25,48 @@ QtObject {
 
   property int cornerRadius: 0
 
+  // ---------------------------------------------------------- state alphas
+  //
+  // Foreground-tinted fills + border alphas used by every interactive
+  // surface in the kit. Themes can override these via [style] in
+  // shell.toml; otherwise the kit defaults below apply.
+  property var styleOverrides: ({})
+
+  function styleNum(key, fallback) {
+    var v = styleOverrides[key]
+    var n = Number(v)
+    return isFinite(n) ? n : fallback
+  }
+
+  readonly property int borderWidth: Math.max(0, Math.round(styleNum("border-width", 1)))
+  readonly property int focusBorderWidth: Math.max(1, Math.round(styleNum("focus-border-width", 3)))
+
+  readonly property real idleBorderAlpha:    styleNum("idle-border-alpha",    0.4)
+  readonly property real hotFillAlpha:       styleNum("hot-fill-alpha",       0.08)
+  readonly property real selectedFillAlpha:  styleNum("selected-fill-alpha",  0.18)
+  readonly property real pressedFillAlpha:   styleNum("pressed-fill-alpha",   0.22)
+  readonly property real focusFillAlpha:     styleNum("focus-fill-alpha",     0.22)
+
+  function alphaForeground(a) {
+    return Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, a)
+  }
+
+  function alphaAccent(a) {
+    return Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, a)
+  }
+
   // Focus affordances. Deliberately distinct from "selected" (which uses an
   // accent fill) so the keyboard cursor never reads as the chosen value.
-  // The settings panel originated these tokens; promoting them here means
-  // every Ui component picks them up uniformly.
   readonly property color focusBorderColor: Color.accent
-  readonly property color focusFillColor: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.22)
-  readonly property int focusBorderWidth: 3
+  readonly property color focusFillColor: alphaAccent(focusFillAlpha)
 
   // Convenience fills used by panel rows and pills. Hot is hover/keyboard
-  // cursor; selected is the persistent chosen/current item state.
-  readonly property color hotFill: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.08)
-  readonly property color selectedFill: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.18)
+  // cursor; selected/active is the persistent chosen/current state.
+  readonly property color hotFill: alphaForeground(hotFillAlpha)
+  readonly property color selectedFill: alphaForeground(selectedFillAlpha)
+  readonly property color pressedFill: alphaForeground(pressedFillAlpha)
+  readonly property color idleBorderColor: alphaForeground(idleBorderAlpha)
+  readonly property color selectedAccentFill: alphaAccent(selectedFillAlpha)
 
   // ---------------------------------------------------------- typography
   //
@@ -57,7 +87,8 @@ QtObject {
   property int fontBaseSize: 12
 
   // Parsed maps populated by loadShell. Keep them as plain dicts so
-  // reassigning the whole property fires reactive bindings.
+  // reassigning the whole property fires reactive bindings. styleOverrides
+  // is declared up top next to the helpers that consume it.
   property var fontOverrides: ({})
   property var barOverrides: ({})
 
@@ -117,10 +148,12 @@ QtObject {
 
   // Parse [font] base-size + per-token overrides and [bar] size-* keys
   // out of shell.toml. Color.qml owns the quoted-string side of the same
-  // file; we only care about the unquoted integer values here.
+  // file; we handle the unquoted numeric tokens for [font], [bar] sizes,
+  // and [style] (alphas + border widths).
   function loadShell(raw) {
     var fontOut = {}
     var barOut = {}
+    var styleOut = {}
     var nextBase = 12
     var text = String(raw || "")
     if (text) {
@@ -131,15 +164,19 @@ QtObject {
         if (!line || line.charAt(0) === "#") continue
         var sectionMatch = line.match(/^\[([A-Za-z0-9_-]+)\]\s*(#.*)?$/)
         if (sectionMatch) { section = sectionMatch[1]; continue }
-        var kv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(-?\d+)\s*(#.*)?$/)
+        // Accept ints OR floats (alphas are 0..1).
+        var kv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(-?\d+(?:\.\d+)?)\s*(#.*)?$/)
         if (!kv) continue
         var key = kv[1]
-        var val = parseInt(kv[2], 10)
+        var raw = kv[2]
         if (section === "font") {
-          if (key === "base-size") nextBase = val
-          else fontOut[key] = val
+          var ival = parseInt(raw, 10)
+          if (key === "base-size") nextBase = ival
+          else fontOut[key] = ival
         } else if (section === "bar" && (key === "size-horizontal" || key === "size-vertical")) {
-          barOut[key] = val
+          barOut[key] = parseInt(raw, 10)
+        } else if (section === "style") {
+          styleOut[key] = parseFloat(raw)
         }
       }
     }
@@ -150,6 +187,7 @@ QtObject {
     fontBaseSize = nextBase
     fontOverrides = fontOut
     barOverrides = barOut
+    styleOverrides = styleOut
   }
 
   property Process hyprctlProc: Process {

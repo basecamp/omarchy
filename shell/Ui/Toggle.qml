@@ -21,7 +21,7 @@ Rectangle {
   property string description: ""
   property bool checked: false
 
-  // Panel-cursor flag. Same role as PillButton.hasCursor / ChoiceButton.hasCursor:
+  // Panel-cursor flag. Same role as Button.hasCursor:
   // panels with their own keyboard cursor bind this to drive the highlight
   // separately from activeFocus. Renders as a tinted fill only — the accent
   // border ring is reserved for Tab focus (activeFocus).

@@ -95,7 +95,7 @@ Item {
         width: parent.width
         implicitHeight: 28
 
-        PillButton {
+        Button {
           id: prevButton
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
@@ -115,7 +115,7 @@ Item {
           font.bold: true
         }
 
-        PillButton {
+        Button {
           id: nextButton
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter

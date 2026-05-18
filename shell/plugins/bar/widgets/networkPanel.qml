@@ -697,7 +697,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           }
         }
 
-        PillButton {
+        Button {
           id: refreshBtn
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
@@ -915,7 +915,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
   // One DNS provider pill. The cursor + current visuals come entirely from
   // CursorSurface; this component just binds them to the panel's cursor
   // state and renders the label/tooltip/click target.
-  component DnsProviderPill: CursorPill {
+  component DnsProviderPill: Button {
     id: pill
     required property string provider
     required property int index
@@ -928,7 +928,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     horizontalPadding: 10
     verticalPadding: 6
 
-    // Map the panel's domain semantics onto CursorPill's structural props:
+    // Map the panel's domain semantics onto Button's structural props:
     // `current DNS` is the pill's `active` fill; the keyboard cursor lights
     // up `hasCursor`.
     active: root.dnsProvider === provider

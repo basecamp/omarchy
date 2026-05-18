@@ -1,7 +1,7 @@
 module qs.Ui
 
-ChoiceButton 1.0 ChoiceButton.qml
-CursorPill 1.0 CursorPill.qml
+Button 1.0 Button.qml
+ButtonGroup 1.0 ButtonGroup.qml
 CursorSurface 1.0 CursorSurface.qml
 Dropdown 1.0 Dropdown.qml
 KeyboardPanel 1.0 KeyboardPanel.qml
@@ -12,7 +12,6 @@ PanelSectionHeader 1.0 PanelSectionHeader.qml
 PanelSeparator 1.0 PanelSeparator.qml
 PanelSlider 1.0 PanelSlider.qml
 PanelToolTip 1.0 PanelToolTip.qml
-PillButton 1.0 PillButton.qml
 PopupCard 1.0 PopupCard.qml
 SearchableDropdown 1.0 SearchableDropdown.qml
 TextField 1.0 TextField.qml

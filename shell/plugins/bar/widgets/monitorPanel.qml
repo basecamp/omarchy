@@ -30,7 +30,7 @@ Item {
   //   "brightness" - single slider row, selectedIndex = -1 sentinel
   //                  (mirrors audioPanel's slider rows). Only present if a
   //                  controllable backlight was detected.
-  //   "scale"      - 6 ChoiceButton scale presets; treated as a single
+  //   "scale"      - 6 Button scale presets; treated as a single
   //                  horizontal row from j/k's perspective. h/l moves
   //                  between presets, identical to bluetooth's header.
   //   "monitors"   - vertical Toggle list for enabling/disabling displays;
@@ -499,7 +499,7 @@ Item {
               Repeater {
                 model: root.scaleValues
 
-                CursorPill {
+                Button {
                   required property string modelData
                   required property int index
 
