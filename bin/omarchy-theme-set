@@ -32,7 +32,7 @@ run_parallel() {
 }
 
 shell_ipc() {
-  timeout 2 omarchy-shell-ipc --if-running "$@" >/dev/null 2>&1
+  timeout 2 omarchy-shell "$@" >/dev/null 2>&1
 }
 
 snapshot_background_path() {

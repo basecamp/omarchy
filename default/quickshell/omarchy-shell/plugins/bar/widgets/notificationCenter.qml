@@ -92,7 +92,7 @@ Item {
     }
   }
 
-  // Service-side IPC (omarchy-shell-ipc notifications showHistory) flips
+  // Service-side IPC (omarchy-shell notifications showHistory) flips
   // historyOpenRequested; we toggle our local popup state from here so the
   // keybind path lands in the same PopupCard the click path uses.
   Connections {

@@ -223,67 +223,17 @@ if [[ $cache_only == true || $prepare_only == true ]]; then
   exit 0
 fi
 
-# Image rows can contain newlines and tabs, which don't survive a positional
-# bash argv into `quickshell ipc call`. Base64-encode for transit; the
-# ImagePicker plugin Qt.atob()s on the other side.
+# Image rows can contain newlines and tabs, which don't survive positional
+# shell IPC arguments. Base64-encode for transit; the ImagePicker plugin
+# Qt.atob()s on the other side.
 rows_b64=$(printf '%s' "$rows" | base64 -w 0)
 
 if [[ $preload == true ]]; then
-  omarchy-shell-ipc image-selector preload "$rows_b64" "$selected_list_image" "$show_labels" "$filterable" >/dev/null || true
+  omarchy-shell image-selector preload "$rows_b64" "$selected_list_image" "$show_labels" "$filterable" >/dev/null || true
   exit 0
 fi
 
-send_builtin_ipc_request() {
-  perl -MCwd=abs_path -MEncode=encode,decode -MSocket \
-    -e '
-      sub read_qstring {
-        my ($data, $offset) = @_;
-        return ("", $offset) if $offset + 4 > length($data);
-        my $length = unpack("N", substr($data, $offset, 4));
-        $offset += 4;
-        return ("", $offset) if $length == 0xffffffff || $offset + $length > length($data);
-        return (decode("UTF-16BE", substr($data, $offset, $length)), $offset + $length);
-      }
-
-      sub qstring {
-        my $encoded = encode("UTF-16BE", $_[0] // "");
-        return pack("N", length($encoded)) . $encoded;
-      }
-
-      my $shell_qml = abs_path(shift @ARGV);
-      my @open_args = @ARGV;
-      my $runtime_dir = $ENV{"XDG_RUNTIME_DIR"} || "/run/user/$<";
-      my $payload = chr(3) . qstring("image-selector") . qstring("open") . pack("N", scalar @open_args) . join("", map { qstring($_) } @open_args);
-      my @candidates;
-
-      for my $lock_path (glob("$runtime_dir/quickshell/by-id/*/instance.lock")) {
-        my $data;
-        next unless open(my $lock, "<:raw", $lock_path);
-        { local $/; $data = <$lock>; }
-        close($lock);
-        my (undef, $offset) = read_qstring($data, 0);
-        my ($path) = read_qstring($data, $offset);
-        next unless $path && abs_path($path) eq $shell_qml;
-        (my $socket_path = $lock_path) =~ s{/instance\.lock$}{/ipc.sock};
-        push @candidates, [(stat($lock_path))[9] || 0, $socket_path];
-      }
-
-      for my $candidate (sort { $b->[0] <=> $a->[0] } @candidates) {
-        socket(my $client, AF_UNIX, SOCK_STREAM, 0) || next;
-        if (connect($client, sockaddr_un($candidate->[1]))) {
-          syswrite($client, $payload);
-          close($client);
-          exit 0;
-        }
-        close($client);
-      }
-
-      exit 1;
-    ' "$OMARCHY_PATH/default/quickshell/omarchy-shell/shell.qml" \
-    "" "$rows_b64" "$selected_list_image" "$selection_file" "$done_file" "$show_labels" "$filterable"
-}
-
-if ! send_builtin_ipc_request && ! omarchy-shell-ipc image-selector open \
+if ! omarchy-shell image-selector open \
      "" \
      "$rows_b64" \
      "$selected_list_image" \

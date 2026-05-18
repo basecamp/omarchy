@@ -1,0 +1,17 @@
+[Unit]
+Description=Omarchy Shell
+PartOf=graphical-session.target
+After=graphical-session.target
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Type=exec
+Environment=OMARCHY_PATH=%h/.local/share/omarchy
+ExecStart=/usr/bin/quickshell -p %h/.local/share/omarchy/default/quickshell/omarchy-shell
+Restart=always
+RestartSec=2
+Slice=session-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

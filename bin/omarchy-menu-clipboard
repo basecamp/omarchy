@@ -3,4 +3,4 @@
 # omarchy:group=menu
 # omarchy:examples=omarchy menu clipboard
 
-omarchy-shell-ipc shell toggle omarchy.clipboard-picker "{}"
+omarchy-shell shell toggle omarchy.clipboard-picker "{}"

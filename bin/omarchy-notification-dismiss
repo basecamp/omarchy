@@ -8,4 +8,4 @@ if (($# == 0)); then
   exit 1
 fi
 
-omarchy-shell-ipc notifications dismiss "$1" >/dev/null 2>&1 || true
+omarchy-shell notifications dismiss "$1" >/dev/null 2>&1 || true

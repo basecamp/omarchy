@@ -1126,7 +1126,7 @@ Item {
     horizontalMargin: 7.5
     onPressed: function(button) {
       if (button === Qt.RightButton) root.run("xdg-terminal-exec")
-      else root.run("omarchy-shell-ipc menu toggle root")
+      else root.run("omarchy-shell menu toggle root")
     }
   }
 
@@ -1632,7 +1632,7 @@ Item {
     tooltipText: root.batteryTooltip()
     onPressed: function(button) {
       if (button === Qt.RightButton) root.run("omarchy-notification-send \"$(omarchy-battery-status)\"")
-      else root.run("omarchy-shell-ipc menu toggle power")
+      else root.run("omarchy-shell menu toggle power")
     }
   }
 }

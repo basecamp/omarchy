@@ -3,13 +3,5 @@
 # omarchy:summary=Restart the Omarchy shell
 # omarchy:examples=omarchy restart shell
 
-CONFIG_DIR="$OMARCHY_PATH/default/quickshell/omarchy-shell"
-
-# Skip `quickshell kill` (graceful IPC exit) — it currently trips an upstream
-# crash in IpcKillCommand::exec (Quickshell #539), which leaves the Wayland
-# surface lingering and produces a duplicate bar when the new instance starts.
-# A SIGKILL drops the client connection and the compositor cleans up surfaces
-# immediately, with no state to flush since the shell holds nothing persistent.
-pkill -KILL -f "quickshell -p $CONFIG_DIR" 2>/dev/null
-
-setsid uwsm-app -- quickshell -p "$CONFIG_DIR" >/dev/null 2>&1 &
+systemctl --user enable omarchy-shell.service >/dev/null
+systemctl --user restart omarchy-shell.service

@@ -3,4 +3,4 @@
 # omarchy:group=menu
 # omarchy:examples=omarchy menu emoji
 
-omarchy-shell-ipc shell toggle omarchy.emoji-picker "{}"
+omarchy-shell shell toggle omarchy.emoji-picker "{}"

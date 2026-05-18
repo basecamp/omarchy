@@ -4,8 +4,8 @@
 # omarchy:args=[toggle|summon|close|refresh|ping] [route]
 # omarchy:examples=omarchy menu | omarchy menu toggle system | omarchy menu summon style.theme | omarchy menu refresh
 
-# Thin wrapper around `omarchy-shell-ipc menu`. Keybinds and the bar icon
-# call omarchy-shell-ipc directly to skip the omarchy-CLI dispatch hop;
+# Thin wrapper around `omarchy-shell menu`. Keybinds and the bar icon
+# call omarchy-shell directly to skip the omarchy-CLI dispatch hop;
 # this exists so humans get `omarchy menu toggle X` etc.
 
 verb="${1-toggle}"
@@ -13,10 +13,10 @@ route="${2-root}"
 
 case "$verb" in
   toggle | summon)
-    exec omarchy-shell-ipc menu "$verb" "$route"
+    exec omarchy-shell menu "$verb" "$route"
     ;;
   close | refresh | ping)
-    exec omarchy-shell-ipc menu "$verb"
+    exec omarchy-shell menu "$verb"
     ;;
   -h | --help | help)
     cat <<USAGE

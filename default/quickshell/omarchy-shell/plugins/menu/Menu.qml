@@ -14,7 +14,7 @@ Item {
   property var pluginRegistry: null
 
   // Plugin lifecycle hooks. The host calls open(payloadJson) after
-  // `omarchy-shell-ipc shell summon omarchy.menu ...` and close() when hidden.
+  // `omarchy-shell shell summon omarchy.menu ...` and close() when hidden.
   property string pendingInitialMenu: "root"
 
   function open(payloadJson) {
@@ -616,7 +616,7 @@ Item {
 
   // ----------------------------------------------------------- IPC surface
   //
-  // `omarchy-shell-ipc menu summon <id>` is the keybind hot path — the
+  // `omarchy-shell menu summon <id>` is the keybind hot path — the
   // Hyprland bindings call straight into here, no bash hops. `refresh` is
   // a manual nudge for when watchChanges isn't enough (e.g. someone wired
   // a CI step that re-emits the JSONC).
@@ -646,7 +646,7 @@ Item {
       var id = root.resolveRoute(initialMenu)
       var entry = root.items[id]
       // If the resolved id is an action (i.e. the user invoked an alias for
-      // a leaf, e.g. `omarchy-shell-ipc menu summon screenrecord-stop`),
+      // a leaf, e.g. `omarchy-shell menu summon screenrecord-stop`),
       // run it directly instead of opening an action with no children.
       if (entry && entry.kind === "action" && entry.action) {
         Quickshell.execDetached(["bash", "-lc", entry.action])
