@@ -338,12 +338,80 @@ Item {
               font.bold: true
             }
             Text {
-              text: "Live previews of every type exported from qs.Ui. Use this as the visual reference when porting panels or building plugins. Scroll for more. Esc to close."
+              text: "Live previews of every type exported from qs.Ui. Use this as the visual reference when porting panels or building plugins. j/k or arrows to walk; h/l within rows; Enter to activate; Esc to close."
               color: Qt.darker(root.foreground, 1.4)
               font.family: root.fontFamily
               font.pixelSize: 11
               width: parent.width
               wrapMode: Text.WordWrap
+            }
+          }
+
+          PanelSeparator { foreground: root.foreground }
+
+          // ---- Kit conventions ---------------------------------------------
+          Column {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              text: "Conventions"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 13
+              font.bold: true
+            }
+
+            Rectangle {
+              width: parent.width
+              implicitHeight: conventionsCol.implicitHeight + 24
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
+              radius: Style.cornerRadius
+              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+              border.width: 1
+
+              Column {
+                id: conventionsCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 14
+                anchors.rightMargin: 14
+                spacing: 8
+
+                Text {
+                  width: parent.width
+                  wrapMode: Text.WordWrap
+                  color: Qt.darker(root.foreground, 1.4)
+                  font.family: root.fontFamily
+                  font.pixelSize: 11
+                  text: "Theme. qs.Commons.Style exposes cornerRadius (mirrored from Hyprland's decoration:rounding), focusBorderColor / focusFillColor / focusBorderWidth (derived from Color.accent), and hotFill (the shared hover/cursor tint). qs.Commons.Color exposes foreground / background / accent / urgent plus per-surface roles. Components default-bind to these so a caller with no overrides matches the active theme."
+                }
+                Text {
+                  width: parent.width
+                  wrapMode: Text.WordWrap
+                  color: Qt.darker(root.foreground, 1.4)
+                  font.family: root.fontFamily
+                  font.pixelSize: 11
+                  text: "Single cursor. Every interactive primitive exposes hasCursor: bool and emits hovered(bool). The panel root owns focusSection + selectedIndex; each element binds hasCursor: root.focusSection === 'X' && root.selectedIndex === N, and onHovered updates the same state. One highlight on screen, keyboard and mouse always agree. See plugins/bar/widgets/audioPanel.qml for the canonical recipe."
+                }
+                Text {
+                  width: parent.width
+                  wrapMode: Text.WordWrap
+                  color: Qt.darker(root.foreground, 1.4)
+                  font.family: root.fontFamily
+                  font.pixelSize: 11
+                  text: "Popups + editors. Dropdown / SearchableDropdown expose popupOpen plus open() / close() / toggle(); inline TextField uses activeFocus. While any of those own the keys, set PanelKeyCatcher.blocked so the panel's cursor model freezes and the active widget handles input."
+                }
+                Text {
+                  width: parent.width
+                  wrapMode: Text.WordWrap
+                  color: Qt.darker(root.foreground, 1.4)
+                  font.family: root.fontFamily
+                  font.pixelSize: 11
+                  text: "Adding a component. Drop the QML in Ui/, add a line to Ui/qmldir, then add a section here using the real type (not a copy). The gallery doubles as a smoke test — if a component starts misbehaving this is the fastest place to see it."
+                }
+              }
             }
           }
 
