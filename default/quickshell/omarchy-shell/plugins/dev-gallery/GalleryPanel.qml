@@ -21,7 +21,10 @@ Item {
   function open(payloadJson) {
     closingFromHost = false
     window.visible = true
-    Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+    Qt.callLater(function() {
+      if (keyCatcher) keyCatcher.forceActiveFocus()
+      ensureCursorVisible(currentTarget())
+    })
   }
 
   // Host-initiated close (`shell hide`). Visibility flips without
