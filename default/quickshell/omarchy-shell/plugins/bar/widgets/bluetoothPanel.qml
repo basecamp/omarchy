@@ -3,7 +3,7 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -71,7 +71,7 @@ Item {
   //                  them, Enter activates.
   //   "known"      — paired/known device rows; Enter toggles connect.
   //   "discovered" — unpaired devices visible while scanning; Enter pairs.
-  // Visuals always come from Common.CursorSurface (hasCursor / current),
+  // Visuals always come from CursorSurface (hasCursor / current),
   // never from containsMouse. Mouse hover updates root cursor state too,
   // guaranteeing one highlight on screen.
   property string focusSection: "header"
@@ -310,7 +310,7 @@ Item {
     function hide(): void { root.closePopout() }
   }
 
-  Common.WidgetButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
@@ -322,7 +322,7 @@ Item {
     }
   }
 
-  Common.KeyboardPanel {
+  KeyboardPanel {
     id: panel
     anchorItem: button
     owner: root
@@ -445,7 +445,7 @@ Item {
             }
 
             // Discovered (unpaired) devices, only shown while scanning.
-            Common.PanelSectionHeader {
+            PanelSectionHeader {
               visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
               text: "Discovered"
               foreground: root.bar.foreground
@@ -483,11 +483,11 @@ Item {
     }
   }
 
-  // Header pill — wraps Common.PillButton with cursor-state binding so it
+  // Header pill — wraps PillButton with cursor-state binding so it
   // participates in the same single-cursor model as device rows. We don't
-  // use Common.CursorSurface here because the pill already provides its
+  // use CursorSurface here because the pill already provides its
   // own active/hover visuals and we want them to layer correctly.
-  component HeaderPill: Common.PillButton {
+  component HeaderPill: PillButton {
     id: pill
     required property int pillIndex
     property bool pillEnabled: true
@@ -528,7 +528,7 @@ Item {
   // connect that drops back to Disconnected within 10s surfaces as "Failed".
   // Now a cursor target: hasCursor binds to root state, mouse hover updates
   // root state. The X button on the right is a PanelActionButton.
-  component DeviceRow: Common.CursorSurface {
+  component DeviceRow: CursorSurface {
     id: row
     required property var dev
     required property int rowIndex
@@ -660,7 +660,7 @@ Item {
 
       // Explicit close button on any known device. Action depends on state:
       // connected -> disconnect, otherwise -> forget the pairing entirely.
-      Common.PanelActionButton {
+      PanelActionButton {
         id: disconnectBtn
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter

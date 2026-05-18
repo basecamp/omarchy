@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -279,7 +279,7 @@ Item {
     onTriggered: root.refresh()
   }
 
-  Common.WidgetButton {
+  WidgetButton {
     id: button
     anchors.left: parent.left
     anchors.verticalCenter: parent.verticalCenter
@@ -305,7 +305,7 @@ Item {
     }
   }
 
-  Common.PopupCard {
+  PopupCard {
     id: popup
     anchorItem: button
     owner: root

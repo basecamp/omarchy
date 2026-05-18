@@ -3,7 +3,7 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Pipewire
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -90,7 +90,7 @@ Item {
   // selectedIndex semantics within a section:
   //   -1            → on the slider row (h/l adjusts volume, m/Enter mute)
   //   0..N-1        → on the Nth device/stream row
-  // Visuals derive from hasCursor/current via Common.CursorSurface, never
+  // Visuals derive from hasCursor/current via CursorSurface, never
   // from containsMouse — that's what keeps the highlight unique across
   // keyboard + mouse like wifi does.
   property string focusSection: "output"
@@ -348,7 +348,7 @@ Item {
     function hide(): void { root.closePopout() }
   }
 
-  Common.WidgetButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
@@ -366,7 +366,7 @@ Item {
     }
   }
 
-  Common.KeyboardPanel {
+  KeyboardPanel {
     id: panel
     anchorItem: button
     owner: root
@@ -440,7 +440,7 @@ Item {
               width: parent.width
               spacing: 8
 
-              Common.PanelSectionHeader {
+              PanelSectionHeader {
                 text: "Output"
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily
@@ -462,7 +462,7 @@ Item {
             // Output slider row — itself a cursor target (selectedIndex === -1
             // when focusSection === "output"). h/l adjust the value via
             // root.adjustVolume; m / Enter toggle mute.
-            Common.CursorSurface {
+            CursorSurface {
               id: outputSliderRow
               width: parent.width
               height: outputSliderInner.implicitHeight + 8
@@ -496,7 +496,7 @@ Item {
                   }
                 }
 
-                Common.Slider {
+                PanelSlider {
                   id: outputSlider
                   bar: root.bar
                   width: parent.width - outputIconText.width - outputPercent.width - 16
@@ -559,7 +559,7 @@ Item {
               width: parent.width
               spacing: 8
 
-              Common.PanelSectionHeader {
+              PanelSectionHeader {
                 text: "Input"
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily
@@ -578,7 +578,7 @@ Item {
               }
             }
 
-            Common.CursorSurface {
+            CursorSurface {
               id: inputSliderRow
               visible: !!root.source
               width: parent.width
@@ -613,7 +613,7 @@ Item {
                   }
                 }
 
-                Common.Slider {
+                PanelSlider {
                   id: inputSlider
                   bar: root.bar
                   width: parent.width - inputIconText.width - inputPercent.width - 16
@@ -672,7 +672,7 @@ Item {
             spacing: 6
             visible: root.audioStreams.length > 0
 
-            Common.PanelSectionHeader {
+            PanelSectionHeader {
               text: "Playing"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
@@ -701,7 +701,7 @@ Item {
   // Output device row — cursor target inside the "output" section. Mouse
   // hover updates the panel cursor at the root; visuals come entirely
   // from hasCursor/current via CursorSurface, never from containsMouse.
-  component SinkRow: Common.CursorSurface {
+  component SinkRow: CursorSurface {
     id: sinkRow
     required property var node
     required property int rowIndex
@@ -767,7 +767,7 @@ Item {
   }
 
   // Input device row — sibling of SinkRow for the "input" section.
-  component SourceRow: Common.CursorSurface {
+  component SourceRow: CursorSurface {
     id: sourceRow
     required property var node
     required property int rowIndex
@@ -836,7 +836,7 @@ Item {
   // The stream has its own slider inline, so h/l from the keyboard
   // adjusts THIS stream's volume (not the global output) when the cursor
   // sits on this row. Enter/Space mutes the stream.
-  component StreamRow: Common.CursorSurface {
+  component StreamRow: CursorSurface {
     id: streamRow
     required property var node
     required property int rowIndex
@@ -906,7 +906,7 @@ Item {
         }
       }
 
-      Common.Slider {
+      PanelSlider {
         bar: root.bar
         width: parent.width
         minimum: 0

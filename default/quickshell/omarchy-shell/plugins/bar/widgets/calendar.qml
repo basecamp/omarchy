@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -57,7 +57,7 @@ Item {
     onDateChanged: root.now = clockTimer.date
   }
 
-  Common.WidgetButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
@@ -76,7 +76,7 @@ Item {
     }
   }
 
-  Common.PopupCard {
+  PopupCard {
     id: popup
     anchorItem: button
     bar: root.bar
@@ -94,7 +94,7 @@ Item {
         width: parent.width
         implicitHeight: 28
 
-        Common.PillButton {
+        PillButton {
           id: prevButton
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
@@ -114,7 +114,7 @@ Item {
           font.bold: true
         }
 
-        Common.PillButton {
+        PillButton {
           id: nextButton
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter

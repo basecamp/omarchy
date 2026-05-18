@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import qs.Commons
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -72,7 +72,7 @@ Item {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  Common.WidgetButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
@@ -103,7 +103,7 @@ Item {
     }
   }
 
-  Common.PopupCard {
+  PopupCard {
     id: popup
     anchorItem: button
     bar: root.bar

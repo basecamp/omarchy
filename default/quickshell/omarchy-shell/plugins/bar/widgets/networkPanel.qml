@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -66,7 +66,7 @@ Item {
   // Single cursor model: exactly one highlighted spot across the whole
   // panel, located via `focusSection` + (`selectedIndex` | `dnsIndex`).
   // Mouse hover and keyboard nav both mutate this state at the root; items
-  // never read containsMouse for visuals. See Common.CursorSurface for the
+  // never read containsMouse for visuals. See CursorSurface for the
   // shared chrome (fill / border) shared by NetworkRow and DnsProviderPill.
   readonly property color activeFill: bar ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18) : "transparent"
 
@@ -518,7 +518,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     }
   }
 
-  Common.WidgetButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
@@ -535,12 +535,12 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
   }
 
   // Keyboard-driven popup anchored to the bar widget icon. The shared
-  // Common.KeyboardPanel handles the layer-shell PanelWindow scaffolding
+  // KeyboardPanel handles the layer-shell PanelWindow scaffolding
   // (Exclusive focus on map, screen binding, anchored-to-icon positioning,
   // outside-click via an overlay MouseArea + Region mask that lets the bar
   // remain clickable, fade animation, popout coordination). What stays
   // here is the wifi-specific UI inside.
-  Common.KeyboardPanel {
+  KeyboardPanel {
     id: panel
     anchorItem: button
     owner: root
@@ -664,7 +664,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           }
         }
 
-        Common.PillButton {
+        PillButton {
           id: refreshBtn
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
@@ -681,7 +681,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
         }
       }
 
-      Common.PanelSeparator {
+      PanelSeparator {
         visible: !!root.info.iface
         foreground: root.bar.foreground
       }
@@ -776,7 +776,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       }
 
       // DNS provider selection.
-      Common.PanelSeparator {
+      PanelSeparator {
         foreground: root.bar.foreground
       }
 
@@ -784,7 +784,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
         width: parent.width
         spacing: 8
 
-        Common.PanelSectionHeader {
+        PanelSectionHeader {
           text: "DNS provider"
           foreground: root.bar.foreground
           fontFamily: root.bar.fontFamily
@@ -825,12 +825,12 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       }
 
       // Wi-Fi networks (only if a Wi-Fi station is available).
-      Common.PanelSeparator {
+      PanelSeparator {
         visible: root.wifiStationAvailable
         foreground: root.bar.foreground
       }
 
-      Common.PanelSectionHeader {
+      PanelSectionHeader {
         visible: root.wifiStationAvailable
         text: root.scanning ? "Scanning Wi-Fi…" : "Wi-Fi networks"
         foreground: root.bar.foreground
@@ -882,7 +882,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
   // One DNS provider pill. The cursor + current visuals come entirely from
   // CursorSurface; this component just binds them to the panel's cursor
   // state and renders the label/tooltip/click target.
-  component DnsProviderPill: Common.CursorSurface {
+  component DnsProviderPill: CursorSurface {
     id: pill
     required property string provider
     required property int index
@@ -921,7 +921,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       onClicked: pill.clicked()
     }
 
-    Common.PanelToolTip {
+    PanelToolTip {
       visible: pill.tooltipText !== "" && pillMouse.containsMouse
       text: pill.tooltipText
       panelForeground: root.bar.foreground
@@ -934,7 +934,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
   // expands inline to a passphrase prompt when the user picks a protected
   // network we don't have credentials for. Clicking a connected row
   // disconnects; the X button on a connected row forgets the network.
-  component NetworkRow: Common.CursorSurface {
+  component NetworkRow: CursorSurface {
     id: row
     required property var net
     required property int index
@@ -1042,7 +1042,7 @@ iwctl known-networks list 2>/dev/null \\
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      Common.PanelActionButton {
+      PanelActionButton {
         id: forgetBtn
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
@@ -1167,7 +1167,7 @@ iwctl known-networks list 2>/dev/null \\
       // 22×22 right-anchored to line up with forgetBtn and lockIndicator
       // above. Esc closes the prompt (handled by pwField.Keys.onEscapePressed)
       // so there's no separate cancel button.
-      Common.PanelActionButton {
+      PanelActionButton {
         id: connectPwBtn
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter

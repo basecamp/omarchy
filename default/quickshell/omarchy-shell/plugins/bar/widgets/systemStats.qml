@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -147,7 +147,7 @@ Item {
   onButtonHoveredChanged: buttonHovered ? showPopup() : scheduleHide()
   onPopupHoveredChanged: popupHovered ? hideTimer.stop() : scheduleHide()
 
-  Common.WidgetButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
@@ -169,7 +169,7 @@ Item {
     onHoveredChanged: root.buttonHovered = hovered
   }
 
-  Common.PopupCard {
+  PopupCard {
     id: popup
     anchorItem: button
     owner: root

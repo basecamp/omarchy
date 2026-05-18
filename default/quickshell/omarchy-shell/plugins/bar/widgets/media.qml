@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Services.Mpris
-import "../common" as Common
+import qs.Ui
 
 Item {
   id: root
@@ -113,7 +113,7 @@ Item {
     onExited: if (root.bar) root.bar.hideTooltip(root)
   }
 
-  Common.PopupCard {
+  PopupCard {
     id: popup
     anchorItem: root
     bar: root.bar
@@ -198,7 +198,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 6
 
-        Common.PillButton {
+        PillButton {
           iconText: "󰒮"
           foreground: root.bar.foreground
           horizontalPadding: 10
@@ -208,7 +208,7 @@ Item {
           onClicked: if (root.activePlayer) root.activePlayer.previous()
         }
 
-        Common.PillButton {
+        PillButton {
           iconText: root.activePlayer && root.activePlayer.isPlaying ? "󰏤" : "󰐊"
           foreground: root.bar.foreground
           horizontalPadding: 14
@@ -219,7 +219,7 @@ Item {
           onClicked: if (root.activePlayer) root.activePlayer.togglePlaying()
         }
 
-        Common.PillButton {
+        PillButton {
           iconText: "󰒭"
           foreground: root.bar.foreground
           horizontalPadding: 10
