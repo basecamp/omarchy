@@ -169,7 +169,7 @@ Item {
         y: trigger.height + 2
         width: trigger.width
         implicitHeight: Math.max(root.popupMinHeight,
-                                 Math.min(root.filtered.length * root.popupRowHeight + Math.max(0, root.filtered.length - 1) * 4 + 50,
+                                 Math.min(resultList.contentHeight + 50,
                                           root.popupRowHeight * 6 + 5 * 4 + 50))
         padding: 1
         focus: true
@@ -267,6 +267,7 @@ Item {
                 popup.close()
               }
 
+              Keys.priority: Keys.BeforeItem
               Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Escape) {
                   popup.close(); event.accepted = true
@@ -292,18 +293,19 @@ Item {
                 required property var modelData
                 required property int index
                 width: resultList.width
-                height: root.popupRowHeight
+                height: Math.max(root.popupRowHeight, rowContent.implicitHeight + 12)
                 color: index === resultList.currentIndex
                   ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
                   : "transparent"
 
                 Column {
+                  id: rowContent
                   anchors.left: parent.left
                   anchors.right: parent.right
                   anchors.verticalCenter: parent.verticalCenter
                   anchors.leftMargin: 10
                   anchors.rightMargin: 10
-                  spacing: 1
+                  spacing: 2
 
                   Text {
                     text: root.optionLabel(modelData)
