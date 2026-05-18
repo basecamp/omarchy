@@ -4,7 +4,7 @@
 
 if pgrep -x hypridle >/dev/null; then
   pkill -x hypridle
-  omarchy-notification-send -g "󰛊" "Staying awake" "Idle behavior disabled"
+  omarchy-notification-send -g "󰅶" "Staying awake" "Idle behavior disabled"
 else
   uwsm-app -- hypridle >/dev/null 2>&1 &
   omarchy-notification-send -g "󰾪" "Idle behavior on" "System can now sleep / lock on idle"

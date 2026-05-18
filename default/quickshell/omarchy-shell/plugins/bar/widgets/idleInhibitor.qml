@@ -12,7 +12,7 @@ Item {
 
   property bool active: false
 
-  readonly property string icon: active ? "󰛊" : "󰾪"
+  readonly property string icon: active ? "󰅶" : "󰛊"
 
   function refresh() {
     if (!statusProc.running) statusProc.running = true
