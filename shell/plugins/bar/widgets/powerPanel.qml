@@ -33,7 +33,18 @@ Item {
     return defaultIcons[index]
   }
 
-  function modeLabel() { return UPower.onBattery ? "Battery" : "Charging" }
+  function modeLabel() {
+    var device = UPower.displayDevice
+    var percentage = device && device.isPresent ? device.percentage : 0
+
+    if (!UPower.onBattery && percentage >= 1) {
+      return "Fully charged"
+    } else if (UPower.onBattery) {
+      return "Battery"
+    } else {
+      return "Charging"
+    }
+  }
 
   function refresh() {
     if (!batteryProc.running) batteryProc.running = true
