@@ -107,7 +107,7 @@ When testing layer-shell UI, capture the reference and candidate states as separ
 # Omarchy shell
 
 The Quickshell desktop runs as a single long-running process out of
-`default/quickshell/omarchy-shell/`. The `omarchy-shell.service` user unit
+`shell/`. The `omarchy-shell.service` user unit
 keeps it running for the graphical session; do not start additional
 standalone `quickshell -p` instances for individual components.
 
@@ -116,7 +116,7 @@ Run `omarchy-restart-shell` after making changes to QML files.
 Plugin contract:
 
 - Each plugin lives in its own directory under
-  `default/quickshell/omarchy-shell/plugins/<id>/` (first-party) or
+  `shell/plugins/<id>/` (first-party) or
   `~/.config/omarchy/plugins/<id>/` (third-party).
 - Every plugin ships a `manifest.json` declaring `id`, `kinds`,
   `activation`, and `entryPoints`. The full schema is in
@@ -137,7 +137,7 @@ IPC:
   plugins can register additional IPC targets (the bar registers `bar`,
   the background switcher registers `image-selector`).
 
-Widget files in `plugins/bar/widgets/` contain Nerd Font glyphs as raw
+Widget files in `shell/plugins/bar/widgets/` contain Nerd Font glyphs as raw
 unicode characters. The `Write` and `Edit` tools strip multi-byte
 codepoints in some positions — do **not** rewrite widget files wholesale
 through those tools. For glyph fixes, use the targeted `Edit` tool with

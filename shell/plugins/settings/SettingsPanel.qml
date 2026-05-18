@@ -37,13 +37,16 @@ Item {
     var env = Quickshell.env("OMARCHY_PATH")
     if (env) return env
     var dir = String(Quickshell.shellDir || "")
-    if (dir.indexOf("/default/quickshell/omarchy-shell") !== -1)
-      return dir.substring(0, dir.indexOf("/default/quickshell/omarchy-shell"))
+    while (dir.length > 1 && dir.charAt(dir.length - 1) === "/")
+      dir = dir.substring(0, dir.length - 1)
+    var suffix = "/shell"
+    if (dir.length > suffix.length && dir.substring(dir.length - suffix.length) === suffix)
+      return dir.substring(0, dir.length - suffix.length)
     return Quickshell.env("HOME") + "/.local/share/omarchy"
   }
   readonly property string home: Quickshell.env("HOME")
   readonly property string userConfigPath: home + "/.config/omarchy/shell.json"
-  readonly property string defaultsPath: omarchyPath + "/default/quickshell/omarchy-shell/shell-defaults.json"
+  readonly property string defaultsPath: omarchyPath + "/shell/shell-defaults.json"
 
   // ---------------- theme --------------------------------------------------
   // Bar settings deliberately isn't a themable surface in shell.toml — it

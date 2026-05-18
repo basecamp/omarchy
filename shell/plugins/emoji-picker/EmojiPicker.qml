@@ -152,7 +152,7 @@ Item {
   }
 
   FileView {
-    path: root.omarchyPath + "/default/quickshell/omarchy-shell/plugins/emoji-picker/emojis.json"
+    path: root.omarchyPath + "/shell/plugins/emoji-picker/emojis.json"
     onLoaded: root.loadEmojis(text())
   }
   PanelWindow {

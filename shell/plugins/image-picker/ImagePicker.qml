@@ -61,7 +61,7 @@ Item {
 
   function scriptPath(name) {
     var base = omarchyPath || Quickshell.env("OMARCHY_PATH") || (Quickshell.env("HOME") + "/.local/share/omarchy")
-    return base + "/default/quickshell/omarchy-shell/scripts/" + name
+    return base + "/shell/scripts/" + name
   }
 
   function focusPicker() {

@@ -10,7 +10,8 @@ for file in ~/.config/hypr/bindings.lua ~/.config/hypr/bindings/*.lua; do
 done
 
 if ! systemctl --user is-active --quiet omarchy-shell.service && omarchy-cmd-present quickshell; then
-  quickshell kill -p "$OMARCHY_PATH/default/quickshell/omarchy-shell" >/dev/null 2>&1 || true
+  quickshell kill -p "$OMARCHY_PATH/shell" >/dev/null 2>&1 || true
+  quickshell kill -p "$OMARCHY_PATH/default/quickshell"/omarchy-shell >/dev/null 2>&1 || true
 fi
 
 systemctl --user enable --now omarchy-shell.service || true

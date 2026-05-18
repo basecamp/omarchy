@@ -26,13 +26,17 @@ ShellRoot {
     var env = Quickshell.env("OMARCHY_PATH")
     if (env) return env
     var dir = String(Quickshell.shellDir || "")
-    if (dir.indexOf("/default/quickshell/omarchy-shell") !== -1)
-      return dir.substring(0, dir.indexOf("/default/quickshell/omarchy-shell"))
+    while (dir.length > 1 && dir.charAt(dir.length - 1) === "/")
+      dir = dir.substring(0, dir.length - 1)
+    var suffix = "/shell"
+    if (dir.length > suffix.length && dir.substring(dir.length - suffix.length) === suffix)
+      return dir.substring(0, dir.length - suffix.length)
     return home + "/.local/share/omarchy"
   }
   property string omarchyPath: deriveOmarchyPath()
-  readonly property string firstPartyPluginsDir: omarchyPath + "/default/quickshell/omarchy-shell/plugins"
-  readonly property string defaultsPath: omarchyPath + "/default/quickshell/omarchy-shell/shell-defaults.json"
+  readonly property string shellPath: omarchyPath + "/shell"
+  readonly property string firstPartyPluginsDir: shellPath + "/plugins"
+  readonly property string defaultsPath: shellPath + "/shell-defaults.json"
   readonly property string userConfigPath: home + "/.config/omarchy/shell.json"
 
   // Bundled fallback so the shell can start even when shell-defaults.json is

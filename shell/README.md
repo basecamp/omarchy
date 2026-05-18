@@ -14,10 +14,10 @@ Hosting everything inside one shell means:
 - third-party plugins can be loaded from disk without changing any source
   code in Omarchy itself
 
-The runtime layout in this branch:
+The runtime layout:
 
 ```
-default/quickshell/omarchy-shell/
+shell/
   shell.qml              entry point (ShellRoot)
   shell-defaults.json    canonical out-of-the-box config
   services/
@@ -94,7 +94,7 @@ The full schema lives in `services/PluginRegistry.qml`.
 3. Enable the plugin with `omarchy-shell shell setPluginEnabled <id> true`.
 4. If it's a `bar-widget`, add it to a layout section from the bar editor.
 
-First-party plugins under `default/quickshell/omarchy-shell/plugins/`
+First-party plugins under `shell/plugins/`
 are discovered the same way and cannot be disabled.
 
 ## IPC contract
@@ -118,14 +118,14 @@ running a separate Quickshell instance.
 Direct invocation:
 
 ```
-quickshell ipc -p $OMARCHY_PATH/default/quickshell/omarchy-shell call shell ping
+quickshell ipc -p $OMARCHY_PATH/shell call shell ping
 ```
 
 The `omarchy-shell.service` user unit starts the shell for the graphical
 session and restarts it if it exits. Use `omarchy-restart-shell` to reload
 the long-running shell process.
 
-A convenience wrapper, [`omarchy-shell`](../../../bin/omarchy-shell),
+A convenience wrapper, [`omarchy-shell`](../bin/omarchy-shell),
 forwards IPC calls to the running service. It does not start the shell; the
 systemd unit owns the shell lifecycle.
 
