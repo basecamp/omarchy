@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Ui
 
 import "../../ui/settings" as SettingsUi
 import "./components" as Cmp
@@ -642,10 +643,13 @@ Item {
       }
     }
 
-    BarToggleRow {
+    Toggle {
       Layout.fillWidth: true
       label: "Transparent bar"
       description: "Hide the bar background so the wallpaper shows through."
+      foreground: root.foreground
+      accent: root.accent
+      fontFamily: root.fontFamily
       checked: root.draft.bar.transparent === true
       onClicked: {
         var next = root.cloneJson(root.draft)
@@ -705,158 +709,19 @@ Item {
         Repeater {
           model: positionGroup.positions
 
-          delegate: PositionButton {
+          delegate: ChoiceButton {
             required property string modelData
 
             text: modelData
             selected: positionGroup.value === modelData
+            foreground: root.foreground
+            background: root.background
+            accent: root.accent
+            fontFamily: root.fontFamily
             onClicked: positionGroup.changed(modelData)
           }
         }
       }
-    }
-  }
-
-  component PositionButton: Rectangle {
-    id: positionButton
-
-    property string text: ""
-    property bool selected: false
-
-    signal clicked()
-
-    activeFocusOnTab: true
-    Keys.onReturnPressed: positionButton.clicked()
-    Keys.onEnterPressed: positionButton.clicked()
-    Keys.onSpacePressed: positionButton.clicked()
-
-    implicitWidth: Math.max(56, positionLabel.implicitWidth + 22)
-    implicitHeight: 28
-    radius: root.cornerRadius
-    color: positionButton.selected
-      ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.18)
-      : (positionArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08) : root.background)
-    border.color: positionButton.selected
-      ? root.accent
-      : (positionButton.activeFocus ? root.foreground : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.4))
-    border.width: positionButton.selected ? 2 : (positionButton.activeFocus ? 2 : 1)
-
-    Behavior on color { ColorAnimation { duration: 100 } }
-
-    Text {
-      id: positionLabel
-      anchors.centerIn: parent
-      text: positionButton.text
-      color: positionButton.selected ? root.accent : root.foreground
-      font.family: root.fontFamily
-      font.pixelSize: 12
-      font.bold: positionButton.selected
-    }
-
-    MouseArea {
-      id: positionArea
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: {
-        positionButton.forceActiveFocus()
-        positionButton.clicked()
-      }
-    }
-  }
-
-  component BarToggleRow: Rectangle {
-    id: toggleRow
-
-    property string label: ""
-    property string description: ""
-    property bool checked: false
-
-    signal clicked()
-
-    activeFocusOnTab: true
-    Keys.onReturnPressed: toggleRow.clicked()
-    Keys.onEnterPressed: toggleRow.clicked()
-    Keys.onSpacePressed: toggleRow.clicked()
-
-    Layout.fillWidth: true
-    implicitHeight: Math.max(54, toggleContent.implicitHeight + 18)
-    radius: root.cornerRadius
-    color: toggleRow.activeFocus
-      ? root.focusFillColor
-      : (toggleArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03))
-    border.color: toggleRow.activeFocus ? root.focusBorderColor : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-    border.width: toggleRow.activeFocus ? root.focusBorderWidth : 1
-
-    Behavior on color { ColorAnimation { duration: 100 } }
-
-    Row {
-      id: toggleContent
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      anchors.margins: 12
-      spacing: 12
-
-      Column {
-        width: parent.width - switchTrack.width - parent.spacing
-        spacing: 3
-        anchors.verticalCenter: parent.verticalCenter
-
-        Text {
-          text: toggleRow.label
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: 13
-          font.bold: true
-          elide: Text.ElideRight
-          width: parent.width
-        }
-
-        Text {
-          text: toggleRow.description
-          color: Qt.darker(root.foreground, 1.5)
-          font.family: root.fontFamily
-          font.pixelSize: 10
-          wrapMode: Text.WordWrap
-          width: parent.width
-        }
-      }
-
-      Rectangle {
-        id: switchTrack
-        width: 42
-        height: 22
-        radius: height / 2
-        color: toggleRow.checked
-          ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.35)
-          : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-        border.color: toggleRow.checked ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.28)
-        border.width: 1
-        anchors.verticalCenter: parent.verticalCenter
-
-        Behavior on color { ColorAnimation { duration: 120 } }
-
-        Rectangle {
-          width: 16
-          height: 16
-          radius: 8
-          x: toggleRow.checked ? switchTrack.width - width - 3 : 3
-          y: 3
-          color: toggleRow.checked ? root.accent : Qt.darker(root.foreground, 1.25)
-
-          Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-          Behavior on color { ColorAnimation { duration: 120 } }
-        }
-      }
-    }
-
-    MouseArea {
-      id: toggleArea
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: toggleRow.clicked()
     }
   }
 
