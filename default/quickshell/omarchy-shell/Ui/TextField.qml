@@ -26,6 +26,17 @@ TextField {
   property real horizontalPadding: 10
   property real verticalPadding: 7
 
+  // Panel-cursor flag. When true (and the field isn't already focused),
+  // the background paints the same accent ring as activeFocus so the
+  // panel's keyboard cursor lands here identically to a mouse hover.
+  // Emits `hovered(bool)` on pointer enter/leave so the panel can update
+  // its cursor state to match.
+  property bool hasCursor: false
+
+  signal hovered(bool isHovered)
+
+  readonly property bool _focused: activeFocus || hasCursor
+
   echoMode: password ? TextInput.Password : TextInput.Normal
   color: foreground
   selectionColor: selectionTint
@@ -39,11 +50,15 @@ TextField {
 
   background: Rectangle {
     color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b,
-                   root.activeFocus ? 0.08 : 0.04)
-    border.color: root.activeFocus
+                   root._focused ? 0.08 : 0.04)
+    border.color: root._focused
       ? Style.focusBorderColor
       : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-    border.width: root.activeFocus ? Style.focusBorderWidth : 1
+    border.width: root._focused ? Style.focusBorderWidth : 1
     radius: Style.cornerRadius
+  }
+
+  HoverHandler {
+    onHoveredChanged: root.hovered(hovered)
   }
 }

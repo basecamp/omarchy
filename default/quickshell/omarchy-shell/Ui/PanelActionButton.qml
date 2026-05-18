@@ -18,6 +18,12 @@ import qs.Commons
 // in form contexts (the bar settings widget cards) where Tab walks a list
 // of controls; leave it false for the right-edge actions on panel rows
 // where the row's CursorSurface owns the keyboard cursor.
+//
+// Set `hasCursor: true` to have the button render the same fill as a
+// mouse hover — so a panel's keyboard cursor lands on it identically.
+// Use this when a PanelActionButton is itself the cursor target (rather
+// than living inside a CursorSurface row). Emits `hovered(bool)` on
+// pointer enter/leave so the panel can update its cursor state to match.
 Rectangle {
   id: root
 
@@ -31,8 +37,10 @@ Rectangle {
   property real size: 22
 
   property bool focusable: false
+  property bool hasCursor: false
 
   signal clicked()
+  signal hovered(bool isHovered)
 
   activeFocusOnTab: focusable
   Keys.onReturnPressed: if (focusable) root.clicked()
@@ -44,10 +52,11 @@ Rectangle {
   radius: Style.cornerRadius
 
   readonly property bool _showFocusRing: focusable && activeFocus
+  readonly property bool _hot: (mouse.containsMouse || root.hasCursor) && root.enabled
 
   color: _showFocusRing
     ? Style.focusFillColor
-    : (mouse.containsMouse && root.enabled
+    : (_hot
       ? Qt.rgba(hoverColor.r, hoverColor.g, hoverColor.b, 0.20)
       : "transparent")
   border.width: _showFocusRing ? Style.focusBorderWidth : 0
@@ -59,7 +68,7 @@ Rectangle {
     anchors.centerIn: parent
     text: root.iconText
     color: root.enabled
-      ? (mouse.containsMouse ? root.hoverColor : Qt.darker(root.foreground, 1.3))
+      ? (root._hot ? root.hoverColor : Qt.darker(root.foreground, 1.3))
       : Qt.darker(root.foreground, 2.0)
     font.family: root.fontFamily
     font.pixelSize: root.fontSize
@@ -71,6 +80,7 @@ Rectangle {
     hoverEnabled: true
     cursorShape: root.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
     enabled: root.enabled
+    onContainsMouseChanged: root.hovered(containsMouse)
     onClicked: {
       if (root.focusable) root.forceActiveFocus()
       root.clicked()
