@@ -153,16 +153,24 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
         Text { text: root.modeLabel(); color: root.bar.foreground; font.family: root.bar.fontFamily; font.pixelSize: 13; font.bold: true }
       }
 
-      Grid {
+      Row {
         visible: root.batteryInfo.percentage !== undefined
         width: parent.width
-        columns: 2
-        columnSpacing: 14
-        rowSpacing: 4
-        InfoLabel { text: "Percentage" } InfoValue { text: root.batteryInfo.percentage || "" }
-        InfoLabel { text: UPower.onBattery ? "Time left" : "Time to full" } InfoValue { text: root.batteryInfo.time || "—" }
-        InfoLabel { text: "Battery size" } InfoValue { text: root.batteryInfo.size || "" }
-        InfoLabel { text: UPower.onBattery ? "Draw" : "Charge rate" } InfoValue { text: root.batteryInfo.rate || "" }
+        spacing: 20
+
+        Column {
+          width: (parent.width - parent.spacing) / 2
+          spacing: 4
+          InfoPair { label: "Percentage"; value: root.batteryInfo.percentage || "" }
+          InfoPair { label: "Battery size"; value: root.batteryInfo.size || "" }
+        }
+
+        Column {
+          width: (parent.width - parent.spacing) / 2
+          spacing: 4
+          InfoPair { label: UPower.onBattery ? "Time left" : "Time to full"; value: root.batteryInfo.time || "—" }
+          InfoPair { label: UPower.onBattery ? "Draw" : "Charge rate"; value: root.batteryInfo.rate || "" }
+        }
       }
 
       PanelSeparator { foreground: root.bar.foreground }
@@ -198,6 +206,18 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
         InfoLabel { text: "Memory" } InfoValue { text: root.systemInfo.memory || "—" }
       }
     }
+  }
+
+  component InfoPair: Row {
+    property string label: ""
+    property string value: ""
+
+    width: parent.width
+    spacing: 8
+
+    InfoLabel { text: label }
+    Item { width: Math.max(0, parent.width - parent.children[0].implicitWidth - parent.children[2].implicitWidth - parent.spacing * 2); height: 1 }
+    InfoValue { text: value }
   }
 
   component InfoLabel: Text {
