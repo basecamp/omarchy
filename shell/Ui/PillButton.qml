@@ -38,10 +38,12 @@ Rectangle {
 
   // Persistent 1px foreground border at idle. Use for "primary" form buttons
   // (Save, Apply, + Add widget) so they read as buttons before the cursor
-  // hits them. The hot/cursor state paints its own 1px border, so changing
-  // this doesn't affect panel-pill visuals.
+  // hits them.
+  //
+  // The hot/cursor state is a fill only, matching CursorSurface's canonical
+  // chrome and the other panel primitives (Toggle, PanelActionButton). The
+  // accent border ring is reserved for Tab focus on `focusable` buttons.
   property bool bordered: false
-  property bool cursorBordered: true
 
   activeFocusOnTab: focusable
   Keys.onReturnPressed: if (focusable) root.clicked()
@@ -95,7 +97,6 @@ Rectangle {
     : hot ? hoverBackground
     : (active ? activeBackground : background)
   border.width: _showFocusRing ? Style.focusBorderWidth
-    : hot ? (cursorBordered ? 1 : 0)
     : (bordered ? 1 : 0)
   border.color: _showFocusRing ? Style.focusBorderColor : foreground
 

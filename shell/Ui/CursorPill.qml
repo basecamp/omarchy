@@ -20,8 +20,6 @@ import QtQuick
 PillButton {
   id: root
 
-  cursorBordered: false
-
   signal hovered(bool isHovered)
 
   HoverHandler {

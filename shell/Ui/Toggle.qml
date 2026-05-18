@@ -6,9 +6,10 @@ import qs.Commons
 // flip `checked` in response (the component is stateless about the actual
 // value so it composes cleanly with model-driven UI).
 //
-// Focus styling follows the shared Style tokens (accent border + tinted
-// fill on activeFocus) so keyboard nav looks the same here as on
-// ChoiceButton and other focusable Ui components.
+// Cursor and focus styling match the rest of the kit: hasCursor (panel
+// keyboard cursor / mouse hover) is a fill only, mirroring CursorSurface;
+// activeFocus (Tab focus) adds the accent border ring on top via the
+// shared Style tokens.
 //
 // `rounded` auto-detects from Style.cornerRadius so the switch follows
 // the theme: pill shape on round-corners themes, square on sharp.
@@ -22,8 +23,8 @@ Rectangle {
 
   // Panel-cursor flag. Same role as PillButton.hasCursor / ChoiceButton.hasCursor:
   // panels with their own keyboard cursor bind this to drive the highlight
-  // separately from activeFocus. Visuals match the activeFocus look (accent
-  // border + tinted fill via Style tokens) so cursor and Tab focus read the same.
+  // separately from activeFocus. Renders as a tinted fill only — the accent
+  // border ring is reserved for Tab focus (activeFocus).
   property bool hasCursor: false
 
   // Switch shape follows the theme by default: pill on round, square on sharp.
