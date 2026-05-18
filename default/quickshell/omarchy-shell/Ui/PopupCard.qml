@@ -13,6 +13,7 @@ PopupWindow {
   property int padding: 14
   property int contentWidth: 280
   property int contentHeight: 200
+  property color borderColor: Color.popups.border
   property bool open: false
   property bool centerOnBar: false
   // "click" — uses HyprlandFocusGrab so clicking outside dismisses the popup.
@@ -117,7 +118,7 @@ PopupWindow {
     id: card
     anchors.fill: parent
     color: Color.popups.background
-    border.color: Color.popups.border
+    border.color: root.borderColor
     border.width: 2
     radius: Style.cornerRadius
     opacity: root.open ? 1.0 : 0
