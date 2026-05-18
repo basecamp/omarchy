@@ -43,7 +43,7 @@ Rectangle {
 
   color: selected
     ? Qt.rgba(accent.r, accent.g, accent.b, 0.18)
-    : ((mouse.containsMouse || hasCursor) ? Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12) : background)
+    : ((mouse.containsMouse || hasCursor) ? Qt.rgba(foreground.r, foreground.g, foreground.b, 0.08) : background)
   border.color: selected
     ? accent
     : (activeFocus ? foreground : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.4))

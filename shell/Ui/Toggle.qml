@@ -48,13 +48,13 @@ Rectangle {
   implicitWidth: 240
   radius: Style.cornerRadius
 
-  color: activeFocus || hasCursor
+  color: activeFocus
     ? Style.focusFillColor
-    : (mouse.containsMouse ? Style.hotFill : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.03))
-  border.color: activeFocus || hasCursor
+    : ((hasCursor || mouse.containsMouse) ? Qt.rgba(foreground.r, foreground.g, foreground.b, 0.08) : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.03))
+  border.color: activeFocus
     ? Style.focusBorderColor
     : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
-  border.width: activeFocus || hasCursor ? Style.focusBorderWidth : 1
+  border.width: activeFocus ? Style.focusBorderWidth : 1
 
   Behavior on color { ColorAnimation { duration: 100 } }
 

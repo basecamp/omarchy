@@ -10,7 +10,7 @@ Rectangle {
   property string tooltipText: ""
   property color foreground: "#cacccc"
   property color background: "transparent"
-  property color hoverBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
+  property color hoverBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.08)
   property color pressedBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.22)
   property color tooltipBackground: "#101315"
   property color tooltipForeground: foreground

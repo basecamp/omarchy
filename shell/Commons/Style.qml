@@ -31,10 +31,10 @@ QtObject {
   readonly property color focusFillColor: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.22)
   readonly property int focusBorderWidth: 3
 
-  // Convenience: the standard "hot" (hover or keyboard cursor) tint used by
-  // PillButton, PanelActionButton, etc. Foreground at 0.12 alpha matches the
-  // value PillButton was already painting before promotion.
-  readonly property color hotFill: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.12)
+  // Convenience fills used by panel rows and pills. Hot is hover/keyboard
+  // cursor; selected is the persistent chosen/current item state.
+  readonly property color hotFill: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.08)
+  readonly property color selectedFill: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.18)
 
   function refresh() {
     hyprctlProc.running = true

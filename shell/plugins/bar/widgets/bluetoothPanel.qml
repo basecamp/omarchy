@@ -108,8 +108,11 @@ Item {
   // same device across reorders rather than the slot it used to occupy.
   property string focusedKnownAddress: ""
 
-  readonly property color activeFill: bar
-    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.12)
+  readonly property color hoverFill: bar
+    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.08)
+    : "transparent"
+  readonly property color selectedFill: bar
+    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18)
     : "transparent"
 
   function sectionCount(section) {
@@ -557,8 +560,8 @@ Item {
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(row)
     current: isConnected
     foreground: root.bar.foreground
-    fill: root.activeFill
-    currentFill: root.activeFill
+    fill: root.hoverFill
+    currentFill: root.selectedFill
 
     // 0 idle, 1 connecting, 2 disconnecting, 3 pairing, 4 failed.
     property int pendingAction: 0

@@ -96,8 +96,11 @@ Item {
   property string focusSection: "output"
   property int selectedIndex: -1
 
-  readonly property color activeFill: bar
-    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.12)
+  readonly property color hoverFill: bar
+    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.08)
+    : "transparent"
+  readonly property color selectedFill: bar
+    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18)
     : "transparent"
 
   function sectionCount(section) {
@@ -692,7 +695,8 @@ Item {
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(sinkRow)
     current: isActive
     foreground: root.bar.foreground
-    fill: root.activeFill
+    fill: root.hoverFill
+    currentFill: root.selectedFill
     implicitHeight: sinkInner.implicitHeight + 10
 
     Row {
@@ -758,7 +762,8 @@ Item {
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(sourceRow)
     current: isActive
     foreground: root.bar.foreground
-    fill: root.activeFill
+    fill: root.hoverFill
+    currentFill: root.selectedFill
     implicitHeight: sourceInner.implicitHeight + 10
 
     Row {
@@ -828,7 +833,8 @@ Item {
     hasCursor: root.focusSection === "streams" && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(streamRow)
     foreground: root.bar.foreground
-    fill: root.activeFill
+    fill: root.hoverFill
+    currentFill: root.selectedFill
     implicitHeight: streamColumn.implicitHeight + 8
 
     Column {

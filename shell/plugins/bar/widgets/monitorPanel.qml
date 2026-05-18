@@ -498,20 +498,22 @@ Item {
               Repeater {
                 model: root.scaleValues
 
-                ChoiceButton {
+                CursorPill {
                   required property string modelData
                   required property int index
 
                   width: (panelColumn.width - 30) / 6
                   text: modelData + "x"
                   foreground: root.bar.foreground
-                  background: root.bar.background
-                  accent: root.bar.foreground
+                  background: "transparent"
+                  tooltipBackground: root.bar.background
+                  tooltipForeground: root.bar.foreground
                   fontFamily: root.bar.fontFamily
                   fontSize: 11
-                  selected: root.normalizeScale(root.monitorScale) === root.normalizeScale(modelData)
+                  horizontalPadding: 0
+                  verticalPadding: 6
+                  active: root.normalizeScale(root.monitorScale) === root.normalizeScale(modelData)
                   hasCursor: root.focusSection === "scale" && root.selectedIndex === index
-                  borderlessHighlight: true
                   onClicked: root.setScale(modelData)
                   onHovered: function(h) {
                     if (h) {
