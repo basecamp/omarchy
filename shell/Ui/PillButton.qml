@@ -17,6 +17,7 @@ Rectangle {
   property string fontFamily: "JetBrainsMono Nerd Font"
   property real fontSize: 12
   property real iconSize: 14
+  property real iconRotation: 0
   property real horizontalPadding: 10
   property real verticalPadding: 6
   property bool active: false
@@ -116,6 +117,8 @@ Rectangle {
       color: root.foreground
       font.family: root.fontFamily
       font.pixelSize: root.iconSize
+      rotation: root.iconRotation
+      transformOrigin: Item.Center
       anchors.verticalCenter: parent.verticalCenter
     }
 
