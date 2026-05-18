@@ -18,8 +18,9 @@ Rectangle {
 
   // Panel-cursor flag. Same role as PillButton.hasCursor: panels that own
   // their own cursor state bind this to drive the keyboard highlight
-  // separately from real activeFocus. Visuals match the activeFocus look
-  // (foreground 2px border) so cursor and Tab focus read the same.
+  // separately from real activeFocus. Cursor renders as a fill only —
+  // CursorSurface is the canonical chrome — while Tab focus adds the
+  // accent border ring on top.
   property bool hasCursor: false
   property bool borderlessHighlight: false
 
@@ -48,7 +49,7 @@ Rectangle {
     ? accent
     : (activeFocus ? foreground : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.4))
   border.width: borderlessHighlight ? (activeFocus ? 2 : 0)
-    : (selected ? 2 : (activeFocus || hasCursor ? 2 : 1))
+    : (selected ? 2 : (activeFocus ? 2 : 1))
 
   Behavior on color { ColorAnimation { duration: 100 } }
 
