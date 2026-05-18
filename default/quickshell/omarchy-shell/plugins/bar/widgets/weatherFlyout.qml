@@ -30,8 +30,16 @@ Item {
   property var dailyForecastReport: null
   property string wttrLocation: ""
 
-  readonly property string label: bar ? bar.weatherText : ""
-  readonly property string klass: bar ? bar.weatherClass : ""
+  // Bar pill state. Polled locally; populated by weatherProc below.
+  property string label: ""
+  property string klass: ""
+
+  function updateWeather(raw) {
+    var data
+    try { data = JSON.parse(raw || "{}") } catch (e) { data = {} }
+    label = data.text || ""
+    klass = data.class || ""
+  }
 
   readonly property var current: report && report.current_condition && report.current_condition[0] ? report.current_condition[0] : null
   readonly property var areaInfo: report && report.nearest_area && report.nearest_area[0] ? report.nearest_area[0] : null
@@ -532,5 +540,23 @@ Item {
         }
       }
     }
+  }
+
+  // Poll the weather pill text/class every minute. Local to this widget.
+  Process {
+    id: weatherProc
+    command: ["bash", "-lc", root.bar ? root.bar.commandWithOmarchyPath(root.bar.shellQuote(root.bar.omarchyPath + "/default/quickshell/omarchy-shell/scripts/weather.sh")) : ""]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateWeather(text)
+    }
+  }
+
+  Timer {
+    interval: 60000
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: if (!weatherProc.running) weatherProc.running = true
   }
 }

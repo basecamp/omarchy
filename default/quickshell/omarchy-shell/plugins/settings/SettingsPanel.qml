@@ -306,21 +306,15 @@ Item {
   }
 
   // ---------------- widget catalog -----------------------------------------
-  readonly property var legacyWidgetMeta: ({
+  readonly property var builtinWidgetMeta: ({
     "omarchy":          { name: "Omarchy menu",       description: "Launches the Omarchy menu",                category: "Compositor" },
     "workspaces":       { name: "Workspaces",         description: "Workspace number indicators",              category: "Compositor" },
     "clock":            { name: "Clock",              description: "Date / time text",                          category: "Time" },
-    "weather":          { name: "Weather (legacy)",   description: "Tiny weather pill",                          category: "Info" },
     "update":           { name: "Updates",            description: "Indicates available system updates",        category: "System" },
     "voxtype":          { name: "Voxtype",            description: "Voxtype dictation state",                   category: "Status" },
     "screenRecording":  { name: "Screen recording",   description: "Active recording indicator",                category: "Status" },
-    "idle":             { name: "Idle (legacy)",      description: "Inhibitor indicator",                        category: "Status" },
     "notifications":    { name: "DND",                 description: "Do-not-disturb indicator",                 category: "Status" },
     "tray":             { name: "System tray",        description: "Status notifier items",                     category: "Status" },
-    "bluetooth":        { name: "Bluetooth (legacy)", description: "Bluetooth status icon",                    category: "Network" },
-    "network":          { name: "Network (legacy)",   description: "Wi-Fi / ethernet status",                    category: "Network" },
-    "audio":            { name: "Volume (legacy)",    description: "Speaker icon, scroll for volume",            category: "Audio" },
-    "cpu":              { name: "CPU (legacy)",       description: "btop launcher",                              category: "System" },
     "battery":          { name: "Battery",            description: "Battery percent and ETA",                   category: "System" }
   })
 
@@ -344,7 +338,7 @@ Item {
     var key = String(id || "")
     if (root.barWidgetRegistry && root.barWidgetRegistry.has(key))
       return root.barWidgetRegistry.metadataFor(key) || {}
-    if (legacyWidgetMeta[key]) return legacyWidgetMeta[key]
+    if (builtinWidgetMeta[key]) return builtinWidgetMeta[key]
 
     var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[key] : null
     if (manifest) {
@@ -409,7 +403,7 @@ Item {
           ids[pid] = true
       }
     }
-    for (var key in legacyWidgetMeta) ids[key] = true
+    for (var key in builtinWidgetMeta) ids[key] = true
     return Object.keys(ids)
   }
 
@@ -432,7 +426,7 @@ Item {
       var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
       var manifestIsBarWidget = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar-widget") !== -1
       var isBarWidget = !!(meta && meta.source !== "plugin") || manifestIsBarWidget
-      if (!isBarWidget && !legacyWidgetMeta[id]) continue
+      if (!isBarWidget && !builtinWidgetMeta[id]) continue
 
       var inSection = sectionArray(section)
       var existsHere = false
