@@ -871,7 +871,7 @@ Item {
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
-            font.pixelSize: 16
+            font.pixelSize: Style.font.heading
             elide: Text.ElideRight
           }
 
@@ -946,7 +946,7 @@ Item {
                 color: index === root.selectedIndex ? root.accent : root.foreground
                 opacity: row.kind === "back" ? 0.7 : 1
                 font.family: root.fontFamily
-                font.pixelSize: 18
+                font.pixelSize: Style.font.iconLarge
                 width: 36
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
@@ -970,7 +970,7 @@ Item {
                   text: row.label
                   color: index === root.selectedIndex ? root.accent : root.foreground
                   font.family: root.fontFamily
-                  font.pixelSize: 16
+                  font.pixelSize: Style.font.heading
                   font.weight: Font.Medium
                   elide: Text.ElideRight
                 }
@@ -982,7 +982,7 @@ Item {
                   color: root.foreground
                   opacity: 0.52
                   font.family: root.fontFamily
-                  font.pixelSize: 11
+                  font.pixelSize: Style.font.bodySmall
                   elide: Text.ElideRight
                 }
               }
@@ -1001,7 +1001,7 @@ Item {
                   color: root.foreground
                   opacity: 0.45
                   font.family: root.fontFamily
-                  font.pixelSize: 12
+                  font.pixelSize: Style.font.body
                   anchors.verticalCenter: parent.verticalCenter
                 }
 
@@ -1010,7 +1010,7 @@ Item {
                   color: index === root.selectedIndex ? root.accent : root.foreground
                   opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
                   font.family: root.fontFamily
-                  font.pixelSize: 16
+                  font.pixelSize: Style.font.heading
                   font.weight: Font.Normal
                   anchors.verticalCenter: parent.verticalCenter
                 }
@@ -1036,7 +1036,7 @@ Item {
               color: root.accent
               opacity: 0.8
               font.family: root.fontFamily
-              font.pixelSize: 28
+              font.pixelSize: Style.font.displayLarge
               horizontalAlignment: Text.AlignHCenter
               width: 320
             }
@@ -1046,7 +1046,7 @@ Item {
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily
-              font.pixelSize: 14
+              font.pixelSize: Style.font.title
               horizontalAlignment: Text.AlignHCenter
               width: 320
             }

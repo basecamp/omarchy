@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Ui
+import qs.Commons
 
 Item {
   id: root
@@ -76,7 +77,7 @@ Item {
     anchors.fill: parent
     bar: root.bar
     text: root.layoutLabel
-    fontSize: 10
+    fontSize: Style.font.caption
     horizontalMargin: 6
     tooltipText: root.layoutFull
     onPressed: function() { root.cycleLayout() }

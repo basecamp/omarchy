@@ -12,8 +12,8 @@ Column {
   property int stepSize: 1
   property color foreground: Color.foreground
   property color accent: Color.accent
-  property string fontFamily: "JetBrainsMono Nerd Font"
-  property real fontSize: 12
+  property string fontFamily: Style.font.family
+  property real fontSize: Style.font.body
   property real fieldWidth: 120
   property bool hasCursor: false
   property alias field: spin
@@ -28,7 +28,7 @@ Column {
     text: root.label
     color: Qt.darker(root.foreground, 1.4)
     font.family: root.fontFamily
-    font.pixelSize: 11
+    font.pixelSize: Style.font.bodySmall
   }
 
   QQC.SpinBox {

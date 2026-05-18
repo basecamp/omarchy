@@ -559,7 +559,7 @@ Item {
             text: "Omarchy Bar Settings"
             color: root.foreground
             font.family: root.fontFamily
-            font.pixelSize: 16
+            font.pixelSize: Style.font.heading
             font.bold: true
             anchors.left: parent.left
             anchors.leftMargin: 18
@@ -570,7 +570,7 @@ Item {
             text: "~/.config/omarchy/shell.json"
             color: Qt.darker(root.foreground, 1.8)
             font.family: root.fontFamily
-            font.pixelSize: 10
+            font.pixelSize: Style.font.caption
             anchors.right: parent.right
             anchors.rightMargin: 18
             anchors.verticalCenter: parent.verticalCenter
@@ -651,7 +651,7 @@ Item {
             text: root.widgetName(root.widgetDialogEntry.id || "")
             color: root.foreground
             font.family: root.fontFamily
-            font.pixelSize: 14
+            font.pixelSize: Style.font.title
             font.bold: true
           }
 
@@ -659,7 +659,7 @@ Item {
             text: root.widgetDescription(root.widgetDialogEntry.id || "")
             color: Qt.darker(root.foreground, 1.4)
             font.family: root.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: Style.font.bodySmall
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
           }
@@ -709,7 +709,7 @@ Item {
       text: "Bar"
       color: root.foreground
       font.family: root.fontFamily
-      font.pixelSize: 18
+      font.pixelSize: Style.font.iconLarge
       font.bold: true
     }
 
@@ -717,7 +717,7 @@ Item {
       text: "Drag widgets between the bar's three sections, drop in plugin widgets, and tweak per-widget options. Auto-saves to shell.json."
       color: Qt.darker(root.foreground, 1.6)
       font.family: root.fontFamily
-      font.pixelSize: 11
+      font.pixelSize: Style.font.bodySmall
       wrapMode: Text.WordWrap
       Layout.fillWidth: true
     }
@@ -819,7 +819,7 @@ Item {
         text: "Position"
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
-        font.pixelSize: 10
+        font.pixelSize: Style.font.caption
         font.bold: true
       }
 
@@ -869,7 +869,7 @@ Item {
         text: section.sectionLabel
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: 13
+        font.pixelSize: Style.font.subtitle
         font.bold: true
         Layout.alignment: Qt.AlignVCenter
       }
@@ -878,7 +878,7 @@ Item {
         text: "·  " + section.entries.length + (section.entries.length === 1 ? " widget" : " widgets")
         color: Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
-        font.pixelSize: 11
+        font.pixelSize: Style.font.bodySmall
         Layout.alignment: Qt.AlignVCenter
       }
 
@@ -947,7 +947,7 @@ Item {
           text: "Empty — add a widget"
           color: Qt.darker(root.foreground, 1.5)
           font.family: root.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
       }
     }
@@ -984,7 +984,7 @@ Item {
         foreground: root.foreground
         panelBackground: root.background
         fontFamily: root.fontFamily
-        fontSize: 13
+        fontSize: Style.font.subtitle
         size: 26
         focusable: true
         onClicked: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex - 1)
@@ -995,7 +995,7 @@ Item {
         foreground: root.foreground
         panelBackground: root.background
         fontFamily: root.fontFamily
-        fontSize: 13
+        fontSize: Style.font.subtitle
         size: 26
         focusable: true
         onClicked: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex + 1)
@@ -1006,7 +1006,7 @@ Item {
         foreground: root.foreground
         panelBackground: root.background
         fontFamily: root.fontFamily
-        fontSize: 13
+        fontSize: Style.font.subtitle
         size: 26
         focusable: true
         visible: card.hasSettings
@@ -1019,7 +1019,7 @@ Item {
         hoverColor: root.urgent
         panelBackground: root.background
         fontFamily: root.fontFamily
-        fontSize: 13
+        fontSize: Style.font.subtitle
         size: 26
         focusable: true
         onClicked: root.removeEntry(card.sectionKey, card.entryIndex)
@@ -1038,7 +1038,7 @@ Item {
         text: card.displayName
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
         font.bold: true
         elide: Text.ElideRight
         width: parent.width
@@ -1048,7 +1048,7 @@ Item {
         text: card.description
         color: Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
-        font.pixelSize: 10
+        font.pixelSize: Style.font.caption
         elide: Text.ElideRight
         width: parent.width
       }
@@ -1126,7 +1126,7 @@ Item {
         foreground: root.foreground
         accent: root.accent
         font.family: root.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
         onEditingFinished: if (fieldKey) calForm.fieldChanged(fieldKey, text)
       }
 
@@ -1134,7 +1134,7 @@ Item {
         text: "Horizontal format"
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
-        font.pixelSize: 11
+        font.pixelSize: Style.font.bodySmall
       }
       CalendarField {
         fieldKey: "format"
@@ -1145,7 +1145,7 @@ Item {
         text: "Alternate format (click to swap)"
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
-        font.pixelSize: 11
+        font.pixelSize: Style.font.bodySmall
       }
       CalendarField {
         fieldKey: "formatAlt"
@@ -1156,7 +1156,7 @@ Item {
         text: "Vertical format (left/right bars)"
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
-        font.pixelSize: 11
+        font.pixelSize: Style.font.bodySmall
       }
       CalendarField {
         fieldKey: "verticalFormat"

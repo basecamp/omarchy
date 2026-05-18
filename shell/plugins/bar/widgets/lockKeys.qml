@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons
 
 Item {
   id: root
@@ -96,6 +97,6 @@ Item {
     text: glyph
     color: active ? (root.bar ? root.bar.foreground : "#cacccc") : Qt.rgba(0.7, 0.7, 0.7, 0.3)
     font.family: root.bar ? root.bar.fontFamily : "JetBrainsMono Nerd Font"
-    font.pixelSize: 11
+    font.pixelSize: Style.font.bodySmall
   }
 }

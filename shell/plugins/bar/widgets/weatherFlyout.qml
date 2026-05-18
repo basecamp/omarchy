@@ -351,6 +351,8 @@ Item {
             text: root.label || "—"
             color: root.bar.foreground
             font.family: root.bar.fontFamily
+            // Decorative condition emoji; intentionally larger than the
+            // Style.font.* scale's displayLarge (28).
             font.pixelSize: 64
           }
 
@@ -363,6 +365,8 @@ Item {
               text: root.reportTempNum || "—"
               color: root.bar.foreground
               font.family: root.bar.fontFamily
+              // Hero temperature read-out; deliberately oversized, outside
+              // the Style.font.* scale.
               font.pixelSize: 56
               font.bold: true
             }
@@ -370,7 +374,7 @@ Item {
               text: root.current ? root.tempUnit : ""
               color: root.bar.foreground
               font.family: root.bar.fontFamily
-              font.pixelSize: 22
+              font.pixelSize: Style.font.display
               anchors.top: tempBig.top
               anchors.topMargin: 10
             }
@@ -392,14 +396,14 @@ Item {
               text: ""  // nf-fa-map_marker
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
-              font.pixelSize: 12
+              font.pixelSize: Style.font.body
               anchors.verticalCenter: parent.verticalCenter
             }
             Text {
               text: (root.reportLocation || "").toUpperCase()
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
-              font.pixelSize: 12
+              font.pixelSize: Style.font.body
               font.letterSpacing: 1
               anchors.verticalCenter: parent.verticalCenter
             }
@@ -415,14 +419,14 @@ Item {
                 text: "FEELS"
                 color: Qt.darker(root.bar.foreground, 1.5)
                 font.family: root.bar.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: Style.font.bodySmall
                 font.letterSpacing: 1
               }
               Text {
                 text: root.reportFeels
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
-                font.pixelSize: 15
+                font.pixelSize: Style.font.title
               }
             }
 
@@ -432,14 +436,14 @@ Item {
                 text: "WIND"
                 color: Qt.darker(root.bar.foreground, 1.5)
                 font.family: root.bar.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: Style.font.bodySmall
                 font.letterSpacing: 1
               }
               Text {
                 text: root.reportWind
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
-                font.pixelSize: 15
+                font.pixelSize: Style.font.title
               }
             }
 
@@ -449,14 +453,14 @@ Item {
                 text: "HUMID"
                 color: Qt.darker(root.bar.foreground, 1.5)
                 font.family: root.bar.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: Style.font.bodySmall
                 font.letterSpacing: 1
               }
               Text {
                 text: root.reportHumidity
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
-                font.pixelSize: 15
+                font.pixelSize: Style.font.title
               }
             }
           }
@@ -468,7 +472,7 @@ Item {
         text: "Fetching forecast…"
         color: Qt.darker(root.bar.foreground, 1.5)
         font.family: root.bar.fontFamily
-        font.pixelSize: 11
+        font.pixelSize: Style.font.bodySmall
         font.italic: true
       }
 
@@ -506,7 +510,7 @@ Item {
                 text: root.dayIcon(modelData)
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
-                font.pixelSize: 24
+                font.pixelSize: Style.font.display
               }
 
               Column {
@@ -517,7 +521,7 @@ Item {
                   text: root.dayName(modelData.date).toUpperCase()
                   color: Qt.darker(root.bar.foreground, 1.4)
                   font.family: root.bar.fontFamily
-                  font.pixelSize: 10
+                  font.pixelSize: Style.font.caption
                   font.letterSpacing: 1
                 }
 
@@ -528,13 +532,13 @@ Item {
                     text: root.bareTempForDay(modelData, "max")
                     color: root.bar.foreground
                     font.family: root.bar.fontFamily
-                    font.pixelSize: 12
+                    font.pixelSize: Style.font.body
                   }
                   Text {
                     text: root.bareTempForDay(modelData, "min")
                     color: Qt.darker(root.bar.foreground, 1.5)
                     font.family: root.bar.fontFamily
-                    font.pixelSize: 12
+                    font.pixelSize: Style.font.body
                   }
                 }
               }

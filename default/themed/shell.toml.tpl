@@ -1,11 +1,37 @@
-# Omarchy shell colors. Defaults derive from colors.toml; themes can ship
-# themes/<name>/shell.toml to override individual keys.
+# Omarchy shell surfaces. Colors derive from colors.toml; sizes and the
+# typographic scale come from the keys below. Themes can ship
+# themes/<name>/shell.toml to override any individual key.
 
 [bar]
 background = "{{ background }}"
 text       = "{{ foreground }}"
 # Modules calling attention to themselves (recording, voxtype, alerts, updates)
 active     = "{{ color1 }}"
+# Cross-axis size in px. size-horizontal is the height of top/bottom bars;
+# size-vertical is the width of left/right bars.
+size-horizontal = 26
+size-vertical   = 28
+
+[font]
+# base-size is the rem root for the type scale. Every Style.font.<token>
+# derives from it (e.g. body = base, subtitle ≈ base * 1.083,
+# heading ≈ base * 1.333). Clamped 11..13 by the shell — row heights are
+# fixed until we ship matching spacing tokens, so growth would clip.
+base-size = 12
+# Per-token overrides, in px. Uncomment any to pin a specific size without
+# affecting the rest of the scale. Useful for stylistic emphasis (a
+# minimalist theme that wants a bigger heading without scaling everything).
+# caption       = 10
+# body-small    = 11
+# body          = 12
+# subtitle      = 13
+# title         = 14
+# heading       = 16
+# display       = 24
+# display-large = 28
+# icon-small    = 11
+# icon          = 14
+# icon-large    = 18
 
 [popups]
 # Shared by every bar flyout. Body text inside flyouts is not separately

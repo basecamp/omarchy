@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import qs.Ui
+import qs.Commons
 
 Item {
   id: root
@@ -110,7 +111,7 @@ Item {
           text: Qt.formatDate(root.viewMonth, "MMMM yyyy")
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 14
+          font.pixelSize: Style.font.title
           font.bold: true
         }
 
@@ -146,7 +147,7 @@ Item {
               text: modelData
               color: Qt.darker(root.bar.foreground, 1.6)
               font.family: root.bar.fontFamily
-              font.pixelSize: 11
+              font.pixelSize: Style.font.bodySmall
               font.bold: true
             }
           }
@@ -187,7 +188,7 @@ Item {
               text: dayDate.getDate()
               color: isToday ? root.bar.background : (inMonth ? root.bar.foreground : Qt.darker(root.bar.foreground, 2.2))
               font.family: root.bar.fontFamily
-              font.pixelSize: 12
+              font.pixelSize: Style.font.body
               font.bold: isToday
             }
           }

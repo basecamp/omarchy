@@ -125,7 +125,7 @@ Item {
           text: "Notifications"
           font.family: root.bar ? root.bar.fontFamily : ""
           color: root.colForeground
-          font.pixelSize: 14
+          font.pixelSize: Style.font.title
           font.bold: true
         }
 
@@ -151,7 +151,7 @@ Item {
               text: dndPill.dndOn ? "󰂛" : "󰂚"
               font.family: root.bar ? root.bar.fontFamily : ""
               color: dndPill.dndOn ? Color.background : root.colDim
-              font.pixelSize: 12
+              font.pixelSize: Style.font.body
               anchors.verticalCenter: parent.verticalCenter
             }
 
@@ -160,7 +160,7 @@ Item {
               text: dndPill.dndOn ? "DND on" : "DND off"
               font.family: root.bar ? root.bar.fontFamily : ""
               color: dndPill.dndOn ? Color.background : root.colDim
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               font.bold: true
               anchors.verticalCenter: parent.verticalCenter
             }
@@ -198,7 +198,7 @@ Item {
               text: modelData.label + (modelData.count > 0 ? "  " + modelData.count : "")
               font.family: root.bar ? root.bar.fontFamily : ""
               color: parent.isActive ? root.colForeground : root.colDim
-              font.pixelSize: 12
+              font.pixelSize: Style.font.body
               font.bold: parent.isActive
             }
 
@@ -243,7 +243,7 @@ Item {
             text: root.activeTab === "pending" ? "Mark all as seen" : "Clear recent"
             font.family: root.bar ? root.bar.fontFamily : ""
             color: root.colForeground
-            font.pixelSize: 10
+            font.pixelSize: Style.font.caption
           }
 
           MouseArea {
@@ -342,7 +342,7 @@ Item {
                 text: rowCard.summary
                 font.family: root.bar ? root.bar.fontFamily : ""
                 color: root.colForeground
-                font.pixelSize: 13
+                font.pixelSize: Style.font.subtitle
                 font.bold: true
                 wrapMode: Text.WordWrap
                 elide: Text.ElideRight
@@ -356,7 +356,7 @@ Item {
                 font.family: root.bar ? root.bar.fontFamily : ""
                 textFormat: Text.PlainText
                 color: root.colDim
-                font.pixelSize: 11
+                font.pixelSize: Style.font.bodySmall
                 wrapMode: Text.WordWrap
                 elide: Text.ElideRight
                 maximumLineCount: 2
@@ -375,7 +375,7 @@ Item {
                 text: "✕"
                 font.family: root.bar ? root.bar.fontFamily : ""
                 color: root.colDim
-                font.pixelSize: 11
+                font.pixelSize: Style.font.bodySmall
               }
 
               MouseArea {
@@ -409,6 +409,8 @@ Item {
             text: "󰂚"
             font.family: root.bar ? root.bar.fontFamily : ""
             color: root.colBorder
+            // Deliberately oversized empty-state glyph; doesn't follow the
+            // Style.font.* scale because it's a one-off decorative element.
             font.pixelSize: 36
           }
 
@@ -421,7 +423,7 @@ Item {
               ? "Nothing waiting for you"
               : "No past notifications"
             color: root.colDim
-            font.pixelSize: 12
+            font.pixelSize: Style.font.body
           }
         }
       }

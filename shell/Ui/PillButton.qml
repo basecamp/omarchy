@@ -8,15 +8,15 @@ Rectangle {
   property string text: ""
   property string iconText: ""
   property string tooltipText: ""
-  property color foreground: "#cacccc"
+  property color foreground: Color.foreground
   property color background: "transparent"
   property color hoverBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.08)
   property color pressedBackground: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.22)
-  property color tooltipBackground: "#101315"
+  property color tooltipBackground: Color.background
   property color tooltipForeground: foreground
-  property string fontFamily: "JetBrainsMono Nerd Font"
-  property real fontSize: 12
-  property real iconSize: 14
+  property string fontFamily: Style.font.family
+  property real fontSize: Style.font.body
+  property real iconSize: Style.font.icon
   property real iconRotation: 0
   property real horizontalPadding: 10
   property real verticalPadding: 6
@@ -66,7 +66,7 @@ Rectangle {
       text: root.tooltipText
       color: root.tooltipForeground
       font.family: root.fontFamily
-      font.pixelSize: 11
+      font.pixelSize: Style.font.bodySmall
       leftPadding: 10
       rightPadding: 10
       topPadding: 6

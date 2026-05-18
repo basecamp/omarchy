@@ -2,4 +2,4 @@
 
 # omarchy:summary=Open the omarchy-shell dev gallery (qs.Ui kit preview)
 
-omarchy-shell-ipc shell summon omarchy.dev-gallery '{}'
+omarchy-shell shell summon omarchy.dev-gallery '{}'

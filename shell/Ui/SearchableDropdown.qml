@@ -29,7 +29,7 @@ Item {
   property color background: Color.popups.background
   property color popupBorder: Color.popups.border
   property color accent: Color.accent
-  property string fontFamily: "JetBrainsMono Nerd Font"
+  property string fontFamily: Style.font.family
   property int rowHeight: 28
   property int popupRowHeight: 28
   property int popupMinHeight: 220
@@ -96,7 +96,7 @@ Item {
       text: root.label
       color: Qt.darker(root.foreground, 1.4)
       font.family: root.fontFamily
-      font.pixelSize: 10
+      font.pixelSize: Style.font.caption
       font.bold: true
     }
 
@@ -140,7 +140,7 @@ Item {
         text: root.currentLabel() || root.triggerLabel || root.placeholderText
         color: (root.currentLabel() || root.triggerLabel) ? root.foreground : Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
         elide: Text.ElideRight
       }
 
@@ -152,7 +152,7 @@ Item {
         text: "󰅀"
         color: Qt.darker(root.foreground, 1.2)
         font.family: root.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
       }
 
       MouseArea {
@@ -204,7 +204,7 @@ Item {
               foreground: root.foreground
               accent: root.accent
               font.family: root.fontFamily
-              font.pixelSize: 12
+              font.pixelSize: Style.font.body
 
               onTextChanged: {
                 root.recomputeFiltered()
@@ -247,7 +247,7 @@ Item {
               text: root.emptyText
               color: Qt.darker(root.foreground, 1.6)
               font.family: root.fontFamily
-              font.pixelSize: 12
+              font.pixelSize: Style.font.body
             }
 
             ListView {
@@ -312,7 +312,7 @@ Item {
                     text: root.optionLabel(modelData)
                     color: index === resultList.currentIndex ? root.accent : root.foreground
                     font.family: root.fontFamily
-                    font.pixelSize: 12
+                    font.pixelSize: Style.font.body
                     elide: Text.ElideRight
                     width: parent.width
                   }
@@ -321,7 +321,7 @@ Item {
                     text: root.optionDescription(modelData)
                     color: Qt.darker(root.foreground, 1.5)
                     font.family: root.fontFamily
-                    font.pixelSize: 10
+                    font.pixelSize: Style.font.caption
                     elide: Text.ElideRight
                     width: parent.width
                   }

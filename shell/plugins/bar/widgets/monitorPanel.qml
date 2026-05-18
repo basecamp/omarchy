@@ -3,6 +3,7 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import qs.Ui
+import qs.Commons
 
 Item {
   id: root
@@ -353,7 +354,7 @@ Item {
     anchors.fill: parent
     bar: root.bar
     text: "󰍹"
-    fontSize: 13
+    fontSize: Style.font.subtitle
     onPressed: function(b) { root.popupOpen = !root.popupOpen }
     onWheelMoved: function(delta) {
       if (root.brightnessAvailable) root.setBrightness(root.brightnessPercent + (delta > 0 ? 5 : -5))
@@ -403,7 +404,7 @@ Item {
               text: "Brightness"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
-              fontSize: 11
+              fontSize: Style.font.bodySmall
             }
 
             CursorSurface {
@@ -427,7 +428,7 @@ Item {
                   text: "󰃠"
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
-                  font.pixelSize: 16
+                  font.pixelSize: Style.font.heading
                   width: 22
                   horizontalAlignment: Text.AlignHCenter
                   anchors.verticalCenter: parent.verticalCenter
@@ -455,7 +456,7 @@ Item {
                   text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
-                  font.pixelSize: 11
+                  font.pixelSize: Style.font.bodySmall
                   width: 36
                   horizontalAlignment: Text.AlignRight
                   anchors.verticalCenter: parent.verticalCenter
@@ -475,7 +476,7 @@ Item {
               text: "No controllable backlight found"
               color: Qt.darker(root.bar.foreground, 1.5)
               font.family: root.bar.fontFamily
-              font.pixelSize: 11
+              font.pixelSize: Style.font.bodySmall
             }
           }
 
@@ -488,7 +489,7 @@ Item {
               text: "Scale"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
-              fontSize: 11
+              fontSize: Style.font.bodySmall
             }
 
             Row {
@@ -509,7 +510,7 @@ Item {
                   tooltipBackground: root.bar.background
                   tooltipForeground: root.bar.foreground
                   fontFamily: root.bar.fontFamily
-                  fontSize: 11
+                  fontSize: Style.font.bodySmall
                   horizontalPadding: 0
                   verticalPadding: 6
                   active: root.normalizeScale(root.monitorScale) === root.normalizeScale(modelData)
@@ -536,7 +537,7 @@ Item {
               text: "Monitors"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
-              fontSize: 11
+              fontSize: Style.font.bodySmall
             }
 
             Repeater {

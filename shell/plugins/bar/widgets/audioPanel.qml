@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Pipewire
 import qs.Ui
+import qs.Commons
 
 Item {
   id: root
@@ -356,7 +357,7 @@ Item {
     anchors.fill: parent
     bar: root.bar
     text: root.outputIcon()
-    fontSize: 12
+    fontSize: Style.font.body
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggleOutputMute()
       else if (b === Qt.MiddleButton) root.bar.run("omarchy-launch-audio")
@@ -428,7 +429,7 @@ Item {
                 text: "Output"
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily
-                fontSize: 11
+                fontSize: Style.font.bodySmall
                 anchors.verticalCenter: parent.verticalCenter
               }
 
@@ -436,7 +437,7 @@ Item {
                 text: root.sink ? "· " + root.nodeLabel(root.sink) : ""
                 color: Qt.darker(root.bar.foreground, 1.8)
                 font.family: root.bar.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: Style.font.bodySmall
                 elide: Text.ElideRight
                 width: parent.width - 70
                 anchors.verticalCenter: parent.verticalCenter
@@ -467,7 +468,7 @@ Item {
                   text: root.outputIcon()
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
-                  font.pixelSize: 16
+                  font.pixelSize: Style.font.heading
                   width: 22
                   horizontalAlignment: Text.AlignHCenter
                   anchors.verticalCenter: parent.verticalCenter
@@ -500,7 +501,7 @@ Item {
                   text: Math.round((outputSlider.dragging ? outputSlider.liveValue : root.outputVolume) * 100) + "%"
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
-                  font.pixelSize: 11
+                  font.pixelSize: Style.font.bodySmall
                   width: 36
                   horizontalAlignment: Text.AlignRight
                   anchors.verticalCenter: parent.verticalCenter
@@ -547,7 +548,7 @@ Item {
                 text: "Input"
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily
-                fontSize: 11
+                fontSize: Style.font.bodySmall
                 anchors.verticalCenter: parent.verticalCenter
               }
 
@@ -555,7 +556,7 @@ Item {
                 text: root.source ? "· " + root.nodeLabel(root.source) : ""
                 color: Qt.darker(root.bar.foreground, 1.8)
                 font.family: root.bar.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: Style.font.bodySmall
                 elide: Text.ElideRight
                 width: parent.width - 56
                 anchors.verticalCenter: parent.verticalCenter
@@ -584,7 +585,7 @@ Item {
                   text: root.inputIcon()
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
-                  font.pixelSize: 16
+                  font.pixelSize: Style.font.heading
                   width: 22
                   horizontalAlignment: Text.AlignHCenter
                   anchors.verticalCenter: parent.verticalCenter
@@ -617,7 +618,7 @@ Item {
                   text: Math.round((inputSlider.dragging ? inputSlider.liveValue : root.inputVolume) * 100) + "%"
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
-                  font.pixelSize: 11
+                  font.pixelSize: Style.font.bodySmall
                   width: 36
                   horizontalAlignment: Text.AlignRight
                   anchors.verticalCenter: parent.verticalCenter
@@ -660,7 +661,7 @@ Item {
               text: "Playing"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
-              fontSize: 11
+              fontSize: Style.font.bodySmall
             }
 
             Repeater {
@@ -712,7 +713,7 @@ Item {
         text: root.sinkGlyph(sinkRow.node)
         color: root.bar.foreground
         font.family: root.bar.fontFamily
-        font.pixelSize: 14
+        font.pixelSize: Style.font.title
         width: 22
         horizontalAlignment: Text.AlignHCenter
         anchors.verticalCenter: parent.verticalCenter
@@ -722,7 +723,7 @@ Item {
         text: root.nodeLabel(sinkRow.node)
         color: root.bar.foreground
         font.family: root.bar.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
         elide: Text.ElideRight
         width: parent.width - 22 - 14 - 16
         anchors.verticalCenter: parent.verticalCenter
@@ -732,7 +733,7 @@ Item {
         text: sinkRow.isActive ? "󰄬" : ""
         color: root.bar.foreground
         font.family: root.bar.fontFamily
-        font.pixelSize: 13
+        font.pixelSize: Style.font.subtitle
         width: 14
         horizontalAlignment: Text.AlignRight
         anchors.verticalCenter: parent.verticalCenter
@@ -779,7 +780,7 @@ Item {
         text: root.sourceGlyph(sourceRow.node)
         color: root.bar.foreground
         font.family: root.bar.fontFamily
-        font.pixelSize: 14
+        font.pixelSize: Style.font.title
         width: 22
         horizontalAlignment: Text.AlignHCenter
         anchors.verticalCenter: parent.verticalCenter
@@ -789,7 +790,7 @@ Item {
         text: root.nodeLabel(sourceRow.node)
         color: root.bar.foreground
         font.family: root.bar.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
         elide: Text.ElideRight
         width: parent.width - 22 - 14 - 16
         anchors.verticalCenter: parent.verticalCenter
@@ -799,7 +800,7 @@ Item {
         text: sourceRow.isActive ? "󰄬" : ""
         color: root.bar.foreground
         font.family: root.bar.fontFamily
-        font.pixelSize: 13
+        font.pixelSize: Style.font.subtitle
         width: 14
         horizontalAlignment: Text.AlignRight
         anchors.verticalCenter: parent.verticalCenter
@@ -855,7 +856,7 @@ Item {
           text: streamRow.streamMuted ? "󰝟" : "󰕾"
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 12
+          font.pixelSize: Style.font.body
           width: 14
           horizontalAlignment: Text.AlignHCenter
           anchors.verticalCenter: parent.verticalCenter
@@ -875,7 +876,7 @@ Item {
           text: root.streamLabel(streamRow.node)
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
           elide: Text.ElideRight
           width: parent.width - streamMuteIcon.width - streamPct.width - 12
           anchors.verticalCenter: parent.verticalCenter
@@ -886,7 +887,7 @@ Item {
           text: Math.round(streamRow.streamVolume * 100) + "%"
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
           width: 36
           horizontalAlignment: Text.AlignRight
           anchors.verticalCenter: parent.verticalCenter

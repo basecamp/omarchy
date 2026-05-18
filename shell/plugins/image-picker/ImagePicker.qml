@@ -642,7 +642,7 @@ Item {
           color: root.foreground
           style: Text.Outline
           styleColor: root.withAlpha(root.background, 0.7)
-          font.pixelSize: 24
+          font.pixelSize: Style.font.display
           font.weight: Font.DemiBold
           horizontalAlignment: Text.AlignHCenter
           elide: Text.ElideRight
@@ -659,7 +659,7 @@ Item {
           opacity: 0.85
           style: Text.Outline
           styleColor: root.withAlpha(root.background, 0.7)
-          font.pixelSize: 14
+          font.pixelSize: Style.font.title
           horizontalAlignment: Text.AlignHCenter
           elide: Text.ElideRight
         }

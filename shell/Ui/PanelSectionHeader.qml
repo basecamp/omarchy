@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 
 // Small-caps-style label that introduces a panel section ("DNS provider",
 // "Wi-Fi networks", "Output device", "Paired devices"). Sits between a
@@ -6,9 +7,9 @@ import QtQuick
 Text {
   id: root
 
-  property color foreground: "#cacccc"
-  property string fontFamily: "JetBrainsMono Nerd Font"
-  property real fontSize: 10
+  property color foreground: Color.foreground
+  property string fontFamily: Style.font.family
+  property real fontSize: Style.font.caption
 
   color: Qt.darker(foreground, 1.4)
   font.family: fontFamily
