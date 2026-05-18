@@ -32,9 +32,9 @@ Rectangle {
 
   property color foreground: Color.foreground
   property color accent: Color.accent
-  property string fontFamily: "monospace"
-  property real titleSize: 13
-  property real descriptionSize: 10
+  property string fontFamily: Style.font.family
+  property real titleSize: Style.font.subtitle
+  property real descriptionSize: Style.font.caption
 
   signal clicked()
   signal hovered(bool isHovered)

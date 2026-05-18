@@ -26,7 +26,7 @@ Item {
   property color background: Color.popups.background
   property color popupBorder: Color.popups.border
   property color accent: Color.accent
-  property string fontFamily: "JetBrainsMono Nerd Font"
+  property string fontFamily: Style.font.family
   property int rowHeight: 28
   property int popupRowHeight: 28
   property bool showLabel: true
@@ -74,7 +74,7 @@ Item {
       text: root.label
       color: Qt.darker(root.foreground, 1.4)
       font.family: root.fontFamily
-      font.pixelSize: 10
+      font.pixelSize: Style.font.caption
       font.bold: true
     }
 
@@ -118,7 +118,7 @@ Item {
         text: root.currentLabel()
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
         elide: Text.ElideRight
       }
 
@@ -130,7 +130,7 @@ Item {
         text: "󰅀"
         color: Qt.darker(root.foreground, 1.2)
         font.family: root.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
       }
 
       MouseArea {
@@ -219,7 +219,7 @@ Item {
               text: root.optionLabel(modelData)
               color: index === optionList.currentIndex ? root.accent : root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 12
+              font.pixelSize: Style.font.body
               elide: Text.ElideRight
             }
 

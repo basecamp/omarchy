@@ -37,6 +37,8 @@ TextField {
   readonly property bool _focused: activeFocus || hasCursor
 
   echoMode: password ? TextInput.Password : TextInput.Normal
+  font.family: Style.font.family
+  font.pixelSize: Style.font.body
   color: foreground
   selectionColor: selectionTint
   selectedTextColor: foreground

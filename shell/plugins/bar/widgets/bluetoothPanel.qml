@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
 import qs.Ui
+import qs.Commons
 
 Item {
   id: root
@@ -395,7 +396,7 @@ Item {
               text: "Bluetooth"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
-              fontSize: 11
+              fontSize: Style.font.bodySmall
               anchors.verticalCenter: parent.verticalCenter
             }
 
@@ -403,7 +404,7 @@ Item {
               text: "· " + (root.adapter && root.adapter.enabled ? "On" : "Off")
               color: Qt.darker(root.bar.foreground, 1.8)
               font.family: root.bar.fontFamily
-              font.pixelSize: 11
+              font.pixelSize: Style.font.bodySmall
               anchors.verticalCenter: parent.verticalCenter
             }
           }
@@ -501,7 +502,7 @@ Item {
                   : "No paired devices. Tap the scan icon to find new ones."
               color: Qt.darker(root.bar.foreground, 1.5)
               font.family: root.bar.fontFamily
-              font.pixelSize: 11
+              font.pixelSize: Style.font.bodySmall
               wrapMode: Text.WordWrap
               width: deviceList.width
             }
@@ -672,7 +673,7 @@ Item {
         text: row.isConnected ? "󰂱" : "󰂯"
         color: row.statusColor
         font.family: root.bar.fontFamily
-        font.pixelSize: 16
+        font.pixelSize: Style.font.heading
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
       }
@@ -715,7 +716,7 @@ Item {
           text: root.deviceLabel(row.dev) || "Device"
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 12
+          font.pixelSize: Style.font.body
           elide: Text.ElideRight
           width: parent.width
         }
@@ -724,7 +725,7 @@ Item {
           text: row.statusText
           color: row.statusColor
           font.family: root.bar.fontFamily
-          font.pixelSize: 10
+          font.pixelSize: Style.font.caption
           elide: Text.ElideRight
           width: parent.width
         }

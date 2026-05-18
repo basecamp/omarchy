@@ -3,6 +3,7 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import qs.Ui
+import qs.Commons
 
 Item {
   id: root
@@ -663,7 +664,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
             text: root.icon
             color: root.bar.foreground
             font.family: root.bar.fontFamily
-            font.pixelSize: 22
+            font.pixelSize: Style.font.display
             anchors.verticalCenter: parent.verticalCenter
           }
 
@@ -675,7 +676,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
               text: root.info.iface || (root.kind === "disconnected" ? "Disconnected" : "No connection")
               color: root.bar.foreground
               font.family: root.bar.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
@@ -691,7 +692,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
               visible: text !== ""
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
             }
           }
         }
@@ -732,14 +733,14 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           text: "IP address"
           color: Qt.darker(root.bar.foreground, 1.4)
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
         Text {
           visible: !!root.info.ip
           text: (root.info.ip || "") + (root.info.prefix ? "/" + root.info.prefix : "")
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
 
         // Gateway.
@@ -748,14 +749,14 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           text: "Gateway"
           color: Qt.darker(root.bar.foreground, 1.4)
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
         Text {
           visible: !!root.info.gateway
           text: root.info.gateway || ""
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
 
         // Ethernet link speed / duplex.
@@ -764,14 +765,14 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           text: "Link"
           color: Qt.darker(root.bar.foreground, 1.4)
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
         Text {
           visible: root.info.type === "ethernet" && !!root.info.speed
           text: root.formatSpeed(root.info.speed || "") + (root.info.duplex ? "  ·  " + root.info.duplex + " duplex" : "")
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
 
         // Wi-Fi signal.
@@ -780,14 +781,14 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           text: "Signal"
           color: Qt.darker(root.bar.foreground, 1.4)
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
         Text {
           visible: root.info.type === "wifi" && !!root.info.signal_dbm
           text: (root.info.signal_dbm || "") + " dBm"
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
 
         // Wi-Fi tx bitrate.
@@ -796,14 +797,14 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           text: "Link rate"
           color: Qt.darker(root.bar.foreground, 1.4)
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
         Text {
           visible: root.info.type === "wifi" && !!root.info.bitrate
           text: root.info.bitrate || ""
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
       }
 
@@ -1048,7 +1049,7 @@ iwctl known-networks list 2>/dev/null \\
         text: row.net ? root.wifiIconFor(row.net.signal) : ""
         color: row.statusColor
         font.family: root.bar.fontFamily
-        font.pixelSize: 14
+        font.pixelSize: Style.font.title
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
       }
@@ -1083,7 +1084,7 @@ iwctl known-networks list 2>/dev/null \\
         text: "󰌾"
         color: Qt.darker(root.bar.foreground, 1.4)
         font.family: root.bar.fontFamily
-        font.pixelSize: 13
+        font.pixelSize: Style.font.subtitle
       }
 
       Column {
@@ -1101,7 +1102,7 @@ iwctl known-networks list 2>/dev/null \\
           text: row.net ? (row.net.ssid || "Hidden") : ""
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 12
+          font.pixelSize: Style.font.body
           elide: Text.ElideRight
           width: parent.width
         }
@@ -1116,7 +1117,7 @@ iwctl known-networks list 2>/dev/null \\
           height: visible ? implicitHeight : 0
           color: row.statusColor
           font.family: root.bar.fontFamily
-          font.pixelSize: 10
+          font.pixelSize: Style.font.caption
           elide: Text.ElideRight
           width: parent.width
         }
@@ -1146,7 +1147,7 @@ iwctl known-networks list 2>/dev/null \\
         password: true
         placeholderText: "Passphrase"
         font.family: root.bar.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
         foreground: root.bar.foreground
         horizontalPadding: 8
         verticalPadding: 6

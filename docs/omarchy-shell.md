@@ -99,6 +99,80 @@ Rules:
 user `shell.json` exists, defaults are used verbatim. Once the user
 customizes, `shell.json` is canonical — there is no deep-merge.
 
+## Theme tokens
+
+Themes ship colors in `themes/<name>/colors.toml` and surface roles +
+sizing in `themes/<name>/shell.toml`. Defaults are generated from
+`default/themed/shell.toml.tpl`; a theme may also drop a hand-written
+`shell.toml` next to its `colors.toml` to override individual keys.
+
+The shell exposes these tokens to QML via two singletons in
+`qs.Commons`:
+
+- `Color` — palette (`foreground`, `background`, `accent`, `urgent`)
+  and per-surface roles (`Color.bar.*`, `Color.popups.*`,
+  `Color.notifications.*`, `Color.menu.*`, `Color.imagePicker.*`).
+- `Style` — structural tokens (`cornerRadius`, focus affordances),
+  the type scale (`Style.font.*`), and bar dimensions
+  (`Style.bar.sizeHorizontal` / `Style.bar.sizeVertical`).
+
+### Typography
+
+`[font] base-size` is the rem root for the scale. Every
+`Style.font.<token>` derives from it via a fixed multiplier, so
+bumping `base-size` rescales the whole shell proportionally:
+
+| Token                 | Multiplier | Default |
+|-----------------------|------------|---------|
+| `Style.font.caption`      | 0.833 | 10 |
+| `Style.font.bodySmall`    | 0.917 | 11 |
+| `Style.font.body`         | 1.0   | 12 |
+| `Style.font.subtitle`     | 1.083 | 13 |
+| `Style.font.title`        | 1.167 | 14 |
+| `Style.font.heading`      | 1.333 | 16 |
+| `Style.font.display`      | 2.0   | 24 |
+| `Style.font.displayLarge` | 2.333 | 28 |
+| `Style.font.iconSmall`    | bodySmall | 11 |
+| `Style.font.icon`         | title     | 14 |
+| `Style.font.iconLarge`    | 1.5       | 18 |
+
+A theme can either scale everything by tweaking `base-size`:
+
+```toml
+[font]
+base-size = 13   # roomier
+```
+
+…or pin individual tokens for stylistic emphasis without affecting
+the rest of the scale:
+
+```toml
+[font]
+base-size = 12
+heading       = 20
+display-large = 36
+```
+
+Recognized override keys: `base-size`, `caption`, `body-small`,
+`body`, `subtitle`, `title`, `heading`, `display`, `display-large`,
+`icon-small`, `icon`, `icon-large`.
+
+`base-size` is clamped to **11..13** because row heights and the bar
+cross-axis size are fixed; per-token overrides aren't clamped. The
+shell font family is the fontconfig `monospace` alias — themes don't
+set it, the user does via `omarchy font set <name>`.
+
+### Bar size
+
+`[bar] size-horizontal` / `size-vertical` set the cross-axis dimension
+of top/bottom and left/right bars respectively (in px):
+
+```toml
+[bar]
+size-horizontal = 26   # top/bottom bar height
+size-vertical   = 28   # left/right bar width
+```
+
 ## Custom bar modules
 
 If a full plugin is overkill, declare a one-off module inline in

@@ -29,11 +29,11 @@ Rectangle {
 
   property string iconText: ""
   property string tooltipText: ""
-  property color foreground: "#cacccc"
+  property color foreground: Color.foreground
   property color hoverColor: foreground
-  property color panelBackground: "#101315"
-  property string fontFamily: "JetBrainsMono Nerd Font"
-  property real fontSize: 14
+  property color panelBackground: Color.background
+  property string fontFamily: Style.font.family
+  property real fontSize: Style.font.icon
   property real size: 22
 
   property bool focusable: false

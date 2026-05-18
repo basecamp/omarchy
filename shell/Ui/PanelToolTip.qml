@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import qs.Commons
 
 // Styled wrapper around Qt Quick Controls ToolTip. Drop-in: declare inside
 // the hovered item and bind `visible` to the hover state, e.g.
@@ -16,10 +17,10 @@ import QtQuick.Controls
 ToolTip {
   id: root
 
-  property color panelForeground: "#cacccc"
-  property color panelBackground: "#101315"
-  property string fontFamily: "JetBrainsMono Nerd Font"
-  property real fontSize: 11
+  property color panelForeground: Color.foreground
+  property color panelBackground: Color.background
+  property string fontFamily: Style.font.family
+  property real fontSize: Style.font.bodySmall
 
   delay: 400
   padding: 0

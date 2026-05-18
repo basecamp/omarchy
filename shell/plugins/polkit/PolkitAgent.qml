@@ -269,7 +269,7 @@ Item {
           text: "\uf023"
           color: root.errorFlash ? Color.urgent : root.accent
           font.family: root.fontFamily
-          font.pixelSize: 20
+          font.pixelSize: Style.font.iconLarge
           width: 26
           height: root.fieldHeight
           horizontalAlignment: Text.AlignHCenter
@@ -289,7 +289,7 @@ Item {
             selectionColor: root.withAlpha(root.accent, 0.45)
             selectedTextColor: root.foreground
             font.family: root.fontFamily
-            font.pixelSize: 19
+            font.pixelSize: Style.font.iconLarge
             echoMode: root.responseVisible ? TextInput.Normal : TextInput.Password
             passwordCharacter: "\u2022"
             color: root.errorFlash ? Color.urgent : root.foreground
@@ -314,7 +314,7 @@ Item {
             color: root.errorFlash ? Color.urgent : root.foreground
             opacity: root.errorFlash ? 1 : 0.36
             font.family: root.fontFamily
-            font.pixelSize: 19
+            font.pixelSize: Style.font.iconLarge
             elide: Text.ElideRight
             visible: passwordInput.visible && passwordInput.text.length === 0
           }

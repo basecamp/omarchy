@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Ui
+import qs.Commons
 
 Item {
   id: root
@@ -188,7 +189,7 @@ Item {
         text: "System"
         color: root.bar.foreground
         font.family: root.bar.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
         font.bold: true
       }
 
@@ -217,13 +218,13 @@ Item {
           text: "Load"
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
         Text {
           text: root.loadAvg.toFixed(2)
           color: root.bar.foreground
           font.family: root.bar.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
         }
       }
     }
@@ -246,14 +247,14 @@ Item {
         text: detail.title
         color: Qt.darker(detail.barFg, 1.4)
         font.family: detail.fontFamily
-        font.pixelSize: 11
+        font.pixelSize: Style.font.bodySmall
       }
       Item { width: detail.width - parent.children[0].implicitWidth - parent.children[2].implicitWidth; height: 1 }
       Text {
         text: detail.value
         color: detail.barFg
         font.family: detail.fontFamily
-        font.pixelSize: 11
+        font.pixelSize: Style.font.bodySmall
       }
     }
 

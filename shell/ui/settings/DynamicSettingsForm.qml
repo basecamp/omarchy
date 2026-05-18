@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import qs.Commons
 import qs.Ui
 
 // Generic schema-driven settings form. The host panel passes:
@@ -16,8 +17,8 @@ Column {
 
   property var schema: []
   property var entry: ({})
-  property color foregroundColor: "#cacccc"
-  property string fontFamilyName: "JetBrainsMono Nerd Font"
+  property color foregroundColor: Color.foreground
+  property string fontFamilyName: Style.font.family
   spacing: 10
   width: parent ? parent.width : 0
 
@@ -45,7 +46,7 @@ Column {
         text: modelData && modelData.label ? modelData.label : (modelData && modelData.key ? modelData.key : "")
         color: Qt.darker(root.foregroundColor, 1.3)
         font.family: root.fontFamilyName
-        font.pixelSize: 11
+        font.pixelSize: Style.font.bodySmall
         font.bold: true
         visible: text !== ""
       }
@@ -55,7 +56,7 @@ Column {
         text: modelData ? (modelData.description || "") : ""
         color: Qt.darker(root.foregroundColor, 1.6)
         font.family: root.fontFamilyName
-        font.pixelSize: 10
+        font.pixelSize: Style.font.caption
         wrapMode: Text.WordWrap
         width: parent.width
       }
@@ -89,7 +90,7 @@ Column {
           width: parent.width
           foreground: root.foregroundColor
           font.family: root.fontFamilyName
-          font.pixelSize: 12
+          font.pixelSize: Style.font.body
           text: root.currentValue(field) === undefined ? "" : String(root.currentValue(field))
           onEditingFinished: if (fieldKey) root.fieldChanged(fieldKey, text)
         }
@@ -101,7 +102,7 @@ Column {
           property string fieldKey: ""
           property var field: ({})
           font.family: root.fontFamilyName
-          font.pixelSize: 12
+          font.pixelSize: Style.font.body
           text: field && field.label ? "" : ""
           checked: !!root.currentValue(field)
           onToggled: if (fieldKey) root.fieldChanged(fieldKey, checked)
@@ -115,7 +116,7 @@ Column {
           property var field: ({})
           width: parent.width
           font.family: root.fontFamilyName
-          font.pixelSize: 12
+          font.pixelSize: Style.font.body
           model: field && field.options ? field.options : []
           currentIndex: {
             var v = root.currentValue(field)
@@ -172,7 +173,7 @@ Column {
             text: slider.value.toFixed(2)
             color: root.foregroundColor
             font.family: root.fontFamilyName
-            font.pixelSize: 11
+            font.pixelSize: Style.font.bodySmall
             anchors.verticalCenter: parent.verticalCenter
           }
         }
@@ -185,6 +186,6 @@ Column {
     text: "No settings."
     color: Qt.darker(root.foregroundColor, 1.5)
     font.family: root.fontFamilyName
-    font.pixelSize: 11
+    font.pixelSize: Style.font.bodySmall
   }
 }

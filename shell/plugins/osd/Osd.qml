@@ -109,8 +109,8 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           horizontalAlignment: Text.AlignHCenter
           text: root.icon
-          font.family: "JetBrainsMono Nerd Font"
-          font.pixelSize: 27
+          font.family: Style.font.family
+          font.pixelSize: Style.font.displayLarge
           color: Color.foreground
         }
         Rectangle {
@@ -129,9 +129,9 @@ Item {
           width: root.hasProgress ? 41 : 190
           anchors.verticalCenter: parent.verticalCenter
           text: root.message
-          font.family: "JetBrainsMono Nerd Font"
+          font.family: Style.font.family
           font.bold: true
-          font.pixelSize: 14
+          font.pixelSize: Style.font.title
           color: Color.foreground
           elide: Text.ElideRight
           maximumLineCount: 1

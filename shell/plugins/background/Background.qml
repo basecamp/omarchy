@@ -81,6 +81,10 @@ Item {
     NoctaliaCommons.Color.resumeThemeReloads()
     NoctaliaCommons.Color.loadColors(pendingColorsRaw)
     NoctaliaCommons.Color.loadShell(pendingShellRaw)
+    // Style watches the same shell.toml for [font] and [bar] sizing; push
+    // synchronously so the type scale flips with the background instead of
+    // waiting on inotify debounce.
+    NoctaliaCommons.Style.loadShell(pendingShellRaw)
     pendingThemeVersion = -1
     pendingColorsRaw = ""
     pendingShellRaw = ""

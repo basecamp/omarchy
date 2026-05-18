@@ -200,7 +200,7 @@ Rectangle {
           text: root.glyph
           color: Color.notifications.text
           font.family: root.fontFamily
-          font.pixelSize: 18
+          font.pixelSize: Style.font.iconLarge
         }
       }
 
@@ -215,7 +215,7 @@ Rectangle {
           text: root.summary
           font.family: "Liberation Sans"
           color: Color.notifications.text
-          font.pixelSize: 14
+          font.pixelSize: Style.font.title
           font.bold: true
           wrapMode: Text.WordWrap
           elide: Text.ElideRight
@@ -230,7 +230,7 @@ Rectangle {
           textFormat: Text.StyledText
           font.family: "Liberation Sans"
           color: root.bodyColor
-          font.pixelSize: 14
+          font.pixelSize: Style.font.title
           wrapMode: Text.WordWrap
           elide: Text.ElideRight
           maximumLineCount: 3

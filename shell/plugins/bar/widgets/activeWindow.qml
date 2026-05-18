@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
+import qs.Commons
 
 Item {
   id: root
@@ -42,7 +43,7 @@ Item {
       text: root.title
       color: root.bar ? root.bar.foreground : "#cacccc"
       font.family: root.bar ? root.bar.fontFamily : "JetBrainsMono Nerd Font"
-      font.pixelSize: 12
+      font.pixelSize: Style.font.body
       elide: Text.ElideRight
       opacity: 0.85
     }

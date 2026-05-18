@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Mpris
 import qs.Ui
+import qs.Commons
 
 Item {
   id: root
@@ -52,8 +53,7 @@ Item {
       text: root.playIcon
       color: activePlayer && activePlayer.isPlaying ? root.bar.foreground : Qt.darker(root.bar.foreground, 1.5)
       font.family: root.bar.fontFamily
-      font.pixelSize: 12
-
+      font.pixelSize: Style.font.body
       Behavior on color { ColorAnimation { duration: 160 } }
     }
 
@@ -70,7 +70,7 @@ Item {
         text: root.title + (root.artist ? "  ·  " + root.artist : "")
         color: root.bar.foreground
         font.family: root.bar.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Style.font.body
         anchors.verticalCenter: parent.verticalCenter
 
         property bool needsScroll: implicitWidth > scrollClip.width
@@ -154,7 +154,7 @@ Item {
             text: "󰝚"
             color: root.bar.foreground
             font.family: root.bar.fontFamily
-            font.pixelSize: 28
+            font.pixelSize: Style.font.displayLarge
           }
         }
 
@@ -166,7 +166,7 @@ Item {
             text: root.title || "Nothing playing"
             color: root.bar.foreground
             font.family: root.bar.fontFamily
-            font.pixelSize: 13
+            font.pixelSize: Style.font.subtitle
             font.bold: true
             elide: Text.ElideRight
             width: parent.width
@@ -176,7 +176,7 @@ Item {
             text: root.artist
             color: Qt.darker(root.bar.foreground, 1.3)
             font.family: root.bar.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: Style.font.bodySmall
             elide: Text.ElideRight
             width: parent.width
             visible: text !== ""
@@ -186,7 +186,7 @@ Item {
             text: root.activePlayer && root.activePlayer.trackAlbum ? root.activePlayer.trackAlbum : ""
             color: Qt.darker(root.bar.foreground, 1.6)
             font.family: root.bar.fontFamily
-            font.pixelSize: 10
+            font.pixelSize: Style.font.caption
             elide: Text.ElideRight
             width: parent.width
             visible: text !== ""

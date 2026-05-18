@@ -5,8 +5,8 @@ import qs.Ui
 import qs.Commons
 
 // Visual reference + live playground for omarchy-shell's common UI
-// components. Summoned via:
-//   omarchy-shell-ipc shell summon omarchy.dev-gallery "{}"
+// components. Summon with `omarchy dev ui-preview`, or directly via:
+//   omarchy-shell shell summon omarchy.dev-gallery "{}"
 //
 // Every section here renders the REAL component (not a copy) so the
 // gallery doubles as a smoke test. When you add a new common component,
@@ -21,9 +21,11 @@ Item {
   function open(payloadJson) {
     closingFromHost = false
     window.visible = true
+    // Defer focus so the FloatingWindow's content tree is in place; the
+    // hasCursor bindings on each demo target scroll themselves into view
+    // via onHasCursorChanged, so no explicit scroll call is needed here.
     Qt.callLater(function() {
       if (keyCatcher) keyCatcher.forceActiveFocus()
-      ensureCursorVisible(currentTarget())
     })
   }
 
@@ -334,14 +336,14 @@ Item {
               text: "Omarchy shell · dev gallery"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 18
+              font.pixelSize: Style.font.iconLarge
               font.bold: true
             }
             Text {
               text: "Live previews of every type exported from qs.Ui. Use this as the visual reference when porting panels or building plugins. j/k or arrows to walk; h/l within rows; Enter to activate; Esc to close."
               color: Qt.darker(root.foreground, 1.4)
               font.family: root.fontFamily
-              font.pixelSize: 11
+              font.pixelSize: Style.font.bodySmall
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -358,7 +360,7 @@ Item {
               text: "Conventions"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
 
@@ -384,7 +386,7 @@ Item {
                   wrapMode: Text.WordWrap
                   color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
-                  font.pixelSize: 11
+                  font.pixelSize: Style.font.bodySmall
                   text: "Theme. qs.Commons.Style exposes cornerRadius (mirrored from Hyprland's decoration:rounding), focusBorderColor / focusFillColor / focusBorderWidth (derived from Color.accent), and hotFill (the shared hover/cursor tint). qs.Commons.Color exposes foreground / background / accent / urgent plus per-surface roles. Components default-bind to these so a caller with no overrides matches the active theme."
                 }
                 Text {
@@ -392,7 +394,7 @@ Item {
                   wrapMode: Text.WordWrap
                   color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
-                  font.pixelSize: 11
+                  font.pixelSize: Style.font.bodySmall
                   text: "Single cursor. Most reusable panel primitives expose hasCursor: bool and emit hovered(bool); a few (like PanelSlider) defer to their own focus handling. The panel root owns focusSection + selectedIndex; each element binds hasCursor: root.focusSection === 'X' && root.selectedIndex === N, and onHovered updates the same state. One highlight on screen, keyboard and mouse always agree. See plugins/bar/widgets/audioPanel.qml for the canonical recipe."
                 }
                 Text {
@@ -400,7 +402,7 @@ Item {
                   wrapMode: Text.WordWrap
                   color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
-                  font.pixelSize: 11
+                  font.pixelSize: Style.font.bodySmall
                   text: "Popups + editors. Dropdown / SearchableDropdown expose popupOpen plus open() / close() / toggle(); inline TextField uses activeFocus. While any of those own the keys, set PanelKeyCatcher.blocked so the panel's cursor model freezes and the active widget handles input."
                 }
                 Text {
@@ -408,8 +410,207 @@ Item {
                   wrapMode: Text.WordWrap
                   color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
-                  font.pixelSize: 11
+                  font.pixelSize: Style.font.bodySmall
                   text: "Adding a component. Drop the QML in Ui/, add a line to Ui/qmldir, then add a section here using the real type (not a copy). The gallery doubles as a smoke test — if a component starts misbehaving this is the fastest place to see it."
+                }
+              }
+            }
+          }
+
+          PanelSeparator { foreground: root.foreground }
+
+          // ---- Typography --------------------------------------------------
+          Column {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              text: "Typography"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.subtitle
+              font.bold: true
+            }
+            Text {
+              text: "Style.font.* is the shell-wide type scale. Themes ship a single "
+                + "[font] base-size in shell.toml (clamped 11..13); every token derives from "
+                + "it via a fixed multiplier, so changing base-size rescales the whole shell "
+                + "proportionally. Themes can also pin individual tokens (caption, heading, "
+                + "display, etc.) for stylistic emphasis. The family follows the fontconfig "
+                + "monospace alias \u2014 set it with `omarchy font set <name>`."
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              width: parent.width
+              wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+              width: parent.width
+              implicitHeight: typeCol.implicitHeight + 24
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
+              radius: Style.cornerRadius
+              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+              border.width: 1
+
+              Column {
+                id: typeCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 14
+                anchors.rightMargin: 14
+                spacing: 10
+
+                Text {
+                  text: "Scale"
+                  color: Qt.darker(root.foreground, 1.4)
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
+
+                // Every Style.font.* token rendered at its actual size. The
+                // model is data, not a Component graph, so this list stays
+                // in lockstep with the singleton without manual upkeep.
+                Repeater {
+                  model: [
+                    { key: "caption",      size: Style.font.caption,      sample: "Section header text" },
+                    { key: "bodySmall",    size: Style.font.bodySmall,    sample: "Secondary / tooltip text" },
+                    { key: "body",         size: Style.font.body,         sample: "Default label and control text" },
+                    { key: "subtitle",     size: Style.font.subtitle,     sample: "Row title text" },
+                    { key: "title",        size: Style.font.title,        sample: "Card title text" },
+                    { key: "heading",      size: Style.font.heading,      sample: "Panel heading" },
+                    { key: "display",      size: Style.font.display,      sample: "Display text" },
+                    { key: "displayLarge", size: Style.font.displayLarge, sample: "Display large" },
+                    { key: "iconSmall",    size: Style.font.iconSmall,    sample: "\uf004 \uf005 \uf02d" },
+                    { key: "icon",         size: Style.font.icon,         sample: "\uf004 \uf005 \uf02d" },
+                    { key: "iconLarge",    size: Style.font.iconLarge,    sample: "\uf004 \uf005 \uf02d" }
+                  ]
+                  delegate: Item {
+                    required property var modelData
+                    width: typeCol.width
+                    implicitHeight: Math.max(metaCol.implicitHeight, sampleText.implicitHeight)
+
+                    Column {
+                      id: metaCol
+                      anchors.left: parent.left
+                      anchors.verticalCenter: parent.verticalCenter
+                      width: 140
+                      spacing: 1
+                      Text {
+                        text: "Style.font." + modelData.key
+                        color: root.foreground
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.bodySmall
+                      }
+                      Text {
+                        text: modelData.size + " px"
+                        color: Qt.darker(root.foreground, 1.5)
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                      }
+                    }
+
+                    Text {
+                      id: sampleText
+                      anchors.left: metaCol.right
+                      anchors.right: parent.right
+                      anchors.verticalCenter: parent.verticalCenter
+                      anchors.leftMargin: 16
+                      text: modelData.sample
+                      color: root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: modelData.size
+                      elide: Text.ElideRight
+                    }
+                  }
+                }
+
+                Rectangle {
+                  width: parent.width
+                  height: 1
+                  color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+                }
+
+                Text {
+                  text: "Theme tokens"
+                  color: Qt.darker(root.foreground, 1.4)
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
+
+                Grid {
+                  columns: 2
+                  columnSpacing: 16
+                  rowSpacing: 4
+                  width: parent.width
+
+                  Text {
+                    text: "Style.font.family"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                  Text {
+                    text: Style.font.family
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+
+                  Text {
+                    text: "Style.font.resolvedFamily"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                  Text {
+                    text: Style.font.resolvedFamily
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+
+                  Text {
+                    text: "Style.font.baseSize"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                  Text {
+                    text: Style.font.baseSize + " px"
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+
+                  Text {
+                    text: "Style.bar.sizeHorizontal"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                  Text {
+                    text: Style.bar.sizeHorizontal + " px"
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+
+                  Text {
+                    text: "Style.bar.sizeVertical"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                  Text {
+                    text: Style.bar.sizeVertical + " px"
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
                 }
               }
             }
@@ -426,14 +627,14 @@ Item {
               text: "PanelSectionHeader"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "Small-caps-style intro label for a section."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
             }
 
             Rectangle {
@@ -467,7 +668,7 @@ Item {
                   text: "Playing"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
-                  fontSize: 11
+                  fontSize: Style.font.bodySmall
                 }
               }
             }
@@ -482,14 +683,14 @@ Item {
               text: "PanelSeparator"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "1px horizontal rule. Default 0.12 alpha on foreground; tweak via strength."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
             }
 
             Rectangle {
@@ -525,14 +726,14 @@ Item {
               text: "CursorSurface"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "Single highlight chrome for keyboard+mouse navigable items. Press h/l (anywhere in this window) to move the demo cursor. The middle item is also marked `current` to show how the two states layer."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -582,7 +783,7 @@ Item {
                       text: modelData.label
                       color: root.foreground
                       font.family: root.fontFamily
-                      font.pixelSize: 12
+                      font.pixelSize: Style.font.body
                       elide: Text.ElideRight
                     }
 
@@ -610,14 +811,14 @@ Item {
               text: "PillButton"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "Compact rounded button with optional icon, label, tooltip, and `active` highlight. Used inside panels for inline actions (Refresh, DNS pills, Bluetooth header)."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -713,14 +914,14 @@ Item {
               text: "CursorPill"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "PillButton with panel-cursor wiring. Bind hasCursor to your cursor state and onHovered to update it on mouse enter; clicks come from PillButton's clicked() signal. Use this for any \"pick one in a row\" UI (wifi DNS pills, bluetooth header actions). Click below or press h/l to walk the demo cursor."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -773,14 +974,14 @@ Item {
               text: "PanelActionButton"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "22×22 right-edge action button. Two flavors via hoverColor: default (foreground tint, e.g. confirm) and urgent (red tint, e.g. forget/unpair). Hover and click states are intrinsic; the row that owns it stays responsible for the cursor highlight."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -847,7 +1048,7 @@ Item {
                   foreground: root.foreground
                   panelBackground: root.background
                   fontFamily: root.fontFamily
-                  fontSize: 13
+                  fontSize: Style.font.subtitle
                   size: 26
                   focusable: true
                   hasCursor: root.focusSection === "panel-action-button" && root.selectedIndex === 3
@@ -869,14 +1070,14 @@ Item {
               text: "PanelToolTip"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "Hover the swatch below to see the styled tooltip. Use this whenever a custom button or row needs a hover hint."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -901,7 +1102,7 @@ Item {
                 text: "hover me"
                 color: root.foreground
                 font.family: root.fontFamily
-                font.pixelSize: 12
+                font.pixelSize: Style.font.body
               }
 
               MouseArea {
@@ -935,14 +1136,14 @@ Item {
               text: "Slider"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "Volume / progress slider. Drag, click anywhere on the track, or scroll the wheel."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -981,7 +1182,7 @@ Item {
                   text: "󰕾"
                   color: root.foreground
                   font.family: root.fontFamily
-                  font.pixelSize: 16
+                  font.pixelSize: Style.font.heading
                   width: 22
                   horizontalAlignment: Text.AlignHCenter
                   anchors.verticalCenter: parent.verticalCenter
@@ -1000,7 +1201,7 @@ Item {
                   text: Math.round((demoSlider.dragging ? demoSlider.liveValue : sliderRow.demoVolume) * 100) + "%"
                   color: root.foreground
                   font.family: root.fontFamily
-                  font.pixelSize: 12
+                  font.pixelSize: Style.font.body
                   width: 38
                   horizontalAlignment: Text.AlignRight
                   anchors.verticalCenter: parent.verticalCenter
@@ -1018,14 +1219,14 @@ Item {
               text: "ChoiceButton"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "A single button in a mutually-exclusive choice group. Selected styling uses the accent fill+border; focus styling uses the Style.focusBorderColor outline so keyboard nav can land on a non-selected option without it reading as the chosen one."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -1081,14 +1282,14 @@ Item {
               text: "TextField"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "Single-line input. Inherits Qt Quick Controls TextField, swaps in the kit's focus chrome and selection styling. Toggle `password: true` for masked entry."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -1117,7 +1318,7 @@ Item {
                   foreground: root.foreground
                   accent: root.accent
                   font.family: root.fontFamily
-                  font.pixelSize: 12
+                  font.pixelSize: Style.font.body
                   hasCursor: !activeFocus && root.focusSection === "text-field" && root.selectedIndex === 0
                   onHoveredChanged: if (hovered) {
                     root.focusSection = "text-field"; root.selectedIndex = 0
@@ -1139,7 +1340,7 @@ Item {
                   foreground: root.foreground
                   accent: root.accent
                   font.family: root.fontFamily
-                  font.pixelSize: 12
+                  font.pixelSize: Style.font.body
                   hasCursor: !activeFocus && root.focusSection === "text-field" && root.selectedIndex === 1
                   onHoveredChanged: if (hovered) {
                     root.focusSection = "text-field"; root.selectedIndex = 1
@@ -1165,14 +1366,14 @@ Item {
               text: "NumberField"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "Labeled spin box for integer settings. Up/down arrows step the value; the field accepts typed input. Pair with `from`/`to`/`stepSize` to constrain range."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -1216,14 +1417,14 @@ Item {
               text: "Toggle"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "Title + description + switch. Click anywhere on the row to flip; caller updates `checked` in response. Same focus tokens as ChoiceButton."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -1277,14 +1478,14 @@ Item {
               text: "Dropdown"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "Themed single-select with a panel-styled popup. Tab to focus the trigger, Enter/Space opens, j/k or arrows walk options, Enter selects. Options can be plain strings or { value, label } objects."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -1333,14 +1534,14 @@ Item {
               text: "SearchableDropdown"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "Dropdown with an embedded filter input. Type to narrow the list, Down to jump from the search to the first match, Enter to select. Use this for the bar settings \"+ Add widget\" picker and any other long-list selector."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -1406,14 +1607,14 @@ Item {
               text: "Composed example"
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 13
+              font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
               text: "A miniature wifi-style row built from CursorSurface + PanelActionButton + PanelToolTip. This is what new panel rows should look like — no inline Rectangle/Text/MouseArea reimplementation."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
-              font.pixelSize: 10
+              font.pixelSize: Style.font.caption
               width: parent.width
               wrapMode: Text.WordWrap
             }
@@ -1472,7 +1673,7 @@ Item {
                       text: "󰖩"
                       color: root.foreground
                       font.family: root.fontFamily
-                      font.pixelSize: 14
+                      font.pixelSize: Style.font.title
                     }
 
                     PanelActionButton {
@@ -1499,7 +1700,7 @@ Item {
                         text: "HughesWiFi"
                         color: root.foreground
                         font.family: root.fontFamily
-                        font.pixelSize: 12
+                        font.pixelSize: Style.font.body
                         elide: Text.ElideRight
                         width: parent.width
                       }
@@ -1507,7 +1708,7 @@ Item {
                         text: "Connected"
                         color: root.foreground
                         font.family: root.fontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: Style.font.caption
                         elide: Text.ElideRight
                         width: parent.width
                       }
@@ -1546,7 +1747,7 @@ Item {
                       text: "󰖩"
                       color: Qt.darker(root.foreground, 1.4)
                       font.family: root.fontFamily
-                      font.pixelSize: 14
+                      font.pixelSize: Style.font.title
                     }
 
                     Text {
@@ -1556,7 +1757,7 @@ Item {
                       text: "HughesATT"
                       color: root.foreground
                       font.family: root.fontFamily
-                      font.pixelSize: 12
+                      font.pixelSize: Style.font.body
                     }
                   }
                 }

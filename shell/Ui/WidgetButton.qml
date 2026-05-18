@@ -1,14 +1,15 @@
 import QtQuick
+import qs.Commons
 
 Item {
   id: root
 
   property var bar: null
   property string text: ""
-  property string fontFamily: bar ? bar.fontFamily : "JetBrainsMono Nerd Font"
-  property real fontSize: 12
-  property color foreground: bar ? bar.foreground : "#cacccc"
-  property color activeColor: bar ? bar.urgent : "#a55555"
+  property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  property real fontSize: Style.font.body
+  property color foreground: bar ? bar.foreground : Color.foreground
+  property color activeColor: bar ? bar.urgent : Color.urgent
   property bool active: false
   property real horizontalMargin: 8.5
   property real rightExtraMargin: 0
@@ -23,7 +24,7 @@ Item {
   signal wheelMoved(int delta)
 
   readonly property bool vertical: bar ? bar.vertical : false
-  readonly property int barSize: bar ? bar.barSize : 26
+  readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
 
   visible: text !== "" || keepSpace
   opacity: text === "" ? 0 : 1
@@ -41,7 +42,7 @@ Item {
     text: root.text
     color: root.active ? root.activeColor : root.foreground
     font.family: root.fontFamily
-    font.pointSize: root.fontSize * 0.75
+    font.pixelSize: root.fontSize
     renderType: Text.NativeRendering
     rotation: root.textRotation
     horizontalAlignment: Text.AlignHCenter

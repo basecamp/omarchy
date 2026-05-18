@@ -44,9 +44,10 @@ Item {
   property bool transparent: false
   property int barConfigSerial: 0
   property string position: "top"
-  // "monospace" resolves through fontconfig at paint time, so changing the
-  // system font (via `omarchy-font-set`) updates the bar without a reload.
-  property string fontFamily: "monospace"
+  // Resolves through fontconfig at paint time (Style.font.family defaults
+  // to "monospace"), so changing the system font (via `omarchy-font-set`)
+  // updates the bar without a reload.
+  property string fontFamily: Style.font.family
   // Bound to the central Color singleton so the bar tracks shell.toml's
   // [bar] section. Property names kept for the rest of this file's bindings.
   property color foreground: Color.bar.text
@@ -80,7 +81,7 @@ Item {
   }
 
   readonly property bool vertical: position === "left" || position === "right"
-  readonly property int barSize: vertical ? 28 : 26
+  readonly property int barSize: vertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
 
   signal indicatorsRefreshRequested()
 
@@ -713,7 +714,7 @@ Item {
           text: root.tooltipText
           color: root.foreground
           font.family: root.fontFamily
-          font.pixelSize: 12
+          font.pixelSize: Style.font.body
           horizontalAlignment: Text.AlignHCenter
           verticalAlignment: Text.AlignVCenter
         }
@@ -1073,7 +1074,7 @@ Item {
     property bool active: false
     property bool keepSpace: false
     property string fontFamily: root.fontFamily
-    property real fontSize: 12
+    property real fontSize: Style.font.body
     property real horizontalMargin: 7.5
     property real rightExtraMargin: 0
     property real verticalPadding: 6
@@ -1097,7 +1098,7 @@ Item {
       text: buttonRoot.text
       color: buttonRoot.active ? root.urgent : root.foreground
       font.family: buttonRoot.fontFamily
-      font.pointSize: buttonRoot.fontSize * 0.75
+      font.pixelSize: buttonRoot.fontSize
       renderType: Text.NativeRendering
       rotation: buttonRoot.textRotation
       horizontalAlignment: Text.AlignHCenter
@@ -1118,7 +1119,7 @@ Item {
   }
 
   component IndicatorModule: ModuleButton {
-    fontSize: 10
+    fontSize: Style.font.caption
     horizontalMargin: 5
     verticalPadding: 5
   }
@@ -1171,7 +1172,7 @@ Item {
 
   component UpdateModule: ModuleButton {
     text: root.updateAvailable ? "" : ""
-    fontSize: 10
+    fontSize: Style.font.caption
     tooltipText: root.updateAvailable ? "Omarchy update available" : ""
     onPressed: function() { root.run("omarchy-launch-floating-terminal-with-presentation omarchy-update") }
   }
@@ -1483,7 +1484,7 @@ Item {
           text: "Tray icons"
           color: root.foreground
           font.family: root.fontFamily
-          font.pixelSize: 12
+          font.pixelSize: Style.font.body
           font.bold: true
         }
 
@@ -1491,7 +1492,7 @@ Item {
           text: "Pinned icons stay visible. Hidden icons never show."
           color: Qt.darker(root.foreground, 1.4)
           font.family: root.fontFamily
-          font.pixelSize: 10
+          font.pixelSize: Style.font.caption
           wrapMode: Text.WordWrap
           width: parent.width
         }
@@ -1501,7 +1502,7 @@ Item {
           text: "No tray items reporting."
           color: Qt.darker(root.foreground, 1.5)
           font.family: root.fontFamily
-          font.pixelSize: 11
+          font.pixelSize: Style.font.bodySmall
           font.italic: true
         }
 
@@ -1546,7 +1547,7 @@ Item {
               text: rowRoot.displayName
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: 11
+              font.pixelSize: Style.font.bodySmall
               elide: Text.ElideRight
             }
 
@@ -1559,8 +1560,8 @@ Item {
               foreground: root.foreground
               horizontalPadding: 8
               verticalPadding: 3
-              iconSize: 11
-              fontSize: 11
+              iconSize: Style.font.bodySmall
+              fontSize: Style.font.bodySmall
               onClicked: trayRoot.togglePin(rowRoot.itemId)
             }
 
@@ -1574,8 +1575,8 @@ Item {
               foreground: root.foreground
               horizontalPadding: 8
               verticalPadding: 3
-              iconSize: 11
-              fontSize: 11
+              iconSize: Style.font.bodySmall
+              fontSize: Style.font.bodySmall
               onClicked: trayRoot.toggleHide(rowRoot.itemId)
             }
           }

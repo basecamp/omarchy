@@ -249,7 +249,7 @@ Item {
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
-            font.pixelSize: 16
+            font.pixelSize: Style.font.heading
             elide: Text.ElideRight
           }
         }
@@ -279,7 +279,7 @@ Item {
               Text {
                 text: parent.emoji
                 font.family: root.fontFamily
-                font.pixelSize: 24
+                font.pixelSize: Style.font.display
                 anchors.centerIn: parent
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
@@ -308,7 +308,7 @@ Item {
               color: root.accent
               opacity: 0.8
               font.family: root.fontFamily
-              font.pixelSize: 28
+              font.pixelSize: Style.font.displayLarge
               horizontalAlignment: Text.AlignHCenter
               width: parent.width
             }
@@ -318,7 +318,7 @@ Item {
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily
-              font.pixelSize: 14
+              font.pixelSize: Style.font.title
               horizontalAlignment: Text.AlignHCenter
               width: parent.width
             }
