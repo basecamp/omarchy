@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import qs.Commons
 
 Rectangle {
   id: root
@@ -58,7 +59,7 @@ Rectangle {
 
   implicitWidth: row.implicitWidth + horizontalPadding * 2
   implicitHeight: row.implicitHeight + verticalPadding * 2
-  radius: 4
+  radius: Style.cornerRadius
 
   // Hot = mouse hover OR keyboard cursor. Pressed wins over both; otherwise
   // hot beats `active` (so a cursor on an already-active pill still reads

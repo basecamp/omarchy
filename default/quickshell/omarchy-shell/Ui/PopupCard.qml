@@ -119,7 +119,7 @@ PopupWindow {
     color: Color.popups.background
     border.color: Color.popups.border
     border.width: 2
-    radius: 0
+    radius: Style.cornerRadius
     opacity: root.open ? 1.0 : 0
 
     Behavior on opacity {
