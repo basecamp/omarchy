@@ -68,7 +68,8 @@ Item {
   // Mouse hover and keyboard nav both mutate this state at the root; items
   // never read containsMouse for visuals. See CursorSurface for the
   // shared chrome (fill / border) shared by NetworkRow and DnsProviderPill.
-  readonly property color activeFill: bar ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.12) : "transparent"
+  readonly property color hoverFill: bar ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.08) : "transparent"
+  readonly property color selectedFill: bar ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18) : "transparent"
 
   // The panel below is its own layer-shell with Exclusive keyboard focus,
   // so Hyprland grants focus when the surface is mapped (popupOpen flips
@@ -577,7 +578,6 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     text: root.icon
     horizontalMargin: 8.5
     rightExtraMargin: 2
-    tooltipText: root.networkTooltip()
 
     onPressed: function(b) {
       if (b === Qt.RightButton) root.launchImpala()
@@ -956,7 +956,8 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     hasCursor: isSelected
     current: isConnected
     foreground: root.bar.foreground
-    fill: root.activeFill
+    fill: root.hoverFill
+    currentFill: root.selectedFill
     // Gate on the matching *Kind/*Reason being non-empty so a hidden-SSID
     // row (ssid == "") doesn't match the "" defaults of actionSsid etc.
     readonly property bool isBusy: root.actionKind !== "" && root.actionSsid === (net ? net.ssid : "")
