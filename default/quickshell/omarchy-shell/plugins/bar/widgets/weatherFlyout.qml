@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons
 import qs.Ui
 
 Item {
@@ -323,6 +324,8 @@ Item {
     triggerMode: "click"
     contentWidth: 480
     contentHeight: card.implicitHeight + 28
+    margin: 24
+    borderColor: Color.notifications.border
 
     Column {
       id: card
