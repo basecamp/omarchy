@@ -16,6 +16,12 @@ Rectangle {
   property string text: ""
   property bool selected: false
 
+  // Panel-cursor flag. Same role as PillButton.hasCursor: panels that own
+  // their own cursor state bind this to drive the keyboard highlight
+  // separately from real activeFocus. Visuals match the activeFocus look
+  // (foreground 2px border) so cursor and Tab focus read the same.
+  property bool hasCursor: false
+
   property color foreground: Color.foreground
   property color background: Color.background
   property color accent: Color.accent
@@ -23,6 +29,7 @@ Rectangle {
   property real fontSize: 12
 
   signal clicked()
+  signal hovered(bool isHovered)
 
   activeFocusOnTab: true
   Keys.onReturnPressed: root.clicked()
@@ -38,8 +45,8 @@ Rectangle {
     : (mouse.containsMouse ? Style.hotFill : background)
   border.color: selected
     ? accent
-    : (activeFocus ? foreground : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.4))
-  border.width: selected ? 2 : (activeFocus ? 2 : 1)
+    : (activeFocus || hasCursor ? foreground : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.4))
+  border.width: selected ? 2 : (activeFocus || hasCursor ? 2 : 1)
 
   Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -62,5 +69,9 @@ Rectangle {
       root.forceActiveFocus()
       root.clicked()
     }
+  }
+
+  HoverHandler {
+    onHoveredChanged: root.hovered(hovered)
   }
 }
