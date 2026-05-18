@@ -65,12 +65,14 @@ while (($# > 0)); do
   fi
 done
 
-if [[ -n $glyph ]]; then
-  args+=(--hint=string:omarchy-glyph:$glyph)
-fi
-
 # Tag as a user-action toast so it pops through DND. See dnd-fix-plan.md.
 args+=("-a" "omarchy-action" "-u" "$urgency")
+
+# Keep Omarchy action toasts compact by rendering glyphs inline instead of
+# forcing the notification card's icon slot.
+if [[ -n $glyph ]]; then
+  headline="$glyph    $headline"
+fi
 
 if [[ -n $description ]]; then
   notify-send "${args[@]}" "$headline" "$description"
