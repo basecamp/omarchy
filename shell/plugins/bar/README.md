@@ -39,7 +39,7 @@ Example `shell.json` (bar subtree only shown):
       ],
       "right": [
         { "id": "audioPanel" },
-        { "id": "battery" }
+        { "id": "powerPanel" }
       ]
     }
   }
@@ -57,6 +57,7 @@ Example `shell.json` (bar subtree only shown):
 | `media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
 | `audioPanel` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = audio TUI · scroll = volume |
 | `networkPanel` | Wi-Fi/Ethernet icon + popup with Wi-Fi scan, signal, connect, DNS provider selection | left = popup · right = nmtui |
+| `powerPanel` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup |
 | `bluetoothPanel` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
 | `calendar` | Clock + popup with month-grid calendar | left = popup · right = tz selector |
 | `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
