@@ -1,36 +1,19 @@
 #!/bin/bash
 
-# omarchy:summary=Set or toggle corner radius for the omarchy-shell menu and bar settings panel
+# omarchy:summary=No-op shim; the shell now mirrors Hyprland's decoration:rounding directly
 # omarchy:args=[toggle|sharp|round]
 # omarchy:examples=omarchy style corners quickshell toggle | omarchy style corners quickshell round | omarchy style corners quickshell sharp
 
-STYLE_FILE="$HOME/.local/state/omarchy/toggles/quickshell-menu.json"
-
-current_radius() {
-  [[ -f $STYLE_FILE ]] || { echo 0; return; }
-  local r
-  r=$(grep -oE '"radius"[[:space:]]*:[[:space:]]*[0-9]+' "$STYLE_FILE" | grep -oE '[0-9]+$')
-  echo "${r:-0}"
-}
-
-set_radius() {
-  local radius="$1"
-  mkdir -p "$(dirname "$STYLE_FILE")"
-  printf '{ "radius": %s }\n' "$radius" >"$STYLE_FILE"
-}
+# qs.Commons.Style reads decoration:rounding from hyprctl and watches the
+# theme name + rounded-corners toggle files for changes. There is no
+# separate quickshell-menu.json to write anymore. This shim stays around
+# so anyone still calling the old subcommand (or the dispatcher in
+# omarchy-style-corners) doesn't error out.
 
 case "${1:-toggle}" in
-  round) set_radius 6 ;;
-  sharp) set_radius 0 ;;
-  toggle)
-    if (( $(current_radius) > 0 )); then
-      set_radius 0
-    else
-      set_radius 6
-    fi
-    ;;
+  round|sharp|toggle) exit 0 ;;
   *)
-    echo "Usage: omarchy-style-corners-quickshell [toggle|sharp|round]"
+    echo "Usage: omarchy-style-corners-quickshell [toggle|sharp|round]" >&2
     exit 1
     ;;
 esac

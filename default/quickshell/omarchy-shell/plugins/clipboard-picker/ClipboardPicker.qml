@@ -21,10 +21,8 @@ Item {
   property color background: Color.menu.background
   property color foreground: Color.menu.text
   property color border: foreground
-  property int cornerRadius: 0
+  readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
-  property string styleFile: Quickshell.env("OMARCHY_MENU_STYLE_FILE") || (Quickshell.env("HOME") + "/.local/state/omarchy/toggles/quickshell-menu.json")
-
   property int contentMargin: 18
   property int headerHeight: 34
   property int contentSpacing: 6
@@ -122,14 +120,6 @@ Item {
     var escId = identifier.replace(/'/g, "'\\''")
     Quickshell.execDetached(["bash", "-lc", "elephant activate 'clipboard;" + escId + ";copy;;'; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true"])
   }
-
-  function loadStyle(raw) {
-    try {
-      var style = JSON.parse(raw || "{}")
-      root.cornerRadius = Number(style.radius || 0)
-    } catch (e) {}
-  }
-
   ListModel { id: displayModel }
 
   Process {
@@ -163,14 +153,6 @@ Item {
     function toggle(): string { root.toggle(); return "ok" }
     function ping(): string { return "ok" }
   }
-
-  FileView {
-    path: root.styleFile
-    watchChanges: true
-    onLoaded: root.loadStyle(text())
-    onFileChanged: { reload(); root.loadStyle(text()) }
-  }
-
   PanelWindow {
     id: panel
     visible: root.opened

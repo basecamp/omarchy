@@ -13,12 +13,11 @@ Item {
   property var manifest: null
 
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
-  property string styleFile: Quickshell.env("OMARCHY_MENU_STYLE_FILE") || (Quickshell.env("HOME") + "/.local/state/omarchy/toggles/quickshell-menu.json")
   property color accent: Color.accent
   property color background: Color.menu.background
   property color foreground: Color.menu.text
   property color border: foreground
-  property int cornerRadius: 0
+  readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: 18
   property int contentSpacing: 12
   property int fieldHeight: 42
@@ -43,14 +42,6 @@ Item {
   function withAlpha(color, alpha) {
     return Qt.rgba(color.r, color.g, color.b, alpha)
   }
-
-  function loadStyle(raw) {
-    try {
-      var style = JSON.parse(raw || "{}")
-      root.cornerRadius = Number(style.radius || 0)
-    } catch (e) {}
-  }
-
   function messageText() {
     return "Authentication is needed..."
   }
@@ -164,14 +155,6 @@ Item {
     NumberAnimation { target: root; property: "shakeOffset"; to: 8; duration: 50; easing.type: Easing.InOutQuad }
     NumberAnimation { target: root; property: "shakeOffset"; to: 0; duration: 55; easing.type: Easing.OutQuad }
   }
-
-  FileView {
-    path: root.styleFile
-    watchChanges: true
-    onLoaded: root.loadStyle(text())
-    onFileChanged: { reload(); root.loadStyle(text()) }
-  }
-
   FileView {
     path: "/etc/pam.d/polkit-1"
     watchChanges: true
