@@ -33,7 +33,7 @@ Item {
     return defaultIcons[index]
   }
 
-  function modeLabel() { return UPower.onBattery ? "Battery" : "AC" }
+  function modeLabel() { return UPower.onBattery ? "Battery" : "Charging" }
 
   function refresh() {
     if (!batteryProc.running) batteryProc.running = true
@@ -126,6 +126,7 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
     bar: root.bar
     text: root.batteryIcon()
     horizontalMargin: 8.5
+    rightExtraMargin: 2
     active: UPower.displayDevice && UPower.displayDevice.percentage <= 0.2 && UPower.onBattery
     tooltipText: ""
     onPressed: function(b) { root.popupOpen = !root.popupOpen; if (root.popupOpen) root.refresh() }
@@ -147,11 +148,37 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
       anchors.top: parent.top
       spacing: 16
 
-      Row {
-        spacing: 10
-        anchors.left: parent.left
-        Text { id: acIcon; text: root.batteryIcon(); color: root.bar.foreground; font.family: root.bar.fontFamily; font.pixelSize: 22 }
-        Text { text: root.modeLabel(); color: root.bar.foreground; font.family: root.bar.fontFamily; font.pixelSize: 13; font.bold: true; anchors.verticalCenter: acIcon.verticalCenter }
+      Item {
+        width: parent.width
+        implicitHeight: 28
+
+        Item {
+          id: iconWrapper
+          width: 28
+          height: 28
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+
+          Text {
+            id: acIcon
+            text: root.batteryIcon()
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: 22
+            anchors.centerIn: parent
+          }
+        }
+
+        Text {
+          text: root.modeLabel()
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: 13
+          font.bold: true
+          anchors.left: iconWrapper.right
+          anchors.leftMargin: 10
+          anchors.verticalCenter: parent.verticalCenter
+        }
       }
 
       Row {
@@ -199,22 +226,6 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
               onClicked: root.setProfile(modelData)
             }
           }
-        }
-      }
-
-      PanelSeparator { foreground: root.bar.foreground }
-
-      Column {
-        width: parent.width
-        spacing: 12
-        PanelSectionHeader { text: "SYSTEM"; foreground: root.bar.foreground; fontFamily: root.bar.fontFamily }
-        Grid {
-          width: parent.width
-          columns: 2
-          columnSpacing: 14
-          rowSpacing: 4
-          InfoLabel { text: "CPU" } InfoValue { text: root.systemInfo.cpu || "—" }
-          InfoLabel { text: "Mem" } InfoValue { text: root.systemInfo.memory || "—" }
         }
       }
     }
