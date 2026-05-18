@@ -136,23 +136,26 @@ Item {
           radius: Style.cornerRadius
         }
 
-        onOpened: optionList.currentIndex = Math.max(0, optionList.indexOfValue(root.value))
-
-        Keys.onPressed: function(event) {
-          if (event.key === Qt.Key_Escape) { popup.close(); event.accepted = true }
-          else if (event.key === Qt.Key_Down || event.text === "j") {
-            optionList.currentIndex = Math.min(root.options.length - 1, optionList.currentIndex + 1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Up || event.text === "k") {
-            optionList.currentIndex = Math.max(0, optionList.currentIndex - 1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            optionList.selectCurrent(); event.accepted = true
-          }
+        onOpened: {
+          optionList.currentIndex = Math.max(0, optionList.indexOfValue(root.value))
+          optionList.forceActiveFocus()
         }
 
         contentItem: ListView {
           id: optionList
+
+          Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Escape) { popup.close(); event.accepted = true }
+            else if (event.key === Qt.Key_Down || event.text === "j") {
+              optionList.currentIndex = Math.min(root.options.length - 1, optionList.currentIndex + 1)
+              event.accepted = true
+            } else if (event.key === Qt.Key_Up || event.text === "k") {
+              optionList.currentIndex = Math.max(0, optionList.currentIndex - 1)
+              event.accepted = true
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+              optionList.selectCurrent(); event.accepted = true
+            }
+          }
           implicitHeight: contentHeight
           clip: true
           boundsBehavior: Flickable.StopAtBounds

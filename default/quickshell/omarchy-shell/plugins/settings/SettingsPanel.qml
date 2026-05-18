@@ -787,7 +787,6 @@ Item {
         }
         foreground: root.foreground
         accent: root.accent
-        cornerRadius: root.cornerRadius
         fontFamily: root.fontFamily
         onChanged: function(v) { if (v) root.addEntry(section.sectionKey, v) }
       }
