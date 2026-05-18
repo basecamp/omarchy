@@ -9,6 +9,10 @@ import qs.Commons
 // Focus styling follows the shared Style tokens (accent border + tinted
 // fill on activeFocus) so keyboard nav looks the same here as on
 // ChoiceButton and other focusable Ui components.
+//
+// `rounded` auto-detects from Style.cornerRadius so the switch follows
+// the theme: pill shape on round-corners themes, square on sharp.
+// Callers can override per-instance.
 Rectangle {
   id: root
 
@@ -21,6 +25,10 @@ Rectangle {
   // separately from activeFocus. Visuals match the activeFocus look (accent
   // border + tinted fill via Style tokens) so cursor and Tab focus read the same.
   property bool hasCursor: false
+
+  // Switch shape follows the theme by default: pill on round, square on sharp.
+  // Override per-instance if a caller wants the opposite.
+  property bool rounded: Style.cornerRadius > 0
 
   property color foreground: Color.foreground
   property color accent: Color.accent
@@ -89,7 +97,7 @@ Rectangle {
       id: track
       width: 42
       height: 22
-      radius: height / 2
+      radius: root.rounded ? height / 2 : 0
       color: root.checked
         ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.35)
         : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
@@ -104,7 +112,7 @@ Rectangle {
       Rectangle {
         width: 16
         height: 16
-        radius: 8
+        radius: root.rounded ? 8 : 0
         x: root.checked ? track.width - width - 3 : 3
         y: 3
         color: root.checked ? root.accent : Qt.darker(root.foreground, 1.25)
