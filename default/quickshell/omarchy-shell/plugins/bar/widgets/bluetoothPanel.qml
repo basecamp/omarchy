@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Io
 import Quickshell.Bluetooth
 import "../common" as Common
 
@@ -65,12 +66,216 @@ Item {
     return "󰂯"
   }
 
+  // Single cursor model shared by keyboard and mouse. Sections:
+  //   "header"     — 3 action pills (scan, tui, toggle); h/l moves between
+  //                  them, Enter activates.
+  //   "known"      — paired/known device rows; Enter toggles connect.
+  //   "discovered" — unpaired devices visible while scanning; Enter pairs.
+  // Visuals always come from Common.CursorSurface (hasCursor / current),
+  // never from containsMouse. Mouse hover updates root cursor state too,
+  // guaranteeing one highlight on screen.
+  property string focusSection: "header"
+  property int selectedIndex: 2  // default = toggle pill
+  readonly property int headerPillCount: 3
+
+  // Stable identity for the focused known device. The known list is sorted
+  // (connected-first, then alphabetical) so activating a device can shift
+  // its index. We track the BlueZ address here so the cursor follows the
+  // same device across reorders rather than the slot it used to occupy.
+  property string focusedKnownAddress: ""
+
+  readonly property color activeFill: bar
+    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18)
+    : "transparent"
+
+  function sectionCount(section) {
+    if (section === "header") return headerPillCount
+    if (section === "known") return knownDevices.length
+    if (section === "discovered") return discoveredDevices.length
+    return 0
+  }
+
+  function sectionVisible(section) {
+    if (section === "header") return true
+    if (section === "known") return knownDevices.length > 0
+    if (section === "discovered") return adapter && adapter.discovering && discoveredDevices.length > 0
+    return false
+  }
+
+  readonly property var visibleSections: {
+    var list = ["header"]
+    if (sectionVisible("known")) list.push("known")
+    if (sectionVisible("discovered")) list.push("discovered")
+    return list
+  }
+
+  // j/k navigates between sections row-by-row. The header is treated as a
+  // SINGLE row (its pills sit on one horizontal line), so j/k from devices
+  // jumps to/from the header as a unit, and h/l moves between the three
+  // pills inside it. This matches wifi's DNS-pill behaviour.
+  function moveCursor(delta) {
+    var sections = visibleSections
+    if (!sections || sections.length === 0) return
+    var sIdx = sections.indexOf(focusSection)
+    if (sIdx < 0) { focusSection = sections[0]; selectedIndex = 0; return }
+
+    var idx = selectedIndex
+    var inHeader = focusSection === "header"
+    var max = inHeader ? 0 : sectionCount(focusSection) - 1
+
+    if (delta > 0) {
+      if (!inHeader && idx < max) { selectedIndex = idx + 1; return }
+      if (sIdx < sections.length - 1) {
+        focusSection = sections[sIdx + 1]
+        // Entering the header from below shouldn't happen (header is first),
+        // but other entries start at 0.
+        selectedIndex = 0
+      }
+    } else {
+      if (!inHeader && idx > 0) { selectedIndex = idx - 1; return }
+      if (sIdx > 0) {
+        focusSection = sections[sIdx - 1]
+        // Entering the header always lands on the toggle pill — the most
+        // common action and consistent with the on-open default. h/l from
+        // there moves to scan/TUI.
+        selectedIndex = focusSection === "header" ? 2 : sectionCount(focusSection) - 1
+      }
+    }
+  }
+
+  // h/l: only meaningful in the header. In device sections it's a no-op
+  // — j/k is the canonical row navigator there.
+  function moveCursorH(delta) {
+    if (focusSection !== "header") return
+    var next = selectedIndex + delta
+    if (next < 0) next = 0
+    if (next > headerPillCount - 1) next = headerPillCount - 1
+    selectedIndex = next
+  }
+
+  function activateCursor() {
+    if (focusSection === "header") {
+      if (selectedIndex === 0) {
+        if (adapter && adapter.enabled) adapter.discovering = !adapter.discovering
+      } else if (selectedIndex === 1) {
+        if (bar) bar.run("omarchy-launch-bluetooth")
+        closePopout()
+      } else if (selectedIndex === 2) {
+        if (adapter) adapter.enabled = !adapter.enabled
+      }
+      return
+    }
+    if (focusSection === "known") {
+      var dev = knownDevices[selectedIndex]
+      if (!dev) return
+      if (!dev.trusted) dev.trusted = true
+      if (dev.connected) dev.disconnect()
+      else dev.connect()
+      return
+    }
+    if (focusSection === "discovered") {
+      var d = discoveredDevices[selectedIndex]
+      if (!d) return
+      pendingPairAddresses[d.address] = true
+      d.pair()
+    }
+  }
+
+  // 'x' on a known row mirrors the row's X button: connected device
+  // disconnects, everything else forgets the pairing. Mismatching this
+  // (e.g. forgetting a connected device) is destructive — the X button
+  // tooltip says "Disconnect" for connected rows, and the keybind has
+  // to agree.
+  function deleteSelected() {
+    if (focusSection !== "known") return
+    var dev = knownDevices[selectedIndex]
+    if (!dev) return
+    if (dev.connected) dev.disconnect()
+    else if (dev.forget) dev.forget()
+  }
+
+  onPopupOpenChanged: {
+    if (popupOpen) {
+      if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
+      else { focusSection = "header"; selectedIndex = 2 }
+      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+    }
+  }
+
+  // When `selectedIndex` changes inside the known section, remember which
+  // address it points at. Updates from re-resolution (below) are idempotent
+  // because we end up setting the same address.
+  onSelectedIndexChanged: {
+    if (focusSection !== "known") return
+    if (selectedIndex < 0 || selectedIndex >= knownDevices.length) return
+    var d = knownDevices[selectedIndex]
+    focusedKnownAddress = d ? (d.address || "") : ""
+  }
+
+  onFocusSectionChanged: {
+    if (focusSection !== "known") focusedKnownAddress = ""
+  }
+
+  onKnownDevicesChanged: {
+    // Try to follow the device by address before clamping. If we can't find
+    // the address (e.g. it was forgotten), fall through to clampCursor()
+    // which will pull selectedIndex back into range.
+    if (focusSection === "known" && focusedKnownAddress !== "") {
+      for (var i = 0; i < knownDevices.length; i++) {
+        if (knownDevices[i] && knownDevices[i].address === focusedKnownAddress) {
+          if (selectedIndex !== i) selectedIndex = i
+          clampCursor()
+          return
+        }
+      }
+    }
+    clampCursor()
+  }
+  onDiscoveredDevicesChanged: clampCursor()
+  onVisibleSectionsChanged: clampCursor()
+
+  // Keep the keyboard-focused row inside the visible viewport of the device
+  // Flickable. Each DeviceRow calls this when it gains hasCursor. Without
+  // it, j/k can walk the selection off-screen in a long device list.
+  function ensureCursorVisible(item) {
+    if (!item || !deviceFlick) return
+    var pt = item.mapToItem(deviceFlick.contentItem, 0, 0)
+    var top = pt.y
+    var bottom = top + (item.height || 0)
+    var viewTop = deviceFlick.contentY
+    var viewBottom = viewTop + deviceFlick.height
+    var margin = 6
+    if (top < viewTop + margin) deviceFlick.contentY = Math.max(0, top - margin)
+    else if (bottom > viewBottom - margin)
+      deviceFlick.contentY = bottom + margin - deviceFlick.height
+  }
+
+  function clampCursor() {
+    var sections = visibleSections
+    if (!sections || !sections.length) return
+    if (sections.indexOf(focusSection) < 0) {
+      focusSection = sections[0]
+      selectedIndex = 0
+      return
+    }
+    var count = sectionCount(focusSection)
+    if (count === 0) {
+      // Section emptied out — bounce to the previous visible one.
+      var sIdx = sections.indexOf(focusSection)
+      focusSection = sIdx > 0 ? sections[sIdx - 1] : sections[0]
+      selectedIndex = Math.max(0, sectionCount(focusSection) - 1)
+      return
+    }
+    if (selectedIndex > count - 1) selectedIndex = count - 1
+    if (selectedIndex < 0) selectedIndex = 0
+  }
+
   visible: adapter !== null
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
   // Non-visual lifecycle watchers, one per device. Survives popup open/close
-  // and the discovered↔known transition that destroys row delegates.
+  // and the discovered-known transition that destroys row delegates.
   Repeater {
     model: root.devices
     Item {
@@ -94,6 +299,17 @@ Item {
     }
   }
 
+  // Lets a Hyprland keybind summon the panel without a click.
+  IpcHandler {
+    target: "bluetoothPanel"
+    function toggle(): void {
+      if (root.popupOpen) root.closePopout()
+      else root.popupOpen = true
+    }
+    function show(): void { if (!root.popupOpen) root.popupOpen = true }
+    function hide(): void { root.closePopout() }
+  }
+
   Common.WidgetButton {
     id: button
     anchors.fill: parent
@@ -106,7 +322,8 @@ Item {
     }
   }
 
-  Common.PopupCard {
+  Common.KeyboardPanel {
+    id: panel
     anchorItem: button
     owner: root
     bar: root.bar
@@ -114,151 +331,218 @@ Item {
     contentWidth: 320
     contentHeight: column.implicitHeight + 28
 
-    Column {
-      id: column
+    Item {
+      id: keyCatcher
       anchors.fill: parent
-      spacing: 10
-
-      // Header: title left, on/off toggle right.
-      Item {
-        width: parent.width
-        height: titleText.implicitHeight
-
-        Text {
-          id: titleText
-          anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
-          text: "Bluetooth"
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: 13
-          font.bold: true
+      focus: true
+      Keys.priority: Keys.AfterItem
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Escape) {
+          root.closePopout(); event.accepted = true; return
         }
-
-        Row {
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: 4
-
-          Common.PillButton {
-            iconText: "󰂳"
-            tooltipText: !root.adapter ? "" : !root.adapter.enabled ? "Bluetooth is off"
-              : root.adapter.discovering ? "Stop scanning" : "Scan for devices"
-            tooltipBackground: root.bar.background
-            tooltipForeground: root.bar.foreground
-            foreground: root.bar.foreground
-            horizontalPadding: 6
-            verticalPadding: 4
-            iconSize: 14
-            enabled: root.adapter !== null && root.adapter.enabled
-            opacity: enabled ? 1 : 0.4
-            active: root.adapter && root.adapter.discovering
-            onClicked: if (root.adapter) root.adapter.discovering = !root.adapter.discovering
-          }
-
-          Common.PillButton {
-            iconText: "󱁤"
-            tooltipText: "Open Impala (TUI)"
-            tooltipBackground: root.bar.background
-            tooltipForeground: root.bar.foreground
-            foreground: root.bar.foreground
-            horizontalPadding: 6
-            verticalPadding: 4
-            iconSize: 14
-            onClicked: { root.bar.run("omarchy-launch-bluetooth"); root.popupOpen = false }
-          }
-
-          Common.PillButton {
-            iconText: root.adapter && root.adapter.enabled ? "󰂯" : "󰂲"
-            text: root.adapter && root.adapter.enabled ? "On" : "Off"
-            tooltipText: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
-            tooltipBackground: root.bar.background
-            tooltipForeground: root.bar.foreground
-            foreground: root.bar.foreground
-            horizontalPadding: 10
-            verticalPadding: 4
-            active: root.adapter && root.adapter.enabled
-            onClicked: if (root.adapter) root.adapter.enabled = !root.adapter.enabled
-          }
+        if (event.key === Qt.Key_Down || event.text === "j") {
+          root.moveCursor(1); event.accepted = true; return
+        }
+        if (event.key === Qt.Key_Up || event.text === "k") {
+          root.moveCursor(-1); event.accepted = true; return
+        }
+        if (event.key === Qt.Key_Right || event.text === "l") {
+          root.moveCursorH(1); event.accepted = true; return
+        }
+        if (event.key === Qt.Key_Left || event.text === "h") {
+          root.moveCursorH(-1); event.accepted = true; return
+        }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+          root.activateCursor(); event.accepted = true; return
+        }
+        if (event.text === "x" || event.text === "X") {
+          root.deleteSelected(); event.accepted = true
         }
       }
 
-      // Scrollable device list — capped so a noisy neighborhood doesn't
-      // grow the popup past the screen.
-      Flickable {
-        width: parent.width
-        height: Math.min(deviceList.implicitHeight, 400)
-        contentWidth: width
-        contentHeight: deviceList.implicitHeight
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
+      Column {
+        id: column
+        anchors.fill: parent
+        spacing: 10
 
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-        Column {
-          id: deviceList
+        // Header: title left, on/off toggle + actions right.
+        Item {
           width: parent.width
-          spacing: 10
+          height: titleText.implicitHeight
 
-          // Paired / known devices.
-          Repeater {
-            model: root.knownDevices
-            DeviceRow {
-              required property var modelData
-              width: deviceList.width
-              dev: modelData
-              isDiscovered: false
-            }
-          }
-
-          // Discovered (unpaired) devices, only shown while scanning.
           Text {
-            visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
-            text: "Discovered"
-            color: Qt.darker(root.bar.foreground, 1.4)
+            id: titleText
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Bluetooth"
+            color: root.bar.foreground
             font.family: root.bar.fontFamily
-            font.pixelSize: 10
+            font.pixelSize: 13
             font.bold: true
           }
 
-          Repeater {
-            model: root.adapter && root.adapter.discovering ? root.discoveredDevices : []
-            DeviceRow {
-              required property var modelData
-              width: deviceList.width
-              dev: modelData
-              isDiscovered: true
+          Row {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 4
+
+            HeaderPill {
+              pillIndex: 0
+              iconText: "󰂳"
+              tooltipText: !root.adapter ? "" : !root.adapter.enabled ? "Bluetooth is off"
+                : root.adapter.discovering ? "Stop scanning" : "Scan for devices"
+              pillEnabled: root.adapter !== null && root.adapter.enabled
+              active: root.adapter && root.adapter.discovering
+              onActivated: if (root.adapter) root.adapter.discovering = !root.adapter.discovering
+            }
+
+            HeaderPill {
+              pillIndex: 1
+              iconText: "󱁤"
+              tooltipText: "Open Impala (TUI)"
+              onActivated: { root.bar.run("omarchy-launch-bluetooth"); root.popupOpen = false }
+            }
+
+            HeaderPill {
+              pillIndex: 2
+              iconText: root.adapter && root.adapter.enabled ? "󰂯" : "󰂲"
+              tooltipText: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
+              active: root.adapter && root.adapter.enabled
+              onActivated: if (root.adapter) root.adapter.enabled = !root.adapter.enabled
             }
           }
+        }
 
-          Text {
-            visible: root.knownDevices.length === 0
-                     && (!root.adapter || !root.adapter.discovering || root.discoveredDevices.length === 0)
-            text: !root.adapter ? "No Bluetooth adapter"
-                : !root.adapter.enabled ? "Turn Bluetooth on to scan"
-                : root.adapter.discovering ? "Scanning for devices…"
-                : "No paired devices. Tap the scan icon to find new ones."
-            color: Qt.darker(root.bar.foreground, 1.5)
-            font.family: root.bar.fontFamily
-            font.pixelSize: 11
-            wrapMode: Text.WordWrap
-            width: deviceList.width
+        // Scrollable device list — capped so a noisy neighborhood doesn't
+        // grow the popup past the screen.
+        Flickable {
+          id: deviceFlick
+          width: parent.width
+          height: Math.min(deviceList.implicitHeight, 400)
+          contentWidth: width
+          contentHeight: deviceList.implicitHeight
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+
+          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+          Column {
+            id: deviceList
+            width: parent.width
+            spacing: 10
+
+            // Paired / known devices.
+            Repeater {
+              model: root.knownDevices
+              DeviceRow {
+                required property var modelData
+                required property int index
+                width: deviceList.width
+                dev: modelData
+                rowIndex: index
+                isDiscovered: false
+              }
+            }
+
+            // Discovered (unpaired) devices, only shown while scanning.
+            Common.PanelSectionHeader {
+              visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
+              text: "Discovered"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+            }
+
+            Repeater {
+              model: root.adapter && root.adapter.discovering ? root.discoveredDevices : []
+              DeviceRow {
+                required property var modelData
+                required property int index
+                width: deviceList.width
+                dev: modelData
+                rowIndex: index
+                isDiscovered: true
+              }
+            }
+
+            Text {
+              visible: root.knownDevices.length === 0
+                       && (!root.adapter || !root.adapter.discovering || root.discoveredDevices.length === 0)
+              text: !root.adapter ? "No Bluetooth adapter"
+                  : !root.adapter.enabled ? "Turn Bluetooth on to scan"
+                  : root.adapter.discovering ? "Scanning for devices…"
+                  : "No paired devices. Tap the scan icon to find new ones."
+              color: Qt.darker(root.bar.foreground, 1.5)
+              font.family: root.bar.fontFamily
+              font.pixelSize: 11
+              wrapMode: Text.WordWrap
+              width: deviceList.width
+            }
           }
         }
       }
     }
   }
 
-  // Two-line device row showing name + live status (Connected, Connecting…,
-  // Pairing…, Failed). Tracks pending click attempts with a Timer so a
+  // Header pill — wraps Common.PillButton with cursor-state binding so it
+  // participates in the same single-cursor model as device rows. We don't
+  // use Common.CursorSurface here because the pill already provides its
+  // own active/hover visuals and we want them to layer correctly.
+  component HeaderPill: Common.PillButton {
+    id: pill
+    required property int pillIndex
+    property bool pillEnabled: true
+    signal activated()
+
+    tooltipBackground: root.bar.background
+    tooltipForeground: root.bar.foreground
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: 6
+    verticalPadding: 4
+    iconSize: 14
+    enabled: pillEnabled
+    opacity: pillEnabled ? 1 : 0.4
+
+    // Hand off to PillButton's built-in cursor visuals so keyboard cursor and
+    // mouse hover render identically (fill + 1px border).
+    hasCursor: root.focusSection === "header" && root.selectedIndex === pillIndex
+
+    onClicked: pill.activated()
+
+    // Mouse hover updates root cursor state so keyboard + mouse share one
+    // selection model.
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
+      propagateComposedEvents: true
+      onContainsMouseChanged: if (containsMouse) {
+        root.focusSection = "header"
+        root.selectedIndex = pill.pillIndex
+      }
+    }
+  }
+
+  // Two-line device row showing name + live status (Connected, Connecting,
+  // Pairing, Failed). Tracks pending click attempts with a Timer so a
   // connect that drops back to Disconnected within 10s surfaces as "Failed".
-  component DeviceRow: Rectangle {
+  // Now a cursor target: hasCursor binds to root state, mouse hover updates
+  // root state. The X button on the right is a PanelActionButton.
+  component DeviceRow: Common.CursorSurface {
     id: row
     required property var dev
+    required property int rowIndex
     required property bool isDiscovered
 
     readonly property bool isConnected: dev && dev.connected
     readonly property int devState: dev && dev.state !== undefined ? dev.state : -1
+    readonly property string sectionName: isDiscovered ? "discovered" : "known"
+
+    hasCursor: root.focusSection === sectionName && root.selectedIndex === rowIndex
+    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(row)
+    current: isConnected
+    foreground: root.bar.foreground
+    fill: root.activeFill
 
     // 0 idle, 1 connecting, 2 disconnecting, 3 pairing, 4 failed.
     property int pendingAction: 0
@@ -300,9 +584,9 @@ Item {
     readonly property string statusText: {
       if (!dev) return ""
       if (pendingAction === 4) return failureReason || "Failed"
-      if (pendingAction === 1 || devState === 3) return "Connecting\u2026"
-      if (pendingAction === 2 || devState === 2) return "Disconnecting\u2026"
-      if (pendingAction === 3 || (dev.pairing === true)) return "Pairing\u2026"
+      if (pendingAction === 1 || devState === 3) return "Connecting…"
+      if (pendingAction === 2 || devState === 2) return "Disconnecting…"
+      if (pendingAction === 3 || (dev.pairing === true)) return "Pairing…"
       if (isConnected) {
         if (dev.batteryAvailable) return "Connected · " + Math.round(dev.battery * 100) + "%"
         return "Connected"
@@ -319,12 +603,6 @@ Item {
     }
 
     implicitHeight: rowContent.implicitHeight + 12
-    radius: 4
-    color: rowMouse.containsMouse
-      ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.10)
-      : (isConnected ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.05) : "transparent")
-
-    Behavior on color { ColorAnimation { duration: 120 } }
 
     MouseArea {
       id: rowMouse
@@ -332,6 +610,11 @@ Item {
       hoverEnabled: true
       acceptedButtons: Qt.LeftButton | Qt.RightButton
       cursorShape: row.dev ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+      onContainsMouseChanged: if (containsMouse) {
+        root.focusSection = row.sectionName
+        root.selectedIndex = row.rowIndex
+      }
 
       onClicked: function(mouse) {
         if (!row.dev) return
@@ -363,10 +646,10 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       anchors.leftMargin: 10
       anchors.rightMargin: 10
-      implicitHeight: Math.max(icon.implicitHeight, info.implicitHeight, disconnectBtn.implicitHeight)
+      implicitHeight: Math.max(deviceIcon.implicitHeight, info.implicitHeight, disconnectBtn.implicitHeight)
 
       Text {
-        id: icon
+        id: deviceIcon
         text: row.isConnected ? "󰂱" : "󰂯"
         color: row.statusColor
         font.family: root.bar.fontFamily
@@ -377,69 +660,25 @@ Item {
 
       // Explicit close button on any known device. Action depends on state:
       // connected -> disconnect, otherwise -> forget the pairing entirely.
-      Rectangle {
+      Common.PanelActionButton {
         id: disconnectBtn
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        width: 22
-        height: 22
-        radius: 4
         visible: !row.isDiscovered
-        readonly property string action: row.isConnected ? "Disconnect" : "Forget"
-        color: disconnectMouse.containsMouse
-          ? Qt.rgba(root.bar.urgent.r, root.bar.urgent.g, root.bar.urgent.b, 0.20)
-          : "transparent"
-
-        Behavior on color { ColorAnimation { duration: 120 } }
-
-        Text {
-          anchors.centerIn: parent
-          text: "󰅙"
-          color: disconnectMouse.containsMouse ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.3)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 14
-        }
-
-        MouseArea {
-          id: disconnectMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          acceptedButtons: Qt.LeftButton
-
-          onClicked: {
-            if (!row.dev) return
-            if (row.isConnected) {
-              row.pendingAction = 2
-              failureTimer.stop()
-              row.dev.disconnect()
-            } else if (row.dev.forget) {
-              row.dev.forget()
-            }
-          }
-        }
-
-        ToolTip {
-          visible: disconnectMouse.containsMouse
-          text: disconnectBtn.action
-          delay: 400
-          padding: 0
-          background: Rectangle {
-            color: root.bar.background
-            border.color: root.bar.foreground
-            border.width: 1
-            radius: 0
-            opacity: 0.97
-          }
-          contentItem: Text {
-            text: disconnectBtn.action
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: 11
-            leftPadding: 10
-            rightPadding: 10
-            topPadding: 6
-            bottomPadding: 6
+        iconText: "󰅙"
+        tooltipText: row.isConnected ? "Disconnect" : "Forget"
+        foreground: root.bar.foreground
+        hoverColor: root.bar.urgent
+        panelBackground: root.bar.background
+        fontFamily: root.bar.fontFamily
+        onClicked: {
+          if (!row.dev) return
+          if (row.isConnected) {
+            row.pendingAction = 2
+            failureTimer.stop()
+            row.dev.disconnect()
+          } else if (row.dev.forget) {
+            row.dev.forget()
           }
         }
       }
@@ -447,7 +686,7 @@ Item {
       Column {
         id: info
         spacing: 1
-        anchors.left: icon.right
+        anchors.left: deviceIcon.right
         anchors.leftMargin: 10
         anchors.right: disconnectBtn.visible ? disconnectBtn.left : parent.right
         anchors.rightMargin: disconnectBtn.visible ? 8 : 0
@@ -472,6 +711,5 @@ Item {
         }
       }
     }
-
   }
 }

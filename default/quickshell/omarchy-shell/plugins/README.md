@@ -19,6 +19,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Notifications | `omarchy.notifications` | `service` | persistent | `notifications/Service.qml`         |
 | OSD           | `omarchy.osd`           | `panel`   | persistent | `osd/Osd.qml`                       |
 | Polkit agent  | `omarchy.polkit`        | `service` | persistent | `polkit/PolkitAgent.qml`            |
+| Dev gallery   | `omarchy.dev-gallery`   | `panel`   | on-demand  | `dev-gallery/GalleryPanel.qml`      |
 
 ## Bar
 

@@ -681,11 +681,9 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
         }
       }
 
-      Rectangle {
+      Common.PanelSeparator {
         visible: !!root.info.iface
-        width: parent.width
-        height: 1
-        color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+        foreground: root.bar.foreground
       }
 
       // Connection details: IP, gateway, link speed, etc.
@@ -778,22 +776,18 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       }
 
       // DNS provider selection.
-      Rectangle {
-        width: parent.width
-        height: 1
-        color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      Common.PanelSeparator {
+        foreground: root.bar.foreground
       }
 
       Column {
         width: parent.width
         spacing: 8
 
-        Text {
+        Common.PanelSectionHeader {
           text: "DNS provider"
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 10
-          font.bold: true
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
         }
 
         Row {
@@ -831,20 +825,16 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       }
 
       // Wi-Fi networks (only if a Wi-Fi station is available).
-      Rectangle {
+      Common.PanelSeparator {
         visible: root.wifiStationAvailable
-        width: parent.width
-        height: 1
-        color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+        foreground: root.bar.foreground
       }
 
-      Text {
+      Common.PanelSectionHeader {
         visible: root.wifiStationAvailable
         text: root.scanning ? "Scanning Wi-Fi…" : "Wi-Fi networks"
-        color: Qt.darker(root.bar.foreground, 1.4)
-        font.family: root.bar.fontFamily
-        font.pixelSize: 10
-        font.bold: true
+        foreground: root.bar.foreground
+        fontFamily: root.bar.fontFamily
       }
 
       // Scrollable network list — cap the height so a busy neighbourhood
@@ -931,30 +921,12 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       onClicked: pill.clicked()
     }
 
-    ToolTip {
+    Common.PanelToolTip {
       visible: pill.tooltipText !== "" && pillMouse.containsMouse
       text: pill.tooltipText
-      delay: 400
-      padding: 0
-
-      background: Rectangle {
-        color: root.bar.background
-        border.color: root.bar.foreground
-        border.width: 1
-        radius: 0
-        opacity: 0.97
-      }
-
-      contentItem: Text {
-        text: pill.tooltipText
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: 11
-        leftPadding: 10
-        rightPadding: 10
-        topPadding: 6
-        bottomPadding: 6
-      }
+      panelForeground: root.bar.foreground
+      panelBackground: root.bar.background
+      fontFamily: root.bar.fontFamily
     }
   }
 
@@ -1070,60 +1042,19 @@ iwctl known-networks list 2>/dev/null \\
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      Rectangle {
+      Common.PanelActionButton {
         id: forgetBtn
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        width: 22
-        height: 22
-        radius: 4
         visible: row.isConnected
-        color: forgetMouse.containsMouse
-          ? Qt.rgba(root.bar.urgent.r, root.bar.urgent.g, root.bar.urgent.b, 0.20)
-          : "transparent"
-
-        Behavior on color { ColorAnimation { duration: 60 } }
-
-        Text {
-          anchors.centerIn: parent
-          text: "󰅙"
-          color: forgetMouse.containsMouse ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.3)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 14
-        }
-
-        MouseArea {
-          id: forgetMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          enabled: !root.busy
-          onClicked: if (row.net) root.forget(row.net.ssid)
-        }
-
-        ToolTip {
-          visible: forgetMouse.containsMouse
-          text: "Forget network"
-          delay: 400
-          padding: 0
-          background: Rectangle {
-            color: root.bar.background
-            border.color: root.bar.foreground
-            border.width: 1
-            radius: 0
-            opacity: 0.97
-          }
-          contentItem: Text {
-            text: "Forget network"
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: 11
-            leftPadding: 10
-            rightPadding: 10
-            topPadding: 6
-            bottomPadding: 6
-          }
-        }
+        enabled: !root.busy
+        iconText: "󰅙"
+        tooltipText: "Forget network"
+        foreground: root.bar.foreground
+        hoverColor: root.bar.urgent
+        panelBackground: root.bar.background
+        fontFamily: root.bar.fontFamily
+        onClicked: if (row.net) root.forget(row.net.ssid)
       }
 
       // Shows a lock glyph on the right for protected networks that
@@ -1236,61 +1167,17 @@ iwctl known-networks list 2>/dev/null \\
       // 22×22 right-anchored to line up with forgetBtn and lockIndicator
       // above. Esc closes the prompt (handled by pwField.Keys.onEscapePressed)
       // so there's no separate cancel button.
-      Rectangle {
+      Common.PanelActionButton {
         id: connectPwBtn
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        width: 22
-        height: 22
-        radius: 4
-        property bool clickEnabled: !root.busy && row.net && pwField.text.length > 0
-        color: connectPwMouse.containsMouse && connectPwBtn.clickEnabled
-          ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.20)
-          : "transparent"
-
-        Behavior on color { ColorAnimation { duration: 60 } }
-
-        Text {
-          anchors.centerIn: parent
-          text: "󰄬"
-          color: connectPwBtn.clickEnabled
-            ? (connectPwMouse.containsMouse ? root.bar.foreground : Qt.darker(root.bar.foreground, 1.3))
-            : Qt.darker(root.bar.foreground, 2.0)
-          font.family: root.bar.fontFamily
-          font.pixelSize: 14
-        }
-
-        MouseArea {
-          id: connectPwMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: connectPwBtn.clickEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-          onClicked: if (connectPwBtn.clickEnabled) root.connectWithPassphrase(row.net.ssid, pwField.text)
-        }
-
-        ToolTip {
-          visible: connectPwMouse.containsMouse
-          text: "Connect"
-          delay: 400
-          padding: 0
-          background: Rectangle {
-            color: root.bar.background
-            border.color: root.bar.foreground
-            border.width: 1
-            radius: 0
-            opacity: 0.97
-          }
-          contentItem: Text {
-            text: "Connect"
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: 11
-            leftPadding: 10
-            rightPadding: 10
-            topPadding: 6
-            bottomPadding: 6
-          }
-        }
+        enabled: !root.busy && row.net && pwField.text.length > 0
+        iconText: "󰄬"
+        tooltipText: "Connect"
+        foreground: root.bar.foreground
+        panelBackground: root.bar.background
+        fontFamily: root.bar.fontFamily
+        onClicked: if (row.net) root.connectWithPassphrase(row.net.ssid, pwField.text)
       }
     }
   }
