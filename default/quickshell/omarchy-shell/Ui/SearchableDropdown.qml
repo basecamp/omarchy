@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls as QQC
 import qs.Commons
 
 // Searchable single-select dropdown. Same trigger shape as Dropdown, but
@@ -140,7 +140,7 @@ Item {
         }
       }
 
-      Popup {
+      QQC.Popup {
         id: popup
         x: 0
         y: trigger.height + 2
