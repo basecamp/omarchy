@@ -63,14 +63,189 @@ Item {
     readonly property int barSize: 26
   }
 
-  // ---- cursor demo state --------------------------------------------------
-  property int cursorDemoIndex: 1
-  property int pillDemoIndex: 1
+  // ---- cursor model -------------------------------------------------------
+  //
+  // The gallery itself uses the same recipe wifi / audio / bluetooth /
+  // monitor panels use: focusSection + selectedIndex drive a single
+  // highlight that crosses kit primitives uniformly, with j/k walking
+  // targets (jumping section boundaries automatically), h/l acting
+  // locally (horizontal rows / slider adjustment), Enter activating, and
+  // Esc closing. Mouse hover updates the same (focusSection,
+  // selectedIndex) so keyboard and pointer never diverge.
+  //
+  // Plugin authors: copy this section verbatim as a template. Replace
+  // the section IDs with whatever your panel needs. The shape
+  // (visibleSections, sectionCount, sectionIsHorizontal,
+  // sectionAdjustsValue, moveCursor, moveCursorH, activateCursor,
+  // ensureCursorVisible, clampCursor) is the canonical pattern.
+  property string focusSection: "cursor-surface"
+  property int selectedIndex: 0
+
+  // Demo state mutated by activation.
   property string choiceDemoValue: "top"
   property bool toggleDemoOn: true
   property bool toggleSquareOn: false
   property string dropdownDemoValue: "calendar"
   property string searchableDemoValue: ""
+
+  readonly property var visibleSections: [
+    "cursor-surface", "pill-button", "cursor-pill", "panel-action-button",
+    "panel-tool-tip", "slider", "choice-button", "text-field", "toggle",
+    "dropdown", "searchable-dropdown", "composed"
+  ]
+
+  function sectionCount(section) {
+    switch (section) {
+      case "cursor-surface":      return 3
+      case "pill-button":         return 5
+      case "cursor-pill":         return 4
+      case "panel-action-button": return 4
+      case "panel-tool-tip":      return 1
+      case "slider":              return 1
+      case "choice-button":       return 4
+      case "text-field":          return 2
+      case "toggle":              return 2
+      case "dropdown":            return 1
+      case "searchable-dropdown": return 1
+      case "composed":            return 2
+    }
+    return 0
+  }
+
+  // True for sections whose primitives lay out horizontally (a row of
+  // pills, choice buttons, etc.) — j/k jumps to the next/prev section,
+  // h/l walks within the row.
+  function sectionIsHorizontal(section) {
+    return section === "pill-button"
+      || section === "cursor-pill"
+      || section === "panel-action-button"
+      || section === "choice-button"
+  }
+
+  // True for sections where h/l should adjust a value rather than walk.
+  function sectionAdjustsValue(section) {
+    return section === "slider"
+  }
+
+  // Where to land when entering a section from above / below.
+  function sectionFirstIndex(section) { return 0 }
+  function sectionLastIndex(section) { return Math.max(0, sectionCount(section) - 1) }
+
+  function moveCursor(delta) {
+    var sections = visibleSections
+    var sIdx = sections.indexOf(focusSection)
+    if (sIdx < 0) {
+      focusSection = sections[0]
+      selectedIndex = sectionFirstIndex(focusSection)
+      return
+    }
+    if (sectionIsHorizontal(focusSection) || sectionAdjustsValue(focusSection)
+        || sectionCount(focusSection) <= 1) {
+      // Single-row / horizontal / value-adjust sections: j/k crosses to
+      // the next section.
+      if (delta > 0 && sIdx < sections.length - 1) {
+        focusSection = sections[sIdx + 1]
+        selectedIndex = sectionFirstIndex(focusSection)
+      } else if (delta < 0 && sIdx > 0) {
+        focusSection = sections[sIdx - 1]
+        selectedIndex = sectionLastIndex(focusSection)
+      }
+      return
+    }
+    // Vertical multi-row section: walk within, then cross at boundaries.
+    var next = selectedIndex + delta
+    if (next < 0) {
+      if (sIdx > 0) {
+        focusSection = sections[sIdx - 1]
+        selectedIndex = sectionLastIndex(focusSection)
+      }
+    } else if (next >= sectionCount(focusSection)) {
+      if (sIdx < sections.length - 1) {
+        focusSection = sections[sIdx + 1]
+        selectedIndex = sectionFirstIndex(focusSection)
+      }
+    } else {
+      selectedIndex = next
+    }
+  }
+
+  function moveCursorH(delta) {
+    if (sectionAdjustsValue(focusSection)) {
+      // h/l on the slider section nudges the demo volume by 5%.
+      sliderRow.demoVolume = Math.max(0, Math.min(1, sliderRow.demoVolume + delta * 0.05))
+      return
+    }
+    if (!sectionIsHorizontal(focusSection)) return
+    var next = selectedIndex + delta
+    var max = sectionCount(focusSection) - 1
+    if (next < 0) next = 0
+    if (next > max) next = max
+    selectedIndex = next
+  }
+
+  function activateCursor() {
+    if (focusSection === "choice-button") {
+      var opts = ["top", "right", "bottom", "left"]
+      if (selectedIndex >= 0 && selectedIndex < opts.length)
+        root.choiceDemoValue = opts[selectedIndex]
+      return
+    }
+    if (focusSection === "toggle") {
+      if (selectedIndex === 0) root.toggleDemoOn = !root.toggleDemoOn
+      else root.toggleSquareOn = !root.toggleSquareOn
+      return
+    }
+    if (focusSection === "dropdown") {
+      demoDropdown.toggle()
+      return
+    }
+    if (focusSection === "searchable-dropdown") {
+      demoSearchableDropdown.toggle()
+      return
+    }
+    if (focusSection === "text-field") {
+      if (selectedIndex === 0) demoTextField.forceActiveFocus()
+      else demoPasswordField.forceActiveFocus()
+      return
+    }
+    // pill / panel-action-button / cursor-surface / composed: nothing to
+    // mutate in a demo, but real consumers would call their clicked().
+  }
+
+  function clampCursor() {
+    var sections = visibleSections
+    if (sections.indexOf(focusSection) < 0) {
+      focusSection = sections[0]
+      selectedIndex = sectionFirstIndex(focusSection)
+      return
+    }
+    if (selectedIndex < 0) selectedIndex = 0
+    var max = sectionLastIndex(focusSection)
+    if (selectedIndex > max) selectedIndex = max
+  }
+
+  // Scroll the gallery so the given Item is fully visible inside
+  // scrollArea's viewport, with a 20px breathing margin. Wired into the
+  // hasCursor change handler of every cursor target below.
+  function ensureCursorVisible(item) {
+    if (!item || !scrollArea) return
+    var sb = scrollArea.ScrollBar.vertical
+    if (!sb || scrollArea.contentHeight <= scrollArea.height) return
+    var contentItem = scrollArea.contentItem
+    if (!contentItem) return
+    var p = item.mapToItem(contentItem, 0, 0)
+    var itemTop = p.y
+    var itemBottom = p.y + item.height
+    var viewTop = sb.position * scrollArea.contentHeight
+    var viewBottom = viewTop + scrollArea.height
+    var pad = 20
+    if (itemTop < viewTop + pad) {
+      sb.position = Math.max(0, (itemTop - pad) / scrollArea.contentHeight)
+    } else if (itemBottom > viewBottom - pad) {
+      var newPos = (itemBottom + pad - scrollArea.height) / scrollArea.contentHeight
+      sb.position = Math.max(0, Math.min(1 - sb.size, newPos))
+    }
+  }
 
   FloatingWindow {
     id: window
@@ -90,9 +265,6 @@ Item {
       anchors.fill: parent
       focus: true
 
-      // Scroll the gallery's ScrollView by `dy` pixels. Bound below 0 and
-      // above (1 - thumbSize) so the thumb stays on the track when the
-      // user mashes Page_Down past the end.
       function scrollBy(dy) {
         var sb = scrollArea.ScrollBar.vertical
         if (!sb || scrollArea.contentHeight <= scrollArea.height) return
@@ -118,22 +290,24 @@ Item {
         }
       }
 
-      // Panel-style key dispatch. j/k scroll the gallery; h/l walk the
-      // cursor / pill demos; Esc closes. Same component the wifi, audio,
-      // bluetooth, monitor, and settings panels all use — the gallery
-      // is meant to demonstrate the standard, so it should USE the
-      // standard rather than reimplement its own keyhandler.
+      // Panel-style key dispatch — the gallery demonstrates the standard,
+      // so it USES the standard. j/k walks cursor targets across sections,
+      // h/l acts locally (rows + slider adjust), Enter activates the
+      // current target, Esc closes. The catcher suspends itself while a
+      // dropdown popup or text field owns keyboard input, so typing into
+      // the embedded controls doesn't double-drive the panel cursor.
       PanelKeyCatcher {
         id: keyCatcher
         anchors.fill: parent
+        blocked: demoDropdown.popupOpen
+          || demoSearchableDropdown.popupOpen
+          || demoTextField.activeFocus
+          || demoPasswordField.activeFocus
         onMoveRequested: function(dx, dy) {
-          if (dy !== 0) {
-            focusScope.scrollBy(dy * 60)
-          } else if (dx !== 0) {
-            root.cursorDemoIndex = Math.max(0, Math.min(2, root.cursorDemoIndex + dx))
-            root.pillDemoIndex = Math.max(0, Math.min(3, root.pillDemoIndex + dx))
-          }
+          if (dy !== 0) root.moveCursor(dy)
+          else if (dx !== 0) root.moveCursorH(dx)
         }
+        onActivateRequested: root.activateCursor()
         onCloseRequested: root.requestClose()
 
         ScrollView {
@@ -320,10 +494,11 @@ Item {
                     required property int index
                     width: parent.width
                     implicitHeight: csLabel.implicitHeight + 16
-                    hasCursor: root.cursorDemoIndex === index
+                    hasCursor: root.focusSection === "cursor-surface" && root.selectedIndex === index
                     current: index === 1
                     foreground: root.foreground
                     fill: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
 
                     Text {
                       id: csLabel
@@ -343,7 +518,10 @@ Item {
                       anchors.fill: parent
                       hoverEnabled: true
                       cursorShape: Qt.PointingHandCursor
-                      onContainsMouseChanged: if (containsMouse) root.cursorDemoIndex = parent.index
+                      onContainsMouseChanged: if (containsMouse) {
+                        root.focusSection = "cursor-surface"
+                        root.selectedIndex = parent.index
+                      }
                     }
                   }
                 }
@@ -394,6 +572,9 @@ Item {
                   tooltipForeground: root.foreground
                   foreground: root.foreground
                   fontFamily: root.fontFamily
+                  hasCursor: root.focusSection === "pill-button" && root.selectedIndex === 0
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  HoverHandler { onHoveredChanged: if (hovered) { root.focusSection = "pill-button"; root.selectedIndex = 0 } }
                 }
 
                 PillButton {
@@ -404,6 +585,9 @@ Item {
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   active: true
+                  hasCursor: root.focusSection === "pill-button" && root.selectedIndex === 1
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  HoverHandler { onHoveredChanged: if (hovered) { root.focusSection = "pill-button"; root.selectedIndex = 1 } }
                 }
 
                 PillButton {
@@ -415,6 +599,9 @@ Item {
                   fontFamily: root.fontFamily
                   horizontalPadding: 8
                   verticalPadding: 4
+                  hasCursor: root.focusSection === "pill-button" && root.selectedIndex === 2
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  HoverHandler { onHoveredChanged: if (hovered) { root.focusSection = "pill-button"; root.selectedIndex = 2 } }
                 }
 
                 PillButton {
@@ -426,6 +613,9 @@ Item {
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   active: true
+                  hasCursor: root.focusSection === "pill-button" && root.selectedIndex === 3
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  HoverHandler { onHoveredChanged: if (hovered) { root.focusSection = "pill-button"; root.selectedIndex = 3 } }
                 }
 
                 PillButton {
@@ -434,6 +624,9 @@ Item {
                   fontFamily: root.fontFamily
                   focusable: true
                   bordered: true
+                  hasCursor: root.focusSection === "pill-button" && root.selectedIndex === 4
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  HoverHandler { onHoveredChanged: if (hovered) { root.focusSection = "pill-button"; root.selectedIndex = 4 } }
                 }
               }
             }
@@ -486,10 +679,13 @@ Item {
                     tooltipForeground: root.foreground
                     fontFamily: root.fontFamily
                     tooltipText: "Pick " + modelData
-                    hasCursor: root.pillDemoIndex === index
+                    hasCursor: root.focusSection === "cursor-pill" && root.selectedIndex === index
                     active: modelData === "Cloudflare"
-                    onHovered: function(h) { if (h) root.pillDemoIndex = index }
-                    onClicked: root.pillDemoIndex = index
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "cursor-pill"; root.selectedIndex = index }
+                    }
+                    onClicked: { root.focusSection = "cursor-pill"; root.selectedIndex = index }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                   }
                 }
               }
@@ -538,6 +734,11 @@ Item {
                   foreground: root.foreground
                   panelBackground: root.background
                   fontFamily: root.fontFamily
+                  hasCursor: root.focusSection === "panel-action-button" && root.selectedIndex === 0
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "panel-action-button"; root.selectedIndex = 0 }
+                  }
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                 }
 
                 PanelActionButton {
@@ -547,6 +748,11 @@ Item {
                   hoverColor: root.urgent
                   panelBackground: root.background
                   fontFamily: root.fontFamily
+                  hasCursor: root.focusSection === "panel-action-button" && root.selectedIndex === 1
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "panel-action-button"; root.selectedIndex = 1 }
+                  }
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                 }
 
                 PanelActionButton {
@@ -556,6 +762,11 @@ Item {
                   panelBackground: root.background
                   fontFamily: root.fontFamily
                   enabled: false
+                  hasCursor: root.focusSection === "panel-action-button" && root.selectedIndex === 2
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "panel-action-button"; root.selectedIndex = 2 }
+                  }
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                 }
 
                 PanelActionButton {
@@ -567,6 +778,11 @@ Item {
                   fontSize: 13
                   size: 26
                   focusable: true
+                  hasCursor: root.focusSection === "panel-action-button" && root.selectedIndex === 3
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "panel-action-button"; root.selectedIndex = 3 }
+                  }
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                 }
               }
             }
@@ -594,12 +810,19 @@ Item {
             }
 
             Rectangle {
+              id: tipSwatch
               width: 140
               height: 36
-              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
-              border.width: 1
+              readonly property bool focused: root.focusSection === "panel-tool-tip"
+              color: tipMouse.containsMouse || focused
+                ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+              border.color: focused
+                ? Style.focusBorderColor
+                : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
+              border.width: focused ? Style.focusBorderWidth : 1
               radius: Style.cornerRadius
+              onFocusedChanged: if (focused) root.ensureCursorVisible(this)
 
               Text {
                 anchors.centerIn: parent
@@ -614,10 +837,14 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: if (containsMouse) {
+                  root.focusSection = "panel-tool-tip"
+                  root.selectedIndex = 0
+                }
               }
 
               PanelToolTip {
-                visible: tipMouse.containsMouse
+                visible: tipMouse.containsMouse || tipSwatch.focused
                 text: "Styled tooltip — drop into any panel"
                 panelForeground: root.foreground
                 panelBackground: root.background
@@ -649,12 +876,24 @@ Item {
             }
 
             Rectangle {
+              id: sliderWrapper
               width: parent.width
               implicitHeight: sliderRow.implicitHeight + 24
+              readonly property bool focused: root.focusSection === "slider"
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
+              border.color: focused
+                ? Style.focusBorderColor
+                : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+              border.width: focused ? Style.focusBorderWidth : 1
+              onFocusedChanged: if (focused) root.ensureCursorVisible(this)
+
+              HoverHandler {
+                onHoveredChanged: if (hovered) {
+                  root.focusSection = "slider"
+                  root.selectedIndex = 0
+                }
+              }
 
               Row {
                 id: sliderRow
@@ -738,13 +977,23 @@ Item {
                   model: ["top", "right", "bottom", "left"]
                   ChoiceButton {
                     required property string modelData
+                    required property int index
                     text: modelData
                     foreground: root.foreground
                     background: root.background
                     accent: root.accent
                     fontFamily: root.fontFamily
                     selected: root.choiceDemoValue === modelData
-                    onClicked: root.choiceDemoValue = modelData
+                    hasCursor: root.focusSection === "choice-button" && root.selectedIndex === index
+                    onClicked: {
+                      root.focusSection = "choice-button"
+                      root.selectedIndex = index
+                      root.choiceDemoValue = modelData
+                    }
+                    onHovered: function(h) {
+                      if (h) { root.focusSection = "choice-button"; root.selectedIndex = index }
+                    }
+                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                   }
                 }
               }
@@ -790,15 +1039,28 @@ Item {
                 spacing: 10
 
                 TextField {
+                  id: demoTextField
                   width: parent.width
-                  placeholderText: "Type something"
+                  placeholderText: "Type something (Enter to start editing, Esc to leave)"
                   foreground: root.foreground
                   accent: root.accent
                   font.family: root.fontFamily
                   font.pixelSize: 12
+                  hasCursor: !activeFocus && root.focusSection === "text-field" && root.selectedIndex === 0
+                  onHoveredChanged: if (hovered) {
+                    root.focusSection = "text-field"; root.selectedIndex = 0
+                  }
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  Keys.onPressed: function(event) {
+                    if (event.key === Qt.Key_Escape) {
+                      focus = false
+                      event.accepted = true
+                    }
+                  }
                 }
 
                 TextField {
+                  id: demoPasswordField
                   width: parent.width
                   password: true
                   placeholderText: "Password"
@@ -806,6 +1068,17 @@ Item {
                   accent: root.accent
                   font.family: root.fontFamily
                   font.pixelSize: 12
+                  hasCursor: !activeFocus && root.focusSection === "text-field" && root.selectedIndex === 1
+                  onHoveredChanged: if (hovered) {
+                    root.focusSection = "text-field"; root.selectedIndex = 1
+                  }
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+                  Keys.onPressed: function(event) {
+                    if (event.key === Qt.Key_Escape) {
+                      focus = false
+                      event.accepted = true
+                    }
+                  }
                 }
               }
             }
@@ -840,7 +1113,15 @@ Item {
               accent: root.accent
               fontFamily: root.fontFamily
               checked: root.toggleDemoOn
-              onClicked: root.toggleDemoOn = !root.toggleDemoOn
+              hasCursor: root.focusSection === "toggle" && root.selectedIndex === 0
+              onHovered: function(h) {
+                if (h) { root.focusSection = "toggle"; root.selectedIndex = 0 }
+              }
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+              onClicked: {
+                root.focusSection = "toggle"; root.selectedIndex = 0
+                root.toggleDemoOn = !root.toggleDemoOn
+              }
             }
 
             Toggle {
@@ -852,7 +1133,15 @@ Item {
               fontFamily: root.fontFamily
               rounded: false
               checked: root.toggleSquareOn
-              onClicked: root.toggleSquareOn = !root.toggleSquareOn
+              hasCursor: root.focusSection === "toggle" && root.selectedIndex === 1
+              onHovered: function(h) {
+                if (h) { root.focusSection = "toggle"; root.selectedIndex = 1 }
+              }
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+              onClicked: {
+                root.focusSection = "toggle"; root.selectedIndex = 1
+                root.toggleSquareOn = !root.toggleSquareOn
+              }
             }
           }
 
@@ -895,11 +1184,17 @@ Item {
                 spacing: 6
 
                 Dropdown {
+                  id: demoDropdown
                   width: 260
                   label: "Center anchor"
                   fontFamily: root.fontFamily
                   options: ["calendar", "weather", "clock", "battery"]
                   value: root.dropdownDemoValue
+                  hasCursor: root.focusSection === "dropdown" && root.selectedIndex === 0
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "dropdown"; root.selectedIndex = 0 }
+                  }
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                   onChanged: function(v) { root.dropdownDemoValue = v }
                 }
               }
@@ -945,10 +1240,16 @@ Item {
                 spacing: 6
 
                 SearchableDropdown {
+                  id: demoSearchableDropdown
                   width: 280
                   label: "Add widget"
                   fontFamily: root.fontFamily
                   placeholderText: "Search widgets..."
+                  hasCursor: root.focusSection === "searchable-dropdown" && root.selectedIndex === 0
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "searchable-dropdown"; root.selectedIndex = 0 }
+                  }
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                   options: [
                     { value: "clock", label: "Clock", description: "Time + date display" },
                     { value: "weather", label: "Weather", description: "Local conditions and forecast" },
@@ -1023,6 +1324,14 @@ Item {
                   current: true
                   foreground: root.foreground
                   fill: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                  hasCursor: root.focusSection === "composed" && root.selectedIndex === 0
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+
+                  HoverHandler {
+                    onHoveredChanged: if (hovered) {
+                      root.focusSection = "composed"; root.selectedIndex = 0
+                    }
+                  }
 
                   Item {
                     id: composedRow
@@ -1090,6 +1399,14 @@ Item {
                   implicitHeight: idleRow.implicitHeight + 12
                   foreground: root.foreground
                   fill: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                  hasCursor: root.focusSection === "composed" && root.selectedIndex === 1
+                  onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
+
+                  HoverHandler {
+                    onHoveredChanged: if (hovered) {
+                      root.focusSection = "composed"; root.selectedIndex = 1
+                    }
+                  }
 
                   Item {
                     id: idleRow
