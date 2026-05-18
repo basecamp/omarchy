@@ -465,11 +465,11 @@ Item {
     }
   }
 
-  // Header pill — wraps PillButton with cursor-state binding so it
-  // participates in the same single-cursor model as device rows. We don't
-  // use CursorSurface here because the pill already provides its
-  // own active/hover visuals and we want them to layer correctly.
-  component HeaderPill: PillButton {
+  // Header pill: a CursorPill bound into the panel's "header" cursor
+  // section. CursorPill collapses what used to be a PillButton subclass +
+  // overlay MouseArea into one component; we keep the pillIndex / activated
+  // shim here so the three header pill instantiations stay readable.
+  component HeaderPill: CursorPill {
     id: pill
     required property int pillIndex
     property bool pillEnabled: true
@@ -485,23 +485,13 @@ Item {
     enabled: pillEnabled
     opacity: pillEnabled ? 1 : 0.4
 
-    // Hand off to PillButton's built-in cursor visuals so keyboard cursor and
-    // mouse hover render identically (fill + 1px border).
     hasCursor: root.focusSection === "header" && root.selectedIndex === pillIndex
 
     onClicked: pill.activated()
-
-    // Mouse hover updates root cursor state so keyboard + mouse share one
-    // selection model.
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      acceptedButtons: Qt.NoButton
-      propagateComposedEvents: true
-      onContainsMouseChanged: if (containsMouse) {
-        root.focusSection = "header"
-        root.selectedIndex = pill.pillIndex
-      }
+    onHovered: function(isHovered) {
+      if (!isHovered) return
+      root.focusSection = "header"
+      root.selectedIndex = pill.pillIndex
     }
   }
 

@@ -862,51 +862,29 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
   // One DNS provider pill. The cursor + current visuals come entirely from
   // CursorSurface; this component just binds them to the panel's cursor
   // state and renders the label/tooltip/click target.
-  component DnsProviderPill: CursorSurface {
+  component DnsProviderPill: CursorPill {
     id: pill
     required property string provider
     required property int index
-    property string tooltipText: ""
 
-    signal clicked()
-
-    hasCursor: root.focusSection === "dns" && root.dnsIndex === index
-    current: root.dnsProvider === provider
+    text: provider
     foreground: root.bar.foreground
-    fill: root.activeFill
+    tooltipBackground: root.bar.background
+    tooltipForeground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: 10
+    verticalPadding: 6
 
-    implicitWidth: pillLabel.implicitWidth + 20
-    implicitHeight: pillLabel.implicitHeight + 12
+    // Map the panel's domain semantics onto CursorPill's structural props:
+    // `current DNS` is the pill's `active` fill; the keyboard cursor lights
+    // up `hasCursor`.
+    active: root.dnsProvider === provider
+    hasCursor: root.focusSection === "dns" && root.dnsIndex === index
 
-    Text {
-      id: pillLabel
-      anchors.centerIn: parent
-      text: pill.provider
-      color: root.bar.foreground
-      font.family: root.bar.fontFamily
-      font.pixelSize: 12
-    }
-
-    MouseArea {
-      id: pillMouse
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-
-      onContainsMouseChanged: if (containsMouse) {
-        root.focusSection = "dns"
-        root.dnsIndex = pill.index
-      }
-
-      onClicked: pill.clicked()
-    }
-
-    PanelToolTip {
-      visible: pill.tooltipText !== "" && pillMouse.containsMouse
-      text: pill.tooltipText
-      panelForeground: root.bar.foreground
-      panelBackground: root.bar.background
-      fontFamily: root.bar.fontFamily
+    onHovered: function(isHovered) {
+      if (!isHovered) return
+      root.focusSection = "dns"
+      root.dnsIndex = pill.index
     }
   }
 
