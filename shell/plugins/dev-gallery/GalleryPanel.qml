@@ -1121,18 +1121,14 @@ Item {
               wrapMode: Text.WordWrap
             }
 
-            Rectangle {
+            CursorSurface {
               id: sliderWrapper
               width: parent.width
               implicitHeight: sliderRow.implicitHeight + 24
-              readonly property bool focused: root.focusSection === "slider"
-              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: Style.cornerRadius
-              border.color: focused
-                ? Style.focusBorderColor
-                : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: focused ? Style.focusBorderWidth : 1
-              onFocusedChanged: if (focused) root.ensureCursorVisible(this)
+              outline: true
+              foreground: root.foreground
+              hasCursor: root.focusSection === "slider"
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
 
               HoverHandler {
                 onHoveredChanged: if (hovered) {

@@ -415,7 +415,7 @@ Item {
               hasCursor: root.focusSection === "brightness" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
               foreground: root.bar.foreground
-              fill: "transparent"
+              outline: true
 
               Row {
                 id: brightnessInner
