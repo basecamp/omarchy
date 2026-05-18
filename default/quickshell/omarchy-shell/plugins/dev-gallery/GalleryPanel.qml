@@ -90,11 +90,12 @@ Item {
   property bool toggleSquareOn: false
   property string dropdownDemoValue: "calendar"
   property string searchableDemoValue: ""
+  property int numberDemoValue: 15
 
   readonly property var visibleSections: [
     "cursor-surface", "pill-button", "cursor-pill", "panel-action-button",
-    "panel-tool-tip", "slider", "choice-button", "text-field", "toggle",
-    "dropdown", "searchable-dropdown", "composed"
+    "panel-tool-tip", "slider", "choice-button", "text-field", "number-field",
+    "toggle", "dropdown", "searchable-dropdown", "composed"
   ]
 
   function sectionCount(section) {
@@ -107,6 +108,7 @@ Item {
       case "slider":              return 1
       case "choice-button":       return 4
       case "text-field":          return 2
+      case "number-field":        return 1
       case "toggle":              return 2
       case "dropdown":            return 1
       case "searchable-dropdown": return 1
@@ -209,6 +211,10 @@ Item {
     if (focusSection === "text-field") {
       if (selectedIndex === 0) demoTextField.forceActiveFocus()
       else demoPasswordField.forceActiveFocus()
+      return
+    }
+    if (focusSection === "number-field") {
+      numberDemo.field.forceActiveFocus()
       return
     }
     // pill / panel-action-button / cursor-surface / composed: nothing to
@@ -1078,6 +1084,57 @@ Item {
                     }
                   }
                 }
+              }
+            }
+          }
+
+          // ---- NumberField ---------------------------------------------------
+          Column {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              text: "NumberField"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 13
+              font.bold: true
+            }
+            Text {
+              text: "Labeled spin box for integer settings. Up/down arrows step the value; the field accepts typed input. Pair with `from`/`to`/`stepSize` to constrain range."
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              width: parent.width
+              wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+              width: parent.width
+              implicitHeight: numberDemo.implicitHeight + 24
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
+              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+              border.width: 1
+              radius: Style.cornerRadius
+
+              NumberField {
+                id: numberDemo
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 12
+                label: "Auto-refresh interval (minutes)"
+                from: 1
+                to: 1440
+                value: root.numberDemoValue
+                foreground: root.foreground
+                accent: root.accent
+                fontFamily: root.fontFamily
+                hasCursor: root.focusSection === "number-field" && root.selectedIndex === 0
+                onModified: function(v) { root.numberDemoValue = v }
+                onHovered: function(on) {
+                  if (on) { root.focusSection = "number-field"; root.selectedIndex = 0 }
+                }
+                onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
               }
             }
           }

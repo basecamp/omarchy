@@ -5,6 +5,7 @@ CursorPill 1.0 CursorPill.qml
 CursorSurface 1.0 CursorSurface.qml
 Dropdown 1.0 Dropdown.qml
 KeyboardPanel 1.0 KeyboardPanel.qml
+NumberField 1.0 NumberField.qml
 PanelActionButton 1.0 PanelActionButton.qml
 PanelKeyCatcher 1.0 PanelKeyCatcher.qml
 PanelSectionHeader 1.0 PanelSectionHeader.qml
