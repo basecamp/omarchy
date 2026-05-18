@@ -77,7 +77,7 @@ Item {
   // — OnDemand only grants focus on click/hover.
   onPopupOpenChanged: {
     if (popupOpen) {
-      refresh()
+      refresh(true)
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       focusSection = "dns"
       var idx = dnsProviders.indexOf(dnsProvider)
@@ -215,7 +215,8 @@ iwctl known-networks list 2>/dev/null \\
     return "󰤮"
   }
 
-  function refresh() {
+  function refresh(scanWifi) {
+    if (scanWifi === undefined) scanWifi = false
     if (!detailsProc.running) detailsProc.running = true
     if (!dnsProc.running) {
       dnsProc.command = ["bash", "-lc", root.dnsCommand("")]
@@ -223,8 +224,36 @@ iwctl known-networks list 2>/dev/null \\
     }
     if (!wifiProc.running) {
       scanning = true
+      wifiProc.command = ["bash", "-c", root.wifiScanScript(scanWifi)]
       wifiProc.running = true
     }
+  }
+
+  function wifiScanScript(scanWifi) {
+    return `
+station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
+[[ -z $station ]] && exit 0
+echo STATION_AVAILABLE
+${scanWifi ? 'iwctl station "$station" scan >/dev/null 2>&1 || true' : ''}
+iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
+  | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
+  | awk '
+      NR <= 4 { next }
+      /^[[:space:]]*$/ { next }
+      {
+        connected = (substr($0, 1, 4) ~ />/) ? 1 : 0
+        line = $0
+        sub(/^[[:space:]]*>?[[:space:]]+/, "", line)
+        sub(/[[:space:]]+$/, "", line)
+        n = split(line, parts, /[[:space:]]{2,}/)
+        if (n < 3) next
+        ssid = parts[1]
+        security = parts[n-1]
+        dbm = parts[n] / 100
+        signal = (dbm >= -50) ? 100 : (dbm <= -100) ? 0 : int(2 * (dbm + 100))
+        printf "%d\\t%s\\t%d\\t%s\\n", connected, ssid, signal, security
+      }'
+`
   }
 
   function formatSpeed(mbps) {
@@ -454,29 +483,6 @@ fi
   // iwctl's table layout starts each row with one, which breaks naive parsing.
   Process {
     id: wifiProc
-    command: ["bash", "-c", `
-station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
-[[ -z $station ]] && exit 0
-echo STATION_AVAILABLE
-iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
-  | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
-  | awk '
-      NR <= 4 { next }
-      /^[[:space:]]*$/ { next }
-      {
-        connected = (substr($0, 1, 4) ~ />/) ? 1 : 0
-        line = $0
-        sub(/^[[:space:]]*>?[[:space:]]+/, "", line)
-        sub(/[[:space:]]+$/, "", line)
-        n = split(line, parts, /[[:space:]]{2,}/)
-        if (n < 3) next
-        ssid = parts[1]
-        security = parts[n-1]
-        dbm = parts[n] / 100
-        signal = (dbm >= -50) ? 100 : (dbm <= -100) ? 0 : int(2 * (dbm + 100))
-        printf "%d\\t%s\\t%d\\t%s\\n", connected, ssid, signal, security
-      }'
-`]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateWifi(text)
@@ -701,6 +707,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           iconText: "󰑐"
+          iconSpinning: root.scanning
           tooltipText: "Refresh"
           tooltipBackground: root.bar.background
           tooltipForeground: root.bar.foreground
@@ -709,7 +716,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           verticalPadding: 4
           iconSize: 14
           active: root.scanning
-          onClicked: root.refresh()
+          onClicked: root.refresh(true)
         }
       }
 

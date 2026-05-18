@@ -18,6 +18,7 @@ Rectangle {
   property real fontSize: 12
   property real iconSize: 14
   property real iconRotation: 0
+  property bool iconSpinning: false
   property real horizontalPadding: 10
   property real verticalPadding: 6
   property bool active: false
@@ -112,14 +113,23 @@ Rectangle {
     spacing: 8
 
     Text {
+      id: iconLabel
       visible: root.iconText !== ""
       text: root.iconText
       color: root.foreground
       font.family: root.fontFamily
       font.pixelSize: root.iconSize
-      rotation: root.iconRotation
+      rotation: root.iconSpinning ? 0 : root.iconRotation
       transformOrigin: Item.Center
       anchors.verticalCenter: parent.verticalCenter
+
+      RotationAnimation on rotation {
+        from: 0
+        to: 360
+        duration: 900
+        loops: Animation.Infinite
+        running: root.iconSpinning
+      }
     }
 
     Text {

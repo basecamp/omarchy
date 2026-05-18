@@ -415,21 +415,12 @@ Item {
 
             HeaderPill {
               pillIndex: 0
-              property real scanRotation: 0
               iconText: "󰑐"
-              iconRotation: root.adapter && root.adapter.discovering ? scanRotation : 0
+              iconSpinning: root.adapter && root.adapter.discovering
               tooltipText: !root.adapter ? "" : !root.adapter.enabled ? "Bluetooth is off"
                 : root.adapter.discovering ? "Stop scanning" : "Scan for devices"
               pillEnabled: root.adapter !== null && root.adapter.enabled
               onActivated: if (root.adapter) root.adapter.discovering = !root.adapter.discovering
-
-              NumberAnimation on scanRotation {
-                from: 0
-                to: 360
-                duration: 900
-                loops: Animation.Infinite
-                running: root.adapter && root.adapter.discovering
-              }
             }
 
             HeaderPill {
