@@ -770,90 +770,26 @@ Item {
         height: 1
       }
 
-      PillButton {
+      SearchableDropdown {
         id: addPill
-        text: "+ Add widget"
-        foreground: root.foreground
-        fontFamily: root.fontFamily
-        focusable: true
-        bordered: true
-        onClicked: addPopup.open()
-      }
-    }
-
-    // Styled add-widget popup. Anchored under the "+ Add widget" pill,
-    // pulls fresh data from the host's availableToAdd() each open.
-    Popup {
-      id: addPopup
-      parent: addPill
-      x: addPill.width - width
-      y: addPill.height + 4
-      width: 280
-      implicitHeight: Math.min(addList.contentHeight + 2, 340)
-      padding: 1
-      modal: false
-      focus: true
-
-      background: Rectangle {
-        color: root.background
-        border.color: root.foreground
-        border.width: 1
-        radius: root.cornerRadius
-      }
-
-      contentItem: ListView {
-        id: addList
-        clip: true
-        model: root.availableToAdd(section.sectionKey)
-        boundsBehavior: Flickable.StopAtBounds
-
-        delegate: Rectangle {
-          required property var modelData
-          width: addList.width
-          height: 36
-          color: addArea.containsMouse
-            ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-            : "transparent"
-
-          Column {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 1
-
-            Text {
-              text: modelData.name
-                + (modelData.elsewhere ? "  (elsewhere)" : "")
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: 12
-              elide: Text.ElideRight
-              width: parent.width
-            }
-            Text {
-              visible: text !== ""
-              text: modelData.description || ""
-              color: Qt.darker(root.foreground, 1.5)
-              font.family: root.fontFamily
-              font.pixelSize: 10
-              elide: Text.ElideRight
-              width: parent.width
-            }
+        label: "󰐕 Add widget"
+        value: ""
+        placeholderText: "Search widgets..."
+        emptyText: "No widgets to add"
+        width: 220
+        options: {
+          var list = root.availableToAdd(section.sectionKey)
+          var out = []
+          for (var i = 0; i < list.length; i++) {
+            out.push({ value: list[i].id, label: list[i].name + (list[i].elsewhere ? "  (elsewhere)" : "") })
           }
-
-          MouseArea {
-            id: addArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-              root.addEntry(section.sectionKey, modelData.id)
-              addPopup.close()
-            }
-          }
+          return out
         }
+        foreground: root.foreground
+        accent: root.accent
+        cornerRadius: root.cornerRadius
+        fontFamily: root.fontFamily
+        onChanged: function(v) { if (v) root.addEntry(section.sectionKey, v) }
       }
     }
 
@@ -920,7 +856,7 @@ Item {
       spacing: 4
 
       PanelActionButton {
-        iconText: "↑"
+        iconText: "󰁝"
         tooltipText: "Move up"
         foreground: root.foreground
         panelBackground: root.background
@@ -931,7 +867,7 @@ Item {
         onClicked: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex - 1)
       }
       PanelActionButton {
-        iconText: "↓"
+        iconText: "󰁅"
         tooltipText: "Move down"
         foreground: root.foreground
         panelBackground: root.background
@@ -942,7 +878,7 @@ Item {
         onClicked: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex + 1)
       }
       PanelActionButton {
-        iconText: "⚙"
+        iconText: "󰒓"
         tooltipText: "Settings"
         foreground: root.foreground
         panelBackground: root.background
@@ -954,7 +890,7 @@ Item {
         onClicked: settingsLoader.open(card.entry)
       }
       PanelActionButton {
-        iconText: "✕"
+        iconText: "󰅖"
         tooltipText: "Remove"
         foreground: root.urgent
         hoverColor: root.urgent
