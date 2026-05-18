@@ -27,12 +27,11 @@ Item {
 
   Process {
     id: statusProc
-    command: ["bash", "-lc", "if pgrep -x hyprlock >/dev/null 2>&1; then echo locked; elif pgrep -f 'systemd-inhibit' >/dev/null 2>&1; then echo inhibited; elif [[ -f /tmp/omarchy-idle-off ]]; then echo off; else echo idle; fi"]
+    command: ["bash", "-lc", "pgrep -x hypridle >/dev/null 2>&1 && echo running || echo stopped"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        var state = String(text || "").trim()
-        root.active = state === "inhibited" || state === "off"
+        root.active = String(text || "").trim() === "stopped"
       }
     }
   }
@@ -59,7 +58,7 @@ Item {
     bar: root.bar
     text: root.icon
     active: root.active
-    tooltipText: root.active ? "Idle inhibited — click to allow sleep" : "System can idle — click to keep awake"
+    tooltipText: root.active ? "Staying awake — click to allow idle" : "Can idle — click to stay awake"
     onPressed: function() { root.toggle() }
   }
 }
