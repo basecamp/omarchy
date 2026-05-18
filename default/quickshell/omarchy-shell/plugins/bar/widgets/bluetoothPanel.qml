@@ -331,34 +331,16 @@ Item {
     contentWidth: 320
     contentHeight: column.implicitHeight + 28
 
-    Item {
+    PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      focus: true
-      Keys.priority: Keys.AfterItem
-      Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-          root.closePopout(); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Down || event.text === "j") {
-          root.moveCursor(1); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Up || event.text === "k") {
-          root.moveCursor(-1); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Right || event.text === "l") {
-          root.moveCursorH(1); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Left || event.text === "h") {
-          root.moveCursorH(-1); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
-          root.activateCursor(); event.accepted = true; return
-        }
-        if (event.text === "x" || event.text === "X") {
-          root.deleteSelected(); event.accepted = true
-        }
+      onMoveRequested: function(dx, dy) {
+        if (dy !== 0) root.moveCursor(dy)
+        else if (dx !== 0) root.moveCursorH(dx)
       }
+      onActivateRequested: root.activateCursor()
+      onCloseRequested: root.closePopout()
+      onDeleteRequested: root.deleteSelected()
 
       Column {
         id: column
