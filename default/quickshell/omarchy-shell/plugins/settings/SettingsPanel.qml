@@ -744,7 +744,7 @@ Item {
       function onDraftRevisionChanged() { section.entries = root.sectionArray(section.sectionKey) }
     }
 
-    Row {
+    RowLayout {
       width: section.width
       spacing: 8
 
@@ -754,7 +754,7 @@ Item {
         font.family: root.fontFamily
         font.pixelSize: 13
         font.bold: true
-        anchors.verticalCenter: parent.verticalCenter
+        Layout.alignment: Qt.AlignVCenter
       }
 
       Text {
@@ -762,21 +762,20 @@ Item {
         color: Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
         font.pixelSize: 11
-        anchors.verticalCenter: parent.verticalCenter
+        Layout.alignment: Qt.AlignVCenter
       }
 
-      Item {
-        width: Math.max(0, section.width - 200 - 100)
-        height: 1
-      }
+      Item { Layout.fillWidth: true; implicitHeight: 1 }
 
       SearchableDropdown {
         id: addPill
-        label: "󰐕 Add widget"
+        showLabel: false
+        triggerLabel: "󰐕 Add widget"
         value: ""
         placeholderText: "Search widgets..."
         emptyText: "No widgets to add"
-        width: 220
+        Layout.preferredWidth: 220
+        Layout.alignment: Qt.AlignVCenter
         options: {
           var list = root.availableToAdd(section.sectionKey)
           var out = []
