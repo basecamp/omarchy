@@ -1551,7 +1551,7 @@ Item {
               elide: Text.ElideRight
             }
 
-            PillButton {
+            Button {
               id: rowPinBtn
               anchors.verticalCenter: parent.verticalCenter
               anchors.right: parent.right
@@ -1565,7 +1565,7 @@ Item {
               onClicked: trayRoot.togglePin(rowRoot.itemId)
             }
 
-            PillButton {
+            Button {
               id: rowHideBtn
               anchors.verticalCenter: parent.verticalCenter
               anchors.right: rowPinBtn.left

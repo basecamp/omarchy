@@ -12,6 +12,17 @@ active     = "{{ color1 }}"
 size-horizontal = 26
 size-vertical   = 28
 
+[style]
+# State alphas used by every interactive surface in the kit (Button,
+# Toggle, TextField, etc.). Foreground-tinted unless noted.
+border-width        = 1     # idle 1px border on inputs and bordered buttons
+focus-border-width  = 3     # accent ring on Tab focus
+idle-border-alpha   = 0.4   # alpha for the idle 1px foreground border
+hot-fill-alpha      = 0.08  # cursor / hover fill
+selected-fill-alpha = 0.18  # selected / active / current fill
+pressed-fill-alpha  = 0.22  # button pressed
+focus-fill-alpha    = 0.22  # accent fill behind Tab focus ring
+
 [font]
 # base-size is the rem root for the type scale. Every Style.font.<token>
 # derives from it (e.g. body = base, subtitle ≈ base * 1.083,

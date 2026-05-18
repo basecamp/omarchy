@@ -95,20 +95,19 @@ Item {
   property int numberDemoValue: 15
 
   readonly property var visibleSections: [
-    "cursor-surface", "pill-button", "cursor-pill", "panel-action-button",
-    "panel-tool-tip", "slider", "choice-button", "text-field", "number-field",
+    "cursor-surface", "button", "button-group", "panel-action-button",
+    "panel-tool-tip", "slider", "text-field", "number-field",
     "toggle", "dropdown", "searchable-dropdown", "composed"
   ]
 
   function sectionCount(section) {
     switch (section) {
       case "cursor-surface":      return 3
-      case "pill-button":         return 5
-      case "cursor-pill":         return 4
+      case "button":              return 5
+      case "button-group":        return 4
       case "panel-action-button": return 4
       case "panel-tool-tip":      return 1
       case "slider":              return 1
-      case "choice-button":       return 4
       case "text-field":          return 2
       case "number-field":        return 1
       case "toggle":              return 2
@@ -120,13 +119,11 @@ Item {
   }
 
   // True for sections whose primitives lay out horizontally (a row of
-  // pills, choice buttons, etc.) — j/k jumps to the next/prev section,
-  // h/l walks within the row.
+  // buttons) — j/k jumps to the next/prev section, h/l walks within the row.
   function sectionIsHorizontal(section) {
-    return section === "pill-button"
-      || section === "cursor-pill"
+    return section === "button"
+      || section === "button-group"
       || section === "panel-action-button"
-      || section === "choice-button"
   }
 
   // True for sections where h/l should adjust a value rather than walk.
@@ -191,7 +188,7 @@ Item {
   }
 
   function activateCursor() {
-    if (focusSection === "choice-button") {
+    if (focusSection === "button-group") {
       var opts = ["top", "right", "bottom", "left"]
       if (selectedIndex >= 0 && selectedIndex < opts.length)
         root.choiceDemoValue = opts[selectedIndex]
@@ -802,20 +799,20 @@ Item {
             }
           }
 
-          // ---- PillButton --------------------------------------------------
+          // ---- Button ------------------------------------------------------
           Column {
             width: parent.width
             spacing: 8
 
             Text {
-              text: "PillButton"
+              text: "Button"
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
-              text: "Compact rounded button with optional icon, label, tooltip, and `active` highlight. Used inside panels for inline actions (Refresh, DNS pills, Bluetooth header)."
+              text: "The kit's only button. State flags compose: hasCursor (panel cursor / hover) paints a tinted fill; active adds a persistent highlight; bordered draws a 1px idle ring for primary form buttons; focusable enables Tab focus with the accent ring. Click below or press h/l to walk the demo cursor."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -825,100 +822,92 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: pillCol.implicitHeight + 24
+              implicitHeight: buttonRow.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
               Row {
-                id: pillCol
+                id: buttonRow
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: 14
                 spacing: 6
 
-                PillButton {
+                Button {
                   text: "DHCP"
                   tooltipText: "Use DNS from DHCP"
-                  tooltipBackground: root.background
-                  tooltipForeground: root.foreground
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  hasCursor: root.focusSection === "pill-button" && root.selectedIndex === 0
+                  hasCursor: root.focusSection === "button" && root.selectedIndex === 0
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "button"; root.selectedIndex = 0 }
+                  }
                   onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
-                  HoverHandler { onHoveredChanged: if (hovered) { root.focusSection = "pill-button"; root.selectedIndex = 0 } }
                 }
 
-                PillButton {
+                Button {
                   text: "Cloudflare"
                   tooltipText: "Set DNS to Cloudflare"
-                  tooltipBackground: root.background
-                  tooltipForeground: root.foreground
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
                   active: true
-                  hasCursor: root.focusSection === "pill-button" && root.selectedIndex === 1
+                  hasCursor: root.focusSection === "button" && root.selectedIndex === 1
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "button"; root.selectedIndex = 1 }
+                  }
                   onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
-                  HoverHandler { onHoveredChanged: if (hovered) { root.focusSection = "pill-button"; root.selectedIndex = 1 } }
                 }
 
-                PillButton {
+                Button {
                   iconText: "󰑐"
                   tooltipText: "Refresh"
-                  tooltipBackground: root.background
-                  tooltipForeground: root.foreground
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
                   horizontalPadding: 8
                   verticalPadding: 4
-                  hasCursor: root.focusSection === "pill-button" && root.selectedIndex === 2
+                  hasCursor: root.focusSection === "button" && root.selectedIndex === 2
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "button"; root.selectedIndex = 2 }
+                  }
                   onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
-                  HoverHandler { onHoveredChanged: if (hovered) { root.focusSection = "pill-button"; root.selectedIndex = 2 } }
                 }
 
-                PillButton {
+                Button {
                   iconText: "󰂯"
                   text: "On"
                   tooltipText: "Turn Bluetooth off"
-                  tooltipBackground: root.background
-                  tooltipForeground: root.foreground
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
                   active: true
-                  hasCursor: root.focusSection === "pill-button" && root.selectedIndex === 3
+                  hasCursor: root.focusSection === "button" && root.selectedIndex === 3
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "button"; root.selectedIndex = 3 }
+                  }
                   onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
-                  HoverHandler { onHoveredChanged: if (hovered) { root.focusSection = "pill-button"; root.selectedIndex = 3 } }
                 }
 
-                PillButton {
+                Button {
                   text: "Apply"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
                   focusable: true
                   bordered: true
-                  hasCursor: root.focusSection === "pill-button" && root.selectedIndex === 4
+                  hasCursor: root.focusSection === "button" && root.selectedIndex === 4
+                  onHovered: function(h) {
+                    if (h) { root.focusSection = "button"; root.selectedIndex = 4 }
+                  }
                   onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
-                  HoverHandler { onHoveredChanged: if (hovered) { root.focusSection = "pill-button"; root.selectedIndex = 4 } }
                 }
               }
             }
           }
 
-          // ---- CursorPill --------------------------------------------------
+          // ---- ButtonGroup -------------------------------------------------
           Column {
             width: parent.width
             spacing: 8
 
             Text {
-              text: "CursorPill"
+              text: "ButtonGroup"
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.subtitle
               font.bold: true
             }
             Text {
-              text: "PillButton with panel-cursor wiring. Bind hasCursor to your cursor state and onHovered to update it on mouse enter; clicks come from PillButton's clicked() signal. Use this for any \"pick one in a row\" UI (wifi DNS pills, bluetooth header actions). Click below or press h/l to walk the demo cursor."
+              text: "Mutually-exclusive row of Buttons. Selected option paints the accent fill+border so the chosen value stands out from non-selected options the cursor may pass through. Click to pick or press h/l + Enter."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -928,38 +917,22 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: cpRow.implicitHeight + 24
+              implicitHeight: choiceRow.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
-              Row {
-                id: cpRow
+              ButtonGroup {
+                id: choiceRow
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: 14
-                spacing: 6
-
-                Repeater {
-                  model: ["DHCP", "Cloudflare", "Google", "Custom"]
-                  CursorPill {
-                    required property string modelData
-                    required property int index
-                    text: modelData
-                    foreground: root.foreground
-                    tooltipBackground: root.background
-                    tooltipForeground: root.foreground
-                    fontFamily: root.fontFamily
-                    tooltipText: "Pick " + modelData
-                    hasCursor: root.focusSection === "cursor-pill" && root.selectedIndex === index
-                    active: modelData === "Cloudflare"
-                    onHovered: function(h) {
-                      if (h) { root.focusSection = "cursor-pill"; root.selectedIndex = index }
-                    }
-                    onClicked: { root.focusSection = "cursor-pill"; root.selectedIndex = index }
-                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
-                  }
+                options: ["top", "right", "bottom", "left"]
+                value: root.choiceDemoValue
+                onChanged: function(v) {
+                  root.focusSection = "button-group"
+                  root.choiceDemoValue = v
                 }
               }
             }
@@ -1210,69 +1183,6 @@ Item {
             }
           }
 
-          // ---- ChoiceButton --------------------------------------------------
-          Column {
-            width: parent.width
-            spacing: 8
-
-            Text {
-              text: "ChoiceButton"
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.subtitle
-              font.bold: true
-            }
-            Text {
-              text: "A single button in a mutually-exclusive choice group. Selected styling uses the accent fill+border; focus styling uses the Style.focusBorderColor outline so keyboard nav can land on a non-selected option without it reading as the chosen one."
-              color: Qt.darker(root.foreground, 1.5)
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              width: parent.width
-              wrapMode: Text.WordWrap
-            }
-
-            Rectangle {
-              width: parent.width
-              implicitHeight: choiceRow.implicitHeight + 24
-              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: Style.cornerRadius
-              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
-              border.width: 1
-
-              Row {
-                id: choiceRow
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                spacing: 6
-
-                Repeater {
-                  model: ["top", "right", "bottom", "left"]
-                  ChoiceButton {
-                    required property string modelData
-                    required property int index
-                    text: modelData
-                    foreground: root.foreground
-                    background: root.background
-                    accent: root.accent
-                    fontFamily: root.fontFamily
-                    selected: root.choiceDemoValue === modelData
-                    hasCursor: root.focusSection === "choice-button" && root.selectedIndex === index
-                    onClicked: {
-                      root.focusSection = "choice-button"
-                      root.selectedIndex = index
-                      root.choiceDemoValue = modelData
-                    }
-                    onHovered: function(h) {
-                      if (h) { root.focusSection = "choice-button"; root.selectedIndex = index }
-                    }
-                    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
-                  }
-                }
-              }
-            }
-          }
-
           // ---- TextField -----------------------------------------------------
           Column {
             width: parent.width
@@ -1421,7 +1331,7 @@ Item {
               font.bold: true
             }
             Text {
-              text: "Title + description + switch. Click anywhere on the row to flip; caller updates `checked` in response. Same focus tokens as ChoiceButton."
+              text: "Title + description + switch. Click anywhere on the row to flip; caller updates `checked` in response. Same focus tokens as Button."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
