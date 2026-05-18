@@ -454,7 +454,7 @@ Item {
               hasCursor: root.focusSection === "output" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(outputSliderRow)
               foreground: root.bar.foreground
-              fill: "transparent"
+              outline: true
 
               Row {
                 id: outputSliderInner
@@ -571,7 +571,7 @@ Item {
               hasCursor: root.focusSection === "input" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(inputSliderRow)
               foreground: root.bar.foreground
-              fill: "transparent"
+              outline: true
 
               Row {
                 id: inputSliderInner
