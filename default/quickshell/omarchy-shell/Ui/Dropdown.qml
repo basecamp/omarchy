@@ -124,8 +124,8 @@ Item {
         x: 0
         y: trigger.height + 2
         width: trigger.width
-        implicitHeight: Math.min(root.options.length * root.popupRowHeight + 2,
-                                 root.popupRowHeight * 8 + 2)
+        implicitHeight: Math.min(root.options.length * root.popupRowHeight + Math.max(0, root.options.length - 1) * 4 + 2,
+                                 root.popupRowHeight * 8 + 7 * 4 + 2)
         padding: 1
         focus: true
 
@@ -143,6 +143,7 @@ Item {
 
         contentItem: ListView {
           id: optionList
+          spacing: 4
 
           Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) { popup.close(); event.accepted = true }

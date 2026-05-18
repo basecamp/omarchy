@@ -146,8 +146,8 @@ Item {
         y: trigger.height + 2
         width: trigger.width
         implicitHeight: Math.max(root.popupMinHeight,
-                                 Math.min(root.filtered.length * root.popupRowHeight + 50,
-                                          root.popupRowHeight * 6 + 50))
+                                 Math.min(root.filtered.length * root.popupRowHeight + Math.max(0, root.filtered.length - 1) * 4 + 50,
+                                          root.popupRowHeight * 6 + 5 * 4 + 50))
         padding: 1
         focus: true
 
@@ -229,6 +229,7 @@ Item {
             ListView {
               id: resultList
               anchors.fill: parent
+              spacing: 4
               clip: true
               boundsBehavior: Flickable.StopAtBounds
               model: root.filtered
