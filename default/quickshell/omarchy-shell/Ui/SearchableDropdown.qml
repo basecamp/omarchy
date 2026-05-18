@@ -23,6 +23,7 @@ Item {
   property var options: []
   property string placeholderText: "Search..."
   property string emptyText: "No matches"
+  property string triggerLabel: ""
 
   property color foreground: Color.foreground
   property color background: Color.popups.background
@@ -136,8 +137,8 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         anchors.leftMargin: 10
         anchors.rightMargin: 6
-        text: root.currentLabel() || root.placeholderText
-        color: root.currentLabel() ? root.foreground : Qt.darker(root.foreground, 1.5)
+        text: root.currentLabel() || root.triggerLabel || root.placeholderText
+        color: (root.currentLabel() || root.triggerLabel) ? root.foreground : Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
         font.pixelSize: 12
         elide: Text.ElideRight
