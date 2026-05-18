@@ -16,8 +16,19 @@ Item {
   property var systemInfo: ({})
   property var profiles: []
   property string activeProfile: ""
+  property int profileIndex: 0
 
   function closePopout() { popupOpen = false }
+
+  function selectProfileByDelta(delta) {
+    if (profiles.length === 0) { profileIndex = 0; return }
+    profileIndex = Math.max(0, Math.min(profiles.length - 1, profileIndex + delta))
+  }
+
+  function activateSelectedProfile() {
+    if (profileIndex < 0 || profileIndex >= profiles.length) return
+    setProfile(profiles[profileIndex])
+  }
 
   function batteryIcon() {
     var device = UPower.displayDevice
@@ -82,12 +93,26 @@ Item {
     }
     profiles = list
     activeProfile = active
+    if (profileIndex >= profiles.length) profileIndex = Math.max(0, profiles.length - 1)
+    if (popupOpen && activeProfile !== "") {
+      var idx = profiles.indexOf(activeProfile)
+      if (idx >= 0) profileIndex = idx
+    }
   }
 
   function setProfile(profile) {
     if (!profile || actionProc.running) return
     actionProc.command = ["powerprofilesctl", "set", profile]
     actionProc.running = true
+  }
+
+  onPopupOpenChanged: {
+    if (popupOpen) {
+      refresh()
+      var idx = profiles.indexOf(activeProfile)
+      profileIndex = idx >= 0 ? idx : 0
+      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+    }
   }
 
   Component.onCompleted: refresh()
@@ -145,7 +170,7 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
     rightExtraMargin: 2
     active: UPower.displayDevice && UPower.displayDevice.percentage <= 0.2 && UPower.onBattery
     tooltipText: ""
-    onPressed: function(b) { root.popupOpen = !root.popupOpen; if (root.popupOpen) root.refresh() }
+    onPressed: function(b) { root.popupOpen = !root.popupOpen }
   }
 
   KeyboardPanel {
@@ -157,12 +182,22 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
     contentWidth: 340
     contentHeight: column.implicitHeight + 28
 
-    Column {
-      id: column
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: parent.top
-      spacing: 16
+    PanelKeyCatcher {
+      id: keyCatcher
+      anchors.fill: parent
+      onMoveRequested: function(dx, dy) {
+        if (dx !== 0) root.selectProfileByDelta(dx)
+        else if (dy !== 0) root.selectProfileByDelta(dy)
+      }
+      onActivateRequested: root.activateSelectedProfile()
+      onCloseRequested: root.closePopout()
+
+      Column {
+        id: column
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        spacing: 16
 
       Item {
         width: parent.width
@@ -238,6 +273,7 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
             model: root.profiles
             CursorPill {
               required property var modelData
+              required property int index
               text: String(modelData).charAt(0).toUpperCase() + String(modelData).slice(1)
               foreground: root.bar.foreground
               background: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.04)
@@ -247,12 +283,17 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
               horizontalPadding: 10
               verticalPadding: 6
               active: root.activeProfile === modelData
+              hasCursor: root.profileIndex === index
               onClicked: root.setProfile(modelData)
+              onHovered: function(h) {
+                if (h) root.profileIndex = index
+              }
             }
           }
         }
       }
     }
+  }
   }
 
   component InfoPair: Row {
