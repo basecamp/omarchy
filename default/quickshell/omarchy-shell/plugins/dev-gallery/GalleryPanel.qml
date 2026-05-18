@@ -559,7 +559,7 @@ Item {
                 }
 
                 PanelActionButton {
-                  iconText: "⚙"
+                  iconText: "󰒓"
                   tooltipText: "Focusable (settings form button)"
                   foreground: root.foreground
                   panelBackground: root.background
@@ -599,7 +599,7 @@ Item {
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
               border.width: 1
-              radius: 4
+              radius: Style.cornerRadius
 
               Text {
                 anchors.centerIn: parent
