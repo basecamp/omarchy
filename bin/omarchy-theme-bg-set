@@ -22,4 +22,4 @@ ln -nsf "$BACKGROUND" "$CURRENT_BACKGROUND_LINK"
 
 # Update the live shell background immediately when it is running. The
 # background plugin also polls this symlink, but IPC avoids the visible delay.
-omarchy-shell-ipc-fast background set "$BACKGROUND" >/dev/null 2>&1 || true
+omarchy-shell background set "$BACKGROUND" >/dev/null 2>&1 || true

@@ -2,5 +2,5 @@
 
 # omarchy:summary=Ensure the status bar icon offering the available update is removed
 
-omarchy-shell-ipc --if-running bar refreshUpdate >/dev/null 2>&1 || true
+omarchy-shell bar refreshUpdate >/dev/null 2>&1 || true
 exit 0

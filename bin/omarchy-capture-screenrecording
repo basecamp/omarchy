@@ -255,7 +255,7 @@ stop_screenrecording() {
 }
 
 toggle_screenrecording_indicator() {
-  omarchy-shell-ipc --if-running bar refreshScreenRecording >/dev/null 2>&1 || true
+  omarchy-shell bar refreshScreenRecording >/dev/null 2>&1 || true
 }
 
 screenrecording_active() {

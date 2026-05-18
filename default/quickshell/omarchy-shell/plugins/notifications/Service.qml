@@ -46,7 +46,7 @@ Item {
   readonly property int liveBarSize: shell && shell.bar && !shell.bar.barHidden ? Math.max(0, shell.bar.barSize) : defaultBarSize
   readonly property int barClearance: liveBarSize + 12
 
-  // Fired by IPC (`omarchy-shell-ipc notifications showHistory`) so the
+  // Fired by IPC (`omarchy-shell notifications showHistory`) so the
   // bar widget can drop its PopupCard from the same anchor a click would.
   signal historyOpenRequested()
 

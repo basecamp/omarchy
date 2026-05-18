@@ -10,4 +10,4 @@ else
   omarchy-notification-send -g "󰾪" "Idle behavior on" "System can now sleep / lock on idle"
 fi
 
-omarchy-shell-ipc --if-running bar refreshIndicators >/dev/null 2>&1 || true
+omarchy-shell bar refreshIndicators >/dev/null 2>&1 || true

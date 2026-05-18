@@ -2,4 +2,4 @@
 
 # omarchy:summary=Launch the Omarchy bar settings panel
 
-exec omarchy-shell-ipc shell summon omarchy.settings "{}"
+exec omarchy-shell shell summon omarchy.settings "{}"
