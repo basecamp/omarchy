@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 
 // Shared visual chrome for keyboard-and-mouse-navigable items inside a panel.
 // Contract: items must NOT read `containsMouse` for color/border. Mouse
@@ -14,7 +15,7 @@ Rectangle {
   property color foreground: "#cacccc"
   property color fill: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18)
 
-  radius: 4
+  radius: Style.cornerRadius
   color: (hasCursor || current) ? fill : "transparent"
   border.width: hasCursor ? 1 : 0
   border.color: foreground

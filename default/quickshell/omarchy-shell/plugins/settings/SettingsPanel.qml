@@ -43,7 +43,6 @@ Item {
   readonly property string home: Quickshell.env("HOME")
   readonly property string userConfigPath: home + "/.config/omarchy/shell.json"
   readonly property string defaultsPath: omarchyPath + "/default/quickshell/omarchy-shell/shell-defaults.json"
-  readonly property string styleStatePath: home + "/.local/state/omarchy/toggles/quickshell-menu.json"
 
   // ---------------- theme --------------------------------------------------
   // Bar settings deliberately isn't a themable surface in shell.toml — it
@@ -54,22 +53,15 @@ Item {
   property color urgent: Color.urgent
   property string fontFamily: "monospace"
 
-  // Source-of-truth for the shell-wide corner radius. Mirrors what the menu
-  // reads from quickshell-menu.json so `omarchy style corners <sharp|round>`
-  // flips both surfaces together.
-  property int cornerRadius: 0
-
-  // ---------------- keyboard focus -----------------------------------------
-  // Keyboard navigation walks the bar form directly; this panel no longer has
-  // side navigation because it only edits the bar.
-
-  // Focus visuals — deliberately *different* from selected styling so the
-  // keyboard cursor never gets confused with the current value/choice. A
-  // selected control gets a 2px accent border; a focused control gets a 3px
-  // accent border plus a noticeably tinted accent background.
-  readonly property color focusBorderColor: accent
-  readonly property color focusFillColor: Qt.rgba(accent.r, accent.g, accent.b, 0.22)
-  readonly property int focusBorderWidth: 3
+  // Structural style tokens live on the shared Style singleton so toggling
+  // `omarchy style corners` and theme swaps update every consumer at once.
+  // Aliasing them as readonly properties keeps the existing inline component
+  // bindings (`root.cornerRadius`, `root.focusBorderColor`, ...) working
+  // without sprinkling Style.* across the file.
+  readonly property int cornerRadius: Style.cornerRadius
+  readonly property color focusBorderColor: Style.focusBorderColor
+  readonly property color focusFillColor: Style.focusFillColor
+  readonly property int focusBorderWidth: Style.focusBorderWidth
 
   // Move activeFocus to a dedicated sink Item that lives outside the body
   // tree. Just clearing focus on the previously focused descendant isn't
@@ -312,16 +304,6 @@ Item {
     mutateSection(section, function(a) { a[index] = cloneJson(newEntry) })
   }
 
-  function loadStyleState(raw) {
-    try {
-      var s = JSON.parse(raw || "{}")
-      var n = Number(s.radius)
-      cornerRadius = isFinite(n) ? n : 0
-    } catch (e) {
-      cornerRadius = 0
-    }
-  }
-
   // ---------------- widget catalog -----------------------------------------
   readonly property var legacyWidgetMeta: ({
     "omarchy":          { name: "Omarchy menu",       description: "Launches the Omarchy menu",                category: "Compositor" },
@@ -483,14 +465,6 @@ Item {
       if (root.suppressReload) { root.suppressReload = false; return }
       root.loadConfig()
     }
-    onFileChanged: reload()
-  }
-
-  FileView {
-    path: root.styleStatePath
-    watchChanges: true
-    printErrors: false
-    onLoaded: root.loadStyleState(text())
     onFileChanged: reload()
   }
 

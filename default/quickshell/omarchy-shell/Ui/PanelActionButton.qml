@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 
 // Small (22×22 by default) icon button used at the right edge of panel rows
 // for inline actions — forget network, confirm passphrase, unpair device,
@@ -27,7 +28,7 @@ Rectangle {
 
   implicitWidth: size
   implicitHeight: size
-  radius: 4
+  radius: Style.cornerRadius
 
   color: mouse.containsMouse && root.enabled
     ? Qt.rgba(hoverColor.r, hoverColor.g, hoverColor.b, 0.20)
