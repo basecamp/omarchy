@@ -145,28 +145,29 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top
-      spacing: 12
+      spacing: 16
 
       Row {
         spacing: 10
-        Text { text: root.batteryIcon(); color: root.bar.foreground; font.family: root.bar.fontFamily; font.pixelSize: 22 }
-        Text { text: root.modeLabel(); color: root.bar.foreground; font.family: root.bar.fontFamily; font.pixelSize: 13; font.bold: true }
+        anchors.left: parent.left
+        Text { id: acIcon; text: root.batteryIcon(); color: root.bar.foreground; font.family: root.bar.fontFamily; font.pixelSize: 22 }
+        Text { text: root.modeLabel(); color: root.bar.foreground; font.family: root.bar.fontFamily; font.pixelSize: 13; font.bold: true; anchors.verticalCenter: acIcon.verticalCenter }
       }
 
       Row {
         visible: root.batteryInfo.percentage !== undefined
-        width: parent.width
-        spacing: 20
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: 24
 
         Column {
-          width: (parent.width - parent.spacing) / 2
+          width: 140
           spacing: 4
           InfoPair { label: "Percentage"; value: root.batteryInfo.percentage || "" }
           InfoPair { label: "Battery size"; value: root.batteryInfo.size || "" }
         }
 
         Column {
-          width: (parent.width - parent.spacing) / 2
+          width: 140
           spacing: 4
           InfoPair { label: UPower.onBattery ? "Time left" : "Time to full"; value: root.batteryInfo.time || "—" }
           InfoPair { label: UPower.onBattery ? "Draw" : "Charge rate"; value: root.batteryInfo.rate || "" }
@@ -174,36 +175,47 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
       }
 
       PanelSeparator { foreground: root.bar.foreground }
-      PanelSectionHeader { text: "Power profile"; foreground: root.bar.foreground; fontFamily: root.bar.fontFamily }
-      Row {
+
+      Column {
         width: parent.width
-        spacing: 6
-        Repeater {
-          model: root.profiles
-          CursorPill {
-            required property var modelData
-            text: String(modelData).charAt(0).toUpperCase() + String(modelData).slice(1)
-            foreground: root.bar.foreground
-            tooltipBackground: root.bar.background
-            tooltipForeground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            horizontalPadding: 10
-            verticalPadding: 6
-            active: root.activeProfile === modelData
-            onClicked: root.setProfile(modelData)
+        spacing: 12
+        PanelSectionHeader { text: "POWER PROFILE"; foreground: root.bar.foreground; fontFamily: root.bar.fontFamily }
+        Row {
+          width: parent.width
+          spacing: 6
+          Repeater {
+            model: root.profiles
+            CursorPill {
+              required property var modelData
+              text: String(modelData).charAt(0).toUpperCase() + String(modelData).slice(1)
+              foreground: root.bar.foreground
+              background: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.04)
+              tooltipBackground: root.bar.background
+              tooltipForeground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              horizontalPadding: 10
+              verticalPadding: 6
+              active: root.activeProfile === modelData
+              onClicked: root.setProfile(modelData)
+            }
           }
         }
       }
 
       PanelSeparator { foreground: root.bar.foreground }
-      PanelSectionHeader { text: "System"; foreground: root.bar.foreground; fontFamily: root.bar.fontFamily }
-      Grid {
+
+      Column {
         width: parent.width
-        columns: 2
-        columnSpacing: 14
-        rowSpacing: 4
-        InfoLabel { text: "CPU" } InfoValue { text: root.systemInfo.cpu || "—" }
-        InfoLabel { text: "Memory" } InfoValue { text: root.systemInfo.memory || "—" }
+        spacing: 12
+        PanelSectionHeader { text: "SYSTEM"; foreground: root.bar.foreground; fontFamily: root.bar.fontFamily }
+        Grid {
+          width: parent.width
+          columns: 2
+          columnSpacing: 14
+          rowSpacing: 4
+          InfoLabel { text: "CPU" } InfoValue { text: root.systemInfo.cpu || "—" }
+          InfoLabel { text: "Mem" } InfoValue { text: root.systemInfo.memory || "—" }
+        }
       }
     }
   }
@@ -221,7 +233,8 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
   }
 
   component InfoLabel: Text {
-    color: Qt.darker(root.bar.foreground, 1.4)
+    color: root.bar.foreground
+    opacity: 0.6
     font.family: root.bar.fontFamily
     font.pixelSize: 11
   }
