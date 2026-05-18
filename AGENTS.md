@@ -120,7 +120,7 @@ Plugin contract:
   `~/.config/omarchy/plugins/<id>/` (third-party).
 - Every plugin ships a `manifest.json` declaring `id`, `kinds`,
   `activation`, and `entryPoints`. The full schema is in
-  `default/quickshell/omarchy-shell/README.md`.
+  [`docs/omarchy-shell.md`](docs/omarchy-shell.md).
 - Entry-point QML files are `Item`s (not `ShellRoot`), and accept the
   shell-injected properties `omarchyPath`, `shell`, `manifest`, and
   `pluginRegistry` / `barWidgetRegistry` as appropriate.
