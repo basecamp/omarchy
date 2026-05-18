@@ -464,6 +464,36 @@ Item {
   }
 
   // ---------------- window -------------------------------------------------
+  // ---------------- per-widget settings dialog state -----------------------
+  property bool widgetDialogVisible: false
+  property string widgetDialogSection: ""
+  property int widgetDialogIndex: -1
+  property var widgetDialogEntry: ({})
+
+  function openWidgetSettings(sectionKey, entryIndex, entry) {
+    widgetDialogEntry = root.cloneJson(entry)
+    widgetDialogSection = sectionKey
+    widgetDialogIndex = entryIndex
+    widgetDialogVisible = true
+  }
+
+  function commitWidgetSettings() {
+    if (widgetDialogFormLoader.item && typeof widgetDialogFormLoader.item.saveSettings === "function") {
+      widgetDialogFormLoader.item.saveSettings()
+    } else {
+      root.updateEntry(widgetDialogSection, widgetDialogIndex, widgetDialogEntry)
+    }
+    widgetDialogVisible = false
+  }
+
+  function discardWidgetSettings() { widgetDialogVisible = false }
+
+  function widgetDialogFieldChanged(key, value) {
+    var copy = root.cloneJson(widgetDialogEntry)
+    copy[key] = value
+    widgetDialogEntry = copy
+  }
+
   FloatingWindow {
     id: window
     title: "Omarchy Bar Settings"
@@ -575,6 +605,95 @@ Item {
         }
       }
     }
+    }
+
+    // ---------- per-widget settings overlay -----------------------------------
+    Rectangle {
+      anchors.fill: parent
+      visible: root.widgetDialogVisible
+      color: Qt.rgba(0, 0, 0, 0.45)
+      z: 100
+
+      MouseArea {
+        anchors.fill: parent
+        onClicked: root.discardWidgetSettings()
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+      }
+
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Escape) {
+          root.discardWidgetSettings()
+          event.accepted = true
+        }
+      }
+
+      Rectangle {
+        anchors.centerIn: parent
+        width: 420
+        height: Math.min(parent.height - 60, 380)
+        color: root.background
+        radius: Style.cornerRadius
+        border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.2)
+        border.width: 1
+
+        MouseArea { anchors.fill: parent }
+
+        ColumnLayout {
+          anchors.fill: parent
+          anchors.margins: 18
+          spacing: 12
+
+          Text {
+            text: root.widgetName(root.widgetDialogEntry.id || "")
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: 14
+            font.bold: true
+          }
+
+          Text {
+            text: root.widgetDescription(root.widgetDialogEntry.id || "")
+            color: Qt.darker(root.foreground, 1.4)
+            font.family: root.fontFamily
+            font.pixelSize: 11
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+          }
+
+          Loader {
+            id: widgetDialogFormLoader
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            sourceComponent: root.widgetDialogVisible ? formComponent(root.widgetDialogEntry.id || "") : null
+            onLoaded: {
+              if (item && "entry" in item) item.entry = root.widgetDialogEntry
+              if (item && "fieldChanged" in item) {
+                item.fieldChanged.connect(function(key, value) { root.widgetDialogFieldChanged(key, value) })
+              }
+            }
+          }
+
+          Row {
+            Layout.alignment: Qt.AlignRight
+            spacing: 8
+            PillButton {
+              text: "Cancel"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              focusable: true
+              onClicked: root.discardWidgetSettings()
+            }
+            PillButton {
+              text: "Apply"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              focusable: true
+              bordered: true
+              onClicked: root.commitWidgetSettings()
+            }
+          }
+        }
+      }
     }
   }
 
@@ -883,7 +1002,7 @@ Item {
         size: 26
         focusable: true
         visible: card.hasSettings
-        onClicked: settingsLoader.open(card.entry)
+        onClicked: root.openWidgetSettings(card.sectionKey, card.entryIndex, card.entry)
       }
       PanelActionButton {
         iconText: "󰅖"
@@ -932,114 +1051,6 @@ Item {
       anchors.fill: parent
       hoverEnabled: true
       acceptedButtons: Qt.NoButton
-    }
-
-    SettingsDialog {
-      id: settingsLoader
-      anchorWindow: window
-      sectionKey: card.sectionKey
-      entryIndex: card.entryIndex
-    }
-  }
-
-  component SettingsDialog: Item {
-    id: dialog
-    property var anchorWindow: null
-    property string sectionKey: ""
-    property int entryIndex: -1
-    property var workingEntry: ({})
-
-    function open(entry) {
-      workingEntry = root.cloneJson(entry)
-      win.visible = true
-    }
-
-    function commit() {
-      if (formLoader.item && typeof formLoader.item.saveSettings === "function") {
-        formLoader.item.saveSettings()
-      } else {
-        root.updateEntry(sectionKey, entryIndex, workingEntry)
-      }
-      win.visible = false
-    }
-
-    function discard() { win.visible = false }
-
-    function fieldChanged(key, value) {
-      var copy = root.cloneJson(workingEntry)
-      copy[key] = value
-      workingEntry = copy
-    }
-
-    FloatingWindow {
-      id: win
-      title: "Widget settings — " + root.widgetName(dialog.workingEntry.id || "")
-      color: root.background
-      implicitWidth: 380
-      implicitHeight: 320
-      visible: false
-
-      Rectangle {
-        anchors.fill: parent
-        color: root.background
-
-        ColumnLayout {
-          anchors.fill: parent
-          anchors.margins: 18
-          spacing: 12
-
-          Text {
-            text: root.widgetName(dialog.workingEntry.id || "")
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: 14
-            font.bold: true
-          }
-
-          Text {
-            text: root.widgetDescription(dialog.workingEntry.id || "")
-            color: Qt.darker(root.foreground, 1.4)
-            font.family: root.fontFamily
-            font.pixelSize: 11
-            wrapMode: Text.WordWrap
-            Layout.fillWidth: true
-          }
-
-          Loader {
-            id: formLoader
-            Layout.fillWidth: true
-            sourceComponent: formComponent(dialog.workingEntry.id || "")
-            onLoaded: {
-              if (item && "entry" in item) item.entry = dialog.workingEntry
-              if (item && "fieldChanged" in item) {
-                item.fieldChanged.connect(function(key, value) { dialog.fieldChanged(key, value) })
-              }
-            }
-          }
-
-          Item { Layout.fillHeight: true }
-
-          Row {
-            Layout.alignment: Qt.AlignRight
-            spacing: 8
-            PillButton {
-              text: "Cancel"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              focusable: true
-              onClicked: dialog.discard()
-            }
-            PillButton {
-              text: "Apply"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              focusable: true
-              bordered: true
-              onClicked: dialog.commit()
-            }
-          }
-        }
-      }
     }
   }
 
