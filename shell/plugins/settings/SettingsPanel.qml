@@ -139,24 +139,21 @@ Item {
     bar: {
       position: "top",
       transparent: false,
-      fontFamily: "monospace",
       centerAnchor: "calendar",
       layout: {
-        left: [{ id: "omarchy" }, { id: "workspaces" }, { id: "activeWindow" }],
+        left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [
-          { id: "media" },
-          { id: "calendar", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n—\nmm" },
+          { id: "calendar", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
           { id: "weatherFlyout" }, { id: "update" }, { id: "voxtype" },
-          { id: "screenRecording" }, { id: "idle" }, { id: "notifications" }
+          { id: "screenRecording" }, { id: "idleInhibitor" }, { id: "notifications" }
         ],
         right: [
-          { id: "tray" }, { id: "systemStats" }, { id: "microphone" },
-          { id: "bluetoothPanel" }, { id: "networkPanel" }, { id: "audioPanel" },
-          { id: "monitorPanel" }, { id: "battery" }
+          { id: "tray" }, { id: "bluetoothPanel" }, { id: "networkPanel" },
+          { id: "audioPanel" }, { id: "monitorPanel" }, { id: "battery" }
         ]
       }
     },
-    plugins: []
+    plugins: [{ id: "omarchy.osd" }]
   })
 
   property var defaultConfig: builtinShellConfig
@@ -617,12 +614,16 @@ Item {
       color: Qt.rgba(0, 0, 0, 0.45)
       z: 100
 
+      focus: visible
+      onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
+
       MouseArea {
         anchors.fill: parent
         onClicked: root.discardWidgetSettings()
         acceptedButtons: Qt.LeftButton | Qt.RightButton
       }
 
+      Keys.priority: Keys.BeforeItem
       Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape) {
           root.discardWidgetSettings()
@@ -907,7 +908,11 @@ Item {
         foreground: root.foreground
         accent: root.accent
         fontFamily: root.fontFamily
-        onChanged: function(v) { if (v) root.addEntry(section.sectionKey, v) }
+        onChanged: function(v) {
+          if (!v) return
+          root.addEntry(section.sectionKey, v)
+          addPill.value = ""
+        }
       }
     }
 
