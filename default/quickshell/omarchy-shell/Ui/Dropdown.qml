@@ -31,7 +31,23 @@ Item {
   property int popupRowHeight: 28
   property bool showLabel: true
 
+  // Panel-cursor flag. When true, the trigger renders the same focus ring
+  // as Tab-focus so a panel's keyboard cursor lands here identically.
+  // Emits `hovered(bool)` on pointer enter/leave so the panel can keep
+  // its cursor state in sync with the mouse.
+  property bool hasCursor: false
+
+  // popupOpen + open()/close()/toggle() let a parent panel know when the
+  // dropdown owns keys (its embedded ListView is active) and suspend its
+  // own keyCatcher so j/k inside the popup don't double-drive the panel
+  // cursor.
+  readonly property bool popupOpen: popup.opened
+  function open() { popup.open() }
+  function close() { popup.close() }
+  function toggle() { popup.opened ? popup.close() : popup.open() }
+
   signal changed(string value)
+  signal hovered(bool isHovered)
 
   function optionValue(o) {
     return (o && typeof o === "object") ? String(o.value) : String(o)
@@ -67,14 +83,21 @@ Item {
       width: parent.width
       height: root.rowHeight
       radius: Style.cornerRadius
+
+      readonly property bool _focused: trigger.activeFocus || root.hasCursor
+
       color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b,
-                     trigger.activeFocus ? 0.08 : 0.04)
-      border.color: trigger.activeFocus
+                     trigger._focused ? 0.08 : 0.04)
+      border.color: trigger._focused
         ? Style.focusBorderColor
         : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.4)
-      border.width: trigger.activeFocus ? Style.focusBorderWidth : 1
+      border.width: trigger._focused ? Style.focusBorderWidth : 1
 
       activeFocusOnTab: true
+
+      HoverHandler {
+        onHoveredChanged: root.hovered(hovered)
+      }
 
       Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
