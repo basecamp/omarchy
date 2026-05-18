@@ -21,7 +21,7 @@ Item {
   function open(payloadJson) {
     closingFromHost = false
     window.visible = true
-    Qt.callLater(function() { if (focusSink) focusSink.forceActiveFocus() })
+    Qt.callLater(function() { if (scrollArea) scrollArea.forceActiveFocus() })
   }
 
   // Host-initiated close (`shell hide`). Visibility flips without
@@ -65,6 +65,9 @@ Item {
 
   // ---- cursor demo state --------------------------------------------------
   property int cursorDemoIndex: 1
+  property int pillDemoIndex: 1
+  property string choiceDemoValue: "top"
+  property bool toggleDemoOn: true
 
   FloatingWindow {
     id: window
@@ -83,21 +86,20 @@ Item {
       id: focusScope
       anchors.fill: parent
       focus: true
-
-      Item {
-        id: focusSink
-        width: 1; height: 1
-        focus: true
-        Keys.onPressed: function(event) {
-          if (event.key === Qt.Key_Escape) { root.requestClose(); event.accepted = true }
-          if (event.key === Qt.Key_Right || event.text === "l") {
-            root.cursorDemoIndex = Math.min(2, root.cursorDemoIndex + 1)
-            event.accepted = true
-          }
-          if (event.key === Qt.Key_Left || event.text === "h") {
-            root.cursorDemoIndex = Math.max(0, root.cursorDemoIndex - 1)
-            event.accepted = true
-          }
+      // Esc + h/l for the cursor demo. Other keys (arrow keys, Page_Down,
+      // Home/End) propagate down to ScrollView's built-in scroll handling so
+      // keyboard scrolling works. AfterItem priority means a focused inner
+      // control would get its keys first — we don't have any here yet.
+      Keys.priority: Keys.AfterItem
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Escape) {
+          root.requestClose(); event.accepted = true
+        } else if (event.text === "l") {
+          root.cursorDemoIndex = Math.min(2, root.cursorDemoIndex + 1)
+          event.accepted = true
+        } else if (event.text === "h") {
+          root.cursorDemoIndex = Math.max(0, root.cursorDemoIndex - 1)
+          event.accepted = true
         }
       }
 
@@ -125,7 +127,7 @@ Item {
               font.bold: true
             }
             Text {
-              text: "Live previews of every type exported from qs.Ui. Use this as the visual reference when porting panels or building plugins. Press h/l to walk the cursor demo, Esc to close."
+              text: "Live previews of every type exported from qs.Ui. Use this as the visual reference when porting panels or building plugins. Scroll for more. Esc to close."
               color: Qt.darker(root.foreground, 1.4)
               font.family: root.fontFamily
               font.pixelSize: 11
@@ -396,6 +398,63 @@ Item {
             }
           }
 
+          // ---- CursorPill --------------------------------------------------
+          Column {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              text: "CursorPill"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 13
+              font.bold: true
+            }
+            Text {
+              text: "PillButton with panel-cursor wiring. Bind hasCursor to your cursor state and onHovered to update it on mouse enter; clicks come from PillButton's clicked() signal. Use this for any \"pick one in a row\" UI (wifi DNS pills, bluetooth header actions). Click below or press h/l to walk the demo cursor."
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              width: parent.width
+              wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+              width: parent.width
+              implicitHeight: cpRow.implicitHeight + 24
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
+              radius: 6
+              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+              border.width: 1
+
+              Row {
+                id: cpRow
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 14
+                spacing: 6
+
+                Repeater {
+                  model: ["DHCP", "Cloudflare", "Google", "Custom"]
+                  CursorPill {
+                    required property string modelData
+                    required property int index
+                    text: modelData
+                    foreground: root.foreground
+                    tooltipBackground: root.background
+                    tooltipForeground: root.foreground
+                    fontFamily: root.fontFamily
+                    tooltipText: "Pick " + modelData
+                    hasCursor: root.pillDemoIndex === index
+                    active: modelData === "Cloudflare"
+                    onHovered: function(h) { if (h) root.pillDemoIndex = index }
+                    onClicked: root.pillDemoIndex = index
+                  }
+                }
+              }
+            }
+          }
+
           // ---- PanelActionButton -------------------------------------------
           Column {
             width: parent.width
@@ -584,6 +643,92 @@ Item {
                   anchors.verticalCenter: parent.verticalCenter
                 }
               }
+            }
+          }
+
+          // ---- ChoiceButton --------------------------------------------------
+          Column {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              text: "ChoiceButton"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 13
+              font.bold: true
+            }
+            Text {
+              text: "A single button in a mutually-exclusive choice group. Selected styling uses the accent fill+border; focus styling uses the Style.focusBorderColor outline so keyboard nav can land on a non-selected option without it reading as the chosen one."
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              width: parent.width
+              wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+              width: parent.width
+              implicitHeight: choiceRow.implicitHeight + 24
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
+              radius: 6
+              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+              border.width: 1
+
+              Row {
+                id: choiceRow
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 14
+                spacing: 6
+
+                Repeater {
+                  model: ["top", "right", "bottom", "left"]
+                  ChoiceButton {
+                    required property string modelData
+                    text: modelData
+                    foreground: root.foreground
+                    background: root.background
+                    accent: root.accent
+                    fontFamily: root.fontFamily
+                    selected: root.choiceDemoValue === modelData
+                    onClicked: root.choiceDemoValue = modelData
+                  }
+                }
+              }
+            }
+          }
+
+          // ---- Toggle --------------------------------------------------------
+          Column {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              text: "Toggle"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 13
+              font.bold: true
+            }
+            Text {
+              text: "Title + description + switch. Click anywhere on the row to flip; caller updates `checked` in response. Same focus tokens as ChoiceButton."
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              width: parent.width
+              wrapMode: Text.WordWrap
+            }
+
+            Toggle {
+              width: parent.width
+              label: "Transparent bar"
+              description: "Hide the bar background so the wallpaper shows through."
+              foreground: root.foreground
+              accent: root.accent
+              fontFamily: root.fontFamily
+              checked: root.toggleDemoOn
+              onClicked: root.toggleDemoOn = !root.toggleDemoOn
             }
           }
 
