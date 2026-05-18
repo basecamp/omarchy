@@ -164,6 +164,11 @@ iwctl known-networks list 2>/dev/null \\
     frequency = parts[3] || ""
   }
 
+  function copyToClipboard(value) {
+    if (!value || !root.bar) return
+    Quickshell.execDetached(["bash", "-lc", "printf %s " + root.bar.shellQuote(value) + " | wl-copy"])
+  }
+
   function networkTooltip() {
     if (kind === "wifi") {
       var f = parseFloat(frequency)
@@ -783,11 +788,15 @@ fi
             visible: !!root.info.ip
             label: "IP"
             value: root.info.ip || ""
+            copyable: true
+            tooltipText: "Copy IP"
           }
           InfoPair {
             visible: !!root.info.gateway
             label: "Gateway"
             value: root.info.gateway || ""
+            copyable: true
+            tooltipText: "Copy gateway"
           }
         }
 
@@ -1157,6 +1166,7 @@ iwctl known-networks list 2>/dev/null \\
       anchors.rightMargin: 10
       anchors.topMargin: 4
       implicitHeight: 34
+      height: implicitHeight
 
       TextField {
         id: pwField
@@ -1165,6 +1175,7 @@ iwctl known-networks list 2>/dev/null \\
         anchors.right: connectPwBtn.left
         anchors.verticalCenter: parent.verticalCenter
         anchors.rightMargin: 6
+        height: 26
         password: true
         placeholderText: "Passphrase"
         font.family: root.bar.fontFamily
@@ -1172,7 +1183,6 @@ iwctl known-networks list 2>/dev/null \\
         foreground: root.bar.foreground
         horizontalPadding: 8
         verticalPadding: 6
-        implicitHeight: 26
 
         onAccepted: {
           if (!root.busy && row.net && text.length > 0) root.connectWithPassphrase(row.net.ssid, text)
@@ -1199,7 +1209,7 @@ iwctl known-networks list 2>/dev/null \\
           anchors.fill: parent
           horizontalAlignment: Text.AlignHCenter
           verticalAlignment: Text.AlignVCenter
-          text: row.isFailed ? (root.failureReason || "Wrong password") : "Connecting..."
+          text: row.isFailed ? "Wrong password" : "Connecting..."
           color: row.isFailed ? root.bar.urgent : root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: 12
@@ -1268,13 +1278,35 @@ iwctl known-networks list 2>/dev/null \\
   component InfoPair: Row {
     property string label: ""
     property string value: ""
+    property bool copyable: false
+    property string tooltipText: "Copy to clipboard"
 
     width: parent.width
     spacing: 8
 
     InfoLabel { text: label }
-    Item { width: Math.max(0, parent.width - parent.children[0].implicitWidth - parent.children[2].implicitWidth - parent.spacing * 2); height: 1 }
-    InfoValue { text: value }
+    Item { width: Math.max(0, parent.width - parent.children[0].implicitWidth - valueText.implicitWidth - parent.spacing * 2); height: 1 }
+    InfoValue {
+      id: valueText
+      text: value
+
+      MouseArea {
+        id: valueMouse
+        anchors.fill: parent
+        enabled: copyable && valueText.text !== ""
+        hoverEnabled: enabled
+        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: root.copyToClipboard(valueText.text)
+      }
+
+      PanelToolTip {
+        visible: valueMouse.enabled && valueMouse.containsMouse
+        text: tooltipText
+        panelForeground: root.bar.foreground
+        panelBackground: root.bar.background
+        fontFamily: root.bar.fontFamily
+      }
+    }
   }
 
   component InfoLabel: Text {

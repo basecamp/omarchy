@@ -44,7 +44,7 @@ Item {
     var list = []
     if (brightnessAvailable) list.push("brightness")
     list.push("scale")
-    if (displays.length > 0) list.push("monitors")
+    if (displays.length > 1) list.push("monitors")
     return list
   }
 
@@ -530,7 +530,7 @@ Item {
           Column {
             width: parent.width
             spacing: 6
-            visible: root.displays.length > 0
+            visible: root.displays.length > 1
 
             PanelSectionHeader {
               text: "Monitors"
