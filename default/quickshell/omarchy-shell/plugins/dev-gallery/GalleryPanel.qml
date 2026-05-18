@@ -21,7 +21,7 @@ Item {
   function open(payloadJson) {
     closingFromHost = false
     window.visible = true
-    Qt.callLater(function() { if (scrollArea) scrollArea.forceActiveFocus() })
+    Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
   }
 
   // Host-initiated close (`shell hide`). Visibility flips without
@@ -68,6 +68,9 @@ Item {
   property int pillDemoIndex: 1
   property string choiceDemoValue: "top"
   property bool toggleDemoOn: true
+  property bool toggleSquareOn: false
+  property string dropdownDemoValue: "calendar"
+  property string searchableDemoValue: ""
 
   FloatingWindow {
     id: window
@@ -86,29 +89,59 @@ Item {
       id: focusScope
       anchors.fill: parent
       focus: true
-      // Esc + h/l for the cursor demo. Other keys (arrow keys, Page_Down,
-      // Home/End) propagate down to ScrollView's built-in scroll handling so
-      // keyboard scrolling works. AfterItem priority means a focused inner
-      // control would get its keys first — we don't have any here yet.
+
+      // Scroll the gallery's ScrollView by `dy` pixels. Bound below 0 and
+      // above (1 - thumbSize) so the thumb stays on the track when the
+      // user mashes Page_Down past the end.
+      function scrollBy(dy) {
+        var sb = scrollArea.ScrollBar.vertical
+        if (!sb || scrollArea.contentHeight <= scrollArea.height) return
+        var newPos = sb.position + dy / scrollArea.contentHeight
+        sb.position = Math.max(0, Math.min(1 - sb.size, newPos))
+      }
+
+      // Page/Home/End handled here so they bubble up past keyCatcher
+      // (which only consumes Esc / Enter / j-k-h-l / x / text keys).
       Keys.priority: Keys.AfterItem
       Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-          root.requestClose(); event.accepted = true
-        } else if (event.text === "l") {
-          root.cursorDemoIndex = Math.min(2, root.cursorDemoIndex + 1)
+        if (event.key === Qt.Key_PageDown) {
+          focusScope.scrollBy(300); event.accepted = true
+        } else if (event.key === Qt.Key_PageUp) {
+          focusScope.scrollBy(-300); event.accepted = true
+        } else if (event.key === Qt.Key_Home) {
+          scrollArea.ScrollBar.vertical.position = 0
           event.accepted = true
-        } else if (event.text === "h") {
-          root.cursorDemoIndex = Math.max(0, root.cursorDemoIndex - 1)
+        } else if (event.key === Qt.Key_End) {
+          var sb = scrollArea.ScrollBar.vertical
+          if (sb) sb.position = Math.max(0, 1 - sb.size)
           event.accepted = true
         }
       }
 
-      ScrollView {
-        id: scrollArea
+      // Panel-style key dispatch. j/k scroll the gallery; h/l walk the
+      // cursor / pill demos; Esc closes. Same component the wifi, audio,
+      // bluetooth, monitor, and settings panels all use — the gallery
+      // is meant to demonstrate the standard, so it should USE the
+      // standard rather than reimplement its own keyhandler.
+      PanelKeyCatcher {
+        id: keyCatcher
         anchors.fill: parent
-        anchors.margins: 18
-        clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        onMoveRequested: function(dx, dy) {
+          if (dy !== 0) {
+            focusScope.scrollBy(dy * 60)
+          } else if (dx !== 0) {
+            root.cursorDemoIndex = Math.max(0, Math.min(2, root.cursorDemoIndex + dx))
+            root.pillDemoIndex = Math.max(0, Math.min(3, root.pillDemoIndex + dx))
+          }
+        }
+        onCloseRequested: root.requestClose()
+
+        ScrollView {
+          id: scrollArea
+          anchors.fill: parent
+          anchors.margins: 18
+          clip: true
+          ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
         Column {
           width: scrollArea.availableWidth
@@ -161,7 +194,7 @@ Item {
               width: parent.width
               implicitHeight: shCol.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: 6
+              radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
@@ -217,7 +250,7 @@ Item {
               width: parent.width
               implicitHeight: sepCol.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: 6
+              radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
@@ -262,7 +295,7 @@ Item {
               width: parent.width
               implicitHeight: csCol.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: 6
+              radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
@@ -343,7 +376,7 @@ Item {
               width: parent.width
               implicitHeight: pillCol.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: 6
+              radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
@@ -431,7 +464,7 @@ Item {
               width: parent.width
               implicitHeight: cpRow.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: 6
+              radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
@@ -488,7 +521,7 @@ Item {
               width: parent.width
               implicitHeight: pabCol.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: 6
+              radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
@@ -619,7 +652,7 @@ Item {
               width: parent.width
               implicitHeight: sliderRow.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: 6
+              radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
@@ -690,7 +723,7 @@ Item {
               width: parent.width
               implicitHeight: choiceRow.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: 6
+              radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
@@ -743,7 +776,7 @@ Item {
               width: parent.width
               implicitHeight: tfCol.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: 6
+              radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
@@ -809,6 +842,135 @@ Item {
               checked: root.toggleDemoOn
               onClicked: root.toggleDemoOn = !root.toggleDemoOn
             }
+
+            Toggle {
+              width: parent.width
+              label: "Square switch (forced)"
+              description: "`rounded: false` overrides the theme auto-detect so the switch reads square even when corners are round. Set `rounded: Style.cornerRadius > 0` (the default) to follow the theme."
+              foreground: root.foreground
+              accent: root.accent
+              fontFamily: root.fontFamily
+              rounded: false
+              checked: root.toggleSquareOn
+              onClicked: root.toggleSquareOn = !root.toggleSquareOn
+            }
+          }
+
+          // ---- Dropdown -----------------------------------------------------
+          Column {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              text: "Dropdown"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 13
+              font.bold: true
+            }
+            Text {
+              text: "Themed single-select with a panel-styled popup. Tab to focus the trigger, Enter/Space opens, j/k or arrows walk options, Enter selects. Options can be plain strings or { value, label } objects."
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              width: parent.width
+              wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+              width: parent.width
+              implicitHeight: ddCol.implicitHeight + 24
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
+              radius: Style.cornerRadius
+              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+              border.width: 1
+
+              Column {
+                id: ddCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 14
+                anchors.rightMargin: 14
+                spacing: 6
+
+                Dropdown {
+                  width: 260
+                  label: "Center anchor"
+                  fontFamily: root.fontFamily
+                  options: ["calendar", "weather", "clock", "battery"]
+                  value: root.dropdownDemoValue
+                  onChanged: function(v) { root.dropdownDemoValue = v }
+                }
+              }
+            }
+          }
+
+          // ---- SearchableDropdown -------------------------------------------
+          Column {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              text: "SearchableDropdown"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 13
+              font.bold: true
+            }
+            Text {
+              text: "Dropdown with an embedded filter input. Type to narrow the list, Down to jump from the search to the first match, Enter to select. Use this for the bar settings \"+ Add widget\" picker and any other long-list selector."
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              width: parent.width
+              wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+              width: parent.width
+              implicitHeight: sddCol.implicitHeight + 24
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
+              radius: Style.cornerRadius
+              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+              border.width: 1
+
+              Column {
+                id: sddCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 14
+                anchors.rightMargin: 14
+                spacing: 6
+
+                SearchableDropdown {
+                  width: 280
+                  label: "Add widget"
+                  fontFamily: root.fontFamily
+                  placeholderText: "Search widgets..."
+                  options: [
+                    { value: "clock", label: "Clock", description: "Time + date display" },
+                    { value: "weather", label: "Weather", description: "Local conditions and forecast" },
+                    { value: "battery", label: "Battery", description: "Charge level + power profile" },
+                    { value: "audio", label: "Audio", description: "Output sink + volume" },
+                    { value: "network", label: "Network", description: "Wi-Fi + ethernet status" },
+                    { value: "bluetooth", label: "Bluetooth", description: "Paired and nearby devices" },
+                    { value: "monitor", label: "Monitor", description: "Brightness + scale" },
+                    { value: "calendar", label: "Calendar", description: "Month grid flyout" },
+                    { value: "media", label: "Media", description: "Now-playing + transport" },
+                    { value: "workspaces", label: "Workspaces", description: "Hyprland workspace pills" },
+                    { value: "system-tray", label: "System tray", description: "StatusNotifierItem icons" },
+                    { value: "omarchy-menu", label: "Omarchy menu", description: "Launcher / system menu" },
+                    { value: "power-profiles", label: "Power profiles", description: "Performance / balanced / saver" },
+                    { value: "hardware", label: "Hardware", description: "CPU, GPU, mem utilization" },
+                    { value: "notifications", label: "Notifications", description: "Recent notification history" }
+                  ]
+                  value: root.searchableDemoValue
+                  onChanged: function(v) { root.searchableDemoValue = v }
+                }
+              }
+            }
           }
 
           // ---- Composed example -------------------------------------------
@@ -836,7 +998,7 @@ Item {
               width: parent.width
               implicitHeight: composedCol.implicitHeight + 24
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-              radius: 6
+              radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
               border.width: 1
 
@@ -964,6 +1126,7 @@ Item {
 
           Item { width: 1; height: 12 }
         }
+      }
       }
     }
   }
