@@ -68,6 +68,19 @@ Item {
   property string tooltipText: ""
   property bool tooltipShown: false
   property var activePopout: null
+  property var clickTargets: []
+
+  function registerClickTarget(target) {
+    if (!target || clickTargets.indexOf(target) !== -1) return
+    var next = clickTargets.slice()
+    next.push(target)
+    clickTargets = next
+  }
+
+  function unregisterClickTarget(target) {
+    var next = clickTargets.filter(function(item) { return item !== target })
+    clickTargets = next
+  }
 
   function requestPopout(owner) {
     if (activePopout === owner) return
@@ -1086,6 +1099,14 @@ Item {
     signal pressed(int button)
     signal wheelMoved(int delta)
 
+    function triggerPress(button) {
+      root.hideTooltip(buttonRoot)
+      buttonRoot.pressed(button)
+    }
+
+    Component.onCompleted: root.registerClickTarget(buttonRoot)
+    Component.onDestruction: root.unregisterClickTarget(buttonRoot)
+
     visible: text !== "" || keepSpace
     opacity: text === "" ? 0 : 1
     implicitWidth: fixedWidth > 0 ? fixedWidth : (root.vertical ? root.barSize : Math.max(12, label.implicitWidth + horizontalMargin * 2 + rightExtraMargin))
@@ -1113,7 +1134,7 @@ Item {
       cursorShape: Qt.PointingHandCursor
       onEntered: root.showTooltip(buttonRoot, buttonRoot.tooltipText)
       onExited: root.hideTooltip(buttonRoot)
-      onClicked: function(mouse) { buttonRoot.pressed(mouse.button) }
+      onClicked: function(mouse) { buttonRoot.triggerPress(mouse.button) }
       onWheel: function(wheel) { buttonRoot.wheelMoved(wheel.angleDelta.y) }
     }
   }
