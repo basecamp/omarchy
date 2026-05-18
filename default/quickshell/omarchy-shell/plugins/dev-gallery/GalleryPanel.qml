@@ -699,6 +699,66 @@ Item {
             }
           }
 
+          // ---- TextField -----------------------------------------------------
+          Column {
+            width: parent.width
+            spacing: 8
+
+            Text {
+              text: "TextField"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 13
+              font.bold: true
+            }
+            Text {
+              text: "Single-line input. Inherits Qt Quick Controls TextField, swaps in the kit's focus chrome and selection styling. Toggle `password: true` for masked entry."
+              color: Qt.darker(root.foreground, 1.5)
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              width: parent.width
+              wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+              width: parent.width
+              implicitHeight: tfCol.implicitHeight + 24
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
+              radius: 6
+              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+              border.width: 1
+
+              Column {
+                id: tfCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 14
+                anchors.rightMargin: 14
+                spacing: 10
+
+                TextField {
+                  width: parent.width
+                  placeholderText: "Type something"
+                  foreground: root.foreground
+                  accent: root.accent
+                  font.family: root.fontFamily
+                  font.pixelSize: 12
+                }
+
+                TextField {
+                  width: parent.width
+                  password: true
+                  placeholderText: "Password"
+                  foreground: root.foreground
+                  accent: root.accent
+                  font.family: root.fontFamily
+                  font.pixelSize: 12
+                }
+              }
+            }
+          }
+
           // ---- Toggle --------------------------------------------------------
           Column {
             width: parent.width

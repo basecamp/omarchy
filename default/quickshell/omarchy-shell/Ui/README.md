@@ -57,6 +57,7 @@ Grouped by what they're for, not alphabetically.
 | `CursorPill` | `PillButton` that participates in a panel's single-cursor model. Adds a `hovered(bool)` signal so the panel can update its cursor state on mouse enter/leave. Use for DNS-pill / header-pill / segmented-choice patterns. |
 | `ChoiceButton` | A single button in a mutually-exclusive choice group (segmented control). `selected` uses accent fill+border; focus uses `Style.focusBorderColor` so keyboard nav reads differently from selection. |
 | `Toggle` | Title + description + switch. Click anywhere on the row to flip; caller updates `checked` in response. |
+| `TextField` | Single-line input. Inherits from Qt Quick Controls `TextField` so all of its base API (text, placeholderText, accepted, validator, ...) is available. Adds `password: bool`, `foreground` / `accent` / `selectionTint` color overrides, and `horizontalPadding` / `verticalPadding` size knobs. Focus styling uses `Style.focusBorderColor` to match `Toggle` and `ChoiceButton`. |
 | `PanelActionButton` | 22×22 right-edge action button (confirm, forget, unpair). `hoverColor` swaps between default foreground tint and urgent (red) tint. |
 | `PanelSlider` | Volume/progress slider. Drag, click track, or wheel. `moved(value)` fires per change, `released(value)` once at end. (Named to avoid colliding with `QtQuick.Controls.Slider`.) |
 | `WidgetButton` | Bar widget chrome — for the strip itself, not for inside panels. |
