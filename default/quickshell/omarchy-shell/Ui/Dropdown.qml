@@ -168,6 +168,7 @@ Item {
           id: optionList
           spacing: 4
 
+          Keys.priority: Keys.BeforeItem
           Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) { popup.close(); event.accepted = true }
             else if (event.key === Qt.Key_Down || event.text === "j") {
