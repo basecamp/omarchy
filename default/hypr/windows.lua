@@ -23,3 +23,6 @@ require("default.hypr.apps")
 
 -- Apply default opacity after apps have had a chance to opt out.
 o.window({ tag = "default-opacity" }, { opacity = "0.97 0.9" })
+
+-- Behavior for floating windows being peeked through.
+o.window({ tag = "peek", float = true }, { opacity = "0.1 override", no_blur = true })
