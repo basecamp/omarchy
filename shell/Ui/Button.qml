@@ -72,13 +72,23 @@ Rectangle {
     : active               ? Style.selectedFill
     : background
 
+  // Border color follows the same precedence as fill: focus ring wins,
+  // then selected, then cursor on bordered (paints accent so the chip
+  // structure clearly reads as "cursor is here"), then plain bordered
+  // (foreground), then nothing.
   border.color: _showFocusRing ? Style.focusBorderColor
     : selected                 ? accent
+    : (bordered && hot)        ? Style.focusBorderColor
     : bordered                 ? foreground
     : Style.idleBorderColor
 
+  // selected+hot thickens to the focus-ring width so the cursor remains
+  // visible on the chosen option (otherwise selected's accent fill+border
+  // masks any hot fill). bordered+hot also thickens so the chip cursor
+  // reads as a deliberate state change rather than a faint tint.
   border.width: _showFocusRing ? Style.focusBorderWidth
-    : selected                 ? Math.max(Style.borderWidth, 2)
+    : selected                 ? (hot ? Style.focusBorderWidth : Math.max(Style.borderWidth, 2))
+    : (bordered && hot)        ? Style.focusBorderWidth
     : bordered                 ? Style.borderWidth
     : 0
 
