@@ -232,22 +232,17 @@ Item {
   // hasCursor change handler of every cursor target below.
   function ensureCursorVisible(item) {
     if (!item || !scrollArea) return
-    var sb = scrollArea.ScrollBar.vertical
-    if (!sb || scrollArea.contentHeight <= scrollArea.height) return
-    var contentItem = scrollArea.contentItem
-    if (!contentItem) return
-    var p = item.mapToItem(contentItem, 0, 0)
-    var itemTop = p.y
-    var itemBottom = p.y + item.height
-    var viewTop = sb.position * scrollArea.contentHeight
-    var viewBottom = viewTop + scrollArea.height
-    var pad = 20
-    if (itemTop < viewTop + pad) {
-      sb.position = Math.max(0, (itemTop - pad) / scrollArea.contentHeight)
-    } else if (itemBottom > viewBottom - pad) {
-      var newPos = (itemBottom + pad - scrollArea.height) / scrollArea.contentHeight
-      sb.position = Math.max(0, Math.min(1 - sb.size, newPos))
-    }
+    var flick = scrollArea.contentItem
+    if (!flick || flick.contentY === undefined) return
+    var pt = item.mapToItem(flick.contentItem || flick, 0, 0)
+    var top = pt.y
+    var bottom = top + (item.height || 0)
+    var viewTop = flick.contentY
+    var viewBottom = viewTop + flick.height
+    var margin = 12
+    if (top < viewTop + margin) flick.contentY = Math.max(0, top - margin)
+    else if (bottom > viewBottom - margin)
+      flick.contentY = bottom + margin - flick.height
   }
 
   FloatingWindow {

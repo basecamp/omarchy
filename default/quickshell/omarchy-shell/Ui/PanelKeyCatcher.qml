@@ -20,15 +20,16 @@ import QtQuick
 //     }
 //   }
 //
-// Keys.priority: Keys.AfterItem means a focused descendant (e.g. a
-// TextField inside an inline password prompt) gets the event first. Only
-// events the focused subtree ignores reach this handler — that's what
-// lets j/k/Esc keep working in the panel while an input field consumes
-// typing.
+// Keys.priority: Keys.BeforeItem means this handler gets keys first,
+// even when a descendant has activeFocus. That's what lets Up/Down
+// arrows drive the cursor instead of being consumed by an inner
+// Flickable's built-in scroll handling. When a panel has an inline
+// editor (wifi passphrase, gallery TextField demo) the panel must
+// set `blocked: editor.activeFocus` so this handler short-circuits
+// and the editor receives keys normally.
 //
 // blocked: when true, ALL keys are forwarded to descendants without
-// triggering signals. Useful when an inline editor is open and the
-// caller wants the cursor model frozen.
+// triggering signals.
 Item {
   id: root
 
@@ -41,7 +42,7 @@ Item {
   signal textKey(string text)
 
   focus: true
-  Keys.priority: Keys.AfterItem
+  Keys.priority: Keys.BeforeItem
   Keys.onPressed: function(event) {
     if (blocked) return
 
