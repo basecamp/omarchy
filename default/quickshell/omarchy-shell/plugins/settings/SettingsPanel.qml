@@ -1210,28 +1210,13 @@ Item {
       width: parent ? parent.width : 0
 
       component CalendarField: TextField {
-        id: calField
         property string fieldKey: ""
+        width: parent.width
+        foreground: root.foreground
+        accent: root.accent
         font.family: root.fontFamily
         font.pixelSize: 12
-        width: parent.width
-        color: root.foreground
-        selectionColor: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
-        selectedTextColor: root.foreground
-        placeholderTextColor: Qt.darker(root.foreground, 1.6)
-        leftPadding: 10
-        rightPadding: 10
-        topPadding: 7
-        bottomPadding: 7
         onEditingFinished: if (fieldKey) calForm.fieldChanged(fieldKey, text)
-        background: Rectangle {
-          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b,
-                         calField.activeFocus ? 0.08 : 0.04)
-          border.color: calField.activeFocus
-            ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.4)
-            : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-          border.width: 1
-        }
       }
 
       Text {

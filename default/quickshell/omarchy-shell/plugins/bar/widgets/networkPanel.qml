@@ -1090,28 +1090,14 @@ iwctl known-networks list 2>/dev/null \\
         anchors.right: connectPwBtn.left
         anchors.verticalCenter: parent.verticalCenter
         anchors.rightMargin: 6
-        echoMode: TextInput.Password
+        password: true
         placeholderText: "Passphrase"
         font.family: root.bar.fontFamily
         font.pixelSize: 12
-        color: root.bar.foreground
-        selectionColor: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.35)
-        selectedTextColor: root.bar.foreground
-        placeholderTextColor: Qt.darker(root.bar.foreground, 1.6)
-        leftPadding: 8
-        rightPadding: 8
-        topPadding: 6
-        bottomPadding: 6
+        foreground: root.bar.foreground
+        horizontalPadding: 8
+        verticalPadding: 6
         enabled: !row.isBusy
-
-        background: Rectangle {
-          color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, pwField.activeFocus ? 0.10 : 0.05)
-          border.color: pwField.activeFocus
-            ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.45)
-            : Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.20)
-          border.width: 1
-          radius: 4
-        }
 
         onAccepted: {
           if (!root.busy && row.net && text.length > 0) root.connectWithPassphrase(row.net.ssid, text)

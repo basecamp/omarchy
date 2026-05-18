@@ -12,5 +12,6 @@ PanelSlider 1.0 PanelSlider.qml
 PanelToolTip 1.0 PanelToolTip.qml
 PillButton 1.0 PillButton.qml
 PopupCard 1.0 PopupCard.qml
+TextField 1.0 TextField.qml
 Toggle 1.0 Toggle.qml
 WidgetButton 1.0 WidgetButton.qml
