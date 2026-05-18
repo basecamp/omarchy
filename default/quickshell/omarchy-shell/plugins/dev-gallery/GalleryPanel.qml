@@ -394,6 +394,14 @@ Item {
                   fontFamily: root.fontFamily
                   active: true
                 }
+
+                PillButton {
+                  text: "Apply"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  focusable: true
+                  bordered: true
+                }
               }
             }
           }
@@ -515,6 +523,17 @@ Item {
                   panelBackground: root.background
                   fontFamily: root.fontFamily
                   enabled: false
+                }
+
+                PanelActionButton {
+                  iconText: "⚙"
+                  tooltipText: "Focusable (settings form button)"
+                  foreground: root.foreground
+                  panelBackground: root.background
+                  fontFamily: root.fontFamily
+                  fontSize: 13
+                  size: 26
+                  focusable: true
                 }
               }
             }

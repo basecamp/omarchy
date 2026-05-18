@@ -28,6 +28,24 @@ Rectangle {
   // indistinguishable. Default false; bind from a panel's cursor state.
   property bool hasCursor: false
 
+  // Tab-focusable form-button mode. Enables activeFocusOnTab and
+  // Enter/Return/Space activation, and uses Style.focusBorderColor / FillColor
+  // for the focus ring (distinct from the panel-cursor `hot` state). Set
+  // true for settings buttons (Save, Cancel, Reset); leave false for the
+  // panel-cursor pills (DNS picker, header actions).
+  property bool focusable: false
+
+  // Persistent 1px foreground border at idle. Use for "primary" form buttons
+  // (Save, Apply, + Add widget) so they read as buttons before the cursor
+  // hits them. The hot/cursor state paints its own 1px border, so changing
+  // this doesn't affect panel-pill visuals.
+  property bool bordered: false
+
+  activeFocusOnTab: focusable
+  Keys.onReturnPressed: if (focusable) root.clicked()
+  Keys.onEnterPressed: if (focusable) root.clicked()
+  Keys.onSpacePressed: if (focusable) root.clicked()
+
   ToolTip {
     visible: root.tooltipText !== "" && mouseArea.containsMouse
     text: root.tooltipText
@@ -66,11 +84,18 @@ Rectangle {
   // as hovered, matching CursorSurface's behaviour for navigable rows).
   readonly property bool hot: mouseArea.containsMouse || hasCursor
 
+  // Tab-focus styling wins over hot — the accent ring is the strongest
+  // signal and shouldn't be masked by a hover landing on the focused item.
+  readonly property bool _showFocusRing: focusable && activeFocus
+
   color: mouseArea.pressed ? pressedBackground
+    : _showFocusRing ? Style.focusFillColor
     : hot ? hoverBackground
     : (active ? activeBackground : background)
-  border.width: hot ? 1 : 0
-  border.color: foreground
+  border.width: _showFocusRing ? Style.focusBorderWidth
+    : hot ? 1
+    : (bordered ? 1 : 0)
+  border.color: _showFocusRing ? Style.focusBorderColor : foreground
 
   Behavior on color {
     ColorAnimation { duration: 120 }
@@ -110,6 +135,7 @@ Rectangle {
     cursorShape: Qt.PointingHandCursor
     acceptedButtons: Qt.LeftButton | Qt.RightButton
     onClicked: function(mouse) {
+      if (root.focusable) root.forceActiveFocus()
       if (mouse.button === Qt.RightButton) root.rightClicked()
       else root.clicked()
     }
