@@ -726,14 +726,31 @@ Item {
       Layout.fillWidth: true
       spacing: 14
 
-      PositionButtonGroup {
-        value: root.draft.bar.position
-        onChanged: function(v) {
-          if (root.draft.bar.position === v) return
-          var next = root.cloneJson(root.draft)
-          next.bar.position = v
-          root.draft = next
-          root.markDirty()
+      Column {
+        spacing: 4
+
+        Text {
+          text: "Position"
+          color: Qt.darker(root.foreground, 1.4)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+        }
+
+        ButtonGroup {
+          options: ["top", "right", "bottom", "left"]
+          value: root.draft.bar.position
+          foreground: root.foreground
+          background: root.background
+          accent: root.accent
+          fontFamily: root.fontFamily
+          onChanged: function(v) {
+            if (root.draft.bar.position === v) return
+            var next = root.cloneJson(root.draft)
+            next.bar.position = v
+            root.draft = next
+            root.markDirty()
+          }
         }
       }
 
@@ -795,52 +812,6 @@ Item {
         focusable: true
         bordered: true
         onClicked: root.resetBarToDefaults()
-      }
-    }
-  }
-
-  // ===================== shared chrome =====================================
-  component PositionButtonGroup: Item {
-    id: positionGroup
-
-    property string value: "top"
-    readonly property var positions: ["top", "right", "bottom", "left"]
-
-    signal changed(string value)
-
-    implicitWidth: positionColumn.implicitWidth
-    implicitHeight: positionColumn.implicitHeight
-
-    Column {
-      id: positionColumn
-      spacing: 4
-
-      Text {
-        text: "Position"
-        color: Qt.darker(root.foreground, 1.4)
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        font.bold: true
-      }
-
-      Row {
-        spacing: 6
-
-        Repeater {
-          model: positionGroup.positions
-
-          delegate: Button {
-            required property string modelData
-
-            text: modelData
-            selected: positionGroup.value === modelData
-            foreground: root.foreground
-            background: root.background
-            accent: root.accent
-            fontFamily: root.fontFamily
-            onClicked: positionGroup.changed(modelData)
-          }
-        }
       }
     }
   }
