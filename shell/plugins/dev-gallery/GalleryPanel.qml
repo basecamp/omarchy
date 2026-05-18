@@ -21,10 +21,28 @@ Item {
   function open(payloadJson) {
     closingFromHost = false
     window.visible = true
-    // Defer focus so the FloatingWindow's content tree is in place; the
-    // hasCursor bindings on each demo target scroll themselves into view
-    // via onHasCursorChanged, so no explicit scroll call is needed here.
+
+    // Optional { section: "button" } in the payload lets `omarchy dev
+    // ui-preview <section>` open the gallery with the cursor already on
+    // a specific component, so iterating on one widget doesn't require
+    // scrolling from the top each time. Unknown section names are
+    // ignored — the gallery opens at its default position.
+    var requested = ""
+    if (payloadJson) {
+      try {
+        var parsed = JSON.parse(String(payloadJson))
+        if (parsed && typeof parsed.section === "string") requested = parsed.section
+      } catch (e) { /* ignore */ }
+    }
+
+    // Defer the section assignment + focus so the FloatingWindow's
+    // content tree is mounted. The hasCursor bindings on each demo
+    // target then scroll themselves into view via onHasCursorChanged.
     Qt.callLater(function() {
+      if (requested && visibleSections.indexOf(requested) !== -1) {
+        focusSection = requested
+        selectedIndex = sectionFirstIndex(requested)
+      }
       if (keyCatcher) keyCatcher.forceActiveFocus()
     })
   }
