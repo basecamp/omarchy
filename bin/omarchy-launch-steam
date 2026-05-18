@@ -2,65 +2,11 @@
 
 if omarchy-pkg-present steam; then # Only apply if steam is installed
 
-  # Launch steam in gaming mode ( inspired by https://github.com/cephalization/omarchy-steam-gaming-mode)
-
-  POSSIBLE_GPUS=$(lspci | grep VGA)
-  ACTIVE_MONITOR_INFO=$(hyprctl monitors -j | jq '.[] | select(.focused==true)')
-
-  filter_info() {
-    echo $ACTIVE_MONITOR_INFO | grep $1 | grep -o '[0-9]\+' | head -1
-  }
-
-  WIDTH=filter_info width
-  HEIGHT=filter_info height
-  REFRESH_RATE=filter_info refreshRate
-  GAMESCOPE_ARGS=(
-    -f
-    -b
-    -W "$WIDTH"
-    -H "$HEIGHT"
-    -r "$REFRESH_RATE"
-    --mangoapp
-    --steam
-    --expose-wayland
-    --tenfoot
-  )
-
-
-  # Restore state on exit
-
-  trap "omarchy-toggle-screensaver; omarchy-toggle-hypridle"
-
-  # Disable screensaver
-  STATE_FILE=~/.local/state/omarchy/toggles/screensaver-off
-  if [[ ! -f $STATE_FILE ]]; then
-    mkdir -p "$(dirname $STATE_FILE)"
-    touch $STATE_FILE
-    notify-send "󱄄   Screensaver disabled"
-  fi
-
-  # Disable hypridle
-  if pgrep -x hypridle >/dev/null; then
-    pkill -x hypridle
-    notify-send "󱫖    Stop locking computer when idle"
-  fi
-
-  # Shutdown Hyprland
-  if pgrep -x hyprland >/dev/null; then
-    echo "Exiting Hyprland"
-    omarchy system logout
-  fi
-
   # Kill existing steam instances
   killall steam
-# Check if the NVIDIA or AMD drivers are installed
-    if omarchy-pkg-present lib32-nvidia-utils; then
-      args+=(-F nis)
-    elif omarchy-pkg-present lib32-vulkan-radeon; then
-      args+=(-F fsr)
-    fi
-    gamescope "${args[@]}"
-# Launch gamescope with steam
+# Launch steam with gamescope session
+  gum confirm "The system will reboot, and once you login, you will be taken to steam" &&\
+    sudo sed -i 's/^Session=.*/Session=gamescope-session-steam/' /etc/sddm.conf.d/autologin.conf && omarchy-system-reboot
 else
   echo "please install steam first by running omarchy-install-steam"
 fi

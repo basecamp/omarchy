@@ -27,8 +27,23 @@ omarchy-pkg-add steam gamemode gamescope lib32-gamemode winetricks
 # Set Proton-GE by default automatically
 sed -i -e 's/proton_experimental/Proton-GE/g' "$HOME/.local/share/Steam/config/config.vdf"
 
+echo "Creating steam shortcut to return to hyprland, make sure to add it to your steam library so you can get back to the desktop"
+
+if [[ ! -f ~/.local/share/applications/hyprland-return.desktop ]]; then
+  cat << EOF | sudo tee ~/.local/share/applications/hyprland-return.desktop
+[Desktop Entry]
+Name=Exit to SDDM
+Comment=Exit Gamescope session and return to login screen
+Exec=sh -c 'sudo sed -i 's/^Session=.*/Session=hyprland-uwsm/' /etc/sddm.conf.d/autologin.conf pkill gamescope; sleep 2; loginctl terminate-user $USER'
+Type=Application
+Categories=System;
+EOF
+fi
+
+
 omarchy-launch-steam
 
 echo "Make sure to add \"gamescope gamemoderun %command%\" to the games in your steam library to make proper use of these tools"
+
 
 # Note: this is a WIP, as of now, I don't know of a more automated way to add these launch options, but that would be ideal
