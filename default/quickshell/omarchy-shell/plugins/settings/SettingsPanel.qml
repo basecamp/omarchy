@@ -1088,18 +1088,15 @@ Item {
       spacing: 8
       width: parent ? parent.width : 0
 
-      Text {
-        text: "Size (pixels)"
-        color: Qt.darker(root.foreground, 1.4)
-        font.family: root.fontFamily
-        font.pixelSize: 11
-      }
-
-      SpinBox {
+      NumberField {
+        label: "Size (pixels)"
         from: 0
         to: 256
         value: spacerForm.entry.size !== undefined ? spacerForm.entry.size : 12
-        onValueModified: spacerForm.fieldChanged("size", value)
+        foreground: root.foreground
+        accent: root.accent
+        fontFamily: root.fontFamily
+        onModified: function(v) { spacerForm.fieldChanged("size", v) }
       }
     }
   }
@@ -1171,18 +1168,15 @@ Item {
       spacing: 8
       width: parent ? parent.width : 0
 
-      Text {
-        text: "Auto-refresh interval (minutes)"
-        color: Qt.darker(root.foreground, 1.4)
-        font.family: root.fontFamily
-        font.pixelSize: 11
-      }
-
-      SpinBox {
+      NumberField {
+        label: "Auto-refresh interval (minutes)"
         from: 1
         to: 1440
         value: weatherForm.entry.refreshMinutes !== undefined ? weatherForm.entry.refreshMinutes : 15
-        onValueModified: weatherForm.fieldChanged("refreshMinutes", value)
+        foreground: root.foreground
+        accent: root.accent
+        fontFamily: root.fontFamily
+        onModified: function(v) { weatherForm.fieldChanged("refreshMinutes", v) }
       }
     }
   }
