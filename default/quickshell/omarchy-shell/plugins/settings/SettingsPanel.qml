@@ -671,9 +671,12 @@ Item {
 
     Row {
       Layout.alignment: Qt.AlignRight
-      ActionPill {
+      PillButton {
         text: "Reset bar to defaults"
         foreground: root.urgent
+        fontFamily: root.fontFamily
+        focusable: true
+        bordered: true
         onClicked: root.resetBarToDefaults()
       }
     }
@@ -725,87 +728,6 @@ Item {
     }
   }
 
-  component ActionPill: Rectangle {
-    id: pill
-    property string text: ""
-    property color foreground: root.foreground
-    property bool bordered: true
-    signal clicked()
-
-    activeFocusOnTab: true
-    Keys.onReturnPressed: pill.clicked()
-    Keys.onEnterPressed: pill.clicked()
-    Keys.onSpacePressed: pill.clicked()
-
-    implicitWidth: pillLabel.implicitWidth + 22
-    implicitHeight: 26
-    radius: root.cornerRadius
-    color: pill.activeFocus
-      ? root.focusFillColor
-      : (pillArea.containsMouse ? Qt.rgba(pill.foreground.r, pill.foreground.g, pill.foreground.b, 0.15) : "transparent")
-    border.color: pill.activeFocus ? root.focusBorderColor : (pill.bordered ? pill.foreground : "transparent")
-    border.width: pill.activeFocus ? root.focusBorderWidth : 1
-
-    Behavior on color { ColorAnimation { duration: 100 } }
-
-    Text {
-      id: pillLabel
-      anchors.centerIn: parent
-      text: pill.text
-      color: pill.foreground
-      font.family: root.fontFamily
-      font.pixelSize: 11
-    }
-
-    MouseArea {
-      id: pillArea
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: pill.clicked()
-    }
-  }
-
-  component IconButton: Rectangle {
-    id: iconButton
-    property string glyph: ""
-    property string tooltip: ""
-    property color foreground: root.foreground
-    signal clicked()
-
-    activeFocusOnTab: true
-    Keys.onReturnPressed: iconButton.clicked()
-    Keys.onEnterPressed: iconButton.clicked()
-    Keys.onSpacePressed: iconButton.clicked()
-
-    implicitWidth: 26
-    implicitHeight: 26
-    radius: root.cornerRadius
-    color: iconButton.activeFocus
-      ? root.focusFillColor
-      : (iconArea.containsMouse ? Qt.rgba(iconButton.foreground.r, iconButton.foreground.g, iconButton.foreground.b, 0.18) : "transparent")
-    border.color: iconButton.activeFocus ? root.focusBorderColor : "transparent"
-    border.width: iconButton.activeFocus ? root.focusBorderWidth : 0
-
-    Behavior on color { ColorAnimation { duration: 100 } }
-
-    Text {
-      anchors.centerIn: parent
-      text: iconButton.glyph
-      color: iconButton.foreground
-      font.family: root.fontFamily
-      font.pixelSize: 13
-    }
-
-    MouseArea {
-      id: iconArea
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: iconButton.clicked()
-    }
-  }
-
   // ===================== bar layout pieces =================================
   component SectionEditor: Column {
     id: section
@@ -848,9 +770,13 @@ Item {
         height: 1
       }
 
-      ActionPill {
+      PillButton {
         id: addPill
         text: "+ Add widget"
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        focusable: true
+        bordered: true
         onClicked: addPopup.open()
       }
     }
@@ -993,26 +919,50 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       spacing: 4
 
-      IconButton {
-        glyph: "↑"
-        tooltip: "Move up"
+      PanelActionButton {
+        iconText: "↑"
+        tooltipText: "Move up"
+        foreground: root.foreground
+        panelBackground: root.background
+        fontFamily: root.fontFamily
+        fontSize: 13
+        size: 26
+        focusable: true
         onClicked: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex - 1)
       }
-      IconButton {
-        glyph: "↓"
-        tooltip: "Move down"
+      PanelActionButton {
+        iconText: "↓"
+        tooltipText: "Move down"
+        foreground: root.foreground
+        panelBackground: root.background
+        fontFamily: root.fontFamily
+        fontSize: 13
+        size: 26
+        focusable: true
         onClicked: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex + 1)
       }
-      IconButton {
-        glyph: "⚙"
-        tooltip: "Settings"
+      PanelActionButton {
+        iconText: "⚙"
+        tooltipText: "Settings"
+        foreground: root.foreground
+        panelBackground: root.background
+        fontFamily: root.fontFamily
+        fontSize: 13
+        size: 26
+        focusable: true
         visible: card.hasSettings
         onClicked: settingsLoader.open(card.entry)
       }
-      IconButton {
-        glyph: "✕"
-        tooltip: "Remove"
+      PanelActionButton {
+        iconText: "✕"
+        tooltipText: "Remove"
         foreground: root.urgent
+        hoverColor: root.urgent
+        panelBackground: root.background
+        fontFamily: root.fontFamily
+        fontSize: 13
+        size: 26
+        focusable: true
         onClicked: root.removeEntry(card.sectionKey, card.entryIndex)
       }
     }
@@ -1140,8 +1090,21 @@ Item {
           Row {
             Layout.alignment: Qt.AlignRight
             spacing: 8
-            ActionPill { text: "Cancel"; bordered: false; onClicked: dialog.discard() }
-            ActionPill { text: "Apply"; onClicked: dialog.commit() }
+            PillButton {
+              text: "Cancel"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              focusable: true
+              onClicked: dialog.discard()
+            }
+            PillButton {
+              text: "Apply"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              focusable: true
+              bordered: true
+              onClicked: dialog.commit()
+            }
           }
         }
       }

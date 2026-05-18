@@ -12,6 +12,12 @@ import qs.Commons
 // hover state visuals; mouse hover does NOT update any panel cursor state
 // here because action buttons are not cursor targets — the row they live
 // in is.
+//
+// Set `focusable: true` to make the button keyboard-tabbable with an
+// accent focus ring (Style.focusBorderColor / FillColor / Width). Use this
+// in form contexts (the bar settings widget cards) where Tab walks a list
+// of controls; leave it false for the right-edge actions on panel rows
+// where the row's CursorSurface owns the keyboard cursor.
 Rectangle {
   id: root
 
@@ -24,15 +30,28 @@ Rectangle {
   property real fontSize: 14
   property real size: 22
 
+  property bool focusable: false
+
   signal clicked()
+
+  activeFocusOnTab: focusable
+  Keys.onReturnPressed: if (focusable) root.clicked()
+  Keys.onEnterPressed: if (focusable) root.clicked()
+  Keys.onSpacePressed: if (focusable) root.clicked()
 
   implicitWidth: size
   implicitHeight: size
   radius: Style.cornerRadius
 
-  color: mouse.containsMouse && root.enabled
-    ? Qt.rgba(hoverColor.r, hoverColor.g, hoverColor.b, 0.20)
-    : "transparent"
+  readonly property bool _showFocusRing: focusable && activeFocus
+
+  color: _showFocusRing
+    ? Style.focusFillColor
+    : (mouse.containsMouse && root.enabled
+      ? Qt.rgba(hoverColor.r, hoverColor.g, hoverColor.b, 0.20)
+      : "transparent")
+  border.width: _showFocusRing ? Style.focusBorderWidth : 0
+  border.color: _showFocusRing ? Style.focusBorderColor : "transparent"
 
   Behavior on color { ColorAnimation { duration: 60 } }
 
@@ -52,7 +71,10 @@ Rectangle {
     hoverEnabled: true
     cursorShape: root.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
     enabled: root.enabled
-    onClicked: root.clicked()
+    onClicked: {
+      if (root.focusable) root.forceActiveFocus()
+      root.clicked()
+    }
   }
 
   PanelToolTip {
