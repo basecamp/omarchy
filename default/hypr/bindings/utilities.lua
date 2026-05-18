@@ -53,9 +53,10 @@ hl.bind("SUPER + CTRL + ALT + T", hl.dsp.exec_cmd("omarchy-notification-time"), 
 hl.bind("SUPER + CTRL + ALT + B", hl.dsp.exec_cmd("omarchy-notification-battery"), { description = "Show battery remaining" })
 hl.bind("SUPER + CTRL + ALT + W", hl.dsp.exec_cmd("omarchy-notification-weather"), { description = "Show weather" })
 
-hl.bind("SUPER + CTRL + A", hl.dsp.exec_cmd("omarchy-shell-ipc audioPanel toggle"), { description = "Audio panel" })
-hl.bind("SUPER + CTRL + B", hl.dsp.exec_cmd("omarchy-shell-ipc bluetoothPanel toggle"), { description = "Bluetooth panel" })
-hl.bind("SUPER + CTRL + W", hl.dsp.exec_cmd("omarchy-shell-ipc networkPanel toggle"), { description = "Wifi panel" })
+hl.bind("SUPER + CTRL + A", hl.dsp.exec_cmd("omarchy-shell audioPanel toggle"), { description = "Audio panel" })
+hl.bind("SUPER + CTRL + B", hl.dsp.exec_cmd("omarchy-shell bluetoothPanel toggle"), { description = "Bluetooth panel" })
+hl.bind("SUPER + CTRL + D", hl.dsp.exec_cmd("omarchy-shell monitorPanel toggle"), { description = "Display panel" })
+hl.bind("SUPER + CTRL + W", hl.dsp.exec_cmd("omarchy-shell networkPanel toggle"), { description = "Network panel" })
 hl.bind("SUPER + CTRL + T", hl.dsp.exec_cmd("omarchy-launch-tui btop"), { description = "Activity" })
 
 hl.bind("SUPER + CTRL + X", hl.dsp.exec_cmd("voxtype record toggle"), { description = "Toggle dictation" })
