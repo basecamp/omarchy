@@ -109,7 +109,7 @@ Item {
   function adjustBrightness(delta) {
     if (focusSection !== "brightness") return
     if (!brightnessAvailable) return
-    setBrightness(brightnessPercent + delta)
+    setBrightness(root.brightnessPercent + delta)
   }
 
   function activateCursor() {
@@ -436,7 +436,7 @@ Item {
                 PanelSlider {
                   id: brightnessSlider
                   bar: root.bar
-                  width: parent.width - 22 - brightnessPercent.width - 16
+                  width: parent.width - 22 - brightnessLabel.width - 16
                   anchors.verticalCenter: parent.verticalCenter
                   minimum: 1
                   maximum: 100
@@ -451,7 +451,7 @@ Item {
                 }
 
                 Text {
-                  id: brightnessPercent
+                  id: brightnessLabel
                   text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
