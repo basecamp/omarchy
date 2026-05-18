@@ -47,6 +47,29 @@ Item {
   // Index into `wifiNetworks` for keyboard navigation. -1 = no selection.
   property int selectedIndex: -1
 
+  // Keyboard focus zone for the panel. j/k crosses the boundary: from the
+  // top of the wifi list a k goes back up to the DNS row, j from DNS drops
+  // into the wifi list. h/l only mean something while focused on DNS.
+  property string focusSection: "dns"  // "dns" | "wifi"
+  readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
+  property int dnsIndex: 0
+
+  function selectDnsByDelta(delta) {
+    dnsIndex = Math.max(0, Math.min(dnsProviders.length - 1, dnsIndex + delta))
+  }
+
+  function activateDns() {
+    if (dnsIndex < 0 || dnsIndex >= dnsProviders.length) return
+    setDns(dnsProviders[dnsIndex])
+  }
+
+  // Single cursor model: exactly one highlighted spot across the whole
+  // panel, located via `focusSection` + (`selectedIndex` | `dnsIndex`).
+  // Mouse hover and keyboard nav both mutate this state at the root; items
+  // never read containsMouse for visuals. See Common.CursorSurface for the
+  // shared chrome (fill / border) shared by NetworkRow and DnsProviderPill.
+  readonly property color activeFill: bar ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18) : "transparent"
+
   // The panel below is its own layer-shell with Exclusive keyboard focus,
   // so Hyprland grants focus when the surface is mapped (popupOpen flips
   // to true). That's what makes the SUPER+CTRL+W keybind actually work
@@ -55,6 +78,9 @@ Item {
     if (popupOpen) {
       refresh()
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
+      focusSection = "dns"
+      var idx = dnsProviders.indexOf(dnsProvider)
+      dnsIndex = idx >= 0 ? idx : 0
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
@@ -68,10 +94,17 @@ Item {
   }
 
   // Keep selectedIndex valid as scans refresh the network list.
+  // If the list empties (station gone, e.g. wifi off), bounce the cursor
+  // back to the DNS row so the panel doesn't end up with no cursor at all.
   onWifiNetworksChanged: {
-    if (wifiNetworks.length === 0) selectedIndex = -1
-    else if (selectedIndex >= wifiNetworks.length) selectedIndex = wifiNetworks.length - 1
-    else if (selectedIndex < 0 && popupOpen) selectedIndex = 0
+    if (wifiNetworks.length === 0) {
+      selectedIndex = -1
+      if (focusSection === "wifi") focusSection = "dns"
+    } else if (selectedIndex >= wifiNetworks.length) {
+      selectedIndex = wifiNetworks.length - 1
+    } else if (selectedIndex < 0 && popupOpen) {
+      selectedIndex = 0
+    }
   }
 
   function selectByDelta(delta) {
@@ -217,14 +250,14 @@ iwctl known-networks list 2>/dev/null \\
     if (provider === "Custom") {
       var launcher = root.bar.shellQuote(root.bar.omarchyPath + "/bin/omarchy-launch-floating-terminal-with-presentation")
       root.bar.run(launcher + " " + root.bar.shellQuote(root.dnsCommand(provider)))
-      root.popupOpen = false
+      root.closePopout()
       return
     }
 
     root.pendingDnsProvider = provider
     actionProc.command = ["bash", "-lc", root.dnsCommand(provider)]
     actionProc.running = true
-    root.popupOpen = false
+    root.closePopout()
   }
 
   function isProtected(security) {
@@ -529,20 +562,49 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           if (event.key === Qt.Key_Escape) {
             root.closePopout()
             event.accepted = true
-          } else if (event.key === Qt.Key_Down || event.text === "j") {
+            return
+          }
+          if (event.text === "r" || event.text === "R") {
+            root.refresh()
+            event.accepted = true
+            return
+          }
+          if (root.focusSection === "dns") {
+            if (event.key === Qt.Key_Left || event.text === "h") {
+              root.selectDnsByDelta(-1)
+              event.accepted = true
+            } else if (event.key === Qt.Key_Right || event.text === "l") {
+              root.selectDnsByDelta(1)
+              event.accepted = true
+            } else if (event.key === Qt.Key_Down || event.text === "j") {
+              // Drop into the wifi list if there's anything to land on;
+              // otherwise hold position so j isn't a no-op surprise.
+              if (root.wifiNetworks.length > 0) {
+                root.focusSection = "wifi"
+                if (root.selectedIndex < 0) root.selectedIndex = 0
+              }
+              event.accepted = true
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+              root.activateDns()
+              event.accepted = true
+            }
+            return
+          }
+          // focusSection === "wifi"
+          if (event.key === Qt.Key_Down || event.text === "j") {
             root.selectByDelta(1)
             event.accepted = true
           } else if (event.key === Qt.Key_Up || event.text === "k") {
-            root.selectByDelta(-1)
+            // k from the top row escapes back up into the DNS row rather
+            // than wrapping around to the bottom of the list.
+            if (root.selectedIndex <= 0) root.focusSection = "dns"
+            else root.selectByDelta(-1)
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
             root.activateSelected()
             event.accepted = true
           } else if (event.text === "x" || event.text === "X") {
             root.forgetSelected()
-            event.accepted = true
-          } else if (event.text === "r" || event.text === "R") {
-            root.refresh()
             event.accepted = true
           }
         }
@@ -738,52 +800,32 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           width: parent.width
           spacing: 6
 
-          Common.PillButton {
-            text: "DHCP"
+          DnsProviderPill {
+            provider: "DHCP"
+            index: 0
             tooltipText: "Use DNS from DHCP"
-            tooltipBackground: root.bar.background
-            tooltipForeground: root.bar.foreground
-            foreground: root.bar.foreground
-            horizontalPadding: 10
-            verticalPadding: 6
-            active: root.dnsProvider === "DHCP"
-            onClicked: root.setDns("DHCP")
+            onClicked: root.setDns(provider)
           }
 
-          Common.PillButton {
-            text: "Cloudflare"
+          DnsProviderPill {
+            provider: "Cloudflare"
+            index: 1
             tooltipText: "Set DNS to Cloudflare"
-            tooltipBackground: root.bar.background
-            tooltipForeground: root.bar.foreground
-            foreground: root.bar.foreground
-            horizontalPadding: 10
-            verticalPadding: 6
-            active: root.dnsProvider === "Cloudflare"
-            onClicked: root.setDns("Cloudflare")
+            onClicked: root.setDns(provider)
           }
 
-          Common.PillButton {
-            text: "Google"
+          DnsProviderPill {
+            provider: "Google"
+            index: 2
             tooltipText: "Set DNS to Google"
-            tooltipBackground: root.bar.background
-            tooltipForeground: root.bar.foreground
-            foreground: root.bar.foreground
-            horizontalPadding: 10
-            verticalPadding: 6
-            active: root.dnsProvider === "Google"
-            onClicked: root.setDns("Google")
+            onClicked: root.setDns(provider)
           }
 
-          Common.PillButton {
-            text: "Custom"
+          DnsProviderPill {
+            provider: "Custom"
+            index: 3
             tooltipText: "Set custom DNS servers"
-            tooltipBackground: root.bar.background
-            tooltipForeground: root.bar.foreground
-            foreground: root.bar.foreground
-            horizontalPadding: 10
-            verticalPadding: 6
-            active: root.dnsProvider === "Custom"
-            onClicked: root.setDns("Custom")
+            onClicked: root.setDns(provider)
           }
         }
       }
@@ -847,18 +889,92 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       }
     }
 
+  // One DNS provider pill. The cursor + current visuals come entirely from
+  // CursorSurface; this component just binds them to the panel's cursor
+  // state and renders the label/tooltip/click target.
+  component DnsProviderPill: Common.CursorSurface {
+    id: pill
+    required property string provider
+    required property int index
+    property string tooltipText: ""
+
+    signal clicked()
+
+    hasCursor: root.focusSection === "dns" && root.dnsIndex === index
+    current: root.dnsProvider === provider
+    foreground: root.bar.foreground
+    fill: root.activeFill
+
+    implicitWidth: pillLabel.implicitWidth + 20
+    implicitHeight: pillLabel.implicitHeight + 12
+
+    Text {
+      id: pillLabel
+      anchors.centerIn: parent
+      text: pill.provider
+      color: root.bar.foreground
+      font.family: root.bar.fontFamily
+      font.pixelSize: 12
+    }
+
+    MouseArea {
+      id: pillMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+
+      onContainsMouseChanged: if (containsMouse) {
+        root.focusSection = "dns"
+        root.dnsIndex = pill.index
+      }
+
+      onClicked: pill.clicked()
+    }
+
+    ToolTip {
+      visible: pill.tooltipText !== "" && pillMouse.containsMouse
+      text: pill.tooltipText
+      delay: 400
+      padding: 0
+
+      background: Rectangle {
+        color: root.bar.background
+        border.color: root.bar.foreground
+        border.width: 1
+        radius: 0
+        opacity: 0.97
+      }
+
+      contentItem: Text {
+        text: pill.tooltipText
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: 11
+        leftPadding: 10
+        rightPadding: 10
+        topPadding: 6
+        bottomPadding: 6
+      }
+    }
+  }
+
   // A single Wi-Fi network entry. Collapses to a one-line pill normally;
   // expands inline to a passphrase prompt when the user picks a protected
   // network we don't have credentials for. Clicking a connected row
   // disconnects; the X button on a connected row forgets the network.
-  component NetworkRow: Rectangle {
+  component NetworkRow: Common.CursorSurface {
     id: row
     required property var net
     required property int index
 
     readonly property bool isConnected: net && net.connected
     readonly property bool isProtected: root.isProtected(net ? net.security : "")
-    readonly property bool isSelected: root.selectedIndex === index
+    readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
+
+    hasCursor: isSelected
+    current: isConnected
+    foreground: root.bar.foreground
+    fill: root.activeFill
     // Gate on the matching *Kind/*Reason being non-empty so a hidden-SSID
     // row (ssid == "") doesn't match the "" defaults of actionSsid etc.
     readonly property bool isBusy: root.actionKind !== "" && root.actionSsid === (net ? net.ssid : "")
@@ -883,14 +999,6 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     }
 
     implicitHeight: rowBody.implicitHeight + (isPasswordOpen ? passwordPanel.implicitHeight + 6 : 0)
-    radius: 4
-    color: isSelected
-      ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.18)
-      : rowMouse.containsMouse
-        ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
-        : (isConnected ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.06) : "transparent")
-
-    Behavior on color { ColorAnimation { duration: 120 } }
 
     MouseArea {
       id: rowMouse
@@ -903,8 +1011,17 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       cursorShape: Qt.PointingHandCursor
       enabled: !root.busy
 
+      // Move the cursor here when the mouse enters; mouse leaving doesn't
+      // clear it (so the cursor stays where the mouse last was and
+      // subsequent j/k pick up from this row).
+      onContainsMouseChanged: if (containsMouse) { root.focusSection = "wifi"; root.selectedIndex = row.index }
+
       onClicked: {
         if (!row.net) return
+        // Resync cursor in case keyboard nav moved it away while the mouse
+        // stayed parked on this row — the click target is unambiguously here.
+        root.focusSection = "wifi"
+        root.selectedIndex = row.index
         if (row.isConnected) {
           root.disconnect(row.net.ssid)
           return
@@ -965,7 +1082,7 @@ iwctl known-networks list 2>/dev/null \\
           ? Qt.rgba(root.bar.urgent.r, root.bar.urgent.g, root.bar.urgent.b, 0.20)
           : "transparent"
 
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { ColorAnimation { duration: 60 } }
 
         Text {
           anchors.centerIn: parent
@@ -1131,7 +1248,7 @@ iwctl known-networks list 2>/dev/null \\
           ? Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.20)
           : "transparent"
 
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { ColorAnimation { duration: 60 } }
 
         Text {
           anchors.centerIn: parent
