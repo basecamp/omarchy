@@ -7,7 +7,7 @@
 set -e
 
 CONFIG_FILE="$HOME/.config/omarchy/shell.json"
-DEFAULTS_FILE="$OMARCHY_PATH/default/quickshell/omarchy-shell/shell-defaults.json"
+DEFAULTS_FILE="$OMARCHY_PATH/shell/shell-defaults.json"
 position=$1
 
 if [[ ! $position =~ ^(top|bottom|left|right)$ ]]; then

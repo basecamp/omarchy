@@ -36,7 +36,7 @@ first call.
 (loaded by `shell summon`, unloaded by `shell hide`). On-demand
 plugins can set `keepLoaded: true` to survive between summons.
 
-Full schema: `services/PluginRegistry.qml`.
+Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
 
 ## Installing a third-party plugin
 

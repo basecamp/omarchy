@@ -30,7 +30,7 @@ if [[ -z ${OMARCHY_PATH:-} ]]; then
   exit 1
 fi
 
-SHELL_QML="$OMARCHY_PATH/default/quickshell/omarchy-shell/shell.qml"
+SHELL_QML="$OMARCHY_PATH/shell/shell.qml"
 
 perl -MCwd=abs_path -MEncode=encode,decode -MSocket -MIO::Handle \
   -e '

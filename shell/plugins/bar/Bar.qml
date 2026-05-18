@@ -577,7 +577,7 @@ Item {
 
   Process {
     id: screenRecordingProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/quickshell/omarchy-shell/scripts/indicators/screen-recording.sh"))]
+    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/shell/scripts/indicators/screen-recording.sh"))]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateIndicator("screenRecording", text)
@@ -586,7 +586,7 @@ Item {
 
   Process {
     id: notificationSilencingProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/default/quickshell/omarchy-shell/scripts/indicators/notification-silencing.sh"))]
+    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/shell/scripts/indicators/notification-silencing.sh"))]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateIndicator("notifications", text)

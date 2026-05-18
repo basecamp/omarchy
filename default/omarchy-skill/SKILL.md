@@ -51,13 +51,14 @@ This directory contains Omarchy's source files managed by git. Any changes will 
 ├── config/                 # Default config templates
 ├── themes/                 # Stock themes
 ├── default/                # System defaults
+├── shell/                  # Omarchy shell source and defaults
 ├── migrations/             # Update migrations
 └── install/                # Installation scripts
 ```
 
 **Reading `~/.local/share/omarchy/` is SAFE and useful** - do it freely to:
 - Understand how omarchy commands work: `omarchy theme set --help` or `cat $(which omarchy-theme-set)`
-- See default configs before customizing: `cat ~/.local/share/omarchy/default/quickshell/omarchy-shell/shell-defaults.json`
+- See default configs before customizing: `cat ~/.local/share/omarchy/shell/shell-defaults.json`
 - Check stock theme files to copy for customization
 - Reference default hyprland settings: `cat ~/.local/share/omarchy/default/hypr/*`
 
@@ -154,7 +155,7 @@ inside a single long-running Quickshell process (`omarchy-shell`).
 
 ```
 ~/.config/omarchy/shell.json      # User overrides: bar.position, bar.layout, plugins[]
-~/.local/share/omarchy/default/quickshell/omarchy-shell/shell-defaults.json   # Canonical defaults
+~/.local/share/omarchy/shell/shell-defaults.json   # Canonical defaults
 ```
 
 The shell hot-reloads `shell.json` on save — no restart needed for layout
@@ -375,7 +376,7 @@ omarchy reminder clear
 ## Out of Scope
 
 This skill intentionally does not cover Omarchy source development. Do not use this skill for:
-- Editing files in `~/.local/share/omarchy/` (`bin/`, `config/`, `default/`, `themes/`, `migrations/`, etc.)
+- Editing files in `~/.local/share/omarchy/` (`bin/`, `config/`, `default/`, `shell/`, `themes/`, `migrations/`, etc.)
 - Creating or editing migrations
 - Running `omarchy dev ...` commands
 
