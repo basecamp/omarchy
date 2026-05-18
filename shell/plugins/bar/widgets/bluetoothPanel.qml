@@ -25,10 +25,34 @@ Item {
   readonly property var adapter: Bluetooth.defaultAdapter
   readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
 
+  function deviceLabel(device) {
+    if (!device) return ""
+    return String(device.deviceName || device.name || "").trim()
+  }
+
+  function isUuidLike(value) {
+    var text = (value || "").trim()
+    if (text === "") return false
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)
+      || /^[0-9a-f]{32}$/i.test(text)
+      || /^0x[0-9a-f]{4,32}$/i.test(text)
+      || /^0000[0-9a-f]{4}-0000-1000-8000-00805f9b34fb$/i.test(text)
+  }
+
+  function isAddressLike(value) {
+    var text = (value || "").trim()
+    return /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(text)
+  }
+
+  function hasHumanName(device) {
+    var label = deviceLabel(device)
+    return label !== "" && !isUuidLike(label) && !isAddressLike(label)
+  }
+
   readonly property var connectedDevices: {
     var list = []
     for (var i = 0; i < devices.length; i++)
-      if (devices[i] && devices[i].connected) list.push(devices[i])
+      if (devices[i] && devices[i].connected && hasHumanName(devices[i])) list.push(devices[i])
     return list
   }
 
@@ -36,11 +60,11 @@ Item {
     var list = []
     for (var i = 0; i < devices.length; i++) {
       var d = devices[i]
-      if (d && (d.paired || d.connected || d.bonded || d.trusted)) list.push(d)
+      if (d && hasHumanName(d) && (d.paired || d.connected || d.bonded || d.trusted)) list.push(d)
     }
     list.sort(function(a, b) {
       if (a.connected !== b.connected) return a.connected ? -1 : 1
-      return (a.name || a.deviceName || "").localeCompare(b.name || b.deviceName || "")
+      return deviceLabel(a).localeCompare(deviceLabel(b))
     })
     return list
   }
@@ -49,12 +73,12 @@ Item {
     var list = []
     for (var i = 0; i < devices.length; i++) {
       var d = devices[i]
-      if (!d) continue
+      if (!d || !hasHumanName(d)) continue
       if (d.paired || d.connected || d.bonded || d.trusted) continue
       list.push(d)
     }
     list.sort(function(a, b) {
-      return (a.name || a.deviceName || a.address || "").localeCompare(b.name || b.deviceName || b.address || "")
+      return deviceLabel(a).localeCompare(deviceLabel(b))
     })
     return list
   }
@@ -67,7 +91,7 @@ Item {
   }
 
   // Single cursor model shared by keyboard and mouse. Sections:
-  //   "header"     — 3 action pills (scan, tui, toggle); h/l moves between
+  //   "header"     — 2 action pills (scan, toggle); h/l moves between
   //                  them, Enter activates.
   //   "known"      — paired/known device rows; Enter toggles connect.
   //   "discovered" — unpaired devices visible while scanning; Enter pairs.
@@ -75,8 +99,8 @@ Item {
   // never from containsMouse. Mouse hover updates root cursor state too,
   // guaranteeing one highlight on screen.
   property string focusSection: "header"
-  property int selectedIndex: 2  // default = toggle pill
-  readonly property int headerPillCount: 3
+  property int selectedIndex: 1  // default = toggle pill
+  readonly property int headerPillCount: 2
 
   // Stable identity for the focused known device. The known list is sorted
   // (connected-first, then alphabetical) so activating a device can shift
@@ -137,8 +161,8 @@ Item {
         focusSection = sections[sIdx - 1]
         // Entering the header always lands on the toggle pill — the most
         // common action and consistent with the on-open default. h/l from
-        // there moves to scan/TUI.
-        selectedIndex = focusSection === "header" ? 2 : sectionCount(focusSection) - 1
+        // there moves to scan.
+        selectedIndex = focusSection === "header" ? 1 : sectionCount(focusSection) - 1
       }
     }
   }
@@ -158,9 +182,6 @@ Item {
       if (selectedIndex === 0) {
         if (adapter && adapter.enabled) adapter.discovering = !adapter.discovering
       } else if (selectedIndex === 1) {
-        if (bar) bar.run("omarchy-launch-bluetooth")
-        closePopout()
-      } else if (selectedIndex === 2) {
         if (adapter) adapter.enabled = !adapter.enabled
       }
       return
@@ -196,8 +217,9 @@ Item {
 
   onPopupOpenChanged: {
     if (popupOpen) {
+      if (adapter && adapter.enabled && !adapter.discovering) adapter.discovering = true
       if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
-      else { focusSection = "header"; selectedIndex = 2 }
+      else { focusSection = "header"; selectedIndex = 1 }
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
@@ -273,6 +295,14 @@ Item {
   visible: adapter !== null
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
+
+  Connections {
+    target: root.adapter || null
+    function onEnabledChanged() {
+      if (root.popupOpen && root.adapter && root.adapter.enabled && !root.adapter.discovering)
+        root.adapter.discovering = true
+    }
+  }
 
   // Non-visual lifecycle watchers, one per device. Survives popup open/close
   // and the discovered-known transition that destroys row delegates.
@@ -352,15 +382,27 @@ Item {
           width: parent.width
           height: titleText.implicitHeight
 
-          Text {
-            id: titleText
+          Row {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Bluetooth"
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: 13
-            font.bold: true
+            spacing: 8
+
+            PanelSectionHeader {
+              id: titleText
+              text: "Bluetooth"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              fontSize: 11
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+              text: "· " + (root.adapter && root.adapter.enabled ? "On" : "Off")
+              color: Qt.darker(root.bar.foreground, 1.8)
+              font.family: root.bar.fontFamily
+              font.pixelSize: 11
+              anchors.verticalCenter: parent.verticalCenter
+            }
           }
 
           Row {
@@ -370,23 +412,26 @@ Item {
 
             HeaderPill {
               pillIndex: 0
-              iconText: "󰂳"
+              property real scanRotation: 0
+              iconText: "󰑐"
+              iconRotation: root.adapter && root.adapter.discovering ? scanRotation : 0
               tooltipText: !root.adapter ? "" : !root.adapter.enabled ? "Bluetooth is off"
                 : root.adapter.discovering ? "Stop scanning" : "Scan for devices"
               pillEnabled: root.adapter !== null && root.adapter.enabled
               onActivated: if (root.adapter) root.adapter.discovering = !root.adapter.discovering
+
+              NumberAnimation on scanRotation {
+                from: 0
+                to: 360
+                duration: 900
+                loops: Animation.Infinite
+                running: root.adapter && root.adapter.discovering
+              }
             }
 
             HeaderPill {
               pillIndex: 1
-              iconText: "󱁤"
-              tooltipText: "Open Impala (TUI)"
-              onActivated: { root.bar.run("omarchy-launch-bluetooth"); root.popupOpen = false }
-            }
-
-            HeaderPill {
-              pillIndex: 2
-              iconText: root.adapter && root.adapter.enabled ? "󰂯" : "󰂲"
+              iconText: root.adapter && root.adapter.enabled ? "󰂲" : "󰂯"
               tooltipText: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
               onActivated: if (root.adapter) root.adapter.enabled = !root.adapter.enabled
             }
@@ -512,7 +557,8 @@ Item {
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(row)
     current: isConnected
     foreground: root.bar.foreground
-    fill: isConnected ? root.activeFill : "transparent"
+    fill: root.activeFill
+    currentFill: root.activeFill
 
     // 0 idle, 1 connecting, 2 disconnecting, 3 pairing, 4 failed.
     property int pendingAction: 0
@@ -663,7 +709,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
-          text: row.dev ? (row.dev.deviceName || row.dev.name || row.dev.address || "Device") : ""
+          text: root.deviceLabel(row.dev) || "Device"
           color: root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: 12
