@@ -780,7 +780,11 @@ Item {
           var list = root.availableToAdd(section.sectionKey)
           var out = []
           for (var i = 0; i < list.length; i++) {
-            out.push({ value: list[i].id, label: list[i].name + (list[i].elsewhere ? "  (elsewhere)" : "") })
+            out.push({
+              value: list[i].id,
+              label: list[i].name + (list[i].elsewhere ? "  (elsewhere)" : ""),
+              description: list[i].description || ""
+            })
           }
           return out
         }
