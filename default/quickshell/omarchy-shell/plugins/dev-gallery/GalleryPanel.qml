@@ -102,13 +102,14 @@ Item {
       }
 
       ScrollView {
+        id: scrollArea
         anchors.fill: parent
         anchors.margins: 18
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
         Column {
-          width: parent.width - 24
+          width: scrollArea.availableWidth
           spacing: 22
 
           // ---- Header ------------------------------------------------------
@@ -513,6 +514,7 @@ Item {
               }
             }
           }
+
 
           // ---- Slider ------------------------------------------------------
           Column {
