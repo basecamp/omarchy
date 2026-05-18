@@ -97,7 +97,7 @@ Item {
   property int selectedIndex: -1
 
   readonly property color activeFill: bar
-    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18)
+    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.12)
     : "transparent"
 
   function sectionCount(section) {
@@ -450,7 +450,7 @@ Item {
               hasCursor: root.focusSection === "output" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(outputSliderRow)
               foreground: root.bar.foreground
-              fill: root.activeFill
+              fill: "transparent"
 
               Row {
                 id: outputSliderInner
@@ -567,7 +567,7 @@ Item {
               hasCursor: root.focusSection === "input" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(inputSliderRow)
               foreground: root.bar.foreground
-              fill: root.activeFill
+              fill: "transparent"
 
               Row {
                 id: inputSliderInner
@@ -700,8 +700,8 @@ Item {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: 10
-      anchors.rightMargin: 10
+      anchors.leftMargin: 6
+      anchors.rightMargin: 6
       spacing: 8
 
       Text {
@@ -709,7 +709,7 @@ Item {
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: 14
-        width: 18
+        width: 22
         horizontalAlignment: Text.AlignHCenter
         anchors.verticalCenter: parent.verticalCenter
       }
@@ -720,7 +720,7 @@ Item {
         font.family: root.bar.fontFamily
         font.pixelSize: 12
         elide: Text.ElideRight
-        width: parent.width - 18 - 14 - 16
+        width: parent.width - 22 - 14 - 16
         anchors.verticalCenter: parent.verticalCenter
       }
 
@@ -766,8 +766,8 @@ Item {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: 10
-      anchors.rightMargin: 10
+      anchors.leftMargin: 6
+      anchors.rightMargin: 6
       spacing: 8
 
       Text {
@@ -775,7 +775,7 @@ Item {
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: 14
-        width: 18
+        width: 22
         horizontalAlignment: Text.AlignHCenter
         anchors.verticalCenter: parent.verticalCenter
       }
@@ -786,7 +786,7 @@ Item {
         font.family: root.bar.fontFamily
         font.pixelSize: 12
         elide: Text.ElideRight
-        width: parent.width - 18 - 14 - 16
+        width: parent.width - 22 - 14 - 16
         anchors.verticalCenter: parent.verticalCenter
       }
 

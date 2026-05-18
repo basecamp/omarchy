@@ -414,7 +414,7 @@ Item {
               hasCursor: root.focusSection === "brightness" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
               foreground: root.bar.foreground
-              fill: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.18)
+              fill: "transparent"
 
               Row {
                 id: brightnessInner
@@ -511,6 +511,7 @@ Item {
                   fontSize: 11
                   selected: root.normalizeScale(root.monitorScale) === root.normalizeScale(modelData)
                   hasCursor: root.focusSection === "scale" && root.selectedIndex === index
+                  borderlessHighlight: true
                   onClicked: root.setScale(modelData)
                   onHovered: function(h) {
                     if (h) {

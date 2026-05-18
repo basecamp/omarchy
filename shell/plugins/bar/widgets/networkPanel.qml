@@ -68,7 +68,7 @@ Item {
   // Mouse hover and keyboard nav both mutate this state at the root; items
   // never read containsMouse for visuals. See CursorSurface for the
   // shared chrome (fill / border) shared by NetworkRow and DnsProviderPill.
-  readonly property color activeFill: bar ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18) : "transparent"
+  readonly property color activeFill: bar ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.12) : "transparent"
 
   // The panel below is its own layer-shell with Exclusive keyboard focus,
   // so Hyprland grants focus when the surface is mapped (popupOpen flips
