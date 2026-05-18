@@ -18,9 +18,25 @@ Item {
   property real textRotation: 0
   property bool keepSpace: false
   property string tooltipText: ""
+  property var registeredBar: null
 
   signal pressed(int button)
   signal wheelMoved(int delta)
+
+  function triggerPress(button) {
+    if (root.bar) root.bar.hideTooltip(root)
+    root.pressed(button)
+  }
+
+  function syncClickRegistration() {
+    if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(root)
+    registeredBar = root.bar
+    if (registeredBar && registeredBar.registerClickTarget) registeredBar.registerClickTarget(root)
+  }
+
+  onBarChanged: syncClickRegistration()
+  Component.onCompleted: syncClickRegistration()
+  Component.onDestruction: if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(root)
 
   readonly property bool vertical: bar ? bar.vertical : false
   readonly property int barSize: bar ? bar.barSize : 26
@@ -60,10 +76,7 @@ Item {
     cursorShape: Qt.PointingHandCursor
     onEntered: if (root.bar) root.bar.showTooltip(root, root.tooltipText)
     onExited: if (root.bar) root.bar.hideTooltip(root)
-    onClicked: function(mouse) {
-      if (root.bar) root.bar.hideTooltip(root)
-      root.pressed(mouse.button)
-    }
+    onClicked: function(mouse) { root.triggerPress(mouse.button) }
     onWheel: function(wheel) { root.wheelMoved(wheel.angleDelta.y) }
   }
 }
