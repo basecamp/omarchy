@@ -8,8 +8,8 @@ if [[ $# -eq 0 || $1 == "-h" || $1 == "--help" ]]; then
   cat <<USAGE
 Usage: omarchy-shell <target> <method> [args...]
 
-Forwards an IPC call to the supervised omarchy-shell service. The shell is
-expected to already be running; this command does not start it.
+Forwards an IPC call to the running Omarchy shell. The shell is expected
+to already be running; this command does not start it.
 
 Examples:
   omarchy-shell shell ping
