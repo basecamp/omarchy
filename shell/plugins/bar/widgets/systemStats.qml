@@ -177,13 +177,13 @@ Item {
     bar: root.bar
     open: root.popupOpen
     triggerMode: "hover"
-    contentWidth: 320
-    contentHeight: detailColumn.implicitHeight + 28
+    contentWidth: popup.fittedContentWidth(Style.space(320))
+    contentHeight: popup.fittedContentHeight(detailColumn.implicitHeight)
 
     Column {
       id: detailColumn
       anchors.fill: parent
-      spacing: 10
+      spacing: Style.space(10)
 
       Text {
         text: "System"
@@ -213,7 +213,7 @@ Item {
 
       Row {
         width: parent.width
-        spacing: 6
+        spacing: Style.space(6)
         Text {
           text: "Load"
           color: Qt.darker(root.bar.foreground, 1.5)
@@ -239,7 +239,7 @@ Item {
     property color barFg: "#cacccc"
     property string fontFamily: "JetBrainsMono Nerd Font"
 
-    spacing: 4
+    spacing: Style.space(4)
 
     Row {
       width: parent.width
@@ -261,7 +261,7 @@ Item {
     Canvas {
       id: detailCanvas
       width: parent.width
-      height: 40
+      height: Style.space(40)
       property var history: detail.history
       onHistoryChanged: requestPaint()
 

@@ -57,18 +57,18 @@ Item {
   property color foreground: Color.menu.text
   property color border: foreground
   readonly property int cornerRadius: Style.cornerRadius
-  property int contentMargin: 18
-  property int headerHeight: 34
-  property int contentSpacing: 6
-  property int baseRowHeight: 50
-  property int detailRowHeight: 58
-  property int rowSpacing: 3
-  property int dividerHeight: 17
+  property int contentMargin: Style.spacing.panelPadding
+  property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
+  property int contentSpacing: Style.spacing.md
+  property int baseRowHeight: Math.max(Style.space(50), Style.font.body + Style.spacing.rowPaddingX * 2)
+  property int detailRowHeight: Math.max(Style.space(58), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
+  property int rowSpacing: Style.spacing.xs
+  property int dividerHeight: Style.space(17)
   property bool searchDivider: false
   property int layoutSerial: 0
-  property int cardWidth: Math.min((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? 520 : 300, panel.width - 48)
+  property int cardWidth: Math.min((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(300), panel.width - Style.gapsOut * 2)
   property int visibleRowsHeight: rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
-  property int cardHeight: Math.min(Math.max(220, contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight), panel.height - 48)
+  property int cardHeight: Math.min(Math.max(Style.space(220), contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
 
   function shellQuote(value) {
     return "'" + String(value).replace(/'/g, "'\\''") + "'"
@@ -807,7 +807,7 @@ Item {
       anchors.centerIn: parent
       color: root.background
       border.color: root.border
-      border.width: 2
+      border.width: Math.max(1, Style.space(2))
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
@@ -900,11 +900,11 @@ Item {
 
               Rectangle {
                 anchors.left: parent.left
-                anchors.leftMargin: 4
+                anchors.leftMargin: Style.space(4)
                 anchors.right: parent.right
-                anchors.rightMargin: 4
+                anchors.rightMargin: Style.space(4)
                 anchors.verticalCenter: parent.verticalCenter
-                height: 1
+                height: Style.spacing.hairline
                 color: root.withAlpha(root.foreground, 0.2)
               }
             }
@@ -925,50 +925,50 @@ Item {
               width: ListView.view.width
               height: root.rowHeightForDetail(row.detail)
               radius: root.cornerRadius
-              color: index === root.selectedIndex ? root.withAlpha(root.foreground, 0.08) : root.withAlpha(root.foreground, mouseArea.containsMouse ? 0.045 : 0)
-              border.color: "transparent"
-              border.width: 0
+              color: index === root.selectedIndex ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
+              border.color: index === root.selectedIndex ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
+              border.width: index === root.selectedIndex ? Style.hoverBorderWidth : 0
 
               Rectangle {
                 visible: false
-                width: 4
-                height: parent.height - 18
-                radius: Math.min(root.cornerRadius, 4)
+                width: Style.space(4)
+                height: parent.height - Style.space(18)
+                radius: Math.min(root.cornerRadius, Style.space(4))
                 color: root.accent
                 anchors.left: parent.left
-                anchors.leftMargin: 8
+                anchors.leftMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
               }
 
               Text {
                 id: iconText
                 text: row.icon
-                color: index === root.selectedIndex ? root.accent : root.foreground
+                color: index === root.selectedIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                 opacity: row.kind === "back" ? 0.7 : 1
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.iconLarge
-                width: 36
+                width: Style.space(36)
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 anchors.left: parent.left
-                anchors.leftMargin: 8
+                anchors.leftMargin: Style.space(8)
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
               }
 
               Column {
                 id: contentColumn
                 anchors.left: iconText.right
-                anchors.leftMargin: 6
+                anchors.leftMargin: Style.space(6)
                 anchors.right: trail.left
-                anchors.rightMargin: 6
+                anchors.rightMargin: Style.space(6)
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 3
+                spacing: Style.space(3)
 
                 Text {
                   id: labelText
                   width: parent.width
                   text: row.label
-                  color: index === root.selectedIndex ? root.accent : root.foreground
+                  color: index === root.selectedIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.heading
                   font.weight: Font.Medium
@@ -989,9 +989,9 @@ Item {
 
               Row {
                 id: trail
-                width: 14
+                width: Style.space(14)
                 anchors.right: parent.right
-                anchors.rightMargin: 8
+                anchors.rightMargin: Style.space(8)
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
                 spacing: 0
 
@@ -1007,7 +1007,7 @@ Item {
 
                 Text {
                   text: row.kind === "menu" || row.kind === "link" ? "›" : ""
-                  color: index === root.selectedIndex ? root.accent : root.foreground
+                  color: index === root.selectedIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                   opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.heading
@@ -1021,6 +1021,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: if (containsMouse) root.selectedIndex = row.index
                 onClicked: root.activateIndex(row.index)
               }
             }
@@ -1028,7 +1029,7 @@ Item {
 
           Column {
             anchors.centerIn: parent
-            spacing: 8
+            spacing: Style.space(8)
             visible: displayModel.count === 0
 
             Text {
@@ -1038,7 +1039,7 @@ Item {
               font.family: root.fontFamily
               font.pixelSize: Style.font.displayLarge
               horizontalAlignment: Text.AlignHCenter
-              width: 320
+              width: Style.space(320)
             }
 
             Text {
@@ -1048,7 +1049,7 @@ Item {
               font.family: root.fontFamily
               font.pixelSize: Style.font.title
               horizontalAlignment: Text.AlignHCenter
-              width: 320
+              width: Style.space(320)
             }
           }
         }

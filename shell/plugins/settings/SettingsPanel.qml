@@ -122,7 +122,7 @@ Item {
   function ensureBodyItemVisible(item) {
     if (!item || typeof bodyScroll === "undefined" || !bodyScroll || !bodyScroll.contentItem) return
     var pos = item.mapToItem(bodyScroll.contentItem, 0, 0)
-    var pad = 24
+    var pad = Style.space(24)
     var top = pos.y - pad
     var bottom = pos.y + item.height + pad
     if (top < bodyScroll.contentY) {
@@ -160,6 +160,27 @@ Item {
   property var draft: ({ version: 1, bar: { position: "top", transparent: false, centerAnchor: "calendar", layout: { left: [], center: [], right: [] } }, plugins: [] })
   property int draftRevision: 0
   property bool suppressReload: false
+
+  // When a widget action moves an entry, the Repeater rebuilds / reindexes
+  // cards. Remember the action group position so focus follows the moved
+  // widget instead of falling back to the first action on the old/new row.
+  property string pendingActionFocusSection: ""
+  property int pendingActionFocusIndex: -1
+  property int pendingActionFocusAction: 0
+  property int pendingActionFocusRevision: 0
+
+  function scheduleActionFocus(section, index, action) {
+    pendingActionFocusSection = section
+    pendingActionFocusIndex = index
+    pendingActionFocusAction = action
+    pendingActionFocusRevision++
+  }
+
+  function clearPendingActionFocus() {
+    pendingActionFocusSection = ""
+    pendingActionFocusIndex = -1
+    pendingActionFocusAction = 0
+  }
 
   // ---------------- draft helpers ------------------------------------------
   function cloneJson(value) { return JSON.parse(JSON.stringify(value || null)) }
@@ -283,7 +304,7 @@ Item {
     markDirty()
   }
 
-  function moveEntry(section, fromIndex, toIndex) {
+  function moveEntry(section, fromIndex, toIndex, focusActionIndex) {
     var arr = sectionArray(section)
     if (toIndex < 0 || toIndex >= arr.length) return
     mutateSection(section, function(a) {
@@ -291,6 +312,7 @@ Item {
       a.splice(fromIndex, 1)
       a.splice(toIndex, 0, item)
     })
+    if (focusActionIndex !== undefined) scheduleActionFocus(section, toIndex, focusActionIndex)
   }
 
   function removeEntry(section, index) {
@@ -498,9 +520,9 @@ Item {
     id: window
     title: "Omarchy Bar Settings"
     color: root.background
-    implicitWidth: 760
-    implicitHeight: 620
-    minimumSize: Qt.size(620, 480)
+    implicitWidth: Style.space(760)
+    implicitHeight: Style.space(620)
+    minimumSize: Qt.size(Style.space(620), Style.space(480))
 
     onVisibleChanged: {
       if (!visible && !root.closingFromHost && root.shell && typeof root.shell.hide === "function")
@@ -541,70 +563,70 @@ Item {
         }
       }
 
-    Rectangle {
-      anchors.fill: parent
-      color: root.background
-      // No explicit border — the Hyprland window decoration already draws one.
-
-      ColumnLayout {
+      Rectangle {
         anchors.fill: parent
-        spacing: 0
+        color: root.background
+        // No explicit border — the Hyprland window decoration already draws one.
 
-        // Header
-        Item {
-          Layout.fillWidth: true
-          Layout.preferredHeight: 48
+        ColumnLayout {
+          anchors.fill: parent
+          spacing: 0
 
-          Text {
-            text: "Omarchy Bar Settings"
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.heading
-            font.bold: true
-            anchors.left: parent.left
-            anchors.leftMargin: 18
-            anchors.verticalCenter: parent.verticalCenter
+          // Header
+          Item {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.max(Style.space(48), Style.font.heading + Style.spacing.controlPaddingY * 2)
+
+            Text {
+              text: "Omarchy Bar Settings"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.heading
+              font.bold: true
+              anchors.left: parent.left
+              anchors.leftMargin: Style.spacing.panelPadding
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+              text: "~/.config/omarchy/shell.json"
+              color: Qt.darker(root.foreground, 1.8)
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              anchors.right: parent.right
+              anchors.rightMargin: Style.spacing.panelPadding
+              anchors.verticalCenter: parent.verticalCenter
+            }
           }
 
-          Text {
-            text: "~/.config/omarchy/shell.json"
-            color: Qt.darker(root.foreground, 1.8)
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            anchors.right: parent.right
-            anchors.rightMargin: 18
-            anchors.verticalCenter: parent.verticalCenter
+          Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Style.spacing.hairline
+            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
           }
-        }
 
-        Rectangle {
-          Layout.fillWidth: true
-          Layout.preferredHeight: 1
-          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-        }
+          // Content
+          Flickable {
+            id: bodyScroll
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.margins: Style.spacing.panelPadding
+            clip: true
+            contentWidth: width
+            contentHeight: contentColumn.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
 
-        // Content
-        Flickable {
-          id: bodyScroll
-          Layout.fillWidth: true
-          Layout.fillHeight: true
-          Layout.margins: 18
-          clip: true
-          contentWidth: width
-          contentHeight: contentColumn.implicitHeight
-          boundsBehavior: Flickable.StopAtBounds
-          flickableDirection: Flickable.VerticalFlick
+            ColumnLayout {
+              id: contentColumn
+              width: bodyScroll.width
+              spacing: Style.spacing.panelGap
 
-          ColumnLayout {
-            id: contentColumn
-            width: bodyScroll.width
-            spacing: 14
-
-            BarCategory { Layout.fillWidth: true }
+              BarCategory { Layout.fillWidth: true }
+            }
           }
         }
       }
-    }
     }
 
     // ---------- per-widget settings overlay -----------------------------------
@@ -633,19 +655,19 @@ Item {
 
       Rectangle {
         anchors.centerIn: parent
-        width: 420
-        height: Math.min(parent.height - 60, 380)
+        width: Math.min(Style.space(420), parent.width - Style.gapsOut * 2)
+        height: Math.min(parent.height - Style.space(60), Style.space(380))
         color: root.background
         radius: Style.cornerRadius
-        border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.2)
-        border.width: 1
+        border.color: Style.normalBorderFor(root.foreground, root.accent)
+        border.width: Style.normalBorderWidth
 
         MouseArea { anchors.fill: parent }
 
         ColumnLayout {
           anchors.fill: parent
-          anchors.margins: 18
-          spacing: 12
+          anchors.margins: Style.spacing.panelPadding
+          spacing: Style.spacing.rowPaddingX
 
           Text {
             text: root.widgetName(root.widgetDialogEntry.id || "")
@@ -679,7 +701,7 @@ Item {
 
           Row {
             Layout.alignment: Qt.AlignRight
-            spacing: 8
+            spacing: Style.spacing.rowGap
             Button {
               text: "Cancel"
               foreground: root.foreground
@@ -703,7 +725,7 @@ Item {
 
   // ===================== bar category ======================================
   component BarCategory: ColumnLayout {
-    spacing: 14
+    spacing: Style.spacing.panelGap
 
     Text {
       text: "Bar"
@@ -724,10 +746,10 @@ Item {
 
     Row {
       Layout.fillWidth: true
-      spacing: 14
+      spacing: Style.spacing.panelGap
 
       Column {
-        spacing: 4
+        spacing: Style.spacing.labelGap
 
         Text {
           text: "Position"
@@ -799,7 +821,7 @@ Item {
 
     Rectangle {
       Layout.fillWidth: true
-      Layout.preferredHeight: 1
+      Layout.preferredHeight: Style.spacing.hairline
       color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
     }
 
@@ -824,8 +846,8 @@ Item {
     property string sectionLabel: ""
     property var entries: root.sectionArray(section.sectionKey)
     Layout.fillWidth: true
-    Layout.topMargin: 8
-    spacing: 8
+    Layout.topMargin: Style.spacing.rowGap
+    spacing: Style.spacing.rowGap
 
     Connections {
       target: root
@@ -834,7 +856,7 @@ Item {
 
     RowLayout {
       width: section.width
-      spacing: 8
+      spacing: Style.spacing.rowGap
 
       Text {
         text: section.sectionLabel
@@ -862,7 +884,7 @@ Item {
         value: ""
         placeholderText: "Search widgets..."
         emptyText: "No widgets to add"
-        Layout.preferredWidth: 220
+        Layout.preferredWidth: Style.spacing.searchableDropdownWidth
         Layout.alignment: Qt.AlignVCenter
         options: {
           var list = root.availableToAdd(section.sectionKey)
@@ -890,7 +912,7 @@ Item {
     Column {
       Layout.fillWidth: true
       width: section.width
-      spacing: 4
+      spacing: Style.spacing.labelGap
 
       Repeater {
         model: section.entries
@@ -907,11 +929,11 @@ Item {
       Rectangle {
         visible: section.entries.length === 0
         width: parent.width
-        height: 32
+        height: Math.max(Style.space(32), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
         radius: root.cornerRadius
-        color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-        border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-        border.width: 1
+        color: Style.normalFillFor(root.foreground, root.accent)
+        border.color: Style.normalBorderFor(root.foreground, root.accent)
+        border.width: Style.normalBorderWidth
 
         Text {
           anchors.centerIn: parent
@@ -934,56 +956,154 @@ Item {
     readonly property string description: root.widgetDescription(entryId)
     readonly property bool hasSettings: root.widgetHasSettings(entryId)
 
-    implicitHeight: 50
+    implicitHeight: Style.space(50)
     radius: root.cornerRadius
-    color: cardArea.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.03)
-    border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-    border.width: 1
+    color: cardArea.containsMouse || actionRow.activeFocus
+      ? Style.hoverFillFor(root.foreground, root.accent)
+      : Style.normalFillFor(root.foreground, root.accent)
+    border.color: cardArea.containsMouse || actionRow.activeFocus
+      ? Style.hoverBorderFor(root.foreground, root.accent)
+      : Style.normalBorderFor(root.foreground, root.accent)
+    border.width: cardArea.containsMouse || actionRow.activeFocus ? Style.hoverBorderWidth : Style.normalBorderWidth
 
     Behavior on color { ColorAnimation { duration: 100 } }
+
+    function maybeRestoreActionFocus() {
+      if (root.pendingActionFocusSection !== card.sectionKey) return
+      if (root.pendingActionFocusIndex !== card.entryIndex) return
+
+      actionRow.actionIndex = root.pendingActionFocusAction
+      actionRow.clampActionIndex()
+      root.clearPendingActionFocus()
+
+      Qt.callLater(function() {
+        actionRow.forceActiveFocus()
+        root.ensureBodyItemVisible(card)
+      })
+    }
+
+    onEntryIndexChanged: maybeRestoreActionFocus()
+    Component.onCompleted: maybeRestoreActionFocus()
+
+    Connections {
+      target: root
+      function onPendingActionFocusRevisionChanged() { card.maybeRestoreActionFocus() }
+    }
 
     Row {
       id: actionRow
       anchors.right: parent.right
-      anchors.rightMargin: 8
+      anchors.rightMargin: Style.spacing.controlGap
       anchors.verticalCenter: parent.verticalCenter
-      spacing: 4
+      spacing: Style.spacing.labelGap
+      activeFocusOnTab: true
+
+      property int actionIndex: 0
+
+      onActiveFocusChanged: if (activeFocus) {
+        clampActionIndex()
+        root.ensureBodyItemVisible(card)
+      }
+
+      function actionVisible(index) {
+        switch (index) {
+        case 0: return moveUpButton.visible && moveUpButton.enabled
+        case 1: return moveDownButton.visible && moveDownButton.enabled
+        case 2: return settingsButton.visible && settingsButton.enabled
+        case 3: return removeButton.visible && removeButton.enabled
+        }
+        return false
+      }
+
+      function firstActionIndex() {
+        for (var i = 0; i < 4; i++) if (actionVisible(i)) return i
+        return 0
+      }
+
+      function clampActionIndex() {
+        if (actionVisible(actionIndex)) return
+        actionIndex = firstActionIndex()
+      }
+
+      function moveAction(delta) {
+        clampActionIndex()
+        var next = actionIndex
+        while (true) {
+          next += delta
+          if (next < 0 || next > 3) return
+          if (actionVisible(next)) { actionIndex = next; return }
+        }
+      }
+
+      function activateAction() {
+        clampActionIndex()
+        switch (actionIndex) {
+        case 0: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex - 1, actionIndex); return
+        case 1: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex + 1, actionIndex); return
+        case 2: root.openWidgetSettings(card.sectionKey, card.entryIndex, card.entry); return
+        case 3: root.removeEntry(card.sectionKey, card.entryIndex); return
+        }
+      }
+
+      Keys.priority: Keys.BeforeItem
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Left || event.text === "h") {
+          moveAction(-1); event.accepted = true; return
+        }
+        if (event.key === Qt.Key_Right || event.text === "l") {
+          moveAction(1); event.accepted = true; return
+        }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+          activateAction(); event.accepted = true; return
+        }
+      }
 
       PanelActionButton {
+        id: moveUpButton
         iconText: "󰁝"
         tooltipText: "Move up"
         foreground: root.foreground
         panelBackground: root.background
         fontFamily: root.fontFamily
         fontSize: Style.font.subtitle
-        size: 26
-        focusable: true
-        onClicked: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex - 1)
+        size: Style.space(26)
+        hasCursor: actionRow.activeFocus && actionRow.actionIndex === 0
+        bordered: hasCursor
+        onHovered: function(h) { if (h) actionRow.actionIndex = 0 }
+        onClicked: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex - 1, 0)
       }
       PanelActionButton {
+        id: moveDownButton
         iconText: "󰁅"
         tooltipText: "Move down"
         foreground: root.foreground
         panelBackground: root.background
         fontFamily: root.fontFamily
         fontSize: Style.font.subtitle
-        size: 26
-        focusable: true
-        onClicked: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex + 1)
+        size: Style.space(26)
+        hasCursor: actionRow.activeFocus && actionRow.actionIndex === 1
+        bordered: hasCursor
+        onHovered: function(h) { if (h) actionRow.actionIndex = 1 }
+        onClicked: root.moveEntry(card.sectionKey, card.entryIndex, card.entryIndex + 1, 1)
       }
       PanelActionButton {
+        id: settingsButton
         iconText: "󰒓"
         tooltipText: "Settings"
         foreground: root.foreground
         panelBackground: root.background
         fontFamily: root.fontFamily
         fontSize: Style.font.subtitle
-        size: 26
-        focusable: true
+        size: Style.space(26)
         visible: card.hasSettings
+        hasCursor: actionRow.activeFocus && actionRow.actionIndex === 2
+        bordered: hasCursor
+        onVisibleChanged: if (!visible && actionRow.actionIndex === 2) actionRow.clampActionIndex()
+        onHovered: function(h) { if (h) actionRow.actionIndex = 2 }
         onClicked: root.openWidgetSettings(card.sectionKey, card.entryIndex, card.entry)
       }
       PanelActionButton {
+        id: removeButton
         iconText: "󰅖"
         tooltipText: "Remove"
         foreground: root.urgent
@@ -991,8 +1111,10 @@ Item {
         panelBackground: root.background
         fontFamily: root.fontFamily
         fontSize: Style.font.subtitle
-        size: 26
-        focusable: true
+        size: Style.space(26)
+        hasCursor: actionRow.activeFocus && actionRow.actionIndex === 3
+        bordered: hasCursor
+        onHovered: function(h) { if (h) actionRow.actionIndex = 3 }
         onClicked: root.removeEntry(card.sectionKey, card.entryIndex)
       }
     }
@@ -1000,10 +1122,10 @@ Item {
     Column {
       anchors.left: parent.left
       anchors.right: actionRow.left
-      anchors.leftMargin: 12
-      anchors.rightMargin: 12
+      anchors.leftMargin: Style.spacing.rowPaddingX
+      anchors.rightMargin: Style.spacing.rowPaddingX
       anchors.verticalCenter: parent.verticalCenter
-      spacing: 2
+      spacing: Style.spacing.xxs
 
       Text {
         text: card.displayName
@@ -1064,7 +1186,7 @@ Item {
       signal fieldChanged(string key, var value)
       property var entry: ({})
 
-      spacing: 8
+      spacing: Style.spacing.rowGap
       width: parent ? parent.width : 0
 
       NumberField {
@@ -1088,7 +1210,7 @@ Item {
       signal fieldChanged(string key, var value)
       property var entry: ({})
 
-      spacing: 8
+      spacing: Style.spacing.rowGap
       width: parent ? parent.width : 0
 
       component CalendarField: TextField {
@@ -1144,7 +1266,7 @@ Item {
       signal fieldChanged(string key, var value)
       property var entry: ({})
 
-      spacing: 8
+      spacing: Style.spacing.rowGap
       width: parent ? parent.width : 0
 
       NumberField {

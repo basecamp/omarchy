@@ -14,14 +14,15 @@ Column {
   property color accent: Color.accent
   property string fontFamily: Style.font.family
   property real fontSize: Style.font.body
-  property real fieldWidth: 120
+  property real fieldWidth: Style.spacing.numberFieldWidth
   property bool hasCursor: false
+  property bool _hovered: false
   property alias field: spin
 
   signal modified(int value)
   signal hovered(bool on)
 
-  spacing: 6
+  spacing: Style.spacing.md
 
   Text {
     visible: root.label !== ""
@@ -34,6 +35,7 @@ Column {
   QQC.SpinBox {
     id: spin
     width: root.fieldWidth
+    implicitHeight: Math.max(Style.spacing.controlHeight, root.fontSize + Style.spacing.controlPaddingY * 2)
     from: root.from
     to: root.to
     stepSize: root.stepSize
@@ -45,16 +47,29 @@ Column {
     onValueModified: root.modified(value)
 
     background: Rectangle {
-      readonly property bool _hot: spin.activeFocus || (root.hasCursor && !spin.activeFocus)
-      color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, _hot ? 0.10 : 0.05)
-      border.color: _hot
-        ? Style.focusBorderColor
-        : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.3)
-      border.width: _hot ? Style.focusBorderWidth : 1
+      readonly property bool _focused: spin.activeFocus
+      readonly property bool _hot: root._hovered || root.hasCursor
+
+      color: _focused
+        ? Style.focusFillFor(root.foreground, root.accent)
+        : (_hot
+          ? Style.hoverFillFor(root.foreground, root.accent)
+          : Style.normalFillFor(root.foreground, root.accent))
+      border.color: _focused
+        ? Style.focusBorderFor(root.foreground, root.accent)
+        : (_hot
+          ? Style.hoverBorderFor(root.foreground, root.accent)
+          : Style.normalBorderFor(root.foreground, root.accent))
+      border.width: _focused
+        ? Style.focusBorderWidth
+        : (_hot ? Style.hoverBorderWidth : Style.normalBorderWidth)
       radius: Style.cornerRadius
 
       HoverHandler {
-        onHoveredChanged: root.hovered(hovered)
+        onHoveredChanged: {
+          root._hovered = hovered
+          root.hovered(hovered)
+        }
       }
     }
 
@@ -62,7 +77,7 @@ Column {
       text: spin.displayText
       font: spin.font
       color: root.foreground
-      selectionColor: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
+      selectionColor: Style.selectionFillFor(root.foreground, root.accent)
       selectedTextColor: root.foreground
       horizontalAlignment: Qt.AlignHCenter
       verticalAlignment: Qt.AlignVCenter

@@ -19,7 +19,7 @@ Column {
   property var entry: ({})
   property color foregroundColor: Color.foreground
   property string fontFamilyName: Style.font.family
-  spacing: 10
+  spacing: Style.spacing.xl
   width: parent ? parent.width : 0
 
   function currentValue(field) {
@@ -40,7 +40,7 @@ Column {
     Column {
       required property var modelData
       width: root.width
-      spacing: 4
+      spacing: Style.spacing.labelGap
 
       Text {
         text: modelData && modelData.label ? modelData.label : (modelData && modelData.key ? modelData.key : "")
@@ -153,7 +153,7 @@ Column {
           property string fieldKey: ""
           property var field: ({})
           width: parent.width
-          spacing: 8
+          spacing: Style.spacing.rowGap
           property real currentNumber: {
             var v = root.currentValue(field)
             var n = typeof v === "number" ? v : parseFloat(String(v || 0))
@@ -161,7 +161,7 @@ Column {
           }
           Slider {
             id: slider
-            width: parent.width - readout.width - 8
+            width: parent.width - readout.width - Style.spacing.rowGap
             from: field && field.min !== undefined ? field.min : 0
             to: field && field.max !== undefined ? field.max : 1
             stepSize: field && field.step !== undefined ? field.step : 0.01

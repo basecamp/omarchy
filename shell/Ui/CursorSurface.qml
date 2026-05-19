@@ -7,35 +7,39 @@ import qs.Commons
 // `hasCursor` / `current`. That's what guarantees a single highlight on
 // screen at any time across both keyboard and mouse interaction.
 //
-// Two cursor visuals are supported:
-//
-//   default (outline: false) — paint a tinted fill across the row when
-//   hasCursor is true. Use for narrow text rows (wifi networks, audio
-//   devices, menu items) where fill reads cleanly.
-//
-//   outline: true — paint an accent border instead of a fill. Use for
-//   wide content rows where a fill would obscure the row's chrome
-//   (slider rows in audio / monitor panels). The fill / currentFill
-//   props are ignored in this mode.
+// Cursor paint is always the shared hover-cursor fill plus optional
+// hover-cursor border. `outline` remains as a compatibility flag for
+// callers that used to request border-only rows, but slider rows still
+// receive the same hover-cursor background as every other row.
 Rectangle {
   id: root
 
   property bool hasCursor: false
   property bool current: false
   property bool outline: false
+  property bool bordered: false
 
   property color foreground: Color.foreground
-  property color fill: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.08)
-  property color currentFill: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18)
+  property color accent: Color.accent
+  property color fill: Style.hoverFillFor(foreground, accent)
+  property color currentFill: Style.selectedFillFor(foreground, accent)
 
   radius: Style.cornerRadius
 
-  color: root.outline
-    ? "transparent"
-    : (hasCursor ? fill : (current ? currentFill : "transparent"))
+  color: hasCursor ? fill : (current ? currentFill : "transparent")
 
-  border.color: root.outline && hasCursor ? Style.focusBorderColor : foreground
-  border.width: root.outline && hasCursor ? Style.focusBorderWidth : 0
+  border.color: root.hasCursor
+    ? Style.hoverBorderFor(root.foreground, root.accent)
+    : (root.current
+      ? Style.selectedBorderFor(root.foreground, root.accent)
+      : (root.bordered
+        ? Style.normalBorderFor(root.foreground, root.accent)
+        : "transparent"))
+  border.width: root.hasCursor
+    ? Style.hoverBorderWidth
+    : (root.current
+      ? Style.selectedBorderWidth
+      : (root.bordered ? Style.normalBorderWidth : 0))
 
   Behavior on color {
     ColorAnimation { duration: 60 }

@@ -367,8 +367,8 @@ Item {
     owner: root
     bar: root.bar
     open: root.popupOpen
-    contentWidth: 320
-    contentHeight: Math.min(560, panelColumn.implicitHeight + 28)
+    contentWidth: panel.fittedContentWidth(Style.space(320))
+    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -393,12 +393,12 @@ Item {
         Column {
           id: panelColumn
           width: scrollArea.availableWidth
-          spacing: 14
+          spacing: Style.space(14)
 
           // ---- Brightness ----
           Column {
             width: parent.width
-            spacing: 6
+            spacing: Style.space(6)
 
             PanelSectionHeader {
               text: "Brightness"
@@ -411,7 +411,7 @@ Item {
               id: brightnessRow
               visible: root.brightnessAvailable
               width: parent.width
-              height: brightnessInner.implicitHeight + 8
+              height: brightnessInner.implicitHeight + Style.spacing.controlGap
               hasCursor: root.focusSection === "brightness" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
               foreground: root.bar.foreground
@@ -420,16 +420,16 @@ Item {
               Row {
                 id: brightnessInner
                 anchors.fill: parent
-                anchors.leftMargin: 6
-                anchors.rightMargin: 6
-                spacing: 8
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                spacing: Style.space(8)
 
                 Text {
                   text: "󰃠"
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
                   font.pixelSize: Style.font.heading
-                  width: 22
+                  width: Style.space(22)
                   horizontalAlignment: Text.AlignHCenter
                   anchors.verticalCenter: parent.verticalCenter
                 }
@@ -437,7 +437,7 @@ Item {
                 PanelSlider {
                   id: brightnessSlider
                   bar: root.bar
-                  width: parent.width - 22 - brightnessLabel.width - 16
+                  width: parent.width - Style.space(22) - brightnessLabel.width - Style.space(16)
                   anchors.verticalCenter: parent.verticalCenter
                   minimum: 1
                   maximum: 100
@@ -457,7 +457,7 @@ Item {
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
                   font.pixelSize: Style.font.bodySmall
-                  width: 36
+                  width: Style.space(36)
                   horizontalAlignment: Text.AlignRight
                   anchors.verticalCenter: parent.verticalCenter
                 }
@@ -483,7 +483,7 @@ Item {
           // ---- Scale ----
           Column {
             width: parent.width
-            spacing: 6
+            spacing: Style.space(6)
 
             PanelSectionHeader {
               text: "Scale"
@@ -494,7 +494,7 @@ Item {
 
             Row {
               width: parent.width
-              spacing: 6
+              spacing: Style.space(6)
 
               Repeater {
                 model: root.scaleValues
@@ -503,7 +503,7 @@ Item {
                   required property string modelData
                   required property int index
 
-                  width: (panelColumn.width - 30) / 6
+                  width: (panelColumn.width - Style.space(30)) / 6
                   text: modelData + "x"
                   foreground: root.bar.foreground
                   background: "transparent"
@@ -512,7 +512,7 @@ Item {
                   fontFamily: root.bar.fontFamily
                   fontSize: Style.font.bodySmall
                   horizontalPadding: 0
-                  verticalPadding: 6
+                  verticalPadding: Style.spacing.controlPaddingY
                   active: root.normalizeScale(root.monitorScale) === root.normalizeScale(modelData)
                   hasCursor: root.focusSection === "scale" && root.selectedIndex === index
                   onClicked: root.setScale(modelData)
@@ -530,7 +530,7 @@ Item {
           // ---- Monitors ----
           Column {
             width: parent.width
-            spacing: 6
+            spacing: Style.space(6)
             visible: root.displays.length > 0
 
             PanelSectionHeader {

@@ -90,7 +90,7 @@ Rectangle {
       .replace(/^\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?\s+/i, "")
   }
 
-  implicitWidth: 380
+  implicitWidth: Style.space(380)
   // Add 2 * border.width so mainColumn (inset by border.width on top/left/right)
   // doesn't push content under the bottom edge. The bottom edge is also inset
   // for symmetry except when the progress bar replaces it.
@@ -98,7 +98,7 @@ Rectangle {
   radius: cornerRadius
   color: Color.notifications.background
   border.color: urgency === 2 ? Color.urgent : Color.notifications.border
-  border.width: 2
+  border.width: Math.max(1, Style.space(2))
   clip: true
 
   HoverHandler { id: hoverTracker }
@@ -126,7 +126,7 @@ Rectangle {
     // the preview looks like a clean banner without dark letterboxing.
     Item {
       Layout.fillWidth: true
-      Layout.preferredHeight: 140
+      Layout.preferredHeight: Style.space(140)
       visible: root.mediaMode
       clip: true
 
@@ -164,16 +164,16 @@ Rectangle {
     // the summary/body ("Screenshot saved" etc) under the hero image.
     RowLayout {
       Layout.fillWidth: true
-      Layout.leftMargin: 12
-      Layout.rightMargin: 12
-      Layout.topMargin: 10
-      Layout.bottomMargin: 10
-      spacing: 12
+      Layout.leftMargin: Style.space(12)
+      Layout.rightMargin: Style.space(12)
+      Layout.topMargin: Style.space(10)
+      Layout.bottomMargin: Style.space(10)
+      spacing: Style.space(12)
 
       Item {
         id: smallIconSlot
-        Layout.preferredWidth: 40
-        Layout.preferredHeight: 40
+        Layout.preferredWidth: Style.space(40)
+        Layout.preferredHeight: Style.space(40)
         Layout.alignment: Qt.AlignVCenter
         // Hide the slot when the icon failed to resolve (themed-icon name
         // not in the user's icon theme) AND we don't have a glyph fallback
@@ -184,8 +184,8 @@ Rectangle {
           id: smallIconImage
           anchors.fill: parent
           source: root.smallIconSource
-          sourceSize.width: 40 * Screen.devicePixelRatio
-          sourceSize.height: 40 * Screen.devicePixelRatio
+          sourceSize.width: smallIconSlot.width * Screen.devicePixelRatio
+          sourceSize.height: smallIconSlot.height * Screen.devicePixelRatio
           fillMode: Image.PreserveAspectFit
           asynchronous: true
           smooth: true
@@ -207,7 +207,7 @@ Rectangle {
       ColumnLayout {
         Layout.fillWidth: true
         Layout.alignment: Qt.AlignVCenter
-        spacing: 2
+        spacing: Style.space(2)
 
         Text {
           Layout.fillWidth: true
@@ -224,7 +224,7 @@ Rectangle {
 
         Text {
           Layout.fillWidth: true
-          Layout.topMargin: 2
+          Layout.topMargin: Style.space(2)
           visible: root.sanitizedBody.length > 0
           text: root.sanitizedBody
           textFormat: Text.StyledText
@@ -246,7 +246,7 @@ Rectangle {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: parent.bottom
-    height: 3
+    height: Math.max(1, Style.space(3))
     color: Color.notifications.border
     visible: false
 

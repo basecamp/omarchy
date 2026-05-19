@@ -9,8 +9,8 @@ PopupWindow {
   required property Item anchorItem
   required property QtObject bar
   property var owner: null
-  property int margin: 10
-  property int padding: 14
+  property int margin: Style.gapsOut
+  property int padding: Style.spacing.popupPadding
   property int contentWidth: 280
   property int contentHeight: 200
   property color borderColor: Color.popups.border
@@ -22,7 +22,38 @@ PopupWindow {
 
   readonly property var coordinatorKey: owner || root
   readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
+  readonly property var popupScreen: anchorWindow ? anchorWindow.screen : null
   readonly property bool containsMouse: cardHover.hovered
+  readonly property real screenW: popupScreen ? popupScreen.width : 0
+  readonly property real screenH: popupScreen ? popupScreen.height : 0
+  readonly property real barW: anchorWindow ? anchorWindow.width : 0
+  readonly property real barH: anchorWindow ? anchorWindow.height : 0
+  readonly property real availableCardWidth: screenW > 0
+    ? Math.max(120, screenW - ((bar && (bar.position === "left" || bar.position === "right")) ? barW : 0) - root.margin * 2)
+    : 0
+  readonly property real availableCardHeight: screenH > 0
+    ? Math.max(120, screenH - ((bar && (bar.position === "top" || bar.position === "bottom")) ? barH : 0) - root.margin * 2)
+    : 0
+
+  function fittedContentWidth(width, cap) {
+    var desired = Math.max(1, Number(width) || 1)
+    var maxWidth = root.availableCardWidth > 0 ? root.availableCardWidth : desired
+    if (cap !== undefined && Number(cap) > 0) maxWidth = Math.min(maxWidth, Number(cap))
+    return Math.round(Math.min(desired, maxWidth))
+  }
+
+  function fittedContentHeight(implicitHeight, cap) {
+    var desired = Math.max(root.padding * 2, (Number(implicitHeight) || 0) + root.padding * 2)
+    var maxHeight = root.availableCardHeight > 0 ? root.availableCardHeight : desired
+    if (cap !== undefined && Number(cap) > 0) maxHeight = Math.min(maxHeight, Number(cap))
+    return Math.round(Math.min(desired, maxHeight))
+  }
+
+  function cappedContentHeight(height) {
+    var desired = Math.max(root.padding * 2, Number(height) || root.padding * 2)
+    var maxHeight = root.availableCardHeight > 0 ? root.availableCardHeight : desired
+    return Math.round(Math.min(desired, maxHeight))
+  }
 
   function closePopout() {
     if (owner && "closePopout" in owner) owner.closePopout()
@@ -119,7 +150,7 @@ PopupWindow {
     anchors.fill: parent
     color: Color.popups.background
     border.color: root.borderColor
-    border.width: 2
+    border.width: Math.max(1, Style.space(2))
     radius: Style.cornerRadius
     opacity: root.open ? 1.0 : 0
 

@@ -42,9 +42,9 @@ Item {
   // shell.bar isn't reachable so the popup never lands on top of the bar.
   readonly property string barPosition: shell && shell.barConfig ? String(shell.barConfig.position || "top") : "top"
   readonly property bool barVertical: barPosition === "left" || barPosition === "right"
-  readonly property int defaultBarSize: barVertical ? 28 : 26
+  readonly property int defaultBarSize: barVertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
   readonly property int liveBarSize: shell && shell.bar && !shell.bar.barHidden ? Math.max(0, shell.bar.barSize) : defaultBarSize
-  readonly property int barClearance: liveBarSize + 12
+  readonly property int barClearance: liveBarSize + Style.gapsOut
 
   // Fired by IPC (`omarchy-shell notifications showHistory`) so the
   // bar widget can drop its PopupCard from the same anchor a click would.
@@ -806,10 +806,10 @@ Item {
         right: service.barPosition !== "left"
       }
       margins {
-        top:    service.barPosition === "top"    ? service.barClearance + 12 : 20
-        bottom: service.barPosition === "bottom" ? service.barClearance + 12 : 20
-        left:   service.barPosition === "left"   ? service.barClearance + 12 : 20
-        right:  service.barPosition === "right"  ? service.barClearance + 12 : 20
+        top:    service.barPosition === "top"    ? service.barClearance : Style.gapsOut
+        bottom: service.barPosition === "bottom" ? service.barClearance : Style.gapsOut
+        left:   service.barPosition === "left"   ? service.barClearance : Style.gapsOut
+        right:  service.barPosition === "right"  ? service.barClearance : Style.gapsOut
       }
 
       implicitWidth: popupColumn.implicitWidth
@@ -819,7 +819,7 @@ Item {
         id: popupColumn
         anchors.right: parent.right
         anchors.top: parent.top
-        spacing: 8
+        spacing: Style.space(8)
 
         Repeater {
           model: popupModel

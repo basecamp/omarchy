@@ -112,9 +112,96 @@ The shell exposes these tokens to QML via two singletons in
 - `Color` — palette (`foreground`, `background`, `accent`, `urgent`)
   and per-surface roles (`Color.bar.*`, `Color.popups.*`,
   `Color.notifications.*`, `Color.menu.*`, `Color.imagePicker.*`).
-- `Style` — structural tokens (`cornerRadius`, focus affordances),
+- `Style` — structural tokens (`cornerRadius`), shared interactive
+  state tokens/helpers, spacing (`Style.spacing.*` / `Style.space(px)`),
   the type scale (`Style.font.*`), and bar dimensions
   (`Style.bar.sizeHorizontal` / `Style.bar.sizeVertical`).
+
+### Interactive states
+
+`[style]` standardizes reusable control chrome around four states:
+`normal`, `hover-cursor`, `selected`, and `focus`. State colors can be
+palette roles (`foreground`, `accent`, `urgent`, `background`) or hex
+strings. Fill/border alphas are applied to that state's color.
+
+Focus inherits `hover-cursor` by default so mouse hover, the panel
+keyboard cursor, and Qt activeFocus read as the same state. Use the
+literal value `"hover-cursor"` on `focus-*` tokens to keep that
+inheritance; set an explicit color/number only when a theme intentionally
+wants focus to differ.
+
+| State | Color token | Fill alpha | Border width | Border alpha |
+|-------|-------------|------------|--------------|--------------|
+| Normal idle chrome | `normal-color` | `normal-fill-alpha` | `normal-border-width` | `normal-border-alpha` |
+| Hover / keyboard cursor | `hover-cursor-color` | `hover-cursor-fill-alpha` | `hover-cursor-border-width` | `hover-cursor-border-alpha` |
+| Persistent selected/current | `selected-color` | `selected-fill-alpha` | `selected-border-width` | `selected-border-alpha` |
+| Qt activeFocus | `focus-color` | `focus-fill-alpha` | `focus-border-width` | `focus-border-alpha` |
+
+Border widths are the theme-level on/off switches for state borders; set
+a width to `0` to keep the fill while removing that state border. The
+default theme keeps selected borders off globally (`selected-border-width
+= 0`); explicitly bordered controls can still keep their normal border
+when selected.
+
+```toml
+[style]
+# Accent-tinted cursor/focus, foreground-tinted selected state.
+hover-cursor-color = "accent"
+focus-color        = "hover-cursor"
+selected-color     = "foreground"
+
+# Keep selected fills but remove selected-state borders.
+selected-border-width = 0
+```
+
+Momentary fills use `pressed-fill-alpha` for button press feedback and
+`selection-fill-alpha` for text selection. Themes may also provide
+`pressed-color` or `selection-color`; they fall back to hover-cursor and
+foreground respectively.
+
+### Spacing
+
+`[spacing] scale` multiplies the shell's shared margins, gaps, and
+padding. The default is `1.0`; values above `1.0` create more breathing
+room while values below `1.0` make controls denser.
+
+```toml
+[spacing]
+scale = 1.15  # roomier panels and controls
+```
+
+QML components should prefer semantic tokens where possible:
+
+| Token | Default use |
+|-------|-------------|
+| `Style.spacing.controlPaddingX` / `controlPaddingY` | Button and tooltip padding |
+| `Style.spacing.inputPaddingY` | Text-field vertical padding |
+| `Style.spacing.controlHeight` / `popupRowHeight` | Dropdown and number-field row heights |
+| `Style.spacing.dropdownWidth` / `searchableDropdownWidth` / `numberFieldWidth` | Default field widths |
+| `Style.spacing.searchablePopupMinHeight` | Minimum searchable dropdown popup height |
+| `Style.spacing.controlGap` | Gap between icon and label inside controls |
+| `Style.spacing.labelGap` | Label-to-control and compact list gaps |
+| `Style.spacing.rowGap` / `rowPaddingX` | Form rows and list row content |
+| `Style.spacing.panelGap` / `panelPadding` | Panel section spacing and interior padding |
+| `Style.spacing.popupPadding` | Popout interior padding |
+
+Popout placement deliberately follows Hyprland's `general:gaps_out`
+(`Style.gapsOut`) so panels align with tiled windows. Use a theme's
+`hyprland.lua` to change that outer alignment; `[spacing]` controls the
+interior breathing room.
+
+For one-off proportional constants, use `Style.space(px)` to preserve the
+old default at scale `1.0` while still responding to the theme scale. Use
+`Style.spaceReal(px)` only for fractional geometry that should not be
+rounded, such as bar widget text margins. Themes can override any semantic
+token directly in `[spacing]`, e.g.:
+
+```toml
+[spacing]
+scale = 1.0
+panel-padding = 22
+row-gap = 10
+```
 
 ### Typography
 
@@ -157,8 +244,8 @@ Recognized override keys: `base-size`, `caption`, `body-small`,
 `body`, `subtitle`, `title`, `heading`, `display`, `display-large`,
 `icon-small`, `icon`, `icon-large`.
 
-`base-size` is clamped to **11..13** because row heights and the bar
-cross-axis size are fixed; per-token overrides aren't clamped. The
+`base-size` is clamped to **11..13** because some row heights and the bar
+cross-axis size remain fixed; per-token overrides aren't clamped. The
 shell font family is the fontconfig `monospace` alias — themes don't
 set it, the user does via `omarchy font set <name>`.
 

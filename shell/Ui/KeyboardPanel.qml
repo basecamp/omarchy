@@ -38,12 +38,12 @@ PanelWindow {
   required property Item anchorItem
   required property QtObject bar
   property var owner: null
-  property int margin: 10
-  property int padding: 14
+  property int margin: Style.gapsOut
+  property int padding: Style.spacing.popupPadding
   property int contentWidth: 280
   property int contentHeight: 200
   property bool open: false
-  property int gap: 10  // distance between bar edge and panel
+  property int gap: Style.gapsOut  // distance between bar edge and panel
 
   default property alias contentItem: contentHolder.children
 
@@ -123,6 +123,32 @@ PanelWindow {
   readonly property real anchorH: anchorItem ? anchorItem.height : 0
   readonly property real screenW: screen ? screen.width : 0
   readonly property real screenH: screen ? screen.height : 0
+  readonly property real availableCardWidth: screenW > 0
+    ? Math.max(120, screenW - ((barPos === "left" || barPos === "right") ? barW + gap + margin : margin * 2))
+    : 0
+  readonly property real availableCardHeight: screenH > 0
+    ? Math.max(120, screenH - ((barPos === "top" || barPos === "bottom") ? barH + gap + margin : margin * 2))
+    : 0
+
+  function fittedContentWidth(width, cap) {
+    var desired = Math.max(1, Number(width) || 1)
+    var maxWidth = root.availableCardWidth > 0 ? root.availableCardWidth : desired
+    if (cap !== undefined && Number(cap) > 0) maxWidth = Math.min(maxWidth, Number(cap))
+    return Math.round(Math.min(desired, maxWidth))
+  }
+
+  function fittedContentHeight(implicitHeight, cap) {
+    var desired = Math.max(root.padding * 2, (Number(implicitHeight) || 0) + root.padding * 2)
+    var maxHeight = root.availableCardHeight > 0 ? root.availableCardHeight : desired
+    if (cap !== undefined && Number(cap) > 0) maxHeight = Math.min(maxHeight, Number(cap))
+    return Math.round(Math.min(desired, maxHeight))
+  }
+
+  function cappedContentHeight(height) {
+    var desired = Math.max(root.padding * 2, Number(height) || root.padding * 2)
+    var maxHeight = root.availableCardHeight > 0 ? root.availableCardHeight : desired
+    return Math.round(Math.min(desired, maxHeight))
+  }
 
   // Desired top-left of the card in screen coordinates. For the
   // perpendicular axis (away-from-bar) we anchor to the bar window's edge
@@ -192,7 +218,7 @@ PanelWindow {
     height: root.contentHeight
     color: Color.popups.background
     border.color: Color.popups.border
-    border.width: 2
+    border.width: Math.max(1, Style.space(2))
     radius: Style.cornerRadius
     opacity: root.open ? 1.0 : 0
     Behavior on opacity {

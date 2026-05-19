@@ -473,7 +473,7 @@ Item {
       id: card
       visible: root.opened && root.imagesLoaded && root.layoutSettled && root.imageArray.length > 0
         width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
-        height: root.expandedHeight + 30 + root.bottomChromeHeight
+        height: root.expandedHeight + Style.space(30) + root.bottomChromeHeight
         anchors.centerIn: parent
 
         MouseArea { anchors.fill: parent; onClicked: {} }
@@ -481,7 +481,7 @@ Item {
         Item {
           id: carousel
           anchors.top: parent.top
-          anchors.topMargin: 30
+          anchors.topMargin: Style.space(30)
           anchors.bottom: parent.bottom
           anchors.bottomMargin: root.bottomChromeHeight
           anchors.horizontalCenter: parent.horizontalCenter
@@ -635,7 +635,7 @@ Item {
           id: selectedLabel
           visible: root.showLabels
           anchors.top: carousel.bottom
-          anchors.topMargin: 16
+          anchors.topMargin: Style.space(16)
           anchors.horizontalCenter: carousel.horizontalCenter
           width: root.expandedWidth
           text: root.currentLabel()
@@ -651,7 +651,7 @@ Item {
         Text {
           visible: root.filterable && root.filterText
           anchors.top: selectedLabel.bottom
-          anchors.topMargin: 8
+          anchors.topMargin: Style.space(8)
           anchors.horizontalCenter: carousel.horizontalCenter
           width: root.expandedWidth
           text: root.filterText

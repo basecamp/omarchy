@@ -110,10 +110,10 @@ Item {
   property string focusedKnownAddress: ""
 
   readonly property color hoverFill: bar
-    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.08)
+    ? Style.hoverFillFor(bar.foreground, Color.accent)
     : "transparent"
   readonly property color selectedFill: bar
-    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18)
+    ? Style.selectedFillFor(bar.foreground, Color.accent)
     : "transparent"
 
   function sectionCount(section) {
@@ -362,8 +362,8 @@ Item {
     owner: root
     bar: root.bar
     open: root.popupOpen
-    contentWidth: 320
-    contentHeight: column.implicitHeight + 28
+    contentWidth: panel.fittedContentWidth(Style.space(320))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight)
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -379,7 +379,7 @@ Item {
       Column {
         id: column
         anchors.fill: parent
-        spacing: 10
+        spacing: Style.space(10)
 
         // Header: title left, on/off toggle + actions right.
         Item {
@@ -389,7 +389,7 @@ Item {
           Row {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 8
+            spacing: Style.space(8)
 
             PanelSectionHeader {
               id: titleText
@@ -412,7 +412,7 @@ Item {
           Row {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 4
+            spacing: Style.space(4)
 
             HeaderPill {
               pillIndex: 0
@@ -447,7 +447,7 @@ Item {
         Flickable {
           id: deviceFlick
           width: parent.width
-          height: Math.min(deviceList.implicitHeight, 400)
+          height: Math.min(deviceList.implicitHeight, Style.space(400))
           contentWidth: width
           contentHeight: deviceList.implicitHeight
           clip: true
@@ -458,7 +458,7 @@ Item {
           Column {
             id: deviceList
             width: parent.width
-            spacing: 10
+            spacing: Style.space(10)
 
             // Paired / known devices.
             Repeater {
@@ -526,8 +526,8 @@ Item {
     tooltipForeground: root.bar.foreground
     foreground: root.bar.foreground
     fontFamily: root.bar.fontFamily
-    horizontalPadding: 6
-    verticalPadding: 4
+    horizontalPadding: Style.spacing.md
+    verticalPadding: Style.spacing.labelGap
     iconSize: 14
     enabled: pillEnabled
     opacity: pillEnabled ? 1 : 0.4
@@ -622,7 +622,7 @@ Item {
       return Qt.darker(root.bar.foreground, 1.5)
     }
 
-    implicitHeight: rowContent.implicitHeight + 12
+    implicitHeight: rowContent.implicitHeight + Style.spacing.rowPaddingX
 
     MouseArea {
       id: rowMouse
@@ -664,8 +664,8 @@ Item {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: 10
-      anchors.rightMargin: 10
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
       implicitHeight: Math.max(deviceIcon.implicitHeight, info.implicitHeight, disconnectBtn.implicitHeight)
 
       Text {
@@ -705,11 +705,11 @@ Item {
 
       Column {
         id: info
-        spacing: 1
+        spacing: Style.space(1)
         anchors.left: deviceIcon.right
-        anchors.leftMargin: 10
+        anchors.leftMargin: Style.space(10)
         anchors.right: disconnectBtn.visible ? disconnectBtn.left : parent.right
-        anchors.rightMargin: disconnectBtn.visible ? 8 : 0
+        anchors.rightMargin: disconnectBtn.visible ? Style.space(8) : 0
         anchors.verticalCenter: parent.verticalCenter
 
         Text {

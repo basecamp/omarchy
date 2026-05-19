@@ -23,12 +23,12 @@ Item {
   property color border: foreground
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
-  property int contentMargin: 18
-  property int headerHeight: 34
-  property int contentSpacing: 6
-  property int cardWidth: 800
-  property int cardHeight: 600
-  property int rowHeight: 50
+  property int contentMargin: Style.spacing.panelPadding
+  property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
+  property int contentSpacing: Style.spacing.md
+  property int cardWidth: Math.min(Style.space(800), panel.width - Style.gapsOut * 2)
+  property int cardHeight: Math.min(Style.space(600), panel.height - Style.gapsOut * 2)
+  property int rowHeight: Math.max(Style.space(50), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
 
   function open(payloadJson) {
     root.opened = true
@@ -181,7 +181,7 @@ Item {
       anchors.centerIn: parent
       color: root.background
       border.color: root.border
-      border.width: 2
+      border.width: Math.max(1, Style.space(2))
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
@@ -260,7 +260,7 @@ Item {
               height: parent.height
               model: displayModel
               clip: true
-              spacing: 4
+              spacing: Style.space(4)
               boundsBehavior: Flickable.StopAtBounds
 
               delegate: Rectangle {
@@ -273,31 +273,33 @@ Item {
                 width: ListView.view.width
                 height: root.rowHeight
                 radius: root.cornerRadius
-                color: index === root.selectedIndex ? root.withAlpha(root.foreground, 0.08) : root.withAlpha(root.foreground, mouseArea.containsMouse ? 0.045 : 0)
+                color: index === root.selectedIndex ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
+                border.color: index === root.selectedIndex ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
+                border.width: index === root.selectedIndex ? Style.hoverBorderWidth : 0
 
                 Rectangle {
                   visible: false
-                  width: 4
-                  height: parent.height - 18
-                  radius: Math.min(root.cornerRadius, 4)
+                  width: Style.space(4)
+                  height: parent.height - Style.space(18)
+                  radius: Math.min(root.cornerRadius, Style.space(4))
                   color: root.accent
                   anchors.left: parent.left
-                  anchors.leftMargin: 8
+                  anchors.leftMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
                 }
 
                 Item {
                   anchors.fill: parent
-                  anchors.leftMargin: 12
-                  anchors.rightMargin: 12
-                  anchors.topMargin: 8
-                  anchors.bottomMargin: 8
+                  anchors.leftMargin: Style.space(12)
+                  anchors.rightMargin: Style.space(12)
+                  anchors.topMargin: Style.space(8)
+                  anchors.bottomMargin: Style.space(8)
 
                   Text {
                     width: parent.width
                     height: parent.height
                     text: parent.parent.isPassword ? "••••••••" : (parent.parent.previewType === "text" ? parent.parent.previewText : "Image")
-                    color: index === root.selectedIndex ? root.accent : root.foreground
+                    color: index === root.selectedIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.title
                     font.italic: parent.parent.previewType === "file" || parent.parent.isPassword
@@ -313,6 +315,7 @@ Item {
                   anchors.fill: parent
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
+                  onContainsMouseChanged: if (containsMouse) root.selectedIndex = index
                   onClicked: {
                     root.selectedIndex = index
                     root.activateIndex(index)
@@ -327,7 +330,7 @@ Item {
               radius: root.cornerRadius
               color: root.withAlpha(root.background, 0.5)
               border.color: root.withAlpha(root.border, 0.1)
-              border.width: 1
+              border.width: Style.normalBorderWidth
               clip: true
 
               property var activeRow: displayModel.count > 0 && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count ? displayModel.get(root.selectedIndex) : null
@@ -335,7 +338,7 @@ Item {
               Text {
                 visible: parent.activeRow && parent.activeRow.previewType === "text"
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: Style.space(16)
                 text: parent.activeRow ? (parent.activeRow.isPassword ? "••••••••" : parent.activeRow.previewText) : ""
                 color: root.foreground
                 font.family: root.fontFamily
@@ -348,7 +351,7 @@ Item {
               Image {
                 visible: parent.activeRow && parent.activeRow.previewType === "file"
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: Style.space(16)
                 source: parent.activeRow ? parent.activeRow.previewImage : ""
                 fillMode: Image.PreserveAspectFit
               }
@@ -357,7 +360,7 @@ Item {
 
           Column {
             anchors.centerIn: parent
-            spacing: 8
+            spacing: Style.space(8)
             visible: displayModel.count === 0
 
             Text {

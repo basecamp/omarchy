@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 
 Item {
   id: root
@@ -9,11 +10,12 @@ Item {
   property real maximum: 1
   property real step: 0.05
   property bool integer: false
-  property color trackColor: bar ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18) : "#333"
+  property color trackColor: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "#333"
   property color fillColor: bar ? bar.foreground : "#cacccc"
   property color knobColor: bar ? bar.foreground : "#cacccc"
   property bool dragging: false
-  property real trackHeight: 4
+  property real trackHeight: Math.max(4, Math.round(Style.spacing.controlHeight * 0.11))
+  property real knobSize: Math.max(14, Math.round(Style.spacing.controlHeight * 0.38))
   property real liveValue: value
 
   onValueChanged: if (!dragging) liveValue = value
@@ -21,8 +23,8 @@ Item {
   signal moved(real value)
   signal released(real value)
 
-  implicitWidth: 200
-  implicitHeight: 22
+  implicitWidth: Style.space(200)
+  implicitHeight: Math.max(Style.space(22), knobSize + Style.spacing.md)
 
   readonly property real range: Math.max(0.0001, maximum - minimum)
   readonly property real progress: Math.max(0, Math.min(1, (liveValue - minimum) / range))
@@ -54,12 +56,12 @@ Item {
 
   Rectangle {
     id: knob
-    width: 14
-    height: 14
-    radius: 7
+    width: root.knobSize
+    height: root.knobSize
+    radius: root.knobSize / 2
     color: root.knobColor
     border.color: root.bar ? root.bar.background : "#101315"
-    border.width: 2
+    border.width: Math.max(1, Style.space(2))
     anchors.verticalCenter: track.verticalCenter
     x: Math.max(0, Math.min(track.width - width, track.width * root.progress - width / 2))
     scale: mouseArea.containsMouse || root.dragging ? 1.15 : 1.0

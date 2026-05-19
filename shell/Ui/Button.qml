@@ -6,11 +6,11 @@ import qs.Commons
 // States compose independently and are applied in priority order:
 //
 //   pressed (mouse down)         pressed fill
-//   activeFocus (Tab focus)      accent ring + accent fill
-//   selected                     accent fill + accent border
-//   active                       foreground tint fill (highlighted)
-//   hasCursor || hover           hot fill
-//   idle                         transparent or 1px border if `bordered`
+//   activeFocus (Tab focus)      focus fill + focus border token
+//   hasCursor || hover           hover-cursor fill (+ border if `bordered`)
+//   selected                     selected fill + optional selected border
+//   active                       selected fill
+//   idle                         transparent or normal border if `bordered`
 //
 // All fills/borders come from `qs.Commons.Style` tokens, so themes
 // control the look via [style] in shell.toml.
@@ -41,8 +41,8 @@ Rectangle {
   property real fontSize: Style.font.body
   property real iconSize: Style.font.icon
   property real iconRotation: 0
-  property real horizontalPadding: 10
-  property real verticalPadding: 6
+  property real horizontalPadding: Style.spacing.controlPaddingX
+  property real verticalPadding: Style.spacing.controlPaddingY
   property bool leftAlign: false
 
   // Tooltip palette. Auto-rendered if tooltipText is set.
@@ -64,32 +64,32 @@ Rectangle {
 
   readonly property bool hot: mouseArea.containsMouse || hasCursor
   readonly property bool _showFocusRing: focusable && activeFocus
+  readonly property color _selectedColor: Style.selectedStateColor(root.foreground, root.accent)
 
-  color: mouseArea.pressed ? Style.pressedFill
-    : _showFocusRing       ? Style.focusFillColor
-    : selected             ? Style.selectedAccentFill
-    : hot                  ? Style.hotFill
-    : active               ? Style.selectedFill
+  color: mouseArea.pressed ? Style.pressedFillFor(root.foreground, root.accent)
+    : _showFocusRing       ? Style.focusFillFor(root.foreground, root.accent)
+    : hot                  ? Style.hoverFillFor(root.foreground, root.accent)
+    : selected             ? Style.selectedFillFor(root.foreground, root.accent)
+    : active               ? Style.selectedFillFor(root.foreground, root.accent)
     : background
 
-  // Border color follows the same precedence as fill: focus ring wins,
-  // then selected, then cursor on bordered (paints accent so the chip
-  // structure clearly reads as "cursor is here"), then plain bordered
-  // (foreground), then nothing.
-  border.color: _showFocusRing ? Style.focusBorderColor
-    : selected                 ? accent
-    : (bordered && hot)        ? Style.focusBorderColor
-    : bordered                 ? foreground
-    : Style.idleBorderColor
+  // Border follows the same state precedence as fill. Buttons stay
+  // borderless at rest unless `bordered` is set, but hover-cursor/focus
+  // always use the shared cursor border so the keyboard target is visible
+  // and consistent with the rest of the kit. Selected borders are off by
+  // default for plain buttons; explicitly bordered buttons keep their
+  // normal border when selected unless selected-border-width opts in to a
+  // dedicated selected border.
+  border.color: _showFocusRing ? Style.focusBorderFor(root.foreground, root.accent)
+    : hot                      ? Style.hoverBorderFor(root.foreground, root.accent)
+    : selected                 ? (Style.selectedBorderWidth > 0 ? Style.selectedBorderFor(root.foreground, root.accent) : Style.normalBorderFor(root.foreground, root.accent))
+    : bordered                 ? Style.normalBorderFor(root.foreground, root.accent)
+    : "transparent"
 
-  // selected+hot thickens to the focus-ring width so the cursor remains
-  // visible on the chosen option (otherwise selected's accent fill+border
-  // masks any hot fill). bordered+hot also thickens so the chip cursor
-  // reads as a deliberate state change rather than a faint tint.
   border.width: _showFocusRing ? Style.focusBorderWidth
-    : selected                 ? (hot ? Style.focusBorderWidth : Math.max(Style.borderWidth, 2))
-    : (bordered && hot)        ? Style.focusBorderWidth
-    : bordered                 ? Style.borderWidth
+    : hot                      ? Style.hoverBorderWidth
+    : selected                 ? (Style.selectedBorderWidth > 0 ? Style.selectedBorderWidth : (bordered ? Style.normalBorderWidth : 0))
+    : bordered                 ? Style.normalBorderWidth
     : 0
 
   Behavior on color { ColorAnimation { duration: 120 } }
@@ -102,7 +102,7 @@ Rectangle {
     background: Rectangle {
       color: root.tooltipBackground
       border.color: root.tooltipForeground
-      border.width: 1
+      border.width: Math.max(1, Style.normalBorderWidth)
       radius: 0
       opacity: 0.97
     }
@@ -111,10 +111,10 @@ Rectangle {
       color: root.tooltipForeground
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall
-      leftPadding: 10
-      rightPadding: 10
-      topPadding: 6
-      bottomPadding: 6
+      leftPadding: Style.spacing.controlPaddingX
+      rightPadding: Style.spacing.controlPaddingX
+      topPadding: Style.spacing.controlPaddingY
+      bottomPadding: Style.spacing.controlPaddingY
     }
   }
 
@@ -124,12 +124,12 @@ Rectangle {
     anchors.left: root.leftAlign ? parent.left : undefined
     anchors.leftMargin: root.leftAlign ? root.horizontalPadding : 0
     anchors.horizontalCenter: root.leftAlign ? undefined : parent.horizontalCenter
-    spacing: 8
+    spacing: Style.spacing.controlGap
 
     Text {
       visible: root.iconText !== ""
       text: root.iconText
-      color: root.selected ? root.accent : root.foreground
+      color: root.selected ? root._selectedColor : root.foreground
       font.family: root.fontFamily
       font.pixelSize: root.iconSize
       rotation: root.iconRotation
@@ -140,7 +140,7 @@ Rectangle {
     Text {
       visible: root.text !== ""
       text: root.text
-      color: root.selected ? root.accent : root.foreground
+      color: root.selected ? root._selectedColor : root.foreground
       font.family: root.fontFamily
       font.pixelSize: root.fontSize
       font.bold: root.selected

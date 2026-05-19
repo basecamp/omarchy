@@ -6,10 +6,8 @@ import qs.Commons
 // flip `checked` in response (the component is stateless about the actual
 // value so it composes cleanly with model-driven UI).
 //
-// Cursor and focus styling match the rest of the kit: hasCursor (panel
-// keyboard cursor / mouse hover) is a fill only, mirroring CursorSurface;
-// activeFocus (Tab focus) adds the accent border ring on top via the
-// shared Style tokens.
+// Cursor and focus styling match the rest of the kit: hasCursor / mouse
+// hover and activeFocus share the hover-cursor defaults.
 //
 // `rounded` auto-detects from Style.cornerRadius so the switch follows
 // the theme: pill shape on round-corners themes, square on sharp.
@@ -23,8 +21,7 @@ Rectangle {
 
   // Panel-cursor flag. Same role as Button.hasCursor:
   // panels with their own keyboard cursor bind this to drive the highlight
-  // separately from activeFocus. Renders as a tinted fill only — the accent
-  // border ring is reserved for Tab focus (activeFocus).
+  // separately from activeFocus. Visuals use the same hover-cursor tokens.
   property bool hasCursor: false
 
   // Switch shape follows the theme by default: pill on round, square on sharp.
@@ -45,17 +42,30 @@ Rectangle {
   Keys.onEnterPressed: root.clicked()
   Keys.onSpacePressed: root.clicked()
 
-  implicitHeight: Math.max(54, content.implicitHeight + 18)
-  implicitWidth: 240
+  readonly property int trackHeight: Math.max(22, Math.round(Style.spacing.controlHeight * 0.55))
+  readonly property int trackWidth: Math.max(42, Math.round(trackHeight * 1.9))
+  readonly property int knobSize: Math.max(16, Math.round(trackHeight * 0.72))
+  readonly property int knobInset: Math.max(2, Math.round((trackHeight - knobSize) / 2))
+
+  implicitHeight: Math.max(54, content.implicitHeight + Style.spacing.huge)
+  implicitWidth: Style.space(240)
   radius: Style.cornerRadius
 
+  readonly property bool _hot: hasCursor || mouse.containsMouse
+
   color: activeFocus
-    ? Style.focusFillColor
-    : ((hasCursor || mouse.containsMouse) ? Qt.rgba(foreground.r, foreground.g, foreground.b, 0.08) : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.03))
+    ? Style.focusFillFor(foreground, accent)
+    : (_hot
+      ? Style.hoverFillFor(foreground, accent)
+      : Style.normalFillFor(foreground, accent))
   border.color: activeFocus
-    ? Style.focusBorderColor
-    : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
-  border.width: activeFocus ? Style.focusBorderWidth : 1
+    ? Style.focusBorderFor(foreground, accent)
+    : (_hot
+      ? Style.hoverBorderFor(foreground, accent)
+      : Style.normalBorderFor(foreground, accent))
+  border.width: activeFocus
+    ? Style.focusBorderWidth
+    : (_hot ? Style.hoverBorderWidth : Style.normalBorderWidth)
 
   Behavior on color { ColorAnimation { duration: 100 } }
 
@@ -64,13 +74,13 @@ Rectangle {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.verticalCenter: parent.verticalCenter
-    anchors.leftMargin: 12
-    anchors.rightMargin: 12
-    spacing: 12
+    anchors.leftMargin: Style.spacing.rowPaddingX
+    anchors.rightMargin: Style.spacing.rowPaddingX
+    spacing: Style.spacing.rowPaddingX
 
     Column {
       width: parent.width - track.width - parent.spacing
-      spacing: 3
+      spacing: Style.spacing.xs
       anchors.verticalCenter: parent.verticalCenter
 
       Text {
@@ -96,27 +106,27 @@ Rectangle {
 
     Rectangle {
       id: track
-      width: 42
-      height: 22
+      width: root.trackWidth
+      height: root.trackHeight
       radius: root.rounded ? height / 2 : 0
       color: root.checked
-        ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.35)
-        : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+        ? Style.selectedFillFor(root.foreground, root.accent)
+        : Style.normalFillFor(root.foreground, root.accent)
       border.color: root.checked
-        ? root.accent
-        : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.28)
-      border.width: 1
+        ? Style.selectedBorderFor(root.foreground, root.accent)
+        : Style.normalBorderFor(root.foreground, root.accent)
+      border.width: root.checked ? Style.selectedBorderWidth : Style.normalBorderWidth
       anchors.verticalCenter: parent.verticalCenter
 
       Behavior on color { ColorAnimation { duration: 120 } }
 
       Rectangle {
-        width: 16
-        height: 16
-        radius: root.rounded ? 8 : 0
-        x: root.checked ? track.width - width - 3 : 3
-        y: 3
-        color: root.checked ? root.accent : Qt.darker(root.foreground, 1.25)
+        width: root.knobSize
+        height: root.knobSize
+        radius: root.rounded ? height / 2 : 0
+        x: root.checked ? track.width - width - root.knobInset : root.knobInset
+        y: root.knobInset
+        color: root.checked ? Style.selectedStateColor(root.foreground, root.accent) : Qt.darker(root.foreground, 1.25)
 
         Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: 120 } }
