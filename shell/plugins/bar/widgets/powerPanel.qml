@@ -18,6 +18,7 @@ Item {
   property var profiles: []
   property string activeProfile: ""
   property int profileIndex: 0
+  property bool cursorActive: false
 
   function closePopout() { popupOpen = false }
 
@@ -112,6 +113,7 @@ Item {
       refresh()
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
+      cursorActive = false
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
@@ -187,10 +189,11 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
       id: keyCatcher
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
+        if (!root.cursorActive) { root.cursorActive = true; return }
         if (dx !== 0) root.selectProfileByDelta(dx)
         else if (dy !== 0) root.selectProfileByDelta(dy)
       }
-      onActivateRequested: root.activateSelectedProfile()
+      onActivateRequested: if (root.cursorActive) root.activateSelectedProfile()
       onCloseRequested: root.closePopout()
 
       Column {
@@ -283,10 +286,13 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
               horizontalPadding: Style.spacing.controlPaddingX
               verticalPadding: Style.spacing.controlPaddingY
               active: root.activeProfile === modelData
-              hasCursor: root.profileIndex === index
+              hasCursor: root.cursorActive && root.profileIndex === index
               onClicked: root.setProfile(modelData)
               onHovered: function(h) {
-                if (h) root.profileIndex = index
+                if (h) {
+                  root.cursorActive = true
+                  root.profileIndex = index
+                }
               }
             }
           }

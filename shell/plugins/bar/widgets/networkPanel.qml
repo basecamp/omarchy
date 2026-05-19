@@ -47,13 +47,37 @@ Item {
 
   // Index into `wifiNetworks` for keyboard navigation. -1 = no selection.
   property int selectedIndex: -1
+  property bool cursorActive: false
 
-  // Keyboard focus zone for the panel. j/k crosses the boundary: from the
-  // top of the wifi list a k goes back up to the DNS row, j from DNS drops
-  // into the wifi list. h/l only mean something while focused on DNS.
-  property string focusSection: "dns"  // "dns" | "wifi"
+  // Keyboard focus zone for the panel. j/k crosses row boundaries:
+  // header actions ⇄ DNS row ⇄ Wi-Fi networks. h/l move within header
+  // actions or DNS providers.
+  property string focusSection: "dns"  // "header" | "dns" | "wifi"
+  property int headerIndex: 0
+  readonly property bool canDisconnect: info.type === "wifi" && !!info.ssid
+  readonly property int headerActionCount: canDisconnect ? 2 : 1
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
+
+  onHeaderActionCountChanged: clampHeaderIndex()
+
+  function clampHeaderIndex() {
+    var max = Math.max(0, headerActionCount - 1)
+    if (headerIndex > max) headerIndex = max
+    if (headerIndex < 0) headerIndex = 0
+  }
+
+  function selectHeaderByDelta(delta) {
+    headerIndex = Math.max(0, Math.min(headerActionCount - 1, headerIndex + delta))
+  }
+
+  function activateHeader() {
+    if (canDisconnect && headerIndex === 0) {
+      if (!busy) disconnect(info.ssid)
+      return
+    }
+    refresh(true)
+  }
 
   function selectDnsByDelta(delta) {
     dnsIndex = Math.max(0, Math.min(dnsProviders.length - 1, dnsIndex + delta))
@@ -65,10 +89,10 @@ Item {
   }
 
   // Single cursor model: exactly one highlighted spot across the whole
-  // panel, located via `focusSection` + (`selectedIndex` | `dnsIndex`).
-  // Mouse hover and keyboard nav both mutate this state at the root; items
-  // never read containsMouse for visuals. See CursorSurface for the
-  // shared chrome (fill / border) shared by NetworkRow and DnsProviderPill.
+  // panel, located via `focusSection` + (`headerIndex` | `dnsIndex` |
+  // `selectedIndex`). Mouse hover and keyboard nav both mutate this state
+  // at the root; items never read containsMouse for visuals. See
+  // CursorSurface for the shared chrome shared by rows and pills.
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
@@ -83,6 +107,7 @@ Item {
       focusSection = wifiNetworks.length > 0 ? "wifi" : "dns"
       var idx = dnsProviders.indexOf(dnsProvider)
       dnsIndex = idx >= 0 ? idx : 0
+      cursorActive = false
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
@@ -638,11 +663,20 @@ fi
       blocked: root.passwordSsid !== ""
 
       onMoveRequested: function(dx, dy) {
+        if (!root.cursorActive) {
+          root.cursorActive = true
+          if (dy >= 0) return
+        }
         if (dy !== 0) {
-          if (root.focusSection === "dns") {
-            // j from DNS drops into the wifi list if there's anywhere to
-            // land; otherwise hold position so j isn't a no-op surprise.
-            if (dy > 0 && root.wifiNetworks.length > 0) {
+          if (root.focusSection === "header") {
+            if (dy > 0) root.focusSection = "dns"
+          } else if (root.focusSection === "dns") {
+            // k from DNS moves up into header actions; j drops into the
+            // wifi list if there's anywhere to land.
+            if (dy < 0) {
+              root.focusSection = "header"
+              root.headerIndex = root.headerActionCount - 1  // refresh by default
+            } else if (root.wifiNetworks.length > 0) {
               root.focusSection = "wifi"
               if (root.selectedIndex < 0) root.selectedIndex = 0
             }
@@ -653,15 +687,21 @@ fi
             else root.selectByDelta(dy)
           }
         }
-        if (dx !== 0 && root.focusSection === "dns") root.selectDnsByDelta(dx)
+        if (dx !== 0) {
+          if (root.focusSection === "header") root.selectHeaderByDelta(dx)
+          else if (root.focusSection === "dns") root.selectDnsByDelta(dx)
+        }
       }
       onActivateRequested: {
-        if (root.focusSection === "dns") root.activateDns()
-        else root.activateSelected()
+        if (root.cursorActive) {
+          if (root.focusSection === "header") root.activateHeader()
+          else if (root.focusSection === "dns") root.activateDns()
+          else root.activateSelected()
+        }
       }
       onCloseRequested: root.closePopout()
       onDeleteRequested: {
-        if (root.focusSection === "wifi") root.forgetSelected()
+        if (root.cursorActive && root.focusSection === "wifi") root.forgetSelected()
       }
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refresh()
@@ -747,8 +787,9 @@ fi
 
           PanelActionButton {
             id: disconnectBtn
-            visible: root.info.type === "wifi" && !!root.info.ssid
+            visible: root.canDisconnect
             enabled: !root.busy
+            hasCursor: root.cursorActive && root.focusSection === "header" && root.headerIndex === 0
             iconText: "󰅙"
             tooltipText: "Disconnect"
             foreground: root.bar.foreground
@@ -756,6 +797,12 @@ fi
             panelBackground: root.bar.background
             fontFamily: root.bar.fontFamily
             anchors.verticalCenter: parent.verticalCenter
+            onHovered: function(h) {
+              if (!h) return
+              root.cursorActive = true
+              root.focusSection = "header"
+              root.headerIndex = 0
+            }
             onClicked: root.disconnect(root.info.ssid)
           }
 
@@ -772,6 +819,13 @@ fi
             verticalPadding: Style.spacing.labelGap
             iconSize: Style.font.icon
             active: root.scanning
+            hasCursor: root.cursorActive && root.focusSection === "header" && root.headerIndex === (root.canDisconnect ? 1 : 0)
+            onHovered: function(h) {
+              if (!h) return
+              root.cursorActive = true
+              root.focusSection = "header"
+              root.headerIndex = root.canDisconnect ? 1 : 0
+            }
             onClicked: root.refresh(true)
           }
         }
@@ -950,10 +1004,11 @@ fi
     // `current DNS` is the pill's `active` fill; the keyboard cursor lights
     // up `hasCursor`.
     active: root.dnsProvider === provider
-    hasCursor: root.focusSection === "dns" && root.dnsIndex === index
+    hasCursor: root.cursorActive && root.focusSection === "dns" && root.dnsIndex === index
 
     onHovered: function(isHovered) {
       if (!isHovered) return
+      root.cursorActive = true
       root.focusSection = "dns"
       root.dnsIndex = pill.index
     }
@@ -972,7 +1027,7 @@ fi
     readonly property bool isProtected: root.isProtected(net ? net.security : "")
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
 
-    hasCursor: isSelected
+    hasCursor: root.cursorActive && isSelected
     current: isConnected
     foreground: root.bar.foreground
     fill: root.hoverFill
@@ -1017,12 +1072,13 @@ fi
       // Move the cursor here when the mouse enters; mouse leaving doesn't
       // clear it (so the cursor stays where the mouse last was and
       // subsequent j/k pick up from this row).
-      onContainsMouseChanged: if (containsMouse) { root.focusSection = "wifi"; root.selectedIndex = row.index }
+      onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "wifi"; root.selectedIndex = row.index }
 
       onClicked: {
         if (!row.net) return
         // Resync cursor in case keyboard nav moved it away while the mouse
         // stayed parked on this row — the click target is unambiguously here.
+        root.cursorActive = true
         root.focusSection = "wifi"
         root.selectedIndex = row.index
         if (row.isConnected) {

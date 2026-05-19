@@ -100,7 +100,8 @@ Item {
   // never from containsMouse. Mouse hover updates root cursor state too,
   // guaranteeing one highlight on screen.
   property string focusSection: "header"
-  property int selectedIndex: 1  // default = toggle pill
+  property int selectedIndex: 1  // default = toggle pill once the cursor is revealed
+  property bool cursorActive: false
   readonly property int headerPillCount: 2
 
   // Stable identity for the focused known device. The known list is sorted
@@ -224,6 +225,7 @@ Item {
       if (adapter && adapter.enabled && !adapter.discovering) adapter.discovering = true
       if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else { focusSection = "header"; selectedIndex = 1 }
+      cursorActive = false
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
@@ -369,12 +371,13 @@ Item {
       id: keyCatcher
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
+        if (!root.cursorActive) { root.cursorActive = true; return }
         if (dy !== 0) root.moveCursor(dy)
         else if (dx !== 0) root.moveCursorH(dx)
       }
-      onActivateRequested: root.activateCursor()
+      onActivateRequested: if (root.cursorActive) root.activateCursor()
       onCloseRequested: root.closePopout()
-      onDeleteRequested: root.deleteSelected()
+      onDeleteRequested: if (root.cursorActive) root.deleteSelected()
 
       Column {
         id: column
@@ -523,11 +526,12 @@ Item {
     enabled: pillEnabled
     opacity: pillEnabled ? 1 : 0.4
 
-    hasCursor: root.focusSection === "header" && root.selectedIndex === pillIndex
+    hasCursor: root.cursorActive && root.focusSection === "header" && root.selectedIndex === pillIndex
 
     onClicked: pill.activated()
     onHovered: function(isHovered) {
       if (!isHovered) return
+      root.cursorActive = true
       root.focusSection = "header"
       root.selectedIndex = pill.pillIndex
     }
@@ -548,7 +552,7 @@ Item {
     readonly property int devState: dev && dev.state !== undefined ? dev.state : -1
     readonly property string sectionName: isDiscovered ? "discovered" : "known"
 
-    hasCursor: root.focusSection === sectionName && root.selectedIndex === rowIndex
+    hasCursor: root.cursorActive && root.focusSection === sectionName && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(row)
     current: isConnected
     foreground: root.bar.foreground
@@ -623,6 +627,7 @@ Item {
       cursorShape: row.dev ? Qt.PointingHandCursor : Qt.ArrowCursor
 
       onContainsMouseChanged: if (containsMouse) {
+        root.cursorActive = true
         root.focusSection = row.sectionName
         root.selectedIndex = row.rowIndex
       }

@@ -15,6 +15,7 @@ Item {
   property bool opened: false
   property string filterText: ""
   property int selectedIndex: 0
+  property bool cursorActive: false
   property var emojis: []
   property var filteredEmojis: []
 
@@ -38,6 +39,7 @@ Item {
     root.opened = true
     root.filterText = ""
     root.selectedIndex = 0
+    root.cursorActive = false
     root.rebuildDisplay()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -100,12 +102,23 @@ Item {
 
   function select(delta) {
     if (displayModel.count === 0) return
-    selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
+    if (!cursorActive) {
+      cursorActive = true
+      selectedIndex = delta < 0 ? displayModel.count - 1 : 0
+    } else {
+      selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
+    }
     resultGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
   }
 
   function selectRow(delta) {
     if (displayModel.count === 0) return
+    if (!cursorActive) {
+      cursorActive = true
+      selectedIndex = delta < 0 ? displayModel.count - 1 : 0
+      resultGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
+      return
+    }
     var newIndex = selectedIndex + delta * columns
     if (newIndex < 0) newIndex = 0
     if (newIndex >= displayModel.count) newIndex = displayModel.count - 1
@@ -115,6 +128,12 @@ Item {
 
   function selectPage(delta) {
     if (displayModel.count === 0) return
+    if (!cursorActive) {
+      cursorActive = true
+      selectedIndex = delta < 0 ? displayModel.count - 1 : 0
+      resultGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
+      return
+    }
     var visibleRows = Math.max(1, Math.floor(resultGrid.height / cellHeight))
     var newIndex = selectedIndex + delta * columns * visibleRows
     if (newIndex < 0) newIndex = 0
@@ -126,6 +145,7 @@ Item {
   function setFilter(nextFilter) {
     root.filterText = nextFilter
     root.selectedIndex = 0
+    root.cursorActive = false
     root.rebuildDisplay()
   }
 
@@ -220,7 +240,8 @@ Item {
             root.selectPage(1)
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            root.activateIndex(root.selectedIndex)
+            if (root.cursorActive) root.activateIndex(root.selectedIndex)
+            else if (displayModel.count > 0) root.cursorActive = true
             event.accepted = true
           } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127) {
             root.setFilter(root.filterText + event.text)
@@ -271,12 +292,14 @@ Item {
               required property int index
               required property string emoji
 
+              readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
+
               width: root.cellWidth
               height: root.cellHeight
               radius: root.cornerRadius
-              color: index === root.selectedIndex ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
-              border.color: index === root.selectedIndex ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
-              border.width: index === root.selectedIndex ? Style.hoverBorderWidth : 0
+              color: hasCursor ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
+              border.color: hasCursor ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
+              border.width: hasCursor ? Style.hoverBorderWidth : 0
 
               Text {
                 text: parent.emoji
@@ -292,8 +315,12 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: if (containsMouse) root.selectedIndex = index
+                onContainsMouseChanged: if (containsMouse) {
+                  root.cursorActive = true
+                  root.selectedIndex = index
+                }
                 onClicked: {
+                  root.cursorActive = true
                   root.selectedIndex = index
                   root.activateIndex(index)
                 }
