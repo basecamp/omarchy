@@ -1,4 +1,3 @@
-echo "Replace bluetooth GUI with TUI"
+echo "Drop bluetooth GUI"
 
-omarchy-pkg-add bluetui
 omarchy-pkg-drop blueberry
