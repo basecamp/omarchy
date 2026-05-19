@@ -108,11 +108,10 @@ Item {
   //   - omarchy-action: a user-action confirmation toast ("Theme changed",
   //     "Screenshot saved"). The user JUST did something — their feedback
   //     should show.
-  //   - urgency=critical AND app_name=notify-send: bare-CLI emergency alerts
-  //     (omarchy-battery-monitor uses this for low-battery; a few scripts
-  //     use it for emergency failures). Trusted because it's almost always
-  //     omarchy or system shell scripts — chat apps set app_name to
-  //     their brand (Discord/Slack/Vesktop) which falls outside this rule.
+  //   - urgency=critical AND app_name=notify-send: bare-CLI emergency alerts.
+  //     Trusted because it's almost always omarchy or system shell scripts —
+  //     chat apps set app_name to their brand (Discord/Slack/Vesktop), which
+  //     falls outside this rule.
   function shouldBypassDnd(notification) {
     var appName = String(notification.appName || "")
     if (appName === "omarchy-action") return true
