@@ -62,14 +62,15 @@ Item {
   property var navStack: []
   property var providersLoaded: ({})
   property var providerQueue: []
-  // Bound to the central [menu] section in shell.toml via Color.qml. Each
-  // surface color composes with its alpha companion at render time.
+  // Bound to the central [menu] section in shell.toml via Color.qml.
+  // Each color already includes its alpha companion (composed in the
+  // singleton), so consumers can drop them straight into a Rectangle.
   property color background: Color.menu.background
   property color foreground: Color.menu.text
-  property color border: Color.alpha(Color.menu.border, Color.menu.borderAlpha)
-  property color selectedBackground: Color.alpha(Color.menu.selectedBackground, Color.menu.selectedBackgroundAlpha)
+  property color border: Color.menu.border
+  property color selectedBackground: Color.menu.selectedBackground
   property color selectedText: Color.menu.selectedText
-  property color selectedBorder: Color.alpha(Color.menu.selectedBorder, Color.menu.selectedBorderAlpha)
+  property color selectedBorder: Color.menu.selectedBorder
   readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
@@ -1083,7 +1084,7 @@ Item {
               radius: root.cornerRadius
               color: row.hasCursor ? root.selectedBackground : "transparent"
               border.color: row.hasCursor ? root.selectedBorder : "transparent"
-              border.width: (row.hasCursor && Color.menu.selectedBorderAlpha > 0) ? Style.hoverBorderWidth : 0
+              border.width: (row.hasCursor && root.selectedBorder.a > 0) ? Style.hoverBorderWidth : 0
 
               Rectangle {
                 visible: false

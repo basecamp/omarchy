@@ -38,63 +38,75 @@ QtObject {
     return Math.max(0, Math.min(1, n))
   }
 
+  function alpha(c, opacity) {
+    if (!c) return Qt.rgba(0, 0, 0, opacity)
+    // pick() returns raw strings from shell.toml; convert to a color object
+    // so .r/.g/.b are defined. Color objects pass through unchanged.
+    if (typeof c === "string") c = Qt.color(c)
+    return Qt.rgba(c.r, c.g, c.b, opacity)
+  }
+
+  // Compose a color from a base-color key and its `-alpha` companion,
+  // applying the alpha to the resolved color. Used by every surface that
+  // exposes an alpha companion so consumers can read a single ready-to-use
+  // value rather than composing themselves.
+  function composed(colorKey, alphaKey, colorFallback, alphaFallback) {
+    return alpha(pick(colorKey, colorFallback), pickAlpha(alphaKey, alphaFallback))
+  }
+
   // Surface roles. Each property reads its shell.toml override if set,
-  // otherwise falls back to a foundational palette token.
+  // otherwise falls back to a foundational palette token. Color values are
+  // pre-composed with their `-alpha` companion where one exists, so
+  // consumers can drop them straight into a Rectangle.color binding.
   readonly property QtObject bar: QtObject {
-    property color background: root.pick("bar.background", root.background)
+    property color background: root.composed("bar.background", "bar.background-alpha", root.background, 1.0)
     property color text: root.pick("bar.text", root.foreground)
     property color active: root.pick("bar.active", root.urgent)
   }
   readonly property QtObject popups: QtObject {
-    property color background: root.pick("popups.background", root.background)
-    property color border: root.pick("popups.border", root.pick("notifications.border", root.accent))
+    property color background: root.composed("popups.background", "popups.background-alpha", root.background, 1.0)
+    property color border: root.composed("popups.border", "popups.border-alpha", root.pick("notifications.border", root.accent), 1.0)
   }
   readonly property QtObject tooltip: QtObject {
-    property color background: root.pick("tooltip.background", root.background)
+    // Default background-alpha 0.97 matches the legacy tooltip opacity so
+    // existing themes look identical until they override it.
+    property color background: root.composed("tooltip.background", "tooltip.background-alpha", root.background, 0.97)
     property color text: root.pick("tooltip.text", root.foreground)
-    property color border: root.pick("tooltip.border", root.foreground)
+    property color border: root.composed("tooltip.border", "tooltip.border-alpha", root.foreground, 1.0)
   }
   readonly property QtObject notifications: QtObject {
-    property color background: root.pick("notifications.background", root.background)
+    property color background: root.composed("notifications.background", "notifications.background-alpha", root.background, 1.0)
     property color text: root.pick("notifications.text", root.foreground)
-    property color border: root.pick("notifications.border", root.accent)
+    property color border: root.composed("notifications.border", "notifications.border-alpha", root.accent, 1.0)
     property color countdown: root.pick("notifications.countdown", root.accent)
   }
   readonly property QtObject appLauncher: QtObject {
-    property color background: root.pick("app-launcher.background", root.background)
+    property color background: root.composed("app-launcher.background", "app-launcher.background-alpha", root.background, 0.95)
     property color text: root.pick("app-launcher.text", root.foreground)
-    property color border: root.pick("app-launcher.border", root.foreground)
-    property real borderAlpha: root.pickAlpha("app-launcher.border-alpha", 1.0)
-    property color selectedBackground: root.pick("app-launcher.selected-background", root.foreground)
-    property real selectedBackgroundAlpha: root.pickAlpha("app-launcher.selected-background-alpha", 0.08)
+    property color border: root.composed("app-launcher.border", "app-launcher.border-alpha", root.foreground, 1.0)
+    property color selectedBackground: root.composed("app-launcher.selected-background", "app-launcher.selected-background-alpha", root.foreground, 0.08)
     property color selectedText: root.pick("app-launcher.selected-text", root.accent)
-    property color selectedBorder: root.pick("app-launcher.selected-border", root.foreground)
-    property real selectedBorderAlpha: root.pickAlpha("app-launcher.selected-border-alpha", 0.0)
+    property color selectedBorder: root.composed("app-launcher.selected-border", "app-launcher.selected-border-alpha", root.foreground, 0.0)
   }
   readonly property QtObject menu: QtObject {
-    property color background: root.pick("menu.background", root.background)
-    property color text: root.pick("menu.text", root.foreground)
-    property color border: root.pick("menu.border", root.foreground)
-    property real borderAlpha: root.pickAlpha("menu.border-alpha", 1.0)
     // Defaults mirror the panel cursor: a subtle foreground-tint fill,
     // no visible border, accent text. Themes override any of these
     // (including the alpha companions) per surface.
-    property color selectedBackground: root.pick("menu.selected-background", root.pick("menu.selected", root.foreground))
-    property real selectedBackgroundAlpha: root.pickAlpha("menu.selected-background-alpha", 0.08)
+    property color background: root.composed("menu.background", "menu.background-alpha", root.background, 1.0)
+    property color text: root.pick("menu.text", root.foreground)
+    property color border: root.composed("menu.border", "menu.border-alpha", root.foreground, 1.0)
+    property color selectedBackground: root.composed("menu.selected-background", "menu.selected-background-alpha", root.pick("menu.selected", root.foreground), 0.08)
     property color selectedText: root.pick("menu.selected-text", root.accent)
-    property color selectedBorder: root.pick("menu.selected-border", root.foreground)
-    property real selectedBorderAlpha: root.pickAlpha("menu.selected-border-alpha", 0.0)
+    property color selectedBorder: root.composed("menu.selected-border", "menu.selected-border-alpha", root.foreground, 0.0)
   }
   readonly property QtObject imagePicker: QtObject {
-    property color background: root.pick("image-picker.background", root.background)
+    // Defaults reflect what the picker hard-coded before alphas were
+    // themable: scrim background at 0.5, unselected carousel borders at
+    // 0.28, selected border fully opaque.
+    property color background: root.composed("image-picker.background", "image-picker.background-alpha", root.background, 0.5)
     property color text: root.pick("image-picker.text", root.foreground)
-    property color selectedBorder: root.pick("image-picker.selected-border", root.accent)
-    property color unselectedBorder: root.pick("image-picker.unselected-border", root.foreground)
-  }
-
-  function alpha(c, opacity) {
-    if (!c) return Qt.rgba(0, 0, 0, opacity)
-    return Qt.rgba(c.r, c.g, c.b, opacity)
+    property color selectedBorder: root.composed("image-picker.selected-border", "image-picker.selected-border-alpha", root.accent, 1.0)
+    property color unselectedBorder: root.composed("image-picker.unselected-border", "image-picker.unselected-border-alpha", root.foreground, 0.28)
   }
 
   function loadColors(raw) {

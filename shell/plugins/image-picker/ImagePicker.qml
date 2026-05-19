@@ -440,7 +440,7 @@ Item {
     Rectangle {
       anchors.fill: parent
       visible: root.opened && root.imagesLoaded
-      color: root.withAlpha(root.background, 0.5)
+      color: root.background
     }
 
     MouseArea {
@@ -592,7 +592,7 @@ Item {
                 preferredRendererType: Shape.CurveRenderer
                 ShapePath {
                   fillColor: "transparent"
-                  strokeColor: item.selected ? root.selectedBorder : root.withAlpha(root.unselectedBorder, 0.28)
+                  strokeColor: item.selected ? root.selectedBorder : root.unselectedBorder
                   strokeWidth: item.selected ? 3 : 1
                   startX: item.topLeft; startY: 0
                   PathLine { x: item.topRight; y: 0 }
