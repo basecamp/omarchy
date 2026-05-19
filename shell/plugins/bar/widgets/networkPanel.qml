@@ -1328,7 +1328,7 @@ iwctl known-networks list 2>/dev/null \\
   // Bar.qml does not need to mirror network state.
   Process {
     id: networkProc
-    command: ["bash", "-lc", root.bar ? root.bar.commandWithOmarchyPath(root.networkCommand()) : ""]
+    command: ["bash", "-lc", root.bar ? root.networkCommand() : ""]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateNetwork(text)

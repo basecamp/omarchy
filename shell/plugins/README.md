@@ -18,6 +18,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Clipboard mgr | `omarchy.clipboard-picker`| `overlay` | `clipboard-picker/ClipboardPicker.qml`|
 | Omarchy menu  | `omarchy.menu`            | `menu`    | `menu/Menu.qml`                       |
 | Notifications | `omarchy.notifications`   | `service` | `notifications/Service.qml`           |
+| Idle monitor  | `omarchy.idle`            | `service` | `idle/Service.qml`                    |
 | OSD           | `omarchy.osd`             | `panel`   | `osd/Osd.qml`                         |
 | Polkit agent  | `omarchy.polkit`          | `service` | `polkit/PolkitAgent.qml`              |
 

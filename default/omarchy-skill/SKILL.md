@@ -136,8 +136,7 @@ Run `omarchy --help` for the full list. The most common groups:
 ├── looknfeel.conf     # Appearance (gaps, borders, animations)
 ├── envs.conf          # Environment variables
 ├── autostart.conf     # Startup applications
-├── hypridle.conf      # Idle behavior (screen off, lock, suspend)
-├── hyprlock.conf      # Lock screen appearance
+├── hyprlock.conf      # Lock screen appearance and auth
 └── hyprsunset.conf    # Night light / blue light filter
 ```
 

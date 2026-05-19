@@ -21,21 +21,9 @@ ShellRoot {
   property string home: Quickshell.env("HOME")
 
   // The omarchy-shell host is the long-running entry point. Plugins live in
-  // sibling directories under plugins/. Most child code (the bar, future
-  // plugins) accept omarchyPath as a required property; resolve it once here
-  // from the shellDir so we don't depend on OMARCHY_PATH being set in the env.
-  function deriveOmarchyPath() {
-    var env = Quickshell.env("OMARCHY_PATH")
-    if (env) return env
-    var dir = String(Quickshell.shellDir || "")
-    while (dir.length > 1 && dir.charAt(dir.length - 1) === "/")
-      dir = dir.substring(0, dir.length - 1)
-    var suffix = "/shell"
-    if (dir.length > suffix.length && dir.substring(dir.length - suffix.length) === suffix)
-      return dir.substring(0, dir.length - suffix.length)
-    return home + "/.local/share/omarchy"
-  }
-  property string omarchyPath: deriveOmarchyPath()
+  // sibling directories under plugins/. OMARCHY_PATH is provided by the uwsm
+  // session environment and is the single source of truth for this checkout.
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   readonly property string shellPath: omarchyPath + "/shell"
   readonly property string firstPartyPluginsDir: shellPath + "/plugins"
   readonly property string defaultsPath: shellPath + "/shell-defaults.json"
@@ -46,6 +34,10 @@ ShellRoot {
   // closely enough to render a usable bar; not authoritative.
   readonly property var builtinShellConfig: ({
     version: 1,
+    idle: {
+      screensaver: 150,
+      lock: 300
+    },
     bar: {
       position: "top",
       transparent: false,

@@ -9,9 +9,8 @@ import qs.Commons
 Item {
   id: root
 
-  // Injected by omarchy-shell so helper scripts resolve without relying on
-  // OMARCHY_PATH being set in the environment.
-  property string omarchyPath: ""
+  // Injected by omarchy-shell; defaults to the session OMARCHY_PATH.
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property string imageDirs: Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIRS") || Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIR") || Quickshell.env("OMARCHY_STOCK_BACKGROUNDS_DIR") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/backgrounds")
   property string imageRows: ""
   property string loadedImageRows: ""
@@ -53,8 +52,7 @@ Item {
   }
 
   function scriptPath(name) {
-    var base = omarchyPath || Quickshell.env("OMARCHY_PATH") || (Quickshell.env("HOME") + "/.local/share/omarchy")
-    return base + "/shell/scripts/" + name
+    return omarchyPath + "/shell/scripts/" + name
   }
 
   function focusPicker() {

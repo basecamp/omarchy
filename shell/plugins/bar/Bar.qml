@@ -12,8 +12,7 @@ import qs.Ui
 Item {
   id: root
 
-  // The omarchy-shell host injects omarchyPath when it instantiates this Bar.
-  // Default fallback keeps the file loadable in isolation (e.g. for QML tooling).
+  // The omarchy-shell host injects omarchyPath from OMARCHY_PATH.
   required property string omarchyPath
   // Injected by the host shell. Shared with the bar settings panel so both
   // see the same widget catalogue.
@@ -108,10 +107,6 @@ Item {
 
   function fileUrl(path) {
     return "file://" + path.split("/").map(encodeURIComponent).join("/")
-  }
-
-  function commandWithOmarchyPath(command) {
-    return "OMARCHY_PATH=" + shellQuote(omarchyPath) + " " + command
   }
 
   function isPlainObject(value) {
@@ -539,7 +534,7 @@ Item {
 
   Process {
     id: updateProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath("omarchy-update-available")]
+    command: ["bash", "-lc", "omarchy-update-available"]
     stdout: StdioCollector { waitForEnd: true }
     onExited: function(exitCode) {
       root.updateAvailable = exitCode === 0
@@ -556,7 +551,7 @@ Item {
 
   Process {
     id: voxtypeProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath("omarchy-voxtype-status")]
+    command: ["bash", "-lc", "omarchy-voxtype-status"]
     running: true
     stdout: SplitParser {
       onRead: function(data) {
@@ -567,7 +562,7 @@ Item {
 
   Process {
     id: screenRecordingProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/shell/scripts/indicators/screen-recording.sh"))]
+    command: ["bash", "-lc", root.shellQuote(root.omarchyPath + "/shell/scripts/indicators/screen-recording.sh")]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateIndicator("screenRecording", text)
@@ -576,7 +571,7 @@ Item {
 
   Process {
     id: notificationSilencingProc
-    command: ["bash", "-lc", root.commandWithOmarchyPath(root.shellQuote(root.omarchyPath + "/shell/scripts/indicators/notification-silencing.sh"))]
+    command: ["bash", "-lc", root.shellQuote(root.omarchyPath + "/shell/scripts/indicators/notification-silencing.sh")]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateIndicator("notifications", text)
@@ -1037,7 +1032,7 @@ Item {
 
     Process {
       id: customProc
-      command: ["bash", "-lc", root.commandWithOmarchyPath(String(customRoot.setting("exec", "")))]
+      command: ["bash", "-lc", String(customRoot.setting("exec", ""))]
       stdout: StdioCollector {
         waitForEnd: true
         onStreamFinished: customRoot.update(text)

@@ -33,17 +33,7 @@ Item {
   property var shell: null
 
   // ---------------- paths --------------------------------------------------
-  property string omarchyPath: {
-    var env = Quickshell.env("OMARCHY_PATH")
-    if (env) return env
-    var dir = String(Quickshell.shellDir || "")
-    while (dir.length > 1 && dir.charAt(dir.length - 1) === "/")
-      dir = dir.substring(0, dir.length - 1)
-    var suffix = "/shell"
-    if (dir.length > suffix.length && dir.substring(dir.length - suffix.length) === suffix)
-      return dir.substring(0, dir.length - suffix.length)
-    return Quickshell.env("HOME") + "/.local/share/omarchy"
-  }
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   readonly property string home: Quickshell.env("HOME")
   readonly property string userConfigPath: home + "/.config/omarchy/shell.json"
   readonly property string defaultsPath: omarchyPath + "/shell/shell-defaults.json"
