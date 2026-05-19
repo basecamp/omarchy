@@ -1,10 +1,10 @@
 # Omarchy shell
 
 `omarchy-shell` is a single long-running [Quickshell](https://quickshell.org/)
-instance that hosts the Omarchy desktop. A supervised user systemd service
-keeps one shell running per graphical session; everything else — the bar,
-the bar settings UI, the background switcher, future panels and overlays —
-runs **inside** the shell as a plugin.
+instance that hosts the Omarchy desktop. Hyprland autostart launches one shell
+per graphical session; everything else — the bar, the bar settings UI, the
+background switcher, future panels and overlays — runs **inside** the shell as
+a plugin.
 
 Hosting everything inside one shell means:
 
@@ -119,13 +119,12 @@ Direct invocation:
 quickshell ipc -p $OMARCHY_PATH/shell call shell ping
 ```
 
-The `omarchy-shell.service` user unit starts the shell for the graphical
-session and restarts it if it exits. Use `omarchy-restart-shell` to reload
-the long-running shell process.
+Hyprland autostart launches the shell directly with `quickshell -p
+$OMARCHY_PATH/shell`. Use `omarchy-restart-shell` (`quickshell reload`) to
+reload the long-running shell process.
 
-A convenience wrapper, [`omarchy-shell`](../bin/omarchy-shell),
-forwards IPC calls to the running service. It does not start the shell; the
-systemd unit owns the shell lifecycle.
+A convenience wrapper, [`omarchy-shell`](../bin/omarchy-shell), forwards IPC
+calls to the running shell. It does not start the shell.
 
 ```
 omarchy-shell shell ping

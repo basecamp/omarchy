@@ -107,9 +107,9 @@ When testing layer-shell UI, capture the reference and candidate states as separ
 # Omarchy shell
 
 The Quickshell desktop runs as a single long-running process out of
-`shell/`. The `omarchy-shell.service` user unit
-keeps it running for the graphical session; do not start additional
-standalone `quickshell -p` instances for individual components.
+`shell/`. Hyprland autostart launches it directly with `quickshell -p`; do
+not start additional standalone `quickshell -p` instances for individual
+components.
 
 Run `omarchy-restart-shell` after making changes to QML files.
 
@@ -130,8 +130,8 @@ Plugin contract:
 IPC:
 
 - `bin/omarchy-shell` is the canonical IPC entry point. It forwards to
-  the running shell service and does not start it. Prefer it over
-  re-implementing direct Quickshell socket calls in every CLI.
+  the running shell and does not start it. Prefer it over re-implementing
+  direct Quickshell socket calls in every CLI.
 - The `shell` IPC target exposes `ping`, `summon`, `hide`, `toggle`,
   `rescanPlugins`, `setPluginEnabled`, and `listPlugins`. Individual
   plugins can register additional IPC targets (the bar registers `bar`,
