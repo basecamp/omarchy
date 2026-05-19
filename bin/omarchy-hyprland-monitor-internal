@@ -6,9 +6,10 @@
 TOGGLE="internal-monitor-disable"
 TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.conf"
 MIRROR_TOGGLE="internal-monitor-mirror"
+INTERNAL_MONITOR_MATCHES='eDP LVDS DSI'
 
 # Get internal monitor name dynamically
-INTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | contains("eDP")).name' | head -n 1)
+INTERNAL=$(hyprctl monitors -j | jq -r --arg matches "$INTERNAL_MONITOR_MATCHES" '.[] | .name as $name | select($matches | split(" ") | any(. as $match | $name | contains($match))).name' | head -n 1)
 
 enable() {
   if omarchy-hyprland-toggle-enabled "$TOGGLE"; then
@@ -17,10 +18,16 @@ enable() {
 }
 
 disable() {
+  if [[ -z "$INTERNAL" ]]; then
+    notify-send -u low "󰍹    Internal display could not be detected"
+    exit 1
+  fi
+
   if ! omarchy-hw-external-monitors; then
     notify-send -u low "󰍹    Can't disable the only active display"
     exit 1
   fi
+
   if omarchy-hyprland-toggle-disabled "$TOGGLE" && omarchy-hyprland-toggle-disabled "$MIRROR_TOGGLE"; then
     echo "monitor=$INTERNAL,disable" >"$TOGGLE_FLAG"
     notify-send -u low "󰍹    Laptop display disabled"

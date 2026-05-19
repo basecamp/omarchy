@@ -2,8 +2,12 @@
 
 # omarchy:summary=Returns true when an external monitor is physically connected.
 
+INTERNAL_MONITOR_MATCHES="eDP LVDS DSI"
+
 for status in /sys/class/drm/card*-*/status; do
-  [[ "$status" == *-eDP-*/status ]] && continue
+  for match in $INTERNAL_MONITOR_MATCHES; do
+    [[ "$status" == *-"$match"-*/status ]] && continue 2
+  done
   [[ "$(<"$status")" == "connected" ]] && exit 0
 done
 exit 1
