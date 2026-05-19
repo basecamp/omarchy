@@ -52,6 +52,9 @@ Item {
     return list
   }
 
+  property var sinkAvailability: ({})
+  property bool sinkAvailabilityLoaded: false
+
   // Identify true playback streams without reading node.properties here:
   // PwNode.properties is invalid until the node is bound, and reading it while
   // capture streams are appearing (for example, when Voxtype starts recording)
@@ -72,7 +75,7 @@ Item {
   readonly property var audioSinks: {
     var list = []
     for (var i = 0; i < candidateSinks.length; i++)
-      if (candidateSinks[i].audio) list.push(candidateSinks[i])
+      if (candidateSinks[i].audio && sinkAvailable(candidateSinks[i])) list.push(candidateSinks[i])
     return list
   }
 
@@ -293,12 +296,66 @@ Item {
     if (source && source.audio) source.audio.muted = !source.audio.muted
   }
 
-  function setDefaultSink(node) { Pipewire.preferredDefaultAudioSink = node }
-  function setDefaultSource(node) { Pipewire.preferredDefaultAudioSource = node }
+  function setDefaultSink(node) {
+    if (!node) return
+    Pipewire.preferredDefaultAudioSink = node
+    if (root.bar && node.id !== undefined && node.name) {
+      var idArg = root.bar.shellQuote(String(node.id))
+      var nameArg = root.bar.shellQuote(String(node.name))
+      root.bar.run("wpctl set-default " + idArg + " 2>/dev/null || true; "
+        + "pactl set-default-sink " + nameArg + " 2>/dev/null || true; "
+        + "pactl list short sink-inputs 2>/dev/null | awk '{ print $1 }' | while read -r input; do "
+        + "pactl move-sink-input \"$input\" " + nameArg + " 2>/dev/null || true; done")
+    }
+  }
+
+  function setDefaultSource(node) {
+    if (!node) return
+    Pipewire.preferredDefaultAudioSource = node
+    if (root.bar && node.id !== undefined && node.name) {
+      var idArg = root.bar.shellQuote(String(node.id))
+      var nameArg = root.bar.shellQuote(String(node.name))
+      root.bar.run("wpctl set-default " + idArg + " 2>/dev/null || true; "
+        + "pactl set-default-source " + nameArg + " 2>/dev/null || true; "
+        + "pactl list short source-outputs 2>/dev/null | awk '{ print $1 }' | while read -r output; do "
+        + "pactl move-source-output \"$output\" " + nameArg + " 2>/dev/null || true; done")
+    }
+  }
+
+  function sinkAvailable(node) {
+    if (!node || !node.name || !sinkAvailabilityLoaded) return true
+    var name = String(node.name)
+    return sinkAvailability[name] !== false
+  }
+
+  function updateSinkAvailability(raw) {
+    var next = {}
+    var lines = String(raw || "").split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim()
+      if (!line) continue
+      var parts = line.split("\t")
+      if (parts.length >= 2) next[parts[0]] = parts[1] !== "0"
+    }
+    sinkAvailability = next
+    sinkAvailabilityLoaded = true
+  }
+
+  function friendlyDeviceLabel(text) {
+    var label = String(text || "").trim()
+    label = label.replace(/^sof-soundwire\s+/i, "")
+    label = label.replace(/^built-?in audio\s+/i, "")
+    label = label.replace(/\s+Output$/i, "")
+    label = label.replace(/\s+Input$/i, "")
+    return label
+  }
 
   function nodeLabel(node) {
     if (!node) return "Unknown"
-    return node.description || node.nickname || node.name || "Unknown"
+    var p = nodeProps(node)
+    var nickname = friendlyDeviceLabel(node.nickname || node.nick || p["node.nick"] || p["device.profile.description"] || "")
+    if (nickname) return nickname
+    return friendlyDeviceLabel(node.description || p["node.description"] || node.name || "Unknown")
   }
 
   function nodeProps(node) {
@@ -344,6 +401,47 @@ Item {
   PwObjectTracker { objects: root.candidateSinks }
   PwObjectTracker { objects: root.candidateSources }
   PwObjectTracker { objects: root.audioStreams }
+
+  Process {
+    id: sinkAvailabilityProc
+    command: ["bash", "-lc", `
+pactl list sinks 2>/dev/null | python3 -c '
+import re
+import sys
+
+for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
+    name = re.search(r"(?m)^\\s*Name:\\s*(\\S+)", block)
+    if not name:
+        continue
+
+    ports = []
+    in_ports = False
+    for line in block.splitlines():
+        if line.strip() == "Ports:":
+            in_ports = True
+            continue
+        if in_ports and line.startswith("\\tActive Port:"):
+            in_ports = False
+        if in_ports and line.startswith("\\t\\t"):
+            ports.append(line)
+
+    available = not ports or any("not available" not in port for port in ports)
+    print("%s\\t%d" % (name.group(1), 1 if available else 0))
+'
+`]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateSinkAvailability(text)
+    }
+  }
+
+  Timer {
+    interval: 5000
+    running: root.popupOpen
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: if (!sinkAvailabilityProc.running) sinkAvailabilityProc.running = true
+  }
 
   // Lets a Hyprland keybind summon the panel without a click. Mirrors the
   // networkPanel IpcHandler pattern; KeyboardPanel grants Exclusive focus
