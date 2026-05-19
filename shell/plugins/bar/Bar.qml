@@ -695,7 +695,7 @@ Item {
         color: root.background
         border.color: root.foreground
         border.width: 1
-        radius: 0
+        radius: Style.cornerRadius
         opacity: 0.97
 
         Text {

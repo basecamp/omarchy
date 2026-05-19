@@ -29,7 +29,7 @@ ToolTip {
     color: root.panelBackground
     border.color: Style.normalBorderFor(root.panelForeground, Color.accent)
     border.width: Style.normalBorderWidth
-    radius: 0
+    radius: Style.cornerRadius
     opacity: 0.97
   }
 
