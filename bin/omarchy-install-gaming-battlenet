@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# omarchy:summary=Install Battle.net standalone via umu-launcher + GE-Proton (no Steam, no Lutris, no Heroic).
+# omarchy:requires-sudo=true
+
+set -e
+
+PREFIX="$HOME/Games/battlenet"
+LAUNCHER="$PREFIX/drive_c/Program Files (x86)/Battle.net/Battle.net Launcher.exe"
+INSTALLER_URL="https://downloader.battle.net/download/getInstallerForGame?os=win&gameProgram=BATTLENET_APP&version=Live"
+
+echo "Installing Battle.net..."
+
+omarchy-pkg-add umu-launcher
+omarchy-install-gaming-gpu-lib32
+
+# Detect a half-finished prefix from a closed/crashed previous run and offer
+# to wipe it before trying again. Battle.net's installer isn't idempotent.
+if [[ -d $PREFIX && ! -f $LAUNCHER ]]; then
+  echo
+  echo "Found a partial Battle.net install at $PREFIX (no Launcher.exe)."
+  echo "Battle.net's installer can't resume from this state."
+  if gum confirm "Wipe the partial prefix and start fresh?"; then
+    pkill -f "$PREFIX" 2>/dev/null || true
+    sleep 1
+    rm -rf "$PREFIX"
+  else
+    echo "Aborting. Re-run when ready to wipe."
+    exit 1
+  fi
+fi
+
+mkdir -p "$PREFIX"
+
+export WINEPREFIX="$PREFIX"
+export PROTONPATH=GE-Proton
+export GAMEID=umu-battlenet
+export PROTON_VERB=run
+
+if [[ -f "$LAUNCHER" ]]; then
+  echo "Battle.net is already installed at $PREFIX."
+  launched_installer=0
+else
+  cache_dir="$HOME/.cache/omarchy"
+  mkdir -p "$cache_dir"
+  installer="$cache_dir/Battle.net-Setup.exe"
+
+  echo
+  echo "Downloading Battle.net installer..."
+  curl --fail --location --retry 3 "$INSTALLER_URL" --output "$installer"
+
+  cat <<'EOF'
+
+Launching the Battle.net setup wizard. Click through it normally — the
+default install path is fine. When it finishes, Battle.net will be in your
+app launcher.
+
+EOF
+
+  log="/tmp/omarchy-battlenet-installer.log"
+  setsid -f sh -c "umu-run '$installer' >'$log' 2>&1" </dev/null >/dev/null 2>&1
+  echo "Installer log: $log"
+  launched_installer=1
+fi
+
+mkdir -p "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/48x48/apps"
+install -m 644 "$HOME/.local/share/omarchy/applications/battlenet.desktop" \
+  "$HOME/.local/share/applications/battlenet.desktop"
+install -m 644 "$HOME/.local/share/omarchy/applications/icons/Battle.net.png" \
+  "$HOME/.local/share/icons/hicolor/48x48/apps/Battle.net.png"
+gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
+update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+
+if (( launched_installer )); then
+  cat <<EOF
+
+The Battle.net installer is running in the background. After it finishes,
+find Battle.net in your app launcher, or run:
+
+  omarchy-launch-battlenet
+
+EOF
+else
+  cat <<EOF
+
+Battle.net is installed. Find it in your app launcher, or run:
+
+  omarchy-launch-battlenet
+
+EOF
+fi

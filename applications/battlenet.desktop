@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Battle.net
+GenericName=Game Launcher
+Comment=Blizzard game launcher (umu-launcher + GE-Proton)
+Exec=omarchy-launch-battlenet
+Icon=Battle.net
+Terminal=false
+Categories=Game;
+StartupNotify=true
+StartupWMClass=battle.net.exe

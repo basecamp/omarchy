@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# omarchy:summary=Remove Battle.net, its Proton prefix, installed games, and desktop entry.
+
+set -e
+
+PREFIX="$HOME/Games/battlenet"
+
+# Stop any running Battle.net / wine processes tied to this prefix.
+pkill -f "$PREFIX" 2>/dev/null || true
+sleep 1
+
+rm -rf "$PREFIX"
+rm -f "$HOME/.local/share/applications/battlenet.desktop"
+rm -f "$HOME/.local/share/icons/hicolor/48x48/apps/Battle.net.png"
+rm -f "$HOME/.cache/omarchy/Battle.net-Setup.exe"
+gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
+update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+
+echo
+echo "Battle.net and its Proton prefix at $PREFIX have been removed."
+
+if omarchy-pkg-present umu-launcher; then
+  echo
+  read -rp "Also remove umu-launcher? It's only used by this command. [y/N] " reply
+  if [[ $reply =~ ^[Yy]$ ]]; then
+    omarchy-pkg-drop umu-launcher
+  fi
+fi
+
+PROTON_DIR="$HOME/.local/share/Steam/compatibilitytools.d"
+if compgen -G "$PROTON_DIR/GE-Proton*" >/dev/null; then
+  echo
+  read -rp "Also remove GE-Proton runtimes downloaded by umu? [y/N] " reply
+  if [[ $reply =~ ^[Yy]$ ]]; then
+    rm -rf "$PROTON_DIR"/GE-Proton*
+    rm -rf "$HOME/.local/share/umu"
+  fi
+fi

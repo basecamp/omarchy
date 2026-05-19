@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the installed Battle.net client via umu-launcher + GE-Proton.
+# omarchy:args=[--with-mangohud]
+# omarchy:examples=omarchy launch battlenet | omarchy launch battlenet --with-mangohud
+
+set -e
+
+PREFIX="$HOME/Games/battlenet"
+LAUNCHER="$PREFIX/drive_c/Program Files (x86)/Battle.net/Battle.net Launcher.exe"
+
+with_mangohud=0
+for arg in "$@"; do
+  case "$arg" in
+    --with-mangohud) with_mangohud=1 ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: omarchy-launch-battlenet [--with-mangohud]
+
+Options:
+  --with-mangohud   Enable the MangoHud FPS overlay for games launched from
+                    Battle.net. Toggle perf logging in-game with Shift_L+F2;
+                    CSV logs land in ~/mangohud/.
+EOF
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      echo "Try: omarchy-launch-battlenet --help" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! -f "$LAUNCHER" ]]; then
+  echo "Battle.net is not installed. Run omarchy-install-gaming-battlenet first." >&2
+  exit 1
+fi
+
+env_args=(
+  WINEPREFIX="$PREFIX"
+  PROTONPATH=GE-Proton
+  GAMEID=umu-battlenet
+  PROTON_VERB=run
+)
+(( with_mangohud )) && env_args+=(MANGOHUD=1)
+
+env "${env_args[@]}" umu-run "$LAUNCHER"
