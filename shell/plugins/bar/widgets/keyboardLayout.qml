@@ -5,12 +5,10 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 
-Item {
+BarWidget {
   id: root
+  moduleName: "keyboardLayout"
 
-  property QtObject bar: null
-  property string moduleName: "keyboardLayout"
-  property var settings: ({})
 
   property string layoutLabel: ""
   property string layoutFull: ""

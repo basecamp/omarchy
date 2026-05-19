@@ -5,14 +5,15 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 
-Item {
+BarWidget {
   id: root
+  moduleName: "monitorPanel"
 
-  property QtObject bar: null
-  property string moduleName: "monitorPanel"
-  property var settings: ({})
 
-  property bool popupOpen: false
+  // manageIpc: false so this panel can own the single IpcHandler the target
+  // permits — needed for the brightness + state methods below.
+  PanelController { id: ctrl; ipcTarget: "monitorPanel"; manageIpc: false }
+  readonly property bool popupOpen: ctrl.open
   property int brightnessPercent: 0
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
@@ -169,7 +170,7 @@ Item {
       flick.contentY = bottom + margin - flick.height
   }
 
-  function closePopout() { popupOpen = false }
+  function closePopout() { ctrl.hide() }
 
   IpcHandler {
     target: "monitorPanel"
@@ -190,12 +191,9 @@ Item {
       })
     }
 
-    function toggle(): void {
-      if (root.popupOpen) root.closePopout()
-      else root.popupOpen = true
-    }
-    function show(): void { if (!root.popupOpen) root.popupOpen = true }
-    function hide(): void { root.closePopout() }
+    function toggle(): void { ctrl.toggle() }
+    function show(): void { ctrl.show() }
+    function hide(): void { ctrl.hide() }
   }
 
   function refresh() {
@@ -273,7 +271,6 @@ Item {
         selectedIndex = 0
       }
       cursorActive = false
-      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
 
@@ -346,7 +343,7 @@ Item {
     bar: root.bar
     text: root.displays.length > 1 ? "󰍺" : "󰍹"
     fontSize: Style.font.subtitle
-    onPressed: function(b) { root.popupOpen = !root.popupOpen }
+    onPressed: function(b) { ctrl.toggle() }
     onWheelMoved: function(delta) {
       if (root.brightnessAvailable) root.setBrightness(root.brightnessPercent + (delta > 0 ? 5 : -5))
     }
@@ -355,9 +352,10 @@ Item {
   KeyboardPanel {
     id: panel
     anchorItem: button
-    owner: root
+    owner: ctrl
     bar: root.bar
-    open: root.popupOpen
+    open: ctrl.open
+    focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(320))
     contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
 

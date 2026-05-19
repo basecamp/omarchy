@@ -6,14 +6,13 @@ import Quickshell.Bluetooth
 import qs.Ui
 import qs.Commons
 
-Item {
+BarWidget {
   id: root
+  moduleName: "bluetoothPanel"
 
-  property QtObject bar: null
-  property string moduleName: "bluetoothPanel"
-  property var settings: ({})
 
-  property bool popupOpen: false
+  PanelController { id: ctrl; ipcTarget: "bluetoothPanel" }
+  readonly property bool popupOpen: ctrl.open
 
   // Address -> true while we are waiting for a click-initiated pair to land
   // so we can chain trust + connect at root scope. Doing this in the row's
@@ -21,7 +20,7 @@ Item {
   // moment `paired` flips, before the row's handler reliably fires.
   property var pendingPairAddresses: ({})
 
-  function closePopout() { popupOpen = false }
+  function closePopout() { ctrl.hide() }
 
   readonly property var adapter: Bluetooth.defaultAdapter
   readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
@@ -226,7 +225,6 @@ Item {
       if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else { focusSection = "header"; selectedIndex = 1 }
       cursorActive = false
-      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
 
@@ -335,17 +333,6 @@ Item {
     }
   }
 
-  // Lets a Hyprland keybind summon the panel without a click.
-  IpcHandler {
-    target: "bluetoothPanel"
-    function toggle(): void {
-      if (root.popupOpen) root.closePopout()
-      else root.popupOpen = true
-    }
-    function show(): void { if (!root.popupOpen) root.popupOpen = true }
-    function hide(): void { root.closePopout() }
-  }
-
   WidgetButton {
     id: button
     anchors.fill: parent
@@ -354,16 +341,17 @@ Item {
     onPressed: function(b) {
       if (b === Qt.RightButton && root.adapter) root.adapter.enabled = !root.adapter.enabled
       else if (b === Qt.MiddleButton) root.bar.run("omarchy-launch-bluetooth")
-      else root.popupOpen = !root.popupOpen
+      else ctrl.toggle()
     }
   }
 
   KeyboardPanel {
     id: panel
     anchorItem: button
-    owner: root
+    owner: ctrl
     bar: root.bar
-    open: root.popupOpen
+    open: ctrl.open
+    focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(320))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
 

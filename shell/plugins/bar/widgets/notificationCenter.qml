@@ -4,12 +4,10 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 
-Item {
+BarWidget {
   id: root
+  moduleName: "notificationCenter"
 
-  property QtObject bar: null
-  property string moduleName: "notificationCenter"
-  property var settings: ({})
 
   property bool popupOpen: false
   function closePopout() { popupOpen = false }

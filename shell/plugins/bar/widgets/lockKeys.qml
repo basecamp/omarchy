@@ -2,13 +2,12 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Ui
 
-Item {
+BarWidget {
   id: root
+  moduleName: "lockKeys"
 
-  property QtObject bar: null
-  property string moduleName: "lockKeys"
-  property var settings: ({})
 
   property bool capsOn: false
   property bool numOn: false

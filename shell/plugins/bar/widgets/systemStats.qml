@@ -4,12 +4,10 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 
-Item {
+BarWidget {
   id: root
+  moduleName: "systemStats"
 
-  property QtObject bar: null
-  property string moduleName: "systemStats"
-  property var settings: ({})
 
   property real cpuPercent: 0
   property real memPercent: 0

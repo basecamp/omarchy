@@ -3,12 +3,10 @@ import Quickshell
 import Quickshell.Services.Pipewire
 import qs.Ui
 
-Item {
+BarWidget {
   id: root
+  moduleName: "microphone"
 
-  property QtObject bar: null
-  property string moduleName: "microphone"
-  property var settings: ({})
 
   readonly property var source: Pipewire.defaultAudioSource
   readonly property bool muted: source && source.audio ? source.audio.muted : true

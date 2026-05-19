@@ -3,12 +3,10 @@ import Quickshell
 import Quickshell.Io
 import qs.Ui
 
-Item {
+BarWidget {
   id: root
+  moduleName: "idleInhibitor"
 
-  property QtObject bar: null
-  property string moduleName: "idleInhibitor"
-  property var settings: ({})
 
   property bool active: false
 

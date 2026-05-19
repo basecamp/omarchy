@@ -4,12 +4,10 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-Item {
+BarWidget {
   id: root
+  moduleName: "weather"
 
-  property QtObject bar: null
-  property string moduleName: "weather"
-  property var settings: ({})
 
   property bool popupOpen: false
   function closePopout() { popupOpen = false }

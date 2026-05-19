@@ -5,14 +5,13 @@ import Quickshell.Services.UPower
 import qs.Commons
 import qs.Ui
 
-Item {
+BarWidget {
   id: root
+  moduleName: "powerPanel"
 
-  property QtObject bar: null
-  property string moduleName: "powerPanel"
-  property var settings: ({})
 
-  property bool popupOpen: false
+  PanelController { id: ctrl; ipcTarget: "powerPanel" }
+  readonly property bool popupOpen: ctrl.open
   property var batteryInfo: ({})
   property var systemInfo: ({})
   property var profiles: []
@@ -20,7 +19,7 @@ Item {
   property int profileIndex: 0
   property bool cursorActive: false
 
-  function closePopout() { popupOpen = false }
+  function closePopout() { ctrl.hide() }
 
   function selectProfileByDelta(delta) {
     if (profiles.length === 0) { profileIndex = 0; return }
@@ -114,7 +113,6 @@ Item {
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
       cursorActive = false
-      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
 
@@ -122,13 +120,6 @@ Item {
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
-
-  IpcHandler {
-    target: "powerPanel"
-    function toggle(): void { root.popupOpen = !root.popupOpen }
-    function show(): void { root.popupOpen = true }
-    function hide(): void { root.closePopout() }
-  }
 
   Process {
     id: batteryProc
@@ -173,15 +164,16 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
     rightExtraMargin: 2
     active: UPower.displayDevice && UPower.displayDevice.percentage <= 0.2 && UPower.onBattery
     tooltipText: ""
-    onPressed: function(b) { root.popupOpen = !root.popupOpen }
+    onPressed: function(b) { ctrl.toggle() }
   }
 
   KeyboardPanel {
     id: panel
     anchorItem: button
-    owner: root
+    owner: ctrl
     bar: root.bar
-    open: root.popupOpen
+    open: ctrl.open
+    focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(340))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
 

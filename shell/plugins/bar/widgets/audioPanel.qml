@@ -6,16 +6,14 @@ import Quickshell.Services.Pipewire
 import qs.Ui
 import qs.Commons
 
-Item {
+BarWidget {
   id: root
+  moduleName: "audioPanel"
 
-  property QtObject bar: null
-  property string moduleName: "audioPanel"
-  property var settings: ({})
 
-  property bool popupOpen: false
-
-  function closePopout() { popupOpen = false }
+  PanelController { id: ctrl; ipcTarget: "audioPanel" }
+  readonly property bool popupOpen: ctrl.open
+  function closePopout() { ctrl.hide() }
 
   readonly property var sink: Pipewire.defaultAudioSink
   readonly property var source: Pipewire.defaultAudioSource
@@ -219,10 +217,7 @@ Item {
       focusSection = "output"
       selectedIndex = -1  // first keyboard cursor reveal starts on the output slider
       cursorActive = false
-      Qt.callLater(function() {
-        resetScroll()
-        if (keyCatcher) keyCatcher.forceActiveFocus()
-      })
+      Qt.callLater(resetScroll)
     }
   }
 
@@ -460,19 +455,6 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
     onTriggered: if (!sinkAvailabilityProc.running) sinkAvailabilityProc.running = true
   }
 
-  // Lets a Hyprland keybind summon the panel without a click. Mirrors the
-  // networkPanel IpcHandler pattern; KeyboardPanel grants Exclusive focus
-  // at map-time so j/k/h/l work the moment the panel appears.
-  IpcHandler {
-    target: "audioPanel"
-    function toggle(): void {
-      if (root.popupOpen) root.closePopout()
-      else root.popupOpen = true
-    }
-    function show(): void { if (!root.popupOpen) root.popupOpen = true }
-    function hide(): void { root.closePopout() }
-  }
-
   WidgetButton {
     id: button
     anchors.fill: parent
@@ -481,7 +463,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
     fontSize: Style.font.body
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggleOutputMute()
-      else root.popupOpen = !root.popupOpen
+      else ctrl.toggle()
     }
 
     onWheelMoved: function(delta) {
@@ -493,9 +475,10 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
   KeyboardPanel {
     id: panel
     anchorItem: button
-    owner: root
+    owner: ctrl
     bar: root.bar
-    open: root.popupOpen
+    open: ctrl.open
+    focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(370))
     contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
 
