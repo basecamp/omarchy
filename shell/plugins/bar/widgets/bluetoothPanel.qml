@@ -516,8 +516,6 @@ Item {
     property bool pillEnabled: true
     signal activated()
 
-    tooltipBackground: root.bar.background
-    tooltipForeground: root.bar.foreground
     foreground: root.bar.foreground
     fontFamily: root.bar.fontFamily
     horizontalPadding: Style.spacing.md
@@ -685,7 +683,6 @@ Item {
         tooltipText: row.isConnected ? "Disconnect" : "Forget"
         foreground: root.bar.foreground
         hoverColor: root.bar.urgent
-        panelBackground: root.bar.background
         fontFamily: root.bar.fontFamily
         onClicked: {
           if (!row.dev) return

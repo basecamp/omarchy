@@ -31,7 +31,6 @@ Rectangle {
   property string tooltipText: ""
   property color foreground: Color.foreground
   property color hoverColor: foreground
-  property color panelBackground: Color.background
   property string fontFamily: Style.font.family
   property real fontSize: Style.font.icon
   property real size: Math.max(Style.space(22), fontSize + Style.spacing.sm * 2)
@@ -99,8 +98,6 @@ Rectangle {
   PanelToolTip {
     visible: root.tooltipText !== "" && mouse.containsMouse
     text: root.tooltipText
-    panelForeground: root.foreground
-    panelBackground: root.panelBackground
     fontFamily: root.fontFamily
   }
 }

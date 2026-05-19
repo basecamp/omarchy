@@ -75,6 +75,12 @@ base-size = 12
 background = "{{ background }}"
 border     = "{{ accent }}"
 
+[tooltip]
+# Hover tooltips across the bar, panels, and buttons.
+background = "{{ background }}"
+text       = "{{ foreground }}"
+border     = "{{ foreground }}"
+
 [notifications]
 background = "{{ background }}"
 text       = "{{ foreground }}"

@@ -46,9 +46,12 @@ Rectangle {
   property real verticalPadding: Style.spacing.controlPaddingY
   property bool leftAlign: false
 
-  // Tooltip palette. Auto-rendered if tooltipText is set.
-  property color tooltipBackground: Color.background
-  property color tooltipForeground: foreground
+  // Tooltip palette. Auto-rendered if tooltipText is set. Defaults pull
+  // from [tooltip] in shell.toml; override per-instance only when a button
+  // intentionally wants a tooltip that diverges from the theme.
+  property color tooltipBackground: Color.tooltip.background
+  property color tooltipForeground: Color.tooltip.text
+  property color tooltipBorder: Color.tooltip.border
 
   signal clicked()
   signal rightClicked()
@@ -102,7 +105,7 @@ Rectangle {
     padding: 0
     background: Rectangle {
       color: root.tooltipBackground
-      border.color: root.tooltipForeground
+      border.color: root.tooltipBorder
       border.width: Math.max(1, Style.normalBorderWidth)
       radius: 0
       opacity: 0.97

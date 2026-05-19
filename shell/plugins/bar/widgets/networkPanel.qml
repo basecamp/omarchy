@@ -748,7 +748,6 @@ fi
             tooltipText: "Toggle Wi-Fi"
             foreground: root.bar.foreground
             hoverColor: root.bar.foreground // Override the dimming behavior
-            panelBackground: root.bar.background
             fontFamily: root.bar.fontFamily
             enabled: true
             onClicked: {
@@ -805,7 +804,6 @@ fi
             tooltipText: "Disconnect"
             foreground: root.bar.foreground
             hoverColor: root.bar.urgent
-            panelBackground: root.bar.background
             fontFamily: root.bar.fontFamily
             anchors.verticalCenter: parent.verticalCenter
             onHovered: function(h) {
@@ -823,8 +821,6 @@ fi
             iconText: "󰑐"
             iconSpinning: root.scanning
             tooltipText: "Refresh"
-            tooltipBackground: root.bar.background
-            tooltipForeground: root.bar.foreground
             foreground: root.bar.foreground
             horizontalPadding: Style.spacing.controlGap
             verticalPadding: Style.spacing.labelGap
@@ -1005,8 +1001,6 @@ fi
 
     text: provider
     foreground: root.bar.foreground
-    tooltipBackground: root.bar.background
-    tooltipForeground: root.bar.foreground
     fontFamily: root.bar.fontFamily
     horizontalPadding: Style.spacing.controlPaddingX
     verticalPadding: Style.spacing.controlPaddingY
@@ -1153,7 +1147,6 @@ iwctl known-networks list 2>/dev/null \\
         tooltipText: "Forget network"
         foreground: root.bar.foreground
         hoverColor: root.bar.urgent
-        panelBackground: root.bar.background
         fontFamily: root.bar.fontFamily
         onClicked: if (row.net) root.forget(row.net.ssid)
       }
@@ -1296,7 +1289,6 @@ iwctl known-networks list 2>/dev/null \\
         iconText: "󰄬"
         tooltipText: "Connect"
         foreground: root.bar.foreground
-        panelBackground: root.bar.background
         fontFamily: root.bar.fontFamily
         onClicked: if (row.net) root.connectWithPassphrase(row.net.ssid, pwField.text)
       }
@@ -1370,8 +1362,6 @@ iwctl known-networks list 2>/dev/null \\
       PanelToolTip {
         visible: valueMouse.enabled && valueMouse.containsMouse
         text: tooltipText
-        panelForeground: root.bar.foreground
-        panelBackground: root.bar.background
         fontFamily: root.bar.fontFamily
       }
     }
