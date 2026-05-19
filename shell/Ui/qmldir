@@ -1,5 +1,6 @@
 module qs.Ui
 
+BarWidget 1.0 BarWidget.qml
 Button 1.0 Button.qml
 ButtonGroup 1.0 ButtonGroup.qml
 CursorSurface 1.0 CursorSurface.qml
@@ -7,6 +8,7 @@ Dropdown 1.0 Dropdown.qml
 KeyboardPanel 1.0 KeyboardPanel.qml
 NumberField 1.0 NumberField.qml
 PanelActionButton 1.0 PanelActionButton.qml
+PanelController 1.0 PanelController.qml
 PanelKeyCatcher 1.0 PanelKeyCatcher.qml
 PanelSectionHeader 1.0 PanelSectionHeader.qml
 PanelSeparator 1.0 PanelSeparator.qml

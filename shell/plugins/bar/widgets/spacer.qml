@@ -1,11 +1,10 @@
 import QtQuick
+import qs.Ui
 
-Item {
+BarWidget {
   id: root
+  moduleName: "spacer"
 
-  property QtObject bar: null
-  property string moduleName: "spacer"
-  property var settings: ({})
 
   readonly property bool vertical: bar ? bar.vertical : false
   readonly property int span: settings && settings.size !== undefined ? Number(settings.size) : 12

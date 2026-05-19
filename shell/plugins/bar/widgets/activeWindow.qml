@@ -2,13 +2,12 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import qs.Commons
+import qs.Ui
 
-Item {
+BarWidget {
   id: root
+  moduleName: "activeWindow"
 
-  property QtObject bar: null
-  property string moduleName: "activeWindow"
-  property var settings: ({})
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined

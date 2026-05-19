@@ -4,12 +4,10 @@ import Quickshell
 import qs.Ui
 import qs.Commons
 
-Item {
+BarWidget {
   id: root
+  moduleName: "calendar"
 
-  property QtObject bar: null
-  property string moduleName: "calendar"
-  property var settings: ({})
 
   property date now: new Date()
   property date viewMonth: new Date()

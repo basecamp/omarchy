@@ -4,12 +4,10 @@ import Quickshell.Services.Mpris
 import qs.Ui
 import qs.Commons
 
-Item {
+BarWidget {
   id: root
+  moduleName: "media"
 
-  property QtObject bar: null
-  property string moduleName: "media"
-  property var settings: ({})
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined

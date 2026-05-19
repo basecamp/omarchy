@@ -45,6 +45,14 @@ PanelWindow {
   property bool open: false
   property int gap: Style.gapsOut  // distance between bar edge and panel
 
+  // Item that should take keyboard focus once the panel maps. Typically a
+  // PanelKeyCatcher inside the panel content. Layer-shell grants focus to
+  // the surface at map time, but Qt still needs an active-focus target
+  // inside the surface for Keys.onPressed handlers to fire. Schedule the
+  // focus through Qt.callLater so it runs after the surface is fully
+  // mapped and child items have completed layout.
+  property Item focusTarget: null
+
   default property alias contentItem: contentHolder.children
 
   readonly property var coordinatorKey: owner || root
@@ -187,6 +195,9 @@ PanelWindow {
   // Coordinate on `open`, not `visible`. `visible` lags into the fade-out
   // animation, which made ownership transfer to a sibling popup race.
   onOpenChanged: {
+    if (open && focusTarget) Qt.callLater(function() {
+      if (root.open && root.focusTarget) root.focusTarget.forceActiveFocus()
+    })
     if (!bar) return
     if (open) bar.requestPopout(coordinatorKey)
     else if (bar.activePopout === coordinatorKey) bar.releasePopout(coordinatorKey)

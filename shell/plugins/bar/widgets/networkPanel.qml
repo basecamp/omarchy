@@ -5,17 +5,16 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 
-Item {
+BarWidget {
   id: root
+  moduleName: "networkPanel"
 
-  property QtObject bar: null
-  property string moduleName: "networkPanel"
-  property var settings: ({})
 
-  property bool popupOpen: false
+  PanelController { id: ctrl; ipcTarget: "networkPanel" }
+  readonly property bool popupOpen: ctrl.open
   // Centralized close so callers can't forget to drop the passphrase prompt.
   function closePopout() {
-    popupOpen = false
+    ctrl.hide()
     passwordSsid = ""
   }
 
@@ -108,12 +107,13 @@ Item {
       var idx = dnsProviders.indexOf(dnsProvider)
       dnsIndex = idx >= 0 ? idx : 0
       cursorActive = false
-      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
 
   // When the passphrase prompt closes (Esc / Cancel / success) restore
   // focus to the keyCatcher so j/k/Enter resume working without a click.
+  // The KeyboardPanel's focusTarget covers initial popup-open; this handles
+  // the inline-editor case where focus was handed off to a child.
   onPasswordSsidChanged: {
     if (passwordSsid === "" && popupOpen) {
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
@@ -478,18 +478,6 @@ iwctl known-networks ${quotedSsid} forget
 
   Component.onCompleted: refresh()
 
-  // Lets a Hyprland keybind summon the panel without needing to click the
-  // bar icon. Paired with the SUPER+CTRL+W binding in utilities.lua.
-  IpcHandler {
-    target: "networkPanel"
-    function toggle(): void {
-      if (root.popupOpen) root.closePopout()
-      else root.popupOpen = true
-    }
-    function show(): void { if (!root.popupOpen) root.popupOpen = true }
-    function hide(): void { root.closePopout() }
-  }
-
   // Pulls everything we want about the active route's interface in one shot.
   Process {
     id: detailsProc
@@ -643,8 +631,8 @@ fi
     rightExtraMargin: 2
 
     onPressed: function(b) {
-      if (root.popupOpen) root.closePopout()
-      else { root.popupOpen = true; root.refresh() }
+      if (ctrl.open) root.closePopout()
+      else { ctrl.show(); root.refresh() }
     }
   }
 
@@ -657,9 +645,10 @@ fi
   KeyboardPanel {
     id: panel
     anchorItem: button
-    owner: root
+    owner: ctrl
     bar: root.bar
-    open: root.popupOpen
+    open: ctrl.open
+    focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(340))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
 
