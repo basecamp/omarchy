@@ -12,7 +12,7 @@ Item {
 
   property bool active: false
 
-  readonly property string icon: active ? "󰅶" : "󰛊"
+  readonly property string icon: active ? "󰅶" : ""
 
   function refresh() {
     if (!statusProc.running) statusProc.running = true
@@ -55,16 +55,17 @@ Item {
     onTriggered: root.refresh()
   }
 
-  implicitWidth: button.implicitWidth
-  implicitHeight: button.implicitHeight
+  visible: active
+  implicitWidth: visible ? button.implicitWidth : 0
+  implicitHeight: visible ? button.implicitHeight : 0
 
   WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: root.icon
-    active: root.active
-    tooltipText: root.active ? "Staying awake — click to allow idle" : "Can idle — click to stay awake"
+    active: false
+    tooltipText: root.active ? "No sleep, lock, or screensaver" : ""
     onPressed: function() { root.toggle() }
   }
 }
