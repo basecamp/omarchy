@@ -9,6 +9,9 @@ asdcontrol
 avahi
 bash-completion
 bat
+bluez
+bluez-tools
+bluez-utils
 bolt
 brightnessctl
 btop
