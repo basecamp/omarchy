@@ -101,15 +101,16 @@ countdown        = "{{ accent }}"
 
 [app-launcher]
 # Same six tokens as [menu], applied to the app launcher overlay. Alpha
-# companions go from 0 (invisible) to 1 (opaque). Defaults mirror [menu]:
-# subtle foreground-tinted fill on the selected row, no visible border,
-# accent-colored text. background-alpha of 0.95 mirrors the legacy
-# hard-coded card translucency.
+# companions go from 0 (invisible) to 1 (opaque). scrim is the full-screen
+# dim layer behind the card; background is the card itself. Defaults
+# mirror [menu] with the card at 0.95 to preserve the legacy translucency.
 background                = "{{ background }}"
 background-alpha          = 0.95
 text                      = "{{ foreground }}"
 border                    = "{{ foreground }}"
 border-alpha              = 1.0
+scrim                     = "{{ background }}"
+scrim-alpha               = 0.5
 selected-background       = "{{ foreground }}"
 selected-background-alpha = 0.08
 selected-text             = "{{ accent }}"
@@ -118,26 +119,63 @@ selected-border-alpha     = 0.25
 
 [menu]
 # Cards, rows, and selected-row treatment. Alpha companions (where present)
-# go from 0 (invisible) to 1 (opaque). Defaults mirror the panel keyboard
-# cursor: a subtle foreground-tinted fill on the selected row, no visible
-# border, accent-colored text. Override any of these per-theme.
+# go from 0 (invisible) to 1 (opaque). scrim is the full-screen dim layer
+# behind the card. The clipboard and emoji pickers inherit these tokens.
 background                = "{{ background }}"
 background-alpha          = 1.0
 text                      = "{{ foreground }}"
 border                    = "{{ foreground }}"
 border-alpha              = 1.0
+scrim                     = "{{ background }}"
+scrim-alpha               = 0.5
 selected-background       = "{{ foreground }}"
 selected-background-alpha = 0.08
 selected-text             = "{{ accent }}"
 selected-border           = "{{ foreground }}"
 selected-border-alpha     = 0.25
 
+[polkit]
+# Polkit authentication prompt (sudo/password dialogs). scrim is the
+# darkening layer behind the card; background is the card itself.
+# text-error tints the lock icon, password text, and placeholder when
+# authentication fails.
+background       = "{{ background }}"
+background-alpha = 1.0
+text             = "{{ foreground }}"
+text-error       = "{{ color1 }}"
+border           = "{{ accent }}"
+border-error     = "{{ color1 }}"
+border-alpha     = 1.0
+scrim            = "{{ background }}"
+scrim-alpha      = 0.5
+# accent is the lock-icon glyph color + text-selection tint.
+accent           = "{{ accent }}"
+
+[lock]
+# Lock screen password input. background/background-alpha control the
+# centered input field card; border/border-active/border-error cycle
+# through idle, typing/authenticating, and wrong-password states.
+background       = "{{ background }}"
+background-alpha = 0.8
+text             = "{{ foreground }}"
+text-error       = "{{ color1 }}"
+border           = "{{ foreground }}"
+border-active    = "{{ accent }}"
+border-error     = "{{ color1 }}"
+border-alpha     = 1.0
+# selection is the text-selection tint inside the input field.
+selection        = "{{ accent }}"
+selection-alpha  = 0.45
+
 [image-picker]
-# Carousel-style picker. background-alpha sets the scrim opacity behind
-# the picker; unselected-border-alpha softens carousel slices that aren't
-# the current selection. Defaults preserve the legacy hard-coded behavior.
+# Carousel-style picker. The picker has no separate card surface, so
+# `scrim` is the full-screen wash. `background` is the underlying color
+# used for per-slice dim overlays and text outlines on top of the scrim.
+# unselected-border-alpha softens carousel slices that aren't selected.
 background              = "{{ background }}"
-background-alpha        = 0.5
+background-alpha        = 1.0
+scrim                   = "{{ background }}"
+scrim-alpha             = 0.5
 text                    = "{{ foreground }}"
 selected-border         = "{{ accent }}"
 selected-border-alpha   = 1.0

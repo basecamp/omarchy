@@ -41,8 +41,8 @@ Item {
   // ---------------- theme --------------------------------------------------
   // Bar settings deliberately isn't a themable surface in shell.toml — it
   // tracks the foundational palette so every theme renders consistently.
-  property color foreground: Color.foreground
-  property color background: Color.background
+  property color foreground: Color.popups.text
+  property color background: Color.popups.background
   property color accent: Color.accent
   property color urgent: Color.urgent
   property string fontFamily: "monospace"

@@ -31,6 +31,7 @@ Item {
   // Bound to the central [image-picker] section in shell.toml via Color.qml.
   property color background: Color.imagePicker.background
   property color foreground: Color.imagePicker.text
+  property color scrim: Color.imagePicker.scrim
   property color selectedBorder: Color.imagePicker.selectedBorder
   property color unselectedBorder: Color.imagePicker.unselectedBorder
   property int expandedWidth: 768
@@ -440,7 +441,7 @@ Item {
     Rectangle {
       anchors.fill: parent
       visible: root.opened && root.imagesLoaded
-      color: root.background
+      color: root.scrim
     }
 
     MouseArea {
