@@ -481,7 +481,6 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
     fontSize: Style.font.body
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggleOutputMute()
-      else if (b === Qt.MiddleButton) root.bar.run("omarchy-launch-audio")
       else root.popupOpen = !root.popupOpen
     }
 

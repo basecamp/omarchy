@@ -119,7 +119,7 @@
   "style.install.font.iosevka": {"icon":"","label":"Iosevka","action":"omarchy-install-font Iosevka ttf-iosevka-nerd 'Iosevka Nerd Font Mono'"},
 
   // Setup
-  "setup.audio": {"icon":"","label":"Audio","keywords":"sound","action":"omarchy-launch-audio"},
+  "setup.audio": {"icon":"","label":"Audio","keywords":"sound","action":"omarchy-shell audioPanel toggle"},
   "setup.power": {"icon":"󱐋","label":"Power Profile","aliases":["power","power-profile","power-profiles"],"keywords":"performance battery","provider":"power-profiles"},
   "setup.sleep": {"icon":"","label":"System Sleep","keywords":"suspend hibernate"},
   "setup.sleep.suspend-enable": {"icon":"󰒲","label":"Enable Suspend","when":"omarchy-toggle-enabled suspend-off","action":"omarchy-toggle-suspend"},

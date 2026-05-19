@@ -5,7 +5,7 @@ hl.window_rule({ match = { tag = "floating-window" }, size = { 875, 600 } })
 
 hl.window_rule({
   match = {
-    class = "(org.omarchy.wiremix|org.omarchy.btop|org.omarchy.terminal|org.omarchy.bash|org.codeberg.dnkl.foot|org.gnome.NautilusPreviewer|org.gnome.Evince|com.gabm.satty|Omarchy|About|TUI.float|imv|mpv)",
+    class = "(org.omarchy.btop|org.omarchy.terminal|org.omarchy.bash|org.codeberg.dnkl.foot|org.gnome.NautilusPreviewer|org.gnome.Evince|com.gabm.satty|Omarchy|About|TUI.float|imv|mpv)",
   },
   tag = "+floating-window",
 })
