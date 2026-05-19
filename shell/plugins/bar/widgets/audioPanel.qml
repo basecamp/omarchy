@@ -219,7 +219,10 @@ Item {
       focusSection = "output"
       selectedIndex = -1  // first keyboard cursor reveal starts on the output slider
       cursorActive = false
-      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+      Qt.callLater(function() {
+        resetScroll()
+        if (keyCatcher) keyCatcher.forceActiveFocus()
+      })
     }
   }
 
@@ -233,19 +236,30 @@ Item {
   // StreamRow) calls this when it gains hasCursor. Without it, j/k can
   // walk the selection off-screen — wifi uses ListView.positionViewAtIndex
   // for this; we don't have that affordance with a multi-section Column.
+  function resetScroll() {
+    if (!scrollArea) return
+    var flick = scrollArea.contentItem
+    if (flick && flick.contentY !== undefined) flick.contentY = 0
+  }
+
   function ensureCursorVisible(item) {
     if (!item || !scrollArea) return
     var flick = scrollArea.contentItem
     if (!flick || flick.contentY === undefined) return
+    var margin = 6
+    var maxY = Math.max(0, (flick.contentHeight || 0) - flick.height)
+    if (maxY <= Style.space(24) || (root.focusSection === "output" && root.selectedIndex === -1)) {
+      flick.contentY = 0
+      return
+    }
     var pt = item.mapToItem(flick.contentItem || flick, 0, 0)
     var top = pt.y
     var bottom = top + (item.height || 0)
     var viewTop = flick.contentY
     var viewBottom = viewTop + flick.height
-    var margin = 6
-    if (top < viewTop + margin) flick.contentY = Math.max(0, top - margin)
+    if (top < viewTop + margin) flick.contentY = Math.max(0, Math.min(maxY, top - margin))
     else if (bottom > viewBottom - margin)
-      flick.contentY = bottom + margin - flick.height
+      flick.contentY = Math.max(0, Math.min(maxY, bottom + margin - flick.height))
   }
 
   function clampCursor() {
