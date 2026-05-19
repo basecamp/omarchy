@@ -483,14 +483,6 @@ iwctl known-networks ${quotedSsid} forget
 `)
   }
 
-  function launchImpala() {
-    if (!bar) return
-    var quotedPath = bar.shellQuote(bar.omarchyPath)
-    var quotedBin = bar.shellQuote(bar.omarchyPath + "/bin/omarchy-launch-wifi")
-    var quotedFullPath = bar.shellQuote(bar.omarchyPath + "/bin:" + (Quickshell.env("PATH") || ""))
-    bar.run("OMARCHY_PATH=" + quotedPath + " PATH=" + quotedFullPath + " " + quotedBin)
-  }
-
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -661,8 +653,7 @@ fi
     rightExtraMargin: 2
 
     onPressed: function(b) {
-      if (b === Qt.RightButton) root.launchImpala()
-      else if (root.popupOpen) root.closePopout()
+      if (root.popupOpen) root.closePopout()
       else { root.popupOpen = true; root.refresh() }
     }
   }

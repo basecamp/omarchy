@@ -120,8 +120,6 @@
 
   // Setup
   "setup.audio": {"icon":"","label":"Audio","keywords":"sound","action":"omarchy-launch-audio"},
-  "setup.wifi": {"icon":"","label":"Wifi","keywords":"wireless network","action":"omarchy-launch-wifi"},
-  "setup.bluetooth": {"icon":"󰂯","label":"Bluetooth","action":"omarchy-launch-bluetooth"},
   "setup.power": {"icon":"󱐋","label":"Power Profile","aliases":["power","power-profile","power-profiles"],"keywords":"performance battery","provider":"power-profiles"},
   "setup.sleep": {"icon":"","label":"System Sleep","keywords":"suspend hibernate"},
   "setup.sleep.suspend-enable": {"icon":"󰒲","label":"Enable Suspend","when":"omarchy-toggle-enabled suspend-off","action":"omarchy-toggle-suspend"},
