@@ -42,7 +42,7 @@ EOF
   # post-transaction deploy hook runs limine-install and reads this file. Without
   # it, ESP_PATH falls back to bootctl, which in a chroot prints a warning that
   # gets captured as the path and trips a spurious "invalid ESP" error.
-  sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
+  sudo cp "$OMARCHY_PATH/default/limine/default.conf" /etc/default/limine
   sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
 
   # Append any drop-in kernel cmdline configs (from hardware fix scripts, etc.)
@@ -62,7 +62,7 @@ EOF
   fi
 
   # We overwrite the whole thing knowing the limine-update will add the entries for us
-  sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
+  sudo cp "$OMARCHY_PATH/default/limine/limine.conf" /boot/limine.conf
 
   if [[ $root_fstype == "btrfs" ]]; then
     sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
@@ -75,7 +75,7 @@ EOF
     if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
       sudo snapper -c root create-config /
     fi
-    sudo cp $OMARCHY_PATH/default/snapper/root /etc/snapper/configs/root
+    sudo cp "$OMARCHY_PATH/default/snapper/root" /etc/snapper/configs/root
 
     # Disable btrfs quotas — full qgroup accounting is a major performance drag
     sudo btrfs quota disable / 2>/dev/null || true

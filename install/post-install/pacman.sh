@@ -1,3 +1,7 @@
+if ! declare -F use_omarchy_pacman_config >/dev/null; then
+  source "${OMARCHY_INSTALL:-${BASH_SOURCE[0]%/*}/..}/helpers/pacman.sh"
+fi
+
 # Configure pacman
 use_omarchy_pacman_config
 
