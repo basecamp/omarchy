@@ -13,7 +13,7 @@
   //   checked        shell condition; append ✓ when it succeeds
 
   // Root Menu
-  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"keywords":"launch launcher","action":"omarchy-launch-walker -p 'Launch…'"},
+  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"keywords":"launch launcher quickshell","action":"omarchy-shell shell summon omarchy.app-launcher '{}'"},
   "learn": {"icon":"󰧑","label":"Learn","keywords":"manual docs help reference"},
   "trigger": {"icon":"󱓞","label":"Trigger","keywords":"actions capture share toggle hardware reminder"},
   "style": {"icon":"","label":"Style","keywords":"theme background font bar quickshell hyprland appearance"},
@@ -87,7 +87,6 @@
 
   // Style
   "style.theme": {"icon":"󰸌","label":"Theme","aliases":["theme","themes"],"keywords":"colors","action":"theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""},
-  "style.unlock": {"icon":"󰟵","label":"Unlock","keywords":"themes","action":"omarchy-launch-walker -m menus:omarchyunlocks --width 800 --minheight 400"},
   "style.font": {"icon":"","label":"Font","keywords":"typeface","provider":"fonts"},
   "style.background": {"icon":"","label":"Background","aliases":["background","wallpaper"],"action":"background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""},
   "style.bar": {"icon":"󰍜","label":"Bar","keywords":"quickshell top bottom left right settings"},
@@ -158,12 +157,11 @@
   "setup.dns.google": {"icon":"󰖩","label":"Google","checked":"[[ $(omarchy-dns) == \"Google\" ]]","action":"omarchy-dns Google"},
   "setup.dns.custom": {"icon":"󰖩","label":"Custom","checked":"[[ $(omarchy-dns) == \"Custom\" ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-dns Custom"},
   "setup.security": {"icon":"","label":"Security","keywords":"fingerprint fido2"},
-  "setup.config": {"icon":"","label":"Config","keywords":"files hyprland bar quickshell walker"},
+  "setup.config": {"icon":"","label":"Config","keywords":"files hyprland bar quickshell"},
   "setup.security.fingerprint": {"icon":"󰈷","label":"Fingerprint","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fingerprint"},
   "setup.security.fido2": {"icon":"","label":"Fido2","keywords":"key","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fido2"},
   "setup.config.hyprland": {"icon":"","label":"Hyprland","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/hyprland.lua\""},
   "setup.config.hyprsunset": {"icon":"","label":"Hyprsunset","keywords":"night light","action":"omarchy-launch-config-editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset"},
-  "setup.config.walker": {"icon":"󰌧","label":"Walker","keywords":"launcher","action":"omarchy-launch-config-editor ~/.config/walker/config.toml && omarchy-restart-walker"},
   "setup.config.bar": {"icon":"󰍜","label":"Bar","keywords":"quickshell shell config settings widgets position","action":"omarchy-launch-bar-settings"},
   "setup.config.xcompose": {"icon":"󰞅","label":"XCompose","keywords":"compose key","action":"omarchy-launch-config-editor ~/.XCompose && omarchy-restart-xcompose"},
 
@@ -311,14 +309,12 @@
   "update.channel.dev": {"icon":"🔴","label":"Dev","keywords":"development","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-channel-set dev'"},
   "update.process.hyprsunset": {"icon":"","label":"Hyprsunset","keywords":"restart","action":"omarchy-restart-hyprsunset"},
   "update.process.osd": {"icon":"","label":"OSD","keywords":"restart","action":"omarchy-restart-shell"},
-  "update.process.walker": {"icon":"󰌧","label":"Walker","keywords":"restart launcher","action":"omarchy-restart-walker"},
   "update.process.shell": {"icon":"󰍜","label":"Shell","keywords":"restart bar quickshell omarchy-shell","action":"omarchy-restart-shell"},
   "update.config.hyprland": {"icon":"","label":"Hyprland","keywords":"refresh","action":"omarchy-launch-floating-terminal-with-presentation omarchy-refresh-hyprland"},
   "update.config.hyprsunset": {"icon":"","label":"Hyprsunset","keywords":"refresh","action":"omarchy-launch-floating-terminal-with-presentation omarchy-refresh-hyprsunset"},
   "update.config.plymouth": {"icon":"󱣴","label":"Plymouth","keywords":"refresh","action":"omarchy-launch-floating-terminal-with-presentation omarchy-refresh-plymouth"},
   "update.config.osd": {"icon":"","label":"OSD","keywords":"refresh","action":"omarchy-restart-shell"},
   "update.config.tmux": {"icon":"","label":"Tmux","keywords":"refresh","action":"omarchy-launch-floating-terminal-with-presentation omarchy-refresh-tmux"},
-  "update.config.walker": {"icon":"󰌧","label":"Walker","keywords":"refresh","action":"omarchy-launch-floating-terminal-with-presentation omarchy-refresh-walker"},
   "update.config.shell": {"icon":"󰍜","label":"Shell","keywords":"refresh bar quickshell","action":"omarchy-launch-floating-terminal-with-presentation omarchy-refresh-shell"},
   "update.hardware.audio": {"icon":"","label":"Audio","keywords":"restart pipewire","action":"omarchy-launch-floating-terminal-with-presentation omarchy-restart-pipewire"},
   "update.hardware.wifi": {"icon":"󱚾","label":"Wi-Fi","keywords":"restart wireless","action":"omarchy-launch-floating-terminal-with-presentation omarchy-restart-wifi"},

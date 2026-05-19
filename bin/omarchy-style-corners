@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Set Hyprland and Walker corners to sharp or round (the shell mirrors Hyprland)
+# omarchy:summary=Set Hyprland corners to sharp or round (the shell mirrors Hyprland)
 # omarchy:args=<sharp|round>
 # omarchy:examples=omarchy style corners round | omarchy style corners sharp
 
@@ -10,11 +10,9 @@ if [[ $1 != "sharp" && $1 != "round" ]]; then
 fi
 
 # The shell tracks Hyprland's `decoration:rounding` directly via
-# Quickshell's qs.Commons.Style singleton; no separate quickshell-corners
-# state file is written. The old omarchy-style-corners-quickshell shim is
-# kept as a no-op so external callers don't error.
+# Quickshell's qs.Commons.Style singleton; no separate shell state file is
+# written.
 omarchy-style-corners-hyprland "$1"
-omarchy-style-corners-walker "$1"
 
 case $1 in
   sharp) omarchy-notification-send "Sharp corners enabled" -g 󰝣 ;;

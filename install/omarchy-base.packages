@@ -39,6 +39,7 @@ ffmpegthumbnailer
 fontconfig
 foot
 fzf
+git
 github-cli
 gnome-calculator
 gnome-keyring
@@ -88,7 +89,6 @@ nvim
 obs-studio
 obsidian
 omarchy-nvim
-omarchy-walker
 pamixer
 pinta
 playerctl

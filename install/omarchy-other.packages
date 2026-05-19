@@ -9,7 +9,6 @@ broadcom-wl
 btrfs-progs
 dkms
 egl-wayland
-git
 gst-plugin-pipewire
 gtk4-layer-shell
 libpulse

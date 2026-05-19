@@ -4,11 +4,11 @@
 # omarchy:args=[toggle|sharp|round]
 # omarchy:examples=omarchy style corners quickshell toggle | omarchy style corners quickshell round | omarchy style corners quickshell sharp
 
-# qs.Commons.Style reads decoration:rounding from hyprctl and watches the
-# theme name + rounded-corners toggle files for changes. There is no
-# separate quickshell-menu.json to write anymore. This shim stays around
-# so anyone still calling the old subcommand (or the dispatcher in
-# omarchy-style-corners) doesn't error out.
+# qs.Commons.Style reads decoration:rounding from hyprctl. Theme changes
+# refresh it through shell IPC, while user corner toggles still trigger their
+# own refresh. There is no separate quickshell-menu.json to write anymore.
+# This shim stays around so anyone still calling the old subcommand (or the
+# dispatcher in omarchy-style-corners) doesn't error out.
 
 case "${1:-toggle}" in
   round|sharp|toggle) exit 0 ;;

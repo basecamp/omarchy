@@ -45,4 +45,6 @@ for APP_NAME in "${APP_NAMES[@]}"; do
   echo "Removed $APP_NAME"
 done
 
-omarchy-restart-walker
+if command -v update-desktop-database &>/dev/null; then
+  update-desktop-database "$DESKTOP_DIR" &>/dev/null || true
+fi
