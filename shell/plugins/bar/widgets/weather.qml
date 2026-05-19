@@ -14,16 +14,21 @@ Item {
   property bool popupOpen: false
   function closePopout() { popupOpen = false }
 
+  function showPopup() {
+    root.popupOpen = !root.popupOpen
+    if (root.popupOpen) root.refresh()
+  }
+
   IpcHandler {
     target: "weather"
-    function show(): void {
-      root.popupOpen = !root.popupOpen
-      if (root.popupOpen) root.refresh()
-    }
+    function show(): void { root.showPopup() }
+    function toggle(): void { root.showPopup() }
+  }
 
-    function toggle(): void {
-      show()
-    }
+  IpcHandler {
+    target: "weatherFlyout"
+    function show(): void { root.showPopup() }
+    function toggle(): void { root.showPopup() }
   }
 
   // Parsed wttr.in j1 response. Kept on failure so stale data stays visible.
@@ -58,8 +63,6 @@ Item {
   readonly property int refreshMinutes: Math.max(1, parseInt(setting("refreshMinutes", 15), 10) || 15)
 
   readonly property string reportLocation:  wttrLocation || (areaInfo && areaInfo.areaName && areaInfo.areaName[0] ? areaInfo.areaName[0].value : "")
-  readonly property string reportCondition: current && current.weatherDesc && current.weatherDesc[0] ? current.weatherDesc[0].value : ""
-  readonly property string reportTemp:      current ? formatTemp(useImperial ? current.temp_F : current.temp_C) : ""
   readonly property string reportTempNum:   current ? String(useImperial ? current.temp_F : current.temp_C) : ""
   readonly property string tempUnit:        "°" + (useImperial ? "F" : "C")
   readonly property string reportFeels:     current ? formatTemp(useImperial ? current.FeelsLikeF : current.FeelsLikeC) : ""
@@ -162,16 +165,6 @@ Item {
     var d = new Date(dateString + "T12:00:00")
     if (isNaN(d.getTime())) return ""
     return Qt.formatDate(d, "dddd")
-  }
-
-  function maxTempForDay(day) {
-    if (!day) return ""
-    return formatTemp(useImperial ? day.maxtempF : day.maxtempC)
-  }
-
-  function minTempForDay(day) {
-    if (!day) return ""
-    return formatTemp(useImperial ? day.mintempF : day.mintempC)
   }
 
   // Bare degree value (no unit letter), used in the forecast row.

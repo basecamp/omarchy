@@ -5,10 +5,9 @@ shipped as a first-party plugin of [`omarchy-shell`](../../README.md), the
 long-running shell host. The bar is mounted at startup and lives inside
 the shell for its whole session.
 
-- `manifest.json` declares the plugin (`id: omarchy.bar`, `kind: bar`, `activation: persistent`) and points at `Bar.qml` as the entry point.
+- `manifest.json` declares the plugin (`id: omarchy.bar`, `kind: bar`) and points at `Bar.qml` as the entry point.
 - `Bar.qml` is Omarchy-owned bar engine code, loaded by the omarchy-shell host. Users should not edit it directly.
 - `widgets/` holds first-party widgets — modular, interactive components shipped with Omarchy.
-- `common/` holds shared QML helpers (buttons, sliders, popup cards).
 - The bar receives its config from the host shell as a `barConfig` property; the host loads it from `~/.config/omarchy/shell.json` (or `shell-defaults.json` when the user has no file).
 - `omarchy-style-bar-position` updates only the user shell.json file.
 

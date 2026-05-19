@@ -2,7 +2,7 @@ import QtQuick
 
 // Drop-in key dispatcher for keyboard-driven panels. Wraps panel content
 // and emits semantic signals so each panel keeps its own state machine
-// (focusSection, selectedIndex, activation rules) while the boilerplate
+// (focusSection, selectedIndex, action rules) while the boilerplate
 // key handling lives here.
 //
 // Usage:

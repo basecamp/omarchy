@@ -5,8 +5,9 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "description": "An emoji picker to copy or type emojis",
-  "kinds": ["overlay"],
-  "activation": "on-demand",
+  "kinds": [
+    "overlay"
+  ],
   "keepLoaded": true,
   "entryPoints": {
     "overlay": "EmojiPicker.qml"

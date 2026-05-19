@@ -5,8 +5,9 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "description": "Notification daemon, popups, and history",
-  "kinds": ["service"],
-  "activation": "persistent",
+  "kinds": [
+    "service"
+  ],
   "keepLoaded": true,
   "entryPoints": {
     "service": "Service.qml"

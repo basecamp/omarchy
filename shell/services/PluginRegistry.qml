@@ -181,15 +181,6 @@ QtObject {
     pluginsChanged()
   }
 
-  function manifestsOfKind(kind) {
-    var result = []
-    for (var id in installedPlugins) {
-      var m = installedPlugins[id]
-      if (m && Array.isArray(m.kinds) && m.kinds.indexOf(kind) !== -1) result.push(m)
-    }
-    return result
-  }
-
   // ---------------------------------------------------------------- scanning
 
   // Output format produced by the rescan script:

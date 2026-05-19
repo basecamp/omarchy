@@ -4,8 +4,11 @@
   "name": "On-screen display",
   "version": "1.0.0",
   "description": "Quickshell volume, brightness, and status overlays.",
-  "kinds": ["panel"],
-  "activation": "persistent",
+  "kinds": [
+    "panel"
+  ],
   "keepLoaded": true,
-  "entryPoints": { "panel": "Osd.qml" }
+  "entryPoints": {
+    "panel": "Osd.qml"
+  }
 }

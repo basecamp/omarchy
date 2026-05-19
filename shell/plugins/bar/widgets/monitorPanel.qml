@@ -123,7 +123,7 @@ Item {
       var d = displays[selectedIndex]
       if (d) toggleDisplay(d.name, d.enabled)
     }
-    // brightness: no semantic activation; the slider value is the action.
+    // brightness: no separate action; the slider value is the action.
   }
 
   function clampCursor() {
@@ -220,18 +220,6 @@ Item {
   function previewBrightness(value) {
     root.brightnessPercent = Math.max(1, Math.min(100, Math.round(value)))
     brightnessDebounce.restart()
-  }
-
-  function toggleMirror() {
-    if (!internalMonitor || !externalMonitor) return
-    actionProc.command = ["bash", "-lc", "if hyprctl monitors -j | jq -e --arg i '" + internalMonitor + "' --arg e '" + externalMonitor + "' '.[] | select(.name == $i and .mirrorOf == $e)' >/dev/null; then hyprctl keyword monitor '" + internalMonitor + ",preferred,auto,auto'; else hyprctl keyword monitor '" + internalMonitor + ",preferred,auto,auto,mirror," + externalMonitor + "'; fi"]
-    if (!actionProc.running) actionProc.running = true
-  }
-
-  function toggleInternal() {
-    if (!internalMonitor || !externalMonitor) return
-    actionProc.command = ["bash", "-lc", "if hyprctl monitors -j | jq -e --arg i '" + internalMonitor + "' '.[] | select(.name == $i)' >/dev/null; then hyprctl keyword monitor '" + internalMonitor + ",disable'; else hyprctl keyword monitor '" + internalMonitor + ",preferred,auto,auto'; fi"]
-    if (!actionProc.running) actionProc.running = true
   }
 
   function normalizeScale(scale) {

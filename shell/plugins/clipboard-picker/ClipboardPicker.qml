@@ -7,11 +7,6 @@ import qs.Commons
 Item {
   id: root
 
-  property string omarchyPath: Quickshell.env("OMARCHY_PATH") || (Quickshell.env("HOME") + "/.local/share/omarchy")
-  property var shell: null
-  property var manifest: null
-  property var pluginRegistry: null
-
   property bool opened: false
   property string filterText: ""
   property int selectedIndex: 0
@@ -152,14 +147,6 @@ Item {
       root.items = newItems
       root.rebuildDisplay()
     }
-  }
-
-  IpcHandler {
-    target: "clipboard-picker"
-    function summon(): string { root.open("{}"); return "ok" }
-    function hide(): string { root.close(); return "ok" }
-    function toggle(): string { root.toggle(); return "ok" }
-    function ping(): string { return "ok" }
   }
   PanelWindow {
     id: panel

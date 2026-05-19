@@ -1,24 +1,25 @@
 # First-party plugins
 
-These plugins ship with Omarchy and are loaded by the shell at startup.
+These plugins ship with Omarchy and are discovered by the shell at startup.
 They use the same `manifest.json` contract as third-party plugins; the
 only difference is that the shell flags them with `__isFirstParty: true`
-so they cannot be disabled.
+so they are always enabled. Services and keep-loaded panels are mounted at
+startup; other panels, overlays, and menus are loaded on demand.
 
 User-installed plugins live alongside these conceptually but on disk under
 `~/.config/omarchy/plugins/<plugin-id>/` rather than in this directory.
 
-| Plugin        | id                      | kinds     | activation | entry point                         |
-|---------------|-------------------------|-----------|------------|-------------------------------------|
-| Bar           | `omarchy.bar`           | `bar`     | persistent | `bar/Bar.qml`                       |
-| Bar settings  | `omarchy.settings`      | `panel`   | on-demand  | `settings/SettingsPanel.qml`        |
-| Image picker  | `omarchy.image-picker`  | `overlay` | on-demand  | `image-picker/ImagePicker.qml`      |
-| Emoji picker  | `omarchy.emoji-picker`  | `overlay` | on-demand  | `emoji-picker/EmojiPicker.qml`      |
-| Clipboard mgr | `omarchy.clipboard-picker`| `overlay` | on-demand  | `clipboard-picker/ClipboardPicker.qml`|
-| Omarchy menu  | `omarchy.menu`          | `menu`    | on-demand  | `menu/Menu.qml`                     |
-| Notifications | `omarchy.notifications` | `service` | persistent | `notifications/Service.qml`         |
-| OSD           | `omarchy.osd`           | `panel`   | persistent | `osd/Osd.qml`                       |
-| Polkit agent  | `omarchy.polkit`        | `service` | persistent | `polkit/PolkitAgent.qml`            |
+| Plugin        | id                        | kinds     | entry point                           |
+|---------------|---------------------------|-----------|---------------------------------------|
+| Bar           | `omarchy.bar`             | `bar`     | `bar/Bar.qml`                         |
+| Bar settings  | `omarchy.settings`        | `panel`   | `settings/SettingsPanel.qml`          |
+| Image picker  | `omarchy.image-picker`    | `overlay` | `image-picker/ImagePicker.qml`        |
+| Emoji picker  | `omarchy.emoji-picker`    | `overlay` | `emoji-picker/EmojiPicker.qml`        |
+| Clipboard mgr | `omarchy.clipboard-picker`| `overlay` | `clipboard-picker/ClipboardPicker.qml`|
+| Omarchy menu  | `omarchy.menu`            | `menu`    | `menu/Menu.qml`                       |
+| Notifications | `omarchy.notifications`   | `service` | `notifications/Service.qml`           |
+| OSD           | `omarchy.osd`             | `panel`   | `osd/Osd.qml`                         |
+| Polkit agent  | `omarchy.polkit`          | `service` | `polkit/PolkitAgent.qml`              |
 
 ## Bar
 

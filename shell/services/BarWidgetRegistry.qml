@@ -34,11 +34,6 @@ QtObject {
     changed()
   }
 
-  function componentFor(id) {
-    var entry = widgets[String(id)]
-    return entry ? entry.component : null
-  }
-
   function metadataFor(id) {
     var entry = widgets[String(id)]
     return entry ? entry.metadata : null

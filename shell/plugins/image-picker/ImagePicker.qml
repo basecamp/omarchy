@@ -9,16 +9,9 @@ import qs.Commons
 Item {
   id: root
 
-  // Injected by omarchy-shell. Optional here — the picker doesn't need
-  // omarchyPath itself, but every plugin gets it so user-installed scripts
-  // referenced by other plugins can stay path-portable.
+  // Injected by omarchy-shell so helper scripts resolve without relying on
+  // OMARCHY_PATH being set in the environment.
   property string omarchyPath: ""
-  // Set by omarchy-shell when summoning the overlay; not currently consumed but
-  // declared so the host's onLoaded injection doesn't trip a missing-property
-  // warning.
-  property var shell: null
-  property var manifest: null
-
   property string imageDirs: Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIRS") || Quickshell.env("OMARCHY_IMAGE_SELECTOR_DIR") || Quickshell.env("OMARCHY_STOCK_BACKGROUNDS_DIR") || (Quickshell.env("HOME") + "/.config/omarchy/current/theme/backgrounds")
   property string imageRows: ""
   property string loadedImageRows: ""
@@ -118,17 +111,6 @@ Item {
     var path = imageArray[index].filePath
     var needle = filterText.toLowerCase()
     return nameForPath(path).toLowerCase().indexOf(needle) !== -1 || labelForPath(path).toLowerCase().indexOf(needle) !== -1
-  }
-
-  function matchingCount() {
-    if (!filterText) return imageArray.length
-
-    var count = 0
-    for (var i = 0; i < imageArray.length; i++) {
-      if (itemMatches(i)) count++
-    }
-
-    return count
   }
 
   function firstMatchingIndex() {

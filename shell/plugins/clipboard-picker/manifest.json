@@ -5,8 +5,9 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "description": "A clipboard manager to view and paste history",
-  "kinds": ["overlay"],
-  "activation": "on-demand",
+  "kinds": [
+    "overlay"
+  ],
   "keepLoaded": true,
   "entryPoints": {
     "overlay": "ClipboardPicker.qml"

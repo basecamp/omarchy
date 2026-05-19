@@ -34,28 +34,6 @@ Rectangle {
 
   signal closeRequested()
   signal cardClicked()
-  signal imageClicked()
-
-  // Media mode = the notification carries a real screenshot or screen
-  // recording preview. Quickshell normalizes file paths from `-i` and the
-  // `image-path` hint into `image://icon//<absolute path>` (double slash
-  // marks an absolute filesystem path vs a themed icon name like
-  // `image://icon/firefox`).
-  function _imageFilePath(s) {
-    if (!s) return ""
-    if (s.indexOf("image://icon//") === 0) return s.substring("image://icon/".length)
-    if (s.indexOf("file://") === 0) return decodeURIComponent(s.substring(7))
-    return ""
-  }
-  function _isMediaFile(path) {
-    if (!path) return false
-    var lower = path.toLowerCase()
-    return lower.endsWith(".png") || lower.endsWith(".jpg") ||
-           lower.endsWith(".jpeg") || lower.endsWith(".webp") ||
-           lower.endsWith(".gif")
-  }
-  readonly property string mediaImageSource: ""
-  readonly property bool mediaMode: false
   // Use only what the notification explicitly carries — no themed-icon
   // theme-lookup fallback because Quickshell's icon image provider returns
   // a placeholder for missing names (rather than erroring), which means
@@ -64,7 +42,7 @@ Rectangle {
   // `appIcon` (-i flag) still get one.
   readonly property string smallIconSource: image.length > 0 ? image : appIcon
   readonly property bool hasGlyph: glyph.length > 0
-  readonly property bool hasSmallIcon: !mediaMode && (smallIconSource.length > 0 || hasGlyph)
+  readonly property bool hasSmallIcon: smallIconSource.length > 0 || hasGlyph
   readonly property bool chromiumDerived: {
     var source = (app + "\n" + appIcon).toLowerCase()
     return source.indexOf("chrom") >= 0 || source.indexOf("brave") >= 0 ||
@@ -75,7 +53,6 @@ Rectangle {
 
   readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
   readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
-  readonly property color hoverColor: Qt.rgba(Color.notifications.text.r, Color.notifications.text.g, Color.notifications.text.b, 0.14)
   readonly property color accentColor: urgency === 2 ? Color.urgent : (urgency === 0 ? dimColor : Color.notifications.countdown)
 
   function sanitizeBody(s) {
@@ -111,9 +88,8 @@ Rectangle {
 
   ColumnLayout {
     id: mainColumn
-    // Inset by the card border so the hero image (and the text row) don't
-    // paint over the card's outer border. Without this the left/right/top
-    // border is invisible under the image.
+    // Inset by the card border so the content doesn't paint over the card's
+    // outer border.
     anchors.top: parent.top
     anchors.left: parent.left
     anchors.right: parent.right
@@ -122,46 +98,7 @@ Rectangle {
     anchors.rightMargin: root.border.width
     spacing: 0
 
-    // Hero image strip (media notifications only). PreserveAspectCrop so
-    // the preview looks like a clean banner without dark letterboxing.
-    Item {
-      Layout.fillWidth: true
-      Layout.preferredHeight: Style.space(140)
-      visible: root.mediaMode
-      clip: true
-
-      Image {
-        anchors.fill: parent
-        source: root.mediaImageSource
-        fillMode: Image.PreserveAspectCrop
-        sourceSize.width: width > 0 ? width * Screen.devicePixelRatio : 0
-        sourceSize.height: height > 0 ? height * Screen.devicePixelRatio : 0
-        asynchronous: true
-        smooth: true
-        cache: false
-      }
-
-      // Bottom divider matching the card border so the screenshot is
-      // visually framed on every side (card border wraps top/left/right;
-      // this line completes the bottom).
-      Rectangle {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: root.border.width
-        color: root.urgency === 2 ? Color.urgent : Color.notifications.border
-      }
-
-      MouseArea {
-        anchors.fill: parent
-        cursorShape: Qt.PointingHandCursor
-        onClicked: root.imageClicked()
-      }
-
-    }
-
-    // Text content. Always rendered — for media notifications this carries
-    // the summary/body ("Screenshot saved" etc) under the hero image.
+    // Text content.
     RowLayout {
       Layout.fillWidth: true
       Layout.leftMargin: Style.space(12)

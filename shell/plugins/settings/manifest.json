@@ -5,7 +5,10 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "description": "Customize the Omarchy bar position and widgets",
-  "kinds": ["panel"],
-  "activation": "on-demand",
-  "entryPoints": { "panel": "SettingsPanel.qml" }
+  "kinds": [
+    "panel"
+  ],
+  "entryPoints": {
+    "panel": "SettingsPanel.qml"
+  }
 }
