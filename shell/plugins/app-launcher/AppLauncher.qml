@@ -32,6 +32,7 @@ Item {
   property color background: Color.appLauncher.background
   property color foreground: Color.appLauncher.text
   property color border: Color.appLauncher.border
+  property color scrim: Color.appLauncher.scrim
   property color selectedBackground: Color.appLauncher.selectedBackground
   property color selectedText: Color.appLauncher.selectedText
   property color selectedBorder: Color.appLauncher.selectedBorder
@@ -336,7 +337,7 @@ Item {
 
     Rectangle {
       anchors.fill: parent
-      color: root.withAlpha(root.background, 0.5)
+      color: root.scrim
     }
 
     MouseArea {

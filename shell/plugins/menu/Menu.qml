@@ -68,6 +68,7 @@ Item {
   property color background: Color.menu.background
   property color foreground: Color.menu.text
   property color border: Color.menu.border
+  property color scrim: Color.menu.scrim
   property color selectedBackground: Color.menu.selectedBackground
   property color selectedText: Color.menu.selectedText
   property color selectedBorder: Color.menu.selectedBorder
@@ -942,7 +943,7 @@ Item {
 
     Rectangle {
       anchors.fill: parent
-      color: root.withAlpha(root.background, 0.5)
+      color: root.scrim
     }
 
     MouseArea {
@@ -1194,7 +1195,7 @@ Item {
 
             Text {
               text: "󰈉"
-              color: root.selectedBackground
+              color: root.selectedText
               opacity: 0.8
               font.family: root.fontFamily
               font.pixelSize: Style.font.displayLarge

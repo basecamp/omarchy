@@ -18,10 +18,16 @@ Item {
   property var emojis: []
   property var filteredEmojis: []
 
-  property color accent: Color.menu.selected
+  // Shares the [menu] surface tokens — themes that style the menu also
+  // style the emoji picker. Selected-cell colors composed in the
+  // singleton so consumers drop them straight into Rectangle bindings.
   property color background: Color.menu.background
   property color foreground: Color.menu.text
-  property color border: foreground
+  property color border: Color.menu.border
+  property color scrim: Color.menu.scrim
+  property color selectedBackground: Color.menu.selectedBackground
+  property color selectedText: Color.menu.selectedText
+  property color selectedBorder: Color.menu.selectedBorder
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
   property int contentMargin: Style.spacing.panelPadding
@@ -178,7 +184,7 @@ Item {
 
     Rectangle {
       anchors.fill: parent
-      color: root.withAlpha(root.background, 0.5)
+      color: root.scrim
     }
 
     MouseArea {
@@ -288,9 +294,9 @@ Item {
               width: root.cellWidth
               height: root.cellHeight
               radius: root.cornerRadius
-              color: hasCursor ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
-              border.color: hasCursor ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
-              border.width: hasCursor ? Style.hoverBorderWidth : 0
+              color: hasCursor ? root.selectedBackground : "transparent"
+              border.color: hasCursor ? root.selectedBorder : "transparent"
+              border.width: (hasCursor && root.selectedBorder.a > 0) ? Style.hoverBorderWidth : 0
 
               Text {
                 text: parent.emoji
@@ -326,7 +332,7 @@ Item {
 
             Text {
               text: "󰈉"
-              color: root.accent
+              color: root.selectedText
               opacity: 0.8
               font.family: root.fontFamily
               font.pixelSize: Style.font.displayLarge

@@ -7,7 +7,8 @@ import Quickshell.Io
 // (foreground/background/accent/urgent) come from the theme's colors.toml.
 // Per-surface roles (Color.bar.*, Color.popups.*, Color.tooltip.*,
 // Color.notifications.*, Color.menu.*, Color.appLauncher.*,
-// Color.imagePicker.*) come from shell.toml, which is generated
+// Color.imagePicker.*, Color.polkit.*, Color.lock.*) come from shell.toml,
+// which is generated
 // per theme from default/themed/shell.toml.tpl (or shipped directly by a
 // theme to override). Surfaces that don't appear in shell.toml fall back to
 // the foundational palette, so themes can ship partial overrides.
@@ -85,6 +86,7 @@ QtObject {
     property color background: root.composed("app-launcher.background", "app-launcher.background-alpha", root.background, 0.95)
     property color text: root.pick("app-launcher.text", root.foreground)
     property color border: root.composed("app-launcher.border", "app-launcher.border-alpha", root.foreground, 1.0)
+    property color scrim: root.composed("app-launcher.scrim", "app-launcher.scrim-alpha", root.background, 0.5)
     property color selectedBackground: root.composed("app-launcher.selected-background", "app-launcher.selected-background-alpha", root.foreground, 0.08)
     property color selectedText: root.pick("app-launcher.selected-text", root.accent)
     property color selectedBorder: root.composed("app-launcher.selected-border", "app-launcher.selected-border-alpha", root.foreground, 0.0)
@@ -96,15 +98,35 @@ QtObject {
     property color background: root.composed("menu.background", "menu.background-alpha", root.background, 1.0)
     property color text: root.pick("menu.text", root.foreground)
     property color border: root.composed("menu.border", "menu.border-alpha", root.foreground, 1.0)
+    property color scrim: root.composed("menu.scrim", "menu.scrim-alpha", root.background, 0.5)
     property color selectedBackground: root.composed("menu.selected-background", "menu.selected-background-alpha", root.pick("menu.selected", root.foreground), 0.08)
     property color selectedText: root.pick("menu.selected-text", root.accent)
     property color selectedBorder: root.composed("menu.selected-border", "menu.selected-border-alpha", root.foreground, 0.0)
   }
+  readonly property QtObject polkit: QtObject {
+    property color background: root.composed("polkit.background", "polkit.background-alpha", root.background, 1.0)
+    property color text: root.pick("polkit.text", root.foreground)
+    property color textError: root.pick("polkit.text-error", root.urgent)
+    property color border: root.composed("polkit.border", "polkit.border-alpha", root.accent, 1.0)
+    property color borderError: root.composed("polkit.border-error", "polkit.border-alpha", root.urgent, 1.0)
+    property color accent: root.pick("polkit.accent", root.accent)
+    property color scrim: root.composed("polkit.scrim", "polkit.scrim-alpha", root.background, 0.5)
+  }
+  readonly property QtObject lock: QtObject {
+    property color background: root.composed("lock.background", "lock.background-alpha", root.background, 0.8)
+    property color text: root.pick("lock.text", root.foreground)
+    property color textError: root.pick("lock.text-error", root.urgent)
+    property color border: root.composed("lock.border", "lock.border-alpha", root.foreground, 1.0)
+    property color borderActive: root.composed("lock.border-active", "lock.border-alpha", root.accent, 1.0)
+    property color borderError: root.composed("lock.border-error", "lock.border-alpha", root.urgent, 1.0)
+    property color selection: root.composed("lock.selection", "lock.selection-alpha", root.accent, 0.45)
+  }
   readonly property QtObject imagePicker: QtObject {
-    // Defaults reflect what the picker hard-coded before alphas were
-    // themable: scrim background at 0.5, unselected carousel borders at
-    // 0.28, selected border fully opaque.
-    property color background: root.composed("image-picker.background", "image-picker.background-alpha", root.background, 0.5)
+    // The picker has no separate card; `scrim` is the full-screen dim
+    // wash, `background` is the palette color used for per-slice dim
+    // overlays and text outlines on top of the scrim.
+    property color background: root.composed("image-picker.background", "image-picker.background-alpha", root.background, 1.0)
+    property color scrim: root.composed("image-picker.scrim", "image-picker.scrim-alpha", root.background, 0.5)
     property color text: root.pick("image-picker.text", root.foreground)
     property color selectedBorder: root.composed("image-picker.selected-border", "image-picker.selected-border-alpha", root.accent, 1.0)
     property color unselectedBorder: root.composed("image-picker.unselected-border", "image-picker.unselected-border-alpha", root.foreground, 0.28)

@@ -11,8 +11,8 @@ Item {
   property string label: ""
   property string value: ""
   property var options: []
-  property color foreground: Color.foreground
-  property color background: Color.background
+  property color foreground: Color.popups.text
+  property color background: Color.popups.background
   property color accent: Color.accent
   property string fontFamily: Style.font.family
   property int cornerRadius: 0

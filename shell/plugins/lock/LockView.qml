@@ -87,8 +87,8 @@ Item {
       width: root.fieldWidth
       height: root.fieldHeight
       anchors.centerIn: parent
-      color: root.withAlpha(Color.background, 0.8)
-      border.color: root.failureMessage.length > 0 ? Color.urgent : (root.authenticatingPassword ? Color.accent : Color.foreground)
+      color: Color.lock.background
+      border.color: root.failureMessage.length > 0 ? Color.lock.borderError : (root.authenticatingPassword ? Color.lock.borderActive : Color.lock.border)
       border.width: root.outlineThickness
       radius: Style.cornerRadius
       clip: true
@@ -107,9 +107,9 @@ Item {
         echoMode: TextInput.Password
         passwordCharacter: "\u2022"
         passwordMaskDelay: 0
-        color: Color.foreground
-        selectionColor: root.withAlpha(Color.accent, 0.45)
-        selectedTextColor: Color.foreground
+        color: Color.lock.text
+        selectionColor: Color.lock.selection
+        selectedTextColor: Color.lock.text
         font.family: "monospace"
         font.pixelSize: root.fieldFontSize
         cursorVisible: activeFocus && !root.authenticatingPassword && root.hasTyped
@@ -139,7 +139,7 @@ Item {
         anchors.fill: passwordInput
         text: root.failureMessage.length > 0 ? root.failureMessage : root.placeholderText
         visible: passwordInput.text.length === 0
-        color: root.failureMessage.length > 0 ? Color.urgent : Color.foreground
+        color: root.failureMessage.length > 0 ? Color.lock.textError : Color.lock.text
         font.family: "monospace"
         font.pixelSize: root.fieldFontSize
         font.italic: root.failureMessage.length > 0
