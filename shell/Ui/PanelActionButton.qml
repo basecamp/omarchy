@@ -77,7 +77,7 @@ Rectangle {
     anchors.centerIn: parent
     text: root.iconText
     color: root.enabled
-      ? (root._hot ? root.hoverColor : Qt.darker(root.foreground, 1.3))
+      ? (root._hot ? root.hoverColor : root.foreground)
       : Qt.darker(root.foreground, 2.0)
     font.family: root.fontFamily
     font.pixelSize: root.fontSize

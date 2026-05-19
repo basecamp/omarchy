@@ -41,6 +41,7 @@ Rectangle {
   property real fontSize: Style.font.body
   property real iconSize: Style.font.icon
   property real iconRotation: 0
+  property bool iconSpinning: false
   property real horizontalPadding: Style.spacing.controlPaddingX
   property real verticalPadding: Style.spacing.controlPaddingY
   property bool leftAlign: false
@@ -132,9 +133,17 @@ Rectangle {
       color: root.selected ? root._selectedColor : root.foreground
       font.family: root.fontFamily
       font.pixelSize: root.iconSize
-      rotation: root.iconRotation
+      rotation: root.iconSpinning ? 0 : root.iconRotation
       transformOrigin: Item.Center
       anchors.verticalCenter: parent.verticalCenter
+
+      RotationAnimation on rotation {
+        from: 0
+        to: 360
+        duration: 900
+        loops: Animation.Infinite
+        running: root.iconSpinning
+      }
     }
 
     Text {

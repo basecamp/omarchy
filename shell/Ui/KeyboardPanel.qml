@@ -83,20 +83,17 @@ PanelWindow {
     right: true
   }
 
-  // Clickable region = whole screen MINUS the bar's strip. Clicks on the
-  // bar pass through to the bar layer; clicks anywhere else are caught
-  // by us and either land on the card (no-op) or trigger dismissal.
-  readonly property real _barStripSize: bar ? bar.barSize : 0
+  // Clickable region is the whole screen. Clicks in the bar strip are
+  // forwarded to registered bar buttons so switching between panel icons
+  // works in one click even when the overlay surface is above the bar.
+  readonly property real _barStripSize: {
+    if (!bar) return 0
+    var actual = (root.barPos === "top" || root.barPos === "bottom") ? root.barH : root.barW
+    return Math.max(bar.barSize, actual) + root.gap
+  }
   mask: Region {
     width: root.screenW
     height: root.screenH
-    Region {
-      x: root.barPos === "right" ? root.screenW - root._barStripSize : 0
-      y: root.barPos === "bottom" ? root.screenH - root._barStripSize : 0
-      width: (root.barPos === "top" || root.barPos === "bottom") ? root.screenW : root._barStripSize
-      height: (root.barPos === "top" || root.barPos === "bottom") ? root._barStripSize : root.screenH
-      intersection: Intersection.Subtract
-    }
   }
 
   // Track every layout change between the bar's contentItem and the
@@ -203,9 +200,52 @@ PanelWindow {
   // during the fade-out so the dying overlay doesn't swallow clicks that
   // were meant for the apps behind it.
   MouseArea {
+    id: dismissArea
     anchors.fill: parent
     enabled: root.open
-    onClicked: root.closePopout()
+    hoverEnabled: true
+    property bool hoveringBar: false
+    cursorShape: hoveringBar ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+    function inBarRegion(px, py) {
+      if (root.barPos === "bottom") return py >= root.screenH - root._barStripSize
+      if (root.barPos === "left") return px <= root._barStripSize
+      if (root.barPos === "right") return px >= root.screenW - root._barStripSize
+      return py <= root._barStripSize
+    }
+
+    function barPoint(px, py) {
+      if (root.barPos === "bottom") return Qt.point(px, py - (root.screenH - root.barH))
+      if (root.barPos === "right") return Qt.point(px - (root.screenW - root.barW), py)
+      return Qt.point(px, py)
+    }
+
+    function pressTargetAt(px, py) {
+      if (!root.anchorWindow || !root.anchorWindow.contentItem || !root.bar || !root.bar.clickTargets) return null
+      var p = barPoint(px, py)
+      var targets = root.bar.clickTargets
+      for (var i = targets.length - 1; i >= 0; i--) {
+        var target = targets[i]
+        if (!target || !target.triggerPress || target.visible === false || target.opacity === 0 || !target.mapToItem) continue
+        var pos = root.anchorWindow.itemPosition(target)
+        if (p.x >= pos.x && p.x <= pos.x + target.width && p.y >= pos.y && p.y <= pos.y + target.height) return target
+      }
+      return null
+    }
+
+    function forwardBarClick(px, py, button) {
+      var target = pressTargetAt(px, py)
+      if (!target) return false
+      target.triggerPress(button)
+      return true
+    }
+
+    onPositionChanged: function(mouse) { hoveringBar = inBarRegion(mouse.x, mouse.y) }
+    onExited: hoveringBar = false
+    onClicked: function(mouse) {
+      if (inBarRegion(mouse.x, mouse.y) && forwardBarClick(mouse.x, mouse.y, mouse.button)) return
+      root.closePopout()
+    }
   }
 
   // --- card ----------------------------------------------------------------
