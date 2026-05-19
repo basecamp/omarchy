@@ -12,7 +12,6 @@ egl-wayland
 git
 gst-plugin-pipewire
 gtk4-layer-shell
-jdk-openjdk
 libpulse
 intel-ipu7-camera
 intel-lpmd
