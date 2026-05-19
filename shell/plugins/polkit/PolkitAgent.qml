@@ -18,9 +18,9 @@ Item {
   property color foreground: Color.menu.text
   property color border: foreground
   readonly property int cornerRadius: Style.cornerRadius
-  property int contentMargin: 18
-  property int contentSpacing: 12
-  property int fieldHeight: 42
+  property int contentMargin: Style.spacing.panelPadding
+  property int contentSpacing: Style.spacing.rowPaddingX
+  property int fieldHeight: Math.max(Style.space(42), Style.spacing.controlHeight)
 
   property bool closing: false
   property bool submitted: false
@@ -36,8 +36,8 @@ Item {
 
   readonly property bool dialogVisible: polkitAgent.isActive || closing
   readonly property bool fingerprintWaiting: dialogVisible && !responseRequired && !submitted && (fingerprintFirst || promptLooksFingerprint(currentPrompt + " " + currentSupplementary))
-  readonly property int cardWidth: Math.min(312, Math.max(260, panel.width - 48))
-  readonly property int cardHeight: panel.height > 0 ? Math.min(fieldHeight + contentMargin * 2, panel.height - 48) : fieldHeight + contentMargin * 2
+  readonly property int cardWidth: Math.min(Style.space(312), Math.max(Style.space(260), panel.width - Style.gapsOut * 2))
+  readonly property int cardHeight: panel.height > 0 ? Math.min(fieldHeight + contentMargin * 2, panel.height - Style.gapsOut * 2) : fieldHeight + contentMargin * 2
 
   function withAlpha(color, alpha) {
     return Qt.rgba(color.r, color.g, color.b, alpha)
@@ -238,7 +238,7 @@ Item {
       anchors.horizontalCenterOffset: root.shakeOffset
       color: root.background
       border.color: root.accent
-      border.width: 2
+      border.width: Math.max(1, Style.space(2))
 
       MouseArea { anchors.fill: parent; onClicked: root.refocus() }
 
@@ -263,21 +263,21 @@ Item {
         id: cardRow
         anchors.fill: parent
         anchors.margins: root.contentMargin
-        spacing: 14
+        spacing: Style.space(14)
 
         Text {
           text: "\uf023"
           color: root.errorFlash ? Color.urgent : root.accent
           font.family: root.fontFamily
           font.pixelSize: Style.font.iconLarge
-          width: 26
+          width: Style.space(26)
           height: root.fieldHeight
           horizontalAlignment: Text.AlignHCenter
           verticalAlignment: Text.AlignVCenter
         }
 
         Item {
-          width: parent.width - 40
+          width: parent.width - Style.space(40)
           height: root.fieldHeight
 
           TextInput {
@@ -320,8 +320,8 @@ Item {
           }
 
           Rectangle {
-            width: 2
-            height: 24
+            width: Math.max(1, Style.space(2))
+            height: Style.space(24)
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             color: root.errorFlash ? Color.urgent : root.foreground

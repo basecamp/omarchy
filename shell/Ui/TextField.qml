@@ -9,9 +9,8 @@ import qs.Commons
 //
 // Defaults bind to qs.Commons.Color so a caller with no theme overrides
 // just works; foreground / accent / selectionTint can be overridden per
-// instance. Focus styling uses Style.focusBorderColor (the same accent
-// ring Toggle and Button paint) so keyboard cursor and form focus
-// chrome stay consistent across the shell.
+// instance. activeFocus and mouse hover / panel cursor use the same
+// hover-cursor defaults, so text inputs match Button, Toggle, and Dropdown.
 //
 // Sizing is driven by font.pixelSize + verticalPadding. The default 30px
 // implicitHeight fits dialog forms; inline callers (wifi's row-embedded
@@ -21,20 +20,20 @@ TextField {
 
   property color foreground: Color.foreground
   property color accent: Color.accent
-  property color selectionTint: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.35)
+  property color selectionTint: Style.selectionFillFor(foreground, accent)
   property bool password: false
-  property real horizontalPadding: 10
-  property real verticalPadding: 7
+  property real horizontalPadding: Style.spacing.controlPaddingX
+  property real verticalPadding: Style.spacing.inputPaddingY
 
   // Panel-cursor flag. When true (and the field isn't already focused),
-  // the background paints the same accent ring as activeFocus so the
-  // panel's keyboard cursor lands here identically to a mouse hover.
+  // the background paints the shared hover/cursor state.
   // For mouse-enter/leave the consumer reads QQC TextField's inherited
   // `hovered` property (via onHoveredChanged) — we don't add a sibling
   // signal because the inherited property would shadow it.
   property bool hasCursor: false
 
-  readonly property bool _focused: activeFocus || hasCursor
+  readonly property bool _focused: activeFocus
+  readonly property bool _hot: hovered || hasCursor
 
   echoMode: password ? TextInput.Password : TextInput.Normal
   font.family: Style.font.family
@@ -50,12 +49,19 @@ TextField {
   bottomPadding: verticalPadding
 
   background: Rectangle {
-    color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b,
-                   root._focused ? 0.08 : 0.04)
+    color: root._focused
+      ? Style.focusFillFor(root.foreground, root.accent)
+      : (root._hot
+        ? Style.hoverFillFor(root.foreground, root.accent)
+        : Style.normalFillFor(root.foreground, root.accent))
     border.color: root._focused
-      ? Style.focusBorderColor
-      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-    border.width: root._focused ? Style.focusBorderWidth : 1
+      ? Style.focusBorderFor(root.foreground, root.accent)
+      : (root._hot
+        ? Style.hoverBorderFor(root.foreground, root.accent)
+        : Style.normalBorderFor(root.foreground, root.accent))
+    border.width: root._focused
+      ? Style.focusBorderWidth
+      : (root._hot ? Style.hoverBorderWidth : Style.normalBorderWidth)
     radius: Style.cornerRadius
   }
 }

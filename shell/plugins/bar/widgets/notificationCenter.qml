@@ -64,8 +64,8 @@ Item {
   // rest of the notification stack).
   readonly property color colForeground: Color.foreground
   readonly property color colDim: Qt.darker(Color.foreground, 1.4)
-  readonly property color colBorder: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.18)
-  readonly property color colSurface: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.06)
+  readonly property color colBorder: Style.normalBorderFor(Color.foreground, Color.accent)
+  readonly property color colSurface: Style.normalFillFor(Color.foreground, Color.accent)
   readonly property color colAccent: Color.accent
   readonly property int cardRadius: notificationService ? notificationService.cornerRadius : 0
 
@@ -109,17 +109,17 @@ Item {
     bar: root.bar
     owner: root
     open: root.popupOpen
-    contentWidth: 440
-    contentHeight: 540
+    contentWidth: popup.fittedContentWidth(Style.space(440))
+    contentHeight: popup.cappedContentHeight(Style.space(540))
 
     ColumnLayout {
       anchors.fill: parent
-      spacing: 10
+      spacing: Style.space(10)
 
       // ----------------------------------------- header
       RowLayout {
         Layout.fillWidth: true
-        spacing: 8
+        spacing: Style.space(8)
 
         Text {
           text: "Notifications"
@@ -133,18 +133,18 @@ Item {
 
         Rectangle {
           id: dndPill
-          Layout.preferredHeight: 24
-          Layout.preferredWidth: dndLabel.implicitWidth + dndGlyph.implicitWidth + 18
-          radius: Math.min(12, root.cardRadius + 6)
+          Layout.preferredHeight: Math.max(Style.space(24), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
+          Layout.preferredWidth: dndLabel.implicitWidth + dndGlyph.implicitWidth + Style.space(18)
+          radius: Math.min(Style.space(12), root.cardRadius + Style.space(6))
           color: dndOn ? root.colAccent : root.colSurface
           border.color: dndOn ? root.colAccent : root.colBorder
-          border.width: 1
+          border.width: Style.normalBorderWidth
 
           readonly property bool dndOn: !!root.notificationService && root.notificationService.doNotDisturb
 
           Row {
             anchors.centerIn: parent
-            spacing: 4
+            spacing: Style.space(4)
 
             Text {
               id: dndGlyph
@@ -190,7 +190,7 @@ Item {
             readonly property bool isActive: root.activeTab === modelData.key
 
             Layout.fillWidth: true
-            Layout.preferredHeight: 30
+            Layout.preferredHeight: Math.max(Style.space(30), Style.font.body + Style.spacing.controlPaddingY * 2)
             color: "transparent"
 
             Text {
@@ -206,7 +206,7 @@ Item {
               anchors.left: parent.left
               anchors.right: parent.right
               anchors.bottom: parent.bottom
-              height: 2
+              height: Math.max(1, Style.space(2))
               color: parent.isActive ? root.colAccent : root.colBorder
               opacity: parent.isActive ? 1 : 0.4
             }
@@ -225,17 +225,17 @@ Item {
         Layout.fillWidth: true
         visible: (root.activeTab === "pending" && root.pendingCount > 0)
               || (root.activeTab === "past" && root.pastCount > 0)
-        spacing: 8
+        spacing: Style.space(8)
 
         Item { Layout.fillWidth: true }
 
         Rectangle {
-          Layout.preferredWidth: actionLabel.implicitWidth + 16
-          Layout.preferredHeight: 22
-          radius: Math.min(6, root.cardRadius)
+          Layout.preferredWidth: actionLabel.implicitWidth + Style.space(16)
+          Layout.preferredHeight: Math.max(Style.space(22), Style.font.bodySmall + Style.spacing.controlPaddingY * 2)
+          radius: Math.min(Style.space(6), root.cardRadius)
           color: actionArea.containsMouse ? root.colBorder : "transparent"
           border.color: root.colBorder
-          border.width: 1
+          border.width: Style.normalBorderWidth
 
           Text {
             id: actionLabel
@@ -266,7 +266,7 @@ Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
-        spacing: 8
+        spacing: Style.space(8)
 
         readonly property bool onPending: root.activeTab === "pending"
         model: !root.notificationService ? null
@@ -291,11 +291,11 @@ Item {
           readonly property string sanitizedBody: root.sanitizeBody(body, app, appIcon)
 
           width: listView.width
-          implicitHeight: rowContent.implicitHeight + 20
+          implicitHeight: rowContent.implicitHeight + Style.spacing.panelGap
           radius: root.cardRadius
           color: "transparent"
           border.color: root.colBorder
-          border.width: 1
+          border.width: Style.normalBorderWidth
 
           MouseArea {
             anchors.fill: parent
@@ -308,13 +308,14 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: 12
-            anchors.rightMargin: 12
-            spacing: 10
+            anchors.leftMargin: Style.space(12)
+            anchors.rightMargin: Style.space(12)
+            spacing: Style.space(10)
 
             Item {
-              Layout.preferredWidth: 32
-              Layout.preferredHeight: 32
+              id: imageSlot
+              Layout.preferredWidth: Style.space(32)
+              Layout.preferredHeight: Style.space(32)
               Layout.alignment: Qt.AlignVCenter
               // Hide on icon load failure so unresolved themed-icon names
               // don't render Qt's broken-image placeholder.
@@ -325,8 +326,8 @@ Item {
                 anchors.fill: parent
                 source: rowCard.hasMedia ? rowCard.image : rowCard.smallIconSource
                 fillMode: rowCard.hasMedia ? Image.PreserveAspectCrop : Image.PreserveAspectFit
-                sourceSize.width: 32 * Screen.devicePixelRatio
-                sourceSize.height: 32 * Screen.devicePixelRatio
+                sourceSize.width: imageSlot.width * Screen.devicePixelRatio
+                sourceSize.height: imageSlot.height * Screen.devicePixelRatio
                 asynchronous: true
                 smooth: true
               }
@@ -334,7 +335,7 @@ Item {
 
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: 2
+              spacing: Style.space(2)
 
               Text {
                 Layout.fillWidth: true
@@ -364,8 +365,8 @@ Item {
             }
 
             Rectangle {
-              Layout.preferredWidth: 18
-              Layout.preferredHeight: 18
+              Layout.preferredWidth: Style.space(18)
+              Layout.preferredHeight: Style.space(18)
               Layout.alignment: Qt.AlignVCenter
               radius: Math.min(4, root.cardRadius)
               color: rowCloseArea.containsMouse ? root.colBorder : "transparent"
@@ -402,16 +403,14 @@ Item {
 
         ColumnLayout {
           anchors.centerIn: parent
-          spacing: 6
+          spacing: Style.space(6)
 
           Text {
             Layout.alignment: Qt.AlignHCenter
             text: "󰂚"
             font.family: root.bar ? root.bar.fontFamily : ""
             color: root.colBorder
-            // Deliberately oversized empty-state glyph; doesn't follow the
-            // Style.font.* scale because it's a one-off decorative element.
-            font.pixelSize: 36
+            font.pixelSize: Style.font.displayLarge
           }
 
           Text {
@@ -420,8 +419,6 @@ Item {
               ? "Nothing waiting for you"
               : "Nothing recent"
             font.family: root.bar ? root.bar.fontFamily : ""
-              ? "Nothing waiting for you"
-              : "No past notifications"
             color: root.colDim
             font.pixelSize: Style.font.body
           }

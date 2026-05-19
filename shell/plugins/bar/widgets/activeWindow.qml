@@ -22,7 +22,7 @@ Item {
   readonly property bool vertical: bar ? bar.vertical : false
 
   visible: title !== "" && !vertical
-  implicitWidth: visible ? Math.min(maxLabelWidth, labelText.implicitWidth) + 16 : 0
+  implicitWidth: visible ? Math.min(maxLabelWidth, labelText.implicitWidth) + Style.spacing.controlPaddingX * 2 : 0
   implicitHeight: bar ? bar.barSize : 26
 
   Behavior on implicitWidth {
@@ -31,8 +31,8 @@ Item {
 
   Item {
     anchors.fill: parent
-    anchors.leftMargin: 8
-    anchors.rightMargin: 8
+    anchors.leftMargin: Style.space(8)
+    anchors.rightMargin: Style.space(8)
     clip: true
 
     Text {

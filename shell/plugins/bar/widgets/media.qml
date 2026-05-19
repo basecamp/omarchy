@@ -39,13 +39,13 @@ Item {
   property real maxLabelWidth: 180
 
   visible: hasMedia
-  implicitWidth: hasMedia ? row.implicitWidth + 14 : 0
+  implicitWidth: hasMedia ? row.implicitWidth + Style.space(14) : 0
   implicitHeight: bar ? bar.barSize : 26
 
   Row {
     id: row
     anchors.centerIn: parent
-    spacing: 6
+    spacing: Style.space(6)
 
     Text {
       id: glyph
@@ -119,29 +119,29 @@ Item {
     bar: root.bar
     owner: root
     open: root.popupOpen
-    contentWidth: 320
-    contentHeight: column.implicitHeight + 28
+    contentWidth: popup.fittedContentWidth(Style.space(320))
+    contentHeight: popup.fittedContentHeight(column.implicitHeight)
 
     Column {
       id: column
       anchors.fill: parent
-      spacing: 10
+      spacing: Style.space(10)
 
       Row {
-        spacing: 10
+        spacing: Style.space(10)
         width: parent.width
 
         Rectangle {
-          width: 64
-          height: 64
-          radius: 4
-          color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.08)
-          border.color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.2)
-          border.width: 1
+          width: Style.space(64)
+          height: Style.space(64)
+          radius: Style.spacing.labelGap
+          color: Style.normalFillFor(root.bar.foreground, Color.accent)
+          border.color: Style.normalBorderFor(root.bar.foreground, Color.accent)
+          border.width: Style.normalBorderWidth
 
           Image {
             anchors.fill: parent
-            anchors.margins: 2
+            anchors.margins: Style.space(2)
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             source: root.activePlayer && root.activePlayer.trackArtUrl ? root.activePlayer.trackArtUrl : ""
@@ -159,8 +159,8 @@ Item {
         }
 
         Column {
-          spacing: 4
-          width: parent.width - 74
+          spacing: Style.space(4)
+          width: parent.width - Style.space(74)
 
           Text {
             text: root.title || "Nothing playing"
@@ -196,13 +196,13 @@ Item {
 
       Row {
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 6
+        spacing: Style.space(6)
 
         Button {
           iconText: "󰒮"
           foreground: root.bar.foreground
-          horizontalPadding: 10
-          verticalPadding: 6
+          horizontalPadding: Style.spacing.controlPaddingX
+          verticalPadding: Style.spacing.controlPaddingY
           enabled: root.activePlayer && root.activePlayer.canGoPrevious
           opacity: enabled ? 1.0 : 0.4
           onClicked: if (root.activePlayer) root.activePlayer.previous()
@@ -211,9 +211,9 @@ Item {
         Button {
           iconText: root.activePlayer && root.activePlayer.isPlaying ? "󰏤" : "󰐊"
           foreground: root.bar.foreground
-          horizontalPadding: 14
-          verticalPadding: 6
-          iconSize: 18
+          horizontalPadding: Style.spacing.panelGap
+          verticalPadding: Style.spacing.controlPaddingY
+          iconSize: Style.font.iconLarge
           enabled: root.activePlayer && root.activePlayer.canTogglePlaying
           opacity: enabled ? 1.0 : 0.4
           onClicked: if (root.activePlayer) root.activePlayer.togglePlaying()
@@ -222,8 +222,8 @@ Item {
         Button {
           iconText: "󰒭"
           foreground: root.bar.foreground
-          horizontalPadding: 10
-          verticalPadding: 6
+          horizontalPadding: Style.spacing.controlPaddingX
+          verticalPadding: Style.spacing.controlPaddingY
           enabled: root.activePlayer && root.activePlayer.canGoNext
           opacity: enabled ? 1.0 : 0.4
           onClicked: if (root.activePlayer) root.activePlayer.next()

@@ -83,12 +83,12 @@ Item {
     bar: root.bar
     owner: root
     open: root.popupOpen
-    contentWidth: 300
-    contentHeight: header.implicitHeight + grid.implicitHeight + 36
+    contentWidth: popup.fittedContentWidth(Style.space(300))
+    contentHeight: popup.fittedContentHeight(header.implicitHeight + grid.implicitHeight + Style.spacing.rowGap)
 
     Column {
       anchors.fill: parent
-      spacing: 8
+      spacing: Style.space(8)
 
       Item {
         id: header
@@ -101,8 +101,8 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           iconText: "󰅁"
           foreground: root.bar.foreground
-          horizontalPadding: 8
-          verticalPadding: 4
+          horizontalPadding: Style.spacing.controlGap
+          verticalPadding: Style.spacing.labelGap
           onClicked: root.shiftMonth(-1)
         }
 
@@ -121,8 +121,8 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           iconText: "󰅂"
           foreground: root.bar.foreground
-          horizontalPadding: 8
-          verticalPadding: 4
+          horizontalPadding: Style.spacing.controlGap
+          verticalPadding: Style.spacing.labelGap
           onClicked: root.shiftMonth(1)
         }
       }
@@ -130,8 +130,8 @@ Item {
       Grid {
         id: grid
         columns: 7
-        rowSpacing: 4
-        columnSpacing: 4
+        rowSpacing: Style.space(4)
+        columnSpacing: Style.space(4)
         width: parent.width
 
         Repeater {
@@ -140,7 +140,7 @@ Item {
           Item {
             required property string modelData
             width: (grid.width - grid.columnSpacing * 6) / 7
-            height: 18
+            height: Math.max(Style.space(18), Style.font.caption + Style.spacing.xxs)
 
             Text {
               anchors.centerIn: parent
@@ -177,7 +177,7 @@ Item {
             }
 
             width: (grid.width - grid.columnSpacing * 6) / 7
-            height: 28
+            height: Math.max(Style.space(28), Style.font.body + Style.spacing.sm)
             radius: 4
             color: isToday ? root.bar.foreground : "transparent"
             border.color: isToday ? root.bar.foreground : "transparent"

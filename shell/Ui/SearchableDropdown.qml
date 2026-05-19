@@ -30,13 +30,13 @@ Item {
   property color popupBorder: Color.popups.border
   property color accent: Color.accent
   property string fontFamily: Style.font.family
-  property int rowHeight: 28
-  property int popupRowHeight: 28
-  property int popupMinHeight: 220
+  property int rowHeight: Style.spacing.controlHeight
+  property int popupRowHeight: Style.spacing.popupRowHeight
+  property int popupMinHeight: Style.spacing.searchablePopupMinHeight
   property bool showLabel: true
 
-  // Panel-cursor flag. When true, the trigger renders the same focus ring
-  // as Tab-focus so a panel's keyboard cursor lands here identically.
+  // Panel-cursor flag. When true, the trigger renders the shared
+  // hover-cursor state. Active Qt focus defaults to the same visuals.
   // Emits `hovered(bool)` on pointer enter/leave so the panel can keep
   // its cursor state in sync with the mouse.
   property bool hasCursor: false
@@ -84,12 +84,12 @@ Item {
 
   onOptionsChanged: recomputeFiltered()
 
-  implicitWidth: 260
-  implicitHeight: showLabel && label !== "" ? rowHeight + 18 : rowHeight
+  implicitWidth: Style.spacing.searchableDropdownWidth
+  implicitHeight: showLabel && label !== "" ? rowHeight + Style.spacing.huge : rowHeight
 
   Column {
     anchors.fill: parent
-    spacing: 4
+    spacing: Style.spacing.labelGap
 
     Text {
       visible: root.showLabel && root.label !== ""
@@ -106,18 +106,27 @@ Item {
       height: root.rowHeight
       radius: Style.cornerRadius
 
-      readonly property bool _focused: trigger.activeFocus || root.hasCursor
+      readonly property bool _focused: trigger.activeFocus
+      readonly property bool _hot: triggerHover.hovered || root.hasCursor
 
-      color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b,
-                     trigger._focused ? 0.08 : 0.04)
+      color: trigger._focused
+        ? Style.focusFillFor(root.foreground, root.accent)
+        : (trigger._hot
+          ? Style.hoverFillFor(root.foreground, root.accent)
+          : Style.normalFillFor(root.foreground, root.accent))
       border.color: trigger._focused
-        ? Style.focusBorderColor
-        : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.4)
-      border.width: trigger._focused ? Style.focusBorderWidth : 1
+        ? Style.focusBorderFor(root.foreground, root.accent)
+        : (trigger._hot
+          ? Style.hoverBorderFor(root.foreground, root.accent)
+          : Style.normalBorderFor(root.foreground, root.accent))
+      border.width: trigger._focused
+        ? Style.focusBorderWidth
+        : (trigger._hot ? Style.hoverBorderWidth : Style.normalBorderWidth)
 
       activeFocusOnTab: true
 
       HoverHandler {
+        id: triggerHover
         onHoveredChanged: root.hovered(hovered)
       }
 
@@ -135,8 +144,8 @@ Item {
         anchors.left: parent.left
         anchors.right: chevron.left
         anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: 10
-        anchors.rightMargin: 6
+        anchors.leftMargin: Style.spacing.controlPaddingX
+        anchors.rightMargin: Style.spacing.md
         text: root.currentLabel() || root.triggerLabel || root.placeholderText
         color: (root.currentLabel() || root.triggerLabel) ? root.foreground : Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
@@ -148,7 +157,7 @@ Item {
         id: chevron
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        anchors.rightMargin: 8
+        anchors.rightMargin: Style.spacing.controlGap
         text: "󰅀"
         color: Qt.darker(root.foreground, 1.2)
         font.family: root.fontFamily
@@ -167,18 +176,18 @@ Item {
       QQC.Popup {
         id: popup
         x: 0
-        y: trigger.height + 2
+        y: trigger.height + Style.spacing.xxs
         width: trigger.width
         implicitHeight: Math.max(root.popupMinHeight,
-                                 Math.min(resultList.contentHeight + 50,
-                                          root.popupRowHeight * 6 + 5 * 4 + 50))
-        padding: 1
+                                 Math.min(resultList.contentHeight + Style.space(50),
+                                          root.popupRowHeight * 6 + 5 * Style.spacing.labelGap + Style.space(50)))
+        padding: Style.spacing.hairline
         focus: true
 
         background: Rectangle {
           color: root.background
           border.color: root.popupBorder
-          border.width: 1
+          border.width: Style.normalBorderWidth
           radius: Style.cornerRadius
         }
 
@@ -193,13 +202,14 @@ Item {
           spacing: 0
 
           Item {
+            id: searchHeader
             width: parent.width
-            height: 38
+            height: root.popupRowHeight + Style.spacing.controlPaddingX
 
             TextField {
               id: searchField
               anchors.fill: parent
-              anchors.margins: 6
+              anchors.margins: Style.spacing.md
               placeholderText: root.placeholderText
               foreground: root.foreground
               accent: root.accent
@@ -234,12 +244,12 @@ Item {
           Rectangle {
             width: parent.width
             height: 1
-            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+            color: Style.alpha(root.foreground, 0.10)
           }
 
           Item {
             width: parent.width
-            height: popup.height - 38 - 2 - 1
+            height: popup.height - searchHeader.height - Style.spacing.xxs - 1
 
             Text {
               anchors.centerIn: parent
@@ -253,7 +263,7 @@ Item {
             ListView {
               id: resultList
               anchors.fill: parent
-              spacing: 4
+              spacing: Style.spacing.labelGap
               clip: true
               boundsBehavior: Flickable.StopAtBounds
               model: root.filtered
@@ -294,9 +304,9 @@ Item {
                 required property var modelData
                 required property int index
                 width: resultList.width
-                height: Math.max(root.popupRowHeight, rowContent.implicitHeight + 12)
+                height: Math.max(root.popupRowHeight, rowContent.implicitHeight + Style.spacing.rowPaddingX)
                 color: index === resultList.currentIndex
-                  ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
+                  ? Style.hoverFillFor(root.foreground, root.accent)
                   : "transparent"
 
                 Column {
@@ -304,13 +314,13 @@ Item {
                   anchors.left: parent.left
                   anchors.right: parent.right
                   anchors.verticalCenter: parent.verticalCenter
-                  anchors.leftMargin: 10
-                  anchors.rightMargin: 10
-                  spacing: 2
+                  anchors.leftMargin: Style.spacing.controlPaddingX
+                  anchors.rightMargin: Style.spacing.controlPaddingX
+                  spacing: Style.spacing.xxs
 
                   Text {
                     text: root.optionLabel(modelData)
-                    color: index === resultList.currentIndex ? root.accent : root.foreground
+                    color: index === resultList.currentIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.body
                     elide: Text.ElideRight

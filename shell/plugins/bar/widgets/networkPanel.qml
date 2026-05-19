@@ -69,8 +69,8 @@ Item {
   // Mouse hover and keyboard nav both mutate this state at the root; items
   // never read containsMouse for visuals. See CursorSurface for the
   // shared chrome (fill / border) shared by NetworkRow and DnsProviderPill.
-  readonly property color hoverFill: bar ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.08) : "transparent"
-  readonly property color selectedFill: bar ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18) : "transparent"
+  readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
+  readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
   // The panel below is its own layer-shell with Exclusive keyboard focus,
   // so Hyprland grants focus when the surface is mapped (popupOpen flips
@@ -599,8 +599,8 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     owner: root
     bar: root.bar
     open: root.popupOpen
-    contentWidth: 340
-    contentHeight: column.implicitHeight + 28
+    contentWidth: panel.fittedContentWidth(Style.space(340))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight)
 
     // Catches all unhandled keys for keyboard navigation. AfterItem priority
     // lets the passphrase TextField (a child via focus chain) get its keys
@@ -647,7 +647,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top
-      spacing: 12
+      spacing: Style.space(12)
 
       // Header — interface name + type, refresh on the right.
       Item {
@@ -658,7 +658,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           id: headerInfo
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
-          spacing: 10
+          spacing: Style.space(10)
 
           Text {
             text: root.icon
@@ -669,7 +669,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           }
 
           Column {
-            spacing: 2
+            spacing: Style.space(2)
             anchors.verticalCenter: parent.verticalCenter
 
             Text {
@@ -706,9 +706,9 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           tooltipBackground: root.bar.background
           tooltipForeground: root.bar.foreground
           foreground: root.bar.foreground
-          horizontalPadding: 8
-          verticalPadding: 4
-          iconSize: 14
+          horizontalPadding: Style.spacing.controlGap
+          verticalPadding: Style.spacing.labelGap
+          iconSize: Style.font.icon
           active: root.scanning
           onClicked: root.refresh()
         }
@@ -724,8 +724,8 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
         visible: !!root.info.iface
         width: parent.width
         columns: 2
-        columnSpacing: 14
-        rowSpacing: 4
+        columnSpacing: Style.space(14)
+        rowSpacing: Style.space(4)
 
         // IP address.
         Text {
@@ -815,7 +815,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
 
       Column {
         width: parent.width
-        spacing: 8
+        spacing: Style.space(8)
 
         PanelSectionHeader {
           text: "DNS provider"
@@ -825,7 +825,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
 
         Row {
           width: parent.width
-          spacing: 6
+          spacing: Style.space(6)
 
           DnsProviderPill {
             provider: "DHCP"
@@ -879,8 +879,8 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
         id: networkList
         visible: root.wifiStationAvailable
         width: parent.width
-        height: Math.min(contentHeight, 240)
-        spacing: 4
+        height: Math.min(contentHeight, Style.space(240))
+        spacing: Style.space(4)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         interactive: contentHeight > height
@@ -925,8 +925,8 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     tooltipBackground: root.bar.background
     tooltipForeground: root.bar.foreground
     fontFamily: root.bar.fontFamily
-    horizontalPadding: 10
-    verticalPadding: 6
+    horizontalPadding: Style.spacing.controlPaddingX
+    verticalPadding: Style.spacing.controlPaddingY
 
     // Map the panel's domain semantics onto Button's structural props:
     // `current DNS` is the pill's `active` fill; the keyboard cursor lights
@@ -982,7 +982,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       return Qt.darker(root.bar.foreground, 1.5)
     }
 
-    implicitHeight: rowBody.implicitHeight + (isPasswordOpen ? passwordPanel.implicitHeight + 6 : 0)
+    implicitHeight: rowBody.implicitHeight + (isPasswordOpen ? passwordPanel.implicitHeight + Style.spacing.md : 0)
 
     MouseArea {
       id: rowMouse
@@ -1040,9 +1040,9 @@ iwctl known-networks list 2>/dev/null \\
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top
-      anchors.leftMargin: 10
-      anchors.rightMargin: 10
-      implicitHeight: Math.max(networkIcon.implicitHeight, networkInfo.implicitHeight, forgetBtn.implicitHeight) + 12
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      implicitHeight: Math.max(networkIcon.implicitHeight, networkInfo.implicitHeight, forgetBtn.implicitHeight) + Style.spacing.rowPaddingX
 
       Text {
         id: networkIcon
@@ -1072,12 +1072,12 @@ iwctl known-networks list 2>/dev/null \\
       // Shows a lock glyph on the right for protected networks that
       // aren't currently connected. Once connected, the forget X takes
       // its place (and 'protected' is implied by the fact we're on it).
-      // Same 22-wide right-anchored centered geometry as forgetBtn so the
-      // glyph centers line up across rows.
+      // Same action-sized right-anchored centered geometry as forgetBtn so
+      // the glyph centers line up across rows.
       Text {
         id: lockIndicator
         visible: row.isProtected && !row.isConnected
-        width: 22
+        width: Style.space(22)
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         horizontalAlignment: Text.AlignHCenter
@@ -1089,13 +1089,13 @@ iwctl known-networks list 2>/dev/null \\
 
       Column {
         id: networkInfo
-        spacing: 1
+        spacing: Style.space(1)
         anchors.left: networkIcon.right
-        anchors.leftMargin: 10
+        anchors.leftMargin: Style.space(10)
         anchors.right: forgetBtn.visible ? forgetBtn.left
                       : lockIndicator.visible ? lockIndicator.left
                       : parent.right
-        anchors.rightMargin: (forgetBtn.visible || lockIndicator.visible) ? 8 : 0
+        anchors.rightMargin: (forgetBtn.visible || lockIndicator.visible) ? Style.space(8) : 0
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
@@ -1133,24 +1133,24 @@ iwctl known-networks list 2>/dev/null \\
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: rowMouse.bottom
-      anchors.leftMargin: 10
-      anchors.rightMargin: 10
-      anchors.topMargin: 4
-      implicitHeight: pwField.implicitHeight + 8
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      anchors.topMargin: Style.space(4)
+      implicitHeight: pwField.implicitHeight + Style.spacing.rowGap
 
       TextField {
         id: pwField
         anchors.left: parent.left
         anchors.right: connectPwBtn.left
         anchors.verticalCenter: parent.verticalCenter
-        anchors.rightMargin: 6
+        anchors.rightMargin: Style.space(6)
         password: true
         placeholderText: "Passphrase"
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
         foreground: root.bar.foreground
-        horizontalPadding: 8
-        verticalPadding: 6
+        horizontalPadding: Style.spacing.controlGap
+        verticalPadding: Style.spacing.controlPaddingY
         enabled: !row.isBusy
 
         onAccepted: {

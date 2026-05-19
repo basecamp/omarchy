@@ -13,21 +13,46 @@ size-horizontal = 26
 size-vertical   = 28
 
 [style]
-# State alphas used by every interactive surface in the kit (Button,
-# Toggle, TextField, etc.). Foreground-tinted unless noted.
-border-width        = 1     # idle 1px border on inputs and bordered buttons
-focus-border-width  = 3     # accent ring on Tab focus
-idle-border-alpha   = 0.4   # alpha for the idle 1px foreground border
-hot-fill-alpha      = 0.08  # cursor / hover fill
-selected-fill-alpha = 0.18  # selected / active / current fill
-pressed-fill-alpha  = 0.22  # button pressed
-focus-fill-alpha    = 0.22  # accent fill behind Tab focus ring
+# Shared control state tokens. See docs/omarchy-shell.md#interactive-states.
+# Colors accept palette roles (foreground/accent/urgent/background) or hex.
+
+# Normal: idle control chrome.
+normal-color        = "foreground"
+normal-fill-alpha   = 0.04
+normal-border-width = 1
+normal-border-alpha = 0.4
+
+# Hover-cursor: mouse hover and the panel keyboard cursor.
+hover-cursor-color        = "foreground"
+hover-cursor-fill-alpha   = 0.08
+hover-cursor-border-width = 1
+hover-cursor-border-alpha = 1.0
+
+# Selected: persistent chosen/current state.
+selected-color        = "foreground"
+selected-fill-alpha   = 0.18
+selected-border-width = 0
+selected-border-alpha = 1.0
+
+# Focus: Qt activeFocus; inherit hover-cursor unless intentionally different.
+focus-color        = "hover-cursor"
+focus-fill-alpha   = "hover-cursor"
+focus-border-width = "hover-cursor"
+focus-border-alpha = "hover-cursor"
+
+# Momentary fills.
+pressed-fill-alpha   = 0.22
+selection-fill-alpha = 0.35
+
+[spacing]
+# Multiplies shared margins, gaps, and padding. See docs/omarchy-shell.md#spacing.
+scale = 1.0
 
 [font]
 # base-size is the rem root for the type scale. Every Style.font.<token>
 # derives from it (e.g. body = base, subtitle ≈ base * 1.083,
-# heading ≈ base * 1.333). Clamped 11..13 by the shell — row heights are
-# fixed until we ship matching spacing tokens, so growth would clip.
+# heading ≈ base * 1.333). Clamped 11..13 by the shell because some
+# row heights remain fixed, so larger type can clip.
 base-size = 12
 # Per-token overrides, in px. Uncomment any to pin a specific size without
 # affecting the rest of the scale. Useful for stylistic emphasis (a

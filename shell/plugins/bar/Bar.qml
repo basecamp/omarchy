@@ -731,13 +731,13 @@ Item {
 
         LeftModules {
           anchors.left: parent.left
-          anchors.leftMargin: 8
+          anchors.leftMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
         }
 
         RightModules {
           anchors.right: parent.right
-          anchors.rightMargin: 8
+          anchors.rightMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
         }
       }
@@ -753,13 +753,13 @@ Item {
 
         LeftModules {
           anchors.top: parent.top
-          anchors.topMargin: 8
+          anchors.topMargin: Style.space(8)
           anchors.horizontalCenter: parent.horizontalCenter
         }
 
         RightModules {
           anchors.bottom: parent.bottom
-          anchors.bottomMargin: 8
+          anchors.bottomMargin: Style.space(8)
           anchors.horizontalCenter: parent.horizontalCenter
         }
       }
@@ -1136,8 +1136,8 @@ Item {
 
   component WorkspacesModule: GridLayout {
     columns: root.vertical ? 1 : root.workspaceIds().length
-    columnSpacing: root.vertical ? 0 : 2
-    rowSpacing: root.vertical ? 2 : 0
+    columnSpacing: root.vertical ? 0 : Style.space(2)
+    rowSpacing: root.vertical ? Style.space(2) : 0
 
     Repeater {
       model: root.workspaceIds()
@@ -1357,7 +1357,7 @@ Item {
               id: trayIcons
               x: trayRoot.drawerExtent - trayRoot.revealExtent
               anchors.verticalCenter: parent.verticalCenter
-              spacing: 17
+              spacing: Style.space(17)
               layer.enabled: true
 
               Repeater {
@@ -1372,8 +1372,8 @@ Item {
           id: pinnedRow
           x: drawerArea.x + horizontalTrayRoot.drawerBlockWidth
           anchors.verticalCenter: parent.verticalCenter
-          spacing: 17
-          leftPadding: trayRoot.pinnedItems.length > 0 && trayRoot.allItems.length > 0 ? 6 : 0
+          spacing: Style.space(17)
+          leftPadding: trayRoot.pinnedItems.length > 0 && trayRoot.allItems.length > 0 ? Style.space(6) : 0
           Repeater {
             model: trayRoot.pinnedItems
             TrayItem {}
@@ -1441,7 +1441,7 @@ Item {
               id: trayIcons
               y: trayRoot.drawerExtent - trayRoot.revealExtent
               anchors.horizontalCenter: parent.horizontalCenter
-              spacing: 17
+              spacing: Style.space(17)
               layer.enabled: true
 
               Repeater {
@@ -1456,8 +1456,8 @@ Item {
           id: pinnedCol
           y: drawerArea.y + verticalTrayRoot.drawerBlockHeight
           anchors.horizontalCenter: parent.horizontalCenter
-          spacing: 17
-          topPadding: trayRoot.pinnedItems.length > 0 && trayRoot.allItems.length > 0 ? 6 : 0
+          spacing: Style.space(17)
+          topPadding: trayRoot.pinnedItems.length > 0 && trayRoot.allItems.length > 0 ? Style.space(6) : 0
           Repeater {
             model: trayRoot.pinnedItems
             TrayItem {}
@@ -1472,13 +1472,13 @@ Item {
       owner: trayRoot
       bar: root
       open: trayRoot.managePopupOpen
-      contentWidth: 300
-      contentHeight: manageColumn.implicitHeight + 28
+      contentWidth: managePopup.fittedContentWidth(Style.space(300))
+      contentHeight: managePopup.fittedContentHeight(manageColumn.implicitHeight)
 
       Column {
         id: manageColumn
         anchors.fill: parent
-        spacing: 8
+        spacing: Style.space(8)
 
         Text {
           text: "Tray icons"
@@ -1541,9 +1541,9 @@ Item {
             Text {
               anchors.verticalCenter: parent.verticalCenter
               anchors.left: rowIcon.right
-              anchors.leftMargin: 10
+              anchors.leftMargin: Style.space(10)
               anchors.right: rowHideBtn.left
-              anchors.rightMargin: 8
+              anchors.rightMargin: Style.space(8)
               text: rowRoot.displayName
               color: root.foreground
               font.family: root.fontFamily
@@ -1569,7 +1569,7 @@ Item {
               id: rowHideBtn
               anchors.verticalCenter: parent.verticalCenter
               anchors.right: rowPinBtn.left
-              anchors.rightMargin: 6
+              anchors.rightMargin: Style.space(6)
               iconText: ""
               text: rowRoot.isHidden ? "Show" : "Hide"
               foreground: root.foreground

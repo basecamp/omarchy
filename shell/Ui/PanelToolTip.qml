@@ -27,8 +27,8 @@ ToolTip {
 
   background: Rectangle {
     color: root.panelBackground
-    border.color: root.panelForeground
-    border.width: 1
+    border.color: Style.normalBorderFor(root.panelForeground, Color.accent)
+    border.width: Style.normalBorderWidth
     radius: 0
     opacity: 0.97
   }
@@ -38,9 +38,9 @@ ToolTip {
     color: root.panelForeground
     font.family: root.fontFamily
     font.pixelSize: root.fontSize
-    leftPadding: 10
-    rightPadding: 10
-    topPadding: 6
-    bottomPadding: 6
+    leftPadding: Style.spacing.controlPaddingX
+    rightPadding: Style.spacing.controlPaddingX
+    topPadding: Style.spacing.controlPaddingY
+    bottomPadding: Style.spacing.controlPaddingY
   }
 }

@@ -16,18 +16,18 @@ Item {
   property color accent: Color.accent
   property string fontFamily: Style.font.family
   property int cornerRadius: 0
-  property int rowHeight: 28
-  property int popupRowHeight: 28
+  property int rowHeight: Style.spacing.controlHeight
+  property int popupRowHeight: Style.spacing.popupRowHeight
   property bool showLabel: true
 
   signal changed(string value)
 
-  implicitWidth: 240
-  implicitHeight: showLabel ? rowHeight + 18 : rowHeight
+  implicitWidth: Style.spacing.dropdownWidth
+  implicitHeight: showLabel ? rowHeight + Style.spacing.huge : rowHeight
 
   Column {
     anchors.fill: parent
-    spacing: 4
+    spacing: Style.spacing.labelGap
 
     Text {
       visible: root.showLabel && root.label !== ""
@@ -54,17 +54,25 @@ Item {
       }
 
       background: Rectangle {
-        color: root.background
+        color: combo.activeFocus
+          ? Style.focusFillFor(root.foreground, root.accent)
+          : (combo.hovered
+            ? Style.hoverFillFor(root.foreground, root.accent)
+            : Style.normalFillFor(root.foreground, root.accent))
         border.color: combo.activeFocus
-          ? root.accent
-          : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.4)
-        border.width: 1
+          ? Style.focusBorderFor(root.foreground, root.accent)
+          : (combo.hovered
+            ? Style.hoverBorderFor(root.foreground, root.accent)
+            : Style.normalBorderFor(root.foreground, root.accent))
+        border.width: combo.activeFocus
+          ? Style.focusBorderWidth
+          : (combo.hovered ? Style.hoverBorderWidth : Style.normalBorderWidth)
         radius: root.cornerRadius
       }
 
       contentItem: Text {
-        leftPadding: 8
-        rightPadding: 24
+        leftPadding: Style.spacing.controlGap
+        rightPadding: Style.space(24)
         text: combo.displayText
         color: root.foreground
         font: combo.font
@@ -72,7 +80,7 @@ Item {
       }
 
       indicator: Text {
-        x: combo.width - width - 8
+        x: combo.width - width - Style.spacing.controlGap
         y: combo.topPadding + (combo.availableHeight - height) / 2
         text: "▾"
         color: Qt.darker(root.foreground, 1.2)
@@ -86,12 +94,12 @@ Item {
         y: combo.height
         width: combo.width
         implicitHeight: Math.min(contentItem.implicitHeight, root.popupRowHeight * 8)
-        padding: 1
+        padding: Style.spacing.hairline
 
         background: Rectangle {
           color: root.background
-          border.color: root.foreground
-          border.width: 1
+          border.color: Style.normalBorderFor(root.foreground, root.accent)
+          border.width: Style.normalBorderWidth
           radius: root.cornerRadius
         }
 
@@ -114,18 +122,18 @@ Item {
 
         contentItem: Text {
           text: String(modelData)
-          color: index === combo.highlightedIndex ? root.accent : root.foreground
+          color: index === combo.highlightedIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
-          leftPadding: 10
-          rightPadding: 10
+          leftPadding: Style.spacing.controlPaddingX
+          rightPadding: Style.spacing.controlPaddingX
           verticalAlignment: Text.AlignVCenter
           elide: Text.ElideRight
         }
 
         background: Rectangle {
           color: index === combo.highlightedIndex
-            ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+            ? Style.hoverFillFor(root.foreground, root.accent)
             : "transparent"
           radius: 0
         }

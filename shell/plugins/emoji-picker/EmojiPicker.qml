@@ -24,14 +24,14 @@ Item {
   property color border: foreground
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
-  property int contentMargin: 18
-  property int headerHeight: 34
-  property int contentSpacing: 6
-  property int cardWidth: 400
-  property int cardHeight: 500
+  property int contentMargin: Style.spacing.panelPadding
+  property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
+  property int contentSpacing: Style.spacing.md
+  property int cardWidth: Math.min(Style.space(400), panel.width - Style.gapsOut * 2)
+  property int cardHeight: Math.min(Style.space(500), panel.height - Style.gapsOut * 2)
 
-  property int cellWidth: 44
-  property int cellHeight: 44
+  property int cellWidth: Math.max(Style.space(44), Style.font.display + Style.spacing.md)
+  property int cellHeight: Math.max(Style.space(44), Style.font.display + Style.spacing.md)
   property int columns: Math.floor((cardWidth - contentMargin * 2) / cellWidth)
 
   function open(payloadJson) {
@@ -183,7 +183,7 @@ Item {
       anchors.centerIn: parent
       color: root.background
       border.color: root.border
-      border.width: 2
+      border.width: Math.max(1, Style.space(2))
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
@@ -274,7 +274,9 @@ Item {
               width: root.cellWidth
               height: root.cellHeight
               radius: root.cornerRadius
-              color: index === root.selectedIndex ? root.withAlpha(root.foreground, 0.08) : root.withAlpha(root.foreground, mouseArea.containsMouse ? 0.045 : 0)
+              color: index === root.selectedIndex ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
+              border.color: index === root.selectedIndex ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
+              border.width: index === root.selectedIndex ? Style.hoverBorderWidth : 0
 
               Text {
                 text: parent.emoji
@@ -290,6 +292,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: if (containsMouse) root.selectedIndex = index
                 onClicked: {
                   root.selectedIndex = index
                   root.activateIndex(index)
@@ -300,7 +303,7 @@ Item {
 
           Column {
             anchors.centerIn: parent
-            spacing: 8
+            spacing: Style.space(8)
             visible: displayModel.count === 0
 
             Text {

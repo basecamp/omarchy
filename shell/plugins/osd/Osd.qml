@@ -88,24 +88,24 @@ Item {
 
     Rectangle {
       id: card
-      width: 269
-      height: 68
+      width: Style.space(269)
+      height: Math.max(Style.space(68), Style.font.displayLarge + Style.spacing.panelGap)
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
-      anchors.bottomMargin: 67
+      anchors.bottomMargin: Style.space(67)
       color: Color.alpha(Color.background, 0.97)
       border.color: Color.foreground
-      border.width: 2
+      border.width: Math.max(1, Style.space(2))
       radius: Style.cornerRadius
       opacity: root.opened ? 1 : 0
 
       Row {
         anchors.fill: parent
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
-        spacing: 16
+        anchors.leftMargin: Style.space(16)
+        anchors.rightMargin: Style.space(16)
+        spacing: Style.space(16)
         Text {
-          width: 28
+          width: Style.space(28)
           anchors.verticalCenter: parent.verticalCenter
           horizontalAlignment: Text.AlignHCenter
           text: root.icon
@@ -115,8 +115,8 @@ Item {
         }
         Rectangle {
           visible: root.hasProgress
-          width: visible ? 142 : 0
-          height: 6
+          width: visible ? Style.space(142) : 0
+          height: Math.max(Style.space(6), Style.spacing.sm)
           anchors.verticalCenter: parent.verticalCenter
           color: Color.alpha(Color.foreground, 0.45)
           Rectangle {
@@ -126,7 +126,7 @@ Item {
           }
         }
         Text {
-          width: root.hasProgress ? 41 : 190
+          width: root.hasProgress ? Style.space(41) : Style.space(190)
           anchors.verticalCenter: parent.verticalCenter
           text: root.message
           font.family: Style.font.family

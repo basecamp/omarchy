@@ -25,11 +25,14 @@ Item {
 
   readonly property bool vertical: bar ? bar.vertical : false
   readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
+  readonly property real scaledHorizontalMargin: Style.spaceReal(horizontalMargin)
+  readonly property real scaledRightExtraMargin: Style.spaceReal(rightExtraMargin)
+  readonly property real scaledVerticalPadding: Style.spaceReal(verticalPadding)
 
   visible: text !== "" || keepSpace
   opacity: text === "" ? 0 : 1
-  implicitWidth: fixedWidth > 0 ? fixedWidth : (vertical ? barSize : Math.max(12, label.implicitWidth + horizontalMargin * 2 + rightExtraMargin))
-  implicitHeight: fixedHeight > 0 ? fixedHeight : (vertical ? Math.max(12, label.implicitHeight + verticalPadding * 2) : barSize)
+  implicitWidth: fixedWidth > 0 ? fixedWidth : (vertical ? barSize : Math.max(12, label.implicitWidth + scaledHorizontalMargin * 2 + scaledRightExtraMargin))
+  implicitHeight: fixedHeight > 0 ? fixedHeight : (vertical ? Math.max(12, label.implicitHeight + scaledVerticalPadding * 2) : barSize)
 
   Behavior on opacity {
     NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
@@ -38,7 +41,7 @@ Item {
   Text {
     id: label
     anchors.centerIn: parent
-    anchors.horizontalCenterOffset: root.vertical ? 0 : -root.rightExtraMargin / 2
+    anchors.horizontalCenterOffset: root.vertical ? 0 : -root.scaledRightExtraMargin / 2
     text: root.text
     color: root.active ? root.activeColor : root.foreground
     font.family: root.fontFamily

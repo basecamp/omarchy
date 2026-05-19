@@ -98,10 +98,10 @@ Item {
   property int selectedIndex: -1
 
   readonly property color hoverFill: bar
-    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.08)
+    ? Style.hoverFillFor(bar.foreground, Color.accent)
     : "transparent"
   readonly property color selectedFill: bar
-    ? Qt.rgba(bar.foreground.r, bar.foreground.g, bar.foreground.b, 0.18)
+    ? Style.selectedFillFor(bar.foreground, Color.accent)
     : "transparent"
 
   function sectionCount(section) {
@@ -376,8 +376,8 @@ Item {
     owner: root
     bar: root.bar
     open: root.popupOpen
-    contentWidth: 370
-    contentHeight: Math.min(560, panelColumn.implicitHeight + 28)
+    contentWidth: panel.fittedContentWidth(Style.space(370))
+    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -414,16 +414,16 @@ Item {
         Column {
           id: panelColumn
           width: scrollArea.availableWidth
-          spacing: 14
+          spacing: Style.space(14)
 
           // ---- Output ----
           Column {
             width: parent.width
-            spacing: 6
+            spacing: Style.space(6)
 
             Row {
               width: parent.width
-              spacing: 8
+              spacing: Style.space(8)
 
               PanelSectionHeader {
                 text: "Output"
@@ -439,7 +439,7 @@ Item {
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 elide: Text.ElideRight
-                width: parent.width - 70
+                width: parent.width - Style.space(70)
                 anchors.verticalCenter: parent.verticalCenter
               }
             }
@@ -450,7 +450,7 @@ Item {
             CursorSurface {
               id: outputSliderRow
               width: parent.width
-              height: outputSliderInner.implicitHeight + 8
+              height: outputSliderInner.implicitHeight + Style.spacing.controlGap
               hasCursor: root.focusSection === "output" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(outputSliderRow)
               foreground: root.bar.foreground
@@ -459,9 +459,9 @@ Item {
               Row {
                 id: outputSliderInner
                 anchors.fill: parent
-                anchors.leftMargin: 6
-                anchors.rightMargin: 6
-                spacing: 8
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                spacing: Style.space(8)
 
                 Text {
                   id: outputIconText
@@ -469,7 +469,7 @@ Item {
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
                   font.pixelSize: Style.font.heading
-                  width: 22
+                  width: Style.space(22)
                   horizontalAlignment: Text.AlignHCenter
                   anchors.verticalCenter: parent.verticalCenter
                   opacity: root.outputMuted ? 0.5 : 1.0
@@ -484,7 +484,7 @@ Item {
                 PanelSlider {
                   id: outputSlider
                   bar: root.bar
-                  width: parent.width - outputIconText.width - outputPercent.width - 16
+                  width: parent.width - outputIconText.width - outputPercent.width - Style.space(16)
                   anchors.verticalCenter: parent.verticalCenter
                   minimum: 0
                   maximum: 1
@@ -502,7 +502,7 @@ Item {
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
                   font.pixelSize: Style.font.bodySmall
-                  width: 36
+                  width: Style.space(36)
                   horizontalAlignment: Text.AlignRight
                   anchors.verticalCenter: parent.verticalCenter
                   opacity: root.outputMuted ? 0.5 : 1.0
@@ -537,12 +537,12 @@ Item {
           // ---- Input ----
           Column {
             width: parent.width
-            spacing: 6
+            spacing: Style.space(6)
             visible: root.audioSources.length > 0 || !!root.source
 
             Row {
               width: parent.width
-              spacing: 8
+              spacing: Style.space(8)
 
               PanelSectionHeader {
                 text: "Input"
@@ -558,7 +558,7 @@ Item {
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 elide: Text.ElideRight
-                width: parent.width - 56
+                width: parent.width - Style.space(56)
                 anchors.verticalCenter: parent.verticalCenter
               }
             }
@@ -567,7 +567,7 @@ Item {
               id: inputSliderRow
               visible: !!root.source
               width: parent.width
-              height: inputSliderInner.implicitHeight + 8
+              height: inputSliderInner.implicitHeight + Style.spacing.controlGap
               hasCursor: root.focusSection === "input" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(inputSliderRow)
               foreground: root.bar.foreground
@@ -576,9 +576,9 @@ Item {
               Row {
                 id: inputSliderInner
                 anchors.fill: parent
-                anchors.leftMargin: 6
-                anchors.rightMargin: 6
-                spacing: 8
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                spacing: Style.space(8)
 
                 Text {
                   id: inputIconText
@@ -586,7 +586,7 @@ Item {
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
                   font.pixelSize: Style.font.heading
-                  width: 22
+                  width: Style.space(22)
                   horizontalAlignment: Text.AlignHCenter
                   anchors.verticalCenter: parent.verticalCenter
                   opacity: root.inputMuted ? 0.5 : 1.0
@@ -601,7 +601,7 @@ Item {
                 PanelSlider {
                   id: inputSlider
                   bar: root.bar
-                  width: parent.width - inputIconText.width - inputPercent.width - 16
+                  width: parent.width - inputIconText.width - inputPercent.width - Style.space(16)
                   anchors.verticalCenter: parent.verticalCenter
                   minimum: 0
                   maximum: 1
@@ -619,7 +619,7 @@ Item {
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
                   font.pixelSize: Style.font.bodySmall
-                  width: 36
+                  width: Style.space(36)
                   horizontalAlignment: Text.AlignRight
                   anchors.verticalCenter: parent.verticalCenter
                   opacity: root.inputMuted ? 0.5 : 1.0
@@ -654,7 +654,7 @@ Item {
           // ---- Per-app streams ----
           Column {
             width: parent.width
-            spacing: 6
+            spacing: Style.space(6)
             visible: root.audioStreams.length > 0
 
             PanelSectionHeader {
@@ -698,23 +698,23 @@ Item {
     foreground: root.bar.foreground
     fill: root.hoverFill
     currentFill: root.selectedFill
-    implicitHeight: sinkInner.implicitHeight + 10
+    implicitHeight: sinkInner.implicitHeight + Style.spacing.xl
 
     Row {
       id: sinkInner
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: 6
-      anchors.rightMargin: 6
-      spacing: 8
+      anchors.leftMargin: Style.space(6)
+      anchors.rightMargin: Style.space(6)
+      spacing: Style.space(8)
 
       Text {
         text: root.sinkGlyph(sinkRow.node)
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.title
-        width: 22
+        width: Style.space(22)
         horizontalAlignment: Text.AlignHCenter
         anchors.verticalCenter: parent.verticalCenter
       }
@@ -725,7 +725,7 @@ Item {
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
         elide: Text.ElideRight
-        width: parent.width - 22 - 14 - 16
+        width: parent.width - Style.space(22) - Style.space(14) - Style.space(16)
         anchors.verticalCenter: parent.verticalCenter
       }
 
@@ -734,7 +734,7 @@ Item {
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.subtitle
-        width: 14
+        width: Style.space(14)
         horizontalAlignment: Text.AlignRight
         anchors.verticalCenter: parent.verticalCenter
       }
@@ -765,23 +765,23 @@ Item {
     foreground: root.bar.foreground
     fill: root.hoverFill
     currentFill: root.selectedFill
-    implicitHeight: sourceInner.implicitHeight + 10
+    implicitHeight: sourceInner.implicitHeight + Style.spacing.xl
 
     Row {
       id: sourceInner
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: 6
-      anchors.rightMargin: 6
-      spacing: 8
+      anchors.leftMargin: Style.space(6)
+      anchors.rightMargin: Style.space(6)
+      spacing: Style.space(8)
 
       Text {
         text: root.sourceGlyph(sourceRow.node)
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.title
-        width: 22
+        width: Style.space(22)
         horizontalAlignment: Text.AlignHCenter
         anchors.verticalCenter: parent.verticalCenter
       }
@@ -792,7 +792,7 @@ Item {
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
         elide: Text.ElideRight
-        width: parent.width - 22 - 14 - 16
+        width: parent.width - Style.space(22) - Style.space(14) - Style.space(16)
         anchors.verticalCenter: parent.verticalCenter
       }
 
@@ -801,7 +801,7 @@ Item {
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.subtitle
-        width: 14
+        width: Style.space(14)
         horizontalAlignment: Text.AlignRight
         anchors.verticalCenter: parent.verticalCenter
       }
@@ -836,20 +836,20 @@ Item {
     foreground: root.bar.foreground
     fill: root.hoverFill
     currentFill: root.selectedFill
-    implicitHeight: streamColumn.implicitHeight + 8
+    implicitHeight: streamColumn.implicitHeight + Style.spacing.rowGap
 
     Column {
       id: streamColumn
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: 6
-      anchors.rightMargin: 6
-      spacing: 2
+      anchors.leftMargin: Style.space(6)
+      anchors.rightMargin: Style.space(6)
+      spacing: Style.space(2)
 
       Row {
         width: parent.width
-        spacing: 6
+        spacing: Style.space(6)
 
         Text {
           id: streamMuteIcon
@@ -857,7 +857,7 @@ Item {
           color: root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.body
-          width: 14
+          width: Style.space(14)
           horizontalAlignment: Text.AlignHCenter
           anchors.verticalCenter: parent.verticalCenter
           opacity: streamRow.streamMuted ? 0.5 : 1.0
@@ -878,7 +878,7 @@ Item {
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
           elide: Text.ElideRight
-          width: parent.width - streamMuteIcon.width - streamPct.width - 12
+          width: parent.width - streamMuteIcon.width - streamPct.width - Style.space(12)
           anchors.verticalCenter: parent.verticalCenter
         }
 
@@ -888,7 +888,7 @@ Item {
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
-          width: 36
+          width: Style.space(36)
           horizontalAlignment: Text.AlignRight
           anchors.verticalCenter: parent.verticalCenter
         }

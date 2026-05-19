@@ -67,7 +67,7 @@ Item {
   readonly property string reportHumidity:  current ? (current.humidity + "%") : ""
 
   visible: label !== ""
-  implicitWidth: button.implicitWidth + 8
+  implicitWidth: button.implicitWidth + Style.spacing.controlGap
   implicitHeight: button.implicitHeight
 
   function setting(name, fallback) {
@@ -322,15 +322,22 @@ Item {
     open: root.popupOpen
     centerOnBar: true
     triggerMode: "click"
-    contentWidth: 480
-    contentHeight: card.implicitHeight + 28
-    margin: 24
+    contentWidth: popup.fittedContentWidth(Style.space(480))
+    contentHeight: popup.fittedContentHeight(weatherColumn.implicitHeight)
     borderColor: Color.notifications.border
 
-    Column {
-      id: card
+    Flickable {
+      id: weatherScroll
       anchors.fill: parent
-      spacing: 14
+      contentWidth: width
+      contentHeight: weatherColumn.implicitHeight
+      clip: true
+      boundsBehavior: Flickable.StopAtBounds
+
+      Column {
+        id: weatherColumn
+        width: weatherScroll.width
+        spacing: Style.space(14)
 
       // ---- Hero row: big icon + temp on the left; location and stats stacked on the right.
       Item {
@@ -340,9 +347,9 @@ Item {
         Row {
           id: heroLeft
           anchors.left: parent.left
-          anchors.leftMargin: 16
+          anchors.leftMargin: Style.space(16)
           anchors.verticalCenter: parent.verticalCenter
-          spacing: 16
+          spacing: Style.space(16)
 
           Text {
             id: heroIcon
@@ -358,7 +365,7 @@ Item {
 
           Row {
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 2
+            spacing: Style.space(2)
 
             Text {
               id: tempBig
@@ -376,7 +383,7 @@ Item {
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.display
               anchors.top: tempBig.top
-              anchors.topMargin: 10
+              anchors.topMargin: Style.space(10)
             }
           }
         }
@@ -384,13 +391,13 @@ Item {
         Column {
           id: heroRight
           anchors.right: parent.right
-          anchors.rightMargin: 20
+          anchors.rightMargin: Style.space(20)
           anchors.verticalCenter: parent.verticalCenter
-          spacing: 12
+          spacing: Style.space(12)
 
           Row {
             visible: root.reportLocation !== ""
-            spacing: 6
+            spacing: Style.space(6)
 
             Text {
               text: ""  // nf-fa-map_marker
@@ -411,10 +418,10 @@ Item {
 
           Row {
             visible: !!root.current
-            spacing: 36
+            spacing: Style.space(36)
 
             Column {
-              spacing: 5
+              spacing: Style.space(5)
               Text {
                 text: "FEELS"
                 color: Qt.darker(root.bar.foreground, 1.5)
@@ -431,7 +438,7 @@ Item {
             }
 
             Column {
-              spacing: 5
+              spacing: Style.space(5)
               Text {
                 text: "WIND"
                 color: Qt.darker(root.bar.foreground, 1.5)
@@ -448,7 +455,7 @@ Item {
             }
 
             Column {
-              spacing: 5
+              spacing: Style.space(5)
               Text {
                 text: "HUMID"
                 color: Qt.darker(root.bar.foreground, 1.5)
@@ -480,7 +487,7 @@ Item {
       Rectangle {
         visible: root.forecastDays.length > 0
         width: parent.width
-        height: 1
+        height: Style.spacing.hairline
         color: root.bar.foreground
         opacity: 0.12
       }
@@ -495,7 +502,7 @@ Item {
         Row {
           id: forecastRow
           anchors.horizontalCenter: parent.horizontalCenter
-          spacing: 44
+          spacing: Style.space(44)
 
           Repeater {
             model: root.forecastDays
@@ -503,7 +510,7 @@ Item {
             Row {
               required property var modelData
               required property int index
-              spacing: 10
+              spacing: Style.space(10)
 
               Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -515,7 +522,7 @@ Item {
 
               Column {
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
+                spacing: Style.space(2)
 
                 Text {
                   text: root.dayName(modelData.date).toUpperCase()
@@ -526,7 +533,7 @@ Item {
                 }
 
                 Row {
-                  spacing: 6
+                  spacing: Style.space(6)
 
                   Text {
                     text: root.bareTempForDay(modelData, "max")
@@ -547,6 +554,7 @@ Item {
         }
       }
     }
+  }
   }
 
   // Poll the weather pill text/class every minute. Local to this widget.

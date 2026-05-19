@@ -334,18 +334,18 @@ Item {
         ScrollView {
           id: scrollArea
           anchors.fill: parent
-          anchors.margins: 18
+          anchors.margins: Style.space(18)
           clip: true
           ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
         Column {
           width: scrollArea.availableWidth
-          spacing: 22
+          spacing: Style.space(22)
 
           // ---- Header ------------------------------------------------------
           Column {
             width: parent.width
-            spacing: 4
+            spacing: Style.space(4)
 
             Text {
               text: "Omarchy shell · dev gallery"
@@ -369,7 +369,7 @@ Item {
           // ---- Kit conventions ---------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "Conventions"
@@ -381,7 +381,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: conventionsCol.implicitHeight + 24
+              implicitHeight: conventionsCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -392,9 +392,9 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 8
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(8)
 
                 Text {
                   width: parent.width
@@ -402,7 +402,7 @@ Item {
                   color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
-                  text: "Theme. qs.Commons.Style exposes cornerRadius (mirrored from Hyprland's decoration:rounding), focusBorderColor / focusFillColor / focusBorderWidth (derived from Color.accent), and hotFill (the shared hover/cursor tint). qs.Commons.Color exposes foreground / background / accent / urgent plus per-surface roles. Components default-bind to these so a caller with no overrides matches the active theme."
+                  text: "Theme. qs.Commons.Style exposes cornerRadius plus shared normal / hover-cursor / selected / focus state tokens (state colors, fill alphas, border widths, and border alphas), spacing tokens, typography, and bar dimensions. Focus defaults to hover-cursor; selected borders are off by default. Border widths are the theme-level on/off switch for state borders. qs.Commons.Color exposes foreground / background / accent / urgent plus per-surface roles. Components default-bind to these so a caller with no overrides matches the active theme."
                 }
                 Text {
                   width: parent.width
@@ -410,7 +410,7 @@ Item {
                   color: Qt.darker(root.foreground, 1.4)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
-                  text: "Single cursor. Most reusable panel primitives expose hasCursor: bool and emit hovered(bool); a few (like PanelSlider) defer to their own focus handling. The panel root owns focusSection + selectedIndex; each element binds hasCursor: root.focusSection === 'X' && root.selectedIndex === N, and onHovered updates the same state. One highlight on screen, keyboard and mouse always agree. See plugins/bar/widgets/audioPanel.qml for the canonical recipe."
+                  text: "Single cursor. Most reusable panel primitives expose hasCursor: bool and emit hovered(bool); composed rows (including sliders) wrap their content in CursorSurface. The panel root owns focusSection + selectedIndex; each element binds hasCursor: root.focusSection === 'X' && root.selectedIndex === N, and onHovered updates the same state. One highlight on screen, keyboard and mouse always agree. See plugins/bar/widgets/audioPanel.qml for the canonical recipe."
                 }
                 Text {
                   width: parent.width
@@ -437,7 +437,7 @@ Item {
           // ---- Typography --------------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "Typography"
@@ -462,7 +462,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: typeCol.implicitHeight + 24
+              implicitHeight: typeCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -473,9 +473,9 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 10
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(10)
 
                 Text {
                   text: "Scale"
@@ -511,8 +511,8 @@ Item {
                       id: metaCol
                       anchors.left: parent.left
                       anchors.verticalCenter: parent.verticalCenter
-                      width: 140
-                      spacing: 1
+                      width: Style.space(140)
+                      spacing: Style.space(1)
                       Text {
                         text: "Style.font." + modelData.key
                         color: root.foreground
@@ -532,7 +532,7 @@ Item {
                       anchors.left: metaCol.right
                       anchors.right: parent.right
                       anchors.verticalCenter: parent.verticalCenter
-                      anchors.leftMargin: 16
+                      anchors.leftMargin: Style.space(16)
                       text: modelData.sample
                       color: root.foreground
                       font.family: root.fontFamily
@@ -558,8 +558,8 @@ Item {
 
                 Grid {
                   columns: 2
-                  columnSpacing: 16
-                  rowSpacing: 4
+                  columnSpacing: Style.space(16)
+                  rowSpacing: Style.space(4)
                   width: parent.width
 
                   Text {
@@ -626,6 +626,32 @@ Item {
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.bodySmall
                   }
+
+                  Text {
+                    text: "Style.spacing.scale"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                  Text {
+                    text: Style.spacing.scale.toFixed(2)
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+
+                  Text {
+                    text: "Style.spacing.panelPadding"
+                    color: Qt.darker(root.foreground, 1.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                  Text {
+                    text: Style.spacing.panelPadding + " px"
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
                 }
               }
             }
@@ -636,7 +662,7 @@ Item {
           // ---- PanelSectionHeader ------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "PanelSectionHeader"
@@ -654,7 +680,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: shCol.implicitHeight + 24
+              implicitHeight: shCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -665,9 +691,9 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 6
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(6)
 
                 PanelSectionHeader {
                   text: "DNS provider"
@@ -692,7 +718,7 @@ Item {
           // ---- PanelSeparator ----------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "PanelSeparator"
@@ -710,7 +736,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: sepCol.implicitHeight + 24
+              implicitHeight: sepCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -721,9 +747,9 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 12
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(12)
 
                 PanelSeparator { foreground: root.foreground }
                 PanelSeparator { foreground: root.foreground; strength: 0.25 }
@@ -735,7 +761,7 @@ Item {
           // ---- CursorSurface -----------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "CursorSurface"
@@ -755,7 +781,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: csCol.implicitHeight + 24
+              implicitHeight: csCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -766,9 +792,9 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 6
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(6)
 
                 Repeater {
                   model: [
@@ -781,11 +807,11 @@ Item {
                     required property var modelData
                     required property int index
                     width: parent.width
-                    implicitHeight: csLabel.implicitHeight + 16
+                    implicitHeight: csLabel.implicitHeight + Style.spacing.controlGap * 2
                     hasCursor: root.focusSection === "cursor-surface" && root.selectedIndex === index
                     current: index === 1
                     foreground: root.foreground
-                    fill: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                    fill: Style.hoverFillFor(root.foreground, root.accent)
                     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
 
                     Text {
@@ -793,8 +819,8 @@ Item {
                       anchors.left: parent.left
                       anchors.right: parent.right
                       anchors.verticalCenter: parent.verticalCenter
-                      anchors.leftMargin: 10
-                      anchors.rightMargin: 10
+                      anchors.leftMargin: Style.space(10)
+                      anchors.rightMargin: Style.space(10)
                       text: modelData.label
                       color: root.foreground
                       font.family: root.fontFamily
@@ -820,7 +846,7 @@ Item {
           // ---- Button ------------------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "Button"
@@ -830,7 +856,7 @@ Item {
               font.bold: true
             }
             Text {
-              text: "The kit's only button. State flags compose: hasCursor (panel cursor / hover) paints a tinted fill; active adds a persistent highlight; bordered draws a 1px idle ring for primary form buttons; focusable enables Tab focus with the accent ring. Click below or press h/l to walk the demo cursor."
+              text: "The kit's only button. State flags compose from shared tokens: hasCursor / hover paints the hover-cursor fill; active/selected add the selected fill; selected borders are off by default; bordered opts into normal/hover-cursor borders; focusable uses the same defaults as hover-cursor. Click below or press h/l to walk the demo cursor."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -840,7 +866,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: buttonRow.implicitHeight + 24
+              implicitHeight: buttonRow.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -850,15 +876,15 @@ Item {
                 id: buttonRow
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                spacing: 16
+                anchors.leftMargin: Style.space(14)
+                spacing: Style.space(16)
 
                 // Each demo Button is paired with a caption labeling the
                 // state(s) it exercises so the section reads as one Button
                 // showing its flag combinations side by side.
 
                 Column {
-                  spacing: 6
+                  spacing: Style.space(6)
                   Button {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "DHCP"
@@ -879,7 +905,7 @@ Item {
                 }
 
                 Column {
-                  spacing: 6
+                  spacing: Style.space(6)
                   Button {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Cloudflare"
@@ -901,13 +927,13 @@ Item {
                 }
 
                 Column {
-                  spacing: 6
+                  spacing: Style.space(6)
                   Button {
                     anchors.horizontalCenter: parent.horizontalCenter
                     iconText: "󰑐"
                     tooltipText: "Refresh"
-                    horizontalPadding: 8
-                    verticalPadding: 4
+                    horizontalPadding: Style.spacing.controlGap
+                    verticalPadding: Style.spacing.labelGap
                     hasCursor: root.focusSection === "button" && root.selectedIndex === 2
                     onHovered: function(h) {
                       if (h) { root.focusSection = "button"; root.selectedIndex = 2 }
@@ -924,7 +950,7 @@ Item {
                 }
 
                 Column {
-                  spacing: 6
+                  spacing: Style.space(6)
                   Button {
                     anchors.horizontalCenter: parent.horizontalCenter
                     iconText: "󰂯"
@@ -947,7 +973,7 @@ Item {
                 }
 
                 Column {
-                  spacing: 6
+                  spacing: Style.space(6)
                   Button {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Apply"
@@ -975,7 +1001,7 @@ Item {
           Column {
             id: buttonGroupSection
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
             readonly property bool focused: root.focusSection === "button-group"
             onFocusedChanged: if (focused) root.ensureCursorVisible(this)
 
@@ -987,7 +1013,7 @@ Item {
               font.bold: true
             }
             Text {
-              text: "Mutually-exclusive row of Buttons. Selected option paints the accent fill+border so the chosen value stands out from non-selected options the cursor may pass through. Click to pick or press h/l + Enter."
+              text: "Mutually-exclusive row of Buttons. Each chip uses Button's bordered chrome; selected and cursor states come from the same shared Style tokens as every other control. Click to pick or press h/l + Enter."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -997,7 +1023,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: choiceRow.implicitHeight + 24
+              implicitHeight: choiceRow.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -1007,7 +1033,7 @@ Item {
                 id: choiceRow
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
+                anchors.leftMargin: Style.space(14)
                 options: ["top", "right", "bottom", "left"]
                 value: root.choiceDemoValue
                 cursorIndex: root.focusSection === "button-group" ? root.selectedIndex : -1
@@ -1028,7 +1054,7 @@ Item {
           // ---- PanelActionButton -------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "PanelActionButton"
@@ -1048,7 +1074,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: pabCol.implicitHeight + 24
+              implicitHeight: pabCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -1058,8 +1084,8 @@ Item {
                 id: pabCol
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                spacing: 18
+                anchors.leftMargin: Style.space(14)
+                spacing: Style.space(18)
 
                 PanelActionButton {
                   iconText: "󰄬"
@@ -1109,7 +1135,7 @@ Item {
                   panelBackground: root.background
                   fontFamily: root.fontFamily
                   fontSize: Style.font.subtitle
-                  size: 26
+                  size: Style.space(26)
                   focusable: true
                   hasCursor: root.focusSection === "panel-action-button" && root.selectedIndex === 3
                   onHovered: function(h) {
@@ -1124,7 +1150,7 @@ Item {
           // ---- PanelToolTip ------------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "PanelToolTip"
@@ -1144,16 +1170,16 @@ Item {
 
             Rectangle {
               id: tipSwatch
-              width: 140
-              height: 36
+              width: Style.space(140)
+              height: Style.space(36)
               readonly property bool focused: root.focusSection === "panel-tool-tip"
               color: tipMouse.containsMouse || focused
-                ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-                : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
+                ? Style.hoverFillFor(root.foreground, root.accent)
+                : Style.normalFillFor(root.foreground, root.accent)
               border.color: focused
-                ? Style.focusBorderColor
-                : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
-              border.width: focused ? Style.focusBorderWidth : 1
+                ? Style.hoverBorderFor(root.foreground, root.accent)
+                : Style.normalBorderFor(root.foreground, root.accent)
+              border.width: focused ? Style.hoverBorderWidth : Style.normalBorderWidth
               radius: Style.cornerRadius
               onFocusedChanged: if (focused) root.ensureCursorVisible(this)
 
@@ -1190,7 +1216,7 @@ Item {
           // ---- Slider ------------------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "Slider"
@@ -1211,7 +1237,7 @@ Item {
             CursorSurface {
               id: sliderWrapper
               width: parent.width
-              implicitHeight: sliderRow.implicitHeight + 24
+              implicitHeight: sliderRow.implicitHeight + Style.spacing.rowPaddingX * 2
               outline: true
               foreground: root.foreground
               hasCursor: root.focusSection === "slider"
@@ -1229,9 +1255,9 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 10
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(10)
                 property real demoVolume: 0.45
 
                 Text {
@@ -1269,7 +1295,7 @@ Item {
           // ---- TextField -----------------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "TextField"
@@ -1289,7 +1315,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: tfCol.implicitHeight + 24
+              implicitHeight: tfCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -1300,9 +1326,9 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 10
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(10)
 
                 TextField {
                   id: demoTextField
@@ -1353,7 +1379,7 @@ Item {
           // ---- NumberField ---------------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "NumberField"
@@ -1373,7 +1399,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: numberDemo.implicitHeight + 24
+              implicitHeight: numberDemo.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
               border.width: 1
@@ -1383,7 +1409,7 @@ Item {
                 id: numberDemo
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 12
+                anchors.leftMargin: Style.space(12)
                 label: "Auto-refresh interval (minutes)"
                 from: 1
                 to: 1440
@@ -1404,7 +1430,7 @@ Item {
           // ---- Toggle --------------------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "Toggle"
@@ -1414,7 +1440,7 @@ Item {
               font.bold: true
             }
             Text {
-              text: "Title + description + switch. Click anywhere on the row to flip; caller updates `checked` in response. Same focus tokens as Button."
+              text: "Title + description + switch. Click anywhere on the row to flip; caller updates `checked` in response. Uses the same normal / hover-cursor / focus tokens as Button and the checked switch track uses selected tokens."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -1465,7 +1491,7 @@ Item {
           // ---- Dropdown -----------------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "Dropdown"
@@ -1485,7 +1511,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: ddCol.implicitHeight + 24
+              implicitHeight: ddCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -1496,13 +1522,13 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 6
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(6)
 
                 Dropdown {
                   id: demoDropdown
-                  width: 260
+                  width: Style.spacing.dropdownWidth
                   label: "Center anchor"
                   fontFamily: root.fontFamily
                   options: ["calendar", "weather", "clock", "battery"]
@@ -1521,7 +1547,7 @@ Item {
           // ---- SearchableDropdown -------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "SearchableDropdown"
@@ -1541,7 +1567,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: sddCol.implicitHeight + 24
+              implicitHeight: sddCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -1552,13 +1578,13 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 6
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(6)
 
                 SearchableDropdown {
                   id: demoSearchableDropdown
-                  width: 280
+                  width: Style.spacing.searchableDropdownWidth
                   label: "Add widget"
                   fontFamily: root.fontFamily
                   placeholderText: "Search widgets..."
@@ -1594,7 +1620,7 @@ Item {
           // ---- Composed example -------------------------------------------
           Column {
             width: parent.width
-            spacing: 8
+            spacing: Style.space(8)
 
             Text {
               text: "Composed example"
@@ -1614,7 +1640,7 @@ Item {
 
             Rectangle {
               width: parent.width
-              implicitHeight: composedCol.implicitHeight + 24
+              implicitHeight: composedCol.implicitHeight + Style.spacing.rowPaddingX * 2
               color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
               radius: Style.cornerRadius
               border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
@@ -1625,9 +1651,9 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                spacing: 6
+                anchors.leftMargin: Style.space(14)
+                anchors.rightMargin: Style.space(14)
+                spacing: Style.space(6)
 
                 PanelSectionHeader {
                   text: "Wi-Fi networks"
@@ -1637,10 +1663,10 @@ Item {
 
                 CursorSurface {
                   width: parent.width
-                  implicitHeight: composedRow.implicitHeight + 12
+                  implicitHeight: composedRow.implicitHeight + Style.spacing.md * 2
                   current: true
                   foreground: root.foreground
-                  fill: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                  fill: Style.hoverFillFor(root.foreground, root.accent)
                   hasCursor: root.focusSection === "composed" && root.selectedIndex === 0
                   onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
 
@@ -1655,8 +1681,8 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
+                    anchors.leftMargin: Style.space(10)
+                    anchors.rightMargin: Style.space(10)
                     implicitHeight: 36
 
                     Text {
@@ -1682,11 +1708,11 @@ Item {
                     }
 
                     Column {
-                      spacing: 1
+                      spacing: Style.space(1)
                       anchors.left: composedIcon.right
-                      anchors.leftMargin: 10
+                      anchors.leftMargin: Style.space(10)
                       anchors.right: composedForget.left
-                      anchors.rightMargin: 8
+                      anchors.rightMargin: Style.space(8)
                       anchors.verticalCenter: parent.verticalCenter
 
                       Text {
@@ -1713,9 +1739,9 @@ Item {
 
                 CursorSurface {
                   width: parent.width
-                  implicitHeight: idleRow.implicitHeight + 12
+                  implicitHeight: idleRow.implicitHeight + Style.spacing.md * 2
                   foreground: root.foreground
-                  fill: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                  fill: Style.hoverFillFor(root.foreground, root.accent)
                   hasCursor: root.focusSection === "composed" && root.selectedIndex === 1
                   onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
 
@@ -1730,8 +1756,8 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
+                    anchors.leftMargin: Style.space(10)
+                    anchors.rightMargin: Style.space(10)
                     implicitHeight: 36
 
                     Text {
@@ -1745,7 +1771,7 @@ Item {
 
                     Text {
                       anchors.left: parent.left
-                      anchors.leftMargin: 24
+                      anchors.leftMargin: Style.space(24)
                       anchors.verticalCenter: parent.verticalCenter
                       text: "HughesATT"
                       color: root.foreground
@@ -1758,7 +1784,7 @@ Item {
             }
           }
 
-          Item { width: 1; height: 12 }
+          Item { width: 1; height: Style.spacing.rowPaddingX }
         }
       }
       }

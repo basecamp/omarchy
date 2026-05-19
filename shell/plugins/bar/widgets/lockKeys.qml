@@ -61,8 +61,8 @@ Item {
 
   readonly property bool vertical: bar ? bar.vertical : false
 
-  implicitWidth: vertical ? (bar ? bar.barSize : 28) : (lay.item ? lay.item.implicitWidth + 8 : 0)
-  implicitHeight: vertical ? (lay.item ? lay.item.implicitHeight + 8 : 0) : (bar ? bar.barSize : 26)
+  implicitWidth: vertical ? (bar ? bar.barSize : Style.bar.sizeVertical) : (lay.item ? lay.item.implicitWidth + Style.spacing.controlGap : 0)
+  implicitHeight: vertical ? (lay.item ? lay.item.implicitHeight + Style.spacing.controlGap : 0) : (bar ? bar.barSize : Style.bar.sizeHorizontal)
 
   Loader {
     id: lay
@@ -73,7 +73,7 @@ Item {
   Component {
     id: rowLayout
     Row {
-      spacing: 4
+      spacing: Style.space(4)
       LockGlyph { glyph: "A"; active: root.capsOn; visible: !root.hideWhenOff || root.capsOn }
       LockGlyph { glyph: "1"; active: root.numOn; visible: !root.hideWhenOff || root.numOn }
       LockGlyph { glyph: "S"; active: root.scrollOn; visible: !root.hideWhenOff || root.scrollOn }
@@ -83,7 +83,7 @@ Item {
   Component {
     id: colLayout
     Column {
-      spacing: 2
+      spacing: Style.space(2)
       LockGlyph { glyph: "A"; active: root.capsOn; visible: !root.hideWhenOff || root.capsOn }
       LockGlyph { glyph: "1"; active: root.numOn; visible: !root.hideWhenOff || root.numOn }
       LockGlyph { glyph: "S"; active: root.scrollOn; visible: !root.hideWhenOff || root.scrollOn }
