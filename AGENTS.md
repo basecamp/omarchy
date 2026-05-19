@@ -60,7 +60,8 @@ Example:
 
 # Runtime Environment
 
-- Commands in `bin/` should rely on `$OMARCHY_PATH` from the uwsm environment; do not set or default `OMARCHY_PATH` manually there.
+- `$OMARCHY_PATH` is set at the top level by the uwsm session environment and is always available to Omarchy runtime code.
+- Commands in `bin/` and Quickshell QML should rely on `$OMARCHY_PATH` / `Quickshell.env("OMARCHY_PATH")`; do not derive fallback paths from `HOME`, `Quickshell.shellDir`, or re-export/default `OMARCHY_PATH` manually.
 
 # Install Scripts
 

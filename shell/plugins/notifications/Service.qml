@@ -383,25 +383,6 @@ Item {
 
   Process { id: focusAppProc; running: false }
 
-  // Open the popup's large image in the user's default image viewer.
-  // image:// URIs come from the upstream raw-bytes provider and have no
-  // on-disk path to hand to xdg-open, so we just dismiss in that case.
-  function openPopupImage(index) {
-    if (index < 0 || index >= popupModel.count) return
-    var entry = popupModel.get(index)
-    if (!entry) return
-    var image = String(entry.image || "")
-    if (image.indexOf("file://") === 0) {
-      var lower = image.toLowerCase()
-      if (lower.endsWith(".png") || lower.endsWith(".jpg") ||
-          lower.endsWith(".jpeg") || lower.endsWith(".webp")) {
-        var path = decodeURIComponent(image.substring(7))
-        Quickshell.execDetached(["xdg-open", path])
-      }
-    }
-    dismissPopup(index)
-  }
-
   // ---------------------------------------------------- image cache
   //
   // Notifications coming from screenshot helpers ship an `image-path` hint
@@ -879,7 +860,6 @@ Item {
 
               onCloseRequested: service.dismissPopup(cardSlot.index)
               onCardClicked: service.invokePopupDefault(cardSlot.index)
-              onImageClicked: service.openPopupImage(cardSlot.index)
             }
           }
         }
