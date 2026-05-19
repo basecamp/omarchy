@@ -2,7 +2,6 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Services.SystemTray
-import Quickshell.Services.UPower
 import Quickshell.Wayland
 import Quickshell.Widgets
 import QtQuick
@@ -235,7 +234,6 @@ Item {
     case "notifications":
     case "notificationSilencing": return notificationsModuleComponent
     case "tray": return trayModuleComponent
-    case "battery": return batteryModuleComponent
     default: return null
     }
   }
@@ -285,7 +283,7 @@ Item {
     "calendar":           { displayName: "Calendar",           description: "Clock with month-grid popup",                  category: "Time",     allowMultiple: false, settingsForm: "calendarSettings" },
     "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND",  category: "Status",   allowMultiple: false },
     "systemStats":        { displayName: "System stats",       description: "CPU icon — hover for graphs, click to open btop", category: "System",   allowMultiple: false },
-    "weatherFlyout":      { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false, settingsForm: "weatherSettings" },
+    "weather":            { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false, settingsForm: "weatherSettings" },
     "idleInhibitor":      { displayName: "Stay awake",         description: "Toggle whether the system can idle",          category: "System",   allowMultiple: false },
     "microphone":         { displayName: "Microphone",         description: "Mic input state and mute toggle",             category: "Audio",    allowMultiple: false },
     "activeWindow":       { displayName: "Active window",      description: "Title of the focused window",                 category: "Compositor", allowMultiple: false },
@@ -471,28 +469,6 @@ Item {
     }
 
     return count
-  }
-
-  function batteryIcon() {
-    var device = UPower.displayDevice
-    if (!device || !device.isPresent) return ""
-
-    var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
-    var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
-    var index = Math.max(0, Math.min(9, Math.floor(device.percentage * 10)))
-
-    if (device.state === UPowerDeviceState.FullyCharged) return "󰂅"
-    if (!UPower.onBattery && device.state !== UPowerDeviceState.Charging) return ""
-    if (device.state === UPowerDeviceState.Charging) return chargingIcons[index]
-    return defaultIcons[index]
-  }
-
-  function batteryTooltip() {
-    var device = UPower.displayDevice
-    if (!device || !device.isPresent) return ""
-
-    var direction = UPower.onBattery ? "↓" : "↑"
-    return Math.round(device.changeRate) + "W" + direction + " " + Math.round(device.percentage * 100) + "%"
   }
 
   function trayIconSource(icon) {
@@ -789,7 +765,6 @@ Item {
   Component { id: screenRecordingModuleComponent; ScreenRecordingModule {} }
   Component { id: notificationsModuleComponent; NotificationsModule {} }
   Component { id: trayModuleComponent; TrayModule {} }
-  Component { id: batteryModuleComponent; BatteryModule {} }
 
   function findCenterAnchorEntry() {
     var entries = root.layoutEntries("center")
@@ -1648,17 +1623,4 @@ Item {
     }
   }
 
-  component BatteryModule: ModuleButton {
-    property var device: UPower.displayDevice
-
-    text: root.batteryIcon()
-    horizontalMargin: 8.5
-    visible: device !== null && device.isPresent && device.percentage > 0
-    active: device !== null && device.percentage <= 0.2 && UPower.onBattery
-    tooltipText: root.batteryTooltip()
-    onPressed: function(button) {
-      if (button === Qt.RightButton) root.run("omarchy-notification-send \"$(omarchy-battery-status)\"")
-      else root.run("omarchy-shell menu toggle power")
-    }
-  }
 }

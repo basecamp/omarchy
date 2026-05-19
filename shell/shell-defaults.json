@@ -21,7 +21,7 @@
           "verticalFormat": "HH\n\u2014\nmm"
         },
         {
-          "id": "weatherFlyout"
+          "id": "weather"
         },
         {
           "id": "update"

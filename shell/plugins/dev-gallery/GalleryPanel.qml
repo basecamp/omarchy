@@ -1531,7 +1531,7 @@ Item {
                   width: Style.spacing.dropdownWidth
                   label: "Center anchor"
                   fontFamily: root.fontFamily
-                  options: ["calendar", "weather", "clock", "battery"]
+                  options: ["calendar", "weather", "clock", "powerPanel"]
                   value: root.dropdownDemoValue
                   hasCursor: root.focusSection === "dropdown" && root.selectedIndex === 0
                   onHovered: function(h) {
@@ -1596,7 +1596,7 @@ Item {
                   options: [
                     { value: "clock", label: "Clock", description: "Time + date display" },
                     { value: "weather", label: "Weather", description: "Local conditions and forecast" },
-                    { value: "battery", label: "Battery", description: "Charge level + power profile" },
+                    { value: "powerPanel", label: "Power", description: "Charge level + power profile" },
                     { value: "audio", label: "Audio", description: "Output sink + volume" },
                     { value: "network", label: "Network", description: "Wi-Fi + ethernet status" },
                     { value: "bluetooth", label: "Bluetooth", description: "Paired and nearby devices" },
