@@ -1,8 +1,8 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls as QQC
 import QtQuick.Layouts
 import qs.Commons
-import qs.Ui
+import qs.Ui as Ui
 
 // Generic schema-driven settings form. The host panel passes:
 //   - schema: array of { key, label, type, defaultValue?, options?, min?, max?, step?, description? }
@@ -62,6 +62,8 @@ Column {
       }
 
       Loader {
+        width: parent.width
+        height: item ? item.implicitHeight : 0
         sourceComponent: {
           if (!modelData || !modelData.type) return stringField
           switch (String(modelData.type)) {
@@ -84,11 +86,12 @@ Column {
 
       Component {
         id: stringField
-        TextField {
+        Ui.TextField {
           property string fieldKey: ""
           property var field: ({})
           width: parent.width
           foreground: root.foregroundColor
+          accent: Color.accent
           font.family: root.fontFamilyName
           font.pixelSize: Style.font.body
           text: root.currentValue(field) === undefined ? "" : String(root.currentValue(field))
@@ -98,43 +101,45 @@ Column {
 
       Component {
         id: booleanField
-        CheckBox {
+        Ui.Toggle {
           property string fieldKey: ""
           property var field: ({})
-          font.family: root.fontFamilyName
-          font.pixelSize: Style.font.body
-          text: field && field.label ? "" : ""
+          width: parent.width
+          label: "Enabled"
+          foreground: root.foregroundColor
+          accent: Color.accent
+          fontFamily: root.fontFamilyName
           checked: !!root.currentValue(field)
-          onToggled: if (fieldKey) root.fieldChanged(fieldKey, checked)
+          onClicked: if (fieldKey) root.fieldChanged(fieldKey, !checked)
         }
       }
 
       Component {
         id: enumField
-        ComboBox {
+        Ui.Dropdown {
           property string fieldKey: ""
           property var field: ({})
           width: parent.width
-          font.family: root.fontFamilyName
-          font.pixelSize: Style.font.body
-          model: field && field.options ? field.options : []
-          currentIndex: {
-            var v = root.currentValue(field)
-            for (var i = 0; i < (field && field.options ? field.options.length : 0); i++)
-              if (field.options[i] === v) return i
-            return 0
-          }
-          onActivated: function(index) {
-            if (fieldKey && field && field.options) root.fieldChanged(fieldKey, field.options[index])
+          showLabel: false
+          foreground: root.foregroundColor
+          accent: Color.accent
+          fontFamily: root.fontFamilyName
+          options: field && field.options ? field.options : []
+          value: String(root.currentValue(field))
+          onChanged: function(value) {
+            if (fieldKey) root.fieldChanged(fieldKey, value)
           }
         }
       }
 
       Component {
         id: integerField
-        SpinBox {
+        Ui.NumberField {
           property string fieldKey: ""
           property var field: ({})
+          foreground: root.foregroundColor
+          accent: Color.accent
+          fontFamily: root.fontFamilyName
           from: field && field.min !== undefined ? field.min : 0
           to: field && field.max !== undefined ? field.max : 9999
           stepSize: field && field.step !== undefined ? field.step : 1
@@ -143,7 +148,7 @@ Column {
             var n = typeof v === "number" ? v : parseInt(String(v || 0), 10)
             return isFinite(n) ? n : 0
           }
-          onValueModified: if (fieldKey) root.fieldChanged(fieldKey, value)
+          onModified: function(value) { if (fieldKey) root.fieldChanged(fieldKey, value) }
         }
       }
 
@@ -159,7 +164,7 @@ Column {
             var n = typeof v === "number" ? v : parseFloat(String(v || 0))
             return isFinite(n) ? n : 0
           }
-          Slider {
+          QQC.Slider {
             id: slider
             width: parent.width - readout.width - Style.spacing.rowGap
             from: field && field.min !== undefined ? field.min : 0

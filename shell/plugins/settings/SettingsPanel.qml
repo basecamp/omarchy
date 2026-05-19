@@ -685,15 +685,26 @@ Item {
             Layout.fillWidth: true
           }
 
-          Loader {
-            id: widgetDialogFormLoader
+          Flickable {
+            id: widgetDialogScroll
             Layout.fillWidth: true
             Layout.fillHeight: true
-            sourceComponent: root.widgetDialogVisible ? formComponent(root.widgetDialogEntry.id || "") : null
-            onLoaded: {
-              if (item && "entry" in item) item.entry = root.widgetDialogEntry
-              if (item && "fieldChanged" in item) {
-                item.fieldChanged.connect(function(key, value) { root.widgetDialogFieldChanged(key, value) })
+            contentWidth: width
+            contentHeight: widgetDialogFormLoader.item ? widgetDialogFormLoader.item.implicitHeight : 0
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            Loader {
+              id: widgetDialogFormLoader
+              width: widgetDialogScroll.width
+              sourceComponent: root.widgetDialogVisible ? formComponent(root.widgetDialogEntry.id || "") : null
+              onLoaded: {
+                if (item && "entry" in item) item.entry = root.widgetDialogEntry
+                if (item && "fieldChanged" in item) {
+                  item.fieldChanged.connect(function(key, value) { root.widgetDialogFieldChanged(key, value) })
+                }
               }
             }
           }
