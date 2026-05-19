@@ -30,9 +30,8 @@ Item {
   // ~/.cache where regeneratable artifacts belong.
   readonly property string cacheDir: home + "/.cache/omarchy/"
   readonly property string imageCacheDir: cacheDir + "notification-images/"
-  // Corner radius is shared with omarchy-shell menu and bar settings panel —
-  // `omarchy style corners <sharp|round>` writes this file once and every
-  // surface reads it. Default 0 for sharp corners.
+  // Corner radius is shared with omarchy-shell menu and bar settings panel.
+  // It mirrors Hyprland's current decoration:rounding value.
   readonly property int cornerRadius: Style.cornerRadius
   // Surfaces anchor relative to the omarchy bar so popups and history land
   // alongside the other shell panels rather than on top of the bar itself.

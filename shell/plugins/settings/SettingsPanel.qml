@@ -47,8 +47,8 @@ Item {
   property color urgent: Color.urgent
   property string fontFamily: "monospace"
 
-  // Structural style tokens live on the shared Style singleton so toggling
-  // `omarchy style corners` and theme swaps update every consumer at once.
+  // Structural style tokens live on the shared Style singleton so theme swaps
+  // and Hyprland-derived values update every consumer at once.
   // Aliasing them as readonly properties keeps the existing inline component
   // bindings (`root.cornerRadius`, `root.focusBorderColor`, ...) working
   // without sprinkling Style.* across the file.

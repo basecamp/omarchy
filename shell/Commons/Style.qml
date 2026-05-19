@@ -9,12 +9,9 @@ import Quickshell.Io
 // dimensions — so panels and qs.Ui components have a single source of
 // truth.
 //
-// `cornerRadius` mirrors Hyprland's `decoration:rounding`. Themes ship
-// their own rounding via theme/hyprland.lua; the user toggle via
-// `omarchy style corners <round|sharp>` flips Hyprland's flag file
-// and Hyprland's auto-reload pushes the new value out. The shell picks
-// up the change here by re-running `hyprctl getoption` when theme IPC
-// manually reloads the theme and whenever user toggle files change.
+// `cornerRadius` mirrors Hyprland's `decoration:rounding`. Themes and user
+// Hyprland config own that value; the shell picks it up by re-running
+// `hyprctl getoption` on startup and after theme IPC applies a theme.
 //
 // Typography, spacing, and bar size come from `theme/shell.toml`.
 // `[font] base-size` is the rem root; every `Style.font.<token>` derives
@@ -490,18 +487,9 @@ QtObject {
     onTriggered: root.refresh()
   }
 
-  // `omarchy style corners <round|sharp>` and `omarchy toggle window-gaps`
-  // create/remove these flag files. Hyprland reloads its config when sourced
-  // files change, then hyprctl reflects the new effective values.
-  property FileView roundedCornersToggle: FileView {
-    path: Quickshell.env("HOME") + "/.local/state/omarchy/toggles/hypr/rounded-corners.lua"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: refreshTimer.restart()
-    onLoaded: refreshTimer.restart()
-    onLoadFailed: refreshTimer.restart()
-  }
-
+  // `omarchy toggle window-gaps` creates/removes this flag file. Hyprland
+  // reloads its config when sourced files change, then hyprctl reflects the
+  // new effective value.
   property FileView windowNoGapsToggle: FileView {
     path: Quickshell.env("HOME") + "/.local/state/omarchy/toggles/hypr/window-no-gaps.lua"
     watchChanges: true
