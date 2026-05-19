@@ -44,7 +44,7 @@ Item {
     active: root.inUse
     tooltipText: root.muted ? "Microphone muted" : (root.inUse ? "Microphone in use" : "Microphone live")
     onPressed: function(b) {
-      if (b === Qt.MiddleButton) root.bar.run("omarchy-launch-audio")
+      if (b === Qt.MiddleButton) root.bar.run("omarchy-shell audioPanel toggle")
       else root.toggleMute()
     }
     onWheelMoved: function(delta) {

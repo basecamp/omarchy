@@ -54,7 +54,7 @@ Example `shell.json` (bar subtree only shown):
 | Name | What it does | Interactions |
 |---|---|---|
 | `media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
-| `audioPanel` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = audio TUI · scroll = volume |
+| `audioPanel` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = popup · scroll = volume |
 | `networkPanel` | Wi-Fi/Ethernet icon + popup with Wi-Fi scan, signal, connect, DNS provider selection | left = popup · right = nmtui |
 | `powerPanel` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup |
 | `bluetoothPanel` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
@@ -63,7 +63,7 @@ Example `shell.json` (bar subtree only shown):
 | `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
 | `weather` | Weather icon + popup with forecast | left = popup · right = full notification |
 | `idleInhibitor` | Coffee-cup that toggles `omarchy-toggle-idle` | left = toggle |
-| `microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio TUI · scroll = source volume |
+| `microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
 
 ### Built-in base modules (in `Bar.qml`)
 
