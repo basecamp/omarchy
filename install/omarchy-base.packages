@@ -101,6 +101,7 @@ power-profiles-daemon
 python-gobject
 python-poetry-core
 python-terminaltexteffects
+qemu-user-static-binfmt
 qt5-wayland
 quickshell
 ripgrep
