@@ -8,14 +8,14 @@ Item {
   id: root
 
   property QtObject bar: null
-  property string moduleName: "weatherFlyout"
+  property string moduleName: "weather"
   property var settings: ({})
 
   property bool popupOpen: false
   function closePopout() { popupOpen = false }
 
   IpcHandler {
-    target: "weatherFlyout"
+    target: "weather"
     function show(): void {
       root.popupOpen = !root.popupOpen
       if (root.popupOpen) root.refresh()

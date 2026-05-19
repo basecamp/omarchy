@@ -144,12 +144,12 @@ Item {
         left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [
           { id: "calendar", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
-          { id: "weatherFlyout" }, { id: "update" }, { id: "voxtype" },
+          { id: "weather" }, { id: "update" }, { id: "voxtype" },
           { id: "screenRecording" }, { id: "idleInhibitor" }, { id: "notifications" }
         ],
         right: [
           { id: "tray" }, { id: "bluetoothPanel" }, { id: "networkPanel" },
-          { id: "audioPanel" }, { id: "monitorPanel" }, { id: "battery" }
+          { id: "audioPanel" }, { id: "monitorPanel" }, { id: "powerPanel" }
         ]
       }
     },
@@ -336,8 +336,7 @@ Item {
     "voxtype":          { name: "Voxtype",            description: "Voxtype dictation state",                   category: "Status" },
     "screenRecording":  { name: "Screen recording",   description: "Active recording indicator",                category: "Status" },
     "notifications":    { name: "DND",                 description: "Do-not-disturb indicator",                 category: "Status" },
-    "tray":             { name: "System tray",        description: "Status notifier items",                     category: "Status" },
-    "battery":          { name: "Battery",            description: "Battery percent and ETA",                   category: "System" }
+    "tray":             { name: "System tray",        description: "Status notifier items",                     category: "Status" }
   })
 
   property int catalogRevision: 0

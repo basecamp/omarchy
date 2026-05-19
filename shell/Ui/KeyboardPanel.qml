@@ -16,7 +16,7 @@ import qs.Commons
 // API is a subset of Common.PopupCard: anchorItem, owner, bar, open,
 // padding, margin, contentWidth/Height, default contentItem. Missing on
 // purpose (for now): centerOnBar, triggerMode ("hover"), containsMouse.
-// Hover-mode popups (system-stats, weather-flyout) and centered popups
+// Hover-mode popups (system-stats, weather) and centered popups
 // (calendar week-view) need extra plumbing before migrating; converting
 // them is a follow-up.
 //

@@ -62,15 +62,15 @@ Example `shell.json` (bar subtree only shown):
 | `calendar` | Clock + popup with month-grid calendar | left = popup · right = tz selector |
 | `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
 | `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
-| `weatherFlyout` | Weather icon + popup with forecast | left = popup · right = full notification |
+| `weather` | Weather icon + popup with forecast | left = popup · right = full notification |
 | `idleInhibitor` | Coffee-cup that toggles `omarchy-toggle-idle` | left = toggle |
 | `microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio TUI · scroll = source volume |
 
-### Built-in legacy modules (in `shell.qml`)
+### Built-in base modules (in `Bar.qml`)
 
-`omarchy`, `workspaces`, `clock`, `weather`, `update`, `voxtype`, `screenRecording`, `idle`, `notifications`, `tray`, `bluetooth`, `network`, `audio`, `cpu`, `battery`.
+`omarchy`, `workspaces`, `clock`, `update`, `voxtype`, `screenRecording`, `notifications`, `tray`.
 
-These remain available — set them in `layout` to use them instead of the richer widget versions.
+These remain available for compact status/launcher slots. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `widgets/` above.
 
 ## Orientation
 
