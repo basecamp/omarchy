@@ -190,7 +190,36 @@ Item {
       visible: true
       anchors { top: true; bottom: true; left: true; right: true }
       color: "transparent"
+      // The wallpaper is static outside of image loads/transitions. Disabling
+      // render updates keeps animations in other shell windows from repainting
+      // this background layer and wasting GPU cycles.
+      updatesEnabled: frozenBackgroundVersion !== root.backgroundVersion
+        || root.incomingBackground !== ""
+        || root.finishingTransition
+        || root.revealProgress < 1
+        || base.status === Image.Loading
+        || oldFrame.status === Image.Loading
+        || incomingFrame.status === Image.Loading
+
       property bool maskReady: false
+      property int frozenBackgroundVersion: -1
+
+      function backgroundIsStable() {
+        return !root.incomingBackground
+          && !root.finishingTransition
+          && root.revealProgress >= 1
+          && base.status !== Image.Loading
+          && oldFrame.status !== Image.Loading
+          && incomingFrame.status !== Image.Loading
+      }
+
+      function scheduleUpdatesFreeze() {
+        if (!backgroundIsStable()) {
+          freezeUpdatesTimer.stop()
+          return
+        }
+        freezeUpdatesTimer.restart()
+      }
 
       function maybeStartReveal() {
         if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
@@ -207,6 +236,17 @@ Item {
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
       exclusionMode: ExclusionMode.Ignore
 
+      Timer {
+        id: freezeUpdatesTimer
+        interval: 100
+        repeat: false
+        onTriggered: {
+          if (panel.backgroundIsStable()) panel.frozenBackgroundVersion = root.backgroundVersion
+        }
+      }
+
+      Component.onCompleted: scheduleUpdatesFreeze()
+
       Image {
         id: base
         anchors.fill: parent
@@ -220,6 +260,7 @@ Item {
             root.oldBackground = ""
             root.finishingTransition = false
           }
+          panel.scheduleUpdatesFreeze()
         }
       }
 
@@ -233,7 +274,10 @@ Item {
         smooth: true
         mipmap: true
         visible: root.oldBackground !== "" && root.revealProgress < 1
-        onStatusChanged: panel.maybeStartReveal()
+        onStatusChanged: {
+          panel.maybeStartReveal()
+          panel.scheduleUpdatesFreeze()
+        }
       }
 
       Item {
@@ -258,7 +302,10 @@ Item {
           cache: false
           smooth: true
           mipmap: true
-          onStatusChanged: panel.maybeStartReveal()
+          onStatusChanged: {
+            panel.maybeStartReveal()
+            panel.scheduleUpdatesFreeze()
+          }
         }
       }
 
@@ -292,10 +339,17 @@ Item {
 
       Connections {
         target: root
+        function onBackgroundVersionChanged() {
+          panel.frozenBackgroundVersion = -1
+          panel.scheduleUpdatesFreeze()
+        }
+        function onFinishingTransitionChanged() { panel.scheduleUpdatesFreeze() }
         function onIncomingBackgroundChanged() {
           panel.maskReady = false
           panel.maybeStartReveal()
+          panel.scheduleUpdatesFreeze()
         }
+        function onRevealProgressChanged() { panel.scheduleUpdatesFreeze() }
       }
 
       MouseArea {
