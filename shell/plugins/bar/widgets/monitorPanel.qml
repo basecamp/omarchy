@@ -356,7 +356,7 @@ Item {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰍹"
+    text: root.displays.length > 1 ? "󰍺" : "󰍹"
     fontSize: Style.font.subtitle
     onPressed: function(b) { root.popupOpen = !root.popupOpen }
     onWheelMoved: function(delta) {
