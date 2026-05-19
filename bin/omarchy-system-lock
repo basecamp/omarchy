@@ -17,12 +17,3 @@ fi
 
 # Avoid running screensaver when locked
 pkill -f '[o]rg.omarchy.screensaver'
-
-if [[ ${OMARCHY_LOCK_ONLY:-false} != "true" ]]; then
-  (
-    sleep 3
-    [[ $(omarchy-shell lock isLocked 2>/dev/null) == "true" ]] || exit 0
-    omarchy-brightness-keyboard off
-    omarchy-brightness-display off
-  ) &
-fi

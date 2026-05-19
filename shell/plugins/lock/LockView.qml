@@ -24,6 +24,8 @@ Item {
   readonly property int fieldFontSize: Style.font.heading
 
   signal submitPassword(string password)
+  signal clearFailureRequested()
+  signal wakeRequested()
 
   function withAlpha(color, alpha) {
     return Qt.rgba(color.r, color.g, color.b, alpha)
@@ -79,7 +81,9 @@ Item {
 
     MouseArea {
       anchors.fill: parent
-      onClicked: root.forcePasswordFocus()
+      hoverEnabled: true
+      onClicked: { root.wakeRequested(); root.forcePasswordFocus() }
+      onPositionChanged: root.wakeRequested()
     }
 
     Rectangle {
@@ -115,8 +119,11 @@ Item {
         cursorVisible: activeFocus && !root.authenticatingPassword && root.hasTyped
 
         onTextChanged: {
-          if (text.length > 0) root.hasTyped = true
-          if (text.length > 0 && root.failureMessage.length > 0) root.failureMessage = ""
+          if (text.length > 0) {
+            root.hasTyped = true
+            root.wakeRequested()
+          }
+          if (text.length > 0 && root.failureMessage.length > 0) root.clearFailureRequested()
         }
 
         onAccepted: {
@@ -127,6 +134,7 @@ Item {
         }
 
         Keys.onPressed: function(event) {
+          root.wakeRequested()
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             text = ""
             root.hasTyped = false
@@ -137,12 +145,12 @@ Item {
 
       Text {
         anchors.fill: passwordInput
-        text: root.failureMessage.length > 0 ? root.failureMessage : root.placeholderText
+        text: root.authenticatingPassword ? "Checking…" : (root.failureMessage.length > 0 ? root.failureMessage : root.placeholderText)
         visible: passwordInput.text.length === 0
-        color: root.failureMessage.length > 0 ? Color.lock.textError : Color.lock.text
+        color: (!root.authenticatingPassword && root.failureMessage.length > 0) ? Color.lock.textError : Color.lock.text
         font.family: "monospace"
         font.pixelSize: root.fieldFontSize
-        font.italic: root.failureMessage.length > 0
+        font.italic: !root.authenticatingPassword && root.failureMessage.length > 0
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight

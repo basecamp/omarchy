@@ -57,6 +57,7 @@ Item {
     refreshFingerprintStatus()
     lockRequested = true
     sessionLock.locked = true
+    idleBlankTimer.restart()
     return true
   }
 
@@ -65,18 +66,25 @@ Item {
 
     lockRequested = false
     resetAuthenticationState()
+    idleBlankTimer.stop()
     sessionLock.locked = false
     runWake()
   }
 
   function runWake() {
     if (!wakeProcess.running) wakeProcess.running = true
+    if (lockRequested) idleBlankTimer.restart()
+  }
+
+  function runBlank() {
+    if (!blankProcess.running) blankProcess.running = true
   }
 
   function submitPassword(value) {
     var password = String(value || "")
     if (!lockRequested || authenticatingPassword || password.length === 0) return
 
+    runWake()
     pendingPassword = password
     failureMessage = ""
     authenticatingPassword = true
@@ -101,6 +109,7 @@ Item {
     pendingPassword = ""
     failedAttempts += 1
     failureMessage = "Authentication failed (" + failedAttempts + ")"
+    runWake()
   }
 
   function startFingerprint() {
@@ -157,6 +166,8 @@ Item {
         inputEnabled: root.lockRequested
         scaleFactor: lockSurface.screen && lockSurface.screen.devicePixelRatio > 0 ? lockSurface.screen.devicePixelRatio : 1
         onSubmitPassword: function(password) { root.submitPassword(password) }
+        onClearFailureRequested: root.failureMessage = ""
+        onWakeRequested: root.runWake()
       }
 
     }
@@ -264,6 +275,24 @@ Item {
   Process {
     id: wakeProcess
     command: ["bash", "-lc", "omarchy-system-wake"]
+  }
+
+  Process {
+    id: blankProcess
+    command: ["bash", "-lc", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
+  }
+
+  Timer {
+    id: idleBlankTimer
+    interval: 30000
+    repeat: false
+    onTriggered: if (root.lockRequested && !root.authenticating) root.runBlank()
+  }
+
+  onAuthenticatingChanged: {
+    if (!lockRequested) return
+    if (authenticating) idleBlankTimer.stop()
+    else idleBlankTimer.restart()
   }
 
   FileView {
