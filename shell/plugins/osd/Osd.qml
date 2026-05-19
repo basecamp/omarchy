@@ -22,7 +22,7 @@ Item {
 
   function iconFor(name, percent) {
     var n = String(name || "").toLowerCase()
-    if (n === "volume-muted" || n === "volume-mute" || n === "muted" || n === "mute") return "󰝟"
+    if (n === "volume-muted" || n === "volume-mute" || n === "muted" || n === "mute") return ""
     if (n === "volume-low") return ""
     if (n === "volume-medium") return ""
     if (n === "volume-high" || n === "volume") return ""
@@ -33,7 +33,7 @@ Item {
     if (n === "touchpad") return "󰟸"
     if (n === "touch" || n === "touchscreen") return "󰜉"
     if (n === "media" || n === "player") return "󰝚"
-    if (percent <= 0) return "󰝟"
+    if (percent <= 0) return ""
     if (percent <= 33) return ""
     if (percent <= 66) return ""
     return ""
