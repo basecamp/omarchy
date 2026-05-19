@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Set Hyprland, Hyprlock, and Walker corners to sharp or round (the shell mirrors Hyprland)
+# omarchy:summary=Set Hyprland and Walker corners to sharp or round (the shell mirrors Hyprland)
 # omarchy:args=<sharp|round>
 # omarchy:examples=omarchy style corners round | omarchy style corners sharp
 
@@ -14,7 +14,6 @@ fi
 # state file is written. The old omarchy-style-corners-quickshell shim is
 # kept as a no-op so external callers don't error.
 omarchy-style-corners-hyprland "$1"
-omarchy-style-corners-hyprlock "$1"
 omarchy-style-corners-walker "$1"
 
 case $1 in

@@ -19,6 +19,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Omarchy menu  | `omarchy.menu`            | `menu`    | `menu/Menu.qml`                       |
 | Notifications | `omarchy.notifications`   | `service` | `notifications/Service.qml`           |
 | Idle monitor  | `omarchy.idle`            | `service` | `idle/Service.qml`                    |
+| Lock screen   | `omarchy.lock`            | `service` | `lock/Service.qml`                    |
 | OSD           | `omarchy.osd`             | `panel`   | `osd/Osd.qml`                         |
 | Polkit agent  | `omarchy.polkit`          | `service` | `polkit/PolkitAgent.qml`              |
 
@@ -68,6 +69,14 @@ clears it without writing a selection.
 
 The plugin has `keepLoaded: true` so the layer-shell window survives
 between summons within a single shell session.
+
+## Lock screen
+
+Session-lock surface using Quickshell's native `WlSessionLock` and two
+separate PAM services: `omarchy-lock-password` for password auth and,
+only when fingerprints are enrolled, `omarchy-lock-fingerprint` for
+fingerprint auth. It mirrors the previous lock screen field dimensions,
+colors, blurred wallpaper, placeholder, and corner toggle.
 
 ## Polkit agent
 

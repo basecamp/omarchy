@@ -136,7 +136,7 @@ Run `omarchy --help` for the full list. The most common groups:
 ├── looknfeel.conf     # Appearance (gaps, borders, animations)
 ├── envs.conf          # Environment variables
 ├── autostart.conf     # Startup applications
-├── hyprlock.conf      # Lock screen appearance and auth
+├── shell.json         # Omarchy shell, bar, idle, and lock settings
 └── hyprsunset.conf    # Night light / blue light filter
 ```
 
@@ -343,7 +343,7 @@ omarchy refresh <app>
 
 # Refresh specific config file
 # config-file path is relative to ~/.config/
-# eg. `omarchy refresh config hypr/hyprlock.conf` will refresh ~/.config/hypr/hyprlock.conf
+# eg. `omarchy refresh config hypr/hyprland.lua` will refresh ~/.config/hypr/hyprland.lua
 omarchy refresh config <config-file>
 
 # Full reinstall of configs (nuclear option)

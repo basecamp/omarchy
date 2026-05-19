@@ -26,8 +26,6 @@ if [[ -n $font_name ]]; then
       sed -i "s/^font=.*/font=$font_name:size=9/g" ~/.config/foot/foot.ini
     fi
 
-    sed -i "s/font_family = .*/font_family = $font_name/g" ~/.config/hypr/hyprlock.conf
-
     # fontconfig is the canonical source of truth — the omarchy shell, Qt
     # apps, and anything else that resolves "monospace" all read from here.
     xmlstarlet ed -L \
