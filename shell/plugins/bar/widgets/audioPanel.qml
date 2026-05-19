@@ -105,6 +105,7 @@ Item {
   // keyboard + mouse like wifi does.
   property string focusSection: "output"
   property int selectedIndex: -1
+  property bool cursorActive: false
 
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
@@ -216,7 +217,8 @@ Item {
   onPopupOpenChanged: {
     if (popupOpen) {
       focusSection = "output"
-      selectedIndex = -1  // start on the output slider
+      selectedIndex = -1  // first keyboard cursor reveal starts on the output slider
+      cursorActive = false
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
@@ -488,15 +490,17 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
       id: keyCatcher
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
+        if (!root.cursorActive) { root.cursorActive = true; return }
         if (dy !== 0) root.moveCursor(dy)
         else if (dx !== 0) root.adjustVolume(dx * 0.05)
       }
-      onActivateRequested: root.activateCursor()
+      onActivateRequested: if (root.cursorActive) root.activateCursor()
       onCloseRequested: root.closePopout()
       onTextKey: function(t) {
         // 'm' mutes whatever the cursor is on: focused section's slider
         // for output/input, the focused stream for streams.
         if (t === "m" || t === "M") {
+          if (!root.cursorActive) return
           if (root.focusSection === "streams" && root.selectedIndex >= 0
               && root.selectedIndex < root.audioStreams.length) {
             var s = root.audioStreams[root.selectedIndex]
@@ -556,7 +560,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
               id: outputSliderRow
               width: parent.width
               height: outputSliderInner.implicitHeight + Style.spacing.controlGap
-              hasCursor: root.focusSection === "output" && root.selectedIndex === -1
+              hasCursor: root.cursorActive && root.focusSection === "output" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(outputSliderRow)
               foreground: root.bar.foreground
               outline: true
@@ -620,6 +624,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
                 acceptedButtons: Qt.NoButton
                 propagateComposedEvents: true
                 onContainsMouseChanged: if (containsMouse) {
+                  root.cursorActive = true
                   root.focusSection = "output"
                   root.selectedIndex = -1
                 }
@@ -673,7 +678,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
               visible: !!root.source
               width: parent.width
               height: inputSliderInner.implicitHeight + Style.spacing.controlGap
-              hasCursor: root.focusSection === "input" && root.selectedIndex === -1
+              hasCursor: root.cursorActive && root.focusSection === "input" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(inputSliderRow)
               foreground: root.bar.foreground
               outline: true
@@ -737,6 +742,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
                 acceptedButtons: Qt.NoButton
                 propagateComposedEvents: true
                 onContainsMouseChanged: if (containsMouse) {
+                  root.cursorActive = true
                   root.focusSection = "input"
                   root.selectedIndex = -1
                 }
@@ -797,7 +803,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
     required property int rowIndex
 
     readonly property bool isActive: root.sink && node && root.sink.id === node.id
-    hasCursor: root.focusSection === "output" && root.selectedIndex === rowIndex
+    hasCursor: root.cursorActive && root.focusSection === "output" && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(sinkRow)
     current: isActive
     foreground: root.bar.foreground
@@ -850,6 +856,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onContainsMouseChanged: if (containsMouse) {
+        root.cursorActive = true
         root.focusSection = "output"
         root.selectedIndex = sinkRow.rowIndex
       }
@@ -864,7 +871,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
     required property int rowIndex
 
     readonly property bool isActive: root.source && node && root.source.id === node.id
-    hasCursor: root.focusSection === "input" && root.selectedIndex === rowIndex
+    hasCursor: root.cursorActive && root.focusSection === "input" && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(sourceRow)
     current: isActive
     foreground: root.bar.foreground
@@ -917,6 +924,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onContainsMouseChanged: if (containsMouse) {
+        root.cursorActive = true
         root.focusSection = "input"
         root.selectedIndex = sourceRow.rowIndex
       }
@@ -936,7 +944,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
     readonly property real streamVolume: node && node.audio ? node.audio.volume : 0
     readonly property bool streamMuted: node && node.audio ? node.audio.muted : false
 
-    hasCursor: root.focusSection === "streams" && root.selectedIndex === rowIndex
+    hasCursor: root.cursorActive && root.focusSection === "streams" && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(streamRow)
     foreground: root.bar.foreground
     fill: root.hoverFill
@@ -1020,6 +1028,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
       acceptedButtons: Qt.NoButton
       propagateComposedEvents: true
       onContainsMouseChanged: if (containsMouse) {
+        root.cursorActive = true
         root.focusSection = "streams"
         root.selectedIndex = streamRow.rowIndex
       }

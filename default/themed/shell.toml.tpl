@@ -26,7 +26,7 @@ normal-border-alpha = 0.4
 hover-cursor-color        = "foreground"
 hover-cursor-fill-alpha   = 0.08
 hover-cursor-border-width = 1
-hover-cursor-border-alpha = 1.0
+hover-cursor-border-alpha = 0.25
 
 # Selected: persistent chosen/current state.
 selected-color        = "foreground"

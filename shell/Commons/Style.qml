@@ -115,7 +115,7 @@ QtObject {
   readonly property real selectionFillAlpha:    styleAlpha("selection-fill-alpha", 0.35)
 
   readonly property real normalBorderAlpha:     styleAlpha(["normal-border-alpha", "idle-border-alpha"], 0.4)
-  readonly property real hoverBorderAlpha:      styleAlpha(["hover-cursor-border-alpha", "hover-border-alpha"], 1.0)
+  readonly property real hoverBorderAlpha:      styleAlpha(["hover-cursor-border-alpha", "hover-border-alpha"], 0.25)
   readonly property real selectedBorderAlpha:   styleAlpha("selected-border-alpha", 1.0)
   readonly property real focusBorderAlpha:      styleAlpha("focus-border-alpha", hoverBorderAlpha)
 

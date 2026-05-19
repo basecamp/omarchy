@@ -44,6 +44,7 @@ Item {
   property string activeMenu: "root"
   property string filterText: ""
   property int selectedIndex: 0
+  property bool cursorActive: false
   property int requestSerial: 0
   property int applySerial: 0
   property var items: ({})
@@ -537,13 +538,19 @@ Item {
   function select(delta) {
     if (displayModel.count === 0) return
 
-    selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
+    if (!cursorActive) {
+      cursorActive = true
+      selectedIndex = delta < 0 ? displayModel.count - 1 : 0
+    } else {
+      selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
+    }
     resultList.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
 
   function setFilter(nextFilter) {
     root.filterText = nextFilter
     root.selectedIndex = 0
+    root.cursorActive = false
     if (root.filterText.trim()) root.loadProvidersForSearch()
     root.rebuildDisplay()
   }
@@ -554,6 +561,7 @@ Item {
     root.activeMenu = id
     root.filterText = ""
     root.selectedIndex = 0
+    root.cursorActive = false
     root.rebuildDisplay()
     root.loadProviderForMenu(id)
   }
@@ -605,6 +613,7 @@ Item {
     navStack = []
     filterText = ""
     selectedIndex = 0
+    cursorActive = false
     root.evaluateGuards()
     opened = true
     rebuildDisplay()
@@ -842,7 +851,8 @@ Item {
             if (!root.filterText) root.goBack()
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
-            root.activateIndex(root.selectedIndex)
+            if (root.cursorActive) root.activateIndex(root.selectedIndex)
+            else if (displayModel.count > 0) root.cursorActive = true
             event.accepted = true
           } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
             root.setFilter(root.filterText + event.text)
@@ -922,12 +932,14 @@ Item {
               required property string action
               required property int childCount
 
+              readonly property bool hasCursor: root.cursorActive && row.index === root.selectedIndex
+
               width: ListView.view.width
               height: root.rowHeightForDetail(row.detail)
               radius: root.cornerRadius
-              color: index === root.selectedIndex ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
-              border.color: index === root.selectedIndex ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
-              border.width: index === root.selectedIndex ? Style.hoverBorderWidth : 0
+              color: row.hasCursor ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
+              border.color: row.hasCursor ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
+              border.width: row.hasCursor ? Style.hoverBorderWidth : 0
 
               Rectangle {
                 visible: false
@@ -943,7 +955,7 @@ Item {
               Text {
                 id: iconText
                 text: row.icon
-                color: index === root.selectedIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
+                color: row.hasCursor ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                 opacity: row.kind === "back" ? 0.7 : 1
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.iconLarge
@@ -968,7 +980,7 @@ Item {
                   id: labelText
                   width: parent.width
                   text: row.label
-                  color: index === root.selectedIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
+                  color: row.hasCursor ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.heading
                   font.weight: Font.Medium
@@ -1007,7 +1019,7 @@ Item {
 
                 Text {
                   text: row.kind === "menu" || row.kind === "link" ? "›" : ""
-                  color: index === root.selectedIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
+                  color: row.hasCursor ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                   opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.heading
@@ -1021,7 +1033,10 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: if (containsMouse) root.selectedIndex = row.index
+                onContainsMouseChanged: if (containsMouse) {
+                  root.cursorActive = true
+                  root.selectedIndex = row.index
+                }
                 onClicked: root.activateIndex(row.index)
               }
             }

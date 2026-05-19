@@ -15,6 +15,7 @@ Item {
   property bool opened: false
   property string filterText: ""
   property int selectedIndex: 0
+  property bool cursorActive: false
   property var items: []
 
   property color accent: Color.menu.selected
@@ -34,6 +35,7 @@ Item {
     root.opened = true
     root.filterText = ""
     root.selectedIndex = 0
+    root.cursorActive = false
     
     // Trigger fetch
     fetchProc.collected = ""
@@ -98,13 +100,19 @@ Item {
 
   function select(delta) {
     if (displayModel.count === 0) return
-    selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
+    if (!cursorActive) {
+      cursorActive = true
+      selectedIndex = delta < 0 ? displayModel.count - 1 : 0
+    } else {
+      selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
+    }
     resultList.positionViewAtIndex(selectedIndex, ListView.Contain)
   }
 
   function setFilter(nextFilter) {
     root.filterText = nextFilter
     root.selectedIndex = 0
+    root.cursorActive = false
     root.rebuildDisplay()
   }
 
@@ -212,7 +220,8 @@ Item {
             root.select(6)
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            root.activateIndex(root.selectedIndex)
+            if (root.cursorActive) root.activateIndex(root.selectedIndex)
+            else if (displayModel.count > 0) root.cursorActive = true
             event.accepted = true
           } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127) {
             root.setFilter(root.filterText + event.text)
@@ -270,12 +279,14 @@ Item {
                 required property string previewType
                 required property bool isPassword
 
+                readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
+
                 width: ListView.view.width
                 height: root.rowHeight
                 radius: root.cornerRadius
-                color: index === root.selectedIndex ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
-                border.color: index === root.selectedIndex ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
-                border.width: index === root.selectedIndex ? Style.hoverBorderWidth : 0
+                color: hasCursor ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
+                border.color: hasCursor ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
+                border.width: hasCursor ? Style.hoverBorderWidth : 0
 
                 Rectangle {
                   visible: false
@@ -299,7 +310,7 @@ Item {
                     width: parent.width
                     height: parent.height
                     text: parent.parent.isPassword ? "••••••••" : (parent.parent.previewType === "text" ? parent.parent.previewText : "Image")
-                    color: index === root.selectedIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
+                    color: parent.parent.hasCursor ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.title
                     font.italic: parent.parent.previewType === "file" || parent.parent.isPassword
@@ -315,8 +326,12 @@ Item {
                   anchors.fill: parent
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
-                  onContainsMouseChanged: if (containsMouse) root.selectedIndex = index
+                  onContainsMouseChanged: if (containsMouse) {
+                    root.cursorActive = true
+                    root.selectedIndex = index
+                  }
                   onClicked: {
+                    root.cursorActive = true
                     root.selectedIndex = index
                     root.activateIndex(index)
                   }
@@ -333,7 +348,7 @@ Item {
               border.width: Style.normalBorderWidth
               clip: true
 
-              property var activeRow: displayModel.count > 0 && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count ? displayModel.get(root.selectedIndex) : null
+              property var activeRow: root.cursorActive && displayModel.count > 0 && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count ? displayModel.get(root.selectedIndex) : null
 
               Text {
                 visible: parent.activeRow && parent.activeRow.previewType === "text"

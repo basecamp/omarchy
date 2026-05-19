@@ -40,6 +40,7 @@ Item {
   readonly property var scaleValues: ["1", "1.25", "1.6", "2", "3", "4"]
   property string focusSection: "scale"
   property int selectedIndex: 0
+  property bool cursorActive: false
 
   readonly property var visibleSections: {
     var list = []
@@ -271,7 +272,8 @@ Item {
   Component.onCompleted: refresh()
 
   // KeyboardPanel takes Exclusive focus at map-time, so SUPER-bound IPC
-  // summons land with j/k ready to navigate. Seed the cursor on each open.
+  // summons land with j/k ready to navigate. Keep a default landing point,
+  // but don't paint the cursor until hover or the first navigation key.
   onPopupOpenChanged: {
     if (popupOpen) {
       refresh()
@@ -282,6 +284,7 @@ Item {
         focusSection = "scale"
         selectedIndex = 0
       }
+      cursorActive = false
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
@@ -374,13 +377,14 @@ Item {
       id: keyCatcher
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
+        if (!root.cursorActive) { root.cursorActive = true; return }
         if (dy !== 0) root.moveCursor(dy)
         else if (dx !== 0) {
           if (root.focusSection === "brightness") root.adjustBrightness(dx * 5)
           else if (root.focusSection === "scale") root.moveCursorH(dx)
         }
       }
-      onActivateRequested: root.activateCursor()
+      onActivateRequested: if (root.cursorActive) root.activateCursor()
       onCloseRequested: root.closePopout()
 
       ScrollView {
@@ -412,7 +416,7 @@ Item {
               visible: root.brightnessAvailable
               width: parent.width
               height: brightnessInner.implicitHeight + Style.spacing.controlGap
-              hasCursor: root.focusSection === "brightness" && root.selectedIndex === -1
+              hasCursor: root.cursorActive && root.focusSection === "brightness" && root.selectedIndex === -1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
               foreground: root.bar.foreground
               outline: true
@@ -465,6 +469,7 @@ Item {
 
               HoverHandler {
                 onHoveredChanged: if (hovered) {
+                  root.cursorActive = true
                   root.focusSection = "brightness"
                   root.selectedIndex = -1
                 }
@@ -514,10 +519,11 @@ Item {
                   horizontalPadding: 0
                   verticalPadding: Style.spacing.controlPaddingY
                   active: root.normalizeScale(root.monitorScale) === root.normalizeScale(modelData)
-                  hasCursor: root.focusSection === "scale" && root.selectedIndex === index
+                  hasCursor: root.cursorActive && root.focusSection === "scale" && root.selectedIndex === index
                   onClicked: root.setScale(modelData)
                   onHovered: function(h) {
                     if (h) {
+                      root.cursorActive = true
                       root.focusSection = "scale"
                       root.selectedIndex = index
                     }
@@ -555,10 +561,11 @@ Item {
                 foreground: root.bar.foreground
                 accent: root.bar.foreground
                 fontFamily: root.bar.fontFamily
-                hasCursor: root.focusSection === "monitors" && root.selectedIndex === index
+                hasCursor: root.cursorActive && root.focusSection === "monitors" && root.selectedIndex === index
                 onClicked: root.toggleDisplay(modelData.name, modelData.enabled)
                 onHovered: function(h) {
                   if (h) {
+                    root.cursorActive = true
                     root.focusSection = "monitors"
                     root.selectedIndex = index
                   }
