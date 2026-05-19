@@ -65,6 +65,7 @@ QtObject {
   }
   readonly property QtObject popups: QtObject {
     property color background: root.composed("popups.background", "popups.background-alpha", root.background, 1.0)
+    property color text: root.pick("popups.text", root.foreground)
     property color border: root.composed("popups.border", "popups.border-alpha", root.pick("notifications.border", root.accent), 1.0)
   }
   readonly property QtObject tooltip: QtObject {

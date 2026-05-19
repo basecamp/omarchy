@@ -372,10 +372,10 @@ QtObject {
   }
 
   // Parse [font] base-size + per-token overrides, [bar] size-* keys,
-  // [style] state colors / alphas / border widths, and [spacing] scale +
+  // [controls] state colors / alphas / border widths, and [spacing] scale +
   // token overrides out of shell.toml. Color.qml owns the quoted-string
   // side of the surface color sections; Style owns quoted strings only
-  // inside [style].
+  // inside [controls].
   function loadShell(raw) {
     var fontOut = {}
     var barOut = {}
@@ -393,7 +393,7 @@ QtObject {
         var sectionMatch = line.match(/^\[([A-Za-z0-9_-]+)\]\s*(#.*)?$/)
         if (sectionMatch) { section = sectionMatch[1]; continue }
         // Accept ints/floats for numeric tokens and quoted/bare words for
-        // [style] color roles / inheritance sentinels (e.g. "foreground",
+        // [controls] color roles / inheritance sentinels (e.g. "foreground",
         // "accent", "hover-cursor", "#c0caf5").
         var numKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(-?\d+(?:\.\d+)?)\s*(#.*)?$/)
         var stringKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*["']([^"']+)["']\s*(#.*)?$/)
@@ -412,7 +412,10 @@ QtObject {
           var fval = parseFloat(rawValue)
           if (key === "scale") nextSpacingScale = fval
           else spacingOut[key] = fval
-        } else if (section === "style") {
+        } else if (section === "controls" || section === "style") {
+          // `[controls]` is the canonical section name; `[style]` is kept
+          // as a legacy alias so hand-written theme shell.toml files that
+          // predate the rename still apply.
           styleOut[key] = numKv ? parseFloat(rawValue) : rawValue
         }
       }
