@@ -74,13 +74,12 @@ Item {
 
   function applyPendingTheme() {
     if (pendingThemeVersion !== backgroundVersion) return
-    NoctaliaCommons.Color.resumeThemeReloads()
     NoctaliaCommons.Color.loadColors(pendingColorsRaw)
     NoctaliaCommons.Color.loadShell(pendingShellRaw)
-    // Style watches the same shell.toml for [font] and [bar] sizing; push
-    // synchronously so the type scale flips with the background instead of
-    // waiting on inotify debounce.
+    // Push style tokens synchronously so the type scale flips with the
+    // background reveal instead of waiting for a separate reload path.
     NoctaliaCommons.Style.loadShell(pendingShellRaw)
+    NoctaliaCommons.Style.scheduleRefresh()
     pendingThemeVersion = -1
     pendingColorsRaw = ""
     pendingShellRaw = ""
