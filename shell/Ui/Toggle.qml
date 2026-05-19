@@ -10,7 +10,7 @@ import qs.Commons
 // hover and activeFocus share the hover-cursor defaults.
 //
 // `rounded` auto-detects from Style.cornerRadius so the switch follows
-// the theme: pill shape on round-corners themes, square on sharp.
+// the theme: pill shape when Hyprland corners are rounded, square on sharp.
 // Callers can override per-instance.
 Rectangle {
   id: root
