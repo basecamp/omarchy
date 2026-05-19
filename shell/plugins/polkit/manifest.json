@@ -5,8 +5,9 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "description": "Theme-aware authentication dialog for privileged actions.",
-  "kinds": ["service"],
-  "activation": "persistent",
+  "kinds": [
+    "service"
+  ],
   "keepLoaded": true,
   "entryPoints": {
     "service": "PolkitAgent.qml"

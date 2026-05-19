@@ -61,9 +61,5 @@
       ]
     }
   },
-  "plugins": [
-    {
-      "id": "omarchy.osd"
-    }
-  ]
+  "plugins": []
 }

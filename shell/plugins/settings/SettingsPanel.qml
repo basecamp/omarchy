@@ -153,7 +153,7 @@ Item {
         ]
       }
     },
-    plugins: [{ id: "omarchy.osd" }]
+    plugins: []
   })
 
   property var defaultConfig: builtinShellConfig
@@ -355,11 +355,20 @@ Item {
     function onChanged() { root.catalogRevision++ }
   }
 
+  function canonicalWidgetId(id) {
+    switch (String(id || "")) {
+    case "idle": return "idleInhibitor"
+    case "weatherFlyout": return "weather"
+    default: return String(id || "")
+    }
+  }
+
   function widgetMetadata(id) {
     var key = String(id || "")
-    if (root.barWidgetRegistry && root.barWidgetRegistry.has(key))
-      return root.barWidgetRegistry.metadataFor(key) || {}
-    if (builtinWidgetMeta[key]) return builtinWidgetMeta[key]
+    var canonicalKey = canonicalWidgetId(key)
+    if (root.barWidgetRegistry && root.barWidgetRegistry.has(canonicalKey))
+      return root.barWidgetRegistry.metadataFor(canonicalKey) || {}
+    if (builtinWidgetMeta[canonicalKey]) return builtinWidgetMeta[canonicalKey]
 
     var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[key] : null
     if (manifest) {

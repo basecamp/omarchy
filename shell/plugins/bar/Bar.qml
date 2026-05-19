@@ -222,6 +222,14 @@ Item {
     return index === -1 ? [] : entries.slice(index + 1)
   }
 
+  function canonicalWidgetId(name) {
+    switch (String(name)) {
+    case "idle": return "idleInhibitor"
+    case "weatherFlyout": return "weather"
+    default: return String(name)
+    }
+  }
+
   function builtinModuleComponent(name) {
     switch (String(name)) {
     case "omarchy": return omarchyModuleComponent
@@ -457,18 +465,6 @@ Item {
 
     ids.sort(function(left, right) { return left - right })
     return ids
-  }
-
-  function activeTrayItemCount() {
-    var count = 0
-    var values = SystemTray.items.values
-
-    for (var i = 0; i < values.length; i++) {
-      if (values[i].status !== Status.Passive)
-        count++
-    }
-
-    return count
   }
 
   function trayIconSource(icon) {
@@ -939,7 +935,8 @@ Item {
     readonly property var registryComponent: {
       var w = root.barWidgetRegistry.widgets
       if (customType || builtinComponent) return null
-      return w[moduleName] ? w[moduleName].component : null
+      var registryName = root.canonicalWidgetId(moduleName)
+      return w[registryName] ? w[registryName].component : null
     }
     readonly property bool qmlCustom: customType === "qml"
     readonly property bool commandCustom: customType === "command"

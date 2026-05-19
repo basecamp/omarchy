@@ -196,16 +196,6 @@ iwctl known-networks list 2>/dev/null \\
     Quickshell.execDetached(["bash", "-lc", "printf %s " + root.bar.shellQuote(value) + " | wl-copy"])
   }
 
-  function networkTooltip() {
-    if (kind === "wifi") {
-      var f = parseFloat(frequency)
-      var ftext = f > 0 ? " (" + (f / 1000).toFixed(1) + " GHz)" : ""
-      return (label || "Wi-Fi") + ftext
-    }
-    if (kind === "ethernet") return "Connected"
-    return "Disconnected"
-  }
-
   function networkCommand() {
     return [
       "device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == \"dev\") { print $(i + 1); exit } }')",

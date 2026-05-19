@@ -57,11 +57,7 @@ ShellRoot {
         right: [{ id: "audioPanel" }]
       }
     },
-    plugins: [
-      { id: "omarchy.settings" },
-      { id: "omarchy.image-picker" },
-      { id: "omarchy.osd" }
-    ]
+    plugins: []
   })
 
   property var defaultsConfig: builtinShellConfig
@@ -117,8 +113,6 @@ ShellRoot {
   }
 
   readonly property var barConfig: shellConfig && isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
-  readonly property var pluginsConfig: shellConfig && Array.isArray(shellConfig.plugins) ? shellConfig.plugins : []
-
   FileView {
     id: defaultsFile
     path: shell.defaultsPath
@@ -217,15 +211,14 @@ ShellRoot {
         console.warn("first-party service load failed for " + key + ": " + comp.errorString())
         return
       }
-      var inst = comp.createObject(firstPartyServiceHost, {
-        omarchyPath: shell.omarchyPath,
-        shell: shell,
-        manifest: manifest
-      })
+      var inst = comp.createObject(firstPartyServiceHost)
       if (!inst) {
         console.warn("first-party service createObject returned null for", key)
         return
       }
+      if ("omarchyPath" in inst) inst.omarchyPath = shell.omarchyPath
+      if ("shell" in inst) inst.shell = shell
+      if ("manifest" in inst) inst.manifest = manifest
       var snext = ({})
       for (var sk in _firstPartyServices) snext[sk] = _firstPartyServices[sk]
       snext[key] = inst
@@ -322,8 +315,6 @@ ShellRoot {
   // object without it) hides it. Reassigning the whole object is required for
   // QML to notice the change.
   property var openPanelIds: ({})
-
-  function isPanelOpen(id) { return openPanelIds[id] === true }
 
   // Pending payloads to deliver to a plugin's open() once its loader resolves.
   // Keyed by plugin id; the value is an array so two summon() calls before

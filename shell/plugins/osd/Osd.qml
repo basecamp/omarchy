@@ -7,10 +7,6 @@ import qs.Commons
 Item {
   id: root
 
-  property string omarchyPath: ""
-  property var shell: null
-  property var manifest: null
-
   property bool opened: false
   property string icon: ""
   property string message: ""

@@ -17,7 +17,6 @@ first call.
   "author": "You",
   "description": "A clock that does cool things",
   "kinds": ["bar-widget"],
-  "activation": "on-demand",
   "entryPoints": { "barWidget": "Widget.qml" }
 }
 ```
@@ -32,9 +31,9 @@ first call.
 | `menu`       | Summoned menu surface                       |
 | `service`    | Headless singleton, no UI                   |
 
-`activation` is `persistent` (loaded at startup) or `on-demand`
-(loaded by `shell summon`, unloaded by `shell hide`). On-demand
-plugins can set `keepLoaded: true` to survive between summons.
+Panels, overlays, and menus are loaded when summoned. Plugins can set
+`keepLoaded: true` to survive between summons. First-party services are
+loaded at startup.
 
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
 
@@ -91,7 +90,7 @@ Rules:
    bar widgets, `plugins[]` for everything else.
 2. Settings are inline on the entry. No `config:` sub-object, no
    merge layers.
-3. Enabled ⇔ present.
+3. Third-party enabled ⇔ present; first-party plugins are always enabled.
 4. `allowMultiple: true` in the manifest permits multiple instances.
 5. `version: 1` is required.
 

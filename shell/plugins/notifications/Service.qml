@@ -17,9 +17,7 @@ Item {
   id: service
 
   // Injected by omarchy-shell (the first-party service loader).
-  property string omarchyPath: ""
   property var shell: null
-  property var manifest: null
 
   readonly property string home: Quickshell.env("HOME")
   // History + DND live under XDG_STATE_HOME: they're persistent user state

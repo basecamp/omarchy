@@ -9,9 +9,6 @@ Item {
 
   // Injected by omarchy-shell when this plugin is summoned.
   property string omarchyPath: Quickshell.env("OMARCHY_PATH") || (Quickshell.env("HOME") + "/.local/share/omarchy")
-  property var shell: null
-  property var manifest: null
-  property var pluginRegistry: null
 
   // Plugin lifecycle hooks. The host calls open(payloadJson) after
   // `omarchy-shell shell summon omarchy.menu ...` and close() when hidden.
@@ -70,14 +67,6 @@ Item {
   property int cardWidth: Math.min((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(300), panel.width - Style.gapsOut * 2)
   property int visibleRowsHeight: rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
   property int cardHeight: Math.min(Math.max(Style.space(220), contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
-
-  function shellQuote(value) {
-    return "'" + String(value).replace(/'/g, "'\\''") + "'"
-  }
-
-  function decodeField(value) {
-    return String(value || "").replace(/\v/g, "\n").replace(/\f/g, "\t")
-  }
 
   function withAlpha(color, alpha) {
     return Qt.rgba(color.r, color.g, color.b, alpha)

@@ -8,10 +8,6 @@ import qs.Commons
 Item {
   id: root
 
-  property string omarchyPath: ""
-  property var shell: null
-  property var manifest: null
-
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
   property color accent: Color.accent
   property color background: Color.menu.background
@@ -19,7 +15,6 @@ Item {
   property color border: foreground
   readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: Style.spacing.panelPadding
-  property int contentSpacing: Style.spacing.rowPaddingX
   property int fieldHeight: Math.max(Style.space(42), Style.spacing.controlHeight)
 
   property bool closing: false
@@ -42,10 +37,6 @@ Item {
   function withAlpha(color, alpha) {
     return Qt.rgba(color.r, color.g, color.b, alpha)
   }
-  function messageText() {
-    return "Authentication is needed..."
-  }
-
   function promptLooksFingerprint(text) {
     var s = String(text || "").toLowerCase()
     return s.indexOf("finger") !== -1 || s.indexOf("fprint") !== -1 || s.indexOf("swipe") !== -1

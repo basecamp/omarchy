@@ -5,11 +5,11 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "description": "Quickshell-powered Omarchy command menu",
-  "kinds": ["menu"],
-  "activation": "on-demand",
+  "kinds": [
+    "menu"
+  ],
   "keepLoaded": true,
-  "entryPoints": { "menu": "Menu.qml" },
-  "ipc": {
-    "summon": "menu"
+  "entryPoints": {
+    "menu": "Menu.qml"
   }
 }

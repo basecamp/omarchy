@@ -52,7 +52,6 @@ shell should load it. Minimal example:
   "author": "You",
   "description": "A clock that does cool things",
   "kinds": ["bar-widget"],
-  "activation": "on-demand",
   "entryPoints": { "barWidget": "Widget.qml" },
   "barWidget": {
     "displayName": "Cool clock",
@@ -77,11 +76,10 @@ Supported `kinds`:
 | `service`    | A headless singleton, no UI                                  |
 | `bar`        | Reserved for the first-party bar host (`omarchy.bar`). Third-party plugins should ship `bar-widget`s; they do not replace the host bar. |
 
-`activation` is either `persistent` (loaded on startup, never unloaded) or
-`on-demand` (loaded by `shell summon <id>` and unloaded by `shell hide`).
-Plugins that need to outlive a single summon can set `keepLoaded: true`
-(e.g. the image picker keeps its overlay window mounted between
-summons).
+Panels, overlays, and menus are loaded when summoned. Plugins that need
+to outlive a single summon can set `keepLoaded: true` (e.g. the image
+picker keeps its overlay window mounted between summons). First-party
+services are loaded at startup.
 
 The full schema lives in `services/PluginRegistry.qml`.
 
@@ -176,10 +174,7 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
       ]
     }
   },
-  "plugins": [
-    { "id": "omarchy.settings" },
-    { "id": "omarchy.image-picker" }
-  ]
+  "plugins": []
 }
 ```
 
@@ -191,9 +186,10 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
 2. **Settings are inline on the entry.** No `config:` sub-object, no
    separate per-plugin settings file, no merge layers. The fields on each
    entry are the values the plugin sees.
-3. **Enabled ⇔ present.** A plugin is enabled iff its id appears somewhere
-   in shell.json. For bar widgets, the bar settings UI adds/removes layout
-   entries; other plugin kinds are enabled with the shell IPC.
+3. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
+   its id appears somewhere in shell.json. For bar widgets, the bar
+   settings UI adds/removes layout entries; other plugin kinds are enabled
+   with the shell IPC. First-party plugins are always enabled.
 4. **Multiple instances** are allowed when a manifest sets
    `allowMultiple: true`. Each instance is independent — e.g. two clocks
    in different timezones are just two `{"id":"calendar", "timezone": ...}`

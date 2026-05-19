@@ -63,10 +63,7 @@ Item {
   }
 
   // ---- host injections ----------------------------------------------------
-  property var barWidgetRegistry: null
-  property var pluginRegistry: null
   property var shell: null
-  property var manifest: null
 
   // ---- theme --------------------------------------------------------------
   readonly property color foreground: Color.foreground
@@ -104,7 +101,7 @@ Item {
   property string focusSection: "cursor-surface"
   property int selectedIndex: 0
 
-  // Demo state mutated by activation.
+  // Demo state mutated by interaction.
   property string choiceDemoValue: "top"
   property bool toggleDemoOn: true
   property bool toggleSquareOn: false

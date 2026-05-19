@@ -9,10 +9,6 @@ import qs.Commons as NoctaliaCommons
 Item {
   id: root
 
-  property string omarchyPath: ""
-  property var shell: null
-  property var manifest: null
-
   readonly property string home: Quickshell.env("HOME")
   readonly property string currentBackgroundLink: home + "/.config/omarchy/current/background"
 

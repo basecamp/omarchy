@@ -5,11 +5,11 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "description": "Image-grid selector overlay used for wallpapers, themes, and any other directory of images",
-  "kinds": ["overlay"],
-  "activation": "on-demand",
+  "kinds": [
+    "overlay"
+  ],
   "keepLoaded": true,
-  "entryPoints": { "overlay": "ImagePicker.qml" },
-  "ipc": {
-    "summon": "image-picker"
+  "entryPoints": {
+    "overlay": "ImagePicker.qml"
   }
 }
