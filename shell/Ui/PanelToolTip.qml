@@ -7,18 +7,20 @@ import qs.Commons
 //   PanelToolTip {
 //     visible: mouse.containsMouse
 //     text: "Forget network"
-//     panelForeground: bar.foreground
-//     panelBackground: bar.background
-//     fontFamily: bar.fontFamily
 //   }
+//
+// Defaults pull from [tooltip] in shell.toml via Color.tooltip.*. Override
+// the panel* properties per-instance only when you need a tooltip that
+// intentionally diverges from the theme.
 //
 // Property names are prefixed `panel*` to avoid clashing with ToolTip's
 // built-in `background`/`font` properties.
 ToolTip {
   id: root
 
-  property color panelForeground: Color.foreground
-  property color panelBackground: Color.background
+  property color panelForeground: Color.tooltip.text
+  property color panelBackground: Color.tooltip.background
+  property color panelBorder: Color.tooltip.border
   property string fontFamily: Style.font.family
   property real fontSize: Style.font.bodySmall
 
@@ -27,7 +29,7 @@ ToolTip {
 
   background: Rectangle {
     color: root.panelBackground
-    border.color: Style.normalBorderFor(root.panelForeground, Color.accent)
+    border.color: root.panelBorder
     border.width: Style.normalBorderWidth
     radius: Style.cornerRadius
     opacity: 0.97

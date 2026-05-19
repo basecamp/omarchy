@@ -1088,7 +1088,6 @@ Item {
                   iconText: "󰄬"
                   tooltipText: "Confirm (default flavor)"
                   foreground: root.foreground
-                  panelBackground: root.background
                   fontFamily: root.fontFamily
                   hasCursor: root.focusSection === "panel-action-button" && root.selectedIndex === 0
                   onHovered: function(h) {
@@ -1102,7 +1101,6 @@ Item {
                   tooltipText: "Forget network (urgent flavor)"
                   foreground: root.foreground
                   hoverColor: root.urgent
-                  panelBackground: root.background
                   fontFamily: root.fontFamily
                   hasCursor: root.focusSection === "panel-action-button" && root.selectedIndex === 1
                   onHovered: function(h) {
@@ -1115,7 +1113,6 @@ Item {
                   iconText: "󰄬"
                   tooltipText: "Disabled — type a passphrase first"
                   foreground: root.foreground
-                  panelBackground: root.background
                   fontFamily: root.fontFamily
                   enabled: false
                   hasCursor: root.focusSection === "panel-action-button" && root.selectedIndex === 2
@@ -1129,7 +1126,6 @@ Item {
                   iconText: "󰒓"
                   tooltipText: "Focusable (settings form button)"
                   foreground: root.foreground
-                  panelBackground: root.background
                   fontFamily: root.fontFamily
                   fontSize: Style.font.subtitle
                   size: Style.space(26)
@@ -1203,7 +1199,6 @@ Item {
                 visible: tipMouse.containsMouse || tipSwatch.focused
                 text: "Styled tooltip — drop into any panel"
                 panelForeground: root.foreground
-                panelBackground: root.background
                 fontFamily: root.fontFamily
               }
             }
@@ -1700,7 +1695,6 @@ Item {
                       tooltipText: "Forget network"
                       foreground: root.foreground
                       hoverColor: root.urgent
-                      panelBackground: root.background
                       fontFamily: root.fontFamily
                     }
 

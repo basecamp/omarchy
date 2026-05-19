@@ -683,8 +683,8 @@ Item {
         id: tooltipBubble
         implicitWidth: tooltipLabel.implicitWidth + 20
         implicitHeight: tooltipLabel.implicitHeight + 14
-        color: root.background
-        border.color: root.foreground
+        color: Color.tooltip.background
+        border.color: Color.tooltip.border
         border.width: 1
         radius: Style.cornerRadius
         opacity: 0.97
@@ -693,7 +693,7 @@ Item {
           id: tooltipLabel
           anchors.centerIn: parent
           text: root.tooltipText
-          color: root.foreground
+          color: Color.tooltip.text
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
           horizontalAlignment: Text.AlignHCenter

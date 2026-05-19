@@ -115,7 +115,8 @@ The shell exposes these tokens to QML via two singletons in
 
 - `Color` — palette (`foreground`, `background`, `accent`, `urgent`)
   and per-surface roles (`Color.bar.*`, `Color.popups.*`,
-  `Color.notifications.*`, `Color.menu.*`, `Color.imagePicker.*`).
+  `Color.tooltip.*`, `Color.notifications.*`, `Color.menu.*`,
+  `Color.imagePicker.*`).
 - `Style` — structural tokens (`cornerRadius`), shared interactive
   state tokens/helpers, spacing (`Style.spacing.*` / `Style.space(px)`),
   the type scale (`Style.font.*`), and bar dimensions

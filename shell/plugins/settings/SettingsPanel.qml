@@ -1072,7 +1072,6 @@ Item {
         iconText: "󰁝"
         tooltipText: "Move up"
         foreground: root.foreground
-        panelBackground: root.background
         fontFamily: root.fontFamily
         fontSize: Style.font.subtitle
         size: Style.space(26)
@@ -1086,7 +1085,6 @@ Item {
         iconText: "󰁅"
         tooltipText: "Move down"
         foreground: root.foreground
-        panelBackground: root.background
         fontFamily: root.fontFamily
         fontSize: Style.font.subtitle
         size: Style.space(26)
@@ -1100,7 +1098,6 @@ Item {
         iconText: "󰒓"
         tooltipText: "Settings"
         foreground: root.foreground
-        panelBackground: root.background
         fontFamily: root.fontFamily
         fontSize: Style.font.subtitle
         size: Style.space(26)
@@ -1117,7 +1114,6 @@ Item {
         tooltipText: "Remove"
         foreground: root.urgent
         hoverColor: root.urgent
-        panelBackground: root.background
         fontFamily: root.fontFamily
         fontSize: Style.font.subtitle
         size: Style.space(26)

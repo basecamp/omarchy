@@ -280,8 +280,6 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
               required property int index
               text: String(modelData).charAt(0).toUpperCase() + String(modelData).slice(1)
               foreground: root.bar.foreground
-              tooltipBackground: root.bar.background
-              tooltipForeground: root.bar.foreground
               fontFamily: root.bar.fontFamily
               horizontalPadding: Style.spacing.controlPaddingX
               verticalPadding: Style.spacing.controlPaddingY

@@ -5,8 +5,9 @@ import Quickshell.Io
 
 // Single source of truth for shell color surfaces. Top-level tokens
 // (foreground/background/accent/urgent) come from the theme's colors.toml.
-// Per-surface roles (Color.bar.*, Color.popups.*, Color.notifications.*,
-// Color.menu.*, Color.imagePicker.*) come from shell.toml, which is generated
+// Per-surface roles (Color.bar.*, Color.popups.*, Color.tooltip.*,
+// Color.notifications.*, Color.menu.*, Color.imagePicker.*) come from
+// shell.toml, which is generated
 // per theme from default/themed/shell.toml.tpl (or shipped directly by a
 // theme to override). Surfaces that don't appear in shell.toml fall back to
 // the foundational palette, so themes can ship partial overrides.
@@ -39,6 +40,11 @@ QtObject {
   readonly property QtObject popups: QtObject {
     property color background: root.pick("popups.background", root.background)
     property color border: root.pick("popups.border", root.pick("notifications.border", root.accent))
+  }
+  readonly property QtObject tooltip: QtObject {
+    property color background: root.pick("tooltip.background", root.background)
+    property color text: root.pick("tooltip.text", root.foreground)
+    property color border: root.pick("tooltip.border", root.foreground)
   }
   readonly property QtObject notifications: QtObject {
     property color background: root.pick("notifications.background", root.background)

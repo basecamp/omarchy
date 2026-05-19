@@ -500,8 +500,6 @@ Item {
                   text: modelData + "x"
                   foreground: root.bar.foreground
                   background: "transparent"
-                  tooltipBackground: root.bar.background
-                  tooltipForeground: root.bar.foreground
                   fontFamily: root.bar.fontFamily
                   fontSize: Style.font.bodySmall
                   horizontalPadding: 0
