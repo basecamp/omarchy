@@ -13,6 +13,7 @@ User-installed plugins live alongside these conceptually but on disk under
 |---------------|---------------------------|-----------|---------------------------------------|
 | Bar           | `omarchy.bar`             | `bar`     | `bar/Bar.qml`                         |
 | Bar settings  | `omarchy.settings`        | `panel`   | `settings/SettingsPanel.qml`          |
+| App launcher  | `omarchy.app-launcher`    | `overlay` | `app-launcher/AppLauncher.qml`        |
 | Image picker  | `omarchy.image-picker`    | `overlay` | `image-picker/ImagePicker.qml`        |
 | Emoji picker  | `omarchy.emoji-picker`    | `overlay` | `emoji-picker/EmojiPicker.qml`        |
 | Clipboard mgr | `omarchy.clipboard-picker`| `overlay` | `clipboard-picker/ClipboardPicker.qml`|
@@ -42,6 +43,14 @@ Visual editor for the bar layout. Summoned by
 - per-section add/move/remove/edit of bar widget entries
 - dynamic per-widget settings forms that write inline back to the
   corresponding shell.json entry
+
+## App launcher
+
+Quickshell-powered app launcher. It uses Quickshell's native
+`DesktopEntries` model for discovery/activation and renders inside the
+long-running shell with the legacy launcher card dimensions, colors, row
+spacing, icon sizing, and keyboard behavior. Summoned directly over shell IPC
+by the `SUPER + SPACE` binding and the Omarchy menu Apps row.
 
 ## Image picker
 
@@ -87,7 +96,7 @@ runs inside the long-lived `omarchy-shell` process, replacing the old
 
 ## Omarchy menu
 
-Quickshell-powered replacement for the legacy Walker-driven `omarchy-menu`.
+Quickshell-powered Omarchy command menu.
 The menu UI lives in `menu/Menu.qml` as a first-party `menu` plugin and is
 summoned through the shell (`omarchy-shell shell summon omarchy.menu ...`),
 so it shares the long-running `omarchy-shell` process instead of starting a

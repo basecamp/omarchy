@@ -7,12 +7,15 @@ import qs.Commons
 Item {
   id: root
 
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property bool opened: false
   property string filterText: ""
   property int selectedIndex: 0
   property bool cursorActive: false
-  property var items: []
+  property var history: []
 
+  property string historyPath: Quickshell.env("HOME") + "/.local/state/omarchy/clipboard-history.json"
+  property string captureScript: root.omarchyPath + "/shell/scripts/clipboard-capture.sh"
   property color accent: Color.menu.selected
   property color background: Color.menu.background
   property color foreground: Color.menu.text
@@ -31,12 +34,7 @@ Item {
     root.filterText = ""
     root.selectedIndex = 0
     root.cursorActive = false
-    
-    // Trigger fetch
-    fetchProc.collected = ""
-    fetchProc.command = ["bash", "-lc", "elephant query --json 'clipboard;;100'"]
-    fetchProc.running = true
-
+    root.rebuildDisplay()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
@@ -53,35 +51,111 @@ Item {
     return Qt.rgba(color.r, color.g, color.b, alpha)
   }
 
+  function shellQuote(value) {
+    return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
+  }
+
+  function fileUrl(path) {
+    return "file://" + String(path).split("/").map(encodeURIComponent).join("/")
+  }
+
+  function normalizeEntry(value) {
+    if (typeof value === "string") {
+      return value.length > 0 ? { type: "text", text: value } : null
+    }
+    if (!value || typeof value !== "object") return null
+
+    var type = String(value.type || value.kind || "")
+    if (type === "text") {
+      var text = String(value.text || "")
+      return text.length > 0 ? { type: "text", text: text } : null
+    }
+    if (type === "image") {
+      var path = String(value.path || "")
+      if (!path) return null
+      return {
+        type: "image",
+        path: path,
+        mime: String(value.mime || "image/png")
+      }
+    }
+    return null
+  }
+
+  function entryKey(entry) {
+    if (!entry) return ""
+    if (entry.type === "image") return "image:" + String(entry.path || "")
+    return "text:" + String(entry.text || "")
+  }
+
+  function loadHistory(raw) {
+    try {
+      var parsed = JSON.parse(String(raw || "[]"))
+      var next = []
+      if (Array.isArray(parsed)) {
+        for (var i = 0; i < parsed.length; i++) {
+          var entry = root.normalizeEntry(parsed[i])
+          if (entry) next.push(entry)
+        }
+      }
+      root.history = next
+    } catch (e) {
+      root.history = []
+    }
+    if (root.opened) root.rebuildDisplay()
+  }
+
+  function saveHistory() {
+    historyFile.setText(JSON.stringify(root.history.slice(0, 100), null, 2) + "\n")
+  }
+
+  function addClipboardEntry(entry) {
+    var normalized = root.normalizeEntry(entry)
+    if (!normalized) return
+
+    var key = root.entryKey(normalized)
+    var next = [normalized]
+    for (var i = 0; i < root.history.length && next.length < 100; i++) {
+      var existing = root.normalizeEntry(root.history[i])
+      if (!existing || root.entryKey(existing) === key) continue
+      next.push(existing)
+    }
+    root.history = next
+    root.saveHistory()
+    if (root.opened) root.rebuildDisplay()
+  }
+
+  function addClipboardJson(line) {
+    var raw = String(line || "").trim()
+    if (!raw) return
+    try { root.addClipboardEntry(JSON.parse(raw)) } catch (e) {}
+  }
+
   function rebuildDisplay() {
     var query = root.filterText.trim().toLowerCase()
-    
+
     displayModel.clear()
     var outCount = 0
-    
-    for (var i = 0; i < root.items.length; i++) {
-      var entry = root.items[i]
-      var isPassword = (entry.meta === "password" || entry.preview_type === "password")
-      
-      var textMatch = false
-      if (isPassword) {
-        textMatch = false // Passwords shouldn't match plain text search queries
-      } else {
-        textMatch = (entry.preview && entry.preview.toLowerCase().indexOf(query) >= 0)
-      }
-      
-      if (!query || textMatch) {
-        displayModel.append({
-          identifier: entry.identifier,
-          previewText: entry.preview_type === "text" ? entry.preview.replace(/\n/g, " ") : "",
-          previewImage: entry.preview_type === "file" ? ("file://" + entry.preview) : "",
-          previewType: entry.preview_type || "text",
-          isPassword: isPassword,
-          index: outCount
-        })
-        outCount++
-        if (outCount >= 50) break
-      }
+
+    for (var i = 0; i < root.history.length; i++) {
+      var entry = root.normalizeEntry(root.history[i])
+      if (!entry) continue
+
+      var isImage = entry.type === "image"
+      var searchable = isImage ? ("image " + String(entry.mime || "")) : String(entry.text || "")
+      if (query && searchable.toLowerCase().indexOf(query) < 0) continue
+
+      displayModel.append({
+        entryType: entry.type,
+        fullText: isImage ? "" : String(entry.text || ""),
+        previewText: isImage ? "Image" : String(entry.text || "").replace(/\s+/g, " "),
+        previewImage: isImage ? root.fileUrl(entry.path) : "",
+        path: isImage ? String(entry.path || "") : "",
+        mime: isImage ? String(entry.mime || "image/png") : "text/plain",
+        index: outCount
+      })
+      outCount++
+      if (outCount >= 50) break
     }
 
     if (displayModel.count === 0) selectedIndex = 0
@@ -114,40 +188,60 @@ Item {
   function activateIndex(index) {
     if (index < 0 || index >= displayModel.count) return
     var row = displayModel.get(index)
-    root.applySelected(row.identifier)
+    root.applySelected(row)
   }
 
-  function applySelected(identifier) {
-    if (!identifier) return
+  function applySelected(row) {
+    if (!row) return
     root.opened = false
-    var escId = identifier.replace(/'/g, "'\\''")
-    Quickshell.execDetached(["bash", "-lc", "elephant activate 'clipboard;" + escId + ";copy;;'; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true"])
+    if (row.entryType === "image") {
+      Quickshell.execDetached(["bash", "-lc", "wl-copy --type " + root.shellQuote(row.mime) + " < " + root.shellQuote(row.path) + "; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true"])
+    } else if (row.fullText) {
+      Quickshell.execDetached(["bash", "-lc", "printf %s " + root.shellQuote(row.fullText) + " | wl-copy; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true"])
+    }
   }
+
+  Component.onCompleted: initProc.running = true
+
   ListModel { id: displayModel }
 
+  FileView {
+    id: historyFile
+    path: root.historyPath
+    watchChanges: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.loadHistory(text())
+    onLoadFailed: root.loadHistory("[]")
+    onFileChanged: reload()
+  }
+
   Process {
-    id: fetchProc
-    property string collected: ""
-    stdout: SplitParser {
-      onRead: function(data) { fetchProc.collected += data + "\n" }
-    }
+    id: initProc
+    command: ["bash", "-lc", "mkdir -p ~/.local/state/omarchy"]
     onExited: {
-      var lines = fetchProc.collected.split("\n")
-      var newItems = []
-      for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].trim()
-        if (!line) continue
-        try {
-          var parsed = JSON.parse(line)
-          if (parsed && parsed.item) {
-            newItems.push(parsed.item)
-          }
-        } catch(e) {}
-      }
-      root.items = newItems
-      root.rebuildDisplay()
+      currentProc.command = [root.captureScript]
+      currentProc.running = true
+      watchProc.command = ["wl-paste", "--watch", root.captureScript]
+      watchProc.running = true
     }
   }
+
+  Process {
+    id: currentProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.addClipboardJson(text)
+    }
+  }
+
+  Process {
+    id: watchProc
+    stdout: SplitParser {
+      onRead: function(data) { root.addClipboardJson(data) }
+    }
+  }
+
   PanelWindow {
     id: panel
     visible: root.opened
@@ -261,10 +355,10 @@ Item {
 
               delegate: Rectangle {
                 required property int index
-                required property string identifier
+                required property string entryType
                 required property string previewText
-                required property string previewType
-                required property bool isPassword
+                required property string fullText
+                required property string previewImage
 
                 readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
 
@@ -275,33 +369,33 @@ Item {
                 border.color: hasCursor ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
                 border.width: hasCursor ? Style.hoverBorderWidth : 0
 
-                Rectangle {
-                  visible: false
-                  width: Style.space(4)
-                  height: parent.height - Style.space(18)
-                  radius: Math.min(root.cornerRadius, Style.space(4))
-                  color: root.accent
-                  anchors.left: parent.left
-                  anchors.leftMargin: Style.space(8)
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Item {
+                Row {
                   anchors.fill: parent
                   anchors.leftMargin: Style.space(12)
                   anchors.rightMargin: Style.space(12)
                   anchors.topMargin: Style.space(8)
                   anchors.bottomMargin: Style.space(8)
+                  spacing: Style.space(10)
+
+                  Image {
+                    visible: parent.parent.entryType === "image"
+                    width: visible ? parent.height : 0
+                    height: parent.height
+                    source: parent.parent.previewImage
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                    smooth: true
+                  }
 
                   Text {
-                    width: parent.width
+                    width: parent.width - (parent.parent.entryType === "image" ? parent.height + parent.spacing : 0)
                     height: parent.height
-                    text: parent.parent.isPassword ? "••••••••" : (parent.parent.previewType === "text" ? parent.parent.previewText : "Image")
+                    text: parent.parent.previewText
                     color: parent.parent.hasCursor ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.title
-                    font.italic: parent.parent.previewType === "file" || parent.parent.isPassword
-                    opacity: (parent.parent.previewType === "file" || parent.parent.isPassword) ? 0.6 : 1.0
+                    font.italic: parent.parent.entryType === "image"
+                    opacity: parent.parent.entryType === "image" ? 0.72 : 1.0
                     elide: Text.ElideRight
                     wrapMode: Text.NoWrap
                     verticalAlignment: Text.AlignVCenter
@@ -309,7 +403,6 @@ Item {
                 }
 
                 MouseArea {
-                  id: mouseArea
                   anchors.fill: parent
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
@@ -335,13 +428,13 @@ Item {
               border.width: Style.normalBorderWidth
               clip: true
 
-              property var activeRow: root.cursorActive && displayModel.count > 0 && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count ? displayModel.get(root.selectedIndex) : null
+              property var activeRow: displayModel.count > 0 && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count ? displayModel.get(root.selectedIndex) : null
 
               Text {
-                visible: parent.activeRow && parent.activeRow.previewType === "text"
+                visible: parent.activeRow && parent.activeRow.entryType === "text"
                 anchors.fill: parent
                 anchors.margins: Style.space(16)
-                text: parent.activeRow ? (parent.activeRow.isPassword ? "••••••••" : parent.activeRow.previewText) : ""
+                text: parent.activeRow ? parent.activeRow.fullText : ""
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.title
@@ -351,11 +444,13 @@ Item {
               }
 
               Image {
-                visible: parent.activeRow && parent.activeRow.previewType === "file"
+                visible: parent.activeRow && parent.activeRow.entryType === "image"
                 anchors.fill: parent
                 anchors.margins: Style.space(16)
                 source: parent.activeRow ? parent.activeRow.previewImage : ""
                 fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                smooth: true
               }
             }
           }
@@ -376,7 +471,7 @@ Item {
             }
 
             Text {
-              text: root.items.length === 0 ? "Clipboard is empty" : "No matches for “" + root.filterText + "”"
+              text: root.history.length === 0 ? "Clipboard is empty" : "No matches for “" + root.filterText + "”"
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily

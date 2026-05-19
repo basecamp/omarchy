@@ -74,9 +74,9 @@ perl -MCwd=abs_path -MEncode=encode,decode -MSocket -MIO::Handle \
 
     my $shell_qml_arg = shift @ARGV;
     my $shell_qml = abs_path($shell_qml_arg);
-    my $target = shift @ARGV;
-    my $function = shift @ARGV;
-    my @args = @ARGV;
+    my $target = decode("UTF-8", shift @ARGV);
+    my $function = decode("UTF-8", shift @ARGV);
+    my @args = map { decode("UTF-8", $_) } @ARGV;
     my $runtime_dir = $ENV{"XDG_RUNTIME_DIR"} || "/run/user/$<";
     my $payload = chr(3) . qstring($target) . qstring($function) . pack("N", scalar @args) . join("", map { qstring($_) } @args);
     my @candidates;

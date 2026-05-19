@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Display Hyprland keybindings defined in your configuration using walker for an interactive search menu.
+# omarchy:summary=Display Hyprland keybindings defined in your configuration using an interactive search menu.
 
 declare -A KEYCODE_SYM_MAP
 # Hyprland reports XKB keycodes for code: bindings. Keep a small fallback for
@@ -600,7 +600,7 @@ else
   monitor_height=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .height')
   menu_height=$((monitor_height * 40 / 100))
   selection=$(cut -f1 <<<"$records" |
-    walker --dmenu -p 'Keybindings' --width 800 --height "$menu_height")
+    omarchy-menu-select 'Keybindings' -- --width 800 --height "$menu_height")
 
   if [[ -n $selection ]]; then
     record=$(awk -F '\t' -v selection="$selection" '$1 == selection { print; exit }' <<<"$records")

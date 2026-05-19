@@ -2,10 +2,10 @@
 name: omarchy
 description: >
   REQUIRED for end-user customization of Linux desktop, window manager, or system config.
-  Use when editing ~/.config/hypr/, ~/.config/omarchy/, ~/.config/walker/,
+  Use when editing ~/.config/hypr/, ~/.config/omarchy/,
   ~/.config/alacritty/, ~/.config/foot/, ~/.config/kitty/, or ~/.config/ghostty/.
   Triggers: Hyprland, window rules, animations, keybindings, monitors, gaps, borders,
-  blur, opacity, omarchy-shell, bar, walker, terminal config, themes, background,
+  blur, opacity, omarchy-shell, bar, terminal config, themes, background,
   night light, idle, lock screen, screenshots, reminders, layer rules, workspace
   settings, display config, and user-facing omarchy commands. Excludes Omarchy
   source development in ~/.local/share/omarchy/ and `omarchy dev` workflows.
@@ -23,7 +23,7 @@ It is not for contributing to Omarchy source code.
 **ALWAYS invoke this skill for end-user requests involving ANY of these:**
 
 - Editing ANY file in `~/.config/hypr/` (window rules, animations, keybindings, monitors, etc.)
-- Editing `~/.config/omarchy/shell.json` (status bar layout, widgets) or `~/.config/walker/`
+- Editing `~/.config/omarchy/shell.json` (status bar layout, widgets)
 - Editing terminal configs (alacritty, foot, kitty, ghostty)
 - Editing ANY file in `~/.config/omarchy/`
 - Window behavior, animations, opacity, blur, gaps, borders
@@ -78,7 +78,7 @@ Omarchy is built on:
 | **Arch Linux** | Base OS | `/etc/`, `~/.config/` |
 | **Hyprland** | Wayland compositor/WM | `~/.config/hypr/` |
 | **Omarchy shell** | Status bar + notifications (Quickshell) | `~/.config/omarchy/shell.json` |
-| **Walker** | App launcher | `~/.config/walker/` |
+| **App launcher** | Quickshell app launcher | `~/.config/omarchy/shell.json` |
 | **Alacritty/Foot/Kitty/Ghostty** | Terminals | `~/.config/<terminal>/` |
 | **Omarchy OSD** | On-screen display | Quickshell plugin |
 
@@ -182,7 +182,6 @@ changes. For more invasive changes (new plugin, packaged update):
 | lazygit | `~/.config/lazygit/config.yml` |
 | starship | `~/.config/starship.toml` |
 | git | `~/.config/git/config` |
-| walker | `~/.config/walker/config.toml` |
 
 ## Safe Customization Patterns
 
@@ -202,7 +201,7 @@ cp ~/.config/hypr/bindings.conf ~/.config/hypr/bindings.conf.bak.$(date +%s)
 # 4. Apply changes
 # - Hyprland: auto-reloads on save, but MUST validate with `hyprctl reload` and `hyprctl configerrors`
 # - Omarchy shell: shell.json hot-reloads; use `omarchy-restart-shell` for plugin/widget code changes
-# - Walker: MUST restart with `omarchy restart walker`
+# - App launcher: restart with `omarchy restart shell`
 # - Terminals: MUST restart with `omarchy restart terminal`
 ```
 

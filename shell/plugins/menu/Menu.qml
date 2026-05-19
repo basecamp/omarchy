@@ -18,10 +18,14 @@ Item {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
 
-    root.pendingInitialMenu = payload.initialMenu || payload.menu || "root"
     if (payload.fontFamily) root.fontFamily = payload.fontFamily
 
-    root.openExistingMenu(root.pendingInitialMenu)
+    if (payload.mode === "select" || payload.mode === "input") {
+      root.openDmenu(payload)
+    } else {
+      root.pendingInitialMenu = payload.initialMenu || payload.menu || "root"
+      root.openExistingMenu(root.pendingInitialMenu)
+    }
   }
 
   function close() {
@@ -37,6 +41,15 @@ Item {
   property var defaultMenuItems: []
   property var userMenuItems: []
   property bool opened: false
+  property string mode: "menu"
+  readonly property bool dmenuActive: mode === "select" || mode === "input"
+  property string dmenuPrompt: ""
+  property var dmenuOptions: []
+  property string selectionFile: ""
+  property string doneFile: ""
+  property int dmenuWidth: 300
+  property int dmenuMaxHeight: 0
+  property bool requestActive: false
   property bool rowsLoaded: false
   property string activeMenu: "root"
   property string filterText: ""
@@ -64,12 +77,38 @@ Item {
   property int dividerHeight: Style.space(17)
   property bool searchDivider: false
   property int layoutSerial: 0
-  property int cardWidth: Math.min((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(300), panel.width - Style.gapsOut * 2)
-  property int visibleRowsHeight: rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
-  property int cardHeight: Math.min(Math.max(Style.space(220), contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
+  property int cardWidth: Math.min(root.dmenuActive ? Style.space(root.dmenuWidth) : ((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(300)), panel.width - Style.gapsOut * 2)
+  property int visibleRowsHeight: root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
+  property int cardHeight: root.dmenuActive
+    ? Math.min(contentMargin * 2 + headerHeight + (mode === "input" ? 0 : contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
+    : Math.min(Math.max(Style.space(220), contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
 
   function withAlpha(color, alpha) {
     return Qt.rgba(color.r, color.g, color.b, alpha)
+  }
+
+  function shellQuote(value) {
+    return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
+  }
+
+  function finishRequest(selection) {
+    if (!root.requestActive || !root.doneFile) {
+      root.opened = false
+      return
+    }
+
+    var activeSelectionFile = root.selectionFile
+    var activeDoneFile = root.doneFile
+    root.requestActive = false
+    root.selectionFile = ""
+    root.doneFile = ""
+
+    if (selection === null || selection === undefined) {
+      resultProc.command = ["bash", "-lc", ": > " + root.shellQuote(activeDoneFile)]
+    } else {
+      resultProc.command = ["bash", "-lc", "printf '%s\\n' " + root.shellQuote(selection) + " > " + root.shellQuote(activeSelectionFile) + "; : > " + root.shellQuote(activeDoneFile)]
+    }
+    resultProc.running = true
   }
 
   function rowHeightForDetail(detail) {
@@ -92,6 +131,20 @@ Item {
     }
 
     return total
+  }
+
+  function dmenuRowListHeight(_serial, _count, _filter) {
+    if (root.mode === "input") return 0
+    if (displayModel.count === 0) return root.baseRowHeight
+
+    var count = Math.min(displayModel.count, 10)
+    var total = 0
+    for (var i = 0; i < count; i++) {
+      if (i > 0) total += root.rowSpacing
+      total += root.baseRowHeight
+    }
+
+    return root.dmenuMaxHeight > 0 ? Math.min(total, Style.space(root.dmenuMaxHeight)) : total
   }
 
   function item(id) {
@@ -458,7 +511,52 @@ Item {
     }
   }
 
+  function rebuildDmenuDisplay() {
+    displayModel.clear()
+    root.searchDivider = false
+
+    if (root.mode === "input") {
+      layoutSerial += 1
+      return
+    }
+
+    var query = root.filterText.trim().toLowerCase()
+    for (var i = 0; i < root.dmenuOptions.length; i++) {
+      var label = String(root.dmenuOptions[i] || "")
+      if (query && label.toLowerCase().indexOf(query) < 0) continue
+      displayModel.append({
+        itemId: "dmenu." + i,
+        kind: "dmenu",
+        icon: "",
+        label: label,
+        target: "",
+        detail: "",
+        path: "",
+        childCount: 0,
+        action: "",
+        provider: "",
+        score: i,
+        section: ""
+      })
+    }
+
+    layoutSerial += 1
+
+    if (displayModel.count === 0) selectedIndex = 0
+    else if (selectedIndex >= displayModel.count) selectedIndex = displayModel.count - 1
+    else if (selectedIndex < 0) selectedIndex = 0
+
+    Qt.callLater(function() {
+      if (displayModel.count > 0) resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+    })
+  }
+
   function rebuildDisplay() {
+    if (root.dmenuActive) {
+      root.rebuildDmenuDisplay()
+      return
+    }
+
     displayModel.clear()
 
     if (!root.rowsLoaded) return
@@ -540,7 +638,7 @@ Item {
     root.filterText = nextFilter
     root.selectedIndex = 0
     root.cursorActive = false
-    if (root.filterText.trim()) root.loadProvidersForSearch()
+    if (!root.dmenuActive && root.filterText.trim()) root.loadProvidersForSearch()
     root.rebuildDisplay()
   }
 
@@ -571,6 +669,16 @@ Item {
   }
 
   function activateIndex(index) {
+    if (root.dmenuActive) {
+      if (root.mode === "input") {
+        root.applyDmenuSelection(root.filterText)
+        return
+      }
+      if (index < 0 || index >= displayModel.count) return
+      root.applyDmenuSelection(displayModel.get(index).label)
+      return
+    }
+
     if (index < 0 || index >= displayModel.count) return
 
     var row = displayModel.get(index)
@@ -583,6 +691,13 @@ Item {
     }
   }
 
+  function applyDmenuSelection(value) {
+    applySerial = requestSerial
+    opened = false
+    filterText = ""
+    root.finishRequest(value)
+  }
+
   function applySelected(id, action) {
     if (!id) { cancel(); return }
     applySerial = requestSerial
@@ -592,12 +707,17 @@ Item {
   }
 
   function cancel() {
+    if (root.dmenuActive) root.finishRequest(null)
     opened = false
     filterText = ""
   }
 
   function openExistingMenu(initialMenu) {
     requestSerial += 1
+    mode = "menu"
+    requestActive = false
+    selectionFile = ""
+    doneFile = ""
     activeMenu = root.item(initialMenu) ? initialMenu : "root"
     navStack = []
     filterText = ""
@@ -607,6 +727,27 @@ Item {
     opened = true
     rebuildDisplay()
     loadProviderForMenu(activeMenu)
+
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function openDmenu(payload) {
+    requestSerial += 1
+    mode = payload.mode === "input" ? "input" : "select"
+    dmenuPrompt = String(payload.prompt || (mode === "input" ? "Input" : "Select"))
+    dmenuOptions = Array.isArray(payload.options) ? payload.options : []
+    selectionFile = String(payload.selectionFile || "")
+    doneFile = String(payload.doneFile || "")
+    requestActive = !!doneFile
+    dmenuWidth = Math.max(1, Number(payload.width || 300))
+    dmenuMaxHeight = Math.max(0, Number(payload.maxHeight || 0))
+    activeMenu = "root"
+    navStack = []
+    filterText = ""
+    selectedIndex = 0
+    cursorActive = false
+    opened = true
+    rebuildDisplay()
 
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -694,6 +835,14 @@ Item {
       root.mergeProviderRows(providerProc.collected, providerProc.menuId, providerProc.providerKey)
       if (root.filterText.trim()) root.loadProvidersForSearch()
       root.startNextProvider()
+    }
+  }
+
+  Process {
+    id: resultProc
+    onExited: {
+      if (root.applySerial === root.requestSerial)
+        root.opened = false
     }
   }
 
@@ -840,7 +989,10 @@ Item {
             if (!root.filterText) root.goBack()
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
-            if (root.cursorActive) root.activateIndex(root.selectedIndex)
+            if (root.dmenuActive) {
+              if (root.mode === "input") root.applyDmenuSelection(root.filterText)
+              else if (displayModel.count > 0) root.activateIndex(root.cursorActive ? root.selectedIndex : 0)
+            } else if (root.cursorActive) root.activateIndex(root.selectedIndex)
             else if (displayModel.count > 0) root.cursorActive = true
             event.accepted = true
           } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
@@ -866,7 +1018,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.filterText || ((root.item(root.activeMenu) ? root.item(root.activeMenu).label : "Go") + "…")
+            text: root.filterText || (root.dmenuActive ? (root.dmenuPrompt + "…") : ((root.item(root.activeMenu) ? root.item(root.activeMenu).label : "Go") + "…"))
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
@@ -1034,7 +1186,7 @@ Item {
           Column {
             anchors.centerIn: parent
             spacing: Style.space(8)
-            visible: displayModel.count === 0
+            visible: displayModel.count === 0 && root.mode !== "input"
 
             Text {
               text: "󰈉"

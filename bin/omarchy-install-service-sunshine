@@ -62,7 +62,6 @@ install_admin_webapp() {
   mkdir -p "$WEBAPP_ICON_DIR"
   cp "$SUNSHINE_ICON_SOURCE" "$WEBAPP_ICON_DIR/$SUNSHINE_ICON_NAME"
   omarchy-webapp-install "$SUNSHINE_ADMIN_APP" "$SUNSHINE_ADMIN_URL" "$SUNSHINE_ICON_NAME" "$SUNSHINE_ADMIN_EXEC"
-  omarchy-restart-walker
 }
 
 enable_hyprland_autostart() {

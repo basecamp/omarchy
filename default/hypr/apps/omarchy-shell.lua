@@ -6,7 +6,8 @@
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "omarchy-menu" }, no_anim = true, animation = "none" })
 
--- Image selector, emoji picker, and clipboard overlays should also pop without animation.
+-- App launcher, image selector, emoji picker, and clipboard overlays should also pop without animation.
+hl.layer_rule({ match = { namespace = "omarchy-app-launcher" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "omarchy-image-selector" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "omarchy-emoji-picker" }, no_anim = true, animation = "none" })
 hl.layer_rule({ match = { namespace = "omarchy-clipboard-picker" }, no_anim = true, animation = "none" })

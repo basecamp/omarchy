@@ -20,7 +20,6 @@ run_logged $OMARCHY_INSTALL/config/user-dirs.sh
 run_logged $OMARCHY_INSTALL/config/toggles.sh
 run_logged $OMARCHY_INSTALL/config/nautilus-python.sh
 run_logged $OMARCHY_INSTALL/config/localdb.sh
-run_logged $OMARCHY_INSTALL/config/walker-elephant.sh
 run_logged $OMARCHY_INSTALL/config/fast-shutdown.sh
 run_logged $OMARCHY_INSTALL/config/unmount-fuse.sh
 run_logged $OMARCHY_INSTALL/config/sudoless-asdcontrol.sh

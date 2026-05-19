@@ -122,10 +122,6 @@ fi
 exec 9>"$THEME_SET_LOCK"
 flock 9
 
-# Prevent file-watch reloads from changing shell colors before the background
-# reveal is ready. The theme IPC below resumes reloads as it applies colors.
-shell_ipc shell suspendThemeReloads || true
-
 # Setup clean next theme directory (for atomic theme config swapping)
 rm -rf "$NEXT_THEME_PATH"
 mkdir -p "$NEXT_THEME_PATH"
@@ -154,8 +150,8 @@ mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
 # Store theme name for reference
 echo "$THEME_NAME" >"$HOME/.config/omarchy/current/theme.name"
 
-# Make the running shell pick up the new palette immediately instead of waiting
-# for file-watch debounce while the rest of the theme hooks run.
+# Make the running shell pick up the new palette immediately while the rest of
+# the theme hooks run.
 colors_payload=$([[ -f $CURRENT_THEME_PATH/colors.toml ]] && base64 -w 0 "$CURRENT_THEME_PATH/colors.toml")
 shell_payload=$([[ -f $CURRENT_THEME_PATH/shell.toml ]] && base64 -w 0 "$CURRENT_THEME_PATH/shell.toml")
 if [[ $OMARCHY_THEME_SKIP_BACKGROUND == "1" ]]; then
