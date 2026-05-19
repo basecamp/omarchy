@@ -62,6 +62,19 @@ EOF
   fi
 }
 
+add_hyprlock_face_icon() {
+  echo "Adding face icon to hyprlock placeholder text..."
+  if grep -q '󰱻' ~/.config/hypr/hyprlock.conf; then
+    return 0
+  fi
+  if grep -q '󰈷' ~/.config/hypr/hyprlock.conf; then
+    # Fingerprint icon already present, append face glyph alongside
+    sed -i 's|󰈷 </span>|󰈷 󰱻 </span>|' ~/.config/hypr/hyprlock.conf
+  else
+    sed -i 's|placeholder_text = .*|placeholder_text = <span> Enter Password 󰱻 </span>|' ~/.config/hypr/hyprlock.conf
+  fi
+}
+
 enable_hyprlock_face_unlock() {
   # Allow empty Enter to trigger PAM so face detection starts without typing
   sed -i 's/ignore_empty_input = true/ignore_empty_input = false/' ~/.config/hypr/hyprlock.conf
@@ -102,6 +115,7 @@ if systemctl list-unit-files linux-enable-ir-emitter.service &>/dev/null; then
 fi
 
 setup_pam_config
+add_hyprlock_face_icon
 enable_hyprlock_face_unlock
 
 echo -e "\e[32m\nLet's add your face model.\e[0m"

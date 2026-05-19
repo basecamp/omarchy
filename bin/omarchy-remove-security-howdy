@@ -19,6 +19,16 @@ remove_pam_config() {
   done
 }
 
+remove_hyprlock_face_icon() {
+  echo "Removing face icon from hyprlock placeholder text..."
+  if grep -q '󰈷 󰱻' ~/.config/hypr/hyprlock.conf; then
+    # Fingerprint icon coexists, strip only the face glyph
+    sed -i 's| 󰱻||' ~/.config/hypr/hyprlock.conf
+  elif grep -q '󰱻' ~/.config/hypr/hyprlock.conf; then
+    sed -i 's|placeholder_text = .*|placeholder_text = Enter Password|' ~/.config/hypr/hyprlock.conf
+  fi
+}
+
 disable_hyprlock_face_unlock() {
   sed -i 's/ignore_empty_input = false/ignore_empty_input = true/' ~/.config/hypr/hyprlock.conf
 }
@@ -26,6 +36,7 @@ disable_hyprlock_face_unlock() {
 echo -e "\e[32mRemoving face unlock from authentication.\n\e[0m"
 
 remove_pam_config
+remove_hyprlock_face_icon
 disable_hyprlock_face_unlock
 
 if systemctl is-enabled linux-enable-ir-emitter.service &>/dev/null; then
