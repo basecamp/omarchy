@@ -14,9 +14,12 @@ hl.layer_rule({ match = { namespace = "omarchy-clipboard-picker" }, no_anim = tr
 
 -- Bar settings floats centered with a sensible default size instead of
 -- tiling — it's a transient dialog, not a workspace surface.
-hl.window_rule({ match = { class = "^org.quickshell$", title = "^Omarchy Bar Settings$" }, float = true })
-hl.window_rule({ match = { class = "^org.quickshell$", title = "^Omarchy Bar Settings$" }, center = true })
-hl.window_rule({ match = { class = "^org.quickshell$", title = "^Omarchy Bar Settings$" }, size = { 760, 620 } })
+hl.window_rule({
+  match = { class = "^org.quickshell$", title = "^Omarchy Bar Settings$" },
+  float = true,
+  center = true,
+  size = { 760, 620 },
+})
 
 -- Dev gallery is the main shell workbench; open it maximized like
 -- SUPER+ALT+F so component previews have the whole workspace.
