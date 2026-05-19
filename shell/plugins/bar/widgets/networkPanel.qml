@@ -885,7 +885,7 @@ fi
           InfoPair {
             visible: root.info.type === "ethernet" && !!root.info.speed
             label: "Link"
-            value: root.formatSpeed(root.info.speed || "") + (root.info.duplex ? " • " + root.info.duplex + " dup" : "")
+            value: root.formatSpeed(root.info.speed || "")
           }
 
           // Wi-Fi details
