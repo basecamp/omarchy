@@ -148,7 +148,7 @@ Item {
     var net = wifiNetworks[selectedIndex]
     if (!net) return
     if (net.connected) { disconnect(net.ssid); return }
-    if (isProtected(net.security)) {
+    if (isProtected(net.security) && !net.known) {
       var quotedSsid = bar.shellQuote(net.ssid)
       knownCheck.targetSsid = net.ssid
       knownCheck.command = ["bash", "-c", `
@@ -167,12 +167,13 @@ iwctl known-networks list 2>/dev/null \\
     connectKnown(net.ssid)
   }
 
-  // 'x' on the highlighted row. Only meaningful on the currently-connected
-  // network — forget is a no-op (and the X icon is hidden) otherwise.
+  // 'x' on the highlighted row. Meaningful for saved/known networks
+  // (and the currently-connected row, if one is ever present); forget is
+  // hidden and a no-op otherwise.
   function forgetSelected() {
     if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
-    if (net && net.connected) forget(net.ssid)
+    if (net && (net.connected || net.known)) forget(net.ssid)
   }
 
   // Bar pill state. Polled locally so this panel is self-contained;
@@ -266,6 +267,19 @@ station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk 
 [[ -z $station ]] && exit 0
 echo STATION_AVAILABLE
 ${scanWifi ? 'iwctl station "$station" scan >/dev/null 2>&1 || true' : ''}
+iwctl known-networks list 2>/dev/null \\
+  | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
+  | awk '
+      NR <= 3 { next }
+      /^[[:space:]]*$/ { next }
+      {
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+        sub(/[[:space:]]+$/, "", line)
+        if (line ~ /^-+$/) next
+        n = split(line, parts, /[[:space:]]{2,}/)
+        if (n >= 1 && parts[1] != "") printf "KNOWN\\t%s\\n", parts[1]
+      }'
 iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
   | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
   | awk '
@@ -282,7 +296,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
         security = parts[n-1]
         dbm = parts[n] / 100
         signal = (dbm >= -50) ? 100 : (dbm <= -100) ? 0 : int(2 * (dbm + 100))
-        printf "%d\\t%s\\t%d\\t%s\\n", connected, ssid, signal, security
+        printf "NETWORK\\t%d\\t%s\\t%d\\t%s\\n", connected, ssid, signal, security
       }'
 `
   }
@@ -316,22 +330,38 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
   function updateWifi(raw) {
     var lines = String(raw || "").split("\n")
     var hasStation = false
+    var knownNetworks = {}
     var nets = []
+
     for (var i = 0; i < lines.length; i++) {
-      var line = lines[i].trim()
-      if (!line) continue
-      if (line === "STATION_AVAILABLE") { hasStation = true; continue }
-      // Format: connected<TAB>ssid<TAB>signal<TAB>security
+      var knownLine = lines[i].trim()
+      if (!knownLine) continue
+      if (knownLine === "STATION_AVAILABLE") { hasStation = true; continue }
+      var knownParts = knownLine.split("\t")
+      if (knownParts.length >= 2 && knownParts[0] === "KNOWN") knownNetworks[knownParts[1]] = true
+    }
+
+    for (var j = 0; j < lines.length; j++) {
+      var line = lines[j].trim()
+      if (!line || line === "STATION_AVAILABLE") continue
+      // Format: NETWORK<TAB>connected<TAB>ssid<TAB>signal<TAB>security
+      // Older rows without the NETWORK prefix are accepted for compatibility.
       var parts = line.split("\t")
-      if (parts.length < 3) continue
-      var isConnected = parts[0] === "1"
-      if (isConnected && parts[1] !== root.actionSsid) continue // Skip the connected network so it doesn't appear in the list, unless we are currently trying to connect to it
+      if (parts[0] === "KNOWN") continue
+      var offset = parts[0] === "NETWORK" ? 1 : 0
+      if (parts.length < offset + 3) continue
+      var isConnected = parts[offset] === "1"
+      var ssid = parts[offset + 1]
+      if (isConnected && ssid !== root.actionSsid) continue // Skip the connected network so it doesn't appear in the list, unless we are currently trying to connect to it
+      var isKnown = knownNetworks[ssid] === true
+      if (parts.length > offset + 4) isKnown = isKnown || parts[offset + 4] === "1"
 
       nets.push({
-        connected: false,
-        ssid: parts[1],
-        signal: parseInt(parts[2], 10) || 0,
-        security: parts[3] || ""
+        connected: isConnected,
+        known: isKnown,
+        ssid: ssid,
+        signal: parseInt(parts[offset + 2], 10) || 0,
+        security: parts[offset + 3] || ""
       })
     }
     nets.sort(function(a, b) {
@@ -1017,14 +1047,16 @@ fi
   // A single Wi-Fi network entry. Collapses to a one-line pill normally;
   // expands inline to a passphrase prompt when the user picks a protected
   // network we don't have credentials for. Clicking a connected row
-  // disconnects; the X button on a connected row forgets the network.
+  // disconnects; the X button on any saved/connected row forgets it.
   component NetworkRow: CursorSurface {
     id: row
     required property var net
     required property int index
 
     readonly property bool isConnected: net && net.connected
+    readonly property bool isKnown: !!(net && net.known)
     readonly property bool isProtected: root.isProtected(net ? net.security : "")
+    readonly property bool canForget: isConnected || isKnown
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
 
     hasCursor: root.cursorActive && isSelected
@@ -1085,12 +1117,12 @@ fi
           root.disconnect(row.net.ssid)
           return
         }
-        if (row.isProtected) {
-          // Known protected network: iwd has the passphrase, just connect.
-          // Otherwise expand the inline password prompt for this row. Stash
-          // the SSID as a string — if we held a reference to the row
-          // delegate it could be destroyed by a model refresh, and a rapid
-          // second click would overwrite it and misroute the first result.
+        if (row.isProtected && !row.isKnown) {
+          // Unknown protected network: probe iwd before expanding the inline
+          // password prompt for this row. Stash the SSID as a string — if we
+          // held a reference to the row delegate it could be destroyed by a
+          // model refresh, and a rapid second click would overwrite it and
+          // misroute the first result.
           var quotedSsid = root.bar.shellQuote(row.net.ssid)
           knownCheck.targetSsid = row.net.ssid
           knownCheck.command = ["bash", "-c", `
@@ -1131,9 +1163,10 @@ iwctl known-networks list 2>/dev/null \\
 
       PanelActionButton {
         id: forgetBtn
-        anchors.right: parent.right
+        anchors.right: lockIndicator.visible ? lockIndicator.left : parent.right
+        anchors.rightMargin: lockIndicator.visible ? Style.space(4) : 0
         anchors.verticalCenter: parent.verticalCenter
-        visible: row.isConnected
+        visible: row.canForget
         enabled: !root.busy
         iconText: "󰅙"
         tooltipText: "Forget network"
@@ -1144,11 +1177,8 @@ iwctl known-networks list 2>/dev/null \\
         onClicked: if (row.net) root.forget(row.net.ssid)
       }
 
-      // Shows a lock glyph on the right for protected networks that
-      // aren't currently connected. Once connected, the forget X takes
-      // its place (and 'protected' is implied by the fact we're on it).
-      // Same action-sized right-anchored centered geometry as forgetBtn so
-      // the glyph centers line up across rows.
+      // Shows a lock glyph for protected disconnected networks at the far
+      // right, with the forget X to its left when the network is saved.
       Text {
         id: lockIndicator
         visible: row.isProtected && !row.isConnected
@@ -1182,11 +1212,11 @@ iwctl known-networks list 2>/dev/null \\
           width: parent.width
         }
         Text {
-          // Signal strength is conveyed by the wifi-bars icon and a lock
-          // glyph on the right denotes protected networks, so the second
-          // line only carries action status (Connecting…, Connected,
-          // Failed, etc.). Collapses to zero height when empty so rows
-          // without status keep a tight one-line look.
+          // Signal strength is conveyed by the wifi-bars icon and the
+          // right-edge glyph/buttons carry protection or forget affordances,
+          // so the second line only carries action status (Connecting…,
+          // Connected, Failed, etc.). Collapses to zero height when empty
+          // so rows without status keep a tight one-line look.
           text: row.statusText
           visible: row.statusText !== ""
           height: visible ? implicitHeight : 0
