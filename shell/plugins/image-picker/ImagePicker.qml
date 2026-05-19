@@ -29,7 +29,9 @@ Item {
   property string filterText: ""
   property var doneFilesToRelease: []
   // Bound to the central [image-picker] section in shell.toml via Color.qml.
-  property color background: Color.imagePicker.background
+  // `dimColor` tints unselected slices and text outlines on top of the scrim;
+  // it intentionally tracks the foundational background, not a surface role.
+  property color dimColor: Color.background
   property color foreground: Color.imagePicker.text
   property color scrim: Color.imagePicker.scrim
   property color selectedBorder: Color.imagePicker.selectedBorder
@@ -583,7 +585,7 @@ Item {
 
                 Rectangle {
                   anchors.fill: parent
-                  color: root.withAlpha(root.background, item.selected ? 0 : 0.42)
+                  color: root.withAlpha(root.dimColor, item.selected ? 0 : 0.42)
                 }
               }
 
@@ -622,7 +624,7 @@ Item {
           text: root.currentLabel()
           color: root.foreground
           style: Text.Outline
-          styleColor: root.withAlpha(root.background, 0.7)
+          styleColor: root.withAlpha(root.dimColor, 0.7)
           font.pixelSize: Style.font.display
           font.weight: Font.DemiBold
           horizontalAlignment: Text.AlignHCenter
@@ -639,7 +641,7 @@ Item {
           color: root.foreground
           opacity: 0.85
           style: Text.Outline
-          styleColor: root.withAlpha(root.background, 0.7)
+          styleColor: root.withAlpha(root.dimColor, 0.7)
           font.pixelSize: Style.font.title
           horizontalAlignment: Text.AlignHCenter
           elide: Text.ElideRight

@@ -5,15 +5,15 @@ import Quickshell.Io
 
 // Shared structural style tokens for the shell. Color is the palette
 // singleton; Style holds everything else themes can influence — corner
-// rounding, state affordances, spacing, typography scale, and bar
-// dimensions — so panels and qs.Ui components have a single source of
-// truth.
+// rounding, gap to screen edges, state affordances, spacing, typography
+// scale, and bar dimensions.
 //
-// `cornerRadius` mirrors Hyprland's `decoration:rounding`. Themes and user
-// Hyprland config own that value; the shell picks it up by re-running
-// `hyprctl getoption` on startup and after theme IPC applies a theme.
+// `cornerRadius` mirrors Hyprland's `decoration:rounding`, and `gapsOut`
+// mirrors `general:gaps_out`. Themes and user Hyprland config own those
+// values; the shell picks them up by re-running `hyprctl getoption` on
+// startup and after theme IPC applies a theme.
 //
-// Typography, spacing, and bar size come from `theme/shell.toml`.
+// Typography, spacing, and bar size come from theme/shell.toml.
 // `[font] base-size` is the rem root; every `Style.font.<token>` derives
 // from it via the scale multipliers below unless the theme pins that
 // specific token. `[spacing] scale` multiplies shared margins, gaps, and
@@ -29,23 +29,16 @@ QtObject {
   // ---------------------------------------------------------- state tokens
   //
   // Shared interactive-state tokens for every reusable surface in the kit.
-  // The vocabulary is intentionally small:
+  // The vocabulary:
   //   normal       — idle control chrome
   //   hover-cursor — mouse hover OR panel keyboard cursor (`hasCursor`)
   //   selected     — persistent chosen/current state
   //   focus        — actual Qt activeFocus, defaulting to hover-cursor
   //
-  // Each state has a color token plus fill/border alphas. Color tokens may
-  // be palette roles (`foreground`, `accent`, `urgent`, `background`) or
-  // hex colors. Border widths are the on/off switch themes can use: set a
-  // state width to 0 to remove that state border everywhere. Legacy
-  // `border-width`, `idle-border-alpha`, `hover-*`, and `hot-fill-alpha`
-  // remain supported aliases for existing theme shell.toml files.
+  // Each state has a color token plus fill/border alphas. Color tokens
+  // may be palette roles (`foreground`, `accent`, `urgent`, `background`)
+  // or hex colors. Set a state's border width to 0 to drop that border.
   property var styleOverrides: ({})
-
-  function keyList(keys) {
-    return (typeof keys === "string") ? [keys] : keys
-  }
 
   function styleRawNum(key) {
     var v = styleOverrides[key]
@@ -53,17 +46,8 @@ QtObject {
     return isFinite(n) ? n : null
   }
 
-  function styleRawNumAny(keys) {
-    var list = keyList(keys)
-    for (var i = 0; i < list.length; i++) {
-      var n = styleRawNum(list[i])
-      if (n !== null) return n
-    }
-    return null
-  }
-
-  function styleNum(keys, fallback) {
-    var n = styleRawNumAny(keys)
+  function styleNum(key, fallback) {
+    var n = styleRawNum(key)
     return n === null ? fallback : n
   }
 
@@ -73,54 +57,40 @@ QtObject {
     return Math.max(0, Math.min(1, n))
   }
 
-  function styleAlpha(keys, fallback) {
-    return clampAlpha(styleNum(keys, fallback))
+  function styleAlpha(key, fallback) {
+    return clampAlpha(styleNum(key, fallback))
   }
 
-  function styleString(keys, fallback) {
-    var list = keyList(keys)
-    for (var i = 0; i < list.length; i++) {
-      var v = styleOverrides[list[i]]
-      if (typeof v !== "string") continue
-      v = v.replace(/^\s+|\s+$/g, "")
-      if (v.length > 0) return v
-    }
-    return fallback
+  function styleString(key, fallback) {
+    var v = styleOverrides[key]
+    if (typeof v !== "string") return fallback
+    v = v.replace(/^\s+|\s+$/g, "")
+    return v.length > 0 ? v : fallback
   }
 
   readonly property string normalColorToken: styleString("normal-color", "foreground")
-  readonly property string hoverColorToken: styleString(["hover-cursor-color", "hover-color"], "foreground")
+  readonly property string hoverColorToken: styleString("hover-cursor-color", "foreground")
   readonly property string selectedColorToken: styleString("selected-color", "foreground")
   readonly property string pressedColorToken: styleString("pressed-color", hoverColorToken)
   readonly property string focusColorToken: styleString("focus-color", hoverColorToken)
   readonly property string selectionColorToken: styleString("selection-color", "foreground")
 
-  readonly property int normalBorderWidth: Math.max(0, Math.round(styleNum(["normal-border-width", "border-width"], 1)))
-  readonly property int hoverBorderWidth: Math.max(0, Math.round(styleNum(["hover-cursor-border-width", "hover-border-width"], normalBorderWidth)))
+  readonly property int normalBorderWidth: Math.max(0, Math.round(styleNum("normal-border-width", 1)))
+  readonly property int hoverBorderWidth: Math.max(0, Math.round(styleNum("hover-cursor-border-width", normalBorderWidth)))
   readonly property int selectedBorderWidth: Math.max(0, Math.round(styleNum("selected-border-width", 0)))
   readonly property int focusBorderWidth: Math.max(0, Math.round(styleNum("focus-border-width", hoverBorderWidth)))
 
-  // Back-compat names used by older components / third-party plugins.
-  readonly property int borderWidth: normalBorderWidth
-  readonly property int hoverCursorBorderWidth: hoverBorderWidth
+  readonly property real normalFillAlpha:    styleAlpha("normal-fill-alpha", 0.04)
+  readonly property real hoverFillAlpha:     styleAlpha("hover-cursor-fill-alpha", 0.08)
+  readonly property real selectedFillAlpha:  styleAlpha("selected-fill-alpha", 0.18)
+  readonly property real pressedFillAlpha:   styleAlpha("pressed-fill-alpha", 0.22)
+  readonly property real focusFillAlpha:     styleAlpha("focus-fill-alpha", hoverFillAlpha)
+  readonly property real selectionFillAlpha: styleAlpha("selection-fill-alpha", 0.35)
 
-  readonly property real normalFillAlpha:       styleAlpha("normal-fill-alpha", 0.04)
-  readonly property real hoverFillAlpha:        styleAlpha(["hover-cursor-fill-alpha", "hover-fill-alpha", "hot-fill-alpha"], 0.08)
-  readonly property real selectedFillAlpha:     styleAlpha("selected-fill-alpha", 0.18)
-  readonly property real pressedFillAlpha:      styleAlpha("pressed-fill-alpha", 0.22)
-  readonly property real focusFillAlpha:        styleAlpha("focus-fill-alpha", hoverFillAlpha)
-  readonly property real selectionFillAlpha:    styleAlpha("selection-fill-alpha", 0.35)
-
-  readonly property real normalBorderAlpha:     styleAlpha(["normal-border-alpha", "idle-border-alpha"], 0.4)
-  readonly property real hoverBorderAlpha:      styleAlpha(["hover-cursor-border-alpha", "hover-border-alpha"], 0.25)
-  readonly property real selectedBorderAlpha:   styleAlpha("selected-border-alpha", 1.0)
-  readonly property real focusBorderAlpha:      styleAlpha("focus-border-alpha", hoverBorderAlpha)
-
-  // Back-compat names used by older components / third-party plugins.
-  readonly property real idleBorderAlpha: normalBorderAlpha
-  readonly property real hotFillAlpha: hoverFillAlpha
-  readonly property real hoverCursorFillAlpha: hoverFillAlpha
-  readonly property real hoverCursorBorderAlpha: hoverBorderAlpha
+  readonly property real normalBorderAlpha:   styleAlpha("normal-border-alpha", 0.4)
+  readonly property real hoverBorderAlpha:    styleAlpha("hover-cursor-border-alpha", 0.25)
+  readonly property real selectedBorderAlpha: styleAlpha("selected-border-alpha", 1.0)
+  readonly property real focusBorderAlpha:    styleAlpha("focus-border-alpha", hoverBorderAlpha)
 
   function alpha(c, opacity) {
     var a = clampAlpha(opacity)
@@ -200,16 +170,13 @@ QtObject {
   function selectedBorderFor(foreground, accent, urgent) { return alpha(selectedStateColor(foreground, accent, urgent), selectedBorderAlpha) }
   function focusBorderFor(foreground, accent, urgent) { return alpha(focusStateColor(foreground, accent, urgent), focusBorderAlpha) }
 
-  // Convenience colors used by panel rows and pills. `hot*` remains as a
-  // compatibility alias for the hover/cursor state.
+  // Convenience colors resolved against the foundational palette.
   readonly property color normalFill: normalFillFor(Color.foreground, Color.accent, Color.urgent)
   readonly property color hoverFill: hoverFillFor(Color.foreground, Color.accent, Color.urgent)
-  readonly property color hotFill: hoverFill
   readonly property color selectedFill: selectedFillFor(Color.foreground, Color.accent, Color.urgent)
   readonly property color pressedFill: pressedFillFor(Color.foreground, Color.accent, Color.urgent)
   readonly property color focusFillColor: focusFillFor(Color.foreground, Color.accent, Color.urgent)
   readonly property color normalBorderColor: normalBorderFor(Color.foreground, Color.accent, Color.urgent)
-  readonly property color idleBorderColor: normalBorderColor
   readonly property color hoverBorderColor: hoverBorderFor(Color.foreground, Color.accent, Color.urgent)
   readonly property color selectedBorderColor: selectedBorderFor(Color.foreground, Color.accent, Color.urgent)
   readonly property color focusBorderColor: focusBorderFor(Color.foreground, Color.accent, Color.urgent)
@@ -221,8 +188,8 @@ QtObject {
   // The spacing scale is the shell equivalent of rem for margins, gaps,
   // and padding. Components keep their existing proportions by asking for
   // the old pixel value through `Style.space(px)` (or `spaceReal(px)` for
-  // fractional geometry); themes can make the shell denser or roomier with
-  // a single `[spacing] scale` value.
+  // fractional geometry); themes can make the shell denser or roomier
+  // with `[spacing] scale`, or pin individual tokens.
   property real spacingScale: 1.0
   property var spacingOverrides: ({})
 
@@ -290,13 +257,10 @@ QtObject {
   // read `resolvedFontFamily` when you want to *display* what's drawing.
   property string resolvedFontFamily: "monospace"
 
-  // Clamped 11..13 by loadShell — some row heights remain fixed, so
-  // unbounded type growth can still clip even with scalable spacing.
+  // Clamped 11..13 by applyShellValues — some row heights remain fixed,
+  // so unbounded type growth can still clip even with scalable spacing.
   property int fontBaseSize: 12
 
-  // Parsed maps populated by loadShell. Keep them as plain dicts so
-  // reassigning the whole property fires reactive bindings. styleOverrides
-  // and spacingOverrides are declared near the helpers that consume them.
   property var fontOverrides: ({})
   property var barOverrides: ({})
 
@@ -371,53 +335,39 @@ QtObject {
     }
   }
 
-  // Parse [font] base-size + per-token overrides, [bar] size-* keys,
-  // [controls] state colors / alphas / border widths, and [spacing] scale +
-  // token overrides out of shell.toml. Color.qml owns the quoted-string
-  // side of the surface color sections; Style owns quoted strings only
-  // inside [controls].
-  function loadShell(raw) {
+  // Pull typography, bar dimensions, state tokens, and spacing out of the
+  // shell.toml dict that Color already parsed. Called by Color.loadShell so
+  // a single parse pass feeds both singletons.
+  function applyShellValues(values) {
     var fontOut = {}
     var barOut = {}
     var styleOut = {}
     var spacingOut = {}
     var nextBase = 12
     var nextSpacingScale = 1.0
-    var text = String(raw || "")
-    if (text) {
-      var lines = text.split("\n")
-      var section = ""
-      for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].replace(/^\s+|\s+$/g, "")
-        if (!line || line.charAt(0) === "#") continue
-        var sectionMatch = line.match(/^\[([A-Za-z0-9_-]+)\]\s*(#.*)?$/)
-        if (sectionMatch) { section = sectionMatch[1]; continue }
-        // Accept ints/floats for numeric tokens and quoted/bare words for
-        // [controls] color roles / inheritance sentinels (e.g. "foreground",
-        // "accent", "hover-cursor", "#c0caf5").
-        var numKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(-?\d+(?:\.\d+)?)\s*(#.*)?$/)
-        var stringKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*["']([^"']+)["']\s*(#.*)?$/)
-        var bareKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*([A-Za-z][A-Za-z0-9_-]*)\s*(#.*)?$/)
-        var kv = numKv || stringKv || bareKv
-        if (!kv) continue
-        var key = kv[1]
-        var rawValue = kv[2]
-        if (section === "font" && numKv) {
-          var ival = parseInt(rawValue, 10)
-          if (key === "base-size") nextBase = ival
-          else fontOut[key] = ival
-        } else if (section === "bar" && numKv && (key === "size-horizontal" || key === "size-vertical")) {
-          barOut[key] = parseInt(rawValue, 10)
-        } else if (section === "spacing" && numKv) {
-          var fval = parseFloat(rawValue)
-          if (key === "scale") nextSpacingScale = fval
-          else spacingOut[key] = fval
-        } else if (section === "controls" || section === "style") {
-          // `[controls]` is the canonical section name; `[style]` is kept
-          // as a legacy alias so hand-written theme shell.toml files that
-          // predate the rename still apply.
-          styleOut[key] = numKv ? parseFloat(rawValue) : rawValue
-        }
+    var v = values || {}
+    for (var fullKey in v) {
+      var dot = fullKey.indexOf(".")
+      if (dot < 0) continue
+      var section = fullKey.substr(0, dot)
+      var key = fullKey.substr(dot + 1)
+      var raw = v[fullKey]
+      if (section === "font") {
+        var ival = parseInt(raw, 10)
+        if (!isFinite(ival)) continue
+        if (key === "base-size") nextBase = ival
+        else fontOut[key] = ival
+      } else if (section === "bar" && (key === "size-horizontal" || key === "size-vertical")) {
+        var b = parseInt(raw, 10)
+        if (isFinite(b)) barOut[key] = b
+      } else if (section === "spacing") {
+        var fval = parseFloat(raw)
+        if (!isFinite(fval)) continue
+        if (key === "scale") nextSpacingScale = fval
+        else spacingOut[key] = fval
+      } else if (section === "controls") {
+        // Strings are passed through; styleRawNum/styleString coerce on read.
+        styleOut[key] = raw
       }
     }
     // Clamp the rem root. Per-token overrides aren't clamped — a theme
@@ -491,8 +441,8 @@ QtObject {
   }
 
   // `omarchy toggle window-gaps` creates/removes this flag file. Hyprland
-  // reloads its config when sourced files change, then hyprctl reflects the
-  // new effective value.
+  // reloads its config when sourced files change, then hyprctl reflects
+  // the new effective value.
   property FileView windowNoGapsToggle: FileView {
     path: Quickshell.env("HOME") + "/.local/state/omarchy/toggles/hypr/window-no-gaps.lua"
     watchChanges: true
@@ -500,15 +450,6 @@ QtObject {
     onFileChanged: refreshTimer.restart()
     onLoaded: refreshTimer.restart()
     onLoadFailed: refreshTimer.restart()
-  }
-
-  property FileView shellTomlFile: FileView {
-    id: shellTomlFile
-    path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/shell.toml"
-    watchChanges: false
-    printErrors: false
-    onLoaded: root.loadShell(text())
-    onLoadFailed: root.loadShell("")
   }
 
   Component.onCompleted: {
