@@ -30,6 +30,14 @@ QtObject {
     return (typeof v === "string" && v.length > 0) ? v : fallback
   }
 
+  function pickAlpha(key, fallback) {
+    var v = shellValues[key]
+    if (typeof v !== "string" || v.length === 0) return fallback
+    var n = Number(v)
+    if (!isFinite(n)) return fallback
+    return Math.max(0, Math.min(1, n))
+  }
+
   // Surface roles. Each property reads its shell.toml override if set,
   // otherwise falls back to a foundational palette token.
   readonly property QtObject bar: QtObject {
@@ -55,7 +63,16 @@ QtObject {
   readonly property QtObject menu: QtObject {
     property color background: root.pick("menu.background", root.background)
     property color text: root.pick("menu.text", root.foreground)
-    property color selected: root.pick("menu.selected", root.accent)
+    property color border: root.pick("menu.border", root.foreground)
+    property real borderAlpha: root.pickAlpha("menu.border-alpha", 1.0)
+    // Defaults mirror the panel cursor: a subtle foreground-tint fill,
+    // no visible border, accent text. Themes override any of these
+    // (including the alpha companions) per surface.
+    property color selectedBackground: root.pick("menu.selected-background", root.pick("menu.selected", root.foreground))
+    property real selectedBackgroundAlpha: root.pickAlpha("menu.selected-background-alpha", 0.08)
+    property color selectedText: root.pick("menu.selected-text", root.accent)
+    property color selectedBorder: root.pick("menu.selected-border", root.foreground)
+    property real selectedBorderAlpha: root.pickAlpha("menu.selected-border-alpha", 0.0)
   }
   readonly property QtObject imagePicker: QtObject {
     property color background: root.pick("image-picker.background", root.background)
@@ -89,9 +106,11 @@ QtObject {
     if (!foundAccent && color4Value.length > 0) accent = color4Value
   }
 
-  // Walk shell.toml line-by-line. We only need string values for color keys,
-  // and the file is small, so no proper TOML parser. Accepts double- or
-  // single-quoted values and tolerates trailing inline comments.
+  // Walk shell.toml line-by-line. The file is small, so no proper TOML
+  // parser. Accepts double- or single-quoted strings for colors and bare
+  // numeric values (e.g. alpha companions like `selected-background-alpha
+  // = 0.08`), and tolerates trailing inline comments. Numbers are kept as
+  // strings here; pickAlpha() coerces and clamps when read.
   function loadShell(raw) {
     var parsed = {}
     var text = String(raw || "")
@@ -103,7 +122,9 @@ QtObject {
         if (!line || line.charAt(0) === "#") continue
         var sectionMatch = line.match(/^\[([A-Za-z0-9_-]+)\]\s*(#.*)?$/)
         if (sectionMatch) { section = sectionMatch[1]; continue }
-        var kv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*["']([^"']+)["']\s*(#.*)?$/)
+        var stringKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*["']([^"']+)["']\s*(#.*)?$/)
+        var numKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(-?\d+(?:\.\d+)?)\s*(#.*)?$/)
+        var kv = stringKv || numKv
         if (!kv || !section) continue
         parsed[section + "." + kv[1]] = kv[2]
       }

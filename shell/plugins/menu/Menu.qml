@@ -62,11 +62,14 @@ Item {
   property var navStack: []
   property var providersLoaded: ({})
   property var providerQueue: []
-  // Bound to the central [menu] section in shell.toml via Color.qml.
-  property color accent: Color.menu.selected
+  // Bound to the central [menu] section in shell.toml via Color.qml. Each
+  // surface color composes with its alpha companion at render time.
   property color background: Color.menu.background
   property color foreground: Color.menu.text
-  property color border: foreground
+  property color border: Color.alpha(Color.menu.border, Color.menu.borderAlpha)
+  property color selectedBackground: Color.alpha(Color.menu.selectedBackground, Color.menu.selectedBackgroundAlpha)
+  property color selectedText: Color.menu.selectedText
+  property color selectedBorder: Color.alpha(Color.menu.selectedBorder, Color.menu.selectedBorderAlpha)
   readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
@@ -1078,16 +1081,16 @@ Item {
               width: ListView.view.width
               height: root.rowHeightForDetail(row.detail)
               radius: root.cornerRadius
-              color: row.hasCursor ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
-              border.color: row.hasCursor ? Style.hoverBorderFor(root.foreground, root.accent) : "transparent"
-              border.width: row.hasCursor ? Style.hoverBorderWidth : 0
+              color: row.hasCursor ? root.selectedBackground : "transparent"
+              border.color: row.hasCursor ? root.selectedBorder : "transparent"
+              border.width: (row.hasCursor && Color.menu.selectedBorderAlpha > 0) ? Style.hoverBorderWidth : 0
 
               Rectangle {
                 visible: false
                 width: Style.space(4)
                 height: parent.height - Style.space(18)
                 radius: Math.min(root.cornerRadius, Style.space(4))
-                color: root.accent
+                color: root.selectedBackground
                 anchors.left: parent.left
                 anchors.leftMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
@@ -1096,7 +1099,7 @@ Item {
               Text {
                 id: iconText
                 text: row.icon
-                color: row.hasCursor ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
+                color: row.hasCursor ? root.selectedText : root.foreground
                 opacity: row.kind === "back" ? 0.7 : 1
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.iconLarge
@@ -1121,7 +1124,7 @@ Item {
                   id: labelText
                   width: parent.width
                   text: row.label
-                  color: row.hasCursor ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
+                  color: row.hasCursor ? root.selectedText : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.heading
                   font.weight: Font.Medium
@@ -1160,7 +1163,7 @@ Item {
 
                 Text {
                   text: row.kind === "menu" || row.kind === "link" ? "›" : ""
-                  color: row.hasCursor ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
+                  color: row.hasCursor ? root.selectedText : root.foreground
                   opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.heading
@@ -1190,7 +1193,7 @@ Item {
 
             Text {
               text: "󰈉"
-              color: root.accent
+              color: root.selectedBackground
               opacity: 0.8
               font.family: root.fontFamily
               font.pixelSize: Style.font.displayLarge
