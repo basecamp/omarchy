@@ -13,8 +13,8 @@ import Quickshell.Io
 // their own rounding via theme/hyprland.lua; the user toggle via
 // `omarchy style corners <round|sharp>` flips Hyprland's flag file
 // and Hyprland's auto-reload pushes the new value out. The shell picks
-// up the change here by re-running `hyprctl getoption` whenever either
-// of those input files changes.
+// up the change here by re-running `hyprctl getoption` when theme IPC
+// manually reloads the theme and whenever user toggle files change.
 //
 // Typography, spacing, and bar size come from `theme/shell.toml`.
 // `[font] base-size` is the rem root; every `Style.font.<token>` derives
@@ -348,23 +348,11 @@ QtObject {
     gapsOutProc.running = true
   }
 
-  property bool themeReloadSuspended: false
-
-  function suspendThemeReloads() {
-    themeReloadSuspended = true
-  }
-
-  function resumeThemeReloads() {
-    themeReloadSuspended = false
-  }
-
   function scheduleRefresh() {
-    if (themeReloadSuspended) return
     refreshTimer.restart()
   }
 
   function reloadTheme() {
-    if (themeReloadSuspended) return
     shellTomlFile.reload()
     scheduleRefresh()
   }
@@ -507,18 +495,6 @@ QtObject {
     onTriggered: root.refresh()
   }
 
-  // The theme name flips whenever `omarchy-theme-set` swaps the theme/
-  // symlink; that's when theme/hyprland.lua's `rounding` value changes
-  // and the new theme/shell.toml drops into place. Force a reload of
-  // shell.toml here so we don't wait on the inotify watch — Color.qml
-  // uses the same tripwire for the same reason.
-  property FileView themeNameFile: FileView {
-    path: Quickshell.env("HOME") + "/.config/omarchy/current/theme.name"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: root.reloadTheme()
-  }
-
   // `omarchy style corners <round|sharp>` and `omarchy toggle window-gaps`
   // create/remove these flag files. Hyprland reloads its config when sourced
   // files change, then hyprctl reflects the new effective values.
@@ -543,11 +519,10 @@ QtObject {
   property FileView shellTomlFile: FileView {
     id: shellTomlFile
     path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/shell.toml"
-    watchChanges: true
+    watchChanges: false
     printErrors: false
     onLoaded: root.loadShell(text())
     onLoadFailed: root.loadShell("")
-    onFileChanged: root.reloadTheme()
   }
 
   Component.onCompleted: {

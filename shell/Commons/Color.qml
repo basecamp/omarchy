@@ -105,46 +105,26 @@ QtObject {
     shellValues = parsed
   }
 
-  property bool themeReloadSuspended: false
-
-  function suspendThemeReloads() {
-    themeReloadSuspended = true
-  }
-
-  function resumeThemeReloads() {
-    themeReloadSuspended = false
-  }
-
   function reloadTheme() {
-    if (themeReloadSuspended) return
     colorsFile.reload()
     shellFile.reload()
   }
 
-  // `omarchy-theme-set` recreates the theme/ directory via rm+mv, which kills
-  // the inotify watch on colors.toml. Use theme.name (overwritten in place) as
-  // a tripwire that forces a fresh reload after each swap.
+  // Startup load plus manual reloadTheme() support. Runtime theme switches
+  // normally push the payload explicitly through shell IPC.
   property FileView colorsFile: FileView {
     id: colorsFile
     path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/colors.toml"
-    watchChanges: true
+    watchChanges: false
     printErrors: false
     onLoaded: root.loadColors(text())
-    onFileChanged: root.reloadTheme()
   }
   property FileView shellFile: FileView {
     id: shellFile
     path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/shell.toml"
-    watchChanges: true
+    watchChanges: false
     printErrors: false
     onLoaded: root.loadShell(text())
     onLoadFailed: root.loadShell("")
-    onFileChanged: root.reloadTheme()
-  }
-  property FileView themeNameFile: FileView {
-    path: Quickshell.env("HOME") + "/.config/omarchy/current/theme.name"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: root.reloadTheme()
   }
 }
