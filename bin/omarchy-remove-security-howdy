@@ -14,6 +14,7 @@ remove_pam_config() {
     if grep -q 'pam_howdy.so' "$file"; then
       echo "Removing face authentication from $(basename "$file")..."
       sudo sed -i '/pam_howdy\.so/d' "$file"
+      sudo sed -i '/pam_unix\.so try_first_pass likeauth nullok/d' "$file"
     fi
   done
 }

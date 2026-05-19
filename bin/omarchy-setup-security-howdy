@@ -20,22 +20,38 @@ detect_ir_camera() {
 }
 
 setup_pam_config() {
-  if ! grep -q pam_howdy.so /etc/pam.d/sudo; then
+  # pam_unix.so (try_first_pass, nullok) sits above pam_howdy.so so that a typed
+  # password authenticates instantly via pam_unix; an empty Enter falls through
+  # to howdy. This keeps the password path fast and avoids howdy firing silently
+  # on every sudo invocation (e.g. unattended scripts).
+  if ! grep -q "pam_unix.so try_first_pass likeauth nullok" /etc/pam.d/sudo; then
     echo "Configuring sudo for face authentication..."
-    sudo sed -i '1i auth    sufficient pam_howdy.so' /etc/pam.d/sudo
+    sudo sed -i '1i auth    sufficient pam_unix.so try_first_pass likeauth nullok' /etc/pam.d/sudo
+  fi
+  if ! grep -q "pam_howdy.so" /etc/pam.d/sudo; then
+    sudo sed -i '/pam_unix.so try_first_pass likeauth nullok/a auth    sufficient pam_howdy.so' /etc/pam.d/sudo
   fi
 
-  if ! grep -q pam_howdy.so /etc/pam.d/hyprlock; then
+  if ! grep -q "pam_unix.so try_first_pass likeauth nullok" /etc/pam.d/hyprlock; then
     echo "Configuring hyprlock for face authentication..."
-    sudo sed -i '1i auth    sufficient pam_howdy.so' /etc/pam.d/hyprlock
+    sudo sed -i '1i auth    sufficient pam_unix.so try_first_pass likeauth nullok' /etc/pam.d/hyprlock
+  fi
+  if ! grep -q "pam_howdy.so" /etc/pam.d/hyprlock; then
+    sudo sed -i '/pam_unix.so try_first_pass likeauth nullok/a auth    sufficient pam_howdy.so' /etc/pam.d/hyprlock
   fi
 
-  if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_howdy.so' /etc/pam.d/polkit-1; then
-    echo "Configuring polkit for face authentication..."
-    sudo sed -i '1i auth      sufficient pam_howdy.so' /etc/pam.d/polkit-1
-  elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
+  if [[ -f /etc/pam.d/polkit-1 ]]; then
+    if ! grep -q "pam_unix.so try_first_pass likeauth nullok" /etc/pam.d/polkit-1; then
+      echo "Configuring polkit for face authentication..."
+      sudo sed -i '1i auth      sufficient pam_unix.so try_first_pass likeauth nullok' /etc/pam.d/polkit-1
+    fi
+    if ! grep -q "pam_howdy.so" /etc/pam.d/polkit-1; then
+      sudo sed -i '/pam_unix.so try_first_pass likeauth nullok/a auth      sufficient pam_howdy.so' /etc/pam.d/polkit-1
+    fi
+  else
     echo "Creating polkit configuration with face authentication..."
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
+auth      sufficient pam_unix.so try_first_pass likeauth nullok
 auth      sufficient pam_howdy.so
 auth      required pam_unix.so
 
