@@ -89,9 +89,19 @@ border     = "{{ accent }}"
 countdown  = "{{ accent }}"
 
 [menu]
-background = "{{ background }}"
-text       = "{{ foreground }}"
-selected   = "{{ accent }}"
+# Cards, rows, and selected-row treatment. Alpha companions (where present)
+# go from 0 (invisible) to 1 (opaque). Defaults mirror the panel keyboard
+# cursor: a subtle foreground-tinted fill on the selected row, no visible
+# border, accent-colored text. Override any of these per-theme.
+background                = "{{ background }}"
+text                      = "{{ foreground }}"
+border                    = "{{ foreground }}"
+border-alpha              = 1.0
+selected-background       = "{{ foreground }}"
+selected-background-alpha = 0.08
+selected-text             = "{{ accent }}"
+selected-border           = "{{ foreground }}"
+selected-border-alpha     = 0.25
 
 [image-picker]
 # Drawn at ~70% alpha as a scrim
