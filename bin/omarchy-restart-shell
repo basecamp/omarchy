@@ -5,6 +5,6 @@
 
 CONFIG_DIR="$OMARCHY_PATH/shell"
 
-quickshell kill -p "$CONFIG_DIR" --any-display >/dev/null 2>&1 || true
+pkill -x quickshell 2>/dev/null || true
 sleep 0.2
 setsid quickshell -n -p "$CONFIG_DIR" >/dev/null 2>&1 &
