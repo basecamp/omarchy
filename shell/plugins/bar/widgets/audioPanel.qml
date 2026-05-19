@@ -55,12 +55,18 @@ Item {
   // Identify true playback streams without reading node.properties here:
   // PwNode.properties is invalid until the node is bound, and reading it while
   // capture streams are appearing (for example, when Voxtype starts recording)
-  // can destabilize Quickshell's Pipewire service. `type` mirrors media.class
-  // and is safe enough for pre-bind filtering.
+  // can destabilize Quickshell's Pipewire service. Quickshell versions differ
+  // in how `type` is exposed (media.class, enum name, or numeric enum), but
+  // playback streams consistently accept audio input from clients and publish
+  // `isSink: true`; capture streams publish as stream sources.
   function isPlaybackStream(node) {
-    if (!node) return false
+    if (!node || !node.isStream) return false
+    if (node.isSink === true) return true
+
     var mediaClass = String(node.type || "")
-    return mediaClass.indexOf("Output") !== -1
+    return mediaClass.indexOf("Stream/Output/Audio") !== -1
+      || mediaClass.indexOf("AudioOutStream") !== -1
+      || mediaClass.indexOf("Output") !== -1
   }
 
   readonly property var audioSinks: {
