@@ -21,6 +21,11 @@ Item {
 
   property bool idledThisCycle: false
   property bool screensaverStartedThisCycle: false
+  property string lastEvent: "starting"
+  property string lastEventAt: ""
+  property string lastScreensaverState: "unknown"
+  property string lastScreensaverCheckAt: ""
+  property int screensaverCheckCount: 0
 
   PersistentProperties {
     id: persisted
@@ -34,8 +39,23 @@ Item {
     return Math.floor(n)
   }
 
-  function runProcess(process, command) {
-    if (process.running) return false
+  function nowIso() {
+    return new Date().toISOString()
+  }
+
+  function logEvent(event, details) {
+    var suffix = details === undefined || details === null || details === "" ? "" : ": " + String(details)
+    root.lastEventAt = nowIso()
+    root.lastEvent = event + suffix
+    console.log("omarchy idle " + root.lastEventAt + " " + root.lastEvent)
+  }
+
+  function runProcess(process, label, command) {
+    if (process.running) {
+      logEvent("process-skip", label + " already running")
+      return false
+    }
+    logEvent("process-start", label + " " + command)
     process.command = ["bash", "-lc", command]
     process.running = true
     return true
@@ -43,21 +63,27 @@ Item {
 
   function launchScreensaver() {
     root.screensaverStartedThisCycle = true
-    runProcess(screensaverProcess, "pidof hyprlock >/dev/null || omarchy-launch-screensaver")
+    screensaverResumePollTimer.restart()
+    runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-launch-screensaver")
   }
 
-  function lockSystem() {
+  function lockSystem(reason) {
+    logEvent("lock-system", reason || "requested")
     screensaverTimer.stop()
     lockTimer.stop()
     screensaverResumePollTimer.stop()
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
-    runProcess(lockProcess, "omarchy-system-lock")
+    runProcess(lockProcess, "lock", "omarchy-system-lock")
   }
 
   function startIdleCycle() {
-    if (root.idledThisCycle) return
+    if (root.idledThisCycle) {
+      logEvent("idle-cycle-already-running")
+      return
+    }
 
+    logEvent("idle-cycle-start", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds)
     root.idledThisCycle = true
     root.screensaverStartedThisCycle = false
     screensaverResumePollTimer.stop()
@@ -65,16 +91,17 @@ Item {
     if (root.screensaverDelaySeconds === 0) launchScreensaver()
     else screensaverTimer.restart()
 
-    if (root.lockDelaySeconds === 0) lockSystem()
+    if (root.lockDelaySeconds === 0) lockSystem("lock-timeout-immediate")
     else lockTimer.restart()
   }
 
-  function cancelIdleCycle() {
+  function cancelIdleCycle(reason) {
+    logEvent("idle-cycle-cancel", reason || "requested")
     screensaverTimer.stop()
     lockTimer.stop()
     screensaverResumePollTimer.stop()
 
-    if (root.idledThisCycle) runProcess(wakeProcess, "omarchy-system-wake")
+    if (root.idledThisCycle) runProcess(wakeProcess, "wake", "omarchy-system-wake")
 
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
@@ -83,7 +110,9 @@ Item {
   function checkScreensaverAfterActiveSignal() {
     if (!root.idledThisCycle || !root.screensaverStartedThisCycle) return
     if (screensaverCheckProcess.running) return
-    screensaverCheckProcess.command = ["bash", "-lc", "pgrep -f org.omarchy.screensaver >/dev/null && echo running || echo stopped"]
+    root.lastScreensaverState = "checking"
+    root.lastScreensaverCheckAt = nowIso()
+    screensaverCheckProcess.command = ["bash", "-lc", "if hyprctl clients -j 2>/dev/null | jq -e '.[] | select(.class == \"org.omarchy.screensaver\" or .initialClass == \"org.omarchy.screensaver\")' >/dev/null; then echo running-window; elif pgrep -f '[o]rg.omarchy.screensaver' >/dev/null; then echo running-process; elif omarchy-toggle-enabled screensaver-off; then echo disabled; else echo stopped; fi"]
     screensaverCheckProcess.running = true
   }
 
@@ -94,14 +123,16 @@ Item {
     // the lock timer running while the screensaver is still alive so the lock
     // deadline remains `idle.lock` seconds from the original user idle time.
     if (root.screensaverStartedThisCycle) {
+      logEvent("idle-monitor-active", "screensaver cycle remains armed")
       screensaverResumePollTimer.restart()
       return
     }
 
-    cancelIdleCycle()
+    cancelIdleCycle("activity")
   }
 
   function handleIdleChanged() {
+    logEvent("idle-monitor", idleMonitor.isIdle ? "idle" : "active")
     if (!root.idleEnabled) return
 
     if (idleMonitor.isIdle) startIdleCycle()
@@ -113,9 +144,31 @@ Item {
       enabled: root.idleEnabled,
       idle: idleMonitor.isIdle,
       inIdleCycle: root.idledThisCycle,
+      screensaverStarted: root.screensaverStartedThisCycle,
       sleepMonitor: sleepMonitorProcess.running,
       screensaver: root.screensaverTimeoutSeconds,
-      lock: root.lockTimeoutSeconds
+      lock: root.lockTimeoutSeconds,
+      screensaverDelay: root.screensaverDelaySeconds,
+      lockDelay: root.lockDelaySeconds,
+      timers: {
+        screensaver: screensaverTimer.running,
+        lock: lockTimer.running,
+        poll: screensaverResumePollTimer.running,
+        sleepMonitorRestart: sleepMonitorRestartTimer.running
+      },
+      processes: {
+        screensaver: screensaverProcess.running,
+        lock: lockProcess.running,
+        wake: wakeProcess.running,
+        check: screensaverCheckProcess.running,
+        sleepLock: sleepLockProcess.running,
+        sleepWake: sleepWakeProcess.running
+      },
+      lastEvent: root.lastEvent,
+      lastEventAt: root.lastEventAt,
+      lastScreensaverState: root.lastScreensaverState,
+      lastScreensaverCheckAt: root.lastScreensaverCheckAt,
+      screensaverCheckCount: root.screensaverCheckCount
     })
   }
 
@@ -123,10 +176,10 @@ Item {
     if (!root.idleEnabled) return
 
     if (preparing) {
-      cancelIdleCycle()
-      runProcess(sleepLockProcess, "OMARCHY_LOCK_ONLY=true omarchy-system-lock")
+      cancelIdleCycle("sleep-preparing")
+      runProcess(sleepLockProcess, "sleep-lock", "OMARCHY_LOCK_ONLY=true omarchy-system-lock")
     } else {
-      runProcess(sleepWakeProcess, "sleep 1 && omarchy-system-wake")
+      runProcess(sleepWakeProcess, "sleep-wake", "sleep 1 && omarchy-system-wake")
     }
   }
 
@@ -135,7 +188,8 @@ Item {
     if (persisted.idleEnabled === enabled) return enabled ? "enabled" : "disabled"
 
     persisted.idleEnabled = enabled
-    if (!enabled) cancelIdleCycle()
+    logEvent("idle-enabled", enabled ? "enabled" : "disabled")
+    if (!enabled) cancelIdleCycle("disabled")
     else Qt.callLater(root.handleIdleChanged)
 
     return enabled ? "enabled" : "disabled"
@@ -160,7 +214,7 @@ Item {
     id: lockTimer
     interval: root.lockDelaySeconds * 1000
     repeat: false
-    onTriggered: if (root.idleEnabled && root.idledThisCycle) root.lockSystem()
+    onTriggered: if (root.idleEnabled && root.idledThisCycle) root.lockSystem("lock-timeout")
   }
 
   Timer {
@@ -170,22 +224,52 @@ Item {
     onTriggered: root.checkScreensaverAfterActiveSignal()
   }
 
-  Process { id: screensaverProcess }
-  Process { id: lockProcess }
-  Process { id: wakeProcess }
-  Process { id: sleepLockProcess }
-  Process { id: sleepWakeProcess }
+  Process {
+    id: screensaverProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "screensaver exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: lockProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "lock exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: wakeProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "wake exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: sleepLockProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "sleep-lock exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: sleepWakeProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "sleep-wake exitCode=" + exitCode + " status=" + exitStatus) }
+  }
 
   Process {
     id: screensaverCheckProcess
-    stdout: StdioCollector {
-      id: screensaverCheckStdout
-      waitForEnd: true
+    stdout: SplitParser {
+      onRead: function(line) {
+        root.lastScreensaverState = String(line || "").trim()
+        root.lastScreensaverCheckAt = root.nowIso()
+        root.screensaverCheckCount++
+        root.logEvent("screensaver-check", root.lastScreensaverState)
+      }
     }
-    onExited: {
-      if (!root.idledThisCycle || !root.screensaverStartedThisCycle) return
-      if (String(screensaverCheckStdout.text || "").trim() === "running") return
-      root.cancelIdleCycle()
+    onExited: function(exitCode, exitStatus) {
+      root.logEvent("process-exit", "screensaver-check exitCode=" + exitCode + " status=" + exitStatus + " state=" + root.lastScreensaverState)
+      if (!root.idleEnabled || !root.idledThisCycle || !root.screensaverStartedThisCycle) return
+
+      var state = String(root.lastScreensaverState || "").trim()
+      if (state.indexOf("running") === 0) return
+      if (state === "disabled") {
+        screensaverResumePollTimer.stop()
+        return
+      }
+
+      // If the screensaver disappears while we're still in the idle cycle,
+      // treat that as the user returning and require authentication before
+      // showing the desktop again.
+      root.lockSystem("screensaver-stopped state=" + state)
     }
   }
 
@@ -200,22 +284,37 @@ Item {
         else if (text === "boolean false") root.handleSleepPreparing(false)
       }
     }
-    onExited: sleepMonitorRestartTimer.restart()
+    onExited: {
+      root.logEvent("sleep-monitor-exit", "restarting")
+      sleepMonitorRestartTimer.restart()
+    }
   }
 
   Timer {
     id: sleepMonitorRestartTimer
     interval: 5000
     repeat: false
-    onTriggered: if (!sleepMonitorProcess.running) sleepMonitorProcess.running = true
+    onTriggered: {
+      if (!sleepMonitorProcess.running) {
+        root.logEvent("sleep-monitor-restart")
+        sleepMonitorProcess.running = true
+      }
+    }
   }
 
-  Component.onCompleted: Qt.callLater(root.handleIdleChanged)
+  Component.onCompleted: {
+    logEvent("service-ready")
+    Qt.callLater(root.handleIdleChanged)
+  }
 
   IpcHandler {
     target: "idle"
 
     function status(): string {
+      return root.statusJson()
+    }
+
+    function debug(): string {
       return root.statusJson()
     }
 

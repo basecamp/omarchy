@@ -20,16 +20,18 @@ remove_pam_config() {
   fi
 }
 
-remove_hyprlock_fingerprint_icon() {
-  echo "Removing fingerprint icon from hyprlock placeholder text..."
-  sed -i 's/placeholder_text = .*/placeholder_text = Enter Password/' ~/.config/hypr/hyprlock.conf
-  sed -i 's/fingerprint:enabled = .*/fingerprint:enabled = false/' ~/.config/hypr/hyprlock.conf
+remove_lock_fingerprint_pam() {
+  if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]]; then
+    echo "Removing lock screen fingerprint authentication..."
+    sudo rm -f /etc/pam.d/omarchy-lock-fingerprint
+  fi
 }
+
 
 echo -e "\e[32mRemoving fingerprint scanner from authentication.\n\e[0m"
 
 remove_pam_config
-remove_hyprlock_fingerprint_icon
+remove_lock_fingerprint_pam
 
 echo "Removing fingerprint packages..."
 omarchy-pkg-drop fprintd libfprint-git

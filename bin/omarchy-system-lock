@@ -5,12 +5,7 @@
 # omarchy:name=lock
 # omarchy:examples=omarchy system lock
 
-if ! pidof hyprlock >/dev/null; then
-  (
-    hyprlock
-    omarchy-system-wake
-  ) &
-fi
+omarchy-shell lock lock >/dev/null
 
 # Set keyboard layout to default (first layout)
 hyprctl switchxkblayout all 0 > /dev/null 2>&1
@@ -21,12 +16,12 @@ if pgrep -x "1password" >/dev/null; then
 fi
 
 # Avoid running screensaver when locked
-pkill -f org.omarchy.screensaver
+pkill -f '[o]rg.omarchy.screensaver'
 
 if [[ ${OMARCHY_LOCK_ONLY:-false} != "true" ]]; then
   (
     sleep 3
-    pidof hyprlock >/dev/null || exit 0
+    [[ $(omarchy-shell lock isLocked 2>/dev/null) == "true" ]] || exit 0
     omarchy-brightness-keyboard off
     omarchy-brightness-display off
   ) &

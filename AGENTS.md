@@ -169,12 +169,3 @@ New migration format:
 Some older migrations predate these rules. Do not copy older migrations that start with shebangs, omit the leading `echo`, or hard-code `~/.local/share/omarchy`.
 
 Migrations may use raw `pacman`, `command -v`, or direct config edits when needed for historical compatibility or one-off repair work.
-
-Example:
-```bash
-echo "Disable fingerprint in hyprlock if fingerprint auth is not configured"
-
-if omarchy-cmd-missing fprintd-list || ! fprintd-list "$USER" 2>/dev/null | grep -q "finger"; then
-  sed -i 's/fingerprint:enabled = .*/fingerprint:enabled = false/' ~/.config/hypr/hyprlock.conf
-fi
-```

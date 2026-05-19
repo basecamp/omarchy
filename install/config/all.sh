@@ -6,6 +6,7 @@ run_logged $OMARCHY_INSTALL/config/gpg.sh
 run_logged $OMARCHY_INSTALL/config/timezones.sh
 run_logged $OMARCHY_INSTALL/config/increase-sudo-tries.sh
 run_logged $OMARCHY_INSTALL/config/increase-lockout-limit.sh
+run_logged $OMARCHY_INSTALL/config/lockscreen-pam.sh
 run_logged $OMARCHY_INSTALL/config/ssh-flakiness.sh
 run_logged $OMARCHY_INSTALL/config/increase-file-watchers.sh
 run_logged $OMARCHY_INSTALL/config/increase-fd-limit.sh
