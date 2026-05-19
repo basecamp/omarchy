@@ -105,13 +105,8 @@ QtObject {
     shellValues = parsed
   }
 
-  function reloadTheme() {
-    colorsFile.reload()
-    shellFile.reload()
-  }
-
-  // Startup load plus manual reloadTheme() support. Runtime theme switches
-  // normally push the payload explicitly through shell IPC.
+  // Startup load only. Runtime theme switches push the payload explicitly
+  // through shell IPC.
   property FileView colorsFile: FileView {
     id: colorsFile
     path: Quickshell.env("HOME") + "/.config/omarchy/current/theme/colors.toml"

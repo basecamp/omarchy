@@ -352,11 +352,6 @@ QtObject {
     refreshTimer.restart()
   }
 
-  function reloadTheme() {
-    shellTomlFile.reload()
-    scheduleRefresh()
-  }
-
   function applyRoundingJson(raw) {
     try {
       var json = JSON.parse(raw || "{}")

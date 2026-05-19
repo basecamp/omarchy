@@ -589,12 +589,6 @@ ShellRoot {
       return "ok"
     }
 
-    function reloadTheme(): string {
-      NoctaliaCommons.Color.reloadTheme()
-      NoctaliaCommons.Style.reloadTheme()
-      return "ok"
-    }
-
     function rescanPlugins(): void {
       shell.pluginRegistry.rescan()
     }
