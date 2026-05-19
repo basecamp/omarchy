@@ -347,6 +347,7 @@ Item {
     label = label.replace(/^built-?in audio\s+/i, "")
     label = label.replace(/\s+Output$/i, "")
     label = label.replace(/\s+Input$/i, "")
+    label = label.replace(/\bMicrophones\b/g, "Microphone")
     return label
   }
 
