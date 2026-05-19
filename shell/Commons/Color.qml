@@ -6,8 +6,8 @@ import Quickshell.Io
 // Single source of truth for shell color surfaces. Top-level tokens
 // (foreground/background/accent/urgent) come from the theme's colors.toml.
 // Per-surface roles (Color.bar.*, Color.popups.*, Color.tooltip.*,
-// Color.notifications.*, Color.menu.*, Color.imagePicker.*) come from
-// shell.toml, which is generated
+// Color.notifications.*, Color.menu.*, Color.appLauncher.*,
+// Color.imagePicker.*) come from shell.toml, which is generated
 // per theme from default/themed/shell.toml.tpl (or shipped directly by a
 // theme to override). Surfaces that don't appear in shell.toml fall back to
 // the foundational palette, so themes can ship partial overrides.
@@ -59,6 +59,17 @@ QtObject {
     property color text: root.pick("notifications.text", root.foreground)
     property color border: root.pick("notifications.border", root.accent)
     property color countdown: root.pick("notifications.countdown", root.accent)
+  }
+  readonly property QtObject appLauncher: QtObject {
+    property color background: root.pick("app-launcher.background", root.background)
+    property color text: root.pick("app-launcher.text", root.foreground)
+    property color border: root.pick("app-launcher.border", root.foreground)
+    property real borderAlpha: root.pickAlpha("app-launcher.border-alpha", 1.0)
+    property color selectedBackground: root.pick("app-launcher.selected-background", root.foreground)
+    property real selectedBackgroundAlpha: root.pickAlpha("app-launcher.selected-background-alpha", 0.08)
+    property color selectedText: root.pick("app-launcher.selected-text", root.accent)
+    property color selectedBorder: root.pick("app-launcher.selected-border", root.foreground)
+    property real selectedBorderAlpha: root.pickAlpha("app-launcher.selected-border-alpha", 0.0)
   }
   readonly property QtObject menu: QtObject {
     property color background: root.pick("menu.background", root.background)

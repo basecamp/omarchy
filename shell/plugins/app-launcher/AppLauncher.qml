@@ -19,10 +19,14 @@ Item {
   property bool hoverArmed: false
   property var filteredEntries: []
 
-  property color accent: Color.menu.selected
-  property color background: Color.menu.background
-  property color foreground: Color.menu.text
-  property color border: foreground
+  // Bound to the central [app-launcher] section in shell.toml via Color.qml.
+  // Each surface color composes with its alpha companion at render time.
+  property color background: Color.appLauncher.background
+  property color foreground: Color.appLauncher.text
+  property color border: Color.alpha(Color.appLauncher.border, Color.appLauncher.borderAlpha)
+  property color selectedBackground: Color.alpha(Color.appLauncher.selectedBackground, Color.appLauncher.selectedBackgroundAlpha)
+  property color selectedText: Color.appLauncher.selectedText
+  property color selectedBorder: Color.alpha(Color.appLauncher.selectedBorder, Color.appLauncher.selectedBorderAlpha)
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
 
   property int cardWidth: 644
@@ -351,7 +355,9 @@ Item {
               width: ListView.view.width
               height: root.rowHeight
               radius: 0
-              color: row.hasCursor ? root.withAlpha(root.foreground, 0.07) : "transparent"
+              color: row.hasCursor ? root.selectedBackground : "transparent"
+              border.color: row.hasCursor ? root.selectedBorder : "transparent"
+              border.width: (row.hasCursor && Color.appLauncher.selectedBorderAlpha > 0) ? Math.max(1, Style.normalBorderWidth) : 0
 
               Item {
                 id: iconSlot
@@ -376,7 +382,7 @@ Item {
                   anchors.centerIn: parent
                   visible: appIcon.status === Image.Error
                   text: "?"
-                  color: row.hasCursor ? root.accent : root.foreground
+                  color: row.hasCursor ? root.selectedText : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: 18
                 }
@@ -389,7 +395,7 @@ Item {
                 anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
                 text: row.name
-                color: row.hasCursor ? root.accent : root.foreground
+                color: row.hasCursor ? root.selectedText : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: 18
                 elide: Text.ElideRight
