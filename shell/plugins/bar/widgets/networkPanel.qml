@@ -78,9 +78,9 @@ Item {
   // — OnDemand only grants focus on click/hover.
   onPopupOpenChanged: {
     if (popupOpen) {
-      refresh()
+      refresh(true)
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
-      focusSection = "dns"
+      focusSection = wifiNetworks.length > 0 ? "wifi" : "dns"
       var idx = dnsProviders.indexOf(dnsProvider)
       dnsIndex = idx >= 0 ? idx : 0
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
@@ -112,7 +112,7 @@ Item {
   function selectByDelta(delta) {
     if (wifiNetworks.length === 0) { selectedIndex = -1; return }
     if (selectedIndex < 0) selectedIndex = delta > 0 ? 0 : wifiNetworks.length - 1
-    else selectedIndex = (selectedIndex + delta + wifiNetworks.length) % wifiNetworks.length
+    else selectedIndex = Math.max(0, Math.min(wifiNetworks.length - 1, selectedIndex + delta))
   }
 
   // Enter/Space on the highlighted row. Mirrors row-click semantics:
@@ -163,6 +163,11 @@ iwctl known-networks list 2>/dev/null \\
     label = parts[1] || ""
     signalStrength = parts[2] ? parseInt(parts[2], 10) : -1
     frequency = parts[3] || ""
+  }
+
+  function copyToClipboard(value) {
+    if (!value || !root.bar) return
+    Quickshell.execDetached(["bash", "-lc", "printf %s " + root.bar.shellQuote(value) + " | wl-copy"])
   }
 
   function networkTooltip() {
@@ -216,7 +221,8 @@ iwctl known-networks list 2>/dev/null \\
     return "󰤮"
   }
 
-  function refresh() {
+  function refresh(scanWifi) {
+    if (scanWifi === undefined) scanWifi = false
     if (!detailsProc.running) detailsProc.running = true
     if (!dnsProc.running) {
       dnsProc.command = ["bash", "-lc", root.dnsCommand("")]
@@ -224,8 +230,36 @@ iwctl known-networks list 2>/dev/null \\
     }
     if (!wifiProc.running) {
       scanning = true
+      wifiProc.command = ["bash", "-c", root.wifiScanScript(scanWifi)]
       wifiProc.running = true
     }
+  }
+
+  function wifiScanScript(scanWifi) {
+    return `
+station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
+[[ -z $station ]] && exit 0
+echo STATION_AVAILABLE
+${scanWifi ? 'iwctl station "$station" scan >/dev/null 2>&1 || true' : ''}
+iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
+  | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
+  | awk '
+      NR <= 4 { next }
+      /^[[:space:]]*$/ { next }
+      {
+        connected = (substr($0, 1, 4) ~ />/) ? 1 : 0
+        line = $0
+        sub(/^[[:space:]]*>?[[:space:]]+/, "", line)
+        sub(/[[:space:]]+$/, "", line)
+        n = split(line, parts, /[[:space:]]{2,}/)
+        if (n < 3) next
+        ssid = parts[1]
+        security = parts[n-1]
+        dbm = parts[n] / 100
+        signal = (dbm >= -50) ? 100 : (dbm <= -100) ? 0 : int(2 * (dbm + 100))
+        printf "%d\\t%s\\t%d\\t%s\\n", connected, ssid, signal, security
+      }'
+`
   }
 
   function formatSpeed(mbps) {
@@ -265,15 +299,17 @@ iwctl known-networks list 2>/dev/null \\
       // Format: connected<TAB>ssid<TAB>signal<TAB>security
       var parts = line.split("\t")
       if (parts.length < 3) continue
+      var isConnected = parts[0] === "1"
+      if (isConnected && parts[1] !== root.actionSsid) continue // Skip the connected network so it doesn't appear in the list, unless we are currently trying to connect to it
+
       nets.push({
-        connected: parts[0] === "1",
+        connected: false,
         ssid: parts[1],
         signal: parseInt(parts[2], 10) || 0,
         security: parts[3] || ""
       })
     }
     nets.sort(function(a, b) {
-      if (a.connected !== b.connected) return a.connected ? -1 : 1
       return b.signal - a.signal
     })
     wifiNetworks = nets
@@ -347,8 +383,13 @@ iwctl --dont-ask station "$station" connect ${quotedSsid}
     var quotedPass = bar.shellQuote(passphrase)
     runAction("connect", ssid, `
 station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
-[[ -z $station ]] && { echo "no Wi-Fi station available" >&2; exit 1; }
-iwctl --passphrase ${quotedPass} station "$station" connect ${quotedSsid}
+[[ -z $station ]] && { echo "No Wi-Fi station available" >&2; exit 1; }
+output=$(iwctl --passphrase ${quotedPass} station "$station" connect ${quotedSsid} 2>&1)
+exit_code=$?
+if [[ $exit_code -ne 0 ]]; then
+  echo "$output" | sed -e 's/\\x1b\\[[0-9;]*m//g' >&2
+  exit $exit_code
+fi
 `)
   }
 
@@ -455,29 +496,6 @@ fi
   // iwctl's table layout starts each row with one, which breaks naive parsing.
   Process {
     id: wifiProc
-    command: ["bash", "-c", `
-station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
-[[ -z $station ]] && exit 0
-echo STATION_AVAILABLE
-iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
-  | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
-  | awk '
-      NR <= 4 { next }
-      /^[[:space:]]*$/ { next }
-      {
-        connected = (substr($0, 1, 4) ~ />/) ? 1 : 0
-        line = $0
-        sub(/^[[:space:]]*>?[[:space:]]+/, "", line)
-        sub(/[[:space:]]+$/, "", line)
-        n = split(line, parts, /[[:space:]]{2,}/)
-        if (n < 3) next
-        ssid = parts[1]
-        security = parts[n-1]
-        dbm = parts[n] / 100
-        signal = (dbm >= -50) ? 100 : (dbm <= -100) ? 0 : int(2 * (dbm + 100))
-        printf "%d\\t%s\\t%d\\t%s\\n", connected, ssid, signal, security
-      }'
-`]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateWifi(text)
@@ -529,7 +547,14 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           else reason = "Failed to forget"
         }
         // Squash multi-line iwctl errors into a single readable line.
-        root.failureReason = reason.split("\n").pop()
+        // Also strip bash script error prefixes like "bash: line 4: " and "Operation failed"
+        var finalReason = reason.split("\n").pop().replace(/^bash: line \d+: /, "").replace(/^Operation failed/, "").trim()
+        if (!finalReason) {
+          if (kind === "connect") finalReason = "Failed to connect"
+          else if (kind === "disconnect") finalReason = "Failed to disconnect"
+          else finalReason = "Failed to forget"
+        }
+        root.failureReason = finalReason
       }
       root.actionSsid = ""
       root.actionKind = ""
@@ -652,159 +677,153 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
       // Header — interface name + type, refresh on the right.
       Item {
         width: parent.width
-        height: Math.max(headerInfo.implicitHeight, refreshBtn.implicitHeight)
+        height: Math.max(headerInfo.implicitHeight, headerActions.implicitHeight)
 
-        Row {
+        Item {
           id: headerInfo
           anchors.left: parent.left
+          anchors.right: headerActions.left
+          anchors.rightMargin: Style.spacing.controlPaddingX
           anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.space(10)
+          implicitHeight: Math.max(wifiToggleBtn.implicitHeight, wifiMainText.implicitHeight)
 
-          Text {
-            text: root.icon
-            color: root.bar.foreground
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.display
+          PanelActionButton {
+            id: wifiToggleBtn
+            anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
+            iconText: root.icon
+            fontSize: Style.font.iconLarge
+            size: Style.space(28)
+            tooltipText: "Toggle Wi-Fi"
+            foreground: root.bar.foreground
+            hoverColor: root.bar.foreground // Override the dimming behavior
+            panelBackground: root.bar.background
+            fontFamily: root.bar.fontFamily
+            enabled: true
+            onClicked: {
+              root.bar.run("rfkill toggle wlan")
+              Qt.callLater(function() { root.refresh(true) })
+            }
           }
 
-          Column {
-            spacing: Style.space(2)
+          Row {
+            anchors.left: wifiToggleBtn.right
+            anchors.leftMargin: Style.spacing.controlPaddingX
+            anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
 
             Text {
-              text: root.info.iface || (root.kind === "disconnected" ? "Disconnected" : "No connection")
+              id: wifiMainText
+              text: {
+                if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
+                if (root.info.type === "ethernet") return "Ethernet"
+                return root.info.iface || (root.kind === "disconnected" ? "Disconnected" : "No connection")
+              }
               color: root.bar.foreground
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.subtitle
               font.bold: true
+              elide: Text.ElideRight
+              width: Math.min(implicitWidth, parent.width - (wifiFreqText.visible ? wifiFreqText.implicitWidth : 0))
             }
+
             Text {
-              text: {
-                if (root.info.type === "wifi") {
-                  var s = root.info.ssid || "Wi-Fi"
-                  if (root.info.freq) s += "  ·  " + root.formatFreq(root.info.freq)
-                  return s
-                }
-                if (root.info.type === "ethernet") return "Ethernet"
-                return ""
-              }
-              visible: text !== ""
+              id: wifiFreqText
+              visible: root.info.type === "wifi" && !!root.info.freq
+              text: " • " + root.formatFreq(root.info.freq)
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: Style.font.subtitle
+              font.bold: true
             }
           }
         }
 
-        Button {
-          id: refreshBtn
+        Row {
+          id: headerActions
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          iconText: "󰑐"
-          tooltipText: "Refresh"
-          tooltipBackground: root.bar.background
-          tooltipForeground: root.bar.foreground
-          foreground: root.bar.foreground
-          horizontalPadding: Style.spacing.controlGap
-          verticalPadding: Style.spacing.labelGap
-          iconSize: Style.font.icon
-          active: root.scanning
-          onClicked: root.refresh()
-        }
-      }
+          spacing: Style.spacing.controlGap
 
-      PanelSeparator {
-        visible: !!root.info.iface
-        foreground: root.bar.foreground
+          PanelActionButton {
+            id: disconnectBtn
+            visible: root.info.type === "wifi" && !!root.info.ssid
+            enabled: !root.busy
+            iconText: "󰅙"
+            tooltipText: "Disconnect"
+            foreground: root.bar.foreground
+            hoverColor: root.bar.urgent
+            panelBackground: root.bar.background
+            fontFamily: root.bar.fontFamily
+            anchors.verticalCenter: parent.verticalCenter
+            onClicked: root.disconnect(root.info.ssid)
+          }
+
+          Button {
+            id: refreshBtn
+            anchors.verticalCenter: parent.verticalCenter
+            iconText: "󰑐"
+            iconSpinning: root.scanning
+            tooltipText: "Refresh"
+            tooltipBackground: root.bar.background
+            tooltipForeground: root.bar.foreground
+            foreground: root.bar.foreground
+            horizontalPadding: Style.spacing.controlGap
+            verticalPadding: Style.spacing.labelGap
+            iconSize: Style.font.icon
+            active: root.scanning
+            onClicked: root.refresh(true)
+          }
+        }
       }
 
       // Connection details: IP, gateway, link speed, etc.
-      Grid {
+      Row {
         visible: !!root.info.iface
-        width: parent.width
-        columns: 2
-        columnSpacing: Style.space(14)
-        rowSpacing: Style.space(4)
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: Style.space(24)
 
-        // IP address.
-        Text {
-          visible: !!root.info.ip
-          text: "IP address"
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
-        }
-        Text {
-          visible: !!root.info.ip
-          text: (root.info.ip || "") + (root.info.prefix ? "/" + root.info.prefix : "")
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
-        }
-
-        // Gateway.
-        Text {
-          visible: !!root.info.gateway
-          text: "Gateway"
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
-        }
-        Text {
-          visible: !!root.info.gateway
-          text: root.info.gateway || ""
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
+        Column {
+          width: Style.space(140)
+          spacing: Style.spacing.labelGap
+          InfoPair {
+            visible: !!root.info.ip
+            label: "IP"
+            value: root.info.ip || ""
+            copyable: true
+            tooltipText: "Copy IP"
+          }
+          InfoPair {
+            visible: !!root.info.gateway
+            label: "Gateway"
+            value: root.info.gateway || ""
+            copyable: true
+            tooltipText: "Copy gateway"
+          }
         }
 
-        // Ethernet link speed / duplex.
-        Text {
-          visible: root.info.type === "ethernet" && !!root.info.speed
-          text: "Link"
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
-        }
-        Text {
-          visible: root.info.type === "ethernet" && !!root.info.speed
-          text: root.formatSpeed(root.info.speed || "") + (root.info.duplex ? "  ·  " + root.info.duplex + " duplex" : "")
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
-        }
+        Column {
+          width: Style.space(140)
+          spacing: Style.spacing.labelGap
 
-        // Wi-Fi signal.
-        Text {
-          visible: root.info.type === "wifi" && !!root.info.signal_dbm
-          text: "Signal"
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
-        }
-        Text {
-          visible: root.info.type === "wifi" && !!root.info.signal_dbm
-          text: (root.info.signal_dbm || "") + " dBm"
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
-        }
+          // Ethernet details
+          InfoPair {
+            visible: root.info.type === "ethernet" && !!root.info.speed
+            label: "Link"
+            value: root.formatSpeed(root.info.speed || "") + (root.info.duplex ? " • " + root.info.duplex + " dup" : "")
+          }
 
-        // Wi-Fi tx bitrate.
-        Text {
-          visible: root.info.type === "wifi" && !!root.info.bitrate
-          text: "Link rate"
-          color: Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
-        }
-        Text {
-          visible: root.info.type === "wifi" && !!root.info.bitrate
-          text: root.info.bitrate || ""
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.bodySmall
+          // Wi-Fi details
+          InfoPair {
+            visible: root.info.type === "wifi" && !!root.info.signal_dbm
+            label: "Signal"
+            value: (root.info.signal_dbm || "") + " dBm"
+          }
+          InfoPair {
+            visible: root.info.type === "wifi" && !!root.info.bitrate
+            label: "Link"
+            value: root.info.bitrate || ""
+          }
         }
       }
 
@@ -907,10 +926,9 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
           }
         }
       }
-
     }
-      }
     }
+  }
 
   // One DNS provider pill. The cursor + current visuals come entirely from
   // CursorSurface; this component just binds them to the panel's cursor
@@ -967,6 +985,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
 
     readonly property string statusText: {
       if (!net) return ""
+      if (isPasswordOpen) return ""
       if (isBusy && root.actionKind === "connect") return "Connecting…"
       if (isBusy && root.actionKind === "disconnect") return "Disconnecting…"
       if (isBusy && root.actionKind === "forget") return "Forgetting…"
@@ -1124,6 +1143,17 @@ iwctl known-networks list 2>/dev/null \\
       }
     }
 
+    Timer {
+      id: failureTimer
+      interval: 2000
+      running: row.isFailed && row.isPasswordOpen
+      onTriggered: {
+        root.failureSsid = ""
+        root.failureReason = ""
+        pwField.forceActiveFocus()
+      }
+    }
+
     // Inline passphrase prompt — only shown when we hit a protected network
     // we don't have saved credentials for. Submitting (Enter or the check
     // button) fires connect; Esc cancels back to the row.
@@ -1137,9 +1167,11 @@ iwctl known-networks list 2>/dev/null \\
       anchors.rightMargin: Style.space(10)
       anchors.topMargin: Style.space(4)
       implicitHeight: pwField.implicitHeight + Style.spacing.rowGap
+      height: implicitHeight
 
       TextField {
         id: pwField
+        visible: !row.isBusy && !row.isFailed
         anchors.left: parent.left
         anchors.right: connectPwBtn.left
         anchors.verticalCenter: parent.verticalCenter
@@ -1162,14 +1194,38 @@ iwctl known-networks list 2>/dev/null \\
         Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
       }
 
+      Rectangle {
+        id: statusMsgWrapper
+        visible: row.isBusy || row.isFailed
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        height: Style.spacing.controlHeight
+        color: Style.normalFillFor(root.bar.foreground)
+        border.color: Style.normalBorderFor(root.bar.foreground)
+        border.width: Style.normalBorderWidth
+        radius: Style.cornerRadius
+
+        Text {
+          anchors.fill: parent
+          horizontalAlignment: Text.AlignHCenter
+          verticalAlignment: Text.AlignVCenter
+          text: row.isFailed ? "Wrong password" : "Connecting..."
+          color: row.isFailed ? root.bar.urgent : root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+      }
+
       // 22×22 right-anchored to line up with forgetBtn and lockIndicator
       // above. Esc closes the prompt (handled by pwField.Keys.onEscapePressed)
       // so there's no separate cancel button.
       PanelActionButton {
         id: connectPwBtn
+        visible: !row.isBusy && !row.isFailed
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        enabled: !root.busy && row.net && pwField.text.length > 0
+        enabled: row.net && pwField.text.length > 0
         iconText: "󰄬"
         tooltipText: "Connect"
         foreground: root.bar.foreground
@@ -1218,5 +1274,52 @@ iwctl known-networks list 2>/dev/null \\
     repeat: true
     triggeredOnStart: true
     onTriggered: if (!networkProc.running) networkProc.running = true
+  }
+
+  component InfoPair: Row {
+    property string label: ""
+    property string value: ""
+    property bool copyable: false
+    property string tooltipText: "Copy to clipboard"
+
+    width: parent.width
+    spacing: Style.space(8)
+
+    InfoLabel { text: label }
+    Item { width: Math.max(0, parent.width - parent.children[0].implicitWidth - valueText.implicitWidth - parent.spacing * 2); height: 1 }
+    InfoValue {
+      id: valueText
+      text: value
+
+      MouseArea {
+        id: valueMouse
+        anchors.fill: parent
+        enabled: copyable && valueText.text !== ""
+        hoverEnabled: enabled
+        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: root.copyToClipboard(valueText.text)
+      }
+
+      PanelToolTip {
+        visible: valueMouse.enabled && valueMouse.containsMouse
+        text: tooltipText
+        panelForeground: root.bar.foreground
+        panelBackground: root.bar.background
+        fontFamily: root.bar.fontFamily
+      }
+    }
+  }
+
+  component InfoLabel: Text {
+    color: root.bar.foreground
+    opacity: 0.6
+    font.family: root.bar.fontFamily
+    font.pixelSize: Style.font.bodySmall
+  }
+
+  component InfoValue: Text {
+    color: root.bar.foreground
+    font.family: root.bar.fontFamily
+    font.pixelSize: Style.font.bodySmall
   }
 }

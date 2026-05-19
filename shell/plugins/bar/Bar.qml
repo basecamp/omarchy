@@ -69,6 +69,19 @@ Item {
   property string tooltipText: ""
   property bool tooltipShown: false
   property var activePopout: null
+  property var clickTargets: []
+
+  function registerClickTarget(target) {
+    if (!target || clickTargets.indexOf(target) !== -1) return
+    var next = clickTargets.slice()
+    next.push(target)
+    clickTargets = next
+  }
+
+  function unregisterClickTarget(target) {
+    var next = clickTargets.filter(function(item) { return item !== target })
+    clickTargets = next
+  }
 
   function requestPopout(owner) {
     if (activePopout === owner) return
@@ -267,6 +280,7 @@ Item {
     "audioPanel":         { displayName: "Audio",              description: "Volume slider, output picker, per-app mixer", category: "Audio",    allowMultiple: false },
     "monitorPanel":       { displayName: "Display",            description: "Brightness slider and laptop display controls", category: "System",   allowMultiple: false },
     "networkPanel":       { displayName: "Network",            description: "Wi-Fi list and connection state",            category: "Network",  allowMultiple: false },
+    "powerPanel":         { displayName: "Power",              description: "Battery, power profile, and system stats",    category: "System",   allowMultiple: false },
     "bluetoothPanel":     { displayName: "Bluetooth",          description: "Bluetooth device list with connect/disconnect", category: "Network", allowMultiple: false },
     "calendar":           { displayName: "Calendar",           description: "Clock with month-grid popup",                  category: "Time",     allowMultiple: false, settingsForm: "calendarSettings" },
     "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND",  category: "Status",   allowMultiple: false },
@@ -1086,6 +1100,14 @@ Item {
     signal pressed(int button)
     signal wheelMoved(int delta)
 
+    function triggerPress(button) {
+      root.hideTooltip(buttonRoot)
+      buttonRoot.pressed(button)
+    }
+
+    Component.onCompleted: root.registerClickTarget(buttonRoot)
+    Component.onDestruction: root.unregisterClickTarget(buttonRoot)
+
     visible: text !== "" || keepSpace
     opacity: text === "" ? 0 : 1
     implicitWidth: fixedWidth > 0 ? fixedWidth : (root.vertical ? root.barSize : Math.max(12, label.implicitWidth + horizontalMargin * 2 + rightExtraMargin))
@@ -1113,7 +1135,7 @@ Item {
       cursorShape: Qt.PointingHandCursor
       onEntered: root.showTooltip(buttonRoot, buttonRoot.tooltipText)
       onExited: root.hideTooltip(buttonRoot)
-      onClicked: function(mouse) { buttonRoot.pressed(mouse.button) }
+      onClicked: function(mouse) { buttonRoot.triggerPress(mouse.button) }
       onWheel: function(wheel) { buttonRoot.wheelMoved(wheel.angleDelta.y) }
     }
   }

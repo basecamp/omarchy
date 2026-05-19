@@ -57,6 +57,7 @@ hl.bind("SUPER + CTRL + A", hl.dsp.exec_cmd("omarchy-shell audioPanel toggle"), 
 hl.bind("SUPER + CTRL + B", hl.dsp.exec_cmd("omarchy-shell bluetoothPanel toggle"), { description = "Bluetooth panel" })
 hl.bind("SUPER + CTRL + D", hl.dsp.exec_cmd("omarchy-shell monitorPanel toggle"), { description = "Display panel" })
 hl.bind("SUPER + CTRL + W", hl.dsp.exec_cmd("omarchy-shell networkPanel toggle"), { description = "Network panel" })
+hl.bind("SUPER + CTRL + P", hl.dsp.exec_cmd("omarchy-shell powerPanel toggle"), { description = "Power panel" })
 hl.bind("SUPER + CTRL + T", hl.dsp.exec_cmd("omarchy-launch-tui btop"), { description = "Activity" })
 
 hl.bind("SUPER + CTRL + X", hl.dsp.exec_cmd("voxtype record toggle"), { description = "Toggle dictation" })
