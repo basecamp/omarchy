@@ -88,6 +88,21 @@ text       = "{{ foreground }}"
 border     = "{{ accent }}"
 countdown  = "{{ accent }}"
 
+[app-launcher]
+# Same six tokens as [menu], applied to the app launcher overlay. Alpha
+# companions go from 0 (invisible) to 1 (opaque). Defaults mirror [menu]:
+# subtle foreground-tinted fill on the selected row, no visible border,
+# accent-colored text.
+background                = "{{ background }}"
+text                      = "{{ foreground }}"
+border                    = "{{ foreground }}"
+border-alpha              = 1.0
+selected-background       = "{{ foreground }}"
+selected-background-alpha = 0.08
+selected-text             = "{{ accent }}"
+selected-border           = "{{ foreground }}"
+selected-border-alpha     = 0.25
+
 [menu]
 # Cards, rows, and selected-row treatment. Alpha companions (where present)
 # go from 0 (invisible) to 1 (opaque). Defaults mirror the panel keyboard
