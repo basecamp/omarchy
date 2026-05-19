@@ -32,7 +32,6 @@ ToolTip {
     border.color: root.panelBorder
     border.width: Style.normalBorderWidth
     radius: Style.cornerRadius
-    opacity: 0.97
   }
 
   contentItem: Text {

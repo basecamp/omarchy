@@ -20,13 +20,14 @@ Item {
   property var filteredEntries: []
 
   // Bound to the central [app-launcher] section in shell.toml via Color.qml.
-  // Each surface color composes with its alpha companion at render time.
+  // Each color already includes its alpha companion (composed in the
+  // singleton), so consumers can drop them straight into a Rectangle.
   property color background: Color.appLauncher.background
   property color foreground: Color.appLauncher.text
-  property color border: Color.alpha(Color.appLauncher.border, Color.appLauncher.borderAlpha)
-  property color selectedBackground: Color.alpha(Color.appLauncher.selectedBackground, Color.appLauncher.selectedBackgroundAlpha)
+  property color border: Color.appLauncher.border
+  property color selectedBackground: Color.appLauncher.selectedBackground
   property color selectedText: Color.appLauncher.selectedText
-  property color selectedBorder: Color.alpha(Color.appLauncher.selectedBorder, Color.appLauncher.selectedBorderAlpha)
+  property color selectedBorder: Color.appLauncher.selectedBorder
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
 
   property int cardWidth: 644
@@ -248,7 +249,7 @@ Item {
       height: Math.min(root.cardHeight, panel.height - Style.gapsOut * 2)
       radius: Style.cornerRadius
       anchors.centerIn: parent
-      color: root.withAlpha(root.background, 0.95)
+      color: root.background
       border.color: root.border
       border.width: 2
       clip: true
@@ -357,7 +358,7 @@ Item {
               radius: 0
               color: row.hasCursor ? root.selectedBackground : "transparent"
               border.color: row.hasCursor ? root.selectedBorder : "transparent"
-              border.width: (row.hasCursor && Color.appLauncher.selectedBorderAlpha > 0) ? Math.max(1, Style.normalBorderWidth) : 0
+              border.width: (row.hasCursor && root.selectedBorder.a > 0) ? Math.max(1, Style.normalBorderWidth) : 0
 
               Item {
                 id: iconSlot

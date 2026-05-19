@@ -108,7 +108,6 @@ Rectangle {
       border.color: root.tooltipBorder
       border.width: Math.max(1, Style.normalBorderWidth)
       radius: 0
-      opacity: 0.97
     }
     contentItem: Text {
       text: root.tooltipText

@@ -687,7 +687,6 @@ Item {
         border.color: Color.tooltip.border
         border.width: 1
         radius: Style.cornerRadius
-        opacity: 0.97
 
         Text {
           id: tooltipLabel

@@ -3,14 +3,16 @@
 # themes/<name>/shell.toml to override any individual key.
 
 [bar]
-background = "{{ background }}"
-text       = "{{ foreground }}"
+# Alpha companions (where present) range from 0 (invisible) to 1 (opaque).
+background       = "{{ background }}"
+background-alpha = 1.0
+text             = "{{ foreground }}"
 # Modules calling attention to themselves (recording, voxtype, alerts, updates)
-active     = "{{ color1 }}"
+active           = "{{ color1 }}"
 # Cross-axis size in px. size-horizontal is the height of top/bottom bars;
 # size-vertical is the width of left/right bars.
-size-horizontal = 26
-size-vertical   = 28
+size-horizontal  = 26
+size-vertical    = 28
 
 [style]
 # Shared control state tokens. See docs/omarchy-shell.md#interactive-states.
@@ -72,28 +74,37 @@ base-size = 12
 [popups]
 # Shared by every bar flyout. Body text inside flyouts is not separately
 # themable — it follows [bar].text.
-background = "{{ background }}"
-border     = "{{ accent }}"
+background       = "{{ background }}"
+background-alpha = 1.0
+border           = "{{ accent }}"
+border-alpha     = 1.0
 
 [tooltip]
-# Hover tooltips across the bar, panels, and buttons.
-background = "{{ background }}"
-text       = "{{ foreground }}"
-border     = "{{ foreground }}"
+# Hover tooltips across the bar, panels, and buttons. background-alpha of
+# 0.97 mirrors the legacy hard-coded tooltip opacity.
+background       = "{{ background }}"
+background-alpha = 0.97
+text             = "{{ foreground }}"
+border           = "{{ foreground }}"
+border-alpha     = 1.0
 
 [notifications]
-background = "{{ background }}"
-text       = "{{ foreground }}"
+background       = "{{ background }}"
+background-alpha = 1.0
+text             = "{{ foreground }}"
 # Conventionally matches the Hyprland active-window border
-border     = "{{ accent }}"
-countdown  = "{{ accent }}"
+border           = "{{ accent }}"
+border-alpha     = 1.0
+countdown        = "{{ accent }}"
 
 [app-launcher]
 # Same six tokens as [menu], applied to the app launcher overlay. Alpha
 # companions go from 0 (invisible) to 1 (opaque). Defaults mirror [menu]:
 # subtle foreground-tinted fill on the selected row, no visible border,
-# accent-colored text.
+# accent-colored text. background-alpha of 0.95 mirrors the legacy
+# hard-coded card translucency.
 background                = "{{ background }}"
+background-alpha          = 0.95
 text                      = "{{ foreground }}"
 border                    = "{{ foreground }}"
 border-alpha              = 1.0
@@ -109,6 +120,7 @@ selected-border-alpha     = 0.25
 # cursor: a subtle foreground-tinted fill on the selected row, no visible
 # border, accent-colored text. Override any of these per-theme.
 background                = "{{ background }}"
+background-alpha          = 1.0
 text                      = "{{ foreground }}"
 border                    = "{{ foreground }}"
 border-alpha              = 1.0
@@ -119,9 +131,13 @@ selected-border           = "{{ foreground }}"
 selected-border-alpha     = 0.25
 
 [image-picker]
-# Drawn at ~70% alpha as a scrim
-background        = "{{ background }}"
-text              = "{{ foreground }}"
-selected-border   = "{{ accent }}"
-# Drawn at ~28% alpha
-unselected-border = "{{ foreground }}"
+# Carousel-style picker. background-alpha sets the scrim opacity behind
+# the picker; unselected-border-alpha softens carousel slices that aren't
+# the current selection. Defaults preserve the legacy hard-coded behavior.
+background              = "{{ background }}"
+background-alpha        = 0.5
+text                    = "{{ foreground }}"
+selected-border         = "{{ accent }}"
+selected-border-alpha   = 1.0
+unselected-border       = "{{ foreground }}"
+unselected-border-alpha = 0.28
