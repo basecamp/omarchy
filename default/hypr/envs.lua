@@ -1,15 +1,8 @@
 local paths = require("default.hypr.paths")
-
-local function require_file_if_exists(path, module)
-  local file = io.open(path, "r")
-  if file then
-    file:close()
-    require(module)
-  end
-end
+local require_optional = require("default.hypr.require_optional")
 
 -- GUM environment variables for styling purposes.
-require_file_if_exists(paths.config_home .. "/omarchy/current/theme/gum_env.lua", "omarchy.current.theme.gum_env")
+require_optional.module("omarchy.current.theme.gum_env")
 
 -- Cursor size.
 hl.env("XCURSOR_SIZE", "24")

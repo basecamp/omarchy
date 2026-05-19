@@ -14,11 +14,4 @@ require("default.hypr.input")
 require("default.hypr.windows")
 
 -- Current theme overrides.
-do
-  local paths = require("default.hypr.paths")
-  local theme = io.open(paths.config_home .. "/omarchy/current/theme/hyprland.lua", "r")
-  if theme then
-    theme:close()
-    require("omarchy.current.theme.hyprland")
-  end
-end
+require("default.hypr.require_optional").module("omarchy.current.theme.hyprland")
