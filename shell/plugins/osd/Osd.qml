@@ -94,7 +94,7 @@ Item {
       anchors.bottom: parent.bottom
       anchors.bottomMargin: Style.space(67)
       color: Color.alpha(Color.background, 0.97)
-      border.color: Color.foreground
+      border.color: Color.popups.border
       border.width: Math.max(1, Style.space(2))
       radius: Style.cornerRadius
       opacity: root.opened ? 1 : 0

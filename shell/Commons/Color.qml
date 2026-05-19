@@ -38,7 +38,7 @@ QtObject {
   }
   readonly property QtObject popups: QtObject {
     property color background: root.pick("popups.background", root.background)
-    property color border: root.pick("popups.border", root.foreground)
+    property color border: root.pick("popups.border", root.pick("notifications.border", root.accent))
   }
   readonly property QtObject notifications: QtObject {
     property color background: root.pick("notifications.background", root.background)

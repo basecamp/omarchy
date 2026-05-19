@@ -324,7 +324,6 @@ Item {
     triggerMode: "click"
     contentWidth: popup.fittedContentWidth(Style.space(480))
     contentHeight: popup.fittedContentHeight(weatherColumn.implicitHeight)
-    borderColor: Color.notifications.border
 
     Flickable {
       id: weatherScroll

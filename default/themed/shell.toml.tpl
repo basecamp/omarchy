@@ -73,7 +73,7 @@ base-size = 12
 # Shared by every bar flyout. Body text inside flyouts is not separately
 # themable — it follows [bar].text.
 background = "{{ background }}"
-border     = "{{ foreground }}"
+border     = "{{ accent }}"
 
 [notifications]
 background = "{{ background }}"
