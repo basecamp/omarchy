@@ -78,19 +78,11 @@ Item {
       root.shell.hide((root.manifest && root.manifest.id) || "omarchy.app-launcher")
   }
 
-  function withAlpha(color, alpha) {
-    return Qt.rgba(color.r, color.g, color.b, alpha)
-  }
-
-  function fileUrl(path) {
-    return "file://" + String(path).split("/").map(encodeURIComponent).join("/")
-  }
-
   function iconSource(icon) {
     var value = String(icon || "")
     if (value.length === 0) return Quickshell.iconPath("application-x-executable", true)
     if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0) return value
-    if (value.charAt(0) === "/") return root.fileUrl(value)
+    if (value.charAt(0) === "/") return Util.fileUrl(value)
     return Quickshell.iconPath(value, true)
   }
 
@@ -108,10 +100,6 @@ Item {
 
   function toplevelCount() {
     try { return ToplevelManager.toplevels.values.length } catch (e) { return 0 }
-  }
-
-  function shellQuote(value) {
-    return "'" + String(value).replace(/'/g, "'\\''") + "'"
   }
 
   function entrySearchText(entry) {
@@ -140,7 +128,7 @@ Item {
   function hiddenEntryScanCommand() {
     var desktop = [Quickshell.env("XDG_CURRENT_DESKTOP"), Quickshell.env("XDG_SESSION_DESKTOP"), Quickshell.env("DESKTOP_SESSION")].filter(function(v) { return String(v || "").length > 0 }).join(":")
     var script = root.omarchyPath + "/shell/scripts/app-launcher-hidden-entries.sh"
-    return root.shellQuote(script) + " " + root.shellQuote(desktop)
+    return Util.shellQuote(script) + " " + Util.shellQuote(desktop)
   }
 
   function fuzzyScore(entry, query) {

@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons
 
 // Instance, not a singleton — see BarWidgetRegistry for rationale.
 QtObject {
@@ -29,14 +30,6 @@ QtObject {
 
   // ---------------------------------------------------------------- helpers
 
-  function isPlainObject(value) {
-    return value !== null && typeof value === "object" && !Array.isArray(value)
-  }
-
-  function fileUrl(path) {
-    return "file://" + String(path).split("/").map(encodeURIComponent).join("/")
-  }
-
   function isSafeEntryPoint(value) {
     if (typeof value !== "string" || value.length === 0) return false
     if (value.charAt(0) === "/") return false
@@ -45,7 +38,7 @@ QtObject {
   }
 
   function validateManifest(manifest, sourcePath) {
-    if (!isPlainObject(manifest)) {
+    if (!Util.isPlainObject(manifest)) {
       console.warn("PluginRegistry: manifest is not an object at " + sourcePath)
       return null
     }
@@ -69,7 +62,7 @@ QtObject {
       console.warn("PluginRegistry: kinds must be a non-empty array at " + sourcePath)
       return null
     }
-    if (!isPlainObject(manifest.entryPoints)) {
+    if (!Util.isPlainObject(manifest.entryPoints)) {
       console.warn("PluginRegistry: entryPoints must be an object at " + sourcePath)
       return null
     }
@@ -87,7 +80,7 @@ QtObject {
   }
 
   function entryPointUrl(manifest, kind) {
-    if (!isPlainObject(manifest)) return ""
+    if (!Util.isPlainObject(manifest)) return ""
     var ep = manifest.entryPoints ? manifest.entryPoints[kind] : null
     if (!ep) return ""
     var dir = manifest.__sourceDir || ""
@@ -100,7 +93,7 @@ QtObject {
       console.warn("PluginRegistry: entry point escapes sourceDir: " + resolved)
       return ""
     }
-    return fileUrl(resolved)
+    return Util.fileUrl(resolved)
   }
 
   // Enabled = the plugin id is referenced somewhere in shell.json. That can
@@ -125,8 +118,8 @@ QtObject {
   }
 
   function findEntryLocation(config, id) {
-    if (!isPlainObject(config)) return { found: false }
-    if (isPlainObject(config.bar) && isPlainObject(config.bar.layout)) {
+    if (!Util.isPlainObject(config)) return { found: false }
+    if (Util.isPlainObject(config.bar) && Util.isPlainObject(config.bar.layout)) {
       var sections = ["left", "center", "right"]
       for (var s = 0; s < sections.length; s++) {
         var arr = config.bar.layout[sections[s]]
@@ -157,8 +150,8 @@ QtObject {
     var isBarWidget = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar-widget") !== -1
     shellConfigMutator(function(config) {
       // Ensure shape exists.
-      if (!isPlainObject(config.bar)) config.bar = { layout: { left: [], center: [], right: [] } }
-      if (!isPlainObject(config.bar.layout)) config.bar.layout = { left: [], center: [], right: [] }
+      if (!Util.isPlainObject(config.bar)) config.bar = { layout: { left: [], center: [], right: [] } }
+      if (!Util.isPlainObject(config.bar.layout)) config.bar.layout = { left: [], center: [], right: [] }
       if (!Array.isArray(config.plugins)) config.plugins = []
       var location = findEntryLocation(config, key)
       if (value && !location.found) {

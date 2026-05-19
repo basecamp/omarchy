@@ -46,14 +46,6 @@ Item {
 
   onOpenedChanged: if (!opened) layoutSettled = false
 
-  function fileUrl(path) {
-    return "file://" + path.split("/").map(encodeURIComponent).join("/")
-  }
-
-  function shellQuote(value) {
-    return "'" + String(value).replace(/'/g, "'\\''") + "'"
-  }
-
   function scriptPath(name) {
     return omarchyPath + "/shell/scripts/" + name
   }
@@ -70,19 +62,6 @@ Item {
         root.focusPicker()
       }
     })
-  }
-
-  // Decode a base64-encoded UTF-8 string sent via IPC. Used for fields that
-  // would otherwise carry embedded newlines or tabs (image rows, raw colors
-  // JSON) which bash IPC arguments can't reliably round-trip.
-  function decodeBase64(value) {
-    var s = String(value || "")
-    if (!s) return ""
-    try { return Qt.atob(s) } catch (e) { return s }
-  }
-
-  function withAlpha(color, alpha) {
-    return Qt.rgba(color.r, color.g, color.b, alpha)
   }
 
   function currentPath() {
@@ -176,7 +155,7 @@ Item {
     if (releaseProc.running || doneFilesToRelease.length === 0) return
 
     var path = doneFilesToRelease.shift()
-    releaseProc.command = ["bash", "-lc", ": > " + shellQuote(path)]
+    releaseProc.command = ["bash", "-lc", ": > " + Util.shellQuote(path)]
     releaseProc.running = true
   }
 
@@ -200,7 +179,7 @@ Item {
     selectionFile = ""
     doneFile = ""
 
-    applyProc.command = ["bash", "-lc", "printf '%s\\n' " + shellQuote(path) + " > " + shellQuote(activeSelectionFile) + "; : > " + shellQuote(activeDoneFile)]
+    applyProc.command = ["bash", "-lc", "printf '%s\\n' " + Util.shellQuote(path) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
     applyProc.running = true
   }
 
@@ -392,7 +371,7 @@ Item {
                   doneFile: string,
                   showLabels: string,
                   filterable: string): string {
-      var rows = root.decodeBase64(imageRowsB64)
+      var rows = Util.decodeBase64(imageRowsB64)
       root.openSelector(imageDirs, rows, selectedImage, selectionFile, doneFile,
                         showLabels, filterable)
       return "ok"
@@ -402,7 +381,7 @@ Item {
                      selectedImage: string,
                      showLabels: string,
                      filterable: string): string {
-      var rows = root.decodeBase64(imageRowsB64)
+      var rows = Util.decodeBase64(imageRowsB64)
       root.preloadRows(rows, selectedImage, showLabels, filterable)
       return "ok"
     }
@@ -576,7 +555,7 @@ Item {
                   // Load only the initial/visited nearby images, but keep the
                   // source once activated so Qt does not tear textures down as
                   // selection moves through the carousel.
-                  source: item.sourceActivated && item.thumbnailPath ? root.fileUrl(item.thumbnailPath) : ""
+                  source: item.sourceActivated && item.thumbnailPath ? Util.fileUrl(item.thumbnailPath) : ""
                   fillMode: Image.PreserveAspectCrop
                   asynchronous: true
                   cache: true
@@ -585,7 +564,7 @@ Item {
 
                 Rectangle {
                   anchors.fill: parent
-                  color: root.withAlpha(root.dimColor, item.selected ? 0 : 0.42)
+                  color: Util.alpha(root.dimColor, item.selected ? 0 : 0.42)
                 }
               }
 
@@ -624,7 +603,7 @@ Item {
           text: root.currentLabel()
           color: root.foreground
           style: Text.Outline
-          styleColor: root.withAlpha(root.dimColor, 0.7)
+          styleColor: Util.alpha(root.dimColor, 0.7)
           font.pixelSize: Style.font.display
           font.weight: Font.DemiBold
           horizontalAlignment: Text.AlignHCenter
@@ -641,7 +620,7 @@ Item {
           color: root.foreground
           opacity: 0.85
           style: Text.Outline
-          styleColor: root.withAlpha(root.dimColor, 0.7)
+          styleColor: Util.alpha(root.dimColor, 0.7)
           font.pixelSize: Style.font.title
           horizontalAlignment: Text.AlignHCenter
           elide: Text.ElideRight

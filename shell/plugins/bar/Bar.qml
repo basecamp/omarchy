@@ -101,40 +101,14 @@ Item {
     return /^(top|bottom|left|right)$/.test(next) ? next : "top"
   }
 
-  function shellQuote(value) {
-    return "'" + String(value).replace(/'/g, "'\\''") + "'"
-  }
-
-  function fileUrl(path) {
-    return "file://" + path.split("/").map(encodeURIComponent).join("/")
-  }
-
-  function isPlainObject(value) {
-    return value !== null && typeof value === "object" && !Array.isArray(value)
-  }
-
-  function normalizeLayoutEntry(entry) {
-    if (typeof entry === "string") return { id: entry }
-    if (isPlainObject(entry) && entry.id) return entry
-    return null
-  }
-
-  function normalizeLayoutSection(list) {
-    if (!Array.isArray(list)) return []
-    var result = []
-    for (var i = 0; i < list.length; i++) {
-      var normalized = normalizeLayoutEntry(list[i])
-      if (normalized) result.push(normalized)
-    }
-    return result
-  }
-
+  // Apply tray-pinning on top of the shared layout normalization so the
+  // bar host and the bar settings panel can't drift on entry shape.
   function normalizeLayout(layout) {
-    if (!isPlainObject(layout)) layout = fallbackBarConfig.layout
+    var normalized = Util.normalizeLayout(Util.isPlainObject(layout) ? layout : fallbackBarConfig.layout)
     return {
-      left: pinTrayToInner(normalizeLayoutSection(layout.left), "left"),
-      center: pinTrayToInner(normalizeLayoutSection(layout.center), "center"),
-      right: pinTrayToInner(normalizeLayoutSection(layout.right), "right")
+      left:   pinTrayToInner(normalized.left,   "left"),
+      center: pinTrayToInner(normalized.center, "center"),
+      right:  pinTrayToInner(normalized.right,  "right")
     }
   }
 
@@ -157,7 +131,7 @@ Item {
   }
 
   function applyBarConfig() {
-    var config = isPlainObject(barConfig) ? barConfig : fallbackBarConfig
+    var config = Util.isPlainObject(barConfig) ? barConfig : fallbackBarConfig
 
     position = normalizePosition(config.position)
     transparent = config.transparent === true
@@ -175,7 +149,7 @@ Item {
   }
 
   function entrySettings(entry) {
-    if (!isPlainObject(entry)) return {}
+    if (!Util.isPlainObject(entry)) return {}
     var copy = {}
     for (var key in entry) {
       if (key === "id") continue
@@ -186,7 +160,7 @@ Item {
 
   function entryId(entry) {
     if (typeof entry === "string") return entry
-    if (isPlainObject(entry) && entry.id) return String(entry.id)
+    if (Util.isPlainObject(entry) && entry.id) return String(entry.id)
     return ""
   }
 
@@ -270,7 +244,7 @@ Item {
     if (!source && customModuleSafeName(name))
       source = omarchyConfigDir + "/bar/modules/" + String(name) + ".qml"
 
-    return source ? fileUrl(source) : ""
+    return source ? Util.fileUrl(source) : ""
   }
 
   // First-party widgets are registered with the BarWidgetRegistry at startup.
@@ -357,7 +331,7 @@ Item {
     var nextTransparent = !(root.transparent === true)
     if (root.shell && typeof root.shell.mutateShellConfig === "function") {
       root.shell.mutateShellConfig(function(config) {
-        if (!root.isPlainObject(config.bar)) config.bar = {}
+        if (!Util.isPlainObject(config.bar)) config.bar = {}
         config.bar.transparent = nextTransparent
       })
     } else {
@@ -470,7 +444,7 @@ Item {
 
     var name = value.substring(0, markerIndex).split("/").pop()
     var iconPath = value.substring(markerIndex + marker.length).split("&")[0]
-    return fileUrl(iconPath + "/hicolor/16x16/status/" + name + ".png")
+    return Util.fileUrl(iconPath + "/hicolor/16x16/status/" + name + ".png")
   }
 
   function trayTooltip(item) {
@@ -478,7 +452,7 @@ Item {
   }
 
   function focusWorkspace(id) {
-    root.run("hyprctl dispatch " + shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
+    root.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
   }
 
   function clockEntry() {
@@ -562,7 +536,7 @@ Item {
 
   Process {
     id: screenRecordingProc
-    command: ["bash", "-lc", root.shellQuote(root.omarchyPath + "/shell/scripts/indicators/screen-recording.sh")]
+    command: ["bash", "-lc", Util.shellQuote(root.omarchyPath + "/shell/scripts/indicators/screen-recording.sh")]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateIndicator("screenRecording", text)
@@ -571,7 +545,7 @@ Item {
 
   Process {
     id: notificationSilencingProc
-    command: ["bash", "-lc", root.shellQuote(root.omarchyPath + "/shell/scripts/indicators/notification-silencing.sh")]
+    command: ["bash", "-lc", Util.shellQuote(root.omarchyPath + "/shell/scripts/indicators/notification-silencing.sh")]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateIndicator("notifications", text)

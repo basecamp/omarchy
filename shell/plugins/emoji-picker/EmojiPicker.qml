@@ -64,10 +64,6 @@ Item {
     else root.open("{}")
   }
 
-  function withAlpha(color, alpha) {
-    return Qt.rgba(color.r, color.g, color.b, alpha)
-  }
-
   function loadEmojis(raw) {
     try {
       var data = JSON.parse(raw)

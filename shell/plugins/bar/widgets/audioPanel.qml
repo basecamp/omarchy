@@ -316,8 +316,8 @@ Item {
     if (!node) return
     Pipewire.preferredDefaultAudioSink = node
     if (root.bar && node.id !== undefined && node.name) {
-      var idArg = root.bar.shellQuote(String(node.id))
-      var nameArg = root.bar.shellQuote(String(node.name))
+      var idArg = Util.shellQuote(String(node.id))
+      var nameArg = Util.shellQuote(String(node.name))
       root.bar.run("wpctl set-default " + idArg + " 2>/dev/null || true; "
         + "pactl set-default-sink " + nameArg + " 2>/dev/null || true; "
         + "pactl list short sink-inputs 2>/dev/null | awk '{ print $1 }' | while read -r input; do "
@@ -329,8 +329,8 @@ Item {
     if (!node) return
     Pipewire.preferredDefaultAudioSource = node
     if (root.bar && node.id !== undefined && node.name) {
-      var idArg = root.bar.shellQuote(String(node.id))
-      var nameArg = root.bar.shellQuote(String(node.name))
+      var idArg = Util.shellQuote(String(node.id))
+      var nameArg = Util.shellQuote(String(node.name))
       root.bar.run("wpctl set-default " + idArg + " 2>/dev/null || true; "
         + "pactl set-default-source " + nameArg + " 2>/dev/null || true; "
         + "pactl list short source-outputs 2>/dev/null | awk '{ print $1 }' | while read -r output; do "

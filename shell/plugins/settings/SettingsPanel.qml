@@ -173,33 +173,8 @@ Item {
   }
 
   // ---------------- draft helpers ------------------------------------------
-  function cloneJson(value) { return JSON.parse(JSON.stringify(value || null)) }
-  function isPlainObject(value) { return value !== null && typeof value === "object" && !Array.isArray(value) }
-
-  function normalizeLayoutEntry(entry) {
-    if (typeof entry === "string") return { id: entry }
-    if (isPlainObject(entry) && entry.id) return cloneJson(entry)
-    return null
-  }
-
-  function normalizeLayout(layout) {
-    var sections = ["left", "center", "right"]
-    var result = {}
-    for (var i = 0; i < sections.length; i++) {
-      var s = sections[i]
-      var arr = []
-      var src = (layout && layout[s]) || []
-      for (var j = 0; j < src.length; j++) {
-        var entry = normalizeLayoutEntry(src[j])
-        if (entry) arr.push(entry)
-      }
-      result[s] = arr
-    }
-    return result
-  }
-
   function normalizeDraft(source) {
-    var bar = isPlainObject(source.bar) ? source.bar : {}
+    var bar = Util.isPlainObject(source.bar) ? source.bar : {}
     var plugins = Array.isArray(source.plugins) ? source.plugins.slice() : []
     return {
       version: 1,
@@ -208,10 +183,10 @@ Item {
         transparent: bar.transparent === true,
         centerAnchor: String(bar.centerAnchor || ""),
         fontFamily: "monospace",
-        layout: normalizeLayout(bar.layout || {})
+        layout: Util.normalizeLayout(bar.layout || {})
       },
       plugins: plugins
-        .map(normalizeLayoutEntry)
+        .map(Util.normalizeLayoutEntry)
         .filter(function(e) {
           if (!e) return false
           var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[e.id] : null
@@ -227,7 +202,7 @@ Item {
     if (diskText) {
       try {
         var parsed = JSON.parse(diskText)
-        if (isPlainObject(parsed) && parsed.version === 1) defaults = parsed
+        if (Util.isPlainObject(parsed) && parsed.version === 1) defaults = parsed
       } catch (e) {
         console.warn("Bad shell-defaults JSON, falling back to builtin:", e)
         defaults = builtinShellConfig
@@ -240,7 +215,7 @@ Item {
     if (userText.trim()) {
       try {
         var u = JSON.parse(userText)
-        if (isPlainObject(u) && u.version === 1) source = u
+        if (Util.isPlainObject(u) && u.version === 1) source = u
       } catch (e) {
         console.warn("shell.json parse failed in panel:", e)
       }
@@ -256,7 +231,7 @@ Item {
 
   function defaultBarDraft() {
     var source = defaultConfig
-    if (!isPlainObject(source) || !isPlainObject(source.bar) || !isPlainObject(source.bar.layout)) {
+    if (!Util.isPlainObject(source) || !Util.isPlainObject(source.bar) || !Util.isPlainObject(source.bar.layout)) {
       source = builtinShellConfig
     } else {
       var l = source.bar.layout
@@ -267,8 +242,8 @@ Item {
   }
 
   function resetBarToDefaults() {
-    var next = cloneJson(draft)
-    next.bar = cloneJson(defaultBarDraft())
+    var next = Util.cloneJson(draft)
+    next.bar = Util.cloneJson(defaultBarDraft())
     draft = next
     draftRevision++
     persistDraft()
@@ -287,7 +262,7 @@ Item {
   function mutateSection(section, mutator) {
     var arr = sectionArray(section).slice()
     mutator(arr)
-    var nextDraft = cloneJson(draft)
+    var nextDraft = Util.cloneJson(draft)
     if (section === "plugins") nextDraft.plugins = arr
     else nextDraft.bar.layout[section] = arr
     draft = nextDraft
@@ -314,7 +289,7 @@ Item {
   }
 
   function updateEntry(section, index, newEntry) {
-    mutateSection(section, function(a) { a[index] = cloneJson(newEntry) })
+    mutateSection(section, function(a) { a[index] = Util.cloneJson(newEntry) })
   }
 
   // ---------------- widget catalog -----------------------------------------
@@ -491,7 +466,7 @@ Item {
   property var widgetDialogEntry: ({})
 
   function openWidgetSettings(sectionKey, entryIndex, entry) {
-    widgetDialogEntry = root.cloneJson(entry)
+    widgetDialogEntry = Util.cloneJson(entry)
     widgetDialogSection = sectionKey
     widgetDialogIndex = entryIndex
     widgetDialogVisible = true
@@ -509,7 +484,7 @@ Item {
   function discardWidgetSettings() { widgetDialogVisible = false }
 
   function widgetDialogFieldChanged(key, value) {
-    var copy = root.cloneJson(widgetDialogEntry)
+    var copy = Util.cloneJson(widgetDialogEntry)
     copy[key] = value
     widgetDialogEntry = copy
   }
@@ -777,7 +752,7 @@ Item {
           fontFamily: root.fontFamily
           onChanged: function(v) {
             if (root.draft.bar.position === v) return
-            var next = root.cloneJson(root.draft)
+            var next = Util.cloneJson(root.draft)
             next.bar.position = v
             root.draft = next
             root.markDirty()
@@ -800,7 +775,7 @@ Item {
         fontFamily: root.fontFamily
         cornerRadius: root.cornerRadius
         onChanged: function(v) {
-          var next = root.cloneJson(root.draft)
+          var next = Util.cloneJson(root.draft)
           next.bar.centerAnchor = v === "(none)" ? "" : v
           root.draft = next
           root.markDirty()
@@ -817,7 +792,7 @@ Item {
       fontFamily: root.fontFamily
       checked: root.draft.bar.transparent === true
       onClicked: {
-        var next = root.cloneJson(root.draft)
+        var next = Util.cloneJson(root.draft)
         next.bar.transparent = !(next.bar.transparent === true)
         root.draft = next
         root.markDirty()

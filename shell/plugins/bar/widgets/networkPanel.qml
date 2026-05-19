@@ -149,7 +149,7 @@ Item {
     if (!net) return
     if (net.connected) { disconnect(net.ssid); return }
     if (isProtected(net.security) && !net.known) {
-      var quotedSsid = bar.shellQuote(net.ssid)
+      var quotedSsid = Util.shellQuote(net.ssid)
       knownCheck.targetSsid = net.ssid
       knownCheck.command = ["bash", "-c", `
 iwctl known-networks list 2>/dev/null \\
@@ -193,7 +193,7 @@ iwctl known-networks list 2>/dev/null \\
 
   function copyToClipboard(value) {
     if (!value || !root.bar) return
-    Quickshell.execDetached(["bash", "-lc", "printf %s " + root.bar.shellQuote(value) + " | wl-copy"])
+    Quickshell.execDetached(["bash", "-lc", "printf %s " + Util.shellQuote(value) + " | wl-copy"])
   }
 
   function networkCommand() {
@@ -374,8 +374,8 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
   }
 
   function dnsCommand(provider) {
-    var command = root.bar ? root.bar.shellQuote(root.bar.omarchyPath + "/bin/omarchy-dns") : "omarchy-dns"
-    if (provider) command += " " + root.bar.shellQuote(provider)
+    var command = root.bar ? Util.shellQuote(root.bar.omarchyPath + "/bin/omarchy-dns") : "omarchy-dns"
+    if (provider) command += " " + Util.shellQuote(provider)
     return command
   }
 
@@ -383,8 +383,8 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     if (!root.bar || !provider || actionProc.running) return
 
     if (provider === "Custom") {
-      var launcher = root.bar.shellQuote(root.bar.omarchyPath + "/bin/omarchy-launch-floating-terminal-with-presentation")
-      root.bar.run(launcher + " " + root.bar.shellQuote(root.dnsCommand(provider)))
+      var launcher = Util.shellQuote(root.bar.omarchyPath + "/bin/omarchy-launch-floating-terminal-with-presentation")
+      root.bar.run(launcher + " " + Util.shellQuote(root.dnsCommand(provider)))
       root.closePopout()
       return
     }
@@ -415,7 +415,7 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
   }
 
   function connectKnown(ssid) {
-    var quotedSsid = bar.shellQuote(ssid)
+    var quotedSsid = Util.shellQuote(ssid)
     runAction("connect", ssid, `
 station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
 [[ -z $station ]] && { echo "no Wi-Fi station available" >&2; exit 1; }
@@ -424,8 +424,8 @@ iwctl --dont-ask station "$station" connect ${quotedSsid}
   }
 
   function connectWithPassphrase(ssid, passphrase) {
-    var quotedSsid = bar.shellQuote(ssid)
-    var quotedPass = bar.shellQuote(passphrase)
+    var quotedSsid = Util.shellQuote(ssid)
+    var quotedPass = Util.shellQuote(passphrase)
     runAction("connect", ssid, `
 station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
 [[ -z $station ]] && { echo "No Wi-Fi station available" >&2; exit 1; }
@@ -452,7 +452,7 @@ iwctl station "$station" disconnect
   // success. If the station isn't on this SSID (or there is no station),
   // skip straight to forget.
   function forget(ssid) {
-    var quotedSsid = bar.shellQuote(ssid)
+    var quotedSsid = Util.shellQuote(ssid)
     runAction("forget", ssid, `
 station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
 if [[ -n $station ]]; then
@@ -1098,7 +1098,7 @@ fi
           // held a reference to the row delegate it could be destroyed by a
           // model refresh, and a rapid second click would overwrite it and
           // misroute the first result.
-          var quotedSsid = root.bar.shellQuote(row.net.ssid)
+          var quotedSsid = Util.shellQuote(row.net.ssid)
           knownCheck.targetSsid = row.net.ssid
           knownCheck.command = ["bash", "-c", `
 iwctl known-networks list 2>/dev/null \\

@@ -53,18 +53,6 @@ Item {
     else root.open("{}")
   }
 
-  function withAlpha(color, alpha) {
-    return Qt.rgba(color.r, color.g, color.b, alpha)
-  }
-
-  function shellQuote(value) {
-    return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
-  }
-
-  function fileUrl(path) {
-    return "file://" + String(path).split("/").map(encodeURIComponent).join("/")
-  }
-
   function normalizeEntry(value) {
     if (typeof value === "string") {
       return value.length > 0 ? { type: "text", text: value } : null
@@ -155,7 +143,7 @@ Item {
         entryType: entry.type,
         fullText: isImage ? "" : String(entry.text || ""),
         previewText: isImage ? "Image" : String(entry.text || "").replace(/\s+/g, " "),
-        previewImage: isImage ? root.fileUrl(entry.path) : "",
+        previewImage: isImage ? Util.fileUrl(entry.path) : "",
         path: isImage ? String(entry.path || "") : "",
         mime: isImage ? String(entry.mime || "image/png") : "text/plain",
         index: outCount
@@ -201,9 +189,9 @@ Item {
     if (!row) return
     root.opened = false
     if (row.entryType === "image") {
-      Quickshell.execDetached(["bash", "-lc", "wl-copy --type " + root.shellQuote(row.mime) + " < " + root.shellQuote(row.path) + "; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true"])
+      Quickshell.execDetached(["bash", "-lc", "wl-copy --type " + Util.shellQuote(row.mime) + " < " + Util.shellQuote(row.path) + "; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true"])
     } else if (row.fullText) {
-      Quickshell.execDetached(["bash", "-lc", "printf %s " + root.shellQuote(row.fullText) + " | wl-copy; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true"])
+      Quickshell.execDetached(["bash", "-lc", "printf %s " + Util.shellQuote(row.fullText) + " | wl-copy; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true"])
     }
   }
 
@@ -429,8 +417,8 @@ Item {
               width: parent.width / 2 - root.contentSpacing / 2
               height: parent.height
               radius: root.cornerRadius
-              color: root.withAlpha(root.background, 0.5)
-              border.color: root.withAlpha(root.border, 0.1)
+              color: Util.alpha(root.background, 0.5)
+              border.color: Util.alpha(root.border, 0.1)
               border.width: Style.normalBorderWidth
               clip: true
 
