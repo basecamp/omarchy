@@ -11,6 +11,11 @@ action="${1-}"
 # events, and also avoids false negatives from per-port USB-C devices
 # that are present-but-empty (online=0) while another port supplies power.
 if [[ -z $action || $action == "autodetect" ]]; then
+  # On plug/unplug, udev fires the rule before sysfs `online` is updated
+  # on some laptops (notably Lenovo Yoga Pro 7 with USB-C charging). A
+  # short settle delay lets the kernel update before we read state.
+  sleep 0.3
+
   action=battery
   for ps in /sys/class/power_supply/*; do
     [[ -r $ps/online && -r $ps/type ]] || continue
