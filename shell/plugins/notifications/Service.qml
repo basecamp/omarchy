@@ -1,7 +1,4 @@
-// Notification service. Adapted from noctalia-shell (MIT) and
-// DankMaterialShell (MIT). Original implementations:
-//   https://github.com/noctalia-dev/noctalia-shell
-//   https://github.com/AvengeMedia/DankMaterialShell
+// Notification service for the omarchy shell.
 
 import QtQuick
 import QtQuick.Layouts
@@ -200,8 +197,7 @@ Item {
     }
 
     // Qt.callLater avoids "QV4::Object::insertMember" crashes when a
-    // Repeater is mid-incubation while we mutate its model — see noctalia
-    // NotificationService.qml ~L307.
+    // Repeater is mid-incubation while we mutate its model.
     Qt.callLater(function() {
       removeByOriginalId(popupModel, snapshot.originalId)
       popupModel.insert(0, snapshot)

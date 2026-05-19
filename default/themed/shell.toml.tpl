@@ -49,8 +49,36 @@ pressed-fill-alpha   = 0.22
 selection-fill-alpha = 0.35
 
 [spacing]
-# Multiplies shared margins, gaps, and padding. See docs/omarchy-shell.md#spacing.
+# `scale` multiplies shared margins, gaps, and padding; components keep
+# their proportions. Per-token overrides (in px) below pin individual
+# values without affecting the rest of the scale. Uncomment any to tune
+# a specific surface.
 scale = 1.0
+# xxs                       = 2
+# xs                        = 3
+# sm                        = 4
+# md                        = 6
+# lg                        = 8
+# xl                        = 10
+# xxl                       = 12
+# xxxl                      = 14
+# huge                      = 18
+# control-gap               = 8
+# control-padding-x         = 10
+# control-padding-y         = 6
+# input-padding-y           = 7
+# control-height            = 28
+# popup-row-height          = 28
+# row-gap                   = 8
+# row-padding-x             = 12
+# label-gap                 = 4
+# panel-gap                 = 14
+# panel-padding             = 18
+# popup-padding             = 14
+# dropdown-width            = 240
+# searchable-dropdown-width = 260
+# number-field-width        = 120
+# searchable-popup-min-height = 220
 
 [font]
 # base-size is the rem root for the type scale. Every Style.font.<token>
@@ -138,7 +166,8 @@ selected-border-alpha     = 0.25
 # Polkit authentication prompt (sudo/password dialogs). scrim is the
 # darkening layer behind the card; background is the card itself.
 # text-error tints the lock icon, password text, and placeholder when
-# authentication fails.
+# authentication fails. border-alpha applies to both border and
+# border-error (the two states are mutually exclusive in time).
 background       = "{{ background }}"
 background-alpha = 1.0
 text             = "{{ foreground }}"
@@ -155,6 +184,8 @@ accent           = "{{ accent }}"
 # Lock screen password input. background/background-alpha control the
 # centered input field card; border/border-active/border-error cycle
 # through idle, typing/authenticating, and wrong-password states.
+# border-alpha applies to all three border states (they are mutually
+# exclusive in time).
 background       = "{{ background }}"
 background-alpha = 0.8
 text             = "{{ foreground }}"
@@ -168,12 +199,10 @@ selection        = "{{ accent }}"
 selection-alpha  = 0.45
 
 [image-picker]
-# Carousel-style picker. The picker has no separate card surface, so
-# `scrim` is the full-screen wash. `background` is the underlying color
-# used for per-slice dim overlays and text outlines on top of the scrim.
+# Carousel-style picker. The picker has no card surface, so `scrim` is
+# the full-screen wash. Per-slice dim overlays and text outlines on top
+# of the scrim track the foundational background color directly.
 # unselected-border-alpha softens carousel slices that aren't selected.
-background              = "{{ background }}"
-background-alpha        = 1.0
 scrim                   = "{{ background }}"
 scrim-alpha             = 0.5
 text                    = "{{ foreground }}"

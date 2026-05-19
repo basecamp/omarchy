@@ -4,7 +4,7 @@ import Quickshell.Wayland
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
-import qs.Commons as NoctaliaCommons
+import qs.Commons
 
 Item {
   id: root
@@ -74,12 +74,11 @@ Item {
 
   function applyPendingTheme() {
     if (pendingThemeVersion !== backgroundVersion) return
-    NoctaliaCommons.Color.loadColors(pendingColorsRaw)
-    NoctaliaCommons.Color.loadShell(pendingShellRaw)
-    // Push style tokens synchronously so the type scale flips with the
+    Color.loadColors(pendingColorsRaw)
+    // Color.loadShell also refreshes Style so the type scale flips with the
     // background reveal instead of waiting for a separate reload path.
-    NoctaliaCommons.Style.loadShell(pendingShellRaw)
-    NoctaliaCommons.Style.scheduleRefresh()
+    Color.loadShell(pendingShellRaw)
+    Style.scheduleRefresh()
     pendingThemeVersion = -1
     pendingColorsRaw = ""
     pendingShellRaw = ""

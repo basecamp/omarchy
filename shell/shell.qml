@@ -3,7 +3,7 @@ import QtQml.Models
 import Quickshell
 import Quickshell.Io
 
-import qs.Commons as NoctaliaCommons
+import qs.Commons
 
 import "plugins/bar"
 import "services"
@@ -582,10 +582,9 @@ ShellRoot {
       var shellRaw = ""
       try { colorsRaw = Qt.atob(String(colorsB64 || "")) } catch (e) { colorsRaw = "" }
       try { shellRaw = Qt.atob(String(shellB64 || "")) } catch (e2) { shellRaw = "" }
-      NoctaliaCommons.Color.loadColors(colorsRaw)
-      NoctaliaCommons.Color.loadShell(shellRaw)
-      NoctaliaCommons.Style.loadShell(shellRaw)
-      NoctaliaCommons.Style.scheduleRefresh()
+      Color.loadColors(colorsRaw)
+      Color.loadShell(shellRaw)
+      Style.scheduleRefresh()
       return "ok"
     }
 
