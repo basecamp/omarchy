@@ -76,10 +76,6 @@ function o.launch_sole(match, command)
   return "omarchy-launch-or-focus " .. shell_quote(match) .. " " .. shell_quote(o.launch(command))
 end
 
-function o.bind_menu(keys, description, menu, options)
-  o.bind(keys, description, menu and ("omarchy-menu " .. menu) or "omarchy-menu", options)
-end
-
 function o.bind_toggle(keys, description, toggle, options)
   o.bind(keys, description, "omarchy-toggle-" .. toggle, options)
 end

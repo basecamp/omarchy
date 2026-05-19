@@ -10,8 +10,10 @@ hl.layer_rule({ match = { namespace = "^(omarchy-menu|omarchy-app-launcher|omarc
 
 -- Bar settings floats centered with a sensible default size instead of
 -- tiling — it's a transient dialog, not a workspace surface.
-hl.window_rule({
-  match = { class = "^org.quickshell$", title = "^Omarchy Bar Settings$" },
+o.window({
+  class = "^org.quickshell$",
+  title = "^Omarchy Bar Settings$",
+}, {
   float = true,
   center = true,
   size = { 760, 620 },
@@ -19,9 +21,9 @@ hl.window_rule({
 
 -- Dev gallery is the main shell workbench; open it maximized like
 -- SUPER+ALT+F so component previews have the whole workspace.
-hl.window_rule({ match = { class = "^org.quickshell$", title = "^Omarchy shell – dev gallery$" }, maximize = true })
+o.window({ class = "^org.quickshell$", title = "^Omarchy shell – dev gallery$" }, { maximize = true })
 
 -- Per-widget settings dialog opens as a smaller FloatingWindow off the
 -- bar settings panel; keep it floating with its own default size.
-hl.window_rule({ match = { class = "^org.quickshell$", title = "^Widget settings " }, float = true })
-hl.window_rule({ match = { class = "^org.quickshell$", title = "^Widget settings " }, size = { 380, 320 } })
+o.window({ class = "^org.quickshell$", title = "^Widget settings " }, { float = true })
+o.window({ class = "^org.quickshell$", title = "^Widget settings " }, { size = { 380, 320 } })
