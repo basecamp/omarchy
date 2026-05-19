@@ -62,13 +62,9 @@ Item {
     revealProgress = 0
   }
 
-  function decodePayload(payload) {
-    try { return Qt.atob(String(payload || "")) } catch (e) { return "" }
-  }
-
   function setPendingTheme(colorsB64, shellB64) {
-    pendingColorsRaw = decodePayload(colorsB64)
-    pendingShellRaw = decodePayload(shellB64)
+    pendingColorsRaw = Util.decodeBase64(colorsB64)
+    pendingShellRaw = Util.decodeBase64(shellB64)
     pendingThemeVersion = backgroundVersion
   }
 

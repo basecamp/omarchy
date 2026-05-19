@@ -88,14 +88,6 @@ Item {
     ? Math.min(contentMargin * 2 + headerHeight + (mode === "input" ? 0 : contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
     : Math.min(Math.max(Style.space(220), contentMargin * 2 + headerHeight + contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
 
-  function withAlpha(color, alpha) {
-    return Qt.rgba(color.r, color.g, color.b, alpha)
-  }
-
-  function shellQuote(value) {
-    return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
-  }
-
   function finishRequest(selection) {
     if (!root.requestActive || !root.doneFile) {
       root.opened = false
@@ -109,9 +101,9 @@ Item {
     root.doneFile = ""
 
     if (selection === null || selection === undefined) {
-      resultProc.command = ["bash", "-lc", ": > " + root.shellQuote(activeDoneFile)]
+      resultProc.command = ["bash", "-lc", ": > " + Util.shellQuote(activeDoneFile)]
     } else {
-      resultProc.command = ["bash", "-lc", "printf '%s\\n' " + root.shellQuote(selection) + " > " + root.shellQuote(activeSelectionFile) + "; : > " + root.shellQuote(activeDoneFile)]
+      resultProc.command = ["bash", "-lc", "printf '%s\\n' " + Util.shellQuote(selection) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
     }
     resultProc.running = true
   }
@@ -1061,7 +1053,7 @@ Item {
                 anchors.rightMargin: Style.space(4)
                 anchors.verticalCenter: parent.verticalCenter
                 height: Style.spacing.hairline
-                color: root.withAlpha(root.foreground, 0.2)
+                color: Util.alpha(root.foreground, 0.2)
               }
             }
 

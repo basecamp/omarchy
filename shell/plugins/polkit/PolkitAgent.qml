@@ -37,9 +37,6 @@ Item {
   readonly property int cardWidth: Math.min(Style.space(312), Math.max(Style.space(260), panel.width - Style.gapsOut * 2))
   readonly property int cardHeight: panel.height > 0 ? Math.min(fieldHeight + contentMargin * 2, panel.height - Style.gapsOut * 2) : fieldHeight + contentMargin * 2
 
-  function withAlpha(color, alpha) {
-    return Qt.rgba(color.r, color.g, color.b, alpha)
-  }
   function promptLooksFingerprint(text) {
     var s = String(text || "").toLowerCase()
     return s.indexOf("finger") !== -1 || s.indexOf("fprint") !== -1 || s.indexOf("swipe") !== -1

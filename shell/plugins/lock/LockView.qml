@@ -27,10 +27,9 @@ Item {
   signal clearFailureRequested()
   signal wakeRequested()
 
-  function withAlpha(color, alpha) {
-    return Qt.rgba(color.r, color.g, color.b, alpha)
-  }
-
+  // Cache-busts the lock background by appending `?v=`. Adding a query
+  // string keeps Image's loader happy while forcing it to reload when the
+  // user picks a new background mid-session.
   function fileUrl(path) {
     if (!path) return ""
     var encoded = String(path).split("/").map(encodeURIComponent).join("/")

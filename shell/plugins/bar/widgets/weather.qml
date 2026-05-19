@@ -552,7 +552,7 @@ Item {
   // Poll the weather pill text/class every minute. Local to this widget.
   Process {
     id: weatherProc
-    command: ["bash", "-lc", root.bar ? root.bar.shellQuote(root.bar.omarchyPath + "/shell/scripts/weather.sh") : ""]
+    command: ["bash", "-lc", root.bar ? Util.shellQuote(root.bar.omarchyPath + "/shell/scripts/weather.sh") : ""]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateWeather(text)

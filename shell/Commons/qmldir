@@ -1,3 +1,4 @@
 module qs.Commons
 singleton Color 1.0 Color.qml
 singleton Style 1.0 Style.qml
+singleton Util 1.0 Util.qml

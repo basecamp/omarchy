@@ -56,21 +56,17 @@ ShellRoot {
   property var shellConfig: builtinShellConfig
   property bool suppressUserReload: false
 
-  function isPlainObject(value) {
-    return value !== null && typeof value === "object" && !Array.isArray(value)
-  }
-
   function applyShellConfig() {
     // Decide which source is canonical: a valid user shell.json overrides
     // defaults entirely; otherwise fall back to defaults. We do not deep-merge.
-    var defaults = isPlainObject(defaultsConfig) ? defaultsConfig : builtinShellConfig
+    var defaults = Util.isPlainObject(defaultsConfig) ? defaultsConfig : builtinShellConfig
     var user = null
     var userText = userConfigFile.text() || ""
     if (userText.trim()) {
       try {
         var parsed = JSON.parse(userText)
-        if (isPlainObject(parsed) && parsed.version === 1) user = parsed
-        else if (isPlainObject(parsed)) console.warn("shell.json missing version: 1, using defaults")
+        if (Util.isPlainObject(parsed) && parsed.version === 1) user = parsed
+        else if (Util.isPlainObject(parsed)) console.warn("shell.json missing version: 1, using defaults")
       } catch (e) {
         console.warn("shell.json parse failed, using defaults:", e)
       }
@@ -87,7 +83,7 @@ ShellRoot {
     }
     try {
       var parsed = JSON.parse(text)
-      if (isPlainObject(parsed) && parsed.version === 1) defaultsConfig = parsed
+      if (Util.isPlainObject(parsed) && parsed.version === 1) defaultsConfig = parsed
       else defaultsConfig = builtinShellConfig
     } catch (e) {
       console.warn("shell-defaults.json parse failed, using builtin:", e)
@@ -104,7 +100,7 @@ ShellRoot {
     userConfigFile.setText(JSON.stringify(payload, null, 2) + "\n")
   }
 
-  readonly property var barConfig: shellConfig && isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
+  readonly property var barConfig: shellConfig && Util.isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
   FileView {
     id: defaultsFile
     path: shell.defaultsPath
@@ -262,8 +258,8 @@ ShellRoot {
   function updateEntryInline(moduleName, settings) {
     var stripped = String(moduleName)
     var copy = JSON.parse(JSON.stringify(shellConfig || builtinShellConfig))
-    if (!isPlainObject(copy.bar)) copy.bar = { layout: { left: [], center: [], right: [] } }
-    if (!isPlainObject(copy.bar.layout)) copy.bar.layout = { left: [], center: [], right: [] }
+    if (!Util.isPlainObject(copy.bar)) copy.bar = { layout: { left: [], center: [], right: [] } }
+    if (!Util.isPlainObject(copy.bar.layout)) copy.bar.layout = { left: [], center: [], right: [] }
     if (!Array.isArray(copy.plugins)) copy.plugins = []
 
     var sections = ["left", "center", "right"]
