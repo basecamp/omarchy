@@ -33,7 +33,7 @@ Item {
   //   "scale"      - 6 Button scale presets; treated as a single
   //                  horizontal row from j/k's perspective. h/l moves
   //                  between presets, identical to bluetooth's header.
-  //   "monitors"   - vertical Toggle list for enabling/disabling displays;
+  //   "monitors"   - vertical display row list for enabling/disabling displays;
   //                  j/k walks each row.
   // Mouse hover on a target updates root state via the components' `hovered`
   // signal so keyboard cursor and pointer share one highlight.
@@ -549,32 +549,88 @@ Item {
             Repeater {
               model: root.displays
 
-              Toggle {
+              MonitorRow {
                 required property var modelData
                 required property int index
 
                 width: panelColumn.width
-                label: modelData.name + (modelData.focused ? " · focused" : "")
-                checked: modelData.enabled
-                enabled: !modelData.enabled || root.enabledDisplayCount > 1
-                opacity: enabled ? 1.0 : 0.45
-                foreground: root.bar.foreground
-                accent: root.bar.foreground
-                fontFamily: root.bar.fontFamily
-                hasCursor: root.cursorActive && root.focusSection === "monitors" && root.selectedIndex === index
-                onClicked: root.toggleDisplay(modelData.name, modelData.enabled)
-                onHovered: function(h) {
-                  if (h) {
-                    root.cursorActive = true
-                    root.focusSection = "monitors"
-                    root.selectedIndex = index
-                  }
-                }
+                display: modelData
+                rowIndex: index
               }
             }
           }
         }
       }
+    }
+  }
+
+  component MonitorRow: CursorSurface {
+    id: monitorRow
+    required property var display
+    required property int rowIndex
+
+    readonly property bool isFocused: display && display.focused
+    readonly property bool canToggle: display && (!display.enabled || root.enabledDisplayCount > 1)
+
+    hasCursor: root.cursorActive && root.focusSection === "monitors" && root.selectedIndex === rowIndex
+    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(monitorRow)
+    current: isFocused
+    foreground: root.bar.foreground
+    fill: Style.hoverFillFor(root.bar.foreground, Color.accent)
+    currentFill: Style.selectedFillFor(root.bar.foreground, Color.accent)
+    implicitHeight: monitorInner.implicitHeight + Style.spacing.xl
+    opacity: canToggle ? 1.0 : 0.45
+
+    Row {
+      id: monitorInner
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(6)
+      anchors.rightMargin: Style.space(6)
+      spacing: Style.space(8)
+
+      Text {
+        text: "󰍹"
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.title
+        width: Style.space(22)
+        horizontalAlignment: Text.AlignHCenter
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        text: monitorRow.display.name + (monitorRow.display.focused ? " · focused" : "")
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.body
+        elide: Text.ElideRight
+        width: parent.width - Style.space(22) - Style.space(14) - Style.space(16)
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        text: monitorRow.display.enabled ? "󰄬" : ""
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.subtitle
+        width: Style.space(14)
+        horizontalAlignment: Text.AlignRight
+        anchors.verticalCenter: parent.verticalCenter
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: monitorRow.canToggle ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onContainsMouseChanged: if (containsMouse) {
+        root.cursorActive = true
+        root.focusSection = "monitors"
+        root.selectedIndex = monitorRow.rowIndex
+      }
+      onClicked: if (monitorRow.canToggle) root.toggleDisplay(monitorRow.display.name, monitorRow.display.enabled)
     }
   }
 }
