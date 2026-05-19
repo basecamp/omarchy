@@ -9,6 +9,3 @@ hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy
 
 -- Portrait/rotated secondary monitor (transform: 1 = 90°, 3 = 270°)
 -- hl.monitor({ output = "DP-2", mode = "preferred", position = "auto", scale = 1, transform = 1 })
-
--- Disable the second ghost monitor on an Apple 6K XDR over Thunderbolt.
--- hl.monitor({ output = "DP-2", disabled = true })
