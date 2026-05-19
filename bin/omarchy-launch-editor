@@ -1,15 +1,23 @@
 #!/bin/bash
 
-# omarchy:summary=Launch the default editor as determined by $EDITOR (set via ~/.config/uwsm/default) (or nvim if missing).
+# omarchy:summary=Launch the default editor selected via Omarchy defaults.
 # omarchy:args=<path>
 
-omarchy-cmd-present "$EDITOR" || EDITOR=nvim
+editor_file="$HOME/.local/state/omarchy/defaults/editor"
+editor="nvim"
 
-case "$EDITOR" in
+if [[ -f $editor_file ]]; then
+  read -r editor <"$editor_file"
+fi
+
+[[ -n $editor ]] || editor="nvim"
+omarchy-cmd-present "$editor" || editor="nvim"
+
+case "${editor##*/}" in
 nvim | vim | nano | micro | hx | helix | fresh)
-  exec omarchy-launch-tui "$EDITOR" "$@"
+  exec omarchy-launch-tui "$editor" "$@"
   ;;
 *)
-  exec setsid uwsm-app -- "$EDITOR" "$@"
+  exec setsid uwsm-app -- "$editor" "$@"
   ;;
 esac

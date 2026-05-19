@@ -1,11 +1,17 @@
 #!/bin/bash
 
-# omarchy:summary=Set the default editor for $EDITOR
+# omarchy:summary=Set the default editor used by omarchy-launch-editor
 # omarchy:args=[code|cursor|zed|sublime_text|helix|vim|emacs|nvim]
 # omarchy:examples=omarchy default editor | omarchy default editor code | omarchy default editor helix
 
+editor_file="$HOME/.local/state/omarchy/defaults/editor"
+
 if (($# == 0)); then
-  sed -n 's/^export EDITOR=//p' ~/.config/uwsm/default | head -n 1
+  if [[ -f $editor_file ]]; then
+    read -r editor <"$editor_file"
+  fi
+
+  [[ -n $editor ]] && echo "$editor" || echo "nvim"
   exit 0
 fi
 
@@ -24,7 +30,7 @@ nvim) editor="nvim"; name="Neovim"; glyph= ;;
   ;;
 esac
 
-sed -i "s/^export EDITOR=.*/export EDITOR=$editor/" ~/.config/uwsm/default
+mkdir -p "$(dirname "$editor_file")"
+printf '%s\n' "$editor" >"$editor_file"
 
-export EDITOR="$editor"
-omarchy-notification-send -g $glyph "$name is now the default editor" "Effective after logging out"
+omarchy-notification-send -g $glyph "$name is now the default editor"
