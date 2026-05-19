@@ -25,7 +25,7 @@ Item {
   property string emptyText: "No matches"
   property string triggerLabel: ""
 
-  property color foreground: Color.foreground
+  property color foreground: Color.popups.text
   property color background: Color.popups.background
   property color popupBorder: Color.popups.border
   property color accent: Color.accent

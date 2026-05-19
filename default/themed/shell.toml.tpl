@@ -14,33 +14,35 @@ active           = "{{ color1 }}"
 size-horizontal  = 26
 size-vertical    = 28
 
-[style]
-# Shared control state tokens. See docs/omarchy-shell.md#interactive-states.
-# Colors accept palette roles (foreground/accent/urgent/background) or hex.
+[controls]
+# Shared state tokens for interactive control chrome (buttons, dropdowns,
+# tab strips, etc).
 
 # Normal: idle control chrome.
-normal-color        = "foreground"
+normal-color        = "{{ foreground }}"
 normal-fill-alpha   = 0.04
 normal-border-width = 1
 normal-border-alpha = 0.4
 
 # Hover-cursor: mouse hover and the panel keyboard cursor.
-hover-cursor-color        = "foreground"
+hover-cursor-color        = "{{ foreground }}"
 hover-cursor-fill-alpha   = 0.08
 hover-cursor-border-width = 1
 hover-cursor-border-alpha = 0.25
 
+# Focus: Qt activeFocus. Mirror the hover-cursor values by default so
+# mouse hover, keyboard cursor, and tab focus all read as the same state
+# — themes that want focus to stand out override these four lines.
+focus-color        = "{{ foreground }}"
+focus-fill-alpha   = 0.08
+focus-border-width = 1
+focus-border-alpha = 0.25
+
 # Selected: persistent chosen/current state.
-selected-color        = "foreground"
+selected-color        = "{{ foreground }}"
 selected-fill-alpha   = 0.18
 selected-border-width = 0
 selected-border-alpha = 1.0
-
-# Focus: Qt activeFocus; inherit hover-cursor unless intentionally different.
-focus-color        = "hover-cursor"
-focus-fill-alpha   = "hover-cursor"
-focus-border-width = "hover-cursor"
-focus-border-alpha = "hover-cursor"
 
 # Momentary fills.
 pressed-fill-alpha   = 0.22
@@ -72,10 +74,10 @@ base-size = 12
 # icon-large    = 18
 
 [popups]
-# Shared by every bar flyout. Body text inside flyouts is not separately
-# themable — it follows [bar].text.
+# Shared by every bar flyout (dropdowns, OSD, popup cards).
 background       = "{{ background }}"
 background-alpha = 1.0
+text             = "{{ foreground }}"
 border           = "{{ accent }}"
 border-alpha     = 1.0
 

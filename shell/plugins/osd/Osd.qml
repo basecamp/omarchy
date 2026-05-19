@@ -107,14 +107,14 @@ Item {
           text: root.icon
           font.family: Style.font.family
           font.pixelSize: Style.font.displayLarge
-          color: Color.foreground
+          color: Color.popups.text
         }
         Rectangle {
           visible: root.hasProgress
           width: visible ? Style.space(142) : 0
           height: Math.max(Style.space(6), Style.spacing.sm)
           anchors.verticalCenter: parent.verticalCenter
-          color: Color.alpha(Color.foreground, 0.45)
+          color: Color.alpha(Color.popups.text, 0.45)
           Rectangle {
             height: parent.height
             width: parent.width * (root.hasProgress ? root.value / root.maxValue : 0)
@@ -128,7 +128,7 @@ Item {
           font.family: Style.font.family
           font.bold: true
           font.pixelSize: Style.font.title
-          color: Color.foreground
+          color: Color.popups.text
           elide: Text.ElideRight
           maximumLineCount: 1
           clip: true

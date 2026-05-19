@@ -13,7 +13,7 @@ import qs.Commons
 //   idle                         transparent or normal border if `bordered`
 //
 // All fills/borders come from `qs.Commons.Style` tokens, so themes
-// control the look via [style] in shell.toml.
+// control the look via [controls] in shell.toml.
 //
 // Emits `hovered(bool)` so panels with their own keyboard cursor model
 // can update state on mouse enter/leave.

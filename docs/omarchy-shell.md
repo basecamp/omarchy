@@ -124,35 +124,37 @@ The shell exposes these tokens to QML via two singletons in
 
 ### Interactive states
 
-`[style]` standardizes reusable control chrome around four states:
-`normal`, `hover-cursor`, `selected`, and `focus`. State colors can be
-palette roles (`foreground`, `accent`, `urgent`, `background`) or hex
-strings. Fill/border alphas are applied to that state's color.
+`[controls]` standardizes reusable control chrome (buttons, dropdowns,
+tab strips, etc.) around four states: `normal`, `hover-cursor`, `focus`,
+and `selected`. State colors accept palette roles (`foreground`,
+`accent`, `urgent`, `background`) or hex strings; the default template
+ships hex values. Fill/border alphas are applied to that state's color.
 
-Focus inherits `hover-cursor` by default so mouse hover, the panel
-keyboard cursor, and Qt activeFocus read as the same state. Use the
-literal value `"hover-cursor"` on `focus-*` tokens to keep that
-inheritance; set an explicit color/number only when a theme intentionally
-wants focus to differ.
+Surfaces like `[menu]`, `[app-launcher]`, and `[image-picker]` define
+their own `selected-*` tokens and do **not** inherit from `[controls]`.
+`[controls]` only governs the shared button/dropdown chrome.
 
 | State | Color token | Fill alpha | Border width | Border alpha |
 |-------|-------------|------------|--------------|--------------|
 | Normal idle chrome | `normal-color` | `normal-fill-alpha` | `normal-border-width` | `normal-border-alpha` |
 | Hover / keyboard cursor | `hover-cursor-color` | `hover-cursor-fill-alpha` | `hover-cursor-border-width` | `hover-cursor-border-alpha` |
-| Persistent selected/current | `selected-color` | `selected-fill-alpha` | `selected-border-width` | `selected-border-alpha` |
 | Qt activeFocus | `focus-color` | `focus-fill-alpha` | `focus-border-width` | `focus-border-alpha` |
+| Persistent selected/current | `selected-color` | `selected-fill-alpha` | `selected-border-width` | `selected-border-alpha` |
+
+The template ships `focus-*` adjacent to `hover-cursor-*` with the same
+values so mouse hover, keyboard cursor, and tab focus read identically.
+Themes that want focus to stand out override the four `focus-*` keys.
 
 Border widths are the theme-level on/off switches for state borders; set
 a width to `0` to keep the fill while removing that state border. The
-default theme keeps selected borders off globally (`selected-border-width
-= 0`); explicitly bordered controls can still keep their normal border
-when selected.
+default keeps selected borders off globally (`selected-border-width =
+0`); explicitly bordered controls keep their normal border when selected.
 
 ```toml
-[style]
+[controls]
 # Accent-tinted cursor/focus, foreground-tinted selected state.
 hover-cursor-color = "accent"
-focus-color        = "hover-cursor"
+focus-color        = "accent"
 selected-color     = "foreground"
 
 # Keep selected fills but remove selected-state borders.
@@ -163,6 +165,10 @@ Momentary fills use `pressed-fill-alpha` for button press feedback and
 `selection-fill-alpha` for text selection. Themes may also provide
 `pressed-color` or `selection-color`; they fall back to hover-cursor and
 foreground respectively.
+
+The section was previously named `[style]`. Hand-written theme
+`shell.toml` files using the old name still apply — the parser accepts
+both `[controls]` and `[style]`.
 
 ### Spacing
 
