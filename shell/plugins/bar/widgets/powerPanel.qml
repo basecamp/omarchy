@@ -252,7 +252,7 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
           width: Style.space(140)
           spacing: Style.spacing.labelGap
           InfoPair { label: UPower.onBattery ? "Time left" : "Time to full"; value: root.batteryInfo.time || "—" }
-          InfoPair { label: UPower.onBattery ? "Draw" : "Charge rate"; value: root.batteryInfo.rate || "" }
+          InfoPair { label: UPower.onBattery ? "Discharging" : "Charging"; value: root.batteryInfo.rate || "" }
         }
       }
 
