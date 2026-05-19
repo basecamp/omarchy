@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
 import QtQuick
@@ -18,6 +19,12 @@ Item {
   property bool cursorActive: true
   property bool hoverArmed: false
   property var filteredEntries: []
+  property int launchSerial: 0
+  property int launchToplevelCount: 0
+  property var launchActiveToplevel: null
+  property bool launchOsdOpen: false
+  property string launchOsdMessage: ""
+  property var hiddenEntryIds: ({})
 
   // Bound to the central [app-launcher] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
@@ -95,7 +102,15 @@ Item {
   }
 
   function entrySortKey(entry) {
-    return String((entry && entry.id) || root.entryName(entry)).toLowerCase()
+    return root.entryName(entry).toLowerCase()
+  }
+
+  function toplevelCount() {
+    try { return ToplevelManager.toplevels.values.length } catch (e) { return 0 }
+  }
+
+  function shellQuote(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'"
   }
 
   function entrySearchText(entry) {
@@ -107,7 +122,24 @@ Item {
 
   function isHiddenEntry(entry) {
     var id = String((entry && entry.id) || "")
-    return id === "avahi-discover" || id === "bssh" || id === "bvnc"
+    return root.hiddenEntryIds[id] === true
+  }
+
+  function loadHiddenEntries(rawText) {
+    var next = ({})
+    var lines = String(rawText || "").split(/\n/)
+    for (var i = 0; i < lines.length; i++) {
+      var id = lines[i].trim()
+      if (id.length > 0) next[id] = true
+    }
+    root.hiddenEntryIds = next
+    if (root.opened) root.rebuildDisplay()
+  }
+
+  function hiddenEntryScanCommand() {
+    var desktop = [Quickshell.env("XDG_CURRENT_DESKTOP"), Quickshell.env("XDG_SESSION_DESKTOP"), Quickshell.env("DESKTOP_SESSION")].filter(function(v) { return String(v || "").length > 0 }).join(":")
+    var script = root.omarchyPath + "/shell/scripts/app-launcher-hidden-entries.sh"
+    return root.shellQuote(script) + " " + root.shellQuote(desktop)
   }
 
   function fuzzyScore(entry, query) {
@@ -210,18 +242,87 @@ Item {
     if (index < 0 || index >= root.filteredEntries.length) return
     var entry = root.filteredEntries[index]
     if (!entry) return
+    root.beginLaunchFeedback(entry)
     root.dismiss()
     entry.execute()
   }
 
+  function beginLaunchFeedback(entry) {
+    root.launchSerial++
+    root.launchToplevelCount = root.toplevelCount()
+    root.launchActiveToplevel = ToplevelManager.activeToplevel
+    root.launchOsdOpen = false
+    root.launchOsdMessage = "Launching " + root.entryName(entry) + "…"
+    launchDelay.restart()
+    launchTimeout.restart()
+  }
+
+  function closeLaunchFeedback(serial) {
+    if (serial !== root.launchSerial) return
+    launchDelay.stop()
+    launchTimeout.stop()
+    if (root.launchOsdOpen) {
+      Quickshell.execDetached(["omarchy-shell", "osd", "close"])
+      root.launchOsdOpen = false
+    }
+  }
+
+  function maybeFinishLaunchFeedback() {
+    if (!launchDelay.running && !launchTimeout.running && !root.launchOsdOpen) return
+    if (root.toplevelCount() <= root.launchToplevelCount && ToplevelManager.activeToplevel === root.launchActiveToplevel) return
+    root.closeLaunchFeedback(root.launchSerial)
+  }
+
   ListModel { id: displayModel }
+
+  Process {
+    id: hiddenEntryScan
+    command: ["bash", "-lc", root.hiddenEntryScanCommand()]
+    stdout: SplitParser { onRead: function(line) { hiddenEntryOutput.text += line + "\n" } }
+    onStarted: hiddenEntryOutput.text = ""
+    onExited: root.loadHiddenEntries(hiddenEntryOutput.text)
+  }
+
+  QtObject {
+    id: hiddenEntryOutput
+    property string text: ""
+  }
+
+  Connections {
+    target: ToplevelManager.toplevels
+    function onValuesChanged() { root.maybeFinishLaunchFeedback() }
+  }
+
+  Connections {
+    target: ToplevelManager
+    function onActiveToplevelChanged() { root.maybeFinishLaunchFeedback() }
+  }
+
+  Timer {
+    id: launchDelay
+    interval: 2000
+    onTriggered: {
+      if (root.toplevelCount() > root.launchToplevelCount || ToplevelManager.activeToplevel !== root.launchActiveToplevel) return
+      root.launchOsdOpen = true
+      Quickshell.execDetached(["omarchy-shell", "osd", "show", JSON.stringify({ icon: "󱓞", message: root.launchOsdMessage, duration: 0 })])
+    }
+  }
+
+  Timer {
+    id: launchTimeout
+    interval: 15000
+    onTriggered: root.closeLaunchFeedback(root.launchSerial)
+  }
 
   Connections {
     target: DesktopEntries.applications
     function onValuesChanged() {
+      hiddenEntryScan.running = true
       if (root.opened) root.rebuildDisplay()
     }
   }
+
+  Component.onCompleted: hiddenEntryScan.running = true
 
   PanelWindow {
     id: panel
