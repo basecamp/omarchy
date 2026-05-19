@@ -1,13 +1,22 @@
 #!/bin/bash
 
-# omarchy:summary=Toggle hypridle so the system either idles normally or stays awake
+# omarchy:summary=Toggle idle behavior so the system either idles normally or stays awake
 
-if pgrep -x hypridle >/dev/null; then
-  pkill -x hypridle
-  omarchy-notification-send -g "󰅶" "Staying awake" "Idle behavior disabled"
-else
-  uwsm-app -- hypridle >/dev/null 2>&1 &
-  omarchy-notification-send -g "󰾪" "Idle behavior on" "System can now sleep / lock on idle"
+if ! state=$(omarchy-shell idle toggle); then
+  exit 1
 fi
+
+case $state in
+enabled)
+  omarchy-notification-send -g "󰾪" "Idle behavior on" "System can now lock on idle"
+  ;;
+disabled)
+  omarchy-notification-send -g "󰅶" "Staying awake" "Idle behavior disabled"
+  ;;
+*)
+  echo "Unexpected idle state: $state" >&2
+  exit 1
+  ;;
+esac
 
 omarchy-shell bar refreshIndicators >/dev/null 2>&1 || true

@@ -67,6 +67,10 @@ individual plugins (`bar`, `image-selector`, …).
 ```json
 {
   "version": 1,
+  "idle": {
+    "screensaver": 150,
+    "lock": 300
+  },
   "bar": {
     "position": "top",
     "transparent": false,
@@ -92,7 +96,8 @@ Rules:
    merge layers.
 3. Third-party enabled ⇔ present; first-party plugins are always enabled.
 4. `allowMultiple: true` in the manifest permits multiple instances.
-5. `version: 1` is required.
+5. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+6. `version: 1` is required.
 
 `shell-defaults.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user

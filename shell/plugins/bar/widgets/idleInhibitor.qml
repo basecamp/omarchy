@@ -33,11 +33,17 @@ Item {
 
   Process {
     id: statusProc
-    command: ["bash", "-lc", "pgrep -x hypridle >/dev/null 2>&1 && echo running || echo stopped"]
+    command: ["bash", "-lc", "omarchy-shell idle status 2>/dev/null"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.active = String(text || "").trim() === "stopped"
+        var raw = String(text || "").trim()
+        try {
+          var parsed = JSON.parse(raw)
+          root.active = parsed && parsed.enabled === false
+        } catch (e) {
+          root.active = false
+        }
       }
     }
   }
@@ -65,7 +71,7 @@ Item {
     bar: root.bar
     text: root.icon
     active: false
-    tooltipText: root.active ? "No sleep, lock, or screensaver" : ""
+    tooltipText: root.active ? "No lock or screensaver" : ""
     onPressed: function() { root.toggle() }
   }
 }

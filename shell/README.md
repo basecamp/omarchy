@@ -160,6 +160,10 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
 ```json
 {
   "version": 1,
+  "idle": {
+    "screensaver": 150,
+    "lock": 300
+  },
   "bar": {
     "position": "top",
     "transparent": false,
@@ -193,7 +197,10 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
    `allowMultiple: true`. Each instance is independent — e.g. two clocks
    in different timezones are just two `{"id":"calendar", "timezone": ...}`
    entries with their own values.
-5. **`version: 1` is required** at the top level. The shell will fall back
+5. **Idle timings are top-level.** `idle.screensaver` and `idle.lock`
+   are seconds since user idle began, so the default lock fires at 300s
+   even if the 150s screensaver starts first.
+6. **`version: 1` is required** at the top level. The shell will fall back
    to defaults rather than load an unknown version.
 
 ## Implementation history
