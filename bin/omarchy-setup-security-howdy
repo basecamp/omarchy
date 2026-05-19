@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# omarchy:summary=Set up face unlock (howdy) for sudo, polkit, and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+
+detect_ir_camera() {
+  # IR cameras output 8-bit greyscale; pick the first matching video capture device
+  for dev in /dev/video*; do
+    if v4l2-ctl --device="$dev" --list-formats-ext 2>/dev/null | grep -q "GREY\|Y8\|Y10\|Y12\|Y16"; then
+      if v4l2-ctl --device="$dev" --all 2>/dev/null | grep -q "Video Capture"; then
+        echo "$dev"
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+setup_pam_config() {
+  if ! grep -q pam_howdy.so /etc/pam.d/sudo; then
+    echo "Configuring sudo for face authentication..."
+    sudo sed -i '1i auth    sufficient pam_howdy.so' /etc/pam.d/sudo
+  fi
+
+  if ! grep -q pam_howdy.so /etc/pam.d/hyprlock; then
+    echo "Configuring hyprlock for face authentication..."
+    sudo sed -i '1i auth    sufficient pam_howdy.so' /etc/pam.d/hyprlock
+  fi
+
+  if [[ -f /etc/pam.d/polkit-1 ]] && ! grep -q 'pam_howdy.so' /etc/pam.d/polkit-1; then
+    echo "Configuring polkit for face authentication..."
+    sudo sed -i '1i auth      sufficient pam_howdy.so' /etc/pam.d/polkit-1
+  elif [[ ! -f /etc/pam.d/polkit-1 ]]; then
+    echo "Creating polkit configuration with face authentication..."
+    sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
+auth      sufficient pam_howdy.so
+auth      required pam_unix.so
+
+account   required pam_unix.so
+password  required pam_unix.so
+session   required pam_unix.so
+EOF
+  fi
+}
+
+enable_hyprlock_face_unlock() {
+  # Allow empty Enter to trigger PAM so face detection starts without typing
+  sed -i 's/ignore_empty_input = true/ignore_empty_input = false/' ~/.config/hypr/hyprlock.conf
+}
+
+echo -e "\e[32mSetting up face unlock (howdy) for authentication.\n\e[0m"
+
+omarchy-pkg-add v4l-utils
+
+echo "Detecting IR camera..."
+ir_device=$(detect_ir_camera) || true
+
+if [[ -z $ir_device ]]; then
+  echo -e "\e[31m\nNo IR camera detected.\e[0m"
+  echo -e "\e[31mFace unlock requires an infrared camera (common on laptops with Windows Hello support).\e[0m"
+  exit 1
+fi
+
+echo -e "\e[32mFound IR camera at $ir_device\e[0m"
+
+echo "Installing face unlock packages from AUR..."
+omarchy-pkg-aur-add howdy-git linux-enable-ir-emitter
+
+echo "Configuring howdy..."
+sudo sed -i "s|^device_path = .*|device_path = $ir_device|" /etc/howdy/config.ini
+sudo sed -i 's/^detection_notice = .*/detection_notice = true/' /etc/howdy/config.ini
+sudo sed -i 's/^dark_threshold = .*/dark_threshold = 100/' /etc/howdy/config.ini
+
+# linux-enable-ir-emitter-beta (the Rust rewrite) ships no systemd unit, so the
+# systemctl call below is guarded to keep this script forward-compatible.
+echo -e "\nConfiguring IR emitter..."
+echo "Look at the camera, you'll be asked if the IR emitter is flashing."
+echo -e "(Use your phone camera to see the IR light if needed.)\n"
+sudo -E WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR QT_QPA_PLATFORM=wayland \
+  linux-enable-ir-emitter configure 2>/dev/null || true
+if systemctl list-unit-files linux-enable-ir-emitter.service &>/dev/null; then
+  sudo systemctl enable --now linux-enable-ir-emitter.service
+fi
+
+setup_pam_config
+enable_hyprlock_face_unlock
+
+echo -e "\e[32m\nLet's add your face model.\e[0m"
+echo -e "Look straight into the camera until enrollment completes.\n"
+
+if sudo howdy add; then
+  echo -e "\e[32m\nFace model added successfully!\e[0m"
+  echo -e "\e[32m\nFace unlock is now configured.\e[0m"
+  echo "Works with sudo, polkit (1Password), and lock screen (Super + Escape)."
+  echo "On the lock screen, press Enter to trigger face detection."
+else
+  echo -e "\e[31m\nFace enrollment failed. Please try again with: sudo howdy add\e[0m"
+fi

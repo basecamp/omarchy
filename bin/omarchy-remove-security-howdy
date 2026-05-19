@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# omarchy:summary=Remove face unlock (howdy) from sudo, polkit, and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+
+remove_pam_config() {
+  # /etc/pam.d/sddm is included for users upgrading from the original howdy script,
+  # which configured SDDM as well; the new setup script no longer touches sddm.
+  for file in /etc/pam.d/sudo /etc/pam.d/hyprlock /etc/pam.d/polkit-1 /etc/pam.d/sddm; do
+    [[ -f $file ]] || continue
+    if grep -q 'pam_howdy.so' "$file"; then
+      echo "Removing face authentication from $(basename "$file")..."
+      sudo sed -i '/pam_howdy\.so/d' "$file"
+    fi
+  done
+}
+
+disable_hyprlock_face_unlock() {
+  sed -i 's/ignore_empty_input = false/ignore_empty_input = true/' ~/.config/hypr/hyprlock.conf
+}
+
+echo -e "\e[32mRemoving face unlock from authentication.\n\e[0m"
+
+remove_pam_config
+disable_hyprlock_face_unlock
+
+if systemctl is-enabled linux-enable-ir-emitter.service &>/dev/null; then
+  echo "Disabling IR emitter service..."
+  sudo systemctl disable --now linux-enable-ir-emitter.service
+fi
+
+echo "Removing face unlock packages..."
+omarchy-pkg-drop howdy-git linux-enable-ir-emitter
+
+echo -e "\e[32mFace unlock has been completely removed.\e[0m"
