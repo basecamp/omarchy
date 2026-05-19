@@ -13,6 +13,7 @@ Item {
   property int value: 0
   property int maxValue: 100
   property bool hasProgress: true
+  property int duration: 1200
 
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)) }
 
@@ -29,27 +30,31 @@ Item {
     if (n === "touchpad") return "󰟸"
     if (n === "touch" || n === "touchscreen") return "󰜉"
     if (n === "media" || n === "player") return "󰝚"
+    if (n.length > 0) return name
     if (percent <= 0) return ""
     if (percent <= 33) return ""
     if (percent <= 66) return ""
     return ""
   }
 
-  function show(iconName, rawMessage, rawValue, rawMax, rawProgressText) {
+  function show(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration) {
     maxValue = Math.max(1, parseInt(rawMax || "100", 10))
     var parsed = parseInt(rawValue || "0", 10)
     hasProgress = rawValue !== "" && !isNaN(parsed) && rawMessage === ""
     value = hasProgress ? clamp(parsed, 0, maxValue) : 0
     message = String(rawMessage || (hasProgress ? (rawProgressText || Math.round(value * 100 / maxValue) + "%") : ""))
     icon = iconFor(iconName, hasProgress ? Math.round(value * 100 / maxValue) : -1)
+    var parsedDuration = parseInt(rawDuration || "1200", 10)
+    duration = isNaN(parsedDuration) ? 1200 : Math.max(0, parsedDuration)
     opened = true
-    hideTimer.restart()
+    if (duration > 0) hideTimer.restart()
+    else hideTimer.stop()
   }
 
   function open(payloadJson) {
     try {
       var p = JSON.parse(payloadJson || "{}")
-      show(p.icon || "", p.message || "", p.value === undefined ? "" : String(p.value), p.max === undefined ? "100" : String(p.max), p.progressText || "")
+      show(p.icon || "", p.message || "", p.value === undefined ? "" : String(p.value), p.max === undefined ? "100" : String(p.max), p.progressText || "", p.duration === undefined ? "1200" : String(p.duration))
     } catch (e) {}
   }
 
@@ -57,7 +62,7 @@ Item {
 
   Timer {
     id: hideTimer
-    interval: 1200
+    interval: root.duration
     onTriggered: root.opened = false
   }
 
