@@ -842,7 +842,7 @@ Item {
             implicitHeight: card.implicitHeight
 
             readonly property real lifetime: service.durationFor(cardSlot.urgency)
-            property real progress: 1.0
+            property real remainingLifetime: 1.0
             readonly property bool ticking: cardSlot.lifetime > 0 && !card.hovered
 
             Timer {
@@ -851,9 +851,9 @@ Item {
               running: cardSlot.ticking
               onTriggered: {
                 if (cardSlot.lifetime <= 0) return
-                cardSlot.progress -= 50.0 / cardSlot.lifetime
-                if (cardSlot.progress <= 0) {
-                  cardSlot.progress = 0
+                cardSlot.remainingLifetime -= 50.0 / cardSlot.lifetime
+                if (cardSlot.remainingLifetime <= 0) {
+                  cardSlot.remainingLifetime = 0
                   service.dismissPopup(cardSlot.index)
                 }
               }
