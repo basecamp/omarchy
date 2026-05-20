@@ -17,6 +17,9 @@ ShellRoot {
   // own empty copies.
   property PluginRegistry pluginRegistry: PluginRegistry { }
   property BarWidgetRegistry barWidgetRegistry: BarWidgetRegistry { }
+  property FirstPartyWidgets firstPartyWidgets: FirstPartyWidgets {
+    barWidgetRegistry: shell.barWidgetRegistry
+  }
 
   property string home: Quickshell.env("HOME")
 
