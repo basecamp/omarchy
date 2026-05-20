@@ -820,9 +820,9 @@ Item {
         Repeater {
           model: popupModel
 
-          // The delegate is a slot Item that owns lifetime state (timer,
-          // progress, paused). The actual visuals live in NotificationCard,
-          // which the history panel also reuses.
+          // The delegate is a slot Item that owns lifetime timer state. The
+          // actual visuals live in NotificationCard, which the history panel
+          // also reuses.
           delegate: Item {
             id: cardSlot
             required property int index
@@ -872,8 +872,6 @@ Item {
               cornerRadius: service.cornerRadius
               fontFamily: service.shell && service.shell.bar ? service.shell.bar.fontFamily : ""
               glyph: cardSlot.glyph
-              progress: cardSlot.progress
-              showProgress: cardSlot.lifetime > 0
 
               onCloseRequested: service.dismissPopup(cardSlot.index)
               onCardClicked: service.invokePopupDefault(cardSlot.index)
