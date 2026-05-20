@@ -17,7 +17,7 @@ Item {
   property string historyPath: Quickshell.env("HOME") + "/.local/state/omarchy/clipboard-history.json"
   property string captureScript: root.omarchyPath + "/shell/scripts/clipboard-capture.sh"
   // Shares the [menu] surface tokens — themes that style the menu also
-  // style the clipboard picker. Selected-row colors composed in the
+  // style the clipboard. Selected-row colors composed in the
   // singleton so consumers drop them straight into Rectangle bindings.
   property color background: Color.menu.background
   property color foreground: Color.menu.text
@@ -241,7 +241,7 @@ Item {
     visible: root.opened
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "omarchy-clipboard-picker"
+    WlrLayershell.namespace: "omarchy-clipboard"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore

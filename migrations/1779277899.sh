@@ -13,8 +13,10 @@ for config_file in "${config_files[@]}"; do
     sed -i \
       -e 's/omarchy\.app-launcher/omarchy.launcher/g' \
       -e 's/omarchy\.battery-monitor/omarchy.battery/g' \
+      -e 's/omarchy\.clipboard-picker/omarchy.clipboard/g' \
       -e 's/omarchy-app-launcher/omarchy-launcher/g' \
       -e 's/omarchy-battery-monitor/omarchy-battery/g' \
+      -e 's/omarchy-clipboard-picker/omarchy-clipboard/g' \
       -e 's/\[app-launcher\]/[launcher]/g' \
       -e 's/app-launcher\./launcher./g' \
       "$config_file"
