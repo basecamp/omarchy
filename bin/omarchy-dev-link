@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# omarchy:summary=Point Omarchy at a local checkout for live editing
+# omarchy:group=dev
+# omarchy:args=<path-to-checkout>
+# omarchy:examples=omarchy dev link ~/Work/omarchy/omarchy-installer
+
+set -euo pipefail
+
+if [[ $# -ne 1 || $1 == "-h" || $1 == "--help" ]]; then
+  cat <<USAGE
+Usage: omarchy dev link <path-to-checkout>
+
+Writes /etc/omarchy.conf so OMARCHY_PATH resolves to <path-to-checkout>
+in all new shells, the Hyprland session, and Quickshell. Restarts
+omarchy-shell and reloads hyprctl so changes take effect immediately.
+
+Affects only \$OMARCHY_PATH-resolved trees: bin/, default/, shell/,
+themes/, applications/, config/. Files installed at fixed system paths
+(/etc/, /usr/lib/systemd/, udev rule bodies, /etc/skel after user
+creation, /usr/share/plymouth) are NOT covered — for those, use
+omarchy-dev-pkg-test to build and install the package from the checkout.
+USAGE
+  exit 0
+fi
+
+target=$(realpath -e "$1" 2>/dev/null) || {
+  echo "Error: path does not exist: $1" >&2
+  exit 1
+}
+
+# Sanity: looks like an omarchy-installer checkout?
+for required in bin default shell; do
+  if [[ ! -d "$target/$required" ]]; then
+    echo "Warning: $target/$required not found — does this look like an omarchy-installer checkout?" >&2
+  fi
+done
+
+echo "Pointing Omarchy at $target"
+printf 'export OMARCHY_PATH="${OMARCHY_PATH:-%s}"\n' "$target" | sudo tee /etc/omarchy.conf >/dev/null
+
+# Update the current shell so the rest of this script and anything spawned
+# from it see the new path.
+export OMARCHY_PATH="$target"
+export PATH="$target/bin:$PATH"
+
+# Update the live Hyprland session if one is running.
+if command -v hyprctl >/dev/null 2>&1 && hyprctl version &>/dev/null; then
+  hyprctl setenv OMARCHY_PATH "$target" >/dev/null
+  hyprctl setenv PATH "$PATH" >/dev/null
+  echo "  Updated Hyprland session env."
+
+  systemctl --user import-environment OMARCHY_PATH PATH 2>/dev/null || true
+  echo "  Updated systemd --user env."
+
+  if pgrep -x quickshell >/dev/null 2>&1; then
+    omarchy-restart-shell
+    echo "  Restarted omarchy-shell."
+  fi
+
+  hyprctl reload >/dev/null
+  echo "  Reloaded Hyprland config."
+fi
+
+echo
+echo "Done. Open a new shell (or restart existing ones) to pick up the new"
+echo "OMARCHY_PATH. Run 'omarchy dev unlink' to restore the package install."

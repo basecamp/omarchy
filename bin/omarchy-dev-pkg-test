@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# omarchy:summary=Build and install an Omarchy package from a local checkout
+# omarchy:group=dev
+# omarchy:args=[package-name] [path-to-checkout]
+# omarchy:examples=omarchy dev pkg-test omarchy-settings | omarchy dev pkg-test omarchy ~/Work/omarchy/omarchy-installer
+
+set -euo pipefail
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  cat <<USAGE
+Usage: omarchy dev pkg-test [package-name] [path-to-checkout]
+
+Builds and installs an Omarchy package from a local omarchy-installer
+checkout. Use when changes need to land at fixed system paths (/etc/,
+/usr/lib/systemd/, udev rule bodies, plymouth) that omarchy-dev-link
+can't shadow.
+
+Defaults:
+  package-name      omarchy-settings
+  path-to-checkout  ~/Work/omarchy/omarchy-installer
+
+The pkgver of the built package is tagged 'dev.<short-sha>[.dirty]' so
+'pacman -Q' makes it obvious where the installed version came from.
+
+PKGBUILDs are read from \${OMARCHY_PKGBUILDS_DIR:-~/Work/omarchy/omarchy-pkgs/pkgbuilds}/<package-name>/.
+USAGE
+  exit 0
+fi
+
+PKG="${1:-omarchy-settings}"
+CHECKOUT="${2:-$HOME/Work/omarchy/omarchy-installer}"
+PKGBUILDS_ROOT="${OMARCHY_PKGBUILDS_DIR:-$HOME/Work/omarchy/omarchy-pkgs/pkgbuilds}"
+PKGBUILD_DIR="$PKGBUILDS_ROOT/$PKG"
+
+if [[ ! -d "$CHECKOUT" ]]; then
+  echo "Error: checkout not found at $CHECKOUT" >&2
+  exit 1
+fi
+if [[ ! -f "$PKGBUILD_DIR/PKGBUILD" ]]; then
+  echo "Error: PKGBUILD not found at $PKGBUILD_DIR/PKGBUILD" >&2
+  echo "       Pass a different package name as arg 1, or set OMARCHY_PKGBUILDS_DIR." >&2
+  exit 1
+fi
+
+build_dir=$(mktemp -d -t omarchy-dev-pkg-test.XXXXXX)
+trap 'rm -rf "$build_dir"' EXIT
+
+cp -a "$PKGBUILD_DIR/." "$build_dir/"
+
+# Mark the build with a versioned dev pkgver so pacman -Q makes the source obvious.
+short_sha=$(git -C "$CHECKOUT" rev-parse --short HEAD 2>/dev/null || echo "local")
+dirty=""
+if [[ -d "$CHECKOUT/.git" ]] && [[ -n "$(git -C "$CHECKOUT" status --porcelain)" ]]; then
+  dirty=".dirty"
+fi
+new_pkgver="dev.${short_sha}${dirty}"
+sed -i "s/^pkgver=.*/pkgver=${new_pkgver}/" "$build_dir/PKGBUILD"
+
+echo "Building $PKG ${new_pkgver} from $CHECKOUT"
+echo "  build dir: $build_dir"
+echo "  PKGBUILD : $PKGBUILD_DIR/PKGBUILD"
+echo
+
+cd "$build_dir"
+OMARCHY_SRC="$CHECKOUT" makepkg -si --skipchecksums --noconfirm "${@:3}"
