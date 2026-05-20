@@ -1,22 +1,48 @@
 #!/bin/bash
 
 # omarchy:summary=Toggle nightlight screen temperature
+# omarchy:args=[--status]
 # omarchy:examples=omarchy toggle nightlight
 
 ON_TEMP=4000
 OFF_TEMP=6000
 
+current_temp() {
+  hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+' | head -n1
+}
+
+status_json() {
+  local temp enabled
+
+  temp=$(current_temp)
+  if [[ -n $temp && $temp != $OFF_TEMP ]]; then
+    enabled=true
+  else
+    enabled=false
+  fi
+
+  jq -cn --argjson enabled "$enabled" --arg temp "$temp" \
+    '{enabled:$enabled, temperature:(($temp | tonumber?) // null)}'
+}
+
+if [[ ${1:-} == "--status" ]]; then
+  status_json
+  exit 0
+fi
+
 # Ensure hyprsunset is running
-if ! pgrep -x hyprsunset; then
+if ! pgrep -x hyprsunset >/dev/null; then
   setsid uwsm-app -- hyprsunset &
   sleep 1 # Give it time to register
 fi
 
 # Query the current temperature
-CURRENT_TEMP=$(hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+')
+CURRENT_TEMP=$(current_temp)
 
 if [[ $CURRENT_TEMP == $OFF_TEMP ]]; then
   hyprctl hyprsunset temperature $ON_TEMP
 else
   hyprctl hyprsunset temperature $OFF_TEMP
 fi
+
+omarchy-shell -q bar refreshIndicators >/dev/null 2>&1 || true
