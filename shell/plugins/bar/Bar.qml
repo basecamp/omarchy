@@ -93,6 +93,14 @@ Item {
     clickTargets = next
   }
 
+  function targetWindow(target) {
+    return target && target.QsWindow ? target.QsWindow.window : null
+  }
+
+  function targetBelongsToWindow(target, window) {
+    return !!target && !!window && targetWindow(target) === window
+  }
+
   function requestPopout(owner) {
     if (activePopout === owner) return
     if (activePopout && "close" in activePopout) activePopout.close()
@@ -584,7 +592,7 @@ Item {
     PopupWindow {
       id: tooltipWindow
 
-      visible: root.tooltipShown && root.tooltipTarget !== null && root.tooltipText !== ""
+      visible: root.tooltipShown && root.tooltipTarget !== null && root.tooltipText !== "" && root.targetBelongsToWindow(root.tooltipTarget, barWindow)
       color: "transparent"
       implicitWidth: Math.ceil(tooltipBubble.implicitWidth)
       implicitHeight: Math.ceil(tooltipBubble.implicitHeight)
@@ -600,7 +608,7 @@ Item {
 
         onAnchoring: {
           var target = root.tooltipTarget
-          if (!target) return
+          if (!root.targetBelongsToWindow(target, barWindow)) return
 
           var popupWidth = tooltipWindow.implicitWidth
           var popupHeight = tooltipWindow.implicitHeight
