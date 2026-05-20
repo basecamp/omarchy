@@ -54,7 +54,6 @@ Item {
   Behavior on foreground { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
-  property bool updateAvailable: false
   property bool clockAlt: false
   property var tooltipTarget: null
   property var pendingTooltipTarget: null
@@ -259,7 +258,6 @@ Item {
   function builtinModuleComponent(name) {
     switch (String(name)) {
     case "clock": return clockModuleComponent
-    case "update": return updateModuleComponent
     case "indicators": return indicatorsModuleComponent
     case "tray": return trayModuleComponent
     default: return null
@@ -366,10 +364,6 @@ Item {
     clearTooltip()
   }
 
-  function refreshUpdate() {
-    runProcess(updateProc)
-  }
-
   function refreshIndicators() {
     indicatorsRefreshRequested()
   }
@@ -459,23 +453,6 @@ Item {
     onFileChanged: barHiddenProbe.running = true
   }
 
-  Process {
-    id: updateProc
-    command: ["bash", "-lc", "omarchy-update-available"]
-    stdout: StdioCollector { waitForEnd: true }
-    onExited: function(exitCode) {
-      root.updateAvailable = exitCode === 0
-    }
-  }
-
-  Timer {
-    interval: 21600000
-    running: true
-    repeat: true
-    triggeredOnStart: true
-    onTriggered: root.refreshUpdate()
-  }
-
   Timer {
     interval: 2000
     running: true
@@ -486,10 +463,6 @@ Item {
 
   IpcHandler {
     target: "bar"
-
-    function refreshUpdate(): void {
-      root.refreshUpdate()
-    }
 
     function refreshScreenRecording(): void {
       root.refreshIndicators()
@@ -646,7 +619,6 @@ Item {
 
   Component { id: emptyModuleComponent; Item { implicitWidth: 0; implicitHeight: 0; visible: false } }
   Component { id: clockModuleComponent; ClockModule {} }
-  Component { id: updateModuleComponent; UpdateModule {} }
   Component { id: indicatorsModuleComponent; IndicatorsModule {} }
   Component { id: trayModuleComponent; TrayModule {} }
 
@@ -1383,13 +1355,6 @@ Item {
       if (button === Qt.RightButton) root.run("omarchy-launch-floating-terminal-with-presentation omarchy-tz-select")
       else root.clockAlt = !root.clockAlt
     }
-  }
-
-  component UpdateModule: ModuleButton {
-    text: root.updateAvailable ? "" : ""
-    fontSize: Style.font.caption
-    tooltipText: root.updateAvailable ? "Omarchy update available" : ""
-    onPressed: function() { root.run("omarchy-launch-floating-terminal-with-presentation omarchy-update") }
   }
 
   component TrayModule: Item {
