@@ -111,8 +111,6 @@ Panel {
     }
   }
 
-  Component.onCompleted: refresh()
-
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -148,7 +146,7 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
     onExited: root.refresh()
   }
 
-  Timer { interval: 5000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.refresh() }
+  Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: root.refresh() }
 
   WidgetButton {
     id: button
