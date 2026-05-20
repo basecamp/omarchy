@@ -230,7 +230,7 @@
   "remove.webapp": {"icon":"","label":"Web App","keywords":"uninstall","action":"omarchy-launch-floating-terminal-with-presentation omarchy-webapp-remove"},
   "remove.tui": {"icon":"","label":"TUI","keywords":"uninstall terminal app","action":"omarchy-launch-floating-terminal-with-presentation omarchy-tui-remove"},
   "remove.development": {"icon":"󰵮","label":"Development","keywords":"uninstall languages"},
-  "remove.theme": {"icon":"󰸌","label":"Theme","keywords":"uninstall","action":"omarchy-launch-floating-terminal-with-presentation omarchy-theme-remove"},
+  "remove.theme": {"icon":"󰸌","label":"Theme","keywords":"uninstall","action":"omarchy-theme-remove"},
   "remove.browser": {"icon":"","label":"Browser","keywords":"uninstall"},
   "remove.dictation": {"icon":"","label":"Dictation","keywords":"uninstall voice","action":"omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-remove"},
   "remove.gaming": {"icon":"","label":"Gaming","keywords":"uninstall steam retroarch minecraft"},
