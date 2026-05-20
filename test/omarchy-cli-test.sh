@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 CLI="$ROOT/bin/omarchy"
 TMPDIR=""
+PI_TMPDIR=""
 
 export PATH="$ROOT/bin:$PATH"
 
@@ -33,6 +34,7 @@ assert_output_contains() {
 
 cleanup() {
   [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
+  [[ -n $PI_TMPDIR && -d $PI_TMPDIR ]] && rm -rf "$PI_TMPDIR"
 }
 trap cleanup EXIT
 
@@ -187,6 +189,78 @@ pass "safe dispatch works for font list"
 
 "$CLI" font current >/dev/null
 pass "safe dispatch works for font current"
+
+PI_TMPDIR=$(mktemp -d)
+NEXT_THEME="$PI_TMPDIR/.config/omarchy/current/next-theme"
+CURRENT_THEME="$PI_TMPDIR/.config/omarchy/current/theme"
+USER_THEMED="$PI_TMPDIR/.config/omarchy/themed"
+mkdir -p "$NEXT_THEME" "$CURRENT_THEME" "$USER_THEMED"
+
+cat >"$NEXT_THEME/colors.toml" <<'EOF'
+accent = "#336699"
+cursor = "#ffffff"
+foreground = "#ffffff"
+background = "#000000"
+selection_foreground = "#000000"
+selection_background = "#808080"
+color0 = "#000000"
+color1 = "#ff0000"
+color2 = "#00ff00"
+color3 = "#ffff00"
+color4 = "#0000ff"
+color5 = "#ff00ff"
+color6 = "#00ffff"
+color7 = "#ffffff"
+color8 = "#111111"
+color9 = "#ff1111"
+color10 = "#11ff11"
+color11 = "#ffff11"
+color12 = "#1111ff"
+color13 = "#ff11ff"
+color14 = "#11ffff"
+color15 = "#eeeeee"
+EOF
+
+cat >"$USER_THEMED/mix-test.txt.tpl" <<'EOF'
+mix={{ mix background foreground 50% }}
+strip={{ mix_strip background foreground 50% }}
+rgb={{ mix_rgb background foreground 50% }}
+EOF
+
+OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
+grep -qx 'mix=#808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix helper works"
+grep -qx 'strip=808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_strip helper works"
+grep -qx 'rgb=128,128,128' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_rgb helper works"
+pass "theme template color mix helpers work"
+
+jq -e '.name == "omarchy-system" and .vars.panel == "#0f0f0f" and .vars.border == "#4d4d4d" and .colors.accent == "accent"' "$NEXT_THEME/pi.json" >/dev/null
+pass "pi theme template is generated from standard themed templates"
+cp "$NEXT_THEME/pi.json" "$CURRENT_THEME/pi.json"
+
+echo '{"name":"omarchy-system","vars":{"custom":"yes"}}' >"$NEXT_THEME/pi.json"
+OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
+jq -e '.name == "omarchy-system" and .vars.custom == "yes"' "$NEXT_THEME/pi.json" >/dev/null
+pass "theme-specific pi.json overrides the default template"
+
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi"
+[[ ! -d $PI_TMPDIR/.pi ]] || fail "pi theme sync skips missing Pi agent when not activating"
+pass "pi theme sync skips missing Pi agent when not activating"
+
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
+[[ -f $PI_TMPDIR/.pi/agent/themes/omarchy-system.json ]] || fail "pi theme file is synced"
+pass "pi theme file is synced"
+[[ -f $PI_TMPDIR/.pi/agent/settings.json ]] || fail "pi settings file is generated"
+pass "pi settings file is generated"
+jq -e '.name == "omarchy-system" and .vars.panel == "#0f0f0f"' "$PI_TMPDIR/.pi/agent/themes/omarchy-system.json" >/dev/null
+pass "pi synced theme JSON is valid"
+jq -e '.theme == "omarchy-system"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
+pass "pi generated theme is activated"
+
+jq '.model = "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >"$PI_TMPDIR/settings.json.tmp"
+mv "$PI_TMPDIR/settings.json.tmp" "$PI_TMPDIR/.pi/agent/settings.json"
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
+jq -e '.theme == "omarchy-system" and .model == "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
+pass "pi theme activation preserves existing settings"
 
 for binary in \
   omarchy-update \
