@@ -16,4 +16,4 @@ if pgrep -x "1password" >/dev/null; then
 fi
 
 # Avoid running screensaver when locked
-pkill -f '[o]rg.omarchy.screensaver'
+pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null || true
