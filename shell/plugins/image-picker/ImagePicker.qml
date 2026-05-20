@@ -457,9 +457,9 @@ Item {
     Item {
       id: card
       visible: root.opened && root.imagesLoaded && root.layoutSettled && root.imageArray.length > 0
-        width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
-        height: root.expandedHeight + Style.space(30) + root.bottomChromeHeight
-        anchors.centerIn: parent
+      width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
+      height: root.expandedHeight + Style.space(30) + root.bottomChromeHeight
+      anchors.centerIn: parent
 
         MouseArea { anchors.fill: parent; onClicked: {} }
 
