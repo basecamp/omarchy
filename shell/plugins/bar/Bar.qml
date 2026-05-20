@@ -1122,6 +1122,73 @@ Item {
     property string moduleName: "indicators"
     property var settings: ({})
     readonly property var indicatorEntries: root.indicatorEntriesFromSettings(settings)
+    property var activeIndicatorIds: []
+    property var indicatorActiveStates: ({})
+    readonly property var activeIndicatorEntries: activeEntriesFromOrder(activeIndicatorIds)
+
+    function hasIndicatorId(id) {
+      for (var i = 0; i < indicatorEntries.length; i++) {
+        if (root.entryId(indicatorEntries[i]) === id) return true
+      }
+      return false
+    }
+
+    function activeEntriesFromOrder(ids) {
+      var result = []
+
+      for (var i = 0; i < ids.length; i++) {
+        var id = ids[i]
+        for (var j = 0; j < indicatorEntries.length; j++) {
+          var entry = indicatorEntries[j]
+          if (root.entryId(entry) === id) {
+            result.push(entry)
+            break
+          }
+        }
+      }
+
+      return result
+    }
+
+    function copyActiveStates() {
+      var states = {}
+      for (var id in indicatorActiveStates) {
+        if (indicatorActiveStates[id] === true) states[id] = true
+      }
+      return states
+    }
+
+    function orderedActiveIds(states, preferredOrder) {
+      var ids = []
+
+      for (var i = 0; i < preferredOrder.length; i++) {
+        var id = preferredOrder[i]
+        if (ids.indexOf(id) === -1 && hasIndicatorId(id) && states[id] === true) ids.push(id)
+      }
+
+      return ids
+    }
+
+    function setIndicatorActive(entry, active) {
+      var id = root.entryId(entry)
+      if (id === "") return
+
+      var states = copyActiveStates()
+      if (active) states[id] = true
+      else delete states[id]
+
+      indicatorActiveStates = states
+
+      var ids = orderedActiveIds(states, activeIndicatorIds)
+      if (active && ids.indexOf(id) === -1 && hasIndicatorId(id)) ids.push(id)
+      activeIndicatorIds = ids
+    }
+
+    function syncActiveIndicatorOrder() {
+      activeIndicatorIds = orderedActiveIds(indicatorActiveStates, activeIndicatorIds)
+    }
+
+    onIndicatorEntriesChanged: syncActiveIndicatorOrder()
 
     implicitWidth: root.vertical ? verticalIndicators.implicitWidth : horizontalIndicators.implicitWidth
     implicitHeight: root.vertical ? verticalIndicators.implicitHeight : horizontalIndicators.implicitHeight
@@ -1133,7 +1200,8 @@ Item {
       spacing: 0
 
       IndicatorBlock {
-        indicatorEntries: indicatorsRoot.indicatorEntries
+        indicatorsModule: indicatorsRoot
+        indicatorEntries: indicatorsRoot.activeIndicatorEntries
         indicatorBlock: "active"
         horizontal: true
       }
@@ -1149,9 +1217,11 @@ Item {
         IndicatorBlock {
           id: inactiveHorizontalBlock
           anchors.fill: parent
+          indicatorsModule: indicatorsRoot
           indicatorEntries: indicatorsRoot.indicatorEntries
           indicatorBlock: "inactive"
           horizontal: true
+          reportActiveState: !root.vertical
         }
 
         HoverHandler {
@@ -1167,7 +1237,8 @@ Item {
       spacing: 0
 
       IndicatorBlock {
-        indicatorEntries: indicatorsRoot.indicatorEntries
+        indicatorsModule: indicatorsRoot
+        indicatorEntries: indicatorsRoot.activeIndicatorEntries
         indicatorBlock: "active"
         horizontal: false
       }
@@ -1183,9 +1254,11 @@ Item {
         IndicatorBlock {
           id: inactiveVerticalBlock
           anchors.fill: parent
+          indicatorsModule: indicatorsRoot
           indicatorEntries: indicatorsRoot.indicatorEntries
           indicatorBlock: "inactive"
           horizontal: false
+          reportActiveState: root.vertical
         }
 
         HoverHandler {
@@ -1199,8 +1272,10 @@ Item {
     id: indicatorBlockRoot
 
     property var indicatorEntries: []
+    property var indicatorsModule: null
     property string indicatorBlock: "active"
     property bool horizontal: true
+    property bool reportActiveState: false
 
     implicitWidth: blockLoader.item ? blockLoader.item.childrenRect.width : 0
     implicitHeight: blockLoader.item ? blockLoader.item.childrenRect.height : 0
@@ -1225,8 +1300,10 @@ Item {
 
           IndicatorLoader {
             required property var modelData
+            indicatorsModule: indicatorBlockRoot.indicatorsModule
             entry: modelData
             indicatorBlock: indicatorBlockRoot.indicatorBlock
+            reportActiveState: indicatorBlockRoot.reportActiveState
           }
         }
       }
@@ -1243,8 +1320,10 @@ Item {
 
           IndicatorLoader {
             required property var modelData
+            indicatorsModule: indicatorBlockRoot.indicatorsModule
             entry: modelData
             indicatorBlock: indicatorBlockRoot.indicatorBlock
+            reportActiveState: indicatorBlockRoot.reportActiveState
           }
         }
       }
@@ -1255,7 +1334,9 @@ Item {
     id: indicatorSlot
 
     required property var entry
+    property var indicatorsModule: null
     required property string indicatorBlock
+    property bool reportActiveState: false
     readonly property string indicatorId: root.entryId(entry)
     readonly property var indicatorSettings: root.entrySettings(entry)
 
@@ -1263,16 +1344,31 @@ Item {
     implicitHeight: indicatorSource.item && indicatorSource.item.visible ? indicatorSource.item.implicitHeight : 0
     width: implicitWidth
     height: implicitHeight
+    onEntryChanged: {
+      injectProps()
+      syncActiveState()
+    }
     onIndicatorBlockChanged: injectProps()
     onIndicatorSettingsChanged: injectProps()
+    onIndicatorsModuleChanged: syncActiveState()
+    onReportActiveStateChanged: syncActiveState()
 
     Loader {
       id: indicatorSource
 
       anchors.fill: parent
       source: indicatorSlot.indicatorId ? Qt.resolvedUrl("indicators/" + indicatorSlot.indicatorId + ".qml") : ""
-      onLoaded: indicatorSlot.injectProps()
+      onLoaded: {
+        indicatorSlot.injectProps()
+        indicatorSlot.syncActiveState()
+      }
       onStatusChanged: if (status === Loader.Error) console.warn("Indicator loader error", indicatorSlot.indicatorId, source)
+    }
+
+    Connections {
+      target: indicatorSource.item
+      ignoreUnknownSignals: true
+      function onActiveChanged() { indicatorSlot.syncActiveState() }
     }
 
     function injectProps() {
@@ -1282,6 +1378,11 @@ Item {
       if ("moduleName" in target) target.moduleName = indicatorId
       if ("settings" in target) target.settings = indicatorSettings
       if ("indicatorBlock" in target) target.indicatorBlock = indicatorBlock
+    }
+
+    function syncActiveState() {
+      if (!reportActiveState || !indicatorsModule || !indicatorsModule.setIndicatorActive) return
+      indicatorsModule.setIndicatorActive(entry, !!indicatorSource.item && indicatorSource.item.active === true)
     }
   }
 
