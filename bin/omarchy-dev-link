@@ -7,6 +7,14 @@
 
 set -euo pipefail
 
+if [[ $EUID -eq 0 ]]; then
+  echo "Error: run omarchy-dev-link as your user, not under sudo. The script" >&2
+  echo "       will prompt for sudo when it needs to write /etc/omarchy.conf." >&2
+  echo "       (Invoking under sudo wipes HYPRLAND_INSTANCE_SIGNATURE so the" >&2
+  echo "       live-session refresh can't reach hyprctl.)" >&2
+  exit 1
+fi
+
 if [[ $# -ne 1 || $1 == "-h" || $1 == "--help" ]]; then
   cat <<USAGE
 Usage: omarchy dev link <path-to-checkout>
