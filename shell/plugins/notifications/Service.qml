@@ -802,10 +802,10 @@ Item {
         right: service.barPosition !== "left"
       }
       margins {
-        top:    service.barPosition === "top"    ? service.barClearance : Style.gapsOut
-        bottom: service.barPosition === "bottom" ? service.barClearance : Style.gapsOut
-        left:   service.barPosition === "left"   ? service.barClearance : Style.gapsOut
-        right:  service.barPosition === "right"  ? service.barClearance : Style.gapsOut
+        top:    service.barPosition === "top"    ? service.liveBarSize + Math.round(Style.gapsOut / 2) : Math.round(Style.gapsOut / 2)
+        bottom: service.barPosition === "bottom" ? service.barClearance                               : Style.gapsOut
+        left:   service.barPosition === "left"   ? service.barClearance                               : Style.gapsOut
+        right:  service.barPosition === "right"  ? service.barClearance                               : Math.round(Style.gapsOut / 2)
       }
 
       implicitWidth: popupColumn.implicitWidth
