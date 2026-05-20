@@ -27,7 +27,7 @@ Rectangle {
   property real progress: 1.0
   property bool showProgress: false
 
-  // System font from shell.json bar.fontFamily, injected by the container.
+  // System monospace font injected by the container.
   property string fontFamily: ""
 
   readonly property bool hovered: hoverTracker.hovered
