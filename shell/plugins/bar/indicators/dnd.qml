@@ -1,51 +1,22 @@
 import QtQuick
-import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
 BarIndicator {
   id: root
 
-  property string statusText: ""
-  property string statusTooltip: ""
+  readonly property var notificationService: bar.shell.firstPartyServiceFor("omarchy.notifications")
+  readonly property bool dnd: notificationService ? notificationService.doNotDisturb : false
 
-  active: statusText !== ""
-  activeText: statusText
+  active: dnd
+  activeText: "󰂛"
   inactiveText: "󰂛"
-  activeTooltipText: statusTooltip
+  activeTooltipText: "Notifications silenced"
   inactiveTooltipText: "Do Not Disturb"
 
-  function refresh() {
-    if (!root.bar || statusProc.running) return
-    statusProc.command = ["bash", "-lc", Util.shellQuote(root.bar.omarchyPath + "/shell/scripts/indicators/notification-silencing.sh")]
-    statusProc.running = true
-  }
-
-  function update(raw) {
-    var data = extractData(raw)
-
-    statusText = data.text || ""
-    statusTooltip = data.tooltip || ""
-  }
-
-  onBarChanged: refresh()
-  Component.onCompleted: refresh()
-
-  Connections {
-    target: root.bar
-    ignoreUnknownSignals: true
-    function onIndicatorsRefreshRequested() { root.refresh() }
-  }
-
-  Process {
-    id: statusProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.update(text)
-    }
-  }
-
   onPressed: function() {
-    if (root.bar) root.bar.run("omarchy-toggle-notification-silencing")
+    if (root.notificationService) {
+      root.notificationService.setDoNotDisturb(!root.notificationService.doNotDisturb)
+    }
   }
 }
