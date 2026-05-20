@@ -64,9 +64,9 @@ EOF
 fi
 
 mkdir -p "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/48x48/apps"
-install -m 644 "$HOME/.local/share/omarchy/applications/battlenet.desktop" \
+install -m 644 "$OMARCHY_PATH/applications/battlenet.desktop" \
   "$HOME/.local/share/applications/battlenet.desktop"
-install -m 644 "$HOME/.local/share/omarchy/applications/icons/Battle.net.png" \
+install -m 644 "$OMARCHY_PATH/applications/icons/Battle.net.png" \
   "$HOME/.local/share/icons/hicolor/48x48/apps/Battle.net.png"
 gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
