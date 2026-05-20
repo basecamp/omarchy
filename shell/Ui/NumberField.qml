@@ -50,19 +50,9 @@ Column {
       readonly property bool _focused: spin.activeFocus
       readonly property bool _hot: root._hovered || root.hasCursor
 
-      color: _focused
-        ? Style.focusFillFor(root.foreground, root.accent)
-        : (_hot
-          ? Style.hoverFillFor(root.foreground, root.accent)
-          : Style.normalFillFor(root.foreground, root.accent))
-      border.color: _focused
-        ? Style.focusBorderFor(root.foreground, root.accent)
-        : (_hot
-          ? Style.hoverBorderFor(root.foreground, root.accent)
-          : Style.normalBorderFor(root.foreground, root.accent))
-      border.width: _focused
-        ? Style.focusBorderWidth
-        : (_hot ? Style.hoverBorderWidth : Style.normalBorderWidth)
+      color: Style.controlFill(_focused, _hot, root.foreground, root.accent)
+      border.color: Style.controlBorder(_focused, _hot, root.foreground, root.accent)
+      border.width: Style.controlBorderWidth(_focused, _hot)
       radius: Style.cornerRadius
 
       HoverHandler {

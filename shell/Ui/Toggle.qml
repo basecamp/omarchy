@@ -53,19 +53,9 @@ Rectangle {
 
   readonly property bool _hot: hasCursor || mouse.containsMouse
 
-  color: activeFocus
-    ? Style.focusFillFor(foreground, accent)
-    : (_hot
-      ? Style.hoverFillFor(foreground, accent)
-      : Style.normalFillFor(foreground, accent))
-  border.color: activeFocus
-    ? Style.focusBorderFor(foreground, accent)
-    : (_hot
-      ? Style.hoverBorderFor(foreground, accent)
-      : Style.normalBorderFor(foreground, accent))
-  border.width: activeFocus
-    ? Style.focusBorderWidth
-    : (_hot ? Style.hoverBorderWidth : Style.normalBorderWidth)
+  color: Style.controlFill(activeFocus, _hot, foreground, accent)
+  border.color: Style.controlBorder(activeFocus, _hot, foreground, accent)
+  border.width: Style.controlBorderWidth(activeFocus, _hot)
 
   Behavior on color { ColorAnimation { duration: 100 } }
 
