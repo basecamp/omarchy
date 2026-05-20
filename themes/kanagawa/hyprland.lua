@@ -15,4 +15,4 @@ hl.config({
 })
 
 -- Kanagawa backdrop is too strong for default opacity.
-hl.window_rule({ match = { tag = "terminal" }, opacity = "0.98 0.95" })
+o.window({ tag = "terminal" }, { opacity = "0.98 0.95" })
