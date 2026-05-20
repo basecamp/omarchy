@@ -112,7 +112,7 @@ Item {
         color: Color.lock.text
         selectionColor: Color.lock.selection
         selectedTextColor: Color.lock.text
-        font.family: "monospace"
+        font.family: Style.font.family
         font.pixelSize: text.length > 0 ? root.passwordDotFontSize : root.fieldFontSize
         cursorVisible: activeFocus && root.showPasswordCursor && text.length > 0
         cursorDelegate: Rectangle {
@@ -148,7 +148,7 @@ Item {
         text: root.authenticatingPassword ? "Checking…" : (root.failureMessage.length > 0 ? root.failureMessage : root.placeholderText)
         visible: passwordInput.text.length === 0
         color: (!root.authenticatingPassword && root.failureMessage.length > 0) ? Color.lock.textError : Color.lock.text
-        font.family: "monospace"
+        font.family: Style.font.family
         font.pixelSize: root.fieldFontSize
         font.italic: !root.authenticatingPassword && root.failureMessage.length > 0
         horizontalAlignment: Text.AlignHCenter
