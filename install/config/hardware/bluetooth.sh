@@ -1,5 +1,4 @@
-# Turn on bluetooth by default
-chrootable_systemctl_enable bluetooth.service
+# bluetooth.service enable lives in install/config/enable-services.sh.
 
 # Persist last power state across reboots (default AutoEnable=true overrides it)
 sudo sed -i 's/^#\?AutoEnable=.*/AutoEnable=false/' /etc/bluetooth/main.conf
