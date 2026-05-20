@@ -34,6 +34,10 @@ Item {
     root.pressed(button)
   }
 
+  function hideOwnTooltip() {
+    if (root.bar) root.bar.hideTooltip(root)
+  }
+
   function syncClickRegistration() {
     if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(root)
     registeredBar = root.bar
@@ -41,6 +45,9 @@ Item {
   }
 
   onBarChanged: syncClickRegistration()
+  onVisibleChanged: if (!visible) hideOwnTooltip()
+  onInteractiveChanged: if (!interactive) hideOwnTooltip()
+  onConcealedChanged: if (concealed) hideOwnTooltip()
   Component.onCompleted: syncClickRegistration()
   Component.onDestruction: if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(root)
 

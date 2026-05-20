@@ -58,8 +58,11 @@ Item {
   property bool updateAvailable: false
   property bool clockAlt: false
   property var tooltipTarget: null
+  property var pendingTooltipTarget: null
   property string tooltipText: ""
+  property string pendingTooltipText: ""
   property bool tooltipShown: false
+  property int tooltipRequest: 0
   property var activePopout: null
   property var clickTargets: []
   property bool indicatorAreaHovered: false
@@ -385,18 +388,40 @@ Item {
   }
 
   function showTooltip(target, text) {
-    if (!text) return
-
-    tooltipTarget = target
-    tooltipText = text
+    tooltipTimer.stop()
+    tooltipTarget = null
+    tooltipText = ""
     tooltipShown = false
-    tooltipTimer.restart()
+
+    if (!target || !text) {
+      pendingTooltipTarget = null
+      pendingTooltipText = ""
+      tooltipRequest += 1
+      return
+    }
+
+    var request = tooltipRequest + 1
+    tooltipRequest = request
+    pendingTooltipTarget = target
+    pendingTooltipText = text
+
+    Qt.callLater(function() {
+      if (request !== tooltipRequest) return
+      tooltipTarget = pendingTooltipTarget
+      tooltipText = pendingTooltipText
+      pendingTooltipTarget = null
+      pendingTooltipText = ""
+      tooltipTimer.restart()
+    })
   }
 
   function hideTooltip(target) {
-    if (tooltipTarget !== target) return
+    if (tooltipTarget !== target && pendingTooltipTarget !== target) return
 
     tooltipTimer.stop()
+    tooltipRequest += 1
+    pendingTooltipTarget = null
+    pendingTooltipText = ""
     tooltipTarget = null
     tooltipText = ""
     tooltipShown = false
