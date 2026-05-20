@@ -291,7 +291,6 @@ Item {
 
   // ---------------- widget catalog -----------------------------------------
   readonly property var builtinWidgetMeta: ({
-    "omarchy":          { name: "Omarchy menu",       description: "Launches the Omarchy menu",                category: "Compositor" },
     "clock":            { name: "Clock",              description: "Date / time text",                          category: "Time" },
     "update":           { name: "Updates",            description: "Indicates available system updates",        category: "System" },
     "indicators":       { name: "Indicators",         description: "Manual state indicators",                   category: "Status" },
