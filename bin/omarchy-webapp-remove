@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# omarchy:summary=Remove web app desktop launchers
-# omarchy:args=[name...]
+# omarchy:summary=Remove a web app desktop launcher
+# omarchy:args=[name]
 
 set -e
 
@@ -17,34 +17,23 @@ if (( $# == 0 )); then
   done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)
 
   if ((${#WEB_APPS[@]})); then
-    IFS=$'\n' SORTED_WEB_APPS=($(sort <<<"${WEB_APPS[*]}"))
-    unset IFS
-    APP_NAMES_STRING=$(gum choose --no-limit --header "Select web app to remove..." --selected-prefix="✗ " "${SORTED_WEB_APPS[@]}")
-    # Convert newline-separated string to array
-    APP_NAMES=()
-    while IFS= read -r line; do
-      [[ -n $line ]] && APP_NAMES+=("$line")
-    done <<< "$APP_NAMES_STRING"
+    mapfile -t SORTED_WEB_APPS < <(printf '%s\n' "${WEB_APPS[@]}" | sort)
+    APP_NAME=$(omarchy-menu-select "Select web app to remove" "${SORTED_WEB_APPS[@]}" -- --width 520 --maxheight 520)
   else
     echo "No web apps to remove."
     exit 1
   fi
 else
-  # Use array to preserve spaces in app names
-  APP_NAMES=("$@")
+  APP_NAME="$*"
 fi
 
-if (( ${#APP_NAMES[@]} == 0 )); then
-  echo "You must select at least one web app to remove."
+if [[ -z $APP_NAME ]]; then
+  echo "You must select a web app to remove."
   exit 1
 fi
 
-for APP_NAME in "${APP_NAMES[@]}"; do
-  rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
-  rm -f "$ICON_DIR/$APP_NAME.png"
-  echo "Removed $APP_NAME"
-done
+rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
+rm -f "$ICON_DIR/$APP_NAME.png"
 
-if command -v update-desktop-database &>/dev/null; then
-  update-desktop-database "$DESKTOP_DIR" &>/dev/null || true
-fi
+omarchy-notification-send "Web app removed" "$APP_NAME"
+update-desktop-database "$DESKTOP_DIR" &>/dev/null

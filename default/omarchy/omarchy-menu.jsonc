@@ -227,8 +227,8 @@
 
   // Remove
   "remove.package": {"icon":"󰣇","label":"Package","keywords":"uninstall","action":"xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-remove"},
-  "remove.webapp": {"icon":"","label":"Web App","keywords":"uninstall","action":"omarchy-launch-floating-terminal-with-presentation omarchy-webapp-remove"},
-  "remove.tui": {"icon":"","label":"TUI","keywords":"uninstall terminal app","action":"omarchy-launch-floating-terminal-with-presentation omarchy-tui-remove"},
+  "remove.webapp": {"icon":"","label":"Web App","keywords":"uninstall","action":"omarchy-webapp-remove"},
+  "remove.tui": {"icon":"","label":"TUI","keywords":"uninstall terminal app","action":"omarchy-tui-remove"},
   "remove.development": {"icon":"󰵮","label":"Development","keywords":"uninstall languages"},
   "remove.theme": {"icon":"󰸌","label":"Theme","keywords":"uninstall","action":"omarchy-theme-remove"},
   "remove.browser": {"icon":"","label":"Browser","keywords":"uninstall"},
