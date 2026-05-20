@@ -49,19 +49,9 @@ TextField {
   bottomPadding: verticalPadding
 
   background: Rectangle {
-    color: root._focused
-      ? Style.focusFillFor(root.foreground, root.accent)
-      : (root._hot
-        ? Style.hoverFillFor(root.foreground, root.accent)
-        : Style.normalFillFor(root.foreground, root.accent))
-    border.color: root._focused
-      ? Style.focusBorderFor(root.foreground, root.accent)
-      : (root._hot
-        ? Style.hoverBorderFor(root.foreground, root.accent)
-        : Style.normalBorderFor(root.foreground, root.accent))
-    border.width: root._focused
-      ? Style.focusBorderWidth
-      : (root._hot ? Style.hoverBorderWidth : Style.normalBorderWidth)
+    color: Style.controlFill(root._focused, root._hot, root.foreground, root.accent)
+    border.color: Style.controlBorder(root._focused, root._hot, root.foreground, root.accent)
+    border.width: Style.controlBorderWidth(root._focused, root._hot)
     radius: Style.cornerRadius
   }
 }

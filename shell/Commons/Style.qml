@@ -158,6 +158,28 @@ QtObject {
   function selectedBorderFor(foreground, accent, urgent) { return Util.alpha(selectedStateColor(foreground, accent, urgent), selectedBorderAlpha) }
   function focusBorderFor(foreground, accent, urgent) { return Util.alpha(focusStateColor(foreground, accent, urgent), focusBorderAlpha) }
 
+  // Composite helpers for the focus > hover > normal priority chain used by
+  // every form control surface (TextField, NumberField, Dropdown, Toggle,
+  // etc.). Saves callers from re-writing the three-line ternary ladder for
+  // fill / border / border-width on every Rectangle background.
+  function controlFill(focused, hot, foreground, accent) {
+    if (focused) return focusFillFor(foreground, accent)
+    if (hot) return hoverFillFor(foreground, accent)
+    return normalFillFor(foreground, accent)
+  }
+
+  function controlBorder(focused, hot, foreground, accent) {
+    if (focused) return focusBorderFor(foreground, accent)
+    if (hot) return hoverBorderFor(foreground, accent)
+    return normalBorderFor(foreground, accent)
+  }
+
+  function controlBorderWidth(focused, hot) {
+    if (focused) return focusBorderWidth
+    if (hot) return hoverBorderWidth
+    return normalBorderWidth
+  }
+
   // Convenience colors resolved against the foundational palette.
   readonly property color normalFill: normalFillFor(Color.foreground, Color.accent, Color.urgent)
   readonly property color hoverFill: hoverFillFor(Color.foreground, Color.accent, Color.urgent)

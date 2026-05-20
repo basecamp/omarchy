@@ -109,19 +109,9 @@ Item {
       readonly property bool _focused: trigger.activeFocus
       readonly property bool _hot: triggerHover.hovered || root.hasCursor
 
-      color: trigger._focused
-        ? Style.focusFillFor(root.foreground, root.accent)
-        : (trigger._hot
-          ? Style.hoverFillFor(root.foreground, root.accent)
-          : Style.normalFillFor(root.foreground, root.accent))
-      border.color: trigger._focused
-        ? Style.focusBorderFor(root.foreground, root.accent)
-        : (trigger._hot
-          ? Style.hoverBorderFor(root.foreground, root.accent)
-          : Style.normalBorderFor(root.foreground, root.accent))
-      border.width: trigger._focused
-        ? Style.focusBorderWidth
-        : (trigger._hot ? Style.hoverBorderWidth : Style.normalBorderWidth)
+      color: Style.controlFill(trigger._focused, trigger._hot, root.foreground, root.accent)
+      border.color: Style.controlBorder(trigger._focused, trigger._hot, root.foreground, root.accent)
+      border.width: Style.controlBorderWidth(trigger._focused, trigger._hot)
 
       activeFocusOnTab: true
 
