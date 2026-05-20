@@ -31,7 +31,7 @@ Item {
   property var fallbackBarConfig: ({
     position: "top",
     transparent: false,
-    centerAnchor: "daytime",
+    centerAnchor: "clock",
     layout: { left: [], center: [], right: [] }
   })
   property var layoutConfig: fallbackBarConfig.layout

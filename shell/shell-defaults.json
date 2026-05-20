@@ -7,7 +7,7 @@
   "bar": {
     "position": "top",
     "transparent": false,
-    "centerAnchor": "daytime",
+    "centerAnchor": "clock",
     "layout": {
       "left": [
         {
@@ -19,7 +19,7 @@
       ],
       "center": [
         {
-          "id": "daytime",
+          "id": "clock",
           "format": "dddd HH:mm",
           "formatAlt": "dd MMMM yyyy",
           "verticalFormat": "HH\n\u2014\nmm"
