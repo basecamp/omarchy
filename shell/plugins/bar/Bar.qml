@@ -1204,6 +1204,7 @@ Item {
         indicatorEntries: indicatorsRoot.activeIndicatorEntries
         indicatorBlock: "active"
         horizontal: true
+        reportActiveState: !root.vertical
       }
 
       Item {
@@ -1241,6 +1242,7 @@ Item {
         indicatorEntries: indicatorsRoot.activeIndicatorEntries
         indicatorBlock: "active"
         horizontal: false
+        reportActiveState: root.vertical
       }
 
       Item {
@@ -1337,6 +1339,7 @@ Item {
     property var indicatorsModule: null
     required property string indicatorBlock
     property bool reportActiveState: false
+    property bool activeStateObserved: false
     readonly property string indicatorId: root.entryId(entry)
     readonly property var indicatorSettings: root.entrySettings(entry)
 
@@ -1345,6 +1348,7 @@ Item {
     width: implicitWidth
     height: implicitHeight
     onEntryChanged: {
+      activeStateObserved = false
       injectProps()
       syncActiveState()
     }
@@ -1378,11 +1382,19 @@ Item {
       if ("moduleName" in target) target.moduleName = indicatorId
       if ("settings" in target) target.settings = indicatorSettings
       if ("indicatorBlock" in target) target.indicatorBlock = indicatorBlock
+      if ("activeOverride" in target) target.activeOverride = indicatorBlock === "active" ? true : null
     }
 
     function syncActiveState() {
       if (!reportActiveState || !indicatorsModule || !indicatorsModule.setIndicatorActive) return
-      indicatorsModule.setIndicatorActive(entry, !!indicatorSource.item && indicatorSource.item.active === true)
+
+      var active = !!indicatorSource.item && indicatorSource.item.active === true
+      if (indicatorBlock === "active") {
+        if (active) activeStateObserved = true
+        else if (!activeStateObserved) return
+      }
+
+      indicatorsModule.setIndicatorActive(entry, active)
     }
   }
 
