@@ -63,4 +63,16 @@ echo "  PKGBUILD : $PKGBUILD_DIR/PKGBUILD"
 echo
 
 cd "$build_dir"
-OMARCHY_SRC="$CHECKOUT" makepkg -si --skipchecksums --noconfirm "${@:3}"
+OMARCHY_SRC="$CHECKOUT" makepkg -s --skipchecksums --noconfirm "${@:3}"
+
+# Install separately so we can pass --overwrite='*' to pacman. In dev mode
+# the package commonly conflicts with files left behind by previous
+# script-installed Omarchy versions (plymouth themes, /etc drop-ins,
+# sudoers, etc.). makepkg -i forwards a fixed set of flags to pacman and
+# doesn't expose --overwrite.
+built_pkg=$(ls -t "$build_dir"/*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
+if [[ -z $built_pkg ]]; then
+  echo "Error: no built package found in $build_dir" >&2
+  exit 1
+fi
+sudo pacman -U --noconfirm --overwrite='*' "$built_pkg"
