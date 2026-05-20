@@ -48,7 +48,7 @@ trap 'rm -rf "$build_dir"' EXIT
 
 cp -a "$PKGBUILD_DIR/." "$build_dir/"
 
-# Mark the build with a versioned dev pkgver so pacman -Q makes the source obvious.
+# pkgver=dev.<sha>[.dirty] so pacman -Q makes the source obvious.
 short_sha=$(git -C "$CHECKOUT" rev-parse --short HEAD 2>/dev/null || echo "local")
 dirty=""
 if [[ -d "$CHECKOUT/.git" ]] && [[ -n "$(git -C "$CHECKOUT" status --porcelain)" ]]; then
@@ -65,11 +65,9 @@ echo
 cd "$build_dir"
 OMARCHY_SRC="$CHECKOUT" makepkg -s --skipchecksums --noconfirm "${@:3}"
 
-# Install separately so we can pass --overwrite='*' to pacman. In dev mode
-# the package commonly conflicts with files left behind by previous
-# script-installed Omarchy versions (plymouth themes, /etc drop-ins,
-# sudoers, etc.). makepkg -i forwards a fixed set of flags to pacman and
-# doesn't expose --overwrite.
+# Install separately so we can pass --overwrite='*' (makepkg -i can't).
+# Dev builds frequently conflict with files left behind by previous
+# script-installed Omarchy versions; the build is the authoritative state.
 built_pkg=$(ls -t "$build_dir"/*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
 if [[ -z $built_pkg ]]; then
   echo "Error: no built package found in $build_dir" >&2

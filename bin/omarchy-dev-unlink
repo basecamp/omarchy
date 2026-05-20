@@ -6,8 +6,7 @@
 set -euo pipefail
 
 if [[ $EUID -eq 0 ]]; then
-  echo "Error: run omarchy-dev-unlink as your user, not under sudo. The script" >&2
-  echo "       will prompt for sudo when it needs to remove /etc/omarchy.conf." >&2
+  echo "Error: run omarchy-dev-unlink as your user, not under sudo." >&2
   exit 1
 fi
 
@@ -30,13 +29,11 @@ fi
 sudo rm -f /etc/omarchy.conf
 echo "Removed /etc/omarchy.conf"
 
-# Update the current shell.
 export OMARCHY_PATH=/usr/share/omarchy
-# Drop the prepended checkout bin/ from PATH if present.
+# Drop the checkout bin/ that dev-link prepended.
 PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vFx "$(dirname "$0")" | paste -sd:)
 export PATH
 
-# Update the live Hyprland session.
 if command -v hyprctl >/dev/null 2>&1 && hyprctl version &>/dev/null; then
   hyprctl setenv OMARCHY_PATH /usr/share/omarchy >/dev/null
   hyprctl setenv PATH "$PATH" >/dev/null
