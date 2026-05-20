@@ -168,10 +168,10 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
   "bar": {
     "position": "top",
     "transparent": false,
-    "centerAnchor": "daytime",
+    "centerAnchor": "clock",
     "layout": {
       "left":   [ { "id": "omarchy" }, { "id": "workspaces" } ],
-      "center": [ { "id": "daytime", "format": "HH:mm" } ],
+      "center": [ { "id": "clock", "format": "HH:mm" } ],
       "right": [
         { "id": "audioPanel" }
       ]
@@ -194,8 +194,8 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
    settings UI adds/removes layout entries; other plugin kinds are enabled
    with the shell IPC. First-party plugins are always enabled.
 4. **Multiple instances** are allowed when a manifest sets
-   `allowMultiple: true`. Each instance is independent — e.g. two daytime
-   widgets in different timezones are just two `{"id":"daytime", "timezone": ...}`
+   `allowMultiple: true`. Each instance is independent — e.g. two clock
+   widgets in different timezones are just two `{"id":"clock", "timezone": ...}`
    entries with their own values.
 5. **Idle timings are top-level.** `idle.screensaver` and `idle.lock`
    are seconds since user idle began, so the default lock fires at 300s

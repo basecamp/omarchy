@@ -128,11 +128,11 @@ Item {
     bar: {
       position: "top",
       transparent: false,
-      centerAnchor: "daytime",
+      centerAnchor: "clock",
       layout: {
         left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [
-          { id: "daytime", format: "dddd HH:mm", formatAlt: "dd MMMM yyyy", verticalFormat: "HH\n\u2014\nmm" },
+          { id: "clock", format: "dddd HH:mm", formatAlt: "dd MMMM yyyy", verticalFormat: "HH\n\u2014\nmm" },
           { id: "weather" }, { id: "indicators", items: [ "dnd", "nightlight", "stayAwake", "screenrecording", "dictation" ] }, { id: "systemUpdate" }
         ],
         right: [
@@ -145,7 +145,7 @@ Item {
   })
 
   property var defaultConfig: builtinShellConfig
-  property var draft: ({ version: 1, bar: { position: "top", transparent: false, centerAnchor: "daytime", layout: { left: [], center: [], right: [] } }, plugins: [] })
+  property var draft: ({ version: 1, bar: { position: "top", transparent: false, centerAnchor: "clock", layout: { left: [], center: [], right: [] } }, plugins: [] })
   property int draftRevision: 0
   property bool suppressReload: false
 
@@ -1124,7 +1124,7 @@ Item {
     if (meta && meta.settingsForm) {
       switch (meta.settingsForm) {
       case "spacerSettings": return spacerSettingsComponent
-      case "daytimeSettings": return daytimeSettingsComponent
+      case "clockSettings": return clockSettingsComponent
       case "weatherSettings": return weatherSettingsComponent
       }
     }
@@ -1166,24 +1166,24 @@ Item {
   }
 
   Component {
-    id: daytimeSettingsComponent
+    id: clockSettingsComponent
 
     Column {
-      id: calForm
+      id: clockForm
       signal fieldChanged(string key, var value)
       property var entry: ({})
 
       spacing: Style.spacing.rowGap
       width: parent ? parent.width : 0
 
-      component DaytimeField: TextField {
+      component ClockField: TextField {
         property string fieldKey: ""
         width: parent.width
         foreground: root.foreground
         accent: root.accent
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
-        onEditingFinished: if (fieldKey) calForm.fieldChanged(fieldKey, text)
+        onEditingFinished: if (fieldKey) clockForm.fieldChanged(fieldKey, text)
       }
 
       Text {
@@ -1192,20 +1192,20 @@ Item {
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
-      DaytimeField {
+      ClockField {
         fieldKey: "format"
-        text: calForm.entry.format || "dddd HH:mm"
+        text: clockForm.entry.format || "dddd HH:mm"
       }
 
       Text {
-        text: "Tooltip format"
+        text: "Alternate format (click to toggle)"
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
-      DaytimeField {
+      ClockField {
         fieldKey: "formatAlt"
-        text: calForm.entry.formatAlt || "dd MMMM yyyy"
+        text: clockForm.entry.formatAlt || "dd MMMM yyyy"
       }
 
       Text {
@@ -1214,9 +1214,9 @@ Item {
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
-      DaytimeField {
+      ClockField {
         fieldKey: "verticalFormat"
-        text: calForm.entry.verticalFormat || "HH\n—\nmm"
+        text: clockForm.entry.verticalFormat || "HH\n—\nmm"
       }
     }
   }
