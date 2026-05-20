@@ -11,8 +11,8 @@ Item {
   property real step: 0.05
   property bool integer: false
   property color trackColor: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "#333"
-  property color fillColor: bar ? bar.foreground : "#cacccc"
-  property color knobColor: bar ? bar.foreground : "#cacccc"
+  property color fillColor: bar ? bar.foreground : Color.foreground
+  property color knobColor: bar ? bar.foreground : Color.foreground
   property bool dragging: false
   property real trackHeight: Math.max(4, Math.round(Style.spacing.controlHeight * 0.11))
   property real knobSize: Math.max(14, Math.round(Style.spacing.controlHeight * 0.38))
