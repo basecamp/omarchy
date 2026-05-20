@@ -34,7 +34,7 @@ if [[ ! -f ~/.local/share/applications/hyprland-return.desktop ]]; then
 [Desktop Entry]
 Name=Exit to SDDM
 Comment=Exit Gamescope session and return to login screen
-Exec=sh -c 'sudo sed -i 's/^Session=.*/Session=hyprland-uwsm/' /etc/sddm.conf.d/autologin.conf pkill gamescope; sleep 2; loginctl terminate-user $USER'
+Exec=sh -c 'sudo sed -i 's/^Session=.*/Session=hyprland-uwsm/' /etc/sddm.conf.d/autologin.conf pkill gamescope; omarchy-system-restart'
 Type=Application
 Categories=System;
 EOF
