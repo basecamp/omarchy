@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.Mpris
 import Quickshell.Services.Pipewire
 import qs.Ui
 import qs.Commons
@@ -18,6 +19,7 @@ BarWidget {
   readonly property var sink: Pipewire.defaultAudioSink
   readonly property var source: Pipewire.defaultAudioSource
   readonly property var nodes: Pipewire.nodes ? Pipewire.nodes.values : []
+  readonly property var mprisPlayers: Mpris.players ? Mpris.players.values : []
 
   readonly property var candidateSinks: {
     var list = []
@@ -401,10 +403,105 @@ BarWidget {
     return "󰍬"
   }
 
+  function friendlyStreamLabel(label) {
+    label = String(label || "").trim()
+    if (!label) return ""
+
+    var known = {
+      "spotify": "Spotify"
+    }
+    var normalized = label.toLowerCase()
+    return known[normalized] || label
+  }
+
+  function streamLabelKey(label) {
+    return String(label || "").trim().toLowerCase()
+  }
+
+  function streamLabelIsGeneric(label) {
+    return streamLabelKey(label) === "audio-src"
+  }
+
+  function rawStreamLabel(node) {
+    if (!node) return ""
+    var p = nodeProps(node)
+    return p["application.name"]
+      || node.description
+      || p["media.name"]
+      || p["node.name"]
+      || node.name
+  }
+
+  function mprisPlayerLabel(player) {
+    if (!player) return ""
+    return friendlyStreamLabel(player.identity || player.desktopEntry || "")
+  }
+
+  function mprisPlayerIsProxy(player) {
+    var dbusName = String(player && player.dbusName || "").toLowerCase()
+    var desktopEntry = String(player && player.desktopEntry || "").toLowerCase()
+    return dbusName.indexOf("playerctld") !== -1 || desktopEntry === "playerctld"
+  }
+
+  function streamRepresentsMprisPlayer(streamLabel, playerLabel) {
+    var streamKey = streamLabelKey(friendlyStreamLabel(streamLabel))
+    var playerKey = streamLabelKey(playerLabel)
+    if (!streamKey || !playerKey) return false
+    return streamKey === playerKey
+      || streamKey.indexOf(playerKey) !== -1
+      || playerKey.indexOf(streamKey) !== -1
+  }
+
+  function mprisLabelsFor(predicate) {
+    var candidates = []
+    var proxyCandidates = []
+    for (var i = 0; i < mprisPlayers.length; i++) {
+      var player = mprisPlayers[i]
+      if (!player || !player.isPlaying) continue
+
+      var playerLabel = mprisPlayerLabel(player)
+      if (!playerLabel || !predicate(playerLabel)) continue
+
+      if (mprisPlayerIsProxy(player)) proxyCandidates.push(playerLabel)
+      else candidates.push(playerLabel)
+    }
+
+    if (candidates.length === 1) return candidates[0]
+    if (candidates.length === 0 && proxyCandidates.length === 1) return proxyCandidates[0]
+    return ""
+  }
+
+  function matchingMprisStreamLabel(label) {
+    if (streamLabelIsGeneric(label)) return ""
+    return mprisLabelsFor(function(playerLabel) {
+      return streamRepresentsMprisPlayer(label, playerLabel)
+    })
+  }
+
+  function unmatchedMprisStreamLabel(label) {
+    // Spotify exposes its PipeWire stream as "audio-src". For generic stream
+    // names, use the one MPRIS player not already represented by another audio
+    // stream (e.g. Chromium, or ALSA apps like cliamp).
+    if (!streamLabelIsGeneric(label)) return ""
+
+    return mprisLabelsFor(function(playerLabel) {
+      for (var i = 0; i < audioStreams.length; i++) {
+        var stream = audioStreams[i]
+        var streamLabel = rawStreamLabel(stream)
+        if (!streamLabelIsGeneric(streamLabel)
+            && streamRepresentsMprisPlayer(streamLabel, playerLabel))
+          return false
+      }
+      return true
+    })
+  }
+
   function streamLabel(node) {
     if (!node) return "Stream"
-    var p = nodeProps(node)
-    return p["application.name"] || node.description || p["media.name"] || p["node.name"] || node.name || "Stream"
+    var label = rawStreamLabel(node)
+    return friendlyStreamLabel(matchingMprisStreamLabel(label)
+      || unmatchedMprisStreamLabel(label)
+      || label) || "Stream"
   }
 
   implicitWidth: button.implicitWidth
