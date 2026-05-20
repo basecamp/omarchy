@@ -6,7 +6,6 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-import "../../ui/settings" as SettingsUi
 import "./components" as Cmp
 
 Item {
@@ -1147,10 +1146,10 @@ Item {
 
   Component {
     id: dynamicSettingsComponent
-    SettingsUi.DynamicSettingsForm {
+    Cmp.DynamicSettingsForm {
       schema: root.widgetSchema(entry.id || "")
-      foregroundColor: root.foreground
-      fontFamilyName: root.fontFamily
+      foreground: root.foreground
+      fontFamily: root.fontFamily
     }
   }
 
