@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "workspaces"
+  moduleName: "Workspaces"
 
   function workspaceById(id) {
     var values = Hyprland.workspaces.values

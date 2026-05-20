@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "indicators"
+  moduleName: "Indicators"
 
   readonly property int indicatorSlotExtent: Style.space(22)
   readonly property int inactiveSlotExtent: indicatorEntries.length * indicatorSlotExtent
@@ -158,7 +158,7 @@ BarWidget {
   implicitHeight: root.vertical ? verticalIndicators.implicitHeight : horizontalIndicators.implicitHeight
 
   IpcHandler {
-    target: "indicators"
+    target: "Indicators"
 
     function refresh(): void {
       root.refreshRequested()

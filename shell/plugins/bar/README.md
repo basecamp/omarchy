@@ -26,20 +26,20 @@ Example `shell.json` (bar subtree only shown):
   "bar": {
     "position": "top",
     "transparent": false,
-    "centerAnchor": "clock",
+    "centerAnchor": "Clock",
     "layout": {
       "left": [
-        { "id": "omarchy" },
-        { "id": "spacer", "size": 12 },
-        { "id": "workspaces" }
+        { "id": "Omarchy" },
+        { "id": "Spacer", "size": 12 },
+        { "id": "Workspaces" }
       ],
       "center": [
-        { "id": "media" },
-        { "id": "clock", "format": "HH:mm" }
+        { "id": "Media" },
+        { "id": "Clock", "format": "HH:mm" }
       ],
       "right": [
-        { "id": "audioPanel" },
-        { "id": "powerPanel" }
+        { "id": "AudioPanel" },
+        { "id": "PowerPanel" }
       ]
     }
   }
@@ -54,17 +54,17 @@ Example `shell.json` (bar subtree only shown):
 
 | Name | What it does | Interactions |
 |---|---|---|
-| `omarchy` | Omarchy menu launcher | left = menu · right = terminal |
-| `workspaces` | Hyprland workspace switcher | left = focus workspace |
-| `clock` | Date/time label | left = alternate format · right = timezone selector |
-| `media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
-| `indicators` | Manual state indicators | left = indicator action |
-| `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
-| `systemUpdate` | Available update indicator | left = update |
-| `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
-| `tray` | System tray | hover = reveal drawer · right on chevron = manage |
-| `weather` | Weather icon + popup with forecast | left = popup · right = full notification |
-| `microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
+| `Omarchy` | Omarchy menu launcher | left = menu · right = terminal |
+| `Workspaces` | Hyprland workspace switcher | left = focus workspace |
+| `Clock` | Date/time label | left = alternate format · right = timezone selector |
+| `Media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
+| `Indicators` | Manual state indicators | left = indicator action |
+| `NotificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
+| `SystemUpdate` | Available update indicator | left = update |
+| `SystemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
+| `Tray` | System tray | hover = reveal drawer · right on chevron = manage |
+| `Weather` | Weather icon + popup with forecast | left = popup · right = full notification |
+| `Microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
 
 ### First-party panels (in `../panels/`)
 
@@ -76,7 +76,7 @@ Example `shell.json` (bar subtree only shown):
 | `panels.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
 | `panels.monitor` | Brightness and laptop display controls | left = popup |
 
-The `indicators` widget loads individual bar indicators from `indicators/`, ordered by its `items` array in `shell.json`. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `../panels/` above.
+The `Indicators` widget loads individual bar indicators from `indicators/`, ordered by its `items` array in `shell.json`. Rich panels such as `PowerPanel`, `NetworkPanel`, and `AudioPanel` live in `../panels/` above.
 
 ## Orientation
 
@@ -94,9 +94,9 @@ Command module:
   "bar": {
     "layout": {
       "right": [
-        { "id": "tray" },
+        { "id": "Tray" },
         { "id": "vpn", "type": "command", "exec": "~/.config/omarchy/bar/scripts/vpn-status", "interval": 5, "tooltip": "VPN", "onClick": "nm-connection-editor" },
-        { "id": "audioPanel" }
+        { "id": "AudioPanel" }
       ]
     }
   }
@@ -118,7 +118,7 @@ QML module:
     "layout": {
       "right": [
         { "id": "gpu", "type": "qml" },
-        { "id": "audioPanel" }
+        { "id": "AudioPanel" }
       ]
     }
   }
@@ -169,10 +169,10 @@ Widgets receive `bar` (the shell root), `moduleName` (string), and `settings` (o
 - `bar.showTooltip(target, text)` / `bar.hideTooltip(target)` — shared tooltip popup
 - `bar.requestPopout(owner)` / `bar.releasePopout(owner)` — one-popup-at-a-time coordinator
 
-First-party bar widgets live in `widgets/<name>.qml`; first-party panels
-live in `../panels/<name>.qml` and expose IPC targets such as
-`panels.audio`. The compatibility bar layout ids remain `audioPanel`,
-`networkPanel`, and so on, and are picked up by the shell's
+First-party bar widgets live in `widgets/<Name>.qml`; first-party panels
+live in `../panels/<Name>.qml` and expose IPC targets such as
+`panels.audio`. Bar layout ids use UpperCamelCase names such as `AudioPanel`,
+`NetworkPanel`, and so on, and are picked up by the shell's
 `BarWidgetRegistry` at startup; reference one by `id` in any layout list.
 
 Third-party widgets ship as separate plugins under

@@ -2,4 +2,4 @@
 
 # omarchy:summary=Show the current weather notification
 
-omarchy-shell weatherFlyout show
+omarchy-shell Weather show

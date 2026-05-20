@@ -7,7 +7,7 @@ import qs.Ui
 
 Panel {
   id: root
-  moduleName: "powerPanel"
+  moduleName: "PowerPanel"
   ipcTarget: "panels.power"
   property var batteryInfo: ({})
   property var systemInfo: ({})

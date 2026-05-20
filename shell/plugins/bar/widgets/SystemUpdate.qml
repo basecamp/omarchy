@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "systemUpdate"
+  moduleName: "SystemUpdate"
 
   property bool updateAvailable: false
 
@@ -18,7 +18,7 @@ BarWidget {
   implicitHeight: button.implicitHeight
 
   IpcHandler {
-    target: "systemUpdate"
+    target: "SystemUpdate"
 
     function refresh(): void {
       root.refresh()

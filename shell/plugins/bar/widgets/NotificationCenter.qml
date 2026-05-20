@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "notificationCenter"
+  moduleName: "NotificationCenter"
 
 
   property bool popupOpen: false

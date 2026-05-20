@@ -7,7 +7,7 @@ import qs.Commons
 
 Panel {
   id: root
-  moduleName: "monitorPanel"
+  moduleName: "MonitorPanel"
   ipcTarget: "panels.monitor"
   manageIpc: false
 

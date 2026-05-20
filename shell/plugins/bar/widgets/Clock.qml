@@ -5,7 +5,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "clock"
+  moduleName: "Clock"
 
   property bool alt: false
 

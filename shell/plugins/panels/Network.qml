@@ -7,7 +7,7 @@ import qs.Commons
 
 Panel {
   id: root
-  moduleName: "networkPanel"
+  moduleName: "NetworkPanel"
   ipcTarget: "panels.network"
 
   // Centralized close so callers can't forget to drop the passphrase prompt.

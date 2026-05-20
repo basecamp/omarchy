@@ -3,4 +3,4 @@
 # omarchy:summary=Toggle notification do-not-disturb mode
 
 state=$(omarchy-shell notifications toggleDnd 2>/dev/null || echo "")
-omarchy-shell -q indicators refresh
+omarchy-shell -q Indicators refresh

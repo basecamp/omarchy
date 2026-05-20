@@ -105,7 +105,7 @@ Item {
   property string choiceDemoValue: "top"
   property bool toggleDemoOn: true
   property bool toggleSquareOn: false
-  property string dropdownDemoValue: "clock"
+  property string dropdownDemoValue: "Clock"
   property string searchableDemoValue: ""
   property int numberDemoValue: 15
 
@@ -1523,7 +1523,7 @@ Item {
                   width: Style.spacing.dropdownWidth
                   label: "Center anchor"
                   fontFamily: root.fontFamily
-                  options: ["clock", "weather", "powerPanel"]
+                  options: ["Clock", "Weather", "PowerPanel"]
                   value: root.dropdownDemoValue
                   hasCursor: root.focusSection === "dropdown" && root.selectedIndex === 0
                   onHovered: function(h) {
@@ -1586,15 +1586,15 @@ Item {
                   }
                   onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(this)
                   options: [
-                    { value: "clock", label: "Clock", description: "Time + date display" },
-                    { value: "weather", label: "Weather", description: "Local conditions and forecast" },
-                    { value: "powerPanel", label: "Power", description: "Charge level + power profile" },
+                    { value: "Clock", label: "Clock", description: "Time + date display" },
+                    { value: "Weather", label: "Weather", description: "Local conditions and forecast" },
+                    { value: "PowerPanel", label: "Power", description: "Charge level + power profile" },
                     { value: "audio", label: "Audio", description: "Output sink + volume" },
                     { value: "network", label: "Network", description: "Wi-Fi + ethernet status" },
                     { value: "bluetooth", label: "Bluetooth", description: "Paired and nearby devices" },
                     { value: "monitor", label: "Monitor", description: "Brightness + scale" },
-                    { value: "media", label: "Media", description: "Now-playing + transport" },
-                    { value: "workspaces", label: "Workspaces", description: "Hyprland workspace pills" },
+                    { value: "Media", label: "Media", description: "Now-playing + transport" },
+                    { value: "Workspaces", label: "Workspaces", description: "Hyprland workspace pills" },
                     { value: "system-tray", label: "System tray", description: "StatusNotifierItem icons" },
                     { value: "omarchy-menu", label: "Omarchy menu", description: "Launcher / system menu" },
                     { value: "power-profiles", label: "Power profiles", description: "Performance / balanced / saver" },

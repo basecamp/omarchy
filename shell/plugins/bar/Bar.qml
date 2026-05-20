@@ -31,7 +31,7 @@ Item {
   property var fallbackBarConfig: ({
     position: "top",
     transparent: false,
-    centerAnchor: "clock",
+    centerAnchor: "Clock",
     layout: { left: [], center: [], right: [] }
   })
   property var layoutConfig: fallbackBarConfig.layout
@@ -130,7 +130,7 @@ Item {
     var trayEntry = null
     var result = []
     for (var i = 0; i < entries.length; i++) {
-      if (entryId(entries[i]) === "tray") trayEntry = entries[i]
+      if (entryId(entries[i]) === "Tray") trayEntry = entries[i]
       else result.push(entries[i])
     }
     if (trayEntry) {
@@ -205,10 +205,7 @@ Item {
   }
 
   function canonicalWidgetId(name) {
-    switch (String(name)) {
-    case "weatherFlyout": return "weather"
-    default: return String(name)
-    }
+    return String(name)
   }
 
   function expandPath(path) {

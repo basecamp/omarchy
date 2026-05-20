@@ -9,7 +9,7 @@ import qs.Commons
 
 Panel {
   id: root
-  moduleName: "audioPanel"
+  moduleName: "AudioPanel"
   ipcTarget: "panels.audio"
 
   readonly property var sink: Pipewire.defaultAudioSink
