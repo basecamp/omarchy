@@ -125,6 +125,15 @@ printf 'state\t%s\n' "$(awk '/state/ { print $2; exit }' <<<"$info")"
 printf 'rate\t%s\n' "$(awk '/energy-rate/ { v=sprintf("%.1f", $2); sub(/\.0$/, "", v); print v "W"; exit }' <<<"$info")"
 printf 'size\t%s\n' "$(awk '/energy-full:/ { printf "%dWh", $2; exit }' <<<"$info")"
 printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/null)"
+end=$(cat /sys/class/power_supply/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
+start=$(cat /sys/class/power_supply/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
+if [[ -n $end ]]; then
+  if [[ -n $start && $start != "$end" ]]; then
+    printf 'threshold\t%s-%s%%\n' "$start" "$end"
+  else
+    printf 'threshold\t%s%%\n' "$end"
+  fi
+fi
 `]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateKeyValue(text, "battery") }
   }
@@ -219,6 +228,17 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
           anchors.leftMargin: Style.spacing.controlPaddingX
           anchors.verticalCenter: parent.verticalCenter
         }
+
+        Text {
+          visible: root.batteryInfo.percentage !== undefined
+          text: root.batteryInfo.percentage || ""
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.subtitle
+          font.bold: true
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+        }
       }
 
       Row {
@@ -229,8 +249,8 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
         Column {
           width: Style.space(140)
           spacing: Style.spacing.labelGap
-          InfoPair { label: "Percentage"; value: root.batteryInfo.percentage || "" }
           InfoPair { label: "Battery size"; value: root.batteryInfo.size || "" }
+          InfoPair { label: "Threshold"; value: root.batteryInfo.threshold || "—" }
         }
 
         Column {
