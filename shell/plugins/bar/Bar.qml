@@ -258,7 +258,6 @@ Item {
 
   function builtinModuleComponent(name) {
     switch (String(name)) {
-    case "omarchy": return omarchyModuleComponent
     case "clock": return clockModuleComponent
     case "update": return updateModuleComponent
     case "indicators": return indicatorsModuleComponent
@@ -303,6 +302,7 @@ Item {
   // Each entry maps a module id to its display metadata; the QML source is
   // loaded asynchronously via Qt.createComponent.
   readonly property var firstPartyWidgetMetadata: ({
+    "omarchy":            { displayName: "Omarchy menu",       description: "Launches the Omarchy menu",                 category: "Compositor", allowMultiple: false },
     "workspaces":         { displayName: "Workspaces",         description: "Workspace number indicators",               category: "Compositor", allowMultiple: false },
     "media":              { displayName: "Media",              description: "MPRIS now-playing with playback controls",   category: "Media",    allowMultiple: false },
     "audioPanel":         { displayName: "Audio",              description: "Volume slider, output picker, per-app mixer", category: "Audio",    allowMultiple: false, sourceDir: "../panels", sourceName: "Audio" },
@@ -711,7 +711,6 @@ Item {
   }
 
   Component { id: emptyModuleComponent; Item { implicitWidth: 0; implicitHeight: 0; visible: false } }
-  Component { id: omarchyModuleComponent; OmarchyModule {} }
   Component { id: clockModuleComponent; ClockModule {} }
   Component { id: updateModuleComponent; UpdateModule {} }
   Component { id: indicatorsModuleComponent; IndicatorsModule {} }
@@ -1439,16 +1438,6 @@ Item {
       }
 
       indicatorsModule.setIndicatorActive(entry, active)
-    }
-  }
-
-  component OmarchyModule: ModuleButton {
-    text: "\ue900"
-    fontFamily: "omarchy"
-    horizontalMargin: 7.5
-    onPressed: function(button) {
-      if (button === Qt.RightButton) root.run("xdg-terminal-exec")
-      else root.run("omarchy-shell menu toggle root")
     }
   }
 
