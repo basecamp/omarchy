@@ -31,18 +31,12 @@ QtObject {
     if (typeof v !== "string" || v.length === 0) return fallback
     var n = Number(v)
     if (!isFinite(n)) return fallback
-    return Math.max(0, Math.min(1, n))
-  }
-
-  function alpha(c, opacity) {
-    if (!c) return Qt.rgba(0, 0, 0, opacity)
-    if (typeof c === "string") c = Qt.color(c)
-    return Qt.rgba(c.r, c.g, c.b, opacity)
+    return Util.clampAlpha(n)
   }
 
   // Compose a color from a base-color key and its `-alpha` companion.
   function composed(colorKey, alphaKey, colorFallback, alphaFallback) {
-    return alpha(pick(colorKey, colorFallback), pickAlpha(alphaKey, alphaFallback))
+    return Util.alpha(pick(colorKey, colorFallback), pickAlpha(alphaKey, alphaFallback))
   }
 
   readonly property QtObject bar: QtObject {

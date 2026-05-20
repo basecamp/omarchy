@@ -51,14 +51,8 @@ QtObject {
     return n === null ? fallback : n
   }
 
-  function clampAlpha(value) {
-    var n = Number(value)
-    if (!isFinite(n)) return 0
-    return Math.max(0, Math.min(1, n))
-  }
-
   function styleAlpha(key, fallback) {
-    return clampAlpha(styleNum(key, fallback))
+    return Util.clampAlpha(styleNum(key, fallback))
   }
 
   function styleString(key, fallback) {
@@ -91,12 +85,6 @@ QtObject {
   readonly property real hoverBorderAlpha:    styleAlpha("hover-cursor-border-alpha", 0.25)
   readonly property real selectedBorderAlpha: styleAlpha("selected-border-alpha", 1.0)
   readonly property real focusBorderAlpha:    styleAlpha("focus-border-alpha", hoverBorderAlpha)
-
-  function alpha(c, opacity) {
-    var a = clampAlpha(opacity)
-    if (!c) return Qt.rgba(0, 0, 0, a)
-    return Qt.rgba(c.r, c.g, c.b, a)
-  }
 
   function colorFromHex(value, fallback) {
     var s = String(value || "").replace(/^\s+|\s+$/g, "")
@@ -158,17 +146,17 @@ QtObject {
     return resolveStateColor(selectionColorToken, foreground, accent, urgent, foreground || Color.foreground)
   }
 
-  function normalFillFor(foreground, accent, urgent) { return alpha(normalStateColor(foreground, accent, urgent), normalFillAlpha) }
-  function hoverFillFor(foreground, accent, urgent) { return alpha(hoverStateColor(foreground, accent, urgent), hoverFillAlpha) }
-  function selectedFillFor(foreground, accent, urgent) { return alpha(selectedStateColor(foreground, accent, urgent), selectedFillAlpha) }
-  function pressedFillFor(foreground, accent, urgent) { return alpha(pressedStateColor(foreground, accent, urgent), pressedFillAlpha) }
-  function focusFillFor(foreground, accent, urgent) { return alpha(focusStateColor(foreground, accent, urgent), focusFillAlpha) }
-  function selectionFillFor(foreground, accent, urgent) { return alpha(selectionStateColor(foreground, accent, urgent), selectionFillAlpha) }
+  function normalFillFor(foreground, accent, urgent) { return Util.alpha(normalStateColor(foreground, accent, urgent), normalFillAlpha) }
+  function hoverFillFor(foreground, accent, urgent) { return Util.alpha(hoverStateColor(foreground, accent, urgent), hoverFillAlpha) }
+  function selectedFillFor(foreground, accent, urgent) { return Util.alpha(selectedStateColor(foreground, accent, urgent), selectedFillAlpha) }
+  function pressedFillFor(foreground, accent, urgent) { return Util.alpha(pressedStateColor(foreground, accent, urgent), pressedFillAlpha) }
+  function focusFillFor(foreground, accent, urgent) { return Util.alpha(focusStateColor(foreground, accent, urgent), focusFillAlpha) }
+  function selectionFillFor(foreground, accent, urgent) { return Util.alpha(selectionStateColor(foreground, accent, urgent), selectionFillAlpha) }
 
-  function normalBorderFor(foreground, accent, urgent) { return alpha(normalStateColor(foreground, accent, urgent), normalBorderAlpha) }
-  function hoverBorderFor(foreground, accent, urgent) { return alpha(hoverStateColor(foreground, accent, urgent), hoverBorderAlpha) }
-  function selectedBorderFor(foreground, accent, urgent) { return alpha(selectedStateColor(foreground, accent, urgent), selectedBorderAlpha) }
-  function focusBorderFor(foreground, accent, urgent) { return alpha(focusStateColor(foreground, accent, urgent), focusBorderAlpha) }
+  function normalBorderFor(foreground, accent, urgent) { return Util.alpha(normalStateColor(foreground, accent, urgent), normalBorderAlpha) }
+  function hoverBorderFor(foreground, accent, urgent) { return Util.alpha(hoverStateColor(foreground, accent, urgent), hoverBorderAlpha) }
+  function selectedBorderFor(foreground, accent, urgent) { return Util.alpha(selectedStateColor(foreground, accent, urgent), selectedBorderAlpha) }
+  function focusBorderFor(foreground, accent, urgent) { return Util.alpha(focusStateColor(foreground, accent, urgent), focusBorderAlpha) }
 
   // Convenience colors resolved against the foundational palette.
   readonly property color normalFill: normalFillFor(Color.foreground, Color.accent, Color.urgent)
@@ -180,7 +168,7 @@ QtObject {
   readonly property color hoverBorderColor: hoverBorderFor(Color.foreground, Color.accent, Color.urgent)
   readonly property color selectedBorderColor: selectedBorderFor(Color.foreground, Color.accent, Color.urgent)
   readonly property color focusBorderColor: focusBorderFor(Color.foreground, Color.accent, Color.urgent)
-  readonly property color selectedAccentFill: alpha(Color.accent, selectedFillAlpha)
+  readonly property color selectedAccentFill: Util.alpha(Color.accent, selectedFillAlpha)
   readonly property color selectionFill: selectionFillFor(Color.foreground, Color.accent, Color.urgent)
 
   // ---------------------------------------------------------- spacing

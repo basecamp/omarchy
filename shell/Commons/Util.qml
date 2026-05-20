@@ -6,12 +6,23 @@ import QtQuick
 QtObject {
   id: root
 
+  function clamp(value, min, max) {
+    var n = Number(value)
+    if (!isFinite(n)) return min
+    return Math.max(min, Math.min(max, n))
+  }
+
+  function clampAlpha(value) {
+    return clamp(value, 0, 1)
+  }
+
   // Compose a base color with an opacity. Accepts a color object or a hex
   // string; null/undefined yields transparent black at the requested alpha.
   function alpha(c, opacity) {
-    if (!c) return Qt.rgba(0, 0, 0, opacity)
+    var a = clampAlpha(opacity)
+    if (!c) return Qt.rgba(0, 0, 0, a)
     if (typeof c === "string") c = Qt.color(c)
-    return Qt.rgba(c.r, c.g, c.b, opacity)
+    return Qt.rgba(c.r, c.g, c.b, a)
   }
 
   // file:// URL with each path segment percent-encoded so spaces and
