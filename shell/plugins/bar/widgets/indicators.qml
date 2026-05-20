@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
@@ -8,6 +9,9 @@ BarWidget {
   moduleName: "indicators"
 
   readonly property bool vertical: bar ? bar.vertical : false
+  readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
+  readonly property int indicatorSlotExtent: Style.space(22)
+  readonly property int inactiveSlotExtent: indicatorEntries.length * indicatorSlotExtent
   readonly property var indicatorEntries: indicatorEntriesFromSettings(settings)
   property var activeIndicatorIds: []
   property var indicatorActiveStates: ({})
@@ -200,8 +204,8 @@ BarWidget {
     Item {
       id: inactiveHorizontalArea
 
-      implicitWidth: inactiveHorizontalBlock.implicitWidth
-      implicitHeight: inactiveHorizontalBlock.implicitHeight
+      implicitWidth: Math.max(inactiveHorizontalBlock.implicitWidth, root.inactiveSlotExtent)
+      implicitHeight: Math.max(inactiveHorizontalBlock.implicitHeight, root.barSize)
       width: implicitWidth
       height: implicitHeight
 
@@ -241,8 +245,8 @@ BarWidget {
     Item {
       id: inactiveVerticalArea
 
-      implicitWidth: inactiveVerticalBlock.implicitWidth
-      implicitHeight: inactiveVerticalBlock.implicitHeight
+      implicitWidth: Math.max(inactiveVerticalBlock.implicitWidth, root.barSize)
+      implicitHeight: Math.max(inactiveVerticalBlock.implicitHeight, root.inactiveSlotExtent)
       width: implicitWidth
       height: implicitHeight
 
@@ -260,6 +264,10 @@ BarWidget {
         onHoveredChanged: root.setIndicatorAreaHovered(hovered)
       }
     }
+  }
+
+  HoverHandler {
+    onHoveredChanged: root.setIndicatorAreaHovered(hovered)
   }
 
   component ActiveIndicatorBlock: Item {
