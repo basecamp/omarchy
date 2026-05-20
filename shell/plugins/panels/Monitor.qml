@@ -5,15 +5,14 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 
-BarWidget {
+Panel {
   id: root
   moduleName: "monitorPanel"
-
+  ipcTarget: "panels.monitor"
+  manageIpc: false
 
   // manageIpc: false so this panel can own the single IpcHandler the target
   // permits — needed for the brightness + state methods below.
-  PanelController { id: ctrl; ipcTarget: "monitorPanel"; manageIpc: false }
-  readonly property bool popupOpen: ctrl.open
   property int brightnessPercent: 0
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
@@ -29,7 +28,7 @@ BarWidget {
 
   // Cursor model shared by keyboard and mouse. Sections:
   //   "brightness" - single slider row, selectedIndex = -1 sentinel
-  //                  (mirrors audioPanel's slider rows). Only present if a
+  //                  (mirrors Audio's slider rows). Only present if a
   //                  controllable backlight was detected.
   //   "scale"      - 6 Button scale presets; treated as a single
   //                  horizontal row from j/k's perspective. h/l moves
@@ -170,10 +169,8 @@ BarWidget {
       flick.contentY = bottom + margin - flick.height
   }
 
-  function closePopout() { ctrl.hide() }
-
   IpcHandler {
-    target: "monitorPanel"
+    target: "panels.monitor"
 
     function brightness(percent: string): string {
       var value = Number(percent)
@@ -191,9 +188,11 @@ BarWidget {
       })
     }
 
-    function toggle(): void { ctrl.toggle() }
-    function show(): void { ctrl.show() }
-    function hide(): void { ctrl.hide() }
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function toggle(): void { root.toggle() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
   }
 
   function refresh() {
@@ -260,8 +259,8 @@ BarWidget {
   // KeyboardPanel takes Exclusive focus at map-time, so SUPER-bound IPC
   // summons land with j/k ready to navigate. Keep a default landing point,
   // but don't paint the cursor until hover or the first navigation key.
-  onPopupOpenChanged: {
-    if (popupOpen) {
+  onOpenedChanged: {
+    if (opened) {
       refresh()
       if (brightnessAvailable) {
         focusSection = "brightness"
@@ -343,7 +342,7 @@ BarWidget {
     bar: root.bar
     text: root.displays.length > 1 ? "󰍺" : "󰍹"
     fontSize: Style.font.subtitle
-    onPressed: function(b) { ctrl.toggle() }
+    onPressed: function(b) { root.toggle() }
     onWheelMoved: function(delta) {
       if (root.brightnessAvailable) root.setBrightness(root.brightnessPercent + (delta > 0 ? 5 : -5))
     }
@@ -354,7 +353,7 @@ BarWidget {
     anchorItem: button
     owner: ctrl
     bar: root.bar
-    open: ctrl.open
+    open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(320))
     contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
@@ -371,7 +370,7 @@ BarWidget {
         }
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.closePopout()
+      onCloseRequested: root.close()
 
       ScrollView {
         id: scrollArea

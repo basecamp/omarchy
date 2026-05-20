@@ -10,10 +10,10 @@ BarWidget {
 
 
   property bool popupOpen: false
-  function closePopout() { popupOpen = false }
+  function close() { popupOpen = false }
 
   // Always default to the pending tab when there's anything unseen, no
-  // matter how the popup was opened (click, keybind/IPC, or the closePopout
+  // matter how the popup was opened (click, keybind/IPC, or the close
   // path). Keeps the spec from drifting based on the user's last manual
   // tab selection.
   onPopupOpenChanged: {

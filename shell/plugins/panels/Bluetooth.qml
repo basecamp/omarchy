@@ -6,21 +6,16 @@ import Quickshell.Bluetooth
 import qs.Ui
 import qs.Commons
 
-BarWidget {
+Panel {
   id: root
   moduleName: "bluetoothPanel"
-
-
-  PanelController { id: ctrl; ipcTarget: "bluetoothPanel" }
-  readonly property bool popupOpen: ctrl.open
+  ipcTarget: "panels.bluetooth"
 
   // Address -> true while we are waiting for a click-initiated pair to land
   // so we can chain trust + connect at root scope. Doing this in the row's
   // Connections is racy: the discovered Repeater destroys the delegate the
   // moment `paired` flips, before the row's handler reliably fires.
   property var pendingPairAddresses: ({})
-
-  function closePopout() { ctrl.hide() }
 
   readonly property var adapter: Bluetooth.defaultAdapter
   readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
@@ -219,8 +214,8 @@ BarWidget {
     else if (dev.forget) dev.forget()
   }
 
-  onPopupOpenChanged: {
-    if (popupOpen) {
+  onOpenedChanged: {
+    if (opened) {
       if (adapter && adapter.enabled && !adapter.discovering) adapter.discovering = true
       if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else { focusSection = "header"; selectedIndex = 1 }
@@ -303,7 +298,7 @@ BarWidget {
   Connections {
     target: root.adapter || null
     function onEnabledChanged() {
-      if (root.popupOpen && root.adapter && root.adapter.enabled && !root.adapter.discovering)
+      if (root.opened && root.adapter && root.adapter.enabled && !root.adapter.discovering)
         root.adapter.discovering = true
     }
   }
@@ -341,7 +336,7 @@ BarWidget {
     onPressed: function(b) {
       if (b === Qt.RightButton && root.adapter) root.adapter.enabled = !root.adapter.enabled
       else if (b === Qt.MiddleButton) root.bar.run("omarchy-launch-bluetooth")
-      else ctrl.toggle()
+      else root.toggle()
     }
   }
 
@@ -350,7 +345,7 @@ BarWidget {
     anchorItem: button
     owner: ctrl
     bar: root.bar
-    open: ctrl.open
+    open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(320))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
@@ -364,7 +359,7 @@ BarWidget {
         else if (dx !== 0) root.moveCursorH(dx)
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.closePopout()
+      onCloseRequested: root.close()
       onDeleteRequested: if (root.cursorActive) root.deleteSelected()
 
       Column {

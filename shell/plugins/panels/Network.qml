@@ -5,16 +5,14 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 
-BarWidget {
+Panel {
   id: root
   moduleName: "networkPanel"
+  ipcTarget: "panels.network"
 
-
-  PanelController { id: ctrl; ipcTarget: "networkPanel" }
-  readonly property bool popupOpen: ctrl.open
   // Centralized close so callers can't forget to drop the passphrase prompt.
-  function closePopout() {
-    ctrl.hide()
+  function close() {
+    root.controller.hide()
     passwordSsid = ""
   }
 
@@ -96,11 +94,11 @@ BarWidget {
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
   // The panel below is its own layer-shell with Exclusive keyboard focus,
-  // so Hyprland grants focus when the surface is mapped (popupOpen flips
+  // so Hyprland grants focus when the surface is mapped (opened flips
   // to true). That's what makes the SUPER+CTRL+W keybind actually work
   // — OnDemand only grants focus on click/hover.
-  onPopupOpenChanged: {
-    if (popupOpen) {
+  onOpenedChanged: {
+    if (opened) {
       refresh(true)
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       focusSection = wifiNetworks.length > 0 ? "wifi" : "dns"
@@ -115,7 +113,7 @@ BarWidget {
   // The KeyboardPanel's focusTarget covers initial popup-open; this handles
   // the inline-editor case where focus was handed off to a child.
   onPasswordSsidChanged: {
-    if (passwordSsid === "" && popupOpen) {
+    if (passwordSsid === "" && opened) {
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
@@ -129,7 +127,7 @@ BarWidget {
       if (focusSection === "wifi") focusSection = "dns"
     } else if (selectedIndex >= wifiNetworks.length) {
       selectedIndex = wifiNetworks.length - 1
-    } else if (selectedIndex < 0 && popupOpen) {
+    } else if (selectedIndex < 0 && opened) {
       selectedIndex = 0
     }
   }
@@ -385,14 +383,14 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     if (provider === "Custom") {
       var launcher = Util.shellQuote(root.bar.omarchyPath + "/bin/omarchy-launch-floating-terminal-with-presentation")
       root.bar.run(launcher + " " + Util.shellQuote(root.dnsCommand(provider)))
-      root.closePopout()
+      root.close()
       return
     }
 
     root.pendingDnsProvider = provider
     actionProc.command = ["bash", "-lc", root.dnsCommand(provider)]
     actionProc.running = true
-    root.closePopout()
+    root.close()
   }
 
   function isProtected(security) {
@@ -597,7 +595,7 @@ fi
     id: detailsPoll
     interval: 1500
     repeat: true
-    running: root.popupOpen
+    running: root.opened
     onTriggered: if (!detailsProc.running) detailsProc.running = true
   }
 
@@ -631,8 +629,8 @@ fi
     rightExtraMargin: 2
 
     onPressed: function(b) {
-      if (ctrl.open) root.closePopout()
-      else { ctrl.show(); root.refresh() }
+      if (root.opened) root.close()
+      else { root.open(); root.refresh() }
     }
   }
 
@@ -647,7 +645,7 @@ fi
     anchorItem: button
     owner: ctrl
     bar: root.bar
-    open: ctrl.open
+    open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(340))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
@@ -699,7 +697,7 @@ fi
           else root.activateSelected()
         }
       }
-      onCloseRequested: root.closePopout()
+      onCloseRequested: root.close()
       onDeleteRequested: {
         if (root.cursorActive && root.focusSection === "wifi") root.forgetSelected()
       }

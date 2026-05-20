@@ -5,21 +5,16 @@ import Quickshell.Services.UPower
 import qs.Commons
 import qs.Ui
 
-BarWidget {
+Panel {
   id: root
   moduleName: "powerPanel"
-
-
-  PanelController { id: ctrl; ipcTarget: "powerPanel" }
-  readonly property bool popupOpen: ctrl.open
+  ipcTarget: "panels.power"
   property var batteryInfo: ({})
   property var systemInfo: ({})
   property var profiles: []
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
-
-  function closePopout() { ctrl.hide() }
 
   function selectProfileByDelta(delta) {
     if (profiles.length === 0) { profileIndex = 0; return }
@@ -95,7 +90,7 @@ BarWidget {
     profiles = list
     activeProfile = active
     if (profileIndex >= profiles.length) profileIndex = Math.max(0, profiles.length - 1)
-    if (popupOpen && activeProfile !== "") {
+    if (opened && activeProfile !== "") {
       var idx = profiles.indexOf(activeProfile)
       if (idx >= 0) profileIndex = idx
     }
@@ -107,8 +102,8 @@ BarWidget {
     actionProc.running = true
   }
 
-  onPopupOpenChanged: {
-    if (popupOpen) {
+  onOpenedChanged: {
+    if (opened) {
       refresh()
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
@@ -164,7 +159,7 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
     rightExtraMargin: 2
     active: UPower.displayDevice && UPower.displayDevice.percentage <= 0.2 && UPower.onBattery
     tooltipText: ""
-    onPressed: function(b) { ctrl.toggle() }
+    onPressed: function(b) { root.toggle() }
   }
 
   KeyboardPanel {
@@ -172,7 +167,7 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
     anchorItem: button
     owner: ctrl
     bar: root.bar
-    open: ctrl.open
+    open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(340))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
@@ -186,7 +181,7 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
         else if (dy !== 0) root.selectProfileByDelta(dy)
       }
       onActivateRequested: if (root.cursorActive) root.activateSelectedProfile()
-      onCloseRequested: root.closePopout()
+      onCloseRequested: root.close()
 
       Column {
         id: column

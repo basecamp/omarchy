@@ -59,8 +59,8 @@ PanelWindow {
   readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
   readonly property string barPos: bar ? bar.position : "top"
 
-  function closePopout() {
-    if (owner && "closePopout" in owner) owner.closePopout()
+  function close() {
+    if (owner && "close" in owner) owner.close()
     else root.open = false
   }
 
@@ -255,7 +255,7 @@ PanelWindow {
     onExited: hoveringBar = false
     onClicked: function(mouse) {
       if (inBarRegion(mouse.x, mouse.y) && forwardBarClick(mouse.x, mouse.y, mouse.button)) return
-      root.closePopout()
+      root.close()
     }
   }
 

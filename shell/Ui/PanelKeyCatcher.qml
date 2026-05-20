@@ -12,7 +12,7 @@ import QtQuick
 //       anchors.fill: parent
 //       onMoveRequested: function(dx, dy) { root.moveCursor(dx, dy) }
 //       onActivateRequested: root.activateCursor()
-//       onCloseRequested: root.closePopout()
+//       onCloseRequested: root.close()
 //       onDeleteRequested: root.deleteSelected()
 //       onTextKey: function(t) { if (t === "r") root.refresh() }
 //

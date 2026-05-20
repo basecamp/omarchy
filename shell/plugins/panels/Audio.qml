@@ -7,14 +7,10 @@ import Quickshell.Services.Pipewire
 import qs.Ui
 import qs.Commons
 
-BarWidget {
+Panel {
   id: root
   moduleName: "audioPanel"
-
-
-  PanelController { id: ctrl; ipcTarget: "audioPanel" }
-  readonly property bool popupOpen: ctrl.open
-  function closePopout() { ctrl.hide() }
+  ipcTarget: "panels.audio"
 
   readonly property var sink: Pipewire.defaultAudioSink
   readonly property var source: Pipewire.defaultAudioSource
@@ -214,8 +210,8 @@ BarWidget {
     }
   }
 
-  onPopupOpenChanged: {
-    if (popupOpen) {
+  onOpenedChanged: {
+    if (opened) {
       focusSection = "output"
       selectedIndex = -1  // first keyboard cursor reveal starts on the output slider
       cursorActive = false
@@ -546,7 +542,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
 
   Timer {
     interval: 5000
-    running: root.popupOpen
+    running: root.opened
     repeat: true
     triggeredOnStart: true
     onTriggered: if (!sinkAvailabilityProc.running) sinkAvailabilityProc.running = true
@@ -560,7 +556,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
     fontSize: Style.font.body
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggleOutputMute()
-      else ctrl.toggle()
+      else root.toggle()
     }
 
     onWheelMoved: function(delta) {
@@ -574,7 +570,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
     anchorItem: button
     owner: ctrl
     bar: root.bar
-    open: ctrl.open
+    open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(370))
     contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
@@ -588,7 +584,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
         else if (dx !== 0) root.adjustVolume(dx * 0.05)
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.closePopout()
+      onCloseRequested: root.close()
       onTextKey: function(t) {
         // 'm' mutes whatever the cursor is on: focused section's slider
         // for output/input, the focused stream for streams.
