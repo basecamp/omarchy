@@ -286,7 +286,7 @@ Panel {
 
   Process {
     id: stateProc
-    command: ["bash", "-lc", "omarchy-brightness-display 2>/dev/null || true; monitors_json=$(hyprctl monitors all -j); printf '%s\\n' \"$monitors_json\" | jq -r 'def internal: test(\"^(eDP|LVDS|DSI)-\"); ([.[] | select(.name | internal)][0].name // \"\"), ([.[] | select((.name | internal) | not)][0].name // \"\"), ([.[] | select((.name | internal) and .disabled != true)][0].name // \"\"), ([.[] | select((.name | internal) and .mirrorOf != \"none\")][0].mirrorOf // \"\")'; omarchy-hyprland-monitor-focused 2>/dev/null || echo; omarchy-hyprland-monitor-scaling 2>/dev/null || echo; printf '%s\\n' \"$monitors_json\" | jq -c '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true)}]'"]
+    command: ["bash", "-lc", "{ omarchy-brightness-display 2>/dev/null; echo; } | head -n 1; monitors_json=$(hyprctl monitors all -j); printf '%s\\n' \"$monitors_json\" | jq -r 'def internal: test(\"^(eDP|LVDS|DSI)-\"); ([.[] | select(.name | internal)][0].name // \"\"), ([.[] | select((.name | internal) | not)][0].name // \"\"), ([.[] | select((.name | internal) and .disabled != true)][0].name // \"\"), ([.[] | select((.name | internal) and .mirrorOf != \"none\")][0].mirrorOf // \"\")'; omarchy-hyprland-monitor-focused 2>/dev/null || echo; omarchy-hyprland-monitor-scaling 2>/dev/null || echo; printf '%s\\n' \"$monitors_json\" | jq -c '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true)}]'"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -489,28 +489,12 @@ Panel {
               Repeater {
                 model: root.scaleValues
 
-                Button {
+                ScalePill {
                   required property string modelData
                   required property int index
 
-                  width: (panelColumn.width - Style.space(30)) / 6
-                  text: modelData + "x"
-                  foreground: root.bar.foreground
-                  background: "transparent"
-                  fontFamily: root.bar.fontFamily
-                  fontSize: Style.font.bodySmall
-                  horizontalPadding: 0
-                  verticalPadding: Style.spacing.controlPaddingY
-                  active: root.normalizeScale(root.monitorScale) === root.normalizeScale(modelData)
-                  hasCursor: root.cursorActive && root.focusSection === "scale" && root.selectedIndex === index
-                  onClicked: root.setScale(modelData)
-                  onHovered: function(h) {
-                    if (h) {
-                      root.cursorActive = true
-                      root.focusSection = "scale"
-                      root.selectedIndex = index
-                    }
-                  }
+                  scaleValue: modelData
+                  scaleIndex: index
                 }
               }
             }
@@ -544,6 +528,29 @@ Panel {
           }
         }
       }
+    }
+  }
+
+  component ScalePill: Button {
+    id: pill
+    required property string scaleValue
+    required property int scaleIndex
+
+    text: scaleValue + "x"
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: Style.spacing.controlPaddingX
+    verticalPadding: Style.spacing.controlPaddingY
+
+    active: root.normalizeScale(root.monitorScale) === root.normalizeScale(scaleValue)
+    hasCursor: root.cursorActive && root.focusSection === "scale" && root.selectedIndex === scaleIndex
+
+    onClicked: root.setScale(scaleValue)
+    onHovered: function(isHovered) {
+      if (!isHovered) return
+      root.cursorActive = true
+      root.focusSection = "scale"
+      root.selectedIndex = pill.scaleIndex
     }
   }
 
