@@ -59,7 +59,6 @@ Example `shell.json` (bar subtree only shown):
 | `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
 | `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
 | `weather` | Weather icon + popup with forecast | left = popup · right = full notification |
-| `idleInhibitor` | Coffee-cup that toggles `omarchy-toggle-idle` | left = toggle |
 | `microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
 
 ### First-party panels (in `../panels/`)
