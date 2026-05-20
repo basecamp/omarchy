@@ -351,7 +351,7 @@ Panel {
   KeyboardPanel {
     id: panel
     anchorItem: button
-    owner: ctrl
+    owner: root
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher

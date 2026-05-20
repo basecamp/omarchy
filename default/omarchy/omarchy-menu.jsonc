@@ -13,7 +13,7 @@
   //   checked        shell condition; append ✓ when it succeeds
 
   // Root Menu
-  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"keywords":"launch launcher quickshell","action":"omarchy-shell shell summon omarchy.app-launcher '{}'"},
+  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"keywords":"launch launcher quickshell","action":"omarchy-shell shell summon omarchy.launcher '{}'"},
   "learn": {"icon":"󰧑","label":"Learn","keywords":"manual docs help reference"},
   "trigger": {"icon":"󱓞","label":"Trigger","keywords":"actions capture share toggle hardware reminder"},
   "style": {"icon":"","label":"Style","keywords":"theme background font bar quickshell hyprland appearance"},

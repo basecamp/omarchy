@@ -5,8 +5,8 @@
 -- Keep the bar instant: no layer-shell fade/slide animation.
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, no_anim = true, animation = "none" })
 
--- App launcher, image selector, emoji picker, and clipboard overlays should also pop without animation.
-hl.layer_rule({ match = { namespace = "^(omarchy-menu|omarchy-app-launcher|omarchy-image-selector|omarchy-emoji-picker|omarchy-clipboard-picker)$" }, no_anim = true, animation = "none" })
+-- Launcher, image selector, emoji picker, and clipboard overlays should also pop without animation.
+hl.layer_rule({ match = { namespace = "^(omarchy-menu|omarchy-launcher|omarchy-image-selector|omarchy-emoji-picker|omarchy-clipboard-picker)$" }, no_anim = true, animation = "none" })
 
 -- Bar settings floats centered with a sensible default size instead of
 -- tiling — it's a transient dialog, not a workspace surface.

@@ -568,7 +568,7 @@ for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
   KeyboardPanel {
     id: panel
     anchorItem: button
-    owner: ctrl
+    owner: root
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher

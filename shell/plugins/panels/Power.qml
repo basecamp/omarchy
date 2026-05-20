@@ -165,7 +165,7 @@ printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/n
   KeyboardPanel {
     id: panel
     anchorItem: button
-    owner: ctrl
+    owner: root
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher

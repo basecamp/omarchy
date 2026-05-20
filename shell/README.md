@@ -29,7 +29,7 @@ shell/
   plugins/
     bar/                 first-party plugins (see plugins/README.md)
     settings/
-    app-launcher/
+    launcher/
     image-picker/
     menu/
     notifications/

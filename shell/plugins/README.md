@@ -13,7 +13,7 @@ User-installed plugins live alongside these conceptually but on disk under
 |---------------|---------------------------|-----------|---------------------------------------|
 | Bar           | `omarchy.bar`             | `bar`     | `bar/Bar.qml`                         |
 | Bar settings  | `omarchy.settings`        | `panel`   | `settings/SettingsPanel.qml`          |
-| App launcher  | `omarchy.app-launcher`    | `overlay` | `app-launcher/AppLauncher.qml`        |
+| Launcher      | `omarchy.launcher`        | `overlay` | `launcher/Launcher.qml`               |
 | Image picker  | `omarchy.image-picker`    | `overlay` | `image-picker/ImagePicker.qml`        |
 | Emoji picker  | `omarchy.emoji-picker`    | `overlay` | `emoji-picker/EmojiPicker.qml`        |
 | Clipboard mgr | `omarchy.clipboard-picker`| `overlay` | `clipboard-picker/ClipboardPicker.qml`|
@@ -45,9 +45,9 @@ Visual editor for the bar layout. Summoned by
 - dynamic per-widget settings forms that write inline back to the
   corresponding shell.json entry
 
-## App launcher
+## Launcher
 
-Quickshell-powered app launcher. It uses Quickshell's native
+Quickshell-powered launcher. It uses Quickshell's native
 `DesktopEntries` model for discovery/activation and renders inside the
 long-running shell with the legacy launcher card dimensions, colors, row
 spacing, icon sizing, and keyboard behavior. Summoned directly over shell IPC
