@@ -277,7 +277,7 @@ Item {
             verticalAlignment: TextInput.AlignVCenter
             activeFocusOnPress: true
             clip: true
-            selectionColor: Color.alpha(root.accent, 0.45)
+            selectionColor: Util.alpha(root.accent, 0.45)
             selectedTextColor: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.iconLarge

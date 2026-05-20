@@ -94,7 +94,7 @@ Item {
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
       anchors.bottomMargin: Style.space(67)
-      color: Color.alpha(Color.background, 0.97)
+      color: Util.alpha(Color.background, 0.97)
       border.color: Color.popups.border
       border.width: Math.max(1, Style.space(2))
       radius: Style.cornerRadius
@@ -119,7 +119,7 @@ Item {
           width: visible ? Style.space(142) : 0
           height: Math.max(Style.space(6), Style.spacing.sm)
           anchors.verticalCenter: parent.verticalCenter
-          color: Color.alpha(Color.popups.text, 0.45)
+          color: Util.alpha(Color.popups.text, 0.45)
           Rectangle {
             height: parent.height
             width: parent.width * (root.hasProgress ? root.value / root.maxValue : 0)

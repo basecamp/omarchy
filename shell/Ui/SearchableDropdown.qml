@@ -244,7 +244,7 @@ Item {
           Rectangle {
             width: parent.width
             height: 1
-            color: Style.alpha(root.foreground, 0.10)
+            color: Util.alpha(root.foreground, 0.10)
           }
 
           Item {
