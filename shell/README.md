@@ -33,6 +33,9 @@ shell/
     image-picker/
     menu/
     notifications/
+    services/
+      battery/
+      idle/
     osd/
     polkit/
 ```

@@ -13,7 +13,7 @@ Item {
 
   PersistentProperties {
     id: persisted
-    reloadableId: "omarchy-battery-monitor"
+    reloadableId: "omarchy-battery"
     property bool notifiedLowBattery: false
   }
 

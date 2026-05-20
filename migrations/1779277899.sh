@@ -1,4 +1,4 @@
-echo "Rename app launcher shell plugin to launcher"
+echo "Rename shell plugins"
 
 config_files=(
   "$HOME/.config/hypr/bindings/utilities.lua"
@@ -12,7 +12,9 @@ for config_file in "${config_files[@]}"; do
   if [[ -f $config_file ]]; then
     sed -i \
       -e 's/omarchy\.app-launcher/omarchy.launcher/g' \
+      -e 's/omarchy\.battery-monitor/omarchy.battery/g' \
       -e 's/omarchy-app-launcher/omarchy-launcher/g' \
+      -e 's/omarchy-battery-monitor/omarchy-battery/g' \
       -e 's/\[app-launcher\]/[launcher]/g' \
       -e 's/app-launcher\./launcher./g' \
       "$config_file"
