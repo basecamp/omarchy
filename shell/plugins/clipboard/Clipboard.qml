@@ -27,7 +27,7 @@ Item {
   property color selectedText: Color.menu.selectedText
   property color selectedBorder: Color.menu.selectedBorder
   readonly property int cornerRadius: Style.cornerRadius
-  property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
+  property string fontFamily: Style.font.menuFamily
   property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
   property int contentSpacing: Style.spacing.md

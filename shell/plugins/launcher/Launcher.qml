@@ -36,7 +36,7 @@ Item {
   property color selectedBackground: Color.launcher.selectedBackground
   property color selectedText: Color.launcher.selectedText
   property color selectedBorder: Color.launcher.selectedBorder
-  property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
+  property string fontFamily: Style.font.menuFamily
 
   property int cardWidth: 644
   property int cardHeight: 400

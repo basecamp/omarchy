@@ -268,9 +268,19 @@ QtObject {
     return (isFinite(n) && n > 0) ? Math.round(n) : fallback
   }
 
+  // The launcher, menu, polkit, emojis, and clipboard surfaces honor an
+  // OMARCHY_MENU_FONT override for users who want a different family on the
+  // summoned popups than on the bar. Resolved once at startup; an empty env
+  // value falls back to the shared fontconfig alias.
+  readonly property string menuFontFamily: {
+    var override = Quickshell.env("OMARCHY_MENU_FONT")
+    return (override && override.length > 0) ? override : fontFamily
+  }
+
   readonly property QtObject font: QtObject {
     readonly property string family: root.fontFamily
     readonly property string resolvedFamily: root.resolvedFontFamily
+    readonly property string menuFamily: root.menuFontFamily
     readonly property int baseSize: root.fontBaseSize
 
     readonly property int caption:      root.fontToken("caption",       root.fontPx(0.833))   // 10
