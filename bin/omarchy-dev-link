@@ -45,7 +45,7 @@ for required in bin default shell; do
 done
 
 echo "Pointing Omarchy at $target"
-printf 'export OMARCHY_PATH="${OMARCHY_PATH:-%s}"\n' "$target" | sudo tee /etc/omarchy.conf >/dev/null
+printf 'export OMARCHY_PATH="%s"\n' "$target" | sudo tee /etc/omarchy.conf >/dev/null
 
 # Update the current shell so the rest of this script and anything spawned
 # from it see the new path.
