@@ -13,6 +13,7 @@ PopupWindow {
   property int padding: Style.spacing.popupPadding
   property int contentWidth: 280
   property int contentHeight: 200
+  property color backgroundColor: Color.popups.background
   property color borderColor: Color.popups.border
   property bool open: false
   property bool centerOnBar: false
@@ -148,7 +149,7 @@ PopupWindow {
   Rectangle {
     id: card
     anchors.fill: parent
-    color: Color.popups.background
+    color: root.backgroundColor
     border.color: root.borderColor
     border.width: Math.max(1, Style.space(2))
     radius: Style.cornerRadius
