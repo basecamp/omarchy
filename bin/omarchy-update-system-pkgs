@@ -28,4 +28,6 @@ sudo pacman -Syyu --noconfirm \
   --overwrite '/etc/systemd/resolved.conf.d/20-docker-dns.conf' \
   --overwrite '/etc/systemd/system.conf.d/10-faster-shutdown.conf' \
   --overwrite '/etc/systemd/system/user@.service.d/10-faster-shutdown.conf' \
-  --overwrite '/etc/systemd/system/docker.service.d/no-block-boot.conf'
+  --overwrite '/etc/systemd/system/docker.service.d/no-block-boot.conf' \
+  --overwrite '/etc/systemd/system/plocate-updatedb.service.d/ac-only.conf' \
+  --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse'
