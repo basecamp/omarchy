@@ -290,11 +290,6 @@ Item {
   }
 
   // ---------------- widget catalog -----------------------------------------
-  readonly property var builtinWidgetMeta: ({
-    "clock":            { name: "Clock",              description: "Date / time text",                          category: "Time" },
-    "tray":             { name: "System tray",        description: "Status notifier items",                     category: "Status" }
-  })
-
   property int catalogRevision: 0
   onBarWidgetRegistryChanged: {
     catalogRevision++
@@ -323,7 +318,6 @@ Item {
     var canonicalKey = canonicalWidgetId(key)
     if (root.barWidgetRegistry && root.barWidgetRegistry.has(canonicalKey))
       return root.barWidgetRegistry.metadataFor(canonicalKey) || {}
-    if (builtinWidgetMeta[canonicalKey]) return builtinWidgetMeta[canonicalKey]
 
     var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[key] : null
     if (manifest) {
@@ -388,7 +382,6 @@ Item {
           ids[pid] = true
       }
     }
-    for (var key in builtinWidgetMeta) ids[key] = true
     return Object.keys(ids)
   }
 
@@ -411,7 +404,7 @@ Item {
       var manifest = root.pluginRegistry ? root.pluginRegistry.installedPlugins[id] : null
       var manifestIsBarWidget = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar-widget") !== -1
       var isBarWidget = !!(meta && meta.source !== "plugin") || manifestIsBarWidget
-      if (!isBarWidget && !builtinWidgetMeta[id]) continue
+      if (!isBarWidget) continue
 
       var inSection = sectionArray(section)
       var existsHere = false
