@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Copies the named config from ~/.local/share/omarchy/config/X/Y/Z -> ~/.config/X/Y/Z.
+# omarchy:summary=Copies the named config from $OMARCHY_PATH/config/X/Y/Z -> ~/.config/X/Y/Z.
 # omarchy:args=<config-path>
 
 config_file=$1
@@ -10,7 +10,7 @@ if [[ -z $config_file ]]; then
   Usage: $0 [config_file]
 
   Must provide a file path from the .config directory to be refreshed.
-  To copy ~/.local/share/omarchy/config/hypr/hyprland.lua to ~/.config/hypr/hyprland.lua
+  To copy $OMARCHY_PATH/config/hypr/hyprland.lua to ~/.config/hypr/hyprland.lua
 
     $0 hypr/hyprland.lua
 USAGE
