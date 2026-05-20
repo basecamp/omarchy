@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# omarchy:summary=Restore Omarchy to the package install (undo omarchy-dev-link)
+# omarchy:group=dev
+
+set -euo pipefail
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  cat <<USAGE
+Usage: omarchy dev unlink
+
+Removes /etc/omarchy.conf so OMARCHY_PATH falls back to /usr/share/omarchy
+(the package install). Updates Hyprland/systemd session env and restarts
+omarchy-shell so live state matches.
+USAGE
+  exit 0
+fi
+
+if [[ ! -f /etc/omarchy.conf ]]; then
+  echo "Not currently linked. OMARCHY_PATH already resolves to /usr/share/omarchy."
+  exit 0
+fi
+
+sudo rm -f /etc/omarchy.conf
+echo "Removed /etc/omarchy.conf"
+
+# Update the current shell.
+export OMARCHY_PATH=/usr/share/omarchy
+# Drop the prepended checkout bin/ from PATH if present.
+PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vFx "$(dirname "$0")" | paste -sd:)
+export PATH
+
+# Update the live Hyprland session.
+if command -v hyprctl >/dev/null 2>&1 && hyprctl version &>/dev/null; then
+  hyprctl setenv OMARCHY_PATH /usr/share/omarchy >/dev/null
+  hyprctl setenv PATH "$PATH" >/dev/null
+  echo "  Updated Hyprland session env."
+
+  systemctl --user import-environment OMARCHY_PATH PATH 2>/dev/null || true
+  echo "  Updated systemd --user env."
+
+  if pgrep -x quickshell >/dev/null 2>&1; then
+    omarchy-restart-shell
+    echo "  Restarted omarchy-shell."
+  fi
+
+  hyprctl reload >/dev/null
+  echo "  Reloaded Hyprland config."
+fi
+
+echo
+echo "Done. Existing shells still have the old OMARCHY_PATH until restarted."

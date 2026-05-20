@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# omarchy:summary=Show the current Omarchy dev-link state
+# omarchy:group=dev
+
+if [[ -f /etc/omarchy.conf ]]; then
+  # Source in a subshell so we don't mutate the caller's env.
+  configured=$(
+    OMARCHY_PATH=
+    # shellcheck disable=SC1091
+    . /etc/omarchy.conf
+    printf '%s' "${OMARCHY_PATH:-<empty>}"
+  )
+  echo "dev-link: ACTIVE"
+  echo "  /etc/omarchy.conf -> OMARCHY_PATH=$configured"
+else
+  configured="/usr/share/omarchy (default)"
+  echo "dev-link: inactive"
+fi
+
+echo "  current shell:       OMARCHY_PATH=${OMARCHY_PATH:-<unset>}"
+
+if [[ -f /etc/omarchy.conf && "${OMARCHY_PATH:-}" != "$configured" ]]; then
+  echo
+  echo "Note: this shell predates dev-link. Open a new shell to pick up the change,"
+  echo "or 'export OMARCHY_PATH=$configured' to update just this shell."
+fi
+
+if command -v hyprctl >/dev/null 2>&1 && hyprctl version &>/dev/null; then
+  hypr_path=$(hyprctl getoption -j env 2>/dev/null | sed -n 's/.*OMARCHY_PATH=\([^"]*\).*/\1/p' | head -1)
+  if [[ -n "$hypr_path" ]]; then
+    echo "  hyprland session:   OMARCHY_PATH=$hypr_path"
+  fi
+fi
