@@ -8,7 +8,7 @@ import qs.Commons
 Item {
   id: root
 
-  property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
+  property string fontFamily: Style.font.menuFamily
   // Bound to the central [polkit] section in shell.toml via Color.qml.
   property color accent: Color.polkit.accent
   property color background: Color.polkit.background

@@ -32,7 +32,7 @@ Item {
     root.cancel()
   }
 
-  property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
+  property string fontFamily: Style.font.menuFamily
   // JSONC menu definitions. The shell parses both at startup and merges
   // the user file on top of the defaults, so the keybind → IPC → visible
   // path doesn't have to shell out to bash + jq on every open.
