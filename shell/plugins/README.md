@@ -15,7 +15,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Bar settings  | `omarchy.settings`        | `panel`   | `settings/SettingsPanel.qml`          |
 | Launcher      | `omarchy.launcher`        | `overlay` | `launcher/Launcher.qml`               |
 | Image picker  | `omarchy.image-picker`    | `overlay` | `image-picker/ImagePicker.qml`        |
-| Emoji picker  | `omarchy.emoji-picker`    | `overlay` | `emoji-picker/EmojiPicker.qml`        |
+| Emojis  | `omarchy.emojis`    | `overlay` | `emojis/Emojis.qml`        |
 | Clipboard mgr | `omarchy.clipboard`       | `overlay` | `clipboard/Clipboard.qml`             |
 | Omarchy menu  | `omarchy.menu`            | `menu`    | `menu/Menu.qml`                       |
 | Notifications | `omarchy.notifications`   | `service` | `notifications/Service.qml`           |
