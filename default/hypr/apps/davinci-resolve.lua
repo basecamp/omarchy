@@ -1,2 +1,2 @@
--- DaVinci Resolve dialog focus handling.
-o.window(".*[Rr]esolve.*", { float = true, stay_focused = true })
+-- Keep DaVinci Resolve floating without locking focus.
+o.window({ class = "^[Rr]esolve([.]bin)?$" }, { float = true })
