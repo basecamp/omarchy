@@ -127,8 +127,8 @@ border           = "{{ accent }}"
 border-alpha     = 1.0
 countdown        = "{{ accent }}"
 
-[app-launcher]
-# Same six tokens as [menu], applied to the app launcher overlay. Alpha
+[launcher]
+# Same six tokens as [menu], applied to the launcher overlay. Alpha
 # companions go from 0 (invisible) to 1 (opaque). scrim is the full-screen
 # dim layer behind the card; background is the card itself. Defaults
 # mirror [menu] with the card at 0.95 to preserve the legacy translucency.

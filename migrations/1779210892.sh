@@ -1,4 +1,4 @@
-echo "Remove Walker app-launcher services and Elephant providers"
+echo "Remove Walker launcher services and Elephant providers"
 
 pkill elephant 2>/dev/null || true
 systemctl --user disable --now elephant.service 2>/dev/null || true
@@ -10,7 +10,7 @@ sudo rm -f /etc/pacman.d/hooks/walker-restart.hook
 
 for bindings_file in ~/.config/hypr/bindings/utilities.lua ~/.config/hypr/bindings.lua; do
   if [[ -f $bindings_file ]]; then
-    sed -i 's#omarchy-launch-walker#omarchy-shell shell toggle omarchy.app-launcher \\"{}\\"#g' "$bindings_file"
+    sed -i 's#omarchy-launch-walker#omarchy-shell shell toggle omarchy.launcher \\"{}\\"#g' "$bindings_file"
   fi
 done
 

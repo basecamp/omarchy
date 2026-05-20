@@ -116,7 +116,7 @@ The shell exposes these tokens to QML via two singletons in
 - `Color` — palette (`foreground`, `background`, `accent`, `urgent`)
   and per-surface roles (`Color.bar.*`, `Color.popups.*`,
   `Color.tooltip.*`, `Color.notifications.*`, `Color.menu.*`,
-  `Color.appLauncher.*`, `Color.imagePicker.*`, `Color.polkit.*`,
+  `Color.launcher.*`, `Color.imagePicker.*`, `Color.polkit.*`,
   `Color.lock.*`). The clipboard and emoji pickers share `Color.menu.*`.
 - `Style` — structural tokens (`cornerRadius`), shared interactive
   state tokens/helpers, spacing (`Style.spacing.*` / `Style.space(px)`),
@@ -131,7 +131,7 @@ and `selected`. State colors accept palette roles (`foreground`,
 `accent`, `urgent`, `background`) or hex strings; the default template
 ships hex values. Fill/border alphas are applied to that state's color.
 
-Surfaces like `[menu]`, `[app-launcher]`, and `[image-picker]` define
+Surfaces like `[menu]`, `[launcher]`, and `[image-picker]` define
 their own `selected-*` tokens and do **not** inherit from `[controls]`.
 `[controls]` only governs the shared button/dropdown chrome.
 

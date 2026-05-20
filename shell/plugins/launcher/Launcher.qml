@@ -26,16 +26,16 @@ Item {
   property string launchOsdMessage: ""
   property var hiddenEntryIds: ({})
 
-  // Bound to the central [app-launcher] section in shell.toml via Color.qml.
+  // Bound to the central [launcher] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
-  property color background: Color.appLauncher.background
-  property color foreground: Color.appLauncher.text
-  property color border: Color.appLauncher.border
-  property color scrim: Color.appLauncher.scrim
-  property color selectedBackground: Color.appLauncher.selectedBackground
-  property color selectedText: Color.appLauncher.selectedText
-  property color selectedBorder: Color.appLauncher.selectedBorder
+  property color background: Color.launcher.background
+  property color foreground: Color.launcher.text
+  property color border: Color.launcher.border
+  property color scrim: Color.launcher.scrim
+  property color selectedBackground: Color.launcher.selectedBackground
+  property color selectedText: Color.launcher.selectedText
+  property color selectedBorder: Color.launcher.selectedBorder
   property string fontFamily: Quickshell.env("OMARCHY_MENU_FONT") || "monospace"
 
   property int cardWidth: 644
@@ -75,7 +75,7 @@ Item {
   function dismiss() {
     root.opened = false
     if (root.shell && typeof root.shell.hide === "function")
-      root.shell.hide((root.manifest && root.manifest.id) || "omarchy.app-launcher")
+      root.shell.hide((root.manifest && root.manifest.id) || "omarchy.launcher")
   }
 
   function iconSource(icon) {
@@ -127,7 +127,7 @@ Item {
 
   function hiddenEntryScanCommand() {
     var desktop = [Quickshell.env("XDG_CURRENT_DESKTOP"), Quickshell.env("XDG_SESSION_DESKTOP"), Quickshell.env("DESKTOP_SESSION")].filter(function(v) { return String(v || "").length > 0 }).join(":")
-    var script = root.omarchyPath + "/shell/scripts/app-launcher-hidden-entries.sh"
+    var script = root.omarchyPath + "/shell/scripts/launcher-hidden-entries.sh"
     return Util.shellQuote(script) + " " + Util.shellQuote(desktop)
   }
 
@@ -318,7 +318,7 @@ Item {
     visible: root.opened
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "omarchy-app-launcher"
+    WlrLayershell.namespace: "omarchy-launcher"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
