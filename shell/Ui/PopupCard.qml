@@ -55,8 +55,8 @@ PopupWindow {
     return Math.round(Math.min(desired, maxHeight))
   }
 
-  function closePopout() {
-    if (owner && "closePopout" in owner) owner.closePopout()
+  function close() {
+    if (owner && "close" in owner) owner.close()
     else root.open = false
   }
 
@@ -80,7 +80,7 @@ PopupWindow {
   HyprlandFocusGrab {
     active: root.open && root.triggerMode === "click"
     windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
-    onCleared: root.closePopout()
+    onCleared: root.close()
   }
 
   anchor {

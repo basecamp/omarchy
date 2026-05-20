@@ -7,7 +7,8 @@ the shell for its whole session.
 
 - `manifest.json` declares the plugin (`id: omarchy.bar`, `kind: bar`) and points at `Bar.qml` as the entry point.
 - `Bar.qml` is Omarchy-owned bar engine code, loaded by the omarchy-shell host. Users should not edit it directly.
-- `widgets/` holds first-party widgets — modular, interactive components shipped with Omarchy.
+- `widgets/` holds first-party bar widgets.
+- `../panels/` holds first-party panels that the bar can toggle by id.
 - The bar receives its config from the host shell as a `barConfig` property; the host loads it from `~/.config/omarchy/shell.json` (or `shell-defaults.json` when the user has no file).
 - `omarchy-style-bar-position` updates only the user shell.json file.
 
@@ -49,15 +50,11 @@ Example `shell.json` (bar subtree only shown):
 
 ## Module catalogue
 
-### First-party interactive widgets (in `widgets/`)
+### First-party interactive widgets
 
 | Name | What it does | Interactions |
 |---|---|---|
 | `media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
-| `audioPanel` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = popup · scroll = volume |
-| `networkPanel` | Wi-Fi/Ethernet icon + popup with Wi-Fi scan, signal, connect, DNS provider selection | left = popup · right = nmtui |
-| `powerPanel` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup |
-| `bluetoothPanel` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
 | `calendar` | Clock + popup with month-grid calendar | left = popup · right = tz selector |
 | `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
 | `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
@@ -65,11 +62,21 @@ Example `shell.json` (bar subtree only shown):
 | `idleInhibitor` | Coffee-cup that toggles `omarchy-toggle-idle` | left = toggle |
 | `microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
 
+### First-party panels (in `../panels/`)
+
+| Name | What it does | Interactions |
+|---|---|---|
+| `panels.audio` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = popup · scroll = volume |
+| `panels.network` | Wi-Fi/Ethernet icon + popup with Wi-Fi scan, signal, connect, DNS provider selection | left = popup · right = nmtui |
+| `panels.power` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup |
+| `panels.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
+| `panels.monitor` | Brightness and laptop display controls | left = popup |
+
 ### Built-in base modules (in `Bar.qml`)
 
 `omarchy`, `workspaces`, `clock`, `update`, `indicators`, `tray`.
 
-The `indicators` module loads individual bar indicators from `indicators/`, ordered by its `items` array in `shell.json`. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `widgets/` above.
+The `indicators` module loads individual bar indicators from `indicators/`, ordered by its `items` array in `shell.json`. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `../panels/` above.
 
 ## Orientation
 
@@ -162,9 +169,11 @@ Widgets receive `bar` (the shell root), `moduleName` (string), and `settings` (o
 - `bar.showTooltip(target, text)` / `bar.hideTooltip(target)` — shared tooltip popup
 - `bar.requestPopout(owner)` / `bar.releasePopout(owner)` — one-popup-at-a-time coordinator
 
-First-party widgets live in `widgets/<name>.qml` and are picked up by the
-shell's `BarWidgetRegistry` at startup; reference one by `id` in any
-layout list.
+First-party bar widgets live in `widgets/<name>.qml`; first-party panels
+live in `../panels/<name>.qml` and expose IPC targets such as
+`panels.audio`. The compatibility bar layout ids remain `audioPanel`,
+`networkPanel`, and so on, and are picked up by the shell's
+`BarWidgetRegistry` at startup; reference one by `id` in any layout list.
 
 Third-party widgets ship as separate plugins under
 `~/.config/omarchy/plugins/<plugin-id>/` with their own `manifest.json`

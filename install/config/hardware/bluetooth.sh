@@ -7,7 +7,7 @@ sudo sed -i 's/^#\?AutoEnable=.*/AutoEnable=false/' /etc/bluetooth/main.conf
 mkdir -p ~/.config/wireplumber/wireplumber.conf.d/
 cp "$OMARCHY_PATH/default/wireplumber/wireplumber.conf.d/bluetooth-a2dp-autoconnect.conf" ~/.config/wireplumber/wireplumber.conf.d/
 
-# Quickshell.Bluetooth has no Agent API, so the omarchy-shell bluetoothPanel
+# Quickshell.Bluetooth has no Agent API, so the omarchy-shell panels.bluetooth
 # can't answer the auth prompts bluez issues during pair(). bt-agent registers
 # a NoInputNoOutput agent on the system bus so pair() actually completes.
 mkdir -p ~/.config/systemd/user/

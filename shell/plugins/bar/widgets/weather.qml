@@ -10,7 +10,7 @@ BarWidget {
 
 
   property bool popupOpen: false
-  function closePopout() { popupOpen = false }
+  function close() { popupOpen = false }
 
   function showPopup() {
     root.popupOpen = !root.popupOpen

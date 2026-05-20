@@ -19,7 +19,7 @@ BarWidget {
 
   property bool popupOpen: false
 
-  function closePopout() { popupOpen = false }
+  function close() { popupOpen = false }
 
   readonly property int historyLimit: 30
 

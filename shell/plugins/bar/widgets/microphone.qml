@@ -42,7 +42,7 @@ BarWidget {
     active: root.inUse
     tooltipText: root.muted ? "Microphone muted" : (root.inUse ? "Microphone in use" : "Microphone live")
     onPressed: function(b) {
-      if (b === Qt.MiddleButton) root.bar.run("omarchy-shell audioPanel toggle")
+      if (b === Qt.MiddleButton) root.bar.run("omarchy-shell panels.audio toggle")
       else root.toggleMute()
     }
     onWheelMoved: function(delta) {

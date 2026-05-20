@@ -33,7 +33,7 @@ BarWidget {
 
   property bool popupOpen: false
 
-  function closePopout() { popupOpen = false }
+  function close() { popupOpen = false }
   property real maxLabelWidth: 180
 
   visible: hasMedia

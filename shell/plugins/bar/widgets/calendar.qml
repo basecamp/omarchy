@@ -13,7 +13,7 @@ BarWidget {
   property date viewMonth: new Date()
   property bool popupOpen: false
 
-  function closePopout() { popupOpen = false }
+  function close() { popupOpen = false }
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
