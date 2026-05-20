@@ -1,8 +1,10 @@
 # Changes require a restart to take effect.
 
-# Ensure Omarchy bins are in the path
-export OMARCHY_PATH=$HOME/.local/share/omarchy
-export PATH=$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin
+# Ensure Omarchy bins are in the path. /etc/profile.d/omarchy.sh defaults
+# OMARCHY_PATH to /usr/share/omarchy; honor whatever's already set (so
+# install.sh's script-mode override wins).
+export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+export PATH="$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin"
 
 # Set default terminal and editor
 source ~/.config/uwsm/default
