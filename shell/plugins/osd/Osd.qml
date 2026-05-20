@@ -10,10 +10,13 @@ Item {
   property bool opened: false
   property string icon: ""
   property string message: ""
+  property string iconKey: ""
   property int value: 0
   property int maxValue: 100
   property bool hasProgress: true
   property int duration: 1200
+  readonly property int cardWidth: Style.space(269)
+  readonly property int messageWidth: Style.space(190)
 
   function iconFor(name, percent) {
     var n = String(name || "").toLowerCase()
@@ -28,6 +31,10 @@ Item {
     if (n === "touchpad") return "󰟸"
     if (n === "touch" || n === "touchscreen") return "󰜉"
     if (n === "media" || n === "player") return "󰝚"
+    if (n === "media-play" || n === "player-play") return "󰐊"
+    if (n === "media-pause" || n === "player-pause") return "󰏤"
+    if (n === "media-next" || n === "player-next") return "󰒭"
+    if (n === "media-previous" || n === "player-previous") return "󰒮"
     if (n.length > 0) return name
     if (percent <= 0) return ""
     if (percent <= 33) return ""
@@ -36,6 +43,7 @@ Item {
   }
 
   function show(iconName, rawMessage, rawValue, rawMax, rawProgressText, rawDuration) {
+    iconKey = String(iconName || "").toLowerCase()
     maxValue = Math.max(1, parseInt(rawMax || "100", 10))
     var parsed = parseInt(rawValue || "0", 10)
     hasProgress = rawValue !== "" && !isNaN(parsed) && rawMessage === ""
@@ -87,7 +95,7 @@ Item {
 
     Rectangle {
       id: card
-      width: Style.space(269)
+      width: root.cardWidth
       height: Math.max(Style.space(68), Style.font.displayLarge + Style.spacing.panelGap)
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
@@ -125,7 +133,7 @@ Item {
           }
         }
         Text {
-          width: root.hasProgress ? Style.space(41) : Style.space(190)
+          width: root.hasProgress ? Style.space(41) : root.messageWidth
           anchors.verticalCenter: parent.verticalCenter
           text: root.message
           font.family: Style.font.family

@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Services.Mpris
 import qs.Ui
 import qs.Commons
 
@@ -8,18 +7,8 @@ BarWidget {
   id: root
   moduleName: "Media"
 
-
-  readonly property var players: Mpris.players ? Mpris.players.values : []
-  readonly property var activePlayer: {
-    var playing = null
-    for (var i = 0; i < players.length; i++) {
-      var p = players[i]
-      if (!p) continue
-      if (p.isPlaying) return p
-      if (!playing && p.trackTitle) playing = p
-    }
-    return playing
-  }
+  readonly property var mediaService: bar && bar.shell ? bar.shell.firstPartyServiceFor("omarchy.media") : null
+  readonly property var activePlayer: mediaService ? mediaService.activePlayer : null
 
   readonly property bool hasMedia: activePlayer !== null && (activePlayer.trackTitle || activePlayer.trackArtist)
   readonly property string playIcon: activePlayer && activePlayer.isPlaying ? "󰏤" : "󰐊"
@@ -90,17 +79,17 @@ BarWidget {
     onClicked: function(mouse) {
       if (!root.activePlayer) return
       if (mouse.button === Qt.MiddleButton) {
-        if (root.activePlayer.canGoNext) root.activePlayer.next()
+        if (root.mediaService) root.mediaService.runAction("next", false)
       } else if (mouse.button === Qt.RightButton) {
         root.popupOpen = !root.popupOpen
       } else {
-        if (root.activePlayer.canTogglePlaying) root.activePlayer.togglePlaying()
+        if (root.mediaService) root.mediaService.runAction("playPause", false)
       }
     }
     onWheel: function(wheel) {
       if (!root.activePlayer) return
-      if (wheel.angleDelta.y > 0 && root.activePlayer.canGoPrevious) root.activePlayer.previous()
-      else if (wheel.angleDelta.y < 0 && root.activePlayer.canGoNext) root.activePlayer.next()
+      if (wheel.angleDelta.y > 0 && root.mediaService) root.mediaService.runAction("previous", false)
+      else if (wheel.angleDelta.y < 0 && root.mediaService) root.mediaService.runAction("next", false)
     }
     onEntered: if (root.bar) root.bar.showTooltip(root, root.hasMedia ? (root.title + (root.artist ? " — " + root.artist : "")) : "")
     onExited: if (root.bar) root.bar.hideTooltip(root)
@@ -198,7 +187,7 @@ BarWidget {
           verticalPadding: Style.spacing.controlPaddingY
           enabled: root.activePlayer && root.activePlayer.canGoPrevious
           opacity: enabled ? 1.0 : 0.4
-          onClicked: if (root.activePlayer) root.activePlayer.previous()
+          onClicked: if (root.mediaService) root.mediaService.runAction("previous", false)
         }
 
         Button {
@@ -209,7 +198,7 @@ BarWidget {
           iconSize: Style.font.iconLarge
           enabled: root.activePlayer && root.activePlayer.canTogglePlaying
           opacity: enabled ? 1.0 : 0.4
-          onClicked: if (root.activePlayer) root.activePlayer.togglePlaying()
+          onClicked: if (root.mediaService) root.mediaService.runAction("playPause", false)
         }
 
         Button {
@@ -219,7 +208,7 @@ BarWidget {
           verticalPadding: Style.spacing.controlPaddingY
           enabled: root.activePlayer && root.activePlayer.canGoNext
           opacity: enabled ? 1.0 : 0.4
-          onClicked: if (root.activePlayer) root.activePlayer.next()
+          onClicked: if (root.mediaService) root.mediaService.runAction("next", false)
         }
       }
     }

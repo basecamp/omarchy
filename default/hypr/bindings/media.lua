@@ -21,9 +21,9 @@ o.bind("ALT + XF86MonBrightnessUp", "Brightness up precise", "omarchy-brightness
 o.bind("ALT + XF86MonBrightnessDown", "Brightness down precise", "omarchy-brightness-display 1%-", { locked = true, repeating = true })
 
 -- Media controls.
-o.bind("XF86AudioNext", "Next track", "omarchy-audio-player next", { locked = true })
-o.bind("XF86AudioPause", "Pause", "omarchy-audio-player play-pause", { locked = true })
-o.bind("XF86AudioPlay", "Play", "omarchy-audio-player play-pause", { locked = true })
-o.bind("XF86AudioPrev", "Previous track", "omarchy-audio-player previous", { locked = true })
+o.bind("XF86AudioNext", "Next track", "omarchy-shell media next", { locked = true })
+o.bind("XF86AudioPause", "Pause", "omarchy-shell media playPause", { locked = true })
+o.bind("XF86AudioPlay", "Play", "omarchy-shell media playPause", { locked = true })
+o.bind("XF86AudioPrev", "Previous track", "omarchy-shell media previous", { locked = true })
 
 o.bind("SUPER + XF86AudioMute", "Switch audio output", "omarchy-audio-output-switch", { locked = true })
