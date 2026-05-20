@@ -1,14 +1,10 @@
-run_logged $OMARCHY_INSTALL/config/config.sh
 run_logged $OMARCHY_INSTALL/config/theme.sh
 run_logged $OMARCHY_INSTALL/config/branding.sh
 run_logged $OMARCHY_INSTALL/config/git.sh
 run_logged $OMARCHY_INSTALL/config/gpg.sh
-run_logged $OMARCHY_INSTALL/config/timezones.sh
-run_logged $OMARCHY_INSTALL/config/increase-sudo-tries.sh
 run_logged $OMARCHY_INSTALL/config/increase-lockout-limit.sh
 run_logged $OMARCHY_INSTALL/config/lockscreen-pam.sh
 run_logged $OMARCHY_INSTALL/config/sleep-lock.sh
-run_logged $OMARCHY_INSTALL/config/ssh-flakiness.sh
 run_logged $OMARCHY_INSTALL/config/increase-file-watchers.sh
 run_logged $OMARCHY_INSTALL/config/increase-fd-limit.sh
 run_logged $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
@@ -23,7 +19,6 @@ run_logged $OMARCHY_INSTALL/config/nautilus-python.sh
 run_logged $OMARCHY_INSTALL/config/localdb.sh
 run_logged $OMARCHY_INSTALL/config/fast-shutdown.sh
 run_logged $OMARCHY_INSTALL/config/unmount-fuse.sh
-run_logged $OMARCHY_INSTALL/config/sudoless-asdcontrol.sh
 run_logged $OMARCHY_INSTALL/config/input-group.sh
 run_logged $OMARCHY_INSTALL/config/omarchy-ai-skill.sh
 run_logged $OMARCHY_INSTALL/config/pi.sh
@@ -38,8 +33,6 @@ run_logged $OMARCHY_INSTALL/config/hardware/set-wireless-regdom.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-fkeys.sh
 run_logged $OMARCHY_INSTALL/config/hardware/bluetooth.sh
 run_logged $OMARCHY_INSTALL/config/hardware/printer.sh
-run_logged $OMARCHY_INSTALL/config/hardware/usb-autosuspend.sh
-run_logged $OMARCHY_INSTALL/config/hardware/ignore-power-button.sh
 run_logged $OMARCHY_INSTALL/config/hardware/nvidia.sh
 run_logged $OMARCHY_INSTALL/config/hardware/vulkan.sh
 
