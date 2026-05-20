@@ -9,9 +9,10 @@ BarWidget {
 
   property bool alt: false
 
-  // Qt.formatDateTime doesn't recognize `ww` (ISO week number). Pre-substitute
-  // it as a Qt-quoted literal before formatting so users can write the natural
-  // `'W'ww yyyy` and get `W21 2026` rather than `Www 2026`.
+  readonly property string activeFormat: alt
+    ? setting("formatAlt", "dd MMMM 'W'ww yyyy")
+    : (bar && bar.vertical ? setting("verticalFormat", "HH\n—\nmm") : setting("format", "dddd HH:mm"))
+
   function isoWeek(date) {
     var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
     var day = d.getUTCDay() || 7
@@ -20,20 +21,13 @@ BarWidget {
     return Math.ceil(((d - yearStart) / 86400000 + 1) / 7)
   }
 
-  function format(date, fmt) {
-    var f = String(fmt || "")
-    if (f.indexOf("ww") !== -1) {
-      var w = isoWeek(date)
-      var ww = w < 10 ? "0" + w : String(w)
-      f = f.replace(/ww/g, "'" + ww + "'")
-    }
-    return Qt.formatDateTime(date, f)
+  function isoWeekLiteral(date) {
+    var week = isoWeek(date)
+    return (week < 10 ? "0" : "") + week
   }
 
-  function label() {
-    if (alt) return format(clock.date, setting("formatAlt", "dd MMMM 'W'ww yyyy"))
-    if (bar && bar.vertical) return format(clock.date, setting("verticalFormat", "HH\n—\nmm"))
-    return format(clock.date, setting("format", "dddd HH:mm"))
+  function formatted(date) {
+    return Qt.formatDateTime(date, activeFormat.replace(/ww/g, isoWeekLiteral(date)))
   }
 
   implicitWidth: button.implicitWidth
@@ -48,7 +42,7 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.label()
+    text: root.formatted(clock.date)
     horizontalMargin: 8.75
     verticalPadding: 8.75
     onPressed: function(button) {
