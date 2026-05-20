@@ -5,6 +5,12 @@
 
 set -euo pipefail
 
+if [[ $EUID -eq 0 ]]; then
+  echo "Error: run omarchy-dev-unlink as your user, not under sudo. The script" >&2
+  echo "       will prompt for sudo when it needs to remove /etc/omarchy.conf." >&2
+  exit 1
+fi
+
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   cat <<USAGE
 Usage: omarchy dev unlink
