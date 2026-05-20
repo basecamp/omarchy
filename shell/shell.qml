@@ -41,10 +41,10 @@ ShellRoot {
     bar: {
       position: "top",
       transparent: false,
-      centerAnchor: "calendar",
+      centerAnchor: "daytime",
       layout: {
         left: [{ id: "omarchy" }, { id: "workspaces" }],
-        center: [{ id: "calendar", format: "dddd HH:mm" }],
+        center: [{ id: "daytime", format: "dddd HH:mm" }],
         right: [{ id: "audioPanel" }]
       }
     },
@@ -488,7 +488,7 @@ ShellRoot {
   // Mirror plugin registry state into BarWidgetRegistry whenever it changes.
   // Each enabled plugin with kind "bar-widget" gets a Component created from
   // its manifest entry point and registered under its plain manifest id.
-  // First-party widget ids (calendar, weather, etc.) are short and don't
+  // First-party widget ids (daytime, weather, etc.) are short and don't
   // collide with namespaced plugin ids, so we don't need a separate
   // "plugin:" namespace anymore.
   Connections {

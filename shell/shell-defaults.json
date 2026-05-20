@@ -7,7 +7,7 @@
   "bar": {
     "position": "top",
     "transparent": false,
-    "centerAnchor": "calendar",
+    "centerAnchor": "daytime",
     "layout": {
       "left": [
         {
@@ -19,9 +19,9 @@
       ],
       "center": [
         {
-          "id": "calendar",
+          "id": "daytime",
           "format": "dddd HH:mm",
-          "formatAlt": "dd MMMM 'W'ww yyyy",
+          "formatAlt": "dd MMMM yyyy",
           "verticalFormat": "HH\n\u2014\nmm"
         },
         {

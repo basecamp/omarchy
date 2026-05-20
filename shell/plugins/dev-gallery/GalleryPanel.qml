@@ -105,7 +105,7 @@ Item {
   property string choiceDemoValue: "top"
   property bool toggleDemoOn: true
   property bool toggleSquareOn: false
-  property string dropdownDemoValue: "calendar"
+  property string dropdownDemoValue: "daytime"
   property string searchableDemoValue: ""
   property int numberDemoValue: 15
 
@@ -1523,7 +1523,7 @@ Item {
                   width: Style.spacing.dropdownWidth
                   label: "Center anchor"
                   fontFamily: root.fontFamily
-                  options: ["calendar", "weather", "clock", "powerPanel"]
+                  options: ["daytime", "weather", "clock", "powerPanel"]
                   value: root.dropdownDemoValue
                   hasCursor: root.focusSection === "dropdown" && root.selectedIndex === 0
                   onHovered: function(h) {
@@ -1593,7 +1593,7 @@ Item {
                     { value: "network", label: "Network", description: "Wi-Fi + ethernet status" },
                     { value: "bluetooth", label: "Bluetooth", description: "Paired and nearby devices" },
                     { value: "monitor", label: "Monitor", description: "Brightness + scale" },
-                    { value: "calendar", label: "Calendar", description: "Month grid flyout" },
+                    { value: "daytime", label: "Daytime", description: "Day/time label" },
                     { value: "media", label: "Media", description: "Now-playing + transport" },
                     { value: "workspaces", label: "Workspaces", description: "Hyprland workspace pills" },
                     { value: "system-tray", label: "System tray", description: "StatusNotifierItem icons" },

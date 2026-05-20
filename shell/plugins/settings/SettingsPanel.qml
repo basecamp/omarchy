@@ -128,11 +128,11 @@ Item {
     bar: {
       position: "top",
       transparent: false,
-      centerAnchor: "calendar",
+      centerAnchor: "daytime",
       layout: {
         left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [
-          { id: "calendar", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
+          { id: "daytime", format: "dddd HH:mm", formatAlt: "dd MMMM yyyy", verticalFormat: "HH\n\u2014\nmm" },
           { id: "weather" }, { id: "indicators", items: [ "dnd", "nightlight", "stayAwake", "screenrecording", "dictation" ] }, { id: "update" }
         ],
         right: [
@@ -145,7 +145,7 @@ Item {
   })
 
   property var defaultConfig: builtinShellConfig
-  property var draft: ({ version: 1, bar: { position: "top", transparent: false, centerAnchor: "calendar", layout: { left: [], center: [], right: [] } }, plugins: [] })
+  property var draft: ({ version: 1, bar: { position: "top", transparent: false, centerAnchor: "daytime", layout: { left: [], center: [], right: [] } }, plugins: [] })
   property int draftRevision: 0
   property bool suppressReload: false
 
@@ -1135,7 +1135,7 @@ Item {
     if (meta && meta.settingsForm) {
       switch (meta.settingsForm) {
       case "spacerSettings": return spacerSettingsComponent
-      case "calendarSettings": return calendarSettingsComponent
+      case "daytimeSettings": return daytimeSettingsComponent
       case "weatherSettings": return weatherSettingsComponent
       }
     }
@@ -1177,7 +1177,7 @@ Item {
   }
 
   Component {
-    id: calendarSettingsComponent
+    id: daytimeSettingsComponent
 
     Column {
       id: calForm
@@ -1187,7 +1187,7 @@ Item {
       spacing: Style.spacing.rowGap
       width: parent ? parent.width : 0
 
-      component CalendarField: TextField {
+      component DaytimeField: TextField {
         property string fieldKey: ""
         width: parent.width
         foreground: root.foreground
@@ -1203,20 +1203,20 @@ Item {
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
-      CalendarField {
+      DaytimeField {
         fieldKey: "format"
         text: calForm.entry.format || "dddd HH:mm"
       }
 
       Text {
-        text: "Alternate format (click to swap)"
+        text: "Tooltip format"
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
-      CalendarField {
+      DaytimeField {
         fieldKey: "formatAlt"
-        text: calForm.entry.formatAlt || "dd MMMM 'W'ww yyyy"
+        text: calForm.entry.formatAlt || "dd MMMM yyyy"
       }
 
       Text {
@@ -1225,7 +1225,7 @@ Item {
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
       }
-      CalendarField {
+      DaytimeField {
         fieldKey: "verticalFormat"
         text: calForm.entry.verticalFormat || "HH\n—\nmm"
       }
