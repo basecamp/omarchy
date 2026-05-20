@@ -133,7 +133,7 @@ Item {
         left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [
           { id: "calendar", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
-          { id: "weather" }, { id: "indicators", items: [ "dnd", "stayAwake", "screenrecording", "dictation" ] }, { id: "update" }
+          { id: "weather" }, { id: "indicators", items: [ "dnd", "nightlight", "stayAwake", "screenrecording", "dictation" ] }, { id: "update" }
         ],
         right: [
           { id: "tray" }, { id: "bluetoothPanel" }, { id: "networkPanel" },
