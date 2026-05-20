@@ -735,7 +735,7 @@ Item {
     }
   }
 
-  component CustomCommandModule: ModuleButton {
+  component CustomCommandModule: WidgetButton {
     id: customRoot
 
     required property var entry
@@ -759,6 +759,7 @@ Item {
       outputActive = klass === "active" || (Array.isArray(klass) && klass.indexOf("active") !== -1)
     }
 
+    bar: root
     text: outputText || String(setting("text", ""))
     tooltipText: outputTooltip || String(setting("tooltip", ""))
     active: outputActive
@@ -796,65 +797,4 @@ Item {
       onTriggered: root.runProcess(customProc)
     }
   }
-
-  component ModuleButton: Item {
-    id: buttonRoot
-
-    property string text: ""
-    property bool active: false
-    property bool keepSpace: false
-    property string fontFamily: root.fontFamily
-    property real fontSize: Style.font.body
-    property real horizontalMargin: 7.5
-    property real rightExtraMargin: 0
-    property real verticalPadding: 6
-    property real textRotation: 0
-    property real fixedWidth: -1
-    property real fixedHeight: -1
-    property string tooltipText: ""
-    readonly property bool tooltipHovered: visible && opacity > 0 && mouseArea.containsMouse
-
-    signal pressed(int button)
-    signal wheelMoved(int delta)
-
-    function triggerPress(button) {
-      root.hideTooltip(buttonRoot)
-      buttonRoot.pressed(button)
-    }
-
-    Component.onCompleted: root.registerClickTarget(buttonRoot)
-    Component.onDestruction: root.unregisterClickTarget(buttonRoot)
-
-    visible: text !== "" || keepSpace
-    opacity: text === "" ? 0 : 1
-    implicitWidth: fixedWidth > 0 ? fixedWidth : (root.vertical ? root.barSize : Math.max(12, label.implicitWidth + horizontalMargin * 2 + rightExtraMargin))
-    implicitHeight: fixedHeight > 0 ? fixedHeight : (root.vertical ? Math.max(12, label.implicitHeight + verticalPadding * 2) : root.barSize)
-
-    Text {
-      id: label
-      anchors.centerIn: parent
-      anchors.horizontalCenterOffset: root.vertical ? 0 : -buttonRoot.rightExtraMargin / 2
-      text: buttonRoot.text
-      color: buttonRoot.active ? root.urgent : root.foreground
-      font.family: buttonRoot.fontFamily
-      font.pixelSize: buttonRoot.fontSize
-      renderType: Text.NativeRendering
-      rotation: buttonRoot.textRotation
-      horizontalAlignment: Text.AlignHCenter
-      verticalAlignment: Text.AlignVCenter
-    }
-
-    MouseArea {
-      id: mouseArea
-      anchors.fill: parent
-      acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onEntered: root.showTooltip(buttonRoot, buttonRoot.tooltipText)
-      onExited: root.hideTooltip(buttonRoot)
-      onClicked: function(mouse) { buttonRoot.triggerPress(mouse.button) }
-      onWheel: function(wheel) { buttonRoot.wheelMoved(wheel.angleDelta.y) }
-    }
-  }
-
 }
