@@ -132,7 +132,7 @@ Item {
       layout: {
         left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [
-          { id: "clock", format: "dddd HH:mm", formatAlt: "dd MMMM yyyy", verticalFormat: "HH\n\u2014\nmm" },
+          { id: "clock", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
           { id: "weather" }, { id: "indicators", items: [ "dnd", "nightlight", "stayAwake", "screenrecording", "dictation" ] }, { id: "systemUpdate" }
         ],
         right: [
@@ -1205,7 +1205,7 @@ Item {
       }
       ClockField {
         fieldKey: "formatAlt"
-        text: clockForm.entry.formatAlt || "dd MMMM yyyy"
+        text: clockForm.entry.formatAlt || "dd MMMM 'W'ww yyyy"
       }
 
       Text {
