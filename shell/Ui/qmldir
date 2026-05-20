@@ -1,5 +1,6 @@
 module qs.Ui
 
+BarIndicator 1.0 BarIndicator.qml
 BarWidget 1.0 BarWidget.qml
 Button 1.0 Button.qml
 ButtonGroup 1.0 ButtonGroup.qml

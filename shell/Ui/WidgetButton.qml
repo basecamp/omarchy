@@ -18,6 +18,11 @@ Item {
   property real fixedHeight: -1
   property real textRotation: 0
   property bool keepSpace: false
+  property bool dimmed: false
+  property bool concealed: false
+  property bool interactive: true
+  property bool useActiveColor: true
+  property bool maintainIndicatorReveal: false
   property string tooltipText: ""
   property var registeredBar: null
 
@@ -46,7 +51,7 @@ Item {
   readonly property real scaledVerticalPadding: Style.spaceReal(verticalPadding)
 
   visible: text !== "" || keepSpace
-  opacity: text === "" ? 0 : 1
+  opacity: text === "" || concealed ? 0 : (dimmed ? 0.45 : 1)
   implicitWidth: fixedWidth > 0 ? fixedWidth : (vertical ? barSize : Math.max(12, label.implicitWidth + scaledHorizontalMargin * 2 + scaledRightExtraMargin))
   implicitHeight: fixedHeight > 0 ? fixedHeight : (vertical ? Math.max(12, label.implicitHeight + scaledVerticalPadding * 2) : barSize)
 
@@ -59,7 +64,7 @@ Item {
     anchors.centerIn: parent
     anchors.horizontalCenterOffset: root.vertical ? 0 : -root.scaledRightExtraMargin / 2
     text: root.text
-    color: root.active ? root.activeColor : root.foreground
+    color: root.active && root.useActiveColor ? root.activeColor : root.foreground
     font.family: root.fontFamily
     font.pixelSize: root.fontSize
     renderType: Text.NativeRendering
@@ -76,10 +81,23 @@ Item {
     id: mouseArea
     anchors.fill: parent
     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+    enabled: root.interactive
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
-    onEntered: if (root.bar) root.bar.showTooltip(root, root.tooltipText)
-    onExited: if (root.bar) root.bar.hideTooltip(root)
+    onEntered: {
+      if (root.bar) {
+        root.bar.showTooltip(root, root.tooltipText)
+        if (root.maintainIndicatorReveal && root.bar.setIndicatorItemHovered)
+          root.bar.setIndicatorItemHovered(true)
+      }
+    }
+    onExited: {
+      if (root.bar) {
+        root.bar.hideTooltip(root)
+        if (root.maintainIndicatorReveal && root.bar.setIndicatorItemHovered)
+          root.bar.setIndicatorItemHovered(false)
+      }
+    }
     onClicked: function(mouse) { root.triggerPress(mouse.button) }
     onWheel: function(wheel) { root.wheelMoved(wheel.angleDelta.y) }
   }

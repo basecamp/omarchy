@@ -67,9 +67,9 @@ Example `shell.json` (bar subtree only shown):
 
 ### Built-in base modules (in `Bar.qml`)
 
-`omarchy`, `workspaces`, `clock`, `update`, `voxtype`, `screenRecording`, `notifications`, `tray`.
+`omarchy`, `workspaces`, `clock`, `update`, `indicators`, `tray`.
 
-These remain available for compact status/launcher slots. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `widgets/` above.
+The `indicators` module loads individual bar indicators from `indicators/`, ordered by its `items` array in `shell.json`. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `widgets/` above.
 
 ## Orientation
 

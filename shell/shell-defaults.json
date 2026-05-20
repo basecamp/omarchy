@@ -28,19 +28,16 @@
           "id": "weather"
         },
         {
+          "id": "indicators",
+          "items": [
+            "dnd",
+            "stayAwake",
+            "screenrecording",
+            "dictation"
+          ]
+        },
+        {
           "id": "update"
-        },
-        {
-          "id": "voxtype"
-        },
-        {
-          "id": "screenRecording"
-        },
-        {
-          "id": "idleInhibitor"
-        },
-        {
-          "id": "notifications"
         }
       ],
       "right": [

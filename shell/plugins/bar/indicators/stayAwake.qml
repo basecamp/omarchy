@@ -1,11 +1,14 @@
 import QtQuick
-import Quickshell
 import Quickshell.Io
 import qs.Ui
 
 BarIndicator {
   id: root
-  moduleName: "idleInhibitor"
+
+  activeText: "󰅶"
+  inactiveText: "󰅶"
+  activeTooltipText: "No lock or screensaver"
+  inactiveTooltipText: "Idle enabled"
 
   function refresh() {
     if (!statusProc.running) statusProc.running = true
@@ -30,13 +33,8 @@ BarIndicator {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        var raw = String(text || "").trim()
-        try {
-          var parsed = JSON.parse(raw)
-          root.active = parsed && parsed.enabled === false
-        } catch (e) {
-          root.active = false
-        }
+        var data = root.extractData(text)
+        root.active = data && data.enabled === false
       }
     }
   }
@@ -54,9 +52,5 @@ BarIndicator {
     onTriggered: root.refresh()
   }
 
-  activeText: "󰅶"
-  inactiveText: "󰅶"
-  activeTooltipText: "No lock or screensaver"
-  inactiveTooltipText: "Idle enabled"
   onPressed: function() { root.toggle() }
 }

@@ -56,18 +56,30 @@ Item {
   Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   property bool updateAvailable: false
-  property string voxtypeIcon: ""
-  property string voxtypeClass: ""
-  property string screenRecordingText: ""
-  property string screenRecordingTooltip: ""
-  property string notificationSilencingText: ""
-  property string notificationSilencingTooltip: ""
   property bool clockAlt: false
   property var tooltipTarget: null
   property string tooltipText: ""
   property bool tooltipShown: false
   property var activePopout: null
   property var clickTargets: []
+  property bool indicatorAreaHovered: false
+  property bool indicatorItemHovered: false
+  readonly property bool revealInactiveIndicators: indicatorAreaHovered || indicatorItemHovered
+
+  function setIndicatorAreaHovered(hovered) {
+    indicatorAreaHovered = hovered
+    if (hovered) indicatorHideTimer.stop()
+    else indicatorHideTimer.restart()
+  }
+
+  function setIndicatorItemHovered(hovered) {
+    if (hovered) {
+      indicatorItemHovered = true
+      indicatorHideTimer.stop()
+    } else {
+      indicatorHideTimer.restart()
+    }
+  }
 
   function registerClickTarget(target) {
     if (!target || clickTargets.indexOf(target) !== -1) return
@@ -110,6 +122,26 @@ Item {
       center: pinTrayToInner(normalized.center, "center"),
       right:  pinTrayToInner(normalized.right,  "right")
     }
+  }
+
+  function indicatorEntriesFromSettings(settings) {
+    var source = []
+    if (settings.items && typeof settings.items.length === "number") source = settings.items
+    else if (settings.indicators && typeof settings.indicators.length === "number") source = settings.indicators
+
+    var result = []
+    for (var i = 0; i < source.length; i++) {
+      var item = source[i]
+      if (typeof item !== "string" && item !== null && typeof item === "object") {
+        try {
+          item = JSON.parse(JSON.stringify(item))
+        } catch (error) {
+        }
+      }
+      var id = entryId(item)
+      if (id !== "") result.push(item)
+    }
+    return result
   }
 
   // The tray drawer reveals inward (away from the bar edge). Place it at the
@@ -160,7 +192,10 @@ Item {
 
   function entryId(entry) {
     if (typeof entry === "string") return entry
-    if (Util.isPlainObject(entry) && entry.id) return String(entry.id)
+    if (Util.isPlainObject(entry)) {
+      var id = entry["id"]
+      if (id !== undefined && id !== null && String(id) !== "") return String(id)
+    }
     return ""
   }
 
@@ -193,7 +228,6 @@ Item {
 
   function canonicalWidgetId(name) {
     switch (String(name)) {
-    case "idle": return "idleInhibitor"
     case "weatherFlyout": return "weather"
     default: return String(name)
     }
@@ -205,11 +239,7 @@ Item {
     case "workspaces": return workspacesModuleComponent
     case "clock": return clockModuleComponent
     case "update": return updateModuleComponent
-    case "voxtype": return voxtypeModuleComponent
-    case "screenRecording":
-    case "screenrecording": return screenRecordingModuleComponent
-    case "notifications":
-    case "notificationSilencing": return notificationsModuleComponent
+    case "indicators": return indicatorsModuleComponent
     case "tray": return trayModuleComponent
     default: return null
     }
@@ -362,53 +392,11 @@ Item {
     tooltipShown = false
   }
 
-  function parseModuleJson(raw) {
-    var text = String(raw || "").trim()
-    if (!text) return {}
-
-    var lines = text.split("\n")
-    try {
-      return JSON.parse(lines[lines.length - 1])
-    } catch (error) {
-      return { text: text }
-    }
-  }
-
-  function updateIndicator(name, raw) {
-    var data = parseModuleJson(raw)
-    var text = data.text || ""
-    var tooltip = data.tooltip || ""
-
-    if (name === "screenRecording") {
-      screenRecordingText = text
-      screenRecordingTooltip = tooltip
-    } else if (name === "notifications") {
-      notificationSilencingText = text
-      notificationSilencingTooltip = tooltip
-    }
-  }
-
-  function updateVoxtype(raw) {
-    var data = parseModuleJson(raw)
-    var state = String(data.alt || data.class || "idle")
-
-    voxtypeClass = state
-    if (state === "recording") voxtypeIcon = "󰍬"
-    else if (state === "transcribing") voxtypeIcon = "󰔟"
-    else voxtypeIcon = ""
-  }
-
   function refreshUpdate() {
     runProcess(updateProc)
   }
 
-  function refreshScreenRecording() {
-    runProcess(screenRecordingProc)
-  }
-
   function refreshIndicators() {
-    refreshScreenRecording()
-    runProcess(notificationSilencingProc)
     indicatorsRefreshRequested()
   }
 
@@ -490,6 +478,15 @@ Item {
     onTriggered: root.tooltipShown = true
   }
 
+  Timer {
+    id: indicatorHideTimer
+    interval: 120
+    onTriggered: {
+      if (!root.indicatorAreaHovered)
+        root.indicatorItemHovered = false
+    }
+  }
+
   // Presence of the `bar-off` flag = bar hidden. Watching the parent toggles
   // directory because FileView can't observe a file that doesn't exist yet,
   // and the flag is created/removed by `omarchy-toggle-bar`.
@@ -523,35 +520,6 @@ Item {
     onTriggered: root.refreshUpdate()
   }
 
-  Process {
-    id: voxtypeProc
-    command: ["bash", "-lc", "omarchy-voxtype-status"]
-    running: true
-    stdout: SplitParser {
-      onRead: function(data) {
-        root.updateVoxtype(data)
-      }
-    }
-  }
-
-  Process {
-    id: screenRecordingProc
-    command: ["bash", "-lc", Util.shellQuote(root.omarchyPath + "/shell/scripts/indicators/screen-recording.sh")]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.updateIndicator("screenRecording", text)
-    }
-  }
-
-  Process {
-    id: notificationSilencingProc
-    command: ["bash", "-lc", Util.shellQuote(root.omarchyPath + "/shell/scripts/indicators/notification-silencing.sh")]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.updateIndicator("notifications", text)
-    }
-  }
-
   Timer {
     interval: 2000
     running: true
@@ -568,7 +536,7 @@ Item {
     }
 
     function refreshScreenRecording(): void {
-      root.refreshScreenRecording()
+      root.refreshIndicators()
     }
 
     function refreshIndicators(): void {
@@ -725,9 +693,7 @@ Item {
   Component { id: workspacesModuleComponent; WorkspacesModule {} }
   Component { id: clockModuleComponent; ClockModule {} }
   Component { id: updateModuleComponent; UpdateModule {} }
-  Component { id: voxtypeModuleComponent; VoxtypeModule {} }
-  Component { id: screenRecordingModuleComponent; ScreenRecordingModule {} }
-  Component { id: notificationsModuleComponent; NotificationsModule {} }
+  Component { id: indicatorsModuleComponent; IndicatorsModule {} }
   Component { id: trayModuleComponent; TrayModule {} }
 
   function findCenterAnchorEntry() {
@@ -925,6 +891,10 @@ Item {
       active: !slot.qmlCustom && !slot.registered
       sourceComponent: slot.builtinComponent || (slot.commandCustom ? customCommandModuleComponent : emptyModuleComponent)
       anchors.fill: parent
+      onLoaded: {
+        slot.injectProps()
+        Qt.callLater(slot.injectProps)
+      }
     }
 
     Loader {
@@ -932,7 +902,10 @@ Item {
       active: slot.registered
       sourceComponent: slot.registered ? slot.registryComponent : null
       anchors.fill: parent
-      onLoaded: slot.injectProps()
+      onLoaded: {
+        slot.injectProps()
+        Qt.callLater(slot.injectProps)
+      }
     }
 
     Loader {
@@ -940,13 +913,17 @@ Item {
       active: slot.qmlCustom
       source: slot.qmlCustom ? root.customModuleSource(slot.entry) : ""
       anchors.fill: parent
-      onLoaded: slot.injectProps()
+      onLoaded: {
+        slot.injectProps()
+        Qt.callLater(slot.injectProps)
+      }
     }
 
+    onActiveItemChanged: Qt.callLater(injectProps)
     onModuleSettingsChanged: injectProps()
 
     function injectProps() {
-      var target = registryLoader.item || qmlLoader.item
+      var target = activeItem
       if (!target) return
       if ("bar" in target) target.bar = root
       if ("moduleName" in target) target.moduleName = moduleName
@@ -1080,10 +1057,174 @@ Item {
     }
   }
 
-  component IndicatorModule: ModuleButton {
-    fontSize: Style.font.caption
-    horizontalMargin: 5
-    verticalPadding: 5
+  component IndicatorsModule: Item {
+    id: indicatorsRoot
+
+    property var bar: root
+    property string moduleName: "indicators"
+    property var settings: ({})
+    readonly property var indicatorEntries: root.indicatorEntriesFromSettings(settings)
+
+    implicitWidth: root.vertical ? verticalIndicators.implicitWidth : horizontalIndicators.implicitWidth
+    implicitHeight: root.vertical ? verticalIndicators.implicitHeight : horizontalIndicators.implicitHeight
+
+    Row {
+      id: horizontalIndicators
+
+      visible: !root.vertical
+      spacing: 0
+
+      IndicatorBlock {
+        indicatorEntries: indicatorsRoot.indicatorEntries
+        indicatorBlock: "active"
+        horizontal: true
+      }
+
+      Item {
+        id: inactiveHorizontalArea
+
+        implicitWidth: inactiveHorizontalBlock.implicitWidth
+        implicitHeight: inactiveHorizontalBlock.implicitHeight
+        width: implicitWidth
+        height: implicitHeight
+
+        IndicatorBlock {
+          id: inactiveHorizontalBlock
+          anchors.fill: parent
+          indicatorEntries: indicatorsRoot.indicatorEntries
+          indicatorBlock: "inactive"
+          horizontal: true
+        }
+
+        HoverHandler {
+          onHoveredChanged: root.setIndicatorAreaHovered(hovered)
+        }
+      }
+    }
+
+    Column {
+      id: verticalIndicators
+
+      visible: root.vertical
+      spacing: 0
+
+      IndicatorBlock {
+        indicatorEntries: indicatorsRoot.indicatorEntries
+        indicatorBlock: "active"
+        horizontal: false
+      }
+
+      Item {
+        id: inactiveVerticalArea
+
+        implicitWidth: inactiveVerticalBlock.implicitWidth
+        implicitHeight: inactiveVerticalBlock.implicitHeight
+        width: implicitWidth
+        height: implicitHeight
+
+        IndicatorBlock {
+          id: inactiveVerticalBlock
+          anchors.fill: parent
+          indicatorEntries: indicatorsRoot.indicatorEntries
+          indicatorBlock: "inactive"
+          horizontal: false
+        }
+
+        HoverHandler {
+          onHoveredChanged: root.setIndicatorAreaHovered(hovered)
+        }
+      }
+    }
+  }
+
+  component IndicatorBlock: Item {
+    id: indicatorBlockRoot
+
+    property var indicatorEntries: []
+    property string indicatorBlock: "active"
+    property bool horizontal: true
+
+    implicitWidth: blockLoader.item ? blockLoader.item.childrenRect.width : 0
+    implicitHeight: blockLoader.item ? blockLoader.item.childrenRect.height : 0
+    width: implicitWidth
+    height: implicitHeight
+
+    Loader {
+      id: blockLoader
+
+      anchors.fill: parent
+      sourceComponent: indicatorBlockRoot.horizontal ? horizontalIndicatorBlock : verticalIndicatorBlock
+    }
+
+    Component {
+      id: horizontalIndicatorBlock
+
+      Row {
+        spacing: 0
+
+        Repeater {
+          model: indicatorBlockRoot.indicatorEntries
+
+          IndicatorLoader {
+            required property var modelData
+            entry: modelData
+            indicatorBlock: indicatorBlockRoot.indicatorBlock
+          }
+        }
+      }
+    }
+
+    Component {
+      id: verticalIndicatorBlock
+
+      Column {
+        spacing: 0
+
+        Repeater {
+          model: indicatorBlockRoot.indicatorEntries
+
+          IndicatorLoader {
+            required property var modelData
+            entry: modelData
+            indicatorBlock: indicatorBlockRoot.indicatorBlock
+          }
+        }
+      }
+    }
+  }
+
+  component IndicatorLoader: Item {
+    id: indicatorSlot
+
+    required property var entry
+    required property string indicatorBlock
+    readonly property string indicatorId: root.entryId(entry)
+    readonly property var indicatorSettings: root.entrySettings(entry)
+
+    implicitWidth: indicatorSource.item && indicatorSource.item.visible ? indicatorSource.item.implicitWidth : 0
+    implicitHeight: indicatorSource.item && indicatorSource.item.visible ? indicatorSource.item.implicitHeight : 0
+    width: implicitWidth
+    height: implicitHeight
+    onIndicatorBlockChanged: injectProps()
+    onIndicatorSettingsChanged: injectProps()
+
+    Loader {
+      id: indicatorSource
+
+      anchors.fill: parent
+      source: indicatorSlot.indicatorId ? Qt.resolvedUrl("indicators/" + indicatorSlot.indicatorId + ".qml") : ""
+      onLoaded: indicatorSlot.injectProps()
+      onStatusChanged: if (status === Loader.Error) console.warn("Indicator loader error", indicatorSlot.indicatorId, source)
+    }
+
+    function injectProps() {
+      var target = indicatorSource.item
+      if (!target) return
+      if ("bar" in target) target.bar = root
+      if ("moduleName" in target) target.moduleName = indicatorId
+      if ("settings" in target) target.settings = indicatorSettings
+      if ("indicatorBlock" in target) target.indicatorBlock = indicatorBlock
+    }
   }
 
   component OmarchyModule: ModuleButton {
@@ -1137,30 +1278,6 @@ Item {
     fontSize: Style.font.caption
     tooltipText: root.updateAvailable ? "Omarchy update available" : ""
     onPressed: function() { root.run("omarchy-launch-floating-terminal-with-presentation omarchy-update") }
-  }
-
-  component VoxtypeModule: ModuleButton {
-    text: root.voxtypeIcon
-    active: root.voxtypeClass === "recording"
-    tooltipText: root.voxtypeClass
-    onPressed: function(button) {
-      if (button === Qt.RightButton) root.run("omarchy-voxtype-config")
-      else root.run("omarchy-voxtype-model")
-    }
-  }
-
-  component ScreenRecordingModule: IndicatorModule {
-    text: root.screenRecordingText
-    active: root.screenRecordingText !== ""
-    tooltipText: root.screenRecordingTooltip
-    onPressed: function() { root.run("omarchy-capture-screenrecording") }
-  }
-
-  component NotificationsModule: IndicatorModule {
-    text: root.notificationSilencingText
-    active: root.notificationSilencingText !== ""
-    tooltipText: root.notificationSilencingTooltip
-    onPressed: function() { root.run("omarchy-toggle-notification-silencing") }
   }
 
   component TrayModule: Item {
