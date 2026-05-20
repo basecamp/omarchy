@@ -7,8 +7,8 @@ BarIndicator {
 
   activeText: "󰅶"
   inactiveText: "󰅶"
-  activeTooltipText: "No lock or screensaver"
-  inactiveTooltipText: "Idle enabled"
+  activeTooltipText: "Allow Idle Lock & Screensaver"
+  inactiveTooltipText: "Stay Awake"
 
   function refresh() {
     if (!statusProc.running) statusProc.running = true

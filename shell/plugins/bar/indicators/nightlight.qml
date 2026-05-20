@@ -10,7 +10,7 @@ BarIndicator {
   active: nightlight
   activeText: "󰔎"
   inactiveText: "󰔎"
-  activeTooltipText: "Night Light on"
+  activeTooltipText: "Day Light"
   inactiveTooltipText: "Night Light"
 
   function refresh() {
