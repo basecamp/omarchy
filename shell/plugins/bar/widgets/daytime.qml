@@ -9,11 +9,6 @@ BarWidget {
 
   property date now: new Date()
 
-  function setting(name, fallback) {
-    var value = settings ? settings[name] : undefined
-    return value === undefined || value === null ? fallback : value
-  }
-
   function formatLabel() {
     if (!bar) return ""
     var fmt = bar.vertical

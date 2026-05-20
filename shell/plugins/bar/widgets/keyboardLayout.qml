@@ -13,11 +13,6 @@ BarWidget {
   property string layoutLabel: ""
   property string layoutFull: ""
 
-  function setting(name, fallback) {
-    var value = settings ? settings[name] : undefined
-    return value === undefined || value === null ? fallback : value
-  }
-
   function refresh() {
     if (!queryProc.running) queryProc.running = true
   }

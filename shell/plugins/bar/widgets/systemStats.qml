@@ -116,8 +116,7 @@ BarWidget {
     onTriggered: root.refresh()
   }
 
-  readonly property bool vertical: bar ? bar.vertical : false
-  readonly property color statColor: bar ? bar.foreground : "#cacccc"
+  readonly property color statColor: bar ? bar.foreground : Color.foreground
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight

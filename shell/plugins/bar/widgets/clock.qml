@@ -9,11 +9,6 @@ BarWidget {
 
   property bool alt: false
 
-  function setting(name, fallback) {
-    var value = settings ? settings[name] : undefined
-    return value === undefined || value === null ? fallback : value
-  }
-
   function label() {
     if (alt) return Qt.formatDateTime(clock.date, String(setting("formatAlt", "dd MMMM 'W'ww yyyy")))
     if (bar && bar.vertical) return Qt.formatDateTime(clock.date, String(setting("verticalFormat", "HH\n—\nmm")))

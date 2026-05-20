@@ -10,8 +10,6 @@ BarWidget {
 
   property bool expanded: false
   property bool managePopupOpen: false
-  readonly property bool vertical: bar ? bar.vertical : false
-  readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property var pinnedIds: Array.isArray(settings.pinned) ? settings.pinned : []
