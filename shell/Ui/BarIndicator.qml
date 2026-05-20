@@ -11,10 +11,11 @@ WidgetButton {
   property string activeTooltipText: ""
   property string inactiveTooltipText: activeTooltipText
   property string indicatorBlock: "single"
+  property var indicatorHost: null
   property var activeOverride: null
   readonly property bool effectiveActive: activeOverride === null || activeOverride === undefined ? active : activeOverride === true
   readonly property bool belongsInBlock: indicatorBlock === "active" ? effectiveActive : (indicatorBlock === "inactive" ? !effectiveActive : true)
-  readonly property bool inactiveRevealed: !effectiveActive && !!bar && bar.revealInactiveIndicators
+  readonly property bool inactiveRevealed: !effectiveActive && !!indicatorHost && indicatorHost.revealInactiveIndicators
 
   function extractData(raw) {
     var text = String(raw || "").trim()
@@ -49,6 +50,7 @@ WidgetButton {
   interactive: belongsInBlock && (effectiveActive || indicatorBlock === "inactive" || inactiveRevealed)
   useActiveColor: false
   maintainIndicatorReveal: indicatorBlock === "inactive"
+  revealHost: indicatorHost
   fontSize: Style.font.caption
   horizontalMargin: 5
   verticalPadding: 5

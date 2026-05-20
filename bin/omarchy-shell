@@ -24,7 +24,7 @@ Options:
 Examples:
   omarchy-shell shell ping
   omarchy-shell shell summon omarchy.settings "{}"
-  omarchy-shell -q bar refreshIndicators
+  omarchy-shell -q indicators refresh
   omarchy-shell shell listPlugins
   omarchy-shell menu toggle root
 USAGE

@@ -30,9 +30,9 @@ BarIndicator {
   Component.onCompleted: refresh()
 
   Connections {
-    target: root.bar
+    target: root.indicatorHost
     ignoreUnknownSignals: true
-    function onIndicatorsRefreshRequested() { root.refresh() }
+    function onRefreshRequested() { root.refresh() }
   }
 
   Process {

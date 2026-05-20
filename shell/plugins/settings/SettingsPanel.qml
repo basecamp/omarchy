@@ -292,7 +292,6 @@ Item {
   // ---------------- widget catalog -----------------------------------------
   readonly property var builtinWidgetMeta: ({
     "clock":            { name: "Clock",              description: "Date / time text",                          category: "Time" },
-    "indicators":       { name: "Indicators",         description: "Manual state indicators",                   category: "Status" },
     "tray":             { name: "System tray",        description: "Status notifier items",                     category: "Status" }
   })
 
