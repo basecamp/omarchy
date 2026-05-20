@@ -13,13 +13,13 @@
   //   checked        shell condition; append ✓ when it succeeds
 
   // Root Menu
-  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"keywords":"launch launcher quickshell","action":"omarchy-shell shell summon omarchy.launcher '{}'"},
-  "learn": {"icon":"󰧑","label":"Learn","keywords":"manual docs help reference"},
-  "trigger": {"icon":"󱓞","label":"Trigger","keywords":"actions capture share toggle hardware reminder"},
-  "style": {"icon":"","label":"Style","keywords":"theme background font bar quickshell hyprland appearance"},
-  "setup": {"icon":"","label":"Setup","aliases":["settings"],"keywords":"configure defaults wifi bluetooth audio"},
-  "install": {"icon":"󰉉","label":"Install","keywords":"package app service browser editor terminal development gaming"},
-  "remove": {"icon":"󰭌","label":"Remove","aliases":["uninstall"],"keywords":"package app browser development gaming"},
+  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"keywords":"","action":"omarchy-shell shell summon omarchy.launcher"},
+  "learn": {"icon":"󰧑","label":"Learn","keywords":"manual docs help"},
+  "trigger": {"icon":"󱓞","label":"Trigger","keywords":""},
+  "style": {"icon":"","label":"Style","keywords":""},
+  "setup": {"icon":"","label":"Setup","aliases":["settings"],"keywords":""},
+  "install": {"icon":"󰉉","label":"Install","keywords":""},
+  "remove": {"icon":"󰭌","label":"Remove","aliases":["uninstall"],"keywords":""},
   "update": {"icon":"","label":"Update","aliases":["restart","refresh"],"keywords":"upgrade channel firmware timezone"},
   "about": {"icon":"","label":"About","keywords":"omarchy system information","action":"omarchy-launch-about"},
   "system": {"icon":"","label":"System","aliases":["power-menu"],"keywords":"lock logout restart shutdown suspend hibernate"},
