@@ -19,7 +19,7 @@ Item {
   property var filteredEmojis: []
 
   // Shares the [menu] surface tokens — themes that style the menu also
-  // style the emoji picker. Selected-cell colors composed in the
+  // style emojis. Selected-cell colors composed in the
   // singleton so consumers drop them straight into Rectangle bindings.
   property color background: Color.menu.background
   property color foreground: Color.menu.text
@@ -56,7 +56,7 @@ Item {
   function dismiss() {
     root.opened = false
     if (root.shell && typeof root.shell.hide === "function")
-      root.shell.hide((root.manifest && root.manifest.id) || "omarchy.emoji-picker")
+      root.shell.hide((root.manifest && root.manifest.id) || "omarchy.emojis")
   }
 
   function toggle() {
@@ -165,7 +165,7 @@ Item {
   ListModel { id: displayModel }
 
   FileView {
-    path: root.omarchyPath + "/shell/plugins/emoji-picker/emojis.json"
+    path: root.omarchyPath + "/shell/plugins/emojis/emojis.json"
     onLoaded: root.loadEmojis(text())
   }
   PanelWindow {
@@ -173,7 +173,7 @@ Item {
     visible: root.opened
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "omarchy-emoji-picker"
+    WlrLayershell.namespace: "omarchy-emojis"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore

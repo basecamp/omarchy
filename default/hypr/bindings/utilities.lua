@@ -1,5 +1,5 @@
 o.bind("SUPER + SPACE", "Launch apps", "omarchy-shell shell toggle omarchy.launcher \"{}\"")
-o.bind("SUPER + CTRL + E", "Emoji picker", "omarchy-shell shell toggle omarchy.emoji-picker \"{}\"")
+o.bind("SUPER + CTRL + E", "Emojis", "omarchy-shell shell toggle omarchy.emojis")
 o.bind("SUPER + CTRL + C", "Capture menu", "omarchy-shell menu toggle capture")
 o.bind("SUPER + CTRL + O", "Toggle menu", "omarchy-shell menu toggle toggle")
 o.bind("SUPER + CTRL + H", "Hardware menu", "omarchy-shell menu toggle hardware")

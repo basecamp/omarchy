@@ -148,7 +148,7 @@ selected-border-alpha     = 0.25
 [menu]
 # Cards, rows, and selected-row treatment. Alpha companions (where present)
 # go from 0 (invisible) to 1 (opaque). scrim is the full-screen dim layer
-# behind the card. The clipboard and emoji pickers inherit these tokens.
+# behind the card. Clipboard and emojis inherit these tokens.
 background                = "{{ background }}"
 background-alpha          = 1.0
 text                      = "{{ foreground }}"
