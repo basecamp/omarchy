@@ -68,7 +68,7 @@ BarWidget {
   readonly property string reportHumidity:  current ? (current.humidity + "%") : ""
 
   visible: label !== ""
-  implicitWidth: button.implicitWidth + Style.spacing.controlGap
+  implicitWidth: bar && bar.vertical ? button.implicitWidth : button.implicitWidth + Style.spacing.controlGap
   implicitHeight: button.implicitHeight
 
   function setting(name, fallback) {
@@ -281,8 +281,8 @@ BarWidget {
 
   WidgetButton {
     id: button
-    anchors.left: parent.left
     anchors.verticalCenter: parent.verticalCenter
+    x: bar && bar.vertical ? Math.round((parent.width - width) / 2) : 0
     width: implicitWidth
     height: implicitHeight
     bar: root.bar
