@@ -264,18 +264,27 @@ QtObject {
     if (scanning) return
     scanning = true
     // $0 = first-party dir, $1 = third-party dir. Some bash versions need the explicit -- separator.
+    // First-party plugins may be grouped one level deeper, e.g. services/battery.
+    // Third-party plugins stay at the top level of ~/.config/omarchy/plugins.
     var script = ""
-      + "scan() { local dir=\"$1\"; local kind=\"$2\"; "
+      + "emit_manifest() { local kind=\"$1\"; local manifest=\"$2\"; local sub=\"${manifest%/manifest.json}\"; "
+      + "  printf '===%s::%s===\\n' \"$kind\" \"$sub\"; "
+      + "  cat \"$manifest\"; "
+      + "  printf '\\n=== EOM ===\\n'; "
+      + "}; "
+      + "scan_firstparty() { local dir=\"$1\"; "
+      + "  [[ -d \"$dir\" ]] || return 0; "
+      + "  while IFS= read -r manifest; do emit_manifest firstparty \"$manifest\"; done < <(find \"$dir\" -mindepth 2 -maxdepth 3 -name manifest.json -type f | sort); "
+      + "}; "
+      + "scan_thirdparty() { local dir=\"$1\"; "
       + "  [[ -d \"$dir\" ]] || return 0; "
       + "  for sub in \"$dir\"/*/; do "
       + "    [[ -f \"$sub/manifest.json\" ]] || continue; "
-      + "    printf '===%s::%s===\\n' \"$kind\" \"$sub\"; "
-      + "    cat \"$sub/manifest.json\"; "
-      + "    printf '\\n=== EOM ===\\n'; "
+      + "    emit_manifest thirdparty \"$sub/manifest.json\"; "
       + "  done; "
       + "}; "
-      + "scan \"$0\" firstparty; "
-      + "scan \"$1\" thirdparty"
+      + "scan_firstparty \"$0\"; "
+      + "scan_thirdparty \"$1\""
     scanProcess.command = ["bash", "-c", script, registry.firstPartyDir, registry.pluginsDir]
     scanProcess.running = true
   }
