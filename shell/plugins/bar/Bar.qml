@@ -1,5 +1,4 @@
 import Quickshell
-import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Services.SystemTray
 import Quickshell.Wayland
@@ -260,7 +259,6 @@ Item {
   function builtinModuleComponent(name) {
     switch (String(name)) {
     case "omarchy": return omarchyModuleComponent
-    case "workspaces": return workspacesModuleComponent
     case "clock": return clockModuleComponent
     case "update": return updateModuleComponent
     case "indicators": return indicatorsModuleComponent
@@ -305,6 +303,7 @@ Item {
   // Each entry maps a module id to its display metadata; the QML source is
   // loaded asynchronously via Qt.createComponent.
   readonly property var firstPartyWidgetMetadata: ({
+    "workspaces":         { displayName: "Workspaces",         description: "Workspace number indicators",               category: "Compositor", allowMultiple: false },
     "media":              { displayName: "Media",              description: "MPRIS now-playing with playback controls",   category: "Media",    allowMultiple: false },
     "audioPanel":         { displayName: "Audio",              description: "Volume slider, output picker, per-app mixer", category: "Audio",    allowMultiple: false, sourceDir: "../panels", sourceName: "Audio" },
     "monitorPanel":       { displayName: "Display",            description: "Brightness slider and laptop display controls", category: "System",   allowMultiple: false, sourceDir: "../panels", sourceName: "Monitor" },
@@ -441,30 +440,6 @@ Item {
     indicatorsRefreshRequested()
   }
 
-  function workspaceById(id) {
-    var values = Hyprland.workspaces.values
-    for (var i = 0; i < values.length; i++) {
-      if (values[i].id === id)
-        return values[i]
-    }
-
-    return null
-  }
-
-  function workspaceIds() {
-    var ids = [1, 2, 3, 4, 5]
-    var values = Hyprland.workspaces.values
-
-    for (var i = 0; i < values.length; i++) {
-      var id = values[i].id
-      if (id > 0 && id <= 10 && ids.indexOf(id) === -1)
-        ids.push(id)
-    }
-
-    ids.sort(function(left, right) { return left - right })
-    return ids
-  }
-
   function trayIconSource(icon) {
     var value = String(icon || "")
     var marker = "?path="
@@ -478,10 +453,6 @@ Item {
 
   function trayTooltip(item) {
     return item.tooltipTitle || item.title || item.id || ""
-  }
-
-  function focusWorkspace(id) {
-    root.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
   }
 
   function clockEntry() {
@@ -741,7 +712,6 @@ Item {
 
   Component { id: emptyModuleComponent; Item { implicitWidth: 0; implicitHeight: 0; visible: false } }
   Component { id: omarchyModuleComponent; OmarchyModule {} }
-  Component { id: workspacesModuleComponent; WorkspacesModule {} }
   Component { id: clockModuleComponent; ClockModule {} }
   Component { id: updateModuleComponent; UpdateModule {} }
   Component { id: indicatorsModuleComponent; IndicatorsModule {} }
@@ -1479,32 +1449,6 @@ Item {
     onPressed: function(button) {
       if (button === Qt.RightButton) root.run("xdg-terminal-exec")
       else root.run("omarchy-shell menu toggle root")
-    }
-  }
-
-  component WorkspacesModule: GridLayout {
-    columns: root.vertical ? 1 : root.workspaceIds().length
-    columnSpacing: root.vertical ? 0 : Style.space(2)
-    rowSpacing: root.vertical ? Style.space(2) : 0
-
-    Repeater {
-      model: root.workspaceIds()
-
-      ModuleButton {
-        required property int modelData
-
-        property var workspace: root.workspaceById(modelData)
-        property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
-        property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
-
-        text: focused ? "󱓻" : (modelData === 10 ? "0" : String(modelData))
-        opacity: occupied || focused ? 1 : 0.5
-        horizontalMargin: 6
-        verticalPadding: 6
-        fixedWidth: root.vertical ? root.barSize : 22
-        fixedHeight: root.barSize
-        onPressed: function() { root.focusWorkspace(modelData) }
-      }
     }
   }
 

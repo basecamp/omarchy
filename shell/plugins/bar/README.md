@@ -54,6 +54,7 @@ Example `shell.json` (bar subtree only shown):
 
 | Name | What it does | Interactions |
 |---|---|---|
+| `workspaces` | Hyprland workspace switcher | left = focus workspace |
 | `media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
 | `daytime` | Day/time label with date tooltip | hover = date |
 | `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
@@ -73,7 +74,7 @@ Example `shell.json` (bar subtree only shown):
 
 ### Built-in base modules (in `Bar.qml`)
 
-`omarchy`, `workspaces`, `clock`, `update`, `indicators`, `tray`.
+`omarchy`, `clock`, `update`, `indicators`, `tray`.
 
 The `indicators` module loads individual bar indicators from `indicators/`, ordered by its `items` array in `shell.json`. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `../panels/` above.
 
