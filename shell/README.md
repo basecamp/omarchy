@@ -23,12 +23,9 @@ shell/
   services/
     PluginRegistry.qml   discovers, validates plugins, looks up enabled state in shell.json
     BarWidgetRegistry.qml unified registry for bar widgets (1p + 3p)
-  ui/
-    settings/
-      DynamicSettingsForm.qml  renders plugin-declared schemas
   plugins/
     bar/                 first-party plugins (see plugins/README.md)
-    settings/
+    settings/            settings panel + plugin-declared widget forms
     launcher/
     image-picker/
     menu/
