@@ -888,7 +888,7 @@ Item {
       return componentLoader.item
     }
 
-    implicitWidth: activeItem && activeItem.visible ? activeItem.implicitWidth : 0
+    implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
     width: implicitWidth
     height: implicitHeight
