@@ -14,11 +14,6 @@ BarWidget {
   property bool scrollOn: false
   property bool hideWhenOff: true
 
-  function setting(name, fallback) {
-    var value = settings ? settings[name] : undefined
-    return value === undefined || value === null ? fallback : value
-  }
-
   Component.onCompleted: {
     hideWhenOff = setting("hideWhenOff", true) === true
     refresh()
@@ -58,10 +53,8 @@ BarWidget {
   readonly property bool anyOn: capsOn || numOn || scrollOn
   visible: ledsAvailable && (hideWhenOff ? anyOn : true)
 
-  readonly property bool vertical: bar ? bar.vertical : false
-
-  implicitWidth: vertical ? (bar ? bar.barSize : Style.bar.sizeVertical) : (lay.item ? lay.item.implicitWidth + Style.spacing.controlGap : 0)
-  implicitHeight: vertical ? (lay.item ? lay.item.implicitHeight + Style.spacing.controlGap : 0) : (bar ? bar.barSize : Style.bar.sizeHorizontal)
+  implicitWidth: vertical ? barSize : (lay.item ? lay.item.implicitWidth + Style.spacing.controlGap : 0)
+  implicitHeight: vertical ? (lay.item ? lay.item.implicitHeight + Style.spacing.controlGap : 0) : barSize
 
   Loader {
     id: lay

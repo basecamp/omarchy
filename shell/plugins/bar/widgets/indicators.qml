@@ -8,8 +8,6 @@ BarWidget {
   id: root
   moduleName: "indicators"
 
-  readonly property bool vertical: bar ? bar.vertical : false
-  readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
   readonly property int indicatorSlotExtent: Style.space(22)
   readonly property int inactiveSlotExtent: indicatorEntries.length * indicatorSlotExtent
   readonly property var indicatorEntries: indicatorEntriesFromSettings(settings)

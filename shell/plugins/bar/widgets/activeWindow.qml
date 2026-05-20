@@ -9,20 +9,13 @@ BarWidget {
   moduleName: "activeWindow"
 
 
-  function setting(name, fallback) {
-    var value = settings ? settings[name] : undefined
-    return value === undefined || value === null ? fallback : value
-  }
-
   readonly property var toplevel: ToplevelManager.activeToplevel
   readonly property string title: toplevel ? (toplevel.title || toplevel.appId || "") : ""
   readonly property int maxLabelWidth: Number(setting("maxWidth", 280))
 
-  readonly property bool vertical: bar ? bar.vertical : false
-
   visible: title !== "" && !vertical
   implicitWidth: visible ? Math.min(maxLabelWidth, labelText.implicitWidth) + Style.spacing.controlPaddingX * 2 : 0
-  implicitHeight: bar ? bar.barSize : 26
+  implicitHeight: barSize
 
   Behavior on implicitWidth {
     NumberAnimation { duration: 180; easing.type: Easing.OutCubic }

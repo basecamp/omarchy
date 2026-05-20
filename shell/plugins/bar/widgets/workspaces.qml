@@ -8,9 +8,6 @@ BarWidget {
   id: root
   moduleName: "workspaces"
 
-  readonly property bool vertical: bar ? bar.vertical : false
-  readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
-
   function workspaceById(id) {
     var values = Hyprland.workspaces.values
     for (var i = 0; i < values.length; i++) {

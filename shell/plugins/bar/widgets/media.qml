@@ -9,11 +9,6 @@ BarWidget {
   moduleName: "media"
 
 
-  function setting(name, fallback) {
-    var value = settings ? settings[name] : undefined
-    return value === undefined || value === null ? fallback : value
-  }
-
   readonly property var players: Mpris.players ? Mpris.players.values : []
   readonly property var activePlayer: {
     var playing = null
@@ -38,7 +33,7 @@ BarWidget {
 
   visible: hasMedia
   implicitWidth: hasMedia ? row.implicitWidth + Style.space(14) : 0
-  implicitHeight: bar ? bar.barSize : 26
+  implicitHeight: barSize
 
   Row {
     id: row

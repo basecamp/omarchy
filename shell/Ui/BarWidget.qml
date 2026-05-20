@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 
 // Base item every bar widget extends. Codifies the three properties the
 // bar host injects into each widget slot:
@@ -14,4 +15,19 @@ Item {
   property QtObject bar: null
   property string moduleName: ""
   property var settings: ({})
+
+  // Bar geometry, lifted off the host. Widgets read these constantly to pick
+  // between horizontal/vertical layouts; defining them on the base keeps the
+  // `bar ? bar.x : fallback` ternary out of every widget body.
+  readonly property bool vertical: bar ? bar.vertical : false
+  readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
+
+  // Read a single value from this widget's inline shell.json entry, with a
+  // fallback for missing/null values. Every widget that takes user-tunable
+  // settings needs this; defining it once on the base keeps the wiring
+  // consistent.
+  function setting(name, fallback) {
+    var value = settings ? settings[name] : undefined
+    return value === undefined || value === null ? fallback : value
+  }
 }
