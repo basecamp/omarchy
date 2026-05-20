@@ -13,7 +13,6 @@ Item {
   property int failedAttempts: 0
   property bool inputEnabled: true
   property real scaleFactor: 1
-  property bool hasTyped: false
 
   readonly property string fingerprintGlyph: "\uDB80\uDE37"
   readonly property string placeholderText: fingerprintConfigured ? "Enter Password " + fingerprintGlyph : "Enter Password"
@@ -22,6 +21,8 @@ Item {
   readonly property int fieldHeight: Math.round(100 / effectiveScale)
   readonly property int outlineThickness: Math.max(1, Math.round(4 / effectiveScale))
   readonly property int fieldFontSize: Style.font.heading
+  readonly property int passwordDotFontSize: Math.round(fieldFontSize * 1.3)
+  readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
 
   signal submitPassword(string password)
   signal clearFailureRequested()
@@ -42,15 +43,12 @@ Item {
 
   function clearPassword() {
     passwordInput.text = ""
-    hasTyped = false
   }
 
   onInputEnabledChanged: {
-    hasTyped = false
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
   }
   Component.onCompleted: {
-    hasTyped = false
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
   }
 
@@ -115,12 +113,16 @@ Item {
         selectionColor: Color.lock.selection
         selectedTextColor: Color.lock.text
         font.family: "monospace"
-        font.pixelSize: root.fieldFontSize
-        cursorVisible: activeFocus && !root.authenticatingPassword && root.hasTyped
+        font.pixelSize: text.length > 0 ? root.passwordDotFontSize : root.fieldFontSize
+        cursorVisible: activeFocus && root.showPasswordCursor && text.length > 0
+        cursorDelegate: Rectangle {
+          width: Math.max(1, Math.round(2 / root.effectiveScale))
+          color: Color.lock.text
+          visible: passwordInput.cursorVisible
+        }
 
         onTextChanged: {
           if (text.length > 0) {
-            root.hasTyped = true
             root.wakeRequested()
           }
           if (text.length > 0 && root.failureMessage.length > 0) root.clearFailureRequested()
@@ -129,7 +131,6 @@ Item {
         onAccepted: {
           var submitted = text
           text = ""
-          root.hasTyped = false
           if (submitted.length > 0) root.submitPassword(submitted)
         }
 
@@ -137,7 +138,6 @@ Item {
           root.wakeRequested()
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             text = ""
-            root.hasTyped = false
             event.accepted = true
           }
         }
