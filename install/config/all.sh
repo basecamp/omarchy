@@ -22,15 +22,16 @@ run_logged $OMARCHY_INSTALL/config/input-group.sh
 run_logged $OMARCHY_INSTALL/config/omarchy-ai-skill.sh
 run_logged $OMARCHY_INSTALL/config/pi.sh
 run_logged $OMARCHY_INSTALL/config/omarchy-toggles.sh
-run_logged $OMARCHY_INSTALL/config/kernel-modules-hook.sh
 run_logged $OMARCHY_INSTALL/config/powerprofilesctl-rules.sh
 run_logged $OMARCHY_INSTALL/config/wifi-powersave-rules.sh
+
+# Service enables centralized; run after all drop-in files are in place.
+run_logged $OMARCHY_INSTALL/config/enable-services.sh
 
 run_logged $OMARCHY_INSTALL/config/hardware/network.sh
 run_logged $OMARCHY_INSTALL/config/hardware/set-wireless-regdom.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-fkeys.sh
 run_logged $OMARCHY_INSTALL/config/hardware/bluetooth.sh
-run_logged $OMARCHY_INSTALL/config/hardware/printer.sh
 run_logged $OMARCHY_INSTALL/config/hardware/nvidia.sh
 run_logged $OMARCHY_INSTALL/config/hardware/vulkan.sh
 
