@@ -185,7 +185,7 @@ Rectangle {
     anchors.bottom: parent.bottom
     height: Math.max(1, Style.space(3))
     color: Color.notifications.border
-    visible: false
+    visible: root.showProgress
 
     Rectangle {
       anchors.left: parent.left
