@@ -88,6 +88,7 @@ Item {
   ListModel { id: pastModel }
 
   readonly property int historyCap: 100
+  property var imageCacheQueue: []
 
   function durationFor(urgency) {
     switch (urgency) {
@@ -369,7 +370,7 @@ Item {
     var lower = String(entry.app).toLowerCase()
     focusAppProc.command = ["bash", "-lc",
       "hyprctl clients -j 2>/dev/null | " +
-      "jq -r --arg name \"" + lower + "\" " +
+      "jq -r --arg name " + Util.shellQuote(lower) + " " +
       "'[.[] | select((.class // \"\") | ascii_downcase | startswith($name))] | first.address // empty' | " +
       "xargs -r -I{} hyprctl dispatch focuswindow address:{}"]
     focusAppProc.running = true
@@ -407,13 +408,43 @@ Item {
     var srcPath = decodeURIComponent(image.substring(7))
     var ext = imageExtension(srcPath)
     var destPath = imageCacheDir + snapshot.timestamp + "-" + snapshot.originalId + "." + ext
-    var destUri = "file://" + destPath
+    var destUri = Util.fileUrl(destPath)
 
-    imageCacheProc.targetUri = destUri
-    imageCacheProc.matchOriginalId = snapshot.originalId
-    imageCacheProc.matchTimestamp = snapshot.timestamp
-    imageCacheProc.command = ["cp", "-f", srcPath, destPath]
+    imageCacheQueue = imageCacheQueue.concat([{
+      srcPath: srcPath,
+      destPath: destPath,
+      targetUri: destUri,
+      originalId: snapshot.originalId,
+      timestamp: snapshot.timestamp
+    }])
+    runNextImageCacheJob()
+  }
+
+  function runNextImageCacheJob() {
+    if (imageCacheProc.running || imageCacheQueue.length === 0) return
+
+    var job = imageCacheQueue[0]
+    imageCacheQueue = imageCacheQueue.slice(1)
+    imageCacheProc.targetUri = job.targetUri
+    imageCacheProc.matchOriginalId = job.originalId
+    imageCacheProc.matchTimestamp = job.timestamp
+    imageCacheProc.command = ["cp", "-f", job.srcPath, job.destPath]
     imageCacheProc.running = true
+  }
+
+  function rewriteCachedImage(targetUri, originalId, timestamp) {
+    function rewrite(model) {
+      for (var i = 0; i < model.count; i++) {
+        var row = model.get(i)
+        if (row && row.originalId === originalId && row.timestamp === timestamp) {
+          model.setProperty(i, "image", targetUri)
+          return true
+        }
+      }
+      return false
+    }
+
+    return rewrite(pendingModel) || rewrite(pastModel)
   }
 
   function maybeDeleteCachedImage(image) {
@@ -438,20 +469,12 @@ Item {
     property int matchOriginalId: -1
     property double matchTimestamp: 0
     onExited: function(exitCode) {
-      if (exitCode !== 0 || !targetUri) return
-      // Search both models since a notification may have moved to past
-      // between when we kicked off the copy and when it finished.
-      function rewrite(model) {
-        for (var i = 0; i < model.count; i++) {
-          var row = model.get(i)
-          if (row && row.originalId === matchOriginalId && row.timestamp === matchTimestamp) {
-            model.setProperty(i, "image", targetUri)
-            return true
-          }
-        }
-        return false
-      }
-      if (rewrite(pendingModel) || rewrite(pastModel)) scheduleHistorySave()
+      if (exitCode === 0 && targetUri && rewriteCachedImage(targetUri, matchOriginalId, matchTimestamp))
+        scheduleHistorySave()
+      targetUri = ""
+      matchOriginalId = -1
+      matchTimestamp = 0
+      runNextImageCacheJob()
     }
   }
 
