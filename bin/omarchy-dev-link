@@ -42,10 +42,20 @@ for required in bin default shell; do
   fi
 done
 
+# Strip any previous dev-link's bin/ from PATH before adding the new one,
+# so repeated link calls don't accumulate stale entries.
+prior_target=""
+if [[ -f /etc/omarchy.conf ]]; then
+  prior_target=$(sed -n 's/^[[:space:]]*export[[:space:]]\+OMARCHY_PATH="\?\([^"]*\)"\?/\1/p' /etc/omarchy.conf | tail -1)
+fi
+
 echo "Pointing Omarchy at $target"
 printf 'export OMARCHY_PATH="%s"\n' "$target" | sudo tee /etc/omarchy.conf >/dev/null
 
 export OMARCHY_PATH="$target"
+if [[ -n $prior_target && $prior_target != "$target" ]]; then
+  PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vFx "$prior_target/bin" | paste -sd:)
+fi
 export PATH="$target/bin:$PATH"
 
 if command -v hyprctl >/dev/null 2>&1 && hyprctl version &>/dev/null; then
