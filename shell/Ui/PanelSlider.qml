@@ -28,6 +28,7 @@ Item {
 
   readonly property real range: Math.max(0.0001, maximum - minimum)
   readonly property real progress: Math.max(0, Math.min(1, (liveValue - minimum) / range))
+  readonly property bool _hot: mouseArea.containsMouse || root.dragging
 
   Rectangle {
     id: track
@@ -64,7 +65,7 @@ Item {
     border.width: Math.max(1, Style.space(2))
     anchors.verticalCenter: track.verticalCenter
     x: Math.max(0, Math.min(track.width - width, track.width * root.progress - width / 2))
-    scale: mouseArea.containsMouse || root.dragging ? 1.15 : 1.0
+    scale: root._hot ? 1.15 : 1.0
 
     Behavior on x {
       enabled: !root.dragging
