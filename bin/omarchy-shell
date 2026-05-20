@@ -32,6 +32,10 @@ fi
 
 SHELL_QML="$OMARCHY_PATH/shell/shell.qml"
 
+if [[ $1 == "shell" && ( $2 == "summon" || $2 == "toggle" ) && $# -eq 3 ]]; then
+  set -- "$1" "$2" "$3" "{}"
+fi
+
 perl -MCwd=abs_path -MEncode=encode,decode -MSocket -MIO::Handle \
   -e '
     binmode STDOUT, ":encoding(UTF-8)";
