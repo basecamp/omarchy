@@ -730,22 +730,7 @@ Item {
       Item {
         anchors.fill: parent
 
-        MouseArea {
-          anchors.fill: parent
-          acceptedButtons: Qt.LeftButton | Qt.RightButton
-          onClicked: function(mouse) {
-            if (mouse.button === Qt.RightButton) {
-              root.openBarSettings()
-              mouse.accepted = true
-            }
-          }
-          onDoubleClicked: function(mouse) {
-            if (mouse.button !== Qt.RightButton) {
-              root.toggleTransparency()
-              mouse.accepted = true
-            }
-          }
-        }
+        CenterGestureArea { anchors.fill: parent }
 
         ModuleList {
           visible: !centerRoot.hasAnchor
@@ -782,6 +767,8 @@ Item {
       Item {
         anchors.fill: parent
 
+        CenterGestureArea { anchors.fill: parent }
+
         ModuleList {
           visible: !centerRoot.hasAnchor
           entries: centerRoot.entries
@@ -808,6 +795,24 @@ Item {
           anchors.top: centerAnchorModule.bottom
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
+      }
+    }
+  }
+
+  component CenterGestureArea: MouseArea {
+    acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+    onClicked: function(mouse) {
+      if (mouse.button === Qt.RightButton) {
+        root.openBarSettings()
+        mouse.accepted = true
+      }
+    }
+
+    onDoubleClicked: function(mouse) {
+      if (mouse.button !== Qt.RightButton) {
+        root.toggleTransparency()
+        mouse.accepted = true
       }
     }
   }
