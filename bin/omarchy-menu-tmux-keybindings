@@ -1,0 +1,248 @@
+#!/bin/bash
+
+# omarchy:summary=Display Tmux keybindings defined in your configuration using walker for an interactive search menu.
+# omarchy:args=[--print|-p] [--config <path>]
+
+print_only=false
+config_file="${TMUX_CONF:-$HOME/.config/tmux/tmux.conf}"
+
+while (($#)); do
+  case "$1" in
+    --print|-p)
+      print_only=true
+      ;;
+    --config)
+      shift
+      config_file="$1"
+      ;;
+    *)
+      config_file="$1"
+      ;;
+  esac
+
+  shift
+done
+
+if [[ ! -f $config_file ]]; then
+  default_config="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/config/tmux/tmux.conf"
+
+  if [[ -f $default_config ]]; then
+    config_file="$default_config"
+  else
+    echo "Tmux config not found: $config_file" >&2
+    exit 1
+  fi
+fi
+
+output_keybindings() {
+  awk '
+function trim(value) {
+  gsub(/^[ \t]+|[ \t]+$/, "", value)
+  return value
+}
+
+function key_part_text(part, is_modifier, part_count) {
+  gsub(/^\\/, "", part)
+
+  if (is_modifier && part == "C") return "CTRL"
+  if (is_modifier && part == "M") return "ALT"
+  if (is_modifier && part == "S") return "SHIFT"
+  if (part == "Space") return "SPACE"
+  if (part == "BSpace") return "BACKSPACE"
+  if (part == "BTab") return "SHIFT + TAB"
+  if (part == "PPage") return "PAGE UP"
+  if (part == "NPage") return "PAGE DOWN"
+  if (part == "DC") return "DELETE"
+  if (part == "IC") return "INSERT"
+  if (part_count == 1 && part ~ /^[a-z]$/) return part
+
+  return toupper(part)
+}
+
+function key_text(key, parts, count, i, part, text) {
+  gsub(/\\/, "", key)
+  count = split(key, parts, "-")
+  text = ""
+
+  for (i = 1; i <= count; i++) {
+    part = key_part_text(parts[i], i < count, count)
+    text = text (text == "" ? "" : " + ") part
+  }
+
+  return text
+}
+
+function table_text(table) {
+  if (table == "copy-mode-vi") return "COPY MODE"
+  if (table == "copy-mode") return "COPY MODE"
+  if (table == "prefix") return "PREFIX"
+
+  gsub(/-/, " ", table)
+  return toupper(table)
+}
+
+function pretty_command(command) {
+  gsub(/\\;/, ";", command)
+  gsub(/[{}]/, "", command)
+  gsub(/^[ \t]+|[ \t]+$/, "", command)
+  gsub(/[ \t]+/, " ", command)
+  return command
+}
+
+function command_action(command, normalized, target) {
+  normalized = pretty_command(command)
+
+  if (normalized ~ /omarchy-menu-tmux-keybindings/) return "Show Tmux keybindings"
+  if (normalized ~ /^send(-keys)? -X begin-selection/) return "Begin selection"
+  if (normalized ~ /^send(-keys)? -X copy-selection-and-cancel/) return "Copy selection"
+  if (normalized ~ /^send-prefix/) return "Send prefix"
+  if (normalized ~ /^source-file/) return "Reload config"
+  if (normalized ~ /^split-window -v/) return "Split pane vertically"
+  if (normalized ~ /^split-window -h/) return "Split pane horizontally"
+  if (normalized ~ /^kill-pane/) return "Kill pane"
+  if (normalized ~ /^select-pane -L/) return "Focus pane left"
+  if (normalized ~ /^select-pane -R/) return "Focus pane right"
+  if (normalized ~ /^select-pane -U/) return "Focus pane up"
+  if (normalized ~ /^select-pane -D/) return "Focus pane down"
+  if (normalized ~ /^resize-pane -L/) return "Resize pane left"
+  if (normalized ~ /^resize-pane -R/) return "Resize pane right"
+  if (normalized ~ /^resize-pane -U/) return "Resize pane up"
+  if (normalized ~ /^resize-pane -D/) return "Resize pane down"
+  if (normalized ~ /^swap-pane -t "?left-of"?/) return "Move pane left"
+  if (normalized ~ /^swap-pane -t "?right-of"?/) return "Move pane right"
+  if (normalized ~ /^swap-pane -t "?up-of"?/) return "Move pane up"
+  if (normalized ~ /^swap-pane -t "?down-of"?/) return "Move pane down"
+  if (normalized ~ /^swap-pane -U/) return "Move pane left"
+  if (normalized ~ /^swap-pane -D/) return "Move pane right"
+  if (normalized ~ /rename-window/) return "Rename window"
+  if (normalized ~ /^new-window/) return "New window"
+  if (normalized ~ /^kill-window/) return "Kill window"
+
+  if (match(normalized, /^select-window -t ([^ ;]+)/, target)) {
+    gsub(/^:=?/, "", target[1])
+
+    if (target[1] == "-1") return "Previous window"
+    if (target[1] == "+1") return "Next window"
+
+    return "Switch to window " target[1]
+  }
+
+  if (normalized ~ /^swap-window -t -1/) return "Move window left"
+  if (normalized ~ /^swap-window -t \+1/) return "Move window right"
+  if (normalized ~ /rename-session/) return "Rename session"
+  if (normalized ~ /^new-session/) return "New session"
+  if (normalized ~ /^kill-session/) return "Kill session"
+  if (normalized ~ /^switch-client -p/) return "Previous session"
+  if (normalized ~ /^switch-client -n/) return "Next session"
+
+  return normalized
+}
+
+function add_record(combo, action) {
+  records[++record_count] = sprintf("%-32s → %s", combo, action)
+}
+
+function parse_bind(line, words, count, i, table, global, key, command, combo, action) {
+  count = split(line, words, /[ \t]+/)
+  i = 2
+  table = "prefix"
+  global = 0
+
+  while (i <= count && words[i] ~ /^-/) {
+    if (words[i] == "-n") {
+      global = 1
+      i++
+    } else if (words[i] == "-T") {
+      table = words[i + 1]
+      i += 2
+    } else if (words[i] == "-r") {
+      i++
+    } else {
+      i++
+    }
+  }
+
+  key = words[i]
+  i++
+
+  command = ""
+  for (; i <= count; i++) {
+    command = command (command == "" ? "" : " ") words[i]
+  }
+
+  if (key == "" || command == "") return
+
+  if (global) {
+    combo = key_text(key)
+  } else if (table == "prefix") {
+    combo = "PREFIX + " key_text(key)
+  } else {
+    combo = table_text(table) " + " key_text(key)
+  }
+
+  action = command_action(command)
+  add_record(combo, action)
+}
+
+BEGIN {
+  prefix = "C-b"
+  prefix2 = ""
+}
+
+{
+  line = trim($0)
+
+  if (line == "") next
+  if (line ~ /^#/) next
+
+  if (line ~ /^(set|set-option|setw|set-window-option)[ \t]/) {
+    word_count = split(line, words, /[ \t]+/)
+
+    for (i = 2; i <= word_count; i++) {
+      if (words[i] == "prefix") prefix = words[i + 1]
+      if (words[i] == "prefix2") prefix2 = words[i + 1]
+    }
+
+    next
+  }
+
+  if (line ~ /^(bind|bind-key)[ \t]/) parse_bind(line)
+}
+
+END {
+  prefix_description = key_text(prefix)
+
+  if (prefix2 != "" && prefix2 != "None") {
+    prefix_description = prefix_description " / " key_text(prefix2)
+  }
+
+  printf "%-32s → %s\n", "PREFIX", prefix_description
+
+  add_record("PREFIX + {", "Move pane left")
+  add_record("PREFIX + }", "Move pane right")
+
+  for (i = 1; i <= record_count; i++) print records[i]
+}
+' "$config_file"
+}
+
+if [[ $print_only == "true" ]]; then
+  output_keybindings
+  exit 0
+fi
+
+records=$(output_keybindings)
+
+if [[ -z $WAYLAND_DISPLAY ]] || omarchy-cmd-missing walker; then
+  printf '%s\n' "$records"
+  exit 0
+fi
+
+monitor_height=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | .height' 2>/dev/null)
+
+if [[ ! $monitor_height =~ ^[0-9]+$ ]] || ((monitor_height <= 0)); then
+  monitor_height=900
+fi
+
+menu_height=$((monitor_height * 40 / 100))
+printf '%s\n' "$records" | walker --dmenu -p 'Tmux keybindings' --width 800 --height "$menu_height" >/dev/null

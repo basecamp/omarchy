@@ -12,4 +12,4 @@ progress="$(awk -v p="$percent" 'BEGIN{printf "%.2f", p/100}')"
 omarchy-swayosd-client \
   --custom-icon display-brightness-symbolic \
   --custom-progress "$progress" \
-  --custom-progress-text "${percent}%"
+  --custom-progress-text "$(printf '%3d%%' "$percent")"
