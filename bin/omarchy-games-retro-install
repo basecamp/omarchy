@@ -55,7 +55,7 @@ icon_dir="$desktop_dir/icons"
 icon_path="$icon_dir/Retro Gaming.png"
 
 mkdir -p "$desktop_dir" "$icon_dir"
-[[ -f $icon_path ]] || cp "$HOME/.local/share/omarchy/applications/icons/Retro Gaming.png" "$icon_path"
+[[ -f $icon_path ]] || cp "$OMARCHY_PATH/applications/icons/Retro Gaming.png" "$icon_path"
 
 cat >"$desktop_file" <<EOF
 [Desktop Entry]

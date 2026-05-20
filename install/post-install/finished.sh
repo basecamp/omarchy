@@ -6,7 +6,7 @@ echo_in_style() {
 
 clear
 echo
-tte -i ~/.local/share/omarchy/logo.txt --canvas-width 0 --anchor-text c --frame-rate 920 laseretch
+tte -i $OMARCHY_PATH/logo.txt --canvas-width 0 --anchor-text c --frame-rate 920 laseretch
 echo
 
 # Display installation time if available

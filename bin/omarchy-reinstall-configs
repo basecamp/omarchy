@@ -13,8 +13,8 @@ if (( EUID == 0 )); then
 fi
 
 echo "Resetting all Omarchy configs"
-cp -R ~/.local/share/omarchy/config/* ~/.config/
-cp ~/.local/share/omarchy/default/bashrc ~/.bashrc
+cp -R $OMARCHY_PATH/config/* ~/.config/
+cp $OMARCHY_PATH/default/bashrc ~/.bashrc
 echo '[[ -f ~/.bashrc ]] && . ~/.bashrc' | tee ~/.bash_profile >/dev/null
 
 $(bash $OMARCHY_PATH/install/config/theme.sh)
