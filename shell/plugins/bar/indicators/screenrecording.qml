@@ -11,7 +11,7 @@ BarIndicator {
   activeText: "󰻂"
   inactiveText: "󰻂"
   activeTooltipText: "Stop recording"
-  inactiveTooltipText: "Screen recording"
+  inactiveTooltipText: "Screen Recording"
 
   function refresh() {
     if (!root.bar || statusProc.running) return
