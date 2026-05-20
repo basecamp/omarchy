@@ -186,6 +186,10 @@ BarWidget {
     visible: !root.vertical
     spacing: 0
 
+    HoverHandler {
+      onHoveredChanged: root.setIndicatorAreaHovered(hovered)
+    }
+
     ActiveIndicatorBlock {
       indicatorsModule: root
       indicatorModel: activeIndicatorModel
@@ -222,6 +226,10 @@ BarWidget {
 
     visible: root.vertical
     spacing: 0
+
+    HoverHandler {
+      onHoveredChanged: root.setIndicatorAreaHovered(hovered)
+    }
 
     ActiveIndicatorBlock {
       indicatorsModule: root
