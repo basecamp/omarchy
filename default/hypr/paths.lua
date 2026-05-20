@@ -4,18 +4,14 @@
 
 local home = os.getenv("HOME")
 
--- Resolve OMARCHY_PATH with omarchy-dev-link awareness. If /etc/omarchy.conf
--- exists it wins over the process env, so dev-link takes effect even when
--- Hyprland's own env is stale (the launching session never re-read the conf).
+-- /etc/omarchy.conf wins over process env so dev-link survives stale sessions.
 local function read_dev_link_omarchy_path()
   local f = io.open("/etc/omarchy.conf", "r")
   if not f then return nil end
   local value
   for line in f:lines() do
     local v = line:match('^%s*export%s+OMARCHY_PATH=%s*"?([^"\n]+)"?')
-    if v and #v > 0 then
-      value = v
-    end
+    if v and #v > 0 then value = v end
   end
   f:close()
   return value

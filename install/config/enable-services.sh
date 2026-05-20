@@ -1,12 +1,7 @@
-# Central place for unconditional service enables. Services that should NOT
-# be started during install (sddm, ufw) live in their own scripts. Hardware-
-# gated services (t2fanrd, intel_lpmd, thermald, omarchy-nvme-suspend-fix)
-# also live with their detection.
-#
-# Two variants:
-#   chrootable_systemctl_enable      -> enable + start now (safe to start)
-#   chrootable_systemctl_enable_only -> enable only (don't risk starting during
-#                                       install)
+# _only variant skips --now to avoid starting iwd/docker/power-profiles-daemon
+# during install (existing iwd would be interrupted; the others should defer
+# to first boot). sddm, ufw, and hardware-gated services stay in their own
+# scripts.
 chrootable_systemctl_enable      bluetooth.service
 chrootable_systemctl_enable      cups.service
 chrootable_systemctl_enable      cups-browsed.service

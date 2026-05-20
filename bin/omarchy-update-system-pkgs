@@ -7,13 +7,9 @@ set -e
 
 echo -e "\e[32m\nUpdate system packages\e[0m"
 
-# Transition --overwrite: the Omarchy 4 package refactor moves files that
-# previous Omarchy installs wrote as unowned files (via install scripts) into
-# the omarchy-settings package. Pacman would otherwise refuse to install
-# omarchy-settings on the first upgrade because the paths "exist in
-# filesystem". Limited to the exact paths the package now owns; remove the
-# corresponding --overwrite entry once the transition release is everyone's
-# baseline.
+# Transition --overwrite: previous script-installed Omarchy wrote these paths
+# as unowned files; pacman would refuse the omarchy-settings upgrade on first
+# encounter. Drop each entry once the transition release is the baseline.
 sudo pacman -Syyu --noconfirm \
   --overwrite '/etc/docker/daemon.json' \
   --overwrite '/etc/gnupg/dirmngr.conf' \

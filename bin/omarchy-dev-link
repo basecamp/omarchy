@@ -7,11 +7,10 @@
 
 set -euo pipefail
 
+# Sudo wipes HYPRLAND_INSTANCE_SIGNATURE, so the live-session refresh below
+# can't reach hyprctl. Run as user; we sudo internally for the conf write.
 if [[ $EUID -eq 0 ]]; then
-  echo "Error: run omarchy-dev-link as your user, not under sudo. The script" >&2
-  echo "       will prompt for sudo when it needs to write /etc/omarchy.conf." >&2
-  echo "       (Invoking under sudo wipes HYPRLAND_INSTANCE_SIGNATURE so the" >&2
-  echo "       live-session refresh can't reach hyprctl.)" >&2
+  echo "Error: run omarchy-dev-link as your user, not under sudo." >&2
   exit 1
 fi
 
@@ -37,7 +36,6 @@ target=$(realpath -e "$1" 2>/dev/null) || {
   exit 1
 }
 
-# Sanity: looks like an omarchy-installer checkout?
 for required in bin default shell; do
   if [[ ! -d "$target/$required" ]]; then
     echo "Warning: $target/$required not found — does this look like an omarchy-installer checkout?" >&2
@@ -47,12 +45,9 @@ done
 echo "Pointing Omarchy at $target"
 printf 'export OMARCHY_PATH="%s"\n' "$target" | sudo tee /etc/omarchy.conf >/dev/null
 
-# Update the current shell so the rest of this script and anything spawned
-# from it see the new path.
 export OMARCHY_PATH="$target"
 export PATH="$target/bin:$PATH"
 
-# Update the live Hyprland session if one is running.
 if command -v hyprctl >/dev/null 2>&1 && hyprctl version &>/dev/null; then
   hyprctl setenv OMARCHY_PATH "$target" >/dev/null
   hyprctl setenv PATH "$PATH" >/dev/null

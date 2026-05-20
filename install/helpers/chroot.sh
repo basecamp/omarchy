@@ -7,14 +7,12 @@ chrootable_systemctl_enable() {
   fi
 }
 
-# Like chrootable_systemctl_enable but never passes --now, so the service is
-# only enabled for the next boot. Use for services that are either already
-# running (and re-starting would interrupt the install — iwd) or that shouldn't
-# auto-start during install (docker, power-profiles-daemon).
+# Like chrootable_systemctl_enable but never passes --now. Use for services
+# we shouldn't (re)start mid-install (iwd interrupts the network; docker and
+# power-profiles-daemon should defer to first boot).
 chrootable_systemctl_enable_only() {
   sudo systemctl enable $1
 }
 
-# Export the functions so they're available in subshells
 export -f chrootable_systemctl_enable
 export -f chrootable_systemctl_enable_only

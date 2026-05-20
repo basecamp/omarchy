@@ -24,21 +24,13 @@ hl.env("XDG_SESSION_DESKTOP", "Hyprland")
 -- Use XCompose file.
 hl.env("XCOMPOSEFILE", paths.home .. "/.XCompose")
 
--- Propagate OMARCHY_PATH and PATH to processes spawned by Hyprland (keybinds,
--- dispatchers, autostart). hyprctl setenv doesn't reach the env captured for
--- bind exec at config-load time, so omarchy-dev-link reaches this via
--- hyprctl reload re-running envs.lua with the new paths.omarchy_path.
+-- hyprctl setenv doesn't reach keybind dispatcher env; use hl.env.
 hl.env("OMARCHY_PATH", paths.omarchy_path)
 
--- Prepend $OMARCHY_PATH/bin to PATH, deduping any prior occurrence so
--- reloads don't accumulate duplicates.
 local bin_dir = paths.omarchy_path .. "/bin"
-local current_path = os.getenv("PATH") or "/usr/local/bin:/usr/bin"
 local kept = {}
-for entry in current_path:gmatch("[^:]+") do
-  if entry ~= bin_dir then
-    table.insert(kept, entry)
-  end
+for entry in (os.getenv("PATH") or "/usr/local/bin:/usr/bin"):gmatch("[^:]+") do
+  if entry ~= bin_dir then table.insert(kept, entry) end
 end
 table.insert(kept, 1, bin_dir)
 hl.env("PATH", table.concat(kept, ":"))
