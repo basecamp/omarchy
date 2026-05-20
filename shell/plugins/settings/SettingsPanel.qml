@@ -180,7 +180,6 @@ Item {
         position: String(bar.position || "top"),
         transparent: bar.transparent === true,
         centerAnchor: String(bar.centerAnchor || ""),
-        fontFamily: "monospace",
         layout: Util.normalizeLayout(bar.layout || {})
       },
       plugins: plugins

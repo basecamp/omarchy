@@ -41,7 +41,6 @@ ShellRoot {
     bar: {
       position: "top",
       transparent: false,
-      fontFamily: "JetBrainsMono Nerd Font",
       centerAnchor: "calendar",
       layout: {
         left: [{ id: "omarchy" }, { id: "workspaces" }],

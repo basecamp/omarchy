@@ -169,7 +169,6 @@ rewrites the `bar` subtree from the current `shell-defaults.json`.
     "position": "top",
     "transparent": false,
     "centerAnchor": "calendar",
-    "fontFamily": "JetBrainsMono Nerd Font",
     "layout": {
       "left":   [ { "id": "omarchy" }, { "id": "workspaces" } ],
       "center": [ { "id": "calendar", "format": "HH:mm" } ],
