@@ -145,7 +145,7 @@ ShellRoot {
     // chains rescan() once the directory exists. We also kick a scan here in
     // case the user dir already existed at startup.
     pluginRegistry.rescan()
-    shell._syncFirstPartyServices()
+    shell._syncServices()
   }
 
   function mutateShellConfig(mutator) {
@@ -166,28 +166,32 @@ ShellRoot {
     shell: shell
   }
 
-  // ---------------------------------------------------- first-party services
+  // ------------------------------------------------------------- services
   //
-  // Generic loader for any first-party plugin that declares kind "service".
-  // The notification daemon is the first user; future first-party services
-  // (background updaters, idle inhibitor, etc.) plug in here.
+  // Generic loader for any enabled plugin that declares kind "service".
+  // First-party infrastructure services are implicitly enabled by the registry;
+  // third-party services are enabled by adding the plugin id to shell.json.
   Item {
-    id: firstPartyServiceHost
+    id: serviceHost
     visible: false
   }
 
-  property var _firstPartyServices: ({})
+  property var _services: ({})
 
-  function firstPartyServiceFor(pluginId) {
-    return _firstPartyServices[String(pluginId)] || null
+  function serviceFor(pluginId) {
+    return _services[String(pluginId)] || null
   }
 
-  function ensureFirstPartyService(pluginId) {
+  function firstPartyServiceFor(pluginId) {
+    return serviceFor(pluginId)
+  }
+
+  function ensureService(pluginId) {
     var key = String(pluginId)
-    if (_firstPartyServices[key]) return _firstPartyServices[key]
+    if (_services[key]) return _services[key]
     var manifest = pluginRegistry && pluginRegistry.installedPlugins
       ? pluginRegistry.installedPlugins[key] : null
-    if (!manifest || !manifest.__isFirstParty) return null
+    if (!manifest) return null
     if (!Array.isArray(manifest.kinds) || manifest.kinds.indexOf("service") === -1) return null
     if (!manifest.entryPoints || !manifest.entryPoints.service) return null
     var url = pluginRegistry.entryPointUrl(manifest, "service")
@@ -196,58 +200,60 @@ ShellRoot {
     var comp = Qt.createComponent(url, Component.PreferSynchronous)
     function finalize() {
       if (comp.status !== Component.Ready) {
-        console.warn("first-party service load failed for " + key + ": " + comp.errorString())
+        console.warn("service plugin load failed for " + key + ": " + comp.errorString())
         return
       }
-      var inst = comp.createObject(firstPartyServiceHost)
+      var inst = comp.createObject(serviceHost)
       if (!inst) {
-        console.warn("first-party service createObject returned null for", key)
+        console.warn("service plugin createObject returned null for", key)
         return
       }
       if ("omarchyPath" in inst) inst.omarchyPath = shell.omarchyPath
       if ("shell" in inst) inst.shell = shell
       if ("manifest" in inst) inst.manifest = manifest
+      if ("barWidgetRegistry" in inst) inst.barWidgetRegistry = shell.barWidgetRegistry
+      if ("pluginRegistry" in inst) inst.pluginRegistry = shell.pluginRegistry
       var snext = ({})
-      for (var sk in _firstPartyServices) snext[sk] = _firstPartyServices[sk]
+      for (var sk in _services) snext[sk] = _services[sk]
       snext[key] = inst
-      _firstPartyServices = snext
+      _services = snext
     }
     if (comp.status === Component.Loading) {
       comp.statusChanged.connect(finalize)
       return null
     }
     finalize()
-    return _firstPartyServices[key] || null
+    return _services[key] || null
   }
 
-  function _syncFirstPartyServices() {
+  function _syncServices() {
     if (!pluginRegistry || !pluginRegistry.installedPlugins) return
     var plugins = pluginRegistry.installedPlugins
     for (var id in plugins) {
       var m = plugins[id]
-      if (!m || !m.__isFirstParty) continue
+      if (!m) continue
       if (!Array.isArray(m.kinds) || m.kinds.indexOf("service") === -1) continue
       if (!m.entryPoints || !m.entryPoints.service) continue
       if (!pluginRegistry.isEnabled(id)) continue
-      if (_firstPartyServices[id]) continue
-      ensureFirstPartyService(id)
+      if (_services[id]) continue
+      ensureService(id)
     }
     // Drop services for plugins that have been disabled or removed.
-    for (var existingId in _firstPartyServices) {
+    for (var existingId in _services) {
       var stillThere = plugins[existingId]
       var stillEnabled = stillThere && pluginRegistry.isEnabled(existingId)
       if (stillThere && stillEnabled) continue
-      var inst = _firstPartyServices[existingId]
+      var inst = _services[existingId]
       if (inst && typeof inst.destroy === "function") inst.destroy()
       var next = ({})
-      for (var k in _firstPartyServices) if (k !== existingId) next[k] = _firstPartyServices[k]
-      _firstPartyServices = next
+      for (var k in _services) if (k !== existingId) next[k] = _services[k]
+      _services = next
     }
   }
 
   Connections {
     target: shell.pluginRegistry
-    function onPluginsChanged() { shell._syncFirstPartyServices() }
+    function onPluginsChanged() { shell._syncServices() }
   }
 
   // Writes inline settings to a bar layout entry or top-level plugin entry in
@@ -456,10 +462,10 @@ ShellRoot {
           if ("manifest" in item) item.manifest = panelEntry.manifest
           if ("barWidgetRegistry" in item) item.barWidgetRegistry = shell.barWidgetRegistry
           if ("pluginRegistry" in item) item.pluginRegistry = shell.pluginRegistry
-          // First-party plugins that pair a panel UI with a service entry
-          // (e.g. omarchy.notifications) read shared state off `service`. We
-          // hand them the matching service instance if one was loaded.
-          if ("service" in item) item.service = shell.firstPartyServiceFor(panelEntry.pluginId)
+          // Plugins that pair a panel UI with a service entry read shared
+          // state off `service`. Hand them the matching singleton if one was
+          // loaded.
+          if ("service" in item) item.service = shell.serviceFor(panelEntry.pluginId)
           shell.registerPanelLoader(panelEntry.pluginId, this)
         }
         onStatusChanged: {
