@@ -1,31 +1,22 @@
 import QtQuick
 import Quickshell.Io
-import qs.Commons
 import qs.Ui
 
 BarIndicator {
   id: root
 
-  property string statusText: ""
-  property string statusTooltip: ""
+  property bool recording: false
 
-  active: statusText !== ""
-  activeText: statusText
+  active: recording
+  activeText: "󰻂"
   inactiveText: "󰻂"
-  activeTooltipText: statusTooltip
+  activeTooltipText: "Stop recording"
   inactiveTooltipText: "Screen recording"
 
   function refresh() {
     if (!root.bar || statusProc.running) return
-    statusProc.command = ["bash", "-lc", Util.shellQuote(root.bar.omarchyPath + "/shell/scripts/indicators/screen-recording.sh")]
+    statusProc.command = ["pgrep", "--quiet", "-f", "^gpu-screen-recorder"]
     statusProc.running = true
-  }
-
-  function update(raw) {
-    var data = extractData(raw)
-
-    statusText = data.text || ""
-    statusTooltip = data.tooltip || ""
   }
 
   onBarChanged: refresh()
@@ -39,9 +30,8 @@ BarIndicator {
 
   Process {
     id: statusProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.update(text)
+    onExited: function(exitCode) {
+      root.recording = exitCode === 0
     }
   }
 
