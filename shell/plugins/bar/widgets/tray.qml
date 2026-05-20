@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
 import qs.Commons
@@ -10,6 +11,12 @@ BarWidget {
 
   property bool expanded: false
   property bool managePopupOpen: false
+  property bool blockExpand: false
+  property bool itemMenuOpen: false
+  property var itemMenuCurrent: null
+  property var itemMenuStack: []
+  property var itemMenuFallbackItem: null
+  property Item itemMenuFallbackAnchor: null
   readonly property bool vertical: bar ? bar.vertical : false
   readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -28,6 +35,7 @@ BarWidget {
 
   function close() {
     managePopupOpen = false
+    closeItemMenu()
   }
 
   function trayIconSource(icon) {
@@ -96,6 +104,70 @@ BarWidget {
     persistTrayState(p, h)
   }
 
+  function setItemMenu(menu, pushHistory) {
+    if (!menu) return
+    if (pushHistory && itemMenuCurrent) {
+      itemMenuTransitionRetainer.menu = itemMenuCurrent
+      itemMenuStack = itemMenuStack.concat([itemMenuCurrent])
+    }
+    itemMenuCurrent = menu
+    if (typeof menu.updateLayout === "function") menu.updateLayout()
+  }
+
+  function closeItemMenu() {
+    itemMenuCurrent = null
+    itemMenuStack = []
+    itemMenuTransitionRetainer.menu = null
+    root.blockExpand = false
+    root.expanded = false
+    itemMenuOpen = false
+  }
+
+  function openItemMenu(item, anchor) {
+    if (!item || !item.hasMenu) return
+    if (root.bar) root.bar.hideTooltip(anchor)
+    if (!item.menu) {
+      displayNativeItemMenu(item, anchor)
+      return
+    }
+    itemMenuFallbackItem = item
+    itemMenuFallbackAnchor = anchor
+    itemMenuStack = []
+    itemMenuTransitionRetainer.menu = null
+    setItemMenu(item.menu, false)
+    itemMenuOpen = true
+    nativeFallbackTimer.restart()
+    root.blockExpand = true
+  }
+
+  // Fallback for sure
+  function displayNativeItemMenu(item, anchor) {
+    if (!item || !anchor || !anchor.QsWindow || !anchor.QsWindow.window) return
+    var point = anchor.QsWindow.contentItem.mapFromItem(anchor, anchor.width / 2, anchor.height / 2)
+    item.display(anchor.QsWindow.window, point.x, point.y)
+  }
+
+  function activateMenuEntry(entry) {
+    if (!entry || entry.isSeparator || !entry.enabled) return
+    if (entry.hasChildren) {
+      setItemMenu(entry, true)
+      return
+    }
+    if (typeof entry.triggered === "function") entry.triggered()
+    else if (typeof entry.sendTriggered === "function") entry.sendTriggered()
+    closeItemMenu()
+  }
+
+  function goBackItemMenu() {
+    if (itemMenuStack.length === 0) {
+      closeItemMenu()
+      return
+    }
+    var stack = itemMenuStack.slice()
+    setItemMenu(stack.pop(), false)
+    itemMenuStack = stack
+  }
+
   visible: pinnedItems.length > 0 || drawerCount > 0
   clip: false
   implicitWidth: root.vertical ? root.barSize : trayContent.implicitWidth
@@ -146,7 +218,11 @@ BarWidget {
         visible: root.allItems.length > 0
 
         HoverHandler {
-          onHoveredChanged: root.expanded = hovered
+          onHoveredChanged: {
+            if(root.blockExpand === false) {
+              root.expanded = hovered
+            }
+         }
         }
 
         WidgetButton {
@@ -403,14 +479,184 @@ BarWidget {
     }
   }
 
+  QsMenuOpener {
+    id: itemMenuOpener
+    menu: root.itemMenuCurrent
+  }
+
+  QsMenuOpener {
+    id: itemMenuTransitionRetainer
+  }
+
+  Repeater {
+    model: root.itemMenuStack
+
+    delegate: Item {
+      id: retainedMenu
+      required property var modelData
+
+      visible: false
+      width: 0
+      height: 0
+
+      QsMenuOpener {
+        menu: retainedMenu.modelData || null
+      }
+    }
+  }
+
+  Timer {
+    id: nativeFallbackTimer
+    interval: 1000
+    repeat: false
+    onTriggered: {
+      if (root.itemMenuOpen && itemMenuOpener.children.values.length === 0) {
+        root.closeItemMenu()
+        root.displayNativeItemMenu(root.itemMenuFallbackItem, root.itemMenuFallbackAnchor)
+      }
+    }
+  }
+
+  PopupCard {
+    id: itemMenuPopup
+    anchorItem: root
+    owner: root
+    bar: root.bar
+    open: root.itemMenuOpen
+    backgroundColor: Color.menu.background
+    borderColor: Color.menu.border
+    contentWidth: itemMenuPopup.fittedContentWidth(Style.space(210))
+    contentHeight: itemMenuPopup.fittedContentHeight(itemMenuColumn.implicitHeight)
+
+    Column {
+      id: itemMenuColumn
+      anchors.fill: parent
+      spacing: Style.space(3)
+
+      Button {
+        visible: root.itemMenuStack.length > 0
+        width: parent.width
+        text: "Back"
+        iconText: "‹"
+        foreground: Color.menu.text
+        fontFamily: root.fontFamily
+        fontSize: Style.font.bodySmall
+        iconSize: Style.font.body
+        horizontalPadding: Style.space(8)
+        verticalPadding: Style.space(5)
+        leftAlign: true
+        onClicked: root.goBackItemMenu()
+      }
+
+      Repeater {
+        model: itemMenuOpener.children
+
+        delegate: Item {
+          id: menuRow
+          required property var modelData
+
+          width: itemMenuColumn.width
+          height: modelData.isSeparator ? Style.space(8) : Style.space(24)
+          visible: modelData.isSeparator || String(modelData.text || "").length > 0
+
+          Rectangle {
+            visible: menuRow.modelData.isSeparator
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            height: Style.spacing.hairline
+            color: Util.alpha(Color.menu.text, 0.2)
+          }
+
+          Rectangle {
+            visible: !menuRow.modelData.isSeparator
+            anchors.fill: parent
+            radius: Style.cornerRadius
+            color: rowMouse.containsMouse && menuRow.modelData.enabled ? Color.menu.selectedBackground : "transparent"
+            border.color: rowMouse.containsMouse && menuRow.modelData.enabled ? Color.menu.selectedBorder : "transparent"
+            border.width: rowMouse.containsMouse && Color.menu.selectedBorder.a > 0 ? Style.hoverBorderWidth : 0
+
+            Row {
+              anchors.fill: parent
+              anchors.leftMargin: Style.space(1)
+              anchors.rightMargin: Style.space(1)
+              spacing: Style.space(1)
+
+              Text {
+                text: menuRow.modelData.buttonType === QsMenuButtonType.CheckBox
+                  ? (menuRow.modelData.checkState === Qt.Checked ? "✓" : "")
+                  : (menuRow.modelData.buttonType === QsMenuButtonType.RadioButton ? (menuRow.modelData.checkState === Qt.Checked ? "●" : "") : "")
+                width: Style.space(12)
+                color: rowMouse.containsMouse && menuRow.modelData.enabled ? Color.menu.selectedText : Color.menu.text
+                opacity: menuRow.modelData.enabled ? 1 : 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Item {
+                width: 12
+                height: 12
+                anchors.verticalCenter: parent.verticalCenter
+
+                IconImage {
+                  anchors.fill: parent
+                  source: root.trayIconSource(menuRow.modelData.icon)
+                  implicitSize: 12
+                  opacity: String(menuRow.modelData.icon || "").length > 0 ? (menuRow.modelData.enabled ? 1 : 0.45) : 0
+                }
+              }
+
+              Text {
+                text: String(menuRow.modelData.text || "").replace(/_/g, "")
+                color: rowMouse.containsMouse && menuRow.modelData.enabled ? Color.menu.selectedText : Color.menu.text
+                opacity: menuRow.modelData.enabled ? 1 : 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - x - trail.width - Style.space(4)
+              }
+
+              Text {
+                id: trail
+                text: menuRow.modelData.hasChildren ? "›" : ""
+                width: Style.space(10)
+                color: rowMouse.containsMouse && menuRow.modelData.enabled ? Color.menu.selectedText : Color.menu.text
+                opacity: menuRow.modelData.hasChildren ? 0.5 : 0
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                horizontalAlignment: Text.AlignRight
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            MouseArea {
+              id: rowMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: menuRow.modelData.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+              onClicked: root.activateMenuEntry(menuRow.modelData)
+            }
+          }
+        }
+      }
+    }
+  }
+
   component TrayItem: Item {
     id: trayItemRoot
 
     required property var modelData
 
     visible: modelData.status !== Status.Passive
-    implicitWidth: visible ? 16 : 0
-    implicitHeight: visible ? 16 : 0
+    implicitWidth: visible ? 10 : 0
+    implicitHeight: visible ? 10 : 0
+    width: implicitWidth
+    height: implicitHeight
 
     IconImage {
       anchors.centerIn: parent
@@ -430,8 +676,9 @@ BarWidget {
       onExited: if (root.bar) root.bar.hideTooltip(trayItemRoot)
       onClicked: function(mouse) {
         if (mouse.button === Qt.RightButton && trayItemRoot.modelData.hasMenu) {
-          var point = trayItemRoot.QsWindow.contentItem.mapFromItem(trayItemRoot, mouse.x, mouse.y)
-          trayItemRoot.modelData.display(trayItemRoot.QsWindow.window, point.x, point.y)
+          root.openItemMenu(trayItemRoot.modelData, trayItemRoot)
+        } else if (mouse.button === Qt.LeftButton && trayItemRoot.modelData.onlyMenu && trayItemRoot.modelData.hasMenu) {
+          root.openItemMenu(trayItemRoot.modelData, trayItemRoot)
         } else if (mouse.button === Qt.MiddleButton) {
           trayItemRoot.modelData.secondaryActivate()
         } else {
