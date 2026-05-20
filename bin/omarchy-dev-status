@@ -4,7 +4,6 @@
 # omarchy:group=dev
 
 if [[ -f /etc/omarchy.conf ]]; then
-  # Source in a subshell so we don't mutate the caller's env.
   configured=$(
     OMARCHY_PATH=
     # shellcheck disable=SC1091
