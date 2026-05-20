@@ -1,6 +1,8 @@
--- Webcam overlay for screen recording.
-hl.window_rule({ match = { title = "WebcamOverlay" }, float = true })
-hl.window_rule({ match = { title = "WebcamOverlay" }, pin = true })
-hl.window_rule({ match = { title = "WebcamOverlay" }, no_initial_focus = true })
-hl.window_rule({ match = { title = "WebcamOverlay" }, no_dim = true })
-hl.window_rule({ match = { title = "WebcamOverlay" }, move = { "(monitor_w-window_w-40)", "(monitor_h-window_h-40)" } })
+-- Webcam overlay window.
+o.window({ title = "WebcamOverlay" }, {
+  float = true,
+  pin = true,
+  no_initial_focus = true,
+  no_dim = true,
+  move = { "(monitor_w-window_w-40)", "(monitor_h-window_h-40)" },
+})
