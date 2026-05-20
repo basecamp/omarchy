@@ -15,6 +15,7 @@ QtObject {
     "powerPanel":         { displayName: "Power",              description: "Battery, power profile, and system stats",    category: "System",   allowMultiple: false, sourceDir: "../panels", sourceName: "Power" },
     "bluetoothPanel":     { displayName: "Bluetooth",          description: "Bluetooth device list with connect/disconnect", category: "Network", allowMultiple: false, sourceDir: "../panels", sourceName: "Bluetooth" },
     "daytime":            { displayName: "Daytime",            description: "Day/time label with date tooltip",            category: "Time",     allowMultiple: false, settingsForm: "daytimeSettings" },
+    "indicators":         { displayName: "Indicators",         description: "Manual state indicators",                     category: "Status",   allowMultiple: false },
     "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND",                category: "Status",   allowMultiple: false },
     "systemUpdate":       { displayName: "System update",       description: "Indicates available system updates",         category: "System",   allowMultiple: false },
     "systemStats":        { displayName: "System stats",       description: "CPU icon — hover for graphs, click to open btop", category: "System", allowMultiple: false },

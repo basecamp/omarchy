@@ -30,8 +30,7 @@ User-installed plugins live alongside these conceptually but on disk under
 The status bar. Mounted at startup, lives forever. Layout lives in the
 top-level `bar:` subtree of `~/.config/omarchy/shell.json` (with the shell
 providing [`shell-defaults.json`](../shell-defaults.json) when the user has
-no file). Owns the `bar` IPC target for refresh hooks fired by indicator
-scripts. See [`bar/README.md`](bar/README.md) for the widget catalogue
+no file). See [`bar/README.md`](bar/README.md) for the widget catalogue
 and customization schema.
 
 ## Bar settings

@@ -3,4 +3,4 @@
 # omarchy:summary=Toggle idle behavior so the system either idles normally or stays awake
 
 omarchy-shell idle toggle
-omarchy-shell -q bar refreshIndicators
+omarchy-shell -q indicators refresh

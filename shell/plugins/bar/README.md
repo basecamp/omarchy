@@ -58,6 +58,7 @@ Example `shell.json` (bar subtree only shown):
 | `workspaces` | Hyprland workspace switcher | left = focus workspace |
 | `media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
 | `daytime` | Day/time label with date tooltip | hover = date |
+| `indicators` | Manual state indicators | left = indicator action |
 | `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
 | `systemUpdate` | Available update indicator | left = update |
 | `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
@@ -76,9 +77,9 @@ Example `shell.json` (bar subtree only shown):
 
 ### Built-in base modules (in `Bar.qml`)
 
-`clock`, `indicators`, `tray`.
+`clock`, `tray`.
 
-The `indicators` module loads individual bar indicators from `indicators/`, ordered by its `items` array in `shell.json`. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `../panels/` above.
+The `indicators` widget loads individual bar indicators from `indicators/`, ordered by its `items` array in `shell.json`. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `../panels/` above.
 
 ## Orientation
 

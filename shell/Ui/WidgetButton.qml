@@ -24,6 +24,7 @@ Item {
   property bool pressable: true
   property bool useActiveColor: true
   property bool maintainIndicatorReveal: false
+  property var revealHost: bar
   property string tooltipText: ""
   property var registeredBar: null
 
@@ -96,16 +97,16 @@ Item {
     onEntered: {
       if (root.bar) {
         root.bar.showTooltip(root, root.tooltipText)
-        if (root.maintainIndicatorReveal && root.bar.setIndicatorItemHovered)
-          root.bar.setIndicatorItemHovered(true)
       }
+      if (root.maintainIndicatorReveal && root.revealHost && root.revealHost.setIndicatorItemHovered)
+        root.revealHost.setIndicatorItemHovered(true)
     }
     onExited: {
       if (root.bar) {
         root.bar.hideTooltip(root)
-        if (root.maintainIndicatorReveal && root.bar.setIndicatorItemHovered)
-          root.bar.setIndicatorItemHovered(false)
       }
+      if (root.maintainIndicatorReveal && root.revealHost && root.revealHost.setIndicatorItemHovered)
+        root.revealHost.setIndicatorItemHovered(false)
     }
     onClicked: function(mouse) { if (root.pressable) root.triggerPress(mouse.button) }
     onWheel: function(wheel) { root.wheelMoved(wheel.angleDelta.y) }
