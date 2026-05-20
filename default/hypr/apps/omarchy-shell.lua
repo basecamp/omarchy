@@ -6,7 +6,7 @@
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, no_anim = true, animation = "none" })
 
 -- Launcher, image selector, emoji picker, and clipboard overlays should also pop without animation.
-hl.layer_rule({ match = { namespace = "^(omarchy-menu|omarchy-launcher|omarchy-image-selector|omarchy-emoji-picker|omarchy-clipboard-picker)$" }, no_anim = true, animation = "none" })
+hl.layer_rule({ match = { namespace = "^(omarchy-menu|omarchy-launcher|omarchy-image-selector|omarchy-emoji-picker|omarchy-clipboard)$" }, no_anim = true, animation = "none" })
 
 -- Bar settings floats centered with a sensible default size instead of
 -- tiling — it's a transient dialog, not a workspace surface.
