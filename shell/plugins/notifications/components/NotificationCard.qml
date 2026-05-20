@@ -24,9 +24,6 @@ Rectangle {
   property double timestamp: 0
   property int cornerRadius: 0
 
-  property real progress: 1.0
-  property bool showProgress: false
-
   // System monospace font injected by the container.
   property string fontFamily: ""
 
@@ -69,8 +66,7 @@ Rectangle {
 
   implicitWidth: Style.space(380)
   // Add 2 * border.width so mainColumn (inset by border.width on top/left/right)
-  // doesn't push content under the bottom edge. The bottom edge is also inset
-  // for symmetry except when the progress bar replaces it.
+  // doesn't push content under the bottom edge.
   implicitHeight: mainColumn.implicitHeight + border.width * 2
   radius: cornerRadius
   color: Color.notifications.background
@@ -176,23 +172,4 @@ Rectangle {
     }
   }
 
-  // Progress bar at the bottom edge. Stays visible while the container has
-  // a finite lifetime; freezes (doesn't decrement) when hover pauses the
-  // tick from the container side.
-  Rectangle {
-    anchors.left: parent.left
-    anchors.right: parent.right
-    anchors.bottom: parent.bottom
-    height: Math.max(1, Style.space(3))
-    color: Color.notifications.border
-    visible: root.showProgress
-
-    Rectangle {
-      anchors.left: parent.left
-      anchors.top: parent.top
-      anchors.bottom: parent.bottom
-      width: parent.width * Math.max(0, Math.min(1, root.progress))
-      color: root.accentColor
-    }
-  }
 }
