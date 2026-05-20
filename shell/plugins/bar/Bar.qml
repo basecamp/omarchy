@@ -104,6 +104,19 @@ Item {
     return !!target && !!window && targetWindow(target) === window
   }
 
+  function targetTooltipHovered(target) {
+    return !!target && target.visible !== false && target.opacity !== 0 && target.tooltipHovered === true
+  }
+
+  function clearTooltip() {
+    tooltipTimer.stop()
+    pendingTooltipTarget = null
+    pendingTooltipText = ""
+    tooltipTarget = null
+    tooltipText = ""
+    tooltipShown = false
+  }
+
   function requestPopout(owner) {
     if (activePopout === owner) return
     if (activePopout && "close" in activePopout) activePopout.close()
@@ -388,14 +401,9 @@ Item {
   }
 
   function showTooltip(target, text) {
-    tooltipTimer.stop()
-    tooltipTarget = null
-    tooltipText = ""
-    tooltipShown = false
+    clearTooltip()
 
-    if (!target || !text) {
-      pendingTooltipTarget = null
-      pendingTooltipText = ""
+    if (!targetTooltipHovered(target) || !text) {
       tooltipRequest += 1
       return
     }
@@ -407,6 +415,10 @@ Item {
 
     Qt.callLater(function() {
       if (request !== tooltipRequest) return
+      if (!targetTooltipHovered(pendingTooltipTarget)) {
+        clearTooltip()
+        return
+      }
       tooltipTarget = pendingTooltipTarget
       tooltipText = pendingTooltipText
       pendingTooltipTarget = null
@@ -418,13 +430,8 @@ Item {
   function hideTooltip(target) {
     if (tooltipTarget !== target && pendingTooltipTarget !== target) return
 
-    tooltipTimer.stop()
     tooltipRequest += 1
-    pendingTooltipTarget = null
-    pendingTooltipText = ""
-    tooltipTarget = null
-    tooltipText = ""
-    tooltipShown = false
+    clearTooltip()
   }
 
   function refreshUpdate() {
@@ -510,7 +517,17 @@ Item {
   Timer {
     id: tooltipTimer
     interval: 400
-    onTriggered: root.tooltipShown = true
+    onTriggered: {
+      if (root.targetTooltipHovered(root.tooltipTarget)) root.tooltipShown = true
+      else root.clearTooltip()
+    }
+  }
+
+  Timer {
+    interval: 100
+    running: root.tooltipShown
+    repeat: true
+    onTriggered: if (!root.targetTooltipHovered(root.tooltipTarget)) root.hideTooltip(root.tooltipTarget)
   }
 
   Timer {
@@ -1053,6 +1070,7 @@ Item {
     property real fixedWidth: -1
     property real fixedHeight: -1
     property string tooltipText: ""
+    readonly property bool tooltipHovered: visible && opacity > 0 && mouseArea.containsMouse
 
     signal pressed(int button)
     signal wheelMoved(int delta)
@@ -1743,6 +1761,8 @@ Item {
         trayItemRoot.modelData.scroll(wheel.angleDelta.y, false)
       }
     }
+
+    readonly property bool tooltipHovered: visible && opacity > 0 && mouseArea.containsMouse
   }
 
 }

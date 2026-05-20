@@ -56,6 +56,7 @@ Item {
   readonly property real scaledHorizontalMargin: Style.spaceReal(horizontalMargin)
   readonly property real scaledRightExtraMargin: Style.spaceReal(rightExtraMargin)
   readonly property real scaledVerticalPadding: Style.spaceReal(verticalPadding)
+  readonly property bool tooltipHovered: visible && interactive && !concealed && mouseArea.containsMouse
 
   visible: text !== "" || keepSpace
   opacity: text === "" || concealed ? 0 : (dimmed ? 0.45 : 1)
