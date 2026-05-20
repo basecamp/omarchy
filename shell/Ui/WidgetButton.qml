@@ -21,6 +21,7 @@ Item {
   property bool dimmed: false
   property bool concealed: false
   property bool interactive: true
+  property bool pressable: true
   property bool useActiveColor: true
   property bool maintainIndicatorReveal: false
   property string tooltipText: ""
@@ -91,7 +92,7 @@ Item {
     acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
     enabled: root.interactive
     hoverEnabled: true
-    cursorShape: Qt.PointingHandCursor
+    cursorShape: root.pressable ? Qt.PointingHandCursor : Qt.ArrowCursor
     onEntered: {
       if (root.bar) {
         root.bar.showTooltip(root, root.tooltipText)
@@ -106,7 +107,7 @@ Item {
           root.bar.setIndicatorItemHovered(false)
       }
     }
-    onClicked: function(mouse) { root.triggerPress(mouse.button) }
+    onClicked: function(mouse) { if (root.pressable) root.triggerPress(mouse.button) }
     onWheel: function(wheel) { root.wheelMoved(wheel.angleDelta.y) }
   }
 }

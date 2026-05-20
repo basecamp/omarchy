@@ -16,7 +16,7 @@ the shell for its whole session.
 
 The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](../../README.md#shelljson-shape). Out of the box the shell uses [`shell-defaults.json`](../../shell-defaults.json). Once you customize anything via `omarchy launch bar settings` or by editing shell.json directly, your file is canonical — there is no deep-merge.
 
-Launch the visual editor with `omarchy launch bar settings` (or run `omarchy-launch-bar-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand. You can also right-click empty space to the left or right of the centered clock to open it; double-left-click the same empty space to toggle bar transparency.
+Launch the visual editor with `omarchy launch bar settings` (or run `omarchy-launch-bar-settings`) to reorder widgets, add/remove them, and tweak per-widget options without editing JSON by hand. You can also right-click empty space to the left or right of the centered daytime module to open it; double-left-click the same empty space to toggle bar transparency.
 
 Example `shell.json` (bar subtree only shown):
 
@@ -26,7 +26,7 @@ Example `shell.json` (bar subtree only shown):
   "bar": {
     "position": "top",
     "transparent": false,
-    "centerAnchor": "calendar",
+    "centerAnchor": "daytime",
     "layout": {
       "left": [
         { "id": "omarchy" },
@@ -35,7 +35,7 @@ Example `shell.json` (bar subtree only shown):
       ],
       "center": [
         { "id": "media" },
-        { "id": "calendar", "format": "HH:mm" }
+        { "id": "daytime", "format": "HH:mm" }
       ],
       "right": [
         { "id": "audioPanel" },
@@ -55,7 +55,7 @@ Example `shell.json` (bar subtree only shown):
 | Name | What it does | Interactions |
 |---|---|---|
 | `media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
-| `calendar` | Clock + popup with month-grid calendar | left = popup · right = tz selector |
+| `daytime` | Day/time label with date tooltip | hover = date |
 | `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
 | `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
 | `weather` | Weather icon + popup with forecast | left = popup · right = full notification |

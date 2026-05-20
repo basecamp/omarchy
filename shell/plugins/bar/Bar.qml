@@ -34,7 +34,7 @@ Item {
   property var fallbackBarConfig: ({
     position: "top",
     transparent: false,
-    centerAnchor: "calendar",
+    centerAnchor: "daytime",
     layout: { left: [], center: [], right: [] }
   })
   property var layoutConfig: fallbackBarConfig.layout
@@ -311,7 +311,7 @@ Item {
     "networkPanel":       { displayName: "Network",            description: "Wi-Fi list and connection state",            category: "Network",  allowMultiple: false, sourceDir: "../panels", sourceName: "Network" },
     "powerPanel":         { displayName: "Power",              description: "Battery, power profile, and system stats",    category: "System",   allowMultiple: false, sourceDir: "../panels", sourceName: "Power" },
     "bluetoothPanel":     { displayName: "Bluetooth",          description: "Bluetooth device list with connect/disconnect", category: "Network", allowMultiple: false, sourceDir: "../panels", sourceName: "Bluetooth" },
-    "calendar":           { displayName: "Calendar",           description: "Clock with month-grid popup",                  category: "Time",     allowMultiple: false, settingsForm: "calendarSettings" },
+    "daytime":           { displayName: "Daytime",      description: "Day/time label with date tooltip",            category: "Time",     allowMultiple: false, settingsForm: "daytimeSettings" },
     "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND",  category: "Status",   allowMultiple: false },
     "systemStats":        { displayName: "System stats",       description: "CPU icon — hover for graphs, click to open btop", category: "System",   allowMultiple: false },
     "weather":            { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false, settingsForm: "weatherSettings" },
