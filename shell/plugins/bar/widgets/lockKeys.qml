@@ -87,8 +87,8 @@ BarWidget {
     property bool active: false
 
     text: glyph
-    color: active ? (root.bar ? root.bar.foreground : "#cacccc") : Qt.rgba(0.7, 0.7, 0.7, 0.3)
-    font.family: root.bar ? root.bar.fontFamily : "JetBrainsMono Nerd Font"
+    color: active ? (root.bar ? root.bar.foreground : Color.foreground) : Qt.rgba(0.7, 0.7, 0.7, 0.3)
+    font.family: root.bar ? root.bar.fontFamily : Style.font.family
     font.pixelSize: Style.font.bodySmall
   }
 }

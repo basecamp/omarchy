@@ -33,8 +33,8 @@ BarWidget {
       anchors.left: parent.left
       width: parent.width
       text: root.title
-      color: root.bar ? root.bar.foreground : "#cacccc"
-      font.family: root.bar ? root.bar.fontFamily : "JetBrainsMono Nerd Font"
+      color: root.bar ? root.bar.foreground : Color.foreground
+      font.family: root.bar ? root.bar.fontFamily : Style.font.family
       font.pixelSize: Style.font.body
       elide: Text.ElideRight
       opacity: 0.85

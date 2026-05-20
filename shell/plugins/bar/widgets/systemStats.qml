@@ -233,8 +233,8 @@ BarWidget {
     property string title: ""
     property string value: ""
     property var history: []
-    property color barFg: "#cacccc"
-    property string fontFamily: "JetBrainsMono Nerd Font"
+    property color barFg: Color.foreground
+    property string fontFamily: Style.font.family
 
     spacing: Style.space(4)
 
