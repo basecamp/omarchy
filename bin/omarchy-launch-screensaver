@@ -6,8 +6,8 @@ if ! command -v tte &>/dev/null; then
   exit 1
 fi
 
-# Exit early if screensave is already running
-pgrep -f org.omarchy.screensaver && exit 0
+# Exit early if screensaver is already running
+pgrep -f '[o]rg.omarchy.screensaver' && exit 0
 
 # Allow screensaver to be turned off but also force started
 if omarchy-toggle-enabled screensaver-off && [[ $1 != "force" ]]; then
