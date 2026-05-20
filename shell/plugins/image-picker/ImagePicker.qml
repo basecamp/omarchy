@@ -284,11 +284,24 @@ Item {
     selectedIndex = 0
     imagesLoaded = false
     opened = false
-    loadImagesProc.requestSerial = requestSerial
-    loadImagesProc.running = true
+    startImageScan(requestSerial, imageDirs)
   }
 
   property var imageArray: []
+
+  function startImageScan(serial, dirs) {
+    if (loadImagesProc.running) {
+      loadImagesProc.queuedSerial = serial
+      loadImagesProc.queuedDirs = dirs
+      return
+    }
+
+    loadImagesProc.activeSerial = serial
+    loadImagesProc.queuedSerial = 0
+    loadImagesProc.queuedDirs = ""
+    loadImagesProc.command = [root.scriptPath("image-picker-list.sh"), dirs]
+    loadImagesProc.running = true
+  }
 
   function indexForSelectedImage(images) {
     for (var i = 0; i < images.length; i++) {
@@ -305,14 +318,24 @@ Item {
 
   Process {
     id: loadImagesProc
-    property int requestSerial: 0
-    command: [root.scriptPath("image-picker-list.sh"), root.imageDirs]
+    property int activeSerial: 0
+    property int queuedSerial: 0
+    property string queuedDirs: ""
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        if (loadImagesProc.requestSerial === root.requestSerial)
+        if (loadImagesProc.activeSerial === root.requestSerial)
           root.loadRows(String(text || ""), true)
       }
+    }
+    onExited: {
+      var serial = queuedSerial
+      var dirs = queuedDirs
+      activeSerial = 0
+      queuedSerial = 0
+      queuedDirs = ""
+      if (serial > 0 && serial === root.requestSerial)
+        root.startImageScan(serial, dirs)
     }
   }
 
