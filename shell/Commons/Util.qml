@@ -54,6 +54,20 @@ QtObject {
     return JSON.parse(JSON.stringify(value === undefined ? null : value))
   }
 
+  // Parse the last line of a custom-module / indicator process output as
+  // waybar-style JSON ({text, class, tooltip, ...}). Falls back to {text: raw}
+  // when the output isn't JSON, and {} for empty output.
+  function parseModuleJson(raw) {
+    var text = String(raw || "").trim()
+    if (!text) return {}
+    var lines = text.split("\n")
+    try {
+      return JSON.parse(lines[lines.length - 1])
+    } catch (e) {
+      return { text: text }
+    }
+  }
+
   // Layout normalization shared by the bar host and the bar settings panel
   // so the two never drift. Entries are deep-cloned to decouple from the
   // input config; consumers can mutate without leaking back to shell.json.

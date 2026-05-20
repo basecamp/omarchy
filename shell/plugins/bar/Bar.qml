@@ -751,7 +751,7 @@ Item {
     }
 
     function update(raw) {
-      var data = root.parseModuleJson(raw)
+      var data = Util.parseModuleJson(raw)
       var klass = data.class || data.alt || ""
 
       outputText = data.text || String(raw || "").trim()

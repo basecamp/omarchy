@@ -18,15 +18,7 @@ WidgetButton {
   readonly property bool inactiveRevealed: !effectiveActive && !!indicatorHost && indicatorHost.revealInactiveIndicators
 
   function extractData(raw) {
-    var text = String(raw || "").trim()
-    if (text === "") return {}
-
-    var lines = text.split("\n")
-    try {
-      return JSON.parse(lines[lines.length - 1])
-    } catch (error) {
-      return { text: text }
-    }
+    return Util.parseModuleJson(raw)
   }
 
   function syncIndicatorOpacity() {
