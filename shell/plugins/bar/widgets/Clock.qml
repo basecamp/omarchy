@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
@@ -8,10 +9,15 @@ BarWidget {
   moduleName: "Clock"
 
   property bool alt: false
+  property date displayDate: clock.date
 
   readonly property string activeFormat: alt
     ? setting("formatAlt", "dd MMMM 'W'ww yyyy")
     : (bar && bar.vertical ? setting("verticalFormat", "HH\n—\nmm") : setting("format", "dddd HH:mm"))
+
+  function refresh() {
+    displayDate = new Date()
+  }
 
   function isoWeek(date) {
     var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
@@ -36,18 +42,24 @@ BarWidget {
   SystemClock {
     id: clock
     precision: SystemClock.Minutes
+    onDateChanged: root.displayDate = date
+  }
+
+  IpcHandler {
+    target: "Clock"
+    function refresh(): void { root.refresh() }
   }
 
   WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.formatted(clock.date)
+    text: root.formatted(root.displayDate)
     horizontalMargin: 8.75
     verticalPadding: 8.75
     onPressed: function(button) {
       if (!root.bar) return
-      if (button === Qt.RightButton) root.bar.run("omarchy-launch-floating-terminal-with-presentation omarchy-tz-select")
+      if (button === Qt.RightButton) root.bar.run("omarchy-menu-timezone")
       else root.alt = !root.alt
     }
   }

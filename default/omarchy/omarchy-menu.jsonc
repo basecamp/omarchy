@@ -286,7 +286,7 @@
   "update.hardware": {"icon":"󰇅","label":"Hardware","keywords":"restart audio wifi bluetooth trackpad"},
   "update.firmware": {"icon":"","label":"Firmware","keywords":"fwupd","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update-firmware"},
   "update.password": {"icon":"","label":"Password","keywords":"drive user"},
-  "update.timezone": {"icon":"","label":"Timezone","keywords":"time zone","action":"omarchy-launch-floating-terminal-with-presentation omarchy-tz-select"},
+  "update.timezone": {"icon":"","label":"Timezone","keywords":"time zone","action":"omarchy-menu-timezone"},
   "update.time": {"icon":"","label":"Time","keywords":"clock ntp","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update-time"},
   "update.channel.stable": {"icon":"🟢","label":"Stable","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-channel-set stable'"},
   "update.channel.rc": {"icon":"🟡","label":"RC","keywords":"release candidate","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-channel-set rc'"},
