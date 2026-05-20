@@ -1124,7 +1124,8 @@ Item {
     readonly property var indicatorEntries: root.indicatorEntriesFromSettings(settings)
     property var activeIndicatorIds: []
     property var indicatorActiveStates: ({})
-    readonly property var activeIndicatorEntries: activeEntriesFromOrder(activeIndicatorIds)
+
+    ListModel { id: activeIndicatorModel }
 
     function hasIndicatorId(id) {
       for (var i = 0; i < indicatorEntries.length; i++) {
@@ -1133,21 +1134,20 @@ Item {
       return false
     }
 
-    function activeEntriesFromOrder(ids) {
-      var result = []
-
-      for (var i = 0; i < ids.length; i++) {
-        var id = ids[i]
-        for (var j = 0; j < indicatorEntries.length; j++) {
-          var entry = indicatorEntries[j]
-          if (root.entryId(entry) === id) {
-            result.push(entry)
-            break
-          }
-        }
+    function entryForId(id) {
+      for (var i = 0; i < indicatorEntries.length; i++) {
+        var entry = indicatorEntries[i]
+        if (root.entryId(entry) === id) return entry
       }
 
-      return result
+      return { id: id }
+    }
+
+    function activeModelIndex(id) {
+      for (var i = 0; i < activeIndicatorModel.count; i++) {
+        if (activeIndicatorModel.get(i).activeId === id) return i
+      }
+      return -1
     }
 
     function copyActiveStates() {
@@ -1169,6 +1169,20 @@ Item {
       return ids
     }
 
+    function syncActiveIndicatorModel() {
+      for (var i = activeIndicatorModel.count - 1; i >= 0; i--) {
+        if (activeIndicatorIds.indexOf(activeIndicatorModel.get(i).activeId) === -1)
+          activeIndicatorModel.remove(i)
+      }
+
+      for (var j = 0; j < activeIndicatorIds.length; j++) {
+        var id = activeIndicatorIds[j]
+        var index = activeModelIndex(id)
+        if (index === -1) activeIndicatorModel.insert(j, { activeId: id })
+        else if (index !== j) activeIndicatorModel.move(index, j, 1)
+      }
+    }
+
     function setIndicatorActive(entry, active) {
       var id = root.entryId(entry)
       if (id === "") return
@@ -1182,10 +1196,12 @@ Item {
       var ids = orderedActiveIds(states, activeIndicatorIds)
       if (active && ids.indexOf(id) === -1 && hasIndicatorId(id)) ids.push(id)
       activeIndicatorIds = ids
+      syncActiveIndicatorModel()
     }
 
     function syncActiveIndicatorOrder() {
       activeIndicatorIds = orderedActiveIds(indicatorActiveStates, activeIndicatorIds)
+      syncActiveIndicatorModel()
     }
 
     onIndicatorEntriesChanged: syncActiveIndicatorOrder()
@@ -1199,10 +1215,9 @@ Item {
       visible: !root.vertical
       spacing: 0
 
-      IndicatorBlock {
+      ActiveIndicatorBlock {
         indicatorsModule: indicatorsRoot
-        indicatorEntries: indicatorsRoot.activeIndicatorEntries
-        indicatorBlock: "active"
+        indicatorModel: activeIndicatorModel
         horizontal: true
         reportActiveState: !root.vertical
       }
@@ -1237,10 +1252,9 @@ Item {
       visible: root.vertical
       spacing: 0
 
-      IndicatorBlock {
+      ActiveIndicatorBlock {
         indicatorsModule: indicatorsRoot
-        indicatorEntries: indicatorsRoot.activeIndicatorEntries
-        indicatorBlock: "active"
+        indicatorModel: activeIndicatorModel
         horizontal: false
         reportActiveState: root.vertical
       }
@@ -1265,6 +1279,67 @@ Item {
 
         HoverHandler {
           onHoveredChanged: root.setIndicatorAreaHovered(hovered)
+        }
+      }
+    }
+  }
+
+  component ActiveIndicatorBlock: Item {
+    id: activeIndicatorBlockRoot
+
+    property var indicatorModel: null
+    property var indicatorsModule: null
+    property bool horizontal: true
+    property bool reportActiveState: false
+
+    implicitWidth: blockLoader.item ? blockLoader.item.childrenRect.width : 0
+    implicitHeight: blockLoader.item ? blockLoader.item.childrenRect.height : 0
+    width: implicitWidth
+    height: implicitHeight
+
+    Loader {
+      id: blockLoader
+
+      anchors.fill: parent
+      sourceComponent: activeIndicatorBlockRoot.horizontal ? horizontalActiveIndicatorBlock : verticalActiveIndicatorBlock
+    }
+
+    Component {
+      id: horizontalActiveIndicatorBlock
+
+      Row {
+        spacing: 0
+
+        Repeater {
+          model: activeIndicatorBlockRoot.indicatorModel
+
+          IndicatorLoader {
+            required property string activeId
+            indicatorsModule: activeIndicatorBlockRoot.indicatorsModule
+            entry: activeIndicatorBlockRoot.indicatorsModule.entryForId(activeId)
+            indicatorBlock: "active"
+            reportActiveState: activeIndicatorBlockRoot.reportActiveState
+          }
+        }
+      }
+    }
+
+    Component {
+      id: verticalActiveIndicatorBlock
+
+      Column {
+        spacing: 0
+
+        Repeater {
+          model: activeIndicatorBlockRoot.indicatorModel
+
+          IndicatorLoader {
+            required property string activeId
+            indicatorsModule: activeIndicatorBlockRoot.indicatorsModule
+            entry: activeIndicatorBlockRoot.indicatorsModule.entryForId(activeId)
+            indicatorBlock: "active"
+            reportActiveState: activeIndicatorBlockRoot.reportActiveState
+          }
         }
       }
     }
