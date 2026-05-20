@@ -65,11 +65,6 @@ Panel {
   readonly property string reportWind:      current ? (useImperial ? (current.windspeedMiles + " mph") : (current.windspeedKmph + " km/h")) : ""
   readonly property string reportHumidity:  current ? (current.humidity + "%") : ""
 
-  function setting(name, fallback) {
-    var v = settings ? settings[name] : undefined
-    return v === undefined || v === null ? fallback : v
-  }
-
   function refresh() {
     if (!forecastProc.running) forecastProc.running = true
     if (!locationProc.running) locationProc.running = true
