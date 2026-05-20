@@ -25,8 +25,7 @@ Item {
   property real revealProgress: 1
 
   function imageUrl(path) {
-    if (!path) return ""
-    return "file://" + path
+    return Util.fileUrl(path)
   }
 
   function refreshBackground() {
