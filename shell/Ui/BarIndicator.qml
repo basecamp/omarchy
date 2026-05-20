@@ -11,8 +11,10 @@ WidgetButton {
   property string activeTooltipText: ""
   property string inactiveTooltipText: activeTooltipText
   property string indicatorBlock: "single"
-  readonly property bool belongsInBlock: indicatorBlock === "active" ? active : (indicatorBlock === "inactive" ? !active : true)
-  readonly property bool inactiveRevealed: !active && !!bar && bar.revealInactiveIndicators
+  property var activeOverride: null
+  readonly property bool effectiveActive: activeOverride === null || activeOverride === undefined ? active : activeOverride === true
+  readonly property bool belongsInBlock: indicatorBlock === "active" ? effectiveActive : (indicatorBlock === "inactive" ? !effectiveActive : true)
+  readonly property bool inactiveRevealed: !effectiveActive && !!bar && bar.revealInactiveIndicators
 
   function extractData(raw) {
     var text = String(raw || "").trim()
@@ -32,18 +34,19 @@ WidgetButton {
 
   Component.onCompleted: syncIndicatorOpacity()
   onActiveChanged: syncIndicatorOpacity()
+  onEffectiveActiveChanged: syncIndicatorOpacity()
   onBarChanged: syncIndicatorOpacity()
   onBelongsInBlockChanged: syncIndicatorOpacity()
   onInactiveRevealedChanged: syncIndicatorOpacity()
   onIndicatorBlockChanged: syncIndicatorOpacity()
 
   visible: belongsInBlock && (text !== "" || keepSpace)
-  text: active ? activeText : inactiveText
-  tooltipText: active ? activeTooltipText : inactiveTooltipText
+  text: effectiveActive ? activeText : inactiveText
+  tooltipText: effectiveActive ? activeTooltipText : inactiveTooltipText
   keepSpace: true
-  dimmed: !active
-  concealed: !active && !inactiveRevealed
-  interactive: belongsInBlock && (active || indicatorBlock === "inactive" || inactiveRevealed)
+  dimmed: !effectiveActive
+  concealed: !effectiveActive && !inactiveRevealed
+  interactive: belongsInBlock && (effectiveActive || indicatorBlock === "inactive" || inactiveRevealed)
   useActiveColor: false
   maintainIndicatorReveal: indicatorBlock === "inactive"
   fontSize: Style.font.caption
