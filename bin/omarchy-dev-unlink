@@ -26,13 +26,17 @@ if [[ ! -f /etc/omarchy.conf ]]; then
   exit 0
 fi
 
+# Capture the path dev-link wrote BEFORE we delete the conf, so we know
+# which bin/ to strip from PATH.
+prior_target=$(sed -n 's/^[[:space:]]*export[[:space:]]\+OMARCHY_PATH="\?\([^"]*\)"\?/\1/p' /etc/omarchy.conf | tail -1)
 sudo rm -f /etc/omarchy.conf
 echo "Removed /etc/omarchy.conf"
 
 export OMARCHY_PATH=/usr/share/omarchy
-# Drop the checkout bin/ that dev-link prepended.
-PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vFx "$(dirname "$0")" | paste -sd:)
-export PATH
+if [[ -n $prior_target ]]; then
+  PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vFx "$prior_target/bin" | paste -sd:)
+  export PATH
+fi
 
 if command -v hyprctl >/dev/null 2>&1 && hyprctl version &>/dev/null; then
   hyprctl setenv OMARCHY_PATH /usr/share/omarchy >/dev/null
