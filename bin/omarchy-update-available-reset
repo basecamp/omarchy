@@ -2,5 +2,5 @@
 
 # omarchy:summary=Ensure the status bar icon offering the available update is removed
 
-omarchy-shell bar refreshUpdate >/dev/null 2>&1 || true
+omarchy-shell -q bar refreshUpdate
 exit 0

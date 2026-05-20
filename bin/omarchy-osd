@@ -34,4 +34,4 @@ payload=$(jq -cn \
   --arg max "$max" \
   '{icon:$icon,message:$message,value:$value,progressText:$progressText,max:$max}')
 
-omarchy-shell osd show "$payload" >/dev/null 2>&1 || true
+omarchy-shell -q osd show "$payload"
