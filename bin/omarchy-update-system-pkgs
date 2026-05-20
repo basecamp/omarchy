@@ -30,4 +30,5 @@ sudo pacman -Syyu --noconfirm \
   --overwrite '/etc/systemd/system/user@.service.d/10-faster-shutdown.conf' \
   --overwrite '/etc/systemd/system/docker.service.d/no-block-boot.conf' \
   --overwrite '/etc/systemd/system/plocate-updatedb.service.d/ac-only.conf' \
-  --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse'
+  --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse' \
+  --overwrite '/usr/share/plymouth/themes/omarchy/*'
