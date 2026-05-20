@@ -1187,7 +1187,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: if (containsMouse) {
+                onPositionChanged: {
                   root.cursorActive = true
                   root.selectedIndex = row.index
                 }
