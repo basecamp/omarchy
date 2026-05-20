@@ -34,4 +34,4 @@ fi
 
 rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
 rm -f "$ICON_DIR/$APP_NAME.png"
-omarchy-notification-send "TUI removed" "$APP_NAME"
+omarchy-notification-send -g  "TUI removed" "$APP_NAME"

@@ -35,5 +35,5 @@ fi
 rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
 rm -f "$ICON_DIR/$APP_NAME.png"
 
-omarchy-notification-send "Web app removed" "$APP_NAME"
+omarchy-notification-send -g  "Web app removed" "$APP_NAME"
 update-desktop-database "$DESKTOP_DIR" &>/dev/null
