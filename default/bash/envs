@@ -6,6 +6,8 @@ export BAT_THEME=ansi
 export MANROFFOPT="-c"
 export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 
-# Duplicated from .config/uwsm/env so SSH works too
-export OMARCHY_PATH=$HOME/.local/share/omarchy
-export PATH=$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin
+# Duplicated from .config/uwsm/env so SSH works too.
+# /etc/profile.d/omarchy.sh defaults OMARCHY_PATH to /usr/share/omarchy.
+# Honor whatever's already set (so install.sh's script-mode override wins).
+export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+export PATH="$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin"
