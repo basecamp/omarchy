@@ -1085,6 +1085,7 @@ Item {
               required property int childCount
 
               readonly property bool hasCursor: root.cursorActive && row.index === root.selectedIndex
+              readonly property bool hasIcon: row.icon.length > 0
 
               width: ListView.view.width
               height: root.rowHeightForDetail(row.detail)
@@ -1106,6 +1107,7 @@ Item {
 
               Text {
                 id: iconText
+                visible: row.hasIcon
                 text: row.icon
                 color: row.hasCursor ? root.selectedText : root.foreground
                 opacity: row.kind === "back" ? 0.7 : 1
@@ -1121,8 +1123,8 @@ Item {
 
               Column {
                 id: contentColumn
-                anchors.left: iconText.right
-                anchors.leftMargin: Style.space(6)
+                anchors.left: row.hasIcon ? iconText.right : parent.left
+                anchors.leftMargin: row.hasIcon ? Style.space(6) : Style.space(18)
                 anchors.right: trail.left
                 anchors.rightMargin: Style.space(6)
                 anchors.verticalCenter: parent.verticalCenter
