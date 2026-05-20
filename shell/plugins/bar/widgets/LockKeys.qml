@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "lockKeys"
+  moduleName: "LockKeys"
 
 
   property bool capsOn: false

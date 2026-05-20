@@ -3,7 +3,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "spacer"
+  moduleName: "Spacer"
 
   readonly property int span: settings && settings.size !== undefined ? Number(settings.size) : 12
 

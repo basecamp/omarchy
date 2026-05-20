@@ -6,7 +6,7 @@ import qs.Commons
 
 BarWidget {
   id: root
-  moduleName: "media"
+  moduleName: "Media"
 
 
   readonly property var players: Mpris.players ? Mpris.players.values : []

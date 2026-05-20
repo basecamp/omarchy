@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "activeWindow"
+  moduleName: "ActiveWindow"
 
 
   readonly property var toplevel: ToplevelManager.activeToplevel

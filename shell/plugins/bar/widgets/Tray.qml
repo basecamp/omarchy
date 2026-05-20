@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "tray"
+  moduleName: "Tray"
 
   property bool expanded: false
   property bool managePopupOpen: false
@@ -67,7 +67,7 @@ BarWidget {
 
   function persistTrayState(pinned, hidden) {
     if (!root.bar || !root.bar.shell || typeof root.bar.shell.updateEntryInline !== "function") return
-    root.bar.shell.updateEntryInline("tray", { id: "tray", pinned: pinned, hidden: hidden })
+    root.bar.shell.updateEntryInline("Tray", { id: "Tray", pinned: pinned, hidden: hidden })
   }
 
   function togglePin(iid) {

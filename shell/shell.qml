@@ -44,11 +44,11 @@ ShellRoot {
     bar: {
       position: "top",
       transparent: false,
-      centerAnchor: "clock",
+      centerAnchor: "Clock",
       layout: {
-        left: [{ id: "omarchy" }, { id: "workspaces" }],
-        center: [{ id: "clock", format: "dddd HH:mm" }],
-        right: [{ id: "audioPanel" }]
+        left: [{ id: "Omarchy" }, { id: "Workspaces" }],
+        center: [{ id: "Clock", format: "dddd HH:mm" }],
+        right: [{ id: "AudioPanel" }]
       }
     },
     plugins: []

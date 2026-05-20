@@ -6,26 +6,26 @@ QtObject {
   required property var barWidgetRegistry
 
   readonly property var metadata: ({
-    "omarchy":            { displayName: "Omarchy menu",       description: "Launches the Omarchy menu",                 category: "Compositor", allowMultiple: false },
-    "workspaces":         { displayName: "Workspaces",         description: "Workspace number indicators",               category: "Compositor", allowMultiple: false },
-    "media":              { displayName: "Media",              description: "MPRIS now-playing with playback controls",   category: "Media",    allowMultiple: false },
-    "audioPanel":         { displayName: "Audio",              description: "Volume slider, output picker, per-app mixer", category: "Audio",    allowMultiple: false, sourceDir: "../panels", sourceName: "Audio" },
-    "monitorPanel":       { displayName: "Display",            description: "Brightness slider and laptop display controls", category: "System",   allowMultiple: false, sourceDir: "../panels", sourceName: "Monitor" },
-    "networkPanel":       { displayName: "Network",            description: "Wi-Fi list and connection state",            category: "Network",  allowMultiple: false, sourceDir: "../panels", sourceName: "Network" },
-    "powerPanel":         { displayName: "Power",              description: "Battery, power profile, and system stats",    category: "System",   allowMultiple: false, sourceDir: "../panels", sourceName: "Power" },
-    "bluetoothPanel":     { displayName: "Bluetooth",          description: "Bluetooth device list with connect/disconnect", category: "Network", allowMultiple: false, sourceDir: "../panels", sourceName: "Bluetooth" },
-    "clock":              { displayName: "Clock",              description: "Day/time label; click to toggle alternate format", category: "Time",  allowMultiple: false, settingsForm: "clockSettings" },
-    "indicators":         { displayName: "Indicators",         description: "Manual state indicators",                     category: "Status",   allowMultiple: false },
-    "notificationCenter": { displayName: "Notification center", description: "Recent notifications + DND",                category: "Status",   allowMultiple: false },
-    "systemUpdate":       { displayName: "System update",       description: "Indicates available system updates",         category: "System",   allowMultiple: false },
-    "systemStats":        { displayName: "System stats",       description: "CPU icon — hover for graphs, click to open btop", category: "System", allowMultiple: false },
-    "tray":               { displayName: "System tray",        description: "Status notifier items",                       category: "Status",   allowMultiple: false },
-    "weather":            { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false, settingsForm: "weatherSettings" },
-    "microphone":         { displayName: "Microphone",         description: "Mic input state and mute toggle",             category: "Audio",    allowMultiple: false },
-    "activeWindow":       { displayName: "Active window",      description: "Title of the focused window",                 category: "Compositor", allowMultiple: false },
-    "keyboardLayout":     { displayName: "Keyboard layout",    description: "Current xkb layout, click cycles",            category: "Compositor", allowMultiple: false },
-    "lockKeys":           { displayName: "Lock keys",          description: "Caps / Num / Scroll lock indicators",          category: "System",   allowMultiple: false },
-    "spacer":             { displayName: "Spacer",             description: "Configurable blank space",                    category: "Layout",   allowMultiple: true,  settingsForm: "spacerSettings" }
+    "Omarchy":            { displayName: "Omarchy menu",       description: "Launches the Omarchy menu",                 category: "Compositor", allowMultiple: false },
+    "Workspaces":         { displayName: "Workspaces",         description: "Workspace number indicators",               category: "Compositor", allowMultiple: false },
+    "Media":              { displayName: "Media",              description: "MPRIS now-playing with playback controls",   category: "Media",    allowMultiple: false },
+    "AudioPanel":         { displayName: "Audio",              description: "Volume slider, output picker, per-app mixer", category: "Audio",    allowMultiple: false, sourceDir: "../panels", sourceName: "Audio" },
+    "MonitorPanel":       { displayName: "Display",            description: "Brightness slider and laptop display controls", category: "System",   allowMultiple: false, sourceDir: "../panels", sourceName: "Monitor" },
+    "NetworkPanel":       { displayName: "Network",            description: "Wi-Fi list and connection state",            category: "Network",  allowMultiple: false, sourceDir: "../panels", sourceName: "Network" },
+    "PowerPanel":         { displayName: "Power",              description: "Battery, power profile, and system stats",    category: "System",   allowMultiple: false, sourceDir: "../panels", sourceName: "Power" },
+    "BluetoothPanel":     { displayName: "Bluetooth",          description: "Bluetooth device list with connect/disconnect", category: "Network", allowMultiple: false, sourceDir: "../panels", sourceName: "Bluetooth" },
+    "Clock":              { displayName: "Clock",              description: "Day/time label; click to toggle alternate format", category: "Time",  allowMultiple: false, settingsForm: "clockSettings" },
+    "Indicators":         { displayName: "Indicators",         description: "Manual state indicators",                     category: "Status",   allowMultiple: false },
+    "NotificationCenter": { displayName: "Notification center", description: "Recent notifications + DND",                category: "Status",   allowMultiple: false },
+    "SystemUpdate":       { displayName: "System update",       description: "Indicates available system updates",         category: "System",   allowMultiple: false },
+    "SystemStats":        { displayName: "System stats",       description: "CPU icon — hover for graphs, click to open btop", category: "System", allowMultiple: false },
+    "Tray":               { displayName: "System tray",        description: "Status notifier items",                       category: "Status",   allowMultiple: false },
+    "Weather":            { displayName: "Weather",            description: "Weather pill with detail popup",              category: "Info",     allowMultiple: false, settingsForm: "weatherSettings" },
+    "Microphone":         { displayName: "Microphone",         description: "Mic input state and mute toggle",             category: "Audio",    allowMultiple: false },
+    "ActiveWindow":       { displayName: "Active window",      description: "Title of the focused window",                 category: "Compositor", allowMultiple: false },
+    "KeyboardLayout":     { displayName: "Keyboard layout",    description: "Current xkb layout, click cycles",            category: "Compositor", allowMultiple: false },
+    "LockKeys":           { displayName: "Lock keys",          description: "Caps / Num / Scroll lock indicators",          category: "System",   allowMultiple: false },
+    "Spacer":             { displayName: "Spacer",             description: "Configurable blank space",                    category: "Layout",   allowMultiple: true,  settingsForm: "spacerSettings" }
   })
 
   property var registeredComponents: ({})

@@ -6,7 +6,7 @@ import qs.Commons
 
 BarWidget {
   id: root
-  moduleName: "systemStats"
+  moduleName: "SystemStats"
 
 
   property real cpuPercent: 0

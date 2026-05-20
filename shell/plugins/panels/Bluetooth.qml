@@ -8,7 +8,7 @@ import qs.Commons
 
 Panel {
   id: root
-  moduleName: "bluetoothPanel"
+  moduleName: "BluetoothPanel"
   ipcTarget: "panels.bluetooth"
 
   // Address -> true while we are waiting for a click-initiated pair to land

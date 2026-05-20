@@ -7,7 +7,7 @@ import qs.Commons
 
 BarWidget {
   id: root
-  moduleName: "keyboardLayout"
+  moduleName: "KeyboardLayout"
 
 
   property string layoutLabel: ""

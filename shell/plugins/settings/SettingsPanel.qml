@@ -128,16 +128,16 @@ Item {
     bar: {
       position: "top",
       transparent: false,
-      centerAnchor: "clock",
+      centerAnchor: "Clock",
       layout: {
-        left: [{ id: "omarchy" }, { id: "workspaces" }],
+        left: [{ id: "Omarchy" }, { id: "Workspaces" }],
         center: [
-          { id: "clock", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
-          { id: "weather" }, { id: "indicators", items: [ "dnd", "nightlight", "stayAwake", "screenrecording", "dictation" ] }, { id: "systemUpdate" }
+          { id: "Clock", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
+          { id: "Weather" }, { id: "Indicators", items: [ "Dnd", "NightLight", "StayAwake", "ScreenRecording", "Dictation" ] }, { id: "SystemUpdate" }
         ],
         right: [
-          { id: "tray" }, { id: "bluetoothPanel" }, { id: "networkPanel" },
-          { id: "audioPanel" }, { id: "monitorPanel" }, { id: "powerPanel" }
+          { id: "Tray" }, { id: "BluetoothPanel" }, { id: "NetworkPanel" },
+          { id: "AudioPanel" }, { id: "MonitorPanel" }, { id: "PowerPanel" }
         ]
       }
     },
@@ -145,7 +145,7 @@ Item {
   })
 
   property var defaultConfig: builtinShellConfig
-  property var draft: ({ version: 1, bar: { position: "top", transparent: false, centerAnchor: "clock", layout: { left: [], center: [], right: [] } }, plugins: [] })
+  property var draft: ({ version: 1, bar: { position: "top", transparent: false, centerAnchor: "Clock", layout: { left: [], center: [], right: [] } }, plugins: [] })
   property int draftRevision: 0
   property bool suppressReload: false
 
@@ -307,10 +307,7 @@ Item {
   }
 
   function canonicalWidgetId(id) {
-    switch (String(id || "")) {
-    case "weatherFlyout": return "weather"
-    default: return String(id || "")
-    }
+    return String(id || "")
   }
 
   function widgetMetadata(id) {
@@ -364,7 +361,7 @@ Item {
   function widgetAllowsMultiple(id) {
     var meta = widgetMetadata(id)
     if (meta.allowMultiple === true) return true
-    return String(id) === "spacer"
+    return String(id) === "Spacer"
   }
 
   function catalogIds() {

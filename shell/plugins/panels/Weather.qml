@@ -6,8 +6,8 @@ import qs.Ui
 
 Panel {
   id: root
-  moduleName: "weatherPanel"
-  ipcTarget: "weather"
+  moduleName: "WeatherPanel"
+  ipcTarget: "Weather"
 
   property var anchorItem: null
 
@@ -22,7 +22,7 @@ Panel {
   }
 
   IpcHandler {
-    target: "weatherFlyout"
+    target: "Weather"
     function show(): void { root.open() }
     function toggle(): void { root.toggle() }
   }

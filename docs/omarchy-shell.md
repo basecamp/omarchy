@@ -77,9 +77,9 @@ individual plugins (`bar`, `image-selector`, …).
     "centerAnchor": "calendar",
     "fontFamily": "JetBrainsMono Nerd Font",
     "layout": {
-      "left":   [ { "id": "omarchy" } ],
+      "left":   [ { "id": "Omarchy" } ],
       "center": [ { "id": "calendar", "format": "HH:mm" } ],
-      "right":  [ { "id": "audioPanel" } ]
+      "right":  [ { "id": "AudioPanel" } ]
     }
   },
   "plugins": [
