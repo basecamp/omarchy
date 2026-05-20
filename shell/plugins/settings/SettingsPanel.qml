@@ -133,7 +133,7 @@ Item {
         left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [
           { id: "daytime", format: "dddd HH:mm", formatAlt: "dd MMMM yyyy", verticalFormat: "HH\n\u2014\nmm" },
-          { id: "weather" }, { id: "indicators", items: [ "dnd", "nightlight", "stayAwake", "screenrecording", "dictation" ] }, { id: "update" }
+          { id: "weather" }, { id: "indicators", items: [ "dnd", "nightlight", "stayAwake", "screenrecording", "dictation" ] }, { id: "systemUpdate" }
         ],
         right: [
           { id: "tray" }, { id: "bluetoothPanel" }, { id: "networkPanel" },
@@ -292,7 +292,6 @@ Item {
   // ---------------- widget catalog -----------------------------------------
   readonly property var builtinWidgetMeta: ({
     "clock":            { name: "Clock",              description: "Date / time text",                          category: "Time" },
-    "update":           { name: "Updates",            description: "Indicates available system updates",        category: "System" },
     "indicators":       { name: "Indicators",         description: "Manual state indicators",                   category: "Status" },
     "tray":             { name: "System tray",        description: "Status notifier items",                     category: "Status" }
   })

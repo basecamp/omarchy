@@ -59,6 +59,7 @@ Example `shell.json` (bar subtree only shown):
 | `media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
 | `daytime` | Day/time label with date tooltip | hover = date |
 | `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
+| `systemUpdate` | Available update indicator | left = update |
 | `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
 | `weather` | Weather icon + popup with forecast | left = popup · right = full notification |
 | `microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
@@ -75,7 +76,7 @@ Example `shell.json` (bar subtree only shown):
 
 ### Built-in base modules (in `Bar.qml`)
 
-`clock`, `update`, `indicators`, `tray`.
+`clock`, `indicators`, `tray`.
 
 The `indicators` module loads individual bar indicators from `indicators/`, ordered by its `items` array in `shell.json`. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `../panels/` above.
 
