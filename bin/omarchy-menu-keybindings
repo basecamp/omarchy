@@ -187,7 +187,7 @@ hl = setmetatable({
   end,
 })
 
-local config = (os.getenv("HOME") or "") .. "/.config/hypr/hyprland.lua"
+local config = os.getenv("HOME") .. "/.config/hypr/hyprland.lua"
 local file = io.open(config, "r")
 
 if file then
