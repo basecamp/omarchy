@@ -15,8 +15,6 @@ Item {
   property bool hasProgress: true
   property int duration: 1200
 
-  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)) }
-
   function iconFor(name, percent) {
     var n = String(name || "").toLowerCase()
     if (n === "volume-muted" || n === "volume-mute" || n === "muted" || n === "mute") return ""
@@ -41,7 +39,7 @@ Item {
     maxValue = Math.max(1, parseInt(rawMax || "100", 10))
     var parsed = parseInt(rawValue || "0", 10)
     hasProgress = rawValue !== "" && !isNaN(parsed) && rawMessage === ""
-    value = hasProgress ? clamp(parsed, 0, maxValue) : 0
+    value = hasProgress ? Util.clamp(parsed, 0, maxValue) : 0
     message = String(rawMessage || (hasProgress ? (rawProgressText || Math.round(value * 100 / maxValue) + "%") : ""))
     icon = iconFor(iconName, hasProgress ? Math.round(value * 100 / maxValue) : -1)
     var parsedDuration = parseInt(rawDuration || "1200", 10)
