@@ -56,12 +56,14 @@ Example `shell.json` (bar subtree only shown):
 |---|---|---|
 | `omarchy` | Omarchy menu launcher | left = menu · right = terminal |
 | `workspaces` | Hyprland workspace switcher | left = focus workspace |
+| `clock` | Date/time label | left = alternate format · right = timezone selector |
 | `media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
 | `daytime` | Day/time label with date tooltip | hover = date |
 | `indicators` | Manual state indicators | left = indicator action |
 | `notificationCenter` | Bell with badge + popup with recent notifications, DND toggle | left = popup · right = toggle DND |
 | `systemUpdate` | Available update indicator | left = update |
 | `systemStats` | Inline CPU + memory sparklines, popup with detail | left = popup · right = terminal |
+| `tray` | System tray | hover = reveal drawer · right on chevron = manage |
 | `weather` | Weather icon + popup with forecast | left = popup · right = full notification |
 | `microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
 
@@ -74,10 +76,6 @@ Example `shell.json` (bar subtree only shown):
 | `panels.power` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup |
 | `panels.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio · middle = bluetoothctl TUI |
 | `panels.monitor` | Brightness and laptop display controls | left = popup |
-
-### Built-in base modules (in `Bar.qml`)
-
-`clock`, `tray`.
 
 The `indicators` widget loads individual bar indicators from `indicators/`, ordered by its `items` array in `shell.json`. Rich panels such as `powerPanel`, `networkPanel`, and `audioPanel` live in `../panels/` above.
 
