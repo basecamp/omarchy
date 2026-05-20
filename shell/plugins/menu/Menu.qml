@@ -62,6 +62,7 @@ Item {
   property var navStack: []
   property var providersLoaded: ({})
   property var providerQueue: []
+  property int providerRevision: 0
   // Bound to the central [menu] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
@@ -256,11 +257,20 @@ Item {
       nextOrder.unshift("root")
     }
     for (var k3 = 0; k3 < nextOrder.length; k3++) nextItems[nextOrder[k3]].order = k3
+    root.providerRevision += 1
+    root.providersLoaded = ({})
+    root.providerQueue = []
     root.items = nextItems
     root.itemOrder = nextOrder
     root.rowsLoaded = true
     root.evaluateGuards()
-    if (root.opened) root.rebuildDisplay()
+    if (root.opened) {
+      root.rebuildDisplay()
+      if (!root.dmenuActive) {
+        if (root.filterText.trim()) root.loadProvidersForSearch()
+        else root.loadProviderForMenu(root.activeMenu)
+      }
+    }
   }
 
   // Each known provider is a tiny bash one-liner that enumerates a list and
@@ -294,6 +304,7 @@ Item {
     root.providersLoaded[id] = true
     providerProc.menuId = id
     providerProc.providerKey = entry.provider
+    providerProc.revision = root.providerRevision
     providerProc.collected = ""
     providerProc.command = ["bash", "-lc", spec.script]
     providerProc.running = true
@@ -825,12 +836,15 @@ Item {
     property string menuId: ""
     property string providerKey: ""
     property string collected: ""
+    property int revision: 0
     stdout: SplitParser {
       onRead: function(data) { providerProc.collected += data + "\n" }
     }
     onExited: {
-      root.mergeProviderRows(providerProc.collected, providerProc.menuId, providerProc.providerKey)
-      if (root.filterText.trim()) root.loadProvidersForSearch()
+      if (providerProc.revision === root.providerRevision) {
+        root.mergeProviderRows(providerProc.collected, providerProc.menuId, providerProc.providerKey)
+        if (root.filterText.trim()) root.loadProvidersForSearch()
+      }
       root.startNextProvider()
     }
   }
