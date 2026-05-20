@@ -72,6 +72,7 @@ Item {
     MultiEffect {
       anchors.fill: wallpaper
       source: wallpaper
+      autoPaddingEnabled: false
       blurEnabled: wallpaper.status === Image.Ready
       blur: 1.0
       blurMax: 64
