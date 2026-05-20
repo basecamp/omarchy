@@ -134,8 +134,7 @@ Item {
         left: [{ id: "omarchy" }, { id: "workspaces" }],
         center: [
           { id: "calendar", format: "dddd HH:mm", formatAlt: "dd MMMM 'W'ww yyyy", verticalFormat: "HH\n\u2014\nmm" },
-          { id: "weather" }, { id: "update" }, { id: "voxtype" },
-          { id: "screenRecording" }, { id: "idleInhibitor" }, { id: "notifications" }
+          { id: "weather" }, { id: "indicators", items: [ "dnd", "stayAwake", "screenrecording", "dictation" ] }, { id: "update" }
         ],
         right: [
           { id: "tray" }, { id: "bluetoothPanel" }, { id: "networkPanel" },
@@ -298,9 +297,7 @@ Item {
     "workspaces":       { name: "Workspaces",         description: "Workspace number indicators",              category: "Compositor" },
     "clock":            { name: "Clock",              description: "Date / time text",                          category: "Time" },
     "update":           { name: "Updates",            description: "Indicates available system updates",        category: "System" },
-    "voxtype":          { name: "Voxtype",            description: "Voxtype dictation state",                   category: "Status" },
-    "screenRecording":  { name: "Screen recording",   description: "Active recording indicator",                category: "Status" },
-    "notifications":    { name: "DND",                 description: "Do-not-disturb indicator",                 category: "Status" },
+    "indicators":       { name: "Indicators",         description: "Manual state indicators",                   category: "Status" },
     "tray":             { name: "System tray",        description: "Status notifier items",                     category: "Status" }
   })
 
@@ -322,7 +319,6 @@ Item {
 
   function canonicalWidgetId(id) {
     switch (String(id || "")) {
-    case "idle": return "idleInhibitor"
     case "weatherFlyout": return "weather"
     default: return String(id || "")
     }
