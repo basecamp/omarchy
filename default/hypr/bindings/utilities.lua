@@ -51,7 +51,7 @@ o.bind("SUPER + SHIFT + CTRL + R", "Clear reminders", "omarchy-reminder clear")
 
 o.bind("SUPER + CTRL + ALT + T", "Show time", "omarchy-notification-time")
 o.bind("SUPER + CTRL + ALT + B", "Show battery remaining", "omarchy-notification-battery")
-o.bind("SUPER + CTRL + ALT + W", "Show weather", "omarchy-notification-weather")
+o.bind("SUPER + CTRL + ALT + W", "Toggle weather", "omarchy-notification-weather")
 
 o.bind("SUPER + CTRL + A", "Audio panel", "omarchy-shell panels.audio toggle")
 o.bind("SUPER + CTRL + B", "Bluetooth panel", "omarchy-shell panels.bluetooth toggle")
