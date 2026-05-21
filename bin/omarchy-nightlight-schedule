@@ -7,6 +7,7 @@
 STATE_DIR="$HOME/.local/state/omarchy"
 STATE_FILE="$STATE_DIR/nightlight-schedule.conf"
 TOGGLE_FLAG="$STATE_DIR/toggles/nightlight-schedule"
+PREAUTO_BACKUP="$STATE_DIR/hyprsunset.preauto.conf"
 
 HYPRSUNSET_CONF="$HOME/.config/hypr/hyprsunset.conf"
 HYPRSUNSET_DEFAULT="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/config/hypr/hyprsunset.conf"
@@ -50,6 +51,16 @@ is_enabled() {
   [[ -f $TOGGLE_FLAG ]]
 }
 
+backup_user_hyprsunset_conf() {
+  # Preserve whatever the user had before we took over the file, so disable
+  # can restore it exactly. Only capture the first time so repeated toggles
+  # don't overwrite the real original with our managed content.
+  if [[ ! -f $PREAUTO_BACKUP && -f $HYPRSUNSET_CONF ]]; then
+    mkdir -p "$STATE_DIR"
+    cp -f "$HYPRSUNSET_CONF" "$PREAUTO_BACKUP"
+  fi
+}
+
 write_managed_hyprsunset_conf() {
   cat >"$HYPRSUNSET_CONF" <<EOF
 # Nightlight schedule managed by omarchy.
@@ -66,8 +77,12 @@ profile {
 EOF
 }
 
-restore_default_hyprsunset_conf() {
-  if [[ -f $HYPRSUNSET_DEFAULT ]]; then
+restore_user_hyprsunset_conf() {
+  # Prefer the user's pre-enable file; fall back to the Omarchy default if
+  # the backup is missing (e.g. state wiped or first install).
+  if [[ -f $PREAUTO_BACKUP ]]; then
+    mv -f "$PREAUTO_BACKUP" "$HYPRSUNSET_CONF"
+  elif [[ -f $HYPRSUNSET_DEFAULT ]]; then
     cp -f "$HYPRSUNSET_DEFAULT" "$HYPRSUNSET_CONF"
   fi
 }
@@ -86,11 +101,12 @@ remove_autostart() {
 
 apply() {
   if is_enabled; then
+    backup_user_hyprsunset_conf
     write_managed_hyprsunset_conf
     ensure_autostart
     omarchy-restart-app hyprsunset
   else
-    restore_default_hyprsunset_conf
+    restore_user_hyprsunset_conf
     remove_autostart
     pkill -x hyprsunset
   fi
@@ -101,13 +117,13 @@ enable() {
   touch "$TOGGLE_FLAG"
   save_state
   apply
-  notify-send -u low "    Auto-nightlight enabled" "${TEMPERATURE}K from $START_TIME to $END_TIME"
+  notify-send -u low "󰔎  Nightlight enabled" "${TEMPERATURE}K from $START_TIME to $END_TIME"
 }
 
 disable() {
   rm -f "$TOGGLE_FLAG"
   apply
-  notify-send -u low "    Auto-nightlight disabled"
+  notify-send -u low "󰔎  Nightlight disabled"
 }
 
 toggle() {
