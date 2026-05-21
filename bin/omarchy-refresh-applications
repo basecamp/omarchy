@@ -9,7 +9,6 @@ gtk-update-icon-cache ~/.local/share/icons/hicolor &>/dev/null
 # Copy .desktop declarations
 mkdir -p ~/.local/share/applications
 cp ~/.local/share/omarchy/applications/*.desktop ~/.local/share/applications/
-cp ~/.local/share/omarchy/applications/hidden/*.desktop ~/.local/share/applications/
 
 if omarchy-cmd-present alacritty; then
   cp ~/.local/share/omarchy/default/alacritty/alacritty.desktop ~/.local/share/applications/
