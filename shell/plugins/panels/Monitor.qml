@@ -225,6 +225,21 @@ Panel {
     return String(Math.round(n * 100) / 100)
   }
 
+  // Playful mood-name for a given brightness percent. Bands intentionally
+  // span ~10–20 points so casual tweaks change the label, while small
+  // nudges within one band don't.
+  function brightnessName(percent) {
+    var p = Math.round(percent)
+    if (p >= 95) return "Sun blast"
+    if (p >= 80) return "Solar flare"
+    if (p >= 65) return "Golden hour"
+    if (p >= 45) return "Even day"
+    if (p >= 30) return "Soft glow"
+    if (p >= 20) return "Lamp light"
+    if (p >= 10) return "Candlelit"
+    return "Night owl"
+  }
+
   function updateDisplays(displaysJson) {
     try {
       root.displays = displaysJson ? JSON.parse(displaysJson) : []
@@ -355,7 +370,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(320))
+    contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
 
     PanelKeyCatcher {
@@ -384,107 +399,120 @@ Panel {
           width: scrollArea.availableWidth
           spacing: Style.space(14)
 
-          // ---- Brightness ----
-          Column {
+          // ---------- Hero: sun icon · BRIGHTNESS · percentage ----------
+          Item {
             width: parent.width
-            spacing: Style.space(6)
+            visible: root.brightnessAvailable
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroPercent.implicitHeight)
 
-            PanelSectionHeader {
-              text: "Brightness"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
-              fontSize: Style.font.bodySmall
-            }
-
-            CursorSurface {
-              id: brightnessRow
-              visible: root.brightnessAvailable
-              width: parent.width
-              height: brightnessInner.implicitHeight + Style.spacing.controlGap
-              hasCursor: root.cursorActive && root.focusSection === "brightness" && root.selectedIndex === -1
-              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
-              foreground: root.bar.foreground
-              outline: true
-
-              Row {
-                id: brightnessInner
-                anchors.fill: parent
-                anchors.leftMargin: Style.space(6)
-                anchors.rightMargin: Style.space(6)
-                spacing: Style.space(8)
-
-                Text {
-                  text: "󰃠"
-                  color: root.bar.foreground
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: Style.font.heading
-                  width: Style.space(22)
-                  horizontalAlignment: Text.AlignHCenter
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                PanelSlider {
-                  id: brightnessSlider
-                  bar: root.bar
-                  width: parent.width - Style.space(22) - brightnessLabel.width - Style.space(16)
-                  anchors.verticalCenter: parent.verticalCenter
-                  minimum: 1
-                  maximum: 100
-                  step: 1
-                  value: root.brightnessPercent
-                  integer: true
-                  onMoved: function(v) { root.previewBrightness(v) }
-                  onReleased: function(v) {
-                    brightnessDebounce.stop()
-                    root.setBrightness(v)
-                  }
-                }
-
-                Text {
-                  id: brightnessLabel
-                  text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
-                  color: root.bar.foreground
-                  font.family: root.bar.fontFamily
-                  font.pixelSize: Style.font.bodySmall
-                  width: Style.space(36)
-                  horizontalAlignment: Text.AlignRight
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-              }
-
-              HoverHandler {
-                onHoveredChanged: if (hovered) {
-                  root.cursorActive = true
-                  root.focusSection = "brightness"
-                  root.selectedIndex = -1
-                }
-              }
+            Text {
+              id: heroIcon
+              text: root.displays.length > 1 ? "󰍺" : "󰍹"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.display
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
             }
 
             Text {
-              visible: !root.brightnessAvailable
-              text: "No controllable backlight found"
-              color: Qt.darker(root.bar.foreground, 1.5)
+              id: heroLabel
+              text: root.brightnessName(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent).toUpperCase()
+              color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.bodySmall
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              font.letterSpacing: 1.2
+              anchors.left: heroIcon.right
+              anchors.leftMargin: Style.space(14)
+              anchors.right: heroPercent.left
+              anchors.rightMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              elide: Text.ElideRight
+            }
+
+            Text {
+              id: heroPercent
+              text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.displayLarge
+              font.bold: true
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
             }
           }
 
-          // ---- Scale ----
+          // ---------- Brightness slider (full width below hero) ----------
+          CursorSurface {
+            id: brightnessRow
+            visible: root.brightnessAvailable
+            width: parent.width
+            height: brightnessSlider.implicitHeight + Style.spacing.controlGap
+            hasCursor: root.cursorActive && root.focusSection === "brightness" && root.selectedIndex === -1
+            onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(brightnessRow)
+            foreground: root.bar.foreground
+            outline: true
+
+            PanelSlider {
+              id: brightnessSlider
+              bar: root.bar
+              anchors.fill: parent
+              anchors.leftMargin: Style.space(6)
+              anchors.rightMargin: Style.space(6)
+              minimum: 1
+              maximum: 100
+              step: 1
+              value: root.brightnessPercent
+              integer: true
+              onMoved: function(v) { root.previewBrightness(v) }
+              onReleased: function(v) {
+                brightnessDebounce.stop()
+                root.setBrightness(v)
+              }
+            }
+
+            HoverHandler {
+              onHoveredChanged: if (hovered) {
+                root.cursorActive = true
+                root.focusSection = "brightness"
+                root.selectedIndex = -1
+              }
+            }
+          }
+
+          Text {
+            visible: !root.brightnessAvailable
+            text: "No controllable backlight found"
+            color: Qt.darker(root.bar.foreground, 1.5)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+
+          PanelSeparator {
+            visible: root.brightnessAvailable
+            foreground: root.bar.foreground
+          }
+
+          // ---------- Scale ----------
           Column {
             width: parent.width
-            spacing: Style.space(6)
+            spacing: Style.space(10)
 
             PanelSectionHeader {
-              text: "Scale"
+              text: "SCALE"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
-              fontSize: Style.font.bodySmall
             }
 
             Row {
+              id: scaleRow
               width: parent.width
               spacing: Style.space(6)
+
+              readonly property real cellWidth: root.scaleValues.length > 0
+                ? (width - spacing * (root.scaleValues.length - 1)) / root.scaleValues.length
+                : 0
 
               Repeater {
                 model: root.scaleValues
@@ -495,22 +523,27 @@ Panel {
 
                   scaleValue: modelData
                   scaleIndex: index
+                  width: scaleRow.cellWidth
                 }
               }
             }
           }
 
-          // ---- Monitors ----
+          PanelSeparator {
+            visible: root.displays.length > 1
+            foreground: root.bar.foreground
+          }
+
+          // ---------- Monitors ----------
           Column {
             width: parent.width
-            spacing: Style.space(6)
+            spacing: Style.space(10)
             visible: root.displays.length > 1
 
             PanelSectionHeader {
-              text: "Monitors"
+              text: "DISPLAYS"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
-              fontSize: Style.font.bodySmall
             }
 
             Repeater {
@@ -537,10 +570,12 @@ Panel {
     required property int scaleIndex
 
     text: scaleValue + "x"
+    fontSize: Style.font.bodySmall
     foreground: root.bar.foreground
     fontFamily: root.bar.fontFamily
     horizontalPadding: Style.spacing.controlPaddingX
-    verticalPadding: Style.spacing.controlPaddingY
+    verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
+    bordered: true
 
     active: root.normalizeScale(root.monitorScale) === root.normalizeScale(scaleValue)
     hasCursor: root.cursorActive && root.focusSection === "scale" && root.selectedIndex === scaleIndex
