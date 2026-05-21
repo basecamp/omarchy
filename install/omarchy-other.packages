@@ -69,3 +69,6 @@ linux-t2
 linux-t2-headers
 t2fanrd
 tiny-dfr
+
+# Framework 16
+qmk-hid
