@@ -21,6 +21,7 @@ Item {
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
   property bool previewVisible: false
+  property string enteredPassword: ""
   property string pendingPassword: ""
   property string failureMessage: ""
   property int failedAttempts: 0
@@ -39,6 +40,7 @@ Item {
   }
 
   function resetAuthenticationState() {
+    enteredPassword = ""
     pendingPassword = ""
     failureMessage = ""
     failedAttempts = 0
@@ -106,6 +108,7 @@ Item {
     if (!lockRequested) return
 
     authenticatingPassword = false
+    enteredPassword = ""
     pendingPassword = ""
     failedAttempts += 1
     failureMessage = "Authentication failed (" + failedAttempts + ")"
@@ -164,7 +167,9 @@ Item {
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
         inputEnabled: root.lockRequested
+        passwordText: root.enteredPassword
         scaleFactor: lockSurface.screen && lockSurface.screen.devicePixelRatio > 0 ? lockSurface.screen.devicePixelRatio : 1
+        onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
         onWakeRequested: root.runWake()
@@ -192,6 +197,7 @@ Item {
       failureMessage: ""
       failedAttempts: 0
       inputEnabled: false
+      passwordText: ""
       scaleFactor: previewWindow.screen && previewWindow.screen.devicePixelRatio > 0 ? previewWindow.screen.devicePixelRatio : 1
     }
 
