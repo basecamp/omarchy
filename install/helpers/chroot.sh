@@ -1,6 +1,6 @@
-# In iso-chroot mode systemd isn't running, so skip --now and just enable.
+# In offline (ISO chroot) mode systemd isn't running, so skip --now.
 chrootable_systemctl_enable() {
-  if install_mode_is iso-chroot; then
+  if install_mode_is offline; then
     sudo systemctl enable $1
   else
     sudo systemctl enable --now $1
