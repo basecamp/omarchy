@@ -1,16 +1,10 @@
 #!/bin/bash
 #
-# The in-target portion of an Omarchy install: preflight checks, package-level
-# setup, system configuration, login wiring, post-install steps. Run AFTER the
-# orchestrator (offline mode) or install.sh (online mode) has ensured the
-# omarchy runtime + omarchy-base.packages set is already installed.
-#
-# Called by:
-#   - install.sh (online mode, after pacman -Syu)
-#   - orchestrator/main.py (offline mode, via arch-chroot -u $USER)
-#
-# Anything that *must* happen as root pre-user lives in the orchestrator; this
-# script runs as the install user.
+# The in-target portion of an Omarchy install: package-level setup, system
+# configuration, login wiring, post-install. Self-contained — works whether
+# invoked by install.sh (online) or by the Python orchestrator (offline, via
+# arch-chroot). The caller is responsible for system sanity checks (guards),
+# UI styling, and log capture.
 
 set -eEo pipefail
 
@@ -26,7 +20,13 @@ export_legacy_mode_flags
 
 source "$OMARCHY_INSTALL/helpers/all.sh"
 
-source "$OMARCHY_INSTALL/preflight/all.sh"
+# Mark every shipped migration as "done" so future updates only run the new
+# ones. Idempotent; safe to re-run.
+mkdir -p ~/.local/state/omarchy/migrations
+for _f in "$OMARCHY_PATH/migrations"/*.sh; do
+  [[ -f $_f ]] && touch ~/.local/state/omarchy/migrations/"$(basename "$_f")"
+done
+
 source "$OMARCHY_INSTALL/packaging/all.sh"
 source "$OMARCHY_INSTALL/config/all.sh"
 source "$OMARCHY_INSTALL/login/all.sh"
