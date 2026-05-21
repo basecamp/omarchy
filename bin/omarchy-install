@@ -2,6 +2,25 @@
 
 # omarchy:summary=Run the Omarchy installer (shipped via omarchy-installer)
 # omarchy:group=install
-# omarchy:args=[install.sh args]
+# omarchy:args=[--config <json> --creds <json> ...] | [install.sh args]
 
-exec bash "$OMARCHY_PATH/install.sh" "$@"
+set -eEo pipefail
+
+# Dispatcher:
+#   --config <json>  → Python orchestrator (ISO install)
+#   anything else    → bash install.sh (online rerun on an installed system)
+#
+# The Python orchestrator owns the ISO install end-to-end: partitioning,
+# pacstrap, bootloader, user creation, package install, and finally calling
+# finalize.sh inside the chroot. install.sh is the simpler online path:
+# ensures the omarchy runtime is up to date, then exec's finalize.sh.
+for arg in "$@"; do
+  case "$arg" in
+    --config|--config=*)
+      cd "${OMARCHY_PATH:-/usr/share/omarchy}/install"
+      exec python -m orchestrator.main "$@"
+      ;;
+  esac
+done
+
+exec bash "${OMARCHY_PATH:-/usr/share/omarchy}/install.sh" "$@"
