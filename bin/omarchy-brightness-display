@@ -4,13 +4,12 @@
 # omarchy:args=[+N%|N%-|N%|off|on]
 # omarchy:examples=omarchy brightness display | omarchy brightness display +5% | omarchy brightness display 5%- | omarchy brightness display 50% | omarchy brightness display off | omarchy brightness display on
 
+# Get the brightness of the passed display
 display_brightness() {
-  local device="$1"
-
-  brightnessctl -d "$device" -m 2>/dev/null | awk -F, '{ gsub("%", "", $4); print $4; found=1 } END{ exit !found }'
+  brightnessctl -d "$1" -m 2>/dev/null | awk -F, '{ gsub("%", "", $4); print $4; found=1 } END{ exit !found }'
 }
 
-if (( $# == 0 )) || [[ ${1:-} == "get" ]]; then
+if (( $# == 0 )); then
   if omarchy-hyprland-monitor-focused-apple; then
     omarchy-brightness-display-apple
     exit
@@ -41,6 +40,7 @@ if omarchy-hyprland-monitor-focused-apple; then
   exit
 fi
 
+# Current device highlighted
 device="$(omarchy-hw-display)" || exit 1
 
 # Current brightness percentage
@@ -70,4 +70,6 @@ fi
 
 # Set brightness of the display device.
 brightnessctl -d "$device" set "$step" >/dev/null
+
+# Show the new brightness in OSD
 omarchy-osd -i brightness -p "$(display_brightness "$device")"
