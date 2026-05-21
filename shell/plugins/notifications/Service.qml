@@ -16,6 +16,7 @@ Item {
   // Injected by omarchy-shell (the first-party service loader).
   property var shell: null
 
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   readonly property string home: Quickshell.env("HOME")
   // History + DND live under XDG_STATE_HOME: they're persistent user state
   // (history of received notifications, last-set DND preference), not
@@ -361,18 +362,13 @@ Item {
   }
 
   // Try to focus an existing Hyprland window matching the notification's
-  // sender. We shell out to a small bash one-liner because Hyprland's class
-  // matcher is regex-based but its case-sensitivity is implementation-
-  // defined (std::regex doesn't reliably honor `(?i)`). Easier to query the
-  // client list ourselves and pick the first match.
+  // sender. The helper handles case-insensitive class matching.
   function focusApp(entry) {
     if (!entry || !entry.app) return
-    var lower = String(entry.app).toLowerCase()
-    focusAppProc.command = ["bash", "-lc",
-      "hyprctl clients -j 2>/dev/null | " +
-      "jq -r --arg name " + Util.shellQuote(lower) + " " +
-      "'[.[] | select((.class // \"\") | ascii_downcase | startswith($name))] | first.address // empty' | " +
-      "xargs -r -I{} hyprctl dispatch focuswindow address:{}"]
+    focusAppProc.command = [
+      service.omarchyPath + "/bin/omarchy-hyprland-focus-app",
+      String(entry.app)
+    ]
     focusAppProc.running = true
   }
 
