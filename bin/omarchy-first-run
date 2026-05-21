@@ -5,6 +5,12 @@
 
 set -e
 
+# Run user-level setup FIRST so its outcome (→ branding files, AI skill
+# symlinks, xdg dirs, etc.) isn't held hostage to whether one of the
+# privileged first-run steps below aborts under set -e. omarchy-setup-user
+# is idempotent and gated on its own marker.
+omarchy-setup-user || true
+
 FIRST_RUN_MODE=~/.local/state/omarchy/first-run.mode
 
 if [[ -f $FIRST_RUN_MODE ]]; then
@@ -23,7 +29,3 @@ if [[ -f $FIRST_RUN_MODE ]]; then
   bash "$OMARCHY_PATH/install/first-run/welcome.sh"
   bash "$OMARCHY_PATH/install/first-run/wifi.sh"
 fi
-
-# omarchy-setup-user is idempotent (gated on its own marker), so this is
-# safe to call on every invocation — it'll no-op once user setup is done.
-omarchy-setup-user || true
