@@ -122,7 +122,7 @@ Panel {
 
   Process {
     id: profilesProc
-    command: ["bash", "-lc", "powerprofilesctl list 2>/dev/null | awk '/^\\s*[* ]\\s*[a-zA-Z0-9-]+:$/ { active=($1==\"*\"); gsub(/^[*[:space:]]+|:$/,\"\"); print $0 \"\\t\" (active ? 1 : 0) }'"]
+    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-powerprofiles-list" : "omarchy-powerprofiles-list", "--active-state"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateProfiles(text) }
   }
 
