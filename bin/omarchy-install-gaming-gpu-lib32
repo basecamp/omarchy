@@ -25,4 +25,4 @@ elif omarchy-hw-nvidia-without-gsp; then
   PACKAGES+=(lib32-nvidia-580xx-utils)
 fi
 
-[[ ${#PACKAGES[@]} -gt 0 ]] && omarchy-pkg-add "${PACKAGES[@]}"
+(( ${#PACKAGES[@]} > 0 )) && omarchy-pkg-add "${PACKAGES[@]}"

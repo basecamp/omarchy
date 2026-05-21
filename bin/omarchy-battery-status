@@ -44,7 +44,7 @@ if [[ $shell_output == "true" ]]; then
   start=$(cat /sys/class/power_supply/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
 
   if [[ -n $end ]]; then
-    if [[ -n $start && $start != "$end" ]]; then
+    if [[ -n $start && $start != $end ]]; then
       printf 'threshold\t%s-%s%%\n' "$start" "$end"
     else
       printf 'threshold\t%s%%\n' "$end"

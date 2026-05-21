@@ -37,7 +37,7 @@ export PROTONPATH=GE-Proton
 export GAMEID=umu-battlenet
 export PROTON_VERB=run
 
-if [[ -f "$LAUNCHER" ]]; then
+if [[ -f $LAUNCHER ]]; then
   echo "Battle.net is already installed at $PREFIX."
   launched_installer=0
 else

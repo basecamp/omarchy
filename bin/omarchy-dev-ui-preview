@@ -10,7 +10,7 @@
 # `cursor-surface`, `slider`, `toggle`, `dropdown`, etc. Unknown names
 # are ignored and the gallery opens at its normal default position.
 
-if [[ $# -gt 0 && -n $1 ]]; then
+if (( $# > 0 )) && [[ -n $1 ]]; then
   section="$1"
   payload=$(printf '{"section":"%s"}' "${section//\"/}")
 else
