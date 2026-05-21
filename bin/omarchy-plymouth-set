@@ -10,7 +10,7 @@
 # rebuilds the initramfs. Also syncs the SDDM login screen (the post-logout
 # screen) with the same colors and logo so boot/login stay visually unified.
 
-if [[ $# -ne 3 ]]; then
+if (( $# != 3 )); then
   echo "Usage: omarchy-plymouth-set <background-hex> <text-hex> <path-to-logo.png>" >&2
   exit 1
 fi

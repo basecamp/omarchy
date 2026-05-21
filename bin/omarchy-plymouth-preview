@@ -7,7 +7,7 @@
 # Render a Plymouth login-screen preview PNG by compositing the staged omarchy
 # theme assets (recolored with the given text color) onto the background.
 
-if [[ $# -ne 4 ]]; then
+if (( $# != 4 )); then
   echo "Usage: omarchy-plymouth-preview <background-hex> <text-hex> <path-to-logo.png> <output-path>" >&2
   exit 1
 fi

@@ -136,7 +136,7 @@ main() {
     case "$1" in
     --path)
       shift
-      [[ $# -gt 0 ]] || { echo "Missing value for --path" >&2; return 2; }
+      (( $# > 0 )) || { echo "Missing value for --path" >&2; return 2; }
       search_path="$1"
       ;;
     --help | -h)

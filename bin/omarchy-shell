@@ -10,7 +10,7 @@ if [[ ${1:-} == "-q" ]]; then
   shift
 fi
 
-if [[ $# -eq 0 || $1 == "-h" || $1 == "--help" ]]; then
+if (( $# == 0 )) || [[ $1 == "-h" || $1 == "--help" ]]; then
   cat <<USAGE
 Usage: omarchy-shell [-q] <target> <method> [args...]
 
@@ -45,7 +45,7 @@ fi
 
 SHELL_QML="$OMARCHY_PATH/shell/shell.qml"
 
-if [[ $1 == "shell" && ( $2 == "summon" || $2 == "toggle" ) && $# -eq 3 ]]; then
+if [[ $1 == "shell" && ( $2 == "summon" || $2 == "toggle" ) ]] && (( $# == 3 )); then
   set -- "$1" "$2" "$3" "{}"
 fi
 
