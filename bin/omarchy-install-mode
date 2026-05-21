@@ -1,11 +1,8 @@
 #!/bin/bash
 
-# omarchy:summary=Print the install mode the installer was last invoked with
+# omarchy:summary=Print the OMARCHY_INSTALL_MODE in the current env
 # omarchy:group=install
 
-# Used by scripts that need to branch on whether Omarchy was bootstrapped
-# via ISO (iso-chroot), pacman install (online-package), or boot.sh
-# (online-git). The current install.sh sets this; persisted state lives in
-# /var/lib/omarchy/install-mode if Chunk 6+ chooses to record it. For now
-# we echo whatever is in the current env.
+# install.sh exports this during the install flow. Not persisted post-install,
+# so this prints 'unknown' outside the installer.
 echo "${OMARCHY_INSTALL_MODE:-unknown}"
