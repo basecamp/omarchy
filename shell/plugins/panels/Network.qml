@@ -194,31 +194,6 @@ Panel {
     Quickshell.execDetached(["bash", "-lc", "printf %s " + Util.shellQuote(value) + " | wl-copy"])
   }
 
-  function networkCommand() {
-    return [
-      "device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == \"dev\") { print $(i + 1); exit } }')",
-      "if [[ -z $device ]]; then",
-      "  printf 'disconnected\\t\\t\\t\\n'",
-      "  exit 0",
-      "fi",
-      "if [[ ! -d /sys/class/net/$device/wireless ]]; then",
-      "  printf 'ethernet\\t%s\\t\\t\\n' \"$device\"",
-      "  exit 0",
-      "fi",
-      "if command -v nmcli >/dev/null; then",
-      "  nm=$(nmcli -t -f GENERAL.STATE,GENERAL.CONNECTION dev show \"$device\" 2>/dev/null)",
-      "  state=$(awk -F: '$1 == \"GENERAL.STATE\" { print $2; exit }' <<<\"$nm\")",
-      "  ssid=$(awk -F: '$1 == \"GENERAL.CONNECTION\" { print $2; exit }' <<<\"$nm\")",
-      "  signal=$(nmcli -t -f IN-USE,SIGNAL dev wifi list ifname \"$device\" 2>/dev/null | awk -F: '$1 == \"*\" { print $2; exit }')",
-      "  freq=$(iw dev \"$device\" link 2>/dev/null | awk '/freq:/ { print $2; exit }')",
-      "  [[ $state != 100* ]] && { printf 'disconnected\\t\\t\\t\\n'; exit 0; }",
-      "  printf 'wifi\\t%s\\t%s\\t%s\\n' \"${ssid:-$device}\" \"$signal\" \"$freq\"",
-      "  exit 0",
-      "fi",
-      "printf 'wifi\\t%s\\t\\t\\n' \"$device\""
-    ].join("\n")
-  }
-
   readonly property string icon: {
     if (kind === "wifi") {
       var icons = ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"]
@@ -437,35 +412,7 @@ Panel {
   // Pulls everything we want about the active route's interface in one shot.
   Process {
     id: detailsProc
-    command: ["bash", "-c", `
-route_json=$(ip -j route get 1.1.1.1 2>/dev/null)
-[[ -z $route_json ]] && exit 0
-iface=$(echo "$route_json" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0].get("dev",""))' 2>/dev/null)
-gw=$(echo "$route_json" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0].get("gateway",""))' 2>/dev/null)
-src=$(echo "$route_json" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[0].get("prefsrc",""))' 2>/dev/null)
-[[ -z $iface ]] && exit 0
-prefix=$(ip -j addr show "$iface" 2>/dev/null | python3 -c 'import sys,json; d=json.load(sys.stdin); ai=d[0].get("addr_info",[]); print(next((str(a.get("prefixlen","")) for a in ai if a.get("family")=="inet"),""))' 2>/dev/null)
-printf 'iface\\t%s\\n' "$iface"
-printf 'ip\\t%s\\n' "$src"
-printf 'prefix\\t%s\\n' "$prefix"
-printf 'gateway\\t%s\\n' "$gw"
-if [[ -d /sys/class/net/$iface/wireless ]]; then
-  printf 'type\\twifi\\n'
-  if command -v iw >/dev/null; then
-    link=$(iw dev "$iface" link 2>/dev/null)
-    [[ -n $link ]] && {
-      printf 'ssid\\t%s\\n' "$(echo "$link" | awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }')"
-      printf 'signal_dbm\\t%s\\n' "$(echo "$link" | awk '/signal:/ { print $2; exit }')"
-      printf 'freq\\t%s\\n' "$(echo "$link" | awk '/freq:/ { print $2; exit }')"
-      printf 'bitrate\\t%s %s\\n' "$(echo "$link" | awk '/tx bitrate:/ { print $3; exit }')" "$(echo "$link" | awk '/tx bitrate:/ { print $4; exit }')"
-    }
-  fi
-else
-  printf 'type\\tethernet\\n'
-  [[ -r /sys/class/net/$iface/speed ]] && printf 'speed\\t%s\\n' "$(cat /sys/class/net/$iface/speed)"
-  [[ -r /sys/class/net/$iface/duplex ]] && printf 'duplex\\t%s\\n' "$(cat /sys/class/net/$iface/duplex)"
-fi
-`]
+    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-network-status" : "omarchy-network-status", "--verbose"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateDetails(text)
@@ -1205,7 +1152,7 @@ fi
   // Bar.qml does not need to mirror network state.
   Process {
     id: networkProc
-    command: ["bash", "-lc", root.bar ? root.networkCommand() : ""]
+    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-network-status" : "omarchy-network-status"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateNetwork(text)
