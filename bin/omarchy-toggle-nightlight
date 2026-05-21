@@ -8,7 +8,10 @@ ON_TEMP=4000
 OFF_TEMP=6000
 
 current_temp() {
-  hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+' | head -n1
+  local output
+
+  output=$(hyprctl hyprsunset temperature 2>/dev/null) || return
+  grep -oE '[0-9]+' <<<"$output" | head -n1
 }
 
 status_json() {
@@ -39,7 +42,7 @@ fi
 # Query the current temperature
 CURRENT_TEMP=$(current_temp)
 
-if [[ $CURRENT_TEMP == $OFF_TEMP ]]; then
+if [[ -z $CURRENT_TEMP || $CURRENT_TEMP == $OFF_TEMP ]]; then
   hyprctl hyprsunset temperature $ON_TEMP
 else
   hyprctl hyprsunset temperature $OFF_TEMP
