@@ -1,13 +1,16 @@
-"""Install context: parsed configurator output + invocation paths."""
+"""Install context: parsed configurator output, invocation paths, and a
+mutable `state` dict for objects that live across phases (e.g., the
+archinstall config handler and mirror list handler)."""
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
-@dataclass(frozen=True)
+@dataclass
 class InstallContext:
     config_path: Path
     creds_path: Path
@@ -23,6 +26,10 @@ class InstallContext:
     state_dir: Path = Path("/run/omarchy-install")
     log_path: Path = Path("/var/log/omarchy-install.log")
     target_log_path: Path = Path("/mnt/var/log/omarchy-install.log")
+
+    # Mutable per-run state shared across phases (e.g., 'arch_config_handler',
+    # 'mirror_handler'). Phases populate as needed; later phases read.
+    state: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_args(cls, args) -> "InstallContext":
