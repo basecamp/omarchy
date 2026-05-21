@@ -1,6 +1,6 @@
-# Starting the installer with OMARCHY_CHROOT_INSTALL=1 will put it into chroot mode
+# In iso-chroot mode systemd isn't running, so skip --now and just enable.
 chrootable_systemctl_enable() {
-  if [[ -n ${OMARCHY_CHROOT_INSTALL:-} ]]; then
+  if install_mode_is iso-chroot; then
     sudo systemctl enable $1
   else
     sudo systemctl enable --now $1
