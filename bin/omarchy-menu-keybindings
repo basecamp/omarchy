@@ -359,7 +359,7 @@ prioritize_entries() {
     if (match(line, /notification/))  prio = 37
     if (match(line, /Toggle window transparency/))  prio = 38
     if (match(line, /Toggle workspace gaps/))  prio = 39
-    if (match(line, /Toggle nightlight/))  prio = 40
+    if (match(line, /Nightlight/))  prio = 40
     if (match(line, /Toggle locking/))  prio = 41
     if (match(line, /group/))  prio = 94
     if (match(line, /Scroll active workspace/))  prio = 95
