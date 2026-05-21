@@ -33,32 +33,18 @@ def build_phases():
     """
     from .phases_impl import (
         prepare_live,
-        cleanup_disk,
-        partition_and_mount,
-        install_base,
-        install_bootloader,
-        write_limine_config,
-        install_early_omarchy_packages,
-        create_user,
-        install_omarchy_runtime,
+        arch_install,
         run_chroot_finalizer,
         validate_boot,
         finish,
     )
 
     return [
-        ("Preparing live environment",   prepare_live),
-        ("Cleaning install disk",        cleanup_disk),
-        ("Partitioning + mounting",      partition_and_mount),
-        ("Installing base system",       install_base),
-        ("Installing bootloader",        install_bootloader),
-        ("Writing Limine config",        write_limine_config),
-        ("Installing Omarchy keyring + settings", install_early_omarchy_packages),
-        ("Creating user",                create_user),
-        ("Installing Omarchy runtime",   install_omarchy_runtime),
-        ("Finalizing in chroot",         run_chroot_finalizer),
-        ("Validating boot setup",        validate_boot),
-        ("Finishing",                    finish),
+        ("Preparing live environment", prepare_live),
+        ("Installing Arch + Omarchy",  arch_install),
+        ("Finalizing in chroot",       run_chroot_finalizer),
+        ("Validating boot setup",      validate_boot),
+        ("Finishing",                  finish),
     ]
 
 
