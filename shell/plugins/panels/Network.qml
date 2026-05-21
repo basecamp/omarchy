@@ -154,8 +154,8 @@ Panel {
   }
 
   // Enter/Space on the highlighted row. Mirrors row-click semantics:
-  // connected → disconnect, protected-unknown → password prompt (via
-  // known-network probe), open/known → connect.
+  // connected → disconnect, protected-unknown → password prompt,
+  // open/known → connect.
   function activateSelected() {
     if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
@@ -297,6 +297,7 @@ Panel {
     for (var i = 0; i < networks.length; i++) {
       var network = networks[i]
       if (!network) continue
+      checkActionCompletion(network)
       var isConnected = network.connected
       var ssid = network.name || ""
       if (isConnected && ssid !== root.actionSsid) continue // Skip the connected network so it doesn't appear in the list, unless we are currently trying to connect to it
@@ -351,81 +352,81 @@ Panel {
   }
 
   function isProtected(security) {
-    var s = String(security || "").toLowerCase()
-    return s !== "" && s !== "open"
+    return security !== WifiSecurityType.Open
   }
 
-  function runAction(kind, ssid, command) {
-    if (actionProc.running) return
+  function networkForSsid(ssid) {
+    var networks = wifiNetworkObjects || []
+    for (var i = 0; i < networks.length; i++) {
+      if (networks[i] && networks[i].name === ssid) return networks[i]
+    }
+    return null
+  }
+
+  function runNetworkAction(kind, network, callback) {
+    if (actionKind !== "" || !network) return
+    var ssid = network.name || ""
     actionSsid = ssid
     actionKind = kind
     failureSsid = ""
     failureReason = ""
-    actionProc.command = ["bash", "-c", command]
-    actionProc.running = true
+    callback(network)
     // Safety net: if onExited never fires (process death, signal handler
     // throws, etc.), clear the busy state so the row doesn't get stuck on
     // "Connecting…" / "Disconnecting…" forever.
     actionTimeout.restart()
   }
 
+  function clearNetworkAction() {
+    actionTimeout.stop()
+    if (actionKind === "connect") passwordSsid = ""
+    failureSsid = ""
+    failureReason = ""
+    actionSsid = ""
+    actionKind = ""
+    refresh()
+  }
+
+  function failNetworkAction(network, reason) {
+    if (!network || actionKind === "" || actionSsid !== (network.name || "")) return
+    actionTimeout.stop()
+    failureSsid = actionSsid
+    failureReason = networkFailureReason(reason)
+    actionSsid = ""
+    actionKind = ""
+    refresh()
+  }
+
+  function networkFailureReason(reason) {
+    if (reason === ConnectionFailReason.NoSecrets) return "Passphrase required"
+    if (reason === ConnectionFailReason.WifiAuthTimeout) return "Wrong password"
+    if (reason === ConnectionFailReason.WifiNetworkLost) return "Network lost"
+    if (reason === ConnectionFailReason.WifiClientDisconnected) return "Disconnected"
+    if (reason === ConnectionFailReason.WifiClientFailed) return "Connection failed"
+    return "Failed to connect"
+  }
+
+  function checkActionCompletion(network) {
+    if (!network || actionKind === "" || actionSsid !== (network.name || "")) return
+    if (actionKind === "connect" && network.connected) clearNetworkAction()
+    else if (actionKind === "disconnect" && !network.connected && !network.stateChanging) clearNetworkAction()
+    else if (actionKind === "forget" && !network.known && !network.stateChanging) clearNetworkAction()
+  }
+
   function connectKnown(ssid) {
-    var quotedSsid = Util.shellQuote(ssid)
-    runAction("connect", ssid, `
-station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
-[[ -z $station ]] && { echo "no Wi-Fi station available" >&2; exit 1; }
-iwctl --dont-ask station "$station" connect ${quotedSsid}
-`)
+    runNetworkAction("connect", networkForSsid(ssid), function(network) { network.connect() })
   }
 
   function connectWithPassphrase(ssid, passphrase) {
-    var quotedSsid = Util.shellQuote(ssid)
-    var quotedPass = Util.shellQuote(passphrase)
-    runAction("connect", ssid, `
-station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
-[[ -z $station ]] && { echo "No Wi-Fi station available" >&2; exit 1; }
-output=$(iwctl --passphrase ${quotedPass} station "$station" connect ${quotedSsid} 2>&1)
-exit_code=$?
-if [[ $exit_code -ne 0 ]]; then
-  echo "$output" | sed -e 's/\\x1b\\[[0-9;]*m//g' >&2
-  exit $exit_code
-fi
-`)
+    runNetworkAction("connect", networkForSsid(ssid), function(network) { network.connectWithPsk(passphrase) })
   }
 
-  function disconnect(ssid) {
-    runAction("disconnect", ssid, `
-station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
-[[ -z $station ]] && { echo "no Wi-Fi station available" >&2; exit 1; }
-iwctl station "$station" disconnect
-`)
+  function disconnect(network) {
+    runNetworkAction("disconnect", network || connectedWifiNetwork, function(net) { net.disconnect() })
   }
 
-  // iwd doesn't reliably tear down an active connection when you forget the
-  // network underneath it, so if the station is currently on this SSID we
-  // disconnect first and bail on failure rather than reporting a misleading
-  // success. If the station isn't on this SSID (or there is no station),
-  // skip straight to forget.
-  function forget(ssid) {
-    var quotedSsid = Util.shellQuote(ssid)
-    runAction("forget", ssid, `
-station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
-if [[ -n $station ]]; then
-  current=$(iwctl station "$station" show 2>/dev/null \
-    | sed -e 's/\\x1b\\[[0-9;]*m//g' \
-    | awk '/Connected network/ {
-        s = $0
-        sub(/.*Connected network[[:space:]]+/, "", s)
-        sub(/[[:space:]]+$/, "", s)
-        print s
-        exit
-      }')
-  if [[ $current == ${quotedSsid} ]]; then
-    iwctl station "$station" disconnect || { echo "failed to disconnect before forget" >&2; exit 1; }
-  fi
-fi
-iwctl known-networks ${quotedSsid} forget
-`)
+  function forget(net) {
+    runNetworkAction("forget", net ? net.network : null, function(network) { network.forget() })
   }
 
   implicitWidth: button.implicitWidth
@@ -471,15 +472,21 @@ fi
     }
   }
 
-  // Wi-Fi scan via iwctl. Emits a STATION_AVAILABLE marker followed by TSV
-  // rows (connected, ssid, signal_pct, security). Strip ANSI escapes early —
-  // iwctl's table layout starts each row with one, which breaks naive parsing.
-  Process {
-    id: wifiProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.updateWifi(text)
+  Timer {
+    id: scanRestart
+    interval: 100
+    repeat: false
+    onTriggered: {
+      if (root.wifiDevice) root.wifiDevice.scannerEnabled = true
+      scanDone.start()
     }
+  }
+
+  Timer {
+    id: scanDone
+    interval: 1500
+    repeat: false
+    onTriggered: root.syncWifiNetworks()
   }
 
   Process {
@@ -490,64 +497,22 @@ fi
     }
   }
 
-  // Action runner for connect/disconnect/forget and DNS provider changes.
-  // Streams stderr for wifi actions so we can surface "Operation failed" or
-  // "Invalid passphrase" inline rather than dropping the user back to a
-  // silent UI. setDns() and runAction() both gate on `actionProc.running`,
-  // so the two flows can't overlap on this shared process.
+  // Action runner for DNS provider changes. Wi-Fi actions use the
+  // Quickshell.Networking NetworkManager backend directly.
   Process {
     id: actionProc
     stdout: StdioCollector { id: actionStdout; waitForEnd: true }
     stderr: StdioCollector { id: actionStderr; waitForEnd: true }
     onExited: function(exitCode) {
-      // DNS change finished — pendingDnsProvider is the in-flight marker
-      // for that flow (setDns doesn't touch actionKind), so handle it and
-      // return before the wifi-action path.
       if (root.pendingDnsProvider !== "") {
         if (exitCode === 0) root.dnsProvider = root.pendingDnsProvider
         root.pendingDnsProvider = ""
-        return
       }
-      // Timeout already cleared our state and killed us — the exit signal
-      // is stale, don't clobber whatever the user has done since.
-      if (root.actionKind === "") return
-      actionTimeout.stop()
-      var ssid = root.actionSsid
-      var kind = root.actionKind
-      if (exitCode === 0) {
-        if (kind === "connect") root.passwordSsid = ""
-        root.failureSsid = ""
-        root.failureReason = ""
-      } else {
-        root.failureSsid = ssid
-        var reason = (actionStderr.text || actionStdout.text || "").trim()
-        if (!reason) {
-          if (kind === "connect") reason = "Failed to connect"
-          else if (kind === "disconnect") reason = "Failed to disconnect"
-          else reason = "Failed to forget"
-        }
-        // Squash multi-line iwctl errors into a single readable line.
-        // Also strip bash script error prefixes like "bash: line 4: " and "Operation failed"
-        var finalReason = reason.split("\n").pop().replace(/^bash: line \d+: /, "").replace(/^Operation failed/, "").trim()
-        if (!finalReason) {
-          if (kind === "connect") finalReason = "Failed to connect"
-          else if (kind === "disconnect") finalReason = "Failed to disconnect"
-          else finalReason = "Failed to forget"
-        }
-        root.failureReason = finalReason
-      }
-      root.actionSsid = ""
-      root.actionKind = ""
-      root.refresh()
     }
   }
 
-  // Poll detailsProc while the panel is open. `iwctl connect` returns
-  // success the moment iwd accepts credentials — the IP/route isn't
-  // actually assigned until a beat later, so a single post-action refresh
-  // races against routing and the header stays blank. Polling fills the
-  // details in as soon as the route comes up; cheap since the script is
-  // small and only runs while the panel is visible.
+  // Poll details while the panel is open so the IP/route header catches up
+  // as soon as NetworkManager finishes activating a connection.
   Timer {
     id: detailsPoll
     interval: 1500
@@ -566,13 +531,10 @@ fi
       if (root.actionKind === "connect") reason = "Timed out connecting"
       else if (root.actionKind === "disconnect") reason = "Timed out disconnecting"
       else reason = "Timed out forgetting"
-      // Clear state *before* killing the process so the eventual onExited
-      // sees actionKind === "" and bails out as stale.
       root.failureSsid = root.actionSsid
       root.failureReason = reason
       root.actionSsid = ""
       root.actionKind = ""
-      if (actionProc.running) actionProc.running = false  // SIGTERM
       root.refresh()
     }
   }
@@ -693,9 +655,9 @@ fi
             foreground: root.bar.foreground
             hoverColor: root.bar.foreground // Override the dimming behavior
             fontFamily: root.bar.fontFamily
-            enabled: true
+            enabled: root.networkManagerAvailable
             onClicked: {
-              root.bar.run("rfkill toggle wlan")
+              Networking.wifiEnabled = !Networking.wifiEnabled
               Qt.callLater(function() { root.refresh(true) })
             }
           }
@@ -756,7 +718,7 @@ fi
               root.focusSection = "header"
               root.headerIndex = 0
             }
-            onClicked: root.disconnect(root.info.ssid)
+            onClicked: root.disconnect(root.connectedWifiNetwork)
           }
 
           Button {
@@ -974,7 +936,7 @@ fi
 
     readonly property bool isConnected: net && net.connected
     readonly property bool isKnown: !!(net && net.known)
-    readonly property bool isProtected: root.isProtected(net ? net.security : "")
+    readonly property bool isProtected: net ? root.isProtected(net.security) : false
     readonly property bool canForget: isConnected || isKnown
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
 
@@ -988,6 +950,23 @@ fi
     readonly property bool isBusy: root.actionKind !== "" && root.actionSsid === (net ? net.ssid : "")
     readonly property bool isFailed: root.failureReason !== "" && root.failureSsid === (net ? net.ssid : "")
     readonly property bool isPasswordOpen: root.passwordSsid !== "" && root.passwordSsid === (net ? net.ssid : "")
+
+    Connections {
+      target: row.net ? row.net.network : null
+      function onConnectionFailed(reason) {
+        root.failNetworkAction(row.net.network, reason)
+        if (reason === ConnectionFailReason.NoSecrets) root.passwordSsid = row.net.ssid
+      }
+      function onConnectedChanged() {
+        if (row.net) root.checkActionCompletion(row.net.network)
+      }
+      function onKnownChanged() {
+        if (row.net) root.checkActionCompletion(row.net.network)
+      }
+      function onStateChangingChanged() {
+        if (row.net) root.checkActionCompletion(row.net.network)
+      }
+    }
 
     readonly property string statusText: {
       if (!net) return ""
@@ -1033,28 +1012,11 @@ fi
         root.focusSection = "wifi"
         root.selectedIndex = row.index
         if (row.isConnected) {
-          root.disconnect(row.net.ssid)
+          root.disconnect(row.net.network)
           return
         }
         if (row.isProtected && !row.isKnown) {
-          // Unknown protected network: probe iwd before expanding the inline
-          // password prompt for this row. Stash the SSID as a string — if we
-          // held a reference to the row delegate it could be destroyed by a
-          // model refresh, and a rapid second click would overwrite it and
-          // misroute the first result.
-          var quotedSsid = Util.shellQuote(row.net.ssid)
-          knownCheck.targetSsid = row.net.ssid
-          knownCheck.command = ["bash", "-c", `
-iwctl known-networks list 2>/dev/null \\
-  | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
-  | awk -v s=${quotedSsid} 'NR > 3 {
-      line = $0
-      sub(/^[[:space:]]+/, "", line)
-      sub(/[[:space:]]+$/, "", line)
-      n = split(line, p, /[[:space:]]{2,}/)
-      if (n >= 1 && p[1] == s) { print "yes"; exit }
-    }'`]
-          knownCheck.running = true
+          root.passwordSsid = row.net.ssid
           return
         }
         root.connectKnown(row.net.ssid)
@@ -1092,7 +1054,7 @@ iwctl known-networks list 2>/dev/null \\
         foreground: root.bar.foreground
         hoverColor: root.bar.urgent
         fontFamily: root.bar.fontFamily
-        onClicked: if (row.net) root.forget(row.net.ssid)
+        onClicked: if (row.net) root.forget(row.net)
       }
 
       // Shows a lock glyph for protected disconnected networks at the far
@@ -1235,27 +1197,6 @@ iwctl known-networks list 2>/dev/null \\
         foreground: root.bar.foreground
         fontFamily: root.bar.fontFamily
         onClicked: if (row.net) root.connectWithPassphrase(row.net.ssid, pwField.text)
-      }
-    }
-  }
-
-  // One-shot probe: is the just-clicked SSID in iwd's known-networks?
-  // If so, skip the passphrase prompt and connect directly. We hold an SSID
-  // string (not a row delegate) so a model refresh during the probe can't
-  // leave us pointing at a destroyed object. Rows are globally disabled
-  // while `knownCheck.running`, so the SSID can't be overwritten mid-flight.
-  Process {
-    id: knownCheck
-    property string targetSsid: ""
-    stdout: StdioCollector {
-      id: knownStdout
-      waitForEnd: true
-      onStreamFinished: {
-        var ssid = knownCheck.targetSsid
-        knownCheck.targetSsid = ""
-        if (!ssid) return
-        if (text.indexOf("yes") !== -1) root.connectKnown(ssid)
-        else root.passwordSsid = ssid
       }
     }
   }

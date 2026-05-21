@@ -62,7 +62,7 @@ imagemagick
 imv
 inetutils
 inxi
-iwd
+networkmanager
 jq
 kdenlive
 kernel-modules-hook

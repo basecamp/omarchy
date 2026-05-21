@@ -1,5 +1,6 @@
-# Ensure iwd service will be started
-sudo systemctl enable iwd.service
+# Ensure NetworkManager will be started
+sudo systemctl enable NetworkManager.service
+sudo systemctl disable iwd.service 2>/dev/null || true
 
 # Prevent systemd-networkd-wait-online timeout on boot
 sudo systemctl disable systemd-networkd-wait-online.service
