@@ -29,8 +29,11 @@ quickshell --no-color log -p "$OMARCHY_PATH/shell" --any-display --tail "$lines"
 
 section "Relevant processes"
 ps -eo pid=,args= \
-  | grep -E 'quickshell -n -p|dbus-monitor.*PrepareForSleep|org\.omarchy\.screensaver|omarchy-screensaver|(^|/| )tte( |$)' \
+  | grep -E 'quickshell -n -p|omarchy-system-sleep-monitor|systemd-inhibit.*Lock screen before suspend|org\.omarchy\.screensaver|omarchy-screensaver|(^|/| )tte( |$)' \
   | grep -v grep || true
+
+section "Sleep lock service"
+systemctl --user status omarchy-sleep-lock.service --no-pager 2>/dev/null || true
 
 section "Hyprland screensaver clients"
 hyprctl clients -j 2>/dev/null \

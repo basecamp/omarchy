@@ -5,6 +5,11 @@
 
 CONFIG_DIR="$OMARCHY_PATH/shell"
 
+if [[ $(omarchy-shell lock isLocked 2>/dev/null || true) == "true" ]]; then
+  echo "Refusing to restart Omarchy shell while the session is locked." >&2
+  exit 1
+fi
+
 pkill -x quickshell 2>/dev/null || true
 sleep 0.2
 setsid quickshell -n -p "$CONFIG_DIR" >/dev/null 2>&1 &
