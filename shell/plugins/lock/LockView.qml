@@ -12,7 +12,9 @@ Item {
   property string failureMessage: ""
   property int failedAttempts: 0
   property bool inputEnabled: true
+  property string passwordText: ""
   property real scaleFactor: 1
+  property bool syncingPasswordText: false
 
   readonly property string fingerprintGlyph: "\uDB80\uDE37"
   readonly property string placeholderText: fingerprintConfigured ? "Enter Password " + fingerprintGlyph : "Enter Password"
@@ -25,6 +27,7 @@ Item {
   readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
 
   signal submitPassword(string password)
+  signal passwordTextEdited(string password)
   signal clearFailureRequested()
   signal wakeRequested()
 
@@ -42,13 +45,22 @@ Item {
   }
 
   function clearPassword() {
-    passwordInput.text = ""
+    passwordTextEdited("")
   }
 
+  function syncPasswordText() {
+    if (passwordInput.text === passwordText) return
+    syncingPasswordText = true
+    passwordInput.text = passwordText
+    syncingPasswordText = false
+  }
+
+  onPasswordTextChanged: syncPasswordText()
   onInputEnabledChanged: {
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
   }
   Component.onCompleted: {
+    syncPasswordText()
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
   }
 
@@ -122,6 +134,7 @@ Item {
         }
 
         onTextChanged: {
+          if (!root.syncingPasswordText) root.passwordTextEdited(text)
           if (text.length > 0) {
             root.wakeRequested()
           }
@@ -129,15 +142,15 @@ Item {
         }
 
         onAccepted: {
-          var submitted = text
-          text = ""
+          var submitted = root.passwordText
+          root.passwordTextEdited("")
           if (submitted.length > 0) root.submitPassword(submitted)
         }
 
         Keys.onPressed: function(event) {
           root.wakeRequested()
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
-            text = ""
+            root.passwordTextEdited("")
             event.accepted = true
           }
         }
