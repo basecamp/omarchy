@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:summary=Control a Bluetooth device
+# omarchy:group=bluetooth
+# omarchy:args=[pair|connect|disconnect|forget] <address>
+# omarchy:examples=omarchy bluetooth device connect 00:11:22:33:44:55
+
+set -e
+
+usage() {
+  echo "Usage: omarchy-bluetooth-device [pair|connect|disconnect|forget] <address>" >&2
+  exit 1
+}
+
+action=${1:-}
+address=${2:-}
+
+[[ $action == "pair" || $action == "connect" || $action == "disconnect" || $action == "forget" ]] || usage
+[[ $address =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]] || usage
+
+power_on() {
+  bluetoothctl power on >/dev/null 2>&1 || true
+  sleep 0.5
+}
+
+trust_device() {
+  bluetoothctl trust "$address" >/dev/null 2>&1 || true
+}
+
+case "$action" in
+  pair)
+    power_on
+    timeout 20s bluetoothctl pair "$address" >/dev/null 2>&1 || true
+    trust_device
+    timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
+    ;;
+  connect)
+    power_on
+    trust_device
+    timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
+    ;;
+  disconnect)
+    timeout 10s bluetoothctl disconnect "$address" >/dev/null 2>&1 || true
+    ;;
+  forget)
+    power_on
+    timeout 10s bluetoothctl disconnect "$address" >/dev/null 2>&1 || true
+    timeout 10s bluetoothctl remove "$address" >/dev/null 2>&1 || true
+    ;;
+esac
