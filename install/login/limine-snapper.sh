@@ -80,17 +80,6 @@ EOF
   # limine's UKI pipeline — only this command does.
   sudo limine-update
 
-  # Sanity-check the final state. If any of these fail, the system will not
-  # boot, so it's better to halt the installer here than to ship a broken UKI.
-  if ! grep -q "^/+Omarchy" /boot/limine.conf; then
-    echo "Error: /boot/limine.conf does not contain an Omarchy entry" >&2
-    exit 1
-  fi
-  if [[ $CMDLINE == *cryptdevice=* ]] && ! grep -q "cryptdevice=" /boot/limine.conf; then
-    echo "Error: encrypted install but /boot/limine.conf has no cryptdevice=" >&2
-    exit 1
-  fi
-
   # Only snapshot root — /home is user data; rolling it back loses user work
   if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
     sudo snapper -c root create-config /
@@ -101,6 +90,7 @@ EOF
   sudo btrfs quota disable / 2>/dev/null || true
 
   chrootable_systemctl_enable limine-snapper-sync.service
+  LIMINE_CONFIGURED=true
 fi
 
 echo "Re-enabling mkinitcpio hooks..."
@@ -115,6 +105,20 @@ if [[ -f /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled ]]; then
 fi
 
 echo "mkinitcpio hooks re-enabled"
+
+# Final sanity check: assert the Limine config and UKI actually contain what
+# they need to boot. Run AFTER snapper setup and hook re-enable so a
+# validation failure doesn't leave the system half-configured.
+if [[ ${LIMINE_CONFIGURED:-} == true ]]; then
+  if ! grep -q "^/+Omarchy" /boot/limine.conf; then
+    echo "Error: /boot/limine.conf does not contain an Omarchy entry" >&2
+    exit 1
+  fi
+  if [[ ${CMDLINE:-} == *cryptdevice=* ]] && ! grep -q "cryptdevice=" /boot/limine.conf; then
+    echo "Error: encrypted install but /boot/limine.conf has no cryptdevice=" >&2
+    exit 1
+  fi
+fi
 
 if [[ -n $EFI ]] && efibootmgr &>/dev/null; then
   # Remove the archinstall-created Limine entry
