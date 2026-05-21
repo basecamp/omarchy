@@ -5,7 +5,7 @@ ConditionPathExists=%h/.local/state/omarchy/toggles/hypr/internal-monitor-disabl
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/share/omarchy/bin/omarchy-hw-recover-internal-monitor
+ExecStart=/usr/bin/omarchy-hw-recover-internal-monitor
 
 [Install]
 WantedBy=graphical-session-pre.target

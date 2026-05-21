@@ -19,7 +19,7 @@ end
 
 local omarchy_path = read_dev_link_omarchy_path()
   or os.getenv("OMARCHY_PATH")
-  or (home .. "/.local/share/omarchy")
+  or "/usr/share/omarchy"
 
 return {
   home = home,
