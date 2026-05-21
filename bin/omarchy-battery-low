@@ -13,10 +13,5 @@ fi
 
 level=$1
 
-if [[ ! $level =~ ^[0-9]+$ ]]; then
-  echo "Battery percentage must be a number" >&2
-  exit 1
-fi
-
 omarchy-notification-send -g "󱐋" -u critical "Time to recharge!" "Battery is down to ${level}%" -i battery-caution -t 30000
 omarchy-hook battery-low "$level"
