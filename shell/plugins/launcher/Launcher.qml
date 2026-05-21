@@ -24,7 +24,8 @@ Item {
   property var launchActiveToplevel: null
   property bool launchOsdOpen: false
   property string launchOsdMessage: ""
-  property var hiddenEntryIds: ({})
+  property var configuredHiddenEntryIds: ({})
+  property var desktopHiddenEntryIds: ({})
 
   // Bound to the central [launcher] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
@@ -111,17 +112,34 @@ Item {
 
   function isHiddenEntry(entry) {
     var id = String((entry && entry.id) || "")
-    return root.hiddenEntryIds[id] === true
+    return root.configuredHiddenEntryIds[id] === true || root.desktopHiddenEntryIds[id] === true
   }
 
-  function loadHiddenEntries(rawText) {
+  function normalizeDesktopId(id) {
+    var value = String(id || "").trim()
+    if (value.slice(-8) === ".desktop") value = value.slice(0, -8)
+    return value
+  }
+
+  function loadConfiguredHides(rawText) {
     var next = ({})
     var lines = String(rawText || "").split(/\n/)
     for (var i = 0; i < lines.length; i++) {
-      var id = lines[i].trim()
+      var id = root.normalizeDesktopId(lines[i])
       if (id.length > 0) next[id] = true
     }
-    root.hiddenEntryIds = next
+    root.configuredHiddenEntryIds = next
+    if (root.opened) root.rebuildDisplay()
+  }
+
+  function loadDesktopHiddenEntries(rawText) {
+    var next = ({})
+    var lines = String(rawText || "").split(/\n/)
+    for (var i = 0; i < lines.length; i++) {
+      var id = root.normalizeDesktopId(lines[i])
+      if (id.length > 0) next[id] = true
+    }
+    root.desktopHiddenEntryIds = next
     if (root.opened) root.rebuildDisplay()
   }
 
@@ -269,12 +287,22 @@ Item {
     command: ["bash", "-lc", root.hiddenEntryScanCommand()]
     stdout: SplitParser { onRead: function(line) { hiddenEntryOutput.text += line + "\n" } }
     onStarted: hiddenEntryOutput.text = ""
-    onExited: root.loadHiddenEntries(hiddenEntryOutput.text)
+    onExited: root.loadDesktopHiddenEntries(hiddenEntryOutput.text)
   }
 
   QtObject {
     id: hiddenEntryOutput
     property string text: ""
+  }
+
+  FileView {
+    id: launcherHidesFile
+    path: root.omarchyPath + "/default/omarchy/launcher.hides"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.loadConfiguredHides(text())
+    onFileChanged: root.loadConfiguredHides(text())
+    onLoadFailed: root.loadConfiguredHides("")
   }
 
   Connections {
