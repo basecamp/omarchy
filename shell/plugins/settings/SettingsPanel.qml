@@ -327,10 +327,16 @@ Item {
         allowMultiple: meta.allowMultiple === true,
         settingsForm: meta.settingsForm || "",
         schema: Array.isArray(meta.schema) ? meta.schema : [],
+        sourceDir: manifest.__sourceDir || "",
         source: "plugin"
       }
     }
     return {}
+  }
+
+  function widgetSourceDir(id) {
+    var meta = widgetMetadata(id)
+    return meta && meta.sourceDir ? String(meta.sourceDir) : ""
   }
 
   function widgetName(id) {
@@ -1133,6 +1139,7 @@ Item {
     id: dynamicSettingsComponent
     Cmp.DynamicSettingsForm {
       schema: root.widgetSchema(entry.id || "")
+      pluginSourceDir: root.widgetSourceDir(entry.id || "")
       foreground: root.foreground
       fontFamily: root.fontFamily
     }
