@@ -1,0 +1,117 @@
+#!/bin/bash
+
+# omarchy:summary=Interactive TUI to manage the nightlight schedule
+# omarchy:examples=omarchy tui nightlight
+
+if ! command -v gum &>/dev/null; then
+  echo "gum is required. Install with: omarchy pkg add gum" >&2
+  exit 1
+fi
+
+state_file="$HOME/.local/state/omarchy/nightlight-schedule.conf"
+toggle_flag="$HOME/.local/state/omarchy/toggles/nightlight-schedule"
+
+read_state() {
+  TEMPERATURE=4000
+  START_TIME="20:00"
+  END_TIME="07:00"
+  [[ -f $state_file ]] && source "$state_file"
+
+  if [[ -f $toggle_flag ]]; then
+    STATE="Enabled"
+  else
+    STATE="Disabled"
+  fi
+}
+
+draw_panel() {
+  local accent
+  if [[ $STATE == "Enabled" ]]; then
+    accent=2 # green
+  else
+    accent=8 # dim
+  fi
+
+  gum style \
+    --border rounded --border-foreground "$accent" \
+    --margin "1 2" --padding "1 3" --width 44 \
+    "$(gum style --bold "  Nightlight Manager")" \
+    "" \
+    "  Status     $(gum style --foreground "$accent" "$STATE")" \
+    "  Intensity  ${TEMPERATURE}K" \
+    "  Start      $START_TIME" \
+    "  End        $END_TIME"
+}
+
+flash_error() {
+  gum style --margin "0 2" --foreground 1 "  $1"
+  sleep 1.2
+}
+
+pick_intensity() {
+  local choice
+  choice=$(gum choose --header "Pick intensity" \
+    "Strong (3000K)" \
+    "Warm (3500K)" \
+    "Default (4000K)" \
+    "Mild (4500K)" \
+    "Cool (5500K)" \
+    "Custom…") || return
+
+  case $choice in
+    *3000K*) omarchy-nightlight-schedule set-intensity 3000 ;;
+    *3500K*) omarchy-nightlight-schedule set-intensity 3500 ;;
+    *4000K*) omarchy-nightlight-schedule set-intensity 4000 ;;
+    *4500K*) omarchy-nightlight-schedule set-intensity 4500 ;;
+    *5500K*) omarchy-nightlight-schedule set-intensity 5500 ;;
+    Custom*)
+      local value
+      value=$(gum input --header "Temperature in Kelvin (1000-6500)" --placeholder "$TEMPERATURE") || return
+      [[ -n $value ]] || return
+      omarchy-nightlight-schedule set-intensity "$value" 2>/dev/null \
+        || flash_error "Invalid temperature; must be between 1000 and 6500"
+      ;;
+  esac
+}
+
+pick_time() {
+  local header=$1 subcommand=$2 current=$3
+  local value
+  value=$(gum input --header "$header (HH:MM)" --placeholder "$current") || return
+  [[ -n $value ]] || return
+  omarchy-nightlight-schedule "$subcommand" "$value" 2>/dev/null \
+    || flash_error "Invalid time; use HH:MM (e.g. 20:00)"
+}
+
+main_loop() {
+  while true; do
+    read_state
+    clear
+    draw_panel
+
+    local toggle_label
+    if [[ $STATE == "Enabled" ]]; then
+      toggle_label="Disable schedule"
+    else
+      toggle_label="Enable schedule"
+    fi
+
+    local action
+    action=$(gum choose --header "Choose an action" \
+      "$toggle_label" \
+      "Set intensity" \
+      "Set start time" \
+      "Set end time" \
+      "Quit") || break
+
+    case $action in
+      "Enable schedule" | "Disable schedule") omarchy-nightlight-schedule toggle ;;
+      "Set intensity") pick_intensity ;;
+      "Set start time") pick_time "Start time" set-start "$START_TIME" ;;
+      "Set end time") pick_time "End time" set-end "$END_TIME" ;;
+      "Quit" | "") break ;;
+    esac
+  done
+}
+
+main_loop

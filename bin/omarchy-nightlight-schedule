@@ -1,0 +1,175 @@
+#!/bin/bash
+
+# omarchy:summary=Configure or apply the automatic nightlight schedule
+# omarchy:args=<status|enable|disable|toggle|apply|set-intensity|set-start|set-end> [value]
+# omarchy:examples=omarchy nightlight-schedule status | omarchy nightlight-schedule set-intensity 3500 | omarchy nightlight-schedule set-start 19:30
+
+STATE_DIR="$HOME/.local/state/omarchy"
+STATE_FILE="$STATE_DIR/nightlight-schedule.conf"
+TOGGLE_FLAG="$STATE_DIR/toggles/nightlight-schedule"
+
+HYPRSUNSET_CONF="$HOME/.config/hypr/hyprsunset.conf"
+HYPRSUNSET_DEFAULT="${OMARCHY_PATH:-$HOME/.local/share/omarchy}/config/hypr/hyprsunset.conf"
+
+# Pick the autostart format that matches what's on disk. New Lua-based installs
+# use autostart.lua; pre-Lua-migration installs use autostart.conf (hyprlang).
+if [[ -f $HOME/.config/hypr/autostart.lua ]]; then
+  AUTOSTART_FILE="$HOME/.config/hypr/autostart.lua"
+  AUTOSTART_LINE='o.launch_on_start("hyprsunset") -- auto-nightlight (managed by omarchy)'
+elif [[ -f $HOME/.config/hypr/autostart.conf ]]; then
+  AUTOSTART_FILE="$HOME/.config/hypr/autostart.conf"
+  AUTOSTART_LINE='exec-once = uwsm-app -- hyprsunset # auto-nightlight (managed by omarchy)'
+else
+  AUTOSTART_FILE=""
+fi
+
+TEMPERATURE=4000
+START_TIME="20:00"
+END_TIME="07:00"
+
+[[ -f $STATE_FILE ]] && source "$STATE_FILE"
+
+valid_time() {
+  [[ $1 =~ ^([0-1][0-9]|2[0-3]):[0-5][0-9]$ ]]
+}
+
+valid_temp() {
+  [[ $1 =~ ^[0-9]+$ ]] && (($1 >= 1000)) && (($1 <= 6500))
+}
+
+save_state() {
+  mkdir -p "$(dirname "$STATE_FILE")"
+  cat >"$STATE_FILE" <<EOF
+TEMPERATURE=$TEMPERATURE
+START_TIME=$START_TIME
+END_TIME=$END_TIME
+EOF
+}
+
+is_enabled() {
+  [[ -f $TOGGLE_FLAG ]]
+}
+
+write_managed_hyprsunset_conf() {
+  cat >"$HYPRSUNSET_CONF" <<EOF
+# Nightlight schedule managed by omarchy.
+# Change settings via: omarchy menu toggle  >  Nightlight
+# Disable the schedule via: omarchy toggle nightlight-schedule
+profile {
+    time = $START_TIME
+    temperature = $TEMPERATURE
+}
+profile {
+    time = $END_TIME
+    identity = true
+}
+EOF
+}
+
+restore_default_hyprsunset_conf() {
+  if [[ -f $HYPRSUNSET_DEFAULT ]]; then
+    cp -f "$HYPRSUNSET_DEFAULT" "$HYPRSUNSET_CONF"
+  fi
+}
+
+ensure_autostart() {
+  if [[ -n $AUTOSTART_FILE ]] && ! grep -qxF "$AUTOSTART_LINE" "$AUTOSTART_FILE"; then
+    printf '%s\n' "$AUTOSTART_LINE" >>"$AUTOSTART_FILE"
+  fi
+}
+
+remove_autostart() {
+  if [[ -n $AUTOSTART_FILE && -f $AUTOSTART_FILE ]]; then
+    awk -v target="$AUTOSTART_LINE" '$0 != target' "$AUTOSTART_FILE" >"$AUTOSTART_FILE.tmp" && mv "$AUTOSTART_FILE.tmp" "$AUTOSTART_FILE"
+  fi
+}
+
+apply() {
+  if is_enabled; then
+    write_managed_hyprsunset_conf
+    ensure_autostart
+    omarchy-restart-app hyprsunset
+  else
+    restore_default_hyprsunset_conf
+    remove_autostart
+    pkill -x hyprsunset
+  fi
+}
+
+enable() {
+  mkdir -p "$(dirname "$TOGGLE_FLAG")"
+  touch "$TOGGLE_FLAG"
+  save_state
+  apply
+  notify-send -u low "    Auto-nightlight enabled" "${TEMPERATURE}K from $START_TIME to $END_TIME"
+}
+
+disable() {
+  rm -f "$TOGGLE_FLAG"
+  apply
+  notify-send -u low "    Auto-nightlight disabled"
+}
+
+toggle() {
+  if is_enabled; then
+    disable
+  else
+    enable
+  fi
+}
+
+status() {
+  if is_enabled; then
+    printf 'Status: Enabled\n'
+  else
+    printf 'Status: Disabled\n'
+  fi
+  printf 'Intensity: %sK\n' "$TEMPERATURE"
+  printf 'Start: %s\n' "$START_TIME"
+  printf 'End: %s\n' "$END_TIME"
+}
+
+set_intensity() {
+  if ! valid_temp "$1"; then
+    echo "Invalid temperature: ${1:-(empty)} (must be 1000-6500)" >&2
+    exit 1
+  fi
+  TEMPERATURE="$1"
+  save_state
+  is_enabled && apply
+}
+
+set_start() {
+  if ! valid_time "$1"; then
+    echo "Invalid time: ${1:-(empty)} (must be HH:MM)" >&2
+    exit 1
+  fi
+  START_TIME="$1"
+  save_state
+  is_enabled && apply
+}
+
+set_end() {
+  if ! valid_time "$1"; then
+    echo "Invalid time: ${1:-(empty)} (must be HH:MM)" >&2
+    exit 1
+  fi
+  END_TIME="$1"
+  save_state
+  is_enabled && apply
+}
+
+case "${1:-status}" in
+  status) status ;;
+  enable) enable ;;
+  disable) disable ;;
+  toggle) toggle ;;
+  apply) apply ;;
+  set-intensity) set_intensity "$2" ;;
+  set-start) set_start "$2" ;;
+  set-end) set_end "$2" ;;
+  *)
+    echo "Usage: omarchy-nightlight-schedule <status|enable|disable|toggle|apply|set-intensity|set-start|set-end> [value]" >&2
+    exit 1
+    ;;
+esac

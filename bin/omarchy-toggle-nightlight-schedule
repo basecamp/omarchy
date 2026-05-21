@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle the automatic time-based nightlight schedule on or off
+# omarchy:examples=omarchy toggle nightlight-schedule
+
+omarchy-nightlight-schedule toggle
