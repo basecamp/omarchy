@@ -57,10 +57,6 @@ o.bind("SUPER + CTRL + B", "Bluetooth controls", { omarchy = "bluetooth" })
 o.bind("SUPER + CTRL + W", "Wifi controls", { omarchy = "wifi" })
 o.bind("SUPER + CTRL + T", "Activity", { tui = "btop" })
 
-o.bind("SUPER + CTRL + X", "Toggle dictation", "voxtype record toggle")
-o.bind("F9", "Start dictation (push-to-talk)", "voxtype record start")
-o.bind("F9", "Stop dictation (push-to-talk)", "voxtype record stop", { release = true })
-
 o.bind("SUPER + CTRL + Z", "Zoom in", function()
   local zoom = hl.get_config("cursor.zoom_factor") or 1
   hl.config({ cursor = { zoom_factor = zoom + 1 } })

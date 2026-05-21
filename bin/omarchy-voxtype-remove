@@ -18,6 +18,7 @@ if omarchy-cmd-present voxtype; then
   omarchy-pkg-drop voxtype-bin
   rm -rf ~/.config/voxtype
   rm -rf ~/.local/share/voxtype
+  omarchy-hyprland-toggle voxtype off
 else
   echo "Voxtype was not installed."
 fi
