@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# omarchy:summary=Copy text to the clipboard and type or paste it
+# omarchy:group=clipboard
+# omarchy:args=[--shift-insert] <text>
+# omarchy:examples=omarchy clipboard paste text "hello" | omarchy clipboard paste text --shift-insert "hello"
+
+use_shift_insert=false
+
+if [[ ${1:-} == "--shift-insert" ]]; then
+  use_shift_insert=true
+  shift
+fi
+
+text=${1:-}
+[[ -n $text ]] || exit
+
+printf '%s' "$text" | wl-copy
+sleep 0.15
+
+if [[ $use_shift_insert == "true" ]]; then
+  wtype -M shift -k Insert -m shift 2>/dev/null || true
+else
+  wtype "$text" 2>/dev/null || true
+fi

@@ -24,9 +24,7 @@ BarWidget {
   readonly property int historyLimit: 30
 
   function refresh() {
-    if (!cpuProc.running) cpuProc.running = true
-    if (!memProc.running) memProc.running = true
-    if (!loadProc.running) loadProc.running = true
+    if (!statsProc.running) statsProc.running = true
   }
 
   function pushHistory(arr, value) {
@@ -36,20 +34,9 @@ BarWidget {
     return next
   }
 
-  function updateCpu(raw) {
-    var fields = String(raw || "").trim().split(/\s+/)
-    if (fields.length < 8) return
-    var user = parseInt(fields[1], 10) || 0
-    var nice = parseInt(fields[2], 10) || 0
-    var sys = parseInt(fields[3], 10) || 0
-    var idle = parseInt(fields[4], 10) || 0
-    var iowait = parseInt(fields[5], 10) || 0
-    var irq = parseInt(fields[6], 10) || 0
-    var softirq = parseInt(fields[7], 10) || 0
-
-    var total = user + nice + sys + idle + iowait + irq + softirq
-    var totalDiff = total - prevCpu.total
+  function updateCpuTotals(idle, total) {
     var idleDiff = idle - prevCpu.idle
+    var totalDiff = total - prevCpu.total
 
     if (prevCpu.total > 0 && totalDiff > 0) {
       var usage = (1 - idleDiff / totalDiff) * 100
@@ -60,52 +47,38 @@ BarWidget {
     prevCpu = { idle: idle, total: total }
   }
 
-  function updateMem(raw) {
-    var lines = String(raw || "").split("\n")
-    var total = 0
-    var available = 0
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i]
-      if (line.indexOf("MemTotal:") === 0) total = parseInt(line.replace(/[^0-9]/g, ""), 10) || 0
-      else if (line.indexOf("MemAvailable:") === 0) available = parseInt(line.replace(/[^0-9]/g, ""), 10) || 0
-    }
-    if (total > 0) {
-      memPercent = ((total - available) / total) * 100
-      memHistory = pushHistory(memHistory, memPercent)
-    }
-  }
-
   function updateLoad(raw) {
     var n = parseFloat(String(raw || "").trim().split(/\s+/)[0])
     if (!isNaN(n)) loadAvg = n
   }
 
+  function updateStats(raw) {
+    var lines = String(raw || "").split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      var parts = lines[i].trim().split("\t")
+      if (parts.length < 2) continue
+      if (parts[0] === "cpu") updateCpuTotals(parseInt(parts[1], 10) || 0, parseInt(parts[2], 10) || 0)
+      else if (parts[0] === "memory") updateMemPercent(parts[1])
+      else if (parts[0] === "load") updateLoad(parts[1])
+    }
+  }
+
+  function updateMemPercent(raw) {
+    var n = parseFloat(String(raw || "").trim())
+    if (!isNaN(n)) {
+      memPercent = Math.max(0, Math.min(100, n))
+      memHistory = pushHistory(memHistory, memPercent)
+    }
+  }
+
   Component.onCompleted: refresh()
 
   Process {
-    id: cpuProc
-    command: ["bash", "-lc", "head -n1 /proc/stat"]
+    id: statsProc
+    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-system-stats" : "omarchy-system-stats", "--bar-widget"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.updateCpu(text)
-    }
-  }
-
-  Process {
-    id: memProc
-    command: ["bash", "-lc", "head -n3 /proc/meminfo"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.updateMem(text)
-    }
-  }
-
-  Process {
-    id: loadProc
-    command: ["bash", "-lc", "cat /proc/loadavg"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.updateLoad(text)
+      onStreamFinished: root.updateStats(text)
     }
   }
 
