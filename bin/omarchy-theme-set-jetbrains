@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:summary=Sync Omarchy theme to installed JetBrains IDEs
+# omarchy:hidden=true
+
+JETBRAINS_THEME="$HOME/.config/omarchy/current/theme/jetbrains.icls"
+JETBRAINS_CONFIG_ROOT="$HOME/.config/JetBrains"
+
+[[ -d $JETBRAINS_CONFIG_ROOT ]] || exit 0
+omarchy-toggle-enabled skip-jetbrains-theme-changes && exit 0
+
+scheme_name=""
+if [[ -f $JETBRAINS_THEME ]]; then
+  scheme_name=$(sed -n '1{s/.*name="\([^"]*\)".*/\1/p;q}' "$JETBRAINS_THEME")
+fi
+
+set_theme() {
+  local product_dir="$1"
+
+  [[ -d $product_dir/options ]] || return 0
+
+  local colors_dir="$product_dir/colors"
+  local scheme_xml="$product_dir/options/colors.scheme.xml"
+
+  if [[ -n $scheme_name ]]; then
+    mkdir -p "$colors_dir"
+    cp "$JETBRAINS_THEME" "$colors_dir/Omarchy.icls"
+
+    if [[ ! -f $scheme_xml ]]; then
+      cat >"$scheme_xml" <<EOF
+<application>
+  <component name="EditorColorsManagerImpl">
+    <global_color_scheme name="$scheme_name" />
+  </component>
+</application>
+EOF
+    elif grep -q "global_color_scheme" "$scheme_xml"; then
+      sed -i -E "s|(<global_color_scheme[^/]*name=\")[^\"]*(\")|\1$scheme_name\2|" "$scheme_xml"
+    else
+      sed -i -E "s|(<component name=\"EditorColorsManagerImpl\"[^/>]*)/>|\1>\n    <global_color_scheme name=\"$scheme_name\" />\n  </component>|" "$scheme_xml"
+    fi
+  elif [[ -f $colors_dir/Omarchy.icls ]]; then
+    rm -f "$colors_dir/Omarchy.icls"
+  fi
+}
+
+for product_dir in "$JETBRAINS_CONFIG_ROOT"/*; do
+  [[ -d $product_dir ]] || continue
+  set_theme "$product_dir"
+done

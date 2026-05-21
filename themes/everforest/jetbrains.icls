@@ -1,0 +1,201 @@
+<scheme name="Omarchy Everforest" version="142" parent_scheme="Darcula">
+  <metaInfo>
+    <property name="created" value="omarchy-theme-sync" />
+    <property name="ide" value="jetbrains" />
+    <property name="originalScheme" value="Omarchy Everforest" />
+  </metaInfo>
+  <colors>
+    <option name="BACKGROUND" value="2d353b" />
+    <option name="CARET_COLOR" value="d3c6aa" />
+    <option name="CARET_ROW_COLOR" value="3a4144" />
+    <option name="CONSOLE_BACKGROUND_KEY" value="2d353b" />
+    <option name="DOCUMENTATION_COLOR" value="3e4446" />
+    <option name="GUTTER_BACKGROUND" value="2d353b" />
+    <option name="INDENT_GUIDE" value="636c71" />
+    <option name="LINE_NUMBERS_COLOR" value="92989c" />
+    <option name="LINE_NUMBER_ON_CARET_ROW_COLOR" value="d3c6aa" />
+    <option name="LOOKUP_COLOR" value="3e4446" />
+    <option name="RIGHT_MARGIN_COLOR" value="636c71" />
+    <option name="SELECTED_INDENT_GUIDE" value="9e9886" />
+    <option name="SELECTED_TEARLINE_COLOR" value="9e9886" />
+    <option name="SELECTION_BACKGROUND" value="d3c6aa" />
+    <option name="SELECTION_FOREGROUND" value="2d353b" />
+    <option name="SEPARATOR_ABOVE_COLOR" value="555856" />
+    <option name="SEPARATOR_BELOW_COLOR" value="555856" />
+    <option name="TEARLINE_COLOR" value="636c71" />
+    <option name="VISUAL_INDENT_GUIDE" value="555856" />
+    <option name="WHITESPACES" value="636c71" />
+    <option name="ADDED_LINES_COLOR" value="434e47" />
+    <option name="DELETED_LINES_COLOR" value="4e4247" />
+    <option name="MODIFIED_LINES_COLOR" value="3a4a4e" />
+    <option name="FILESTATUS_ADDED" value="a7c080" />
+    <option name="FILESTATUS_COPIED" value="a7c080" />
+    <option name="FILESTATUS_DELETED" value="e67e80" />
+    <option name="FILESTATUS_MODIFIED" value="7fbbb3" />
+    <option name="FILESTATUS_MERGED" value="d699b6" />
+    <option name="FILESTATUS_UNKNOWN" value="dbbc7f" />
+    <option name="FILESTATUS_RENAMED" value="7fbbb3" />
+    <option name="FILESTATUS_NOT_CHANGED_IMMEDIATE" value="7fbbb3" />
+    <option name="FILESTATUS_NOT_CHANGED_RECURSIVE" value="7fbbb3" />
+    <option name="ScrollBar.Mac.thumbColor" value="3e444683" />
+    <option name="ScrollBar.Mac.hoverThumbColor" value="3e4446" />
+  </colors>
+  <attributes>
+    <option name="TEXT">
+      <value>
+        <option name="FOREGROUND" value="d3c6aa" />
+        <option name="BACKGROUND" value="2d353b" />
+      </value>
+    </option>
+    <option name="DEFAULT_KEYWORD">
+      <value>
+        <option name="FOREGROUND" value="d699b6" />
+        <option name="FONT_TYPE" value="1" />
+      </value>
+    </option>
+    <option name="DEFAULT_STRING">
+      <value>
+        <option name="FOREGROUND" value="a7c080" />
+      </value>
+    </option>
+    <option name="DEFAULT_NUMBER">
+      <value>
+        <option name="FOREGROUND" value="dbbc7f" />
+      </value>
+    </option>
+    <option name="DEFAULT_LINE_COMMENT">
+      <value>
+        <option name="FOREGROUND" value="92989c" />
+        <option name="FONT_TYPE" value="2" />
+      </value>
+    </option>
+    <option name="DEFAULT_BLOCK_COMMENT">
+      <value>
+        <option name="FOREGROUND" value="92989c" />
+        <option name="FONT_TYPE" value="2" />
+      </value>
+    </option>
+    <option name="DEFAULT_DOC_COMMENT">
+      <value>
+        <option name="FOREGROUND" value="92989c" />
+        <option name="FONT_TYPE" value="2" />
+      </value>
+    </option>
+    <option name="DEFAULT_OPERATION_SIGN">
+      <value>
+        <option name="FOREGROUND" value="83c092" />
+      </value>
+    </option>
+    <option name="DEFAULT_CLASS_NAME">
+      <value>
+        <option name="FOREGROUND" value="dbbc7f" />
+      </value>
+    </option>
+    <option name="DEFAULT_INTERFACE_NAME">
+      <value>
+        <option name="FOREGROUND" value="dbbc7f" />
+      </value>
+    </option>
+    <option name="DEFAULT_FUNCTION_DECLARATION">
+      <value>
+        <option name="FOREGROUND" value="7fbbb3" />
+      </value>
+    </option>
+    <option name="DEFAULT_FUNCTION_CALL">
+      <value>
+        <option name="FOREGROUND" value="7fbbb3" />
+      </value>
+    </option>
+    <option name="DEFAULT_PARAMETER">
+      <value>
+        <option name="FOREGROUND" value="d699b6" />
+        <option name="FONT_TYPE" value="2" />
+      </value>
+    </option>
+    <option name="DEFAULT_LOCAL_VARIABLE">
+      <value>
+        <option name="FOREGROUND" value="d3c6aa" />
+      </value>
+    </option>
+    <option name="DEFAULT_INSTANCE_FIELD">
+      <value>
+        <option name="FOREGROUND" value="7fbbb3" />
+      </value>
+    </option>
+    <option name="DEFAULT_STATIC_FIELD">
+      <value>
+        <option name="FOREGROUND" value="dbbc7f" />
+        <option name="FONT_TYPE" value="1" />
+      </value>
+    </option>
+    <option name="DEFAULT_CONSTANT">
+      <value>
+        <option name="FOREGROUND" value="dbbc7f" />
+      </value>
+    </option>
+    <option name="DEFAULT_METADATA">
+      <value>
+        <option name="FOREGROUND" value="dbbc7f" />
+      </value>
+    </option>
+    <option name="DEFAULT_LABEL">
+      <value>
+        <option name="FOREGROUND" value="7fbbb3" />
+      </value>
+    </option>
+    <option name="ANNOTATION_NAME_ATTRIBUTES" baseAttributes="DEFAULT_METADATA" />
+    <option name="TEXT_SEARCH_RESULT_ATTRIBUTES">
+      <value>
+        <option name="BACKGROUND" value="5e5b4e" />
+      </value>
+    </option>
+    <option name="LIVE_SEARCH_RESULT_ATTRIBUTES">
+      <value>
+        <option name="BACKGROUND" value="496364" />
+      </value>
+    </option>
+    <option name="WRITE_SEARCH_RESULT_ATTRIBUTES">
+      <value>
+        <option name="BACKGROUND" value="496364" />
+      </value>
+    </option>
+    <option name="IDENTIFIER_UNDER_CARET_ATTRIBUTES">
+      <value>
+        <option name="BACKGROUND" value="3f5255" />
+      </value>
+    </option>
+    <option name="WRITE_IDENTIFIER_UNDER_CARET_ATTRIBUTES">
+      <value>
+        <option name="BACKGROUND" value="3f5255" />
+      </value>
+    </option>
+    <option name="WARNING_ATTRIBUTES">
+      <value>
+        <option name="EFFECT_COLOR" value="dbbc7f" />
+        <option name="EFFECT_TYPE" value="WAVE_UNDERSCORE" />
+      </value>
+    </option>
+    <option name="ERRORS_ATTRIBUTES">
+      <value>
+        <option name="EFFECT_COLOR" value="e67e80" />
+        <option name="EFFECT_TYPE" value="WAVE_UNDERSCORE" />
+      </value>
+    </option>
+    <option name="NOT_USED_ELEMENT_ATTRIBUTES">
+      <value>
+        <option name="FOREGROUND" value="92989c" />
+      </value>
+    </option>
+    <option name="TODO_DEFAULT_ATTRIBUTES">
+      <value>
+        <option name="FOREGROUND" value="dbbc7f" />
+        <option name="FONT_TYPE" value="2" />
+      </value>
+    </option>
+    <option name="UNMATCHED_BRACE_ATTRIBUTES">
+      <value>
+        <option name="BACKGROUND" value="e67e80" />
+      </value>
+    </option>
+  </attributes>
+</scheme>
