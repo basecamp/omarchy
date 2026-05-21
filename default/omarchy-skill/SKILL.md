@@ -383,7 +383,7 @@ This skill intentionally does not cover Omarchy source development. Do not use t
 - "Add a keybinding for Super+E to open file manager" -> Check existing bindings first, add `unbind` if needed, then add `bind` in `~/.config/hypr/bindings.conf`
 - "Configure my external monitor" -> Edit `~/.config/hypr/monitors.conf`
 - "Make the window gaps smaller" -> Edit `~/.config/hypr/looknfeel.conf`
-- "Set up night light to turn on at sunset" -> `omarchy tui nightlight` (interactive manager) or `omarchy nightlight schedule set-start 20:00 && omarchy nightlight schedule enable`
+- "Set up night light to turn on at sunset" -> `omarchy tui nightlight` (interactive manager) or `omarchy nightlight-schedule set-start 20:00 && omarchy nightlight-schedule enable`
 - "Set a reminder to pickup jack in 15 minutes" -> `omarchy reminder 15 "Pickup Jack"`
 - "Show my reminders" -> `omarchy reminder show`
 - "Clear all reminders" -> `omarchy reminder clear`
