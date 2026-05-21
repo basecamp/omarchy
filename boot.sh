@@ -1,7 +1,14 @@
 #!/bin/bash
+# Curl-able Omarchy bootstrap. Configures the omarchy pacman repo on a fresh
+# Arch system, installs the omarchy-installer package (which pulls omarchy,
+# omarchy-settings, and omarchy-limine via depends), then hands off to
+# `omarchy install`.
+#
+# Usage:
+#   curl -sSL https://omarchy.org/boot.sh | bash
+#   curl -sSL https://omarchy.org/boot.sh | OMARCHY_REF=dev bash
 
-# Set install mode to online since boot.sh is used for curl installations
-export OMARCHY_ONLINE_INSTALL=true
+set -e
 
 ansi_art='                 ▄▄▄
  ▄█████▄    ▄███████████▄    ▄███████   ▄███████   ▄███████   ▄█   █▄    ▄█   █▄
@@ -13,38 +20,32 @@ ansi_art='                 ▄▄▄
 ███   ███  ███   ███   ███  ███   ███  ███   ███  ███   ███  ███   ███  ███   ███
  ▀█████▀    ▀█   ███   █▀   ███   █▀   ███   ███  ███████▀   ███   █▀    ▀█████▀
                                        ███   █▀                                  '
-
 clear
 echo -e "\n$ansi_art\n"
 
-# Use custom branch if instructed, otherwise default to master
-OMARCHY_REF="${OMARCHY_REF:-master}"
+# Pick the omarchy package channel. stable is the default; dev/rc are for
+# pre-release testing.
+case "${OMARCHY_REF:-master}" in
+  dev) channel=edge ;;
+  rc)  channel=rc ;;
+  *)   channel=stable ;;
+esac
 
-# Set mirror based on branch
-if [[ $OMARCHY_REF == "dev" ]]; then
-  export OMARCHY_MIRROR=edge
-  echo 'Server = https://mirror.omarchy.org/$repo/os/$arch' | sudo tee /etc/pacman.d/mirrorlist >/dev/null
-elif [[ $OMARCHY_REF == "rc" ]]; then
-  export OMARCHY_MIRROR=rc
-  echo 'Server = https://rc-mirror.omarchy.org/$repo/os/$arch' | sudo tee /etc/pacman.d/mirrorlist >/dev/null
-else
-  export OMARCHY_MIRROR=stable
-  echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' | sudo tee /etc/pacman.d/mirrorlist >/dev/null
+echo "Configuring omarchy [${channel}] pacman repo..."
+sudo tee /etc/pacman.d/omarchy.conf >/dev/null <<EOF
+[omarchy]
+SigLevel = Optional TrustAll
+Server = https://pkgs.omarchy.org/${channel}/\$arch
+EOF
+if ! grep -q '^Include = /etc/pacman.d/omarchy.conf' /etc/pacman.conf; then
+  echo -e "\nInclude = /etc/pacman.d/omarchy.conf" | sudo tee -a /etc/pacman.conf >/dev/null
 fi
 
-sudo pacman -Syu --noconfirm --needed git
+echo "Refreshing pacman databases..."
+sudo pacman -Sy --noconfirm
 
-# Use custom repo if specified, otherwise default to basecamp/omarchy
-OMARCHY_REPO="${OMARCHY_REPO:-basecamp/omarchy}"
-
-echo -e "\nCloning Omarchy from: https://github.com/${OMARCHY_REPO}.git"
-rm -rf ~/.local/share/omarchy/
-git clone "https://github.com/${OMARCHY_REPO}.git" ~/.local/share/omarchy >/dev/null
-
-echo -e "\e[32mUsing branch: $OMARCHY_REF\e[0m"
-cd ~/.local/share/omarchy
-git fetch origin "${OMARCHY_REF}" && git checkout "${OMARCHY_REF}"
-cd -
+echo "Installing omarchy-installer..."
+sudo pacman -S --noconfirm --needed omarchy-installer
 
 echo -e "\nInstallation starting..."
-source ~/.local/share/omarchy/install.sh
+exec omarchy-install
