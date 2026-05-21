@@ -18,18 +18,25 @@ export_legacy_mode_flags
 
 source "$OMARCHY_INSTALL/helpers/all.sh"
 
-# The install scripts assume the full omarchy runtime is installed (preflight
-# guards check for limine; config scripts call omarchy-* commands; etc.).
-# Online: install it now via pacman. Offline: the ISO was supposed to pacstrap
-# it before user creation, so just assert it's present.
+# The install scripts assume the full Omarchy default install set is present
+# (preflight guards check for limine; config scripts call omarchy-* commands;
+# user scripts call apps from omarchy-base.packages; etc.).
+#
+# omarchy itself only hard-depends on the bricking set (~18 packages). The
+# rest of the default install set lives in install/omarchy-base.packages so
+# users can remove non-essential apps without pacman blocking on a depend.
+#
+# Online: install omarchy + everything in omarchy-base.packages now.
+# Offline: the ISO pacstraps the same set before user creation; just assert.
 _omarchy_runtime_pkg="${OMARCHY_RUNTIME_PACKAGE:-omarchy}"
+mapfile -t _omarchy_base_pkgs < <(grep -v '^#\|^$' "$OMARCHY_PATH/install/omarchy-base.packages")
 if install_mode_is offline; then
   pacman -Q "$_omarchy_runtime_pkg" >/dev/null 2>&1 || {
     echo "Error: $_omarchy_runtime_pkg must be pacstrapped before omarchy-install runs in offline mode" >&2
     exit 1
   }
 else
-  sudo pacman -Syu --noconfirm --needed "$_omarchy_runtime_pkg"
+  sudo pacman -Syu --noconfirm --needed "$_omarchy_runtime_pkg" "${_omarchy_base_pkgs[@]}"
 fi
 
 source "$OMARCHY_INSTALL/preflight/all.sh"
