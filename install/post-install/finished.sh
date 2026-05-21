@@ -29,7 +29,7 @@ if gum confirm --padding "0 0 0 $((PADDING_LEFT + 32))" --show-help=false --defa
   # Clear screen to hide any shutdown messages
   clear
 
-  if [[ -n ${OMARCHY_CHROOT_INSTALL:-} ]]; then
+  if install_mode_is iso-chroot; then
     touch /var/tmp/omarchy-install-completed
     exit 0
   else

@@ -1,4 +1,9 @@
-run_logged $OMARCHY_INSTALL/packaging/base.sh
+# online-package mode has omarchy + omarchy-base.packages already installed
+# via pacman, so skip the base package install.
+if ! install_mode_is online-package; then
+  run_logged $OMARCHY_INSTALL/packaging/base.sh
+fi
+
 run_logged $OMARCHY_INSTALL/packaging/fonts.sh
 run_logged $OMARCHY_INSTALL/packaging/nvim.sh
 run_logged $OMARCHY_INSTALL/packaging/icons.sh

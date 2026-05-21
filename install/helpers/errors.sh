@@ -104,8 +104,8 @@ catch_errors() {
   while true; do
     options=()
 
-    # If online install, show retry first
-    if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
+    # Retry only makes sense for online flows (git clone or package install).
+    if install_mode_is online-git || install_mode_is online-package; then
       options+=("Retry installation")
     fi
 
