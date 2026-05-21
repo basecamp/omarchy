@@ -45,7 +45,9 @@ echo "Refreshing pacman databases..."
 sudo pacman -Sy --noconfirm
 
 echo "Installing omarchy-installer..."
-sudo pacman -S --noconfirm --needed omarchy-installer
+# Only install the runner here — install.sh pulls the full omarchy runtime
+# itself once it knows the mode and has logged in.
+sudo pacman -S --noconfirm --needed omarchy-keyring omarchy-installer
 
 echo -e "\nInstallation starting..."
 exec omarchy-install
