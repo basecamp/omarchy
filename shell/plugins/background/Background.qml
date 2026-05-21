@@ -198,10 +198,15 @@ Item {
       property int frozenBackgroundVersion: -1
 
       function backgroundIsStable() {
-        return !root.incomingBackground
+        // Don't freeze before the wallpaper has actually painted at least
+        // once. base.status === Image.Null on startup (empty source) reports
+        // "stable" but the surface hasn't committed a frame yet — freezing
+        // there leaves the wallpaper invisible until something else forces a
+        // repaint.
+        return base.status === Image.Ready
+          && !root.incomingBackground
           && !root.finishingTransition
           && root.revealProgress >= 1
-          && base.status !== Image.Loading
           && oldFrame.status !== Image.Loading
           && incomingFrame.status !== Image.Loading
       }
@@ -237,8 +242,6 @@ Item {
           if (panel.backgroundIsStable()) panel.frozenBackgroundVersion = root.backgroundVersion
         }
       }
-
-      Component.onCompleted: scheduleUpdatesFreeze()
 
       Image {
         id: base
