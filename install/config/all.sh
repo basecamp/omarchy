@@ -1,5 +1,4 @@
 run_logged $OMARCHY_INSTALL/config/theme.sh
-run_logged $OMARCHY_INSTALL/config/branding.sh
 run_logged $OMARCHY_INSTALL/config/git.sh
 run_logged $OMARCHY_INSTALL/config/gpg.sh
 run_logged $OMARCHY_INSTALL/config/increase-lockout-limit.sh
@@ -7,21 +6,14 @@ run_logged $OMARCHY_INSTALL/config/lockscreen-pam.sh
 run_logged $OMARCHY_INSTALL/config/sleep-lock.sh
 run_logged $OMARCHY_INSTALL/config/increase-file-watchers.sh
 run_logged $OMARCHY_INSTALL/config/increase-fd-limit.sh
-run_logged $OMARCHY_INSTALL/config/detect-keyboard-layout.sh
 run_logged $OMARCHY_INSTALL/config/xcompose.sh
 run_logged $OMARCHY_INSTALL/config/mise-work.sh
 run_logged $OMARCHY_INSTALL/config/fix-powerprofilesctl-shebang.sh
 run_logged $OMARCHY_INSTALL/config/docker.sh
-run_logged $OMARCHY_INSTALL/config/mimetypes.sh
-run_logged $OMARCHY_INSTALL/config/user-dirs.sh
-run_logged $OMARCHY_INSTALL/config/toggles.sh
-run_logged $OMARCHY_INSTALL/config/nautilus-python.sh
 run_logged $OMARCHY_INSTALL/config/localdb.sh
 run_logged $OMARCHY_INSTALL/config/fast-shutdown.sh
 run_logged $OMARCHY_INSTALL/config/input-group.sh
-run_logged $OMARCHY_INSTALL/config/omarchy-ai-skill.sh
 run_logged $OMARCHY_INSTALL/config/pi.sh
-run_logged $OMARCHY_INSTALL/config/omarchy-toggles.sh
 run_logged $OMARCHY_INSTALL/config/powerprofilesctl-rules.sh
 run_logged $OMARCHY_INSTALL/config/wifi-powersave-rules.sh
 
