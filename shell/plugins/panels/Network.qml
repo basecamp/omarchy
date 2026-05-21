@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
+import Quickshell.Networking
 import qs.Ui
 import qs.Commons
 
@@ -18,6 +19,11 @@ Panel {
 
   // Live connection details from `ip` / /sys / iw.
   property var info: ({})  // { iface, type, ip, prefix, gateway, speed, duplex, ssid, signal, freq, bitrate }
+  readonly property bool networkManagerAvailable: Networking.backend === NetworkBackendType.NetworkManager
+  readonly property var networkDevices: Networking.devices ? Networking.devices.values : []
+  readonly property var wifiDevice: findDevice(DeviceType.Wifi)
+  readonly property var wifiNetworkObjects: wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : []
+  readonly property var connectedWifiNetwork: findConnectedWifiNetwork()
   property var wifiNetworks: []
   property bool scanning: false
   property bool wifiStationAvailable: false
@@ -37,10 +43,10 @@ Panel {
   property string failureReason: ""
   property string passwordSsid: ""
 
-  // True while any wifi action or known-network probe is mid-flight. Rows
+  // True while any wifi action is mid-flight. Rows
   // disable themselves on this so clicks on the other rows don't silently
-  // no-op against runAction's serialized guard.
-  readonly property bool busy: actionProc.running || knownCheck.running
+  // no-op against runNetworkAction's serialized guard.
+  readonly property bool busy: actionKind !== ""
 
   // Index into `wifiNetworks` for keyboard navigation. -1 = no selection.
   property int selectedIndex: -1
@@ -51,7 +57,7 @@ Panel {
   // actions or DNS providers.
   property string focusSection: "dns"  // "header" | "dns" | "wifi"
   property int headerIndex: 0
-  readonly property bool canDisconnect: info.type === "wifi" && !!info.ssid
+  readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property int headerActionCount: canDisconnect ? 2 : 1
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
@@ -70,7 +76,7 @@ Panel {
 
   function activateHeader() {
     if (canDisconnect && headerIndex === 0) {
-      if (!busy) disconnect(info.ssid)
+      if (!busy) disconnect(connectedWifiNetwork)
       return
     }
     refresh(true)
@@ -105,6 +111,8 @@ Panel {
       var idx = dnsProviders.indexOf(dnsProvider)
       dnsIndex = idx >= 0 ? idx : 0
       cursorActive = false
+    } else if (wifiDevice) {
+      wifiDevice.scannerEnabled = false
     }
   }
 
@@ -132,6 +140,13 @@ Panel {
     }
   }
 
+  onWifiDeviceChanged: {
+    if (wifiDevice) wifiDevice.scannerEnabled = opened
+    syncWifiNetworks()
+  }
+
+  onWifiNetworkObjectsChanged: syncWifiNetworks()
+
   function selectByDelta(delta) {
     if (wifiNetworks.length === 0) { selectedIndex = -1; return }
     if (selectedIndex < 0) selectedIndex = delta > 0 ? 0 : wifiNetworks.length - 1
@@ -145,23 +160,8 @@ Panel {
     if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
     if (!net) return
-    if (net.connected) { disconnect(net.ssid); return }
-    if (isProtected(net.security) && !net.known) {
-      var quotedSsid = Util.shellQuote(net.ssid)
-      knownCheck.targetSsid = net.ssid
-      knownCheck.command = ["bash", "-c", `
-iwctl known-networks list 2>/dev/null \\
-  | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
-  | awk -v s=${quotedSsid} 'NR > 3 {
-      line = $0
-      sub(/^[[:space:]]+/, "", line)
-      sub(/[[:space:]]+$/, "", line)
-      n = split(line, p, /[[:space:]]{2,}/)
-      if (n >= 1 && p[1] == s) { print "yes"; exit }
-    }'`]
-      knownCheck.running = true
-      return
-    }
+    if (net.connected) { disconnect(net.network); return }
+    if (isProtected(net.security) && !net.known) { passwordSsid = net.ssid; return }
     connectKnown(net.ssid)
   }
 
@@ -171,7 +171,7 @@ iwctl known-networks list 2>/dev/null \\
   function forgetSelected() {
     if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
-    if (net && (net.connected || net.known)) forget(net.ssid)
+    if (net && (net.connected || net.known)) forget(net)
   }
 
   // Bar pill state. Polled locally so this panel is self-contained;
@@ -205,23 +205,17 @@ iwctl known-networks list 2>/dev/null \\
       "  printf 'ethernet\\t%s\\t\\t\\n' \"$device\"",
       "  exit 0",
       "fi",
-      "show=$(iwctl station \"$device\" show 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g')",
-      "state=$(awk '/^[[:space:]]*State[[:space:]]/ { sub(/.*State[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
-      "ssid=$(awk '/^[[:space:]]*Connected network[[:space:]]/ { sub(/.*Connected network[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
-      "freq=$(awk '/^[[:space:]]*Frequency[[:space:]]/ { sub(/.*Frequency[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
-      "rssi=$(awk '/^[[:space:]]*RSSI[[:space:]]/ { sub(/.*RSSI[[:space:]]+/, \"\"); sub(/[[:space:]]+$/, \"\"); print; exit }' <<<\"$show\")",
-      "dbm=${rssi%% *}",
-      "signal=\"\"",
-      "if [[ -n $dbm ]]; then",
-      "  if (( dbm >= -50 )); then signal=100",
-      "  elif (( dbm <= -100 )); then signal=0",
-      "  else signal=$(( 2 * (dbm + 100) )); fi",
-      "fi",
-      "if [[ -n $state && $state != connected ]]; then",
-      "  printf 'disconnected\\t\\t\\t\\n'",
+      "if command -v nmcli >/dev/null; then",
+      "  nm=$(nmcli -t -f GENERAL.STATE,GENERAL.CONNECTION dev show \"$device\" 2>/dev/null)",
+      "  state=$(awk -F: '$1 == \"GENERAL.STATE\" { print $2; exit }' <<<\"$nm\")",
+      "  ssid=$(awk -F: '$1 == \"GENERAL.CONNECTION\" { print $2; exit }' <<<\"$nm\")",
+      "  signal=$(nmcli -t -f IN-USE,SIGNAL dev wifi list ifname \"$device\" 2>/dev/null | awk -F: '$1 == \"*\" { print $2; exit }')",
+      "  freq=$(iw dev \"$device\" link 2>/dev/null | awk '/freq:/ { print $2; exit }')",
+      "  [[ $state != 100* ]] && { printf 'disconnected\\t\\t\\t\\n'; exit 0; }",
+      "  printf 'wifi\\t%s\\t%s\\t%s\\n' \"${ssid:-$device}\" \"$signal\" \"$freq\"",
       "  exit 0",
       "fi",
-      "printf 'wifi\\t%s\\t%s\\t%s\\n' \"${ssid:-$device}\" \"$signal\" \"$freq\""
+      "printf 'wifi\\t%s\\t\\t\\n' \"$device\""
     ].join("\n")
   }
 
@@ -242,51 +236,16 @@ iwctl known-networks list 2>/dev/null \\
       dnsProc.command = ["bash", "-lc", root.dnsCommand("")]
       dnsProc.running = true
     }
-    if (!wifiProc.running) {
-      scanning = true
-      wifiProc.command = ["bash", "-c", root.wifiScanScript(scanWifi)]
-      wifiProc.running = true
+    if (wifiDevice) {
+      if (scanWifi) {
+        scanning = true
+        wifiDevice.scannerEnabled = false
+        scanRestart.start()
+      } else {
+        wifiDevice.scannerEnabled = true
+      }
     }
-  }
-
-  function wifiScanScript(scanWifi) {
-    return `
-station=$(iwctl station list 2>/dev/null | sed -e 's/\\x1b\\[[0-9;]*m//g' | awk '/^[[:space:]]*wl/ { print $1; exit }')
-[[ -z $station ]] && exit 0
-echo STATION_AVAILABLE
-${scanWifi ? 'iwctl station "$station" scan >/dev/null 2>&1 || true' : ''}
-iwctl known-networks list 2>/dev/null \\
-  | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
-  | awk '
-      NR <= 3 { next }
-      /^[[:space:]]*$/ { next }
-      {
-        line = $0
-        sub(/^[[:space:]]+/, "", line)
-        sub(/[[:space:]]+$/, "", line)
-        if (line ~ /^-+$/) next
-        n = split(line, parts, /[[:space:]]{2,}/)
-        if (n >= 1 && parts[1] != "") printf "KNOWN\\t%s\\n", parts[1]
-      }'
-iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
-  | sed -e 's/\\x1b\\[[0-9;]*m//g' \\
-  | awk '
-      NR <= 4 { next }
-      /^[[:space:]]*$/ { next }
-      {
-        connected = (substr($0, 1, 4) ~ />/) ? 1 : 0
-        line = $0
-        sub(/^[[:space:]]*>?[[:space:]]+/, "", line)
-        sub(/[[:space:]]+$/, "", line)
-        n = split(line, parts, /[[:space:]]{2,}/)
-        if (n < 3) next
-        ssid = parts[1]
-        security = parts[n-1]
-        dbm = parts[n] / 100
-        signal = (dbm >= -50) ? 100 : (dbm <= -100) ? 0 : int(2 * (dbm + 100))
-        printf "NETWORK\\t%d\\t%s\\t%d\\t%s\\n", connected, ssid, signal, security
-      }'
-`
+    syncWifiNetworks()
   }
 
   function formatSpeed(mbps) {
@@ -315,48 +274,46 @@ iwctl station "$station" get-networks rssi-dbms 2>/dev/null \\
     info = next
   }
 
-  function updateWifi(raw) {
-    var lines = String(raw || "").split("\n")
-    var hasStation = false
-    var knownNetworks = {}
-    var nets = []
-
-    for (var i = 0; i < lines.length; i++) {
-      var knownLine = lines[i].trim()
-      if (!knownLine) continue
-      if (knownLine === "STATION_AVAILABLE") { hasStation = true; continue }
-      var knownParts = knownLine.split("\t")
-      if (knownParts.length >= 2 && knownParts[0] === "KNOWN") knownNetworks[knownParts[1]] = true
+  function findDevice(type) {
+    var devices = networkDevices || []
+    for (var i = 0; i < devices.length; i++) {
+      if (devices[i] && devices[i].type === type) return devices[i]
     }
+    return null
+  }
 
-    for (var j = 0; j < lines.length; j++) {
-      var line = lines[j].trim()
-      if (!line || line === "STATION_AVAILABLE") continue
-      // Format: NETWORK<TAB>connected<TAB>ssid<TAB>signal<TAB>security
-      // Older rows without the NETWORK prefix are accepted for compatibility.
-      var parts = line.split("\t")
-      if (parts[0] === "KNOWN") continue
-      var offset = parts[0] === "NETWORK" ? 1 : 0
-      if (parts.length < offset + 3) continue
-      var isConnected = parts[offset] === "1"
-      var ssid = parts[offset + 1]
+  function findConnectedWifiNetwork() {
+    var networks = wifiNetworkObjects || []
+    for (var i = 0; i < networks.length; i++) {
+      if (networks[i] && networks[i].connected) return networks[i]
+    }
+    return null
+  }
+
+  function syncWifiNetworks() {
+    var nets = []
+    var networks = wifiNetworkObjects || []
+
+    for (var i = 0; i < networks.length; i++) {
+      var network = networks[i]
+      if (!network) continue
+      var isConnected = network.connected
+      var ssid = network.name || ""
       if (isConnected && ssid !== root.actionSsid) continue // Skip the connected network so it doesn't appear in the list, unless we are currently trying to connect to it
-      var isKnown = knownNetworks[ssid] === true
-      if (parts.length > offset + 4) isKnown = isKnown || parts[offset + 4] === "1"
-
       nets.push({
+        network: network,
         connected: isConnected,
-        known: isKnown,
+        known: network.known,
         ssid: ssid,
-        signal: parseInt(parts[offset + 2], 10) || 0,
-        security: parts[offset + 3] || ""
+        signal: Math.round((network.signalStrength || 0) * 100),
+        security: network.security
       })
     }
     nets.sort(function(a, b) {
       return b.signal - a.signal
     })
     wifiNetworks = nets
-    wifiStationAvailable = hasStation
+    wifiStationAvailable = !!wifiDevice
     scanning = false
   }
 
