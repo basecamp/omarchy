@@ -533,7 +533,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(340))
+    contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
 
     // Catches all unhandled keys for keyboard navigation. AfterItem priority
@@ -598,30 +598,26 @@ Panel {
       anchors.top: parent.top
       spacing: Style.space(12)
 
-      // Header — interface name + type, refresh on the right.
+      // ---------- Hero: network icon · SSID + state · actions ----------
       Item {
         width: parent.width
-        height: Math.max(headerInfo.implicitHeight, headerActions.implicitHeight)
+        implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, headerActions.implicitHeight)
 
-        Item {
-          id: headerInfo
+        Text {
+          id: heroIcon
+          text: root.icon
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.display
+          opacity: root.networkManagerAvailable ? 1.0 : 0.5
           anchors.left: parent.left
-          anchors.right: headerActions.left
-          anchors.rightMargin: Style.spacing.controlPaddingX
           anchors.verticalCenter: parent.verticalCenter
-          implicitHeight: Math.max(wifiToggleBtn.implicitHeight, wifiMainText.implicitHeight)
 
-          PanelActionButton {
-            id: wifiToggleBtn
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            iconText: root.icon
-            fontSize: Style.font.iconLarge
-            size: Style.space(28)
-            tooltipText: "Toggle Wi-Fi"
-            foreground: root.bar.foreground
-            hoverColor: root.bar.foreground // Override the dimming behavior
-            fontFamily: root.bar.fontFamily
+          MouseArea {
+            id: heroIconMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             enabled: root.networkManagerAvailable
             onClicked: {
               Networking.wifiEnabled = !Networking.wifiEnabled
@@ -629,36 +625,61 @@ Panel {
             }
           }
 
-          Row {
-            anchors.left: wifiToggleBtn.right
-            anchors.leftMargin: Style.spacing.controlPaddingX
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
+          PanelToolTip {
+            visible: heroIconMouse.containsMouse
+            text: "Toggle Wi-Fi"
+            fontFamily: root.bar.fontFamily
+          }
+        }
 
-            Text {
-              id: wifiMainText
-              text: {
-                if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
-                if (root.info.type === "ethernet") return "Ethernet"
-                return root.info.iface || (root.kind === "disconnected" ? "Disconnected" : "No connection")
+        Column {
+          id: heroLabels
+          anchors.left: heroIcon.right
+          anchors.leftMargin: Style.space(14)
+          anchors.right: headerActions.left
+          anchors.rightMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(2)
+
+          Text {
+            id: heroSsid
+            width: parent.width
+            text: {
+              if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
+              if (root.info.type === "ethernet") return "Ethernet"
+              return root.info.iface || (root.kind === "disconnected" ? "Disconnected" : "No connection")
+            }
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+            elide: Text.ElideRight
+          }
+
+          Text {
+            id: heroMeta
+            width: parent.width
+            text: {
+              var parts = []
+              if (root.info.type === "wifi") {
+                if (root.canDisconnect) parts.push("Connected")
+                else if (root.kind === "disconnected") parts.push("Not connected")
+                if (root.info.freq) parts.push(root.formatFreq(root.info.freq))
+              } else if (root.info.type === "ethernet") {
+                parts.push("Connected")
+                if (root.info.speed) parts.push(root.formatSpeed(root.info.speed))
+              } else if (root.kind === "disconnected") {
+                parts.push("Not connected")
               }
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.subtitle
-              font.bold: true
-              elide: Text.ElideRight
-              width: Math.min(implicitWidth, parent.width - (wifiFreqText.visible ? wifiFreqText.implicitWidth : 0))
+              return parts.join(" · ").toUpperCase()
             }
-
-            Text {
-              id: wifiFreqText
-              visible: root.info.type === "wifi" && !!root.info.freq
-              text: " • " + root.formatFreq(root.info.freq)
-              color: Qt.darker(root.bar.foreground, 1.4)
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.subtitle
-              font.bold: true
-            }
+            visible: text !== ""
+            color: Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 1.2
+            elide: Text.ElideRight
           }
         }
 
@@ -666,14 +687,16 @@ Panel {
           id: headerActions
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.spacing.controlGap
+          spacing: Style.space(4)
 
           PanelActionButton {
             id: disconnectBtn
             visible: root.canDisconnect
             enabled: !root.busy
             hasCursor: root.cursorActive && root.focusSection === "header" && root.headerIndex === 0
-            iconText: "󰅙"
+            iconText: "󰖪"
+            fontSize: Style.font.heading
+            size: Style.space(30)
             tooltipText: "Disconnect"
             foreground: root.bar.foreground
             hoverColor: root.bar.urgent
@@ -688,17 +711,15 @@ Panel {
             onClicked: root.disconnect(root.connectedWifiNetwork)
           }
 
-          Button {
+          PanelActionButton {
             id: refreshBtn
             anchors.verticalCenter: parent.verticalCenter
             iconText: "󰑐"
-            iconSpinning: root.scanning
+            fontSize: Style.font.heading
+            size: Style.space(30)
             tooltipText: "Refresh"
             foreground: root.bar.foreground
-            horizontalPadding: Style.spacing.controlGap
-            verticalPadding: Style.spacing.labelGap
-            iconSize: Style.font.icon
-            active: root.scanning
+            fontFamily: root.bar.fontFamily
             hasCursor: root.cursorActive && root.focusSection === "header" && root.headerIndex === (root.canDisconnect ? 1 : 0)
             onHovered: function(h) {
               if (!h) return
@@ -711,14 +732,15 @@ Panel {
         }
       }
 
-      // Connection details: IP, gateway, link speed, etc.
+      // Connection details: IP, gateway, link speed, etc. Two equal-width
+      // columns spanning the panel — matches the Power panel's stats grid.
       Row {
         visible: !!root.info.iface
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: Style.space(24)
+        width: parent.width
+        spacing: Style.space(20)
 
         Column {
-          width: Style.space(140)
+          width: (parent.width - parent.spacing) / 2
           spacing: Style.spacing.labelGap
           InfoPair {
             visible: !!root.info.ip
@@ -737,7 +759,7 @@ Panel {
         }
 
         Column {
-          width: Style.space(140)
+          width: (parent.width - parent.spacing) / 2
           spacing: Style.spacing.labelGap
 
           // Ethernet details
@@ -768,22 +790,27 @@ Panel {
 
       Column {
         width: parent.width
-        spacing: Style.space(8)
+        spacing: Style.space(10)
 
         PanelSectionHeader {
-          text: "DNS provider"
+          text: "DNS PROVIDER"
           foreground: root.bar.foreground
           fontFamily: root.bar.fontFamily
         }
 
         Row {
+          id: dnsRow
           width: parent.width
           spacing: Style.space(6)
+
+          readonly property int count: 4
+          readonly property real cellWidth: (width - spacing * (count - 1)) / count
 
           DnsProviderPill {
             provider: "DHCP"
             index: 0
             tooltipText: "Use DNS from DHCP"
+            width: dnsRow.cellWidth
             onClicked: root.setDns(provider)
           }
 
@@ -791,6 +818,7 @@ Panel {
             provider: "Cloudflare"
             index: 1
             tooltipText: "Set DNS to Cloudflare"
+            width: dnsRow.cellWidth
             onClicked: root.setDns(provider)
           }
 
@@ -798,6 +826,7 @@ Panel {
             provider: "Google"
             index: 2
             tooltipText: "Set DNS to Google"
+            width: dnsRow.cellWidth
             onClicked: root.setDns(provider)
           }
 
@@ -805,6 +834,7 @@ Panel {
             provider: "Custom"
             index: 3
             tooltipText: "Set custom DNS servers"
+            width: dnsRow.cellWidth
             onClicked: root.setDns(provider)
           }
         }
@@ -818,7 +848,7 @@ Panel {
 
       PanelSectionHeader {
         visible: root.wifiStationAvailable
-        text: root.scanning ? "Scanning Wi-Fi…" : "Wi-Fi networks"
+        text: root.scanning ? "SCANNING WI-FI…" : "WI-FI NETWORKS"
         foreground: root.bar.foreground
         fontFamily: root.bar.fontFamily
       }
@@ -873,10 +903,12 @@ Panel {
     required property int index
 
     text: provider
+    fontSize: Style.font.bodySmall
     foreground: root.bar.foreground
     fontFamily: root.bar.fontFamily
     horizontalPadding: Style.spacing.controlPaddingX
-    verticalPadding: Style.spacing.controlPaddingY
+    verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
+    bordered: true
 
     // Map the panel's domain semantics onto Button's structural props:
     // `current DNS` is the pill's `active` fill; the keyboard cursor lights
