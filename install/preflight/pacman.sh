@@ -1,4 +1,4 @@
-if [[ -n ${OMARCHY_ONLINE_INSTALL:-} ]]; then
+if install_mode_is online-git; then
   # Install build tools
   omarchy-pkg-add base-devel
 
