@@ -42,6 +42,7 @@ Panel {
   property string failureSsid: ""
   property string failureReason: ""
   property string passwordSsid: ""
+  property string passwordText: ""
 
   // True while any wifi action is mid-flight. Rows
   // disable themselves on this so clicks on the other rows don't silently
@@ -122,6 +123,7 @@ Panel {
   // the inline-editor case where focus was handed off to a child.
   onPasswordSsidChanged: {
     if (passwordSsid === "" && opened) {
+      passwordText = ""
       Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
     }
   }
@@ -133,6 +135,12 @@ Panel {
     if (wifiNetworks.length === 0) {
       selectedIndex = -1
       if (focusSection === "wifi") focusSection = "dns"
+    } else if (passwordSsid !== "") {
+      var passwordIndex = wifiIndexForSsid(passwordSsid)
+      if (passwordIndex >= 0) {
+        selectedIndex = passwordIndex
+        focusSection = "wifi"
+      }
     } else if (selectedIndex >= wifiNetworks.length) {
       selectedIndex = wifiNetworks.length - 1
     } else if (selectedIndex < 0 && opened) {
@@ -161,7 +169,7 @@ Panel {
     var net = wifiNetworks[selectedIndex]
     if (!net) return
     if (net.connected) { disconnect(net.network); return }
-    if (isProtected(net.security) && !net.known) { passwordSsid = net.ssid; return }
+    if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
     connectKnown(net.ssid)
   }
 
@@ -330,12 +338,24 @@ Panel {
     return security !== WifiSecurityType.Open
   }
 
+  function openPasswordPrompt(ssid) {
+    if (passwordSsid !== ssid) passwordText = ""
+    passwordSsid = ssid
+  }
+
   function networkForSsid(ssid) {
     var networks = wifiNetworkObjects || []
     for (var i = 0; i < networks.length; i++) {
       if (networks[i] && networks[i].name === ssid) return networks[i]
     }
     return null
+  }
+
+  function wifiIndexForSsid(ssid) {
+    for (var i = 0; i < wifiNetworks.length; i++) {
+      if (wifiNetworks[i] && wifiNetworks[i].ssid === ssid) return i
+    }
+    return -1
   }
 
   function runNetworkAction(kind, network, callback) {
@@ -902,7 +922,7 @@ Panel {
       target: row.net ? row.net.network : null
       function onConnectionFailed(reason) {
         root.failNetworkAction(row.net.network, reason)
-        if (reason === ConnectionFailReason.NoSecrets) root.passwordSsid = row.net.ssid
+        if (reason === ConnectionFailReason.NoSecrets) root.openPasswordPrompt(row.net.ssid)
       }
       function onConnectedChanged() {
         if (row.net) root.checkActionCompletion(row.net.network)
@@ -963,7 +983,7 @@ Panel {
           return
         }
         if (row.isProtected && !row.isKnown) {
-          root.passwordSsid = row.net.ssid
+          root.openPasswordPrompt(row.net.ssid)
           return
         }
         root.connectKnown(row.net.ssid)
@@ -1097,11 +1117,13 @@ Panel {
         horizontalPadding: Style.spacing.controlGap
         verticalPadding: Style.spacing.controlPaddingY
         enabled: !row.isBusy
+        text: row.isPasswordOpen ? root.passwordText : ""
 
         onAccepted: {
           if (!root.busy && row.net && text.length > 0) root.connectWithPassphrase(row.net.ssid, text)
         }
-        Keys.onEscapePressed: { root.passwordSsid = ""; text = "" }
+        onTextChanged: if (row.isPasswordOpen && text !== root.passwordText) root.passwordText = text
+        Keys.onEscapePressed: { root.passwordSsid = ""; root.passwordText = "" }
 
         onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
         Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
@@ -1143,7 +1165,7 @@ Panel {
         tooltipText: "Connect"
         foreground: root.bar.foreground
         fontFamily: root.bar.fontFamily
-        onClicked: if (row.net) root.connectWithPassphrase(row.net.ssid, pwField.text)
+        onClicked: if (row.net) root.connectWithPassphrase(row.net.ssid, root.passwordText)
       }
     }
   }
