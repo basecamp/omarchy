@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# omarchy:summary=Print active network status for the shell
+# omarchy:group=network
+# omarchy:args=[--verbose]
+
+verbose=false
+
+case "${1:-}" in
+  "")
+    ;;
+  --verbose)
+    verbose=true
+    ;;
+  *)
+    echo "Usage: omarchy-network-status [--verbose]" >&2
+    exit 2
+    ;;
+esac
+
+print_status() {
+  local device nm state ssid signal freq
+
+  device=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+
+  if [[ -z $device ]]; then
+    printf 'disconnected\t\t\t\n'
+    return
+  fi
+
+  if [[ ! -d /sys/class/net/$device/wireless ]]; then
+    printf 'ethernet\t%s\t\t\n' "$device"
+    return
+  fi
+
+  if omarchy-cmd-present nmcli; then
+    nm=$(nmcli -t -f GENERAL.STATE,GENERAL.CONNECTION dev show "$device" 2>/dev/null)
+    state=$(awk -F: '$1 == "GENERAL.STATE" { print $2; exit }' <<<"$nm")
+    ssid=$(awk -F: '$1 == "GENERAL.CONNECTION" { print $2; exit }' <<<"$nm")
+    signal=$(nmcli -t -f IN-USE,SIGNAL dev wifi list ifname "$device" 2>/dev/null | awk -F: '$1 == "*" { print $2; exit }')
+    freq=$(iw dev "$device" link 2>/dev/null | awk '/freq:/ { print $2; exit }')
+
+    if [[ $state != 100* ]]; then
+      printf 'disconnected\t\t\t\n'
+      return
+    fi
+
+    printf 'wifi\t%s\t%s\t%s\n' "${ssid:-$device}" "$signal" "$freq"
+    return
+  fi
+
+  printf 'wifi\t%s\t\t\n' "$device"
+}
+
+print_verbose() {
+  local route_json iface gw src prefix link
+
+  route_json=$(ip -j route get 1.1.1.1 2>/dev/null)
+  [[ -z $route_json ]] && return
+
+  iface=$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null)
+  gw=$(jq -r '.[0].gateway // ""' <<<"$route_json" 2>/dev/null)
+  src=$(jq -r '.[0].prefsrc // ""' <<<"$route_json" 2>/dev/null)
+
+  [[ -z $iface ]] && return
+
+  prefix=$(ip -j addr show "$iface" 2>/dev/null | jq -r '.[0].addr_info[]? | select(.family == "inet") | .prefixlen // ""' 2>/dev/null | head -n 1)
+
+  printf 'iface\t%s\n' "$iface"
+  printf 'ip\t%s\n' "$src"
+  printf 'prefix\t%s\n' "$prefix"
+  printf 'gateway\t%s\n' "$gw"
+
+  if [[ -d /sys/class/net/$iface/wireless ]]; then
+    printf 'type\twifi\n'
+
+    if omarchy-cmd-present iw; then
+      link=$(iw dev "$iface" link 2>/dev/null)
+
+      if [[ -n $link ]]; then
+        printf 'ssid\t%s\n' "$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")"
+        printf 'signal_dbm\t%s\n' "$(awk '/signal:/ { print $2; exit }' <<<"$link")"
+        printf 'freq\t%s\n' "$(awk '/freq:/ { print $2; exit }' <<<"$link")"
+        printf 'bitrate\t%s %s\n' "$(awk '/tx bitrate:/ { print $3; exit }' <<<"$link")" "$(awk '/tx bitrate:/ { print $4; exit }' <<<"$link")"
+      fi
+    fi
+  else
+    printf 'type\tethernet\n'
+    [[ -r /sys/class/net/$iface/speed ]] && printf 'speed\t%s\n' "$(cat /sys/class/net/$iface/speed)"
+    [[ -r /sys/class/net/$iface/duplex ]] && printf 'duplex\t%s\n' "$(cat /sys/class/net/$iface/duplex)"
+  fi
+}
+
+if [[ $verbose == "true" ]]; then
+  print_verbose
+else
+  print_status
+fi
