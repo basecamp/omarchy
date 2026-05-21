@@ -509,31 +509,7 @@ Panel {
 
   Process {
     id: sinkAvailabilityProc
-    command: ["bash", "-lc", `
-pactl list sinks 2>/dev/null | python3 -c '
-import re
-import sys
-
-for block in re.split(r"(?m)^Sink #", sys.stdin.read())[1:]:
-    name = re.search(r"(?m)^\\s*Name:\\s*(\\S+)", block)
-    if not name:
-        continue
-
-    ports = []
-    in_ports = False
-    for line in block.splitlines():
-        if line.strip() == "Ports:":
-            in_ports = True
-            continue
-        if in_ports and line.startswith("\\tActive Port:"):
-            in_ports = False
-        if in_ports and line.startswith("\\t\\t"):
-            ports.append(line)
-
-    available = not ports or any("not available" not in port for port in ports)
-    print("%s\\t%d" % (name.group(1), 1 if available else 0))
-'
-`]
+    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-audio-sink-availability" : "omarchy-audio-sink-availability"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateSinkAvailability(text)

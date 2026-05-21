@@ -116,25 +116,7 @@ Panel {
 
   Process {
     id: batteryProc
-    command: ["bash", "-lc", `
-bat=$(upower -e 2>/dev/null | grep BAT | head -n1)
-[[ -z $bat ]] && exit 0
-info=$(upower -i "$bat")
-printf 'percentage\t%s\n' "$(awk '/percentage/ { print int($2) "%"; exit }' <<<"$info")"
-printf 'state\t%s\n' "$(awk '/state/ { print $2; exit }' <<<"$info")"
-printf 'rate\t%s\n' "$(awk '/energy-rate/ { v=sprintf("%.1f", $2); sub(/\.0$/, "", v); print v "W"; exit }' <<<"$info")"
-printf 'size\t%s\n' "$(awk '/energy-full:/ { printf "%dWh", $2; exit }' <<<"$info")"
-printf 'time\t%s\n' "$($OMARCHY_PATH/bin/omarchy-battery-remaining-time 2>/dev/null)"
-end=$(cat /sys/class/power_supply/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
-start=$(cat /sys/class/power_supply/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
-if [[ -n $end ]]; then
-  if [[ -n $start && $start != "$end" ]]; then
-    printf 'threshold\t%s-%s%%\n' "$start" "$end"
-  else
-    printf 'threshold\t%s%%\n' "$end"
-  fi
-fi
-`]
+    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-battery-status" : "omarchy-battery-status", "--shell"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateKeyValue(text, "battery") }
   }
 
@@ -146,7 +128,7 @@ fi
 
   Process {
     id: systemProc
-    command: ["bash", "-lc", "cpu=$(top -bn1 | awk '/^%?Cpu/ { gsub(/,/, \"\"); for (i=1; i<=NF; i++) if ($(i+1) == \"id\") { printf \"%.0f%%\", 100 - $i; exit } }'); awk -v cpu=\"$cpu\" '/^MemTotal:/ { total=$2 } /^MemAvailable:/ { avail=$2 } END { used=total-avail; printf \"cpu\\t%s\\n\", cpu; printf \"memory\\t%.1fGB / %.0fGB\\n\", used/1024/1024, total/1024/1024 }' /proc/meminfo"]
+    command: [root.bar ? root.bar.omarchyPath + "/bin/omarchy-system-stats" : "omarchy-system-stats"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateKeyValue(text, "system") }
   }
 

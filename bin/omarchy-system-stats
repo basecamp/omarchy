@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# omarchy:summary=Print CPU and memory stats for the shell
+# omarchy:group=system
+
+cpu=$(top -bn1 | awk '/^%?Cpu/ {
+  gsub(/,/, "")
+  for (i = 1; i <= NF; i++) {
+    if ($(i + 1) == "id") {
+      printf "%.0f%%", 100 - $i
+      exit
+    }
+  }
+}')
+
+awk -v cpu="$cpu" '
+  /^MemTotal:/ { total = $2 }
+  /^MemAvailable:/ { avail = $2 }
+  END {
+    used = total - avail
+    printf "cpu\t%s\n", cpu
+    printf "memory\t%.1fGB / %.0fGB\n", used / 1024 / 1024, total / 1024 / 1024
+  }
+' /proc/meminfo

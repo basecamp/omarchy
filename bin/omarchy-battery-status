@@ -1,27 +1,61 @@
 #!/bin/bash
 
 # omarchy:summary=Returns a formatted battery status string with percentage and power draw/charge.
+# omarchy:args=[--shell]
 
-battery_info=$(upower -i $(upower -e | grep BAT))
+shell_output=false
 
-percentage=$(echo "$battery_info" | awk '/percentage/ {
-    print int($2)
-    exit
-}')
+case "${1:-}" in
+  "")
+    ;;
+  --shell)
+    shell_output=true
+    ;;
+  *)
+    echo "Usage: omarchy-battery-status [--shell]" >&2
+    exit 2
+    ;;
+esac
 
-power_rate=$(echo "$battery_info" | awk '/energy-rate/ {
-    rounded = sprintf("%.1f", $2)
-    sub(/\.0$/, "", rounded)
-    print rounded
-    exit
-}')
+battery=$(upower -e 2>/dev/null | grep BAT | head -n 1)
+[[ -z $battery ]] && exit 0
 
-state=$(echo "$battery_info" | awk '/state/ { print $2; exit }')
-time_remaining=$(omarchy-battery-remaining-time)
-capacity=$(omarchy-battery-capacity)
+battery_info=$(upower -i "$battery")
+
+percentage=$(awk '/percentage/ { print int($2); exit }' <<<"$battery_info")
+power_rate=$(awk '/energy-rate/ {
+  rounded = sprintf("%.1f", $2)
+  sub(/\.0$/, "", rounded)
+  print rounded
+  exit
+}' <<<"$battery_info")
+state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
+time_remaining=$(omarchy-battery-remaining-time 2>/dev/null)
+capacity=$(omarchy-battery-capacity 2>/dev/null)
+
+if [[ $shell_output == "true" ]]; then
+  printf 'percentage\t%s\n' "${percentage}%"
+  printf 'state\t%s\n' "$state"
+  printf 'rate\t%s\n' "${power_rate}W"
+  printf 'size\t%s\n' "${capacity}Wh"
+  printf 'time\t%s\n' "$time_remaining"
+
+  end=$(cat /sys/class/power_supply/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
+  start=$(cat /sys/class/power_supply/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
+
+  if [[ -n $end ]]; then
+    if [[ -n $start && $start != "$end" ]]; then
+      printf 'threshold\t%s-%s%%\n' "$start" "$end"
+    else
+      printf 'threshold\t%s%%\n' "$end"
+    fi
+  fi
+
+  exit 0
+fi
 
 if [[ $state == "charging" ]]; then
-    echo "Battery ${percentage}%  ·  ${time_remaining} to full  ·   ${power_rate}W / ${capacity}Wh"
+  echo "Battery ${percentage}%  ·  ${time_remaining} to full  ·   ${power_rate}W / ${capacity}Wh"
 else
-    echo "Battery ${percentage}%  ·  ${time_remaining} left  ·   ${power_rate}W / ${capacity}Wh"
+  echo "Battery ${percentage}%  ·  ${time_remaining} left  ·   ${power_rate}W / ${capacity}Wh"
 fi
