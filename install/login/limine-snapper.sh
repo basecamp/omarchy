@@ -27,10 +27,15 @@ EOF
 
   CMDLINE=$(grep "^[[:space:]]*cmdline:" "$limine_config" | head -1 | sed 's/^[[:space:]]*cmdline:[[:space:]]*//')
 
-  # Write /etc/default/limine *before* installing limine-mkinitcpio-hook, whose
-  # post-transaction deploy hook runs limine-install and reads this file. Without
-  # it, ESP_PATH falls back to bootctl, which in a chroot prints a warning that
-  # gets captured as the path and trips a spurious "invalid ESP" error.
+  if [[ -z ${CMDLINE// } ]]; then
+    echo "Error: failed to extract kernel cmdline from $limine_config" >&2
+    exit 1
+  fi
+  if [[ $CMDLINE != *root=* ]]; then
+    echo "Error: extracted kernel cmdline has no root=: $CMDLINE" >&2
+    exit 1
+  fi
+
   sudo cp $OMARCHY_PATH/default/limine/default.conf /etc/default/limine
   sudo sed -i "s|@@CMDLINE@@|$CMDLINE|g" /etc/default/limine
 
@@ -44,28 +49,47 @@ EOF
     sudo sed -i '/^ENABLE_UKI=/d; /^ENABLE_LIMINE_FALLBACK=/d' /etc/default/limine
   fi
 
-  # Remove the original config file if it's not /boot/limine.conf, so the deploy
-  # hook doesn't see conflicting configs on the same ESP.
-  if [[ $limine_config != "/boot/limine.conf" ]] && [[ -f $limine_config ]]; then
-    sudo rm "$limine_config"
-  fi
+  # Remove every alternate Limine config so limine-update can't pick a stale one
+  # over our /boot/limine.conf.
+  for stale in \
+    /boot/EFI/arch-limine/limine.conf \
+    /boot/EFI/BOOT/limine.conf \
+    /boot/EFI/limine/limine.conf \
+    /boot/limine/limine.conf; do
+    [[ -f $stale ]] && sudo rm -f "$stale"
+  done
 
-  # We overwrite the whole thing knowing the limine-update will add the entries for us
   sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
 
-  # The UKI must embed the kernel cmdline (read by mkinitcpio --uki from
-  # /etc/kernel/cmdline) so the early encrypt hook can find cryptdevice=...
-  # to unlock /dev/mapper/root. archinstall doesn't write this file; the
-  # initial UKI built when limine-mkinitcpio-hook was pulled in via
-  # omarchy-limine's depends was built with an empty cmdline, dropping us
-  # to the emergency shell on first boot.
-  echo "$CMDLINE" | sudo tee /etc/kernel/cmdline >/dev/null
+  # limine-mkinitcpio-hook fired its post-transaction UKI build when archinstall
+  # pacstrapped it (via omarchy-limine's depends) BEFORE /etc/default/limine and
+  # /etc/kernel/cmdline existed, so the UKI on disk was built with an empty
+  # cmdline. Delete every stale UKI for installed kernels so limine-update only
+  # finds our about-to-be-rebuilt one.
+  if [[ -d /boot/EFI/Linux ]]; then
+    while IFS= read -r kname; do
+      [[ -n $kname ]] || continue
+      sudo rm -f "/boot/EFI/Linux/"*"_${kname}.efi" \
+                 "/boot/EFI/Linux/"*"_${kname}-fallback.efi"
+    done < <(cat /usr/lib/modules/*/pkgbase 2>/dev/null)
+  fi
 
-  # Force a UKI rebuild now that /etc/default/limine and /etc/kernel/cmdline
-  # exist. limine-snapper-sync and limine-mkinitcpio-hook are already
-  # installed (via omarchy-limine's depends), so 'pacman -S --needed' here
-  # is a no-op and won't re-trigger the post-transaction UKI rebuild.
-  sudo mkinitcpio -P
+  # limine-update runs limine-install + limine-mkinitcpio (which reads
+  # /etc/default/limine's KERNEL_CMDLINE[default] via limine-entry-tool and
+  # embeds it into a freshly-built UKI). mkinitcpio -P alone does NOT trigger
+  # limine's UKI pipeline — only this command does.
+  sudo limine-update
+
+  # Sanity-check the final state. If any of these fail, the system will not
+  # boot, so it's better to halt the installer here than to ship a broken UKI.
+  if ! grep -q "^/+Omarchy" /boot/limine.conf; then
+    echo "Error: /boot/limine.conf does not contain an Omarchy entry" >&2
+    exit 1
+  fi
+  if [[ $CMDLINE == *cryptdevice=* ]] && ! grep -q "cryptdevice=" /boot/limine.conf; then
+    echo "Error: encrypted install but /boot/limine.conf has no cryptdevice=" >&2
+    exit 1
+  fi
 
   # Only snapshot root — /home is user data; rolling it back loses user work
   if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
@@ -91,20 +115,6 @@ if [[ -f /usr/share/libalpm/hooks/60-mkinitcpio-remove.hook.disabled ]]; then
 fi
 
 echo "mkinitcpio hooks re-enabled"
-
-# Installing limine-mkinitcpio-hook above already triggered a full UKI rebuild
-# (via 80-limine-efi-deploy.hook + 90-mkinitcpio-install.hook), which writes the
-# boot entries into /boot/limine.conf. Only fall back to limine-update if those
-# hooks didn't run for some reason — running it unconditionally rebuilds every
-# UKI a second time.
-if ! grep -q "^/+" /boot/limine.conf; then
-  sudo limine-update
-fi
-
-if ! grep -q "^/+" /boot/limine.conf; then
-  echo "Error: failed to add boot entries to /boot/limine.conf" >&2
-  exit 1
-fi
 
 if [[ -n $EFI ]] && efibootmgr &>/dev/null; then
   # Remove the archinstall-created Limine entry
