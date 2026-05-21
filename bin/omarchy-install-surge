@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# omarchy:summary=Install Surge Download Manager from the AUR.
+
+set -e
+
+echo "Installing Surge Download Manager..."
+omarchy-pkg-aur-add surge
+
+cat <<'MSG'
+
+Surge installed.
+
+To connect your browser downloads to Surge:
+1. Download extension-chrome.zip from https://github.com/SurgeDM/Surge/releases/latest
+2. Unzip it somewhere on disk.
+3. Open chrome://extensions in Chrome, Chromium, Brave, or Edge.
+4. Enable Developer mode.
+5. Click Load unpacked and select the unzipped extension-chrome folder.
+6. Start Surge and get an auth token from Settings > Extension, or run: surge token
+7. Paste that token into the extension settings.
+
+The extension talks to Surge on port 1700 by default.
+MSG
