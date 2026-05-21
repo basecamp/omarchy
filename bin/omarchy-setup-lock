@@ -59,4 +59,9 @@ else
 fi
 
 
-omarchy-shell lock status >/dev/null 2>&1 && echo "Lock screen authentication configured."
+# omarchy-shell can't reach a running shell during chroot install. The echo
+# is just confirmation, so swallow the failure rather than letting it become
+# the script's exit code.
+if omarchy-shell lock status >/dev/null 2>&1; then
+  echo "Lock screen authentication configured."
+fi
