@@ -11,11 +11,10 @@ Panel {
   moduleName: "BluetoothPanel"
   ipcTarget: "panels.bluetooth"
 
-  // Address -> true while we are waiting for a click-initiated pair to land
-  // so we can chain trust + connect at root scope. Doing this in the row's
-  // Connections is racy: the discovered Repeater destroys the delegate the
-  // moment `paired` flips, before the row's handler reliably fires.
-  property var pendingPairAddresses: ({})
+  // Address -> "connecting" | "disconnecting" | "forgetting".
+  // The actual Bluetooth sequencing lives in bin/omarchy-bluetooth-device;
+  // this map only keeps the panel responsive while BlueZ catches up.
+  property var pendingActions: ({})
 
   readonly property var adapter: Bluetooth.defaultAdapter
   readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
@@ -46,8 +45,13 @@ Panel {
 
   readonly property var connectedDevices: {
     var list = []
-    for (var i = 0; i < devices.length; i++)
-      if (devices[i] && devices[i].connected && hasHumanName(devices[i])) list.push(devices[i])
+    for (var i = 0; i < devices.length; i++) {
+      var d = devices[i]
+      if (d && d.connected && hasHumanName(d)) list.push(d)
+    }
+    list.sort(function(a, b) {
+      return deviceLabel(a).localeCompare(deviceLabel(b))
+    })
     return list
   }
 
@@ -55,10 +59,9 @@ Panel {
     var list = []
     for (var i = 0; i < devices.length; i++) {
       var d = devices[i]
-      if (d && hasHumanName(d) && (d.paired || d.connected || d.bonded || d.trusted)) list.push(d)
+      if (d && hasHumanName(d) && !d.connected && (d.paired || d.bonded || d.trusted)) list.push(d)
     }
     list.sort(function(a, b) {
-      if (a.connected !== b.connected) return a.connected ? -1 : 1
       return deviceLabel(a).localeCompare(deviceLabel(b))
     })
     return list
@@ -69,7 +72,7 @@ Panel {
     for (var i = 0; i < devices.length; i++) {
       var d = devices[i]
       if (!d || !hasHumanName(d)) continue
-      if (d.paired || d.connected || d.bonded || d.trusted) continue
+      if (d.connected || d.paired || d.bonded || d.trusted) continue
       list.push(d)
     }
     list.sort(function(a, b) {
@@ -88,8 +91,9 @@ Panel {
   // Single cursor model shared by keyboard and mouse. Sections:
   //   "header"     — 2 action pills (scan, toggle); h/l moves between
   //                  them, Enter activates.
-  //   "known"      — paired/known device rows; Enter toggles connect.
-  //   "discovered" — unpaired devices visible while scanning; Enter pairs.
+  //   "connected"  — currently connected devices; Enter disconnects.
+  //   "known"      — remembered devices; Enter connects.
+  //   "discovered" — unremembered devices visible while scanning; Enter connects.
   // Visuals always come from CursorSurface (hasCursor / current),
   // never from containsMouse. Mouse hover updates root cursor state too,
   // guaranteeing one highlight on screen.
@@ -98,11 +102,10 @@ Panel {
   property bool cursorActive: false
   readonly property int headerPillCount: 2
 
-  // Stable identity for the focused known device. The known list is sorted
-  // (connected-first, then alphabetical) so activating a device can shift
-  // its index. We track the BlueZ address here so the cursor follows the
-  // same device across reorders rather than the slot it used to occupy.
-  property string focusedKnownAddress: ""
+  // Stable identity for the focused device. Devices move between sections as
+  // they connect, disconnect, pair, or get forgotten, so follow the BlueZ
+  // address across section changes instead of preserving a stale row index.
+  property string focusedDeviceAddress: ""
 
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
@@ -113,6 +116,7 @@ Panel {
 
   function sectionCount(section) {
     if (section === "header") return headerPillCount
+    if (section === "connected") return connectedDevices.length
     if (section === "known") return knownDevices.length
     if (section === "discovered") return discoveredDevices.length
     return 0
@@ -120,6 +124,7 @@ Panel {
 
   function sectionVisible(section) {
     if (section === "header") return true
+    if (section === "connected") return connectedDevices.length > 0
     if (section === "known") return knownDevices.length > 0
     if (section === "discovered") return adapter && adapter.discovering && discoveredDevices.length > 0
     return false
@@ -127,9 +132,100 @@ Panel {
 
   readonly property var visibleSections: {
     var list = ["header"]
+    if (sectionVisible("connected")) list.push("connected")
     if (sectionVisible("known")) list.push("known")
     if (sectionVisible("discovered")) list.push("discovered")
     return list
+  }
+
+  function devicesForSection(section) {
+    if (section === "connected") return connectedDevices
+    if (section === "known") return knownDevices
+    if (section === "discovered") return discoveredDevices
+    return []
+  }
+
+  function deviceAt(section, index) {
+    var list = devicesForSection(section)
+    return index >= 0 && index < list.length ? list[index] : null
+  }
+
+  function cloneMap(map) {
+    var next = ({})
+    for (var key in map) next[key] = map[key]
+    return next
+  }
+
+  function pendingAction(address) {
+    return address && pendingActions[address] ? pendingActions[address] : ""
+  }
+
+  function setPendingAction(address, action) {
+    if (!address) return
+    var next = cloneMap(pendingActions)
+    if (action) next[address] = action
+    else delete next[address]
+    pendingActions = next
+    if (action) pendingTimeout.restart()
+  }
+
+  function deviceCommand(action, address) {
+    var command = root.bar && root.bar.omarchyPath
+      ? root.bar.omarchyPath + "/bin/omarchy-bluetooth-device"
+      : "omarchy-bluetooth-device"
+    return [command, action, address]
+  }
+
+  function runDeviceAction(device, action, pending) {
+    if (!device || !device.address) return
+    setPendingAction(device.address, pending)
+    Quickshell.execDetached(deviceCommand(action, device.address))
+  }
+
+  function connectDevice(device) {
+    if (!device || device.connected) return
+    if (device.paired || device.bonded || device.trusted) runDeviceAction(device, "connect", "connecting")
+    else runDeviceAction(device, "pair", "connecting")
+  }
+
+  function disconnectDevice(device) {
+    if (!device || !device.address) return
+    if (!device.connected) return
+    setPendingAction(device.address, "disconnecting")
+    if (device.disconnect) device.disconnect()
+    Quickshell.execDetached(deviceCommand("disconnect", device.address))
+  }
+
+  function forgetDevice(device) {
+    if (!device || !device.address) return
+    runDeviceAction(device, "forget", "forgetting")
+  }
+
+  function syncPendingActions() {
+    var next = cloneMap(pendingActions)
+    var changed = false
+
+    for (var address in next) {
+      var action = next[address]
+      var found = null
+
+      for (var i = 0; i < devices.length; i++) {
+        var d = devices[i]
+        if (d && d.address === address) {
+          found = d
+          break
+        }
+      }
+
+      if ((action === "connecting" && found && found.connected)
+          || (action === "disconnecting" && found && !found.connected)
+          || (action === "forgetting" && (!found || (!found.paired && !found.bonded && !found.trusted)))) {
+        delete next[address]
+        changed = true
+      }
+    }
+
+    if (changed) pendingActions = next
   }
 
   // j/k navigates between sections row-by-row. The header is treated as a
@@ -185,19 +281,17 @@ Panel {
       }
       return
     }
-    if (focusSection === "known") {
-      var dev = knownDevices[selectedIndex]
+    if (focusSection === "connected" || focusSection === "known") {
+      var dev = deviceAt(focusSection, selectedIndex)
       if (!dev) return
-      if (!dev.trusted) dev.trusted = true
-      if (dev.connected) dev.disconnect()
-      else dev.connect()
+      if (dev.connected) disconnectDevice(dev)
+      else connectDevice(dev)
       return
     }
     if (focusSection === "discovered") {
       var d = discoveredDevices[selectedIndex]
       if (!d) return
-      pendingPairAddresses[d.address] = true
-      d.pair()
+      connectDevice(d)
     }
   }
 
@@ -207,52 +301,61 @@ Panel {
   // tooltip says "Disconnect" for connected rows, and the keybind has
   // to agree.
   function deleteSelected() {
-    if (focusSection !== "known") return
-    var dev = knownDevices[selectedIndex]
+    if (focusSection !== "connected" && focusSection !== "known") return
+    var dev = deviceAt(focusSection, selectedIndex)
     if (!dev) return
-    if (dev.connected) dev.disconnect()
-    else if (dev.forget) dev.forget()
+    if (dev.connected) disconnectDevice(dev)
+    else forgetDevice(dev)
   }
 
   onOpenedChanged: {
     if (opened) {
       if (adapter && adapter.enabled && !adapter.discovering) adapter.discovering = true
-      if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
+      if (connectedDevices.length > 0) { focusSection = "connected"; selectedIndex = 0 }
+      else if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else { focusSection = "header"; selectedIndex = 1 }
       cursorActive = false
     }
   }
 
-  // When `selectedIndex` changes inside the known section, remember which
-  // address it points at. Updates from re-resolution (below) are idempotent
-  // because we end up setting the same address.
-  onSelectedIndexChanged: {
-    if (focusSection !== "known") return
-    if (selectedIndex < 0 || selectedIndex >= knownDevices.length) return
-    var d = knownDevices[selectedIndex]
-    focusedKnownAddress = d ? (d.address || "") : ""
+  function updateFocusedAddress() {
+    if (focusSection === "header") {
+      focusedDeviceAddress = ""
+      return
+    }
+    var d = deviceAt(focusSection, selectedIndex)
+    focusedDeviceAddress = d ? (d.address || "") : ""
   }
 
-  onFocusSectionChanged: {
-    if (focusSection !== "known") focusedKnownAddress = ""
-  }
+  function reselectFocusedDevice() {
+    if (focusedDeviceAddress === "") {
+      clampCursor()
+      return
+    }
 
-  onKnownDevicesChanged: {
-    // Try to follow the device by address before clamping. If we can't find
-    // the address (e.g. it was forgotten), fall through to clampCursor()
-    // which will pull selectedIndex back into range.
-    if (focusSection === "known" && focusedKnownAddress !== "") {
-      for (var i = 0; i < knownDevices.length; i++) {
-        if (knownDevices[i] && knownDevices[i].address === focusedKnownAddress) {
-          if (selectedIndex !== i) selectedIndex = i
+    var sections = ["connected", "known", "discovered"]
+    for (var s = 0; s < sections.length; s++) {
+      var section = sections[s]
+      if (!sectionVisible(section)) continue
+      var list = devicesForSection(section)
+      for (var i = 0; i < list.length; i++) {
+        if (list[i] && list[i].address === focusedDeviceAddress) {
+          focusSection = section
+          selectedIndex = i
           clampCursor()
           return
         }
       }
     }
+
     clampCursor()
   }
-  onDiscoveredDevicesChanged: clampCursor()
+
+  onSelectedIndexChanged: updateFocusedAddress()
+  onFocusSectionChanged: updateFocusedAddress()
+  onConnectedDevicesChanged: { reselectFocusedDevice(); syncPendingActions() }
+  onKnownDevicesChanged: { reselectFocusedDevice(); syncPendingActions() }
+  onDiscoveredDevicesChanged: { reselectFocusedDevice(); syncPendingActions() }
   onVisibleSectionsChanged: clampCursor()
 
   // Keep the keyboard-focused row inside the visible viewport of the device
@@ -303,29 +406,11 @@ Panel {
     }
   }
 
-  // Non-visual lifecycle watchers, one per device. Survives popup open/close
-  // and the discovered-known transition that destroys row delegates.
-  Repeater {
-    model: root.devices
-    Item {
-      required property var modelData
-      visible: false
-      Connections {
-        target: modelData || null
-        function onPairedChanged() {
-          var d = modelData
-          if (!d || !d.paired) return
-          if (!root.pendingPairAddresses[d.address]) return
-          delete root.pendingPairAddresses[d.address]
-          // BlueZ pair() does not auto-trust or auto-connect. Without
-          // trusted, the daemon may drop the entry shortly after pairing,
-          // which makes a freshly-paired device flash "Connected" and then
-          // vanish from the model.
-          d.trusted = true
-          if (!d.connected) d.connect()
-        }
-      }
-    }
+  Timer {
+    id: pendingTimeout
+    interval: 20000
+    repeat: false
+    onTriggered: root.pendingActions = ({})
   }
 
   WidgetButton {
@@ -437,7 +522,35 @@ Panel {
             width: parent.width
             spacing: Style.space(10)
 
-            // Paired / known devices.
+            // Connected devices.
+            PanelSectionHeader {
+              visible: root.connectedDevices.length > 0
+              text: "Connected"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+            }
+
+            Repeater {
+              model: root.connectedDevices
+              DeviceRow {
+                required property var modelData
+                required property int index
+                width: deviceList.width
+                dev: modelData
+                rowIndex: index
+                sectionName: "connected"
+                isDiscovered: false
+              }
+            }
+
+            // Remembered devices.
+            PanelSectionHeader {
+              visible: root.knownDevices.length > 0
+              text: "Paired"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+            }
+
             Repeater {
               model: root.knownDevices
               DeviceRow {
@@ -446,6 +559,7 @@ Panel {
                 width: deviceList.width
                 dev: modelData
                 rowIndex: index
+                sectionName: "known"
                 isDiscovered: false
               }
             }
@@ -453,7 +567,7 @@ Panel {
             // Discovered (unpaired) devices, only shown while scanning.
             PanelSectionHeader {
               visible: root.adapter && root.adapter.discovering && root.discoveredDevices.length > 0
-              text: "Discovered"
+              text: "Available"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
             }
@@ -466,12 +580,14 @@ Panel {
                 width: deviceList.width
                 dev: modelData
                 rowIndex: index
+                sectionName: "discovered"
                 isDiscovered: true
               }
             }
 
             Text {
-              visible: root.knownDevices.length === 0
+              visible: root.connectedDevices.length === 0
+                       && root.knownDevices.length === 0
                        && (!root.adapter || !root.adapter.discovering || root.discoveredDevices.length === 0)
               text: !root.adapter ? "No Bluetooth adapter"
                   : !root.adapter.enabled ? "Turn Bluetooth on to scan"
@@ -518,20 +634,18 @@ Panel {
     }
   }
 
-  // Two-line device row showing name + live status (Connected, Connecting,
-  // Pairing, Failed). Tracks pending click attempts with a Timer so a
-  // connect that drops back to Disconnected within 10s surfaces as "Failed".
-  // Now a cursor target: hasCursor binds to root state, mouse hover updates
-  // root state. The X button on the right is a PanelActionButton.
+  // Two-line device row showing name + live status. Pending state is owned
+  // by the panel so it survives rows moving between sections.
   component DeviceRow: CursorSurface {
     id: row
     required property var dev
     required property int rowIndex
+    required property string sectionName
     required property bool isDiscovered
 
     readonly property bool isConnected: dev && dev.connected
     readonly property int devState: dev && dev.state !== undefined ? dev.state : -1
-    readonly property string sectionName: isDiscovered ? "discovered" : "known"
+    readonly property string action: root.pendingAction(dev ? dev.address : "")
 
     hasCursor: root.cursorActive && root.focusSection === sectionName && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(row)
@@ -540,61 +654,22 @@ Panel {
     fill: root.hoverFill
     currentFill: root.selectedFill
 
-    // 0 idle, 1 connecting, 2 disconnecting, 3 pairing, 4 failed.
-    property int pendingAction: 0
-    property string failureReason: ""
-
-    // Heuristic: while pendingAction is set, the connect/pair attempt is
-    // expected to land within ~10s. If state stays Disconnected past that, we
-    // declare failure. Cleared as soon as state reaches Connected.
-    Timer {
-      id: failureTimer
-      interval: 10000
-      repeat: false
-      onTriggered: {
-        if (row.pendingAction === 1 && !row.isConnected) {
-          row.pendingAction = 4
-          row.failureReason = "Could not connect"
-        } else if (row.pendingAction === 3 && row.dev && !row.dev.paired) {
-          row.pendingAction = 4
-          row.failureReason = "Pairing failed"
-        } else {
-          row.pendingAction = 0
-          row.failureReason = ""
-        }
-      }
-    }
-
-    Connections {
-      target: row.dev || null
-      function onConnectedChanged() {
-        if (row.isConnected) { row.pendingAction = 0; row.failureReason = "" }
-      }
-      function onPairedChanged() {
-        if (row.dev && row.dev.paired && row.pendingAction === 3) {
-          row.pendingAction = 0
-        }
-      }
-    }
-
     readonly property string statusText: {
       if (!dev) return ""
-      if (pendingAction === 4) return failureReason || "Failed"
-      if (pendingAction === 1 || devState === 3) return "Connecting…"
-      if (pendingAction === 2 || devState === 2) return "Disconnecting…"
-      if (pendingAction === 3 || (dev.pairing === true)) return "Pairing…"
+      if (action === "forgetting") return "Forgetting…"
+      if (action === "disconnecting" || devState === 2) return "Disconnecting…"
       if (isConnected) {
-        if (dev.batteryAvailable) return "Connected · " + Math.round(dev.battery * 100) + "%"
-        return "Connected"
+        if (dev.batteryAvailable) return Math.round(dev.battery * 100) + "%"
+        return sectionName === "connected" ? "" : "Connected"
       }
+      if (action === "connecting" || devState === 3 || dev.pairing === true) return "Connecting…"
       if (isDiscovered) return ""
       return ""
     }
 
     readonly property color statusColor: {
-      if (pendingAction === 4) return root.bar.urgent
       if (isConnected) return root.bar.foreground
-      if (pendingAction === 1 || devState === 3 || pendingAction === 3) return root.bar.foreground
+      if (action !== "" || devState === 3 || dev.pairing === true) return root.bar.foreground
       return Qt.darker(root.bar.foreground, 1.5)
     }
 
@@ -616,23 +691,12 @@ Panel {
       onClicked: function(mouse) {
         if (!row.dev) return
         if (mouse.button === Qt.RightButton) {
-          if (row.dev.forget) row.dev.forget()
+          if (row.isConnected) root.disconnectDevice(row.dev)
+          else if (!row.isDiscovered) root.forgetDevice(row.dev)
           return
         }
-        if (row.isDiscovered) {
-          row.pendingAction = 3
-          row.failureReason = ""
-          failureTimer.restart()
-          root.pendingPairAddresses[row.dev.address] = true
-          row.dev.pair()
-          return
-        }
-        if (!row.dev.trusted) row.dev.trusted = true
         if (row.isConnected) return  // use the X button to disconnect
-        row.pendingAction = 1
-        row.failureReason = ""
-        failureTimer.restart()
-        row.dev.connect()
+        root.connectDevice(row.dev)
       }
     }
 
@@ -669,13 +733,8 @@ Panel {
         fontFamily: root.bar.fontFamily
         onClicked: {
           if (!row.dev) return
-          if (row.isConnected) {
-            row.pendingAction = 2
-            failureTimer.stop()
-            row.dev.disconnect()
-          } else if (row.dev.forget) {
-            row.dev.forget()
-          }
+          if (row.isConnected) root.disconnectDevice(row.dev)
+          else root.forgetDevice(row.dev)
         }
       }
 
