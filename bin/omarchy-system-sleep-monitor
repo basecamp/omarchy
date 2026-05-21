@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# omarchy:summary=Monitor sleep preparation and lock before suspend
+# omarchy:group=system
+# omarchy:hidden=true
+
+monitor_command='exec dbus-monitor --system "type='\''signal'\'',sender='\''org.freedesktop.login1'\'',interface='\''org.freedesktop.login1.Manager'\'',member='\''PrepareForSleep'\''"'
+
+consume_sleep_events() {
+  local line
+
+  while IFS= read -r line; do
+    if [[ $line == *"boolean true"* ]]; then
+      "$OMARCHY_PATH/bin/omarchy-system-sleep-lock"
+      exit 0
+    fi
+  done
+}
+
+if [[ ${1:-} == "--consume" ]]; then
+  consume_sleep_events
+  exit 0
+fi
+
+exec systemd-inhibit \
+  --what=sleep \
+  --mode=delay \
+  --who=Omarchy \
+  --why="Lock screen before suspend" \
+  bash -lc "$monitor_command | \"$OMARCHY_PATH/bin/omarchy-system-sleep-monitor\" --consume"

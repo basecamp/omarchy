@@ -202,7 +202,6 @@ Item {
       idle: idleMonitor.isIdle,
       inIdleCycle: root.idledThisCycle,
       screensaverStarted: root.screensaverStartedThisCycle,
-      sleepMonitor: sleepMonitorProcess.running,
       screensaver: root.screensaverTimeoutSeconds,
       lock: root.lockTimeoutSeconds,
       screensaverDelay: root.screensaverDelaySeconds,
@@ -211,30 +210,16 @@ Item {
       timers: {
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
-        screensaverLaunchGrace: screensaverLaunchGraceTimer.running,
-        sleepMonitorRestart: sleepMonitorRestartTimer.running
+        screensaverLaunchGrace: screensaverLaunchGraceTimer.running
       },
       processes: {
         screensaver: screensaverProcess.running,
         lock: lockProcess.running,
-        wake: wakeProcess.running,
-        sleepLock: sleepLockProcess.running,
-        sleepWake: sleepWakeProcess.running
+        wake: wakeProcess.running
       },
       lastEvent: root.lastEvent,
       lastEventAt: root.lastEventAt
     })
-  }
-
-  function handleSleepPreparing(preparing) {
-    if (!root.idleEnabled) return
-
-    if (preparing) {
-      cancelIdleCycle("sleep-preparing")
-      runProcess(sleepLockProcess, "sleep-lock", "OMARCHY_LOCK_ONLY=true omarchy-system-lock")
-    } else {
-      runProcess(sleepWakeProcess, "sleep-wake", "sleep 1 && omarchy-system-wake")
-    }
   }
 
   function setIdleEnabled(value) {
@@ -298,43 +283,6 @@ Item {
   Process {
     id: wakeProcess
     onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "wake exitCode=" + exitCode + " status=" + exitStatus) }
-  }
-  Process {
-    id: sleepLockProcess
-    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "sleep-lock exitCode=" + exitCode + " status=" + exitStatus) }
-  }
-  Process {
-    id: sleepWakeProcess
-    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "sleep-wake exitCode=" + exitCode + " status=" + exitStatus) }
-  }
-
-  Process {
-    id: sleepMonitorProcess
-    command: ["bash", "-lc", "exec dbus-monitor --system \"type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'\""]
-    running: true
-    stdout: SplitParser {
-      onRead: function(line) {
-        var text = String(line || "").trim()
-        if (text === "boolean true") root.handleSleepPreparing(true)
-        else if (text === "boolean false") root.handleSleepPreparing(false)
-      }
-    }
-    onExited: {
-      root.logEvent("sleep-monitor-exit", "restarting")
-      sleepMonitorRestartTimer.restart()
-    }
-  }
-
-  Timer {
-    id: sleepMonitorRestartTimer
-    interval: 5000
-    repeat: false
-    onTriggered: {
-      if (!sleepMonitorProcess.running) {
-        root.logEvent("sleep-monitor-restart")
-        sleepMonitorProcess.running = true
-      }
-    }
   }
 
   Component.onCompleted: {
