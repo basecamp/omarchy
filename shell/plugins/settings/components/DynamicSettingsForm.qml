@@ -13,6 +13,9 @@ Column {
   property color foreground: Color.popups.text
   property color accent: Color.accent
   property string fontFamily: Style.font.family
+  // Resolved on disk path of the plugin that owns this form, used to
+  // resolve relative argv entries in a multiselect's `optionsCommand`.
+  property string pluginSourceDir: ""
 
   spacing: Style.spacing.xl
   width: parent ? parent.width : 0
@@ -26,8 +29,45 @@ Column {
     case "integer":
     case "number": return field.min !== undefined ? field.min : 0
     case "enum": return field.options && field.options.length > 0 ? field.options[0] : ""
+    case "multiselect": return []
     default: return ""
     }
+  }
+
+  // Resolve a multiselect's optionsCommand argv against the plugin's source
+  // directory. The first entry is treated as a path relative to the plugin
+  // dir unless it is absolute or begins with ".". Subsequent entries pass
+  // through unchanged.
+  // Resolve a multiselect's optionsCommand argv against the plugin's source
+  // directory. The first argv entry must be a relative path inside the
+  // plugin dir (no leading `/`, no `..` segments, no empty segments);
+  // anything else is rejected and the field falls back to whatever static
+  // `options` it has. Subsequent argv entries pass through unchanged. We
+  // avoid `Array.isArray` because schema-supplied arrays sometimes arrive
+  // as QML JSValue lists that don't satisfy it; iterating by `.length`
+  // works for both real arrays and JSValue lists.
+  function resolveOptionsCommand(field) {
+    var oc = field ? field.optionsCommand : undefined
+    if (!oc || typeof oc.length !== "number" || oc.length === 0) return []
+    var argv = []
+    for (var i = 0; i < oc.length; i++) argv.push(String(oc[i]))
+    if (!pluginSourceDir) return []
+    var head = argv[0]
+    if (head.length === 0 || head.charAt(0) === "/") {
+      console.warn("DynamicSettingsForm: optionsCommand must be a path relative to the plugin dir, got: " + head)
+      return []
+    }
+    var rel = head.replace(/^\.\//, "")
+    var segments = rel.split("/")
+    for (var s = 0; s < segments.length; s++) {
+      if (segments[s] === ".." || segments[s] === "") {
+        console.warn("DynamicSettingsForm: optionsCommand may not contain '..' or empty segments: " + head)
+        return []
+      }
+    }
+    var dir = pluginSourceDir.replace(/\/$/, "")
+    argv[0] = dir + "/" + rel
+    return argv
   }
 
   Repeater {
@@ -68,6 +108,7 @@ Column {
           case "enum": return enumField
           case "integer": return integerField
           case "number": return numberField
+          case "multiselect": return multiselectField
           default: return stringField
           }
         }
@@ -165,6 +206,36 @@ Column {
       }
 
       onModified: function(value) { if (fieldKey) root.fieldChanged(fieldKey, value) }
+    }
+  }
+
+  Component {
+    id: multiselectField
+
+    Ui.MultiSelect {
+      property string fieldKey: ""
+      property var field: ({})
+
+      width: parent.width
+      foreground: root.foreground
+      accent: root.accent
+      fontFamily: root.fontFamily
+      showLabel: false
+      // MultiSelect's arrayFrom() tolerates JSValue-style schema arrays, so
+      // we can hand it `field.options` directly without an Array.isArray
+      // guard that would silently drop JSValue lists.
+      options: field ? (field.options || []) : []
+      optionsCommand: root.resolveOptionsCommand(field)
+      optionsCommandCwd: root.pluginSourceDir
+      placeholderText: field && field.placeholderText ? String(field.placeholderText) : "Search..."
+      emptyText: field && field.emptyText ? String(field.emptyText) : "No options"
+      noSelectionText: field && field.noSelectionText ? String(field.noSelectionText) : "None selected"
+      values: {
+        var v = root.currentValue(field)
+        return v ? v : []
+      }
+
+      onChanged: function(arr) { if (fieldKey) root.fieldChanged(fieldKey, arr) }
     }
   }
 

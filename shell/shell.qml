@@ -520,8 +520,6 @@ ShellRoot {
         console.warn("Plugin " + manifest.id + " has no barWidget entry point")
         continue
       }
-      if (existing && existing.url === url && shell.barWidgetRegistry.has(registryKey)) continue
-
       var meta = manifest.barWidget || {}
       meta = {
         displayName: meta.displayName || manifest.name,
@@ -531,7 +529,17 @@ ShellRoot {
         defaults: meta.defaults || {},
         schema: meta.schema || [],
         pluginId: manifest.id,
+        sourceDir: manifest.__sourceDir || "",
         source: "plugin"
+      }
+
+      // If the component URL is unchanged, just refresh the metadata in
+      // place. We can't skip this even when the URL matches: manifests can
+      // change schema, defaults, or sourceDir between rescans, and the
+      // settings panel reads metadata from the registry.
+      if (existing && existing.url === url && shell.barWidgetRegistry.has(registryKey)) {
+        shell.barWidgetRegistry.register(registryKey, existing.component, meta)
+        continue
       }
 
       loadPluginWidget(registryKey, url, meta)
