@@ -660,18 +660,14 @@ Panel {
             id: heroMeta
             width: parent.width
             text: {
-              var parts = []
               if (root.info.type === "wifi") {
-                if (root.canDisconnect) parts.push("Connected")
-                else if (root.kind === "disconnected") parts.push("Not connected")
-                if (root.info.freq) parts.push(root.formatFreq(root.info.freq))
-              } else if (root.info.type === "ethernet") {
-                parts.push("Connected")
-                if (root.info.speed) parts.push(root.formatSpeed(root.info.speed))
-              } else if (root.kind === "disconnected") {
-                parts.push("Not connected")
+                if (root.canDisconnect) return "CONNECTED"
+                if (root.kind === "disconnected") return "NOT CONNECTED"
+                return ""
               }
-              return parts.join(" · ").toUpperCase()
+              if (root.info.type === "ethernet") return "CONNECTED"
+              if (root.kind === "disconnected") return "NOT CONNECTED"
+              return ""
             }
             visible: text !== ""
             color: Qt.darker(root.bar.foreground, 1.4)
@@ -771,9 +767,9 @@ Panel {
 
           // Wi-Fi details
           InfoPair {
-            visible: root.info.type === "wifi" && !!root.info.signal_dbm
-            label: "Signal"
-            value: (root.info.signal_dbm || "") + " dBm"
+            visible: root.info.type === "wifi" && !!root.info.freq
+            label: "Band"
+            value: root.formatFreq(root.info.freq || "")
           }
           InfoPair {
             visible: root.info.type === "wifi" && !!root.info.bitrate
