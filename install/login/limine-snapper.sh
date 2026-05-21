@@ -53,7 +53,19 @@ EOF
   # We overwrite the whole thing knowing the limine-update will add the entries for us
   sudo cp $OMARCHY_PATH/default/limine/limine.conf /boot/limine.conf
 
-  sudo pacman -S --noconfirm --needed limine-snapper-sync limine-mkinitcpio-hook
+  # The UKI must embed the kernel cmdline (read by mkinitcpio --uki from
+  # /etc/kernel/cmdline) so the early encrypt hook can find cryptdevice=...
+  # to unlock /dev/mapper/root. archinstall doesn't write this file; the
+  # initial UKI built when limine-mkinitcpio-hook was pulled in via
+  # omarchy-limine's depends was built with an empty cmdline, dropping us
+  # to the emergency shell on first boot.
+  echo "$CMDLINE" | sudo tee /etc/kernel/cmdline >/dev/null
+
+  # Force a UKI rebuild now that /etc/default/limine and /etc/kernel/cmdline
+  # exist. limine-snapper-sync and limine-mkinitcpio-hook are already
+  # installed (via omarchy-limine's depends), so 'pacman -S --needed' here
+  # is a no-op and won't re-trigger the post-transaction UKI rebuild.
+  sudo mkinitcpio -P
 
   # Only snapshot root — /home is user data; rolling it back loses user work
   if ! sudo snapper list-configs 2>/dev/null | grep -q "root"; then
