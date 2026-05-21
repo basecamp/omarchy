@@ -23,3 +23,7 @@ if [[ -f $FIRST_RUN_MODE ]]; then
   bash "$OMARCHY_PATH/install/first-run/welcome.sh"
   bash "$OMARCHY_PATH/install/first-run/wifi.sh"
 fi
+
+# omarchy-setup-user is idempotent (gated on its own marker), so this is
+# safe to call on every invocation — it'll no-op once user setup is done.
+omarchy-setup-user || true

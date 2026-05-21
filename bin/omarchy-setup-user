@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# omarchy:summary=Set up Omarchy for the current user (~/.config, ~/.local, etc.)
+# omarchy:group=install
+# omarchy:examples=omarchy setup user | omarchy setup user --force
+
+set -euo pipefail
+
+if [[ $EUID -eq 0 ]]; then
+  echo "Error: run omarchy-setup-user as the user being configured, not as root." >&2
+  exit 1
+fi
+
+force=0
+if [[ ${1:-} == "--force" ]]; then
+  force=1
+elif [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  cat <<USAGE
+Usage: omarchy setup user [--force]
+
+Idempotent user-level setup: copies/symlinks defaults from \$OMARCHY_PATH
+into \$HOME (config files, AI skills, nautilus extensions, branding, MIME
+defaults, etc.). Runs automatically on first user login via the omarchy
+first-run flow; rerun manually after creating a new user, or with --force
+to refresh after a dev-link.
+
+Idempotency marker: ~/.local/state/omarchy/setup-user.done
+USAGE
+  exit 0
+fi
+
+state_dir="$HOME/.local/state/omarchy"
+marker="$state_dir/setup-user.done"
+mkdir -p "$state_dir"
+
+if [[ -f $marker && $force -eq 0 ]]; then
+  echo "User setup already complete (rerun with --force to refresh)."
+  exit 0
+fi
+
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+
+# AI assistant skill symlinks. Each agent has its own conventional skills
+# directory; we drop an 'omarchy' entry into each so the skill is loaded.
+mkdir -p ~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills
+ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.agents/skills/omarchy
+ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.claude/skills/omarchy
+ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.codex/skills/omarchy
+ln -sfn "$OMARCHY_PATH/default/omarchy-skill" ~/.pi/agent/skills/omarchy
+
+# Toggle state and flags
+mkdir -p ~/.local/state/omarchy/toggles/hypr
+cp "$OMARCHY_PATH/default/hypr/toggles/flags.lua" ~/.local/state/omarchy/toggles/hypr/
+
+# Nautilus python extensions
+mkdir -p "$HOME/.local/share/nautilus-python/extensions"
+cp "$OMARCHY_PATH/default/nautilus-python/extensions/localsend.py" \
+   "$HOME/.local/share/nautilus-python/extensions/"
+cp "$OMARCHY_PATH/default/nautilus-python/extensions/transcode.py" \
+   "$HOME/.local/share/nautilus-python/extensions/"
+
+# Branding (fastfetch about + screensaver text)
+mkdir -p ~/.config/omarchy/branding
+cp "$OMARCHY_PATH/icon.txt" ~/.config/omarchy/branding/about.txt
+cp "$OMARCHY_PATH/logo.txt" ~/.config/omarchy/branding/screensaver.txt
+
+# XDG user dirs (folder layout, gtk bookmarks)
+mkdir -p ~/Downloads ~/Pictures ~/Videos ~/.config/gtk-3.0
+xdg-user-dirs-update --set TEMPLATES "$HOME"
+xdg-user-dirs-update --set PUBLICSHARE "$HOME"
+xdg-user-dirs-update --set DESKTOP "$HOME"
+rmdir ~/Templates ~/Public ~/Desktop 2>/dev/null || true
+touch ~/.config/gtk-3.0/bookmarks
+for dir in Downloads Projects Pictures Videos; do
+  printf 'file://%s/%s %s\n' "$HOME" "$dir" "$dir" >>~/.config/gtk-3.0/bookmarks
+done
+
+# Hyprland keyboard layout from /etc/vconsole.conf
+conf=/etc/vconsole.conf
+hyprlua="$HOME/.config/hypr/input.lua"
+if [[ -f $conf && -f $hyprlua ]]; then
+  if grep -q '^XKBLAYOUT=' "$conf"; then
+    layout=$(grep '^XKBLAYOUT=' "$conf" | cut -d= -f2 | tr -d '"')
+    sed -i "/^[[:space:]]*kb_options *=/i\    kb_layout = \"$layout\"," "$hyprlua"
+  fi
+  if grep -q '^XKBVARIANT=' "$conf"; then
+    variant=$(grep '^XKBVARIANT=' "$conf" | cut -d= -f2 | tr -d '"')
+    sed -i "/^[[:space:]]*kb_options *=/i\    kb_variant = \"$variant\"," "$hyprlua"
+  fi
+fi
+
+# Application catalog + MIME defaults
+omarchy-refresh-applications
+xdg-settings set default-web-browser chromium.desktop
+xdg-mime default HEY.desktop x-scheme-handler/mailto
+
+touch "$marker"
+echo "User setup complete."
