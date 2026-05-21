@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Run the Omarchy installer (shipped via omarchy-installer)
+# omarchy:group=install
+# omarchy:args=[install.sh args]
+
+exec bash "$OMARCHY_PATH/install.sh" "$@"
