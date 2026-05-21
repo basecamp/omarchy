@@ -159,8 +159,7 @@ Item {
   function applySelected(emoji) {
     if (!emoji) return
     root.dismiss()
-    var escEmoji = emoji.replace(/'/g, "'\\''")
-    Quickshell.execDetached(["bash", "-lc", "wl-copy '" + escEmoji + "'; sleep 0.15; wtype '" + escEmoji + "' 2>/dev/null || true"])
+    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", emoji])
   }
   ListModel { id: displayModel }
 

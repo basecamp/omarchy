@@ -189,9 +189,9 @@ Item {
     if (!row) return
     root.opened = false
     if (row.entryType === "image") {
-      Quickshell.execDetached(["bash", "-lc", "wl-copy --type " + Util.shellQuote(row.mime) + " < " + Util.shellQuote(row.path) + "; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true"])
+      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-file", row.mime, row.path])
     } else if (row.fullText) {
-      Quickshell.execDetached(["bash", "-lc", "printf %s " + Util.shellQuote(row.fullText) + " | wl-copy; sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true"])
+      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--shift-insert", row.fullText])
     }
   }
 

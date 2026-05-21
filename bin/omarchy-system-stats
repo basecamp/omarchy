@@ -2,6 +2,41 @@
 
 # omarchy:summary=Print CPU and memory stats for the shell
 # omarchy:group=system
+# omarchy:args=[--bar-widget]
+
+bar_widget_stats() {
+  awk '
+    NR == 1 {
+      idle = $5
+      total = 0
+      for (i = 2; i <= NF; i++) total += $i
+      printf "cpu\t%s\t%s\n", idle, total
+    }
+  ' /proc/stat
+
+  awk '
+    /^MemTotal:/ { total = $2 }
+    /^MemAvailable:/ { avail = $2 }
+    END {
+      if (total > 0) printf "memory\t%.2f\n", ((total - avail) / total) * 100
+    }
+  ' /proc/meminfo
+
+  awk '{ print "load\t" $1 }' /proc/loadavg
+}
+
+case "${1:-}" in
+  "")
+    ;;
+  --bar-widget)
+    bar_widget_stats
+    exit
+    ;;
+  *)
+    echo "Usage: omarchy-system-stats [--bar-widget]" >&2
+    exit 1
+    ;;
+esac
 
 cpu=$(top -bn1 | awk '/^%?Cpu/ {
   gsub(/,/, "")
