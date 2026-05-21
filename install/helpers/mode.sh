@@ -4,6 +4,15 @@
 
 detect_install_mode() {
   if [[ -n ${OMARCHY_INSTALL_MODE:-} ]]; then
+    case $OMARCHY_INSTALL_MODE in
+      iso-chroot|online-package|online-git) ;;
+      *)
+        echo "Error: invalid OMARCHY_INSTALL_MODE=$OMARCHY_INSTALL_MODE" >&2
+        echo "       must be one of: iso-chroot, online-package, online-git" >&2
+        exit 1
+        ;;
+    esac
+    export OMARCHY_INSTALL_MODE
     return
   fi
 
@@ -22,15 +31,22 @@ install_mode_is() {
   [[ ${OMARCHY_INSTALL_MODE:-} == "$1" ]]
 }
 
-# Sets OMARCHY_CHROOT_INSTALL=1 and OMARCHY_ONLINE_INSTALL=true so callers
-# that still check the legacy vars keep working through the transition.
+# Synchronize the legacy vars to the canonical mode so callers that still
+# check OMARCHY_CHROOT_INSTALL / OMARCHY_ONLINE_INSTALL agree with us
+# (including unsetting contradictory ones).
 export_legacy_mode_flags() {
   case ${OMARCHY_INSTALL_MODE:-} in
     iso-chroot)
       export OMARCHY_CHROOT_INSTALL=1
+      unset OMARCHY_ONLINE_INSTALL
       ;;
     online-git)
       export OMARCHY_ONLINE_INSTALL=true
+      unset OMARCHY_CHROOT_INSTALL
+      ;;
+    online-package)
+      unset OMARCHY_CHROOT_INSTALL
+      unset OMARCHY_ONLINE_INSTALL
       ;;
   esac
 }

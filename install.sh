@@ -6,7 +6,7 @@ set -eEo pipefail
 # whether it's run from /usr/share/omarchy/install.sh (package mode) or
 # $HOME/.local/share/omarchy/install.sh (git mode). An explicit OMARCHY_PATH
 # in the caller env still wins.
-_OMARCHY_INSTALLER_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+_OMARCHY_INSTALLER_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 export OMARCHY_PATH="${OMARCHY_PATH:-$_OMARCHY_INSTALLER_DIR}"
 export OMARCHY_INSTALL="$OMARCHY_PATH/install"
 export OMARCHY_INSTALL_LOG_FILE="/var/log/omarchy-install.log"
