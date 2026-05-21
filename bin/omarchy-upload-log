@@ -41,12 +41,26 @@ fi
 
 case "$LOG_TYPE" in
 install)
+  # In the live ISO before reboot, the target system is mounted at /mnt so the
+  # omarchy install log lives at /mnt/var/log/omarchy-install.log. On the
+  # installed system it's at /var/log/omarchy-install.log. Prefer whichever
+  # exists, with /mnt taking precedence (only present in the ISO context, and
+  # there it's the right one).
   ARCHINSTALL_LOG="/var/log/archinstall/install.log"
-  OMARCHY_LOG="/var/log/omarchy-install.log"
+  if [[ -s /mnt/var/log/omarchy-install.log ]]; then
+    OMARCHY_LOG="/mnt/var/log/omarchy-install.log"
+  else
+    OMARCHY_LOG="/var/log/omarchy-install.log"
+  fi
 
-  # Combine system info with logs
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
-  cat $ARCHINSTALL_LOG $OMARCHY_LOG >>"$TEMP_LOG" 2>/dev/null
+  [[ -s $ARCHINSTALL_LOG ]] && cat "$ARCHINSTALL_LOG" >>"$TEMP_LOG"
+  if [[ -s $OMARCHY_LOG ]]; then
+    printf '\n========================================\nOMARCHY INSTALL LOG (%s)\n========================================\n\n' "$OMARCHY_LOG" >>"$TEMP_LOG"
+    cat "$OMARCHY_LOG" >>"$TEMP_LOG"
+  else
+    echo "Warning: omarchy install log not found (looked at /mnt/var/log/ and /var/log/)" >&2
+  fi
 
   if [[ ! -s $TEMP_LOG ]]; then
     echo "Error: No install logs found"
