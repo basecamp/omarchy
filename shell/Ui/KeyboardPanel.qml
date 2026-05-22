@@ -40,8 +40,8 @@ PanelWindow {
   property var owner: null
   property int margin: Style.gapsOut
   property int padding: Style.spacing.popupPadding
-  property int contentWidth: 280
-  property int contentHeight: 200
+  property int contentWidth: Style.space(280)
+  property int contentHeight: Style.space(200)
   property bool open: false
   property int gap: Style.gapsOut  // distance between bar edge and panel
   property bool popoutSwitching: false

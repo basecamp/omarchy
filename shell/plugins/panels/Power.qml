@@ -259,8 +259,7 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: root.batteryIcon()
-    horizontalMargin: 8.5
-    rightExtraMargin: 2
+    horizontalMargin: 5
     active: UPower.displayDevice && UPower.displayDevice.percentage <= 0.2 && UPower.onBattery
     tooltipText: ""
     onPressed: function(b) { root.toggle() }
