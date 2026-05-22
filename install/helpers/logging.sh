@@ -1,4 +1,9 @@
 start_log_output() {
+  # Offline ISO installs already have a live dashboard on tty1. The chrooted
+  # finalizer's stdout/stderr is captured to logs, so this monitor would only
+  # create noisy feedback in the log and burn CPU.
+  [[ -n ${OMARCHY_CHROOT_FINALIZER:-} ]] && return 0
+
   local ANSI_SAVE_CURSOR="\033[s"
   local ANSI_RESTORE_CURSOR="\033[u"
   local ANSI_CLEAR_LINE="\033[2K"

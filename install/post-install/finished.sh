@@ -1,5 +1,16 @@
 stop_install_log
 
+# Offline ISO installs run inside arch-chroot while the live ISO orchestrator
+# owns the visible UI. Never prompt from here: stdout/stderr may be captured to
+# logs, leaving gum waiting invisibly on /dev/tty. The live orchestrator shows
+# the final "installed in ... / reboot" screen after validation.
+if install_mode_is offline; then
+  # Never risk an interactive sudo prompt in the chrooted ISO route. The
+  # orchestrator removes this shim after finalize.sh returns.
+  touch /var/tmp/omarchy-install-completed
+  return 0 2>/dev/null || exit 0
+fi
+
 echo_in_style() {
   echo "$1" | tte --canvas-width 0 --anchor-text c --frame-rate 640 print
 }
@@ -29,10 +40,5 @@ if gum confirm --padding "0 0 0 $((PADDING_LEFT + 32))" --show-help=false --defa
   # Clear screen to hide any shutdown messages
   clear
 
-  if install_mode_is offline; then
-    touch /var/tmp/omarchy-install-completed
-    exit 0
-  else
-    sudo reboot 2>/dev/null
-  fi
+  sudo reboot 2>/dev/null
 fi
