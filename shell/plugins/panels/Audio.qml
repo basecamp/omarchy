@@ -107,6 +107,15 @@ Panel {
     return list
   }
 
+  // Feed Repeaters with panel-local snapshots instead of the live PipeWire
+  // model. PipeWire can remove nodes while Quickshell is dispatching the
+  // removal signal; rebuilding a Repeater from that signal path has crashed
+  // in Quickshell's PipeWire service. The snapshot timer lets that mutation
+  // settle first, and closed panels keep their repeaters detached entirely.
+  property var displayAudioSinks: []
+  property var displayAudioSources: []
+  property var displayAudioStreams: []
+
   readonly property real outputVolume: sink && sink.audio ? sink.audio.volume : 0
   readonly property bool outputMuted: sink && sink.audio ? sink.audio.muted : false
   readonly property real inputVolume: source && source.audio ? source.audio.volume : 0
@@ -137,16 +146,16 @@ Panel {
     : "transparent"
 
   function sectionCount(section) {
-    if (section === "output") return audioSinks.length
-    if (section === "input") return audioSources.length
-    if (section === "streams") return audioStreams.length
+    if (section === "output") return displayAudioSinks.length
+    if (section === "input") return displayAudioSources.length
+    if (section === "streams") return displayAudioStreams.length
     return 0
   }
 
   function sectionVisible(section) {
     if (section === "output") return true
-    if (section === "input") return audioSources.length > 0 || !!source
-    if (section === "streams") return audioStreams.length > 0
+    if (section === "input") return displayAudioSources.length > 0 || !!source
+    if (section === "streams") return displayAudioStreams.length > 0
     return false
   }
 
@@ -221,8 +230,8 @@ Panel {
       setInputVolume(inputVolume + delta)
       return
     }
-    if (focusSection === "streams" && selectedIndex >= 0 && selectedIndex < audioStreams.length) {
-      var s = audioStreams[selectedIndex]
+    if (focusSection === "streams" && selectedIndex >= 0 && selectedIndex < displayAudioStreams.length) {
+      var s = displayAudioStreams[selectedIndex]
       if (s && s.audio) s.audio.volume = Math.max(0, Math.min(1.5, s.audio.volume + delta))
     }
   }
@@ -231,35 +240,62 @@ Panel {
   function activateCursor() {
     if (focusSection === "output") {
       if (selectedIndex === -1) { toggleOutputMute(); return }
-      var sink = audioSinks[selectedIndex]
+      var sink = displayAudioSinks[selectedIndex]
       if (sink) setDefaultSink(sink)
       return
     }
     if (focusSection === "input") {
       if (selectedIndex === -1) { toggleInputMute(); return }
-      var src = audioSources[selectedIndex]
+      var src = displayAudioSources[selectedIndex]
       if (src) setDefaultSource(src)
       return
     }
     if (focusSection === "streams" && selectedIndex >= 0) {
-      var st = audioStreams[selectedIndex]
+      var st = displayAudioStreams[selectedIndex]
       if (st && st.audio) st.audio.muted = !st.audio.muted
     }
   }
 
   onOpenedChanged: {
     if (opened) {
+      refreshDisplayAudioModels()
       focusSection = "output"
       selectedIndex = -1  // first keyboard cursor reveal starts on the output slider
       cursorActive = false
       Qt.callLater(resetScroll)
+    } else {
+      clearDisplayAudioModels()
     }
   }
 
   // Clamp / repair the cursor whenever any list refreshes underneath us.
-  onAudioSinksChanged: clampCursor()
-  onAudioSourcesChanged: clampCursor()
-  onAudioStreamsChanged: clampCursor()
+  onAudioSinksChanged: scheduleDisplayAudioModelRefresh()
+  onAudioSourcesChanged: scheduleDisplayAudioModelRefresh()
+  onAudioStreamsChanged: scheduleDisplayAudioModelRefresh()
+
+  function listSnapshot(list) {
+    return list && list.slice ? list.slice() : []
+  }
+
+  function refreshDisplayAudioModels() {
+    if (!opened) return
+    displayAudioSinks = listSnapshot(audioSinks)
+    displayAudioSources = listSnapshot(audioSources)
+    displayAudioStreams = listSnapshot(audioStreams)
+    clampCursor()
+  }
+
+  function scheduleDisplayAudioModelRefresh() {
+    if (!opened) return
+    audioModelRefreshTimer.restart()
+  }
+
+  function clearDisplayAudioModels() {
+    audioModelRefreshTimer.stop()
+    displayAudioSinks = []
+    displayAudioSources = []
+    displayAudioStreams = []
+  }
 
   // Keep the keyboard-focused row inside the visible viewport of the
   // ScrollView. Each cursor target (slider rows, SinkRow, SourceRow,
@@ -560,8 +596,8 @@ Panel {
     if (!streamLabelIsGeneric(label)) return ""
 
     return mprisLabelsFor(function(playerLabel) {
-      for (var i = 0; i < audioStreams.length; i++) {
-        var stream = audioStreams[i]
+      for (var i = 0; i < displayAudioStreams.length; i++) {
+        var stream = displayAudioStreams[i]
         var streamLabel = rawStreamLabel(stream)
         if (!streamLabelIsGeneric(streamLabel)
             && streamRepresentsMprisPlayer(streamLabel, playerLabel))
@@ -619,6 +655,13 @@ Panel {
     onTriggered: if (!sinkAvailabilityProc.running) sinkAvailabilityProc.running = true
   }
 
+  Timer {
+    id: audioModelRefreshTimer
+    interval: 75
+    repeat: false
+    onTriggered: root.refreshDisplayAudioModels()
+  }
+
   WidgetButton {
     id: button
     anchors.fill: parent
@@ -663,8 +706,8 @@ Panel {
         if (t === "m" || t === "M") {
           if (!root.cursorActive) return
           if (root.focusSection === "streams" && root.selectedIndex >= 0
-              && root.selectedIndex < root.audioStreams.length) {
-            var s = root.audioStreams[root.selectedIndex]
+              && root.selectedIndex < root.displayAudioStreams.length) {
+            var s = root.displayAudioStreams[root.selectedIndex]
             if (s && s.audio) s.audio.muted = !s.audio.muted
           } else if (root.focusSection === "input") {
             root.toggleInputMute()
@@ -811,7 +854,7 @@ Panel {
             }
 
             Repeater {
-              model: root.audioSinks
+              model: root.displayAudioSinks
 
               SinkRow {
                 required property var modelData
@@ -827,7 +870,7 @@ Panel {
           Column {
             width: parent.width
             spacing: Style.space(6)
-            visible: root.audioSources.length > 0 || !!root.source
+            visible: root.displayAudioSources.length > 0 || !!root.source
 
             Item {
               width: parent.width
@@ -912,7 +955,7 @@ Panel {
             }
 
             Repeater {
-              model: root.audioSources
+              model: root.displayAudioSources
 
               SourceRow {
                 required property var modelData
@@ -928,7 +971,7 @@ Panel {
           Column {
             width: parent.width
             spacing: Style.space(10)
-            visible: root.audioStreams.length > 0
+            visible: root.displayAudioStreams.length > 0
 
             PanelSectionHeader {
               text: "SOURCES"
@@ -937,7 +980,7 @@ Panel {
             }
 
             Repeater {
-              model: root.audioStreams
+              model: root.displayAudioStreams
 
               StreamRow {
                 required property var modelData
