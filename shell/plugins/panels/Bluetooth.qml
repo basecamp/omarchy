@@ -115,6 +115,7 @@ Panel {
   // guaranteeing one highlight on screen.
   property string focusSection: "connected"
   property int selectedIndex: 0
+  property bool actionFocused: false
   property bool cursorActive: false
 
   // Stable identity for the focused device. Devices move between sections as
@@ -246,24 +247,43 @@ Panel {
     var sections = visibleSections
     if (!sections || sections.length === 0) return
     var sIdx = sections.indexOf(focusSection)
-    if (sIdx < 0) { focusSection = sections[0]; selectedIndex = 0; return }
+    if (sIdx < 0) { focusSection = sections[0]; selectedIndex = 0; actionFocused = false; return }
 
     var idx = selectedIndex
     var max = sectionCount(focusSection) - 1
 
     if (delta > 0) {
-      if (idx < max) { selectedIndex = idx + 1; return }
+      if (idx < max) { selectedIndex = idx + 1; actionFocused = false; return }
       if (sIdx < sections.length - 1) {
         focusSection = sections[sIdx + 1]
         selectedIndex = 0
+        actionFocused = false
       }
     } else {
-      if (idx > 0) { selectedIndex = idx - 1; return }
-      if (sIdx > 0) { focusSection = sections[sIdx - 1]; selectedIndex = sectionCount(focusSection) - 1 }
+      if (idx > 0) { selectedIndex = idx - 1; actionFocused = false; return }
+      if (sIdx > 0) {
+        focusSection = sections[sIdx - 1]
+        selectedIndex = sectionCount(focusSection) - 1
+        actionFocused = false
+      }
     }
   }
 
+  function moveCursorH(delta) {
+    if (!cursorActive) { cursorActive = true; return }
+    if (focusSection !== "known") return
+    var dev = deviceAt(focusSection, selectedIndex)
+    if (!dev || dev.connected) return
+    if (delta > 0) actionFocused = true
+    else if (delta < 0) actionFocused = false
+  }
+
   function activateCursor() {
+    if (actionFocused) {
+      deleteSelected()
+      return
+    }
+
     if (focusSection === "connected" || focusSection === "known") {
       var dev = deviceAt(focusSection, selectedIndex)
       if (!dev) return
@@ -278,17 +298,14 @@ Panel {
     }
   }
 
-  // 'x' on a known row mirrors the row's X button: connected device
-  // disconnects, everything else forgets the pairing. Mismatching this
-  // (e.g. forgetting a connected device) is destructive — the X button
-  // tooltip says "Disconnect" for connected rows, and the keybind has
-  // to agree.
+  // 'x' forgets remembered devices. Connected rows toggle connection via
+  // Enter/click, so the destructive forget action is intentionally unavailable
+  // while connected.
   function deleteSelected() {
-    if (focusSection !== "connected" && focusSection !== "known") return
+    if (focusSection !== "known") return
     var dev = deviceAt(focusSection, selectedIndex)
     if (!dev) return
-    if (dev.connected) disconnectDevice(dev)
-    else forgetDevice(dev)
+    forgetDevice(dev)
   }
 
   onOpenedChanged: {
@@ -297,6 +314,7 @@ Panel {
       if (connectedDevices.length > 0) { focusSection = "connected"; selectedIndex = 0 }
       else if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else if (discoveredDevices.length > 0) { focusSection = "discovered"; selectedIndex = 0 }
+      actionFocused = false
       cursorActive = false
     }
   }
@@ -464,6 +482,7 @@ Panel {
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) { root.cursorActive = true; return }
         if (dy !== 0) root.moveCursor(dy)
+        else if (dx !== 0) root.moveCursorH(dx)
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
       onCloseRequested: root.close()
@@ -650,8 +669,18 @@ Panel {
     readonly property bool isConnected: dev && dev.connected
     readonly property int devState: dev && dev.state !== undefined ? dev.state : -1
     readonly property string action: root.pendingAction(dev ? dev.address : "")
+    readonly property string actionTooltip: {
+      if (!dev) return ""
+      if (isConnected) return "Disconnect"
+      if (isDiscovered) return "Pair"
+      return "Connect"
+    }
 
-    hasCursor: root.cursorActive && root.focusSection === sectionName && root.selectedIndex === rowIndex
+    readonly property bool rowSelected: root.cursorActive && root.focusSection === sectionName && root.selectedIndex === rowIndex
+    readonly property bool forgetAvailable: sectionName === "known" && !isConnected && !isDiscovered
+    readonly property bool showForgetButton: forgetAvailable && (rowMouse.containsMouse || rowSelected)
+
+    hasCursor: rowSelected && !root.actionFocused
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(row)
     current: isConnected
     foreground: root.bar.foreground
@@ -690,6 +719,7 @@ Panel {
         root.cursorActive = true
         root.focusSection = row.sectionName
         root.selectedIndex = row.rowIndex
+        root.actionFocused = false
       }
 
       onClicked: function(mouse) {
@@ -699,9 +729,15 @@ Panel {
           else if (!row.isDiscovered) root.forgetDevice(row.dev)
           return
         }
-        if (row.isConnected) return  // use the X button to disconnect
-        root.connectDevice(row.dev)
+        if (row.isConnected) root.disconnectDevice(row.dev)
+        else root.connectDevice(row.dev)
       }
+    }
+
+    PanelToolTip {
+      visible: row.actionTooltip !== "" && rowMouse.containsMouse && !root.actionFocused
+      text: row.actionTooltip
+      fontFamily: root.bar.fontFamily
     }
 
     Item {
@@ -711,7 +747,7 @@ Panel {
       anchors.verticalCenter: parent.verticalCenter
       anchors.leftMargin: Style.space(10)
       anchors.rightMargin: Style.space(10)
-      implicitHeight: Math.max(deviceIcon.implicitHeight, info.implicitHeight, disconnectBtn.implicitHeight)
+      implicitHeight: Math.max(deviceIcon.implicitHeight, info.implicitHeight, forgetBtn.implicitHeight)
 
       Text {
         id: deviceIcon
@@ -723,32 +759,13 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      // Explicit close button on any known device. Action depends on state:
-      // connected -> disconnect, otherwise -> forget the pairing entirely.
-      PanelActionButton {
-        id: disconnectBtn
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        visible: !row.isDiscovered
-        iconText: "󰅙"
-        tooltipText: row.isConnected ? "Disconnect" : "Forget"
-        foreground: root.bar.foreground
-        hoverColor: root.bar.urgent
-        fontFamily: root.bar.fontFamily
-        onClicked: {
-          if (!row.dev) return
-          if (row.isConnected) root.disconnectDevice(row.dev)
-          else root.forgetDevice(row.dev)
-        }
-      }
-
       Column {
         id: info
         spacing: Style.space(1)
         anchors.left: deviceIcon.right
         anchors.leftMargin: Style.space(10)
-        anchors.right: disconnectBtn.visible ? disconnectBtn.left : parent.right
-        anchors.rightMargin: disconnectBtn.visible ? Style.space(8) : 0
+        anchors.right: forgetBtn.visible ? forgetBtn.left : parent.right
+        anchors.rightMargin: forgetBtn.visible ? Style.space(8) : 0
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
@@ -767,6 +784,33 @@ Panel {
           font.pixelSize: Style.font.caption
           elide: Text.ElideRight
           width: parent.width
+        }
+      }
+
+      PanelActionButton {
+        id: forgetBtn
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        visible: row.showForgetButton
+        iconText: "󰅙"
+        tooltipText: "Forget"
+        foreground: root.bar.foreground
+        hoverColor: root.bar.foreground
+        fontFamily: root.bar.fontFamily
+        hasCursor: row.rowSelected && root.actionFocused
+        onHovered: function(isHovered) {
+          if (!isHovered) {
+            if (rowMouse.containsMouse) root.actionFocused = false
+            return
+          }
+          root.cursorActive = true
+          root.focusSection = row.sectionName
+          root.selectedIndex = row.rowIndex
+          root.actionFocused = true
+        }
+        onClicked: {
+          if (!row.dev) return
+          root.forgetDevice(row.dev)
         }
       }
     }
