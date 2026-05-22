@@ -44,6 +44,8 @@ PanelWindow {
   property int contentHeight: 200
   property bool open: false
   property int gap: Style.gapsOut  // distance between bar edge and panel
+  property bool popoutSwitching: false
+  property bool popoutSwitchClosing: false
 
   // Item that should take keyboard focus once the panel maps. Typically a
   // PanelKeyCatcher inside the panel content. Layer-shell grants focus to
@@ -67,7 +69,7 @@ PanelWindow {
   // --- screen + lifetime ---------------------------------------------------
 
   screen: anchorWindow ? anchorWindow.screen : null
-  visible: open || card.opacity > 0
+  visible: open || card.opacity > 0 || popoutSwitching
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
 
@@ -199,8 +201,29 @@ PanelWindow {
       if (root.open && root.focusTarget) root.focusTarget.forceActiveFocus()
     })
     if (!bar) return
-    if (open) bar.requestPopout(coordinatorKey)
-    else if (bar.activePopout === coordinatorKey) bar.releasePopout(coordinatorKey)
+    if (open) {
+      popoutSwitchClosing = false
+      popoutSwitching = bar.activePopout && bar.activePopout !== coordinatorKey
+      bar.requestPopout(coordinatorKey)
+      if (popoutSwitching) popoutSwitchTimer.restart()
+    } else {
+      popoutSwitchClosing = !!(owner && owner.popoutSwitchClosing)
+      popoutSwitching = false
+      if (bar.activePopout === coordinatorKey) bar.releasePopout(coordinatorKey)
+      if (popoutSwitchClosing) closeSwitchTimer.restart()
+    }
+  }
+
+  Timer {
+    id: popoutSwitchTimer
+    interval: 150
+    onTriggered: root.popoutSwitching = false
+  }
+
+  Timer {
+    id: closeSwitchTimer
+    interval: 1
+    onTriggered: root.popoutSwitchClosing = false
   }
 
   // --- outside-click dismissal --------------------------------------------
@@ -272,8 +295,10 @@ PanelWindow {
     border.color: Color.popups.border
     border.width: Math.max(1, Style.space(2))
     radius: Style.cornerRadius
-    opacity: root.open ? 1.0 : 0
+    opacity: root.open || root.popoutSwitching ? 1.0 : 0
+
     Behavior on opacity {
+      enabled: !root.popoutSwitching && !root.popoutSwitchClosing
       NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
     }
 
@@ -285,6 +310,12 @@ PanelWindow {
       id: contentHolder
       anchors.fill: parent
       anchors.margins: root.padding
+      opacity: root.popoutSwitching ? (root.open ? 1.0 : 0) : 1.0
+
+      Behavior on opacity {
+        enabled: root.popoutSwitching
+        NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+      }
     }
   }
 }

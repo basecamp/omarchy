@@ -14,11 +14,18 @@ Item {
   property string ipcTarget: ""
   property bool manageIpc: true
   property alias controller: panelController
+  property bool popoutSwitching: false
+  property bool popoutSwitchClosing: false
 
   readonly property bool opened: panelController.open
 
   function open() { panelController.show() }
   function close() { panelController.hide() }
+  function closeForPopoutSwitch() {
+    popoutSwitchClosing = true
+    close()
+    Qt.callLater(function() { popoutSwitchClosing = false })
+  }
   function toggle() { opened ? close() : open() }
 
   // Read a single value from this panel's inline shell.json entry, with a

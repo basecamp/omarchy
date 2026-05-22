@@ -27,7 +27,7 @@ Item {
     if (n === "microphone-muted" || n === "microphone-off" || n === "mic-muted" || n === "mic-off") return "󰍭"
     if (n === "microphone" || n === "mic") return "󰍬"
     if (n === "keyboard") return "󰌌"
-    if (n === "brightness" || n === "display") return "󰃠"
+    if (n === "brightness" || n === "display") return "󰍹"
     if (n === "touchpad") return "󰟸"
     if (n === "touch" || n === "touchscreen") return "󰜉"
     if (n === "media" || n === "player") return "󰝚"
