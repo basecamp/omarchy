@@ -16,6 +16,7 @@ Item {
 
   property string historyPath: Quickshell.env("HOME") + "/.local/state/omarchy/clipboard-history.json"
   property string captureScript: root.omarchyPath + "/shell/scripts/clipboard-capture.sh"
+  property string watchCommand: "script=$1\ntrap 'kill $(jobs -p) 2>/dev/null' EXIT\nwl-paste --watch \"$script\" &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/png wl-paste --type image/png --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/jpeg wl-paste --type image/jpeg --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/webp wl-paste --type image/webp --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/gif wl-paste --type image/gif --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/bmp wl-paste --type image/bmp --watch \"$script\" 2>/dev/null &\nOMARCHY_CLIPBOARD_WATCH_MIME=image/tiff wl-paste --type image/tiff --watch \"$script\" 2>/dev/null &\nwait"
   // Shares the [menu] surface tokens — themes that style the menu also
   // style the clipboard. Selected-row colors composed in the
   // singleton so consumers drop them straight into Rectangle bindings.
@@ -212,11 +213,11 @@ Item {
 
   Process {
     id: initProc
-    command: ["bash", "-lc", "mkdir -p ~/.local/state/omarchy"]
+    command: ["bash", "-c", "mkdir -p ~/.local/state/omarchy\nscript=$1\nfor pid in $(pgrep -x wl-paste || true); do\n  cmdline=$(tr '\\0' ' ' <\"/proc/$pid/cmdline\" 2>/dev/null || true)\n  if [[ $cmdline == *\"wl-paste --watch $script \"* || $cmdline == *\"wl-paste --type \"*\" --watch $script \"* ]]; then\n    kill \"$pid\" 2>/dev/null || true\n  fi\ndone", "clipboard-init", root.captureScript]
     onExited: {
       currentProc.command = [root.captureScript]
       currentProc.running = true
-      watchProc.command = ["wl-paste", "--watch", root.captureScript]
+      watchProc.command = ["bash", "-c", root.watchCommand, "clipboard-watch", root.captureScript]
       watchProc.running = true
     }
   }
