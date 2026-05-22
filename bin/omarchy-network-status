@@ -71,6 +71,13 @@ print_verbose() {
   printf 'prefix\t%s\n' "$prefix"
   printf 'gateway\t%s\n' "$gw"
 
+  if [[ -r /sys/class/net/$iface/statistics/rx_bytes ]]; then
+    printf 'rx_bytes\t%s\n' "$(cat /sys/class/net/$iface/statistics/rx_bytes)"
+  fi
+  if [[ -r /sys/class/net/$iface/statistics/tx_bytes ]]; then
+    printf 'tx_bytes\t%s\n' "$(cat /sys/class/net/$iface/statistics/tx_bytes)"
+  fi
+
   if [[ -d /sys/class/net/$iface/wireless ]]; then
     printf 'type\twifi\n'
 

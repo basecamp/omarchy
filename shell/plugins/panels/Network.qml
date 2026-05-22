@@ -18,7 +18,29 @@ Panel {
   }
 
   // Live connection details from `ip` / /sys / iw.
-  property var info: ({})  // { iface, type, ip, prefix, gateway, speed, duplex, ssid, signal, freq, bitrate }
+  property var info: ({})  // { iface, type, ip, prefix, gateway, speed, duplex, ssid, signal, freq, bitrate, rx_bytes, tx_bytes }
+
+  // Throughput tracking. Rates are computed as deltas between successive
+  // `omarchy-network-status --verbose` samples (~1.5s apart via detailsPoll).
+  // We hold "prev" alongside a timestamp so the first sample after open or
+  // after an interface switch doesn't manufacture a spike.
+  property real prevRxBytes: 0
+  property real prevTxBytes: 0
+  property real prevSampleTime: 0
+  property string prevIface: ""
+  property real downloadRate: 0  // bytes/sec
+  property real uploadRate: 0    // bytes/sec
+  property int ethernetPhraseIndex: 0
+  readonly property var ethernetPhrases: [
+    "Wiring bits",
+    "Handling packets",
+    "Sorting frames",
+    "Hauling bytes",
+    "Routing crumbs",
+    "Counting collisions",
+    "Bending light",
+  ]
+  readonly property string ethernetPhrase: ethernetPhrases[ethernetPhraseIndex % ethernetPhrases.length]
   readonly property bool networkManagerAvailable: Networking.backend === NetworkBackendType.NetworkManager
   readonly property var networkDevices: Networking.devices ? Networking.devices.values : []
   readonly property var wifiDevice: findDevice(DeviceType.Wifi)
@@ -59,7 +81,11 @@ Panel {
   property string focusSection: "dns"  // "header" | "dns" | "wifi"
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
-  readonly property int headerActionCount: canDisconnect ? 2 : 1
+  // The disconnect button is suppressed on ethernet (see disconnectBtn.visible).
+  // headerActionCount/nav must agree, so the keyboard cursor never lands on a
+  // hidden button.
+  readonly property bool headerHasDisconnect: canDisconnect && info.type !== "ethernet"
+  readonly property int headerActionCount: headerHasDisconnect ? 1 : 0
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
 
@@ -76,11 +102,7 @@ Panel {
   }
 
   function activateHeader() {
-    if (canDisconnect && headerIndex === 0) {
-      if (!busy) disconnect(connectedWifiNetwork)
-      return
-    }
-    refresh(true)
+    if (headerHasDisconnect && headerIndex === 0 && !busy) disconnect(connectedWifiNetwork)
   }
 
   function selectDnsByDelta(delta) {
@@ -112,8 +134,13 @@ Panel {
       var idx = dnsProviders.indexOf(dnsProvider)
       dnsIndex = idx >= 0 ? idx : 0
       cursorActive = false
-    } else if (wifiDevice) {
-      wifiDevice.scannerEnabled = false
+    } else {
+      // Reset throughput tracking so the next open doesn't compute a fake
+      // rate from a sample taken minutes ago.
+      prevSampleTime = 0
+      downloadRate = 0
+      uploadRate = 0
+      if (wifiDevice) wifiDevice.scannerEnabled = false
     }
   }
 
@@ -255,6 +282,49 @@ Panel {
       next[line.substring(0, idx)] = line.substring(idx + 1).trim()
     }
     info = next
+    updateThroughput(next)
+  }
+
+  function updateThroughput(next) {
+    var iface = next.iface || ""
+    var rx = parseFloat(next.rx_bytes || "0")
+    var tx = parseFloat(next.tx_bytes || "0")
+    var now = Date.now() / 1000
+
+    // Interface changed (or first sample) — reseed without emitting a rate;
+    // raw counters from two different NICs are meaningless to subtract.
+    if (iface !== prevIface || prevSampleTime === 0) {
+      prevIface = iface
+      prevRxBytes = rx
+      prevTxBytes = tx
+      prevSampleTime = now
+      downloadRate = 0
+      uploadRate = 0
+      return
+    }
+
+    var dt = now - prevSampleTime
+    if (dt > 0) {
+      // Math.max guards against counter wrap or reset to 0 (interface flap).
+      downloadRate = Math.max(0, (rx - prevRxBytes) / dt)
+      uploadRate = Math.max(0, (tx - prevTxBytes) / dt)
+    }
+    prevRxBytes = rx
+    prevTxBytes = tx
+    prevSampleTime = now
+  }
+
+  function formatBytes(bytes) {
+    var n = Number(bytes)
+    if (!isFinite(n) || n < 0) n = 0
+    if (n < 1024) return Math.round(n) + " B"
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB"
+    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB"
+    return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB"
+  }
+
+  function formatRate(bytesPerSec) {
+    return formatBytes(bytesPerSec) + "/s"
   }
 
   function findDevice(type) {
@@ -489,6 +559,39 @@ Panel {
   }
 
   Timer {
+    id: ethernetPhraseTimer
+    interval: 2800
+    running: root.opened && root.info.type === "ethernet"
+    repeat: true
+    onTriggered: ethernetPhraseSwap.restart()
+  }
+
+  SequentialAnimation {
+    id: ethernetPhraseSwap
+    PropertyAnimation {
+      target: heroMeta; property: "opacity"
+      to: 0.0; duration: 180; easing.type: Easing.OutQuad
+    }
+    ScriptAction {
+      script: root.ethernetPhraseIndex = (root.ethernetPhraseIndex + 1) % root.ethernetPhrases.length
+    }
+    PropertyAnimation {
+      target: heroMeta; property: "opacity"
+      to: 1.0; duration: 260; easing.type: Easing.InQuad
+    }
+  }
+
+  Connections {
+    target: root
+    function onInfoChanged() {
+      if (root.info.type !== "ethernet") {
+        ethernetPhraseSwap.stop()
+        heroMeta.opacity = 1.0
+      }
+    }
+  }
+
+  Timer {
     id: actionTimeout
     interval: 15000
     repeat: false
@@ -555,11 +658,14 @@ Panel {
           if (root.focusSection === "header") {
             if (dy > 0) root.focusSection = "dns"
           } else if (root.focusSection === "dns") {
-            // k from DNS moves up into header actions; j drops into the
-            // wifi list if there's anywhere to land.
+            // k from DNS moves up into the disconnect button when there is
+            // one; otherwise stays put. j drops into the wifi list if there's
+            // anywhere to land.
             if (dy < 0) {
-              root.focusSection = "header"
-              root.headerIndex = root.headerActionCount - 1  // refresh by default
+              if (root.headerHasDisconnect) {
+                root.focusSection = "header"
+                root.headerIndex = 0
+              }
             } else if (root.wifiNetworks.length > 0) {
               root.focusSection = "wifi"
               if (root.selectedIndex < 0) root.selectedIndex = 0
@@ -627,7 +733,7 @@ Panel {
 
           PanelToolTip {
             visible: heroIconMouse.containsMouse
-            text: "Toggle Wi-Fi"
+            text: root.info.type === "ethernet" ? "Toggle network" : "Toggle Wi-Fi"
             fontFamily: root.bar.fontFamily
           }
         }
@@ -643,10 +749,10 @@ Panel {
 
           Text {
             id: heroSsid
+            visible: root.info.type !== "ethernet"
             width: parent.width
             text: {
               if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
-              if (root.info.type === "ethernet") return "Ethernet"
               return root.info.iface || (root.kind === "disconnected" ? "Disconnected" : "No connection")
             }
             color: root.bar.foreground
@@ -665,7 +771,7 @@ Panel {
                 if (root.kind === "disconnected") return "NOT CONNECTED"
                 return ""
               }
-              if (root.info.type === "ethernet") return "CONNECTED"
+              if (root.info.type === "ethernet") return root.ethernetPhrase.toUpperCase()
               if (root.kind === "disconnected") return "NOT CONNECTED"
               return ""
             }
@@ -687,7 +793,10 @@ Panel {
 
           PanelActionButton {
             id: disconnectBtn
-            visible: root.canDisconnect
+            // Hide on ethernet — the panel can't disconnect a wired link, and
+            // a wifi-off glyph next to the ethernet hero icon reads as a state
+            // contradiction.
+            visible: root.canDisconnect && root.info.type !== "ethernet"
             enabled: !root.busy
             hasCursor: root.cursorActive && root.focusSection === "header" && root.headerIndex === 0
             iconText: "󰖪"
@@ -707,24 +816,6 @@ Panel {
             onClicked: root.disconnect(root.connectedWifiNetwork)
           }
 
-          PanelActionButton {
-            id: refreshBtn
-            anchors.verticalCenter: parent.verticalCenter
-            iconText: "󰑐"
-            fontSize: Style.font.heading
-            size: Style.space(30)
-            tooltipText: "Refresh"
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            hasCursor: root.cursorActive && root.focusSection === "header" && root.headerIndex === (root.canDisconnect ? 1 : 0)
-            onHovered: function(h) {
-              if (!h) return
-              root.cursorActive = true
-              root.focusSection = "header"
-              root.headerIndex = root.canDisconnect ? 1 : 0
-            }
-            onClicked: root.refresh(true)
-          }
         }
       }
 
@@ -776,6 +867,33 @@ Panel {
             label: "Link"
             value: root.info.bitrate || ""
           }
+        }
+      }
+
+      PanelSeparator {
+        visible: !!root.info.iface && root.info.rx_bytes !== undefined
+        foreground: root.bar.foreground
+      }
+
+      // Throughput: instantaneous rate (from sample-to-sample delta) plus
+      // cumulative bytes since the interface came up.
+      Row {
+        visible: !!root.info.iface && root.info.rx_bytes !== undefined
+        width: parent.width
+        spacing: Style.space(20)
+
+        Column {
+          width: (parent.width - parent.spacing) / 2
+          spacing: Style.spacing.labelGap
+          InfoPair { label: "Receiving"; value: root.formatRate(root.downloadRate) }
+          InfoPair { label: "Downloaded"; value: root.formatBytes(parseFloat(root.info.rx_bytes || "0")) }
+        }
+
+        Column {
+          width: (parent.width - parent.spacing) / 2
+          spacing: Style.spacing.labelGap
+          InfoPair { label: "Sending"; value: root.formatRate(root.uploadRate) }
+          InfoPair { label: "Uploaded"; value: root.formatBytes(parseFloat(root.info.tx_bytes || "0")) }
         }
       }
 
