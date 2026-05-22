@@ -73,6 +73,7 @@ Panel {
 
   // Index into `wifiNetworks` for keyboard navigation. -1 = no selection.
   property int selectedIndex: -1
+  property bool wifiActionFocused: false
   property bool cursorActive: false
 
   // Keyboard focus zone for the panel. j/k crosses row boundaries:
@@ -130,6 +131,7 @@ Panel {
     if (opened) {
       refresh(true)
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
+      wifiActionFocused = false
       focusSection = wifiNetworks.length > 0 ? "wifi" : "dns"
       var idx = dnsProviders.indexOf(dnsProvider)
       dnsIndex = idx >= 0 ? idx : 0
@@ -161,6 +163,7 @@ Panel {
   onWifiNetworksChanged: {
     if (wifiNetworks.length === 0) {
       selectedIndex = -1
+      wifiActionFocused = false
       if (focusSection === "wifi") focusSection = "dns"
     } else if (passwordSsid !== "") {
       var passwordIndex = wifiIndexForSsid(passwordSsid)
@@ -172,6 +175,10 @@ Panel {
       selectedIndex = wifiNetworks.length - 1
     } else if (selectedIndex < 0 && opened) {
       selectedIndex = 0
+    }
+
+    if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length || !canForgetNetwork(wifiNetworks[selectedIndex])) {
+      wifiActionFocused = false
     }
   }
 
@@ -186,6 +193,21 @@ Panel {
     if (wifiNetworks.length === 0) { selectedIndex = -1; return }
     if (selectedIndex < 0) selectedIndex = delta > 0 ? 0 : wifiNetworks.length - 1
     else selectedIndex = Math.max(0, Math.min(wifiNetworks.length - 1, selectedIndex + delta))
+    wifiActionFocused = false
+  }
+
+  function canForgetNetwork(net) {
+    return !!(net && net.known && isProtected(net.security) && !net.connected)
+  }
+
+  function selectWifiActionByDelta(delta) {
+    if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
+    if (!canForgetNetwork(wifiNetworks[selectedIndex])) {
+      wifiActionFocused = false
+      return
+    }
+    if (delta > 0) wifiActionFocused = true
+    else if (delta < 0) wifiActionFocused = false
   }
 
   // Enter/Space on the highlighted row. Mirrors row-click semantics:
@@ -195,18 +217,10 @@ Panel {
     if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
     if (!net) return
+    if (wifiActionFocused && canForgetNetwork(net)) { forget(net); return }
     if (net.connected) { disconnect(net.network); return }
     if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
     connectKnown(net.ssid)
-  }
-
-  // 'x' on the highlighted row. Meaningful for saved/known networks
-  // (and the currently-connected row, if one is ever present); forget is
-  // hidden and a no-op otherwise.
-  function forgetSelected() {
-    if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
-    var net = wifiNetworks[selectedIndex]
-    if (net && (net.connected || net.known)) forget(net)
   }
 
   // Bar pill state. Polled locally so this panel is self-contained;
@@ -353,7 +367,6 @@ Panel {
       checkActionCompletion(network)
       var isConnected = network.connected
       var ssid = network.name || ""
-      if (isConnected && ssid !== root.actionSsid) continue // Skip the connected network so it doesn't appear in the list, unless we are currently trying to connect to it
       nets.push({
         network: network,
         connected: isConnected,
@@ -364,11 +377,24 @@ Panel {
       })
     }
     nets.sort(function(a, b) {
+      if (a.connected !== b.connected) return a.connected ? -1 : 1
+      if (a.known !== b.known) return a.known ? -1 : 1
       return b.signal - a.signal
     })
     wifiNetworks = nets
     wifiStationAvailable = !!wifiDevice
     scanning = false
+  }
+
+  function wifiSectionTitle(index) {
+    if (index < 0 || index >= wifiNetworks.length) return ""
+
+    var net = wifiNetworks[index]
+    if (!net) return ""
+
+    if (net.known && index === 0) return "KNOWN NETWORKS"
+    if (!net.known && (index === 0 || (wifiNetworks[index - 1] && wifiNetworks[index - 1].known))) return "OTHER NETWORKS"
+    return ""
   }
 
   function wifiIconFor(strength) {
@@ -673,13 +699,17 @@ Panel {
           } else {  // wifi
             // k from the top row escapes back up into the DNS row rather
             // than wrapping around to the bottom of the list.
-            if (dy < 0 && root.selectedIndex <= 0) root.focusSection = "dns"
+            if (dy < 0 && root.selectedIndex <= 0) {
+              root.focusSection = "dns"
+              root.wifiActionFocused = false
+            }
             else root.selectByDelta(dy)
           }
         }
         if (dx !== 0) {
           if (root.focusSection === "header") root.selectHeaderByDelta(dx)
           else if (root.focusSection === "dns") root.selectDnsByDelta(dx)
+          else if (root.focusSection === "wifi") root.selectWifiActionByDelta(dx)
         }
       }
       onActivateRequested: {
@@ -690,9 +720,6 @@ Panel {
         }
       }
       onCloseRequested: root.close()
-      onDeleteRequested: {
-        if (root.cursorActive && root.focusSection === "wifi") root.forgetSelected()
-      }
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refresh()
       }
@@ -961,8 +988,8 @@ Panel {
       }
 
       PanelSectionHeader {
-        visible: root.wifiStationAvailable
-        text: root.scanning ? "SCANNING WI-FI…" : "WI-FI NETWORKS"
+        visible: root.wifiStationAvailable && root.scanning
+        text: "SCANNING WI-FI…"
         foreground: root.bar.foreground
         fontFamily: root.bar.fontFamily
       }
@@ -994,13 +1021,29 @@ Panel {
         delegate: Item {
           required property var modelData
           required property int index
+          readonly property string sectionTitle: root.wifiSectionTitle(index)
           width: ListView.view.width
-          height: row.implicitHeight
-          NetworkRow {
-            id: row
+          height: delegateColumn.implicitHeight
+
+          Column {
+            id: delegateColumn
             width: parent.width
-            net: parent.modelData
-            index: parent.index
+            spacing: Style.space(4)
+
+            PanelSectionHeader {
+              visible: sectionTitle !== ""
+              text: sectionTitle
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              height: visible ? implicitHeight : 0
+            }
+
+            NetworkRow {
+              id: row
+              width: parent.width
+              net: modelData
+              index: parent.parent.index
+            }
           }
         }
       }
@@ -1041,7 +1084,7 @@ Panel {
   // A single Wi-Fi network entry. Collapses to a one-line pill normally;
   // expands inline to a passphrase prompt when the user picks a protected
   // network we don't have credentials for. Clicking a connected row
-  // disconnects; the X button on any saved/connected row forgets it.
+  // disconnects.
   component NetworkRow: CursorSurface {
     id: row
     required property var net
@@ -1050,10 +1093,12 @@ Panel {
     readonly property bool isConnected: net && net.connected
     readonly property bool isKnown: !!(net && net.known)
     readonly property bool isProtected: net ? root.isProtected(net.security) : false
-    readonly property bool canForget: isConnected || isKnown
+    readonly property bool canForgetFromLock: isKnown && isProtected && !isConnected
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
+    readonly property bool forgetFocused: isSelected && root.wifiActionFocused && canForgetFromLock
+    readonly property bool forgetVisible: canForgetFromLock && (forgetFocused || rightMouse.containsMouse)
 
-    hasCursor: root.cursorActive && isSelected
+    hasCursor: root.cursorActive && isSelected && !root.wifiActionFocused
     current: isConnected
     foreground: root.bar.foreground
     fill: root.hoverFill
@@ -1115,7 +1160,7 @@ Panel {
       // Move the cursor here when the mouse enters; mouse leaving doesn't
       // clear it (so the cursor stays where the mouse last was and
       // subsequent j/k pick up from this row).
-      onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "wifi"; root.selectedIndex = row.index }
+      onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "wifi"; root.selectedIndex = row.index; root.wifiActionFocused = false }
 
       onClicked: {
         if (!row.net) return
@@ -1124,6 +1169,7 @@ Panel {
         root.cursorActive = true
         root.focusSection = "wifi"
         root.selectedIndex = row.index
+        root.wifiActionFocused = false
         if (row.isConnected) {
           root.disconnect(row.net.network)
           return
@@ -1143,7 +1189,7 @@ Panel {
       anchors.top: parent.top
       anchors.leftMargin: Style.space(10)
       anchors.rightMargin: Style.space(10)
-      implicitHeight: Math.max(networkIcon.implicitHeight, networkInfo.implicitHeight, forgetBtn.implicitHeight) + Style.spacing.rowPaddingX
+      implicitHeight: Math.max(networkIcon.implicitHeight, networkInfo.implicitHeight, rightAction.implicitHeight) + Style.spacing.rowPaddingX
 
       Text {
         id: networkIcon
@@ -1155,34 +1201,53 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      PanelActionButton {
-        id: forgetBtn
-        anchors.right: lockIndicator.visible ? lockIndicator.left : parent.right
-        anchors.rightMargin: lockIndicator.visible ? Style.space(4) : 0
-        anchors.verticalCenter: parent.verticalCenter
-        visible: row.canForget
-        enabled: !root.busy
-        iconText: "󰅙"
-        tooltipText: "Forget network"
-        foreground: root.bar.foreground
-        hoverColor: root.bar.urgent
-        fontFamily: root.bar.fontFamily
-        onClicked: if (row.net) root.forget(row.net)
-      }
-
-      // Shows a lock glyph for protected disconnected networks at the far
-      // right, with the forget X to its left when the network is saved.
-      Text {
-        id: lockIndicator
-        visible: row.isProtected && !row.isConnected
+      // Shows a lock glyph for protected networks. Known disconnected
+      // networks reveal the forget action when hovering that right edge.
+      Item {
+        id: rightAction
+        visible: row.isProtected
         width: Style.space(22)
+        implicitHeight: lockIndicator.implicitHeight
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        horizontalAlignment: Text.AlignHCenter
-        text: "󰌾"
-        color: Qt.darker(root.bar.foreground, 1.4)
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.subtitle
+
+        Text {
+          id: lockIndicator
+          width: parent.width
+          anchors.verticalCenter: parent.verticalCenter
+          horizontalAlignment: Text.AlignHCenter
+          text: row.forgetVisible ? "󰅙" : "󰌾"
+          color: row.forgetVisible ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.4)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.subtitle
+        }
+
+        Rectangle {
+          anchors.fill: parent
+          visible: row.forgetFocused
+          color: Style.hoverFillFor(root.bar.urgent, root.bar.urgent)
+          border.color: Style.hoverBorderFor(root.bar.urgent, root.bar.urgent)
+          border.width: Style.hoverBorderWidth
+          radius: Style.cornerRadius
+          z: -1
+        }
+
+        MouseArea {
+          id: rightMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          acceptedButtons: Qt.LeftButton
+          enabled: row.canForgetFromLock && !root.busy
+          cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+          onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "wifi"; root.selectedIndex = row.index; root.wifiActionFocused = true }
+          onClicked: if (row.net) root.forget(row.net)
+        }
+
+        PanelToolTip {
+          visible: rightMouse.containsMouse || row.forgetFocused
+          text: "Forget network"
+          fontFamily: root.bar.fontFamily
+        }
       }
 
       Column {
@@ -1190,10 +1255,9 @@ Panel {
         spacing: Style.space(1)
         anchors.left: networkIcon.right
         anchors.leftMargin: Style.space(10)
-        anchors.right: forgetBtn.visible ? forgetBtn.left
-                      : lockIndicator.visible ? lockIndicator.left
+        anchors.right: rightAction.visible ? rightAction.left
                       : parent.right
-        anchors.rightMargin: (forgetBtn.visible || lockIndicator.visible) ? Style.space(8) : 0
+        anchors.rightMargin: rightAction.visible ? Style.space(8) : 0
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
@@ -1257,7 +1321,7 @@ Panel {
         anchors.rightMargin: Style.space(6)
         password: true
         placeholderText: "Passphrase"
-        font.family: root.bar.fontFamily
+        font.family: Style.font.family
         font.pixelSize: Style.font.body
         foreground: root.bar.foreground
         horizontalPadding: Style.spacing.controlGap
@@ -1298,8 +1362,8 @@ Panel {
         }
       }
 
-      // 22×22 right-anchored to line up with forgetBtn and lockIndicator
-      // above. Esc closes the prompt (handled by pwField.Keys.onEscapePressed)
+      // 22×22 right-anchored to line up with lockIndicator above. Esc closes
+      // the prompt (handled by pwField.Keys.onEscapePressed)
       // so there's no separate cancel button.
       PanelActionButton {
         id: connectPwBtn
