@@ -749,10 +749,10 @@ Panel {
 
           Text {
             id: heroSsid
-            visible: root.info.type !== "ethernet"
             width: parent.width
             text: {
               if (root.info.type === "wifi") return root.info.ssid || "Wi-Fi"
+              if (root.info.type === "ethernet") return "Ethernet"
               return root.info.iface || (root.kind === "disconnected" ? "Disconnected" : "No connection")
             }
             color: root.bar.foreground
